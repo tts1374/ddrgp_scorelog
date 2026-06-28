@@ -4,7 +4,7 @@ DanceDanceRevolution GRAND PRIX のリザルト画面からスコア情報を取
 
 ## Status
 
-初期セットアップ段階です。現時点では要求定義、スクリーンショット収集方針、マスタ取得機能とWindows常駐アプリの置き場を用意しています。
+初期PoC段階です。現時点では要求定義、スクリーンショット収集方針、マスタ取得機能とWindows常駐アプリの置き場に加え、リザルト候補分類とOCR前処理のPoCを用意しています。
 
 ## Goals
 
@@ -22,6 +22,8 @@ DanceDanceRevolution GRAND PRIX のリザルト画面からスコア情報を取
 ├─ docs/                        # 要求定義・設計メモ
 ├─ master/                      # BEMANIWikiマスタDB生成
 ├─ samples/                     # スクショ収集ルールとメタデータ例
+├─ tests/                       # 画像分類/OCR前処理PoCのテスト
+├─ tools/vision_poc/            # 画面分類、ROI切り出し、OCR前処理PoC
 └─ pyproject.toml               # Python側の依存・開発ツール定義
 ```
 
@@ -29,6 +31,8 @@ DanceDanceRevolution GRAND PRIX のリザルト画面からスコア情報を取
 
 - [要求定義](docs/requirements.md)
 - [スクリーンショット収集マトリクス](docs/screenshot-collection.md)
+- [画面解析PoC準備メモ](docs/vision-poc-prep.md)
+- [画面解析PoCツール](tools/vision_poc/README.md)
 - [マスタ取得機能メモ](master/README.md)
 - [Windowsアプリ機能メモ](app/README.md)
 
@@ -42,4 +46,3 @@ DanceDanceRevolution GRAND PRIX のリザルト画面からスコア情報を取
 - スコア・判定数の数字領域を固定ROIで読み取れるか。
 - 曲名・SP/DP・難易度をマスタDBと照合できるか。
 - 低確信度の結果を安全に破棄できるか。
-
