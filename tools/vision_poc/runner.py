@@ -118,6 +118,13 @@ class ResultEvent:
 
 
 @dataclass(frozen=True)
+class FrameInput:
+    row: dict[str, str]
+    image_path: Path
+    timestamp_ms: int | None = None
+
+
+@dataclass(frozen=True)
 class ScoreOcrResult:
     organized_file: str
     screen_type: str
@@ -356,6 +363,40 @@ def read_metadata(path: Path) -> list[dict[str, str]]:
         joined = ", ".join(sorted(missing))
         raise ValueError(f"metadata.csv is missing required columns: {joined}")
     return rows
+
+
+def build_metadata_frame_inputs(
+    rows: Iterable[dict[str, str]],
+    screenshots_root: Path,
+) -> list[FrameInput]:
+    return [
+        FrameInput(
+            row=row,
+            image_path=screenshots_root / row["organized_file"],
+        )
+        for row in rows
+    ]
+
+
+def build_timestamped_frame_inputs(
+    rows: Iterable[dict[str, str]],
+    screenshots_root: Path,
+    *,
+    start_ms: int = 0,
+    frame_interval_ms: int = 1000,
+) -> list[FrameInput]:
+    timestamp_ms = start_ms
+    frames: list[FrameInput] = []
+    for row in rows:
+        frames.append(
+            FrameInput(
+                row=row,
+                image_path=screenshots_root / row["organized_file"],
+                timestamp_ms=timestamp_ms,
+            )
+        )
+        timestamp_ms += frame_interval_ms
+    return frames
 
 
 def save_primary_rois(image: Image.Image, output_dir: Path, stem: str) -> None:
@@ -833,6 +874,15 @@ def print_summary(summary: dict[str, object], output_dir: Path) -> None:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Evaluate OCR-free DDR GP result screen signals.")
     parser.add_argument(
+        "--sequence-mode",
+        choices=("metadata", "timestamped"),
+        default="metadata",
+        help=(
+            "Input sequence mode. metadata keeps legacy frame-based events; timestamped attaches "
+            "artificial capture timestamps to the same local image sequence."
+        ),
+    )
+    parser.add_argument(
         "--metadata",
         type=Path,
         default=Path("samples/screenshots/metadata.csv"),
@@ -847,8 +897,20 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--output",
         type=Path,
-        default=Path("data/vision_poc"),
+        default=None,
         help="Directory for CSV/JSON logs and cropped ROI images.",
+    )
+    parser.add_argument(
+        "--timestamp-start-ms",
+        type=int,
+        default=0,
+        help="Starting timestamp for --sequence-mode timestamped.",
+    )
+    parser.add_argument(
+        "--timestamp-interval-ms",
+        type=int,
+        default=1000,
+        help="Artificial interval between local frames for --sequence-mode timestamped.",
     )
     parser.add_argument(
         "--no-rois",
@@ -885,29 +947,45 @@ def resolve_ocr_rois(values: list[str]) -> tuple[str, ...]:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    output_dir: Path = args.output
+    output_dir: Path = args.output or (
+        Path("data/vision_poc_timestamped")
+        if args.sequence_mode == "timestamped"
+        else Path("data/vision_poc")
+    )
     output_dir.mkdir(parents=True, exist_ok=True)
     ocr_rois = resolve_ocr_rois(args.ocr_rois)
 
     rows = read_metadata(args.metadata)
+    if args.sequence_mode == "timestamped":
+        frames = build_timestamped_frame_inputs(
+            rows,
+            args.screenshots_root,
+            start_ms=args.timestamp_start_ms,
+            frame_interval_ms=args.timestamp_interval_ms,
+        )
+    else:
+        frames = build_metadata_frame_inputs(rows, args.screenshots_root)
+
     classifications: list[Classification] = []
     score_ocr_results: list[ScoreOcrResult] = []
-    for row in rows:
-        image_path = args.screenshots_root / row["organized_file"]
-        with Image.open(image_path) as image:
+    for frame in frames:
+        with Image.open(frame.image_path) as image:
             image = image.convert("RGB")
-            classification = classify(image, row)
+            classification = classify(image, frame.row)
             classifications.append(classification)
             if not args.no_rois:
-                save_primary_rois(image, output_dir, image_path.stem)
+                save_primary_rois(image, output_dir, frame.image_path.stem)
             if not args.no_ocr and classification.result_candidate:
                 for roi_name in ocr_rois:
                     score_ocr_results.append(
-                        process_ocr_roi(image, row, classification, output_dir, roi_name)
+                        process_ocr_roi(image, frame.row, classification, output_dir, roi_name)
                     )
 
     write_results_csv(output_dir / "results.csv", classifications)
-    result_events = build_result_events(classifications)
+    timestamps_ms = (
+        [frame.timestamp_ms for frame in frames] if args.sequence_mode == "timestamped" else None
+    )
+    result_events = build_result_events(classifications, timestamps_ms=timestamps_ms)
     write_result_events_csv(output_dir / "result_events.csv", result_events)
     write_score_ocr_csv(output_dir / "score_ocr.csv", score_ocr_results)
     summary = summarize(classifications)

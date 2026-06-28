@@ -22,6 +22,22 @@ python -m pip install -e ".[vision]"
 
 出力先には `results.csv`、`result_events.csv`、`summary.json`、`misclassifications.md`、`rois/<画像名>/` 配下の主要ROI画像が生成されます。`data/` はGit管理対象外です。
 
+この既定実行は metadata 評価モードです。`samples/screenshots/metadata.csv` の並びをフレーム順として扱いますが、キャプチャ時刻は持たないため、`result_events.csv` の `timestamp_ms` と `candidate_duration_ms` は空欄、`confirmation_mode` は `frames` になります。
+
+実キャプチャ相当の時系列PoCは、同じローカル画像列へ人工 `timestamp_ms` を付けて実行できます。
+
+```powershell
+python -m tools.vision_poc --sequence-mode timestamped
+```
+
+既定の出力先は `data/vision_poc_timestamped/` です。このモードでは `build_result_events(..., timestamps_ms=...)` にキャプチャ時刻相当の値を渡すため、`result_events.csv` の `confirmation_mode` は `time`、`timestamp_ms` と `candidate_duration_ms` はミリ秒値になります。
+
+人工 timestamp は既定で `0ms` から `1000ms` 間隔です。必要に応じて以下のように開始時刻や間隔を変えられます。
+
+```powershell
+python -m tools.vision_poc --sequence-mode timestamped --timestamp-start-ms 5000 --timestamp-interval-ms 333
+```
+
 OCR前処理も既定で実行されます。対象は `result_candidate=true` の画像だけで、既定では `score_digits` ROIから以下を出力します。
 
 - `data/vision_poc/ocr/<画像名>/score_digits_original.png`
@@ -111,7 +127,7 @@ python -m pytest tests
 
 `build_result_events()` は任意で `timestamps_ms` を受け取れます。timestamp がある入力では、フレーム数ではなく `result_candidate=true` が `CONFIRMED_RESULT_MIN_DURATION_MS=1000` ミリ秒以上継続した時点で `confirmed_result=true` にします。metadata には時刻情報がないため、現在の `python -m tools.vision_poc` の出力は従来どおりフレームベースです。
 
-この値は、まずローカル素材や人工シーケンスで「単発誤検出を保存しない」ことを確認するための最小しきい値です。実キャプチャ導入時はキャプチャ時刻を `timestamp_ms` として渡し、FPS固定ではなくても安定する時刻ベース判定を優先します。FPSが揺れる、またはフレーム欠落が起きる環境では、フレーム数より継続ミリ秒を保存確定の基準にします。
+この値は、まずローカル素材や人工シーケンスで「単発誤検出を保存しない」ことを確認するための最小しきい値です。実キャプチャ導入時はフレーム番号ではなく、キャプチャした時点の単調増加時刻を `timestamp_ms` として渡します。FPS固定ではなくても、時刻ベースなら `result_candidate=true` が実時間でどれだけ続いたかを見られるため、FPS揺れやフレーム欠落があっても保存確定が安定します。たとえばフレーム数が少なくても1000ms以上継続していれば確定し、逆にフレーム数が多くても短時間に偏っていれば確定しません。
 
 `transition_countup_*` は `result_shape_candidate=true` でも `transition_kind=countup` として扱い、`event_type=rejected_transition`、`confirmed_result=false` のままにします。
 

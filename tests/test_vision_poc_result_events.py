@@ -2,6 +2,8 @@ from __future__ import annotations
 
 # ruff: noqa: I001
 
+from pathlib import Path
+
 import pytest
 
 pytest.importorskip("numpy")
@@ -131,6 +133,55 @@ def test_timestamp_confirmed_result_requires_sustained_duration() -> None:
     assert "confirmed_after_ms=1100" in events[2].reason
 
 
+def test_timestamp_irregular_intervals_confirm_after_duration() -> None:
+    events = runner.build_result_events(
+        [
+            classification("organized/result_score123456_a.png", result_candidate=True),
+            classification("organized/result_score123456_b.png", result_candidate=True),
+            classification("organized/result_score123456_c.png", result_candidate=True),
+        ],
+        timestamps_ms=[10_000, 10_120, 11_050],
+        min_confirmed_duration_ms=1_000,
+    )
+
+    assert [event.confirmed_result for event in events] == [False, False, True]
+    assert events[2].candidate_duration_ms == 1_050
+    assert events[2].confirmation_mode == "time"
+
+
+def test_timestamp_few_frames_confirm_when_duration_is_enough() -> None:
+    events = runner.build_result_events(
+        [
+            classification("organized/result_score123456_a.png", result_candidate=True),
+            classification("organized/result_score123456_b.png", result_candidate=True),
+        ],
+        timestamps_ms=[2_000, 3_250],
+        min_confirmed_duration_ms=1_000,
+    )
+
+    assert [event.confirmed_result for event in events] == [False, True]
+    assert events[1].event_type == "confirmed"
+    assert events[1].candidate_duration_ms == 1_250
+
+
+def test_timestamp_many_frames_do_not_confirm_when_duration_is_short() -> None:
+    events = runner.build_result_events(
+        [
+            classification("organized/result_score123456_a.png", result_candidate=True),
+            classification("organized/result_score123456_b.png", result_candidate=True),
+            classification("organized/result_score123456_c.png", result_candidate=True),
+            classification("organized/result_score123456_d.png", result_candidate=True),
+            classification("organized/result_score123456_e.png", result_candidate=True),
+        ],
+        timestamps_ms=[5_000, 5_090, 5_180, 5_270, 5_360],
+        min_confirmed_duration_ms=1_000,
+    )
+
+    assert [event.confirmed_result for event in events] == [False, False, False, False, False]
+    assert events[4].candidate_duration_ms == 360
+    assert events[4].confirmation_mode == "time"
+
+
 def test_timestamp_short_duration_is_not_confirmed() -> None:
     events = runner.build_result_events(
         [
@@ -164,3 +215,23 @@ def test_timestamp_duplicate_uses_time_window() -> None:
     assert events[2].event_type == "duplicate"
     assert events[2].duplicate
     assert "duplicate_within_ms=500" in events[2].reason
+
+
+def test_timestamped_frame_inputs_attach_artificial_capture_time() -> None:
+    frames = runner.build_timestamped_frame_inputs(
+        [
+            {"organized_file": "organized/a.png", "screen_type": "menu_setup"},
+            {"organized_file": "organized/b.png", "screen_type": "result"},
+            {"organized_file": "organized/c.png", "screen_type": "result"},
+        ],
+        Path("samples/screenshots"),
+        start_ms=250,
+        frame_interval_ms=333,
+    )
+
+    assert [frame.timestamp_ms for frame in frames] == [250, 583, 916]
+    assert [frame.image_path.as_posix() for frame in frames] == [
+        "samples/screenshots/organized/a.png",
+        "samples/screenshots/organized/b.png",
+        "samples/screenshots/organized/c.png",
+    ]
