@@ -924,6 +924,32 @@ def write_result_events_csv(path: Path, events: Iterable[ResultEvent]) -> None:
         writer.writerows(rows)
 
 
+def summarize_result_events(events: list[ResultEvent]) -> dict[str, object]:
+    confirmation_mode_counts: dict[str, int] = {}
+    for event in events:
+        confirmation_mode_counts[event.confirmation_mode] = (
+            confirmation_mode_counts.get(event.confirmation_mode, 0) + 1
+        )
+
+    first_confirmed = next((event for event in events if event.confirmed_result), None)
+    return {
+        "total": len(events),
+        "confirmed_count": sum(event.event_type == "confirmed" for event in events),
+        "confirmed_result_count": sum(event.confirmed_result for event in events),
+        "duplicate_count": sum(event.event_type == "duplicate" for event in events),
+        "rejected_transition_count": sum(
+            event.event_type == "rejected_transition" for event in events
+        ),
+        "first_confirmed_frame_index": (
+            first_confirmed.frame_index if first_confirmed is not None else None
+        ),
+        "first_confirmed_timestamp_ms": (
+            first_confirmed.timestamp_ms if first_confirmed is not None else None
+        ),
+        "confirmation_mode_counts": confirmation_mode_counts,
+    }
+
+
 def summarize(classifications: list[Classification]) -> dict[str, object]:
     by_type: dict[str, dict[str, int]] = {}
     for item in classifications:
@@ -1218,6 +1244,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     result_events = build_result_events(classifications, timestamps_ms=timestamps_ms)
     write_result_events_csv(output_dir / "result_events.csv", result_events)
+    result_events_summary = summarize_result_events(result_events)
+    (output_dir / "result_events_summary.json").write_text(
+        json.dumps(result_events_summary, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
     write_score_ocr_csv(output_dir / "score_ocr.csv", score_ocr_results)
     summary = summarize(classifications)
     (output_dir / "summary.json").write_text(

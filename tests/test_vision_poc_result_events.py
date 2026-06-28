@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import argparse
+import json
 from pathlib import Path
 
 import pytest
@@ -146,6 +147,22 @@ def test_timestamp_confirmed_result_requires_sustained_duration() -> None:
     assert "confirmed_after_ms=1100" in events[2].reason
 
 
+def test_timestamp_candidate_duration_grows_from_first_candidate() -> None:
+    events = runner.build_result_events(
+        [
+            classification("organized/result_score123456_a.png", result_candidate=True),
+            classification("organized/result_score123456_b.png", result_candidate=True),
+            classification("organized/result_score123456_c.png", result_candidate=True),
+        ],
+        timestamps_ms=[1_000, 1_400, 2_000],
+        min_confirmed_duration_ms=1_000,
+    )
+
+    assert [event.candidate_duration_ms for event in events] == [0, 400, 1_000]
+    assert events[2].confirmed_result
+    assert events[2].confirmation_mode == "time"
+
+
 def test_timestamp_irregular_intervals_confirm_after_duration() -> None:
     events = runner.build_result_events(
         [
@@ -220,6 +237,7 @@ def test_timestamp_duplicate_uses_time_window() -> None:
         ],
         timestamps_ms=[1_000, 2_100, 2_600],
         min_confirmed_duration_ms=1_000,
+        duplicate_window_frames=0,
         duplicate_window_ms=1_000,
     )
 
@@ -228,6 +246,39 @@ def test_timestamp_duplicate_uses_time_window() -> None:
     assert events[2].event_type == "duplicate"
     assert events[2].duplicate
     assert "duplicate_within_ms=500" in events[2].reason
+
+
+def test_result_events_summary_counts_event_outcomes() -> None:
+    events = runner.build_result_events(
+        [
+            classification("organized/result_score123456_a.png", result_candidate=True),
+            classification("organized/result_score123456_b.png", result_candidate=True),
+            classification("organized/result_score123456_c.png", result_candidate=True),
+            classification(
+                "organized/transition_countup_score999999_a.png",
+                result_candidate=False,
+                result_shape_candidate=True,
+                screen_type="transition",
+                transition_kind="countup",
+            ),
+        ],
+        timestamps_ms=[1_000, 2_100, 2_600, 3_000],
+        min_confirmed_duration_ms=1_000,
+        duplicate_window_ms=1_000,
+    )
+
+    summary = runner.summarize_result_events(events)
+
+    assert summary == {
+        "total": 4,
+        "confirmed_count": 1,
+        "confirmed_result_count": 2,
+        "duplicate_count": 1,
+        "rejected_transition_count": 1,
+        "first_confirmed_frame_index": 1,
+        "first_confirmed_timestamp_ms": 2_100,
+        "confirmation_mode_counts": {"time": 4},
+    }
 
 
 def test_timestamped_frame_inputs_attach_artificial_capture_time() -> None:
@@ -454,6 +505,11 @@ def test_manifest_mode_writes_time_based_result_events(
     assert [row["timestamp_ms"] for row in rows] == ["1000", "2200"]
     assert rows[1]["candidate_duration_ms"] == "1200"
     assert rows[1]["event_type"] == "confirmed"
+    summary = json.loads((output_dir / "result_events_summary.json").read_text(encoding="utf-8"))
+    assert summary["confirmed_count"] == 1
+    assert summary["first_confirmed_frame_index"] == 1
+    assert summary["first_confirmed_timestamp_ms"] == 2200
+    assert summary["confirmation_mode_counts"] == {"time": 2}
 
 
 def test_metadata_mode_keeps_frame_based_result_events(
@@ -502,6 +558,88 @@ def test_metadata_mode_keeps_frame_based_result_events(
     assert [row["timestamp_ms"] for row in rows] == ["", ""]
     assert [row["candidate_duration_ms"] for row in rows] == ["", ""]
     assert rows[1]["event_type"] == "confirmed"
+    summary = json.loads((output_dir / "result_events_summary.json").read_text(encoding="utf-8"))
+    assert summary["confirmed_count"] == 1
+    assert summary["first_confirmed_frame_index"] == 1
+    assert summary["first_confirmed_timestamp_ms"] is None
+    assert summary["confirmation_mode_counts"] == {"frames": 2}
+
+
+def test_timestamped_synthetic_sequence_writes_time_event_summary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for name in ("a.png", "b.png", "c.png", "d.png", "e.png"):
+        write_test_image(tmp_path / "screenshots" / name)
+    metadata_path = tmp_path / "metadata.csv"
+    metadata_path.write_text(
+        "organized_file,screen_type\n"
+        "a.png,result\n"
+        "b.png,result\n"
+        "c.png,result\n"
+        "d.png,transition\n"
+        "e.png,result\n",
+        encoding="utf-8",
+    )
+
+    def classify_synthetic(_image: Image.Image, row: dict[str, str]) -> runner.Classification:
+        if row["organized_file"] == "d.png":
+            return classification(
+                "transition_countup_score999999_d.png",
+                result_candidate=False,
+                result_shape_candidate=True,
+                screen_type="transition",
+                transition_kind="countup",
+            )
+        return classification(
+            f"organized/result_score123456_{row['organized_file']}",
+            result_candidate=True,
+            screen_type=row["screen_type"],
+        )
+
+    monkeypatch.setattr(runner, "classify", classify_synthetic)
+
+    output_dir = tmp_path / "output"
+    assert (
+        runner.main(
+            [
+                "--sequence-mode",
+                "timestamped",
+                "--metadata",
+                str(metadata_path),
+                "--screenshots-root",
+                str(tmp_path / "screenshots"),
+                "--output",
+                str(output_dir),
+                "--timestamp-start-ms",
+                "1000",
+                "--timestamp-interval-ms",
+                "500",
+                "--no-rois",
+                "--no-ocr",
+            ]
+        )
+        == 0
+    )
+
+    rows = read_csv_rows(output_dir / "result_events.csv")
+    assert [row["candidate_duration_ms"] for row in rows] == ["0", "500", "1000", "", "0"]
+    assert [row["event_type"] for row in rows] == [
+        "none",
+        "none",
+        "confirmed",
+        "rejected_transition",
+        "none",
+    ]
+    assert rows[3]["confirmed_result"] == "False"
+    assert rows[3]["result_shape_candidate"] == "True"
+
+    summary = json.loads((output_dir / "result_events_summary.json").read_text(encoding="utf-8"))
+    assert summary["confirmed_count"] == 1
+    assert summary["duplicate_count"] == 0
+    assert summary["rejected_transition_count"] == 1
+    assert summary["first_confirmed_timestamp_ms"] == 2000
+    assert summary["confirmation_mode_counts"] == {"time": 5}
 
 
 def test_timestamped_mode_writes_reusable_frame_manifest(
