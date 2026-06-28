@@ -17,7 +17,9 @@ from PIL import Image, ImageFilter, ImageOps
 BASE_WIDTH = 1280
 BASE_HEIGHT = 720
 CONFIRMED_RESULT_MIN_FRAMES = 2
+CONFIRMED_RESULT_MIN_DURATION_MS = 1000
 DUPLICATE_WINDOW_FRAMES = 90
+DUPLICATE_WINDOW_MS = 90_000
 
 
 ROI_DEFINITIONS: dict[str, tuple[int, int, int, int]] = {
@@ -109,6 +111,9 @@ class ResultEvent:
     event_type: str
     duplicate: bool
     duplicate_key: str
+    timestamp_ms: int | None
+    candidate_duration_ms: int | None
+    confirmation_mode: str
     reason: str
 
 
@@ -388,45 +393,87 @@ def duplicate_key_for_classification(classification: Classification) -> str:
 def build_result_events(
     classifications: Iterable[Classification],
     *,
+    timestamps_ms: Iterable[int | None] | None = None,
     min_confirmed_frames: int = CONFIRMED_RESULT_MIN_FRAMES,
+    min_confirmed_duration_ms: int = CONFIRMED_RESULT_MIN_DURATION_MS,
     duplicate_window_frames: int = DUPLICATE_WINDOW_FRAMES,
+    duplicate_window_ms: int = DUPLICATE_WINDOW_MS,
 ) -> list[ResultEvent]:
     events: list[ResultEvent] = []
     candidate_streak = 0
-    last_confirmed_by_key: dict[str, int] = {}
+    candidate_start_timestamp_ms: int | None = None
+    last_confirmed_by_key: dict[str, tuple[int, int | None]] = {}
+    timestamp_iter = iter(timestamps_ms) if timestamps_ms is not None else None
 
     for frame_index, classification in enumerate(classifications):
+        if timestamp_iter is None:
+            timestamp_ms = None
+        else:
+            try:
+                timestamp_ms = next(timestamp_iter)
+            except StopIteration as exc:
+                msg = "timestamps_ms must contain one item per classification"
+                raise ValueError(msg) from exc
+
         duplicate_key = duplicate_key_for_classification(classification)
         confirmed_result = False
         duplicate = False
+        candidate_duration_ms: int | None = None
+        confirmation_mode = "time" if timestamp_ms is not None else "frames"
         event_type = "none"
         reasons = [classification.reason]
 
         if classification.transition_kind == "countup" and classification.result_shape_candidate:
             candidate_streak = 0
+            candidate_start_timestamp_ms = None
             event_type = "rejected_transition"
             reasons.append("transition_countup_shape_candidate")
         elif classification.result_candidate:
             candidate_streak += 1
+            if timestamp_ms is not None:
+                if candidate_start_timestamp_ms is None:
+                    candidate_start_timestamp_ms = timestamp_ms
+                candidate_duration_ms = max(0, timestamp_ms - candidate_start_timestamp_ms)
             reasons.append(f"candidate_streak={candidate_streak}")
-            if candidate_streak >= min_confirmed_frames:
+
+            if timestamp_ms is not None:
+                confirmed_result = candidate_duration_ms >= min_confirmed_duration_ms
+            else:
+                confirmed_result = candidate_streak >= min_confirmed_frames
+
+            if confirmed_result:
                 confirmed_result = True
-                previous_frame = last_confirmed_by_key.get(duplicate_key)
-                if (
-                    previous_frame is not None
-                    and frame_index - previous_frame <= duplicate_window_frames
-                ):
+                previous = last_confirmed_by_key.get(duplicate_key)
+                if previous is None:
+                    duplicate_distance: int | None = None
+                    duplicate_reason = ""
+                else:
+                    previous_frame, previous_timestamp_ms = previous
+                    if timestamp_ms is not None and previous_timestamp_ms is not None:
+                        duplicate_distance = timestamp_ms - previous_timestamp_ms
+                        duplicate_reason = f"duplicate_within_ms={duplicate_distance}"
+                        duplicate_window = duplicate_window_ms
+                    else:
+                        duplicate_distance = frame_index - previous_frame
+                        duplicate_reason = f"duplicate_within_frames={duplicate_distance}"
+                        duplicate_window = duplicate_window_frames
+
+                if duplicate_distance is not None and duplicate_distance <= duplicate_window:
                     duplicate = True
                     event_type = "duplicate"
-                    reasons.append(f"duplicate_within_frames={frame_index - previous_frame}")
+                    reasons.append(duplicate_reason)
                 else:
                     event_type = "confirmed"
-                    reasons.append(f"confirmed_after_frames={candidate_streak}")
-                last_confirmed_by_key[duplicate_key] = frame_index
+                    if timestamp_ms is not None:
+                        reasons.append(f"confirmed_after_ms={candidate_duration_ms}")
+                    else:
+                        reasons.append(f"confirmed_after_frames={candidate_streak}")
+                last_confirmed_by_key[duplicate_key] = (frame_index, timestamp_ms)
         else:
             if candidate_streak:
                 reasons.append(f"candidate_streak_reset={candidate_streak}")
             candidate_streak = 0
+            candidate_start_timestamp_ms = None
 
         events.append(
             ResultEvent(
@@ -439,9 +486,21 @@ def build_result_events(
                 event_type=event_type,
                 duplicate=duplicate,
                 duplicate_key=duplicate_key,
+                timestamp_ms=timestamp_ms,
+                candidate_duration_ms=candidate_duration_ms,
+                confirmation_mode=confirmation_mode,
                 reason=",".join(part for part in reasons if part),
             )
         )
+
+    if timestamp_iter is not None:
+        try:
+            next(timestamp_iter)
+        except StopIteration:
+            pass
+        else:
+            msg = "timestamps_ms must contain one item per classification"
+            raise ValueError(msg)
 
     return events
 
@@ -643,6 +702,9 @@ def write_result_events_csv(path: Path, events: Iterable[ResultEvent]) -> None:
         "duplicate",
         "duplicate_key",
         "reason",
+        "timestamp_ms",
+        "candidate_duration_ms",
+        "confirmation_mode",
     ]
     rows = [flatten_result_event(item) for item in events]
     with path.open("w", encoding="utf-8", newline="") as file:

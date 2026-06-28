@@ -109,13 +109,17 @@ python -m pytest tests
 
 実キャプチャでは一瞬の誤検出や遷移中フレームが混ざるため、単発の `result_candidate=true` だけでは保存確定しません。PoCでは metadata の並びをフレーム順として扱い、`result_candidate=true` が `CONFIRMED_RESULT_MIN_FRAMES=2` フレーム継続した時点で `confirmed_result=true` にします。
 
-この値は、まずローカル素材や人工シーケンスで「単発誤検出を保存しない」ことを確認するための最小しきい値です。実キャプチャ導入時はフレームレートに応じて、フレーム数ではなく「1.0〜1.5秒程度の継続時間」へ置き換える想定です。
+`build_result_events()` は任意で `timestamps_ms` を受け取れます。timestamp がある入力では、フレーム数ではなく `result_candidate=true` が `CONFIRMED_RESULT_MIN_DURATION_MS=1000` ミリ秒以上継続した時点で `confirmed_result=true` にします。metadata には時刻情報がないため、現在の `python -m tools.vision_poc` の出力は従来どおりフレームベースです。
+
+この値は、まずローカル素材や人工シーケンスで「単発誤検出を保存しない」ことを確認するための最小しきい値です。実キャプチャ導入時はキャプチャ時刻を `timestamp_ms` として渡し、FPS固定ではなくても安定する時刻ベース判定を優先します。FPSが揺れる、またはフレーム欠落が起きる環境では、フレーム数より継続ミリ秒を保存確定の基準にします。
 
 `transition_countup_*` は `result_shape_candidate=true` でも `transition_kind=countup` として扱い、`event_type=rejected_transition`、`confirmed_result=false` のままにします。
 
 ### 重複保存防止
 
 同じリザルト画面を連続検出しても保存候補イベントは1回だけ扱えるよう、PoCでは `duplicate_key` ごとに直近の確定フレームを記録します。同一キーが `DUPLICATE_WINDOW_FRAMES=90` フレーム以内に再度確定した場合は `event_type=duplicate`、`duplicate=true` にします。
+
+timestamp がある入力では `DUPLICATE_WINDOW_MS=90000` ミリ秒以内の同一キーを重複として扱います。判定理由には時刻ベースなら `duplicate_within_ms=<差分>`、フレームベースなら `duplicate_within_frames=<差分>` を残します。timestamp がない metadata 順実行では、互換性のため引き続きフレーム窓を使います。
 
 現在の `duplicate_key` は、ファイル名に `scoreXXXXXX` があれば `score:<数字>`、なければ `file:<ファイル名>` です。これはローカル評価向けの簡易キーで、実キャプチャでは perceptual hash、`score+曲名+難易度`、またはDB保存前の正規化済みリザルトIDに置き換える想定です。置き換え箇所は `duplicate_key_for_classification()` です。
 
@@ -133,3 +137,6 @@ python -m pytest tests
 - `duplicate`: 重複候補か
 - `duplicate_key`: 重複判定キー
 - `reason`: 判定に使った分類理由、継続フレーム数、重複距離など
+- `timestamp_ms`: 入力時刻。metadata 順実行では時刻情報がないため空欄
+- `candidate_duration_ms`: timestamp 付き入力で `result_candidate=true` が継続している時間。フレームベースでは空欄
+- `confirmation_mode`: `frames` / `time`
