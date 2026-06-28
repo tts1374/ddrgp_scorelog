@@ -4,7 +4,7 @@ DanceDanceRevolution GRAND PRIX のリザルト画面からスコア情報を取
 
 ## Status
 
-初期PoC段階です。現時点では要求定義、スクリーンショット収集方針、マスタ取得機能とWindows常駐アプリの置き場に加え、リザルト候補分類とOCR前処理のPoCを用意しています。
+初期PoC段階です。現時点では要求定義、スクリーンショット収集方針、マスタ取得機能とWindows常駐アプリの置き場に加え、リザルト候補分類、confirmed-events OCR対象絞り込み、ROI別OCR弱点レポート、OCR profile比較PoCを用意しています。
 
 ## Goals
 
@@ -38,11 +38,12 @@ DanceDanceRevolution GRAND PRIX のリザルト画面からスコア情報を取
 
 ## Next Step
 
-まずは `docs/screenshot-collection.md` に沿って、リザルト画面・選曲画面・プレー中画面のスクリーンショットを収集します。
+まずは `docs/screenshot-collection.md` に沿って、リザルト画面・選曲画面・プレー中画面のスクリーンショットを収集します。ローカル画像素材と `samples/screenshots/metadata.csv` はGit管理せず、期待値列の整備方針は [画面解析PoCツール](tools/vision_poc/README.md) に記載します。
 
 その後、画面解析PoCとして以下を確認します。
 
 - リザルト画面と非リザルト画面を分類できるか。
 - スコア・判定数の数字領域を固定ROIで読み取れるか。
+- `confirmed-events` と `--ocr-rois all --ocr-profile all` で、期待値があるROIは精度比較し、期待値がないROIは `ocr_expected_coverage.md` を見て metadata 列を増やすべきか判断できるか。
 - 曲名・SP/DP・難易度をマスタDBと照合できるか。
 - 低確信度の結果を安全に破棄できるか。

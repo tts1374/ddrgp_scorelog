@@ -92,6 +92,7 @@ python -m tools.vision_poc --sequence-mode manifest --frame-manifest data/vision
 - `data/vision_poc/score_ocr.csv`
 - `data/vision_poc/score_ocr_summary.json`
 - `data/vision_poc/ocr_roi_report.md`
+- `data/vision_poc/ocr_expected_coverage.md`
 
 `score_ocr.csv` には `roi_name`、`score_ocr_raw`、`score_ocr_normalized`、`expected_score`、`match`、`engine`、`status`、`error`、`original_path`、`enlarged_path`、`binary_path` を出力します。`score_digits` の `expected_score` は metadata の `score` / `expected_score` 列があれば優先し、なければファイル名内の `scoreXXXXXX` から取得します。`max_combo`、`marvelous`、`perfect`、`great`、`good`、`miss` は metadata に同名列または `expected_<roi_name>` 列がある場合だけ期待値として使います。期待値がないROIは `match` を空欄のままにし、summary の `no_expected_value_count` で集計します。
 
@@ -99,7 +100,9 @@ python -m tools.vision_poc --sequence-mode manifest --frame-manifest data/vision
 
 `score_ocr_summary.json` の `by_roi` はROI名ごとの集計です。各ROIに `total_ocr_attempts`、`ok_count`、`engine_unavailable_count`、`match_count`、`mismatch_count`、`empty_ocr_count`、`no_expected_value_count` が入り、`--ocr-rois all` でどのROIが弱いかを横並びで確認できます。`by_status` は `ok`、`engine_unavailable`、`ocr_failed` などOCR実行ステータスの件数、`failure_reasons` は `engine_unavailable`、`ocr_failed`、`empty_ocr`、`mismatch`、`no_expected_value` の観点別件数です。
 
-`ocr_roi_report.md` は `score_ocr_summary.json` と `score_ocr.csv` を人間が読みやすい形に並べたROI別弱点レポートです。ROIごとに `total_ocr_attempts`、`match_count`、`mismatch_count`、`empty_ocr_count`、`no_expected_value_count`、`engine_unavailable_count` を表で確認し、代表的な `mismatch` / `empty_ocr` の `organized_file` を見て、対応する `ocr/<画像名>/<roi>_*.png` を目視します。`--ocr-target confirmed-events` を指定した場合は、未確定候補やduplicateを除いた対象イベントだけでレポートされます。
+`score_ocr_summary.json` の `expected_coverage_by_roi` と `ocr_expected_coverage.md` は、ROIごとに期待値がどれだけ入っているかを確認するためのレポートです。`evaluation_status=evaluated` は全OCR試行に期待値がある状態、`partially_evaluated` は一部だけ期待値がある状態、`no_expected_values` はOCRを試していても精度評価できていない状態です。`max_combo`、`marvelous`、`perfect`、`great`、`good`、`miss` で `no_expected_value_count` が多い場合は、OCR精度未評価として扱い、先に metadata の期待値列を増やします。
+
+`ocr_roi_report.md` は `score_ocr_summary.json` と `score_ocr.csv` を人間が読みやすい形に並べたROI別弱点レポートです。ROIごとに `evaluation_status`、`total_ocr_attempts`、`match_count`、`mismatch_count`、`empty_ocr_count`、`no_expected_value_count`、`engine_unavailable_count` を表で確認し、代表的な `mismatch` / `empty_ocr` の `organized_file` を見て、対応する `ocr/<画像名>/<roi>_*.png` を目視します。`--ocr-target confirmed-events` を指定した場合は、未確定候補やduplicateを除いた対象イベントだけでレポートされます。
 
 OCRエンジンはPATH上の `tesseract` を使います。未導入または利用不可の場合でもPoCは落ちず、前処理画像を保存したうえで `score_ocr.csv` に `engine=none`、`status=engine_unavailable` を残します。
 
@@ -127,6 +130,8 @@ profile比較を有効にすると、追加で以下を出力します。
 
 `score_ocr_profiles_summary.json` は `profiles -> profile -> roi -> counts` の形で、profile別・ROI別の `match_count`、`mismatch_count`、`empty_ocr_count`、`no_expected_value_count` などを集計します。`best_by_roi` にはROIごとに `match_count` が最も多いprofileと、`empty_ocr_count` が最も少ないprofileを出します。期待値がないROIは成功/失敗にせず、`no_expected_value_count` として扱います。
 
+`best_by_roi` には `evaluation_status` と `recommendation_basis` も出力します。期待値があるROIでは `match_count` を精度比較の主指標にし、期待値がないROIでは `empty_ocr_count` を目視確認の補助指標としてだけ使います。`evaluation_status=no_expected_values` のROIは `best_match_profiles` が出ていてもOCR精度未評価です。
+
 まずは以下のように confirmed-events と全OCR ROI、profile比較を組み合わせ、保存直前OCR相当で弱いROIを特定します。
 
 ```powershell
@@ -135,7 +140,15 @@ python -m tools.vision_poc --sequence-mode timestamped --ocr-target confirmed-ev
 python -m tools.vision_poc --sequence-mode manifest --frame-manifest data/vision_poc_timestamped/frame_manifest.csv --frame-root samples/screenshots --ocr-target confirmed-events --ocr-rois all --ocr-profile all
 ```
 
-この段階では `empty_ocr_count` が多いROIは二値化条件やROI位置、`mismatch_count` が多いROIは余白・拡大率・Tesseract設定、`no_expected_value_count` が多いROIは metadata の真値列不足を疑います。調整後も既存互換の `score_ocr.csv` は `profile` 列を追加せず、比較結果は別ファイルで確認します。
+profile比較は、期待値があるROIでは精度比較、期待値がないROIでは空OCRや前処理画像の目視確認の補助として使います。この段階では `empty_ocr_count` が多いROIは二値化条件やROI位置、`mismatch_count` が多いROIは余白・拡大率・Tesseract設定、`no_expected_value_count` が多いROIは metadata の真値列不足を疑います。調整後も既存互換の `score_ocr.csv` は `profile` 列を追加せず、比較結果は別ファイルで確認します。
+
+実キャプチャAPIに進む前は、まず以下の3系統で保存直前OCR相当の弱いROIを見つけます。`ocr_expected_coverage.md` で未評価ROIを確認し、必要ならローカルの `samples/screenshots/metadata.csv` に期待値列を追加してから再実行します。
+
+```powershell
+python -m tools.vision_poc --ocr-target confirmed-events --ocr-rois all --ocr-profile all
+python -m tools.vision_poc --sequence-mode timestamped --ocr-target confirmed-events --ocr-rois all --ocr-profile all
+python -m tools.vision_poc --sequence-mode manifest --frame-manifest data/vision_poc_timestamped/frame_manifest.csv --frame-root samples/screenshots --ocr-target confirmed-events --ocr-rois all --ocr-profile all
+```
 
 OCR前処理を省略したい場合は以下を使います。
 
@@ -151,6 +164,21 @@ python -m tools.vision_poc --ocr-rois score_digits max_combo marvelous perfect g
 ```
 
 既存確認用の `score_digits_original.png`、`score_digits_enlarged.png`、`score_digits_binary.png` のファイル名は維持しています。
+
+### metadata期待値列
+
+`samples/screenshots/metadata.csv` とローカル画像素材はGit管理対象外です。代わりに、このREADMEの列定義に沿って各環境のローカル metadata を整備します。
+
+判定数ROIの精度評価には、以下の列を追加します。値はカンマや空白を含んでもよく、PoC側で数字だけに正規化します。空欄または列なしの場合は期待値なしとして扱い、`match` は成功にも失敗にもせず、`no_expected_value_count` に集計します。
+
+- `max_combo` または `expected_max_combo`
+- `marvelous` または `expected_marvelous`
+- `perfect` または `expected_perfect`
+- `great` または `expected_great`
+- `good` または `expected_good`
+- `miss` または `expected_miss`
+
+`score_digits` は既存互換のため、引き続き `score`、`expected_score`、ファイル名内の `scoreXXXXXX` の順で期待値を取得します。
 
 ### OCR前処理とTesseract設定
 

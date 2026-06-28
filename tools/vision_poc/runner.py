@@ -160,6 +160,7 @@ class ScoreOcrSummary:
     by_roi: dict[str, dict[str, int]]
     by_status: dict[str, int]
     failure_reasons: dict[str, int]
+    expected_coverage_by_roi: dict[str, dict[str, int | str]]
 
 
 @dataclass(frozen=True)
@@ -1027,6 +1028,35 @@ def ocr_summary_bucket(results: Iterable[OcrResultLike]) -> dict[str, int]:
     }
 
 
+def ocr_evaluation_status(bucket: dict[str, int]) -> str:
+    total = bucket["total_ocr_attempts"]
+    expected_count = total - bucket["no_expected_value_count"]
+    if total == 0 or expected_count == 0:
+        return "no_expected_values"
+    if expected_count == total:
+        return "evaluated"
+    return "partially_evaluated"
+
+
+def expected_coverage_bucket(bucket: dict[str, int]) -> dict[str, int | str]:
+    expected_count = bucket["total_ocr_attempts"] - bucket["no_expected_value_count"]
+    return {
+        "total_ocr_attempts": bucket["total_ocr_attempts"],
+        "expected_value_count": expected_count,
+        "no_expected_value_count": bucket["no_expected_value_count"],
+        "evaluation_status": ocr_evaluation_status(bucket),
+    }
+
+
+def summarize_expected_coverage_by_roi(
+    by_roi: dict[str, dict[str, int]],
+) -> dict[str, dict[str, int | str]]:
+    return {
+        roi_name: expected_coverage_bucket(bucket)
+        for roi_name, bucket in sorted(by_roi.items())
+    }
+
+
 def summarize_ocr_by_roi(results: Iterable[OcrResultLike]) -> dict[str, dict[str, int]]:
     buckets: dict[str, list[OcrResultLike]] = {}
     for result in results:
@@ -1070,6 +1100,7 @@ def summarize_score_ocr(
         )
 
     bucket = ocr_summary_bucket(result_rows)
+    by_roi = summarize_ocr_by_roi(result_rows)
     return ScoreOcrSummary(
         total_ocr_attempts=bucket["total_ocr_attempts"],
         ok_count=bucket["ok_count"],
@@ -1081,9 +1112,10 @@ def summarize_score_ocr(
         skipped_duplicate_count=skipped_duplicate_count,
         skipped_unconfirmed_count=skipped_unconfirmed_count,
         ocr_target_mode=ocr_target_mode,
-        by_roi=summarize_ocr_by_roi(result_rows),
+        by_roi=by_roi,
         by_status=summarize_ocr_by_status(result_rows),
         failure_reasons=summarize_ocr_failure_reasons(result_rows),
+        expected_coverage_by_roi=summarize_expected_coverage_by_roi(by_roi),
     )
 
 
@@ -1118,6 +1150,30 @@ def summarize_profile_score_ocr(
             continue
         best_match_count = max(bucket["match_count"] for _, bucket in candidates)
         lowest_empty_count = min(bucket["empty_ocr_count"] for _, bucket in candidates)
+        total_attempts = max(bucket["total_ocr_attempts"] for _, bucket in candidates)
+        no_expected_count = max(bucket["no_expected_value_count"] for _, bucket in candidates)
+        expected_value_count = max(
+            bucket["total_ocr_attempts"] - bucket["no_expected_value_count"]
+            for _, bucket in candidates
+        )
+        evaluation_status = (
+            "no_expected_values"
+            if expected_value_count == 0
+            else "evaluated"
+            if all(
+                bucket["no_expected_value_count"] == 0
+                and bucket["total_ocr_attempts"] == total_attempts
+                for _, bucket in candidates
+            )
+            else "partially_evaluated"
+        )
+        recommendation_basis = (
+            "match_count"
+            if evaluation_status == "evaluated"
+            else "match_count_partial"
+            if evaluation_status == "partially_evaluated"
+            else "empty_ocr_reference_only"
+        )
         best_by_roi[roi_name] = {
             "best_match_profiles": [
                 profile
@@ -1131,6 +1187,11 @@ def summarize_profile_score_ocr(
             ],
             "best_match_count": best_match_count,
             "lowest_empty_ocr_count": lowest_empty_count,
+            "evaluation_status": evaluation_status,
+            "expected_value_count": expected_value_count,
+            "no_expected_value_count": no_expected_count,
+            "recommendation_basis": recommendation_basis,
+            "match_recommendation_evaluated": evaluation_status != "no_expected_values",
         }
 
     return {
@@ -1165,6 +1226,10 @@ def representative_files(
     return files
 
 
+def format_representative_list(files: list[str]) -> str:
+    return ", ".join(f"`{name}`" for name in files) if files else "none"
+
+
 def write_ocr_roi_report(
     path: Path,
     results: Iterable[ScoreOcrResult],
@@ -1181,12 +1246,14 @@ def write_ocr_roi_report(
         f"- OCR target mode: `{summary.ocr_target_mode}`",
         f"- Total OCR attempts: {summary.total_ocr_attempts}",
         "",
-        "| ROI | total | match | mismatch | empty | no expected | engine unavailable |",
-        "| --- | ---: | ---: | ---: | ---: | ---: | ---: |",
+        "| ROI | evaluation_status | total | match | mismatch | empty | no expected | "
+        "engine unavailable |",
+        "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |",
     ]
     for roi_name, bucket in sorted(summary.by_roi.items()):
         lines.append(
-            f"| `{roi_name}` | {bucket['total_ocr_attempts']} | {bucket['match_count']} | "
+            f"| `{roi_name}` | `{ocr_evaluation_status(bucket)}` | "
+            f"{bucket['total_ocr_attempts']} | {bucket['match_count']} | "
             f"{bucket['mismatch_count']} | {bucket['empty_ocr_count']} | "
             f"{bucket['no_expected_value_count']} | {bucket['engine_unavailable_count']} |"
         )
@@ -1197,15 +1264,82 @@ def write_ocr_roi_report(
         mismatches = representative_files(roi_rows, reason="mismatch")
         empties = representative_files(roi_rows, reason="empty_ocr")
         lines.extend([f"### `{roi_name}`", ""])
-        lines.append(
-            "- mismatch: "
-            + (", ".join(f"`{name}`" for name in mismatches) if mismatches else "none")
-        )
-        lines.append(
-            "- empty_ocr: "
-            + (", ".join(f"`{name}`" for name in empties) if empties else "none")
-        )
+        lines.append(f"- evaluation_status: `{ocr_evaluation_status(summary.by_roi[roi_name])}`")
+        lines.append(f"- representative mismatch: {format_representative_list(mismatches)}")
+        lines.append(f"- representative empty_ocr: {format_representative_list(empties)}")
         lines.append("")
+
+    path.write_text("\n".join(lines), encoding="utf-8")
+
+
+def write_ocr_expected_coverage_report(
+    path: Path,
+    score_summary: ScoreOcrSummary,
+    profile_summary: dict[str, object] | None = None,
+) -> None:
+    lines = [
+        "# OCR Expected Value Coverage",
+        "",
+        f"- OCR target mode: `{score_summary.ocr_target_mode}`",
+        "- `evaluated`: every OCR attempt for the ROI had an expected value.",
+        "- `partially_evaluated`: some attempts had expected values and some did not.",
+        "- `no_expected_values`: OCR was attempted, but no rows had expected values; "
+        "OCR accuracy is not evaluated.",
+        "",
+        "## Default OCR Output",
+        "",
+        "| ROI | evaluation_status | expected values | no expected values | total attempts |",
+        "| --- | --- | ---: | ---: | ---: |",
+    ]
+
+    for roi_name, coverage in sorted(score_summary.expected_coverage_by_roi.items()):
+        lines.append(
+            f"| `{roi_name}` | `{coverage['evaluation_status']}` | "
+            f"{coverage['expected_value_count']} | {coverage['no_expected_value_count']} | "
+            f"{coverage['total_ocr_attempts']} |"
+        )
+
+    judgment_rois = [roi for roi in OCR_ROIS if roi != "score_digits"]
+    unevaluated = [
+        roi
+        for roi in judgment_rois
+        if score_summary.expected_coverage_by_roi.get(roi, {}).get("evaluation_status")
+        == "no_expected_values"
+    ]
+    if unevaluated:
+        lines.extend(
+            [
+                "",
+                "## Unevaluated Judgment ROIs",
+                "",
+                "These ROIs need metadata columns before OCR accuracy can be judged:",
+                "",
+            ]
+        )
+        lines.extend(f"- `{roi}`" for roi in unevaluated)
+
+    if profile_summary is not None:
+        best_by_roi = profile_summary.get("best_by_roi", {})
+        if isinstance(best_by_roi, dict):
+            lines.extend(
+                [
+                    "",
+                    "## Profile Comparison Coverage",
+                    "",
+                    "| ROI | evaluation_status | recommendation basis | expected values | "
+                    "no expected values |",
+                    "| --- | --- | --- | ---: | ---: |",
+                ]
+            )
+            for roi_name, raw_bucket in sorted(best_by_roi.items()):
+                if not isinstance(raw_bucket, dict):
+                    continue
+                lines.append(
+                    f"| `{roi_name}` | `{raw_bucket.get('evaluation_status', '')}` | "
+                    f"`{raw_bucket.get('recommendation_basis', '')}` | "
+                    f"{raw_bucket.get('expected_value_count', 0)} | "
+                    f"{raw_bucket.get('no_expected_value_count', 0)} |"
+                )
 
     path.write_text("\n".join(lines), encoding="utf-8")
 
@@ -1628,6 +1762,7 @@ def main(argv: list[str] | None = None) -> int:
         encoding="utf-8",
     )
     write_ocr_roi_report(output_dir / "ocr_roi_report.md", score_ocr_results, score_ocr_summary)
+    score_ocr_profiles_summary: dict[str, object] | None = None
     if run_profile_comparison:
         write_profile_score_ocr_csv(output_dir / "score_ocr_profiles.csv", profile_ocr_results)
         score_ocr_profiles_summary = summarize_profile_score_ocr(
@@ -1638,6 +1773,11 @@ def main(argv: list[str] | None = None) -> int:
             json.dumps(score_ocr_profiles_summary, ensure_ascii=False, indent=2) + "\n",
             encoding="utf-8",
         )
+    write_ocr_expected_coverage_report(
+        output_dir / "ocr_expected_coverage.md",
+        score_ocr_summary,
+        score_ocr_profiles_summary,
+    )
     summary = summarize(classifications)
     (output_dir / "summary.json").write_text(
         json.dumps(summary, ensure_ascii=False, indent=2) + "\n",

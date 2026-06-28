@@ -349,6 +349,15 @@ def test_ocr_rois_all_writes_roi_summary_and_failure_reasons(
     assert summary["by_roi"]["good"]["empty_ocr_count"] == 1
     assert summary["by_roi"]["perfect"]["no_expected_value_count"] == 1
     assert summary["by_roi"]["miss"]["no_expected_value_count"] == 1
+    assert summary["expected_coverage_by_roi"]["score_digits"]["evaluation_status"] == "evaluated"
+    assert summary["expected_coverage_by_roi"]["perfect"]["evaluation_status"] == (
+        "no_expected_values"
+    )
+
+    coverage = (output_dir / "ocr_expected_coverage.md").read_text(encoding="utf-8")
+    assert "| `score_digits` | `evaluated` | 1 | 0 | 1 |" in coverage
+    assert "| `perfect` | `no_expected_values` | 0 | 1 | 1 |" in coverage
+    assert "- `perfect`" in coverage
 
 
 def test_profile_comparison_keeps_score_ocr_csv_compatible_and_summarizes_by_profile(
@@ -449,7 +458,9 @@ def test_profile_comparison_keeps_score_ocr_csv_compatible_and_summarizes_by_pro
     ]
 
     report = (output_dir / "ocr_roi_report.md").read_text(encoding="utf-8")
-    assert "| `max_combo` | 1 | 0 | 0 | 1 | 0 | 0 |" in report
+    assert "| `max_combo` | `evaluated` | 1 | 0 | 0 | 1 | 0 | 0 |" in report
+    assert "- evaluation_status: `evaluated`" in report
+    assert "- representative empty_ocr: `result_score123456_b.png`" in report
     assert "`result_score123456_b.png`" in report
 
     profile_rows = read_csv_rows(output_dir / "score_ocr_profiles.csv")
@@ -472,10 +483,86 @@ def test_profile_comparison_keeps_score_ocr_csv_compatible_and_summarizes_by_pro
     assert summary["profiles"]["low-threshold"]["score_digits"]["mismatch_count"] == 1
     assert summary["profiles"]["low-threshold"]["perfect"]["empty_ocr_count"] == 1
     assert summary["best_by_roi"]["max_combo"]["best_match_profiles"] == ["high-contrast"]
+    assert summary["best_by_roi"]["max_combo"]["evaluation_status"] == "evaluated"
+    assert summary["best_by_roi"]["max_combo"]["recommendation_basis"] == "match_count"
     assert summary["best_by_roi"]["score_digits"]["lowest_empty_profiles"] == [
         "default",
         "low-threshold",
     ]
+    assert summary["best_by_roi"]["perfect"]["evaluation_status"] == "no_expected_values"
+    assert summary["best_by_roi"]["perfect"]["recommendation_basis"] == (
+        "empty_ocr_reference_only"
+    )
+    assert summary["best_by_roi"]["perfect"]["match_recommendation_evaluated"] is False
+
+    coverage = (output_dir / "ocr_expected_coverage.md").read_text(encoding="utf-8")
+    assert "| `perfect` | `no_expected_values` | 0 | 1 | 1 |" in coverage
+    assert "| `perfect` | `no_expected_values` | `empty_ocr_reference_only` | 0 | 1 |" in coverage
+
+
+def test_expected_coverage_marks_partially_evaluated_roi(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for name in ("result_score123456_a.png", "result_score123456_b.png"):
+        write_test_image(tmp_path / "screenshots" / name)
+    metadata_path = tmp_path / "metadata.csv"
+    metadata_path.write_text(
+        "organized_file,screen_type,expected_score,max_combo\n"
+        "result_score123456_a.png,result,123456,10\n"
+        "result_score123456_b.png,result,123456,\n",
+        encoding="utf-8",
+    )
+
+    def classify_synthetic(_image: Image.Image, row: dict[str, str]) -> runner.Classification:
+        return classification(
+            row["organized_file"],
+            result_candidate=True,
+            screen_type=row["screen_type"],
+        )
+
+    monkeypatch.setattr(runner, "classify", classify_synthetic)
+    monkeypatch.setattr(
+        runner,
+        "run_tesseract",
+        lambda _binary, roi_name="score_digits": (
+            "10" if roi_name == "max_combo" else "123456",
+            "tesseract",
+            "ok",
+            "",
+        ),
+    )
+
+    output_dir = tmp_path / "output"
+    assert (
+        runner.main(
+            [
+                "--metadata",
+                str(metadata_path),
+                "--screenshots-root",
+                str(tmp_path / "screenshots"),
+                "--output",
+                str(output_dir),
+                "--ocr-rois",
+                "score_digits",
+                "max_combo",
+                "--no-rois",
+            ]
+        )
+        == 0
+    )
+
+    summary = json.loads((output_dir / "score_ocr_summary.json").read_text(encoding="utf-8"))
+    assert summary["expected_coverage_by_roi"]["max_combo"]["expected_value_count"] == 1
+    assert summary["expected_coverage_by_roi"]["max_combo"]["no_expected_value_count"] == 1
+    assert summary["expected_coverage_by_roi"]["max_combo"]["evaluation_status"] == (
+        "partially_evaluated"
+    )
+    assert summary["by_roi"]["max_combo"]["match_count"] == 1
+    assert summary["by_roi"]["max_combo"]["no_expected_value_count"] == 1
+
+    coverage = (output_dir / "ocr_expected_coverage.md").read_text(encoding="utf-8")
+    assert "| `max_combo` | `partially_evaluated` | 1 | 1 | 2 |" in coverage
 
 
 def test_confirmed_events_ocr_target_filters_metadata_frame_events(
@@ -633,6 +720,15 @@ def test_confirmed_events_ocr_rois_all_summary_uses_only_target_events(
     assert summary["by_roi"]["score_digits"]["match_count"] == 1
     assert summary["by_roi"]["max_combo"]["match_count"] == 1
     assert summary["by_roi"]["perfect"]["no_expected_value_count"] == 1
+    assert summary["expected_coverage_by_roi"]["score_digits"]["evaluation_status"] == "evaluated"
+    assert summary["expected_coverage_by_roi"]["max_combo"]["evaluation_status"] == "evaluated"
+    assert summary["expected_coverage_by_roi"]["perfect"]["evaluation_status"] == (
+        "no_expected_values"
+    )
+
+    coverage = (output_dir / "ocr_expected_coverage.md").read_text(encoding="utf-8")
+    assert "- OCR target mode: `confirmed-events`" in coverage
+    assert "| `score_digits` | `evaluated` | 1 | 0 | 1 |" in coverage
 
 
 def test_confirmed_events_ocr_target_uses_time_events_in_timestamped_mode(
