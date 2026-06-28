@@ -319,6 +319,26 @@ def test_read_frame_manifest_resolves_paths_from_frame_root(tmp_path: Path) -> N
     assert frames[0].row == {"organized_file": "a.png", "screen_type": "result"}
 
 
+def test_read_frame_manifest_preserves_optional_expected_columns(tmp_path: Path) -> None:
+    image_path = tmp_path / "frames" / "a.png"
+    write_test_image(image_path)
+    manifest_path = tmp_path / "manifest.csv"
+    manifest_path.write_text(
+        "image_path,timestamp_ms,screen_type,max_combo,ex_score\n"
+        "a.png,100,result,111,552\n",
+        encoding="utf-8",
+    )
+
+    frames = runner.read_frame_manifest(manifest_path, tmp_path / "frames")
+
+    assert frames[0].row == {
+        "organized_file": "a.png",
+        "screen_type": "result",
+        "max_combo": "111",
+        "ex_score": "552",
+    }
+
+
 def test_make_frame_manifest_writes_sorted_strictly_increasing_timestamps(tmp_path: Path) -> None:
     frame_root = tmp_path / "frames"
     write_test_image(frame_root / "frame_002.jpg")
@@ -650,9 +670,9 @@ def test_timestamped_mode_writes_reusable_frame_manifest(
     write_test_image(tmp_path / "screenshots" / "b.png")
     metadata_path = tmp_path / "metadata.csv"
     metadata_path.write_text(
-        "organized_file,screen_type\n"
-        "a.png,menu_setup\n"
-        "b.png,result\n",
+        "organized_file,screen_type,max_combo,ex_score\n"
+        "a.png,menu_setup,,\n"
+        "b.png,result,111,552\n",
         encoding="utf-8",
     )
 
@@ -691,6 +711,18 @@ def test_timestamped_mode_writes_reusable_frame_manifest(
 
     rows = read_csv_rows(output_dir / "frame_manifest.csv")
     assert rows == [
-        {"image_path": "a.png", "timestamp_ms": "500", "screen_type": "menu_setup"},
-        {"image_path": "b.png", "timestamp_ms": "833", "screen_type": "result"},
+        {
+            "image_path": "a.png",
+            "timestamp_ms": "500",
+            "screen_type": "menu_setup",
+            "max_combo": "",
+            "ex_score": "",
+        },
+        {
+            "image_path": "b.png",
+            "timestamp_ms": "833",
+            "screen_type": "result",
+            "max_combo": "111",
+            "ex_score": "552",
+        },
     ]

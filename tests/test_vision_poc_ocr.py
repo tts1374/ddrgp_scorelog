@@ -127,6 +127,13 @@ def test_normalize_digits_keeps_only_digits(raw: str, expected: str) -> None:
     assert runner.normalize_digits(raw) == expected
 
 
+def test_ocr_digits_match_ignores_leading_zero_padding() -> None:
+    assert runner.ocr_digits_match("0111", "111") is True
+    assert runner.ocr_digits_match("00", "0") is True
+    assert runner.ocr_digits_match("852", "552") is False
+    assert runner.ocr_digits_match("", "0") is None
+
+
 def test_preprocess_ocr_roi_supports_judgment_rois() -> None:
     image = Image.new("RGB", (1280, 720), "black")
 
@@ -292,6 +299,7 @@ def test_ocr_rois_all_writes_roi_summary_and_failure_reasons(
             "great": "5",
             "good": "",
             "miss": "2",
+            "ex_score": "777",
         }
         return raw_by_roi[roi_name], "tesseract", "ok", ""
 
@@ -326,22 +334,23 @@ def test_ocr_rois_all_writes_roi_summary_and_failure_reasons(
         "False",
         "",
         "",
+        "",
     ]
 
     summary = json.loads((output_dir / "score_ocr_summary.json").read_text(encoding="utf-8"))
-    assert summary["total_ocr_attempts"] == 7
-    assert summary["ok_count"] == 7
+    assert summary["total_ocr_attempts"] == 8
+    assert summary["ok_count"] == 8
     assert summary["match_count"] == 2
     assert summary["mismatch_count"] == 2
     assert summary["empty_ocr_count"] == 1
-    assert summary["no_expected_value_count"] == 2
-    assert summary["by_status"] == {"ok": 7}
+    assert summary["no_expected_value_count"] == 3
+    assert summary["by_status"] == {"ok": 8}
     assert summary["failure_reasons"] == {
         "engine_unavailable": 0,
         "ocr_failed": 0,
         "empty_ocr": 1,
         "mismatch": 2,
-        "no_expected_value": 2,
+        "no_expected_value": 3,
     }
     assert summary["by_roi"]["score_digits"]["match_count"] == 1
     assert summary["by_roi"]["score_digits"]["no_expected_value_count"] == 0
@@ -349,6 +358,7 @@ def test_ocr_rois_all_writes_roi_summary_and_failure_reasons(
     assert summary["by_roi"]["good"]["empty_ocr_count"] == 1
     assert summary["by_roi"]["perfect"]["no_expected_value_count"] == 1
     assert summary["by_roi"]["miss"]["no_expected_value_count"] == 1
+    assert summary["by_roi"]["ex_score"]["no_expected_value_count"] == 1
     assert summary["expected_coverage_by_roi"]["score_digits"]["evaluation_status"] == "evaluated"
     assert summary["expected_coverage_by_roi"]["perfect"]["evaluation_status"] == (
         "no_expected_values"
@@ -646,12 +656,13 @@ def test_ocr_expected_template_lists_result_rows_missing_judgment_values(
             "max_combo": "10",
             "marvelous": "",
             "perfect": "",
-            "great": "",
-            "good": "",
-            "miss": "",
-            "missing_judgment_rois": "marvelous perfect great good miss",
-        }
-    ]
+                "great": "",
+                "good": "",
+                "miss": "",
+                "ex_score": "",
+                "missing_judgment_rois": "marvelous perfect great good miss ex_score",
+            }
+        ]
 
 
 def test_profile_summary_marks_partially_evaluated_recommendations_as_tentative() -> None:

@@ -215,6 +215,7 @@ OCR_ROIS = (
     "great",
     "good",
     "miss",
+    "ex_score",
 )
 OCR_PREPROCESS_CONFIG = OcrPreprocessConfig()
 OCR_PREPROCESS_PROFILES: dict[str, OcrPreprocessConfig] = {
@@ -478,7 +479,12 @@ def read_frame_manifest(path: Path, frame_root: Path | None = None) -> list[Fram
             frames.append(
                 FrameInput(
                     row={
-                        "organized_file": raw_image_path,
+                        **{
+                            key: value
+                            for key, value in row.items()
+                            if key not in {"image_path", "timestamp_ms"}
+                        },
+                        "organized_file": row.get("organized_file") or raw_image_path,
                         "screen_type": row.get("screen_type", ""),
                     },
                     image_path=image_path,
@@ -601,18 +607,34 @@ def build_timestamped_frame_inputs(
 
 
 def write_frame_manifest(path: Path, frames: Iterable[FrameInput]) -> None:
-    fieldnames = ["image_path", "timestamp_ms", "screen_type"]
+    frame_list = list(frames)
+    extra_fieldnames: list[str] = []
+    for frame in frame_list:
+        for key in frame.row:
+            if (
+                key not in {"organized_file", "image_path", "timestamp_ms"}
+                and key not in extra_fieldnames
+            ):
+                extra_fieldnames.append(key)
+
+    fieldnames = ["image_path", "timestamp_ms"]
+    if "screen_type" in extra_fieldnames:
+        fieldnames.append("screen_type")
+        extra_fieldnames.remove("screen_type")
+    fieldnames.extend(extra_fieldnames)
+
     with path.open("w", encoding="utf-8", newline="") as file:
         writer = csv.DictWriter(file, fieldnames=fieldnames)
         writer.writeheader()
-        for frame in frames:
-            writer.writerow(
-                {
-                    "image_path": frame.row["organized_file"],
-                    "timestamp_ms": frame.timestamp_ms,
-                    "screen_type": frame.row.get("screen_type", ""),
-                }
-            )
+        for frame in frame_list:
+            row = {
+                key: value
+                for key, value in frame.row.items()
+                if key not in {"organized_file", "image_path", "timestamp_ms"}
+            }
+            row["image_path"] = frame.row["organized_file"]
+            row["timestamp_ms"] = frame.timestamp_ms
+            writer.writerow(row)
 
 
 def write_ocr_expected_template(path: Path, frames: Iterable[FrameInput]) -> int:
@@ -657,6 +679,19 @@ def save_primary_rois(image: Image.Image, output_dir: Path, stem: str) -> None:
 
 def normalize_digits(value: str) -> str:
     return "".join(re.findall(r"\d", value))
+
+
+def canonical_ocr_digits(value: str) -> str:
+    normalized = normalize_digits(value)
+    if not normalized:
+        return ""
+    return normalized.lstrip("0") or "0"
+
+
+def ocr_digits_match(normalized: str, expected: str) -> bool | None:
+    if not normalized or not expected:
+        return None
+    return canonical_ocr_digits(normalized) == canonical_ocr_digits(expected)
 
 
 def expected_score_from_row(row: dict[str, str]) -> str:
@@ -912,7 +947,7 @@ def process_ocr_roi(
     raw, engine, status, error = run_tesseract(preprocessed.binary, roi_name)
     normalized = normalize_digits(raw)
     expected = expected_ocr_value_from_row(row, roi_name)
-    match = normalized == expected if normalized and expected else None
+    match = ocr_digits_match(normalized, expected)
 
     return ScoreOcrResult(
         organized_file=row["organized_file"],

@@ -94,13 +94,13 @@ python -m tools.vision_poc --sequence-mode manifest --frame-manifest data/vision
 - `data/vision_poc/ocr_roi_report.md`
 - `data/vision_poc/ocr_expected_coverage.md`
 
-`score_ocr.csv` には `roi_name`、`score_ocr_raw`、`score_ocr_normalized`、`expected_score`、`match`、`engine`、`status`、`error`、`original_path`、`enlarged_path`、`binary_path` を出力します。`score_digits` の `expected_score` は metadata の `score` / `expected_score` 列があれば優先し、なければファイル名内の `scoreXXXXXX` から取得します。`max_combo`、`marvelous`、`perfect`、`great`、`good`、`miss` は metadata に同名列または `expected_<roi_name>` 列がある場合だけ期待値として使います。期待値がないROIは `match` を空欄のままにし、summary の `no_expected_value_count` で集計します。
+`score_ocr.csv` には `roi_name`、`score_ocr_raw`、`score_ocr_normalized`、`expected_score`、`match`、`engine`、`status`、`error`、`original_path`、`enlarged_path`、`binary_path` を出力します。`score_digits` の `expected_score` は metadata の `score` / `expected_score` 列があれば優先し、なければファイル名内の `scoreXXXXXX` から取得します。`max_combo`、`marvelous`、`perfect`、`great`、`good`、`miss`、`ex_score` は metadata に同名列または `expected_<roi_name>` 列がある場合だけ期待値として使います。期待値がないROIは `match` を空欄のままにし、summary の `no_expected_value_count` で集計します。`match` 判定では `0111` と `111`、`00` と `0` のような先頭ゼロだけの差は同値として扱いますが、CSV上の `score_ocr_normalized` と `expected_score` は確認用に元の数字文字列を保持します。
 
 `score_ocr.csv` は行単位の詳細確認用です。個別画像のOCR生文字列、正規化後の数字、期待値、前処理画像パスを見るときに使います。`score_ocr_summary.json` はROI別・失敗理由別の俯瞰用です。トップレベルには `total_ocr_attempts`、`ok_count`、`engine_unavailable_count`、`match_count`、`mismatch_count`、`empty_ocr_count`、`no_expected_value_count`、`skipped_duplicate_count`、`skipped_unconfirmed_count`、`ocr_target_mode` を出力します。
 
 `score_ocr_summary.json` の `by_roi` はROI名ごとの集計です。各ROIに `total_ocr_attempts`、`ok_count`、`engine_unavailable_count`、`match_count`、`mismatch_count`、`empty_ocr_count`、`no_expected_value_count` が入り、`--ocr-rois all` でどのROIが弱いかを横並びで確認できます。`by_status` は `ok`、`engine_unavailable`、`ocr_failed` などOCR実行ステータスの件数、`failure_reasons` は `engine_unavailable`、`ocr_failed`、`empty_ocr`、`mismatch`、`no_expected_value` の観点別件数です。
 
-`score_ocr_summary.json` の `expected_coverage_by_roi` と `ocr_expected_coverage.md` は、ROIごとに期待値がどれだけ入っているかを確認するためのレポートです。`evaluation_status=evaluated` は全OCR試行に期待値がある状態、`partially_evaluated` は一部だけ期待値がある状態、`no_expected_values` はOCRを試していても精度評価できていない状態です。`max_combo`、`marvelous`、`perfect`、`great`、`good`、`miss` で `no_expected_value_count` が多い場合は、OCR精度未評価として扱い、先に metadata の期待値列を増やします。
+`score_ocr_summary.json` の `expected_coverage_by_roi` と `ocr_expected_coverage.md` は、ROIごとに期待値がどれだけ入っているかを確認するためのレポートです。`evaluation_status=evaluated` は全OCR試行に期待値がある状態、`partially_evaluated` は一部だけ期待値がある状態、`no_expected_values` はOCRを試していても精度評価できていない状態です。`max_combo`、`marvelous`、`perfect`、`great`、`good`、`miss`、`ex_score` で `no_expected_value_count` が多い場合は、OCR精度未評価として扱い、先に metadata の期待値列を増やします。
 
 `ocr_roi_report.md` は `score_ocr_summary.json` と `score_ocr.csv` を人間が読みやすい形に並べたROI別弱点レポートです。ROIごとに `evaluation_status`、`total_ocr_attempts`、`match_count`、`mismatch_count`、`empty_ocr_count`、`no_expected_value_count`、`engine_unavailable_count` を表で確認し、代表的な `mismatch` / `empty_ocr` の `organized_file` を見て、対応する `ocr/<画像名>/<roi>_*.png` を目視します。`--ocr-target confirmed-events` を指定した場合は、未確定候補やduplicateを除いた対象イベントだけでレポートされます。
 
@@ -152,17 +152,23 @@ python -m tools.vision_poc --sequence-mode timestamped --ocr-target confirmed-ev
 python -m tools.vision_poc --sequence-mode manifest --frame-manifest data/vision_poc_timestamped/frame_manifest.csv --frame-root samples/screenshots --ocr-target confirmed-events --ocr-rois all --ocr-profile all
 ```
 
+2026-06時点のローカル実測では、confirmed-events の重複除外後4イベントに `max_combo` / `marvelous` / `perfect` / `great` / `good` / `miss` / `ex_score` の期待値を入れると、`score_digits` を含む全OCR ROIが `evaluated` になります。`score_digits`、`max_combo`、`marvelous`、`perfect`、`great`、`good` は既存profileが横並びで全件matchし、まずは `default` のまま確認できます。`miss` は `low-threshold` または `no-sharpen` を優先して見ます。`ex_score` は `low-threshold` が暫定候補で、defaultの mismatch 代表として `ocr/result_016_sp_basic_lv06_score935730/ex_score_binary.png`、`ocr/result_031_sp_challenge_lv09_score977490_duplicate/ex_score_binary.png`、`ocr/result_047_dp_basic_lv09_score834500_duplicate_01/ex_score_binary.png` を確認します。
+
+同じ評価を manifest モードで読む場合は、timestamped モードで生成した `data/vision_poc_timestamped/frame_manifest.csv` を使います。この生成manifestには metadata の期待値列も保持されるため、manifest モードでも `evaluated` / `partially_evaluated` / `no_expected_values` の読み替えが維持されます。外部ツールが作る最小manifestに期待値列がない場合、`score_digits` 以外は `no_expected_values` になり、OCR精度の成功扱いにはしません。
+
+現在のローカル metadata で次に埋める対象は、`ocr_expected_template.csv` に残る未入力 result 行です。まず confirmed-events 対象を広げたい場合は、`result_015`、`result_022`、`result_026`、`result_028`、`result_030`、`result_036`、`result_038`、`result_043`、`result_046`、`result_048`、`result_051`、`result_053` の `max_combo` / `marvelous` / `perfect` / `great` / `good` / `miss` / `ex_score` を、ROI切り出し画像と元スクリーンショットを見て埋めます。
+
 OCR前処理を省略したい場合は以下を使います。
 
 ```powershell
 python -m tools.vision_poc --no-ocr
 ```
 
-`score_digits` 以外の判定数ROIも同じ前処理APIを使えます。現時点ではOCR精度調整前の足場として、まずは `max_combo`、`marvelous`、`perfect`、`great`、`good`、`miss` の `*_original.png` / `*_enlarged.png` / `*_binary.png` を確認できる状態にしています。
+`score_digits` 以外の判定数ROIと `ex_score` も同じ前処理APIを使えます。現時点ではOCR精度調整前の足場として、まずは `max_combo`、`marvelous`、`perfect`、`great`、`good`、`miss`、`ex_score` の `*_original.png` / `*_enlarged.png` / `*_binary.png` を確認できる状態にしています。
 
 ```powershell
 python -m tools.vision_poc --ocr-rois all
-python -m tools.vision_poc --ocr-rois score_digits max_combo marvelous perfect great good miss
+python -m tools.vision_poc --ocr-rois score_digits max_combo marvelous perfect great good miss ex_score
 ```
 
 既存確認用の `score_digits_original.png`、`score_digits_enlarged.png`、`score_digits_binary.png` のファイル名は維持しています。
@@ -179,10 +185,11 @@ python -m tools.vision_poc --ocr-rois score_digits max_combo marvelous perfect g
 - `great` または `expected_great`
 - `good` または `expected_good`
 - `miss` または `expected_miss`
+- `ex_score` または `expected_ex_score`
 
 `score_digits` は既存互換のため、引き続き `score`、`expected_score`、ファイル名内の `scoreXXXXXX` の順で期待値を取得します。
 
-実行時には、期待値が不足している `screen_type=result` 行だけを `data/vision_poc/ocr_expected_template.csv` へ出力します。このCSVはローカル `metadata.csv` を破壊的に更新せず、どの行に `max_combo` / `marvelous` / `perfect` / `great` / `good` / `miss` を埋めるべきか確認するための補助です。`missing_judgment_rois` を見て、対象画像の `ocr/<画像名>/<roi>_original.png` や実スクリーンショットを目視し、ローカルの `samples/screenshots/metadata.csv` に列と値を追加してから再実行します。
+実行時には、期待値が不足している `screen_type=result` 行だけを `data/vision_poc/ocr_expected_template.csv` へ出力します。このCSVはローカル `metadata.csv` を破壊的に更新せず、どの行に `max_combo` / `marvelous` / `perfect` / `great` / `good` / `miss` / `ex_score` を埋めるべきか確認するための補助です。`missing_judgment_rois` を見て、対象画像の `ocr/<画像名>/<roi>_original.png` や実スクリーンショットを目視し、ローカルの `samples/screenshots/metadata.csv` に列と値を追加してから再実行します。
 
 実キャプチャAPIへ進む前の期待値整備は、以下の順で行います。
 
@@ -234,9 +241,10 @@ python -m pytest tests
 - `confirmed-events` OCR対象モードは `confirmed_result=true` かつ `duplicate=false` だけをOCRする
 - metadata ではフレームベース、timestamped / manifest では時刻ベースの確定イベントをOCR対象にできる
 - 連番画像からファイル名昇順かつ単調増加timestampの manifest を生成できる
+- timestamped が生成する manifest は metadata の期待値列を保持し、manifest 再実行でもROI別カバレッジ評価に使える
 - 不正fps、対象画像なし、生成 manifest の読み込み互換性を確認する
 - `score` / `expected_score` / `organized_file` から `expected_score` を抽出できる
-- 判定数ROIは metadata の同名列または `expected_<roi_name>` 列がある場合だけ期待値として評価できる
+- 判定数ROIと `ex_score` は metadata の同名列または `expected_<roi_name>` 列がある場合だけ期待値として評価できる
 - `score_ocr_summary.json` でROI別、ステータス別、失敗理由別のOCR集計を確認できる
 - `ocr_roi_report.md` でROI別の弱点と代表的な `mismatch` / `empty_ocr` を確認できる
 - `--ocr-profile all` で既存 `score_ocr.csv` の列を維持したまま、profile別summaryを出力できる
