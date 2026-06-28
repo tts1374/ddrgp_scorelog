@@ -2,6 +2,8 @@ from __future__ import annotations
 
 # ruff: noqa: I001
 
+import csv
+import json
 from pathlib import Path
 
 import pytest
@@ -15,6 +17,49 @@ from tools.vision_poc import runner  # noqa: E402
 
 METADATA_PATH = Path("samples/screenshots/metadata.csv")
 SCREENSHOTS_ROOT = Path("samples/screenshots")
+SIGNAL = runner.SignalResult(value=False, score=0.0, features={})
+
+
+def classification(
+    organized_file: str,
+    *,
+    result_candidate: bool,
+    result_shape_candidate: bool | None = None,
+    screen_type: str = "result",
+    transition_kind: str = "",
+) -> runner.Classification:
+    shape = result_candidate if result_shape_candidate is None else result_shape_candidate
+    return runner.Classification(
+        organized_file=organized_file,
+        screen_type=screen_type,
+        result_candidate=result_candidate,
+        result_shape_candidate=shape,
+        transition_kind=transition_kind,
+        expected_result_candidate=screen_type == "result",
+        correct=True,
+        header_signal=SIGNAL,
+        detail_panel_signal=SIGNAL,
+        score_signal=SIGNAL,
+        rank_signal=SIGNAL,
+        reason="test",
+    )
+
+
+def write_test_image(path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    Image.new("RGB", (1280, 720), "black").save(path)
+
+
+def read_csv_rows(path: Path) -> list[dict[str, str]]:
+    with path.open("r", encoding="utf-8", newline="") as file:
+        return list(csv.DictReader(file))
+
+
+def stub_tesseract(
+    _binary: Image.Image,
+    _roi_name: str = "score_digits",
+) -> tuple[str, str, str, str]:
+    return "123456", "tesseract", "ok", ""
 
 
 def test_expected_score_prefers_metadata_score() -> None:
@@ -112,3 +157,306 @@ def test_score_digits_preprocessing_writes_images_without_ocr_engine(
     assert Path(result.original_path).name == "score_digits_original.png"
     assert Path(result.enlarged_path).name == "score_digits_enlarged.png"
     assert Path(result.binary_path).name == "score_digits_binary.png"
+
+
+def test_result_candidate_ocr_target_keeps_legacy_result_candidate_selection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for name in ("a.png", "b.png", "c.png", "d.png"):
+        write_test_image(tmp_path / "screenshots" / name)
+    metadata_path = tmp_path / "metadata.csv"
+    metadata_path.write_text(
+        "organized_file,screen_type\n"
+        "a.png,result\n"
+        "b.png,result\n"
+        "c.png,transition\n"
+        "d.png,menu_setup\n",
+        encoding="utf-8",
+    )
+
+    def classify_synthetic(_image: Image.Image, row: dict[str, str]) -> runner.Classification:
+        if row["organized_file"] == "c.png":
+            return classification(
+                "transition_countup_score999999_c.png",
+                result_candidate=False,
+                result_shape_candidate=True,
+                screen_type="transition",
+                transition_kind="countup",
+            )
+        return classification(
+            f"organized/result_score123456_{row['organized_file']}",
+            result_candidate=row["organized_file"] in {"a.png", "b.png"},
+            screen_type=row["screen_type"],
+        )
+
+    monkeypatch.setattr(runner, "classify", classify_synthetic)
+    monkeypatch.setattr(runner, "run_tesseract", stub_tesseract)
+
+    output_dir = tmp_path / "output"
+    assert (
+        runner.main(
+            [
+                "--metadata",
+                str(metadata_path),
+                "--screenshots-root",
+                str(tmp_path / "screenshots"),
+                "--output",
+                str(output_dir),
+                "--no-rois",
+            ]
+        )
+        == 0
+    )
+
+    rows = read_csv_rows(output_dir / "score_ocr.csv")
+    assert [row["organized_file"] for row in rows] == [
+        "a.png",
+        "b.png",
+    ]
+    summary = json.loads((output_dir / "score_ocr_summary.json").read_text(encoding="utf-8"))
+    assert summary["ocr_target_mode"] == "result-candidate"
+    assert summary["total_ocr_attempts"] == 2
+    assert summary["ok_count"] == 2
+    assert summary["skipped_duplicate_count"] == 0
+    assert summary["skipped_unconfirmed_count"] == 0
+
+
+def test_confirmed_events_ocr_target_filters_metadata_frame_events(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    frame_names = (
+        "result_score123456_a.png",
+        "result_score123456_b.png",
+        "result_score123456_c.png",
+        "transition_countup_score999999_d.png",
+        "result_score222222_e.png",
+        "result_score222222_f.png",
+    )
+    for name in frame_names:
+        write_test_image(tmp_path / "screenshots" / name)
+    metadata_path = tmp_path / "metadata.csv"
+    metadata_path.write_text(
+        "organized_file,screen_type\n"
+        "result_score123456_a.png,result\n"
+        "result_score123456_b.png,result\n"
+        "result_score123456_c.png,result\n"
+        "transition_countup_score999999_d.png,transition\n"
+        "result_score222222_e.png,result\n"
+        "result_score222222_f.png,result\n",
+        encoding="utf-8",
+    )
+
+    def classify_synthetic(_image: Image.Image, row: dict[str, str]) -> runner.Classification:
+        if row["organized_file"].startswith("transition_countup_"):
+            return classification(
+                "transition_countup_score999999_d.png",
+                result_candidate=False,
+                result_shape_candidate=True,
+                screen_type="transition",
+                transition_kind="countup",
+            )
+        score = "123456" if "score123456" in row["organized_file"] else "222222"
+        return classification(
+            f"organized/result_score{score}_{row['organized_file']}",
+            result_candidate=True,
+            screen_type=row["screen_type"],
+        )
+
+    monkeypatch.setattr(runner, "classify", classify_synthetic)
+    monkeypatch.setattr(runner, "run_tesseract", stub_tesseract)
+
+    output_dir = tmp_path / "output"
+    assert (
+        runner.main(
+            [
+                "--metadata",
+                str(metadata_path),
+                "--screenshots-root",
+                str(tmp_path / "screenshots"),
+                "--output",
+                str(output_dir),
+                "--ocr-target",
+                "confirmed-events",
+                "--no-rois",
+            ]
+        )
+        == 0
+    )
+
+    event_rows = read_csv_rows(output_dir / "result_events.csv")
+    assert [row["confirmation_mode"] for row in event_rows] == ["frames"] * 6
+    assert [row["event_type"] for row in event_rows] == [
+        "none",
+        "confirmed",
+        "duplicate",
+        "rejected_transition",
+        "none",
+        "confirmed",
+    ]
+
+    rows = read_csv_rows(output_dir / "score_ocr.csv")
+    assert [row["organized_file"] for row in rows] == [
+        "result_score123456_b.png",
+        "result_score222222_f.png",
+    ]
+    summary = json.loads((output_dir / "score_ocr_summary.json").read_text(encoding="utf-8"))
+    assert summary["ocr_target_mode"] == "confirmed-events"
+    assert summary["total_ocr_attempts"] == 2
+    assert summary["ok_count"] == 2
+    assert summary["match_count"] == 1
+    assert summary["mismatch_count"] == 1
+    assert summary["skipped_duplicate_count"] == 1
+    assert summary["skipped_unconfirmed_count"] == 3
+
+
+def test_confirmed_events_ocr_target_uses_time_events_in_timestamped_mode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for name in ("a.png", "b.png", "c.png", "d.png", "e.png"):
+        write_test_image(tmp_path / "screenshots" / name)
+    metadata_path = tmp_path / "metadata.csv"
+    metadata_path.write_text(
+        "organized_file,screen_type\n"
+        "a.png,result\n"
+        "b.png,result\n"
+        "c.png,result\n"
+        "d.png,result\n"
+        "e.png,transition\n",
+        encoding="utf-8",
+    )
+
+    def classify_synthetic(_image: Image.Image, row: dict[str, str]) -> runner.Classification:
+        if row["organized_file"] == "e.png":
+            return classification(
+                "transition_countup_score999999_e.png",
+                result_candidate=False,
+                result_shape_candidate=True,
+                screen_type="transition",
+                transition_kind="countup",
+            )
+        return classification(
+            f"organized/result_score123456_{row['organized_file']}",
+            result_candidate=True,
+            screen_type=row["screen_type"],
+        )
+
+    monkeypatch.setattr(runner, "classify", classify_synthetic)
+    monkeypatch.setattr(runner, "run_tesseract", stub_tesseract)
+
+    output_dir = tmp_path / "output"
+    assert (
+        runner.main(
+            [
+                "--sequence-mode",
+                "timestamped",
+                "--metadata",
+                str(metadata_path),
+                "--screenshots-root",
+                str(tmp_path / "screenshots"),
+                "--output",
+                str(output_dir),
+                "--timestamp-start-ms",
+                "1000",
+                "--timestamp-interval-ms",
+                "500",
+                "--ocr-target",
+                "confirmed-events",
+                "--no-rois",
+            ]
+        )
+        == 0
+    )
+
+    event_rows = read_csv_rows(output_dir / "result_events.csv")
+    assert [row["confirmation_mode"] for row in event_rows] == ["time"] * 5
+    assert [row["event_type"] for row in event_rows] == [
+        "none",
+        "none",
+        "confirmed",
+        "duplicate",
+        "rejected_transition",
+    ]
+
+    rows = read_csv_rows(output_dir / "score_ocr.csv")
+    assert [row["organized_file"] for row in rows] == ["c.png"]
+    summary = json.loads((output_dir / "score_ocr_summary.json").read_text(encoding="utf-8"))
+    assert summary["total_ocr_attempts"] == 1
+    assert summary["skipped_duplicate_count"] == 1
+    assert summary["skipped_unconfirmed_count"] == 3
+
+
+def test_confirmed_events_ocr_target_uses_time_events_in_manifest_mode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for name in ("a.png", "b.png", "c.png", "d.png", "e.png"):
+        write_test_image(tmp_path / "frames" / name)
+    manifest_path = tmp_path / "manifest.csv"
+    manifest_path.write_text(
+        "image_path,timestamp_ms,screen_type\n"
+        "a.png,1000,result\n"
+        "b.png,1500,result\n"
+        "c.png,2000,result\n"
+        "d.png,2500,result\n"
+        "e.png,3000,transition\n",
+        encoding="utf-8",
+    )
+
+    def classify_synthetic(_image: Image.Image, row: dict[str, str]) -> runner.Classification:
+        if row["organized_file"] == "e.png":
+            return classification(
+                "transition_countup_score999999_e.png",
+                result_candidate=False,
+                result_shape_candidate=True,
+                screen_type="transition",
+                transition_kind="countup",
+            )
+        return classification(
+            f"organized/result_score123456_{row['organized_file']}",
+            result_candidate=True,
+            screen_type=row["screen_type"],
+        )
+
+    monkeypatch.setattr(runner, "classify", classify_synthetic)
+    monkeypatch.setattr(runner, "run_tesseract", stub_tesseract)
+
+    output_dir = tmp_path / "output"
+    assert (
+        runner.main(
+            [
+                "--sequence-mode",
+                "manifest",
+                "--frame-manifest",
+                str(manifest_path),
+                "--frame-root",
+                str(tmp_path / "frames"),
+                "--output",
+                str(output_dir),
+                "--ocr-target",
+                "confirmed-events",
+                "--no-rois",
+            ]
+        )
+        == 0
+    )
+
+    event_rows = read_csv_rows(output_dir / "result_events.csv")
+    assert [row["confirmation_mode"] for row in event_rows] == ["time"] * 5
+    assert [row["event_type"] for row in event_rows] == [
+        "none",
+        "none",
+        "confirmed",
+        "duplicate",
+        "rejected_transition",
+    ]
+
+    rows = read_csv_rows(output_dir / "score_ocr.csv")
+    assert [row["organized_file"] for row in rows] == ["c.png"]
+    summary = json.loads((output_dir / "score_ocr_summary.json").read_text(encoding="utf-8"))
+    assert summary["ocr_target_mode"] == "confirmed-events"
+    assert summary["total_ocr_attempts"] == 1
+    assert summary["skipped_duplicate_count"] == 1
+    assert summary["skipped_unconfirmed_count"] == 3

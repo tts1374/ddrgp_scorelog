@@ -22,6 +22,7 @@ CONFIRMED_RESULT_MIN_DURATION_MS = 1000
 DUPLICATE_WINDOW_FRAMES = 90
 DUPLICATE_WINDOW_MS = 90_000
 FRAME_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
+OCR_TARGET_MODES = ("result-candidate", "confirmed-events")
 
 
 ROI_DEFINITIONS: dict[str, tuple[int, int, int, int]] = {
@@ -142,6 +143,18 @@ class ScoreOcrResult:
     original_path: str
     enlarged_path: str
     binary_path: str
+
+
+@dataclass(frozen=True)
+class ScoreOcrSummary:
+    total_ocr_attempts: int
+    ok_count: int
+    engine_unavailable_count: int
+    match_count: int
+    mismatch_count: int
+    skipped_duplicate_count: int
+    skipped_unconfirmed_count: int
+    ocr_target_mode: str
 
 
 @dataclass(frozen=True)
@@ -897,6 +910,48 @@ def write_score_ocr_csv(path: Path, results: Iterable[ScoreOcrResult]) -> None:
         writer.writerows(rows)
 
 
+def is_ocr_target(
+    classification: Classification,
+    event: ResultEvent,
+    ocr_target_mode: str,
+) -> bool:
+    if ocr_target_mode == "result-candidate":
+        return classification.result_candidate
+    if ocr_target_mode == "confirmed-events":
+        return event.confirmed_result and not event.duplicate
+    joined = ", ".join(OCR_TARGET_MODES)
+    raise ValueError(f"unsupported OCR target mode: {ocr_target_mode}; expected: {joined}")
+
+
+def summarize_score_ocr(
+    results: Iterable[ScoreOcrResult],
+    events: Iterable[ResultEvent],
+    ocr_target_mode: str,
+) -> ScoreOcrSummary:
+    result_rows = list(results)
+    event_rows = list(events)
+    skipped_duplicate_count = 0
+    skipped_unconfirmed_count = 0
+    if ocr_target_mode == "confirmed-events":
+        skipped_duplicate_count = sum(event.duplicate for event in event_rows)
+        skipped_unconfirmed_count = sum(
+            not event.confirmed_result and not event.duplicate for event in event_rows
+        )
+
+    return ScoreOcrSummary(
+        total_ocr_attempts=len(result_rows),
+        ok_count=sum(result.status == "ok" for result in result_rows),
+        engine_unavailable_count=sum(
+            result.status == "engine_unavailable" for result in result_rows
+        ),
+        match_count=sum(result.match is True for result in result_rows),
+        mismatch_count=sum(result.match is False for result in result_rows),
+        skipped_duplicate_count=skipped_duplicate_count,
+        skipped_unconfirmed_count=skipped_unconfirmed_count,
+        ocr_target_mode=ocr_target_mode,
+    )
+
+
 def flatten_result_event(event: ResultEvent) -> dict[str, str | int | bool]:
     return asdict(event)
 
@@ -1155,6 +1210,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="Skip score_digits OCR preprocessing and OCR attempts.",
     )
     parser.add_argument(
+        "--ocr-target",
+        choices=OCR_TARGET_MODES,
+        default="result-candidate",
+        help=(
+            "Frames to OCR. result-candidate preserves the legacy behavior; confirmed-events "
+            "OCRs only result_events rows with confirmed_result=true and duplicate=false."
+        ),
+    )
+    parser.add_argument(
         "--ocr-rois",
         nargs="+",
         default=["score_digits"],
@@ -1224,7 +1288,6 @@ def main(argv: list[str] | None = None) -> int:
         raise ValueError("input sequence contains no frames")
 
     classifications: list[Classification] = []
-    score_ocr_results: list[ScoreOcrResult] = []
     for frame in frames:
         with Image.open(frame.image_path) as image:
             image = image.convert("RGB")
@@ -1232,11 +1295,6 @@ def main(argv: list[str] | None = None) -> int:
             classifications.append(classification)
             if not args.no_rois:
                 save_primary_rois(image, output_dir, frame.image_path.stem)
-            if not args.no_ocr and classification.result_candidate:
-                for roi_name in ocr_rois:
-                    score_ocr_results.append(
-                        process_ocr_roi(image, frame.row, classification, output_dir, roi_name)
-                    )
 
     write_results_csv(output_dir / "results.csv", classifications)
     timestamps_ms = (
@@ -1249,7 +1307,29 @@ def main(argv: list[str] | None = None) -> int:
         json.dumps(result_events_summary, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
+    score_ocr_results: list[ScoreOcrResult] = []
+    if not args.no_ocr:
+        frame_event_rows = zip(frames, classifications, result_events, strict=True)
+        for frame, classification, event in frame_event_rows:
+            if not is_ocr_target(classification, event, args.ocr_target):
+                continue
+            with Image.open(frame.image_path) as image:
+                image = image.convert("RGB")
+                for roi_name in ocr_rois:
+                    score_ocr_results.append(
+                        process_ocr_roi(image, frame.row, classification, output_dir, roi_name)
+                    )
+
     write_score_ocr_csv(output_dir / "score_ocr.csv", score_ocr_results)
+    score_ocr_summary = summarize_score_ocr(
+        score_ocr_results,
+        result_events,
+        args.ocr_target,
+    )
+    (output_dir / "score_ocr_summary.json").write_text(
+        json.dumps(asdict(score_ocr_summary), ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
     summary = summarize(classifications)
     (output_dir / "summary.json").write_text(
         json.dumps(summary, ensure_ascii=False, indent=2) + "\n",

@@ -70,16 +70,35 @@ python -m tools.vision_poc --sequence-mode manifest --frame-manifest data/vision
 
 導入前の調整では `result_events_summary.json` を見て、`confirmed_count`、`duplicate_count`、`rejected_transition_count`、`first_confirmed_timestamp_ms`、`confirmation_mode_counts` を確認します。実キャプチャ列で確定が早すぎる、遅すぎる、または同一リザルトの重複が多い場合は、この summary と `result_events.csv` の `candidate_duration_ms` / `reason` を見比べて、保存確定しきい値や duplicate window を調整します。
 
-OCR前処理も既定で実行されます。対象は `result_candidate=true` の画像だけで、既定では `score_digits` ROIから以下を出力します。
+OCR前処理も既定で実行されます。対象は `--ocr-target` で切り替えます。既定は `result-candidate` で、従来どおり `result_candidate=true` の画像をOCR対象にします。
+
+```powershell
+python -m tools.vision_poc --ocr-target result-candidate
+```
+
+実キャプチャ導入前の保存直前OCR相当の評価には `confirmed-events` を使います。このモードでは `result_events.csv` 上で `confirmed_result=true` かつ `duplicate=false` のフレームだけをOCRします。未確定候補、`transition_countup_*` のような `rejected_transition`、duplicate window内の重複確定はOCR対象外です。
+
+```powershell
+python -m tools.vision_poc --ocr-target confirmed-events
+python -m tools.vision_poc --sequence-mode timestamped --ocr-target confirmed-events
+python -m tools.vision_poc --sequence-mode manifest --frame-manifest data/vision_poc_timestamped/frame_manifest.csv --frame-root samples/screenshots --ocr-target confirmed-events
+```
+
+既定では `score_digits` ROIから以下を出力します。
 
 - `data/vision_poc/ocr/<画像名>/score_digits_original.png`
 - `data/vision_poc/ocr/<画像名>/score_digits_enlarged.png`
 - `data/vision_poc/ocr/<画像名>/score_digits_binary.png`
 - `data/vision_poc/score_ocr.csv`
+- `data/vision_poc/score_ocr_summary.json`
 
 `score_ocr.csv` には `roi_name`、`score_ocr_raw`、`score_ocr_normalized`、`expected_score`、`match`、`engine`、`status`、`error`、`original_path`、`enlarged_path`、`binary_path` を出力します。`expected_score` は metadata の `score` / `expected_score` 列があれば優先し、なければファイル名内の `scoreXXXXXX` から取得します。
 
+`score_ocr_summary.json` はOCR評価だけを集計したJSONです。`total_ocr_attempts`、`ok_count`、`engine_unavailable_count`、`match_count`、`mismatch_count`、`skipped_duplicate_count`、`skipped_unconfirmed_count`、`ocr_target_mode` を出力します。`score_ocr.csv` は各ROIごとの詳細確認用、`score_ocr_summary.json` は対象モードごとの件数と失敗傾向の確認用です。
+
 OCRエンジンはPATH上の `tesseract` を使います。未導入または利用不可の場合でもPoCは落ちず、前処理画像を保存したうえで `score_ocr.csv` に `engine=none`、`status=engine_unavailable` を残します。
+
+実キャプチャ導入時は、まず `confirmed-events` モードで保存直前OCR相当の精度と失敗理由を見ます。ここで `skipped_duplicate_count` が増えすぎる、`skipped_unconfirmed_count` に保存したいフレームが混ざる、または `engine_unavailable_count` / `mismatch_count` が多い場合は、キャプチャAPIやDB保存を作る前にイベント確定しきい値、duplicate window、ROI前処理を調整します。
 
 OCR前処理を省略したい場合は以下を使います。
 
@@ -136,6 +155,9 @@ python -m pytest tests
 - `result_candidate=true` が継続したときだけ `confirmed_result=true` になる
 - 1フレームだけの `result_candidate=true` は保存確定しない
 - 同一キーの連続確定は `duplicate` として区別する
+- `result-candidate` OCR対象モードは従来どおり `result_candidate=true` をOCRする
+- `confirmed-events` OCR対象モードは `confirmed_result=true` かつ `duplicate=false` だけをOCRする
+- metadata ではフレームベース、timestamped / manifest では時刻ベースの確定イベントをOCR対象にできる
 - 連番画像からファイル名昇順かつ単調増加timestampの manifest を生成できる
 - 不正fps、対象画像なし、生成 manifest の読み込み互換性を確認する
 - `score` / `expected_score` / `organized_file` から `expected_score` を抽出できる
