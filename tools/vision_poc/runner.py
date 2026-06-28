@@ -365,6 +365,81 @@ def read_metadata(path: Path) -> list[dict[str, str]]:
     return rows
 
 
+def parse_manifest_timestamp(value: str, *, line_number: int) -> int:
+    if value == "":
+        raise ValueError(f"frame manifest line {line_number}: timestamp_ms is empty")
+    try:
+        timestamp_ms = int(value)
+    except ValueError as exc:
+        raise ValueError(
+            f"frame manifest line {line_number}: timestamp_ms must be an integer: {value!r}"
+        ) from exc
+    if timestamp_ms < 0:
+        raise ValueError(
+            f"frame manifest line {line_number}: timestamp_ms must be non-negative: {value!r}"
+        )
+    return timestamp_ms
+
+
+def resolve_manifest_image_path(
+    raw_image_path: str,
+    manifest_path: Path,
+    frame_root: Path | None,
+) -> Path:
+    image_path = Path(raw_image_path)
+    if image_path.is_absolute():
+        return image_path
+    root = frame_root if frame_root is not None else manifest_path.parent
+    return root / image_path
+
+
+def read_frame_manifest(path: Path, frame_root: Path | None = None) -> list[FrameInput]:
+    with path.open("r", encoding="utf-8", newline="") as file:
+        reader = csv.DictReader(file)
+        required = {"image_path", "timestamp_ms"}
+        missing = required - set(reader.fieldnames or ())
+        if missing:
+            joined = ", ".join(sorted(missing))
+            raise ValueError(f"frame manifest is missing required columns: {joined}")
+
+        frames: list[FrameInput] = []
+        previous_timestamp_ms: int | None = None
+        for row in reader:
+            line_number = reader.line_num
+            raw_image_path = row.get("image_path", "")
+            if raw_image_path == "":
+                raise ValueError(f"frame manifest line {line_number}: image_path is empty")
+
+            timestamp_ms = parse_manifest_timestamp(
+                row.get("timestamp_ms", ""),
+                line_number=line_number,
+            )
+            if previous_timestamp_ms is not None and timestamp_ms <= previous_timestamp_ms:
+                raise ValueError(
+                    f"frame manifest line {line_number}: timestamp_ms must be strictly "
+                    f"increasing; previous={previous_timestamp_ms}, current={timestamp_ms}"
+                )
+            previous_timestamp_ms = timestamp_ms
+
+            image_path = resolve_manifest_image_path(raw_image_path, path, frame_root)
+            if not image_path.exists():
+                raise ValueError(
+                    f"frame manifest line {line_number}: image_path does not exist: {image_path}"
+                )
+
+            frames.append(
+                FrameInput(
+                    row={
+                        "organized_file": raw_image_path,
+                        "screen_type": row.get("screen_type", ""),
+                    },
+                    image_path=image_path,
+                    timestamp_ms=timestamp_ms,
+                )
+            )
+    return frames
+
+
 def build_metadata_frame_inputs(
     rows: Iterable[dict[str, str]],
     screenshots_root: Path,
@@ -397,6 +472,21 @@ def build_timestamped_frame_inputs(
         )
         timestamp_ms += frame_interval_ms
     return frames
+
+
+def write_frame_manifest(path: Path, frames: Iterable[FrameInput]) -> None:
+    fieldnames = ["image_path", "timestamp_ms", "screen_type"]
+    with path.open("w", encoding="utf-8", newline="") as file:
+        writer = csv.DictWriter(file, fieldnames=fieldnames)
+        writer.writeheader()
+        for frame in frames:
+            writer.writerow(
+                {
+                    "image_path": frame.row["organized_file"],
+                    "timestamp_ms": frame.timestamp_ms,
+                    "screen_type": frame.row.get("screen_type", ""),
+                }
+            )
 
 
 def save_primary_rois(image: Image.Image, output_dir: Path, stem: str) -> None:
@@ -875,11 +965,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Evaluate OCR-free DDR GP result screen signals.")
     parser.add_argument(
         "--sequence-mode",
-        choices=("metadata", "timestamped"),
+        choices=("metadata", "timestamped", "manifest"),
         default="metadata",
         help=(
             "Input sequence mode. metadata keeps legacy frame-based events; timestamped attaches "
-            "artificial capture timestamps to the same local image sequence."
+            "artificial capture timestamps to the same local image sequence; manifest reads "
+            "timestamped frame rows from CSV."
         ),
     )
     parser.add_argument(
@@ -893,6 +984,21 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=Path("samples/screenshots"),
         help="Root directory used to resolve metadata organized_file paths.",
+    )
+    parser.add_argument(
+        "--frame-manifest",
+        type=Path,
+        default=None,
+        help="CSV frame manifest for --sequence-mode manifest; requires image_path,timestamp_ms.",
+    )
+    parser.add_argument(
+        "--frame-root",
+        type=Path,
+        default=None,
+        help=(
+            "Optional root directory used to resolve relative image_path values in "
+            "--frame-manifest. Defaults to the manifest file directory."
+        ),
     )
     parser.add_argument(
         "--output",
@@ -948,23 +1054,34 @@ def resolve_ocr_rois(values: list[str]) -> tuple[str, ...]:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     output_dir: Path = args.output or (
-        Path("data/vision_poc_timestamped")
-        if args.sequence_mode == "timestamped"
-        else Path("data/vision_poc")
+        {
+            "metadata": Path("data/vision_poc"),
+            "timestamped": Path("data/vision_poc_timestamped"),
+            "manifest": Path("data/vision_poc_manifest"),
+        }[args.sequence_mode]
     )
     output_dir.mkdir(parents=True, exist_ok=True)
     ocr_rois = resolve_ocr_rois(args.ocr_rois)
 
-    rows = read_metadata(args.metadata)
-    if args.sequence_mode == "timestamped":
-        frames = build_timestamped_frame_inputs(
-            rows,
-            args.screenshots_root,
-            start_ms=args.timestamp_start_ms,
-            frame_interval_ms=args.timestamp_interval_ms,
-        )
+    if args.sequence_mode == "manifest":
+        if args.frame_manifest is None:
+            raise ValueError("--frame-manifest is required when --sequence-mode manifest")
+        frames = read_frame_manifest(args.frame_manifest, args.frame_root)
     else:
-        frames = build_metadata_frame_inputs(rows, args.screenshots_root)
+        rows = read_metadata(args.metadata)
+        if args.sequence_mode == "timestamped":
+            frames = build_timestamped_frame_inputs(
+                rows,
+                args.screenshots_root,
+                start_ms=args.timestamp_start_ms,
+                frame_interval_ms=args.timestamp_interval_ms,
+            )
+            write_frame_manifest(output_dir / "frame_manifest.csv", frames)
+        else:
+            frames = build_metadata_frame_inputs(rows, args.screenshots_root)
+
+    if not frames:
+        raise ValueError("input sequence contains no frames")
 
     classifications: list[Classification] = []
     score_ocr_results: list[ScoreOcrResult] = []
@@ -983,7 +1100,7 @@ def main(argv: list[str] | None = None) -> int:
 
     write_results_csv(output_dir / "results.csv", classifications)
     timestamps_ms = (
-        [frame.timestamp_ms for frame in frames] if args.sequence_mode == "timestamped" else None
+        None if args.sequence_mode == "metadata" else [frame.timestamp_ms for frame in frames]
     )
     result_events = build_result_events(classifications, timestamps_ms=timestamps_ms)
     write_result_events_csv(output_dir / "result_events.csv", result_events)

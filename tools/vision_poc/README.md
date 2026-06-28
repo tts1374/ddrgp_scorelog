@@ -24,19 +24,35 @@ python -m pip install -e ".[vision]"
 
 この既定実行は metadata 評価モードです。`samples/screenshots/metadata.csv` の並びをフレーム順として扱いますが、キャプチャ時刻は持たないため、`result_events.csv` の `timestamp_ms` と `candidate_duration_ms` は空欄、`confirmation_mode` は `frames` になります。
 
+入力モードの役割は以下です。
+
+- `metadata`: ローカル評価用。`samples/screenshots/metadata.csv` の `organized_file` と `screen_type` を真値として、既存画像の分類精度を確認します。
+- `timestamped`: 実キャプチャ前の人工時系列PoC。metadata と同じ画像列へ単調増加する人工 `timestamp_ms` を付け、時刻ベースのリザルト確定を確認します。
+- `manifest`: 実フレーム列入力PoC。録画切り出しや将来のキャプチャ処理が供給する `image_path,timestamp_ms` のCSVを読み、実キャプチャに近い入力境界を確認します。
+
 実キャプチャ相当の時系列PoCは、同じローカル画像列へ人工 `timestamp_ms` を付けて実行できます。
 
 ```powershell
 python -m tools.vision_poc --sequence-mode timestamped
 ```
 
-既定の出力先は `data/vision_poc_timestamped/` です。このモードでは `build_result_events(..., timestamps_ms=...)` にキャプチャ時刻相当の値を渡すため、`result_events.csv` の `confirmation_mode` は `time`、`timestamp_ms` と `candidate_duration_ms` はミリ秒値になります。
+既定の出力先は `data/vision_poc_timestamped/` です。このモードでは `build_result_events(..., timestamps_ms=...)` にキャプチャ時刻相当の値を渡すため、`result_events.csv` の `confirmation_mode` は `time`、`timestamp_ms` と `candidate_duration_ms` はミリ秒値になります。あわせて、同じ人工時系列を manifest 入力で再利用できるように `data/vision_poc_timestamped/frame_manifest.csv` を生成します。
 
 人工 timestamp は既定で `0ms` から `1000ms` 間隔です。必要に応じて以下のように開始時刻や間隔を変えられます。
 
 ```powershell
 python -m tools.vision_poc --sequence-mode timestamped --timestamp-start-ms 5000 --timestamp-interval-ms 333
 ```
+
+manifest 実フレーム列モードは、最小列 `image_path,timestamp_ms` を持つCSVを読みます。任意で `screen_type` があれば、`results.csv` と `result_events.csv` にそのまま反映します。`image_path` は既定では manifest ファイルからの相対パスとして解決し、`--frame-root` を指定した場合はそのディレクトリからの相対パスとして解決します。
+
+```powershell
+python -m tools.vision_poc --sequence-mode manifest --frame-manifest data/vision_poc_timestamped/frame_manifest.csv --frame-root samples/screenshots
+```
+
+既定の出力先は `data/vision_poc_manifest/` です。manifest モードでは timestamp 付き入力として扱うため、`result_events.csv` の `confirmation_mode` は `time` になります。`timestamp_ms` はフレーム番号ではなく、キャプチャ時点の単調増加する時刻をミリ秒で表します。空、非整数、負数、非単調増加の timestamp や、存在しない画像パスは行番号付きのエラーにします。
+
+実キャプチャ導入時は、キャプチャAPIや録画フレーム抽出処理がこの manifest 相当の `image_path,timestamp_ms` 列を供給する方針です。FPSが揺れたりフレームが欠落したりしても、時刻ベースなら `result_candidate=true` が実時間で何ミリ秒継続したかを見られるため、固定フレーム数だけに依存するより保存確定が安定します。
 
 OCR前処理も既定で実行されます。対象は `result_candidate=true` の画像だけで、既定では `score_digits` ROIから以下を出力します。
 
