@@ -62,6 +62,29 @@ def stub_tesseract(
     return "123456", "tesseract", "ok", ""
 
 
+def stub_profile_preprocess(
+    _image: Image.Image,
+    roi_name: str,
+    config: runner.OcrPreprocessConfig = runner.OCR_PREPROCESS_CONFIG,
+) -> runner.OcrPreprocessedImages:
+    original = Image.new("RGB", (4, 4), "black")
+    enlarged = Image.new("RGB", (8, 8), "white")
+    binary = Image.new("L", (8, 8), "white")
+    profile = next(
+        name
+        for name, profile_config in runner.OCR_PREPROCESS_PROFILES.items()
+        if profile_config == config
+    )
+    binary.info["profile"] = profile
+    binary.info["roi_name"] = roi_name
+    return runner.OcrPreprocessedImages(
+        roi_name=roi_name,
+        original=original,
+        enlarged=enlarged,
+        binary=binary,
+    )
+
+
 def test_expected_score_prefers_metadata_score() -> None:
     row = {
         "organized_file": "organized/result_score111111_sample.png",
@@ -326,6 +349,133 @@ def test_ocr_rois_all_writes_roi_summary_and_failure_reasons(
     assert summary["by_roi"]["good"]["empty_ocr_count"] == 1
     assert summary["by_roi"]["perfect"]["no_expected_value_count"] == 1
     assert summary["by_roi"]["miss"]["no_expected_value_count"] == 1
+
+
+def test_profile_comparison_keeps_score_ocr_csv_compatible_and_summarizes_by_profile(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for name in ("result_score123456_a.png", "result_score123456_b.png"):
+        write_test_image(tmp_path / "screenshots" / name)
+    metadata_path = tmp_path / "metadata.csv"
+    metadata_path.write_text(
+        "organized_file,screen_type,expected_score,max_combo,expected_marvelous\n"
+        "result_score123456_a.png,result,123456,10,20\n"
+        "result_score123456_b.png,result,123456,10,20\n",
+        encoding="utf-8",
+    )
+
+    def classify_synthetic(_image: Image.Image, row: dict[str, str]) -> runner.Classification:
+        return classification(
+            row["organized_file"],
+            result_candidate=True,
+            screen_type=row["screen_type"],
+        )
+
+    def run_tesseract_synthetic(
+        binary: Image.Image,
+        roi_name: str = "score_digits",
+    ) -> tuple[str, str, str, str]:
+        profile = binary.info.get("profile", "default")
+        raw_by_profile = {
+            "default": {
+                "score_digits": "123456",
+                "max_combo": "",
+                "marvelous": "21",
+                "perfect": "7",
+            },
+            "high-contrast": {
+                "score_digits": "",
+                "max_combo": "10",
+                "marvelous": "20",
+                "perfect": "7",
+            },
+            "low-threshold": {
+                "score_digits": "999999",
+                "max_combo": "",
+                "marvelous": "20",
+                "perfect": "",
+            },
+        }
+        return raw_by_profile[profile][roi_name], "tesseract", "ok", ""
+
+    monkeypatch.setattr(runner, "classify", classify_synthetic)
+    monkeypatch.setattr(runner, "preprocess_ocr_roi", stub_profile_preprocess)
+    monkeypatch.setattr(runner, "run_tesseract", run_tesseract_synthetic)
+
+    output_dir = tmp_path / "output"
+    assert (
+        runner.main(
+            [
+                "--metadata",
+                str(metadata_path),
+                "--screenshots-root",
+                str(tmp_path / "screenshots"),
+                "--output",
+                str(output_dir),
+                "--ocr-target",
+                "confirmed-events",
+                "--ocr-rois",
+                "score_digits",
+                "max_combo",
+                "marvelous",
+                "perfect",
+                "--ocr-profile",
+                "all",
+                "--no-rois",
+            ]
+        )
+        == 0
+    )
+
+    legacy_rows = read_csv_rows(output_dir / "score_ocr.csv")
+    assert len(legacy_rows) == 4
+    assert {row["organized_file"] for row in legacy_rows} == {"result_score123456_b.png"}
+    assert list(legacy_rows[0]) == [
+        "organized_file",
+        "screen_type",
+        "result_candidate",
+        "roi_name",
+        "score_ocr_raw",
+        "score_ocr_normalized",
+        "expected_score",
+        "match",
+        "engine",
+        "status",
+        "error",
+        "original_path",
+        "enlarged_path",
+        "binary_path",
+    ]
+
+    report = (output_dir / "ocr_roi_report.md").read_text(encoding="utf-8")
+    assert "| `max_combo` | 1 | 0 | 0 | 1 | 0 | 0 |" in report
+    assert "`result_score123456_b.png`" in report
+
+    profile_rows = read_csv_rows(output_dir / "score_ocr_profiles.csv")
+    assert len(profile_rows) == 12
+    assert {row["profile"] for row in profile_rows} == {
+        "default",
+        "high-contrast",
+        "low-threshold",
+    }
+    assert {row["organized_file"] for row in profile_rows} == {"result_score123456_b.png"}
+
+    summary = json.loads(
+        (output_dir / "score_ocr_profiles_summary.json").read_text(encoding="utf-8")
+    )
+    assert summary["ocr_target_mode"] == "confirmed-events"
+    assert summary["profiles"]["default"]["max_combo"]["empty_ocr_count"] == 1
+    assert summary["profiles"]["default"]["marvelous"]["mismatch_count"] == 1
+    assert summary["profiles"]["default"]["perfect"]["no_expected_value_count"] == 1
+    assert summary["profiles"]["high-contrast"]["max_combo"]["match_count"] == 1
+    assert summary["profiles"]["low-threshold"]["score_digits"]["mismatch_count"] == 1
+    assert summary["profiles"]["low-threshold"]["perfect"]["empty_ocr_count"] == 1
+    assert summary["best_by_roi"]["max_combo"]["best_match_profiles"] == ["high-contrast"]
+    assert summary["best_by_roi"]["score_digits"]["lowest_empty_profiles"] == [
+        "default",
+        "low-threshold",
+    ]
 
 
 def test_confirmed_events_ocr_target_filters_metadata_frame_events(

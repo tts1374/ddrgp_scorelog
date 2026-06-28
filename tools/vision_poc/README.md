@@ -91,6 +91,7 @@ python -m tools.vision_poc --sequence-mode manifest --frame-manifest data/vision
 - `data/vision_poc/ocr/<画像名>/score_digits_binary.png`
 - `data/vision_poc/score_ocr.csv`
 - `data/vision_poc/score_ocr_summary.json`
+- `data/vision_poc/ocr_roi_report.md`
 
 `score_ocr.csv` には `roi_name`、`score_ocr_raw`、`score_ocr_normalized`、`expected_score`、`match`、`engine`、`status`、`error`、`original_path`、`enlarged_path`、`binary_path` を出力します。`score_digits` の `expected_score` は metadata の `score` / `expected_score` 列があれば優先し、なければファイル名内の `scoreXXXXXX` から取得します。`max_combo`、`marvelous`、`perfect`、`great`、`good`、`miss` は metadata に同名列または `expected_<roi_name>` 列がある場合だけ期待値として使います。期待値がないROIは `match` を空欄のままにし、summary の `no_expected_value_count` で集計します。
 
@@ -98,9 +99,43 @@ python -m tools.vision_poc --sequence-mode manifest --frame-manifest data/vision
 
 `score_ocr_summary.json` の `by_roi` はROI名ごとの集計です。各ROIに `total_ocr_attempts`、`ok_count`、`engine_unavailable_count`、`match_count`、`mismatch_count`、`empty_ocr_count`、`no_expected_value_count` が入り、`--ocr-rois all` でどのROIが弱いかを横並びで確認できます。`by_status` は `ok`、`engine_unavailable`、`ocr_failed` などOCR実行ステータスの件数、`failure_reasons` は `engine_unavailable`、`ocr_failed`、`empty_ocr`、`mismatch`、`no_expected_value` の観点別件数です。
 
+`ocr_roi_report.md` は `score_ocr_summary.json` と `score_ocr.csv` を人間が読みやすい形に並べたROI別弱点レポートです。ROIごとに `total_ocr_attempts`、`match_count`、`mismatch_count`、`empty_ocr_count`、`no_expected_value_count`、`engine_unavailable_count` を表で確認し、代表的な `mismatch` / `empty_ocr` の `organized_file` を見て、対応する `ocr/<画像名>/<roi>_*.png` を目視します。`--ocr-target confirmed-events` を指定した場合は、未確定候補やduplicateを除いた対象イベントだけでレポートされます。
+
 OCRエンジンはPATH上の `tesseract` を使います。未導入または利用不可の場合でもPoCは落ちず、前処理画像を保存したうえで `score_ocr.csv` に `engine=none`、`status=engine_unavailable` を残します。
 
 実キャプチャ導入時は、まず `confirmed-events` と `--ocr-rois all` を組み合わせて、保存直前OCR相当の精度と失敗理由をROI別に見ます。ここで `skipped_duplicate_count` が増えすぎる、`skipped_unconfirmed_count` に保存したいフレームが混ざる、特定ROIの `empty_ocr_count` / `mismatch_count` が多い、または `no_expected_value_count` が多く評価できない場合は、キャプチャAPIやDB保存を作る前にイベント確定しきい値、duplicate window、metadata真値列、ROI前処理を調整します。
+
+### OCR profile比較
+
+実キャプチャ導入前の前処理調整PoCとして、`--ocr-profile` で複数の軽量profileを比較できます。これはローカル画像に対するROI別弱点分析用であり、本番キャプチャAPI、常駐監視ループ、非同期処理、DB保存ではありません。
+
+```powershell
+python -m tools.vision_poc --ocr-target confirmed-events --ocr-rois all --ocr-profile all
+```
+
+利用できるprofileは以下です。
+
+- `default`: 既定の前処理。従来の `score_ocr.csv` は常にこの設定で出力します。
+- `high-contrast`: 明るい白文字に寄せ、`luma_threshold` を上げて `channel_spread` を狭めます。
+- `low-threshold`: 暗めの文字に寄せ、`luma_threshold` を下げて `channel_spread` を広げます。
+
+profile比較を有効にすると、追加で以下を出力します。
+
+- `data/vision_poc/score_ocr_profiles.csv`
+- `data/vision_poc/score_ocr_profiles_summary.json`
+- `data/vision_poc/ocr_profiles/<profile>/<画像名>/<roi>_*.png`
+
+`score_ocr_profiles_summary.json` は `profiles -> profile -> roi -> counts` の形で、profile別・ROI別の `match_count`、`mismatch_count`、`empty_ocr_count`、`no_expected_value_count` などを集計します。`best_by_roi` にはROIごとに `match_count` が最も多いprofileと、`empty_ocr_count` が最も少ないprofileを出します。期待値がないROIは成功/失敗にせず、`no_expected_value_count` として扱います。
+
+まずは以下のように confirmed-events と全OCR ROI、profile比較を組み合わせ、保存直前OCR相当で弱いROIを特定します。
+
+```powershell
+python -m tools.vision_poc --ocr-target confirmed-events --ocr-rois all --ocr-profile all
+python -m tools.vision_poc --sequence-mode timestamped --ocr-target confirmed-events --ocr-rois all --ocr-profile all
+python -m tools.vision_poc --sequence-mode manifest --frame-manifest data/vision_poc_timestamped/frame_manifest.csv --frame-root samples/screenshots --ocr-target confirmed-events --ocr-rois all --ocr-profile all
+```
+
+この段階では `empty_ocr_count` が多いROIは二値化条件やROI位置、`mismatch_count` が多いROIは余白・拡大率・Tesseract設定、`no_expected_value_count` が多いROIは metadata の真値列不足を疑います。調整後も既存互換の `score_ocr.csv` は `profile` 列を追加せず、比較結果は別ファイルで確認します。
 
 OCR前処理を省略したい場合は以下を使います。
 
@@ -165,6 +200,8 @@ python -m pytest tests
 - `score` / `expected_score` / `organized_file` から `expected_score` を抽出できる
 - 判定数ROIは metadata の同名列または `expected_<roi_name>` 列がある場合だけ期待値として評価できる
 - `score_ocr_summary.json` でROI別、ステータス別、失敗理由別のOCR集計を確認できる
+- `ocr_roi_report.md` でROI別の弱点と代表的な `mismatch` / `empty_ocr` を確認できる
+- `--ocr-profile all` で既存 `score_ocr.csv` の列を維持したまま、profile別summaryを出力できる
 - `score_ocr_raw` から数字だけを `score_ocr_normalized` にできる
 - ローカル素材がある環境では `score_digits` の前処理画像を生成できる
 

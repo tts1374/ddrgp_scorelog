@@ -163,6 +163,25 @@ class ScoreOcrSummary:
 
 
 @dataclass(frozen=True)
+class ProfileScoreOcrResult:
+    profile: str
+    organized_file: str
+    screen_type: str
+    result_candidate: bool
+    roi_name: str
+    score_ocr_raw: str
+    score_ocr_normalized: str
+    expected_score: str
+    match: bool | None
+    engine: str
+    status: str
+    error: str
+    original_path: str
+    enlarged_path: str
+    binary_path: str
+
+
+@dataclass(frozen=True)
 class OcrPreprocessedImages:
     roi_name: str
     original: Image.Image
@@ -197,6 +216,11 @@ OCR_ROIS = (
     "miss",
 )
 OCR_PREPROCESS_CONFIG = OcrPreprocessConfig()
+OCR_PREPROCESS_PROFILES: dict[str, OcrPreprocessConfig] = {
+    "default": OCR_PREPROCESS_CONFIG,
+    "high-contrast": OcrPreprocessConfig(luma_threshold=150, channel_spread_max=105),
+    "low-threshold": OcrPreprocessConfig(luma_threshold=115, channel_spread_max=165),
+}
 TESSERACT_CONFIG = TesseractConfig()
 
 
@@ -833,11 +857,14 @@ def process_ocr_roi(
     classification: Classification,
     output_dir: Path,
     roi_name: str,
+    *,
+    preprocess_config: OcrPreprocessConfig = OCR_PREPROCESS_CONFIG,
+    output_root_name: str = "ocr",
 ) -> ScoreOcrResult:
-    target_dir = output_dir / "ocr" / Path(row["organized_file"]).stem
+    target_dir = output_dir / output_root_name / Path(row["organized_file"]).stem
     target_dir.mkdir(parents=True, exist_ok=True)
 
-    preprocessed = preprocess_ocr_roi(image, roi_name)
+    preprocessed = preprocess_ocr_roi(image, roi_name, preprocess_config)
     original_path = target_dir / f"{roi_name}_original.png"
     enlarged_path = target_dir / f"{roi_name}_enlarged.png"
     binary_path = target_dir / f"{roi_name}_binary.png"
@@ -866,6 +893,27 @@ def process_ocr_roi(
         enlarged_path=str(enlarged_path),
         binary_path=str(binary_path),
     )
+
+
+def process_profile_ocr_roi(
+    image: Image.Image,
+    row: dict[str, str],
+    classification: Classification,
+    output_dir: Path,
+    roi_name: str,
+    profile: str,
+    preprocess_config: OcrPreprocessConfig,
+) -> ProfileScoreOcrResult:
+    result = process_ocr_roi(
+        image,
+        row,
+        classification,
+        output_dir,
+        roi_name,
+        preprocess_config=preprocess_config,
+        output_root_name=f"ocr_profiles/{profile}",
+    )
+    return ProfileScoreOcrResult(profile=profile, **asdict(result))
 
 
 def process_score_ocr(
@@ -926,6 +974,20 @@ def write_score_ocr_csv(path: Path, results: Iterable[ScoreOcrResult]) -> None:
         writer.writerows(rows)
 
 
+def flatten_profile_score_ocr(result: ProfileScoreOcrResult) -> dict[str, str | bool | None]:
+    return asdict(result)
+
+
+def write_profile_score_ocr_csv(path: Path, results: Iterable[ProfileScoreOcrResult]) -> None:
+    rows = [flatten_profile_score_ocr(item) for item in results]
+    if not rows:
+        return
+    with path.open("w", encoding="utf-8", newline="") as file:
+        writer = csv.DictWriter(file, fieldnames=list(rows[0].keys()))
+        writer.writeheader()
+        writer.writerows(rows)
+
+
 def is_ocr_target(
     classification: Classification,
     event: ResultEvent,
@@ -939,15 +1001,18 @@ def is_ocr_target(
     raise ValueError(f"unsupported OCR target mode: {ocr_target_mode}; expected: {joined}")
 
 
-def empty_ocr_count(results: Iterable[ScoreOcrResult]) -> int:
+OcrResultLike = ScoreOcrResult | ProfileScoreOcrResult
+
+
+def empty_ocr_count(results: Iterable[OcrResultLike]) -> int:
     return sum(result.status == "ok" and result.score_ocr_normalized == "" for result in results)
 
 
-def no_expected_value_count(results: Iterable[ScoreOcrResult]) -> int:
+def no_expected_value_count(results: Iterable[OcrResultLike]) -> int:
     return sum(result.expected_score == "" for result in results)
 
 
-def ocr_summary_bucket(results: Iterable[ScoreOcrResult]) -> dict[str, int]:
+def ocr_summary_bucket(results: Iterable[OcrResultLike]) -> dict[str, int]:
     result_rows = list(results)
     return {
         "total_ocr_attempts": len(result_rows),
@@ -962,21 +1027,21 @@ def ocr_summary_bucket(results: Iterable[ScoreOcrResult]) -> dict[str, int]:
     }
 
 
-def summarize_ocr_by_roi(results: Iterable[ScoreOcrResult]) -> dict[str, dict[str, int]]:
-    buckets: dict[str, list[ScoreOcrResult]] = {}
+def summarize_ocr_by_roi(results: Iterable[OcrResultLike]) -> dict[str, dict[str, int]]:
+    buckets: dict[str, list[OcrResultLike]] = {}
     for result in results:
         buckets.setdefault(result.roi_name, []).append(result)
     return {roi_name: ocr_summary_bucket(rows) for roi_name, rows in sorted(buckets.items())}
 
 
-def summarize_ocr_by_status(results: Iterable[ScoreOcrResult]) -> dict[str, int]:
+def summarize_ocr_by_status(results: Iterable[OcrResultLike]) -> dict[str, int]:
     by_status: dict[str, int] = {}
     for result in results:
         by_status[result.status] = by_status.get(result.status, 0) + 1
     return dict(sorted(by_status.items()))
 
 
-def summarize_ocr_failure_reasons(results: Iterable[ScoreOcrResult]) -> dict[str, int]:
+def summarize_ocr_failure_reasons(results: Iterable[OcrResultLike]) -> dict[str, int]:
     result_rows = list(results)
     return {
         "engine_unavailable": sum(
@@ -1020,6 +1085,129 @@ def summarize_score_ocr(
         by_status=summarize_ocr_by_status(result_rows),
         failure_reasons=summarize_ocr_failure_reasons(result_rows),
     )
+
+
+def summarize_profile_score_ocr(
+    results: Iterable[ProfileScoreOcrResult],
+    ocr_target_mode: str,
+) -> dict[str, object]:
+    result_rows = list(results)
+    by_profile: dict[str, dict[str, dict[str, int]]] = {}
+    roi_names: set[str] = set()
+    for result in result_rows:
+        roi_names.add(result.roi_name)
+
+    profile_buckets: dict[str, dict[str, list[ProfileScoreOcrResult]]] = {}
+    for result in result_rows:
+        roi_buckets = profile_buckets.setdefault(result.profile, {})
+        roi_buckets.setdefault(result.roi_name, []).append(result)
+
+    for profile, roi_buckets in sorted(profile_buckets.items()):
+        by_profile[profile] = {
+            roi_name: ocr_summary_bucket(rows) for roi_name, rows in sorted(roi_buckets.items())
+        }
+
+    best_by_roi: dict[str, dict[str, object]] = {}
+    for roi_name in sorted(roi_names):
+        candidates = [
+            (profile, by_profile[profile][roi_name])
+            for profile in sorted(by_profile)
+            if roi_name in by_profile[profile]
+        ]
+        if not candidates:
+            continue
+        best_match_count = max(bucket["match_count"] for _, bucket in candidates)
+        lowest_empty_count = min(bucket["empty_ocr_count"] for _, bucket in candidates)
+        best_by_roi[roi_name] = {
+            "best_match_profiles": [
+                profile
+                for profile, bucket in candidates
+                if bucket["match_count"] == best_match_count
+            ],
+            "lowest_empty_profiles": [
+                profile
+                for profile, bucket in candidates
+                if bucket["empty_ocr_count"] == lowest_empty_count
+            ],
+            "best_match_count": best_match_count,
+            "lowest_empty_ocr_count": lowest_empty_count,
+        }
+
+    return {
+        "ocr_target_mode": ocr_target_mode,
+        "profiles": by_profile,
+        "best_by_roi": best_by_roi,
+    }
+
+
+def representative_files(
+    results: Iterable[OcrResultLike],
+    *,
+    reason: str,
+    limit: int = 5,
+) -> list[str]:
+    files: list[str] = []
+    seen: set[str] = set()
+    for result in results:
+        matched = (
+            (reason == "mismatch" and result.match is False)
+            or (
+                reason == "empty_ocr"
+                and result.status == "ok"
+                and result.score_ocr_normalized == ""
+            )
+        )
+        if matched and result.organized_file not in seen:
+            files.append(result.organized_file)
+            seen.add(result.organized_file)
+            if len(files) >= limit:
+                break
+    return files
+
+
+def write_ocr_roi_report(
+    path: Path,
+    results: Iterable[ScoreOcrResult],
+    summary: ScoreOcrSummary,
+) -> None:
+    result_rows = list(results)
+    rows_by_roi: dict[str, list[ScoreOcrResult]] = {}
+    for result in result_rows:
+        rows_by_roi.setdefault(result.roi_name, []).append(result)
+
+    lines = [
+        "# OCR ROI Weakness Report",
+        "",
+        f"- OCR target mode: `{summary.ocr_target_mode}`",
+        f"- Total OCR attempts: {summary.total_ocr_attempts}",
+        "",
+        "| ROI | total | match | mismatch | empty | no expected | engine unavailable |",
+        "| --- | ---: | ---: | ---: | ---: | ---: | ---: |",
+    ]
+    for roi_name, bucket in sorted(summary.by_roi.items()):
+        lines.append(
+            f"| `{roi_name}` | {bucket['total_ocr_attempts']} | {bucket['match_count']} | "
+            f"{bucket['mismatch_count']} | {bucket['empty_ocr_count']} | "
+            f"{bucket['no_expected_value_count']} | {bucket['engine_unavailable_count']} |"
+        )
+
+    lines.extend(["", "## Representative Failures", ""])
+    for roi_name in sorted(rows_by_roi):
+        roi_rows = rows_by_roi[roi_name]
+        mismatches = representative_files(roi_rows, reason="mismatch")
+        empties = representative_files(roi_rows, reason="empty_ocr")
+        lines.extend([f"### `{roi_name}`", ""])
+        lines.append(
+            "- mismatch: "
+            + (", ".join(f"`{name}`" for name in mismatches) if mismatches else "none")
+        )
+        lines.append(
+            "- empty_ocr: "
+            + (", ".join(f"`{name}`" for name in empties) if empties else "none")
+        )
+        lines.append("")
+
+    path.write_text("\n".join(lines), encoding="utf-8")
 
 
 def flatten_result_event(event: ResultEvent) -> dict[str, str | int | bool]:
@@ -1297,6 +1485,16 @@ def build_parser() -> argparse.ArgumentParser:
             f"ROIs. Default: score_digits. Supported: {', '.join(OCR_ROIS)}"
         ),
     )
+    parser.add_argument(
+        "--ocr-profile",
+        nargs="+",
+        default=["default"],
+        help=(
+            "OCR preprocessing profile(s) for comparison outputs. Use 'all' to run every "
+            f"profile. Legacy score_ocr.csv always uses default. Supported: "
+            f"{', '.join(OCR_PREPROCESS_PROFILES)}"
+        ),
+    )
     return parser
 
 
@@ -1308,6 +1506,19 @@ def resolve_ocr_rois(values: list[str]) -> tuple[str, ...]:
         joined_unknown = ", ".join(unknown)
         joined_supported = ", ".join(OCR_ROIS)
         raise ValueError(f"unsupported OCR ROI(s): {joined_unknown}; expected: {joined_supported}")
+    return tuple(dict.fromkeys(values))
+
+
+def resolve_ocr_profiles(values: list[str]) -> tuple[str, ...]:
+    if values == ["all"]:
+        return tuple(OCR_PREPROCESS_PROFILES)
+    unknown = [value for value in values if value not in OCR_PREPROCESS_PROFILES]
+    if unknown:
+        joined_unknown = ", ".join(unknown)
+        joined_supported = ", ".join(OCR_PREPROCESS_PROFILES)
+        raise ValueError(
+            f"unsupported OCR profile(s): {joined_unknown}; expected: {joined_supported}"
+        )
     return tuple(dict.fromkeys(values))
 
 
@@ -1336,6 +1547,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     output_dir.mkdir(parents=True, exist_ok=True)
     ocr_rois = resolve_ocr_rois(args.ocr_rois)
+    ocr_profiles = resolve_ocr_profiles(args.ocr_profile)
 
     if args.sequence_mode == "manifest":
         if args.frame_manifest is None:
@@ -1378,6 +1590,8 @@ def main(argv: list[str] | None = None) -> int:
         encoding="utf-8",
     )
     score_ocr_results: list[ScoreOcrResult] = []
+    profile_ocr_results: list[ProfileScoreOcrResult] = []
+    run_profile_comparison = ocr_profiles != ("default",)
     if not args.no_ocr:
         frame_event_rows = zip(frames, classifications, result_events, strict=True)
         for frame, classification, event in frame_event_rows:
@@ -1389,6 +1603,19 @@ def main(argv: list[str] | None = None) -> int:
                     score_ocr_results.append(
                         process_ocr_roi(image, frame.row, classification, output_dir, roi_name)
                     )
+                    if run_profile_comparison:
+                        for profile in ocr_profiles:
+                            profile_ocr_results.append(
+                                process_profile_ocr_roi(
+                                    image,
+                                    frame.row,
+                                    classification,
+                                    output_dir,
+                                    roi_name,
+                                    profile,
+                                    OCR_PREPROCESS_PROFILES[profile],
+                                )
+                            )
 
     write_score_ocr_csv(output_dir / "score_ocr.csv", score_ocr_results)
     score_ocr_summary = summarize_score_ocr(
@@ -1400,6 +1627,17 @@ def main(argv: list[str] | None = None) -> int:
         json.dumps(asdict(score_ocr_summary), ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
+    write_ocr_roi_report(output_dir / "ocr_roi_report.md", score_ocr_results, score_ocr_summary)
+    if run_profile_comparison:
+        write_profile_score_ocr_csv(output_dir / "score_ocr_profiles.csv", profile_ocr_results)
+        score_ocr_profiles_summary = summarize_profile_score_ocr(
+            profile_ocr_results,
+            args.ocr_target,
+        )
+        (output_dir / "score_ocr_profiles_summary.json").write_text(
+            json.dumps(score_ocr_profiles_summary, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
     summary = summarize(classifications)
     (output_dir / "summary.json").write_text(
         json.dumps(summary, ensure_ascii=False, indent=2) + "\n",
