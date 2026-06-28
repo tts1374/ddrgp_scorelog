@@ -20,7 +20,7 @@ python -m pip install -e ".[vision]"
 - 入力画像: `samples/screenshots/organized/`
 - 出力先: `data/vision_poc/`
 
-出力先には `results.csv`、`summary.json`、`misclassifications.md`、`rois/<画像名>/` 配下の主要ROI画像が生成されます。`data/` はGit管理対象外です。
+出力先には `results.csv`、`result_events.csv`、`summary.json`、`misclassifications.md`、`rois/<画像名>/` 配下の主要ROI画像が生成されます。`data/` はGit管理対象外です。
 
 OCR前処理も既定で実行されます。対象は `result_candidate=true` の画像だけで、既定では `score_digits` ROIから以下を出力します。
 
@@ -85,6 +85,9 @@ python -m pytest tests
 - `screen_type=result` は `result_candidate=true`
 - `song_select`、`gameplay`、`menu_setup`、`transition` は `result_candidate=false`
 - `transition_countup_*` は `result_shape_candidate=true` かつ `result_candidate=false`
+- `result_candidate=true` が継続したときだけ `confirmed_result=true` になる
+- 1フレームだけの `result_candidate=true` は保存確定しない
+- 同一キーの連続確定は `duplicate` として区別する
 - `score` / `expected_score` / `organized_file` から `expected_score` を抽出できる
 - `score_ocr_raw` から数字だけを `score_ocr_normalized` にできる
 - ローカル素材がある環境では `score_digits` の前処理画像を生成できる
@@ -101,3 +104,32 @@ python -m pytest tests
 - ランク周辺の黄色/灰色大文字らしさ
 
 `result_shape_candidate` はリザルト形状の検出、`result_candidate` は保存処理に進める候補です。`transition_countup_*` は形状検出できても保存不可として扱えるよう、`transition_kind=countup` としてログ上で区別します。
+
+### リザルト確定
+
+実キャプチャでは一瞬の誤検出や遷移中フレームが混ざるため、単発の `result_candidate=true` だけでは保存確定しません。PoCでは metadata の並びをフレーム順として扱い、`result_candidate=true` が `CONFIRMED_RESULT_MIN_FRAMES=2` フレーム継続した時点で `confirmed_result=true` にします。
+
+この値は、まずローカル素材や人工シーケンスで「単発誤検出を保存しない」ことを確認するための最小しきい値です。実キャプチャ導入時はフレームレートに応じて、フレーム数ではなく「1.0〜1.5秒程度の継続時間」へ置き換える想定です。
+
+`transition_countup_*` は `result_shape_candidate=true` でも `transition_kind=countup` として扱い、`event_type=rejected_transition`、`confirmed_result=false` のままにします。
+
+### 重複保存防止
+
+同じリザルト画面を連続検出しても保存候補イベントは1回だけ扱えるよう、PoCでは `duplicate_key` ごとに直近の確定フレームを記録します。同一キーが `DUPLICATE_WINDOW_FRAMES=90` フレーム以内に再度確定した場合は `event_type=duplicate`、`duplicate=true` にします。
+
+現在の `duplicate_key` は、ファイル名に `scoreXXXXXX` があれば `score:<数字>`、なければ `file:<ファイル名>` です。これはローカル評価向けの簡易キーで、実キャプチャでは perceptual hash、`score+曲名+難易度`、またはDB保存前の正規化済みリザルトIDに置き換える想定です。置き換え箇所は `duplicate_key_for_classification()` です。
+
+### result_events.csv
+
+`data/vision_poc/result_events.csv` は分類結果を時系列イベントとして見直すためのCSVです。列は以下です。
+
+- `frame_index`: metadata順または入力順の0始まりフレーム番号
+- `organized_file`: 入力画像の相対パス
+- `screen_type`: metadata上の画面種別
+- `result_candidate`: 単発フレーム分類で保存候補か
+- `result_shape_candidate`: リザルト形状らしさがあるか
+- `confirmed_result`: 継続条件を満たして保存確定したか
+- `event_type`: `none` / `confirmed` / `duplicate` / `rejected_transition`
+- `duplicate`: 重複候補か
+- `duplicate_key`: 重複判定キー
+- `reason`: 判定に使った分類理由、継続フレーム数、重複距離など
