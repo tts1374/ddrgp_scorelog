@@ -1,0 +1,6 @@
+file,screen_type,style,difficulty,level,song_title,score,note
+result/20260628_SP_EXPERT_15_987650_songname_001.png,result,SP,EXPERT,15,Song Name,987650,example row
+song_select/20260628_SP_EXPERT_songname_001.png,song_select,SP,EXPERT,15,Song Name,,example row
+gameplay/20260628_SP_EXPERT_songname_001.png,gameplay,SP,EXPERT,15,Song Name,,example row
+transition/20260628_result_entering_001.png,transition,,,,,,example row
+

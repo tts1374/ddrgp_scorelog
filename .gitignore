@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+venv/
+dist/
+build/
+*.egg-info/
+
+# .NET / Visual Studio
+bin/
+obj/
+.vs/
+*.user
+*.suo
+*.rsuser
+
+# Local app data
+data/
+logs/
+failed-captures/
+*.sqlite
+*.sqlite3
+*.db
+
+# Screenshot captures are local/private by default.
+samples/screenshots/**/*.png
+samples/screenshots/**/*.jpg
+samples/screenshots/**/*.jpeg
+samples/screenshots/**/*.bmp
+samples/screenshots/**/*.webp
+samples/screenshots/metadata.csv
+
+# OS / editor
+.DS_Store
+Thumbs.db
+
