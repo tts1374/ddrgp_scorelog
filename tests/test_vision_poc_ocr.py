@@ -115,6 +115,22 @@ def test_preprocess_ocr_roi_supports_judgment_rois() -> None:
     assert preprocessed.binary.size == (1176, 168)
 
 
+def test_expected_ocr_value_uses_optional_judgment_columns() -> None:
+    row = {
+        "organized_file": "organized/result_score111111_sample.png",
+        "expected_score": "123456",
+        "max_combo": "321",
+        "expected_marvelous": "98",
+        "perfect": "",
+    }
+
+    assert runner.expected_ocr_value_from_row(row, "score_digits") == "123456"
+    assert runner.expected_ocr_value_from_row(row, "max_combo") == "321"
+    assert runner.expected_ocr_value_from_row(row, "marvelous") == "98"
+    assert runner.expected_ocr_value_from_row(row, "perfect") == ""
+    assert runner.expected_ocr_value_from_row(row, "miss") == ""
+
+
 def test_score_digits_preprocessing_writes_images_without_ocr_engine(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -222,6 +238,96 @@ def test_result_candidate_ocr_target_keeps_legacy_result_candidate_selection(
     assert summary["skipped_unconfirmed_count"] == 0
 
 
+def test_ocr_rois_all_writes_roi_summary_and_failure_reasons(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    write_test_image(tmp_path / "screenshots" / "result_score111111_a.png")
+    metadata_path = tmp_path / "metadata.csv"
+    metadata_path.write_text(
+        "organized_file,screen_type,expected_score,max_combo,expected_marvelous,great,good\n"
+        "result_score111111_a.png,result,123456,321,50,4,7\n",
+        encoding="utf-8",
+    )
+
+    def classify_synthetic(_image: Image.Image, row: dict[str, str]) -> runner.Classification:
+        return classification(
+            row["organized_file"],
+            result_candidate=True,
+            screen_type=row["screen_type"],
+        )
+
+    def run_tesseract_synthetic(
+        _binary: Image.Image,
+        roi_name: str = "score_digits",
+    ) -> tuple[str, str, str, str]:
+        raw_by_roi = {
+            "score_digits": "123456",
+            "max_combo": "321",
+            "marvelous": "51",
+            "perfect": "999",
+            "great": "5",
+            "good": "",
+            "miss": "2",
+        }
+        return raw_by_roi[roi_name], "tesseract", "ok", ""
+
+    monkeypatch.setattr(runner, "classify", classify_synthetic)
+    monkeypatch.setattr(runner, "run_tesseract", run_tesseract_synthetic)
+
+    output_dir = tmp_path / "output"
+    assert (
+        runner.main(
+            [
+                "--metadata",
+                str(metadata_path),
+                "--screenshots-root",
+                str(tmp_path / "screenshots"),
+                "--output",
+                str(output_dir),
+                "--no-rois",
+                "--ocr-rois",
+                "all",
+            ]
+        )
+        == 0
+    )
+
+    rows = read_csv_rows(output_dir / "score_ocr.csv")
+    assert [row["roi_name"] for row in rows] == list(runner.OCR_ROIS)
+    assert [row["match"] for row in rows] == [
+        "True",
+        "True",
+        "False",
+        "",
+        "False",
+        "",
+        "",
+    ]
+
+    summary = json.loads((output_dir / "score_ocr_summary.json").read_text(encoding="utf-8"))
+    assert summary["total_ocr_attempts"] == 7
+    assert summary["ok_count"] == 7
+    assert summary["match_count"] == 2
+    assert summary["mismatch_count"] == 2
+    assert summary["empty_ocr_count"] == 1
+    assert summary["no_expected_value_count"] == 2
+    assert summary["by_status"] == {"ok": 7}
+    assert summary["failure_reasons"] == {
+        "engine_unavailable": 0,
+        "ocr_failed": 0,
+        "empty_ocr": 1,
+        "mismatch": 2,
+        "no_expected_value": 2,
+    }
+    assert summary["by_roi"]["score_digits"]["match_count"] == 1
+    assert summary["by_roi"]["score_digits"]["no_expected_value_count"] == 0
+    assert summary["by_roi"]["marvelous"]["mismatch_count"] == 1
+    assert summary["by_roi"]["good"]["empty_ocr_count"] == 1
+    assert summary["by_roi"]["perfect"]["no_expected_value_count"] == 1
+    assert summary["by_roi"]["miss"]["no_expected_value_count"] == 1
+
+
 def test_confirmed_events_ocr_target_filters_metadata_frame_events(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -309,6 +415,74 @@ def test_confirmed_events_ocr_target_filters_metadata_frame_events(
     assert summary["mismatch_count"] == 1
     assert summary["skipped_duplicate_count"] == 1
     assert summary["skipped_unconfirmed_count"] == 3
+
+
+def test_confirmed_events_ocr_rois_all_summary_uses_only_target_events(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for name in ("result_score123456_a.png", "result_score123456_b.png"):
+        write_test_image(tmp_path / "screenshots" / name)
+    metadata_path = tmp_path / "metadata.csv"
+    metadata_path.write_text(
+        "organized_file,screen_type,expected_score,max_combo\n"
+        "result_score123456_a.png,result,123456,10\n"
+        "result_score123456_b.png,result,123456,10\n",
+        encoding="utf-8",
+    )
+
+    def classify_synthetic(_image: Image.Image, row: dict[str, str]) -> runner.Classification:
+        return classification(
+            row["organized_file"],
+            result_candidate=True,
+            screen_type=row["screen_type"],
+        )
+
+    monkeypatch.setattr(runner, "classify", classify_synthetic)
+    monkeypatch.setattr(
+        runner,
+        "run_tesseract",
+        lambda _binary, roi_name="score_digits": (
+            "10" if roi_name == "max_combo" else "123456",
+            "tesseract",
+            "ok",
+            "",
+        ),
+    )
+
+    output_dir = tmp_path / "output"
+    assert (
+        runner.main(
+            [
+                "--metadata",
+                str(metadata_path),
+                "--screenshots-root",
+                str(tmp_path / "screenshots"),
+                "--output",
+                str(output_dir),
+                "--ocr-target",
+                "confirmed-events",
+                "--ocr-rois",
+                "all",
+                "--no-rois",
+            ]
+        )
+        == 0
+    )
+
+    rows = read_csv_rows(output_dir / "score_ocr.csv")
+    assert len(rows) == len(runner.OCR_ROIS)
+    assert {row["organized_file"] for row in rows} == {"result_score123456_b.png"}
+
+    summary = json.loads((output_dir / "score_ocr_summary.json").read_text(encoding="utf-8"))
+    assert summary["ocr_target_mode"] == "confirmed-events"
+    assert summary["total_ocr_attempts"] == len(runner.OCR_ROIS)
+    assert summary["skipped_unconfirmed_count"] == 1
+    assert set(summary["by_roi"]) == set(runner.OCR_ROIS)
+    assert all(bucket["total_ocr_attempts"] == 1 for bucket in summary["by_roi"].values())
+    assert summary["by_roi"]["score_digits"]["match_count"] == 1
+    assert summary["by_roi"]["max_combo"]["match_count"] == 1
+    assert summary["by_roi"]["perfect"]["no_expected_value_count"] == 1
 
 
 def test_confirmed_events_ocr_target_uses_time_events_in_timestamped_mode(

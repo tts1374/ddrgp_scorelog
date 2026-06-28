@@ -152,9 +152,14 @@ class ScoreOcrSummary:
     engine_unavailable_count: int
     match_count: int
     mismatch_count: int
+    empty_ocr_count: int
+    no_expected_value_count: int
     skipped_duplicate_count: int
     skipped_unconfirmed_count: int
     ocr_target_mode: str
+    by_roi: dict[str, dict[str, int]]
+    by_status: dict[str, int]
+    failure_reasons: dict[str, int]
 
 
 @dataclass(frozen=True)
@@ -603,6 +608,17 @@ def expected_score_from_row(row: dict[str, str]) -> str:
     return match.group(1) if match else ""
 
 
+def expected_ocr_value_from_row(row: dict[str, str], roi_name: str) -> str:
+    if roi_name == "score_digits":
+        return expected_score_from_row(row)
+
+    for key in (roi_name, f"expected_{roi_name}"):
+        normalized = normalize_digits(row.get(key, ""))
+        if normalized:
+            return normalized
+    return ""
+
+
 def duplicate_key_for_classification(classification: Classification) -> str:
     match = re.search(
         r"score(\d+)",
@@ -831,7 +847,7 @@ def process_ocr_roi(
 
     raw, engine, status, error = run_tesseract(preprocessed.binary, roi_name)
     normalized = normalize_digits(raw)
-    expected = expected_score_from_row(row) if roi_name == "score_digits" else ""
+    expected = expected_ocr_value_from_row(row, roi_name)
     match = normalized == expected if normalized and expected else None
 
     return ScoreOcrResult(
@@ -923,6 +939,56 @@ def is_ocr_target(
     raise ValueError(f"unsupported OCR target mode: {ocr_target_mode}; expected: {joined}")
 
 
+def empty_ocr_count(results: Iterable[ScoreOcrResult]) -> int:
+    return sum(result.status == "ok" and result.score_ocr_normalized == "" for result in results)
+
+
+def no_expected_value_count(results: Iterable[ScoreOcrResult]) -> int:
+    return sum(result.expected_score == "" for result in results)
+
+
+def ocr_summary_bucket(results: Iterable[ScoreOcrResult]) -> dict[str, int]:
+    result_rows = list(results)
+    return {
+        "total_ocr_attempts": len(result_rows),
+        "ok_count": sum(result.status == "ok" for result in result_rows),
+        "engine_unavailable_count": sum(
+            result.status == "engine_unavailable" for result in result_rows
+        ),
+        "match_count": sum(result.match is True for result in result_rows),
+        "mismatch_count": sum(result.match is False for result in result_rows),
+        "empty_ocr_count": empty_ocr_count(result_rows),
+        "no_expected_value_count": no_expected_value_count(result_rows),
+    }
+
+
+def summarize_ocr_by_roi(results: Iterable[ScoreOcrResult]) -> dict[str, dict[str, int]]:
+    buckets: dict[str, list[ScoreOcrResult]] = {}
+    for result in results:
+        buckets.setdefault(result.roi_name, []).append(result)
+    return {roi_name: ocr_summary_bucket(rows) for roi_name, rows in sorted(buckets.items())}
+
+
+def summarize_ocr_by_status(results: Iterable[ScoreOcrResult]) -> dict[str, int]:
+    by_status: dict[str, int] = {}
+    for result in results:
+        by_status[result.status] = by_status.get(result.status, 0) + 1
+    return dict(sorted(by_status.items()))
+
+
+def summarize_ocr_failure_reasons(results: Iterable[ScoreOcrResult]) -> dict[str, int]:
+    result_rows = list(results)
+    return {
+        "engine_unavailable": sum(
+            result.status == "engine_unavailable" for result in result_rows
+        ),
+        "ocr_failed": sum(result.status == "ocr_failed" for result in result_rows),
+        "empty_ocr": empty_ocr_count(result_rows),
+        "mismatch": sum(result.match is False for result in result_rows),
+        "no_expected_value": no_expected_value_count(result_rows),
+    }
+
+
 def summarize_score_ocr(
     results: Iterable[ScoreOcrResult],
     events: Iterable[ResultEvent],
@@ -938,17 +1004,21 @@ def summarize_score_ocr(
             not event.confirmed_result and not event.duplicate for event in event_rows
         )
 
+    bucket = ocr_summary_bucket(result_rows)
     return ScoreOcrSummary(
-        total_ocr_attempts=len(result_rows),
-        ok_count=sum(result.status == "ok" for result in result_rows),
-        engine_unavailable_count=sum(
-            result.status == "engine_unavailable" for result in result_rows
-        ),
-        match_count=sum(result.match is True for result in result_rows),
-        mismatch_count=sum(result.match is False for result in result_rows),
+        total_ocr_attempts=bucket["total_ocr_attempts"],
+        ok_count=bucket["ok_count"],
+        engine_unavailable_count=bucket["engine_unavailable_count"],
+        match_count=bucket["match_count"],
+        mismatch_count=bucket["mismatch_count"],
+        empty_ocr_count=bucket["empty_ocr_count"],
+        no_expected_value_count=bucket["no_expected_value_count"],
         skipped_duplicate_count=skipped_duplicate_count,
         skipped_unconfirmed_count=skipped_unconfirmed_count,
         ocr_target_mode=ocr_target_mode,
+        by_roi=summarize_ocr_by_roi(result_rows),
+        by_status=summarize_ocr_by_status(result_rows),
+        failure_reasons=summarize_ocr_failure_reasons(result_rows),
     )
 
 

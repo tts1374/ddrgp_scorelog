@@ -79,9 +79,9 @@ python -m tools.vision_poc --ocr-target result-candidate
 実キャプチャ導入前の保存直前OCR相当の評価には `confirmed-events` を使います。このモードでは `result_events.csv` 上で `confirmed_result=true` かつ `duplicate=false` のフレームだけをOCRします。未確定候補、`transition_countup_*` のような `rejected_transition`、duplicate window内の重複確定はOCR対象外です。
 
 ```powershell
-python -m tools.vision_poc --ocr-target confirmed-events
-python -m tools.vision_poc --sequence-mode timestamped --ocr-target confirmed-events
-python -m tools.vision_poc --sequence-mode manifest --frame-manifest data/vision_poc_timestamped/frame_manifest.csv --frame-root samples/screenshots --ocr-target confirmed-events
+python -m tools.vision_poc --ocr-target confirmed-events --ocr-rois all
+python -m tools.vision_poc --sequence-mode timestamped --ocr-target confirmed-events --ocr-rois all
+python -m tools.vision_poc --sequence-mode manifest --frame-manifest data/vision_poc_timestamped/frame_manifest.csv --frame-root samples/screenshots --ocr-target confirmed-events --ocr-rois all
 ```
 
 既定では `score_digits` ROIから以下を出力します。
@@ -92,13 +92,15 @@ python -m tools.vision_poc --sequence-mode manifest --frame-manifest data/vision
 - `data/vision_poc/score_ocr.csv`
 - `data/vision_poc/score_ocr_summary.json`
 
-`score_ocr.csv` には `roi_name`、`score_ocr_raw`、`score_ocr_normalized`、`expected_score`、`match`、`engine`、`status`、`error`、`original_path`、`enlarged_path`、`binary_path` を出力します。`expected_score` は metadata の `score` / `expected_score` 列があれば優先し、なければファイル名内の `scoreXXXXXX` から取得します。
+`score_ocr.csv` には `roi_name`、`score_ocr_raw`、`score_ocr_normalized`、`expected_score`、`match`、`engine`、`status`、`error`、`original_path`、`enlarged_path`、`binary_path` を出力します。`score_digits` の `expected_score` は metadata の `score` / `expected_score` 列があれば優先し、なければファイル名内の `scoreXXXXXX` から取得します。`max_combo`、`marvelous`、`perfect`、`great`、`good`、`miss` は metadata に同名列または `expected_<roi_name>` 列がある場合だけ期待値として使います。期待値がないROIは `match` を空欄のままにし、summary の `no_expected_value_count` で集計します。
 
-`score_ocr_summary.json` はOCR評価だけを集計したJSONです。`total_ocr_attempts`、`ok_count`、`engine_unavailable_count`、`match_count`、`mismatch_count`、`skipped_duplicate_count`、`skipped_unconfirmed_count`、`ocr_target_mode` を出力します。`score_ocr.csv` は各ROIごとの詳細確認用、`score_ocr_summary.json` は対象モードごとの件数と失敗傾向の確認用です。
+`score_ocr.csv` は行単位の詳細確認用です。個別画像のOCR生文字列、正規化後の数字、期待値、前処理画像パスを見るときに使います。`score_ocr_summary.json` はROI別・失敗理由別の俯瞰用です。トップレベルには `total_ocr_attempts`、`ok_count`、`engine_unavailable_count`、`match_count`、`mismatch_count`、`empty_ocr_count`、`no_expected_value_count`、`skipped_duplicate_count`、`skipped_unconfirmed_count`、`ocr_target_mode` を出力します。
+
+`score_ocr_summary.json` の `by_roi` はROI名ごとの集計です。各ROIに `total_ocr_attempts`、`ok_count`、`engine_unavailable_count`、`match_count`、`mismatch_count`、`empty_ocr_count`、`no_expected_value_count` が入り、`--ocr-rois all` でどのROIが弱いかを横並びで確認できます。`by_status` は `ok`、`engine_unavailable`、`ocr_failed` などOCR実行ステータスの件数、`failure_reasons` は `engine_unavailable`、`ocr_failed`、`empty_ocr`、`mismatch`、`no_expected_value` の観点別件数です。
 
 OCRエンジンはPATH上の `tesseract` を使います。未導入または利用不可の場合でもPoCは落ちず、前処理画像を保存したうえで `score_ocr.csv` に `engine=none`、`status=engine_unavailable` を残します。
 
-実キャプチャ導入時は、まず `confirmed-events` モードで保存直前OCR相当の精度と失敗理由を見ます。ここで `skipped_duplicate_count` が増えすぎる、`skipped_unconfirmed_count` に保存したいフレームが混ざる、または `engine_unavailable_count` / `mismatch_count` が多い場合は、キャプチャAPIやDB保存を作る前にイベント確定しきい値、duplicate window、ROI前処理を調整します。
+実キャプチャ導入時は、まず `confirmed-events` と `--ocr-rois all` を組み合わせて、保存直前OCR相当の精度と失敗理由をROI別に見ます。ここで `skipped_duplicate_count` が増えすぎる、`skipped_unconfirmed_count` に保存したいフレームが混ざる、特定ROIの `empty_ocr_count` / `mismatch_count` が多い、または `no_expected_value_count` が多く評価できない場合は、キャプチャAPIやDB保存を作る前にイベント確定しきい値、duplicate window、metadata真値列、ROI前処理を調整します。
 
 OCR前処理を省略したい場合は以下を使います。
 
@@ -125,7 +127,7 @@ python -m tools.vision_poc --ocr-rois score_digits max_combo marvelous perfect g
 - 周囲に20pxの白余白を追加
 - Tesseractは `--psm 8`、`--dpi 300`、`tessedit_char_whitelist=0123456789`
 
-この設定では、現ローカル素材の `score_digits` は `score_ocr.csv` 上で16件すべて `match=true` です。判定数ROIも同じ前処理とTesseract設定で実行できますが、真値列がまだないため、現段階では画像と `score_ocr_raw` の目視確認を次の精度確認に使います。
+この設定では、現ローカル素材の `score_digits` は `score_ocr.csv` 上で16件すべて `match=true` です。判定数ROIも同じ前処理とTesseract設定で実行できます。metadata に `max_combo` や `expected_marvelous` のような真値列があれば `match_count` / `mismatch_count` で評価し、真値列がないROIは `no_expected_value_count` と画像、`score_ocr_raw` の目視確認を次の精度確認に使います。
 
 ## テスト
 
@@ -161,6 +163,8 @@ python -m pytest tests
 - 連番画像からファイル名昇順かつ単調増加timestampの manifest を生成できる
 - 不正fps、対象画像なし、生成 manifest の読み込み互換性を確認する
 - `score` / `expected_score` / `organized_file` から `expected_score` を抽出できる
+- 判定数ROIは metadata の同名列または `expected_<roi_name>` 列がある場合だけ期待値として評価できる
+- `score_ocr_summary.json` でROI別、ステータス別、失敗理由別のOCR集計を確認できる
 - `score_ocr_raw` から数字だけを `score_ocr_normalized` にできる
 - ローカル素材がある環境では `score_digits` の前処理画像を生成できる
 
