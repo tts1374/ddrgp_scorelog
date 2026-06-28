@@ -16,6 +16,8 @@ from PIL import Image, ImageFilter, ImageOps
 
 BASE_WIDTH = 1280
 BASE_HEIGHT = 720
+CONFIRMED_RESULT_MIN_FRAMES = 2
+DUPLICATE_WINDOW_FRAMES = 90
 
 
 ROI_DEFINITIONS: dict[str, tuple[int, int, int, int]] = {
@@ -93,6 +95,20 @@ class Classification:
     detail_panel_signal: SignalResult
     score_signal: SignalResult
     rank_signal: SignalResult
+    reason: str
+
+
+@dataclass(frozen=True)
+class ResultEvent:
+    frame_index: int
+    organized_file: str
+    screen_type: str
+    result_candidate: bool
+    result_shape_candidate: bool
+    confirmed_result: bool
+    event_type: str
+    duplicate: bool
+    duplicate_key: str
     reason: str
 
 
@@ -358,6 +374,78 @@ def expected_score_from_row(row: dict[str, str]) -> str:
     return match.group(1) if match else ""
 
 
+def duplicate_key_for_classification(classification: Classification) -> str:
+    match = re.search(
+        r"score(\d+)",
+        Path(classification.organized_file).stem,
+        flags=re.IGNORECASE,
+    )
+    if match:
+        return f"score:{match.group(1)}"
+    return f"file:{Path(classification.organized_file).name}"
+
+
+def build_result_events(
+    classifications: Iterable[Classification],
+    *,
+    min_confirmed_frames: int = CONFIRMED_RESULT_MIN_FRAMES,
+    duplicate_window_frames: int = DUPLICATE_WINDOW_FRAMES,
+) -> list[ResultEvent]:
+    events: list[ResultEvent] = []
+    candidate_streak = 0
+    last_confirmed_by_key: dict[str, int] = {}
+
+    for frame_index, classification in enumerate(classifications):
+        duplicate_key = duplicate_key_for_classification(classification)
+        confirmed_result = False
+        duplicate = False
+        event_type = "none"
+        reasons = [classification.reason]
+
+        if classification.transition_kind == "countup" and classification.result_shape_candidate:
+            candidate_streak = 0
+            event_type = "rejected_transition"
+            reasons.append("transition_countup_shape_candidate")
+        elif classification.result_candidate:
+            candidate_streak += 1
+            reasons.append(f"candidate_streak={candidate_streak}")
+            if candidate_streak >= min_confirmed_frames:
+                confirmed_result = True
+                previous_frame = last_confirmed_by_key.get(duplicate_key)
+                if (
+                    previous_frame is not None
+                    and frame_index - previous_frame <= duplicate_window_frames
+                ):
+                    duplicate = True
+                    event_type = "duplicate"
+                    reasons.append(f"duplicate_within_frames={frame_index - previous_frame}")
+                else:
+                    event_type = "confirmed"
+                    reasons.append(f"confirmed_after_frames={candidate_streak}")
+                last_confirmed_by_key[duplicate_key] = frame_index
+        else:
+            if candidate_streak:
+                reasons.append(f"candidate_streak_reset={candidate_streak}")
+            candidate_streak = 0
+
+        events.append(
+            ResultEvent(
+                frame_index=frame_index,
+                organized_file=classification.organized_file,
+                screen_type=classification.screen_type,
+                result_candidate=classification.result_candidate,
+                result_shape_candidate=classification.result_shape_candidate,
+                confirmed_result=confirmed_result,
+                event_type=event_type,
+                duplicate=duplicate,
+                duplicate_key=duplicate_key,
+                reason=",".join(part for part in reasons if part),
+            )
+        )
+
+    return events
+
+
 def preprocess_ocr_roi(
     image: Image.Image,
     roi_name: str,
@@ -535,6 +623,30 @@ def write_score_ocr_csv(path: Path, results: Iterable[ScoreOcrResult]) -> None:
         return
     with path.open("w", encoding="utf-8", newline="") as file:
         writer = csv.DictWriter(file, fieldnames=list(rows[0].keys()))
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+def flatten_result_event(event: ResultEvent) -> dict[str, str | int | bool]:
+    return asdict(event)
+
+
+def write_result_events_csv(path: Path, events: Iterable[ResultEvent]) -> None:
+    fieldnames = [
+        "frame_index",
+        "organized_file",
+        "screen_type",
+        "result_candidate",
+        "result_shape_candidate",
+        "confirmed_result",
+        "event_type",
+        "duplicate",
+        "duplicate_key",
+        "reason",
+    ]
+    rows = [flatten_result_event(item) for item in events]
+    with path.open("w", encoding="utf-8", newline="") as file:
+        writer = csv.DictWriter(file, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(rows)
 
@@ -733,6 +845,8 @@ def main(argv: list[str] | None = None) -> int:
                     )
 
     write_results_csv(output_dir / "results.csv", classifications)
+    result_events = build_result_events(classifications)
+    write_result_events_csv(output_dir / "result_events.csv", result_events)
     write_score_ocr_csv(output_dir / "score_ocr.csv", score_ocr_results)
     summary = summarize(classifications)
     (output_dir / "summary.json").write_text(
