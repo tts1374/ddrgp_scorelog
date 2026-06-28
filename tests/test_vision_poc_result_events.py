@@ -3,6 +3,7 @@ from __future__ import annotations
 # ruff: noqa: I001
 
 import csv
+import argparse
 from pathlib import Path
 
 import pytest
@@ -265,6 +266,92 @@ def test_read_frame_manifest_resolves_paths_from_frame_root(tmp_path: Path) -> N
     assert frames[0].image_path == image_path
     assert frames[0].timestamp_ms == 100
     assert frames[0].row == {"organized_file": "a.png", "screen_type": "result"}
+
+
+def test_make_frame_manifest_writes_sorted_strictly_increasing_timestamps(tmp_path: Path) -> None:
+    frame_root = tmp_path / "frames"
+    write_test_image(frame_root / "frame_002.jpg")
+    write_test_image(frame_root / "frame_001.png")
+    write_test_image(frame_root / "frame_003.webp")
+    manifest_path = tmp_path / "capture_manifest.csv"
+
+    count = runner.write_capture_frame_manifest(
+        manifest_path,
+        frame_root,
+        30,
+        screen_type="unknown",
+    )
+
+    assert count == 3
+    assert read_csv_rows(manifest_path) == [
+        {"image_path": "frame_001.png", "timestamp_ms": "0", "screen_type": "unknown"},
+        {"image_path": "frame_002.jpg", "timestamp_ms": "33", "screen_type": "unknown"},
+        {"image_path": "frame_003.webp", "timestamp_ms": "67", "screen_type": "unknown"},
+    ]
+
+
+def test_make_frame_manifest_avoids_duplicate_timestamps_at_high_fps(tmp_path: Path) -> None:
+    frame_root = tmp_path / "frames"
+    write_test_image(frame_root / "frame_001.png")
+    write_test_image(frame_root / "frame_002.png")
+    write_test_image(frame_root / "frame_003.png")
+    manifest_path = tmp_path / "capture_manifest.csv"
+
+    runner.write_capture_frame_manifest(manifest_path, frame_root, 3000)
+
+    rows = read_csv_rows(manifest_path)
+    assert [row["timestamp_ms"] for row in rows] == ["0", "1", "2"]
+    assert list(rows[0].keys()) == ["image_path", "timestamp_ms"]
+
+
+def test_make_frame_manifest_rejects_invalid_fps() -> None:
+    message = "fps must be a finite number greater than 0"
+    with pytest.raises(argparse.ArgumentTypeError, match=message):
+        runner.parse_positive_fps("0")
+
+    with pytest.raises(argparse.ArgumentTypeError, match=message):
+        runner.parse_positive_fps("not-a-number")
+
+
+def test_make_frame_manifest_rejects_empty_frame_root(tmp_path: Path) -> None:
+    frame_root = tmp_path / "frames"
+    frame_root.mkdir()
+
+    with pytest.raises(ValueError, match="contains no frame images"):
+        runner.write_capture_frame_manifest(tmp_path / "capture_manifest.csv", frame_root, 30)
+
+
+def test_make_frame_manifest_rejects_missing_output_parent(tmp_path: Path) -> None:
+    frame_root = tmp_path / "frames"
+    write_test_image(frame_root / "frame_001.png")
+
+    with pytest.raises(ValueError, match="parent directory does not exist"):
+        runner.write_capture_frame_manifest(
+            tmp_path / "missing" / "capture_manifest.csv",
+            frame_root,
+            30,
+        )
+
+
+def test_generated_frame_manifest_is_readable(tmp_path: Path) -> None:
+    frame_root = tmp_path / "frames"
+    write_test_image(frame_root / "frame_001.png")
+    write_test_image(frame_root / "frame_002.png")
+    manifest_path = tmp_path / "capture_manifest.csv"
+    runner.write_capture_frame_manifest(
+        manifest_path,
+        frame_root,
+        60,
+        screen_type="unknown",
+    )
+
+    frames = runner.read_frame_manifest(manifest_path, frame_root)
+
+    assert [frame.row for frame in frames] == [
+        {"organized_file": "frame_001.png", "screen_type": "unknown"},
+        {"organized_file": "frame_002.png", "screen_type": "unknown"},
+    ]
+    assert [frame.timestamp_ms for frame in frames] == [0, 17]
 
 
 @pytest.mark.parametrize(

@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import math
 import re
 import shutil
 import subprocess
@@ -20,6 +21,7 @@ CONFIRMED_RESULT_MIN_FRAMES = 2
 CONFIRMED_RESULT_MIN_DURATION_MS = 1000
 DUPLICATE_WINDOW_FRAMES = 90
 DUPLICATE_WINDOW_MS = 90_000
+FRAME_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
 
 
 ROI_DEFINITIONS: dict[str, tuple[int, int, int, int]] = {
@@ -438,6 +440,84 @@ def read_frame_manifest(path: Path, frame_root: Path | None = None) -> list[Fram
                 )
             )
     return frames
+
+
+def parse_positive_fps(value: str) -> float:
+    try:
+        fps = float(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(
+            f"fps must be a finite number greater than 0: {value!r}"
+        ) from exc
+    if not math.isfinite(fps) or fps <= 0:
+        raise argparse.ArgumentTypeError(f"fps must be a finite number greater than 0: {value!r}")
+    return fps
+
+
+def frame_timestamp_ms(index: int, fps: float, previous_timestamp_ms: int | None) -> int:
+    timestamp_ms = round(index * 1000 / fps)
+    if previous_timestamp_ms is not None and timestamp_ms <= previous_timestamp_ms:
+        return previous_timestamp_ms + 1
+    return timestamp_ms
+
+
+def find_frame_images(frame_root: Path) -> list[Path]:
+    if not frame_root.exists():
+        raise ValueError(f"--frame-root does not exist: {frame_root}")
+    if not frame_root.is_dir():
+        raise ValueError(f"--frame-root must be a directory: {frame_root}")
+
+    images = [
+        path
+        for path in frame_root.iterdir()
+        if path.is_file() and path.suffix.lower() in FRAME_IMAGE_EXTENSIONS
+    ]
+    if not images:
+        extensions = ", ".join(sorted(FRAME_IMAGE_EXTENSIONS))
+        raise ValueError(f"--frame-root contains no frame images ({extensions}): {frame_root}")
+    return sorted(images, key=lambda path: path.name.lower())
+
+
+def build_frame_manifest_rows(
+    frame_root: Path,
+    fps: float,
+    *,
+    screen_type: str | None = None,
+) -> list[dict[str, str | int]]:
+    rows: list[dict[str, str | int]] = []
+    previous_timestamp_ms: int | None = None
+    for index, image_path in enumerate(find_frame_images(frame_root)):
+        timestamp_ms = frame_timestamp_ms(index, fps, previous_timestamp_ms)
+        previous_timestamp_ms = timestamp_ms
+        row: dict[str, str | int] = {
+            "image_path": image_path.relative_to(frame_root).as_posix(),
+            "timestamp_ms": timestamp_ms,
+        }
+        if screen_type is not None:
+            row["screen_type"] = screen_type
+        rows.append(row)
+    return rows
+
+
+def write_capture_frame_manifest(
+    output_path: Path,
+    frame_root: Path,
+    fps: float,
+    *,
+    screen_type: str | None = None,
+) -> int:
+    parent = output_path.parent
+    if parent != Path("") and not parent.exists():
+        raise ValueError(f"--make-frame-manifest parent directory does not exist: {parent}")
+    rows = build_frame_manifest_rows(frame_root, fps, screen_type=screen_type)
+    fieldnames = ["image_path", "timestamp_ms"]
+    if screen_type is not None:
+        fieldnames.append("screen_type")
+    with output_path.open("w", encoding="utf-8", newline="") as file:
+        writer = csv.DictWriter(file, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
+    return len(rows)
 
 
 def build_metadata_frame_inputs(
@@ -1001,6 +1081,26 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--make-frame-manifest",
+        type=Path,
+        default=None,
+        help=(
+            "Write a frame manifest CSV from images directly under --frame-root and exit. "
+            "The CSV is readable by --sequence-mode manifest."
+        ),
+    )
+    parser.add_argument(
+        "--fps",
+        type=parse_positive_fps,
+        default=None,
+        help="Capture FPS used to generate timestamp_ms for --make-frame-manifest.",
+    )
+    parser.add_argument(
+        "--screen-type",
+        default=None,
+        help="Optional fixed screen_type value to include in --make-frame-manifest output.",
+    )
+    parser.add_argument(
         "--output",
         type=Path,
         default=None,
@@ -1053,6 +1153,20 @@ def resolve_ocr_rois(values: list[str]) -> tuple[str, ...]:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if args.make_frame_manifest is not None:
+        if args.frame_root is None:
+            raise ValueError("--frame-root is required with --make-frame-manifest")
+        if args.fps is None:
+            raise ValueError("--fps is required with --make-frame-manifest")
+        frame_count = write_capture_frame_manifest(
+            args.make_frame_manifest,
+            args.frame_root,
+            args.fps,
+            screen_type=args.screen_type,
+        )
+        print(f"Wrote frame manifest: {args.make_frame_manifest} ({frame_count} frames)")
+        return 0
+
     output_dir: Path = args.output or (
         {
             "metadata": Path("data/vision_poc"),

@@ -52,7 +52,21 @@ python -m tools.vision_poc --sequence-mode manifest --frame-manifest data/vision
 
 既定の出力先は `data/vision_poc_manifest/` です。manifest モードでは timestamp 付き入力として扱うため、`result_events.csv` の `confirmation_mode` は `time` になります。`timestamp_ms` はフレーム番号ではなく、キャプチャ時点の単調増加する時刻をミリ秒で表します。空、非整数、負数、非単調増加の timestamp や、存在しない画像パスは行番号付きのエラーにします。
 
-実キャプチャ導入時は、キャプチャAPIや録画フレーム抽出処理がこの manifest 相当の `image_path,timestamp_ms` 列を供給する方針です。FPSが揺れたりフレームが欠落したりしても、時刻ベースなら `result_candidate=true` が実時間で何ミリ秒継続したかを見られるため、固定フレーム数だけに依存するより保存確定が安定します。
+録画切り出しやキャプチャ前段で作った連番画像ディレクトリは、補助入口 `--make-frame-manifest` で manifest 化できます。対象拡張子は `png`、`jpg`、`jpeg`、`webp` で、`--frame-root` 直下の画像をファイル名昇順で読みます。生成CSVの `image_path` は `--frame-root` からの相対パスです。`--screen-type unknown` のように固定 `screen_type` を付けることもできます。
+
+```powershell
+python -m tools.vision_poc --make-frame-manifest data/vision_poc_sequences/capture_manifest.csv --frame-root data/captured_frames --fps 30 --screen-type unknown
+```
+
+この生成処理で付ける `timestamp_ms` はフレーム番号ではなく、仮のキャプチャ時刻です。`--fps` 指定時は `round(index * 1000 / fps)` を基準にし、丸めで同一timestampが出る場合は直前値 + 1ms に補正して単調増加を保証します。`--fps` が0以下、非数値、無限大、対象画像なし、`--frame-root` 不在、出力先の親ディレクトリ不在はエラーにします。
+
+生成した manifest はそのまま manifest モードで処理できます。
+
+```powershell
+python -m tools.vision_poc --sequence-mode manifest --frame-manifest data/vision_poc_sequences/capture_manifest.csv --frame-root data/captured_frames
+```
+
+実キャプチャ導入時は、この manifest 生成処理をリアルタイム供給に置き換え、キャプチャAPIが同等の `image_path,timestamp_ms` 列を渡す方針です。FPSが揺れたりフレームが欠落したりしても、時刻ベースなら `result_candidate=true` が実時間で何ミリ秒継続したかを見られるため、固定フレーム数だけに依存するより保存確定が安定します。
 
 OCR前処理も既定で実行されます。対象は `result_candidate=true` の画像だけで、既定では `score_digits` ROIから以下を出力します。
 
@@ -120,6 +134,8 @@ python -m pytest tests
 - `result_candidate=true` が継続したときだけ `confirmed_result=true` になる
 - 1フレームだけの `result_candidate=true` は保存確定しない
 - 同一キーの連続確定は `duplicate` として区別する
+- 連番画像からファイル名昇順かつ単調増加timestampの manifest を生成できる
+- 不正fps、対象画像なし、生成 manifest の読み込み互換性を確認する
 - `score` / `expected_score` / `organized_file` から `expected_score` を抽出できる
 - `score_ocr_raw` から数字だけを `score_ocr_normalized` にできる
 - ローカル素材がある環境では `score_digits` の前処理画像を生成できる
