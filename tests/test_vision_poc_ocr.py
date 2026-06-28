@@ -405,6 +405,18 @@ def test_profile_comparison_keeps_score_ocr_csv_compatible_and_summarizes_by_pro
                 "marvelous": "20",
                 "perfect": "",
             },
+            "tighter-white": {
+                "score_digits": "123456",
+                "max_combo": "10",
+                "marvelous": "",
+                "perfect": "7",
+            },
+            "no-sharpen": {
+                "score_digits": "123456",
+                "max_combo": "9",
+                "marvelous": "20",
+                "perfect": "7",
+            },
         }
         return raw_by_profile[profile][roi_name], "tesseract", "ok", ""
 
@@ -464,11 +476,13 @@ def test_profile_comparison_keeps_score_ocr_csv_compatible_and_summarizes_by_pro
     assert "`result_score123456_b.png`" in report
 
     profile_rows = read_csv_rows(output_dir / "score_ocr_profiles.csv")
-    assert len(profile_rows) == 12
+    assert len(profile_rows) == 20
     assert {row["profile"] for row in profile_rows} == {
         "default",
         "high-contrast",
         "low-threshold",
+        "tighter-white",
+        "no-sharpen",
     }
     assert {row["organized_file"] for row in profile_rows} == {"result_score123456_b.png"}
 
@@ -482,18 +496,36 @@ def test_profile_comparison_keeps_score_ocr_csv_compatible_and_summarizes_by_pro
     assert summary["profiles"]["high-contrast"]["max_combo"]["match_count"] == 1
     assert summary["profiles"]["low-threshold"]["score_digits"]["mismatch_count"] == 1
     assert summary["profiles"]["low-threshold"]["perfect"]["empty_ocr_count"] == 1
-    assert summary["best_by_roi"]["max_combo"]["best_match_profiles"] == ["high-contrast"]
+    assert summary["profiles"]["tighter-white"]["max_combo"]["match_count"] == 1
+    assert summary["profiles"]["no-sharpen"]["max_combo"]["mismatch_count"] == 1
+    assert summary["best_by_roi"]["max_combo"]["best_match_profiles"] == [
+        "high-contrast",
+        "tighter-white",
+    ]
     assert summary["best_by_roi"]["max_combo"]["evaluation_status"] == "evaluated"
     assert summary["best_by_roi"]["max_combo"]["recommendation_basis"] == "match_count"
+    assert summary["best_by_roi"]["max_combo"]["recommended_profiles"] == [
+        "high-contrast",
+        "tighter-white",
+    ]
     assert summary["best_by_roi"]["score_digits"]["lowest_empty_profiles"] == [
         "default",
         "low-threshold",
+        "no-sharpen",
+        "tighter-white",
     ]
     assert summary["best_by_roi"]["perfect"]["evaluation_status"] == "no_expected_values"
     assert summary["best_by_roi"]["perfect"]["recommendation_basis"] == (
         "empty_ocr_reference_only"
     )
     assert summary["best_by_roi"]["perfect"]["match_recommendation_evaluated"] is False
+    assert summary["best_by_roi"]["perfect"]["recommended_profiles"] == []
+    assert summary["best_by_roi"]["perfect"]["reference_profiles"] == [
+        "default",
+        "high-contrast",
+        "no-sharpen",
+        "tighter-white",
+    ]
 
     coverage = (output_dir / "ocr_expected_coverage.md").read_text(encoding="utf-8")
     assert "| `perfect` | `no_expected_values` | 0 | 1 | 1 |" in coverage
@@ -563,6 +595,106 @@ def test_expected_coverage_marks_partially_evaluated_roi(
 
     coverage = (output_dir / "ocr_expected_coverage.md").read_text(encoding="utf-8")
     assert "| `max_combo` | `partially_evaluated` | 1 | 1 | 2 |" in coverage
+
+
+def test_ocr_expected_template_lists_result_rows_missing_judgment_values(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for name in ("result_score123456_a.png", "song_select.png"):
+        write_test_image(tmp_path / "screenshots" / name)
+    metadata_path = tmp_path / "metadata.csv"
+    metadata_path.write_text(
+        "organized_file,screen_type,expected_score,max_combo\n"
+        "result_score123456_a.png,result,123456,10\n"
+        "song_select.png,song_select,,\n",
+        encoding="utf-8",
+    )
+
+    def classify_synthetic(_image: Image.Image, row: dict[str, str]) -> runner.Classification:
+        return classification(
+            row["organized_file"],
+            result_candidate=row["screen_type"] == "result",
+            screen_type=row["screen_type"],
+        )
+
+    monkeypatch.setattr(runner, "classify", classify_synthetic)
+    monkeypatch.setattr(runner, "run_tesseract", stub_tesseract)
+
+    output_dir = tmp_path / "output"
+    assert (
+        runner.main(
+            [
+                "--metadata",
+                str(metadata_path),
+                "--screenshots-root",
+                str(tmp_path / "screenshots"),
+                "--output",
+                str(output_dir),
+                "--no-rois",
+            ]
+        )
+        == 0
+    )
+
+    rows = read_csv_rows(output_dir / "ocr_expected_template.csv")
+    assert rows == [
+        {
+            "organized_file": "result_score123456_a.png",
+            "screen_type": "result",
+            "score_digits": "123456",
+            "max_combo": "10",
+            "marvelous": "",
+            "perfect": "",
+            "great": "",
+            "good": "",
+            "miss": "",
+            "missing_judgment_rois": "marvelous perfect great good miss",
+        }
+    ]
+
+
+def test_profile_summary_marks_partially_evaluated_recommendations_as_tentative() -> None:
+    def profile_result(
+        profile: str,
+        organized_file: str,
+        expected_score: str,
+        normalized: str,
+    ) -> runner.ProfileScoreOcrResult:
+        return runner.ProfileScoreOcrResult(
+            profile=profile,
+            organized_file=organized_file,
+            screen_type="result",
+            result_candidate=True,
+            roi_name="max_combo",
+            score_ocr_raw=normalized,
+            score_ocr_normalized=normalized,
+            expected_score=expected_score,
+            match=normalized == expected_score if expected_score else None,
+            engine="tesseract",
+            status="ok",
+            error="",
+            original_path="",
+            enlarged_path="",
+            binary_path="",
+        )
+
+    summary = runner.summarize_profile_score_ocr(
+        [
+            profile_result("default", "a.png", "10", "10"),
+            profile_result("default", "b.png", "", "10"),
+            profile_result("tighter-white", "a.png", "10", "9"),
+            profile_result("tighter-white", "b.png", "", "10"),
+        ],
+        "confirmed-events",
+    )
+
+    bucket = summary["best_by_roi"]["max_combo"]
+    assert bucket["evaluation_status"] == "partially_evaluated"
+    assert bucket["recommendation_basis"] == "match_count_partial"
+    assert bucket["recommendation_is_tentative"] is True
+    assert bucket["recommended_profiles"] == ["default"]
+    assert bucket["match_recommendation_evaluated"] is True
 
 
 def test_confirmed_events_ocr_target_filters_metadata_frame_events(

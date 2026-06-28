@@ -221,8 +221,11 @@ OCR_PREPROCESS_PROFILES: dict[str, OcrPreprocessConfig] = {
     "default": OCR_PREPROCESS_CONFIG,
     "high-contrast": OcrPreprocessConfig(luma_threshold=150, channel_spread_max=105),
     "low-threshold": OcrPreprocessConfig(luma_threshold=115, channel_spread_max=165),
+    "tighter-white": OcrPreprocessConfig(luma_threshold=165, channel_spread_max=80),
+    "no-sharpen": OcrPreprocessConfig(sharpen=False, padding=16),
 }
 TESSERACT_CONFIG = TesseractConfig()
+JUDGMENT_OCR_ROIS = tuple(roi for roi in OCR_ROIS if roi != "score_digits")
 
 
 def clamp01(value: float) -> float:
@@ -610,6 +613,39 @@ def write_frame_manifest(path: Path, frames: Iterable[FrameInput]) -> None:
                     "screen_type": frame.row.get("screen_type", ""),
                 }
             )
+
+
+def write_ocr_expected_template(path: Path, frames: Iterable[FrameInput]) -> int:
+    rows: list[dict[str, str]] = []
+    for frame in frames:
+        row = frame.row
+        if row.get("screen_type") != "result":
+            continue
+        template_row = {
+            "organized_file": row["organized_file"],
+            "screen_type": row.get("screen_type", ""),
+            "score_digits": expected_ocr_value_from_row(row, "score_digits"),
+        }
+        missing_rois: list[str] = []
+        for roi_name in JUDGMENT_OCR_ROIS:
+            value = expected_ocr_value_from_row(row, roi_name)
+            template_row[roi_name] = value
+            if value == "":
+                missing_rois.append(roi_name)
+        if missing_rois:
+            template_row["missing_judgment_rois"] = " ".join(missing_rois)
+            rows.append(template_row)
+
+    if not rows:
+        return 0
+
+    fieldnames = ["organized_file", "screen_type", "score_digits", *JUDGMENT_OCR_ROIS]
+    fieldnames.append("missing_judgment_rois")
+    with path.open("w", encoding="utf-8", newline="") as file:
+        writer = csv.DictWriter(file, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
+    return len(rows)
 
 
 def save_primary_rois(image: Image.Image, output_dir: Path, stem: str) -> None:
@@ -1174,6 +1210,46 @@ def summarize_profile_score_ocr(
             if evaluation_status == "partially_evaluated"
             else "empty_ocr_reference_only"
         )
+        ranked_candidates = sorted(
+            candidates,
+            key=lambda item: (
+                -item[1]["match_count"],
+                item[1]["mismatch_count"],
+                item[1]["empty_ocr_count"],
+                item[0],
+            ),
+        )
+        recommended_profiles = (
+            [
+                profile
+                for profile, bucket in ranked_candidates
+                if bucket["match_count"] == ranked_candidates[0][1]["match_count"]
+                and bucket["mismatch_count"] == ranked_candidates[0][1]["mismatch_count"]
+                and bucket["empty_ocr_count"] == ranked_candidates[0][1]["empty_ocr_count"]
+            ]
+            if evaluation_status != "no_expected_values"
+            else []
+        )
+        reference_profiles = [
+            profile
+            for profile, bucket in candidates
+            if bucket["empty_ocr_count"] == lowest_empty_count
+        ]
+        if evaluation_status == "evaluated":
+            recommendation_basis_detail = (
+                "evaluated: recommended profiles maximize match_count, then minimize "
+                "mismatch_count and empty_ocr_count."
+            )
+        elif evaluation_status == "partially_evaluated":
+            recommendation_basis_detail = (
+                "tentative: only rows with expected values affect match/mismatch; "
+                "fill remaining metadata before treating this as final."
+            )
+        else:
+            recommendation_basis_detail = (
+                "reference only: no expected values are present, so empty_ocr_count can "
+                "guide image inspection but is not an accuracy success."
+            )
         best_by_roi[roi_name] = {
             "best_match_profiles": [
                 profile
@@ -1192,6 +1268,10 @@ def summarize_profile_score_ocr(
             "no_expected_value_count": no_expected_count,
             "recommendation_basis": recommendation_basis,
             "match_recommendation_evaluated": evaluation_status != "no_expected_values",
+            "recommended_profiles": recommended_profiles,
+            "reference_profiles": reference_profiles,
+            "recommendation_basis_detail": recommendation_basis_detail,
+            "recommendation_is_tentative": evaluation_status == "partially_evaluated",
         }
 
     return {
@@ -1230,10 +1310,42 @@ def format_representative_list(files: list[str]) -> str:
     return ", ".join(f"`{name}`" for name in files) if files else "none"
 
 
+def profile_recommendation_for_roi(
+    profile_summary: dict[str, object] | None,
+    roi_name: str,
+) -> dict[str, object] | None:
+    if profile_summary is None:
+        return None
+    best_by_roi = profile_summary.get("best_by_roi")
+    if not isinstance(best_by_roi, dict):
+        return None
+    bucket = best_by_roi.get(roi_name)
+    return bucket if isinstance(bucket, dict) else None
+
+
+def format_profile_list(value: object) -> str:
+    if not isinstance(value, list) or not value:
+        return "none"
+    return ", ".join(f"`{item}`" for item in value if isinstance(item, str))
+
+
+def representative_path_hint(
+    roi_name: str,
+    files: list[str],
+    *,
+    output_root_name: str = "ocr",
+) -> str:
+    if not files:
+        return "none"
+    stem = Path(files[0]).stem
+    return f"`{output_root_name}/{stem}/{roi_name}_binary.png`"
+
+
 def write_ocr_roi_report(
     path: Path,
     results: Iterable[ScoreOcrResult],
     summary: ScoreOcrSummary,
+    profile_summary: dict[str, object] | None = None,
 ) -> None:
     result_rows = list(results)
     rows_by_roi: dict[str, list[ScoreOcrResult]] = {}
@@ -1263,10 +1375,32 @@ def write_ocr_roi_report(
         roi_rows = rows_by_roi[roi_name]
         mismatches = representative_files(roi_rows, reason="mismatch")
         empties = representative_files(roi_rows, reason="empty_ocr")
+        recommendation = profile_recommendation_for_roi(profile_summary, roi_name)
+        if recommendation is None:
+            recommended_profiles = "not run"
+            recommendation_basis = "default_only"
+            recommendation_detail = "Run with `--ocr-profile all` to compare profiles."
+        else:
+            recommended_profiles = format_profile_list(recommendation.get("recommended_profiles"))
+            if recommended_profiles == "none":
+                recommended_profiles = (
+                    "reference only: "
+                    + format_profile_list(recommendation.get("reference_profiles"))
+                )
+            recommendation_basis = str(recommendation.get("recommendation_basis", ""))
+            recommendation_detail = str(recommendation.get("recommendation_basis_detail", ""))
         lines.extend([f"### `{roi_name}`", ""])
         lines.append(f"- evaluation_status: `{ocr_evaluation_status(summary.by_roi[roi_name])}`")
+        lines.append(f"- recommended profile candidate: {recommended_profiles}")
+        lines.append(f"- recommendation_basis: `{recommendation_basis}`")
+        lines.append(f"- recommendation note: {recommendation_detail}")
         lines.append(f"- representative mismatch: {format_representative_list(mismatches)}")
         lines.append(f"- representative empty_ocr: {format_representative_list(empties)}")
+        lines.append(
+            "- next preprocessing image hint: "
+            f"mismatch={representative_path_hint(roi_name, mismatches)}, "
+            f"empty_ocr={representative_path_hint(roi_name, empties)}"
+        )
         lines.append("")
 
     path.write_text("\n".join(lines), encoding="utf-8")
@@ -1703,6 +1837,8 @@ def main(argv: list[str] | None = None) -> int:
     if not frames:
         raise ValueError("input sequence contains no frames")
 
+    write_ocr_expected_template(output_dir / "ocr_expected_template.csv", frames)
+
     classifications: list[Classification] = []
     for frame in frames:
         with Image.open(frame.image_path) as image:
@@ -1761,7 +1897,6 @@ def main(argv: list[str] | None = None) -> int:
         json.dumps(asdict(score_ocr_summary), ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
-    write_ocr_roi_report(output_dir / "ocr_roi_report.md", score_ocr_results, score_ocr_summary)
     score_ocr_profiles_summary: dict[str, object] | None = None
     if run_profile_comparison:
         write_profile_score_ocr_csv(output_dir / "score_ocr_profiles.csv", profile_ocr_results)
@@ -1773,6 +1908,12 @@ def main(argv: list[str] | None = None) -> int:
             json.dumps(score_ocr_profiles_summary, ensure_ascii=False, indent=2) + "\n",
             encoding="utf-8",
         )
+    write_ocr_roi_report(
+        output_dir / "ocr_roi_report.md",
+        score_ocr_results,
+        score_ocr_summary,
+        score_ocr_profiles_summary,
+    )
     write_ocr_expected_coverage_report(
         output_dir / "ocr_expected_coverage.md",
         score_ocr_summary,

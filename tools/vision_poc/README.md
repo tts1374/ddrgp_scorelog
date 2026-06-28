@@ -121,6 +121,8 @@ python -m tools.vision_poc --ocr-target confirmed-events --ocr-rois all --ocr-pr
 - `default`: 既定の前処理。従来の `score_ocr.csv` は常にこの設定で出力します。
 - `high-contrast`: 明るい白文字に寄せ、`luma_threshold` を上げて `channel_spread` を狭めます。
 - `low-threshold`: 暗めの文字に寄せ、`luma_threshold` を下げて `channel_spread` を広げます。
+- `tighter-white`: 判定数ROIで周辺の色や枠を拾いすぎる場合の仮説確認用です。より明るく色差の少ない白文字候補だけに絞り、`max_combo`、`marvelous`、`perfect` などの白い細数字で空OCRや誤読が減るかを見ます。
+- `no-sharpen`: 細い判定数がシャープ化で欠ける場合の仮説確認用です。シャープ化を外し、余白を少し狭めて、`great`、`good`、`miss` など小さい数字のつぶれ方を比較します。
 
 profile比較を有効にすると、追加で以下を出力します。
 
@@ -130,7 +132,7 @@ profile比較を有効にすると、追加で以下を出力します。
 
 `score_ocr_profiles_summary.json` は `profiles -> profile -> roi -> counts` の形で、profile別・ROI別の `match_count`、`mismatch_count`、`empty_ocr_count`、`no_expected_value_count` などを集計します。`best_by_roi` にはROIごとに `match_count` が最も多いprofileと、`empty_ocr_count` が最も少ないprofileを出します。期待値がないROIは成功/失敗にせず、`no_expected_value_count` として扱います。
 
-`best_by_roi` には `evaluation_status` と `recommendation_basis` も出力します。期待値があるROIでは `match_count` を精度比較の主指標にし、期待値がないROIでは `empty_ocr_count` を目視確認の補助指標としてだけ使います。`evaluation_status=no_expected_values` のROIは `best_match_profiles` が出ていてもOCR精度未評価です。
+`best_by_roi` には `evaluation_status`、`recommendation_basis`、`recommended_profiles`、`reference_profiles`、`recommendation_basis_detail` も出力します。期待値が全行にある `evaluated` ROIでは `match_count` を主指標にし、同点なら `mismatch_count` と `empty_ocr_count` が少ないprofileを推奨候補にします。`partially_evaluated` ROIでは同じ指標を使いますが、`recommendation_is_tentative=true` の暫定候補として扱い、残りの期待値を埋めてから判断します。`no_expected_values` ROIでは `recommended_profiles` は空になり、`reference_profiles` は空OCRが少ない目視確認用の参考候補です。これはOCR精度の成功扱いではありません。
 
 まずは以下のように confirmed-events と全OCR ROI、profile比較を組み合わせ、保存直前OCR相当で弱いROIを特定します。
 
@@ -179,6 +181,14 @@ python -m tools.vision_poc --ocr-rois score_digits max_combo marvelous perfect g
 - `miss` または `expected_miss`
 
 `score_digits` は既存互換のため、引き続き `score`、`expected_score`、ファイル名内の `scoreXXXXXX` の順で期待値を取得します。
+
+実行時には、期待値が不足している `screen_type=result` 行だけを `data/vision_poc/ocr_expected_template.csv` へ出力します。このCSVはローカル `metadata.csv` を破壊的に更新せず、どの行に `max_combo` / `marvelous` / `perfect` / `great` / `good` / `miss` を埋めるべきか確認するための補助です。`missing_judgment_rois` を見て、対象画像の `ocr/<画像名>/<roi>_original.png` や実スクリーンショットを目視し、ローカルの `samples/screenshots/metadata.csv` に列と値を追加してから再実行します。
+
+実キャプチャAPIへ進む前の期待値整備は、以下の順で行います。
+
+1. `python -m tools.vision_poc --ocr-target confirmed-events --ocr-rois all --ocr-profile all` を実行し、保存直前OCR相当の対象イベントだけで `ocr_expected_coverage.md` と `ocr_expected_template.csv` を確認します。
+2. `ocr_expected_template.csv` の `missing_judgment_rois` をもとに、ローカルの `samples/screenshots/metadata.csv` へ judgment ROI 期待値列を追加します。このファイルはGit管理対象外のままです。
+3. 同じコマンドを再実行し、`score_ocr_profiles_summary.json` と `ocr_roi_report.md` で `evaluated` / `partially_evaluated` / `no_expected_values` の違い、推奨profile候補、代表的な mismatch / empty_ocr、次に見る前処理画像を確認します。
 
 ### OCR前処理とTesseract設定
 
