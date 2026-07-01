@@ -148,7 +148,7 @@ def test_preprocess_ocr_roi_supports_judgment_rois() -> None:
 def test_preprocess_ocr_roi_digit_focus_is_limited_to_miss() -> None:
     image = Image.new("RGB", (1280, 720), "black")
 
-    assert set(runner.OCR_DIGIT_FOCUS_LEFT_FRACTIONS) <= {"miss", "ex_score"}
+    assert set(runner.OCR_DIGIT_FOCUS_LEFT_FRACTIONS) == {"miss"}
 
     miss = runner.preprocess_ocr_roi(image, "miss")
     ex_score = runner.preprocess_ocr_roi(image, "ex_score")
@@ -163,6 +163,31 @@ def test_preprocess_ocr_roi_digit_focus_is_limited_to_miss() -> None:
     assert good.original.size == (232, 28)
     assert good.enlarged.size == (928, 112)
     assert good.binary.size == (968, 152)
+
+
+def test_preprocess_ocr_roi_black_dilation_is_limited_to_ex_score(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    crop = Image.new("RGB", (16, 12), "black")
+    for y in range(crop.height):
+        crop.putpixel((10, y), (255, 255, 255))
+
+    monkeypatch.setattr(runner, "crop_roi", lambda _image, _roi: crop.copy())
+
+    image = Image.new("RGB", (1280, 720), "black")
+    ex_score = runner.preprocess_ocr_roi(image, "ex_score")
+    good = runner.preprocess_ocr_roi(image, "good")
+    miss = runner.preprocess_ocr_roi(image, "miss")
+
+    assert set(runner.OCR_BINARY_BLACK_DILATE_KERNELS) == {"ex_score"}
+    assert ex_score.binary.size == good.binary.size
+    assert count_dark_pixels(ex_score.binary) > count_dark_pixels(good.binary)
+    assert miss.binary.size[0] < good.binary.size[0]
+    assert count_dark_pixels(miss.binary) <= count_dark_pixels(good.binary)
+
+
+def count_dark_pixels(image: Image.Image) -> int:
+    return sum(1 for value in image.convert("L").tobytes() if value < 128)
 
 
 def test_expected_ocr_value_uses_optional_judgment_columns() -> None:

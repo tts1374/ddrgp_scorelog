@@ -230,6 +230,9 @@ JUDGMENT_OCR_ROIS = tuple(roi for roi in OCR_ROIS if roi != "score_digits")
 OCR_DIGIT_FOCUS_LEFT_FRACTIONS: dict[str, float] = {
     "miss": 0.35,
 }
+OCR_BINARY_BLACK_DILATE_KERNELS: dict[str, int] = {
+    "ex_score": 3,
+}
 
 
 def clamp01(value: float) -> float:
@@ -883,6 +886,9 @@ def preprocess_ocr_roi(
     binary = Image.fromarray(binary_array).convert("L")
     if config.padding:
         binary = ImageOps.expand(binary, border=config.padding, fill=background)
+    black_dilate_kernel = OCR_BINARY_BLACK_DILATE_KERNELS.get(roi_name)
+    if black_dilate_kernel is not None:
+        binary = binary.filter(ImageFilter.MinFilter(black_dilate_kernel))
     digit_focus_left_fraction = OCR_DIGIT_FOCUS_LEFT_FRACTIONS.get(roi_name)
     if digit_focus_left_fraction is not None:
         original = crop_right_fraction(original, digit_focus_left_fraction)
