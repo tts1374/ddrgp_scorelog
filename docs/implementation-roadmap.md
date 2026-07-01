@@ -110,6 +110,7 @@ Windows常駐アプリが DDR GRAND PRIX のゲームウィンドウを直接キ
 - duplicate、未確定候補、`rejected_transition` は confirmed-events OCR対象外のまま維持する。
 - default summary と profile summary の読み分けを固定し、`score_ocr_summary.json` は default profile の現行弱点、`score_ocr_profiles_summary.json` は profile採用候補の比較として読む。
 - 現ローカル確認では `ex_score` の default は 4件中1 match / 3 mismatch だが、`low-threshold` は 4件中4 match で、confirmed-events かつ `evaluated` の場合だけ採用候補として読める。
+- ローカル検証用に、各 result 画像を non-result reset 後の2連続フレームとして並べ、result間を duplicate window より長く離した manifest を `data/` 配下で作ると、既存の保存境界を保ったまま `ex_score` の confirmed-events 母数を16件へ増やせる。この確認では default は 4 match / 11 mismatch / 1 empty、`low-threshold` は 16 match / 0 mismatch / 0 empty で、`recommendation_readiness=adoption_candidate` を維持している。
 
 次にやること:
 
