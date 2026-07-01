@@ -319,6 +319,26 @@ def test_read_frame_manifest_resolves_paths_from_frame_root(tmp_path: Path) -> N
     assert frames[0].row == {"organized_file": "a.png", "screen_type": "result"}
 
 
+def test_read_frame_manifest_resolves_paths_from_manifest_directory_without_frame_root(
+    tmp_path: Path,
+) -> None:
+    image_path = tmp_path / "a.png"
+    write_test_image(image_path)
+    manifest_path = tmp_path / "manifest.csv"
+    manifest_path.write_text(
+        "image_path,timestamp_ms,screen_type\n"
+        "a.png,100,result\n",
+        encoding="utf-8",
+    )
+
+    frames = runner.read_frame_manifest(manifest_path)
+
+    assert len(frames) == 1
+    assert frames[0].image_path == image_path
+    assert frames[0].timestamp_ms == 100
+    assert frames[0].row == {"organized_file": "a.png", "screen_type": "result"}
+
+
 def test_read_frame_manifest_preserves_optional_expected_columns(tmp_path: Path) -> None:
     image_path = tmp_path / "frames" / "a.png"
     write_test_image(image_path)
@@ -461,7 +481,52 @@ def test_read_frame_manifest_rejects_non_increasing_timestamps(tmp_path: Path) -
         encoding="utf-8",
     )
 
-    with pytest.raises(ValueError, match="timestamp_ms must be strictly increasing"):
+    with pytest.raises(
+        ValueError,
+        match=r"line 3: timestamp_ms must be strictly increasing; previous=100, current=100",
+    ):
+        runner.read_frame_manifest(manifest_path)
+
+
+def test_read_frame_manifest_reports_reversed_timestamp_line_number(tmp_path: Path) -> None:
+    write_test_image(tmp_path / "a.png")
+    write_test_image(tmp_path / "b.png")
+    manifest_path = tmp_path / "manifest.csv"
+    manifest_path.write_text(
+        "image_path,timestamp_ms\n"
+        "a.png,200\n"
+        "b.png,100\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=r"line 3: timestamp_ms must be strictly increasing; previous=200, current=100",
+    ):
+        runner.read_frame_manifest(manifest_path)
+
+
+def test_read_frame_manifest_reports_empty_image_path_line_number(tmp_path: Path) -> None:
+    manifest_path = tmp_path / "manifest.csv"
+    manifest_path.write_text(
+        "image_path,timestamp_ms\n"
+        ",100\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match=r"line 2: image_path is empty"):
+        runner.read_frame_manifest(manifest_path)
+
+
+def test_read_frame_manifest_requires_image_path_column(tmp_path: Path) -> None:
+    manifest_path = tmp_path / "manifest.csv"
+    manifest_path.write_text(
+        "timestamp_ms\n"
+        "100\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="missing required columns: image_path"):
         runner.read_frame_manifest(manifest_path)
 
 

@@ -70,6 +70,17 @@ python -m tools.vision_poc --sequence-mode manifest --frame-manifest data/vision
 
 導入前の調整では `result_events_summary.json` を見て、`confirmed_count`、`duplicate_count`、`rejected_transition_count`、`first_confirmed_timestamp_ms`、`confirmation_mode_counts` を確認します。実キャプチャ列で確定が早すぎる、遅すぎる、または同一リザルトの重複が多い場合は、この summary と `result_events.csv` の `candidate_duration_ms` / `reason` を見比べて、保存確定しきい値や duplicate window を調整します。
 
+実キャプチャAPIへ進む前の manifest 入力境界チェックは、まず `timestamped` でローカル metadata 由来の再利用可能な manifest を作り、その manifest を `manifest` で読み直します。`timestamped` は既存ローカル画像列に人工時刻を付けて、期待値列を保持した manifest を生成する確認用です。`manifest` は将来のキャプチャ前段と同じ `image_path,timestamp_ms` CSV契約を読む確認用で、timestamp の同値・逆行、空の `image_path`、存在しない画像パス、`--frame-root` あり/なしの相対パス解決をここで潰します。
+
+```powershell
+python -m tools.vision_poc --sequence-mode timestamped --ocr-target confirmed-events --ocr-rois all --ocr-profile all
+python -m tools.vision_poc --sequence-mode manifest --frame-manifest data/vision_poc_timestamped/frame_manifest.csv --frame-root samples/screenshots --ocr-target confirmed-events --ocr-rois all --ocr-profile all
+```
+
+この2系統では `result_events_summary.json` の `confirmed_count`、`duplicate_count`、`rejected_transition_count` と、`score_ocr_summary.json` の `skipped_duplicate_count` / `skipped_unconfirmed_count` を合わせて見ます。`confirmed-events` は保存直前評価なので、`confirmed_result=true` かつ `duplicate=false` だけがOCR対象です。`result-candidate` は未確定候補やduplicateも含む参考母数で、前処理の副作用確認には使えますが、保存直前評価の成功扱いにはしません。
+
+manifest に metadata 由来の `max_combo`、`miss`、`ex_score` などの期待値列がある場合は、`expected_coverage_by_roi` と `ocr_expected_coverage.md` に評価カバレッジとして反映されます。最小 manifest に期待値列がない場合、`score_digits` はファイル名などから期待値を取れることがありますが、判定数ROIと `ex_score` は `no_expected_values` になり、OCR精度の成功扱いにはしません。`partially_evaluated` は一部だけ期待値がある暫定状態なので、採否判断の前に不足列を埋めて再実行します。
+
 OCR前処理も既定で実行されます。対象は `--ocr-target` で切り替えます。既定は `result-candidate` で、従来どおり `result_candidate=true` の画像をOCR対象にします。
 
 ```powershell
