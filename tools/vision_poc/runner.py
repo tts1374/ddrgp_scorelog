@@ -162,6 +162,7 @@ class ScoreOcrSummary:
     no_expected_value_count: int
     skipped_duplicate_count: int
     skipped_unconfirmed_count: int
+    skipped_rejected_transition_count: int
     ocr_target_mode: str
     by_roi: dict[str, dict[str, int]]
     by_status: dict[str, int]
@@ -1279,8 +1280,12 @@ def summarize_score_ocr(
     event_rows = list(events)
     skipped_duplicate_count = 0
     skipped_unconfirmed_count = 0
+    skipped_rejected_transition_count = 0
     if ocr_target_mode == "confirmed-events":
         skipped_duplicate_count = sum(event.duplicate for event in event_rows)
+        skipped_rejected_transition_count = sum(
+            event.event_type == "rejected_transition" for event in event_rows
+        )
         skipped_unconfirmed_count = sum(
             not event.confirmed_result and not event.duplicate for event in event_rows
         )
@@ -1297,6 +1302,7 @@ def summarize_score_ocr(
         no_expected_value_count=bucket["no_expected_value_count"],
         skipped_duplicate_count=skipped_duplicate_count,
         skipped_unconfirmed_count=skipped_unconfirmed_count,
+        skipped_rejected_transition_count=skipped_rejected_transition_count,
         ocr_target_mode=ocr_target_mode,
         by_roi=by_roi,
         by_status=summarize_ocr_by_status(result_rows),

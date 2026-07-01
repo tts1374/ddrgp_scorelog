@@ -58,16 +58,20 @@
 - rejected transition は confirmed-events OCR対象外。
 - 未確定候補は confirmed-events OCR対象外。
 - dry-run sequence scenario の confirmed-events OCR対象は `confirmed_result=true` かつ `duplicate=false` のみ。
+- `score_ocr_summary.json` では duplicate と rejected transition を `skipped_duplicate_count` / `skipped_rejected_transition_count` で読み分けられる。
 
 ## expected coverage
 
-- expected columns があるROIは評価に使う。
-- expected columns がないROIは `no_expected_values` として扱う。
+- confirmed-events 対象で expected columns が全試行にあるROIは `evaluated` として扱う。
+- confirmed-events 対象で expected columns が一部だけあるROIは `partially_evaluated` として扱う。
+- confirmed-events 対象で expected columns がないROIは `no_expected_values` として扱う。
 - `no_expected_values` はOCR成功扱いにしない。
 - `partially_evaluated` は暫定評価として扱う。
 - `evaluated` / `partially_evaluated` / `no_expected_values` の意味を変えない。
 - timestamped が生成する manifest は metadata の期待値列を保持する。
 - manifest 再実行でも expected coverage の読み替えを維持する。
+- profile比較では `no_expected_values` の `reference_profiles` は目視参考に留め、採用根拠にしない。
+- profile比較では `partially_evaluated` の推奨は暫定扱いにし、期待値不足を埋めてから判断する。
 
 ## OCR出力互換
 

@@ -103,6 +103,8 @@ duplicate=false
 
 `--ocr-target result-candidate` は従来互換と副作用確認用であり、保存直前評価の成功扱いにはしない。
 
+OCR対象境界とOCR成功条件は別に読む。`confirmed-events` は「OCRを試す保存直前イベント」を選ぶ境界であり、DB保存成功やOCR成功を意味しない。対象イベントに対して期待値がないROIは `no_expected_values`、一部だけ期待値があるROIは `partially_evaluated` として扱い、どちらも最終的な保存品質の採用根拠にはしない。OCR品質は `score_ocr_summary.json`、`score_ocr_profiles_summary.json`、`ocr_expected_coverage.md`、`ocr_roi_report.md` のROI別 `match_count` / `mismatch_count` / `empty_ocr_count` / `no_expected_value_count` を見て判断する。
+
 ## transition_countup の扱い
 
 `transition_countup_*` はリザルト形状が出ていても保存対象外とする。
@@ -207,6 +209,8 @@ DUPLICATE_WINDOW_FRAMES = 90
 - `rejected_transition_count`: 遷移除外数
 - `first_confirmed_timestamp_ms`: timestamp付き入力で最初に保存確定した時刻
 - `confirmation_mode_counts`: `time` / `frames` の分布
+
+confirmed-events OCR評価では、あわせて `score_ocr_summary.json` の `skipped_duplicate_count`、`skipped_unconfirmed_count`、`skipped_rejected_transition_count` を見る。duplicate、未確定候補、`rejected_transition` がOCR対象外のまま維持されていることを確認するための値であり、OCR精度そのものはROI別の expected coverage と match / mismatch で読む。
 
 ## M0/M1で固定すること
 

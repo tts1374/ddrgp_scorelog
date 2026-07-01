@@ -101,12 +101,22 @@ Windows常駐アプリが DDR GRAND PRIX のゲームウィンドウを直接キ
 
 目的は、保存候補イベントに対してスコアと判定数を十分な精度で読める状態にすることです。
 
-やること:
+現在地:
+
+- `confirmed-events` を保存直前OCR相当の主評価対象として使う。
+- timestamped と manifest 再読込の両方で `confirmation_mode=time` と expected columns 保持を確認する。
+- `evaluated` / `partially_evaluated` / `no_expected_values` でROI別の期待値カバレッジを読む。
+- `no_expected_values` はOCR成功扱いにせず、profile比較の `reference_profiles` も目視参考に留める。
+- duplicate、未確定候補、`rejected_transition` は confirmed-events OCR対象外のまま維持する。
+
+次にやること:
 
 - confirmed-events を主評価対象として、`score_digits`、`max_combo`、`marvelous`、`perfect`、`great`、`good`、`miss`、`ex_score` の精度を見る。
 - `no_expected_values` のROIは成功扱いにせず、metadata期待値列を増やす。
 - `partially_evaluated` は暫定判断として扱い、採用判断前に不足期待値を埋める。
 - ROI座標の大変更ではなく、まずは局所前処理とprofile評価で改善する。
+- default OCR summary と profile比較の読み分けを維持し、保存候補で弱いROIを `ocr_roi_report.md` から追う。
+- 現ローカル確認では confirmed-events の主要ROIは expected coverage 上すべて `evaluated` だが、default 出力の `ex_score` に mismatch が残るため、`low-threshold` profile を採用候補として扱う条件を詰める。
 
 完了条件:
 

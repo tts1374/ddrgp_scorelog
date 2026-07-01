@@ -1211,6 +1211,143 @@ def test_manifest_confirmed_events_ocr_uses_expected_columns_and_skips_duplicate
     )
 
 
+def test_confirmed_events_expected_coverage_statuses_and_exclusions(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    frame_names = (
+        "result_score111111_a.png",
+        "result_score111111_b.png",
+        "result_score111111_c.png",
+        "gameplay_reset.png",
+        "result_score222222_a.png",
+        "result_score222222_b.png",
+        "result_score222222_c.png",
+        "result_score222222_d.png",
+        "transition_countup_score999999.png",
+    )
+    for name in frame_names:
+        write_test_image(tmp_path / "frames" / name)
+    manifest_path = tmp_path / "manifest.csv"
+    manifest_path.write_text(
+        "image_path,timestamp_ms,screen_type,expected_score,max_combo\n"
+        "result_score111111_a.png,0,result,111111,10\n"
+        "result_score111111_b.png,500,result,111111,10\n"
+        "result_score111111_c.png,1000,result,111111,10\n"
+        "gameplay_reset.png,1500,gameplay,,\n"
+        "result_score222222_a.png,2000,result,222222,\n"
+        "result_score222222_b.png,2500,result,222222,\n"
+        "result_score222222_c.png,3000,result,222222,\n"
+        "result_score222222_d.png,3500,result,222222,\n"
+        "transition_countup_score999999.png,4000,transition,999999,99\n",
+        encoding="utf-8",
+    )
+
+    def classify_synthetic(_image: Image.Image, row: dict[str, str]) -> runner.Classification:
+        organized_file = row["organized_file"]
+        if organized_file.startswith("transition_countup_"):
+            return classification(
+                organized_file,
+                result_candidate=False,
+                result_shape_candidate=True,
+                screen_type="transition",
+                transition_kind="countup",
+            )
+        return classification(
+            organized_file,
+            result_candidate=row.get("screen_type") == "result",
+            result_shape_candidate=row.get("screen_type") == "result",
+            screen_type=row.get("screen_type", "unknown"),
+        )
+
+    def run_tesseract_synthetic(
+        _binary: Image.Image,
+        roi_name: str = "score_digits",
+    ) -> tuple[str, str, str, str]:
+        raw_by_roi = {
+            "score_digits": "111111",
+            "max_combo": "10",
+            "perfect": "30",
+        }
+        return raw_by_roi[roi_name], "tesseract", "ok", ""
+
+    monkeypatch.setattr(runner, "classify", classify_synthetic)
+    monkeypatch.setattr(runner, "preprocess_ocr_roi", stub_profile_preprocess)
+    monkeypatch.setattr(runner, "run_tesseract", run_tesseract_synthetic)
+
+    output_dir = tmp_path / "output"
+    assert (
+        runner.main(
+            [
+                "--sequence-mode",
+                "manifest",
+                "--frame-manifest",
+                str(manifest_path),
+                "--frame-root",
+                str(tmp_path / "frames"),
+                "--output",
+                str(output_dir),
+                "--ocr-target",
+                "confirmed-events",
+                "--ocr-rois",
+                "score_digits",
+                "max_combo",
+                "perfect",
+                "--no-rois",
+            ]
+        )
+        == 0
+    )
+
+    event_rows = read_csv_rows(output_dir / "result_events.csv")
+    assert [row["event_type"] for row in event_rows] == [
+        "none",
+        "none",
+        "confirmed",
+        "none",
+        "none",
+        "none",
+        "confirmed",
+        "duplicate",
+        "rejected_transition",
+    ]
+
+    ocr_rows = read_csv_rows(output_dir / "score_ocr.csv")
+    assert {row["organized_file"] for row in ocr_rows} == {
+        "result_score111111_c.png",
+        "result_score222222_c.png",
+    }
+    assert "result_score222222_d.png" not in {row["organized_file"] for row in ocr_rows}
+    assert "transition_countup_score999999.png" not in {
+        row["organized_file"] for row in ocr_rows
+    }
+
+    summary = json.loads((output_dir / "score_ocr_summary.json").read_text(encoding="utf-8"))
+    assert summary["ocr_target_mode"] == "confirmed-events"
+    assert summary["skipped_duplicate_count"] == 1
+    assert summary["skipped_rejected_transition_count"] == 1
+    assert summary["expected_coverage_by_roi"]["score_digits"]["evaluation_status"] == (
+        "evaluated"
+    )
+    assert summary["expected_coverage_by_roi"]["max_combo"]["evaluation_status"] == (
+        "partially_evaluated"
+    )
+    assert summary["expected_coverage_by_roi"]["max_combo"]["expected_value_count"] == 1
+    assert summary["expected_coverage_by_roi"]["max_combo"]["no_expected_value_count"] == 1
+    assert summary["expected_coverage_by_roi"]["perfect"]["evaluation_status"] == (
+        "no_expected_values"
+    )
+    assert summary["by_roi"]["max_combo"]["match_count"] == 1
+    assert summary["by_roi"]["max_combo"]["no_expected_value_count"] == 1
+    assert summary["by_roi"]["perfect"]["match_count"] == 0
+    assert summary["by_roi"]["perfect"]["no_expected_value_count"] == 2
+
+    coverage = (output_dir / "ocr_expected_coverage.md").read_text(encoding="utf-8")
+    assert "| `score_digits` | `evaluated` | 2 | 0 | 2 |" in coverage
+    assert "| `max_combo` | `partially_evaluated` | 1 | 1 | 2 |" in coverage
+    assert "| `perfect` | `no_expected_values` | 0 | 2 | 2 |" in coverage
+
+
 def test_dry_run_sequence_scenario_replays_manifest_save_boundary(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
