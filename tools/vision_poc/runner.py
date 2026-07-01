@@ -1391,6 +1391,43 @@ def summarize_profile_score_ocr(
             for profile, bucket in candidates
             if bucket["empty_ocr_count"] == lowest_empty_count
         ]
+        default_counts = next(
+            (bucket for profile, bucket in candidates if profile == "default"),
+            None,
+        )
+        top_recommended_profile = recommended_profiles[0] if recommended_profiles else ""
+        top_recommended_counts = next(
+            (
+                bucket
+                for profile, bucket in candidates
+                if profile == top_recommended_profile
+            ),
+            None,
+        )
+        recommended_vs_default_delta = (
+            {
+                "match_count": (
+                    top_recommended_counts["match_count"] - default_counts["match_count"]
+                ),
+                "mismatch_count": (
+                    top_recommended_counts["mismatch_count"]
+                    - default_counts["mismatch_count"]
+                ),
+                "empty_ocr_count": (
+                    top_recommended_counts["empty_ocr_count"]
+                    - default_counts["empty_ocr_count"]
+                ),
+            }
+            if default_counts is not None and top_recommended_counts is not None
+            else {}
+        )
+        recommendation_readiness = (
+            "adoption_candidate"
+            if evaluation_status == "evaluated" and recommended_profiles
+            else "tentative"
+            if evaluation_status == "partially_evaluated" and recommended_profiles
+            else "reference_only"
+        )
         if evaluation_status == "evaluated":
             recommendation_basis_detail = (
                 "evaluated: recommended profiles maximize match_count, then minimize "
@@ -1426,6 +1463,13 @@ def summarize_profile_score_ocr(
             "match_recommendation_evaluated": evaluation_status != "no_expected_values",
             "recommended_profiles": recommended_profiles,
             "reference_profiles": reference_profiles,
+            "default_profile": "default" if default_counts is not None else "",
+            "default_profile_counts": default_counts or {},
+            "top_recommended_profile": top_recommended_profile,
+            "top_recommended_profile_counts": top_recommended_counts or {},
+            "recommended_vs_default_delta": recommended_vs_default_delta,
+            "default_is_recommended": "default" in recommended_profiles,
+            "recommendation_readiness": recommendation_readiness,
             "recommendation_basis_detail": recommendation_basis_detail,
             "recommendation_is_tentative": evaluation_status == "partially_evaluated",
         }
@@ -1483,6 +1527,27 @@ def format_profile_list(value: object) -> str:
     if not isinstance(value, list) or not value:
         return "none"
     return ", ".join(f"`{item}`" for item in value if isinstance(item, str))
+
+
+def format_profile_counts(value: object) -> str:
+    if not isinstance(value, dict) or not value:
+        return "none"
+    return (
+        f"match={value.get('match_count', 0)}, "
+        f"mismatch={value.get('mismatch_count', 0)}, "
+        f"empty={value.get('empty_ocr_count', 0)}, "
+        f"no_expected={value.get('no_expected_value_count', 0)}"
+    )
+
+
+def format_profile_delta(value: object) -> str:
+    if not isinstance(value, dict) or not value:
+        return "none"
+    return (
+        f"match={value.get('match_count', 0):+}, "
+        f"mismatch={value.get('mismatch_count', 0):+}, "
+        f"empty={value.get('empty_ocr_count', 0):+}"
+    )
 
 
 def representative_path_hint(
@@ -1545,11 +1610,34 @@ def write_ocr_roi_report(
                 )
             recommendation_basis = str(recommendation.get("recommendation_basis", ""))
             recommendation_detail = str(recommendation.get("recommendation_basis_detail", ""))
+            recommendation_readiness = str(
+                recommendation.get("recommendation_readiness", "")
+            )
+            default_profile_counts = format_profile_counts(
+                recommendation.get("default_profile_counts")
+            )
+            top_recommended_profile = str(
+                recommendation.get("top_recommended_profile", "")
+            )
+            top_recommended_counts = format_profile_counts(
+                recommendation.get("top_recommended_profile_counts")
+            )
+            recommended_delta = format_profile_delta(
+                recommendation.get("recommended_vs_default_delta")
+            )
         lines.extend([f"### `{roi_name}`", ""])
         lines.append(f"- evaluation_status: `{ocr_evaluation_status(summary.by_roi[roi_name])}`")
         lines.append(f"- recommended profile candidate: {recommended_profiles}")
         lines.append(f"- recommendation_basis: `{recommendation_basis}`")
         lines.append(f"- recommendation note: {recommendation_detail}")
+        if recommendation is not None:
+            lines.append(f"- recommendation_readiness: `{recommendation_readiness}`")
+            lines.append(f"- default profile counts: {default_profile_counts}")
+            lines.append(
+                "- top recommended profile counts: "
+                f"`{top_recommended_profile}` {top_recommended_counts}"
+            )
+            lines.append(f"- recommended vs default delta: {recommended_delta}")
         lines.append(f"- representative mismatch: {format_representative_list(mismatches)}")
         lines.append(f"- representative empty_ocr: {format_representative_list(empties)}")
         lines.append(
@@ -1616,9 +1704,9 @@ def write_ocr_expected_coverage_report(
                     "",
                     "## Profile Comparison Coverage",
                     "",
-                    "| ROI | evaluation_status | recommendation basis | expected values | "
-                    "no expected values |",
-                    "| --- | --- | --- | ---: | ---: |",
+                    "| ROI | evaluation_status | recommendation readiness | "
+                    "recommendation basis | expected values | no expected values |",
+                    "| --- | --- | --- | --- | ---: | ---: |",
                 ]
             )
             for roi_name, raw_bucket in sorted(best_by_roi.items()):
@@ -1626,6 +1714,7 @@ def write_ocr_expected_coverage_report(
                     continue
                 lines.append(
                     f"| `{roi_name}` | `{raw_bucket.get('evaluation_status', '')}` | "
+                    f"`{raw_bucket.get('recommendation_readiness', '')}` | "
                     f"`{raw_bucket.get('recommendation_basis', '')}` | "
                     f"{raw_bucket.get('expected_value_count', 0)} | "
                     f"{raw_bucket.get('no_expected_value_count', 0)} |"

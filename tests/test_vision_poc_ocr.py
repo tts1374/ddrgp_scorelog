@@ -563,6 +563,20 @@ def test_profile_comparison_keeps_score_ocr_csv_compatible_and_summarizes_by_pro
         "high-contrast",
         "tighter-white",
     ]
+    assert summary["best_by_roi"]["max_combo"]["recommendation_readiness"] == (
+        "adoption_candidate"
+    )
+    assert summary["best_by_roi"]["max_combo"]["default_profile_counts"][
+        "empty_ocr_count"
+    ] == 1
+    assert summary["best_by_roi"]["max_combo"]["top_recommended_profile"] == (
+        "high-contrast"
+    )
+    assert summary["best_by_roi"]["max_combo"]["recommended_vs_default_delta"] == {
+        "match_count": 1,
+        "mismatch_count": 0,
+        "empty_ocr_count": -1,
+    }
     assert summary["best_by_roi"]["score_digits"]["lowest_empty_profiles"] == [
         "default",
         "low-threshold",
@@ -575,6 +589,7 @@ def test_profile_comparison_keeps_score_ocr_csv_compatible_and_summarizes_by_pro
     )
     assert summary["best_by_roi"]["perfect"]["match_recommendation_evaluated"] is False
     assert summary["best_by_roi"]["perfect"]["recommended_profiles"] == []
+    assert summary["best_by_roi"]["perfect"]["recommendation_readiness"] == "reference_only"
     assert summary["best_by_roi"]["perfect"]["reference_profiles"] == [
         "default",
         "high-contrast",
@@ -584,7 +599,10 @@ def test_profile_comparison_keeps_score_ocr_csv_compatible_and_summarizes_by_pro
 
     coverage = (output_dir / "ocr_expected_coverage.md").read_text(encoding="utf-8")
     assert "| `perfect` | `no_expected_values` | 0 | 1 | 1 |" in coverage
-    assert "| `perfect` | `no_expected_values` | `empty_ocr_reference_only` | 0 | 1 |" in coverage
+    assert (
+        "| `perfect` | `no_expected_values` | `reference_only` | "
+        "`empty_ocr_reference_only` | 0 | 1 |"
+    ) in coverage
 
 
 def test_expected_coverage_marks_partially_evaluated_roi(
@@ -650,6 +668,54 @@ def test_expected_coverage_marks_partially_evaluated_roi(
 
     coverage = (output_dir / "ocr_expected_coverage.md").read_text(encoding="utf-8")
     assert "| `max_combo` | `partially_evaluated` | 1 | 1 | 2 |" in coverage
+
+
+def test_profile_summary_recommends_low_threshold_when_ex_score_default_is_weaker() -> None:
+    def profile_result(
+        profile: str,
+        normalized: str,
+        expected_score: str,
+    ) -> runner.ProfileScoreOcrResult:
+        return runner.ProfileScoreOcrResult(
+            profile=profile,
+            organized_file=f"{profile}.png",
+            screen_type="result",
+            result_candidate=True,
+            roi_name="ex_score",
+            score_ocr_raw=normalized,
+            score_ocr_normalized=normalized,
+            expected_score=expected_score,
+            match=normalized == expected_score if expected_score else None,
+            engine="tesseract",
+            status="ok",
+            error="",
+            original_path="",
+            enlarged_path="",
+            binary_path="",
+        )
+
+    summary = runner.summarize_profile_score_ocr(
+        [
+            profile_result("default", "552", "552"),
+            profile_result("default", "662", "552"),
+            profile_result("low-threshold", "552", "552"),
+            profile_result("low-threshold", "552", "552"),
+        ],
+        "confirmed-events",
+    )
+
+    bucket = summary["best_by_roi"]["ex_score"]
+    assert bucket["evaluation_status"] == "evaluated"
+    assert bucket["recommendation_is_tentative"] is False
+    assert bucket["recommended_profiles"] == ["low-threshold"]
+    assert bucket["recommendation_readiness"] == "adoption_candidate"
+    assert bucket["default_profile_counts"]["match_count"] == 1
+    assert bucket["top_recommended_profile_counts"]["match_count"] == 2
+    assert bucket["recommended_vs_default_delta"] == {
+        "match_count": 1,
+        "mismatch_count": -1,
+        "empty_ocr_count": 0,
+    }
 
 
 def test_ocr_expected_template_lists_result_rows_missing_judgment_values(
@@ -783,6 +849,7 @@ def test_profile_summary_marks_partially_evaluated_recommendations_as_tentative(
     assert bucket["recommendation_is_tentative"] is True
     assert bucket["recommended_profiles"] == ["default"]
     assert bucket["match_recommendation_evaluated"] is True
+    assert bucket["recommendation_readiness"] == "tentative"
 
 
 def test_confirmed_events_ocr_target_filters_metadata_frame_events(

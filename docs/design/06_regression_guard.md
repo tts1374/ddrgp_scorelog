@@ -72,6 +72,11 @@
 - manifest 再実行でも expected coverage の読み替えを維持する。
 - profile比較では `no_expected_values` の `reference_profiles` は目視参考に留め、採用根拠にしない。
 - profile比較では `partially_evaluated` の推奨は暫定扱いにし、期待値不足を埋めてから判断する。
+- profile比較では `evaluated` かつ `recommended_profiles` があるROIだけを `recommendation_readiness=adoption_candidate` として読む。
+- profile比較では `no_expected_values` の `recommended_profiles` を空に保ち、`recommendation_readiness=reference_only` として読む。
+- profile比較では `partially_evaluated` の推奨を `recommendation_readiness=tentative` として読む。
+- `ex_score` の `low-threshold` は confirmed-events 対象かつ expected coverage が `evaluated` の場合だけ採用候補として読む。
+- `score_ocr_profiles_summary.json` と `ocr_roi_report.md` では default profile と推奨profileの差を確認できる補助情報を維持する。
 
 ## OCR出力互換
 

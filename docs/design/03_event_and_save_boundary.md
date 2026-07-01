@@ -103,7 +103,7 @@ duplicate=false
 
 `--ocr-target result-candidate` は従来互換と副作用確認用であり、保存直前評価の成功扱いにはしない。
 
-OCR対象境界とOCR成功条件は別に読む。`confirmed-events` は「OCRを試す保存直前イベント」を選ぶ境界であり、DB保存成功やOCR成功を意味しない。対象イベントに対して期待値がないROIは `no_expected_values`、一部だけ期待値があるROIは `partially_evaluated` として扱い、どちらも最終的な保存品質の採用根拠にはしない。OCR品質は `score_ocr_summary.json`、`score_ocr_profiles_summary.json`、`ocr_expected_coverage.md`、`ocr_roi_report.md` のROI別 `match_count` / `mismatch_count` / `empty_ocr_count` / `no_expected_value_count` を見て判断する。
+OCR対象境界、expected coverage、profile採用判断は別条件として読む。`confirmed-events` は「OCRを試す保存直前イベント」を選ぶ境界であり、DB保存成功やOCR成功を意味しない。対象イベントに対して期待値がないROIは `no_expected_values`、一部だけ期待値があるROIは `partially_evaluated` として扱い、どちらも最終的な保存品質の採用根拠にはしない。profile採用候補として読めるのは、confirmed-events 対象で expected coverage が `evaluated` かつ `recommended_profiles` があるROIだけです。`partially_evaluated` は暫定、`no_expected_values` は `reference_profiles` が出ていても目視参考に留める。OCR品質は `score_ocr_summary.json`、`score_ocr_profiles_summary.json`、`ocr_expected_coverage.md`、`ocr_roi_report.md` のROI別 `match_count` / `mismatch_count` / `empty_ocr_count` / `no_expected_value_count` を見て判断する。
 
 ## transition_countup の扱い
 

@@ -108,6 +108,8 @@ Windows常駐アプリが DDR GRAND PRIX のゲームウィンドウを直接キ
 - `evaluated` / `partially_evaluated` / `no_expected_values` でROI別の期待値カバレッジを読む。
 - `no_expected_values` はOCR成功扱いにせず、profile比較の `reference_profiles` も目視参考に留める。
 - duplicate、未確定候補、`rejected_transition` は confirmed-events OCR対象外のまま維持する。
+- default summary と profile summary の読み分けを固定し、`score_ocr_summary.json` は default profile の現行弱点、`score_ocr_profiles_summary.json` は profile採用候補の比較として読む。
+- 現ローカル確認では `ex_score` の default は 4件中1 match / 3 mismatch だが、`low-threshold` は 4件中4 match で、confirmed-events かつ `evaluated` の場合だけ採用候補として読める。
 
 次にやること:
 
@@ -115,8 +117,8 @@ Windows常駐アプリが DDR GRAND PRIX のゲームウィンドウを直接キ
 - `no_expected_values` のROIは成功扱いにせず、metadata期待値列を増やす。
 - `partially_evaluated` は暫定判断として扱い、採用判断前に不足期待値を埋める。
 - ROI座標の大変更ではなく、まずは局所前処理とprofile評価で改善する。
-- default OCR summary と profile比較の読み分けを維持し、保存候補で弱いROIを `ocr_roi_report.md` から追う。
-- 現ローカル確認では confirmed-events の主要ROIは expected coverage 上すべて `evaluated` だが、default 出力の `ex_score` に mismatch が残るため、`low-threshold` profile を採用候補として扱う条件を詰める。
+- default OCR summary と profile比較の読み分けを維持し、保存候補で弱いROIを `ocr_roi_report.md` の default counts / recommended counts / delta から追う。
+- `ex_score` は `low-threshold` 採用候補の読み方を固定済みなので、次は評価母数を増やし、同じ条件で `recommendation_readiness=adoption_candidate` が維持されるか確認する。
 
 完了条件:
 
