@@ -30,6 +30,20 @@ python -m pip install -e ".[vision]"
 - `timestamped`: 実キャプチャ前の人工時系列PoC。metadata と同じ画像列へ単調増加する人工 `timestamp_ms` を付け、時刻ベースのリザルト確定を確認します。
 - `manifest`: 実フレーム列入力PoC。録画切り出しや将来のキャプチャ処理が供給する `image_path,timestamp_ms` のCSVを読み、実キャプチャに近い入力境界を確認します。
 
+### frame source 境界
+
+PoC内部の薄い入力境界は `FrameInput` です。`FrameInput` は、分類器とイベント確定処理へ渡す1フレーム分の情報として `image_path`、任意の `timestamp_ms`、metadata互換の `row` を持ちます。`row` には `organized_file`、任意の `screen_type`、任意のOCR期待値列、将来のキャプチャ前段が付ける補助列を保持します。
+
+実キャプチャAPIが最初に満たす契約は以下だけです。
+
+- 画像パス、またはフレーム画像へ到達できる参照を1フレームごとに渡す
+- `timestamp_ms` はキャプチャ時点のミリ秒値で、入力順に単調増加する
+- `screen_type` は任意で、未知の場合は空欄や `unknown` のままでよい
+- `score` / `expected_score` / `max_combo` / `expected_<roi_name>` などのOCR期待値列は任意で、あれば `FrameInput.row` に保持する
+- 入力順は時系列順にする
+
+`metadata` mode は既存ローカル評価のための時刻なし入力です。`timestamped` mode は同じ metadata 行へ人工 `timestamp_ms` を付け、時刻ベース確定をローカルで再現する互換確認です。`manifest` mode はこの frame source 契約のファイル版で、実キャプチャAPIは同じ契約のリアルタイム版として扱います。つまり、本番キャプチャ導入時に差し替える境界は「CSVを読むか、キャプチャ provider から次フレームを受けるか」だけで、以降の分類、`confirmation_mode=time`、confirmed-events OCR対象絞り込みは同じ意味を維持します。
+
 実キャプチャ相当の時系列PoCは、同じローカル画像列へ人工 `timestamp_ms` を付けて実行できます。
 
 ```powershell
@@ -80,6 +94,15 @@ python -m tools.vision_poc --sequence-mode manifest --frame-manifest data/vision
 この2系統では `result_events_summary.json` の `confirmed_count`、`duplicate_count`、`rejected_transition_count` と、`score_ocr_summary.json` の `skipped_duplicate_count` / `skipped_unconfirmed_count` を合わせて見ます。`confirmed-events` は保存直前評価なので、`confirmed_result=true` かつ `duplicate=false` だけがOCR対象です。`result-candidate` は未確定候補やduplicateも含む参考母数で、前処理の副作用確認には使えますが、保存直前評価の成功扱いにはしません。
 
 manifest に metadata 由来の `max_combo`、`miss`、`ex_score` などの期待値列がある場合は、`expected_coverage_by_roi` と `ocr_expected_coverage.md` に評価カバレッジとして反映されます。最小 manifest に期待値列がない場合、`score_digits` はファイル名などから期待値を取れることがありますが、判定数ROIと `ex_score` は `no_expected_values` になり、OCR精度の成功扱いにはしません。`partially_evaluated` は一部だけ期待値がある暫定状態なので、採否判断の前に不足列を埋めて再実行します。
+
+実キャプチャAPI実装時の最初の単位は以下に限定します。
+
+- capture frame provider: 実デバイスや録画前段から1フレームずつ画像参照を受ける薄い入口
+- timestamp provider: 各フレームへ単調増加する `timestamp_ms` を付ける入口
+- frame persistence location: dry-run や目視確認用フレームは `data/` 配下へ保存する
+- manifest互換 dry-run 出力: キャプチャしたフレーム列を `image_path,timestamp_ms` と任意列つきCSVとして再実行できる形にする
+
+この段階では、DB保存、常駐監視ループ、非同期処理、OCR方式刷新、duplicate key の本格差し替え、実キャプチャデバイス依存コードには踏み込みません。confirmed-events の保存境界は引き続き `confirmed_result=true` かつ `duplicate=false` で、`transition_countup_*` は `result_shape_candidate=true` でも `event_type=rejected_transition` として保存対象外です。
 
 実キャプチャAPIへ進む前は、以下をチェックリストとして確認します。
 

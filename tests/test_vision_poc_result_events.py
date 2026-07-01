@@ -352,13 +352,13 @@ def test_read_frame_manifest_resolves_paths_from_manifest_directory_without_fram
     assert frames[0].row == {"organized_file": "a.png", "screen_type": "result"}
 
 
-def test_read_frame_manifest_preserves_optional_expected_columns(tmp_path: Path) -> None:
+def test_read_frame_manifest_preserves_optional_row_columns(tmp_path: Path) -> None:
     image_path = tmp_path / "frames" / "a.png"
     write_test_image(image_path)
     manifest_path = tmp_path / "manifest.csv"
     manifest_path.write_text(
-        "image_path,timestamp_ms,screen_type,max_combo,ex_score\n"
-        "a.png,100,result,111,552\n",
+        "image_path,timestamp_ms,screen_type,max_combo,ex_score,capture_note\n"
+        "a.png,100,result,111,552,manual-fixture\n",
         encoding="utf-8",
     )
 
@@ -369,6 +369,7 @@ def test_read_frame_manifest_preserves_optional_expected_columns(tmp_path: Path)
         "screen_type": "result",
         "max_combo": "111",
         "ex_score": "552",
+        "capture_note": "manual-fixture",
     }
 
 
