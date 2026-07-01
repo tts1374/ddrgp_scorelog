@@ -111,15 +111,16 @@ Windows常駐アプリが DDR GRAND PRIX のゲームウィンドウを直接キ
 - default summary と profile summary の読み分けを固定し、`score_ocr_summary.json` は default profile の現行弱点、`score_ocr_profiles_summary.json` は profile採用候補の比較として読む。
 - 現ローカル確認では `ex_score` の default は 4件中1 match / 3 mismatch だが、`low-threshold` は 4件中4 match で、confirmed-events かつ `evaluated` の場合だけ採用候補として読める。
 - ローカル検証用に、各 result 画像を non-result reset 後の2連続フレームとして並べ、result間を duplicate window より長く離した manifest を `--make-m2-expanded-manifest` で `data/` 配下へ再生成できる。既存の保存境界を保ったまま `ex_score` の confirmed-events 母数を16件へ増やせ、この確認では default は 4 match / 11 mismatch / 1 empty、`low-threshold` は 16 match / 0 mismatch / 0 empty で、`recommendation_readiness=adoption_candidate` を維持している。
+- 同じ拡張manifestで主要数字ROI全体を16件評価すると、`score_digits`、`max_combo`、`marvelous`、`perfect`、`great`、`good`、`miss` は default profile が16 match / 0 mismatch / 0 emptyで、現時点では追加調整なしで採用候補として固定できる。`ex_score` だけ default が弱く、`low-threshold` が16 match / 0 mismatch / 0 emptyの単独採用候補になる。
 
 次にやること:
 
-- confirmed-events を主評価対象として、`score_digits`、`max_combo`、`marvelous`、`perfect`、`great`、`good`、`miss`、`ex_score` の精度を見る。
+- confirmed-events を主評価対象として、標準4件評価と拡張16件評価の両方で `score_digits`、`max_combo`、`marvelous`、`perfect`、`great`、`good`、`miss`、`ex_score` の精度を継続確認する。
 - `no_expected_values` のROIは成功扱いにせず、metadata期待値列を増やす。
 - `partially_evaluated` は暫定判断として扱い、採用判断前に不足期待値を埋める。
 - ROI座標の大変更ではなく、まずは局所前処理とprofile評価で改善する。
 - default OCR summary と profile比較の読み分けを維持し、保存候補で弱いROIを `ocr_roi_report.md` の default counts / recommended counts / delta から追う。
-- `ex_score` は `low-threshold` 採用候補の読み方と拡張confirmed-events manifestの再生成入口を固定済みなので、次は同じ manifest で弱点や副作用が出やすいROIから主要数字ROI全体へ段階的に広げる。
+- `ex_score` 以外の主要数字ROIは拡張16件評価で default 16/16 match を確認済みなので、次は実キャプチャ前の追加素材や期待値列増加時に同じ読み方で再確認する。`ex_score` は引き続き `low-threshold` 採用候補として扱い、本番処理への直結は別フェーズに残す。
 
 完了条件:
 
