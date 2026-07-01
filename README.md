@@ -30,6 +30,11 @@ DanceDanceRevolution GRAND PRIX のリザルト画面からスコア情報を取
 ## Current Documents
 
 - [要求定義](docs/requirements.md)
+- [実装ロードマップ](docs/implementation-roadmap.md)
+- [設計資料](docs/design/)
+- [M0入力境界チェックリスト](docs/checklists/m0_input_boundary.md)
+- [M0 dry-run sequence 指示テンプレート](docs/task-prompts/m0_dry_run_sequence_scenario.md)
+- [ADR: 初期PoC境界の固定](docs/adr/0001-foundational-poc-boundaries.md)
 - [スクリーンショット収集マトリクス](docs/screenshot-collection.md)
 - [画面解析PoC準備メモ](docs/vision-poc-prep.md)
 - [画面解析PoCツール](tools/vision_poc/README.md)
