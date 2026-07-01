@@ -1211,6 +1211,189 @@ def test_manifest_confirmed_events_ocr_uses_expected_columns_and_skips_duplicate
     )
 
 
+def test_dry_run_sequence_scenario_replays_manifest_save_boundary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    frame_root = tmp_path / "scenario_frames"
+    frame_names = (
+        "menu_setup_a.png",
+        "result_score111111_short_a.png",
+        "result_score111111_short_b.png",
+        "gameplay_reset.png",
+        "result_score123456_a.png",
+        "result_score123456_b.png",
+        "result_score123456_c.png",
+        "result_score123456_d.png",
+        "transition_countup_score999999.png",
+    )
+    for name in frame_names:
+        write_test_image(frame_root / name)
+    scenario_manifest = tmp_path / "dry_run_sequence.csv"
+    scenario_manifest.write_text(
+        "image_path,timestamp_ms,screen_type,expected_score,max_combo,capture_note\n"
+        "menu_setup_a.png,0,menu_setup,,,non-result\n"
+        "result_score111111_short_a.png,100,result,111111,5,short-start\n"
+        "result_score111111_short_b.png,500,result,111111,5,short-still-unconfirmed\n"
+        "gameplay_reset.png,700,gameplay,,,reset\n"
+        "result_score123456_a.png,1000,result,123456,10,sustained-start\n"
+        "result_score123456_b.png,1500,result,123456,10,sustained-middle\n"
+        "result_score123456_c.png,2100,result,123456,10,confirmed-save-boundary\n"
+        "result_score123456_d.png,2600,result,123456,10,duplicate-window\n"
+        "transition_countup_score999999.png,3000,transition,999999,,countup-shape\n",
+        encoding="utf-8",
+    )
+
+    assert (
+        runner.main(
+            [
+                "--capture-dry-run-scenario",
+                str(scenario_manifest),
+                "--frame-root",
+                str(frame_root),
+                "--capture-dry-run-output",
+                "data/dry_run_sequence",
+            ]
+        )
+        == 0
+    )
+
+    generated_manifest = Path("data/dry_run_sequence/frame_manifest.csv")
+    frames = runner.read_frame_manifest(generated_manifest)
+    assert [frame.timestamp_ms for frame in frames] == [
+        0,
+        100,
+        500,
+        700,
+        1000,
+        1500,
+        2100,
+        2600,
+        3000,
+    ]
+    assert [frame.row["screen_type"] for frame in frames] == [
+        "menu_setup",
+        "result",
+        "result",
+        "gameplay",
+        "result",
+        "result",
+        "result",
+        "result",
+        "transition",
+    ]
+    assert frames[6].row["expected_score"] == "123456"
+    assert frames[6].row["max_combo"] == "10"
+    assert frames[8].row["capture_note"] == "countup-shape"
+
+    def classify_synthetic(_image: Image.Image, row: dict[str, str]) -> runner.Classification:
+        organized_file = row["organized_file"]
+        if "transition_countup_" in organized_file:
+            return classification(
+                organized_file,
+                result_candidate=False,
+                result_shape_candidate=True,
+                screen_type="transition",
+                transition_kind="countup",
+            )
+        return classification(
+            organized_file,
+            result_candidate=row["screen_type"] == "result",
+            screen_type=row["screen_type"],
+        )
+
+    def run_tesseract_synthetic(
+        _binary: Image.Image,
+        roi_name: str = "score_digits",
+    ) -> tuple[str, str, str, str]:
+        raw_by_roi = {
+            "score_digits": "123456",
+            "max_combo": "10",
+            "marvelous": "20",
+            "perfect": "30",
+            "great": "40",
+            "good": "50",
+            "miss": "1",
+            "ex_score": "234",
+        }
+        return raw_by_roi[roi_name], "tesseract", "ok", ""
+
+    monkeypatch.setattr(runner, "classify", classify_synthetic)
+    monkeypatch.setattr(runner, "preprocess_ocr_roi", stub_profile_preprocess)
+    monkeypatch.setattr(runner, "run_tesseract", run_tesseract_synthetic)
+
+    output_dir = Path("data/dry_run_sequence_replay")
+    assert (
+        runner.main(
+            [
+                "--sequence-mode",
+                "manifest",
+                "--frame-manifest",
+                str(generated_manifest),
+                "--output",
+                str(output_dir),
+                "--ocr-target",
+                "confirmed-events",
+                "--ocr-rois",
+                "all",
+                "--no-rois",
+            ]
+        )
+        == 0
+    )
+
+    event_rows = read_csv_rows(output_dir / "result_events.csv")
+    assert [row["confirmation_mode"] for row in event_rows] == ["time"] * 9
+    assert [row["timestamp_ms"] for row in event_rows] == [
+        "0",
+        "100",
+        "500",
+        "700",
+        "1000",
+        "1500",
+        "2100",
+        "2600",
+        "3000",
+    ]
+    assert [row["event_type"] for row in event_rows] == [
+        "none",
+        "none",
+        "none",
+        "none",
+        "none",
+        "none",
+        "confirmed",
+        "duplicate",
+        "rejected_transition",
+    ]
+    assert event_rows[2]["candidate_duration_ms"] == "400"
+    assert event_rows[6]["confirmed_result"] == "True"
+    assert event_rows[6]["duplicate"] == "False"
+    assert event_rows[7]["confirmed_result"] == "True"
+    assert event_rows[7]["duplicate"] == "True"
+    assert event_rows[8]["result_shape_candidate"] == "True"
+    assert event_rows[8]["confirmed_result"] == "False"
+
+    ocr_rows = read_csv_rows(output_dir / "score_ocr.csv")
+    assert len(ocr_rows) == len(runner.OCR_ROIS)
+    assert {row["organized_file"] for row in ocr_rows} == {
+        "frames/result_score123456_c_frame_0007.png"
+    }
+    assert {row["roi_name"] for row in ocr_rows} == set(runner.OCR_ROIS)
+
+    summary = json.loads((output_dir / "score_ocr_summary.json").read_text(encoding="utf-8"))
+    assert summary["ocr_target_mode"] == "confirmed-events"
+    assert summary["total_ocr_attempts"] == len(runner.OCR_ROIS)
+    assert summary["skipped_duplicate_count"] == 1
+    assert summary["skipped_unconfirmed_count"] == 7
+    assert summary["expected_coverage_by_roi"]["score_digits"]["evaluation_status"] == "evaluated"
+    assert summary["expected_coverage_by_roi"]["max_combo"]["evaluation_status"] == "evaluated"
+    assert summary["expected_coverage_by_roi"]["perfect"]["evaluation_status"] == (
+        "no_expected_values"
+    )
+
+
 def test_minimal_manifest_marks_judgment_rois_as_no_expected_values(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

@@ -643,6 +643,40 @@ def write_capture_dry_run(
     return manifest_path, len(frames)
 
 
+def write_capture_dry_run_scenario(
+    output_dir: Path,
+    scenario_manifest: Path,
+    frame_root: Path | None = None,
+) -> tuple[Path, int]:
+    ensure_data_output_path(output_dir, argument_name="--capture-dry-run-output")
+    source_frames = read_frame_manifest(scenario_manifest, frame_root)
+    frames_dir = output_dir / "frames"
+    frames_dir.mkdir(parents=True, exist_ok=True)
+
+    frames: list[FrameInput] = []
+    for index, source_frame in enumerate(source_frames, start=1):
+        destination = frames_dir / (
+            f"{source_frame.image_path.stem}_frame_{index:04d}{source_frame.image_path.suffix}"
+        )
+        shutil.copy2(source_frame.image_path, destination)
+        relative_image_path = destination.relative_to(output_dir).as_posix()
+        row = {
+            **source_frame.row,
+            "organized_file": relative_image_path,
+        }
+        frames.append(
+            FrameInput(
+                row=row,
+                image_path=destination,
+                timestamp_ms=source_frame.timestamp_ms,
+            )
+        )
+
+    manifest_path = output_dir / "frame_manifest.csv"
+    write_frame_manifest(manifest_path, frames)
+    return manifest_path, len(frames)
+
+
 def build_metadata_frame_inputs(
     rows: Iterable[dict[str, str]],
     screenshots_root: Path,
@@ -1817,6 +1851,16 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--capture-dry-run-scenario",
+        type=Path,
+        default=None,
+        help=(
+            "Read a manifest-compatible dry-run sequence CSV with image_path,timestamp_ms, "
+            "copy its frames into data/, preserve optional columns, write frame_manifest.csv, "
+            "and exit."
+        ),
+    )
+    parser.add_argument(
         "--capture-dry-run-output",
         type=Path,
         default=Path("data/vision_poc_capture_dry_run"),
@@ -1921,6 +1965,18 @@ def resolve_ocr_profiles(values: list[str]) -> tuple[str, ...]:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if args.capture_dry_run and args.capture_dry_run_scenario is not None:
+        raise ValueError("--capture-dry-run and --capture-dry-run-scenario are mutually exclusive")
+
+    if args.capture_dry_run_scenario is not None:
+        manifest_path, frame_count = write_capture_dry_run_scenario(
+            args.capture_dry_run_output,
+            args.capture_dry_run_scenario,
+            args.frame_root,
+        )
+        print(f"Wrote dry-run sequence manifest: {manifest_path} ({frame_count} frames)")
+        return 0
+
     if args.capture_dry_run:
         if args.frame_root is None:
             raise ValueError("--frame-root is required with --capture-dry-run")

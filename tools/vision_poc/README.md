@@ -86,6 +86,28 @@ python -m tools.vision_poc --capture-dry-run --frame-root data/captured_frames -
 python -m tools.vision_poc --sequence-mode manifest --frame-manifest data/vision_poc_capture_dry_run/frame_manifest.csv --ocr-target confirmed-events --ocr-rois all --ocr-profile all
 ```
 
+複数 `screen_type` を混ぜた保存境界シナリオは `--capture-dry-run-scenario` で作れます。入力CSVは既存manifest契約と同じ `image_path,timestamp_ms` を必須列にし、任意で `screen_type`、`expected_score`、`max_combo`、`miss`、`ex_score`、補助列を持てます。`image_path` は `--frame-root` からの相対パス、またはCSVから解決できるパスです。PoCは各行の画像を `data/.../frames/` にコピーし、timestampと任意列を保った manifest互換 `frame_manifest.csv` を出力します。
+
+```csv
+image_path,timestamp_ms,screen_type,expected_score,max_combo,capture_note
+menu_setup_a.png,0,menu_setup,,,non-result
+result_score111111_short_a.png,100,result,111111,5,short-start
+result_score111111_short_b.png,500,result,111111,5,short-still-unconfirmed
+gameplay_reset.png,700,gameplay,,,reset
+result_score123456_a.png,1000,result,123456,10,sustained-start
+result_score123456_b.png,1500,result,123456,10,sustained-middle
+result_score123456_c.png,2100,result,123456,10,confirmed-save-boundary
+result_score123456_d.png,2600,result,123456,10,duplicate-window
+transition_countup_score999999.png,3000,transition,999999,,countup-shape
+```
+
+```powershell
+python -m tools.vision_poc --capture-dry-run-scenario data/vision_poc_sequences/dry_run_sequence.csv --frame-root data/vision_poc_sequences/source_frames --capture-dry-run-output data/vision_poc_sequence_dry_run
+python -m tools.vision_poc --sequence-mode manifest --frame-manifest data/vision_poc_sequence_dry_run/frame_manifest.csv --ocr-target confirmed-events --ocr-rois all --ocr-profile all
+```
+
+この入口も本番キャプチャではありません。実デバイス、常駐監視、非同期処理、DB保存、OCR方式刷新には踏み込まず、実キャプチャ前に近い時系列を manifest mode で再現するための補助です。確認点は、short result sequence が未確定のまま残ること、sustained result sequence が `confirmation_mode=time` で確定すること、duplicate window 内の同一キーが `duplicate=true` になること、`transition_countup_*` が `result_shape_candidate=true` でも `event_type=rejected_transition` として保存対象外になることです。confirmed-events の保存境界は引き続き `confirmed_result=true` かつ `duplicate=false` だけです。
+
 実キャプチャAPI導入時は provider の入力元だけを実デバイスや録画前段に差し替え、manifest互換 dry-run 出力はしばらく維持します。これにより、`FrameInput` 契約、`timestamp_ms` の単調増加、manifest expected columns の保持、`confirmation_mode=time`、confirmed-events の保存境界を同じコマンドで再確認できます。
 
 生成した manifest はそのまま manifest モードで処理できます。

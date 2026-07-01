@@ -528,6 +528,80 @@ def test_capture_dry_run_writes_data_manifest_readable_by_manifest_mode(
     ]
 
 
+def test_capture_dry_run_scenario_preserves_mixed_manifest_columns(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    frame_root = tmp_path / "input_frames"
+    write_test_image(frame_root / "menu.png")
+    write_test_image(frame_root / "result_score123456.png")
+    write_test_image(frame_root / "transition_countup_score999999.png")
+    scenario_manifest = tmp_path / "scenario.csv"
+    scenario_manifest.write_text(
+        "image_path,timestamp_ms,screen_type,expected_score,max_combo,capture_note\n"
+        "menu.png,0,menu_setup,,,warmup\n"
+        "result_score123456.png,500,result,123456,10,short\n"
+        "transition_countup_score999999.png,1500,transition,999999,,countup\n",
+        encoding="utf-8",
+    )
+
+    manifest_path, count = runner.write_capture_dry_run_scenario(
+        Path("data/capture_sequence_test"),
+        scenario_manifest,
+        frame_root,
+    )
+
+    assert count == 3
+    assert manifest_path == Path("data/capture_sequence_test/frame_manifest.csv")
+    rows = read_csv_rows(manifest_path)
+    assert list(rows[0].keys()) == [
+        "image_path",
+        "timestamp_ms",
+        "screen_type",
+        "expected_score",
+        "max_combo",
+        "capture_note",
+    ]
+    assert rows == [
+        {
+            "image_path": "frames/menu_frame_0001.png",
+            "timestamp_ms": "0",
+            "screen_type": "menu_setup",
+            "expected_score": "",
+            "max_combo": "",
+            "capture_note": "warmup",
+        },
+        {
+            "image_path": "frames/result_score123456_frame_0002.png",
+            "timestamp_ms": "500",
+            "screen_type": "result",
+            "expected_score": "123456",
+            "max_combo": "10",
+            "capture_note": "short",
+        },
+        {
+            "image_path": "frames/transition_countup_score999999_frame_0003.png",
+            "timestamp_ms": "1500",
+            "screen_type": "transition",
+            "expected_score": "999999",
+            "max_combo": "",
+            "capture_note": "countup",
+        },
+    ]
+
+    frames = runner.read_frame_manifest(manifest_path)
+    assert [frame.timestamp_ms for frame in frames] == [0, 500, 1500]
+    assert [frame.row["screen_type"] for frame in frames] == [
+        "menu_setup",
+        "result",
+        "transition",
+    ]
+    assert frames[1].row["expected_score"] == "123456"
+    assert frames[1].row["max_combo"] == "10"
+    assert frames[2].row["capture_note"] == "countup"
+
+
 def test_capture_dry_run_rejects_output_outside_data(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
