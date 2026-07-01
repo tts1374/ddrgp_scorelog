@@ -192,7 +192,14 @@ OCRエンジンはPATH上の `tesseract` を使います。未導入または利
 
 現在のローカル metadata で `python -m tools.vision_poc --sequence-mode timestamped --ocr-target confirmed-events --ocr-rois all --ocr-profile all` と、その manifest 再読込を実行すると、保存直前イベントは4件、duplicateは1件、`transition_countup_*` の rejected transition は3件です。timestamped と manifest ではどちらも `confirmation_mode=time` になり、metadata 由来の期待値列が保持されるため、`score_digits`、`max_combo`、`marvelous`、`perfect`、`great`、`good`、`miss`、`ex_score` はすべて `evaluated` として読めます。default `score_ocr_summary.json` では `ex_score` が4件中1 match / 3 mismatch ですが、`score_ocr_profiles_summary.json` では `low-threshold` が4件中4 matchで、`recommendation_readiness=adoption_candidate` の単独推奨です。したがって M2 の現時点では、`ex_score` の `low-threshold` は confirmed-events かつ expected coverage が `evaluated` の場合だけ採用候補として読む、という条件で固定します。DB保存、常駐監視、本番キャプチャAPI、OCR方式刷新、ROI座標定義の大変更にはまだ進みません。
 
-confirmed-events の標準評価母数が4件に留まる理由は、metadata の時系列で1000ms以上連続した result candidate だけが time-based confirmation で確定し、duplicate window 内の同一 `duplicate_key` は保存直前OCR対象から外れるためです。ローカル素材で `ex_score` の採用候補をもう少し安定して見る場合は、`data/` 配下に検証用 manifest を作り、各 result 画像を non-result reset の後に2フレーム連続、かつ各result間を90秒超に離して並べます。この manifest は本番キャプチャやDB保存ではなく、既存の manifest 契約で confirmed-events の母数だけを増やすローカル評価です。2026-07時点のローカル確認では、この形で `ex_score` の confirmed-events を16件に増やしても `confirmation_mode=time`、`evaluation_status=evaluated`、`recommendation_readiness=adoption_candidate` は維持され、default は4 match / 11 mismatch / 1 empty、`low-threshold` は16 match / 0 mismatch / 0 empty でした。
+confirmed-events の標準評価母数が4件に留まる理由は、metadata の時系列で1000ms以上連続した result candidate だけが time-based confirmation で確定し、duplicate window 内の同一 `duplicate_key` は保存直前OCR対象から外れるためです。ローカル素材で `ex_score` の採用候補をもう少し安定して見る場合は、`--make-m2-expanded-manifest` で `data/` 配下に検証用 manifest を再生成できます。この manifest は、各 result 画像を non-result reset の後に2フレーム連続、かつ各result間を90秒超に離して並べます。本番キャプチャやDB保存ではなく、既存の manifest 契約で confirmed-events の母数だけを増やすローカル評価です。
+
+```powershell
+python -m tools.vision_poc --make-m2-expanded-manifest data/vision_poc_m2_expanded_manifest
+python -m tools.vision_poc --sequence-mode manifest --frame-manifest data/vision_poc_m2_expanded_manifest/frame_manifest.csv --frame-root samples/screenshots --output data/vision_poc_m2_expanded_ex_score --ocr-target confirmed-events --ocr-rois ex_score --ocr-profile all
+```
+
+2026-07時点のローカル確認では、この形で `ex_score` の confirmed-events を16件に増やしても `confirmation_mode=time`、`evaluation_status=evaluated`、`recommendation_readiness=adoption_candidate` は維持され、default は4 match / 11 mismatch / 1 empty、`low-threshold` は16 match / 0 mismatch / 0 empty でした。主要数字ROI全体へ広げる場合は、同じ manifest を使い、まず `ex_score`、`miss`、`good`、`score_digits`、`max_combo`、`marvelous`、`perfect`、`great` の順で弱点や副作用が出やすいROIから確認します。`no_expected_values` は採用根拠にせず、`partially_evaluated` は暫定扱いのまま期待値列を埋めてから再判断します。
 
 ### OCR profile比較
 

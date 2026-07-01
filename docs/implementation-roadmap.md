@@ -110,7 +110,7 @@ Windows常駐アプリが DDR GRAND PRIX のゲームウィンドウを直接キ
 - duplicate、未確定候補、`rejected_transition` は confirmed-events OCR対象外のまま維持する。
 - default summary と profile summary の読み分けを固定し、`score_ocr_summary.json` は default profile の現行弱点、`score_ocr_profiles_summary.json` は profile採用候補の比較として読む。
 - 現ローカル確認では `ex_score` の default は 4件中1 match / 3 mismatch だが、`low-threshold` は 4件中4 match で、confirmed-events かつ `evaluated` の場合だけ採用候補として読める。
-- ローカル検証用に、各 result 画像を non-result reset 後の2連続フレームとして並べ、result間を duplicate window より長く離した manifest を `data/` 配下で作ると、既存の保存境界を保ったまま `ex_score` の confirmed-events 母数を16件へ増やせる。この確認では default は 4 match / 11 mismatch / 1 empty、`low-threshold` は 16 match / 0 mismatch / 0 empty で、`recommendation_readiness=adoption_candidate` を維持している。
+- ローカル検証用に、各 result 画像を non-result reset 後の2連続フレームとして並べ、result間を duplicate window より長く離した manifest を `--make-m2-expanded-manifest` で `data/` 配下へ再生成できる。既存の保存境界を保ったまま `ex_score` の confirmed-events 母数を16件へ増やせ、この確認では default は 4 match / 11 mismatch / 1 empty、`low-threshold` は 16 match / 0 mismatch / 0 empty で、`recommendation_readiness=adoption_candidate` を維持している。
 
 次にやること:
 
@@ -119,7 +119,7 @@ Windows常駐アプリが DDR GRAND PRIX のゲームウィンドウを直接キ
 - `partially_evaluated` は暫定判断として扱い、採用判断前に不足期待値を埋める。
 - ROI座標の大変更ではなく、まずは局所前処理とprofile評価で改善する。
 - default OCR summary と profile比較の読み分けを維持し、保存候補で弱いROIを `ocr_roi_report.md` の default counts / recommended counts / delta から追う。
-- `ex_score` は `low-threshold` 採用候補の読み方を固定済みなので、次は評価母数を増やし、同じ条件で `recommendation_readiness=adoption_candidate` が維持されるか確認する。
+- `ex_score` は `low-threshold` 採用候補の読み方と拡張confirmed-events manifestの再生成入口を固定済みなので、次は同じ manifest で弱点や副作用が出やすいROIから主要数字ROI全体へ段階的に広げる。
 
 完了条件:
 

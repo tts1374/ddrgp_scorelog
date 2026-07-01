@@ -712,6 +712,85 @@ def build_timestamped_frame_inputs(
     return frames
 
 
+def select_non_result_reset_row(rows: Iterable[dict[str, str]]) -> dict[str, str]:
+    row_list = list(rows)
+    preferred_screen_types = {"menu_setup", "song_select", "gameplay"}
+    for row in row_list:
+        if row.get("screen_type", "") in preferred_screen_types:
+            return row
+    for row in row_list:
+        if row.get("screen_type", "") != "result":
+            return row
+    raise ValueError("metadata contains no non-result row to use as an expanded manifest reset")
+
+
+def build_m2_expanded_confirmed_events_frames(
+    rows: Iterable[dict[str, str]],
+    screenshots_root: Path,
+    *,
+    start_ms: int = 0,
+    sequence_stride_ms: int = DUPLICATE_WINDOW_MS + 5_000,
+    reset_to_result_ms: int = 1_000,
+    result_frame_interval_ms: int = CONFIRMED_RESULT_MIN_DURATION_MS,
+) -> list[FrameInput]:
+    row_list = list(rows)
+    reset_row = select_non_result_reset_row(row_list)
+    result_rows = [row for row in row_list if row.get("screen_type", "") == "result"]
+    if not result_rows:
+        raise ValueError("metadata contains no result rows for expanded confirmed-events manifest")
+    if sequence_stride_ms <= DUPLICATE_WINDOW_MS:
+        raise ValueError("sequence_stride_ms must be greater than DUPLICATE_WINDOW_MS")
+    if reset_to_result_ms <= 0:
+        raise ValueError("reset_to_result_ms must be greater than 0")
+    if result_frame_interval_ms < CONFIRMED_RESULT_MIN_DURATION_MS:
+        raise ValueError(
+            "result_frame_interval_ms must be at least CONFIRMED_RESULT_MIN_DURATION_MS"
+        )
+
+    frames: list[FrameInput] = []
+    for index, result_row in enumerate(result_rows):
+        base_timestamp_ms = start_ms + index * sequence_stride_ms
+        frames.extend(
+            [
+                FrameInput(
+                    row=reset_row,
+                    image_path=screenshots_root / reset_row["organized_file"],
+                    timestamp_ms=base_timestamp_ms,
+                ),
+                FrameInput(
+                    row=result_row,
+                    image_path=screenshots_root / result_row["organized_file"],
+                    timestamp_ms=base_timestamp_ms + reset_to_result_ms,
+                ),
+                FrameInput(
+                    row=result_row,
+                    image_path=screenshots_root / result_row["organized_file"],
+                    timestamp_ms=(
+                        base_timestamp_ms + reset_to_result_ms + result_frame_interval_ms
+                    ),
+                ),
+            ]
+        )
+    return frames
+
+
+def write_m2_expanded_confirmed_events_manifest(
+    output_dir: Path,
+    rows: Iterable[dict[str, str]],
+    screenshots_root: Path,
+) -> tuple[Path, int, int]:
+    ensure_data_output_path(output_dir, argument_name="--make-m2-expanded-manifest")
+    output_dir.mkdir(parents=True, exist_ok=True)
+    frames = build_m2_expanded_confirmed_events_frames(rows, screenshots_root)
+    for frame in frames:
+        if not frame.image_path.exists():
+            raise ValueError(f"expanded manifest image_path does not exist: {frame.image_path}")
+    manifest_path = output_dir / "frame_manifest.csv"
+    write_frame_manifest(manifest_path, frames)
+    result_count = sum(1 for frame in frames if frame.row.get("screen_type", "") == "result") // 2
+    return manifest_path, len(frames), result_count
+
+
 def write_frame_manifest(path: Path, frames: Iterable[FrameInput]) -> None:
     frame_list = list(frames)
     extra_fieldnames: list[str] = []
@@ -1942,6 +2021,15 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--make-m2-expanded-manifest",
+        type=Path,
+        default=None,
+        help=(
+            "Write an M2 local evaluation manifest under data/ that replays every metadata "
+            "result row after a non-result reset and two sustained result frames."
+        ),
+    )
+    parser.add_argument(
         "--capture-dry-run",
         action="store_true",
         help=(
@@ -2102,6 +2190,19 @@ def main(argv: list[str] | None = None) -> int:
             screen_type=args.screen_type,
         )
         print(f"Wrote frame manifest: {args.make_frame_manifest} ({frame_count} frames)")
+        return 0
+
+    if args.make_m2_expanded_manifest is not None:
+        rows = read_metadata(args.metadata)
+        manifest_path, frame_count, result_count = write_m2_expanded_confirmed_events_manifest(
+            args.make_m2_expanded_manifest,
+            rows,
+            args.screenshots_root,
+        )
+        print(
+            "Wrote M2 expanded confirmed-events manifest: "
+            f"{manifest_path} ({frame_count} frames, {result_count} result events)"
+        )
         return 0
 
     output_dir: Path = args.output or (

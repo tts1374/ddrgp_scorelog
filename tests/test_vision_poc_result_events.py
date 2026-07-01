@@ -1072,3 +1072,126 @@ def test_timestamped_mode_writes_reusable_frame_manifest(
             "ex_score": "552",
         },
     ]
+
+
+def test_m2_expanded_manifest_replays_each_result_after_reset(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    screenshots_root = tmp_path / "screenshots"
+    for name in ("menu_setup/reset.png", "result/a_score111111.png", "result/b_score222222.png"):
+        write_test_image(screenshots_root / name)
+    metadata_path = tmp_path / "metadata.csv"
+    metadata_path.write_text(
+        "organized_file,screen_type,expected_score,max_combo,ex_score\n"
+        "menu_setup/reset.png,menu_setup,,,\n"
+        "result/a_score111111.png,result,111111,10,111\n"
+        "result/b_score222222.png,result,222222,20,222\n",
+        encoding="utf-8",
+    )
+
+    assert (
+        runner.main(
+            [
+                "--make-m2-expanded-manifest",
+                "data/m2_expanded",
+                "--metadata",
+                str(metadata_path),
+                "--screenshots-root",
+                str(screenshots_root),
+            ]
+        )
+        == 0
+    )
+
+    rows = read_csv_rows(Path("data/m2_expanded/frame_manifest.csv"))
+    assert rows == [
+        {
+            "image_path": "menu_setup/reset.png",
+            "timestamp_ms": "0",
+            "screen_type": "menu_setup",
+            "expected_score": "",
+            "max_combo": "",
+            "ex_score": "",
+        },
+        {
+            "image_path": "result/a_score111111.png",
+            "timestamp_ms": "1000",
+            "screen_type": "result",
+            "expected_score": "111111",
+            "max_combo": "10",
+            "ex_score": "111",
+        },
+        {
+            "image_path": "result/a_score111111.png",
+            "timestamp_ms": "2000",
+            "screen_type": "result",
+            "expected_score": "111111",
+            "max_combo": "10",
+            "ex_score": "111",
+        },
+        {
+            "image_path": "menu_setup/reset.png",
+            "timestamp_ms": "95000",
+            "screen_type": "menu_setup",
+            "expected_score": "",
+            "max_combo": "",
+            "ex_score": "",
+        },
+        {
+            "image_path": "result/b_score222222.png",
+            "timestamp_ms": "96000",
+            "screen_type": "result",
+            "expected_score": "222222",
+            "max_combo": "20",
+            "ex_score": "222",
+        },
+        {
+            "image_path": "result/b_score222222.png",
+            "timestamp_ms": "97000",
+            "screen_type": "result",
+            "expected_score": "222222",
+            "max_combo": "20",
+            "ex_score": "222",
+        },
+    ]
+
+    frames = runner.read_frame_manifest(
+        Path("data/m2_expanded/frame_manifest.csv"),
+        screenshots_root,
+    )
+    events = runner.build_result_events(
+        [
+            classification(
+                frame.row["organized_file"],
+                result_candidate=frame.row["screen_type"] == "result",
+                screen_type=frame.row["screen_type"],
+            )
+            for frame in frames
+        ],
+        timestamps_ms=[frame.timestamp_ms for frame in frames],
+    )
+    assert [event.event_type for event in events] == [
+        "none",
+        "none",
+        "confirmed",
+        "none",
+        "none",
+        "confirmed",
+    ]
+    assert [event.confirmation_mode for event in events] == ["time"] * 6
+    assert not any(event.duplicate for event in events)
+
+
+def test_m2_expanded_manifest_requires_data_output(tmp_path: Path) -> None:
+    rows = [
+        {"organized_file": "reset.png", "screen_type": "menu_setup"},
+        {"organized_file": "result.png", "screen_type": "result"},
+    ]
+    with pytest.raises(ValueError, match="--make-m2-expanded-manifest must be under data/"):
+        runner.write_m2_expanded_confirmed_events_manifest(
+            tmp_path / "outside_data",
+            rows,
+            tmp_path,
+        )
