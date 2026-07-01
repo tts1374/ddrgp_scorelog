@@ -128,6 +128,12 @@ class FrameInput:
 
 
 @dataclass(frozen=True)
+class DryRunCaptureFrame:
+    source_path: Path
+    timestamp_ms: int
+
+
+@dataclass(frozen=True)
 class ScoreOcrResult:
     organized_file: str
     screen_type: str
@@ -546,6 +552,22 @@ def find_frame_images(frame_root: Path) -> list[Path]:
     return sorted(images, key=lambda path: path.name.lower())
 
 
+def ensure_data_output_path(path: Path, *, argument_name: str) -> None:
+    data_root = (Path.cwd() / "data").resolve()
+    resolved_path = path.resolve()
+    if resolved_path == data_root or data_root in resolved_path.parents:
+        return
+    raise ValueError(f"{argument_name} must be under data/: {path}")
+
+
+def iter_dry_run_capture_frames(frame_root: Path, fps: float) -> Iterable[DryRunCaptureFrame]:
+    previous_timestamp_ms: int | None = None
+    for index, image_path in enumerate(find_frame_images(frame_root)):
+        timestamp_ms = frame_timestamp_ms(index, fps, previous_timestamp_ms)
+        previous_timestamp_ms = timestamp_ms
+        yield DryRunCaptureFrame(source_path=image_path, timestamp_ms=timestamp_ms)
+
+
 def build_frame_manifest_rows(
     frame_root: Path,
     fps: float,
@@ -586,6 +608,39 @@ def write_capture_frame_manifest(
         writer.writeheader()
         writer.writerows(rows)
     return len(rows)
+
+
+def write_capture_dry_run(
+    output_dir: Path,
+    frame_root: Path,
+    fps: float,
+    *,
+    screen_type: str | None = None,
+) -> tuple[Path, int]:
+    ensure_data_output_path(output_dir, argument_name="--capture-dry-run-output")
+    frames_dir = output_dir / "frames"
+    frames_dir.mkdir(parents=True, exist_ok=True)
+
+    frames: list[FrameInput] = []
+    for capture_frame in iter_dry_run_capture_frames(frame_root, fps):
+        destination = frames_dir / capture_frame.source_path.name
+        shutil.copy2(capture_frame.source_path, destination)
+        relative_image_path = destination.relative_to(output_dir).as_posix()
+        row = {
+            "organized_file": relative_image_path,
+            "screen_type": "" if screen_type is None else screen_type,
+        }
+        frames.append(
+            FrameInput(
+                row=row,
+                image_path=destination,
+                timestamp_ms=capture_frame.timestamp_ms,
+            )
+        )
+
+    manifest_path = output_dir / "frame_manifest.csv"
+    write_frame_manifest(manifest_path, frames)
+    return manifest_path, len(frames)
 
 
 def build_metadata_frame_inputs(
@@ -1754,10 +1809,27 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--capture-dry-run",
+        action="store_true",
+        help=(
+            "Copy images directly under --frame-root into a data/ dry-run frame directory, "
+            "write a manifest-compatible frame_manifest.csv, and exit."
+        ),
+    )
+    parser.add_argument(
+        "--capture-dry-run-output",
+        type=Path,
+        default=Path("data/vision_poc_capture_dry_run"),
+        help="Output directory under data/ for --capture-dry-run frames and frame_manifest.csv.",
+    )
+    parser.add_argument(
         "--fps",
         type=parse_positive_fps,
         default=None,
-        help="Capture FPS used to generate timestamp_ms for --make-frame-manifest.",
+        help=(
+            "Capture FPS used to generate timestamp_ms for --make-frame-manifest and "
+            "--capture-dry-run."
+        ),
     )
     parser.add_argument(
         "--screen-type",
@@ -1849,6 +1921,20 @@ def resolve_ocr_profiles(values: list[str]) -> tuple[str, ...]:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if args.capture_dry_run:
+        if args.frame_root is None:
+            raise ValueError("--frame-root is required with --capture-dry-run")
+        if args.fps is None:
+            raise ValueError("--fps is required with --capture-dry-run")
+        manifest_path, frame_count = write_capture_dry_run(
+            args.capture_dry_run_output,
+            args.frame_root,
+            args.fps,
+            screen_type=args.screen_type,
+        )
+        print(f"Wrote dry-run capture manifest: {manifest_path} ({frame_count} frames)")
+        return 0
+
     if args.make_frame_manifest is not None:
         if args.frame_root is None:
             raise ValueError("--frame-root is required with --make-frame-manifest")

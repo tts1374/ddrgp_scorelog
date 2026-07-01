@@ -142,3 +142,11 @@ PoCの初期判定は、以下を満たしたらリザルト候補とする。
 4. スコアと判定数ROIの数字OCRを試す。
 5. 連続フレームの代わりに、重複サンプルとカウントアップサンプルを使って安定判定ロジックをユニットテスト化する。
 6. 実キャプチャ接続後に、時間バッファによる `final_result` 判定へ置き換える。
+
+## 実キャプチャAPI前の dry-run
+
+実キャプチャAPIへ進む直前の確認として、既存画像ディレクトリを capture provider の代替入力にする dry-run を使う。これは本番キャプチャ、実デバイス依存コード、常駐監視ループ、非同期処理、DB保存、OCR方式刷新ではない。
+
+dry-run provider はファイル名昇順にフレームを返し、各フレームへ単調増加する `timestamp_ms` を付けるだけにする。保存先は `data/` 配下に限定し、出力は `frames/` と manifest互換CSVにする。生成manifestは `--sequence-mode manifest` で読み直し、`confirmation_mode=time`、`confirmed_result=true` かつ `duplicate=false` の保存境界、`transition_countup_*` の `rejected_transition` 扱いが維持されることを確認する。
+
+実キャプチャAPI導入時は provider の入力元だけを差し替え、manifest互換 dry-run 出力はしばらく維持する。これにより、キャプチャ入力の不具合と分類/OCR/イベント確定の不具合を同じCSV契約で切り分けられる。

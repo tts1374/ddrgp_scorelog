@@ -459,6 +459,146 @@ def test_generated_frame_manifest_is_readable(tmp_path: Path) -> None:
     assert [frame.timestamp_ms for frame in frames] == [0, 17]
 
 
+def test_dry_run_capture_provider_supplies_sorted_frames_with_timestamps(
+    tmp_path: Path,
+) -> None:
+    frame_root = tmp_path / "frames"
+    write_test_image(frame_root / "frame_002.jpg")
+    write_test_image(frame_root / "frame_001.png")
+    write_test_image(frame_root / "frame_003.webp")
+
+    frames = list(runner.iter_dry_run_capture_frames(frame_root, 30))
+
+    assert [frame.source_path.name for frame in frames] == [
+        "frame_001.png",
+        "frame_002.jpg",
+        "frame_003.webp",
+    ]
+    assert [frame.timestamp_ms for frame in frames] == [0, 33, 67]
+
+
+def test_capture_dry_run_writes_data_manifest_readable_by_manifest_mode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    frame_root = tmp_path / "input_frames"
+    write_test_image(frame_root / "frame_002.jpg")
+    write_test_image(frame_root / "frame_001.png")
+    write_test_image(frame_root / "frame_003.webp")
+
+    manifest_path, count = runner.write_capture_dry_run(
+        Path("data/capture_dry_run_test"),
+        frame_root,
+        30,
+        screen_type="unknown",
+    )
+
+    assert count == 3
+    assert manifest_path == Path("data/capture_dry_run_test/frame_manifest.csv")
+    assert read_csv_rows(manifest_path) == [
+        {
+            "image_path": "frames/frame_001.png",
+            "timestamp_ms": "0",
+            "screen_type": "unknown",
+        },
+        {
+            "image_path": "frames/frame_002.jpg",
+            "timestamp_ms": "33",
+            "screen_type": "unknown",
+        },
+        {
+            "image_path": "frames/frame_003.webp",
+            "timestamp_ms": "67",
+            "screen_type": "unknown",
+        },
+    ]
+
+    frames = runner.read_frame_manifest(manifest_path)
+    assert [frame.image_path.as_posix() for frame in frames] == [
+        "data/capture_dry_run_test/frames/frame_001.png",
+        "data/capture_dry_run_test/frames/frame_002.jpg",
+        "data/capture_dry_run_test/frames/frame_003.webp",
+    ]
+    assert [frame.timestamp_ms for frame in frames] == [0, 33, 67]
+    assert [frame.row for frame in frames] == [
+        {"organized_file": "frames/frame_001.png", "screen_type": "unknown"},
+        {"organized_file": "frames/frame_002.jpg", "screen_type": "unknown"},
+        {"organized_file": "frames/frame_003.webp", "screen_type": "unknown"},
+    ]
+
+
+def test_capture_dry_run_rejects_output_outside_data(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    frame_root = tmp_path / "input_frames"
+    write_test_image(frame_root / "frame_001.png")
+
+    with pytest.raises(ValueError, match="must be under data/"):
+        runner.write_capture_dry_run(tmp_path / "outside", frame_root, 30)
+
+
+def test_capture_dry_run_cli_manifest_keeps_time_confirmation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    frame_root = tmp_path / "input_frames"
+    write_test_image(frame_root / "result_score123456_a.png")
+    write_test_image(frame_root / "result_score123456_b.png")
+    write_test_image(frame_root / "result_score123456_c.png")
+
+    assert (
+        runner.main(
+            [
+                "--capture-dry-run",
+                "--frame-root",
+                str(frame_root),
+                "--fps",
+                "1",
+                "--screen-type",
+                "result",
+                "--capture-dry-run-output",
+                "data/capture_dry_run_cli",
+            ]
+        )
+        == 0
+    )
+
+    monkeypatch.setattr(
+        runner,
+        "classify",
+        lambda _image, row: classification(
+            row["organized_file"],
+            result_candidate=True,
+            screen_type=row["screen_type"],
+        ),
+    )
+
+    assert (
+        runner.main(
+            [
+                "--sequence-mode",
+                "manifest",
+                "--frame-manifest",
+                "data/capture_dry_run_cli/frame_manifest.csv",
+                "--output",
+                "data/capture_dry_run_manifest_read",
+                "--no-rois",
+                "--no-ocr",
+            ]
+        )
+        == 0
+    )
+
+    rows = read_csv_rows(Path("data/capture_dry_run_manifest_read/result_events.csv"))
+    assert [row["confirmation_mode"] for row in rows] == ["time", "time", "time"]
+    assert [row["timestamp_ms"] for row in rows] == ["0", "1000", "2000"]
+    assert rows[1]["event_type"] == "confirmed"
+
+
 @pytest.mark.parametrize(
     ("timestamp_ms", "expected_message"),
     [
