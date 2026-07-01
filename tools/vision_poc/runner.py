@@ -1179,9 +1179,13 @@ def is_ocr_target(
     if ocr_target_mode == "result-candidate":
         return classification.result_candidate
     if ocr_target_mode == "confirmed-events":
-        return event.confirmed_result and not event.duplicate
+        return is_save_candidate_event(event)
     joined = ", ".join(OCR_TARGET_MODES)
     raise ValueError(f"unsupported OCR target mode: {ocr_target_mode}; expected: {joined}")
+
+
+def is_save_candidate_event(event: ResultEvent) -> bool:
+    return event.confirmed_result and not event.duplicate
 
 
 OcrResultLike = ScoreOcrResult | ProfileScoreOcrResult

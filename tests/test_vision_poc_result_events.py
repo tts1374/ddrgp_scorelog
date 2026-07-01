@@ -128,6 +128,59 @@ def test_repeated_confirmed_duplicate_key_becomes_duplicate() -> None:
     assert "duplicate_within_frames=1" in events[2].reason
 
 
+def test_save_candidate_event_boundary_requires_confirmed_non_duplicate() -> None:
+    events = runner.build_result_events(
+        [
+            classification("organized/result_score123456_a.png", result_candidate=True),
+            classification("organized/result_score123456_b.png", result_candidate=True),
+            classification("organized/result_score123456_c.png", result_candidate=True),
+            classification(
+                "organized/transition_countup_score999999_a.png",
+                result_candidate=False,
+                result_shape_candidate=True,
+                screen_type="transition",
+                transition_kind="countup",
+            ),
+            classification(
+                "organized/song_select_a.png",
+                result_candidate=False,
+                result_shape_candidate=False,
+                screen_type="song_select",
+            ),
+            classification("organized/result_score222222_a.png", result_candidate=True),
+        ]
+    )
+
+    assert [event.event_type for event in events] == [
+        "none",
+        "confirmed",
+        "duplicate",
+        "rejected_transition",
+        "none",
+        "none",
+    ]
+    assert [event.result_candidate for event in events] == [
+        True,
+        True,
+        True,
+        False,
+        False,
+        True,
+    ]
+    assert [runner.is_save_candidate_event(event) for event in events] == [
+        False,
+        True,
+        False,
+        False,
+        False,
+        False,
+    ]
+    assert events[2].confirmed_result
+    assert events[2].duplicate
+    assert events[3].result_shape_candidate
+    assert not events[3].confirmed_result
+
+
 def test_duplicate_key_for_classification_uses_local_poc_score_key() -> None:
     with_score = classification(
         "organized/result_016_sp_basic_lv06_score935730.png",

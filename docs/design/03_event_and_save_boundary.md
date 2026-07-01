@@ -75,6 +75,14 @@ event_type=confirmed
 
 ただし将来 `event_type` が増える場合でも、保存境界の基本は `confirmed_result=true` かつ `duplicate=false` とする。
 
+保存しない行:
+
+- `duplicate=true`。`confirmed_result=true` でも保存しない。
+- `event_type=rejected_transition`。
+- `event_type=none`。
+- `result_candidate=true` だが `confirmed_result=false` の未確定候補。
+- `result_shape_candidate=true` だけの行。
+
 ## OCR対象境界
 
 `--ocr-target confirmed-events` は保存直前OCR相当の評価モードです。
@@ -150,7 +158,9 @@ DUPLICATE_WINDOW_FRAMES = 90
 - ファイル名に `scoreXXXXXX` があれば `score:<digits>`
 - なければ `file:<filename>`
 
-これは本格実装ではない。将来候補:
+これはローカルPoC用の簡易キーであり、本格実装ではない。score だけで寄せるため、同点別曲や同点別譜面を誤って duplicate 扱いする可能性がある。DB保存へ進む前に、本格キーへ差し替える。
+
+将来候補:
 
 - score + 曲名 + 難易度
 - score + 判定数
@@ -158,6 +168,22 @@ DUPLICATE_WINDOW_FRAMES = 90
 - マスタ照合後の正規化済み result id
 
 ## `result_events.csv` の読み方
+
+`result_events.csv` は保存直前イベント契約のCSVです。各列の意味は以下です。
+
+- `frame_index`: 入力順の0始まりフレーム番号。
+- `organized_file`: 入力画像を表す相対名またはmanifest上の画像名。
+- `screen_type`: metadataまたはmanifest上の画面種別。未知なら空欄や `unknown` もあり得る。
+- `result_candidate`: 単発フレーム分類で保存候補に見えるか。これだけでは保存しない。
+- `result_shape_candidate`: リザルト画面らしい形状検出。`transition_countup_*` では `true` でも保存対象外。
+- `confirmed_result`: 継続条件を満たしたか。duplicate行でも `true` になり得る。
+- `event_type`: `none` / `confirmed` / `duplicate` / `rejected_transition` の現行イベント解釈。
+- `duplicate`: duplicate window 内の同一キー再確定か。`true` の行は保存しない。
+- `duplicate_key`: 現行PoCの簡易重複キー。
+- `reason`: 分類理由、継続条件、重複距離などの確認用メモ。
+- `timestamp_ms`: timestamped / manifest / dry-run 由来の入力時刻。metadata modeでは空欄。
+- `candidate_duration_ms`: timestamp付き入力で候補が継続した時間。metadata modeでは空欄。
+- `confirmation_mode`: `frames` または `time`。
 
 保存候補確認では以下を見る。
 

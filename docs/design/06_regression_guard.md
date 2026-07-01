@@ -30,12 +30,16 @@
 ## 保存境界
 
 - `result_candidate=true` だけでは保存対象にしない。
-- 保存対象は `confirmed_result=true` かつ `duplicate=false`。
-- `event_type=confirmed` は保存候補として扱える。
+- 保存対象は `confirmed_result=true` かつ `duplicate=false` だけ。
+- 現行PoCでは `event_type=confirmed` は保存候補として扱える。
+- 将来 `event_type` が増えても、基本境界は `confirmed_result=true` かつ `duplicate=false`。
 - `event_type=duplicate` は保存しない。
 - `event_type=rejected_transition` は保存しない。
 - `event_type=none` は保存しない。
 - duplicate の行は `confirmed_result=true` でも保存しない。
+- 未確定の `result_candidate=true` は保存しない。
+- `result_shape_candidate=true` だけでは保存しない。
+- 現行 `duplicate_key` はファイル名由来のローカルPoC簡易キーのまま維持し、M1では本格キーへ差し替えない。
 
 ## transition_countup
 

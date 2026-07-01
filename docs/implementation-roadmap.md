@@ -85,7 +85,8 @@ Windows常駐アプリが DDR GRAND PRIX のゲームウィンドウを直接キ
 やること:
 
 - `result_events.csv` の列意味を仕様として固定する。
-- 保存候補を `event_type=confirmed` または `confirmed_result=true` かつ `duplicate=false` に統一する。
+- 保存候補を `confirmed_result=true` かつ `duplicate=false` に固定する。
+- 現行PoCでは `event_type=confirmed` も保存候補として読めるが、将来 `event_type` が増えても基本境界は `confirmed_result=true` かつ `duplicate=false` とする。
 - `duplicate_key` は現行PoCの簡易実装であることを明記し、本格差し替えポイントを整理する。
 - time-based confirmation のしきい値をサンプルで再確認する。
 - `transition_countup_*` は `result_shape_candidate=true` でも保存対象外にする方針を維持する。
@@ -93,6 +94,7 @@ Windows常駐アプリが DDR GRAND PRIX のゲームウィンドウを直接キ
 完了条件:
 
 - 保存対象、重複、遷移除外、未確定の区別がテストとREADMEで一致している。
+- duplicate、`rejected_transition`、`none`、未確定 `result_candidate` が保存対象外であることをテストで確認できる。
 - DB保存実装がなくても「保存してよいイベント行」を一意に判定できる。
 
 ### M2: 数字OCRの保存候補品質を上げる
