@@ -639,6 +639,8 @@ def write_frame_manifest(path: Path, frames: Iterable[FrameInput]) -> None:
 
 def write_ocr_expected_template(path: Path, frames: Iterable[FrameInput]) -> int:
     rows: list[dict[str, str]] = []
+    fieldnames = ["organized_file", "screen_type", "score_digits", *JUDGMENT_OCR_ROIS]
+    fieldnames.append("missing_judgment_rois")
     for frame in frames:
         row = frame.row
         if row.get("screen_type") != "result":
@@ -658,15 +660,11 @@ def write_ocr_expected_template(path: Path, frames: Iterable[FrameInput]) -> int
             template_row["missing_judgment_rois"] = " ".join(missing_rois)
             rows.append(template_row)
 
-    if not rows:
-        return 0
-
-    fieldnames = ["organized_file", "screen_type", "score_digits", *JUDGMENT_OCR_ROIS]
-    fieldnames.append("missing_judgment_rois")
     with path.open("w", encoding="utf-8", newline="") as file:
         writer = csv.DictWriter(file, fieldnames=fieldnames)
         writer.writeheader()
-        writer.writerows(rows)
+        if rows:
+            writer.writerows(rows)
     return len(rows)
 
 

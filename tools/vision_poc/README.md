@@ -152,11 +152,13 @@ python -m tools.vision_poc --sequence-mode timestamped --ocr-target confirmed-ev
 python -m tools.vision_poc --sequence-mode manifest --frame-manifest data/vision_poc_timestamped/frame_manifest.csv --frame-root samples/screenshots --ocr-target confirmed-events --ocr-rois all --ocr-profile all
 ```
 
-2026-06時点のローカル実測では、confirmed-events の重複除外後4イベントに `max_combo` / `marvelous` / `perfect` / `great` / `good` / `miss` / `ex_score` の期待値を入れると、`score_digits` を含む全OCR ROIが `evaluated` になります。`score_digits`、`max_combo`、`marvelous`、`perfect`、`great`、`good` は既存profileが横並びで全件matchし、まずは `default` のまま確認できます。`miss` は `low-threshold` または `no-sharpen` を優先して見ます。`ex_score` は `low-threshold` が暫定候補で、defaultの mismatch 代表として `ocr/result_016_sp_basic_lv06_score935730/ex_score_binary.png`、`ocr/result_031_sp_challenge_lv09_score977490_duplicate/ex_score_binary.png`、`ocr/result_047_dp_basic_lv09_score834500_duplicate_01/ex_score_binary.png` を確認します。
+2026-07時点のローカル実測では、confirmed-events の重複除外後4イベントに `max_combo` / `marvelous` / `perfect` / `great` / `good` / `miss` / `ex_score` の期待値が入り、`score_digits` を含む全OCR ROIが `evaluated` になります。`score_digits`、`max_combo`、`marvelous`、`perfect`、`great`、`good` は既存profileが横並びで全件matchし、まずは `default` のまま確認できます。`miss` は `low-threshold` または `no-sharpen` を優先して見ます。`ex_score` は `low-threshold` が候補で、defaultの mismatch 代表として `ocr/result_016_sp_basic_lv06_score935730/ex_score_binary.png`、`ocr/result_031_sp_challenge_lv09_score977490_duplicate/ex_score_binary.png`、`ocr/result_047_dp_basic_lv09_score834500_duplicate_01/ex_score_binary.png` を確認します。
+
+同じローカル metadata で `--ocr-target result-candidate --ocr-rois all --ocr-profile all` を使うと、全16 result 行を参考母数としてprofile比較できます。この読みでは全ROIが `evaluated` で、`score_digits`、`max_combo`、`marvelous`、`perfect`、`great` は全profileが16/16 match、`good` は `default` / `high-contrast` / `low-threshold` が16/16 matchです。`miss` は `low-threshold` が14/16 match、mismatch 代表は `ocr/result_022_sp_expert_lv16_score900170/miss_binary.png` と `ocr/result_044_sp_difficult_lv12_score916680/miss_binary.png`、empty 代表は `ocr/result_016_sp_basic_lv06_score935730/miss_binary.png` です。`ex_score` は `low-threshold` が15/16 match、empty 代表は `ocr/result_028_sp_challenge_lv17_score821420/ex_score_binary.png` です。result-candidate は未確定候補やduplicateも含むため保存直前評価の成功扱いにはせず、confirmed-events の対象絞り込み結果と並べて前処理候補を確認します。
 
 同じ評価を manifest モードで読む場合は、timestamped モードで生成した `data/vision_poc_timestamped/frame_manifest.csv` を使います。この生成manifestには metadata の期待値列も保持されるため、manifest モードでも `evaluated` / `partially_evaluated` / `no_expected_values` の読み替えが維持されます。外部ツールが作る最小manifestに期待値列がない場合、`score_digits` 以外は `no_expected_values` になり、OCR精度の成功扱いにはしません。
 
-現在のローカル metadata で次に埋める対象は、`ocr_expected_template.csv` に残る未入力 result 行です。まず confirmed-events 対象を広げたい場合は、`result_015`、`result_022`、`result_026`、`result_028`、`result_030`、`result_036`、`result_038`、`result_043`、`result_046`、`result_048`、`result_051`、`result_053` の `max_combo` / `marvelous` / `perfect` / `great` / `good` / `miss` / `ex_score` を、ROI切り出し画像と元スクリーンショットを見て埋めます。
+現在のローカル metadata では全16 result 行の `max_combo` / `marvelous` / `perfect` / `great` / `good` / `miss` / `ex_score` が埋まっており、`ocr_expected_template.csv` はヘッダーのみになります。次に確認する場合は、まず `ocr_expected_coverage.md` で期待値カバレッジを見て、不足があればROI切り出し画像と元スクリーンショットで期待値を追加し、その後にprofile比較とROI別採用候補を確認します。
 
 OCR前処理を省略したい場合は以下を使います。
 
@@ -196,6 +198,7 @@ python -m tools.vision_poc --ocr-rois score_digits max_combo marvelous perfect g
 1. `python -m tools.vision_poc --ocr-target confirmed-events --ocr-rois all --ocr-profile all` を実行し、保存直前OCR相当の対象イベントだけで `ocr_expected_coverage.md` と `ocr_expected_template.csv` を確認します。
 2. `ocr_expected_template.csv` の `missing_judgment_rois` をもとに、ローカルの `samples/screenshots/metadata.csv` へ judgment ROI 期待値列を追加します。このファイルはGit管理対象外のままです。
 3. 同じコマンドを再実行し、`score_ocr_profiles_summary.json` と `ocr_roi_report.md` で `evaluated` / `partially_evaluated` / `no_expected_values` の違い、推奨profile候補、代表的な mismatch / empty_ocr、次に見る前処理画像を確認します。
+4. confirmed-events の対象絞り込みを維持したうえで全result行の前処理傾向も見たい場合だけ、別出力先で `python -m tools.vision_poc --output data/vision_poc_result_candidate --ocr-target result-candidate --ocr-rois all --ocr-profile all` を実行し、保存直前評価とは分けて参考母数として読みます。
 
 ### OCR前処理とTesseract設定
 

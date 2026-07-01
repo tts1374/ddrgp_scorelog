@@ -665,6 +665,38 @@ def test_ocr_expected_template_lists_result_rows_missing_judgment_values(
         ]
 
 
+def test_ocr_expected_template_clears_stale_rows_when_all_values_exist(tmp_path: Path) -> None:
+    output_path = tmp_path / "ocr_expected_template.csv"
+    output_path.write_text(
+        "organized_file,screen_type,score_digits,max_combo,marvelous,perfect,great,good,miss,"
+        "ex_score,missing_judgment_rois\n"
+        "stale.png,result,123456,,,,,,,,max_combo marvelous perfect great good miss ex_score\n",
+        encoding="utf-8",
+    )
+    frame = runner.FrameInput(
+        row={
+            "organized_file": "result_score123456_a.png",
+            "screen_type": "result",
+            "max_combo": "10",
+            "marvelous": "20",
+            "perfect": "30",
+            "great": "40",
+            "good": "0",
+            "miss": "1",
+            "ex_score": "234",
+        },
+        image_path=tmp_path / "screenshots" / "result_score123456_a.png",
+    )
+
+    assert runner.write_ocr_expected_template(output_path, [frame]) == 0
+
+    assert read_csv_rows(output_path) == []
+    assert output_path.read_text(encoding="utf-8").startswith(
+        "organized_file,screen_type,score_digits,max_combo,marvelous,perfect,great,good,miss,"
+        "ex_score,missing_judgment_rois\n"
+    )
+
+
 def test_profile_summary_marks_partially_evaluated_recommendations_as_tentative() -> None:
     def profile_result(
         profile: str,
