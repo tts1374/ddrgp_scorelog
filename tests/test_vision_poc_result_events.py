@@ -128,6 +128,19 @@ def test_repeated_confirmed_duplicate_key_becomes_duplicate() -> None:
     assert "duplicate_within_frames=1" in events[2].reason
 
 
+def test_duplicate_key_for_classification_uses_local_poc_score_key() -> None:
+    with_score = classification(
+        "organized/result_016_sp_basic_lv06_score935730.png",
+        result_candidate=True,
+    )
+    without_score = classification("organized/result_without_score.png", result_candidate=True)
+
+    assert runner.duplicate_key_for_classification(with_score) == "score:935730"
+    assert runner.duplicate_key_for_classification(without_score) == (
+        "file:result_without_score.png"
+    )
+
+
 def test_timestamp_confirmed_result_requires_sustained_duration() -> None:
     events = runner.build_result_events(
         [
