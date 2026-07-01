@@ -145,6 +145,26 @@ def test_preprocess_ocr_roi_supports_judgment_rois() -> None:
     assert preprocessed.binary.size == (1176, 168)
 
 
+def test_preprocess_ocr_roi_digit_focus_is_limited_to_miss() -> None:
+    image = Image.new("RGB", (1280, 720), "black")
+
+    assert set(runner.OCR_DIGIT_FOCUS_LEFT_FRACTIONS) <= {"miss", "ex_score"}
+
+    miss = runner.preprocess_ocr_roi(image, "miss")
+    ex_score = runner.preprocess_ocr_roi(image, "ex_score")
+    good = runner.preprocess_ocr_roi(image, "good")
+
+    assert miss.original.size == (151, 28)
+    assert miss.enlarged.size == (603, 112)
+    assert miss.binary.size == (629, 152)
+    assert ex_score.original.size == (250, 34)
+    assert ex_score.enlarged.size == (1000, 136)
+    assert ex_score.binary.size == (1040, 176)
+    assert good.original.size == (232, 28)
+    assert good.enlarged.size == (928, 112)
+    assert good.binary.size == (968, 152)
+
+
 def test_expected_ocr_value_uses_optional_judgment_columns() -> None:
     row = {
         "organized_file": "organized/result_score111111_sample.png",

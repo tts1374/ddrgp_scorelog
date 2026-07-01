@@ -227,6 +227,9 @@ OCR_PREPROCESS_PROFILES: dict[str, OcrPreprocessConfig] = {
 }
 TESSERACT_CONFIG = TesseractConfig()
 JUDGMENT_OCR_ROIS = tuple(roi for roi in OCR_ROIS if roi != "score_digits")
+OCR_DIGIT_FOCUS_LEFT_FRACTIONS: dict[str, float] = {
+    "miss": 0.35,
+}
 
 
 def clamp01(value: float) -> float:
@@ -254,6 +257,16 @@ def scaled_box(image: Image.Image, roi: tuple[int, int, int, int]) -> tuple[int,
 
 def crop_roi(image: Image.Image, roi: tuple[int, int, int, int]) -> Image.Image:
     return image.crop(scaled_box(image, roi))
+
+
+def crop_right_fraction(image: Image.Image, left_fraction: float) -> Image.Image:
+    left = round(image.width * left_fraction)
+    if left <= 0:
+        return image
+    if left >= image.width:
+        msg = f"left_fraction leaves no pixels: {left_fraction}"
+        raise ValueError(msg)
+    return image.crop((left, 0, image.width, image.height))
 
 
 def extract_features(region: Image.Image) -> RegionFeatures:
@@ -870,6 +883,11 @@ def preprocess_ocr_roi(
     binary = Image.fromarray(binary_array).convert("L")
     if config.padding:
         binary = ImageOps.expand(binary, border=config.padding, fill=background)
+    digit_focus_left_fraction = OCR_DIGIT_FOCUS_LEFT_FRACTIONS.get(roi_name)
+    if digit_focus_left_fraction is not None:
+        original = crop_right_fraction(original, digit_focus_left_fraction)
+        enlarged = crop_right_fraction(enlarged, digit_focus_left_fraction)
+        binary = crop_right_fraction(binary, digit_focus_left_fraction)
     return OcrPreprocessedImages(
         roi_name=roi_name,
         original=original,
