@@ -20,7 +20,7 @@ python -m pip install -e ".[vision]"
 - 入力画像: `samples/screenshots/organized/`
 - 出力先: `data/vision_poc/`
 
-出力先には `results.csv`、`result_events.csv`、`result_events_summary.json`、`summary.json`、`misclassifications.md`、`rois/<画像名>/` 配下の主要ROI画像が生成されます。`data/` はGit管理対象外です。
+出力先には `results.csv`、`result_events.csv`、`result_events_summary.json`、`summary.json`、`misclassifications.md`、`rois/<画像名>/` 配下の主要ROI画像が生成されます。`data/` はGit管理対象外です。`rois/<画像名>/` には分類確認用ROIに加えて、M3入口の目視確認用として `play_style`、`difficulty`、`level`、`rank`、`song_title`、`artist` も出力します。この段階では切り出し足場だけで、本格OCR、テンプレート照合、マスタ照合には進みません。
 
 この既定実行は metadata 評価モードです。`samples/screenshots/metadata.csv` の並びをフレーム順として扱いますが、キャプチャ時刻は持たないため、`result_events.csv` の `timestamp_ms` と `candidate_duration_ms` は空欄、`confirmation_mode` は `frames` になります。
 
@@ -266,6 +266,8 @@ OCR前処理を省略したい場合は以下を使います。
 python -m tools.vision_poc --no-ocr
 ```
 
+M3入口の曲・譜面情報確認では、まず `data/vision_poc/rois/<画像名>/play_style.png`、`difficulty.png`、`level.png`、`rank.png`、`song_title.png`、`artist.png` を目視します。これらは保存直前イベントから曲・譜面情報を評価するための切り出し足場であり、現時点では `--ocr-rois all` のOCR評価対象には含めません。
+
 `score_digits` 以外の判定数ROIと `ex_score` も同じ前処理APIを使えます。現時点ではOCR精度調整前の足場として、まずは `max_combo`、`marvelous`、`perfect`、`great`、`good`、`miss`、`ex_score` の `*_original.png` / `*_enlarged.png` / `*_binary.png` を確認できる状態にしています。
 
 ```powershell
@@ -290,6 +292,8 @@ python -m tools.vision_poc --ocr-rois score_digits max_combo marvelous perfect g
 - `ex_score` または `expected_ex_score`
 
 `score_digits` は既存互換のため、引き続き `score`、`expected_score`、ファイル名内の `scoreXXXXXX` の順で期待値を取得します。
+
+`expected_rank` はランクROIや低ランク素材の目視評価用メモとして扱います。数字OCRの expected coverage には含めず、`score_ocr_summary.json`、`score_ocr_profiles_summary.json`、`ocr_expected_coverage.md` の `evaluated` / `partially_evaluated` / `no_expected_values` 判定とも混同しません。ランクOCRやランクテンプレート評価に進む場合は、別途M3の評価列とレポートとして定義します。
 
 実行時には、期待値が不足している `screen_type=result` 行だけを `data/vision_poc/ocr_expected_template.csv` へ出力します。このCSVはローカル `metadata.csv` を破壊的に更新せず、どの行に `max_combo` / `marvelous` / `perfect` / `great` / `good` / `miss` / `ex_score` を埋めるべきか確認するための補助です。`missing_judgment_rois` を見て、対象画像の `ocr/<画像名>/<roi>_original.png` や実スクリーンショットを目視し、ローカルの `samples/screenshots/metadata.csv` に列と値を追加してから再実行します。
 
@@ -356,6 +360,7 @@ python -m pytest tests
 - `--ocr-profile all` で既存 `score_ocr.csv` の列を維持したまま、profile別summaryを出力できる
 - `score_ocr_raw` から数字だけを `score_ocr_normalized` にできる
 - ローカル素材がある環境では `score_digits` の前処理画像を生成できる
+- 曲・譜面情報の目視確認用ROIとして `play_style`、`difficulty`、`level`、`rank`、`song_title`、`artist` を `rois/` に生成できる
 
 `samples/screenshots/metadata.csv` や画像がない環境では、ローカル素材が必要なテストだけ skip します。
 
@@ -368,7 +373,7 @@ python -m pytest tests
 - スコア周辺の白い大数字とエッジ量
 - ランク周辺の黄色/灰色大文字らしさ
 
-`result_shape_candidate` はリザルト形状の検出、`result_candidate` は保存処理に進める候補です。`transition_countup_*` は形状検出できても保存不可として扱えるよう、`transition_kind=countup` としてログ上で区別します。
+スコア周辺とランク周辺は補助シグナルです。低スコア、D/B系ランク、0点リザルトでは色特徴が弱くなるため、現在の `result_candidate` は `RESULTS` ヘッダーと詳細リザルト枠がそろった完了済みリザルトフレームを基準にします。`result_shape_candidate` はリザルト形状の検出、`result_candidate` は保存処理に進める候補です。`transition_countup_*` は形状検出できても保存不可として扱えるよう、`transition_kind=countup` としてログ上で区別します。
 
 ### リザルト確定
 

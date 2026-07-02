@@ -35,6 +35,7 @@ ROI_DEFINITIONS: dict[str, tuple[int, int, int, int]] = {
     "score_digits": (250, 278, 210, 48),
     "jacket": (532, 54, 216, 216),
     "song_title": (488, 274, 304, 52),
+    "artist": (548, 306, 184, 26),
     "detail_result_panel": (662, 330, 462, 288),
     "detail_result_header": (662, 330, 194, 36),
     "max_combo": (714, 368, 284, 32),
@@ -52,9 +53,14 @@ ROI_DEFINITIONS: dict[str, tuple[int, int, int, int]] = {
 
 PRIMARY_ROIS = (
     "results_header",
+    "play_style",
+    "difficulty",
+    "level",
     "rank",
     "score_area",
     "score_digits",
+    "song_title",
+    "artist",
     "detail_result_panel",
     "detail_result_header",
     "max_combo",
@@ -366,7 +372,7 @@ def score_score_area(features: RegionFeatures) -> SignalResult:
         + 0.10 * ratio_score(features.std_luma, 65, 80)
     )
     return SignalResult(
-        value=score >= 0.68,
+        value=score >= 0.35,
         score=score,
         features=asdict(features),
     )
@@ -392,10 +398,13 @@ def classify(image: Image.Image, row: dict[str, str]) -> Classification:
     score_area = score_score_area(extract_features(crop_roi(image, ROI_DEFINITIONS["score_area"])))
     rank = score_rank(extract_features(crop_roi(image, ROI_DEFINITIONS["rank"])))
 
-    result_shape_candidate = header.value and detail.value and (score_area.value or rank.value)
-    result_candidate = header.value and detail.value and score_area.value
     is_countup = Path(row["organized_file"]).name.startswith("transition_countup_")
     transition_kind = "countup" if is_countup else ""
+    finished_result_frame = header.value and detail.value and not is_countup
+    result_shape_candidate = header.value and detail.value and (
+        score_area.value or rank.value or finished_result_frame
+    )
+    result_candidate = finished_result_frame
     expected = row["screen_type"] == "result"
 
     reasons: list[str] = []
@@ -409,6 +418,8 @@ def classify(image: Image.Image, row: dict[str, str]) -> Classification:
         reasons.append("rank")
     if transition_kind:
         reasons.append(f"transition_{transition_kind}")
+    if finished_result_frame:
+        reasons.append("finished_result_frame")
 
     return Classification(
         organized_file=row["organized_file"],

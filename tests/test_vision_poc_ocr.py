@@ -145,6 +145,23 @@ def test_preprocess_ocr_roi_supports_judgment_rois() -> None:
     assert preprocessed.binary.size == (1176, 168)
 
 
+def test_primary_rois_include_m3_song_and_chart_fields(tmp_path: Path) -> None:
+    image = Image.new("RGB", (1280, 720), "black")
+
+    runner.save_primary_rois(image, tmp_path, "sample")
+
+    roi_dir = tmp_path / "rois" / "sample"
+    for roi_name in (
+        "play_style",
+        "difficulty",
+        "level",
+        "rank",
+        "song_title",
+        "artist",
+    ):
+        assert (roi_dir / f"{roi_name}.png").exists()
+
+
 def test_preprocess_ocr_roi_digit_focus_is_limited_to_miss() -> None:
     image = Image.new("RGB", (1280, 720), "black")
 
