@@ -313,6 +313,41 @@ def test_m3_metadata_expected_report_uses_confirmed_events_boundary(
     template_rows = read_csv_rows(output_dir / "m3_metadata_expected_template.csv")
     assert template_rows == []
 
+    chart_rows = read_csv_rows(output_dir / "m3_chart_fields.csv")
+    assert [row["chart_field_target"] for row in chart_rows] == [
+        "False",
+        "False",
+        "True",
+        "False",
+        "False",
+    ]
+    assert [row["exclusion_reason"] for row in chart_rows] == [
+        "unconfirmed",
+        "unconfirmed",
+        "",
+        "duplicate",
+        "rejected_transition",
+    ]
+    assert chart_rows[2]["expected_play_style"] == "SINGLE"
+    assert chart_rows[2]["expected_difficulty"] == "BEGINNER"
+    assert chart_rows[2]["expected_level"] == "06"
+    assert chart_rows[2]["play_style_roi_path"] == "rois/result_score123456_c/play_style.png"
+
+    chart_summary = json.loads(
+        (output_dir / "m3_chart_fields_summary.json").read_text(encoding="utf-8")
+    )
+    assert chart_summary["target_boundary"] == "confirmed_result=true and duplicate=false"
+    assert chart_summary["chart_field_target_count"] == 1
+    assert chart_summary["excluded_counts"] == {
+        "duplicate": 1,
+        "rejected_transition": 1,
+        "unconfirmed": 2,
+        "non_result": 0,
+    }
+    assert chart_summary["fields"]["play_style"]["evaluation_status"] == "evaluated"
+    assert chart_summary["fields"]["difficulty"]["expected_value_count"] == 1
+    assert chart_summary["fields"]["level"]["no_expected_value_count"] == 0
+
     event_rows = read_csv_rows(output_dir / "result_events.csv")
     assert [row["event_type"] for row in event_rows] == [
         "none",

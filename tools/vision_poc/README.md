@@ -20,7 +20,7 @@ python -m pip install -e ".[vision]"
 - 入力画像: `samples/screenshots/organized/`
 - 出力先: `data/vision_poc/`
 
-出力先には `results.csv`、`result_events.csv`、`result_events_summary.json`、`summary.json`、`misclassifications.md`、`m3_metadata_expected_coverage.md`、`m3_metadata_expected_template.csv`、`rois/<画像名>/` 配下の主要ROI画像が生成されます。`data/` はGit管理対象外です。`rois/<画像名>/` には分類確認用ROIに加えて、M3入口の目視確認用として `play_style`、`difficulty`、`level`、`rank`、`song_title`、`artist` も出力します。この段階では切り出し足場だけで、本格OCR、テンプレート照合、マスタ照合には進みません。
+出力先には `results.csv`、`result_events.csv`、`result_events_summary.json`、`summary.json`、`misclassifications.md`、`m3_metadata_expected_coverage.md`、`m3_metadata_expected_template.csv`、`m3_chart_fields.csv`、`m3_chart_fields_summary.json`、`rois/<画像名>/` 配下の主要ROI画像が生成されます。`data/` はGit管理対象外です。`rois/<画像名>/` には分類確認用ROIに加えて、M3入口の目視確認用として `play_style`、`difficulty`、`level`、`rank`、`song_title`、`artist` も出力します。この段階では切り出し足場だけで、本格OCR、テンプレート照合、マスタ照合には進みません。
 
 この既定実行は metadata 評価モードです。`samples/screenshots/metadata.csv` の並びをフレーム順として扱いますが、キャプチャ時刻は持たないため、`result_events.csv` の `timestamp_ms` と `candidate_duration_ms` は空欄、`confirmation_mode` は `frames` になります。
 
@@ -267,6 +267,10 @@ python -m tools.vision_poc --no-ocr
 ```
 
 M3入口の曲・譜面情報確認では、まず `data/vision_poc/rois/<画像名>/play_style.png`、`difficulty.png`、`level.png`、`rank.png`、`song_title.png`、`artist.png` を目視します。これらは保存直前イベントから曲・譜面情報を評価するための切り出し足場であり、現時点では `--ocr-rois all` のOCR評価対象には含めません。期待値列の充足状況は `m3_metadata_expected_coverage.md` で確認します。このレポートの対象は confirmed-events 境界、つまり `confirmed_result=true` かつ `duplicate=false` だけです。`artist.png` は補助ROIで、長いアーティスト名では左右が切れることがあります。M3入口では座標の大変更に進まず、`song_title.png` 内の2行表示も合わせて目視します。代表確認では、長い曲名、記号入り曲名、日本語曲名、DOUBLE、長い `artist` でも `play_style`、`difficulty`、`level`、`rank`、`song_title` は目視評価に使える一方、`artist` は左右切れがあり補助情報として読む前提を維持します。
+
+`m3_chart_fields.csv` は、M3で先に扱う有限候補の `play_style`、`difficulty`、`level` だけを対象にした評価足場です。全イベント行を出力し、`chart_field_target=true` になるのは confirmed-events 境界の `confirmed_result=true` かつ `duplicate=false` だけです。duplicate、`rejected_transition`、未確定候補、non-result は `chart_field_target=false` とし、`exclusion_reason` に `duplicate`、`rejected_transition`、`unconfirmed`、`non_result` を出します。各対象行には `expected_play_style`、`expected_difficulty`、`expected_level` と、`rois/<画像名>/<field>.png` への相対パスを出します。これは chart-field 抽出PoCの入力一覧であり、曲名OCR、artist OCR、ランクOCR、テンプレート照合、マスタ照合の成功を意味しません。
+
+`m3_chart_fields_summary.json` は同じ対象境界の集計です。`target_boundary`、`chart_field_target_count`、`excluded_counts`、`fields` を確認し、`play_style` / `difficulty` / `level` の期待値が confirmed-events 対象にそろっているかを見ます。数字OCRの `score_ocr_summary.json`、`score_ocr_profiles_summary.json`、`ocr_expected_coverage.md` とは別レポートとして読みます。
 
 現在のローカル metadata では、M3 metadata expected coverage の confirmed-events 対象は60件です。`song_title` / `artist` / `play_style` / `difficulty` / `level` は60件すべてが埋まっており、M3入口ではこの5項目を優先して評価します。`rank` / `expected_rank` は12件だけが埋まっているため、残り48件の不足は数字OCR expected coverage の不足とは別に読み、当面は補助ROIの部分評価として扱います。ランクOCR、ランクテンプレート照合、本格採用判断へ進む場合は、別途M3の評価列とレポートとして定義します。
 

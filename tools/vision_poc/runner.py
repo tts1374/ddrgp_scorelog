@@ -238,6 +238,11 @@ M3_METADATA_EXPECTED_FIELDS = (
     "level",
     "rank",
 )
+M3_CHART_FIELD_FIELDS = (
+    "play_style",
+    "difficulty",
+    "level",
+)
 M3_METADATA_EXPECTED_COLUMN_KEYS: dict[str, tuple[str, ...]] = {
     "song_title": ("song_title", "expected_song_title"),
     "artist": ("artist", "expected_artist"),
@@ -1877,6 +1882,127 @@ def write_ocr_roi_report(
     path.write_text("\n".join(lines), encoding="utf-8")
 
 
+def m3_chart_field_exclusion_reason(event: ResultEvent) -> str:
+    if is_save_candidate_event(event):
+        return ""
+    if event.duplicate:
+        return "duplicate"
+    if event.event_type == "rejected_transition":
+        return "rejected_transition"
+    if event.result_candidate:
+        return "unconfirmed"
+    return "non_result"
+
+
+def m3_chart_field_roi_path(image_stem: str, field_name: str) -> str:
+    return f"rois/{image_stem}/{field_name}.png"
+
+
+def m3_chart_field_rows(
+    frames: Iterable[FrameInput],
+    events: Iterable[ResultEvent],
+) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    for frame, event in zip(frames, events, strict=True):
+        target = is_save_candidate_event(event)
+        row = {
+            "organized_file": frame.row["organized_file"],
+            "screen_type": frame.row.get("screen_type", ""),
+            "event_type": event.event_type,
+            "confirmed_result": str(event.confirmed_result),
+            "duplicate": str(event.duplicate),
+            "chart_field_target": str(target),
+            "exclusion_reason": m3_chart_field_exclusion_reason(event),
+        }
+        for field_name in M3_CHART_FIELD_FIELDS:
+            row[f"expected_{field_name}"] = expected_m3_metadata_value_from_row(
+                frame.row,
+                field_name,
+            )
+            row[f"{field_name}_roi_path"] = m3_chart_field_roi_path(
+                frame.image_path.stem,
+                field_name,
+            )
+        rows.append(row)
+    return rows
+
+
+def write_m3_chart_fields_csv(
+    path: Path,
+    frames: Iterable[FrameInput],
+    events: Iterable[ResultEvent],
+) -> None:
+    fieldnames = [
+        "organized_file",
+        "screen_type",
+        "event_type",
+        "confirmed_result",
+        "duplicate",
+        "chart_field_target",
+        "exclusion_reason",
+    ]
+    for field_name in M3_CHART_FIELD_FIELDS:
+        fieldnames.append(f"expected_{field_name}")
+        fieldnames.append(f"{field_name}_roi_path")
+
+    rows = m3_chart_field_rows(frames, events)
+    with path.open("w", encoding="utf-8", newline="") as file:
+        writer = csv.DictWriter(file, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+def summarize_m3_chart_fields(
+    frames: Iterable[FrameInput],
+    events: Iterable[ResultEvent],
+) -> dict[str, object]:
+    total_events = 0
+    target_count = 0
+    excluded_counts = {
+        "duplicate": 0,
+        "rejected_transition": 0,
+        "unconfirmed": 0,
+        "non_result": 0,
+    }
+    coverage = {
+        field_name: {"expected_value_count": 0, "no_expected_value_count": 0, "total": 0}
+        for field_name in M3_CHART_FIELD_FIELDS
+    }
+    for frame, event in zip(frames, events, strict=True):
+        total_events += 1
+        if not is_save_candidate_event(event):
+            reason = m3_chart_field_exclusion_reason(event)
+            excluded_counts[reason] = excluded_counts.get(reason, 0) + 1
+            continue
+
+        target_count += 1
+        for field_name, bucket in coverage.items():
+            bucket["total"] += 1
+            if expected_m3_metadata_value_from_row(frame.row, field_name):
+                bucket["expected_value_count"] += 1
+            else:
+                bucket["no_expected_value_count"] += 1
+
+    return {
+        "target_boundary": "confirmed_result=true and duplicate=false",
+        "total_events": total_events,
+        "chart_field_target_count": target_count,
+        "excluded_counts": excluded_counts,
+        "fields": {
+            field_name: {
+                "evaluation_status": m3_expected_coverage_status(
+                    int(bucket["expected_value_count"]),
+                    int(bucket["total"]),
+                ),
+                "expected_value_count": bucket["expected_value_count"],
+                "no_expected_value_count": bucket["no_expected_value_count"],
+                "total_events": bucket["total"],
+            }
+            for field_name, bucket in coverage.items()
+        },
+    }
+
+
 def write_ocr_expected_coverage_report(
     path: Path,
     score_summary: ScoreOcrSummary,
@@ -2415,6 +2541,20 @@ def main(argv: list[str] | None = None) -> int:
     write_m3_metadata_expected_report(
         output_dir / "m3_metadata_expected_coverage.md",
         m3_expected_coverage,
+    )
+    write_m3_chart_fields_csv(
+        output_dir / "m3_chart_fields.csv",
+        frames,
+        result_events,
+    )
+    (output_dir / "m3_chart_fields_summary.json").write_text(
+        json.dumps(
+            summarize_m3_chart_fields(frames, result_events),
+            ensure_ascii=False,
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
     )
     score_ocr_results: list[ScoreOcrResult] = []
     profile_ocr_results: list[ProfileScoreOcrResult] = []

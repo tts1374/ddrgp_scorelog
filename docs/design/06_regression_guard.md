@@ -86,6 +86,15 @@
 - `m3_metadata_expected_coverage.md` と `m3_metadata_expected_template.csv` は期待値列の充足確認であり、曲名OCR、テンプレート照合、マスタ照合の成功扱いにはしない。
 - `expected_rank` は `score_ocr_summary.json`、`score_ocr_profiles_summary.json`、`ocr_expected_coverage.md` の `evaluated` / `partially_evaluated` / `no_expected_values` 判定に含めない。
 
+## M3 chart-field evaluation
+
+- M3 chart-field 評価の入口は当面 `play_style`、`difficulty`、`level` に限定する。
+- `m3_chart_fields.csv` の `chart_field_target=true` は confirmed-events 境界、つまり `confirmed_result=true` かつ `duplicate=false` だけにする。
+- duplicate、`event_type=rejected_transition`、未確定 `result_candidate`、non-result は `chart_field_target=false` のまま、`exclusion_reason` で区別する。
+- `m3_chart_fields_summary.json` は `chart_field_target_count` と `excluded_counts` で対象境界を確認できる。
+- `m3_chart_fields.csv` と `m3_chart_fields_summary.json` は数字OCR expected coverage、曲名OCR、artist OCR、rank OCR、テンプレート照合、マスタ照合の成功扱いにはしない。
+- `rank` は引き続き補助/部分評価として扱い、M3 chart-field の初期対象に含めない。
+
 ## OCR出力互換
 
 - `score_ocr.csv` の既存列を維持する。
