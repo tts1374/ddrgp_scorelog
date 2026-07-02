@@ -93,6 +93,9 @@
 - duplicate、`event_type=rejected_transition`、未確定 `result_candidate`、non-result は `chart_field_target=false` のまま、`exclusion_reason` で区別する。
 - `m3_chart_fields_summary.json` は `chart_field_target_count` と `excluded_counts` で対象境界を確認できる。
 - `m3_chart_fields.csv` と `m3_chart_fields_summary.json` は数字OCR expected coverage、曲名OCR、artist OCR、rank OCR、テンプレート照合、マスタ照合の成功扱いにはしない。
+- `m3_chart_field_extraction.csv` と `m3_chart_field_extraction_summary.json` も confirmed-events 境界だけを抽出評価対象にする。
+- 現行 extractor の `filename-baseline` はローカル `organized_file` 名からの初期baselineであり、ROI画像特徴、OCR、テンプレート照合、マスタ照合の成功扱いにはしない。
+- duplicate、`event_type=rejected_transition`、未確定 `result_candidate`、non-result は chart-field 抽出評価でも `status=skipped` のまま、`failure_reason` で区別する。
 - `rank` は引き続き補助/部分評価として扱い、M3 chart-field の初期対象に含めない。
 
 ## OCR出力互換

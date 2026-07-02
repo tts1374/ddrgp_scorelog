@@ -249,10 +249,10 @@ def test_m3_metadata_expected_report_uses_confirmed_events_boundary(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     frame_names = (
-        "result_score123456_a.png",
-        "result_score123456_b.png",
-        "result_score123456_c.png",
-        "result_score123456_d.png",
+        "result_001_sp_beginner_lv06_score123456_a.png",
+        "result_001_sp_beginner_lv06_score123456_b.png",
+        "result_001_sp_beginner_lv06_score123456_c.png",
+        "result_001_sp_beginner_lv06_score123456_d.png",
         "transition_countup_score999999.png",
     )
     for name in frame_names:
@@ -261,10 +261,10 @@ def test_m3_metadata_expected_report_uses_confirmed_events_boundary(
     manifest_path.write_text(
         "image_path,timestamp_ms,screen_type,song_title,artist,play_style,difficulty,level,"
         "expected_rank,expected_score\n"
-        "result_score123456_a.png,0,result,,,,,,,\n"
-        "result_score123456_b.png,500,result,,,,,,,\n"
-        "result_score123456_c.png,1000,result,CHAOS,DE-SIRE,SINGLE,BEGINNER,06,D,123456\n"
-        "result_score123456_d.png,1500,result,,,,,,,123456\n"
+        "result_001_sp_beginner_lv06_score123456_a.png,0,result,,,,,,,\n"
+        "result_001_sp_beginner_lv06_score123456_b.png,500,result,,,,,,,\n"
+        "result_001_sp_beginner_lv06_score123456_c.png,1000,result,CHAOS,DE-SIRE,SINGLE,BEGINNER,06,D,123456\n"
+        "result_001_sp_beginner_lv06_score123456_d.png,1500,result,,,,,,,123456\n"
         "transition_countup_score999999.png,2000,transition,COUNTUP,NOPE,SINGLE,EXPERT,16,A,999999\n",
         encoding="utf-8",
     )
@@ -331,7 +331,9 @@ def test_m3_metadata_expected_report_uses_confirmed_events_boundary(
     assert chart_rows[2]["expected_play_style"] == "SINGLE"
     assert chart_rows[2]["expected_difficulty"] == "BEGINNER"
     assert chart_rows[2]["expected_level"] == "06"
-    assert chart_rows[2]["play_style_roi_path"] == "rois/result_score123456_c/play_style.png"
+    assert chart_rows[2]["play_style_roi_path"] == (
+        "rois/result_001_sp_beginner_lv06_score123456_c/play_style.png"
+    )
 
     chart_summary = json.loads(
         (output_dir / "m3_chart_fields_summary.json").read_text(encoding="utf-8")
@@ -347,6 +349,36 @@ def test_m3_metadata_expected_report_uses_confirmed_events_boundary(
     assert chart_summary["fields"]["play_style"]["evaluation_status"] == "evaluated"
     assert chart_summary["fields"]["difficulty"]["expected_value_count"] == 1
     assert chart_summary["fields"]["level"]["no_expected_value_count"] == 0
+
+    extraction_rows = read_csv_rows(output_dir / "m3_chart_field_extraction.csv")
+    target_extraction_rows = [
+        row for row in extraction_rows if row["chart_field_target"] == "True"
+    ]
+    extracted_values = [
+        (row["field_name"], row["expected_value"], row["extracted_value"], row["match"])
+        for row in target_extraction_rows
+    ]
+    assert extracted_values == [
+        ("play_style", "SINGLE", "SINGLE", "True"),
+        ("difficulty", "BEGINNER", "BEGINNER", "True"),
+        ("level", "6", "6", "True"),
+    ]
+    assert {row["status"] for row in target_extraction_rows} == {"match"}
+    assert extraction_rows[0]["status"] == "skipped"
+    assert extraction_rows[0]["failure_reason"] == "unconfirmed"
+    assert extraction_rows[9]["failure_reason"] == "duplicate"
+    assert extraction_rows[12]["failure_reason"] == "rejected_transition"
+
+    extraction_summary = json.loads(
+        (output_dir / "m3_chart_field_extraction_summary.json").read_text(encoding="utf-8")
+    )
+    assert extraction_summary["target_boundary"] == "confirmed_result=true and duplicate=false"
+    assert extraction_summary["extractor"] == "filename-baseline"
+    assert extraction_summary["chart_field_target_count"] == 1
+    assert extraction_summary["total_attempts"] == 3
+    assert extraction_summary["status_counts"]["match"] == 3
+    assert extraction_summary["status_counts"]["skipped"] == 12
+    assert extraction_summary["fields"]["level"]["match_count"] == 1
 
     event_rows = read_csv_rows(output_dir / "result_events.csv")
     assert [row["event_type"] for row in event_rows] == [

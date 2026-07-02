@@ -243,6 +243,20 @@ M3_CHART_FIELD_FIELDS = (
     "difficulty",
     "level",
 )
+M3_CHART_FIELD_EXTRACTION_METHOD = "filename-baseline"
+M3_CHART_FIELD_DIFFICULTIES = (
+    "BEGINNER",
+    "BASIC",
+    "DIFFICULT",
+    "EXPERT",
+    "CHALLENGE",
+)
+M3_CHART_FILENAME_PATTERN = re.compile(
+    r"(?:^|[_-])(?P<style>sp|dp|single|double)[_-]"
+    r"(?P<difficulty>beginner|basic|difficult|expert|challenge)[_-]"
+    r"lv(?P<level>\d{1,2})(?:[_-]|$)",
+    re.IGNORECASE,
+)
 M3_METADATA_EXPECTED_COLUMN_KEYS: dict[str, tuple[str, ...]] = {
     "song_title": ("song_title", "expected_song_title"),
     "artist": ("artist", "expected_artist"),
@@ -2003,6 +2017,182 @@ def summarize_m3_chart_fields(
     }
 
 
+def normalize_m3_chart_field_value(field_name: str, value: str) -> str:
+    normalized = normalize_expected_text(value).upper()
+    if field_name == "play_style":
+        if normalized in {"SP", "SINGLE"}:
+            return "SINGLE"
+        if normalized in {"DP", "DOUBLE"}:
+            return "DOUBLE"
+        return normalized
+    if field_name == "difficulty":
+        return normalized
+    if field_name == "level":
+        digits = normalize_digits(normalized)
+        if not digits:
+            return ""
+        return str(int(digits))
+    return normalized
+
+
+def extract_m3_chart_fields_from_filename(organized_file: str) -> dict[str, str]:
+    name = Path(organized_file).stem
+    match = M3_CHART_FILENAME_PATTERN.search(name)
+    if match is None:
+        return {field_name: "" for field_name in M3_CHART_FIELD_FIELDS}
+
+    return {
+        "play_style": normalize_m3_chart_field_value("play_style", match.group("style")),
+        "difficulty": normalize_m3_chart_field_value("difficulty", match.group("difficulty")),
+        "level": normalize_m3_chart_field_value("level", match.group("level")),
+    }
+
+
+def m3_chart_field_extraction_rows(
+    frames: Iterable[FrameInput],
+    events: Iterable[ResultEvent],
+) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    for frame, event in zip(frames, events, strict=True):
+        target = is_save_candidate_event(event)
+        exclusion_reason = m3_chart_field_exclusion_reason(event)
+        extracted_values = extract_m3_chart_fields_from_filename(frame.row["organized_file"])
+        for field_name in M3_CHART_FIELD_FIELDS:
+            expected_value = normalize_m3_chart_field_value(
+                field_name,
+                expected_m3_metadata_value_from_row(frame.row, field_name),
+            )
+            extracted_value = extracted_values[field_name]
+            match_value: bool | None = None
+            failure_reason = ""
+            if not target:
+                status = "skipped"
+                failure_reason = exclusion_reason
+            elif expected_value == "":
+                status = "no_expected_value"
+                failure_reason = "no_expected_value"
+            elif extracted_value == "":
+                status = "empty_extraction"
+                failure_reason = "empty_extraction"
+            else:
+                match_value = extracted_value == expected_value
+                status = "match" if match_value else "mismatch"
+                failure_reason = "" if match_value else "mismatch"
+
+            rows.append(
+                {
+                    "organized_file": frame.row["organized_file"],
+                    "screen_type": frame.row.get("screen_type", ""),
+                    "event_type": event.event_type,
+                    "confirmed_result": str(event.confirmed_result),
+                    "duplicate": str(event.duplicate),
+                    "chart_field_target": str(target),
+                    "exclusion_reason": exclusion_reason,
+                    "field_name": field_name,
+                    "extractor": M3_CHART_FIELD_EXTRACTION_METHOD,
+                    "expected_value": expected_value,
+                    "extracted_value": extracted_value,
+                    "match": "" if match_value is None else str(match_value),
+                    "status": status,
+                    "failure_reason": failure_reason,
+                    "roi_path": m3_chart_field_roi_path(frame.image_path.stem, field_name),
+                }
+            )
+    return rows
+
+
+def write_m3_chart_field_extraction_csv(
+    path: Path,
+    frames: Iterable[FrameInput],
+    events: Iterable[ResultEvent],
+) -> None:
+    fieldnames = [
+        "organized_file",
+        "screen_type",
+        "event_type",
+        "confirmed_result",
+        "duplicate",
+        "chart_field_target",
+        "exclusion_reason",
+        "field_name",
+        "extractor",
+        "expected_value",
+        "extracted_value",
+        "match",
+        "status",
+        "failure_reason",
+        "roi_path",
+    ]
+    rows = m3_chart_field_extraction_rows(frames, events)
+    with path.open("w", encoding="utf-8", newline="") as file:
+        writer = csv.DictWriter(file, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+def summarize_m3_chart_field_extraction(
+    frames: Iterable[FrameInput],
+    events: Iterable[ResultEvent],
+) -> dict[str, object]:
+    rows = m3_chart_field_extraction_rows(frames, events)
+    field_buckets = {
+        field_name: {
+            "target_count": 0,
+            "match_count": 0,
+            "mismatch_count": 0,
+            "empty_extraction_count": 0,
+            "no_expected_value_count": 0,
+            "skipped_count": 0,
+        }
+        for field_name in M3_CHART_FIELD_FIELDS
+    }
+    status_counts = {
+        "match": 0,
+        "mismatch": 0,
+        "empty_extraction": 0,
+        "no_expected_value": 0,
+        "skipped": 0,
+    }
+    for row in rows:
+        status = row["status"]
+        status_counts[status] = status_counts.get(status, 0) + 1
+        bucket = field_buckets[row["field_name"]]
+        if row["chart_field_target"] == "True":
+            bucket["target_count"] += 1
+        if status == "match":
+            bucket["match_count"] += 1
+        elif status == "mismatch":
+            bucket["mismatch_count"] += 1
+        elif status == "empty_extraction":
+            bucket["empty_extraction_count"] += 1
+        elif status == "no_expected_value":
+            bucket["no_expected_value_count"] += 1
+        elif status == "skipped":
+            bucket["skipped_count"] += 1
+
+    target_count = sum(
+        1 for row in rows if row["chart_field_target"] == "True" and row["field_name"] == "level"
+    )
+    return {
+        "target_boundary": "confirmed_result=true and duplicate=false",
+        "extractor": M3_CHART_FIELD_EXTRACTION_METHOD,
+        "total_rows": len(rows),
+        "chart_field_target_count": target_count,
+        "total_attempts": target_count * len(M3_CHART_FIELD_FIELDS),
+        "status_counts": status_counts,
+        "fields": {
+            field_name: {
+                **bucket,
+                "evaluation_status": m3_expected_coverage_status(
+                    int(bucket["target_count"]) - int(bucket["no_expected_value_count"]),
+                    int(bucket["target_count"]),
+                ),
+            }
+            for field_name, bucket in field_buckets.items()
+        },
+    }
+
+
 def write_ocr_expected_coverage_report(
     path: Path,
     score_summary: ScoreOcrSummary,
@@ -2550,6 +2740,20 @@ def main(argv: list[str] | None = None) -> int:
     (output_dir / "m3_chart_fields_summary.json").write_text(
         json.dumps(
             summarize_m3_chart_fields(frames, result_events),
+            ensure_ascii=False,
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    write_m3_chart_field_extraction_csv(
+        output_dir / "m3_chart_field_extraction.csv",
+        frames,
+        result_events,
+    )
+    (output_dir / "m3_chart_field_extraction_summary.json").write_text(
+        json.dumps(
+            summarize_m3_chart_field_extraction(frames, result_events),
             ensure_ascii=False,
             indent=2,
         )

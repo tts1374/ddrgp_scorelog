@@ -109,6 +109,8 @@ M3入口の曲・譜面情報ROIも、評価対象は同じ confirmed-events 境
 
 M3 chart-field 抽出PoCの入口では、有限候補で扱いやすい `play_style`、`difficulty`、`level` を優先する。`m3_chart_fields.csv` は全イベント行を出し、`confirmed_result=true` かつ `duplicate=false` の行だけを `chart_field_target=true` にする。duplicate、`rejected_transition`、未確定候補、non-result は対象外理由を付ける。これは chart-field 評価対象の一覧であり、数字OCR expected coverage、曲名OCR、artist OCR、rank OCR、テンプレート照合、マスタ照合の成功とは分けて読む。
 
+`m3_chart_field_extraction.csv` と `m3_chart_field_extraction_summary.json` は、同じ対象境界に対して抽出値、期待値、match、status、failure_reason を出す別レポートです。現行の extractor は `filename-baseline` で、ローカル `organized_file` 名から `SP/DP`、難易度、`lvXX` を正規化する初期baselineに留める。これはROI画像特徴、OCR、テンプレート照合、マスタ照合の成功ではない。画像特徴やテンプレート比較へ進む場合も、この出力の対象境界と status 語彙を維持する。
+
 ## transition_countup の扱い
 
 `transition_countup_*` はリザルト形状が出ていても保存対象外とする。
@@ -218,7 +220,7 @@ confirmed-events OCR評価では、あわせて `score_ocr_summary.json` の `sk
 
 M3曲・譜面情報の期待値列確認では、`m3_metadata_expected_coverage.md` の `total confirmed-events` が保存直前イベント数と一致していること、duplicate、`rejected_transition`、未確定候補、non-result が対象外であることを見る。数字OCR用の `ocr_expected_coverage.md` とは別レポートとして扱う。
 
-M3 chart-field 評価の足場では、`m3_chart_fields.csv` と `m3_chart_fields_summary.json` を見る。`chart_field_target_count` が保存直前イベント数と一致し、`excluded_counts` で duplicate、`rejected_transition`、未確定候補、non-result が対象外に残っていることを確認する。対象fieldは当面 `play_style`、`difficulty`、`level` に限定する。
+M3 chart-field 評価の足場では、`m3_chart_fields.csv` と `m3_chart_fields_summary.json` を見る。`chart_field_target_count` が保存直前イベント数と一致し、`excluded_counts` で duplicate、`rejected_transition`、未確定候補、non-result が対象外に残っていることを確認する。対象fieldは当面 `play_style`、`difficulty`、`level` に限定する。抽出評価へ進む場合は `m3_chart_field_extraction.csv` と `m3_chart_field_extraction_summary.json` を合わせて読み、`filename-baseline` の match をROI/OCR/テンプレート照合の成功扱いにしない。
 
 ## M0/M1で固定すること
 
