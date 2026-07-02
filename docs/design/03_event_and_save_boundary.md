@@ -105,6 +105,8 @@ duplicate=false
 
 OCR対象境界、expected coverage、profile採用判断は別条件として読む。`confirmed-events` は「OCRを試す保存直前イベント」を選ぶ境界であり、DB保存成功やOCR成功を意味しない。対象イベントに対して期待値がないROIは `no_expected_values`、一部だけ期待値があるROIは `partially_evaluated` として扱い、どちらも最終的な保存品質の採用根拠にはしない。profile採用候補として読めるのは、confirmed-events 対象で expected coverage が `evaluated` かつ `recommended_profiles` があるROIだけです。`partially_evaluated` は暫定、`no_expected_values` は `reference_profiles` が出ていても目視参考に留める。OCR品質は `score_ocr_summary.json`、`score_ocr_profiles_summary.json`、`ocr_expected_coverage.md`、`ocr_roi_report.md` のROI別 `match_count` / `mismatch_count` / `empty_ocr_count` / `no_expected_value_count` を見て判断する。
 
+M3入口の曲・譜面情報ROIも、評価対象は同じ confirmed-events 境界へ寄せる。ただし `song_title`、`artist`、`play_style`、`difficulty`、`level`、`rank` / `expected_rank` は数字OCRの expected coverage ではなく、`m3_metadata_expected_coverage.md` と `m3_metadata_expected_template.csv` で別に読む。これは期待値列が保存直前イベントにそろっているかの確認であり、曲名OCR、ランクテンプレート照合、マスタ照合の成功を意味しない。
+
 ## transition_countup の扱い
 
 `transition_countup_*` はリザルト形状が出ていても保存対象外とする。
@@ -211,6 +213,8 @@ DUPLICATE_WINDOW_FRAMES = 90
 - `confirmation_mode_counts`: `time` / `frames` の分布
 
 confirmed-events OCR評価では、あわせて `score_ocr_summary.json` の `skipped_duplicate_count`、`skipped_unconfirmed_count`、`skipped_rejected_transition_count` を見る。duplicate、未確定候補、`rejected_transition` がOCR対象外のまま維持されていることを確認するための値であり、OCR精度そのものはROI別の expected coverage と match / mismatch で読む。
+
+M3曲・譜面情報の期待値列確認では、`m3_metadata_expected_coverage.md` の `total confirmed-events` が保存直前イベント数と一致していること、duplicate、`rejected_transition`、未確定候補、non-result が対象外であることを見る。数字OCR用の `ocr_expected_coverage.md` とは別レポートとして扱う。
 
 ## M0/M1で固定すること
 

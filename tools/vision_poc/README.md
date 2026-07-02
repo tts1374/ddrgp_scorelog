@@ -20,7 +20,7 @@ python -m pip install -e ".[vision]"
 - 入力画像: `samples/screenshots/organized/`
 - 出力先: `data/vision_poc/`
 
-出力先には `results.csv`、`result_events.csv`、`result_events_summary.json`、`summary.json`、`misclassifications.md`、`rois/<画像名>/` 配下の主要ROI画像が生成されます。`data/` はGit管理対象外です。`rois/<画像名>/` には分類確認用ROIに加えて、M3入口の目視確認用として `play_style`、`difficulty`、`level`、`rank`、`song_title`、`artist` も出力します。この段階では切り出し足場だけで、本格OCR、テンプレート照合、マスタ照合には進みません。
+出力先には `results.csv`、`result_events.csv`、`result_events_summary.json`、`summary.json`、`misclassifications.md`、`m3_metadata_expected_coverage.md`、`m3_metadata_expected_template.csv`、`rois/<画像名>/` 配下の主要ROI画像が生成されます。`data/` はGit管理対象外です。`rois/<画像名>/` には分類確認用ROIに加えて、M3入口の目視確認用として `play_style`、`difficulty`、`level`、`rank`、`song_title`、`artist` も出力します。この段階では切り出し足場だけで、本格OCR、テンプレート照合、マスタ照合には進みません。
 
 この既定実行は metadata 評価モードです。`samples/screenshots/metadata.csv` の並びをフレーム順として扱いますが、キャプチャ時刻は持たないため、`result_events.csv` の `timestamp_ms` と `candidate_duration_ms` は空欄、`confirmation_mode` は `frames` になります。
 
@@ -266,7 +266,7 @@ OCR前処理を省略したい場合は以下を使います。
 python -m tools.vision_poc --no-ocr
 ```
 
-M3入口の曲・譜面情報確認では、まず `data/vision_poc/rois/<画像名>/play_style.png`、`difficulty.png`、`level.png`、`rank.png`、`song_title.png`、`artist.png` を目視します。これらは保存直前イベントから曲・譜面情報を評価するための切り出し足場であり、現時点では `--ocr-rois all` のOCR評価対象には含めません。
+M3入口の曲・譜面情報確認では、まず `data/vision_poc/rois/<画像名>/play_style.png`、`difficulty.png`、`level.png`、`rank.png`、`song_title.png`、`artist.png` を目視します。これらは保存直前イベントから曲・譜面情報を評価するための切り出し足場であり、現時点では `--ocr-rois all` のOCR評価対象には含めません。期待値列の充足状況は `m3_metadata_expected_coverage.md` で確認します。このレポートの対象は confirmed-events 境界、つまり `confirmed_result=true` かつ `duplicate=false` だけです。`artist.png` は補助ROIで、長いアーティスト名では左右が切れることがあります。M3入口では座標の大変更に進まず、`song_title.png` 内の2行表示も合わせて目視します。
 
 `score_digits` 以外の判定数ROIと `ex_score` も同じ前処理APIを使えます。現時点ではOCR精度調整前の足場として、まずは `max_combo`、`marvelous`、`perfect`、`great`、`good`、`miss`、`ex_score` の `*_original.png` / `*_enlarged.png` / `*_binary.png` を確認できる状態にしています。
 
@@ -294,6 +294,17 @@ python -m tools.vision_poc --ocr-rois score_digits max_combo marvelous perfect g
 `score_digits` は既存互換のため、引き続き `score`、`expected_score`、ファイル名内の `scoreXXXXXX` の順で期待値を取得します。
 
 `expected_rank` はランクROIや低ランク素材の目視評価用メモとして扱います。数字OCRの expected coverage には含めず、`score_ocr_summary.json`、`score_ocr_profiles_summary.json`、`ocr_expected_coverage.md` の `evaluated` / `partially_evaluated` / `no_expected_values` 判定とも混同しません。ランクOCRやランクテンプレート評価に進む場合は、別途M3の評価列とレポートとして定義します。
+
+M3入口の曲・譜面情報ROIでは、以下の列をローカル metadata の期待値として読みます。値は文字列として前後空白と連続空白だけ正規化し、数字OCRのような桁正規化や match 判定はまだ行いません。
+
+- `song_title` または `expected_song_title`
+- `artist` または `expected_artist`
+- `play_style` または `expected_play_style`
+- `difficulty` または `expected_difficulty`
+- `level` または `expected_level`
+- `rank` または `expected_rank`
+
+`m3_metadata_expected_coverage.md` は、confirmed-events 対象行について上記列が埋まっているかだけを `evaluated` / `partially_evaluated` / `no_expected_values` で集計します。`m3_metadata_expected_template.csv` は不足列がある confirmed-events 行だけを出力する補助CSVです。これは曲名OCR、難易度テンプレート照合、マスタ照合の精度評価ではなく、保存直前イベントで目視評価に使う期待値列がそろっているかを見るための別レポートです。
 
 実行時には、期待値が不足している `screen_type=result` 行だけを `data/vision_poc/ocr_expected_template.csv` へ出力します。このCSVはローカル `metadata.csv` を破壊的に更新せず、どの行に `max_combo` / `marvelous` / `perfect` / `great` / `good` / `miss` / `ex_score` を埋めるべきか確認するための補助です。`missing_judgment_rois` を見て、対象画像の `ocr/<画像名>/<roi>_original.png` や実スクリーンショットを目視し、ローカルの `samples/screenshots/metadata.csv` に列と値を追加してから再実行します。
 

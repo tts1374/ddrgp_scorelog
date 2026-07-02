@@ -223,6 +223,106 @@ def test_expected_ocr_value_uses_optional_judgment_columns() -> None:
     assert runner.expected_ocr_value_from_row(row, "miss") == ""
 
 
+def test_m3_metadata_expected_values_are_separate_from_digit_ocr_expected_values() -> None:
+    row = {
+        "organized_file": "organized/result_score111111_sample.png",
+        "song_title": "  CHAOS   ",
+        "expected_artist": "DE-SIRE retunes",
+        "play_style": "SINGLE",
+        "difficulty": "BEGINNER",
+        "level": "06",
+        "expected_rank": "D",
+        "expected_score": "111111",
+    }
+
+    assert runner.expected_m3_metadata_value_from_row(row, "song_title") == "CHAOS"
+    assert runner.expected_m3_metadata_value_from_row(row, "artist") == "DE-SIRE retunes"
+    assert runner.expected_m3_metadata_value_from_row(row, "play_style") == "SINGLE"
+    assert runner.expected_m3_metadata_value_from_row(row, "difficulty") == "BEGINNER"
+    assert runner.expected_m3_metadata_value_from_row(row, "level") == "06"
+    assert runner.expected_m3_metadata_value_from_row(row, "rank") == "D"
+    assert runner.expected_ocr_value_from_row(row, "rank") == ""
+
+
+def test_m3_metadata_expected_report_uses_confirmed_events_boundary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    frame_names = (
+        "result_score123456_a.png",
+        "result_score123456_b.png",
+        "result_score123456_c.png",
+        "result_score123456_d.png",
+        "transition_countup_score999999.png",
+    )
+    for name in frame_names:
+        write_test_image(tmp_path / "frames" / name)
+    manifest_path = tmp_path / "manifest.csv"
+    manifest_path.write_text(
+        "image_path,timestamp_ms,screen_type,song_title,artist,play_style,difficulty,level,"
+        "expected_rank,expected_score\n"
+        "result_score123456_a.png,0,result,,,,,,,\n"
+        "result_score123456_b.png,500,result,,,,,,,\n"
+        "result_score123456_c.png,1000,result,CHAOS,DE-SIRE,SINGLE,BEGINNER,06,D,123456\n"
+        "result_score123456_d.png,1500,result,,,,,,,123456\n"
+        "transition_countup_score999999.png,2000,transition,COUNTUP,NOPE,SINGLE,EXPERT,16,A,999999\n",
+        encoding="utf-8",
+    )
+
+    def classify_synthetic(_image: Image.Image, row: dict[str, str]) -> runner.Classification:
+        if row["organized_file"].startswith("transition_countup_"):
+            return classification(
+                row["organized_file"],
+                result_candidate=False,
+                result_shape_candidate=True,
+                screen_type="transition",
+                transition_kind="countup",
+            )
+        return classification(
+            row["organized_file"],
+            result_candidate=True,
+            screen_type=row["screen_type"],
+        )
+
+    monkeypatch.setattr(runner, "classify", classify_synthetic)
+
+    output_dir = tmp_path / "output"
+    assert (
+        runner.main(
+            [
+                "--sequence-mode",
+                "manifest",
+                "--frame-manifest",
+                str(manifest_path),
+                "--frame-root",
+                str(tmp_path / "frames"),
+                "--output",
+                str(output_dir),
+                "--no-rois",
+                "--no-ocr",
+            ]
+        )
+        == 0
+    )
+
+    coverage = (output_dir / "m3_metadata_expected_coverage.md").read_text(encoding="utf-8")
+    assert "| `song_title` | `evaluated` | 1 | 0 | 1 |" in coverage
+    assert "| `rank` | `evaluated` | 1 | 0 | 1 |" in coverage
+    assert "`expected_rank` は数字OCRの" in coverage
+
+    template_rows = read_csv_rows(output_dir / "m3_metadata_expected_template.csv")
+    assert template_rows == []
+
+    event_rows = read_csv_rows(output_dir / "result_events.csv")
+    assert [row["event_type"] for row in event_rows] == [
+        "none",
+        "none",
+        "confirmed",
+        "duplicate",
+        "rejected_transition",
+    ]
+
+
 def test_score_digits_preprocessing_writes_images_without_ocr_engine(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

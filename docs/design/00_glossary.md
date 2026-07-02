@@ -176,6 +176,19 @@ OCR評価に使う期待値列。
 
 manifest や timestamped 出力で保持する。
 
+M3入口では、数字OCRとは別に曲・譜面情報ROIの期待値列も扱う。
+
+例:
+
+- `song_title` / `expected_song_title`
+- `artist` / `expected_artist`
+- `play_style` / `expected_play_style`
+- `difficulty` / `expected_difficulty`
+- `level` / `expected_level`
+- `rank` / `expected_rank`
+
+これらは `m3_metadata_expected_coverage.md` で confirmed-events 対象の列充足を見るための値であり、数字OCRの `ocr_expected_coverage.md` には含めない。
+
 ## evaluated
 
 対象ROIのすべてのOCR試行に期待値がある状態。

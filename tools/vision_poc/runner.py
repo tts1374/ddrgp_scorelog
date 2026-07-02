@@ -230,6 +230,22 @@ OCR_ROIS = (
     "miss",
     "ex_score",
 )
+M3_METADATA_EXPECTED_FIELDS = (
+    "song_title",
+    "artist",
+    "play_style",
+    "difficulty",
+    "level",
+    "rank",
+)
+M3_METADATA_EXPECTED_COLUMN_KEYS: dict[str, tuple[str, ...]] = {
+    "song_title": ("song_title", "expected_song_title"),
+    "artist": ("artist", "expected_artist"),
+    "play_style": ("play_style", "expected_play_style"),
+    "difficulty": ("difficulty", "expected_difficulty"),
+    "level": ("level", "expected_level"),
+    "rank": ("rank", "expected_rank"),
+}
 OCR_PREPROCESS_CONFIG = OcrPreprocessConfig()
 OCR_PREPROCESS_PROFILES: dict[str, OcrPreprocessConfig] = {
     "default": OCR_PREPROCESS_CONFIG,
@@ -862,6 +878,127 @@ def write_ocr_expected_template(path: Path, frames: Iterable[FrameInput]) -> int
         if rows:
             writer.writerows(rows)
     return len(rows)
+
+
+def normalize_expected_text(value: str) -> str:
+    return " ".join(value.strip().split())
+
+
+def expected_m3_metadata_value_from_row(row: dict[str, str], field_name: str) -> str:
+    for key in M3_METADATA_EXPECTED_COLUMN_KEYS[field_name]:
+        value = normalize_expected_text(row.get(key, ""))
+        if value:
+            return value
+    return ""
+
+
+def m3_expected_coverage_status(expected_value_count: int, total: int) -> str:
+    if total == 0 or expected_value_count == 0:
+        return "no_expected_values"
+    if expected_value_count == total:
+        return "evaluated"
+    return "partially_evaluated"
+
+
+def summarize_m3_metadata_expected_coverage(
+    frames: Iterable[FrameInput],
+    events: Iterable[ResultEvent],
+) -> dict[str, dict[str, int | str]]:
+    buckets = {
+        field_name: {"expected_value_count": 0, "no_expected_value_count": 0, "total": 0}
+        for field_name in M3_METADATA_EXPECTED_FIELDS
+    }
+    for frame, event in zip(frames, events, strict=True):
+        if not is_save_candidate_event(event):
+            continue
+        for field_name, bucket in buckets.items():
+            bucket["total"] += 1
+            if expected_m3_metadata_value_from_row(frame.row, field_name):
+                bucket["expected_value_count"] += 1
+            else:
+                bucket["no_expected_value_count"] += 1
+
+    return {
+        field_name: {
+            "evaluation_status": m3_expected_coverage_status(
+                int(bucket["expected_value_count"]),
+                int(bucket["total"]),
+            ),
+            "expected_value_count": bucket["expected_value_count"],
+            "no_expected_value_count": bucket["no_expected_value_count"],
+            "total_events": bucket["total"],
+        }
+        for field_name, bucket in buckets.items()
+    }
+
+
+def write_m3_metadata_expected_template(
+    path: Path,
+    frames: Iterable[FrameInput],
+    events: Iterable[ResultEvent],
+) -> int:
+    fieldnames = ["organized_file", "screen_type", *M3_METADATA_EXPECTED_FIELDS, "missing_fields"]
+    rows: list[dict[str, str]] = []
+    for frame, event in zip(frames, events, strict=True):
+        if not is_save_candidate_event(event):
+            continue
+        missing_fields: list[str] = []
+        template_row = {
+            "organized_file": frame.row["organized_file"],
+            "screen_type": frame.row.get("screen_type", ""),
+        }
+        for field_name in M3_METADATA_EXPECTED_FIELDS:
+            value = expected_m3_metadata_value_from_row(frame.row, field_name)
+            template_row[field_name] = value
+            if value == "":
+                missing_fields.append(field_name)
+        if missing_fields:
+            template_row["missing_fields"] = " ".join(missing_fields)
+            rows.append(template_row)
+
+    with path.open("w", encoding="utf-8", newline="") as file:
+        writer = csv.DictWriter(file, fieldnames=fieldnames)
+        writer.writeheader()
+        if rows:
+            writer.writerows(rows)
+    return len(rows)
+
+
+def write_m3_metadata_expected_report(
+    path: Path,
+    coverage: dict[str, dict[str, int | str]],
+) -> None:
+    lines = [
+        "# M3 Metadata Expected Coverage",
+        "",
+        "曲・譜面情報ROIの期待値列を、数字OCR expected coverage とは別に確認するための"
+        "レポートです。",
+        "対象は保存直前イベント境界の `confirmed_result=true` かつ `duplicate=false` のみです。",
+        "",
+        "| field | status | expected | missing | total confirmed-events |",
+        "|---|---|---:|---:|---:|",
+    ]
+    for field_name in M3_METADATA_EXPECTED_FIELDS:
+        item = coverage[field_name]
+        lines.append(
+            f"| `{field_name}` | `{item['evaluation_status']}` | "
+            f"{item['expected_value_count']} | {item['no_expected_value_count']} | "
+            f"{item['total_events']} |"
+        )
+    lines.extend(
+        [
+            "",
+            "## 読み方",
+            "",
+            "- `evaluated`: confirmed-events 対象行すべてに期待値があります。",
+            "- `partially_evaluated`: 一部の confirmed-events 対象行だけに期待値があります。",
+            "- `no_expected_values`: confirmed-events 対象行に期待値がありません。",
+            "",
+            "`rank` は `rank` または `expected_rank` から読みます。`expected_rank` は数字OCRの "
+            "`ocr_expected_coverage.md` には含めません。",
+        ]
+    )
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def save_primary_rois(image: Image.Image, output_dir: Path, stem: str) -> None:
@@ -2268,6 +2405,16 @@ def main(argv: list[str] | None = None) -> int:
     (output_dir / "result_events_summary.json").write_text(
         json.dumps(result_events_summary, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
+    )
+    m3_expected_coverage = summarize_m3_metadata_expected_coverage(frames, result_events)
+    write_m3_metadata_expected_template(
+        output_dir / "m3_metadata_expected_template.csv",
+        frames,
+        result_events,
+    )
+    write_m3_metadata_expected_report(
+        output_dir / "m3_metadata_expected_coverage.md",
+        m3_expected_coverage,
     )
     score_ocr_results: list[ScoreOcrResult] = []
     profile_ocr_results: list[ProfileScoreOcrResult] = []

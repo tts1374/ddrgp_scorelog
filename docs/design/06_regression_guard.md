@@ -78,6 +78,14 @@
 - `ex_score` の `low-threshold` は confirmed-events 対象かつ expected coverage が `evaluated` の場合だけ採用候補として読む。
 - `score_ocr_profiles_summary.json` と `ocr_roi_report.md` では default profile と推奨profileの差を確認できる補助情報を維持する。
 
+## M3 metadata expected coverage
+
+- 曲・譜面情報ROIの期待値列確認は confirmed-events 境界、つまり `confirmed_result=true` かつ `duplicate=false` だけを対象にする。
+- duplicate、`event_type=rejected_transition`、未確定 `result_candidate`、non-result は M3 metadata expected coverage 対象外にする。
+- `song_title`、`artist`、`play_style`、`difficulty`、`level`、`rank` / `expected_rank` は数字OCR expected coverage と混同しない。
+- `m3_metadata_expected_coverage.md` と `m3_metadata_expected_template.csv` は期待値列の充足確認であり、曲名OCR、テンプレート照合、マスタ照合の成功扱いにはしない。
+- `expected_rank` は `score_ocr_summary.json`、`score_ocr_profiles_summary.json`、`ocr_expected_coverage.md` の `evaluated` / `partially_evaluated` / `no_expected_values` 判定に含めない。
+
 ## OCR出力互換
 
 - `score_ocr.csv` の既存列を維持する。
