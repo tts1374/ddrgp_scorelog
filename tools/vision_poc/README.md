@@ -293,6 +293,10 @@ python -m tools.vision_poc --ocr-rois score_digits max_combo marvelous perfect g
 
 既存確認用の `score_digits_original.png`、`score_digits_enlarged.png`、`score_digits_binary.png` のファイル名は維持しています。
 
+### 実行時間メモ
+
+`python -m tools.vision_poc --no-ocr` は分類だけでなく、M3のCSV/JSON/Markdownレポートと `rois/` のPNG出力も行うデバッグ用バッチです。ROI PNG保存は重いため、反映速度や抽出ロジックだけを確認する場合は `--no-rois` を付けます。直近ローカル測定では、ROI出力ありの `--no-ocr` が約9.7秒、`--no-ocr --no-rois` が約5.5秒でした。実運用の保存判定では、PoCレポートとROI画像保存を毎フレーム行う前提にはしません。
+
 ### metadata期待値列
 
 `samples/screenshots/metadata.csv` とローカル画像素材はGit管理対象外です。代わりに、このREADMEの列定義に沿って各環境のローカル metadata を整備します。

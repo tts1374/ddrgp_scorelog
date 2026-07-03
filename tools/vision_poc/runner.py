@@ -2278,20 +2278,22 @@ def format_float(value: float | None) -> str:
 def m3_chart_field_image_feature_extraction_rows(
     frames: Iterable[FrameInput],
     events: Iterable[ResultEvent],
+    feature_samples: dict[tuple[int, str], dict[str, float]] | None = None,
 ) -> list[dict[str, str]]:
     frame_list = list(frames)
     event_list = list(events)
-    feature_samples: dict[tuple[int, str], dict[str, float]] = {}
-    for frame_index, (frame, event) in enumerate(zip(frame_list, event_list, strict=True)):
-        if not is_save_candidate_event(event):
-            continue
-        with Image.open(frame.image_path) as image:
-            image = image.convert("RGB")
-            for field_name in M3_CHART_FIELD_FIELDS:
-                feature_samples[(frame_index, field_name)] = m3_chart_field_feature_values(
-                    image,
-                    field_name,
-                )
+    if feature_samples is None:
+        feature_samples = {}
+        for frame_index, (frame, event) in enumerate(zip(frame_list, event_list, strict=True)):
+            if not is_save_candidate_event(event):
+                continue
+            with Image.open(frame.image_path) as image:
+                image = image.convert("RGB")
+                for field_name in M3_CHART_FIELD_FIELDS:
+                    feature_samples[(frame_index, field_name)] = m3_chart_field_feature_values(
+                        image,
+                        field_name,
+                    )
 
     rows: list[dict[str, str]] = []
     for frame_index, (frame, event) in enumerate(zip(frame_list, event_list, strict=True)):
@@ -2419,11 +2421,46 @@ def write_m3_chart_field_image_feature_extraction_csv(
         writer.writerows(rows)
 
 
-def summarize_m3_chart_field_image_feature_extraction(
-    frames: Iterable[FrameInput],
-    events: Iterable[ResultEvent],
+def write_m3_chart_field_image_feature_extraction_rows_csv(
+    path: Path,
+    rows: Iterable[dict[str, str]],
+) -> None:
+    fieldnames = [
+        "organized_file",
+        "screen_type",
+        "event_type",
+        "confirmed_result",
+        "duplicate",
+        "chart_field_target",
+        "exclusion_reason",
+        "field_name",
+        "extractor",
+        "expected_value",
+        "extracted_value",
+        "match",
+        "status",
+        "failure_reason",
+        "nearest_distance",
+        "feature_bright_ratio",
+        "feature_white_ratio",
+        "feature_yellow_ratio",
+        "feature_cyan_ratio",
+        "feature_green_ratio",
+        "feature_edge_ratio",
+        "feature_mean_luma",
+        "feature_std_luma",
+        "roi_path",
+    ]
+    with path.open("w", encoding="utf-8", newline="") as file:
+        writer = csv.DictWriter(file, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+def summarize_m3_chart_field_image_feature_extraction_rows(
+    rows: Iterable[dict[str, str]],
 ) -> dict[str, object]:
-    rows = m3_chart_field_image_feature_extraction_rows(frames, events)
+    row_list = list(rows)
     field_buckets = {
         field_name: {
             "target_count": 0,
@@ -2442,7 +2479,7 @@ def summarize_m3_chart_field_image_feature_extraction(
         "no_expected_value": 0,
         "skipped": 0,
     }
-    for row in rows:
+    for row in row_list:
         status = row["status"]
         status_counts[status] = status_counts.get(status, 0) + 1
         bucket = field_buckets[row["field_name"]]
@@ -2461,14 +2498,14 @@ def summarize_m3_chart_field_image_feature_extraction(
 
     target_count = sum(
         1
-        for row in rows
+        for row in row_list
         if row["chart_field_target"] == "True" and row["field_name"] == "level"
     )
     return {
         "target_boundary": "confirmed_result=true and duplicate=false",
         "extractor": M3_CHART_FIELD_IMAGE_FEATURE_EXTRACTION_METHOD,
         "reference_mode": "leave-one-out nearest centroid from confirmed-events expected labels",
-        "total_rows": len(rows),
+        "total_rows": len(row_list),
         "chart_field_target_count": target_count,
         "total_attempts": target_count * len(M3_CHART_FIELD_FIELDS),
         "status_counts": status_counts,
@@ -2483,6 +2520,14 @@ def summarize_m3_chart_field_image_feature_extraction(
             for field_name, bucket in field_buckets.items()
         },
     }
+
+
+def summarize_m3_chart_field_image_feature_extraction(
+    frames: Iterable[FrameInput],
+    events: Iterable[ResultEvent],
+) -> dict[str, object]:
+    rows = m3_chart_field_image_feature_extraction_rows(frames, events)
+    return summarize_m3_chart_field_image_feature_extraction_rows(rows)
 
 
 def display_path(path: Path) -> str:
@@ -2628,20 +2673,22 @@ def m3_chart_field_template_extraction_rows(
     template_root: Path = M3_CHART_FIELD_TEMPLATE_ROOT,
     *,
     include_result_references: bool = True,
+    target_vectors: dict[tuple[int, str], np.ndarray] | None = None,
 ) -> list[dict[str, str]]:
     frame_list = list(frames)
     event_list = list(events)
-    target_vectors: dict[tuple[int, str], np.ndarray] = {}
-    for frame_index, (frame, event) in enumerate(zip(frame_list, event_list, strict=True)):
-        if not is_save_candidate_event(event):
-            continue
-        with Image.open(frame.image_path) as image:
-            image = image.convert("RGB")
-            for field_name in M3_CHART_FIELD_FIELDS:
-                target_vectors[(frame_index, field_name)] = m3_chart_field_template_vector(
-                    image,
-                    field_name,
-                )
+    if target_vectors is None:
+        target_vectors = {}
+        for frame_index, (frame, event) in enumerate(zip(frame_list, event_list, strict=True)):
+            if not is_save_candidate_event(event):
+                continue
+            with Image.open(frame.image_path) as image:
+                image = image.convert("RGB")
+                for field_name in M3_CHART_FIELD_FIELDS:
+                    target_vectors[(frame_index, field_name)] = m3_chart_field_template_vector(
+                        image,
+                        field_name,
+                    )
 
     references_by_field = load_m3_chart_field_template_references(template_root)
     if include_result_references:
@@ -3047,6 +3094,13 @@ def write_m3_chart_field_image_feature_diagnostics(
     events: Iterable[ResultEvent],
 ) -> None:
     rows = m3_chart_field_image_feature_extraction_rows(frames, events)
+    write_m3_chart_field_image_feature_diagnostics_rows(path, rows)
+
+
+def write_m3_chart_field_image_feature_diagnostics_rows(
+    path: Path,
+    rows: Iterable[dict[str, str]],
+) -> None:
     status_by_field, mismatch_confusions, representative_mismatches = (
         m3_chart_field_image_feature_diagnostic_tables(rows)
     )
@@ -3662,13 +3716,22 @@ def main(argv: list[str] | None = None) -> int:
     write_ocr_expected_template(output_dir / "ocr_expected_template.csv", frames)
 
     classifications: list[Classification] = []
-    for frame in frames:
+    m3_chart_field_feature_samples: dict[tuple[int, str], dict[str, float]] = {}
+    m3_chart_field_template_vectors: dict[tuple[int, str], np.ndarray] = {}
+    for frame_index, frame in enumerate(frames):
         with Image.open(frame.image_path) as image:
             image = image.convert("RGB")
             classification = classify(image, frame.row)
             classifications.append(classification)
             if not args.no_rois:
                 save_primary_rois(image, output_dir, frame.image_path.stem)
+            for field_name in M3_CHART_FIELD_FIELDS:
+                m3_chart_field_feature_samples[(frame_index, field_name)] = (
+                    m3_chart_field_feature_values(image, field_name)
+                )
+                m3_chart_field_template_vectors[(frame_index, field_name)] = (
+                    m3_chart_field_template_vector(image, field_name)
+                )
 
     write_results_csv(output_dir / "results.csv", classifications)
     timestamps_ms = (
@@ -3719,29 +3782,35 @@ def main(argv: list[str] | None = None) -> int:
         + "\n",
         encoding="utf-8",
     )
-    write_m3_chart_field_image_feature_extraction_csv(
-        output_dir / "m3_chart_field_image_feature_extraction.csv",
+    m3_chart_field_image_feature_rows = m3_chart_field_image_feature_extraction_rows(
         frames,
         result_events,
+        m3_chart_field_feature_samples,
+    )
+    write_m3_chart_field_image_feature_extraction_rows_csv(
+        output_dir / "m3_chart_field_image_feature_extraction.csv",
+        m3_chart_field_image_feature_rows,
     )
     (output_dir / "m3_chart_field_image_feature_extraction_summary.json").write_text(
         json.dumps(
-            summarize_m3_chart_field_image_feature_extraction(frames, result_events),
+            summarize_m3_chart_field_image_feature_extraction_rows(
+                m3_chart_field_image_feature_rows
+            ),
             ensure_ascii=False,
             indent=2,
         )
         + "\n",
         encoding="utf-8",
     )
-    write_m3_chart_field_image_feature_diagnostics(
+    write_m3_chart_field_image_feature_diagnostics_rows(
         output_dir / "m3_chart_field_image_feature_diagnostics.md",
-        frames,
-        result_events,
+        m3_chart_field_image_feature_rows,
     )
     m3_chart_field_template_rows = m3_chart_field_template_extraction_rows(
         frames,
         result_events,
         args.chart_field_template_root,
+        target_vectors=m3_chart_field_template_vectors,
     )
     write_m3_chart_field_template_extraction_rows_csv(
         output_dir / "m3_chart_field_template_extraction.csv",

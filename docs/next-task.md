@@ -41,7 +41,9 @@ high
 - combined template value counts は `play_style={DOUBLE:11,SINGLE:78}`、`difficulty={BASIC:24,BEGINNER:11,CHALLENGE:14,DIFFICULT:17,EXPERT:23}`、`level=1-19すべてあり`。
 - `difficulty` の残り mismatch 5件は、ROIの見た目と metadata / ファイル名由来期待値が食い違っている可能性が高い。該当は `result_056...`、`result_073...`、`result_084...`、`result_085...`、`result_102...`。
 - `roi-template-nearest` は同分布内の leave-one-out 診断として読む。採用済みテンプレート照合やマスタ照合の成功扱いにしない。
-- 現状の `python -m tools.vision_poc --no-ocr` はこの環境の簡易測定で約12.9秒。変更前測定は約15.7秒だったが、環境差があるため参考値として扱う。
+- M3 image feature / template extraction で同じresult画像を開き直していたため、分類時にM3用ROI特徴とベクトルをキャッシュするようにした。
+- 直近ローカル簡易測定では `python -m tools.vision_poc --no-ocr` は約9.7秒、`python -m tools.vision_poc --no-ocr --no-rois` は約5.5秒。
+- ROI PNG保存がまだ重いため、反映速度や抽出ロジックだけを見る場合は `--no-rois` を使う。実運用ではPoCレポートとROI画像保存を毎フレーム行う前提にしない。
 - `tools/vision_poc/README.md`、`docs/design/03_event_and_save_boundary.md`、`docs/design/06_regression_guard.md` に読み方を追記済み。
 - `tests/test_vision_poc_ocr.py` に、テンプレート素材なし環境、confirmed-events 境界、leave-one-out result参照を保つテンプレート比較テストを追加済み。
 - 直近確認では `python -m tools.vision_poc --no-ocr`、`python -m ruff check tools\vision_poc pyproject.toml tests`、`python -m compileall tools\vision_poc`、`python -m pytest tests` が通過し、pytest は 84 passed。
@@ -96,7 +98,8 @@ high
    - `play_style` と `level` は `roi-template-nearest` が 60/60 match なので、まず同分布 leave-one-out 診断として副作用確認を続ける。
    - `difficulty` は 55/60 match。残り5件はROIの見た目と期待値の食い違い候補として、metadata / ファイル名 / 実画像のどれを正とするかを確認する。
    - confirmed-events result参照は評価セット由来なので、採用候補へ進める前に参照専用セットと評価専用セットの分割、または追加素材での外部検証を検討する。
-   - 読み込み時間が増える場合は、template/result ROI vector の再計算回数、画像open回数、summary生成の二重計算を優先して見る。
+   - 読み込み時間が増える場合は、ROI PNG保存、画像open回数、summary生成の二重計算を優先して見る。
+   - 次に速度を見るなら、`--no-rois` 前提の高速確認コマンドを基本にし、必要時だけROI PNGを出力する運用を整理する。
    - 新しい extractor 名を追加する場合は既存 `filename-baseline`、`roi-feature-nearest-centroid`、`roi-template-nearest` を比較用baselineとして維持する。
 
 3. テスト補強
