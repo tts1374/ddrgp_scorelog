@@ -659,6 +659,7 @@ def test_m3_chart_field_template_extraction_uses_confirmed_events_boundary(
     )
     assert summary["extractor"] == "roi-template-nearest"
     assert summary["template_image_count"] == 2
+    assert summary["field_vector_modes"]["difficulty"] == "foreground-color-pattern"
     assert summary["template_reference_counts"] == {
         "play_style": 3,
         "difficulty": 3,

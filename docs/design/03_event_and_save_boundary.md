@@ -117,6 +117,8 @@ M3 chart-field 抽出PoCの入口では、有限候補で扱いやすい `play_s
 
 `m3_chart_field_template_extraction.csv` と `m3_chart_field_template_extraction_summary.json` は、ローカル `samples/screenshots/organized/chart_field_templates/` 画像と confirmed-events 対象の result ROIを参照する最近傍テンプレート比較PoCです。extractor は `roi-template-nearest` で、テンプレートファイル名や metadata 期待値から期待ラベルを読み、confirmed-events 対象の `play_style`、`difficulty`、`level` ROIと同じROIを比較する。confirmed-events 由来の参照は評価中の同一フレームを除く leave-one-out にする。これは追加テンプレート素材と評価セット由来参照を使った同分布内の比較実験であり、OCR、マスタ照合、採用済みテンプレート照合の成功ではない。参照がない環境では対象行を `empty_extraction` / `no_template_references` として扱い、期待ラベルの参照テンプレートがない mismatch は `missing_expected_template_reference` として通常の mismatch と区別する。通常の112件分類回帰セットとは混同しない。
 
+`difficulty` は5種類の文字色が分かれているため、`roi-template-nearest` では difficulty ROIに限って前景文字色の比率パターンで比較する。残る mismatch は、ROI画像の見た目と metadata / ファイル名由来期待値の食い違い候補として確認する。
+
 ## transition_countup の扱い
 
 `transition_countup_*` はリザルト形状が出ていても保存対象外とする。

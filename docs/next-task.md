@@ -35,10 +35,11 @@ high
 - `--chart-field-template-root <dir>` でテンプレート参照先を差し替えられる。存在しない場合も confirmed-events result ROI 参照だけで比較できる。
 - confirmed-events result ROI 参照では、評価中の同一フレームを除外する leave-one-out を使う。
 - テンプレート素材はローカル素材扱いでGit管理しない。通常の112件分類回帰セットにも追加しない。
-- 直近ローカル実測では `roi-template-nearest` は `chart_field_templates` 29枚 + confirmed-events result参照60件、target 60件 x 3 field = 180 attempt、match 169、mismatch 11、skipped 156。
-- `roi-template-nearest` field別では `play_style` 60/60 match、`difficulty` 49/60 match、`level` 60/60 match。
+- `difficulty` は5種類の文字色が強い手がかりになるため、`roi-template-nearest` 内で difficulty ROIだけ前景文字色パターン比較にした。
+- 直近ローカル実測では `roi-template-nearest` は `chart_field_templates` 29枚 + confirmed-events result参照60件、target 60件 x 3 field = 180 attempt、match 175、mismatch 5、skipped 156。
+- `roi-template-nearest` field別では `play_style` 60/60 match、`difficulty` 55/60 match、`level` 60/60 match。
 - combined template value counts は `play_style={DOUBLE:11,SINGLE:78}`、`difficulty={BASIC:24,BEGINNER:11,CHALLENGE:14,DIFFICULT:17,EXPERT:23}`、`level=1-19すべてあり`。
-- `difficulty` の mismatch は `DIFFICULT/EXPERT/CHALLENGE` 間に残っている。代表内訳は `DIFFICULT -> EXPERT` 4件、`CHALLENGE -> EXPERT` 2件、`EXPERT -> DIFFICULT` 2件など。
+- `difficulty` の残り mismatch 5件は、ROIの見た目と metadata / ファイル名由来期待値が食い違っている可能性が高い。該当は `result_056...`、`result_073...`、`result_084...`、`result_085...`、`result_102...`。
 - `roi-template-nearest` は同分布内の leave-one-out 診断として読む。採用済みテンプレート照合やマスタ照合の成功扱いにしない。
 - 現状の `python -m tools.vision_poc --no-ocr` はこの環境の簡易測定で約12.9秒。変更前測定は約15.7秒だったが、環境差があるため参考値として扱う。
 - `tools/vision_poc/README.md`、`docs/design/03_event_and_save_boundary.md`、`docs/design/06_regression_guard.md` に読み方を追記済み。
@@ -93,7 +94,7 @@ high
 
 2. M3 chart-field template比較の次の最小単位を決める
    - `play_style` と `level` は `roi-template-nearest` が 60/60 match なので、まず同分布 leave-one-out 診断として副作用確認を続ける。
-   - `difficulty` は 49/60 match で、`DIFFICULT` / `EXPERT` / `CHALLENGE` 間の混同が残る。代表ROIと nearest_source_type を見て、ROI全体比較の限界か、切り出し/前処理で改善できるかを整理する。
+   - `difficulty` は 55/60 match。残り5件はROIの見た目と期待値の食い違い候補として、metadata / ファイル名 / 実画像のどれを正とするかを確認する。
    - confirmed-events result参照は評価セット由来なので、採用候補へ進める前に参照専用セットと評価専用セットの分割、または追加素材での外部検証を検討する。
    - 読み込み時間が増える場合は、template/result ROI vector の再計算回数、画像open回数、summary生成の二重計算を優先して見る。
    - 新しい extractor 名を追加する場合は既存 `filename-baseline`、`roi-feature-nearest-centroid`、`roi-template-nearest` を比較用baselineとして維持する。

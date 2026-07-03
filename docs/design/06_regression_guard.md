@@ -101,6 +101,7 @@
 - `m3_chart_field_template_extraction.csv` と `m3_chart_field_template_extraction_summary.json` も confirmed-events 境界だけを抽出評価対象にする。
 - `roi-template-nearest` はローカル `chart_field_templates` 素材と confirmed-events result ROI の leave-one-out 最近傍比較PoCであり、OCR、マスタ照合、採用済みテンプレート照合の成功扱いにはしない。
 - confirmed-events result ROI を参照に加えても、評価中の同一フレームは参照から除外する。
+- `difficulty` は5種類の前景文字色パターンで比較し、ROI全体背景に引っ張られないようにする。
 - テンプレート素材や confirmed-events 参照がない環境では `status=empty_extraction`、`failure_reason=no_template_references` として扱い、通常の112件分類回帰セットの期待件数を変えない。
 - 期待ラベルの参照テンプレートがない mismatch は `failure_reason=missing_expected_template_reference` として、参照ありの最近傍負けと分けて読めるようにする。
 - `level` の単純ROI画像特徴baselineは、match が弱い間は採用候補扱いにしない。

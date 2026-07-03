@@ -2496,8 +2496,39 @@ def m3_chart_field_template_vector(image: Image.Image, field_name: str) -> np.nd
     x, y, width, height = ROI_DEFINITIONS[field_name]
     del x, y
     crop = crop_roi(image, ROI_DEFINITIONS[field_name]).convert("RGB")
+    if field_name == "difficulty":
+        return m3_difficulty_color_pattern_vector(crop)
     normalized = crop.resize((width, height), Image.Resampling.BILINEAR)
     return np.asarray(normalized, dtype=np.float32).reshape(-1) / 255.0
+
+
+def m3_difficulty_color_pattern_vector(region: Image.Image) -> np.ndarray:
+    rgb = np.asarray(region.convert("RGB"), dtype=np.float32)
+    red = rgb[:, :, 0]
+    green = rgb[:, :, 1]
+    blue = rgb[:, :, 2]
+    max_channel = rgb.max(axis=2)
+    min_channel = rgb.min(axis=2)
+    luma = rgb.mean(axis=2)
+    foreground = (luma > 50) & ((max_channel - min_channel) > 35) & (max_channel > 100)
+    foreground_count = int(foreground.sum())
+    if foreground_count == 0:
+        return np.zeros(6, dtype=np.float32)
+
+    def ratio(mask: np.ndarray) -> float:
+        return float((mask & foreground).sum() / foreground_count)
+
+    return np.asarray(
+        [
+            ratio((blue > 120) & (red < 120)),  # BEGINNER cyan/blue
+            ratio((red > 140) & (green > 110) & (blue < 120)),  # BASIC yellow/orange
+            ratio((red > 150) & (green < 100) & (blue < 120)),  # DIFFICULT red
+            ratio((green > 120) & (red < 120) & (blue < 120)),  # EXPERT green
+            ratio((red > 130) & (blue > 130) & (green < 90)),  # CHALLENGE magenta
+            foreground_count / float(foreground.size),
+        ],
+        dtype=np.float32,
+    )
 
 
 def load_m3_chart_field_template_references(
@@ -2909,6 +2940,11 @@ def summarize_m3_chart_field_template_extraction_rows(
             "confirmed-events result references with leave-one-out self exclusion"
         ),
         "template_root": display_path(template_root),
+        "field_vector_modes": {
+            "play_style": "raw-roi-rgb",
+            "difficulty": "foreground-color-pattern",
+            "level": "raw-roi-rgb",
+        },
         "reference_source_image_counts": label_counts["source_image_counts"],
         "template_image_count": label_counts["source_image_counts"]["chart_field_templates"],
         "result_reference_image_count": label_counts["source_image_counts"]["confirmed_events"],

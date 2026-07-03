@@ -280,6 +280,8 @@ M3入口の曲・譜面情報確認では、まず `data/vision_poc/rois/<画像
 
 `m3_chart_field_template_extraction.csv` と `m3_chart_field_template_extraction_summary.json` は、追加ローカル素材 `samples/screenshots/organized/chart_field_templates/` と confirmed-events 対象の result ROI を参照する `roi-template-nearest` の小さな比較PoCです。テンプレート画像名と metadata 期待値から `play_style`、`difficulty`、`level` の期待ラベルを読み、各ROI画像との最近傍距離で `extracted_value` を出します。confirmed-events 由来の参照では評価中の同一フレームを除く leave-one-out にします。テンプレート素材はローカル素材扱いでGit管理しません。ディレクトリが存在しない環境でも confirmed-events 由来の参照だけで比較できます。参照がない場合は `status=empty_extraction`、`failure_reason=no_template_references` になります。期待ラベルの参照テンプレートがない mismatch は `failure_reason=missing_expected_template_reference` として、単純な最近傍負けとは分けて読みます。この出力も confirmed-events 境界だけを抽出評価対象にし、OCR、マスタ照合、採用済みテンプレート照合の成功扱いにはしません。必要に応じて `--chart-field-template-root <dir>` で参照先を差し替えられます。
 
+`difficulty` は5種類の文字色が強い手がかりになるため、`roi-template-nearest` 内ではROI全体ピクセルではなく前景文字色の比率パターンで比較します。直近ローカル素材では `play_style` と `level` は 60/60 match、`difficulty` は 55/60 match です。残る `difficulty` mismatch はROIの見た目と metadata / ファイル名由来の期待値が食い違っている可能性があるため、抽出ロジックの失敗だけでなく期待値レビュー候補として読みます。
+
 現在のローカル metadata では、M3 metadata expected coverage の confirmed-events 対象は60件です。`song_title` / `artist` / `play_style` / `difficulty` / `level` は60件すべてが埋まっており、M3入口ではこの5項目を優先して評価します。`rank` / `expected_rank` は12件だけが埋まっているため、残り48件の不足は数字OCR expected coverage の不足とは別に読み、当面は補助ROIの部分評価として扱います。ランクOCR、ランクテンプレート照合、本格採用判断へ進む場合は、別途M3の評価列とレポートとして定義します。
 
 `score_digits` 以外の判定数ROIと `ex_score` も同じ前処理APIを使えます。現時点ではOCR精度調整前の足場として、まずは `max_combo`、`marvelous`、`perfect`、`great`、`good`、`miss`、`ex_score` の `*_original.png` / `*_enlarged.png` / `*_binary.png` を確認できる状態にしています。
