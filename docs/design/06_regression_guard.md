@@ -99,8 +99,9 @@
 - `roi-feature-nearest-centroid` はROI画像特徴の軽い比較baselineであり、OCR、テンプレート照合、マスタ照合の成功扱いにはしない。
 - `m3_chart_field_image_feature_diagnostics.md` は mismatch の混同表と代表ROIを読む補助レポートであり、OCR、テンプレート照合、マスタ照合の成功扱いにはしない。
 - `m3_chart_field_template_extraction.csv` と `m3_chart_field_template_extraction_summary.json` も confirmed-events 境界だけを抽出評価対象にする。
-- `roi-template-nearest` はローカル `chart_field_templates` 素材との最近傍比較PoCであり、OCR、マスタ照合、採用済みテンプレート照合の成功扱いにはしない。
-- テンプレート素材がない環境では `status=empty_extraction`、`failure_reason=no_template_references` として扱い、通常の112件分類回帰セットの期待件数を変えない。
+- `roi-template-nearest` はローカル `chart_field_templates` 素材と confirmed-events result ROI の leave-one-out 最近傍比較PoCであり、OCR、マスタ照合、採用済みテンプレート照合の成功扱いにはしない。
+- confirmed-events result ROI を参照に加えても、評価中の同一フレームは参照から除外する。
+- テンプレート素材や confirmed-events 参照がない環境では `status=empty_extraction`、`failure_reason=no_template_references` として扱い、通常の112件分類回帰セットの期待件数を変えない。
 - 期待ラベルの参照テンプレートがない mismatch は `failure_reason=missing_expected_template_reference` として、参照ありの最近傍負けと分けて読めるようにする。
 - `level` の単純ROI画像特徴baselineは、match が弱い間は採用候補扱いにしない。
 - duplicate、`event_type=rejected_transition`、未確定 `result_candidate`、non-result は chart-field 抽出評価でも `status=skipped` のまま、`failure_reason` で区別する。

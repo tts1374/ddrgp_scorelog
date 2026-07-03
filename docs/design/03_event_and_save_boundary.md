@@ -115,7 +115,7 @@ M3 chart-field 抽出PoCの入口では、有限候補で扱いやすい `play_s
 
 `m3_chart_field_image_feature_diagnostics.md` は、同じ画像特徴baselineの mismatch を混同表と代表ROIで確認する補助レポートです。`play_style` の単発mismatch、`difficulty` の期待値/抽出値の混同、`level` の弱さを次のPoC単位へ渡すために読み、採用根拠やテンプレート照合成功として扱わない。
 
-`m3_chart_field_template_extraction.csv` と `m3_chart_field_template_extraction_summary.json` は、ローカル `samples/screenshots/organized/chart_field_templates/` 画像を参照する最近傍テンプレート比較PoCです。extractor は `roi-template-nearest` で、テンプレートファイル名から期待ラベルを読み、confirmed-events 対象の `play_style`、`difficulty`、`level` ROIと同じROIを比較する。これは追加テンプレート素材を使った比較実験であり、OCR、マスタ照合、採用済みテンプレート照合の成功ではない。テンプレート素材がない環境では対象行を `empty_extraction` / `no_template_references` として扱い、期待ラベルの参照テンプレートがない mismatch は `missing_expected_template_reference` として通常の mismatch と区別する。通常の112件分類回帰セットとは混同しない。
+`m3_chart_field_template_extraction.csv` と `m3_chart_field_template_extraction_summary.json` は、ローカル `samples/screenshots/organized/chart_field_templates/` 画像と confirmed-events 対象の result ROIを参照する最近傍テンプレート比較PoCです。extractor は `roi-template-nearest` で、テンプレートファイル名や metadata 期待値から期待ラベルを読み、confirmed-events 対象の `play_style`、`difficulty`、`level` ROIと同じROIを比較する。confirmed-events 由来の参照は評価中の同一フレームを除く leave-one-out にする。これは追加テンプレート素材と評価セット由来参照を使った同分布内の比較実験であり、OCR、マスタ照合、採用済みテンプレート照合の成功ではない。参照がない環境では対象行を `empty_extraction` / `no_template_references` として扱い、期待ラベルの参照テンプレートがない mismatch は `missing_expected_template_reference` として通常の mismatch と区別する。通常の112件分類回帰セットとは混同しない。
 
 ## transition_countup の扱い
 

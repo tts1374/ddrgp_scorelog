@@ -30,19 +30,20 @@ high
 - `filename-baseline` は target 60件 x 3 field = 180 attempt、match 180、skipped 156。これはファイル名由来であり、ROI/OCR/テンプレート照合/マスタ照合の成功ではない。
 - `roi-feature-nearest-centroid` は target 60件 x 3 field = 180 attempt、match 117、mismatch 63、skipped 156。field別では `play_style` 59/60、`difficulty` 41/60、`level` 17/60。
 - `m3_chart_field_image_feature_diagnostics.md` は画像特徴baselineの mismatch 診断レポートで、採用根拠ではない。
-- 今回、ローカルテンプレート素材 `samples/screenshots/organized/chart_field_templates/` を参照する `roi-template-nearest` を追加した。
+- 今回、ローカルテンプレート素材 `samples/screenshots/organized/chart_field_templates/` と confirmed-events result ROI を参照する `roi-template-nearest` を追加した。
 - 新出力は `m3_chart_field_template_extraction.csv` と `m3_chart_field_template_extraction_summary.json`。
-- `--chart-field-template-root <dir>` でテンプレート参照先を差し替えられる。存在しない場合は `empty_extraction` / `no_template_references` で落とさない。
+- `--chart-field-template-root <dir>` でテンプレート参照先を差し替えられる。存在しない場合も confirmed-events result ROI 参照だけで比較できる。
+- confirmed-events result ROI 参照では、評価中の同一フレームを除外する leave-one-out を使う。
 - テンプレート素材はローカル素材扱いでGit管理しない。通常の112件分類回帰セットにも追加しない。
-- 直近ローカル実測では `roi-template-nearest` は template image 29、target 60件 x 3 field = 180 attempt、match 107、mismatch 73、skipped 156。
-- `roi-template-nearest` field別では `play_style` 60/60 match、`difficulty` 40/60 match、`level` 7/60 match。
-- template value counts は `play_style={DOUBLE:10,SINGLE:19}`、`difficulty={BASIC:10,BEGINNER:9,EXPERT:3,CHALLENGE:7}`。`DIFFICULT` テンプレートはまだない。
-- template level counts は `1:3,2:3,3:3,4:3,5:5,7:1,8:1,14:2,15:3,18:2,19:3`。確認対象にある `6,9,10,11,12,13,16,17` などは参照不足。
-- 参照不足に起因する mismatch は `failure_reason=missing_expected_template_reference` として、参照ありの `mismatch` と分けて読める。
-- `roi-template-nearest` は現時点では `play_style` の強い候補、`difficulty` / `level` の診断用PoCとして扱う。採用済みテンプレート照合やマスタ照合の成功扱いにしない。
+- 直近ローカル実測では `roi-template-nearest` は `chart_field_templates` 29枚 + confirmed-events result参照60件、target 60件 x 3 field = 180 attempt、match 169、mismatch 11、skipped 156。
+- `roi-template-nearest` field別では `play_style` 60/60 match、`difficulty` 49/60 match、`level` 60/60 match。
+- combined template value counts は `play_style={DOUBLE:11,SINGLE:78}`、`difficulty={BASIC:24,BEGINNER:11,CHALLENGE:14,DIFFICULT:17,EXPERT:23}`、`level=1-19すべてあり`。
+- `difficulty` の mismatch は `DIFFICULT/EXPERT/CHALLENGE` 間に残っている。代表内訳は `DIFFICULT -> EXPERT` 4件、`CHALLENGE -> EXPERT` 2件、`EXPERT -> DIFFICULT` 2件など。
+- `roi-template-nearest` は同分布内の leave-one-out 診断として読む。採用済みテンプレート照合やマスタ照合の成功扱いにしない。
+- 現状の `python -m tools.vision_poc --no-ocr` はこの環境の簡易測定で約12.9秒。変更前測定は約15.7秒だったが、環境差があるため参考値として扱う。
 - `tools/vision_poc/README.md`、`docs/design/03_event_and_save_boundary.md`、`docs/design/06_regression_guard.md` に読み方を追記済み。
-- `tests/test_vision_poc_ocr.py` に、テンプレート素材なし環境と confirmed-events 境界を保つテンプレート比較テストを追加済み。
-- 直近確認では `python -m tools.vision_poc --no-ocr`、`python -m ruff check tools\vision_poc pyproject.toml tests`、`python -m compileall tools\vision_poc`、`python -m pytest tests` が通過し、pytest は 83 passed。
+- `tests/test_vision_poc_ocr.py` に、テンプレート素材なし環境、confirmed-events 境界、leave-one-out result参照を保つテンプレート比較テストを追加済み。
+- 直近確認では `python -m tools.vision_poc --no-ocr`、`python -m ruff check tools\vision_poc pyproject.toml tests`、`python -m compileall tools\vision_poc`、`python -m pytest tests` が通過し、pytest は 84 passed。
 
 ## 必読資料
 
@@ -88,14 +89,13 @@ high
    - `samples/screenshots/metadata.csv` がローカルに存在する場合、112行であることを確認する。
    - `samples/screenshots/organized/chart_field_templates/` が存在する場合、113-141の29枚があることを確認する。
    - `python -m tools.vision_poc --no-ocr` を実行し、112件全正解、`transition_countup_*` 除外、confirmed-events 境界が崩れていないことを確認する。
-   - `m3_chart_field_template_extraction_summary.json` を読み、`template_value_counts` と `missing_expected_template_reference` の内訳を見る。
+   - `m3_chart_field_template_extraction_summary.json` を読み、`reference_source_image_counts`、`template_value_counts`、field別 match/mismatch を見る。
 
 2. M3 chart-field template比較の次の最小単位を決める
-   - `play_style` は `roi-template-nearest` が 60/60 match なので、採用候補に進める前の副作用確認対象にする。
-   - `difficulty` は `DIFFICULT` テンプレートがないため、まず参照不足として読む。DIFFICULT素材を追加するか、既存confirmed-eventsから参照セットを作るかは別判断にする。
-   - `EXPERT -> BASIC` など参照あり mismatch は、ROI全体比較が背景や別要素に引っ張られている可能性を代表ROIで見る。
-   - `level` は参照不足が多く、素のROI全体比較では 7/60 match に留まる。採用候補にしない。
-   - `level` の次案は、数字部分に寄せた二値/エッジ比較、参照テンプレートのカバレッジ拡充、または数字OCR前処理とは分けた軽い形状特徴。
+   - `play_style` と `level` は `roi-template-nearest` が 60/60 match なので、まず同分布 leave-one-out 診断として副作用確認を続ける。
+   - `difficulty` は 49/60 match で、`DIFFICULT` / `EXPERT` / `CHALLENGE` 間の混同が残る。代表ROIと nearest_source_type を見て、ROI全体比較の限界か、切り出し/前処理で改善できるかを整理する。
+   - confirmed-events result参照は評価セット由来なので、採用候補へ進める前に参照専用セットと評価専用セットの分割、または追加素材での外部検証を検討する。
+   - 読み込み時間が増える場合は、template/result ROI vector の再計算回数、画像open回数、summary生成の二重計算を優先して見る。
    - 新しい extractor 名を追加する場合は既存 `filename-baseline`、`roi-feature-nearest-centroid`、`roi-template-nearest` を比較用baselineとして維持する。
 
 3. テスト補強
@@ -157,6 +157,7 @@ M3用の新しいCLI、CSV、JSON、Markdownレポート、または出力ディ
 - confirmed-events の保存境界が `confirmed_result=true` かつ `duplicate=false` のまま。
 - duplicate / rejected_transition / unconfirmed / non-result が保存直前OCR評価対象外、M3 metadata expected coverage 対象外、M3 chart-field inventory / extraction / diagnostics 対象外のまま。
 - `m3_chart_field_template_extraction.csv` と summary が confirmed-events 境界だけを抽出評価対象にする。
+- confirmed-events result ROI を参照に使う場合、同一フレームを leave-one-out で除外する。
 - `roi-template-nearest` をOCR、マスタ照合、採用済みテンプレート照合の成功扱いにしない。
 - テンプレート素材がない環境で `no_template_references` として壊れずに実行できる。
 - 追加テンプレート素材を使う場合も、`metadata.csv` の112件分類回帰セットと混同しない。

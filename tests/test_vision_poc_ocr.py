@@ -645,7 +645,8 @@ def test_m3_chart_field_template_extraction_uses_confirmed_events_boundary(
     assert rows[5]["extracted_value"] == "2"
     assert rows[6]["failure_reason"] == "duplicate"
     assert rows[9]["failure_reason"] == "rejected_transition"
-    assert rows[0]["template_reference_count"] == "2"
+    assert rows[0]["nearest_source_type"] == "chart_field_templates"
+    assert rows[0]["template_reference_count"] == "3"
     assert rows[0]["expected_template_reference_count"] == "1"
     assert rows[0]["nearest_template_path"].endswith(
         "chart_field_template_001_single_basic_lv01.png"
@@ -659,11 +660,20 @@ def test_m3_chart_field_template_extraction_uses_confirmed_events_boundary(
     assert summary["extractor"] == "roi-template-nearest"
     assert summary["template_image_count"] == 2
     assert summary["template_reference_counts"] == {
-        "play_style": 2,
-        "difficulty": 2,
-        "level": 2,
+        "play_style": 3,
+        "difficulty": 3,
+        "level": 3,
     }
-    assert summary["template_value_counts"]["difficulty"] == {"BASIC": 1, "EXPERT": 1}
+    assert summary["reference_source_image_counts"] == {
+        "chart_field_templates": 2,
+        "confirmed_events": 2,
+    }
+    assert summary["reference_value_counts_by_source"]["difficulty"] == {
+        "chart_field_templates": {"BASIC": 1, "EXPERT": 1},
+        "confirmed_events": {"BASIC": 1, "EXPERT": 1},
+        "combined": {"BASIC": 2, "EXPERT": 2},
+    }
+    assert summary["template_value_counts"]["difficulty"] == {"BASIC": 2, "EXPERT": 2}
     assert summary["chart_field_target_count"] == 2
     assert summary["status_counts"] == {
         "match": 6,
@@ -672,6 +682,67 @@ def test_m3_chart_field_template_extraction_uses_confirmed_events_boundary(
         "no_expected_value": 0,
         "skipped": 6,
     }
+
+
+def test_m3_chart_field_template_extraction_uses_result_references_leave_one_out(
+    tmp_path: Path,
+) -> None:
+    samples = [
+        ("single_a.png", "SINGLE", "red"),
+        ("single_b.png", "SINGLE", "red"),
+        ("double.png", "DOUBLE", "green"),
+    ]
+    frames: list[runner.FrameInput] = []
+    for name, play_style, color in samples:
+        image_path = tmp_path / name
+        write_chart_feature_image(image_path, {"play_style": color})
+        frames.append(
+            runner.FrameInput(
+                row={
+                    "organized_file": name,
+                    "screen_type": "result",
+                    "play_style": play_style,
+                },
+                image_path=image_path,
+            )
+        )
+    events = [result_event(name, confirmed_result=True) for name, _, _ in samples]
+
+    rows = runner.m3_chart_field_template_extraction_rows(
+        frames,
+        events,
+        tmp_path / "missing_templates",
+    )
+
+    play_style_rows = [row for row in rows if row["field_name"] == "play_style"]
+    assert [row["status"] for row in play_style_rows] == [
+        "match",
+        "match",
+        "mismatch",
+    ]
+    assert [row["nearest_source_type"] for row in play_style_rows] == [
+        "confirmed_events",
+        "confirmed_events",
+        "confirmed_events",
+    ]
+    assert [row["expected_template_reference_count"] for row in play_style_rows] == [
+        "1",
+        "1",
+        "0",
+    ]
+    assert play_style_rows[2]["failure_reason"] == "missing_expected_template_reference"
+
+    summary = runner.summarize_m3_chart_field_template_extraction_rows(
+        rows,
+        frames,
+        events,
+        tmp_path / "missing_templates",
+    )
+    assert summary["reference_source_image_counts"] == {
+        "chart_field_templates": 0,
+        "confirmed_events": 3,
+    }
+    assert summary["template_value_counts"]["play_style"] == {"DOUBLE": 1, "SINGLE": 2}
 
 
 def test_m3_chart_field_image_feature_diagnostics_reports_mismatches(

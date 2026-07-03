@@ -139,6 +139,8 @@ class M3ChartFieldTemplateReference:
     expected_value: str
     image_path: Path
     vector: np.ndarray
+    source_type: str
+    frame_index: int | None = None
 
 
 @dataclass(frozen=True)
@@ -2182,7 +2184,9 @@ def summarize_m3_chart_field_extraction(
             bucket["skipped_count"] += 1
 
     target_count = sum(
-        1 for row in rows if row["chart_field_target"] == "True" and row["field_name"] == "level"
+        1
+        for row in rows
+        if row["chart_field_target"] == "True" and row["field_name"] == "level"
     )
     return {
         "target_boundary": "confirmed_result=true and duplicate=false",
@@ -2456,7 +2460,9 @@ def summarize_m3_chart_field_image_feature_extraction(
             bucket["skipped_count"] += 1
 
     target_count = sum(
-        1 for row in rows if row["chart_field_target"] == "True" and row["field_name"] == "level"
+        1
+        for row in rows
+        if row["chart_field_target"] == "True" and row["field_name"] == "level"
     )
     return {
         "target_boundary": "confirmed_result=true and duplicate=false",
@@ -2525,9 +2531,39 @@ def load_m3_chart_field_template_references(
                         expected_value=expected_value,
                         image_path=template_path,
                         vector=m3_chart_field_template_vector(image, field_name),
+                        source_type="chart_field_templates",
                     )
                 )
     return references
+
+
+def add_m3_chart_field_result_references(
+    references: dict[str, list[M3ChartFieldTemplateReference]],
+    frames: Iterable[FrameInput],
+    events: Iterable[ResultEvent],
+    target_vectors: dict[tuple[int, str], np.ndarray],
+) -> None:
+    for frame_index, (frame, event) in enumerate(zip(frames, events, strict=True)):
+        if not is_save_candidate_event(event):
+            continue
+        for field_name in M3_CHART_FIELD_FIELDS:
+            expected_value = normalize_m3_chart_field_value(
+                field_name,
+                expected_m3_metadata_value_from_row(frame.row, field_name),
+            )
+            vector = target_vectors.get((frame_index, field_name))
+            if not expected_value or vector is None:
+                continue
+            references[field_name].append(
+                M3ChartFieldTemplateReference(
+                    field_name=field_name,
+                    expected_value=expected_value,
+                    image_path=frame.image_path,
+                    vector=vector,
+                    source_type="confirmed_events",
+                    frame_index=frame_index,
+                )
+            )
 
 
 def m3_chart_field_template_distance(
@@ -2542,27 +2578,28 @@ def m3_chart_field_template_distance(
 def nearest_m3_chart_field_template_value(
     target_vector: np.ndarray,
     references: Iterable[M3ChartFieldTemplateReference],
-) -> tuple[str, float | None, Path | None]:
+) -> tuple[str, float | None, M3ChartFieldTemplateReference | None]:
     best_value = ""
     best_distance: float | None = None
-    best_path: Path | None = None
+    best_reference: M3ChartFieldTemplateReference | None = None
     for reference in references:
         distance = m3_chart_field_template_distance(target_vector, reference.vector)
         if best_distance is None or distance < best_distance:
             best_value = reference.expected_value
             best_distance = distance
-            best_path = reference.image_path
-    return best_value, best_distance, best_path
+            best_reference = reference
+    return best_value, best_distance, best_reference
 
 
 def m3_chart_field_template_extraction_rows(
     frames: Iterable[FrameInput],
     events: Iterable[ResultEvent],
     template_root: Path = M3_CHART_FIELD_TEMPLATE_ROOT,
+    *,
+    include_result_references: bool = True,
 ) -> list[dict[str, str]]:
     frame_list = list(frames)
     event_list = list(events)
-    references_by_field = load_m3_chart_field_template_references(template_root)
     target_vectors: dict[tuple[int, str], np.ndarray] = {}
     for frame_index, (frame, event) in enumerate(zip(frame_list, event_list, strict=True)):
         if not is_save_candidate_event(event):
@@ -2575,6 +2612,15 @@ def m3_chart_field_template_extraction_rows(
                     field_name,
                 )
 
+    references_by_field = load_m3_chart_field_template_references(template_root)
+    if include_result_references:
+        add_m3_chart_field_result_references(
+            references_by_field,
+            frame_list,
+            event_list,
+            target_vectors,
+        )
+
     rows: list[dict[str, str]] = []
     for frame_index, (frame, event) in enumerate(zip(frame_list, event_list, strict=True)):
         target = is_save_candidate_event(event)
@@ -2585,13 +2631,17 @@ def m3_chart_field_template_extraction_rows(
                 expected_m3_metadata_value_from_row(frame.row, field_name),
             )
             target_vector = target_vectors.get((frame_index, field_name))
-            references = references_by_field[field_name]
+            references = [
+                reference
+                for reference in references_by_field[field_name]
+                if reference.frame_index != frame_index
+            ]
             expected_reference_count = sum(
                 1 for reference in references if reference.expected_value == expected_value
             )
             extracted_value = ""
             nearest_distance: float | None = None
-            nearest_template_path: Path | None = None
+            nearest_reference: M3ChartFieldTemplateReference | None = None
             match_value: bool | None = None
             failure_reason = ""
             if not target:
@@ -2607,7 +2657,7 @@ def m3_chart_field_template_extraction_rows(
                 status = "empty_extraction"
                 failure_reason = "no_template_references"
             else:
-                extracted_value, nearest_distance, nearest_template_path = (
+                extracted_value, nearest_distance, nearest_reference = (
                     nearest_m3_chart_field_template_value(target_vector, references)
                 )
                 if extracted_value == "":
@@ -2644,7 +2694,12 @@ def m3_chart_field_template_extraction_rows(
                     "failure_reason": failure_reason,
                     "nearest_distance": format_float(nearest_distance),
                     "nearest_template_path": (
-                        "" if nearest_template_path is None else display_path(nearest_template_path)
+                        ""
+                        if nearest_reference is None
+                        else display_path(nearest_reference.image_path)
+                    ),
+                    "nearest_source_type": (
+                        "" if nearest_reference is None else nearest_reference.source_type
                     ),
                     "template_reference_count": str(len(references)),
                     "expected_template_reference_count": str(expected_reference_count),
@@ -2677,6 +2732,7 @@ def write_m3_chart_field_template_extraction_csv(
         "failure_reason",
         "nearest_distance",
         "nearest_template_path",
+        "nearest_source_type",
         "template_reference_count",
         "expected_template_reference_count",
         "roi_path",
@@ -2688,13 +2744,125 @@ def write_m3_chart_field_template_extraction_csv(
         writer.writerows(rows)
 
 
-def summarize_m3_chart_field_template_extraction(
+def write_m3_chart_field_template_extraction_rows_csv(
+    path: Path,
+    rows: Iterable[dict[str, str]],
+) -> None:
+    fieldnames = [
+        "organized_file",
+        "screen_type",
+        "event_type",
+        "confirmed_result",
+        "duplicate",
+        "chart_field_target",
+        "exclusion_reason",
+        "field_name",
+        "extractor",
+        "expected_value",
+        "extracted_value",
+        "match",
+        "status",
+        "failure_reason",
+        "nearest_distance",
+        "nearest_template_path",
+        "nearest_source_type",
+        "template_reference_count",
+        "expected_template_reference_count",
+        "roi_path",
+    ]
+    with path.open("w", encoding="utf-8", newline="") as file:
+        writer = csv.DictWriter(file, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+def m3_chart_field_template_reference_label_counts(
     frames: Iterable[FrameInput],
     events: Iterable[ResultEvent],
     template_root: Path = M3_CHART_FIELD_TEMPLATE_ROOT,
+    *,
+    include_result_references: bool = True,
 ) -> dict[str, object]:
-    rows = m3_chart_field_template_extraction_rows(frames, events, template_root)
-    references_by_field = load_m3_chart_field_template_references(template_root)
+    source_counts = {
+        "chart_field_templates": 0,
+        "confirmed_events": 0,
+    }
+    value_counts = {
+        field_name: {"chart_field_templates": {}, "confirmed_events": {}, "combined": {}}
+        for field_name in M3_CHART_FIELD_FIELDS
+    }
+
+    template_paths = []
+    if template_root.exists() and template_root.is_dir():
+        template_paths = [
+            path
+            for path in template_root.iterdir()
+            if path.is_file() and path.suffix.lower() in FRAME_IMAGE_EXTENSIONS
+        ]
+    for template_path in template_paths:
+        expected_values = extract_m3_chart_fields_from_filename(template_path.name)
+        if not any(expected_values.values()):
+            continue
+        source_counts["chart_field_templates"] += 1
+        for field_name in M3_CHART_FIELD_FIELDS:
+            expected_value = expected_values[field_name]
+            if not expected_value:
+                continue
+            bucket = value_counts[field_name]["chart_field_templates"]
+            bucket[expected_value] = bucket.get(expected_value, 0) + 1
+
+    if include_result_references:
+        for frame, event in zip(frames, events, strict=True):
+            if not is_save_candidate_event(event):
+                continue
+            row_has_reference = False
+            for field_name in M3_CHART_FIELD_FIELDS:
+                expected_value = normalize_m3_chart_field_value(
+                    field_name,
+                    expected_m3_metadata_value_from_row(frame.row, field_name),
+                )
+                if not expected_value:
+                    continue
+                row_has_reference = True
+                bucket = value_counts[field_name]["confirmed_events"]
+                bucket[expected_value] = bucket.get(expected_value, 0) + 1
+            if row_has_reference:
+                source_counts["confirmed_events"] += 1
+
+    for field_name in M3_CHART_FIELD_FIELDS:
+        combined: dict[str, int] = {}
+        for source_name in ("chart_field_templates", "confirmed_events"):
+            for expected_value, count in value_counts[field_name][source_name].items():
+                combined[expected_value] = combined.get(expected_value, 0) + count
+        value_counts[field_name]["combined"] = dict(sorted(combined.items()))
+        value_counts[field_name]["chart_field_templates"] = dict(
+            sorted(value_counts[field_name]["chart_field_templates"].items())
+        )
+        value_counts[field_name]["confirmed_events"] = dict(
+            sorted(value_counts[field_name]["confirmed_events"].items())
+        )
+
+    return {
+        "source_image_counts": source_counts,
+        "value_counts": value_counts,
+    }
+
+
+def summarize_m3_chart_field_template_extraction_rows(
+    rows: Iterable[dict[str, str]],
+    frames: Iterable[FrameInput],
+    events: Iterable[ResultEvent],
+    template_root: Path = M3_CHART_FIELD_TEMPLATE_ROOT,
+    *,
+    include_result_references: bool = True,
+) -> dict[str, object]:
+    row_list = list(rows)
+    label_counts = m3_chart_field_template_reference_label_counts(
+        frames,
+        events,
+        template_root,
+        include_result_references=include_result_references,
+    )
     field_buckets = {
         field_name: {
             "target_count": 0,
@@ -2713,7 +2881,7 @@ def summarize_m3_chart_field_template_extraction(
         "no_expected_value": 0,
         "skipped": 0,
     }
-    for row in rows:
+    for row in row_list:
         status = row["status"]
         status_counts[status] = status_counts.get(status, 0) + 1
         bucket = field_buckets[row["field_name"]]
@@ -2736,31 +2904,31 @@ def summarize_m3_chart_field_template_extraction(
     return {
         "target_boundary": "confirmed_result=true and duplicate=false",
         "extractor": M3_CHART_FIELD_TEMPLATE_EXTRACTION_METHOD,
-        "reference_mode": "nearest ROI image template from chart_field_templates",
-        "template_root": display_path(template_root),
-        "template_image_count": len(
-            {
-                reference.image_path
-                for references in references_by_field.values()
-                for reference in references
-            }
+        "reference_mode": (
+            "nearest ROI image template from chart_field_templates plus "
+            "confirmed-events result references with leave-one-out self exclusion"
         ),
+        "template_root": display_path(template_root),
+        "reference_source_image_counts": label_counts["source_image_counts"],
+        "template_image_count": label_counts["source_image_counts"]["chart_field_templates"],
+        "result_reference_image_count": label_counts["source_image_counts"]["confirmed_events"],
         "template_reference_counts": {
-            field_name: len(references)
-            for field_name, references in references_by_field.items()
+            field_name: max(
+                (
+                    int(row["template_reference_count"])
+                    for row in row_list
+                    if row["field_name"] == field_name and row["chart_field_target"] == "True"
+                ),
+                default=0,
+            )
+            for field_name in M3_CHART_FIELD_FIELDS
         },
         "template_value_counts": {
-            field_name: {
-                expected_value: sum(
-                    1 for reference in references if reference.expected_value == expected_value
-                )
-                for expected_value in sorted(
-                    {reference.expected_value for reference in references}
-                )
-            }
-            for field_name, references in references_by_field.items()
+            field_name: label_counts["value_counts"][field_name]["combined"]
+            for field_name in M3_CHART_FIELD_FIELDS
         },
-        "total_rows": len(rows),
+        "reference_value_counts_by_source": label_counts["value_counts"],
+        "total_rows": len(row_list),
         "chart_field_target_count": target_count,
         "total_attempts": target_count * len(M3_CHART_FIELD_FIELDS),
         "status_counts": status_counts,
@@ -2775,6 +2943,30 @@ def summarize_m3_chart_field_template_extraction(
             for field_name, bucket in field_buckets.items()
         },
     }
+
+
+def summarize_m3_chart_field_template_extraction(
+    frames: Iterable[FrameInput],
+    events: Iterable[ResultEvent],
+    template_root: Path = M3_CHART_FIELD_TEMPLATE_ROOT,
+    *,
+    include_result_references: bool = True,
+) -> dict[str, object]:
+    frame_list = list(frames)
+    event_list = list(events)
+    rows = m3_chart_field_template_extraction_rows(
+        frame_list,
+        event_list,
+        template_root,
+        include_result_references=include_result_references,
+    )
+    return summarize_m3_chart_field_template_extraction_rows(
+        rows,
+        frame_list,
+        event_list,
+        template_root,
+        include_result_references=include_result_references,
+    )
 
 
 def m3_chart_field_image_feature_diagnostic_tables(
@@ -3510,15 +3702,19 @@ def main(argv: list[str] | None = None) -> int:
         frames,
         result_events,
     )
-    write_m3_chart_field_template_extraction_csv(
-        output_dir / "m3_chart_field_template_extraction.csv",
+    m3_chart_field_template_rows = m3_chart_field_template_extraction_rows(
         frames,
         result_events,
         args.chart_field_template_root,
     )
+    write_m3_chart_field_template_extraction_rows_csv(
+        output_dir / "m3_chart_field_template_extraction.csv",
+        m3_chart_field_template_rows,
+    )
     (output_dir / "m3_chart_field_template_extraction_summary.json").write_text(
         json.dumps(
-            summarize_m3_chart_field_template_extraction(
+            summarize_m3_chart_field_template_extraction_rows(
+                m3_chart_field_template_rows,
                 frames,
                 result_events,
                 args.chart_field_template_root,
