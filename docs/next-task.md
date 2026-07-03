@@ -10,14 +10,14 @@ high
 
 `codex/vision-poc-ocr-tuning`
 
-最新確認コミットは、このファイルを含む「M3 chart-field ROI画像特徴diagnostics追加」コミットを想定します。このコミットまでで、既存の `filename-baseline`、ROI画像特徴由来の `roi-feature-nearest-centroid` CSV/summary に加えて、mismatch診断用の `m3_chart_field_image_feature_diagnostics.md` が追加されています。
+最新確認コミットは、このファイルを含む「M3 chart-field template素材配置メモ更新」コミットを想定します。このコミットまでで、既存の `filename-baseline`、ROI画像特徴由来の `roi-feature-nearest-centroid` CSV/summary に加えて、mismatch診断用の `m3_chart_field_image_feature_diagnostics.md` が追加されています。ローカル素材として、chart-fieldテンプレート評価用スクリーンショット113-141が `samples/screenshots/organized/chart_field_templates/` に配置済みである前提も追記しています。
 
 作業開始時に以下を確認してください。
 
 - `git status --short --branch`
 - `git log --oneline -5`
 - 現在ブランチが `codex/vision-poc-ocr-tuning` であること
-- 最新コミットが M3 chart-field ROI画像特徴diagnostics追加以降であること
+- 最新コミットが M3 chart-field template素材配置メモ更新以降であること
 - `docs/next-task.md` は次チャット用の作業指示ファイルとして扱うこと
 
 ## 今回までの作業結果
@@ -38,6 +38,11 @@ high
 - diagnostics の直近実測では `play_style` の mismatch は `result_047_dp_basic_lv09_score834500_duplicate_01.png` の `DOUBLE -> SINGLE` 1件。
 - diagnostics の `difficulty` は `DIFFICULT -> CHALLENGE` が15件、`EXPERT -> CHALLENGE` が3件、`DIFFICULT -> EXPERT` が1件。色特徴だけで分けにくい組み合わせとして読む。
 - diagnostics の `level` は混同が広く、17/60 match に留まるため、単純ROI画像特徴baselineを採用候補にしない。次はレベルROIだけを対象にした数字テンプレート比較、またはOCR前処理とは分けた軽い形状特徴が候補。
+- ユーザーが追加キャプチャしたデスクトップ全体スクリーンショット113-141は、左上1280x720のDDR GP画面だけを `samples/screenshots/cropped/` へ切り出し済み。
+- 同じ113-141の切り出し画像を、テンプレート評価用として `samples/screenshots/organized/chart_field_templates/chart_field_template_###_<style>_<difficulty>_lvXX.png` に配置済み。
+- 追加テンプレート素材はローカル素材でありGit管理対象外。`metadata.csv` にはまだ追加していない。下側に別ウィンドウが被っている元デスクトップスクリーンショット由来なので、通常の分類回帰セットではなく chart-field テンプレート素材として扱う。
+- 追加テンプレート素材は `DOUBLE` 10枚、`SINGLE` 19枚。difficulty は `BASIC` 10枚、`BEGINNER` 9枚、`EXPERT` 3枚、`CHALLENGE` 7枚。既存素材と合わせて level 1-19 はすべて3枚以上そろった。
+- 追加素材の一時インベントリは `data/vision_poc_new_captures/chart_field_template_inventory.csv`。これは生成物扱いでGit管理しない。
 - `tools/vision_poc/README.md`、`docs/design/03_event_and_save_boundary.md`、`docs/design/06_regression_guard.md` に diagnostics の読み方を追記済み。
 - `tests/test_vision_poc_ocr.py` で、diagnostics が mismatch混同表、代表ROI、`level` 弱さの読み方を出すことを確認している。
 - 直近確認では `python -m tools.vision_poc --no-ocr`、`python -m ruff check tools\vision_poc pyproject.toml tests`、`python -m compileall tools\vision_poc`、`python -m pytest tests` が通過し、pytest は 82 passed。
@@ -87,13 +92,17 @@ high
    - `samples/screenshots/metadata.csv` がローカルに存在する場合、112行であること、追加分105-112の organized file が存在することを確認する。
    - `python -m tools.vision_poc --no-ocr` を実行し、112件全正解、低スコア result の保存候補維持、`transition_countup_*` 除外が崩れていないことを確認する。
    - `result_events_summary.json`、`m3_metadata_expected_coverage.md`、`m3_metadata_expected_template.csv`、`m3_chart_fields_summary.json`、`m3_chart_field_extraction_summary.json`、`m3_chart_field_image_feature_extraction_summary.json`、`m3_chart_field_image_feature_diagnostics.md` を読む。
+   - `samples/screenshots/organized/chart_field_templates/` がローカルに存在する場合、`chart_field_template_113_...` から `chart_field_template_141_...` まで29枚あることを確認する。
+   - 追加テンプレート素材は `metadata.csv` の112件分類回帰セットとは別扱いにし、通常の `python -m tools.vision_poc --no-ocr` の件数期待値を変えない。
    - 新旧baselineを混同しない。`filename-baseline` はファイル名由来、`roi-feature-nearest-centroid` はROI画像特徴由来の診断用。
 
 2. M3 chart-field 画像由来抽出PoCの次の最小単位を決める
    - `play_style` はまず diagnostics の1件 mismatch と `rois/result_047_dp_basic_lv09_score834500_duplicate_01/play_style.png` を確認する。
    - `difficulty` は diagnostics の混同表を起点に、`DIFFICULT -> CHALLENGE` と `EXPERT -> CHALLENGE` の代表ROIを見て、色特徴だけで分けられる候補と分けられない候補を整理する。
-   - `level` は単純ROI特徴を採用候補にしない。次に進むなら、レベルROIだけを対象にした数字テンプレート比較、またはOCR前処理とは分けた軽い形状特徴を小さく追加する。
-   - 画像由来 extractor を追加する場合は extractor 名を分け、既存 `filename-baseline` と `roi-feature-nearest-centroid` を比較用baselineとして維持する。
+   - `level` は単純ROI特徴を採用候補にしない。次に進むなら、追加テンプレート素材を使って `play_style` / `difficulty` / `level` の有限パターン画像比較を小さく追加する。
+   - 画像由来 extractor を追加する場合は extractor 名を分け、既存 `filename-baseline` と `roi-feature-nearest-centroid` を比較用baselineとして維持する。候補名は `roi-template-nearest` など。
+   - 追加テンプレート素材はデスクトップ全体スクリーンショットから左上1280x720を切り出したものなので、テンプレート素材読み込みでは `samples/screenshots/organized/chart_field_templates/` の切り出し済み画像を使う。
+   - `metadata.csv` の分類回帰セットへ追加するかは別判断にする。まずは chart-field template extractor の参照素材として使う。
    - 出力は既存の chart-field status 語彙に寄せる。
 
 3. テスト補強
@@ -123,6 +132,8 @@ Get-Content data\vision_poc\m3_chart_fields_summary.json
 Get-Content data\vision_poc\m3_chart_field_extraction_summary.json
 Get-Content data\vision_poc\m3_chart_field_image_feature_extraction_summary.json
 Get-Content data\vision_poc\m3_chart_field_image_feature_diagnostics.md
+if (Test-Path samples\screenshots\organized\chart_field_templates) { Get-ChildItem samples\screenshots\organized\chart_field_templates -File | Measure-Object }
+if (Test-Path data\vision_poc_new_captures\chart_field_template_inventory.csv) { Import-Csv data\vision_poc_new_captures\chart_field_template_inventory.csv | Group-Object play_style; Import-Csv data\vision_poc_new_captures\chart_field_template_inventory.csv | Group-Object difficulty; Import-Csv data\vision_poc_new_captures\chart_field_template_inventory.csv | Group-Object level }
 Import-Csv data\vision_poc\m3_chart_fields.csv | Group-Object chart_field_target
 Import-Csv data\vision_poc\m3_chart_fields.csv | Group-Object exclusion_reason
 Import-Csv data\vision_poc\m3_chart_field_extraction.csv | Group-Object field_name,status
@@ -142,6 +153,7 @@ M3用の新しいCLI、CSV、JSON、Markdownレポート、または出力ディ
 ## コミット/Push方針
 
 - `metadata.csv`、`data/`、`logs/`、ローカル素材、ローカルDBはコミットしない。
+- `samples/screenshots/cropped/` と `samples/screenshots/organized/chart_field_templates/` の追加画像はローカル素材扱いでコミットしない。
 - `docs/next-task.md` はユーザーから明示されているためコミット対象に含める。
 - コード、README、docs、テストに変更がある場合のみ、今回作業分だけをステージしてコミットする。
 - `data/` 配下のPoC出力、ROI画像、OCR画像、解析ログはステージしない。
@@ -161,6 +173,7 @@ M3用の新しいCLI、CSV、JSON、Markdownレポート、または出力ディ
 - `m3_chart_field_extraction.csv` と `m3_chart_field_extraction_summary.json` が `filename-baseline` をROI/OCR/テンプレート照合/マスタ照合の成功扱いにしていない。
 - `m3_chart_field_image_feature_extraction.csv` と `m3_chart_field_image_feature_extraction_summary.json` が `roi-feature-nearest-centroid` をOCR/テンプレート照合/マスタ照合の成功扱いにしていない。
 - `m3_chart_field_image_feature_diagnostics.md` が mismatch の診断レポートであり、OCR/テンプレート照合/マスタ照合の成功扱いになっていない。
+- 追加テンプレート素材を使う場合も、`metadata.csv` の112件分類回帰セットと混同しない。
 - `song_title` / `artist` / `play_style` / `difficulty` / `level` は confirmed-events 対象60件で `evaluated` のまま。
 - `play_style` / `difficulty` / `level` は M3 chart-field 対象60件で `evaluated` のまま。
 - `rank` / `expected_rank` は、数字OCR expected coverage と混同せず、当面は補助/部分評価として扱われている。
