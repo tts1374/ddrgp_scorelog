@@ -44,6 +44,7 @@ high
 - M3 image feature / template extraction で同じresult画像を開き直していたため、分類時にM3用ROI特徴とベクトルをキャッシュするようにした。
 - 直近ローカル簡易測定では `python -m tools.vision_poc --no-ocr` は約9.7秒、`python -m tools.vision_poc --no-ocr --no-rois` は約5.5秒。
 - ROI PNG保存がまだ重いため、反映速度や抽出ロジックだけを見る場合は `--no-rois` を使う。実運用ではPoCレポートとROI画像保存を毎フレーム行う前提にしない。
+- 速度改善は、明らかな二重計算削除と `--no-rois` 高速確認の整備まででいったん十分。本格的な高速化、差分実行、並列化、常駐プロセス化、レポート生成分離は、実キャプチャや保存判定の形が固まってから扱う。
 - `tools/vision_poc/README.md`、`docs/design/03_event_and_save_boundary.md`、`docs/design/06_regression_guard.md` に読み方を追記済み。
 - `tests/test_vision_poc_ocr.py` に、テンプレート素材なし環境、confirmed-events 境界、leave-one-out result参照を保つテンプレート比較テストを追加済み。
 - 直近確認では `python -m tools.vision_poc --no-ocr`、`python -m ruff check tools\vision_poc pyproject.toml tests`、`python -m compileall tools\vision_poc`、`python -m pytest tests` が通過し、pytest は 84 passed。
@@ -100,6 +101,7 @@ high
    - confirmed-events result参照は評価セット由来なので、採用候補へ進める前に参照専用セットと評価専用セットの分割、または追加素材での外部検証を検討する。
    - 読み込み時間が増える場合は、ROI PNG保存、画像open回数、summary生成の二重計算を優先して見る。
    - 次に速度を見るなら、`--no-rois` 前提の高速確認コマンドを基本にし、必要時だけROI PNGを出力する運用を整理する。
+   - 大きな速度改善は今の主作業にしない。M3の抽出精度、期待値レビュー、採用前の評価分割を優先する。
    - 新しい extractor 名を追加する場合は既存 `filename-baseline`、`roi-feature-nearest-centroid`、`roi-template-nearest` を比較用baselineとして維持する。
 
 3. テスト補強
