@@ -531,6 +531,97 @@ def test_m3_chart_field_image_feature_extraction_uses_confirmed_events_boundary(
     assert summary["fields"]["difficulty"]["no_expected_value_count"] == 4
 
 
+def test_m3_chart_field_image_feature_diagnostics_reports_mismatches(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    diagnostic_rows = [
+        {
+            "organized_file": "sample_play_style.png",
+            "field_name": "play_style",
+            "expected_value": "DOUBLE",
+            "extracted_value": "SINGLE",
+            "status": "mismatch",
+            "nearest_distance": "0.120000",
+            "roi_path": "rois/sample_play_style/play_style.png",
+        },
+        {
+            "organized_file": "sample_difficulty_a.png",
+            "field_name": "difficulty",
+            "expected_value": "DIFFICULT",
+            "extracted_value": "CHALLENGE",
+            "status": "mismatch",
+            "nearest_distance": "0.230000",
+            "roi_path": "rois/sample_difficulty_a/difficulty.png",
+        },
+        {
+            "organized_file": "sample_difficulty_b.png",
+            "field_name": "difficulty",
+            "expected_value": "DIFFICULT",
+            "extracted_value": "CHALLENGE",
+            "status": "mismatch",
+            "nearest_distance": "0.240000",
+            "roi_path": "rois/sample_difficulty_b/difficulty.png",
+        },
+        {
+            "organized_file": "sample_level_match.png",
+            "field_name": "level",
+            "expected_value": "12",
+            "extracted_value": "12",
+            "status": "match",
+            "nearest_distance": "0.010000",
+            "roi_path": "rois/sample_level_match/level.png",
+        },
+        {
+            "organized_file": "sample_level_mismatch_a.png",
+            "field_name": "level",
+            "expected_value": "13",
+            "extracted_value": "14",
+            "status": "mismatch",
+            "nearest_distance": "0.310000",
+            "roi_path": "rois/sample_level_mismatch_a/level.png",
+        },
+        {
+            "organized_file": "sample_level_mismatch_b.png",
+            "field_name": "level",
+            "expected_value": "13",
+            "extracted_value": "16",
+            "status": "mismatch",
+            "nearest_distance": "0.320000",
+            "roi_path": "rois/sample_level_mismatch_b/level.png",
+        },
+    ]
+    for field_name in runner.M3_CHART_FIELD_FIELDS:
+        diagnostic_rows.append(
+            {
+                "organized_file": f"skipped_{field_name}.png",
+                "field_name": field_name,
+                "expected_value": "",
+                "extracted_value": "",
+                "status": "skipped",
+                "nearest_distance": "",
+                "roi_path": f"rois/skipped_{field_name}/{field_name}.png",
+            }
+        )
+
+    monkeypatch.setattr(
+        runner,
+        "m3_chart_field_image_feature_extraction_rows",
+        lambda _frames, _events: diagnostic_rows,
+    )
+
+    output_path = tmp_path / "diagnostics.md"
+    runner.write_m3_chart_field_image_feature_diagnostics(output_path, [], [])
+
+    report = output_path.read_text(encoding="utf-8")
+    assert "| `difficulty` | `DIFFICULT` | `CHALLENGE` | 2 |" in report
+    assert "| `play_style` | `DOUBLE` | `SINGLE` | 1 |" in report
+    assert "`sample_level_mismatch_a.png`" in report
+    assert "`level` is" not in report
+    assert "`level` は match が半数未満" in report
+    assert "OCR、テンプレート照合、マスタ照合の成功扱いにはしません" in report
+
+
 def test_score_digits_preprocessing_writes_images_without_ocr_engine(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

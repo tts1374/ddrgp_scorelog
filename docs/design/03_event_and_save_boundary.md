@@ -113,6 +113,8 @@ M3 chart-field 抽出PoCの入口では、有限候補で扱いやすい `play_s
 
 `m3_chart_field_image_feature_extraction.csv` と `m3_chart_field_image_feature_extraction_summary.json` は、ROI画像特徴由来の軽い比較baselineです。extractor は `roi-feature-nearest-centroid` で、confirmed-events 対象の `play_style`、`difficulty`、`level` ROIから明度、白/黄/シアン/緑比率、エッジ比率などを取り、期待値ラベルごとの leave-one-out centroid に最も近い値を出す。これは画像特徴の診断用であり、OCR、テンプレート照合、マスタ照合の成功ではない。画像特徴やテンプレート比較へ進む場合も、対象境界と `match` / `mismatch` / `empty_extraction` / `no_expected_value` / `skipped` の status 語彙を維持する。
 
+`m3_chart_field_image_feature_diagnostics.md` は、同じ画像特徴baselineの mismatch を混同表と代表ROIで確認する補助レポートです。`play_style` の単発mismatch、`difficulty` の期待値/抽出値の混同、`level` の弱さを次のPoC単位へ渡すために読み、採用根拠やテンプレート照合成功として扱わない。
+
 ## transition_countup の扱い
 
 `transition_countup_*` はリザルト形状が出ていても保存対象外とする。
@@ -222,7 +224,7 @@ confirmed-events OCR評価では、あわせて `score_ocr_summary.json` の `sk
 
 M3曲・譜面情報の期待値列確認では、`m3_metadata_expected_coverage.md` の `total confirmed-events` が保存直前イベント数と一致していること、duplicate、`rejected_transition`、未確定候補、non-result が対象外であることを見る。数字OCR用の `ocr_expected_coverage.md` とは別レポートとして扱う。
 
-M3 chart-field 評価の足場では、`m3_chart_fields.csv` と `m3_chart_fields_summary.json` を見る。`chart_field_target_count` が保存直前イベント数と一致し、`excluded_counts` で duplicate、`rejected_transition`、未確定候補、non-result が対象外に残っていることを確認する。対象fieldは当面 `play_style`、`difficulty`、`level` に限定する。抽出評価へ進む場合は `m3_chart_field_extraction.csv` と `m3_chart_field_extraction_summary.json` を合わせて読み、`filename-baseline` の match をROI/OCR/テンプレート照合の成功扱いにしない。ROI画像特徴の比較は `m3_chart_field_image_feature_extraction.csv` と `m3_chart_field_image_feature_extraction_summary.json` を読み、`roi-feature-nearest-centroid` を本格テンプレート照合の成功扱いにしない。
+M3 chart-field 評価の足場では、`m3_chart_fields.csv` と `m3_chart_fields_summary.json` を見る。`chart_field_target_count` が保存直前イベント数と一致し、`excluded_counts` で duplicate、`rejected_transition`、未確定候補、non-result が対象外に残っていることを確認する。対象fieldは当面 `play_style`、`difficulty`、`level` に限定する。抽出評価へ進む場合は `m3_chart_field_extraction.csv` と `m3_chart_field_extraction_summary.json` を合わせて読み、`filename-baseline` の match をROI/OCR/テンプレート照合の成功扱いにしない。ROI画像特徴の比較は `m3_chart_field_image_feature_extraction.csv`、`m3_chart_field_image_feature_extraction_summary.json`、`m3_chart_field_image_feature_diagnostics.md` を読み、`roi-feature-nearest-centroid` を本格テンプレート照合の成功扱いにしない。
 
 ## M0/M1で固定すること
 

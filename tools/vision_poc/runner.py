@@ -2469,6 +2469,144 @@ def summarize_m3_chart_field_image_feature_extraction(
     }
 
 
+def m3_chart_field_image_feature_diagnostic_tables(
+    rows: Iterable[dict[str, str]],
+) -> tuple[
+    dict[str, dict[str, int]],
+    dict[tuple[str, str, str], int],
+    dict[str, list[dict[str, str]]],
+]:
+    status_by_field = {
+        field_name: {
+            "match": 0,
+            "mismatch": 0,
+            "empty_extraction": 0,
+            "no_expected_value": 0,
+            "skipped": 0,
+        }
+        for field_name in M3_CHART_FIELD_FIELDS
+    }
+    mismatch_confusions: dict[tuple[str, str, str], int] = {}
+    representative_mismatches = {field_name: [] for field_name in M3_CHART_FIELD_FIELDS}
+
+    for row in rows:
+        field_name = row["field_name"]
+        status = row["status"]
+        status_by_field[field_name][status] = status_by_field[field_name].get(status, 0) + 1
+        if status != "mismatch":
+            continue
+
+        key = (field_name, row["expected_value"], row["extracted_value"])
+        mismatch_confusions[key] = mismatch_confusions.get(key, 0) + 1
+        representatives = representative_mismatches[field_name]
+        if len(representatives) < 8:
+            representatives.append(row)
+
+    return status_by_field, mismatch_confusions, representative_mismatches
+
+
+def write_m3_chart_field_image_feature_diagnostics(
+    path: Path,
+    frames: Iterable[FrameInput],
+    events: Iterable[ResultEvent],
+) -> None:
+    rows = m3_chart_field_image_feature_extraction_rows(frames, events)
+    status_by_field, mismatch_confusions, representative_mismatches = (
+        m3_chart_field_image_feature_diagnostic_tables(rows)
+    )
+    lines = [
+        "# M3 Chart Field Image Feature Diagnostics",
+        "",
+        "`roi-feature-nearest-centroid` の mismatch を読むための診断レポートです。",
+        "これはROI画像特徴の軽い比較baselineであり、OCR、テンプレート照合、"
+        "マスタ照合の成功扱いにはしません。",
+        "",
+        "- target boundary: `confirmed_result=true and duplicate=false`",
+        "- status vocabulary: `match` / `mismatch` / `empty_extraction` / "
+        "`no_expected_value` / `skipped`",
+        "",
+        "## Field Summary",
+        "",
+        "| field | match | mismatch | empty | no expected | skipped |",
+        "|---|---:|---:|---:|---:|---:|",
+    ]
+    for field_name in M3_CHART_FIELD_FIELDS:
+        bucket = status_by_field[field_name]
+        lines.append(
+            f"| `{field_name}` | {bucket['match']} | {bucket['mismatch']} | "
+            f"{bucket['empty_extraction']} | {bucket['no_expected_value']} | "
+            f"{bucket['skipped']} |"
+        )
+
+    lines.extend(
+        [
+            "",
+            "## Mismatch Confusions",
+            "",
+            "| field | expected | extracted | count |",
+            "|---|---|---|---:|",
+        ]
+    )
+    confusion_items = sorted(
+        mismatch_confusions.items(),
+        key=lambda item: (-item[1], item[0]),
+    )
+    if confusion_items:
+        for (field_name, expected_value, extracted_value), count in confusion_items:
+            lines.append(
+                f"| `{field_name}` | `{expected_value}` | `{extracted_value}` | {count} |"
+            )
+    else:
+        lines.append("| - | - | - | 0 |")
+
+    lines.extend(["", "## Representative Mismatches", ""])
+    for field_name in M3_CHART_FIELD_FIELDS:
+        lines.extend(
+            [
+                f"### `{field_name}`",
+                "",
+                "| organized_file | expected | extracted | distance | roi |",
+                "|---|---|---|---:|---|",
+            ]
+        )
+        representatives = representative_mismatches[field_name]
+        if not representatives:
+            lines.append("| - | - | - | - | - |")
+        else:
+            for row in representatives:
+                lines.append(
+                    f"| `{row['organized_file']}` | `{row['expected_value']}` | "
+                    f"`{row['extracted_value']}` | {row['nearest_distance']} | "
+                    f"`{row['roi_path']}` |"
+                )
+        lines.append("")
+
+    level_bucket = status_by_field["level"]
+    level_target_count = level_bucket["match"] + level_bucket["mismatch"]
+    level_is_weak = level_target_count > 0 and level_bucket["match"] * 2 < level_target_count
+    lines.extend(
+        [
+            "## Reading Notes",
+            "",
+            "- `play_style` は mismatch が少ない場合も、ROI画像特徴baselineの診断結果として読む。",
+            "- `difficulty` は mismatch confusions を見て、色特徴だけで分けられる組み合わせと"
+            "分けにくい組み合わせを次作業で確認する。",
+        ]
+    )
+    if level_is_weak:
+        lines.append(
+            "- `level` は match が半数未満のため、この単純ROI特徴baselineを採用候補にしない。"
+            "次はレベルROIだけを対象にした数字テンプレート比較、またはOCR前処理とは分けた"
+            "軽い形状特徴を検討する。"
+        )
+    else:
+        lines.append(
+            "- `level` はこのレポートだけで採用判断せず、代表mismatchとROI画像を確認する。"
+        )
+    lines.append("")
+    path.write_text("\n".join(lines), encoding="utf-8")
+
+
 def write_ocr_expected_coverage_report(
     path: Path,
     score_summary: ScoreOcrSummary,
@@ -3049,6 +3187,11 @@ def main(argv: list[str] | None = None) -> int:
         )
         + "\n",
         encoding="utf-8",
+    )
+    write_m3_chart_field_image_feature_diagnostics(
+        output_dir / "m3_chart_field_image_feature_diagnostics.md",
+        frames,
+        result_events,
     )
     score_ocr_results: list[ScoreOcrResult] = []
     profile_ocr_results: list[ProfileScoreOcrResult] = []

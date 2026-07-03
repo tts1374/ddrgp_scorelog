@@ -20,7 +20,7 @@ python -m pip install -e ".[vision]"
 - 入力画像: `samples/screenshots/organized/`
 - 出力先: `data/vision_poc/`
 
-出力先には `results.csv`、`result_events.csv`、`result_events_summary.json`、`summary.json`、`misclassifications.md`、`m3_metadata_expected_coverage.md`、`m3_metadata_expected_template.csv`、`m3_chart_fields.csv`、`m3_chart_fields_summary.json`、`m3_chart_field_extraction.csv`、`m3_chart_field_extraction_summary.json`、`m3_chart_field_image_feature_extraction.csv`、`m3_chart_field_image_feature_extraction_summary.json`、`rois/<画像名>/` 配下の主要ROI画像が生成されます。`data/` はGit管理対象外です。`rois/<画像名>/` には分類確認用ROIに加えて、M3入口の目視確認用として `play_style`、`difficulty`、`level`、`rank`、`song_title`、`artist` も出力します。この段階では切り出し足場、ファイル名由来 baseline、ROI画像特徴の軽い比較だけで、本格OCR、テンプレート照合、マスタ照合には進みません。
+出力先には `results.csv`、`result_events.csv`、`result_events_summary.json`、`summary.json`、`misclassifications.md`、`m3_metadata_expected_coverage.md`、`m3_metadata_expected_template.csv`、`m3_chart_fields.csv`、`m3_chart_fields_summary.json`、`m3_chart_field_extraction.csv`、`m3_chart_field_extraction_summary.json`、`m3_chart_field_image_feature_extraction.csv`、`m3_chart_field_image_feature_extraction_summary.json`、`m3_chart_field_image_feature_diagnostics.md`、`rois/<画像名>/` 配下の主要ROI画像が生成されます。`data/` はGit管理対象外です。`rois/<画像名>/` には分類確認用ROIに加えて、M3入口の目視確認用として `play_style`、`difficulty`、`level`、`rank`、`song_title`、`artist` も出力します。この段階では切り出し足場、ファイル名由来 baseline、ROI画像特徴の軽い比較だけで、本格OCR、テンプレート照合、マスタ照合には進みません。
 
 この既定実行は metadata 評価モードです。`samples/screenshots/metadata.csv` の並びをフレーム順として扱いますが、キャプチャ時刻は持たないため、`result_events.csv` の `timestamp_ms` と `candidate_duration_ms` は空欄、`confirmation_mode` は `frames` になります。
 
@@ -276,6 +276,8 @@ M3入口の曲・譜面情報確認では、まず `data/vision_poc/rois/<画像
 
 `m3_chart_field_image_feature_extraction.csv` と `m3_chart_field_image_feature_extraction_summary.json` は、ROI画像由来の軽い比較baselineです。extractor は `roi-feature-nearest-centroid` で、confirmed-events 対象の `play_style` / `difficulty` / `level` ROIから明度、白/黄/シアン/緑比率、エッジ比率などの特徴を取り、期待値ラベルごとの leave-one-out centroid に最も近い値を `extracted_value` として出します。status 語彙は `match` / `mismatch` / `empty_extraction` / `no_expected_value` / `skipped` に寄せています。これは画像特徴の診断用baselineであり、OCR、テンプレート照合、マスタ照合の成功ではありません。既存の `filename-baseline` は比較用baselineとして維持します。
 
+`m3_chart_field_image_feature_diagnostics.md` は、同じ `roi-feature-nearest-centroid` の mismatch を読むための補助Markdownです。field別の match / mismatch 数、期待値と抽出値の混同表、代表mismatchの `organized_file` とROIパスを出します。`play_style` の単発mismatch確認、`difficulty` の色特徴で分けにくい組み合わせ整理、`level` が単純ROI特徴だけでは弱いことの確認に使い、これもOCR、テンプレート照合、マスタ照合の成功扱いにはしません。
+
 現在のローカル metadata では、M3 metadata expected coverage の confirmed-events 対象は60件です。`song_title` / `artist` / `play_style` / `difficulty` / `level` は60件すべてが埋まっており、M3入口ではこの5項目を優先して評価します。`rank` / `expected_rank` は12件だけが埋まっているため、残り48件の不足は数字OCR expected coverage の不足とは別に読み、当面は補助ROIの部分評価として扱います。ランクOCR、ランクテンプレート照合、本格採用判断へ進む場合は、別途M3の評価列とレポートとして定義します。
 
 `score_digits` 以外の判定数ROIと `ex_score` も同じ前処理APIを使えます。現時点ではOCR精度調整前の足場として、まずは `max_combo`、`marvelous`、`perfect`、`great`、`good`、`miss`、`ex_score` の `*_original.png` / `*_enlarged.png` / `*_binary.png` を確認できる状態にしています。
@@ -384,6 +386,7 @@ python -m pytest tests
 - 曲・譜面情報の目視確認用ROIとして `play_style`、`difficulty`、`level`、`rank`、`song_title`、`artist` を `rois/` に生成できる
 - M3 chart-field 抽出評価は confirmed-events 境界だけを対象にし、duplicate / rejected_transition / unconfirmed / non-result を `skipped` として区別できる
 - M3 chart-field ROI画像特徴baselineは confirmed-events 境界だけを対象にし、既存の filename baseline と分けて出力できる
+- M3 chart-field ROI画像特徴diagnosticsは mismatch の混同表と代表ROIを出し、`level` の単純特徴baselineを採用候補扱いしない
 
 `samples/screenshots/metadata.csv` や画像がない環境では、ローカル素材が必要なテストだけ skip します。
 
