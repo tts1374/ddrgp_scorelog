@@ -10,47 +10,37 @@ high
 
 `codex/vision-poc-ocr-tuning`
 
-最新確認コミットは、このファイルを含む `Add M3 chart-field extraction baseline` コミットを想定します。このコミットまでで、M3 chart-field 評価の足場に `m3_chart_field_extraction.csv` と `m3_chart_field_extraction_summary.json` が追加されています。
+最新確認コミットは、このファイルを含む「M3 chart-field ROI画像特徴baseline追加」コミットを想定します。このコミットまでで、既存の `filename-baseline` に加えて、ROI画像特徴由来の `roi-feature-nearest-centroid` レポートが追加されています。
 
 作業開始時に以下を確認してください。
 
 - `git status --short --branch`
 - `git log --oneline -5`
 - 現在ブランチが `codex/vision-poc-ocr-tuning` であること
-- 最新コミットが `Add M3 chart-field extraction baseline` 以降であること
+- 最新コミットが M3 chart-field ROI画像特徴baseline追加以降であること
 - `docs/next-task.md` は次チャット用の作業指示ファイルとして扱うこと
 
 ## 今回までの作業結果
 
-- `tools/vision_poc/runner.py` の `result_candidate` は、低スコア/低ランクで score/rank 色特徴が弱くても、`RESULTS` ヘッダー + 詳細リザルト枠を基準に保存候補へ残す。
+- `python -m tools.vision_poc --no-ocr` は Total 112 / Correct 112 / false positives 0 / false negatives 0。
 - 105の0点D、106のD、110のB、112のB+ などの低スコア/低ランク result は `result_candidate=true` を維持している。
-- `transition_countup_*` は `result_shape_candidate=true` でも `result_candidate=false`、`event_type=rejected_transition` のまま保存不可候補として扱う。
-- `PRIMARY_ROIS` は、M3入口の目視確認用に `play_style`、`difficulty`、`level`、`rank`、`song_title`、`artist` を `data/vision_poc/rois/<画像名>/` へ出力する。
-- `artist` ROI は補助ROI。短い名前は読めるが、長い名前は左右が切れる場合がある。M3入口ではROI座標の大変更に進まない。
-- M3 metadata expected coverage の対象は confirmed-events 境界、つまり `confirmed_result=true` かつ `duplicate=false` のみ。
-- `m3_metadata_expected_coverage.md` と `m3_metadata_expected_template.csv` は、数字OCR expected coverage と別の期待値充足レポートとして維持されている。
-- `m3_chart_fields.csv` と `m3_chart_fields_summary.json` は全イベント行を出し、`play_style`、`difficulty`、`level` の chart-field 対象一覧を confirmed-events 境界だけに限定する。
-- duplicate、`event_type=rejected_transition`、未確定 `result_candidate`、non-result は M3 metadata expected coverage / M3 chart-field inventory / M3 chart-field extraction の対象外。
-- 今回 `m3_chart_field_extraction.csv` と `m3_chart_field_extraction_summary.json` を追加した。
-- 現行 extractor は `filename-baseline`。`organized_file` の `sp_basic_lv06` のような命名から `play_style`、`difficulty`、`level` を正規化して取り出す初期baselineであり、ROI画像特徴、OCR、テンプレート照合、マスタ照合の成功ではない。
-- `play_style` は `SP`/`SINGLE` を `SINGLE`、`DP`/`DOUBLE` を `DOUBLE` に正規化する。`difficulty` は大文字の有限候補、`level` は先頭ゼロなしの数値文字列に正規化する。
-- `m3_chart_field_extraction.csv` はイベント × field の行を出し、`expected_value`、`extracted_value`、`match`、`status`、`failure_reason`、`roi_path` を持つ。
-- 対象外イベントは `status=skipped` とし、`failure_reason` で `duplicate`、`rejected_transition`、`unconfirmed`、`non_result` を区別する。
-- 対象イベントで期待値がない場合は `no_expected_value`、抽出できない場合は `empty_extraction`、不一致は `mismatch` として扱う。
-- ローカル `samples/screenshots/metadata.csv` は112行。追加分105-112の organized file は存在確認済み。
-- Git管理対象外ファイルである `samples/screenshots/metadata.csv` はコミットしない。直近の期待値追記もローカル真値整備として扱う。
-- 現在のローカル metadata では confirmed-events 対象は60件。
-- M3 metadata expected coverage は `song_title` / `artist` / `play_style` / `difficulty` / `level` が60/60件で `evaluated`。
-- `rank` / `expected_rank` は12/60件が埋まっており、残り48件は rank のみ不足。これは数字OCR expected coverage とは別扱い。
-- `m3_metadata_expected_template.csv` は48行で、いずれも `missing_fields=rank` のみ。duplicate、`rejected_transition`、未確定候補、non-result の混入はない。
-- rank はM3入口では当面補助ROIの部分評価として扱う。残り48件の `expected_rank` を無理に埋める作業には進まない。
-- 直近確認では `python -m tools.vision_poc --no-ocr` が Total 112 / Correct 112 / false positives 0 / false negatives 0。`transition_countup_*` は shape 3件、result_candidate 0件。
-- `data/vision_poc/result_events_summary.json` は `confirmed_count=60`、`confirmed_result_count=61`、`duplicate_count=1`、`rejected_transition_count=3`。
-- `data/vision_poc/m3_chart_fields_summary.json` は `chart_field_target_count=60`、`excluded_counts={duplicate:1,rejected_transition:3,unconfirmed:12,non_result:36}`。
-- `data/vision_poc/m3_chart_field_extraction_summary.json` は `extractor=filename-baseline`、`chart_field_target_count=60`、`total_attempts=180`、`match=180`、`skipped=156`。
-- `tools/vision_poc/README.md`、`docs/design/03_event_and_save_boundary.md`、`docs/design/06_regression_guard.md` に M3 chart-field extraction baseline の読み方を追記済み。
-- `tests/test_vision_poc_ocr.py` で、chart-field extraction が confirmed-events 境界だけを対象にし、duplicate / rejected_transition / unconfirmed を skipped にすることを確認している。
-- 直近確認では `python -m ruff check tools\vision_poc pyproject.toml tests`、`python -m compileall tools\vision_poc`、`python -m pytest tests` が通過し、pytest は 80 passed。
+- `transition_countup_*` は `result_shape_candidate=true` でも `result_candidate=false`、`event_type=rejected_transition` のまま。
+- `result_events_summary.json` は `confirmed_count=60`、`confirmed_result_count=61`、`duplicate_count=1`、`rejected_transition_count=3`。
+- `m3_metadata_expected_coverage.md` は `song_title` / `artist` / `play_style` / `difficulty` / `level` が60/60件で `evaluated`。
+- `rank` / `expected_rank` は12/60件のみで `partially_evaluated`。`m3_metadata_expected_template.csv` は48行、すべて `missing_fields=rank`。
+- `m3_chart_fields_summary.json` は `chart_field_target_count=60`、`excluded_counts={duplicate:1,rejected_transition:3,unconfirmed:12,non_result:36}`。
+- 既存の `m3_chart_field_extraction.csv` / summary は `filename-baseline` のまま維持している。ローカル `organized_file` 名から `play_style`、`difficulty`、`level` を正規化する比較用baselineで、ROI/OCR/テンプレート照合/マスタ照合の成功ではない。
+- `filename-baseline` の直近確認は target 60件 × 3 field = 180 attempt、match 180、skipped 156。
+- 今回 `m3_chart_field_image_feature_extraction.csv` と `m3_chart_field_image_feature_extraction_summary.json` を追加した。
+- 新 extractor は `roi-feature-nearest-centroid`。confirmed-events 対象のROI画像から明度、白/黄/シアン/緑比率、エッジ比率などの特徴を取り、期待値ラベルごとの leave-one-out centroid に最も近い値を `extracted_value` として出す軽い画像特徴baseline。
+- `roi-feature-nearest-centroid` も confirmed-events 境界だけを抽出評価対象にし、duplicate / rejected_transition / unconfirmed / non-result は `status=skipped` のまま `failure_reason` で区別する。
+- `roi-feature-nearest-centroid` のstatus語彙は `match` / `mismatch` / `empty_extraction` / `no_expected_value` / `skipped`。
+- 直近ローカル実測では `roi-feature-nearest-centroid` は target 60件 × 3 field = 180 attempt、match 117、mismatch 63、skipped 156。
+- field別では `play_style` 59/60 match、`difficulty` 41/60 match、`level` 17/60 match。特に `level` は単純なROI特徴だけでは弱く、次は数字向けの軽いテンプレート比較または局所特徴が候補。
+- `roi-feature-nearest-centroid` は画像特徴の診断用baselineであり、OCR、テンプレート照合、マスタ照合の成功扱いにしない。
+- `tools/vision_poc/README.md`、`docs/design/03_event_and_save_boundary.md`、`docs/design/06_regression_guard.md` に新レポートの読み方を追記済み。
+- `tests/test_vision_poc_ocr.py` で、ROI画像特徴baselineが confirmed-events 境界だけを対象にし、対象外を `skipped` にすること、合成画像で leave-one-out nearest centroid が `match` を出せることを確認している。
+- 直近確認では `python -m ruff check tools\vision_poc pyproject.toml tests`、`python -m compileall tools\vision_poc`、`python -m pytest tests` が通過し、pytest は 81 passed。
 
 ## 必読資料
 
@@ -96,30 +86,20 @@ high
 1. 現状確認
    - `samples/screenshots/metadata.csv` がローカルに存在する場合、112行であること、追加分105-112の organized file が存在することを確認する。
    - `python -m tools.vision_poc --no-ocr` を実行し、112件全正解、低スコア result の保存候補維持、`transition_countup_*` 除外が崩れていないことを確認する。
-   - `data/vision_poc/result_events_summary.json` で `confirmed_count=60`、`confirmed_result_count=61`、`duplicate_count=1`、`rejected_transition_count=3` を確認する。
-   - `data/vision_poc/m3_metadata_expected_coverage.md` と `data/vision_poc/m3_metadata_expected_template.csv` を読み、5項目60/60 evaluated、rank 12/60 partially_evaluated、template 48行すべて `missing_fields=rank` であることを確認する。
-   - `data/vision_poc/m3_chart_fields_summary.json` を読み、chart-field 対象が confirmed-events 60件だけであること、対象外理由が `duplicate` / `rejected_transition` / `unconfirmed` / `non_result` に分かれていることを確認する。
-   - `data/vision_poc/m3_chart_field_extraction_summary.json` を読み、`filename-baseline` が target 60件 × 3 field = 180 attempt で match 180、skipped 156 であることを確認する。
+   - `result_events_summary.json`、`m3_metadata_expected_coverage.md`、`m3_metadata_expected_template.csv`、`m3_chart_fields_summary.json`、`m3_chart_field_extraction_summary.json`、`m3_chart_field_image_feature_extraction_summary.json` を読む。
+   - 新旧baselineを混同しない。`filename-baseline` はファイル名由来、`roi-feature-nearest-centroid` はROI画像特徴由来の診断用。
 
-2. M3 chart-field 抽出PoCの次の最小単位を決める
-   - 次の実装対象は `play_style`、`difficulty`、`level` のROI画像特徴または軽いテンプレート比較に限定する。
-   - 既存の `filename-baseline` は比較用baselineとして維持し、画像由来 extractor を追加する場合は extractor 名を分ける。
-   - `play_style` は `SINGLE` / `DOUBLE`、`difficulty` は有限候補、`level` は1-19の小さな値として扱える入口を検討する。
-   - `rank` は補助/部分評価として維持し、ランクOCRやランクテンプレート照合には進まない。
-   - `song_title` と `artist` は当面、ROI切り出しと期待値カバレッジの確認に留める。曲名OCR、正規化、マスタ候補絞り込みには進まない。
+2. M3 chart-field 画像由来抽出PoCの次の最小単位を決める
+   - まず `play_style` 59/60 mismatch の1件を `m3_chart_field_image_feature_extraction.csv` とROI画像で確認する。
+   - `difficulty` は41/60なので、色特徴だけで分けられる候補と分けられない候補を mismatch 代表から整理する。
+   - `level` は17/60で弱いため、単純ROI特徴を採用候補にしない。次に進むなら、レベルROIだけを対象にした数字テンプレート比較、またはOCR前処理とは分けた軽い形状特徴を検討する。
+   - 画像由来 extractor を追加する場合は extractor 名を分け、既存 `filename-baseline` を比較用baselineとして維持する。
+   - 出力は既存の chart-field status 語彙に寄せる。
 
-3. 軽い画像由来 chart-field 抽出評価の候補
-   - まずは `play_style`、`difficulty`、`level` の期待値とROI画像パスがそろっている confirmed-events だけを対象にする。
-   - 画像特徴を試す場合も、出力は既存の `m3_chart_field_extraction.csv` / summary と同じ status 語彙に寄せる。
-   - テンプレート比較や色特徴を試す場合は、ローカル画像に依存しない単体テストで境界や集計を先に固定する。
-   - 画像特徴を実装する場合でも、ROI座標定義の大変更やOCR方式刷新には進まない。
-   - 出力先は `data/vision_poc/` 配下に限定し、生成物はGit管理しない。
-
-4. テスト補強
+3. テスト補強
    - ローカル画像や `metadata.csv` に依存しない小さなテストを優先する。
-   - confirmed-events 境界だけを対象にすること、duplicate / rejected_transition / unconfirmed / non-result を除外することをテストする。
-   - 数字OCR expected coverage、M3 metadata expected coverage、M3 chart-field inventory / extraction を混同しないことをテストする。
-   - 既存の `test_m3_metadata_expected_report_uses_confirmed_events_boundary` で足りる範囲は増やしすぎない。
+   - confirmed-events 境界だけを対象にすること、duplicate / rejected_transition / unconfirmed / non-result を除外することを維持する。
+   - 数字OCR expected coverage、M3 metadata expected coverage、M3 chart-field inventory / filename extraction / image feature extraction を混同しないことをテストする。
 
 ## 検証コマンド
 
@@ -141,9 +121,11 @@ Get-Content data\vision_poc\m3_metadata_expected_coverage.md
 Get-Content data\vision_poc\m3_metadata_expected_template.csv
 Get-Content data\vision_poc\m3_chart_fields_summary.json
 Get-Content data\vision_poc\m3_chart_field_extraction_summary.json
+Get-Content data\vision_poc\m3_chart_field_image_feature_extraction_summary.json
 Import-Csv data\vision_poc\m3_chart_fields.csv | Group-Object chart_field_target
 Import-Csv data\vision_poc\m3_chart_fields.csv | Group-Object exclusion_reason
 Import-Csv data\vision_poc\m3_chart_field_extraction.csv | Group-Object field_name,status
+Import-Csv data\vision_poc\m3_chart_field_image_feature_extraction.csv | Group-Object field_name,status
 ```
 
 M2 confirmed-events 回帰も見る場合:
@@ -158,7 +140,7 @@ M3用の新しいCLI、CSV、JSON、Markdownレポート、または出力ディ
 ## コミット/Push方針
 
 - `metadata.csv`、`data/`、`logs/`、ローカル素材、ローカルDBはコミットしない。
-- `docs/next-task.md` は今回ユーザーから明示されているためコミット対象に含める。
+- `docs/next-task.md` はユーザーから明示されているためコミット対象に含める。
 - コード、README、docs、テストに変更がある場合のみ、今回作業分だけをステージしてコミットする。
 - `data/` 配下のPoC出力、ROI画像、OCR画像、解析ログはステージしない。
 - 分類条件、保存境界、expected coverage、M3 ROIの読み方を変えた場合は、関連する `tools/vision_poc/README.md` または `docs/design/` 更新を同じコミットに含める。
@@ -172,10 +154,10 @@ M3用の新しいCLI、CSV、JSON、Markdownレポート、または出力ディ
 - confirmed-events の保存境界が `confirmed_result=true` かつ `duplicate=false` のまま。
 - duplicate / rejected_transition / unconfirmed / non-result が保存直前OCR評価対象外、M3 metadata expected coverage 対象外、M3 chart-field inventory / extraction 対象外のまま。
 - M3用ROIは、少なくとも `play_style`、`difficulty`、`level`、`rank`、`song_title`、`artist` を目視確認できる形で `rois/` に出力できる。
-- `artist` ROI は補助ROIとして扱い、長いアーティスト名の左右切れを理由にROI座標定義の大変更へ進んでいない。
 - `m3_metadata_expected_coverage.md` と `m3_metadata_expected_template.csv` が数字OCR expected coverage と別の読み方として維持されている。
 - `m3_chart_fields.csv` と `m3_chart_fields_summary.json` が数字OCR expected coverage、曲名OCR、artist OCR、rank OCR、テンプレート照合、マスタ照合の成功扱いになっていない。
-- `m3_chart_field_extraction.csv` と `m3_chart_field_extraction_summary.json` が confirmed-events 境界だけを抽出評価対象にし、`filename-baseline` をROI/OCR/テンプレート照合/マスタ照合の成功扱いにしていない。
+- `m3_chart_field_extraction.csv` と `m3_chart_field_extraction_summary.json` が `filename-baseline` をROI/OCR/テンプレート照合/マスタ照合の成功扱いにしていない。
+- `m3_chart_field_image_feature_extraction.csv` と `m3_chart_field_image_feature_extraction_summary.json` が `roi-feature-nearest-centroid` をOCR/テンプレート照合/マスタ照合の成功扱いにしていない。
 - `song_title` / `artist` / `play_style` / `difficulty` / `level` は confirmed-events 対象60件で `evaluated` のまま。
 - `play_style` / `difficulty` / `level` は M3 chart-field 対象60件で `evaluated` のまま。
 - `rank` / `expected_rank` は、数字OCR expected coverage と混同せず、当面は補助/部分評価として扱われている。

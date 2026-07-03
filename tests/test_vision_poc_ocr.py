@@ -50,9 +50,42 @@ def write_test_image(path: Path) -> None:
     Image.new("RGB", (1280, 720), "black").save(path)
 
 
+def write_chart_feature_image(path: Path, field_colors: dict[str, str]) -> None:
+    image = Image.new("RGB", (1280, 720), "black")
+    for field_name, color in field_colors.items():
+        image.paste(color, runner.scaled_box(image, runner.ROI_DEFINITIONS[field_name]))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    image.save(path)
+
+
 def read_csv_rows(path: Path) -> list[dict[str, str]]:
     with path.open("r", encoding="utf-8", newline="") as file:
         return list(csv.DictReader(file))
+
+
+def result_event(
+    organized_file: str,
+    *,
+    confirmed_result: bool,
+    duplicate: bool = False,
+    event_type: str = "confirmed",
+    result_candidate: bool = True,
+) -> runner.ResultEvent:
+    return runner.ResultEvent(
+        frame_index=0,
+        organized_file=organized_file,
+        screen_type="result" if result_candidate else "transition",
+        result_candidate=result_candidate,
+        result_shape_candidate=result_candidate,
+        confirmed_result=confirmed_result,
+        event_type=event_type,
+        duplicate=duplicate,
+        duplicate_key=f"file:{organized_file}",
+        timestamp_ms=None,
+        candidate_duration_ms=None,
+        confirmation_mode="frames",
+        reason="test",
+    )
 
 
 def stub_tesseract(
@@ -380,6 +413,35 @@ def test_m3_metadata_expected_report_uses_confirmed_events_boundary(
     assert extraction_summary["status_counts"]["skipped"] == 12
     assert extraction_summary["fields"]["level"]["match_count"] == 1
 
+    image_feature_rows = read_csv_rows(
+        output_dir / "m3_chart_field_image_feature_extraction.csv"
+    )
+    assert [row["status"] for row in image_feature_rows[:6]] == [
+        "skipped",
+        "skipped",
+        "skipped",
+        "skipped",
+        "skipped",
+        "skipped",
+    ]
+    assert {row["status"] for row in image_feature_rows[6:9]} == {"empty_extraction"}
+    assert image_feature_rows[9]["failure_reason"] == "duplicate"
+    assert image_feature_rows[12]["failure_reason"] == "rejected_transition"
+
+    image_feature_summary = json.loads(
+        (output_dir / "m3_chart_field_image_feature_extraction_summary.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert image_feature_summary["target_boundary"] == (
+        "confirmed_result=true and duplicate=false"
+    )
+    assert image_feature_summary["extractor"] == "roi-feature-nearest-centroid"
+    assert image_feature_summary["chart_field_target_count"] == 1
+    assert image_feature_summary["total_attempts"] == 3
+    assert image_feature_summary["status_counts"]["empty_extraction"] == 3
+    assert image_feature_summary["status_counts"]["skipped"] == 12
+
     event_rows = read_csv_rows(output_dir / "result_events.csv")
     assert [row["event_type"] for row in event_rows] == [
         "none",
@@ -388,6 +450,85 @@ def test_m3_metadata_expected_report_uses_confirmed_events_boundary(
         "duplicate",
         "rejected_transition",
     ]
+
+
+def test_m3_chart_field_image_feature_extraction_uses_confirmed_events_boundary(
+    tmp_path: Path,
+) -> None:
+    samples = [
+        ("single_a.png", "SINGLE", "red"),
+        ("single_b.png", "SINGLE", "red"),
+        ("double_a.png", "DOUBLE", "green"),
+        ("double_b.png", "DOUBLE", "green"),
+        ("duplicate.png", "DOUBLE", "green"),
+        ("transition_countup.png", "SINGLE", "red"),
+    ]
+    frames: list[runner.FrameInput] = []
+    for name, play_style, color in samples:
+        image_path = tmp_path / name
+        write_chart_feature_image(image_path, {"play_style": color})
+        frames.append(
+            runner.FrameInput(
+                row={
+                    "organized_file": name,
+                    "screen_type": "result",
+                    "play_style": play_style,
+                },
+                image_path=image_path,
+            )
+        )
+    events = [
+        result_event("single_a.png", confirmed_result=True),
+        result_event("single_b.png", confirmed_result=True),
+        result_event("double_a.png", confirmed_result=True),
+        result_event("double_b.png", confirmed_result=True),
+        result_event(
+            "duplicate.png",
+            confirmed_result=True,
+            duplicate=True,
+            event_type="duplicate",
+        ),
+        result_event(
+            "transition_countup.png",
+            confirmed_result=False,
+            event_type="rejected_transition",
+            result_candidate=False,
+        ),
+    ]
+
+    rows = runner.m3_chart_field_image_feature_extraction_rows(frames, events)
+
+    play_style_rows = [row for row in rows if row["field_name"] == "play_style"]
+    assert [row["status"] for row in play_style_rows] == [
+        "match",
+        "match",
+        "match",
+        "match",
+        "skipped",
+        "skipped",
+    ]
+    assert [row["extracted_value"] for row in play_style_rows[:4]] == [
+        "SINGLE",
+        "SINGLE",
+        "DOUBLE",
+        "DOUBLE",
+    ]
+    assert play_style_rows[4]["failure_reason"] == "duplicate"
+    assert play_style_rows[5]["failure_reason"] == "rejected_transition"
+    assert all(row["feature_green_ratio"] for row in play_style_rows[:4])
+
+    summary = runner.summarize_m3_chart_field_image_feature_extraction(frames, events)
+    assert summary["extractor"] == "roi-feature-nearest-centroid"
+    assert summary["chart_field_target_count"] == 4
+    assert summary["status_counts"] == {
+        "match": 4,
+        "mismatch": 0,
+        "empty_extraction": 0,
+        "no_expected_value": 8,
+        "skipped": 6,
+    }
+    assert summary["fields"]["play_style"]["match_count"] == 4
+    assert summary["fields"]["difficulty"]["no_expected_value_count"] == 4
 
 
 def test_score_digits_preprocessing_writes_images_without_ocr_engine(

@@ -244,6 +244,7 @@ M3_CHART_FIELD_FIELDS = (
     "level",
 )
 M3_CHART_FIELD_EXTRACTION_METHOD = "filename-baseline"
+M3_CHART_FIELD_IMAGE_FEATURE_EXTRACTION_METHOD = "roi-feature-nearest-centroid"
 M3_CHART_FIELD_DIFFICULTIES = (
     "BEGINNER",
     "BASIC",
@@ -2193,6 +2194,281 @@ def summarize_m3_chart_field_extraction(
     }
 
 
+def m3_chart_field_feature_values(image: Image.Image, field_name: str) -> dict[str, float]:
+    features = extract_features(crop_roi(image, ROI_DEFINITIONS[field_name]))
+    return {
+        "bright_ratio": features.bright_ratio,
+        "white_ratio": features.white_ratio,
+        "yellow_ratio": features.yellow_ratio,
+        "cyan_ratio": features.cyan_ratio,
+        "green_ratio": features.green_ratio,
+        "edge_ratio": features.edge_ratio,
+        "mean_luma": features.mean_luma,
+        "std_luma": features.std_luma,
+    }
+
+
+def m3_chart_field_feature_vector(feature_values: dict[str, float]) -> tuple[float, ...]:
+    return (
+        feature_values["bright_ratio"],
+        feature_values["white_ratio"],
+        feature_values["yellow_ratio"],
+        feature_values["cyan_ratio"],
+        feature_values["green_ratio"],
+        feature_values["edge_ratio"],
+        feature_values["mean_luma"] / 255.0,
+        feature_values["std_luma"] / 128.0,
+    )
+
+
+def centroid_feature_vector(feature_vectors: Iterable[tuple[float, ...]]) -> tuple[float, ...]:
+    vectors = list(feature_vectors)
+    if not vectors:
+        return ()
+    return tuple(
+        sum(vector[index] for vector in vectors) / len(vectors)
+        for index in range(len(vectors[0]))
+    )
+
+
+def m3_chart_field_feature_distance(
+    feature_vector: tuple[float, ...],
+    centroid: tuple[float, ...],
+) -> float:
+    return math.sqrt(
+        sum((left - right) ** 2 for left, right in zip(feature_vector, centroid, strict=True))
+    )
+
+
+def nearest_m3_chart_field_feature_value(
+    feature_vector: tuple[float, ...],
+    references: dict[str, list[tuple[float, ...]]],
+) -> tuple[str, float | None]:
+    best_value = ""
+    best_distance: float | None = None
+    for expected_value in sorted(references):
+        centroid = centroid_feature_vector(references[expected_value])
+        if not centroid:
+            continue
+        distance = m3_chart_field_feature_distance(feature_vector, centroid)
+        if best_distance is None or distance < best_distance:
+            best_value = expected_value
+            best_distance = distance
+    return best_value, best_distance
+
+
+def format_float(value: float | None) -> str:
+    return "" if value is None else f"{value:.6f}"
+
+
+def m3_chart_field_image_feature_extraction_rows(
+    frames: Iterable[FrameInput],
+    events: Iterable[ResultEvent],
+) -> list[dict[str, str]]:
+    frame_list = list(frames)
+    event_list = list(events)
+    feature_samples: dict[tuple[int, str], dict[str, float]] = {}
+    for frame_index, (frame, event) in enumerate(zip(frame_list, event_list, strict=True)):
+        if not is_save_candidate_event(event):
+            continue
+        with Image.open(frame.image_path) as image:
+            image = image.convert("RGB")
+            for field_name in M3_CHART_FIELD_FIELDS:
+                feature_samples[(frame_index, field_name)] = m3_chart_field_feature_values(
+                    image,
+                    field_name,
+                )
+
+    rows: list[dict[str, str]] = []
+    for frame_index, (frame, event) in enumerate(zip(frame_list, event_list, strict=True)):
+        target = is_save_candidate_event(event)
+        exclusion_reason = m3_chart_field_exclusion_reason(event)
+        for field_name in M3_CHART_FIELD_FIELDS:
+            expected_value = normalize_m3_chart_field_value(
+                field_name,
+                expected_m3_metadata_value_from_row(frame.row, field_name),
+            )
+            feature_values = feature_samples.get((frame_index, field_name), {})
+            feature_vector = (
+                m3_chart_field_feature_vector(feature_values) if feature_values else ()
+            )
+            references: dict[str, list[tuple[float, ...]]] = {}
+            for reference_index, reference_frame in enumerate(frame_list):
+                if reference_index == frame_index:
+                    continue
+                reference_event = event_list[reference_index]
+                if not is_save_candidate_event(reference_event):
+                    continue
+                reference_expected = normalize_m3_chart_field_value(
+                    field_name,
+                    expected_m3_metadata_value_from_row(reference_frame.row, field_name),
+                )
+                reference_features = feature_samples.get((reference_index, field_name))
+                if not reference_expected or reference_features is None:
+                    continue
+                references.setdefault(reference_expected, []).append(
+                    m3_chart_field_feature_vector(reference_features)
+                )
+
+            extracted_value = ""
+            nearest_distance: float | None = None
+            match_value: bool | None = None
+            failure_reason = ""
+            if not target:
+                status = "skipped"
+                failure_reason = exclusion_reason
+            elif expected_value == "":
+                status = "no_expected_value"
+                failure_reason = "no_expected_value"
+            elif not feature_vector:
+                status = "empty_extraction"
+                failure_reason = "empty_extraction"
+            else:
+                extracted_value, nearest_distance = nearest_m3_chart_field_feature_value(
+                    feature_vector,
+                    references,
+                )
+                if extracted_value == "":
+                    status = "empty_extraction"
+                    failure_reason = "empty_extraction"
+                else:
+                    match_value = extracted_value == expected_value
+                    status = "match" if match_value else "mismatch"
+                    failure_reason = "" if match_value else "mismatch"
+
+            rows.append(
+                {
+                    "organized_file": frame.row["organized_file"],
+                    "screen_type": frame.row.get("screen_type", ""),
+                    "event_type": event.event_type,
+                    "confirmed_result": str(event.confirmed_result),
+                    "duplicate": str(event.duplicate),
+                    "chart_field_target": str(target),
+                    "exclusion_reason": exclusion_reason,
+                    "field_name": field_name,
+                    "extractor": M3_CHART_FIELD_IMAGE_FEATURE_EXTRACTION_METHOD,
+                    "expected_value": expected_value,
+                    "extracted_value": extracted_value,
+                    "match": "" if match_value is None else str(match_value),
+                    "status": status,
+                    "failure_reason": failure_reason,
+                    "nearest_distance": format_float(nearest_distance),
+                    "feature_bright_ratio": format_float(feature_values.get("bright_ratio")),
+                    "feature_white_ratio": format_float(feature_values.get("white_ratio")),
+                    "feature_yellow_ratio": format_float(feature_values.get("yellow_ratio")),
+                    "feature_cyan_ratio": format_float(feature_values.get("cyan_ratio")),
+                    "feature_green_ratio": format_float(feature_values.get("green_ratio")),
+                    "feature_edge_ratio": format_float(feature_values.get("edge_ratio")),
+                    "feature_mean_luma": format_float(feature_values.get("mean_luma")),
+                    "feature_std_luma": format_float(feature_values.get("std_luma")),
+                    "roi_path": m3_chart_field_roi_path(frame.image_path.stem, field_name),
+                }
+            )
+    return rows
+
+
+def write_m3_chart_field_image_feature_extraction_csv(
+    path: Path,
+    frames: Iterable[FrameInput],
+    events: Iterable[ResultEvent],
+) -> None:
+    fieldnames = [
+        "organized_file",
+        "screen_type",
+        "event_type",
+        "confirmed_result",
+        "duplicate",
+        "chart_field_target",
+        "exclusion_reason",
+        "field_name",
+        "extractor",
+        "expected_value",
+        "extracted_value",
+        "match",
+        "status",
+        "failure_reason",
+        "nearest_distance",
+        "feature_bright_ratio",
+        "feature_white_ratio",
+        "feature_yellow_ratio",
+        "feature_cyan_ratio",
+        "feature_green_ratio",
+        "feature_edge_ratio",
+        "feature_mean_luma",
+        "feature_std_luma",
+        "roi_path",
+    ]
+    rows = m3_chart_field_image_feature_extraction_rows(frames, events)
+    with path.open("w", encoding="utf-8", newline="") as file:
+        writer = csv.DictWriter(file, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+def summarize_m3_chart_field_image_feature_extraction(
+    frames: Iterable[FrameInput],
+    events: Iterable[ResultEvent],
+) -> dict[str, object]:
+    rows = m3_chart_field_image_feature_extraction_rows(frames, events)
+    field_buckets = {
+        field_name: {
+            "target_count": 0,
+            "match_count": 0,
+            "mismatch_count": 0,
+            "empty_extraction_count": 0,
+            "no_expected_value_count": 0,
+            "skipped_count": 0,
+        }
+        for field_name in M3_CHART_FIELD_FIELDS
+    }
+    status_counts = {
+        "match": 0,
+        "mismatch": 0,
+        "empty_extraction": 0,
+        "no_expected_value": 0,
+        "skipped": 0,
+    }
+    for row in rows:
+        status = row["status"]
+        status_counts[status] = status_counts.get(status, 0) + 1
+        bucket = field_buckets[row["field_name"]]
+        if row["chart_field_target"] == "True":
+            bucket["target_count"] += 1
+        if status == "match":
+            bucket["match_count"] += 1
+        elif status == "mismatch":
+            bucket["mismatch_count"] += 1
+        elif status == "empty_extraction":
+            bucket["empty_extraction_count"] += 1
+        elif status == "no_expected_value":
+            bucket["no_expected_value_count"] += 1
+        elif status == "skipped":
+            bucket["skipped_count"] += 1
+
+    target_count = sum(
+        1 for row in rows if row["chart_field_target"] == "True" and row["field_name"] == "level"
+    )
+    return {
+        "target_boundary": "confirmed_result=true and duplicate=false",
+        "extractor": M3_CHART_FIELD_IMAGE_FEATURE_EXTRACTION_METHOD,
+        "reference_mode": "leave-one-out nearest centroid from confirmed-events expected labels",
+        "total_rows": len(rows),
+        "chart_field_target_count": target_count,
+        "total_attempts": target_count * len(M3_CHART_FIELD_FIELDS),
+        "status_counts": status_counts,
+        "fields": {
+            field_name: {
+                **bucket,
+                "evaluation_status": m3_expected_coverage_status(
+                    int(bucket["target_count"]) - int(bucket["no_expected_value_count"]),
+                    int(bucket["target_count"]),
+                ),
+            }
+            for field_name, bucket in field_buckets.items()
+        },
+    }
+
+
 def write_ocr_expected_coverage_report(
     path: Path,
     score_summary: ScoreOcrSummary,
@@ -2754,6 +3030,20 @@ def main(argv: list[str] | None = None) -> int:
     (output_dir / "m3_chart_field_extraction_summary.json").write_text(
         json.dumps(
             summarize_m3_chart_field_extraction(frames, result_events),
+            ensure_ascii=False,
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    write_m3_chart_field_image_feature_extraction_csv(
+        output_dir / "m3_chart_field_image_feature_extraction.csv",
+        frames,
+        result_events,
+    )
+    (output_dir / "m3_chart_field_image_feature_extraction_summary.json").write_text(
+        json.dumps(
+            summarize_m3_chart_field_image_feature_extraction(frames, result_events),
             ensure_ascii=False,
             indent=2,
         )
