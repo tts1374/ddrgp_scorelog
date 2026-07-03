@@ -333,6 +333,8 @@ def test_m3_metadata_expected_report_uses_confirmed_events_boundary(
                 str(output_dir),
                 "--no-rois",
                 "--no-ocr",
+                "--chart-field-template-root",
+                str(tmp_path / "missing_templates"),
             ]
         )
         == 0
@@ -442,6 +444,39 @@ def test_m3_metadata_expected_report_uses_confirmed_events_boundary(
     assert image_feature_summary["status_counts"]["empty_extraction"] == 3
     assert image_feature_summary["status_counts"]["skipped"] == 12
 
+    template_extraction_rows = read_csv_rows(
+        output_dir / "m3_chart_field_template_extraction.csv"
+    )
+    assert [row["status"] for row in template_extraction_rows[:6]] == [
+        "skipped",
+        "skipped",
+        "skipped",
+        "skipped",
+        "skipped",
+        "skipped",
+    ]
+    assert {row["status"] for row in template_extraction_rows[6:9]} == {
+        "empty_extraction"
+    }
+    assert {
+        row["failure_reason"] for row in template_extraction_rows[6:9]
+    } == {"no_template_references"}
+    assert template_extraction_rows[9]["failure_reason"] == "duplicate"
+    assert template_extraction_rows[12]["failure_reason"] == "rejected_transition"
+
+    template_summary = json.loads(
+        (output_dir / "m3_chart_field_template_extraction_summary.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert template_summary["target_boundary"] == "confirmed_result=true and duplicate=false"
+    assert template_summary["extractor"] == "roi-template-nearest"
+    assert template_summary["template_image_count"] == 0
+    assert template_summary["chart_field_target_count"] == 1
+    assert template_summary["total_attempts"] == 3
+    assert template_summary["status_counts"]["empty_extraction"] == 3
+    assert template_summary["status_counts"]["skipped"] == 12
+
     event_rows = read_csv_rows(output_dir / "result_events.csv")
     assert [row["event_type"] for row in event_rows] == [
         "none",
@@ -529,6 +564,114 @@ def test_m3_chart_field_image_feature_extraction_uses_confirmed_events_boundary(
     }
     assert summary["fields"]["play_style"]["match_count"] == 4
     assert summary["fields"]["difficulty"]["no_expected_value_count"] == 4
+
+
+def test_m3_chart_field_template_extraction_uses_confirmed_events_boundary(
+    tmp_path: Path,
+) -> None:
+    template_root = tmp_path / "templates"
+    write_chart_feature_image(
+        template_root / "chart_field_template_001_single_basic_lv01.png",
+        {"play_style": "red", "difficulty": "blue", "level": "yellow"},
+    )
+    write_chart_feature_image(
+        template_root / "chart_field_template_002_double_expert_lv02.png",
+        {"play_style": "green", "difficulty": "purple", "level": "white"},
+    )
+
+    samples = [
+        (
+            "single_target.png",
+            {"play_style": "red", "difficulty": "blue", "level": "yellow"},
+            {"play_style": "SINGLE", "difficulty": "BASIC", "level": "1"},
+        ),
+        (
+            "double_target.png",
+            {"play_style": "green", "difficulty": "purple", "level": "white"},
+            {"play_style": "DOUBLE", "difficulty": "EXPERT", "level": "2"},
+        ),
+        (
+            "duplicate.png",
+            {"play_style": "green", "difficulty": "purple", "level": "white"},
+            {"play_style": "DOUBLE", "difficulty": "EXPERT", "level": "2"},
+        ),
+        (
+            "transition_countup.png",
+            {"play_style": "red", "difficulty": "blue", "level": "yellow"},
+            {"play_style": "SINGLE", "difficulty": "BASIC", "level": "1"},
+        ),
+    ]
+    frames: list[runner.FrameInput] = []
+    for name, colors, expected in samples:
+        image_path = tmp_path / name
+        write_chart_feature_image(image_path, colors)
+        frames.append(
+            runner.FrameInput(
+                row={
+                    "organized_file": name,
+                    "screen_type": "result",
+                    **expected,
+                },
+                image_path=image_path,
+            )
+        )
+    events = [
+        result_event("single_target.png", confirmed_result=True),
+        result_event("double_target.png", confirmed_result=True),
+        result_event(
+            "duplicate.png",
+            confirmed_result=True,
+            duplicate=True,
+            event_type="duplicate",
+        ),
+        result_event(
+            "transition_countup.png",
+            confirmed_result=False,
+            event_type="rejected_transition",
+            result_candidate=False,
+        ),
+    ]
+
+    rows = runner.m3_chart_field_template_extraction_rows(frames, events, template_root)
+
+    assert [row["status"] for row in rows[:6]] == ["match"] * 6
+    assert [row["status"] for row in rows[6:]] == ["skipped"] * 6
+    assert rows[0]["extractor"] == "roi-template-nearest"
+    assert rows[0]["extracted_value"] == "SINGLE"
+    assert rows[1]["extracted_value"] == "BASIC"
+    assert rows[2]["extracted_value"] == "1"
+    assert rows[3]["extracted_value"] == "DOUBLE"
+    assert rows[4]["extracted_value"] == "EXPERT"
+    assert rows[5]["extracted_value"] == "2"
+    assert rows[6]["failure_reason"] == "duplicate"
+    assert rows[9]["failure_reason"] == "rejected_transition"
+    assert rows[0]["template_reference_count"] == "2"
+    assert rows[0]["expected_template_reference_count"] == "1"
+    assert rows[0]["nearest_template_path"].endswith(
+        "chart_field_template_001_single_basic_lv01.png"
+    )
+
+    summary = runner.summarize_m3_chart_field_template_extraction(
+        frames,
+        events,
+        template_root,
+    )
+    assert summary["extractor"] == "roi-template-nearest"
+    assert summary["template_image_count"] == 2
+    assert summary["template_reference_counts"] == {
+        "play_style": 2,
+        "difficulty": 2,
+        "level": 2,
+    }
+    assert summary["template_value_counts"]["difficulty"] == {"BASIC": 1, "EXPERT": 1}
+    assert summary["chart_field_target_count"] == 2
+    assert summary["status_counts"] == {
+        "match": 6,
+        "mismatch": 0,
+        "empty_extraction": 0,
+        "no_expected_value": 0,
+        "skipped": 6,
+    }
 
 
 def test_m3_chart_field_image_feature_diagnostics_reports_mismatches(
