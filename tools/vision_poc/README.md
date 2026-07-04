@@ -276,6 +276,8 @@ python -m tools.vision_poc --no-ocr
 
 M3入口の曲・譜面情報確認では、まず `data/vision_poc/rois/<画像名>/play_style.png`、`difficulty.png`、`level.png`、`rank.png`、`song_title.png`、`artist.png` を目視します。これらは保存直前イベントから曲・譜面情報を評価するための切り出し足場であり、現時点では `--ocr-rois all` のOCR評価対象には含めません。期待値列の充足状況は `m3_metadata_expected_coverage.md` で確認します。このレポートの対象は confirmed-events 境界、つまり `confirmed_result=true` かつ `duplicate=false` だけです。`artist.png` は補助ROIで、長いアーティスト名では左右が切れることがあります。M3入口では座標の大変更に進まず、`song_title.png` 内の2行表示も合わせて目視します。代表確認では、長い曲名、記号入り曲名、日本語曲名、DOUBLE、長い `artist` でも `play_style`、`difficulty`、`level`、`rank`、`song_title` は目視評価に使える一方、`artist` は左右切れがあり補助情報として読む前提を維持します。
 
+M3の成果物は、曲・譜面の照合済みデータではなく、M5のマスタ照合PoCへ渡す観測値と失敗理由です。`song_title` はOCR入口結果、`play_style` / `difficulty` / `level` はPoC抽出候補、`artist` は補助観測値として扱います。空でないOCR文字列や `ready` は、曲ID、譜面ID、マスタ曲名への一意照合、曲名正規化、ファジーマッチ、照合スコア、照合確信度の成功を意味しません。M5で照合した結果、M3で読めているように見えたOCR文字列や譜面候補が違っていたと判明する可能性を前提にします。
+
 M3-4の曲名/artist OCR入口は、明示的に `--m3-song-artist-ocr` を付けて実行します。
 
 ```powershell

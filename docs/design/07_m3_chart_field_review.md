@@ -89,3 +89,7 @@ python -m tools.vision_poc --m3-song-artist-ocr --ocr-target confirmed-events --
 結果は confirmed-events 60件、OCR試行120件、`song_title empty_ocr=2`、`artist empty_ocr=22` でした。`song_title` の代表は `8000000` と `天弓ノ舞` で、主要項目のOCR入口失敗代表として読みます。`artist` は `TAG`、`DKC Crew`、`Ryu☆` など短い表示や左右切れの影響を含む補助項目のOCR入口失敗代表として読み、`song_title` と同じ改善対象として混ぜません。
 
 この確認はOCR入口の観察であり、曲名正規化、ファジーマッチ、マスタ照合、DB保存可否判定の成功/失敗ではありません。生成されたOCR画像、PoC出力、`data/` 配下のJSON/MarkdownはGit管理しません。
+
+## M3 completion boundary
+
+M3は、曲・譜面の照合成功ではなく、M5へ渡す観測値と失敗理由をそろえるところで閉じます。`song_title` はOCR入口結果、`play_style` / `difficulty` / `level` はPoC抽出候補、`artist` は補助観測値です。空でないOCR文字列や chart-field の `ready` は、曲ID、譜面ID、マスタ曲名への一意照合、曲名正規化、ファジーマッチ、照合スコア、照合確信度を意味しません。M5で照合した結果、M3で読めているように見えた文字列や譜面候補が違っていたと判明する可能性を前提にします。

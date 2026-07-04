@@ -37,6 +37,10 @@ high
 - `artist` の代表は `TAG`、`DKC Crew`、`Ryu☆`。
 - `song_title` と `artist` を同じ改善対象として混ぜない。
 - M3-9整理はOCR入口の観察であり、曲名正規化、ファジーマッチ、マスタ照合、DB保存可否判定の成功/失敗ではない。
+- M3の成果物は照合済みデータではなく、M5へ渡す観測値と失敗理由。
+- M3で「読めた」と扱ってよいのは、`song_title` のOCR入口結果、`play_style` / `difficulty` / `level` のPoC抽出候補、`artist` の補助観測値まで。
+- 曲ID、譜面ID、マスタ曲名への一意照合、曲名正規化、ファジーマッチ、候補一覧、照合スコア、照合確信度はM5まで未確定。
+- M5で照合した結果、M3で読めているように見えたOCR文字列や譜面候補が違っていたと判明する可能性を前提にする。
 - テンプレート画像、OCR画像、PoC出力、`metadata.csv`、`data/`、`logs/`、ローカルDBはGit管理しない。
 - 直近確認では `python -m tools.vision_poc --no-ocr`、`python -m tools.vision_poc --m3-song-artist-ocr --ocr-target confirmed-events --no-rois --output data\vision_poc_m3_song_artist`、`python -m ruff check tools\vision_poc pyproject.toml tests`、`python -m compileall tools\vision_poc`、`python -m pytest tests` が通過し、pytest は 90 passed。
 
@@ -85,12 +89,13 @@ high
    - `song_title empty_ocr=2` と `artist empty_ocr=22` が役割別に分離されていることを確認する。
    - `m3_save_candidate_summary.json`、`m3_save_candidate_blockers_summary.json`、`m3_save_candidate_blocker_resolution_plan.json` も読み、chart-field 3項目 ready と song/artist OCR入口失敗を混同していないことを確認する。
 
-3. M3-10候補: song_title OCR入口の小さな前処理検討
-   - まず `song_title` の2代表だけを主要項目の入口失敗として見る。
-   - 代表ROIや `m3_song_artist_ocr_images/*/song_title_*` を目視する場合も、画像や `data/` 出力はGit管理しない。
-   - 前処理を試す場合は `song_title` に限定した小さな変更にし、`artist` 補助項目の左右切れ改善と混ぜない。
-   - OCR方式刷新、ROI座標定義の大変更、曲名正規化、ファジーマッチ、マスタ照合へ進まない。
-   - 改善候補を入れる場合は、M3-9レポートが `song_title` / `artist` を分けて読み続けられることをテストで固定する。
+3. M3-10候補: M3完了判断の文書化
+   - M3を「照合済みデータ」ではなく「M5へ渡す観測値と失敗理由」で閉じる方針を README / docs / tests の読み方に固定する。
+   - `song_title` はOCR入口結果、`play_style` / `difficulty` / `level` はPoC抽出候補、`artist` は補助観測値として扱う。
+   - `ready` や空でないOCR文字列を、曲名・譜面の正規化済み照合成功として扱わない。
+   - M5で照合した結果、M3のOCR文字列や譜面候補が違っていたと判明し得ることを明記する。
+   - 代表ROIや `m3_song_artist_ocr_images/*` を目視する場合も、画像や `data/` 出力はGit管理しない。
+   - 前処理を試す場合はM3完了判断とは別コミット/別作業単位にし、OCR方式刷新、ROI座標定義の大変更、曲名正規化、ファジーマッチ、マスタ照合へ進まない。
 
 4. テスト補強
    - ローカル画像や `metadata.csv` に依存しない manifest fixture / synthetic rows を優先する。
@@ -158,6 +163,8 @@ python -m tools.vision_poc --sequence-mode manifest --frame-manifest data\vision
 - `play_style` / `difficulty` / `level` の `ready` をDB保存可能、採用済みテンプレート照合成功、マスタ照合成功、ファジーマッチ成功、曲名正規化成功として扱っていない。
 - `song_title` と `artist` のOCR入口失敗代表を別々に読み、同じ改善対象として混ぜていない。
 - M3の残りをOCR入口代表失敗として整理し、曲名正規化、ファジーマッチ、マスタ照合、DB保存可否判定へ進んでいない。
+- M3の成果物をM5へ渡す観測値と失敗理由として扱い、照合済みデータとして扱っていない。
+- M5でM3のOCR文字列や譜面候補が誤りだったと判明し得る前提がdocsに残っている。
 - テンプレート素材がない環境で `no_template_references` として壊れずに実行できる。
 - OCRエンジンがない環境で `engine_unavailable` として壊れずに実行できる。
 - `docs/design/07_m3_chart_field_review.md` をローカル期待値レビュー結果として読み、`metadata.csv` 実体や画像はコミットしない。
