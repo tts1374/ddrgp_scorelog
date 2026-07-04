@@ -282,9 +282,9 @@ M3入口の曲・譜面情報確認では、まず `data/vision_poc/rois/<画像
 
 `m3_chart_field_template_diagnostics.md` は、同じ `roi-template-nearest` の mismatch を読むための補助Markdownです。field別の match / mismatch 数、期待値と抽出値の混同表、代表mismatch、`difficulty` の期待値レビュー候補を出します。`difficulty` mismatch は抽出ロジックの失敗だけでなく、ROIの見た目と metadata / ファイル名由来期待値の食い違い候補として、実画像、ROI PNG、metadata、ファイル名を突き合わせて確認します。このレポートも同分布内の leave-one-out 診断であり、OCR、採用済みテンプレート照合、マスタ照合の成功扱いにはしません。
 
-`difficulty` は5種類の文字色が強い手がかりになるため、`roi-template-nearest` 内ではROI全体ピクセルではなく前景文字色の比率パターンで比較します。直近ローカル素材では `play_style` と `level` は 60/60 match、`difficulty` は 55/60 match です。残る `difficulty` mismatch はROIの見た目と metadata / ファイル名由来の期待値が食い違っている可能性があるため、抽出ロジックの失敗だけでなく期待値レビュー候補として読みます。
+`difficulty` は5種類の文字色が強い手がかりになるため、`roi-template-nearest` 内ではROI全体ピクセルではなく前景文字色の比率パターンで比較します。直近ローカル素材では `play_style`、`difficulty`、`level` は 60/60 match です。ただしこれは同分布内の leave-one-out 診断であり、抽出ロジックの採用判断には外部検証や参照/評価セット分割が必要です。
 
-2026-07-04時点の5件レビューでは、`difficulty` mismatch はすべてROI表示が metadata / ファイル名由来期待値と食い違うローカル期待値修正候補でした。詳細は `docs/design/07_m3_chart_field_review.md` を参照します。`metadata.csv` とスクリーンショット画像はGit管理しないため、修正候補は文書に残し、実体更新はローカル素材側で行います。
+2026-07-04時点の5件レビューでは、`difficulty` mismatch はすべてROI表示が metadata / ファイル名由来期待値と食い違うローカル期待値修正候補でした。ローカル `metadata.csv` はROI表示へ合わせて修正済みで、ファイル名は当面リネームしません。修正後は `roi-template-nearest` が 180/180 match、`filename-baseline` が difficulty 5件 mismatch になります。詳細は `docs/design/07_m3_chart_field_review.md` を参照します。`metadata.csv` とスクリーンショット画像はGit管理しないため、判断と修正内容は文書に残し、実体更新はローカル素材側で行います。
 
 現在のローカル metadata では、M3 metadata expected coverage の confirmed-events 対象は60件です。`song_title` / `artist` / `play_style` / `difficulty` / `level` は60件すべてが埋まっており、M3入口ではこの5項目を優先して評価します。`rank` / `expected_rank` は12件だけが埋まっているため、残り48件の不足は数字OCR expected coverage の不足とは別に読み、当面は補助ROIの部分評価として扱います。ランクOCR、ランクテンプレート照合、本格採用判断へ進む場合は、別途M3の評価列とレポートとして定義します。
 
