@@ -3858,7 +3858,10 @@ def summarize_m3_save_candidates(rows: Iterable[dict[str, str]]) -> dict[str, ob
         ],
         "reading_notes": [
             "One row represents one confirmed-events save candidate.",
-            "play_style ready means M3-3 adoption candidate, not production template adoption.",
+            (
+                "play_style, difficulty, and level ready mean M3-3 adoption candidates, "
+                "not production template adoption."
+            ),
             "song_title and artist statuses are OCR entry observations, not master matching.",
             "difficulty and level can remain missing_reference until local templates are added.",
         ],
@@ -3926,7 +3929,8 @@ def write_m3_save_candidate_summary_report(
             "",
             "- `ready` はこのM3 PoC内で次の確認へ渡せる状態です。"
             "DB保存可能やマスタ照合成功を意味しません。",
-            "- `play_style` は M3-3 の `adoption_candidate` を反映しますが、"
+            "- `play_style` / `difficulty` / `level` は M3-3 の "
+            "`adoption_candidate` を反映しますが、"
             "採用済みテンプレート照合として扱いません。",
             "- `song_title` / `artist` の `pre_normalized_text` はレビュー用文字列であり、"
             "曲名正規化やファジーマッチの成功扱いにしません。",

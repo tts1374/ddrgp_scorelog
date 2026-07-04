@@ -155,7 +155,8 @@ M3内マイルストーン:
    - `play_style` / `difficulty` / `level` について、採用候補にする extractor と失敗理由を決める。
    - `filename-baseline`、`roi-feature-nearest-centroid`、`roi-template-nearest` の読み分けをREADME、docs、testsで固定する。
    - 低確信度、参照不足、期待値不足の failure_reason を保存前判断へ渡せる語彙に寄せる。
-   - 現ローカル holdout では `play_style` を `roi-template-holdout` の `adoption_candidate` として読める。`difficulty` と `level` は `needs_template_references` で、保存前判断へは `missing_reference` として渡す候補にする。
+   - 初回ローカル holdout では `play_style` を `roi-template-holdout` の `adoption_candidate` として読め、`difficulty` と `level` は `needs_template_references` だった。
+   - ローカル37テンプレート配置後は `play_style`、`difficulty`、`level` がすべて confirmed-events 60/60 match の `adoption_candidate` になった。
    - `m3_chart_field_adoption_candidates_summary.json` と `m3_chart_field_adoption_candidates.md` は採用候補レビューであり、本番採用済みテンプレート照合、OCR、マスタ照合の成功扱いにしない。
 4. M3-4: 曲名・artist ROIの入口
    - `song_title` / `artist` のOCR生文字列と正規化前文字列を出す。
@@ -177,6 +178,10 @@ M3内マイルストーン:
    - `m3_save_candidate_blocker_resolution_plan.json` と Markdownで、解消順、必要ラベル、代表 `organized_file`、期待値、抽出値、extractor、`roi_path` を出す入口を追加済み。
    - テンプレート画像、OCR画像、PoC出力はGit管理せず、必要ラベルと判断だけをdocsに残す。
    - 解消順整理はレビュー補助であり、DB保存可否判定、マスタ照合、ファジーマッチ、曲名正規化には進まない。
+8. M3-8: chart-field採用候補の最終整理
+   - ローカル37テンプレート配置後の `play_style` / `difficulty` / `level` 60/60 match を、PoC上の採用候補としてdocsとテストで固定する。
+   - M3-5集約では chart-field 3項目を `ready` として扱えるが、DB保存可能、本番採用済みテンプレート照合、マスタ照合の成功ではない。
+   - M3の残りは `song_title empty_ocr` / `artist empty_ocr` のOCR入口代表失敗の整理に絞る。
 
 完了条件:
 

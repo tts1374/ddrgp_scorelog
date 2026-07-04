@@ -117,7 +117,8 @@
 - `roi-template-holdout` は confirmed-events result ROI を評価専用にし、参照をローカル `chart_field_templates` 素材だけに限定する比較PoCであり、OCR、マスタ照合、採用済みテンプレート照合の成功扱いにはしない。
 - `m3_chart_field_template_holdout_diagnostics.md` は holdout の mismatch と参照不足を読む補助レポートであり、参照元に confirmed-events result ROI を含めないことを確認する。
 - `m3_chart_field_adoption_candidates_summary.json` と `m3_chart_field_adoption_candidates.md` は `roi-template-holdout` を根拠にしたM3-3採用候補レビューであり、OCR、マスタ照合、採用済みテンプレート照合の成功扱いにはしない。
-- 採用候補レビューでは `play_style` のように holdout 全件matchのfieldだけを `adoption_candidate` とし、参照不足があるfieldは `needs_template_references` として本番採用候補から分ける。
+- 採用候補レビューでは holdout 全件matchのfieldだけを `adoption_candidate` とし、参照不足があるfieldは `needs_template_references` として本番採用候補から分ける。
+- ローカル37テンプレート配置後の `play_style` / `difficulty` / `level` 60/60 match はPoC上の採用候補として読むが、本番採用済みテンプレート照合、OCR、マスタ照合の成功扱いにはしない。
 - `difficulty` の期待値レビュー結果は `docs/design/07_m3_chart_field_review.md` に残し、Git管理外の `metadata.csv` 実体やローカル画像の代わりに参照する。
 - confirmed-events result ROI を参照に加えても、評価中の同一フレームは参照から除外する。
 - holdout 比較では confirmed-events result ROI を参照に加えず、`chart_field_templates/` と評価対象を混同しない。
@@ -136,7 +137,7 @@
 - duplicate、`event_type=rejected_transition`、未確定 `result_candidate`、non-result は M3 save candidate summary 対象外にする。
 - 集約対象fieldは `song_title`、`artist`、`play_style`、`difficulty`、`level` に限定し、`rank` と数字OCR expected coverage を混同しない。
 - status 語彙は `ready`、`missing_reference`、`ocr_unavailable`、`ocr_failed`、`empty_ocr`、`no_expected_value`、`not_adopted` に寄せる。
-- `play_style` の `ready` は M3-3 の `adoption_candidate` を反映するだけで、本番採用済みテンプレート照合、OCR、マスタ照合の成功扱いにはしない。
+- `play_style` / `difficulty` / `level` の `ready` は M3-3 の `adoption_candidate` を反映するだけで、本番採用済みテンプレート照合、OCR、マスタ照合の成功扱いにはしない。
 - `difficulty` / `level` の参照不足は保存前判断向けに `missing_reference` として読めるようにする。
 - `song_title` / `artist` の `ready` は M3-4 OCR入口の観察結果であり、曲名正規化、ファジーマッチ、マスタ照合、DB保存可能を意味しない。
 - `--m3-song-artist-ocr` を指定していない場合、`song_title` / `artist` はOCR未実行として `ocr_unavailable` に倒す。
@@ -157,6 +158,7 @@
 - `difficulty` / `level` の `missing_reference` は追加すべきローカルテンプレート参照ラベルとして読む。
 - `field_needs_template_references` は不足ラベル追加後の再確認であり、個別ROIの保存成功扱いにしない。
 - `song_title` / `artist` の `ocr_not_run`、`engine_unavailable`、`empty_ocr` はOCR入口の次手として読み、曲名正規化、ファジーマッチ、マスタ照合の成功/失敗扱いにはしない。
+- ローカル37テンプレート配置後に chart-field 3項目が `ready` になった状態では、M3-7解消順の残りを `song_title` / `artist` OCR入口代表失敗に絞る。
 - テンプレート画像、OCR画像、PoC出力はGit管理せず、必要ラベル、代表ROI、判断だけをdocsに残す。
 
 ## OCR出力互換

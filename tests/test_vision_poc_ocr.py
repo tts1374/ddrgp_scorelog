@@ -1262,6 +1262,150 @@ def test_m3_save_candidate_summary_uses_save_status_vocabulary(tmp_path: Path) -
     assert "曲名正規化やマスタ照合の失敗判定ではありません" in resolution_report
 
 
+def test_m3_chart_field_ready_fields_leave_only_song_artist_ocr_blockers(
+    tmp_path: Path,
+) -> None:
+    frames = [
+        runner.FrameInput(
+            row={
+                "organized_file": "result_score765432_c.png",
+                "screen_type": "result",
+            },
+            image_path=tmp_path / "result_score765432_c.png",
+            timestamp_ms=1000,
+        )
+    ]
+    events = [
+        runner.ResultEvent(
+            frame_index=2,
+            organized_file="result_score765432_c.png",
+            screen_type="result",
+            result_candidate=True,
+            result_shape_candidate=True,
+            confirmed_result=True,
+            event_type="confirmed",
+            duplicate=False,
+            duplicate_key="score:765432",
+            timestamp_ms=1000,
+            candidate_duration_ms=1000,
+            confirmation_mode="time",
+            reason="test",
+        )
+    ]
+    holdout_rows = [
+        {
+            "organized_file": "result_score765432_c.png",
+            "field_name": "play_style",
+            "chart_field_target": "True",
+            "status": "match",
+            "failure_reason": "",
+            "expected_value": "SINGLE",
+            "extracted_value": "SINGLE",
+            "extractor": runner.M3_CHART_FIELD_TEMPLATE_HOLDOUT_EXTRACTION_METHOD,
+        },
+        {
+            "organized_file": "result_score765432_c.png",
+            "field_name": "difficulty",
+            "chart_field_target": "True",
+            "status": "match",
+            "failure_reason": "",
+            "expected_value": "EXPERT",
+            "extracted_value": "EXPERT",
+            "extractor": runner.M3_CHART_FIELD_TEMPLATE_HOLDOUT_EXTRACTION_METHOD,
+        },
+        {
+            "organized_file": "result_score765432_c.png",
+            "field_name": "level",
+            "chart_field_target": "True",
+            "status": "match",
+            "failure_reason": "",
+            "expected_value": "16",
+            "extracted_value": "16",
+            "extractor": runner.M3_CHART_FIELD_TEMPLATE_HOLDOUT_EXTRACTION_METHOD,
+        },
+    ]
+    song_artist_results = [
+        runner.M3SongArtistOcrResult(
+            organized_file="result_score765432_c.png",
+            screen_type="result",
+            event_type="confirmed",
+            confirmed_result=True,
+            duplicate=False,
+            field_name="song_title",
+            extractor=runner.M3_SONG_ARTIST_OCR_METHOD,
+            ocr_raw="",
+            pre_normalized_text="",
+            expected_value="PARANOiA",
+            engine="tesseract",
+            status="ok",
+            error="",
+            failure_reason="empty_ocr",
+            roi_path="rois/result_score765432_c/song_title.png",
+            original_path="",
+            enlarged_path="",
+            binary_path="",
+        ),
+        runner.M3SongArtistOcrResult(
+            organized_file="result_score765432_c.png",
+            screen_type="result",
+            event_type="confirmed",
+            confirmed_result=True,
+            duplicate=False,
+            field_name="artist",
+            extractor=runner.M3_SONG_ARTIST_OCR_METHOD,
+            ocr_raw="",
+            pre_normalized_text="",
+            expected_value="180",
+            engine="tesseract",
+            status="ok",
+            error="",
+            failure_reason="empty_ocr",
+            roi_path="rois/result_score765432_c/artist.png",
+            original_path="",
+            enlarged_path="",
+            binary_path="",
+        ),
+    ]
+
+    adoption_summary = runner.summarize_m3_chart_field_adoption_candidates(holdout_rows)
+    for field_name in ("play_style", "difficulty", "level"):
+        field = adoption_summary["fields"][field_name]
+        assert field["adoption_readiness"] == "adoption_candidate"
+        assert field["recommended_extractor"] == (
+            runner.M3_CHART_FIELD_TEMPLATE_HOLDOUT_EXTRACTION_METHOD
+        )
+
+    rows = runner.m3_save_candidate_rows(
+        frames,
+        events,
+        holdout_rows,
+        adoption_summary,
+        song_artist_results,
+    )
+
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["play_style_status"] == "ready"
+    assert row["difficulty_status"] == "ready"
+    assert row["level_status"] == "ready"
+    assert row["song_title_status"] == "empty_ocr"
+    assert row["artist_status"] == "empty_ocr"
+    assert row["blocking_fields"] == "song_title artist"
+
+    blocker_summary = runner.summarize_m3_save_candidate_blockers(rows)
+    assert blocker_summary["fields"]["play_style"]["blocker_count"] == 0
+    assert blocker_summary["fields"]["difficulty"]["blocker_count"] == 0
+    assert blocker_summary["fields"]["level"]["blocker_count"] == 0
+    assert blocker_summary["fields"]["song_title"]["blocker_count"] == 1
+    assert blocker_summary["fields"]["artist"]["blocker_count"] == 1
+
+    resolution_summary = runner.summarize_m3_save_candidate_blocker_resolution(rows)
+    resolution_items = resolution_summary["resolution_order"]
+    assert [item["field"] for item in resolution_items] == ["song_title", "artist"]
+    assert {item["action"] for item in resolution_items} == {"inspect_ocr_entry_failures"}
+    assert all(item["required_reference_label_counts"] == {} for item in resolution_items)
+
+
 def test_m3_chart_field_template_diagnostics_reports_review_candidates(
     tmp_path: Path,
 ) -> None:
