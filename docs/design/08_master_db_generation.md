@@ -38,6 +38,10 @@ data/master/ddrgp-master.sqlite
 
 生成DBはGit管理しない。将来の配布用DBは GitHub Releases 成果物として扱う。
 
+CI生成では `.github/workflows/build-master-db.yml` を使う。workflowは手動実行と週次定期実行を持ち、fixtureテスト、実HTMLからのSQLite生成、`master_metadata` と実テーブル件数の整合検査、`source_snapshots` 件数検査を行う。生成DBと `master-summary.json` は `ddrgp-master-<run_number>` artifact として保存し、Git管理対象にはしない。
+
+Releases配布は、artifactで生成結果と取得元構造変化検出を確認できる状態が安定してから追加する。
+
 ## 初期スキーマ
 
 ### `songs`
@@ -97,6 +101,8 @@ data/master/ddrgp-master.sqlite
 - `songs` または `charts` が0件になる。
 - 同一 `chart_id` の譜面行が食い違う。
 - SQLite制約に反するレベルや譜面種別が出る。
+- CI生成後の `master_metadata` 件数と実テーブル件数が一致しない。
+- CI生成後の `source_snapshots` が1件ではない。
 
 fixtureテストでは、セル結合、注記付きレベル、削除/限定/パック記号、SP/DP片方のみ、CHALLENGEなし、同名曲・同アーティスト、複数バージョン表を扱う。実HTMLの件数確認はネットワークに依存するため、通常テストには含めない。
 

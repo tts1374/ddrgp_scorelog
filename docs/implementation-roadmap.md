@@ -229,14 +229,13 @@ M3完了判断:
 - 通常テストはネットワークに依存せず、小さなHTML fixtureでセル結合、注記付きレベル、削除/限定/パック記号、SP/DP片方のみ、CHALLENGEなし、同名曲・同アーティスト、複数バージョン表を固定する。
 - 注記付きレベルは raw 表記を保持し、整数 level は最初に現れる数字列から取得する。同一 `chart_id` の譜面行が食い違う場合は生成失敗として扱う。
 - 実HTML取得では `data/master/ddrgp-master.sqlite` に 1282 songs / 9594 charts を生成できることを確認済み。ただし生成DBはGit管理しない。
+- GitHub Actions の `build-master-db.yml` で、手動・週次実行、fixtureテスト、実HTML生成、metadata件数検査、artifactアップロードを行える。
 
 やること:
 
-- BEMANIWiki のHTML取得と解析を実装する。
-- `songs`、`charts`、`master_metadata`、`source_snapshots` のSQLite生成を行う。
-- セル結合、注記、削除曲、限定曲、SP/DP片方のみ、CHALLENGEなしを扱う。
-- GitHub Actionsで手動実行と定期実行を用意する。
+- GitHub Actions artifactの生成結果を確認し、取得元構造変化の検出が十分かを見る。
 - Releases成果物として配布する流れを作る。
+- 配布互換性が必要になった段階で `song_id` / `chart_id` の互換方針を固定する。
 
 完了条件:
 
