@@ -222,6 +222,13 @@ M3完了判断:
 
 目的は、BEMANIWiki の全曲リストから曲・譜面マスタDBを生成することです。
 
+現在地:
+
+- `master` パッケージに、BEMANIWiki風HTMLの楽曲リスト表を解析して `songs` / `charts` / `master_metadata` / `source_snapshots` を持つSQLite DBを生成する初期入口を追加済み。
+- 2026-07-04時点の取得元URLと2段ヘッダ構造を確認し、`docs/design/08_master_db_generation.md` に初期スキーマと境界を整理済み。
+- 通常テストはネットワークに依存せず、小さなHTML fixtureでセル結合、CHALLENGEなし、SP/DP差分、複数バージョン表を固定する。
+- 実HTML取得では `data/master/ddrgp-master.sqlite` に 1282 songs / 9594 charts を生成できることを確認済み。ただし生成DBはGit管理しない。
+
 やること:
 
 - BEMANIWiki のHTML取得と解析を実装する。

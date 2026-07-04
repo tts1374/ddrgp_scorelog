@@ -197,13 +197,19 @@ logs/
 ddrgp-master.sqlite
 ```
 
+M4初期実装のローカル生成先:
+
+```text
+data/master/ddrgp-master.sqlite
+```
+
 個人スコアDB候補:
 
 ```text
 ddrgp-scores.sqlite
 ```
 
-開発中に生成したDBはGit管理しない。配布用マスタDBはGitHub Releases成果物として扱う。
+開発中に生成したDB、取得元HTML snapshot、解析ログはGit管理しない。配布用マスタDBはGitHub Releases成果物として扱う。
 
 ## 削除・移動のルール
 

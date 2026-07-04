@@ -4,7 +4,7 @@ DanceDanceRevolution GRAND PRIX のリザルト画面からスコア情報を取
 
 ## Status
 
-初期PoC段階です。現時点では要求定義、スクリーンショット収集方針、マスタ取得機能とWindows常駐アプリの置き場に加え、リザルト候補分類、confirmed-events OCR対象絞り込み、ROI別OCR弱点レポート、OCR profile比較PoC、実キャプチャAPI導入前の dry-run capture provider PoC を用意しています。
+初期PoC段階です。現時点では要求定義、スクリーンショット収集方針、Windows常駐アプリの置き場に加え、リザルト候補分類、confirmed-events OCR対象絞り込み、ROI別OCR弱点レポート、OCR profile比較PoC、実キャプチャAPI導入前の dry-run capture provider PoC、BEMANIWiki HTMLからのマスタDB生成入口を用意しています。
 
 ## Goals
 
@@ -38,7 +38,7 @@ DanceDanceRevolution GRAND PRIX のリザルト画面からスコア情報を取
 - [スクリーンショット収集マトリクス](docs/screenshot-collection.md)
 - [画面解析PoC準備メモ](docs/vision-poc-prep.md)
 - [画面解析PoCツール](tools/vision_poc/README.md)
-- [マスタ取得機能メモ](master/README.md)
+- [マスタDB生成](master/README.md)
 - [Windowsアプリ機能メモ](app/README.md)
 
 ## Next Step
@@ -51,5 +51,5 @@ DanceDanceRevolution GRAND PRIX のリザルト画面からスコア情報を取
 - スコア・判定数の数字領域を固定ROIで読み取れるか。
 - `confirmed-events` と `--ocr-rois all --ocr-profile all` で、期待値があるROIは精度比較し、期待値がないROIは `ocr_expected_coverage.md` を見て metadata 列を増やすべきか判断できるか。
 - dry-run capture provider で既存画像ディレクトリから `data/` 配下へフレームを保存し、manifest互換CSVを `--sequence-mode manifest` で読み直せるか。
-- 曲名・SP/DP・難易度をマスタDBと照合できるか。
+- BEMANIWiki HTMLから生成したマスタDBを使い、曲名・SP/DP・難易度を照合できるか。
 - 低確信度の結果を安全に破棄できるか。

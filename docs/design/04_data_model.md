@@ -89,30 +89,35 @@ Git管理しない。
 
 楽曲単位。
 
-候補フィールド:
+M4初期スキーマのフィールド:
 
 - `song_id`
 - `title`
-- `title_reading`
 - `artist`
 - `version`
 - `bpm`
 - `category`
+- `source_version`
+- `movie_stage`
+- `availability`
 - `notes`
 - `created_at`
 - `updated_at`
+
+`title_reading` はM5以降の正規化・照合で必要性が見えた時点で追加を検討する。
 
 ### `charts`
 
 譜面単位。
 
-候補フィールド:
+M4初期スキーマのフィールド:
 
 - `chart_id`
 - `song_id`
 - `play_style`
 - `difficulty`
 - `level`
+- `raw_level`
 - `shock_arrow`
 - `notes`
 - `is_removed`
@@ -129,6 +134,8 @@ Git管理しない。
 - `generated_at`
 - `generator_version`
 - `source_hash`
+- `song_count`
+- `chart_count`
 
 ### `source_snapshots`
 
@@ -140,6 +147,9 @@ Git管理しない。
 - `fetched_at`
 - `content_hash`
 - `parser_version`
+- `html_content`
+
+M4初期実装では、source snapshot は生成DB内に保存する。DB自体は生成物としてGit管理しない。
 
 ## 個人スコアDB概念モデル
 
@@ -240,8 +250,7 @@ PoCでは簡易 `duplicate_key` を使うが、本番では以下を組み合わ
 
 ## 未決事項
 
-- SQLiteの実スキーマ
-- マイグレーション方式
+- M4以降のスキーマ互換方針とマイグレーション方式
 - ローカルアプリデータ配下の最終保存パス
 - 解析ログをDB内に持つか、JSONファイル参照にするか
 - 失敗画像の保存期間
