@@ -32,6 +32,7 @@ high
 - ユーザー確認後、ローカル `samples/screenshots/metadata.csv` の5行について、`note` と `difficulty` をROI表示に合わせて修正済み。画像ファイル名はリネームしていない。
 - 修正後の `python -m tools.vision_poc --no-ocr` では、`roi-template-nearest` は 180/180 match、`filename-baseline` は difficulty 5件 mismatch。これはファイル名ラベルのドリフト検出として読む。
 - レビュー結果は `docs/design/07_m3_chart_field_review.md` に追加し、`docs/design/README.md`、`docs/design/03_event_and_save_boundary.md`、`docs/design/06_regression_guard.md`、`tools/vision_poc/README.md` から参照できるようにした。
+- `docs/implementation-roadmap.md` にM3内マイルストーンを追加した。現在地はM3-1「期待値と評価セットの整理」完了相当で、次はM3-2「chart-field評価分割」。
 - `samples/screenshots/metadata.csv`、スクリーンショット画像、`data/` 配下のPoC出力はGit管理しない。
 - 直近確認では `python -m tools.vision_poc --no-ocr`、`python -m ruff check tools\vision_poc pyproject.toml tests`、`python -m compileall tools\vision_poc`、`python -m pytest tests` が通過し、pytest は 85 passed。
 
@@ -90,6 +91,7 @@ high
 
 3. M3 chart-field template比較の次の最小単位を決める
    - `play_style` / `difficulty` / `level` は 60/60 match だが、同分布 leave-one-out 診断として扱う。
+   - M3-2として、confirmed-events result ROIを参照用と評価用に分ける方法を決める。
    - confirmed-events result参照は評価セット由来なので、採用候補へ進める前に参照専用セットと評価専用セットの分割、または追加素材での外部検証を検討する。
    - 新しい extractor 名を追加する場合は既存 `filename-baseline`、`roi-feature-nearest-centroid`、`roi-template-nearest` を比較用baselineとして維持する。
 

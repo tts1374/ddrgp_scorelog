@@ -139,10 +139,38 @@ Windows常駐アプリが DDR GRAND PRIX のゲームウィンドウを直接キ
 - SP/DP、難易度、レベルの読み取りを先に安定させる。
 - 曲名はOCR生文字列、正規化文字列、候補一覧、確信度を出す。
 
+M3内マイルストーン:
+
+1. M3-1: 期待値と評価セットの整理
+   - metadata期待値はROI目視を正にする。
+   - ファイル名由来baselineは、古いラベルやドリフト検出の参考として扱う。
+   - `roi-template-nearest` の同分布 leave-one-out 診断を再確認する。
+   - 同分布診断を採用済みテンプレート照合やマスタ照合の成功扱いにしない。
+2. M3-2: chart-field評価分割
+   - confirmed-events result ROIを、参照用と評価用に分ける。
+   - `chart_field_templates/` と評価対象を混同しない。
+   - `play_style` / `difficulty` / `level` の外部検証に近い評価形を作る。
+3. M3-3: chart-field採用候補の仕様化
+   - `play_style` / `difficulty` / `level` について、採用候補にする extractor と失敗理由を決める。
+   - `filename-baseline`、`roi-feature-nearest-centroid`、`roi-template-nearest` の読み分けをREADME、docs、testsで固定する。
+   - 低確信度、参照不足、期待値不足の failure_reason を保存前判断へ渡せる語彙に寄せる。
+4. M3-4: 曲名・artist ROIの入口
+   - `song_title` / `artist` のOCR生文字列と正規化前文字列を出す。
+   - 長い曲名、日本語、記号、2行表示、artist切れを代表ケースとして見る。
+   - マスタ照合、ファジーマッチ、曲名正規化の本格実装にはまだ進まない。
+5. M3-5: 保存候補向けのM3集約レポート
+   - confirmed-eventsごとに、曲名、artist、`play_style`、`difficulty`、`level` の抽出状態を一覧化する。
+   - `ready`、`low_confidence`、`missing_reference`、`ocr_unavailable` など、保存前判断に使える理由を出す。
+   - DB保存やマスタ照合はM4/M5以降へ残す。
+
 完了条件:
 
 - 保存候補イベントから曲・譜面照合に必要な最小情報を抽出できる。
 - 低確信度時にDB保存へ進めないための理由をログ化できる。
+- confirmed-events対象から `play_style` / `difficulty` / `level` を安定して抽出できる。
+- 曲名は少なくともOCR生文字列と失敗理由を出せる。
+- duplicate、`transition_countup_*`、未確定候補、non-result はM3評価対象外のまま維持される。
+- README、docs、testsで、何を成功扱いにしてよいかが固定されている。
 
 ### M4: マスタDB生成
 
