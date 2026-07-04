@@ -15,33 +15,23 @@ high
 - `git status --short --branch`
 - `git log --oneline -5`
 - 現在ブランチが `codex/vision-poc-ocr-tuning` であること
-- 最新コミットが今回の `m3_chart_field_template_diagnostics.md` 追加コミット以降であること
+- 最新コミットが今回の M3 difficulty review notes 追加コミット以降であること
 - `docs/next-task.md` は次チャット用の作業指示ファイルとして扱うこと
 
 ## 今回までの作業結果
 
-- `samples/screenshots/metadata.csv` はローカルに112行あり、`samples/screenshots/organized/chart_field_templates/` は29枚ある状態で確認した。
+- `samples/screenshots/metadata.csv` はローカルに112行あり、`samples/screenshots/organized/chart_field_templates/` は113-141の29枚がある状態で確認した。
 - `python -m tools.vision_poc --no-ocr` は Total 112 / Correct 112 / false positives 0 / false negatives 0。
 - `transition_countup_*` は `result_shape_candidate=true` でも `result_candidate=false`、`event_type=rejected_transition` のまま。
 - `result_events_summary.json` は `confirmed_count=60`、`confirmed_result_count=61`、`duplicate_count=1`、`rejected_transition_count=3`。
-- `m3_metadata_expected_coverage.md` は `song_title` / `artist` / `play_style` / `difficulty` / `level` が60/60件で `evaluated`。
-- `rank` / `expected_rank` は12/60件のみで `partially_evaluated`。
+- `m3_metadata_expected_coverage.md` は `song_title` / `artist` / `play_style` / `difficulty` / `level` が60/60件で `evaluated`、`rank` は12/60件で `partially_evaluated`。
 - `m3_chart_fields_summary.json` は `chart_field_target_count=60`、`excluded_counts={duplicate:1,rejected_transition:3,unconfirmed:12,non_result:36}`。
-- `filename-baseline` は target 60件 x 3 field = 180 attempt、match 180、skipped 156。これはファイル名由来であり、ROI/OCR/テンプレート照合/マスタ照合の成功ではない。
-- `roi-feature-nearest-centroid` は target 60件 x 3 field = 180 attempt、match 117、mismatch 63、skipped 156。field別では `play_style` 59/60、`difficulty` 41/60、`level` 17/60。
-- `roi-template-nearest` は `chart_field_templates` 29枚 + confirmed-events result参照60件、target 60件 x 3 field = 180 attempt、match 175、mismatch 5、skipped 156。
+- `roi-template-nearest` は `chart_field_templates` 29枚 + confirmed-events result参照60件を使い、target 60件 x 3 field = 180 attempt、match 175、mismatch 5、skipped 156。
 - `roi-template-nearest` field別では `play_style` 60/60 match、`difficulty` 55/60 match、`level` 60/60 match。
-- combined template value counts は `play_style={DOUBLE:11,SINGLE:78}`、`difficulty={BASIC:24,BEGINNER:11,CHALLENGE:14,DIFFICULT:17,EXPERT:23}`、`level=1-19すべてあり`。
-- 今回、`m3_chart_field_template_diagnostics.md` を追加した。これは `roi-template-nearest` の mismatch 混同表、代表ROI、`difficulty` の期待値レビュー候補を読むための補助Markdown。
-- 追加レポートは `roi-template-nearest` をOCR、採用済みテンプレート照合、マスタ照合の成功扱いにしない旨を明記している。
-- 現ローカル実測の `difficulty` review candidates は以下5件。
-  - `result_056...`: expected `DIFFICULT` / extracted `EXPERT`
-  - `result_073...`: expected `EXPERT` / extracted `DIFFICULT`
-  - `result_084...`: expected `DIFFICULT` / extracted `CHALLENGE`
-  - `result_085...`: expected `EXPERT` / extracted `CHALLENGE`
-  - `result_102...`: expected `EXPERT` / extracted `DIFFICULT`
-- `tools/vision_poc/README.md`、`docs/design/03_event_and_save_boundary.md`、`docs/design/06_regression_guard.md` に `m3_chart_field_template_diagnostics.md` の読み方を追記済み。
-- `tests/test_vision_poc_ocr.py` に template diagnostics の回帰テストを追加済み。
+- `roi-template-nearest` は同分布内の leave-one-out 診断であり、OCR、採用済みテンプレート照合、マスタ照合の成功扱いにしない。
+- 今回、`difficulty` mismatch 5件を目視レビューした。5件すべてでROI表示が metadata / ファイル名由来期待値と食い違っていた。
+- レビュー結果は `docs/design/07_m3_chart_field_review.md` に追加し、`docs/design/README.md`、`docs/design/03_event_and_save_boundary.md`、`docs/design/06_regression_guard.md`、`tools/vision_poc/README.md` から参照できるようにした。
+- `samples/screenshots/metadata.csv`、スクリーンショット画像、`data/` 配下のPoC出力はGit管理しない。
 - 直近確認では `python -m tools.vision_poc --no-ocr`、`python -m ruff check tools\vision_poc pyproject.toml tests`、`python -m compileall tools\vision_poc`、`python -m pytest tests` が通過し、pytest は 85 passed。
 
 ## 必読資料
@@ -56,6 +46,7 @@ high
 - `docs/design/02_frame_input_contract.md`
 - `docs/design/03_event_and_save_boundary.md`
 - `docs/design/06_regression_guard.md`
+- `docs/design/07_m3_chart_field_review.md`
 - `docs/adr/0001-foundational-poc-boundaries.md`
 - `tools/vision_poc/README.md`
 - `tools/vision_poc/runner.py`
@@ -85,28 +76,27 @@ high
 ## 後続作業
 
 1. 現状確認
-   - `samples/screenshots/metadata.csv` がローカルに存在する場合、112行であることを確認する。
-   - `samples/screenshots/organized/chart_field_templates/` が存在する場合、113-141の29枚があることを確認する。
+   - `git status --short --branch` と `git log --oneline -5` を確認する。
+   - ローカルに素材がある場合、`metadata.csv` が112行、`chart_field_templates/` が29枚であることを確認する。
    - `python -m tools.vision_poc --no-ocr` を実行し、112件全正解、`transition_countup_*` 除外、confirmed-events 境界が崩れていないことを確認する。
-   - `m3_chart_field_template_extraction_summary.json` と `m3_chart_field_template_diagnostics.md` を読み、reference counts、field別 match/mismatch、`difficulty` review candidates を見る。
+   - `docs/design/07_m3_chart_field_review.md` と `m3_chart_field_template_diagnostics.md` を読み、5件がローカル期待値修正候補であることを把握する。
 
-2. `difficulty` review candidates の目視確認
-   - `m3_chart_field_template_diagnostics.md` の5件について、実画像、`data/vision_poc/rois/<画像名>/difficulty.png`、metadata、ファイル名を突き合わせる。
-   - ROIの見た目が metadata / ファイル名期待値と食い違う場合は、ローカル `samples/screenshots/metadata.csv` の修正候補として扱う。metadataはGit管理しない。
-   - 期待値が正しく、ROI見た目が別難易度に見える場合は、テンプレート素材や前景色patternの限界として記録する。
-   - 期待値レビューの結論をGit管理したい場合は、metadata実体ではなく docs または README に「読み方」や「既知候補」として残す。
+2. ローカル期待値修正の扱いを決める
+   - `metadata.csv` はGit管理しない。修正する場合はローカル作業として行い、コミットしない。
+   - ファイル名にも難易度が含まれるため、metadataだけを直すと `filename-baseline` は mismatch になる。この扱いを次の小タスクとして決める。
+   - 選択肢は、ローカル画像/ファイル名も合わせて整理する、`filename-baseline` を過去互換の参考に留める、metadata override 的な読み方を足す、のいずれか。大きな整理や素材移動は目的と対象を明確にしてから行う。
+   - ローカル素材を変更した場合は、変更内容をGit管理対象ではなく docs のレビュー結果や最終報告に残す。
 
 3. M3 chart-field template比較の次の最小単位を決める
-   - `play_style` と `level` は `roi-template-nearest` が 60/60 match なので、まず同分布 leave-one-out 診断として副作用確認を続ける。
-   - `difficulty` は 55/60 match。残り5件の目視確認が済むまでは、抽出ロジックの追加調整や採用判断に進まない。
+   - `play_style` と `level` は 60/60 match だが、同分布 leave-one-out 診断として扱う。
+   - `difficulty` は5件が期待値修正候補だったため、ローカル期待値を解消した後に `roi-template-nearest` の再評価を見る。
    - confirmed-events result参照は評価セット由来なので、採用候補へ進める前に参照専用セットと評価専用セットの分割、または追加素材での外部検証を検討する。
-   - 大きな速度改善は主作業にしない。M3の抽出精度、期待値レビュー、採用前の評価分割を優先する。
    - 新しい extractor 名を追加する場合は既存 `filename-baseline`、`roi-feature-nearest-centroid`、`roi-template-nearest` を比較用baselineとして維持する。
 
 4. テスト補強
    - ローカル画像や `metadata.csv` に依存しない小さなテストを優先する。
    - confirmed-events 境界だけを対象にすること、duplicate / rejected_transition / unconfirmed / non-result を除外することを維持する。
-   - 数字OCR expected coverage、M3 metadata expected coverage、M3 chart-field inventory / filename extraction / image feature extraction / template extraction / diagnostics を混同しないことをテストする。
+   - 数字OCR expected coverage、M3 metadata expected coverage、M3 chart-field inventory / filename extraction / image feature extraction / template extraction / diagnostics、review notes を混同しないことをテストまたはdocsで固定する。
 
 ## 検証コマンド
 
@@ -165,6 +155,7 @@ M3用の新しいCLI、CSV、JSON、Markdownレポート、または出力ディ
 - `m3_chart_field_template_extraction.csv`、summary、diagnostics が confirmed-events 境界だけを抽出評価対象にする。
 - confirmed-events result ROI を参照に使う場合、同一フレームを leave-one-out で除外する。
 - `roi-template-nearest` と `m3_chart_field_template_diagnostics.md` をOCR、マスタ照合、採用済みテンプレート照合の成功扱いにしない。
+- `docs/design/07_m3_chart_field_review.md` をローカル期待値レビュー結果として読み、`metadata.csv` 実体や画像はコミットしない。
 - テンプレート素材がない環境で `no_template_references` として壊れずに実行できる。
 - 追加テンプレート素材を使う場合も、`metadata.csv` の112件分類回帰セットと混同しない。
 - `song_title` / `artist` / `play_style` / `difficulty` / `level` は confirmed-events 対象60件で `evaluated` のまま。

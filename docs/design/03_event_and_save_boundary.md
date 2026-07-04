@@ -121,6 +121,8 @@ M3 chart-field 抽出PoCの入口では、有限候補で扱いやすい `play_s
 
 `difficulty` は5種類の文字色が分かれているため、`roi-template-nearest` では difficulty ROIに限って前景文字色の比率パターンで比較する。残る mismatch は、ROI画像の見た目と metadata / ファイル名由来期待値の食い違い候補として確認する。
 
+2026-07-04時点のローカルレビューでは、`difficulty` mismatch 5件はすべてROI表示が metadata / ファイル名由来期待値と食い違う修正候補だった。レビュー結果は `docs/design/07_m3_chart_field_review.md` に残し、Git管理外の `metadata.csv` 実体やスクリーンショット画像はコミットしない。
+
 ## transition_countup の扱い
 
 `transition_countup_*` はリザルト形状が出ていても保存対象外とする。
