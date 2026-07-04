@@ -15,7 +15,7 @@ high
 - `git status --short --branch`
 - `git log --oneline -5`
 - 現在ブランチが `codex/vision-poc-ocr-tuning` であること
-- 最新コミットが M3-9 song/artist OCR入口失敗代表整理コミット以降であること
+- 最新コミットが M3完了境界整理コミット以降であること
 - `docs/next-task.md` は次チャット用の作業指示ファイルとして扱うこと
 
 ## 今回までの作業結果
@@ -41,6 +41,8 @@ high
 - M3で「読めた」と扱ってよいのは、`song_title` のOCR入口結果、`play_style` / `difficulty` / `level` のPoC抽出候補、`artist` の補助観測値まで。
 - 曲ID、譜面ID、マスタ曲名への一意照合、曲名正規化、ファジーマッチ、候補一覧、照合スコア、照合確信度はM5まで未確定。
 - M5で照合した結果、M3で読めているように見えたOCR文字列や譜面候補が違っていたと判明する可能性を前提にする。
+- M3は2026-07-04時点で完了扱い。これ以上M3番号を増やさず、追加のOCR前処理改善や正規化は別フェーズとして扱う。
+- 次の大きな作業はM4のマスタDB生成。M5のマスタ照合PoCはM4で参照可能なマスタDBの形が見えてから進める。
 - テンプレート画像、OCR画像、PoC出力、`metadata.csv`、`data/`、`logs/`、ローカルDBはGit管理しない。
 - 直近確認では `python -m tools.vision_poc --no-ocr`、`python -m tools.vision_poc --m3-song-artist-ocr --ocr-target confirmed-events --no-rois --output data\vision_poc_m3_song_artist`、`python -m ruff check tools\vision_poc pyproject.toml tests`、`python -m compileall tools\vision_poc`、`python -m pytest tests` が通過し、pytest は 90 passed。
 
@@ -89,18 +91,25 @@ high
    - `song_title empty_ocr=2` と `artist empty_ocr=22` が役割別に分離されていることを確認する。
    - `m3_save_candidate_summary.json`、`m3_save_candidate_blockers_summary.json`、`m3_save_candidate_blocker_resolution_plan.json` も読み、chart-field 3項目 ready と song/artist OCR入口失敗を混同していないことを確認する。
 
-3. M3-10候補: M3完了判断の文書化
-   - M3を「照合済みデータ」ではなく「M5へ渡す観測値と失敗理由」で閉じる方針を README / docs / tests の読み方に固定する。
+3. M3完了境界の再確認
+   - M3は「照合済みデータ」ではなく「M5へ渡す観測値と失敗理由」で完了済みとして扱う。
    - `song_title` はOCR入口結果、`play_style` / `difficulty` / `level` はPoC抽出候補、`artist` は補助観測値として扱う。
    - `ready` や空でないOCR文字列を、曲名・譜面の正規化済み照合成功として扱わない。
-   - M5で照合した結果、M3のOCR文字列や譜面候補が違っていたと判明し得ることを明記する。
-   - 代表ROIや `m3_song_artist_ocr_images/*` を目視する場合も、画像や `data/` 出力はGit管理しない。
-   - 前処理を試す場合はM3完了判断とは別コミット/別作業単位にし、OCR方式刷新、ROI座標定義の大変更、曲名正規化、ファジーマッチ、マスタ照合へ進まない。
+   - M5で照合した結果、M3のOCR文字列や譜面候補が違っていたと判明し得る前提を維持する。
+   - M3番号をこれ以上増やさない。OCR前処理改善、曲名正規化、ファジーマッチ、マスタ照合は別フェーズとして切る。
 
-4. テスト補強
+4. M4候補: マスタDB生成の入口整理
+   - `docs/implementation-roadmap.md` の M4 を読み、BEMANIWiki由来の曲・譜面マスタDB生成に必要な入力、出力、スキーマ、更新方法を整理する。
+   - まずは仕様・調査・小さなfixtureから入り、いきなり本番スクレイピングやCI配布へ飛ばない。
+   - Web上の取得元構造は変わり得るため、実装時は最新の取得元を確認する。
+   - 生成DB、source snapshot、解析ログは `data/` または `logs/` 配下に置き、Git管理しない方針を維持する。
+   - M5の曲名正規化、ファジーマッチ、候補絞り込みは、M4のマスタDBスキーマが見えてから着手する。
+
+5. テスト補強
    - ローカル画像や `metadata.csv` に依存しない manifest fixture / synthetic rows を優先する。
    - M3 song/artist OCR入口とM3-9入口失敗代表が confirmed-events 境界だけを対象にし、duplicate / rejected_transition / unconfirmed / non-result を対象外に保つことを固定する。
    - M3 song/artist OCR入口、M3 song/artist OCR entry failures、M3 chart-field adoption candidates、M3 save candidate summary、M3-6 blocker representatives、M3-7 resolution plan、数字OCR expected coverage を混同しないことをテストまたはdocsで固定する。
+   - M4へ進む場合は、ネットワーク取得に依存しない小さなHTML fixtureやDB schemaテストを優先する。
 
 ## 検証コマンド
 
@@ -165,6 +174,7 @@ python -m tools.vision_poc --sequence-mode manifest --frame-manifest data\vision
 - M3の残りをOCR入口代表失敗として整理し、曲名正規化、ファジーマッチ、マスタ照合、DB保存可否判定へ進んでいない。
 - M3の成果物をM5へ渡す観測値と失敗理由として扱い、照合済みデータとして扱っていない。
 - M5でM3のOCR文字列や譜面候補が誤りだったと判明し得る前提がdocsに残っている。
+- M3を完了済みとして扱い、次の作業をM4へ切り替えられる。
 - テンプレート素材がない環境で `no_template_references` として壊れずに実行できる。
 - OCRエンジンがない環境で `engine_unavailable` として壊れずに実行できる。
 - `docs/design/07_m3_chart_field_review.md` をローカル期待値レビュー結果として読み、`metadata.csv` 実体や画像はコミットしない。

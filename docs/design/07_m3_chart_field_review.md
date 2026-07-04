@@ -93,3 +93,5 @@ python -m tools.vision_poc --m3-song-artist-ocr --ocr-target confirmed-events --
 ## M3 completion boundary
 
 M3は、曲・譜面の照合成功ではなく、M5へ渡す観測値と失敗理由をそろえるところで閉じます。`song_title` はOCR入口結果、`play_style` / `difficulty` / `level` はPoC抽出候補、`artist` は補助観測値です。空でないOCR文字列や chart-field の `ready` は、曲ID、譜面ID、マスタ曲名への一意照合、曲名正規化、ファジーマッチ、照合スコア、照合確信度を意味しません。M5で照合した結果、M3で読めているように見えた文字列や譜面候補が違っていたと判明する可能性を前提にします。
+
+2026-07-04時点で、M3はこの境界で完了扱いにします。以降はM3番号を増やさず、マスタDB生成はM4、曲名正規化とマスタ照合はM5で扱います。
