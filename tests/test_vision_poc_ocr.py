@@ -477,6 +477,33 @@ def test_m3_metadata_expected_report_uses_confirmed_events_boundary(
     assert template_summary["status_counts"]["empty_extraction"] == 3
     assert template_summary["status_counts"]["skipped"] == 12
 
+    holdout_rows = read_csv_rows(output_dir / "m3_chart_field_template_holdout_extraction.csv")
+    assert [row["status"] for row in holdout_rows[:6]] == [
+        "skipped",
+        "skipped",
+        "skipped",
+        "skipped",
+        "skipped",
+        "skipped",
+    ]
+    assert {row["status"] for row in holdout_rows[6:9]} == {"empty_extraction"}
+    assert {row["failure_reason"] for row in holdout_rows[6:9]} == {
+        "no_template_references"
+    }
+    assert {row["extractor"] for row in holdout_rows} == {"roi-template-holdout"}
+
+    holdout_summary = json.loads(
+        (output_dir / "m3_chart_field_template_holdout_extraction_summary.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert holdout_summary["extractor"] == "roi-template-holdout"
+    assert holdout_summary["reference_source_image_counts"] == {
+        "chart_field_templates": 0,
+        "confirmed_events": 0,
+    }
+    assert holdout_summary["status_counts"]["empty_extraction"] == 3
+
     event_rows = read_csv_rows(output_dir / "result_events.csv")
     assert [row["event_type"] for row in event_rows] == [
         "none",
@@ -684,6 +711,37 @@ def test_m3_chart_field_template_extraction_uses_confirmed_events_boundary(
         "skipped": 6,
     }
 
+    holdout_rows = runner.m3_chart_field_template_holdout_extraction_rows(
+        frames,
+        events,
+        template_root,
+    )
+    assert [row["status"] for row in holdout_rows[:6]] == ["match"] * 6
+    assert {row["extractor"] for row in holdout_rows} == {"roi-template-holdout"}
+    assert holdout_rows[0]["nearest_source_type"] == "chart_field_templates"
+    assert holdout_rows[0]["template_reference_count"] == "2"
+
+    holdout_summary = runner.summarize_m3_chart_field_template_extraction_rows(
+        holdout_rows,
+        frames,
+        events,
+        template_root,
+        include_result_references=False,
+        extractor_method=runner.M3_CHART_FIELD_TEMPLATE_HOLDOUT_EXTRACTION_METHOD,
+        reference_mode="templates only",
+    )
+    assert holdout_summary["extractor"] == "roi-template-holdout"
+    assert holdout_summary["reference_mode"] == "templates only"
+    assert holdout_summary["reference_source_image_counts"] == {
+        "chart_field_templates": 2,
+        "confirmed_events": 0,
+    }
+    assert holdout_summary["template_reference_counts"] == {
+        "play_style": 2,
+        "difficulty": 2,
+        "level": 2,
+    }
+
 
 def test_m3_chart_field_template_extraction_uses_result_references_leave_one_out(
     tmp_path: Path,
@@ -744,6 +802,36 @@ def test_m3_chart_field_template_extraction_uses_result_references_leave_one_out
         "confirmed_events": 3,
     }
     assert summary["template_value_counts"]["play_style"] == {"DOUBLE": 1, "SINGLE": 2}
+
+    holdout_rows = runner.m3_chart_field_template_holdout_extraction_rows(
+        frames,
+        events,
+        tmp_path / "missing_templates",
+    )
+    play_style_holdout_rows = [row for row in holdout_rows if row["field_name"] == "play_style"]
+    assert [row["status"] for row in play_style_holdout_rows] == [
+        "empty_extraction",
+        "empty_extraction",
+        "empty_extraction",
+    ]
+    assert {row["failure_reason"] for row in play_style_holdout_rows} == {
+        "no_template_references"
+    }
+
+    holdout_summary = runner.summarize_m3_chart_field_template_extraction_rows(
+        holdout_rows,
+        frames,
+        events,
+        tmp_path / "missing_templates",
+        include_result_references=False,
+        extractor_method=runner.M3_CHART_FIELD_TEMPLATE_HOLDOUT_EXTRACTION_METHOD,
+        reference_mode="templates only",
+    )
+    assert holdout_summary["reference_source_image_counts"] == {
+        "chart_field_templates": 0,
+        "confirmed_events": 0,
+    }
+    assert holdout_summary["template_value_counts"]["play_style"] == {}
 
 
 def test_m3_chart_field_template_diagnostics_reports_review_candidates(

@@ -150,6 +150,7 @@ M3内マイルストーン:
    - confirmed-events result ROIを、参照用と評価用に分ける。
    - `chart_field_templates/` と評価対象を混同しない。
    - `play_style` / `difficulty` / `level` の外部検証に近い評価形を作る。
+   - 参照を `chart_field_templates/` のみに限定した `roi-template-holdout` レポートを、同分布 leave-one-out 診断とは別に読む。
 3. M3-3: chart-field採用候補の仕様化
    - `play_style` / `difficulty` / `level` について、採用候補にする extractor と失敗理由を決める。
    - `filename-baseline`、`roi-feature-nearest-centroid`、`roi-template-nearest` の読み分けをREADME、docs、testsで固定する。

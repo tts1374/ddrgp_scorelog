@@ -256,6 +256,7 @@ M3_CHART_FIELD_FIELDS = (
 M3_CHART_FIELD_EXTRACTION_METHOD = "filename-baseline"
 M3_CHART_FIELD_IMAGE_FEATURE_EXTRACTION_METHOD = "roi-feature-nearest-centroid"
 M3_CHART_FIELD_TEMPLATE_EXTRACTION_METHOD = "roi-template-nearest"
+M3_CHART_FIELD_TEMPLATE_HOLDOUT_EXTRACTION_METHOD = "roi-template-holdout"
 M3_CHART_FIELD_TEMPLATE_ROOT = Path("samples/screenshots/organized/chart_field_templates")
 M3_CHART_FIELD_DIFFICULTIES = (
     "BEGINNER",
@@ -2787,6 +2788,25 @@ def m3_chart_field_template_extraction_rows(
     return rows
 
 
+def m3_chart_field_template_holdout_extraction_rows(
+    frames: Iterable[FrameInput],
+    events: Iterable[ResultEvent],
+    template_root: Path = M3_CHART_FIELD_TEMPLATE_ROOT,
+    *,
+    target_vectors: dict[tuple[int, str], np.ndarray] | None = None,
+) -> list[dict[str, str]]:
+    rows = m3_chart_field_template_extraction_rows(
+        frames,
+        events,
+        template_root,
+        include_result_references=False,
+        target_vectors=target_vectors,
+    )
+    for row in rows:
+        row["extractor"] = M3_CHART_FIELD_TEMPLATE_HOLDOUT_EXTRACTION_METHOD
+    return rows
+
+
 def write_m3_chart_field_template_extraction_csv(
     path: Path,
     frames: Iterable[FrameInput],
@@ -2933,6 +2953,8 @@ def summarize_m3_chart_field_template_extraction_rows(
     template_root: Path = M3_CHART_FIELD_TEMPLATE_ROOT,
     *,
     include_result_references: bool = True,
+    extractor_method: str = M3_CHART_FIELD_TEMPLATE_EXTRACTION_METHOD,
+    reference_mode: str | None = None,
 ) -> dict[str, object]:
     row_list = list(rows)
     label_counts = m3_chart_field_template_reference_label_counts(
@@ -2977,14 +2999,17 @@ def summarize_m3_chart_field_template_extraction_rows(
             bucket["skipped_count"] += 1
 
     target_count = sum(
-        1 for row in rows if row["chart_field_target"] == "True" and row["field_name"] == "level"
+        1
+        for row in row_list
+        if row["chart_field_target"] == "True" and row["field_name"] == "level"
     )
     return {
         "target_boundary": "confirmed_result=true and duplicate=false",
-        "extractor": M3_CHART_FIELD_TEMPLATE_EXTRACTION_METHOD,
-        "reference_mode": (
-            "nearest ROI image template from chart_field_templates plus "
-            "confirmed-events result references with leave-one-out self exclusion"
+        "extractor": extractor_method,
+        "reference_mode": reference_mode
+        or (
+            "nearest ROI image template from chart_field_templates plus confirmed-events "
+            "result references with leave-one-out self exclusion"
         ),
         "template_root": display_path(template_root),
         "field_vector_modes": {
@@ -3034,6 +3059,8 @@ def summarize_m3_chart_field_template_extraction(
     template_root: Path = M3_CHART_FIELD_TEMPLATE_ROOT,
     *,
     include_result_references: bool = True,
+    extractor_method: str = M3_CHART_FIELD_TEMPLATE_EXTRACTION_METHOD,
+    reference_mode: str | None = None,
 ) -> dict[str, object]:
     frame_list = list(frames)
     event_list = list(events)
@@ -3049,6 +3076,34 @@ def summarize_m3_chart_field_template_extraction(
         event_list,
         template_root,
         include_result_references=include_result_references,
+        extractor_method=extractor_method,
+        reference_mode=reference_mode,
+    )
+
+
+def summarize_m3_chart_field_template_holdout_extraction(
+    frames: Iterable[FrameInput],
+    events: Iterable[ResultEvent],
+    template_root: Path = M3_CHART_FIELD_TEMPLATE_ROOT,
+) -> dict[str, object]:
+    frame_list = list(frames)
+    event_list = list(events)
+    rows = m3_chart_field_template_holdout_extraction_rows(
+        frame_list,
+        event_list,
+        template_root,
+    )
+    return summarize_m3_chart_field_template_extraction_rows(
+        rows,
+        frame_list,
+        event_list,
+        template_root,
+        include_result_references=False,
+        extractor_method=M3_CHART_FIELD_TEMPLATE_HOLDOUT_EXTRACTION_METHOD,
+        reference_mode=(
+            "nearest ROI image template from chart_field_templates only; "
+            "confirmed-events result ROI are evaluation targets only"
+        ),
     )
 
 
@@ -3096,6 +3151,16 @@ def m3_chart_field_template_diagnostic_tables(
 def write_m3_chart_field_template_diagnostics_rows(
     path: Path,
     rows: Iterable[dict[str, str]],
+    *,
+    title: str = "M3 Chart Field Template Diagnostics",
+    extractor_method: str = M3_CHART_FIELD_TEMPLATE_EXTRACTION_METHOD,
+    reference_mode: str = (
+        "`chart_field_templates` + confirmed-events result references with leave-one-out "
+        "self exclusion"
+    ),
+    comparison_note: str = (
+        "これはローカルテンプレート素材と confirmed-events result ROI の比較PoCであり、"
+    ),
 ) -> None:
     row_list = list(rows)
     status_by_field, mismatch_confusions, representative_mismatches = (
@@ -3107,16 +3172,15 @@ def write_m3_chart_field_template_diagnostics_rows(
         if row["field_name"] == "difficulty" and row["status"] == "mismatch"
     ]
     lines = [
-        "# M3 Chart Field Template Diagnostics",
+        f"# {title}",
         "",
-        "`roi-template-nearest` の mismatch と期待値レビュー候補を読むための診断レポートです。",
-        "これはローカルテンプレート素材と confirmed-events result ROI の比較PoCであり、"
+        f"`{extractor_method}` の mismatch と期待値レビュー候補を読むための診断レポートです。",
+        comparison_note,
         "OCR、採用済みテンプレート照合、マスタ照合の成功扱いにはしません。",
         "",
         "- target boundary: `confirmed_result=true and duplicate=false`",
-        "- extractor: `roi-template-nearest`",
-        "- reference mode: `chart_field_templates` + confirmed-events result references "
-        "with leave-one-out self exclusion",
+        f"- extractor: `{extractor_method}`",
+        f"- reference mode: {reference_mode}",
         "- status vocabulary: `match` / `mismatch` / `empty_extraction` / "
         "`no_expected_value` / `skipped`",
         "",
@@ -3995,6 +4059,49 @@ def main(argv: list[str] | None = None) -> int:
                 frames,
                 result_events,
                 args.chart_field_template_root,
+            ),
+            ensure_ascii=False,
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    m3_chart_field_template_holdout_rows = m3_chart_field_template_holdout_extraction_rows(
+        frames,
+        result_events,
+        args.chart_field_template_root,
+        target_vectors=m3_chart_field_template_vectors,
+    )
+    write_m3_chart_field_template_extraction_rows_csv(
+        output_dir / "m3_chart_field_template_holdout_extraction.csv",
+        m3_chart_field_template_holdout_rows,
+    )
+    write_m3_chart_field_template_diagnostics_rows(
+        output_dir / "m3_chart_field_template_holdout_diagnostics.md",
+        m3_chart_field_template_holdout_rows,
+        title="M3 Chart Field Template Holdout Diagnostics",
+        extractor_method=M3_CHART_FIELD_TEMPLATE_HOLDOUT_EXTRACTION_METHOD,
+        reference_mode=(
+            "`chart_field_templates` only; confirmed-events result ROI are evaluation targets only"
+        ),
+        comparison_note=(
+            "これはローカルテンプレート素材だけを参照し、confirmed-events result ROI を"
+            "評価専用に分ける比較PoCであり、"
+        ),
+    )
+    (output_dir / "m3_chart_field_template_holdout_extraction_summary.json").write_text(
+        json.dumps(
+            summarize_m3_chart_field_template_extraction_rows(
+                m3_chart_field_template_holdout_rows,
+                frames,
+                result_events,
+                args.chart_field_template_root,
+                include_result_references=False,
+                extractor_method=M3_CHART_FIELD_TEMPLATE_HOLDOUT_EXTRACTION_METHOD,
+                reference_mode=(
+                    "nearest ROI image template from chart_field_templates only; "
+                    "confirmed-events result ROI are evaluation targets only"
+                ),
             ),
             ensure_ascii=False,
             indent=2,

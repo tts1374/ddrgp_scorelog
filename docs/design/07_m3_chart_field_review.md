@@ -25,4 +25,4 @@ M3 chart-field PoC の期待値レビュー結果を、ローカル `metadata.cs
 
 ## Next review unit
 
-`play_style`、`difficulty`、`level` は現ローカル素材の `roi-template-nearest` で 60/60 match ですが、同分布内の leave-one-out 診断として読む範囲に留めます。次はテンプレート素材と confirmed-events 参照の分割、または追加素材での外部検証へ進みます。
+`play_style`、`difficulty`、`level` は現ローカル素材の `roi-template-nearest` で 60/60 match ですが、同分布内の leave-one-out 診断として読む範囲に留めます。参照を `chart_field_templates/` のみに限定する `roi-template-holdout` レポートで、confirmed-events result ROI を評価専用に分けて読みます。次はこの holdout 結果を見て、追加テンプレート素材の不足や採用候補へ進める failure_reason を整理します。
