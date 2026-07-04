@@ -15,7 +15,7 @@ high
 - `git status --short --branch`
 - `git log --oneline -5`
 - 現在ブランチが `codex/vision-poc-ocr-tuning` であること
-- 最新コミットが M3-4 song/artist OCR入口追加コミット以降であること
+- 最新コミットが M3-5 保存候補向け集約レポート追加コミット以降であること
 - `docs/next-task.md` は次チャット用の作業指示ファイルとして扱うこと
 
 ## 今回までの作業結果
@@ -24,20 +24,17 @@ high
 - `python -m tools.vision_poc --no-ocr` は Total 112 / Correct 112 / false positives 0 / false negatives 0。
 - `transition_countup_*` は `result_shape_candidate=true` でも `result_candidate=false`、`event_type=rejected_transition` のまま。
 - `result_events_summary.json` は `confirmed_count=60`、`confirmed_result_count=61`、`duplicate_count=1`、`rejected_transition_count=3`。
-- `m3_chart_fields_summary.json` は `chart_field_target_count=60`、`excluded_counts={duplicate:1,rejected_transition:3,unconfirmed:12,non_result:36}`。
-- M3-3 adoption candidates は引き続き、`play_style` が `adoption_readiness=adoption_candidate` / `recommended_extractor=roi-template-holdout` / 60/60 match。
-- `difficulty` は 43/60 match、17 mismatch。`DIFFICULT` テンプレート不足により `needs_template_references`、保存前判断向け語彙では `missing_reference`。
-- `level` は 7/60 match、53 mismatch。不足参照値は 6/9/10/11/12/13/16/17 で、`needs_template_references`、保存前判断向け語彙では `missing_reference`。
-- 今回、M3-4用に `--m3-song-artist-ocr`、`m3_song_artist_ocr.csv`、`m3_song_artist_ocr_summary.json`、`m3_song_artist_ocr.md`、`m3_song_artist_ocr_images/` を追加した。
-- M3-4 song/artist OCR入口は confirmed-events 境界だけを対象にする。duplicate / rejected_transition / unconfirmed / non-result は対象外。
-- `m3_song_artist_ocr.csv` は `ocr_raw`、`pre_normalized_text`、`expected_value`、`engine`、`status`、`error`、`failure_reason`、`roi_path` を出す。
-- `pre_normalized_text` は改行と連続空白だけを畳んだレビュー用文字列で、本格的な曲名正規化、ファジーマッチ、マスタ照合の成功扱いにしない。
-- OCRエンジンがない環境では `failure_reason=engine_unavailable` として記録し、PoC全体を落とさない。
-- 直近ローカル実行では `python -m tools.vision_poc --m3-song-artist-ocr --ocr-target confirmed-events --no-rois --output data\vision_poc_m3_song_artist` が通過。
-- 同実行の `m3_song_artist_ocr_summary.json` は `target_count=60`、`total_attempts=120`、`by_status={ok:120}`。
-- 同実行の非空OCRは `song_title` 58/60、`artist` 38/60。`empty_ocr` は `song_title` 2件、`artist` 22件。これは観察値であり成功率や採用判断ではない。
-- `tests/test_vision_poc_ocr.py` に M3-4 OCR入口の confirmed-events 境界、CSV/summary、`engine_unavailable` failure reason のテストを追加した。
-- 直近確認では `python -m tools.vision_poc --no-ocr`、`python -m tools.vision_poc --m3-song-artist-ocr --ocr-target confirmed-events --no-rois --output data\vision_poc_m3_song_artist`、`python -m ruff check tools\vision_poc pyproject.toml tests`、`python -m compileall tools\vision_poc`、`python -m pytest tests` が通過し、pytest は 88 passed。
+- M3-5用に `m3_save_candidate_summary.csv`、`m3_save_candidate_summary.json`、`m3_save_candidate_summary.md` を追加した。
+- M3-5集約は confirmed-events 境界、つまり `confirmed_result=true` かつ `duplicate=false` の60件だけを1行単位で対象にする。
+- M3-5集約対象fieldは `song_title`、`artist`、`play_style`、`difficulty`、`level`。
+- M3-5 status 語彙は `ready`、`missing_reference`、`ocr_unavailable`、`ocr_failed`、`empty_ocr`、`no_expected_value`、`not_adopted`。
+- `python -m tools.vision_poc --no-ocr` 由来の `m3_save_candidate_summary.json` では、`song_title` / `artist` はOCR未実行として各60件 `ocr_unavailable`、`play_style` は60件 `ready`、`difficulty` / `level` は各60件 `missing_reference`。
+- `python -m tools.vision_poc --m3-song-artist-ocr --ocr-target confirmed-events --no-rois --output data\vision_poc_m3_song_artist` 由来の `m3_save_candidate_summary.json` では、`song_title` が58件 `ready` / 2件 `empty_ocr`、`artist` が38件 `ready` / 22件 `empty_ocr`、`play_style` が60件 `ready`、`difficulty` / `level` が各60件 `missing_reference`。
+- 同実行の `m3_song_artist_ocr_summary.json` は `target_count=60`、`total_attempts=120`、`by_status={ok:120}`、`failure_reason_counts={empty_ocr:24}`。
+- M3-5の `ready` はPoC内で次の確認へ渡せる状態であり、DB保存可能、マスタ照合成功、ファジーマッチ成功、曲名正規化成功を意味しない。
+- `play_style` の `ready` は M3-3 の `adoption_candidate` を反映するだけで、本番採用済みテンプレート照合ではない。
+- `song_title` / `artist` の `ready` は M3-4 OCR入口の観察結果であり、曲名正規化やマスタ照合の成功扱いにしない。
+- 直近確認では `python -m tools.vision_poc --no-ocr`、`python -m tools.vision_poc --m3-song-artist-ocr --ocr-target confirmed-events --no-rois --output data\vision_poc_m3_song_artist`、`python -m ruff check tools\vision_poc pyproject.toml tests`、`python -m compileall tools\vision_poc`、`python -m pytest tests` が通過し、pytest は 89 passed。
 - `samples/screenshots/metadata.csv`、スクリーンショット画像、`samples/screenshots/organized/chart_field_templates/`、`data/` 配下のPoC出力はGit管理しない。
 
 ## 必読資料
@@ -84,28 +81,28 @@ high
 1. 現状確認
    - `git status --short --branch` と `git log --oneline -5` を確認する。
    - ローカル素材がある場合、`metadata.csv` が112行、`chart_field_templates/` が29枚であることを確認する。
-   - `python -m tools.vision_poc --no-ocr` を実行し、112件全正解、`transition_countup_*` 除外、confirmed-events 境界が崩れていないことを確認する。
-   - 必要に応じて `python -m tools.vision_poc --m3-song-artist-ocr --ocr-target confirmed-events --no-rois --output data\vision_poc_m3_song_artist` を実行し、M3-4入口レポートを確認する。
+   - `python -m tools.vision_poc --no-ocr` を実行し、112件全正解、`transition_countup_*` 除外、confirmed-events 境界、M3-5集約の `target_count=60` が崩れていないことを確認する。
+   - 必要に応じて `python -m tools.vision_poc --m3-song-artist-ocr --ocr-target confirmed-events --no-rois --output data\vision_poc_m3_song_artist` を実行し、M3-4 / M3-5レポートを確認する。
 
-2. M3-4 song/artist OCR入口を読む
-   - `m3_song_artist_ocr_summary.json` と `m3_song_artist_ocr.md` を確認する。
+2. M3-5集約レポートを読む
+   - `m3_save_candidate_summary.json` と `m3_save_candidate_summary.md` を確認する。
    - `song_title` は主要項目、`artist` は左右切れがある補助項目として読む。
-   - `pre_normalized_text` は本格正規化ではなく、改行と連続空白を畳んだレビュー用文字列として読む。
-   - `failure_reason=empty_ocr` の代表ROIを見て、長い曲名、日本語、記号、2行表示、artist切れの代表ケースを整理する。
-   - OCRエンジン差や日本語辞書有無の影響を、採用判断ではなく観察メモとして扱う。
+   - `play_style` の `ready` は M3-3採用候補であり、本番採用済みテンプレート照合として扱わない。
+   - `difficulty` / `level` の `missing_reference` は、追加テンプレート素材が不足している保存前ブロッカーとして読む。
+   - `song_title` / `artist` の `empty_ocr` 代表行を、`m3_song_artist_ocr.md` と `m3_song_artist_ocr_images/` で見る。ただしPoC出力や画像はGit管理しない。
+   - OCRエンジン差や日本語辞書有無の影響は、採用判断ではなく観察メモとして扱う。
 
-3. M3-5 保存候補向けM3集約レポートへ進む
-   - confirmed-eventsごとに、`song_title`、`artist`、`play_style`、`difficulty`、`level` の抽出状態を1行にまとめる小さなCSV/JSON/Markdownを検討する。
-   - `play_style` は M3-3の `adoption_candidate` を反映できるが、本番採用済みテンプレート照合として扱わない。
-   - `difficulty` / `level` は参照不足を `missing_reference` として保存前判断向け語彙へ寄せる。
-   - `song_title` / `artist` は OCR入口の `engine_unavailable` / `ocr_failed` / `empty_ocr` / `no_expected_value` を集約する。
-   - 集約レポートの状態語彙は、まず `ready` / `missing_reference` / `ocr_unavailable` / `ocr_failed` / `empty_ocr` / `no_expected_value` / `not_adopted` 程度に小さく始める。
-   - マスタ照合、ファジーマッチ、曲名正規化の本格実装には進まない。
+3. M3-6 保存候補ブロッカーの代表整理へ進む
+   - M3-5集約から、保存前に止める理由を field別に代表化する小さなMarkdownまたはsummary追加を検討する。
+   - 例: `song_title empty_ocr`、`artist empty_ocr`、`difficulty missing_reference`、`level missing_reference` の代表 `organized_file` と `roi_path` を数件だけ出す。
+   - 代表整理はレビュー補助に留め、DB保存可否判定、マスタ照合、ファジーマッチ、曲名正規化には進まない。
+   - 追加する場合は confirmed-events 境界だけを対象にし、duplicate / rejected_transition / unconfirmed / non-result を対象外に保つ。
+   - `data/` 配下の実行結果をコミットせず、必要な読み方だけ `tools/vision_poc/README.md` または `docs/design/` に反映する。
 
 4. テスト補強
    - ローカル画像や `metadata.csv` に依存しない manifest fixture を優先する。
    - confirmed-events 境界だけを対象にし、duplicate / rejected_transition / unconfirmed / non-result を対象外に保つことを固定する。
-   - 数字OCR expected coverage、M3 metadata expected coverage、M3 chart-field adoption candidates、M3 song/artist OCR入口、M3集約レポートを混同しないことをテストまたはdocsで固定する。
+   - 数字OCR expected coverage、M3 metadata expected coverage、M3 chart-field adoption candidates、M3 song/artist OCR入口、M3 save candidate summary、今後追加する代表整理レポートを混同しないことをテストまたはdocsで固定する。
 
 ## 検証コマンド
 
@@ -118,13 +115,14 @@ python -m compileall tools\vision_poc
 python -m pytest tests
 ```
 
-M3-4 song/artist OCR入口:
+M3-4 / M3-5確認:
 
 ```powershell
 python -m tools.vision_poc --m3-song-artist-ocr --ocr-target confirmed-events --no-rois --output data\vision_poc_m3_song_artist
 Get-Content data\vision_poc_m3_song_artist\m3_song_artist_ocr_summary.json
-Get-Content data\vision_poc_m3_song_artist\m3_song_artist_ocr.md
-Import-Csv data\vision_poc_m3_song_artist\m3_song_artist_ocr.csv | Group-Object field_name,status,failure_reason
+Get-Content data\vision_poc_m3_song_artist\m3_save_candidate_summary.json
+Get-Content data\vision_poc_m3_song_artist\m3_save_candidate_summary.md
+Import-Csv data\vision_poc_m3_song_artist\m3_save_candidate_summary.csv | Group-Object song_title_status,artist_status,play_style_status,difficulty_status,level_status
 ```
 
 M3 chart-field 足場の確認:
@@ -135,7 +133,7 @@ Get-Content data\vision_poc\result_events_summary.json
 Get-Content data\vision_poc\m3_chart_fields_summary.json
 Get-Content data\vision_poc\m3_chart_field_template_holdout_extraction_summary.json
 Get-Content data\vision_poc\m3_chart_field_adoption_candidates_summary.json
-Get-Content data\vision_poc\m3_chart_field_adoption_candidates.md
+Get-Content data\vision_poc\m3_save_candidate_summary.json
 if (Test-Path samples\screenshots\organized\chart_field_templates) { Get-ChildItem samples\screenshots\organized\chart_field_templates -File | Measure-Object }
 ```
 
@@ -155,7 +153,7 @@ M3用の新しいCLI、CSV、JSON、Markdownレポート、または出力ディ
 - `docs/next-task.md` はユーザーから明示されているためコミット対象に含める。
 - コード、README、docs、テストに変更がある場合のみ、今回作業分だけをステージしてコミットする。
 - `data/` 配下のPoC出力、ROI画像、OCR画像、解析ログはステージしない。
-- 分類条件、保存境界、expected coverage、M3 ROIの読み方を変えた場合は、関連する `tools/vision_poc/README.md` または `docs/design/` 更新を同じコミットに含める。
+- 分類条件、保存境界、expected coverage、M3 ROI、M3 save candidate summary の読み方を変えた場合は、関連する `tools/vision_poc/README.md` または `docs/design/` 更新を同じコミットに含める。
 - 作業完了後、コミットがある場合は `codex/vision-poc-ocr-tuning` を push する。
 
 ## 完了条件
@@ -164,10 +162,12 @@ M3用の新しいCLI、CSV、JSON、Markdownレポート、または出力ディ
 - 低スコア、低ランク、0点 result が保存候補から落ちない。
 - `transition_countup_*` は `result_shape_candidate=true` でも `result_candidate=false`、`event_type=rejected_transition` のまま。
 - confirmed-events の保存境界が `confirmed_result=true` かつ `duplicate=false` のまま。
-- duplicate / rejected_transition / unconfirmed / non-result が保存直前OCR評価対象外、M3 metadata expected coverage 対象外、M3 chart-field inventory / extraction / diagnostics / adoption candidates 対象外、M3 song/artist OCR対象外のまま。
+- duplicate / rejected_transition / unconfirmed / non-result が保存直前OCR評価対象外、M3 metadata expected coverage 対象外、M3 chart-field inventory / extraction / diagnostics / adoption candidates 対象外、M3 song/artist OCR対象外、M3 save candidate summary 対象外のまま。
 - `m3_chart_field_template_holdout_extraction.csv`、summary、diagnostics が confirmed-events 境界だけを抽出評価対象にし、confirmed-events result ROI を参照に含めない。
 - `m3_chart_field_adoption_candidates_summary.json` と `.md` が `play_style` の `adoption_candidate`、`difficulty` / `level` の `needs_template_references`、保存前向け `missing_reference` を読み分ける。
 - `m3_song_artist_ocr.csv`、summary、Markdown が confirmed-events 境界だけを対象にし、`pre_normalized_text` を曲名正規化、ファジーマッチ、マスタ照合の成功扱いにしない。
+- `m3_save_candidate_summary.csv`、summary、Markdown が confirmed-events 1件を1行にし、`song_title` / `artist` / `play_style` / `difficulty` / `level` を保存前向け状態へ集約する。
+- M3-5の `ready` をDB保存可能、マスタ照合成功、ファジーマッチ成功、曲名正規化成功として扱っていない。
 - OCRエンジンがない環境で `engine_unavailable` として壊れずに実行できる。
 - `roi-template-nearest`、`roi-template-holdout`、各diagnostics、adoption candidatesをOCR、マスタ照合、採用済みテンプレート照合の成功扱いにしない。
 - `docs/design/07_m3_chart_field_review.md` をローカル期待値レビュー結果として読み、`metadata.csv` 実体や画像はコミットしない。
@@ -175,7 +175,6 @@ M3用の新しいCLI、CSV、JSON、Markdownレポート、または出力ディ
 - `song_title` / `artist` / `play_style` / `difficulty` / `level` は confirmed-events 対象60件で `evaluated` のまま。
 - `play_style` / `difficulty` / `level` は M3 chart-field 対象60件で `evaluated` のまま。
 - `rank` / `expected_rank` は、数字OCR expected coverage と混同せず、当面は補助/部分評価として扱われている。
-- M3-5で集約レポートを追加する場合、confirmed-events 境界、expected coverage、chart-field adoption candidates、song/artist OCR入口と混同しない。
 - 仕様や判定方針を追加で変えた場合は、関連する `docs/` または `tools/vision_poc/README.md` が更新されている。
 - 検証コマンドが通っている。
 - コミット/Pushする場合は、Git管理対象外ファイルを含めていない。

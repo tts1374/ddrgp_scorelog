@@ -282,6 +282,7 @@ M3_CHART_FIELD_TEMPLATE_EXTRACTION_METHOD = "roi-template-nearest"
 M3_CHART_FIELD_TEMPLATE_HOLDOUT_EXTRACTION_METHOD = "roi-template-holdout"
 M3_SONG_ARTIST_OCR_FIELDS = ("song_title", "artist")
 M3_SONG_ARTIST_OCR_METHOD = "tesseract-text-raw"
+M3_SAVE_CANDIDATE_FIELDS = (*M3_SONG_ARTIST_OCR_FIELDS, *M3_CHART_FIELD_FIELDS)
 M3_CHART_FIELD_TEMPLATE_ROOT = Path("samples/screenshots/organized/chart_field_templates")
 M3_CHART_FIELD_DIFFICULTIES = (
     "BEGINNER",
@@ -3654,6 +3655,286 @@ def write_m3_chart_field_adoption_candidates_report(
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def m3_save_candidate_song_artist_status(
+    result: M3SongArtistOcrResult | None,
+) -> tuple[str, str, str, str, str]:
+    if result is None:
+        return "ocr_unavailable", "ocr_not_run", "", "", ""
+    if result.failure_reason == "engine_unavailable":
+        return "ocr_unavailable", "engine_unavailable", result.expected_value, "", result.extractor
+    if result.failure_reason == "ocr_failed":
+        return "ocr_failed", "ocr_failed", result.expected_value, "", result.extractor
+    if result.failure_reason == "empty_ocr":
+        return "empty_ocr", "empty_ocr", result.expected_value, "", result.extractor
+    if result.failure_reason == "no_expected_value":
+        return (
+            "no_expected_value",
+            "no_expected_value",
+            result.expected_value,
+            result.pre_normalized_text,
+            result.extractor,
+        )
+    return "ready", "", result.expected_value, result.pre_normalized_text, result.extractor
+
+
+def m3_save_candidate_chart_status(
+    row: dict[str, str] | None,
+    adoption_bucket: dict[str, object] | None,
+) -> tuple[str, str, str, str, str]:
+    if row is None:
+        return "not_adopted", "missing_chart_field_row", "", "", ""
+
+    failure_reason = row.get("failure_reason", "")
+    save_failure_reason = m3_chart_field_save_failure_reason(failure_reason)
+    expected_value = row.get("expected_value", "")
+    extracted_value = row.get("extracted_value", "")
+    extractor = row.get("extractor", "")
+
+    if save_failure_reason == "missing_reference":
+        return "missing_reference", save_failure_reason, expected_value, extracted_value, extractor
+    if save_failure_reason == "no_expected_value" or row["status"] == "no_expected_value":
+        return "no_expected_value", "no_expected_value", expected_value, extracted_value, extractor
+    if row["status"] == "empty_extraction":
+        return "empty_ocr", "empty_extraction", expected_value, extracted_value, extractor
+
+    adoption_readiness = ""
+    if adoption_bucket is not None:
+        value = adoption_bucket.get("adoption_readiness", "")
+        adoption_readiness = value if isinstance(value, str) else ""
+
+    if adoption_readiness == "adoption_candidate" and row["status"] == "match":
+        return "ready", "", expected_value, extracted_value, extractor
+    if adoption_readiness == "needs_template_references":
+        return (
+            "missing_reference",
+            "field_needs_template_references",
+            expected_value,
+            extracted_value,
+            extractor,
+        )
+    if adoption_readiness == "needs_expected_values":
+        return (
+            "no_expected_value",
+            "field_needs_expected_values",
+            expected_value,
+            extracted_value,
+            extractor,
+        )
+
+    reason = save_failure_reason or adoption_readiness or row["status"]
+    return "not_adopted", reason, expected_value, extracted_value, extractor
+
+
+def m3_save_candidate_rows(
+    frames: Iterable[FrameInput],
+    events: Iterable[ResultEvent],
+    holdout_rows: Iterable[dict[str, str]],
+    adoption_summary: dict[str, object],
+    song_artist_results: Iterable[M3SongArtistOcrResult],
+) -> list[dict[str, str]]:
+    frame_list = list(frames)
+    event_list = list(events)
+    song_artist_by_key = {
+        (result.organized_file, result.field_name): result for result in song_artist_results
+    }
+    holdout_by_key = {
+        (row["organized_file"], row["field_name"]): row
+        for row in holdout_rows
+        if row.get("chart_field_target") == "True"
+    }
+    adoption_fields = adoption_summary.get("fields", {})
+    if not isinstance(adoption_fields, dict):
+        adoption_fields = {}
+
+    rows: list[dict[str, str]] = []
+    for frame, event in zip(frame_list, event_list, strict=True):
+        if not is_save_candidate_event(event):
+            continue
+        row: dict[str, str] = {
+            "frame_index": str(event.frame_index),
+            "organized_file": frame.row["organized_file"],
+            "screen_type": frame.row.get("screen_type", ""),
+            "event_type": event.event_type,
+            "confirmed_result": str(event.confirmed_result),
+            "duplicate": str(event.duplicate),
+            "timestamp_ms": "" if event.timestamp_ms is None else str(event.timestamp_ms),
+            "confirmation_mode": event.confirmation_mode,
+        }
+        blocking_fields: list[str] = []
+        for field_name in M3_SAVE_CANDIDATE_FIELDS:
+            if field_name in M3_SONG_ARTIST_OCR_FIELDS:
+                status, failure, expected, extracted, extractor = (
+                    m3_save_candidate_song_artist_status(
+                        song_artist_by_key.get((frame.row["organized_file"], field_name))
+                    )
+                )
+            else:
+                adoption_bucket = adoption_fields.get(field_name)
+                status, failure, expected, extracted, extractor = m3_save_candidate_chart_status(
+                    holdout_by_key.get((frame.row["organized_file"], field_name)),
+                    adoption_bucket if isinstance(adoption_bucket, dict) else None,
+                )
+            row[f"{field_name}_status"] = status
+            row[f"{field_name}_failure_reason"] = failure
+            row[f"{field_name}_expected_value"] = expected
+            row[f"{field_name}_extracted_value"] = extracted
+            row[f"{field_name}_extractor"] = extractor
+            if status != "ready":
+                blocking_fields.append(field_name)
+        row["overall_status"] = "ready" if not blocking_fields else "not_ready"
+        row["blocking_fields"] = " ".join(blocking_fields)
+        rows.append(row)
+    return rows
+
+
+def write_m3_save_candidate_summary_csv(path: Path, rows: Iterable[dict[str, str]]) -> None:
+    fieldnames = [
+        "frame_index",
+        "organized_file",
+        "screen_type",
+        "event_type",
+        "confirmed_result",
+        "duplicate",
+        "timestamp_ms",
+        "confirmation_mode",
+    ]
+    for field_name in M3_SAVE_CANDIDATE_FIELDS:
+        fieldnames.extend(
+            [
+                f"{field_name}_status",
+                f"{field_name}_failure_reason",
+                f"{field_name}_expected_value",
+                f"{field_name}_extracted_value",
+                f"{field_name}_extractor",
+            ]
+        )
+    fieldnames.extend(["overall_status", "blocking_fields"])
+
+    with path.open("w", encoding="utf-8", newline="") as file:
+        writer = csv.DictWriter(file, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+def summarize_m3_save_candidates(rows: Iterable[dict[str, str]]) -> dict[str, object]:
+    row_list = list(rows)
+    fields: dict[str, dict[str, object]] = {}
+    for field_name in M3_SAVE_CANDIDATE_FIELDS:
+        status_counts: dict[str, int] = {}
+        failure_reason_counts: dict[str, int] = {}
+        for row in row_list:
+            status = row[f"{field_name}_status"]
+            status_counts[status] = status_counts.get(status, 0) + 1
+            failure_reason = row[f"{field_name}_failure_reason"]
+            if failure_reason:
+                failure_reason_counts[failure_reason] = (
+                    failure_reason_counts.get(failure_reason, 0) + 1
+                )
+        fields[field_name] = {
+            "status_counts": dict(sorted(status_counts.items())),
+            "failure_reason_counts": dict(sorted(failure_reason_counts.items())),
+        }
+
+    overall_status_counts: dict[str, int] = {}
+    for row in row_list:
+        status = row["overall_status"]
+        overall_status_counts[status] = overall_status_counts.get(status, 0) + 1
+
+    return {
+        "target_boundary": "confirmed_result=true and duplicate=false",
+        "scope": "M3-5 save candidate aggregate report",
+        "target_count": len(row_list),
+        "fields": fields,
+        "overall_status_counts": dict(sorted(overall_status_counts.items())),
+        "status_vocabulary": [
+            "ready",
+            "missing_reference",
+            "ocr_unavailable",
+            "ocr_failed",
+            "empty_ocr",
+            "no_expected_value",
+            "not_adopted",
+        ],
+        "reading_notes": [
+            "One row represents one confirmed-events save candidate.",
+            "play_style ready means M3-3 adoption candidate, not production template adoption.",
+            "song_title and artist statuses are OCR entry observations, not master matching.",
+            "difficulty and level can remain missing_reference until local templates are added.",
+        ],
+    }
+
+
+def write_m3_save_candidate_summary_report(
+    path: Path,
+    rows: Iterable[dict[str, str]],
+    summary: dict[str, object],
+) -> None:
+    row_list = list(rows)
+    fields = summary["fields"]
+    assert isinstance(fields, dict)
+    lines = [
+        "# M3 Save Candidate Summary",
+        "",
+        "confirmed-events ごとに、曲名、artist、プレースタイル、難易度、"
+        "レベルの抽出状態を1行に集約するM3-5レポートです。",
+        "DB保存、マスタ照合、ファジーマッチ、曲名正規化には進みません。",
+        "",
+        f"- target boundary: `{summary['target_boundary']}`",
+        f"- target confirmed-events: {summary['target_count']}",
+        "- status vocabulary: `ready` / `missing_reference` / `ocr_unavailable` / "
+        "`ocr_failed` / `empty_ocr` / `no_expected_value` / `not_adopted`",
+        "",
+        "## Field Status",
+        "",
+        "| field | status counts | failure reasons |",
+        "|---|---|---|",
+    ]
+    for field_name in M3_SAVE_CANDIDATE_FIELDS:
+        bucket = fields[field_name]
+        assert isinstance(bucket, dict)
+        lines.append(
+            f"| `{field_name}` | "
+            f"`{json.dumps(bucket['status_counts'], ensure_ascii=False, sort_keys=True)}` | "
+            f"`{json.dumps(bucket['failure_reason_counts'], ensure_ascii=False, sort_keys=True)}` |"
+        )
+
+    lines.extend(
+        [
+            "",
+            "## Candidate Rows",
+            "",
+            "| organized_file | overall | blocking fields | song_title | artist | "
+            "play_style | difficulty | level |",
+            "|---|---|---|---|---|---|---|---|",
+        ]
+    )
+    for row in row_list[:20]:
+        lines.append(
+            f"| `{row['organized_file']}` | `{row['overall_status']}` | "
+            f"`{row['blocking_fields']}` | `{row['song_title_status']}` | "
+            f"`{row['artist_status']}` | `{row['play_style_status']}` | "
+            f"`{row['difficulty_status']}` | `{row['level_status']}` |"
+        )
+    if len(row_list) > 20:
+        lines.append("| ... | ... | ... | ... | ... | ... | ... | ... |")
+
+    lines.extend(
+        [
+            "",
+            "## Reading Notes",
+            "",
+            "- `ready` はこのM3 PoC内で次の確認へ渡せる状態です。"
+            "DB保存可能やマスタ照合成功を意味しません。",
+            "- `play_style` は M3-3 の `adoption_candidate` を反映しますが、"
+            "採用済みテンプレート照合として扱いません。",
+            "- `song_title` / `artist` の `pre_normalized_text` はレビュー用文字列であり、"
+            "曲名正規化やファジーマッチの成功扱いにしません。",
+            "- duplicate、`rejected_transition`、未確定候補、non-result はこの集約対象外です。",
+        ]
+    )
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
 def m3_chart_field_template_diagnostic_tables(
     rows: Iterable[dict[str, str]],
 ) -> tuple[
@@ -4710,6 +4991,29 @@ def main(argv: list[str] | None = None) -> int:
             m3_song_artist_ocr_results,
             m3_song_artist_ocr_summary,
         )
+    m3_save_candidate_summary_rows = m3_save_candidate_rows(
+        frames,
+        result_events,
+        m3_chart_field_template_holdout_rows,
+        m3_chart_field_adoption_summary,
+        m3_song_artist_ocr_results,
+    )
+    write_m3_save_candidate_summary_csv(
+        output_dir / "m3_save_candidate_summary.csv",
+        m3_save_candidate_summary_rows,
+    )
+    m3_save_candidate_summary = summarize_m3_save_candidates(
+        m3_save_candidate_summary_rows
+    )
+    (output_dir / "m3_save_candidate_summary.json").write_text(
+        json.dumps(m3_save_candidate_summary, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    write_m3_save_candidate_summary_report(
+        output_dir / "m3_save_candidate_summary.md",
+        m3_save_candidate_summary_rows,
+        m3_save_candidate_summary,
+    )
     score_ocr_results: list[ScoreOcrResult] = []
     profile_ocr_results: list[ProfileScoreOcrResult] = []
     run_profile_comparison = ocr_profiles != ("default",)

@@ -130,6 +130,17 @@
 - chart-field 抽出評価の status 語彙は `match`、`mismatch`、`empty_extraction`、`no_expected_value`、`skipped` を維持する。
 - `rank` は引き続き補助/部分評価として扱い、M3 chart-field の初期対象に含めない。
 
+## M3 save candidate summary
+
+- `m3_save_candidate_summary.csv`、`m3_save_candidate_summary.json`、`m3_save_candidate_summary.md` は confirmed-events 境界、つまり `confirmed_result=true` かつ `duplicate=false` だけを1行単位で集約する。
+- duplicate、`event_type=rejected_transition`、未確定 `result_candidate`、non-result は M3 save candidate summary 対象外にする。
+- 集約対象fieldは `song_title`、`artist`、`play_style`、`difficulty`、`level` に限定し、`rank` と数字OCR expected coverage を混同しない。
+- status 語彙は `ready`、`missing_reference`、`ocr_unavailable`、`ocr_failed`、`empty_ocr`、`no_expected_value`、`not_adopted` に寄せる。
+- `play_style` の `ready` は M3-3 の `adoption_candidate` を反映するだけで、本番採用済みテンプレート照合、OCR、マスタ照合の成功扱いにはしない。
+- `difficulty` / `level` の参照不足は保存前判断向けに `missing_reference` として読めるようにする。
+- `song_title` / `artist` の `ready` は M3-4 OCR入口の観察結果であり、曲名正規化、ファジーマッチ、マスタ照合、DB保存可能を意味しない。
+- `--m3-song-artist-ocr` を指定していない場合、`song_title` / `artist` はOCR未実行として `ocr_unavailable` に倒す。
+
 ## OCR出力互換
 
 - `score_ocr.csv` の既存列を維持する。

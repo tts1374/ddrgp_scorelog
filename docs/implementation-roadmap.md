@@ -164,7 +164,8 @@ M3内マイルストーン:
    - `--m3-song-artist-ocr` で confirmed-events 対象の `m3_song_artist_ocr.csv`、summary、Markdownを出し、`engine_unavailable` / `ocr_failed` / `empty_ocr` / `no_expected_value` を保存前判断に近い失敗理由として観察できる入口を追加済み。
 5. M3-5: 保存候補向けのM3集約レポート
    - confirmed-eventsごとに、曲名、artist、`play_style`、`difficulty`、`level` の抽出状態を一覧化する。
-   - `ready`、`low_confidence`、`missing_reference`、`ocr_unavailable` など、保存前判断に使える理由を出す。
+   - `m3_save_candidate_summary.csv`、summary、Markdownで `ready`、`missing_reference`、`ocr_unavailable`、`ocr_failed`、`empty_ocr`、`no_expected_value`、`not_adopted` を保存前判断に近い状態として出す入口を追加済み。
+   - `play_style` の `ready` は M3-3 の採用候補、`song_title` / `artist` の `ready` は M3-4 OCR入口観察であり、DB保存可能やマスタ照合成功として扱わない。
    - DB保存やマスタ照合はM4/M5以降へ残す。
 
 完了条件:
