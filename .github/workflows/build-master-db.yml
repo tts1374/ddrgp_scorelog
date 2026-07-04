@@ -32,46 +32,9 @@ jobs:
         run: python -m master --output data/master/ddrgp-master.sqlite
 
       - name: Inspect generated database
-        run: |
-          python - <<'PY'
-          import json
-          import sqlite3
-          from pathlib import Path
-
-          db_path = Path("data/master/ddrgp-master.sqlite")
-          summary_path = Path("data/master/master-summary.json")
-
-          with sqlite3.connect(db_path) as con:
-              metadata = dict(con.execute("SELECT key, value FROM master_metadata"))
-              song_count = con.execute("SELECT COUNT(*) FROM songs").fetchone()[0]
-              chart_count = con.execute("SELECT COUNT(*) FROM charts").fetchone()[0]
-              snapshot_count = con.execute("SELECT COUNT(*) FROM source_snapshots").fetchone()[0]
-
-          if song_count <= 0 or chart_count <= 0:
-              raise SystemExit("generated database must contain songs and charts")
-          if metadata.get("song_count") != str(song_count):
-              raise SystemExit("master_metadata song_count does not match songs table")
-          if metadata.get("chart_count") != str(chart_count):
-              raise SystemExit("master_metadata chart_count does not match charts table")
-          if snapshot_count != 1:
-              raise SystemExit("generated database must contain exactly one source snapshot")
-
-          summary = {
-              "database": str(db_path),
-              "song_count": song_count,
-              "chart_count": chart_count,
-              "source_hash": metadata.get("source_hash"),
-              "master_version": metadata.get("master_version"),
-              "source_url": metadata.get("source_url"),
-              "generated_at": metadata.get("generated_at"),
-              "generator_version": metadata.get("generator_version"),
-          }
-          summary_path.write_text(
-              json.dumps(summary, ensure_ascii=False, indent=2) + "\n",
-              encoding="utf-8",
-          )
-          print(json.dumps(summary, ensure_ascii=False, indent=2))
-          PY
+        run: >
+          python -m master.inspect data/master/ddrgp-master.sqlite
+          --summary data/master/master-summary.json
 
       - name: Upload master database artifact
         uses: actions/upload-artifact@v4

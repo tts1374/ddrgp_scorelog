@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 from pathlib import Path
 
 from master import builder
+from master import inspect as master_inspect
 
 FIXTURE_HTML = """
 <!doctype html>
@@ -200,6 +202,75 @@ def test_write_master_database_creates_expected_schema_and_metadata(tmp_path: Pa
         assert snapshot[1] == build.snapshot.content_hash
         assert snapshot[2] == builder.PARSER_VERSION
         assert "MAKE IT BETTER" in snapshot[3]
+
+
+def test_inspect_master_database_writes_summary_for_valid_database(tmp_path: Path) -> None:
+    build = builder.parse_master_html(
+        FIXTURE_HTML,
+        source_url="https://example.test/source",
+        fetched_at="2026-07-04T00:00:00+00:00",
+    )
+    output_path = tmp_path / "ddrgp-master.sqlite"
+    summary_path = tmp_path / "master-summary.json"
+    builder.write_master_database(
+        output_path,
+        build,
+        master_version="fixture-v1",
+        generated_at="2026-07-04T01:23:45+00:00",
+    )
+
+    summary = master_inspect.inspect_master_database(output_path)
+    master_inspect.write_summary(summary_path, summary)
+
+    assert summary["song_count"] == 3
+    assert summary["chart_count"] == 23
+    assert summary["master_version"] == "fixture-v1"
+    assert summary["source_hash"] == build.snapshot.content_hash
+    assert json.loads(summary_path.read_text(encoding="utf-8")) == summary
+
+
+def test_inspect_master_database_rejects_metadata_count_mismatch(tmp_path: Path) -> None:
+    build = builder.parse_master_html(
+        FIXTURE_HTML,
+        source_url="https://example.test/source",
+        fetched_at="2026-07-04T00:00:00+00:00",
+    )
+    output_path = tmp_path / "ddrgp-master.sqlite"
+    builder.write_master_database(output_path, build, master_version="fixture-v1")
+
+    with sqlite3.connect(output_path) as connection:
+        connection.execute(
+            "UPDATE master_metadata SET value = '999' WHERE key = 'song_count'"
+        )
+
+    try:
+        master_inspect.inspect_master_database(output_path)
+    except ValueError as exc:
+        assert "song_count" in str(exc)
+    else:
+        raise AssertionError("inspect_master_database should reject mismatched metadata")
+
+
+def test_inspect_master_database_rejects_source_hash_mismatch(tmp_path: Path) -> None:
+    build = builder.parse_master_html(
+        FIXTURE_HTML,
+        source_url="https://example.test/source",
+        fetched_at="2026-07-04T00:00:00+00:00",
+    )
+    output_path = tmp_path / "ddrgp-master.sqlite"
+    builder.write_master_database(output_path, build, master_version="fixture-v1")
+
+    with sqlite3.connect(output_path) as connection:
+        connection.execute(
+            "UPDATE master_metadata SET value = 'mismatched' WHERE key = 'source_hash'"
+        )
+
+    try:
+        master_inspect.inspect_master_database(output_path)
+    except ValueError as exc:
+        assert "source_hash" in str(exc)
+    else:
+        raise AssertionError("inspect_master_database should reject mismatched source hash")
 
 
 def test_parse_master_html_handles_edge_level_and_chart_identity_cases() -> None:
