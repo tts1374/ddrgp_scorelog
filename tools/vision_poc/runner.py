@@ -4108,6 +4108,228 @@ def write_m3_save_candidate_blockers_report(
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def m3_save_candidate_blocker_resolution_action(
+    field_name: str,
+    status: str,
+    failure_reason: str,
+) -> tuple[str, str, int]:
+    if field_name in {"difficulty", "level"} and status == "missing_reference":
+        if failure_reason == "missing_reference":
+            return (
+                "add_template_references",
+                "不足しているローカルテンプレート参照ラベルを追加し、holdoutを再確認する。",
+                10 if field_name == "difficulty" else 20,
+            )
+        if failure_reason == "field_needs_template_references":
+            return (
+                "rerun_after_reference_update",
+                "不足ラベル追加後にfield全体が採用候補へ戻るか再確認する。",
+                30 if field_name == "difficulty" else 40,
+            )
+    if field_name in M3_SONG_ARTIST_OCR_FIELDS:
+        if failure_reason == "ocr_not_run":
+            return (
+                "run_m3_song_artist_ocr",
+                "`--m3-song-artist-ocr` でOCR入口を実行し、実失敗理由へ分解する。",
+                50 if field_name == "song_title" else 51,
+            )
+        if failure_reason == "engine_unavailable":
+            return (
+                "prepare_ocr_engine",
+                "OCRエンジンの利用可否を確認し、"
+                "PoCが engine_unavailable で壊れないことも維持する。",
+                55,
+            )
+        if failure_reason == "empty_ocr":
+            return (
+                "inspect_ocr_entry_failures",
+                "代表ROIとOCR前処理画像を見て、OCR入口の空読み失敗として整理する。",
+                60 if field_name == "song_title" else 70,
+            )
+    return (
+        "review_blocker_group",
+        "代表ROIと集約行を確認し、次のPoC単位へ分ける。",
+        90,
+    )
+
+
+def m3_save_candidate_value_counts(
+    rows: Iterable[dict[str, str]],
+    field_name: str,
+) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for row in rows:
+        value = row[f"{field_name}_expected_value"]
+        if not value:
+            value = "(empty)"
+        counts[value] = counts.get(value, 0) + 1
+    return dict(sorted(counts.items(), key=lambda item: (-item[1], item[0])))
+
+
+def summarize_m3_save_candidate_blocker_resolution(
+    rows: Iterable[dict[str, str]],
+    representative_limit: int = M3_SAVE_CANDIDATE_BLOCKER_REPRESENTATIVE_LIMIT,
+) -> dict[str, object]:
+    row_list = list(rows)
+    grouped_rows: dict[tuple[str, str, str], list[dict[str, str]]] = {}
+    blocker_row_indexes: set[int] = set()
+
+    for row_index, row in enumerate(row_list):
+        for field_name in M3_SAVE_CANDIDATE_FIELDS:
+            status = row[f"{field_name}_status"]
+            if status == "ready":
+                continue
+            failure_reason = row[f"{field_name}_failure_reason"]
+            grouped_rows.setdefault((field_name, status, failure_reason), []).append(row)
+            blocker_row_indexes.add(row_index)
+
+    items: list[dict[str, object]] = []
+    for (field_name, status, failure_reason), group_rows in grouped_rows.items():
+        action, action_note, sort_priority = m3_save_candidate_blocker_resolution_action(
+            field_name,
+            status,
+            failure_reason,
+        )
+        required_reference_label_counts: dict[str, int] = {}
+        if (
+            field_name in {"difficulty", "level"}
+            and status == "missing_reference"
+            and failure_reason == "missing_reference"
+        ):
+            required_reference_label_counts = m3_save_candidate_value_counts(
+                group_rows,
+                field_name,
+            )
+        items.append(
+            {
+                "sort_priority": sort_priority,
+                "field": field_name,
+                "status": status,
+                "failure_reason": failure_reason,
+                "blocker_count": len(group_rows),
+                "action": action,
+                "action_note": action_note,
+                "expected_value_counts": m3_save_candidate_value_counts(
+                    group_rows,
+                    field_name,
+                ),
+                "required_reference_label_counts": required_reference_label_counts,
+                "representatives": [
+                    m3_save_candidate_blocker_representative(row, field_name)
+                    for row in group_rows[:representative_limit]
+                ],
+            }
+        )
+
+    items.sort(
+        key=lambda item: (
+            int(item["sort_priority"]),
+            -int(item["blocker_count"]),
+            str(item["field"]),
+            str(item["failure_reason"]),
+        )
+    )
+    for priority, item in enumerate(items, start=1):
+        item["priority"] = priority
+        del item["sort_priority"]
+
+    return {
+        "target_boundary": "confirmed_result=true and duplicate=false",
+        "scope": "M3-7 save candidate blocker resolution order",
+        "target_count": len(row_list),
+        "blocker_candidate_count": len(blocker_row_indexes),
+        "representative_limit_per_group": representative_limit,
+        "resolution_order": items,
+        "reading_notes": [
+            "Resolution order is derived from M3-5 save candidate aggregate rows.",
+            "This is a review plan for local templates and OCR entry failures.",
+            "Template images, PoC outputs, and OCR images remain outside Git.",
+            "The plan is not a DB save decision, master matching result, "
+            "fuzzy match, or normalization result.",
+        ],
+    }
+
+
+def write_m3_save_candidate_blocker_resolution_report(
+    path: Path,
+    resolution_summary: dict[str, object],
+) -> None:
+    items = resolution_summary["resolution_order"]
+    assert isinstance(items, list)
+    lines = [
+        "# M3 Save Candidate Blocker Resolution Order",
+        "",
+        "M3-6代表整理を入力に、保存前ブロッカーの解消順を読むM3-7レビュー補助です。",
+        "ローカルテンプレート参照ラベルと曲名/artist OCR入口失敗を分けます。",
+        "DB保存可否判定、マスタ照合、ファジーマッチ、曲名正規化には進みません。",
+        "",
+        f"- target boundary: `{resolution_summary['target_boundary']}`",
+        f"- target confirmed-events: {resolution_summary['target_count']}",
+        f"- candidates with blockers: {resolution_summary['blocker_candidate_count']}",
+        "",
+        "## Resolution Order",
+        "",
+        "| priority | field | blockers | status | failure | action | labels to add |",
+        "|---:|---|---:|---|---|---|---|",
+    ]
+    for item in items:
+        assert isinstance(item, dict)
+        labels = item["required_reference_label_counts"]
+        assert isinstance(labels, dict)
+        label_text = json.dumps(labels, ensure_ascii=False, sort_keys=True)
+        if not labels:
+            label_text = ""
+        lines.append(
+            f"| {item['priority']} | `{item['field']}` | {item['blocker_count']} | "
+            f"`{item['status']}` | `{item['failure_reason']}` | "
+            f"`{item['action']}` | `{label_text}` |"
+        )
+
+    lines.extend(["", "## Representatives", ""])
+    for item in items:
+        assert isinstance(item, dict)
+        representatives = item["representatives"]
+        assert isinstance(representatives, list)
+        if not representatives:
+            continue
+        lines.extend(
+            [
+                f"### {item['priority']}. `{item['field']}` / `{item['action']}`",
+                "",
+                f"- note: {item['action_note']}",
+                "",
+                "| organized_file | expected | extracted | extractor | roi_path |",
+                "|---|---|---|---|---|",
+            ]
+        )
+        for representative in representatives:
+            assert isinstance(representative, dict)
+            lines.append(
+                f"| `{representative['organized_file']}` | "
+                f"`{representative['expected_value']}` | "
+                f"`{representative['extracted_value']}` | "
+                f"`{representative['extractor']}` | "
+                f"`{representative['roi_path']}` |"
+            )
+        lines.append("")
+
+    lines.extend(
+        [
+            "## Reading Notes",
+            "",
+            "- `add_template_references` は必要ラベルと判断だけをdocsへ残し、"
+            "画像はローカル素材としてGit管理しません。",
+            "- `run_m3_song_artist_ocr` は `--no-ocr` 実行時の未実行状態を、"
+            "OCR入口の実失敗理由へ分解するための次手です。",
+            "- `inspect_ocr_entry_failures` はOCR入口の観察であり、"
+            "曲名正規化やマスタ照合の失敗判定ではありません。",
+            "- `rerun_after_reference_update` は不足ラベル追加後の再確認で、"
+            "採用済みテンプレート照合の本番実装ではありません。",
+        ]
+    )
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
 def m3_chart_field_template_diagnostic_tables(
     rows: Iterable[dict[str, str]],
 ) -> tuple[
@@ -5197,6 +5419,24 @@ def main(argv: list[str] | None = None) -> int:
     write_m3_save_candidate_blockers_report(
         output_dir / "m3_save_candidate_blockers_summary.md",
         m3_save_candidate_blockers_summary,
+    )
+    m3_save_candidate_blocker_resolution_summary = (
+        summarize_m3_save_candidate_blocker_resolution(
+            m3_save_candidate_summary_rows
+        )
+    )
+    (output_dir / "m3_save_candidate_blocker_resolution_plan.json").write_text(
+        json.dumps(
+            m3_save_candidate_blocker_resolution_summary,
+            ensure_ascii=False,
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    write_m3_save_candidate_blocker_resolution_report(
+        output_dir / "m3_save_candidate_blocker_resolution_plan.md",
+        m3_save_candidate_blocker_resolution_summary,
     )
     score_ocr_results: list[ScoreOcrResult] = []
     profile_ocr_results: list[ProfileScoreOcrResult] = []

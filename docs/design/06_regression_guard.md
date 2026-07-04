@@ -149,6 +149,16 @@
 - 代表には `organized_file`、期待値、抽出値、extractor、`roi_path` を含める。
 - この代表整理はレビュー補助であり、DB保存可否判定、マスタ照合、ファジーマッチ、曲名正規化の成功/失敗扱いにはしない。
 
+## M3 save candidate blocker resolution order
+
+- `m3_save_candidate_blocker_resolution_plan.json` と `m3_save_candidate_blocker_resolution_plan.md` は M3-5集約の未ready fieldから解消順を整理する。
+- 対象境界は confirmed-events、つまり `confirmed_result=true` かつ `duplicate=false` だけにする。
+- duplicate、`event_type=rejected_transition`、未確定 `result_candidate`、non-result は M3 save candidate blocker resolution order 対象外にする。
+- `difficulty` / `level` の `missing_reference` は追加すべきローカルテンプレート参照ラベルとして読む。
+- `field_needs_template_references` は不足ラベル追加後の再確認であり、個別ROIの保存成功扱いにしない。
+- `song_title` / `artist` の `ocr_not_run`、`engine_unavailable`、`empty_ocr` はOCR入口の次手として読み、曲名正規化、ファジーマッチ、マスタ照合の成功/失敗扱いにはしない。
+- テンプレート画像、OCR画像、PoC出力はGit管理せず、必要ラベル、代表ROI、判断だけをdocsに残す。
+
 ## OCR出力互換
 
 - `score_ocr.csv` の既存列を維持する。

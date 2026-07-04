@@ -131,6 +131,8 @@ M3 chart-field 抽出PoCの入口では、有限候補で扱いやすい `play_s
 
 `m3_save_candidate_blockers_summary.json` と `m3_save_candidate_blockers_summary.md` は、M3-6の保存候補ブロッカー代表整理です。M3-5集約行のうち `ready` ではないfieldだけを、status / failure reasonごとに数件代表化する。代表には `organized_file`、期待値、抽出値、extractor、`roi_path` を含め、`song_title empty_ocr`、`artist empty_ocr`、`difficulty missing_reference`、`level missing_reference` のような保存前に止まる理由を人間が確認しやすくする。対象境界は M3-5と同じ confirmed-events だけで、duplicate、`rejected_transition`、未確定候補、non-result は含めない。このレポートはレビュー補助であり、DB保存可否判定、マスタ照合、ファジーマッチ、曲名正規化の成功/失敗判定にはしない。
 
+`m3_save_candidate_blocker_resolution_plan.json` と `m3_save_candidate_blocker_resolution_plan.md` は、M3-7の保存前ブロッカー解消順レビューです。M3-5集約内の未ready fieldを、`add_template_references`、`rerun_after_reference_update`、`run_m3_song_artist_ocr`、`inspect_ocr_entry_failures` などの次手へ分け、追加すべきローカルテンプレート参照ラベル、代表 `organized_file`、期待値、抽出値、extractor、`roi_path` を出す。対象境界はM3-5/M3-6と同じ confirmed-events だけで、duplicate、`rejected_transition`、未確定候補、non-result は含めない。このレポートは次に増やすローカル素材や確認するOCR入口を決めるためのレビュー補助であり、DB保存可否判定、マスタ照合、ファジーマッチ、曲名正規化の成功/失敗判定にはしない。
+
 `difficulty` は5種類の文字色が分かれているため、`roi-template-nearest` では difficulty ROIに限って前景文字色の比率パターンで比較する。残る mismatch は、ROI画像の見た目と metadata / ファイル名由来期待値の食い違い候補として確認する。
 
 2026-07-04時点のローカルレビューでは、`difficulty` mismatch 5件はすべてROI表示が metadata / ファイル名由来期待値と食い違う修正候補だった。ローカル `metadata.csv` はROI表示へ合わせて修正済みで、ファイル名は当面リネームしない。レビュー結果は `docs/design/07_m3_chart_field_review.md` に残し、Git管理外の `metadata.csv` 実体やスクリーンショット画像はコミットしない。

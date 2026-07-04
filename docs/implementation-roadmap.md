@@ -172,6 +172,11 @@ M3内マイルストーン:
    - `m3_save_candidate_blockers_summary.json` と Markdownで、代表 `organized_file`、期待値、抽出値、extractor、`roi_path` を出す入口を追加済み。
    - 対象は confirmed-events 境界だけに限定し、duplicate、`rejected_transition`、未確定候補、non-result は含めない。
    - 代表整理はレビュー補助であり、DB保存可否判定、マスタ照合、ファジーマッチ、曲名正規化には進まない。
+7. M3-7: 保存前ブロッカー解消順の整理
+   - M3-5集約の未ready fieldから、追加すべきローカルテンプレート参照ラベル、参照追加後の再確認、曲名/artist OCR入口の次手を分ける。
+   - `m3_save_candidate_blocker_resolution_plan.json` と Markdownで、解消順、必要ラベル、代表 `organized_file`、期待値、抽出値、extractor、`roi_path` を出す入口を追加済み。
+   - テンプレート画像、OCR画像、PoC出力はGit管理せず、必要ラベルと判断だけをdocsに残す。
+   - 解消順整理はレビュー補助であり、DB保存可否判定、マスタ照合、ファジーマッチ、曲名正規化には進まない。
 
 完了条件:
 

@@ -1234,6 +1234,33 @@ def test_m3_save_candidate_summary_uses_save_status_vocabulary(tmp_path: Path) -
     assert "`artist`" in blocker_report
     assert "`missing_reference`" in blocker_report
 
+    resolution_summary = runner.summarize_m3_save_candidate_blocker_resolution(rows)
+    assert resolution_summary["scope"] == "M3-7 save candidate blocker resolution order"
+    assert resolution_summary["target_count"] == 1
+    resolution_items = resolution_summary["resolution_order"]
+    assert [item["field"] for item in resolution_items] == [
+        "difficulty",
+        "artist",
+        "level",
+    ]
+    assert resolution_items[0]["action"] == "add_template_references"
+    assert resolution_items[0]["required_reference_label_counts"] == {"DIFFICULT": 1}
+    assert resolution_items[1]["action"] == "inspect_ocr_entry_failures"
+    assert resolution_items[1]["representatives"][0]["roi_path"] == (
+        "rois/result_score123456_c/artist.png"
+    )
+
+    resolution_path = tmp_path / "m3_save_candidate_blocker_resolution_plan.md"
+    runner.write_m3_save_candidate_blocker_resolution_report(
+        resolution_path,
+        resolution_summary,
+    )
+    resolution_report = resolution_path.read_text(encoding="utf-8")
+    assert "# M3 Save Candidate Blocker Resolution Order" in resolution_report
+    assert "`add_template_references`" in resolution_report
+    assert "`{\"DIFFICULT\": 1}`" in resolution_report
+    assert "曲名正規化やマスタ照合の失敗判定ではありません" in resolution_report
+
 
 def test_m3_chart_field_template_diagnostics_reports_review_candidates(
     tmp_path: Path,
