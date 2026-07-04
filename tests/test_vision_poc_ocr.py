@@ -514,6 +514,144 @@ def test_m3_metadata_expected_report_uses_confirmed_events_boundary(
     ]
 
 
+def test_m3_song_artist_ocr_report_uses_confirmed_events_boundary(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    frame_names = (
+        "result_score123456_a.png",
+        "result_score123456_b.png",
+        "result_score123456_c.png",
+        "result_score123456_d.png",
+        "transition_countup_score999999.png",
+    )
+    for name in frame_names:
+        write_test_image(tmp_path / "frames" / name)
+    manifest_path = tmp_path / "manifest.csv"
+    manifest_path.write_text(
+        "image_path,timestamp_ms,screen_type,expected_score,song_title,artist\n"
+        "result_score123456_a.png,0,result,123456,,\n"
+        "result_score123456_b.png,500,result,123456,,\n"
+        "result_score123456_c.png,1000,result,123456,CHAOS,DE-SIRE retunes\n"
+        "result_score123456_d.png,1500,result,123456,,\n"
+        "transition_countup_score999999.png,2000,transition,999999,COUNTUP,NOPE\n",
+        encoding="utf-8",
+    )
+
+    def classify_synthetic(_image: Image.Image, row: dict[str, str]) -> runner.Classification:
+        if row["organized_file"].startswith("transition_countup_"):
+            return classification(
+                row["organized_file"],
+                result_candidate=False,
+                result_shape_candidate=True,
+                screen_type="transition",
+                transition_kind="countup",
+            )
+        return classification(
+            row["organized_file"],
+            result_candidate=True,
+            screen_type=row["screen_type"],
+        )
+
+    def run_tesseract_synthetic(
+        _binary: Image.Image,
+        roi_name: str = "score_digits",
+        _config: runner.TesseractConfig = runner.TESSERACT_CONFIG,
+    ) -> tuple[str, str, str, str]:
+        raw_by_roi = {
+            "score_digits": "123456",
+            "song_title": " CHAOS\n",
+            "artist": "DE-SIRE retunes",
+        }
+        return raw_by_roi[roi_name], "tesseract", "ok", ""
+
+    monkeypatch.setattr(runner, "classify", classify_synthetic)
+    monkeypatch.setattr(runner, "run_tesseract", run_tesseract_synthetic)
+
+    output_dir = tmp_path / "output"
+    assert (
+        runner.main(
+            [
+                "--sequence-mode",
+                "manifest",
+                "--frame-manifest",
+                str(manifest_path),
+                "--frame-root",
+                str(tmp_path / "frames"),
+                "--output",
+                str(output_dir),
+                "--ocr-target",
+                "confirmed-events",
+                "--m3-song-artist-ocr",
+                "--no-rois",
+                "--chart-field-template-root",
+                str(tmp_path / "missing_templates"),
+            ]
+        )
+        == 0
+    )
+
+    rows = read_csv_rows(output_dir / "m3_song_artist_ocr.csv")
+    assert [(row["organized_file"], row["field_name"]) for row in rows] == [
+        ("result_score123456_c.png", "song_title"),
+        ("result_score123456_c.png", "artist"),
+    ]
+    assert rows[0]["ocr_raw"] == " CHAOS\n"
+    assert rows[0]["pre_normalized_text"] == "CHAOS"
+    assert rows[0]["expected_value"] == "CHAOS"
+    assert rows[0]["failure_reason"] == ""
+    assert rows[0]["roi_path"] == "rois/result_score123456_c/song_title.png"
+    assert rows[1]["pre_normalized_text"] == "DE-SIRE retunes"
+    assert rows[1]["expected_value"] == "DE-SIRE retunes"
+
+    summary = json.loads(
+        (output_dir / "m3_song_artist_ocr_summary.json").read_text(encoding="utf-8")
+    )
+    assert summary["target_boundary"] == "confirmed_result=true and duplicate=false"
+    assert summary["extractor"] == "tesseract-text-raw"
+    assert summary["target_count"] == 1
+    assert summary["total_attempts"] == 2
+    assert summary["skipped_counts"] == {
+        "duplicate": 1,
+        "rejected_transition": 1,
+        "unconfirmed": 2,
+        "non_result": 0,
+    }
+    assert summary["fields"]["song_title"]["ok_count"] == 1
+    assert summary["fields"]["artist"]["ok_count"] == 1
+
+    report = (output_dir / "m3_song_artist_ocr.md").read_text(encoding="utf-8")
+    assert "マスタ照合、ファジーマッチ" in report
+    assert "`song_title`" in report
+
+
+def test_m3_song_artist_ocr_failure_reason_keeps_engine_unavailable() -> None:
+    assert (
+        runner.m3_song_artist_ocr_failure_reason(
+            status="engine_unavailable",
+            pre_normalized_text="",
+            expected_value="CHAOS",
+        )
+        == "engine_unavailable"
+    )
+    assert (
+        runner.m3_song_artist_ocr_failure_reason(
+            status="ok",
+            pre_normalized_text="",
+            expected_value="CHAOS",
+        )
+        == "empty_ocr"
+    )
+    assert (
+        runner.m3_song_artist_ocr_failure_reason(
+            status="ok",
+            pre_normalized_text="CHAOS",
+            expected_value="",
+        )
+        == "no_expected_value"
+    )
+
+
 def test_m3_chart_field_image_feature_extraction_uses_confirmed_events_boundary(
     tmp_path: Path,
 ) -> None:

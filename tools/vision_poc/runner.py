@@ -206,6 +206,28 @@ class ProfileScoreOcrResult:
 
 
 @dataclass(frozen=True)
+class M3SongArtistOcrResult:
+    organized_file: str
+    screen_type: str
+    event_type: str
+    confirmed_result: bool
+    duplicate: bool
+    field_name: str
+    extractor: str
+    ocr_raw: str
+    pre_normalized_text: str
+    expected_value: str
+    engine: str
+    status: str
+    error: str
+    failure_reason: str
+    roi_path: str
+    original_path: str
+    enlarged_path: str
+    binary_path: str
+
+
+@dataclass(frozen=True)
 class OcrPreprocessedImages:
     roi_name: str
     original: Image.Image
@@ -227,7 +249,8 @@ class OcrPreprocessConfig:
 class TesseractConfig:
     psm: int = 8
     dpi: int = 300
-    whitelist: str = "0123456789"
+    whitelist: str | None = "0123456789"
+    lang: str | None = None
 
 
 OCR_ROIS = (
@@ -257,6 +280,8 @@ M3_CHART_FIELD_EXTRACTION_METHOD = "filename-baseline"
 M3_CHART_FIELD_IMAGE_FEATURE_EXTRACTION_METHOD = "roi-feature-nearest-centroid"
 M3_CHART_FIELD_TEMPLATE_EXTRACTION_METHOD = "roi-template-nearest"
 M3_CHART_FIELD_TEMPLATE_HOLDOUT_EXTRACTION_METHOD = "roi-template-holdout"
+M3_SONG_ARTIST_OCR_FIELDS = ("song_title", "artist")
+M3_SONG_ARTIST_OCR_METHOD = "tesseract-text-raw"
 M3_CHART_FIELD_TEMPLATE_ROOT = Path("samples/screenshots/organized/chart_field_templates")
 M3_CHART_FIELD_DIFFICULTIES = (
     "BEGINNER",
@@ -288,6 +313,10 @@ OCR_PREPROCESS_PROFILES: dict[str, OcrPreprocessConfig] = {
     "no-sharpen": OcrPreprocessConfig(sharpen=False, padding=16),
 }
 TESSERACT_CONFIG = TesseractConfig()
+M3_TEXT_TESSERACT_CONFIGS: dict[str, TesseractConfig] = {
+    "song_title": TesseractConfig(psm=6, dpi=300, whitelist=None),
+    "artist": TesseractConfig(psm=7, dpi=300, whitelist=None),
+}
 JUDGMENT_OCR_ROIS = tuple(roi for roi in OCR_ROIS if roi != "score_digits")
 OCR_DIGIT_FOCUS_LEFT_FRACTIONS: dict[str, float] = {
     "miss": 0.35,
@@ -1277,9 +1306,11 @@ def run_tesseract(
             str(config.psm),
             "--dpi",
             str(config.dpi),
-            "-c",
-            f"tessedit_char_whitelist={config.whitelist}",
         ]
+        if config.lang:
+            command.extend(["-l", config.lang])
+        if config.whitelist is not None:
+            command.extend(["-c", f"tessedit_char_whitelist={config.whitelist}"])
         completed = subprocess.run(
             command,
             check=False,
@@ -1369,6 +1400,105 @@ def process_score_ocr(
     return process_ocr_roi(image, row, classification, output_dir, "score_digits")
 
 
+def normalize_m3_text_ocr_for_review(value: str) -> str:
+    return normalize_expected_text(value.replace("\r", " ").replace("\n", " ").replace("\t", " "))
+
+
+def preprocess_m3_text_ocr_roi(image: Image.Image, field_name: str) -> OcrPreprocessedImages:
+    if field_name not in M3_SONG_ARTIST_OCR_FIELDS:
+        joined = ", ".join(M3_SONG_ARTIST_OCR_FIELDS)
+        raise ValueError(f"unsupported M3 text OCR field: {field_name}; expected one of: {joined}")
+
+    original = crop_roi(image, ROI_DEFINITIONS[field_name]).convert("RGB")
+    scale = 4 if field_name == "song_title" else 5
+    enlarged = original.resize(
+        (original.width * scale, original.height * scale),
+        resample=Image.Resampling.LANCZOS,
+    )
+    enlarged = ImageOps.autocontrast(enlarged.convert("L")).filter(ImageFilter.SHARPEN)
+    luma = np.asarray(enlarged).astype(np.float32)
+    text_mask = luma > 125
+    binary_array = np.where(text_mask, 0, 255).astype(np.uint8)
+    binary = Image.fromarray(binary_array).convert("L")
+    binary = ImageOps.expand(binary, border=24, fill=255)
+    return OcrPreprocessedImages(
+        roi_name=field_name,
+        original=original,
+        enlarged=enlarged.convert("RGB"),
+        binary=binary,
+    )
+
+
+def m3_song_artist_ocr_failure_reason(
+    *,
+    status: str,
+    pre_normalized_text: str,
+    expected_value: str,
+) -> str:
+    if status == "engine_unavailable":
+        return "engine_unavailable"
+    if status == "ocr_failed":
+        return "ocr_failed"
+    if not pre_normalized_text:
+        return "empty_ocr"
+    if not expected_value:
+        return "no_expected_value"
+    return ""
+
+
+def process_m3_song_artist_ocr_field(
+    image: Image.Image,
+    frame: FrameInput,
+    event: ResultEvent,
+    output_dir: Path,
+    field_name: str,
+) -> M3SongArtistOcrResult:
+    target_dir = output_dir / "m3_song_artist_ocr_images" / frame.image_path.stem
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    preprocessed = preprocess_m3_text_ocr_roi(image, field_name)
+    original_path = target_dir / f"{field_name}_original.png"
+    enlarged_path = target_dir / f"{field_name}_enlarged.png"
+    binary_path = target_dir / f"{field_name}_binary.png"
+    preprocessed.original.save(original_path)
+    preprocessed.enlarged.save(enlarged_path)
+    preprocessed.binary.save(binary_path)
+
+    raw, engine, status, error = run_tesseract(
+        preprocessed.binary,
+        field_name,
+        M3_TEXT_TESSERACT_CONFIGS[field_name],
+    )
+    pre_normalized_text = normalize_m3_text_ocr_for_review(raw)
+    expected_value = expected_m3_metadata_value_from_row(frame.row, field_name)
+    failure_reason = m3_song_artist_ocr_failure_reason(
+        status=status,
+        pre_normalized_text=pre_normalized_text,
+        expected_value=expected_value,
+    )
+
+    return M3SongArtistOcrResult(
+        organized_file=frame.row["organized_file"],
+        screen_type=frame.row.get("screen_type", ""),
+        event_type=event.event_type,
+        confirmed_result=event.confirmed_result,
+        duplicate=event.duplicate,
+        field_name=field_name,
+        extractor=M3_SONG_ARTIST_OCR_METHOD,
+        ocr_raw=raw,
+        pre_normalized_text=pre_normalized_text,
+        expected_value=expected_value,
+        engine=engine,
+        status=status,
+        error=error,
+        failure_reason=failure_reason,
+        roi_path=m3_chart_field_roi_path(frame.image_path.stem, field_name),
+        original_path=str(original_path),
+        enlarged_path=str(enlarged_path),
+        binary_path=str(binary_path),
+    )
+
+
 def flatten_classification(classification: Classification) -> dict[str, str | int | float | bool]:
     row: dict[str, str | int | float | bool] = {
         "organized_file": classification.organized_file,
@@ -1430,6 +1560,44 @@ def write_profile_score_ocr_csv(path: Path, results: Iterable[ProfileScoreOcrRes
         writer = csv.DictWriter(file, fieldnames=list(rows[0].keys()))
         writer.writeheader()
         writer.writerows(rows)
+
+
+def flatten_m3_song_artist_ocr(
+    result: M3SongArtistOcrResult,
+) -> dict[str, str | bool]:
+    return asdict(result)
+
+
+def write_m3_song_artist_ocr_csv(
+    path: Path,
+    results: Iterable[M3SongArtistOcrResult],
+) -> None:
+    rows = [flatten_m3_song_artist_ocr(item) for item in results]
+    fieldnames = [
+        "organized_file",
+        "screen_type",
+        "event_type",
+        "confirmed_result",
+        "duplicate",
+        "field_name",
+        "extractor",
+        "ocr_raw",
+        "pre_normalized_text",
+        "expected_value",
+        "engine",
+        "status",
+        "error",
+        "failure_reason",
+        "roi_path",
+        "original_path",
+        "enlarged_path",
+        "binary_path",
+    ]
+    with path.open("w", encoding="utf-8", newline="") as file:
+        writer = csv.DictWriter(file, fieldnames=fieldnames)
+        writer.writeheader()
+        if rows:
+            writer.writerows(rows)
 
 
 def is_ocr_target(
@@ -1739,6 +1907,179 @@ def summarize_profile_score_ocr(
         "profiles": by_profile,
         "best_by_roi": best_by_roi,
     }
+
+
+def summarize_m3_song_artist_ocr(
+    results: Iterable[M3SongArtistOcrResult],
+    events: Iterable[ResultEvent],
+) -> dict[str, object]:
+    result_rows = list(results)
+    event_rows = list(events)
+    field_buckets = {
+        field_name: {
+            "total_attempts": 0,
+            "ok_count": 0,
+            "engine_unavailable_count": 0,
+            "ocr_failed_count": 0,
+            "empty_ocr_count": 0,
+            "no_expected_value_count": 0,
+        }
+        for field_name in M3_SONG_ARTIST_OCR_FIELDS
+    }
+    by_status: dict[str, int] = {}
+    failure_reason_counts: dict[str, int] = {}
+    for result in result_rows:
+        bucket = field_buckets[result.field_name]
+        bucket["total_attempts"] += 1
+        by_status[result.status] = by_status.get(result.status, 0) + 1
+        if result.status == "ok":
+            bucket["ok_count"] += 1
+        elif result.status == "engine_unavailable":
+            bucket["engine_unavailable_count"] += 1
+        elif result.status == "ocr_failed":
+            bucket["ocr_failed_count"] += 1
+        if result.failure_reason == "empty_ocr":
+            bucket["empty_ocr_count"] += 1
+        elif result.failure_reason == "no_expected_value":
+            bucket["no_expected_value_count"] += 1
+        if result.failure_reason:
+            failure_reason_counts[result.failure_reason] = (
+                failure_reason_counts.get(result.failure_reason, 0) + 1
+            )
+
+    skipped_counts = {
+        "duplicate": sum(event.duplicate for event in event_rows),
+        "rejected_transition": sum(
+            event.event_type == "rejected_transition" for event in event_rows
+        ),
+        "unconfirmed": sum(
+            event.result_candidate
+            and not event.confirmed_result
+            and not event.duplicate
+            and event.event_type != "rejected_transition"
+            for event in event_rows
+        ),
+        "non_result": sum(
+            not event.result_candidate
+            and event.event_type != "rejected_transition"
+            for event in event_rows
+        ),
+    }
+    target_count = sum(is_save_candidate_event(event) for event in event_rows)
+    return {
+        "target_boundary": "confirmed_result=true and duplicate=false",
+        "scope": "M3-4 song_title/artist OCR entry report",
+        "extractor": M3_SONG_ARTIST_OCR_METHOD,
+        "fields": field_buckets,
+        "total_events": len(event_rows),
+        "target_count": target_count,
+        "total_attempts": len(result_rows),
+        "expected_attempts_if_enabled": target_count * len(M3_SONG_ARTIST_OCR_FIELDS),
+        "skipped_counts": skipped_counts,
+        "by_status": dict(sorted(by_status.items())),
+        "failure_reason_counts": dict(sorted(failure_reason_counts.items())),
+        "reading_notes": [
+            "OCR raw text and pre_normalized_text are inspection inputs only.",
+            "No master matching, fuzzy matching, or song title normalization is performed.",
+            "artist is auxiliary because its ROI can be clipped on long names.",
+        ],
+    }
+
+
+def representative_m3_song_artist_rows(
+    rows: Iterable[M3SongArtistOcrResult],
+    *,
+    field_name: str,
+    limit: int = 8,
+) -> list[M3SongArtistOcrResult]:
+    representatives: list[M3SongArtistOcrResult] = []
+    seen: set[str] = set()
+    for row in rows:
+        if row.field_name != field_name or row.organized_file in seen:
+            continue
+        representatives.append(row)
+        seen.add(row.organized_file)
+        if len(representatives) >= limit:
+            break
+    return representatives
+
+
+def write_m3_song_artist_ocr_report(
+    path: Path,
+    rows: Iterable[M3SongArtistOcrResult],
+    summary: dict[str, object],
+) -> None:
+    row_list = list(rows)
+    fields = summary["fields"]
+    assert isinstance(fields, dict)
+    lines = [
+        "# M3 Song / Artist OCR Entry",
+        "",
+        "`song_title` / `artist` ROI のOCR入口レポートです。",
+        "confirmed-events 境界だけを対象にし、マスタ照合、ファジーマッチ、"
+        "曲名正規化の本格実装には進みません。",
+        "",
+        f"- target boundary: `{summary['target_boundary']}`",
+        f"- extractor: `{summary['extractor']}`",
+        f"- target confirmed-events: {summary['target_count']}",
+        f"- total OCR attempts: {summary['total_attempts']}",
+        "- failure_reason vocabulary: `engine_unavailable` / `ocr_failed` / "
+        "`empty_ocr` / `no_expected_value`",
+        "",
+        "## Field Summary",
+        "",
+        "| field | attempts | ok | engine unavailable | ocr failed | empty | no expected |",
+        "|---|---:|---:|---:|---:|---:|---:|",
+    ]
+    for field_name in M3_SONG_ARTIST_OCR_FIELDS:
+        bucket = fields[field_name]
+        assert isinstance(bucket, dict)
+        lines.append(
+            f"| `{field_name}` | {bucket['total_attempts']} | {bucket['ok_count']} | "
+            f"{bucket['engine_unavailable_count']} | {bucket['ocr_failed_count']} | "
+            f"{bucket['empty_ocr_count']} | {bucket['no_expected_value_count']} |"
+        )
+
+    lines.extend(
+        [
+            "",
+            "## Representative Rows",
+            "",
+        ]
+    )
+    for field_name in M3_SONG_ARTIST_OCR_FIELDS:
+        lines.extend(
+            [
+                f"### `{field_name}`",
+                "",
+                "| organized_file | expected | pre-normalized OCR | status | failure | roi |",
+                "|---|---|---|---|---|---|",
+            ]
+        )
+        representatives = representative_m3_song_artist_rows(row_list, field_name=field_name)
+        if not representatives:
+            lines.append("| - | - | - | - | - | - |")
+        else:
+            for row in representatives:
+                lines.append(
+                    f"| `{row.organized_file}` | `{row.expected_value}` | "
+                    f"`{row.pre_normalized_text}` | `{row.status}` | "
+                    f"`{row.failure_reason}` | `{row.roi_path}` |"
+                )
+        lines.append("")
+
+    lines.extend(
+        [
+            "## Reading Notes",
+            "",
+            "- `ocr_raw` はTesseract出力そのもの、`pre_normalized_text` は改行と連続空白だけを"
+            "レビュー用に畳んだ文字列です。",
+            "- `song_title` は主要項目、`artist` は左右切れがある補助項目として読みます。",
+            "- OCRエンジンがない環境では `engine_unavailable` として記録し、"
+            "PoC全体は落としません。",
+        ]
+    )
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def representative_files(
@@ -4030,6 +4371,14 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--m3-song-artist-ocr",
+        action="store_true",
+        help=(
+            "Run the M3-4 song_title/artist OCR entry report for confirmed-events only. "
+            "This does not perform master matching, fuzzy matching, or title normalization."
+        ),
+    )
+    parser.add_argument(
         "--chart-field-template-root",
         type=Path,
         default=M3_CHART_FIELD_TEMPLATE_ROOT,
@@ -4326,6 +4675,41 @@ def main(argv: list[str] | None = None) -> int:
         output_dir / "m3_chart_field_adoption_candidates.md",
         m3_chart_field_adoption_summary,
     )
+    m3_song_artist_ocr_results: list[M3SongArtistOcrResult] = []
+    if args.m3_song_artist_ocr and not args.no_ocr:
+        for frame, event in zip(frames, result_events, strict=True):
+            if not is_save_candidate_event(event):
+                continue
+            with Image.open(frame.image_path) as image:
+                image = image.convert("RGB")
+                for field_name in M3_SONG_ARTIST_OCR_FIELDS:
+                    m3_song_artist_ocr_results.append(
+                        process_m3_song_artist_ocr_field(
+                            image,
+                            frame,
+                            event,
+                            output_dir,
+                            field_name,
+                        )
+                    )
+    if args.m3_song_artist_ocr:
+        write_m3_song_artist_ocr_csv(
+            output_dir / "m3_song_artist_ocr.csv",
+            m3_song_artist_ocr_results,
+        )
+        m3_song_artist_ocr_summary = summarize_m3_song_artist_ocr(
+            m3_song_artist_ocr_results,
+            result_events,
+        )
+        (output_dir / "m3_song_artist_ocr_summary.json").write_text(
+            json.dumps(m3_song_artist_ocr_summary, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        write_m3_song_artist_ocr_report(
+            output_dir / "m3_song_artist_ocr.md",
+            m3_song_artist_ocr_results,
+            m3_song_artist_ocr_summary,
+        )
     score_ocr_results: list[ScoreOcrResult] = []
     profile_ocr_results: list[ProfileScoreOcrResult] = []
     run_profile_comparison = ocr_profiles != ("default",)

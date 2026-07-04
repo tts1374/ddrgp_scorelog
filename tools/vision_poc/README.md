@@ -22,6 +22,8 @@ python -m pip install -e ".[vision]"
 
 出力先には `results.csv`、`result_events.csv`、`result_events_summary.json`、`summary.json`、`misclassifications.md`、`m3_metadata_expected_coverage.md`、`m3_metadata_expected_template.csv`、`m3_chart_fields.csv`、`m3_chart_fields_summary.json`、`m3_chart_field_extraction.csv`、`m3_chart_field_extraction_summary.json`、`m3_chart_field_image_feature_extraction.csv`、`m3_chart_field_image_feature_extraction_summary.json`、`m3_chart_field_image_feature_diagnostics.md`、`m3_chart_field_template_extraction.csv`、`m3_chart_field_template_extraction_summary.json`、`m3_chart_field_template_diagnostics.md`、`m3_chart_field_template_holdout_extraction.csv`、`m3_chart_field_template_holdout_extraction_summary.json`、`m3_chart_field_template_holdout_diagnostics.md`、`m3_chart_field_adoption_candidates_summary.json`、`m3_chart_field_adoption_candidates.md`、`rois/<画像名>/` 配下の主要ROI画像が生成されます。`data/` はGit管理対象外です。`rois/<画像名>/` には分類確認用ROIに加えて、M3入口の目視確認用として `play_style`、`difficulty`、`level`、`rank`、`song_title`、`artist` も出力します。この段階では切り出し足場、ファイル名由来 baseline、ROI画像特徴の軽い比較、ローカルテンプレート素材との最近傍比較だけで、本格OCR、マスタ照合、採用済みテンプレート照合には進みません。
 
+`--m3-song-artist-ocr` を指定した場合は、追加で `m3_song_artist_ocr.csv`、`m3_song_artist_ocr_summary.json`、`m3_song_artist_ocr.md`、`m3_song_artist_ocr_images/<画像名>/` が生成されます。これはM3-4の曲名/artist OCR入口で、confirmed-events 境界だけを対象にし、マスタ照合、ファジーマッチ、曲名正規化の成功扱いにはしません。
+
 この既定実行は metadata 評価モードです。`samples/screenshots/metadata.csv` の並びをフレーム順として扱いますが、キャプチャ時刻は持たないため、`result_events.csv` の `timestamp_ms` と `candidate_duration_ms` は空欄、`confirmation_mode` は `frames` になります。
 
 入力モードの役割は以下です。
@@ -268,6 +270,14 @@ python -m tools.vision_poc --no-ocr
 
 M3入口の曲・譜面情報確認では、まず `data/vision_poc/rois/<画像名>/play_style.png`、`difficulty.png`、`level.png`、`rank.png`、`song_title.png`、`artist.png` を目視します。これらは保存直前イベントから曲・譜面情報を評価するための切り出し足場であり、現時点では `--ocr-rois all` のOCR評価対象には含めません。期待値列の充足状況は `m3_metadata_expected_coverage.md` で確認します。このレポートの対象は confirmed-events 境界、つまり `confirmed_result=true` かつ `duplicate=false` だけです。`artist.png` は補助ROIで、長いアーティスト名では左右が切れることがあります。M3入口では座標の大変更に進まず、`song_title.png` 内の2行表示も合わせて目視します。代表確認では、長い曲名、記号入り曲名、日本語曲名、DOUBLE、長い `artist` でも `play_style`、`difficulty`、`level`、`rank`、`song_title` は目視評価に使える一方、`artist` は左右切れがあり補助情報として読む前提を維持します。
 
+M3-4の曲名/artist OCR入口は、明示的に `--m3-song-artist-ocr` を付けて実行します。
+
+```powershell
+python -m tools.vision_poc --m3-song-artist-ocr --ocr-target confirmed-events
+```
+
+`m3_song_artist_ocr.csv` は `song_title` / `artist` の confirmed-events 対象だけを出し、`ocr_raw`、`pre_normalized_text`、`expected_value`、`engine`、`status`、`error`、`failure_reason`、`roi_path` を確認できます。`pre_normalized_text` は改行と連続空白だけをレビュー用に畳んだ文字列で、本格的な曲名正規化ではありません。OCRエンジンがない環境では `engine_unavailable` を `failure_reason` に記録し、PoC全体は落としません。`song_title` は主要項目、`artist` は左右切れがある補助項目として読みます。
+
 `m3_chart_fields.csv` は、M3で先に扱う有限候補の `play_style`、`difficulty`、`level` だけを対象にした評価足場です。全イベント行を出力し、`chart_field_target=true` になるのは confirmed-events 境界の `confirmed_result=true` かつ `duplicate=false` だけです。duplicate、`rejected_transition`、未確定候補、non-result は `chart_field_target=false` とし、`exclusion_reason` に `duplicate`、`rejected_transition`、`unconfirmed`、`non_result` を出します。各対象行には `expected_play_style`、`expected_difficulty`、`expected_level` と、`rois/<画像名>/<field>.png` への相対パスを出します。これは chart-field 抽出PoCの入力一覧であり、曲名OCR、artist OCR、ランクOCR、テンプレート照合、マスタ照合の成功を意味しません。
 
 `m3_chart_fields_summary.json` は同じ対象境界の集計です。`target_boundary`、`chart_field_target_count`、`excluded_counts`、`fields` を確認し、`play_style` / `difficulty` / `level` の期待値が confirmed-events 対象にそろっているかを見ます。数字OCRの `score_ocr_summary.json`、`score_ocr_profiles_summary.json`、`ocr_expected_coverage.md` とは別レポートとして読みます。
@@ -411,6 +421,7 @@ python -m pytest tests
 - M3 chart-field template holdout比較PoCは confirmed-events result ROI を評価専用にし、参照を `chart_field_templates/` だけに限定できる
 - M3 chart-field template diagnosticsは mismatch の混同表、代表ROI、`difficulty` の期待値レビュー候補を出し、採用済みテンプレート照合やマスタ照合の成功扱いにしない
 - M3 chart-field adoption candidatesは `roi-template-holdout` を根拠に `adoption_candidate` / `needs_template_references` を分け、保存前判断向けの `missing_reference` / `no_expected_value` / `empty_extraction` / `low_confidence` 語彙を出せる
+- M3 song/artist OCR入口は confirmed-events 境界だけを対象にし、`ocr_raw` / `pre_normalized_text` / `engine` / `status` / `failure_reason` を出し、マスタ照合や曲名正規化の成功扱いにしない
 
 `samples/screenshots/metadata.csv` や画像がない環境では、ローカル素材が必要なテストだけ skip します。
 

@@ -86,6 +86,18 @@
 - `m3_metadata_expected_coverage.md` と `m3_metadata_expected_template.csv` は期待値列の充足確認であり、曲名OCR、テンプレート照合、マスタ照合の成功扱いにはしない。
 - `expected_rank` は `score_ocr_summary.json`、`score_ocr_profiles_summary.json`、`ocr_expected_coverage.md` の `evaluated` / `partially_evaluated` / `no_expected_values` 判定に含めない。
 
+## M3 song/artist OCR entry
+
+- `m3_song_artist_ocr.csv`、`m3_song_artist_ocr_summary.json`、`m3_song_artist_ocr.md` は `--m3-song-artist-ocr` 指定時だけ生成する。
+- M3 song/artist OCR入口は confirmed-events 境界、つまり `confirmed_result=true` かつ `duplicate=false` だけを対象にする。
+- duplicate、`event_type=rejected_transition`、未確定 `result_candidate`、non-result は M3 song/artist OCR対象外にする。
+- 対象fieldは `song_title` と `artist` に限定し、`play_style` / `difficulty` / `level` の chart-field adoption candidates と混同しない。
+- `ocr_raw` はOCRエンジン出力そのもの、`pre_normalized_text` は改行と連続空白だけを畳んだレビュー用文字列として扱う。
+- `pre_normalized_text` を曲名正規化、ファジーマッチ、マスタ照合、保存可否の成功扱いにしない。
+- OCRエンジンがない環境でもPoCは落とさず、`failure_reason=engine_unavailable` として記録する。
+- `failure_reason` は `engine_unavailable`、`ocr_failed`、`empty_ocr`、`no_expected_value` に寄せる。
+- `song_title` は主要項目、`artist` は左右切れがある補助項目として読む。
+
 ## M3 chart-field evaluation
 
 - M3 chart-field 評価の入口は当面 `play_style`、`difficulty`、`level` に限定する。

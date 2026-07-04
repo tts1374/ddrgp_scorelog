@@ -161,6 +161,7 @@ M3内マイルストーン:
    - `song_title` / `artist` のOCR生文字列と正規化前文字列を出す。
    - 長い曲名、日本語、記号、2行表示、artist切れを代表ケースとして見る。
    - マスタ照合、ファジーマッチ、曲名正規化の本格実装にはまだ進まない。
+   - `--m3-song-artist-ocr` で confirmed-events 対象の `m3_song_artist_ocr.csv`、summary、Markdownを出し、`engine_unavailable` / `ocr_failed` / `empty_ocr` / `no_expected_value` を保存前判断に近い失敗理由として観察できる入口を追加済み。
 5. M3-5: 保存候補向けのM3集約レポート
    - confirmed-eventsごとに、曲名、artist、`play_style`、`difficulty`、`level` の抽出状態を一覧化する。
    - `ready`、`low_confidence`、`missing_reference`、`ocr_unavailable` など、保存前判断に使える理由を出す。
