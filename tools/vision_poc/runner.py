@@ -3052,6 +3052,174 @@ def summarize_m3_chart_field_template_extraction(
     )
 
 
+def m3_chart_field_template_diagnostic_tables(
+    rows: Iterable[dict[str, str]],
+) -> tuple[
+    dict[str, dict[str, int]],
+    dict[tuple[str, str, str, str], int],
+    dict[str, list[dict[str, str]]],
+]:
+    status_by_field = {
+        field_name: {
+            "match": 0,
+            "mismatch": 0,
+            "empty_extraction": 0,
+            "no_expected_value": 0,
+            "skipped": 0,
+        }
+        for field_name in M3_CHART_FIELD_FIELDS
+    }
+    mismatch_confusions: dict[tuple[str, str, str, str], int] = {}
+    representative_mismatches = {field_name: [] for field_name in M3_CHART_FIELD_FIELDS}
+
+    for row in rows:
+        field_name = row["field_name"]
+        status = row["status"]
+        status_by_field[field_name][status] = status_by_field[field_name].get(status, 0) + 1
+        if status != "mismatch":
+            continue
+
+        key = (
+            field_name,
+            row["expected_value"],
+            row["extracted_value"],
+            row.get("failure_reason", ""),
+        )
+        mismatch_confusions[key] = mismatch_confusions.get(key, 0) + 1
+        representatives = representative_mismatches[field_name]
+        if len(representatives) < 8:
+            representatives.append(row)
+
+    return status_by_field, mismatch_confusions, representative_mismatches
+
+
+def write_m3_chart_field_template_diagnostics_rows(
+    path: Path,
+    rows: Iterable[dict[str, str]],
+) -> None:
+    row_list = list(rows)
+    status_by_field, mismatch_confusions, representative_mismatches = (
+        m3_chart_field_template_diagnostic_tables(row_list)
+    )
+    difficulty_review_candidates = [
+        row
+        for row in row_list
+        if row["field_name"] == "difficulty" and row["status"] == "mismatch"
+    ]
+    lines = [
+        "# M3 Chart Field Template Diagnostics",
+        "",
+        "`roi-template-nearest` の mismatch と期待値レビュー候補を読むための診断レポートです。",
+        "これはローカルテンプレート素材と confirmed-events result ROI の比較PoCであり、"
+        "OCR、採用済みテンプレート照合、マスタ照合の成功扱いにはしません。",
+        "",
+        "- target boundary: `confirmed_result=true and duplicate=false`",
+        "- extractor: `roi-template-nearest`",
+        "- reference mode: `chart_field_templates` + confirmed-events result references "
+        "with leave-one-out self exclusion",
+        "- status vocabulary: `match` / `mismatch` / `empty_extraction` / "
+        "`no_expected_value` / `skipped`",
+        "",
+        "## Field Summary",
+        "",
+        "| field | match | mismatch | empty | no expected | skipped |",
+        "|---|---:|---:|---:|---:|---:|",
+    ]
+    for field_name in M3_CHART_FIELD_FIELDS:
+        bucket = status_by_field[field_name]
+        lines.append(
+            f"| `{field_name}` | {bucket['match']} | {bucket['mismatch']} | "
+            f"{bucket['empty_extraction']} | {bucket['no_expected_value']} | "
+            f"{bucket['skipped']} |"
+        )
+
+    lines.extend(
+        [
+            "",
+            "## Mismatch Confusions",
+            "",
+            "| field | expected | extracted | reason | count |",
+            "|---|---|---|---|---:|",
+        ]
+    )
+    confusion_items = sorted(
+        mismatch_confusions.items(),
+        key=lambda item: (-item[1], item[0]),
+    )
+    if confusion_items:
+        for (field_name, expected_value, extracted_value, failure_reason), count in (
+            confusion_items
+        ):
+            lines.append(
+                f"| `{field_name}` | `{expected_value}` | `{extracted_value}` | "
+                f"`{failure_reason}` | {count} |"
+            )
+    else:
+        lines.append("| - | - | - | - | 0 |")
+
+    lines.extend(["", "## Representative Mismatches", ""])
+    for field_name in M3_CHART_FIELD_FIELDS:
+        lines.extend(
+            [
+                f"### `{field_name}`",
+                "",
+                "| organized_file | expected | extracted | reason | distance | source | "
+                "nearest | roi |",
+                "|---|---|---|---|---:|---|---|---|",
+            ]
+        )
+        representatives = representative_mismatches[field_name]
+        if not representatives:
+            lines.append("| - | - | - | - | - | - | - | - |")
+        else:
+            for row in representatives:
+                lines.append(
+                    f"| `{row['organized_file']}` | `{row['expected_value']}` | "
+                    f"`{row['extracted_value']}` | `{row.get('failure_reason', '')}` | "
+                    f"{row.get('nearest_distance', '')} | "
+                    f"`{row.get('nearest_source_type', '')}` | "
+                    f"`{row.get('nearest_template_path', '')}` | "
+                    f"`{row.get('roi_path', '')}` |"
+                )
+        lines.append("")
+
+    lines.extend(
+        [
+            "## Difficulty Expected Review Candidates",
+            "",
+            "`difficulty` の mismatch は、抽出ロジックの失敗だけでなく、"
+            "ROIの見た目と metadata / ファイル名由来期待値の食い違い候補として読む。",
+            "",
+            "| organized_file | expected | extracted | source | nearest | roi |",
+            "|---|---|---|---|---|---|",
+        ]
+    )
+    if difficulty_review_candidates:
+        for row in difficulty_review_candidates:
+            lines.append(
+                f"| `{row['organized_file']}` | `{row['expected_value']}` | "
+                f"`{row['extracted_value']}` | `{row.get('nearest_source_type', '')}` | "
+                f"`{row.get('nearest_template_path', '')}` | "
+                f"`{row.get('roi_path', '')}` |"
+            )
+    else:
+        lines.append("| - | - | - | - | - | - |")
+
+    lines.extend(
+        [
+            "",
+            "## Reading Notes",
+            "",
+            "- `play_style` と `level` が全件matchでも、同分布内の leave-one-out 診断として読む。",
+            "- `difficulty` の候補は実画像、ROI PNG、metadata、ファイル名を突き合わせて、"
+            "どれを正とするかを別途決める。",
+            "- 参照が confirmed-events 由来の場合、評価中の同一フレームは参照から除外されている。",
+            "",
+        ]
+    )
+    path.write_text("\n".join(lines), encoding="utf-8")
+
+
 def m3_chart_field_image_feature_diagnostic_tables(
     rows: Iterable[dict[str, str]],
 ) -> tuple[
@@ -3814,6 +3982,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     write_m3_chart_field_template_extraction_rows_csv(
         output_dir / "m3_chart_field_template_extraction.csv",
+        m3_chart_field_template_rows,
+    )
+    write_m3_chart_field_template_diagnostics_rows(
+        output_dir / "m3_chart_field_template_diagnostics.md",
         m3_chart_field_template_rows,
     )
     (output_dir / "m3_chart_field_template_extraction_summary.json").write_text(

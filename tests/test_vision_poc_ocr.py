@@ -746,6 +746,77 @@ def test_m3_chart_field_template_extraction_uses_result_references_leave_one_out
     assert summary["template_value_counts"]["play_style"] == {"DOUBLE": 1, "SINGLE": 2}
 
 
+def test_m3_chart_field_template_diagnostics_reports_review_candidates(
+    tmp_path: Path,
+) -> None:
+    diagnostic_rows = [
+        {
+            "organized_file": "result_056.png",
+            "field_name": "difficulty",
+            "expected_value": "DIFFICULT",
+            "extracted_value": "EXPERT",
+            "status": "mismatch",
+            "failure_reason": "mismatch",
+            "nearest_distance": "0.000000",
+            "nearest_source_type": "chart_field_templates",
+            "nearest_template_path": "templates/chart_field_template_126_single_expert_lv15.png",
+            "roi_path": "rois/result_056/difficulty.png",
+        },
+        {
+            "organized_file": "result_073.png",
+            "field_name": "difficulty",
+            "expected_value": "EXPERT",
+            "extracted_value": "DIFFICULT",
+            "status": "mismatch",
+            "failure_reason": "mismatch",
+            "nearest_distance": "0.000000",
+            "nearest_source_type": "confirmed_events",
+            "nearest_template_path": "organized/result/result_044_sp_difficult_lv12.png",
+            "roi_path": "rois/result_073/difficulty.png",
+        },
+        {
+            "organized_file": "result_level.png",
+            "field_name": "level",
+            "expected_value": "12",
+            "extracted_value": "12",
+            "status": "match",
+            "failure_reason": "",
+            "nearest_distance": "0.010000",
+            "nearest_source_type": "confirmed_events",
+            "nearest_template_path": "organized/result/result_level_ref.png",
+            "roi_path": "rois/result_level/level.png",
+        },
+    ]
+    for field_name in runner.M3_CHART_FIELD_FIELDS:
+        diagnostic_rows.append(
+            {
+                "organized_file": f"skipped_{field_name}.png",
+                "field_name": field_name,
+                "expected_value": "",
+                "extracted_value": "",
+                "status": "skipped",
+                "failure_reason": "unconfirmed",
+                "nearest_distance": "",
+                "nearest_source_type": "",
+                "nearest_template_path": "",
+                "roi_path": f"rois/skipped_{field_name}/{field_name}.png",
+            }
+        )
+
+    output_path = tmp_path / "template_diagnostics.md"
+    runner.write_m3_chart_field_template_diagnostics_rows(output_path, diagnostic_rows)
+
+    report = output_path.read_text(encoding="utf-8")
+    assert "| `difficulty` | `DIFFICULT` | `EXPERT` | `mismatch` | 1 |" in report
+    assert "| `difficulty` | `EXPERT` | `DIFFICULT` | `mismatch` | 1 |" in report
+    assert "`result_056.png`" in report
+    assert "`chart_field_templates`" in report
+    assert "`confirmed_events`" in report
+    assert "Difficulty Expected Review Candidates" in report
+    assert "metadata / ファイル名由来期待値の食い違い候補" in report
+    assert "採用済みテンプレート照合、マスタ照合の成功扱いにはしません" in report
+
+
 def test_m3_chart_field_image_feature_diagnostics_reports_mismatches(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

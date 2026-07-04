@@ -117,6 +117,8 @@ M3 chart-field 抽出PoCの入口では、有限候補で扱いやすい `play_s
 
 `m3_chart_field_template_extraction.csv` と `m3_chart_field_template_extraction_summary.json` は、ローカル `samples/screenshots/organized/chart_field_templates/` 画像と confirmed-events 対象の result ROIを参照する最近傍テンプレート比較PoCです。extractor は `roi-template-nearest` で、テンプレートファイル名や metadata 期待値から期待ラベルを読み、confirmed-events 対象の `play_style`、`difficulty`、`level` ROIと同じROIを比較する。confirmed-events 由来の参照は評価中の同一フレームを除く leave-one-out にする。これは追加テンプレート素材と評価セット由来参照を使った同分布内の比較実験であり、OCR、マスタ照合、採用済みテンプレート照合の成功ではない。参照がない環境では対象行を `empty_extraction` / `no_template_references` として扱い、期待ラベルの参照テンプレートがない mismatch は `missing_expected_template_reference` として通常の mismatch と区別する。通常の112件分類回帰セットとは混同しない。
 
+`m3_chart_field_template_diagnostics.md` は、同じ `roi-template-nearest` の mismatch を混同表、代表ROI、`difficulty` の期待値レビュー候補として読む補助レポートです。`difficulty` mismatch は、抽出ロジックの失敗だけではなく、ROI画像の見た目と metadata / ファイル名由来期待値の食い違い候補として確認する。これも同分布内の leave-one-out 診断であり、OCR、採用済みテンプレート照合、マスタ照合の成功扱いにはしない。
+
 `difficulty` は5種類の文字色が分かれているため、`roi-template-nearest` では difficulty ROIに限って前景文字色の比率パターンで比較する。残る mismatch は、ROI画像の見た目と metadata / ファイル名由来期待値の食い違い候補として確認する。
 
 ## transition_countup の扱い
@@ -228,7 +230,7 @@ confirmed-events OCR評価では、あわせて `score_ocr_summary.json` の `sk
 
 M3曲・譜面情報の期待値列確認では、`m3_metadata_expected_coverage.md` の `total confirmed-events` が保存直前イベント数と一致していること、duplicate、`rejected_transition`、未確定候補、non-result が対象外であることを見る。数字OCR用の `ocr_expected_coverage.md` とは別レポートとして扱う。
 
-M3 chart-field 評価の足場では、`m3_chart_fields.csv` と `m3_chart_fields_summary.json` を見る。`chart_field_target_count` が保存直前イベント数と一致し、`excluded_counts` で duplicate、`rejected_transition`、未確定候補、non-result が対象外に残っていることを確認する。対象fieldは当面 `play_style`、`difficulty`、`level` に限定する。抽出評価へ進む場合は `m3_chart_field_extraction.csv` と `m3_chart_field_extraction_summary.json` を合わせて読み、`filename-baseline` の match をROI/OCR/テンプレート照合の成功扱いにしない。ROI画像特徴の比較は `m3_chart_field_image_feature_extraction.csv`、`m3_chart_field_image_feature_extraction_summary.json`、`m3_chart_field_image_feature_diagnostics.md` を読み、`roi-feature-nearest-centroid` を本格テンプレート照合の成功扱いにしない。ローカルテンプレート素材との比較は `m3_chart_field_template_extraction.csv` と `m3_chart_field_template_extraction_summary.json` を読み、`roi-template-nearest` を採用済みテンプレート照合やマスタ照合の成功扱いにしない。
+M3 chart-field 評価の足場では、`m3_chart_fields.csv` と `m3_chart_fields_summary.json` を見る。`chart_field_target_count` が保存直前イベント数と一致し、`excluded_counts` で duplicate、`rejected_transition`、未確定候補、non-result が対象外に残っていることを確認する。対象fieldは当面 `play_style`、`difficulty`、`level` に限定する。抽出評価へ進む場合は `m3_chart_field_extraction.csv` と `m3_chart_field_extraction_summary.json` を合わせて読み、`filename-baseline` の match をROI/OCR/テンプレート照合の成功扱いにしない。ROI画像特徴の比較は `m3_chart_field_image_feature_extraction.csv`、`m3_chart_field_image_feature_extraction_summary.json`、`m3_chart_field_image_feature_diagnostics.md` を読み、`roi-feature-nearest-centroid` を本格テンプレート照合の成功扱いにしない。ローカルテンプレート素材との比較は `m3_chart_field_template_extraction.csv`、`m3_chart_field_template_extraction_summary.json`、`m3_chart_field_template_diagnostics.md` を読み、`roi-template-nearest` を採用済みテンプレート照合やマスタ照合の成功扱いにしない。
 
 ## M0/M1で固定すること
 

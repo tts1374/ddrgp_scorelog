@@ -100,6 +100,7 @@
 - `m3_chart_field_image_feature_diagnostics.md` は mismatch の混同表と代表ROIを読む補助レポートであり、OCR、テンプレート照合、マスタ照合の成功扱いにはしない。
 - `m3_chart_field_template_extraction.csv` と `m3_chart_field_template_extraction_summary.json` も confirmed-events 境界だけを抽出評価対象にする。
 - `roi-template-nearest` はローカル `chart_field_templates` 素材と confirmed-events result ROI の leave-one-out 最近傍比較PoCであり、OCR、マスタ照合、採用済みテンプレート照合の成功扱いにはしない。
+- `m3_chart_field_template_diagnostics.md` は mismatch の混同表、代表ROI、`difficulty` の期待値レビュー候補を読む補助レポートであり、OCR、採用済みテンプレート照合、マスタ照合の成功扱いにはしない。
 - confirmed-events result ROI を参照に加えても、評価中の同一フレームは参照から除外する。
 - `difficulty` は5種類の前景文字色パターンで比較し、ROI全体背景に引っ張られないようにする。
 - テンプレート素材や confirmed-events 参照がない環境では `status=empty_extraction`、`failure_reason=no_template_references` として扱い、通常の112件分類回帰セットの期待件数を変えない。

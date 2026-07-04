@@ -20,7 +20,7 @@ python -m pip install -e ".[vision]"
 - 入力画像: `samples/screenshots/organized/`
 - 出力先: `data/vision_poc/`
 
-出力先には `results.csv`、`result_events.csv`、`result_events_summary.json`、`summary.json`、`misclassifications.md`、`m3_metadata_expected_coverage.md`、`m3_metadata_expected_template.csv`、`m3_chart_fields.csv`、`m3_chart_fields_summary.json`、`m3_chart_field_extraction.csv`、`m3_chart_field_extraction_summary.json`、`m3_chart_field_image_feature_extraction.csv`、`m3_chart_field_image_feature_extraction_summary.json`、`m3_chart_field_image_feature_diagnostics.md`、`m3_chart_field_template_extraction.csv`、`m3_chart_field_template_extraction_summary.json`、`rois/<画像名>/` 配下の主要ROI画像が生成されます。`data/` はGit管理対象外です。`rois/<画像名>/` には分類確認用ROIに加えて、M3入口の目視確認用として `play_style`、`difficulty`、`level`、`rank`、`song_title`、`artist` も出力します。この段階では切り出し足場、ファイル名由来 baseline、ROI画像特徴の軽い比較、ローカルテンプレート素材との最近傍比較だけで、本格OCR、マスタ照合、採用済みテンプレート照合には進みません。
+出力先には `results.csv`、`result_events.csv`、`result_events_summary.json`、`summary.json`、`misclassifications.md`、`m3_metadata_expected_coverage.md`、`m3_metadata_expected_template.csv`、`m3_chart_fields.csv`、`m3_chart_fields_summary.json`、`m3_chart_field_extraction.csv`、`m3_chart_field_extraction_summary.json`、`m3_chart_field_image_feature_extraction.csv`、`m3_chart_field_image_feature_extraction_summary.json`、`m3_chart_field_image_feature_diagnostics.md`、`m3_chart_field_template_extraction.csv`、`m3_chart_field_template_extraction_summary.json`、`m3_chart_field_template_diagnostics.md`、`rois/<画像名>/` 配下の主要ROI画像が生成されます。`data/` はGit管理対象外です。`rois/<画像名>/` には分類確認用ROIに加えて、M3入口の目視確認用として `play_style`、`difficulty`、`level`、`rank`、`song_title`、`artist` も出力します。この段階では切り出し足場、ファイル名由来 baseline、ROI画像特徴の軽い比較、ローカルテンプレート素材との最近傍比較だけで、本格OCR、マスタ照合、採用済みテンプレート照合には進みません。
 
 この既定実行は metadata 評価モードです。`samples/screenshots/metadata.csv` の並びをフレーム順として扱いますが、キャプチャ時刻は持たないため、`result_events.csv` の `timestamp_ms` と `candidate_duration_ms` は空欄、`confirmation_mode` は `frames` になります。
 
@@ -280,6 +280,8 @@ M3入口の曲・譜面情報確認では、まず `data/vision_poc/rois/<画像
 
 `m3_chart_field_template_extraction.csv` と `m3_chart_field_template_extraction_summary.json` は、追加ローカル素材 `samples/screenshots/organized/chart_field_templates/` と confirmed-events 対象の result ROI を参照する `roi-template-nearest` の小さな比較PoCです。テンプレート画像名と metadata 期待値から `play_style`、`difficulty`、`level` の期待ラベルを読み、各ROI画像との最近傍距離で `extracted_value` を出します。confirmed-events 由来の参照では評価中の同一フレームを除く leave-one-out にします。テンプレート素材はローカル素材扱いでGit管理しません。ディレクトリが存在しない環境でも confirmed-events 由来の参照だけで比較できます。参照がない場合は `status=empty_extraction`、`failure_reason=no_template_references` になります。期待ラベルの参照テンプレートがない mismatch は `failure_reason=missing_expected_template_reference` として、単純な最近傍負けとは分けて読みます。この出力も confirmed-events 境界だけを抽出評価対象にし、OCR、マスタ照合、採用済みテンプレート照合の成功扱いにはしません。必要に応じて `--chart-field-template-root <dir>` で参照先を差し替えられます。
 
+`m3_chart_field_template_diagnostics.md` は、同じ `roi-template-nearest` の mismatch を読むための補助Markdownです。field別の match / mismatch 数、期待値と抽出値の混同表、代表mismatch、`difficulty` の期待値レビュー候補を出します。`difficulty` mismatch は抽出ロジックの失敗だけでなく、ROIの見た目と metadata / ファイル名由来期待値の食い違い候補として、実画像、ROI PNG、metadata、ファイル名を突き合わせて確認します。このレポートも同分布内の leave-one-out 診断であり、OCR、採用済みテンプレート照合、マスタ照合の成功扱いにはしません。
+
 `difficulty` は5種類の文字色が強い手がかりになるため、`roi-template-nearest` 内ではROI全体ピクセルではなく前景文字色の比率パターンで比較します。直近ローカル素材では `play_style` と `level` は 60/60 match、`difficulty` は 55/60 match です。残る `difficulty` mismatch はROIの見た目と metadata / ファイル名由来の期待値が食い違っている可能性があるため、抽出ロジックの失敗だけでなく期待値レビュー候補として読みます。
 
 現在のローカル metadata では、M3 metadata expected coverage の confirmed-events 対象は60件です。`song_title` / `artist` / `play_style` / `difficulty` / `level` は60件すべてが埋まっており、M3入口ではこの5項目を優先して評価します。`rank` / `expected_rank` は12件だけが埋まっているため、残り48件の不足は数字OCR expected coverage の不足とは別に読み、当面は補助ROIの部分評価として扱います。ランクOCR、ランクテンプレート照合、本格採用判断へ進む場合は、別途M3の評価列とレポートとして定義します。
@@ -396,6 +398,7 @@ python -m pytest tests
 - M3 chart-field ROI画像特徴baselineは confirmed-events 境界だけを対象にし、既存の filename baseline と分けて出力できる
 - M3 chart-field ROI画像特徴diagnosticsは mismatch の混同表と代表ROIを出し、`level` の単純特徴baselineを採用候補扱いしない
 - M3 chart-field template比較PoCは confirmed-events 境界だけを対象にし、テンプレート素材がない環境では `no_template_references` の `empty_extraction` として扱える
+- M3 chart-field template diagnosticsは mismatch の混同表、代表ROI、`difficulty` の期待値レビュー候補を出し、採用済みテンプレート照合やマスタ照合の成功扱いにしない
 
 `samples/screenshots/metadata.csv` や画像がない環境では、ローカル素材が必要なテストだけ skip します。
 
