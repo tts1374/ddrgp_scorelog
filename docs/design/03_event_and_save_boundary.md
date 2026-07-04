@@ -127,6 +127,8 @@ M3 chart-field 抽出PoCの入口では、有限候補で扱いやすい `play_s
 
 `m3_song_artist_ocr.csv`、`m3_song_artist_ocr_summary.json`、`m3_song_artist_ocr.md` は、M3-4の曲名/artist OCR入口レポートです。`--m3-song-artist-ocr` 指定時だけ生成し、対象は confirmed-events 境界の `confirmed_result=true` かつ `duplicate=false` に限定する。`song_title` と `artist` の `ocr_raw`、改行と連続空白だけを畳んだ `pre_normalized_text`、`engine`、`status`、`error`、`expected_value`、`roi_path`、`failure_reason` を出す。`failure_reason` は `engine_unavailable`、`ocr_failed`、`empty_ocr`、`no_expected_value` に寄せる。このレポートはOCR入口の観察用であり、曲名正規化、ファジーマッチ、マスタ照合、保存可否の成功扱いにはしない。`artist` は左右切れがある補助項目として読む。
 
+`m3_song_artist_ocr_entry_failures_summary.json` と `m3_song_artist_ocr_entry_failures.md` は、M3-9の曲名/artist OCR入口失敗代表整理です。M3-4のOCR入口行から `engine_unavailable`、`ocr_failed`、`empty_ocr` だけを入口失敗として集約し、`song_title` を主要項目、`artist` を左右切れがある補助項目として別々に代表化する。`no_expected_value` は期待値整備の問題として入口失敗代表には含めない。このレポートも confirmed-events 境界だけを元にし、曲名正規化、ファジーマッチ、マスタ照合、DB保存可否判定の成功/失敗扱いにはしない。
+
 `m3_save_candidate_summary.csv`、`m3_save_candidate_summary.json`、`m3_save_candidate_summary.md` は、M3-5の保存候補向け集約レポートです。1行は1つの confirmed-events 保存候補で、`song_title`、`artist`、`play_style`、`difficulty`、`level` の状態を横並びにする。状態語彙は `ready`、`missing_reference`、`ocr_unavailable`、`ocr_failed`、`empty_ocr`、`no_expected_value`、`not_adopted` に小さく保つ。`play_style` / `difficulty` / `level` の `ready` は M3-3 の `adoption_candidate` を反映するだけで、本番採用済みテンプレート照合ではない。`song_title` / `artist` の `ready` も OCR入口観察が得られた状態であり、曲名正規化、ファジーマッチ、マスタ照合、DB保存可能を意味しない。duplicate、`rejected_transition`、未確定候補、non-result は集約対象外のまま維持する。
 
 `m3_save_candidate_blockers_summary.json` と `m3_save_candidate_blockers_summary.md` は、M3-6の保存候補ブロッカー代表整理です。M3-5集約行のうち `ready` ではないfieldだけを、status / failure reasonごとに数件代表化する。代表には `organized_file`、期待値、抽出値、extractor、`roi_path` を含め、`song_title empty_ocr`、`artist empty_ocr`、`difficulty missing_reference`、`level missing_reference` のような保存前に止まる理由を人間が確認しやすくする。対象境界は M3-5と同じ confirmed-events だけで、duplicate、`rejected_transition`、未確定候補、non-result は含めない。このレポートはレビュー補助であり、DB保存可否判定、マスタ照合、ファジーマッチ、曲名正規化の成功/失敗判定にはしない。
@@ -134,6 +136,8 @@ M3 chart-field 抽出PoCの入口では、有限候補で扱いやすい `play_s
 `m3_save_candidate_blocker_resolution_plan.json` と `m3_save_candidate_blocker_resolution_plan.md` は、M3-7の保存前ブロッカー解消順レビューです。M3-5集約内の未ready fieldを、`add_template_references`、`rerun_after_reference_update`、`run_m3_song_artist_ocr`、`inspect_ocr_entry_failures` などの次手へ分け、追加すべきローカルテンプレート参照ラベル、代表 `organized_file`、期待値、抽出値、extractor、`roi_path` を出す。対象境界はM3-5/M3-6と同じ confirmed-events だけで、duplicate、`rejected_transition`、未確定候補、non-result は含めない。このレポートは次に増やすローカル素材や確認するOCR入口を決めるためのレビュー補助であり、DB保存可否判定、マスタ照合、ファジーマッチ、曲名正規化の成功/失敗判定にはしない。
 
 ローカル37テンプレート配置後のM3-8整理では、`play_style`、`difficulty`、`level` はPoC上の採用候補としてM3-5集約で `ready` へ進める状態になった。M3の残りは `song_title empty_ocr` と `artist empty_ocr` のOCR入口代表失敗を読む単位に絞る。これはM3内のレビュー範囲の整理であり、DB保存、マスタ照合、ファジーマッチ、曲名正規化へは進まない。
+
+M3-9では、M3-8後に残った `song_title empty_ocr` と `artist empty_ocr` を `m3_song_artist_ocr_entry_failures_summary.json` / Markdown で役割別に固定して読む。`song_title` は主要項目のOCR入口失敗代表、`artist` は左右切れがある補助項目のOCR入口失敗代表であり、同じ改善対象として混ぜない。ローカル確認では `song_title empty_ocr=2`、`artist empty_ocr=22` だが、この数はPoC入力とOCRエンジンに依存するため、採用済みマスタ照合や保存可否の成否として扱わない。
 
 `difficulty` は5種類の文字色が分かれているため、`roi-template-nearest` では difficulty ROIに限って前景文字色の比率パターンで比較する。残る mismatch は、ROI画像の見た目と metadata / ファイル名由来期待値の食い違い候補として確認する。
 

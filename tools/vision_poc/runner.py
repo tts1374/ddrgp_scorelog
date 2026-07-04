@@ -284,6 +284,15 @@ M3_SONG_ARTIST_OCR_FIELDS = ("song_title", "artist")
 M3_SONG_ARTIST_OCR_METHOD = "tesseract-text-raw"
 M3_SAVE_CANDIDATE_FIELDS = (*M3_SONG_ARTIST_OCR_FIELDS, *M3_CHART_FIELD_FIELDS)
 M3_SAVE_CANDIDATE_BLOCKER_REPRESENTATIVE_LIMIT = 3
+M3_SONG_ARTIST_ENTRY_FAILURE_REASONS = (
+    "engine_unavailable",
+    "ocr_failed",
+    "empty_ocr",
+)
+M3_SONG_ARTIST_FIELD_ROLES = {
+    "song_title": "primary_song_identifier",
+    "artist": "auxiliary_clipped_reference",
+}
 M3_CHART_FIELD_TEMPLATE_ROOT = Path("samples/screenshots/organized/chart_field_templates")
 M3_CHART_FIELD_DIFFICULTIES = (
     "BEGINNER",
@@ -2079,6 +2088,164 @@ def write_m3_song_artist_ocr_report(
             "- `song_title` は主要項目、`artist` は左右切れがある補助項目として読みます。",
             "- OCRエンジンがない環境では `engine_unavailable` として記録し、"
             "PoC全体は落としません。",
+        ]
+    )
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def summarize_m3_song_artist_ocr_entry_failures(
+    rows: Iterable[M3SongArtistOcrResult],
+    representative_limit: int = M3_SAVE_CANDIDATE_BLOCKER_REPRESENTATIVE_LIMIT,
+) -> dict[str, object]:
+    row_list = [
+        row
+        for row in rows
+        if row.failure_reason in M3_SONG_ARTIST_ENTRY_FAILURE_REASONS
+    ]
+    fields: dict[str, dict[str, object]] = {}
+    total_failures = 0
+    affected_files: set[str] = set()
+
+    for field_name in M3_SONG_ARTIST_OCR_FIELDS:
+        field_rows = [row for row in row_list if row.field_name == field_name]
+        total_failures += len(field_rows)
+        affected_files.update(row.organized_file for row in field_rows)
+        failure_reason_counts: dict[str, int] = {}
+        expected_value_counts: dict[str, int] = {}
+        representatives: list[dict[str, str]] = []
+        seen_files: set[str] = set()
+        for row in field_rows:
+            failure_reason_counts[row.failure_reason] = (
+                failure_reason_counts.get(row.failure_reason, 0) + 1
+            )
+            expected_value = row.expected_value or "(empty)"
+            expected_value_counts[expected_value] = expected_value_counts.get(expected_value, 0) + 1
+            if row.organized_file in seen_files:
+                continue
+            if len(representatives) < representative_limit:
+                representatives.append(
+                    {
+                        "organized_file": row.organized_file,
+                        "expected_value": row.expected_value,
+                        "pre_normalized_text": row.pre_normalized_text,
+                        "status": row.status,
+                        "failure_reason": row.failure_reason,
+                        "extractor": row.extractor,
+                        "roi_path": row.roi_path,
+                        "binary_path": row.binary_path,
+                    }
+                )
+            seen_files.add(row.organized_file)
+
+        fields[field_name] = {
+            "field_role": M3_SONG_ARTIST_FIELD_ROLES[field_name],
+            "failure_count": len(field_rows),
+            "failure_reason_counts": dict(sorted(failure_reason_counts.items())),
+            "expected_value_counts": dict(
+                sorted(expected_value_counts.items(), key=lambda item: (-item[1], item[0]))
+            ),
+            "representatives": representatives,
+            "reading_note": (
+                "primary item: inspect as song_title OCR entry failures"
+                if field_name == "song_title"
+                else "auxiliary item: inspect separately because artist ROI can be clipped"
+            ),
+        }
+
+    return {
+        "target_boundary": "confirmed_result=true and duplicate=false",
+        "scope": "M3-9 song_title/artist OCR entry failure representatives",
+        "failure_reason_scope": list(M3_SONG_ARTIST_ENTRY_FAILURE_REASONS),
+        "representative_limit_per_field": representative_limit,
+        "failure_count": total_failures,
+        "affected_candidate_count": len(affected_files),
+        "fields": fields,
+        "reading_notes": [
+            "This report is derived from the M3-4 OCR entry rows for confirmed-events only.",
+            "song_title is the primary item and artist is an auxiliary clipped-reference item.",
+            "Do not merge song_title and artist counts into one improvement target.",
+            "This is not a DB save decision, master matching result, fuzzy match, "
+            "or normalization result.",
+        ],
+    }
+
+
+def write_m3_song_artist_ocr_entry_failures_report(
+    path: Path,
+    summary: dict[str, object],
+) -> None:
+    fields = summary["fields"]
+    assert isinstance(fields, dict)
+    lines = [
+        "# M3 Song / Artist OCR Entry Failures",
+        "",
+        "M3-9として、`song_title` と `artist` のOCR入口失敗代表を分けて読むための"
+        "レビュー補助です。",
+        "曲名正規化、ファジーマッチ、マスタ照合、DB保存可否判定には進みません。",
+        "",
+        f"- target boundary: `{summary['target_boundary']}`",
+        f"- failure reasons: `{', '.join(summary['failure_reason_scope'])}`",
+        f"- entry failures: {summary['failure_count']}",
+        f"- affected confirmed-events: {summary['affected_candidate_count']}",
+        "",
+        "## Field Failure Summary",
+        "",
+        "| field | role | failures | failure reasons |",
+        "|---|---|---:|---|",
+    ]
+    for field_name in M3_SONG_ARTIST_OCR_FIELDS:
+        bucket = fields[field_name]
+        assert isinstance(bucket, dict)
+        lines.append(
+            f"| `{field_name}` | `{bucket['field_role']}` | {bucket['failure_count']} | "
+            f"`{json.dumps(bucket['failure_reason_counts'], ensure_ascii=False, sort_keys=True)}` |"
+        )
+
+    lines.extend(["", "## Representatives", ""])
+    for field_name in M3_SONG_ARTIST_OCR_FIELDS:
+        bucket = fields[field_name]
+        assert isinstance(bucket, dict)
+        representatives = bucket["representatives"]
+        assert isinstance(representatives, list)
+        lines.extend(
+            [
+                f"### `{field_name}`",
+                "",
+                f"- role: `{bucket['field_role']}`",
+                f"- note: {bucket['reading_note']}",
+                "",
+                "| organized_file | expected | pre-normalized OCR | status | failure | "
+                "roi | binary |",
+                "|---|---|---|---|---|---|---|",
+            ]
+        )
+        if not representatives:
+            lines.append("| - | - | - | - | - | - | - |")
+        else:
+            for representative in representatives:
+                assert isinstance(representative, dict)
+                lines.append(
+                    f"| `{representative['organized_file']}` | "
+                    f"`{representative['expected_value']}` | "
+                    f"`{representative['pre_normalized_text']}` | "
+                    f"`{representative['status']}` | "
+                    f"`{representative['failure_reason']}` | "
+                    f"`{representative['roi_path']}` | "
+                    f"`{representative['binary_path']}` |"
+                )
+        lines.append("")
+
+    lines.extend(
+        [
+            "## Reading Notes",
+            "",
+            "- `song_title` は主要項目のOCR入口失敗代表として読みます。",
+            "- `artist` は左右切れがある補助項目のOCR入口失敗代表として、"
+            "`song_title` と混ぜずに読みます。",
+            "- `empty_ocr` はOCR入口の空読みであり、曲名正規化、ファジーマッチ、"
+            "マスタ照合の失敗判定ではありません。",
+            "- duplicate、`rejected_transition`、未確定候補、non-result は"
+            "confirmed-events 境界外です。",
         ]
     )
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -5389,6 +5556,22 @@ def main(argv: list[str] | None = None) -> int:
             output_dir / "m3_song_artist_ocr.md",
             m3_song_artist_ocr_results,
             m3_song_artist_ocr_summary,
+        )
+        m3_song_artist_entry_failure_summary = summarize_m3_song_artist_ocr_entry_failures(
+            m3_song_artist_ocr_results
+        )
+        (output_dir / "m3_song_artist_ocr_entry_failures_summary.json").write_text(
+            json.dumps(
+                m3_song_artist_entry_failure_summary,
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        write_m3_song_artist_ocr_entry_failures_report(
+            output_dir / "m3_song_artist_ocr_entry_failures.md",
+            m3_song_artist_entry_failure_summary,
         )
     m3_save_candidate_summary_rows = m3_save_candidate_rows(
         frames,

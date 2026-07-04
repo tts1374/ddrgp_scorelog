@@ -182,6 +182,10 @@ M3内マイルストーン:
    - ローカル37テンプレート配置後の `play_style` / `difficulty` / `level` 60/60 match を、PoC上の採用候補としてdocsとテストで固定する。
    - M3-5集約では chart-field 3項目を `ready` として扱えるが、DB保存可能、本番採用済みテンプレート照合、マスタ照合の成功ではない。
    - M3の残りは `song_title empty_ocr` / `artist empty_ocr` のOCR入口代表失敗の整理に絞る。
+9. M3-9: song_title / artist OCR入口失敗代表の整理
+   - `m3_song_artist_ocr_entry_failures_summary.json` と Markdown で、M3-4 OCR入口行の `engine_unavailable` / `ocr_failed` / `empty_ocr` だけを入口失敗代表として整理する。
+   - `song_title` は主要項目、`artist` は左右切れがある補助項目として別々に読み、同じ改善対象として混ぜない。
+   - ローカル確認では `song_title empty_ocr=2`、`artist empty_ocr=22` だが、これはOCR入口観察であり、曲名正規化、ファジーマッチ、マスタ照合、DB保存可否判定へは進まない。
 
 完了条件:
 

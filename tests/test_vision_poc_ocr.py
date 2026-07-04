@@ -623,6 +623,22 @@ def test_m3_song_artist_ocr_report_uses_confirmed_events_boundary(
     report = (output_dir / "m3_song_artist_ocr.md").read_text(encoding="utf-8")
     assert "マスタ照合、ファジーマッチ" in report
     assert "`song_title`" in report
+    entry_failure_summary = json.loads(
+        (output_dir / "m3_song_artist_ocr_entry_failures_summary.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert entry_failure_summary["scope"] == (
+        "M3-9 song_title/artist OCR entry failure representatives"
+    )
+    assert entry_failure_summary["failure_count"] == 0
+    assert entry_failure_summary["fields"]["song_title"]["field_role"] == (
+        "primary_song_identifier"
+    )
+    entry_failure_report = (
+        output_dir / "m3_song_artist_ocr_entry_failures.md"
+    ).read_text(encoding="utf-8")
+    assert "OCR入口失敗代表" in entry_failure_report
 
     aggregate_rows = read_csv_rows(output_dir / "m3_save_candidate_summary.csv")
     assert [row["organized_file"] for row in aggregate_rows] == ["result_score123456_c.png"]
@@ -1404,6 +1420,38 @@ def test_m3_chart_field_ready_fields_leave_only_song_artist_ocr_blockers(
     assert [item["field"] for item in resolution_items] == ["song_title", "artist"]
     assert {item["action"] for item in resolution_items} == {"inspect_ocr_entry_failures"}
     assert all(item["required_reference_label_counts"] == {} for item in resolution_items)
+
+    entry_failure_summary = runner.summarize_m3_song_artist_ocr_entry_failures(
+        song_artist_results
+    )
+    assert entry_failure_summary["scope"] == (
+        "M3-9 song_title/artist OCR entry failure representatives"
+    )
+    assert entry_failure_summary["failure_count"] == 2
+    assert entry_failure_summary["affected_candidate_count"] == 1
+    assert entry_failure_summary["fields"]["song_title"]["field_role"] == (
+        "primary_song_identifier"
+    )
+    assert entry_failure_summary["fields"]["artist"]["field_role"] == (
+        "auxiliary_clipped_reference"
+    )
+    assert entry_failure_summary["fields"]["song_title"]["failure_reason_counts"] == {
+        "empty_ocr": 1
+    }
+    assert entry_failure_summary["fields"]["artist"]["failure_reason_counts"] == {
+        "empty_ocr": 1
+    }
+
+    entry_failure_path = tmp_path / "m3_song_artist_ocr_entry_failures.md"
+    runner.write_m3_song_artist_ocr_entry_failures_report(
+        entry_failure_path,
+        entry_failure_summary,
+    )
+    entry_failure_report = entry_failure_path.read_text(encoding="utf-8")
+    assert "# M3 Song / Artist OCR Entry Failures" in entry_failure_report
+    assert "`primary_song_identifier`" in entry_failure_report
+    assert "`auxiliary_clipped_reference`" in entry_failure_report
+    assert "曲名正規化、ファジーマッチ" in entry_failure_report
 
 
 def test_m3_chart_field_template_diagnostics_reports_review_candidates(

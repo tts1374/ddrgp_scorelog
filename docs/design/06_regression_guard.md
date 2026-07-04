@@ -97,6 +97,10 @@
 - OCRエンジンがない環境でもPoCは落とさず、`failure_reason=engine_unavailable` として記録する。
 - `failure_reason` は `engine_unavailable`、`ocr_failed`、`empty_ocr`、`no_expected_value` に寄せる。
 - `song_title` は主要項目、`artist` は左右切れがある補助項目として読む。
+- `m3_song_artist_ocr_entry_failures_summary.json` と `m3_song_artist_ocr_entry_failures.md` は `--m3-song-artist-ocr` 指定時だけ生成する。
+- M3 song/artist OCR入口失敗代表は M3 song/artist OCR入口行から `engine_unavailable`、`ocr_failed`、`empty_ocr` だけを集約し、`no_expected_value` は期待値整備問題として分ける。
+- `song_title` の入口失敗は主要項目、`artist` の入口失敗は左右切れがある補助項目として別々に読み、同じ改善対象として混ぜない。
+- M3 song/artist OCR入口失敗代表を曲名正規化、ファジーマッチ、マスタ照合、保存可否の成功/失敗扱いにしない。
 
 ## M3 chart-field evaluation
 
@@ -159,6 +163,7 @@
 - `field_needs_template_references` は不足ラベル追加後の再確認であり、個別ROIの保存成功扱いにしない。
 - `song_title` / `artist` の `ocr_not_run`、`engine_unavailable`、`empty_ocr` はOCR入口の次手として読み、曲名正規化、ファジーマッチ、マスタ照合の成功/失敗扱いにはしない。
 - ローカル37テンプレート配置後に chart-field 3項目が `ready` になった状態では、M3-7解消順の残りを `song_title` / `artist` OCR入口代表失敗に絞る。
+- M3-9では `song_title` と `artist` のOCR入口失敗代表を役割別に固定し、chart-field adoption candidates、M3 save candidate summary、M3-6 blocker representatives、M3-7 resolution order、数字OCR expected coverage と混同しない。
 - テンプレート画像、OCR画像、PoC出力はGit管理せず、必要ラベル、代表ROI、判断だけをdocsに残す。
 
 ## OCR出力互換
