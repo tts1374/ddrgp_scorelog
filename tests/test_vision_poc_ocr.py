@@ -643,6 +643,24 @@ def test_m3_song_artist_ocr_report_uses_confirmed_events_boundary(
     )
     assert "DB保存、マスタ照合" in aggregate_report
 
+    blocker_summary = json.loads(
+        (output_dir / "m3_save_candidate_blockers_summary.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert blocker_summary["target_boundary"] == (
+        "confirmed_result=true and duplicate=false"
+    )
+    assert blocker_summary["target_count"] == 1
+    assert blocker_summary["blocker_candidate_count"] == 1
+    assert blocker_summary["fields"]["song_title"]["blocker_count"] == 0
+    assert blocker_summary["fields"]["play_style"]["blocker_count"] == 1
+    blocker_report = (
+        output_dir / "m3_save_candidate_blockers_summary.md"
+    ).read_text(encoding="utf-8")
+    assert "保存前に止める理由" in blocker_report
+    assert "`rois/result_score123456_c/play_style.png`" in blocker_report
+
 
 def test_m3_song_artist_ocr_failure_reason_keeps_engine_unavailable() -> None:
     assert (
@@ -1193,6 +1211,28 @@ def test_m3_save_candidate_summary_uses_save_status_vocabulary(tmp_path: Path) -
     report = output_path.read_text(encoding="utf-8")
     assert "`play_style`" in report
     assert "DB保存可能やマスタ照合成功を意味しません" in report
+
+    blocker_summary = runner.summarize_m3_save_candidate_blockers(rows)
+    assert blocker_summary["scope"] == "M3-6 save candidate blocker representative review"
+    assert blocker_summary["target_count"] == 1
+    assert blocker_summary["blocker_candidate_count"] == 1
+    assert blocker_summary["fields"]["song_title"]["blocker_count"] == 0
+    artist_groups = blocker_summary["fields"]["artist"]["groups"]
+    assert artist_groups[0]["status"] == "empty_ocr"
+    assert artist_groups[0]["failure_reason"] == "empty_ocr"
+    assert artist_groups[0]["representatives"][0]["roi_path"] == (
+        "rois/result_score123456_c/artist.png"
+    )
+    difficulty_groups = blocker_summary["fields"]["difficulty"]["groups"]
+    assert difficulty_groups[0]["status"] == "missing_reference"
+    assert difficulty_groups[0]["representatives"][0]["expected_value"] == "DIFFICULT"
+
+    blocker_path = tmp_path / "m3_save_candidate_blockers_summary.md"
+    runner.write_m3_save_candidate_blockers_report(blocker_path, blocker_summary)
+    blocker_report = blocker_path.read_text(encoding="utf-8")
+    assert "# M3 Save Candidate Blockers" in blocker_report
+    assert "`artist`" in blocker_report
+    assert "`missing_reference`" in blocker_report
 
 
 def test_m3_chart_field_template_diagnostics_reports_review_candidates(

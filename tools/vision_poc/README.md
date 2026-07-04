@@ -20,11 +20,13 @@ python -m pip install -e ".[vision]"
 - 入力画像: `samples/screenshots/organized/`
 - 出力先: `data/vision_poc/`
 
-出力先には `results.csv`、`result_events.csv`、`result_events_summary.json`、`summary.json`、`misclassifications.md`、`m3_metadata_expected_coverage.md`、`m3_metadata_expected_template.csv`、`m3_chart_fields.csv`、`m3_chart_fields_summary.json`、`m3_chart_field_extraction.csv`、`m3_chart_field_extraction_summary.json`、`m3_chart_field_image_feature_extraction.csv`、`m3_chart_field_image_feature_extraction_summary.json`、`m3_chart_field_image_feature_diagnostics.md`、`m3_chart_field_template_extraction.csv`、`m3_chart_field_template_extraction_summary.json`、`m3_chart_field_template_diagnostics.md`、`m3_chart_field_template_holdout_extraction.csv`、`m3_chart_field_template_holdout_extraction_summary.json`、`m3_chart_field_template_holdout_diagnostics.md`、`m3_chart_field_adoption_candidates_summary.json`、`m3_chart_field_adoption_candidates.md`、`m3_save_candidate_summary.csv`、`m3_save_candidate_summary.json`、`m3_save_candidate_summary.md`、`rois/<画像名>/` 配下の主要ROI画像が生成されます。`data/` はGit管理対象外です。`rois/<画像名>/` には分類確認用ROIに加えて、M3入口の目視確認用として `play_style`、`difficulty`、`level`、`rank`、`song_title`、`artist` も出力します。この段階では切り出し足場、ファイル名由来 baseline、ROI画像特徴の軽い比較、ローカルテンプレート素材との最近傍比較だけで、本格OCR、マスタ照合、採用済みテンプレート照合には進みません。
+出力先には `results.csv`、`result_events.csv`、`result_events_summary.json`、`summary.json`、`misclassifications.md`、`m3_metadata_expected_coverage.md`、`m3_metadata_expected_template.csv`、`m3_chart_fields.csv`、`m3_chart_fields_summary.json`、`m3_chart_field_extraction.csv`、`m3_chart_field_extraction_summary.json`、`m3_chart_field_image_feature_extraction.csv`、`m3_chart_field_image_feature_extraction_summary.json`、`m3_chart_field_image_feature_diagnostics.md`、`m3_chart_field_template_extraction.csv`、`m3_chart_field_template_extraction_summary.json`、`m3_chart_field_template_diagnostics.md`、`m3_chart_field_template_holdout_extraction.csv`、`m3_chart_field_template_holdout_extraction_summary.json`、`m3_chart_field_template_holdout_diagnostics.md`、`m3_chart_field_adoption_candidates_summary.json`、`m3_chart_field_adoption_candidates.md`、`m3_save_candidate_summary.csv`、`m3_save_candidate_summary.json`、`m3_save_candidate_summary.md`、`m3_save_candidate_blockers_summary.json`、`m3_save_candidate_blockers_summary.md`、`rois/<画像名>/` 配下の主要ROI画像が生成されます。`data/` はGit管理対象外です。`rois/<画像名>/` には分類確認用ROIに加えて、M3入口の目視確認用として `play_style`、`difficulty`、`level`、`rank`、`song_title`、`artist` も出力します。この段階では切り出し足場、ファイル名由来 baseline、ROI画像特徴の軽い比較、ローカルテンプレート素材との最近傍比較だけで、本格OCR、マスタ照合、採用済みテンプレート照合には進みません。
 
 `--m3-song-artist-ocr` を指定した場合は、追加で `m3_song_artist_ocr.csv`、`m3_song_artist_ocr_summary.json`、`m3_song_artist_ocr.md`、`m3_song_artist_ocr_images/<画像名>/` が生成されます。これはM3-4の曲名/artist OCR入口で、confirmed-events 境界だけを対象にし、マスタ照合、ファジーマッチ、曲名正規化の成功扱いにはしません。
 
 `m3_save_candidate_summary.csv`、`m3_save_candidate_summary.json`、`m3_save_candidate_summary.md` はM3-5の保存候補向け集約レポートです。confirmed-events 1件を1行にし、`song_title`、`artist`、`play_style`、`difficulty`、`level` の状態を `ready` / `missing_reference` / `ocr_unavailable` / `ocr_failed` / `empty_ocr` / `no_expected_value` / `not_adopted` へ寄せます。`--m3-song-artist-ocr` を指定していない場合、`song_title` / `artist` はOCR未実行として `ocr_unavailable` になります。このレポートもDB保存可能、マスタ照合成功、ファジーマッチ成功、曲名正規化成功を意味しません。
+
+`m3_save_candidate_blockers_summary.json` と `m3_save_candidate_blockers_summary.md` はM3-6の保存候補ブロッカー代表整理です。M3-5集約のうち `ready` ではないfieldを、status / failure reasonごとに数件だけ代表化し、`organized_file`、期待値、抽出値、extractor、`roi_path` を出します。対象は confirmed-events だけで、duplicate、`rejected_transition`、未確定候補、non-result は含みません。これはレビュー補助であり、DB保存可否判定、マスタ照合、ファジーマッチ、曲名正規化には進みません。
 
 この既定実行は metadata 評価モードです。`samples/screenshots/metadata.csv` の並びをフレーム順として扱いますが、キャプチャ時刻は持たないため、`result_events.csv` の `timestamp_ms` と `candidate_duration_ms` は空欄、`confirmation_mode` は `frames` になります。
 
@@ -302,6 +304,8 @@ python -m tools.vision_poc --m3-song-artist-ocr --ocr-target confirmed-events
 
 `m3_save_candidate_summary.csv` は confirmed-events ごとに `song_title`、`artist`、`play_style`、`difficulty`、`level` の状態を横並びで出します。`play_style` は M3-3 の `adoption_candidate` を `ready` として反映できますが、本番採用済みテンプレート照合ではありません。`difficulty` / `level` は参照不足がある間、保存前判断向けには `missing_reference` または `not_adopted` として読みます。`song_title` / `artist` は M3-4 OCR入口の `engine_unavailable` / `ocr_failed` / `empty_ocr` / `no_expected_value` を集約し、`pre_normalized_text` を曲名正規化やマスタ照合の成功扱いにしません。
 
+`m3_save_candidate_blockers_summary.json` と Markdown は、M3-5集約内の未ready fieldを status / failure reason ごとに代表化します。代表には `organized_file`、期待値、抽出値、extractor、`roi_path` を出します。`song_title` / `artist` の empty OCR、`difficulty` / `level` の missing reference などを数件だけ見るためのレビュー補助であり、DB保存可否判定、マスタ照合、ファジーマッチ、曲名正規化の成功/失敗扱いにはしません。
+
 `difficulty` は5種類の文字色が強い手がかりになるため、`roi-template-nearest` 内ではROI全体ピクセルではなく前景文字色の比率パターンで比較します。直近ローカル素材では `play_style`、`difficulty`、`level` は 60/60 match です。ただしこれは同分布内の leave-one-out 診断であり、抽出ロジックの採用判断には外部検証や参照/評価セット分割が必要です。
 
 2026-07-04時点の5件レビューでは、`difficulty` mismatch はすべてROI表示が metadata / ファイル名由来期待値と食い違うローカル期待値修正候補でした。ローカル `metadata.csv` はROI表示へ合わせて修正済みで、ファイル名は当面リネームしません。修正後は `roi-template-nearest` が 180/180 match、`filename-baseline` が difficulty 5件 mismatch になります。詳細は `docs/design/07_m3_chart_field_review.md` を参照します。`metadata.csv` とスクリーンショット画像はGit管理しないため、判断と修正内容は文書に残し、実体更新はローカル素材側で行います。
@@ -427,6 +431,7 @@ python -m pytest tests
 - M3 chart-field adoption candidatesは `roi-template-holdout` を根拠に `adoption_candidate` / `needs_template_references` を分け、保存前判断向けの `missing_reference` / `no_expected_value` / `empty_extraction` / `low_confidence` 語彙を出せる
 - M3 song/artist OCR入口は confirmed-events 境界だけを対象にし、`ocr_raw` / `pre_normalized_text` / `engine` / `status` / `failure_reason` を出し、マスタ照合や曲名正規化の成功扱いにしない
 - M3 save candidate summaryは confirmed-events 1件を1行にし、song/artist OCR入口と chart-field adoption candidates を混同せず保存前向け状態へ集約できる
+- M3 save candidate blocker representativesは M3 save candidate summary の未ready fieldだけをfield別・理由別に代表化し、保存可否判定やマスタ照合の成功/失敗扱いにしない
 
 `samples/screenshots/metadata.csv` や画像がない環境では、ローカル素材が必要なテストだけ skip します。
 

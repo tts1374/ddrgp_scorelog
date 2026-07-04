@@ -283,6 +283,7 @@ M3_CHART_FIELD_TEMPLATE_HOLDOUT_EXTRACTION_METHOD = "roi-template-holdout"
 M3_SONG_ARTIST_OCR_FIELDS = ("song_title", "artist")
 M3_SONG_ARTIST_OCR_METHOD = "tesseract-text-raw"
 M3_SAVE_CANDIDATE_FIELDS = (*M3_SONG_ARTIST_OCR_FIELDS, *M3_CHART_FIELD_FIELDS)
+M3_SAVE_CANDIDATE_BLOCKER_REPRESENTATIVE_LIMIT = 3
 M3_CHART_FIELD_TEMPLATE_ROOT = Path("samples/screenshots/organized/chart_field_templates")
 M3_CHART_FIELD_DIFFICULTIES = (
     "BEGINNER",
@@ -3935,6 +3936,178 @@ def write_m3_save_candidate_summary_report(
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def m3_save_candidate_blocker_key(row: dict[str, str], field_name: str) -> tuple[str, str]:
+    status = row[f"{field_name}_status"]
+    failure_reason = row[f"{field_name}_failure_reason"]
+    return status, failure_reason
+
+
+def m3_save_candidate_blocker_representative(
+    row: dict[str, str],
+    field_name: str,
+) -> dict[str, str]:
+    image_stem = Path(row["organized_file"]).stem
+    return {
+        "organized_file": row["organized_file"],
+        "overall_status": row["overall_status"],
+        "blocking_fields": row["blocking_fields"],
+        "expected_value": row[f"{field_name}_expected_value"],
+        "extracted_value": row[f"{field_name}_extracted_value"],
+        "extractor": row[f"{field_name}_extractor"],
+        "roi_path": m3_chart_field_roi_path(image_stem, field_name),
+    }
+
+
+def summarize_m3_save_candidate_blockers(
+    rows: Iterable[dict[str, str]],
+    representative_limit: int = M3_SAVE_CANDIDATE_BLOCKER_REPRESENTATIVE_LIMIT,
+) -> dict[str, object]:
+    row_list = list(rows)
+    fields: dict[str, dict[str, object]] = {}
+    blocker_row_indexes: set[int] = set()
+
+    for field_name in M3_SAVE_CANDIDATE_FIELDS:
+        groups: dict[tuple[str, str], dict[str, object]] = {}
+        total_blockers = 0
+        for row_index, row in enumerate(row_list):
+            if row[f"{field_name}_status"] == "ready":
+                continue
+            blocker_row_indexes.add(row_index)
+            total_blockers += 1
+            key = m3_save_candidate_blocker_key(row, field_name)
+            bucket = groups.setdefault(
+                key,
+                {
+                    "status": key[0],
+                    "failure_reason": key[1],
+                    "count": 0,
+                    "representatives": [],
+                },
+            )
+            bucket["count"] = int(bucket["count"]) + 1
+            representatives = bucket["representatives"]
+            assert isinstance(representatives, list)
+            if len(representatives) < representative_limit:
+                representatives.append(
+                    m3_save_candidate_blocker_representative(row, field_name)
+                )
+
+        fields[field_name] = {
+            "blocker_count": total_blockers,
+            "groups": sorted(
+                groups.values(),
+                key=lambda item: (
+                    str(item["status"]),
+                    str(item["failure_reason"]),
+                ),
+            ),
+        }
+
+    return {
+        "target_boundary": "confirmed_result=true and duplicate=false",
+        "scope": "M3-6 save candidate blocker representative review",
+        "target_count": len(row_list),
+        "blocker_candidate_count": len(blocker_row_indexes),
+        "representative_limit_per_group": representative_limit,
+        "fields": fields,
+        "reading_notes": [
+            "Representatives are selected from M3-5 save candidate aggregate rows.",
+            "Only confirmed-events save candidates are included.",
+            "duplicate, rejected_transition, unconfirmed, and non-result rows are excluded.",
+            "Blockers are review aids, not DB save decisions or master matching results.",
+        ],
+    }
+
+
+def write_m3_save_candidate_blockers_report(
+    path: Path,
+    blocker_summary: dict[str, object],
+) -> None:
+    fields = blocker_summary["fields"]
+    assert isinstance(fields, dict)
+    lines = [
+        "# M3 Save Candidate Blockers",
+        "",
+        "M3-5集約から、保存前に止める理由をfield別に代表化するM3-6レビュー補助です。",
+        "DB保存可否判定、マスタ照合、ファジーマッチ、曲名正規化には進みません。",
+        "",
+        f"- target boundary: `{blocker_summary['target_boundary']}`",
+        f"- target confirmed-events: {blocker_summary['target_count']}",
+        f"- candidates with blockers: {blocker_summary['blocker_candidate_count']}",
+        f"- representative limit per group: "
+        f"{blocker_summary['representative_limit_per_group']}",
+        "",
+        "## Field Blockers",
+        "",
+        "| field | blocker count | grouped reasons |",
+        "|---|---:|---|",
+    ]
+    for field_name in M3_SAVE_CANDIDATE_FIELDS:
+        bucket = fields[field_name]
+        assert isinstance(bucket, dict)
+        group_labels = []
+        groups = bucket["groups"]
+        assert isinstance(groups, list)
+        for group in groups:
+            assert isinstance(group, dict)
+            status = group["status"]
+            reason = group["failure_reason"] or "(none)"
+            count = group["count"]
+            group_labels.append(f"{status}:{reason}={count}")
+        grouped = ", ".join(group_labels) if group_labels else "none"
+        lines.append(
+            f"| `{field_name}` | {bucket['blocker_count']} | `{grouped}` |"
+        )
+
+    lines.extend(["", "## Representatives", ""])
+    for field_name in M3_SAVE_CANDIDATE_FIELDS:
+        bucket = fields[field_name]
+        assert isinstance(bucket, dict)
+        groups = bucket["groups"]
+        assert isinstance(groups, list)
+        if not groups:
+            continue
+        lines.extend([f"### `{field_name}`", ""])
+        for group in groups:
+            assert isinstance(group, dict)
+            status = group["status"]
+            reason = group["failure_reason"] or "(none)"
+            lines.extend(
+                [
+                    f"- status `{status}`, failure `{reason}`, count {group['count']}",
+                    "",
+                    "| organized_file | expected | extracted | extractor | roi_path |",
+                    "|---|---|---|---|---|",
+                ]
+            )
+            representatives = group["representatives"]
+            assert isinstance(representatives, list)
+            for representative in representatives:
+                assert isinstance(representative, dict)
+                lines.append(
+                    f"| `{representative['organized_file']}` | "
+                    f"`{representative['expected_value']}` | "
+                    f"`{representative['extracted_value']}` | "
+                    f"`{representative['extractor']}` | "
+                    f"`{representative['roi_path']}` |"
+                )
+            lines.append("")
+
+    lines.extend(
+        [
+            "## Reading Notes",
+            "",
+            "- このレポートは confirmed-events 境界だけを対象にします。",
+            "- duplicate、`rejected_transition`、未確定候補、non-result は対象外です。",
+            "- `song_title` / `artist` の代表はOCR入口の観察であり、"
+            "曲名正規化やマスタ照合の成功/失敗判定ではありません。",
+            "- `difficulty` / `level` の `missing_reference` は追加テンプレート素材不足の"
+            "レビュー補助であり、DB保存実装へは進みません。",
+        ]
+    )
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
 def m3_chart_field_template_diagnostic_tables(
     rows: Iterable[dict[str, str]],
 ) -> tuple[
@@ -5013,6 +5186,17 @@ def main(argv: list[str] | None = None) -> int:
         output_dir / "m3_save_candidate_summary.md",
         m3_save_candidate_summary_rows,
         m3_save_candidate_summary,
+    )
+    m3_save_candidate_blockers_summary = summarize_m3_save_candidate_blockers(
+        m3_save_candidate_summary_rows
+    )
+    (output_dir / "m3_save_candidate_blockers_summary.json").write_text(
+        json.dumps(m3_save_candidate_blockers_summary, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    write_m3_save_candidate_blockers_report(
+        output_dir / "m3_save_candidate_blockers_summary.md",
+        m3_save_candidate_blockers_summary,
     )
     score_ocr_results: list[ScoreOcrResult] = []
     profile_ocr_results: list[ProfileScoreOcrResult] = []

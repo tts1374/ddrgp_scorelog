@@ -167,6 +167,11 @@ M3内マイルストーン:
    - `m3_save_candidate_summary.csv`、summary、Markdownで `ready`、`missing_reference`、`ocr_unavailable`、`ocr_failed`、`empty_ocr`、`no_expected_value`、`not_adopted` を保存前判断に近い状態として出す入口を追加済み。
    - `play_style` の `ready` は M3-3 の採用候補、`song_title` / `artist` の `ready` は M3-4 OCR入口観察であり、DB保存可能やマスタ照合成功として扱わない。
    - DB保存やマスタ照合はM4/M5以降へ残す。
+6. M3-6: 保存候補ブロッカーの代表整理
+   - M3-5集約から、未ready fieldを status / failure reason ごとに代表化する。
+   - `m3_save_candidate_blockers_summary.json` と Markdownで、代表 `organized_file`、期待値、抽出値、extractor、`roi_path` を出す入口を追加済み。
+   - 対象は confirmed-events 境界だけに限定し、duplicate、`rejected_transition`、未確定候補、non-result は含めない。
+   - 代表整理はレビュー補助であり、DB保存可否判定、マスタ照合、ファジーマッチ、曲名正規化には進まない。
 
 完了条件:
 

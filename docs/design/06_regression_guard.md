@@ -141,6 +141,14 @@
 - `song_title` / `artist` の `ready` は M3-4 OCR入口の観察結果であり、曲名正規化、ファジーマッチ、マスタ照合、DB保存可能を意味しない。
 - `--m3-song-artist-ocr` を指定していない場合、`song_title` / `artist` はOCR未実行として `ocr_unavailable` に倒す。
 
+## M3 save candidate blocker representatives
+
+- `m3_save_candidate_blockers_summary.json` と `m3_save_candidate_blockers_summary.md` は M3-5集約の未ready fieldを status / failure reason ごとに代表整理する。
+- 対象境界は confirmed-events、つまり `confirmed_result=true` かつ `duplicate=false` だけにする。
+- duplicate、`event_type=rejected_transition`、未確定 `result_candidate`、non-result は M3 save candidate blocker representatives 対象外にする。
+- 代表には `organized_file`、期待値、抽出値、extractor、`roi_path` を含める。
+- この代表整理はレビュー補助であり、DB保存可否判定、マスタ照合、ファジーマッチ、曲名正規化の成功/失敗扱いにはしない。
+
 ## OCR出力互換
 
 - `score_ocr.csv` の既存列を維持する。
