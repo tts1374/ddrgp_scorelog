@@ -8,14 +8,14 @@ high
 
 ## 作業ブランチ
 
-`codex/vision-poc-ocr-tuning`
+`codex/m4-master-db-generation`
 
 作業開始時に以下を確認してください。
 
 - `git status --short --branch`
 - `git log --oneline -5`
-- 現在ブランチが `codex/vision-poc-ocr-tuning` であること
-- 最新コミットがM4マスタDB生成入口コミット以降であること
+- 現在ブランチが `codex/m4-master-db-generation` であること
+- 最新コミットがM4ブランチ整理コミット以降であること
 - `docs/next-task.md` は次チャット用の作業指示ファイルとして扱うこと
 
 ## 今回までの作業結果
@@ -28,6 +28,8 @@ high
 - `play_style`、`difficulty`、`level` は `m3_chart_field_adoption_candidates_summary.json` で60/60 match、`adoption_candidate`。
 - M3 song/artist OCR入口は `song_title empty_ocr=2`、`artist empty_ocr=22`。両者を同じ改善対象として混ぜない。
 - M4入口として `master` パッケージを追加した。
+- M4入口コミットは `main` にfast-forward merge済みで、以降のM4継続作業用に `codex/m4-master-db-generation` を作成済み。
+- `codex/vision-poc-ocr-tuning` はM3/M4入口までの履歴を持つが、次作業では使わない。
 - `python -m master --output data\master\ddrgp-master.sqlite` で2026-07-04時点のBEMANIWiki実HTMLから 1282 songs / 9594 charts のSQLiteを生成できることを確認済み。
 - M4初期スキーマは `songs`、`charts`、`master_metadata`、`source_snapshots`。
 - M4 fixtureテストはネットワークに依存せず、セル結合、CHALLENGEなし、SP/DP差分、複数バージョン表を固定する。
@@ -137,7 +139,7 @@ with sqlite3.connect("data/master/ddrgp-master.sqlite") as con:
 - コード、README、docs、テストに変更がある場合のみ、今回作業分だけをステージしてコミットする。
 - `data/master/ddrgp-master.sqlite`、PoC出力、ROI画像、OCR画像、解析ログはステージしない。
 - M4スキーマ、HTML解析境界、生成DBの扱いを変えた場合は、`master/README.md`、`docs/design/08_master_db_generation.md`、必要に応じて `docs/design/04_data_model.md` / `05_storage_io_spec.md` を同じコミットに含める。
-- コミットがある場合は `codex/vision-poc-ocr-tuning` を push する。
+- コミットがある場合は `codex/m4-master-db-generation` を push する。
 
 ## 完了条件
 
