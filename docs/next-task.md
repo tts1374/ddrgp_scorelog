@@ -20,14 +20,15 @@ high
 
 ## 今回までの作業結果
 
-- ローカル `samples/screenshots/metadata.csv` は112行、`samples/screenshots/organized/chart_field_templates/` は29枚。
+- ローカル `samples/screenshots/metadata.csv` は112行、`samples/screenshots/organized/chart_field_templates/` は37枚。
 - `python -m tools.vision_poc --no-ocr` は Total 112 / Correct 112 / false positives 0 / false negatives 0。
 - `transition_countup_*` は `result_shape_candidate=true` でも `result_candidate=false`、`event_type=rejected_transition` のまま。
 - confirmed-events 境界は `confirmed_result=true` かつ `duplicate=false` の60件。
 - M3-7用に `m3_save_candidate_blocker_resolution_plan.json` と `m3_save_candidate_blocker_resolution_plan.md` を追加した。
 - M3-7はM3-5集約の未ready fieldから、`add_template_references`、`rerun_after_reference_update`、`run_m3_song_artist_ocr`、`inspect_ocr_entry_failures` などの次手を出す。
-- `--no-ocr` 由来のM3-7解消順では、追加テンプレート参照ラベルは `difficulty=DIFFICULT` 17件、`level=12` 11件、`level=13` 11件、`level=6` 7件、`level=9` 7件、`level=16` 6件、`level=11` 4件、`level=17` 4件、`level=10` 3件。
-- `difficulty` の43件と `level` の7件は `field_needs_template_references` で、不足ラベル追加後にfield全体が採用候補へ戻るか再確認する対象。
+- 追加テンプレート素材として `chart_field_template_142` から `149` をローカル配置済み。画像はGit管理しない。
+- 配置後の `--no-ocr --no-rois` では `play_style`、`difficulty`、`level` がすべて 60/60 match、`adoption_candidate`。
+- 配置後のM3-5集約では `play_style`、`difficulty`、`level` が60件すべて `ready`。
 - OCRあり実行では `song_title empty_ocr=2`、`artist empty_ocr=22` がM3-7解消順に出る。
 - `song_title` は主要項目のOCR入口失敗代表、`artist` は左右切れがある補助項目のOCR入口失敗代表として読む。
 - M3-7解消順はレビュー補助であり、DB保存可否判定、マスタ照合、ファジーマッチ、曲名正規化の成功/失敗判定ではない。
@@ -70,21 +71,18 @@ high
 
 1. 現状確認
    - `git status --short --branch` と `git log --oneline -5` を確認する。
-   - ローカル素材がある場合、`metadata.csv` が112行、`chart_field_templates/` が29枚であることを確認する。
+   - ローカル素材がある場合、`metadata.csv` が112行、`chart_field_templates/` が37枚であることを確認する。
    - `python -m tools.vision_poc --no-ocr` を実行し、112件全正解、`transition_countup_*` 除外、confirmed-events 60件、M3-7解消順が崩れていないことを確認する。
 
 2. M3-7解消順を読む
    - `m3_save_candidate_blocker_resolution_plan.json` と Markdown を確認する。
-   - `difficulty=DIFFICULT` と `level=6/9/10/11/12/13/16/17` を追加テンプレート参照ラベル候補として読む。
-   - `field_needs_template_references` は、不足ラベル追加後の再確認対象として読む。
+   - ローカル37テンプレート配置後は、`difficulty` / `level` の追加テンプレート参照不足が解消されていることを確認する。
    - `song_title empty_ocr` / `artist empty_ocr` はOCR入口の代表失敗であり、曲名正規化やマスタ照合の失敗扱いにしない。
 
-3. M3-8候補: ローカルテンプレート参照の増強レビュー
-   - 追加テンプレート素材を作る場合でも、画像はローカル素材扱いでコミットしない。
-   - 追加したラベル、選んだ代表画像、判断、再実行結果だけ `docs/design/07_m3_chart_field_review.md` に残す。
-   - まず `difficulty=DIFFICULT` と、母数が多い `level=12` / `13` / `6` / `9` から検討する。
-   - 参照追加後、`roi-template-holdout` の `missing_reference` が減ること、`play_style` が `adoption_candidate` のまま維持されることを確認する。
-   - 本番採用済みテンプレート照合、DB保存、マスタ照合には進まない。
+3. M3-8候補: chart-field採用候補の最終整理
+   - 37テンプレート配置後の `play_style` / `difficulty` / `level` 60/60 match を、PoC上の採用候補としてdocsに整理する。
+   - `ready` はPoC内の次確認へ渡せる状態であり、本番採用済みテンプレート照合、DB保存、マスタ照合の成功ではないと明記する。
+   - M3の残りを `song_title` / `artist` OCR入口代表失敗の整理に絞る。
 
 4. テスト補強
    - ローカル画像や `metadata.csv` に依存しない manifest fixture を優先する。
