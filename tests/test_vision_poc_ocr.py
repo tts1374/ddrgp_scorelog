@@ -834,6 +834,75 @@ def test_m3_chart_field_template_extraction_uses_result_references_leave_one_out
     assert holdout_summary["template_value_counts"]["play_style"] == {}
 
 
+def test_m3_chart_field_adoption_candidates_use_holdout_failure_vocabulary(
+    tmp_path: Path,
+) -> None:
+    rows = [
+        {
+            "field_name": "play_style",
+            "chart_field_target": "True",
+            "status": "match",
+            "failure_reason": "",
+            "expected_value": "SINGLE",
+        },
+        {
+            "field_name": "play_style",
+            "chart_field_target": "True",
+            "status": "match",
+            "failure_reason": "",
+            "expected_value": "DOUBLE",
+        },
+        {
+            "field_name": "difficulty",
+            "chart_field_target": "True",
+            "status": "mismatch",
+            "failure_reason": "missing_expected_template_reference",
+            "expected_value": "DIFFICULT",
+        },
+        {
+            "field_name": "level",
+            "chart_field_target": "True",
+            "status": "mismatch",
+            "failure_reason": "missing_expected_template_reference",
+            "expected_value": "12",
+        },
+        {
+            "field_name": "level",
+            "chart_field_target": "True",
+            "status": "mismatch",
+            "failure_reason": "missing_expected_template_reference",
+            "expected_value": "6",
+        },
+        {
+            "field_name": "level",
+            "chart_field_target": "False",
+            "status": "skipped",
+            "failure_reason": "duplicate",
+            "expected_value": "6",
+        },
+    ]
+
+    summary = runner.summarize_m3_chart_field_adoption_candidates(rows)
+
+    assert summary["candidate_evidence_extractor"] == "roi-template-holdout"
+    fields = summary["fields"]
+    assert fields["play_style"]["adoption_readiness"] == "adoption_candidate"
+    assert fields["play_style"]["recommended_extractor"] == "roi-template-holdout"
+    assert fields["difficulty"]["adoption_readiness"] == "needs_template_references"
+    assert fields["difficulty"]["save_failure_reason_counts"] == {"missing_reference": 1}
+    assert fields["difficulty"]["missing_reference_values"] == ["DIFFICULT"]
+    assert fields["level"]["adoption_readiness"] == "needs_template_references"
+    assert fields["level"]["missing_reference_values"] == ["6", "12"]
+    assert fields["level"]["save_failure_reason_counts"] == {"missing_reference": 2}
+
+    output_path = tmp_path / "m3_chart_field_adoption_candidates.md"
+    runner.write_m3_chart_field_adoption_candidates_report(output_path, summary)
+    report = output_path.read_text(encoding="utf-8")
+    assert "`play_style` | `adoption_candidate` | `roi-template-holdout`" in report
+    assert "`difficulty` | `needs_template_references` | ``" in report
+    assert "`missing_reference`" in report
+
+
 def test_m3_chart_field_template_diagnostics_reports_review_candidates(
     tmp_path: Path,
 ) -> None:

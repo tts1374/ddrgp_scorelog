@@ -104,12 +104,15 @@
 - `m3_chart_field_template_holdout_extraction.csv` と `m3_chart_field_template_holdout_extraction_summary.json` も confirmed-events 境界だけを抽出評価対象にする。
 - `roi-template-holdout` は confirmed-events result ROI を評価専用にし、参照をローカル `chart_field_templates` 素材だけに限定する比較PoCであり、OCR、マスタ照合、採用済みテンプレート照合の成功扱いにはしない。
 - `m3_chart_field_template_holdout_diagnostics.md` は holdout の mismatch と参照不足を読む補助レポートであり、参照元に confirmed-events result ROI を含めないことを確認する。
+- `m3_chart_field_adoption_candidates_summary.json` と `m3_chart_field_adoption_candidates.md` は `roi-template-holdout` を根拠にしたM3-3採用候補レビューであり、OCR、マスタ照合、採用済みテンプレート照合の成功扱いにはしない。
+- 採用候補レビューでは `play_style` のように holdout 全件matchのfieldだけを `adoption_candidate` とし、参照不足があるfieldは `needs_template_references` として本番採用候補から分ける。
 - `difficulty` の期待値レビュー結果は `docs/design/07_m3_chart_field_review.md` に残し、Git管理外の `metadata.csv` 実体やローカル画像の代わりに参照する。
 - confirmed-events result ROI を参照に加えても、評価中の同一フレームは参照から除外する。
 - holdout 比較では confirmed-events result ROI を参照に加えず、`chart_field_templates/` と評価対象を混同しない。
 - `difficulty` は5種類の前景文字色パターンで比較し、ROI全体背景に引っ張られないようにする。
 - テンプレート素材や confirmed-events 参照がない環境では `status=empty_extraction`、`failure_reason=no_template_references` として扱い、通常の112件分類回帰セットの期待件数を変えない。
 - 期待ラベルの参照テンプレートがない mismatch は `failure_reason=missing_expected_template_reference` として、参照ありの最近傍負けと分けて読めるようにする。
+- 保存前判断へ渡すM3 chart-field failure reason は、参照不足を `missing_reference`、期待値不足を `no_expected_value`、抽出空を `empty_extraction`、参照ありの不一致を `low_confidence` に寄せる。
 - `level` の単純ROI画像特徴baselineは、match が弱い間は採用候補扱いにしない。
 - duplicate、`event_type=rejected_transition`、未確定 `result_candidate`、non-result は chart-field 抽出評価でも `status=skipped` のまま、`failure_reason` で区別する。
 - chart-field 抽出評価の status 語彙は `match`、`mismatch`、`empty_extraction`、`no_expected_value`、`skipped` を維持する。

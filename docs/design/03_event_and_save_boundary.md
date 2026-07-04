@@ -123,6 +123,8 @@ M3 chart-field 抽出PoCの入口では、有限候補で扱いやすい `play_s
 
 `m3_chart_field_template_holdout_diagnostics.md` は、同じ `roi-template-holdout` の mismatch と参照不足を読む補助レポートです。参照元に confirmed-events result ROI を含めないことを確認し、`chart_field_templates/` と評価対象の混同を避けるために使う。
 
+`m3_chart_field_adoption_candidates_summary.json` と `m3_chart_field_adoption_candidates.md` は、M3-3の採用候補レビュー用レポートです。候補根拠は `roi-template-holdout` に寄せ、fieldごとに `adoption_candidate`、`needs_template_references`、`needs_expected_values`、`needs_references_or_extraction`、`low_confidence` を分ける。`play_style` は現ローカルholdoutで60/60 matchのため採用候補として読めるが、まだ本番採用済みテンプレート照合、OCR、マスタ照合の成功ではない。`difficulty` と `level` は参照不足が主因で、保存前判断へ渡す語彙では `missing_reference` として扱う。
+
 `difficulty` は5種類の文字色が分かれているため、`roi-template-nearest` では difficulty ROIに限って前景文字色の比率パターンで比較する。残る mismatch は、ROI画像の見た目と metadata / ファイル名由来期待値の食い違い候補として確認する。
 
 2026-07-04時点のローカルレビューでは、`difficulty` mismatch 5件はすべてROI表示が metadata / ファイル名由来期待値と食い違う修正候補だった。ローカル `metadata.csv` はROI表示へ合わせて修正済みで、ファイル名は当面リネームしない。レビュー結果は `docs/design/07_m3_chart_field_review.md` に残し、Git管理外の `metadata.csv` 実体やスクリーンショット画像はコミットしない。
@@ -237,6 +239,7 @@ confirmed-events OCR評価では、あわせて `score_ocr_summary.json` の `sk
 M3曲・譜面情報の期待値列確認では、`m3_metadata_expected_coverage.md` の `total confirmed-events` が保存直前イベント数と一致していること、duplicate、`rejected_transition`、未確定候補、non-result が対象外であることを見る。数字OCR用の `ocr_expected_coverage.md` とは別レポートとして扱う。
 
 M3 chart-field 評価の足場では、`m3_chart_fields.csv` と `m3_chart_fields_summary.json` を見る。`chart_field_target_count` が保存直前イベント数と一致し、`excluded_counts` で duplicate、`rejected_transition`、未確定候補、non-result が対象外に残っていることを確認する。対象fieldは当面 `play_style`、`difficulty`、`level` に限定する。抽出評価へ進む場合は `m3_chart_field_extraction.csv` と `m3_chart_field_extraction_summary.json` を合わせて読み、`filename-baseline` の match をROI/OCR/テンプレート照合の成功扱いにしない。ROI画像特徴の比較は `m3_chart_field_image_feature_extraction.csv`、`m3_chart_field_image_feature_extraction_summary.json`、`m3_chart_field_image_feature_diagnostics.md` を読み、`roi-feature-nearest-centroid` を本格テンプレート照合の成功扱いにしない。ローカルテンプレート素材との比較は `m3_chart_field_template_extraction.csv`、`m3_chart_field_template_extraction_summary.json`、`m3_chart_field_template_diagnostics.md` を読み、`roi-template-nearest` を採用済みテンプレート照合やマスタ照合の成功扱いにしない。参照を `chart_field_templates/` だけに限定した分割確認は `m3_chart_field_template_holdout_extraction.csv`、`m3_chart_field_template_holdout_extraction_summary.json`、`m3_chart_field_template_holdout_diagnostics.md` を読み、`roi-template-holdout` を外部検証に近い診断として扱う。
+M3-3の採用候補レビューでは、さらに `m3_chart_field_adoption_candidates_summary.json` と `m3_chart_field_adoption_candidates.md` を読み、`adoption_candidate` と参照不足を分ける。保存前判断へ渡す failure reason は、参照不足を `missing_reference`、期待値不足を `no_expected_value`、抽出空を `empty_extraction`、参照ありの不一致を `low_confidence` として読む。
 
 ## M0/M1で固定すること
 

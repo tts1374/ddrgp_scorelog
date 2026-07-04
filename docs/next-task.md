@@ -15,7 +15,7 @@ high
 - `git status --short --branch`
 - `git log --oneline -5`
 - 現在ブランチが `codex/vision-poc-ocr-tuning` であること
-- 最新コミットが M3 chart-field template holdout 分割追加コミット以降であること
+- 最新コミットが M3-3 chart-field adoption candidates 追加コミット以降であること
 - `docs/next-task.md` は次チャット用の作業指示ファイルとして扱うこと
 
 ## 今回までの作業結果
@@ -25,16 +25,17 @@ high
 - `transition_countup_*` は `result_shape_candidate=true` でも `result_candidate=false`、`event_type=rejected_transition` のまま。
 - `result_events_summary.json` は `confirmed_count=60`、`confirmed_result_count=61`、`duplicate_count=1`、`rejected_transition_count=3`。
 - `m3_chart_fields_summary.json` は `chart_field_target_count=60`、`excluded_counts={duplicate:1,rejected_transition:3,unconfirmed:12,non_result:36}`。
-- `m3_chart_field_extraction_summary.json` の `filename-baseline` は 180 attempts / 175 match / 5 mismatch / 156 skipped。difficulty 5件 mismatch はファイル名ラベルのドリフト検出として読む。
-- `m3_chart_field_template_extraction_summary.json` の `roi-template-nearest` は 180/180 match。これは `chart_field_templates/` と confirmed-events result ROI の同分布 leave-one-out 診断であり、OCR、採用済みテンプレート照合、マスタ照合の成功扱いにしない。
-- 今回、参照を `chart_field_templates/` のみに限定する `roi-template-holdout` を追加した。出力は `m3_chart_field_template_holdout_extraction.csv`、`m3_chart_field_template_holdout_extraction_summary.json`、`m3_chart_field_template_holdout_diagnostics.md`。
-- holdout 実測は 180 attempts / 110 match / 70 mismatch / 156 skipped。`play_style` は 60/60 match、`difficulty` は 43/60 match、`level` は 7/60 match。
-- holdout の `reference_source_image_counts` は `chart_field_templates=29`、`confirmed_events=0`。confirmed-events result ROI は評価専用で、参照に含めない。
-- holdout mismatch は `missing_expected_template_reference` が中心。`difficulty` は `DIFFICULT` 参照がないため 17件が `DIFFICULT -> BASIC`、`level` は 10/11/12/13/16/17 など未収録レベルが多い。
-- `docs/design/03_event_and_save_boundary.md`、`docs/design/06_regression_guard.md`、`docs/design/07_m3_chart_field_review.md`、`docs/implementation-roadmap.md`、`tools/vision_poc/README.md` に `roi-template-holdout` の読み方を追加した。
-- `tests/test_vision_poc_ocr.py` に、holdout が confirmed-events result ROI を参照に含めないこと、テンプレートなし環境で `no_template_references` になることを追加した。
+- `roi-template-nearest` は同分布 leave-one-out 診断として 180/180 match。OCR、採用済みテンプレート照合、マスタ照合の成功扱いにしない。
+- `roi-template-holdout` は参照を `chart_field_templates/` だけに限定し、confirmed-events result ROI を評価専用にする分割診断。実測は 180 attempts / 110 match / 70 mismatch / 156 skipped。
+- 今回、M3-3用に `m3_chart_field_adoption_candidates_summary.json` と `m3_chart_field_adoption_candidates.md` を追加した。
+- 採用候補レビューでは `play_style` が `adoption_readiness=adoption_candidate`、`recommended_extractor=roi-template-holdout`、60/60 match。
+- `difficulty` は 43/60 match、17 mismatch。`DIFFICULT` テンプレート不足により `needs_template_references`、保存前判断向け語彙では `missing_reference`。
+- `level` は 7/60 match、53 mismatch。不足参照値は 6/9/10/11/12/13/16/17 で、`needs_template_references`、保存前判断向け語彙では `missing_reference`。
+- M3 chart-field の保存前判断向け failure reason は、参照不足を `missing_reference`、期待値不足を `no_expected_value`、抽出空を `empty_extraction`、参照あり不一致を `low_confidence` として読む。
+- `docs/design/03_event_and_save_boundary.md`、`docs/design/06_regression_guard.md`、`docs/design/07_m3_chart_field_review.md`、`docs/implementation-roadmap.md`、`tools/vision_poc/README.md` にM3-3 adoption candidatesの読み方を追加した。
+- `tests/test_vision_poc_ocr.py` に、holdout由来の採用候補と保存前向け failure reason 語彙のテストを追加した。
 - `samples/screenshots/metadata.csv`、スクリーンショット画像、`samples/screenshots/organized/chart_field_templates/`、`data/` 配下のPoC出力はGit管理しない。
-- 直近確認では `python -m tools.vision_poc --no-ocr`、`python -m ruff check tools\vision_poc pyproject.toml tests`、`python -m compileall tools\vision_poc`、`python -m pytest tests` が通過し、pytest は 85 passed。
+- 直近確認では `python -m tools.vision_poc --no-ocr`、`python -m ruff check tools\vision_poc pyproject.toml tests`、`python -m compileall tools\vision_poc`、`python -m pytest tests` が通過し、pytest は 86 passed。
 
 ## 必読資料
 
@@ -71,7 +72,6 @@ high
 - duplicate key の本格実装差し替え
 - マスタDB生成
 - マスタ照合
-- 曲名OCR / artist OCR / rank OCR の本格精度改善
 - ファジーマッチ、曲名正規化、候補絞り込み
 - Windows常駐アプリUI
 - プロジェクト専用Skill/Subagentの作成
@@ -83,22 +83,24 @@ high
    - ローカル素材がある場合、`metadata.csv` が112行、`chart_field_templates/` が29枚であることを確認する。
    - `python -m tools.vision_poc --no-ocr` を実行し、112件全正解、`transition_countup_*` 除外、confirmed-events 境界が崩れていないことを確認する。
 
-2. M3-2 holdout結果を読む
-   - `roi-template-nearest` は同分布 leave-one-out 診断、`roi-template-holdout` は `chart_field_templates/` だけを参照する分割診断として読む。
-   - `roi-template-holdout` の `play_style` 60/60 match は採用候補検討へ進めやすいが、まだ採用済みテンプレート照合ではない。
-   - `difficulty` は `DIFFICULT` テンプレート不足、`level` は多数レベル不足が主因。追加テンプレート素材なしで採用判断へ進めない。
-   - `m3_chart_field_template_holdout_diagnostics.md` の mismatch confusion と representative mismatches を確認し、追加テンプレートが必要なラベルを整理する。
+2. M3-3 adoption candidates を読む
+   - `m3_chart_field_adoption_candidates_summary.json` と `m3_chart_field_adoption_candidates.md` を確認する。
+   - `play_style` は `roi-template-holdout` の採用候補として読めるが、本番採用済みテンプレート照合ではない。
+   - `difficulty` と `level` は `needs_template_references` のまま。追加テンプレート素材なしで採用候補へ進めない。
+   - 追加テンプレート素材が必要な場合も、画像はコミットせず、必要ラベルと判断だけを docs に残す。
 
-3. M3-3 chart-field採用候補の仕様化へ進む
-   - `play_style` / `difficulty` / `level` それぞれについて、採用候補にする extractor と採用不可理由を分ける。
-   - `filename-baseline`、`roi-feature-nearest-centroid`、`roi-template-nearest`、`roi-template-holdout` の読み分けを維持する。
-   - `missing_reference`、`missing_expected_template_reference`、`low_confidence`、`no_expected_value`、`skipped` など、保存前判断へ渡せる failure_reason 語彙を整理する。
-   - 追加テンプレート素材が必要な場合も画像はコミットせず、必要ラベルや判断は docs に残す。
+3. M3-4 曲名・artist ROIの入口へ進む
+   - `song_title` / `artist` の confirmed-events 対象だけを扱う。
+   - まずはOCR生文字列、正規化前文字列、engine/status/error、期待値、ROIパス、failure_reason を出す小さなレポートを検討する。
+   - `song_title` は主要項目、`artist` は左右切れがある補助項目として読む。
+   - 長い曲名、日本語、記号、2行表示、artist切れを代表ケースとして扱う。
+   - マスタ照合、ファジーマッチ、曲名正規化の本格実装には進まない。
+   - OCRエンジンがない環境では落とさず、`engine_unavailable` または同等の failure_reason として記録する。
 
 4. テスト補強
    - ローカル画像や `metadata.csv` に依存しない小さなテストを優先する。
-   - holdout が confirmed-events result ROI を参照に含めないこと、duplicate / rejected_transition / unconfirmed / non-result を除外することを維持する。
-   - 数字OCR expected coverage、M3 metadata expected coverage、M3 chart-field inventory / filename extraction / image feature extraction / template nearest / template holdout / diagnostics、review notes を混同しないことをテストまたはdocsで固定する。
+   - confirmed-events 境界だけを対象にし、duplicate / rejected_transition / unconfirmed / non-result を対象外に保つことを固定する。
+   - 数字OCR expected coverage、M3 metadata expected coverage、M3 chart-field adoption candidates、曲名/artist OCR入口を混同しないことをテストまたはdocsで固定する。
 
 ## 検証コマンド
 
@@ -111,18 +113,15 @@ python -m compileall tools\vision_poc
 python -m pytest tests
 ```
 
-M3 metadata / chart-field 足場の確認:
+M3 chart-field 足場の確認:
 
 ```powershell
 python -m tools.vision_poc --no-ocr
 Get-Content data\vision_poc\result_events_summary.json
-Get-Content data\vision_poc\m3_metadata_expected_coverage.md
 Get-Content data\vision_poc\m3_chart_fields_summary.json
-Get-Content data\vision_poc\m3_chart_field_extraction_summary.json
-Get-Content data\vision_poc\m3_chart_field_image_feature_extraction_summary.json
-Get-Content data\vision_poc\m3_chart_field_template_extraction_summary.json
 Get-Content data\vision_poc\m3_chart_field_template_holdout_extraction_summary.json
-Get-Content data\vision_poc\m3_chart_field_template_holdout_diagnostics.md
+Get-Content data\vision_poc\m3_chart_field_adoption_candidates_summary.json
+Get-Content data\vision_poc\m3_chart_field_adoption_candidates.md
 Import-Csv data\vision_poc\m3_chart_field_template_holdout_extraction.csv | Group-Object field_name,status
 Import-Csv data\vision_poc\m3_chart_field_template_holdout_extraction.csv | Where-Object { $_.status -eq 'mismatch' } | Group-Object field_name,failure_reason,expected_value,extracted_value | Sort-Object Count -Descending
 if (Test-Path samples\screenshots\organized\chart_field_templates) { Get-ChildItem samples\screenshots\organized\chart_field_templates -File | Measure-Object }
@@ -153,17 +152,16 @@ M3用の新しいCLI、CSV、JSON、Markdownレポート、または出力ディ
 - 低スコア、低ランク、0点 result が保存候補から落ちない。
 - `transition_countup_*` は `result_shape_candidate=true` でも `result_candidate=false`、`event_type=rejected_transition` のまま。
 - confirmed-events の保存境界が `confirmed_result=true` かつ `duplicate=false` のまま。
-- duplicate / rejected_transition / unconfirmed / non-result が保存直前OCR評価対象外、M3 metadata expected coverage 対象外、M3 chart-field inventory / extraction / diagnostics 対象外のまま。
-- `m3_chart_field_template_extraction.csv`、summary、diagnostics が confirmed-events 境界だけを抽出評価対象にする。
+- duplicate / rejected_transition / unconfirmed / non-result が保存直前OCR評価対象外、M3 metadata expected coverage 対象外、M3 chart-field inventory / extraction / diagnostics / adoption candidates 対象外のまま。
 - `m3_chart_field_template_holdout_extraction.csv`、summary、diagnostics が confirmed-events 境界だけを抽出評価対象にし、confirmed-events result ROI を参照に含めない。
-- confirmed-events result ROI を参照に使う場合、同一フレームを leave-one-out で除外する。
-- `roi-template-nearest`、`roi-template-holdout`、各diagnosticsをOCR、マスタ照合、採用済みテンプレート照合の成功扱いにしない。
+- `m3_chart_field_adoption_candidates_summary.json` と `.md` が `play_style` の `adoption_candidate`、`difficulty` / `level` の `needs_template_references`、保存前向け `missing_reference` を読み分ける。
+- `roi-template-nearest`、`roi-template-holdout`、各diagnostics、adoption candidatesをOCR、マスタ照合、採用済みテンプレート照合の成功扱いにしない。
 - `docs/design/07_m3_chart_field_review.md` をローカル期待値レビュー結果として読み、`metadata.csv` 実体や画像はコミットしない。
 - テンプレート素材がない環境で `no_template_references` として壊れずに実行できる。
-- 追加テンプレート素材を使う場合も、`metadata.csv` の112件分類回帰セットと混同しない。
 - `song_title` / `artist` / `play_style` / `difficulty` / `level` は confirmed-events 対象60件で `evaluated` のまま。
 - `play_style` / `difficulty` / `level` は M3 chart-field 対象60件で `evaluated` のまま。
 - `rank` / `expected_rank` は、数字OCR expected coverage と混同せず、当面は補助/部分評価として扱われている。
+- M3-4で曲名/artist OCR入口を追加する場合、confirmed-events 境界、expected coverage、chart-field adoption candidates と混同しない。
 - 仕様や判定方針を追加で変えた場合は、関連する `docs/` または `tools/vision_poc/README.md` が更新されている。
 - 検証コマンドが通っている。
 - コミット/Pushする場合は、Git管理対象外ファイルを含めていない。

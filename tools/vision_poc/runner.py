@@ -3107,6 +3107,212 @@ def summarize_m3_chart_field_template_holdout_extraction(
     )
 
 
+def m3_chart_field_save_failure_reason(failure_reason: str) -> str:
+    if failure_reason in {"no_template_references", "missing_expected_template_reference"}:
+        return "missing_reference"
+    if failure_reason == "no_expected_value":
+        return "no_expected_value"
+    if failure_reason == "empty_extraction":
+        return "empty_extraction"
+    if failure_reason == "mismatch":
+        return "low_confidence"
+    return failure_reason
+
+
+def m3_chart_field_value_sort_key(field_name: str, value: str) -> tuple[int, int | str]:
+    if field_name == "level" and value.isdecimal():
+        return (0, int(value))
+    return (1, value)
+
+
+def m3_chart_field_adoption_readiness(
+    bucket: dict[str, int],
+    missing_reference_values: list[str],
+) -> str:
+    target_count = bucket["target_count"]
+    if target_count == 0:
+        return "no_targets"
+    if bucket["no_expected_value_count"] > 0:
+        return "needs_expected_values"
+    if bucket["empty_extraction_count"] > 0:
+        return "needs_references_or_extraction"
+    if bucket["mismatch_count"] == 0 and bucket["match_count"] == target_count:
+        return "adoption_candidate"
+    if missing_reference_values:
+        return "needs_template_references"
+    return "low_confidence"
+
+
+def summarize_m3_chart_field_adoption_candidates(
+    holdout_rows: Iterable[dict[str, str]],
+) -> dict[str, object]:
+    row_list = list(holdout_rows)
+    field_buckets = {
+        field_name: {
+            "target_count": 0,
+            "match_count": 0,
+            "mismatch_count": 0,
+            "empty_extraction_count": 0,
+            "no_expected_value_count": 0,
+            "skipped_count": 0,
+        }
+        for field_name in M3_CHART_FIELD_FIELDS
+    }
+    failure_reason_counts = {field_name: {} for field_name in M3_CHART_FIELD_FIELDS}
+    save_failure_reason_counts = {field_name: {} for field_name in M3_CHART_FIELD_FIELDS}
+    missing_reference_values = {field_name: set() for field_name in M3_CHART_FIELD_FIELDS}
+
+    for row in row_list:
+        field_name = row["field_name"]
+        status = row["status"]
+        bucket = field_buckets[field_name]
+        if row["chart_field_target"] == "True":
+            bucket["target_count"] += 1
+        if status == "match":
+            bucket["match_count"] += 1
+        elif status == "mismatch":
+            bucket["mismatch_count"] += 1
+        elif status == "empty_extraction":
+            bucket["empty_extraction_count"] += 1
+        elif status == "no_expected_value":
+            bucket["no_expected_value_count"] += 1
+        elif status == "skipped":
+            bucket["skipped_count"] += 1
+
+        if row["chart_field_target"] != "True" or status == "match":
+            continue
+
+        failure_reason = row.get("failure_reason", "")
+        if failure_reason:
+            counts = failure_reason_counts[field_name]
+            counts[failure_reason] = counts.get(failure_reason, 0) + 1
+            save_failure_reason = m3_chart_field_save_failure_reason(failure_reason)
+            save_counts = save_failure_reason_counts[field_name]
+            save_counts[save_failure_reason] = save_counts.get(save_failure_reason, 0) + 1
+        if failure_reason in {"no_template_references", "missing_expected_template_reference"}:
+            expected_value = row.get("expected_value", "")
+            if expected_value:
+                missing_reference_values[field_name].add(expected_value)
+
+    fields: dict[str, dict[str, object]] = {}
+    for field_name, bucket in field_buckets.items():
+        missing_values = sorted(
+            missing_reference_values[field_name],
+            key=lambda value: m3_chart_field_value_sort_key(field_name, value),
+        )
+        readiness = m3_chart_field_adoption_readiness(bucket, missing_values)
+        fields[field_name] = {
+            **bucket,
+            "adoption_readiness": readiness,
+            "recommended_extractor": (
+                M3_CHART_FIELD_TEMPLATE_HOLDOUT_EXTRACTION_METHOD
+                if readiness == "adoption_candidate"
+                else ""
+            ),
+            "candidate_extractor_under_review": M3_CHART_FIELD_TEMPLATE_HOLDOUT_EXTRACTION_METHOD,
+            "failure_reason_counts": dict(sorted(failure_reason_counts[field_name].items())),
+            "save_failure_reason_counts": dict(
+                sorted(save_failure_reason_counts[field_name].items())
+            ),
+            "missing_reference_values": missing_values,
+        }
+
+    return {
+        "target_boundary": "confirmed_result=true and duplicate=false",
+        "scope": "M3-3 chart-field adoption candidate review",
+        "candidate_evidence_extractor": M3_CHART_FIELD_TEMPLATE_HOLDOUT_EXTRACTION_METHOD,
+        "extractor_roles": {
+            "filename-baseline": "filename drift diagnostic; not ROI extraction success",
+            "roi-feature-nearest-centroid": "ROI feature diagnostic; not adoption evidence",
+            "roi-template-nearest": (
+                "same-distribution leave-one-out diagnostic; not adoption evidence"
+            ),
+            "roi-template-holdout": (
+                "template-only split diagnostic used for M3-3 adoption candidate review"
+            ),
+        },
+        "failure_reason_vocabulary": {
+            "missing_reference": (
+                "`no_template_references` or `missing_expected_template_reference` before save"
+            ),
+            "no_expected_value": "expected value is absent for the evaluation target",
+            "empty_extraction": "extractor returned no value",
+            "low_confidence": "reference exists but nearest value mismatched",
+            "skipped": "duplicate, rejected_transition, unconfirmed, or non_result",
+        },
+        "fields": fields,
+    }
+
+
+def write_m3_chart_field_adoption_candidates_report(
+    path: Path,
+    summary: dict[str, object],
+) -> None:
+    fields = summary["fields"]
+    assert isinstance(fields, dict)
+    lines = [
+        "# M3 Chart Field Adoption Candidates",
+        "",
+        "`play_style` / `difficulty` / `level` のM3-3採用候補を読むためのレポートです。",
+        "`roi-template-holdout` を外部検証に近い分割診断として使いますが、",
+        "このレポートも採用済みテンプレート照合、OCR、マスタ照合の成功扱いにはしません。",
+        "",
+        f"- target boundary: `{summary['target_boundary']}`",
+        f"- candidate evidence extractor: `{summary['candidate_evidence_extractor']}`",
+        "- save failure vocabulary: `missing_reference` / `no_expected_value` / "
+        "`empty_extraction` / `low_confidence`",
+        "",
+        "## Candidate Matrix",
+        "",
+        "| field | readiness | recommended extractor | target | match | mismatch | "
+        "empty | missing references | save failure reasons |",
+        "|---|---|---|---:|---:|---:|---:|---|---|",
+    ]
+    for field_name in M3_CHART_FIELD_FIELDS:
+        bucket = fields[field_name]
+        assert isinstance(bucket, dict)
+        missing_values = bucket["missing_reference_values"]
+        assert isinstance(missing_values, list)
+        save_reasons = bucket["save_failure_reason_counts"]
+        assert isinstance(save_reasons, dict)
+        lines.append(
+            f"| `{field_name}` | `{bucket['adoption_readiness']}` | "
+            f"`{bucket['recommended_extractor']}` | {bucket['target_count']} | "
+            f"{bucket['match_count']} | {bucket['mismatch_count']} | "
+            f"{bucket['empty_extraction_count']} | "
+            f"`{', '.join(str(value) for value in missing_values)}` | "
+            f"`{json.dumps(save_reasons, ensure_ascii=False, sort_keys=True)}` |"
+        )
+
+    lines.extend(
+        [
+            "",
+            "## Extractor Roles",
+            "",
+        ]
+    )
+    extractor_roles = summary["extractor_roles"]
+    assert isinstance(extractor_roles, dict)
+    for extractor, role in extractor_roles.items():
+        lines.append(f"- `{extractor}`: {role}")
+
+    lines.extend(
+        [
+            "",
+            "## Reading Notes",
+            "",
+            "- `adoption_candidate` はM3-3内で採用候補として読める状態であり、"
+            "本番保存やマスタ照合へ直結しない。",
+            "- `needs_template_references` は追加テンプレート素材が必要な状態として読み、"
+            "画像そのものはGit管理しない。",
+            "- `filename-baseline` の mismatch はファイル名ラベルのドリフト検出として読む。",
+            "- `roi-template-nearest` は同分布 leave-one-out 診断で、"
+            "採用済みテンプレート照合の成功扱いにしない。",
+        ]
+    )
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
 def m3_chart_field_template_diagnostic_tables(
     rows: Iterable[dict[str, str]],
 ) -> tuple[
@@ -4108,6 +4314,17 @@ def main(argv: list[str] | None = None) -> int:
         )
         + "\n",
         encoding="utf-8",
+    )
+    m3_chart_field_adoption_summary = summarize_m3_chart_field_adoption_candidates(
+        m3_chart_field_template_holdout_rows
+    )
+    (output_dir / "m3_chart_field_adoption_candidates_summary.json").write_text(
+        json.dumps(m3_chart_field_adoption_summary, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    write_m3_chart_field_adoption_candidates_report(
+        output_dir / "m3_chart_field_adoption_candidates.md",
+        m3_chart_field_adoption_summary,
     )
     score_ocr_results: list[ScoreOcrResult] = []
     profile_ocr_results: list[ProfileScoreOcrResult] = []

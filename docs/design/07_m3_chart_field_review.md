@@ -26,3 +26,15 @@ M3 chart-field PoC の期待値レビュー結果を、ローカル `metadata.cs
 ## Next review unit
 
 `play_style`、`difficulty`、`level` は現ローカル素材の `roi-template-nearest` で 60/60 match ですが、同分布内の leave-one-out 診断として読む範囲に留めます。参照を `chart_field_templates/` のみに限定する `roi-template-holdout` レポートで、confirmed-events result ROI を評価専用に分けて読みます。次はこの holdout 結果を見て、追加テンプレート素材の不足や採用候補へ進める failure_reason を整理します。
+
+## 2026-07-04 holdout adoption candidate review
+
+`roi-template-holdout` は参照を `chart_field_templates/` だけに限定し、confirmed-events result ROI を評価専用に分ける診断です。現ローカル素材では 180 attempts / 110 match / 70 mismatch で、内訳は `play_style` 60/60 match、`difficulty` 43/60 match、`level` 7/60 match でした。
+
+M3-3では `m3_chart_field_adoption_candidates_summary.json` と `m3_chart_field_adoption_candidates.md` を追加し、採用候補と参照不足を分けて読みます。`play_style` は holdout 全件matchのため `adoption_candidate` として次段階の採用候補にできます。ただし、この判断はPoC上の採用候補であり、本番採用済みテンプレート照合、OCR、マスタ照合の成功ではありません。
+
+`difficulty` は `DIFFICULT` テンプレートがないため、17件が `DIFFICULT -> BASIC` の `missing_expected_template_reference` です。保存前判断へ渡す語彙では `missing_reference` として扱い、追加テンプレート素材なしで採用候補へ進めません。
+
+`level` は 6/9/10/11/12/13/16/17 など、confirmed-events 評価対象に出る多数レベルがテンプレート未収録です。53件の mismatch はすべて `missing_expected_template_reference` として読み、保存前判断へは `missing_reference` で渡す候補にします。
+
+追加テンプレート素材が必要な場合も画像はGit管理しません。このファイルには、必要ラベル、採用候補にできるfield、採用不可理由だけを残します。

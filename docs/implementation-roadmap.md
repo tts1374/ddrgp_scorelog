@@ -155,6 +155,8 @@ M3内マイルストーン:
    - `play_style` / `difficulty` / `level` について、採用候補にする extractor と失敗理由を決める。
    - `filename-baseline`、`roi-feature-nearest-centroid`、`roi-template-nearest` の読み分けをREADME、docs、testsで固定する。
    - 低確信度、参照不足、期待値不足の failure_reason を保存前判断へ渡せる語彙に寄せる。
+   - 現ローカル holdout では `play_style` を `roi-template-holdout` の `adoption_candidate` として読める。`difficulty` と `level` は `needs_template_references` で、保存前判断へは `missing_reference` として渡す候補にする。
+   - `m3_chart_field_adoption_candidates_summary.json` と `m3_chart_field_adoption_candidates.md` は採用候補レビューであり、本番採用済みテンプレート照合、OCR、マスタ照合の成功扱いにしない。
 4. M3-4: 曲名・artist ROIの入口
    - `song_title` / `artist` のOCR生文字列と正規化前文字列を出す。
    - 長い曲名、日本語、記号、2行表示、artist切れを代表ケースとして見る。
