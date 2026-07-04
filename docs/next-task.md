@@ -15,7 +15,7 @@ high
 - `git status --short --branch`
 - `git log --oneline -5`
 - 現在ブランチが `codex/m4-master-db-generation` であること
-- 最新コミットが `ebd6d5a Align next task with M4 branch` 以降であること
+- 最新コミットが今回のM4 parser/fixture補強コミット以降であること
 - `docs/next-task.md` は次チャット用の作業指示ファイルとして扱うこと
 
 ## 今回までの作業結果
@@ -26,9 +26,12 @@ high
 - `python -m master --output data\master\ddrgp-master.sqlite` で2026-07-04時点のBEMANIWiki実HTMLから 1282 songs / 9594 charts のSQLiteを生成できることを確認済み。
 - 実HTML件数は取得元更新で変わり得るため、件数固定の完了条件にはしない。構造変化検出とDB生成成功を確認する。
 - M4初期スキーマは `songs`、`charts`、`master_metadata`、`source_snapshots`。
-- M4 fixtureテストはネットワークに依存せず、セル結合、CHALLENGEなし、SP/DP差分、複数バージョン表を固定する。
+- M4 fixtureテストはネットワークに依存せず、セル結合、注記付きレベル、削除/限定/パック記号、SP/DP片方のみ、CHALLENGEなし、同名曲・同アーティスト、複数バージョン表を固定する。
+- 注記付きレベルは raw 表記を保持し、整数 `level` は最初に現れる数字列から取得する。`10(旧9)`、`10;`、`[SA] 12` で数字を連結しない。
+- 同じ曲名・同じアーティストは同じ `song_id` として扱う。同一 `chart_id` の譜面行が食い違う場合は、静かな上書きではなく生成失敗として扱う。
 - M4はマスタDB生成入口であり、曲名正規化、ファジーマッチ、候補一覧、照合スコア、照合確信度、曲ID/譜面IDの一意照合はM5まで未確定。
-- 直近確認では `python -m ruff check master tools\vision_poc pyproject.toml tests`、`python -m compileall master tools\vision_poc`、`python -m pytest tests` が通過し、pytest は 93 passed。
+- 直近確認では `python -m master --output data\master\ddrgp-master.sqlite` が 1282 songs / 9594 charts で通過した。直近の source hash は取得のたびに変わり得るが、最終確認では `7028e18a53e9...`。
+- 直近確認では `python -m ruff check master tools\vision_poc pyproject.toml tests`、`python -m compileall master tools\vision_poc`、`python -m pytest tests` が通過し、pytest は 96 passed。
 - 生成DB、PoC出力、OCR画像、`metadata.csv`、`data/`、`logs/`、ローカル素材、ローカルDBはGit管理しない。
 
 ## M3境界メモ
@@ -80,16 +83,16 @@ M3境界や画像PoCへ触る場合だけ追加で読む資料:
    - `python -m master --output data\master\ddrgp-master.sqlite` を実行し、実HTMLからマスタDBが生成できることを確認する。
    - 実HTML件数が前回の 1282 songs / 9594 charts と違う場合は、取得元更新かパーサ崩れかを `master_metadata` とHTMLヘッダで確認する。
 
-2. M4 parser/schemaの次補強
-   - `master/builder.py` の初期パーサを読み、現在は楽曲リスト2段ヘッダ表だけを対象にしていることを確認する。
-   - BEMANIWiki の表構造は変わり得るため、実装時は最新HTMLを再確認する。
-   - 通常テストはネットワーク取得に依存させず、小さなHTML fixtureを追加して固定する。
-   - 注記付きレベル、削除/限定/パック記号、SP/DP片方のみ、CHALLENGEなし、同名曲・同アーティストの扱いをfixtureで増やす。
+2. M4 parser/schemaの継続確認
+   - 今回、注記付きレベル、削除/限定/パック記号、SP/DP片方のみ、CHALLENGEなし、同名曲・同アーティスト、同一 `chart_id` 衝突検出のfixtureは追加済み。
+   - `master/builder.py` のパーサは、現在も楽曲リスト2段ヘッダ表だけを対象にしている。
+   - BEMANIWiki の表構造は変わり得るため、次にparserへ触る場合も最新HTMLを再確認する。
+   - 通常テストはネットワーク取得に依存させず、小さなHTML fixtureで固定する。
    - `song_id` / `chart_id` は現時点では安定hashだが、配布互換性が必要になったらID互換方針をdocsで固定する。
 
 3. M4の本番配布前整理
-   - `source_snapshots.html_content` をDB内に持つ方針で十分か、外部snapshotファイルとhashだけにするか検討する。
-   - GitHub Actions、定期実行、Releases配布はまだ未実装。進める場合は生成DBをコミットせずartifact/releaseとして扱う。
+   - 次の主作業候補。`source_snapshots.html_content` をDB内に持つ方針で十分か、外部snapshotファイルとhashだけにするか検討する。
+   - GitHub Actions、手動実行、定期実行、Releases配布はまだ未実装。進める場合は生成DBをコミットせずartifact/releaseとして扱う。
    - 取得元HTML構造変化を、ヘッダ未検出・0件生成・SQLite制約違反として検出できる状態を維持する。
 
 4. M5へ進む前の境界確認
@@ -146,6 +149,7 @@ Get-Content data\vision_poc_m3_song_artist\m3_save_candidate_summary.json
 
 - `python -m master --output data\master\ddrgp-master.sqlite` でマスタDBを生成できる。
 - M4 fixtureテストがネットワークに依存せず通る。
+- M4 fixtureでセル結合、注記付きレベル、削除/限定/パック記号、SP/DP片方のみ、CHALLENGEなし、同名曲・同アーティスト、同一 `chart_id` 衝突検出を維持している。
 - 実HTML件数差分が出た場合、取得元更新かパーサ崩れかを説明できる。
 - M4 DB生成をM5の照合成功として扱っていない。
 - 画像PoCやM3境界を触った場合は、`python -m tools.vision_poc --no-ocr` が112件全正解。

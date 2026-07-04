@@ -226,7 +226,8 @@ M3完了判断:
 
 - `master` パッケージに、BEMANIWiki風HTMLの楽曲リスト表を解析して `songs` / `charts` / `master_metadata` / `source_snapshots` を持つSQLite DBを生成する初期入口を追加済み。
 - 2026-07-04時点の取得元URLと2段ヘッダ構造を確認し、`docs/design/08_master_db_generation.md` に初期スキーマと境界を整理済み。
-- 通常テストはネットワークに依存せず、小さなHTML fixtureでセル結合、CHALLENGEなし、SP/DP差分、複数バージョン表を固定する。
+- 通常テストはネットワークに依存せず、小さなHTML fixtureでセル結合、注記付きレベル、削除/限定/パック記号、SP/DP片方のみ、CHALLENGEなし、同名曲・同アーティスト、複数バージョン表を固定する。
+- 注記付きレベルは raw 表記を保持し、整数 level は最初に現れる数字列から取得する。同一 `chart_id` の譜面行が食い違う場合は生成失敗として扱う。
 - 実HTML取得では `data/master/ddrgp-master.sqlite` に 1282 songs / 9594 charts を生成できることを確認済み。ただし生成DBはGit管理しない。
 
 やること:

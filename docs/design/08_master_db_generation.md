@@ -26,6 +26,8 @@ Be / Ba / Di / Ex / Ch / Ba / Di / Ex / Ch
 
 パーサはこのヘッダを持つ表だけを楽曲リストとして扱う。セル結合されたバージョン見出しは `songs.version` / `songs.category` に入れる。レベルが `-` または空の譜面は未存在として `charts` に作らない。
 
+注記付きレベルは raw 表記を `charts.raw_level` に保持し、整数 `charts.level` は最初に現れる数字列から取得する。`10(旧9)` や `10;` は `10`、`[SA] 12` は `12` として扱い、数字を連結しない。`[SA]`、`SA`、`Shock`、`ショック` を含む表記は `charts.shock_arrow=true` とする。
+
 ## 出力
 
 ローカル生成先の既定:
@@ -66,6 +68,8 @@ data/master/ddrgp-master.sqlite
 - `is_limited`: `分類` 列が空でないか。
 - `notes`: 初期実装では `分類` 列の内容。
 
+同じ曲名・同じアーティストは同じ `song_id` として扱う。同一 `chart_id` の譜面行が複数回出て、保持値が食い違う場合は、HTML構造または入力解釈の変化として生成を失敗させる。
+
 ### `master_metadata`
 
 - `master_version`
@@ -91,9 +95,10 @@ data/master/ddrgp-master.sqlite
 
 - 楽曲リストの2段ヘッダを持つ表が見つからない。
 - `songs` または `charts` が0件になる。
+- 同一 `chart_id` の譜面行が食い違う。
 - SQLite制約に反するレベルや譜面種別が出る。
 
-fixtureテストでは、セル結合、CHALLENGEなし、SP/DP差分、複数バージョン表を扱う。実HTMLの件数確認はネットワークに依存するため、通常テストには含めない。
+fixtureテストでは、セル結合、注記付きレベル、削除/限定/パック記号、SP/DP片方のみ、CHALLENGEなし、同名曲・同アーティスト、複数バージョン表を扱う。実HTMLの件数確認はネットワークに依存するため、通常テストには含めない。
 
 ## M5へ渡すもの
 
