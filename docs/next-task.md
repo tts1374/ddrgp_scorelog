@@ -8,13 +8,13 @@ high
 
 ## 作業ブランチ
 
-`codex/m4-master-db-generation`
+`codex/m4-release-artifact-planning`
 
 作業開始時に以下を確認してください。
 
 - `git status --short --branch`
 - `git log --oneline -5`
-- 現在ブランチが `codex/m4-master-db-generation` であること
+- 現在ブランチが `codex/m4-release-artifact-planning` であること。未作成なら `main` から作成すること
 - `docs/next-task.md` は次チャット用の作業指示ファイルとして扱うこと
 
 ## 今回までの作業結果
@@ -31,8 +31,12 @@ high
 - `.github/workflows/build-master-db.yml` のDB検査は、インラインPythonではなく `python -m master.inspect data/master/ddrgp-master.sqlite --summary data/master/master-summary.json` を使う。
 - `master.inspect` のsummaryには `snapshot_count`、`snapshot_source_hash`、`snapshot_source_url`、`snapshot_parser_version` も出力し、artifact内の `master-summary.json` 単体でもsnapshot由来情報を確認できる。
 - `tests/test_master_builder.py` に `master.inspect` の正常系summary出力、必須metadata欠落、metadata件数不整合、source hash不整合、source URL不整合の失敗テストを追加済み。
-- GitHub Actionsの手動実行確認は未完了。2026-07-05の確認では `origin/main` に `.github/workflows/build-master-db.yml` がまだ無く、`gh workflow list` は空、`gh api repos/tts1374/ddrgp_scorelog/actions/workflows` は `total_count: 0` だった。
-- 上記のため、GitHub側でworkflowを認識させるには、workflowファイルをdefault branchへ入れる必要がある。現在の作業ブランチだけでは手動実行確認に進めない。
+- 2026-07-05にPR #1をmainへmerge後、GitHub Actionsが `Build master database` workflowを認識した。`gh workflow list` で active workflow ID `307310266` を確認済み。
+- 2026-07-05に `gh workflow run build-master-db.yml --ref main` で手動実行し、run `28725098133` が成功した。
+- Actions run `28725098133` では `tests/test_master_builder.py` 11 passed、実HTML生成、`python -m master.inspect`、artifact upload がすべて成功した。
+- Actions artifact `ddrgp-master-1` には `ddrgp-master.sqlite` と `master-summary.json` が含まれることを実物ダウンロードで確認済み。
+- Actions artifact内 `master-summary.json` は 1282 songs / 9594 charts / `snapshot_count=1`。source hash は `9e6b60bc3951588d8c4efd534abdf38e3020d1cb23e330faa4c9514f03f0fbca`。
+- ダウンロードした artifact DB に対して `python -m master.inspect` を再実行し、metadata件数、snapshot件数、source hash整合、source URL整合が通ることを確認済み。
 - Actions内DB検査相当として、`python -m master.inspect data\master\ddrgp-master.sqlite --summary data\master\master-summary.json` がローカル生成DBで通過することを確認済み。
 - 直近確認では `python -m ruff check master tools\vision_poc pyproject.toml tests`、`python -m compileall master tools\vision_poc`、`python -m pytest tests` が通過し、pytest は 101 passed。
 - `master/README.md`、`.github/workflows/README.md`、`docs/design/08_master_db_generation.md` を `master.inspect` 前提に更新済み。
@@ -96,8 +100,8 @@ M3境界や画像PoCへ触る場合だけ追加で読む資料:
 ## 今回必ず進める実作業
 
 - `docs/next-task.md` の更新だけ、または確認結果の記録だけで完了扱いにしない。
-- 最初に、今回進める実作業を1つ決める。候補は GitHub Actions artifact確認、workflowをdefault branchで認識させるためのPR/merge準備、Releases配布前の追加検査、M4 fixture/CLI検証強化のいずれか。
-- GitHub Actions手動実行がdefault branch未反映でブロックされた場合は、その理由を記録したうえで、同じM4内の未ブロックな実装・テスト・検証強化へ切り替える。
+- 最初に、今回進める実作業を1つ決める。候補は Releases配布方針の実装準備、M4 release workflow追加、M4 fixture/CLI検証強化、M5マスタ照合PoC設計のいずれか。
+- GitHub Actions artifact確認は2026-07-05に完了済み。再確認する場合は、取得元HTML更新による件数/hash変化と、artifact内容の2ファイル維持を確認する。
 - 実装に入らずdocs整理だけで終える必要がある場合は、コミット前に理由を明示する。
 - `docs/next-task.md` の更新は、実作業と検証が終わった後の引き継ぎ更新として行う。
 
@@ -111,14 +115,12 @@ M3境界や画像PoCへ触る場合だけ追加で読む資料:
    - 実HTML件数が直近の 1282 songs / 9594 charts と違う場合は、取得元更新かパーサ崩れかを `master_metadata`、`source_snapshots`、HTMLヘッダで確認する。
 
 2. M4 CI/artifact確認
-   - 次の主作業候補。
-   - まず `origin/main` に `.github/workflows/build-master-db.yml` が入っているか確認する。
-   - 現状のまま作業ブランチにworkflowがあるだけでは、GitHub側でworkflow一覧に出ず手動実行できない。
-   - 2026-07-05時点では `origin/main` にworkflowがなく、GitHub APIのworkflow一覧は `total_count: 0`。まずPR/mergeなどでdefault branchにworkflowを入れる必要がある。
-   - workflowファイルがdefault branchへ入った後、GitHub上で `Build master database` workflowを手動実行し、artifactに `ddrgp-master.sqlite` と `master-summary.json` が含まれることを確認する。
-   - Actionsログで `tests/test_master_builder.py`、実HTML生成、`python -m master.inspect` が通っていることを確認する。
-   - artifactの `master-summary.json` で、件数、snapshot件数、source hash、source URL、parser versionが読めることを確認する。
-   - artifact生成結果が安定したら、Releases配布を同じworkflowに足すか、別workflowに分けるかを決める。
+   - 2026-07-05に完了済み。
+   - `gh api repos/tts1374/ddrgp_scorelog/actions/workflows` は `total_count: 1`、`Build master database` active を返す。
+   - 手動実行 run `28725098133` は成功し、artifact `ddrgp-master-1` を生成した。
+   - artifactには `ddrgp-master.sqlite` と `master-summary.json` が含まれる。
+   - artifactの `master-summary.json` で、件数、snapshot件数、source hash、source URL、parser versionが読める。
+   - 以降の再確認では `gh workflow run build-master-db.yml --ref main` を使う。作業ブランチrefではなく default branch のworkflowを対象にする。
 
 3. M4 parser/schemaの継続確認
    - BEMANIWiki の表構造は変わり得るため、parserへ触る場合は最新HTMLを再確認する。
@@ -126,8 +128,11 @@ M3境界や画像PoCへ触る場合だけ追加で読む資料:
    - fixture追加時は、実HTML件数ではなく、解析境界とDB制約の崩れを検出する観点で足す。
 
 4. M4の本番配布前整理
+   - 次の主作業候補。
    - `source_snapshots.html_content` をDB内に持つ方針で十分か、外部snapshotファイルとhashだけにするか検討する。
    - Releases配布はまだ未実装。進める場合は生成DBをコミットせずartifact/releaseとして扱う。
+   - Releases配布を同じ `build-master-db.yml` に足すか、別workflowに分けるかを決める。
+   - Releasesへ進む場合は、手動実行artifactが安定していることを前提に、release作成条件、tag名、上書き可否、手動入力の有無を先にdocsで固定する。
    - 取得元HTML構造変化を、ヘッダ未検出・0件生成・SQLite制約違反・必須metadata欠落・snapshot整合不一致として検出できる状態を維持する。
 
 5. M5へ進む前の境界確認
@@ -173,8 +178,11 @@ GitHub Actions確認:
 ```powershell
 gh api repos/tts1374/ddrgp_scorelog/actions/workflows
 gh workflow list
-gh workflow run build-master-db.yml --ref codex/m4-master-db-generation
+gh workflow run build-master-db.yml --ref main
 gh run list --workflow build-master-db.yml --limit 5
+gh run watch <run-id> --exit-status
+gh run download <run-id> --name ddrgp-master-<run_number> --dir <download-dir>
+python -m master.inspect <download-dir>\ddrgp-master.sqlite
 ```
 
 画像PoCやM3境界を触った場合の回帰:
@@ -195,12 +203,14 @@ Get-Content data\vision_poc_m3_song_artist\m3_save_candidate_summary.json
 - コード、README、docs、テストに変更がある場合のみ、今回作業分だけをステージしてコミットする。
 - `data/master/ddrgp-master.sqlite`、`data/master/master-summary.json`、PoC出力、ROI画像、OCR画像、解析ログはステージしない。
 - M4スキーマ、HTML解析境界、生成DBの扱い、DB検査境界を変えた場合は、`master/README.md`、`docs/design/08_master_db_generation.md`、必要に応じて `docs/design/04_data_model.md` / `05_storage_io_spec.md` を同じコミットに含める。
-- コミットがある場合は `codex/m4-master-db-generation` を push する。
+- コミットがある場合は作業ブランチを push する。新規作業ブランチの推奨名は `codex/m4-release-artifact-planning`。
 
 ## 完了条件
 
 - `python -m master --output data\master\ddrgp-master.sqlite` でマスタDBを生成できる。
 - GitHub Actions workflowが、生成DBをコミットせずartifactとして扱う設計になっている。
+- GitHub Actions workflowがdefault branchで認識され、手動実行できる。
+- 手動実行artifactに `ddrgp-master.sqlite` と `master-summary.json` が含まれる。
 - Actions内DB検査相当で、必須metadata、metadata件数と実テーブル件数、`source_snapshots` 件数、source hash整合、source URL整合を確認できる。
 - `master-summary.json` で、テーブル件数、snapshot件数、source hash、snapshot側source URL、snapshot側parser versionを確認できる。
 - M4 fixtureテストがネットワークに依存せず通る。
