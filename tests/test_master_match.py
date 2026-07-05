@@ -20,6 +20,7 @@ def write_fixture_master_db(tmp_path: Path) -> Path:
         ("song_aa_question", "AA??", "Unit B"),
         ("song_type1", "OSAKA TYPE1", "Unit O"),
         ("song_type2", "OSAKA TYPE2", "Unit O"),
+        ("song_type3", "OSAKA TYPE3", "Unit O"),
     ]
     charts = [
         ("chart_make_single_difficult", "song_make", "SINGLE", "DIFFICULT", 9),
@@ -28,6 +29,7 @@ def write_fixture_master_db(tmp_path: Path) -> Path:
         ("chart_aa_question_single_basic", "song_aa_question", "SINGLE", "BASIC", 1),
         ("chart_type1_single_challenge", "song_type1", "SINGLE", "CHALLENGE", 10),
         ("chart_type2_single_challenge", "song_type2", "SINGLE", "CHALLENGE", 10),
+        ("chart_type3_single_challenge", "song_type3", "SINGLE", "CHALLENGE", 10),
     ]
     with sqlite3.connect(db_path) as connection:
         builder.create_schema(connection)
@@ -155,6 +157,12 @@ def test_chart_filter_normalizes_m3_chart_fields() -> None:
 def test_title_similarity_only_boosts_master_title_inside_ocr_text() -> None:
     assert master_match.title_similarity("makeitbettermitsuo", "makeitbetter") == 1.0
     assert master_match.title_similarity("makeit", "makeitbetter") < 1.0
+
+
+def test_extract_type_suffix_finds_osaka_type_suffix() -> None:
+    assert master_match.extract_type_suffix("osaka EVOLVED (TYPE2)") == "TYPE2"
+    assert master_match.extract_type_suffix("OSAKA EVOLVED  TYPE 3") == "TYPE3"
+    assert master_match.extract_type_suffix("osaka evolved") == ""
 
 
 def test_resolve_song_by_title_uses_normalized_exact_title(tmp_path: Path) -> None:
@@ -390,6 +398,103 @@ def test_match_jacket_save_candidate_row_title_reranks_only_ambiguous_candidates
     assert result["title_rerank_status"] == "resolved_candidate"
     assert result["title_top_song_id"] == "song_type2"
     assert result["title_candidate_feature_count"] == "2"
+    assert result["title_ocr_rerank_status"] == "missing_ocr"
+    assert result["title_ocr_rerank_reason"] == "title_ocr_not_run"
+
+
+def test_match_jacket_save_candidate_row_title_ocr_suffix_reranks_only_ambiguous_candidates(
+    tmp_path: Path,
+) -> None:
+    db_path = write_fixture_master_db(tmp_path)
+    row = save_candidate_row(
+        title="",
+        play_style="SINGLE",
+        difficulty="CHALLENGE",
+        level="10",
+    )
+    row["song_title_expected_value"] = "OSAKA TYPE2"
+
+    result = master_match.match_jacket_save_candidate_row(
+        row,
+        db_path,
+        solid_feature((120, 120, 120)),
+        [
+            jacket_entry(
+                song_id="song_type1",
+                title="OSAKA TYPE1",
+                artist="Unit O",
+                color=(120, 120, 120),
+            ),
+            jacket_entry(
+                song_id="song_type2",
+                title="OSAKA TYPE2",
+                artist="Unit O",
+                color=(120, 120, 120),
+            ),
+            jacket_entry(
+                song_id="song_type3",
+                title="OSAKA TYPE3",
+                artist="Unit O",
+                color=(120, 120, 120),
+            ),
+        ],
+        title_ocr_observation=master_match.TitleOcrObservation(
+            raw="osaka EVOLVED (TYPE2)",
+            text="osaka EVOLVED (TYPE2)",
+            status="ok",
+            failure_reason="",
+        ),
+    )
+
+    assert result["jacket_match_status"] == "ambiguous"
+    assert result["title_rerank_status"] == "missing_feature"
+    assert result["title_ocr_suffix"] == "TYPE2"
+    assert result["title_ocr_rerank_status"] == "resolved_candidate"
+    assert result["title_ocr_top_song_id"] == "song_type2"
+    assert result["title_ocr_top_title"] == "OSAKA TYPE2"
+
+
+def test_match_jacket_save_candidate_row_title_ocr_suffix_does_not_expand_candidates(
+    tmp_path: Path,
+) -> None:
+    db_path = write_fixture_master_db(tmp_path)
+    row = save_candidate_row(
+        title="",
+        play_style="SINGLE",
+        difficulty="CHALLENGE",
+        level="10",
+    )
+
+    result = master_match.match_jacket_save_candidate_row(
+        row,
+        db_path,
+        solid_feature((120, 120, 120)),
+        [
+            jacket_entry(
+                song_id="song_type1",
+                title="OSAKA TYPE1",
+                artist="Unit O",
+                color=(120, 120, 120),
+            ),
+            jacket_entry(
+                song_id="song_type2",
+                title="OSAKA TYPE2",
+                artist="Unit O",
+                color=(120, 120, 120),
+            ),
+        ],
+        title_ocr_observation=master_match.TitleOcrObservation(
+            raw="OSAKA TYPE3",
+            text="OSAKA TYPE3",
+            status="ok",
+            failure_reason="",
+        ),
+    )
+
+    assert result["jacket_match_status"] == "ambiguous"
+    assert result["title_ocr_suffix"] == "TYPE3"
+    assert result["title_ocr_rerank_status"] == "no_candidate_suffix_match"
+    assert result["title_ocr_top_song_id"] == ""
 
 
 def test_match_jacket_save_candidate_row_reports_missing_feature(tmp_path: Path) -> None:
@@ -444,6 +549,15 @@ def test_write_jacket_match_outputs_records_observation_scope(tmp_path: Path) ->
             "title_top_candidates": "",
             "title_rerank_status": "not_run",
             "title_rerank_reason": "",
+            "title_ocr_raw": "",
+            "title_ocr_text": "",
+            "title_ocr_suffix": "",
+            "title_ocr_top_song_id": "",
+            "title_ocr_top_chart_id": "",
+            "title_ocr_top_title": "",
+            "title_ocr_top_candidates": "",
+            "title_ocr_rerank_status": "not_run",
+            "title_ocr_rerank_reason": "",
             "jacket_match_status": "matched",
             "failure_reason": "",
         }
@@ -459,5 +573,6 @@ def test_write_jacket_match_outputs_records_observation_scope(tmp_path: Path) ->
         summary
     )
     assert summary["title_rerank_status_counts"]["not_run"] == 1
+    assert summary["title_ocr_rerank_status_counts"]["not_run"] == 1
     report = (tmp_path / "jacket_match_report.md").read_text(encoding="utf-8")
     assert "DB保存可能や本番採用済み照合ではありません" in report

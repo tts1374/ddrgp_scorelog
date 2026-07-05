@@ -19,30 +19,33 @@ high
 ## 今回までの作業結果
 
 - M5ジャケット特徴量PoCとして `--m5-jacket-match` を追加済み。
-- 今回、`jacket_match_candidates.csv` にローカル期待値診断列を追加した。
-  - `expected_song_title`
-  - `expected_song_id`
-  - `expected_jacket_distance`
-  - `expected_jacket_rank`
-  - `jacket_top_margin`
-- 今回、jacketで `ambiguous` になった候補集合内だけを対象にする title画像特徴量PoCを追加した。
+- `jacket_match_candidates.csv` には、ローカル期待値診断列 `expected_song_title` / `expected_song_id` / `expected_jacket_distance` / `expected_jacket_rank` / `jacket_top_margin` を出す。
+- jacketで `ambiguous` になった候補集合内だけを対象にする title画像特徴量PoCを追加済み。
   - result `song_title` ROIを横長の濃淡サムネイル、エッジサムネイル、右側サフィックス寄りの濃淡/エッジサムネイル、dHashに変換する。
   - 参照はローカルmetadataの期待曲名を M4 `songs.title` へ一意解決できた result 素材から作る。
   - 比較時は同じ `organized_file` の参照を除外する。
-  - title補助列は `title_candidate_feature_count`、`title_top_*`、`title_top_candidates`、`title_rerank_status`、`title_rerank_reason`。
   - `title_rerank_status=resolved_candidate` はPoC観測語彙であり、保存可能、曲ID/譜面ID確定、`jacket_match_status=matched` への昇格を意味しない。
+- 今回、jacketで `ambiguous` になった候補集合内だけを対象にする title OCR suffix 診断を追加した。
+  - `--m3-song-artist-ocr` の result `song_title` OCR文字列から `TYPE1` / `TYPE2` / `TYPE3` suffixだけを観測する。
+  - 出力列は `title_ocr_raw`、`title_ocr_text`、`title_ocr_suffix`、`title_ocr_top_*`、`title_ocr_top_candidates`、`title_ocr_rerank_status`、`title_ocr_rerank_reason`。
+  - `title_ocr_rerank_status=resolved_candidate` はPoC観測語彙であり、保存可能、曲ID/譜面ID確定、`jacket_match_status=matched` への昇格を意味しない。
+  - suffixが候補集合外にありそうでも候補集合外から曲を拾わず、`no_candidate_suffix_match` として観測する。
 - 2026-07-05の今回ローカル確認では metadata は178行、classification は178/178全正解。`transition_countup` shape candidates は3件。
 - 今回の `--m5-jacket-match` 結果は confirmed-events 60件、`jacket_feature_master accepted=59`、`matched=57`、`ambiguous=3`、`not_found=0`、`missing_feature=0`。
-- 追加した期待値診断で、残り `ambiguous=3` は引き続き `osaka EVOLVED -毎度、おおきに！- (TYPE1/2/3)` の同一ジャケット3件。`jacket_top_margin=0.0000` で、画像特徴量だけでは一意化しない。
+- 残り `ambiguous=3` は引き続き `osaka EVOLVED -毎度、おおきに！- (TYPE1/2/3)` の同一ジャケット3件。`jacket_top_margin=0.0000` で、画像特徴量だけでは一意化しない。
 - title画像特徴量PoCの今回結果は `title_rerank_status_counts={"ambiguous_candidate": 3, "not_run": 57}`。osaka 3件は title画像特徴量でも近傍候補が残り、TYPE1/2/3を安定して一意化できなかった。
-- 次は title OCR、または song_select grid/detail 側のタイトル表示ROI参照を検討する。候補集合外から曲を拾う用途には使わない。
+- title OCR suffix 診断の今回結果は `title_ocr_rerank_status_counts={"no_suffix": 3, "not_run": 57}`。
+  - osaka TYPE1 OCR文字列例: `| osaka EVOLVED WM.8e8i!: (TYPE) NAOKI underground |`
+  - osaka TYPE2 OCR文字列例: `osaka EVOLVED WM. Ba#IC!: (TYPED) NAOKI underground |`
+  - osaka TYPE3 OCR文字列例: `osaka EVOLVED WR.gasic!: (TYPES) NAOKI underground`
+  - 現行のM3 title OCR入口だけでは `TYPE1` / `TYPE2` / `TYPE3` suffixを安定取得できない観測。しきい値問題というより、result title ROIの表現/OCR入口の問題として読む。
 - OCRありM5曲名照合の今回結果は confirmed-events 60件、`matched=19`、`not_found=39`、`insufficient_input=2`。`not_found` は `below_score_threshold`、`insufficient_input` は `empty_ocr`。
 - OCRなしM5曲名照合の今回結果は confirmed-events 60件、`insufficient_input=60` / `ocr_not_run=60`。
 - M3 song/artist OCR入口失敗代表は `failure_count=24`、`affected_candidate_count=22`、`song_title empty_ocr=2`、`artist empty_ocr=22`。
-- `matched`、jacket `matched`、title `resolved_candidate` はPoC上の観測語彙で、DB保存可能、本番採用済み照合、曲ID/譜面ID確定を意味しない。
+- `matched`、jacket `matched`、title画像 `resolved_candidate`、title OCR `resolved_candidate` はPoC上の観測語彙で、DB保存可能、本番採用済み照合、曲ID/譜面ID確定を意味しない。
 - 今回の `python -m master --output data\master\ddrgp-master.sqlite` では 1282 songs / 9594 charts を生成できた。
-- 今回source hashは `190ed4dc14df4541a35e526a27dab5759b02bae8787af0d9336b7458e0f9eb6b`。取得元更新でhashは変わり得るため、件数固定ではなく構造変化検出とDB生成成功を見る。
-- 今回コード検証では `python -m ruff check master tools\vision_poc pyproject.toml tests`、`python -m compileall master tools\vision_poc`、`python -m pytest tests` が通過し、pytest は117 passed。
+- 今回source hashは `ce38cabac579c99778b2964fba2b31da5c40182fba45efc9295f73db81741f9a`。取得元更新でhashは変わり得るため、件数固定ではなく構造変化検出とDB生成成功を見る。
+- 今回コード検証では `python -m ruff check master tools\vision_poc pyproject.toml tests`、`python -m compileall master tools\vision_poc`、`python -m pytest tests` が通過し、pytest は120 passed。
 - 生成DB、PoC出力、OCR画像、`metadata.csv`、`data/`、`logs/`、ローカル素材、ローカルDBはGit管理しない。
 
 ## 必読資料
@@ -89,20 +92,21 @@ M3評価レポートや画像PoCの境界へ触る場合だけ追加で読む資
 M5内でまだ成功扱いにしないもの:
 
 - OCR結果、ジャケットPoC結果、title補助結果から曲ID/譜面IDを保存用に確定すること
-- ファジーマッチ結果、jacket `matched`、title `resolved_candidate` を本番採用済み照合として扱うこと
+- ファジーマッチ結果、jacket `matched`、title画像 `resolved_candidate`、title OCR `resolved_candidate` を本番採用済み照合として扱うこと
 - 曖昧一致や低確信度をDB保存可能として扱うこと
 - `artist` を曲名照合の一意主キーとして扱うこと
 - 同一ジャケット候補を画像特徴量だけで無理に一意化すること
-- title画像特徴量を候補集合外から曲を拾うために使うこと
+- title画像特徴量やtitle OCRを候補集合外から曲を拾うために使うこと
 
 ## 次に必ず進める実作業
 
 - `docs/next-task.md` の更新だけ、または確認結果の記録だけで完了扱いにしない。
-- osaka TYPE1/2/3 について、title画像特徴量だけでは `ambiguous_candidate` が残った理由を次の補助信号で切り分ける。
-  - title OCRで `(TYPE1)` / `(TYPE2)` / `(TYPE3)` のsuffixを取れるか確認する。
-  - または song_select grid/detail 側のタイトル表示ROIを定義し、result title ROIではなくsong_select由来のtitle参照で再順位付けできるか確認する。
+- osaka TYPE1/2/3 は、jacket特徴量、result title画像特徴量、現行M3 title OCR入口のいずれでも安定一意化できていない。
+- 次は以下のどちらかを小さく実装して切り分ける。
+  - song_select grid/detail 側のタイトル表示ROIを定義し、result title ROIではなくsong_select由来のtitle参照で再順位付けできるか確認する。
+  - 大きなOCR方式刷新ではなく、osaka suffixだけを対象にした小さな前処理/パース診断を追加し、`TYPE)` / `TYPED` / `TYPES` のような崩れを採用判断なしで観測する。
 - title OCRやtitle画像特徴量は、jacketで `ambiguous` になったsong_id集合内の再順位付けだけに使う。候補集合外から曲を拾わない。
-- `jacket_match_candidates.csv` の `expected_jacket_distance` / `expected_jacket_rank` / `jacket_top_margin` と `title_top_candidates` を見て、しきい値問題か特徴量表現問題かを分ける。
+- `jacket_match_candidates.csv` の `expected_jacket_distance` / `expected_jacket_rank` / `jacket_top_margin`、`title_top_candidates`、`title_ocr_text`、`title_ocr_rerank_status` を見て、しきい値問題か特徴量/OCR表現問題かを分ける。
 - title補助で解消候補が出ても、保存可能判定へ接続せず、PoC観測語彙として docs / README / tests に反映する。
 - 大きなOCR方式刷新やROI座標定義の大変更には進まない。
 - `docs/next-task.md` の更新は、実作業と検証が終わった後の引き継ぎ更新として行う。
@@ -133,7 +137,7 @@ title補助の今回観測確認:
 ```powershell
 Import-Csv data\master_match_poc_jacket\jacket_match_candidates.csv |
   Where-Object {$_.jacket_match_status -eq 'ambiguous'} |
-  Select-Object organized_file,expected_song_title,expected_jacket_rank,jacket_top_margin,title_rerank_status,title_top_title,title_top_distance,title_rerank_reason |
+  Select-Object organized_file,expected_song_title,expected_jacket_rank,jacket_top_margin,title_rerank_status,title_top_title,title_top_distance,title_ocr_text,title_ocr_suffix,title_ocr_rerank_status,title_ocr_top_title,title_ocr_rerank_reason |
   Format-List
 ```
 

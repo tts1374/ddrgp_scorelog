@@ -97,6 +97,14 @@ class TitleFeatureMasterEntry:
     feature: TitleImageFeature
 
 
+@dataclass(frozen=True)
+class TitleOcrObservation:
+    raw: str
+    text: str
+    status: str
+    failure_reason: str
+
+
 def normalize_song_title(value: str) -> str:
     normalized = unicodedata.normalize("NFKC", value).casefold()
     return "".join(
@@ -426,6 +434,20 @@ def expected_rank_from_song_distances(
     return None, None
 
 
+def title_ocr_empty_fields(status: str = "not_run", reason: str = "") -> dict[str, str]:
+    return {
+        "title_ocr_raw": "",
+        "title_ocr_text": "",
+        "title_ocr_suffix": "",
+        "title_ocr_top_song_id": "",
+        "title_ocr_top_chart_id": "",
+        "title_ocr_top_title": "",
+        "title_ocr_top_candidates": "",
+        "title_ocr_rerank_status": status,
+        "title_ocr_rerank_reason": reason,
+    }
+
+
 def empty_title_rerank_fields(status: str = "not_run", reason: str = "") -> dict[str, str]:
     return {
         "title_candidate_feature_count": "0",
@@ -438,6 +460,99 @@ def empty_title_rerank_fields(status: str = "not_run", reason: str = "") -> dict
         "title_top_candidates": "",
         "title_rerank_status": status,
         "title_rerank_reason": reason,
+        **title_ocr_empty_fields(),
+    }
+
+
+def extract_type_suffix(value: str) -> str:
+    normalized = unicodedata.normalize("NFKC", value).casefold()
+    compact = "".join(char for char in normalized if not char.isspace())
+    for suffix in ("type1", "type2", "type3"):
+        if suffix in compact:
+            return suffix.upper()
+    return ""
+
+
+def title_ocr_rerank_fields_for_ambiguous_candidates(
+    *,
+    title_ocr_observation: TitleOcrObservation | None,
+    candidates: Iterable[MasterChartCandidate],
+    ambiguous_song_ids: set[str],
+) -> dict[str, str]:
+    if title_ocr_observation is None:
+        return title_ocr_empty_fields(
+            status="missing_ocr",
+            reason="title_ocr_not_run",
+        )
+
+    base_fields = {
+        "title_ocr_raw": title_ocr_observation.raw,
+        "title_ocr_text": title_ocr_observation.text,
+        "title_ocr_suffix": "",
+        "title_ocr_top_song_id": "",
+        "title_ocr_top_chart_id": "",
+        "title_ocr_top_title": "",
+        "title_ocr_top_candidates": "",
+    }
+    if title_ocr_observation.status != "ok":
+        return {
+            **base_fields,
+            "title_ocr_rerank_status": "missing_ocr",
+            "title_ocr_rerank_reason": (
+                title_ocr_observation.failure_reason
+                or title_ocr_observation.status
+                or "title_ocr_not_ok"
+            ),
+        }
+    if not title_ocr_observation.text:
+        return {
+            **base_fields,
+            "title_ocr_rerank_status": "missing_ocr",
+            "title_ocr_rerank_reason": "empty_ocr",
+        }
+
+    suffix = extract_type_suffix(title_ocr_observation.text)
+    if not suffix:
+        return {
+            **base_fields,
+            "title_ocr_rerank_status": "no_suffix",
+            "title_ocr_rerank_reason": "type_suffix_not_detected",
+        }
+
+    suffix_token = suffix.casefold()
+    candidate_matches = [
+        candidate
+        for candidate in candidates
+        if candidate.song_id in ambiguous_song_ids
+        and suffix_token in normalize_song_title(candidate.title)
+    ]
+    candidate_matches.sort(
+        key=lambda candidate: (candidate.title, candidate.artist, candidate.chart_id)
+    )
+    top_candidates = " | ".join(
+        f"{candidate.title} / {candidate.artist} [{candidate.chart_id}]"
+        for candidate in candidate_matches[:TOP_CANDIDATE_REPORT_LIMIT]
+    )
+    matched_song_ids = {candidate.song_id for candidate in candidate_matches}
+    status = "resolved_candidate"
+    reason = ""
+    if not candidate_matches:
+        status = "no_candidate_suffix_match"
+        reason = "suffix_not_in_ambiguous_candidates"
+    elif len(matched_song_ids) > 1:
+        status = "ambiguous_candidate"
+        reason = "suffix_matches_multiple_ambiguous_songs"
+
+    top_candidate = candidate_matches[0] if candidate_matches else None
+    return {
+        **base_fields,
+        "title_ocr_suffix": suffix,
+        "title_ocr_top_song_id": "" if top_candidate is None else top_candidate.song_id,
+        "title_ocr_top_chart_id": "" if top_candidate is None else top_candidate.chart_id,
+        "title_ocr_top_title": "" if top_candidate is None else top_candidate.title,
+        "title_ocr_top_candidates": top_candidates,
+        "title_ocr_rerank_status": status,
+        "title_ocr_rerank_reason": reason,
     }
 
 
@@ -623,6 +738,7 @@ def match_jacket_save_candidate_row(
     feature_master_entries: Iterable[JacketFeatureMasterEntry],
     result_title_feature: TitleImageFeature | None = None,
     title_feature_master_entries: Iterable[TitleFeatureMasterEntry] = (),
+    title_ocr_observation: TitleOcrObservation | None = None,
     *,
     distance_threshold: float = DEFAULT_JACKET_DISTANCE_THRESHOLD,
     ambiguity_delta: float = DEFAULT_JACKET_AMBIGUITY_DELTA,
@@ -770,9 +886,15 @@ def match_jacket_save_candidate_row(
             ambiguous_song_ids=ambiguous_song_ids,
             target_organized_file=row.get("organized_file", ""),
         )
+        title_ocr_rerank_fields = title_ocr_rerank_fields_for_ambiguous_candidates(
+            title_ocr_observation=title_ocr_observation,
+            candidates=candidates,
+            ambiguous_song_ids=ambiguous_song_ids,
+        )
         return {
             **result,
             **title_rerank_fields,
+            **title_ocr_rerank_fields,
             "jacket_match_status": "ambiguous",
             "failure_reason": "near_top_distance",
         }
@@ -799,6 +921,7 @@ def match_jacket_save_candidate_rows(
     feature_master_entries: Iterable[JacketFeatureMasterEntry],
     result_title_features_by_file: dict[str, TitleImageFeature] | None = None,
     title_feature_master_entries: Iterable[TitleFeatureMasterEntry] = (),
+    title_ocr_observations_by_file: dict[str, TitleOcrObservation] | None = None,
     *,
     distance_threshold: float = DEFAULT_JACKET_DISTANCE_THRESHOLD,
     ambiguity_delta: float = DEFAULT_JACKET_AMBIGUITY_DELTA,
@@ -806,6 +929,7 @@ def match_jacket_save_candidate_rows(
     feature_master_entry_list = list(feature_master_entries)
     title_feature_master_entry_list = list(title_feature_master_entries)
     result_title_features = result_title_features_by_file or {}
+    title_ocr_observations = title_ocr_observations_by_file or {}
     return [
         match_jacket_save_candidate_row(
             row,
@@ -814,6 +938,7 @@ def match_jacket_save_candidate_rows(
             feature_master_entry_list,
             result_title_features.get(row.get("organized_file", "")),
             title_feature_master_entry_list,
+            title_ocr_observations.get(row.get("organized_file", "")),
             distance_threshold=distance_threshold,
             ambiguity_delta=ambiguity_delta,
         )
@@ -883,6 +1008,7 @@ def summarize_jacket_match_rows(rows: Iterable[dict[str, str]]) -> dict[str, Any
     }
     failure_reason_counts: dict[str, int] = {}
     title_rerank_status_counts: dict[str, int] = {}
+    title_ocr_rerank_status_counts: dict[str, int] = {}
     for row in row_list:
         status = row["jacket_match_status"]
         status_counts[status] = status_counts.get(status, 0) + 1
@@ -890,6 +1016,11 @@ def summarize_jacket_match_rows(rows: Iterable[dict[str, str]]) -> dict[str, Any
         if title_status:
             title_rerank_status_counts[title_status] = (
                 title_rerank_status_counts.get(title_status, 0) + 1
+            )
+        title_ocr_status = row.get("title_ocr_rerank_status", "")
+        if title_ocr_status:
+            title_ocr_rerank_status_counts[title_ocr_status] = (
+                title_ocr_rerank_status_counts.get(title_ocr_status, 0) + 1
             )
         failure_reason = row["failure_reason"]
         if failure_reason:
@@ -904,6 +1035,9 @@ def summarize_jacket_match_rows(rows: Iterable[dict[str, str]]) -> dict[str, Any
         "status_counts": dict(sorted(status_counts.items())),
         "failure_reason_counts": dict(sorted(failure_reason_counts.items())),
         "title_rerank_status_counts": dict(sorted(title_rerank_status_counts.items())),
+        "title_ocr_rerank_status_counts": dict(
+            sorted(title_ocr_rerank_status_counts.items())
+        ),
         "status_vocabulary": list(JACKET_MATCH_STATUS_VOCABULARY),
         "distance_threshold": DEFAULT_JACKET_DISTANCE_THRESHOLD,
         "ambiguity_delta": DEFAULT_JACKET_AMBIGUITY_DELTA,
@@ -913,6 +1047,8 @@ def summarize_jacket_match_rows(rows: Iterable[dict[str, str]]) -> dict[str, Any
             "missing_feature means the local feature master lacks a usable reference.",
             "chart fields still only narrow candidates; jacket matching is an observation signal.",
             "title_rerank_status is a diagnostic for jacket ambiguous candidates only.",
+            "title_ocr_rerank_status only observes TYPE suffixes inside jacket ambiguous "
+            "candidates.",
         ],
     }
 
@@ -1023,6 +1159,15 @@ def write_jacket_match_csv(path: Path, rows: Iterable[dict[str, str]]) -> None:
         "title_top_candidates",
         "title_rerank_status",
         "title_rerank_reason",
+        "title_ocr_raw",
+        "title_ocr_text",
+        "title_ocr_suffix",
+        "title_ocr_top_song_id",
+        "title_ocr_top_chart_id",
+        "title_ocr_top_title",
+        "title_ocr_top_candidates",
+        "title_ocr_rerank_status",
+        "title_ocr_rerank_reason",
         "jacket_match_status",
         "failure_reason",
     ]
@@ -1120,6 +1265,8 @@ def write_jacket_match_report(
         f"- jacket_match_status: `{json.dumps(summary['status_counts'], sort_keys=True)}`",
         f"- title_rerank_status: "
         f"`{json.dumps(summary['title_rerank_status_counts'], sort_keys=True)}`",
+        f"- title_ocr_rerank_status: "
+        f"`{json.dumps(summary['title_ocr_rerank_status_counts'], sort_keys=True)}`",
         f"- failure_reason: `{json.dumps(summary['failure_reason_counts'], sort_keys=True)}`",
         "",
         "## Candidate Rows",
@@ -1164,6 +1311,7 @@ def write_jacket_match_report(
             "OCR失敗や保存可否とは別に読みます。",
             "- `expected_jacket_*` はローカル期待値に基づく診断列です。",
             "- `title_rerank_status` はjacketが曖昧な候補集合内だけの補助観測です。",
+            "- `title_ocr_rerank_status` はjacketが曖昧な候補集合内だけでTYPE suffixを観測します。",
             "- `matched` は保存可能を意味しません。",
         ]
     )

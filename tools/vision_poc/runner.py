@@ -5845,6 +5845,16 @@ def main(argv: list[str] | None = None) -> int:
             args.master_db,
             m5_title_result_features,
         )
+        title_ocr_observations = {
+            result.organized_file: master_match.TitleOcrObservation(
+                raw=result.ocr_raw,
+                text=result.pre_normalized_text,
+                status=result.status,
+                failure_reason=result.failure_reason,
+            )
+            for result in m3_song_artist_ocr_results
+            if result.field_name == "song_title"
+        }
         jacket_match_rows = master_match.match_jacket_save_candidate_rows(
             m3_save_candidate_summary_rows,
             args.master_db,
@@ -5852,6 +5862,7 @@ def main(argv: list[str] | None = None) -> int:
             jacket_feature_entries,
             m5_title_result_features,
             title_feature_entries,
+            title_ocr_observations,
         )
         jacket_match_summary = master_match.write_jacket_match_outputs(
             output_dir,
