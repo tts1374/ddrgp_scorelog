@@ -22,13 +22,14 @@ high
 - `song_select` grid右上プレビューROIは 1280x720 基準で `(812, 28, 150, 150)`。result側は既存 `jacket` ROIを使う。
 - 特徴量は中心正方形から 16x16 RGBサムネイル、RGB 8-bin histogram、8x8 dHashを作る。距離しきい値は `0.24`、曖昧判定deltaは `0.015` の初期観測値。
 - `jacket_feature_master.csv`、`jacket_feature_master_summary.json`、`jacket_feature_label_template.csv`、`jacket_match_candidates.csv`、`jacket_match_summary.json`、`jacket_match_report.md` を出力する。
-- 2026-07-05のローカル素材追加後、metadataは176行、classificationは176/176全正解。`transition_countup` shape candidates は3件。
-- 2026-07-05の直近ジャケットPoC結果は confirmed-events 60件、`jacket_feature_master accepted=58`、`matched=56`、`ambiguous=4`、`not_found=0`、`missing_feature=0`、`insufficient_input=0`。
+- 2026-07-05のローカル素材追加後、metadataは178行、classificationは178/178全正解。`transition_countup` shape candidates は3件。
+- 2026-07-05の直近ジャケットPoC結果は confirmed-events 60件、`jacket_feature_master accepted=59`、`matched=57`、`ambiguous=3`、`not_found=0`、`missing_feature=0`、`insufficient_input=0`。
 - 追加キャプチャにより、以前の `not_found` / `missing_feature` は解消済み。`Taking It To The Sky (PLUS step)` と `めうめうぺったんたん！！ (ZAQUVA Remix)` のgrid/result素材もローカルmetadataへ反映済み。
 - `result_098_sp_basic_lv07_if_score972200.png` はファイル名とmetadataが `If` になっていたが、実画面表示は `桜 / Reven-G / SINGLE BASIC Lv7` だったため、ローカルmetadataだけ修正済み。画像ファイル名はローカル素材名として残している。
-- 残り `ambiguous=4` は、`osaka EVOLVED -毎度、おおきに！- (TYPE1/2/3)` の同一ジャケット3件と、`桜` が追加した `めうめうぺったんたん！！ (ZAQUVA Remix)` featureに近くなった1件。
+- `桜` のsong_select grid/result素材を追加したことで、前回残っていた `桜` の曖昧は解消済み。
+- 残り `ambiguous=3` は `osaka EVOLVED -毎度、おおきに！- (TYPE1/2/3)` の同一ジャケット3件だけ。
 - `osaka EVOLVED TYPE1/2/3` はジャケット画像だけで一意化しない。title画像特徴量またはtitle OCRで、jacket候補集合内だけを再順位付けする対象にする。
-- `桜` の曖昧は、expected candidate distance / rank / margin診断を追加して、正解featureが何位か、近距離候補がどの程度危険かを見る。現時点では `桜` のsong_select grid特徴量は未追加。
+- expected candidate distance / rank / margin診断列は、今後の素材追加や近距離曖昧が再発したときのために追加する。
 - OCRありM5曲名照合の直近結果は confirmed-events 60件、`matched=19`、`not_found=39`、`insufficient_input=2`。`not_found` は `below_score_threshold`、`insufficient_input` は `empty_ocr`。
 - OCRなしM5曲名照合は confirmed-events 60件、`insufficient_input=60` / `ocr_not_run=60`。
 - `matched` はPoC上の一意候補という意味だけで、DB保存可能、本番採用済み照合、曲ID/譜面ID確定を意味しない。
@@ -90,7 +91,7 @@ M5内でまだ成功扱いにしないもの:
 
 - `docs/next-task.md` の更新だけ、または確認結果の記録だけで完了扱いにしない。
 - `jacket_match_candidates.csv` に expected song / expected song_id / expected distance / expected rank / top margin を観察できる診断列、または同等の補助CSV/Markdownを追加する。
-- `桜` の `ambiguous` について、正解featureの有無、距離、順位、近距離候補との差分を確認し、しきい値問題か特徴量重み問題かを分ける。
+- 近距離 `ambiguous` が再発した場合は、正解featureの有無、距離、順位、近距離候補との差分を確認し、しきい値問題か特徴量重み問題かを分ける。
 - jacketで `ambiguous` になった場合だけ使う title画像特徴量PoCを追加する。まずは result `song_title` ROI と song_select gridのタイトル表示またはresult参照素材を比較対象にする。
 - title画像特徴量は候補集合外から曲を拾うためには使わない。`play_style / difficulty / level` と jacket候補集合内の再順位付けだけに使う。
 - `osaka EVOLVED TYPE1/2/3` は同一ジャケット候補として残し、title画像特徴量またはtitle OCRで `TYPE1` / `TYPE2` / `TYPE3` を区別できるか確認する。
