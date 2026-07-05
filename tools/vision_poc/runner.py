@@ -15,6 +15,8 @@ from pathlib import Path
 import numpy as np
 from PIL import Image, ImageFilter, ImageOps
 
+from . import master_match
+
 BASE_WIDTH = 1280
 BASE_HEIGHT = 720
 CONFIRMED_RESULT_MIN_FRAMES = 2
@@ -5226,6 +5228,26 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--m5-master-match",
+        action="store_true",
+        help=(
+            "Run the M5 master match PoC from the in-memory M3 save candidate rows and a "
+            "generated M4 SQLite master DB. This reports observations only and does not save."
+        ),
+    )
+    parser.add_argument(
+        "--master-db",
+        type=Path,
+        default=Path("data/master/ddrgp-master.sqlite"),
+        help="Generated M4 SQLite master DB used by --m5-master-match.",
+    )
+    parser.add_argument(
+        "--m5-score-threshold",
+        type=float,
+        default=master_match.DEFAULT_SCORE_THRESHOLD,
+        help="Minimum normalized title similarity for M5 PoC matched status.",
+    )
+    parser.add_argument(
         "--chart-field-template-root",
         type=Path,
         default=M3_CHART_FIELD_TEMPLATE_ROOT,
@@ -5625,6 +5647,22 @@ def main(argv: list[str] | None = None) -> int:
         output_dir / "m3_save_candidate_blocker_resolution_plan.md",
         m3_save_candidate_blocker_resolution_summary,
     )
+    if args.m5_master_match:
+        if not args.master_db.exists():
+            raise FileNotFoundError(f"--master-db does not exist: {args.master_db}")
+        master_match_rows = master_match.match_save_candidate_rows(
+            m3_save_candidate_summary_rows,
+            args.master_db,
+            score_threshold=args.m5_score_threshold,
+        )
+        master_match_summary = master_match.write_master_match_outputs(
+            output_dir,
+            master_match_rows,
+        )
+        print(
+            "Wrote M5 master match PoC: "
+            f"{output_dir} ({master_match_summary['target_count']} candidates)"
+        )
     score_ocr_results: list[ScoreOcrResult] = []
     profile_ocr_results: list[ProfileScoreOcrResult] = []
     run_profile_comparison = ocr_profiles != ("default",)

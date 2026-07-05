@@ -247,11 +247,19 @@ M3完了判断:
 
 目的は、OCR結果から曲と譜面を一意に特定できるか確認することです。
 
+現在地:
+
+- `tools.vision_poc --m5-master-match` で、M3保存候補行とM4マスタDBを使う最小入口を追加済み。
+- 曲名OCR文字列はNFKC、casefold、空白除去、代表的な句読点除去だけの最小正規化を行う。
+- `play_style` / `difficulty` / `level` で `charts` を絞り、候補曲数、候補譜面数、最上位候補、score、`match_status`、`failure_reason` を `master_match_candidates.csv` / summary / Markdownへ出す。
+- `matched` はPoC上の一意候補であり、DB保存可能や本番採用済み照合ではない。
+- 2026-07-05のローカルOCR入口確認では、confirmed-events 60件中 `matched=4`、`not_found=54`、`insufficient_input=2`。多くはOCR文字列にartistなどが混ざり、`below_score_threshold` になった。
+
 やること:
 
-- 曲名OCR正規化を実装する。
-- マスタDBに対するファジーマッチを実装する。
-- SP/DP、難易度、レベルで候補を絞る。
+- 曲名OCR正規化を強化する。
+- マスタDBに対するファジーマッチを改善する。
+- SP/DP、難易度、レベルで候補を絞る入口を、ローカルOCR観測値で継続評価する。
 - 一意に決まらない場合は保存不可にする。
 - 候補一覧と照合スコアをログへ出す。
 

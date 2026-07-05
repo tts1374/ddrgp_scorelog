@@ -1,0 +1,59 @@
+# M5 マスタ照合PoC設計
+
+M5では、M3保存候補レポートの観測値をM4マスタDBへ照合し、曲・譜面候補の絞り込み結果を観察する。ここでの結果はDB保存可否の最終判断ではなく、M7以降の保存判定へ渡すための低確信度語彙と候補情報である。
+
+## 入力
+
+M5 PoCの入力は以下に限定する。
+
+- M3保存候補行: `confirmed_result=true` かつ `duplicate=false` から作った `m3_save_candidate_summary.csv` 相当の行。
+- M4マスタDB: `songs` / `charts` を持つ `ddrgp-master.sqlite`。
+- `song_title_extracted_value`: 曲名OCR入口の生文字列。
+- `play_style_extracted_value` / `difficulty_extracted_value` / `level_extracted_value`: M3 chart-fieldのPoC観測値。
+
+M3の `ready` はM5へ渡せる観測値という意味に留める。曲ID、譜面ID、マスタ曲名への一意照合成功やDB保存可能を意味しない。
+
+## 最小正規化
+
+曲名OCR文字列はPoC入口として以下だけを行う。
+
+- Unicode NFKC正規化。
+- 大小文字をcasefoldで寄せる。
+- 空白を除去する。
+- ASCII句読点と代表的な日本語括弧・句読点を除去する。
+
+この正規化はM5最小入口であり、読み仮名、別名、版権表記差、OCR誤読辞書、曲名固有ルールはまだ扱わない。
+
+## 候補絞り込み
+
+まず `play_style` / `difficulty` / `level` で `charts` を絞り、該当chartとsongを候補集合にする。曲名類似度は標準ライブラリの `difflib.SequenceMatcher` を使い、正規化済みOCR文字列とマスタ曲名の正規化文字列を比較する。
+
+現時点の既定しきい値は `0.92`。外部依存は増やさない。
+
+## match_status
+
+- `matched`: しきい値以上の最上位候補が1件だけある。PoC上の一意候補であり、保存可能や本番採用済み照合ではない。
+- `ambiguous`: しきい値以上の最上位候補が同点で複数ある。
+- `not_found`: chart条件に候補がない、または最上位スコアがしきい値未満。
+- `insufficient_input`: `song_title` または chart-field 3項目がM5入力として足りない。
+
+`ambiguous`、`not_found`、`insufficient_input` は、M7以降で保存不可理由や低確信度ログへ渡す観測語彙として扱う。
+
+## 出力
+
+`--m5-master-match` はPoC出力先に以下を生成する。
+
+- `master_match_candidates.csv`
+- `master_match_summary.json`
+- `master_match_report.md`
+
+各行には、OCR入力文字列、正規化文字列、chart-field条件、候補曲数、候補譜面数、最上位候補、score、`match_status`、`failure_reason` を出す。生成物は `data/` 配下に置き、Git管理しない。
+
+## スコープ外
+
+- OCR方式刷新。
+- ROI座標定義の大変更。
+- artistを一意照合主キーにすること。
+- 曖昧一致をDB保存可能として扱うこと。
+- 個人スコアDB保存。
+- duplicate key の本格差し替え。
