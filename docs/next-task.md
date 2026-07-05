@@ -18,20 +18,22 @@ high
 
 ## 今回までの作業結果
 
-- M5ジャケット特徴量PoCとして `--m5-jacket-match` を追加した。
+- M5ジャケット特徴量PoCとして `--m5-jacket-match` を追加済み。
 - `song_select` grid右上プレビューROIは 1280x720 基準で `(812, 28, 150, 150)`。result側は既存 `jacket` ROIを使う。
 - 特徴量は中心正方形から 16x16 RGBサムネイル、RGB 8-bin histogram、8x8 dHashを作る。距離しきい値は `0.24`、曖昧判定deltaは `0.015` の初期観測値。
 - `jacket_feature_master.csv`、`jacket_feature_master_summary.json`、`jacket_feature_label_template.csv`、`jacket_match_candidates.csv`、`jacket_match_summary.json`、`jacket_match_report.md` を出力する。
-- `jacket_feature_label_template.csv` は未ラベルgrid行の補助テンプレートで、metadata実体は編集しない。
-- 現ローカルmetadataでは `song_select` gridラベル付き23件がすべて M4 `songs.title` に一意一致し、`jacket_feature_master_summary.json` は `accepted=23`。
-- OCRありM5曲名照合の直近結果は confirmed-events 60件、classification 134/134、`matched=19`、`not_found=39`、`insufficient_input=2`。`not_found` は `below_score_threshold`、`insufficient_input` は `empty_ocr`。
+- 2026-07-05のローカル素材追加後、metadataは176行、classificationは176/176全正解。`transition_countup` shape candidates は3件。
+- 2026-07-05の直近ジャケットPoC結果は confirmed-events 60件、`jacket_feature_master accepted=58`、`matched=56`、`ambiguous=4`、`not_found=0`、`missing_feature=0`、`insufficient_input=0`。
+- 追加キャプチャにより、以前の `not_found` / `missing_feature` は解消済み。`Taking It To The Sky (PLUS step)` と `めうめうぺったんたん！！ (ZAQUVA Remix)` のgrid/result素材もローカルmetadataへ反映済み。
+- 残り `ambiguous=4` は、`osaka EVOLVED -毎度、おおきに！- (TYPE1/2/3)` の同一ジャケット3件と、`If` が追加した `めうめうぺったんたん！！ (ZAQUVA Remix)` featureに近くなった1件。
+- `osaka EVOLVED TYPE1/2/3` はジャケット画像だけで一意化しない。title画像特徴量またはtitle OCRで、jacket候補集合内だけを再順位付けする対象にする。
+- `If` の曖昧は、expected candidate distance / rank / margin診断を追加して、正解featureが何位か、近距離候補がどの程度危険かを見る。
+- OCRありM5曲名照合の直近結果は confirmed-events 60件、`matched=19`、`not_found=39`、`insufficient_input=2`。`not_found` は `below_score_threshold`、`insufficient_input` は `empty_ocr`。
 - OCRなしM5曲名照合は confirmed-events 60件、`insufficient_input=60` / `ocr_not_run=60`。
-- ジャケット照合の直近結果は confirmed-events 60件、`matched=28`、`not_found=28`、`missing_feature=4`、`ambiguous=0`、`insufficient_input=0`。`not_found` は `above_distance_threshold`、`missing_feature` は `no_candidate_jacket_features`。
 - `matched` はPoC上の一意候補という意味だけで、DB保存可能、本番採用済み照合、曲ID/譜面ID確定を意味しない。
 - 2026-07-05の直近確認では `python -m master --output data\master\ddrgp-master.sqlite` で 1282 songs / 9594 charts を生成できた。
 - 直近source hashは `82c0522f51b00fb624b5281addd70d108649d8ca2e8c598b3ea094edffa5d40f`。取得元更新でhashは変わり得るため、件数固定ではなく構造変化検出とDB生成成功を見る。
-- 直近検証では `python -m ruff check master tools\vision_poc pyproject.toml tests`、`python -m compileall master tools\vision_poc`、`python -m pytest tests` が通過し、pytest は 115 passed。
-- `python -m tools.vision_poc --no-ocr` は現ローカル素材134件で全正解、`transition_countup` shape candidates は3件。
+- 直近コード検証では `python -m ruff check master tools\vision_poc pyproject.toml tests`、`python -m compileall master tools\vision_poc`、`python -m pytest tests` が通過し、pytest は 115 passed。
 - 生成DB、PoC出力、OCR画像、`metadata.csv`、`data/`、`logs/`、ローカル素材、ローカルDBはGit管理しない。
 
 ## 必読資料
@@ -81,17 +83,19 @@ M5内でまだ成功扱いにしないもの:
 - ファジーマッチ結果やジャケット `matched` を本番採用済み照合として扱うこと
 - 曖昧一致や低確信度をDB保存可能として扱うこと
 - `artist` を曲名照合の一意主キーとして扱うこと
+- 同一ジャケット候補を画像特徴量だけで無理に一意化すること
 
 ## 次に必ず進める実作業
 
 - `docs/next-task.md` の更新だけ、または確認結果の記録だけで完了扱いにしない。
-- `data\master_match_poc_jacket\jacket_match_candidates.csv` を読み、`not_found / above_distance_threshold` 28件と `missing_feature / no_candidate_jacket_features` 4件の代表を整理する。
-- `jacket_match_candidates.csv` に期待曲名との比較や距離分布を観察しやすい列または補助レポートを追加する。metadata実体は編集しない。
-- `missing_feature` 4件は、chart-fieldで絞った候補song_id側にローカルgrid特徴量がないケースとして読み、追加すべき `song_select` gridラベル候補を `data/` 配下の補助CSVへ出す。
-- `not_found` 28件は、ROI切り出し、外枠混入、色特徴重み、dHash重み、距離しきい値のどれが支配的かを小さく診断する。
+- `jacket_match_candidates.csv` に expected song / expected song_id / expected distance / expected rank / top margin を観察できる診断列、または同等の補助CSV/Markdownを追加する。
+- `If` の `ambiguous` について、正解featureの距離・順位・近距離候補との差分を確認し、しきい値問題か特徴量重み問題かを分ける。
+- jacketで `ambiguous` になった場合だけ使う title画像特徴量PoCを追加する。まずは result `song_title` ROI と song_select gridのタイトル表示またはresult参照素材を比較対象にする。
+- title画像特徴量は候補集合外から曲を拾うためには使わない。`play_style / difficulty / level` と jacket候補集合内の再順位付けだけに使う。
+- `osaka EVOLVED TYPE1/2/3` は同一ジャケット候補として残し、title画像特徴量またはtitle OCRで `TYPE1` / `TYPE2` / `TYPE3` を区別できるか確認する。
+- `matched`、title画像特徴量による解消候補、OCRによる解消候補はいずれもPoC観測語彙であり、保存可能とは書かない。
 - しきい値や特徴量重みを変える場合は、保存可能判定に接続せず、`docs/design/09_master_match_poc.md` と `tools/vision_poc/README.md` も更新する。
 - 大きなOCR方式刷新やROI座標定義の大変更には進まない。
-- `matched` はPoC上の一意候補という意味に限定し、保存可能とは書かない。
 - `docs/next-task.md` の更新は、実作業と検証が終わった後の引き継ぎ更新として行う。
 
 ## 検証コマンド
@@ -162,6 +166,7 @@ Get-Content data\vision_poc_m3_song_artist\m3_save_candidate_summary.json
 - ラベル不足のsong_select grid行をテンプレCSVへ出し、metadata実体を変更していない。
 - result confirmed-events のジャケットROIを、chart-fieldで絞った候補song_idのfeatureだけと比較できる。
 - jacket matchの `matched` / `ambiguous` / `not_found` / `insufficient_input` / `missing_feature` の意味が保存可否と混同されていない。
+- title画像特徴量を追加する場合は、jacket ambiguous候補集合内の再順位付けに限定し、保存可能判定と混同していない。
 - M5 fixtureテストがネットワーク、画像、`metadata.csv` に依存せず通る。
 - 画像PoCやM3境界を触った場合は、`python -m tools.vision_poc --no-ocr` が全正解。
 - 画像PoCやM3境界を触った場合は、`transition_countup_*` と confirmed-events 境界が維持されている。
