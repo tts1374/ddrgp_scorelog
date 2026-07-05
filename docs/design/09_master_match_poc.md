@@ -86,7 +86,7 @@ result confirmed-events
 
 `jacket_feature_master.csv` は、`screen_type=song_select` かつ grid 画面の右上選択中ジャケットプレビューを特徴量化し、metadata の `song_title` / `expected_song_title` を M4 `songs.title` へ一意照合できた行だけを `accepted` として出す。ラベルが空のgrid行は `jacket_feature_label_template.csv` へ出し、metadata実体は更新しない。
 
-`jacket_match_candidates.csv` は、confirmed-events の result `jacket` ROIを特徴量化し、`play_style` / `difficulty` / `level` で絞った候補song_idに紐づくローカル特徴量だけと比較する。列には候補曲数、候補譜面数、候補特徴量数、最上位候補、score、distance、特徴量参照元、上位候補一覧、期待曲名、期待song_id、期待song_idの距離、期待song_idの順位、最上位と次点songの距離差、title画像特徴量補助、title OCR suffix補助、`jacket_match_status`、`failure_reason` を出す。期待値由来の列はローカルmetadataを使った診断であり、保存可能判定ではない。
+`jacket_match_candidates.csv` は、confirmed-events の result `jacket` ROIを特徴量化し、`play_style` / `difficulty` / `level` で絞った候補song_idに紐づくローカル特徴量だけと比較する。列には候補曲数、候補譜面数、候補特徴量数、最上位候補、score、distance、特徴量参照元、上位候補一覧、期待曲名、期待song_id、期待song_idの距離、期待song_idの順位、最上位と次点songの距離差、title画像特徴量補助、title OCR suffix補助、title line-hash補助、`jacket_match_status`、`failure_reason` を出す。期待値由来の列はローカルmetadataを使った診断であり、保存可能判定ではない。
 
 `jacket_match_status` は以下のPoC観測語彙とする。
 
@@ -114,7 +114,7 @@ title OCR suffix補助は、`--m3-song-artist-ocr` で得た result `song_title`
 
 title line-hashでは、result `song_title` ROIの文字色を固定しきい値で二値化し、行ごとのbit列を4bit単位でhex化する。比較は2系統を同時に出す。完全一致型は行ごとのhexキー一致を強い証拠として見る。距離比較型は、候補参照同士で差が出るbitを重く見たHamming距離で順位付けする。これにより、osakaのように共通文字列が大半を占める曲名でも、候補間の差分がある箇所を相対的に強く見る。
 
-`jacket_match_candidates.csv` へ追加するline-hash観測列は、`title_linehash_candidate_feature_count`、`title_linehash_diff_bit_count`、`title_linehash_exact_status`、`title_linehash_distance_status`、`title_linehash_top_song_id`、`title_linehash_top_chart_id`、`title_linehash_top_title`、`title_linehash_top_distance`、`title_linehash_top_candidates`、`title_linehash_rerank_reason` を基本とする。`title_linehash_*_status=resolved_candidate` は、line-hashが曖昧候補集合内の再順位付け候補を出したというM5観測であり、`jacket_match_status` を変えたり、曲ID/譜面ID確定やDB保存可能を意味したりしない。line-hashが候補集合外にありそうな曲名形状を示しても、候補集合外から曲を拾わない。
+`jacket_match_candidates.csv` へ追加するline-hash観測列は、`title_linehash_candidate_feature_count`、`title_linehash_diff_bit_count`、`title_linehash_exact_status`、`title_linehash_distance_status`、`title_linehash_top_song_id`、`title_linehash_top_chart_id`、`title_linehash_top_title`、`title_linehash_top_distance`、`title_linehash_top_candidates`、`title_linehash_rerank_reason` を基本とする。PoC実装では `song_title` ROIを固定サイズへ寄せ、輝度しきい値で二値化して行ごとのhexキーを作る。距離比較では、候補参照間で値が割れるbitを重くしたHamming距離を使う。`title_linehash_*_status=resolved_candidate` は、line-hashが曖昧候補集合内の再順位付け候補を出したというM5観測であり、`jacket_match_status` を変えたり、曲ID/譜面ID確定やDB保存可能を意味したりしない。line-hashが候補集合外にありそうな曲名形状を示しても、候補集合外から曲を拾わない。
 
 固定UI文字は最終的に汎用OCRより画像認識へ寄せる方針だが、スコア/判定数/EX SCORE のTesseract離脱や数字テンプレート認識は後続タスクに回す。M5の次作業では、まずtitle line-hashをjacket ambiguous候補内の補助信号として観測する。
 

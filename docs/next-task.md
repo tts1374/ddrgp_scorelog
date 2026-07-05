@@ -19,39 +19,28 @@ high
 ## 今回までの作業結果
 
 - M5ジャケット特徴量PoCとして `--m5-jacket-match` を追加済み。
-- `jacket_match_candidates.csv` には、ローカル期待値診断列 `expected_song_title` / `expected_song_id` / `expected_jacket_distance` / `expected_jacket_rank` / `jacket_top_margin` を出す。
-- jacketで `ambiguous` になった候補集合内だけを対象にする title画像特徴量PoCを追加済み。
-  - result `song_title` ROIを横長の濃淡サムネイル、エッジサムネイル、右側サフィックス寄りの濃淡/エッジサムネイル、dHashに変換する。
-  - 参照はローカルmetadataの期待曲名を M4 `songs.title` へ一意解決できた result 素材から作る。
-  - 比較時は同じ `organized_file` の参照を除外する。
-  - `title_rerank_status=resolved_candidate` はPoC観測語彙であり、保存可能、曲ID/譜面ID確定、`jacket_match_status=matched` への昇格を意味しない。
-- 今回、jacketで `ambiguous` になった候補集合内だけを対象にする title OCR suffix 診断を追加した。
-  - `--m3-song-artist-ocr` の result `song_title` OCR文字列から `TYPE1` / `TYPE2` / `TYPE3` suffixだけを観測する。
-  - 出力列は `title_ocr_raw`、`title_ocr_text`、`title_ocr_suffix`、`title_ocr_top_*`、`title_ocr_top_candidates`、`title_ocr_rerank_status`、`title_ocr_rerank_reason`。
-  - `title_ocr_rerank_status=resolved_candidate` はPoC観測語彙であり、保存可能、曲ID/譜面ID確定、`jacket_match_status=matched` への昇格を意味しない。
-  - suffixが候補集合外にありそうでも候補集合外から曲を拾わず、`no_candidate_suffix_match` として観測する。
+- jacketで `ambiguous` になった候補集合内だけを対象にする title画像特徴量PoC、title OCR suffix診断、title line-hash診断を追加済み。
+- 今回、result `song_title` ROI の title line-hash rerank PoC を実装した。
+  - `song_title` ROIを固定サイズへ寄せ、輝度しきい値で二値化し、行ごとのbit列をhex化する。
+  - 参照はローカルmetadata期待曲名を M4 `songs.title` へ一意解決できた result素材のみ。
+  - 同じ `organized_file` の参照は比較から除外する。
+  - jacketで `ambiguous` になったsong_id集合内だけで比較し、候補集合外から曲を拾わない。
+  - 完全一致型 `title_linehash_exact_status` と、候補参照間で差が出るbitを重く見る距離比較型 `title_linehash_distance_status` を `jacket_match_candidates.csv` に出す。
+  - `title_linehash_*_status=resolved_candidate` はPoC観測語彙であり、保存可能、曲ID/譜面ID確定、`jacket_match_status=matched` への昇格を意味しない。
 - 2026-07-05の今回ローカル確認では metadata は178行、classification は178/178全正解。`transition_countup` shape candidates は3件。
+- 今回の M4 DB生成は 1282 songs / 9594 charts。source hash は `a866ea0527c2ac305cee6c17cedf10c2c85975fb1cf45b8870d56ad119d9f8b5`。
+- OCRなしM5曲名照合は confirmed-events 60件、`insufficient_input=60` / `ocr_not_run=60`。
+- OCRありM5曲名照合は confirmed-events 60件、`matched=19`、`not_found=39`、`insufficient_input=2`。
+- M3 song/artist OCR入口失敗代表は `failure_count=24`、`affected_candidate_count=22`、`song_title empty_ocr=2`、`artist empty_ocr=22`。
 - 今回の `--m5-jacket-match` 結果は confirmed-events 60件、`jacket_feature_master accepted=59`、`matched=57`、`ambiguous=3`、`not_found=0`、`missing_feature=0`。
 - 残り `ambiguous=3` は引き続き `osaka EVOLVED -毎度、おおきに！- (TYPE1/2/3)` の同一ジャケット3件。`jacket_top_margin=0.0000` で、画像特徴量だけでは一意化しない。
-- title画像特徴量PoCの今回結果は `title_rerank_status_counts={"ambiguous_candidate": 3, "not_run": 57}`。osaka 3件は title画像特徴量でも近傍候補が残り、TYPE1/2/3を安定して一意化できなかった。
-- title OCR suffix 診断の今回結果は `title_ocr_rerank_status_counts={"no_suffix": 3, "not_run": 57}`。
-  - osaka TYPE1 OCR文字列例: `| osaka EVOLVED WM.8e8i!: (TYPE) NAOKI underground |`
-  - osaka TYPE2 OCR文字列例: `osaka EVOLVED WM. Ba#IC!: (TYPED) NAOKI underground |`
-  - osaka TYPE3 OCR文字列例: `osaka EVOLVED WR.gasic!: (TYPES) NAOKI underground`
-  - 現行のM3 title OCR入口だけでは `TYPE1` / `TYPE2` / `TYPE3` suffixを安定取得できない観測。しきい値問題というより、result title ROIの表現/OCR入口の問題として読む。
-- OCRありM5曲名照合の今回結果は confirmed-events 60件、`matched=19`、`not_found=39`、`insufficient_input=2`。`not_found` は `below_score_threshold`、`insufficient_input` は `empty_ocr`。
-- OCRなしM5曲名照合の今回結果は confirmed-events 60件、`insufficient_input=60` / `ocr_not_run=60`。
-- M3 song/artist OCR入口失敗代表は `failure_count=24`、`affected_candidate_count=22`、`song_title empty_ocr=2`、`artist empty_ocr=22`。
-- `matched`、jacket `matched`、title画像 `resolved_candidate`、title OCR `resolved_candidate` はPoC上の観測語彙で、DB保存可能、本番採用済み照合、曲ID/譜面ID確定を意味しない。
-- 今回の方針相談で、次のM5補助信号は result `song_title` ROI の line-hash 方式にすることを決めた。
-  - 参照元は result 素材のみ。song_select 側タイトル表示ROIは使わない。
-  - jacketで `ambiguous` になった候補song_id集合内だけを対象にし、候補集合外から曲を拾わない。
-  - inf-notebook 風に、固定ROIの文字色を二値化し、行ごとのhexキーを作る。
-  - 完全一致型と距離比較型を両方出し、距離比較では候補参照間で差が出るbitを重く見る。
-  - line-hash成功はM5相応の観測列まで。DB保存、M7/M8保存判定、実保存処理には接続しない。
-  - スコア/判定数のTesseract離脱や数字テンプレート認識は後続に回す。
-- 今回の `python -m master --output data\master\ddrgp-master.sqlite` では 1282 songs / 9594 charts を生成できた。
-- 今回source hashは `ce38cabac579c99778b2964fba2b31da5c40182fba45efc9295f73db81741f9a`。取得元更新でhashは変わり得るため、件数固定ではなく構造変化検出とDB生成成功を見る。
+- title画像特徴量PoCの今回結果は `title_rerank_status_counts={"ambiguous_candidate": 3, "not_run": 57}`。
+- title OCR suffix診断の今回結果は `title_ocr_rerank_status_counts={"no_suffix": 3, "not_run": 57}`。
+- title line-hash診断の今回結果は `title_linehash_exact_status_counts={"no_exact_match": 3, "not_run": 57}`、`title_linehash_distance_status_counts={"ambiguous_candidate": 3, "not_run": 57}`。
+  - osaka 3件の line-hash最上位候補は期待TYPEと一致した。
+  - ただし次点候補が近く、現しきい値では `ambiguous_candidate` のまま。しきい値だけで無理に解決扱いにしない。
+  - 観測例: TYPE1 top distance `0.0546`、TYPE2 `0.0323`、TYPE3 `0.0376`。diff bit count はそれぞれ `476` / `670` / `621`。
+- `matched`、jacket `matched`、title画像 `resolved_candidate`、title OCR `resolved_candidate`、title line-hash `resolved_candidate` はPoC上の観測語彙で、DB保存可能、本番採用済み照合、曲ID/譜面ID確定を意味しない。
 - 今回コード検証では `python -m ruff check master tools\vision_poc pyproject.toml tests`、`python -m compileall master tools\vision_poc`、`python -m pytest tests` が通過し、pytest は120 passed。
 - 生成DB、PoC出力、OCR画像、`metadata.csv`、`data/`、`logs/`、ローカル素材、ローカルDBはGit管理しない。
 
@@ -99,42 +88,26 @@ M3評価レポートや画像PoCの境界へ触る場合だけ追加で読む資
 M5内でまだ成功扱いにしないもの:
 
 - OCR結果、ジャケットPoC結果、title補助結果から曲ID/譜面IDを保存用に確定すること
-- ファジーマッチ結果、jacket `matched`、title画像 `resolved_candidate`、title OCR `resolved_candidate` を本番採用済み照合として扱うこと
+- ファジーマッチ結果、jacket `matched`、title画像 `resolved_candidate`、title OCR `resolved_candidate`、title line-hash `resolved_candidate` を本番採用済み照合として扱うこと
 - 曖昧一致や低確信度をDB保存可能として扱うこと
 - `artist` を曲名照合の一意主キーとして扱うこと
 - 同一ジャケット候補を画像特徴量だけで無理に一意化すること
-- title画像特徴量やtitle OCRを候補集合外から曲を拾うために使うこと
-- title line-hashを候補集合外から曲を拾うために使うこと
+- title画像特徴量、title OCR、title line-hashを候補集合外から曲を拾うために使うこと
 - title line-hash成功をDB保存可能、M7/M8保存判定、実保存処理として扱うこと
 - スコア/判定数のTesseract離脱を今回の実装に含めること
 
 ## 次に必ず進める実作業
 
 - `docs/next-task.md` の更新だけ、または確認結果の記録だけで完了扱いにしない。
-- osaka TYPE1/2/3 は、jacket特徴量、result title画像特徴量、現行M3 title OCR入口のいずれでも安定一意化できていない。
-- 次は result `song_title` ROI の title line-hash rerank PoC を実装する。
-  - 文字色を固定しきい値で二値化する。
-  - 行ごとのbit列を4bit単位でhex化する。
-  - 参照はローカルmetadata期待曲名を M4 `songs.title` へ一意解決できた result素材だけから作る。
-  - 同じ `organized_file` の参照は比較から除外する。
-  - jacketで `ambiguous` になったsong_id集合内だけで比較する。
-  - 完全一致型と距離比較型を同じ `jacket_match_candidates.csv` に出す。
-  - 距離比較は、候補参照間で差が出るbitを重く見る。
-- 追加する観測列候補:
-  - `title_linehash_candidate_feature_count`
-  - `title_linehash_diff_bit_count`
-  - `title_linehash_exact_status`
-  - `title_linehash_distance_status`
-  - `title_linehash_top_song_id`
-  - `title_linehash_top_chart_id`
-  - `title_linehash_top_title`
-  - `title_linehash_top_distance`
-  - `title_linehash_top_candidates`
-  - `title_linehash_rerank_reason`
-- `jacket_match_status` は line-hashで解けても変更しない。M5補助観測として読む。
-- title line-hash、title OCR、title画像特徴量はいずれも、jacketで `ambiguous` になったsong_id集合内の再順位付けだけに使う。候補集合外から曲を拾わない。
+- osaka TYPE1/2/3 は、jacket特徴量、result title画像特徴量、現行M3 title OCR入口、現行title line-hashのいずれでも安定一意化できていない。
+- 次は title line-hash の suffix寄り診断を追加・比較する。
+  - 現行line-hash全体距離は最上位TYPEが期待値に合うが、次点が近く `ambiguous_candidate` のまま。
+  - まず `title_linehash_top_candidates` と距離差を読みやすくする診断列を追加する候補を検討する。
+  - そのうえで result `song_title` ROI の右側suffix寄り領域だけ、または候補参照間で差が出る列周辺だけを比較する小さなPoCを追加する。
+  - 参照は引き続き result素材のみ。song_select 側タイトル表示ROIは使わない。
+  - jacketで `ambiguous` になったsong_id集合内だけを対象にし、候補集合外から曲を拾わない。
+  - `jacket_match_status` は suffix寄りline-hashで解けても変更しない。M5補助観測として読む。
 - `jacket_match_candidates.csv` の `expected_jacket_distance` / `expected_jacket_rank` / `jacket_top_margin`、`title_top_candidates`、`title_ocr_text`、`title_ocr_rerank_status`、`title_linehash_*` を見て、しきい値問題か特徴量/OCR/line-hash表現問題かを分ける。
-- title line-hashで解消候補が出ても、保存可能判定へ接続せず、PoC観測語彙として docs / README / tests に反映する。
 - 大きなOCR方式刷新やROI座標定義の大変更には進まない。
 - スコア/判定数のTesseract離脱や数字テンプレート認識は後続タスクとして扱い、今回の実作業には含めない。
 - `docs/next-task.md` の更新は、実作業と検証が終わった後の引き継ぎ更新として行う。
@@ -160,12 +133,12 @@ python -m compileall master tools\vision_poc
 python -m pytest tests
 ```
 
-title補助の今回観測確認:
+title補助の観測確認:
 
 ```powershell
 Import-Csv data\master_match_poc_jacket\jacket_match_candidates.csv |
   Where-Object {$_.jacket_match_status -eq 'ambiguous'} |
-  Select-Object organized_file,expected_song_title,expected_jacket_rank,jacket_top_margin,title_rerank_status,title_top_title,title_top_distance,title_ocr_text,title_ocr_suffix,title_ocr_rerank_status,title_ocr_top_title,title_linehash_exact_status,title_linehash_distance_status,title_linehash_top_title,title_linehash_top_distance,title_linehash_rerank_reason |
+  Select-Object organized_file,expected_song_title,expected_jacket_rank,jacket_top_margin,title_rerank_status,title_top_title,title_top_distance,title_ocr_text,title_ocr_suffix,title_ocr_rerank_status,title_ocr_top_title,title_linehash_exact_status,title_linehash_distance_status,title_linehash_top_title,title_linehash_top_distance,title_linehash_diff_bit_count,title_linehash_rerank_reason |
   Format-List
 ```
 
@@ -213,12 +186,11 @@ Get-Content data\vision_poc_m3_song_artist\m3_save_candidate_summary.json
 - 曲名OCR文字列の正規化方針がテストとdocsで説明できる。
 - M5 PoCのCSV/summaryで、候補数、最上位候補、上位候補一覧、score、`match_status`、`failure_reason`を確認できる。
 - song_select grid右上プレビュー由来のjacket feature masterを `data/` 配下へ生成できる。
-- ラベル不足のsong_select grid行をテンプレCSVへ出し、metadata実体を変更していない。
 - result confirmed-events のジャケットROIを、chart-fieldで絞った候補song_idのfeatureだけと比較できる。
 - jacket matchの `matched` / `ambiguous` / `not_found` / `insufficient_input` / `missing_feature` の意味が保存可否と混同されていない。
 - `jacket_match_candidates.csv` で expected song / expected song_id / expected distance / expected rank / top margin を確認できる。
-- title画像特徴量またはtitle OCRを追加する場合は、jacket ambiguous候補集合内の再順位付けに限定し、保存可能判定と混同していない。
-- title line-hashを追加する場合は、result素材参照だけを使い、jacket ambiguous候補集合内の再順位付けに限定し、保存可能判定と混同していない。
+- title画像特徴量、title OCR、title line-hashを追加・変更する場合は、jacket ambiguous候補集合内の再順位付けに限定し、保存可能判定と混同していない。
+- title line-hashは result素材参照だけを使い、候補集合外から曲を拾わない。
 - M5 fixtureテストがネットワーク、画像、`metadata.csv` に依存せず通る。
 - 画像PoCやM3境界を触った場合は、`python -m tools.vision_poc --no-ocr` が全正解。
 - 画像PoCやM3境界を触った場合は、`transition_countup_*` と confirmed-events 境界が維持されている。

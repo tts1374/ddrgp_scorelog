@@ -31,6 +31,7 @@ DEFAULT_SCORE_THRESHOLD = 0.92
 DEFAULT_JACKET_DISTANCE_THRESHOLD = 0.24
 DEFAULT_JACKET_AMBIGUITY_DELTA = 0.015
 DEFAULT_TITLE_AMBIGUITY_DELTA = 0.01
+DEFAULT_TITLE_LINEHASH_AMBIGUITY_DELTA = 0.01
 PUNCTUATION_TO_DROP = frozenset(
     string.punctuation + "　、。，．・･：；！？（）［］【】『』「」‘’“”"
 )
@@ -39,6 +40,9 @@ TOP_CANDIDATE_REPORT_LIMIT = 5
 JACKET_THUMBNAIL_SIZE = (16, 16)
 JACKET_DHASH_SIZE = 8
 TITLE_THUMBNAIL_SIZE = (96, 16)
+TITLE_LINEHASH_SIZE = (304, 52)
+TITLE_LINEHASH_LUMA_THRESHOLD = 150
+TITLE_LINEHASH_VARIABLE_BIT_WEIGHT = 5.0
 
 
 @dataclass(frozen=True)
@@ -75,6 +79,8 @@ class TitleImageFeature:
     suffix_edge: np.ndarray
     dhash_bits: np.ndarray
     dhash_hex: str
+    linehash_bits: np.ndarray
+    linehash_rows: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -280,6 +286,22 @@ def bits_to_hex(bits: np.ndarray) -> str:
     return f"{int(bit_string, 2):0{len(bit_string) // 4}x}"
 
 
+def row_bits_to_hex(bits: np.ndarray) -> str:
+    padded_length = ((len(bits) + 3) // 4) * 4
+    if padded_length != len(bits):
+        bits = np.pad(bits, (0, padded_length - len(bits)))
+    bit_string = "".join("1" if bit >= 0.5 else "0" for bit in bits)
+    return f"{int(bit_string, 2):0{padded_length // 4}x}"
+
+
+def title_linehash_from_image(image: Image.Image) -> tuple[np.ndarray, tuple[str, ...]]:
+    grayscale = image.convert("L").resize(TITLE_LINEHASH_SIZE, Image.Resampling.LANCZOS)
+    pixels = np.asarray(grayscale, dtype=np.uint8)
+    bit_rows = (pixels >= TITLE_LINEHASH_LUMA_THRESHOLD).astype(np.float32)
+    row_hexes = tuple(row_bits_to_hex(row) for row in bit_rows)
+    return bit_rows.reshape(-1), row_hexes
+
+
 def extract_jacket_feature(image: Image.Image) -> JacketFeature:
     square = center_square(image.convert("RGB"))
     thumbnail = np.asarray(
@@ -321,6 +343,7 @@ def extract_title_image_feature(image: Image.Image) -> TitleImageFeature:
         dtype=np.float32,
     ).reshape(-1) / 255.0
     hash_bits = dhash_bits(grayscale)
+    linehash_bits, linehash_rows = title_linehash_from_image(image)
     return TitleImageFeature(
         luma=luma,
         edge=edge,
@@ -328,6 +351,8 @@ def extract_title_image_feature(image: Image.Image) -> TitleImageFeature:
         suffix_edge=suffix_edge,
         dhash_bits=hash_bits,
         dhash_hex=bits_to_hex(hash_bits),
+        linehash_bits=linehash_bits,
+        linehash_rows=linehash_rows,
     )
 
 
@@ -379,6 +404,21 @@ def format_jacket_top_candidates(
 
 
 def format_title_top_candidates(
+    scored_candidates: Iterable[tuple[float, MasterChartCandidate, TitleFeatureMasterEntry]],
+    *,
+    limit: int = TOP_CANDIDATE_REPORT_LIMIT,
+) -> str:
+    parts = []
+    for distance, candidate, feature_entry in list(scored_candidates)[:limit]:
+        score = max(0.0, 1.0 - distance)
+        parts.append(
+            f"{score:.4f}:{candidate.title} / {candidate.artist} "
+            f"[{candidate.chart_id}; {feature_entry.organized_file}]"
+        )
+    return " | ".join(parts)
+
+
+def format_title_linehash_top_candidates(
     scored_candidates: Iterable[tuple[float, MasterChartCandidate, TitleFeatureMasterEntry]],
     *,
     limit: int = TOP_CANDIDATE_REPORT_LIMIT,
@@ -448,6 +488,24 @@ def title_ocr_empty_fields(status: str = "not_run", reason: str = "") -> dict[st
     }
 
 
+def title_linehash_empty_fields(
+    status: str = "not_run",
+    reason: str = "",
+) -> dict[str, str]:
+    return {
+        "title_linehash_candidate_feature_count": "0",
+        "title_linehash_diff_bit_count": "0",
+        "title_linehash_exact_status": status,
+        "title_linehash_distance_status": status,
+        "title_linehash_top_song_id": "",
+        "title_linehash_top_chart_id": "",
+        "title_linehash_top_title": "",
+        "title_linehash_top_distance": "",
+        "title_linehash_top_candidates": "",
+        "title_linehash_rerank_reason": reason,
+    }
+
+
 def empty_title_rerank_fields(status: str = "not_run", reason: str = "") -> dict[str, str]:
     return {
         "title_candidate_feature_count": "0",
@@ -461,6 +519,7 @@ def empty_title_rerank_fields(status: str = "not_run", reason: str = "") -> dict
         "title_rerank_status": status,
         "title_rerank_reason": reason,
         **title_ocr_empty_fields(),
+        **title_linehash_empty_fields(),
     }
 
 
@@ -620,6 +679,116 @@ def title_rerank_fields_for_ambiguous_candidates(
         "title_top_candidates": format_title_top_candidates(scored_candidates),
         "title_rerank_status": status,
         "title_rerank_reason": reason,
+    }
+
+
+def title_linehash_distance(
+    left: TitleImageFeature,
+    right: TitleImageFeature,
+    variable_bit_mask: np.ndarray,
+) -> float:
+    if len(left.linehash_bits) != len(right.linehash_bits):
+        return 1.0
+    weights = np.ones(len(left.linehash_bits), dtype=np.float32)
+    if len(variable_bit_mask) == len(weights):
+        weights = weights + (
+            variable_bit_mask.astype(np.float32) * (TITLE_LINEHASH_VARIABLE_BIT_WEIGHT - 1.0)
+        )
+    mismatches = left.linehash_bits != right.linehash_bits
+    return float(np.sum(weights * mismatches) / np.sum(weights))
+
+
+def title_linehash_fields_for_ambiguous_candidates(
+    *,
+    result_title_feature: TitleImageFeature | None,
+    title_feature_master_entries: Iterable[TitleFeatureMasterEntry],
+    candidates: Iterable[MasterChartCandidate],
+    ambiguous_song_ids: set[str],
+    target_organized_file: str,
+    ambiguity_delta: float = DEFAULT_TITLE_LINEHASH_AMBIGUITY_DELTA,
+) -> dict[str, str]:
+    if result_title_feature is None:
+        return title_linehash_empty_fields(
+            status="missing_feature",
+            reason="result_title_linehash_unavailable",
+        )
+
+    entries_by_song_id: dict[str, list[TitleFeatureMasterEntry]] = {}
+    for entry in title_feature_master_entries:
+        if entry.organized_file == target_organized_file:
+            continue
+        if entry.song_id in ambiguous_song_ids:
+            entries_by_song_id.setdefault(entry.song_id, []).append(entry)
+
+    candidate_entries: list[tuple[MasterChartCandidate, TitleFeatureMasterEntry]] = []
+    for candidate in candidates:
+        if candidate.song_id not in ambiguous_song_ids:
+            continue
+        for entry in entries_by_song_id.get(candidate.song_id, []):
+            candidate_entries.append((candidate, entry))
+
+    if not candidate_entries:
+        return title_linehash_empty_fields(
+            status="missing_feature",
+            reason="no_candidate_title_linehash_features",
+        )
+
+    reference_bits = np.asarray(
+        [entry.feature.linehash_bits for _candidate, entry in candidate_entries],
+        dtype=np.float32,
+    )
+    variable_bit_mask = reference_bits.max(axis=0) != reference_bits.min(axis=0)
+    diff_bit_count = int(np.sum(variable_bit_mask))
+
+    exact_matches = [
+        (candidate, entry)
+        for candidate, entry in candidate_entries
+        if entry.feature.linehash_rows == result_title_feature.linehash_rows
+    ]
+    exact_song_ids = {candidate.song_id for candidate, _entry in exact_matches}
+    exact_status = "no_exact_match"
+    if exact_matches and len(exact_song_ids) == 1:
+        exact_status = "resolved_candidate"
+    elif len(exact_song_ids) > 1:
+        exact_status = "ambiguous_candidate"
+
+    scored_candidates = [
+        (
+            title_linehash_distance(
+                result_title_feature,
+                entry.feature,
+                variable_bit_mask,
+            ),
+            candidate,
+            entry,
+        )
+        for candidate, entry in candidate_entries
+    ]
+    scored_candidates.sort(
+        key=lambda item: (item[0], item[1].title, item[1].artist, item[1].chart_id)
+    )
+    top_distance, top_candidate, _top_feature_entry = scored_candidates[0]
+    near_top = [
+        item
+        for item in scored_candidates
+        if item[0] - top_distance <= ambiguity_delta
+        and item[1].song_id != top_candidate.song_id
+    ]
+    distance_status = "ambiguous_candidate" if near_top else "resolved_candidate"
+    reason = "near_top_title_linehash_distance" if near_top else ""
+    return {
+        "title_linehash_candidate_feature_count": str(len(scored_candidates)),
+        "title_linehash_diff_bit_count": str(diff_bit_count),
+        "title_linehash_exact_status": exact_status,
+        "title_linehash_distance_status": distance_status,
+        "title_linehash_top_song_id": top_candidate.song_id,
+        "title_linehash_top_chart_id": top_candidate.chart_id,
+        "title_linehash_top_title": top_candidate.title,
+        "title_linehash_top_distance": f"{top_distance:.4f}",
+        "title_linehash_top_candidates": format_title_linehash_top_candidates(
+            scored_candidates
+        ),
+        "title_linehash_rerank_reason": reason,
     }
 
 
@@ -891,10 +1060,18 @@ def match_jacket_save_candidate_row(
             candidates=candidates,
             ambiguous_song_ids=ambiguous_song_ids,
         )
+        title_linehash_rerank_fields = title_linehash_fields_for_ambiguous_candidates(
+            result_title_feature=result_title_feature,
+            title_feature_master_entries=title_feature_master_entries,
+            candidates=candidates,
+            ambiguous_song_ids=ambiguous_song_ids,
+            target_organized_file=row.get("organized_file", ""),
+        )
         return {
             **result,
             **title_rerank_fields,
             **title_ocr_rerank_fields,
+            **title_linehash_rerank_fields,
             "jacket_match_status": "ambiguous",
             "failure_reason": "near_top_distance",
         }
@@ -1009,6 +1186,8 @@ def summarize_jacket_match_rows(rows: Iterable[dict[str, str]]) -> dict[str, Any
     failure_reason_counts: dict[str, int] = {}
     title_rerank_status_counts: dict[str, int] = {}
     title_ocr_rerank_status_counts: dict[str, int] = {}
+    title_linehash_exact_status_counts: dict[str, int] = {}
+    title_linehash_distance_status_counts: dict[str, int] = {}
     for row in row_list:
         status = row["jacket_match_status"]
         status_counts[status] = status_counts.get(status, 0) + 1
@@ -1021,6 +1200,17 @@ def summarize_jacket_match_rows(rows: Iterable[dict[str, str]]) -> dict[str, Any
         if title_ocr_status:
             title_ocr_rerank_status_counts[title_ocr_status] = (
                 title_ocr_rerank_status_counts.get(title_ocr_status, 0) + 1
+            )
+        title_linehash_exact_status = row.get("title_linehash_exact_status", "")
+        if title_linehash_exact_status:
+            title_linehash_exact_status_counts[title_linehash_exact_status] = (
+                title_linehash_exact_status_counts.get(title_linehash_exact_status, 0) + 1
+            )
+        title_linehash_distance_status = row.get("title_linehash_distance_status", "")
+        if title_linehash_distance_status:
+            title_linehash_distance_status_counts[title_linehash_distance_status] = (
+                title_linehash_distance_status_counts.get(title_linehash_distance_status, 0)
+                + 1
             )
         failure_reason = row["failure_reason"]
         if failure_reason:
@@ -1038,10 +1228,17 @@ def summarize_jacket_match_rows(rows: Iterable[dict[str, str]]) -> dict[str, Any
         "title_ocr_rerank_status_counts": dict(
             sorted(title_ocr_rerank_status_counts.items())
         ),
+        "title_linehash_exact_status_counts": dict(
+            sorted(title_linehash_exact_status_counts.items())
+        ),
+        "title_linehash_distance_status_counts": dict(
+            sorted(title_linehash_distance_status_counts.items())
+        ),
         "status_vocabulary": list(JACKET_MATCH_STATUS_VOCABULARY),
         "distance_threshold": DEFAULT_JACKET_DISTANCE_THRESHOLD,
         "ambiguity_delta": DEFAULT_JACKET_AMBIGUITY_DELTA,
         "title_ambiguity_delta": DEFAULT_TITLE_AMBIGUITY_DELTA,
+        "title_linehash_ambiguity_delta": DEFAULT_TITLE_LINEHASH_AMBIGUITY_DELTA,
         "reading_notes": [
             "matched means a unique PoC top jacket feature candidate, not DB-save readiness.",
             "missing_feature means the local feature master lacks a usable reference.",
@@ -1049,6 +1246,7 @@ def summarize_jacket_match_rows(rows: Iterable[dict[str, str]]) -> dict[str, Any
             "title_rerank_status is a diagnostic for jacket ambiguous candidates only.",
             "title_ocr_rerank_status only observes TYPE suffixes inside jacket ambiguous "
             "candidates.",
+            "title_linehash statuses only rerank inside jacket ambiguous candidates.",
         ],
     }
 
@@ -1168,6 +1366,16 @@ def write_jacket_match_csv(path: Path, rows: Iterable[dict[str, str]]) -> None:
         "title_ocr_top_candidates",
         "title_ocr_rerank_status",
         "title_ocr_rerank_reason",
+        "title_linehash_candidate_feature_count",
+        "title_linehash_diff_bit_count",
+        "title_linehash_exact_status",
+        "title_linehash_distance_status",
+        "title_linehash_top_song_id",
+        "title_linehash_top_chart_id",
+        "title_linehash_top_title",
+        "title_linehash_top_distance",
+        "title_linehash_top_candidates",
+        "title_linehash_rerank_reason",
         "jacket_match_status",
         "failure_reason",
     ]
@@ -1267,6 +1475,10 @@ def write_jacket_match_report(
         f"`{json.dumps(summary['title_rerank_status_counts'], sort_keys=True)}`",
         f"- title_ocr_rerank_status: "
         f"`{json.dumps(summary['title_ocr_rerank_status_counts'], sort_keys=True)}`",
+        f"- title_linehash_exact_status: "
+        f"`{json.dumps(summary['title_linehash_exact_status_counts'], sort_keys=True)}`",
+        f"- title_linehash_distance_status: "
+        f"`{json.dumps(summary['title_linehash_distance_status_counts'], sort_keys=True)}`",
         f"- failure_reason: `{json.dumps(summary['failure_reason_counts'], sort_keys=True)}`",
         "",
         "## Candidate Rows",
@@ -1312,6 +1524,8 @@ def write_jacket_match_report(
             "- `expected_jacket_*` はローカル期待値に基づく診断列です。",
             "- `title_rerank_status` はjacketが曖昧な候補集合内だけの補助観測です。",
             "- `title_ocr_rerank_status` はjacketが曖昧な候補集合内だけでTYPE suffixを観測します。",
+            "- `title_linehash_*_status` はjacketが曖昧な候補集合内だけで"
+            "固定ROIのbit列を観測します。",
             "- `matched` は保存可能を意味しません。",
         ]
     )
