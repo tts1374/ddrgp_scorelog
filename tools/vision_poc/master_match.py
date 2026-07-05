@@ -18,7 +18,11 @@ MATCH_STATUS_VOCABULARY = (
     "insufficient_input",
 )
 DEFAULT_SCORE_THRESHOLD = 0.92
-PUNCTUATION_TO_DROP = frozenset(string.punctuation + "　、。，．・･：；！？（）［］【】『』「」")
+PUNCTUATION_TO_DROP = frozenset(
+    string.punctuation + "　、。，．・･：；！？（）［］【】『』「」‘’“”"
+)
+MIN_CONTAINMENT_MATCH_LENGTH = 5
+TOP_CANDIDATE_REPORT_LIMIT = 5
 
 
 @dataclass(frozen=True)
@@ -133,7 +137,23 @@ def load_chart_candidates(
 def title_similarity(left: str, right: str) -> float:
     if not left or not right:
         return 0.0
-    return SequenceMatcher(None, left, right).ratio()
+    full_ratio = SequenceMatcher(None, left, right).ratio()
+    if len(right) >= MIN_CONTAINMENT_MATCH_LENGTH and right in left:
+        return 1.0
+    return full_ratio
+
+
+def format_top_candidates(
+    scored_candidates: Iterable[tuple[float, MasterChartCandidate]],
+    *,
+    limit: int = TOP_CANDIDATE_REPORT_LIMIT,
+) -> str:
+    parts = []
+    for score, candidate in list(scored_candidates)[:limit]:
+        parts.append(
+            f"{score:.4f}:{candidate.title} / {candidate.artist} [{candidate.chart_id}]"
+        )
+    return " | ".join(parts)
 
 
 def match_save_candidate_row(
@@ -159,6 +179,7 @@ def match_save_candidate_row(
         "top_title": "",
         "top_artist": "",
         "top_score": "",
+        "top_candidates": "",
         "match_status": "insufficient_input",
         "failure_reason": "",
     }
@@ -219,6 +240,7 @@ def match_save_candidate_row(
         "top_title": top_candidate.title,
         "top_artist": top_candidate.artist,
         "top_score": f"{top_score:.4f}",
+        "top_candidates": format_top_candidates(scored_candidates),
     }
     if top_score < score_threshold:
         return {
@@ -298,6 +320,7 @@ def write_master_match_csv(path: Path, rows: Iterable[dict[str, str]]) -> None:
         "top_title",
         "top_artist",
         "top_score",
+        "top_candidates",
         "match_status",
         "failure_reason",
     ]
@@ -364,6 +387,7 @@ def write_master_match_report(
             "## Reading Notes",
             "",
             "- `song_title` はOCR入口の生文字列を最小正規化したものです。",
+            "- `top_candidates` は上位候補の観察用で、保存可能判定ではありません。",
             "- `play_style` / `difficulty` / `level` は候補絞り込み条件です。",
             "- `ambiguous`、`not_found`、`insufficient_input` は保存不可理由へ渡す観測語彙です。",
         ]

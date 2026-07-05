@@ -1,6 +1,6 @@
 # 次チャット用タスク
 
-`C:\work\ddrgp_scorelog` で作業してください。必ず `AGENTS.md` のプロジェクトルールに従ってください。
+`C:\work\ddrgp_scorelog` で作業してください。必ず `AGENTS.md` のプロジェクトルールに従ってください。`docs/next-task.md` は次チャット用の引き継ぎ仕様として扱い、実装・検証が終わった後に更新してください。
 
 ## 推論レベル
 
@@ -15,25 +15,18 @@ high
 - `git status --short --branch`
 - `git log --oneline -5`
 - 現在ブランチが `codex/m5-master-match-poc` であること
-- `docs/next-task.md` は次チャット用の作業指示ファイルとして扱うこと
 
 ## 今回までの作業結果
 
-- M4はマスタDB生成入口として完了扱い。M4 DBはM5照合PoCの入力として使ってよい。
-- `python -m master --output data\master\ddrgp-master.sqlite` で、2026-07-05時点の実HTMLから 1282 songs / 9594 charts のSQLiteを生成できることを確認済み。
-- 今回のローカルsource hashは `1fb8f6e7f067947314f3a99c8a4218864a1e429e9e0bb69071b38583640798a7`。取得元更新で変わり得るため、件数固定ではなく構造変化検出とDB生成成功を見る。
-- M5入口として `tools/vision_poc/master_match.py` と `--m5-master-match` を追加済み。
-- `--m5-master-match` は同じ実行内のM3保存候補行を使い、M4 SQLiteの `charts` を `play_style` / `difficulty` / `level` で絞り、曲名OCR文字列との類似度を出す。
-- M5出力は `master_match_candidates.csv`、`master_match_summary.json`、`master_match_report.md`。
-- `match_status` は `matched` / `ambiguous` / `not_found` / `insufficient_input`。`matched` はPoC上の一意候補であり、DB保存可能や本番採用済み照合ではない。
-- 曲名正規化は現時点でNFKC、casefold、空白除去、代表的な句読点除去だけ。
-- fixtureテスト `tests/test_master_match.py` はネットワーク、画像、`metadata.csv` に依存しない。
-- `python -m tools.vision_poc --m5-master-match --master-db data\master\ddrgp-master.sqlite --output data\master_match_poc --no-rois --no-ocr` では confirmed-events 60件、classification 112/112、M5は `insufficient_input=60` / `ocr_not_run=60`。
-- `python -m tools.vision_poc --m3-song-artist-ocr --m5-master-match --master-db data\master\ddrgp-master.sqlite --output data\master_match_poc_ocr --no-rois` では confirmed-events 60件、classification 112/112、M5は `matched=4`、`not_found=54`、`insufficient_input=2`。`not_found` はすべて `below_score_threshold`、`insufficient_input` は `empty_ocr`。
-- OCRありM5では、曲名OCR文字列にartistや余分な記号が混ざるケースが多く、次の改善対象は本格OCR刷新ではなくM5側の入力観察、最小正規化、候補スコア読み方の強化。
-- ジャケット特徴量は将来の補助信号候補として `docs/design/09_master_match_poc.md` に設計メモだけ残した。実装にはまだ入らない。
-- ジャケット特徴量を試す場合は、全曲ジャケット画像の取得、hash記録、`song_id` 対応manifest、取得失敗レポートを持つ専用ツールが必要。これは曲名OCRクリーニングを一段進めた後の独立フェーズとして扱う。
-- 直近確認では `python -m ruff check master tools\vision_poc pyproject.toml tests`、`python -m compileall master tools\vision_poc`、`python -m pytest tests` が通過し、pytest は 108 passed。
+- M4 DBはM5照合PoCの入力として使ってよい。2026-07-05の直近確認では `python -m master --output data\master\ddrgp-master.sqlite` で 1282 songs / 9594 charts を生成できた。
+- 直近source hashは `49fd88ea80c4a19b6e1c194c5fae30091ed932ba6ceac7b8464770522245c137`。前回メモのhashから変化したが、件数、snapshot数、metadata/snapshot hash整合、parser versionは `python -m master.inspect` で正常確認済み。取得元更新でhashは変わり得るため、件数固定ではなく構造変化検出とDB生成成功を見る。
+- M5の軽量改善として、曲名OCR文字列にartistや余分な記号が後続混入するケース向けに、正規化後のマスタ曲名が5文字以上でOCR正規化文字列に含まれる場合だけ包含一致として類似度を最大扱いにした。短いOCR断片がマスタ曲名に含まれるだけでは最大扱いにしない。
+- 曲名正規化では従来のNFKC、casefold、空白除去、代表的な句読点除去に加え、曲名OCRで出やすい curly quote 系の `‘’“”` を除去対象にした。
+- `master_match_candidates.csv` に `top_candidates` を追加し、上位5候補を `score:title / artist [chart_id]` 形式で観察できるようにした。これは失敗代表の観察用であり、保存可能判定ではない。
+- fixtureテストに、artist suffix混入、包含一致の過剰boost防止、`top_candidates` 出力を追加済み。
+- OCRありM5の直近結果は confirmed-events 60件、classification 112/112、`matched=19`、`not_found=39`、`insufficient_input=2`。`not_found` はすべて `below_score_threshold`、`insufficient_input` は `empty_ocr`。
+- OCRなしM5の直近結果は confirmed-events 60件、classification 112/112、`insufficient_input=60` / `ocr_not_run=60`。
+- 直近検証では `python -m ruff check master tools\vision_poc pyproject.toml tests`、`python -m compileall master tools\vision_poc`、`python -m pytest tests` が通過し、pytest は 110 passed。
 - 生成DB、PoC出力、OCR画像、`metadata.csv`、`data/`、`logs/`、ローカル素材、ローカルDBはGit管理しない。
 
 ## 必読資料
@@ -83,40 +76,15 @@ M5内でまだ成功扱いにしないもの:
 - 曖昧一致や低確信度をDB保存可能として扱うこと
 - `artist` を曲名照合の一意主キーとして扱うこと
 
-## 今回必ず進める実作業
+## 次に必ず進める実作業
 
 - `docs/next-task.md` の更新だけ、または確認結果の記録だけで完了扱いにしない。
-- M5の次作業として、OCRありM5の `below_score_threshold` を観察し、軽量な改善を1つ以上実装する。
-- 推奨候補は、曲名OCR文字列からartist混入を減らす最小クリーニング、上位候補を複数残すCSV列、`not_found` 理由の細分化、しきい値前後の代表レポート、またはfixtureテスト追加。
+- OCRありM5出力 `data\master_match_poc_ocr\master_match_candidates.csv` を再生成し、残った `below_score_threshold=39` を `top_candidates` と合わせて代表確認する。
+- 推奨候補は、記号・装飾文字差の軽量正規化、先頭ゴミ/末尾ゴミの観察、`below_score_threshold` の理由細分化、しきい値前後の代表レポート、または追加fixtureテスト。
+- 例として残件には `BREVK DOWN!` vs `BRE∀K DOWN！`、`CRAZYYLOVE` vs `CRAZY♥LOVE`、`RËVOLUTIФN`、`Lachryma《Re:Queen’M》`、日本語タイトルのOCR崩れがある。まずは標準ライブラリベースの小さい正規化・観察強化に留める。
 - 大きなOCR方式刷新やROI座標変更には進まない。
 - `matched` はPoC上の一意候補という意味に限定し、保存可能とは書かない。
 - `docs/next-task.md` の更新は、実作業と検証が終わった後の引き継ぎ更新として行う。
-
-## 後続作業
-
-1. 現状確認
-   - `git status --short --branch` と `git log --oneline -5` を確認する。
-   - `python -m master --output data\master\ddrgp-master.sqlite` を実行し、M5入力用のマスタDBをローカル生成する。
-   - `python -m master.inspect data\master\ddrgp-master.sqlite --summary data\master\master-summary.json` を実行し、DB検査とsummary出力を確認する。
-   - 実HTML件数が直近の 1282 songs / 9594 charts と違う場合は、取得元更新かパーサ崩れかを `master_metadata`、`source_snapshots`、HTMLヘッダで確認する。
-
-2. M5入力境界の確認
-   - duplicate、`rejected_transition`、未確定候補、non-result がM5対象外であることを維持する。
-   - M3の `song_title` はOCR生文字列または入口失敗理由として扱い、正解値や正規化済みタイトルとして扱わない。
-   - M3の `artist` は補助観測値。左右切れがあるため、最初の一意照合主キーにしない。
-   - `play_style` / `difficulty` / `level` は候補絞り込み条件として使うが、マスタ照合成功とは別に読む。
-
-3. M5 PoC改善
-   - OCRありM5出力 `data\master_match_poc_ocr\master_match_candidates.csv` を再生成して読む。
-   - `below_score_threshold` の代表行で、OCR文字列、正規化文字列、top候補、scoreを確認する。
-   - まずは標準ライブラリベースで改善する。外部依存を増やす場合はPoC専用optional dependencyに分ける。
-   - 改善した正規化やスコア方針はfixtureテストで固定する。
-   - 出力は `data/` 配下に置く。例: `data/master_match_poc_ocr/`。
-
-4. M5 docs/tests
-   - M5の照合境界、正規化方針、`match_status`、`failure_reason` を変えた場合は `docs/design/09_master_match_poc.md` と `tools/vision_poc/README.md` を更新する。
-   - fixtureテストはネットワーク、画像、`metadata.csv` に依存させない。
-   - M4 DB schemaや保存境界の意味を変える場合は、`docs/design/04_data_model.md`、`05_storage_io_spec.md`、`08_master_db_generation.md` も更新する。
 
 ## 検証コマンド
 
@@ -126,17 +94,13 @@ M5内でまだ成功扱いにしないもの:
 python -m master --output data\master\ddrgp-master.sqlite
 python -m master.inspect data\master\ddrgp-master.sqlite --summary data\master\master-summary.json
 python -m tools.vision_poc --m5-master-match --master-db data\master\ddrgp-master.sqlite --output data\master_match_poc --no-rois --no-ocr
+python -m tools.vision_poc --m3-song-artist-ocr --m5-master-match --master-db data\master\ddrgp-master.sqlite --output data\master_match_poc_ocr --no-rois
+Get-Content data\master_match_poc\master_match_summary.json
+Get-Content data\master_match_poc_ocr\master_match_summary.json
+Get-Content data\master_match_poc_ocr\m3_song_artist_ocr_entry_failures_summary.json
 python -m ruff check master tools\vision_poc pyproject.toml tests
 python -m compileall master tools\vision_poc
 python -m pytest tests
-```
-
-M5 OCR入口確認:
-
-```powershell
-python -m tools.vision_poc --m3-song-artist-ocr --m5-master-match --master-db data\master\ddrgp-master.sqlite --output data\master_match_poc_ocr --no-rois
-Get-Content data\master_match_poc_ocr\master_match_summary.json
-Get-Content data\master_match_poc_ocr\m3_song_artist_ocr_entry_failures_summary.json
 ```
 
 M4 DB確認:
@@ -181,7 +145,7 @@ Get-Content data\vision_poc_m3_song_artist\m3_save_candidate_summary.json
 - M3の `ready` やOCR文字列を、マスタ照合成功として扱っていない。
 - M4 DBから曲・譜面候補を読み、`play_style` / `difficulty` / `level` で候補を絞れる。
 - 曲名OCR文字列の正規化方針がテストとdocsで説明できる。
-- M5 PoCのCSV/summaryで、候補数、最上位候補、score、`match_status`、`failure_reason`を確認できる。
+- M5 PoCのCSV/summaryで、候補数、最上位候補、上位候補一覧、score、`match_status`、`failure_reason`を確認できる。
 - `matched` / `ambiguous` / `not_found` / `insufficient_input` の意味が保存可否と混同されていない。
 - M5 fixtureテストがネットワーク、画像、`metadata.csv` に依存せず通る。
 - 画像PoCやM3境界を触った場合は、`python -m tools.vision_poc --no-ocr` が112件全正解。

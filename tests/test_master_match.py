@@ -82,6 +82,9 @@ def test_normalize_song_title_folds_width_case_space_and_punctuation() -> None:
     assert master_match.normalize_song_title(" ＭＡＫＥ　ＩＴ・ＢＥＴＴＥＲ!! ") == (
         "makeitbetter"
     )
+    assert master_match.normalize_song_title("Poppin’ Soda “Remix”") == (
+        "poppinsodaremix"
+    )
     assert master_match.normalize_song_title("PARANOiA") == "paranoia"
 
 
@@ -100,6 +103,11 @@ def test_chart_filter_normalizes_m3_chart_fields() -> None:
     )
 
 
+def test_title_similarity_only_boosts_master_title_inside_ocr_text() -> None:
+    assert master_match.title_similarity("makeitbettermitsuo", "makeitbetter") == 1.0
+    assert master_match.title_similarity("makeit", "makeitbetter") < 1.0
+
+
 def test_match_save_candidate_row_reports_unique_matched_candidate(tmp_path: Path) -> None:
     db_path = write_fixture_master_db(tmp_path)
     row = save_candidate_row(title="MAKE IT BETTER")
@@ -111,6 +119,20 @@ def test_match_save_candidate_row_reports_unique_matched_candidate(tmp_path: Pat
     assert result["top_chart_id"] == "chart_make_single_difficult"
     assert result["candidate_song_count"] == "1"
     assert result["candidate_chart_count"] == "1"
+    assert result["top_score"] == "1.0000"
+    assert "MAKE IT BETTER / mitsu-O!" in result["top_candidates"]
+
+
+def test_match_save_candidate_row_tolerates_artist_suffix_in_ocr(
+    tmp_path: Path,
+) -> None:
+    db_path = write_fixture_master_db(tmp_path)
+    row = save_candidate_row(title="MAKE IT BETTER mitsu-O!")
+
+    result = master_match.match_save_candidate_row(row, db_path)
+
+    assert result["match_status"] == "matched"
+    assert result["top_song_id"] == "song_make"
     assert result["top_score"] == "1.0000"
 
 
@@ -185,6 +207,7 @@ def test_write_master_match_outputs_records_observation_scope(tmp_path: Path) ->
             "top_title": "MAKE IT BETTER",
             "top_artist": "mitsu-O!",
             "top_score": "1.0000",
+            "top_candidates": "1.0000:MAKE IT BETTER / mitsu-O! [chart_make_single_difficult]",
             "match_status": "matched",
             "failure_reason": "",
         }
