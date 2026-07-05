@@ -23,17 +23,18 @@ high
 - M4入口として `master` パッケージを追加し、BEMANIWiki全曲リストHTMLからSQLiteマスタDBを生成できるようにした。
 - `python -m master --output data\master\ddrgp-master.sqlite` で2026-07-04時点のBEMANIWiki実HTMLから 1282 songs / 9594 charts のSQLiteを生成できる。
 - 実HTML件数は取得元更新で変わり得るため、件数固定の完了条件にはしない。構造変化検出とDB生成成功を確認する。
-- 直近確認では 1282 songs / 9594 charts で通過した。直近の source hash は `93880825c348188273c6a8f483a9bf3e0ee3dc26882bcde81fcd1fc4698e4370`。
+- 2026-07-05の直近確認では 1282 songs / 9594 charts で通過した。直近の source hash は `689ac5dc5f70b4992c4115263622c55d174d770c7bce4b87cb89e03e4b41edab`。
 - M4初期スキーマは `songs`、`charts`、`master_metadata`、`source_snapshots`。
 - `.github/workflows/build-master-db.yml` を追加し、手動実行・週次実行でfixtureテスト、実HTMLからのSQLite生成、metadata件数検査、artifactアップロードを行える設計にした。
 - Actions artifact名は `ddrgp-master-<run_number>`。中身は `data/master/ddrgp-master.sqlite` と `data/master/master-summary.json`。生成DBはGit管理しない。
-- `master.inspect` を追加し、生成済みSQLiteの `master_metadata` 件数、実テーブル件数、`source_snapshots` 件数、source hash整合をローカル/CI共通で検査できるようにした。
+- `master.inspect` を追加し、生成済みSQLiteの必須metadata、`master_metadata` 件数、実テーブル件数、`source_snapshots` 件数、source hash整合、source URL整合をローカル/CI共通で検査できるようにした。
 - `.github/workflows/build-master-db.yml` のDB検査は、インラインPythonではなく `python -m master.inspect data/master/ddrgp-master.sqlite --summary data/master/master-summary.json` を使う。
-- `tests/test_master_builder.py` に `master.inspect` の正常系summary出力、metadata件数不整合、source hash不整合の失敗テストを追加済み。
-- GitHub Actionsの手動実行確認は未完了。2026-07-04の確認では `origin/main` に `.github/workflows/build-master-db.yml` がまだ無く、`gh workflow list` は空、`gh api repos/tts1374/ddrgp_scorelog/actions/workflows` は `total_count: 0` だった。
+- `master.inspect` のsummaryには `snapshot_count`、`snapshot_source_hash`、`snapshot_source_url`、`snapshot_parser_version` も出力し、artifact内の `master-summary.json` 単体でもsnapshot由来情報を確認できる。
+- `tests/test_master_builder.py` に `master.inspect` の正常系summary出力、必須metadata欠落、metadata件数不整合、source hash不整合、source URL不整合の失敗テストを追加済み。
+- GitHub Actionsの手動実行確認は未完了。2026-07-05の確認では `origin/main` に `.github/workflows/build-master-db.yml` がまだ無く、`gh workflow list` は空、`gh api repos/tts1374/ddrgp_scorelog/actions/workflows` は `total_count: 0` だった。
 - 上記のため、GitHub側でworkflowを認識させるには、workflowファイルをdefault branchへ入れる必要がある。現在の作業ブランチだけでは手動実行確認に進めない。
 - Actions内DB検査相当として、`python -m master.inspect data\master\ddrgp-master.sqlite --summary data\master\master-summary.json` がローカル生成DBで通過することを確認済み。
-- 直近確認では `python -m ruff check master tools\vision_poc pyproject.toml tests`、`python -m compileall master tools\vision_poc`、`python -m pytest tests` が通過し、pytest は 99 passed。
+- 直近確認では `python -m ruff check master tools\vision_poc pyproject.toml tests`、`python -m compileall master tools\vision_poc`、`python -m pytest tests` が通過し、pytest は 101 passed。
 - `master/README.md`、`.github/workflows/README.md`、`docs/design/08_master_db_generation.md` を `master.inspect` 前提に更新済み。
 - 生成DB、PoC出力、OCR画像、`metadata.csv`、`data/`、`logs/`、ローカル素材、ローカルDBはGit管理しない。
 
@@ -106,14 +107,17 @@ M3境界や画像PoCへ触る場合だけ追加で読む資料:
    - `git status --short --branch` と `git log --oneline -5` を確認する。
    - `python -m master --output data\master\ddrgp-master.sqlite` を実行し、実HTMLからマスタDBが生成できることを確認する。
    - `python -m master.inspect data\master\ddrgp-master.sqlite --summary data\master\master-summary.json` を実行し、生成DB検査とsummary出力を確認する。
-   - 実HTML件数が直近の 1282 songs / 9594 charts と違う場合は、取得元更新かパーサ崩れかを `master_metadata` とHTMLヘッダで確認する。
+   - `master-summary.json` に `snapshot_count=1`、`source_hash` と `snapshot_source_hash` の一致、`source_url` と `snapshot_source_url` の一致、`snapshot_parser_version` が出ていることを確認する。
+   - 実HTML件数が直近の 1282 songs / 9594 charts と違う場合は、取得元更新かパーサ崩れかを `master_metadata`、`source_snapshots`、HTMLヘッダで確認する。
 
 2. M4 CI/artifact確認
    - 次の主作業候補。
    - まず `origin/main` に `.github/workflows/build-master-db.yml` が入っているか確認する。
    - 現状のまま作業ブランチにworkflowがあるだけでは、GitHub側でworkflow一覧に出ず手動実行できない。
+   - 2026-07-05時点では `origin/main` にworkflowがなく、GitHub APIのworkflow一覧は `total_count: 0`。まずPR/mergeなどでdefault branchにworkflowを入れる必要がある。
    - workflowファイルがdefault branchへ入った後、GitHub上で `Build master database` workflowを手動実行し、artifactに `ddrgp-master.sqlite` と `master-summary.json` が含まれることを確認する。
    - Actionsログで `tests/test_master_builder.py`、実HTML生成、`python -m master.inspect` が通っていることを確認する。
+   - artifactの `master-summary.json` で、件数、snapshot件数、source hash、source URL、parser versionが読めることを確認する。
    - artifact生成結果が安定したら、Releases配布を同じworkflowに足すか、別workflowに分けるかを決める。
 
 3. M4 parser/schemaの継続確認
@@ -124,7 +128,7 @@ M3境界や画像PoCへ触る場合だけ追加で読む資料:
 4. M4の本番配布前整理
    - `source_snapshots.html_content` をDB内に持つ方針で十分か、外部snapshotファイルとhashだけにするか検討する。
    - Releases配布はまだ未実装。進める場合は生成DBをコミットせずartifact/releaseとして扱う。
-   - 取得元HTML構造変化を、ヘッダ未検出・0件生成・SQLite制約違反として検出できる状態を維持する。
+   - 取得元HTML構造変化を、ヘッダ未検出・0件生成・SQLite制約違反・必須metadata欠落・snapshot整合不一致として検出できる状態を維持する。
 
 5. M5へ進む前の境界確認
    - M4 DBを入力にした別PoCとして、曲名正規化、ファジーマッチ、候補絞り込み、照合スコアを設計する。
@@ -197,7 +201,8 @@ Get-Content data\vision_poc_m3_song_artist\m3_save_candidate_summary.json
 
 - `python -m master --output data\master\ddrgp-master.sqlite` でマスタDBを生成できる。
 - GitHub Actions workflowが、生成DBをコミットせずartifactとして扱う設計になっている。
-- Actions内DB検査相当で、metadata件数と実テーブル件数、`source_snapshots` 件数、source hash整合を確認できる。
+- Actions内DB検査相当で、必須metadata、metadata件数と実テーブル件数、`source_snapshots` 件数、source hash整合、source URL整合を確認できる。
+- `master-summary.json` で、テーブル件数、snapshot件数、source hash、snapshot側source URL、snapshot側parser versionを確認できる。
 - M4 fixtureテストがネットワークに依存せず通る。
 - M4 fixtureでセル結合、注記付きレベル、削除/限定/パック記号、SP/DP片方のみ、CHALLENGEなし、同名曲・同アーティスト、同一 `chart_id` 衝突検出を維持している。
 - 実HTML件数差分が出た場合、取得元更新かパーサ崩れかを説明できる。

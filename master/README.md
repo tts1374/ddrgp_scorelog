@@ -42,6 +42,8 @@ python -m master.inspect data\master\ddrgp-master.sqlite --summary data\master\m
 
 workflowでは、ネットワークに依存しないfixtureテストを通した後、実HTMLから `data/master/ddrgp-master.sqlite` を生成し、`python -m master.inspect` で `master_metadata` とテーブル件数の整合、source snapshot件数とhashを検査します。生成DBと `master-summary.json` は `ddrgp-master-<run_number>` artifact としてアップロードし、リポジトリにはコミットしません。
 
+`master.inspect` は、必須metadataキー、`songs` / `charts` の実件数、`source_snapshots` が1件だけであること、`source_hash` と `source_url` がmetadataとsnapshotで一致することを検査します。`master-summary.json` にはテーブル件数、snapshot件数、source hash、snapshot側のsource URL、parser versionを出力し、artifact単体でも生成元を確認できるようにします。
+
 Releases配布はまだ未実装です。まずはartifactで生成結果と取得元構造変化の検出を確認し、安定後にReleases配布を別フェーズで追加します。
 
 ## Tables

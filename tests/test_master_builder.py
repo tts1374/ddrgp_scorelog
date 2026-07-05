@@ -224,9 +224,35 @@ def test_inspect_master_database_writes_summary_for_valid_database(tmp_path: Pat
 
     assert summary["song_count"] == 3
     assert summary["chart_count"] == 23
+    assert summary["snapshot_count"] == 1
     assert summary["master_version"] == "fixture-v1"
     assert summary["source_hash"] == build.snapshot.content_hash
+    assert summary["snapshot_source_hash"] == build.snapshot.content_hash
+    assert summary["source_url"] == "https://example.test/source"
+    assert summary["snapshot_source_url"] == "https://example.test/source"
+    assert summary["snapshot_parser_version"] == builder.PARSER_VERSION
     assert json.loads(summary_path.read_text(encoding="utf-8")) == summary
+
+
+def test_inspect_master_database_rejects_missing_required_metadata(tmp_path: Path) -> None:
+    build = builder.parse_master_html(
+        FIXTURE_HTML,
+        source_url="https://example.test/source",
+        fetched_at="2026-07-04T00:00:00+00:00",
+    )
+    output_path = tmp_path / "ddrgp-master.sqlite"
+    builder.write_master_database(output_path, build, master_version="fixture-v1")
+
+    with sqlite3.connect(output_path) as connection:
+        connection.execute("DELETE FROM master_metadata WHERE key = 'generator_version'")
+
+    try:
+        master_inspect.inspect_master_database(output_path)
+    except ValueError as exc:
+        assert "missing required keys" in str(exc)
+        assert "generator_version" in str(exc)
+    else:
+        raise AssertionError("inspect_master_database should reject missing metadata")
 
 
 def test_inspect_master_database_rejects_metadata_count_mismatch(tmp_path: Path) -> None:
@@ -271,6 +297,29 @@ def test_inspect_master_database_rejects_source_hash_mismatch(tmp_path: Path) ->
         assert "source_hash" in str(exc)
     else:
         raise AssertionError("inspect_master_database should reject mismatched source hash")
+
+
+def test_inspect_master_database_rejects_source_url_mismatch(tmp_path: Path) -> None:
+    build = builder.parse_master_html(
+        FIXTURE_HTML,
+        source_url="https://example.test/source",
+        fetched_at="2026-07-04T00:00:00+00:00",
+    )
+    output_path = tmp_path / "ddrgp-master.sqlite"
+    builder.write_master_database(output_path, build, master_version="fixture-v1")
+
+    with sqlite3.connect(output_path) as connection:
+        connection.execute(
+            "UPDATE master_metadata SET value = 'https://example.test/other' "
+            "WHERE key = 'source_url'"
+        )
+
+    try:
+        master_inspect.inspect_master_database(output_path)
+    except ValueError as exc:
+        assert "source_url" in str(exc)
+    else:
+        raise AssertionError("inspect_master_database should reject mismatched source URL")
 
 
 def test_parse_master_html_handles_edge_level_and_chart_identity_cases() -> None:
