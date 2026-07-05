@@ -400,6 +400,9 @@ def test_match_jacket_save_candidate_row_title_reranks_only_ambiguous_candidates
     assert result["title_rerank_status"] == "resolved_candidate"
     assert result["title_top_song_id"] == "song_type2"
     assert result["title_candidate_feature_count"] == "2"
+    assert result["title_linehash_dict_status"] == "resolved_candidate"
+    assert result["title_linehash_dict_top_song_id"] == "song_type2"
+    assert result["title_linehash_dict_top_row_matches"] == "28"
     assert result["title_linehash_exact_status"] == "resolved_candidate"
     assert result["title_linehash_distance_status"] == "resolved_candidate"
     assert result["title_linehash_top_song_id"] == "song_type2"
@@ -458,6 +461,7 @@ def test_match_jacket_save_candidate_row_title_ocr_suffix_reranks_only_ambiguous
     assert result["title_ocr_rerank_status"] == "resolved_candidate"
     assert result["title_ocr_top_song_id"] == "song_type2"
     assert result["title_ocr_top_title"] == "OSAKA TYPE2"
+    assert result["title_linehash_dict_status"] == "missing_feature"
     assert result["title_linehash_exact_status"] == "missing_feature"
     assert result["title_linehash_rerank_reason"] == "result_title_linehash_unavailable"
 
@@ -568,6 +572,12 @@ def test_write_jacket_match_outputs_records_observation_scope(tmp_path: Path) ->
             "title_ocr_rerank_reason": "",
             "title_linehash_candidate_feature_count": "0",
             "title_linehash_diff_bit_count": "0",
+            "title_linehash_dict_status": "not_run",
+            "title_linehash_dict_top_song_id": "",
+            "title_linehash_dict_top_chart_id": "",
+            "title_linehash_dict_top_title": "",
+            "title_linehash_dict_top_row_matches": "",
+            "title_linehash_dict_top_candidates": "",
             "title_linehash_exact_status": "not_run",
             "title_linehash_distance_status": "not_run",
             "title_linehash_top_song_id": "",
@@ -592,6 +602,7 @@ def test_write_jacket_match_outputs_records_observation_scope(tmp_path: Path) ->
     )
     assert summary["title_rerank_status_counts"]["not_run"] == 1
     assert summary["title_ocr_rerank_status_counts"]["not_run"] == 1
+    assert summary["title_linehash_dict_status_counts"]["not_run"] == 1
     assert summary["title_linehash_exact_status_counts"]["not_run"] == 1
     assert summary["title_linehash_distance_status_counts"]["not_run"] == 1
     report = (tmp_path / "jacket_match_report.md").read_text(encoding="utf-8")

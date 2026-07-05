@@ -20,12 +20,13 @@ high
 
 - M5ジャケット特徴量PoCとして `--m5-jacket-match` を追加済み。
 - jacketで `ambiguous` になった候補集合内だけを対象にする title画像特徴量PoC、title OCR suffix診断、title line-hash診断を追加済み。
-- 今回、result `song_title` ROI の title line-hash rerank PoC を実装した。
-  - `song_title` ROIを固定サイズへ寄せ、輝度しきい値で二値化し、行ごとのbit列をhex化する。
+- result `song_title` ROI の title line-hash rerank PoC を実装済み。
+  - `song_title` ROIの曲名行だけを固定サイズへ寄せ、白文字色域を固定しきい値で二値化し、行ごとのbit列をhex化する。
   - 参照はローカルmetadata期待曲名を M4 `songs.title` へ一意解決できた result素材のみ。
   - 同じ `organized_file` の参照は比較から除外する。
   - jacketで `ambiguous` になったsong_id集合内だけで比較し、候補集合外から曲を拾わない。
-  - 完全一致型 `title_linehash_exact_status` と、候補参照間で差が出るbitを重く見る距離比較型 `title_linehash_distance_status` を `jacket_match_candidates.csv` に出す。
+  - inf-notebook 風の行hexキー辞書 `title_linehash_dict_status` を主観測にする。
+  - 完全一致型 `title_linehash_exact_status` と、候補参照間で差が出るbitを重く見る距離比較型 `title_linehash_distance_status` は参考列として残す。
   - `title_linehash_*_status=resolved_candidate` はPoC観測語彙であり、保存可能、曲ID/譜面ID確定、`jacket_match_status=matched` への昇格を意味しない。
 - 2026-07-05の今回ローカル確認では metadata は178行、classification は178/178全正解。`transition_countup` shape candidates は3件。
 - 今回の M4 DB生成は 1282 songs / 9594 charts。source hash は `a866ea0527c2ac305cee6c17cedf10c2c85975fb1cf45b8870d56ad119d9f8b5`。
@@ -36,10 +37,10 @@ high
 - 残り `ambiguous=3` は引き続き `osaka EVOLVED -毎度、おおきに！- (TYPE1/2/3)` の同一ジャケット3件。`jacket_top_margin=0.0000` で、画像特徴量だけでは一意化しない。
 - title画像特徴量PoCの今回結果は `title_rerank_status_counts={"ambiguous_candidate": 3, "not_run": 57}`。
 - title OCR suffix診断の今回結果は `title_ocr_rerank_status_counts={"no_suffix": 3, "not_run": 57}`。
-- title line-hash診断の今回結果は `title_linehash_exact_status_counts={"no_exact_match": 3, "not_run": 57}`、`title_linehash_distance_status_counts={"ambiguous_candidate": 3, "not_run": 57}`。
-  - osaka 3件の line-hash最上位候補は期待TYPEと一致した。
-  - ただし次点候補が近く、現しきい値では `ambiguous_candidate` のまま。しきい値だけで無理に解決扱いにしない。
-  - 観測例: TYPE1 top distance `0.0546`、TYPE2 `0.0323`、TYPE3 `0.0376`。diff bit count はそれぞれ `476` / `670` / `621`。
+- title line-hash辞書化後の今回結果は `title_linehash_dict_status_counts={"not_run": 57, "resolved_candidate": 3}`、`title_linehash_exact_status_counts={"no_exact_match": 3, "not_run": 57}`、`title_linehash_distance_status_counts={"ambiguous_candidate": 1, "not_run": 57, "resolved_candidate": 2}`。
+  - osaka 3件の `title_linehash_dict_top_title` は期待TYPEと一致した。
+  - 辞書の行一致数は TYPE1 `13`、TYPE2 `14`、TYPE3 `15`。
+  - `title_linehash_distance_status` は参考列として残り、TYPE2 はまだ `ambiguous_candidate`。今後は距離比較を本命にしない。
 - `matched`、jacket `matched`、title画像 `resolved_candidate`、title OCR `resolved_candidate`、title line-hash `resolved_candidate` はPoC上の観測語彙で、DB保存可能、本番採用済み照合、曲ID/譜面ID確定を意味しない。
 - 今回コード検証では `python -m ruff check master tools\vision_poc pyproject.toml tests`、`python -m compileall master tools\vision_poc`、`python -m pytest tests` が通過し、pytest は120 passed。
 - 生成DB、PoC出力、OCR画像、`metadata.csv`、`data/`、`logs/`、ローカル素材、ローカルDBはGit管理しない。
@@ -99,14 +100,13 @@ M5内でまだ成功扱いにしないもの:
 ## 次に必ず進める実作業
 
 - `docs/next-task.md` の更新だけ、または確認結果の記録だけで完了扱いにしない。
-- osaka TYPE1/2/3 は、jacket特徴量、result title画像特徴量、現行M3 title OCR入口、現行title line-hashのいずれでも安定一意化できていない。
-- 次は title line-hash の suffix寄り診断を追加・比較する。
-  - 現行line-hash全体距離は最上位TYPEが期待値に合うが、次点が近く `ambiguous_candidate` のまま。
-  - まず `title_linehash_top_candidates` と距離差を読みやすくする診断列を追加する候補を検討する。
-  - そのうえで result `song_title` ROI の右側suffix寄り領域だけ、または候補参照間で差が出る列周辺だけを比較する小さなPoCを追加する。
+- osaka TYPE1/2/3 は、jacket特徴量、result title画像特徴量、現行M3 title OCR入口では安定一意化できていないが、title line-hash辞書では候補集合内の `resolved_candidate` になった。
+- 次は title line-hash辞書結果をM5補助観測として整理し、低確信度語彙と後続保存判定への渡し方を設計する。
+  - `title_linehash_dict_status=resolved_candidate` を、DB保存可能や `jacket_match_status=matched` へ直結しない。
+  - `jacket_match_status` は現状どおり jacket単体の結果として `ambiguous` のまま維持するか、別の統合観測列を追加するかを docs / tests で明確にする。
+  - `title_linehash_distance_status` は将来的に廃止候補の参考列として扱い、主判断へ戻さない。
   - 参照は引き続き result素材のみ。song_select 側タイトル表示ROIは使わない。
   - jacketで `ambiguous` になったsong_id集合内だけを対象にし、候補集合外から曲を拾わない。
-  - `jacket_match_status` は suffix寄りline-hashで解けても変更しない。M5補助観測として読む。
 - `jacket_match_candidates.csv` の `expected_jacket_distance` / `expected_jacket_rank` / `jacket_top_margin`、`title_top_candidates`、`title_ocr_text`、`title_ocr_rerank_status`、`title_linehash_*` を見て、しきい値問題か特徴量/OCR/line-hash表現問題かを分ける。
 - 大きなOCR方式刷新やROI座標定義の大変更には進まない。
 - スコア/判定数のTesseract離脱や数字テンプレート認識は後続タスクとして扱い、今回の実作業には含めない。
@@ -138,7 +138,7 @@ title補助の観測確認:
 ```powershell
 Import-Csv data\master_match_poc_jacket\jacket_match_candidates.csv |
   Where-Object {$_.jacket_match_status -eq 'ambiguous'} |
-  Select-Object organized_file,expected_song_title,expected_jacket_rank,jacket_top_margin,title_rerank_status,title_top_title,title_top_distance,title_ocr_text,title_ocr_suffix,title_ocr_rerank_status,title_ocr_top_title,title_linehash_exact_status,title_linehash_distance_status,title_linehash_top_title,title_linehash_top_distance,title_linehash_diff_bit_count,title_linehash_rerank_reason |
+  Select-Object organized_file,expected_song_title,expected_jacket_rank,jacket_top_margin,title_rerank_status,title_top_title,title_top_distance,title_ocr_text,title_ocr_suffix,title_ocr_rerank_status,title_ocr_top_title,title_linehash_dict_status,title_linehash_dict_top_title,title_linehash_dict_top_row_matches,title_linehash_exact_status,title_linehash_distance_status,title_linehash_top_title,title_linehash_top_distance,title_linehash_diff_bit_count,title_linehash_rerank_reason |
   Format-List
 ```
 
