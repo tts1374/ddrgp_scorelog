@@ -26,6 +26,8 @@ Be / Ba / Di / Ex / Ch / Ba / Di / Ex / Ch
 
 パーサはこのヘッダを持つ表だけを楽曲リストとして扱う。セル結合されたバージョン見出しは `songs.version` / `songs.category` に入れる。レベルが `-` または空の譜面は未存在として `charts` に作らない。
 
+注記付きレベルは raw 表記を `charts.raw_level` に保持し、整数 `charts.level` は最初に現れる数字列から取得する。`10(旧9)` や `10;` は `10`、`[SA] 12` は `12` として扱い、数字を連結しない。`[SA]`、`SA`、`Shock`、`ショック` を含む表記は `charts.shock_arrow=true` とする。
+
 ## 出力
 
 ローカル生成先の既定:
@@ -35,6 +37,10 @@ data/master/ddrgp-master.sqlite
 ```
 
 生成DBはGit管理しない。将来の配布用DBは GitHub Releases 成果物として扱う。
+
+CI生成では `.github/workflows/build-master-db.yml` を使う。workflowは手動実行と週次定期実行を持ち、fixtureテスト、実HTMLからのSQLite生成、`python -m master.inspect` による必須metadataキー検査、`master_metadata` と実テーブル件数の整合検査、`source_snapshots` 件数検査、source hash / source URL の整合検査を行う。生成DBと `master-summary.json` は `ddrgp-master-<run_number>` artifact として保存し、Git管理対象にはしない。`master-summary.json` にはテーブル件数に加えて、snapshot件数、snapshot側source URL、snapshot側parser versionを出力する。
+
+Releases配布は、artifactで生成結果と取得元構造変化検出を確認できる状態が安定してから追加する。
 
 ## 初期スキーマ
 
@@ -66,6 +72,8 @@ data/master/ddrgp-master.sqlite
 - `is_limited`: `分類` 列が空でないか。
 - `notes`: 初期実装では `分類` 列の内容。
 
+同じ曲名・同じアーティストは同じ `song_id` として扱う。同一 `chart_id` の譜面行が複数回出て、保持値が食い違う場合は、HTML構造または入力解釈の変化として生成を失敗させる。
+
 ### `master_metadata`
 
 - `master_version`
@@ -91,9 +99,15 @@ data/master/ddrgp-master.sqlite
 
 - 楽曲リストの2段ヘッダを持つ表が見つからない。
 - `songs` または `charts` が0件になる。
+- 同一 `chart_id` の譜面行が食い違う。
 - SQLite制約に反するレベルや譜面種別が出る。
+- CI生成後の `master_metadata` 件数と実テーブル件数が一致しない。
+- CI生成後の `source_snapshots` が1件ではない。
+- CI生成後の `master_metadata.source_hash` と `source_snapshots.content_hash` が一致しない。
+- CI生成後の `master_metadata.source_url` と `source_snapshots.source_url` が一致しない。
+- CI生成後の `master_metadata` に必須キーがない、または必須値が空。
 
-fixtureテストでは、セル結合、CHALLENGEなし、SP/DP差分、複数バージョン表を扱う。実HTMLの件数確認はネットワークに依存するため、通常テストには含めない。
+fixtureテストでは、セル結合、注記付きレベル、削除/限定/パック記号、SP/DP片方のみ、CHALLENGEなし、同名曲・同アーティスト、複数バージョン表を扱う。実HTMLの件数確認はネットワークに依存するため、通常テストには含めない。
 
 ## M5へ渡すもの
 

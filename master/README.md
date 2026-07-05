@@ -12,6 +12,8 @@ https://bemaniwiki.com/index.php?DanceDanceRevolution+GRAND+PRIX/%E5%85%A8%E6%9B
 
 対象ページには、`分類 / 曲名 / アーティスト / 出典 / BPM / MV/St / SINGLE / DOUBLE` の2段ヘッダを持つ楽曲リスト表が複数あります。パーサはこの表だけを対象にし、セル結合されたバージョン見出しと譜面レベル列を展開します。
 
+譜面レベルは raw 表記を `raw_level` に保持しつつ、整数 `level` は最初に現れる数字列から取得します。これにより `10(旧9)`、`10;`、`[SA] 12` のような注記付き表記で数字を連結しません。`[SA]` などショックアローを示す表記は `shock_arrow` に反映します。
+
 ## Usage
 
 ローカルHTML snapshotから生成:
@@ -26,7 +28,23 @@ python -m master --input data\master\source.html --output data\master\ddrgp-mast
 python -m master --output data\master\ddrgp-master.sqlite
 ```
 
+生成DBを検査して、artifact用summaryを出力:
+
+```powershell
+python -m master.inspect data\master\ddrgp-master.sqlite --summary data\master\master-summary.json
+```
+
 生成DB、取得元snapshot、解析ログはGit管理しません。ローカル生成物は原則 `data/` 配下に置きます。
+
+## GitHub Actions
+
+`.github/workflows/build-master-db.yml` で、手動実行と週次定期実行のマスタDB生成を行います。
+
+workflowでは、ネットワークに依存しないfixtureテストを通した後、実HTMLから `data/master/ddrgp-master.sqlite` を生成し、`python -m master.inspect` で `master_metadata` とテーブル件数の整合、source snapshot件数とhashを検査します。生成DBと `master-summary.json` は `ddrgp-master-<run_number>` artifact としてアップロードし、リポジトリにはコミットしません。
+
+`master.inspect` は、必須metadataキー、`songs` / `charts` の実件数、`source_snapshots` が1件だけであること、`source_hash` と `source_url` がmetadataとsnapshotで一致することを検査します。`master-summary.json` にはテーブル件数、snapshot件数、source hash、snapshot側のsource URL、parser versionを出力し、artifact単体でも生成元を確認できるようにします。
+
+Releases配布はまだ未実装です。まずはartifactで生成結果と取得元構造変化の検出を確認し、安定後にReleases配布を別フェーズで追加します。
 
 ## Tables
 
@@ -38,6 +56,7 @@ python -m master --output data\master\ddrgp-master.sqlite
 ## Current Boundaries
 
 - M4ではマスタDB生成までを扱い、曲名正規化、ファジーマッチ、候補スコア、一意照合はM5へ残します。
-- GitHub Actions、Releases配布、定期実行は未実装です。
+- GitHub Actions による手動・週次artifact生成入口は追加済みです。Releases配布は未実装です。
 - BEMANIWiki の表構造は変わり得るため、本番取得前にfixtureと実HTMLの両方で件数・ヘッダ検出を確認します。
 - `song_id` と `chart_id` は現時点ではHTML由来テキストから作る安定hashです。将来、配布互換性が必要になった段階でID互換方針を別途固定します。
+- 同じ曲名・同じアーティストは同じ `song_id` として扱います。同一 `chart_id` の譜面行が食い違う場合は、静かな上書きではなく生成失敗として扱います。

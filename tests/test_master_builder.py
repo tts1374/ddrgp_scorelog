@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 from pathlib import Path
 
 from master import builder
+from master import inspect as master_inspect
 
 FIXTURE_HTML = """
 <!doctype html>
@@ -65,6 +67,56 @@ FIXTURE_HTML = """
 </body>
 </html>
 """
+
+EDGE_FIXTURE_HTML = """
+<!doctype html>
+<html>
+<body>
+<table class="style_table">
+  <tr>
+    <td rowspan="2">分類</td>
+    <td rowspan="2">曲名</td>
+    <td rowspan="2">アーティスト</td>
+    <td rowspan="2">出典</td>
+    <td rowspan="2">BPM</td>
+    <td rowspan="2">MV/St</td>
+    <td colspan="5">SINGLE</td>
+    <td colspan="4">DOUBLE</td>
+  </tr>
+  <tr>
+    <td>Be</td><td>Ba</td><td>Di</td><td>Ex</td><td>Ch</td>
+    <td>Ba</td><td>Di</td><td>Ex</td><td>Ch</td>
+  </tr>
+  <tr><td colspan="15">DDR Edge Cases</td></tr>
+  <tr>
+    <td>削 GP99</td><td>LIMITED TEST</td><td>Unit A</td>
+    <td>DDR GP Test Pack</td><td>150</td><td>-</td>
+    <td>10(旧9)</td><td>[SA] 12</td><td>10;</td><td>-</td><td>-</td>
+    <td>-</td><td>-</td><td>-</td><td>-</td>
+  </tr>
+  <tr>
+    <td></td><td>SIDE ONLY</td><td>Same Unit</td>
+    <td>DDR GP Test Pack</td><td>140</td><td>-</td>
+    <td>-</td><td>-</td><td>-</td><td>-</td><td>-</td>
+    <td>6</td><td>8</td><td>-</td><td>-</td>
+  </tr>
+  <tr>
+    <td></td><td>SIDE ONLY</td><td>Same Unit</td>
+    <td>DDR GP Test Pack</td><td>140</td><td>-</td>
+    <td>1</td><td>4</td><td>7</td><td>10</td><td>-</td>
+    <td>-</td><td>-</td><td>-</td><td>-</td>
+  </tr>
+</table>
+</body>
+</html>
+"""
+
+
+def test_parse_level_uses_first_numeric_token_without_joining_notes() -> None:
+    assert builder.parse_level("10(旧9)") == 10
+    assert builder.parse_level("[SA] 12") == 12
+    assert builder.parse_level("10;") == 10
+    assert builder.parse_level("-") is None
 
 
 def test_parse_master_html_extracts_songs_and_available_charts() -> None:
@@ -152,6 +204,183 @@ def test_write_master_database_creates_expected_schema_and_metadata(tmp_path: Pa
         assert "MAKE IT BETTER" in snapshot[3]
 
 
+def test_inspect_master_database_writes_summary_for_valid_database(tmp_path: Path) -> None:
+    build = builder.parse_master_html(
+        FIXTURE_HTML,
+        source_url="https://example.test/source",
+        fetched_at="2026-07-04T00:00:00+00:00",
+    )
+    output_path = tmp_path / "ddrgp-master.sqlite"
+    summary_path = tmp_path / "master-summary.json"
+    builder.write_master_database(
+        output_path,
+        build,
+        master_version="fixture-v1",
+        generated_at="2026-07-04T01:23:45+00:00",
+    )
+
+    summary = master_inspect.inspect_master_database(output_path)
+    master_inspect.write_summary(summary_path, summary)
+
+    assert summary["song_count"] == 3
+    assert summary["chart_count"] == 23
+    assert summary["snapshot_count"] == 1
+    assert summary["master_version"] == "fixture-v1"
+    assert summary["source_hash"] == build.snapshot.content_hash
+    assert summary["snapshot_source_hash"] == build.snapshot.content_hash
+    assert summary["source_url"] == "https://example.test/source"
+    assert summary["snapshot_source_url"] == "https://example.test/source"
+    assert summary["snapshot_parser_version"] == builder.PARSER_VERSION
+    assert json.loads(summary_path.read_text(encoding="utf-8")) == summary
+
+
+def test_inspect_master_database_rejects_missing_required_metadata(tmp_path: Path) -> None:
+    build = builder.parse_master_html(
+        FIXTURE_HTML,
+        source_url="https://example.test/source",
+        fetched_at="2026-07-04T00:00:00+00:00",
+    )
+    output_path = tmp_path / "ddrgp-master.sqlite"
+    builder.write_master_database(output_path, build, master_version="fixture-v1")
+
+    with sqlite3.connect(output_path) as connection:
+        connection.execute("DELETE FROM master_metadata WHERE key = 'generator_version'")
+
+    try:
+        master_inspect.inspect_master_database(output_path)
+    except ValueError as exc:
+        assert "missing required keys" in str(exc)
+        assert "generator_version" in str(exc)
+    else:
+        raise AssertionError("inspect_master_database should reject missing metadata")
+
+
+def test_inspect_master_database_rejects_metadata_count_mismatch(tmp_path: Path) -> None:
+    build = builder.parse_master_html(
+        FIXTURE_HTML,
+        source_url="https://example.test/source",
+        fetched_at="2026-07-04T00:00:00+00:00",
+    )
+    output_path = tmp_path / "ddrgp-master.sqlite"
+    builder.write_master_database(output_path, build, master_version="fixture-v1")
+
+    with sqlite3.connect(output_path) as connection:
+        connection.execute(
+            "UPDATE master_metadata SET value = '999' WHERE key = 'song_count'"
+        )
+
+    try:
+        master_inspect.inspect_master_database(output_path)
+    except ValueError as exc:
+        assert "song_count" in str(exc)
+    else:
+        raise AssertionError("inspect_master_database should reject mismatched metadata")
+
+
+def test_inspect_master_database_rejects_source_hash_mismatch(tmp_path: Path) -> None:
+    build = builder.parse_master_html(
+        FIXTURE_HTML,
+        source_url="https://example.test/source",
+        fetched_at="2026-07-04T00:00:00+00:00",
+    )
+    output_path = tmp_path / "ddrgp-master.sqlite"
+    builder.write_master_database(output_path, build, master_version="fixture-v1")
+
+    with sqlite3.connect(output_path) as connection:
+        connection.execute(
+            "UPDATE master_metadata SET value = 'mismatched' WHERE key = 'source_hash'"
+        )
+
+    try:
+        master_inspect.inspect_master_database(output_path)
+    except ValueError as exc:
+        assert "source_hash" in str(exc)
+    else:
+        raise AssertionError("inspect_master_database should reject mismatched source hash")
+
+
+def test_inspect_master_database_rejects_source_url_mismatch(tmp_path: Path) -> None:
+    build = builder.parse_master_html(
+        FIXTURE_HTML,
+        source_url="https://example.test/source",
+        fetched_at="2026-07-04T00:00:00+00:00",
+    )
+    output_path = tmp_path / "ddrgp-master.sqlite"
+    builder.write_master_database(output_path, build, master_version="fixture-v1")
+
+    with sqlite3.connect(output_path) as connection:
+        connection.execute(
+            "UPDATE master_metadata SET value = 'https://example.test/other' "
+            "WHERE key = 'source_url'"
+        )
+
+    try:
+        master_inspect.inspect_master_database(output_path)
+    except ValueError as exc:
+        assert "source_url" in str(exc)
+    else:
+        raise AssertionError("inspect_master_database should reject mismatched source URL")
+
+
+def test_parse_master_html_handles_edge_level_and_chart_identity_cases() -> None:
+    build = builder.parse_master_html(
+        EDGE_FIXTURE_HTML,
+        source_url="https://example.test/edge-source",
+        fetched_at="2026-07-04T00:00:00+00:00",
+    )
+
+    assert len(build.songs) == 2
+    assert len(build.charts) == 9
+
+    limited_song = next(song for song in build.songs if song.title == "LIMITED TEST")
+    limited_charts = [chart for chart in build.charts if chart.song_id == limited_song.song_id]
+    assert len(limited_charts) == 3
+    assert {(chart.difficulty, chart.level, chart.raw_level) for chart in limited_charts} == {
+        ("BEGINNER", 10, "10(旧9)"),
+        ("BASIC", 12, "[SA] 12"),
+        ("DIFFICULT", 10, "10;"),
+    }
+    assert all(chart.is_removed for chart in limited_charts)
+    assert all(chart.is_limited for chart in limited_charts)
+    assert all(chart.notes == "削 GP99" for chart in limited_charts)
+    assert {
+        (chart.difficulty, chart.shock_arrow) for chart in limited_charts
+    } >= {
+        ("BASIC", True),
+        ("BEGINNER", False),
+    }
+
+    side_only_song = next(song for song in build.songs if song.title == "SIDE ONLY")
+    side_only_charts = [chart for chart in build.charts if chart.song_id == side_only_song.song_id]
+    assert len(side_only_charts) == 6
+    assert {
+        (chart.play_style, chart.difficulty, chart.level) for chart in side_only_charts
+    } == {
+        ("DOUBLE", "BASIC", 6),
+        ("DOUBLE", "DIFFICULT", 8),
+        ("SINGLE", "BEGINNER", 1),
+        ("SINGLE", "BASIC", 4),
+        ("SINGLE", "DIFFICULT", 7),
+        ("SINGLE", "EXPERT", 10),
+    }
+
+
+def test_parse_master_html_rejects_conflicting_duplicate_chart_identity() -> None:
+    conflicting_html = EDGE_FIXTURE_HTML.replace(
+        "    <td>1</td><td>4</td><td>7</td><td>10</td><td>-</td>\n"
+        "    <td>-</td><td>-</td><td>-</td><td>-</td>",
+        "    <td>1</td><td>4</td><td>7</td><td>10</td><td>-</td>\n"
+        "    <td>9</td><td>-</td><td>-</td><td>-</td>",
+    )
+
+    try:
+        builder.parse_master_html(conflicting_html)
+    except ValueError as exc:
+        assert "conflicting chart rows" in str(exc)
+    else:
+        raise AssertionError("parse_master_html should reject conflicting chart rows")
+
+
 def test_parse_master_html_rejects_missing_song_list_table() -> None:
     try:
         builder.parse_master_html("<html><table><tr><td>not songs</td></tr></table></html>")
@@ -159,4 +388,3 @@ def test_parse_master_html_rejects_missing_song_list_table() -> None:
         assert "song list tables" in str(exc)
     else:
         raise AssertionError("parse_master_html should reject unrelated HTML")
-

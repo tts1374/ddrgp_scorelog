@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import re
 import sqlite3
 from collections import defaultdict
 from dataclasses import dataclass
@@ -78,10 +79,10 @@ def parse_level(raw_level: str) -> int | None:
     normalized = normalize_text(raw_level)
     if normalized in {"", "-"}:
         return None
-    digits = "".join(ch for ch in normalized if ch.isdigit())
-    if not digits:
+    match = re.search(r"\d+", normalized)
+    if match is None:
         return None
-    return int(digits)
+    return int(match.group())
 
 
 def has_shock_arrow(raw_level: str) -> bool:
@@ -245,8 +246,16 @@ def parse_master_html(
             continue
         song_table_count += 1
         songs, charts = parse_song_list_rows(rows)
-        songs_by_id.update({song.song_id: song for song in songs})
-        charts_by_id.update({chart.chart_id: chart for chart in charts})
+        for song in songs:
+            songs_by_id.setdefault(song.song_id, song)
+        for chart in charts:
+            existing_chart = charts_by_id.get(chart.chart_id)
+            if existing_chart is not None and existing_chart != chart:
+                raise ValueError(
+                    "source HTML contains conflicting chart rows for "
+                    f"{chart.song_id} {chart.play_style} {chart.difficulty}"
+                )
+            charts_by_id[chart.chart_id] = chart
 
     if song_table_count == 0:
         raise ValueError("source HTML does not contain DDR GP song list tables")

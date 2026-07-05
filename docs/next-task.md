@@ -8,46 +8,72 @@ high
 
 ## 作業ブランチ
 
-`codex/vision-poc-ocr-tuning`
+`codex/m4-master-db-generation`
 
 作業開始時に以下を確認してください。
 
 - `git status --short --branch`
 - `git log --oneline -5`
-- 現在ブランチが `codex/vision-poc-ocr-tuning` であること
-- 最新コミットがM4マスタDB生成入口コミット以降であること
+- 現在ブランチが `codex/m4-master-db-generation` であること
 - `docs/next-task.md` は次チャット用の作業指示ファイルとして扱うこと
 
 ## 今回までの作業結果
 
 - M3は2026-07-04時点で完了扱い。M3成果物は照合済みデータではなく、M5へ渡す観測値と失敗理由。
-- `python -m tools.vision_poc --no-ocr` は Total 112 / Correct 112 / false positives 0 / false negatives 0。
-- `transition_countup_*` は `result_shape_candidate=true` でも `result_candidate=false`、`event_type=rejected_transition` のまま。
+- M4入口として `master` パッケージを追加し、BEMANIWiki全曲リストHTMLからSQLiteマスタDBを生成できるようにした。
+- `python -m master --output data\master\ddrgp-master.sqlite` で2026-07-04時点のBEMANIWiki実HTMLから 1282 songs / 9594 charts のSQLiteを生成できる。
+- 実HTML件数は取得元更新で変わり得るため、件数固定の完了条件にはしない。構造変化検出とDB生成成功を確認する。
+- 2026-07-05の直近確認では 1282 songs / 9594 charts で通過した。直近の source hash は `689ac5dc5f70b4992c4115263622c55d174d770c7bce4b87cb89e03e4b41edab`。
+- M4初期スキーマは `songs`、`charts`、`master_metadata`、`source_snapshots`。
+- `.github/workflows/build-master-db.yml` を追加し、手動実行・週次実行でfixtureテスト、実HTMLからのSQLite生成、metadata件数検査、artifactアップロードを行える設計にした。
+- Actions artifact名は `ddrgp-master-<run_number>`。中身は `data/master/ddrgp-master.sqlite` と `data/master/master-summary.json`。生成DBはGit管理しない。
+- `master.inspect` を追加し、生成済みSQLiteの必須metadata、`master_metadata` 件数、実テーブル件数、`source_snapshots` 件数、source hash整合、source URL整合をローカル/CI共通で検査できるようにした。
+- `.github/workflows/build-master-db.yml` のDB検査は、インラインPythonではなく `python -m master.inspect data/master/ddrgp-master.sqlite --summary data/master/master-summary.json` を使う。
+- `master.inspect` のsummaryには `snapshot_count`、`snapshot_source_hash`、`snapshot_source_url`、`snapshot_parser_version` も出力し、artifact内の `master-summary.json` 単体でもsnapshot由来情報を確認できる。
+- `tests/test_master_builder.py` に `master.inspect` の正常系summary出力、必須metadata欠落、metadata件数不整合、source hash不整合、source URL不整合の失敗テストを追加済み。
+- GitHub Actionsの手動実行確認は未完了。2026-07-05の確認では `origin/main` に `.github/workflows/build-master-db.yml` がまだ無く、`gh workflow list` は空、`gh api repos/tts1374/ddrgp_scorelog/actions/workflows` は `total_count: 0` だった。
+- 上記のため、GitHub側でworkflowを認識させるには、workflowファイルをdefault branchへ入れる必要がある。現在の作業ブランチだけでは手動実行確認に進めない。
+- Actions内DB検査相当として、`python -m master.inspect data\master\ddrgp-master.sqlite --summary data\master\master-summary.json` がローカル生成DBで通過することを確認済み。
+- 直近確認では `python -m ruff check master tools\vision_poc pyproject.toml tests`、`python -m compileall master tools\vision_poc`、`python -m pytest tests` が通過し、pytest は 101 passed。
+- `master/README.md`、`.github/workflows/README.md`、`docs/design/08_master_db_generation.md` を `master.inspect` 前提に更新済み。
+- 生成DB、PoC出力、OCR画像、`metadata.csv`、`data/`、`logs/`、ローカル素材、ローカルDBはGit管理しない。
+
+## M4 parser/schemaメモ
+
+- パーサは、2026-07-04時点のBEMANIWiki全曲リストにある2段ヘッダ表を対象にする。
+- 対象ヘッダは `分類 / 曲名 / アーティスト / 出典 / BPM / MV/St / SINGLE / DOUBLE` と `Be / Ba / Di / Ex / Ch / Ba / Di / Ex / Ch`。
+- 通常テストはネットワーク取得に依存させず、小さなHTML fixtureで固定する。
+- fixtureでは、セル結合、注記付きレベル、削除/限定/パック記号、SP/DP片方のみ、CHALLENGEなし、同名曲・同アーティスト、複数バージョン表、同一 `chart_id` 衝突検出を維持している。
+- 注記付きレベルは raw 表記を保持し、整数 `level` は最初に現れる数字列から取得する。`10(旧9)`、`10;`、`[SA] 12` で数字を連結しない。
+- 同じ曲名・同じアーティストは同じ `song_id` として扱う。同一 `chart_id` の譜面行が食い違う場合は、静かな上書きではなく生成失敗として扱う。
+- `song_id` / `chart_id` は現時点では安定hashだが、配布互換性が必要になったらID互換方針をdocsで固定する。
+- M4はマスタDB生成入口であり、曲名正規化、ファジーマッチ、候補一覧、照合スコア、照合確信度、曲ID/譜面IDの一意照合はM5まで未確定。
+
+## M3境界メモ
+
+- `python -m tools.vision_poc --no-ocr` は過去確認で Total 112 / Correct 112 / false positives 0 / false negatives 0。
 - confirmed-events 境界は `confirmed_result=true` かつ `duplicate=false` の60件。
-- ローカル `samples/screenshots/organized/chart_field_templates/` は37枚。
+- `transition_countup_*` は `result_shape_candidate=true` でも `result_candidate=false`、`event_type=rejected_transition` のまま。
 - `play_style`、`difficulty`、`level` は `m3_chart_field_adoption_candidates_summary.json` で60/60 match、`adoption_candidate`。
 - M3 song/artist OCR入口は `song_title empty_ocr=2`、`artist empty_ocr=22`。両者を同じ改善対象として混ぜない。
-- M4入口として `master` パッケージを追加した。
-- `python -m master --output data\master\ddrgp-master.sqlite` で2026-07-04時点のBEMANIWiki実HTMLから 1282 songs / 9594 charts のSQLiteを生成できることを確認済み。
-- M4初期スキーマは `songs`、`charts`、`master_metadata`、`source_snapshots`。
-- M4 fixtureテストはネットワークに依存せず、セル結合、CHALLENGEなし、SP/DP差分、複数バージョン表を固定する。
-- M4はマスタDB生成入口であり、曲名正規化、ファジーマッチ、候補一覧、照合スコア、照合確信度、曲ID/譜面IDの一意照合はM5まで未確定。
-- 直近確認では `python -m ruff check master tools\vision_poc pyproject.toml tests`、`python -m compileall master tools\vision_poc`、`python -m pytest tests` が通過し、pytest は 93 passed。
-- 生成DB、PoC出力、OCR画像、`metadata.csv`、`data/`、`logs/`、ローカル素材、ローカルDBはGit管理しない。
+- M4 DBが生成できても、M3 OCR文字列や chart-field ready を曲ID/譜面IDの照合成功として扱わない。
 
 ## 必読資料
 
 - `AGENTS.md`
 - `docs/next-task.md`
-- `docs/implementation-roadmap.md`
-- `docs/requirements.md`
-- `docs/design/README.md`
-- `docs/design/04_data_model.md`
-- `docs/design/05_storage_io_spec.md`
 - `docs/design/08_master_db_generation.md`
 - `master/README.md`
+- `.github/workflows/build-master-db.yml`
+- `.github/workflows/README.md`
 - `master/builder.py`
 - `tests/test_master_builder.py`
+- `docs/design/04_data_model.md`
+- `docs/design/05_storage_io_spec.md`
+- `docs/implementation-roadmap.md`
+
+M3境界や画像PoCへ触る場合だけ追加で読む資料:
+
 - `docs/design/00_glossary.md`
 - `docs/design/03_event_and_save_boundary.md`
 - `docs/design/06_regression_guard.md`
@@ -67,48 +93,58 @@ high
 - プロジェクト専用Skill/Subagentの作成
 - 生成済み `data/master/ddrgp-master.sqlite` のコミット
 
+## 今回必ず進める実作業
+
+- `docs/next-task.md` の更新だけ、または確認結果の記録だけで完了扱いにしない。
+- 最初に、今回進める実作業を1つ決める。候補は GitHub Actions artifact確認、workflowをdefault branchで認識させるためのPR/merge準備、Releases配布前の追加検査、M4 fixture/CLI検証強化のいずれか。
+- GitHub Actions手動実行がdefault branch未反映でブロックされた場合は、その理由を記録したうえで、同じM4内の未ブロックな実装・テスト・検証強化へ切り替える。
+- 実装に入らずdocs整理だけで終える必要がある場合は、コミット前に理由を明示する。
+- `docs/next-task.md` の更新は、実作業と検証が終わった後の引き継ぎ更新として行う。
+
 ## 後続作業
 
 1. 現状確認
    - `git status --short --branch` と `git log --oneline -5` を確認する。
-   - `python -m tools.vision_poc --no-ocr` を実行し、112件全正解、`transition_countup_*` 除外、confirmed-events 60件、chart-field 3項目 ready を確認する。
    - `python -m master --output data\master\ddrgp-master.sqlite` を実行し、実HTMLからマスタDBが生成できることを確認する。
+   - `python -m master.inspect data\master\ddrgp-master.sqlite --summary data\master\master-summary.json` を実行し、生成DB検査とsummary出力を確認する。
+   - `master-summary.json` に `snapshot_count=1`、`source_hash` と `snapshot_source_hash` の一致、`source_url` と `snapshot_source_url` の一致、`snapshot_parser_version` が出ていることを確認する。
+   - 実HTML件数が直近の 1282 songs / 9594 charts と違う場合は、取得元更新かパーサ崩れかを `master_metadata`、`source_snapshots`、HTMLヘッダで確認する。
 
-2. M4 parser/schemaの次補強
-   - `master/builder.py` の初期パーサを読み、現在は楽曲リスト2段ヘッダ表だけを対象にしていることを確認する。
-   - BEMANIWiki の表構造は変わり得るため、実装時は最新HTMLを再確認する。
-   - 通常テストはネットワーク取得に依存させず、小さなHTML fixtureを追加して固定する。
-   - 注記付きレベル、削除/限定/パック記号、SP/DP片方のみ、CHALLENGEなし、同名曲・同アーティストの扱いをfixtureで増やす。
-   - `song_id` / `chart_id` は現時点では安定hashだが、配布互換性が必要になったらID互換方針をdocsで固定する。
+2. M4 CI/artifact確認
+   - 次の主作業候補。
+   - まず `origin/main` に `.github/workflows/build-master-db.yml` が入っているか確認する。
+   - 現状のまま作業ブランチにworkflowがあるだけでは、GitHub側でworkflow一覧に出ず手動実行できない。
+   - 2026-07-05時点では `origin/main` にworkflowがなく、GitHub APIのworkflow一覧は `total_count: 0`。まずPR/mergeなどでdefault branchにworkflowを入れる必要がある。
+   - workflowファイルがdefault branchへ入った後、GitHub上で `Build master database` workflowを手動実行し、artifactに `ddrgp-master.sqlite` と `master-summary.json` が含まれることを確認する。
+   - Actionsログで `tests/test_master_builder.py`、実HTML生成、`python -m master.inspect` が通っていることを確認する。
+   - artifactの `master-summary.json` で、件数、snapshot件数、source hash、source URL、parser versionが読めることを確認する。
+   - artifact生成結果が安定したら、Releases配布を同じworkflowに足すか、別workflowに分けるかを決める。
 
-3. M4の本番配布前整理
+3. M4 parser/schemaの継続確認
+   - BEMANIWiki の表構造は変わり得るため、parserへ触る場合は最新HTMLを再確認する。
+   - 通常テストはネットワーク取得に依存させず、小さなHTML fixtureで固定する。
+   - fixture追加時は、実HTML件数ではなく、解析境界とDB制約の崩れを検出する観点で足す。
+
+4. M4の本番配布前整理
    - `source_snapshots.html_content` をDB内に持つ方針で十分か、外部snapshotファイルとhashだけにするか検討する。
-   - GitHub Actions、定期実行、Releases配布はまだ未実装。進める場合は生成DBをコミットせずartifact/releaseとして扱う。
-   - 取得元HTML構造変化を、ヘッダ未検出・0件生成・SQLite制約違反として検出できる状態を維持する。
+   - Releases配布はまだ未実装。進める場合は生成DBをコミットせずartifact/releaseとして扱う。
+   - 取得元HTML構造変化を、ヘッダ未検出・0件生成・SQLite制約違反・必須metadata欠落・snapshot整合不一致として検出できる状態を維持する。
 
-4. M3/M4境界の維持
-   - M4 DBが生成できても、M3 OCR文字列や chart-field ready を曲ID/譜面IDの照合成功として扱わない。
-   - M5へ進む場合は、M4 DBを入力にした別PoCとして曲名正規化、ファジーマッチ、候補絞り込み、照合スコアを実装する。
+5. M5へ進む前の境界確認
+   - M4 DBを入力にした別PoCとして、曲名正規化、ファジーマッチ、候補絞り込み、照合スコアを設計する。
+   - M4内ではOCR結果から曲ID/譜面IDを一意に決めない。
+   - M3の `ready` や空でないOCR文字列を、マスタ照合成功として扱わない。
 
 ## 検証コマンド
 
 最低限:
 
 ```powershell
-python -m tools.vision_poc --no-ocr
 python -m master --output data\master\ddrgp-master.sqlite
+python -m master.inspect data\master\ddrgp-master.sqlite --summary data\master\master-summary.json
 python -m ruff check master tools\vision_poc pyproject.toml tests
 python -m compileall master tools\vision_poc
 python -m pytest tests
-```
-
-M3-9確認:
-
-```powershell
-python -m tools.vision_poc --m3-song-artist-ocr --ocr-target confirmed-events --no-rois --output data\vision_poc_m3_song_artist
-Get-Content data\vision_poc_m3_song_artist\m3_song_artist_ocr_summary.json
-Get-Content data\vision_poc_m3_song_artist\m3_song_artist_ocr_entry_failures_summary.json
-Get-Content data\vision_poc_m3_song_artist\m3_save_candidate_summary.json
 ```
 
 M4 DB確認:
@@ -116,17 +152,39 @@ M4 DB確認:
 ```powershell
 python -m pytest tests\test_master_builder.py
 python -m master --output data\master\ddrgp-master.sqlite
-```
-
-必要に応じてSQLite件数確認:
-
-```powershell
+python -m master.inspect data\master\ddrgp-master.sqlite --summary data\master\master-summary.json
 @'
 import sqlite3
 with sqlite3.connect("data/master/ddrgp-master.sqlite") as con:
     print(con.execute("select count(*) from songs").fetchone()[0])
     print(con.execute("select count(*) from charts").fetchone()[0])
+    print(dict(con.execute("select key, value from master_metadata")))
 '@ | python -
+```
+
+Actions内DB検査相当:
+
+```powershell
+python -m master.inspect data\master\ddrgp-master.sqlite --summary data\master\master-summary.json
+```
+
+GitHub Actions確認:
+
+```powershell
+gh api repos/tts1374/ddrgp_scorelog/actions/workflows
+gh workflow list
+gh workflow run build-master-db.yml --ref codex/m4-master-db-generation
+gh run list --workflow build-master-db.yml --limit 5
+```
+
+画像PoCやM3境界を触った場合の回帰:
+
+```powershell
+python -m tools.vision_poc --no-ocr
+python -m tools.vision_poc --m3-song-artist-ocr --ocr-target confirmed-events --no-rois --output data\vision_poc_m3_song_artist
+Get-Content data\vision_poc_m3_song_artist\m3_song_artist_ocr_summary.json
+Get-Content data\vision_poc_m3_song_artist\m3_song_artist_ocr_entry_failures_summary.json
+Get-Content data\vision_poc_m3_song_artist\m3_save_candidate_summary.json
 ```
 
 ## コミット/Push方針
@@ -135,21 +193,23 @@ with sqlite3.connect("data/master/ddrgp-master.sqlite") as con:
 - `samples/screenshots/cropped/` と `samples/screenshots/organized/chart_field_templates/` の画像はローカル素材扱いでコミットしない。
 - `docs/next-task.md` は引き継ぎ仕様としてコミット対象に含める。
 - コード、README、docs、テストに変更がある場合のみ、今回作業分だけをステージしてコミットする。
-- `data/master/ddrgp-master.sqlite`、PoC出力、ROI画像、OCR画像、解析ログはステージしない。
-- M4スキーマ、HTML解析境界、生成DBの扱いを変えた場合は、`master/README.md`、`docs/design/08_master_db_generation.md`、必要に応じて `docs/design/04_data_model.md` / `05_storage_io_spec.md` を同じコミットに含める。
-- コミットがある場合は `codex/vision-poc-ocr-tuning` を push する。
+- `data/master/ddrgp-master.sqlite`、`data/master/master-summary.json`、PoC出力、ROI画像、OCR画像、解析ログはステージしない。
+- M4スキーマ、HTML解析境界、生成DBの扱い、DB検査境界を変えた場合は、`master/README.md`、`docs/design/08_master_db_generation.md`、必要に応じて `docs/design/04_data_model.md` / `05_storage_io_spec.md` を同じコミットに含める。
+- コミットがある場合は `codex/m4-master-db-generation` を push する。
 
 ## 完了条件
 
-- `python -m tools.vision_poc --no-ocr` が112件全正解。
-- `transition_countup_*` は `result_shape_candidate=true` でも `result_candidate=false`、`event_type=rejected_transition` のまま。
-- confirmed-events の保存境界が `confirmed_result=true` かつ `duplicate=false` のまま。
-- duplicate / rejected_transition / unconfirmed / non-result が、M3 chart-field、M3 song/artist OCR、M3 save candidate summary の対象外のまま。
-- `play_style` / `difficulty` / `level` の `ready` をDB保存可能、採用済みテンプレート照合成功、マスタ照合成功、ファジーマッチ成功、曲名正規化成功として扱っていない。
-- `song_title` と `artist` のOCR入口失敗代表を別々に読み、同じ改善対象として混ぜていない。
 - `python -m master --output data\master\ddrgp-master.sqlite` でマスタDBを生成できる。
+- GitHub Actions workflowが、生成DBをコミットせずartifactとして扱う設計になっている。
+- Actions内DB検査相当で、必須metadata、metadata件数と実テーブル件数、`source_snapshots` 件数、source hash整合、source URL整合を確認できる。
+- `master-summary.json` で、テーブル件数、snapshot件数、source hash、snapshot側source URL、snapshot側parser versionを確認できる。
 - M4 fixtureテストがネットワークに依存せず通る。
+- M4 fixtureでセル結合、注記付きレベル、削除/限定/パック記号、SP/DP片方のみ、CHALLENGEなし、同名曲・同アーティスト、同一 `chart_id` 衝突検出を維持している。
+- 実HTML件数差分が出た場合、取得元更新かパーサ崩れかを説明できる。
+- GitHub Actions手動実行確認へ進む場合は、workflowファイルがdefault branchで認識されている。
 - M4 DB生成をM5の照合成功として扱っていない。
+- 画像PoCやM3境界を触った場合は、`python -m tools.vision_poc --no-ocr` が112件全正解。
+- 画像PoCやM3境界を触った場合は、`transition_countup_*` と confirmed-events 境界が維持されている。
 - 生成DB、テンプレート素材、PoC出力、`metadata.csv` 実体や画像をコミットしていない。
 - 検証コマンドが通っている。
 - コミット/Pushする場合は、Git管理対象外ファイルを含めていない。
