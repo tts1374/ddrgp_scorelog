@@ -28,19 +28,23 @@ high
   - inf-notebook 風の行hexキー辞書 `title_linehash_dict_status` を主観測にする。
   - 完全一致型 `title_linehash_exact_status` と、候補参照間で差が出るbitを重く見る距離比較型 `title_linehash_distance_status` は参考列として残す。
   - `title_linehash_*_status=resolved_candidate` はPoC観測語彙であり、保存可能、曲ID/譜面ID確定、`jacket_match_status=matched` への昇格を意味しない。
-- 2026-07-05の今回ローカル確認では metadata は178行、classification は178/178全正解。`transition_countup` shape candidates は3件。
+- 2026-07-05の追加ローカル素材取り込み後、metadata は220行、classification は220/220全正解。`transition_countup` shape candidates は3件。
+- 追加ローカル素材として `samples/screenshots` の `スクリーンショット (216).png` 〜 `スクリーンショット (257).png` を crop 済み。raw画像は残し、`samples/screenshots/cropped/` と `samples/screenshots/organized/` に配置し、`samples/screenshots/metadata.csv` へ追記済み。これら画像と metadata 実体はGit管理しない。
+  - osaka result は 216〜218 TYPE1、219〜221 TYPE2、222〜224 TYPE3。
+  - New York / tokyo / London EVOLVED の同一・類似ジャケット grid/result も追加済み。
 - 今回の M4 DB生成は 1282 songs / 9594 charts。source hash は `a866ea0527c2ac305cee6c17cedf10c2c85975fb1cf45b8870d56ad119d9f8b5`。
 - OCRなしM5曲名照合は confirmed-events 60件、`insufficient_input=60` / `ocr_not_run=60`。
 - OCRありM5曲名照合は confirmed-events 60件、`matched=19`、`not_found=39`、`insufficient_input=2`。
 - M3 song/artist OCR入口失敗代表は `failure_count=24`、`affected_candidate_count=22`、`song_title empty_ocr=2`、`artist empty_ocr=22`。
-- 今回の `--m5-jacket-match` 結果は confirmed-events 60件、`jacket_feature_master accepted=59`、`matched=57`、`ambiguous=3`、`not_found=0`、`missing_feature=0`。
+- 今回の `--m5-jacket-match` 結果は confirmed-events 60件、`jacket_feature_master accepted=68`、`matched=57`、`ambiguous=3`、`not_found=0`、`missing_feature=0`。
 - 残り `ambiguous=3` は引き続き `osaka EVOLVED -毎度、おおきに！- (TYPE1/2/3)` の同一ジャケット3件。`jacket_top_margin=0.0000` で、画像特徴量だけでは一意化しない。
 - title画像特徴量PoCの今回結果は `title_rerank_status_counts={"ambiguous_candidate": 3, "not_run": 57}`。
 - title OCR suffix診断の今回結果は `title_ocr_rerank_status_counts={"no_suffix": 3, "not_run": 57}`。
-- title line-hash辞書化後の今回結果は `title_linehash_dict_status_counts={"not_run": 57, "resolved_candidate": 3}`、`title_linehash_exact_status_counts={"no_exact_match": 3, "not_run": 57}`、`title_linehash_distance_status_counts={"ambiguous_candidate": 1, "not_run": 57, "resolved_candidate": 2}`。
+- title line-hash辞書化後の今回結果は `title_linehash_dict_status_counts={"not_run": 57, "resolved_candidate": 3}`、`title_linehash_exact_status_counts={"no_exact_match": 3, "not_run": 57}`、`title_linehash_distance_status_counts={"not_run": 57, "resolved_candidate": 3}`。
   - osaka 3件の `title_linehash_dict_top_title` は期待TYPEと一致した。
-  - 辞書の行一致数は TYPE1 `13`、TYPE2 `14`、TYPE3 `15`。
-  - `title_linehash_distance_status` は参考列として残り、TYPE2 はまだ `ambiguous_candidate`。今後は距離比較を本命にしない。
+  - 辞書の行一致数は TYPE1 `13`、TYPE2 `14`、TYPE3 `16`。
+  - 追加素材のラベル誤りがあると辞書結果も容易に崩れるため、同一ジャケット分岐の取り込み時は resultタイトルROIを目視して TYPE suffix を確認する。
+  - `title_linehash_distance_status` は今回3件とも `resolved_candidate` だが、参考列として残すだけにし、今後も距離比較を本命にしない。
 - `matched`、jacket `matched`、title画像 `resolved_candidate`、title OCR `resolved_candidate`、title line-hash `resolved_candidate` はPoC上の観測語彙で、DB保存可能、本番採用済み照合、曲ID/譜面ID確定を意味しない。
 - 今回コード検証では `python -m ruff check master tools\vision_poc pyproject.toml tests`、`python -m compileall master tools\vision_poc`、`python -m pytest tests` が通過し、pytest は120 passed。
 - 生成DB、PoC出力、OCR画像、`metadata.csv`、`data/`、`logs/`、ローカル素材、ローカルDBはGit管理しない。
@@ -122,6 +126,7 @@ python -m master.inspect data\master\ddrgp-master.sqlite --summary data\master\m
 python -m tools.vision_poc --m5-master-match --master-db data\master\ddrgp-master.sqlite --output data\master_match_poc --no-rois --no-ocr
 python -m tools.vision_poc --m3-song-artist-ocr --m5-master-match --master-db data\master\ddrgp-master.sqlite --output data\master_match_poc_ocr --no-rois
 python -m tools.vision_poc --m3-song-artist-ocr --m5-master-match --m5-jacket-match --master-db data\master\ddrgp-master.sqlite --output data\master_match_poc_jacket --no-rois
+python -m tools.vision_poc --m3-song-artist-ocr --m5-master-match --m5-jacket-match --master-db data\master\ddrgp-master.sqlite --output data\master_match_poc_jacket_ingested --no-rois
 Get-Content data\master_match_poc\master_match_summary.json
 Get-Content data\master_match_poc_ocr\master_match_summary.json
 Get-Content data\master_match_poc_jacket\jacket_feature_master_summary.json
