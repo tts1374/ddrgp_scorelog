@@ -92,6 +92,14 @@ M3境界や画像PoCへ触る場合だけ追加で読む資料:
 - プロジェクト専用Skill/Subagentの作成
 - 生成済み `data/master/ddrgp-master.sqlite` のコミット
 
+## 今回必ず進める実作業
+
+- `docs/next-task.md` の更新だけ、または確認結果の記録だけで完了扱いにしない。
+- 最初に、今回進める実作業を1つ決める。候補は GitHub Actions artifact確認、workflowをdefault branchで認識させるためのPR/merge準備、Releases配布前の追加検査、M4 fixture/CLI検証強化のいずれか。
+- GitHub Actions手動実行がdefault branch未反映でブロックされた場合は、その理由を記録したうえで、同じM4内の未ブロックな実装・テスト・検証強化へ切り替える。
+- 実装に入らずdocs整理だけで終える必要がある場合は、コミット前に理由を明示する。
+- `docs/next-task.md` の更新は、実作業と検証が終わった後の引き継ぎ更新として行う。
+
 ## 後続作業
 
 1. 現状確認
