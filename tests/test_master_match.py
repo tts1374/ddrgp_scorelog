@@ -4,6 +4,8 @@ import json
 import sqlite3
 from pathlib import Path
 
+from PIL import Image
+
 from master import builder
 from tools.vision_poc import master_match
 
@@ -78,6 +80,27 @@ def save_candidate_row(
     }
 
 
+def solid_feature(color: tuple[int, int, int]) -> master_match.JacketFeature:
+    return master_match.extract_jacket_feature(Image.new("RGB", (64, 64), color))
+
+
+def jacket_entry(
+    *,
+    song_id: str = "song_make",
+    title: str = "MAKE IT BETTER",
+    artist: str = "mitsu-O!",
+    color: tuple[int, int, int] = (240, 20, 20),
+) -> master_match.JacketFeatureMasterEntry:
+    return master_match.JacketFeatureMasterEntry(
+        organized_file="organized/song_select/song_select_fixture_grid.png",
+        source_song_title=title,
+        song_id=song_id,
+        title=title,
+        artist=artist,
+        feature=solid_feature(color),
+    )
+
+
 def test_normalize_song_title_folds_width_case_space_and_punctuation() -> None:
     assert master_match.normalize_song_title(" ＭＡＫＥ　ＩＴ・ＢＥＴＴＥＲ!! ") == (
         "makeitbetter"
@@ -106,6 +129,16 @@ def test_chart_filter_normalizes_m3_chart_fields() -> None:
 def test_title_similarity_only_boosts_master_title_inside_ocr_text() -> None:
     assert master_match.title_similarity("makeitbettermitsuo", "makeitbetter") == 1.0
     assert master_match.title_similarity("makeit", "makeitbetter") < 1.0
+
+
+def test_resolve_song_by_title_uses_normalized_exact_title(tmp_path: Path) -> None:
+    db_path = write_fixture_master_db(tmp_path)
+
+    song, failure_reason = master_match.resolve_song_by_title(db_path, " make it better!! ")
+
+    assert failure_reason == ""
+    assert song is not None
+    assert song.song_id == "song_make"
 
 
 def test_match_save_candidate_row_reports_unique_matched_candidate(tmp_path: Path) -> None:
@@ -222,4 +255,87 @@ def test_write_master_match_outputs_records_observation_scope(tmp_path: Path) ->
         summary
     )
     report = (tmp_path / "master_match_report.md").read_text(encoding="utf-8")
+    assert "DB保存可能や本番採用済み照合ではありません" in report
+
+
+def test_jacket_feature_distance_prefers_same_image() -> None:
+    red = solid_feature((240, 20, 20))
+    red_again = solid_feature((240, 20, 20))
+    blue = solid_feature((20, 20, 240))
+
+    assert master_match.jacket_feature_distance(red, red_again) == 0.0
+    assert master_match.jacket_feature_distance(red, blue) > 0.1
+
+
+def test_match_jacket_save_candidate_row_reports_unique_match(tmp_path: Path) -> None:
+    db_path = write_fixture_master_db(tmp_path)
+    row = save_candidate_row(title="")
+
+    result = master_match.match_jacket_save_candidate_row(
+        row,
+        db_path,
+        solid_feature((240, 20, 20)),
+        [jacket_entry()],
+    )
+
+    assert result["jacket_match_status"] == "matched"
+    assert result["top_song_id"] == "song_make"
+    assert result["top_chart_id"] == "chart_make_single_difficult"
+    assert result["candidate_song_count"] == "1"
+    assert result["candidate_feature_count"] == "1"
+    assert result["top_score"] == "1.0000"
+
+
+def test_match_jacket_save_candidate_row_reports_missing_feature(tmp_path: Path) -> None:
+    db_path = write_fixture_master_db(tmp_path)
+    row = save_candidate_row(title="")
+
+    result = master_match.match_jacket_save_candidate_row(
+        row,
+        db_path,
+        solid_feature((240, 20, 20)),
+        [jacket_entry(song_id="song_paranoia", title="PARANOiA", artist="180")],
+    )
+
+    assert result["jacket_match_status"] == "missing_feature"
+    assert result["failure_reason"] == "no_candidate_jacket_features"
+
+
+def test_write_jacket_match_outputs_records_observation_scope(tmp_path: Path) -> None:
+    rows = [
+        {
+            "frame_index": "2",
+            "organized_file": "organized/result/result_fixture.png",
+            "input_play_style": "SINGLE",
+            "input_difficulty": "DIFFICULT",
+            "input_level": "9",
+            "candidate_song_count": "1",
+            "candidate_chart_count": "1",
+            "candidate_feature_count": "1",
+            "top_song_id": "song_make",
+            "top_chart_id": "chart_make_single_difficult",
+            "top_title": "MAKE IT BETTER",
+            "top_artist": "mitsu-O!",
+            "top_score": "1.0000",
+            "top_distance": "0.0000",
+            "top_feature_source": "organized/song_select/song_select_fixture_grid.png",
+            "top_candidates": (
+                "1.0000:MAKE IT BETTER / mitsu-O! "
+                "[chart_make_single_difficult; organized/song_select/song_select_fixture_grid.png]"
+            ),
+            "jacket_match_status": "matched",
+            "failure_reason": "",
+        }
+    ]
+
+    summary = master_match.write_jacket_match_outputs(tmp_path, rows)
+
+    assert summary["scope"] == "M5 jacket match PoC"
+    assert summary["status_counts"]["matched"] == 1
+    assert "missing_feature" in summary["status_vocabulary"]
+    assert (tmp_path / "jacket_match_candidates.csv").exists()
+    assert json.loads((tmp_path / "jacket_match_summary.json").read_text(encoding="utf-8")) == (
+        summary
+    )
+    report = (tmp_path / "jacket_match_report.md").read_text(encoding="utf-8")
     assert "DB保存可能や本番採用済み照合ではありません" in report

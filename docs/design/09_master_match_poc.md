@@ -75,6 +75,27 @@ result confirmed-events
 
 初回特徴量は新規依存を増やさず、Pillow / numpy の範囲で、縮小RGBサムネイル、色ヒストグラム、dHash系の軽量特徴を比較する。しきい値や距離はPoC上の観察値であり、DB保存可能判定ではない。
 
+`--m5-jacket-match` は以下を生成する。
+
+- `jacket_feature_master.csv`
+- `jacket_feature_master_summary.json`
+- `jacket_feature_label_template.csv`
+- `jacket_match_candidates.csv`
+- `jacket_match_summary.json`
+- `jacket_match_report.md`
+
+`jacket_feature_master.csv` は、`screen_type=song_select` かつ grid 画面の右上選択中ジャケットプレビューを特徴量化し、metadata の `song_title` / `expected_song_title` を M4 `songs.title` へ一意照合できた行だけを `accepted` として出す。ラベルが空のgrid行は `jacket_feature_label_template.csv` へ出し、metadata実体は更新しない。
+
+`jacket_match_candidates.csv` は、confirmed-events の result `jacket` ROIを特徴量化し、`play_style` / `difficulty` / `level` で絞った候補song_idに紐づくローカル特徴量だけと比較する。列には候補曲数、候補譜面数、候補特徴量数、最上位候補、score、distance、特徴量参照元、上位候補一覧、`jacket_match_status`、`failure_reason` を出す。
+
+`jacket_match_status` は以下のPoC観測語彙とする。
+
+- `matched`: 距離しきい値内で、近傍同点候補がない。PoC上の一意候補であり、保存可能や本番採用済み照合ではない。
+- `ambiguous`: 距離しきい値内だが、別song_idに近傍候補がある。
+- `not_found`: chart条件に候補がない、または最上位距離がしきい値を超える。
+- `insufficient_input`: chart-field 3項目が候補絞り込みに足りない。
+- `missing_feature`: resultジャケット特徴量または候補song_id側のローカル特徴量参照が足りない。
+
 全曲ジャケット画像取得、配布可否、画像キャッシュ方針は別フェーズとして残す。ジャケット特徴量を入れる場合も、初回は保存成功判定ではなく、低確信度ログへ渡す観測値として始める。
 
 ## スコープ外

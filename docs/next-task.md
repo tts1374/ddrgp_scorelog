@@ -18,22 +18,20 @@ high
 
 ## 今回までの作業結果
 
-- M4 DBはM5照合PoCの入力として使ってよい。2026-07-05の直近確認では `python -m master --output data\master\ddrgp-master.sqlite` で 1282 songs / 9594 charts を生成できた。
-- 直近source hashは `fdde31591016dd54d1c9d18d21939f6b692594b604e3d29217b3b82dae5d1b0e`。取得元更新でhashは変わり得るため、件数固定ではなく構造変化検出とDB生成成功を見る。
-- M4パーサは `m4-initial-html-table-v2`。BEMANIWikiの脚注リンク本文が `*2` のような `*` + 数字だけの場合は曲名本文から除外し、`neko*neko` のような本文アスタリスクは残す。実HTML再生成後、`IX` と `Timepiece phase II` は脚注なしで一意に引けることを確認済み。
-- M5の軽量改善として、曲名OCR文字列にartistや余分な記号が後続混入するケース向けに、正規化後のマスタ曲名が5文字以上でOCR正規化文字列に含まれる場合だけ包含一致として類似度を最大扱いにした。短いOCR断片がマスタ曲名に含まれるだけでは最大扱いにしない。
-- 曲名正規化では従来のNFKC、casefold、空白除去、代表的な句読点除去に加え、曲名OCRで出やすい curly quote 系の `‘’“”` を除去対象にした。
-- `master_match_candidates.csv` に `top_candidates` を追加し、上位5候補を `score:title / artist [chart_id]` 形式で観察できるようにした。これは失敗代表の観察用であり、保存可能判定ではない。
-- fixtureテストに、artist suffix混入、包含一致の過剰boost防止、`top_candidates` 出力を追加済み。
-- OCRありM5の直近結果は confirmed-events 60件、classification 112/112、`matched=19`、`not_found=39`、`insufficient_input=2`。`not_found` はすべて `below_score_threshold`、`insufficient_input` は `empty_ocr`。
-- OCRなしM5の直近結果は confirmed-events 60件、classification 112/112、`insufficient_input=60` / `ocr_not_run=60`。
-- 方針相談の結果、曲名OCR単独での曲ID確定は厳しいため、次の主信号候補をジャケット特徴量へ寄せる。
-- 初回ジャケットPoCは `song_select` の detail ではなく grid 画面を対象にする。ただしgrid内の小ジャケットセル検出は避け、右上に出る大きい選択中ジャケットプレビューを使う。
-- `song_select` grid右上プレビューからローカル特徴量マスタを作り、metadata の `song_title` / `expected_song_title` を M4 `songs.title` へ照合して `song_id` に紐づける方針にする。
-- ローカルmetadataには追加grid素材を反映済み。`song_select_view=grid` かつ曲名ラベル付きは23件あり、全件M4 `songs.title` に一意一致する。`IX` は脚注除去後のM4表記に合わせて `IX` として扱う。
-- result確定時は resultジャケットROIを特徴量化し、`play_style` / `difficulty` / `level` で絞った候補song_idの特徴量だけと比較する。
-- 特徴量マスタとPoC出力は `data/` 配下のCSV/JSONにし、画像本体、metadata、ローカルDBはGit管理しない。
-- 直近検証では `python -m ruff check master tools\vision_poc pyproject.toml tests`、`python -m compileall master tools\vision_poc`、`python -m pytest tests` が通過し、pytest は 110 passed。
+- M5ジャケット特徴量PoCとして `--m5-jacket-match` を追加した。
+- `song_select` grid右上プレビューROIは 1280x720 基準で `(812, 28, 150, 150)`。result側は既存 `jacket` ROIを使う。
+- 特徴量は中心正方形から 16x16 RGBサムネイル、RGB 8-bin histogram、8x8 dHashを作る。距離しきい値は `0.24`、曖昧判定deltaは `0.015` の初期観測値。
+- `jacket_feature_master.csv`、`jacket_feature_master_summary.json`、`jacket_feature_label_template.csv`、`jacket_match_candidates.csv`、`jacket_match_summary.json`、`jacket_match_report.md` を出力する。
+- `jacket_feature_label_template.csv` は未ラベルgrid行の補助テンプレートで、metadata実体は編集しない。
+- 現ローカルmetadataでは `song_select` gridラベル付き23件がすべて M4 `songs.title` に一意一致し、`jacket_feature_master_summary.json` は `accepted=23`。
+- OCRありM5曲名照合の直近結果は confirmed-events 60件、classification 134/134、`matched=19`、`not_found=39`、`insufficient_input=2`。`not_found` は `below_score_threshold`、`insufficient_input` は `empty_ocr`。
+- OCRなしM5曲名照合は confirmed-events 60件、`insufficient_input=60` / `ocr_not_run=60`。
+- ジャケット照合の直近結果は confirmed-events 60件、`matched=28`、`not_found=28`、`missing_feature=4`、`ambiguous=0`、`insufficient_input=0`。`not_found` は `above_distance_threshold`、`missing_feature` は `no_candidate_jacket_features`。
+- `matched` はPoC上の一意候補という意味だけで、DB保存可能、本番採用済み照合、曲ID/譜面ID確定を意味しない。
+- 2026-07-05の直近確認では `python -m master --output data\master\ddrgp-master.sqlite` で 1282 songs / 9594 charts を生成できた。
+- 直近source hashは `82c0522f51b00fb624b5281addd70d108649d8ca2e8c598b3ea094edffa5d40f`。取得元更新でhashは変わり得るため、件数固定ではなく構造変化検出とDB生成成功を見る。
+- 直近検証では `python -m ruff check master tools\vision_poc pyproject.toml tests`、`python -m compileall master tools\vision_poc`、`python -m pytest tests` が通過し、pytest は 115 passed。
+- `python -m tools.vision_poc --no-ocr` は現ローカル素材134件で全正解、`transition_countup` shape candidates は3件。
 - 生成DB、PoC出力、OCR画像、`metadata.csv`、`data/`、`logs/`、ローカル素材、ローカルDBはGit管理しない。
 
 ## 必読資料
@@ -79,22 +77,20 @@ M3評価レポートや画像PoCの境界へ触る場合だけ追加で読む資
 
 M5内でまだ成功扱いにしないもの:
 
-- OCR結果から曲ID/譜面IDを保存用に確定すること
-- ファジーマッチ結果を本番採用済み照合として扱うこと
+- OCR結果やジャケットPoC結果から曲ID/譜面IDを保存用に確定すること
+- ファジーマッチ結果やジャケット `matched` を本番採用済み照合として扱うこと
 - 曖昧一致や低確信度をDB保存可能として扱うこと
 - `artist` を曲名照合の一意主キーとして扱うこと
 
 ## 次に必ず進める実作業
 
 - `docs/next-task.md` の更新だけ、または確認結果の記録だけで完了扱いにしない。
-- M5ジャケット特徴量PoCを実装する。初回対象は `screen_type=song_select` かつ `organized_file` に `grid` を含む行の右上選択中ジャケットプレビュー。
-- 既存metadataでは `song_select` の `song_title` / `expected_song_title` が空の行があるため、未ラベルsong_select一覧を `data/` 配下のテンプレCSVへ出す。metadata実体は編集・コミットしない。
-- ラベルがあるsong_select行だけ、M4 `songs.title` へ既存の曲名正規化で照合し、1曲に決まる場合だけ `song_id` 付きの jacket feature master に採用する。
-- result confirmed-events の `jacket` ROIを特徴量化し、`play_style` / `difficulty` / `level` で絞った候補song_idのfeatureだけと比較する。
-- 出力は `jacket_feature_master.csv`、`jacket_feature_master_summary.json`、`jacket_feature_label_template.csv`、`jacket_match_candidates.csv`、`jacket_match_summary.json`、`jacket_match_report.md` を想定する。
-- 特徴量は新規依存を増やさず、Pillow / numpy の範囲で、縮小RGBサムネイル、色ヒストグラム、dHash系の軽量特徴から始める。
-- `jacket_match_status` は `matched` / `ambiguous` / `not_found` / `insufficient_input` / `missing_feature` のPoC観測語彙として扱う。`matched` は保存可能や本番採用済み照合ではない。
-- 大きなOCR方式刷新やROI座標変更には進まない。
+- `data\master_match_poc_jacket\jacket_match_candidates.csv` を読み、`not_found / above_distance_threshold` 28件と `missing_feature / no_candidate_jacket_features` 4件の代表を整理する。
+- `jacket_match_candidates.csv` に期待曲名との比較や距離分布を観察しやすい列または補助レポートを追加する。metadata実体は編集しない。
+- `missing_feature` 4件は、chart-fieldで絞った候補song_id側にローカルgrid特徴量がないケースとして読み、追加すべき `song_select` gridラベル候補を `data/` 配下の補助CSVへ出す。
+- `not_found` 28件は、ROI切り出し、外枠混入、色特徴重み、dHash重み、距離しきい値のどれが支配的かを小さく診断する。
+- しきい値や特徴量重みを変える場合は、保存可能判定に接続せず、`docs/design/09_master_match_poc.md` と `tools/vision_poc/README.md` も更新する。
+- 大きなOCR方式刷新やROI座標定義の大変更には進まない。
 - `matched` はPoC上の一意候補という意味に限定し、保存可能とは書かない。
 - `docs/next-task.md` の更新は、実作業と検証が終わった後の引き継ぎ更新として行う。
 
@@ -110,8 +106,10 @@ python -m tools.vision_poc --m3-song-artist-ocr --m5-master-match --master-db da
 python -m tools.vision_poc --m3-song-artist-ocr --m5-master-match --m5-jacket-match --master-db data\master\ddrgp-master.sqlite --output data\master_match_poc_jacket --no-rois
 Get-Content data\master_match_poc\master_match_summary.json
 Get-Content data\master_match_poc_ocr\master_match_summary.json
+Get-Content data\master_match_poc_jacket\jacket_feature_master_summary.json
 Get-Content data\master_match_poc_jacket\jacket_match_summary.json
 Get-Content data\master_match_poc_ocr\m3_song_artist_ocr_entry_failures_summary.json
+python -m tools.vision_poc --no-ocr
 python -m ruff check master tools\vision_poc pyproject.toml tests
 python -m compileall master tools\vision_poc
 python -m pytest tests
@@ -161,12 +159,11 @@ Get-Content data\vision_poc_m3_song_artist\m3_save_candidate_summary.json
 - 曲名OCR文字列の正規化方針がテストとdocsで説明できる。
 - M5 PoCのCSV/summaryで、候補数、最上位候補、上位候補一覧、score、`match_status`、`failure_reason`を確認できる。
 - song_select grid右上プレビュー由来のjacket feature masterを `data/` 配下へ生成できる。
-- ラベル不足のsong_select行をテンプレCSVへ出し、metadata実体を変更していない。
+- ラベル不足のsong_select grid行をテンプレCSVへ出し、metadata実体を変更していない。
 - result confirmed-events のジャケットROIを、chart-fieldで絞った候補song_idのfeatureだけと比較できる。
 - jacket matchの `matched` / `ambiguous` / `not_found` / `insufficient_input` / `missing_feature` の意味が保存可否と混同されていない。
-- `matched` / `ambiguous` / `not_found` / `insufficient_input` の意味が保存可否と混同されていない。
 - M5 fixtureテストがネットワーク、画像、`metadata.csv` に依存せず通る。
-- 画像PoCやM3境界を触った場合は、`python -m tools.vision_poc --no-ocr` が112件全正解。
+- 画像PoCやM3境界を触った場合は、`python -m tools.vision_poc --no-ocr` が全正解。
 - 画像PoCやM3境界を触った場合は、`transition_countup_*` と confirmed-events 境界が維持されている。
 - 生成DB、テンプレート素材、PoC出力、`metadata.csv` 実体や画像をコミットしていない。
 - 検証コマンドが通っている。
