@@ -254,11 +254,14 @@ M3完了判断:
 - `play_style` / `difficulty` / `level` で `charts` を絞り、候補曲数、候補譜面数、最上位候補、score、`match_status`、`failure_reason` を `master_match_candidates.csv` / summary / Markdownへ出す。
 - `matched` はPoC上の一意候補であり、DB保存可能や本番採用済み照合ではない。
 - 2026-07-05のローカルOCR入口確認では、confirmed-events 60件中 `matched=4`、`not_found=54`、`insufficient_input=2`。多くはOCR文字列にartistなどが混ざり、`below_score_threshold` になった。
+- その後の軽量改善で、artist後続混入向けの包含一致と上位候補一覧を追加し、ローカル確認では `matched=19`、`not_found=39`、`insufficient_input=2` になった。ただし、曲名OCR単独での曲ID確定は依然として弱い。
+- 次の主信号候補として、`song_select` grid画面右上の選択中ジャケットプレビューから `song_id` に紐づくローカル特徴量マスタを作り、resultジャケットROIと比較する方針に寄せる。grid内の小ジャケットセル検出、全曲ジャケット画像取得、画像配布は別フェーズに残す。
 
 やること:
 
-- 曲名OCR正規化を強化する。
-- マスタDBに対するファジーマッチを改善する。
+- `song_select` grid右上プレビューのジャケット特徴量を、metadata期待曲名経由で `song_id` に紐づけるPoCを作る。
+- result confirmed-events のジャケットROIを特徴量化し、`play_style` / `difficulty` / `level` で絞った候補songだけと比較する。
+- 曲名OCR正規化とファジーマッチは補助ログとして継続し、主判定候補はジャケット特徴量へ移す。
 - SP/DP、難易度、レベルで候補を絞る入口を、ローカルOCR観測値で継続評価する。
 - 一意に決まらない場合は保存不可にする。
 - 候補一覧と照合スコアをログへ出す。

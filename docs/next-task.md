@@ -26,6 +26,11 @@ high
 - fixtureテストに、artist suffix混入、包含一致の過剰boost防止、`top_candidates` 出力を追加済み。
 - OCRありM5の直近結果は confirmed-events 60件、classification 112/112、`matched=19`、`not_found=39`、`insufficient_input=2`。`not_found` はすべて `below_score_threshold`、`insufficient_input` は `empty_ocr`。
 - OCRなしM5の直近結果は confirmed-events 60件、classification 112/112、`insufficient_input=60` / `ocr_not_run=60`。
+- 方針相談の結果、曲名OCR単独での曲ID確定は厳しいため、次の主信号候補をジャケット特徴量へ寄せる。
+- 初回ジャケットPoCは `song_select` の detail ではなく grid 画面を対象にする。ただしgrid内の小ジャケットセル検出は避け、右上に出る大きい選択中ジャケットプレビューを使う。
+- `song_select` grid右上プレビューからローカル特徴量マスタを作り、metadata の `song_title` / `expected_song_title` を M4 `songs.title` へ照合して `song_id` に紐づける方針にする。
+- result確定時は resultジャケットROIを特徴量化し、`play_style` / `difficulty` / `level` で絞った候補song_idの特徴量だけと比較する。
+- 特徴量マスタとPoC出力は `data/` 配下のCSV/JSONにし、画像本体、metadata、ローカルDBはGit管理しない。
 - 直近検証では `python -m ruff check master tools\vision_poc pyproject.toml tests`、`python -m compileall master tools\vision_poc`、`python -m pytest tests` が通過し、pytest は 110 passed。
 - 生成DB、PoC出力、OCR画像、`metadata.csv`、`data/`、`logs/`、ローカル素材、ローカルDBはGit管理しない。
 
@@ -62,8 +67,9 @@ M3評価レポートや画像PoCの境界へ触る場合だけ追加で読む資
 - 個人スコアDB保存、保存可否判定本番仕様、低確信度ログ本番仕様
 - OCR方式の大幅刷新、ROI座標定義の大変更
 - duplicate key の本格実装差し替え
-- ジャケット特徴量照合の実装
 - 全曲ジャケット画像取得ツールの実装
+- grid内の小ジャケットセル検出
+- song_select detail画面を必須にすること
 - M4 Releases配布の実装
 - Windows常駐アプリUI
 - プロジェクト専用Skill/Subagentの作成
@@ -79,9 +85,13 @@ M5内でまだ成功扱いにしないもの:
 ## 次に必ず進める実作業
 
 - `docs/next-task.md` の更新だけ、または確認結果の記録だけで完了扱いにしない。
-- OCRありM5出力 `data\master_match_poc_ocr\master_match_candidates.csv` を再生成し、残った `below_score_threshold=39` を `top_candidates` と合わせて代表確認する。
-- 推奨候補は、記号・装飾文字差の軽量正規化、先頭ゴミ/末尾ゴミの観察、`below_score_threshold` の理由細分化、しきい値前後の代表レポート、または追加fixtureテスト。
-- 例として残件には `BREVK DOWN!` vs `BRE∀K DOWN！`、`CRAZYYLOVE` vs `CRAZY♥LOVE`、`RËVOLUTIФN`、`Lachryma《Re:Queen’M》`、日本語タイトルのOCR崩れがある。まずは標準ライブラリベースの小さい正規化・観察強化に留める。
+- M5ジャケット特徴量PoCを実装する。初回対象は `screen_type=song_select` かつ `organized_file` に `grid` を含む行の右上選択中ジャケットプレビュー。
+- 既存metadataでは `song_select` の `song_title` / `expected_song_title` が空の行があるため、未ラベルsong_select一覧を `data/` 配下のテンプレCSVへ出す。metadata実体は編集・コミットしない。
+- ラベルがあるsong_select行だけ、M4 `songs.title` へ既存の曲名正規化で照合し、1曲に決まる場合だけ `song_id` 付きの jacket feature master に採用する。
+- result confirmed-events の `jacket` ROIを特徴量化し、`play_style` / `difficulty` / `level` で絞った候補song_idのfeatureだけと比較する。
+- 出力は `jacket_feature_master.csv`、`jacket_feature_master_summary.json`、`jacket_feature_label_template.csv`、`jacket_match_candidates.csv`、`jacket_match_summary.json`、`jacket_match_report.md` を想定する。
+- 特徴量は新規依存を増やさず、Pillow / numpy の範囲で、縮小RGBサムネイル、色ヒストグラム、dHash系の軽量特徴から始める。
+- `jacket_match_status` は `matched` / `ambiguous` / `not_found` / `insufficient_input` / `missing_feature` のPoC観測語彙として扱う。`matched` は保存可能や本番採用済み照合ではない。
 - 大きなOCR方式刷新やROI座標変更には進まない。
 - `matched` はPoC上の一意候補という意味に限定し、保存可能とは書かない。
 - `docs/next-task.md` の更新は、実作業と検証が終わった後の引き継ぎ更新として行う。
@@ -95,8 +105,10 @@ python -m master --output data\master\ddrgp-master.sqlite
 python -m master.inspect data\master\ddrgp-master.sqlite --summary data\master\master-summary.json
 python -m tools.vision_poc --m5-master-match --master-db data\master\ddrgp-master.sqlite --output data\master_match_poc --no-rois --no-ocr
 python -m tools.vision_poc --m3-song-artist-ocr --m5-master-match --master-db data\master\ddrgp-master.sqlite --output data\master_match_poc_ocr --no-rois
+python -m tools.vision_poc --m3-song-artist-ocr --m5-master-match --m5-jacket-match --master-db data\master\ddrgp-master.sqlite --output data\master_match_poc_jacket --no-rois
 Get-Content data\master_match_poc\master_match_summary.json
 Get-Content data\master_match_poc_ocr\master_match_summary.json
+Get-Content data\master_match_poc_jacket\jacket_match_summary.json
 Get-Content data\master_match_poc_ocr\m3_song_artist_ocr_entry_failures_summary.json
 python -m ruff check master tools\vision_poc pyproject.toml tests
 python -m compileall master tools\vision_poc
@@ -135,7 +147,7 @@ Get-Content data\vision_poc_m3_song_artist\m3_save_candidate_summary.json
 - `docs/next-task.md` は引き継ぎ仕様としてコミット対象に含める。
 - コード、README、docs、テストに変更がある場合のみ、今回作業分だけをステージしてコミットする。
 - `data/master/ddrgp-master.sqlite`、`data/master/master-summary.json`、M5 PoC出力、ROI画像、OCR画像、解析ログはステージしない。
-- M5照合境界、正規化方針、候補スコア、`match_status`、`failure_reason` を変えた場合は、関連する `docs/design/` または `tools/vision_poc/README.md` を同じコミットに含める。
+- M5照合境界、正規化方針、候補スコア、ジャケット特徴量方針、`match_status`、`failure_reason` を変えた場合は、関連する `docs/design/` または `tools/vision_poc/README.md` を同じコミットに含める。
 - コミットがある場合は作業ブランチを push する。
 
 ## 完了条件
@@ -146,6 +158,10 @@ Get-Content data\vision_poc_m3_song_artist\m3_save_candidate_summary.json
 - M4 DBから曲・譜面候補を読み、`play_style` / `difficulty` / `level` で候補を絞れる。
 - 曲名OCR文字列の正規化方針がテストとdocsで説明できる。
 - M5 PoCのCSV/summaryで、候補数、最上位候補、上位候補一覧、score、`match_status`、`failure_reason`を確認できる。
+- song_select grid右上プレビュー由来のjacket feature masterを `data/` 配下へ生成できる。
+- ラベル不足のsong_select行をテンプレCSVへ出し、metadata実体を変更していない。
+- result confirmed-events のジャケットROIを、chart-fieldで絞った候補song_idのfeatureだけと比較できる。
+- jacket matchの `matched` / `ambiguous` / `not_found` / `insufficient_input` / `missing_feature` の意味が保存可否と混同されていない。
 - `matched` / `ambiguous` / `not_found` / `insufficient_input` の意味が保存可否と混同されていない。
 - M5 fixtureテストがネットワーク、画像、`metadata.csv` に依存せず通る。
 - 画像PoCやM3境界を触った場合は、`python -m tools.vision_poc --no-ocr` が112件全正解。
