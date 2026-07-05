@@ -19,7 +19,8 @@ high
 ## 今回までの作業結果
 
 - M4 DBはM5照合PoCの入力として使ってよい。2026-07-05の直近確認では `python -m master --output data\master\ddrgp-master.sqlite` で 1282 songs / 9594 charts を生成できた。
-- 直近source hashは `49fd88ea80c4a19b6e1c194c5fae30091ed932ba6ceac7b8464770522245c137`。前回メモのhashから変化したが、件数、snapshot数、metadata/snapshot hash整合、parser versionは `python -m master.inspect` で正常確認済み。取得元更新でhashは変わり得るため、件数固定ではなく構造変化検出とDB生成成功を見る。
+- 直近source hashは `fdde31591016dd54d1c9d18d21939f6b692594b604e3d29217b3b82dae5d1b0e`。取得元更新でhashは変わり得るため、件数固定ではなく構造変化検出とDB生成成功を見る。
+- M4パーサは `m4-initial-html-table-v2`。BEMANIWikiの脚注リンク本文が `*2` のような `*` + 数字だけの場合は曲名本文から除外し、`neko*neko` のような本文アスタリスクは残す。実HTML再生成後、`IX` と `Timepiece phase II` は脚注なしで一意に引けることを確認済み。
 - M5の軽量改善として、曲名OCR文字列にartistや余分な記号が後続混入するケース向けに、正規化後のマスタ曲名が5文字以上でOCR正規化文字列に含まれる場合だけ包含一致として類似度を最大扱いにした。短いOCR断片がマスタ曲名に含まれるだけでは最大扱いにしない。
 - 曲名正規化では従来のNFKC、casefold、空白除去、代表的な句読点除去に加え、曲名OCRで出やすい curly quote 系の `‘’“”` を除去対象にした。
 - `master_match_candidates.csv` に `top_candidates` を追加し、上位5候補を `score:title / artist [chart_id]` 形式で観察できるようにした。これは失敗代表の観察用であり、保存可能判定ではない。
@@ -29,6 +30,7 @@ high
 - 方針相談の結果、曲名OCR単独での曲ID確定は厳しいため、次の主信号候補をジャケット特徴量へ寄せる。
 - 初回ジャケットPoCは `song_select` の detail ではなく grid 画面を対象にする。ただしgrid内の小ジャケットセル検出は避け、右上に出る大きい選択中ジャケットプレビューを使う。
 - `song_select` grid右上プレビューからローカル特徴量マスタを作り、metadata の `song_title` / `expected_song_title` を M4 `songs.title` へ照合して `song_id` に紐づける方針にする。
+- ローカルmetadataには追加grid素材を反映済み。`song_select_view=grid` かつ曲名ラベル付きは23件あり、全件M4 `songs.title` に一意一致する。`IX` は脚注除去後のM4表記に合わせて `IX` として扱う。
 - result確定時は resultジャケットROIを特徴量化し、`play_style` / `difficulty` / `level` で絞った候補song_idの特徴量だけと比較する。
 - 特徴量マスタとPoC出力は `data/` 配下のCSV/JSONにし、画像本体、metadata、ローカルDBはGit管理しない。
 - 直近検証では `python -m ruff check master tools\vision_poc pyproject.toml tests`、`python -m compileall master tools\vision_poc`、`python -m pytest tests` が通過し、pytest は 110 passed。

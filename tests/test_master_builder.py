@@ -106,6 +106,18 @@ EDGE_FIXTURE_HTML = """
     <td>1</td><td>4</td><td>7</td><td>10</td><td>-</td>
     <td>-</td><td>-</td><td>-</td><td>-</td>
   </tr>
+  <tr>
+    <td></td><td>IX<a href="#note1">*2</a></td><td>dj TAKA VS DJ TOTTO feat.藍</td>
+    <td>DDR GP Test Pack</td><td>198</td><td>-</td>
+    <td>5</td><td>-</td><td>-</td><td>-</td><td>-</td>
+    <td>-</td><td>-</td><td>-</td><td>-</td>
+  </tr>
+  <tr>
+    <td></td><td>neko*neko</td><td>日向美ビタースイーツ♪</td>
+    <td>DDR GP Test Pack</td><td>123</td><td>-</td>
+    <td>2</td><td>-</td><td>-</td><td>-</td><td>-</td>
+    <td>-</td><td>-</td><td>-</td><td>-</td>
+  </tr>
 </table>
 </body>
 </html>
@@ -329,8 +341,8 @@ def test_parse_master_html_handles_edge_level_and_chart_identity_cases() -> None
         fetched_at="2026-07-04T00:00:00+00:00",
     )
 
-    assert len(build.songs) == 2
-    assert len(build.charts) == 9
+    assert len(build.songs) == 4
+    assert len(build.charts) == 11
 
     limited_song = next(song for song in build.songs if song.title == "LIMITED TEST")
     limited_charts = [chart for chart in build.charts if chart.song_id == limited_song.song_id]
@@ -363,6 +375,10 @@ def test_parse_master_html_handles_edge_level_and_chart_identity_cases() -> None
         ("SINGLE", "DIFFICULT", 7),
         ("SINGLE", "EXPERT", 10),
     }
+
+    ix_song = next(song for song in build.songs if song.artist == "dj TAKA VS DJ TOTTO feat.藍")
+    assert ix_song.title == "IX"
+    assert any(song.title == "neko*neko" for song in build.songs)
 
 
 def test_parse_master_html_rejects_conflicting_duplicate_chart_identity() -> None:

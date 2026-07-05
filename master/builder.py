@@ -15,7 +15,7 @@ SOURCE_URL = (
     "https://bemaniwiki.com/index.php?"
     "DanceDanceRevolution+GRAND+PRIX/%E5%85%A8%E6%9B%B2%E3%83%AA%E3%82%B9%E3%83%88"
 )
-PARSER_VERSION = "m4-initial-html-table-v1"
+PARSER_VERSION = "m4-initial-html-table-v2"
 DIFFICULTIES_BY_STYLE = {
     "SINGLE": ("BEGINNER", "BASIC", "DIFFICULT", "EXPERT", "CHALLENGE"),
     "DOUBLE": ("BASIC", "DIFFICULT", "EXPERT", "CHALLENGE"),
@@ -70,6 +70,14 @@ def normalize_text(value: str) -> str:
     return " ".join(value.replace("\xa0", " ").replace("\u2003", " ").split())
 
 
+def normalize_table_cell_text(cell) -> str:
+    cell_copy = BeautifulSoup(str(cell), "html.parser")
+    for anchor in cell_copy.find_all("a"):
+        if re.fullmatch(r"\*\d+", anchor.get_text(strip=True)):
+            anchor.decompose()
+    return normalize_text(cell_copy.get_text(" ", strip=True))
+
+
 def stable_id(prefix: str, *parts: str) -> str:
     digest = hashlib.sha1("\0".join(parts).encode("utf-8")).hexdigest()[:16]
     return f"{prefix}_{digest}"
@@ -114,7 +122,7 @@ def expanded_table_rows(table) -> list[list[str]]:
                     del spans[col_index]
                 col_index += 1
 
-            text = normalize_text(cell.get_text(" ", strip=True))
+            text = normalize_table_cell_text(cell)
             rowspan = int(cell.get("rowspan", 1))
             colspan = int(cell.get("colspan", 1))
             for offset in range(colspan):
