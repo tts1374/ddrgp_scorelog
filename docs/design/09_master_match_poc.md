@@ -98,7 +98,7 @@ result confirmed-events
 
 2026-07-05のローカル追加素材反映後は、`song_select` grid右上プレビュー由来の特徴量マスタが58件になり、confirmed-events 60件に対するジャケット照合は `matched=56`、`ambiguous=4`、`not_found=0`、`missing_feature=0` になった。ここでの `matched` は引き続きPoC上の一意候補であり、保存可能ではない。
 
-残る `ambiguous` は、`osaka EVOLVED -毎度、おおきに！- (TYPE1/2/3)` の同一ジャケット3件と、`If` が近距離候補を持つ1件である。前者は画像特徴量だけで無理に一意化せず、title画像特徴量またはtitle OCRで `TYPE1` / `TYPE2` / `TYPE3` を候補集合内だけ再順位付けする対象にする。後者は expected song の距離、順位、top margin を診断して、しきい値問題か特徴量重み問題かを分ける。
+残る `ambiguous` は、`osaka EVOLVED -毎度、おおきに！- (TYPE1/2/3)` の同一ジャケット3件と、`桜` が近距離候補を持つ1件である。`result_098_sp_basic_lv07_if_score972200.png` はファイル名とmetadataが `If` になっていたが、実画面表示は `桜 / Reven-G / SINGLE BASIC Lv7` だったためローカルmetadataを修正済み。前者は画像特徴量だけで無理に一意化せず、title画像特徴量またはtitle OCRで `TYPE1` / `TYPE2` / `TYPE3` を候補集合内だけ再順位付けする対象にする。後者は expected song の距離、順位、top margin を診断して、しきい値問題か特徴量重み問題かを分ける。
 
 title / artist の画像特徴量を追加する場合も、候補集合外から曲を拾うためには使わない。基本順序は `play_style / difficulty / level` で候補集合を作り、ジャケット特徴量で狭め、残った曖昧候補だけを title 画像特徴量や title OCR で再順位付けする。artistは主キーではなく、矛盾チェックや弱い補助信号に留める。
 
