@@ -18,12 +18,16 @@ def write_fixture_master_db(tmp_path: Path) -> Path:
         ("song_paranoia", "PARANOiA", "180"),
         ("song_aa_bang", "AA!!", "Unit A"),
         ("song_aa_question", "AA??", "Unit B"),
+        ("song_type1", "OSAKA TYPE1", "Unit O"),
+        ("song_type2", "OSAKA TYPE2", "Unit O"),
     ]
     charts = [
         ("chart_make_single_difficult", "song_make", "SINGLE", "DIFFICULT", 9),
         ("chart_paranoia_single_expert", "song_paranoia", "SINGLE", "EXPERT", 16),
         ("chart_aa_bang_single_basic", "song_aa_bang", "SINGLE", "BASIC", 1),
         ("chart_aa_question_single_basic", "song_aa_question", "SINGLE", "BASIC", 1),
+        ("chart_type1_single_challenge", "song_type1", "SINGLE", "CHALLENGE", 10),
+        ("chart_type2_single_challenge", "song_type2", "SINGLE", "CHALLENGE", 10),
     ]
     with sqlite3.connect(db_path) as connection:
         builder.create_schema(connection)
@@ -84,6 +88,10 @@ def solid_feature(color: tuple[int, int, int]) -> master_match.JacketFeature:
     return master_match.extract_jacket_feature(Image.new("RGB", (64, 64), color))
 
 
+def title_feature(color: int) -> master_match.TitleImageFeature:
+    return master_match.extract_title_image_feature(Image.new("RGB", (160, 40), color))
+
+
 def jacket_entry(
     *,
     song_id: str = "song_make",
@@ -98,6 +106,24 @@ def jacket_entry(
         title=title,
         artist=artist,
         feature=solid_feature(color),
+    )
+
+
+def title_entry(
+    *,
+    song_id: str,
+    title: str,
+    artist: str,
+    color: int,
+    organized_file: str = "organized/result/result_title_reference.png",
+) -> master_match.TitleFeatureMasterEntry:
+    return master_match.TitleFeatureMasterEntry(
+        organized_file=organized_file,
+        source_song_title=title,
+        song_id=song_id,
+        title=title,
+        artist=artist,
+        feature=title_feature(color),
     )
 
 
@@ -284,6 +310,86 @@ def test_match_jacket_save_candidate_row_reports_unique_match(tmp_path: Path) ->
     assert result["candidate_song_count"] == "1"
     assert result["candidate_feature_count"] == "1"
     assert result["top_score"] == "1.0000"
+    assert result["jacket_top_margin"] == ""
+    assert result["title_rerank_status"] == "not_run"
+
+
+def test_match_jacket_save_candidate_row_reports_expected_jacket_diagnostics(
+    tmp_path: Path,
+) -> None:
+    db_path = write_fixture_master_db(tmp_path)
+    row = save_candidate_row(title="")
+    row["song_title_expected_value"] = "MAKE IT BETTER"
+
+    result = master_match.match_jacket_save_candidate_row(
+        row,
+        db_path,
+        solid_feature((240, 20, 20)),
+        [jacket_entry()],
+    )
+
+    assert result["expected_song_title"] == "MAKE IT BETTER"
+    assert result["expected_song_id"] == "song_make"
+    assert result["expected_jacket_distance"] == "0.0000"
+    assert result["expected_jacket_rank"] == "1"
+
+
+def test_match_jacket_save_candidate_row_title_reranks_only_ambiguous_candidates(
+    tmp_path: Path,
+) -> None:
+    db_path = write_fixture_master_db(tmp_path)
+    row = save_candidate_row(
+        title="",
+        play_style="SINGLE",
+        difficulty="CHALLENGE",
+        level="10",
+    )
+    row["organized_file"] = "organized/result/result_type2.png"
+    row["song_title_expected_value"] = "OSAKA TYPE2"
+
+    result = master_match.match_jacket_save_candidate_row(
+        row,
+        db_path,
+        solid_feature((120, 120, 120)),
+        [
+            jacket_entry(
+                song_id="song_type1",
+                title="OSAKA TYPE1",
+                artist="Unit O",
+                color=(120, 120, 120),
+            ),
+            jacket_entry(
+                song_id="song_type2",
+                title="OSAKA TYPE2",
+                artist="Unit O",
+                color=(120, 120, 120),
+            ),
+        ],
+        title_feature(220),
+        [
+            title_entry(
+                song_id="song_type1",
+                title="OSAKA TYPE1",
+                artist="Unit O",
+                color=40,
+            ),
+            title_entry(
+                song_id="song_type2",
+                title="OSAKA TYPE2",
+                artist="Unit O",
+                color=220,
+            ),
+        ],
+    )
+
+    assert result["jacket_match_status"] == "ambiguous"
+    assert result["failure_reason"] == "near_top_distance"
+    assert result["jacket_top_margin"] == "0.0000"
+    assert result["expected_song_id"] == "song_type2"
+    assert result["expected_jacket_rank"] in {"1", "2"}
+    assert result["title_rerank_status"] == "resolved_candidate"
+    assert result["title_top_song_id"] == "song_type2"
+    assert result["title_candidate_feature_count"] == "2"
 
 
 def test_match_jacket_save_candidate_row_reports_missing_feature(tmp_path: Path) -> None:
@@ -306,6 +412,8 @@ def test_write_jacket_match_outputs_records_observation_scope(tmp_path: Path) ->
         {
             "frame_index": "2",
             "organized_file": "organized/result/result_fixture.png",
+            "expected_song_title": "MAKE IT BETTER",
+            "expected_song_id": "song_make",
             "input_play_style": "SINGLE",
             "input_difficulty": "DIFFICULT",
             "input_level": "9",
@@ -323,6 +431,19 @@ def test_write_jacket_match_outputs_records_observation_scope(tmp_path: Path) ->
                 "1.0000:MAKE IT BETTER / mitsu-O! "
                 "[chart_make_single_difficult; organized/song_select/song_select_fixture_grid.png]"
             ),
+            "expected_jacket_distance": "0.0000",
+            "expected_jacket_rank": "1",
+            "jacket_top_margin": "",
+            "title_candidate_feature_count": "0",
+            "title_top_song_id": "",
+            "title_top_chart_id": "",
+            "title_top_title": "",
+            "title_top_score": "",
+            "title_top_distance": "",
+            "title_top_feature_source": "",
+            "title_top_candidates": "",
+            "title_rerank_status": "not_run",
+            "title_rerank_reason": "",
             "jacket_match_status": "matched",
             "failure_reason": "",
         }
@@ -337,5 +458,6 @@ def test_write_jacket_match_outputs_records_observation_scope(tmp_path: Path) ->
     assert json.loads((tmp_path / "jacket_match_summary.json").read_text(encoding="utf-8")) == (
         summary
     )
+    assert summary["title_rerank_status_counts"]["not_run"] == 1
     report = (tmp_path / "jacket_match_report.md").read_text(encoding="utf-8")
     assert "DB保存可能や本番採用済み照合ではありません" in report

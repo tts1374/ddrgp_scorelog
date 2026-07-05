@@ -3154,6 +3154,36 @@ def build_m5_jacket_feature_master_rows(
     return rows, entries
 
 
+def build_m5_title_feature_master_entries(
+    frames: Iterable[FrameInput],
+    db_path: Path,
+    title_features_by_file: dict[str, master_match.TitleImageFeature],
+) -> list[master_match.TitleFeatureMasterEntry]:
+    entries: list[master_match.TitleFeatureMasterEntry] = []
+    for frame in frames:
+        if frame.row.get("screen_type") != "result":
+            continue
+        organized_file = frame.row.get("organized_file", "")
+        source_song_title = expected_m3_metadata_value_from_row(frame.row, "song_title")
+        feature = title_features_by_file.get(organized_file)
+        if source_song_title == "" or feature is None:
+            continue
+        song, failure_reason = master_match.resolve_song_by_title(db_path, source_song_title)
+        if song is None or failure_reason:
+            continue
+        entries.append(
+            master_match.TitleFeatureMasterEntry(
+                organized_file=organized_file,
+                source_song_title=source_song_title,
+                song_id=song.song_id,
+                title=song.title,
+                artist=song.artist,
+                feature=feature,
+            )
+        )
+    return entries
+
+
 def m3_chart_field_template_vector(image: Image.Image, field_name: str) -> np.ndarray:
     x, y, width, height = ROI_DEFINITIONS[field_name]
     del x, y
@@ -5488,6 +5518,7 @@ def main(argv: list[str] | None = None) -> int:
     m3_chart_field_template_vectors: dict[tuple[int, str], np.ndarray] = {}
     m5_jacket_result_features: dict[str, master_match.JacketFeature] = {}
     m5_jacket_song_select_preview_features: dict[str, master_match.JacketFeature] = {}
+    m5_title_result_features: dict[str, master_match.TitleImageFeature] = {}
     for frame_index, frame in enumerate(frames):
         with Image.open(frame.image_path) as image:
             image = image.convert("RGB")
@@ -5506,6 +5537,11 @@ def main(argv: list[str] | None = None) -> int:
             if frame.row.get("screen_type") == "result":
                 m5_jacket_result_features[organized_file] = master_match.extract_jacket_feature(
                     crop_roi(image, ROI_DEFINITIONS["jacket"])
+                )
+                m5_title_result_features[organized_file] = (
+                    master_match.extract_title_image_feature(
+                        crop_roi(image, ROI_DEFINITIONS["song_title"])
+                    )
                 )
             if is_song_select_grid_frame(frame):
                 m5_jacket_song_select_preview_features[organized_file] = (
@@ -5804,11 +5840,18 @@ def main(argv: list[str] | None = None) -> int:
             output_dir / "jacket_feature_label_template.csv",
             m5_jacket_feature_label_template_rows(frames),
         )
+        title_feature_entries = build_m5_title_feature_master_entries(
+            frames,
+            args.master_db,
+            m5_title_result_features,
+        )
         jacket_match_rows = master_match.match_jacket_save_candidate_rows(
             m3_save_candidate_summary_rows,
             args.master_db,
             m5_jacket_result_features,
             jacket_feature_entries,
+            m5_title_result_features,
+            title_feature_entries,
         )
         jacket_match_summary = master_match.write_jacket_match_outputs(
             output_dir,

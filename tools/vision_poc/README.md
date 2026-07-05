@@ -330,9 +330,11 @@ python -m tools.vision_poc --m5-master-match --master-db data\master\ddrgp-maste
 python -m tools.vision_poc --m3-song-artist-ocr --m5-master-match --m5-jacket-match --master-db data\master\ddrgp-master.sqlite --output data\master_match_poc_jacket --no-rois
 ```
 
-`jacket_match_candidates.csv` は候補曲数、候補譜面数、候補特徴量数、最上位候補、score、distance、参照元grid画像、上位候補一覧、`jacket_match_status`、`failure_reason` を出します。`jacket_match_status` は `matched` / `ambiguous` / `not_found` / `insufficient_input` / `missing_feature` です。ここでの `matched` もPoC上の一意候補であり、保存可能、本番採用済み照合、曲ID/譜面ID確定を意味しません。特徴量マスタはローカル素材由来の `data/` 出力であり、画像本体やmetadata実体はGit管理しません。
+`jacket_match_candidates.csv` は候補曲数、候補譜面数、候補特徴量数、最上位候補、score、distance、参照元grid画像、上位候補一覧、期待曲名、期待song_id、期待song_idの距離、期待song_idの順位、最上位と次点songの距離差、`jacket_match_status`、`failure_reason` を出します。期待値由来の診断列はローカルmetadataに対する観察であり、保存可能判定には使いません。`jacket_match_status` は `matched` / `ambiguous` / `not_found` / `insufficient_input` / `missing_feature` です。ここでの `matched` もPoC上の一意候補であり、保存可能、本番採用済み照合、曲ID/譜面ID確定を意味しません。特徴量マスタはローカル素材由来の `data/` 出力であり、画像本体やmetadata実体はGit管理しません。
 
-2026-07-05のローカル追加素材反映後は、jacket feature master が59件、confirmed-events 60件に対する jacket match が `matched=57` / `ambiguous=3` / `not_found=0` / `missing_feature=0` です。残る曖昧は `osaka EVOLVED -毎度、おおきに！- (TYPE1/2/3)` の同一ジャケット3件です。`result_098_sp_basic_lv07_if_score972200.png` はファイル名とmetadataが `If` になっていましたが、実画面表示は `桜 / Reven-G / SINGLE BASIC Lv7` だったためローカルmetadataを修正済みです。その後、`桜` のsong_select grid/result素材を追加して近距離曖昧は解消しました。次のPoCでは、jacketで曖昧な候補集合内だけを title画像特徴量やtitle OCRで再順位付けする方針です。title / artist は候補集合外から曲を拾う主キーにはしません。
+title画像特徴量PoCは、jacketで `ambiguous` になった候補集合内だけを補助的に再順位付けします。初期実装では result `song_title` ROIを横長の濃淡サムネイル、エッジサムネイル、右側サフィックス寄りの濃淡/エッジサムネイル、dHashに変換し、ローカルmetadataの期待曲名を M4 `songs.title` へ一意解決できた result 素材を参照にします。比較時は同じ `organized_file` の参照を除外します。`title_rerank_status=resolved_candidate` はtitle画像特徴量が解消候補を出したというPoC観測であり、`jacket_match_status` を `matched` に変更したり、保存可能や曲ID/譜面ID確定を意味したりしません。`title_rerank_status` は `not_run` / `missing_feature` / `resolved_candidate` / `ambiguous_candidate` として読みます。
+
+2026-07-05のローカル追加素材反映後は、jacket feature master が59件、confirmed-events 60件に対する jacket match が `matched=57` / `ambiguous=3` / `not_found=0` / `missing_feature=0` です。残る曖昧は `osaka EVOLVED -毎度、おおきに！- (TYPE1/2/3)` の同一ジャケット3件です。`result_098_sp_basic_lv07_if_score972200.png` はファイル名とmetadataが `If` になっていましたが、実画面表示は `桜 / Reven-G / SINGLE BASIC Lv7` だったためローカルmetadataを修正済みです。その後、`桜` のsong_select grid/result素材を追加して近距離曖昧は解消しました。title / artist は候補集合外から曲を拾う主キーにはしません。
 
 `difficulty` は5種類の文字色が強い手がかりになるため、`roi-template-nearest` 内ではROI全体ピクセルではなく前景文字色の比率パターンで比較します。直近ローカル素材では `play_style`、`difficulty`、`level` は 60/60 match です。ただしこれは同分布内の leave-one-out 診断であり、抽出ロジックの採用判断には外部検証や参照/評価セット分割が必要です。
 

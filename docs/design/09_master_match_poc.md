@@ -86,7 +86,7 @@ result confirmed-events
 
 `jacket_feature_master.csv` は、`screen_type=song_select` かつ grid 画面の右上選択中ジャケットプレビューを特徴量化し、metadata の `song_title` / `expected_song_title` を M4 `songs.title` へ一意照合できた行だけを `accepted` として出す。ラベルが空のgrid行は `jacket_feature_label_template.csv` へ出し、metadata実体は更新しない。
 
-`jacket_match_candidates.csv` は、confirmed-events の result `jacket` ROIを特徴量化し、`play_style` / `difficulty` / `level` で絞った候補song_idに紐づくローカル特徴量だけと比較する。列には候補曲数、候補譜面数、候補特徴量数、最上位候補、score、distance、特徴量参照元、上位候補一覧、`jacket_match_status`、`failure_reason` を出す。
+`jacket_match_candidates.csv` は、confirmed-events の result `jacket` ROIを特徴量化し、`play_style` / `difficulty` / `level` で絞った候補song_idに紐づくローカル特徴量だけと比較する。列には候補曲数、候補譜面数、候補特徴量数、最上位候補、score、distance、特徴量参照元、上位候補一覧、期待曲名、期待song_id、期待song_idの距離、期待song_idの順位、最上位と次点songの距離差、`jacket_match_status`、`failure_reason` を出す。期待値由来の列はローカルmetadataを使った診断であり、保存可能判定ではない。
 
 `jacket_match_status` は以下のPoC観測語彙とする。
 
@@ -101,6 +101,10 @@ result confirmed-events
 残る `ambiguous` は、`osaka EVOLVED -毎度、おおきに！- (TYPE1/2/3)` の同一ジャケット3件である。`result_098_sp_basic_lv07_if_score972200.png` はファイル名とmetadataが `If` になっていたが、実画面表示は `桜 / Reven-G / SINGLE BASIC Lv7` だったためローカルmetadataを修正済み。その後、`桜` のsong_select grid/result素材を追加して近距離曖昧は解消した。osaka 3件は画像特徴量だけで無理に一意化せず、title画像特徴量またはtitle OCRで `TYPE1` / `TYPE2` / `TYPE3` を候補集合内だけ再順位付けする対象にする。
 
 title / artist の画像特徴量を追加する場合も、候補集合外から曲を拾うためには使わない。基本順序は `play_style / difficulty / level` で候補集合を作り、ジャケット特徴量で狭め、残った曖昧候補だけを title 画像特徴量や title OCR で再順位付けする。artistは主キーではなく、矛盾チェックや弱い補助信号に留める。
+
+初期の title 画像特徴量PoCでは、result `song_title` ROIを横長の濃淡サムネイル、エッジサムネイル、右側サフィックス寄りの濃淡/エッジサムネイル、dHashに変換する。参照はローカルmetadataの期待曲名を M4 `songs.title` へ一意解決できた result 素材から作る。比較時は同じ `organized_file` の参照を除外し、jacketで `ambiguous` になったsong_id集合内だけを対象にする。結果は `title_rerank_status`、title最上位候補、title距離、title参照元、title上位候補一覧として `jacket_match_candidates.csv` に出す。
+
+`title_rerank_status=resolved_candidate` は、title画像特徴量が曖昧候補集合内の再順位付け候補を出したというPoC観測であり、`jacket_match_status` を `matched` に変えたり、曲ID/譜面ID確定やDB保存可能を意味したりしない。`missing_feature` はtitle参照不足、`ambiguous_candidate` はtitle画像でも近傍候補が残る状態として読む。
 
 全曲ジャケット画像取得、配布可否、画像キャッシュ方針は別フェーズとして残す。ジャケット特徴量を入れる場合も、初回は保存成功判定ではなく、低確信度ログへ渡す観測値として始める。
 

@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageFilter, ImageOps
 
 MATCH_STATUS_VOCABULARY = (
     "matched",
@@ -30,6 +30,7 @@ JACKET_MATCH_STATUS_VOCABULARY = (
 DEFAULT_SCORE_THRESHOLD = 0.92
 DEFAULT_JACKET_DISTANCE_THRESHOLD = 0.24
 DEFAULT_JACKET_AMBIGUITY_DELTA = 0.015
+DEFAULT_TITLE_AMBIGUITY_DELTA = 0.01
 PUNCTUATION_TO_DROP = frozenset(
     string.punctuation + "　、。，．・･：；！？（）［］【】『』「」‘’“”"
 )
@@ -37,6 +38,7 @@ MIN_CONTAINMENT_MATCH_LENGTH = 5
 TOP_CANDIDATE_REPORT_LIMIT = 5
 JACKET_THUMBNAIL_SIZE = (16, 16)
 JACKET_DHASH_SIZE = 8
+TITLE_THUMBNAIL_SIZE = (96, 16)
 
 
 @dataclass(frozen=True)
@@ -66,6 +68,16 @@ class JacketFeature:
 
 
 @dataclass(frozen=True)
+class TitleImageFeature:
+    luma: np.ndarray
+    edge: np.ndarray
+    suffix_luma: np.ndarray
+    suffix_edge: np.ndarray
+    dhash_bits: np.ndarray
+    dhash_hex: str
+
+
+@dataclass(frozen=True)
 class JacketFeatureMasterEntry:
     organized_file: str
     source_song_title: str
@@ -73,6 +85,16 @@ class JacketFeatureMasterEntry:
     title: str
     artist: str
     feature: JacketFeature
+
+
+@dataclass(frozen=True)
+class TitleFeatureMasterEntry:
+    organized_file: str
+    source_song_title: str
+    song_id: str
+    title: str
+    artist: str
+    feature: TitleImageFeature
 
 
 def normalize_song_title(value: str) -> str:
@@ -274,12 +296,57 @@ def extract_jacket_feature(image: Image.Image) -> JacketFeature:
     )
 
 
+def extract_title_image_feature(image: Image.Image) -> TitleImageFeature:
+    grayscale = ImageOps.autocontrast(image.convert("L"))
+    resized = grayscale.resize(TITLE_THUMBNAIL_SIZE, Image.Resampling.LANCZOS)
+    suffix_left = round(grayscale.width * 0.62)
+    suffix = grayscale.crop((suffix_left, 0, grayscale.width, grayscale.height))
+    suffix_resized = suffix.resize((40, TITLE_THUMBNAIL_SIZE[1]), Image.Resampling.LANCZOS)
+    luma = np.asarray(resized, dtype=np.float32).reshape(-1) / 255.0
+    edge = np.asarray(
+        resized.filter(ImageFilter.FIND_EDGES),
+        dtype=np.float32,
+    ).reshape(-1) / 255.0
+    suffix_luma = np.asarray(suffix_resized, dtype=np.float32).reshape(-1) / 255.0
+    suffix_edge = np.asarray(
+        suffix_resized.filter(ImageFilter.FIND_EDGES),
+        dtype=np.float32,
+    ).reshape(-1) / 255.0
+    hash_bits = dhash_bits(grayscale)
+    return TitleImageFeature(
+        luma=luma,
+        edge=edge,
+        suffix_luma=suffix_luma,
+        suffix_edge=suffix_edge,
+        dhash_bits=hash_bits,
+        dhash_hex=bits_to_hex(hash_bits),
+    )
+
+
 def jacket_feature_distance(left: JacketFeature, right: JacketFeature) -> float:
     thumbnail_distance = float(np.mean(np.abs(left.thumbnail - right.thumbnail)))
     histogram_distance = float(np.mean(np.abs(left.histogram - right.histogram)))
     dhash_distance = float(np.mean(left.dhash_bits != right.dhash_bits))
     return (0.70 * thumbnail_distance) + (0.20 * histogram_distance) + (
         0.10 * dhash_distance
+    )
+
+
+def title_image_feature_distance(
+    left: TitleImageFeature,
+    right: TitleImageFeature,
+) -> float:
+    luma_distance = float(np.mean(np.abs(left.luma - right.luma)))
+    edge_distance = float(np.mean(np.abs(left.edge - right.edge)))
+    suffix_luma_distance = float(np.mean(np.abs(left.suffix_luma - right.suffix_luma)))
+    suffix_edge_distance = float(np.mean(np.abs(left.suffix_edge - right.suffix_edge)))
+    dhash_distance = float(np.mean(left.dhash_bits != right.dhash_bits))
+    return (
+        (0.35 * luma_distance)
+        + (0.15 * edge_distance)
+        + (0.30 * suffix_luma_distance)
+        + (0.10 * suffix_edge_distance)
+        + (0.10 * dhash_distance)
     )
 
 
@@ -301,6 +368,144 @@ def format_jacket_top_candidates(
             f"[{candidate.chart_id}; {feature_entry.organized_file}]"
         )
     return " | ".join(parts)
+
+
+def format_title_top_candidates(
+    scored_candidates: Iterable[tuple[float, MasterChartCandidate, TitleFeatureMasterEntry]],
+    *,
+    limit: int = TOP_CANDIDATE_REPORT_LIMIT,
+) -> str:
+    parts = []
+    for distance, candidate, feature_entry in list(scored_candidates)[:limit]:
+        score = max(0.0, 1.0 - distance)
+        parts.append(
+            f"{score:.4f}:{candidate.title} / {candidate.artist} "
+            f"[{candidate.chart_id}; {feature_entry.organized_file}]"
+        )
+    return " | ".join(parts)
+
+
+def best_distances_by_song_id(
+    scored_candidates: Iterable[tuple[float, MasterChartCandidate, JacketFeatureMasterEntry]],
+) -> dict[str, float]:
+    distances: dict[str, float] = {}
+    for distance, candidate, _feature_entry in scored_candidates:
+        current = distances.get(candidate.song_id)
+        if current is None or distance < current:
+            distances[candidate.song_id] = distance
+    return distances
+
+
+def top_margin_from_song_distances(
+    distances_by_song_id: dict[str, float],
+    top_song_id: str,
+) -> float | None:
+    top_distance = distances_by_song_id.get(top_song_id)
+    if top_distance is None:
+        return None
+    other_distances = [
+        distance
+        for song_id, distance in distances_by_song_id.items()
+        if song_id != top_song_id
+    ]
+    if not other_distances:
+        return None
+    return min(other_distances) - top_distance
+
+
+def expected_rank_from_song_distances(
+    distances_by_song_id: dict[str, float],
+    expected_song_id: str,
+) -> tuple[float | None, int | None]:
+    if expected_song_id not in distances_by_song_id:
+        return None, None
+    ordered = sorted(distances_by_song_id.items(), key=lambda item: (item[1], item[0]))
+    for index, (song_id, distance) in enumerate(ordered, start=1):
+        if song_id == expected_song_id:
+            return distance, index
+    return None, None
+
+
+def empty_title_rerank_fields(status: str = "not_run", reason: str = "") -> dict[str, str]:
+    return {
+        "title_candidate_feature_count": "0",
+        "title_top_song_id": "",
+        "title_top_chart_id": "",
+        "title_top_title": "",
+        "title_top_score": "",
+        "title_top_distance": "",
+        "title_top_feature_source": "",
+        "title_top_candidates": "",
+        "title_rerank_status": status,
+        "title_rerank_reason": reason,
+    }
+
+
+def title_rerank_fields_for_ambiguous_candidates(
+    *,
+    result_title_feature: TitleImageFeature | None,
+    title_feature_master_entries: Iterable[TitleFeatureMasterEntry],
+    candidates: Iterable[MasterChartCandidate],
+    ambiguous_song_ids: set[str],
+    target_organized_file: str,
+    ambiguity_delta: float = DEFAULT_TITLE_AMBIGUITY_DELTA,
+) -> dict[str, str]:
+    if result_title_feature is None:
+        return empty_title_rerank_fields(
+            status="missing_feature",
+            reason="result_title_feature_unavailable",
+        )
+
+    entries_by_song_id: dict[str, list[TitleFeatureMasterEntry]] = {}
+    for entry in title_feature_master_entries:
+        if entry.organized_file == target_organized_file:
+            continue
+        if entry.song_id in ambiguous_song_ids:
+            entries_by_song_id.setdefault(entry.song_id, []).append(entry)
+
+    scored_candidates: list[tuple[float, MasterChartCandidate, TitleFeatureMasterEntry]] = []
+    for candidate in candidates:
+        if candidate.song_id not in ambiguous_song_ids:
+            continue
+        for entry in entries_by_song_id.get(candidate.song_id, []):
+            scored_candidates.append(
+                (
+                    title_image_feature_distance(result_title_feature, entry.feature),
+                    candidate,
+                    entry,
+                )
+            )
+
+    if not scored_candidates:
+        return empty_title_rerank_fields(
+            status="missing_feature",
+            reason="no_candidate_title_features",
+        )
+
+    scored_candidates.sort(
+        key=lambda item: (item[0], item[1].title, item[1].artist, item[1].chart_id)
+    )
+    top_distance, top_candidate, top_feature_entry = scored_candidates[0]
+    near_top = [
+        item
+        for item in scored_candidates
+        if item[0] - top_distance <= ambiguity_delta
+        and item[1].song_id != top_candidate.song_id
+    ]
+    status = "ambiguous_candidate" if near_top else "resolved_candidate"
+    reason = "near_top_title_distance" if near_top else ""
+    return {
+        "title_candidate_feature_count": str(len(scored_candidates)),
+        "title_top_song_id": top_candidate.song_id,
+        "title_top_chart_id": top_candidate.chart_id,
+        "title_top_title": top_candidate.title,
+        "title_top_score": f"{max(0.0, 1.0 - top_distance):.4f}",
+        "title_top_distance": f"{top_distance:.4f}",
+        "title_top_feature_source": top_feature_entry.organized_file,
+        "title_top_candidates": format_title_top_candidates(scored_candidates),
+        "title_rerank_status": status,
+        "title_rerank_reason": reason,
+    }
 
 
 def match_save_candidate_row(
@@ -416,13 +621,22 @@ def match_jacket_save_candidate_row(
     db_path: Path,
     result_feature: JacketFeature | None,
     feature_master_entries: Iterable[JacketFeatureMasterEntry],
+    result_title_feature: TitleImageFeature | None = None,
+    title_feature_master_entries: Iterable[TitleFeatureMasterEntry] = (),
     *,
     distance_threshold: float = DEFAULT_JACKET_DISTANCE_THRESHOLD,
     ambiguity_delta: float = DEFAULT_JACKET_AMBIGUITY_DELTA,
 ) -> dict[str, str]:
+    expected_song_title = row.get("song_title_expected_value", "")
+    expected_song, _expected_failure_reason = resolve_song_by_title(
+        db_path,
+        expected_song_title,
+    )
     base_result = {
         "frame_index": row.get("frame_index", ""),
         "organized_file": row.get("organized_file", ""),
+        "expected_song_title": expected_song_title,
+        "expected_song_id": "" if expected_song is None else expected_song.song_id,
         "input_play_style": row.get("play_style_extracted_value", ""),
         "input_difficulty": row.get("difficulty_extracted_value", ""),
         "input_level": row.get("level_extracted_value", ""),
@@ -437,6 +651,10 @@ def match_jacket_save_candidate_row(
         "top_distance": "",
         "top_feature_source": "",
         "top_candidates": "",
+        "expected_jacket_distance": "",
+        "expected_jacket_rank": "",
+        "jacket_top_margin": "",
+        **empty_title_rerank_fields(),
         "jacket_match_status": "insufficient_input",
         "failure_reason": "",
     }
@@ -507,6 +725,12 @@ def match_jacket_save_candidate_row(
         key=lambda item: (item[0], item[1].title, item[1].artist, item[1].chart_id)
     )
     top_distance, top_candidate, top_feature_entry = scored_candidates[0]
+    distances_by_song_id = best_distances_by_song_id(scored_candidates)
+    expected_distance, expected_rank = expected_rank_from_song_distances(
+        distances_by_song_id,
+        base_result["expected_song_id"],
+    )
+    top_margin = top_margin_from_song_distances(distances_by_song_id, top_candidate.song_id)
     result = {
         **base_result,
         "top_song_id": top_candidate.song_id,
@@ -517,6 +741,11 @@ def match_jacket_save_candidate_row(
         "top_distance": f"{top_distance:.4f}",
         "top_feature_source": top_feature_entry.organized_file,
         "top_candidates": format_jacket_top_candidates(scored_candidates),
+        "expected_jacket_distance": (
+            "" if expected_distance is None else f"{expected_distance:.4f}"
+        ),
+        "expected_jacket_rank": "" if expected_rank is None else str(expected_rank),
+        "jacket_top_margin": "" if top_margin is None else f"{top_margin:.4f}",
     }
     if top_distance > distance_threshold:
         return {
@@ -532,8 +761,18 @@ def match_jacket_save_candidate_row(
         and item[1].song_id != top_candidate.song_id
     ]
     if near_top:
+        ambiguous_song_ids = {top_candidate.song_id}
+        ambiguous_song_ids.update(item[1].song_id for item in near_top)
+        title_rerank_fields = title_rerank_fields_for_ambiguous_candidates(
+            result_title_feature=result_title_feature,
+            title_feature_master_entries=title_feature_master_entries,
+            candidates=candidates,
+            ambiguous_song_ids=ambiguous_song_ids,
+            target_organized_file=row.get("organized_file", ""),
+        )
         return {
             **result,
+            **title_rerank_fields,
             "jacket_match_status": "ambiguous",
             "failure_reason": "near_top_distance",
         }
@@ -558,17 +797,23 @@ def match_jacket_save_candidate_rows(
     db_path: Path,
     result_features_by_file: dict[str, JacketFeature],
     feature_master_entries: Iterable[JacketFeatureMasterEntry],
+    result_title_features_by_file: dict[str, TitleImageFeature] | None = None,
+    title_feature_master_entries: Iterable[TitleFeatureMasterEntry] = (),
     *,
     distance_threshold: float = DEFAULT_JACKET_DISTANCE_THRESHOLD,
     ambiguity_delta: float = DEFAULT_JACKET_AMBIGUITY_DELTA,
 ) -> list[dict[str, str]]:
     feature_master_entry_list = list(feature_master_entries)
+    title_feature_master_entry_list = list(title_feature_master_entries)
+    result_title_features = result_title_features_by_file or {}
     return [
         match_jacket_save_candidate_row(
             row,
             db_path,
             result_features_by_file.get(row.get("organized_file", "")),
             feature_master_entry_list,
+            result_title_features.get(row.get("organized_file", "")),
+            title_feature_master_entry_list,
             distance_threshold=distance_threshold,
             ambiguity_delta=ambiguity_delta,
         )
@@ -637,9 +882,15 @@ def summarize_jacket_match_rows(rows: Iterable[dict[str, str]]) -> dict[str, Any
         status: 0 for status in JACKET_MATCH_STATUS_VOCABULARY
     }
     failure_reason_counts: dict[str, int] = {}
+    title_rerank_status_counts: dict[str, int] = {}
     for row in row_list:
         status = row["jacket_match_status"]
         status_counts[status] = status_counts.get(status, 0) + 1
+        title_status = row.get("title_rerank_status", "")
+        if title_status:
+            title_rerank_status_counts[title_status] = (
+                title_rerank_status_counts.get(title_status, 0) + 1
+            )
         failure_reason = row["failure_reason"]
         if failure_reason:
             failure_reason_counts[failure_reason] = (
@@ -652,13 +903,16 @@ def summarize_jacket_match_rows(rows: Iterable[dict[str, str]]) -> dict[str, Any
         "target_count": len(row_list),
         "status_counts": dict(sorted(status_counts.items())),
         "failure_reason_counts": dict(sorted(failure_reason_counts.items())),
+        "title_rerank_status_counts": dict(sorted(title_rerank_status_counts.items())),
         "status_vocabulary": list(JACKET_MATCH_STATUS_VOCABULARY),
         "distance_threshold": DEFAULT_JACKET_DISTANCE_THRESHOLD,
         "ambiguity_delta": DEFAULT_JACKET_AMBIGUITY_DELTA,
+        "title_ambiguity_delta": DEFAULT_TITLE_AMBIGUITY_DELTA,
         "reading_notes": [
             "matched means a unique PoC top jacket feature candidate, not DB-save readiness.",
             "missing_feature means the local feature master lacks a usable reference.",
             "chart fields still only narrow candidates; jacket matching is an observation signal.",
+            "title_rerank_status is a diagnostic for jacket ambiguous candidates only.",
         ],
     }
 
@@ -740,6 +994,8 @@ def write_jacket_match_csv(path: Path, rows: Iterable[dict[str, str]]) -> None:
     fieldnames = [
         "frame_index",
         "organized_file",
+        "expected_song_title",
+        "expected_song_id",
         "input_play_style",
         "input_difficulty",
         "input_level",
@@ -754,6 +1010,19 @@ def write_jacket_match_csv(path: Path, rows: Iterable[dict[str, str]]) -> None:
         "top_distance",
         "top_feature_source",
         "top_candidates",
+        "expected_jacket_distance",
+        "expected_jacket_rank",
+        "jacket_top_margin",
+        "title_candidate_feature_count",
+        "title_top_song_id",
+        "title_top_chart_id",
+        "title_top_title",
+        "title_top_score",
+        "title_top_distance",
+        "title_top_feature_source",
+        "title_top_candidates",
+        "title_rerank_status",
+        "title_rerank_reason",
         "jacket_match_status",
         "failure_reason",
     ]
@@ -849,13 +1118,15 @@ def write_jacket_match_report(
         "## Status Counts",
         "",
         f"- jacket_match_status: `{json.dumps(summary['status_counts'], sort_keys=True)}`",
+        f"- title_rerank_status: "
+        f"`{json.dumps(summary['title_rerank_status_counts'], sort_keys=True)}`",
         f"- failure_reason: `{json.dumps(summary['failure_reason_counts'], sort_keys=True)}`",
         "",
         "## Candidate Rows",
         "",
         "| organized_file | status | chart | top candidate | score | distance | "
-        "feature source | reason |",
-        "|---|---|---|---|---|---|---|---|",
+        "expected rank | margin | title rerank | reason |",
+        "|---|---|---|---|---|---|---|---|---|---|",
     ]
     for row in row_list[:20]:
         chart_text = " ".join(
@@ -873,11 +1144,13 @@ def write_jacket_match_report(
         lines.append(
             f"| `{row['organized_file']}` | `{row['jacket_match_status']}` | "
             f"`{chart_text}` | `{top_text}` | `{row['top_score']}` | "
-            f"`{row['top_distance']}` | `{row['top_feature_source']}` | "
+            f"`{row['top_distance']}` | `{row.get('expected_jacket_rank', '')}` | "
+            f"`{row.get('jacket_top_margin', '')}` | "
+            f"`{row.get('title_rerank_status', '')}` | "
             f"`{row['failure_reason']}` |"
         )
     if len(row_list) > 20:
-        lines.append("| ... | ... | ... | ... | ... | ... | ... | ... |")
+        lines.append("| ... | ... | ... | ... | ... | ... | ... | ... | ... | ... |")
 
     lines.extend(
         [
@@ -889,6 +1162,8 @@ def write_jacket_match_report(
             "その候補にある特徴量だけを比較します。",
             "- `missing_feature` はローカル特徴量参照不足であり、"
             "OCR失敗や保存可否とは別に読みます。",
+            "- `expected_jacket_*` はローカル期待値に基づく診断列です。",
+            "- `title_rerank_status` はjacketが曖昧な候補集合内だけの補助観測です。",
             "- `matched` は保存可能を意味しません。",
         ]
     )

@@ -19,23 +19,30 @@ high
 ## 今回までの作業結果
 
 - M5ジャケット特徴量PoCとして `--m5-jacket-match` を追加済み。
-- `song_select` grid右上プレビューROIは 1280x720 基準で `(812, 28, 150, 150)`。result側は既存 `jacket` ROIを使う。
-- 特徴量は中心正方形から 16x16 RGBサムネイル、RGB 8-bin histogram、8x8 dHashを作る。距離しきい値は `0.24`、曖昧判定deltaは `0.015` の初期観測値。
-- `jacket_feature_master.csv`、`jacket_feature_master_summary.json`、`jacket_feature_label_template.csv`、`jacket_match_candidates.csv`、`jacket_match_summary.json`、`jacket_match_report.md` を出力する。
-- 2026-07-05のローカル素材追加後、metadataは178行、classificationは178/178全正解。`transition_countup` shape candidates は3件。
-- 2026-07-05の直近ジャケットPoC結果は confirmed-events 60件、`jacket_feature_master accepted=59`、`matched=57`、`ambiguous=3`、`not_found=0`、`missing_feature=0`、`insufficient_input=0`。
-- 追加キャプチャにより、以前の `not_found` / `missing_feature` は解消済み。`Taking It To The Sky (PLUS step)` と `めうめうぺったんたん！！ (ZAQUVA Remix)` のgrid/result素材もローカルmetadataへ反映済み。
-- `result_098_sp_basic_lv07_if_score972200.png` はファイル名とmetadataが `If` になっていたが、実画面表示は `桜 / Reven-G / SINGLE BASIC Lv7` だったため、ローカルmetadataだけ修正済み。画像ファイル名はローカル素材名として残している。
-- `桜` のsong_select grid/result素材を追加したことで、前回残っていた `桜` の曖昧は解消済み。
-- 残り `ambiguous=3` は `osaka EVOLVED -毎度、おおきに！- (TYPE1/2/3)` の同一ジャケット3件だけ。
-- `osaka EVOLVED TYPE1/2/3` はジャケット画像だけで一意化しない。title画像特徴量またはtitle OCRで、jacket候補集合内だけを再順位付けする対象にする。
-- expected candidate distance / rank / margin診断列は、今後の素材追加や近距離曖昧が再発したときのために追加する。
-- OCRありM5曲名照合の直近結果は confirmed-events 60件、`matched=19`、`not_found=39`、`insufficient_input=2`。`not_found` は `below_score_threshold`、`insufficient_input` は `empty_ocr`。
-- OCRなしM5曲名照合は confirmed-events 60件、`insufficient_input=60` / `ocr_not_run=60`。
-- `matched` はPoC上の一意候補という意味だけで、DB保存可能、本番採用済み照合、曲ID/譜面ID確定を意味しない。
-- 2026-07-05の直近確認では `python -m master --output data\master\ddrgp-master.sqlite` で 1282 songs / 9594 charts を生成できた。
-- 直近source hashは `82c0522f51b00fb624b5281addd70d108649d8ca2e8c598b3ea094edffa5d40f`。取得元更新でhashは変わり得るため、件数固定ではなく構造変化検出とDB生成成功を見る。
-- 直近コード検証では `python -m ruff check master tools\vision_poc pyproject.toml tests`、`python -m compileall master tools\vision_poc`、`python -m pytest tests` が通過し、pytest は 115 passed。
+- 今回、`jacket_match_candidates.csv` にローカル期待値診断列を追加した。
+  - `expected_song_title`
+  - `expected_song_id`
+  - `expected_jacket_distance`
+  - `expected_jacket_rank`
+  - `jacket_top_margin`
+- 今回、jacketで `ambiguous` になった候補集合内だけを対象にする title画像特徴量PoCを追加した。
+  - result `song_title` ROIを横長の濃淡サムネイル、エッジサムネイル、右側サフィックス寄りの濃淡/エッジサムネイル、dHashに変換する。
+  - 参照はローカルmetadataの期待曲名を M4 `songs.title` へ一意解決できた result 素材から作る。
+  - 比較時は同じ `organized_file` の参照を除外する。
+  - title補助列は `title_candidate_feature_count`、`title_top_*`、`title_top_candidates`、`title_rerank_status`、`title_rerank_reason`。
+  - `title_rerank_status=resolved_candidate` はPoC観測語彙であり、保存可能、曲ID/譜面ID確定、`jacket_match_status=matched` への昇格を意味しない。
+- 2026-07-05の今回ローカル確認では metadata は178行、classification は178/178全正解。`transition_countup` shape candidates は3件。
+- 今回の `--m5-jacket-match` 結果は confirmed-events 60件、`jacket_feature_master accepted=59`、`matched=57`、`ambiguous=3`、`not_found=0`、`missing_feature=0`。
+- 追加した期待値診断で、残り `ambiguous=3` は引き続き `osaka EVOLVED -毎度、おおきに！- (TYPE1/2/3)` の同一ジャケット3件。`jacket_top_margin=0.0000` で、画像特徴量だけでは一意化しない。
+- title画像特徴量PoCの今回結果は `title_rerank_status_counts={"ambiguous_candidate": 3, "not_run": 57}`。osaka 3件は title画像特徴量でも近傍候補が残り、TYPE1/2/3を安定して一意化できなかった。
+- 次は title OCR、または song_select grid/detail 側のタイトル表示ROI参照を検討する。候補集合外から曲を拾う用途には使わない。
+- OCRありM5曲名照合の今回結果は confirmed-events 60件、`matched=19`、`not_found=39`、`insufficient_input=2`。`not_found` は `below_score_threshold`、`insufficient_input` は `empty_ocr`。
+- OCRなしM5曲名照合の今回結果は confirmed-events 60件、`insufficient_input=60` / `ocr_not_run=60`。
+- M3 song/artist OCR入口失敗代表は `failure_count=24`、`affected_candidate_count=22`、`song_title empty_ocr=2`、`artist empty_ocr=22`。
+- `matched`、jacket `matched`、title `resolved_candidate` はPoC上の観測語彙で、DB保存可能、本番採用済み照合、曲ID/譜面ID確定を意味しない。
+- 今回の `python -m master --output data\master\ddrgp-master.sqlite` では 1282 songs / 9594 charts を生成できた。
+- 今回source hashは `190ed4dc14df4541a35e526a27dab5759b02bae8787af0d9336b7458e0f9eb6b`。取得元更新でhashは変わり得るため、件数固定ではなく構造変化検出とDB生成成功を見る。
+- 今回コード検証では `python -m ruff check master tools\vision_poc pyproject.toml tests`、`python -m compileall master tools\vision_poc`、`python -m pytest tests` が通過し、pytest は117 passed。
 - 生成DB、PoC出力、OCR画像、`metadata.csv`、`data/`、`logs/`、ローカル素材、ローカルDBはGit管理しない。
 
 ## 必読資料
@@ -81,22 +88,22 @@ M3評価レポートや画像PoCの境界へ触る場合だけ追加で読む資
 
 M5内でまだ成功扱いにしないもの:
 
-- OCR結果やジャケットPoC結果から曲ID/譜面IDを保存用に確定すること
-- ファジーマッチ結果やジャケット `matched` を本番採用済み照合として扱うこと
+- OCR結果、ジャケットPoC結果、title補助結果から曲ID/譜面IDを保存用に確定すること
+- ファジーマッチ結果、jacket `matched`、title `resolved_candidate` を本番採用済み照合として扱うこと
 - 曖昧一致や低確信度をDB保存可能として扱うこと
 - `artist` を曲名照合の一意主キーとして扱うこと
 - 同一ジャケット候補を画像特徴量だけで無理に一意化すること
+- title画像特徴量を候補集合外から曲を拾うために使うこと
 
 ## 次に必ず進める実作業
 
 - `docs/next-task.md` の更新だけ、または確認結果の記録だけで完了扱いにしない。
-- `jacket_match_candidates.csv` に expected song / expected song_id / expected distance / expected rank / top margin を観察できる診断列、または同等の補助CSV/Markdownを追加する。
-- 近距離 `ambiguous` が再発した場合は、正解featureの有無、距離、順位、近距離候補との差分を確認し、しきい値問題か特徴量重み問題かを分ける。
-- jacketで `ambiguous` になった場合だけ使う title画像特徴量PoCを追加する。まずは result `song_title` ROI と song_select gridのタイトル表示またはresult参照素材を比較対象にする。
-- title画像特徴量は候補集合外から曲を拾うためには使わない。`play_style / difficulty / level` と jacket候補集合内の再順位付けだけに使う。
-- `osaka EVOLVED TYPE1/2/3` は同一ジャケット候補として残し、title画像特徴量またはtitle OCRで `TYPE1` / `TYPE2` / `TYPE3` を区別できるか確認する。
-- `matched`、title画像特徴量による解消候補、OCRによる解消候補はいずれもPoC観測語彙であり、保存可能とは書かない。
-- しきい値や特徴量重みを変える場合は、保存可能判定に接続せず、`docs/design/09_master_match_poc.md` と `tools/vision_poc/README.md` も更新する。
+- osaka TYPE1/2/3 について、title画像特徴量だけでは `ambiguous_candidate` が残った理由を次の補助信号で切り分ける。
+  - title OCRで `(TYPE1)` / `(TYPE2)` / `(TYPE3)` のsuffixを取れるか確認する。
+  - または song_select grid/detail 側のタイトル表示ROIを定義し、result title ROIではなくsong_select由来のtitle参照で再順位付けできるか確認する。
+- title OCRやtitle画像特徴量は、jacketで `ambiguous` になったsong_id集合内の再順位付けだけに使う。候補集合外から曲を拾わない。
+- `jacket_match_candidates.csv` の `expected_jacket_distance` / `expected_jacket_rank` / `jacket_top_margin` と `title_top_candidates` を見て、しきい値問題か特徴量表現問題かを分ける。
+- title補助で解消候補が出ても、保存可能判定へ接続せず、PoC観測語彙として docs / README / tests に反映する。
 - 大きなOCR方式刷新やROI座標定義の大変更には進まない。
 - `docs/next-task.md` の更新は、実作業と検証が終わった後の引き継ぎ更新として行う。
 
@@ -119,6 +126,15 @@ python -m tools.vision_poc --no-ocr
 python -m ruff check master tools\vision_poc pyproject.toml tests
 python -m compileall master tools\vision_poc
 python -m pytest tests
+```
+
+title補助の今回観測確認:
+
+```powershell
+Import-Csv data\master_match_poc_jacket\jacket_match_candidates.csv |
+  Where-Object {$_.jacket_match_status -eq 'ambiguous'} |
+  Select-Object organized_file,expected_song_title,expected_jacket_rank,jacket_top_margin,title_rerank_status,title_top_title,title_top_distance,title_rerank_reason |
+  Format-List
 ```
 
 M4 DB確認:
@@ -153,7 +169,7 @@ Get-Content data\vision_poc_m3_song_artist\m3_save_candidate_summary.json
 - `docs/next-task.md` は引き継ぎ仕様としてコミット対象に含める。
 - コード、README、docs、テストに変更がある場合のみ、今回作業分だけをステージしてコミットする。
 - `data/master/ddrgp-master.sqlite`、`data/master/master-summary.json`、M5 PoC出力、ROI画像、OCR画像、解析ログはステージしない。
-- M5照合境界、正規化方針、候補スコア、ジャケット特徴量方針、`match_status`、`failure_reason` を変えた場合は、関連する `docs/design/` または `tools/vision_poc/README.md` を同じコミットに含める。
+- M5照合境界、正規化方針、候補スコア、ジャケット特徴量方針、title補助方針、`match_status`、`failure_reason` を変えた場合は、関連する `docs/design/` または `tools/vision_poc/README.md` を同じコミットに含める。
 - コミットがある場合は作業ブランチを push する。
 
 ## 完了条件
@@ -168,7 +184,8 @@ Get-Content data\vision_poc_m3_song_artist\m3_save_candidate_summary.json
 - ラベル不足のsong_select grid行をテンプレCSVへ出し、metadata実体を変更していない。
 - result confirmed-events のジャケットROIを、chart-fieldで絞った候補song_idのfeatureだけと比較できる。
 - jacket matchの `matched` / `ambiguous` / `not_found` / `insufficient_input` / `missing_feature` の意味が保存可否と混同されていない。
-- title画像特徴量を追加する場合は、jacket ambiguous候補集合内の再順位付けに限定し、保存可能判定と混同していない。
+- `jacket_match_candidates.csv` で expected song / expected song_id / expected distance / expected rank / top margin を確認できる。
+- title画像特徴量またはtitle OCRを追加する場合は、jacket ambiguous候補集合内の再順位付けに限定し、保存可能判定と混同していない。
 - M5 fixtureテストがネットワーク、画像、`metadata.csv` に依存せず通る。
 - 画像PoCやM3境界を触った場合は、`python -m tools.vision_poc --no-ocr` が全正解。
 - 画像PoCやM3境界を触った場合は、`transition_countup_*` と confirmed-events 境界が維持されている。
