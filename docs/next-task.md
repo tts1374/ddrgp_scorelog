@@ -31,6 +31,8 @@ high
 - `python -m tools.vision_poc --m5-master-match --master-db data\master\ddrgp-master.sqlite --output data\master_match_poc --no-rois --no-ocr` では confirmed-events 60件、classification 112/112、M5は `insufficient_input=60` / `ocr_not_run=60`。
 - `python -m tools.vision_poc --m3-song-artist-ocr --m5-master-match --master-db data\master\ddrgp-master.sqlite --output data\master_match_poc_ocr --no-rois` では confirmed-events 60件、classification 112/112、M5は `matched=4`、`not_found=54`、`insufficient_input=2`。`not_found` はすべて `below_score_threshold`、`insufficient_input` は `empty_ocr`。
 - OCRありM5では、曲名OCR文字列にartistや余分な記号が混ざるケースが多く、次の改善対象は本格OCR刷新ではなくM5側の入力観察、最小正規化、候補スコア読み方の強化。
+- ジャケット特徴量は将来の補助信号候補として `docs/design/09_master_match_poc.md` に設計メモだけ残した。実装にはまだ入らない。
+- ジャケット特徴量を試す場合は、全曲ジャケット画像の取得、hash記録、`song_id` 対応manifest、取得失敗レポートを持つ専用ツールが必要。これは曲名OCRクリーニングを一段進めた後の独立フェーズとして扱う。
 - 直近確認では `python -m ruff check master tools\vision_poc pyproject.toml tests`、`python -m compileall master tools\vision_poc`、`python -m pytest tests` が通過し、pytest は 108 passed。
 - 生成DB、PoC出力、OCR画像、`metadata.csv`、`data/`、`logs/`、ローカル素材、ローカルDBはGit管理しない。
 
@@ -67,6 +69,8 @@ M3評価レポートや画像PoCの境界へ触る場合だけ追加で読む資
 - 個人スコアDB保存、保存可否判定本番仕様、低確信度ログ本番仕様
 - OCR方式の大幅刷新、ROI座標定義の大変更
 - duplicate key の本格実装差し替え
+- ジャケット特徴量照合の実装
+- 全曲ジャケット画像取得ツールの実装
 - M4 Releases配布の実装
 - Windows常駐アプリUI
 - プロジェクト専用Skill/Subagentの作成
