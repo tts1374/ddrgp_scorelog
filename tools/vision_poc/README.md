@@ -340,6 +340,12 @@ title OCR suffix補助は、`--m3-song-artist-ocr` で得た result `song_title`
 
 同日の title OCR suffix 診断では、osaka 3件の `title_ocr_rerank_status` はすべて `no_suffix` でした。OCR文字列は `TYPE)`、`TYPED`、`TYPES` のようにsuffix末尾が崩れており、現行のM3 title OCR入口だけでは `TYPE1` / `TYPE2` / `TYPE3` を安定取得できない観測です。この結果も保存可能判定ではなく、次に見るべき補助信号の切り分け材料として扱います。
 
+次のtitle補助PoCは、result `song_title` ROIのline-hash方式に寄せます。固定ROIの文字色を二値化し、行ごとのbit列を4bit単位でhex化して、jacketで `ambiguous` になった候補song_id集合内だけで再順位付けします。参照はローカルmetadataの期待曲名を M4 `songs.title` へ一意解決できた result素材だけから作り、song_select側のタイトル表示ROIは使いません。
+
+title line-hashは、完全一致型と距離比較型を同時に観測します。完全一致型は行ごとのhexキー一致を強い証拠として見ます。距離比較型は候補参照同士で差が出るbitを重く見るHamming距離で、共通文字列が多い曲名でも候補間の差分を相対的に強く見ます。`title_linehash_*_status=resolved_candidate` はM5補助観測であり、`jacket_match_status` を変更したり、保存可能や曲ID/譜面ID確定を意味したりしません。
+
+固定UI文字は将来的に汎用OCRより画像認識へ寄せます。ただし、スコア、判定数、EX SCORE のTesseract離脱や数字テンプレート認識は後続タスクに回し、次のM5作業ではtitle line-hashを優先します。
+
 `difficulty` は5種類の文字色が強い手がかりになるため、`roi-template-nearest` 内ではROI全体ピクセルではなく前景文字色の比率パターンで比較します。直近ローカル素材では `play_style`、`difficulty`、`level` は 60/60 match です。ただしこれは同分布内の leave-one-out 診断であり、抽出ロジックの採用判断には外部検証や参照/評価セット分割が必要です。
 
 2026-07-04時点の5件レビューでは、`difficulty` mismatch はすべてROI表示が metadata / ファイル名由来期待値と食い違うローカル期待値修正候補でした。ローカル `metadata.csv` はROI表示へ合わせて修正済みで、ファイル名は当面リネームしません。修正後は `roi-template-nearest` が 180/180 match、`filename-baseline` が difficulty 5件 mismatch になります。詳細は `docs/design/07_m3_chart_field_review.md` を参照します。`metadata.csv` とスクリーンショット画像はGit管理しないため、判断と修正内容は文書に残し、実体更新はローカル素材側で行います。

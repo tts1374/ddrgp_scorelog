@@ -110,6 +110,14 @@ title OCR suffix補助は、`--m3-song-artist-ocr` で得た result `song_title`
 
 2026-07-05のローカル確認では、osaka 3件の title OCR suffix 補助はすべて `no_suffix` だった。OCR文字列には `TYPE)`、`TYPED`、`TYPES` のようなsuffix末尾崩れが出ており、現行のM3 title OCR入口だけでは `TYPE1` / `TYPE2` / `TYPE3` を安定取得できない。これはOCR方式刷新の採用判断ではなく、次に song_select grid/detail 側のタイトル表示ROI参照やsuffix専用の小さな前処理を検討するための観測として扱う。
 
+次のtitle補助は、result `song_title` ROIのline-hash方式に寄せる。これはinf-notebook系の固定UI文字認識を参考に、OCR文字列ではなく、固定ROIから抽出した文字画素のbit列を比較するPoCである。参照元はresult素材だけに限定し、song_select側のタイトル表示ROIは使わない。ローカルmetadataの期待曲名を M4 `songs.title` へ一意解決できた result素材から参照featureを作り、同じ `organized_file` の参照は比較から除外する。
+
+title line-hashでは、result `song_title` ROIの文字色を固定しきい値で二値化し、行ごとのbit列を4bit単位でhex化する。比較は2系統を同時に出す。完全一致型は行ごとのhexキー一致を強い証拠として見る。距離比較型は、候補参照同士で差が出るbitを重く見たHamming距離で順位付けする。これにより、osakaのように共通文字列が大半を占める曲名でも、候補間の差分がある箇所を相対的に強く見る。
+
+`jacket_match_candidates.csv` へ追加するline-hash観測列は、`title_linehash_candidate_feature_count`、`title_linehash_diff_bit_count`、`title_linehash_exact_status`、`title_linehash_distance_status`、`title_linehash_top_song_id`、`title_linehash_top_chart_id`、`title_linehash_top_title`、`title_linehash_top_distance`、`title_linehash_top_candidates`、`title_linehash_rerank_reason` を基本とする。`title_linehash_*_status=resolved_candidate` は、line-hashが曖昧候補集合内の再順位付け候補を出したというM5観測であり、`jacket_match_status` を変えたり、曲ID/譜面ID確定やDB保存可能を意味したりしない。line-hashが候補集合外にありそうな曲名形状を示しても、候補集合外から曲を拾わない。
+
+固定UI文字は最終的に汎用OCRより画像認識へ寄せる方針だが、スコア/判定数/EX SCORE のTesseract離脱や数字テンプレート認識は後続タスクに回す。M5の次作業では、まずtitle line-hashをjacket ambiguous候補内の補助信号として観測する。
+
 全曲ジャケット画像取得、配布可否、画像キャッシュ方針は別フェーズとして残す。ジャケット特徴量を入れる場合も、初回は保存成功判定ではなく、低確信度ログへ渡す観測値として始める。
 
 ## スコープ外
