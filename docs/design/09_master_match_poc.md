@@ -86,7 +86,7 @@ result confirmed-events
 
 `jacket_feature_master.csv` は、`screen_type=song_select` かつ grid 画面の右上選択中ジャケットプレビューを特徴量化し、metadata の `song_title` / `expected_song_title` を M4 `songs.title` へ一意照合できた行だけを `accepted` として出す。ラベルが空のgrid行は `jacket_feature_label_template.csv` へ出し、metadata実体は更新しない。
 
-`jacket_match_candidates.csv` は、confirmed-events の result `jacket` ROIを特徴量化し、`play_style` / `difficulty` / `level` で絞った候補song_idに紐づくローカル特徴量だけと比較する。列には候補曲数、候補譜面数、候補特徴量数、最上位候補、score、distance、特徴量参照元、上位候補一覧、期待曲名、期待song_id、期待song_idの距離、期待song_idの順位、最上位と次点songの距離差、title画像特徴量補助、title OCR suffix補助、title line-hash補助、`jacket_match_status`、`failure_reason` を出す。期待値由来の列はローカルmetadataを使った診断であり、保存可能判定ではない。
+`jacket_match_candidates.csv` は、confirmed-events の result `jacket` ROIを特徴量化し、`play_style` / `difficulty` / `level` で絞った候補song_idに紐づくローカル特徴量だけと比較する。列には候補曲数、候補譜面数、候補特徴量数、最上位候補、score、distance、特徴量参照元、上位候補一覧、期待曲名、期待song_id、期待song_idの距離、期待song_idの順位、最上位と次点songの距離差、title画像特徴量補助、title OCR suffix補助、title line-hash補助、後続保存判定へ渡すM5候補観測 `identity_signal_*`、`jacket_match_status`、`failure_reason` を出す。期待値由来の列はローカルmetadataを使った診断であり、保存可能判定ではない。
 
 `jacket_match_status` は以下のPoC観測語彙とする。
 
@@ -95,6 +95,17 @@ result confirmed-events
 - `not_found`: chart条件に候補がない、または最上位距離がしきい値を超える。
 - `insufficient_input`: chart-field 3項目が候補絞り込みに足りない。
 - `missing_feature`: resultジャケット特徴量または候補song_id側のローカル特徴量参照が足りない。
+
+`jacket_match_status` はjacket特徴量単体の観測として維持する。title補助で候補が1件に見えても、`jacket_match_status=ambiguous` を `matched` へ昇格しない。後続保存判定へ渡す候補観測は別列 `identity_signal_*` に出す。
+
+`identity_signal_status` はM5内の候補観測語彙であり、保存可能、曲ID/譜面ID確定、本番採用済み照合を意味しない。現時点の主な語彙は以下。
+
+- `jacket_resolved_candidate`: jacket特徴量単体でPoC上の一意候補がある。
+- `auxiliary_resolved_candidate`: jacketは曖昧なままだが、曖昧候補集合内で補助観測が候補を1件示した。
+- `unresolved_ambiguous`: jacket曖昧候補を補助観測でも1件へ寄せられない。
+- `unresolved_insufficient_input` / `unresolved_missing_feature` / `unresolved_not_found`: M5入力、特徴量参照、候補距離の不足により候補観測を出せない。
+
+`identity_signal_source` は候補観測の出所を示す。優先順は `jacket_feature`、`title_linehash_dict`、`title_ocr_suffix`、`title_image_feature` とする。`title_linehash_exact_status` と `title_linehash_distance_status` は参考列に留め、`identity_signal_source` には使わない。
 
 2026-07-05のローカル追加素材反映後は、`song_select` grid右上プレビュー由来の特徴量マスタが59件になり、confirmed-events 60件に対するジャケット照合は `matched=57`、`ambiguous=3`、`not_found=0`、`missing_feature=0` になった。ここでの `matched` は引き続きPoC上の一意候補であり、保存可能ではない。
 
@@ -114,7 +125,7 @@ title OCR suffix補助は、`--m3-song-artist-ocr` で得た result `song_title`
 
 title line-hashでは、result `song_title` ROIのうち曲名行だけを対象にし、白文字色域を固定しきい値で二値化して、行ごとのbit列を4bit単位でhex化する。inf-notebook 風に、参照素材から作った行hexキー辞書を主観測にする。距離比較型は互換の参考列として残し、候補参照同士で差が出るbitを重く見たHamming距離で順位付けする。
 
-`jacket_match_candidates.csv` へ追加するline-hash観測列は、`title_linehash_candidate_feature_count`、`title_linehash_diff_bit_count`、`title_linehash_dict_status`、`title_linehash_dict_top_*`、`title_linehash_dict_top_candidates`、`title_linehash_exact_status`、`title_linehash_distance_status`、`title_linehash_top_*`、`title_linehash_top_candidates`、`title_linehash_rerank_reason` を基本とする。`title_linehash_dict_status=resolved_candidate` は、line-hash辞書が曖昧候補集合内の再順位付け候補を出したというM5観測であり、`jacket_match_status` を変えたり、曲ID/譜面ID確定やDB保存可能を意味したりしない。line-hashが候補集合外にありそうな曲名形状を示しても、候補集合外から曲を拾わない。
+`jacket_match_candidates.csv` へ追加するline-hash観測列は、`title_linehash_candidate_feature_count`、`title_linehash_diff_bit_count`、`title_linehash_dict_status`、`title_linehash_dict_top_*`、`title_linehash_dict_top_candidates`、`title_linehash_exact_status`、`title_linehash_distance_status`、`title_linehash_top_*`、`title_linehash_top_candidates`、`title_linehash_rerank_reason` を基本とする。`title_linehash_dict_status=resolved_candidate` は、line-hash辞書が曖昧候補集合内の再順位付け候補を出したというM5観測であり、`jacket_match_status` を変えたり、曲ID/譜面ID確定やDB保存可能を意味したりしない。line-hashが候補集合外にありそうな曲名形状を示しても、候補集合外から曲を拾わない。line-hash辞書で候補が出た場合は `identity_signal_status=auxiliary_resolved_candidate` / `identity_signal_source=title_linehash_dict` として後続へ渡すが、これは低確信度の候補観測であり、保存判定では引き続きM7以降の集約ルールを待つ。
 
 固定UI文字は最終的に汎用OCRより画像認識へ寄せる方針だが、スコア/判定数/EX SCORE のTesseract離脱や数字テンプレート認識は後続タスクに回す。M5の次作業では、まずtitle line-hashをjacket ambiguous候補内の補助信号として観測する。
 

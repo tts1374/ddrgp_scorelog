@@ -407,6 +407,12 @@ def test_match_jacket_save_candidate_row_title_reranks_only_ambiguous_candidates
     assert result["title_linehash_distance_status"] == "resolved_candidate"
     assert result["title_linehash_top_song_id"] == "song_type2"
     assert result["title_linehash_candidate_feature_count"] == "2"
+    assert result["identity_signal_status"] == "auxiliary_resolved_candidate"
+    assert result["identity_signal_source"] == "title_linehash_dict"
+    assert result["identity_signal_song_id"] == "song_type2"
+    assert result["identity_signal_reason"] == (
+        "jacket_ambiguous_title_linehash_dict_resolved"
+    )
     assert result["title_ocr_rerank_status"] == "missing_ocr"
     assert result["title_ocr_rerank_reason"] == "title_ocr_not_run"
 
@@ -461,6 +467,9 @@ def test_match_jacket_save_candidate_row_title_ocr_suffix_reranks_only_ambiguous
     assert result["title_ocr_rerank_status"] == "resolved_candidate"
     assert result["title_ocr_top_song_id"] == "song_type2"
     assert result["title_ocr_top_title"] == "OSAKA TYPE2"
+    assert result["identity_signal_status"] == "auxiliary_resolved_candidate"
+    assert result["identity_signal_source"] == "title_ocr_suffix"
+    assert result["identity_signal_song_id"] == "song_type2"
     assert result["title_linehash_dict_status"] == "missing_feature"
     assert result["title_linehash_exact_status"] == "missing_feature"
     assert result["title_linehash_rerank_reason"] == "result_title_linehash_unavailable"
@@ -507,6 +516,8 @@ def test_match_jacket_save_candidate_row_title_ocr_suffix_does_not_expand_candid
     assert result["title_ocr_suffix"] == "TYPE3"
     assert result["title_ocr_rerank_status"] == "no_candidate_suffix_match"
     assert result["title_ocr_top_song_id"] == ""
+    assert result["identity_signal_status"] == "unresolved_ambiguous"
+    assert result["identity_signal_source"] == ""
 
 
 def test_match_jacket_save_candidate_row_reports_missing_feature(tmp_path: Path) -> None:
@@ -586,6 +597,12 @@ def test_write_jacket_match_outputs_records_observation_scope(tmp_path: Path) ->
             "title_linehash_top_distance": "",
             "title_linehash_top_candidates": "",
             "title_linehash_rerank_reason": "",
+            "identity_signal_status": "jacket_resolved_candidate",
+            "identity_signal_source": "jacket_feature",
+            "identity_signal_song_id": "song_make",
+            "identity_signal_chart_id": "chart_make_single_difficult",
+            "identity_signal_title": "MAKE IT BETTER",
+            "identity_signal_reason": "jacket_feature_unique_candidate",
             "jacket_match_status": "matched",
             "failure_reason": "",
         }
@@ -605,5 +622,8 @@ def test_write_jacket_match_outputs_records_observation_scope(tmp_path: Path) ->
     assert summary["title_linehash_dict_status_counts"]["not_run"] == 1
     assert summary["title_linehash_exact_status_counts"]["not_run"] == 1
     assert summary["title_linehash_distance_status_counts"]["not_run"] == 1
+    assert summary["identity_signal_status_counts"]["jacket_resolved_candidate"] == 1
+    assert summary["identity_signal_source_counts"]["jacket_feature"] == 1
     report = (tmp_path / "jacket_match_report.md").read_text(encoding="utf-8")
     assert "DB保存可能や本番採用済み照合ではありません" in report
+    assert "identity_signal_*" in report

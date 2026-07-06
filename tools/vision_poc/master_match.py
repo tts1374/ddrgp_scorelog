@@ -558,6 +558,83 @@ def empty_title_rerank_fields(status: str = "not_run", reason: str = "") -> dict
     }
 
 
+def identity_signal_empty_fields(
+    status: str,
+    reason: str,
+) -> dict[str, str]:
+    return {
+        "identity_signal_status": status,
+        "identity_signal_source": "",
+        "identity_signal_song_id": "",
+        "identity_signal_chart_id": "",
+        "identity_signal_title": "",
+        "identity_signal_reason": reason,
+    }
+
+
+def identity_signal_fields(row: dict[str, str]) -> dict[str, str]:
+    jacket_status = row.get("jacket_match_status", "")
+    if jacket_status == "matched":
+        return {
+            "identity_signal_status": "jacket_resolved_candidate",
+            "identity_signal_source": "jacket_feature",
+            "identity_signal_song_id": row.get("top_song_id", ""),
+            "identity_signal_chart_id": row.get("top_chart_id", ""),
+            "identity_signal_title": row.get("top_title", ""),
+            "identity_signal_reason": "jacket_feature_unique_candidate",
+        }
+
+    if jacket_status == "ambiguous":
+        if row.get("title_linehash_dict_status") == "resolved_candidate":
+            return {
+                "identity_signal_status": "auxiliary_resolved_candidate",
+                "identity_signal_source": "title_linehash_dict",
+                "identity_signal_song_id": row.get("title_linehash_dict_top_song_id", ""),
+                "identity_signal_chart_id": row.get("title_linehash_dict_top_chart_id", ""),
+                "identity_signal_title": row.get("title_linehash_dict_top_title", ""),
+                "identity_signal_reason": (
+                    "jacket_ambiguous_title_linehash_dict_resolved"
+                ),
+            }
+        if row.get("title_ocr_rerank_status") == "resolved_candidate":
+            return {
+                "identity_signal_status": "auxiliary_resolved_candidate",
+                "identity_signal_source": "title_ocr_suffix",
+                "identity_signal_song_id": row.get("title_ocr_top_song_id", ""),
+                "identity_signal_chart_id": row.get("title_ocr_top_chart_id", ""),
+                "identity_signal_title": row.get("title_ocr_top_title", ""),
+                "identity_signal_reason": "jacket_ambiguous_title_ocr_suffix_resolved",
+            }
+        if row.get("title_rerank_status") == "resolved_candidate":
+            return {
+                "identity_signal_status": "auxiliary_resolved_candidate",
+                "identity_signal_source": "title_image_feature",
+                "identity_signal_song_id": row.get("title_top_song_id", ""),
+                "identity_signal_chart_id": row.get("title_top_chart_id", ""),
+                "identity_signal_title": row.get("title_top_title", ""),
+                "identity_signal_reason": "jacket_ambiguous_title_image_resolved",
+            }
+        return identity_signal_empty_fields(
+            "unresolved_ambiguous",
+            "jacket_ambiguous_without_auxiliary_resolution",
+        )
+
+    if jacket_status in {"insufficient_input", "missing_feature", "not_found"}:
+        return identity_signal_empty_fields(
+            f"unresolved_{jacket_status}",
+            row.get("failure_reason", "") or jacket_status,
+        )
+
+    return identity_signal_empty_fields(
+        "unresolved_unknown",
+        jacket_status or "missing_jacket_match_status",
+    )
+
+
+def with_identity_signal_fields(row: dict[str, str]) -> dict[str, str]:
+    return {**row, **identity_signal_fields(row)}
+
+
 def extract_type_suffix(value: str) -> str:
     normalized = unicodedata.normalize("NFKC", value).casefold()
     compact = "".join(char for char in normalized if not char.isspace())
@@ -1048,13 +1125,15 @@ def match_jacket_save_candidate_row(
         reason = "chart_fields_not_ready"
         if missing:
             reason = "chart_fields_not_ready:" + ",".join(missing)
-        return {**base_result, "failure_reason": reason}
+        return with_identity_signal_fields({**base_result, "failure_reason": reason})
     if result_feature is None:
-        return {
-            **base_result,
-            "jacket_match_status": "missing_feature",
-            "failure_reason": "result_jacket_feature_unavailable",
-        }
+        return with_identity_signal_fields(
+            {
+                **base_result,
+                "jacket_match_status": "missing_feature",
+                "failure_reason": "result_jacket_feature_unavailable",
+            }
+        )
 
     play_style, difficulty, level = chart_filter
     candidates = load_chart_candidates(
@@ -1073,11 +1152,13 @@ def match_jacket_save_candidate_row(
         "candidate_chart_count": str(len(candidates)),
     }
     if not candidates:
-        return {
-            **base_result,
-            "jacket_match_status": "not_found",
-            "failure_reason": "no_chart_candidates",
-        }
+        return with_identity_signal_fields(
+            {
+                **base_result,
+                "jacket_match_status": "not_found",
+                "failure_reason": "no_chart_candidates",
+            }
+        )
 
     features_by_song_id: dict[str, list[JacketFeatureMasterEntry]] = {}
     for entry in feature_master_entries:
@@ -1094,11 +1175,13 @@ def match_jacket_save_candidate_row(
         "candidate_feature_count": str(len(scored_candidates)),
     }
     if not scored_candidates:
-        return {
-            **base_result,
-            "jacket_match_status": "missing_feature",
-            "failure_reason": "no_candidate_jacket_features",
-        }
+        return with_identity_signal_fields(
+            {
+                **base_result,
+                "jacket_match_status": "missing_feature",
+                "failure_reason": "no_candidate_jacket_features",
+            }
+        )
 
     scored_candidates.sort(
         key=lambda item: (item[0], item[1].title, item[1].artist, item[1].chart_id)
@@ -1127,11 +1210,13 @@ def match_jacket_save_candidate_row(
         "jacket_top_margin": "" if top_margin is None else f"{top_margin:.4f}",
     }
     if top_distance > distance_threshold:
-        return {
-            **result,
-            "jacket_match_status": "not_found",
-            "failure_reason": "above_distance_threshold",
-        }
+        return with_identity_signal_fields(
+            {
+                **result,
+                "jacket_match_status": "not_found",
+                "failure_reason": "above_distance_threshold",
+            }
+        )
 
     near_top = [
         item
@@ -1161,16 +1246,20 @@ def match_jacket_save_candidate_row(
             ambiguous_song_ids=ambiguous_song_ids,
             target_organized_file=row.get("organized_file", ""),
         )
-        return {
-            **result,
-            **title_rerank_fields,
-            **title_ocr_rerank_fields,
-            **title_linehash_rerank_fields,
-            "jacket_match_status": "ambiguous",
-            "failure_reason": "near_top_distance",
-        }
+        return with_identity_signal_fields(
+            {
+                **result,
+                **title_rerank_fields,
+                **title_ocr_rerank_fields,
+                **title_linehash_rerank_fields,
+                "jacket_match_status": "ambiguous",
+                "failure_reason": "near_top_distance",
+            }
+        )
 
-    return {**result, "jacket_match_status": "matched", "failure_reason": ""}
+    return with_identity_signal_fields(
+        {**result, "jacket_match_status": "matched", "failure_reason": ""}
+    )
 
 
 def match_save_candidate_rows(
@@ -1283,9 +1372,21 @@ def summarize_jacket_match_rows(rows: Iterable[dict[str, str]]) -> dict[str, Any
     title_linehash_dict_status_counts: dict[str, int] = {}
     title_linehash_exact_status_counts: dict[str, int] = {}
     title_linehash_distance_status_counts: dict[str, int] = {}
+    identity_signal_status_counts: dict[str, int] = {}
+    identity_signal_source_counts: dict[str, int] = {}
     for row in row_list:
         status = row["jacket_match_status"]
         status_counts[status] = status_counts.get(status, 0) + 1
+        identity_status = row.get("identity_signal_status", "")
+        if identity_status:
+            identity_signal_status_counts[identity_status] = (
+                identity_signal_status_counts.get(identity_status, 0) + 1
+            )
+        identity_source = row.get("identity_signal_source", "")
+        if identity_source:
+            identity_signal_source_counts[identity_source] = (
+                identity_signal_source_counts.get(identity_source, 0) + 1
+            )
         title_status = row.get("title_rerank_status", "")
         if title_status:
             title_rerank_status_counts[title_status] = (
@@ -1337,6 +1438,12 @@ def summarize_jacket_match_rows(rows: Iterable[dict[str, str]]) -> dict[str, Any
         "title_linehash_distance_status_counts": dict(
             sorted(title_linehash_distance_status_counts.items())
         ),
+        "identity_signal_status_counts": dict(
+            sorted(identity_signal_status_counts.items())
+        ),
+        "identity_signal_source_counts": dict(
+            sorted(identity_signal_source_counts.items())
+        ),
         "status_vocabulary": list(JACKET_MATCH_STATUS_VOCABULARY),
         "distance_threshold": DEFAULT_JACKET_DISTANCE_THRESHOLD,
         "ambiguity_delta": DEFAULT_JACKET_AMBIGUITY_DELTA,
@@ -1351,6 +1458,8 @@ def summarize_jacket_match_rows(rows: Iterable[dict[str, str]]) -> dict[str, Any
             "candidates.",
             "title_linehash dict/exact/distance statuses only rerank inside jacket "
             "ambiguous candidates.",
+            "identity_signal_* columns are M5 handoff observations, not save-ready "
+            "decisions.",
         ],
     }
 
@@ -1486,6 +1595,12 @@ def write_jacket_match_csv(path: Path, rows: Iterable[dict[str, str]]) -> None:
         "title_linehash_top_distance",
         "title_linehash_top_candidates",
         "title_linehash_rerank_reason",
+        "identity_signal_status",
+        "identity_signal_source",
+        "identity_signal_song_id",
+        "identity_signal_chart_id",
+        "identity_signal_title",
+        "identity_signal_reason",
         "jacket_match_status",
         "failure_reason",
     ]
@@ -1591,12 +1706,16 @@ def write_jacket_match_report(
         f"`{json.dumps(summary['title_linehash_exact_status_counts'], sort_keys=True)}`",
         f"- title_linehash_distance_status: "
         f"`{json.dumps(summary['title_linehash_distance_status_counts'], sort_keys=True)}`",
+        f"- identity_signal_status: "
+        f"`{json.dumps(summary['identity_signal_status_counts'], sort_keys=True)}`",
+        f"- identity_signal_source: "
+        f"`{json.dumps(summary['identity_signal_source_counts'], sort_keys=True)}`",
         f"- failure_reason: `{json.dumps(summary['failure_reason_counts'], sort_keys=True)}`",
         "",
         "## Candidate Rows",
         "",
         "| organized_file | status | chart | top candidate | score | distance | "
-        "expected rank | margin | title rerank | reason |",
+        "expected rank | margin | identity signal | reason |",
         "|---|---|---|---|---|---|---|---|---|---|",
     ]
     for row in row_list[:20]:
@@ -1617,7 +1736,8 @@ def write_jacket_match_report(
             f"`{chart_text}` | `{top_text}` | `{row['top_score']}` | "
             f"`{row['top_distance']}` | `{row.get('expected_jacket_rank', '')}` | "
             f"`{row.get('jacket_top_margin', '')}` | "
-            f"`{row.get('title_rerank_status', '')}` | "
+            f"`{row.get('identity_signal_status', '')}`"
+            f" / `{row.get('identity_signal_source', '')}` | "
             f"`{row['failure_reason']}` |"
         )
     if len(row_list) > 20:
@@ -1640,6 +1760,8 @@ def write_jacket_match_report(
             "曲名行のhexキー辞書を観測します。",
             "- `title_linehash_exact_status` / `title_linehash_distance_status` は"
             "旧来の比較観測です。",
+            "- `identity_signal_*` はM5から後続保存判定へ渡す候補観測で、"
+            "保存可能や曲ID/譜面ID確定を意味しません。",
             "- `matched` は保存可能を意味しません。",
         ]
     )
