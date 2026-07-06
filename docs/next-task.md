@@ -53,6 +53,7 @@ high
   - 代表例として New York EVOLVED は `result_228` Type A が `confirmed_result=false`、`result_231` Type B と `result_234` Type C が `duplicate=true` のため、通常のM5 jacket対象に入っていない。
   - `song_select_225` Type A、`song_select_226` Type B、`song_select_227` Type C のgrid素材は jacket feature master 側の参照素材としては入っている。
   - 現 duplicate key は `score:000000` が粗く、ゼロ点リザルトの別曲・別Typeを同一duplicateとして扱いやすい。保存候補境界を変えず、診断用出力で duplicate / unconfirmed も観察する。
+  - 0点リザルトは保存対象にしない方針を有力案とする。M5では保存候補から外す前提を崩さず、同一・類似ジャケットの診断素材としてだけ使う。
 - title画像特徴量PoCの今回結果は `title_rerank_status_counts={"ambiguous_candidate": 3, "not_run": 57}`。
 - title OCR suffix診断の今回結果は `title_ocr_rerank_status_counts={"no_suffix": 3, "not_run": 57}`。
 - title line-hash辞書化後の今回結果は `title_linehash_dict_status_counts={"not_run": 57, "resolved_candidate": 3}`、`title_linehash_exact_status_counts={"no_exact_match": 3, "not_run": 57}`、`title_linehash_distance_status_counts={"not_run": 57, "resolved_candidate": 3}`。
@@ -120,6 +121,7 @@ M5内でまだ成功扱いにしないもの:
 - ファジーマッチ結果、jacket `matched`、title画像 `resolved_candidate`、title OCR `resolved_candidate`、title line-hash `resolved_candidate` を本番採用済み照合として扱うこと
 - 未解決の曖昧一致や低確信度をDB保存可能として扱うこと
 - duplicate / unconfirmed を含める診断用M5出力を、保存候補や保存可否判定として扱うこと
+- 0点リザルトの診断結果を、保存候補や保存可否判定として扱うこと
 - `grand_prix_play_available=0` の曲を通常M5候補へ戻すこと
 - `artist` を曲名照合の一意主キーとして扱うこと
 - 同一ジャケット候補を画像特徴量だけで無理に一意化すること
@@ -138,6 +140,7 @@ M5内でまだ成功扱いにしないもの:
   - New York EVOLVED の `result_228` Type A、`result_231` Type B、`result_234` Type C が別物として観察できることを代表確認対象にする。
   - tokyo EVOLVED、London EVOLVED、osaka EVOLVED など、ゼロ点連続素材や同一・類似ジャケット分岐も同じ診断出力で確認できるようにする。
   - 診断出力の結果は保存OK/NGではなく、M5同定能力とduplicate/unconfirmed境界の観察材料として扱う。
+  - 0点リザルトは将来のM7保存方針では保存候補から除外する優先案として扱い、M5では診断用の観察対象に留める。
 - その次に、公式GP可否フィルタ後に増えた `Inner Spirit -GIGA HiTECH MIX-` の `unresolved_ambiguous` と、`RЁVOLUTIФN` の `unresolved_not_found` を観察し、公式/Wiki/metadata表記差か、feature/line-hash表現問題かを分ける。
   - まずは `jacket_match_candidates.csv` の該当行、M4 `songs` の `official_availability_match`、ローカルmetadata期待値、result title ROIを突き合わせる。
   - 公式GP可否フィルタは維持し、GP対象外曲をM5候補へ戻さない。
@@ -155,6 +158,7 @@ M5内でまだ成功扱いにしないもの:
   - `matched` はPoC信号上の一意候補であり、保存OKではない。
   - `composite_resolved_candidate` は複合根拠で候補1件を示した観測であり、保存OKではない。
   - duplicate / unconfirmed 診断結果は保存候補ではない。
+  - 0点リザルトはM5診断対象にはできるが、保存候補ではない優先案として扱う。
   - 保存OK/NG、低信頼度ログ、人手確認キュー、個人スコアDB書き込みはM7以降で決める。
 - 大きなOCR方式刷新やROI座標定義の大変更には進まない。
 - スコア/判定数のTesseract離脱や数字テンプレート認識は後続タスクとして扱い、今回の実作業には含めない。
