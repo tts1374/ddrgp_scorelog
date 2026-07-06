@@ -38,6 +38,10 @@ high
 - M3 song/artist OCR入口失敗代表は `failure_count=24`、`affected_candidate_count=22`、`song_title empty_ocr=2`、`artist empty_ocr=22`。
 - 今回の `--m5-jacket-match` 結果は confirmed-events 60件、`jacket_feature_master accepted=68`、`matched=57`、`ambiguous=3`、`not_found=0`、`missing_feature=0`。
 - 残り `ambiguous=3` は引き続き `osaka EVOLVED -毎度、おおきに！- (TYPE1/2/3)` の同一ジャケット3件。`jacket_top_margin=0.0000` で、画像特徴量だけでは一意化しない。
+- 追加 result の `result_228` 以降は通常の `jacket_match_candidates.csv` には出ない。
+  - M5 jacket match の対象境界は `confirmed_result=true` かつ `duplicate=false`。
+  - `result_228` 以降はゼロ点リザルト連続素材で、`score:000000` の duplicate か、confirmed-events 境界外として扱われる。
+  - したがって「ambiguous にならない」のではなく、保存候補評価対象に入っていない。追加 result は主に title line-hash 参照素材、追加 grid は jacket feature master 参照素材として効く。
 - title画像特徴量PoCの今回結果は `title_rerank_status_counts={"ambiguous_candidate": 3, "not_run": 57}`。
 - title OCR suffix診断の今回結果は `title_ocr_rerank_status_counts={"no_suffix": 3, "not_run": 57}`。
 - title line-hash辞書化後の今回結果は `title_linehash_dict_status_counts={"not_run": 57, "resolved_candidate": 3}`、`title_linehash_exact_status_counts={"no_exact_match": 3, "not_run": 57}`、`title_linehash_distance_status_counts={"not_run": 57, "resolved_candidate": 3}`。
@@ -112,6 +116,7 @@ M5内でまだ成功扱いにしないもの:
   - 参照は引き続き result素材のみ。song_select 側タイトル表示ROIは使わない。
   - jacketで `ambiguous` になったsong_id集合内だけを対象にし、候補集合外から曲を拾わない。
 - `jacket_match_candidates.csv` の `expected_jacket_distance` / `expected_jacket_rank` / `jacket_top_margin`、`title_top_candidates`、`title_ocr_text`、`title_ocr_rerank_status`、`title_linehash_*` を見て、しきい値問題か特徴量/OCR/line-hash表現問題かを分ける。
+- New York / tokyo / London EVOLVED の同一・類似ジャケット分岐を result単体で観察したい場合は、通常のM5保存候補境界を変えずに、別の診断出力として duplicate / unconfirmed を含む観察モードを検討する。保存候補用 `jacket_match_candidates.csv` に混ぜない。
 - 大きなOCR方式刷新やROI座標定義の大変更には進まない。
 - スコア/判定数のTesseract離脱や数字テンプレート認識は後続タスクとして扱い、今回の実作業には含めない。
 - `docs/next-task.md` の更新は、実作業と検証が終わった後の引き継ぎ更新として行う。
