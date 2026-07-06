@@ -340,11 +340,13 @@ title OCR suffix補助は、`--m3-song-artist-ocr` で得た result `song_title`
 
 title line-hash補助は、jacketで `ambiguous` になった候補集合内だけを対象に、result `song_title` ROIの曲名行を固定しきい値で二値化した行ごとのhexキーで再順位付けします。参照はローカルmetadataの期待曲名を M4 `songs.title` へ一意解決できた result 素材だけで、同じ `organized_file` の参照は除外します。主観測は inf-notebook 風の行hexキー辞書 `title_linehash_dict_status` です。完全一致型の `title_linehash_exact_status` と、候補参照間で差が出るbitを重く見る距離比較型の `title_linehash_distance_status` は参考列として残します。`resolved_candidate` は候補集合内の補助観測であり、`jacket_match_status` を変えたり、保存可能や曲ID/譜面ID確定を意味したりしません。候補集合外から曲を拾いません。line-hash辞書で候補が出た場合だけ、`identity_signal_status=composite_resolved_candidate` / `identity_signal_source=title_linehash_dict` として複合根拠の曲同定候補観測を後続へ渡します。距離比較型は `identity_signal_source` に使いません。
 
-2026-07-05のローカル追加素材反映後は、jacket feature master が59件、confirmed-events 60件に対する jacket match が `matched=57` / `ambiguous=3` / `not_found=0` / `missing_feature=0` です。残る曖昧は `osaka EVOLVED -毎度、おおきに！- (TYPE1/2/3)` の同一ジャケット3件です。`result_098_sp_basic_lv07_if_score972200.png` はファイル名とmetadataが `If` になっていましたが、実画面表示は `桜 / Reven-G / SINGLE BASIC Lv7` だったためローカルmetadataを修正済みです。その後、`桜` のsong_select grid/result素材を追加して近距離曖昧は解消しました。title / artist は候補集合外から曲を拾う主キーにはしません。
+2026-07-05のローカル追加素材反映後は、jacket feature master が59件、confirmed-events 60件に対する jacket match が `matched=57` / `ambiguous=3` / `not_found=0` / `missing_feature=0` です。残る曖昧は、現ローカル素材では `osaka EVOLVED -毎度、おおきに！- (TYPE1/2/3)` の同一ジャケット3件です。これはEVOLVED系だけの特例ではなく、同一・類似ジャケットでタイトル側に分岐情報が出る曲群の代表ケースとして読みます。`result_098_sp_basic_lv07_if_score972200.png` はファイル名とmetadataが `If` になっていましたが、実画面表示は `桜 / Reven-G / SINGLE BASIC Lv7` だったためローカルmetadataを修正済みです。その後、`桜` のsong_select grid/result素材を追加して近距離曖昧は解消しました。title / artist は候補集合外から曲を拾う主キーにはしません。
 
 同日の title OCR suffix 診断では、osaka 3件の `title_ocr_rerank_status` はすべて `no_suffix` でした。OCR文字列は `TYPE)`、`TYPED`、`TYPES` のようにsuffix末尾が崩れており、現行のM3 title OCR入口だけでは `TYPE1` / `TYPE2` / `TYPE3` を安定取得できない観測です。この結果も保存可能判定ではなく、title line-hash辞書の必要性を示す切り分け材料として扱います。
 
 2026-07-05の line-hash辞書化後は、osaka 3件の `title_linehash_dict_status` がすべて `resolved_candidate` になり、辞書上位候補も期待TYPEと一致しました。`title_linehash_distance_status` は参考列として残しており、TYPE2は引き続き `ambiguous_candidate` です。今後は距離比較を本命にせず、行hexキー辞書の安定性確認と、保存判定へ渡す曲同定候補観測の整理を優先します。
+
+X-Special付き譜面のように、通常版と同一ジャケットを共有し得る分岐も将来は同じ問題分類に入る可能性があります。ただし現時点ではGRAND PRIXプレー対象として扱わないため、M5の実装対象には含めません。
 
 固定UI文字は将来的に汎用OCRより画像認識へ寄せます。ただし、スコア、判定数、EX SCORE のTesseract離脱や数字テンプレート認識は後続タスクに回し、次のM5作業ではtitle line-hashを優先します。
 

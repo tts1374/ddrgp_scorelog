@@ -109,9 +109,11 @@ result confirmed-events
 
 2026-07-05のローカル追加素材反映後は、`song_select` grid右上プレビュー由来の特徴量マスタが59件になり、confirmed-events 60件に対するジャケット照合は `matched=57`、`ambiguous=3`、`not_found=0`、`missing_feature=0` になった。ここでの `matched` は引き続きPoC上の一意候補であり、保存可能ではない。
 
-残る `ambiguous` は、`osaka EVOLVED -毎度、おおきに！- (TYPE1/2/3)` の同一ジャケット3件である。`result_098_sp_basic_lv07_if_score972200.png` はファイル名とmetadataが `If` になっていたが、実画面表示は `桜 / Reven-G / SINGLE BASIC Lv7` だったためローカルmetadataを修正済み。その後、`桜` のsong_select grid/result素材を追加して近距離曖昧は解消した。osaka 3件は画像特徴量だけで無理に一意化せず、title画像特徴量またはtitle OCRで `TYPE1` / `TYPE2` / `TYPE3` を候補集合内だけ再順位付けする対象にする。
+残る `ambiguous` は、現ローカル素材では `osaka EVOLVED -毎度、おおきに！- (TYPE1/2/3)` の同一ジャケット3件である。これはEVOLVED系だけの特例ではなく、同一・類似ジャケットでタイトル側に分岐情報が出る曲群の代表ケースとして扱う。`result_098_sp_basic_lv07_if_score972200.png` はファイル名とmetadataが `If` になっていたが、実画面表示は `桜 / Reven-G / SINGLE BASIC Lv7` だったためローカルmetadataを修正済み。その後、`桜` のsong_select grid/result素材を追加して近距離曖昧は解消した。osaka 3件は画像特徴量だけで無理に一意化せず、title画像特徴量またはtitle OCRで `TYPE1` / `TYPE2` / `TYPE3` を候補集合内だけ再順位付けする対象にする。
 
 title / artist の画像特徴量を追加する場合も、候補集合外から曲を拾うためには使わない。基本順序は `play_style / difficulty / level` で候補集合を作り、ジャケット特徴量で狭め、残った曖昧候補だけを title 画像特徴量や title OCR で再順位付けする。artistは主キーではなく、矛盾チェックや弱い補助信号に留める。
+
+将来、GRAND PRIXでプレー可能な範囲に同一・類似ジャケット分岐が増えた場合も同じ読み方にする。例えばX-Special付き譜面が通常版と同一ジャケットを共有する可能性はあるが、現時点ではGRAND PRIXプレー対象として扱わないため、M5の実装対象には含めない。
 
 初期の title 画像特徴量PoCでは、result `song_title` ROIを横長の濃淡サムネイル、エッジサムネイル、右側サフィックス寄りの濃淡/エッジサムネイル、dHashに変換する。参照はローカルmetadataの期待曲名を M4 `songs.title` へ一意解決できた result 素材から作る。比較時は同じ `organized_file` の参照を除外し、jacketで `ambiguous` になったsong_id集合内だけを対象にする。結果は `title_rerank_status`、title最上位候補、title距離、title参照元、title上位候補一覧として `jacket_match_candidates.csv` に出す。
 
