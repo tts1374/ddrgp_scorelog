@@ -50,6 +50,9 @@ high
   - M5 jacket match の対象境界は `confirmed_result=true` かつ `duplicate=false`。
   - `result_228` 以降はゼロ点リザルト連続素材で、`score:000000` の duplicate か、confirmed-events 境界外として扱われる。
   - したがって「ambiguous にならない」のではなく、保存候補評価対象に入っていない。追加 result は主に title line-hash 参照素材、追加 grid は jacket feature master 参照素材として効く。
+  - 代表例として New York EVOLVED は `result_228` Type A が `confirmed_result=false`、`result_231` Type B と `result_234` Type C が `duplicate=true` のため、通常のM5 jacket対象に入っていない。
+  - `song_select_225` Type A、`song_select_226` Type B、`song_select_227` Type C のgrid素材は jacket feature master 側の参照素材としては入っている。
+  - 現 duplicate key は `score:000000` が粗く、ゼロ点リザルトの別曲・別Typeを同一duplicateとして扱いやすい。保存候補境界を変えず、診断用出力で duplicate / unconfirmed も観察する。
 - title画像特徴量PoCの今回結果は `title_rerank_status_counts={"ambiguous_candidate": 3, "not_run": 57}`。
 - title OCR suffix診断の今回結果は `title_ocr_rerank_status_counts={"no_suffix": 3, "not_run": 57}`。
 - title line-hash辞書化後の今回結果は `title_linehash_dict_status_counts={"not_run": 57, "resolved_candidate": 3}`、`title_linehash_exact_status_counts={"no_exact_match": 3, "not_run": 57}`、`title_linehash_distance_status_counts={"not_run": 57, "resolved_candidate": 3}`。
@@ -116,6 +119,7 @@ M5内でまだ成功扱いにしないもの:
 - OCR結果、ジャケットPoC結果、title補助結果から曲ID/譜面IDを保存用に確定すること
 - ファジーマッチ結果、jacket `matched`、title画像 `resolved_candidate`、title OCR `resolved_candidate`、title line-hash `resolved_candidate` を本番採用済み照合として扱うこと
 - 未解決の曖昧一致や低確信度をDB保存可能として扱うこと
+- duplicate / unconfirmed を含める診断用M5出力を、保存候補や保存可否判定として扱うこと
 - `grand_prix_play_available=0` の曲を通常M5候補へ戻すこと
 - `artist` を曲名照合の一意主キーとして扱うこと
 - 同一ジャケット候補を画像特徴量だけで無理に一意化すること
@@ -128,19 +132,30 @@ M5内でまだ成功扱いにしないもの:
 
 - `docs/next-task.md` の更新だけ、または確認結果の記録だけで完了扱いにしない。
 - osaka TYPE1/2/3 は、jacket特徴量、result title画像特徴量、現行M3 title OCR入口では安定一意化できていないが、title line-hash辞書では候補集合内の `resolved_candidate` になり、`identity_signal_source=title_linehash_dict` として複合根拠の曲同定候補観測へ整理済み。この読み方はosakaやEVOLVED系専用ではなく、同一・類似ジャケットでタイトル側に分岐情報が出る曲群全般に適用する。
-- 次は公式GP可否フィルタ後に増えた `Inner Spirit -GIGA HiTECH MIX-` の `unresolved_ambiguous` と、`RЁVOLUTIФN` の `unresolved_not_found` を観察し、公式/Wiki/metadata表記差か、feature/line-hash表現問題かを分ける。
+- 次の実作業は、まず duplicate / unconfirmed も含める診断用M5出力を追加する。
+  - 通常の `jacket_match_candidates.csv` は保存候補境界のまま維持し、`confirmed_result=true` かつ `duplicate=false` だけを対象にする。
+  - 診断用出力は別ファイルにし、保存候補用CSVへ混ぜない。
+  - New York EVOLVED の `result_228` Type A、`result_231` Type B、`result_234` Type C が別物として観察できることを代表確認対象にする。
+  - tokyo EVOLVED、London EVOLVED、osaka EVOLVED など、ゼロ点連続素材や同一・類似ジャケット分岐も同じ診断出力で確認できるようにする。
+  - 診断出力の結果は保存OK/NGではなく、M5同定能力とduplicate/unconfirmed境界の観察材料として扱う。
+- その次に、公式GP可否フィルタ後に増えた `Inner Spirit -GIGA HiTECH MIX-` の `unresolved_ambiguous` と、`RЁVOLUTIФN` の `unresolved_not_found` を観察し、公式/Wiki/metadata表記差か、feature/line-hash表現問題かを分ける。
   - まずは `jacket_match_candidates.csv` の該当行、M4 `songs` の `official_availability_match`、ローカルmetadata期待値、result title ROIを突き合わせる。
   - 公式GP可否フィルタは維持し、GP対象外曲をM5候補へ戻さない。
   - 表記差を直す場合は、M4側のalias/official availability突合補助として扱い、M5の保存判定へ直結しない。
 - そのうえで `identity_signal_*` をM5の後続渡し出力としてさらに扱いやすくする実装を進める。
   - 例: `jacket_match_report.md` または新規M5レポートで、`jacket_resolved_candidate`、`composite_resolved_candidate`、`unresolved_*` を保存判定前の観測カテゴリとして代表行つきで確認できるようにする。
+  - 通常候補と duplicate / unconfirmed 診断候補は混ぜず、診断側の観測は保存候補外として明示する。
   - `identity_signal_status` は保存判定ではなく、M7以降へ渡す候補観測として読む。
   - `composite_resolved_candidate` はjacket単体より低いという意味ではなく、複合根拠で曲候補を1件示した観測として扱う。ただしDB保存可能や `jacket_match_status=matched` へ直結しない。
   - `title_linehash_distance_status` は参考列として扱い、`identity_signal_source` や主判断へ戻さない。
   - 参照は引き続き result素材のみ。song_select 側タイトル表示ROIは使わない。
   - jacketで `ambiguous` になったsong_id集合内だけを対象にし、候補集合外から曲を拾わない。
 - `jacket_match_candidates.csv` の `identity_signal_*`、`expected_jacket_distance` / `expected_jacket_rank` / `jacket_top_margin`、`title_top_candidates`、`title_ocr_text`、`title_ocr_rerank_status`、`title_linehash_*` を見て、しきい値問題か特徴量/OCR/line-hash表現問題か、またはM5後続渡し語彙の整理問題かを分ける。
-- New York / tokyo / London EVOLVED など、通常のM5保存候補境界に入っていない同一・類似ジャケット分岐を result単体で観察したい場合は、保存候補境界を変えずに、別の診断出力として duplicate / unconfirmed を含む観察モードを検討する。保存候補用 `jacket_match_candidates.csv` に混ぜない。
+- 最後にM5の語彙を固定する。
+  - `matched` はPoC信号上の一意候補であり、保存OKではない。
+  - `composite_resolved_candidate` は複合根拠で候補1件を示した観測であり、保存OKではない。
+  - duplicate / unconfirmed 診断結果は保存候補ではない。
+  - 保存OK/NG、低信頼度ログ、人手確認キュー、個人スコアDB書き込みはM7以降で決める。
 - 大きなOCR方式刷新やROI座標定義の大変更には進まない。
 - スコア/判定数のTesseract離脱や数字テンプレート認識は後続タスクとして扱い、今回の実作業には含めない。
 - `docs/next-task.md` の更新は、実作業と検証が終わった後の引き継ぎ更新として行う。
