@@ -37,6 +37,7 @@ PUNCTUATION_TO_DROP = frozenset(
 )
 MIN_CONTAINMENT_MATCH_LENGTH = 5
 TOP_CANDIDATE_REPORT_LIMIT = 5
+JACKET_REPORT_REPRESENTATIVE_LIMIT = 3
 JACKET_THUMBNAIL_SIZE = (16, 16)
 JACKET_DHASH_SIZE = 8
 TITLE_THUMBNAIL_SIZE = (96, 16)
@@ -1743,6 +1744,142 @@ def write_master_match_report(
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def markdown_code_cell(value: object) -> str:
+    text = str(value or "").replace("|", "\\|")
+    return f"`{text}`"
+
+
+def jacket_report_top_candidate(row: dict[str, str]) -> str:
+    top_text = row.get("top_title", "")
+    if row.get("top_artist"):
+        top_text = f"{top_text} / {row['top_artist']}"
+    return top_text
+
+
+def representative_rows_by_field(
+    rows: Iterable[dict[str, str]],
+    field_name: str,
+    *,
+    limit_per_value: int = JACKET_REPORT_REPRESENTATIVE_LIMIT,
+    value_order: tuple[str, ...] = (),
+) -> list[dict[str, str]]:
+    counts: dict[str, int] = {}
+    representatives_by_value: dict[str, list[dict[str, str]]] = {}
+    first_seen_values: list[str] = []
+    for row in rows:
+        value = row.get(field_name, "")
+        if not value:
+            continue
+        current_count = counts.get(value, 0)
+        if current_count >= limit_per_value:
+            continue
+        if value not in counts:
+            first_seen_values.append(value)
+        counts[value] = current_count + 1
+        representatives_by_value.setdefault(value, []).append(row)
+
+    ordered_values = [
+        value for value in value_order if value in representatives_by_value
+    ]
+    ordered_values.extend(
+        value
+        for value in first_seen_values
+        if value not in set(ordered_values)
+    )
+    representatives: list[dict[str, str]] = []
+    for value in ordered_values:
+        representatives.extend(representatives_by_value[value])
+    return representatives
+
+
+def append_identity_signal_representatives(
+    lines: list[str],
+    row_list: list[dict[str, str]],
+) -> None:
+    lines.extend(
+        [
+            "",
+            "## Identity Signal Representatives",
+            "",
+            "| identity signal | organized_file | expected title | jacket status | "
+            "top candidate | reason |",
+            "|---|---|---|---|---|---|",
+        ]
+    )
+    representatives = representative_rows_by_field(row_list, "identity_signal_status")
+    if not representatives:
+        lines.append("|  |  |  |  |  |  |")
+        return
+    for row in representatives:
+        identity_signal = " / ".join(
+            value
+            for value in (
+                row.get("identity_signal_status", ""),
+                row.get("identity_signal_source", ""),
+            )
+            if value
+        )
+        reason = row.get("identity_signal_reason") or row.get("failure_reason", "")
+        lines.append(
+            f"| {markdown_code_cell(identity_signal)} | "
+            f"{markdown_code_cell(row.get('organized_file', ''))} | "
+            f"{markdown_code_cell(row.get('expected_song_title', ''))} | "
+            f"{markdown_code_cell(row.get('jacket_match_status', ''))} | "
+            f"{markdown_code_cell(jacket_report_top_candidate(row))} | "
+            f"{markdown_code_cell(reason)} |"
+        )
+
+
+def append_boundary_representatives(
+    lines: list[str],
+    row_list: list[dict[str, str]],
+) -> None:
+    lines.extend(
+        [
+            "",
+            "## Boundary Representatives",
+            "",
+            "| boundary | event | duplicate | organized_file | expected title | "
+            "jacket status | identity signal | top candidate | reason |",
+            "|---|---|---|---|---|---|---|---|---|",
+        ]
+    )
+    representatives = representative_rows_by_field(
+        row_list,
+        "m5_target_boundary_reason",
+        value_order=(
+            "save_candidate",
+            "unconfirmed",
+            "duplicate",
+            "metadata_result_not_candidate",
+        ),
+    )
+    if not representatives:
+        lines.append("|  |  |  |  |  |  |  |  |  |")
+        return
+    for row in representatives:
+        identity_signal = " / ".join(
+            value
+            for value in (
+                row.get("identity_signal_status", ""),
+                row.get("identity_signal_source", ""),
+            )
+            if value
+        )
+        reason = row.get("identity_signal_reason") or row.get("failure_reason", "")
+        lines.append(
+            f"| {markdown_code_cell(row.get('m5_target_boundary_reason', ''))} | "
+            f"{markdown_code_cell(row.get('event_type', ''))} | "
+            f"{markdown_code_cell(row.get('duplicate', ''))} | "
+            f"{markdown_code_cell(row.get('organized_file', ''))} | "
+            f"{markdown_code_cell(row.get('expected_song_title', ''))} | "
+            f"{markdown_code_cell(row.get('jacket_match_status', ''))} | "
+            f"{markdown_code_cell(identity_signal)} | "
+            f"{markdown_code_cell(jacket_report_top_candidate(row))} | "
+            f"{markdown_code_cell(reason)} |"
+        )
+
+
 def write_jacket_match_report(
     path: Path,
     rows: Iterable[dict[str, str]],
@@ -1779,13 +1916,18 @@ def write_jacket_match_report(
         f"- identity_signal_source: "
         f"`{json.dumps(summary['identity_signal_source_counts'], sort_keys=True)}`",
         f"- failure_reason: `{json.dumps(summary['failure_reason_counts'], sort_keys=True)}`",
-        "",
-        "## Candidate Rows",
-        "",
-        "| organized_file | status | chart | top candidate | score | distance | "
-        "expected rank | margin | identity signal | reason |",
-        "|---|---|---|---|---|---|---|---|---|---|",
     ]
+    append_identity_signal_representatives(lines, row_list)
+    lines.extend(
+        [
+            "",
+            "## Candidate Rows",
+            "",
+            "| organized_file | status | chart | top candidate | score | distance | "
+            "expected rank | margin | identity signal | reason |",
+            "|---|---|---|---|---|---|---|---|---|---|",
+        ]
+    )
     for row in row_list[:20]:
         chart_text = " ".join(
             value
@@ -1796,9 +1938,7 @@ def write_jacket_match_report(
             )
             if value
         )
-        top_text = row["top_title"]
-        if row["top_artist"]:
-            top_text = f"{top_text} / {row['top_artist']}"
+        top_text = jacket_report_top_candidate(row)
         lines.append(
             f"| `{row['organized_file']}` | `{row['jacket_match_status']}` | "
             f"`{chart_text}` | `{top_text}` | `{row['top_score']}` | "
@@ -1866,17 +2006,21 @@ def write_jacket_match_diagnostic_report(
         f"- identity_signal_source: "
         f"`{json.dumps(summary['identity_signal_source_counts'], sort_keys=True)}`",
         f"- failure_reason: `{json.dumps(summary['failure_reason_counts'], sort_keys=True)}`",
-        "",
-        "## Diagnostic Rows",
-        "",
-        "| organized_file | boundary | event | duplicate | status | top candidate | "
-        "identity signal | reason |",
-        "|---|---|---|---|---|---|---|---|",
     ]
+    append_boundary_representatives(lines, row_list)
+    append_identity_signal_representatives(lines, row_list)
+    lines.extend(
+        [
+            "",
+            "## Diagnostic Rows",
+            "",
+            "| organized_file | boundary | event | duplicate | status | top candidate | "
+            "identity signal | reason |",
+            "|---|---|---|---|---|---|---|---|",
+        ]
+    )
     for row in row_list[:30]:
-        top_text = row["top_title"]
-        if row["top_artist"]:
-            top_text = f"{top_text} / {row['top_artist']}"
+        top_text = jacket_report_top_candidate(row)
         lines.append(
             f"| `{row['organized_file']}` | "
             f"`{row.get('m5_target_boundary_reason', '')}` | "

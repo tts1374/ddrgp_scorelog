@@ -32,6 +32,8 @@ python -m pip install -e ".[vision]"
 
 `--m5-jacket-match` 指定時は、通常の保存候補出力 `jacket_match_candidates.csv` / summary / Markdown に加えて、`jacket_match_diagnostics.csv`、`jacket_match_diagnostics_summary.json`、`jacket_match_diagnostics.md` も生成します。通常候補は引き続き `confirmed_result=true` かつ `duplicate=false` のM3保存候補だけを対象にします。診断出力は別ファイルで、metadata上のresult行、未確定result、duplicateを含め、`m5_target_boundary_reason` で `save_candidate` / `unconfirmed` / `duplicate` などを分けます。診断行の曲名と譜面3項目はローカルmetadata期待値を `metadata-expected-diagnostic` として使う観察用入力であり、保存候補への昇格やDB保存可能判定を意味しません。
 
+`jacket_match_report.md` は `identity_signal_status` ごとの代表行を出し、通常候補内の `jacket_resolved_candidate`、`composite_resolved_candidate`、`unresolved_*` を保存判定前の観測カテゴリとして確認できます。`jacket_match_diagnostics.md` は `m5_target_boundary_reason` ごとの代表行も出し、`save_candidate` / `unconfirmed` / `duplicate` を同じ診断レポート内で観察できます。どちらの代表行もMarkdown上の読みやすさのための抜粋であり、保存候補CSVの境界やDB保存可否を変えません。
+
 この既定実行は metadata 評価モードです。`samples/screenshots/metadata.csv` の並びをフレーム順として扱いますが、キャプチャ時刻は持たないため、`result_events.csv` の `timestamp_ms` と `candidate_duration_ms` は空欄、`confirmation_mode` は `frames` になります。
 
 入力モードの役割は以下です。
@@ -333,6 +335,8 @@ python -m tools.vision_poc --m3-song-artist-ocr --m5-master-match --m5-jacket-ma
 ```
 
 `jacket_match_candidates.csv` は候補曲数、候補譜面数、候補特徴量数、最上位候補、score、distance、参照元grid画像、上位候補一覧、期待曲名、期待song_id、期待song_idの距離、期待song_idの順位、最上位と次点songの距離差、title画像特徴量補助、title OCR suffix補助、title line-hash補助、後続保存判定へ渡すM5候補観測 `identity_signal_*`、`jacket_match_status`、`failure_reason` を出します。期待値由来の診断列はローカルmetadataに対する観察であり、保存可能判定には使いません。`jacket_match_status` は `matched` / `ambiguous` / `not_found` / `insufficient_input` / `missing_feature` です。ここでの `matched` もPoC上の一意候補であり、保存可能、本番採用済み照合、曲ID/譜面ID確定を意味しません。特徴量マスタはローカル素材由来の `data/` 出力であり、画像本体やmetadata実体はGit管理しません。
+
+`jacket_match_report.md` の `Identity Signal Representatives` は、通常候補CSVの行から `identity_signal_status` ごとに数件だけ抜き出した観察補助です。通常候補60件の境界は変えず、未解決代表を探すときはこの表から `jacket_match_candidates.csv` の該当 `organized_file` へ戻って確認します。
 
 `identity_signal_*` はM5からM7以降の保存判定へ渡すための候補観測列です。`identity_signal_status=jacket_resolved_candidate` はjacket特徴量単体のPoC一意候補、`identity_signal_status=composite_resolved_candidate` はjacket候補集合にtitle補助を合わせると候補集合内で1件を示した状態です。`identity_signal_source` は `jacket_feature` / `title_linehash_dict` / `title_ocr_suffix` / `title_image_feature` のいずれかです。これらは保存可能、曲ID/譜面ID確定、本番採用済み照合を意味しません。`jacket_match_status=ambiguous` は title補助で候補が出ても `matched` へ昇格しません。
 

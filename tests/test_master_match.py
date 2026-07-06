@@ -638,25 +638,54 @@ def test_write_jacket_match_outputs_records_observation_scope(tmp_path: Path) ->
             "failure_reason": "",
         }
     ]
+    rows.append(
+        {
+            **rows[0],
+            "organized_file": "organized/result/result_ambiguous.png",
+            "expected_song_title": "OSAKA TYPE2",
+            "expected_song_id": "song_type2",
+            "top_song_id": "song_type1",
+            "top_chart_id": "chart_type1_single_challenge",
+            "top_title": "OSAKA TYPE1",
+            "top_artist": "Unit O",
+            "top_score": "1.0000",
+            "top_distance": "0.0000",
+            "expected_jacket_rank": "2",
+            "jacket_top_margin": "0.0000",
+            "identity_signal_status": "unresolved_ambiguous",
+            "identity_signal_source": "",
+            "identity_signal_song_id": "",
+            "identity_signal_chart_id": "",
+            "identity_signal_title": "",
+            "identity_signal_reason": "jacket_ambiguous_without_title_resolution",
+            "jacket_match_status": "ambiguous",
+            "failure_reason": "near_top_distance",
+        }
+    )
 
     summary = master_match.write_jacket_match_outputs(tmp_path, rows)
 
     assert summary["scope"] == "M5 jacket match PoC"
     assert summary["status_counts"]["matched"] == 1
+    assert summary["status_counts"]["ambiguous"] == 1
     assert "missing_feature" in summary["status_vocabulary"]
     assert (tmp_path / "jacket_match_candidates.csv").exists()
     assert json.loads((tmp_path / "jacket_match_summary.json").read_text(encoding="utf-8")) == (
         summary
     )
-    assert summary["title_rerank_status_counts"]["not_run"] == 1
-    assert summary["title_ocr_rerank_status_counts"]["not_run"] == 1
-    assert summary["title_linehash_dict_status_counts"]["not_run"] == 1
-    assert summary["title_linehash_exact_status_counts"]["not_run"] == 1
-    assert summary["title_linehash_distance_status_counts"]["not_run"] == 1
+    assert summary["title_rerank_status_counts"]["not_run"] == 2
+    assert summary["title_ocr_rerank_status_counts"]["not_run"] == 2
+    assert summary["title_linehash_dict_status_counts"]["not_run"] == 2
+    assert summary["title_linehash_exact_status_counts"]["not_run"] == 2
+    assert summary["title_linehash_distance_status_counts"]["not_run"] == 2
     assert summary["identity_signal_status_counts"]["jacket_resolved_candidate"] == 1
+    assert summary["identity_signal_status_counts"]["unresolved_ambiguous"] == 1
     assert summary["identity_signal_source_counts"]["jacket_feature"] == 1
     report = (tmp_path / "jacket_match_report.md").read_text(encoding="utf-8")
     assert "DB保存可能や本番採用済み照合ではありません" in report
+    assert "## Identity Signal Representatives" in report
+    assert "organized/result/result_ambiguous.png" in report
+    assert "jacket_ambiguous_without_title_resolution" in report
     assert "identity_signal_*" in report
 
 
@@ -740,13 +769,44 @@ def test_write_jacket_match_diagnostic_outputs_keep_boundary_context(
             "failure_reason": "",
         }
     ]
+    rows.append(
+        {
+            **rows[0],
+            "m5_target_boundary_reason": "save_candidate",
+            "event_type": "confirmed",
+            "confirmed_result": "True",
+            "duplicate": "False",
+            "frame_index": "2",
+            "organized_file": "organized/result/result_save_candidate.png",
+        }
+    )
+    rows.append(
+        {
+            **rows[0],
+            "m5_target_boundary_reason": "unconfirmed",
+            "event_type": "none",
+            "confirmed_result": "False",
+            "duplicate": "False",
+            "frame_index": "1",
+            "organized_file": "organized/result/result_unconfirmed.png",
+            "identity_signal_status": "composite_resolved_candidate",
+            "identity_signal_source": "title_linehash_dict",
+            "identity_signal_reason": "jacket_ambiguous_title_linehash_dict_resolved",
+            "jacket_match_status": "ambiguous",
+            "failure_reason": "near_top_distance",
+        }
+    )
 
     summary = master_match.write_jacket_match_diagnostic_outputs(tmp_path, rows)
 
     assert summary["scope"] == "M5 jacket match diagnostic PoC"
-    assert summary["m5_target_boundary_reason_counts"] == {"duplicate": 1}
-    assert summary["event_type_counts"] == {"duplicate": 1}
-    assert summary["duplicate_counts"] == {"True": 1}
+    assert summary["m5_target_boundary_reason_counts"] == {
+        "duplicate": 1,
+        "save_candidate": 1,
+        "unconfirmed": 1,
+    }
+    assert summary["event_type_counts"] == {"confirmed": 1, "duplicate": 1, "none": 1}
+    assert summary["duplicate_counts"] == {"False": 2, "True": 1}
     assert (tmp_path / "jacket_match_diagnostics.csv").exists()
     assert json.loads(
         (tmp_path / "jacket_match_diagnostics_summary.json").read_text(
@@ -755,3 +815,8 @@ def test_write_jacket_match_diagnostic_outputs_keep_boundary_context(
     ) == summary
     report = (tmp_path / "jacket_match_diagnostics.md").read_text(encoding="utf-8")
     assert "保存OK/NG判定として扱いません" in report
+    assert "## Boundary Representatives" in report
+    assert "organized/result/result_save_candidate.png" in report
+    assert "organized/result/result_unconfirmed.png" in report
+    assert "organized/result/result_zero_score.png" in report
+    assert "## Identity Signal Representatives" in report

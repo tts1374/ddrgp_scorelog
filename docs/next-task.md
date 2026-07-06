@@ -26,17 +26,26 @@ high
   - `m5_target_boundary_reason` は `save_candidate` / `unconfirmed` / `duplicate` / `metadata_result_not_candidate` を使う。
   - 診断行の曲名と `play_style` / `difficulty` / `level` はローカルmetadata期待値を `metadata-expected-diagnostic` として使う。これはM5同定能力とイベント境界の観察用で、保存候補への昇格やDB保存可能判定ではない。
 - `tools/vision_poc/README.md` と `docs/design/09_master_match_poc.md` に、通常候補と診断候補を混ぜない読み方を追記した。
+- M5 jacket Markdownレポートに代表行セクションを追加した。
+  - `jacket_match_report.md` に `Identity Signal Representatives` を追加し、通常候補60件の `jacket_resolved_candidate` / `composite_resolved_candidate` / `unresolved_*` を代表行つきで確認できる。
+  - `jacket_match_diagnostics.md` に `Boundary Representatives` を追加し、`save_candidate` / `unconfirmed` / `duplicate` を同じ診断レポートで観察できる。表示順は `save_candidate`、`unconfirmed`、`duplicate`、`metadata_result_not_candidate` を優先する。
+  - 代表行はMarkdown上の観察補助であり、通常候補CSVの境界、`jacket_match_status`、保存OK/NG、DB保存可否は変えない。
 - テストを追加した。
   - `tests/test_vision_poc_result_events.py`: M5 jacket診断入力行が未確定result、保存候補、duplicateを含み、metadata期待値を診断入力として渡すこと。
   - `tests/test_master_match.py`: 診断出力 writer が境界context、summary、別CSV/Markdownを生成すること。
+  - `tests/test_master_match.py`: 通常候補レポートの `Identity Signal Representatives` と診断レポートの `Boundary Representatives` / `Identity Signal Representatives` を固定すること。
 - 2026-07-06の今回検証では、M4 DBは 1282 songs / 9594 charts / source_snapshots 2件。
-  - Wiki source hash は `587d4606d8591c1829b85d73e42f63f6aab8b1f0859602682af5faec281ef9fe`。
-  - 公式収録曲一覧 source hash は `8997875913458252d12f8cbf7aadc92d85ef5f669dde424763a84c742e8cf043`。
+  - Wiki source hash は `2518be81691192ffd76c89d36f96c513bd5e5b01f88295ddc7e8b08654b8953e`。
+  - 公式収録曲一覧 source hash は `2509cd8bb140aa2a587d6574ef7d900cec987394dbdd042e0ee149c1f4bbaee5`。
   - `grand_prix_play_available_song_count=1180`、`free_play_available_song_count=64`、`official_availability_matched_song_count=1180`。
+- 2026-07-06の今回検証では、M5 jacket feature master は `target_count=68` / `accepted=68`。
 - 今回の M5 jacket通常候補結果は60件で、従来境界を維持している。
   - `jacket_match_status_counts={"ambiguous": 4, "insufficient_input": 0, "matched": 55, "missing_feature": 0, "not_found": 1}`
   - `identity_signal_status_counts={"composite_resolved_candidate": 3, "jacket_resolved_candidate": 55, "unresolved_ambiguous": 1, "unresolved_not_found": 1}`
   - `identity_signal_source_counts={"jacket_feature": 55, "title_linehash_dict": 3}`
+- 通常候補の未解決代表は以下。
+  - `Inner Spirit -GIGA HiTECH MIX-`: `organized/result/result_054_sp_difficult_lv11_inner_spirit_giga_hitech_mix_score990270.png`、`identity_signal_status=unresolved_ambiguous`、`jacket_match_status=ambiguous`、`title_linehash_dict_status=no_dict_match`、`title_linehash_dict_top_title=London EVOLVED ver.A`。
+  - `RЁVOLUTIФN`: `organized/result/result_085_sp_expert_lv17_revolution_score882780.png`、`identity_signal_status=unresolved_not_found`、`jacket_match_status=not_found`、`failure_reason=above_distance_threshold`、`expected_song_id` は空。
 - 今回の M5 jacket診断結果は118件。
   - `event_type_counts={"confirmed": 60, "duplicate": 37, "none": 21}`
   - `m5_target_boundary_reason_counts={"duplicate": 37, "save_candidate": 60, "unconfirmed": 21}`
@@ -117,16 +126,15 @@ M5内でまだ成功扱いにしないもの:
 ## 次に必ず進める実作業
 
 - `docs/next-task.md` の更新だけ、または確認結果の記録だけで完了扱いにしない。
-- まず今回追加した `jacket_match_diagnostics.csv` を使い、通常候補60件と診断118件を混同せずに読むレポート強化または観察整理を進める。
-  - 例: `jacket_match_report.md` または `jacket_match_diagnostics.md` に、`save_candidate` / `unconfirmed` / `duplicate` 別の代表行を追加する。
+- まず今回追加した `jacket_match_report.md` の `Identity Signal Representatives` と `jacket_match_diagnostics.md` の `Boundary Representatives` を入口に、通常候補60件と診断118件を混同せずに読む。
   - New York EVOLVED の Type A/B/C が診断CSVで別行として観察できる状態は維持する。
   - London EVOLVED ver.B の `result_254` / `result_255` は、line-hash参照やmetadataラベルの目視確認対象として扱う。保存候補化やしきい値変更へ直結しない。
-- その次に、通常候補側で残る `Inner Spirit -GIGA HiTECH MIX-` の `unresolved_ambiguous` と、`RЁVOLUTIФN` の `unresolved_not_found` を観察する。
+- 次に、通常候補側で残る `Inner Spirit -GIGA HiTECH MIX-` の `unresolved_ambiguous` と、`RЁVOLUTIФN` の `unresolved_not_found` を観察する。
   - `jacket_match_candidates.csv` の該当行、M4 `songs.official_availability_match`、ローカルmetadata期待値、result title ROIを突き合わせる。
   - 公式GP可否フィルタは維持し、GP対象外曲をM5候補へ戻さない。
   - 表記差を直す場合はM4側のalias/official availability突合補助として扱い、M5保存判定へ直結しない。
-- そのうえで `identity_signal_*` をM5の後続渡し出力としてさらに扱いやすくする実装を進める。
-  - `jacket_resolved_candidate`、`composite_resolved_candidate`、`unresolved_*` を保存判定前の観測カテゴリとして代表行つきで確認できるようにする。
+- そのうえで、観察結果に応じて `identity_signal_*` をM5の後続渡し出力としてさらに扱いやすくする実装を進める。
+  - 例: unresolved専用の代表表、expected song未解決理由、M4 official availability突合状態、line-hash参照元の表示など。ただし保存判定や候補昇格へは進めない。
   - 通常候補と duplicate / unconfirmed 診断候補は混ぜず、診断側の観測は保存候補外として明示する。
   - `composite_resolved_candidate` は複合根拠で曲候補を1件示した観測であり、DB保存可能や `jacket_match_status=matched` への昇格ではない。
   - `title_linehash_distance_status` は参考列のまま維持し、`identity_signal_source` や主判断へ戻さない。
@@ -158,6 +166,8 @@ Get-Content data\master_match_poc_jacket\jacket_feature_master_summary.json
 Get-Content data\master_match_poc_jacket\jacket_match_summary.json
 Get-Content data\master_match_poc_jacket\jacket_match_diagnostics_summary.json
 Get-Content data\master_match_poc_ocr\m3_song_artist_ocr_entry_failures_summary.json
+Select-String -Path data\master_match_poc_jacket\jacket_match_report.md -Pattern "Identity Signal Representatives" -Context 0,8
+Select-String -Path data\master_match_poc_jacket\jacket_match_diagnostics.md -Pattern "Boundary Representatives|Identity Signal Representatives" -Context 0,12
 python -m tools.vision_poc --no-ocr
 python -m ruff check master tools\vision_poc pyproject.toml tests
 python -m compileall master tools\vision_poc
