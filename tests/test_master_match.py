@@ -37,9 +37,14 @@ def write_fixture_master_db(tmp_path: Path) -> Path:
             """
             INSERT INTO songs (
               song_id, title, artist, version, source_version, bpm, category,
-              movie_stage, availability, notes, created_at, updated_at
+              movie_stage, availability, free_play_available,
+              grand_prix_play_available, official_availability_match,
+              notes, created_at, updated_at
             )
-            VALUES (?, ?, ?, 'fixture', 'fixture', '', 'fixture', '', '', '', ?, ?)
+            VALUES (
+              ?, ?, ?, 'fixture', 'fixture', '', 'fixture', '', '',
+              1, 1, 'fixture', '', ?, ?
+            )
             """,
             [
                 (song_id, title, artist, generated_at, generated_at)
@@ -154,6 +159,32 @@ def test_chart_filter_normalizes_m3_chart_fields() -> None:
         "DIFFICULT",
         9,
     )
+
+
+def test_load_chart_candidates_filters_to_grand_prix_available_songs(
+    tmp_path: Path,
+) -> None:
+    db_path = write_fixture_master_db(tmp_path)
+    with sqlite3.connect(db_path) as connection:
+        connection.execute(
+            """
+            UPDATE songs
+            SET grand_prix_play_available = 0
+            WHERE song_id = 'song_type3'
+            """
+        )
+
+    candidates = master_match.load_chart_candidates(
+        db_path,
+        play_style="SINGLE",
+        difficulty="CHALLENGE",
+        level=10,
+    )
+
+    assert {candidate.song_id for candidate in candidates} == {
+        "song_type1",
+        "song_type2",
+    }
 
 
 def test_title_similarity_only_boosts_master_title_inside_ocr_text() -> None:

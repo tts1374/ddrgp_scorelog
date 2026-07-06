@@ -54,13 +54,37 @@ def inspect_master_database(db_path: Path) -> dict[str, Any]:
         raise ValueError("master_metadata song_count does not match songs table")
     if metadata.get("chart_count") != str(chart_count):
         raise ValueError("master_metadata chart_count does not match charts table")
-    if snapshot_count != 1:
-        raise ValueError("generated database must contain exactly one source snapshot")
-    snapshot_source_url, snapshot_content_hash, snapshot_parser_version = snapshot_rows[0]
+    if snapshot_count not in {1, 2}:
+        raise ValueError("generated database must contain one or two source snapshots")
+
+    snapshots_by_url = {row[0]: row for row in snapshot_rows}
+    source_url = metadata.get("source_url")
+    if source_url not in snapshots_by_url:
+        raise ValueError("master_metadata source_url does not match source snapshot")
+    snapshot_source_url, snapshot_content_hash, snapshot_parser_version = snapshots_by_url[
+        source_url
+    ]
     if metadata.get("source_hash") != snapshot_content_hash:
         raise ValueError("master_metadata source_hash does not match source snapshot")
-    if metadata.get("source_url") != snapshot_source_url:
-        raise ValueError("master_metadata source_url does not match source snapshot")
+
+    official_source_url = metadata.get("official_source_url")
+    official_source_hash = metadata.get("official_source_hash")
+    official_snapshot_source_hash = None
+    official_snapshot_parser_version = None
+    if official_source_url or official_source_hash:
+        if not official_source_url or not official_source_hash:
+            raise ValueError("official source metadata must include URL and hash")
+        if official_source_url not in snapshots_by_url:
+            raise ValueError(
+                "master_metadata official_source_url does not match source snapshot"
+            )
+        _url, official_snapshot_source_hash, official_snapshot_parser_version = (
+            snapshots_by_url[official_source_url]
+        )
+        if official_source_hash != official_snapshot_source_hash:
+            raise ValueError(
+                "master_metadata official_source_hash does not match source snapshot"
+            )
 
     return {
         "database": str(db_path),
@@ -71,6 +95,17 @@ def inspect_master_database(db_path: Path) -> dict[str, Any]:
         "snapshot_source_hash": snapshot_content_hash,
         "snapshot_source_url": snapshot_source_url,
         "snapshot_parser_version": snapshot_parser_version,
+        "official_source_hash": official_source_hash,
+        "official_snapshot_source_hash": official_snapshot_source_hash,
+        "official_source_url": official_source_url,
+        "official_snapshot_parser_version": official_snapshot_parser_version,
+        "free_play_available_song_count": metadata.get("free_play_available_song_count"),
+        "grand_prix_play_available_song_count": metadata.get(
+            "grand_prix_play_available_song_count"
+        ),
+        "official_availability_matched_song_count": metadata.get(
+            "official_availability_matched_song_count"
+        ),
         "master_version": metadata.get("master_version"),
         "source_url": metadata.get("source_url"),
         "generated_at": metadata.get("generated_at"),

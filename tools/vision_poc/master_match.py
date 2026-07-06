@@ -229,6 +229,7 @@ def load_chart_candidates(
             WHERE c.play_style = ?
               AND c.difficulty = ?
               AND c.level = ?
+              AND s.grand_prix_play_available = 1
             ORDER BY s.title, s.artist, c.chart_id
             """,
             (play_style, difficulty, level),

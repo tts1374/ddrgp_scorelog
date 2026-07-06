@@ -4,6 +4,7 @@ import argparse
 import hashlib
 import re
 import sqlite3
+import unicodedata
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -15,7 +16,8 @@ SOURCE_URL = (
     "https://bemaniwiki.com/index.php?"
     "DanceDanceRevolution+GRAND+PRIX/%E5%85%A8%E6%9B%B2%E3%83%AA%E3%82%B9%E3%83%88"
 )
-PARSER_VERSION = "m4-initial-html-table-v2"
+OFFICIAL_MUSIC_LIST_URL = "https://p.eagate.573.jp/game/eacddr/konaddr/info/mlist.html"
+PARSER_VERSION = "m4-initial-html-table-v3"
 DIFFICULTIES_BY_STYLE = {
     "SINGLE": ("BEGINNER", "BASIC", "DIFFICULT", "EXPERT", "CHALLENGE"),
     "DOUBLE": ("BASIC", "DIFFICULT", "EXPERT", "CHALLENGE"),
@@ -34,6 +36,9 @@ class MasterSong:
     movie_stage: str
     availability: str
     notes: str
+    free_play_available: bool = False
+    grand_prix_play_available: bool = False
+    official_availability_match: str = "not_checked"
 
 
 @dataclass(frozen=True)
@@ -60,10 +65,19 @@ class SourceSnapshot:
 
 
 @dataclass(frozen=True)
+class OfficialSongAvailability:
+    title: str
+    artist: str
+    free_play_available: bool
+    grand_prix_play_available: bool
+
+
+@dataclass(frozen=True)
 class MasterBuild:
     songs: tuple[MasterSong, ...]
     charts: tuple[MasterChart, ...]
     snapshot: SourceSnapshot
+    official_snapshot: SourceSnapshot | None = None
 
 
 def normalize_text(value: str) -> str:
@@ -76,6 +90,11 @@ def normalize_table_cell_text(cell) -> str:
         if re.fullmatch(r"\*\d+", anchor.get_text(strip=True)):
             anchor.decompose()
     return normalize_text(cell_copy.get_text(" ", strip=True))
+
+
+def normalize_availability_key(value: str) -> str:
+    normalized = unicodedata.normalize("NFKC", normalize_text(value)).casefold()
+    return "".join(char for char in normalized if not char.isspace())
 
 
 def stable_id(prefix: str, *parts: str) -> str:
@@ -237,11 +256,119 @@ def parse_song_list_rows(rows: list[list[str]]) -> tuple[list[MasterSong], list[
     return songs, charts
 
 
+def parse_official_music_list_html(html: str) -> tuple[OfficialSongAvailability, ...]:
+    soup = parse_soup(html)
+    entries: dict[tuple[str, str], OfficialSongAvailability] = {}
+
+    for table in soup.find_all("table"):
+        rows = expanded_table_rows(table)
+        if not rows:
+            continue
+        header = rows[0]
+        if "タイトル" not in header or "アーティスト" not in header:
+            continue
+        if "グランプリプレー" not in header:
+            continue
+        title_index = header.index("タイトル")
+        artist_index = header.index("アーティスト")
+        grand_prix_index = header.index("グランプリプレー")
+        free_play_index = header.index("フリープレー") if "フリープレー" in header else None
+
+        for row in rows[1:]:
+            if len(row) <= max(title_index, artist_index, grand_prix_index):
+                continue
+            title = normalize_text(row[title_index])
+            artist = normalize_text(row[artist_index])
+            if not title:
+                continue
+            free_play_available = (
+                False
+                if free_play_index is None or len(row) <= free_play_index
+                else "〇" in row[free_play_index]
+            )
+            grand_prix_play_available = "〇" in row[grand_prix_index]
+            key = (normalize_availability_key(title), normalize_availability_key(artist))
+            previous = entries.get(key)
+            entries[key] = OfficialSongAvailability(
+                title=title,
+                artist=artist,
+                free_play_available=free_play_available
+                or (previous.free_play_available if previous is not None else False),
+                grand_prix_play_available=grand_prix_play_available
+                or (
+                    previous.grand_prix_play_available
+                    if previous is not None
+                    else False
+                ),
+            )
+
+    if not entries:
+        raise ValueError("official music list did not produce availability rows")
+    return tuple(entries.values())
+
+
+def apply_official_availability(
+    songs: tuple[MasterSong, ...],
+    availability_entries: tuple[OfficialSongAvailability, ...],
+) -> tuple[MasterSong, ...]:
+    by_title_artist = {
+        (
+            normalize_availability_key(entry.title),
+            normalize_availability_key(entry.artist),
+        ): entry
+        for entry in availability_entries
+        if entry.artist
+    }
+    by_title: dict[str, list[OfficialSongAvailability]] = {}
+    for entry in availability_entries:
+        by_title.setdefault(normalize_availability_key(entry.title), []).append(entry)
+
+    updated_songs: list[MasterSong] = []
+    for song in songs:
+        title_key = normalize_availability_key(song.title)
+        artist_key = normalize_availability_key(song.artist)
+        entry = by_title_artist.get((title_key, artist_key))
+        match_status = "title_artist"
+        if entry is None:
+            title_matches = by_title.get(title_key, [])
+            if len(title_matches) == 1:
+                entry = title_matches[0]
+                match_status = "unique_title"
+            elif title_matches:
+                match_status = "ambiguous_title"
+            else:
+                match_status = "not_found"
+        updated_songs.append(
+            MasterSong(
+                song_id=song.song_id,
+                title=song.title,
+                artist=song.artist,
+                version=song.version,
+                source_version=song.source_version,
+                bpm=song.bpm,
+                category=song.category,
+                movie_stage=song.movie_stage,
+                availability=song.availability,
+                free_play_available=(
+                    False if entry is None else entry.free_play_available
+                ),
+                grand_prix_play_available=(
+                    False if entry is None else entry.grand_prix_play_available
+                ),
+                official_availability_match=match_status,
+                notes=song.notes,
+            )
+        )
+    return tuple(updated_songs)
+
+
 def parse_master_html(
     html: str,
     *,
     source_url: str = SOURCE_URL,
     fetched_at: str | None = None,
+    official_html: str | None = None,
+    official_source_url: str = OFFICIAL_MUSIC_LIST_URL,
 ) -> MasterBuild:
     soup = parse_soup(html)
     songs_by_id: dict[str, MasterSong] = {}
@@ -277,10 +404,25 @@ def parse_master_html(
         parser_version=PARSER_VERSION,
         html_content=html,
     )
+    official_snapshot = None
+    songs = tuple(songs_by_id.values())
+    if official_html is not None:
+        official_snapshot = SourceSnapshot(
+            source_url=official_source_url,
+            fetched_at=fetched_at or datetime.now(UTC).isoformat(timespec="seconds"),
+            content_hash=hashlib.sha256(official_html.encode("utf-8")).hexdigest(),
+            parser_version=PARSER_VERSION,
+            html_content=official_html,
+        )
+        songs = apply_official_availability(
+            songs,
+            parse_official_music_list_html(official_html),
+        )
     return MasterBuild(
-        songs=tuple(songs_by_id.values()),
+        songs=songs,
         charts=tuple(charts_by_id.values()),
         snapshot=snapshot,
+        official_snapshot=official_snapshot,
     )
 
 
@@ -299,6 +441,11 @@ def create_schema(connection: sqlite3.Connection) -> None:
           category TEXT NOT NULL,
           movie_stage TEXT NOT NULL,
           availability TEXT NOT NULL,
+          free_play_available INTEGER NOT NULL DEFAULT 0 CHECK (free_play_available IN (0, 1)),
+          grand_prix_play_available INTEGER NOT NULL DEFAULT 0 CHECK (
+            grand_prix_play_available IN (0, 1)
+          ),
+          official_availability_match TEXT NOT NULL DEFAULT 'not_checked',
           notes TEXT NOT NULL,
           created_at TEXT NOT NULL,
           updated_at TEXT NOT NULL
@@ -361,9 +508,10 @@ def write_master_database(
             """
             INSERT INTO songs (
               song_id, title, artist, version, source_version, bpm, category,
-              movie_stage, availability, notes, created_at, updated_at
+              movie_stage, availability, free_play_available, grand_prix_play_available,
+              official_availability_match, notes, created_at, updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
                 (
@@ -376,6 +524,9 @@ def write_master_database(
                     song.category,
                     song.movie_stage,
                     song.availability,
+                    int(song.free_play_available),
+                    int(song.grand_prix_play_available),
+                    song.official_availability_match,
                     song.notes,
                     generated_at,
                     generated_at,
@@ -415,33 +566,58 @@ def write_master_database(
             "source_hash": build.snapshot.content_hash,
             "song_count": str(len(build.songs)),
             "chart_count": str(len(build.charts)),
+            "free_play_available_song_count": str(
+                sum(1 for song in build.songs if song.free_play_available)
+            ),
+            "grand_prix_play_available_song_count": str(
+                sum(1 for song in build.songs if song.grand_prix_play_available)
+            ),
+            "official_availability_matched_song_count": str(
+                sum(
+                    1
+                    for song in build.songs
+                    if song.official_availability_match
+                    in {"title_artist", "unique_title"}
+                )
+            ),
         }
+        if build.official_snapshot is not None:
+            metadata.update(
+                {
+                    "official_source_url": build.official_snapshot.source_url,
+                    "official_source_hash": build.official_snapshot.content_hash,
+                }
+            )
         connection.executemany(
             "INSERT INTO master_metadata (key, value) VALUES (?, ?)",
             sorted(metadata.items()),
         )
-        snapshot_id = stable_id(
-            "snapshot",
-            build.snapshot.source_url,
-            build.snapshot.content_hash,
-            build.snapshot.parser_version,
-        )
-        connection.execute(
-            """
-            INSERT INTO source_snapshots (
-              snapshot_id, source_url, fetched_at, content_hash, parser_version, html_content
+        for snapshot in (build.snapshot, build.official_snapshot):
+            if snapshot is None:
+                continue
+            snapshot_id = stable_id(
+                "snapshot",
+                snapshot.source_url,
+                snapshot.content_hash,
+                snapshot.parser_version,
             )
-            VALUES (?, ?, ?, ?, ?, ?)
-            """,
-            (
-                snapshot_id,
-                build.snapshot.source_url,
-                build.snapshot.fetched_at,
-                build.snapshot.content_hash,
-                build.snapshot.parser_version,
-                build.snapshot.html_content,
-            ),
-        )
+            connection.execute(
+                """
+                INSERT INTO source_snapshots (
+                  snapshot_id, source_url, fetched_at, content_hash,
+                  parser_version, html_content
+                )
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    snapshot_id,
+                    snapshot.source_url,
+                    snapshot.fetched_at,
+                    snapshot.content_hash,
+                    snapshot.parser_version,
+                    snapshot.html_content,
+                ),
+            )
 
 
 def summarize_build(build: MasterBuild) -> dict[str, object]:
@@ -454,6 +630,15 @@ def summarize_build(build: MasterBuild) -> dict[str, object]:
         "songs": len(build.songs),
         "charts": len(build.charts),
         "source_hash": build.snapshot.content_hash,
+        "official_source_hash": (
+            None if build.official_snapshot is None else build.official_snapshot.content_hash
+        ),
+        "free_play_available_songs": sum(
+            1 for song in build.songs if song.free_play_available
+        ),
+        "grand_prix_play_available_songs": sum(
+            1 for song in build.songs if song.grand_prix_play_available
+        ),
         "by_play_style": dict(sorted(by_style.items())),
         "by_difficulty": dict(sorted(by_difficulty.items())),
     }
@@ -480,6 +665,21 @@ def build_parser() -> argparse.ArgumentParser:
         help="Source URL recorded in master_metadata and source_snapshots.",
     )
     parser.add_argument(
+        "--official-input",
+        type=Path,
+        help="Local official music list HTML snapshot for play availability.",
+    )
+    parser.add_argument(
+        "--official-source-url",
+        default=OFFICIAL_MUSIC_LIST_URL,
+        help="Official music list URL recorded in metadata and source snapshots.",
+    )
+    parser.add_argument(
+        "--skip-official-availability",
+        action="store_true",
+        help="Do not fetch or apply official free/grand-prix play availability.",
+    )
+    parser.add_argument(
         "--output",
         type=Path,
         default=Path("data/master/ddrgp-master.sqlite"),
@@ -499,7 +699,19 @@ def main(argv: list[str] | None = None) -> int:
         if args.input is not None
         else fetch_source_html(args.source_url)
     )
-    build = parse_master_html(html, source_url=args.source_url)
+    official_html = None
+    if not args.skip_official_availability:
+        official_html = (
+            args.official_input.read_text(encoding="utf-8")
+            if args.official_input is not None
+            else fetch_source_html(args.official_source_url)
+        )
+    build = parse_master_html(
+        html,
+        source_url=args.source_url,
+        official_html=official_html,
+        official_source_url=args.official_source_url,
+    )
     write_master_database(args.output, build, master_version=args.master_version)
     summary = summarize_build(build)
     print(

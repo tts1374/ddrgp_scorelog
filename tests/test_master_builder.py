@@ -123,6 +123,39 @@ EDGE_FIXTURE_HTML = """
 </html>
 """
 
+OFFICIAL_FIXTURE_HTML = """
+<!doctype html>
+<html>
+<body>
+<table class="m_list">
+  <tr>
+    <th>タイトル</th><th>アーティスト</th>
+    <th>フリープレー</th><th>グランプリプレー</th>
+  </tr>
+  <tr><td>2026年4月3日追加</td></tr>
+  <tr>
+    <td>MAKE IT BETTER</td><td>mitsu-O!</td><td>〇　※１</td><td>〇</td>
+  </tr>
+  <tr>
+    <td>PARANOiA</td><td>180 (169-183)</td><td>〇　※１</td><td></td>
+  </tr>
+</table>
+<table class="m_list">
+  <tr>
+    <th>タイトル</th><th>アーティスト</th>
+    <th>フリープレー</th><th>グランプリプレー</th><th>備考</th>
+  </tr>
+  <tr><td>グランプリ楽曲パック vol.37</td></tr>
+  <tr>
+    <td>踊るフィーバーロボ　Eu-Robot mix</td>
+    <td>D&amp;E&amp;Y Rmx by kors k as disconation</td>
+    <td></td><td>〇</td><td>先行プレー対象</td>
+  </tr>
+</table>
+</body>
+</html>
+"""
+
 
 def test_parse_level_uses_first_numeric_token_without_joining_notes() -> None:
     assert builder.parse_level("10(旧9)") == 10
@@ -167,6 +200,29 @@ def test_parse_master_html_extracts_songs_and_available_charts() -> None:
     }
 
 
+def test_parse_master_html_applies_official_grand_prix_availability() -> None:
+    build = builder.parse_master_html(
+        FIXTURE_HTML,
+        source_url="https://example.test/source",
+        official_html=OFFICIAL_FIXTURE_HTML,
+        official_source_url="https://example.test/official",
+        fetched_at="2026-07-04T00:00:00+00:00",
+    )
+
+    make = next(song for song in build.songs if song.title == "MAKE IT BETTER")
+    paranoia = next(song for song in build.songs if song.title == "PARANOiA")
+    fever = next(song for song in build.songs if song.title == "踊るフィーバーロボ Eu-Robot mix")
+
+    assert make.free_play_available
+    assert make.grand_prix_play_available
+    assert make.official_availability_match == "title_artist"
+    assert paranoia.free_play_available
+    assert not paranoia.grand_prix_play_available
+    assert fever.grand_prix_play_available
+    assert build.official_snapshot is not None
+    assert build.official_snapshot.source_url == "https://example.test/official"
+
+
 def test_write_master_database_creates_expected_schema_and_metadata(tmp_path: Path) -> None:
     build = builder.parse_master_html(
         FIXTURE_HTML,
@@ -194,6 +250,7 @@ def test_write_master_database_creates_expected_schema_and_metadata(tmp_path: Pa
         assert metadata["song_count"] == "3"
         assert metadata["chart_count"] == "23"
         assert metadata["generator_version"] == builder.PARSER_VERSION
+        assert metadata["grand_prix_play_available_song_count"] == "0"
 
         rows = connection.execute(
             """
@@ -214,6 +271,52 @@ def test_write_master_database_creates_expected_schema_and_metadata(tmp_path: Pa
         assert snapshot[1] == build.snapshot.content_hash
         assert snapshot[2] == builder.PARSER_VERSION
         assert "MAKE IT BETTER" in snapshot[3]
+
+
+def test_write_master_database_records_official_availability_snapshot(
+    tmp_path: Path,
+) -> None:
+    build = builder.parse_master_html(
+        FIXTURE_HTML,
+        source_url="https://example.test/source",
+        official_html=OFFICIAL_FIXTURE_HTML,
+        official_source_url="https://example.test/official",
+        fetched_at="2026-07-04T00:00:00+00:00",
+    )
+    output_path = tmp_path / "ddrgp-master.sqlite"
+
+    builder.write_master_database(
+        output_path,
+        build,
+        master_version="fixture-v1",
+        generated_at="2026-07-04T01:23:45+00:00",
+    )
+
+    with sqlite3.connect(output_path) as connection:
+        metadata = dict(connection.execute("SELECT key, value FROM master_metadata"))
+        assert metadata["official_source_url"] == "https://example.test/official"
+        assert metadata["official_source_hash"] == build.official_snapshot.content_hash
+        assert metadata["grand_prix_play_available_song_count"] == "2"
+        assert metadata["free_play_available_song_count"] == "2"
+        assert metadata["official_availability_matched_song_count"] == "3"
+        rows = connection.execute(
+            """
+            SELECT title, free_play_available, grand_prix_play_available,
+                   official_availability_match
+            FROM songs
+            ORDER BY title
+            """
+        ).fetchall()
+        assert ("MAKE IT BETTER", 1, 1, "title_artist") in rows
+        assert ("PARANOiA", 1, 0, "title_artist") in rows
+        assert ("踊るフィーバーロボ Eu-Robot mix", 0, 1, "title_artist") in rows
+        assert connection.execute("SELECT COUNT(*) FROM source_snapshots").fetchone()[0] == 2
+
+    summary = master_inspect.inspect_master_database(output_path)
+    assert summary["snapshot_count"] == 2
+    assert summary["official_source_url"] == "https://example.test/official"
+    assert summary["official_source_hash"] == build.official_snapshot.content_hash
+    assert summary["grand_prix_play_available_song_count"] == "2"
 
 
 def test_inspect_master_database_writes_summary_for_valid_database(tmp_path: Path) -> None:

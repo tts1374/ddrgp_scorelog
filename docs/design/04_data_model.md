@@ -100,6 +100,9 @@ M4初期スキーマのフィールド:
 - `source_version`
 - `movie_stage`
 - `availability`
+- `free_play_available`
+- `grand_prix_play_available`
+- `official_availability_match`
 - `notes`
 - `created_at`
 - `updated_at`
@@ -134,8 +137,13 @@ M4初期スキーマのフィールド:
 - `generated_at`
 - `generator_version`
 - `source_hash`
+- `official_source_url`
+- `official_source_hash`
 - `song_count`
 - `chart_count`
+- `free_play_available_song_count`
+- `grand_prix_play_available_song_count`
+- `official_availability_matched_song_count`
 
 ### `source_snapshots`
 

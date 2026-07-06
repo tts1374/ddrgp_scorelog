@@ -33,12 +33,19 @@ high
   - osaka result は 216〜218 TYPE1、219〜221 TYPE2、222〜224 TYPE3。
   - New York / tokyo / London EVOLVED の同一・類似ジャケット grid/result も追加済み。
   - これらはEVOLVED系だけの特例ではなく、同一・類似ジャケットでタイトル側に分岐情報が出る曲群の代表ケースとして読む。
-- 2026-07-06の M4 DB生成は 1282 songs / 9594 charts。source hash は `f31dac01e0d54f9f984360a56206b2b3b56c0ab26ab708089cb16d92a6704cc2`。
+- 2026-07-06の M4 DB生成は 1282 songs / 9594 charts。Wiki source hash は `a7aeea8b8e171cbcc06168bab78052244be23f264fefaa46de70adc3fac6045e`、公式収録曲一覧 source hash は `8997875913458252d12f8cbf7aadc92d85ef5f669dde424763a84c742e8cf043`。
+- M4 DBはBEMANIWiki譜面表に加えて、公式収録曲一覧 `https://p.eagate.573.jp/game/eacddr/konaddr/info/mlist.html` から `free_play_available` / `grand_prix_play_available` / `official_availability_match` を付与する。
+  - `source_snapshots` はWikiと公式の2件。
+  - `grand_prix_play_available_song_count=1180`、`free_play_available_song_count=64`、`official_availability_matched_song_count=1180`。
+  - X-Special付き曲はマスタには残るが、現公式リスト突合では `grand_prix_play_available=0` / `official_availability_match=not_found` になり、通常M5候補から除外される。
+- M5の `load_chart_candidates` は `songs.grand_prix_play_available=1` の曲だけを通常候補にする。
 - OCRなしM5曲名照合は confirmed-events 60件、`insufficient_input=60` / `ocr_not_run=60`。
 - OCRありM5曲名照合は confirmed-events 60件、`matched=19`、`not_found=39`、`insufficient_input=2`。
 - M3 song/artist OCR入口失敗代表は `failure_count=24`、`affected_candidate_count=22`、`song_title empty_ocr=2`、`artist empty_ocr=22`。
-- 今回の `--m5-jacket-match` 結果は confirmed-events 60件、`jacket_feature_master accepted=68`、`matched=57`、`ambiguous=3`、`not_found=0`、`missing_feature=0`。
-- 残り `ambiguous=3` は現ローカル素材では `osaka EVOLVED -毎度、おおきに！- (TYPE1/2/3)` の同一ジャケット3件。`jacket_top_margin=0.0000` で、画像特徴量だけでは一意化しない。
+- 公式GP可否フィルタ導入後の `--m5-jacket-match` 結果は confirmed-events 60件、`jacket_feature_master accepted=68`、`matched=55`、`ambiguous=4`、`not_found=1`、`missing_feature=0`。
+  - osaka TYPE1/2/3 の3件は `identity_signal_status=composite_resolved_candidate` / `identity_signal_source=title_linehash_dict` を維持。
+  - 追加の `ambiguous=1` は `Inner Spirit -GIGA HiTECH MIX-`。GP候補集合化後、近傍候補が増え `title_linehash_dict_status=no_dict_match`。
+  - `not_found=1` は `RЁVOLUTIФN` 期待行で、現M4 title解決では `expected_song_id` が空。表記差レビュー対象。
 - 追加 result の `result_228` 以降は通常の `jacket_match_candidates.csv` には出ない。
   - M5 jacket match の対象境界は `confirmed_result=true` かつ `duplicate=false`。
   - `result_228` 以降はゼロ点リザルト連続素材で、`score:000000` の duplicate か、confirmed-events 境界外として扱われる。
@@ -56,10 +63,10 @@ high
   - `identity_signal_status=composite_resolved_candidate` は、jacket候補集合にtitle補助を合わせると候補集合内で1件を示した状態。
   - `identity_signal_source` の優先順は `jacket_feature`、`title_linehash_dict`、`title_ocr_suffix`、`title_image_feature`。
   - `title_linehash_exact_status` / `title_linehash_distance_status` は参考列で、`identity_signal_source` には使わない。
-  - 今回の jacket summary は `identity_signal_status_counts={"composite_resolved_candidate": 3, "jacket_resolved_candidate": 57}`、`identity_signal_source_counts={"jacket_feature": 57, "title_linehash_dict": 3}`。
+  - 公式GP可否フィルタ導入後の jacket summary は `identity_signal_status_counts={"composite_resolved_candidate": 3, "jacket_resolved_candidate": 55, "unresolved_ambiguous": 1, "unresolved_not_found": 1}`、`identity_signal_source_counts={"jacket_feature": 55, "title_linehash_dict": 3}`。
   - `composite_resolved_candidate` はEVOLVED系専用ではなく、同一・類似ジャケット分岐全般に使う曲同定候補観測。
 - `matched`、jacket `matched`、title画像 `resolved_candidate`、title OCR `resolved_candidate`、title line-hash `resolved_candidate`、`identity_signal_*` はPoC上の観測語彙で、DB保存可能、本番採用済み照合、曲ID/譜面ID確定を意味しない。
-- 今回コード検証では `python -m ruff check master tools\vision_poc pyproject.toml tests`、`python -m compileall master tools\vision_poc`、`python -m pytest tests` が通過し、pytest は120 passed。M5生成系と `python -m tools.vision_poc --no-ocr` も通過し、classification は220/220全正解。
+- 今回コード検証では `python -m ruff check master tools\vision_poc pyproject.toml tests`、`python -m compileall master tools\vision_poc`、`python -m pytest tests` が通過し、pytest は123 passed。M5生成系と `python -m tools.vision_poc --no-ocr` も通過し、classification は220/220全正解。
 - 生成DB、PoC出力、OCR画像、`metadata.csv`、`data/`、`logs/`、ローカル素材、ローカルDBはGit管理しない。
 
 ## 必読資料
@@ -109,6 +116,7 @@ M5内でまだ成功扱いにしないもの:
 - OCR結果、ジャケットPoC結果、title補助結果から曲ID/譜面IDを保存用に確定すること
 - ファジーマッチ結果、jacket `matched`、title画像 `resolved_candidate`、title OCR `resolved_candidate`、title line-hash `resolved_candidate` を本番採用済み照合として扱うこと
 - 未解決の曖昧一致や低確信度をDB保存可能として扱うこと
+- `grand_prix_play_available=0` の曲を通常M5候補へ戻すこと
 - `artist` を曲名照合の一意主キーとして扱うこと
 - 同一ジャケット候補を画像特徴量だけで無理に一意化すること
 - title画像特徴量、title OCR、title line-hashを候補集合外から曲を拾うために使うこと
@@ -120,7 +128,11 @@ M5内でまだ成功扱いにしないもの:
 
 - `docs/next-task.md` の更新だけ、または確認結果の記録だけで完了扱いにしない。
 - osaka TYPE1/2/3 は、jacket特徴量、result title画像特徴量、現行M3 title OCR入口では安定一意化できていないが、title line-hash辞書では候補集合内の `resolved_candidate` になり、`identity_signal_source=title_linehash_dict` として複合根拠の曲同定候補観測へ整理済み。この読み方はosakaやEVOLVED系専用ではなく、同一・類似ジャケットでタイトル側に分岐情報が出る曲群全般に適用する。
-- 次は `identity_signal_*` をM5の後続渡し出力としてさらに扱いやすくする実装を進める。
+- 次は公式GP可否フィルタ後に増えた `Inner Spirit -GIGA HiTECH MIX-` の `unresolved_ambiguous` と、`RЁVOLUTIФN` の `unresolved_not_found` を観察し、公式/Wiki/metadata表記差か、feature/line-hash表現問題かを分ける。
+  - まずは `jacket_match_candidates.csv` の該当行、M4 `songs` の `official_availability_match`、ローカルmetadata期待値、result title ROIを突き合わせる。
+  - 公式GP可否フィルタは維持し、GP対象外曲をM5候補へ戻さない。
+  - 表記差を直す場合は、M4側のalias/official availability突合補助として扱い、M5の保存判定へ直結しない。
+- そのうえで `identity_signal_*` をM5の後続渡し出力としてさらに扱いやすくする実装を進める。
   - 例: `jacket_match_report.md` または新規M5レポートで、`jacket_resolved_candidate`、`composite_resolved_candidate`、`unresolved_*` を保存判定前の観測カテゴリとして代表行つきで確認できるようにする。
   - `identity_signal_status` は保存判定ではなく、M7以降へ渡す候補観測として読む。
   - `composite_resolved_candidate` はjacket単体より低いという意味ではなく、複合根拠で曲候補を1件示した観測として扱う。ただしDB保存可能や `jacket_match_status=matched` へ直結しない。
@@ -175,6 +187,8 @@ import sqlite3
 with sqlite3.connect("data/master/ddrgp-master.sqlite") as con:
     print(con.execute("select count(*) from songs").fetchone()[0])
     print(con.execute("select count(*) from charts").fetchone()[0])
+    print(con.execute("select count(*) from songs where grand_prix_play_available = 1").fetchone()[0])
+    print(con.execute("select official_availability_match, count(*) from songs group by official_availability_match order by count(*) desc").fetchall())
     print(dict(con.execute("select key, value from master_metadata")))
 '@ | python -
 ```
@@ -202,9 +216,11 @@ Get-Content data\vision_poc_m3_song_artist\m3_save_candidate_summary.json
 ## 完了条件
 
 - M4 DBをM5入力として生成・検査できる。
+- M4 DBが公式収録曲一覧から `grand_prix_play_available` を付与し、`source_snapshots` にWiki/公式の2件を保持している。
 - M5の入力境界が、confirmed-events由来の保存候補だけを対象にしている。
 - M3の `ready` やOCR文字列を、マスタ照合成功として扱っていない。
 - M4 DBから曲・譜面候補を読み、`play_style` / `difficulty` / `level` で候補を絞れる。
+- M5通常候補は `grand_prix_play_available=1` に限定され、X-SpecialなどGP対象外曲を候補へ戻していない。
 - 曲名OCR文字列の正規化方針がテストとdocsで説明できる。
 - M5 PoCのCSV/summaryで、候補数、最上位候補、上位候補一覧、score、`match_status`、`failure_reason`を確認できる。
 - song_select grid右上プレビュー由来のjacket feature masterを `data/` 配下へ生成できる。
