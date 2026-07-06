@@ -658,3 +658,100 @@ def test_write_jacket_match_outputs_records_observation_scope(tmp_path: Path) ->
     report = (tmp_path / "jacket_match_report.md").read_text(encoding="utf-8")
     assert "DB保存可能や本番採用済み照合ではありません" in report
     assert "identity_signal_*" in report
+
+
+def test_write_jacket_match_diagnostic_outputs_keep_boundary_context(
+    tmp_path: Path,
+) -> None:
+    rows = [
+        {
+            "diagnostic_scope": "m5_jacket_result_boundary_diagnostic",
+            "m5_target_boundary_reason": "duplicate",
+            "screen_type": "result",
+            "event_type": "duplicate",
+            "confirmed_result": "True",
+            "duplicate": "True",
+            "duplicate_key": "score:000000",
+            "timestamp_ms": "",
+            "confirmation_mode": "frames",
+            "frame_index": "3",
+            "organized_file": "organized/result/result_zero_score.png",
+            "expected_song_title": "NEW YORK TYPE B",
+            "expected_song_id": "song_type2",
+            "input_play_style": "SINGLE",
+            "input_difficulty": "CHALLENGE",
+            "input_level": "10",
+            "candidate_song_count": "2",
+            "candidate_chart_count": "2",
+            "candidate_feature_count": "2",
+            "top_song_id": "song_type2",
+            "top_chart_id": "chart_type2_single_challenge",
+            "top_title": "OSAKA TYPE2",
+            "top_artist": "Unit O",
+            "top_score": "1.0000",
+            "top_distance": "0.0000",
+            "top_feature_source": "organized/song_select/song_select_type2.png",
+            "top_candidates": "",
+            "expected_jacket_distance": "0.0000",
+            "expected_jacket_rank": "1",
+            "jacket_top_margin": "0.0200",
+            "title_candidate_feature_count": "0",
+            "title_top_song_id": "",
+            "title_top_chart_id": "",
+            "title_top_title": "",
+            "title_top_score": "",
+            "title_top_distance": "",
+            "title_top_feature_source": "",
+            "title_top_candidates": "",
+            "title_rerank_status": "not_run",
+            "title_rerank_reason": "",
+            "title_ocr_raw": "",
+            "title_ocr_text": "",
+            "title_ocr_suffix": "",
+            "title_ocr_top_song_id": "",
+            "title_ocr_top_chart_id": "",
+            "title_ocr_top_title": "",
+            "title_ocr_top_candidates": "",
+            "title_ocr_rerank_status": "not_run",
+            "title_ocr_rerank_reason": "",
+            "title_linehash_candidate_feature_count": "0",
+            "title_linehash_diff_bit_count": "0",
+            "title_linehash_dict_status": "not_run",
+            "title_linehash_dict_top_song_id": "",
+            "title_linehash_dict_top_chart_id": "",
+            "title_linehash_dict_top_title": "",
+            "title_linehash_dict_top_row_matches": "",
+            "title_linehash_dict_top_candidates": "",
+            "title_linehash_exact_status": "not_run",
+            "title_linehash_distance_status": "not_run",
+            "title_linehash_top_song_id": "",
+            "title_linehash_top_chart_id": "",
+            "title_linehash_top_title": "",
+            "title_linehash_top_distance": "",
+            "title_linehash_top_candidates": "",
+            "title_linehash_rerank_reason": "",
+            "identity_signal_status": "jacket_resolved_candidate",
+            "identity_signal_source": "jacket_feature",
+            "identity_signal_song_id": "song_type2",
+            "identity_signal_chart_id": "chart_type2_single_challenge",
+            "identity_signal_title": "OSAKA TYPE2",
+            "identity_signal_reason": "jacket_feature_unique_candidate",
+            "jacket_match_status": "matched",
+            "failure_reason": "",
+        }
+    ]
+
+    summary = master_match.write_jacket_match_diagnostic_outputs(tmp_path, rows)
+
+    assert summary["scope"] == "M5 jacket match diagnostic PoC"
+    assert summary["m5_target_boundary_reason_counts"] == {"duplicate": 1}
+    assert summary["event_type_counts"] == {"duplicate": 1}
+    assert summary["duplicate_counts"] == {"True": 1}
+    assert (tmp_path / "jacket_match_diagnostics.csv").exists()
+    assert json.loads(
+        (tmp_path / "jacket_match_diagnostics_summary.json").read_text(
+            encoding="utf-8"
+        )
+    ) == summary
+    report = (tmp_path / "jacket_match_diagnostics.md").read_text(encoding="utf-8")
+    assert "保存OK/NG判定として扱いません" in report

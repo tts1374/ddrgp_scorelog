@@ -45,6 +45,84 @@ TITLE_LINEHASH_SOURCE_HEIGHT = 28
 TITLE_LINEHASH_LUMA_THRESHOLD = 180
 TITLE_LINEHASH_CHANNEL_SPREAD_MAX = 80
 TITLE_LINEHASH_VARIABLE_BIT_WEIGHT = 5.0
+JACKET_MATCH_FIELDNAMES = [
+    "frame_index",
+    "organized_file",
+    "expected_song_title",
+    "expected_song_id",
+    "input_play_style",
+    "input_difficulty",
+    "input_level",
+    "candidate_song_count",
+    "candidate_chart_count",
+    "candidate_feature_count",
+    "top_song_id",
+    "top_chart_id",
+    "top_title",
+    "top_artist",
+    "top_score",
+    "top_distance",
+    "top_feature_source",
+    "top_candidates",
+    "expected_jacket_distance",
+    "expected_jacket_rank",
+    "jacket_top_margin",
+    "title_candidate_feature_count",
+    "title_top_song_id",
+    "title_top_chart_id",
+    "title_top_title",
+    "title_top_score",
+    "title_top_distance",
+    "title_top_feature_source",
+    "title_top_candidates",
+    "title_rerank_status",
+    "title_rerank_reason",
+    "title_ocr_raw",
+    "title_ocr_text",
+    "title_ocr_suffix",
+    "title_ocr_top_song_id",
+    "title_ocr_top_chart_id",
+    "title_ocr_top_title",
+    "title_ocr_top_candidates",
+    "title_ocr_rerank_status",
+    "title_ocr_rerank_reason",
+    "title_linehash_candidate_feature_count",
+    "title_linehash_diff_bit_count",
+    "title_linehash_dict_status",
+    "title_linehash_dict_top_song_id",
+    "title_linehash_dict_top_chart_id",
+    "title_linehash_dict_top_title",
+    "title_linehash_dict_top_row_matches",
+    "title_linehash_dict_top_candidates",
+    "title_linehash_exact_status",
+    "title_linehash_distance_status",
+    "title_linehash_top_song_id",
+    "title_linehash_top_chart_id",
+    "title_linehash_top_title",
+    "title_linehash_top_distance",
+    "title_linehash_top_candidates",
+    "title_linehash_rerank_reason",
+    "identity_signal_status",
+    "identity_signal_source",
+    "identity_signal_song_id",
+    "identity_signal_chart_id",
+    "identity_signal_title",
+    "identity_signal_reason",
+    "jacket_match_status",
+    "failure_reason",
+]
+JACKET_MATCH_DIAGNOSTIC_FIELDNAMES = [
+    "diagnostic_scope",
+    "m5_target_boundary_reason",
+    "screen_type",
+    "event_type",
+    "confirmed_result",
+    "duplicate",
+    "duplicate_key",
+    "timestamp_ms",
+    "confirmation_mode",
+    *JACKET_MATCH_FIELDNAMES,
+]
 
 
 @dataclass(frozen=True)
@@ -1465,6 +1543,51 @@ def summarize_jacket_match_rows(rows: Iterable[dict[str, str]]) -> dict[str, Any
     }
 
 
+def summarize_jacket_match_diagnostic_rows(
+    rows: Iterable[dict[str, str]],
+) -> dict[str, Any]:
+    row_list = list(rows)
+    summary = summarize_jacket_match_rows(row_list)
+    event_type_counts: dict[str, int] = {}
+    boundary_reason_counts: dict[str, int] = {}
+    confirmed_result_counts: dict[str, int] = {}
+    duplicate_counts: dict[str, int] = {}
+    for row in row_list:
+        event_type = row.get("event_type", "")
+        event_type_counts[event_type] = event_type_counts.get(event_type, 0) + 1
+        boundary_reason = row.get("m5_target_boundary_reason", "")
+        boundary_reason_counts[boundary_reason] = (
+            boundary_reason_counts.get(boundary_reason, 0) + 1
+        )
+        confirmed_result = row.get("confirmed_result", "")
+        confirmed_result_counts[confirmed_result] = (
+            confirmed_result_counts.get(confirmed_result, 0) + 1
+        )
+        duplicate = row.get("duplicate", "")
+        duplicate_counts[duplicate] = duplicate_counts.get(duplicate, 0) + 1
+
+    return {
+        **summary,
+        "scope": "M5 jacket match diagnostic PoC",
+        "target_boundary": (
+            "diagnostic result-like rows including save candidates, duplicate, "
+            "and unconfirmed result frames"
+        ),
+        "event_type_counts": dict(sorted(event_type_counts.items())),
+        "m5_target_boundary_reason_counts": dict(sorted(boundary_reason_counts.items())),
+        "confirmed_result_counts": dict(sorted(confirmed_result_counts.items())),
+        "duplicate_counts": dict(sorted(duplicate_counts.items())),
+        "reading_notes": [
+            *summary["reading_notes"],
+            "Diagnostic rows are not save candidates and are not mixed into "
+            "jacket_match_candidates.csv.",
+            "duplicate and unconfirmed rows are observation material for M5, not DB-save "
+            "readiness.",
+            "Chart/title inputs for diagnostics come from local metadata expected values.",
+        ],
+    }
+
+
 def write_master_match_csv(path: Path, rows: Iterable[dict[str, str]]) -> None:
     fieldnames = [
         "frame_index",
@@ -1539,74 +1662,18 @@ def write_jacket_feature_master_summary(path: Path, summary: dict[str, Any]) -> 
 
 
 def write_jacket_match_csv(path: Path, rows: Iterable[dict[str, str]]) -> None:
-    fieldnames = [
-        "frame_index",
-        "organized_file",
-        "expected_song_title",
-        "expected_song_id",
-        "input_play_style",
-        "input_difficulty",
-        "input_level",
-        "candidate_song_count",
-        "candidate_chart_count",
-        "candidate_feature_count",
-        "top_song_id",
-        "top_chart_id",
-        "top_title",
-        "top_artist",
-        "top_score",
-        "top_distance",
-        "top_feature_source",
-        "top_candidates",
-        "expected_jacket_distance",
-        "expected_jacket_rank",
-        "jacket_top_margin",
-        "title_candidate_feature_count",
-        "title_top_song_id",
-        "title_top_chart_id",
-        "title_top_title",
-        "title_top_score",
-        "title_top_distance",
-        "title_top_feature_source",
-        "title_top_candidates",
-        "title_rerank_status",
-        "title_rerank_reason",
-        "title_ocr_raw",
-        "title_ocr_text",
-        "title_ocr_suffix",
-        "title_ocr_top_song_id",
-        "title_ocr_top_chart_id",
-        "title_ocr_top_title",
-        "title_ocr_top_candidates",
-        "title_ocr_rerank_status",
-        "title_ocr_rerank_reason",
-        "title_linehash_candidate_feature_count",
-        "title_linehash_diff_bit_count",
-        "title_linehash_dict_status",
-        "title_linehash_dict_top_song_id",
-        "title_linehash_dict_top_chart_id",
-        "title_linehash_dict_top_title",
-        "title_linehash_dict_top_row_matches",
-        "title_linehash_dict_top_candidates",
-        "title_linehash_exact_status",
-        "title_linehash_distance_status",
-        "title_linehash_top_song_id",
-        "title_linehash_top_chart_id",
-        "title_linehash_top_title",
-        "title_linehash_top_distance",
-        "title_linehash_top_candidates",
-        "title_linehash_rerank_reason",
-        "identity_signal_status",
-        "identity_signal_source",
-        "identity_signal_song_id",
-        "identity_signal_chart_id",
-        "identity_signal_title",
-        "identity_signal_reason",
-        "jacket_match_status",
-        "failure_reason",
-    ]
     with path.open("w", encoding="utf-8", newline="") as file:
-        writer = csv.DictWriter(file, fieldnames=fieldnames)
+        writer = csv.DictWriter(file, fieldnames=JACKET_MATCH_FIELDNAMES)
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+def write_jacket_match_diagnostic_csv(
+    path: Path,
+    rows: Iterable[dict[str, str]],
+) -> None:
+    with path.open("w", encoding="utf-8", newline="") as file:
+        writer = csv.DictWriter(file, fieldnames=JACKET_MATCH_DIAGNOSTIC_FIELDNAMES)
         writer.writeheader()
         writer.writerows(rows)
 
@@ -1769,6 +1836,73 @@ def write_jacket_match_report(
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def write_jacket_match_diagnostic_report(
+    path: Path,
+    rows: Iterable[dict[str, str]],
+    summary: dict[str, Any],
+) -> None:
+    row_list = list(rows)
+    lines = [
+        "# M5 Jacket Match Diagnostics",
+        "",
+        "通常の保存候補境界とは別に、duplicate と未確定resultも含めて"
+        "M5の曲同定候補観測を確認する診断レポートです。",
+        "`jacket_match_candidates.csv` には混ぜず、保存OK/NG判定として扱いません。",
+        "",
+        f"- target boundary: `{summary['target_boundary']}`",
+        f"- diagnostic candidates: {summary['target_count']}",
+        f"- event_type: `{json.dumps(summary['event_type_counts'], sort_keys=True)}`",
+        "- m5_target_boundary_reason: "
+        f"`{json.dumps(summary['m5_target_boundary_reason_counts'], sort_keys=True)}`",
+        f"- confirmed_result: "
+        f"`{json.dumps(summary['confirmed_result_counts'], sort_keys=True)}`",
+        f"- duplicate: `{json.dumps(summary['duplicate_counts'], sort_keys=True)}`",
+        "",
+        "## Status Counts",
+        "",
+        f"- jacket_match_status: `{json.dumps(summary['status_counts'], sort_keys=True)}`",
+        f"- identity_signal_status: "
+        f"`{json.dumps(summary['identity_signal_status_counts'], sort_keys=True)}`",
+        f"- identity_signal_source: "
+        f"`{json.dumps(summary['identity_signal_source_counts'], sort_keys=True)}`",
+        f"- failure_reason: `{json.dumps(summary['failure_reason_counts'], sort_keys=True)}`",
+        "",
+        "## Diagnostic Rows",
+        "",
+        "| organized_file | boundary | event | duplicate | status | top candidate | "
+        "identity signal | reason |",
+        "|---|---|---|---|---|---|---|---|",
+    ]
+    for row in row_list[:30]:
+        top_text = row["top_title"]
+        if row["top_artist"]:
+            top_text = f"{top_text} / {row['top_artist']}"
+        lines.append(
+            f"| `{row['organized_file']}` | "
+            f"`{row.get('m5_target_boundary_reason', '')}` | "
+            f"`{row.get('event_type', '')}` | `{row.get('duplicate', '')}` | "
+            f"`{row['jacket_match_status']}` | `{top_text}` | "
+            f"`{row.get('identity_signal_status', '')}`"
+            f" / `{row.get('identity_signal_source', '')}` | "
+            f"`{row['failure_reason']}` |"
+        )
+    if len(row_list) > 30:
+        lines.append("| ... | ... | ... | ... | ... | ... | ... | ... |")
+
+    lines.extend(
+        [
+            "",
+            "## Reading Notes",
+            "",
+            "- この診断出力はM5同定能力とイベント境界の観察材料です。",
+            "- `confirmed_result=true` かつ `duplicate=false` 以外の行は保存候補ではありません。",
+            "- 0点リザルトやduplicate行をここで観察しても、保存候補への昇格を意味しません。",
+            "- 通常候補CSVと診断CSVは混ぜて読みません。",
+        ]
+    )
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
 def write_master_match_outputs(
     output_dir: Path,
     rows: Iterable[dict[str, str]],
@@ -1804,4 +1938,26 @@ def write_jacket_match_outputs(
     write_jacket_match_csv(output_dir / "jacket_match_candidates.csv", row_list)
     write_jacket_match_summary(output_dir / "jacket_match_summary.json", summary)
     write_jacket_match_report(output_dir / "jacket_match_report.md", row_list, summary)
+    return summary
+
+
+def write_jacket_match_diagnostic_outputs(
+    output_dir: Path,
+    rows: Iterable[dict[str, str]],
+) -> dict[str, Any]:
+    row_list = list(rows)
+    summary = summarize_jacket_match_diagnostic_rows(row_list)
+    write_jacket_match_diagnostic_csv(
+        output_dir / "jacket_match_diagnostics.csv",
+        row_list,
+    )
+    write_jacket_match_summary(
+        output_dir / "jacket_match_diagnostics_summary.json",
+        summary,
+    )
+    write_jacket_match_diagnostic_report(
+        output_dir / "jacket_match_diagnostics.md",
+        row_list,
+        summary,
+    )
     return summary

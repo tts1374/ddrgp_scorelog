@@ -30,6 +30,8 @@ python -m pip install -e ".[vision]"
 
 `m3_save_candidate_blocker_resolution_plan.json` と `m3_save_candidate_blocker_resolution_plan.md` はM3-7の保存前ブロッカー解消順レビューです。M3-5集約の未ready fieldを、追加すべきローカルテンプレート参照ラベル、OCR未実行、OCR入口の空読み失敗、参照追加後の再確認に分けます。テンプレート画像やOCR画像はローカル素材のままGit管理せず、必要ラベル、代表ROI、判断だけをdocsに残すための補助であり、DB保存可否判定、マスタ照合、ファジーマッチ、曲名正規化には進みません。
 
+`--m5-jacket-match` 指定時は、通常の保存候補出力 `jacket_match_candidates.csv` / summary / Markdown に加えて、`jacket_match_diagnostics.csv`、`jacket_match_diagnostics_summary.json`、`jacket_match_diagnostics.md` も生成します。通常候補は引き続き `confirmed_result=true` かつ `duplicate=false` のM3保存候補だけを対象にします。診断出力は別ファイルで、metadata上のresult行、未確定result、duplicateを含め、`m5_target_boundary_reason` で `save_candidate` / `unconfirmed` / `duplicate` などを分けます。診断行の曲名と譜面3項目はローカルmetadata期待値を `metadata-expected-diagnostic` として使う観察用入力であり、保存候補への昇格やDB保存可能判定を意味しません。
+
 この既定実行は metadata 評価モードです。`samples/screenshots/metadata.csv` の並びをフレーム順として扱いますが、キャプチャ時刻は持たないため、`result_events.csv` の `timestamp_ms` と `candidate_duration_ms` は空欄、`confirmation_mode` は `frames` になります。
 
 入力モードの役割は以下です。

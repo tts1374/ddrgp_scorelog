@@ -4091,6 +4091,108 @@ def m3_save_candidate_rows(
     return rows
 
 
+def is_m5_jacket_diagnostic_event(frame: FrameInput, event: ResultEvent) -> bool:
+    return (
+        frame.row.get("screen_type") == "result"
+        or event.result_candidate
+        or event.confirmed_result
+    )
+
+
+def m5_jacket_diagnostic_boundary_reason(event: ResultEvent) -> str:
+    if is_save_candidate_event(event):
+        return "save_candidate"
+    if event.duplicate:
+        return "duplicate"
+    if event.event_type == "rejected_transition":
+        return "rejected_transition"
+    if event.result_candidate:
+        return "unconfirmed"
+    return "metadata_result_not_candidate"
+
+
+def m5_jacket_diagnostic_metadata_field_status(
+    row: dict[str, str],
+    field_name: str,
+) -> tuple[str, str]:
+    value = expected_m3_metadata_value_from_row(row, field_name)
+    if value == "":
+        return "no_expected_value", ""
+    return "ready", value
+
+
+def m5_jacket_diagnostic_candidate_rows(
+    frames: Iterable[FrameInput],
+    events: Iterable[ResultEvent],
+) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    for frame, event in zip(frames, events, strict=True):
+        if not is_m5_jacket_diagnostic_event(frame, event):
+            continue
+        row: dict[str, str] = {
+            "diagnostic_scope": "m5_jacket_result_boundary_diagnostic",
+            "m5_target_boundary_reason": m5_jacket_diagnostic_boundary_reason(event),
+            "frame_index": str(event.frame_index),
+            "organized_file": frame.row["organized_file"],
+            "screen_type": frame.row.get("screen_type", ""),
+            "event_type": event.event_type,
+            "confirmed_result": str(event.confirmed_result),
+            "duplicate": str(event.duplicate),
+            "duplicate_key": event.duplicate_key,
+            "timestamp_ms": "" if event.timestamp_ms is None else str(event.timestamp_ms),
+            "confirmation_mode": event.confirmation_mode,
+        }
+        for field_name in M3_SAVE_CANDIDATE_FIELDS:
+            status, value = m5_jacket_diagnostic_metadata_field_status(
+                frame.row,
+                field_name,
+            )
+            row[f"{field_name}_status"] = status
+            row[f"{field_name}_failure_reason"] = (
+                "" if status == "ready" else "no_expected_value"
+            )
+            row[f"{field_name}_expected_value"] = value
+            row[f"{field_name}_extracted_value"] = value
+            row[f"{field_name}_extractor"] = "metadata-expected-diagnostic"
+        row["overall_status"] = (
+            "ready"
+            if all(row[f"{field_name}_status"] == "ready" for field_name in M3_CHART_FIELD_FIELDS)
+            else "not_ready"
+        )
+        row["blocking_fields"] = " ".join(
+            field_name
+            for field_name in M3_CHART_FIELD_FIELDS
+            if row[f"{field_name}_status"] != "ready"
+        )
+        rows.append(row)
+    return rows
+
+
+def attach_m5_jacket_diagnostic_context(
+    diagnostic_input_rows: Iterable[dict[str, str]],
+    jacket_match_rows: Iterable[dict[str, str]],
+) -> list[dict[str, str]]:
+    context_fields = [
+        "diagnostic_scope",
+        "m5_target_boundary_reason",
+        "screen_type",
+        "event_type",
+        "confirmed_result",
+        "duplicate",
+        "duplicate_key",
+        "timestamp_ms",
+        "confirmation_mode",
+    ]
+    return [
+        {**{field: input_row.get(field, "") for field in context_fields}, **match_row}
+        for input_row, match_row in zip(
+            diagnostic_input_rows,
+            jacket_match_rows,
+            strict=True,
+        )
+    ]
+
+
 def write_m3_save_candidate_summary_csv(path: Path, rows: Iterable[dict[str, str]]) -> None:
     fieldnames = [
         "frame_index",
@@ -5868,11 +5970,33 @@ def main(argv: list[str] | None = None) -> int:
             output_dir,
             jacket_match_rows,
         )
+        jacket_diagnostic_input_rows = m5_jacket_diagnostic_candidate_rows(
+            frames,
+            result_events,
+        )
+        jacket_diagnostic_match_rows = master_match.match_jacket_save_candidate_rows(
+            jacket_diagnostic_input_rows,
+            args.master_db,
+            m5_jacket_result_features,
+            jacket_feature_entries,
+            m5_title_result_features,
+            title_feature_entries,
+            title_ocr_observations,
+        )
+        jacket_diagnostic_rows = attach_m5_jacket_diagnostic_context(
+            jacket_diagnostic_input_rows,
+            jacket_diagnostic_match_rows,
+        )
+        jacket_diagnostic_summary = master_match.write_jacket_match_diagnostic_outputs(
+            output_dir,
+            jacket_diagnostic_rows,
+        )
         print(
             "Wrote M5 jacket match PoC: "
             f"{output_dir} "
             f"({jacket_feature_summary['status_counts'].get('accepted', 0)} features, "
-            f"{jacket_match_summary['target_count']} candidates)"
+            f"{jacket_match_summary['target_count']} candidates, "
+            f"{jacket_diagnostic_summary['target_count']} diagnostics)"
         )
     score_ocr_results: list[ScoreOcrResult] = []
     profile_ocr_results: list[ProfileScoreOcrResult] = []

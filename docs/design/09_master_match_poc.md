@@ -83,10 +83,15 @@ result confirmed-events
 - `jacket_match_candidates.csv`
 - `jacket_match_summary.json`
 - `jacket_match_report.md`
+- `jacket_match_diagnostics.csv`
+- `jacket_match_diagnostics_summary.json`
+- `jacket_match_diagnostics.md`
 
 `jacket_feature_master.csv` は、`screen_type=song_select` かつ grid 画面の右上選択中ジャケットプレビューを特徴量化し、metadata の `song_title` / `expected_song_title` を M4 `songs.title` へ一意照合できた行だけを `accepted` として出す。ラベルが空のgrid行は `jacket_feature_label_template.csv` へ出し、metadata実体は更新しない。
 
 `jacket_match_candidates.csv` は、confirmed-events の result `jacket` ROIを特徴量化し、`play_style` / `difficulty` / `level` で絞った候補song_idに紐づくローカル特徴量だけと比較する。列には候補曲数、候補譜面数、候補特徴量数、最上位候補、score、distance、特徴量参照元、上位候補一覧、期待曲名、期待song_id、期待song_idの距離、期待song_idの順位、最上位と次点songの距離差、title画像特徴量補助、title OCR suffix補助、title line-hash補助、後続保存判定へ渡すM5候補観測 `identity_signal_*`、`jacket_match_status`、`failure_reason` を出す。期待値由来の列はローカルmetadataを使った診断であり、保存可能判定ではない。
+
+`jacket_match_diagnostics.csv` は、通常の保存候補境界とは別に、metadata上のresult行、未確定result、duplicateを含めてM5同定能力とイベント境界を観察するための別出力である。通常の `jacket_match_candidates.csv` には混ぜず、`m5_target_boundary_reason` で `save_candidate` / `unconfirmed` / `duplicate` / `metadata_result_not_candidate` を分ける。診断行の曲名と `play_style` / `difficulty` / `level` はローカルmetadata期待値を `metadata-expected-diagnostic` として使う。これは0点リザルトや同一・類似ジャケット分岐を観察するための入力であり、保存候補への昇格、保存OK/NG、本番DB保存可能判定を意味しない。
 
 `jacket_match_status` は以下のPoC観測語彙とする。
 
