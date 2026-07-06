@@ -587,7 +587,7 @@ def identity_signal_fields(row: dict[str, str]) -> dict[str, str]:
     if jacket_status == "ambiguous":
         if row.get("title_linehash_dict_status") == "resolved_candidate":
             return {
-                "identity_signal_status": "auxiliary_resolved_candidate",
+                "identity_signal_status": "composite_resolved_candidate",
                 "identity_signal_source": "title_linehash_dict",
                 "identity_signal_song_id": row.get("title_linehash_dict_top_song_id", ""),
                 "identity_signal_chart_id": row.get("title_linehash_dict_top_chart_id", ""),
@@ -598,7 +598,7 @@ def identity_signal_fields(row: dict[str, str]) -> dict[str, str]:
             }
         if row.get("title_ocr_rerank_status") == "resolved_candidate":
             return {
-                "identity_signal_status": "auxiliary_resolved_candidate",
+                "identity_signal_status": "composite_resolved_candidate",
                 "identity_signal_source": "title_ocr_suffix",
                 "identity_signal_song_id": row.get("title_ocr_top_song_id", ""),
                 "identity_signal_chart_id": row.get("title_ocr_top_chart_id", ""),
@@ -607,7 +607,7 @@ def identity_signal_fields(row: dict[str, str]) -> dict[str, str]:
             }
         if row.get("title_rerank_status") == "resolved_candidate":
             return {
-                "identity_signal_status": "auxiliary_resolved_candidate",
+                "identity_signal_status": "composite_resolved_candidate",
                 "identity_signal_source": "title_image_feature",
                 "identity_signal_song_id": row.get("title_top_song_id", ""),
                 "identity_signal_chart_id": row.get("title_top_chart_id", ""),

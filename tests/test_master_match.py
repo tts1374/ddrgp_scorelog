@@ -407,7 +407,7 @@ def test_match_jacket_save_candidate_row_title_reranks_only_ambiguous_candidates
     assert result["title_linehash_distance_status"] == "resolved_candidate"
     assert result["title_linehash_top_song_id"] == "song_type2"
     assert result["title_linehash_candidate_feature_count"] == "2"
-    assert result["identity_signal_status"] == "auxiliary_resolved_candidate"
+    assert result["identity_signal_status"] == "composite_resolved_candidate"
     assert result["identity_signal_source"] == "title_linehash_dict"
     assert result["identity_signal_song_id"] == "song_type2"
     assert result["identity_signal_reason"] == (
@@ -467,7 +467,7 @@ def test_match_jacket_save_candidate_row_title_ocr_suffix_reranks_only_ambiguous
     assert result["title_ocr_rerank_status"] == "resolved_candidate"
     assert result["title_ocr_top_song_id"] == "song_type2"
     assert result["title_ocr_top_title"] == "OSAKA TYPE2"
-    assert result["identity_signal_status"] == "auxiliary_resolved_candidate"
+    assert result["identity_signal_status"] == "composite_resolved_candidate"
     assert result["identity_signal_source"] == "title_ocr_suffix"
     assert result["identity_signal_song_id"] == "song_type2"
     assert result["title_linehash_dict_status"] == "missing_feature"

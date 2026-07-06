@@ -52,10 +52,10 @@ high
 - title line-hash辞書結果をM5候補観測として後続へ渡すため、`jacket_match_candidates.csv` に `identity_signal_*` 列を追加済み。
   - `jacket_match_status` はjacket特徴量単体の観測として維持する。title補助で候補が1件に見えても `ambiguous` から `matched` へ昇格しない。
   - `identity_signal_status=jacket_resolved_candidate` はjacket単体のPoC一意候補。
-  - `identity_signal_status=auxiliary_resolved_candidate` は、jacketが曖昧なまま補助観測が候補集合内で1件を示した状態。
+  - `identity_signal_status=composite_resolved_candidate` は、jacket候補集合にtitle補助を合わせると候補集合内で1件を示した状態。
   - `identity_signal_source` の優先順は `jacket_feature`、`title_linehash_dict`、`title_ocr_suffix`、`title_image_feature`。
   - `title_linehash_exact_status` / `title_linehash_distance_status` は参考列で、`identity_signal_source` には使わない。
-  - 今回の jacket summary は `identity_signal_status_counts={"auxiliary_resolved_candidate": 3, "jacket_resolved_candidate": 57}`、`identity_signal_source_counts={"jacket_feature": 57, "title_linehash_dict": 3}`。
+  - 今回の jacket summary は `identity_signal_status_counts={"composite_resolved_candidate": 3, "jacket_resolved_candidate": 57}`、`identity_signal_source_counts={"jacket_feature": 57, "title_linehash_dict": 3}`。
 - `matched`、jacket `matched`、title画像 `resolved_candidate`、title OCR `resolved_candidate`、title line-hash `resolved_candidate`、`identity_signal_*` はPoC上の観測語彙で、DB保存可能、本番採用済み照合、曲ID/譜面ID確定を意味しない。
 - 今回コード検証では `python -m ruff check master tools\vision_poc pyproject.toml tests`、`python -m compileall master tools\vision_poc`、`python -m pytest tests` が通過し、pytest は120 passed。M5生成系と `python -m tools.vision_poc --no-ocr` も通過し、classification は220/220全正解。
 - 生成DB、PoC出力、OCR画像、`metadata.csv`、`data/`、`logs/`、ローカル素材、ローカルDBはGit管理しない。
@@ -105,22 +105,22 @@ M5内でまだ成功扱いにしないもの:
 
 - OCR結果、ジャケットPoC結果、title補助結果から曲ID/譜面IDを保存用に確定すること
 - ファジーマッチ結果、jacket `matched`、title画像 `resolved_candidate`、title OCR `resolved_candidate`、title line-hash `resolved_candidate` を本番採用済み照合として扱うこと
-- 曖昧一致や低確信度をDB保存可能として扱うこと
+- 未解決の曖昧一致や低確信度をDB保存可能として扱うこと
 - `artist` を曲名照合の一意主キーとして扱うこと
 - 同一ジャケット候補を画像特徴量だけで無理に一意化すること
 - title画像特徴量、title OCR、title line-hashを候補集合外から曲を拾うために使うこと
 - title line-hash成功をDB保存可能、M7/M8保存判定、実保存処理として扱うこと
-- `identity_signal_status=auxiliary_resolved_candidate` や `identity_signal_source=title_linehash_dict` を保存可能、曲ID/譜面ID確定、本番採用済み照合として扱うこと
+- `identity_signal_status=composite_resolved_candidate` や `identity_signal_source=title_linehash_dict` を保存可能、曲ID/譜面ID確定、本番採用済み照合として扱うこと
 - スコア/判定数のTesseract離脱を今回の実装に含めること
 
 ## 次に必ず進める実作業
 
 - `docs/next-task.md` の更新だけ、または確認結果の記録だけで完了扱いにしない。
-- osaka TYPE1/2/3 は、jacket特徴量、result title画像特徴量、現行M3 title OCR入口では安定一意化できていないが、title line-hash辞書では候補集合内の `resolved_candidate` になり、`identity_signal_source=title_linehash_dict` として低確信度候補観測へ整理済み。
+- osaka TYPE1/2/3 は、jacket特徴量、result title画像特徴量、現行M3 title OCR入口では安定一意化できていないが、title line-hash辞書では候補集合内の `resolved_candidate` になり、`identity_signal_source=title_linehash_dict` として複合根拠の曲同定候補観測へ整理済み。
 - 次は `identity_signal_*` をM5の後続渡し出力としてさらに扱いやすくする実装を進める。
-  - 例: `jacket_match_report.md` または新規M5レポートで、`jacket_resolved_candidate`、`auxiliary_resolved_candidate`、`unresolved_*` を保存判定前の観測カテゴリとして代表行つきで確認できるようにする。
+  - 例: `jacket_match_report.md` または新規M5レポートで、`jacket_resolved_candidate`、`composite_resolved_candidate`、`unresolved_*` を保存判定前の観測カテゴリとして代表行つきで確認できるようにする。
   - `identity_signal_status` は保存判定ではなく、M7以降へ渡す候補観測として読む。
-  - `auxiliary_resolved_candidate` は低確信度のまま扱い、DB保存可能や `jacket_match_status=matched` へ直結しない。
+  - `composite_resolved_candidate` はjacket単体より低いという意味ではなく、複合根拠で曲候補を1件示した観測として扱う。ただしDB保存可能や `jacket_match_status=matched` へ直結しない。
   - `title_linehash_distance_status` は参考列として扱い、`identity_signal_source` や主判断へ戻さない。
   - 参照は引き続き result素材のみ。song_select 側タイトル表示ROIは使わない。
   - jacketで `ambiguous` になったsong_id集合内だけを対象にし、候補集合外から曲を拾わない。
