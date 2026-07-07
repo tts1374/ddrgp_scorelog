@@ -329,12 +329,13 @@ M5完了時点で固定すること:
 - 2026-07-07時点のローカル `score_digits` テンプレート配置後は、confirmed-events 60件で M7a が60/60 `recognized` / match。Tesseract比較ありの実行では、Tesseract側の余分な桁または先頭誤読との差分が3件、OCR未取得が1件だった。これはM7aの保存値候補観測であり、保存OK判定ではない。
 - 2026-07-07時点のローカル `max_combo` テンプレート配置後は、`score_digits` と `max_combo` の2 ROIで confirmed-events 60件ずつ、合計120/120 `recognized` / match。テンプレート配置前でも `max_combo` は `missing_reference` のまま分割分布が期待桁数分布と一致する。
 - 2026-07-07時点のローカル `marvelous` テンプレート配置後は、`score_digits`、`max_combo`、`marvelous` の3 ROIで confirmed-events 60件ずつ、合計180/180 `recognized` / match。テンプレート配置前でも `marvelous` は `missing_reference` のまま分割分布が期待桁数分布と一致する。
+- 2026-07-07時点のローカル `perfect` テンプレート配置後は、`score_digits`、`max_combo`、`marvelous`、`perfect` の4 ROIで confirmed-events 60件ずつ、合計240/240 `recognized` / match。テンプレート配置前でも `perfect` は `missing_reference` のまま分割分布が期待桁数分布と一致する。
 
 やること:
 
 - ローカル `score_digits` テンプレート配置済み環境では、追加素材で1桁から7桁までの実画面サンプルが増えたときに同じ可変桁分割で再確認する。
 - `score_digits` のテンプレート余白、桁分割、距離しきい値を継続レビューし、過剰な `ambiguous` や誤認識があれば最小限で調整する。
-- 次は `score_digits`、`max_combo`、`marvelous` の読み方を保ったまま、`perfect`、`great`、`good`、`miss`、`ex_score` のうち小さい範囲から M7a 対象を広げる。
+- 次は `score_digits`、`max_combo`、`marvelous`、`perfect` の読み方を保ったまま、`great`、`good`、`miss`、`ex_score` のうち小さい範囲から M7a 対象を広げる。
 - 既存Tesseract出力との比較summaryを読み、差分代表を保存判定ではなくレビュー材料として整理する。
 - 出力は `data/` 配下に置き、テンプレート素材やローカル画像はGit管理しない。
 - fixtureテストで、正規化、桁分割、テンプレート選択、失敗理由の基本動作を継続確認する。
