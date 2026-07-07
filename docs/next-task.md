@@ -8,16 +8,18 @@ high
 
 ## 作業ブランチ
 
-`codex/m5-master-match-poc`
+`codex/m7a-digit-recognition-poc`
 
 作業開始時に以下を確認してください。
 
 - `git status --short --branch`
 - `git log --oneline -5`
-- 現在ブランチが `codex/m5-master-match-poc` であること
+- 現在ブランチが `codex/m7a-digit-recognition-poc` であること
+- `origin/main` にM5 PR #3 (`bf614d1`) がマージ済みであること
 
 ## 今回までの作業結果
 
+- M5 PR #3 は `main` へマージ済み。M7aブランチは `origin/main` 上に載せ直し済み。
 - M5は完了扱い。`jacket_match_status=matched`、`identity_signal_status=*resolved_candidate`、coverage系summaryは保存OKや曲ID/譜面ID確定ではない。
 - M7a「スコア系数字認識のOCR脱却」の最小入口を追加した。
   - `--m7a-digit-recognition`
