@@ -158,8 +158,10 @@ def write_digit_roi_image(
         draw = ImageDraw.Draw(image)
         draw.rectangle((left, top + 4, left + 18, top + 23), fill="white")
         draw.rectangle((left + 24, top + 4, left + 54, top + 23), fill="white")
-        draw.rectangle((left + 170, bottom - 4, right - 2, bottom - 1), fill="white")
-    cursor_x = left + int((right - left) * 0.65) + 14
+        if roi_name == "max_combo":
+            draw.rectangle((left + 170, bottom - 4, right - 2, bottom - 1), fill="white")
+    digit_left_fraction = 0.65 if roi_name == "max_combo" else 0.56
+    cursor_x = left + int((right - left) * digit_left_fraction) + 10
     cursor_y = top + 4
     for digit in digits:
         glyph = digit_glyph(digit, scale=4)
@@ -1919,6 +1921,90 @@ def test_m7a_digit_recognition_reports_segment_count_without_reference(
     assert result.segment_count == 3
 
 
+@pytest.mark.parametrize(
+    ("roi_name", "expected_column"),
+    [
+        ("max_combo", "max_combo"),
+        ("marvelous", "marvelous"),
+        ("perfect", "perfect"),
+    ],
+)
+def test_m7a_digit_recognition_segments_four_digit_judgment_counts(
+    tmp_path: Path,
+    roi_name: str,
+    expected_column: str,
+) -> None:
+    template_root = tmp_path / "digit_templates"
+    write_digit_templates(template_root, roi_name, scale=4)
+    templates = runner.load_m7a_digit_templates(template_root, roi_name)
+    image_path = tmp_path / f"result_{roi_name}1234.png"
+    write_digit_roi_image(
+        image_path,
+        roi_name=roi_name,
+        digits="1234",
+        expected_label_noise=True,
+    )
+    frame = runner.FrameInput(
+        row={
+            "organized_file": f"result_{roi_name}1234.png",
+            "screen_type": "result",
+            expected_column: "1234",
+        },
+        image_path=image_path,
+    )
+    event = result_event(f"result_{roi_name}1234.png", confirmed_result=True)
+
+    with Image.open(image_path) as image:
+        result = runner.process_m7a_digit_roi(
+            image.convert("RGB"),
+            frame,
+            event,
+            roi_name,
+            templates,
+        )
+
+    assert result.segment_count == 4
+    assert result.recognized_digits == "1234"
+    assert result.status == "recognized"
+    assert result.match is True
+
+
+@pytest.mark.parametrize("roi_name", ["max_combo", "marvelous", "perfect"])
+def test_m7a_digit_recognition_reports_four_digit_segment_count_without_reference(
+    tmp_path: Path,
+    roi_name: str,
+) -> None:
+    image_path = tmp_path / f"result_{roi_name}1234.png"
+    write_digit_roi_image(
+        image_path,
+        roi_name=roi_name,
+        digits="1234",
+        expected_label_noise=True,
+    )
+    frame = runner.FrameInput(
+        row={
+            "organized_file": f"result_{roi_name}1234.png",
+            "screen_type": "result",
+            roi_name: "1234",
+        },
+        image_path=image_path,
+    )
+    event = result_event(f"result_{roi_name}1234.png", confirmed_result=True)
+
+    with Image.open(image_path) as image:
+        result = runner.process_m7a_digit_roi(
+            image.convert("RGB"),
+            frame,
+            event,
+            roi_name,
+            [],
+        )
+
+    assert result.status == "missing_reference"
+    assert result.failure_reason == "missing_digit_templates=0123456789"
+    assert result.segment_count == 4
+
+
 def test_m7a_digit_recognition_segments_marvelous_digit_area(tmp_path: Path) -> None:
     template_root = tmp_path / "digit_templates"
     write_digit_templates(template_root, "marvelous", scale=4)
@@ -2057,6 +2143,66 @@ def test_m7a_digit_recognition_reports_perfect_segment_count_without_reference(
     assert result.status == "missing_reference"
     assert result.failure_reason == "missing_digit_templates=0123456789"
     assert result.segment_count == 3
+
+
+@pytest.mark.parametrize("roi_name", ["marvelous", "perfect"])
+def test_m7a_digit_recognition_uses_shared_judgment_count_templates(
+    tmp_path: Path,
+    roi_name: str,
+) -> None:
+    template_root = tmp_path / "digit_templates"
+    write_digit_templates(template_root, "judgment_counts", scale=4)
+    templates = runner.load_m7a_digit_templates(template_root, roi_name)
+    image_path = tmp_path / f"result_{roi_name}128.png"
+    write_digit_roi_image(
+        image_path,
+        roi_name=roi_name,
+        digits="128",
+        expected_label_noise=True,
+    )
+    frame = runner.FrameInput(
+        row={
+            "organized_file": f"result_{roi_name}128.png",
+            "screen_type": "result",
+            roi_name: "128",
+        },
+        image_path=image_path,
+    )
+    event = result_event(f"result_{roi_name}128.png", confirmed_result=True)
+
+    with Image.open(image_path) as image:
+        result = runner.process_m7a_digit_roi(
+            image.convert("RGB"),
+            frame,
+            event,
+            roi_name,
+            templates,
+        )
+
+    assert {Path(template.image_path).parent.name for template in templates} == {
+        "judgment_counts"
+    }
+    assert result.segment_count == 3
+    assert result.recognized_digits == "128"
+    assert result.status == "recognized"
+    assert result.match is True
+
+
+def test_m7a_digit_template_search_roots_include_future_shared_groups(
+    tmp_path: Path,
+) -> None:
+    template_root = tmp_path / "digit_templates"
+
+    assert runner.m7a_digit_template_search_roots(template_root, "great") == [
+        template_root / "great",
+        template_root / "judgment_counts",
+        template_root,
+    ]
+    assert runner.m7a_digit_template_search_roots(template_root, "ex_score") == [
+        template_root / "ex_score",
+        template_root / "combo_ex_score",
+        template_root,
+    ]
 
 
 def test_m7a_digit_recognition_reports_failed_segmentation(tmp_path: Path) -> None:

@@ -321,7 +321,7 @@ M5完了時点で固定すること:
 
 - `--m7a-digit-recognition` で、confirmed-events 境界だけを対象にした非OCR数字認識PoCの最小入口を追加済み。
 - 初期対象は既定で `score_digits`。`--m7a-digit-rois all` で判定数ROIや `ex_score` へ広げられるが、採用判断はまだ行わない。
-- 桁分割した前景maskを、ローカル `digit_templates/<roi>/<digit>.png` または `<root>/<digit>.png` のbitmapテンプレートと比較する。テンプレート画像はローカル素材でGit管理しない。
+- 桁分割した前景maskを、ローカル `digit_templates/<roi>/<digit>.png`、共有グループ、または `<root>/<digit>.png` のbitmapテンプレートと比較する。テンプレート画像はローカル素材でGit管理しない。判定数系は `digit_templates/judgment_counts/`、`max_combo` / `ex_score` 系は `digit_templates/combo_ex_score/` を共有候補として試せる。
 - `score_digits` は0から1,000,000までの可変桁表示を前提にし、カンマや背景ノイズを除いた大きな数字成分だけを左から読む。1桁から7桁までを固定6桁へ寄せない。
 - `max_combo` はROI左側ラベルや下線を除き、右側数字領域の前景コンポーネントを分割する。テンプレート不足時でも `segment_count_counts` と `expected_digit_length_counts` で分割数と期待桁数を確認できる。
 - 出力は `m7a_digit_recognition.csv`、`m7a_digit_recognition_summary.json`、`m7a_digit_recognition_report.md`。既存 `score_ocr.csv` / `score_ocr_summary.json` は壊さず、同じ実行にOCR結果がある場合だけ `tesseract_comparison` で比較する。
@@ -330,6 +330,7 @@ M5完了時点で固定すること:
 - 2026-07-07時点のローカル `max_combo` テンプレート配置後は、`score_digits` と `max_combo` の2 ROIで confirmed-events 60件ずつ、合計120/120 `recognized` / match。テンプレート配置前でも `max_combo` は `missing_reference` のまま分割分布が期待桁数分布と一致する。
 - 2026-07-07時点のローカル `marvelous` テンプレート配置後は、`score_digits`、`max_combo`、`marvelous` の3 ROIで confirmed-events 60件ずつ、合計180/180 `recognized` / match。テンプレート配置前でも `marvelous` は `missing_reference` のまま分割分布が期待桁数分布と一致する。
 - 2026-07-07時点のローカル `perfect` テンプレート配置後は、`score_digits`、`max_combo`、`marvelous`、`perfect` の4 ROIで confirmed-events 60件ずつ、合計240/240 `recognized` / match。テンプレート配置前でも `perfect` は `missing_reference` のまま分割分布が期待桁数分布と一致する。
+- `max_combo`、`marvelous`、`perfect` は4桁fixtureでも右側数字領域を分割・認識できる。`marvelous` と `perfect` は共有 `judgment_counts` テンプレートだけでも認識できるfixtureを追加済み。
 
 やること:
 

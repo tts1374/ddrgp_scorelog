@@ -308,6 +308,15 @@ M7A_DIGIT_FOCUS_LEFT_FRACTIONS: dict[str, float] = {
     "perfect": 0.52,
 }
 M7A_COMPONENT_SEGMENT_ROIS = frozenset({"max_combo", "marvelous", "perfect"})
+M7A_DIGIT_TEMPLATE_GROUPS: dict[str, tuple[str, ...]] = {
+    "marvelous": ("judgment_counts",),
+    "perfect": ("judgment_counts",),
+    "great": ("judgment_counts",),
+    "good": ("judgment_counts",),
+    "miss": ("judgment_counts",),
+    "max_combo": ("combo_ex_score",),
+    "ex_score": ("combo_ex_score",),
+}
 M3_METADATA_EXPECTED_FIELDS = (
     "song_title",
     "artist",
@@ -1538,11 +1547,18 @@ def m7a_template_label_from_path(path: Path) -> str:
     return match.group("label") if match else ""
 
 
+def m7a_digit_template_search_roots(template_root: Path, roi_name: str) -> list[Path]:
+    return [
+        template_root / roi_name,
+        *(template_root / group for group in M7A_DIGIT_TEMPLATE_GROUPS.get(roi_name, ())),
+        template_root,
+    ]
+
+
 def load_m7a_digit_templates(template_root: Path, roi_name: str) -> list[M7aDigitTemplate]:
-    search_roots = [template_root / roi_name, template_root]
     templates: list[M7aDigitTemplate] = []
     seen_paths: set[Path] = set()
-    for root in search_roots:
+    for root in m7a_digit_template_search_roots(template_root, roi_name):
         if not root.exists() or not root.is_dir():
             continue
         for path in sorted(root.iterdir()):
