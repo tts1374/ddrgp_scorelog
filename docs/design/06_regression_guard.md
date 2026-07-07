@@ -183,7 +183,8 @@
 - `max_combo` はROI左側ラベルや下線を数字として数えず、右側数字領域の前景コンポーネントを分割する。
 - `marvelous` はROI左側ラベルを数字として数えず、右側数字領域の前景コンポーネントを分割する。
 - `perfect` はROI左側ラベルを数字として数えず、右側数字領域の前景コンポーネントを分割する。
-- `max_combo`、`marvelous`、`perfect` は4桁fixtureでも分割・認識できる状態を維持する。
+- `great` はROI左側ラベルを数字として数えず、右側数字領域の前景コンポーネントを分割する。
+- `max_combo`、`marvelous`、`perfect`、`great` は4桁fixtureでも分割・認識できる状態を維持する。
 - 判定数系テンプレートはROI別ディレクトリに加えて、共有 `judgment_counts` ディレクトリからも読める。
 - `max_combo` / `ex_score` 系テンプレートは、将来の共通化候補として共有 `combo_ex_score` ディレクトリからも読める。
 - M7a summary/report はROI別に `segment_count_counts` と `expected_digit_length_counts` を出し、テンプレート不足時でも分割数と期待桁数を確認できる。
