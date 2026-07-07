@@ -1919,6 +1919,76 @@ def test_m7a_digit_recognition_reports_segment_count_without_reference(
     assert result.segment_count == 3
 
 
+def test_m7a_digit_recognition_segments_marvelous_digit_area(tmp_path: Path) -> None:
+    template_root = tmp_path / "digit_templates"
+    write_digit_templates(template_root, "marvelous", scale=4)
+    templates = runner.load_m7a_digit_templates(template_root, "marvelous")
+    image_path = tmp_path / "result_marvelous128.png"
+    write_digit_roi_image(
+        image_path,
+        roi_name="marvelous",
+        digits="128",
+        expected_label_noise=True,
+    )
+    frame = runner.FrameInput(
+        row={
+            "organized_file": "result_marvelous128.png",
+            "screen_type": "result",
+            "marvelous": "128",
+        },
+        image_path=image_path,
+    )
+    event = result_event("result_marvelous128.png", confirmed_result=True)
+
+    with Image.open(image_path) as image:
+        result = runner.process_m7a_digit_roi(
+            image.convert("RGB"),
+            frame,
+            event,
+            "marvelous",
+            templates,
+        )
+
+    assert result.segment_count == 3
+    assert result.recognized_digits == "128"
+    assert result.status == "recognized"
+    assert result.match is True
+
+
+def test_m7a_digit_recognition_reports_marvelous_segment_count_without_reference(
+    tmp_path: Path,
+) -> None:
+    image_path = tmp_path / "result_marvelous128.png"
+    write_digit_roi_image(
+        image_path,
+        roi_name="marvelous",
+        digits="128",
+        expected_label_noise=True,
+    )
+    frame = runner.FrameInput(
+        row={
+            "organized_file": "result_marvelous128.png",
+            "screen_type": "result",
+            "marvelous": "128",
+        },
+        image_path=image_path,
+    )
+    event = result_event("result_marvelous128.png", confirmed_result=True)
+
+    with Image.open(image_path) as image:
+        result = runner.process_m7a_digit_roi(
+            image.convert("RGB"),
+            frame,
+            event,
+            "marvelous",
+            [],
+        )
+
+    assert result.status == "missing_reference"
+    assert result.failure_reason == "missing_digit_templates=0123456789"
+    assert result.segment_count == 3
+
+
 def test_m7a_digit_recognition_reports_failed_segmentation(tmp_path: Path) -> None:
     template_root = tmp_path / "digit_templates"
     write_digit_templates(template_root)

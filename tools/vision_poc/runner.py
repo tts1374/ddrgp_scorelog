@@ -304,8 +304,9 @@ M7A_DIGIT_MIN_MARGIN = 0.02
 M7A_DIGIT_SEGMENT_GAP_TOLERANCE = 1
 M7A_DIGIT_FOCUS_LEFT_FRACTIONS: dict[str, float] = {
     "max_combo": 0.65,
+    "marvelous": 0.52,
 }
-M7A_COMPONENT_SEGMENT_ROIS = frozenset({"max_combo"})
+M7A_COMPONENT_SEGMENT_ROIS = frozenset({"max_combo", "marvelous"})
 M3_METADATA_EXPECTED_FIELDS = (
     "song_title",
     "artist",
