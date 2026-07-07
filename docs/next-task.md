@@ -18,53 +18,40 @@ high
 
 ## 今回までの作業結果
 
-- M5参照カバレッジの完了整理をdocs/README/testsで固定した。
-  - `docs/design/09_master_match_poc.md` に、`jacket_match_summary.json` と `jacket_reference_coverage_summary.json` の読み分けを明記した。
-  - `tools/vision_poc/README.md` に、通常coverageと診断coverageの出力名、summaryの読み方、`expected_missing_feature` / `expected_not_in_chart_candidates` / `expected_unresolved` の扱いを追記した。
-  - `docs/implementation-roadmap.md` のM5節を、完了判定と次フェーズ切り分けへ更新した。
-  - `tests/test_master_match.py` に、`expected_not_in_chart_candidates` と診断coverage出力名の回帰テストを追加した。
-- M5は完了扱いにしてよい。
-  - `jacket_match_status=matched` はPoC上の一意候補で、保存OKではない。
-  - `identity_signal_status=jacket_resolved_candidate` / `composite_resolved_candidate` はM7以降へ渡す候補観測で、曲ID/譜面ID確定ではない。
-  - `jacket_reference_coverage_summary.json` は参照素材カバレッジ診断で、照合成功数ではない。
-  - `expected_missing_feature` / `expected_not_in_chart_candidates` / `expected_unresolved` はレビュー材料で、保存候補昇格やGP対象外曲復帰には使わない。
-  - duplicate / unconfirmed を含む診断出力は保存候補ではない。
-- 2026-07-07の最新ローカル検証結果:
-  - M4 DB: 1282 songs / 9594 charts / `song_aliases=39` / `source_snapshots=2`
-  - Wiki source hash: `d433ba20255663eec865d043ba73ec6fc8dc6c201d56253fb15e8f0de2dc5d50`
-  - 公式収録曲一覧 source hash: `ce7e1ecd782df839b44ca8e993648b4025336360c395ada8f71f81026020cb0d`
-  - `grand_prix_play_available_song_count=1181`
-  - `free_play_available_song_count=64`
-  - `official_availability_matched_song_count=1181`
-  - `official_availability_match`: `title_artist=1143` / `unique_title=36` / `alias_title_artist=2` / `not_found=101`
-- M5 jacket通常候補の最新結果:
-  - `jacket_feature_master`: `target_count=69` / `accepted=69`
-  - `jacket_match_status_counts={"ambiguous": 3, "insufficient_input": 0, "matched": 57, "missing_feature": 0, "not_found": 0}`
-  - `identity_signal_status_counts={"composite_resolved_candidate": 3, "jacket_resolved_candidate": 57}`
-  - `identity_signal_source_counts={"jacket_feature": 57, "title_linehash_dict": 3}`
-  - `expected_song_resolution_status_counts={"resolved": 59, "unresolved": 1}`
-  - `expected_song_resolution_reason_counts={"title_not_found": 1}`
-  - `expected_song_grand_prix_play_available_counts={"True": 59}`
-- M5 jacket参照カバレッジ通常候補の最新結果:
+- M5は完了扱い。`jacket_match_status=matched`、`identity_signal_status=*resolved_candidate`、coverage系summaryは保存OKや曲ID/譜面ID確定ではない。
+- M7a「スコア系数字認識のOCR脱却」の最小入口を追加した。
+  - `--m7a-digit-recognition`
+  - `--m7a-digit-rois`。既定は `score_digits`、`all` で主要数字ROIへ拡張可能。
+  - `--m7a-digit-template-root`。既定は `samples/screenshots/organized/digit_templates`。
+  - 出力は `m7a_digit_recognition.csv`、`m7a_digit_recognition_summary.json`、`m7a_digit_recognition_report.md`。
+  - 既存 `score_ocr.csv` / `score_ocr_summary.json` は変更しない。
+  - 同じ実行でTesseract結果がある場合だけ `tesseract_comparison` で正規化済み数字列を比較する。
+- M7aは confirmed-events 境界だけを対象にする。
+  - 条件は `confirmed_result=true` かつ `duplicate=false`。
+  - duplicate、未確定候補、`rejected_transition`、non-result は対象外。
+- M7a status語彙:
+  - `recognized`: bitmapテンプレート比較で数字候補が出た。
+  - `ambiguous`: 距離またはmarginがしきい値不足。
+  - `missing_reference`: digit template不足。
+  - `failed_segmentation`: 桁分割失敗。
+  - `not_evaluated`: 数字候補は出たが期待値がなく成功判定できない。
+- fixtureテストで、confirmed-events対象、Tesseract比較、`missing_reference`、`failed_segmentation`、`not_evaluated` を固定した。
+- docs/README更新済み。
+  - `tools/vision_poc/README.md`
+  - `docs/design/03_event_and_save_boundary.md`
+  - `docs/implementation-roadmap.md`
+- 2026-07-07のローカルM7a実行結果:
+  - コマンド: `python -m tools.vision_poc --m7a-digit-recognition --no-ocr --no-rois --output data\vision_poc_m7a_digit`
+  - 分類: 221/221 correct、false positives 0、false negatives 0。
   - `target_count=60`
-  - `coverage_row_count=7634`
-  - `total_candidate_songs=7634`
-  - `referenced_candidate_songs=618`
-  - `missing_feature_candidate_songs=7016`
-  - `row_reference_status_counts={"all_referenced": 2, "partial_referenced": 58}`
-  - `expected_song_reference_status_counts={"expected_missing_feature": 5, "expected_not_in_chart_candidates": 1, "expected_referenced": 53, "expected_unresolved": 1}`
-- M5 jacket参照カバレッジ診断候補の最新結果:
-  - `target_count=118`
-  - `coverage_row_count=13790`
-  - `total_candidate_songs=13778`
-  - `referenced_candidate_songs=1143`
-  - `missing_feature_candidate_songs=12635`
-  - `row_reference_status_counts={"all_referenced": 2, "insufficient_input": 12, "no_candidate_features": 1, "partial_referenced": 103}`
-  - `expected_song_reference_status_counts={"expected_missing_feature": 6, "expected_not_in_chart_candidates": 2, "expected_referenced": 97, "expected_unresolved": 13}`
-- M4 canonical/alias確認:
-  - `RЁVOLUTIФN`: `songs.title=RЁVOLUTIФN` / artist `TЁЯRA` / `grand_prix_play_available=1` / `official_availability_match=alias_title_artist`
-  - Wiki由来 `RËVOLUTIФN` は `song_aliases` に保持される。
-- 生成DB、PoC出力、OCR画像、`metadata.csv`、`data/`、`logs/`、ローカル素材、ローカルDBはGit管理しない。
+  - `total_attempts=60`
+  - `status_counts={"missing_reference": 60}`
+  - `failure_reason_counts={"missing_digit_templates=0123456789": 60}`
+  - `skipped_duplicate_count=37`
+  - `skipped_rejected_transition_count=3`
+  - `skipped_unconfirmed_count=124`
+  - `tesseract_comparison.available_attempts=0`。`--no-ocr` 実行のため。
+- 上記 `missing_reference` は、ローカル digit template が未配置であるための想定結果。実装失敗ではない。
 
 ## 必読資料
 
@@ -74,35 +61,39 @@ high
 - `docs/design/03_event_and_save_boundary.md`
 - `docs/design/04_data_model.md`
 - `docs/design/05_storage_io_spec.md`
-- `docs/design/08_master_db_generation.md`
+- `docs/design/06_regression_guard.md`
 - `docs/design/09_master_match_poc.md`
-- `docs/design/07_m3_chart_field_review.md`
 - `tools/vision_poc/README.md`
-- `tools/vision_poc/master_match.py`
 - `tools/vision_poc/runner.py`
+- `tools/vision_poc/master_match.py`
+- `tests/test_vision_poc_ocr.py`
+- `tests/test_vision_poc_result_events.py`
+- `tests/test_master_match.py`
+
+M5/M4境界へ触る場合は追加で読む資料:
+
+- `docs/design/08_master_db_generation.md`
+- `docs/design/07_m3_chart_field_review.md`
 - `master/README.md`
 - `master/builder.py`
 - `master/inspect.py`
 - `tests/test_master_builder.py`
-- `tests/test_master_match.py`
-- `tests/test_vision_poc_result_events.py`
-
-M7aの数字認識PoCへ進む場合は追加で読む資料:
-
-- `docs/design/00_glossary.md`
-- `docs/design/06_regression_guard.md`
-- `tests/test_vision_poc_ocr.py`
 
 ## スコープ外
 
 - スクリーンショット画像、`samples/screenshots/metadata.csv`、`data/`、`logs/`、ローカルDBのGit管理
 - `samples/screenshots/cropped/` と `samples/screenshots/organized/` 配下のローカル追加画像コミット
+- `samples/screenshots/organized/digit_templates/` などのM7a digit template画像コミット
 - 本番キャプチャAPI、実キャプチャデバイス依存コード、常駐監視ループ、非同期処理
-- 個人スコアDB保存、保存可否判定本番仕様、低確信度ログ本番仕様
+- 個人スコアDB保存、保存可否判定本番仕様、低信頼度ログ本番仕様
+- OCR結果やM7a認識結果から保存値を本番確定すること
+- 曲ID/譜面IDの保存用確定
+- ROI座標定義の大変更
+- Tesseract OCR全体の撤去やOCR方式全面刷新
+- duplicate key の本格実装差し替え
 - M4 Releases配布の実装
 - Windows常駐アプリUI
 - プロジェクト専用Skill/Subagentの作成
-- 生成済み `data/master/ddrgp-master.sqlite` のコミット
 
 M5で完了済みとして扱い、次チャットで蒸し返さないもの:
 
@@ -112,51 +103,28 @@ M5で完了済みとして扱い、次チャットで蒸し返さないもの:
 - `Inner Spirit -GIGA HiTECH MIX-` と `RЁVOLUTIФN` のjacket参照追加後のM5確認
 - title line-hashをjacket ambiguous候補集合内だけに使う境界
 
-M7aでまだやらないこと:
-
-- 保存OK/NG判定、個人スコアDB保存、低信頼度ログ本番仕様
-- OCR結果や数字認識結果から保存値を本番確定すること
-- 曲ID/譜面IDの保存用確定
-- ROI座標定義の大変更
-- Tesseract OCR全体の撤去やOCR方式全面刷新
-- duplicate key の本格実装差し替え
-
 ## 次に必ず進める実作業
 
-次は M7a「スコア系数字認識のOCR脱却」の最小PoCを進める。
+M7aの次ステップとして、`score_digits` のローカルdigit templateを整備し、実素材の confirmed-events で `recognized` を出せるか確認する。
 
-- `docs/next-task.md` の更新だけ、または確認結果の記録だけで完了扱いにしない。
-- confirmed-eventsだけを対象に、保存値候補になる数字ROIの非OCR認識PoCを追加する。
-- 初回対象は、実装量を抑えるため `score_digits` を優先する。余力があれば `ex_score`、`max_combo`、`marvelous`、`perfect`、`great`、`good`、`miss` へ広げる。
-- Tesseractではなく、テンプレート、桁分割、画像特徴、または固定UI向けの軽量line/bitmap比較を使う。
-- 出力は `data/` 配下に置き、テンプレート素材やローカル画像はGit管理しない。
-- status語彙は最初から `recognized` / `ambiguous` / `missing_reference` / `failed_segmentation` / `not_evaluated` などを分ける。
-- 既存Tesseract出力とは別summaryとして出し、既存 `score_ocr.csv` / `score_ocr_summary.json` を壊さない。
-- M7保存判定やM8 DB保存と混同せず、保存値候補の読み取り材料として扱う。
-- コードを追加した場合は、ネットワーク、画像、`metadata.csv` に依存しないfixtureテストを追加する。
-- 仕様や読み方を変えた場合は、`docs/implementation-roadmap.md`、関連する `docs/design/`、`tools/vision_poc/README.md` も同じ作業で更新する。
+- テンプレート素材はローカル素材として置き、Git管理しない。
+- まず `score_digits` だけを対象にする。
+- テンプレート画像は数字前景の周囲に背景余白を含める。
+- `samples/screenshots/organized/digit_templates/score_digits/0.png` から `9.png` のような配置を優先する。
+- `python -m tools.vision_poc --m7a-digit-recognition --ocr-target confirmed-events --no-rois --output data\vision_poc_m7a_digit_ocr_compare` を実行し、M7a結果と既存Tesseract結果を比較する。
+- `missing_reference` が解消した後、`recognized` / `ambiguous` / `failed_segmentation` / mismatch の代表を確認する。
+- 過剰な `ambiguous` や明らかな誤認識があれば、テンプレート余白、桁分割、距離しきい値を小さく調整する。
+- `score_digits` が読める状態になるまで、`max_combo`、`marvelous`、`perfect`、`great`、`good`、`miss`、`ex_score` へ広げない。
+- 実装を変えた場合は、ネットワーク、画像、`metadata.csv` に依存しないfixtureテストを追加または更新する。
+- 仕様語彙や読み方を変えた場合は、`docs/implementation-roadmap.md`、関連する `docs/design/`、`tools/vision_poc/README.md` も同じ作業で更新する。
 
 ## 検証コマンド
 
-M5完了確認として今回通したコマンド:
-
-```powershell
-python -m master --output data\master\ddrgp-master.sqlite
-python -m master.inspect data\master\ddrgp-master.sqlite --summary data\master\master-summary.json
-python -m tools.vision_poc --m5-master-match --master-db data\master\ddrgp-master.sqlite --output data\master_match_poc --no-rois --no-ocr
-python -m tools.vision_poc --m3-song-artist-ocr --m5-master-match --master-db data\master\ddrgp-master.sqlite --output data\master_match_poc_ocr --no-rois
-python -m tools.vision_poc --m3-song-artist-ocr --m5-master-match --m5-jacket-match --master-db data\master\ddrgp-master.sqlite --output data\master_match_poc_jacket --no-rois
-python -m tools.vision_poc --no-ocr
-python -m ruff check master tools\vision_poc pyproject.toml tests
-python -m compileall master tools\vision_poc
-python -m pytest tests
-git diff --check
-```
-
-M7aで最低限実行するコマンド:
+今回通したコマンド:
 
 ```powershell
 python -m tools.vision_poc --no-ocr
+python -m tools.vision_poc --m7a-digit-recognition --no-ocr --no-rois --output data\vision_poc_m7a_digit
 python -m tools.vision_poc --m3-song-artist-ocr --ocr-target confirmed-events --no-rois --output data\vision_poc_m3_song_artist
 python -m ruff check master tools\vision_poc pyproject.toml tests
 python -m compileall master tools\vision_poc
@@ -164,23 +132,36 @@ python -m pytest tests
 git diff --check
 ```
 
-M4/M5境界へ触った場合は、今回通したM5完了確認コマンドも再実行すること。
+次チャットで最低限実行するコマンド:
+
+```powershell
+python -m tools.vision_poc --m7a-digit-recognition --no-ocr --no-rois --output data\vision_poc_m7a_digit
+python -m tools.vision_poc --m7a-digit-recognition --ocr-target confirmed-events --no-rois --output data\vision_poc_m7a_digit_ocr_compare
+python -m tools.vision_poc --no-ocr
+python -m ruff check master tools\vision_poc pyproject.toml tests
+python -m compileall master tools\vision_poc
+python -m pytest tests
+git diff --check
+```
+
+M4/M5境界へ触った場合は、M5完了確認コマンドも再実行すること。
 
 ## コミット/Push方針
 
 - `metadata.csv`、`data/`、`logs/`、ローカル素材、ローカルDBはコミットしない。
 - `samples/screenshots/cropped/` と `samples/screenshots/organized/` 配下の画像はローカル素材扱いでコミットしない。
+- `samples/screenshots/organized/digit_templates/` などのM7aテンプレート画像はコミットしない。
 - `docs/next-task.md` は引き継ぎ仕様としてコミット対象に含める。
 - コード、README、docs、テストに変更がある場合のみ、今回作業分だけをステージしてコミットする。
 - `data/master/ddrgp-master.sqlite`、`data/master/master-summary.json`、M5/M7a PoC出力、ROI画像、OCR画像、解析ログはステージしない。
-- 仕様語彙、出力ファイル名、summaryの読み方、保存境界、OCR対象境界を変えた場合は、関連する `docs/design/` または `tools/vision_poc/README.md` を同じコミットに含める。
+- 仕様語彙、出力ファイル名、summaryの読み方、保存境界、OCR/M7a対象境界を変えた場合は、関連する `docs/design/` または `tools/vision_poc/README.md` を同じコミットに含める。
 - コミットがある場合は作業ブランチを push する。
 
 ## 完了条件
 
-- M7aの最小PoCが confirmed-events 対象だけを入力にしている。
-- 対象数字ROIについて、非OCR方式の認識候補、信頼度または距離、status、failure_reason を出せる。
-- `recognized`、`ambiguous`、`missing_reference`、`failed_segmentation` などの失敗理由を混同せず読める。
+- M7a digit recognition が confirmed-events 対象だけを入力にしている。
+- `score_digits` について、非OCR方式の認識候補、距離またはconfidence、status、failure_reason を出せる。
+- `recognized`、`ambiguous`、`missing_reference`、`failed_segmentation`、`not_evaluated` を混同せず読める。
 - 既存Tesseract OCR出力を壊していない。
 - M5の通常候補、診断出力、coverage summary、`identity_signal_*` の意味を変更していない。
 - M7保存判定やM8 DB保存を実装していない。

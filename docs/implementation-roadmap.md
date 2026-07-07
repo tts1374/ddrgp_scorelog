@@ -317,15 +317,22 @@ M5完了時点で固定すること:
 
 目的は、個人スコアDBへ保存する数値項目を、Tesseract OCR依存からテンプレート/画像特徴ベースのPoCへ切り出すことです。曲・譜面同定を扱うM5とは分け、DB保存を実装するM8より前に、保存値として使う数字の読み取り方式と失敗理由を固定します。
 
+現在地:
+
+- `--m7a-digit-recognition` で、confirmed-events 境界だけを対象にした非OCR数字認識PoCの最小入口を追加済み。
+- 初期対象は既定で `score_digits`。`--m7a-digit-rois all` で判定数ROIや `ex_score` へ広げられるが、採用判断はまだ行わない。
+- 桁分割した前景maskを、ローカル `digit_templates/<roi>/<digit>.png` または `<root>/<digit>.png` のbitmapテンプレートと比較する。テンプレート画像はローカル素材でGit管理しない。
+- 出力は `m7a_digit_recognition.csv`、`m7a_digit_recognition_summary.json`、`m7a_digit_recognition_report.md`。既存 `score_ocr.csv` / `score_ocr_summary.json` は壊さず、同じ実行にOCR結果がある場合だけ `tesseract_comparison` で比較する。
+- status は `recognized`、`ambiguous`、`missing_reference`、`failed_segmentation`、`not_evaluated` を分ける。これは保存値候補の読み取り材料であり、保存OK/NG判定やDB保存ではない。
+
 やること:
 
-- confirmed-eventsだけを対象にする。
-- `score_digits`、`max_combo`、`marvelous`、`perfect`、`great`、`good`、`miss`、`ex_score` の数字ROIを対象にする。
-- Tesseractではなく、テンプレート、桁分割、画像特徴などのOCR非依存方式で数字候補を出す。
-- 既存Tesseract出力と比較できるsummaryを出す。
-- ROIごとに `recognized` / `ambiguous` / `missing_reference` / `failed_segmentation` などの失敗理由を出す。
+- ローカル `score_digits` テンプレートを整備し、実素材の confirmed-events で `recognized` / `ambiguous` / `missing_reference` / `failed_segmentation` の分布を確認する。
+- `score_digits` のテンプレート余白、桁分割、距離しきい値をレビューし、過剰な `ambiguous` や誤認識があれば最小限で調整する。
+- `score_digits` が読める状態になってから、`max_combo`、`marvelous`、`perfect`、`great`、`good`、`miss`、`ex_score` へ広げる。
+- 既存Tesseract出力との比較summaryを読み、差分代表を保存判定ではなくレビュー材料として整理する。
 - 出力は `data/` 配下に置き、テンプレート素材やローカル画像はGit管理しない。
-- fixtureテストで、正規化、桁分割、テンプレート選択、失敗理由の基本動作を確認する。
+- fixtureテストで、正規化、桁分割、テンプレート選択、失敗理由の基本動作を継続確認する。
 
 完了条件:
 

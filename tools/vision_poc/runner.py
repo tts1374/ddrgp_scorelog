@@ -210,6 +210,34 @@ class ProfileScoreOcrResult:
 
 
 @dataclass(frozen=True)
+class M7aDigitTemplate:
+    label: str
+    image_path: str
+    vector: np.ndarray
+
+
+@dataclass(frozen=True)
+class M7aDigitRecognitionResult:
+    organized_file: str
+    screen_type: str
+    event_type: str
+    confirmed_result: bool
+    duplicate: bool
+    roi_name: str
+    method: str
+    recognized_digits: str
+    expected_value: str
+    match: bool | None
+    status: str
+    failure_reason: str
+    distance: float | None
+    confidence: float | None
+    segment_count: int
+    template_count: int
+    per_digit_distances: str
+
+
+@dataclass(frozen=True)
 class M3SongArtistOcrResult:
     organized_file: str
     screen_type: str
@@ -267,6 +295,13 @@ OCR_ROIS = (
     "miss",
     "ex_score",
 )
+M7A_DIGIT_RECOGNITION_METHOD = "bitmap-template-nearest"
+M7A_DIGIT_TEMPLATE_ROOT = Path("samples/screenshots/organized/digit_templates")
+M7A_DIGIT_REQUIRED_LABELS = tuple("0123456789")
+M7A_DIGIT_VECTOR_SIZE = (16, 24)
+M7A_DIGIT_MAX_DISTANCE = 0.28
+M7A_DIGIT_MIN_MARGIN = 0.02
+M7A_DIGIT_SEGMENT_GAP_TOLERANCE = 1
 M3_METADATA_EXPECTED_FIELDS = (
     "song_title",
     "artist",
@@ -1447,6 +1482,239 @@ def process_score_ocr(
     return process_ocr_roi(image, row, classification, output_dir, "score_digits")
 
 
+def m7a_foreground_mask(image: Image.Image, *, prefer_dark: bool = False) -> np.ndarray:
+    luma = np.asarray(image.convert("L"))
+    dark = luma < 128
+    if prefer_dark:
+        return dark
+
+    bright = luma > 180
+    border = np.concatenate((luma[0, :], luma[-1, :], luma[:, 0], luma[:, -1]))
+    border_mean = float(np.mean(border))
+    if border_mean < 128:
+        return bright if 0 < int(bright.sum()) < bright.size else np.zeros_like(bright)
+    if border_mean > 160:
+        return dark if 0 < int(dark.sum()) < dark.size else np.zeros_like(dark)
+
+    total = dark.size
+    candidates = [
+        candidate
+        for candidate in (dark, bright)
+        if 0 < int(candidate.sum()) < total
+    ]
+    if not candidates:
+        return np.zeros_like(dark, dtype=bool)
+    return min(candidates, key=lambda candidate: int(candidate.sum()))
+
+
+def m7a_foreground_bbox(mask: np.ndarray) -> tuple[int, int, int, int] | None:
+    ys, xs = np.where(mask)
+    if len(xs) == 0 or len(ys) == 0:
+        return None
+    return int(xs.min()), int(ys.min()), int(xs.max()) + 1, int(ys.max()) + 1
+
+
+def m7a_vector_from_mask(mask: np.ndarray) -> np.ndarray:
+    bbox = m7a_foreground_bbox(mask)
+    if bbox is None:
+        width, height = M7A_DIGIT_VECTOR_SIZE
+        return np.zeros(width * height, dtype=np.float32)
+
+    left, top, right, bottom = bbox
+    cropped = mask[top:bottom, left:right]
+    glyph = Image.fromarray(np.where(cropped, 255, 0).astype(np.uint8), mode="L")
+    resized = glyph.resize(M7A_DIGIT_VECTOR_SIZE, resample=Image.Resampling.NEAREST)
+    return (np.asarray(resized) > 0).astype(np.float32).reshape(-1)
+
+
+def m7a_template_label_from_path(path: Path) -> str:
+    match = re.match(r"(?P<label>\d)", path.stem)
+    return match.group("label") if match else ""
+
+
+def load_m7a_digit_templates(template_root: Path, roi_name: str) -> list[M7aDigitTemplate]:
+    search_roots = [template_root / roi_name, template_root]
+    templates: list[M7aDigitTemplate] = []
+    seen_paths: set[Path] = set()
+    for root in search_roots:
+        if not root.exists() or not root.is_dir():
+            continue
+        for path in sorted(root.iterdir()):
+            if path in seen_paths or path.suffix.lower() not in FRAME_IMAGE_EXTENSIONS:
+                continue
+            label = m7a_template_label_from_path(path)
+            if label not in M7A_DIGIT_REQUIRED_LABELS:
+                continue
+            with Image.open(path) as image:
+                mask = m7a_foreground_mask(image)
+            templates.append(
+                M7aDigitTemplate(
+                    label=label,
+                    image_path=str(path),
+                    vector=m7a_vector_from_mask(mask),
+                )
+            )
+            seen_paths.add(path)
+    return templates
+
+
+def m7a_missing_template_labels(templates: Iterable[M7aDigitTemplate]) -> list[str]:
+    labels = {template.label for template in templates}
+    return [label for label in M7A_DIGIT_REQUIRED_LABELS if label not in labels]
+
+
+def m7a_fill_column_gaps(columns: np.ndarray, *, max_gap: int) -> np.ndarray:
+    filled = columns.copy()
+    index = 0
+    while index < len(filled):
+        if filled[index]:
+            index += 1
+            continue
+        gap_start = index
+        while index < len(filled) and not filled[index]:
+            index += 1
+        gap_end = index
+        if gap_start == 0 or gap_end == len(filled):
+            continue
+        if gap_end - gap_start <= max_gap:
+            filled[gap_start:gap_end] = True
+    return filled
+
+
+def segment_m7a_digit_masks(image: Image.Image) -> list[np.ndarray]:
+    mask = m7a_foreground_mask(image)
+    bbox = m7a_foreground_bbox(mask)
+    if bbox is None:
+        return []
+
+    left, top, right, bottom = bbox
+    content = mask[top:bottom, left:right]
+    columns = m7a_fill_column_gaps(
+        content.any(axis=0),
+        max_gap=M7A_DIGIT_SEGMENT_GAP_TOLERANCE,
+    )
+    segments: list[np.ndarray] = []
+    index = 0
+    while index < len(columns):
+        if not columns[index]:
+            index += 1
+            continue
+        start = index
+        while index < len(columns) and columns[index]:
+            index += 1
+        end = index
+        segment = content[:, start:end]
+        if int(segment.sum()) > 0:
+            segments.append(segment)
+    return segments
+
+
+def m7a_template_distances(
+    vector: np.ndarray,
+    templates: Iterable[M7aDigitTemplate],
+) -> list[tuple[str, float]]:
+    by_label: dict[str, float] = {}
+    for template in templates:
+        distance = float(np.mean(np.abs(vector - template.vector)))
+        current = by_label.get(template.label)
+        if current is None or distance < current:
+            by_label[template.label] = distance
+    return sorted(by_label.items(), key=lambda item: (item[1], item[0]))
+
+
+def recognize_m7a_digit_segments(
+    image: Image.Image,
+    templates: list[M7aDigitTemplate],
+) -> tuple[str, str, float | None, float | None, str, int, str]:
+    missing_labels = m7a_missing_template_labels(templates)
+    if missing_labels:
+        reason = "missing_digit_templates=" + "".join(missing_labels)
+        return "missing_reference", "", None, None, reason, 0, ""
+
+    segments = segment_m7a_digit_masks(image)
+    if not segments:
+        return "failed_segmentation", "", None, None, "no_digit_segments", 0, ""
+
+    recognized: list[str] = []
+    distances: list[float] = []
+    distance_parts: list[str] = []
+    ambiguous_reason = ""
+    for segment in segments:
+        vector = m7a_vector_from_mask(segment)
+        ranked = m7a_template_distances(vector, templates)
+        if not ranked:
+            return "missing_reference", "", None, None, "no_digit_templates", len(segments), ""
+        best_label, best_distance = ranked[0]
+        second_distance = ranked[1][1] if len(ranked) > 1 else 1.0
+        margin = second_distance - best_distance
+        recognized.append(best_label)
+        distances.append(best_distance)
+        distance_parts.append(f"{best_label}:{best_distance:.4f}:{margin:.4f}")
+        if best_distance > M7A_DIGIT_MAX_DISTANCE:
+            ambiguous_reason = "distance_above_threshold"
+        elif margin < M7A_DIGIT_MIN_MARGIN:
+            ambiguous_reason = "low_margin"
+
+    average_distance = sum(distances) / len(distances)
+    confidence = 1.0 - min(1.0, average_distance / M7A_DIGIT_MAX_DISTANCE)
+    status = "ambiguous" if ambiguous_reason else "recognized"
+    return (
+        status,
+        "".join(recognized),
+        average_distance,
+        confidence,
+        ambiguous_reason,
+        len(segments),
+        ";".join(distance_parts),
+    )
+
+
+def process_m7a_digit_roi(
+    image: Image.Image,
+    frame: FrameInput,
+    event: ResultEvent,
+    roi_name: str,
+    templates: list[M7aDigitTemplate],
+) -> M7aDigitRecognitionResult:
+    original = crop_roi(image, ROI_DEFINITIONS[roi_name]).convert("RGB")
+    (
+        status,
+        recognized_digits,
+        distance,
+        confidence,
+        failure_reason,
+        segment_count,
+        per_digit_distances,
+    ) = recognize_m7a_digit_segments(original, templates)
+    expected = expected_ocr_value_from_row(frame.row, roi_name)
+    match = ocr_digits_match(recognized_digits, expected) if status == "recognized" else None
+    if status == "recognized" and not expected:
+        status = "not_evaluated"
+        failure_reason = "no_expected_value"
+    elif status == "recognized" and match is False:
+        failure_reason = "mismatch"
+
+    return M7aDigitRecognitionResult(
+        organized_file=frame.row["organized_file"],
+        screen_type=frame.row.get("screen_type", ""),
+        event_type=event.event_type,
+        confirmed_result=event.confirmed_result,
+        duplicate=event.duplicate,
+        roi_name=roi_name,
+        method=M7A_DIGIT_RECOGNITION_METHOD,
+        recognized_digits=recognized_digits,
+        expected_value=expected,
+        match=match,
+        status=status,
+        failure_reason=failure_reason,
+        distance=distance,
+        confidence=confidence,
+        segment_count=segment_count,
+        template_count=len(templates),
+        per_digit_distances=per_digit_distances,
+    )
+
+
 def normalize_m3_text_ocr_for_review(value: str) -> str:
     return normalize_expected_text(value.replace("\r", " ").replace("\n", " ").replace("\t", " "))
 
@@ -1607,6 +1875,43 @@ def write_profile_score_ocr_csv(path: Path, results: Iterable[ProfileScoreOcrRes
         writer = csv.DictWriter(file, fieldnames=list(rows[0].keys()))
         writer.writeheader()
         writer.writerows(rows)
+
+
+def flatten_m7a_digit_recognition(
+    result: M7aDigitRecognitionResult,
+) -> dict[str, str | bool | float | int | None]:
+    return asdict(result)
+
+
+def write_m7a_digit_recognition_csv(
+    path: Path,
+    results: Iterable[M7aDigitRecognitionResult],
+) -> None:
+    rows = [flatten_m7a_digit_recognition(item) for item in results]
+    fieldnames = [
+        "organized_file",
+        "screen_type",
+        "event_type",
+        "confirmed_result",
+        "duplicate",
+        "roi_name",
+        "method",
+        "recognized_digits",
+        "expected_value",
+        "match",
+        "status",
+        "failure_reason",
+        "distance",
+        "confidence",
+        "segment_count",
+        "template_count",
+        "per_digit_distances",
+    ]
+    with path.open("w", encoding="utf-8", newline="") as file:
+        writer = csv.DictWriter(file, fieldnames=fieldnames)
+        writer.writeheader()
+        if rows:
+            writer.writerows(rows)
 
 
 def flatten_m3_song_artist_ocr(
@@ -1784,6 +2089,114 @@ def summarize_score_ocr(
         failure_reasons=summarize_ocr_failure_reasons(result_rows),
         expected_coverage_by_roi=summarize_expected_coverage_by_roi(by_roi),
     )
+
+
+def m7a_status_counts(results: Iterable[M7aDigitRecognitionResult]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for result in results:
+        counts[result.status] = counts.get(result.status, 0) + 1
+    return dict(sorted(counts.items()))
+
+
+def m7a_failure_reason_counts(
+    results: Iterable[M7aDigitRecognitionResult],
+) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for result in results:
+        if not result.failure_reason:
+            continue
+        counts[result.failure_reason] = counts.get(result.failure_reason, 0) + 1
+    return dict(sorted(counts.items()))
+
+
+def m7a_recognition_bucket(results: Iterable[M7aDigitRecognitionResult]) -> dict[str, object]:
+    rows = list(results)
+    distances = [result.distance for result in rows if result.distance is not None]
+    return {
+        "total_attempts": len(rows),
+        "match_count": sum(result.match is True for result in rows),
+        "mismatch_count": sum(result.match is False for result in rows),
+        "no_expected_value_count": sum(result.expected_value == "" for result in rows),
+        "status_counts": m7a_status_counts(rows),
+        "failure_reason_counts": m7a_failure_reason_counts(rows),
+        "average_distance": (sum(distances) / len(distances) if distances else None),
+    }
+
+
+def summarize_m7a_tesseract_comparison(
+    digit_results: Iterable[M7aDigitRecognitionResult],
+    ocr_results: Iterable[ScoreOcrResult],
+) -> dict[str, int]:
+    ocr_by_key = {
+        (result.organized_file, result.roi_name): result
+        for result in ocr_results
+        if result.score_ocr_normalized
+    }
+    available = 0
+    same = 0
+    different = 0
+    unavailable = 0
+    for result in digit_results:
+        if not result.recognized_digits:
+            unavailable += 1
+            continue
+        ocr_result = ocr_by_key.get((result.organized_file, result.roi_name))
+        if ocr_result is None:
+            unavailable += 1
+            continue
+        available += 1
+        if canonical_ocr_digits(result.recognized_digits) == canonical_ocr_digits(
+            ocr_result.score_ocr_normalized
+        ):
+            same += 1
+        else:
+            different += 1
+    return {
+        "available_attempts": available,
+        "same_normalized_count": same,
+        "different_normalized_count": different,
+        "unavailable_count": unavailable,
+    }
+
+
+def summarize_m7a_digit_recognition(
+    results: Iterable[M7aDigitRecognitionResult],
+    events: Iterable[ResultEvent],
+    template_root: Path,
+    roi_names: Iterable[str],
+    ocr_results: Iterable[ScoreOcrResult],
+) -> dict[str, object]:
+    result_rows = list(results)
+    event_rows = list(events)
+    by_roi: dict[str, dict[str, object]] = {}
+    for roi_name in roi_names:
+        roi_rows = [result for result in result_rows if result.roi_name == roi_name]
+        by_roi[roi_name] = m7a_recognition_bucket(roi_rows)
+    return {
+        "target_boundary": "confirmed_result=true and duplicate=false",
+        "method": M7A_DIGIT_RECOGNITION_METHOD,
+        "template_root": str(template_root),
+        "roi_names": list(roi_names),
+        "target_count": sum(is_save_candidate_event(event) for event in event_rows),
+        "total_attempts": len(result_rows),
+        "status_counts": m7a_status_counts(result_rows),
+        "failure_reason_counts": m7a_failure_reason_counts(result_rows),
+        "match_count": sum(result.match is True for result in result_rows),
+        "mismatch_count": sum(result.match is False for result in result_rows),
+        "no_expected_value_count": sum(result.expected_value == "" for result in result_rows),
+        "skipped_duplicate_count": sum(event.duplicate for event in event_rows),
+        "skipped_rejected_transition_count": sum(
+            event.event_type == "rejected_transition" for event in event_rows
+        ),
+        "skipped_unconfirmed_count": sum(
+            not event.confirmed_result and not event.duplicate for event in event_rows
+        ),
+        "by_roi": by_roi,
+        "tesseract_comparison": summarize_m7a_tesseract_comparison(
+            result_rows,
+            ocr_results,
+        ),
+    }
 
 
 def summarize_profile_score_ocr(
@@ -2282,6 +2695,107 @@ def write_m3_song_artist_ocr_entry_failures_report(
             "マスタ照合の失敗判定ではありません。",
             "- duplicate、`rejected_transition`、未確定候補、non-result は"
             "confirmed-events 境界外です。",
+        ]
+    )
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def write_m7a_digit_recognition_report(
+    path: Path,
+    results: Iterable[M7aDigitRecognitionResult],
+    summary: dict[str, object],
+) -> None:
+    result_rows = list(results)
+    lines = [
+        "# M7a Digit Recognition Report",
+        "",
+        "スコア系数字ROIをTesseract OCRとは別に、桁分割とbitmapテンプレート最近傍で"
+        "読むPoCです。",
+        "",
+        f"- target boundary: `{summary['target_boundary']}`",
+        f"- method: `{summary['method']}`",
+        f"- template root: `{summary['template_root']}`",
+        f"- target confirmed-events: {summary['target_count']}",
+        f"- total attempts: {summary['total_attempts']}",
+        "- status vocabulary: `recognized` / `ambiguous` / `missing_reference` / "
+        "`failed_segmentation` / `not_evaluated`",
+        "",
+        "## ROI Summary",
+        "",
+        "| ROI | total | recognized | ambiguous | missing reference | failed segmentation | "
+        "not evaluated | match | mismatch | no expected | average distance |",
+        "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+    ]
+    by_roi = summary["by_roi"]
+    assert isinstance(by_roi, dict)
+    for roi_name, value in by_roi.items():
+        assert isinstance(value, dict)
+        status_counts = value.get("status_counts", {})
+        assert isinstance(status_counts, dict)
+        average_distance = value.get("average_distance")
+        distance_text = (
+            f"{average_distance:.4f}" if isinstance(average_distance, float) else ""
+        )
+        lines.append(
+            f"| `{roi_name}` | {value.get('total_attempts', 0)} | "
+            f"{status_counts.get('recognized', 0)} | "
+            f"{status_counts.get('ambiguous', 0)} | "
+            f"{status_counts.get('missing_reference', 0)} | "
+            f"{status_counts.get('failed_segmentation', 0)} | "
+            f"{status_counts.get('not_evaluated', 0)} | "
+            f"{value.get('match_count', 0)} | {value.get('mismatch_count', 0)} | "
+            f"{value.get('no_expected_value_count', 0)} | {distance_text} |"
+        )
+
+    comparison = summary["tesseract_comparison"]
+    assert isinstance(comparison, dict)
+    lines.extend(
+        [
+            "",
+            "## Tesseract Comparison",
+            "",
+            "- 既存 `score_ocr.csv` が同じ出力先で生成されている場合だけ、正規化済み数字列を"
+            "比較します。",
+            f"- available attempts: {comparison.get('available_attempts', 0)}",
+            f"- same normalized: {comparison.get('same_normalized_count', 0)}",
+            f"- different normalized: {comparison.get('different_normalized_count', 0)}",
+            f"- unavailable: {comparison.get('unavailable_count', 0)}",
+            "",
+            "## Representatives",
+            "",
+        ]
+    )
+    for status in (
+        "ambiguous",
+        "missing_reference",
+        "failed_segmentation",
+        "not_evaluated",
+    ):
+        representatives = [result for result in result_rows if result.status == status][:3]
+        if not representatives:
+            continue
+        lines.append(f"### `{status}`")
+        lines.append("")
+        lines.append(
+            "| organized_file | ROI | recognized | expected | failure_reason | distance |"
+        )
+        lines.append("| --- | --- | --- | --- | --- | ---: |")
+        for result in representatives:
+            distance_text = f"{result.distance:.4f}" if result.distance is not None else ""
+            lines.append(
+                f"| `{result.organized_file}` | `{result.roi_name}` | "
+                f"`{result.recognized_digits}` | `{result.expected_value}` | "
+                f"`{result.failure_reason}` | {distance_text} |"
+            )
+        lines.append("")
+
+    lines.extend(
+        [
+            "## Notes",
+            "",
+            "- このレポートは保存値候補の読み取り材料であり、DB保存OK/NG判定ではありません。",
+            "- duplicate、未確定候補、`rejected_transition` は対象外です。",
+            "- テンプレート画像やPoC出力はローカル素材としてGit管理しません。",
         ]
     )
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -5456,6 +5970,32 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--m7a-digit-recognition",
+        action="store_true",
+        help=(
+            "Run the M7a non-OCR digit recognition PoC for confirmed-events only. "
+            "This writes m7a_digit_recognition.* and does not change score_ocr.*."
+        ),
+    )
+    parser.add_argument(
+        "--m7a-digit-rois",
+        nargs="+",
+        default=["score_digits"],
+        help=(
+            "Digit ROI names for --m7a-digit-recognition. Use 'all' for score_digits and "
+            f"judgment ROIs. Default: score_digits. Supported: {', '.join(OCR_ROIS)}"
+        ),
+    )
+    parser.add_argument(
+        "--m7a-digit-template-root",
+        type=Path,
+        default=M7A_DIGIT_TEMPLATE_ROOT,
+        help=(
+            "Local digit template root for --m7a-digit-recognition. The tool reads "
+            "<root>/<roi>/<digit>.png or <root>/<digit>.png. Templates are local assets."
+        ),
+    )
+    parser.add_argument(
         "--m3-song-artist-ocr",
         action="store_true",
         help=(
@@ -5512,6 +6052,10 @@ def resolve_ocr_rois(values: list[str]) -> tuple[str, ...]:
         joined_supported = ", ".join(OCR_ROIS)
         raise ValueError(f"unsupported OCR ROI(s): {joined_unknown}; expected: {joined_supported}")
     return tuple(dict.fromkeys(values))
+
+
+def resolve_m7a_digit_rois(values: list[str]) -> tuple[str, ...]:
+    return resolve_ocr_rois(values)
 
 
 def resolve_ocr_profiles(values: list[str]) -> tuple[str, ...]:
@@ -5592,6 +6136,7 @@ def main(argv: list[str] | None = None) -> int:
     output_dir.mkdir(parents=True, exist_ok=True)
     ocr_rois = resolve_ocr_rois(args.ocr_rois)
     ocr_profiles = resolve_ocr_profiles(args.ocr_profile)
+    m7a_digit_rois = resolve_m7a_digit_rois(args.m7a_digit_rois)
 
     if args.sequence_mode == "manifest":
         if args.frame_manifest is None:
@@ -6090,6 +6635,47 @@ def main(argv: list[str] | None = None) -> int:
         score_ocr_summary,
         score_ocr_profiles_summary,
     )
+    if args.m7a_digit_recognition:
+        m7a_templates_by_roi = {
+            roi_name: load_m7a_digit_templates(args.m7a_digit_template_root, roi_name)
+            for roi_name in m7a_digit_rois
+        }
+        m7a_digit_results: list[M7aDigitRecognitionResult] = []
+        for frame, event in zip(frames, result_events, strict=True):
+            if not is_save_candidate_event(event):
+                continue
+            with Image.open(frame.image_path) as image:
+                image = image.convert("RGB")
+                for roi_name in m7a_digit_rois:
+                    m7a_digit_results.append(
+                        process_m7a_digit_roi(
+                            image,
+                            frame,
+                            event,
+                            roi_name,
+                            m7a_templates_by_roi[roi_name],
+                        )
+                    )
+        write_m7a_digit_recognition_csv(
+            output_dir / "m7a_digit_recognition.csv",
+            m7a_digit_results,
+        )
+        m7a_digit_summary = summarize_m7a_digit_recognition(
+            m7a_digit_results,
+            result_events,
+            args.m7a_digit_template_root,
+            m7a_digit_rois,
+            score_ocr_results,
+        )
+        (output_dir / "m7a_digit_recognition_summary.json").write_text(
+            json.dumps(m7a_digit_summary, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        write_m7a_digit_recognition_report(
+            output_dir / "m7a_digit_recognition_report.md",
+            m7a_digit_results,
+            m7a_digit_summary,
+        )
     summary = summarize(classifications)
     (output_dir / "summary.json").write_text(
         json.dumps(summary, ensure_ascii=False, indent=2) + "\n",

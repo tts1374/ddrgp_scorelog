@@ -11,13 +11,25 @@ import pytest
 pytest.importorskip("numpy")
 pytest.importorskip("PIL")
 
-from PIL import Image  # noqa: E402
+from PIL import Image, ImageDraw  # noqa: E402
 from tools.vision_poc import runner  # noqa: E402
 
 
 METADATA_PATH = Path("samples/screenshots/metadata.csv")
 SCREENSHOTS_ROOT = Path("samples/screenshots")
 SIGNAL = runner.SignalResult(value=False, score=0.0, features={})
+DIGIT_PATTERNS = {
+    "0": ("111", "101", "101", "101", "111"),
+    "1": ("010", "110", "010", "010", "111"),
+    "2": ("111", "001", "111", "100", "111"),
+    "3": ("111", "001", "111", "001", "111"),
+    "4": ("101", "101", "111", "001", "001"),
+    "5": ("111", "100", "111", "001", "111"),
+    "6": ("111", "100", "111", "101", "111"),
+    "7": ("111", "001", "001", "001", "001"),
+    "8": ("111", "101", "111", "101", "111"),
+    "9": ("111", "101", "111", "001", "111"),
+}
 
 
 def classification(
@@ -48,6 +60,50 @@ def classification(
 def write_test_image(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     Image.new("RGB", (1280, 720), "black").save(path)
+
+
+def digit_glyph(label: str, *, scale: int = 6) -> Image.Image:
+    pattern = DIGIT_PATTERNS[label]
+    padding = scale // 2
+    image = Image.new(
+        "RGB",
+        (len(pattern[0]) * scale + padding * 2, len(pattern) * scale + padding * 2),
+        "black",
+    )
+    draw = ImageDraw.Draw(image)
+    for row_index, row in enumerate(pattern):
+        for column_index, value in enumerate(row):
+            if value == "1":
+                draw.rectangle(
+                    (
+                        padding + column_index * scale,
+                        padding + row_index * scale,
+                        padding + (column_index + 1) * scale - 1,
+                        padding + (row_index + 1) * scale - 1,
+                    ),
+                    fill="white",
+                )
+    return image
+
+
+def write_digit_templates(root: Path, roi_name: str = "score_digits") -> None:
+    template_dir = root / roi_name
+    template_dir.mkdir(parents=True, exist_ok=True)
+    for label in runner.M7A_DIGIT_REQUIRED_LABELS:
+        digit_glyph(label).save(template_dir / f"{label}.png")
+
+
+def write_score_digit_image(path: Path, digits: str) -> None:
+    image = Image.new("RGB", (1280, 720), "black")
+    left, top, _right, _bottom = runner.scaled_box(image, runner.ROI_DEFINITIONS["score_digits"])
+    cursor_x = left + 20
+    cursor_y = top + 8
+    for digit in digits:
+        glyph = digit_glyph(digit)
+        image.paste(glyph, (cursor_x, cursor_y))
+        cursor_x += glyph.width + 6
+    path.parent.mkdir(parents=True, exist_ok=True)
+    image.save(path)
 
 
 def write_chart_feature_image(path: Path, field_colors: dict[str, str]) -> None:
@@ -1614,6 +1670,170 @@ def test_m3_chart_field_image_feature_diagnostics_reports_mismatches(
     assert "`level` is" not in report
     assert "`level` は match が半数未満" in report
     assert "OCR、テンプレート照合、マスタ照合の成功扱いにはしません" in report
+
+
+def test_m7a_digit_recognition_writes_confirmed_events_report(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    template_root = tmp_path / "digit_templates"
+    write_digit_templates(template_root)
+    frame_names = (
+        "result_score123456_a.png",
+        "result_score123456_b.png",
+        "result_score123456_c.png",
+    )
+    for name in frame_names:
+        write_score_digit_image(tmp_path / "frames" / name, "123456")
+    manifest_path = tmp_path / "manifest.csv"
+    manifest_path.write_text(
+        "image_path,timestamp_ms,screen_type,expected_score\n"
+        "result_score123456_a.png,0,result,123456\n"
+        "result_score123456_b.png,500,result,123456\n"
+        "result_score123456_c.png,1000,result,123456\n",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        runner,
+        "classify",
+        lambda _image, row: classification(
+            row["organized_file"],
+            result_candidate=True,
+            screen_type="result",
+        ),
+    )
+    monkeypatch.setattr(
+        runner,
+        "run_tesseract",
+        lambda _binary, _roi_name="score_digits": ("123456", "tesseract", "ok", ""),
+    )
+
+    output_dir = tmp_path / "output"
+    assert (
+        runner.main(
+            [
+                "--sequence-mode",
+                "manifest",
+                "--frame-manifest",
+                str(manifest_path),
+                "--frame-root",
+                str(tmp_path / "frames"),
+                "--output",
+                str(output_dir),
+                "--ocr-target",
+                "confirmed-events",
+                "--m7a-digit-recognition",
+                "--m7a-digit-template-root",
+                str(template_root),
+                "--no-rois",
+            ]
+        )
+        == 0
+    )
+
+    rows = read_csv_rows(output_dir / "m7a_digit_recognition.csv")
+    assert len(rows) == 1
+    assert rows[0]["organized_file"] == "result_score123456_c.png"
+    assert rows[0]["roi_name"] == "score_digits"
+    assert rows[0]["recognized_digits"] == "123456"
+    assert rows[0]["expected_value"] == "123456"
+    assert rows[0]["match"] == "True"
+    assert rows[0]["status"] == "recognized"
+    assert rows[0]["failure_reason"] == ""
+    assert rows[0]["segment_count"] == "6"
+
+    summary = json.loads(
+        (output_dir / "m7a_digit_recognition_summary.json").read_text(encoding="utf-8")
+    )
+    assert summary["target_boundary"] == "confirmed_result=true and duplicate=false"
+    assert summary["target_count"] == 1
+    assert summary["total_attempts"] == 1
+    assert summary["status_counts"] == {"recognized": 1}
+    assert summary["match_count"] == 1
+    assert summary["tesseract_comparison"] == {
+        "available_attempts": 1,
+        "same_normalized_count": 1,
+        "different_normalized_count": 0,
+        "unavailable_count": 0,
+    }
+    assert summary["by_roi"]["score_digits"]["status_counts"] == {"recognized": 1}
+
+    report = (output_dir / "m7a_digit_recognition_report.md").read_text(encoding="utf-8")
+    assert "status vocabulary" in report
+    assert "DB保存OK/NG判定ではありません" in report
+
+
+def test_m7a_digit_recognition_reports_missing_reference(tmp_path: Path) -> None:
+    image = Image.new("RGB", (1280, 720), "black")
+    frame = runner.FrameInput(
+        row={
+            "organized_file": "result_score123456.png",
+            "screen_type": "result",
+            "expected_score": "123456",
+        },
+        image_path=tmp_path / "result_score123456.png",
+    )
+    event = result_event("result_score123456.png", confirmed_result=True)
+
+    result = runner.process_m7a_digit_roi(image, frame, event, "score_digits", [])
+
+    assert result.status == "missing_reference"
+    assert result.failure_reason == "missing_digit_templates=0123456789"
+    assert result.match is None
+
+
+def test_m7a_digit_recognition_reports_failed_segmentation(tmp_path: Path) -> None:
+    template_root = tmp_path / "digit_templates"
+    write_digit_templates(template_root)
+    templates = runner.load_m7a_digit_templates(template_root, "score_digits")
+    image = Image.new("RGB", (1280, 720), "black")
+    frame = runner.FrameInput(
+        row={
+            "organized_file": "blank_result.png",
+            "screen_type": "result",
+            "expected_score": "123456",
+        },
+        image_path=tmp_path / "blank_result.png",
+    )
+    event = result_event("blank_result.png", confirmed_result=True)
+
+    result = runner.process_m7a_digit_roi(image, frame, event, "score_digits", templates)
+
+    assert result.status == "failed_segmentation"
+    assert result.failure_reason == "no_digit_segments"
+    assert result.segment_count == 0
+
+
+def test_m7a_digit_recognition_keeps_recognized_candidate_without_expected_value(
+    tmp_path: Path,
+) -> None:
+    template_root = tmp_path / "digit_templates"
+    write_digit_templates(template_root)
+    templates = runner.load_m7a_digit_templates(template_root, "score_digits")
+    image_path = tmp_path / "result_no_expected.png"
+    write_score_digit_image(image_path, "789")
+    frame = runner.FrameInput(
+        row={
+            "organized_file": "result_no_expected.png",
+            "screen_type": "result",
+        },
+        image_path=image_path,
+    )
+    event = result_event("result_no_expected.png", confirmed_result=True)
+    with Image.open(image_path) as image:
+        result = runner.process_m7a_digit_roi(
+            image.convert("RGB"),
+            frame,
+            event,
+            "score_digits",
+            templates,
+        )
+
+    assert result.status == "not_evaluated"
+    assert result.recognized_digits == "789"
+    assert result.failure_reason == "no_expected_value"
+    assert result.match is None
 
 
 def test_score_digits_preprocessing_writes_images_without_ocr_engine(
