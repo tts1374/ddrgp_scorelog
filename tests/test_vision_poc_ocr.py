@@ -3084,3 +3084,87 @@ def test_minimal_manifest_marks_judgment_rois_as_no_expected_values(
     coverage = (output_dir / "ocr_expected_coverage.md").read_text(encoding="utf-8")
     assert "| `score_digits` | `evaluated` | 1 | 0 | 1 |" in coverage
     assert "| `max_combo` | `no_expected_values` | 0 | 1 | 1 |" in coverage
+
+
+def test_m5_result_features_use_classified_result_candidates_without_screen_type(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for name in (
+        "result_score123456_a.png",
+        "result_score123456_b.png",
+        "result_score123456_c.png",
+    ):
+        write_test_image(tmp_path / name)
+    manifest_path = tmp_path / "manifest.csv"
+    manifest_path.write_text(
+        "image_path,timestamp_ms\n"
+        "result_score123456_a.png,1000\n"
+        "result_score123456_b.png,1500\n"
+        "result_score123456_c.png,2000\n",
+        encoding="utf-8",
+    )
+    captured_jacket_files: list[str] = []
+    captured_title_files: list[str] = []
+
+    def classify_synthetic(_image: Image.Image, row: dict[str, str]) -> runner.Classification:
+        return runner.Classification(
+            organized_file=row["organized_file"],
+            screen_type=row.get("screen_type", ""),
+            result_candidate=True,
+            result_shape_candidate=True,
+            transition_kind="",
+            expected_result_candidate=True,
+            correct=True,
+            header_signal=SIGNAL,
+            detail_panel_signal=SIGNAL,
+            score_signal=SIGNAL,
+            rank_signal=SIGNAL,
+            reason="test",
+        )
+
+    def extract_jacket_synthetic(_image: Image.Image) -> object:
+        captured_jacket_files.append(current_file)
+        return object()
+
+    def extract_title_synthetic(_image: Image.Image) -> object:
+        captured_title_files.append(current_file)
+        return object()
+
+    current_file = ""
+
+    def tracking_classify(image: Image.Image, row: dict[str, str]) -> runner.Classification:
+        nonlocal current_file
+        current_file = row["organized_file"]
+        return classify_synthetic(image, row)
+
+    monkeypatch.setattr(runner, "classify", tracking_classify)
+    monkeypatch.setattr(runner.master_match, "extract_jacket_feature", extract_jacket_synthetic)
+    monkeypatch.setattr(
+        runner.master_match,
+        "extract_title_image_feature",
+        extract_title_synthetic,
+    )
+
+    output_dir = tmp_path / "output"
+    assert (
+        runner.main(
+            [
+                "--sequence-mode",
+                "manifest",
+                "--frame-manifest",
+                str(manifest_path),
+                "--output",
+                str(output_dir),
+                "--no-rois",
+            ]
+        )
+        == 0
+    )
+
+    assert captured_jacket_files == [
+        "result_score123456_a.png",
+        "result_score123456_b.png",
+        "result_score123456_c.png",
+    ]
+    assert captured_title_files == captured_jacket_files

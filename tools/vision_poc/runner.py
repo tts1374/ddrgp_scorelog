@@ -5636,7 +5636,7 @@ def main(argv: list[str] | None = None) -> int:
                     m3_chart_field_template_vector(image, field_name)
                 )
             organized_file = frame.row.get("organized_file", "")
-            if frame.row.get("screen_type") == "result":
+            if classification.result_candidate:
                 m5_jacket_result_features[organized_file] = master_match.extract_jacket_feature(
                     crop_roi(image, ROI_DEFINITIONS["jacket"])
                 )

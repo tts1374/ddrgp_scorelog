@@ -71,6 +71,8 @@ result confirmed-events
   -> 一意に近い候補だけ PoC 上の matched とする
 ```
 
+result側のジャケットROIとタイトル画像ROIの特徴量は、metadata の `screen_type=result` ラベルではなく分類結果の `result_candidate=true` から抽出する。manifest / timestamped / dry-run 由来で手ラベルが空でも、後続の confirmed-events 保存候補が `missing_feature` に倒れないようにする。`confirmed_result=true` かつ `duplicate=false` の通常候補境界は変えない。
+
 特徴量マスタはまず `data/` 配下のCSV/JSONとして出力し、Git管理しない。metadata実体もGit管理しないため、ラベルが不足している `song_select` 行は `data/` 配下のテンプレートCSVへ出し、人がローカルmetadataへ転記して再実行する運用にする。
 
 初回特徴量は新規依存を増やさず、Pillow / numpy の範囲で、縮小RGBサムネイル、色ヒストグラム、dHash系の軽量特徴を比較する。しきい値や距離はPoC上の観察値であり、DB保存可能判定ではない。
