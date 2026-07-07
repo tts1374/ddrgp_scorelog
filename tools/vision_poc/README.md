@@ -34,6 +34,8 @@ python -m pip install -e ".[vision]"
 
 `jacket_match_report.md` は `identity_signal_status` ごとの代表行を出し、通常候補内の `jacket_resolved_candidate`、`composite_resolved_candidate`、`unresolved_*` を保存判定前の観測カテゴリとして確認できます。`jacket_match_diagnostics.md` は `m5_target_boundary_reason` ごとの代表行も出し、`save_candidate` / `unconfirmed` / `duplicate` を同じ診断レポート内で観察できます。どちらの代表行もMarkdown上の読みやすさのための抜粋であり、保存候補CSVの境界やDB保存可否を変えません。
 
+`jacket_match_candidates.csv` と診断CSVには、ローカルmetadata期待曲名をM4 `songs.title` へ突き合わせた `expected_song_resolution_status`、`expected_song_resolution_reason`、`expected_song_grand_prix_play_available`、`expected_song_official_availability_match` を出します。これは `Inner Spirit -GIGA HiTECH MIX-` や `RЁVOLUTIФN` のような未解決代表で、期待曲ラベル自体がM4へ解決できているか、公式GP対象として解決されているかを見るための診断列です。`jacket_match_report.md` と `jacket_match_diagnostics.md` の `Unresolved Identity Signal Representatives` は、`unresolved_*` だけを抜き出し、期待曲解決状態、GP可否、公式突合状態、line-hash辞書状態を同じ行で確認できるようにします。この表も保存候補化、曲ID確定、`jacket_match_status` 昇格、GP対象外曲の復帰には使いません。
+
 この既定実行は metadata 評価モードです。`samples/screenshots/metadata.csv` の並びをフレーム順として扱いますが、キャプチャ時刻は持たないため、`result_events.csv` の `timestamp_ms` と `candidate_duration_ms` は空欄、`confirmation_mode` は `frames` になります。
 
 入力モードの役割は以下です。

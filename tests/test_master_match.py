@@ -371,8 +371,33 @@ def test_match_jacket_save_candidate_row_reports_expected_jacket_diagnostics(
 
     assert result["expected_song_title"] == "MAKE IT BETTER"
     assert result["expected_song_id"] == "song_make"
+    assert result["expected_song_resolution_status"] == "resolved"
+    assert result["expected_song_grand_prix_play_available"] == "True"
+    assert result["expected_song_official_availability_match"] == "fixture"
     assert result["expected_jacket_distance"] == "0.0000"
     assert result["expected_jacket_rank"] == "1"
+
+
+def test_match_jacket_save_candidate_row_reports_unresolved_expected_song(
+    tmp_path: Path,
+) -> None:
+    db_path = write_fixture_master_db(tmp_path)
+    row = save_candidate_row(title="")
+    row["song_title_expected_value"] = "MISSING SONG"
+
+    result = master_match.match_jacket_save_candidate_row(
+        row,
+        db_path,
+        solid_feature((240, 20, 20)),
+        [jacket_entry()],
+    )
+
+    assert result["jacket_match_status"] == "matched"
+    assert result["expected_song_id"] == ""
+    assert result["expected_song_resolution_status"] == "unresolved"
+    assert result["expected_song_resolution_reason"] == "title_not_found"
+    assert result["expected_song_grand_prix_play_available"] == ""
+    assert result["expected_song_official_availability_match"] == ""
 
 
 def test_match_jacket_save_candidate_row_title_reranks_only_ambiguous_candidates(
@@ -684,7 +709,9 @@ def test_write_jacket_match_outputs_records_observation_scope(tmp_path: Path) ->
     report = (tmp_path / "jacket_match_report.md").read_text(encoding="utf-8")
     assert "DB保存可能や本番採用済み照合ではありません" in report
     assert "## Identity Signal Representatives" in report
+    assert "## Unresolved Identity Signal Representatives" in report
     assert "organized/result/result_ambiguous.png" in report
+    assert "OSAKA TYPE2" in report
     assert "jacket_ambiguous_without_title_resolution" in report
     assert "identity_signal_*" in report
 
@@ -820,3 +847,4 @@ def test_write_jacket_match_diagnostic_outputs_keep_boundary_context(
     assert "organized/result/result_unconfirmed.png" in report
     assert "organized/result/result_zero_score.png" in report
     assert "## Identity Signal Representatives" in report
+    assert "## Unresolved Identity Signal Representatives" in report

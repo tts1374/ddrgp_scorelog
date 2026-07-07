@@ -51,6 +51,10 @@ JACKET_MATCH_FIELDNAMES = [
     "organized_file",
     "expected_song_title",
     "expected_song_id",
+    "expected_song_resolution_status",
+    "expected_song_resolution_reason",
+    "expected_song_grand_prix_play_available",
+    "expected_song_official_availability_match",
     "input_play_style",
     "input_difficulty",
     "input_level",
@@ -142,6 +146,8 @@ class MasterSong:
     song_id: str
     title: str
     artist: str
+    grand_prix_play_available: bool = False
+    official_availability_match: str = ""
 
 
 @dataclass(frozen=True)
@@ -244,13 +250,21 @@ def load_songs(db_path: Path) -> list[MasterSong]:
     with sqlite3.connect(db_path) as connection:
         rows = connection.execute(
             """
-            SELECT song_id, title, artist
+            SELECT
+              song_id, title, artist,
+              grand_prix_play_available, official_availability_match
             FROM songs
             ORDER BY title, artist, song_id
             """
         ).fetchall()
     return [
-        MasterSong(song_id=str(row[0]), title=str(row[1]), artist=str(row[2]))
+        MasterSong(
+            song_id=str(row[0]),
+            title=str(row[1]),
+            artist=str(row[2]),
+            grand_prix_play_available=bool(row[3]),
+            official_availability_match=str(row[4] or ""),
+        )
         for row in rows
     ]
 
@@ -1164,15 +1178,24 @@ def match_jacket_save_candidate_row(
     ambiguity_delta: float = DEFAULT_JACKET_AMBIGUITY_DELTA,
 ) -> dict[str, str]:
     expected_song_title = row.get("song_title_expected_value", "")
-    expected_song, _expected_failure_reason = resolve_song_by_title(
+    expected_song, expected_failure_reason = resolve_song_by_title(
         db_path,
         expected_song_title,
     )
+    expected_song_resolution_status = "resolved" if expected_song is not None else "unresolved"
     base_result = {
         "frame_index": row.get("frame_index", ""),
         "organized_file": row.get("organized_file", ""),
         "expected_song_title": expected_song_title,
         "expected_song_id": "" if expected_song is None else expected_song.song_id,
+        "expected_song_resolution_status": expected_song_resolution_status,
+        "expected_song_resolution_reason": expected_failure_reason,
+        "expected_song_grand_prix_play_available": (
+            "" if expected_song is None else str(expected_song.grand_prix_play_available)
+        ),
+        "expected_song_official_availability_match": (
+            "" if expected_song is None else expected_song.official_availability_match
+        ),
         "input_play_style": row.get("play_style_extracted_value", ""),
         "input_difficulty": row.get("difficulty_extracted_value", ""),
         "input_level": row.get("level_extracted_value", ""),
@@ -1454,9 +1477,44 @@ def summarize_jacket_match_rows(rows: Iterable[dict[str, str]]) -> dict[str, Any
     title_linehash_distance_status_counts: dict[str, int] = {}
     identity_signal_status_counts: dict[str, int] = {}
     identity_signal_source_counts: dict[str, int] = {}
+    expected_song_resolution_status_counts: dict[str, int] = {}
+    expected_song_resolution_reason_counts: dict[str, int] = {}
+    expected_song_grand_prix_play_available_counts: dict[str, int] = {}
     for row in row_list:
         status = row["jacket_match_status"]
         status_counts[status] = status_counts.get(status, 0) + 1
+        expected_song_resolution_status = row.get("expected_song_resolution_status", "")
+        if expected_song_resolution_status:
+            expected_song_resolution_status_counts[expected_song_resolution_status] = (
+                expected_song_resolution_status_counts.get(
+                    expected_song_resolution_status,
+                    0,
+                )
+                + 1
+            )
+        expected_song_resolution_reason = row.get("expected_song_resolution_reason", "")
+        if expected_song_resolution_reason:
+            expected_song_resolution_reason_counts[expected_song_resolution_reason] = (
+                expected_song_resolution_reason_counts.get(
+                    expected_song_resolution_reason,
+                    0,
+                )
+                + 1
+            )
+        expected_song_grand_prix_play_available = row.get(
+            "expected_song_grand_prix_play_available",
+            "",
+        )
+        if expected_song_grand_prix_play_available:
+            expected_song_grand_prix_play_available_counts[
+                expected_song_grand_prix_play_available
+            ] = (
+                expected_song_grand_prix_play_available_counts.get(
+                    expected_song_grand_prix_play_available,
+                    0,
+                )
+                + 1
+            )
         identity_status = row.get("identity_signal_status", "")
         if identity_status:
             identity_signal_status_counts[identity_status] = (
@@ -1524,6 +1582,15 @@ def summarize_jacket_match_rows(rows: Iterable[dict[str, str]]) -> dict[str, Any
         "identity_signal_source_counts": dict(
             sorted(identity_signal_source_counts.items())
         ),
+        "expected_song_resolution_status_counts": dict(
+            sorted(expected_song_resolution_status_counts.items())
+        ),
+        "expected_song_resolution_reason_counts": dict(
+            sorted(expected_song_resolution_reason_counts.items())
+        ),
+        "expected_song_grand_prix_play_available_counts": dict(
+            sorted(expected_song_grand_prix_play_available_counts.items())
+        ),
         "status_vocabulary": list(JACKET_MATCH_STATUS_VOCABULARY),
         "distance_threshold": DEFAULT_JACKET_DISTANCE_THRESHOLD,
         "ambiguity_delta": DEFAULT_JACKET_AMBIGUITY_DELTA,
@@ -1540,6 +1607,8 @@ def summarize_jacket_match_rows(rows: Iterable[dict[str, str]]) -> dict[str, Any
             "ambiguous candidates.",
             "identity_signal_* columns are M5 handoff observations, not save-ready "
             "decisions.",
+            "expected_song_* columns are local metadata diagnostics for review, not "
+            "candidate promotion logic.",
         ],
     }
 
@@ -1830,6 +1899,68 @@ def append_identity_signal_representatives(
         )
 
 
+def append_unresolved_identity_signal_representatives(
+    lines: list[str],
+    row_list: list[dict[str, str]],
+) -> None:
+    lines.extend(
+        [
+            "",
+            "## Unresolved Identity Signal Representatives",
+            "",
+            "| identity signal | organized_file | expected title | expected song | "
+            "GP | official match | jacket status | expected rank | margin | "
+            "linehash dict | top candidate | reason |",
+            "|---|---|---|---|---|---|---|---|---|---|---|---|",
+        ]
+    )
+    unresolved_rows = [
+        row
+        for row in row_list
+        if row.get("identity_signal_status", "").startswith("unresolved_")
+    ]
+    representatives = representative_rows_by_field(
+        unresolved_rows,
+        "identity_signal_status",
+    )
+    if not representatives:
+        lines.append("|  |  |  |  |  |  |  |  |  |  |  |  |")
+        return
+    for row in representatives:
+        expected_song = " / ".join(
+            value
+            for value in (
+                row.get("expected_song_id", ""),
+                row.get("expected_song_resolution_status", ""),
+                row.get("expected_song_resolution_reason", ""),
+            )
+            if value
+        )
+        linehash_dict = " / ".join(
+            value
+            for value in (
+                row.get("title_linehash_dict_status", ""),
+                row.get("title_linehash_dict_top_title", ""),
+            )
+            if value
+        )
+        reason = row.get("identity_signal_reason") or row.get("failure_reason", "")
+        lines.append(
+            f"| {markdown_code_cell(row.get('identity_signal_status', ''))} | "
+            f"{markdown_code_cell(row.get('organized_file', ''))} | "
+            f"{markdown_code_cell(row.get('expected_song_title', ''))} | "
+            f"{markdown_code_cell(expected_song)} | "
+            f"{markdown_code_cell(row.get('expected_song_grand_prix_play_available', ''))} | "
+            f"{markdown_code_cell(row.get('expected_song_official_availability_match', ''))} | "
+            f"{markdown_code_cell(row.get('jacket_match_status', ''))} | "
+            f"{markdown_code_cell(row.get('expected_jacket_rank', ''))} | "
+            f"{markdown_code_cell(row.get('jacket_top_margin', ''))} | "
+            f"{markdown_code_cell(linehash_dict)} | "
+            f"{markdown_code_cell(jacket_report_top_candidate(row))} | "
+            f"{markdown_code_cell(reason)} |"
+        )
+
+
 def append_boundary_representatives(
     lines: list[str],
     row_list: list[dict[str, str]],
@@ -1915,9 +2046,18 @@ def write_jacket_match_report(
         f"`{json.dumps(summary['identity_signal_status_counts'], sort_keys=True)}`",
         f"- identity_signal_source: "
         f"`{json.dumps(summary['identity_signal_source_counts'], sort_keys=True)}`",
+        f"- expected_song_resolution_status: "
+        f"`{json.dumps(summary['expected_song_resolution_status_counts'], sort_keys=True)}`",
+        "- expected_song_grand_prix_play_available: `"
+        + json.dumps(
+            summary["expected_song_grand_prix_play_available_counts"],
+            sort_keys=True,
+        )
+        + "`",
         f"- failure_reason: `{json.dumps(summary['failure_reason_counts'], sort_keys=True)}`",
     ]
     append_identity_signal_representatives(lines, row_list)
+    append_unresolved_identity_signal_representatives(lines, row_list)
     lines.extend(
         [
             "",
@@ -1962,6 +2102,8 @@ def write_jacket_match_report(
             "- `missing_feature` はローカル特徴量参照不足であり、"
             "OCR失敗や保存可否とは別に読みます。",
             "- `expected_jacket_*` はローカル期待値に基づく診断列です。",
+            "- `expected_song_*` はローカル期待値をM4曲へ突き合わせたレビュー列で、"
+            "保存候補化やGP対象外曲の復帰には使いません。",
             "- `title_rerank_status` はjacketが曖昧な候補集合内だけの補助観測です。",
             "- `title_ocr_rerank_status` はjacketが曖昧な候補集合内だけでTYPE suffixを観測します。",
             "- `title_linehash_dict_status` はjacketが曖昧な候補集合内だけで"
@@ -2005,10 +2147,19 @@ def write_jacket_match_diagnostic_report(
         f"`{json.dumps(summary['identity_signal_status_counts'], sort_keys=True)}`",
         f"- identity_signal_source: "
         f"`{json.dumps(summary['identity_signal_source_counts'], sort_keys=True)}`",
+        f"- expected_song_resolution_status: "
+        f"`{json.dumps(summary['expected_song_resolution_status_counts'], sort_keys=True)}`",
+        "- expected_song_grand_prix_play_available: `"
+        + json.dumps(
+            summary["expected_song_grand_prix_play_available_counts"],
+            sort_keys=True,
+        )
+        + "`",
         f"- failure_reason: `{json.dumps(summary['failure_reason_counts'], sort_keys=True)}`",
     ]
     append_boundary_representatives(lines, row_list)
     append_identity_signal_representatives(lines, row_list)
+    append_unresolved_identity_signal_representatives(lines, row_list)
     lines.extend(
         [
             "",
