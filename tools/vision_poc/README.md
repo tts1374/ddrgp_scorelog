@@ -30,7 +30,7 @@ python -m pip install -e ".[vision]"
 
 `m3_save_candidate_blocker_resolution_plan.json` と `m3_save_candidate_blocker_resolution_plan.md` はM3-7の保存前ブロッカー解消順レビューです。M3-5集約の未ready fieldを、追加すべきローカルテンプレート参照ラベル、OCR未実行、OCR入口の空読み失敗、参照追加後の再確認に分けます。テンプレート画像やOCR画像はローカル素材のままGit管理せず、必要ラベル、代表ROI、判断だけをdocsに残すための補助であり、DB保存可否判定、マスタ照合、ファジーマッチ、曲名正規化には進みません。
 
-`--m7a-digit-recognition` を指定した場合は、追加で `m7a_digit_recognition.csv`、`m7a_digit_recognition_summary.json`、`m7a_digit_recognition_report.md` が生成されます。これはM7aのスコア系数字認識PoCで、対象は confirmed-events 境界の `confirmed_result=true` かつ `duplicate=false` だけです。初期対象は既定で `score_digits` だけにし、`--m7a-digit-rois all` で `max_combo`、`marvelous`、`perfect`、`great`、`good`、`miss`、`ex_score` へ広げられます。Tesseractは使わず、ROI内の前景maskを桁分割して、ローカルテンプレートとのbitmap最近傍距離で `recognized` / `ambiguous` / `missing_reference` / `failed_segmentation` / `not_evaluated` を出します。`score_digits` は0から1,000,000までの可変桁表示を前提に、カンマや背景ノイズを大きな数字成分から分けて左から読むため、1桁の`0`、4桁/5桁のカンマ付き表示、通常の6桁、最大値の7桁を固定桁数へ寄せません。既存 `score_ocr.csv` / `score_ocr_summary.json` は変更せず、同じ実行でOCR結果がある場合だけ summary の `tesseract_comparison` で正規化済み数字列を比較します。テンプレートは既定で `samples/screenshots/organized/digit_templates/<roi>/<digit>.png` または `<root>/<digit>.png` を読みますが、画像素材はローカル素材としてGit管理しません。テンプレート画像は数字前景の周囲に背景余白を含めます。
+`--m7a-digit-recognition` を指定した場合は、追加で `m7a_digit_recognition.csv`、`m7a_digit_recognition_summary.json`、`m7a_digit_recognition_report.md` が生成されます。これはM7aのスコア系数字認識PoCで、対象は confirmed-events 境界の `confirmed_result=true` かつ `duplicate=false` だけです。初期対象は既定で `score_digits` だけにし、`--m7a-digit-rois all` で `max_combo`、`marvelous`、`perfect`、`great`、`good`、`miss`、`ex_score` へ広げられます。Tesseractは使わず、ROI内の前景maskを桁分割して、ローカルテンプレートとのbitmap最近傍距離で `recognized` / `ambiguous` / `missing_reference` / `failed_segmentation` / `not_evaluated` を出します。`score_digits` は0から1,000,000までの可変桁表示を前提に、カンマや背景ノイズを大きな数字成分から分けて左から読むため、1桁から7桁までを固定桁数へ寄せません。既存 `score_ocr.csv` / `score_ocr_summary.json` は変更せず、同じ実行でOCR結果がある場合だけ summary の `tesseract_comparison` で正規化済み数字列を比較します。テンプレートは既定で `samples/screenshots/organized/digit_templates/<roi>/<digit>.png` または `<root>/<digit>.png` を読みますが、画像素材はローカル素材としてGit管理しません。テンプレート画像は数字前景の周囲に背景余白を含めます。
 
 `--m5-jacket-match` 指定時は、通常の保存候補出力 `jacket_match_candidates.csv` / summary / Markdown に加えて、`jacket_match_diagnostics.csv`、`jacket_match_diagnostics_summary.json`、`jacket_match_diagnostics.md` も生成します。通常候補は引き続き `confirmed_result=true` かつ `duplicate=false` のM3保存候補だけを対象にします。診断出力は別ファイルで、metadata上のresult行、未確定result、duplicateを含め、`m5_target_boundary_reason` で `save_candidate` / `unconfirmed` / `duplicate` などを分けます。診断行の曲名と譜面3項目はローカルmetadata期待値を `metadata-expected-diagnostic` として使う観察用入力であり、保存候補への昇格やDB保存可能判定を意味しません。
 
@@ -492,7 +492,7 @@ python -m pytest tests
 - `--ocr-profile all` で既存 `score_ocr.csv` の列を維持したまま、profile別summaryを出力できる
 - `score_ocr_raw` から数字だけを `score_ocr_normalized` にできる
 - M7a digit recognitionは confirmed-events 境界だけを対象にし、Tesseractなしで `recognized` / `missing_reference` / `failed_segmentation` / `not_evaluated` をfixtureで確認できる
-- M7a digit recognitionの `score_digits` は、カンマを数字扱いせず、1桁の`0`、4桁/5桁のカンマ付き表示、通常の6桁、最大値の7桁を可変桁として確認できる
+- M7a digit recognitionの `score_digits` は、カンマを数字扱いせず、1桁から7桁までを可変桁として確認できる
 - M7a digit recognitionは既存 `score_ocr.csv` を変更せず、同じ実行内のTesseract結果がある場合だけ別summaryで比較できる
 - ローカル素材がある環境では `score_digits` の前処理画像を生成できる
 - 曲・譜面情報の目視確認用ROIとして `play_style`、`difficulty`、`level`、`rank`、`song_title`、`artist` を `rois/` に生成できる

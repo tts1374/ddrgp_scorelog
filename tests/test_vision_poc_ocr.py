@@ -1881,6 +1881,8 @@ def test_m7a_digit_recognition_supports_score_range_boundaries(tmp_path: Path) -
     templates = runner.load_m7a_digit_templates(template_root, "score_digits")
     cases = [
         ("result_score000000.png", "0", "0"),
+        ("result_score000042.png", "42", "42"),
+        ("result_score000710.png", "710", "710"),
         ("result_score009870.png", "9870", "9,870"),
         ("result_score054321.png", "54321", "54,321"),
         ("result_score935730.png", "935730", "935,730"),
