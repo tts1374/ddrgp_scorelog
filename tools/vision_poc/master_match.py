@@ -284,10 +284,45 @@ def resolve_song_by_title(
     ]
     song_ids = {song.song_id for song in matches}
     if not matches:
-        return None, "title_not_found"
+        alias_matches = load_songs_by_alias_title(db_path, source_title)
+        alias_song_ids = {song.song_id for song in alias_matches}
+        if not alias_matches:
+            return None, "title_not_found"
+        if len(alias_song_ids) > 1:
+            return None, "ambiguous_alias_title"
+        return alias_matches[0], ""
     if len(song_ids) > 1:
         return None, "ambiguous_title"
     return matches[0], ""
+
+
+def load_songs_by_alias_title(db_path: Path, source_title: str) -> list[MasterSong]:
+    normalized_source_title = normalize_song_title(source_title)
+    if not normalized_source_title:
+        return []
+    with sqlite3.connect(db_path) as connection:
+        rows = connection.execute(
+            """
+            SELECT
+              s.song_id, s.title, s.artist,
+              s.grand_prix_play_available, s.official_availability_match,
+              a.alias_title
+            FROM song_aliases a
+            JOIN songs s ON s.song_id = a.song_id
+            ORDER BY s.title, s.artist, s.song_id
+            """
+        ).fetchall()
+    return [
+        MasterSong(
+            song_id=str(row[0]),
+            title=str(row[1]),
+            artist=str(row[2]),
+            grand_prix_play_available=bool(row[3]),
+            official_availability_match=str(row[4] or ""),
+        )
+        for row in rows
+        if normalize_song_title(str(row[5])) == normalized_source_title
+    ]
 
 
 def chart_filter_from_save_candidate(row: dict[str, str]) -> tuple[str, str, int] | None:
@@ -1458,7 +1493,7 @@ def summarize_jacket_feature_master_rows(rows: Iterable[dict[str, str]]) -> dict
         "reading_notes": [
             "Feature rows come from local song_select grid preview images.",
             "Feature rows are not bundled assets.",
-            "Resolved song_id uses metadata labels matched to M4 songs.title.",
+            "Resolved song_id uses metadata labels matched to M4 songs.title or song_aliases.",
             "accepted feature rows are local PoC references, not a distributed jacket database.",
         ],
     }

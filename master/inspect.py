@@ -25,6 +25,7 @@ def inspect_master_database(db_path: Path) -> dict[str, Any]:
         metadata = dict(connection.execute("SELECT key, value FROM master_metadata"))
         song_count = connection.execute("SELECT COUNT(*) FROM songs").fetchone()[0]
         chart_count = connection.execute("SELECT COUNT(*) FROM charts").fetchone()[0]
+        alias_count = connection.execute("SELECT COUNT(*) FROM song_aliases").fetchone()[0]
         snapshot_rows = connection.execute(
             """
             SELECT source_url, content_hash, parser_version
@@ -90,6 +91,7 @@ def inspect_master_database(db_path: Path) -> dict[str, Any]:
         "database": str(db_path),
         "song_count": song_count,
         "chart_count": chart_count,
+        "song_alias_count": alias_count,
         "snapshot_count": snapshot_count,
         "source_hash": metadata.get("source_hash"),
         "snapshot_source_hash": snapshot_content_hash,

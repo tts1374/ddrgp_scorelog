@@ -17,7 +17,7 @@ SOURCE_URL = (
     "DanceDanceRevolution+GRAND+PRIX/%E5%85%A8%E6%9B%B2%E3%83%AA%E3%82%B9%E3%83%88"
 )
 OFFICIAL_MUSIC_LIST_URL = "https://p.eagate.573.jp/game/eacddr/konaddr/info/mlist.html"
-PARSER_VERSION = "m4-initial-html-table-v3"
+PARSER_VERSION = "m4-initial-html-table-v4"
 DIFFICULTIES_BY_STYLE = {
     "SINGLE": ("BEGINNER", "BASIC", "DIFFICULT", "EXPERT", "CHALLENGE"),
     "DOUBLE": ("BASIC", "DIFFICULT", "EXPERT", "CHALLENGE"),
@@ -56,6 +56,16 @@ class MasterChart:
 
 
 @dataclass(frozen=True)
+class MasterSongAlias:
+    alias_id: str
+    song_id: str
+    alias_title: str
+    alias_artist: str
+    alias_type: str
+    source: str
+
+
+@dataclass(frozen=True)
 class SourceSnapshot:
     source_url: str
     fetched_at: str
@@ -77,6 +87,7 @@ class MasterBuild:
     songs: tuple[MasterSong, ...]
     charts: tuple[MasterChart, ...]
     snapshot: SourceSnapshot
+    song_aliases: tuple[MasterSongAlias, ...] = ()
     official_snapshot: SourceSnapshot | None = None
 
 
@@ -95,6 +106,46 @@ def normalize_table_cell_text(cell) -> str:
 def normalize_availability_key(value: str) -> str:
     normalized = unicodedata.normalize("NFKC", normalize_text(value)).casefold()
     return "".join(char for char in normalized if not char.isspace())
+
+
+CYRILLIC_CONFUSABLES_FOR_ALIAS = str.maketrans(
+    {
+        "А": "a",
+        "В": "b",
+        "Е": "e",
+        "Ё": "e",
+        "К": "k",
+        "М": "m",
+        "Н": "h",
+        "О": "o",
+        "Р": "p",
+        "С": "c",
+        "Т": "t",
+        "Х": "x",
+        "а": "a",
+        "в": "b",
+        "е": "e",
+        "ё": "e",
+        "к": "k",
+        "м": "m",
+        "н": "h",
+        "о": "o",
+        "р": "p",
+        "с": "c",
+        "т": "t",
+        "х": "x",
+    }
+)
+
+
+def normalize_availability_alias_key(value: str) -> str:
+    normalized = unicodedata.normalize("NFKD", normalize_text(value)).casefold()
+    without_marks = "".join(
+        char for char in normalized if unicodedata.category(char) != "Mn"
+    )
+    return normalize_availability_key(
+        without_marks.translate(CYRILLIC_CONFUSABLES_FOR_ALIAS)
+    )
 
 
 def stable_id(prefix: str, *parts: str) -> str:
@@ -310,7 +361,7 @@ def parse_official_music_list_html(html: str) -> tuple[OfficialSongAvailability,
 def apply_official_availability(
     songs: tuple[MasterSong, ...],
     availability_entries: tuple[OfficialSongAvailability, ...],
-) -> tuple[MasterSong, ...]:
+) -> tuple[tuple[MasterSong, ...], tuple[MasterSongAlias, ...]]:
     by_title_artist = {
         (
             normalize_availability_key(entry.title),
@@ -319,30 +370,85 @@ def apply_official_availability(
         for entry in availability_entries
         if entry.artist
     }
+    alias_by_title_artist: dict[tuple[str, str], list[OfficialSongAvailability]] = {}
+    for entry in availability_entries:
+        if not entry.artist:
+            continue
+        alias_by_title_artist.setdefault(
+            (
+                normalize_availability_alias_key(entry.title),
+                normalize_availability_alias_key(entry.artist),
+            ),
+            [],
+        ).append(entry)
     by_title: dict[str, list[OfficialSongAvailability]] = {}
+    alias_by_title: dict[str, list[OfficialSongAvailability]] = {}
     for entry in availability_entries:
         by_title.setdefault(normalize_availability_key(entry.title), []).append(entry)
+        alias_by_title.setdefault(
+            normalize_availability_alias_key(entry.title),
+            [],
+        ).append(entry)
 
     updated_songs: list[MasterSong] = []
+    aliases: list[MasterSongAlias] = []
     for song in songs:
         title_key = normalize_availability_key(song.title)
         artist_key = normalize_availability_key(song.artist)
+        title_alias_key = normalize_availability_alias_key(song.title)
+        artist_alias_key = normalize_availability_alias_key(song.artist)
         entry = by_title_artist.get((title_key, artist_key))
         match_status = "title_artist"
         if entry is None:
-            title_matches = by_title.get(title_key, [])
-            if len(title_matches) == 1:
-                entry = title_matches[0]
-                match_status = "unique_title"
-            elif title_matches:
-                match_status = "ambiguous_title"
+            alias_title_artist_matches = alias_by_title_artist.get(
+                (title_alias_key, artist_alias_key),
+                [],
+            )
+            if len(alias_title_artist_matches) == 1:
+                entry = alias_title_artist_matches[0]
+                match_status = "alias_title_artist"
+            elif alias_title_artist_matches:
+                match_status = "ambiguous_alias_title_artist"
             else:
-                match_status = "not_found"
+                title_matches = by_title.get(title_key, [])
+                if len(title_matches) == 1:
+                    entry = title_matches[0]
+                    match_status = "unique_title"
+                elif title_matches:
+                    match_status = "ambiguous_title"
+                else:
+                    alias_title_matches = alias_by_title.get(title_alias_key, [])
+                    if len(alias_title_matches) == 1:
+                        entry = alias_title_matches[0]
+                        match_status = "alias_unique_title"
+                    elif alias_title_matches:
+                        match_status = "ambiguous_alias_title"
+                    else:
+                        match_status = "not_found"
+        title = song.title if entry is None else entry.title
+        artist = song.artist if entry is None or not entry.artist else entry.artist
+        if entry is not None and (title != song.title or artist != song.artist):
+            aliases.append(
+                MasterSongAlias(
+                    alias_id=stable_id(
+                        "alias",
+                        song.song_id,
+                        song.title,
+                        song.artist,
+                        "wiki_source",
+                    ),
+                    song_id=song.song_id,
+                    alias_title=song.title,
+                    alias_artist=song.artist,
+                    alias_type="wiki_source",
+                    source="bemaniwiki",
+                )
+            )
         updated_songs.append(
             MasterSong(
                 song_id=song.song_id,
-                title=song.title,
-                artist=song.artist,
+                title=title,
+                artist=artist,
                 version=song.version,
                 source_version=song.source_version,
                 bpm=song.bpm,
@@ -359,7 +465,7 @@ def apply_official_availability(
                 notes=song.notes,
             )
         )
-    return tuple(updated_songs)
+    return tuple(updated_songs), tuple(aliases)
 
 
 def parse_master_html(
@@ -406,6 +512,7 @@ def parse_master_html(
     )
     official_snapshot = None
     songs = tuple(songs_by_id.values())
+    song_aliases: tuple[MasterSongAlias, ...] = ()
     if official_html is not None:
         official_snapshot = SourceSnapshot(
             source_url=official_source_url,
@@ -414,7 +521,7 @@ def parse_master_html(
             parser_version=PARSER_VERSION,
             html_content=official_html,
         )
-        songs = apply_official_availability(
+        songs, song_aliases = apply_official_availability(
             songs,
             parse_official_music_list_html(official_html),
         )
@@ -422,6 +529,7 @@ def parse_master_html(
         songs=songs,
         charts=tuple(charts_by_id.values()),
         snapshot=snapshot,
+        song_aliases=song_aliases,
         official_snapshot=official_snapshot,
     )
 
@@ -467,6 +575,16 @@ def create_schema(connection: sqlite3.Connection) -> None:
           UNIQUE (song_id, play_style, difficulty)
         );
 
+        CREATE TABLE song_aliases (
+          alias_id TEXT PRIMARY KEY,
+          song_id TEXT NOT NULL REFERENCES songs(song_id) ON DELETE CASCADE,
+          alias_title TEXT NOT NULL,
+          alias_artist TEXT NOT NULL,
+          alias_type TEXT NOT NULL,
+          source TEXT NOT NULL,
+          UNIQUE (song_id, alias_title, alias_artist, alias_type)
+        );
+
         CREATE TABLE master_metadata (
           key TEXT PRIMARY KEY,
           value TEXT NOT NULL
@@ -484,6 +602,8 @@ def create_schema(connection: sqlite3.Connection) -> None:
         CREATE INDEX idx_songs_title ON songs(title);
         CREATE INDEX idx_charts_song_id ON charts(song_id);
         CREATE INDEX idx_charts_identity ON charts(play_style, difficulty, level);
+        CREATE INDEX idx_song_aliases_song_id ON song_aliases(song_id);
+        CREATE INDEX idx_song_aliases_title ON song_aliases(alias_title);
         """
     )
 
@@ -558,6 +678,25 @@ def write_master_database(
                 for chart in build.charts
             ],
         )
+        connection.executemany(
+            """
+            INSERT INTO song_aliases (
+              alias_id, song_id, alias_title, alias_artist, alias_type, source
+            )
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    alias.alias_id,
+                    alias.song_id,
+                    alias.alias_title,
+                    alias.alias_artist,
+                    alias.alias_type,
+                    alias.source,
+                )
+                for alias in build.song_aliases
+            ],
+        )
         metadata = {
             "master_version": master_version,
             "source_url": build.snapshot.source_url,
@@ -566,6 +705,7 @@ def write_master_database(
             "source_hash": build.snapshot.content_hash,
             "song_count": str(len(build.songs)),
             "chart_count": str(len(build.charts)),
+            "song_alias_count": str(len(build.song_aliases)),
             "free_play_available_song_count": str(
                 sum(1 for song in build.songs if song.free_play_available)
             ),
@@ -577,7 +717,12 @@ def write_master_database(
                     1
                     for song in build.songs
                     if song.official_availability_match
-                    in {"title_artist", "unique_title"}
+                    in {
+                        "title_artist",
+                        "unique_title",
+                        "alias_title_artist",
+                        "alias_unique_title",
+                    }
                 )
             ),
         }
@@ -629,6 +774,7 @@ def summarize_build(build: MasterBuild) -> dict[str, object]:
     return {
         "songs": len(build.songs),
         "charts": len(build.charts),
+        "song_aliases": len(build.song_aliases),
         "source_hash": build.snapshot.content_hash,
         "official_source_hash": (
             None if build.official_snapshot is None else build.official_snapshot.content_hash

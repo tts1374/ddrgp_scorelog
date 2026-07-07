@@ -64,6 +64,17 @@ def write_fixture_master_db(tmp_path: Path) -> Path:
                 for chart_id, song_id, play_style, difficulty, level in charts
             ],
         )
+        connection.execute(
+            """
+            INSERT INTO song_aliases (
+              alias_id, song_id, alias_title, alias_artist, alias_type, source
+            )
+            VALUES (
+              'alias_make', 'song_make', 'MAKE IT BETTER ALIAS',
+              'mitsu-O!', 'wiki_source', 'fixture'
+            )
+            """
+        )
     return db_path
 
 
@@ -206,6 +217,20 @@ def test_resolve_song_by_title_uses_normalized_exact_title(tmp_path: Path) -> No
     assert failure_reason == ""
     assert song is not None
     assert song.song_id == "song_make"
+
+
+def test_resolve_song_by_title_uses_m4_song_aliases(tmp_path: Path) -> None:
+    db_path = write_fixture_master_db(tmp_path)
+
+    song, failure_reason = master_match.resolve_song_by_title(
+        db_path,
+        "MAKE IT BETTER ALIAS",
+    )
+
+    assert failure_reason == ""
+    assert song is not None
+    assert song.song_id == "song_make"
+    assert song.title == "MAKE IT BETTER"
 
 
 def test_match_save_candidate_row_reports_unique_matched_candidate(tmp_path: Path) -> None:

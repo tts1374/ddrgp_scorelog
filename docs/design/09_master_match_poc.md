@@ -91,6 +91,8 @@ result confirmed-events
 
 `jacket_match_candidates.csv` は、confirmed-events の result `jacket` ROIを特徴量化し、`play_style` / `difficulty` / `level` で絞った候補song_idに紐づくローカル特徴量だけと比較する。列には候補曲数、候補譜面数、候補特徴量数、最上位候補、score、distance、特徴量参照元、上位候補一覧、期待曲名、期待song_id、期待曲名のM4解決状態、期待曲の公式GP可否、公式可否突合状態、期待song_idの距離、期待song_idの順位、最上位と次点songの距離差、title画像特徴量補助、title OCR suffix補助、title line-hash補助、後続保存判定へ渡すM5候補観測 `identity_signal_*`、`jacket_match_status`、`failure_reason` を出す。期待値由来の列はローカルmetadataを使った診断であり、保存可能判定ではない。
 
+期待曲名やsong_select参照ラベルの解決では、まずM4 `songs.title` の公式canonical表記を使い、見つからない場合だけ `song_aliases` のWiki由来aliasを補助的に見る。これは `RЁVOLUTIФN` / `RËVOLUTIФN` のようなM4表記差を吸収するための入口であり、候補集合外から曲を拾うためのtitle補助とは分けて読む。
+
 `jacket_match_report.md` は通常候補60件を読みやすくするため、`identity_signal_status` ごとの代表行を出す。これは `jacket_resolved_candidate`、`composite_resolved_candidate`、`unresolved_*` を保存判定前の観測カテゴリとして見比べるための補助であり、候補を保存OKへ昇格する根拠ではない。
 
 通常候補レポートには `Unresolved Identity Signal Representatives` も出す。ここでは `unresolved_*` だけを抜き出し、期待曲がM4で `resolved` / `unresolved` のどちらか、`title_not_found` などの解決理由、`grand_prix_play_available`、`official_availability_match`、line-hash辞書状態を同じ行で確認する。これは `Inner Spirit -GIGA HiTECH MIX-` のような jacket曖昧残りと、`RЁVOLUTIФN` のような期待曲名解決失敗を切り分けるための観察補助であり、公式GP可否フィルタを緩めたり、GP対象外曲を通常M5候補へ戻したりする根拠ではない。

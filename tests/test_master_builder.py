@@ -156,6 +156,54 @@ OFFICIAL_FIXTURE_HTML = """
 </html>
 """
 
+ALIAS_FIXTURE_HTML = """
+<!doctype html>
+<html>
+<body>
+<table class="style_table">
+  <tr>
+    <td rowspan="2">分類</td>
+    <td rowspan="2">曲名</td>
+    <td rowspan="2">アーティスト</td>
+    <td rowspan="2">出典</td>
+    <td rowspan="2">BPM</td>
+    <td rowspan="2">MV/St</td>
+    <td colspan="5">SINGLE</td>
+    <td colspan="4">DOUBLE</td>
+  </tr>
+  <tr>
+    <td>Be</td><td>Ba</td><td>Di</td><td>Ex</td><td>Ch</td>
+    <td>Ba</td><td>Di</td><td>Ex</td><td>Ch</td>
+  </tr>
+  <tr><td colspan="15">DDR Alias Cases</td></tr>
+  <tr>
+    <td>GP5</td><td>RËVOLUTIФN</td><td>TËЯRA</td>
+    <td>DDR GP Test Pack</td><td>202</td><td>-</td>
+    <td>-</td><td>-</td><td>-</td><td>-</td><td>17</td>
+    <td>-</td><td>-</td><td>-</td><td>-</td>
+  </tr>
+</table>
+</body>
+</html>
+"""
+
+OFFICIAL_ALIAS_FIXTURE_HTML = """
+<!doctype html>
+<html>
+<body>
+<table class="m_list">
+  <tr>
+    <th>タイトル</th><th>アーティスト</th>
+    <th>フリープレー</th><th>グランプリプレー</th>
+  </tr>
+  <tr>
+    <td>RЁVOLUTIФN</td><td>TЁЯRA</td><td></td><td>〇</td>
+  </tr>
+</table>
+</body>
+</html>
+"""
+
 
 def test_parse_level_uses_first_numeric_token_without_joining_notes() -> None:
     assert builder.parse_level("10(旧9)") == 10
@@ -223,6 +271,39 @@ def test_parse_master_html_applies_official_grand_prix_availability() -> None:
     assert build.official_snapshot.source_url == "https://example.test/official"
 
 
+def test_parse_master_html_uses_official_title_artist_as_canonical_alias_match() -> None:
+    build = builder.parse_master_html(
+        ALIAS_FIXTURE_HTML,
+        source_url="https://example.test/source",
+        official_html=OFFICIAL_ALIAS_FIXTURE_HTML,
+        official_source_url="https://example.test/official",
+        fetched_at="2026-07-04T00:00:00+00:00",
+    )
+
+    song = build.songs[0]
+
+    assert song.title == "RЁVOLUTIФN"
+    assert song.artist == "TЁЯRA"
+    assert song.grand_prix_play_available
+    assert song.official_availability_match == "alias_title_artist"
+    assert build.song_aliases == (
+        builder.MasterSongAlias(
+            alias_id=builder.stable_id(
+                "alias",
+                song.song_id,
+                "RËVOLUTIФN",
+                "TËЯRA",
+                "wiki_source",
+            ),
+            song_id=song.song_id,
+            alias_title="RËVOLUTIФN",
+            alias_artist="TËЯRA",
+            alias_type="wiki_source",
+            source="bemaniwiki",
+        ),
+    )
+
+
 def test_write_master_database_creates_expected_schema_and_metadata(tmp_path: Path) -> None:
     build = builder.parse_master_html(
         FIXTURE_HTML,
@@ -249,6 +330,7 @@ def test_write_master_database_creates_expected_schema_and_metadata(tmp_path: Pa
         assert metadata["source_url"] == "https://example.test/source"
         assert metadata["song_count"] == "3"
         assert metadata["chart_count"] == "23"
+        assert metadata["song_alias_count"] == "0"
         assert metadata["generator_version"] == builder.PARSER_VERSION
         assert metadata["grand_prix_play_available_song_count"] == "0"
 
@@ -299,6 +381,7 @@ def test_write_master_database_records_official_availability_snapshot(
         assert metadata["grand_prix_play_available_song_count"] == "2"
         assert metadata["free_play_available_song_count"] == "2"
         assert metadata["official_availability_matched_song_count"] == "3"
+        assert metadata["song_alias_count"] == "0"
         rows = connection.execute(
             """
             SELECT title, free_play_available, grand_prix_play_available,
@@ -317,6 +400,42 @@ def test_write_master_database_records_official_availability_snapshot(
     assert summary["official_source_url"] == "https://example.test/official"
     assert summary["official_source_hash"] == build.official_snapshot.content_hash
     assert summary["grand_prix_play_available_song_count"] == "2"
+    assert summary["song_alias_count"] == 0
+
+
+def test_write_master_database_records_song_aliases_for_official_canonical_match(
+    tmp_path: Path,
+) -> None:
+    build = builder.parse_master_html(
+        ALIAS_FIXTURE_HTML,
+        source_url="https://example.test/source",
+        official_html=OFFICIAL_ALIAS_FIXTURE_HTML,
+        official_source_url="https://example.test/official",
+        fetched_at="2026-07-04T00:00:00+00:00",
+    )
+    output_path = tmp_path / "ddrgp-master.sqlite"
+
+    builder.write_master_database(
+        output_path,
+        build,
+        master_version="fixture-v1",
+        generated_at="2026-07-04T01:23:45+00:00",
+    )
+
+    with sqlite3.connect(output_path) as connection:
+        metadata = dict(connection.execute("SELECT key, value FROM master_metadata"))
+        assert metadata["grand_prix_play_available_song_count"] == "1"
+        assert metadata["official_availability_matched_song_count"] == "1"
+        assert metadata["song_alias_count"] == "1"
+        assert connection.execute(
+            "SELECT title, artist, official_availability_match FROM songs"
+        ).fetchone() == ("RЁVOLUTIФN", "TЁЯRA", "alias_title_artist")
+        assert connection.execute(
+            "SELECT alias_title, alias_artist, alias_type, source FROM song_aliases"
+        ).fetchone() == ("RËVOLUTIФN", "TËЯRA", "wiki_source", "bemaniwiki")
+
+    summary = master_inspect.inspect_master_database(output_path)
+    assert summary["song_alias_count"] == 1
 
 
 def test_inspect_master_database_writes_summary_for_valid_database(tmp_path: Path) -> None:
