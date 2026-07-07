@@ -302,6 +302,10 @@ M7A_DIGIT_VECTOR_SIZE = (16, 24)
 M7A_DIGIT_MAX_DISTANCE = 0.28
 M7A_DIGIT_MIN_MARGIN = 0.02
 M7A_DIGIT_SEGMENT_GAP_TOLERANCE = 1
+M7A_DIGIT_FOCUS_LEFT_FRACTIONS: dict[str, float] = {
+    "max_combo": 0.65,
+}
+M7A_COMPONENT_SEGMENT_ROIS = frozenset({"max_combo"})
 M3_METADATA_EXPECTED_FIELDS = (
     "song_title",
     "artist",
@@ -1637,12 +1641,33 @@ def segment_m7a_score_digit_masks(mask: np.ndarray) -> list[np.ndarray]:
     ]
 
 
+def segment_m7a_component_digit_masks(mask: np.ndarray) -> list[np.ndarray]:
+    height, _width = mask.shape
+    min_digit_height = max(10, int(height * 0.35))
+    digit_components = [
+        (left, top, right, bottom, area)
+        for left, top, right, bottom, area in m7a_mask_components(mask)
+        if bottom - top >= min_digit_height and right - left >= 2 and area >= 20
+    ]
+    return [
+        mask[top:bottom, left:right]
+        for left, top, right, bottom, _area in sorted(digit_components)
+    ]
+
+
 def segment_m7a_digit_masks(image: Image.Image, roi_name: str = "") -> list[np.ndarray]:
+    focus_left_fraction = M7A_DIGIT_FOCUS_LEFT_FRACTIONS.get(roi_name)
+    if focus_left_fraction is not None:
+        image = crop_right_fraction(image, focus_left_fraction)
     mask = m7a_foreground_mask(image)
     if roi_name == "score_digits":
         score_segments = segment_m7a_score_digit_masks(mask)
         if score_segments:
             return score_segments
+    if roi_name in M7A_COMPONENT_SEGMENT_ROIS:
+        component_segments = segment_m7a_component_digit_masks(mask)
+        if component_segments:
+            return component_segments
 
     bbox = m7a_foreground_bbox(mask)
     if bbox is None:
@@ -1688,12 +1713,11 @@ def recognize_m7a_digit_segments(
     templates: list[M7aDigitTemplate],
     roi_name: str = "",
 ) -> tuple[str, str, float | None, float | None, str, int, str]:
+    segments = segment_m7a_digit_masks(image, roi_name)
     missing_labels = m7a_missing_template_labels(templates)
     if missing_labels:
         reason = "missing_digit_templates=" + "".join(missing_labels)
-        return "missing_reference", "", None, None, reason, 0, ""
-
-    segments = segment_m7a_digit_masks(image, roi_name)
+        return "missing_reference", "", None, None, reason, len(segments), ""
     if not segments:
         return "failed_segmentation", "", None, None, "no_digit_segments", 0, ""
 
@@ -2174,6 +2198,15 @@ def m7a_failure_reason_counts(
 def m7a_recognition_bucket(results: Iterable[M7aDigitRecognitionResult]) -> dict[str, object]:
     rows = list(results)
     distances = [result.distance for result in rows if result.distance is not None]
+    segment_count_counts: dict[str, int] = {}
+    expected_digit_length_counts: dict[str, int] = {}
+    for result in rows:
+        segment_key = str(result.segment_count)
+        segment_count_counts[segment_key] = segment_count_counts.get(segment_key, 0) + 1
+        expected_length_key = str(len(result.expected_value))
+        expected_digit_length_counts[expected_length_key] = (
+            expected_digit_length_counts.get(expected_length_key, 0) + 1
+        )
     return {
         "total_attempts": len(rows),
         "match_count": sum(result.match is True for result in rows),
@@ -2181,6 +2214,8 @@ def m7a_recognition_bucket(results: Iterable[M7aDigitRecognitionResult]) -> dict
         "no_expected_value_count": sum(result.expected_value == "" for result in rows),
         "status_counts": m7a_status_counts(rows),
         "failure_reason_counts": m7a_failure_reason_counts(rows),
+        "segment_count_counts": dict(sorted(segment_count_counts.items())),
+        "expected_digit_length_counts": dict(sorted(expected_digit_length_counts.items())),
         "average_distance": (sum(distances) / len(distances) if distances else None),
     }
 
@@ -2808,6 +2843,29 @@ def write_m7a_digit_recognition_report(
             f"{value.get('match_count', 0)} | {value.get('mismatch_count', 0)} | "
             f"{value.get('no_expected_value_count', 0)} | {distance_text} |"
         )
+
+    lines.extend(
+        [
+            "",
+            "## Segment Diagnostics",
+            "",
+            "| ROI | segment counts | expected digit lengths |",
+            "| --- | --- | --- |",
+        ]
+    )
+    for roi_name, value in by_roi.items():
+        assert isinstance(value, dict)
+        segment_counts = value.get("segment_count_counts", {})
+        expected_lengths = value.get("expected_digit_length_counts", {})
+        assert isinstance(segment_counts, dict)
+        assert isinstance(expected_lengths, dict)
+        segment_text = ", ".join(
+            f"{segment_count}:{count}" for segment_count, count in segment_counts.items()
+        )
+        expected_text = ", ".join(
+            f"{digit_length}:{count}" for digit_length, count in expected_lengths.items()
+        )
+        lines.append(f"| `{roi_name}` | `{segment_text}` | `{expected_text}` |")
 
     comparison = summary["tesseract_comparison"]
     assert isinstance(comparison, dict)

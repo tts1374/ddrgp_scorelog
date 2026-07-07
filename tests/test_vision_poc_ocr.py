@@ -86,11 +86,11 @@ def digit_glyph(label: str, *, scale: int = 6) -> Image.Image:
     return image
 
 
-def write_digit_templates(root: Path, roi_name: str = "score_digits") -> None:
+def write_digit_templates(root: Path, roi_name: str = "score_digits", *, scale: int = 6) -> None:
     template_dir = root / roi_name
     template_dir.mkdir(parents=True, exist_ok=True)
     for label in runner.M7A_DIGIT_REQUIRED_LABELS:
-        digit_glyph(label).save(template_dir / f"{label}.png")
+        digit_glyph(label, scale=scale).save(template_dir / f"{label}.png")
 
 
 def write_score_digit_image(path: Path, digits: str) -> None:
@@ -141,6 +141,30 @@ def write_score_digit_display_image(path: Path, display_text: str) -> None:
         glyph = digit_glyph(character)
         image.paste(glyph, (cursor_x, cursor_y))
         cursor_x += glyph.width + 3
+    path.parent.mkdir(parents=True, exist_ok=True)
+    image.save(path)
+
+
+def write_digit_roi_image(
+    path: Path,
+    *,
+    roi_name: str,
+    digits: str,
+    expected_label_noise: bool = False,
+) -> None:
+    image = Image.new("RGB", (1280, 720), "black")
+    left, top, right, bottom = runner.scaled_box(image, runner.ROI_DEFINITIONS[roi_name])
+    if expected_label_noise:
+        draw = ImageDraw.Draw(image)
+        draw.rectangle((left, top + 4, left + 18, top + 23), fill="white")
+        draw.rectangle((left + 24, top + 4, left + 54, top + 23), fill="white")
+        draw.rectangle((left + 170, bottom - 4, right - 2, bottom - 1), fill="white")
+    cursor_x = left + int((right - left) * 0.65) + 14
+    cursor_y = top + 4
+    for digit in digits:
+        glyph = digit_glyph(digit, scale=4)
+        image.paste(glyph, (cursor_x, cursor_y))
+        cursor_x += glyph.width + 4
     path.parent.mkdir(parents=True, exist_ok=True)
     image.save(path)
 
@@ -1797,9 +1821,12 @@ def test_m7a_digit_recognition_writes_confirmed_events_report(
         "unavailable_count": 0,
     }
     assert summary["by_roi"]["score_digits"]["status_counts"] == {"recognized": 1}
+    assert summary["by_roi"]["score_digits"]["segment_count_counts"] == {"6": 1}
+    assert summary["by_roi"]["score_digits"]["expected_digit_length_counts"] == {"6": 1}
 
     report = (output_dir / "m7a_digit_recognition_report.md").read_text(encoding="utf-8")
     assert "status vocabulary" in report
+    assert "Segment Diagnostics" in report
     assert "DB保存OK/NG判定ではありません" in report
 
 
@@ -1820,6 +1847,76 @@ def test_m7a_digit_recognition_reports_missing_reference(tmp_path: Path) -> None
     assert result.status == "missing_reference"
     assert result.failure_reason == "missing_digit_templates=0123456789"
     assert result.match is None
+
+
+def test_m7a_digit_recognition_segments_max_combo_digit_area(tmp_path: Path) -> None:
+    template_root = tmp_path / "digit_templates"
+    write_digit_templates(template_root, "max_combo", scale=4)
+    templates = runner.load_m7a_digit_templates(template_root, "max_combo")
+    image_path = tmp_path / "result_max_combo198.png"
+    write_digit_roi_image(
+        image_path,
+        roi_name="max_combo",
+        digits="198",
+        expected_label_noise=True,
+    )
+    frame = runner.FrameInput(
+        row={
+            "organized_file": "result_max_combo198.png",
+            "screen_type": "result",
+            "max_combo": "198",
+        },
+        image_path=image_path,
+    )
+    event = result_event("result_max_combo198.png", confirmed_result=True)
+
+    with Image.open(image_path) as image:
+        result = runner.process_m7a_digit_roi(
+            image.convert("RGB"),
+            frame,
+            event,
+            "max_combo",
+            templates,
+        )
+
+    assert result.segment_count == 3
+    assert result.recognized_digits == "198"
+    assert result.status == "recognized"
+    assert result.match is True
+
+
+def test_m7a_digit_recognition_reports_segment_count_without_reference(
+    tmp_path: Path,
+) -> None:
+    image_path = tmp_path / "result_max_combo198.png"
+    write_digit_roi_image(
+        image_path,
+        roi_name="max_combo",
+        digits="198",
+        expected_label_noise=True,
+    )
+    frame = runner.FrameInput(
+        row={
+            "organized_file": "result_max_combo198.png",
+            "screen_type": "result",
+            "max_combo": "198",
+        },
+        image_path=image_path,
+    )
+    event = result_event("result_max_combo198.png", confirmed_result=True)
+
+    with Image.open(image_path) as image:
+        result = runner.process_m7a_digit_roi(
+            image.convert("RGB"),
+            frame,
+            event,
+            "max_combo",
+            [],
+        )
+
+    assert result.status == "missing_reference"
+    assert result.failure_reason == "missing_digit_templates=0123456789"
+    assert result.segment_count == 3
 
 
 def test_m7a_digit_recognition_reports_failed_segmentation(tmp_path: Path) -> None:

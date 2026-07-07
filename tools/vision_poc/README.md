@@ -32,6 +32,8 @@ python -m pip install -e ".[vision]"
 
 `--m7a-digit-recognition` を指定した場合は、追加で `m7a_digit_recognition.csv`、`m7a_digit_recognition_summary.json`、`m7a_digit_recognition_report.md` が生成されます。これはM7aのスコア系数字認識PoCで、対象は confirmed-events 境界の `confirmed_result=true` かつ `duplicate=false` だけです。初期対象は既定で `score_digits` だけにし、`--m7a-digit-rois all` で `max_combo`、`marvelous`、`perfect`、`great`、`good`、`miss`、`ex_score` へ広げられます。Tesseractは使わず、ROI内の前景maskを桁分割して、ローカルテンプレートとのbitmap最近傍距離で `recognized` / `ambiguous` / `missing_reference` / `failed_segmentation` / `not_evaluated` を出します。`score_digits` は0から1,000,000までの可変桁表示を前提に、カンマや背景ノイズを大きな数字成分から分けて左から読むため、1桁から7桁までを固定桁数へ寄せません。既存 `score_ocr.csv` / `score_ocr_summary.json` は変更せず、同じ実行でOCR結果がある場合だけ summary の `tesseract_comparison` で正規化済み数字列を比較します。テンプレートは既定で `samples/screenshots/organized/digit_templates/<roi>/<digit>.png` または `<root>/<digit>.png` を読みますが、画像素材はローカル素材としてGit管理しません。テンプレート画像は数字前景の周囲に背景余白を含めます。
 
+`max_combo` は同じROI内に左側ラベルと下線が入るため、M7aではROI右側の数字領域へ寄せ、数字らしい高さの前景コンポーネントだけを桁候補として分けます。`m7a_digit_recognition_summary.json` のROI別bucketには `segment_count_counts` と `expected_digit_length_counts` があり、テンプレート不足で `missing_reference` の段階でも、分割数が期待値桁数と合っているかを先に確認できます。2026-07-07時点のローカル `max_combo` テンプレート配置後は、`score_digits` と `max_combo` の2 ROIで confirmed-events 60件ずつ、合計120/120 `recognized` / match です。
+
 `--m5-jacket-match` 指定時は、通常の保存候補出力 `jacket_match_candidates.csv` / summary / Markdown に加えて、`jacket_match_diagnostics.csv`、`jacket_match_diagnostics_summary.json`、`jacket_match_diagnostics.md` も生成します。通常候補は引き続き `confirmed_result=true` かつ `duplicate=false` のM3保存候補だけを対象にします。診断出力は別ファイルで、metadata上のresult行、未確定result、duplicateを含め、`m5_target_boundary_reason` で `save_candidate` / `unconfirmed` / `duplicate` などを分けます。診断行の曲名と譜面3項目はローカルmetadata期待値を `metadata-expected-diagnostic` として使う観察用入力であり、保存候補への昇格やDB保存可能判定を意味しません。
 
 同じ `--m5-jacket-match` では、参照カバレッジ診断として `jacket_reference_coverage.csv`、`jacket_reference_coverage_summary.json`、`jacket_reference_coverage_missing_representatives.csv`、`jacket_reference_coverage_report.md` も生成します。これは通常候補について、`play_style` / `difficulty` / `level` で絞った候補song_idごとに、song_select由来のローカルjacket特徴量参照があるかを出す観察用レポートです。duplicate / unconfirmed を含む診断側は、別ファイル `jacket_reference_diagnostics_coverage.csv`、`jacket_reference_diagnostics_coverage_summary.json`、`jacket_reference_diagnostics_coverage_missing_representatives.csv`、`jacket_reference_diagnostics_coverage_report.md` として生成します。`expected_song_reference_status` は `expected_unresolved`、`expected_not_in_chart_candidates`、`expected_missing_feature`、`expected_referenced` を分け、参照不足や期待曲名未解決を近傍の別曲へ寄せた解消扱いにしません。
@@ -439,6 +441,8 @@ python -m tools.vision_poc --m7a-digit-recognition --no-ocr --output data\vision
 
 2026-07-07時点のローカル `score_digits` テンプレート配置後は、`python -m tools.vision_poc --m7a-digit-recognition --no-ocr --no-rois --output data\vision_poc_m7a_digit` で confirmed-events 60件すべてが `recognized` / `match=true` になり、`missing_reference`、`ambiguous`、`failed_segmentation` は0件です。`python -m tools.vision_poc --m7a-digit-recognition --ocr-target confirmed-events --no-rois --output data\vision_poc_m7a_digit_ocr_compare` では M7a は60/60 match、Tesseract比較は59件中56件が同一、3件がTesseract側の余分な桁または先頭誤読との差分、1件がOCR未取得でした。この結果は保存OK判定ではなく、M7aの保存値候補読み取り材料として扱います。
 
+2026-07-07時点のローカル `max_combo` テンプレート配置後は、`python -m tools.vision_poc --m7a-digit-recognition --m7a-digit-rois score_digits max_combo --no-ocr --no-rois --output data\vision_poc_m7a_digit_max_combo_templates` で `score_digits` 60/60、`max_combo` 60/60 がいずれも `recognized` / `match=true` です。テンプレート配置前でも `max_combo` は `missing_reference` のまま `segment_count_counts={1:1,2:4,3:55}`、`expected_digit_length_counts={1:1,2:4,3:55}` として分割分布を確認できます。テンプレート画像は `samples/screenshots/organized/digit_templates/max_combo/0.png` から `9.png` のローカル素材であり、Git管理しません。
+
 ### OCR前処理とTesseract設定
 
 `score_digits` はローカル評価画像での初期調整として、以下の設定を既定値にしています。
@@ -494,6 +498,7 @@ python -m pytest tests
 - M7a digit recognitionは confirmed-events 境界だけを対象にし、Tesseractなしで `recognized` / `missing_reference` / `failed_segmentation` / `not_evaluated` をfixtureで確認できる
 - M7a digit recognitionの `score_digits` は、カンマを数字扱いせず、1桁から7桁までを可変桁として確認できる
 - M7a digit recognitionは既存 `score_ocr.csv` を変更せず、同じ実行内のTesseract結果がある場合だけ別summaryで比較できる
+- M7a digit recognitionは `max_combo` の右側数字領域を分割し、テンプレート不足時でも `segment_count_counts` と `expected_digit_length_counts` をsummary/reportで確認できる
 - ローカル素材がある環境では `score_digits` の前処理画像を生成できる
 - 曲・譜面情報の目視確認用ROIとして `play_style`、`difficulty`、`level`、`rank`、`song_title`、`artist` を `rois/` に生成できる
 - M3 chart-field 抽出評価は confirmed-events 境界だけを対象にし、duplicate / rejected_transition / unconfirmed / non-result を `skipped` として区別できる

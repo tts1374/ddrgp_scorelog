@@ -323,15 +323,17 @@ M5完了時点で固定すること:
 - 初期対象は既定で `score_digits`。`--m7a-digit-rois all` で判定数ROIや `ex_score` へ広げられるが、採用判断はまだ行わない。
 - 桁分割した前景maskを、ローカル `digit_templates/<roi>/<digit>.png` または `<root>/<digit>.png` のbitmapテンプレートと比較する。テンプレート画像はローカル素材でGit管理しない。
 - `score_digits` は0から1,000,000までの可変桁表示を前提にし、カンマや背景ノイズを除いた大きな数字成分だけを左から読む。1桁から7桁までを固定6桁へ寄せない。
+- `max_combo` はROI左側ラベルや下線を除き、右側数字領域の前景コンポーネントを分割する。テンプレート不足時でも `segment_count_counts` と `expected_digit_length_counts` で分割数と期待桁数を確認できる。
 - 出力は `m7a_digit_recognition.csv`、`m7a_digit_recognition_summary.json`、`m7a_digit_recognition_report.md`。既存 `score_ocr.csv` / `score_ocr_summary.json` は壊さず、同じ実行にOCR結果がある場合だけ `tesseract_comparison` で比較する。
 - status は `recognized`、`ambiguous`、`missing_reference`、`failed_segmentation`、`not_evaluated` を分ける。これは保存値候補の読み取り材料であり、保存OK/NG判定やDB保存ではない。
 - 2026-07-07時点のローカル `score_digits` テンプレート配置後は、confirmed-events 60件で M7a が60/60 `recognized` / match。Tesseract比較ありの実行では、Tesseract側の余分な桁または先頭誤読との差分が3件、OCR未取得が1件だった。これはM7aの保存値候補観測であり、保存OK判定ではない。
+- 2026-07-07時点のローカル `max_combo` テンプレート配置後は、`score_digits` と `max_combo` の2 ROIで confirmed-events 60件ずつ、合計120/120 `recognized` / match。テンプレート配置前でも `max_combo` は `missing_reference` のまま分割分布が期待桁数分布と一致する。
 
 やること:
 
 - ローカル `score_digits` テンプレート配置済み環境では、追加素材で1桁から7桁までの実画面サンプルが増えたときに同じ可変桁分割で再確認する。
 - `score_digits` のテンプレート余白、桁分割、距離しきい値を継続レビューし、過剰な `ambiguous` や誤認識があれば最小限で調整する。
-- 次は `score_digits` の読み方を保ったまま、`max_combo`、`marvelous`、`perfect`、`great`、`good`、`miss`、`ex_score` のうち小さい範囲から M7a 対象を広げる。
+- 次は `score_digits` と `max_combo` の読み方を保ったまま、`marvelous`、`perfect`、`great`、`good`、`miss`、`ex_score` のうち小さい範囲から M7a 対象を広げる。
 - 既存Tesseract出力との比較summaryを読み、差分代表を保存判定ではなくレビュー材料として整理する。
 - 出力は `data/` 配下に置き、テンプレート素材やローカル画像はGit管理しない。
 - fixtureテストで、正規化、桁分割、テンプレート選択、失敗理由の基本動作を継続確認する。

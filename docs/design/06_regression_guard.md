@@ -180,6 +180,8 @@
 - `score_digits` は0から1,000,000までの可変桁表示を扱い、固定6桁前提にしない。
 - `score_digits` はカンマや背景ノイズを数字として数えず、大きな数字成分だけを左から読む。
 - 1桁から7桁までの可変桁表示をfixtureで維持する。
+- `max_combo` はROI左側ラベルや下線を数字として数えず、右側数字領域の前景コンポーネントを分割する。
+- M7a summary/report はROI別に `segment_count_counts` と `expected_digit_length_counts` を出し、テンプレート不足時でも分割数と期待桁数を確認できる。
 - `recognized`、`ambiguous`、`missing_reference`、`failed_segmentation`、`not_evaluated` の語彙を維持し、保存OK/NG判定と混同しない。
 - 同じ実行でTesseract結果がある場合だけ、`tesseract_comparison` を参考比較として読む。
 - ローカル digit template 画像はGit管理しない。
