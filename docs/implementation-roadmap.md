@@ -330,14 +330,16 @@ M5完了時点で固定すること:
 - 2026-07-07時点のローカル `max_combo` テンプレート配置後は、`score_digits` と `max_combo` の2 ROIで confirmed-events 60件ずつ、合計120/120 `recognized` / match。テンプレート配置前でも `max_combo` は `missing_reference` のまま分割分布が期待桁数分布と一致する。
 - 2026-07-07時点のローカル `marvelous` テンプレート配置後は、`score_digits`、`max_combo`、`marvelous` の3 ROIで confirmed-events 60件ずつ、合計180/180 `recognized` / match。テンプレート配置前でも `marvelous` は `missing_reference` のまま分割分布が期待桁数分布と一致する。
 - 2026-07-07時点のローカル `perfect` テンプレート配置後は、`score_digits`、`max_combo`、`marvelous`、`perfect` の4 ROIで confirmed-events 60件ずつ、合計240/240 `recognized` / match。テンプレート配置前でも `perfect` は `missing_reference` のまま分割分布が期待桁数分布と一致する。
-- `great` を非OCR認識対象へ広げ、右側数字領域を分割・認識できるfixture、テンプレート不足時の分割数診断、共有 `judgment_counts` テンプレートだけで読めるfixtureを追加済み。
-- `max_combo`、`marvelous`、`perfect`、`great` は4桁fixtureでも右側数字領域を分割・認識できる。`marvelous`、`perfect`、`great` は共有 `judgment_counts` テンプレートだけでも認識できるfixtureを追加済み。
+- `great`、`good` を非OCR認識対象へ広げ、右側数字領域を分割・認識できるfixture、テンプレート不足時の分割数診断、共有 `judgment_counts` テンプレートだけで読めるfixtureを追加済み。
+- `max_combo`、`marvelous`、`perfect`、`great`、`good` は4桁fixtureでも右側数字領域を分割・認識できる。`marvelous`、`perfect`、`great`、`good` は共有 `judgment_counts` テンプレートだけでも認識できるfixtureを追加済み。
+- 2026-07-07時点のローカル `good` テンプレート配置後は、`score_digits`、`max_combo`、`marvelous`、`perfect`、`great`、`good` の6 ROIで confirmed-events 60件ずつ、合計360/360 `recognized` / match。`good` は左側ラベル由来成分を避けるため、右側数字領域へのfocusを `great` より少し強くしている。
+- 2026-07-07時点の共有 `judgment_counts` テンプレート確認でも、同じ6 ROI合計360/360 `recognized` / match。
 
 やること:
 
 - ローカル `score_digits` テンプレート配置済み環境では、追加素材で1桁から7桁までの実画面サンプルが増えたときに同じ可変桁分割で再確認する。
 - `score_digits` のテンプレート余白、桁分割、距離しきい値を継続レビューし、過剰な `ambiguous` や誤認識があれば最小限で調整する。
-- 次は `score_digits`、`max_combo`、`marvelous`、`perfect`、`great` の読み方を保ったまま、`good`、`miss`、`ex_score` のうち小さい範囲から M7a 対象を広げる。
+- 次は `score_digits`、`max_combo`、`marvelous`、`perfect`、`great`、`good` の読み方を保ったまま、`miss`、`ex_score` のうち小さい範囲から M7a 対象を広げる。
 - 既存Tesseract出力との比較summaryを読み、差分代表を保存判定ではなくレビュー材料として整理する。
 - 出力は `data/` 配下に置き、テンプレート素材やローカル画像はGit管理しない。
 - fixtureテストで、正規化、桁分割、テンプレート選択、失敗理由の基本動作を継続確認する。

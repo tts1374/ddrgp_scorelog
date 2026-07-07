@@ -307,8 +307,11 @@ M7A_DIGIT_FOCUS_LEFT_FRACTIONS: dict[str, float] = {
     "marvelous": 0.52,
     "perfect": 0.52,
     "great": 0.52,
+    "good": 0.55,
 }
-M7A_COMPONENT_SEGMENT_ROIS = frozenset({"max_combo", "marvelous", "perfect", "great"})
+M7A_COMPONENT_SEGMENT_ROIS = frozenset(
+    {"max_combo", "marvelous", "perfect", "great", "good"}
+)
 M7A_DIGIT_TEMPLATE_GROUPS: dict[str, tuple[str, ...]] = {
     "marvelous": ("judgment_counts",),
     "perfect": ("judgment_counts",),

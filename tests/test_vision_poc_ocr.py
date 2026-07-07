@@ -1928,6 +1928,7 @@ def test_m7a_digit_recognition_reports_segment_count_without_reference(
         ("marvelous", "marvelous"),
         ("perfect", "perfect"),
         ("great", "great"),
+        ("good", "good"),
     ],
 )
 def test_m7a_digit_recognition_segments_four_digit_judgment_counts(
@@ -1970,7 +1971,7 @@ def test_m7a_digit_recognition_segments_four_digit_judgment_counts(
     assert result.match is True
 
 
-@pytest.mark.parametrize("roi_name", ["max_combo", "marvelous", "perfect", "great"])
+@pytest.mark.parametrize("roi_name", ["max_combo", "marvelous", "perfect", "great", "good"])
 def test_m7a_digit_recognition_reports_four_digit_segment_count_without_reference(
     tmp_path: Path,
     roi_name: str,
@@ -2146,33 +2147,37 @@ def test_m7a_digit_recognition_reports_perfect_segment_count_without_reference(
     assert result.segment_count == 3
 
 
-def test_m7a_digit_recognition_segments_great_digit_area(tmp_path: Path) -> None:
+@pytest.mark.parametrize("roi_name", ["great", "good"])
+def test_m7a_digit_recognition_segments_judgment_digit_area(
+    tmp_path: Path,
+    roi_name: str,
+) -> None:
     template_root = tmp_path / "digit_templates"
-    write_digit_templates(template_root, "great", scale=4)
-    templates = runner.load_m7a_digit_templates(template_root, "great")
-    image_path = tmp_path / "result_great128.png"
+    write_digit_templates(template_root, roi_name, scale=4)
+    templates = runner.load_m7a_digit_templates(template_root, roi_name)
+    image_path = tmp_path / f"result_{roi_name}128.png"
     write_digit_roi_image(
         image_path,
-        roi_name="great",
+        roi_name=roi_name,
         digits="128",
         expected_label_noise=True,
     )
     frame = runner.FrameInput(
         row={
-            "organized_file": "result_great128.png",
+            "organized_file": f"result_{roi_name}128.png",
             "screen_type": "result",
-            "great": "128",
+            roi_name: "128",
         },
         image_path=image_path,
     )
-    event = result_event("result_great128.png", confirmed_result=True)
+    event = result_event(f"result_{roi_name}128.png", confirmed_result=True)
 
     with Image.open(image_path) as image:
         result = runner.process_m7a_digit_roi(
             image.convert("RGB"),
             frame,
             event,
-            "great",
+            roi_name,
             templates,
         )
 
@@ -2182,32 +2187,34 @@ def test_m7a_digit_recognition_segments_great_digit_area(tmp_path: Path) -> None
     assert result.match is True
 
 
-def test_m7a_digit_recognition_reports_great_segment_count_without_reference(
+@pytest.mark.parametrize("roi_name", ["great", "good"])
+def test_m7a_digit_recognition_reports_judgment_segment_count_without_reference(
     tmp_path: Path,
+    roi_name: str,
 ) -> None:
-    image_path = tmp_path / "result_great128.png"
+    image_path = tmp_path / f"result_{roi_name}128.png"
     write_digit_roi_image(
         image_path,
-        roi_name="great",
+        roi_name=roi_name,
         digits="128",
         expected_label_noise=True,
     )
     frame = runner.FrameInput(
         row={
-            "organized_file": "result_great128.png",
+            "organized_file": f"result_{roi_name}128.png",
             "screen_type": "result",
-            "great": "128",
+            roi_name: "128",
         },
         image_path=image_path,
     )
-    event = result_event("result_great128.png", confirmed_result=True)
+    event = result_event(f"result_{roi_name}128.png", confirmed_result=True)
 
     with Image.open(image_path) as image:
         result = runner.process_m7a_digit_roi(
             image.convert("RGB"),
             frame,
             event,
-            "great",
+            roi_name,
             [],
         )
 
@@ -2216,7 +2223,7 @@ def test_m7a_digit_recognition_reports_great_segment_count_without_reference(
     assert result.segment_count == 3
 
 
-@pytest.mark.parametrize("roi_name", ["marvelous", "perfect", "great"])
+@pytest.mark.parametrize("roi_name", ["marvelous", "perfect", "great", "good"])
 def test_m7a_digit_recognition_uses_shared_judgment_count_templates(
     tmp_path: Path,
     roi_name: str,
@@ -2266,6 +2273,11 @@ def test_m7a_digit_template_search_roots_include_future_shared_groups(
 
     assert runner.m7a_digit_template_search_roots(template_root, "great") == [
         template_root / "great",
+        template_root / "judgment_counts",
+        template_root,
+    ]
+    assert runner.m7a_digit_template_search_roots(template_root, "good") == [
+        template_root / "good",
         template_root / "judgment_counts",
         template_root,
     ]
