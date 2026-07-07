@@ -173,6 +173,17 @@
 - OCRエンジンがない環境でもPoCは落とさず、`engine_unavailable` として記録する。
 - 前処理画像を保存して目視確認できる状態を維持する。
 
+## M7a digit recognition
+
+- M7a digit recognition は confirmed-events 境界、つまり `confirmed_result=true` かつ `duplicate=false` だけを対象にする。
+- duplicate、`event_type=rejected_transition`、未確定 `result_candidate`、non-result は M7a digit recognition 対象外にする。
+- `score_digits` は0から1,000,000までの可変桁表示を扱い、固定6桁前提にしない。
+- `score_digits` はカンマや背景ノイズを数字として数えず、大きな数字成分だけを左から読む。
+- 1桁の`0`、4桁/5桁のカンマ付き表示、通常の6桁、最大値の7桁をfixtureで維持する。
+- `recognized`、`ambiguous`、`missing_reference`、`failed_segmentation`、`not_evaluated` の語彙を維持し、保存OK/NG判定と混同しない。
+- 同じ実行でTesseract結果がある場合だけ、`tesseract_comparison` を参考比較として読む。
+- ローカル digit template 画像はGit管理しない。
+
 ## ROI方針
 
 - ROI座標は 1280x720 基準。

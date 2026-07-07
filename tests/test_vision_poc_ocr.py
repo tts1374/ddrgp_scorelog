@@ -106,6 +106,45 @@ def write_score_digit_image(path: Path, digits: str) -> None:
     image.save(path)
 
 
+def write_score_digit_image_with_comma(path: Path, digits: str) -> None:
+    image = Image.new("RGB", (1280, 720), "black")
+    left, top, right, _bottom = runner.scaled_box(image, runner.ROI_DEFINITIONS["score_digits"])
+    slot_width = (right - left) / 7
+    cursor_y = top + 8
+    slot_indices = (0, 1, 2, 4, 5, 6)
+    for digit, slot_index in zip(digits, slot_indices, strict=True):
+        glyph = digit_glyph(digit)
+        cursor_x = int(left + slot_width * slot_index + (slot_width - glyph.width) / 2)
+        image.paste(glyph, (cursor_x, cursor_y))
+
+    draw = ImageDraw.Draw(image)
+    comma_x = int(left + slot_width * 3 + slot_width * 0.58)
+    comma_y = top + 34
+    draw.rectangle((comma_x, comma_y, comma_x + 4, comma_y + 6), fill="white")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    image.save(path)
+
+
+def write_score_digit_display_image(path: Path, display_text: str) -> None:
+    image = Image.new("RGB", (1280, 720), "black")
+    left, top, _right, _bottom = runner.scaled_box(image, runner.ROI_DEFINITIONS["score_digits"])
+    cursor_x = left + 2
+    cursor_y = top + 8
+    draw = ImageDraw.Draw(image)
+    for character in display_text:
+        if character == ",":
+            comma_x = cursor_x
+            comma_y = top + 34
+            draw.rectangle((comma_x, comma_y, comma_x + 4, comma_y + 6), fill="white")
+            cursor_x += 6
+            continue
+        glyph = digit_glyph(character)
+        image.paste(glyph, (cursor_x, cursor_y))
+        cursor_x += glyph.width + 3
+    path.parent.mkdir(parents=True, exist_ok=True)
+    image.save(path)
+
+
 def write_chart_feature_image(path: Path, field_colors: dict[str, str]) -> None:
     image = Image.new("RGB", (1280, 720), "black")
     for field_name, color in field_colors.items():
@@ -1803,6 +1842,76 @@ def test_m7a_digit_recognition_reports_failed_segmentation(tmp_path: Path) -> No
     assert result.status == "failed_segmentation"
     assert result.failure_reason == "no_digit_segments"
     assert result.segment_count == 0
+
+
+def test_m7a_digit_recognition_ignores_score_digit_comma(tmp_path: Path) -> None:
+    template_root = tmp_path / "digit_templates"
+    write_digit_templates(template_root)
+    templates = runner.load_m7a_digit_templates(template_root, "score_digits")
+    image_path = tmp_path / "result_score935730.png"
+    write_score_digit_image_with_comma(image_path, "935730")
+    frame = runner.FrameInput(
+        row={
+            "organized_file": "result_score935730.png",
+            "screen_type": "result",
+            "expected_score": "935730",
+        },
+        image_path=image_path,
+    )
+    event = result_event("result_score935730.png", confirmed_result=True)
+
+    with Image.open(image_path) as image:
+        result = runner.process_m7a_digit_roi(
+            image.convert("RGB"),
+            frame,
+            event,
+            "score_digits",
+            templates,
+        )
+
+    assert result.segment_count == 6
+    assert result.recognized_digits == "935730"
+    assert result.status == "recognized"
+    assert result.match is True
+
+
+def test_m7a_digit_recognition_supports_score_range_boundaries(tmp_path: Path) -> None:
+    template_root = tmp_path / "digit_templates"
+    write_digit_templates(template_root)
+    templates = runner.load_m7a_digit_templates(template_root, "score_digits")
+    cases = [
+        ("result_score000000.png", "0", "0"),
+        ("result_score009870.png", "9870", "9,870"),
+        ("result_score054321.png", "54321", "54,321"),
+        ("result_score935730.png", "935730", "935,730"),
+        ("result_score1000000.png", "1000000", "1,000,000"),
+    ]
+
+    for file_name, expected_score, display_text in cases:
+        image_path = tmp_path / file_name
+        write_score_digit_display_image(image_path, display_text)
+        frame = runner.FrameInput(
+            row={
+                "organized_file": file_name,
+                "screen_type": "result",
+                "expected_score": expected_score,
+            },
+            image_path=image_path,
+        )
+        event = result_event(file_name, confirmed_result=True)
+
+        with Image.open(image_path) as image:
+            result = runner.process_m7a_digit_roi(
+                image.convert("RGB"),
+                frame,
+                event,
+                "score_digits",
+                templates,
+            )
+
+        assert result.recognized_digits == expected_score
+        assert result.status == "recognized"
+        assert result.match is True
 
 
 def test_m7a_digit_recognition_keeps_recognized_candidate_without_expected_value(

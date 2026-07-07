@@ -1581,8 +1581,69 @@ def m7a_fill_column_gaps(columns: np.ndarray, *, max_gap: int) -> np.ndarray:
     return filled
 
 
-def segment_m7a_digit_masks(image: Image.Image) -> list[np.ndarray]:
+def m7a_mask_components(mask: np.ndarray) -> list[tuple[int, int, int, int, int]]:
+    height, width = mask.shape
+    seen = np.zeros_like(mask, dtype=bool)
+    components: list[tuple[int, int, int, int, int]] = []
+    ys, xs = np.where(mask)
+    for start_y, start_x in zip(ys, xs, strict=True):
+        if seen[start_y, start_x]:
+            continue
+        stack = [(int(start_y), int(start_x))]
+        seen[start_y, start_x] = True
+        component_xs: list[int] = []
+        component_ys: list[int] = []
+        while stack:
+            y, x = stack.pop()
+            component_xs.append(x)
+            component_ys.append(y)
+            for neighbor_y, neighbor_x in (
+                (y - 1, x),
+                (y + 1, x),
+                (y, x - 1),
+                (y, x + 1),
+            ):
+                if (
+                    0 <= neighbor_y < height
+                    and 0 <= neighbor_x < width
+                    and mask[neighbor_y, neighbor_x]
+                    and not seen[neighbor_y, neighbor_x]
+                ):
+                    seen[neighbor_y, neighbor_x] = True
+                    stack.append((neighbor_y, neighbor_x))
+        components.append(
+            (
+                min(component_xs),
+                min(component_ys),
+                max(component_xs) + 1,
+                max(component_ys) + 1,
+                len(component_xs),
+            )
+        )
+    return components
+
+
+def segment_m7a_score_digit_masks(mask: np.ndarray) -> list[np.ndarray]:
+    height, _width = mask.shape
+    min_digit_height = max(18, int(height * 0.45))
+    digit_components = [
+        (left, top, right, bottom, area)
+        for left, top, right, bottom, area in m7a_mask_components(mask)
+        if bottom - top >= min_digit_height and area >= 50
+    ]
+    return [
+        mask[top:bottom, left:right]
+        for left, top, right, bottom, _area in sorted(digit_components)
+    ]
+
+
+def segment_m7a_digit_masks(image: Image.Image, roi_name: str = "") -> list[np.ndarray]:
     mask = m7a_foreground_mask(image)
+    if roi_name == "score_digits":
+        score_segments = segment_m7a_score_digit_masks(mask)
+        if score_segments:
+            return score_segments
+
     bbox = m7a_foreground_bbox(mask)
     if bbox is None:
         return []
@@ -1625,13 +1686,14 @@ def m7a_template_distances(
 def recognize_m7a_digit_segments(
     image: Image.Image,
     templates: list[M7aDigitTemplate],
+    roi_name: str = "",
 ) -> tuple[str, str, float | None, float | None, str, int, str]:
     missing_labels = m7a_missing_template_labels(templates)
     if missing_labels:
         reason = "missing_digit_templates=" + "".join(missing_labels)
         return "missing_reference", "", None, None, reason, 0, ""
 
-    segments = segment_m7a_digit_masks(image)
+    segments = segment_m7a_digit_masks(image, roi_name)
     if not segments:
         return "failed_segmentation", "", None, None, "no_digit_segments", 0, ""
 
@@ -1685,7 +1747,7 @@ def process_m7a_digit_roi(
         failure_reason,
         segment_count,
         per_digit_distances,
-    ) = recognize_m7a_digit_segments(original, templates)
+    ) = recognize_m7a_digit_segments(original, templates, roi_name)
     expected = expected_ocr_value_from_row(frame.row, roi_name)
     match = ocr_digits_match(recognized_digits, expected) if status == "recognized" else None
     if status == "recognized" and not expected:
