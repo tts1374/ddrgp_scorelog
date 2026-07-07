@@ -101,7 +101,7 @@ M5内でまだ成功扱いにしないもの:
 - `artist` を曲名照合の一意主キーとして扱うこと
 - 同一ジャケット候補を画像特徴量だけで無理に一意化すること
 - title画像特徴量、title OCR、title line-hashを候補集合外から曲を拾うために使うこと
-- スコア/判定数のTesseract離脱を今回の実装に含めること
+- スコア/判定数のTesseract離脱をM5作業に含めること。これはM7aとして独立して扱う。
 
 ## 次に必ず進める実作業
 
@@ -120,6 +120,15 @@ M5内でまだ成功扱いにしないもの:
   - 保存OK/NG、低信頼度ログ、人手確認キュー、個人スコアDB書き込みはM7以降で決める。
 - 大きなOCR方式刷新やROI座標定義の大変更には進まない。
 - スコア/判定数のTesseract離脱や数字テンプレート認識は後続タスクとして扱い、今回の実作業には含めない。
+
+## M5後続マイルストーン
+
+- M5参照カバレッジ明示が終わったら、M5完了判定をdocs/README/testsで固定する。
+- スコア系数字認識のOCR脱却は、M7aとしてM7保存判定とM8個人スコアDB保存の間に独立して扱う。
+  - 対象は `score_digits`、`max_combo`、`marvelous`、`perfect`、`great`、`good`、`miss`、`ex_score`。
+  - confirmed-eventsだけを対象にし、Tesseractではなくテンプレート/桁分割/画像特徴などのOCR非依存方式をPoCする。
+  - `recognized` / `ambiguous` / `missing_reference` / `failed_segmentation` などを区別し、既存Tesseract出力との差分summaryを出す。
+  - M7保存判定やM8 DB保存と混同せず、保存値候補の読み取り材料として扱う。
 
 ## 検証コマンド
 

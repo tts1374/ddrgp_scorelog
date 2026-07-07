@@ -305,6 +305,28 @@ M3完了判断:
 - 保存する、保存しない、重複として捨てる、低確信度としてログ保存する、を機械的に判定できる。
 - 誤保存を避けるための失敗側ログが残る。
 
+### M7a: スコア系数字認識のOCR脱却
+
+目的は、個人スコアDBへ保存する数値項目を、Tesseract OCR依存からテンプレート/画像特徴ベースのPoCへ切り出すことです。曲・譜面同定を扱うM5とは分け、DB保存を実装するM8より前に、保存値として使う数字の読み取り方式と失敗理由を固定します。
+
+やること:
+
+- confirmed-eventsだけを対象にする。
+- `score_digits`、`max_combo`、`marvelous`、`perfect`、`great`、`good`、`miss`、`ex_score` の数字ROIを対象にする。
+- Tesseractではなく、テンプレート、桁分割、画像特徴などのOCR非依存方式で数字候補を出す。
+- 既存Tesseract出力と比較できるsummaryを出す。
+- ROIごとに `recognized` / `ambiguous` / `missing_reference` / `failed_segmentation` などの失敗理由を出す。
+- 出力は `data/` 配下に置き、テンプレート素材やローカル画像はGit管理しない。
+- fixtureテストで、正規化、桁分割、テンプレート選択、失敗理由の基本動作を確認する。
+
+完了条件:
+
+- confirmed-events対象で保存値候補になる数字ROIを評価できる。
+- OCR非依存の認識候補、信頼度、失敗理由を出せる。
+- Tesseract既存結果との差分をsummaryで確認できる。
+- mismatch / ambiguous / missing_reference / failed_segmentation を区別できる。
+- 保存判定M7やDB保存M8と混同せず、M8へ渡す数値読み取り材料として文書化されている。
+
 ### M8: 個人スコアDB保存
 
 目的は、保存候補をローカルの個人スコアDBへ1プレー1レコードで保存することです。
@@ -367,7 +389,9 @@ M3完了判断:
 4. 曲・譜面情報ROIの抽出PoCへ進む。
 5. マスタDB生成を始める。
 6. マスタ照合PoCを作る。
-7. 実キャプチャAPIの最小接続へ進む。
+7. M5の参照カバレッジ明示と完了判定を固める。
+8. M7aとしてスコア系数字認識のOCR脱却PoCを切る。
+9. 実キャプチャAPIの最小接続、保存判定、個人スコアDB保存へ進む。
 
 ## しばらく守る境界
 
@@ -375,5 +399,5 @@ M3完了判断:
 - 実キャプチャAPI導入後もしばらく、実フレームをmanifestで再実行できる形に残す。
 - 保存直前境界は `confirmed_result=true` かつ `duplicate=false` を維持する。
 - `transition_countup_*` は `result_shape_candidate=true` でも保存対象外にする。
-- DB保存、常駐監視、非同期処理、OCR方式刷新は、それぞれ独立したフェーズとして扱う。
+- DB保存、常駐監視、非同期処理、スコア系数字認識のOCR脱却は、それぞれ独立したフェーズとして扱う。
 - ローカル素材、`samples/screenshots/metadata.csv`、PoC出力、解析ログ、ローカルDBはGit管理しない。
