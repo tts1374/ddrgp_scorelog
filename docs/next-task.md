@@ -1,6 +1,6 @@
 # 次チャット用タスク
 
-`C:\work\ddrgp_scorelog` で作業してください。必ず `AGENTS.md` のプロジェクトルールに従ってください。`docs/next-task.md` は次チャット用の引き継ぎ仕様として扱い、実装・検証が終わった後に更新してください。
+`C:\work\ddrgp_scorelog` で作業してください。必ず `AGENTS.md` のプロジェクトルールに従ってください。`docs/next-task.md` は次チャット用の引き継ぎ仕様として扱い、実装・検証が終わった後に更新してください。`docs/next-task.md` の更新だけで作業完了扱いにしないでください。
 
 ## 推論レベル
 
@@ -18,34 +18,63 @@ high
 
 ## 今回までの作業結果
 
-- M4で公式canonical/alias突合を追加した。
-  - 公式収録曲一覧へ突合できた場合、`songs.title` / `songs.artist` を公式表記へ寄せる。
-  - Wiki側表記差は `song_aliases` に `wiki_source` として保存する。
-  - `Ё` / `Ë` のような装飾記号差と一部のキリル/ラテン混在差をalias正規化し、`official_availability_match=alias_title_artist` / `alias_unique_title` として区別する。
-  - M5の期待曲名/song_select参照解決は、M4 `songs.title` に見つからない場合だけ `song_aliases` も参照する。
-- `RЁVOLUTIФN` はM4公式canonical化で解決した。
-  - M4 `songs`: `RЁVOLUTIФN` / `TЁЯRA` / `grand_prix_play_available=1` / `official_availability_match=alias_title_artist`
-  - `song_aliases`: Wiki由来 `RËVOLUTIФN` / `TËЯRA`
-  - M5 song_select feature masterではローカルmetadataの `RËVOLUTIФN` ラベルがalias経由で `RЁVOLUTIФN` に解決され、featureとしてaccepted。
-- ユーザー追加の `スクリーンショット (258).png` をローカル素材としてcrop/配置し、metadataへ `Inner Spirit -GIGA HiTECH MIX-` のsong_select grid参照を追加した。素材とmetadata実体はGit管理しない。
-  - `organized/song_select/song_select_258_sp_difficult_lv11_inner_spirit_giga_hitech_mix_grid.png`
-  - `paired_result_file=organized/result/result_054_sp_difficult_lv11_inner_spirit_giga_hitech_mix_score990270.png`
-- 追加素材とM4 alias消費後の最新 M5 jacket通常候補結果は、ユーザー確認対象2曲が解消済み。
+- M5 jacket参照カバレッジ診断を追加した。
+  - 通常候補用:
+    - `jacket_reference_coverage.csv`
+    - `jacket_reference_coverage_summary.json`
+    - `jacket_reference_coverage_missing_representatives.csv`
+    - `jacket_reference_coverage_report.md`
+  - duplicate / unconfirmed を含む診断用:
+    - `jacket_reference_diagnostics_coverage.csv`
+    - `jacket_reference_diagnostics_coverage_summary.json`
+    - `jacket_reference_diagnostics_coverage_missing_representatives.csv`
+    - `jacket_reference_diagnostics_coverage_report.md`
+- coverage CSVは、`play_style` / `difficulty` / `level` で絞った候補song_idごとにローカルjacket特徴量参照の有無を出す。
+  - `candidate_reference_status=missing_feature` は候補song_id側の参照不足。
+  - `expected_song_reference_status=expected_unresolved` は期待曲名がM4 canonical/aliasへ解決できない状態。
+  - `expected_not_in_chart_candidates` は期待曲がM4で解決していても、chart-field条件の候補集合に入っていない状態。
+  - `expected_missing_feature` は期待曲が候補集合にあるが、song_select由来のjacket参照がない状態。
+  - 参照不足時に近傍の別曲へ寄せて解消扱いにしない。
+- M5通常候補と診断候補の境界は維持している。
+  - 通常候補は `confirmed_result=true` かつ `duplicate=false` の60件。
+  - 診断出力は duplicate / unconfirmed を含む118件で、保存候補ではない。
+- 今回の最新ローカル生成結果:
+  - M4 DB: 1282 songs / 9594 charts / `song_aliases=39` / `source_snapshots=2`
+  - Wiki source hash: `538d6455ee590f2994555586e3766f55212fcd95483f8f2aa9fc0f7719d7c2a6`
+  - 公式収録曲一覧 source hash: `16ccb77606ea08ab221811d30f6dd82e846e1b093b438cc4f411a9e1aad07d37`
+  - `grand_prix_play_available_song_count=1181`
+  - `free_play_available_song_count=64`
+  - `official_availability_matched_song_count=1181`
+  - `official_availability_match`: `title_artist=1143` / `unique_title=36` / `alias_title_artist=2` / `not_found=101`
+- M5 jacket通常候補の最新結果:
   - `jacket_feature_master`: `target_count=69` / `accepted=69`
   - `jacket_match_status_counts={"ambiguous": 3, "insufficient_input": 0, "matched": 57, "missing_feature": 0, "not_found": 0}`
   - `identity_signal_status_counts={"composite_resolved_candidate": 3, "jacket_resolved_candidate": 57}`
+  - `identity_signal_source_counts={"jacket_feature": 57, "title_linehash_dict": 3}`
   - `expected_song_resolution_status_counts={"resolved": 59, "unresolved": 1}`
   - `expected_song_resolution_reason_counts={"title_not_found": 1}`
   - `expected_song_grand_prix_play_available_counts={"True": 59}`
+- M5 jacket参照カバレッジ通常候補の最新結果:
+  - `target_count=60`
+  - `coverage_row_count=7634`
+  - `total_candidate_songs=7634`
+  - `referenced_candidate_songs=618`
+  - `missing_feature_candidate_songs=7016`
+  - `row_reference_status_counts={"all_referenced": 2, "partial_referenced": 58}`
+  - `expected_song_reference_status_counts={"expected_missing_feature": 5, "expected_not_in_chart_candidates": 1, "expected_referenced": 53, "expected_unresolved": 1}`
+  - `expected_song_reference_reason_counts={"chart_filter_excluded_expected_song": 1, "expected_song_has_no_jacket_reference": 5, "title_not_found": 1}`
+- M5 jacket参照カバレッジ診断候補の最新結果:
+  - `target_count=118`
+  - `coverage_row_count=13790`
+  - `total_candidate_songs=13778`
+  - `referenced_candidate_songs=1143`
+  - `missing_feature_candidate_songs=12635`
+  - `row_reference_status_counts={"all_referenced": 2, "insufficient_input": 12, "no_candidate_features": 1, "partial_referenced": 103}`
+  - `expected_song_reference_status_counts={"expected_missing_feature": 6, "expected_not_in_chart_candidates": 2, "expected_referenced": 97, "expected_unresolved": 13}`
 - 解消確認:
-  - `Inner Spirit -GIGA HiTECH MIX-`: `jacket_match_status=matched` / `top_distance=0.0501` / `expected_jacket_rank=1` / `jacket_top_margin=0.1699` / `identity_signal_status=jacket_resolved_candidate`
-  - `RЁVOLUTIФN`: `jacket_match_status=matched` / `top_distance=0.0321` / `expected_jacket_rank=1` / `jacket_top_margin=0.2194` / `identity_signal_status=jacket_resolved_candidate`
-- M4 DBの最新ローカル生成結果は 1282 songs / 9594 charts / song_aliases 39件 / source_snapshots 2件。
-  - Wiki source hash は `9102987ea11f208287cd392a867fea4153ed0772f0834ab64f0e734a3f56e535`。
-  - 公式収録曲一覧 source hash は `e929391b31f45f48c1dc461e323380d69b9b24db50cd15f1601f1766034e5856`。
-  - `grand_prix_play_available_song_count=1181`、`free_play_available_song_count=64`、`official_availability_matched_song_count=1181`。
-  - `official_availability_match` 内訳は `title_artist=1143`、`unique_title=36`、`alias_title_artist=2`、`not_found=101`。
-- M5の通常候補境界は confirmed-events 60件のまま維持している。duplicate / unconfirmed は `jacket_match_diagnostics.csv` 側の観察対象であり、通常候補や保存候補へ混ぜない。
+  - `Inner Spirit -GIGA HiTECH MIX-`: `jacket_match_status=matched` / `expected_jacket_rank=1` / `jacket_top_margin=0.1699` / `identity_signal_status=jacket_resolved_candidate`
+  - `RЁVOLUTIФN`: `jacket_match_status=matched` / `expected_jacket_rank=1` / `jacket_top_margin=0.2194` / `identity_signal_status=jacket_resolved_candidate`
+  - `RЁVOLUTIФN` はM4 canonicalとして `songs.title=RЁVOLUTIФN`、Wiki由来 `RËVOLUTIФN` は `song_aliases` に保持される。
 - 生成DB、PoC出力、OCR画像、`metadata.csv`、`data/`、`logs/`、ローカル素材、ローカルDBはGit管理しない。
 
 ## 必読資料
@@ -69,7 +98,7 @@ high
 - `tests/test_master_match.py`
 - `tests/test_vision_poc_result_events.py`
 
-M3評価レポートや画像PoCの境界へ触る場合だけ追加で読む資料:
+M3境界、分類、OCR評価へ触る場合だけ追加で読む資料:
 
 - `docs/design/00_glossary.md`
 - `docs/design/06_regression_guard.md`
@@ -95,7 +124,7 @@ M5内でまだ成功扱いにしないもの:
 
 - OCR結果、ジャケットPoC結果、title補助結果から曲ID/譜面IDを保存用に確定すること
 - jacket `matched`、title補助 `resolved_candidate`、`identity_signal_*` を本番採用済み照合として扱うこと
-- `expected_song_*` 診断列を保存候補化やGP対象外曲復帰の根拠にすること
+- `expected_song_*` と `expected_song_reference_*` を保存候補化やGP対象外曲復帰の根拠にすること
 - duplicate / unconfirmed を含める診断用M5出力を、保存候補や保存可否判定として扱うこと
 - 参照不足の曲を、近傍の別曲へ寄せて解消扱いにすること
 - `artist` を曲名照合の一意主キーとして扱うこと
@@ -106,25 +135,28 @@ M5内でまだ成功扱いにしないもの:
 ## 次に必ず進める実作業
 
 - `docs/next-task.md` の更新だけ、または確認結果の記録だけで完了扱いにしない。
-- M5内で、参照カバレッジを明示し、参照不足時に別曲へ寄せないための診断を実装する。
-  - 例: jacket特徴量参照のcoverage summary、候補song_idごとの参照有無、期待song_idの参照不足理由、参照不足代表CSV/Markdown。
-  - `missing_feature`、`no_dict_match`、`title_not_found`、`ambiguous` を混同せず、参照不足は参照不足として観察できるようにする。
-  - Inner Spiritのように正しいgrid参照を追加すれば解決するケースと、London系のような近傍・同一/類似ジャケット候補を切り分ける。
+- M5参照カバレッジ出力を前提に、M5完了判定をdocs/README/testsで固定する。
+  - `jacket_reference_coverage_summary.json` と `jacket_match_summary.json` の読み分けを `docs/design/09_master_match_poc.md` と `tools/vision_poc/README.md` でさらに明確にする。
+  - `expected_missing_feature` / `expected_not_in_chart_candidates` / `expected_unresolved` の代表を、保存候補昇格ではなくレビュー材料として読む方針を固定する。
+  - 必要なら `tests/test_master_match.py` に、coverage summary の語彙・代表CSV・診断coverage出力名の回帰テストを追加する。
+  - M5完了条件を `docs/implementation-roadmap.md` のM5節へ反映し、次フェーズをM7aまたはM6以降として切り分ける。
 - 通常候補60件と診断出力を混同しない。
   - 通常候補は `confirmed_result=true` かつ `duplicate=false`。
   - 診断出力は duplicate / unconfirmed を含む観察用で、保存候補ではない。
 - M5語彙は維持する。
   - `matched` はPoC信号上の一意候補であり、保存OKではない。
   - `composite_resolved_candidate` は複合根拠で候補1件を示した観測であり、保存OKではない。
+  - `missing_feature` と `expected_missing_feature` を混同しない。前者はjacket照合行の失敗語彙、後者は期待曲側の参照カバレッジ診断語彙。
   - duplicate / unconfirmed 診断結果は保存候補ではない。
   - 保存OK/NG、低信頼度ログ、人手確認キュー、個人スコアDB書き込みはM7以降で決める。
 - 大きなOCR方式刷新やROI座標定義の大変更には進まない。
-- スコア/判定数のTesseract離脱や数字テンプレート認識は後続タスクとして扱い、今回の実作業には含めない。
+- スコア/判定数のTesseract離脱や数字テンプレート認識は後続タスクとして扱い、M5完了整理には含めない。
 
 ## M5後続マイルストーン
 
-- M5参照カバレッジ明示が終わったら、M5完了判定をdocs/README/testsで固定する。
-- スコア系数字認識のOCR脱却は、M7aとしてM7保存判定とM8個人スコアDB保存の間に独立して扱う。
+- M5参照カバレッジ明示と完了判定がdocs/README/testsで固定できたら、M5は完了扱いにする。
+- 次の大きな候補は M7a「スコア系数字認識のOCR脱却」または M6「本番キャプチャAPIの最小接続」。
+- M7aを進める場合:
   - 対象は `score_digits`、`max_combo`、`marvelous`、`perfect`、`great`、`good`、`miss`、`ex_score`。
   - confirmed-eventsだけを対象にし、Tesseractではなくテンプレート/桁分割/画像特徴などのOCR非依存方式をPoCする。
   - `recognized` / `ambiguous` / `missing_reference` / `failed_segmentation` などを区別し、既存Tesseract出力との差分summaryを出す。
@@ -150,6 +182,7 @@ git diff --check
 M4 canonical/alias確認:
 
 ```powershell
+$env:PYTHONIOENCODING='utf-8'
 @'
 import sqlite3
 with sqlite3.connect("data/master/ddrgp-master.sqlite") as con:
@@ -160,12 +193,18 @@ with sqlite3.connect("data/master/ddrgp-master.sqlite") as con:
 '@ | python -
 ```
 
-M5 jacket確認:
+M5 jacket / coverage確認:
 
 ```powershell
 Get-Content data\master_match_poc_jacket\jacket_feature_master_summary.json
 Get-Content data\master_match_poc_jacket\jacket_match_summary.json
 Get-Content data\master_match_poc_jacket\jacket_match_diagnostics_summary.json
+Get-Content data\master_match_poc_jacket\jacket_reference_coverage_summary.json
+Get-Content data\master_match_poc_jacket\jacket_reference_diagnostics_coverage_summary.json
+Import-Csv data\master_match_poc_jacket\jacket_reference_coverage.csv |
+  Where-Object {$_.expected_song_reference_status -ne 'expected_referenced'} |
+  Select-Object -Unique coverage_row_id,organized_file,expected_song_title,expected_song_id,expected_song_reference_status,expected_song_reference_reason,row_reference_status |
+  Format-List
 Import-Csv data\master_match_poc_jacket\jacket_match_candidates.csv |
   Where-Object {$_.expected_song_title -match 'Inner Spirit|RЁVOLUTIФN|RËVOLUTIФN'} |
   Select-Object organized_file,expected_song_title,expected_song_id,expected_song_resolution_status,expected_song_resolution_reason,expected_song_grand_prix_play_available,expected_song_official_availability_match,jacket_match_status,failure_reason,expected_jacket_rank,jacket_top_margin,identity_signal_status,identity_signal_source,top_candidates |
@@ -189,7 +228,7 @@ Get-Content data\vision_poc_m3_song_artist\m3_save_candidate_summary.json
 - `docs/next-task.md` は引き継ぎ仕様としてコミット対象に含める。
 - コード、README、docs、テストに変更がある場合のみ、今回作業分だけをステージしてコミットする。
 - `data/master/ddrgp-master.sqlite`、`data/master/master-summary.json`、M5 PoC出力、ROI画像、OCR画像、解析ログはステージしない。
-- M5照合境界、正規化方針、候補スコア、ジャケット特徴量方針、title補助方針、`match_status`、`failure_reason`、`identity_signal_*`、`expected_song_*` を変えた場合は、関連する `docs/design/` または `tools/vision_poc/README.md` を同じコミットに含める。
+- M5照合境界、正規化方針、候補スコア、ジャケット特徴量方針、title補助方針、`match_status`、`failure_reason`、`identity_signal_*`、`expected_song_*`、`expected_song_reference_*` を変えた場合は、関連する `docs/design/` または `tools/vision_poc/README.md` を同じコミットに含める。
 - コミットがある場合は作業ブランチを push する。
 
 ## 完了条件
@@ -203,10 +242,12 @@ Get-Content data\vision_poc_m3_song_artist\m3_save_candidate_summary.json
 - M5の通常入力境界が、confirmed-events由来の保存候補だけを対象にしている。
 - M5 jacket診断出力が通常候補CSVとは別に生成され、duplicate / unconfirmed を保存候補外として観察できる。
 - `jacket_match_candidates.csv` で expected song / expected song_id / expected song resolution / official availability / expected distance / expected rank / top margin を確認できる。
+- `jacket_reference_coverage.csv` で、候補song_idごとの参照有無と期待曲側の参照不足理由を確認できる。
+- `missing_feature`、`no_dict_match`、`title_not_found`、`ambiguous`、`expected_missing_feature`、`expected_not_in_chart_candidates` を混同せず読める。
 - M3の `ready` やOCR文字列を、マスタ照合成功として扱っていない。
 - M5通常候補は `grand_prix_play_available=1` に限定され、X-SpecialなどGP対象外曲を候補へ戻していない。
 - title画像特徴量、title OCR、title line-hashを追加・変更する場合は、jacket ambiguous候補集合内の再順位付けに限定し、保存可能判定と混同していない。
-- `identity_signal_*` と `expected_song_*` はM5後続渡し/レビュー用の観測として出力し、保存可能、曲ID/譜面ID確定、`jacket_match_status` 昇格と混同していない。
+- `identity_signal_*` と `expected_song_*` と `expected_song_reference_*` はM5後続渡し/レビュー用の観測として出力し、保存可能、曲ID/譜面ID確定、`jacket_match_status` 昇格と混同していない。
 - 参照不足時は参照不足として明示し、近傍の別曲へ寄せて解消扱いにしない。
 - M5 fixtureテストがネットワーク、画像、`metadata.csv` に依存せず通る。
 - 画像PoCやM3境界を触った場合は、`python -m tools.vision_poc --no-ocr` が全正解。

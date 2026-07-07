@@ -128,6 +128,39 @@ JACKET_MATCH_DIAGNOSTIC_FIELDNAMES = [
     "confirmation_mode",
     *JACKET_MATCH_FIELDNAMES,
 ]
+JACKET_REFERENCE_COVERAGE_FIELDNAMES = [
+    "coverage_scope",
+    "coverage_row_id",
+    "m5_target_boundary_reason",
+    "frame_index",
+    "organized_file",
+    "expected_song_title",
+    "expected_song_id",
+    "expected_song_resolution_status",
+    "expected_song_resolution_reason",
+    "expected_song_reference_status",
+    "expected_song_reference_reason",
+    "expected_song_grand_prix_play_available",
+    "input_play_style",
+    "input_difficulty",
+    "input_level",
+    "chart_filter_status",
+    "chart_filter_failure_reason",
+    "result_jacket_feature_status",
+    "candidate_song_count",
+    "candidate_chart_count",
+    "candidate_referenced_song_count",
+    "candidate_missing_feature_song_count",
+    "row_reference_status",
+    "candidate_song_id",
+    "candidate_title",
+    "candidate_artist",
+    "candidate_chart_ids",
+    "candidate_chart_count_for_song",
+    "reference_feature_count",
+    "reference_sources",
+    "candidate_reference_status",
+]
 
 
 @dataclass(frozen=True)
@@ -1444,6 +1477,228 @@ def match_jacket_save_candidate_rows(
     ]
 
 
+def group_jacket_features_by_song_id(
+    feature_master_entries: Iterable[JacketFeatureMasterEntry],
+) -> dict[str, list[JacketFeatureMasterEntry]]:
+    features_by_song_id: dict[str, list[JacketFeatureMasterEntry]] = {}
+    for entry in feature_master_entries:
+        features_by_song_id.setdefault(entry.song_id, []).append(entry)
+    return features_by_song_id
+
+
+def group_chart_candidates_by_song_id(
+    candidates: Iterable[MasterChartCandidate],
+) -> dict[str, list[MasterChartCandidate]]:
+    candidates_by_song_id: dict[str, list[MasterChartCandidate]] = {}
+    for candidate in candidates:
+        candidates_by_song_id.setdefault(candidate.song_id, []).append(candidate)
+    return candidates_by_song_id
+
+
+def expected_song_reference_status(
+    *,
+    expected_song: MasterSong | None,
+    expected_failure_reason: str,
+    chart_filter_status: str,
+    candidate_song_ids: set[str],
+    features_by_song_id: dict[str, list[JacketFeatureMasterEntry]],
+) -> tuple[str, str]:
+    if expected_song is None:
+        reason = expected_failure_reason or "missing_label"
+        return "expected_unresolved", reason
+    if chart_filter_status != "ready":
+        return "not_evaluated", chart_filter_status
+    if expected_song.song_id not in candidate_song_ids:
+        return "expected_not_in_chart_candidates", "chart_filter_excluded_expected_song"
+    if not features_by_song_id.get(expected_song.song_id):
+        return "expected_missing_feature", "expected_song_has_no_jacket_reference"
+    return "expected_referenced", ""
+
+
+def reference_sources_for_song(
+    entries: Iterable[JacketFeatureMasterEntry],
+) -> str:
+    return " | ".join(entry.organized_file for entry in entries)
+
+
+def jacket_reference_coverage_rows(
+    rows: Iterable[dict[str, str]],
+    db_path: Path,
+    result_features_by_file: dict[str, JacketFeature],
+    feature_master_entries: Iterable[JacketFeatureMasterEntry],
+    *,
+    coverage_scope: str = "m5_jacket_save_candidate_reference_coverage",
+) -> list[dict[str, str]]:
+    features_by_song_id = group_jacket_features_by_song_id(feature_master_entries)
+    coverage_rows: list[dict[str, str]] = []
+    for row_index, row in enumerate(rows):
+        expected_song_title = row.get("song_title_expected_value", "")
+        expected_song, expected_failure_reason = resolve_song_by_title(
+            db_path,
+            expected_song_title,
+        )
+        expected_song_resolution_status = (
+            "resolved" if expected_song is not None else "unresolved"
+        )
+        base_row = {
+            "coverage_scope": coverage_scope,
+            "coverage_row_id": str(row_index),
+            "m5_target_boundary_reason": row.get(
+                "m5_target_boundary_reason",
+                "save_candidate",
+            ),
+            "frame_index": row.get("frame_index", ""),
+            "organized_file": row.get("organized_file", ""),
+            "expected_song_title": expected_song_title,
+            "expected_song_id": "" if expected_song is None else expected_song.song_id,
+            "expected_song_resolution_status": expected_song_resolution_status,
+            "expected_song_resolution_reason": expected_failure_reason,
+            "expected_song_grand_prix_play_available": (
+                "" if expected_song is None else str(expected_song.grand_prix_play_available)
+            ),
+            "input_play_style": row.get("play_style_extracted_value", ""),
+            "input_difficulty": row.get("difficulty_extracted_value", ""),
+            "input_level": row.get("level_extracted_value", ""),
+            "chart_filter_status": "ready",
+            "chart_filter_failure_reason": "",
+            "result_jacket_feature_status": (
+                "available"
+                if row.get("organized_file", "") in result_features_by_file
+                else "missing"
+            ),
+            "candidate_song_count": "0",
+            "candidate_chart_count": "0",
+            "candidate_referenced_song_count": "0",
+            "candidate_missing_feature_song_count": "0",
+            "row_reference_status": "",
+        }
+
+        chart_filter = chart_filter_from_save_candidate(row)
+        if chart_filter is None:
+            missing = [
+                field_name
+                for field_name in ("play_style", "difficulty", "level")
+                if row.get(f"{field_name}_status") != "ready"
+            ]
+            reason = "chart_fields_not_ready"
+            if missing:
+                reason = "chart_fields_not_ready:" + ",".join(missing)
+            expected_status, expected_reason = expected_song_reference_status(
+                expected_song=expected_song,
+                expected_failure_reason=expected_failure_reason,
+                chart_filter_status="insufficient_input",
+                candidate_song_ids=set(),
+                features_by_song_id=features_by_song_id,
+            )
+            coverage_rows.append(
+                {
+                    **base_row,
+                    "chart_filter_status": "insufficient_input",
+                    "chart_filter_failure_reason": reason,
+                    "row_reference_status": "insufficient_input",
+                    "expected_song_reference_status": expected_status,
+                    "expected_song_reference_reason": expected_reason,
+                    "candidate_song_id": "",
+                    "candidate_title": "",
+                    "candidate_artist": "",
+                    "candidate_chart_ids": "",
+                    "candidate_chart_count_for_song": "0",
+                    "reference_feature_count": "0",
+                    "reference_sources": "",
+                    "candidate_reference_status": "not_evaluated",
+                }
+            )
+            continue
+
+        play_style, difficulty, level = chart_filter
+        candidates = load_chart_candidates(
+            db_path,
+            play_style=play_style,
+            difficulty=difficulty,
+            level=level,
+        )
+        candidates_by_song_id = group_chart_candidates_by_song_id(candidates)
+        candidate_song_ids = set(candidates_by_song_id)
+        referenced_song_ids = {
+            song_id
+            for song_id in candidate_song_ids
+            if features_by_song_id.get(song_id)
+        }
+        missing_feature_song_ids = candidate_song_ids - referenced_song_ids
+        if not candidates:
+            row_reference_status = "no_chart_candidates"
+        elif not referenced_song_ids:
+            row_reference_status = "no_candidate_features"
+        elif missing_feature_song_ids:
+            row_reference_status = "partial_referenced"
+        else:
+            row_reference_status = "all_referenced"
+        expected_status, expected_reason = expected_song_reference_status(
+            expected_song=expected_song,
+            expected_failure_reason=expected_failure_reason,
+            chart_filter_status="ready",
+            candidate_song_ids=candidate_song_ids,
+            features_by_song_id=features_by_song_id,
+        )
+        base_candidate_row = {
+            **base_row,
+            "input_play_style": play_style,
+            "input_difficulty": difficulty,
+            "input_level": str(level),
+            "candidate_song_count": str(len(candidate_song_ids)),
+            "candidate_chart_count": str(len(candidates)),
+            "candidate_referenced_song_count": str(len(referenced_song_ids)),
+            "candidate_missing_feature_song_count": str(len(missing_feature_song_ids)),
+            "row_reference_status": row_reference_status,
+            "expected_song_reference_status": expected_status,
+            "expected_song_reference_reason": expected_reason,
+        }
+        if not candidates:
+            coverage_rows.append(
+                {
+                    **base_candidate_row,
+                    "candidate_song_id": "",
+                    "candidate_title": "",
+                    "candidate_artist": "",
+                    "candidate_chart_ids": "",
+                    "candidate_chart_count_for_song": "0",
+                    "reference_feature_count": "0",
+                    "reference_sources": "",
+                    "candidate_reference_status": "not_evaluated",
+                }
+            )
+            continue
+
+        for song_id, song_candidates in sorted(
+            candidates_by_song_id.items(),
+            key=lambda item: (
+                item[1][0].title,
+                item[1][0].artist,
+                item[0],
+            ),
+        ):
+            candidate = song_candidates[0]
+            feature_entries = features_by_song_id.get(song_id, [])
+            coverage_rows.append(
+                {
+                    **base_candidate_row,
+                    "candidate_song_id": song_id,
+                    "candidate_title": candidate.title,
+                    "candidate_artist": candidate.artist,
+                    "candidate_chart_ids": " ".join(
+                        chart.chart_id for chart in song_candidates
+                    ),
+                    "candidate_chart_count_for_song": str(len(song_candidates)),
+                    "reference_feature_count": str(len(feature_entries)),
+                    "reference_sources": reference_sources_for_song(feature_entries),
+                    "candidate_reference_status": (
+                        "referenced" if feature_entries else "missing_feature"
+                    ),
+                }
+            )
+    return coverage_rows
+
+
 def summarize_master_match_rows(rows: Iterable[dict[str, str]]) -> dict[str, Any]:
     row_list = list(rows)
     status_counts: dict[str, int] = {status: 0 for status in MATCH_STATUS_VOCABULARY}
@@ -1693,6 +1948,92 @@ def summarize_jacket_match_diagnostic_rows(
     }
 
 
+def increment_count(counts: dict[str, int], value: str) -> None:
+    counts[value] = counts.get(value, 0) + 1
+
+
+def unique_coverage_rows_by_id(
+    rows: Iterable[dict[str, str]],
+) -> dict[str, dict[str, str]]:
+    unique_rows: dict[str, dict[str, str]] = {}
+    for row in rows:
+        row_id = row.get("coverage_row_id", "")
+        if row_id not in unique_rows:
+            unique_rows[row_id] = row
+    return unique_rows
+
+
+def summarize_jacket_reference_coverage_rows(
+    rows: Iterable[dict[str, str]],
+) -> dict[str, Any]:
+    row_list = list(rows)
+    unique_rows = unique_coverage_rows_by_id(row_list)
+    row_reference_status_counts: dict[str, int] = {}
+    expected_reference_status_counts: dict[str, int] = {}
+    expected_reference_reason_counts: dict[str, int] = {}
+    candidate_reference_status_counts: dict[str, int] = {}
+    boundary_reason_counts: dict[str, int] = {}
+    total_candidate_songs = 0
+    referenced_candidate_songs = 0
+    missing_feature_candidate_songs = 0
+    result_jacket_feature_missing_rows = 0
+    for row in unique_rows.values():
+        increment_count(row_reference_status_counts, row.get("row_reference_status", ""))
+        increment_count(
+            expected_reference_status_counts,
+            row.get("expected_song_reference_status", ""),
+        )
+        expected_reason = row.get("expected_song_reference_reason", "")
+        if expected_reason:
+            increment_count(expected_reference_reason_counts, expected_reason)
+        increment_count(
+            boundary_reason_counts,
+            row.get("m5_target_boundary_reason", ""),
+        )
+        if row.get("result_jacket_feature_status") == "missing":
+            result_jacket_feature_missing_rows += 1
+    for row in row_list:
+        candidate_status = row.get("candidate_reference_status", "")
+        if candidate_status in {"referenced", "missing_feature"}:
+            total_candidate_songs += 1
+            increment_count(candidate_reference_status_counts, candidate_status)
+        if candidate_status == "referenced":
+            referenced_candidate_songs += 1
+        if candidate_status == "missing_feature":
+            missing_feature_candidate_songs += 1
+
+    return {
+        "scope": "M5 jacket reference coverage PoC",
+        "coverage_scope": row_list[0].get("coverage_scope", "") if row_list else "",
+        "target_count": len(unique_rows),
+        "coverage_row_count": len(row_list),
+        "total_candidate_songs": total_candidate_songs,
+        "referenced_candidate_songs": referenced_candidate_songs,
+        "missing_feature_candidate_songs": missing_feature_candidate_songs,
+        "result_jacket_feature_missing_rows": result_jacket_feature_missing_rows,
+        "row_reference_status_counts": dict(sorted(row_reference_status_counts.items())),
+        "candidate_reference_status_counts": dict(
+            sorted(candidate_reference_status_counts.items())
+        ),
+        "expected_song_reference_status_counts": dict(
+            sorted(expected_reference_status_counts.items())
+        ),
+        "expected_song_reference_reason_counts": dict(
+            sorted(expected_reference_reason_counts.items())
+        ),
+        "m5_target_boundary_reason_counts": dict(sorted(boundary_reason_counts.items())),
+        "reading_notes": [
+            "Rows are diagnostic coverage observations, not save candidates.",
+            "candidate_reference_status=missing_feature means a chart-filtered candidate "
+            "song lacks a local jacket feature reference.",
+            "expected_song_reference_status separates unresolved expected labels, "
+            "chart-filter exclusion, and missing local references.",
+            "partial_referenced and no_candidate_features are reference coverage gaps; "
+            "they are not OCR failures or DB-save decisions.",
+        ],
+    }
+
+
 def write_master_match_csv(path: Path, rows: Iterable[dict[str, str]]) -> None:
     fieldnames = [
         "frame_index",
@@ -1781,6 +2122,70 @@ def write_jacket_match_diagnostic_csv(
         writer = csv.DictWriter(file, fieldnames=JACKET_MATCH_DIAGNOSTIC_FIELDNAMES)
         writer.writeheader()
         writer.writerows(rows)
+
+
+def write_jacket_reference_coverage_csv(
+    path: Path,
+    rows: Iterable[dict[str, str]],
+) -> None:
+    with path.open("w", encoding="utf-8", newline="") as file:
+        writer = csv.DictWriter(file, fieldnames=JACKET_REFERENCE_COVERAGE_FIELDNAMES)
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+def jacket_reference_missing_representatives(
+    rows: Iterable[dict[str, str]],
+    *,
+    limit: int = 50,
+) -> list[dict[str, str]]:
+    row_list = list(rows)
+    representatives: list[dict[str, str]] = []
+    seen_keys: set[tuple[str, str, str]] = set()
+
+    def add_representative(row: dict[str, str], key: tuple[str, str, str]) -> None:
+        if key in seen_keys or len(representatives) >= limit:
+            return
+        representatives.append(row)
+        seen_keys.add(key)
+
+    for row in row_list:
+        expected_status = row.get("expected_song_reference_status", "")
+        if expected_status in {
+            "expected_missing_feature",
+            "expected_not_in_chart_candidates",
+            "expected_unresolved",
+        }:
+            add_representative(
+                row,
+                ("expected", row.get("coverage_row_id", ""), expected_status),
+            )
+    for row in row_list:
+        row_status = row.get("row_reference_status", "")
+        if row_status in {
+            "insufficient_input",
+            "no_chart_candidates",
+            "no_candidate_features",
+            "partial_referenced",
+        }:
+            add_representative(
+                row,
+                ("row", row.get("coverage_row_id", ""), row_status),
+            )
+    for row in row_list:
+        if row.get("candidate_reference_status") == "missing_feature":
+            add_representative(
+                row,
+                ("candidate", row.get("coverage_row_id", ""), "missing_feature"),
+            )
+    return representatives
+
+
+def write_jacket_reference_coverage_summary(
+    path: Path,
+    summary: dict[str, Any],
+) -> None:
+    path.write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
 def write_jacket_match_summary(path: Path, summary: dict[str, Any]) -> None:
@@ -2046,6 +2451,92 @@ def append_boundary_representatives(
         )
 
 
+def write_jacket_reference_coverage_report(
+    path: Path,
+    rows: Iterable[dict[str, str]],
+    summary: dict[str, Any],
+) -> None:
+    row_list = list(rows)
+    missing_representatives = jacket_reference_missing_representatives(row_list)
+    lines = [
+        "# M5 Jacket Reference Coverage",
+        "",
+        "chart-fieldで絞った候補song_idに、ローカルjacket特徴量参照があるかを確認する診断レポートです。",
+        "参照不足は参照不足として読み、近傍の別曲へ寄せた解消扱いにはしません。",
+        "",
+        f"- coverage scope: `{summary['coverage_scope']}`",
+        f"- target rows: {summary['target_count']}",
+        f"- candidate song rows: {summary['total_candidate_songs']}",
+        f"- referenced candidate songs: {summary['referenced_candidate_songs']}",
+        f"- missing feature candidate songs: {summary['missing_feature_candidate_songs']}",
+        "",
+        "## Status Counts",
+        "",
+        "- row_reference_status: `"
+        + json.dumps(summary["row_reference_status_counts"], sort_keys=True)
+        + "`",
+        "- candidate_reference_status: `"
+        + json.dumps(summary["candidate_reference_status_counts"], sort_keys=True)
+        + "`",
+        "- expected_song_reference_status: `"
+        + json.dumps(summary["expected_song_reference_status_counts"], sort_keys=True)
+        + "`",
+        "- expected_song_reference_reason: `"
+        + json.dumps(summary["expected_song_reference_reason_counts"], sort_keys=True)
+        + "`",
+        "- m5_target_boundary_reason: `"
+        + json.dumps(summary["m5_target_boundary_reason_counts"], sort_keys=True)
+        + "`",
+        "",
+        "## Missing Representatives",
+        "",
+        "| boundary | organized_file | expected title | expected reference | row coverage | "
+        "candidate | candidate reference | reason |",
+        "|---|---|---|---|---|---|---|---|",
+    ]
+    if not missing_representatives:
+        lines.append("|  |  |  |  |  |  |  |  |")
+    for row in missing_representatives:
+        candidate_text = " / ".join(
+            value
+            for value in (
+                row.get("candidate_song_id", ""),
+                row.get("candidate_title", ""),
+            )
+            if value
+        )
+        reason = row.get("expected_song_reference_reason") or row.get(
+            "chart_filter_failure_reason",
+            "",
+        )
+        lines.append(
+            f"| {markdown_code_cell(row.get('m5_target_boundary_reason', ''))} | "
+            f"{markdown_code_cell(row.get('organized_file', ''))} | "
+            f"{markdown_code_cell(row.get('expected_song_title', ''))} | "
+            f"{markdown_code_cell(row.get('expected_song_reference_status', ''))} | "
+            f"{markdown_code_cell(row.get('row_reference_status', ''))} | "
+            f"{markdown_code_cell(candidate_text)} | "
+            f"{markdown_code_cell(row.get('candidate_reference_status', ''))} | "
+            f"{markdown_code_cell(reason)} |"
+        )
+    lines.extend(
+        [
+            "",
+            "## Reading Notes",
+            "",
+            "- `candidate_reference_status=missing_feature` は候補song_id側の"
+            "ローカル参照不足です。",
+            "- `expected_unresolved` は期待曲名がM4 canonical/aliasへ解決できない状態です。",
+            "- `expected_not_in_chart_candidates` は期待曲がM4で解決していても、"
+            "chart-field条件の候補集合に入っていない状態です。",
+            "- `expected_missing_feature` は期待曲が候補集合にあるが、"
+            "song_select由来のjacket参照がない状態です。",
+            "- duplicate / unconfirmed を含む診断coverageは保存候補ではありません。",
+        ]
+    )
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
 def write_jacket_match_report(
     path: Path,
     rows: Iterable[dict[str, str]],
@@ -2287,6 +2778,32 @@ def write_jacket_match_diagnostic_outputs(
     )
     write_jacket_match_diagnostic_report(
         output_dir / "jacket_match_diagnostics.md",
+        row_list,
+        summary,
+    )
+    return summary
+
+
+def write_jacket_reference_coverage_outputs(
+    output_dir: Path,
+    rows: Iterable[dict[str, str]],
+    *,
+    file_stem: str = "jacket_reference_coverage",
+) -> dict[str, Any]:
+    row_list = list(rows)
+    summary = summarize_jacket_reference_coverage_rows(row_list)
+    missing_rows = jacket_reference_missing_representatives(row_list)
+    write_jacket_reference_coverage_csv(output_dir / f"{file_stem}.csv", row_list)
+    write_jacket_reference_coverage_summary(
+        output_dir / f"{file_stem}_summary.json",
+        summary,
+    )
+    write_jacket_reference_coverage_csv(
+        output_dir / f"{file_stem}_missing_representatives.csv",
+        missing_rows,
+    )
+    write_jacket_reference_coverage_report(
+        output_dir / f"{file_stem}_report.md",
         row_list,
         summary,
     )

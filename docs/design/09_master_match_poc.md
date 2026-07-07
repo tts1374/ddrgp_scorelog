@@ -86,6 +86,14 @@ result confirmed-events
 - `jacket_match_diagnostics.csv`
 - `jacket_match_diagnostics_summary.json`
 - `jacket_match_diagnostics.md`
+- `jacket_reference_coverage.csv`
+- `jacket_reference_coverage_summary.json`
+- `jacket_reference_coverage_missing_representatives.csv`
+- `jacket_reference_coverage_report.md`
+- `jacket_reference_diagnostics_coverage.csv`
+- `jacket_reference_diagnostics_coverage_summary.json`
+- `jacket_reference_diagnostics_coverage_missing_representatives.csv`
+- `jacket_reference_diagnostics_coverage_report.md`
 
 `jacket_feature_master.csv` は、`screen_type=song_select` かつ grid 画面の右上選択中ジャケットプレビューを特徴量化し、metadata の `song_title` / `expected_song_title` を M4 `songs.title` へ一意照合できた行だけを `accepted` として出す。ラベルが空のgrid行は `jacket_feature_label_template.csv` へ出し、metadata実体は更新しない。
 
@@ -98,6 +106,10 @@ result confirmed-events
 通常候補レポートには `Unresolved Identity Signal Representatives` も出す。ここでは `unresolved_*` だけを抜き出し、期待曲がM4で `resolved` / `unresolved` のどちらか、`title_not_found` などの解決理由、`grand_prix_play_available`、`official_availability_match`、line-hash辞書状態を同じ行で確認する。これは `Inner Spirit -GIGA HiTECH MIX-` のような jacket曖昧残りと、`RЁVOLUTIФN` のような期待曲名解決失敗を切り分けるための観察補助であり、公式GP可否フィルタを緩めたり、GP対象外曲を通常M5候補へ戻したりする根拠ではない。
 
 `jacket_match_diagnostics.csv` は、通常の保存候補境界とは別に、metadata上のresult行、未確定result、duplicateを含めてM5同定能力とイベント境界を観察するための別出力である。通常の `jacket_match_candidates.csv` には混ぜず、`m5_target_boundary_reason` で `save_candidate` / `unconfirmed` / `duplicate` / `metadata_result_not_candidate` を分ける。診断行の曲名と `play_style` / `difficulty` / `level` はローカルmetadata期待値を `metadata-expected-diagnostic` として使う。これは0点リザルトや同一・類似ジャケット分岐を観察するための入力であり、保存候補への昇格、保存OK/NG、本番DB保存可能判定を意味しない。
+
+`jacket_reference_coverage.csv` は、通常候補について、chart-field条件で絞った候補song_idごとにローカルjacket特徴量参照の有無を出す。`candidate_reference_status=missing_feature` は候補song_id側の参照不足であり、OCR失敗、曲名未解決、保存可否判定とは分けて読む。`row_reference_status` は `all_referenced` / `partial_referenced` / `no_candidate_features` / `no_chart_candidates` / `insufficient_input` を出し、通常候補60件全体の参照カバレッジを確認する。`expected_song_reference_status` は期待曲名側の診断で、`expected_unresolved`、`expected_not_in_chart_candidates`、`expected_missing_feature`、`expected_referenced` を分ける。これにより、Inner Spiritのように正しいsong_select参照を追加すれば解決するケース、London系や同一・類似ジャケット候補のように参照はあっても曖昧性が残るケース、期待曲名がM4へ解決できないケースを混同しない。
+
+`jacket_reference_diagnostics_coverage.csv` は duplicate / unconfirmed を含む診断側の同じ参照カバレッジである。通常候補の `jacket_reference_coverage.csv` へ混ぜず、`m5_target_boundary_reason` を見て保存候補外の観察として読む。どちらのcoverage出力も、参照不足時に近傍の別曲へ寄せて解消扱いにするための根拠ではない。
 
 `jacket_match_diagnostics.md` は `m5_target_boundary_reason` ごとの代表行と `identity_signal_status` ごとの代表行を出す。`save_candidate`、`unconfirmed`、`duplicate` を同じ診断レポート内で観察できるが、通常候補CSVへ混ぜず、duplicate / unconfirmed は保存候補外として読む。
 

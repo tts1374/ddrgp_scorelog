@@ -5970,6 +5970,18 @@ def main(argv: list[str] | None = None) -> int:
             output_dir,
             jacket_match_rows,
         )
+        jacket_reference_coverage_rows = master_match.jacket_reference_coverage_rows(
+            m3_save_candidate_summary_rows,
+            args.master_db,
+            m5_jacket_result_features,
+            jacket_feature_entries,
+        )
+        jacket_reference_coverage_summary = (
+            master_match.write_jacket_reference_coverage_outputs(
+                output_dir,
+                jacket_reference_coverage_rows,
+            )
+        )
         jacket_diagnostic_input_rows = m5_jacket_diagnostic_candidate_rows(
             frames,
             result_events,
@@ -5991,12 +6003,32 @@ def main(argv: list[str] | None = None) -> int:
             output_dir,
             jacket_diagnostic_rows,
         )
+        jacket_diagnostic_reference_coverage_rows = (
+            master_match.jacket_reference_coverage_rows(
+                jacket_diagnostic_input_rows,
+                args.master_db,
+                m5_jacket_result_features,
+                jacket_feature_entries,
+                coverage_scope="m5_jacket_diagnostic_reference_coverage",
+            )
+        )
+        jacket_diagnostic_reference_coverage_summary = (
+            master_match.write_jacket_reference_coverage_outputs(
+                output_dir,
+                jacket_diagnostic_reference_coverage_rows,
+                file_stem="jacket_reference_diagnostics_coverage",
+            )
+        )
         print(
             "Wrote M5 jacket match PoC: "
             f"{output_dir} "
             f"({jacket_feature_summary['status_counts'].get('accepted', 0)} features, "
             f"{jacket_match_summary['target_count']} candidates, "
-            f"{jacket_diagnostic_summary['target_count']} diagnostics)"
+            f"{jacket_diagnostic_summary['target_count']} diagnostics, "
+            f"{jacket_reference_coverage_summary['missing_feature_candidate_songs']} "
+            "candidate feature gaps, "
+            f"{jacket_diagnostic_reference_coverage_summary['missing_feature_candidate_songs']} "
+            "diagnostic candidate feature gaps)"
         )
     score_ocr_results: list[ScoreOcrResult] = []
     profile_ocr_results: list[ProfileScoreOcrResult] = []
