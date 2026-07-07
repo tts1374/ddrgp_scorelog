@@ -327,7 +327,7 @@ python -m tools.vision_poc --m3-song-artist-ocr --ocr-target confirmed-events
 M5のマスタ照合PoCは、M4で生成したSQLiteマスタDBと、同じ実行内で作った `m3_save_candidate_summary.csv` 相当の行を入力にします。
 
 ```powershell
-python -m tools.vision_poc --m5-master-match --master-db data\master\ddrgp-master.sqlite --output data\master_match_poc
+python -m tools.vision_poc --m3-song-artist-ocr --m5-master-match --master-db data\master\ddrgp-master.sqlite --output data\master_match_poc
 ```
 
 `master_match_candidates.csv` は、confirmed-events由来の保存候補ごとに、曲名OCR文字列、最小正規化文字列、`play_style` / `difficulty` / `level` の候補絞り込み条件、候補曲数、候補譜面数、最上位候補、score、上位候補一覧、`match_status`、`failure_reason` を出します。`master_match_summary.json` と `master_match_report.md` は `matched` / `ambiguous` / `not_found` / `insufficient_input` を集計します。ここでの `matched` はPoC上の一意候補という意味だけで、DB保存可能、本番採用済み照合、曲ID/譜面ID確定を意味しません。`ambiguous`、`not_found`、`insufficient_input` はM7以降の保存不可理由や追加確認ログへ渡す観測語彙として読みます。曲名正規化はNFKC、casefold、空白除去、代表的な句読点除去と、5文字以上のマスタ曲名がOCR文字列に含まれる場合の包含一致だけの軽量入口です。上位候補一覧は失敗代表の観察用で、保存可能判定ではありません。詳細は `docs/design/09_master_match_poc.md` を参照します。
