@@ -106,6 +106,99 @@ EDGE_FIXTURE_HTML = """
     <td>1</td><td>4</td><td>7</td><td>10</td><td>-</td>
     <td>-</td><td>-</td><td>-</td><td>-</td>
   </tr>
+  <tr>
+    <td></td><td>IX<a href="#note1">*2</a></td><td>dj TAKA VS DJ TOTTO feat.藍</td>
+    <td>DDR GP Test Pack</td><td>198</td><td>-</td>
+    <td>5</td><td>-</td><td>-</td><td>-</td><td>-</td>
+    <td>-</td><td>-</td><td>-</td><td>-</td>
+  </tr>
+  <tr>
+    <td></td><td>neko*neko</td><td>日向美ビタースイーツ♪</td>
+    <td>DDR GP Test Pack</td><td>123</td><td>-</td>
+    <td>2</td><td>-</td><td>-</td><td>-</td><td>-</td>
+    <td>-</td><td>-</td><td>-</td><td>-</td>
+  </tr>
+</table>
+</body>
+</html>
+"""
+
+OFFICIAL_FIXTURE_HTML = """
+<!doctype html>
+<html>
+<body>
+<table class="m_list">
+  <tr>
+    <th>タイトル</th><th>アーティスト</th>
+    <th>フリープレー</th><th>グランプリプレー</th>
+  </tr>
+  <tr><td>2026年4月3日追加</td></tr>
+  <tr>
+    <td>MAKE IT BETTER</td><td>mitsu-O!</td><td>〇　※１</td><td>〇</td>
+  </tr>
+  <tr>
+    <td>PARANOiA</td><td>180 (169-183)</td><td>〇　※１</td><td></td>
+  </tr>
+</table>
+<table class="m_list">
+  <tr>
+    <th>タイトル</th><th>アーティスト</th>
+    <th>フリープレー</th><th>グランプリプレー</th><th>備考</th>
+  </tr>
+  <tr><td>グランプリ楽曲パック vol.37</td></tr>
+  <tr>
+    <td>踊るフィーバーロボ　Eu-Robot mix</td>
+    <td>D&amp;E&amp;Y Rmx by kors k as disconation</td>
+    <td></td><td>〇</td><td>先行プレー対象</td>
+  </tr>
+</table>
+</body>
+</html>
+"""
+
+ALIAS_FIXTURE_HTML = """
+<!doctype html>
+<html>
+<body>
+<table class="style_table">
+  <tr>
+    <td rowspan="2">分類</td>
+    <td rowspan="2">曲名</td>
+    <td rowspan="2">アーティスト</td>
+    <td rowspan="2">出典</td>
+    <td rowspan="2">BPM</td>
+    <td rowspan="2">MV/St</td>
+    <td colspan="5">SINGLE</td>
+    <td colspan="4">DOUBLE</td>
+  </tr>
+  <tr>
+    <td>Be</td><td>Ba</td><td>Di</td><td>Ex</td><td>Ch</td>
+    <td>Ba</td><td>Di</td><td>Ex</td><td>Ch</td>
+  </tr>
+  <tr><td colspan="15">DDR Alias Cases</td></tr>
+  <tr>
+    <td>GP5</td><td>RËVOLUTIФN</td><td>TËЯRA</td>
+    <td>DDR GP Test Pack</td><td>202</td><td>-</td>
+    <td>-</td><td>-</td><td>-</td><td>-</td><td>17</td>
+    <td>-</td><td>-</td><td>-</td><td>-</td>
+  </tr>
+</table>
+</body>
+</html>
+"""
+
+OFFICIAL_ALIAS_FIXTURE_HTML = """
+<!doctype html>
+<html>
+<body>
+<table class="m_list">
+  <tr>
+    <th>タイトル</th><th>アーティスト</th>
+    <th>フリープレー</th><th>グランプリプレー</th>
+  </tr>
+  <tr>
+    <td>RЁVOLUTIФN</td><td>TЁЯRA</td><td></td><td>〇</td>
+  </tr>
 </table>
 </body>
 </html>
@@ -155,6 +248,62 @@ def test_parse_master_html_extracts_songs_and_available_charts() -> None:
     }
 
 
+def test_parse_master_html_applies_official_grand_prix_availability() -> None:
+    build = builder.parse_master_html(
+        FIXTURE_HTML,
+        source_url="https://example.test/source",
+        official_html=OFFICIAL_FIXTURE_HTML,
+        official_source_url="https://example.test/official",
+        fetched_at="2026-07-04T00:00:00+00:00",
+    )
+
+    make = next(song for song in build.songs if song.title == "MAKE IT BETTER")
+    paranoia = next(song for song in build.songs if song.title == "PARANOiA")
+    fever = next(song for song in build.songs if song.title == "踊るフィーバーロボ Eu-Robot mix")
+
+    assert make.free_play_available
+    assert make.grand_prix_play_available
+    assert make.official_availability_match == "title_artist"
+    assert paranoia.free_play_available
+    assert not paranoia.grand_prix_play_available
+    assert fever.grand_prix_play_available
+    assert build.official_snapshot is not None
+    assert build.official_snapshot.source_url == "https://example.test/official"
+
+
+def test_parse_master_html_uses_official_title_artist_as_canonical_alias_match() -> None:
+    build = builder.parse_master_html(
+        ALIAS_FIXTURE_HTML,
+        source_url="https://example.test/source",
+        official_html=OFFICIAL_ALIAS_FIXTURE_HTML,
+        official_source_url="https://example.test/official",
+        fetched_at="2026-07-04T00:00:00+00:00",
+    )
+
+    song = build.songs[0]
+
+    assert song.title == "RЁVOLUTIФN"
+    assert song.artist == "TЁЯRA"
+    assert song.grand_prix_play_available
+    assert song.official_availability_match == "alias_title_artist"
+    assert build.song_aliases == (
+        builder.MasterSongAlias(
+            alias_id=builder.stable_id(
+                "alias",
+                song.song_id,
+                "RËVOLUTIФN",
+                "TËЯRA",
+                "wiki_source",
+            ),
+            song_id=song.song_id,
+            alias_title="RËVOLUTIФN",
+            alias_artist="TËЯRA",
+            alias_type="wiki_source",
+            source="bemaniwiki",
+        ),
+    )
+
+
 def test_write_master_database_creates_expected_schema_and_metadata(tmp_path: Path) -> None:
     build = builder.parse_master_html(
         FIXTURE_HTML,
@@ -181,7 +330,9 @@ def test_write_master_database_creates_expected_schema_and_metadata(tmp_path: Pa
         assert metadata["source_url"] == "https://example.test/source"
         assert metadata["song_count"] == "3"
         assert metadata["chart_count"] == "23"
+        assert metadata["song_alias_count"] == "0"
         assert metadata["generator_version"] == builder.PARSER_VERSION
+        assert metadata["grand_prix_play_available_song_count"] == "0"
 
         rows = connection.execute(
             """
@@ -202,6 +353,89 @@ def test_write_master_database_creates_expected_schema_and_metadata(tmp_path: Pa
         assert snapshot[1] == build.snapshot.content_hash
         assert snapshot[2] == builder.PARSER_VERSION
         assert "MAKE IT BETTER" in snapshot[3]
+
+
+def test_write_master_database_records_official_availability_snapshot(
+    tmp_path: Path,
+) -> None:
+    build = builder.parse_master_html(
+        FIXTURE_HTML,
+        source_url="https://example.test/source",
+        official_html=OFFICIAL_FIXTURE_HTML,
+        official_source_url="https://example.test/official",
+        fetched_at="2026-07-04T00:00:00+00:00",
+    )
+    output_path = tmp_path / "ddrgp-master.sqlite"
+
+    builder.write_master_database(
+        output_path,
+        build,
+        master_version="fixture-v1",
+        generated_at="2026-07-04T01:23:45+00:00",
+    )
+
+    with sqlite3.connect(output_path) as connection:
+        metadata = dict(connection.execute("SELECT key, value FROM master_metadata"))
+        assert metadata["official_source_url"] == "https://example.test/official"
+        assert metadata["official_source_hash"] == build.official_snapshot.content_hash
+        assert metadata["grand_prix_play_available_song_count"] == "2"
+        assert metadata["free_play_available_song_count"] == "2"
+        assert metadata["official_availability_matched_song_count"] == "3"
+        assert metadata["song_alias_count"] == "0"
+        rows = connection.execute(
+            """
+            SELECT title, free_play_available, grand_prix_play_available,
+                   official_availability_match
+            FROM songs
+            ORDER BY title
+            """
+        ).fetchall()
+        assert ("MAKE IT BETTER", 1, 1, "title_artist") in rows
+        assert ("PARANOiA", 1, 0, "title_artist") in rows
+        assert ("踊るフィーバーロボ Eu-Robot mix", 0, 1, "title_artist") in rows
+        assert connection.execute("SELECT COUNT(*) FROM source_snapshots").fetchone()[0] == 2
+
+    summary = master_inspect.inspect_master_database(output_path)
+    assert summary["snapshot_count"] == 2
+    assert summary["official_source_url"] == "https://example.test/official"
+    assert summary["official_source_hash"] == build.official_snapshot.content_hash
+    assert summary["grand_prix_play_available_song_count"] == "2"
+    assert summary["song_alias_count"] == 0
+
+
+def test_write_master_database_records_song_aliases_for_official_canonical_match(
+    tmp_path: Path,
+) -> None:
+    build = builder.parse_master_html(
+        ALIAS_FIXTURE_HTML,
+        source_url="https://example.test/source",
+        official_html=OFFICIAL_ALIAS_FIXTURE_HTML,
+        official_source_url="https://example.test/official",
+        fetched_at="2026-07-04T00:00:00+00:00",
+    )
+    output_path = tmp_path / "ddrgp-master.sqlite"
+
+    builder.write_master_database(
+        output_path,
+        build,
+        master_version="fixture-v1",
+        generated_at="2026-07-04T01:23:45+00:00",
+    )
+
+    with sqlite3.connect(output_path) as connection:
+        metadata = dict(connection.execute("SELECT key, value FROM master_metadata"))
+        assert metadata["grand_prix_play_available_song_count"] == "1"
+        assert metadata["official_availability_matched_song_count"] == "1"
+        assert metadata["song_alias_count"] == "1"
+        assert connection.execute(
+            "SELECT title, artist, official_availability_match FROM songs"
+        ).fetchone() == ("RЁVOLUTIФN", "TЁЯRA", "alias_title_artist")
+        assert connection.execute(
+            "SELECT alias_title, alias_artist, alias_type, source FROM song_aliases"
+        ).fetchone() == ("RËVOLUTIФN", "TËЯRA", "wiki_source", "bemaniwiki")
+
+    summary = master_inspect.inspect_master_database(output_path)
+    assert summary["song_alias_count"] == 1
 
 
 def test_inspect_master_database_writes_summary_for_valid_database(tmp_path: Path) -> None:
@@ -329,8 +563,8 @@ def test_parse_master_html_handles_edge_level_and_chart_identity_cases() -> None
         fetched_at="2026-07-04T00:00:00+00:00",
     )
 
-    assert len(build.songs) == 2
-    assert len(build.charts) == 9
+    assert len(build.songs) == 4
+    assert len(build.charts) == 11
 
     limited_song = next(song for song in build.songs if song.title == "LIMITED TEST")
     limited_charts = [chart for chart in build.charts if chart.song_id == limited_song.song_id]
@@ -363,6 +597,10 @@ def test_parse_master_html_handles_edge_level_and_chart_identity_cases() -> None
         ("SINGLE", "DIFFICULT", 7),
         ("SINGLE", "EXPERT", 10),
     }
+
+    ix_song = next(song for song in build.songs if song.artist == "dj TAKA VS DJ TOTTO feat.藍")
+    assert ix_song.title == "IX"
+    assert any(song.title == "neko*neko" for song in build.songs)
 
 
 def test_parse_master_html_rejects_conflicting_duplicate_chart_identity() -> None:

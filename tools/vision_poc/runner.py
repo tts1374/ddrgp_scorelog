@@ -15,6 +15,8 @@ from pathlib import Path
 import numpy as np
 from PIL import Image, ImageFilter, ImageOps
 
+from . import master_match
+
 BASE_WIDTH = 1280
 BASE_HEIGHT = 720
 CONFIRMED_RESULT_MIN_FRAMES = 2
@@ -34,6 +36,7 @@ ROI_DEFINITIONS: dict[str, tuple[int, int, int, int]] = {
     "score_area": (170, 250, 320, 90),
     "score_digits": (250, 278, 210, 48),
     "jacket": (532, 54, 216, 216),
+    "song_select_grid_preview_jacket": (812, 28, 150, 150),
     "song_title": (488, 274, 304, 52),
     "artist": (548, 306, 184, 26),
     "detail_result_panel": (662, 330, 462, 288),
@@ -60,6 +63,7 @@ PRIMARY_ROIS = (
     "score_area",
     "score_digits",
     "song_title",
+    "song_select_grid_preview_jacket",
     "artist",
     "detail_result_panel",
     "detail_result_header",
@@ -963,6 +967,38 @@ def expected_m3_metadata_value_from_row(row: dict[str, str], field_name: str) ->
         if value:
             return value
     return ""
+
+
+def is_song_select_grid_frame(frame: FrameInput) -> bool:
+    row = frame.row
+    organized_file = row.get("organized_file", "").lower()
+    song_select_view = normalize_expected_text(row.get("song_select_view", "")).casefold()
+    return row.get("screen_type") == "song_select" and (
+        song_select_view == "grid" or "grid" in organized_file
+    )
+
+
+def m5_jacket_feature_label_template_rows(frames: Iterable[FrameInput]) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    for frame in frames:
+        if not is_song_select_grid_frame(frame):
+            continue
+        song_title = normalize_expected_text(frame.row.get("song_title", ""))
+        expected_song_title = normalize_expected_text(frame.row.get("expected_song_title", ""))
+        if song_title or expected_song_title:
+            continue
+        rows.append(
+            {
+                "organized_file": frame.row.get("organized_file", ""),
+                "screen_type": frame.row.get("screen_type", ""),
+                "song_select_view": frame.row.get("song_select_view", ""),
+                "preview_visible": frame.row.get("preview_visible", ""),
+                "song_title": "",
+                "expected_song_title": "",
+                "note": frame.row.get("note", ""),
+            }
+        )
+    return rows
 
 
 def m3_expected_coverage_status(expected_value_count: int, total: int) -> str:
@@ -3048,6 +3084,106 @@ def display_path(path: Path) -> str:
         return path.as_posix()
 
 
+def build_m5_jacket_feature_master_rows(
+    frames: Iterable[FrameInput],
+    db_path: Path,
+    preview_features_by_file: dict[str, master_match.JacketFeature],
+) -> tuple[list[dict[str, str]], list[master_match.JacketFeatureMasterEntry]]:
+    rows: list[dict[str, str]] = []
+    entries: list[master_match.JacketFeatureMasterEntry] = []
+    for frame in frames:
+        if not is_song_select_grid_frame(frame):
+            continue
+        organized_file = frame.row.get("organized_file", "")
+        source_song_title = expected_m3_metadata_value_from_row(frame.row, "song_title")
+        normalized_song_title = master_match.normalize_song_title(source_song_title)
+        feature = preview_features_by_file.get(organized_file)
+        base_row = {
+            "organized_file": organized_file,
+            "source_song_title": source_song_title,
+            "normalized_song_title": normalized_song_title,
+            "song_id": "",
+            "title": "",
+            "artist": "",
+            "feature_status": "skipped",
+            "failure_reason": "",
+            "dhash_hex": "",
+            "histogram": "",
+            "thumbnail_rgb": "",
+        }
+        if feature is None:
+            rows.append(
+                {
+                    **base_row,
+                    "feature_status": "missing_feature",
+                    "failure_reason": "preview_jacket_feature_unavailable",
+                }
+            )
+            continue
+
+        song, failure_reason = master_match.resolve_song_by_title(db_path, source_song_title)
+        if song is None:
+            rows.append({**base_row, "failure_reason": failure_reason})
+            continue
+
+        rows.append(
+            {
+                **base_row,
+                "song_id": song.song_id,
+                "title": song.title,
+                "artist": song.artist,
+                "feature_status": "accepted",
+                "dhash_hex": feature.dhash_hex,
+                "histogram": master_match.serialize_float_vector(feature.histogram),
+                "thumbnail_rgb": master_match.serialize_float_vector(
+                    feature.thumbnail,
+                    limit=192,
+                ),
+            }
+        )
+        entries.append(
+            master_match.JacketFeatureMasterEntry(
+                organized_file=organized_file,
+                source_song_title=source_song_title,
+                song_id=song.song_id,
+                title=song.title,
+                artist=song.artist,
+                feature=feature,
+            )
+        )
+    return rows, entries
+
+
+def build_m5_title_feature_master_entries(
+    frames: Iterable[FrameInput],
+    db_path: Path,
+    title_features_by_file: dict[str, master_match.TitleImageFeature],
+) -> list[master_match.TitleFeatureMasterEntry]:
+    entries: list[master_match.TitleFeatureMasterEntry] = []
+    for frame in frames:
+        if frame.row.get("screen_type") != "result":
+            continue
+        organized_file = frame.row.get("organized_file", "")
+        source_song_title = expected_m3_metadata_value_from_row(frame.row, "song_title")
+        feature = title_features_by_file.get(organized_file)
+        if source_song_title == "" or feature is None:
+            continue
+        song, failure_reason = master_match.resolve_song_by_title(db_path, source_song_title)
+        if song is None or failure_reason:
+            continue
+        entries.append(
+            master_match.TitleFeatureMasterEntry(
+                organized_file=organized_file,
+                source_song_title=source_song_title,
+                song_id=song.song_id,
+                title=song.title,
+                artist=song.artist,
+                feature=feature,
+            )
+        )
+    return entries
+
+
 def m3_chart_field_template_vector(image: Image.Image, field_name: str) -> np.ndarray:
     x, y, width, height = ROI_DEFINITIONS[field_name]
     del x, y
@@ -3953,6 +4089,108 @@ def m3_save_candidate_rows(
         row["blocking_fields"] = " ".join(blocking_fields)
         rows.append(row)
     return rows
+
+
+def is_m5_jacket_diagnostic_event(frame: FrameInput, event: ResultEvent) -> bool:
+    return (
+        frame.row.get("screen_type") == "result"
+        or event.result_candidate
+        or event.confirmed_result
+    )
+
+
+def m5_jacket_diagnostic_boundary_reason(event: ResultEvent) -> str:
+    if is_save_candidate_event(event):
+        return "save_candidate"
+    if event.duplicate:
+        return "duplicate"
+    if event.event_type == "rejected_transition":
+        return "rejected_transition"
+    if event.result_candidate:
+        return "unconfirmed"
+    return "metadata_result_not_candidate"
+
+
+def m5_jacket_diagnostic_metadata_field_status(
+    row: dict[str, str],
+    field_name: str,
+) -> tuple[str, str]:
+    value = expected_m3_metadata_value_from_row(row, field_name)
+    if value == "":
+        return "no_expected_value", ""
+    return "ready", value
+
+
+def m5_jacket_diagnostic_candidate_rows(
+    frames: Iterable[FrameInput],
+    events: Iterable[ResultEvent],
+) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    for frame, event in zip(frames, events, strict=True):
+        if not is_m5_jacket_diagnostic_event(frame, event):
+            continue
+        row: dict[str, str] = {
+            "diagnostic_scope": "m5_jacket_result_boundary_diagnostic",
+            "m5_target_boundary_reason": m5_jacket_diagnostic_boundary_reason(event),
+            "frame_index": str(event.frame_index),
+            "organized_file": frame.row["organized_file"],
+            "screen_type": frame.row.get("screen_type", ""),
+            "event_type": event.event_type,
+            "confirmed_result": str(event.confirmed_result),
+            "duplicate": str(event.duplicate),
+            "duplicate_key": event.duplicate_key,
+            "timestamp_ms": "" if event.timestamp_ms is None else str(event.timestamp_ms),
+            "confirmation_mode": event.confirmation_mode,
+        }
+        for field_name in M3_SAVE_CANDIDATE_FIELDS:
+            status, value = m5_jacket_diagnostic_metadata_field_status(
+                frame.row,
+                field_name,
+            )
+            row[f"{field_name}_status"] = status
+            row[f"{field_name}_failure_reason"] = (
+                "" if status == "ready" else "no_expected_value"
+            )
+            row[f"{field_name}_expected_value"] = value
+            row[f"{field_name}_extracted_value"] = value
+            row[f"{field_name}_extractor"] = "metadata-expected-diagnostic"
+        row["overall_status"] = (
+            "ready"
+            if all(row[f"{field_name}_status"] == "ready" for field_name in M3_CHART_FIELD_FIELDS)
+            else "not_ready"
+        )
+        row["blocking_fields"] = " ".join(
+            field_name
+            for field_name in M3_CHART_FIELD_FIELDS
+            if row[f"{field_name}_status"] != "ready"
+        )
+        rows.append(row)
+    return rows
+
+
+def attach_m5_jacket_diagnostic_context(
+    diagnostic_input_rows: Iterable[dict[str, str]],
+    jacket_match_rows: Iterable[dict[str, str]],
+) -> list[dict[str, str]]:
+    context_fields = [
+        "diagnostic_scope",
+        "m5_target_boundary_reason",
+        "screen_type",
+        "event_type",
+        "confirmed_result",
+        "duplicate",
+        "duplicate_key",
+        "timestamp_ms",
+        "confirmation_mode",
+    ]
+    return [
+        {**{field: input_row.get(field, "") for field in context_fields}, **match_row}
+        for input_row, match_row in zip(
+            diagnostic_input_rows,
+            jacket_match_rows,
+            strict=True,
+        )
+    ]
 
 
 def write_m3_save_candidate_summary_csv(path: Path, rows: Iterable[dict[str, str]]) -> None:
@@ -5226,6 +5464,34 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--m5-master-match",
+        action="store_true",
+        help=(
+            "Run the M5 master match PoC from the in-memory M3 save candidate rows and a "
+            "generated M4 SQLite master DB. This reports observations only and does not save."
+        ),
+    )
+    parser.add_argument(
+        "--m5-jacket-match",
+        action="store_true",
+        help=(
+            "Run the M5 jacket feature match PoC using song_select grid preview features and "
+            "confirmed-events result jacket ROI features. This reports observations only."
+        ),
+    )
+    parser.add_argument(
+        "--master-db",
+        type=Path,
+        default=Path("data/master/ddrgp-master.sqlite"),
+        help="Generated M4 SQLite master DB used by M5 match PoCs.",
+    )
+    parser.add_argument(
+        "--m5-score-threshold",
+        type=float,
+        default=master_match.DEFAULT_SCORE_THRESHOLD,
+        help="Minimum normalized title similarity for M5 PoC matched status.",
+    )
+    parser.add_argument(
         "--chart-field-template-root",
         type=Path,
         default=M3_CHART_FIELD_TEMPLATE_ROOT,
@@ -5352,6 +5618,9 @@ def main(argv: list[str] | None = None) -> int:
     classifications: list[Classification] = []
     m3_chart_field_feature_samples: dict[tuple[int, str], dict[str, float]] = {}
     m3_chart_field_template_vectors: dict[tuple[int, str], np.ndarray] = {}
+    m5_jacket_result_features: dict[str, master_match.JacketFeature] = {}
+    m5_jacket_song_select_preview_features: dict[str, master_match.JacketFeature] = {}
+    m5_title_result_features: dict[str, master_match.TitleImageFeature] = {}
     for frame_index, frame in enumerate(frames):
         with Image.open(frame.image_path) as image:
             image = image.convert("RGB")
@@ -5365,6 +5634,22 @@ def main(argv: list[str] | None = None) -> int:
                 )
                 m3_chart_field_template_vectors[(frame_index, field_name)] = (
                     m3_chart_field_template_vector(image, field_name)
+                )
+            organized_file = frame.row.get("organized_file", "")
+            if classification.result_candidate:
+                m5_jacket_result_features[organized_file] = master_match.extract_jacket_feature(
+                    crop_roi(image, ROI_DEFINITIONS["jacket"])
+                )
+                m5_title_result_features[organized_file] = (
+                    master_match.extract_title_image_feature(
+                        crop_roi(image, ROI_DEFINITIONS["song_title"])
+                    )
+                )
+            if is_song_select_grid_frame(frame):
+                m5_jacket_song_select_preview_features[organized_file] = (
+                    master_match.extract_jacket_feature(
+                        crop_roi(image, ROI_DEFINITIONS["song_select_grid_preview_jacket"])
+                    )
                 )
 
     write_results_csv(output_dir / "results.csv", classifications)
@@ -5625,6 +5910,126 @@ def main(argv: list[str] | None = None) -> int:
         output_dir / "m3_save_candidate_blocker_resolution_plan.md",
         m3_save_candidate_blocker_resolution_summary,
     )
+    if args.m5_master_match:
+        if not args.master_db.exists():
+            raise FileNotFoundError(f"--master-db does not exist: {args.master_db}")
+        master_match_rows = master_match.match_save_candidate_rows(
+            m3_save_candidate_summary_rows,
+            args.master_db,
+            score_threshold=args.m5_score_threshold,
+        )
+        master_match_summary = master_match.write_master_match_outputs(
+            output_dir,
+            master_match_rows,
+        )
+        print(
+            "Wrote M5 master match PoC: "
+            f"{output_dir} ({master_match_summary['target_count']} candidates)"
+        )
+    if args.m5_jacket_match:
+        if not args.master_db.exists():
+            raise FileNotFoundError(f"--master-db does not exist: {args.master_db}")
+        jacket_feature_rows, jacket_feature_entries = build_m5_jacket_feature_master_rows(
+            frames,
+            args.master_db,
+            m5_jacket_song_select_preview_features,
+        )
+        jacket_feature_summary = master_match.write_jacket_feature_master_outputs(
+            output_dir,
+            jacket_feature_rows,
+        )
+        master_match.write_jacket_feature_label_template(
+            output_dir / "jacket_feature_label_template.csv",
+            m5_jacket_feature_label_template_rows(frames),
+        )
+        title_feature_entries = build_m5_title_feature_master_entries(
+            frames,
+            args.master_db,
+            m5_title_result_features,
+        )
+        title_ocr_observations = {
+            result.organized_file: master_match.TitleOcrObservation(
+                raw=result.ocr_raw,
+                text=result.pre_normalized_text,
+                status=result.status,
+                failure_reason=result.failure_reason,
+            )
+            for result in m3_song_artist_ocr_results
+            if result.field_name == "song_title"
+        }
+        jacket_match_rows = master_match.match_jacket_save_candidate_rows(
+            m3_save_candidate_summary_rows,
+            args.master_db,
+            m5_jacket_result_features,
+            jacket_feature_entries,
+            m5_title_result_features,
+            title_feature_entries,
+            title_ocr_observations,
+        )
+        jacket_match_summary = master_match.write_jacket_match_outputs(
+            output_dir,
+            jacket_match_rows,
+        )
+        jacket_reference_coverage_rows = master_match.jacket_reference_coverage_rows(
+            m3_save_candidate_summary_rows,
+            args.master_db,
+            m5_jacket_result_features,
+            jacket_feature_entries,
+        )
+        jacket_reference_coverage_summary = (
+            master_match.write_jacket_reference_coverage_outputs(
+                output_dir,
+                jacket_reference_coverage_rows,
+            )
+        )
+        jacket_diagnostic_input_rows = m5_jacket_diagnostic_candidate_rows(
+            frames,
+            result_events,
+        )
+        jacket_diagnostic_match_rows = master_match.match_jacket_save_candidate_rows(
+            jacket_diagnostic_input_rows,
+            args.master_db,
+            m5_jacket_result_features,
+            jacket_feature_entries,
+            m5_title_result_features,
+            title_feature_entries,
+            title_ocr_observations,
+        )
+        jacket_diagnostic_rows = attach_m5_jacket_diagnostic_context(
+            jacket_diagnostic_input_rows,
+            jacket_diagnostic_match_rows,
+        )
+        jacket_diagnostic_summary = master_match.write_jacket_match_diagnostic_outputs(
+            output_dir,
+            jacket_diagnostic_rows,
+        )
+        jacket_diagnostic_reference_coverage_rows = (
+            master_match.jacket_reference_coverage_rows(
+                jacket_diagnostic_input_rows,
+                args.master_db,
+                m5_jacket_result_features,
+                jacket_feature_entries,
+                coverage_scope="m5_jacket_diagnostic_reference_coverage",
+            )
+        )
+        jacket_diagnostic_reference_coverage_summary = (
+            master_match.write_jacket_reference_coverage_outputs(
+                output_dir,
+                jacket_diagnostic_reference_coverage_rows,
+                file_stem="jacket_reference_diagnostics_coverage",
+            )
+        )
+        print(
+            "Wrote M5 jacket match PoC: "
+            f"{output_dir} "
+            f"({jacket_feature_summary['status_counts'].get('accepted', 0)} features, "
+            f"{jacket_match_summary['target_count']} candidates, "
+            f"{jacket_diagnostic_summary['target_count']} diagnostics, "
+            f"{jacket_reference_coverage_summary['missing_feature_candidate_songs']} "
+            "candidate feature gaps, "
+            f"{jacket_diagnostic_reference_coverage_summary['missing_feature_candidate_songs']} "
+            "diagnostic candidate feature gaps)"
+        )
     score_ocr_results: list[ScoreOcrResult] = []
     profile_ocr_results: list[ProfileScoreOcrResult] = []
     run_profile_comparison = ocr_profiles != ("default",)

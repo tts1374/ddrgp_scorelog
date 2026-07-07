@@ -100,11 +100,31 @@ M4初期スキーマのフィールド:
 - `source_version`
 - `movie_stage`
 - `availability`
+- `free_play_available`
+- `grand_prix_play_available`
+- `official_availability_match`
 - `notes`
 - `created_at`
 - `updated_at`
 
 `title_reading` はM5以降の正規化・照合で必要性が見えた時点で追加を検討する。
+
+M4の公式収録曲一覧に突合できた場合、`title` / `artist` は公式表記をcanonicalとして保持する。Wiki側表記と公式表記が異なる場合は `song_aliases` に残し、canonicalを上書きして失われないようにする。
+
+### `song_aliases`
+
+公式canonicalとは別に、取得元やローカル素材が持つ表記差を保持する。
+
+M4初期スキーマのフィールド:
+
+- `alias_id`
+- `song_id`
+- `alias_title`
+- `alias_artist`
+- `alias_type`
+- `source`
+
+初期用途は、BEMANIWiki由来の曲名/artistが公式表記と異なる場合の `wiki_source` alias。M5は通常 `songs.title` を読むが、ローカルmetadataや既存素材がalias表記の場合は `song_aliases` を補助的に参照できる。
 
 ### `charts`
 
@@ -134,8 +154,13 @@ M4初期スキーマのフィールド:
 - `generated_at`
 - `generator_version`
 - `source_hash`
+- `official_source_url`
+- `official_source_hash`
 - `song_count`
 - `chart_count`
+- `free_play_available_song_count`
+- `grand_prix_play_available_song_count`
+- `official_availability_matched_song_count`
 
 ### `source_snapshots`
 

@@ -181,6 +181,91 @@ def test_save_candidate_event_boundary_requires_confirmed_non_duplicate() -> Non
     assert not events[3].confirmed_result
 
 
+def test_m5_jacket_diagnostic_rows_include_duplicate_and_unconfirmed_results() -> None:
+    frames = [
+        runner.FrameInput(
+            row={
+                "organized_file": "organized/result_score000000_a.png",
+                "screen_type": "result",
+                "song_title": "NEW YORK TYPE A",
+                "play_style": "SINGLE",
+                "difficulty": "CHALLENGE",
+                "level": "13",
+            },
+            image_path=Path("organized/result_score000000_a.png"),
+        ),
+        runner.FrameInput(
+            row={
+                "organized_file": "organized/result_score000000_b.png",
+                "screen_type": "result",
+                "song_title": "NEW YORK TYPE B",
+                "play_style": "SINGLE",
+                "difficulty": "CHALLENGE",
+                "level": "13",
+            },
+            image_path=Path("organized/result_score000000_b.png"),
+        ),
+        runner.FrameInput(
+            row={
+                "organized_file": "organized/result_score000000_c.png",
+                "screen_type": "result",
+                "song_title": "NEW YORK TYPE C",
+                "play_style": "SINGLE",
+                "difficulty": "CHALLENGE",
+                "level": "13",
+            },
+            image_path=Path("organized/result_score000000_c.png"),
+        ),
+        runner.FrameInput(
+            row={
+                "organized_file": "organized/menu.png",
+                "screen_type": "menu_setup",
+            },
+            image_path=Path("organized/menu.png"),
+        ),
+    ]
+    events = runner.build_result_events(
+        [
+            classification(
+                "organized/result_score000000_a.png",
+                result_candidate=True,
+            ),
+            classification(
+                "organized/result_score000000_b.png",
+                result_candidate=True,
+            ),
+            classification(
+                "organized/result_score000000_c.png",
+                result_candidate=True,
+            ),
+            classification(
+                "organized/menu.png",
+                result_candidate=False,
+                result_shape_candidate=False,
+                screen_type="menu_setup",
+            ),
+        ]
+    )
+
+    rows = runner.m5_jacket_diagnostic_candidate_rows(frames, events)
+
+    assert [row["organized_file"] for row in rows] == [
+        "organized/result_score000000_a.png",
+        "organized/result_score000000_b.png",
+        "organized/result_score000000_c.png",
+    ]
+    assert [row["m5_target_boundary_reason"] for row in rows] == [
+        "unconfirmed",
+        "save_candidate",
+        "duplicate",
+    ]
+    assert rows[2]["duplicate"] == "True"
+    assert rows[0]["song_title_extractor"] == "metadata-expected-diagnostic"
+    assert rows[0]["song_title_extracted_value"] == "NEW YORK TYPE A"
+    assert rows[0]["play_style_status"] == "ready"
+    assert rows[0]["level_extracted_value"] == "13"
+
+
 def test_duplicate_key_for_classification_uses_local_poc_score_key() -> None:
     with_score = classification(
         "organized/result_016_sp_basic_lv06_score935730.png",

@@ -245,20 +245,39 @@ M3完了判断:
 
 ### M5: マスタ照合PoC
 
-目的は、OCR結果から曲と譜面を一意に特定できるか確認することです。
+目的は、M3保存候補の曲・譜面観測値をM4マスタDBへ照合し、M7以降の保存判定へ渡す曲同定候補観測と失敗理由を出すことです。M5の `matched` や `identity_signal_*` はPoC上の候補観測であり、保存OK、曲ID/譜面ID確定、本番採用済み照合ではありません。
 
-やること:
+現在地:
 
-- 曲名OCR正規化を実装する。
-- マスタDBに対するファジーマッチを実装する。
-- SP/DP、難易度、レベルで候補を絞る。
-- 一意に決まらない場合は保存不可にする。
-- 候補一覧と照合スコアをログへ出す。
+- `tools.vision_poc --m5-master-match` で、M3保存候補行とM4マスタDBを使う最小入口を追加済み。
+- 曲名OCR文字列はNFKC、casefold、空白除去、代表的な句読点除去だけの最小正規化を行う。
+- `play_style` / `difficulty` / `level` で `charts` を絞り、候補曲数、候補譜面数、最上位候補、score、`match_status`、`failure_reason` を `master_match_candidates.csv` / summary / Markdownへ出す。
+- `matched` はPoC上の一意候補であり、DB保存可能や本番採用済み照合ではない。
+- `--m5-jacket-match` で、`song_select` grid右上プレビュー由来のローカルjacket特徴量マスタ、通常候補60件の `jacket_match_candidates.csv`、duplicate / unconfirmed を含む `jacket_match_diagnostics.csv` を出す。
+- M4公式canonicalと `song_aliases` を使い、`RЁVOLUTIФN` / `RËVOLUTIФN` のような表記差を候補集合外から曲を拾わずに吸収する。
+- `jacket_reference_coverage.csv` と `jacket_reference_diagnostics_coverage.csv` で、chart-field条件の候補song_idごとにローカルjacket参照の有無を確認できる。
+- `jacket_match_summary.json` は照合PoC信号、`jacket_reference_coverage_summary.json` は参照素材カバレッジ診断として読み分ける。`expected_missing_feature` / `expected_not_in_chart_candidates` / `expected_unresolved` はレビュー材料であり、保存候補昇格やGP対象外曲復帰には使わない。
+
+M5完了時点で固定すること:
+
+- 通常候補は `confirmed_result=true` かつ `duplicate=false` だけに限定する。
+- 診断出力は duplicate / unconfirmed を観察できるが、保存候補や保存可否判定として扱わない。
+- `jacket_match_status=matched` はPoC上の一意候補であり、保存可能ではない。
+- `identity_signal_status=jacket_resolved_candidate` / `composite_resolved_candidate` は後続保存判定へ渡す候補観測であり、曲ID/譜面ID確定ではない。
+- `missing_feature` はjacket照合行のローカル参照不足、`expected_missing_feature` は期待曲側の参照カバレッジ診断として分けて読む。
+- 参照不足時に、近傍の別曲へ寄せて解消扱いにしない。
+- title画像特徴量、title OCR、title line-hashは、jacket ambiguous候補集合内の再順位付けだけに使い、候補集合外から曲を拾わない。
+- スコア/判定数のTesseract離脱、保存OK/NG、低信頼度ログ、個人スコアDB保存はM5に含めない。
 
 完了条件:
 
-- 正常なリザルトで曲IDと譜面IDを一意に決められる。
-- 曖昧または低確信度のケースを保存不可として扱える。
+- M4 DBを入力に、通常M5、M5 jacket、診断M5、参照coverageを再生成できる。
+- `jacket_match_candidates.csv` で expected song、expected song_id、expected song resolution、official availability、expected distance、expected rank、top margin、`identity_signal_*` を確認できる。
+- `jacket_reference_coverage.csv` で候補song_idごとの参照有無と、期待曲側の `expected_missing_feature` / `expected_not_in_chart_candidates` / `expected_unresolved` を確認できる。
+- `docs/design/09_master_match_poc.md` と `tools/vision_poc/README.md` が、通常候補、診断出力、coverage summary の読み分けを説明している。
+- fixtureテストが、coverage語彙、代表CSV、診断coverage出力名をネットワーク、画像、`metadata.csv` なしで固定している。
+- 生成DB、PoC出力、OCR画像、`metadata.csv`、ローカル素材、ローカルDBをGit管理していない。
+- この条件を満たした後、次フェーズは M7a「スコア系数字認識のOCR脱却」または M6「本番キャプチャAPIの最小接続」へ切り分ける。
 
 ### M6: 本番キャプチャAPIの最小接続
 
@@ -293,6 +312,28 @@ M3完了判断:
 
 - 保存する、保存しない、重複として捨てる、低確信度としてログ保存する、を機械的に判定できる。
 - 誤保存を避けるための失敗側ログが残る。
+
+### M7a: スコア系数字認識のOCR脱却
+
+目的は、個人スコアDBへ保存する数値項目を、Tesseract OCR依存からテンプレート/画像特徴ベースのPoCへ切り出すことです。曲・譜面同定を扱うM5とは分け、DB保存を実装するM8より前に、保存値として使う数字の読み取り方式と失敗理由を固定します。
+
+やること:
+
+- confirmed-eventsだけを対象にする。
+- `score_digits`、`max_combo`、`marvelous`、`perfect`、`great`、`good`、`miss`、`ex_score` の数字ROIを対象にする。
+- Tesseractではなく、テンプレート、桁分割、画像特徴などのOCR非依存方式で数字候補を出す。
+- 既存Tesseract出力と比較できるsummaryを出す。
+- ROIごとに `recognized` / `ambiguous` / `missing_reference` / `failed_segmentation` などの失敗理由を出す。
+- 出力は `data/` 配下に置き、テンプレート素材やローカル画像はGit管理しない。
+- fixtureテストで、正規化、桁分割、テンプレート選択、失敗理由の基本動作を確認する。
+
+完了条件:
+
+- confirmed-events対象で保存値候補になる数字ROIを評価できる。
+- OCR非依存の認識候補、信頼度、失敗理由を出せる。
+- Tesseract既存結果との差分をsummaryで確認できる。
+- mismatch / ambiguous / missing_reference / failed_segmentation を区別できる。
+- 保存判定M7やDB保存M8と混同せず、M8へ渡す数値読み取り材料として文書化されている。
 
 ### M8: 個人スコアDB保存
 
@@ -356,7 +397,9 @@ M3完了判断:
 4. 曲・譜面情報ROIの抽出PoCへ進む。
 5. マスタDB生成を始める。
 6. マスタ照合PoCを作る。
-7. 実キャプチャAPIの最小接続へ進む。
+7. M5の参照カバレッジ明示と完了判定を固める。
+8. M7aとしてスコア系数字認識のOCR脱却PoCを切る。
+9. 実キャプチャAPIの最小接続、保存判定、個人スコアDB保存へ進む。
 
 ## しばらく守る境界
 
@@ -364,5 +407,5 @@ M3完了判断:
 - 実キャプチャAPI導入後もしばらく、実フレームをmanifestで再実行できる形に残す。
 - 保存直前境界は `confirmed_result=true` かつ `duplicate=false` を維持する。
 - `transition_countup_*` は `result_shape_candidate=true` でも保存対象外にする。
-- DB保存、常駐監視、非同期処理、OCR方式刷新は、それぞれ独立したフェーズとして扱う。
+- DB保存、常駐監視、非同期処理、スコア系数字認識のOCR脱却は、それぞれ独立したフェーズとして扱う。
 - ローカル素材、`samples/screenshots/metadata.csv`、PoC出力、解析ログ、ローカルDBはGit管理しない。
