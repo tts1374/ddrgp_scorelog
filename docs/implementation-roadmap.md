@@ -245,7 +245,7 @@ M3完了判断:
 
 ### M5: マスタ照合PoC
 
-目的は、OCR結果から曲と譜面を一意に特定できるか確認することです。
+目的は、M3保存候補の曲・譜面観測値をM4マスタDBへ照合し、M7以降の保存判定へ渡す曲同定候補観測と失敗理由を出すことです。M5の `matched` や `identity_signal_*` はPoC上の候補観測であり、保存OK、曲ID/譜面ID確定、本番採用済み照合ではありません。
 
 現在地:
 
@@ -253,23 +253,31 @@ M3完了判断:
 - 曲名OCR文字列はNFKC、casefold、空白除去、代表的な句読点除去だけの最小正規化を行う。
 - `play_style` / `difficulty` / `level` で `charts` を絞り、候補曲数、候補譜面数、最上位候補、score、`match_status`、`failure_reason` を `master_match_candidates.csv` / summary / Markdownへ出す。
 - `matched` はPoC上の一意候補であり、DB保存可能や本番採用済み照合ではない。
-- 2026-07-05のローカルOCR入口確認では、confirmed-events 60件中 `matched=4`、`not_found=54`、`insufficient_input=2`。多くはOCR文字列にartistなどが混ざり、`below_score_threshold` になった。
-- その後の軽量改善で、artist後続混入向けの包含一致と上位候補一覧を追加し、ローカル確認では `matched=19`、`not_found=39`、`insufficient_input=2` になった。ただし、曲名OCR単独での曲ID確定は依然として弱い。
-- 次の主信号候補として、`song_select` grid画面右上の選択中ジャケットプレビューから `song_id` に紐づくローカル特徴量マスタを作り、resultジャケットROIと比較する方針に寄せる。grid内の小ジャケットセル検出、全曲ジャケット画像取得、画像配布は別フェーズに残す。
+- `--m5-jacket-match` で、`song_select` grid右上プレビュー由来のローカルjacket特徴量マスタ、通常候補60件の `jacket_match_candidates.csv`、duplicate / unconfirmed を含む `jacket_match_diagnostics.csv` を出す。
+- M4公式canonicalと `song_aliases` を使い、`RЁVOLUTIФN` / `RËVOLUTIФN` のような表記差を候補集合外から曲を拾わずに吸収する。
+- `jacket_reference_coverage.csv` と `jacket_reference_diagnostics_coverage.csv` で、chart-field条件の候補song_idごとにローカルjacket参照の有無を確認できる。
+- `jacket_match_summary.json` は照合PoC信号、`jacket_reference_coverage_summary.json` は参照素材カバレッジ診断として読み分ける。`expected_missing_feature` / `expected_not_in_chart_candidates` / `expected_unresolved` はレビュー材料であり、保存候補昇格やGP対象外曲復帰には使わない。
 
-やること:
+M5完了時点で固定すること:
 
-- `song_select` grid右上プレビューのジャケット特徴量を、metadata期待曲名経由で `song_id` に紐づけるPoCを作る。
-- result confirmed-events のジャケットROIを特徴量化し、`play_style` / `difficulty` / `level` で絞った候補songだけと比較する。
-- 曲名OCR正規化とファジーマッチは補助ログとして継続し、主判定候補はジャケット特徴量へ移す。
-- SP/DP、難易度、レベルで候補を絞る入口を、ローカルOCR観測値で継続評価する。
-- 一意に決まらない場合は保存不可にする。
-- 候補一覧と照合スコアをログへ出す。
+- 通常候補は `confirmed_result=true` かつ `duplicate=false` だけに限定する。
+- 診断出力は duplicate / unconfirmed を観察できるが、保存候補や保存可否判定として扱わない。
+- `jacket_match_status=matched` はPoC上の一意候補であり、保存可能ではない。
+- `identity_signal_status=jacket_resolved_candidate` / `composite_resolved_candidate` は後続保存判定へ渡す候補観測であり、曲ID/譜面ID確定ではない。
+- `missing_feature` はjacket照合行のローカル参照不足、`expected_missing_feature` は期待曲側の参照カバレッジ診断として分けて読む。
+- 参照不足時に、近傍の別曲へ寄せて解消扱いにしない。
+- title画像特徴量、title OCR、title line-hashは、jacket ambiguous候補集合内の再順位付けだけに使い、候補集合外から曲を拾わない。
+- スコア/判定数のTesseract離脱、保存OK/NG、低信頼度ログ、個人スコアDB保存はM5に含めない。
 
 完了条件:
 
-- 正常なリザルトで曲IDと譜面IDを一意に決められる。
-- 曖昧または低確信度のケースを保存不可として扱える。
+- M4 DBを入力に、通常M5、M5 jacket、診断M5、参照coverageを再生成できる。
+- `jacket_match_candidates.csv` で expected song、expected song_id、expected song resolution、official availability、expected distance、expected rank、top margin、`identity_signal_*` を確認できる。
+- `jacket_reference_coverage.csv` で候補song_idごとの参照有無と、期待曲側の `expected_missing_feature` / `expected_not_in_chart_candidates` / `expected_unresolved` を確認できる。
+- `docs/design/09_master_match_poc.md` と `tools/vision_poc/README.md` が、通常候補、診断出力、coverage summary の読み分けを説明している。
+- fixtureテストが、coverage語彙、代表CSV、診断coverage出力名をネットワーク、画像、`metadata.csv` なしで固定している。
+- 生成DB、PoC出力、OCR画像、`metadata.csv`、ローカル素材、ローカルDBをGit管理していない。
+- この条件を満たした後、次フェーズは M7a「スコア系数字認識のOCR脱却」または M6「本番キャプチャAPIの最小接続」へ切り分ける。
 
 ### M6: 本番キャプチャAPIの最小接続
 

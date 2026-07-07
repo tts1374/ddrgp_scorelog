@@ -111,6 +111,10 @@ result confirmed-events
 
 `jacket_reference_diagnostics_coverage.csv` は duplicate / unconfirmed を含む診断側の同じ参照カバレッジである。通常候補の `jacket_reference_coverage.csv` へ混ぜず、`m5_target_boundary_reason` を見て保存候補外の観察として読む。どちらのcoverage出力も、参照不足時に近傍の別曲へ寄せて解消扱いにするための根拠ではない。
 
+`jacket_match_summary.json` は、通常候補60件に対する jacket照合PoC信号の集計である。`jacket_match_status=matched`、`identity_signal_status=jacket_resolved_candidate`、`identity_signal_status=composite_resolved_candidate` は曲同定候補観測であり、保存OK、曲ID/譜面ID確定、本番採用済み照合ではない。`jacket_reference_coverage_summary.json` は同じ通常候補60件に対する参照素材カバレッジの集計であり、照合成功数ではなく、候補song_id側と期待曲側の参照不足・期待値不整合を読むための診断である。`expected_missing_feature` / `expected_not_in_chart_candidates` / `expected_unresolved` の代表CSVとMarkdownは、参照追加、metadata期待値、chart-field境界、M4 canonical/aliasを見直すレビュー材料であり、保存候補昇格やGP対象外曲復帰の根拠にしない。
+
+`jacket_reference_diagnostics_coverage_summary.json` は duplicate / unconfirmed を含む診断coverageの集計である。通常候補の `jacket_reference_coverage_summary.json` と並べて差を見ることはできるが、診断側の `matched`、`expected_referenced`、`expected_missing_feature` を保存候補数や保存可否判断として数えない。
+
 `jacket_match_diagnostics.md` は `m5_target_boundary_reason` ごとの代表行と `identity_signal_status` ごとの代表行を出す。`save_candidate`、`unconfirmed`、`duplicate` を同じ診断レポート内で観察できるが、通常候補CSVへ混ぜず、duplicate / unconfirmed は保存候補外として読む。
 
 診断レポートにも `Unresolved Identity Signal Representatives` を出すが、duplicate / unconfirmed 行の観察は保存候補外のまま扱う。0点リザルトや同一・類似ジャケット分岐で期待曲解決状態やline-hash辞書状態を見ても、通常候補CSVへの混入、保存OK/NG判定、曲ID確定には進めない。

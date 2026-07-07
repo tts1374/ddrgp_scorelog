@@ -693,6 +693,64 @@ def test_jacket_reference_coverage_separates_unresolved_expected_song(
     assert summary["expected_song_reference_reason_counts"]["title_not_found"] == 1
 
 
+def test_jacket_reference_coverage_separates_expected_song_outside_chart_filter(
+    tmp_path: Path,
+) -> None:
+    db_path = write_fixture_master_db(tmp_path)
+    row = save_candidate_row(
+        title="",
+        play_style="SINGLE",
+        difficulty="CHALLENGE",
+        level="10",
+    )
+    row["song_title_expected_value"] = "MAKE IT BETTER"
+
+    rows = master_match.jacket_reference_coverage_rows(
+        [row],
+        db_path,
+        {"organized/result/result_fixture.png": solid_feature((120, 120, 120))},
+        [
+            jacket_entry(
+                song_id="song_type1",
+                title="OSAKA TYPE1",
+                artist="Unit O",
+                color=(120, 120, 120),
+            ),
+            jacket_entry(
+                song_id="song_type2",
+                title="OSAKA TYPE2",
+                artist="Unit O",
+                color=(120, 120, 120),
+            ),
+            jacket_entry(
+                song_id="song_type3",
+                title="OSAKA TYPE3",
+                artist="Unit O",
+                color=(120, 120, 120),
+            ),
+        ],
+    )
+    summary = master_match.summarize_jacket_reference_coverage_rows(rows)
+
+    assert summary["row_reference_status_counts"]["all_referenced"] == 1
+    assert summary["candidate_reference_status_counts"]["referenced"] == 3
+    assert (
+        summary["expected_song_reference_status_counts"][
+            "expected_not_in_chart_candidates"
+        ]
+        == 1
+    )
+    assert (
+        summary["expected_song_reference_reason_counts"][
+            "chart_filter_excluded_expected_song"
+        ]
+        == 1
+    )
+    assert {
+        coverage_row["expected_song_reference_status"] for coverage_row in rows
+    } == {"expected_not_in_chart_candidates"}
+
+
 def test_write_jacket_reference_coverage_outputs_records_missing_representatives(
     tmp_path: Path,
 ) -> None:
@@ -744,6 +802,64 @@ def test_write_jacket_reference_coverage_outputs_records_missing_representatives
     )
     assert "参照不足は参照不足として読み" in report
     assert "OSAKA TYPE3" in report
+
+
+def test_write_jacket_reference_diagnostic_coverage_outputs_use_distinct_names(
+    tmp_path: Path,
+) -> None:
+    row = {
+        "coverage_scope": "m5_jacket_diagnostic_reference_coverage",
+        "coverage_row_id": "0",
+        "m5_target_boundary_reason": "duplicate",
+        "frame_index": "2",
+        "organized_file": "organized/result/result_duplicate.png",
+        "expected_song_title": "OSAKA TYPE3",
+        "expected_song_id": "song_type3",
+        "expected_song_resolution_status": "resolved",
+        "expected_song_resolution_reason": "",
+        "expected_song_reference_status": "expected_missing_feature",
+        "expected_song_reference_reason": "expected_song_has_no_jacket_reference",
+        "expected_song_grand_prix_play_available": "True",
+        "input_play_style": "SINGLE",
+        "input_difficulty": "CHALLENGE",
+        "input_level": "10",
+        "chart_filter_status": "ready",
+        "chart_filter_failure_reason": "",
+        "result_jacket_feature_status": "available",
+        "candidate_song_count": "1",
+        "candidate_chart_count": "1",
+        "candidate_referenced_song_count": "0",
+        "candidate_missing_feature_song_count": "1",
+        "row_reference_status": "no_candidate_features",
+        "candidate_song_id": "song_type3",
+        "candidate_title": "OSAKA TYPE3",
+        "candidate_artist": "Unit O",
+        "candidate_chart_ids": "chart_type3_single_challenge",
+        "candidate_chart_count_for_song": "1",
+        "reference_feature_count": "0",
+        "reference_sources": "",
+        "candidate_reference_status": "missing_feature",
+    }
+
+    summary = master_match.write_jacket_reference_coverage_outputs(
+        tmp_path,
+        [row],
+        file_stem="jacket_reference_diagnostics_coverage",
+    )
+
+    assert summary["coverage_scope"] == "m5_jacket_diagnostic_reference_coverage"
+    assert summary["m5_target_boundary_reason_counts"] == {"duplicate": 1}
+    assert (tmp_path / "jacket_reference_diagnostics_coverage.csv").exists()
+    assert (tmp_path / "jacket_reference_diagnostics_coverage_summary.json").exists()
+    assert (
+        tmp_path / "jacket_reference_diagnostics_coverage_missing_representatives.csv"
+    ).exists()
+    assert (tmp_path / "jacket_reference_diagnostics_coverage_report.md").exists()
+    assert not (tmp_path / "jacket_reference_coverage.csv").exists()
+    report = (tmp_path / "jacket_reference_diagnostics_coverage_report.md").read_text(
+        encoding="utf-8"
+    )
+    assert "duplicate / unconfirmed を含む診断coverageは保存候補ではありません" in report
 
 
 def test_write_jacket_match_outputs_records_observation_scope(tmp_path: Path) -> None:
