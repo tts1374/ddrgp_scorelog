@@ -308,6 +308,13 @@ M5完了時点で固定すること:
 - 低確信度、OCR失敗、マスタ照合失敗、重複疑いの理由をJSONログにする。
 - 保存失敗時画像とログの保存先を決める。
 
+現在地:
+
+- `m7_save_readiness_review.csv`、`m7_save_readiness_review.json`、`m7_save_readiness_review.md` で、M3保存候補材料とM7a数字材料を confirmed-events 1件単位に束ねる保存判定前レビュー入口を追加済み。
+- 入力は `m3_save_candidate_summary_rows` と `m7a_digit_save_candidate_summary_rows` に限定し、duplicate、`rejected_transition`、未確定候補、non-result は対象外のまま維持する。
+- readiness status は `ready_for_save_review`、`blocked_m3_material`、`blocked_digit_review`、`missing_required_material`。`ready_for_save_review` は保存判定へ進むためのPoC材料が揃った状態であり、保存OK、DB保存成功、曲ID/譜面ID確定ではない。
+- 現時点ではDB insert、低確信度ログ本番仕様、保存値本番確定には進んでいない。
+
 完了条件:
 
 - 保存する、保存しない、重複として捨てる、低確信度としてログ保存する、を機械的に判定できる。
@@ -344,8 +351,7 @@ M5完了時点で固定すること:
 
 - ローカル `score_digits` テンプレート配置済み環境では、追加素材で1桁から7桁までの実画面サンプルが増えたときに同じ可変桁分割で再確認する。
 - `score_digits` のテンプレート余白、桁分割、距離しきい値を継続レビューし、過剰な `ambiguous` や誤認識があれば最小限で調整する。
-- 次はM7保存判定またはM8個人スコアDB保存へ進む。M7aの数字読み取り材料は、`m7a_digit_save_candidate_summary.*`、`m7a_digit_save_candidate_review.*`、`m7a_tesseract_comparison_review.*` を合わせて確認する。
-- 既存Tesseract出力との比較summaryを読み、差分代表を保存判定ではなくレビュー材料として整理する。
+- M7aの数字読み取り材料は、M7保存判定前レビューの数字側入力として `m7a_digit_save_candidate_summary.*`、`m7a_digit_save_candidate_review.*`、`m7a_tesseract_comparison_review.*` を合わせて確認する。
 - 出力は `data/` 配下に置き、テンプレート素材やローカル画像はGit管理しない。
 - fixtureテストで、正規化、桁分割、テンプレート選択、失敗理由の基本動作を継続確認する。
 

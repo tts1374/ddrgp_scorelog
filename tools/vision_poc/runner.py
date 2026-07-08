@@ -358,6 +358,7 @@ M3_SAVE_CANDIDATE_FIELDS = (*M3_SONG_ARTIST_OCR_FIELDS, *M3_CHART_FIELD_FIELDS)
 M3_SAVE_CANDIDATE_BLOCKER_REPRESENTATIVE_LIMIT = 3
 M7A_DIGIT_SAVE_CANDIDATE_REVIEW_REPRESENTATIVE_LIMIT = 3
 M7A_TESSERACT_COMPARISON_REVIEW_REPRESENTATIVE_LIMIT = 3
+M7_SAVE_READINESS_REVIEW_REPRESENTATIVE_LIMIT = 3
 M3_SONG_ARTIST_ENTRY_FAILURE_REASONS = (
     "engine_unavailable",
     "ocr_failed",
@@ -2940,6 +2941,238 @@ def write_m7a_digit_save_candidate_review_report(
             "`failed_segmentation` は桁分割失敗、`not_evaluated` は期待値不足または"
             "試行不足として読み分けます。",
             "- 代表整理はレビュー補助であり、保存可否判定やDB保存実装ではありません。",
+        ]
+    )
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def m7_save_readiness_status(
+    m3_row: dict[str, str],
+    digit_row: dict[str, str] | None,
+) -> tuple[str, str]:
+    m3_blockers = m3_row.get("blocking_fields", "")
+    if m3_row.get("overall_status") != "ready":
+        return "blocked_m3_material", m3_blockers
+    if digit_row is None:
+        return "missing_required_material", "m7a_digit_summary_missing"
+
+    digit_status = digit_row.get("aggregate_status", "")
+    if digit_status == "all_digits_recognized":
+        return "ready_for_save_review", ""
+    if digit_status == "needs_digit_review":
+        return "blocked_digit_review", digit_row.get("review_rois", "")
+    return "missing_required_material", digit_status or "unknown_digit_aggregate_status"
+
+
+def m7_save_readiness_review_rows(
+    m3_rows: Iterable[dict[str, str]],
+    digit_rows: Iterable[dict[str, str]],
+) -> list[dict[str, str]]:
+    digit_by_file = {row["organized_file"]: row for row in digit_rows}
+    rows: list[dict[str, str]] = []
+    for m3_row in m3_rows:
+        digit_row = digit_by_file.get(m3_row["organized_file"])
+        readiness_status, readiness_blockers = m7_save_readiness_status(
+            m3_row,
+            digit_row,
+        )
+        row = {
+            "frame_index": m3_row["frame_index"],
+            "organized_file": m3_row["organized_file"],
+            "screen_type": m3_row["screen_type"],
+            "event_type": m3_row["event_type"],
+            "confirmed_result": m3_row["confirmed_result"],
+            "duplicate": m3_row["duplicate"],
+            "timestamp_ms": m3_row["timestamp_ms"],
+            "confirmation_mode": m3_row["confirmation_mode"],
+            "readiness_status": readiness_status,
+            "readiness_blockers": readiness_blockers,
+            "m3_overall_status": m3_row["overall_status"],
+            "m3_blocking_fields": m3_row["blocking_fields"],
+            "m7a_digit_aggregate_status": (
+                "" if digit_row is None else digit_row["aggregate_status"]
+            ),
+            "m7a_digit_review_rois": "" if digit_row is None else digit_row["review_rois"],
+        }
+        rows.append(row)
+    return rows
+
+
+def write_m7_save_readiness_review_csv(
+    path: Path,
+    rows: Iterable[dict[str, str]],
+) -> None:
+    fieldnames = [
+        "frame_index",
+        "organized_file",
+        "screen_type",
+        "event_type",
+        "confirmed_result",
+        "duplicate",
+        "timestamp_ms",
+        "confirmation_mode",
+        "readiness_status",
+        "readiness_blockers",
+        "m3_overall_status",
+        "m3_blocking_fields",
+        "m7a_digit_aggregate_status",
+        "m7a_digit_review_rois",
+    ]
+    with path.open("w", encoding="utf-8", newline="") as file:
+        writer = csv.DictWriter(file, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+def m7_save_readiness_representative(row: dict[str, str]) -> dict[str, str]:
+    return {
+        "organized_file": row["organized_file"],
+        "readiness_status": row["readiness_status"],
+        "readiness_blockers": row["readiness_blockers"],
+        "m3_overall_status": row["m3_overall_status"],
+        "m3_blocking_fields": row["m3_blocking_fields"],
+        "m7a_digit_aggregate_status": row["m7a_digit_aggregate_status"],
+        "m7a_digit_review_rois": row["m7a_digit_review_rois"],
+    }
+
+
+def summarize_m7_save_readiness_review(
+    rows: Iterable[dict[str, str]],
+    representative_limit: int = M7_SAVE_READINESS_REVIEW_REPRESENTATIVE_LIMIT,
+) -> dict[str, object]:
+    row_list = list(rows)
+    readiness_status_counts: dict[str, int] = {}
+    m3_status_counts: dict[str, int] = {}
+    digit_status_counts: dict[str, int] = {}
+    groups: dict[tuple[str, str], dict[str, object]] = {}
+    for row in row_list:
+        readiness_status = row["readiness_status"]
+        readiness_status_counts[readiness_status] = (
+            readiness_status_counts.get(readiness_status, 0) + 1
+        )
+        m3_status = row["m3_overall_status"]
+        m3_status_counts[m3_status] = m3_status_counts.get(m3_status, 0) + 1
+        digit_status = row["m7a_digit_aggregate_status"] or "missing"
+        digit_status_counts[digit_status] = digit_status_counts.get(digit_status, 0) + 1
+
+        key = (readiness_status, row["readiness_blockers"])
+        bucket = groups.setdefault(
+            key,
+            {
+                "readiness_status": readiness_status,
+                "readiness_blockers": row["readiness_blockers"],
+                "count": 0,
+                "representatives": [],
+            },
+        )
+        bucket["count"] = int(bucket["count"]) + 1
+        representatives = bucket["representatives"]
+        assert isinstance(representatives, list)
+        if len(representatives) < representative_limit:
+            representatives.append(m7_save_readiness_representative(row))
+
+    return {
+        "target_boundary": "confirmed_result=true and duplicate=false",
+        "scope": "M7 save readiness review before DB save",
+        "source": "m3_save_candidate_summary_rows and m7a_digit_save_candidate_summary_rows",
+        "target_count": len(row_list),
+        "readiness_status_counts": dict(sorted(readiness_status_counts.items())),
+        "m3_overall_status_counts": dict(sorted(m3_status_counts.items())),
+        "m7a_digit_aggregate_status_counts": dict(sorted(digit_status_counts.items())),
+        "representative_limit_per_group": representative_limit,
+        "groups": sorted(
+            groups.values(),
+            key=lambda item: (
+                str(item["readiness_status"]),
+                str(item["readiness_blockers"]),
+            ),
+        ),
+        "status_vocabulary": [
+            "ready_for_save_review",
+            "blocked_m3_material",
+            "blocked_digit_review",
+            "missing_required_material",
+        ],
+        "reading_notes": [
+            "One row represents one confirmed-events save candidate.",
+            "ready_for_save_review means required PoC materials are present for review.",
+            "It is not a DB save allow decision and does not confirm song_id or chart_id.",
+            "duplicate, rejected_transition, unconfirmed, and non-result rows are excluded.",
+        ],
+    }
+
+
+def write_m7_save_readiness_review_report(
+    path: Path,
+    summary: dict[str, object],
+) -> None:
+    groups = summary["groups"]
+    assert isinstance(groups, list)
+    lines = [
+        "# M7 Save Readiness Review",
+        "",
+        "confirmed-events 保存候補について、M3保存候補材料とM7a数字材料を"
+        "保存判定前レビュー用に束ねます。",
+        "DB保存、保存OK/NG判定、曲ID/譜面ID確定には進みません。",
+        "",
+        f"- target boundary: `{summary['target_boundary']}`",
+        f"- source: `{summary['source']}`",
+        f"- target confirmed-events: {summary['target_count']}",
+        f"- readiness status counts: "
+        f"`{json.dumps(summary['readiness_status_counts'], ensure_ascii=False)}`",
+        f"- representative limit per group: "
+        f"{summary['representative_limit_per_group']}",
+        "",
+        "## Status Groups",
+        "",
+        "| readiness | blockers | count |",
+        "|---|---|---:|",
+    ]
+    for group in groups:
+        assert isinstance(group, dict)
+        blockers = group["readiness_blockers"] or "(none)"
+        lines.append(
+            f"| `{group['readiness_status']}` | `{blockers}` | {group['count']} |"
+        )
+
+    lines.extend(["", "## Representatives", ""])
+    for group in groups:
+        assert isinstance(group, dict)
+        representatives = group["representatives"]
+        assert isinstance(representatives, list)
+        if not representatives:
+            continue
+        blockers = group["readiness_blockers"] or "(none)"
+        lines.extend(
+            [
+                f"### `{group['readiness_status']}` / `{blockers}`",
+                "",
+                "| organized_file | M3 | M3 blockers | M7a digits | digit review ROIs |",
+                "|---|---|---|---|---|",
+            ]
+        )
+        for representative in representatives:
+            assert isinstance(representative, dict)
+            lines.append(
+                f"| `{representative['organized_file']}` | "
+                f"`{representative['m3_overall_status']}` | "
+                f"`{representative['m3_blocking_fields']}` | "
+                f"`{representative['m7a_digit_aggregate_status']}` | "
+                f"`{representative['m7a_digit_review_rois']}` |"
+            )
+        lines.append("")
+
+    lines.extend(
+        [
+            "## Reading Notes",
+            "",
+            "- `ready_for_save_review` は保存前レビュー材料が揃っていることだけを表し、"
+            "DB保存可能を意味しません。",
+            "- `blocked_m3_material` はM3の曲名/artist/chart-field材料に"
+            "未ready項目がある状態です。",
+            "- `blocked_digit_review` はM7a数字材料にレビュー対象ROIがある状態です。",
+            "- `missing_required_material` はM7a集約など必須PoC材料が欠けている状態です。",
+            "- duplicate、`rejected_transition`、未確定候補、non-result は対象外です。",
         ]
     )
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -7595,6 +7828,25 @@ def main(argv: list[str] | None = None) -> int:
         write_m7a_digit_save_candidate_review_report(
             output_dir / "m7a_digit_save_candidate_review.md",
             m7a_save_candidate_review,
+        )
+        m7_save_readiness_rows = m7_save_readiness_review_rows(
+            m3_save_candidate_summary_rows,
+            m7a_save_candidate_rows,
+        )
+        write_m7_save_readiness_review_csv(
+            output_dir / "m7_save_readiness_review.csv",
+            m7_save_readiness_rows,
+        )
+        m7_save_readiness_summary = summarize_m7_save_readiness_review(
+            m7_save_readiness_rows,
+        )
+        (output_dir / "m7_save_readiness_review.json").write_text(
+            json.dumps(m7_save_readiness_summary, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        write_m7_save_readiness_review_report(
+            output_dir / "m7_save_readiness_review.md",
+            m7_save_readiness_summary,
         )
     summary = summarize(classifications)
     (output_dir / "summary.json").write_text(

@@ -1900,6 +1900,21 @@ def test_m7a_digit_recognition_writes_confirmed_events_report(
     ).read_text(encoding="utf-8")
     assert "M7a横持ち集約" in review_report
     assert "保存OK/NG判定" in review_report
+    readiness_rows = read_csv_rows(output_dir / "m7_save_readiness_review.csv")
+    assert len(readiness_rows) == 1
+    assert readiness_rows[0]["organized_file"] == "result_score123456_c.png"
+    assert readiness_rows[0]["readiness_status"] == "blocked_m3_material"
+    readiness_summary = json.loads(
+        (output_dir / "m7_save_readiness_review.json").read_text(encoding="utf-8")
+    )
+    assert readiness_summary["scope"] == "M7 save readiness review before DB save"
+    assert readiness_summary["target_count"] == 1
+    assert readiness_summary["readiness_status_counts"] == {"blocked_m3_material": 1}
+    readiness_report = (
+        output_dir / "m7_save_readiness_review.md"
+    ).read_text(encoding="utf-8")
+    assert "# M7 Save Readiness Review" in readiness_report
+    assert "保存OK/NG判定" in readiness_report
 
 
 def test_m7a_tesseract_comparison_review_groups_representatives(
@@ -2021,6 +2036,101 @@ def test_m7a_tesseract_comparison_review_groups_representatives(
     assert "`different_normalized`" in report
     assert "`empty_normalized_digits`" in report
     assert "保存可否判定" in report
+
+
+def test_m7_save_readiness_review_combines_m3_and_digit_materials(
+    tmp_path: Path,
+) -> None:
+    def m3_row(
+        organized_file: str,
+        overall_status: str,
+        blocking_fields: str,
+    ) -> dict[str, str]:
+        return {
+            "frame_index": "2",
+            "organized_file": organized_file,
+            "screen_type": "result",
+            "event_type": "confirmed",
+            "confirmed_result": "True",
+            "duplicate": "False",
+            "timestamp_ms": "1000",
+            "confirmation_mode": "time",
+            "overall_status": overall_status,
+            "blocking_fields": blocking_fields,
+        }
+
+    def digit_row(
+        organized_file: str,
+        aggregate_status: str,
+        review_rois: str,
+    ) -> dict[str, str]:
+        return {
+            "organized_file": organized_file,
+            "aggregate_status": aggregate_status,
+            "review_rois": review_rois,
+        }
+
+    rows = runner.m7_save_readiness_review_rows(
+        [
+            m3_row("ready.png", "ready", ""),
+            m3_row("m3_blocked.png", "not_ready", "artist difficulty"),
+            m3_row("digit_blocked.png", "ready", ""),
+            m3_row("missing_digit.png", "ready", ""),
+        ],
+        [
+            digit_row("ready.png", "all_digits_recognized", ""),
+            digit_row("m3_blocked.png", "all_digits_recognized", ""),
+            digit_row("digit_blocked.png", "needs_digit_review", "miss"),
+        ],
+    )
+
+    assert [row["readiness_status"] for row in rows] == [
+        "ready_for_save_review",
+        "blocked_m3_material",
+        "blocked_digit_review",
+        "missing_required_material",
+    ]
+    assert rows[1]["readiness_blockers"] == "artist difficulty"
+    assert rows[2]["readiness_blockers"] == "miss"
+    assert rows[3]["readiness_blockers"] == "m7a_digit_summary_missing"
+
+    csv_path = tmp_path / "m7_save_readiness_review.csv"
+    runner.write_m7_save_readiness_review_csv(csv_path, rows)
+    csv_rows = read_csv_rows(csv_path)
+    assert csv_rows[0]["readiness_status"] == "ready_for_save_review"
+    assert csv_rows[2]["m7a_digit_review_rois"] == "miss"
+
+    summary = runner.summarize_m7_save_readiness_review(rows)
+    assert summary["scope"] == "M7 save readiness review before DB save"
+    assert summary["source"] == (
+        "m3_save_candidate_summary_rows and m7a_digit_save_candidate_summary_rows"
+    )
+    assert summary["target_count"] == 4
+    assert summary["readiness_status_counts"] == {
+        "blocked_digit_review": 1,
+        "blocked_m3_material": 1,
+        "missing_required_material": 1,
+        "ready_for_save_review": 1,
+    }
+    assert summary["m3_overall_status_counts"] == {"not_ready": 1, "ready": 3}
+    assert summary["m7a_digit_aggregate_status_counts"] == {
+        "all_digits_recognized": 2,
+        "missing": 1,
+        "needs_digit_review": 1,
+    }
+    ready_group = next(
+        group
+        for group in summary["groups"]
+        if group["readiness_status"] == "ready_for_save_review"
+    )
+    assert ready_group["representatives"][0]["organized_file"] == "ready.png"
+
+    report_path = tmp_path / "m7_save_readiness_review.md"
+    runner.write_m7_save_readiness_review_report(report_path, summary)
+    report = report_path.read_text(encoding="utf-8")
+    assert "# M7 Save Readiness Review" in report
+    assert "`ready_for_save_review`" in report
+    assert "DB保存可能を意味しません" in report
 
 
 def test_m7a_digit_save_candidate_summary_keeps_status_vocabulary(

@@ -206,6 +206,15 @@
 - M7a Tesseract comparison review も保存OK/NG判定、DB保存、OCR方式刷新として扱わない。
 - ローカル digit template 画像はGit管理しない。
 
+## M7 save readiness review
+
+- `m7_save_readiness_review.csv`、`m7_save_readiness_review.json`、`m7_save_readiness_review.md` は、M3 save candidate summary と M7a digit save candidate summary だけを入力にする。
+- 対象は confirmed-events 境界、つまり `confirmed_result=true` かつ `duplicate=false` の1件1行にする。
+- duplicate、`event_type=rejected_transition`、未確定 `result_candidate`、non-result は対象外にする。
+- readiness status は `ready_for_save_review`、`blocked_m3_material`、`blocked_digit_review`、`missing_required_material` に限る。
+- `ready_for_save_review` はPoC材料が揃った状態であり、保存OK/NG判定、DB保存成功、曲ID/譜面ID確定として扱わない。
+- M7 save readiness review は DB insert、低信頼度ログ本番仕様、保存値本番確定に進まない。
+
 ## ROI方針
 
 - ROI座標は 1280x720 基準。
