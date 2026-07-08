@@ -1857,9 +1857,26 @@ def test_m7a_digit_recognition_writes_confirmed_events_report(
     ).read_text(encoding="utf-8")
     assert "保存OK/NG判定" in aggregate_report
     assert "`all_digits_recognized`" in aggregate_report
+    review_summary = json.loads(
+        (output_dir / "m7a_digit_save_candidate_review.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert review_summary["scope"] == "M7a digit save candidate review representatives"
+    assert review_summary["source"] == "m7a_digit_save_candidate_summary_rows"
+    assert review_summary["target_count"] == 1
+    assert review_summary["review_candidate_count"] == 0
+    assert review_summary["aggregate_status_counts"] == {"all_digits_recognized": 1}
+    review_report = (
+        output_dir / "m7a_digit_save_candidate_review.md"
+    ).read_text(encoding="utf-8")
+    assert "M7a横持ち集約" in review_report
+    assert "保存OK/NG判定" in review_report
 
 
-def test_m7a_digit_save_candidate_summary_keeps_status_vocabulary() -> None:
+def test_m7a_digit_save_candidate_summary_keeps_status_vocabulary(
+    tmp_path: Path,
+) -> None:
     frames = [
         runner.FrameInput(
             row={
@@ -1868,6 +1885,7 @@ def test_m7a_digit_save_candidate_summary_keeps_status_vocabulary() -> None:
                 "expected_score": "123456",
                 "max_combo": "198",
                 "ex_score": "",
+                "great": "40",
             },
             image_path=Path("result_score123456.png"),
         ),
@@ -1936,16 +1954,35 @@ def test_m7a_digit_save_candidate_summary_keeps_status_vocabulary() -> None:
             duplicate=False,
             roi_name="ex_score",
             method=runner.M7A_DIGIT_RECOGNITION_METHOD,
-            recognized_digits="552",
+            recognized_digits="553",
             expected_value="",
             match=None,
-            status="not_evaluated",
-            failure_reason="no_expected_value",
+            status="ambiguous",
+            failure_reason="low_margin",
             distance=0.02,
             confidence=0.98,
             segment_count=3,
             template_count=10,
             per_digit_distances="5:0.02",
+        ),
+        runner.M7aDigitRecognitionResult(
+            organized_file="result_score123456.png",
+            screen_type="result",
+            event_type="confirmed",
+            confirmed_result=True,
+            duplicate=False,
+            roi_name="great",
+            method=runner.M7A_DIGIT_RECOGNITION_METHOD,
+            recognized_digits="",
+            expected_value="40",
+            match=None,
+            status="failed_segmentation",
+            failure_reason="no_digit_segments",
+            distance=None,
+            confidence=None,
+            segment_count=0,
+            template_count=10,
+            per_digit_distances="",
         ),
     ]
 
@@ -1953,31 +1990,70 @@ def test_m7a_digit_save_candidate_summary_keeps_status_vocabulary() -> None:
         frames,
         events,
         digit_results,
-        ["score_digits", "max_combo", "ex_score", "miss"],
+        ["score_digits", "max_combo", "ex_score", "great", "miss"],
     )
 
     assert len(rows) == 1
     assert rows[0]["aggregate_status"] == "needs_digit_review"
-    assert rows[0]["review_rois"] == "max_combo ex_score miss"
+    assert rows[0]["review_rois"] == "max_combo ex_score great miss"
     assert rows[0]["score_digits_status"] == "recognized"
     assert rows[0]["score_digits_match"] == "True"
     assert rows[0]["score_digits_distance"] == "0.010000"
     assert rows[0]["max_combo_status"] == "missing_reference"
     assert rows[0]["max_combo_failure_reason"] == "missing_digit_templates=0123456789"
-    assert rows[0]["ex_score_status"] == "not_evaluated"
-    assert rows[0]["ex_score_failure_reason"] == "no_expected_value"
+    assert rows[0]["ex_score_status"] == "ambiguous"
+    assert rows[0]["ex_score_failure_reason"] == "low_margin"
+    assert rows[0]["great_status"] == "failed_segmentation"
+    assert rows[0]["great_failure_reason"] == "no_digit_segments"
     assert rows[0]["miss_status"] == "not_evaluated"
     assert rows[0]["miss_failure_reason"] == "no_digit_attempt"
 
     summary = runner.summarize_m7a_digit_save_candidates(
         rows,
-        ["score_digits", "max_combo", "ex_score", "miss"],
+        ["score_digits", "max_combo", "ex_score", "great", "miss"],
     )
     assert summary["target_count"] == 1
     assert summary["fields"]["max_combo"]["status_counts"] == {"missing_reference": 1}
-    assert summary["fields"]["ex_score"]["status_counts"] == {"not_evaluated": 1}
+    assert summary["fields"]["ex_score"]["status_counts"] == {"ambiguous": 1}
+    assert summary["fields"]["great"]["status_counts"] == {"failed_segmentation": 1}
     assert summary["fields"]["miss"]["failure_reason_counts"] == {"no_digit_attempt": 1}
     assert summary["aggregate_status_counts"] == {"needs_digit_review": 1}
+
+    review = runner.summarize_m7a_digit_save_candidate_review(
+        rows,
+        ["score_digits", "max_combo", "ex_score", "great", "miss"],
+    )
+    assert review["scope"] == "M7a digit save candidate review representatives"
+    assert review["source"] == "m7a_digit_save_candidate_summary_rows"
+    assert review["target_count"] == 1
+    assert review["review_candidate_count"] == 1
+    assert review["aggregate_status_counts"] == {"needs_digit_review": 1}
+    assert review["fields"]["score_digits"]["review_count"] == 0
+    assert review["fields"]["max_combo"]["groups"][0]["status"] == "missing_reference"
+    assert review["fields"]["ex_score"]["groups"][0]["failure_reason"] == "low_margin"
+    assert review["fields"]["great"]["groups"][0]["status"] == "failed_segmentation"
+    assert review["fields"]["miss"]["groups"][0]["failure_reason"] == "no_digit_attempt"
+    assert review["fields"]["max_combo"]["groups"][0]["representatives"][0] == {
+        "organized_file": "result_score123456.png",
+        "roi_name": "max_combo",
+        "recognized_digits": "",
+        "expected_value": "198",
+        "status": "missing_reference",
+        "failure_reason": "missing_digit_templates=0123456789",
+        "match": "",
+        "confidence": "",
+        "distance": "",
+        "segment_count": "3",
+    }
+
+    report_path = tmp_path / "m7a_digit_save_candidate_review.md"
+    runner.write_m7a_digit_save_candidate_review_report(report_path, review)
+    report = report_path.read_text(encoding="utf-8")
+    assert "M7a横持ち集約" in report
+    assert "`ambiguous`" in report
+    assert "`missing_reference`" in report
+    assert "`failed_segmentation`" in report
+    assert "`not_evaluated`" in report
 
 
 def test_m7a_digit_recognition_reports_missing_reference(tmp_path: Path) -> None:

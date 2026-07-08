@@ -356,6 +356,7 @@ M3_SONG_ARTIST_OCR_FIELDS = ("song_title", "artist")
 M3_SONG_ARTIST_OCR_METHOD = "tesseract-text-raw"
 M3_SAVE_CANDIDATE_FIELDS = (*M3_SONG_ARTIST_OCR_FIELDS, *M3_CHART_FIELD_FIELDS)
 M3_SAVE_CANDIDATE_BLOCKER_REPRESENTATIVE_LIMIT = 3
+M7A_DIGIT_SAVE_CANDIDATE_REVIEW_REPRESENTATIVE_LIMIT = 3
 M3_SONG_ARTIST_ENTRY_FAILURE_REASONS = (
     "engine_unavailable",
     "ocr_failed",
@@ -2611,6 +2612,194 @@ def write_m7a_digit_save_candidate_summary_report(
             "`failed_segmentation` は桁分割失敗、`not_evaluated` は期待値不足または"
             "試行不足として読み分けます。",
             "- duplicate、`rejected_transition`、未確定候補、non-result はこの集約対象外です。",
+        ]
+    )
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def m7a_digit_save_candidate_review_representative(
+    row: dict[str, str],
+    roi_name: str,
+) -> dict[str, str]:
+    return {
+        "organized_file": row["organized_file"],
+        "roi_name": roi_name,
+        "recognized_digits": row[f"{roi_name}_recognized_digits"],
+        "expected_value": row[f"{roi_name}_expected_value"],
+        "status": row[f"{roi_name}_status"],
+        "failure_reason": row[f"{roi_name}_failure_reason"],
+        "match": row[f"{roi_name}_match"],
+        "confidence": row[f"{roi_name}_confidence"],
+        "distance": row[f"{roi_name}_distance"],
+        "segment_count": row[f"{roi_name}_segment_count"],
+    }
+
+
+def summarize_m7a_digit_save_candidate_review(
+    rows: Iterable[dict[str, str]],
+    roi_names: Iterable[str],
+    representative_limit: int = M7A_DIGIT_SAVE_CANDIDATE_REVIEW_REPRESENTATIVE_LIMIT,
+) -> dict[str, object]:
+    row_list = list(rows)
+    roi_list = list(roi_names)
+    aggregate_status_counts: dict[str, int] = {}
+    for row in row_list:
+        status = row["aggregate_status"]
+        aggregate_status_counts[status] = aggregate_status_counts.get(status, 0) + 1
+
+    fields: dict[str, dict[str, object]] = {}
+    review_row_indexes: set[int] = set()
+    for roi_name in roi_list:
+        groups: dict[tuple[str, str], dict[str, object]] = {}
+        review_count = 0
+        for row_index, row in enumerate(row_list):
+            if row["aggregate_status"] != "needs_digit_review":
+                continue
+            if roi_name not in row["review_rois"].split():
+                continue
+            review_count += 1
+            review_row_indexes.add(row_index)
+            key = (row[f"{roi_name}_status"], row[f"{roi_name}_failure_reason"])
+            bucket = groups.setdefault(
+                key,
+                {
+                    "status": key[0],
+                    "failure_reason": key[1],
+                    "count": 0,
+                    "representatives": [],
+                },
+            )
+            bucket["count"] = int(bucket["count"]) + 1
+            representatives = bucket["representatives"]
+            assert isinstance(representatives, list)
+            if len(representatives) < representative_limit:
+                representatives.append(
+                    m7a_digit_save_candidate_review_representative(row, roi_name)
+                )
+        fields[roi_name] = {
+            "review_count": review_count,
+            "groups": sorted(
+                groups.values(),
+                key=lambda item: (
+                    str(item["status"]),
+                    str(item["failure_reason"]),
+                ),
+            ),
+        }
+
+    return {
+        "target_boundary": "confirmed_result=true and duplicate=false",
+        "scope": "M7a digit save candidate review representatives",
+        "source": "m7a_digit_save_candidate_summary_rows",
+        "target_count": len(row_list),
+        "review_candidate_count": len(review_row_indexes),
+        "aggregate_status_counts": dict(sorted(aggregate_status_counts.items())),
+        "representative_limit_per_group": representative_limit,
+        "roi_names": roi_list,
+        "fields": fields,
+        "reading_notes": [
+            "Representatives are selected only from M7a save candidate summary rows.",
+            "Only aggregate_status=needs_digit_review rows are grouped for review.",
+            "duplicate, rejected_transition, unconfirmed, and non-result rows are excluded.",
+            "This is a review aid, not a DB save allow/deny decision.",
+            (
+                "missing_reference means local templates are missing; ambiguous means "
+                "distance or margin was insufficient; failed_segmentation means digit "
+                "segmentation failed; not_evaluated means expected values are missing "
+                "or no digit attempt was produced."
+            ),
+        ],
+    }
+
+
+def write_m7a_digit_save_candidate_review_report(
+    path: Path,
+    review_summary: dict[str, object],
+) -> None:
+    fields = review_summary["fields"]
+    assert isinstance(fields, dict)
+    roi_names = review_summary["roi_names"]
+    assert isinstance(roi_names, list)
+    lines = [
+        "# M7a Digit Save Candidate Review",
+        "",
+        "M7a横持ち集約から、レビューすべき数字ROIを代表化する補助レポートです。",
+        "DB保存、保存OK/NG判定、曲ID/譜面ID確定には進みません。",
+        "",
+        f"- target boundary: `{review_summary['target_boundary']}`",
+        f"- source: `{review_summary['source']}`",
+        f"- target confirmed-events: {review_summary['target_count']}",
+        f"- candidates needing digit review: {review_summary['review_candidate_count']}",
+        f"- representative limit per group: "
+        f"{review_summary['representative_limit_per_group']}",
+        "",
+        "## ROI Review Groups",
+        "",
+        "| ROI | review count | grouped reasons |",
+        "|---|---:|---|",
+    ]
+    for roi_name in roi_names:
+        bucket = fields[roi_name]
+        assert isinstance(bucket, dict)
+        group_labels = []
+        groups = bucket["groups"]
+        assert isinstance(groups, list)
+        for group in groups:
+            assert isinstance(group, dict)
+            status = group["status"]
+            reason = group["failure_reason"] or "(none)"
+            count = group["count"]
+            group_labels.append(f"{status}:{reason}={count}")
+        grouped = ", ".join(group_labels) if group_labels else "none"
+        lines.append(f"| `{roi_name}` | {bucket['review_count']} | `{grouped}` |")
+
+    lines.extend(["", "## Representatives", ""])
+    for roi_name in roi_names:
+        bucket = fields[roi_name]
+        assert isinstance(bucket, dict)
+        groups = bucket["groups"]
+        assert isinstance(groups, list)
+        if not groups:
+            continue
+        lines.extend([f"### `{roi_name}`", ""])
+        for group in groups:
+            assert isinstance(group, dict)
+            status = group["status"]
+            reason = group["failure_reason"] or "(none)"
+            lines.extend(
+                [
+                    f"- status `{status}`, failure `{reason}`, count {group['count']}",
+                    "",
+                    "| organized_file | recognized | expected | match | confidence | "
+                    "distance | segments |",
+                    "|---|---|---|---|---:|---:|---:|",
+                ]
+            )
+            representatives = group["representatives"]
+            assert isinstance(representatives, list)
+            for representative in representatives:
+                assert isinstance(representative, dict)
+                lines.append(
+                    f"| `{representative['organized_file']}` | "
+                    f"`{representative['recognized_digits']}` | "
+                    f"`{representative['expected_value']}` | "
+                    f"`{representative['match']}` | "
+                    f"{representative['confidence']} | "
+                    f"{representative['distance']} | "
+                    f"{representative['segment_count']} |"
+                )
+            lines.append("")
+
+    lines.extend(
+        [
+            "## Reading Notes",
+            "",
+            "- このレポートは confirmed-events 境界だけを対象にします。",
+            "- duplicate、`rejected_transition`、未確定候補、non-result は対象外です。",
+            "- `missing_reference` はテンプレート不足、`ambiguous` は距離や余白不足、"
+            "`failed_segmentation` は桁分割失敗、`not_evaluated` は期待値不足または"
+            "試行不足として読み分けます。",
+            "- 代表整理はレビュー補助であり、保存可否判定やDB保存実装ではありません。",
         ]
     )
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -7139,6 +7328,18 @@ def main(argv: list[str] | None = None) -> int:
             output_dir / "m7a_digit_save_candidate_summary.md",
             m7a_save_candidate_rows,
             m7a_save_candidate_summary,
+        )
+        m7a_save_candidate_review = summarize_m7a_digit_save_candidate_review(
+            m7a_save_candidate_rows,
+            m7a_digit_rois,
+        )
+        (output_dir / "m7a_digit_save_candidate_review.json").write_text(
+            json.dumps(m7a_save_candidate_review, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        write_m7a_digit_save_candidate_review_report(
+            output_dir / "m7a_digit_save_candidate_review.md",
+            m7a_save_candidate_review,
         )
     summary = summarize(classifications)
     (output_dir / "summary.json").write_text(

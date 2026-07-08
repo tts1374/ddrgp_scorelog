@@ -337,12 +337,13 @@ M5完了時点で固定すること:
 - 2026-07-08時点のローカル `miss` ROI別テンプレート配置後は、`score_digits`、`max_combo`、`marvelous`、`perfect`、`great`、`good`、`miss` の7 ROIで confirmed-events 60件ずつ、合計420/420 `recognized` / match。判定数ROIは明るい青背景を数字扱いしないよう高明度かつチャンネル差が大きい成分を除外している。`miss` はさらに右側数字領域へのfocus、白数字向けの明度 + チャンネル差mask、最小高さをROI別に絞っている。共有 `judgment_counts` だけでは `miss` が58/60 `ambiguous`、2/60 `recognized` になるため、ROI別テンプレートを使う。
 - 2026-07-08時点の `ex_score` M7a確認では、右側数字領域へのfocusとcomponent分割、既存 `max_combo` テンプレートfallbackにより、ROI別 `ex_score` テンプレートなしで confirmed-events 60/60 `recognized` / match になった。`score_digits` から `ex_score` までの8 ROI合計は480/480 `recognized` / match。分割診断は `segment_count_counts={1:1,3:30,4:29}`、`expected_digit_length_counts={1:1,3:30,4:29}`。この確認ではローカル `metadata.csv` の `result_087_sp_basic_lv06_888_score986610.png` の `ex_score` をROI表示どおり `593` に修正している。
 - `m7a_digit_save_candidate_summary.csv`、`m7a_digit_save_candidate_summary.json`、`m7a_digit_save_candidate_summary.md` で、confirmed-events 保存候補1件につき1行のM7a横持ち集約を追加済み。選択ROIごとに `recognized_digits`、`status`、`failure_reason`、`match`、`confidence`、`distance` を読み、`aggregate_status` は `all_digits_recognized` / `needs_digit_review` / `no_digit_rois` に留める。これはM8向けの数値読み取り材料であり、保存OK/NG判定やDB保存ではない。
+- `m7a_digit_save_candidate_review.json` と `m7a_digit_save_candidate_review.md` で、横持ち集約の `needs_digit_review` 行をROI別 status / failure reason ごとに代表化する補助レポートを追加済み。代表には `organized_file`、ROI名、`recognized_digits`、`expected_value`、`status`、`failure_reason`、`match`、`confidence`、`distance`、`segment_count` を含め、`missing_reference`、`ambiguous`、`failed_segmentation`、`not_evaluated` の読み分けを助ける。これも保存判定やDB保存ではない。
 
 やること:
 
 - ローカル `score_digits` テンプレート配置済み環境では、追加素材で1桁から7桁までの実画面サンプルが増えたときに同じ可変桁分割で再確認する。
 - `score_digits` のテンプレート余白、桁分割、距離しきい値を継続レビューし、過剰な `ambiguous` や誤認識があれば最小限で調整する。
-- 次は `m7a_digit_save_candidate_summary.*` をローカル60件で読み、`all_digits_recognized`、`needs_digit_review`、ROI別 status/failure reason の分布がM8へ渡す材料として足りるかを確認する。
+- 次は `m7a_digit_save_candidate_summary.*` と `m7a_digit_save_candidate_review.*` をローカル60件で読み、`all_digits_recognized`、`needs_digit_review`、ROI別 status/failure reason の分布と代表がM8へ渡す材料として足りるかを確認する。
 - 既存Tesseract出力との比較summaryを読み、差分代表を保存判定ではなくレビュー材料として整理する。
 - 出力は `data/` 配下に置き、テンプレート素材やローカル画像はGit管理しない。
 - fixtureテストで、正規化、桁分割、テンプレート選択、失敗理由の基本動作を継続確認する。

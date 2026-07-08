@@ -198,6 +198,9 @@
 - `m7a_digit_save_candidate_summary.csv`、`m7a_digit_save_candidate_summary.json`、`m7a_digit_save_candidate_summary.md` は confirmed-events 1件を1行にし、選択した数字ROIの `recognized_digits`、`status`、`failure_reason`、`match`、`confidence`、`distance` を横持ち集約する。
 - M7a save candidate summary の `aggregate_status` は `all_digits_recognized`、`needs_digit_review`、`no_digit_rois` に限り、保存OK/NG判定やDB保存成功として扱わない。
 - M7a save candidate summary でも duplicate、`event_type=rejected_transition`、未確定 `result_candidate`、non-result は対象外にする。
+- `m7a_digit_save_candidate_review.json` と `m7a_digit_save_candidate_review.md` は、M7a save candidate summary の `needs_digit_review` 行だけをROI別 status / failure reason ごとに代表化する。
+- M7a save candidate review の代表には `organized_file`、ROI名、`recognized_digits`、`expected_value`、`status`、`failure_reason`、`match`、`confidence`、`distance`、`segment_count` を含める。
+- M7a save candidate review は `missing_reference`、`ambiguous`、`failed_segmentation`、`not_evaluated` を読み分けるレビュー補助であり、保存OK/NG判定やDB保存成功として扱わない。
 - ローカル digit template 画像はGit管理しない。
 
 ## ROI方針
