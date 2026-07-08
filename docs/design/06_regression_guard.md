@@ -173,6 +173,39 @@
 - OCRエンジンがない環境でもPoCは落とさず、`engine_unavailable` として記録する。
 - 前処理画像を保存して目視確認できる状態を維持する。
 
+## M7a digit recognition
+
+- M7a digit recognition は confirmed-events 境界、つまり `confirmed_result=true` かつ `duplicate=false` だけを対象にする。
+- duplicate、`event_type=rejected_transition`、未確定 `result_candidate`、non-result は M7a digit recognition 対象外にする。
+- `score_digits` は0から1,000,000までの可変桁表示を扱い、固定6桁前提にしない。
+- `score_digits` はカンマや背景ノイズを数字として数えず、大きな数字成分だけを左から読む。
+- 1桁から7桁までの可変桁表示をfixtureで維持する。
+- `max_combo` はROI左側ラベルや下線を数字として数えず、右側数字領域の前景コンポーネントを分割する。
+- `marvelous` はROI左側ラベルや明るい青背景を数字として数えず、右側数字領域の前景コンポーネントを分割する。
+- `perfect` はROI左側ラベルや明るい青背景を数字として数えず、右側数字領域の前景コンポーネントを分割する。
+- `great` はROI左側ラベルや明るい青背景を数字として数えず、右側数字領域の前景コンポーネントを分割する。
+- `good` はROI左側ラベルや明るい青背景を数字として数えず、右側数字領域の前景コンポーネントを分割する。
+- `miss` はROI左側ラベル、短いマーカー、明るい青背景を数字として数えず、右側数字領域の白数字前景コンポーネントを分割する。
+- `ex_score` はROI左側ラベルを数字として数えず、右側数字領域の前景コンポーネントを分割する。
+- `max_combo`、`marvelous`、`perfect`、`great`、`good`、`miss`、`ex_score` は4桁fixtureでも分割・認識できる状態を維持する。
+- 判定数系テンプレートはROI別ディレクトリに加えて、共有 `judgment_counts` ディレクトリからも読める。
+- `miss` は共有 `judgment_counts` だけでは `ambiguous` になり得るため、ROI別ローカルテンプレートを優先する。
+- `max_combo` / `ex_score` 系テンプレートは、共通化候補として共有 `combo_ex_score` ディレクトリからも読める。
+- `ex_score` は共有 `combo_ex_score` がない環境でも、既存 `max_combo` テンプレートをfallbackとして読める。
+- M7a summary/report はROI別に `segment_count_counts` と `expected_digit_length_counts` を出し、テンプレート不足時でも分割数と期待桁数を確認できる。
+- `recognized`、`ambiguous`、`missing_reference`、`failed_segmentation`、`not_evaluated` の語彙を維持し、保存OK/NG判定と混同しない。
+- 同じ実行でTesseract結果がある場合だけ、`tesseract_comparison` を参考比較として読む。
+- `m7a_digit_save_candidate_summary.csv`、`m7a_digit_save_candidate_summary.json`、`m7a_digit_save_candidate_summary.md` は confirmed-events 1件を1行にし、選択した数字ROIの `recognized_digits`、`status`、`failure_reason`、`match`、`confidence`、`distance` を横持ち集約する。
+- M7a save candidate summary の `aggregate_status` は `all_digits_recognized`、`needs_digit_review`、`no_digit_rois` に限り、保存OK/NG判定やDB保存成功として扱わない。
+- M7a save candidate summary でも duplicate、`event_type=rejected_transition`、未確定 `result_candidate`、non-result は対象外にする。
+- `m7a_digit_save_candidate_review.json` と `m7a_digit_save_candidate_review.md` は、M7a save candidate summary の `needs_digit_review` 行だけをROI別 status / failure reason ごとに代表化する。
+- M7a save candidate review の代表には `organized_file`、ROI名、`recognized_digits`、`expected_value`、`status`、`failure_reason`、`match`、`confidence`、`distance`、`segment_count` を含める。
+- M7a save candidate review は `missing_reference`、`ambiguous`、`failed_segmentation`、`not_evaluated` を読み分けるレビュー補助であり、保存OK/NG判定やDB保存成功として扱わない。
+- `m7a_tesseract_comparison_review.json` と `m7a_tesseract_comparison_review.md` は、同じ実行内の M7a digit rows と default `score_ocr` rows だけを比較し、`same_normalized`、`different_normalized`、`tesseract_unavailable`、`m7a_unavailable` を代表化する。
+- M7a Tesseract comparison review は `m7a_digit_recognition_summary.json` の `tesseract_comparison` counts を置き換えない。代表には `organized_file`、ROI名、M7a `recognized_digits` / `status` / `failure_reason`、Tesseract raw / normalized / status / error、`expected_value`、M7a match、Tesseract match を含める。
+- M7a Tesseract comparison review も保存OK/NG判定、DB保存、OCR方式刷新として扱わない。
+- ローカル digit template 画像はGit管理しない。
+
 ## ROI方針
 
 - ROI座標は 1280x720 基準。

@@ -317,15 +317,37 @@ M5完了時点で固定すること:
 
 目的は、個人スコアDBへ保存する数値項目を、Tesseract OCR依存からテンプレート/画像特徴ベースのPoCへ切り出すことです。曲・譜面同定を扱うM5とは分け、DB保存を実装するM8より前に、保存値として使う数字の読み取り方式と失敗理由を固定します。
 
+現在地:
+
+- `--m7a-digit-recognition` で、confirmed-events 境界だけを対象にした非OCR数字認識PoCの最小入口を追加済み。
+- 初期対象は既定で `score_digits`。`--m7a-digit-rois all` で判定数ROIや `ex_score` へ広げられるが、採用判断はまだ行わない。
+- 桁分割した前景maskを、ローカル `digit_templates/<roi>/<digit>.png`、共有グループ、または `<root>/<digit>.png` のbitmapテンプレートと比較する。テンプレート画像はローカル素材でGit管理しない。判定数系は `digit_templates/judgment_counts/`、`max_combo` / `ex_score` 系は `digit_templates/combo_ex_score/` を共有候補として試せる。
+- `score_digits` は0から1,000,000までの可変桁表示を前提にし、カンマや背景ノイズを除いた大きな数字成分だけを左から読む。1桁から7桁までを固定6桁へ寄せない。
+- `max_combo` はROI左側ラベルや下線を除き、右側数字領域の前景コンポーネントを分割する。テンプレート不足時でも `segment_count_counts` と `expected_digit_length_counts` で分割数と期待桁数を確認できる。
+- 出力は `m7a_digit_recognition.csv`、`m7a_digit_recognition_summary.json`、`m7a_digit_recognition_report.md`。既存 `score_ocr.csv` / `score_ocr_summary.json` は壊さず、同じ実行にOCR結果がある場合だけ `tesseract_comparison` で比較する。
+- status は `recognized`、`ambiguous`、`missing_reference`、`failed_segmentation`、`not_evaluated` を分ける。これは保存値候補の読み取り材料であり、保存OK/NG判定やDB保存ではない。
+- 2026-07-07時点のローカル `score_digits` テンプレート配置後は、confirmed-events 60件で M7a が60/60 `recognized` / match。Tesseract比較ありの実行では、Tesseract側の余分な桁または先頭誤読との差分が3件、OCR未取得が1件だった。これはM7aの保存値候補観測であり、保存OK判定ではない。
+- 2026-07-07時点のローカル `max_combo` テンプレート配置後は、`score_digits` と `max_combo` の2 ROIで confirmed-events 60件ずつ、合計120/120 `recognized` / match。テンプレート配置前でも `max_combo` は `missing_reference` のまま分割分布が期待桁数分布と一致する。
+- 2026-07-07時点のローカル `marvelous` テンプレート配置後は、`score_digits`、`max_combo`、`marvelous` の3 ROIで confirmed-events 60件ずつ、合計180/180 `recognized` / match。テンプレート配置前でも `marvelous` は `missing_reference` のまま分割分布が期待桁数分布と一致する。
+- 2026-07-07時点のローカル `perfect` テンプレート配置後は、`score_digits`、`max_combo`、`marvelous`、`perfect` の4 ROIで confirmed-events 60件ずつ、合計240/240 `recognized` / match。テンプレート配置前でも `perfect` は `missing_reference` のまま分割分布が期待桁数分布と一致する。
+- `great`、`good`、`miss` を非OCR認識対象へ広げ、右側数字領域を分割・認識できるfixture、テンプレート不足時の分割数診断、共有 `judgment_counts` テンプレートだけで読めるfixtureを追加済み。
+- `max_combo`、`marvelous`、`perfect`、`great`、`good`、`miss` は4桁fixtureでも右側数字領域を分割・認識できる。`marvelous`、`perfect`、`great`、`good`、`miss` は共有 `judgment_counts` テンプレートだけでも認識できるfixtureを追加済み。
+- 2026-07-07時点のローカル `good` テンプレート配置後は、`score_digits`、`max_combo`、`marvelous`、`perfect`、`great`、`good` の6 ROIで confirmed-events 60件ずつ、合計360/360 `recognized` / match。`good` は左側ラベル由来成分を避けるため、右側数字領域へのfocusを `great` より少し強くしている。
+- 2026-07-07時点の共有 `judgment_counts` テンプレート確認でも、同じ6 ROI合計360/360 `recognized` / match。
+- 2026-07-08時点のローカル `miss` ROI別テンプレート配置後は、`score_digits`、`max_combo`、`marvelous`、`perfect`、`great`、`good`、`miss` の7 ROIで confirmed-events 60件ずつ、合計420/420 `recognized` / match。判定数ROIは明るい青背景を数字扱いしないよう高明度かつチャンネル差が大きい成分を除外している。`miss` はさらに右側数字領域へのfocus、白数字向けの明度 + チャンネル差mask、最小高さをROI別に絞っている。共有 `judgment_counts` だけでは `miss` が58/60 `ambiguous`、2/60 `recognized` になるため、ROI別テンプレートを使う。
+- 2026-07-08時点の `ex_score` M7a確認では、右側数字領域へのfocusとcomponent分割、既存 `max_combo` テンプレートfallbackにより、ROI別 `ex_score` テンプレートなしで confirmed-events 60/60 `recognized` / match になった。`score_digits` から `ex_score` までの8 ROI合計は480/480 `recognized` / match。分割診断は `segment_count_counts={1:1,3:30,4:29}`、`expected_digit_length_counts={1:1,3:30,4:29}`。この確認ではローカル `metadata.csv` の `result_087_sp_basic_lv06_888_score986610.png` の `ex_score` をROI表示どおり `593` に修正している。
+- `m7a_digit_save_candidate_summary.csv`、`m7a_digit_save_candidate_summary.json`、`m7a_digit_save_candidate_summary.md` で、confirmed-events 保存候補1件につき1行のM7a横持ち集約を追加済み。選択ROIごとに `recognized_digits`、`status`、`failure_reason`、`match`、`confidence`、`distance` を読み、`aggregate_status` は `all_digits_recognized` / `needs_digit_review` / `no_digit_rois` に留める。これはM8向けの数値読み取り材料であり、保存OK/NG判定やDB保存ではない。
+- `m7a_digit_save_candidate_review.json` と `m7a_digit_save_candidate_review.md` で、横持ち集約の `needs_digit_review` 行をROI別 status / failure reason ごとに代表化する補助レポートを追加済み。代表には `organized_file`、ROI名、`recognized_digits`、`expected_value`、`status`、`failure_reason`、`match`、`confidence`、`distance`、`segment_count` を含め、`missing_reference`、`ambiguous`、`failed_segmentation`、`not_evaluated` の読み分けを助ける。これも保存判定やDB保存ではない。
+- `m7a_tesseract_comparison_review.json` と `m7a_tesseract_comparison_review.md` で、同じ実行内のM7a数字認識結果と既存Tesseract OCR結果の比較差分を代表化する補助レポートを追加済み。既存 `m7a_digit_recognition_summary.json` の `tesseract_comparison` counts は維持し、`same_normalized`、`different_normalized`、`tesseract_unavailable`、`m7a_unavailable` の代表から、Tesseract差分や未取得理由をROI別に確認する。これも保存判定、DB保存、OCR方式刷新ではない。
+
 やること:
 
-- confirmed-eventsだけを対象にする。
-- `score_digits`、`max_combo`、`marvelous`、`perfect`、`great`、`good`、`miss`、`ex_score` の数字ROIを対象にする。
-- Tesseractではなく、テンプレート、桁分割、画像特徴などのOCR非依存方式で数字候補を出す。
-- 既存Tesseract出力と比較できるsummaryを出す。
-- ROIごとに `recognized` / `ambiguous` / `missing_reference` / `failed_segmentation` などの失敗理由を出す。
+- ローカル `score_digits` テンプレート配置済み環境では、追加素材で1桁から7桁までの実画面サンプルが増えたときに同じ可変桁分割で再確認する。
+- `score_digits` のテンプレート余白、桁分割、距離しきい値を継続レビューし、過剰な `ambiguous` や誤認識があれば最小限で調整する。
+- 次はM7保存判定またはM8個人スコアDB保存へ進む。M7aの数字読み取り材料は、`m7a_digit_save_candidate_summary.*`、`m7a_digit_save_candidate_review.*`、`m7a_tesseract_comparison_review.*` を合わせて確認する。
+- 既存Tesseract出力との比較summaryを読み、差分代表を保存判定ではなくレビュー材料として整理する。
 - 出力は `data/` 配下に置き、テンプレート素材やローカル画像はGit管理しない。
-- fixtureテストで、正規化、桁分割、テンプレート選択、失敗理由の基本動作を確認する。
+- fixtureテストで、正規化、桁分割、テンプレート選択、失敗理由の基本動作を継続確認する。
 
 完了条件:
 
