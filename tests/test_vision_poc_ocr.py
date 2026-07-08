@@ -1929,6 +1929,7 @@ def test_m7a_digit_recognition_reports_segment_count_without_reference(
         ("perfect", "perfect"),
         ("great", "great"),
         ("good", "good"),
+        ("miss", "miss"),
     ],
 )
 def test_m7a_digit_recognition_segments_four_digit_judgment_counts(
@@ -1971,7 +1972,9 @@ def test_m7a_digit_recognition_segments_four_digit_judgment_counts(
     assert result.match is True
 
 
-@pytest.mark.parametrize("roi_name", ["max_combo", "marvelous", "perfect", "great", "good"])
+@pytest.mark.parametrize(
+    "roi_name", ["max_combo", "marvelous", "perfect", "great", "good", "miss"]
+)
 def test_m7a_digit_recognition_reports_four_digit_segment_count_without_reference(
     tmp_path: Path,
     roi_name: str,
@@ -2147,7 +2150,7 @@ def test_m7a_digit_recognition_reports_perfect_segment_count_without_reference(
     assert result.segment_count == 3
 
 
-@pytest.mark.parametrize("roi_name", ["great", "good"])
+@pytest.mark.parametrize("roi_name", ["great", "good", "miss"])
 def test_m7a_digit_recognition_segments_judgment_digit_area(
     tmp_path: Path,
     roi_name: str,
@@ -2187,7 +2190,7 @@ def test_m7a_digit_recognition_segments_judgment_digit_area(
     assert result.match is True
 
 
-@pytest.mark.parametrize("roi_name", ["great", "good"])
+@pytest.mark.parametrize("roi_name", ["great", "good", "miss"])
 def test_m7a_digit_recognition_reports_judgment_segment_count_without_reference(
     tmp_path: Path,
     roi_name: str,
@@ -2223,7 +2226,49 @@ def test_m7a_digit_recognition_reports_judgment_segment_count_without_reference(
     assert result.segment_count == 3
 
 
-@pytest.mark.parametrize("roi_name", ["marvelous", "perfect", "great", "good"])
+def test_m7a_digit_recognition_ignores_miss_short_marker_without_reference(
+    tmp_path: Path,
+) -> None:
+    image_path = tmp_path / "result_miss0_marker.png"
+    write_digit_roi_image(
+        image_path,
+        roi_name="miss",
+        digits="0",
+        expected_label_noise=True,
+    )
+    with Image.open(image_path) as image:
+        draw = ImageDraw.Draw(image)
+        left, top, _right, _bottom = runner.scaled_box(
+            image, runner.ROI_DEFINITIONS["miss"]
+        )
+        draw.rectangle((left + 190, top + 17, left + 194, top + 26), fill="white")
+        image.save(image_path)
+
+    frame = runner.FrameInput(
+        row={
+            "organized_file": "result_miss0_marker.png",
+            "screen_type": "result",
+            "miss": "0",
+        },
+        image_path=image_path,
+    )
+    event = result_event("result_miss0_marker.png", confirmed_result=True)
+
+    with Image.open(image_path) as image:
+        result = runner.process_m7a_digit_roi(
+            image.convert("RGB"),
+            frame,
+            event,
+            "miss",
+            [],
+        )
+
+    assert result.status == "missing_reference"
+    assert result.failure_reason == "missing_digit_templates=0123456789"
+    assert result.segment_count == 1
+
+
+@pytest.mark.parametrize("roi_name", ["marvelous", "perfect", "great", "good", "miss"])
 def test_m7a_digit_recognition_uses_shared_judgment_count_templates(
     tmp_path: Path,
     roi_name: str,
@@ -2278,6 +2323,11 @@ def test_m7a_digit_template_search_roots_include_future_shared_groups(
     ]
     assert runner.m7a_digit_template_search_roots(template_root, "good") == [
         template_root / "good",
+        template_root / "judgment_counts",
+        template_root,
+    ]
+    assert runner.m7a_digit_template_search_roots(template_root, "miss") == [
+        template_root / "miss",
         template_root / "judgment_counts",
         template_root,
     ]

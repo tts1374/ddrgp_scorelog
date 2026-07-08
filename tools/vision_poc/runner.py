@@ -308,9 +308,16 @@ M7A_DIGIT_FOCUS_LEFT_FRACTIONS: dict[str, float] = {
     "perfect": 0.52,
     "great": 0.52,
     "good": 0.55,
+    "miss": 0.55,
+}
+M7A_COMPONENT_MIN_HEIGHT_FRACTIONS: dict[str, float] = {
+    "miss": 0.45,
+}
+M7A_COMPONENT_MAX_WIDTH_HEIGHT_RATIOS: dict[str, float] = {
+    "miss": 1.6,
 }
 M7A_COMPONENT_SEGMENT_ROIS = frozenset(
-    {"max_combo", "marvelous", "perfect", "great", "good"}
+    {"max_combo", "marvelous", "perfect", "great", "good", "miss"}
 )
 M7A_DIGIT_TEMPLATE_GROUPS: dict[str, tuple[str, ...]] = {
     "marvelous": ("judgment_counts",),
@@ -1663,13 +1670,23 @@ def segment_m7a_score_digit_masks(mask: np.ndarray) -> list[np.ndarray]:
     ]
 
 
-def segment_m7a_component_digit_masks(mask: np.ndarray) -> list[np.ndarray]:
+def segment_m7a_component_digit_masks(
+    mask: np.ndarray, roi_name: str = ""
+) -> list[np.ndarray]:
     height, _width = mask.shape
-    min_digit_height = max(10, int(height * 0.35))
+    min_height_fraction = M7A_COMPONENT_MIN_HEIGHT_FRACTIONS.get(roi_name, 0.35)
+    min_digit_height = max(10, int(height * min_height_fraction))
+    max_width_height_ratio = M7A_COMPONENT_MAX_WIDTH_HEIGHT_RATIOS.get(roi_name)
     digit_components = [
         (left, top, right, bottom, area)
         for left, top, right, bottom, area in m7a_mask_components(mask)
-        if bottom - top >= min_digit_height and right - left >= 2 and area >= 20
+        if bottom - top >= min_digit_height
+        and right - left >= 2
+        and area >= 20
+        and (
+            max_width_height_ratio is None
+            or (right - left) / (bottom - top) <= max_width_height_ratio
+        )
     ]
     return [
         mask[top:bottom, left:right]
@@ -1687,7 +1704,7 @@ def segment_m7a_digit_masks(image: Image.Image, roi_name: str = "") -> list[np.n
         if score_segments:
             return score_segments
     if roi_name in M7A_COMPONENT_SEGMENT_ROIS:
-        component_segments = segment_m7a_component_digit_masks(mask)
+        component_segments = segment_m7a_component_digit_masks(mask, roi_name)
         if component_segments:
             return component_segments
 
