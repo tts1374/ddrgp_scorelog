@@ -2090,6 +2090,7 @@ def test_m7_save_readiness_review_combines_m3_and_digit_materials(
     rows = runner.m7_save_readiness_review_rows(
         [
             m3_row("ready.png", "ready", ""),
+            m3_row("song_artist_only_blocked.png", "not_ready", "song_title artist"),
             m3_row("m3_blocked.png", "not_ready", "artist difficulty"),
             m3_row("digit_blocked.png", "ready", ""),
             m3_row("missing_digit.png", "ready", ""),
@@ -2098,6 +2099,7 @@ def test_m7_save_readiness_review_combines_m3_and_digit_materials(
         ],
         [
             digit_row("ready.png", "all_digits_recognized", ""),
+            digit_row("song_artist_only_blocked.png", "all_digits_recognized", ""),
             digit_row("m3_blocked.png", "all_digits_recognized", ""),
             digit_row("digit_blocked.png", "needs_digit_review", "miss"),
             digit_row("identity_blocked.png", "all_digits_recognized", ""),
@@ -2106,6 +2108,12 @@ def test_m7_save_readiness_review_combines_m3_and_digit_materials(
         [
             m5_row(
                 "ready.png",
+                "jacket_resolved_candidate",
+                "jacket_feature",
+                "matched",
+            ),
+            m5_row(
+                "song_artist_only_blocked.png",
                 "jacket_resolved_candidate",
                 "jacket_feature",
                 "matched",
@@ -2133,35 +2141,49 @@ def test_m7_save_readiness_review_combines_m3_and_digit_materials(
 
     assert [row["readiness_status"] for row in rows] == [
         "ready_for_save_review",
+        "ready_for_save_review",
         "blocked_m3_material",
         "blocked_digit_review",
         "missing_required_material",
         "blocked_identity_signal",
         "missing_required_material",
     ]
-    assert rows[1]["readiness_blockers"] == "artist difficulty"
-    assert rows[2]["readiness_blockers"] == "miss"
-    assert rows[3]["readiness_blockers"] == "m7a_digit_summary_missing"
-    assert rows[4]["readiness_blockers"] == "m5_identity_signal_unresolved"
-    assert rows[5]["readiness_blockers"] == "m5_jacket_match_missing"
+    assert rows[1]["m3_blocking_fields"] == "song_title artist"
+    assert rows[1]["m7_m3_material_status"] == "m7_m3_ready"
+    assert rows[1]["m7_m3_blocking_fields"] == ""
+    assert rows[2]["readiness_blockers"] == "artist difficulty"
+    assert rows[2]["m7_m3_blocking_fields"] == "artist difficulty"
+    assert rows[3]["readiness_blockers"] == "miss"
+    assert rows[4]["readiness_blockers"] == "m7a_digit_summary_missing"
+    assert rows[5]["readiness_blockers"] == "m5_identity_signal_unresolved"
+    assert rows[6]["readiness_blockers"] == "m5_jacket_match_missing"
     assert rows[0]["m5_identity_material_status"] == "m5_identity_reviewable"
-    assert rows[4]["m5_identity_material_status"] == "m5_identity_not_reviewable"
-    assert rows[5]["m5_identity_material_status"] == "m5_jacket_match_missing"
+    assert rows[5]["m5_identity_material_status"] == "m5_identity_not_reviewable"
+    assert rows[6]["m5_identity_material_status"] == "m5_jacket_match_missing"
 
     no_m5_rows = runner.m7_save_readiness_review_rows(
-        [m3_row("ready_without_m5.png", "ready", "")],
-        [digit_row("ready_without_m5.png", "all_digits_recognized", "")],
+        [
+            m3_row("ready_without_m5.png", "ready", ""),
+            m3_row("song_artist_only_without_m5.png", "not_ready", "song_title artist"),
+        ],
+        [
+            digit_row("ready_without_m5.png", "all_digits_recognized", ""),
+            digit_row("song_artist_only_without_m5.png", "all_digits_recognized", ""),
+        ],
     )
     assert no_m5_rows[0]["readiness_status"] == "ready_for_save_review"
     assert no_m5_rows[0]["m5_identity_material_status"] == "m5_not_run"
+    assert no_m5_rows[1]["readiness_status"] == "blocked_m3_material"
+    assert no_m5_rows[1]["m7_m3_blocking_fields"] == "song_title artist"
 
     csv_path = tmp_path / "m7_save_readiness_review.csv"
     runner.write_m7_save_readiness_review_csv(csv_path, rows)
     csv_rows = read_csv_rows(csv_path)
     assert csv_rows[0]["readiness_status"] == "ready_for_save_review"
-    assert csv_rows[2]["m7a_digit_review_rois"] == "miss"
+    assert csv_rows[1]["m7_m3_material_status"] == "m7_m3_ready"
+    assert csv_rows[3]["m7a_digit_review_rois"] == "miss"
     assert csv_rows[0]["m5_identity_signal_status"] == "jacket_resolved_candidate"
-    assert csv_rows[4]["m5_jacket_match_status"] == "ambiguous"
+    assert csv_rows[5]["m5_jacket_match_status"] == "ambiguous"
 
     summary = runner.summarize_m7_save_readiness_review(rows)
     assert summary["scope"] == "M7 save readiness review before DB save"
@@ -2169,28 +2191,32 @@ def test_m7_save_readiness_review_combines_m3_and_digit_materials(
         "m3_save_candidate_summary_rows, m7a_digit_save_candidate_summary_rows, "
         "and optional m5_jacket_match_rows"
     )
-    assert summary["target_count"] == 6
+    assert summary["target_count"] == 7
     assert summary["readiness_status_counts"] == {
         "blocked_digit_review": 1,
         "blocked_identity_signal": 1,
         "blocked_m3_material": 1,
         "missing_required_material": 2,
-        "ready_for_save_review": 1,
+        "ready_for_save_review": 2,
     }
-    assert summary["m3_overall_status_counts"] == {"not_ready": 1, "ready": 5}
+    assert summary["m3_overall_status_counts"] == {"not_ready": 2, "ready": 5}
+    assert summary["m7_m3_material_status_counts"] == {
+        "m7_m3_blocked": 1,
+        "m7_m3_ready": 6,
+    }
     assert summary["m7a_digit_aggregate_status_counts"] == {
-        "all_digits_recognized": 4,
+        "all_digits_recognized": 5,
         "missing": 1,
         "needs_digit_review": 1,
     }
     assert summary["m5_identity_material_status_counts"] == {
         "m5_identity_not_reviewable": 2,
-        "m5_identity_reviewable": 2,
+        "m5_identity_reviewable": 3,
         "m5_jacket_match_missing": 2,
     }
     assert summary["m5_identity_signal_status_counts"] == {
         "composite_resolved_candidate": 1,
-        "jacket_resolved_candidate": 1,
+        "jacket_resolved_candidate": 2,
         "missing": 2,
         "unresolved_ambiguous": 2,
     }

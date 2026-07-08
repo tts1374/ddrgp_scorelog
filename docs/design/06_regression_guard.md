@@ -213,6 +213,9 @@
 - duplicate、`event_type=rejected_transition`、未確定 `result_candidate`、non-result は対象外にする。
 - M5未実行時はM3材料とM7a数字材料だけで従来どおりレビューする。
 - M5入力がある場合、`identity_signal_status=jacket_resolved_candidate` / `composite_resolved_candidate` だけをレビュー可能なM5候補観測として扱う。
+- M5 identity材料がレビュー可能な場合、`song_title` / `artist` OCR不足だけでは `blocked_m3_material` にしない。
+- `m3_blocking_fields` は元のM3集約の未ready項目として維持し、M7保存前レビュー上のM3 blockerは `m7_m3_blocking_fields` として別に読む。
+- M5未実行時は `song_title` / `artist` 不足もM3 blockerとして扱い、従来のM3 + M7aレビュー境界を維持する。
 - readiness status は `ready_for_save_review`、`blocked_m3_material`、`blocked_digit_review`、`blocked_identity_signal`、`missing_required_material` に限る。
 - `ready_for_save_review` はPoC材料が揃った状態であり、保存OK/NG判定、DB保存成功、曲ID/譜面ID確定として扱わない。
 - `identity_signal_*` は候補観測であり、曲ID/譜面ID確定として扱わない。

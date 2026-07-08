@@ -313,7 +313,7 @@ M5完了時点で固定すること:
 - `m7_save_readiness_review.csv`、`m7_save_readiness_review.json`、`m7_save_readiness_review.md` で、M3保存候補材料、M7a数字材料、任意のM5 jacket候補観測を confirmed-events 1件単位に束ねる保存判定前レビュー入口を追加済み。
 - 入力は `m3_save_candidate_summary_rows`、`m7a_digit_save_candidate_summary_rows`、任意の `jacket_match_rows` とし、duplicate、`rejected_transition`、未確定候補、non-result は対象外のまま維持する。
 - readiness status は `ready_for_save_review`、`blocked_m3_material`、`blocked_digit_review`、`blocked_identity_signal`、`missing_required_material`。`ready_for_save_review` は保存判定へ進むためのPoC材料が揃った状態であり、保存OK、DB保存成功、曲ID/譜面ID確定ではない。
-- `--m5-jacket-match` 実行時は `identity_signal_*` / `jacket_match_status` を参照列として取り込み、`identity_signal_status=jacket_resolved_candidate` / `composite_resolved_candidate` だけをM5側レビュー可能材料として扱う。M5未実行時は従来どおりM3 + M7a材料だけでレビューする。
+- `--m5-jacket-match` 実行時は `identity_signal_*` / `jacket_match_status` を参照列として取り込み、`identity_signal_status=jacket_resolved_candidate` / `composite_resolved_candidate` だけをM5側レビュー可能材料として扱う。M5 identity材料がレビュー可能な場合は `song_title` / `artist` OCR不足だけでは `blocked_m3_material` にせず、元のM3 blockerは `m3_blocking_fields`、M7保存前レビュー上のM3 blockerは `m7_m3_blocking_fields` として分ける。M5未実行時は従来どおりM3 + M7a材料だけでレビューする。
 - 現時点ではDB insert、低確信度ログ本番仕様、保存値本番確定には進んでいない。
 
 完了条件:

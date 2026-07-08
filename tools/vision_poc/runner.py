@@ -363,6 +363,7 @@ M7_REVIEWABLE_IDENTITY_SIGNAL_STATUSES = (
     "jacket_resolved_candidate",
     "composite_resolved_candidate",
 )
+M7_M3_OPTIONAL_IDENTITY_FIELDS_WHEN_M5_REVIEWABLE = M3_SONG_ARTIST_OCR_FIELDS
 M3_SONG_ARTIST_ENTRY_FAILURE_REASONS = (
     "engine_unavailable",
     "ocr_failed",
@@ -2933,7 +2934,7 @@ def write_m7a_digit_save_candidate_review_report(
                     f"{representative['distance']} | "
                     f"{representative['segment_count']} |"
                 )
-            lines.append("")
+        lines.append("")
 
     lines.extend(
         [
@@ -2955,8 +2956,8 @@ def m7_save_readiness_status(
     digit_row: dict[str, str] | None,
     m5_identity_material_status: str,
 ) -> tuple[str, str]:
-    m3_blockers = m3_row.get("blocking_fields", "")
-    if m3_row.get("overall_status") != "ready":
+    m3_blockers = m7_m3_blocking_fields(m3_row, m5_identity_material_status)
+    if m3_blockers:
         return "blocked_m3_material", m3_blockers
     if digit_row is None:
         return "missing_required_material", "m7a_digit_summary_missing"
@@ -2982,6 +2983,27 @@ def m7_identity_material_status(jacket_row: dict[str, str] | None) -> str:
     return "m5_identity_not_reviewable"
 
 
+def m7_m3_blocking_fields(
+    m3_row: dict[str, str],
+    m5_identity_material_status: str,
+) -> str:
+    if m3_row.get("overall_status") == "ready":
+        return ""
+
+    original_blockers = m3_row.get("blocking_fields", "")
+    blocking_fields = original_blockers.split()
+    if m5_identity_material_status == "m5_identity_reviewable":
+        blocking_fields = [
+            field_name
+            for field_name in blocking_fields
+            if field_name not in M7_M3_OPTIONAL_IDENTITY_FIELDS_WHEN_M5_REVIEWABLE
+        ]
+        if not blocking_fields and original_blockers:
+            return ""
+
+    return " ".join(blocking_fields) if blocking_fields else "unknown_m3_material"
+
+
 def m7_save_readiness_review_rows(
     m3_rows: Iterable[dict[str, str]],
     digit_rows: Iterable[dict[str, str]],
@@ -2998,6 +3020,7 @@ def m7_save_readiness_review_rows(
         m5_identity_material_status = (
             "m5_not_run" if m5_by_file is None else m7_identity_material_status(m5_row)
         )
+        m7_m3_blockers = m7_m3_blocking_fields(m3_row, m5_identity_material_status)
         readiness_status, readiness_blockers = m7_save_readiness_status(
             m3_row,
             digit_row,
@@ -3016,6 +3039,10 @@ def m7_save_readiness_review_rows(
             "readiness_blockers": readiness_blockers,
             "m3_overall_status": m3_row["overall_status"],
             "m3_blocking_fields": m3_row["blocking_fields"],
+            "m7_m3_material_status": (
+                "m7_m3_ready" if not m7_m3_blockers else "m7_m3_blocked"
+            ),
+            "m7_m3_blocking_fields": m7_m3_blockers,
             "m7a_digit_aggregate_status": (
                 "" if digit_row is None else digit_row["aggregate_status"]
             ),
@@ -3064,6 +3091,8 @@ def write_m7_save_readiness_review_csv(
         "readiness_blockers",
         "m3_overall_status",
         "m3_blocking_fields",
+        "m7_m3_material_status",
+        "m7_m3_blocking_fields",
         "m7a_digit_aggregate_status",
         "m7a_digit_review_rois",
         "m5_identity_material_status",
@@ -3088,6 +3117,8 @@ def m7_save_readiness_representative(row: dict[str, str]) -> dict[str, str]:
         "readiness_blockers": row["readiness_blockers"],
         "m3_overall_status": row["m3_overall_status"],
         "m3_blocking_fields": row["m3_blocking_fields"],
+        "m7_m3_material_status": row["m7_m3_material_status"],
+        "m7_m3_blocking_fields": row["m7_m3_blocking_fields"],
         "m7a_digit_aggregate_status": row["m7a_digit_aggregate_status"],
         "m7a_digit_review_rois": row["m7a_digit_review_rois"],
         "m5_identity_material_status": row["m5_identity_material_status"],
@@ -3105,6 +3136,7 @@ def summarize_m7_save_readiness_review(
     row_list = list(rows)
     readiness_status_counts: dict[str, int] = {}
     m3_status_counts: dict[str, int] = {}
+    m7_m3_material_status_counts: dict[str, int] = {}
     digit_status_counts: dict[str, int] = {}
     m5_identity_material_status_counts: dict[str, int] = {}
     m5_identity_signal_status_counts: dict[str, int] = {}
@@ -3116,6 +3148,10 @@ def summarize_m7_save_readiness_review(
         )
         m3_status = row["m3_overall_status"]
         m3_status_counts[m3_status] = m3_status_counts.get(m3_status, 0) + 1
+        m7_m3_status = row["m7_m3_material_status"]
+        m7_m3_material_status_counts[m7_m3_status] = (
+            m7_m3_material_status_counts.get(m7_m3_status, 0) + 1
+        )
         digit_status = row["m7a_digit_aggregate_status"] or "missing"
         digit_status_counts[digit_status] = digit_status_counts.get(digit_status, 0) + 1
         m5_identity_material_status = row["m5_identity_material_status"]
@@ -3153,6 +3189,9 @@ def summarize_m7_save_readiness_review(
         "target_count": len(row_list),
         "readiness_status_counts": dict(sorted(readiness_status_counts.items())),
         "m3_overall_status_counts": dict(sorted(m3_status_counts.items())),
+        "m7_m3_material_status_counts": dict(
+            sorted(m7_m3_material_status_counts.items())
+        ),
         "m7a_digit_aggregate_status_counts": dict(sorted(digit_status_counts.items())),
         "m5_identity_material_status_counts": dict(
             sorted(m5_identity_material_status_counts.items())
@@ -3180,6 +3219,10 @@ def summarize_m7_save_readiness_review(
             "ready_for_save_review means required PoC materials are present for review.",
             "It is not a DB save allow decision and does not confirm song_id or chart_id.",
             "M5 identity_signal_* values are candidate observations, not confirmed IDs.",
+            (
+                "When M5 identity material is reviewable, song_title and artist OCR "
+                "blockers are treated as optional M7 diagnostics."
+            ),
             "duplicate, rejected_transition, unconfirmed, and non-result rows are excluded.",
         ],
     }
@@ -3203,6 +3246,8 @@ def write_m7_save_readiness_review_report(
         f"- target confirmed-events: {summary['target_count']}",
         f"- readiness status counts: "
         f"`{json.dumps(summary['readiness_status_counts'], ensure_ascii=False)}`",
+        f"- M7 M3 material status counts: "
+        f"`{json.dumps(summary['m7_m3_material_status_counts'], ensure_ascii=False)}`",
         f"- M5 identity material status counts: "
         f"`{json.dumps(summary['m5_identity_material_status_counts'], ensure_ascii=False)}`",
         f"- M5 identity signal status counts: "
@@ -3234,9 +3279,9 @@ def write_m7_save_readiness_review_report(
             [
                 f"### `{group['readiness_status']}` / `{blockers}`",
                 "",
-                "| organized_file | M3 | M3 blockers | M7a digits | "
+                "| organized_file | M3 | M3 blockers | M7 M3 blockers | M7a digits | "
                 "digit review ROIs | M5 identity | M5 source | jacket |",
-                "|---|---|---|---|---|---|---|---|",
+                "|---|---|---|---|---|---|---|---|---|",
             ]
         )
         for representative in representatives:
@@ -3245,6 +3290,7 @@ def write_m7_save_readiness_review_report(
                 f"| `{representative['organized_file']}` | "
                 f"`{representative['m3_overall_status']}` | "
                 f"`{representative['m3_blocking_fields']}` | "
+                f"`{representative['m7_m3_blocking_fields']}` | "
                 f"`{representative['m7a_digit_aggregate_status']}` | "
                 f"`{representative['m7a_digit_review_rois']}` | "
                 f"`{representative['m5_identity_signal_status']}` | "
@@ -3255,12 +3301,46 @@ def write_m7_save_readiness_review_report(
 
     lines.extend(
         [
+            "## Status Next Actions",
+            "",
+            "| readiness | next action |",
+            "|---|---|",
+            (
+                "| `ready_for_save_review` | M7保存判定ロジックへ渡す前の"
+                "レビュー材料として確認する。DB保存OK扱いにはしない。 |"
+            ),
+            (
+                "| `blocked_m3_material` | `m7_m3_blocking_fields` の譜面材料不足を"
+                "確認する。M5 identity reviewable時の `song_title` / `artist` "
+                "OCR不足は診断扱い。 |"
+            ),
+            (
+                "| `blocked_digit_review` | M7a数字ROIの `review_rois` を確認し、"
+                "テンプレート不足、曖昧、分割失敗、期待値不足を分ける。 |"
+            ),
+            (
+                "| `blocked_identity_signal` | M5候補観測が未解決のため、"
+                "jacket / composite の代表と参照不足を確認する。 |"
+            ),
+            (
+                "| `missing_required_material` | M7a集約やM5入力行など、"
+                "レビューに必要なPoC材料の欠落を先に補う。 |"
+            ),
+            "",
+        ]
+    )
+
+    lines.extend(
+        [
             "## Reading Notes",
             "",
             "- `ready_for_save_review` は保存前レビュー材料が揃っていることだけを表し、"
             "DB保存可能を意味しません。",
             "- `blocked_m3_material` はM3の曲名/artist/chart-field材料に"
-            "未ready項目がある状態です。",
+            "未ready項目がある状態です。ただしM5 identity材料がレビュー可能な場合、"
+            "`song_title` / `artist` OCR不足だけではM7保存前レビューを止めません。",
+            "- `m3_blocking_fields` は元のM3集約の未ready項目、"
+            "`m7_m3_blocking_fields` はM7保存前レビュー上のM3 blockerです。",
             "- `blocked_digit_review` はM7a数字材料にレビュー対象ROIがある状態です。",
             "- `blocked_identity_signal` はM5実行時にM5候補観測が"
             "未解決の状態です。",
