@@ -320,6 +320,8 @@ M5完了時点で固定すること:
 - `m7_save_decision_preview.json` / Markdown は、`preview_save_candidate` の M5 source、jacket status、identity signal status の件数と代表、`needs_identity_review` の理由別代表、`needs_digit_review` のROI別代表を出す。これはM8へ渡す前の診断補助であり、DB保存可否判定ではない。
 - `m8_save_payload_preview.csv`、`m8_save_payload_preview.json`、`m8_save_payload_preview.md` で、M7 preview行から将来DB保存へ渡すならどの材料になるかをdry-run payloadとして確認する入口を追加済み。入力は `m7_save_decision_preview_rows` で、`preview_save_candidate` 以外は `unsupported_preview_status` としてpayload材料から除外する。
 - M8 dry-run status は `payload_ready`、`missing_identity_candidate`、`missing_digit_value`、`unsupported_preview_status`。`payload_ready` はM8本実装前の仮payload材料が揃った状態であり、DB保存可能、保存成功、曲ID/譜面ID確定、保存値確定ではない。
+- `m8_planned_play_records.csv`、`m8_planned_play_records.json`、`m8_planned_play_records.md` で、`payload_ready` 行だけを個人スコアDB `plays` 相当の最小row contractへ変換する入口を追加済み。`unsupported_preview_status`、`missing_identity_candidate`、`missing_digit_value` は保存予定レコードへ変換しない。
+- 最小 `plays` スキーマは in-memory SQLite fixtureで固定し、実ファイルDB生成や本番insertにはまだ進まない。`song_id` / `chart_id` はM5候補観測、数字列はM7a候補値のまま扱う。
 - 現時点ではDB insert、低確信度ログ本番仕様、保存値本番確定には進んでいない。
 
 完了条件:
@@ -380,12 +382,14 @@ M5完了時点で固定すること:
 - `m8_save_payload_preview.*` は `m7_save_decision_preview_rows` を入力にし、`preview_save_candidate` だけをpayload候補として扱う。
 - `payload_ready` は候補IDとM7a数字列が揃ったdry-run状態であり、保存OKやDB保存成功ではない。
 - `preview_save_candidate` 以外は `excluded_preview_status_counts` と代表で読み、payload材料へ昇格しない。
+- `m8_planned_play_records.*` は `payload_ready` だけを `plays` 最小列へ写す保存予定レコードプレビューで、DB保存成功、曲ID/譜面ID確定、保存値確定ではない。
+- `plays` の最小スキーマは in-memory SQLite fixtureで検証し、ローカルDBファイルは生成しない。
 
 やること:
 
-- dry-run payload previewの読み方を保ったまま、次にDBスキーマとinsert境界を別フェーズとして設計する。
-- `ddrgp-scores.sqlite` のスキーマを定義する。
-- `plays` テーブルを実装する。
+- dry-run payload previewと保存予定レコードプレビューの読み方を保ったまま、次にDBファイル生成とinsert境界を別フェーズとして設計する。
+- `ddrgp-scores.sqlite` の正式スキーマを定義する。
+- `plays` テーブルのマイグレーション、insert、保存スキップ境界を実装する。
 - マスタDBバージョン、曲ID、譜面ID、OCR結果、スコア、判定数、画像ハッシュ、解析確信度を保存する。
 - 重複保存防止をDB保存直前にも適用する。
 - マイグレーション方針を決める。

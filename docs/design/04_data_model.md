@@ -281,6 +281,28 @@ M8 PoCでは、DB保存用 `save_decision` ではなく dry-run payload preview 
 
 `payload_ready` は `preview_save_candidate` から将来DBへ渡すなら使う材料が揃った状態であり、`save`、DB保存成功、曲ID/譜面ID確定、保存値確定を意味しない。`missing_identity_candidate` はM5候補観測の song/chart ID欠落、`missing_digit_value` はM7a recognized digits 欠落、`unsupported_preview_status` はM7 preview上でまだpayload対象外の行として読む。`m8_save_payload_preview.*` の数字値はM7aの `*_recognized_digits` を写した候補値で、`*_expected_value` / `*_match` はレビュー材料に留める。
 
+M8の保存予定レコードプレビューでは、`m8_save_payload_preview_rows` の `payload_ready` 行だけを `plays` 最小row contractへ変換する。最小列は以下に限定する。
+
+- `played_at_ms`
+- `song_id`
+- `chart_id`
+- `score`
+- `max_combo`
+- `marvelous`
+- `perfect`
+- `great`
+- `good`
+- `miss`
+- `ex_score`
+- `source_organized_file`
+- `source_confirmation_mode`
+- `analysis_payload_status`
+- `identity_signal_source`
+- `m5_identity_signal_status`
+- `m5_jacket_match_status`
+
+`played_at_ms` は `timestamp_ms` 由来の暫定値で、timestampなし入力では `0` として扱う。`song_id` / `chart_id` はM5 `identity_signal_*` 由来の候補観測、スコア・判定数はM7a `recognized_digits` 由来の候補値であり、保存用確定IDや保存値確定ではない。この最小契約はin-memory SQLite fixtureで `plays` スキーマへ挿入できることを確認するためのもので、実DBファイル生成やDB保存成功を意味しない。
+
 ## 重複保存防止
 
 PoCでは簡易 `duplicate_key` を使うが、本番では以下を組み合わせる。

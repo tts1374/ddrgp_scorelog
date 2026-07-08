@@ -209,6 +209,8 @@ data/master/ddrgp-master.sqlite
 ddrgp-scores.sqlite
 ```
 
+M8の保存予定レコードプレビューでは、まず in-memory SQLite fixtureで `plays` 最小スキーマとrow contractを確認する。実ファイルDBを生成する場合は必ず `data/` 配下に置き、Git管理しない。
+
 開発中に生成したDB、取得元HTML snapshot、解析ログはGit管理しない。配布用マスタDBはGitHub Releases成果物として扱う。
 
 ## 削除・移動のルール

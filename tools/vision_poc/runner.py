@@ -6,6 +6,7 @@ import json
 import math
 import re
 import shutil
+import sqlite3
 import subprocess
 import tempfile
 from collections.abc import Iterable
@@ -362,6 +363,49 @@ M7_SAVE_READINESS_REVIEW_REPRESENTATIVE_LIMIT = 3
 M7_SAVE_DECISION_PREVIEW_REPRESENTATIVE_LIMIT = 3
 M8_SAVE_PAYLOAD_PREVIEW_REPRESENTATIVE_LIMIT = 3
 M8_SAVE_PAYLOAD_DIGIT_ROIS = OCR_ROIS
+M8_PLANNED_PLAY_RECORD_REPRESENTATIVE_LIMIT = 3
+M8_PLANNED_PLAY_RECORD_FIELDNAMES = [
+    "played_at_ms",
+    "song_id",
+    "chart_id",
+    "score",
+    "max_combo",
+    "marvelous",
+    "perfect",
+    "great",
+    "good",
+    "miss",
+    "ex_score",
+    "source_organized_file",
+    "source_confirmation_mode",
+    "analysis_payload_status",
+    "identity_signal_source",
+    "m5_identity_signal_status",
+    "m5_jacket_match_status",
+]
+M8_PLAYS_SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS plays (
+  play_id INTEGER PRIMARY KEY,
+  played_at_ms INTEGER NOT NULL,
+  song_id TEXT NOT NULL,
+  chart_id TEXT NOT NULL,
+  score INTEGER NOT NULL,
+  max_combo INTEGER NOT NULL,
+  marvelous INTEGER NOT NULL,
+  perfect INTEGER NOT NULL,
+  great INTEGER NOT NULL,
+  good INTEGER NOT NULL,
+  miss INTEGER NOT NULL,
+  ex_score INTEGER NOT NULL,
+  source_organized_file TEXT NOT NULL,
+  source_confirmation_mode TEXT NOT NULL,
+  analysis_payload_status TEXT NOT NULL,
+  identity_signal_source TEXT NOT NULL,
+  m5_identity_signal_status TEXT NOT NULL,
+  m5_jacket_match_status TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+)
+"""
 M7_REVIEWABLE_IDENTITY_SIGNAL_STATUSES = (
     "jacket_resolved_candidate",
     "composite_resolved_candidate",
@@ -4585,6 +4629,168 @@ def write_m8_save_payload_preview_report(
             "- `identity_signal_*` はM5候補観測のままで、保存用確定IDではありません。",
             "- 数字列はM7aの `*_recognized_digits` 由来で、保存値確定ではありません。",
             "- `preview_save_candidate` 以外はpayload材料にせず、除外代表として読みます。",
+        ]
+    )
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def create_m8_score_db_schema(connection: sqlite3.Connection) -> None:
+    connection.execute(M8_PLAYS_SCHEMA_SQL)
+
+
+def provisional_played_at_ms(payload_row: dict[str, str]) -> str:
+    timestamp_ms = payload_row.get("timestamp_ms", "").strip()
+    return timestamp_ms if timestamp_ms.isdigit() else "0"
+
+
+def m8_planned_play_record_from_payload_row(
+    payload_row: dict[str, str],
+) -> dict[str, str] | None:
+    if payload_row.get("payload_preview_status") != "payload_ready":
+        return None
+    return {
+        "played_at_ms": provisional_played_at_ms(payload_row),
+        "song_id": payload_row.get("identity_signal_song_id", ""),
+        "chart_id": payload_row.get("identity_signal_chart_id", ""),
+        "score": payload_row.get("score_digits", ""),
+        "max_combo": payload_row.get("max_combo", ""),
+        "marvelous": payload_row.get("marvelous", ""),
+        "perfect": payload_row.get("perfect", ""),
+        "great": payload_row.get("great", ""),
+        "good": payload_row.get("good", ""),
+        "miss": payload_row.get("miss", ""),
+        "ex_score": payload_row.get("ex_score", ""),
+        "source_organized_file": payload_row.get("organized_file", ""),
+        "source_confirmation_mode": payload_row.get("confirmation_mode", ""),
+        "analysis_payload_status": payload_row.get("payload_preview_status", ""),
+        "identity_signal_source": payload_row.get("identity_signal_source", ""),
+        "m5_identity_signal_status": payload_row.get("m5_identity_signal_status", ""),
+        "m5_jacket_match_status": payload_row.get("m5_jacket_match_status", ""),
+    }
+
+
+def m8_planned_play_record_rows(
+    payload_rows: Iterable[dict[str, str]],
+) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    for payload_row in payload_rows:
+        planned_row = m8_planned_play_record_from_payload_row(payload_row)
+        if planned_row is not None:
+            rows.append(planned_row)
+    return rows
+
+
+def write_m8_planned_play_records_csv(
+    path: Path,
+    rows: Iterable[dict[str, str]],
+) -> None:
+    with path.open("w", encoding="utf-8", newline="") as file:
+        writer = csv.DictWriter(file, fieldnames=M8_PLANNED_PLAY_RECORD_FIELDNAMES)
+        writer.writeheader()
+        for row in rows:
+            writer.writerow(
+                {field: row.get(field, "") for field in M8_PLANNED_PLAY_RECORD_FIELDNAMES}
+            )
+
+
+def m8_planned_play_record_representative(
+    row: dict[str, str],
+) -> dict[str, str]:
+    return {field: row.get(field, "") for field in M8_PLANNED_PLAY_RECORD_FIELDNAMES}
+
+
+def summarize_m8_planned_play_records(
+    payload_rows: Iterable[dict[str, str]],
+    planned_rows: Iterable[dict[str, str]],
+    representative_limit: int = M8_PLANNED_PLAY_RECORD_REPRESENTATIVE_LIMIT,
+) -> dict[str, object]:
+    payload_row_list = list(payload_rows)
+    planned_row_list = list(planned_rows)
+    excluded_payload_status_counts: dict[str, int] = {}
+    for payload_row in payload_row_list:
+        payload_status = payload_row.get("payload_preview_status", "")
+        if payload_status != "payload_ready":
+            count_preview_value(excluded_payload_status_counts, payload_status)
+    return {
+        "target_boundary": "m8 payload preview rows; planned records require payload_ready",
+        "scope": "M8 planned play record preview before DB insert",
+        "source": "m8_save_payload_preview_rows",
+        "target_count": len(payload_row_list),
+        "planned_record_count": len(planned_row_list),
+        "excluded_payload_status_counts": dict(
+            sorted(excluded_payload_status_counts.items())
+        ),
+        "fieldnames": M8_PLANNED_PLAY_RECORD_FIELDNAMES,
+        "schema_table": "plays",
+        "representative_limit_per_group": representative_limit,
+        "representatives": [
+            m8_planned_play_record_representative(row)
+            for row in planned_row_list[:representative_limit]
+        ],
+        "reading_notes": [
+            "Only payload_ready rows are converted to planned play records.",
+            "Planned records are row-contract material, not DB insert success.",
+            "song_id and chart_id remain identity_signal candidate observations.",
+            "Digit values remain copied M7a recognized_digits candidates.",
+            "SQLite schema validation should use in-memory fixtures before file DB output.",
+        ],
+    }
+
+
+def write_m8_planned_play_records_report(
+    path: Path,
+    summary: dict[str, object],
+) -> None:
+    representatives = summary["representatives"]
+    assert isinstance(representatives, list)
+    lines = [
+        "# M8 Planned Play Records",
+        "",
+        "`m8_save_payload_preview` の `payload_ready` 行だけを、"
+        "個人スコアDB `plays` 相当の最小row contractへ変換するプレビューです。",
+        "DB insert、保存成功、曲ID/譜面ID確定、保存値確定には進みません。",
+        "",
+        f"- target boundary: `{summary['target_boundary']}`",
+        f"- source: `{summary['source']}`",
+        f"- target payload rows: {summary['target_count']}",
+        f"- planned record count: {summary['planned_record_count']}",
+        f"- excluded payload status counts: "
+        f"`{json.dumps(summary['excluded_payload_status_counts'], ensure_ascii=False)}`",
+        f"- schema table: `{summary['schema_table']}`",
+        "",
+        "## Planned Record Representatives",
+        "",
+        "| source file | played_at_ms | song_id | chart_id | score | combo | judgments | ex |",
+        "|---|---:|---|---|---:|---:|---|---:|",
+    ]
+    if not representatives:
+        lines.append("|  |  |  |  |  |  |  |  |")
+    for representative in representatives:
+        assert isinstance(representative, dict)
+        judgments = " / ".join(
+            str(representative.get(field, ""))
+            for field in ("marvelous", "perfect", "great", "good", "miss")
+        )
+        lines.append(
+            f"| `{representative.get('source_organized_file', '')}` | "
+            f"`{representative.get('played_at_ms', '')}` | "
+            f"`{representative.get('song_id', '')}` | "
+            f"`{representative.get('chart_id', '')}` | "
+            f"`{representative.get('score', '')}` | "
+            f"`{representative.get('max_combo', '')}` | "
+            f"`{judgments}` | "
+            f"`{representative.get('ex_score', '')}` |"
+        )
+    lines.extend(
+        [
+            "",
+            "## Reading Notes",
+            "",
+            "- `payload_ready` 以外は保存予定レコードへ変換しません。",
+            "- このrow contractはin-memory SQLite fixture用で、実DBファイル生成ではありません。",
+            "- `song_id` / `chart_id` はM5の候補観測であり、保存用確定IDではありません。",
+            "- 数字列はM7a `recognized_digits` 由来の候補値で、保存値確定ではありません。",
+            "- timestampなし入力では `played_at_ms=0` の暫定値として扱います。",
         ]
     )
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -9304,6 +9510,24 @@ def main(argv: list[str] | None = None) -> int:
         write_m8_save_payload_preview_report(
             output_dir / "m8_save_payload_preview.md",
             m8_save_payload_preview_summary,
+        )
+        m8_planned_play_rows = m8_planned_play_record_rows(m8_save_payload_rows)
+        write_m8_planned_play_records_csv(
+            output_dir / "m8_planned_play_records.csv",
+            m8_planned_play_rows,
+        )
+        m8_planned_play_summary = summarize_m8_planned_play_records(
+            m8_save_payload_rows,
+            m8_planned_play_rows,
+        )
+        (output_dir / "m8_planned_play_records.json").write_text(
+            json.dumps(m8_planned_play_summary, ensure_ascii=False, indent=2)
+            + "\n",
+            encoding="utf-8",
+        )
+        write_m8_planned_play_records_report(
+            output_dir / "m8_planned_play_records.md",
+            m8_planned_play_summary,
         )
     summary = summarize(classifications)
     (output_dir / "summary.json").write_text(

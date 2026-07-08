@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import json
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -2607,6 +2608,66 @@ def test_m8_save_payload_preview_uses_m7_preview_rows(tmp_path: Path) -> None:
     assert "`payload_ready`" in report
     assert "DB保存可能" in report
     assert "保存値確定" in report
+
+    planned_rows = runner.m8_planned_play_record_rows(rows)
+    assert len(planned_rows) == 1
+    assert planned_rows[0]["source_organized_file"] == "payload_ready.png"
+    assert planned_rows[0]["played_at_ms"] == "1000"
+    assert planned_rows[0]["song_id"] == "song_make"
+    assert planned_rows[0]["chart_id"] == "chart_make_single_difficult"
+    assert planned_rows[0]["score"] == "123"
+    assert planned_rows[0]["max_combo"] == "123"
+    assert planned_rows[0]["analysis_payload_status"] == "payload_ready"
+    assert "identity_missing.png" not in {
+        row["source_organized_file"] for row in planned_rows
+    }
+    assert "digit_missing.png" not in {
+        row["source_organized_file"] for row in planned_rows
+    }
+
+    planned_csv_path = tmp_path / "m8_planned_play_records.csv"
+    runner.write_m8_planned_play_records_csv(planned_csv_path, planned_rows)
+    planned_csv_rows = read_csv_rows(planned_csv_path)
+    assert planned_csv_rows[0]["source_confirmation_mode"] == "time"
+    assert planned_csv_rows[0]["identity_signal_source"] == "jacket_feature"
+
+    planned_summary = runner.summarize_m8_planned_play_records(rows, planned_rows)
+    assert planned_summary["scope"] == "M8 planned play record preview before DB insert"
+    assert planned_summary["source"] == "m8_save_payload_preview_rows"
+    assert planned_summary["target_count"] == 4
+    assert planned_summary["planned_record_count"] == 1
+    assert planned_summary["excluded_payload_status_counts"] == {
+        "missing_digit_value": 1,
+        "missing_identity_candidate": 1,
+        "unsupported_preview_status": 1,
+    }
+    planned_report_path = tmp_path / "m8_planned_play_records.md"
+    runner.write_m8_planned_play_records_report(
+        planned_report_path,
+        planned_summary,
+    )
+    planned_report = planned_report_path.read_text(encoding="utf-8")
+    assert "# M8 Planned Play Records" in planned_report
+    assert "`payload_ready` 以外は保存予定レコードへ変換しません" in planned_report
+    assert "保存値確定" in planned_report
+
+    with sqlite3.connect(":memory:") as connection:
+        runner.create_m8_score_db_schema(connection)
+        placeholders = ", ".join(f":{field}" for field in runner.M8_PLANNED_PLAY_RECORD_FIELDNAMES)
+        columns = ", ".join(runner.M8_PLANNED_PLAY_RECORD_FIELDNAMES)
+        connection.execute(
+            f"INSERT INTO plays ({columns}) VALUES ({placeholders})",
+            planned_rows[0],
+        )
+        stored_row = connection.execute(
+            "SELECT song_id, chart_id, score, analysis_payload_status FROM plays"
+        ).fetchone()
+    assert stored_row == (
+        "song_make",
+        "chart_make_single_difficult",
+        123,
+        "payload_ready",
+    )
 
 
 def test_m7a_digit_save_candidate_summary_keeps_status_vocabulary(

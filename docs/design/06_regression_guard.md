@@ -249,7 +249,18 @@
 - `identity_signal_song_id` / `identity_signal_chart_id` / `identity_signal_source` はM5候補観測を写したもので、保存用確定IDではない。
 - `score_digits`、`max_combo`、`marvelous`、`perfect`、`great`、`good`、`miss`、`ex_score` はM7aの `*_recognized_digits` を写した候補値であり、保存値確定として扱わない。
 - `*_expected_value` と `*_match` はレビュー材料としてだけ読む。
-- M8 save payload preview は DB insert、個人スコアDBスキーマ本実装、低信頼度ログ本番仕様に進まない。
+- M8 save payload preview は DB insert、低信頼度ログ本番仕様に進まない。
+
+## M8 planned play records
+
+- `m8_planned_play_records.csv`、`m8_planned_play_records.json`、`m8_planned_play_records.md` は、`m8_save_payload_preview_rows` を入力にする。
+- 保存予定レコードへ変換するのは `payload_preview_status=payload_ready` の行だけにする。
+- `unsupported_preview_status`、`missing_identity_candidate`、`missing_digit_value` は保存予定レコードへ変換しない。
+- 最小 `plays` スキーマは in-memory SQLite fixtureで検証し、実ファイルDBは生成しない。
+- `played_at_ms` は `timestamp_ms` 由来の暫定値で、timestampなし入力では `0` として扱う。
+- `song_id` / `chart_id` はM5候補観測であり、曲ID/譜面ID確定として扱わない。
+- `score`、`max_combo`、`marvelous`、`perfect`、`great`、`good`、`miss`、`ex_score` はM7a候補値であり、保存値確定として扱わない。
+- 保存予定レコードは DB保存可能、DB保存成功、低信頼度ログ本番仕様として扱わない。
 
 ## ROI方針
 
