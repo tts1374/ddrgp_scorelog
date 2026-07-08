@@ -260,6 +260,16 @@ AnalyzedResult
 - `skip_master_ambiguous`
 - `skip_master_not_found`
 
+M7 PoCでは、DB保存前の最終 `save_decision` ではなく、`m7_save_decision_preview.*` の preview status として以下だけを出す。
+
+- `preview_save_candidate`
+- `blocked_readiness`
+- `needs_identity_review`
+- `needs_digit_review`
+- `missing_required_material`
+
+`preview_save_candidate` はM8へ渡す候補材料が揃ったプレビュー状態であり、`save`、DB保存成功、曲ID/譜面ID確定を意味しない。
+
 ## 重複保存防止
 
 PoCでは簡易 `duplicate_key` を使うが、本番では以下を組み合わせる。
