@@ -21,10 +21,10 @@ high
 
 - M7a `score_digits` は、0から1,000,000までの可変桁表示、カンマ無視、1桁から7桁fixture、3桁実素材 `chart_field_template_129_double_challenge_lv19.png` の読み方を維持している。
 - M7a `max_combo`、`marvelous`、`perfect`、`great`、`good`、`miss` は、ROI左側ラベルや下線を数字扱いせず、右側数字領域へ寄せたcomponent分割を維持している。
-- `good` と `miss` は左側ラベル由来成分が残りやすいため、M7aの右側focusを `0.55` にしている。`miss` は短いマーカーや幅広い背景成分を数字扱いしないよう、最小高さと幅/高さ比もROI別に少し絞っている。
+- `good` と `miss` は左側ラベル由来成分が残りやすいため、M7aの右側focusを `0.55` にしている。`miss` は短いマーカーや明るい青背景を数字扱いしないよう、白数字向けの明度 + チャンネル差maskと最小高さもROI別に少し絞っている。
 - `max_combo`、`marvelous`、`perfect`、`great`、`good`、`miss` の4桁fixture、テンプレート不足時の `missing_reference` + 分割数診断、共有 `judgment_counts` テンプレートfallbackを追加/維持している。
 - `marvelous`、`perfect`、`great`、`good`、`miss` は `digit_templates/judgment_counts/` を共有候補として読む。`max_combo` と今後の `ex_score` は `digit_templates/combo_ex_score/` を共有候補として読む。
-- `miss` は共有 `judgment_counts` だけだと分割数は期待桁数と一致するが、実素材60件すべて `ambiguous` になる。ROI別 `samples/screenshots/organized/digit_templates/miss/` のローカルテンプレートが必要。
+- `miss` は共有 `judgment_counts` だけだと分割数は期待桁数と一致するが、実素材60件中58件が `ambiguous` になる。ROI別 `samples/screenshots/organized/digit_templates/miss/` のローカルテンプレートが必要。
 - ローカル素材として `samples/screenshots/organized/digit_templates/` や `data\m7a_shared_judgment_template_trial` 配下のテンプレートを使う場合がある。これはGit管理しない。
 - 2026-07-08のローカル `score_digits + max_combo + marvelous + perfect + great + good + miss` 実行結果:
   - `python -m tools.vision_poc --m7a-digit-recognition --m7a-digit-rois score_digits max_combo marvelous perfect great good miss --no-ocr --no-rois --output data\vision_poc_m7a_digit_miss`
@@ -39,10 +39,10 @@ high
   - `python -m tools.vision_poc --m7a-digit-recognition --m7a-digit-rois score_digits max_combo marvelous perfect great good miss --m7a-digit-template-root data\m7a_shared_judgment_template_trial --no-ocr --no-rois --output data\vision_poc_m7a_digit_shared_judgment_miss`
   - `target_count=60`
   - `total_attempts=420`
-  - `status_counts={"ambiguous":60,"recognized":360}`
-  - `match_count=360`
+  - `status_counts={"ambiguous":58,"recognized":362}`
+  - `match_count=362`
   - `mismatch_count=0`
-  - `miss`: 60/60 `ambiguous`、`failure_reason_counts={"distance_above_threshold":60}`、分割数は期待桁数と一致。
+  - `miss`: 58/60 `ambiguous`、2/60 `recognized`、`failure_reason_counts={"distance_above_threshold":58}`、分割数は期待桁数と一致。
 - 2026-07-08のTesseract比較あり実行結果:
   - `python -m tools.vision_poc --m7a-digit-recognition --m7a-digit-rois score_digits max_combo marvelous perfect great good miss --ocr-target confirmed-events --no-rois --output data\vision_poc_m7a_digit_miss_ocr_compare`
   - M7aは7 ROI合計420/420 match。

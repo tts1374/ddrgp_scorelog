@@ -2268,6 +2268,48 @@ def test_m7a_digit_recognition_ignores_miss_short_marker_without_reference(
     assert result.segment_count == 1
 
 
+def test_m7a_digit_recognition_ignores_miss_bright_blue_background(
+    tmp_path: Path,
+) -> None:
+    image_path = tmp_path / "result_miss0_blue_background.png"
+    write_digit_roi_image(
+        image_path,
+        roi_name="miss",
+        digits="0",
+        expected_label_noise=True,
+    )
+    with Image.open(image_path) as image:
+        draw = ImageDraw.Draw(image)
+        left, top, _right, _bottom = runner.scaled_box(
+            image, runner.ROI_DEFINITIONS["miss"]
+        )
+        draw.rectangle((left + 188, top + 2, left + 224, top + 27), fill=(150, 190, 230))
+        image.save(image_path)
+
+    frame = runner.FrameInput(
+        row={
+            "organized_file": "result_miss0_blue_background.png",
+            "screen_type": "result",
+            "miss": "0",
+        },
+        image_path=image_path,
+    )
+    event = result_event("result_miss0_blue_background.png", confirmed_result=True)
+
+    with Image.open(image_path) as image:
+        result = runner.process_m7a_digit_roi(
+            image.convert("RGB"),
+            frame,
+            event,
+            "miss",
+            [],
+        )
+
+    assert result.status == "missing_reference"
+    assert result.failure_reason == "missing_digit_templates=0123456789"
+    assert result.segment_count == 1
+
+
 @pytest.mark.parametrize("roi_name", ["marvelous", "perfect", "great", "good", "miss"])
 def test_m7a_digit_recognition_uses_shared_judgment_count_templates(
     tmp_path: Path,

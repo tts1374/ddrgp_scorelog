@@ -316,6 +316,9 @@ M7A_COMPONENT_MIN_HEIGHT_FRACTIONS: dict[str, float] = {
 M7A_COMPONENT_MAX_WIDTH_HEIGHT_RATIOS: dict[str, float] = {
     "miss": 1.6,
 }
+M7A_WHITE_FOREGROUND_ROIS = frozenset({"miss"})
+M7A_WHITE_FOREGROUND_LUMA_THRESHOLD = 180
+M7A_WHITE_FOREGROUND_CHANNEL_SPREAD_MAX = 50
 M7A_COMPONENT_SEGMENT_ROIS = frozenset(
     {"max_combo", "marvelous", "perfect", "great", "good", "miss"}
 )
@@ -1533,6 +1536,18 @@ def m7a_foreground_mask(image: Image.Image, *, prefer_dark: bool = False) -> np.
     return min(candidates, key=lambda candidate: int(candidate.sum()))
 
 
+def m7a_digit_foreground_mask(image: Image.Image, roi_name: str = "") -> np.ndarray:
+    if roi_name in M7A_WHITE_FOREGROUND_ROIS:
+        rgb = np.asarray(image.convert("RGB")).astype(np.int16)
+        luma = np.asarray(image.convert("L"))
+        channel_spread = rgb.max(axis=2) - rgb.min(axis=2)
+        return (
+            (luma > M7A_WHITE_FOREGROUND_LUMA_THRESHOLD)
+            & (channel_spread <= M7A_WHITE_FOREGROUND_CHANNEL_SPREAD_MAX)
+        )
+    return m7a_foreground_mask(image)
+
+
 def m7a_foreground_bbox(mask: np.ndarray) -> tuple[int, int, int, int] | None:
     ys, xs = np.where(mask)
     if len(xs) == 0 or len(ys) == 0:
@@ -1579,7 +1594,7 @@ def load_m7a_digit_templates(template_root: Path, roi_name: str) -> list[M7aDigi
             if label not in M7A_DIGIT_REQUIRED_LABELS:
                 continue
             with Image.open(path) as image:
-                mask = m7a_foreground_mask(image)
+                mask = m7a_digit_foreground_mask(image, roi_name)
             templates.append(
                 M7aDigitTemplate(
                     label=label,
@@ -1698,7 +1713,7 @@ def segment_m7a_digit_masks(image: Image.Image, roi_name: str = "") -> list[np.n
     focus_left_fraction = M7A_DIGIT_FOCUS_LEFT_FRACTIONS.get(roi_name)
     if focus_left_fraction is not None:
         image = crop_right_fraction(image, focus_left_fraction)
-    mask = m7a_foreground_mask(image)
+    mask = m7a_digit_foreground_mask(image, roi_name)
     if roi_name == "score_digits":
         score_segments = segment_m7a_score_digit_masks(mask)
         if score_segments:
