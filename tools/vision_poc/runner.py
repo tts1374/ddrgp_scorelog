@@ -3361,15 +3361,29 @@ def write_m7_save_readiness_review_report(
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def m7_save_decision_preview_identity_review_reason(row: dict[str, str]) -> str:
+    m5_identity_material_status = row.get("m5_identity_material_status", "")
+    if m5_identity_material_status in {
+        "m5_not_run",
+        "m5_identity_not_reviewable",
+        "m5_jacket_match_missing",
+    }:
+        return m5_identity_material_status
+    if not row.get("m5_identity_signal_song_id") or not row.get(
+        "m5_identity_signal_chart_id"
+    ):
+        return "identity_signal_id_missing"
+    if m5_identity_material_status != "m5_identity_reviewable":
+        return "m5_identity_material_required_for_preview"
+    return ""
+
+
 def m7_save_decision_preview_status(row: dict[str, str]) -> tuple[str, str]:
     readiness_status = row.get("readiness_status", "")
     if readiness_status == "ready_for_save_review":
-        if row.get("m5_identity_material_status") != "m5_identity_reviewable":
-            return "needs_identity_review", "m5_identity_material_required_for_preview"
-        if not row.get("m5_identity_signal_song_id") or not row.get(
-            "m5_identity_signal_chart_id"
-        ):
-            return "needs_identity_review", "identity_signal_id_missing"
+        identity_review_reason = m7_save_decision_preview_identity_review_reason(row)
+        if identity_review_reason:
+            return "needs_identity_review", identity_review_reason
         if row.get("m7a_digit_aggregate_status") != "all_digits_recognized":
             return "needs_digit_review", (
                 row.get("m7a_digit_review_rois")
@@ -3380,7 +3394,11 @@ def m7_save_decision_preview_status(row: dict[str, str]) -> tuple[str, str]:
     if readiness_status == "blocked_digit_review":
         return "needs_digit_review", row.get("readiness_blockers", "")
     if readiness_status == "blocked_identity_signal":
-        return "needs_identity_review", row.get("readiness_blockers", "")
+        return (
+            "needs_identity_review",
+            m7_save_decision_preview_identity_review_reason(row)
+            or row.get("readiness_blockers", ""),
+        )
     if readiness_status == "missing_required_material":
         return "missing_required_material", row.get("readiness_blockers", "")
     return "blocked_readiness", row.get("readiness_blockers", "") or readiness_status
@@ -3500,6 +3518,24 @@ def m7_save_decision_preview_representative(
     }
 
 
+def count_preview_value(counts: dict[str, int], value: str) -> None:
+    key = value or "missing"
+    counts[key] = counts.get(key, 0) + 1
+
+
+def append_preview_representative(
+    bucket: dict[str, object],
+    row: dict[str, str],
+    roi_names: Iterable[str],
+    representative_limit: int,
+) -> None:
+    bucket["count"] = int(bucket["count"]) + 1
+    representatives = bucket["representatives"]
+    assert isinstance(representatives, list)
+    if len(representatives) < representative_limit:
+        representatives.append(m7_save_decision_preview_representative(row, roi_names))
+
+
 def summarize_m7_save_decision_preview(
     rows: Iterable[dict[str, str]],
     roi_names: Iterable[str],
@@ -3510,6 +3546,12 @@ def summarize_m7_save_decision_preview(
     preview_status_counts: dict[str, int] = {}
     readiness_status_counts: dict[str, int] = {}
     groups: dict[tuple[str, str], dict[str, object]] = {}
+    preview_candidate_identity_signal_source_counts: dict[str, int] = {}
+    preview_candidate_m5_jacket_match_status_counts: dict[str, int] = {}
+    preview_candidate_m5_identity_signal_status_counts: dict[str, int] = {}
+    preview_candidate_m5_groups: dict[tuple[str, str, str], dict[str, object]] = {}
+    needs_identity_review_groups: dict[tuple[str, str, str], dict[str, object]] = {}
+    needs_digit_review_groups: dict[tuple[str, str, str], dict[str, object]] = {}
     for row in row_list:
         preview_status = row["preview_status"]
         preview_status_counts[preview_status] = (
@@ -3537,6 +3579,104 @@ def summarize_m7_save_decision_preview(
                 m7_save_decision_preview_representative(row, roi_list)
             )
 
+        if preview_status == "preview_save_candidate":
+            source = row.get("m5_identity_signal_source", "")
+            jacket_status = row.get("m5_jacket_match_status", "")
+            identity_signal_status = row.get("m5_identity_signal_status", "")
+            count_preview_value(
+                preview_candidate_identity_signal_source_counts,
+                source,
+            )
+            count_preview_value(
+                preview_candidate_m5_jacket_match_status_counts,
+                jacket_status,
+            )
+            count_preview_value(
+                preview_candidate_m5_identity_signal_status_counts,
+                identity_signal_status,
+            )
+            candidate_key = (
+                source or "missing",
+                jacket_status or "missing",
+                identity_signal_status or "missing",
+            )
+            candidate_bucket = preview_candidate_m5_groups.setdefault(
+                candidate_key,
+                {
+                    "identity_signal_source": source or "missing",
+                    "m5_jacket_match_status": jacket_status or "missing",
+                    "m5_identity_signal_status": identity_signal_status or "missing",
+                    "count": 0,
+                    "representatives": [],
+                },
+            )
+            append_preview_representative(
+                candidate_bucket,
+                row,
+                roi_list,
+                representative_limit,
+            )
+
+        if preview_status == "needs_identity_review":
+            identity_key = (
+                row["preview_reason"] or "missing",
+                row.get("m5_identity_material_status", "") or "missing",
+                row.get("m5_identity_signal_status", "") or "missing",
+            )
+            identity_bucket = needs_identity_review_groups.setdefault(
+                identity_key,
+                {
+                    "preview_reason": row["preview_reason"] or "missing",
+                    "m5_identity_material_status": row.get(
+                        "m5_identity_material_status", ""
+                    )
+                    or "missing",
+                    "m5_identity_signal_status": row.get(
+                        "m5_identity_signal_status", ""
+                    )
+                    or "missing",
+                    "count": 0,
+                    "representatives": [],
+                },
+            )
+            append_preview_representative(
+                identity_bucket,
+                row,
+                roi_list,
+                representative_limit,
+            )
+
+        if preview_status == "needs_digit_review":
+            for roi_name in roi_list:
+                roi_status = row.get(f"{roi_name}_status", "")
+                failure_reason = row.get(f"{roi_name}_failure_reason", "")
+                match = row.get(f"{roi_name}_match", "")
+                if roi_status == "recognized" and match == "True":
+                    continue
+                if not roi_status and not failure_reason and not match:
+                    continue
+                digit_key = (
+                    roi_name,
+                    roi_status or "missing",
+                    failure_reason or "missing",
+                )
+                digit_bucket = needs_digit_review_groups.setdefault(
+                    digit_key,
+                    {
+                        "roi_name": roi_name,
+                        "status": roi_status or "missing",
+                        "failure_reason": failure_reason or "missing",
+                        "count": 0,
+                        "representatives": [],
+                    },
+                )
+                append_preview_representative(
+                    digit_bucket,
+                    row,
+                    roi_list,
+                    representative_limit,
+                )
+
     return {
         "target_boundary": "confirmed_result=true and duplicate=false",
         "scope": "M7 save decision preview before DB save",
@@ -3548,6 +3688,15 @@ def summarize_m7_save_decision_preview(
         ),
         "preview_status_counts": dict(sorted(preview_status_counts.items())),
         "readiness_status_counts": dict(sorted(readiness_status_counts.items())),
+        "preview_save_candidate_identity_signal_source_counts": dict(
+            sorted(preview_candidate_identity_signal_source_counts.items())
+        ),
+        "preview_save_candidate_m5_jacket_match_status_counts": dict(
+            sorted(preview_candidate_m5_jacket_match_status_counts.items())
+        ),
+        "preview_save_candidate_m5_identity_signal_status_counts": dict(
+            sorted(preview_candidate_m5_identity_signal_status_counts.items())
+        ),
         "digit_rois": roi_list,
         "representative_limit_per_group": representative_limit,
         "groups": sorted(
@@ -3555,6 +3704,30 @@ def summarize_m7_save_decision_preview(
             key=lambda item: (
                 str(item["preview_status"]),
                 str(item["preview_reason"]),
+            ),
+        ),
+        "preview_save_candidate_m5_groups": sorted(
+            preview_candidate_m5_groups.values(),
+            key=lambda item: (
+                str(item["identity_signal_source"]),
+                str(item["m5_jacket_match_status"]),
+                str(item["m5_identity_signal_status"]),
+            ),
+        ),
+        "needs_identity_review_groups": sorted(
+            needs_identity_review_groups.values(),
+            key=lambda item: (
+                str(item["preview_reason"]),
+                str(item["m5_identity_material_status"]),
+                str(item["m5_identity_signal_status"]),
+            ),
+        ),
+        "needs_digit_review_groups": sorted(
+            needs_digit_review_groups.values(),
+            key=lambda item: (
+                str(item["roi_name"]),
+                str(item["status"]),
+                str(item["failure_reason"]),
             ),
         ),
         "status_vocabulary": [
@@ -3585,6 +3758,24 @@ def write_m7_save_decision_preview_report(
     assert isinstance(groups, list)
     roi_names = summary["digit_rois"]
     assert isinstance(roi_names, list)
+    preview_candidate_m5_groups = summary["preview_save_candidate_m5_groups"]
+    assert isinstance(preview_candidate_m5_groups, list)
+    needs_identity_review_groups = summary["needs_identity_review_groups"]
+    assert isinstance(needs_identity_review_groups, list)
+    needs_digit_review_groups = summary["needs_digit_review_groups"]
+    assert isinstance(needs_digit_review_groups, list)
+    candidate_source_counts_json = json.dumps(
+        summary["preview_save_candidate_identity_signal_source_counts"],
+        ensure_ascii=False,
+    )
+    candidate_jacket_counts_json = json.dumps(
+        summary["preview_save_candidate_m5_jacket_match_status_counts"],
+        ensure_ascii=False,
+    )
+    candidate_identity_counts_json = json.dumps(
+        summary["preview_save_candidate_m5_identity_signal_status_counts"],
+        ensure_ascii=False,
+    )
     lines = [
         "# M7 Save Decision Preview",
         "",
@@ -3600,6 +3791,18 @@ def write_m7_save_decision_preview_report(
         f"`{json.dumps(summary['preview_status_counts'], ensure_ascii=False)}`",
         f"- readiness status counts: "
         f"`{json.dumps(summary['readiness_status_counts'], ensure_ascii=False)}`",
+        (
+            "- preview candidate M5 source counts: "
+            f"`{candidate_source_counts_json}`"
+        ),
+        (
+            "- preview candidate jacket status counts: "
+            f"`{candidate_jacket_counts_json}`"
+        ),
+        (
+            "- preview candidate identity signal status counts: "
+            f"`{candidate_identity_counts_json}`"
+        ),
         f"- digit rois: `{', '.join(str(roi) for roi in roi_names)}`",
         f"- representative limit per group: "
         f"{summary['representative_limit_per_group']}",
@@ -3665,6 +3868,130 @@ def write_m7_save_decision_preview_report(
                 f"`{' ; '.join(digit_parts)}` |"
             )
         lines.append("")
+
+    if preview_candidate_m5_groups:
+        lines.extend(["", "## Preview Candidate M5 Representatives", ""])
+        for group in preview_candidate_m5_groups:
+            assert isinstance(group, dict)
+            representatives = group["representatives"]
+            assert isinstance(representatives, list)
+            lines.extend(
+                [
+                    (
+                        f"### source `{group['identity_signal_source']}` / "
+                        f"jacket `{group['m5_jacket_match_status']}` / "
+                        f"identity `{group['m5_identity_signal_status']}`"
+                    ),
+                    "",
+                    f"- count: {group['count']}",
+                    "",
+                    "| organized_file | candidate id | title | digits |",
+                    "|---|---|---|---|",
+                ]
+            )
+            for representative in representatives:
+                assert isinstance(representative, dict)
+                digits = representative["digits"]
+                assert isinstance(digits, dict)
+                digit_parts = []
+                for roi_name in roi_names:
+                    value = digits.get(roi_name, {})
+                    assert isinstance(value, dict)
+                    digit_parts.append(
+                        f"{roi_name}:{value.get('recognized_digits', '')}/"
+                        f"{value.get('expected_value', '')}/"
+                        f"{value.get('match', '')}"
+                    )
+                candidate_id = " / ".join(
+                    value
+                    for value in (
+                        str(representative["m5_identity_signal_song_id"]),
+                        str(representative["m5_identity_signal_chart_id"]),
+                    )
+                    if value
+                )
+                lines.append(
+                    f"| `{representative['organized_file']}` | "
+                    f"`{candidate_id}` | "
+                    f"`{representative['m5_identity_signal_title']}` | "
+                    f"`{' ; '.join(digit_parts)}` |"
+                )
+            lines.append("")
+
+    if needs_identity_review_groups:
+        lines.extend(["", "## Identity Review Representatives", ""])
+        for group in needs_identity_review_groups:
+            assert isinstance(group, dict)
+            representatives = group["representatives"]
+            assert isinstance(representatives, list)
+            lines.extend(
+                [
+                    (
+                        f"### reason `{group['preview_reason']}` / "
+                        f"material `{group['m5_identity_material_status']}` / "
+                        f"identity `{group['m5_identity_signal_status']}`"
+                    ),
+                    "",
+                    f"- count: {group['count']}",
+                    "",
+                    "| organized_file | readiness | jacket | candidate id | title |",
+                    "|---|---|---|---|---|",
+                ]
+            )
+            for representative in representatives:
+                assert isinstance(representative, dict)
+                candidate_id = " / ".join(
+                    value
+                    for value in (
+                        str(representative["m5_identity_signal_song_id"]),
+                        str(representative["m5_identity_signal_chart_id"]),
+                    )
+                    if value
+                )
+                lines.append(
+                    f"| `{representative['organized_file']}` | "
+                    f"`{representative['readiness_status']}` | "
+                    f"`{representative['m5_jacket_match_status']}` | "
+                    f"`{candidate_id}` | "
+                    f"`{representative['m5_identity_signal_title']}` |"
+                )
+            lines.append("")
+
+    if needs_digit_review_groups:
+        lines.extend(["", "## Digit Review Representatives", ""])
+        for group in needs_digit_review_groups:
+            assert isinstance(group, dict)
+            representatives = group["representatives"]
+            assert isinstance(representatives, list)
+            lines.extend(
+                [
+                    (
+                        f"### ROI `{group['roi_name']}` / "
+                        f"status `{group['status']}` / "
+                        f"failure `{group['failure_reason']}`"
+                    ),
+                    "",
+                    f"- count: {group['count']}",
+                    "",
+                    "| organized_file | recognized | expected | match | failure reason |",
+                    "|---|---|---|---|---|",
+                ]
+            )
+            roi_name = str(group["roi_name"])
+            for representative in representatives:
+                assert isinstance(representative, dict)
+                digits = representative["digits"]
+                assert isinstance(digits, dict)
+                value = digits.get(roi_name, {})
+                assert isinstance(value, dict)
+                lines.append(
+                    f"| `{representative['organized_file']}` | "
+                    f"`{value.get('recognized_digits', '')}` | "
+                    f"`{value.get('expected_value', '')}` | "
+                    f"`{value.get('match', '')}` | "
+                    f"`{value.get('failure_reason', '')}` |"
+                )
+            lines.append("")
 
     lines.extend(
         [

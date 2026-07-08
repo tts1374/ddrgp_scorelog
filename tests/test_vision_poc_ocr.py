@@ -2301,16 +2301,18 @@ def test_m7_save_decision_preview_uses_readiness_rows(
         identity_signal_status: str,
         identity_signal_song_id: str,
         identity_signal_chart_id: str,
+        identity_signal_source: str = "jacket_feature",
+        jacket_match_status: str = "matched",
     ) -> dict[str, str]:
         return {
             "organized_file": organized_file,
             "identity_signal_status": identity_signal_status,
-            "identity_signal_source": "jacket_feature",
+            "identity_signal_source": identity_signal_source,
             "identity_signal_song_id": identity_signal_song_id,
             "identity_signal_chart_id": identity_signal_chart_id,
             "identity_signal_title": "MAKE IT BETTER",
             "identity_signal_reason": "fixture_identity_reason",
-            "jacket_match_status": "matched",
+            "jacket_match_status": jacket_match_status,
         }
 
     readiness_rows = runner.m7_save_readiness_review_rows(
@@ -2320,6 +2322,7 @@ def test_m7_save_decision_preview_uses_readiness_rows(
             m3_row("digit_blocked.png", "ready", ""),
             m3_row("identity_blocked.png", "ready", ""),
             m3_row("missing_digit.png", "ready", ""),
+            m3_row("id_missing.png", "ready", ""),
         ],
         [
             digit_row("m5_ready.png", "all_digits_recognized", ""),
@@ -2332,6 +2335,7 @@ def test_m7_save_decision_preview_uses_readiness_rows(
                 match="False",
             ),
             digit_row("identity_blocked.png", "all_digits_recognized", ""),
+            digit_row("id_missing.png", "all_digits_recognized", ""),
         ],
         [
             m5_row(
@@ -2352,7 +2356,20 @@ def test_m7_save_decision_preview_uses_readiness_rows(
                 "song_make",
                 "chart_make_single_difficult",
             ),
-            m5_row("identity_blocked.png", "unresolved_ambiguous", "", ""),
+            m5_row(
+                "identity_blocked.png",
+                "unresolved_ambiguous",
+                "",
+                "",
+                identity_signal_source="",
+                jacket_match_status="ambiguous",
+            ),
+            m5_row(
+                "id_missing.png",
+                "jacket_resolved_candidate",
+                "song_make",
+                "",
+            ),
         ],
     )
     no_m5_readiness_rows = runner.m7_save_readiness_review_rows(
@@ -2371,14 +2388,14 @@ def test_m7_save_decision_preview_uses_readiness_rows(
         "needs_identity_review",
         "missing_required_material",
         "needs_identity_review",
+        "needs_identity_review",
     ]
     assert preview_rows[0]["preview_candidate"] == "True"
     assert preview_rows[0]["score_digits_recognized_digits"] == "123456"
     assert preview_rows[0]["m5_identity_signal_song_id"] == "song_make"
-    assert (
-        preview_rows[5]["preview_reason"]
-        == "m5_identity_material_required_for_preview"
-    )
+    assert preview_rows[3]["preview_reason"] == "m5_identity_not_reviewable"
+    assert preview_rows[5]["preview_reason"] == "identity_signal_id_missing"
+    assert preview_rows[6]["preview_reason"] == "m5_not_run"
 
     csv_path = tmp_path / "m7_save_decision_preview.csv"
     runner.write_m7_save_decision_preview_csv(
@@ -2390,7 +2407,8 @@ def test_m7_save_decision_preview_uses_readiness_rows(
     assert csv_rows[0]["preview_status"] == "preview_save_candidate"
     assert csv_rows[0]["score_digits_expected_value"] == "123456"
     assert csv_rows[2]["preview_status"] == "needs_digit_review"
-    assert csv_rows[5]["m5_identity_material_status"] == "m5_not_run"
+    assert csv_rows[5]["preview_reason"] == "identity_signal_id_missing"
+    assert csv_rows[6]["m5_identity_material_status"] == "m5_not_run"
 
     summary = runner.summarize_m7_save_decision_preview(
         preview_rows,
@@ -2398,14 +2416,23 @@ def test_m7_save_decision_preview_uses_readiness_rows(
     )
     assert summary["scope"] == "M7 save decision preview before DB save"
     assert summary["source"] == "m7_save_readiness_review_rows"
-    assert summary["target_count"] == 6
+    assert summary["target_count"] == 7
     assert summary["preview_candidate_count"] == 1
     assert summary["preview_status_counts"] == {
         "blocked_readiness": 1,
         "missing_required_material": 1,
         "needs_digit_review": 1,
-        "needs_identity_review": 2,
+        "needs_identity_review": 3,
         "preview_save_candidate": 1,
+    }
+    assert summary["preview_save_candidate_identity_signal_source_counts"] == {
+        "jacket_feature": 1
+    }
+    assert summary["preview_save_candidate_m5_jacket_match_status_counts"] == {
+        "matched": 1
+    }
+    assert summary["preview_save_candidate_m5_identity_signal_status_counts"] == {
+        "jacket_resolved_candidate": 1
     }
     ready_group = next(
         group
@@ -2419,6 +2446,18 @@ def test_m7_save_decision_preview_uses_readiness_rows(
         "match": "True",
         "failure_reason": "",
     }
+    assert [
+        group["preview_reason"]
+        for group in summary["needs_identity_review_groups"]
+    ] == [
+        "identity_signal_id_missing",
+        "m5_identity_not_reviewable",
+        "m5_not_run",
+    ]
+    assert summary["needs_digit_review_groups"][0]["roi_name"] == "score_digits"
+    assert summary["needs_digit_review_groups"][0]["representatives"][0]["digits"][
+        "score_digits"
+    ]["failure_reason"] == ""
 
     report_path = tmp_path / "m7_save_decision_preview.md"
     runner.write_m7_save_decision_preview_report(report_path, summary)
@@ -2426,6 +2465,11 @@ def test_m7_save_decision_preview_uses_readiness_rows(
     assert "# M7 Save Decision Preview" in report
     assert "`preview_save_candidate`" in report
     assert "`needs_identity_review`" in report
+    assert "Preview Candidate M5 Representatives" in report
+    assert "Identity Review Representatives" in report
+    assert "Digit Review Representatives" in report
+    assert "`m5_not_run`" in report
+    assert "`identity_signal_id_missing`" in report
     assert "DB保存、保存OK/NG判定" in report
 
 

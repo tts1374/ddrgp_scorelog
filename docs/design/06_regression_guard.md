@@ -230,8 +230,11 @@
 - `preview_save_candidate` はM8へ渡す候補材料が揃ったプレビュー状態であり、保存OK/NG判定、DB保存成功、曲ID/譜面ID確定として扱わない。
 - M5未実行の `ready_for_save_review` 行は `needs_identity_review` として止める。
 - M5候補観測が未解決、または `identity_signal_song_id` / `identity_signal_chart_id` が欠ける行も `needs_identity_review` として止める。
+- `needs_identity_review` の `preview_reason` と代表は、`m5_not_run`、`m5_identity_not_reviewable`、`identity_signal_id_missing` を混同しない。
 - M7a digit reviewが必要な行は `needs_digit_review` とし、M3 readiness blockerやM5 identity blockerと混同しない。
 - M7 readiness上のM3 blockerは `blocked_readiness` とし、必須PoC材料欠落は `missing_required_material` として分ける。
+- `preview_save_candidate` は M5 source、jacket status、identity signal status のsummary countsと代表を出し、M8へ渡す候補材料の偏りを読めるようにする。
+- `needs_digit_review` はROI別の `recognized_digits`、`expected_value`、`match`、`failure_reason` を代表で読めるようにする。
 - CSVに出す `identity_signal_song_id` / `identity_signal_chart_id` は候補観測であり、曲ID/譜面ID確定として扱わない。
 - CSVに出すM7aの `recognized_digits`、`expected_value`、`match` は候補値レビュー材料であり、保存値確定として扱わない。
 - M7 save decision preview は DB insert、低信頼度ログ本番仕様、保存値本番確定に進まない。

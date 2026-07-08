@@ -316,7 +316,8 @@ M5完了時点で固定すること:
 - `--m5-jacket-match` 実行時は `identity_signal_*` / `jacket_match_status` を参照列として取り込み、`identity_signal_status=jacket_resolved_candidate` / `composite_resolved_candidate` だけをM5側レビュー可能材料として扱う。M5 identity材料がレビュー可能な場合は `song_title` / `artist` OCR不足だけでは `blocked_m3_material` にせず、元のM3 blockerは `m3_blocking_fields`、M7保存前レビュー上のM3 blockerは `m7_m3_blocking_fields` として分ける。M5未実行時は従来どおりM3 + M7a材料だけでレビューする。
 - `m7_save_decision_preview.csv`、`m7_save_decision_preview.json`、`m7_save_decision_preview.md` で、`m7_save_readiness_review_rows` を入力にした保存判定プレビュー入口を追加済み。
 - preview status は `preview_save_candidate`、`blocked_readiness`、`needs_identity_review`、`needs_digit_review`、`missing_required_material`。`preview_save_candidate` はM8へ渡す候補材料が揃ったプレビュー状態であり、保存OK、DB保存成功、曲ID/譜面ID確定ではない。
-- プレビューではM5未実行の `ready_for_save_review` 行も `needs_identity_review` として止め、`identity_signal_song_id` / `identity_signal_chart_id` は候補観測としてだけ出す。M7aの `recognized_digits`、`expected_value`、`match` も保存値確定ではなくレビュー材料として出す。
+- プレビューではM5未実行の `ready_for_save_review` 行も `needs_identity_review` として止め、`m5_not_run`、`m5_identity_not_reviewable`、`identity_signal_id_missing` を `preview_reason` と代表で読み分ける。`identity_signal_song_id` / `identity_signal_chart_id` は候補観測としてだけ出す。M7aの `recognized_digits`、`expected_value`、`match`、`failure_reason` も保存値確定ではなくレビュー材料として出す。
+- `m7_save_decision_preview.json` / Markdown は、`preview_save_candidate` の M5 source、jacket status、identity signal status の件数と代表、`needs_identity_review` の理由別代表、`needs_digit_review` のROI別代表を出す。これはM8へ渡す前の診断補助であり、DB保存可否判定ではない。
 - 現時点ではDB insert、低確信度ログ本番仕様、保存値本番確定には進んでいない。
 
 完了条件:
