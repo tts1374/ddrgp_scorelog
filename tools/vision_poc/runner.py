@@ -358,6 +358,13 @@ M3_SAVE_CANDIDATE_FIELDS = (*M3_SONG_ARTIST_OCR_FIELDS, *M3_CHART_FIELD_FIELDS)
 M3_SAVE_CANDIDATE_BLOCKER_REPRESENTATIVE_LIMIT = 3
 M7A_DIGIT_SAVE_CANDIDATE_REVIEW_REPRESENTATIVE_LIMIT = 3
 M7A_TESSERACT_COMPARISON_REVIEW_REPRESENTATIVE_LIMIT = 3
+M7_SAVE_READINESS_REVIEW_REPRESENTATIVE_LIMIT = 3
+M7_SAVE_DECISION_PREVIEW_REPRESENTATIVE_LIMIT = 3
+M7_REVIEWABLE_IDENTITY_SIGNAL_STATUSES = (
+    "jacket_resolved_candidate",
+    "composite_resolved_candidate",
+)
+M7_M3_OPTIONAL_IDENTITY_FIELDS_WHEN_M5_REVIEWABLE = M3_SONG_ARTIST_OCR_FIELDS
 M3_SONG_ARTIST_ENTRY_FAILURE_REASONS = (
     "engine_unavailable",
     "ocr_failed",
@@ -2603,7 +2610,8 @@ def write_m7a_digit_save_candidate_summary_csv(
     with path.open("w", encoding="utf-8", newline="") as file:
         writer = csv.DictWriter(file, fieldnames=fieldnames)
         writer.writeheader()
-        writer.writerows(rows)
+        for row in rows:
+            writer.writerow({field: row.get(field, "") for field in fieldnames})
 
 
 def summarize_m7a_digit_save_candidates(
@@ -2928,7 +2936,7 @@ def write_m7a_digit_save_candidate_review_report(
                     f"{representative['distance']} | "
                     f"{representative['segment_count']} |"
                 )
-            lines.append("")
+        lines.append("")
 
     lines.extend(
         [
@@ -2940,6 +2948,1085 @@ def write_m7a_digit_save_candidate_review_report(
             "`failed_segmentation` は桁分割失敗、`not_evaluated` は期待値不足または"
             "試行不足として読み分けます。",
             "- 代表整理はレビュー補助であり、保存可否判定やDB保存実装ではありません。",
+        ]
+    )
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def m7_save_readiness_status(
+    m3_row: dict[str, str],
+    digit_row: dict[str, str] | None,
+    m5_identity_material_status: str,
+) -> tuple[str, str]:
+    m3_blockers = m7_m3_blocking_fields(m3_row, m5_identity_material_status)
+    if m3_blockers:
+        return "blocked_m3_material", m3_blockers
+    if digit_row is None:
+        return "missing_required_material", "m7a_digit_summary_missing"
+
+    digit_status = digit_row.get("aggregate_status", "")
+    if digit_status == "needs_digit_review":
+        return "blocked_digit_review", digit_row.get("review_rois", "")
+    if digit_status != "all_digits_recognized":
+        return "missing_required_material", digit_status or "unknown_digit_aggregate_status"
+
+    if m5_identity_material_status == "m5_identity_not_reviewable":
+        return "blocked_identity_signal", "m5_identity_signal_unresolved"
+    if m5_identity_material_status == "m5_jacket_match_missing":
+        return "missing_required_material", "m5_jacket_match_missing"
+    return "ready_for_save_review", ""
+
+
+def m7_identity_material_status(jacket_row: dict[str, str] | None) -> str:
+    if jacket_row is None:
+        return "m5_jacket_match_missing"
+    if jacket_row.get("identity_signal_status", "") in M7_REVIEWABLE_IDENTITY_SIGNAL_STATUSES:
+        return "m5_identity_reviewable"
+    return "m5_identity_not_reviewable"
+
+
+def m7_m3_blocking_fields(
+    m3_row: dict[str, str],
+    m5_identity_material_status: str,
+) -> str:
+    if m3_row.get("overall_status") == "ready":
+        return ""
+
+    original_blockers = m3_row.get("blocking_fields", "")
+    blocking_fields = original_blockers.split()
+    if m5_identity_material_status == "m5_identity_reviewable":
+        blocking_fields = [
+            field_name
+            for field_name in blocking_fields
+            if field_name not in M7_M3_OPTIONAL_IDENTITY_FIELDS_WHEN_M5_REVIEWABLE
+        ]
+        if not blocking_fields and original_blockers:
+            return ""
+
+    return " ".join(blocking_fields) if blocking_fields else "unknown_m3_material"
+
+
+def m7_save_readiness_review_rows(
+    m3_rows: Iterable[dict[str, str]],
+    digit_rows: Iterable[dict[str, str]],
+    m5_jacket_rows: Iterable[dict[str, str]] | None = None,
+) -> list[dict[str, str]]:
+    digit_by_file = {row["organized_file"]: row for row in digit_rows}
+    m5_by_file = (
+        None if m5_jacket_rows is None else {row["organized_file"]: row for row in m5_jacket_rows}
+    )
+    rows: list[dict[str, str]] = []
+    for m3_row in m3_rows:
+        digit_row = digit_by_file.get(m3_row["organized_file"])
+        m5_row = None if m5_by_file is None else m5_by_file.get(m3_row["organized_file"])
+        m5_identity_material_status = (
+            "m5_not_run" if m5_by_file is None else m7_identity_material_status(m5_row)
+        )
+        m7_m3_blockers = m7_m3_blocking_fields(m3_row, m5_identity_material_status)
+        readiness_status, readiness_blockers = m7_save_readiness_status(
+            m3_row,
+            digit_row,
+            m5_identity_material_status,
+        )
+        row = {
+            "frame_index": m3_row["frame_index"],
+            "organized_file": m3_row["organized_file"],
+            "screen_type": m3_row["screen_type"],
+            "event_type": m3_row["event_type"],
+            "confirmed_result": m3_row["confirmed_result"],
+            "duplicate": m3_row["duplicate"],
+            "timestamp_ms": m3_row["timestamp_ms"],
+            "confirmation_mode": m3_row["confirmation_mode"],
+            "readiness_status": readiness_status,
+            "readiness_blockers": readiness_blockers,
+            "m3_overall_status": m3_row["overall_status"],
+            "m3_blocking_fields": m3_row["blocking_fields"],
+            "m7_m3_material_status": (
+                "m7_m3_ready" if not m7_m3_blockers else "m7_m3_blocked"
+            ),
+            "m7_m3_blocking_fields": m7_m3_blockers,
+            "m7a_digit_aggregate_status": (
+                "" if digit_row is None else digit_row["aggregate_status"]
+            ),
+            "m7a_digit_review_rois": "" if digit_row is None else digit_row["review_rois"],
+            "m5_identity_material_status": m5_identity_material_status,
+            "m5_identity_signal_status": (
+                "" if m5_row is None else m5_row.get("identity_signal_status", "")
+            ),
+            "m5_identity_signal_source": (
+                "" if m5_row is None else m5_row.get("identity_signal_source", "")
+            ),
+            "m5_identity_signal_song_id": (
+                "" if m5_row is None else m5_row.get("identity_signal_song_id", "")
+            ),
+            "m5_identity_signal_chart_id": (
+                "" if m5_row is None else m5_row.get("identity_signal_chart_id", "")
+            ),
+            "m5_identity_signal_title": (
+                "" if m5_row is None else m5_row.get("identity_signal_title", "")
+            ),
+            "m5_identity_signal_reason": (
+                "" if m5_row is None else m5_row.get("identity_signal_reason", "")
+            ),
+            "m5_jacket_match_status": (
+                "" if m5_row is None else m5_row.get("jacket_match_status", "")
+            ),
+        }
+        if digit_row is not None:
+            for key, value in digit_row.items():
+                if key not in row and key not in {"aggregate_status", "review_rois"}:
+                    row[key] = value
+        rows.append(row)
+    return rows
+
+
+def write_m7_save_readiness_review_csv(
+    path: Path,
+    rows: Iterable[dict[str, str]],
+) -> None:
+    fieldnames = [
+        "frame_index",
+        "organized_file",
+        "screen_type",
+        "event_type",
+        "confirmed_result",
+        "duplicate",
+        "timestamp_ms",
+        "confirmation_mode",
+        "readiness_status",
+        "readiness_blockers",
+        "m3_overall_status",
+        "m3_blocking_fields",
+        "m7_m3_material_status",
+        "m7_m3_blocking_fields",
+        "m7a_digit_aggregate_status",
+        "m7a_digit_review_rois",
+        "m5_identity_material_status",
+        "m5_identity_signal_status",
+        "m5_identity_signal_source",
+        "m5_identity_signal_song_id",
+        "m5_identity_signal_chart_id",
+        "m5_identity_signal_title",
+        "m5_identity_signal_reason",
+        "m5_jacket_match_status",
+    ]
+    with path.open("w", encoding="utf-8", newline="") as file:
+        writer = csv.DictWriter(file, fieldnames=fieldnames)
+        writer.writeheader()
+        for row in rows:
+            writer.writerow({field: row.get(field, "") for field in fieldnames})
+
+
+def m7_save_readiness_representative(row: dict[str, str]) -> dict[str, str]:
+    return {
+        "organized_file": row["organized_file"],
+        "readiness_status": row["readiness_status"],
+        "readiness_blockers": row["readiness_blockers"],
+        "m3_overall_status": row["m3_overall_status"],
+        "m3_blocking_fields": row["m3_blocking_fields"],
+        "m7_m3_material_status": row["m7_m3_material_status"],
+        "m7_m3_blocking_fields": row["m7_m3_blocking_fields"],
+        "m7a_digit_aggregate_status": row["m7a_digit_aggregate_status"],
+        "m7a_digit_review_rois": row["m7a_digit_review_rois"],
+        "m5_identity_material_status": row["m5_identity_material_status"],
+        "m5_identity_signal_status": row["m5_identity_signal_status"],
+        "m5_identity_signal_source": row["m5_identity_signal_source"],
+        "m5_identity_signal_title": row["m5_identity_signal_title"],
+        "m5_jacket_match_status": row["m5_jacket_match_status"],
+    }
+
+
+def summarize_m7_save_readiness_review(
+    rows: Iterable[dict[str, str]],
+    representative_limit: int = M7_SAVE_READINESS_REVIEW_REPRESENTATIVE_LIMIT,
+) -> dict[str, object]:
+    row_list = list(rows)
+    readiness_status_counts: dict[str, int] = {}
+    m3_status_counts: dict[str, int] = {}
+    m7_m3_material_status_counts: dict[str, int] = {}
+    digit_status_counts: dict[str, int] = {}
+    m5_identity_material_status_counts: dict[str, int] = {}
+    m5_identity_signal_status_counts: dict[str, int] = {}
+    groups: dict[tuple[str, str], dict[str, object]] = {}
+    for row in row_list:
+        readiness_status = row["readiness_status"]
+        readiness_status_counts[readiness_status] = (
+            readiness_status_counts.get(readiness_status, 0) + 1
+        )
+        m3_status = row["m3_overall_status"]
+        m3_status_counts[m3_status] = m3_status_counts.get(m3_status, 0) + 1
+        m7_m3_status = row["m7_m3_material_status"]
+        m7_m3_material_status_counts[m7_m3_status] = (
+            m7_m3_material_status_counts.get(m7_m3_status, 0) + 1
+        )
+        digit_status = row["m7a_digit_aggregate_status"] or "missing"
+        digit_status_counts[digit_status] = digit_status_counts.get(digit_status, 0) + 1
+        m5_identity_material_status = row["m5_identity_material_status"]
+        m5_identity_material_status_counts[m5_identity_material_status] = (
+            m5_identity_material_status_counts.get(m5_identity_material_status, 0) + 1
+        )
+        m5_identity_signal_status = row["m5_identity_signal_status"] or "missing"
+        m5_identity_signal_status_counts[m5_identity_signal_status] = (
+            m5_identity_signal_status_counts.get(m5_identity_signal_status, 0) + 1
+        )
+
+        key = (readiness_status, row["readiness_blockers"])
+        bucket = groups.setdefault(
+            key,
+            {
+                "readiness_status": readiness_status,
+                "readiness_blockers": row["readiness_blockers"],
+                "count": 0,
+                "representatives": [],
+            },
+        )
+        bucket["count"] = int(bucket["count"]) + 1
+        representatives = bucket["representatives"]
+        assert isinstance(representatives, list)
+        if len(representatives) < representative_limit:
+            representatives.append(m7_save_readiness_representative(row))
+
+    return {
+        "target_boundary": "confirmed_result=true and duplicate=false",
+        "scope": "M7 save readiness review before DB save",
+        "source": (
+            "m3_save_candidate_summary_rows, m7a_digit_save_candidate_summary_rows, "
+            "and optional m5_jacket_match_rows"
+        ),
+        "target_count": len(row_list),
+        "readiness_status_counts": dict(sorted(readiness_status_counts.items())),
+        "m3_overall_status_counts": dict(sorted(m3_status_counts.items())),
+        "m7_m3_material_status_counts": dict(
+            sorted(m7_m3_material_status_counts.items())
+        ),
+        "m7a_digit_aggregate_status_counts": dict(sorted(digit_status_counts.items())),
+        "m5_identity_material_status_counts": dict(
+            sorted(m5_identity_material_status_counts.items())
+        ),
+        "m5_identity_signal_status_counts": dict(
+            sorted(m5_identity_signal_status_counts.items())
+        ),
+        "representative_limit_per_group": representative_limit,
+        "groups": sorted(
+            groups.values(),
+            key=lambda item: (
+                str(item["readiness_status"]),
+                str(item["readiness_blockers"]),
+            ),
+        ),
+        "status_vocabulary": [
+            "ready_for_save_review",
+            "blocked_m3_material",
+            "blocked_digit_review",
+            "blocked_identity_signal",
+            "missing_required_material",
+        ],
+        "reading_notes": [
+            "One row represents one confirmed-events save candidate.",
+            "ready_for_save_review means required PoC materials are present for review.",
+            "It is not a DB save allow decision and does not confirm song_id or chart_id.",
+            "M5 identity_signal_* values are candidate observations, not confirmed IDs.",
+            (
+                "When M5 identity material is reviewable, song_title and artist OCR "
+                "blockers are treated as optional M7 diagnostics."
+            ),
+            "duplicate, rejected_transition, unconfirmed, and non-result rows are excluded.",
+        ],
+    }
+
+
+def write_m7_save_readiness_review_report(
+    path: Path,
+    summary: dict[str, object],
+) -> None:
+    groups = summary["groups"]
+    assert isinstance(groups, list)
+    lines = [
+        "# M7 Save Readiness Review",
+        "",
+        "confirmed-events 保存候補について、M3保存候補材料とM7a数字材料を"
+        "保存判定前レビュー用に束ねます。",
+        "DB保存、保存OK/NG判定、曲ID/譜面ID確定には進みません。",
+        "",
+        f"- target boundary: `{summary['target_boundary']}`",
+        f"- source: `{summary['source']}`",
+        f"- target confirmed-events: {summary['target_count']}",
+        f"- readiness status counts: "
+        f"`{json.dumps(summary['readiness_status_counts'], ensure_ascii=False)}`",
+        f"- M7 M3 material status counts: "
+        f"`{json.dumps(summary['m7_m3_material_status_counts'], ensure_ascii=False)}`",
+        f"- M5 identity material status counts: "
+        f"`{json.dumps(summary['m5_identity_material_status_counts'], ensure_ascii=False)}`",
+        f"- M5 identity signal status counts: "
+        f"`{json.dumps(summary['m5_identity_signal_status_counts'], ensure_ascii=False)}`",
+        f"- representative limit per group: "
+        f"{summary['representative_limit_per_group']}",
+        "",
+        "## Status Groups",
+        "",
+        "| readiness | blockers | count |",
+        "|---|---|---:|",
+    ]
+    for group in groups:
+        assert isinstance(group, dict)
+        blockers = group["readiness_blockers"] or "(none)"
+        lines.append(
+            f"| `{group['readiness_status']}` | `{blockers}` | {group['count']} |"
+        )
+
+    lines.extend(["", "## Representatives", ""])
+    for group in groups:
+        assert isinstance(group, dict)
+        representatives = group["representatives"]
+        assert isinstance(representatives, list)
+        if not representatives:
+            continue
+        blockers = group["readiness_blockers"] or "(none)"
+        lines.extend(
+            [
+                f"### `{group['readiness_status']}` / `{blockers}`",
+                "",
+                "| organized_file | M3 | M3 blockers | M7 M3 blockers | M7a digits | "
+                "digit review ROIs | M5 identity | M5 source | jacket |",
+                "|---|---|---|---|---|---|---|---|---|",
+            ]
+        )
+        for representative in representatives:
+            assert isinstance(representative, dict)
+            lines.append(
+                f"| `{representative['organized_file']}` | "
+                f"`{representative['m3_overall_status']}` | "
+                f"`{representative['m3_blocking_fields']}` | "
+                f"`{representative['m7_m3_blocking_fields']}` | "
+                f"`{representative['m7a_digit_aggregate_status']}` | "
+                f"`{representative['m7a_digit_review_rois']}` | "
+                f"`{representative['m5_identity_signal_status']}` | "
+                f"`{representative['m5_identity_signal_source']}` | "
+                f"`{representative['m5_jacket_match_status']}` |"
+            )
+        lines.append("")
+
+    lines.extend(
+        [
+            "## Status Next Actions",
+            "",
+            "| readiness | next action |",
+            "|---|---|",
+            (
+                "| `ready_for_save_review` | M7保存判定ロジックへ渡す前の"
+                "レビュー材料として確認する。DB保存OK扱いにはしない。 |"
+            ),
+            (
+                "| `blocked_m3_material` | `m7_m3_blocking_fields` の譜面材料不足を"
+                "確認する。M5 identity reviewable時の `song_title` / `artist` "
+                "OCR不足は診断扱い。 |"
+            ),
+            (
+                "| `blocked_digit_review` | M7a数字ROIの `review_rois` を確認し、"
+                "テンプレート不足、曖昧、分割失敗、期待値不足を分ける。 |"
+            ),
+            (
+                "| `blocked_identity_signal` | M5候補観測が未解決のため、"
+                "jacket / composite の代表と参照不足を確認する。 |"
+            ),
+            (
+                "| `missing_required_material` | M7a集約やM5入力行など、"
+                "レビューに必要なPoC材料の欠落を先に補う。 |"
+            ),
+            "",
+        ]
+    )
+
+    lines.extend(
+        [
+            "## Reading Notes",
+            "",
+            "- `ready_for_save_review` は保存前レビュー材料が揃っていることだけを表し、"
+            "DB保存可能を意味しません。",
+            "- `blocked_m3_material` はM3の曲名/artist/chart-field材料に"
+            "未ready項目がある状態です。ただしM5 identity材料がレビュー可能な場合、"
+            "`song_title` / `artist` OCR不足だけではM7保存前レビューを止めません。",
+            "- `m3_blocking_fields` は元のM3集約の未ready項目、"
+            "`m7_m3_blocking_fields` はM7保存前レビュー上のM3 blockerです。",
+            "- `blocked_digit_review` はM7a数字材料にレビュー対象ROIがある状態です。",
+            "- `blocked_identity_signal` はM5実行時にM5候補観測が"
+            "未解決の状態です。",
+            "- M5未実行時はM3材料とM7a数字材料だけでレビューします。",
+            "- `identity_signal_*` はM5から渡す候補観測であり、"
+            "曲ID/譜面ID確定ではありません。",
+            "- `missing_required_material` はM7a集約など必須PoC材料が欠けている状態です。",
+            "- duplicate、`rejected_transition`、未確定候補、non-result は対象外です。",
+        ]
+    )
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def m7_save_decision_preview_identity_review_reason(row: dict[str, str]) -> str:
+    m5_identity_material_status = row.get("m5_identity_material_status", "")
+    if m5_identity_material_status in {
+        "m5_not_run",
+        "m5_identity_not_reviewable",
+        "m5_jacket_match_missing",
+    }:
+        return m5_identity_material_status
+    if not row.get("m5_identity_signal_song_id") or not row.get(
+        "m5_identity_signal_chart_id"
+    ):
+        return "identity_signal_id_missing"
+    if m5_identity_material_status != "m5_identity_reviewable":
+        return "m5_identity_material_required_for_preview"
+    return ""
+
+
+def m7_save_decision_preview_status(row: dict[str, str]) -> tuple[str, str]:
+    readiness_status = row.get("readiness_status", "")
+    if readiness_status == "ready_for_save_review":
+        identity_review_reason = m7_save_decision_preview_identity_review_reason(row)
+        if identity_review_reason:
+            return "needs_identity_review", identity_review_reason
+        if row.get("m7a_digit_aggregate_status") != "all_digits_recognized":
+            return "needs_digit_review", (
+                row.get("m7a_digit_review_rois")
+                or row.get("m7a_digit_aggregate_status")
+                or "digit_material_not_ready"
+            )
+        return "preview_save_candidate", ""
+    if readiness_status == "blocked_digit_review":
+        return "needs_digit_review", row.get("readiness_blockers", "")
+    if readiness_status == "blocked_identity_signal":
+        return (
+            "needs_identity_review",
+            m7_save_decision_preview_identity_review_reason(row)
+            or row.get("readiness_blockers", ""),
+        )
+    if readiness_status == "missing_required_material":
+        return "missing_required_material", row.get("readiness_blockers", "")
+    return "blocked_readiness", row.get("readiness_blockers", "") or readiness_status
+
+
+def m7_save_decision_preview_rows(
+    readiness_rows: Iterable[dict[str, str]],
+) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    for readiness_row in readiness_rows:
+        preview_status, preview_reason = m7_save_decision_preview_status(readiness_row)
+        row = dict(readiness_row)
+        row["preview_status"] = preview_status
+        row["preview_reason"] = preview_reason
+        row["preview_candidate"] = str(preview_status == "preview_save_candidate")
+        rows.append(row)
+    return rows
+
+
+def m7_save_decision_preview_digit_rois(
+    rows: Iterable[dict[str, str]],
+    roi_names: Iterable[str],
+) -> list[str]:
+    row_list = list(rows)
+    return [
+        roi_name
+        for roi_name in roi_names
+        if any(f"{roi_name}_recognized_digits" in row for row in row_list)
+    ]
+
+
+def write_m7_save_decision_preview_csv(
+    path: Path,
+    rows: Iterable[dict[str, str]],
+    roi_names: Iterable[str],
+) -> None:
+    roi_list = list(roi_names)
+    fieldnames = [
+        "frame_index",
+        "organized_file",
+        "screen_type",
+        "event_type",
+        "confirmed_result",
+        "duplicate",
+        "timestamp_ms",
+        "confirmation_mode",
+        "preview_status",
+        "preview_reason",
+        "preview_candidate",
+        "readiness_status",
+        "readiness_blockers",
+        "m7_m3_material_status",
+        "m7_m3_blocking_fields",
+        "m7a_digit_aggregate_status",
+        "m7a_digit_review_rois",
+        "m5_identity_material_status",
+        "m5_identity_signal_status",
+        "m5_identity_signal_source",
+        "m5_identity_signal_song_id",
+        "m5_identity_signal_chart_id",
+        "m5_identity_signal_title",
+        "m5_identity_signal_reason",
+        "m5_jacket_match_status",
+    ]
+    for roi_name in roi_list:
+        fieldnames.extend(
+            [
+                f"{roi_name}_recognized_digits",
+                f"{roi_name}_expected_value",
+                f"{roi_name}_status",
+                f"{roi_name}_failure_reason",
+                f"{roi_name}_match",
+                f"{roi_name}_confidence",
+                f"{roi_name}_distance",
+                f"{roi_name}_segment_count",
+            ]
+        )
+    with path.open("w", encoding="utf-8", newline="") as file:
+        writer = csv.DictWriter(file, fieldnames=fieldnames)
+        writer.writeheader()
+        for row in rows:
+            writer.writerow({field: row.get(field, "") for field in fieldnames})
+
+
+def m7_save_decision_preview_representative(
+    row: dict[str, str],
+    roi_names: Iterable[str],
+) -> dict[str, object]:
+    digit_values = {
+        roi_name: {
+            "recognized_digits": row.get(f"{roi_name}_recognized_digits", ""),
+            "expected_value": row.get(f"{roi_name}_expected_value", ""),
+            "status": row.get(f"{roi_name}_status", ""),
+            "match": row.get(f"{roi_name}_match", ""),
+            "failure_reason": row.get(f"{roi_name}_failure_reason", ""),
+        }
+        for roi_name in roi_names
+    }
+    return {
+        "organized_file": row["organized_file"],
+        "preview_status": row["preview_status"],
+        "preview_reason": row["preview_reason"],
+        "readiness_status": row["readiness_status"],
+        "readiness_blockers": row["readiness_blockers"],
+        "m7_m3_material_status": row["m7_m3_material_status"],
+        "m7_m3_blocking_fields": row["m7_m3_blocking_fields"],
+        "m7a_digit_aggregate_status": row["m7a_digit_aggregate_status"],
+        "m7a_digit_review_rois": row["m7a_digit_review_rois"],
+        "m5_identity_material_status": row["m5_identity_material_status"],
+        "m5_identity_signal_status": row["m5_identity_signal_status"],
+        "m5_identity_signal_source": row["m5_identity_signal_source"],
+        "m5_identity_signal_song_id": row["m5_identity_signal_song_id"],
+        "m5_identity_signal_chart_id": row["m5_identity_signal_chart_id"],
+        "m5_identity_signal_title": row["m5_identity_signal_title"],
+        "m5_jacket_match_status": row["m5_jacket_match_status"],
+        "digits": digit_values,
+    }
+
+
+def count_preview_value(counts: dict[str, int], value: str) -> None:
+    key = value or "missing"
+    counts[key] = counts.get(key, 0) + 1
+
+
+def append_preview_representative(
+    bucket: dict[str, object],
+    row: dict[str, str],
+    roi_names: Iterable[str],
+    representative_limit: int,
+) -> None:
+    bucket["count"] = int(bucket["count"]) + 1
+    representatives = bucket["representatives"]
+    assert isinstance(representatives, list)
+    if len(representatives) < representative_limit:
+        representatives.append(m7_save_decision_preview_representative(row, roi_names))
+
+
+def summarize_m7_save_decision_preview(
+    rows: Iterable[dict[str, str]],
+    roi_names: Iterable[str],
+    representative_limit: int = M7_SAVE_DECISION_PREVIEW_REPRESENTATIVE_LIMIT,
+) -> dict[str, object]:
+    row_list = list(rows)
+    roi_list = list(roi_names)
+    preview_status_counts: dict[str, int] = {}
+    readiness_status_counts: dict[str, int] = {}
+    groups: dict[tuple[str, str], dict[str, object]] = {}
+    preview_candidate_identity_signal_source_counts: dict[str, int] = {}
+    preview_candidate_m5_jacket_match_status_counts: dict[str, int] = {}
+    preview_candidate_m5_identity_signal_status_counts: dict[str, int] = {}
+    preview_candidate_m5_groups: dict[tuple[str, str, str], dict[str, object]] = {}
+    needs_identity_review_groups: dict[tuple[str, str, str], dict[str, object]] = {}
+    needs_digit_review_groups: dict[tuple[str, str, str], dict[str, object]] = {}
+    for row in row_list:
+        preview_status = row["preview_status"]
+        preview_status_counts[preview_status] = (
+            preview_status_counts.get(preview_status, 0) + 1
+        )
+        readiness_status = row["readiness_status"]
+        readiness_status_counts[readiness_status] = (
+            readiness_status_counts.get(readiness_status, 0) + 1
+        )
+        key = (preview_status, row["preview_reason"])
+        bucket = groups.setdefault(
+            key,
+            {
+                "preview_status": preview_status,
+                "preview_reason": row["preview_reason"],
+                "count": 0,
+                "representatives": [],
+            },
+        )
+        bucket["count"] = int(bucket["count"]) + 1
+        representatives = bucket["representatives"]
+        assert isinstance(representatives, list)
+        if len(representatives) < representative_limit:
+            representatives.append(
+                m7_save_decision_preview_representative(row, roi_list)
+            )
+
+        if preview_status == "preview_save_candidate":
+            source = row.get("m5_identity_signal_source", "")
+            jacket_status = row.get("m5_jacket_match_status", "")
+            identity_signal_status = row.get("m5_identity_signal_status", "")
+            count_preview_value(
+                preview_candidate_identity_signal_source_counts,
+                source,
+            )
+            count_preview_value(
+                preview_candidate_m5_jacket_match_status_counts,
+                jacket_status,
+            )
+            count_preview_value(
+                preview_candidate_m5_identity_signal_status_counts,
+                identity_signal_status,
+            )
+            candidate_key = (
+                source or "missing",
+                jacket_status or "missing",
+                identity_signal_status or "missing",
+            )
+            candidate_bucket = preview_candidate_m5_groups.setdefault(
+                candidate_key,
+                {
+                    "identity_signal_source": source or "missing",
+                    "m5_jacket_match_status": jacket_status or "missing",
+                    "m5_identity_signal_status": identity_signal_status or "missing",
+                    "count": 0,
+                    "representatives": [],
+                },
+            )
+            append_preview_representative(
+                candidate_bucket,
+                row,
+                roi_list,
+                representative_limit,
+            )
+
+        if preview_status == "needs_identity_review":
+            identity_key = (
+                row["preview_reason"] or "missing",
+                row.get("m5_identity_material_status", "") or "missing",
+                row.get("m5_identity_signal_status", "") or "missing",
+            )
+            identity_bucket = needs_identity_review_groups.setdefault(
+                identity_key,
+                {
+                    "preview_reason": row["preview_reason"] or "missing",
+                    "m5_identity_material_status": row.get(
+                        "m5_identity_material_status", ""
+                    )
+                    or "missing",
+                    "m5_identity_signal_status": row.get(
+                        "m5_identity_signal_status", ""
+                    )
+                    or "missing",
+                    "count": 0,
+                    "representatives": [],
+                },
+            )
+            append_preview_representative(
+                identity_bucket,
+                row,
+                roi_list,
+                representative_limit,
+            )
+
+        if preview_status == "needs_digit_review":
+            for roi_name in roi_list:
+                roi_status = row.get(f"{roi_name}_status", "")
+                failure_reason = row.get(f"{roi_name}_failure_reason", "")
+                match = row.get(f"{roi_name}_match", "")
+                if roi_status == "recognized" and match == "True":
+                    continue
+                if not roi_status and not failure_reason and not match:
+                    continue
+                digit_key = (
+                    roi_name,
+                    roi_status or "missing",
+                    failure_reason or "missing",
+                )
+                digit_bucket = needs_digit_review_groups.setdefault(
+                    digit_key,
+                    {
+                        "roi_name": roi_name,
+                        "status": roi_status or "missing",
+                        "failure_reason": failure_reason or "missing",
+                        "count": 0,
+                        "representatives": [],
+                    },
+                )
+                append_preview_representative(
+                    digit_bucket,
+                    row,
+                    roi_list,
+                    representative_limit,
+                )
+
+    return {
+        "target_boundary": "confirmed_result=true and duplicate=false",
+        "scope": "M7 save decision preview before DB save",
+        "source": "m7_save_readiness_review_rows",
+        "target_count": len(row_list),
+        "preview_candidate_count": preview_status_counts.get(
+            "preview_save_candidate",
+            0,
+        ),
+        "preview_status_counts": dict(sorted(preview_status_counts.items())),
+        "readiness_status_counts": dict(sorted(readiness_status_counts.items())),
+        "preview_save_candidate_identity_signal_source_counts": dict(
+            sorted(preview_candidate_identity_signal_source_counts.items())
+        ),
+        "preview_save_candidate_m5_jacket_match_status_counts": dict(
+            sorted(preview_candidate_m5_jacket_match_status_counts.items())
+        ),
+        "preview_save_candidate_m5_identity_signal_status_counts": dict(
+            sorted(preview_candidate_m5_identity_signal_status_counts.items())
+        ),
+        "digit_rois": roi_list,
+        "representative_limit_per_group": representative_limit,
+        "groups": sorted(
+            groups.values(),
+            key=lambda item: (
+                str(item["preview_status"]),
+                str(item["preview_reason"]),
+            ),
+        ),
+        "preview_save_candidate_m5_groups": sorted(
+            preview_candidate_m5_groups.values(),
+            key=lambda item: (
+                str(item["identity_signal_source"]),
+                str(item["m5_jacket_match_status"]),
+                str(item["m5_identity_signal_status"]),
+            ),
+        ),
+        "needs_identity_review_groups": sorted(
+            needs_identity_review_groups.values(),
+            key=lambda item: (
+                str(item["preview_reason"]),
+                str(item["m5_identity_material_status"]),
+                str(item["m5_identity_signal_status"]),
+            ),
+        ),
+        "needs_digit_review_groups": sorted(
+            needs_digit_review_groups.values(),
+            key=lambda item: (
+                str(item["roi_name"]),
+                str(item["status"]),
+                str(item["failure_reason"]),
+            ),
+        ),
+        "status_vocabulary": [
+            "preview_save_candidate",
+            "blocked_readiness",
+            "needs_identity_review",
+            "needs_digit_review",
+            "missing_required_material",
+        ],
+        "reading_notes": [
+            "One row represents one confirmed-events save candidate from M7 readiness.",
+            "preview_save_candidate is a preview state for M8 handoff material only.",
+            "It is not a DB save allow decision and does not confirm song_id or chart_id.",
+            "identity_signal_* and M7a recognized digits remain candidate observations.",
+            (
+                "duplicate, rejected_transition, unconfirmed, and non-result rows are "
+                "excluded upstream."
+            ),
+        ],
+    }
+
+
+def write_m7_save_decision_preview_report(
+    path: Path,
+    summary: dict[str, object],
+) -> None:
+    groups = summary["groups"]
+    assert isinstance(groups, list)
+    roi_names = summary["digit_rois"]
+    assert isinstance(roi_names, list)
+    preview_candidate_m5_groups = summary["preview_save_candidate_m5_groups"]
+    assert isinstance(preview_candidate_m5_groups, list)
+    needs_identity_review_groups = summary["needs_identity_review_groups"]
+    assert isinstance(needs_identity_review_groups, list)
+    needs_digit_review_groups = summary["needs_digit_review_groups"]
+    assert isinstance(needs_digit_review_groups, list)
+    candidate_source_counts_json = json.dumps(
+        summary["preview_save_candidate_identity_signal_source_counts"],
+        ensure_ascii=False,
+    )
+    candidate_jacket_counts_json = json.dumps(
+        summary["preview_save_candidate_m5_jacket_match_status_counts"],
+        ensure_ascii=False,
+    )
+    candidate_identity_counts_json = json.dumps(
+        summary["preview_save_candidate_m5_identity_signal_status_counts"],
+        ensure_ascii=False,
+    )
+    lines = [
+        "# M7 Save Decision Preview",
+        "",
+        "M7保存判定前レビューの行から、M8へ渡す候補材料がそろったかを"
+        "小さく確認するプレビューレポートです。",
+        "DB保存、保存OK/NG判定、曲ID/譜面ID確定には進みません。",
+        "",
+        f"- target boundary: `{summary['target_boundary']}`",
+        f"- source: `{summary['source']}`",
+        f"- target confirmed-events: {summary['target_count']}",
+        f"- preview candidate count: {summary['preview_candidate_count']}",
+        f"- preview status counts: "
+        f"`{json.dumps(summary['preview_status_counts'], ensure_ascii=False)}`",
+        f"- readiness status counts: "
+        f"`{json.dumps(summary['readiness_status_counts'], ensure_ascii=False)}`",
+        (
+            "- preview candidate M5 source counts: "
+            f"`{candidate_source_counts_json}`"
+        ),
+        (
+            "- preview candidate jacket status counts: "
+            f"`{candidate_jacket_counts_json}`"
+        ),
+        (
+            "- preview candidate identity signal status counts: "
+            f"`{candidate_identity_counts_json}`"
+        ),
+        f"- digit rois: `{', '.join(str(roi) for roi in roi_names)}`",
+        f"- representative limit per group: "
+        f"{summary['representative_limit_per_group']}",
+        "",
+        "## Status Groups",
+        "",
+        "| preview status | reason | count |",
+        "|---|---|---:|",
+    ]
+    for group in groups:
+        assert isinstance(group, dict)
+        reason = group["preview_reason"] or "(none)"
+        lines.append(
+            f"| `{group['preview_status']}` | `{reason}` | {group['count']} |"
+        )
+
+    lines.extend(["", "## Representatives", ""])
+    for group in groups:
+        assert isinstance(group, dict)
+        representatives = group["representatives"]
+        assert isinstance(representatives, list)
+        if not representatives:
+            continue
+        reason = group["preview_reason"] or "(none)"
+        lines.extend(
+            [
+                f"### `{group['preview_status']}` / `{reason}`",
+                "",
+                "| organized_file | readiness | M3 blockers | M7a | M5 identity | "
+                "candidate id | digits |",
+                "|---|---|---|---|---|---|---|",
+            ]
+        )
+        for representative in representatives:
+            assert isinstance(representative, dict)
+            digits = representative["digits"]
+            assert isinstance(digits, dict)
+            digit_parts = []
+            for roi_name in roi_names:
+                value = digits.get(roi_name, {})
+                assert isinstance(value, dict)
+                digit_parts.append(
+                    f"{roi_name}:{value.get('recognized_digits', '')}/"
+                    f"{value.get('expected_value', '')}/"
+                    f"{value.get('match', '')}"
+                )
+            candidate_id = " / ".join(
+                value
+                for value in (
+                    str(representative["m5_identity_signal_song_id"]),
+                    str(representative["m5_identity_signal_chart_id"]),
+                )
+                if value
+            )
+            lines.append(
+                f"| `{representative['organized_file']}` | "
+                f"`{representative['readiness_status']}` | "
+                f"`{representative['m7_m3_blocking_fields']}` | "
+                f"`{representative['m7a_digit_aggregate_status']}` | "
+                f"`{representative['m5_identity_signal_status']}` / "
+                f"`{representative['m5_identity_signal_source']}` | "
+                f"`{candidate_id}` | "
+                f"`{' ; '.join(digit_parts)}` |"
+            )
+        lines.append("")
+
+    if preview_candidate_m5_groups:
+        lines.extend(["", "## Preview Candidate M5 Representatives", ""])
+        for group in preview_candidate_m5_groups:
+            assert isinstance(group, dict)
+            representatives = group["representatives"]
+            assert isinstance(representatives, list)
+            lines.extend(
+                [
+                    (
+                        f"### source `{group['identity_signal_source']}` / "
+                        f"jacket `{group['m5_jacket_match_status']}` / "
+                        f"identity `{group['m5_identity_signal_status']}`"
+                    ),
+                    "",
+                    f"- count: {group['count']}",
+                    "",
+                    "| organized_file | candidate id | title | digits |",
+                    "|---|---|---|---|",
+                ]
+            )
+            for representative in representatives:
+                assert isinstance(representative, dict)
+                digits = representative["digits"]
+                assert isinstance(digits, dict)
+                digit_parts = []
+                for roi_name in roi_names:
+                    value = digits.get(roi_name, {})
+                    assert isinstance(value, dict)
+                    digit_parts.append(
+                        f"{roi_name}:{value.get('recognized_digits', '')}/"
+                        f"{value.get('expected_value', '')}/"
+                        f"{value.get('match', '')}"
+                    )
+                candidate_id = " / ".join(
+                    value
+                    for value in (
+                        str(representative["m5_identity_signal_song_id"]),
+                        str(representative["m5_identity_signal_chart_id"]),
+                    )
+                    if value
+                )
+                lines.append(
+                    f"| `{representative['organized_file']}` | "
+                    f"`{candidate_id}` | "
+                    f"`{representative['m5_identity_signal_title']}` | "
+                    f"`{' ; '.join(digit_parts)}` |"
+                )
+            lines.append("")
+
+    if needs_identity_review_groups:
+        lines.extend(["", "## Identity Review Representatives", ""])
+        for group in needs_identity_review_groups:
+            assert isinstance(group, dict)
+            representatives = group["representatives"]
+            assert isinstance(representatives, list)
+            lines.extend(
+                [
+                    (
+                        f"### reason `{group['preview_reason']}` / "
+                        f"material `{group['m5_identity_material_status']}` / "
+                        f"identity `{group['m5_identity_signal_status']}`"
+                    ),
+                    "",
+                    f"- count: {group['count']}",
+                    "",
+                    "| organized_file | readiness | jacket | candidate id | title |",
+                    "|---|---|---|---|---|",
+                ]
+            )
+            for representative in representatives:
+                assert isinstance(representative, dict)
+                candidate_id = " / ".join(
+                    value
+                    for value in (
+                        str(representative["m5_identity_signal_song_id"]),
+                        str(representative["m5_identity_signal_chart_id"]),
+                    )
+                    if value
+                )
+                lines.append(
+                    f"| `{representative['organized_file']}` | "
+                    f"`{representative['readiness_status']}` | "
+                    f"`{representative['m5_jacket_match_status']}` | "
+                    f"`{candidate_id}` | "
+                    f"`{representative['m5_identity_signal_title']}` |"
+                )
+            lines.append("")
+
+    if needs_digit_review_groups:
+        lines.extend(["", "## Digit Review Representatives", ""])
+        for group in needs_digit_review_groups:
+            assert isinstance(group, dict)
+            representatives = group["representatives"]
+            assert isinstance(representatives, list)
+            lines.extend(
+                [
+                    (
+                        f"### ROI `{group['roi_name']}` / "
+                        f"status `{group['status']}` / "
+                        f"failure `{group['failure_reason']}`"
+                    ),
+                    "",
+                    f"- count: {group['count']}",
+                    "",
+                    "| organized_file | recognized | expected | match | failure reason |",
+                    "|---|---|---|---|---|",
+                ]
+            )
+            roi_name = str(group["roi_name"])
+            for representative in representatives:
+                assert isinstance(representative, dict)
+                digits = representative["digits"]
+                assert isinstance(digits, dict)
+                value = digits.get(roi_name, {})
+                assert isinstance(value, dict)
+                lines.append(
+                    f"| `{representative['organized_file']}` | "
+                    f"`{value.get('recognized_digits', '')}` | "
+                    f"`{value.get('expected_value', '')}` | "
+                    f"`{value.get('match', '')}` | "
+                    f"`{value.get('failure_reason', '')}` |"
+                )
+            lines.append("")
+
+    lines.extend(
+        [
+            "## Status Next Actions",
+            "",
+            "| preview status | next action |",
+            "|---|---|",
+            (
+                "| `preview_save_candidate` | M8保存処理へ渡す候補材料としてレビューする。"
+                "保存OK、DB保存成功、曲ID/譜面ID確定とは扱わない。 |"
+            ),
+            (
+                "| `blocked_readiness` | M7 readiness の blockerを先に解消する。"
+                "M3材料不足と他の理由を混同しない。 |"
+            ),
+            (
+                "| `needs_identity_review` | M5候補観測の未実行、未解決、候補ID不足を確認する。"
+                "`identity_signal_*` は候補観測のまま読む。 |"
+            ),
+            (
+                "| `needs_digit_review` | M7a数字ROIの `recognized_digits`、"
+                "`expected_value`、`match`、失敗理由を確認する。 |"
+            ),
+            (
+                "| `missing_required_material` | M7a集約やM5行など必須PoC材料の欠落を補う。 |"
+            ),
+            "",
+            "## Reading Notes",
+            "",
+            "- `preview_save_candidate` はM8へ渡す候補材料が揃ったプレビュー状態です。",
+            "- このレポートは保存OK/NG判定、DB保存成功、曲ID/譜面ID確定を意味しません。",
+            "- `identity_signal_song_id` / `identity_signal_chart_id` は候補観測です。",
+            "- M7aの数字列も候補値レビュー材料で、保存値確定ではありません。",
+            "- duplicate、`rejected_transition`、未確定候補、non-result は上流の"
+            "M7 readiness対象外のままです。",
         ]
     )
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -7342,6 +8429,7 @@ def main(argv: list[str] | None = None) -> int:
             "Wrote M5 master match PoC: "
             f"{output_dir} ({master_match_summary['target_count']} candidates)"
         )
+    jacket_match_rows: list[dict[str, str]] | None = None
     if args.m5_jacket_match:
         if not args.master_db.exists():
             raise FileNotFoundError(f"--master-db does not exist: {args.master_db}")
@@ -7595,6 +8683,47 @@ def main(argv: list[str] | None = None) -> int:
         write_m7a_digit_save_candidate_review_report(
             output_dir / "m7a_digit_save_candidate_review.md",
             m7a_save_candidate_review,
+        )
+        m7_save_readiness_rows = m7_save_readiness_review_rows(
+            m3_save_candidate_summary_rows,
+            m7a_save_candidate_rows,
+            jacket_match_rows,
+        )
+        write_m7_save_readiness_review_csv(
+            output_dir / "m7_save_readiness_review.csv",
+            m7_save_readiness_rows,
+        )
+        m7_save_readiness_summary = summarize_m7_save_readiness_review(
+            m7_save_readiness_rows,
+        )
+        (output_dir / "m7_save_readiness_review.json").write_text(
+            json.dumps(m7_save_readiness_summary, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        write_m7_save_readiness_review_report(
+            output_dir / "m7_save_readiness_review.md",
+            m7_save_readiness_summary,
+        )
+        m7_save_decision_rows = m7_save_decision_preview_rows(
+            m7_save_readiness_rows,
+        )
+        write_m7_save_decision_preview_csv(
+            output_dir / "m7_save_decision_preview.csv",
+            m7_save_decision_rows,
+            m7a_digit_rois,
+        )
+        m7_save_decision_preview_summary = summarize_m7_save_decision_preview(
+            m7_save_decision_rows,
+            m7a_digit_rois,
+        )
+        (output_dir / "m7_save_decision_preview.json").write_text(
+            json.dumps(m7_save_decision_preview_summary, ensure_ascii=False, indent=2)
+            + "\n",
+            encoding="utf-8",
+        )
+        write_m7_save_decision_preview_report(
+            output_dir / "m7_save_decision_preview.md",
+            m7_save_decision_preview_summary,
         )
     summary = summarize(classifications)
     (output_dir / "summary.json").write_text(

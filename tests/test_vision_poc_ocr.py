@@ -1900,6 +1900,38 @@ def test_m7a_digit_recognition_writes_confirmed_events_report(
     ).read_text(encoding="utf-8")
     assert "M7a横持ち集約" in review_report
     assert "保存OK/NG判定" in review_report
+    readiness_rows = read_csv_rows(output_dir / "m7_save_readiness_review.csv")
+    assert len(readiness_rows) == 1
+    assert readiness_rows[0]["organized_file"] == "result_score123456_c.png"
+    assert readiness_rows[0]["readiness_status"] == "blocked_m3_material"
+    readiness_summary = json.loads(
+        (output_dir / "m7_save_readiness_review.json").read_text(encoding="utf-8")
+    )
+    assert readiness_summary["scope"] == "M7 save readiness review before DB save"
+    assert readiness_summary["target_count"] == 1
+    assert readiness_summary["readiness_status_counts"] == {"blocked_m3_material": 1}
+    readiness_report = (
+        output_dir / "m7_save_readiness_review.md"
+    ).read_text(encoding="utf-8")
+    assert "# M7 Save Readiness Review" in readiness_report
+    assert "保存OK/NG判定" in readiness_report
+    preview_rows = read_csv_rows(output_dir / "m7_save_decision_preview.csv")
+    assert len(preview_rows) == 1
+    assert preview_rows[0]["organized_file"] == "result_score123456_c.png"
+    assert preview_rows[0]["preview_status"] == "blocked_readiness"
+    assert preview_rows[0]["score_digits_recognized_digits"] == "123456"
+    preview_summary = json.loads(
+        (output_dir / "m7_save_decision_preview.json").read_text(encoding="utf-8")
+    )
+    assert preview_summary["scope"] == "M7 save decision preview before DB save"
+    assert preview_summary["source"] == "m7_save_readiness_review_rows"
+    assert preview_summary["target_count"] == 1
+    assert preview_summary["preview_status_counts"] == {"blocked_readiness": 1}
+    preview_report = (
+        output_dir / "m7_save_decision_preview.md"
+    ).read_text(encoding="utf-8")
+    assert "# M7 Save Decision Preview" in preview_report
+    assert "保存OK/NG判定" in preview_report
 
 
 def test_m7a_tesseract_comparison_review_groups_representatives(
@@ -2021,6 +2053,424 @@ def test_m7a_tesseract_comparison_review_groups_representatives(
     assert "`different_normalized`" in report
     assert "`empty_normalized_digits`" in report
     assert "保存可否判定" in report
+
+
+def test_m7_save_readiness_review_combines_m3_and_digit_materials(
+    tmp_path: Path,
+) -> None:
+    def m3_row(
+        organized_file: str,
+        overall_status: str,
+        blocking_fields: str,
+    ) -> dict[str, str]:
+        return {
+            "frame_index": "2",
+            "organized_file": organized_file,
+            "screen_type": "result",
+            "event_type": "confirmed",
+            "confirmed_result": "True",
+            "duplicate": "False",
+            "timestamp_ms": "1000",
+            "confirmation_mode": "time",
+            "overall_status": overall_status,
+            "blocking_fields": blocking_fields,
+        }
+
+    def digit_row(
+        organized_file: str,
+        aggregate_status: str,
+        review_rois: str,
+    ) -> dict[str, str]:
+        return {
+            "organized_file": organized_file,
+            "aggregate_status": aggregate_status,
+            "review_rois": review_rois,
+        }
+
+    def m5_row(
+        organized_file: str,
+        identity_signal_status: str,
+        identity_signal_source: str,
+        jacket_match_status: str,
+    ) -> dict[str, str]:
+        return {
+            "organized_file": organized_file,
+            "identity_signal_status": identity_signal_status,
+            "identity_signal_source": identity_signal_source,
+            "identity_signal_song_id": "song_make",
+            "identity_signal_chart_id": "chart_make_single_difficult",
+            "identity_signal_title": "MAKE IT BETTER",
+            "identity_signal_reason": "fixture_identity_reason",
+            "jacket_match_status": jacket_match_status,
+        }
+
+    rows = runner.m7_save_readiness_review_rows(
+        [
+            m3_row("ready.png", "ready", ""),
+            m3_row("song_artist_only_blocked.png", "not_ready", "song_title artist"),
+            m3_row("m3_blocked.png", "not_ready", "artist difficulty"),
+            m3_row("digit_blocked.png", "ready", ""),
+            m3_row("missing_digit.png", "ready", ""),
+            m3_row("identity_blocked.png", "ready", ""),
+            m3_row("missing_identity.png", "ready", ""),
+        ],
+        [
+            digit_row("ready.png", "all_digits_recognized", ""),
+            digit_row("song_artist_only_blocked.png", "all_digits_recognized", ""),
+            digit_row("m3_blocked.png", "all_digits_recognized", ""),
+            digit_row("digit_blocked.png", "needs_digit_review", "miss"),
+            digit_row("identity_blocked.png", "all_digits_recognized", ""),
+            digit_row("missing_identity.png", "all_digits_recognized", ""),
+        ],
+        [
+            m5_row(
+                "ready.png",
+                "jacket_resolved_candidate",
+                "jacket_feature",
+                "matched",
+            ),
+            m5_row(
+                "song_artist_only_blocked.png",
+                "jacket_resolved_candidate",
+                "jacket_feature",
+                "matched",
+            ),
+            m5_row(
+                "m3_blocked.png",
+                "unresolved_ambiguous",
+                "",
+                "ambiguous",
+            ),
+            m5_row(
+                "digit_blocked.png",
+                "composite_resolved_candidate",
+                "title_linehash_dict",
+                "ambiguous",
+            ),
+            m5_row(
+                "identity_blocked.png",
+                "unresolved_ambiguous",
+                "",
+                "ambiguous",
+            ),
+        ],
+    )
+
+    assert [row["readiness_status"] for row in rows] == [
+        "ready_for_save_review",
+        "ready_for_save_review",
+        "blocked_m3_material",
+        "blocked_digit_review",
+        "missing_required_material",
+        "blocked_identity_signal",
+        "missing_required_material",
+    ]
+    assert rows[1]["m3_blocking_fields"] == "song_title artist"
+    assert rows[1]["m7_m3_material_status"] == "m7_m3_ready"
+    assert rows[1]["m7_m3_blocking_fields"] == ""
+    assert rows[2]["readiness_blockers"] == "artist difficulty"
+    assert rows[2]["m7_m3_blocking_fields"] == "artist difficulty"
+    assert rows[3]["readiness_blockers"] == "miss"
+    assert rows[4]["readiness_blockers"] == "m7a_digit_summary_missing"
+    assert rows[5]["readiness_blockers"] == "m5_identity_signal_unresolved"
+    assert rows[6]["readiness_blockers"] == "m5_jacket_match_missing"
+    assert rows[0]["m5_identity_material_status"] == "m5_identity_reviewable"
+    assert rows[5]["m5_identity_material_status"] == "m5_identity_not_reviewable"
+    assert rows[6]["m5_identity_material_status"] == "m5_jacket_match_missing"
+
+    no_m5_rows = runner.m7_save_readiness_review_rows(
+        [
+            m3_row("ready_without_m5.png", "ready", ""),
+            m3_row("song_artist_only_without_m5.png", "not_ready", "song_title artist"),
+        ],
+        [
+            digit_row("ready_without_m5.png", "all_digits_recognized", ""),
+            digit_row("song_artist_only_without_m5.png", "all_digits_recognized", ""),
+        ],
+    )
+    assert no_m5_rows[0]["readiness_status"] == "ready_for_save_review"
+    assert no_m5_rows[0]["m5_identity_material_status"] == "m5_not_run"
+    assert no_m5_rows[1]["readiness_status"] == "blocked_m3_material"
+    assert no_m5_rows[1]["m7_m3_blocking_fields"] == "song_title artist"
+
+    csv_path = tmp_path / "m7_save_readiness_review.csv"
+    runner.write_m7_save_readiness_review_csv(csv_path, rows)
+    csv_rows = read_csv_rows(csv_path)
+    assert csv_rows[0]["readiness_status"] == "ready_for_save_review"
+    assert csv_rows[1]["m7_m3_material_status"] == "m7_m3_ready"
+    assert csv_rows[3]["m7a_digit_review_rois"] == "miss"
+    assert csv_rows[0]["m5_identity_signal_status"] == "jacket_resolved_candidate"
+    assert csv_rows[5]["m5_jacket_match_status"] == "ambiguous"
+
+    summary = runner.summarize_m7_save_readiness_review(rows)
+    assert summary["scope"] == "M7 save readiness review before DB save"
+    assert summary["source"] == (
+        "m3_save_candidate_summary_rows, m7a_digit_save_candidate_summary_rows, "
+        "and optional m5_jacket_match_rows"
+    )
+    assert summary["target_count"] == 7
+    assert summary["readiness_status_counts"] == {
+        "blocked_digit_review": 1,
+        "blocked_identity_signal": 1,
+        "blocked_m3_material": 1,
+        "missing_required_material": 2,
+        "ready_for_save_review": 2,
+    }
+    assert summary["m3_overall_status_counts"] == {"not_ready": 2, "ready": 5}
+    assert summary["m7_m3_material_status_counts"] == {
+        "m7_m3_blocked": 1,
+        "m7_m3_ready": 6,
+    }
+    assert summary["m7a_digit_aggregate_status_counts"] == {
+        "all_digits_recognized": 5,
+        "missing": 1,
+        "needs_digit_review": 1,
+    }
+    assert summary["m5_identity_material_status_counts"] == {
+        "m5_identity_not_reviewable": 2,
+        "m5_identity_reviewable": 3,
+        "m5_jacket_match_missing": 2,
+    }
+    assert summary["m5_identity_signal_status_counts"] == {
+        "composite_resolved_candidate": 1,
+        "jacket_resolved_candidate": 2,
+        "missing": 2,
+        "unresolved_ambiguous": 2,
+    }
+    ready_group = next(
+        group
+        for group in summary["groups"]
+        if group["readiness_status"] == "ready_for_save_review"
+    )
+    assert ready_group["representatives"][0]["organized_file"] == "ready.png"
+
+    report_path = tmp_path / "m7_save_readiness_review.md"
+    runner.write_m7_save_readiness_review_report(report_path, summary)
+    report = report_path.read_text(encoding="utf-8")
+    assert "# M7 Save Readiness Review" in report
+    assert "`ready_for_save_review`" in report
+    assert "`blocked_identity_signal`" in report
+    assert "`jacket_resolved_candidate`" in report
+    assert "DB保存可能を意味しません" in report
+
+
+def test_m7_save_decision_preview_uses_readiness_rows(
+    tmp_path: Path,
+) -> None:
+    def m3_row(
+        organized_file: str,
+        overall_status: str,
+        blocking_fields: str,
+    ) -> dict[str, str]:
+        return {
+            "frame_index": "2",
+            "organized_file": organized_file,
+            "screen_type": "result",
+            "event_type": "confirmed",
+            "confirmed_result": "True",
+            "duplicate": "False",
+            "timestamp_ms": "1000",
+            "confirmation_mode": "time",
+            "overall_status": overall_status,
+            "blocking_fields": blocking_fields,
+        }
+
+    def digit_row(
+        organized_file: str,
+        aggregate_status: str,
+        review_rois: str,
+        recognized_digits: str = "123456",
+        match: str = "True",
+    ) -> dict[str, str]:
+        return {
+            "organized_file": organized_file,
+            "score_digits_recognized_digits": recognized_digits,
+            "score_digits_expected_value": "123456",
+            "score_digits_status": "recognized",
+            "score_digits_failure_reason": "",
+            "score_digits_match": match,
+            "score_digits_confidence": "0.980000",
+            "score_digits_distance": "0.020000",
+            "score_digits_segment_count": "6",
+            "aggregate_status": aggregate_status,
+            "review_rois": review_rois,
+        }
+
+    def m5_row(
+        organized_file: str,
+        identity_signal_status: str,
+        identity_signal_song_id: str,
+        identity_signal_chart_id: str,
+        identity_signal_source: str = "jacket_feature",
+        jacket_match_status: str = "matched",
+    ) -> dict[str, str]:
+        return {
+            "organized_file": organized_file,
+            "identity_signal_status": identity_signal_status,
+            "identity_signal_source": identity_signal_source,
+            "identity_signal_song_id": identity_signal_song_id,
+            "identity_signal_chart_id": identity_signal_chart_id,
+            "identity_signal_title": "MAKE IT BETTER",
+            "identity_signal_reason": "fixture_identity_reason",
+            "jacket_match_status": jacket_match_status,
+        }
+
+    readiness_rows = runner.m7_save_readiness_review_rows(
+        [
+            m3_row("m5_ready.png", "ready", ""),
+            m3_row("m3_blocked.png", "not_ready", "difficulty"),
+            m3_row("digit_blocked.png", "ready", ""),
+            m3_row("identity_blocked.png", "ready", ""),
+            m3_row("missing_digit.png", "ready", ""),
+            m3_row("id_missing.png", "ready", ""),
+        ],
+        [
+            digit_row("m5_ready.png", "all_digits_recognized", ""),
+            digit_row("m3_blocked.png", "all_digits_recognized", ""),
+            digit_row(
+                "digit_blocked.png",
+                "needs_digit_review",
+                "score_digits",
+                recognized_digits="12345",
+                match="False",
+            ),
+            digit_row("identity_blocked.png", "all_digits_recognized", ""),
+            digit_row("id_missing.png", "all_digits_recognized", ""),
+        ],
+        [
+            m5_row(
+                "m5_ready.png",
+                "jacket_resolved_candidate",
+                "song_make",
+                "chart_make_single_difficult",
+            ),
+            m5_row(
+                "m3_blocked.png",
+                "jacket_resolved_candidate",
+                "song_make",
+                "chart_make_single_difficult",
+            ),
+            m5_row(
+                "digit_blocked.png",
+                "jacket_resolved_candidate",
+                "song_make",
+                "chart_make_single_difficult",
+            ),
+            m5_row(
+                "identity_blocked.png",
+                "unresolved_ambiguous",
+                "",
+                "",
+                identity_signal_source="",
+                jacket_match_status="ambiguous",
+            ),
+            m5_row(
+                "id_missing.png",
+                "jacket_resolved_candidate",
+                "song_make",
+                "",
+            ),
+        ],
+    )
+    no_m5_readiness_rows = runner.m7_save_readiness_review_rows(
+        [m3_row("m5_not_run.png", "ready", "")],
+        [digit_row("m5_not_run.png", "all_digits_recognized", "")],
+    )
+
+    preview_rows = runner.m7_save_decision_preview_rows(
+        [*readiness_rows, *no_m5_readiness_rows],
+    )
+
+    assert [row["preview_status"] for row in preview_rows] == [
+        "preview_save_candidate",
+        "blocked_readiness",
+        "needs_digit_review",
+        "needs_identity_review",
+        "missing_required_material",
+        "needs_identity_review",
+        "needs_identity_review",
+    ]
+    assert preview_rows[0]["preview_candidate"] == "True"
+    assert preview_rows[0]["score_digits_recognized_digits"] == "123456"
+    assert preview_rows[0]["m5_identity_signal_song_id"] == "song_make"
+    assert preview_rows[3]["preview_reason"] == "m5_identity_not_reviewable"
+    assert preview_rows[5]["preview_reason"] == "identity_signal_id_missing"
+    assert preview_rows[6]["preview_reason"] == "m5_not_run"
+
+    csv_path = tmp_path / "m7_save_decision_preview.csv"
+    runner.write_m7_save_decision_preview_csv(
+        csv_path,
+        preview_rows,
+        ["score_digits"],
+    )
+    csv_rows = read_csv_rows(csv_path)
+    assert csv_rows[0]["preview_status"] == "preview_save_candidate"
+    assert csv_rows[0]["score_digits_expected_value"] == "123456"
+    assert csv_rows[2]["preview_status"] == "needs_digit_review"
+    assert csv_rows[5]["preview_reason"] == "identity_signal_id_missing"
+    assert csv_rows[6]["m5_identity_material_status"] == "m5_not_run"
+
+    summary = runner.summarize_m7_save_decision_preview(
+        preview_rows,
+        ["score_digits"],
+    )
+    assert summary["scope"] == "M7 save decision preview before DB save"
+    assert summary["source"] == "m7_save_readiness_review_rows"
+    assert summary["target_count"] == 7
+    assert summary["preview_candidate_count"] == 1
+    assert summary["preview_status_counts"] == {
+        "blocked_readiness": 1,
+        "missing_required_material": 1,
+        "needs_digit_review": 1,
+        "needs_identity_review": 3,
+        "preview_save_candidate": 1,
+    }
+    assert summary["preview_save_candidate_identity_signal_source_counts"] == {
+        "jacket_feature": 1
+    }
+    assert summary["preview_save_candidate_m5_jacket_match_status_counts"] == {
+        "matched": 1
+    }
+    assert summary["preview_save_candidate_m5_identity_signal_status_counts"] == {
+        "jacket_resolved_candidate": 1
+    }
+    ready_group = next(
+        group
+        for group in summary["groups"]
+        if group["preview_status"] == "preview_save_candidate"
+    )
+    assert ready_group["representatives"][0]["digits"]["score_digits"] == {
+        "recognized_digits": "123456",
+        "expected_value": "123456",
+        "status": "recognized",
+        "match": "True",
+        "failure_reason": "",
+    }
+    assert [
+        group["preview_reason"]
+        for group in summary["needs_identity_review_groups"]
+    ] == [
+        "identity_signal_id_missing",
+        "m5_identity_not_reviewable",
+        "m5_not_run",
+    ]
+    assert summary["needs_digit_review_groups"][0]["roi_name"] == "score_digits"
+    assert summary["needs_digit_review_groups"][0]["representatives"][0]["digits"][
+        "score_digits"
+    ]["failure_reason"] == ""
+
+    report_path = tmp_path / "m7_save_decision_preview.md"
+    runner.write_m7_save_decision_preview_report(report_path, summary)
+    report = report_path.read_text(encoding="utf-8")
+    assert "# M7 Save Decision Preview" in report
+    assert "`preview_save_candidate`" in report
+    assert "`needs_identity_review`" in report
+    assert "Preview Candidate M5 Representatives" in report
+    assert "Identity Review Representatives" in report
+    assert "Digit Review Representatives" in report
+    assert "`m5_not_run`" in report
+    assert "`identity_signal_id_missing`" in report
+    assert "DB保存、保存OK/NG判定" in report
 
 
 def test_m7a_digit_save_candidate_summary_keeps_status_vocabulary(

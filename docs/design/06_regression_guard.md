@@ -206,6 +206,39 @@
 - M7a Tesseract comparison review も保存OK/NG判定、DB保存、OCR方式刷新として扱わない。
 - ローカル digit template 画像はGit管理しない。
 
+## M7 save readiness review
+
+- `m7_save_readiness_review.csv`、`m7_save_readiness_review.json`、`m7_save_readiness_review.md` は、M3 save candidate summary、M7a digit save candidate summary、任意の M5 jacket match rows を入力にする。
+- 対象は confirmed-events 境界、つまり `confirmed_result=true` かつ `duplicate=false` の1件1行にする。
+- duplicate、`event_type=rejected_transition`、未確定 `result_candidate`、non-result は対象外にする。
+- M5未実行時はM3材料とM7a数字材料だけで従来どおりレビューする。
+- M5入力がある場合、`identity_signal_status=jacket_resolved_candidate` / `composite_resolved_candidate` だけをレビュー可能なM5候補観測として扱う。
+- M5 identity材料がレビュー可能な場合、`song_title` / `artist` OCR不足だけでは `blocked_m3_material` にしない。
+- `m3_blocking_fields` は元のM3集約の未ready項目として維持し、M7保存前レビュー上のM3 blockerは `m7_m3_blocking_fields` として別に読む。
+- M5未実行時は `song_title` / `artist` 不足もM3 blockerとして扱い、従来のM3 + M7aレビュー境界を維持する。
+- readiness status は `ready_for_save_review`、`blocked_m3_material`、`blocked_digit_review`、`blocked_identity_signal`、`missing_required_material` に限る。
+- `ready_for_save_review` はPoC材料が揃った状態であり、保存OK/NG判定、DB保存成功、曲ID/譜面ID確定として扱わない。
+- `identity_signal_*` は候補観測であり、曲ID/譜面ID確定として扱わない。
+- M7 save readiness review は DB insert、低信頼度ログ本番仕様、保存値本番確定に進まない。
+
+## M7 save decision preview
+
+- `m7_save_decision_preview.csv`、`m7_save_decision_preview.json`、`m7_save_decision_preview.md` は、`m7_save_readiness_review_rows` を入力にする。
+- 対象はM7 save readiness reviewと同じ confirmed-events 境界、つまり `confirmed_result=true` かつ `duplicate=false` の1件1行にする。
+- duplicate、`event_type=rejected_transition`、未確定 `result_candidate`、non-result は上流のM7 readiness対象外のまま維持する。
+- preview status は `preview_save_candidate`、`blocked_readiness`、`needs_identity_review`、`needs_digit_review`、`missing_required_material` に限る。
+- `preview_save_candidate` はM8へ渡す候補材料が揃ったプレビュー状態であり、保存OK/NG判定、DB保存成功、曲ID/譜面ID確定として扱わない。
+- M5未実行の `ready_for_save_review` 行は `needs_identity_review` として止める。
+- M5候補観測が未解決、または `identity_signal_song_id` / `identity_signal_chart_id` が欠ける行も `needs_identity_review` として止める。
+- `needs_identity_review` の `preview_reason` と代表は、`m5_not_run`、`m5_identity_not_reviewable`、`identity_signal_id_missing` を混同しない。
+- M7a digit reviewが必要な行は `needs_digit_review` とし、M3 readiness blockerやM5 identity blockerと混同しない。
+- M7 readiness上のM3 blockerは `blocked_readiness` とし、必須PoC材料欠落は `missing_required_material` として分ける。
+- `preview_save_candidate` は M5 source、jacket status、identity signal status のsummary countsと代表を出し、M8へ渡す候補材料の偏りを読めるようにする。
+- `needs_digit_review` はROI別の `recognized_digits`、`expected_value`、`match`、`failure_reason` を代表で読めるようにする。
+- CSVに出す `identity_signal_song_id` / `identity_signal_chart_id` は候補観測であり、曲ID/譜面ID確定として扱わない。
+- CSVに出すM7aの `recognized_digits`、`expected_value`、`match` は候補値レビュー材料であり、保存値確定として扱わない。
+- M7 save decision preview は DB insert、低信頼度ログ本番仕様、保存値本番確定に進まない。
+
 ## ROI方針
 
 - ROI座標は 1280x720 基準。
