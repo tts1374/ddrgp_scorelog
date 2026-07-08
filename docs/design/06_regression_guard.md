@@ -186,10 +186,12 @@
 - `great` はROI左側ラベルや明るい青背景を数字として数えず、右側数字領域の前景コンポーネントを分割する。
 - `good` はROI左側ラベルや明るい青背景を数字として数えず、右側数字領域の前景コンポーネントを分割する。
 - `miss` はROI左側ラベル、短いマーカー、明るい青背景を数字として数えず、右側数字領域の白数字前景コンポーネントを分割する。
-- `max_combo`、`marvelous`、`perfect`、`great`、`good`、`miss` は4桁fixtureでも分割・認識できる状態を維持する。
+- `ex_score` はROI左側ラベルを数字として数えず、右側数字領域の前景コンポーネントを分割する。
+- `max_combo`、`marvelous`、`perfect`、`great`、`good`、`miss`、`ex_score` は4桁fixtureでも分割・認識できる状態を維持する。
 - 判定数系テンプレートはROI別ディレクトリに加えて、共有 `judgment_counts` ディレクトリからも読める。
 - `miss` は共有 `judgment_counts` だけでは `ambiguous` になり得るため、ROI別ローカルテンプレートを優先する。
-- `max_combo` / `ex_score` 系テンプレートは、将来の共通化候補として共有 `combo_ex_score` ディレクトリからも読める。
+- `max_combo` / `ex_score` 系テンプレートは、共通化候補として共有 `combo_ex_score` ディレクトリからも読める。
+- `ex_score` は共有 `combo_ex_score` がない環境でも、既存 `max_combo` テンプレートをfallbackとして読める。
 - M7a summary/report はROI別に `segment_count_counts` と `expected_digit_length_counts` を出し、テンプレート不足時でも分割数と期待桁数を確認できる。
 - `recognized`、`ambiguous`、`missing_reference`、`failed_segmentation`、`not_evaluated` の語彙を維持し、保存OK/NG判定と混同しない。
 - 同じ実行でTesseract結果がある場合だけ、`tesseract_comparison` を参考比較として読む。

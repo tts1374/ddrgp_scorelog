@@ -335,12 +335,13 @@ M5完了時点で固定すること:
 - 2026-07-07時点のローカル `good` テンプレート配置後は、`score_digits`、`max_combo`、`marvelous`、`perfect`、`great`、`good` の6 ROIで confirmed-events 60件ずつ、合計360/360 `recognized` / match。`good` は左側ラベル由来成分を避けるため、右側数字領域へのfocusを `great` より少し強くしている。
 - 2026-07-07時点の共有 `judgment_counts` テンプレート確認でも、同じ6 ROI合計360/360 `recognized` / match。
 - 2026-07-08時点のローカル `miss` ROI別テンプレート配置後は、`score_digits`、`max_combo`、`marvelous`、`perfect`、`great`、`good`、`miss` の7 ROIで confirmed-events 60件ずつ、合計420/420 `recognized` / match。判定数ROIは明るい青背景を数字扱いしないよう高明度かつチャンネル差が大きい成分を除外している。`miss` はさらに右側数字領域へのfocus、白数字向けの明度 + チャンネル差mask、最小高さをROI別に絞っている。共有 `judgment_counts` だけでは `miss` が58/60 `ambiguous`、2/60 `recognized` になるため、ROI別テンプレートを使う。
+- 2026-07-08時点の `ex_score` M7a確認では、右側数字領域へのfocusとcomponent分割、既存 `max_combo` テンプレートfallbackにより、ROI別 `ex_score` テンプレートなしで confirmed-events 60/60 `recognized` / match になった。`score_digits` から `ex_score` までの8 ROI合計は480/480 `recognized` / match。分割診断は `segment_count_counts={1:1,3:30,4:29}`、`expected_digit_length_counts={1:1,3:30,4:29}`。この確認ではローカル `metadata.csv` の `result_087_sp_basic_lv06_888_score986610.png` の `ex_score` をROI表示どおり `593` に修正している。
 
 やること:
 
 - ローカル `score_digits` テンプレート配置済み環境では、追加素材で1桁から7桁までの実画面サンプルが増えたときに同じ可変桁分割で再確認する。
 - `score_digits` のテンプレート余白、桁分割、距離しきい値を継続レビューし、過剰な `ambiguous` や誤認識があれば最小限で調整する。
-- 次は `score_digits`、`max_combo`、`marvelous`、`perfect`、`great`、`good`、`miss` の読み方を保ったまま、`ex_score` へ小さい範囲から M7a 対象を広げる。
+- 次は `score_digits`、`max_combo`、`marvelous`、`perfect`、`great`、`good`、`miss`、`ex_score` の読み方を保ったまま、M7a出力を後続の保存判定材料としてどう集約するかを小さく検討する。
 - 既存Tesseract出力との比較summaryを読み、差分代表を保存判定ではなくレビュー材料として整理する。
 - 出力は `data/` 配下に置き、テンプレート素材やローカル画像はGit管理しない。
 - fixtureテストで、正規化、桁分割、テンプレート選択、失敗理由の基本動作を継続確認する。

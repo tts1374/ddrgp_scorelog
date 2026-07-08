@@ -309,6 +309,7 @@ M7A_DIGIT_FOCUS_LEFT_FRACTIONS: dict[str, float] = {
     "great": 0.52,
     "good": 0.55,
     "miss": 0.55,
+    "ex_score": 0.55,
 }
 M7A_COMPONENT_MIN_HEIGHT_FRACTIONS: dict[str, float] = {
     "miss": 0.45,
@@ -323,7 +324,7 @@ M7A_REJECT_BRIGHT_COLORED_BACKGROUND_ROIS = frozenset(
     {"marvelous", "perfect", "great", "good", "miss"}
 )
 M7A_COMPONENT_SEGMENT_ROIS = frozenset(
-    {"max_combo", "marvelous", "perfect", "great", "good", "miss"}
+    {"max_combo", "marvelous", "perfect", "great", "good", "miss", "ex_score"}
 )
 M7A_DIGIT_TEMPLATE_GROUPS: dict[str, tuple[str, ...]] = {
     "marvelous": ("judgment_counts",),
@@ -332,7 +333,7 @@ M7A_DIGIT_TEMPLATE_GROUPS: dict[str, tuple[str, ...]] = {
     "good": ("judgment_counts",),
     "miss": ("judgment_counts",),
     "max_combo": ("combo_ex_score",),
-    "ex_score": ("combo_ex_score",),
+    "ex_score": ("combo_ex_score", "max_combo"),
 }
 M3_METADATA_EXPECTED_FIELDS = (
     "song_title",
