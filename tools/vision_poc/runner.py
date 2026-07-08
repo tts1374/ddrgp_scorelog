@@ -357,6 +357,7 @@ M3_SONG_ARTIST_OCR_METHOD = "tesseract-text-raw"
 M3_SAVE_CANDIDATE_FIELDS = (*M3_SONG_ARTIST_OCR_FIELDS, *M3_CHART_FIELD_FIELDS)
 M3_SAVE_CANDIDATE_BLOCKER_REPRESENTATIVE_LIMIT = 3
 M7A_DIGIT_SAVE_CANDIDATE_REVIEW_REPRESENTATIVE_LIMIT = 3
+M7A_TESSERACT_COMPARISON_REVIEW_REPRESENTATIVE_LIMIT = 3
 M3_SONG_ARTIST_ENTRY_FAILURE_REASONS = (
     "engine_unavailable",
     "ocr_failed",
@@ -2322,6 +2323,145 @@ def summarize_m7a_tesseract_comparison(
     }
 
 
+def m7a_tesseract_comparison_status(
+    digit_result: M7aDigitRecognitionResult,
+    ocr_result: ScoreOcrResult | None,
+) -> tuple[str, str]:
+    if not digit_result.recognized_digits:
+        return "m7a_unavailable", digit_result.failure_reason or "no_recognized_digits"
+    if ocr_result is None:
+        return "tesseract_unavailable", "no_score_ocr_result"
+    if not ocr_result.score_ocr_normalized:
+        return "tesseract_unavailable", "empty_normalized_digits"
+    if canonical_ocr_digits(digit_result.recognized_digits) == canonical_ocr_digits(
+        ocr_result.score_ocr_normalized
+    ):
+        return "same_normalized", ""
+    return "different_normalized", ""
+
+
+def m7a_tesseract_comparison_representative(
+    digit_result: M7aDigitRecognitionResult,
+    ocr_result: ScoreOcrResult | None,
+    comparison_status: str,
+    unavailable_reason: str,
+) -> dict[str, object]:
+    return {
+        "organized_file": digit_result.organized_file,
+        "roi_name": digit_result.roi_name,
+        "comparison_status": comparison_status,
+        "unavailable_reason": unavailable_reason,
+        "m7a_recognized_digits": digit_result.recognized_digits,
+        "m7a_status": digit_result.status,
+        "m7a_failure_reason": digit_result.failure_reason,
+        "tesseract_raw": "" if ocr_result is None else ocr_result.score_ocr_raw,
+        "tesseract_normalized": (
+            "" if ocr_result is None else ocr_result.score_ocr_normalized
+        ),
+        "tesseract_status": "" if ocr_result is None else ocr_result.status,
+        "tesseract_error": "" if ocr_result is None else ocr_result.error,
+        "expected_value": digit_result.expected_value
+        or ("" if ocr_result is None else ocr_result.expected_score),
+        "m7a_match": digit_result.match,
+        "tesseract_match": None if ocr_result is None else ocr_result.match,
+    }
+
+
+def summarize_m7a_tesseract_comparison_review(
+    digit_results: Iterable[M7aDigitRecognitionResult],
+    ocr_results: Iterable[ScoreOcrResult],
+    roi_names: Iterable[str],
+    representative_limit: int = M7A_TESSERACT_COMPARISON_REVIEW_REPRESENTATIVE_LIMIT,
+) -> dict[str, object]:
+    digit_rows = list(digit_results)
+    roi_list = list(roi_names)
+    ocr_by_key = {
+        (result.organized_file, result.roi_name): result for result in ocr_results
+    }
+
+    comparison_status_counts: dict[str, int] = {}
+    fields: dict[str, dict[str, object]] = {}
+    for roi_name in roi_list:
+        roi_rows = [result for result in digit_rows if result.roi_name == roi_name]
+        roi_status_counts: dict[str, int] = {}
+        groups: dict[tuple[str, str], dict[str, object]] = {}
+        for digit_result in roi_rows:
+            ocr_result = ocr_by_key.get(
+                (digit_result.organized_file, digit_result.roi_name)
+            )
+            comparison_status, unavailable_reason = m7a_tesseract_comparison_status(
+                digit_result,
+                ocr_result,
+            )
+            comparison_status_counts[comparison_status] = (
+                comparison_status_counts.get(comparison_status, 0) + 1
+            )
+            roi_status_counts[comparison_status] = (
+                roi_status_counts.get(comparison_status, 0) + 1
+            )
+            key = (comparison_status, unavailable_reason)
+            bucket = groups.setdefault(
+                key,
+                {
+                    "comparison_status": comparison_status,
+                    "unavailable_reason": unavailable_reason,
+                    "count": 0,
+                    "representatives": [],
+                },
+            )
+            bucket["count"] = int(bucket["count"]) + 1
+            representatives = bucket["representatives"]
+            assert isinstance(representatives, list)
+            if len(representatives) < representative_limit:
+                representatives.append(
+                    m7a_tesseract_comparison_representative(
+                        digit_result,
+                        ocr_result,
+                        comparison_status,
+                        unavailable_reason,
+                    )
+                )
+
+        fields[roi_name] = {
+            "comparison_status_counts": dict(sorted(roi_status_counts.items())),
+            "groups": sorted(
+                groups.values(),
+                key=lambda item: (
+                    str(item["comparison_status"]),
+                    str(item["unavailable_reason"]),
+                ),
+            ),
+        }
+
+    return {
+        "target_boundary": "confirmed_result=true and duplicate=false",
+        "scope": "M7a and Tesseract comparison review representatives",
+        "source": "m7a_digit_results and score_ocr_results from the same run",
+        "target_count": len(digit_rows),
+        "comparison_status_counts": dict(sorted(comparison_status_counts.items())),
+        "representative_limit_per_group": representative_limit,
+        "roi_names": roi_list,
+        "fields": fields,
+        "status_vocabulary": [
+            "same_normalized",
+            "different_normalized",
+            "tesseract_unavailable",
+            "m7a_unavailable",
+        ],
+        "reading_notes": [
+            "This report supplements m7a_digit_recognition_summary.tesseract_comparison.",
+            "It only compares M7a digit rows with default score_ocr rows from the same run.",
+            "duplicate, rejected_transition, unconfirmed, and non-result rows are excluded.",
+            "same_normalized and different_normalized compare canonical digit strings.",
+            (
+                "tesseract_unavailable means score_ocr did not produce normalized digits "
+                "for that organized_file and ROI."
+            ),
+            "This is a review aid, not a DB save allow/deny decision.",
+        ],
+    }
+
+
 def summarize_m7a_digit_recognition(
     results: Iterable[M7aDigitRecognitionResult],
     events: Iterable[ResultEvent],
@@ -2799,6 +2939,108 @@ def write_m7a_digit_save_candidate_review_report(
             "- `missing_reference` はテンプレート不足、`ambiguous` は距離や余白不足、"
             "`failed_segmentation` は桁分割失敗、`not_evaluated` は期待値不足または"
             "試行不足として読み分けます。",
+            "- 代表整理はレビュー補助であり、保存可否判定やDB保存実装ではありません。",
+        ]
+    )
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def write_m7a_tesseract_comparison_review_report(
+    path: Path,
+    review_summary: dict[str, object],
+) -> None:
+    fields = review_summary["fields"]
+    assert isinstance(fields, dict)
+    roi_names = review_summary["roi_names"]
+    assert isinstance(roi_names, list)
+    lines = [
+        "# M7a Tesseract Comparison Review",
+        "",
+        "同一実行内のM7a数字認識結果と既存Tesseract OCR結果の差分代表です。",
+        "DB保存、保存OK/NG判定、OCR方式刷新には進みません。",
+        "",
+        f"- target boundary: `{review_summary['target_boundary']}`",
+        f"- source: `{review_summary['source']}`",
+        f"- target M7a digit attempts: {review_summary['target_count']}",
+        f"- comparison status counts: "
+        f"`{json.dumps(review_summary['comparison_status_counts'], ensure_ascii=False)}`",
+        f"- representative limit per group: "
+        f"{review_summary['representative_limit_per_group']}",
+        "",
+        "## ROI Comparison Groups",
+        "",
+        "| ROI | status counts | grouped reasons |",
+        "|---|---|---|",
+    ]
+    for roi_name in roi_names:
+        bucket = fields[roi_name]
+        assert isinstance(bucket, dict)
+        groups = bucket["groups"]
+        assert isinstance(groups, list)
+        group_labels = []
+        for group in groups:
+            assert isinstance(group, dict)
+            status = group["comparison_status"]
+            reason = group["unavailable_reason"] or "(none)"
+            count = group["count"]
+            group_labels.append(f"{status}:{reason}={count}")
+        grouped = ", ".join(group_labels) if group_labels else "none"
+        lines.append(
+            f"| `{roi_name}` | "
+            f"`{json.dumps(bucket['comparison_status_counts'], ensure_ascii=False)}` | "
+            f"`{grouped}` |"
+        )
+
+    lines.extend(["", "## Representatives", ""])
+    for roi_name in roi_names:
+        bucket = fields[roi_name]
+        assert isinstance(bucket, dict)
+        groups = bucket["groups"]
+        assert isinstance(groups, list)
+        if not groups:
+            continue
+        lines.extend([f"### `{roi_name}`", ""])
+        for group in groups:
+            assert isinstance(group, dict)
+            status = group["comparison_status"]
+            reason = group["unavailable_reason"] or "(none)"
+            lines.extend(
+                [
+                    f"- comparison `{status}`, reason `{reason}`, count {group['count']}",
+                    "",
+                    "| organized_file | M7a | Tesseract | expected | M7a match | "
+                    "Tesseract match | Tesseract status |",
+                    "|---|---|---|---|---|---|---|",
+                ]
+            )
+            representatives = group["representatives"]
+            assert isinstance(representatives, list)
+            for representative in representatives:
+                assert isinstance(representative, dict)
+                lines.append(
+                    f"| `{representative['organized_file']}` | "
+                    f"`{representative['m7a_recognized_digits']}` "
+                    f"(`{representative['m7a_status']}`/"
+                    f"`{representative['m7a_failure_reason']}`) | "
+                    f"`{representative['tesseract_raw']}` -> "
+                    f"`{representative['tesseract_normalized']}` | "
+                    f"`{representative['expected_value']}` | "
+                    f"`{representative['m7a_match']}` | "
+                    f"`{representative['tesseract_match']}` | "
+                    f"`{representative['tesseract_status']}` |"
+                )
+            lines.append("")
+
+    lines.extend(
+        [
+            "## Reading Notes",
+            "",
+            "- このレポートは `m7a_digit_recognition_summary.json` の "
+            "`tesseract_comparison` counts を補う代表一覧です。",
+            "- `same_normalized` / `different_normalized` は先頭ゼロ差を正規化して比較します。",
+            "- `tesseract_unavailable` は同じ `organized_file` とROIで、Tesseract側の"
+            "正規化数字列がない状態です。",
+            "- duplicate、`rejected_transition`、未確定候補、non-result は対象外です。",
             "- 代表整理はレビュー補助であり、保存可否判定やDB保存実装ではありません。",
         ]
     )
@@ -7304,6 +7546,19 @@ def main(argv: list[str] | None = None) -> int:
             output_dir / "m7a_digit_recognition_report.md",
             m7a_digit_results,
             m7a_digit_summary,
+        )
+        m7a_tesseract_review = summarize_m7a_tesseract_comparison_review(
+            m7a_digit_results,
+            score_ocr_results,
+            m7a_digit_rois,
+        )
+        (output_dir / "m7a_tesseract_comparison_review.json").write_text(
+            json.dumps(m7a_tesseract_review, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        write_m7a_tesseract_comparison_review_report(
+            output_dir / "m7a_tesseract_comparison_review.md",
+            m7a_tesseract_review,
         )
         m7a_save_candidate_rows = m7a_digit_save_candidate_summary_rows(
             frames,

@@ -201,6 +201,9 @@
 - `m7a_digit_save_candidate_review.json` と `m7a_digit_save_candidate_review.md` は、M7a save candidate summary の `needs_digit_review` 行だけをROI別 status / failure reason ごとに代表化する。
 - M7a save candidate review の代表には `organized_file`、ROI名、`recognized_digits`、`expected_value`、`status`、`failure_reason`、`match`、`confidence`、`distance`、`segment_count` を含める。
 - M7a save candidate review は `missing_reference`、`ambiguous`、`failed_segmentation`、`not_evaluated` を読み分けるレビュー補助であり、保存OK/NG判定やDB保存成功として扱わない。
+- `m7a_tesseract_comparison_review.json` と `m7a_tesseract_comparison_review.md` は、同じ実行内の M7a digit rows と default `score_ocr` rows だけを比較し、`same_normalized`、`different_normalized`、`tesseract_unavailable`、`m7a_unavailable` を代表化する。
+- M7a Tesseract comparison review は `m7a_digit_recognition_summary.json` の `tesseract_comparison` counts を置き換えない。代表には `organized_file`、ROI名、M7a `recognized_digits` / `status` / `failure_reason`、Tesseract raw / normalized / status / error、`expected_value`、M7a match、Tesseract match を含める。
+- M7a Tesseract comparison review も保存OK/NG判定、DB保存、OCR方式刷新として扱わない。
 - ローカル digit template 画像はGit管理しない。
 
 ## ROI方針

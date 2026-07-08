@@ -1831,6 +1831,34 @@ def test_m7a_digit_recognition_writes_confirmed_events_report(
     assert "Segment Diagnostics" in report
     assert "DB保存OK/NG判定ではありません" in report
 
+    comparison_review = json.loads(
+        (output_dir / "m7a_tesseract_comparison_review.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert (
+        comparison_review["scope"]
+        == "M7a and Tesseract comparison review representatives"
+    )
+    assert (
+        comparison_review["source"]
+        == "m7a_digit_results and score_ocr_results from the same run"
+    )
+    assert comparison_review["target_count"] == 1
+    assert comparison_review["comparison_status_counts"] == {"same_normalized": 1}
+    comparison_group = comparison_review["fields"]["score_digits"]["groups"][0]
+    assert comparison_group["comparison_status"] == "same_normalized"
+    assert comparison_group["representatives"][0]["organized_file"] == (
+        "result_score123456_c.png"
+    )
+    assert comparison_group["representatives"][0]["m7a_recognized_digits"] == "123456"
+    assert comparison_group["representatives"][0]["tesseract_normalized"] == "123456"
+    comparison_report = (
+        output_dir / "m7a_tesseract_comparison_review.md"
+    ).read_text(encoding="utf-8")
+    assert "既存Tesseract OCR結果の差分代表" in comparison_report
+    assert "保存OK/NG判定" in comparison_report
+
     aggregate_rows = read_csv_rows(output_dir / "m7a_digit_save_candidate_summary.csv")
     assert len(aggregate_rows) == 1
     assert aggregate_rows[0]["organized_file"] == "result_score123456_c.png"
@@ -1872,6 +1900,127 @@ def test_m7a_digit_recognition_writes_confirmed_events_report(
     ).read_text(encoding="utf-8")
     assert "M7a横持ち集約" in review_report
     assert "保存OK/NG判定" in review_report
+
+
+def test_m7a_tesseract_comparison_review_groups_representatives(
+    tmp_path: Path,
+) -> None:
+    def digit_result(
+        organized_file: str,
+        roi_name: str,
+        recognized_digits: str,
+        expected_value: str,
+        match: bool | None,
+        status: str = "recognized",
+        failure_reason: str = "",
+    ) -> runner.M7aDigitRecognitionResult:
+        return runner.M7aDigitRecognitionResult(
+            organized_file=organized_file,
+            screen_type="result",
+            event_type="confirmed",
+            confirmed_result=True,
+            duplicate=False,
+            roi_name=roi_name,
+            method=runner.M7A_DIGIT_RECOGNITION_METHOD,
+            recognized_digits=recognized_digits,
+            expected_value=expected_value,
+            match=match,
+            status=status,
+            failure_reason=failure_reason,
+            distance=0.01 if recognized_digits else None,
+            confidence=0.99 if recognized_digits else None,
+            segment_count=len(recognized_digits),
+            template_count=10,
+            per_digit_distances="1:0.01" if recognized_digits else "",
+        )
+
+    def ocr_result(
+        organized_file: str,
+        roi_name: str,
+        raw: str,
+        normalized: str,
+        expected_value: str,
+        match: bool | None,
+        status: str = "ok",
+        error: str = "",
+    ) -> runner.ScoreOcrResult:
+        return runner.ScoreOcrResult(
+            organized_file=organized_file,
+            screen_type="result",
+            result_candidate=True,
+            roi_name=roi_name,
+            score_ocr_raw=raw,
+            score_ocr_normalized=normalized,
+            expected_score=expected_value,
+            match=match,
+            engine="tesseract",
+            status=status,
+            error=error,
+            original_path="ocr/original.png",
+            enlarged_path="ocr/enlarged.png",
+            binary_path="ocr/binary.png",
+        )
+
+    digit_results = [
+        digit_result("same.png", "score_digits", "123", "123", True),
+        digit_result("different.png", "score_digits", "123", "123", True),
+        digit_result("missing_ocr.png", "max_combo", "198", "198", True),
+        digit_result("empty_ocr.png", "miss", "0", "0", True),
+        digit_result(
+            "m7a_missing.png",
+            "good",
+            "",
+            "40",
+            None,
+            status="failed_segmentation",
+            failure_reason="no_digit_segments",
+        ),
+    ]
+    ocr_results = [
+        ocr_result("same.png", "score_digits", "00123", "00123", "123", True),
+        ocr_result("different.png", "score_digits", "1234", "1234", "123", False),
+        ocr_result("empty_ocr.png", "miss", "", "", "0", None, status="empty_ocr"),
+    ]
+
+    review = runner.summarize_m7a_tesseract_comparison_review(
+        digit_results,
+        ocr_results,
+        ["score_digits", "max_combo", "miss", "good"],
+    )
+
+    assert review["target_boundary"] == "confirmed_result=true and duplicate=false"
+    assert review["target_count"] == 5
+    assert review["comparison_status_counts"] == {
+        "different_normalized": 1,
+        "m7a_unavailable": 1,
+        "same_normalized": 1,
+        "tesseract_unavailable": 2,
+    }
+    score_groups = review["fields"]["score_digits"]["groups"]
+    assert [group["comparison_status"] for group in score_groups] == [
+        "different_normalized",
+        "same_normalized",
+    ]
+    assert score_groups[0]["representatives"][0]["tesseract_raw"] == "1234"
+    assert score_groups[0]["representatives"][0]["tesseract_match"] is False
+    max_combo_group = review["fields"]["max_combo"]["groups"][0]
+    assert max_combo_group["comparison_status"] == "tesseract_unavailable"
+    assert max_combo_group["unavailable_reason"] == "no_score_ocr_result"
+    miss_group = review["fields"]["miss"]["groups"][0]
+    assert miss_group["unavailable_reason"] == "empty_normalized_digits"
+    assert miss_group["representatives"][0]["tesseract_status"] == "empty_ocr"
+    good_group = review["fields"]["good"]["groups"][0]
+    assert good_group["comparison_status"] == "m7a_unavailable"
+    assert good_group["representatives"][0]["m7a_failure_reason"] == (
+        "no_digit_segments"
+    )
+
+    report_path = tmp_path / "m7a_tesseract_comparison_review.md"
+    runner.write_m7a_tesseract_comparison_review_report(report_path, review)
+    report = report_path.read_text(encoding="utf-8")
+    assert "`different_normalized`" in report
+    assert "`empty_normalized_digits`" in report
+    assert "保存可否判定" in report
 
 
 def test_m7a_digit_save_candidate_summary_keeps_status_vocabulary(

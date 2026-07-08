@@ -338,12 +338,13 @@ M5完了時点で固定すること:
 - 2026-07-08時点の `ex_score` M7a確認では、右側数字領域へのfocusとcomponent分割、既存 `max_combo` テンプレートfallbackにより、ROI別 `ex_score` テンプレートなしで confirmed-events 60/60 `recognized` / match になった。`score_digits` から `ex_score` までの8 ROI合計は480/480 `recognized` / match。分割診断は `segment_count_counts={1:1,3:30,4:29}`、`expected_digit_length_counts={1:1,3:30,4:29}`。この確認ではローカル `metadata.csv` の `result_087_sp_basic_lv06_888_score986610.png` の `ex_score` をROI表示どおり `593` に修正している。
 - `m7a_digit_save_candidate_summary.csv`、`m7a_digit_save_candidate_summary.json`、`m7a_digit_save_candidate_summary.md` で、confirmed-events 保存候補1件につき1行のM7a横持ち集約を追加済み。選択ROIごとに `recognized_digits`、`status`、`failure_reason`、`match`、`confidence`、`distance` を読み、`aggregate_status` は `all_digits_recognized` / `needs_digit_review` / `no_digit_rois` に留める。これはM8向けの数値読み取り材料であり、保存OK/NG判定やDB保存ではない。
 - `m7a_digit_save_candidate_review.json` と `m7a_digit_save_candidate_review.md` で、横持ち集約の `needs_digit_review` 行をROI別 status / failure reason ごとに代表化する補助レポートを追加済み。代表には `organized_file`、ROI名、`recognized_digits`、`expected_value`、`status`、`failure_reason`、`match`、`confidence`、`distance`、`segment_count` を含め、`missing_reference`、`ambiguous`、`failed_segmentation`、`not_evaluated` の読み分けを助ける。これも保存判定やDB保存ではない。
+- `m7a_tesseract_comparison_review.json` と `m7a_tesseract_comparison_review.md` で、同じ実行内のM7a数字認識結果と既存Tesseract OCR結果の比較差分を代表化する補助レポートを追加済み。既存 `m7a_digit_recognition_summary.json` の `tesseract_comparison` counts は維持し、`same_normalized`、`different_normalized`、`tesseract_unavailable`、`m7a_unavailable` の代表から、Tesseract差分や未取得理由をROI別に確認する。これも保存判定、DB保存、OCR方式刷新ではない。
 
 やること:
 
 - ローカル `score_digits` テンプレート配置済み環境では、追加素材で1桁から7桁までの実画面サンプルが増えたときに同じ可変桁分割で再確認する。
 - `score_digits` のテンプレート余白、桁分割、距離しきい値を継続レビューし、過剰な `ambiguous` や誤認識があれば最小限で調整する。
-- 次は `m7a_digit_save_candidate_summary.*` と `m7a_digit_save_candidate_review.*` をローカル60件で読み、`all_digits_recognized`、`needs_digit_review`、ROI別 status/failure reason の分布と代表がM8へ渡す材料として足りるかを確認する。
+- 次はM7保存判定またはM8個人スコアDB保存へ進む。M7aの数字読み取り材料は、`m7a_digit_save_candidate_summary.*`、`m7a_digit_save_candidate_review.*`、`m7a_tesseract_comparison_review.*` を合わせて確認する。
 - 既存Tesseract出力との比較summaryを読み、差分代表を保存判定ではなくレビュー材料として整理する。
 - 出力は `data/` 配下に置き、テンプレート素材やローカル画像はGit管理しない。
 - fixtureテストで、正規化、桁分割、テンプレート選択、失敗理由の基本動作を継続確認する。
