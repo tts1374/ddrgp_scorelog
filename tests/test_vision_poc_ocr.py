@@ -2070,17 +2070,64 @@ def test_m7_save_readiness_review_combines_m3_and_digit_materials(
             "review_rois": review_rois,
         }
 
+    def m5_row(
+        organized_file: str,
+        identity_signal_status: str,
+        identity_signal_source: str,
+        jacket_match_status: str,
+    ) -> dict[str, str]:
+        return {
+            "organized_file": organized_file,
+            "identity_signal_status": identity_signal_status,
+            "identity_signal_source": identity_signal_source,
+            "identity_signal_song_id": "song_make",
+            "identity_signal_chart_id": "chart_make_single_difficult",
+            "identity_signal_title": "MAKE IT BETTER",
+            "identity_signal_reason": "fixture_identity_reason",
+            "jacket_match_status": jacket_match_status,
+        }
+
     rows = runner.m7_save_readiness_review_rows(
         [
             m3_row("ready.png", "ready", ""),
             m3_row("m3_blocked.png", "not_ready", "artist difficulty"),
             m3_row("digit_blocked.png", "ready", ""),
             m3_row("missing_digit.png", "ready", ""),
+            m3_row("identity_blocked.png", "ready", ""),
+            m3_row("missing_identity.png", "ready", ""),
         ],
         [
             digit_row("ready.png", "all_digits_recognized", ""),
             digit_row("m3_blocked.png", "all_digits_recognized", ""),
             digit_row("digit_blocked.png", "needs_digit_review", "miss"),
+            digit_row("identity_blocked.png", "all_digits_recognized", ""),
+            digit_row("missing_identity.png", "all_digits_recognized", ""),
+        ],
+        [
+            m5_row(
+                "ready.png",
+                "jacket_resolved_candidate",
+                "jacket_feature",
+                "matched",
+            ),
+            m5_row(
+                "m3_blocked.png",
+                "unresolved_ambiguous",
+                "",
+                "ambiguous",
+            ),
+            m5_row(
+                "digit_blocked.png",
+                "composite_resolved_candidate",
+                "title_linehash_dict",
+                "ambiguous",
+            ),
+            m5_row(
+                "identity_blocked.png",
+                "unresolved_ambiguous",
+                "",
+                "ambiguous",
+            ),
         ],
     )
 
@@ -2089,34 +2136,63 @@ def test_m7_save_readiness_review_combines_m3_and_digit_materials(
         "blocked_m3_material",
         "blocked_digit_review",
         "missing_required_material",
+        "blocked_identity_signal",
+        "missing_required_material",
     ]
     assert rows[1]["readiness_blockers"] == "artist difficulty"
     assert rows[2]["readiness_blockers"] == "miss"
     assert rows[3]["readiness_blockers"] == "m7a_digit_summary_missing"
+    assert rows[4]["readiness_blockers"] == "m5_identity_signal_unresolved"
+    assert rows[5]["readiness_blockers"] == "m5_jacket_match_missing"
+    assert rows[0]["m5_identity_material_status"] == "m5_identity_reviewable"
+    assert rows[4]["m5_identity_material_status"] == "m5_identity_not_reviewable"
+    assert rows[5]["m5_identity_material_status"] == "m5_jacket_match_missing"
+
+    no_m5_rows = runner.m7_save_readiness_review_rows(
+        [m3_row("ready_without_m5.png", "ready", "")],
+        [digit_row("ready_without_m5.png", "all_digits_recognized", "")],
+    )
+    assert no_m5_rows[0]["readiness_status"] == "ready_for_save_review"
+    assert no_m5_rows[0]["m5_identity_material_status"] == "m5_not_run"
 
     csv_path = tmp_path / "m7_save_readiness_review.csv"
     runner.write_m7_save_readiness_review_csv(csv_path, rows)
     csv_rows = read_csv_rows(csv_path)
     assert csv_rows[0]["readiness_status"] == "ready_for_save_review"
     assert csv_rows[2]["m7a_digit_review_rois"] == "miss"
+    assert csv_rows[0]["m5_identity_signal_status"] == "jacket_resolved_candidate"
+    assert csv_rows[4]["m5_jacket_match_status"] == "ambiguous"
 
     summary = runner.summarize_m7_save_readiness_review(rows)
     assert summary["scope"] == "M7 save readiness review before DB save"
     assert summary["source"] == (
-        "m3_save_candidate_summary_rows and m7a_digit_save_candidate_summary_rows"
+        "m3_save_candidate_summary_rows, m7a_digit_save_candidate_summary_rows, "
+        "and optional m5_jacket_match_rows"
     )
-    assert summary["target_count"] == 4
+    assert summary["target_count"] == 6
     assert summary["readiness_status_counts"] == {
         "blocked_digit_review": 1,
+        "blocked_identity_signal": 1,
         "blocked_m3_material": 1,
-        "missing_required_material": 1,
+        "missing_required_material": 2,
         "ready_for_save_review": 1,
     }
-    assert summary["m3_overall_status_counts"] == {"not_ready": 1, "ready": 3}
+    assert summary["m3_overall_status_counts"] == {"not_ready": 1, "ready": 5}
     assert summary["m7a_digit_aggregate_status_counts"] == {
-        "all_digits_recognized": 2,
+        "all_digits_recognized": 4,
         "missing": 1,
         "needs_digit_review": 1,
+    }
+    assert summary["m5_identity_material_status_counts"] == {
+        "m5_identity_not_reviewable": 2,
+        "m5_identity_reviewable": 2,
+        "m5_jacket_match_missing": 2,
+    }
+    assert summary["m5_identity_signal_status_counts"] == {
+        "composite_resolved_candidate": 1,
+        "jacket_resolved_candidate": 1,
+        "missing": 2,
+        "unresolved_ambiguous": 2,
     }
     ready_group = next(
         group
@@ -2130,6 +2206,8 @@ def test_m7_save_readiness_review_combines_m3_and_digit_materials(
     report = report_path.read_text(encoding="utf-8")
     assert "# M7 Save Readiness Review" in report
     assert "`ready_for_save_review`" in report
+    assert "`blocked_identity_signal`" in report
+    assert "`jacket_resolved_candidate`" in report
     assert "DB保存可能を意味しません" in report
 
 

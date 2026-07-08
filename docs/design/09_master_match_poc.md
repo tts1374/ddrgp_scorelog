@@ -140,6 +140,8 @@ result側のジャケットROIとタイトル画像ROIの特徴量は、metadata
 
 `identity_signal_source` は候補観測の出所を示す。優先順は `jacket_feature`、`title_linehash_dict`、`title_ocr_suffix`、`title_image_feature` とする。`title_linehash_exact_status` と `title_linehash_distance_status` は参考列に留め、`identity_signal_source` には使わない。
 
+M7保存判定前レビューへ渡すM5側材料としては、`identity_signal_status=jacket_resolved_candidate` / `composite_resolved_candidate` だけをレビュー可能な候補観測として扱う。これはM7で曲ID/譜面IDが確定したという意味ではなく、M3材料とM7a数字材料に加えて保存前レビューで参照できる候補観測がある、という状態に留める。未解決の `unresolved_*` は M7 readiness 側で `blocked_identity_signal` として読む。
+
 2026-07-05のローカル追加素材反映後は、`song_select` grid右上プレビュー由来の特徴量マスタが59件になり、confirmed-events 60件に対するジャケット照合は `matched=57`、`ambiguous=3`、`not_found=0`、`missing_feature=0` になった。ここでの `matched` は引き続きPoC上の一意候補であり、保存可能ではない。
 
 残る `ambiguous` は、現ローカル素材では `osaka EVOLVED -毎度、おおきに！- (TYPE1/2/3)` の同一ジャケット3件である。これはEVOLVED系だけの特例ではなく、同一・類似ジャケットでタイトル側に分岐情報が出る曲群の代表ケースとして扱う。`result_098_sp_basic_lv07_if_score972200.png` はファイル名とmetadataが `If` になっていたが、実画面表示は `桜 / Reven-G / SINGLE BASIC Lv7` だったためローカルmetadataを修正済み。その後、`桜` のsong_select grid/result素材を追加して近距離曖昧は解消した。osaka 3件は画像特徴量だけで無理に一意化せず、title画像特徴量またはtitle OCRで `TYPE1` / `TYPE2` / `TYPE3` を候補集合内だけ再順位付けする対象にする。

@@ -208,11 +208,14 @@
 
 ## M7 save readiness review
 
-- `m7_save_readiness_review.csv`、`m7_save_readiness_review.json`、`m7_save_readiness_review.md` は、M3 save candidate summary と M7a digit save candidate summary だけを入力にする。
+- `m7_save_readiness_review.csv`、`m7_save_readiness_review.json`、`m7_save_readiness_review.md` は、M3 save candidate summary、M7a digit save candidate summary、任意の M5 jacket match rows を入力にする。
 - 対象は confirmed-events 境界、つまり `confirmed_result=true` かつ `duplicate=false` の1件1行にする。
 - duplicate、`event_type=rejected_transition`、未確定 `result_candidate`、non-result は対象外にする。
-- readiness status は `ready_for_save_review`、`blocked_m3_material`、`blocked_digit_review`、`missing_required_material` に限る。
+- M5未実行時はM3材料とM7a数字材料だけで従来どおりレビューする。
+- M5入力がある場合、`identity_signal_status=jacket_resolved_candidate` / `composite_resolved_candidate` だけをレビュー可能なM5候補観測として扱う。
+- readiness status は `ready_for_save_review`、`blocked_m3_material`、`blocked_digit_review`、`blocked_identity_signal`、`missing_required_material` に限る。
 - `ready_for_save_review` はPoC材料が揃った状態であり、保存OK/NG判定、DB保存成功、曲ID/譜面ID確定として扱わない。
+- `identity_signal_*` は候補観測であり、曲ID/譜面ID確定として扱わない。
 - M7 save readiness review は DB insert、低信頼度ログ本番仕様、保存値本番確定に進まない。
 
 ## ROI方針
