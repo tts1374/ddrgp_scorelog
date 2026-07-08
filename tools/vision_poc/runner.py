@@ -319,6 +319,9 @@ M7A_COMPONENT_MAX_WIDTH_HEIGHT_RATIOS: dict[str, float] = {
 M7A_WHITE_FOREGROUND_ROIS = frozenset({"miss"})
 M7A_WHITE_FOREGROUND_LUMA_THRESHOLD = 180
 M7A_WHITE_FOREGROUND_CHANNEL_SPREAD_MAX = 50
+M7A_REJECT_BRIGHT_COLORED_BACKGROUND_ROIS = frozenset(
+    {"marvelous", "perfect", "great", "good", "miss"}
+)
 M7A_COMPONENT_SEGMENT_ROIS = frozenset(
     {"max_combo", "marvelous", "perfect", "great", "good", "miss"}
 )
@@ -1537,15 +1540,22 @@ def m7a_foreground_mask(image: Image.Image, *, prefer_dark: bool = False) -> np.
 
 
 def m7a_digit_foreground_mask(image: Image.Image, roi_name: str = "") -> np.ndarray:
+    rgb = np.asarray(image.convert("RGB")).astype(np.int16)
+    luma = np.asarray(image.convert("L"))
+    channel_spread = rgb.max(axis=2) - rgb.min(axis=2)
     if roi_name in M7A_WHITE_FOREGROUND_ROIS:
-        rgb = np.asarray(image.convert("RGB")).astype(np.int16)
-        luma = np.asarray(image.convert("L"))
-        channel_spread = rgb.max(axis=2) - rgb.min(axis=2)
         return (
             (luma > M7A_WHITE_FOREGROUND_LUMA_THRESHOLD)
             & (channel_spread <= M7A_WHITE_FOREGROUND_CHANNEL_SPREAD_MAX)
         )
-    return m7a_foreground_mask(image)
+    mask = m7a_foreground_mask(image)
+    if roi_name in M7A_REJECT_BRIGHT_COLORED_BACKGROUND_ROIS:
+        bright_colored_background = (
+            (luma > M7A_WHITE_FOREGROUND_LUMA_THRESHOLD)
+            & (channel_spread > M7A_WHITE_FOREGROUND_CHANNEL_SPREAD_MAX)
+        )
+        mask &= ~bright_colored_background
+    return mask
 
 
 def m7a_foreground_bbox(mask: np.ndarray) -> tuple[int, int, int, int] | None:

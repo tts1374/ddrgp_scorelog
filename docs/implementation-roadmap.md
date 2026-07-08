@@ -334,7 +334,7 @@ M5完了時点で固定すること:
 - `max_combo`、`marvelous`、`perfect`、`great`、`good`、`miss` は4桁fixtureでも右側数字領域を分割・認識できる。`marvelous`、`perfect`、`great`、`good`、`miss` は共有 `judgment_counts` テンプレートだけでも認識できるfixtureを追加済み。
 - 2026-07-07時点のローカル `good` テンプレート配置後は、`score_digits`、`max_combo`、`marvelous`、`perfect`、`great`、`good` の6 ROIで confirmed-events 60件ずつ、合計360/360 `recognized` / match。`good` は左側ラベル由来成分を避けるため、右側数字領域へのfocusを `great` より少し強くしている。
 - 2026-07-07時点の共有 `judgment_counts` テンプレート確認でも、同じ6 ROI合計360/360 `recognized` / match。
-- 2026-07-08時点のローカル `miss` ROI別テンプレート配置後は、`score_digits`、`max_combo`、`marvelous`、`perfect`、`great`、`good`、`miss` の7 ROIで confirmed-events 60件ずつ、合計420/420 `recognized` / match。`miss` は短いマーカーや明るい青背景を数字扱いしないよう、右側数字領域へのfocus、白数字向けの明度 + チャンネル差mask、最小高さをROI別に絞っている。共有 `judgment_counts` だけでは `miss` が58/60 `ambiguous`、2/60 `recognized` になるため、ROI別テンプレートを使う。
+- 2026-07-08時点のローカル `miss` ROI別テンプレート配置後は、`score_digits`、`max_combo`、`marvelous`、`perfect`、`great`、`good`、`miss` の7 ROIで confirmed-events 60件ずつ、合計420/420 `recognized` / match。判定数ROIは明るい青背景を数字扱いしないよう高明度かつチャンネル差が大きい成分を除外している。`miss` はさらに右側数字領域へのfocus、白数字向けの明度 + チャンネル差mask、最小高さをROI別に絞っている。共有 `judgment_counts` だけでは `miss` が58/60 `ambiguous`、2/60 `recognized` になるため、ROI別テンプレートを使う。
 
 やること:
 
