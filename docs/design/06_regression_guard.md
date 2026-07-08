@@ -195,6 +195,9 @@
 - M7a summary/report はROI別に `segment_count_counts` と `expected_digit_length_counts` を出し、テンプレート不足時でも分割数と期待桁数を確認できる。
 - `recognized`、`ambiguous`、`missing_reference`、`failed_segmentation`、`not_evaluated` の語彙を維持し、保存OK/NG判定と混同しない。
 - 同じ実行でTesseract結果がある場合だけ、`tesseract_comparison` を参考比較として読む。
+- `m7a_digit_save_candidate_summary.csv`、`m7a_digit_save_candidate_summary.json`、`m7a_digit_save_candidate_summary.md` は confirmed-events 1件を1行にし、選択した数字ROIの `recognized_digits`、`status`、`failure_reason`、`match`、`confidence`、`distance` を横持ち集約する。
+- M7a save candidate summary の `aggregate_status` は `all_digits_recognized`、`needs_digit_review`、`no_digit_rois` に限り、保存OK/NG判定やDB保存成功として扱わない。
+- M7a save candidate summary でも duplicate、`event_type=rejected_transition`、未確定 `result_candidate`、non-result は対象外にする。
 - ローカル digit template 画像はGit管理しない。
 
 ## ROI方針

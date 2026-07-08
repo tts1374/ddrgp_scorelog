@@ -508,6 +508,7 @@ python -m pytest tests
 - M7a digit recognitionは判定数ROIの明るい青背景を数字として数えず、`miss` の右側数字領域と短いマーカー除外もfixtureで確認できる
 - M7a digit recognitionは `max_combo`、`marvelous`、`perfect`、`great`、`good`、`miss`、`ex_score` の4桁fixtureを認識できる
 - M7a digit recognitionは判定数系共有テンプレート `judgment_counts` と、`max_combo` / `ex_score` 共有候補 `combo_ex_score` を探索できる
+- M7a digit save candidate summaryは confirmed-events 1件を1行にし、選択した数字ROIの `recognized_digits` / `status` / `failure_reason` / `match` / `confidence` / `distance` を保存判定ではない読み取り材料として横持ち集約できる
 - ローカル素材がある環境では `score_digits` の前処理画像を生成できる
 - 曲・譜面情報の目視確認用ROIとして `play_style`、`difficulty`、`level`、`rank`、`song_title`、`artist` を `rois/` に生成できる
 - M3 chart-field 抽出評価は confirmed-events 境界だけを対象にし、duplicate / rejected_transition / unconfirmed / non-result を `skipped` として区別できる

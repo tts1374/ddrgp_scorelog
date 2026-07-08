@@ -1831,6 +1831,154 @@ def test_m7a_digit_recognition_writes_confirmed_events_report(
     assert "Segment Diagnostics" in report
     assert "DB保存OK/NG判定ではありません" in report
 
+    aggregate_rows = read_csv_rows(output_dir / "m7a_digit_save_candidate_summary.csv")
+    assert len(aggregate_rows) == 1
+    assert aggregate_rows[0]["organized_file"] == "result_score123456_c.png"
+    assert aggregate_rows[0]["score_digits_recognized_digits"] == "123456"
+    assert aggregate_rows[0]["score_digits_expected_value"] == "123456"
+    assert aggregate_rows[0]["score_digits_status"] == "recognized"
+    assert aggregate_rows[0]["score_digits_failure_reason"] == ""
+    assert aggregate_rows[0]["score_digits_match"] == "True"
+    assert aggregate_rows[0]["aggregate_status"] == "all_digits_recognized"
+    assert aggregate_rows[0]["review_rois"] == ""
+    aggregate_summary = json.loads(
+        (output_dir / "m7a_digit_save_candidate_summary.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert aggregate_summary["scope"] == "M7a digit save candidate aggregate report"
+    assert aggregate_summary["target_count"] == 1
+    assert aggregate_summary["fields"]["score_digits"]["status_counts"] == {
+        "recognized": 1
+    }
+    assert aggregate_summary["aggregate_status_counts"] == {"all_digits_recognized": 1}
+    aggregate_report = (
+        output_dir / "m7a_digit_save_candidate_summary.md"
+    ).read_text(encoding="utf-8")
+    assert "保存OK/NG判定" in aggregate_report
+    assert "`all_digits_recognized`" in aggregate_report
+
+
+def test_m7a_digit_save_candidate_summary_keeps_status_vocabulary() -> None:
+    frames = [
+        runner.FrameInput(
+            row={
+                "organized_file": "result_score123456.png",
+                "screen_type": "result",
+                "expected_score": "123456",
+                "max_combo": "198",
+                "ex_score": "",
+            },
+            image_path=Path("result_score123456.png"),
+        ),
+        runner.FrameInput(
+            row={
+                "organized_file": "duplicate_score123456.png",
+                "screen_type": "result",
+                "expected_score": "123456",
+            },
+            image_path=Path("duplicate_score123456.png"),
+        ),
+    ]
+    events = [
+        result_event("result_score123456.png", confirmed_result=True),
+        result_event(
+            "duplicate_score123456.png",
+            confirmed_result=True,
+            duplicate=True,
+            event_type="duplicate",
+        ),
+    ]
+    digit_results = [
+        runner.M7aDigitRecognitionResult(
+            organized_file="result_score123456.png",
+            screen_type="result",
+            event_type="confirmed",
+            confirmed_result=True,
+            duplicate=False,
+            roi_name="score_digits",
+            method=runner.M7A_DIGIT_RECOGNITION_METHOD,
+            recognized_digits="123456",
+            expected_value="123456",
+            match=True,
+            status="recognized",
+            failure_reason="",
+            distance=0.01,
+            confidence=0.99,
+            segment_count=6,
+            template_count=10,
+            per_digit_distances="1:0.01",
+        ),
+        runner.M7aDigitRecognitionResult(
+            organized_file="result_score123456.png",
+            screen_type="result",
+            event_type="confirmed",
+            confirmed_result=True,
+            duplicate=False,
+            roi_name="max_combo",
+            method=runner.M7A_DIGIT_RECOGNITION_METHOD,
+            recognized_digits="",
+            expected_value="198",
+            match=None,
+            status="missing_reference",
+            failure_reason="missing_digit_templates=0123456789",
+            distance=None,
+            confidence=None,
+            segment_count=3,
+            template_count=0,
+            per_digit_distances="",
+        ),
+        runner.M7aDigitRecognitionResult(
+            organized_file="result_score123456.png",
+            screen_type="result",
+            event_type="confirmed",
+            confirmed_result=True,
+            duplicate=False,
+            roi_name="ex_score",
+            method=runner.M7A_DIGIT_RECOGNITION_METHOD,
+            recognized_digits="552",
+            expected_value="",
+            match=None,
+            status="not_evaluated",
+            failure_reason="no_expected_value",
+            distance=0.02,
+            confidence=0.98,
+            segment_count=3,
+            template_count=10,
+            per_digit_distances="5:0.02",
+        ),
+    ]
+
+    rows = runner.m7a_digit_save_candidate_summary_rows(
+        frames,
+        events,
+        digit_results,
+        ["score_digits", "max_combo", "ex_score", "miss"],
+    )
+
+    assert len(rows) == 1
+    assert rows[0]["aggregate_status"] == "needs_digit_review"
+    assert rows[0]["review_rois"] == "max_combo ex_score miss"
+    assert rows[0]["score_digits_status"] == "recognized"
+    assert rows[0]["score_digits_match"] == "True"
+    assert rows[0]["score_digits_distance"] == "0.010000"
+    assert rows[0]["max_combo_status"] == "missing_reference"
+    assert rows[0]["max_combo_failure_reason"] == "missing_digit_templates=0123456789"
+    assert rows[0]["ex_score_status"] == "not_evaluated"
+    assert rows[0]["ex_score_failure_reason"] == "no_expected_value"
+    assert rows[0]["miss_status"] == "not_evaluated"
+    assert rows[0]["miss_failure_reason"] == "no_digit_attempt"
+
+    summary = runner.summarize_m7a_digit_save_candidates(
+        rows,
+        ["score_digits", "max_combo", "ex_score", "miss"],
+    )
+    assert summary["target_count"] == 1
+    assert summary["fields"]["max_combo"]["status_counts"] == {"missing_reference": 1}
+    assert summary["fields"]["ex_score"]["status_counts"] == {"not_evaluated": 1}
+    assert summary["fields"]["miss"]["failure_reason_counts"] == {"no_digit_attempt": 1}
+    assert summary["aggregate_status_counts"] == {"needs_digit_review": 1}
+
 
 def test_m7a_digit_recognition_reports_missing_reference(tmp_path: Path) -> None:
     image = Image.new("RGB", (1280, 720), "black")
