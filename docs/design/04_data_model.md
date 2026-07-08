@@ -272,6 +272,15 @@ M7 PoCでは、DB保存前の最終 `save_decision` ではなく、`m7_save_deci
 
 `m7_save_decision_preview.json` / Markdown では、`preview_save_candidate` の M5 source、jacket status、identity signal status の集計と代表を出す。`needs_identity_review` は `m5_not_run`、`m5_identity_not_reviewable`、`identity_signal_id_missing` を分け、M5未実行、M5候補観測未解決、候補ID欠落を混同しない。`needs_digit_review` はROI別の `recognized_digits`、`expected_value`、`match`、`failure_reason` を代表で読む。これらはM8へ渡す前のレビュー補助であり、保存値確定ではない。
 
+M8 PoCでは、DB保存用 `save_decision` ではなく dry-run payload preview として以下だけを出す。
+
+- `payload_ready`
+- `missing_identity_candidate`
+- `missing_digit_value`
+- `unsupported_preview_status`
+
+`payload_ready` は `preview_save_candidate` から将来DBへ渡すなら使う材料が揃った状態であり、`save`、DB保存成功、曲ID/譜面ID確定、保存値確定を意味しない。`missing_identity_candidate` はM5候補観測の song/chart ID欠落、`missing_digit_value` はM7a recognized digits 欠落、`unsupported_preview_status` はM7 preview上でまだpayload対象外の行として読む。`m8_save_payload_preview.*` の数字値はM7aの `*_recognized_digits` を写した候補値で、`*_expected_value` / `*_match` はレビュー材料に留める。
+
 ## 重複保存防止
 
 PoCでは簡易 `duplicate_key` を使うが、本番では以下を組み合わせる。

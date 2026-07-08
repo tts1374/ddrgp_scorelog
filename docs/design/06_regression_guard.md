@@ -239,6 +239,18 @@
 - CSVに出すM7aの `recognized_digits`、`expected_value`、`match` は候補値レビュー材料であり、保存値確定として扱わない。
 - M7 save decision preview は DB insert、低信頼度ログ本番仕様、保存値本番確定に進まない。
 
+## M8 save payload preview
+
+- `m8_save_payload_preview.csv`、`m8_save_payload_preview.json`、`m8_save_payload_preview.md` は、`m7_save_decision_preview_rows` を入力にする。
+- payload候補は `preview_status=preview_save_candidate` の行だけにする。
+- `preview_save_candidate` 以外は `unsupported_preview_status` としてpayload材料にせず、`excluded_preview_status_counts` と代表で読めるようにする。
+- payload status は `payload_ready`、`missing_identity_candidate`、`missing_digit_value`、`unsupported_preview_status` に限る。
+- `payload_ready` はdry-run payload材料が揃った状態であり、DB保存可能、保存成功、曲ID/譜面ID確定、保存値確定として扱わない。
+- `identity_signal_song_id` / `identity_signal_chart_id` / `identity_signal_source` はM5候補観測を写したもので、保存用確定IDではない。
+- `score_digits`、`max_combo`、`marvelous`、`perfect`、`great`、`good`、`miss`、`ex_score` はM7aの `*_recognized_digits` を写した候補値であり、保存値確定として扱わない。
+- `*_expected_value` と `*_match` はレビュー材料としてだけ読む。
+- M8 save payload preview は DB insert、個人スコアDBスキーマ本実装、低信頼度ログ本番仕様に進まない。
+
 ## ROI方針
 
 - ROI座標は 1280x720 基準。

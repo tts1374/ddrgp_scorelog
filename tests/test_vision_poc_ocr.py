@@ -1932,6 +1932,28 @@ def test_m7a_digit_recognition_writes_confirmed_events_report(
     ).read_text(encoding="utf-8")
     assert "# M7 Save Decision Preview" in preview_report
     assert "保存OK/NG判定" in preview_report
+    payload_rows = read_csv_rows(output_dir / "m8_save_payload_preview.csv")
+    assert len(payload_rows) == 1
+    assert payload_rows[0]["organized_file"] == "result_score123456_c.png"
+    assert payload_rows[0]["source_preview_status"] == "blocked_readiness"
+    assert payload_rows[0]["payload_preview_status"] == "unsupported_preview_status"
+    assert payload_rows[0]["score_digits"] == "123456"
+    payload_summary = json.loads(
+        (output_dir / "m8_save_payload_preview.json").read_text(encoding="utf-8")
+    )
+    assert payload_summary["scope"] == "M8 dry-run save payload preview before DB insert"
+    assert payload_summary["source"] == "m7_save_decision_preview_rows"
+    assert payload_summary["target_count"] == 1
+    assert payload_summary["payload_status_counts"] == {
+        "unsupported_preview_status": 1
+    }
+    assert payload_summary["excluded_preview_status_counts"] == {"blocked_readiness": 1}
+    payload_report = (
+        output_dir / "m8_save_payload_preview.md"
+    ).read_text(encoding="utf-8")
+    assert "# M8 Save Payload Preview" in payload_report
+    assert "DB insert" in payload_report
+    assert "保存値確定" in payload_report
 
 
 def test_m7a_tesseract_comparison_review_groups_representatives(
@@ -2471,6 +2493,120 @@ def test_m7_save_decision_preview_uses_readiness_rows(
     assert "`m5_not_run`" in report
     assert "`identity_signal_id_missing`" in report
     assert "DB保存、保存OK/NG判定" in report
+
+
+def test_m8_save_payload_preview_uses_m7_preview_rows(tmp_path: Path) -> None:
+    digit_rois = list(runner.M8_SAVE_PAYLOAD_DIGIT_ROIS)
+
+    def preview_row(
+        organized_file: str,
+        preview_status: str,
+        preview_reason: str = "",
+        song_id: str = "song_make",
+        chart_id: str = "chart_make_single_difficult",
+        missing_digit_roi: str = "",
+    ) -> dict[str, str]:
+        row = {
+            "organized_file": organized_file,
+            "timestamp_ms": "1000",
+            "confirmation_mode": "time",
+            "preview_status": preview_status,
+            "preview_reason": preview_reason,
+            "m5_identity_signal_song_id": song_id,
+            "m5_identity_signal_chart_id": chart_id,
+            "m5_identity_signal_source": "jacket_feature",
+            "m5_identity_signal_status": "jacket_resolved_candidate",
+            "m5_jacket_match_status": "matched",
+        }
+        for roi_name in digit_rois:
+            if roi_name == missing_digit_roi:
+                continue
+            row[f"{roi_name}_recognized_digits"] = "123"
+            row[f"{roi_name}_expected_value"] = "123"
+            row[f"{roi_name}_match"] = "True"
+        return row
+
+    rows = runner.m8_save_payload_preview_rows(
+        [
+            preview_row("payload_ready.png", "preview_save_candidate"),
+            preview_row(
+                "identity_missing.png",
+                "preview_save_candidate",
+                chart_id="",
+            ),
+            preview_row(
+                "digit_missing.png",
+                "preview_save_candidate",
+                missing_digit_roi="miss",
+            ),
+            preview_row(
+                "preview_unsupported.png",
+                "needs_identity_review",
+                "m5_not_run",
+                song_id="",
+                chart_id="",
+            ),
+        ],
+        digit_rois,
+    )
+
+    assert [row["payload_preview_status"] for row in rows] == [
+        "payload_ready",
+        "missing_identity_candidate",
+        "missing_digit_value",
+        "unsupported_preview_status",
+    ]
+    assert rows[0]["payload_ready"] == "True"
+    assert rows[0]["identity_signal_song_id"] == "song_make"
+    assert rows[0]["score_digits"] == "123"
+    assert rows[1]["payload_preview_reason"] == "identity_signal_id_missing"
+    assert rows[2]["payload_preview_reason"] == "miss"
+    assert rows[3]["payload_candidate"] == "False"
+    assert rows[3]["payload_preview_reason"] == "needs_identity_review"
+
+    csv_path = tmp_path / "m8_save_payload_preview.csv"
+    runner.write_m8_save_payload_preview_csv(csv_path, rows, digit_rois)
+    csv_rows = read_csv_rows(csv_path)
+    assert csv_rows[0]["payload_preview_status"] == "payload_ready"
+    assert csv_rows[0]["identity_signal_chart_id"] == "chart_make_single_difficult"
+    assert csv_rows[2]["miss"] == ""
+    assert csv_rows[3]["source_preview_status"] == "needs_identity_review"
+
+    summary = runner.summarize_m8_save_payload_preview(rows, digit_rois)
+    assert summary["scope"] == "M8 dry-run save payload preview before DB insert"
+    assert summary["source"] == "m7_save_decision_preview_rows"
+    assert summary["target_count"] == 4
+    assert summary["payload_candidate_count"] == 3
+    assert summary["payload_ready_count"] == 1
+    assert summary["payload_status_counts"] == {
+        "missing_digit_value": 1,
+        "missing_identity_candidate": 1,
+        "payload_ready": 1,
+        "unsupported_preview_status": 1,
+    }
+    assert summary["excluded_preview_status_counts"] == {"needs_identity_review": 1}
+    assert summary["payload_ready_groups"][0]["representatives"][0][
+        "identity_signal_song_id"
+    ] == "song_make"
+    assert summary["missing_identity_candidate_groups"][0][
+        "payload_preview_reason"
+    ] == "identity_signal_id_missing"
+    assert summary["missing_digit_value_groups"][0]["roi_name"] == "miss"
+    assert summary["unsupported_preview_status_groups"][0][
+        "source_preview_status"
+    ] == "needs_identity_review"
+
+    report_path = tmp_path / "m8_save_payload_preview.md"
+    runner.write_m8_save_payload_preview_report(report_path, summary)
+    report = report_path.read_text(encoding="utf-8")
+    assert "# M8 Save Payload Preview" in report
+    assert "Payload Ready Representatives" in report
+    assert "Identity Missing Representatives" in report
+    assert "Digit Missing Representatives" in report
+    assert "Preview Exclusion Representatives" in report
+    assert "`payload_ready`" in report
+    assert "DB保存可能" in report
+    assert "保存値確定" in report
 
 
 def test_m7a_digit_save_candidate_summary_keeps_status_vocabulary(

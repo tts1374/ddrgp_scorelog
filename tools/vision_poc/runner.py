@@ -360,6 +360,8 @@ M7A_DIGIT_SAVE_CANDIDATE_REVIEW_REPRESENTATIVE_LIMIT = 3
 M7A_TESSERACT_COMPARISON_REVIEW_REPRESENTATIVE_LIMIT = 3
 M7_SAVE_READINESS_REVIEW_REPRESENTATIVE_LIMIT = 3
 M7_SAVE_DECISION_PREVIEW_REPRESENTATIVE_LIMIT = 3
+M8_SAVE_PAYLOAD_PREVIEW_REPRESENTATIVE_LIMIT = 3
+M8_SAVE_PAYLOAD_DIGIT_ROIS = OCR_ROIS
 M7_REVIEWABLE_IDENTITY_SIGNAL_STATUSES = (
     "jacket_resolved_candidate",
     "composite_resolved_candidate",
@@ -4027,6 +4029,562 @@ def write_m7_save_decision_preview_report(
             "- M7aの数字列も候補値レビュー材料で、保存値確定ではありません。",
             "- duplicate、`rejected_transition`、未確定候補、non-result は上流の"
             "M7 readiness対象外のままです。",
+        ]
+    )
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def m8_save_payload_preview_missing_digit_rois(
+    row: dict[str, str],
+    roi_names: Iterable[str],
+) -> list[str]:
+    return [
+        roi_name
+        for roi_name in roi_names
+        if not row.get(f"{roi_name}_recognized_digits")
+    ]
+
+
+def m8_save_payload_preview_status(
+    row: dict[str, str],
+    roi_names: Iterable[str],
+) -> tuple[str, str]:
+    source_preview_status = row.get("preview_status", "")
+    if source_preview_status != "preview_save_candidate":
+        return "unsupported_preview_status", source_preview_status or "missing_preview_status"
+    if not row.get("m5_identity_signal_song_id") or not row.get(
+        "m5_identity_signal_chart_id"
+    ):
+        return "missing_identity_candidate", "identity_signal_id_missing"
+    missing_digit_rois = m8_save_payload_preview_missing_digit_rois(row, roi_names)
+    if missing_digit_rois:
+        return "missing_digit_value", " ".join(missing_digit_rois)
+    return "payload_ready", ""
+
+
+def m8_save_payload_preview_rows(
+    preview_rows: Iterable[dict[str, str]],
+    roi_names: Iterable[str] = M8_SAVE_PAYLOAD_DIGIT_ROIS,
+) -> list[dict[str, str]]:
+    roi_list = list(roi_names)
+    rows: list[dict[str, str]] = []
+    for preview_row in preview_rows:
+        payload_status, payload_reason = m8_save_payload_preview_status(
+            preview_row,
+            roi_list,
+        )
+        row = {
+            "organized_file": preview_row.get("organized_file", ""),
+            "timestamp_ms": preview_row.get("timestamp_ms", ""),
+            "confirmation_mode": preview_row.get("confirmation_mode", ""),
+            "source_preview_status": preview_row.get("preview_status", ""),
+            "source_preview_reason": preview_row.get("preview_reason", ""),
+            "payload_preview_status": payload_status,
+            "payload_preview_reason": payload_reason,
+            "payload_candidate": str(
+                preview_row.get("preview_status", "") == "preview_save_candidate"
+            ),
+            "payload_ready": str(payload_status == "payload_ready"),
+            "identity_signal_song_id": preview_row.get("m5_identity_signal_song_id", ""),
+            "identity_signal_chart_id": preview_row.get("m5_identity_signal_chart_id", ""),
+            "identity_signal_source": preview_row.get("m5_identity_signal_source", ""),
+            "m5_identity_signal_status": preview_row.get("m5_identity_signal_status", ""),
+            "m5_jacket_match_status": preview_row.get("m5_jacket_match_status", ""),
+        }
+        for roi_name in roi_list:
+            row[roi_name] = preview_row.get(f"{roi_name}_recognized_digits", "")
+            row[f"{roi_name}_expected_value"] = preview_row.get(
+                f"{roi_name}_expected_value",
+                "",
+            )
+            row[f"{roi_name}_match"] = preview_row.get(f"{roi_name}_match", "")
+        rows.append(row)
+    return rows
+
+
+def write_m8_save_payload_preview_csv(
+    path: Path,
+    rows: Iterable[dict[str, str]],
+    roi_names: Iterable[str] = M8_SAVE_PAYLOAD_DIGIT_ROIS,
+) -> None:
+    fieldnames = [
+        "organized_file",
+        "timestamp_ms",
+        "confirmation_mode",
+        "source_preview_status",
+        "source_preview_reason",
+        "payload_preview_status",
+        "payload_preview_reason",
+        "payload_candidate",
+        "payload_ready",
+        "identity_signal_song_id",
+        "identity_signal_chart_id",
+        "identity_signal_source",
+        "m5_identity_signal_status",
+        "m5_jacket_match_status",
+    ]
+    for roi_name in roi_names:
+        fieldnames.extend(
+            [
+                roi_name,
+                f"{roi_name}_expected_value",
+                f"{roi_name}_match",
+            ]
+        )
+    with path.open("w", encoding="utf-8", newline="") as file:
+        writer = csv.DictWriter(file, fieldnames=fieldnames)
+        writer.writeheader()
+        for row in rows:
+            writer.writerow({field: row.get(field, "") for field in fieldnames})
+
+
+def m8_save_payload_preview_representative(
+    row: dict[str, str],
+    roi_names: Iterable[str],
+) -> dict[str, object]:
+    digits = {
+        roi_name: {
+            "value": row.get(roi_name, ""),
+            "expected_value": row.get(f"{roi_name}_expected_value", ""),
+            "match": row.get(f"{roi_name}_match", ""),
+        }
+        for roi_name in roi_names
+    }
+    return {
+        "organized_file": row["organized_file"],
+        "timestamp_ms": row["timestamp_ms"],
+        "confirmation_mode": row["confirmation_mode"],
+        "payload_preview_status": row["payload_preview_status"],
+        "payload_preview_reason": row["payload_preview_reason"],
+        "source_preview_status": row["source_preview_status"],
+        "source_preview_reason": row["source_preview_reason"],
+        "identity_signal_song_id": row["identity_signal_song_id"],
+        "identity_signal_chart_id": row["identity_signal_chart_id"],
+        "identity_signal_source": row["identity_signal_source"],
+        "m5_identity_signal_status": row["m5_identity_signal_status"],
+        "m5_jacket_match_status": row["m5_jacket_match_status"],
+        "digits": digits,
+    }
+
+
+def append_m8_payload_representative(
+    bucket: dict[str, object],
+    row: dict[str, str],
+    roi_names: Iterable[str],
+    representative_limit: int,
+) -> None:
+    bucket["count"] = int(bucket["count"]) + 1
+    representatives = bucket["representatives"]
+    assert isinstance(representatives, list)
+    if len(representatives) < representative_limit:
+        representatives.append(m8_save_payload_preview_representative(row, roi_names))
+
+
+def summarize_m8_save_payload_preview(
+    rows: Iterable[dict[str, str]],
+    roi_names: Iterable[str] = M8_SAVE_PAYLOAD_DIGIT_ROIS,
+    representative_limit: int = M8_SAVE_PAYLOAD_PREVIEW_REPRESENTATIVE_LIMIT,
+) -> dict[str, object]:
+    row_list = list(rows)
+    roi_list = list(roi_names)
+    payload_status_counts: dict[str, int] = {}
+    excluded_preview_status_counts: dict[str, int] = {}
+    groups: dict[tuple[str, str], dict[str, object]] = {}
+    payload_ready_groups: dict[tuple[str, str, str], dict[str, object]] = {}
+    missing_identity_groups: dict[tuple[str, str], dict[str, object]] = {}
+    missing_digit_groups: dict[tuple[str, str], dict[str, object]] = {}
+    unsupported_preview_status_groups: dict[tuple[str, str], dict[str, object]] = {}
+    for row in row_list:
+        payload_status = row["payload_preview_status"]
+        payload_status_counts[payload_status] = (
+            payload_status_counts.get(payload_status, 0) + 1
+        )
+        if row["source_preview_status"] != "preview_save_candidate":
+            count_preview_value(
+                excluded_preview_status_counts,
+                row["source_preview_status"],
+            )
+
+        key = (payload_status, row["payload_preview_reason"])
+        bucket = groups.setdefault(
+            key,
+            {
+                "payload_preview_status": payload_status,
+                "payload_preview_reason": row["payload_preview_reason"],
+                "count": 0,
+                "representatives": [],
+            },
+        )
+        append_m8_payload_representative(
+            bucket,
+            row,
+            roi_list,
+            representative_limit,
+        )
+
+        if payload_status == "payload_ready":
+            ready_key = (
+                row["identity_signal_source"] or "missing",
+                row["m5_jacket_match_status"] or "missing",
+                row["m5_identity_signal_status"] or "missing",
+            )
+            ready_bucket = payload_ready_groups.setdefault(
+                ready_key,
+                {
+                    "identity_signal_source": ready_key[0],
+                    "m5_jacket_match_status": ready_key[1],
+                    "m5_identity_signal_status": ready_key[2],
+                    "count": 0,
+                    "representatives": [],
+                },
+            )
+            append_m8_payload_representative(
+                ready_bucket,
+                row,
+                roi_list,
+                representative_limit,
+            )
+        elif payload_status == "missing_identity_candidate":
+            identity_key = (
+                row["payload_preview_reason"] or "missing",
+                row["m5_identity_signal_status"] or "missing",
+            )
+            identity_bucket = missing_identity_groups.setdefault(
+                identity_key,
+                {
+                    "payload_preview_reason": identity_key[0],
+                    "m5_identity_signal_status": identity_key[1],
+                    "count": 0,
+                    "representatives": [],
+                },
+            )
+            append_m8_payload_representative(
+                identity_bucket,
+                row,
+                roi_list,
+                representative_limit,
+            )
+        elif payload_status == "missing_digit_value":
+            for roi_name in row["payload_preview_reason"].split():
+                digit_key = (roi_name, "missing_recognized_digits")
+                digit_bucket = missing_digit_groups.setdefault(
+                    digit_key,
+                    {
+                        "roi_name": roi_name,
+                        "payload_preview_reason": digit_key[1],
+                        "count": 0,
+                        "representatives": [],
+                    },
+                )
+                append_m8_payload_representative(
+                    digit_bucket,
+                    row,
+                    roi_list,
+                    representative_limit,
+                )
+        elif payload_status == "unsupported_preview_status":
+            unsupported_key = (
+                row["source_preview_status"] or "missing",
+                row["source_preview_reason"] or "missing",
+            )
+            unsupported_bucket = unsupported_preview_status_groups.setdefault(
+                unsupported_key,
+                {
+                    "source_preview_status": unsupported_key[0],
+                    "source_preview_reason": unsupported_key[1],
+                    "count": 0,
+                    "representatives": [],
+                },
+            )
+            append_m8_payload_representative(
+                unsupported_bucket,
+                row,
+                roi_list,
+                representative_limit,
+            )
+
+    payload_candidate_count = sum(
+        1 for row in row_list if row["source_preview_status"] == "preview_save_candidate"
+    )
+    return {
+        "target_boundary": "m7 preview rows; payload candidates require preview_save_candidate",
+        "scope": "M8 dry-run save payload preview before DB insert",
+        "source": "m7_save_decision_preview_rows",
+        "target_count": len(row_list),
+        "payload_candidate_count": payload_candidate_count,
+        "payload_ready_count": payload_status_counts.get("payload_ready", 0),
+        "payload_status_counts": dict(sorted(payload_status_counts.items())),
+        "excluded_preview_status_counts": dict(
+            sorted(excluded_preview_status_counts.items())
+        ),
+        "digit_rois": roi_list,
+        "representative_limit_per_group": representative_limit,
+        "groups": sorted(
+            groups.values(),
+            key=lambda item: (
+                str(item["payload_preview_status"]),
+                str(item["payload_preview_reason"]),
+            ),
+        ),
+        "payload_ready_groups": sorted(
+            payload_ready_groups.values(),
+            key=lambda item: (
+                str(item["identity_signal_source"]),
+                str(item["m5_jacket_match_status"]),
+                str(item["m5_identity_signal_status"]),
+            ),
+        ),
+        "missing_identity_candidate_groups": sorted(
+            missing_identity_groups.values(),
+            key=lambda item: (
+                str(item["payload_preview_reason"]),
+                str(item["m5_identity_signal_status"]),
+            ),
+        ),
+        "missing_digit_value_groups": sorted(
+            missing_digit_groups.values(),
+            key=lambda item: (
+                str(item["roi_name"]),
+                str(item["payload_preview_reason"]),
+            ),
+        ),
+        "unsupported_preview_status_groups": sorted(
+            unsupported_preview_status_groups.values(),
+            key=lambda item: (
+                str(item["source_preview_status"]),
+                str(item["source_preview_reason"]),
+            ),
+        ),
+        "status_vocabulary": [
+            "payload_ready",
+            "missing_identity_candidate",
+            "missing_digit_value",
+            "unsupported_preview_status",
+        ],
+        "reading_notes": [
+            "payload_ready is dry-run handoff material only.",
+            "It is not a DB save allow decision, DB insert success, or confirmed IDs.",
+            "identity_signal_* values remain M5 candidate observations.",
+            "Digit values are copied from M7a recognized_digits and remain candidates.",
+            "Rows outside preview_save_candidate are excluded from payload material.",
+        ],
+    }
+
+
+def write_m8_save_payload_preview_report(
+    path: Path,
+    summary: dict[str, object],
+) -> None:
+    groups = summary["groups"]
+    assert isinstance(groups, list)
+    roi_names = summary["digit_rois"]
+    assert isinstance(roi_names, list)
+    payload_ready_groups = summary["payload_ready_groups"]
+    assert isinstance(payload_ready_groups, list)
+    missing_identity_groups = summary["missing_identity_candidate_groups"]
+    assert isinstance(missing_identity_groups, list)
+    missing_digit_groups = summary["missing_digit_value_groups"]
+    assert isinstance(missing_digit_groups, list)
+    unsupported_groups = summary["unsupported_preview_status_groups"]
+    assert isinstance(unsupported_groups, list)
+    lines = [
+        "# M8 Save Payload Preview",
+        "",
+        "M7保存判定プレビューの行から、将来DBへ渡すならどの材料になるかを"
+        "dry-run payloadとして確認します。",
+        "DB insert、保存成功、曲ID/譜面ID確定、保存値確定には進みません。",
+        "",
+        f"- target boundary: `{summary['target_boundary']}`",
+        f"- source: `{summary['source']}`",
+        f"- target preview rows: {summary['target_count']}",
+        f"- payload candidate count: {summary['payload_candidate_count']}",
+        f"- payload ready count: {summary['payload_ready_count']}",
+        f"- payload status counts: "
+        f"`{json.dumps(summary['payload_status_counts'], ensure_ascii=False)}`",
+        f"- excluded preview status counts: "
+        f"`{json.dumps(summary['excluded_preview_status_counts'], ensure_ascii=False)}`",
+        f"- digit rois: `{', '.join(str(roi) for roi in roi_names)}`",
+        f"- representative limit per group: "
+        f"{summary['representative_limit_per_group']}",
+        "",
+        "## Status Groups",
+        "",
+        "| payload status | reason | count |",
+        "|---|---|---:|",
+    ]
+    for group in groups:
+        assert isinstance(group, dict)
+        reason = group["payload_preview_reason"] or "(none)"
+        lines.append(
+            f"| `{group['payload_preview_status']}` | `{reason}` | {group['count']} |"
+        )
+
+    def digit_summary(representative: dict[str, object]) -> str:
+        digits = representative["digits"]
+        assert isinstance(digits, dict)
+        parts = []
+        for roi_name in roi_names:
+            value = digits.get(roi_name, {})
+            assert isinstance(value, dict)
+            parts.append(
+                f"{roi_name}:{value.get('value', '')}/"
+                f"{value.get('expected_value', '')}/"
+                f"{value.get('match', '')}"
+            )
+        return " ; ".join(parts)
+
+    if payload_ready_groups:
+        lines.extend(["", "## Payload Ready Representatives", ""])
+        for group in payload_ready_groups:
+            assert isinstance(group, dict)
+            representatives = group["representatives"]
+            assert isinstance(representatives, list)
+            lines.extend(
+                [
+                    (
+                        f"### source `{group['identity_signal_source']}` / "
+                        f"jacket `{group['m5_jacket_match_status']}` / "
+                        f"identity `{group['m5_identity_signal_status']}`"
+                    ),
+                    "",
+                    f"- count: {group['count']}",
+                    "",
+                    "| organized_file | candidate id | timestamp | digits |",
+                    "|---|---|---:|---|",
+                ]
+            )
+            for representative in representatives:
+                assert isinstance(representative, dict)
+                candidate_id = " / ".join(
+                    value
+                    for value in (
+                        str(representative["identity_signal_song_id"]),
+                        str(representative["identity_signal_chart_id"]),
+                    )
+                    if value
+                )
+                lines.append(
+                    f"| `{representative['organized_file']}` | "
+                    f"`{candidate_id}` | "
+                    f"`{representative['timestamp_ms']}` | "
+                    f"`{digit_summary(representative)}` |"
+                )
+            lines.append("")
+
+    if missing_identity_groups:
+        lines.extend(["", "## Identity Missing Representatives", ""])
+        for group in missing_identity_groups:
+            assert isinstance(group, dict)
+            representatives = group["representatives"]
+            assert isinstance(representatives, list)
+            lines.extend(
+                [
+                    (
+                        f"### reason `{group['payload_preview_reason']}` / "
+                        f"identity `{group['m5_identity_signal_status']}`"
+                    ),
+                    "",
+                    f"- count: {group['count']}",
+                    "",
+                    "| organized_file | source preview | candidate id | digits |",
+                    "|---|---|---|---|",
+                ]
+            )
+            for representative in representatives:
+                assert isinstance(representative, dict)
+                candidate_id = " / ".join(
+                    value
+                    for value in (
+                        str(representative["identity_signal_song_id"]),
+                        str(representative["identity_signal_chart_id"]),
+                    )
+                    if value
+                )
+                lines.append(
+                    f"| `{representative['organized_file']}` | "
+                    f"`{representative['source_preview_status']}` | "
+                    f"`{candidate_id}` | "
+                    f"`{digit_summary(representative)}` |"
+                )
+            lines.append("")
+
+    if missing_digit_groups:
+        lines.extend(["", "## Digit Missing Representatives", ""])
+        for group in missing_digit_groups:
+            assert isinstance(group, dict)
+            representatives = group["representatives"]
+            assert isinstance(representatives, list)
+            roi_name = str(group["roi_name"])
+            lines.extend(
+                [
+                    f"### ROI `{roi_name}`",
+                    "",
+                    f"- count: {group['count']}",
+                    "",
+                    "| organized_file | candidate id | missing ROI value | digits |",
+                    "|---|---|---|---|",
+                ]
+            )
+            for representative in representatives:
+                assert isinstance(representative, dict)
+                digits = representative["digits"]
+                assert isinstance(digits, dict)
+                value = digits.get(roi_name, {})
+                assert isinstance(value, dict)
+                candidate_id = " / ".join(
+                    value
+                    for value in (
+                        str(representative["identity_signal_song_id"]),
+                        str(representative["identity_signal_chart_id"]),
+                    )
+                    if value
+                )
+                lines.append(
+                    f"| `{representative['organized_file']}` | "
+                    f"`{candidate_id}` | "
+                    f"`{value.get('value', '')}` | "
+                    f"`{digit_summary(representative)}` |"
+                )
+            lines.append("")
+
+    if unsupported_groups:
+        lines.extend(["", "## Preview Exclusion Representatives", ""])
+        for group in unsupported_groups:
+            assert isinstance(group, dict)
+            representatives = group["representatives"]
+            assert isinstance(representatives, list)
+            lines.extend(
+                [
+                    (
+                        f"### preview `{group['source_preview_status']}` / "
+                        f"reason `{group['source_preview_reason']}`"
+                    ),
+                    "",
+                    f"- count: {group['count']}",
+                    "",
+                    "| organized_file | payload status | payload reason | source reason |",
+                    "|---|---|---|---|",
+                ]
+            )
+            for representative in representatives:
+                assert isinstance(representative, dict)
+                lines.append(
+                    f"| `{representative['organized_file']}` | "
+                    f"`{representative['payload_preview_status']}` | "
+                    f"`{representative['payload_preview_reason']}` | "
+                    f"`{representative['source_preview_reason']}` |"
+                )
+            lines.append("")
+
+    lines.extend(
+        [
+            "## Reading Notes",
+            "",
+            "- `payload_ready` はM8本実装前のdry-run payload材料が揃った状態です。",
+            "- DB保存可能、保存成功、曲ID/譜面ID確定、保存値確定を意味しません。",
+            "- `identity_signal_*` はM5候補観測のままで、保存用確定IDではありません。",
+            "- 数字列はM7aの `*_recognized_digits` 由来で、保存値確定ではありません。",
+            "- `preview_save_candidate` 以外はpayload材料にせず、除外代表として読みます。",
         ]
     )
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -8724,6 +9282,28 @@ def main(argv: list[str] | None = None) -> int:
         write_m7_save_decision_preview_report(
             output_dir / "m7_save_decision_preview.md",
             m7_save_decision_preview_summary,
+        )
+        m8_save_payload_rows = m8_save_payload_preview_rows(
+            m7_save_decision_rows,
+            M8_SAVE_PAYLOAD_DIGIT_ROIS,
+        )
+        write_m8_save_payload_preview_csv(
+            output_dir / "m8_save_payload_preview.csv",
+            m8_save_payload_rows,
+            M8_SAVE_PAYLOAD_DIGIT_ROIS,
+        )
+        m8_save_payload_preview_summary = summarize_m8_save_payload_preview(
+            m8_save_payload_rows,
+            M8_SAVE_PAYLOAD_DIGIT_ROIS,
+        )
+        (output_dir / "m8_save_payload_preview.json").write_text(
+            json.dumps(m8_save_payload_preview_summary, ensure_ascii=False, indent=2)
+            + "\n",
+            encoding="utf-8",
+        )
+        write_m8_save_payload_preview_report(
+            output_dir / "m8_save_payload_preview.md",
+            m8_save_payload_preview_summary,
         )
     summary = summarize(classifications)
     (output_dir / "summary.json").write_text(
