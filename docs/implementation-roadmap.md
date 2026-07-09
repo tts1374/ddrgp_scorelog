@@ -388,12 +388,15 @@ M5完了時点で固定すること:
 - `m8_score_db_write_preview.*` は保存予定レコードだけを新規 in-memory SQLite `plays` へinsertするdry-runプレビューで、insert対象件数、insert後件数、除外件数、代表行、`schema_version=1` を確認する。実ファイルDBは生成せず、本番DB保存成功として扱わない。
 - `--m8-score-db-output data\...\ddrgp-scores.sqlite` は、明示した場合だけ保存予定レコードを `data/` 配下の新規SQLiteファイルへinsertするfile output preview。`m8_score_db_file_output_preview.*` は出力DBへのinsert件数と `schema_version=1` の確認であり、本番DB保存成功として扱わない。SQLite側は `PRAGMA user_version=1` を設定する。
 - `plays` の最小スキーマとinsert境界は in-memory SQLite fixtureと明示オプション付きfile output previewで検証し、生成したローカルDBファイルはGit管理しない。
+- file output previewでは、実DB readback由来の `database_schema_version`、`database_preview_metadata`、`database_plays_row_count`、`database_plays_schema_columns` と、metadata / row count / schema の一致診断をJSONとMarkdown reportの両方で確認できる。
+- metadata mismatch、row count mismatch、schema mismatch の負例は実SQLite readback経路で固定済みで、Markdown report上にも mismatch reason がそのまま出ることをfixtureで確認する。
+- 2026-07-09時点でM8 previewは、`m8_save_payload_preview.*`、`m8_planned_play_records.*`、`m8_score_db_write_preview.*`、明示file output preview、readback診断までを一区切りの完了範囲として扱う。
 
 やること:
 
-- dry-run payload preview、保存予定レコードプレビュー、in-memory write preview、明示オプション付きfile output previewの読み方を保ったまま、次に本番DB insert境界を別フェーズとして設計する。
+- dry-run payload preview、保存予定レコードプレビュー、in-memory write preview、明示オプション付きfile output preview、readback診断の読み方を保ったまま、次に本番DB insert境界を別フェーズとして設計する。
 - `ddrgp-scores.sqlite` の正式スキーマを定義する。
-- `plays` テーブルのマイグレーション、insert、保存スキップ境界を実装する。
+- `plays` テーブルのマイグレーション、insert、保存スキップ境界を設計してから実装する。
 - マスタDBバージョン、曲ID、譜面ID、OCR結果、スコア、判定数、画像ハッシュ、解析確信度を保存する。
 - 重複保存防止をDB保存直前にも適用する。
 - マイグレーション方針を決める。

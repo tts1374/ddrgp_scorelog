@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import json
 import sqlite3
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -3442,6 +3443,125 @@ def test_m8_score_db_file_output_preview_reports_row_count_mismatch_from_real_db
     assert summary["database_plays_integer_fields_match_preview_contract"] is True
     assert summary["database_plays_schema_mismatch_reasons"] == []
     assert summary["inserted_count"] == 1
+
+
+def test_m8_score_db_file_output_preview_report_shows_real_db_readback_mismatch_reasons(
+    tmp_path: Path,
+) -> None:
+    planned_row = m8_planned_row_fixture()
+
+    def summarize_mutated_db(
+        mutate: Callable[[sqlite3.Connection], None],
+        database_path: Path,
+    ) -> dict[str, object]:
+        with sqlite3.connect(":memory:") as connection:
+            rows = runner.insert_m8_planned_play_records(
+                connection,
+                [planned_row],
+                inserted_status="inserted_to_file_preview",
+            )
+            row_count_after_insert = connection.execute(
+                "SELECT COUNT(*) FROM plays"
+            ).fetchone()[0]
+            mutate(connection)
+            connection.commit()
+            database_readback = (
+                runner.read_m8_score_db_file_output_preview_metadata(connection)
+            )
+        return runner.summarize_m8_score_db_file_output_preview(
+            rows,
+            database_path,
+            int(row_count_after_insert),
+            database_readback,
+        )
+
+    def mutate_metadata(connection: sqlite3.Connection) -> None:
+        connection.execute(
+            "DELETE FROM preview_metadata WHERE key = 'created_by_preview'"
+        )
+        connection.execute(
+            """
+            UPDATE preview_metadata
+            SET value = 'production_schema'
+            WHERE key = 'production_schema_status'
+            """
+        )
+
+    def mutate_row_count(connection: sqlite3.Connection) -> None:
+        runner.insert_m8_planned_play_record(connection, planned_row)
+
+    def mutate_schema(connection: sqlite3.Connection) -> None:
+        connection.execute("DROP TABLE plays")
+        connection.execute(
+            """
+            CREATE TABLE plays (
+              played_at_ms INTEGER NOT NULL,
+              song_id TEXT NOT NULL,
+              chart_id TEXT NOT NULL,
+              score TEXT NOT NULL,
+              max_combo INTEGER NOT NULL,
+              marvelous INTEGER NOT NULL,
+              perfect INTEGER NOT NULL,
+              great INTEGER NOT NULL,
+              good INTEGER NOT NULL,
+              miss INTEGER NOT NULL,
+              ex_score INTEGER NOT NULL,
+              source_organized_file TEXT NOT NULL,
+              source_confirmation_mode TEXT NOT NULL,
+              analysis_payload_status TEXT NOT NULL,
+              identity_signal_source TEXT NOT NULL,
+              m5_identity_signal_status TEXT NOT NULL,
+              m5_jacket_match_status TEXT NOT NULL
+            )
+            """
+        )
+        runner.insert_m8_planned_play_record(connection, planned_row)
+
+    cases = [
+        (
+            "metadata",
+            mutate_metadata,
+            "database readback mismatch reasons",
+            [
+                "database_preview_metadata.created_by_preview_missing",
+                "database_preview_metadata.production_schema_status_mismatch",
+            ],
+        ),
+        (
+            "row-count",
+            mutate_row_count,
+            "database plays row count mismatch reasons",
+            [
+                "database_plays_row_count_inserted_count_mismatch",
+                "database_plays_row_count_after_insert_mismatch",
+            ],
+        ),
+        (
+            "schema",
+            mutate_schema,
+            "database plays schema mismatch reasons",
+            [
+                "database_plays_schema.play_id_missing",
+                "database_plays_schema.created_at_missing",
+                "database_plays_schema_column_order_mismatch",
+                "database_plays_integer_fields_mismatch",
+            ],
+        ),
+    ]
+
+    for case_name, mutate, report_label, expected_reasons in cases:
+        summary = summarize_mutated_db(
+            mutate,
+            Path(f"data/m8_preview/real-{case_name}-mismatch.sqlite"),
+        )
+        report_path = tmp_path / f"{case_name}-m8-score-db-file-output.md"
+        runner.write_m8_score_db_file_output_preview_report(report_path, summary)
+        report = report_path.read_text(encoding="utf-8")
+
+        assert report_label in report
+        for reason in expected_reasons:
+            assert reason in report
+        assert "本番保存成功、曲ID/譜面ID確定、保存値確定には進みません" in report
 
 
 def test_m8_score_db_file_output_preview_rejects_outside_data(
