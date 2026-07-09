@@ -272,6 +272,43 @@ M7 PoCでは、DB保存前の最終 `save_decision` ではなく、`m7_save_deci
 
 `m7_save_decision_preview.json` / Markdown では、`preview_save_candidate` の M5 source、jacket status、identity signal status の集計と代表を出す。`needs_identity_review` は `m5_not_run`、`m5_identity_not_reviewable`、`identity_signal_id_missing` を分け、M5未実行、M5候補観測未解決、候補ID欠落を混同しない。`needs_digit_review` はROI別の `recognized_digits`、`expected_value`、`match`、`failure_reason` を代表で読む。これらはM8へ渡す前のレビュー補助であり、保存値確定ではない。
 
+M8 PoCでは、DB保存用 `save_decision` ではなく dry-run payload preview として以下だけを出す。
+
+- `payload_ready`
+- `missing_identity_candidate`
+- `missing_digit_value`
+- `unsupported_preview_status`
+
+`payload_ready` は `preview_save_candidate` から将来DBへ渡すなら使う材料が揃った状態であり、`save`、DB保存成功、曲ID/譜面ID確定、保存値確定を意味しない。`missing_identity_candidate` はM5候補観測の song/chart ID欠落、`missing_digit_value` はM7a recognized digits 欠落、`unsupported_preview_status` はM7 preview上でまだpayload対象外の行として読む。`m8_save_payload_preview.*` の数字値はM7aの `*_recognized_digits` を写した候補値で、`*_expected_value` / `*_match` はレビュー材料に留める。
+
+M8の保存予定レコードプレビューでは、`m8_save_payload_preview_rows` の `payload_ready` 行だけを `plays` 最小row contractへ変換する。最小列は以下に限定する。
+
+- `played_at_ms`
+- `song_id`
+- `chart_id`
+- `score`
+- `max_combo`
+- `marvelous`
+- `perfect`
+- `great`
+- `good`
+- `miss`
+- `ex_score`
+- `source_organized_file`
+- `source_confirmation_mode`
+- `analysis_payload_status`
+- `identity_signal_source`
+- `m5_identity_signal_status`
+- `m5_jacket_match_status`
+
+`played_at_ms` は `timestamp_ms` 由来の暫定値で、timestampなし入力では `0` として扱う。`song_id` / `chart_id` はM5 `identity_signal_*` 由来の候補観測、スコア・判定数はM7a `recognized_digits` 由来の候補値であり、保存用確定IDや保存値確定ではない。この最小契約はin-memory SQLite fixtureで `plays` スキーマへ挿入できることを確認するためのもので、実DBファイル生成やDB保存成功を意味しない。
+
+このM8 preview最小 `plays` は、上の「個人スコアDB概念モデル」の正式候補列とは別物として読む。正式候補列には `played_at`、`master_version`、OCR raw/normalized、rank、clear_type、ok、capture_hash、duplicate_key、analysis_confidence、app_version、created_at などがあるが、M8 preview最小列には含めない。逆にM8 preview最小列の `source_organized_file`、`source_confirmation_mode`、`analysis_payload_status`、M5 identity signal系の列は、PoC境界確認用の由来・状態列であり、正式個人スコアDBスキーマ確定を意味しない。
+
+M8のscore DB write previewでは、上記の保存予定レコードだけを新規 in-memory SQLite `plays` へinsertする。summaryでは `schema_name=m8_score_db_preview`、`schema_version=1`、`schema_version_source=PRAGMA user_version`、`schema_contract_scope=preview_minimal_plays`、`production_schema_status=not_production_schema`、`created_by_preview=tools.vision_poc.m8_score_db_preview`、`preview_metadata_table=preview_metadata`、`insert_target_count`、`inserted_count`、`row_count_after_insert`、`excluded_count` を出し、write preview status は `inserted_in_memory` / `skipped_invalid_planned_record` に限定する。SQLite側にも `preview_metadata` 表を作るが、正式マイグレーションではなくpreview生成物の識別だけに使う。`schema_contract_scope` と `production_schema_status` はpreview専用最小スキーマであることの読み間違い防止欄であり、本番DB保存成功、正式スキーマ確定、曲ID/譜面ID確定、保存値確定を意味しない。これはDB insert境界のdry-run確認であり、実ファイルDB生成、本番DB保存成功、曲ID/譜面ID確定、保存値確定を意味しない。非ready payloadは上流で保存予定レコードへ変換されないため、このpreviewの入力にならない。
+
+M8のscore DB file output previewでは、`--m8-score-db-output` を明示した場合だけ、保存予定レコードを `data/` 配下の新規SQLiteファイルへinsertする。テーブルは同じ最小 `plays` スキーマを使い、実ファイルDBには `PRAGMA user_version=1` と `preview_metadata.created_by_preview=tools.vision_poc.m8_score_db_preview`、`preview_metadata.schema_contract_scope=preview_minimal_plays`、`preview_metadata.production_schema_status=not_production_schema` を設定する。summaryでは `database_kind=file sqlite under data/`、`schema_version=1`、`schema_contract_scope=preview_minimal_plays`、`production_schema_status=not_production_schema`、`created_by_preview`、`database_schema_version`、`database_preview_metadata`、`database_plays_row_count`、`database_plays_schema_columns`、`database_readback_matches_preview_contract`、`database_readback_mismatch_reasons`、`database_plays_row_count_matches_insert_counts`、`database_plays_row_count_mismatch_reasons`、`database_plays_insert_columns_match_planned_contract`、`database_plays_integer_fields_match_preview_contract`、`database_plays_schema_mismatch_reasons`、`insert_target_count`、`inserted_count`、`row_count_after_insert`、`excluded_count` を出す。`schema_version`、`schema_contract_scope`、`production_schema_status`、`created_by_preview` はpreview契約として出す定数欄、`database_schema_version`、`database_preview_metadata`、`database_plays_row_count`、`database_plays_schema_columns` は実DBから読み戻した診断欄、readback一致診断欄はpreview契約、insert件数、preview最小 `plays` schemaとの比較結果として分けて読む。file output preview status は `inserted_to_file_preview` / `skipped_invalid_planned_record` に限定する。これは明示オプション付きの実ファイル出力境界確認であり、本番DB保存成功、正式スキーマ確定、曲ID/譜面ID確定、保存値確定を意味しない。既定実行や `--m7a-digit-recognition` だけの実行では実ファイルDBを生成しない。
+
 ## 重複保存防止
 
 PoCでは簡易 `duplicate_key` を使うが、本番では以下を組み合わせる。

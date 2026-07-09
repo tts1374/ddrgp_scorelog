@@ -6,6 +6,7 @@ import json
 import math
 import re
 import shutil
+import sqlite3
 import subprocess
 import tempfile
 from collections.abc import Iterable
@@ -360,6 +361,82 @@ M7A_DIGIT_SAVE_CANDIDATE_REVIEW_REPRESENTATIVE_LIMIT = 3
 M7A_TESSERACT_COMPARISON_REVIEW_REPRESENTATIVE_LIMIT = 3
 M7_SAVE_READINESS_REVIEW_REPRESENTATIVE_LIMIT = 3
 M7_SAVE_DECISION_PREVIEW_REPRESENTATIVE_LIMIT = 3
+M8_SAVE_PAYLOAD_PREVIEW_REPRESENTATIVE_LIMIT = 3
+M8_SAVE_PAYLOAD_DIGIT_ROIS = OCR_ROIS
+M8_PLANNED_PLAY_RECORD_REPRESENTATIVE_LIMIT = 3
+M8_SCORE_DB_WRITE_PREVIEW_REPRESENTATIVE_LIMIT = 3
+M8_PLANNED_PLAY_RECORD_FIELDNAMES = [
+    "played_at_ms",
+    "song_id",
+    "chart_id",
+    "score",
+    "max_combo",
+    "marvelous",
+    "perfect",
+    "great",
+    "good",
+    "miss",
+    "ex_score",
+    "source_organized_file",
+    "source_confirmation_mode",
+    "analysis_payload_status",
+    "identity_signal_source",
+    "m5_identity_signal_status",
+    "m5_jacket_match_status",
+]
+M8_SCORE_DB_WRITE_PREVIEW_FIELDNAMES = [
+    "write_preview_status",
+    "write_preview_reason",
+    "inserted_rowid",
+    *M8_PLANNED_PLAY_RECORD_FIELDNAMES,
+]
+M8_SCORE_DB_FILE_OUTPUT_PREVIEW_REPRESENTATIVE_LIMIT = 3
+M8_SCORE_DB_PREVIEW_SCHEMA_NAME = "m8_score_db_preview"
+M8_SCORE_DB_PREVIEW_SCHEMA_VERSION = 1
+M8_SCORE_DB_PREVIEW_CREATED_BY = "tools.vision_poc.m8_score_db_preview"
+M8_SCORE_DB_PREVIEW_METADATA_TABLE = "preview_metadata"
+M8_SCORE_DB_PREVIEW_SCHEMA_CONTRACT_SCOPE = "preview_minimal_plays"
+M8_SCORE_DB_PREVIEW_PRODUCTION_SCHEMA_STATUS = "not_production_schema"
+M8_SCORE_DB_WRITE_PREVIEW_INTEGER_FIELDS = (
+    "played_at_ms",
+    "score",
+    "max_combo",
+    "marvelous",
+    "perfect",
+    "great",
+    "good",
+    "miss",
+    "ex_score",
+)
+M8_PLAYS_SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS plays (
+  play_id INTEGER PRIMARY KEY,
+  played_at_ms INTEGER NOT NULL,
+  song_id TEXT NOT NULL,
+  chart_id TEXT NOT NULL,
+  score INTEGER NOT NULL,
+  max_combo INTEGER NOT NULL,
+  marvelous INTEGER NOT NULL,
+  perfect INTEGER NOT NULL,
+  great INTEGER NOT NULL,
+  good INTEGER NOT NULL,
+  miss INTEGER NOT NULL,
+  ex_score INTEGER NOT NULL,
+  source_organized_file TEXT NOT NULL,
+  source_confirmation_mode TEXT NOT NULL,
+  analysis_payload_status TEXT NOT NULL,
+  identity_signal_source TEXT NOT NULL,
+  m5_identity_signal_status TEXT NOT NULL,
+  m5_jacket_match_status TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+)
+"""
+M8_PREVIEW_METADATA_SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS preview_metadata (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+)
+"""
 M7_REVIEWABLE_IDENTITY_SIGNAL_STATUSES = (
     "jacket_resolved_candidate",
     "composite_resolved_candidate",
@@ -4027,6 +4104,1465 @@ def write_m7_save_decision_preview_report(
             "- M7aの数字列も候補値レビュー材料で、保存値確定ではありません。",
             "- duplicate、`rejected_transition`、未確定候補、non-result は上流の"
             "M7 readiness対象外のままです。",
+        ]
+    )
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def m8_save_payload_preview_missing_digit_rois(
+    row: dict[str, str],
+    roi_names: Iterable[str],
+) -> list[str]:
+    return [
+        roi_name
+        for roi_name in roi_names
+        if not row.get(f"{roi_name}_recognized_digits")
+    ]
+
+
+def m8_save_payload_preview_status(
+    row: dict[str, str],
+    roi_names: Iterable[str],
+) -> tuple[str, str]:
+    source_preview_status = row.get("preview_status", "")
+    if source_preview_status != "preview_save_candidate":
+        return "unsupported_preview_status", source_preview_status or "missing_preview_status"
+    if not row.get("m5_identity_signal_song_id") or not row.get(
+        "m5_identity_signal_chart_id"
+    ):
+        return "missing_identity_candidate", "identity_signal_id_missing"
+    missing_digit_rois = m8_save_payload_preview_missing_digit_rois(row, roi_names)
+    if missing_digit_rois:
+        return "missing_digit_value", " ".join(missing_digit_rois)
+    return "payload_ready", ""
+
+
+def m8_save_payload_preview_rows(
+    preview_rows: Iterable[dict[str, str]],
+    roi_names: Iterable[str] = M8_SAVE_PAYLOAD_DIGIT_ROIS,
+) -> list[dict[str, str]]:
+    roi_list = list(roi_names)
+    rows: list[dict[str, str]] = []
+    for preview_row in preview_rows:
+        payload_status, payload_reason = m8_save_payload_preview_status(
+            preview_row,
+            roi_list,
+        )
+        row = {
+            "organized_file": preview_row.get("organized_file", ""),
+            "timestamp_ms": preview_row.get("timestamp_ms", ""),
+            "confirmation_mode": preview_row.get("confirmation_mode", ""),
+            "source_preview_status": preview_row.get("preview_status", ""),
+            "source_preview_reason": preview_row.get("preview_reason", ""),
+            "payload_preview_status": payload_status,
+            "payload_preview_reason": payload_reason,
+            "payload_candidate": str(
+                preview_row.get("preview_status", "") == "preview_save_candidate"
+            ),
+            "payload_ready": str(payload_status == "payload_ready"),
+            "identity_signal_song_id": preview_row.get("m5_identity_signal_song_id", ""),
+            "identity_signal_chart_id": preview_row.get("m5_identity_signal_chart_id", ""),
+            "identity_signal_source": preview_row.get("m5_identity_signal_source", ""),
+            "m5_identity_signal_status": preview_row.get("m5_identity_signal_status", ""),
+            "m5_jacket_match_status": preview_row.get("m5_jacket_match_status", ""),
+        }
+        for roi_name in roi_list:
+            row[roi_name] = preview_row.get(f"{roi_name}_recognized_digits", "")
+            row[f"{roi_name}_expected_value"] = preview_row.get(
+                f"{roi_name}_expected_value",
+                "",
+            )
+            row[f"{roi_name}_match"] = preview_row.get(f"{roi_name}_match", "")
+        rows.append(row)
+    return rows
+
+
+def write_m8_save_payload_preview_csv(
+    path: Path,
+    rows: Iterable[dict[str, str]],
+    roi_names: Iterable[str] = M8_SAVE_PAYLOAD_DIGIT_ROIS,
+) -> None:
+    fieldnames = [
+        "organized_file",
+        "timestamp_ms",
+        "confirmation_mode",
+        "source_preview_status",
+        "source_preview_reason",
+        "payload_preview_status",
+        "payload_preview_reason",
+        "payload_candidate",
+        "payload_ready",
+        "identity_signal_song_id",
+        "identity_signal_chart_id",
+        "identity_signal_source",
+        "m5_identity_signal_status",
+        "m5_jacket_match_status",
+    ]
+    for roi_name in roi_names:
+        fieldnames.extend(
+            [
+                roi_name,
+                f"{roi_name}_expected_value",
+                f"{roi_name}_match",
+            ]
+        )
+    with path.open("w", encoding="utf-8", newline="") as file:
+        writer = csv.DictWriter(file, fieldnames=fieldnames)
+        writer.writeheader()
+        for row in rows:
+            writer.writerow({field: row.get(field, "") for field in fieldnames})
+
+
+def m8_save_payload_preview_representative(
+    row: dict[str, str],
+    roi_names: Iterable[str],
+) -> dict[str, object]:
+    digits = {
+        roi_name: {
+            "value": row.get(roi_name, ""),
+            "expected_value": row.get(f"{roi_name}_expected_value", ""),
+            "match": row.get(f"{roi_name}_match", ""),
+        }
+        for roi_name in roi_names
+    }
+    return {
+        "organized_file": row["organized_file"],
+        "timestamp_ms": row["timestamp_ms"],
+        "confirmation_mode": row["confirmation_mode"],
+        "payload_preview_status": row["payload_preview_status"],
+        "payload_preview_reason": row["payload_preview_reason"],
+        "source_preview_status": row["source_preview_status"],
+        "source_preview_reason": row["source_preview_reason"],
+        "identity_signal_song_id": row["identity_signal_song_id"],
+        "identity_signal_chart_id": row["identity_signal_chart_id"],
+        "identity_signal_source": row["identity_signal_source"],
+        "m5_identity_signal_status": row["m5_identity_signal_status"],
+        "m5_jacket_match_status": row["m5_jacket_match_status"],
+        "digits": digits,
+    }
+
+
+def append_m8_payload_representative(
+    bucket: dict[str, object],
+    row: dict[str, str],
+    roi_names: Iterable[str],
+    representative_limit: int,
+) -> None:
+    bucket["count"] = int(bucket["count"]) + 1
+    representatives = bucket["representatives"]
+    assert isinstance(representatives, list)
+    if len(representatives) < representative_limit:
+        representatives.append(m8_save_payload_preview_representative(row, roi_names))
+
+
+def summarize_m8_save_payload_preview(
+    rows: Iterable[dict[str, str]],
+    roi_names: Iterable[str] = M8_SAVE_PAYLOAD_DIGIT_ROIS,
+    representative_limit: int = M8_SAVE_PAYLOAD_PREVIEW_REPRESENTATIVE_LIMIT,
+) -> dict[str, object]:
+    row_list = list(rows)
+    roi_list = list(roi_names)
+    payload_status_counts: dict[str, int] = {}
+    excluded_preview_status_counts: dict[str, int] = {}
+    groups: dict[tuple[str, str], dict[str, object]] = {}
+    payload_ready_groups: dict[tuple[str, str, str], dict[str, object]] = {}
+    missing_identity_groups: dict[tuple[str, str], dict[str, object]] = {}
+    missing_digit_groups: dict[tuple[str, str], dict[str, object]] = {}
+    unsupported_preview_status_groups: dict[tuple[str, str], dict[str, object]] = {}
+    for row in row_list:
+        payload_status = row["payload_preview_status"]
+        payload_status_counts[payload_status] = (
+            payload_status_counts.get(payload_status, 0) + 1
+        )
+        if row["source_preview_status"] != "preview_save_candidate":
+            count_preview_value(
+                excluded_preview_status_counts,
+                row["source_preview_status"],
+            )
+
+        key = (payload_status, row["payload_preview_reason"])
+        bucket = groups.setdefault(
+            key,
+            {
+                "payload_preview_status": payload_status,
+                "payload_preview_reason": row["payload_preview_reason"],
+                "count": 0,
+                "representatives": [],
+            },
+        )
+        append_m8_payload_representative(
+            bucket,
+            row,
+            roi_list,
+            representative_limit,
+        )
+
+        if payload_status == "payload_ready":
+            ready_key = (
+                row["identity_signal_source"] or "missing",
+                row["m5_jacket_match_status"] or "missing",
+                row["m5_identity_signal_status"] or "missing",
+            )
+            ready_bucket = payload_ready_groups.setdefault(
+                ready_key,
+                {
+                    "identity_signal_source": ready_key[0],
+                    "m5_jacket_match_status": ready_key[1],
+                    "m5_identity_signal_status": ready_key[2],
+                    "count": 0,
+                    "representatives": [],
+                },
+            )
+            append_m8_payload_representative(
+                ready_bucket,
+                row,
+                roi_list,
+                representative_limit,
+            )
+        elif payload_status == "missing_identity_candidate":
+            identity_key = (
+                row["payload_preview_reason"] or "missing",
+                row["m5_identity_signal_status"] or "missing",
+            )
+            identity_bucket = missing_identity_groups.setdefault(
+                identity_key,
+                {
+                    "payload_preview_reason": identity_key[0],
+                    "m5_identity_signal_status": identity_key[1],
+                    "count": 0,
+                    "representatives": [],
+                },
+            )
+            append_m8_payload_representative(
+                identity_bucket,
+                row,
+                roi_list,
+                representative_limit,
+            )
+        elif payload_status == "missing_digit_value":
+            for roi_name in row["payload_preview_reason"].split():
+                digit_key = (roi_name, "missing_recognized_digits")
+                digit_bucket = missing_digit_groups.setdefault(
+                    digit_key,
+                    {
+                        "roi_name": roi_name,
+                        "payload_preview_reason": digit_key[1],
+                        "count": 0,
+                        "representatives": [],
+                    },
+                )
+                append_m8_payload_representative(
+                    digit_bucket,
+                    row,
+                    roi_list,
+                    representative_limit,
+                )
+        elif payload_status == "unsupported_preview_status":
+            unsupported_key = (
+                row["source_preview_status"] or "missing",
+                row["source_preview_reason"] or "missing",
+            )
+            unsupported_bucket = unsupported_preview_status_groups.setdefault(
+                unsupported_key,
+                {
+                    "source_preview_status": unsupported_key[0],
+                    "source_preview_reason": unsupported_key[1],
+                    "count": 0,
+                    "representatives": [],
+                },
+            )
+            append_m8_payload_representative(
+                unsupported_bucket,
+                row,
+                roi_list,
+                representative_limit,
+            )
+
+    payload_candidate_count = sum(
+        1 for row in row_list if row["source_preview_status"] == "preview_save_candidate"
+    )
+    return {
+        "target_boundary": "m7 preview rows; payload candidates require preview_save_candidate",
+        "scope": "M8 dry-run save payload preview before DB insert",
+        "source": "m7_save_decision_preview_rows",
+        "target_count": len(row_list),
+        "payload_candidate_count": payload_candidate_count,
+        "payload_ready_count": payload_status_counts.get("payload_ready", 0),
+        "payload_status_counts": dict(sorted(payload_status_counts.items())),
+        "excluded_preview_status_counts": dict(
+            sorted(excluded_preview_status_counts.items())
+        ),
+        "digit_rois": roi_list,
+        "representative_limit_per_group": representative_limit,
+        "groups": sorted(
+            groups.values(),
+            key=lambda item: (
+                str(item["payload_preview_status"]),
+                str(item["payload_preview_reason"]),
+            ),
+        ),
+        "payload_ready_groups": sorted(
+            payload_ready_groups.values(),
+            key=lambda item: (
+                str(item["identity_signal_source"]),
+                str(item["m5_jacket_match_status"]),
+                str(item["m5_identity_signal_status"]),
+            ),
+        ),
+        "missing_identity_candidate_groups": sorted(
+            missing_identity_groups.values(),
+            key=lambda item: (
+                str(item["payload_preview_reason"]),
+                str(item["m5_identity_signal_status"]),
+            ),
+        ),
+        "missing_digit_value_groups": sorted(
+            missing_digit_groups.values(),
+            key=lambda item: (
+                str(item["roi_name"]),
+                str(item["payload_preview_reason"]),
+            ),
+        ),
+        "unsupported_preview_status_groups": sorted(
+            unsupported_preview_status_groups.values(),
+            key=lambda item: (
+                str(item["source_preview_status"]),
+                str(item["source_preview_reason"]),
+            ),
+        ),
+        "status_vocabulary": [
+            "payload_ready",
+            "missing_identity_candidate",
+            "missing_digit_value",
+            "unsupported_preview_status",
+        ],
+        "reading_notes": [
+            "payload_ready is dry-run handoff material only.",
+            "It is not a DB save allow decision, DB insert success, or confirmed IDs.",
+            "identity_signal_* values remain M5 candidate observations.",
+            "Digit values are copied from M7a recognized_digits and remain candidates.",
+            "Rows outside preview_save_candidate are excluded from payload material.",
+        ],
+    }
+
+
+def write_m8_save_payload_preview_report(
+    path: Path,
+    summary: dict[str, object],
+) -> None:
+    groups = summary["groups"]
+    assert isinstance(groups, list)
+    roi_names = summary["digit_rois"]
+    assert isinstance(roi_names, list)
+    payload_ready_groups = summary["payload_ready_groups"]
+    assert isinstance(payload_ready_groups, list)
+    missing_identity_groups = summary["missing_identity_candidate_groups"]
+    assert isinstance(missing_identity_groups, list)
+    missing_digit_groups = summary["missing_digit_value_groups"]
+    assert isinstance(missing_digit_groups, list)
+    unsupported_groups = summary["unsupported_preview_status_groups"]
+    assert isinstance(unsupported_groups, list)
+    lines = [
+        "# M8 Save Payload Preview",
+        "",
+        "M7保存判定プレビューの行から、将来DBへ渡すならどの材料になるかを"
+        "dry-run payloadとして確認します。",
+        "DB insert、保存成功、曲ID/譜面ID確定、保存値確定には進みません。",
+        "",
+        f"- target boundary: `{summary['target_boundary']}`",
+        f"- source: `{summary['source']}`",
+        f"- target preview rows: {summary['target_count']}",
+        f"- payload candidate count: {summary['payload_candidate_count']}",
+        f"- payload ready count: {summary['payload_ready_count']}",
+        f"- payload status counts: "
+        f"`{json.dumps(summary['payload_status_counts'], ensure_ascii=False)}`",
+        f"- excluded preview status counts: "
+        f"`{json.dumps(summary['excluded_preview_status_counts'], ensure_ascii=False)}`",
+        f"- digit rois: `{', '.join(str(roi) for roi in roi_names)}`",
+        f"- representative limit per group: "
+        f"{summary['representative_limit_per_group']}",
+        "",
+        "## Status Groups",
+        "",
+        "| payload status | reason | count |",
+        "|---|---|---:|",
+    ]
+    for group in groups:
+        assert isinstance(group, dict)
+        reason = group["payload_preview_reason"] or "(none)"
+        lines.append(
+            f"| `{group['payload_preview_status']}` | `{reason}` | {group['count']} |"
+        )
+
+    def digit_summary(representative: dict[str, object]) -> str:
+        digits = representative["digits"]
+        assert isinstance(digits, dict)
+        parts = []
+        for roi_name in roi_names:
+            value = digits.get(roi_name, {})
+            assert isinstance(value, dict)
+            parts.append(
+                f"{roi_name}:{value.get('value', '')}/"
+                f"{value.get('expected_value', '')}/"
+                f"{value.get('match', '')}"
+            )
+        return " ; ".join(parts)
+
+    if payload_ready_groups:
+        lines.extend(["", "## Payload Ready Representatives", ""])
+        for group in payload_ready_groups:
+            assert isinstance(group, dict)
+            representatives = group["representatives"]
+            assert isinstance(representatives, list)
+            lines.extend(
+                [
+                    (
+                        f"### source `{group['identity_signal_source']}` / "
+                        f"jacket `{group['m5_jacket_match_status']}` / "
+                        f"identity `{group['m5_identity_signal_status']}`"
+                    ),
+                    "",
+                    f"- count: {group['count']}",
+                    "",
+                    "| organized_file | candidate id | timestamp | digits |",
+                    "|---|---|---:|---|",
+                ]
+            )
+            for representative in representatives:
+                assert isinstance(representative, dict)
+                candidate_id = " / ".join(
+                    value
+                    for value in (
+                        str(representative["identity_signal_song_id"]),
+                        str(representative["identity_signal_chart_id"]),
+                    )
+                    if value
+                )
+                lines.append(
+                    f"| `{representative['organized_file']}` | "
+                    f"`{candidate_id}` | "
+                    f"`{representative['timestamp_ms']}` | "
+                    f"`{digit_summary(representative)}` |"
+                )
+            lines.append("")
+
+    if missing_identity_groups:
+        lines.extend(["", "## Identity Missing Representatives", ""])
+        for group in missing_identity_groups:
+            assert isinstance(group, dict)
+            representatives = group["representatives"]
+            assert isinstance(representatives, list)
+            lines.extend(
+                [
+                    (
+                        f"### reason `{group['payload_preview_reason']}` / "
+                        f"identity `{group['m5_identity_signal_status']}`"
+                    ),
+                    "",
+                    f"- count: {group['count']}",
+                    "",
+                    "| organized_file | source preview | candidate id | digits |",
+                    "|---|---|---|---|",
+                ]
+            )
+            for representative in representatives:
+                assert isinstance(representative, dict)
+                candidate_id = " / ".join(
+                    value
+                    for value in (
+                        str(representative["identity_signal_song_id"]),
+                        str(representative["identity_signal_chart_id"]),
+                    )
+                    if value
+                )
+                lines.append(
+                    f"| `{representative['organized_file']}` | "
+                    f"`{representative['source_preview_status']}` | "
+                    f"`{candidate_id}` | "
+                    f"`{digit_summary(representative)}` |"
+                )
+            lines.append("")
+
+    if missing_digit_groups:
+        lines.extend(["", "## Digit Missing Representatives", ""])
+        for group in missing_digit_groups:
+            assert isinstance(group, dict)
+            representatives = group["representatives"]
+            assert isinstance(representatives, list)
+            roi_name = str(group["roi_name"])
+            lines.extend(
+                [
+                    f"### ROI `{roi_name}`",
+                    "",
+                    f"- count: {group['count']}",
+                    "",
+                    "| organized_file | candidate id | missing ROI value | digits |",
+                    "|---|---|---|---|",
+                ]
+            )
+            for representative in representatives:
+                assert isinstance(representative, dict)
+                digits = representative["digits"]
+                assert isinstance(digits, dict)
+                value = digits.get(roi_name, {})
+                assert isinstance(value, dict)
+                candidate_id = " / ".join(
+                    value
+                    for value in (
+                        str(representative["identity_signal_song_id"]),
+                        str(representative["identity_signal_chart_id"]),
+                    )
+                    if value
+                )
+                lines.append(
+                    f"| `{representative['organized_file']}` | "
+                    f"`{candidate_id}` | "
+                    f"`{value.get('value', '')}` | "
+                    f"`{digit_summary(representative)}` |"
+                )
+            lines.append("")
+
+    if unsupported_groups:
+        lines.extend(["", "## Preview Exclusion Representatives", ""])
+        for group in unsupported_groups:
+            assert isinstance(group, dict)
+            representatives = group["representatives"]
+            assert isinstance(representatives, list)
+            lines.extend(
+                [
+                    (
+                        f"### preview `{group['source_preview_status']}` / "
+                        f"reason `{group['source_preview_reason']}`"
+                    ),
+                    "",
+                    f"- count: {group['count']}",
+                    "",
+                    "| organized_file | payload status | payload reason | source reason |",
+                    "|---|---|---|---|",
+                ]
+            )
+            for representative in representatives:
+                assert isinstance(representative, dict)
+                lines.append(
+                    f"| `{representative['organized_file']}` | "
+                    f"`{representative['payload_preview_status']}` | "
+                    f"`{representative['payload_preview_reason']}` | "
+                    f"`{representative['source_preview_reason']}` |"
+                )
+            lines.append("")
+
+    lines.extend(
+        [
+            "## Reading Notes",
+            "",
+            "- `payload_ready` はM8本実装前のdry-run payload材料が揃った状態です。",
+            "- DB保存可能、保存成功、曲ID/譜面ID確定、保存値確定を意味しません。",
+            "- `identity_signal_*` はM5候補観測のままで、保存用確定IDではありません。",
+            "- 数字列はM7aの `*_recognized_digits` 由来で、保存値確定ではありません。",
+            "- `preview_save_candidate` 以外はpayload材料にせず、除外代表として読みます。",
+        ]
+    )
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def create_m8_score_db_schema(connection: sqlite3.Connection) -> None:
+    connection.execute(M8_PLAYS_SCHEMA_SQL)
+    connection.execute(M8_PREVIEW_METADATA_SCHEMA_SQL)
+    connection.execute(f"PRAGMA user_version = {M8_SCORE_DB_PREVIEW_SCHEMA_VERSION}")
+    metadata_rows = {
+        "created_by_preview": M8_SCORE_DB_PREVIEW_CREATED_BY,
+        "schema_name": M8_SCORE_DB_PREVIEW_SCHEMA_NAME,
+        "schema_version": str(M8_SCORE_DB_PREVIEW_SCHEMA_VERSION),
+        "schema_version_source": "PRAGMA user_version",
+        "schema_table": "plays",
+        "schema_contract_scope": M8_SCORE_DB_PREVIEW_SCHEMA_CONTRACT_SCOPE,
+        "production_schema_status": M8_SCORE_DB_PREVIEW_PRODUCTION_SCHEMA_STATUS,
+    }
+    connection.executemany(
+        """
+        INSERT OR REPLACE INTO preview_metadata (key, value)
+        VALUES (?, ?)
+        """,
+        sorted(metadata_rows.items()),
+    )
+
+
+def validate_m8_planned_play_record(row: dict[str, str]) -> str:
+    for field in M8_PLANNED_PLAY_RECORD_FIELDNAMES:
+        if not row.get(field, ""):
+            return f"missing_required_field:{field}"
+    for field in M8_SCORE_DB_WRITE_PREVIEW_INTEGER_FIELDS:
+        value = row.get(field, "")
+        if not value.isdigit():
+            return f"invalid_integer:{field}"
+    return ""
+
+
+def insert_m8_planned_play_record(
+    connection: sqlite3.Connection,
+    row: dict[str, str],
+) -> int:
+    columns = ", ".join(M8_PLANNED_PLAY_RECORD_FIELDNAMES)
+    placeholders = ", ".join(f":{field}" for field in M8_PLANNED_PLAY_RECORD_FIELDNAMES)
+    cursor = connection.execute(
+        f"INSERT INTO plays ({columns}) VALUES ({placeholders})",
+        {field: row.get(field, "") for field in M8_PLANNED_PLAY_RECORD_FIELDNAMES},
+    )
+    rowid = cursor.lastrowid
+    return int(rowid) if rowid is not None else 0
+
+
+def insert_m8_planned_play_records(
+    connection: sqlite3.Connection,
+    planned_rows: Iterable[dict[str, str]],
+    *,
+    inserted_status: str,
+) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    create_m8_score_db_schema(connection)
+    for planned_row in planned_rows:
+        reason = validate_m8_planned_play_record(planned_row)
+        if reason:
+            rows.append(
+                {
+                    "write_preview_status": "skipped_invalid_planned_record",
+                    "write_preview_reason": reason,
+                    "inserted_rowid": "",
+                    **{
+                        field: planned_row.get(field, "")
+                        for field in M8_PLANNED_PLAY_RECORD_FIELDNAMES
+                    },
+                }
+            )
+            continue
+        inserted_rowid = insert_m8_planned_play_record(connection, planned_row)
+        rows.append(
+            {
+                "write_preview_status": inserted_status,
+                "write_preview_reason": "",
+                "inserted_rowid": str(inserted_rowid),
+                **{
+                    field: planned_row.get(field, "")
+                    for field in M8_PLANNED_PLAY_RECORD_FIELDNAMES
+                },
+            }
+        )
+    connection.commit()
+    return rows
+
+
+def read_m8_score_db_file_output_preview_metadata(
+    connection: sqlite3.Connection,
+) -> dict[str, object]:
+    schema_version = connection.execute("PRAGMA user_version").fetchone()[0]
+    preview_metadata = dict(
+        connection.execute(
+            "SELECT key, value FROM preview_metadata ORDER BY key"
+        ).fetchall()
+    )
+    plays_row_count = connection.execute("SELECT COUNT(*) FROM plays").fetchone()[0]
+    plays_schema_columns = read_m8_score_db_plays_schema_columns(connection)
+    return {
+        "database_schema_version": int(schema_version),
+        "database_preview_metadata": preview_metadata,
+        "database_plays_row_count": int(plays_row_count),
+        "database_plays_schema_columns": plays_schema_columns,
+    }
+
+
+def read_m8_score_db_plays_schema_columns(
+    connection: sqlite3.Connection,
+) -> list[dict[str, object]]:
+    table_info = connection.execute("PRAGMA table_info(plays)").fetchall()
+    return [
+        {
+            "cid": int(row[0]),
+            "name": str(row[1]),
+            "type": str(row[2]).upper(),
+            "notnull": int(row[3]),
+            "default": None if row[4] is None else str(row[4]),
+            "primary_key": int(row[5]),
+        }
+        for row in table_info
+    ]
+
+
+def evaluate_m8_score_db_file_output_preview_readback_contract(
+    database_readback: dict[str, object],
+) -> tuple[bool, list[str]]:
+    reasons: list[str] = []
+    database_schema_version = database_readback.get("database_schema_version")
+    if database_schema_version != M8_SCORE_DB_PREVIEW_SCHEMA_VERSION:
+        reasons.append("database_schema_version_mismatch")
+
+    preview_metadata = database_readback.get("database_preview_metadata", {})
+    if not isinstance(preview_metadata, dict):
+        return False, [
+            *reasons,
+            "database_preview_metadata_not_object",
+        ]
+
+    expected_metadata = {
+        "created_by_preview": M8_SCORE_DB_PREVIEW_CREATED_BY,
+        "schema_name": M8_SCORE_DB_PREVIEW_SCHEMA_NAME,
+        "schema_version": str(M8_SCORE_DB_PREVIEW_SCHEMA_VERSION),
+        "schema_version_source": "PRAGMA user_version",
+        "schema_table": "plays",
+        "schema_contract_scope": M8_SCORE_DB_PREVIEW_SCHEMA_CONTRACT_SCOPE,
+        "production_schema_status": M8_SCORE_DB_PREVIEW_PRODUCTION_SCHEMA_STATUS,
+    }
+    for key, expected_value in expected_metadata.items():
+        if key not in preview_metadata:
+            reasons.append(f"database_preview_metadata.{key}_missing")
+            continue
+        actual_value = preview_metadata[key]
+        if actual_value != expected_value:
+            reasons.append(f"database_preview_metadata.{key}_mismatch")
+
+    return not reasons, reasons
+
+
+def evaluate_m8_score_db_file_output_preview_schema_readback(
+    database_readback: dict[str, object],
+) -> tuple[bool, bool, list[str]]:
+    reasons: list[str] = []
+    schema_columns = database_readback.get("database_plays_schema_columns", [])
+    if not isinstance(schema_columns, list):
+        return False, False, ["database_plays_schema_columns_not_list"]
+
+    column_names = [
+        str(column.get("name", ""))
+        for column in schema_columns
+        if isinstance(column, dict)
+    ]
+    expected_column_names = [
+        "play_id",
+        *M8_PLANNED_PLAY_RECORD_FIELDNAMES,
+        "created_at",
+    ]
+    if "play_id" not in column_names:
+        reasons.append("database_plays_schema.play_id_missing")
+    if "created_at" not in column_names:
+        reasons.append("database_plays_schema.created_at_missing")
+    if "play_id" in M8_PLANNED_PLAY_RECORD_FIELDNAMES:
+        reasons.append("database_plays_schema.play_id_in_planned_contract")
+    if "created_at" in M8_PLANNED_PLAY_RECORD_FIELDNAMES:
+        reasons.append("database_plays_schema.created_at_in_planned_contract")
+    if column_names != expected_column_names:
+        reasons.append("database_plays_schema_column_order_mismatch")
+
+    insert_columns_match_planned_contract = (
+        len(column_names) >= 2
+        and column_names[1:-1] == M8_PLANNED_PLAY_RECORD_FIELDNAMES
+        and "play_id" not in M8_PLANNED_PLAY_RECORD_FIELDNAMES
+        and "created_at" not in M8_PLANNED_PLAY_RECORD_FIELDNAMES
+    )
+
+    column_types = {
+        str(column.get("name", "")): str(column.get("type", "")).upper()
+        for column in schema_columns
+        if isinstance(column, dict)
+    }
+    integer_fields = [
+        field
+        for field in M8_PLANNED_PLAY_RECORD_FIELDNAMES
+        if column_types.get(field) == "INTEGER"
+    ]
+    integer_fields_match_preview_contract = (
+        integer_fields == list(M8_SCORE_DB_WRITE_PREVIEW_INTEGER_FIELDS)
+    )
+    if not integer_fields_match_preview_contract:
+        reasons.append("database_plays_integer_fields_mismatch")
+
+    return (
+        insert_columns_match_planned_contract,
+        integer_fields_match_preview_contract,
+        reasons,
+    )
+
+
+def evaluate_m8_score_db_file_output_preview_row_count_readback(
+    database_readback: dict[str, object],
+    *,
+    inserted_count: int,
+    row_count_after_insert: int,
+) -> tuple[bool, list[str]]:
+    reasons: list[str] = []
+    database_plays_row_count = database_readback.get("database_plays_row_count")
+    if database_plays_row_count != inserted_count:
+        reasons.append("database_plays_row_count_inserted_count_mismatch")
+    if database_plays_row_count != row_count_after_insert:
+        reasons.append("database_plays_row_count_after_insert_mismatch")
+    return not reasons, reasons
+
+
+def m8_score_db_write_preview_rows(
+    planned_rows: Iterable[dict[str, str]],
+) -> list[dict[str, str]]:
+    with sqlite3.connect(":memory:") as connection:
+        return insert_m8_planned_play_records(
+            connection,
+            planned_rows,
+            inserted_status="inserted_in_memory",
+        )
+
+
+def write_m8_score_db_file_output_preview(
+    output_db_path: Path,
+    planned_rows: Iterable[dict[str, str]],
+) -> dict[str, object]:
+    ensure_data_output_path(output_db_path, argument_name="--m8-score-db-output")
+    if output_db_path.exists():
+        raise ValueError(f"--m8-score-db-output already exists: {output_db_path}")
+    output_db_path.parent.mkdir(parents=True, exist_ok=True)
+    with sqlite3.connect(output_db_path) as connection:
+        rows = insert_m8_planned_play_records(
+            connection,
+            planned_rows,
+            inserted_status="inserted_to_file_preview",
+        )
+        row_count_after_insert = connection.execute("SELECT COUNT(*) FROM plays").fetchone()[0]
+        database_readback = read_m8_score_db_file_output_preview_metadata(connection)
+    return summarize_m8_score_db_file_output_preview(
+        rows,
+        output_db_path,
+        int(row_count_after_insert),
+        database_readback,
+    )
+
+
+def write_m8_score_db_write_preview_csv(
+    path: Path,
+    rows: Iterable[dict[str, str]],
+) -> None:
+    with path.open("w", encoding="utf-8", newline="") as file:
+        writer = csv.DictWriter(file, fieldnames=M8_SCORE_DB_WRITE_PREVIEW_FIELDNAMES)
+        writer.writeheader()
+        for row in rows:
+            writer.writerow(
+                {
+                    field: row.get(field, "")
+                    for field in M8_SCORE_DB_WRITE_PREVIEW_FIELDNAMES
+                }
+            )
+
+
+def m8_score_db_write_preview_representative(
+    row: dict[str, str],
+) -> dict[str, str]:
+    return {field: row.get(field, "") for field in M8_SCORE_DB_WRITE_PREVIEW_FIELDNAMES}
+
+
+def append_m8_score_db_write_representative(
+    bucket: dict[str, object],
+    row: dict[str, str],
+    representative_limit: int,
+) -> None:
+    bucket["count"] = int(bucket["count"]) + 1
+    representatives = bucket["representatives"]
+    assert isinstance(representatives, list)
+    if len(representatives) < representative_limit:
+        representatives.append(m8_score_db_write_preview_representative(row))
+
+
+def summarize_m8_score_db_write_preview(
+    rows: Iterable[dict[str, str]],
+    representative_limit: int = M8_SCORE_DB_WRITE_PREVIEW_REPRESENTATIVE_LIMIT,
+) -> dict[str, object]:
+    row_list = list(rows)
+    status_counts: dict[str, int] = {}
+    reason_counts: dict[str, int] = {}
+    groups: dict[tuple[str, str], dict[str, object]] = {}
+    for row in row_list:
+        status = row.get("write_preview_status", "")
+        reason = row.get("write_preview_reason", "")
+        count_preview_value(status_counts, status)
+        if reason:
+            count_preview_value(reason_counts, reason)
+        key = (status, reason)
+        bucket = groups.setdefault(
+            key,
+            {
+                "write_preview_status": status,
+                "write_preview_reason": reason,
+                "count": 0,
+                "representatives": [],
+            },
+        )
+        append_m8_score_db_write_representative(
+            bucket,
+            row,
+            representative_limit,
+        )
+    inserted_count = status_counts.get("inserted_in_memory", 0)
+    excluded_count = len(row_list) - inserted_count
+    return {
+        "target_boundary": "m8 planned play record rows",
+        "scope": "M8 in-memory score DB write preview",
+        "source": "m8_planned_play_records_rows",
+        "database": "in-memory sqlite",
+        "schema_name": M8_SCORE_DB_PREVIEW_SCHEMA_NAME,
+        "schema_version": M8_SCORE_DB_PREVIEW_SCHEMA_VERSION,
+        "schema_version_source": "PRAGMA user_version",
+        "schema_table": "plays",
+        "schema_contract_scope": M8_SCORE_DB_PREVIEW_SCHEMA_CONTRACT_SCOPE,
+        "production_schema_status": M8_SCORE_DB_PREVIEW_PRODUCTION_SCHEMA_STATUS,
+        "preview_metadata_table": M8_SCORE_DB_PREVIEW_METADATA_TABLE,
+        "created_by_preview": M8_SCORE_DB_PREVIEW_CREATED_BY,
+        "target_count": len(row_list),
+        "insert_target_count": inserted_count,
+        "inserted_count": inserted_count,
+        "row_count_after_insert": inserted_count,
+        "excluded_count": excluded_count,
+        "write_preview_status_counts": dict(sorted(status_counts.items())),
+        "write_preview_reason_counts": dict(sorted(reason_counts.items())),
+        "fieldnames": M8_SCORE_DB_WRITE_PREVIEW_FIELDNAMES,
+        "representative_limit_per_group": representative_limit,
+        "groups": sorted(
+            groups.values(),
+            key=lambda item: (
+                str(item["write_preview_status"]),
+                str(item["write_preview_reason"]),
+            ),
+        ),
+        "status_vocabulary": [
+            "inserted_in_memory",
+            "skipped_invalid_planned_record",
+        ],
+        "reading_notes": [
+            "Only planned play record rows are input to this write preview.",
+            "Rows are inserted into a fresh in-memory SQLite plays table only.",
+            "created_by_preview marks this as a preview artifact only.",
+            "schema_version identifies the preview schema contract only.",
+            "schema_contract_scope identifies the preview minimal plays contract only.",
+            "production_schema_status marks this as not the production schema.",
+            "This is not production DB output, DB save success, confirmed IDs, or final values.",
+            "timestamped and manifest inputs keep timestamp_ms as played_at_ms.",
+            "played_at_ms=0 remains the timestamp-less provisional value.",
+        ],
+    }
+
+
+def summarize_m8_score_db_file_output_preview(
+    rows: Iterable[dict[str, str]],
+    output_db_path: Path,
+    row_count_after_insert: int,
+    database_readback: dict[str, object],
+    representative_limit: int = M8_SCORE_DB_FILE_OUTPUT_PREVIEW_REPRESENTATIVE_LIMIT,
+) -> dict[str, object]:
+    row_list = list(rows)
+    status_counts: dict[str, int] = {}
+    reason_counts: dict[str, int] = {}
+    groups: dict[tuple[str, str], dict[str, object]] = {}
+    for row in row_list:
+        status = row.get("write_preview_status", "")
+        reason = row.get("write_preview_reason", "")
+        count_preview_value(status_counts, status)
+        if reason:
+            count_preview_value(reason_counts, reason)
+        key = (status, reason)
+        bucket = groups.setdefault(
+            key,
+            {
+                "write_preview_status": status,
+                "write_preview_reason": reason,
+                "count": 0,
+                "representatives": [],
+            },
+        )
+        append_m8_score_db_write_representative(
+            bucket,
+            row,
+            representative_limit,
+        )
+    inserted_count = status_counts.get("inserted_to_file_preview", 0)
+    (
+        database_readback_matches_preview_contract,
+        database_readback_mismatch_reasons,
+    ) = evaluate_m8_score_db_file_output_preview_readback_contract(database_readback)
+    (
+        database_plays_row_count_matches_insert_counts,
+        database_plays_row_count_mismatch_reasons,
+    ) = evaluate_m8_score_db_file_output_preview_row_count_readback(
+        database_readback,
+        inserted_count=inserted_count,
+        row_count_after_insert=row_count_after_insert,
+    )
+    (
+        database_plays_insert_columns_match_planned_contract,
+        database_plays_integer_fields_match_preview_contract,
+        database_plays_schema_mismatch_reasons,
+    ) = evaluate_m8_score_db_file_output_preview_schema_readback(database_readback)
+    database_plays_schema_columns = database_readback.get(
+        "database_plays_schema_columns",
+        [],
+    )
+    return {
+        "target_boundary": "m8 planned play record rows",
+        "scope": "M8 explicit score DB file output preview",
+        "source": "m8_planned_play_records_rows",
+        "database": str(output_db_path),
+        "database_kind": "file sqlite under data/",
+        "schema_name": M8_SCORE_DB_PREVIEW_SCHEMA_NAME,
+        "schema_version": M8_SCORE_DB_PREVIEW_SCHEMA_VERSION,
+        "schema_version_source": "PRAGMA user_version",
+        "schema_table": "plays",
+        "schema_contract_scope": M8_SCORE_DB_PREVIEW_SCHEMA_CONTRACT_SCOPE,
+        "production_schema_status": M8_SCORE_DB_PREVIEW_PRODUCTION_SCHEMA_STATUS,
+        "preview_metadata_table": M8_SCORE_DB_PREVIEW_METADATA_TABLE,
+        "created_by_preview": M8_SCORE_DB_PREVIEW_CREATED_BY,
+        "database_schema_version": database_readback["database_schema_version"],
+        "database_preview_metadata": database_readback["database_preview_metadata"],
+        "database_plays_row_count": database_readback["database_plays_row_count"],
+        "database_plays_schema_columns": database_plays_schema_columns,
+        "database_readback_matches_preview_contract": (
+            database_readback_matches_preview_contract
+        ),
+        "database_readback_mismatch_reasons": database_readback_mismatch_reasons,
+        "database_plays_row_count_matches_insert_counts": (
+            database_plays_row_count_matches_insert_counts
+        ),
+        "database_plays_row_count_mismatch_reasons": (
+            database_plays_row_count_mismatch_reasons
+        ),
+        "database_plays_insert_columns_match_planned_contract": (
+            database_plays_insert_columns_match_planned_contract
+        ),
+        "database_plays_integer_fields_match_preview_contract": (
+            database_plays_integer_fields_match_preview_contract
+        ),
+        "database_plays_schema_mismatch_reasons": (
+            database_plays_schema_mismatch_reasons
+        ),
+        "target_count": len(row_list),
+        "insert_target_count": inserted_count,
+        "inserted_count": inserted_count,
+        "row_count_after_insert": row_count_after_insert,
+        "excluded_count": len(row_list) - inserted_count,
+        "write_preview_status_counts": dict(sorted(status_counts.items())),
+        "write_preview_reason_counts": dict(sorted(reason_counts.items())),
+        "fieldnames": M8_SCORE_DB_WRITE_PREVIEW_FIELDNAMES,
+        "representative_limit_per_group": representative_limit,
+        "groups": sorted(
+            groups.values(),
+            key=lambda item: (
+                str(item["write_preview_status"]),
+                str(item["write_preview_reason"]),
+            ),
+        ),
+        "status_vocabulary": [
+            "inserted_to_file_preview",
+            "skipped_invalid_planned_record",
+        ],
+        "reading_notes": [
+            "This file DB output runs only when --m8-score-db-output is explicitly specified.",
+            "The output path is restricted to data/ and must be a new file.",
+            "Only planned play record rows are input to this file output preview.",
+            "created_by_preview marks this as a preview artifact only.",
+            "schema_version identifies the preview schema contract only.",
+            "schema_contract_scope identifies the preview minimal plays contract only.",
+            "production_schema_status marks this as not the production schema.",
+            "database_* readback fields are diagnostics read from the preview DB.",
+            "database_readback_matches_preview_contract only compares preview identifiers.",
+            "database_plays_row_count only checks preview DB row count readback.",
+            "database_plays_schema_* fields only check preview minimal plays schema readback.",
+            "This is not production DB save success, confirmed IDs, or final values.",
+            "song_id and chart_id remain identity_signal candidate observations.",
+            "Digit values remain copied M7a recognized_digits candidates.",
+            "timestamped and manifest inputs keep timestamp_ms as played_at_ms.",
+            "played_at_ms=0 remains the timestamp-less provisional value.",
+        ],
+    }
+
+
+def write_m8_score_db_file_output_preview_report(
+    path: Path,
+    summary: dict[str, object],
+) -> None:
+    groups = summary["groups"]
+    assert isinstance(groups, list)
+    lines = [
+        "# M8 Score DB File Output Preview",
+        "",
+        "`--m8-score-db-output` が明示された場合だけ、`m8_planned_play_records` "
+        "の行を指定された `data/` 配下の新規SQLiteファイルへinsertするpreviewです。",
+        "本番保存成功、曲ID/譜面ID確定、保存値確定には進みません。",
+        "",
+        f"- target boundary: `{summary['target_boundary']}`",
+        f"- source: `{summary['source']}`",
+        f"- database: `{summary['database']}`",
+        f"- database kind: `{summary['database_kind']}`",
+        f"- schema name: `{summary['schema_name']}`",
+        f"- schema version: `{summary['schema_version']}`",
+        f"- schema version source: `{summary['schema_version_source']}`",
+        f"- schema table: `{summary['schema_table']}`",
+        f"- schema contract scope: `{summary['schema_contract_scope']}`",
+        f"- production schema status: `{summary['production_schema_status']}`",
+        f"- preview metadata table: `{summary['preview_metadata_table']}`",
+        f"- created by preview: `{summary['created_by_preview']}`",
+        f"- database schema version readback: `{summary['database_schema_version']}`",
+        f"- database preview metadata readback: "
+        f"`{json.dumps(summary['database_preview_metadata'], ensure_ascii=False)}`",
+        f"- database readback matches preview contract: "
+        f"`{summary['database_readback_matches_preview_contract']}`",
+        f"- database readback mismatch reasons: "
+        f"`{json.dumps(summary['database_readback_mismatch_reasons'], ensure_ascii=False)}`",
+        f"- database plays row count readback: `{summary['database_plays_row_count']}`",
+        f"- database plays row count matches insert counts: "
+        f"`{summary['database_plays_row_count_matches_insert_counts']}`",
+        f"- database plays row count mismatch reasons: "
+        f"`{json.dumps(summary['database_plays_row_count_mismatch_reasons'], ensure_ascii=False)}`",
+        f"- database plays schema columns readback: "
+        f"`{json.dumps(summary['database_plays_schema_columns'], ensure_ascii=False)}`",
+        f"- database plays insert columns match planned contract: "
+        f"`{summary['database_plays_insert_columns_match_planned_contract']}`",
+        f"- database plays integer fields match preview contract: "
+        f"`{summary['database_plays_integer_fields_match_preview_contract']}`",
+        f"- database plays schema mismatch reasons: "
+        f"`{json.dumps(summary['database_plays_schema_mismatch_reasons'], ensure_ascii=False)}`",
+        f"- target planned rows: {summary['target_count']}",
+        f"- insert target count: {summary['insert_target_count']}",
+        f"- inserted count: {summary['inserted_count']}",
+        f"- row count after insert: {summary['row_count_after_insert']}",
+        f"- excluded count: {summary['excluded_count']}",
+        f"- status counts: "
+        f"`{json.dumps(summary['write_preview_status_counts'], ensure_ascii=False)}`",
+        f"- reason counts: "
+        f"`{json.dumps(summary['write_preview_reason_counts'], ensure_ascii=False)}`",
+        "",
+        "## Status Groups",
+        "",
+        "| status | reason | count |",
+        "|---|---|---:|",
+    ]
+    for group in groups:
+        assert isinstance(group, dict)
+        reason = group["write_preview_reason"] or "(none)"
+        lines.append(
+            f"| `{group['write_preview_status']}` | `{reason}` | {group['count']} |"
+        )
+
+    lines.extend(["", "## Representatives", ""])
+    for group in groups:
+        assert isinstance(group, dict)
+        representatives = group["representatives"]
+        assert isinstance(representatives, list)
+        lines.extend(
+            [
+                (
+                    f"### status `{group['write_preview_status']}` / "
+                    f"reason `{group['write_preview_reason'] or '(none)'}`"
+                ),
+                "",
+                "| rowid | source file | played_at_ms | song_id | chart_id | score | "
+                "combo | judgments | ex |",
+                "|---:|---|---:|---|---|---:|---:|---|---:|",
+            ]
+        )
+        if not representatives:
+            lines.append("|  |  |  |  |  |  |  |  |  |")
+        for representative in representatives:
+            assert isinstance(representative, dict)
+            judgments = " / ".join(
+                str(representative.get(field, ""))
+                for field in ("marvelous", "perfect", "great", "good", "miss")
+            )
+            lines.append(
+                f"| `{representative.get('inserted_rowid', '')}` | "
+                f"`{representative.get('source_organized_file', '')}` | "
+                f"`{representative.get('played_at_ms', '')}` | "
+                f"`{representative.get('song_id', '')}` | "
+                f"`{representative.get('chart_id', '')}` | "
+                f"`{representative.get('score', '')}` | "
+                f"`{representative.get('max_combo', '')}` | "
+                f"`{judgments}` | "
+                f"`{representative.get('ex_score', '')}` |"
+            )
+        lines.append("")
+
+    lines.extend(
+        [
+            "## Reading Notes",
+            "",
+            "- 明示オプションなしでは実ファイルDBを生成しません。",
+            "- 出力先は `data/` 配下の新規ファイルに限定します。",
+            "- `created_by_preview` はpreview生成物であることだけを示す固定値です。",
+            "- `schema_version` はpreviewスキーマ契約の識別子で、本番保存成功を意味しません。",
+            "- `schema_contract_scope` はpreview専用の最小 `plays` 契約だけを示します。",
+            "- `production_schema_status` は正式個人スコアDBスキーマではないことを示します。",
+            "- `database_*` readback欄は実preview DBから読み戻した診断値で、"
+            "本番保存成功を意味しません。",
+            "- readback一致診断はpreview識別欄の比較だけで、"
+            "本番保存成功や保存値確定を意味しません。",
+            "- 入力は保存予定レコードに変換済みの行だけです。",
+            "- `payload_ready` 以外は上流の planned records で止まり、このpreviewへ入りません。",
+            "- `inserted_to_file_preview` は明示指定されたpreview DBへのinsert確認であり、"
+            "本番DB保存成功ではありません。",
+            "- `song_id` / `chart_id` はM5候補観測、数字列はM7a候補値のままです。",
+            "- timestampなし入力の `played_at_ms=0` は暫定値のままinsert境界へ渡します。",
+        ]
+    )
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def write_m8_score_db_write_preview_report(
+    path: Path,
+    summary: dict[str, object],
+) -> None:
+    groups = summary["groups"]
+    assert isinstance(groups, list)
+    lines = [
+        "# M8 Score DB Write Preview",
+        "",
+        "`m8_planned_play_records` の行だけを、新規の in-memory SQLite `plays` "
+        "テーブルへinsertして境界を確認するdry-runレポートです。",
+        "実ファイルDB生成、本番保存、曲ID/譜面ID確定、保存値確定には進みません。",
+        "",
+        f"- target boundary: `{summary['target_boundary']}`",
+        f"- source: `{summary['source']}`",
+        f"- database: `{summary['database']}`",
+        f"- schema name: `{summary['schema_name']}`",
+        f"- schema version: `{summary['schema_version']}`",
+        f"- schema version source: `{summary['schema_version_source']}`",
+        f"- schema table: `{summary['schema_table']}`",
+        f"- schema contract scope: `{summary['schema_contract_scope']}`",
+        f"- production schema status: `{summary['production_schema_status']}`",
+        f"- preview metadata table: `{summary['preview_metadata_table']}`",
+        f"- created by preview: `{summary['created_by_preview']}`",
+        f"- target planned rows: {summary['target_count']}",
+        f"- insert target count: {summary['insert_target_count']}",
+        f"- inserted count: {summary['inserted_count']}",
+        f"- row count after insert: {summary['row_count_after_insert']}",
+        f"- excluded count: {summary['excluded_count']}",
+        f"- status counts: "
+        f"`{json.dumps(summary['write_preview_status_counts'], ensure_ascii=False)}`",
+        f"- reason counts: "
+        f"`{json.dumps(summary['write_preview_reason_counts'], ensure_ascii=False)}`",
+        "",
+        "## Status Groups",
+        "",
+        "| status | reason | count |",
+        "|---|---|---:|",
+    ]
+    for group in groups:
+        assert isinstance(group, dict)
+        reason = group["write_preview_reason"] or "(none)"
+        lines.append(
+            f"| `{group['write_preview_status']}` | `{reason}` | {group['count']} |"
+        )
+
+    lines.extend(["", "## Representatives", ""])
+    for group in groups:
+        assert isinstance(group, dict)
+        representatives = group["representatives"]
+        assert isinstance(representatives, list)
+        lines.extend(
+            [
+                (
+                    f"### status `{group['write_preview_status']}` / "
+                    f"reason `{group['write_preview_reason'] or '(none)'}`"
+                ),
+                "",
+                "| rowid | source file | played_at_ms | song_id | chart_id | score | "
+                "combo | judgments | ex |",
+                "|---:|---|---:|---|---|---:|---:|---|---:|",
+            ]
+        )
+        if not representatives:
+            lines.append("|  |  |  |  |  |  |  |  |  |")
+        for representative in representatives:
+            assert isinstance(representative, dict)
+            judgments = " / ".join(
+                str(representative.get(field, ""))
+                for field in ("marvelous", "perfect", "great", "good", "miss")
+            )
+            lines.append(
+                f"| `{representative.get('inserted_rowid', '')}` | "
+                f"`{representative.get('source_organized_file', '')}` | "
+                f"`{representative.get('played_at_ms', '')}` | "
+                f"`{representative.get('song_id', '')}` | "
+                f"`{representative.get('chart_id', '')}` | "
+                f"`{representative.get('score', '')}` | "
+                f"`{representative.get('max_combo', '')}` | "
+                f"`{judgments}` | "
+                f"`{representative.get('ex_score', '')}` |"
+            )
+        lines.append("")
+
+    lines.extend(
+        [
+            "## Reading Notes",
+            "",
+            "- 入力は保存予定レコードに変換済みの行だけです。",
+            "- `created_by_preview` はpreview生成物であることだけを示す固定値です。",
+            "- `schema_version` はpreviewスキーマ契約の識別子で、本番保存成功を意味しません。",
+            "- `schema_contract_scope` はpreview専用の最小 `plays` 契約だけを示します。",
+            "- `production_schema_status` は正式個人スコアDBスキーマではないことを示します。",
+            "- `payload_ready` 以外は上流の planned records で止まり、このpreviewへ入りません。",
+            "- `inserted_in_memory` はin-memory fixtureへのinsert確認であり、"
+            "本番DB保存成功ではありません。",
+            "- `song_id` / `chart_id` はM5候補観測、数字列はM7a候補値のままです。",
+            "- timestampなし入力の `played_at_ms=0` は暫定値のままinsert境界へ渡します。",
+        ]
+    )
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def provisional_played_at_ms(payload_row: dict[str, str]) -> str:
+    timestamp_ms = payload_row.get("timestamp_ms", "").strip()
+    return timestamp_ms if timestamp_ms.isdigit() else "0"
+
+
+def m8_planned_play_record_from_payload_row(
+    payload_row: dict[str, str],
+) -> dict[str, str] | None:
+    if payload_row.get("payload_preview_status") != "payload_ready":
+        return None
+    return {
+        "played_at_ms": provisional_played_at_ms(payload_row),
+        "song_id": payload_row.get("identity_signal_song_id", ""),
+        "chart_id": payload_row.get("identity_signal_chart_id", ""),
+        "score": payload_row.get("score_digits", ""),
+        "max_combo": payload_row.get("max_combo", ""),
+        "marvelous": payload_row.get("marvelous", ""),
+        "perfect": payload_row.get("perfect", ""),
+        "great": payload_row.get("great", ""),
+        "good": payload_row.get("good", ""),
+        "miss": payload_row.get("miss", ""),
+        "ex_score": payload_row.get("ex_score", ""),
+        "source_organized_file": payload_row.get("organized_file", ""),
+        "source_confirmation_mode": payload_row.get("confirmation_mode", ""),
+        "analysis_payload_status": payload_row.get("payload_preview_status", ""),
+        "identity_signal_source": payload_row.get("identity_signal_source", ""),
+        "m5_identity_signal_status": payload_row.get("m5_identity_signal_status", ""),
+        "m5_jacket_match_status": payload_row.get("m5_jacket_match_status", ""),
+    }
+
+
+def m8_planned_play_record_rows(
+    payload_rows: Iterable[dict[str, str]],
+) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    for payload_row in payload_rows:
+        planned_row = m8_planned_play_record_from_payload_row(payload_row)
+        if planned_row is not None:
+            rows.append(planned_row)
+    return rows
+
+
+def write_m8_planned_play_records_csv(
+    path: Path,
+    rows: Iterable[dict[str, str]],
+) -> None:
+    with path.open("w", encoding="utf-8", newline="") as file:
+        writer = csv.DictWriter(file, fieldnames=M8_PLANNED_PLAY_RECORD_FIELDNAMES)
+        writer.writeheader()
+        for row in rows:
+            writer.writerow(
+                {field: row.get(field, "") for field in M8_PLANNED_PLAY_RECORD_FIELDNAMES}
+            )
+
+
+def m8_planned_play_record_representative(
+    row: dict[str, str],
+) -> dict[str, str]:
+    return {field: row.get(field, "") for field in M8_PLANNED_PLAY_RECORD_FIELDNAMES}
+
+
+def summarize_m8_planned_play_records(
+    payload_rows: Iterable[dict[str, str]],
+    planned_rows: Iterable[dict[str, str]],
+    representative_limit: int = M8_PLANNED_PLAY_RECORD_REPRESENTATIVE_LIMIT,
+) -> dict[str, object]:
+    payload_row_list = list(payload_rows)
+    planned_row_list = list(planned_rows)
+    excluded_payload_status_counts: dict[str, int] = {}
+    for payload_row in payload_row_list:
+        payload_status = payload_row.get("payload_preview_status", "")
+        if payload_status != "payload_ready":
+            count_preview_value(excluded_payload_status_counts, payload_status)
+    return {
+        "target_boundary": "m8 payload preview rows; planned records require payload_ready",
+        "scope": "M8 planned play record preview before DB insert",
+        "source": "m8_save_payload_preview_rows",
+        "target_count": len(payload_row_list),
+        "planned_record_count": len(planned_row_list),
+        "excluded_payload_status_counts": dict(
+            sorted(excluded_payload_status_counts.items())
+        ),
+        "fieldnames": M8_PLANNED_PLAY_RECORD_FIELDNAMES,
+        "schema_table": "plays",
+        "representative_limit_per_group": representative_limit,
+        "representatives": [
+            m8_planned_play_record_representative(row)
+            for row in planned_row_list[:representative_limit]
+        ],
+        "reading_notes": [
+            "Only payload_ready rows are converted to planned play records.",
+            "Planned records are row-contract material, not DB insert success.",
+            "song_id and chart_id remain identity_signal candidate observations.",
+            "Digit values remain copied M7a recognized_digits candidates.",
+            "timestamped and manifest inputs keep timestamp_ms as played_at_ms.",
+            "played_at_ms=0 remains the timestamp-less provisional value.",
+            "SQLite schema validation should use in-memory fixtures before file DB output.",
+        ],
+    }
+
+
+def write_m8_planned_play_records_report(
+    path: Path,
+    summary: dict[str, object],
+) -> None:
+    representatives = summary["representatives"]
+    assert isinstance(representatives, list)
+    lines = [
+        "# M8 Planned Play Records",
+        "",
+        "`m8_save_payload_preview` の `payload_ready` 行だけを、"
+        "個人スコアDB `plays` 相当の最小row contractへ変換するプレビューです。",
+        "DB insert、保存成功、曲ID/譜面ID確定、保存値確定には進みません。",
+        "",
+        f"- target boundary: `{summary['target_boundary']}`",
+        f"- source: `{summary['source']}`",
+        f"- target payload rows: {summary['target_count']}",
+        f"- planned record count: {summary['planned_record_count']}",
+        f"- excluded payload status counts: "
+        f"`{json.dumps(summary['excluded_payload_status_counts'], ensure_ascii=False)}`",
+        f"- schema table: `{summary['schema_table']}`",
+        "",
+        "## Planned Record Representatives",
+        "",
+        "| source file | played_at_ms | song_id | chart_id | score | combo | judgments | ex |",
+        "|---|---:|---|---|---:|---:|---|---:|",
+    ]
+    if not representatives:
+        lines.append("|  |  |  |  |  |  |  |  |")
+    for representative in representatives:
+        assert isinstance(representative, dict)
+        judgments = " / ".join(
+            str(representative.get(field, ""))
+            for field in ("marvelous", "perfect", "great", "good", "miss")
+        )
+        lines.append(
+            f"| `{representative.get('source_organized_file', '')}` | "
+            f"`{representative.get('played_at_ms', '')}` | "
+            f"`{representative.get('song_id', '')}` | "
+            f"`{representative.get('chart_id', '')}` | "
+            f"`{representative.get('score', '')}` | "
+            f"`{representative.get('max_combo', '')}` | "
+            f"`{judgments}` | "
+            f"`{representative.get('ex_score', '')}` |"
+        )
+    lines.extend(
+        [
+            "",
+            "## Reading Notes",
+            "",
+            "- `payload_ready` 以外は保存予定レコードへ変換しません。",
+            "- このrow contractはin-memory SQLite fixture用で、実DBファイル生成ではありません。",
+            "- `song_id` / `chart_id` はM5の候補観測であり、保存用確定IDではありません。",
+            "- 数字列はM7a `recognized_digits` 由来の候補値で、保存値確定ではありません。",
+            "- timestampなし入力では `played_at_ms=0` の暫定値として扱います。",
         ]
     )
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -7954,6 +9490,15 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--m8-score-db-output",
+        type=Path,
+        default=None,
+        help=(
+            "Explicit M8 file DB output preview path under data/. Requires "
+            "--m7a-digit-recognition and writes only m8_planned_play_records rows."
+        ),
+    )
+    parser.add_argument(
         "--m3-song-artist-ocr",
         action="store_true",
         help=(
@@ -8033,6 +9578,10 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.capture_dry_run and args.capture_dry_run_scenario is not None:
         raise ValueError("--capture-dry-run and --capture-dry-run-scenario are mutually exclusive")
+    if args.m8_score_db_output is not None and not args.m7a_digit_recognition:
+        raise ValueError("--m8-score-db-output requires --m7a-digit-recognition")
+    if args.m8_score_db_output is not None:
+        ensure_data_output_path(args.m8_score_db_output, argument_name="--m8-score-db-output")
 
     if args.capture_dry_run_scenario is not None:
         manifest_path, frame_count = write_capture_dry_run_scenario(
@@ -8725,6 +10274,85 @@ def main(argv: list[str] | None = None) -> int:
             output_dir / "m7_save_decision_preview.md",
             m7_save_decision_preview_summary,
         )
+        m8_save_payload_rows = m8_save_payload_preview_rows(
+            m7_save_decision_rows,
+            M8_SAVE_PAYLOAD_DIGIT_ROIS,
+        )
+        write_m8_save_payload_preview_csv(
+            output_dir / "m8_save_payload_preview.csv",
+            m8_save_payload_rows,
+            M8_SAVE_PAYLOAD_DIGIT_ROIS,
+        )
+        m8_save_payload_preview_summary = summarize_m8_save_payload_preview(
+            m8_save_payload_rows,
+            M8_SAVE_PAYLOAD_DIGIT_ROIS,
+        )
+        (output_dir / "m8_save_payload_preview.json").write_text(
+            json.dumps(m8_save_payload_preview_summary, ensure_ascii=False, indent=2)
+            + "\n",
+            encoding="utf-8",
+        )
+        write_m8_save_payload_preview_report(
+            output_dir / "m8_save_payload_preview.md",
+            m8_save_payload_preview_summary,
+        )
+        m8_planned_play_rows = m8_planned_play_record_rows(m8_save_payload_rows)
+        write_m8_planned_play_records_csv(
+            output_dir / "m8_planned_play_records.csv",
+            m8_planned_play_rows,
+        )
+        m8_planned_play_summary = summarize_m8_planned_play_records(
+            m8_save_payload_rows,
+            m8_planned_play_rows,
+        )
+        (output_dir / "m8_planned_play_records.json").write_text(
+            json.dumps(m8_planned_play_summary, ensure_ascii=False, indent=2)
+            + "\n",
+            encoding="utf-8",
+        )
+        write_m8_planned_play_records_report(
+            output_dir / "m8_planned_play_records.md",
+            m8_planned_play_summary,
+        )
+        m8_score_db_write_preview = m8_score_db_write_preview_rows(
+            m8_planned_play_rows,
+        )
+        write_m8_score_db_write_preview_csv(
+            output_dir / "m8_score_db_write_preview.csv",
+            m8_score_db_write_preview,
+        )
+        m8_score_db_write_preview_summary = summarize_m8_score_db_write_preview(
+            m8_score_db_write_preview,
+        )
+        (output_dir / "m8_score_db_write_preview.json").write_text(
+            json.dumps(m8_score_db_write_preview_summary, ensure_ascii=False, indent=2)
+            + "\n",
+            encoding="utf-8",
+        )
+        write_m8_score_db_write_preview_report(
+            output_dir / "m8_score_db_write_preview.md",
+            m8_score_db_write_preview_summary,
+        )
+        if args.m8_score_db_output is not None:
+            m8_score_db_file_output_preview_summary = (
+                write_m8_score_db_file_output_preview(
+                    args.m8_score_db_output,
+                    m8_planned_play_rows,
+                )
+            )
+            (output_dir / "m8_score_db_file_output_preview.json").write_text(
+                json.dumps(
+                    m8_score_db_file_output_preview_summary,
+                    ensure_ascii=False,
+                    indent=2,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            write_m8_score_db_file_output_preview_report(
+                output_dir / "m8_score_db_file_output_preview.md",
+                m8_score_db_file_output_preview_summary,
+            )
     summary = summarize(classifications)
     (output_dir / "summary.json").write_text(
         json.dumps(summary, ensure_ascii=False, indent=2) + "\n",

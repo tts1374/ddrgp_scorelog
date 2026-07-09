@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import csv
 import json
+import sqlite3
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -30,6 +32,38 @@ DIGIT_PATTERNS = {
     "8": ("111", "101", "111", "101", "111"),
     "9": ("111", "101", "111", "001", "111"),
 }
+
+
+def expected_m8_plays_schema_columns() -> list[dict[str, object]]:
+    with sqlite3.connect(":memory:") as connection:
+        runner.create_m8_score_db_schema(connection)
+        return runner.read_m8_score_db_plays_schema_columns(connection)
+
+
+def m8_planned_row_fixture() -> dict[str, str]:
+    row = {field: "1" for field in runner.M8_PLANNED_PLAY_RECORD_FIELDNAMES}
+    row.update(
+        {
+            "played_at_ms": "345678",
+            "song_id": "song_make",
+            "chart_id": "chart_make_single_difficult",
+            "score": "987650",
+            "max_combo": "456",
+            "marvelous": "700",
+            "perfect": "50",
+            "great": "4",
+            "good": "1",
+            "miss": "0",
+            "ex_score": "1450",
+            "source_organized_file": "result_make.png",
+            "source_confirmation_mode": "time",
+            "analysis_payload_status": "payload_ready",
+            "identity_signal_source": "jacket_feature",
+            "m5_identity_signal_status": "jacket_resolved_candidate",
+            "m5_jacket_match_status": "matched",
+        }
+    )
+    return row
 
 
 def classification(
@@ -237,6 +271,35 @@ def stub_profile_preprocess(
         enlarged=enlarged,
         binary=binary,
     )
+
+
+def write_m8_cli_manifest_fixture(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    digits: str = "123456",
+) -> Path:
+    frame_root = tmp_path / "frames"
+    for suffix in ("a", "b", "c"):
+        write_score_digit_image(frame_root / f"result_score{digits}_{suffix}.png", digits)
+    manifest_path = tmp_path / "manifest.csv"
+    manifest_path.write_text(
+        "image_path,timestamp_ms,screen_type,expected_score\n"
+        f"result_score{digits}_a.png,0,result,{digits}\n"
+        f"result_score{digits}_b.png,500,result,{digits}\n"
+        f"result_score{digits}_c.png,1000,result,{digits}\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        runner,
+        "classify",
+        lambda _image, row: classification(
+            row["organized_file"],
+            result_candidate=True,
+            screen_type="result",
+        ),
+    )
+    return manifest_path
 
 
 def test_expected_score_prefers_metadata_score() -> None:
@@ -1932,6 +1995,28 @@ def test_m7a_digit_recognition_writes_confirmed_events_report(
     ).read_text(encoding="utf-8")
     assert "# M7 Save Decision Preview" in preview_report
     assert "保存OK/NG判定" in preview_report
+    payload_rows = read_csv_rows(output_dir / "m8_save_payload_preview.csv")
+    assert len(payload_rows) == 1
+    assert payload_rows[0]["organized_file"] == "result_score123456_c.png"
+    assert payload_rows[0]["source_preview_status"] == "blocked_readiness"
+    assert payload_rows[0]["payload_preview_status"] == "unsupported_preview_status"
+    assert payload_rows[0]["score_digits"] == "123456"
+    payload_summary = json.loads(
+        (output_dir / "m8_save_payload_preview.json").read_text(encoding="utf-8")
+    )
+    assert payload_summary["scope"] == "M8 dry-run save payload preview before DB insert"
+    assert payload_summary["source"] == "m7_save_decision_preview_rows"
+    assert payload_summary["target_count"] == 1
+    assert payload_summary["payload_status_counts"] == {
+        "unsupported_preview_status": 1
+    }
+    assert payload_summary["excluded_preview_status_counts"] == {"blocked_readiness": 1}
+    payload_report = (
+        output_dir / "m8_save_payload_preview.md"
+    ).read_text(encoding="utf-8")
+    assert "# M8 Save Payload Preview" in payload_report
+    assert "DB insert" in payload_report
+    assert "保存値確定" in payload_report
 
 
 def test_m7a_tesseract_comparison_review_groups_representatives(
@@ -2471,6 +2556,1551 @@ def test_m7_save_decision_preview_uses_readiness_rows(
     assert "`m5_not_run`" in report
     assert "`identity_signal_id_missing`" in report
     assert "DB保存、保存OK/NG判定" in report
+
+
+def test_m8_save_payload_preview_uses_m7_preview_rows(tmp_path: Path) -> None:
+    digit_rois = list(runner.M8_SAVE_PAYLOAD_DIGIT_ROIS)
+
+    def preview_row(
+        organized_file: str,
+        preview_status: str,
+        preview_reason: str = "",
+        song_id: str = "song_make",
+        chart_id: str = "chart_make_single_difficult",
+        missing_digit_roi: str = "",
+    ) -> dict[str, str]:
+        row = {
+            "organized_file": organized_file,
+            "timestamp_ms": "1000",
+            "confirmation_mode": "time",
+            "preview_status": preview_status,
+            "preview_reason": preview_reason,
+            "m5_identity_signal_song_id": song_id,
+            "m5_identity_signal_chart_id": chart_id,
+            "m5_identity_signal_source": "jacket_feature",
+            "m5_identity_signal_status": "jacket_resolved_candidate",
+            "m5_jacket_match_status": "matched",
+        }
+        for roi_name in digit_rois:
+            if roi_name == missing_digit_roi:
+                continue
+            row[f"{roi_name}_recognized_digits"] = "123"
+            row[f"{roi_name}_expected_value"] = "123"
+            row[f"{roi_name}_match"] = "True"
+        return row
+
+    rows = runner.m8_save_payload_preview_rows(
+        [
+            preview_row("payload_ready.png", "preview_save_candidate"),
+            preview_row(
+                "identity_missing.png",
+                "preview_save_candidate",
+                chart_id="",
+            ),
+            preview_row(
+                "digit_missing.png",
+                "preview_save_candidate",
+                missing_digit_roi="miss",
+            ),
+            preview_row(
+                "preview_unsupported.png",
+                "needs_identity_review",
+                "m5_not_run",
+                song_id="",
+                chart_id="",
+            ),
+        ],
+        digit_rois,
+    )
+
+    assert [row["payload_preview_status"] for row in rows] == [
+        "payload_ready",
+        "missing_identity_candidate",
+        "missing_digit_value",
+        "unsupported_preview_status",
+    ]
+    assert rows[0]["payload_ready"] == "True"
+    assert rows[0]["identity_signal_song_id"] == "song_make"
+    assert rows[0]["score_digits"] == "123"
+    assert rows[1]["payload_preview_reason"] == "identity_signal_id_missing"
+    assert rows[2]["payload_preview_reason"] == "miss"
+    assert rows[3]["payload_candidate"] == "False"
+    assert rows[3]["payload_preview_reason"] == "needs_identity_review"
+
+    csv_path = tmp_path / "m8_save_payload_preview.csv"
+    runner.write_m8_save_payload_preview_csv(csv_path, rows, digit_rois)
+    csv_rows = read_csv_rows(csv_path)
+    assert csv_rows[0]["payload_preview_status"] == "payload_ready"
+    assert csv_rows[0]["identity_signal_chart_id"] == "chart_make_single_difficult"
+    assert csv_rows[2]["miss"] == ""
+    assert csv_rows[3]["source_preview_status"] == "needs_identity_review"
+
+    summary = runner.summarize_m8_save_payload_preview(rows, digit_rois)
+    assert summary["scope"] == "M8 dry-run save payload preview before DB insert"
+    assert summary["source"] == "m7_save_decision_preview_rows"
+    assert summary["target_count"] == 4
+    assert summary["payload_candidate_count"] == 3
+    assert summary["payload_ready_count"] == 1
+    assert summary["payload_status_counts"] == {
+        "missing_digit_value": 1,
+        "missing_identity_candidate": 1,
+        "payload_ready": 1,
+        "unsupported_preview_status": 1,
+    }
+    assert summary["excluded_preview_status_counts"] == {"needs_identity_review": 1}
+    assert summary["payload_ready_groups"][0]["representatives"][0][
+        "identity_signal_song_id"
+    ] == "song_make"
+    assert summary["missing_identity_candidate_groups"][0][
+        "payload_preview_reason"
+    ] == "identity_signal_id_missing"
+    assert summary["missing_digit_value_groups"][0]["roi_name"] == "miss"
+    assert summary["unsupported_preview_status_groups"][0][
+        "source_preview_status"
+    ] == "needs_identity_review"
+
+    report_path = tmp_path / "m8_save_payload_preview.md"
+    runner.write_m8_save_payload_preview_report(report_path, summary)
+    report = report_path.read_text(encoding="utf-8")
+    assert "# M8 Save Payload Preview" in report
+    assert "Payload Ready Representatives" in report
+    assert "Identity Missing Representatives" in report
+    assert "Digit Missing Representatives" in report
+    assert "Preview Exclusion Representatives" in report
+    assert "`payload_ready`" in report
+    assert "DB保存可能" in report
+    assert "保存値確定" in report
+
+    planned_rows = runner.m8_planned_play_record_rows(rows)
+    assert len(planned_rows) == 1
+    assert planned_rows[0]["source_organized_file"] == "payload_ready.png"
+    assert planned_rows[0]["played_at_ms"] == "1000"
+    assert planned_rows[0]["song_id"] == "song_make"
+    assert planned_rows[0]["chart_id"] == "chart_make_single_difficult"
+    assert planned_rows[0]["score"] == "123"
+    assert planned_rows[0]["max_combo"] == "123"
+    assert planned_rows[0]["analysis_payload_status"] == "payload_ready"
+    assert "identity_missing.png" not in {
+        row["source_organized_file"] for row in planned_rows
+    }
+    assert "digit_missing.png" not in {
+        row["source_organized_file"] for row in planned_rows
+    }
+
+    planned_csv_path = tmp_path / "m8_planned_play_records.csv"
+    runner.write_m8_planned_play_records_csv(planned_csv_path, planned_rows)
+    planned_csv_rows = read_csv_rows(planned_csv_path)
+    assert planned_csv_rows[0]["source_confirmation_mode"] == "time"
+    assert planned_csv_rows[0]["identity_signal_source"] == "jacket_feature"
+
+    planned_summary = runner.summarize_m8_planned_play_records(rows, planned_rows)
+    assert planned_summary["scope"] == "M8 planned play record preview before DB insert"
+    assert planned_summary["source"] == "m8_save_payload_preview_rows"
+    assert planned_summary["target_count"] == 4
+    assert planned_summary["planned_record_count"] == 1
+    assert planned_summary["excluded_payload_status_counts"] == {
+        "missing_digit_value": 1,
+        "missing_identity_candidate": 1,
+        "unsupported_preview_status": 1,
+    }
+    planned_report_path = tmp_path / "m8_planned_play_records.md"
+    runner.write_m8_planned_play_records_report(
+        planned_report_path,
+        planned_summary,
+    )
+    planned_report = planned_report_path.read_text(encoding="utf-8")
+    assert "# M8 Planned Play Records" in planned_report
+    assert "`payload_ready` 以外は保存予定レコードへ変換しません" in planned_report
+    assert "保存値確定" in planned_report
+
+    write_preview_rows = runner.m8_score_db_write_preview_rows(planned_rows)
+    assert len(write_preview_rows) == 1
+    assert write_preview_rows[0]["write_preview_status"] == "inserted_in_memory"
+    assert write_preview_rows[0]["write_preview_reason"] == ""
+    assert write_preview_rows[0]["inserted_rowid"] == "1"
+    assert write_preview_rows[0]["source_organized_file"] == "payload_ready.png"
+
+    write_preview_csv_path = tmp_path / "m8_score_db_write_preview.csv"
+    runner.write_m8_score_db_write_preview_csv(write_preview_csv_path, write_preview_rows)
+    write_preview_csv_rows = read_csv_rows(write_preview_csv_path)
+    assert write_preview_csv_rows[0]["write_preview_status"] == "inserted_in_memory"
+    assert write_preview_csv_rows[0]["score"] == "123"
+
+    write_preview_summary = runner.summarize_m8_score_db_write_preview(write_preview_rows)
+    assert write_preview_summary["scope"] == "M8 in-memory score DB write preview"
+    assert write_preview_summary["source"] == "m8_planned_play_records_rows"
+    assert write_preview_summary["database"] == "in-memory sqlite"
+    assert write_preview_summary["schema_name"] == "m8_score_db_preview"
+    assert write_preview_summary["schema_version"] == 1
+    assert write_preview_summary["schema_version_source"] == "PRAGMA user_version"
+    assert write_preview_summary["schema_contract_scope"] == "preview_minimal_plays"
+    assert write_preview_summary["production_schema_status"] == "not_production_schema"
+    assert write_preview_summary["preview_metadata_table"] == "preview_metadata"
+    assert (
+        write_preview_summary["created_by_preview"]
+        == "tools.vision_poc.m8_score_db_preview"
+    )
+    assert write_preview_summary["target_count"] == 1
+    assert write_preview_summary["insert_target_count"] == 1
+    assert write_preview_summary["inserted_count"] == 1
+    assert write_preview_summary["row_count_after_insert"] == 1
+    assert write_preview_summary["excluded_count"] == 0
+    assert write_preview_summary["write_preview_status_counts"] == {
+        "inserted_in_memory": 1
+    }
+
+    write_preview_report_path = tmp_path / "m8_score_db_write_preview.md"
+    runner.write_m8_score_db_write_preview_report(
+        write_preview_report_path,
+        write_preview_summary,
+    )
+    write_preview_report = write_preview_report_path.read_text(encoding="utf-8")
+    assert "# M8 Score DB Write Preview" in write_preview_report
+    assert "schema version: `1`" in write_preview_report
+    assert "schema contract scope: `preview_minimal_plays`" in write_preview_report
+    assert "production schema status: `not_production_schema`" in write_preview_report
+    assert (
+        "created by preview: `tools.vision_poc.m8_score_db_preview`"
+        in write_preview_report
+    )
+    assert "`payload_ready` 以外は上流の planned records で止まり" in write_preview_report
+    assert "本番DB保存成功ではありません" in write_preview_report
+
+
+def test_m8_timestamped_planned_and_write_preview_preserve_played_at_ms(
+    tmp_path: Path,
+) -> None:
+    digit_rois = list(runner.M8_SAVE_PAYLOAD_DIGIT_ROIS)
+
+    def preview_save_candidate_row(
+        organized_file: str,
+        timestamp_ms: str,
+        confirmation_mode: str,
+    ) -> dict[str, str]:
+        row = {
+            "organized_file": organized_file,
+            "timestamp_ms": timestamp_ms,
+            "confirmation_mode": confirmation_mode,
+            "preview_status": "preview_save_candidate",
+            "preview_reason": "",
+            "m5_identity_signal_song_id": "song_manifest",
+            "m5_identity_signal_chart_id": "chart_manifest_single_basic",
+            "m5_identity_signal_source": "jacket_feature",
+            "m5_identity_signal_status": "jacket_resolved_candidate",
+            "m5_jacket_match_status": "matched",
+        }
+        for roi_name in digit_rois:
+            row[f"{roi_name}_recognized_digits"] = "123"
+            row[f"{roi_name}_expected_value"] = "123"
+            row[f"{roi_name}_match"] = "True"
+        return row
+
+    payload_rows = runner.m8_save_payload_preview_rows(
+        [
+            preview_save_candidate_row("manifest_result.png", "345678", "time"),
+            preview_save_candidate_row("metadata_result.png", "", "frames"),
+        ],
+        digit_rois,
+    )
+
+    assert [row["payload_preview_status"] for row in payload_rows] == [
+        "payload_ready",
+        "payload_ready",
+    ]
+
+    payload_summary = runner.summarize_m8_save_payload_preview(payload_rows, digit_rois)
+    assert payload_summary["payload_ready_count"] == 2
+    assert payload_summary["payload_ready_groups"][0]["representatives"][0][
+        "timestamp_ms"
+    ] == "345678"
+    assert payload_summary["payload_ready_groups"][0]["representatives"][0][
+        "confirmation_mode"
+    ] == "time"
+
+    planned_rows = runner.m8_planned_play_record_rows(payload_rows)
+
+    assert [row["source_organized_file"] for row in planned_rows] == [
+        "manifest_result.png",
+        "metadata_result.png",
+    ]
+    assert [row["played_at_ms"] for row in planned_rows] == ["345678", "0"]
+    assert [row["source_confirmation_mode"] for row in planned_rows] == [
+        "time",
+        "frames",
+    ]
+
+    planned_csv_path = tmp_path / "m8_planned_play_records.csv"
+    runner.write_m8_planned_play_records_csv(planned_csv_path, planned_rows)
+    planned_csv_rows = read_csv_rows(planned_csv_path)
+    assert [row["played_at_ms"] for row in planned_csv_rows] == ["345678", "0"]
+    assert [row["source_confirmation_mode"] for row in planned_csv_rows] == [
+        "time",
+        "frames",
+    ]
+
+    planned_summary = runner.summarize_m8_planned_play_records(
+        payload_rows,
+        planned_rows,
+    )
+    assert [row["played_at_ms"] for row in planned_summary["representatives"]] == [
+        "345678",
+        "0",
+    ]
+    assert (
+        "timestamped and manifest inputs keep timestamp_ms as played_at_ms."
+        in planned_summary["reading_notes"]
+    )
+
+    write_preview_rows = runner.m8_score_db_write_preview_rows(planned_rows)
+
+    assert [row["write_preview_status"] for row in write_preview_rows] == [
+        "inserted_in_memory",
+        "inserted_in_memory",
+    ]
+    assert [row["played_at_ms"] for row in write_preview_rows] == ["345678", "0"]
+    assert [row["source_confirmation_mode"] for row in write_preview_rows] == [
+        "time",
+        "frames",
+    ]
+
+    write_preview_csv_path = tmp_path / "m8_score_db_write_preview.csv"
+    runner.write_m8_score_db_write_preview_csv(
+        write_preview_csv_path,
+        write_preview_rows,
+    )
+    write_preview_csv_rows = read_csv_rows(write_preview_csv_path)
+    assert [row["played_at_ms"] for row in write_preview_csv_rows] == ["345678", "0"]
+    assert [row["source_confirmation_mode"] for row in write_preview_csv_rows] == [
+        "time",
+        "frames",
+    ]
+
+    write_preview_summary = runner.summarize_m8_score_db_write_preview(
+        write_preview_rows,
+    )
+    assert write_preview_summary["inserted_count"] == 2
+    assert [
+        row["played_at_ms"]
+        for row in write_preview_summary["groups"][0]["representatives"]
+    ] == ["345678", "0"]
+    assert (
+        "timestamped and manifest inputs keep timestamp_ms as played_at_ms."
+        in write_preview_summary["reading_notes"]
+    )
+
+
+def test_m8_score_db_write_preview_skips_invalid_planned_rows() -> None:
+    planned_row = {
+        field: "1" for field in runner.M8_PLANNED_PLAY_RECORD_FIELDNAMES
+    }
+    planned_row.update(
+        {
+            "song_id": "song_make",
+            "chart_id": "chart_make_single_difficult",
+            "score": "",
+            "source_organized_file": "invalid_score.png",
+            "source_confirmation_mode": "time",
+            "analysis_payload_status": "payload_ready",
+            "identity_signal_source": "jacket_feature",
+            "m5_identity_signal_status": "jacket_resolved_candidate",
+            "m5_jacket_match_status": "matched",
+        }
+    )
+
+    rows = runner.m8_score_db_write_preview_rows([planned_row])
+
+    assert rows[0]["write_preview_status"] == "skipped_invalid_planned_record"
+    assert rows[0]["write_preview_reason"] == "missing_required_field:score"
+    assert rows[0]["inserted_rowid"] == ""
+    summary = runner.summarize_m8_score_db_write_preview(rows)
+    assert summary["target_count"] == 1
+    assert summary["insert_target_count"] == 0
+    assert summary["inserted_count"] == 0
+    assert summary["row_count_after_insert"] == 0
+    assert summary["excluded_count"] == 1
+    assert summary["write_preview_status_counts"] == {
+        "skipped_invalid_planned_record": 1
+    }
+
+
+def test_m8_score_db_preview_schema_matches_planned_record_contract() -> None:
+    with sqlite3.connect(":memory:") as connection:
+        runner.create_m8_score_db_schema(connection)
+        table_info = connection.execute("PRAGMA table_info(plays)").fetchall()
+
+    schema_columns = [row[1] for row in table_info]
+    assert schema_columns == [
+        "play_id",
+        *runner.M8_PLANNED_PLAY_RECORD_FIELDNAMES,
+        "created_at",
+    ]
+    assert "play_id" not in runner.M8_PLANNED_PLAY_RECORD_FIELDNAMES
+    assert "created_at" not in runner.M8_PLANNED_PLAY_RECORD_FIELDNAMES
+    assert schema_columns[1:-1] == runner.M8_PLANNED_PLAY_RECORD_FIELDNAMES
+
+    column_info = {
+        row[1]: {
+            "type": row[2].upper(),
+            "notnull": row[3],
+            "default": row[4],
+            "primary_key": row[5],
+        }
+        for row in table_info
+    }
+    assert column_info["play_id"]["type"] == "INTEGER"
+    assert column_info["play_id"]["primary_key"] == 1
+    assert column_info["created_at"]["type"] == "TEXT"
+    assert column_info["created_at"]["default"] == "CURRENT_TIMESTAMP"
+
+    insert_integer_fields = [
+        column_name
+        for column_name in runner.M8_PLANNED_PLAY_RECORD_FIELDNAMES
+        if column_info[column_name]["type"] == "INTEGER"
+    ]
+    assert insert_integer_fields == list(runner.M8_SCORE_DB_WRITE_PREVIEW_INTEGER_FIELDS)
+    assert {
+        field: column_info[field]["type"]
+        for field in runner.M8_SCORE_DB_WRITE_PREVIEW_INTEGER_FIELDS
+    } == {
+        "played_at_ms": "INTEGER",
+        "score": "INTEGER",
+        "max_combo": "INTEGER",
+        "marvelous": "INTEGER",
+        "perfect": "INTEGER",
+        "great": "INTEGER",
+        "good": "INTEGER",
+        "miss": "INTEGER",
+        "ex_score": "INTEGER",
+    }
+
+
+def test_m8_score_db_file_output_preview_writes_explicit_data_db(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    output_db_path = Path("data/m8_preview/ddrgp-scores.sqlite")
+    planned_row = {
+        field: "1" for field in runner.M8_PLANNED_PLAY_RECORD_FIELDNAMES
+    }
+    planned_row.update(
+        {
+            "played_at_ms": "345678",
+            "song_id": "song_make",
+            "chart_id": "chart_make_single_difficult",
+            "score": "987650",
+            "max_combo": "456",
+            "marvelous": "700",
+            "perfect": "50",
+            "great": "4",
+            "good": "1",
+            "miss": "0",
+            "ex_score": "1450",
+            "source_organized_file": "result_make.png",
+            "source_confirmation_mode": "time",
+            "analysis_payload_status": "payload_ready",
+            "identity_signal_source": "jacket_feature",
+            "m5_identity_signal_status": "jacket_resolved_candidate",
+            "m5_jacket_match_status": "matched",
+        }
+    )
+
+    expected_preview_metadata = {
+        "created_by_preview": "tools.vision_poc.m8_score_db_preview",
+        "production_schema_status": "not_production_schema",
+        "schema_contract_scope": "preview_minimal_plays",
+        "schema_name": "m8_score_db_preview",
+        "schema_table": "plays",
+        "schema_version": "1",
+        "schema_version_source": "PRAGMA user_version",
+    }
+
+    summary = runner.write_m8_score_db_file_output_preview(
+        output_db_path,
+        [planned_row],
+    )
+    expected_schema_columns = expected_m8_plays_schema_columns()
+
+    assert output_db_path.exists()
+    assert summary["scope"] == "M8 explicit score DB file output preview"
+    assert summary["source"] == "m8_planned_play_records_rows"
+    assert summary["database"] == str(output_db_path)
+    assert summary["database_kind"] == "file sqlite under data/"
+    assert summary["schema_name"] == "m8_score_db_preview"
+    assert summary["schema_version"] == 1
+    assert summary["schema_version_source"] == "PRAGMA user_version"
+    assert summary["schema_contract_scope"] == "preview_minimal_plays"
+    assert summary["production_schema_status"] == "not_production_schema"
+    assert summary["preview_metadata_table"] == "preview_metadata"
+    assert summary["created_by_preview"] == "tools.vision_poc.m8_score_db_preview"
+    assert summary["database_schema_version"] == 1
+    assert summary["database_preview_metadata"] == expected_preview_metadata
+    assert summary["database_plays_row_count"] == 1
+    assert summary["database_plays_schema_columns"] == expected_schema_columns
+    assert summary["database_readback_matches_preview_contract"] is True
+    assert summary["database_readback_mismatch_reasons"] == []
+    assert summary["database_plays_row_count_matches_insert_counts"] is True
+    assert summary["database_plays_row_count_mismatch_reasons"] == []
+    assert summary["database_plays_insert_columns_match_planned_contract"] is True
+    assert summary["database_plays_integer_fields_match_preview_contract"] is True
+    assert summary["database_plays_schema_mismatch_reasons"] == []
+    assert summary["target_count"] == 1
+    assert summary["insert_target_count"] == 1
+    assert summary["inserted_count"] == 1
+    assert summary["row_count_after_insert"] == 1
+    assert summary["write_preview_status_counts"] == {
+        "inserted_to_file_preview": 1
+    }
+    assert (
+        "This is not production DB save success, confirmed IDs, or final values."
+        in summary["reading_notes"]
+    )
+
+    with sqlite3.connect(output_db_path) as connection:
+        schema_version = connection.execute("PRAGMA user_version").fetchone()[0]
+        stored_row = connection.execute(
+            """
+            SELECT played_at_ms, song_id, chart_id, score, source_confirmation_mode
+            FROM plays
+            """
+        ).fetchone()
+        preview_metadata = dict(
+            connection.execute(
+                "SELECT key, value FROM preview_metadata ORDER BY key"
+            ).fetchall()
+        )
+        schema_columns = runner.read_m8_score_db_plays_schema_columns(connection)
+    assert schema_version == 1
+    assert stored_row == (
+        345678,
+        "song_make",
+        "chart_make_single_difficult",
+        987650,
+        "time",
+    )
+    assert preview_metadata == expected_preview_metadata
+    assert schema_columns == expected_schema_columns
+
+    report_path = Path("data/m8_preview/m8_score_db_file_output_preview.md")
+    runner.write_m8_score_db_file_output_preview_report(report_path, summary)
+    report = report_path.read_text(encoding="utf-8")
+    assert "# M8 Score DB File Output Preview" in report
+    assert "`--m8-score-db-output`" in report
+    assert "schema version: `1`" in report
+    assert "schema contract scope: `preview_minimal_plays`" in report
+    assert "production schema status: `not_production_schema`" in report
+    assert "preview metadata table: `preview_metadata`" in report
+    assert "database schema version readback: `1`" in report
+    assert "database preview metadata readback" in report
+    assert "database readback matches preview contract: `True`" in report
+    assert "database readback mismatch reasons: `[]`" in report
+    assert "database plays row count readback: `1`" in report
+    assert "database plays row count matches insert counts: `True`" in report
+    assert "database plays row count mismatch reasons: `[]`" in report
+    assert "database plays schema columns readback" in report
+    assert (
+        "database plays insert columns match planned contract: `True`" in report
+    )
+    assert (
+        "database plays integer fields match preview contract: `True`" in report
+    )
+    assert "database plays schema mismatch reasons: `[]`" in report
+    assert "本番DB保存成功ではありません" in report
+
+
+def test_m8_score_db_file_output_preview_reports_readback_contract_mismatch() -> None:
+    rows = [
+        {
+            "write_preview_status": "inserted_to_file_preview",
+            "write_preview_reason": "",
+            "inserted_rowid": "1",
+            **{field: "1" for field in runner.M8_PLANNED_PLAY_RECORD_FIELDNAMES},
+        }
+    ]
+    database_readback = {
+        "database_schema_version": 2,
+        "database_plays_row_count": 2,
+        "database_plays_schema_columns": expected_m8_plays_schema_columns(),
+        "database_preview_metadata": {
+            "created_by_preview": "other_preview",
+            "production_schema_status": "production_schema",
+            "schema_contract_scope": "production_plays",
+            "schema_name": "m8_score_db_preview",
+            "schema_table": "other_table",
+            "schema_version": "2",
+            "schema_version_source": "manual",
+        },
+    }
+
+    summary = runner.summarize_m8_score_db_file_output_preview(
+        rows,
+        Path("data/m8_preview/mismatch.sqlite"),
+        1,
+        database_readback,
+    )
+
+    assert summary["database_readback_matches_preview_contract"] is False
+    assert summary["database_readback_mismatch_reasons"] == [
+        "database_schema_version_mismatch",
+        "database_preview_metadata.created_by_preview_mismatch",
+        "database_preview_metadata.schema_version_mismatch",
+        "database_preview_metadata.schema_version_source_mismatch",
+        "database_preview_metadata.schema_table_mismatch",
+        "database_preview_metadata.schema_contract_scope_mismatch",
+        "database_preview_metadata.production_schema_status_mismatch",
+    ]
+    assert summary["database_plays_row_count"] == 2
+    assert summary["database_plays_row_count_matches_insert_counts"] is False
+    assert summary["database_plays_row_count_mismatch_reasons"] == [
+        "database_plays_row_count_inserted_count_mismatch",
+        "database_plays_row_count_after_insert_mismatch",
+    ]
+    assert summary["database_plays_insert_columns_match_planned_contract"] is True
+    assert summary["database_plays_integer_fields_match_preview_contract"] is True
+    assert summary["database_plays_schema_mismatch_reasons"] == []
+    assert summary["inserted_count"] == 1
+
+
+def test_m8_score_db_file_output_preview_reports_missing_metadata_keys() -> None:
+    rows = [
+        {
+            "write_preview_status": "inserted_to_file_preview",
+            "write_preview_reason": "",
+            "inserted_rowid": "1",
+            **{field: "1" for field in runner.M8_PLANNED_PLAY_RECORD_FIELDNAMES},
+        }
+    ]
+    database_readback = {
+        "database_schema_version": 1,
+        "database_plays_row_count": 1,
+        "database_plays_schema_columns": expected_m8_plays_schema_columns(),
+        "database_preview_metadata": {
+            "schema_name": "m8_score_db_preview",
+            "schema_version_source": "PRAGMA user_version",
+        },
+    }
+
+    summary = runner.summarize_m8_score_db_file_output_preview(
+        rows,
+        Path("data/m8_preview/missing-metadata.sqlite"),
+        1,
+        database_readback,
+    )
+
+    assert summary["database_readback_matches_preview_contract"] is False
+    assert summary["database_readback_mismatch_reasons"] == [
+        "database_preview_metadata.created_by_preview_missing",
+        "database_preview_metadata.schema_version_missing",
+        "database_preview_metadata.schema_table_missing",
+        "database_preview_metadata.schema_contract_scope_missing",
+        "database_preview_metadata.production_schema_status_missing",
+    ]
+    assert summary["database_plays_row_count_matches_insert_counts"] is True
+    assert summary["database_plays_row_count_mismatch_reasons"] == []
+    assert summary["database_plays_insert_columns_match_planned_contract"] is True
+    assert summary["database_plays_integer_fields_match_preview_contract"] is True
+    assert summary["database_plays_schema_mismatch_reasons"] == []
+    assert summary["inserted_count"] == 1
+
+
+def test_m8_score_db_file_output_preview_reports_schema_readback_mismatch() -> None:
+    rows = [
+        {
+            "write_preview_status": "inserted_to_file_preview",
+            "write_preview_reason": "",
+            "inserted_rowid": "1",
+            **{field: "1" for field in runner.M8_PLANNED_PLAY_RECORD_FIELDNAMES},
+        }
+    ]
+    schema_columns = [
+        column
+        for column in expected_m8_plays_schema_columns()
+        if column["name"] not in {"play_id", "created_at"}
+    ]
+    for column in schema_columns:
+        if column["name"] == "score":
+            column["type"] = "TEXT"
+    database_readback = {
+        "database_schema_version": 1,
+        "database_plays_row_count": 1,
+        "database_plays_schema_columns": schema_columns,
+        "database_preview_metadata": {
+            "created_by_preview": "tools.vision_poc.m8_score_db_preview",
+            "production_schema_status": "not_production_schema",
+            "schema_contract_scope": "preview_minimal_plays",
+            "schema_name": "m8_score_db_preview",
+            "schema_table": "plays",
+            "schema_version": "1",
+            "schema_version_source": "PRAGMA user_version",
+        },
+    }
+
+    summary = runner.summarize_m8_score_db_file_output_preview(
+        rows,
+        Path("data/m8_preview/schema-mismatch.sqlite"),
+        1,
+        database_readback,
+    )
+
+    assert summary["database_readback_matches_preview_contract"] is True
+    assert summary["database_readback_mismatch_reasons"] == []
+    assert summary["database_plays_row_count_matches_insert_counts"] is True
+    assert summary["database_plays_row_count_mismatch_reasons"] == []
+    assert summary["database_plays_insert_columns_match_planned_contract"] is False
+    assert summary["database_plays_integer_fields_match_preview_contract"] is False
+    assert summary["database_plays_schema_mismatch_reasons"] == [
+        "database_plays_schema.play_id_missing",
+        "database_plays_schema.created_at_missing",
+        "database_plays_schema_column_order_mismatch",
+        "database_plays_integer_fields_mismatch",
+    ]
+
+
+def test_m8_score_db_file_output_preview_reports_schema_mismatch_from_real_db_readback() -> None:
+    rows = [
+        {
+            "write_preview_status": "inserted_to_file_preview",
+            "write_preview_reason": "",
+            "inserted_rowid": "1",
+            **{field: "1" for field in runner.M8_PLANNED_PLAY_RECORD_FIELDNAMES},
+        }
+    ]
+
+    with sqlite3.connect(":memory:") as connection:
+        runner.create_m8_score_db_schema(connection)
+        connection.execute("DROP TABLE plays")
+        connection.execute(
+            """
+            CREATE TABLE plays (
+              played_at_ms INTEGER NOT NULL,
+              song_id TEXT NOT NULL,
+              chart_id TEXT NOT NULL,
+              score TEXT NOT NULL,
+              max_combo INTEGER NOT NULL,
+              marvelous INTEGER NOT NULL,
+              perfect INTEGER NOT NULL,
+              great INTEGER NOT NULL,
+              good INTEGER NOT NULL,
+              miss INTEGER NOT NULL,
+              ex_score INTEGER NOT NULL,
+              source_organized_file TEXT NOT NULL,
+              source_confirmation_mode TEXT NOT NULL,
+              analysis_payload_status TEXT NOT NULL,
+              identity_signal_source TEXT NOT NULL,
+              m5_identity_signal_status TEXT NOT NULL,
+              m5_jacket_match_status TEXT NOT NULL
+            )
+            """
+        )
+        connection.execute(
+            f"""
+            INSERT INTO plays ({", ".join(runner.M8_PLANNED_PLAY_RECORD_FIELDNAMES)})
+            VALUES ({", ".join("?" for _ in runner.M8_PLANNED_PLAY_RECORD_FIELDNAMES)})
+            """,
+            ["1" for _field in runner.M8_PLANNED_PLAY_RECORD_FIELDNAMES],
+        )
+        database_readback = runner.read_m8_score_db_file_output_preview_metadata(
+            connection
+        )
+
+    schema_columns = database_readback["database_plays_schema_columns"]
+    assert isinstance(schema_columns, list)
+    assert [column["name"] for column in schema_columns] == (
+        runner.M8_PLANNED_PLAY_RECORD_FIELDNAMES
+    )
+    assert {
+        column["name"]: column["type"]
+        for column in schema_columns
+        if isinstance(column, dict)
+    }["score"] == "TEXT"
+
+    summary = runner.summarize_m8_score_db_file_output_preview(
+        rows,
+        Path("data/m8_preview/real-schema-mismatch.sqlite"),
+        1,
+        database_readback,
+    )
+
+    assert summary["database_schema_version"] == 1
+    assert summary["database_readback_matches_preview_contract"] is True
+    assert summary["database_readback_mismatch_reasons"] == []
+    assert summary["database_plays_row_count"] == 1
+    assert summary["database_plays_row_count_matches_insert_counts"] is True
+    assert summary["database_plays_row_count_mismatch_reasons"] == []
+    assert summary["database_plays_insert_columns_match_planned_contract"] is False
+    assert summary["database_plays_integer_fields_match_preview_contract"] is False
+    assert summary["database_plays_schema_mismatch_reasons"] == [
+        "database_plays_schema.play_id_missing",
+        "database_plays_schema.created_at_missing",
+        "database_plays_schema_column_order_mismatch",
+        "database_plays_integer_fields_mismatch",
+    ]
+
+
+def test_m8_score_db_file_output_preview_reports_metadata_mismatch_from_real_db_readback() -> None:
+    planned_row = m8_planned_row_fixture()
+
+    with sqlite3.connect(":memory:") as connection:
+        rows = runner.insert_m8_planned_play_records(
+            connection,
+            [planned_row],
+            inserted_status="inserted_to_file_preview",
+        )
+        row_count_after_insert = connection.execute(
+            "SELECT COUNT(*) FROM plays"
+        ).fetchone()[0]
+        connection.execute(
+            "DELETE FROM preview_metadata WHERE key = 'created_by_preview'"
+        )
+        connection.execute(
+            """
+            UPDATE preview_metadata
+            SET value = 'production_schema'
+            WHERE key = 'production_schema_status'
+            """
+        )
+        connection.commit()
+        database_readback = runner.read_m8_score_db_file_output_preview_metadata(
+            connection
+        )
+
+    assert database_readback["database_schema_version"] == 1
+    assert database_readback["database_preview_metadata"] == {
+        "production_schema_status": "production_schema",
+        "schema_contract_scope": "preview_minimal_plays",
+        "schema_name": "m8_score_db_preview",
+        "schema_table": "plays",
+        "schema_version": "1",
+        "schema_version_source": "PRAGMA user_version",
+    }
+    assert database_readback["database_plays_row_count"] == 1
+    assert database_readback["database_plays_schema_columns"] == (
+        expected_m8_plays_schema_columns()
+    )
+
+    summary = runner.summarize_m8_score_db_file_output_preview(
+        rows,
+        Path("data/m8_preview/real-metadata-mismatch.sqlite"),
+        int(row_count_after_insert),
+        database_readback,
+    )
+
+    assert summary["database_readback_matches_preview_contract"] is False
+    assert summary["database_readback_mismatch_reasons"] == [
+        "database_preview_metadata.created_by_preview_missing",
+        "database_preview_metadata.production_schema_status_mismatch",
+    ]
+    assert summary["database_plays_row_count"] == 1
+    assert summary["database_plays_row_count_matches_insert_counts"] is True
+    assert summary["database_plays_row_count_mismatch_reasons"] == []
+    assert summary["database_plays_insert_columns_match_planned_contract"] is True
+    assert summary["database_plays_integer_fields_match_preview_contract"] is True
+    assert summary["database_plays_schema_mismatch_reasons"] == []
+    assert summary["inserted_count"] == 1
+
+
+def test_m8_score_db_file_output_preview_reports_row_count_mismatch_from_real_db_readback() -> None:
+    planned_row = m8_planned_row_fixture()
+
+    with sqlite3.connect(":memory:") as connection:
+        rows = runner.insert_m8_planned_play_records(
+            connection,
+            [planned_row],
+            inserted_status="inserted_to_file_preview",
+        )
+        row_count_after_insert = connection.execute(
+            "SELECT COUNT(*) FROM plays"
+        ).fetchone()[0]
+        extra_rowid = runner.insert_m8_planned_play_record(connection, planned_row)
+        connection.commit()
+        database_readback = runner.read_m8_score_db_file_output_preview_metadata(
+            connection
+        )
+
+    assert extra_rowid == 2
+    assert database_readback["database_schema_version"] == 1
+    assert database_readback["database_plays_row_count"] == 2
+    assert database_readback["database_plays_schema_columns"] == (
+        expected_m8_plays_schema_columns()
+    )
+
+    summary = runner.summarize_m8_score_db_file_output_preview(
+        rows,
+        Path("data/m8_preview/real-row-count-mismatch.sqlite"),
+        int(row_count_after_insert),
+        database_readback,
+    )
+
+    assert summary["database_readback_matches_preview_contract"] is True
+    assert summary["database_readback_mismatch_reasons"] == []
+    assert summary["database_plays_row_count"] == 2
+    assert summary["database_plays_row_count_matches_insert_counts"] is False
+    assert summary["database_plays_row_count_mismatch_reasons"] == [
+        "database_plays_row_count_inserted_count_mismatch",
+        "database_plays_row_count_after_insert_mismatch",
+    ]
+    assert summary["database_plays_insert_columns_match_planned_contract"] is True
+    assert summary["database_plays_integer_fields_match_preview_contract"] is True
+    assert summary["database_plays_schema_mismatch_reasons"] == []
+    assert summary["inserted_count"] == 1
+
+
+def test_m8_score_db_file_output_preview_report_shows_real_db_readback_mismatch_reasons(
+    tmp_path: Path,
+) -> None:
+    planned_row = m8_planned_row_fixture()
+
+    def summarize_mutated_db(
+        mutate: Callable[[sqlite3.Connection], None],
+        database_path: Path,
+    ) -> dict[str, object]:
+        with sqlite3.connect(":memory:") as connection:
+            rows = runner.insert_m8_planned_play_records(
+                connection,
+                [planned_row],
+                inserted_status="inserted_to_file_preview",
+            )
+            row_count_after_insert = connection.execute(
+                "SELECT COUNT(*) FROM plays"
+            ).fetchone()[0]
+            mutate(connection)
+            connection.commit()
+            database_readback = (
+                runner.read_m8_score_db_file_output_preview_metadata(connection)
+            )
+        return runner.summarize_m8_score_db_file_output_preview(
+            rows,
+            database_path,
+            int(row_count_after_insert),
+            database_readback,
+        )
+
+    def mutate_metadata(connection: sqlite3.Connection) -> None:
+        connection.execute(
+            "DELETE FROM preview_metadata WHERE key = 'created_by_preview'"
+        )
+        connection.execute(
+            """
+            UPDATE preview_metadata
+            SET value = 'production_schema'
+            WHERE key = 'production_schema_status'
+            """
+        )
+
+    def mutate_row_count(connection: sqlite3.Connection) -> None:
+        runner.insert_m8_planned_play_record(connection, planned_row)
+
+    def mutate_schema(connection: sqlite3.Connection) -> None:
+        connection.execute("DROP TABLE plays")
+        connection.execute(
+            """
+            CREATE TABLE plays (
+              played_at_ms INTEGER NOT NULL,
+              song_id TEXT NOT NULL,
+              chart_id TEXT NOT NULL,
+              score TEXT NOT NULL,
+              max_combo INTEGER NOT NULL,
+              marvelous INTEGER NOT NULL,
+              perfect INTEGER NOT NULL,
+              great INTEGER NOT NULL,
+              good INTEGER NOT NULL,
+              miss INTEGER NOT NULL,
+              ex_score INTEGER NOT NULL,
+              source_organized_file TEXT NOT NULL,
+              source_confirmation_mode TEXT NOT NULL,
+              analysis_payload_status TEXT NOT NULL,
+              identity_signal_source TEXT NOT NULL,
+              m5_identity_signal_status TEXT NOT NULL,
+              m5_jacket_match_status TEXT NOT NULL
+            )
+            """
+        )
+        runner.insert_m8_planned_play_record(connection, planned_row)
+
+    cases = [
+        (
+            "metadata",
+            mutate_metadata,
+            "database readback mismatch reasons",
+            [
+                "database_preview_metadata.created_by_preview_missing",
+                "database_preview_metadata.production_schema_status_mismatch",
+            ],
+        ),
+        (
+            "row-count",
+            mutate_row_count,
+            "database plays row count mismatch reasons",
+            [
+                "database_plays_row_count_inserted_count_mismatch",
+                "database_plays_row_count_after_insert_mismatch",
+            ],
+        ),
+        (
+            "schema",
+            mutate_schema,
+            "database plays schema mismatch reasons",
+            [
+                "database_plays_schema.play_id_missing",
+                "database_plays_schema.created_at_missing",
+                "database_plays_schema_column_order_mismatch",
+                "database_plays_integer_fields_mismatch",
+            ],
+        ),
+    ]
+
+    for case_name, mutate, report_label, expected_reasons in cases:
+        summary = summarize_mutated_db(
+            mutate,
+            Path(f"data/m8_preview/real-{case_name}-mismatch.sqlite"),
+        )
+        report_path = tmp_path / f"{case_name}-m8-score-db-file-output.md"
+        runner.write_m8_score_db_file_output_preview_report(report_path, summary)
+        report = report_path.read_text(encoding="utf-8")
+
+        assert report_label in report
+        for reason in expected_reasons:
+            assert reason in report
+        assert "本番保存成功、曲ID/譜面ID確定、保存値確定には進みません" in report
+
+
+def test_m8_score_db_file_output_preview_rejects_outside_data(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    with pytest.raises(ValueError, match="--m8-score-db-output must be under data/"):
+        runner.write_m8_score_db_file_output_preview(
+            Path("ddrgp-scores.sqlite"),
+            [],
+        )
+
+    assert not Path("ddrgp-scores.sqlite").exists()
+
+
+def test_m8_score_db_file_output_preview_accepts_zero_planned_rows_after_no_m5(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    digit_rois = list(runner.M8_SAVE_PAYLOAD_DIGIT_ROIS)
+    preview_row = {
+        "organized_file": "needs_identity_review.png",
+        "timestamp_ms": "1000",
+        "confirmation_mode": "time",
+        "preview_status": "needs_identity_review",
+        "preview_reason": "m5_not_run",
+        "m5_identity_signal_song_id": "",
+        "m5_identity_signal_chart_id": "",
+        "m5_identity_signal_source": "",
+        "m5_identity_signal_status": "",
+        "m5_jacket_match_status": "",
+    }
+    for roi_name in digit_rois:
+        preview_row[f"{roi_name}_recognized_digits"] = "123"
+        preview_row[f"{roi_name}_expected_value"] = "123"
+        preview_row[f"{roi_name}_match"] = "True"
+    payload_rows = runner.m8_save_payload_preview_rows([preview_row], digit_rois)
+    planned_rows = runner.m8_planned_play_record_rows(payload_rows)
+
+    assert payload_rows[0]["payload_preview_status"] == "unsupported_preview_status"
+    assert planned_rows == []
+
+    output_db_path = Path("data/m8_preview/no_m5.sqlite")
+    summary = runner.write_m8_score_db_file_output_preview(
+        output_db_path,
+        planned_rows,
+    )
+    expected_schema_columns = expected_m8_plays_schema_columns()
+
+    assert output_db_path.exists()
+    assert summary["target_count"] == 0
+    assert summary["insert_target_count"] == 0
+    assert summary["inserted_count"] == 0
+    assert summary["row_count_after_insert"] == 0
+    assert summary["schema_name"] == "m8_score_db_preview"
+    assert summary["schema_version"] == 1
+    assert summary["schema_contract_scope"] == "preview_minimal_plays"
+    assert summary["production_schema_status"] == "not_production_schema"
+    assert summary["created_by_preview"] == "tools.vision_poc.m8_score_db_preview"
+    assert summary["database_schema_version"] == 1
+    assert summary["database_plays_row_count"] == 0
+    assert summary["database_plays_schema_columns"] == expected_schema_columns
+    assert summary["database_preview_metadata"]["created_by_preview"] == (
+        "tools.vision_poc.m8_score_db_preview"
+    )
+    assert summary["database_preview_metadata"]["schema_contract_scope"] == (
+        "preview_minimal_plays"
+    )
+    assert summary["database_preview_metadata"]["production_schema_status"] == (
+        "not_production_schema"
+    )
+    assert summary["database_readback_matches_preview_contract"] is True
+    assert summary["database_readback_mismatch_reasons"] == []
+    assert summary["database_plays_row_count_matches_insert_counts"] is True
+    assert summary["database_plays_row_count_mismatch_reasons"] == []
+    assert summary["database_plays_insert_columns_match_planned_contract"] is True
+    assert summary["database_plays_integer_fields_match_preview_contract"] is True
+    assert summary["database_plays_schema_mismatch_reasons"] == []
+    assert summary["write_preview_status_counts"] == {}
+    with sqlite3.connect(output_db_path) as connection:
+        schema_version = connection.execute("PRAGMA user_version").fetchone()[0]
+        row_count = connection.execute("SELECT COUNT(*) FROM plays").fetchone()[0]
+        schema_columns = runner.read_m8_score_db_plays_schema_columns(connection)
+        metadata_rows = dict(
+            connection.execute(
+                "SELECT key, value FROM preview_metadata ORDER BY key"
+            ).fetchall()
+        )
+        metadata_value = connection.execute(
+            """
+            SELECT value FROM preview_metadata
+            WHERE key = 'created_by_preview'
+            """
+        ).fetchone()[0]
+    assert schema_version == 1
+    assert row_count == 0
+    assert schema_columns == expected_schema_columns
+    assert metadata_value == "tools.vision_poc.m8_score_db_preview"
+    assert metadata_rows["schema_contract_scope"] == "preview_minimal_plays"
+    assert metadata_rows["production_schema_status"] == "not_production_schema"
+
+
+def test_m8_score_db_output_cli_requires_m7a_digit_recognition(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    output_db_path = Path("data/m8_cli/ddrgp-scores.sqlite")
+
+    with pytest.raises(
+        ValueError,
+        match="--m8-score-db-output requires --m7a-digit-recognition",
+    ):
+        runner.main(["--m8-score-db-output", str(output_db_path)])
+
+    assert not output_db_path.exists()
+
+
+def test_m8_score_db_output_cli_rejects_outside_data_before_writing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    output_db_path = Path("ddrgp-scores.sqlite")
+
+    with pytest.raises(ValueError, match="--m8-score-db-output must be under data/"):
+        runner.main(
+            [
+                "--m8-score-db-output",
+                str(output_db_path),
+                "--m7a-digit-recognition",
+            ]
+        )
+
+    assert not output_db_path.exists()
+
+
+def test_m8_score_db_output_cli_rejects_existing_file_without_overwrite(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    manifest_path = write_m8_cli_manifest_fixture(tmp_path, monkeypatch)
+    output_db_path = Path("data/m8_cli/existing.sqlite")
+    output_db_path.parent.mkdir(parents=True, exist_ok=True)
+    output_db_path.write_bytes(b"existing-preview-db")
+
+    with pytest.raises(ValueError, match="--m8-score-db-output already exists"):
+        runner.main(
+            [
+                "--sequence-mode",
+                "manifest",
+                "--frame-manifest",
+                str(manifest_path),
+                "--frame-root",
+                str(tmp_path / "frames"),
+                "--output",
+                str(tmp_path / "output"),
+                "--m7a-digit-recognition",
+                "--no-ocr",
+                "--no-rois",
+                "--m8-score-db-output",
+                str(output_db_path),
+            ]
+        )
+
+    assert output_db_path.read_bytes() == b"existing-preview-db"
+
+
+def test_m8_score_db_output_cli_without_explicit_option_writes_no_file_preview(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    manifest_path = write_m8_cli_manifest_fixture(tmp_path, monkeypatch)
+    output_dir = tmp_path / "output"
+
+    assert (
+        runner.main(
+            [
+                "--sequence-mode",
+                "manifest",
+                "--frame-manifest",
+                str(manifest_path),
+                "--frame-root",
+                str(tmp_path / "frames"),
+                "--output",
+                str(output_dir),
+                "--m7a-digit-recognition",
+                "--no-ocr",
+                "--no-rois",
+            ]
+        )
+        == 0
+    )
+
+    assert (output_dir / "m8_score_db_write_preview.json").exists()
+    assert not (output_dir / "m8_score_db_file_output_preview.json").exists()
+    assert not (output_dir / "m8_score_db_file_output_preview.md").exists()
+    assert not Path("data/m8_cli/ddrgp-scores.sqlite").exists()
+
+
+def test_m8_score_db_output_cli_writes_empty_schema_for_no_m5_planned_rows(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    manifest_path = write_m8_cli_manifest_fixture(tmp_path, monkeypatch)
+    output_dir = tmp_path / "output"
+    output_db_path = Path("data/m8_cli/no-m5.sqlite")
+
+    assert (
+        runner.main(
+            [
+                "--sequence-mode",
+                "manifest",
+                "--frame-manifest",
+                str(manifest_path),
+                "--frame-root",
+                str(tmp_path / "frames"),
+                "--output",
+                str(output_dir),
+                "--m7a-digit-recognition",
+                "--no-ocr",
+                "--no-rois",
+                "--m8-score-db-output",
+                str(output_db_path),
+            ]
+        )
+        == 0
+    )
+
+    assert output_db_path.exists()
+    summary = json.loads(
+        (output_dir / "m8_score_db_file_output_preview.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    expected_schema_columns = expected_m8_plays_schema_columns()
+    assert summary["target_count"] == 0
+    assert summary["inserted_count"] == 0
+    assert summary["row_count_after_insert"] == 0
+    assert summary["schema_version"] == 1
+    assert summary["schema_contract_scope"] == "preview_minimal_plays"
+    assert summary["production_schema_status"] == "not_production_schema"
+    assert summary["created_by_preview"] == "tools.vision_poc.m8_score_db_preview"
+    assert summary["database_schema_version"] == 1
+    assert summary["database_plays_row_count"] == 0
+    assert summary["database_plays_schema_columns"] == expected_schema_columns
+    assert summary["database_preview_metadata"]["created_by_preview"] == (
+        "tools.vision_poc.m8_score_db_preview"
+    )
+    assert summary["database_preview_metadata"]["schema_contract_scope"] == (
+        "preview_minimal_plays"
+    )
+    assert summary["database_preview_metadata"]["production_schema_status"] == (
+        "not_production_schema"
+    )
+    assert summary["database_readback_matches_preview_contract"] is True
+    assert summary["database_readback_mismatch_reasons"] == []
+    assert summary["database_plays_row_count_matches_insert_counts"] is True
+    assert summary["database_plays_row_count_mismatch_reasons"] == []
+    assert summary["database_plays_insert_columns_match_planned_contract"] is True
+    assert summary["database_plays_integer_fields_match_preview_contract"] is True
+    assert summary["database_plays_schema_mismatch_reasons"] == []
+    with sqlite3.connect(output_db_path) as connection:
+        schema_version = connection.execute("PRAGMA user_version").fetchone()[0]
+        row_count = connection.execute("SELECT COUNT(*) FROM plays").fetchone()[0]
+        schema_columns = runner.read_m8_score_db_plays_schema_columns(connection)
+        metadata_rows = dict(
+            connection.execute(
+                "SELECT key, value FROM preview_metadata ORDER BY key"
+            ).fetchall()
+        )
+        metadata_value = connection.execute(
+            """
+            SELECT value FROM preview_metadata
+            WHERE key = 'created_by_preview'
+            """
+        ).fetchone()[0]
+    assert schema_version == 1
+    assert row_count == 0
+    assert schema_columns == expected_schema_columns
+    assert metadata_value == "tools.vision_poc.m8_score_db_preview"
+    assert metadata_rows["schema_contract_scope"] == "preview_minimal_plays"
+    assert metadata_rows["production_schema_status"] == "not_production_schema"
+
+
+def test_m8_score_db_output_cli_with_m5_inserts_planned_rows(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    manifest_path = write_m8_cli_manifest_fixture(tmp_path, monkeypatch)
+    output_dir = tmp_path / "output"
+    output_db_path = Path("data/m8_cli/m5-preview.sqlite")
+    master_db_path = tmp_path / "master.sqlite"
+    master_db_path.write_bytes(b"fixture-db-exists")
+
+    def m3_save_candidate_rows_synthetic(
+        frames: list[runner.FrameInput],
+        events: list[runner.ResultEvent],
+        _holdout_rows: object,
+        _adoption_summary: object,
+        _song_artist_results: object,
+    ) -> list[dict[str, str]]:
+        rows: list[dict[str, str]] = []
+        for frame, event in zip(frames, events, strict=True):
+            if not runner.is_save_candidate_event(event):
+                continue
+            row = {
+                "frame_index": str(event.frame_index),
+                "organized_file": frame.row["organized_file"],
+                "screen_type": frame.row.get("screen_type", ""),
+                "event_type": event.event_type,
+                "confirmed_result": str(event.confirmed_result),
+                "duplicate": str(event.duplicate),
+                "timestamp_ms": "" if event.timestamp_ms is None else str(event.timestamp_ms),
+                "confirmation_mode": event.confirmation_mode,
+            }
+            for field_name in runner.M3_SAVE_CANDIDATE_FIELDS:
+                status = "empty_ocr" if field_name in {"song_title", "artist"} else "ready"
+                row[f"{field_name}_status"] = status
+                row[f"{field_name}_failure_reason"] = (
+                    "synthetic_ocr_not_needed_for_m5_fixture"
+                    if status != "ready"
+                    else ""
+                )
+                row[f"{field_name}_expected_value"] = ""
+                row[f"{field_name}_extracted_value"] = ""
+                row[f"{field_name}_extractor"] = "synthetic-fixture"
+            row["overall_status"] = "not_ready"
+            row["blocking_fields"] = "song_title artist"
+            rows.append(row)
+        return rows
+
+    def process_m7a_digit_roi_synthetic(
+        _image: Image.Image,
+        frame: runner.FrameInput,
+        event: runner.ResultEvent,
+        roi_name: str,
+        _templates: object,
+    ) -> runner.M7aDigitRecognitionResult:
+        digits_by_roi = {
+            "score_digits": "123456",
+            "max_combo": "321",
+            "marvelous": "400",
+            "perfect": "30",
+            "great": "20",
+            "good": "10",
+            "miss": "1",
+            "ex_score": "789",
+        }
+        expected_value = runner.expected_ocr_value_from_row(frame.row, roi_name)
+        recognized_digits = digits_by_roi[roi_name]
+        return runner.M7aDigitRecognitionResult(
+            organized_file=frame.row["organized_file"],
+            screen_type=frame.row.get("screen_type", ""),
+            event_type=event.event_type,
+            confirmed_result=event.confirmed_result,
+            duplicate=event.duplicate,
+            roi_name=roi_name,
+            method=runner.M7A_DIGIT_RECOGNITION_METHOD,
+            recognized_digits=recognized_digits,
+            expected_value=expected_value,
+            match=(
+                None
+                if not expected_value
+                else runner.ocr_digits_match(recognized_digits, expected_value)
+            ),
+            status="recognized",
+            failure_reason="",
+            distance=0.0,
+            confidence=1.0,
+            segment_count=len(recognized_digits),
+            template_count=10,
+            per_digit_distances="0.0000",
+        )
+
+    def jacket_match_rows_synthetic(
+        input_rows: list[dict[str, str]],
+        *_args: object,
+        **_kwargs: object,
+    ) -> list[dict[str, str]]:
+        rows: list[dict[str, str]] = []
+        for input_row in input_rows:
+            row = {field: "" for field in runner.master_match.JACKET_MATCH_FIELDNAMES}
+            row.update(
+                {
+                    "frame_index": input_row.get("frame_index", ""),
+                    "organized_file": input_row.get("organized_file", ""),
+                    "expected_song_title": "Fixture Song",
+                    "input_play_style": "SINGLE",
+                    "input_difficulty": "BASIC",
+                    "input_level": "6",
+                    "candidate_song_count": "1",
+                    "candidate_chart_count": "1",
+                    "candidate_feature_count": "1",
+                    "top_song_id": "song_fixture",
+                    "top_chart_id": "chart_fixture_single_basic",
+                    "top_title": "Fixture Song",
+                    "top_score": "1.0000",
+                    "top_distance": "0.0000",
+                    "top_feature_source": "synthetic-fixture",
+                    "identity_signal_status": "jacket_resolved_candidate",
+                    "identity_signal_source": "jacket_feature",
+                    "identity_signal_song_id": "song_fixture",
+                    "identity_signal_chart_id": "chart_fixture_single_basic",
+                    "identity_signal_title": "Fixture Song",
+                    "identity_signal_reason": "jacket_feature_unique_candidate",
+                    "jacket_match_status": "matched",
+                    "failure_reason": "",
+                }
+            )
+            rows.append(row)
+        return rows
+
+    monkeypatch.setattr(runner, "m3_save_candidate_rows", m3_save_candidate_rows_synthetic)
+    monkeypatch.setattr(runner, "process_m7a_digit_roi", process_m7a_digit_roi_synthetic)
+    monkeypatch.setattr(runner, "build_m5_jacket_feature_master_rows", lambda *_args: ([], []))
+    monkeypatch.setattr(runner, "build_m5_title_feature_master_entries", lambda *_args: [])
+    monkeypatch.setattr(
+        runner.master_match,
+        "match_jacket_save_candidate_rows",
+        jacket_match_rows_synthetic,
+    )
+    monkeypatch.setattr(
+        runner.master_match,
+        "jacket_reference_coverage_rows",
+        lambda *_args, **_kwargs: [],
+    )
+    monkeypatch.setattr(
+        runner.master_match,
+        "write_jacket_reference_coverage_outputs",
+        lambda *_args, **_kwargs: {"missing_feature_candidate_songs": 0},
+    )
+
+    assert (
+        runner.main(
+            [
+                "--sequence-mode",
+                "manifest",
+                "--frame-manifest",
+                str(manifest_path),
+                "--frame-root",
+                str(tmp_path / "frames"),
+                "--output",
+                str(output_dir),
+                "--m5-jacket-match",
+                "--master-db",
+                str(master_db_path),
+                "--m7a-digit-recognition",
+                "--m7a-digit-rois",
+                "score_digits",
+                "max_combo",
+                "marvelous",
+                "perfect",
+                "great",
+                "good",
+                "miss",
+                "ex_score",
+                "--no-ocr",
+                "--no-rois",
+                "--m8-score-db-output",
+                str(output_db_path),
+            ]
+        )
+        == 0
+    )
+
+    payload_summary = json.loads(
+        (output_dir / "m8_save_payload_preview.json").read_text(encoding="utf-8")
+    )
+    assert payload_summary["payload_status_counts"] == {"payload_ready": 1}
+    planned_summary = json.loads(
+        (output_dir / "m8_planned_play_records.json").read_text(encoding="utf-8")
+    )
+    assert planned_summary["planned_record_count"] == 1
+
+    summary = json.loads(
+        (output_dir / "m8_score_db_file_output_preview.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    expected_schema_columns = expected_m8_plays_schema_columns()
+    assert summary["target_count"] == 1
+    assert summary["inserted_count"] == 1
+    assert summary["row_count_after_insert"] == 1
+    assert summary["schema_version"] == 1
+    assert summary["schema_contract_scope"] == "preview_minimal_plays"
+    assert summary["production_schema_status"] == "not_production_schema"
+    assert summary["created_by_preview"] == "tools.vision_poc.m8_score_db_preview"
+    assert summary["database_schema_version"] == 1
+    assert summary["database_plays_row_count"] == 1
+    assert summary["database_plays_schema_columns"] == expected_schema_columns
+    assert summary["database_preview_metadata"]["created_by_preview"] == (
+        "tools.vision_poc.m8_score_db_preview"
+    )
+    assert summary["database_preview_metadata"]["schema_contract_scope"] == (
+        "preview_minimal_plays"
+    )
+    assert summary["database_preview_metadata"]["production_schema_status"] == (
+        "not_production_schema"
+    )
+    assert summary["database_readback_matches_preview_contract"] is True
+    assert summary["database_readback_mismatch_reasons"] == []
+    assert summary["database_plays_row_count_matches_insert_counts"] is True
+    assert summary["database_plays_row_count_mismatch_reasons"] == []
+    assert summary["database_plays_insert_columns_match_planned_contract"] is True
+    assert summary["database_plays_integer_fields_match_preview_contract"] is True
+    assert summary["database_plays_schema_mismatch_reasons"] == []
+    assert summary["write_preview_status_counts"] == {"inserted_to_file_preview": 1}
+
+    with sqlite3.connect(output_db_path) as connection:
+        schema_columns = runner.read_m8_score_db_plays_schema_columns(connection)
+        stored_row = connection.execute(
+            """
+            SELECT played_at_ms, song_id, chart_id, score, max_combo, ex_score,
+                   source_organized_file, identity_signal_source,
+                   m5_identity_signal_status, m5_jacket_match_status
+            FROM plays
+            """
+        ).fetchone()
+    assert stored_row == (
+        1000,
+        "song_fixture",
+        "chart_fixture_single_basic",
+        123456,
+        321,
+        789,
+        "result_score123456_c.png",
+        "jacket_feature",
+        "jacket_resolved_candidate",
+        "matched",
+    )
+    assert schema_columns == expected_schema_columns
 
 
 def test_m7a_digit_save_candidate_summary_keeps_status_vocabulary(

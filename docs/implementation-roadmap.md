@@ -318,7 +318,13 @@ M5完了時点で固定すること:
 - preview status は `preview_save_candidate`、`blocked_readiness`、`needs_identity_review`、`needs_digit_review`、`missing_required_material`。`preview_save_candidate` はM8へ渡す候補材料が揃ったプレビュー状態であり、保存OK、DB保存成功、曲ID/譜面ID確定ではない。
 - プレビューではM5未実行の `ready_for_save_review` 行も `needs_identity_review` として止め、`m5_not_run`、`m5_identity_not_reviewable`、`identity_signal_id_missing` を `preview_reason` と代表で読み分ける。`identity_signal_song_id` / `identity_signal_chart_id` は候補観測としてだけ出す。M7aの `recognized_digits`、`expected_value`、`match`、`failure_reason` も保存値確定ではなくレビュー材料として出す。
 - `m7_save_decision_preview.json` / Markdown は、`preview_save_candidate` の M5 source、jacket status、identity signal status の件数と代表、`needs_identity_review` の理由別代表、`needs_digit_review` のROI別代表を出す。これはM8へ渡す前の診断補助であり、DB保存可否判定ではない。
-- 現時点ではDB insert、低確信度ログ本番仕様、保存値本番確定には進んでいない。
+- `m8_save_payload_preview.csv`、`m8_save_payload_preview.json`、`m8_save_payload_preview.md` で、M7 preview行から将来DB保存へ渡すならどの材料になるかをdry-run payloadとして確認する入口を追加済み。入力は `m7_save_decision_preview_rows` で、`preview_save_candidate` 以外は `unsupported_preview_status` としてpayload材料から除外する。
+- M8 dry-run status は `payload_ready`、`missing_identity_candidate`、`missing_digit_value`、`unsupported_preview_status`。`payload_ready` はM8本実装前の仮payload材料が揃った状態であり、DB保存可能、保存成功、曲ID/譜面ID確定、保存値確定ではない。
+- `m8_planned_play_records.csv`、`m8_planned_play_records.json`、`m8_planned_play_records.md` で、`payload_ready` 行だけを個人スコアDB `plays` 相当の最小row contractへ変換する入口を追加済み。`unsupported_preview_status`、`missing_identity_candidate`、`missing_digit_value` は保存予定レコードへ変換しない。
+- `m8_score_db_write_preview.csv`、`m8_score_db_write_preview.json`、`m8_score_db_write_preview.md` で、保存予定レコードだけを新規 in-memory SQLite `plays` へinsertするdry-run入口を追加済み。非ready payloadは上流の planned records で止まり、write previewへ進まない。previewスキーマ識別として `schema_version=1` をsummary/reportへ出し、SQLite側は `PRAGMA user_version=1` にする。
+- `--m8-score-db-output data\...\ddrgp-scores.sqlite` を明示した場合だけ、保存予定レコードを `data/` 配下の新規SQLiteファイルへinsertするfile output previewを追加済み。出力DBはGit管理せず、`inserted_to_file_preview` は本番保存成功、曲ID/譜面ID確定、保存値確定として扱わない。
+- 最小 `plays` スキーマとinsert境界は in-memory SQLite fixtureと明示オプション付きfile output previewで固定している。`song_id` / `chart_id` はM5候補観測、数字列はM7a候補値のまま扱う。
+- 現時点では本番insert、低確信度ログ本番仕様、保存値本番確定には進んでいない。
 
 完了条件:
 
@@ -372,10 +378,25 @@ M5完了時点で固定すること:
 
 目的は、保存候補をローカルの個人スコアDBへ1プレー1レコードで保存することです。
 
+現在地:
+
+- DB insertの前段として、M8 dry-run payload previewを追加済み。
+- `m8_save_payload_preview.*` は `m7_save_decision_preview_rows` を入力にし、`preview_save_candidate` だけをpayload候補として扱う。
+- `payload_ready` は候補IDとM7a数字列が揃ったdry-run状態であり、保存OKやDB保存成功ではない。
+- `preview_save_candidate` 以外は `excluded_preview_status_counts` と代表で読み、payload材料へ昇格しない。
+- `m8_planned_play_records.*` は `payload_ready` だけを `plays` 最小列へ写す保存予定レコードプレビューで、DB保存成功、曲ID/譜面ID確定、保存値確定ではない。
+- `m8_score_db_write_preview.*` は保存予定レコードだけを新規 in-memory SQLite `plays` へinsertするdry-runプレビューで、insert対象件数、insert後件数、除外件数、代表行、`schema_version=1` を確認する。実ファイルDBは生成せず、本番DB保存成功として扱わない。
+- `--m8-score-db-output data\...\ddrgp-scores.sqlite` は、明示した場合だけ保存予定レコードを `data/` 配下の新規SQLiteファイルへinsertするfile output preview。`m8_score_db_file_output_preview.*` は出力DBへのinsert件数と `schema_version=1` の確認であり、本番DB保存成功として扱わない。SQLite側は `PRAGMA user_version=1` を設定する。
+- `plays` の最小スキーマとinsert境界は in-memory SQLite fixtureと明示オプション付きfile output previewで検証し、生成したローカルDBファイルはGit管理しない。
+- file output previewでは、実DB readback由来の `database_schema_version`、`database_preview_metadata`、`database_plays_row_count`、`database_plays_schema_columns` と、metadata / row count / schema の一致診断をJSONとMarkdown reportの両方で確認できる。
+- metadata mismatch、row count mismatch、schema mismatch の負例は実SQLite readback経路で固定済みで、Markdown report上にも mismatch reason がそのまま出ることをfixtureで確認する。
+- 2026-07-09時点でM8 previewは、`m8_save_payload_preview.*`、`m8_planned_play_records.*`、`m8_score_db_write_preview.*`、明示file output preview、readback診断までを一区切りの完了範囲として扱う。
+
 やること:
 
-- `ddrgp-scores.sqlite` のスキーマを定義する。
-- `plays` テーブルを実装する。
+- dry-run payload preview、保存予定レコードプレビュー、in-memory write preview、明示オプション付きfile output preview、readback診断の読み方を保ったまま、次に本番DB insert境界を別フェーズとして設計する。
+- `ddrgp-scores.sqlite` の正式スキーマを定義する。
+- `plays` テーブルのマイグレーション、insert、保存スキップ境界を設計してから実装する。
 - マスタDBバージョン、曲ID、譜面ID、OCR結果、スコア、判定数、画像ハッシュ、解析確信度を保存する。
 - 重複保存防止をDB保存直前にも適用する。
 - マイグレーション方針を決める。
