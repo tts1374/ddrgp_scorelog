@@ -4756,9 +4756,11 @@ def read_m8_score_db_file_output_preview_metadata(
             "SELECT key, value FROM preview_metadata ORDER BY key"
         ).fetchall()
     )
+    plays_row_count = connection.execute("SELECT COUNT(*) FROM plays").fetchone()[0]
     return {
         "database_schema_version": int(schema_version),
         "database_preview_metadata": preview_metadata,
+        "database_plays_row_count": int(plays_row_count),
     }
 
 
@@ -4789,6 +4791,21 @@ def evaluate_m8_score_db_file_output_preview_readback_contract(
         if actual_value != expected_value:
             reasons.append(f"database_preview_metadata.{key}_mismatch")
 
+    return not reasons, reasons
+
+
+def evaluate_m8_score_db_file_output_preview_row_count_readback(
+    database_readback: dict[str, object],
+    *,
+    inserted_count: int,
+    row_count_after_insert: int,
+) -> tuple[bool, list[str]]:
+    reasons: list[str] = []
+    database_plays_row_count = database_readback.get("database_plays_row_count")
+    if database_plays_row_count != inserted_count:
+        reasons.append("database_plays_row_count_inserted_count_mismatch")
+    if database_plays_row_count != row_count_after_insert:
+        reasons.append("database_plays_row_count_after_insert_mismatch")
     return not reasons, reasons
 
 
@@ -4972,6 +4989,14 @@ def summarize_m8_score_db_file_output_preview(
         database_readback_matches_preview_contract,
         database_readback_mismatch_reasons,
     ) = evaluate_m8_score_db_file_output_preview_readback_contract(database_readback)
+    (
+        database_plays_row_count_matches_insert_counts,
+        database_plays_row_count_mismatch_reasons,
+    ) = evaluate_m8_score_db_file_output_preview_row_count_readback(
+        database_readback,
+        inserted_count=inserted_count,
+        row_count_after_insert=row_count_after_insert,
+    )
     return {
         "target_boundary": "m8 planned play record rows",
         "scope": "M8 explicit score DB file output preview",
@@ -4986,10 +5011,17 @@ def summarize_m8_score_db_file_output_preview(
         "created_by_preview": M8_SCORE_DB_PREVIEW_CREATED_BY,
         "database_schema_version": database_readback["database_schema_version"],
         "database_preview_metadata": database_readback["database_preview_metadata"],
+        "database_plays_row_count": database_readback["database_plays_row_count"],
         "database_readback_matches_preview_contract": (
             database_readback_matches_preview_contract
         ),
         "database_readback_mismatch_reasons": database_readback_mismatch_reasons,
+        "database_plays_row_count_matches_insert_counts": (
+            database_plays_row_count_matches_insert_counts
+        ),
+        "database_plays_row_count_mismatch_reasons": (
+            database_plays_row_count_mismatch_reasons
+        ),
         "target_count": len(row_list),
         "insert_target_count": inserted_count,
         "inserted_count": inserted_count,
@@ -5018,6 +5050,7 @@ def summarize_m8_score_db_file_output_preview(
             "schema_version identifies the preview schema contract only.",
             "database_* readback fields are diagnostics read from the preview DB.",
             "database_readback_matches_preview_contract only compares preview identifiers.",
+            "database_plays_row_count only checks preview DB row count readback.",
             "This is not production DB save success, confirmed IDs, or final values.",
             "song_id and chart_id remain identity_signal candidate observations.",
             "Digit values remain copied M7a recognized_digits candidates.",
@@ -5057,6 +5090,11 @@ def write_m8_score_db_file_output_preview_report(
         f"`{summary['database_readback_matches_preview_contract']}`",
         f"- database readback mismatch reasons: "
         f"`{json.dumps(summary['database_readback_mismatch_reasons'], ensure_ascii=False)}`",
+        f"- database plays row count readback: `{summary['database_plays_row_count']}`",
+        f"- database plays row count matches insert counts: "
+        f"`{summary['database_plays_row_count_matches_insert_counts']}`",
+        f"- database plays row count mismatch reasons: "
+        f"`{json.dumps(summary['database_plays_row_count_mismatch_reasons'], ensure_ascii=False)}`",
         f"- target planned rows: {summary['target_count']}",
         f"- insert target count: {summary['insert_target_count']}",
         f"- inserted count: {summary['inserted_count']}",

@@ -10,7 +10,7 @@ high
 
 今回の作業ブランチは `codex/m8-score-db-schema-version-preview` です。
 
-2026-07-09時点で、このブランチはM8 preview schema version、M8 file output CLI境界テスト、M8 preview metadata、M8 file output readback診断欄、readback preview契約一致診断、M5ありCLI file output previewのinsert経路fixtureまで含みます。次チャット開始時に以下を確認してください。
+2026-07-09時点で、このブランチはM8 preview schema version、M8 file output CLI境界テスト、M8 preview metadata、M8 file output readback診断欄、readback preview契約一致診断、M5ありCLI file output previewのinsert経路fixture、実DB `plays` row count readback診断まで含みます。次チャット開始時に以下を確認してください。
 
 - `git status --short --branch`
 - `git log --oneline -5`
@@ -21,39 +21,30 @@ high
 
 ## 今回までの作業結果
 
-- `tests/test_vision_poc_ocr.py` に `runner.main()` 経由のM5あり明示file output preview fixtureを追加済み。
-- 追加fixtureは、軽量manifest、stub済みM3 save candidate、stub済みM5 jacket identity、stub済みM7a 8 ROI認識を使い、ローカルスクリーンショット素材や実テンプレート画像への依存を増やしすぎない。
-- CLI引数として `--m5-jacket-match`、`--m7a-digit-recognition`、8つの `--m7a-digit-rois`、`--m8-score-db-output data\...\m5-preview.sqlite` を同時指定する経路を固定した。
-- M5候補観測がある場合に、`m7_save_decision_preview` が `preview_save_candidate`、`m8_save_payload_preview` が `payload_ready`、`m8_planned_play_records` が1件、明示file output previewが実SQLite DBへ1件insertすることを確認している。
-- 追加fixtureでは `database_schema_version=1`、`database_preview_metadata.created_by_preview=tools.vision_poc.m8_score_db_preview`、`database_readback_matches_preview_contract=true`、空 `database_readback_mismatch_reasons` を固定した。
-- 追加fixtureでは実DB `plays` の代表行も読み、`played_at_ms=1000`、M5 `identity_signal_*` 候補、M7a数字候補、`m5_jacket_match_status=matched` が保存予定レコードからfile DBまで渡ることを確認した。
-- 既存のM5なし明示file output CLI fixtureは0件insert、空 `plays`、`preview_metadata`、readback欄、一致診断欄 `true` / 空理由を維持している。
-- `preview_metadata`、DB readback欄、一致診断欄、追加fixtureでinsertされた行はpreview生成物識別とCLI境界確認用であり、本番DB保存成功、曲ID/譜面ID確定、保存値確定を意味しない。
+- `m8_score_db_file_output_preview.json` / Markdown に、実DBの `plays` 行数readbackである `database_plays_row_count` を追加済み。
+- `database_plays_row_count_matches_insert_counts` と `database_plays_row_count_mismatch_reasons` を追加し、実DB readback行数が `inserted_count` / `row_count_after_insert` と一致するかだけを診断するようにした。
+- row count readback診断は、本番DB保存成功、曲ID/譜面ID確定、保存値確定の根拠ではないことを `docs/design/03_event_and_save_boundary.md`、`04_data_model.md`、`05_storage_io_spec.md`、`06_regression_guard.md`、`tools/vision_poc/README.md` に反映済み。
+- `tests/test_vision_poc_ocr.py` では、1件insert fixture、0件insert fixture、M5なしCLI明示file output、M5ありCLI明示file outputで新しいrow count欄と一致診断欄を固定済み。
+- readback契約不一致fixtureでは、`database_plays_row_count` が `inserted_count` / `row_count_after_insert` とずれた場合の mismatch reason も固定済み。
+- 既存の `database_schema_version`、`database_preview_metadata`、`database_readback_matches_preview_contract`、`database_readback_mismatch_reasons` はpreview識別契約のreadback診断として維持している。
+- `preview_metadata`、DB readback欄、row count readback欄、一致診断欄、追加fixtureでinsertされた行はpreview生成物識別とCLI境界確認用であり、本番DB保存成功、曲ID/譜面ID確定、保存値確定を意味しない。
 
 2026-07-09時点のローカル確認:
 
-- `python -m pytest tests\test_vision_poc_ocr.py -k "cli_with_m5"`: 1 passed。
 - `python -m pytest tests\test_vision_poc_ocr.py -k "m8"`: 13 passed。
 - `python -m pytest tests\test_vision_poc_ocr.py -k "m7_save_decision or m7_save_readiness or m7a or m8"`: 64 passed。
-- `python -m ruff check tests\test_vision_poc_ocr.py`: passed。
 - `python -m ruff check tools\vision_poc pyproject.toml tests`: passed。
 - `python -m compileall master tools\vision_poc`: passed。
+- `python -m tools.vision_poc --m7a-digit-recognition --m7a-digit-rois score_digits max_combo marvelous perfect great good miss ex_score --no-ocr --no-rois --output data\vision_poc_m7_save_readiness`: 221/221 correct、false positives 0、false negatives 0。
+- `python -m tools.vision_poc --m5-jacket-match --m7a-digit-recognition --m7a-digit-rois score_digits max_combo marvelous perfect great good miss ex_score --no-ocr --no-rois --output data\vision_poc_m7_m5_readiness`: 221/221 correct、false positives 0、false negatives 0、M5 jacket match features 69、candidates 60、diagnostics 118。
+- `python -m tools.vision_poc --no-ocr`: 221/221 correct、false positives 0、false negatives 0。
+- M5あり明示file output:
+  - `python -m tools.vision_poc --m5-jacket-match --m7a-digit-recognition --m7a-digit-rois score_digits max_combo marvelous perfect great good miss ex_score --no-ocr --no-rois --output data\vision_poc_m8_row_count_readback_20260709 --m8-score-db-output data\vision_poc_m8_row_count_readback_20260709\ddrgp-scores.sqlite`
+  - 分類: 221/221 correct、false positives 0、false negatives 0。
+  - `m8_score_db_file_output_preview.json`: `target_count=60`、`inserted_count=60`、`row_count_after_insert=60`、`database_plays_row_count=60`、`database_plays_row_count_matches_insert_counts=true`、`database_plays_row_count_mismatch_reasons=[]`、`database_readback_matches_preview_contract=true`、`database_readback_mismatch_reasons=[]`。
 - `python -m pytest tests`: 199 passed。
 - `git diff --check`: passed。
-- `python -m tools.vision_poc --no-ocr`: 221/221 correct、false positives 0、false negatives 0。
-- M5なし:
-  - `python -m tools.vision_poc --m7a-digit-recognition --m7a-digit-rois score_digits max_combo marvelous perfect great good miss ex_score --no-ocr --no-rois --output data\vision_poc_m7_save_readiness`
-  - 分類: 221/221 correct、false positives 0、false negatives 0。
-- M5あり:
-  - `python -m tools.vision_poc --m5-jacket-match --m7a-digit-recognition --m7a-digit-rois score_digits max_combo marvelous perfect great good miss ex_score --no-ocr --no-rois --output data\vision_poc_m7_m5_readiness`
-  - 分類: 221/221 correct、false positives 0、false negatives 0。
-  - M5 jacket match: features 69、candidates 60、diagnostics 118。
-- M5あり明示file output:
-  - `python -m tools.vision_poc --m5-jacket-match --m7a-digit-recognition --m7a-digit-rois score_digits max_combo marvelous perfect great good miss ex_score --no-ocr --no-rois --output data\vision_poc_m8_readback_m5_cli_20260709 --m8-score-db-output data\vision_poc_m8_readback_m5_cli_20260709\ddrgp-scores.sqlite`
-  - 分類: 221/221 correct、false positives 0、false negatives 0。
-  - `m8_planned_play_records.json`: `target_count=60`、`planned_record_count=60`。
-  - `m8_score_db_file_output_preview.json`: `target_count=60`、`inserted_count=60`、`row_count_after_insert=60`、`schema_version=1`、`created_by_preview=tools.vision_poc.m8_score_db_preview`、`database_schema_version=1`、`database_preview_metadata.created_by_preview=tools.vision_poc.m8_score_db_preview`、`database_readback_matches_preview_contract=true`、`database_readback_mismatch_reasons=[]`、`write_preview_status_counts={"inserted_to_file_preview":60}`。
-- 生成した `data/vision_poc_m8_readback_m5_cli_20260709/ddrgp-scores.sqlite` はローカルDBであり、コミット対象外。
+- 生成した `data/vision_poc_m8_row_count_readback_20260709/ddrgp-scores.sqlite` はローカルDBであり、コミット対象外。
 
 ## 必読資料
 
@@ -89,7 +80,7 @@ high
 - 既定自動保存、常時保存処理、本番用の自動DB insert
 - 低信頼度ログ本番仕様
 - 正式マイグレーション、正式個人スコアDBスキーマ、duplicate key の本格差し替え
-- file output preview、`schema_version`、`created_by_preview`、`preview_metadata`、`database_schema_version`、`database_preview_metadata`、`database_readback_matches_preview_contract`、`database_readback_mismatch_reasons` を本番DB保存成功、曲ID/譜面ID確定、保存値確定として扱うこと
+- `schema_version`、`created_by_preview`、`preview_metadata`、`database_schema_version`、`database_preview_metadata`、`database_plays_row_count`、各readback一致診断欄を本番DB保存成功、曲ID/譜面ID確定、保存値確定として扱うこと
 - `payload_ready`、保存予定レコード、DB write preview、file output previewを保存OK、DB保存成功、曲ID/譜面ID確定、保存値確定として扱うこと
 - M5 `identity_signal_*` から曲ID/譜面IDを保存用確定すること
 - M7aの `recognized_digits` を保存値確定として扱うこと
@@ -109,6 +100,7 @@ high
 - `created_by_preview=tools.vision_poc.m8_score_db_preview` と `preview_metadata` によるpreview生成物識別
 - `database_schema_version` と `database_preview_metadata` によるfile output preview readback診断
 - `database_readback_matches_preview_contract` と `database_readback_mismatch_reasons` によるfile output preview readback一致診断
+- `database_plays_row_count` と `database_plays_row_count_matches_insert_counts` / `database_plays_row_count_mismatch_reasons` によるfile output preview row count readback診断
 - `--m8-score-db-output` のCLI境界テスト
 - M5なしCLI明示file outputの0件insert空DB fixture
 - M5ありCLI明示file outputの1件以上insert fixture
@@ -118,19 +110,18 @@ high
 
 ## 次に必ず進める実作業
 
-次は、M8 file output previewの実DB readback診断を、row count観点でも明示するかを小さく進める。
+次は、正式個人スコアDBスキーマへ入る前の小さな設計足場として、M8 preview `plays` 最小スキーマが本番スキーマではないことを実行可能な形で固定する。
 
 第一候補:
 
-- `m8_score_db_file_output_preview.json` / Markdown に、実DBの `plays` 行数を明示する `database_plays_row_count` と、`row_count_after_insert` / `inserted_count` との一致を読む軽い診断欄を追加する。
-- ただし現状の `row_count_after_insert` は実DB insert後の件数なので、重複診断になりすぎる場合は、欄名・読み方を最小にするか、追加しない判断をテスト/READMEで明確にする。
-- 追加する場合は、0件insert、1件insert fixture、M5ありCLI fixtureの3経路で `database_plays_row_count` と一致診断を固定する。
-- readback row count診断も、本番DB保存成功、曲ID/譜面ID確定、保存値確定の根拠にしない。
-- 仕様語彙を足した場合は、`docs/design/03_event_and_save_boundary.md`、`04_data_model.md`、`05_storage_io_spec.md`、`06_regression_guard.md`、`tools/vision_poc/README.md` の該当箇所も更新する。
+- in-memory write preview と file output preview のsummary/reportに、preview専用最小スキーマであることを示す軽い識別欄を追加する。例: `schema_contract_scope=preview_minimal_plays`、`production_schema_status=not_production_schema` のような、読み間違いを防ぐためだけの欄。
+- 追加する場合は、in-memory fixture、file output 1件fixture、M5なし0件file output fixture、M5ありCLI file output fixtureで固定する。
+- docsでは preview `plays` 最小列と正式 `plays` 候補列の違いを `docs/design/04_data_model.md` と `05_storage_io_spec.md` に短く整理し、正式マイグレーションや本番insertへ接続しないことを明記する。
+- 追加欄は、本番DB保存成功、正式スキーマ確定、曲ID/譜面ID確定、保存値確定の根拠にしない。
 
 代替候補:
 
-- 正式個人スコアDBスキーマへ入る前の小さな設計足場として、preview `plays` 最小列と正式 `plays` 候補列の差分を `docs/design/04_data_model.md` と `05_storage_io_spec.md` に整理し、まだ正式マイグレーションや本番insertへ接続しないことをテスト名またはREADMEで明確にする。docs整理だけで終えないよう、既存M8 fixtureに「preview schema is not production schema」系の回帰assertを1つ以上追加する。
+- summary欄追加が重複に見える場合は、既存M8 fixtureに「preview schema is not production schema」系の回帰assertを1つ以上追加し、`04_data_model.md` / `05_storage_io_spec.md` で preview最小列と正式候補列の差分を整理する。docs整理だけで終えないこと。
 - `database_preview_metadata` の不一致理由について、欠落keyと値不一致を分ける場合は単体テストで語彙を固定する。DBファイルを壊すfixtureにはしない。
 
 主作業完了後、今回の結果を踏まえて `docs/next-task.md` を次チャット用に更新する。
@@ -182,13 +173,14 @@ M4/M5境界やmaster DB生成へ触った場合は、`tests\test_master_match.py
 - 実ファイルDBへ書く場合は `PRAGMA user_version=1` と `preview_metadata.created_by_preview=tools.vision_poc.m8_score_db_preview` が維持される。
 - file output preview summary/reportの `database_schema_version` と `database_preview_metadata` が実DB readback診断欄として維持される。
 - file output preview summary/reportの `database_readback_matches_preview_contract` と `database_readback_mismatch_reasons` がpreview契約一致診断欄として維持される。
+- file output preview summary/reportの `database_plays_row_count` と `database_plays_row_count_matches_insert_counts` / `database_plays_row_count_mismatch_reasons` がrow count readback診断欄として維持される。
 - readback診断欄を足す場合も、本番DB保存成功、曲ID/譜面ID確定、保存値確定として扱われていない。
 - 0件insertの明示file outputでも、空 `plays`、`preview_metadata`、readback欄、一致診断欄 `true` / 空理由が出る。
 - M5ありCLI明示file outputでは、`payload_ready` から保存予定レコードが生成され、実ファイルpreview DBへ1件以上insertされる。
 - 実ファイルDBへ書く場合は明示オプションで `data/` 配下の新規ファイルに限定され、DBファイルをコミットしていない。
 - 既存DBファイルを上書きしない。
 - 明示オプションなしの既定実行では実ファイルDBと `m8_score_db_file_output_preview.*` を生成しない。
-- preview metadata、DB readback欄、readback一致診断欄を、本番DB保存成功、曲ID/譜面ID確定、保存値確定として扱っていない。
+- preview metadata、DB readback欄、readback一致診断欄、row count readback欄を、本番DB保存成功、曲ID/譜面ID確定、保存値確定として扱っていない。
 - `identity_signal_*`、`m5_identity_reviewable`、`blocked_identity_signal` が曲ID/譜面ID確定として扱われていない。
 - M7aの `recognized_digits`、`expected_value`、`match` が保存値確定として扱われていない。
 - 既存の `m7_save_readiness_review.*`、`m7_save_decision_preview.*`、`m8_save_payload_preview.*`、`m8_planned_play_records.*`、`m8_score_db_write_preview.*` のCSV列や意味を壊していない。
