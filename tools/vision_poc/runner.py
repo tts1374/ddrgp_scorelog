@@ -4812,6 +4812,7 @@ def summarize_m8_score_db_write_preview(
             "Only planned play record rows are input to this write preview.",
             "Rows are inserted into a fresh in-memory SQLite plays table only.",
             "This is not production DB output, DB save success, confirmed IDs, or final values.",
+            "timestamped and manifest inputs keep timestamp_ms as played_at_ms.",
             "played_at_ms=0 remains the timestamp-less provisional value.",
         ],
     }
@@ -5003,6 +5004,8 @@ def summarize_m8_planned_play_records(
             "Planned records are row-contract material, not DB insert success.",
             "song_id and chart_id remain identity_signal candidate observations.",
             "Digit values remain copied M7a recognized_digits candidates.",
+            "timestamped and manifest inputs keep timestamp_ms as played_at_ms.",
+            "played_at_ms=0 remains the timestamp-less provisional value.",
             "SQLite schema validation should use in-memory fixtures before file DB output.",
         ],
     }

@@ -2687,6 +2687,128 @@ def test_m8_save_payload_preview_uses_m7_preview_rows(tmp_path: Path) -> None:
     assert "本番DB保存成功ではありません" in write_preview_report
 
 
+def test_m8_timestamped_planned_and_write_preview_preserve_played_at_ms(
+    tmp_path: Path,
+) -> None:
+    digit_rois = list(runner.M8_SAVE_PAYLOAD_DIGIT_ROIS)
+
+    def preview_save_candidate_row(
+        organized_file: str,
+        timestamp_ms: str,
+        confirmation_mode: str,
+    ) -> dict[str, str]:
+        row = {
+            "organized_file": organized_file,
+            "timestamp_ms": timestamp_ms,
+            "confirmation_mode": confirmation_mode,
+            "preview_status": "preview_save_candidate",
+            "preview_reason": "",
+            "m5_identity_signal_song_id": "song_manifest",
+            "m5_identity_signal_chart_id": "chart_manifest_single_basic",
+            "m5_identity_signal_source": "jacket_feature",
+            "m5_identity_signal_status": "jacket_resolved_candidate",
+            "m5_jacket_match_status": "matched",
+        }
+        for roi_name in digit_rois:
+            row[f"{roi_name}_recognized_digits"] = "123"
+            row[f"{roi_name}_expected_value"] = "123"
+            row[f"{roi_name}_match"] = "True"
+        return row
+
+    payload_rows = runner.m8_save_payload_preview_rows(
+        [
+            preview_save_candidate_row("manifest_result.png", "345678", "time"),
+            preview_save_candidate_row("metadata_result.png", "", "frames"),
+        ],
+        digit_rois,
+    )
+
+    assert [row["payload_preview_status"] for row in payload_rows] == [
+        "payload_ready",
+        "payload_ready",
+    ]
+
+    payload_summary = runner.summarize_m8_save_payload_preview(payload_rows, digit_rois)
+    assert payload_summary["payload_ready_count"] == 2
+    assert payload_summary["payload_ready_groups"][0]["representatives"][0][
+        "timestamp_ms"
+    ] == "345678"
+    assert payload_summary["payload_ready_groups"][0]["representatives"][0][
+        "confirmation_mode"
+    ] == "time"
+
+    planned_rows = runner.m8_planned_play_record_rows(payload_rows)
+
+    assert [row["source_organized_file"] for row in planned_rows] == [
+        "manifest_result.png",
+        "metadata_result.png",
+    ]
+    assert [row["played_at_ms"] for row in planned_rows] == ["345678", "0"]
+    assert [row["source_confirmation_mode"] for row in planned_rows] == [
+        "time",
+        "frames",
+    ]
+
+    planned_csv_path = tmp_path / "m8_planned_play_records.csv"
+    runner.write_m8_planned_play_records_csv(planned_csv_path, planned_rows)
+    planned_csv_rows = read_csv_rows(planned_csv_path)
+    assert [row["played_at_ms"] for row in planned_csv_rows] == ["345678", "0"]
+    assert [row["source_confirmation_mode"] for row in planned_csv_rows] == [
+        "time",
+        "frames",
+    ]
+
+    planned_summary = runner.summarize_m8_planned_play_records(
+        payload_rows,
+        planned_rows,
+    )
+    assert [row["played_at_ms"] for row in planned_summary["representatives"]] == [
+        "345678",
+        "0",
+    ]
+    assert (
+        "timestamped and manifest inputs keep timestamp_ms as played_at_ms."
+        in planned_summary["reading_notes"]
+    )
+
+    write_preview_rows = runner.m8_score_db_write_preview_rows(planned_rows)
+
+    assert [row["write_preview_status"] for row in write_preview_rows] == [
+        "inserted_in_memory",
+        "inserted_in_memory",
+    ]
+    assert [row["played_at_ms"] for row in write_preview_rows] == ["345678", "0"]
+    assert [row["source_confirmation_mode"] for row in write_preview_rows] == [
+        "time",
+        "frames",
+    ]
+
+    write_preview_csv_path = tmp_path / "m8_score_db_write_preview.csv"
+    runner.write_m8_score_db_write_preview_csv(
+        write_preview_csv_path,
+        write_preview_rows,
+    )
+    write_preview_csv_rows = read_csv_rows(write_preview_csv_path)
+    assert [row["played_at_ms"] for row in write_preview_csv_rows] == ["345678", "0"]
+    assert [row["source_confirmation_mode"] for row in write_preview_csv_rows] == [
+        "time",
+        "frames",
+    ]
+
+    write_preview_summary = runner.summarize_m8_score_db_write_preview(
+        write_preview_rows,
+    )
+    assert write_preview_summary["inserted_count"] == 2
+    assert [
+        row["played_at_ms"]
+        for row in write_preview_summary["groups"][0]["representatives"]
+    ] == ["345678", "0"]
+    assert (
+        "timestamped and manifest inputs keep timestamp_ms as played_at_ms."
+        in write_preview_summary["reading_notes"]
+    )
+
+
 def test_m8_score_db_write_preview_skips_invalid_planned_rows() -> None:
     planned_row = {
         field: "1" for field in runner.M8_PLANNED_PLAY_RECORD_FIELDNAMES
