@@ -2700,6 +2700,8 @@ def test_m8_save_payload_preview_uses_m7_preview_rows(tmp_path: Path) -> None:
     assert write_preview_summary["schema_name"] == "m8_score_db_preview"
     assert write_preview_summary["schema_version"] == 1
     assert write_preview_summary["schema_version_source"] == "PRAGMA user_version"
+    assert write_preview_summary["schema_contract_scope"] == "preview_minimal_plays"
+    assert write_preview_summary["production_schema_status"] == "not_production_schema"
     assert write_preview_summary["preview_metadata_table"] == "preview_metadata"
     assert (
         write_preview_summary["created_by_preview"]
@@ -2722,6 +2724,8 @@ def test_m8_save_payload_preview_uses_m7_preview_rows(tmp_path: Path) -> None:
     write_preview_report = write_preview_report_path.read_text(encoding="utf-8")
     assert "# M8 Score DB Write Preview" in write_preview_report
     assert "schema version: `1`" in write_preview_report
+    assert "schema contract scope: `preview_minimal_plays`" in write_preview_report
+    assert "production schema status: `not_production_schema`" in write_preview_report
     assert (
         "created by preview: `tools.vision_poc.m8_score_db_preview`"
         in write_preview_report
@@ -2919,6 +2923,8 @@ def test_m8_score_db_file_output_preview_writes_explicit_data_db(
 
     expected_preview_metadata = {
         "created_by_preview": "tools.vision_poc.m8_score_db_preview",
+        "production_schema_status": "not_production_schema",
+        "schema_contract_scope": "preview_minimal_plays",
         "schema_name": "m8_score_db_preview",
         "schema_table": "plays",
         "schema_version": "1",
@@ -2938,6 +2944,8 @@ def test_m8_score_db_file_output_preview_writes_explicit_data_db(
     assert summary["schema_name"] == "m8_score_db_preview"
     assert summary["schema_version"] == 1
     assert summary["schema_version_source"] == "PRAGMA user_version"
+    assert summary["schema_contract_scope"] == "preview_minimal_plays"
+    assert summary["production_schema_status"] == "not_production_schema"
     assert summary["preview_metadata_table"] == "preview_metadata"
     assert summary["created_by_preview"] == "tools.vision_poc.m8_score_db_preview"
     assert summary["database_schema_version"] == 1
@@ -2988,6 +2996,8 @@ def test_m8_score_db_file_output_preview_writes_explicit_data_db(
     assert "# M8 Score DB File Output Preview" in report
     assert "`--m8-score-db-output`" in report
     assert "schema version: `1`" in report
+    assert "schema contract scope: `preview_minimal_plays`" in report
+    assert "production schema status: `not_production_schema`" in report
     assert "preview metadata table: `preview_metadata`" in report
     assert "database schema version readback: `1`" in report
     assert "database preview metadata readback" in report
@@ -3013,6 +3023,8 @@ def test_m8_score_db_file_output_preview_reports_readback_contract_mismatch() ->
         "database_plays_row_count": 2,
         "database_preview_metadata": {
             "created_by_preview": "other_preview",
+            "production_schema_status": "production_schema",
+            "schema_contract_scope": "production_plays",
             "schema_name": "m8_score_db_preview",
             "schema_table": "other_table",
             "schema_version": "2",
@@ -3034,6 +3046,8 @@ def test_m8_score_db_file_output_preview_reports_readback_contract_mismatch() ->
         "database_preview_metadata.schema_version_mismatch",
         "database_preview_metadata.schema_version_source_mismatch",
         "database_preview_metadata.schema_table_mismatch",
+        "database_preview_metadata.schema_contract_scope_mismatch",
+        "database_preview_metadata.production_schema_status_mismatch",
     ]
     assert summary["database_plays_row_count"] == 2
     assert summary["database_plays_row_count_matches_insert_counts"] is False
@@ -3100,11 +3114,19 @@ def test_m8_score_db_file_output_preview_accepts_zero_planned_rows_after_no_m5(
     assert summary["row_count_after_insert"] == 0
     assert summary["schema_name"] == "m8_score_db_preview"
     assert summary["schema_version"] == 1
+    assert summary["schema_contract_scope"] == "preview_minimal_plays"
+    assert summary["production_schema_status"] == "not_production_schema"
     assert summary["created_by_preview"] == "tools.vision_poc.m8_score_db_preview"
     assert summary["database_schema_version"] == 1
     assert summary["database_plays_row_count"] == 0
     assert summary["database_preview_metadata"]["created_by_preview"] == (
         "tools.vision_poc.m8_score_db_preview"
+    )
+    assert summary["database_preview_metadata"]["schema_contract_scope"] == (
+        "preview_minimal_plays"
+    )
+    assert summary["database_preview_metadata"]["production_schema_status"] == (
+        "not_production_schema"
     )
     assert summary["database_readback_matches_preview_contract"] is True
     assert summary["database_readback_mismatch_reasons"] == []
@@ -3114,6 +3136,11 @@ def test_m8_score_db_file_output_preview_accepts_zero_planned_rows_after_no_m5(
     with sqlite3.connect(output_db_path) as connection:
         schema_version = connection.execute("PRAGMA user_version").fetchone()[0]
         row_count = connection.execute("SELECT COUNT(*) FROM plays").fetchone()[0]
+        metadata_rows = dict(
+            connection.execute(
+                "SELECT key, value FROM preview_metadata ORDER BY key"
+            ).fetchall()
+        )
         metadata_value = connection.execute(
             """
             SELECT value FROM preview_metadata
@@ -3123,6 +3150,8 @@ def test_m8_score_db_file_output_preview_accepts_zero_planned_rows_after_no_m5(
     assert schema_version == 1
     assert row_count == 0
     assert metadata_value == "tools.vision_poc.m8_score_db_preview"
+    assert metadata_rows["schema_contract_scope"] == "preview_minimal_plays"
+    assert metadata_rows["production_schema_status"] == "not_production_schema"
 
 
 def test_m8_score_db_output_cli_requires_m7a_digit_recognition(
@@ -3265,11 +3294,19 @@ def test_m8_score_db_output_cli_writes_empty_schema_for_no_m5_planned_rows(
     assert summary["inserted_count"] == 0
     assert summary["row_count_after_insert"] == 0
     assert summary["schema_version"] == 1
+    assert summary["schema_contract_scope"] == "preview_minimal_plays"
+    assert summary["production_schema_status"] == "not_production_schema"
     assert summary["created_by_preview"] == "tools.vision_poc.m8_score_db_preview"
     assert summary["database_schema_version"] == 1
     assert summary["database_plays_row_count"] == 0
     assert summary["database_preview_metadata"]["created_by_preview"] == (
         "tools.vision_poc.m8_score_db_preview"
+    )
+    assert summary["database_preview_metadata"]["schema_contract_scope"] == (
+        "preview_minimal_plays"
+    )
+    assert summary["database_preview_metadata"]["production_schema_status"] == (
+        "not_production_schema"
     )
     assert summary["database_readback_matches_preview_contract"] is True
     assert summary["database_readback_mismatch_reasons"] == []
@@ -3278,6 +3315,11 @@ def test_m8_score_db_output_cli_writes_empty_schema_for_no_m5_planned_rows(
     with sqlite3.connect(output_db_path) as connection:
         schema_version = connection.execute("PRAGMA user_version").fetchone()[0]
         row_count = connection.execute("SELECT COUNT(*) FROM plays").fetchone()[0]
+        metadata_rows = dict(
+            connection.execute(
+                "SELECT key, value FROM preview_metadata ORDER BY key"
+            ).fetchall()
+        )
         metadata_value = connection.execute(
             """
             SELECT value FROM preview_metadata
@@ -3287,6 +3329,8 @@ def test_m8_score_db_output_cli_writes_empty_schema_for_no_m5_planned_rows(
     assert schema_version == 1
     assert row_count == 0
     assert metadata_value == "tools.vision_poc.m8_score_db_preview"
+    assert metadata_rows["schema_contract_scope"] == "preview_minimal_plays"
+    assert metadata_rows["production_schema_status"] == "not_production_schema"
 
 
 def test_m8_score_db_output_cli_with_m5_inserts_planned_rows(
@@ -3489,11 +3533,19 @@ def test_m8_score_db_output_cli_with_m5_inserts_planned_rows(
     assert summary["inserted_count"] == 1
     assert summary["row_count_after_insert"] == 1
     assert summary["schema_version"] == 1
+    assert summary["schema_contract_scope"] == "preview_minimal_plays"
+    assert summary["production_schema_status"] == "not_production_schema"
     assert summary["created_by_preview"] == "tools.vision_poc.m8_score_db_preview"
     assert summary["database_schema_version"] == 1
     assert summary["database_plays_row_count"] == 1
     assert summary["database_preview_metadata"]["created_by_preview"] == (
         "tools.vision_poc.m8_score_db_preview"
+    )
+    assert summary["database_preview_metadata"]["schema_contract_scope"] == (
+        "preview_minimal_plays"
+    )
+    assert summary["database_preview_metadata"]["production_schema_status"] == (
+        "not_production_schema"
     )
     assert summary["database_readback_matches_preview_contract"] is True
     assert summary["database_readback_mismatch_reasons"] == []

@@ -268,12 +268,14 @@
 - 非ready payloadは上流の planned records で止め、このpreviewへ入力しない。
 - 新規 in-memory SQLite `plays` テーブルへinsertし、実ファイルDBは生成しない。
 - summary/report の `schema_name=m8_score_db_preview`、`schema_version=1`、`schema_version_source=PRAGMA user_version` を維持する。
+- summary/report の `schema_contract_scope=preview_minimal_plays` と `production_schema_status=not_production_schema` を維持し、preview専用最小 `plays` 契約であって正式個人スコアDBスキーマではないことを確認できる。
 - summary/report の `created_by_preview=tools.vision_poc.m8_score_db_preview` と `preview_metadata_table=preview_metadata` を維持する。
 - SQLite側の `preview_metadata` 表はpreview生成物識別だけに使い、正式マイグレーションや本番保存成功の根拠として扱わない。
 - `insert_target_count`、`inserted_count`、`row_count_after_insert`、`excluded_count` をsummaryで確認できる。
 - write preview status は `inserted_in_memory`、`skipped_invalid_planned_record` に限る。
 - `inserted_in_memory` はDB insert境界のdry-run確認であり、本番DB保存成功、曲ID/譜面ID確定、保存値確定として扱わない。
 - `schema_version=1` はpreviewスキーマ契約の識別子であり、本番DB保存成功、曲ID/譜面ID確定、保存値確定として扱わない。
+- `schema_contract_scope` と `production_schema_status` はpreview専用最小スキーマ識別であり、本番DB保存成功、正式スキーマ確定、曲ID/譜面ID確定、保存値確定として扱わない。
 - `created_by_preview` はpreview生成物識別子であり、本番DB保存成功、曲ID/譜面ID確定、保存値確定として扱わない。
 - `skipped_invalid_planned_record` は planned row contractの不足や整数列不正を示し、非ready payloadをここで再判定するための語彙ではない。
 - timestampなし入力の `played_at_ms=0` は暫定値のままinsert境界へ渡す。
@@ -284,6 +286,7 @@
 - 出力先は `data/` 配下の新規SQLiteファイルに限定する。
 - 実ファイルDBの `PRAGMA user_version` は `1` にし、summary/report の `schema_version=1` と一致させる。
 - 実ファイルDBの `preview_metadata.created_by_preview` は `tools.vision_poc.m8_score_db_preview` にし、summary/report の `created_by_preview` と一致させる。
+- 実ファイルDBの `preview_metadata.schema_contract_scope` は `preview_minimal_plays`、`preview_metadata.production_schema_status` は `not_production_schema` にし、summary/report の同名欄と一致させる。
 - summary/report の `database_schema_version` と `database_preview_metadata` は実DBから読み戻した診断欄として維持し、定数のpreview識別欄と混同しない。
 - summary/report の `database_readback_matches_preview_contract` と `database_readback_mismatch_reasons` は、`database_schema_version` と `database_preview_metadata` がpreview契約と一致するかの診断欄として維持する。
 - summary/report の `database_plays_row_count` は実DBの `plays` 行数readbackとして維持し、`database_plays_row_count_matches_insert_counts` と `database_plays_row_count_mismatch_reasons` で `inserted_count` / `row_count_after_insert` との一致だけを診断する。
@@ -295,6 +298,7 @@
 - file output preview status は `inserted_to_file_preview`、`skipped_invalid_planned_record` に限る。
 - `inserted_to_file_preview` は明示指定されたpreview DBへのinsert確認であり、本番DB保存成功、曲ID/譜面ID確定、保存値確定として扱わない。
 - file output preview の `schema_version=1` はpreviewスキーマ契約の識別子であり、本番DB保存成功、曲ID/譜面ID確定、保存値確定として扱わない。
+- file output preview の `schema_contract_scope` と `production_schema_status` はpreview専用最小スキーマ識別であり、本番DB保存成功、正式スキーマ確定、曲ID/譜面ID確定、保存値確定として扱わない。
 - file output preview の `created_by_preview` はpreview生成物識別子であり、本番DB保存成功、曲ID/譜面ID確定、保存値確定として扱わない。
 - M5なしで planned rows が0件の場合は、空の `plays` スキーマDB、`preview_metadata`、readback欄、`inserted_count=0` として確認する。
 

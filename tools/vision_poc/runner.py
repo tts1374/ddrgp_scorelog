@@ -395,6 +395,8 @@ M8_SCORE_DB_PREVIEW_SCHEMA_NAME = "m8_score_db_preview"
 M8_SCORE_DB_PREVIEW_SCHEMA_VERSION = 1
 M8_SCORE_DB_PREVIEW_CREATED_BY = "tools.vision_poc.m8_score_db_preview"
 M8_SCORE_DB_PREVIEW_METADATA_TABLE = "preview_metadata"
+M8_SCORE_DB_PREVIEW_SCHEMA_CONTRACT_SCOPE = "preview_minimal_plays"
+M8_SCORE_DB_PREVIEW_PRODUCTION_SCHEMA_STATUS = "not_production_schema"
 M8_SCORE_DB_WRITE_PREVIEW_INTEGER_FIELDS = (
     "played_at_ms",
     "score",
@@ -4673,6 +4675,8 @@ def create_m8_score_db_schema(connection: sqlite3.Connection) -> None:
         "schema_version": str(M8_SCORE_DB_PREVIEW_SCHEMA_VERSION),
         "schema_version_source": "PRAGMA user_version",
         "schema_table": "plays",
+        "schema_contract_scope": M8_SCORE_DB_PREVIEW_SCHEMA_CONTRACT_SCOPE,
+        "production_schema_status": M8_SCORE_DB_PREVIEW_PRODUCTION_SCHEMA_STATUS,
     }
     connection.executemany(
         """
@@ -4785,6 +4789,8 @@ def evaluate_m8_score_db_file_output_preview_readback_contract(
         "schema_version": str(M8_SCORE_DB_PREVIEW_SCHEMA_VERSION),
         "schema_version_source": "PRAGMA user_version",
         "schema_table": "plays",
+        "schema_contract_scope": M8_SCORE_DB_PREVIEW_SCHEMA_CONTRACT_SCOPE,
+        "production_schema_status": M8_SCORE_DB_PREVIEW_PRODUCTION_SCHEMA_STATUS,
     }
     for key, expected_value in expected_metadata.items():
         actual_value = preview_metadata.get(key)
@@ -4918,6 +4924,8 @@ def summarize_m8_score_db_write_preview(
         "schema_version": M8_SCORE_DB_PREVIEW_SCHEMA_VERSION,
         "schema_version_source": "PRAGMA user_version",
         "schema_table": "plays",
+        "schema_contract_scope": M8_SCORE_DB_PREVIEW_SCHEMA_CONTRACT_SCOPE,
+        "production_schema_status": M8_SCORE_DB_PREVIEW_PRODUCTION_SCHEMA_STATUS,
         "preview_metadata_table": M8_SCORE_DB_PREVIEW_METADATA_TABLE,
         "created_by_preview": M8_SCORE_DB_PREVIEW_CREATED_BY,
         "target_count": len(row_list),
@@ -4945,6 +4953,8 @@ def summarize_m8_score_db_write_preview(
             "Rows are inserted into a fresh in-memory SQLite plays table only.",
             "created_by_preview marks this as a preview artifact only.",
             "schema_version identifies the preview schema contract only.",
+            "schema_contract_scope identifies the preview minimal plays contract only.",
+            "production_schema_status marks this as not the production schema.",
             "This is not production DB output, DB save success, confirmed IDs, or final values.",
             "timestamped and manifest inputs keep timestamp_ms as played_at_ms.",
             "played_at_ms=0 remains the timestamp-less provisional value.",
@@ -5007,6 +5017,8 @@ def summarize_m8_score_db_file_output_preview(
         "schema_version": M8_SCORE_DB_PREVIEW_SCHEMA_VERSION,
         "schema_version_source": "PRAGMA user_version",
         "schema_table": "plays",
+        "schema_contract_scope": M8_SCORE_DB_PREVIEW_SCHEMA_CONTRACT_SCOPE,
+        "production_schema_status": M8_SCORE_DB_PREVIEW_PRODUCTION_SCHEMA_STATUS,
         "preview_metadata_table": M8_SCORE_DB_PREVIEW_METADATA_TABLE,
         "created_by_preview": M8_SCORE_DB_PREVIEW_CREATED_BY,
         "database_schema_version": database_readback["database_schema_version"],
@@ -5048,6 +5060,8 @@ def summarize_m8_score_db_file_output_preview(
             "Only planned play record rows are input to this file output preview.",
             "created_by_preview marks this as a preview artifact only.",
             "schema_version identifies the preview schema contract only.",
+            "schema_contract_scope identifies the preview minimal plays contract only.",
+            "production_schema_status marks this as not the production schema.",
             "database_* readback fields are diagnostics read from the preview DB.",
             "database_readback_matches_preview_contract only compares preview identifiers.",
             "database_plays_row_count only checks preview DB row count readback.",
@@ -5081,6 +5095,8 @@ def write_m8_score_db_file_output_preview_report(
         f"- schema version: `{summary['schema_version']}`",
         f"- schema version source: `{summary['schema_version_source']}`",
         f"- schema table: `{summary['schema_table']}`",
+        f"- schema contract scope: `{summary['schema_contract_scope']}`",
+        f"- production schema status: `{summary['production_schema_status']}`",
         f"- preview metadata table: `{summary['preview_metadata_table']}`",
         f"- created by preview: `{summary['created_by_preview']}`",
         f"- database schema version readback: `{summary['database_schema_version']}`",
@@ -5163,6 +5179,8 @@ def write_m8_score_db_file_output_preview_report(
             "- 出力先は `data/` 配下の新規ファイルに限定します。",
             "- `created_by_preview` はpreview生成物であることだけを示す固定値です。",
             "- `schema_version` はpreviewスキーマ契約の識別子で、本番保存成功を意味しません。",
+            "- `schema_contract_scope` はpreview専用の最小 `plays` 契約だけを示します。",
+            "- `production_schema_status` は正式個人スコアDBスキーマではないことを示します。",
             "- `database_*` readback欄は実preview DBから読み戻した診断値で、"
             "本番保存成功を意味しません。",
             "- readback一致診断はpreview識別欄の比較だけで、"
@@ -5198,6 +5216,8 @@ def write_m8_score_db_write_preview_report(
         f"- schema version: `{summary['schema_version']}`",
         f"- schema version source: `{summary['schema_version_source']}`",
         f"- schema table: `{summary['schema_table']}`",
+        f"- schema contract scope: `{summary['schema_contract_scope']}`",
+        f"- production schema status: `{summary['production_schema_status']}`",
         f"- preview metadata table: `{summary['preview_metadata_table']}`",
         f"- created by preview: `{summary['created_by_preview']}`",
         f"- target planned rows: {summary['target_count']}",
@@ -5267,6 +5287,8 @@ def write_m8_score_db_write_preview_report(
             "- 入力は保存予定レコードに変換済みの行だけです。",
             "- `created_by_preview` はpreview生成物であることだけを示す固定値です。",
             "- `schema_version` はpreviewスキーマ契約の識別子で、本番保存成功を意味しません。",
+            "- `schema_contract_scope` はpreview専用の最小 `plays` 契約だけを示します。",
+            "- `production_schema_status` は正式個人スコアDBスキーマではないことを示します。",
             "- `payload_ready` 以外は上流の planned records で止まり、このpreviewへ入りません。",
             "- `inserted_in_memory` はin-memory fixtureへのinsert確認であり、"
             "本番DB保存成功ではありません。",
