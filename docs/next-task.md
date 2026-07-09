@@ -124,6 +124,15 @@ high
 
 次は、M8 file output preview readback診断の負例がMarkdown report上でも読みやすく見えることを固定する。実DB readback経路の metadata mismatch / row count mismatch / schema mismatch はテストで固定済みなので、次は report 生成側またはまとめ表示側を小さく補強する。
 
+次の1チャットでM8 previewを一区切りにする目安:
+
+- file output preview readback mismatch のMarkdown report fixtureを追加する。
+- 余力があれば `PRAGMA user_version` 不一致の実DB readback負例も追加する。
+- そのうえで、M8 preview完了扱いにできる範囲を `docs/implementation-roadmap.md` または関連design docsに短く反映する。
+- M8 preview完了とは、`m8_save_payload_preview.*`、`m8_planned_play_records.*`、`m8_score_db_write_preview.*`、明示file output preview、readback診断が揃った状態を指す。
+- M8 preview完了後の次フェーズは、正式個人スコアDBスキーマ設計、migration方針、本番insert境界、duplicate key本格化、保存成功/スキップログの設計に移る。
+- ただし次チャットでは、正式個人スコアDB保存の実装へ踏み込まず、M8 preview完了宣言に必要な最小のテスト/README/docs整理までで止める。
+
 第一候補:
 
 - 実DB readback負例fixtureで得たsummaryを `write_m8_score_db_file_output_preview_report` に渡す。
@@ -178,6 +187,9 @@ M4/M5境界やmaster DB生成へ触った場合は、`tests\test_master_match.py
 ## 完了条件
 
 - M8 file output preview readback診断のreport表示fixture、または残りの実DB readback負例fixtureが追加されている。
+- M8 previewを一区切りにするか、まだ残すかが `docs/next-task.md` と必要な設計docs上で明確になっている。
+- M8 previewを一区切りにする場合、次フェーズが正式個人スコアDBスキーマ設計・migration方針・本番insert境界・duplicate key本格化・保存成功/スキップログ設計であることが明記されている。
+- 正式個人スコアDB保存の実装にはまだ踏み込んでいない。
 - 実DB readback経路による metadata mismatch / row count mismatch / schema mismatch fixtureが維持されている。
 - `play_id` と `created_at` がplanned row contractへ混ざっていない。
 - preview `plays` のinsert対象列が `M8_PLANNED_PLAY_RECORD_FIELDNAMES` と同じ順序で維持されている。
