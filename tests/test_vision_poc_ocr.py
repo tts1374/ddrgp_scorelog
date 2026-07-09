@@ -3270,6 +3270,238 @@ def test_m8_score_db_output_cli_writes_empty_schema_for_no_m5_planned_rows(
     assert metadata_value == "tools.vision_poc.m8_score_db_preview"
 
 
+def test_m8_score_db_output_cli_with_m5_inserts_planned_rows(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    manifest_path = write_m8_cli_manifest_fixture(tmp_path, monkeypatch)
+    output_dir = tmp_path / "output"
+    output_db_path = Path("data/m8_cli/m5-preview.sqlite")
+    master_db_path = tmp_path / "master.sqlite"
+    master_db_path.write_bytes(b"fixture-db-exists")
+
+    def m3_save_candidate_rows_synthetic(
+        frames: list[runner.FrameInput],
+        events: list[runner.ResultEvent],
+        _holdout_rows: object,
+        _adoption_summary: object,
+        _song_artist_results: object,
+    ) -> list[dict[str, str]]:
+        rows: list[dict[str, str]] = []
+        for frame, event in zip(frames, events, strict=True):
+            if not runner.is_save_candidate_event(event):
+                continue
+            row = {
+                "frame_index": str(event.frame_index),
+                "organized_file": frame.row["organized_file"],
+                "screen_type": frame.row.get("screen_type", ""),
+                "event_type": event.event_type,
+                "confirmed_result": str(event.confirmed_result),
+                "duplicate": str(event.duplicate),
+                "timestamp_ms": "" if event.timestamp_ms is None else str(event.timestamp_ms),
+                "confirmation_mode": event.confirmation_mode,
+            }
+            for field_name in runner.M3_SAVE_CANDIDATE_FIELDS:
+                status = "empty_ocr" if field_name in {"song_title", "artist"} else "ready"
+                row[f"{field_name}_status"] = status
+                row[f"{field_name}_failure_reason"] = (
+                    "synthetic_ocr_not_needed_for_m5_fixture"
+                    if status != "ready"
+                    else ""
+                )
+                row[f"{field_name}_expected_value"] = ""
+                row[f"{field_name}_extracted_value"] = ""
+                row[f"{field_name}_extractor"] = "synthetic-fixture"
+            row["overall_status"] = "not_ready"
+            row["blocking_fields"] = "song_title artist"
+            rows.append(row)
+        return rows
+
+    def process_m7a_digit_roi_synthetic(
+        _image: Image.Image,
+        frame: runner.FrameInput,
+        event: runner.ResultEvent,
+        roi_name: str,
+        _templates: object,
+    ) -> runner.M7aDigitRecognitionResult:
+        digits_by_roi = {
+            "score_digits": "123456",
+            "max_combo": "321",
+            "marvelous": "400",
+            "perfect": "30",
+            "great": "20",
+            "good": "10",
+            "miss": "1",
+            "ex_score": "789",
+        }
+        expected_value = runner.expected_ocr_value_from_row(frame.row, roi_name)
+        recognized_digits = digits_by_roi[roi_name]
+        return runner.M7aDigitRecognitionResult(
+            organized_file=frame.row["organized_file"],
+            screen_type=frame.row.get("screen_type", ""),
+            event_type=event.event_type,
+            confirmed_result=event.confirmed_result,
+            duplicate=event.duplicate,
+            roi_name=roi_name,
+            method=runner.M7A_DIGIT_RECOGNITION_METHOD,
+            recognized_digits=recognized_digits,
+            expected_value=expected_value,
+            match=(
+                None
+                if not expected_value
+                else runner.ocr_digits_match(recognized_digits, expected_value)
+            ),
+            status="recognized",
+            failure_reason="",
+            distance=0.0,
+            confidence=1.0,
+            segment_count=len(recognized_digits),
+            template_count=10,
+            per_digit_distances="0.0000",
+        )
+
+    def jacket_match_rows_synthetic(
+        input_rows: list[dict[str, str]],
+        *_args: object,
+        **_kwargs: object,
+    ) -> list[dict[str, str]]:
+        rows: list[dict[str, str]] = []
+        for input_row in input_rows:
+            row = {field: "" for field in runner.master_match.JACKET_MATCH_FIELDNAMES}
+            row.update(
+                {
+                    "frame_index": input_row.get("frame_index", ""),
+                    "organized_file": input_row.get("organized_file", ""),
+                    "expected_song_title": "Fixture Song",
+                    "input_play_style": "SINGLE",
+                    "input_difficulty": "BASIC",
+                    "input_level": "6",
+                    "candidate_song_count": "1",
+                    "candidate_chart_count": "1",
+                    "candidate_feature_count": "1",
+                    "top_song_id": "song_fixture",
+                    "top_chart_id": "chart_fixture_single_basic",
+                    "top_title": "Fixture Song",
+                    "top_score": "1.0000",
+                    "top_distance": "0.0000",
+                    "top_feature_source": "synthetic-fixture",
+                    "identity_signal_status": "jacket_resolved_candidate",
+                    "identity_signal_source": "jacket_feature",
+                    "identity_signal_song_id": "song_fixture",
+                    "identity_signal_chart_id": "chart_fixture_single_basic",
+                    "identity_signal_title": "Fixture Song",
+                    "identity_signal_reason": "jacket_feature_unique_candidate",
+                    "jacket_match_status": "matched",
+                    "failure_reason": "",
+                }
+            )
+            rows.append(row)
+        return rows
+
+    monkeypatch.setattr(runner, "m3_save_candidate_rows", m3_save_candidate_rows_synthetic)
+    monkeypatch.setattr(runner, "process_m7a_digit_roi", process_m7a_digit_roi_synthetic)
+    monkeypatch.setattr(runner, "build_m5_jacket_feature_master_rows", lambda *_args: ([], []))
+    monkeypatch.setattr(runner, "build_m5_title_feature_master_entries", lambda *_args: [])
+    monkeypatch.setattr(
+        runner.master_match,
+        "match_jacket_save_candidate_rows",
+        jacket_match_rows_synthetic,
+    )
+    monkeypatch.setattr(
+        runner.master_match,
+        "jacket_reference_coverage_rows",
+        lambda *_args, **_kwargs: [],
+    )
+    monkeypatch.setattr(
+        runner.master_match,
+        "write_jacket_reference_coverage_outputs",
+        lambda *_args, **_kwargs: {"missing_feature_candidate_songs": 0},
+    )
+
+    assert (
+        runner.main(
+            [
+                "--sequence-mode",
+                "manifest",
+                "--frame-manifest",
+                str(manifest_path),
+                "--frame-root",
+                str(tmp_path / "frames"),
+                "--output",
+                str(output_dir),
+                "--m5-jacket-match",
+                "--master-db",
+                str(master_db_path),
+                "--m7a-digit-recognition",
+                "--m7a-digit-rois",
+                "score_digits",
+                "max_combo",
+                "marvelous",
+                "perfect",
+                "great",
+                "good",
+                "miss",
+                "ex_score",
+                "--no-ocr",
+                "--no-rois",
+                "--m8-score-db-output",
+                str(output_db_path),
+            ]
+        )
+        == 0
+    )
+
+    payload_summary = json.loads(
+        (output_dir / "m8_save_payload_preview.json").read_text(encoding="utf-8")
+    )
+    assert payload_summary["payload_status_counts"] == {"payload_ready": 1}
+    planned_summary = json.loads(
+        (output_dir / "m8_planned_play_records.json").read_text(encoding="utf-8")
+    )
+    assert planned_summary["planned_record_count"] == 1
+
+    summary = json.loads(
+        (output_dir / "m8_score_db_file_output_preview.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert summary["target_count"] == 1
+    assert summary["inserted_count"] == 1
+    assert summary["row_count_after_insert"] == 1
+    assert summary["schema_version"] == 1
+    assert summary["created_by_preview"] == "tools.vision_poc.m8_score_db_preview"
+    assert summary["database_schema_version"] == 1
+    assert summary["database_preview_metadata"]["created_by_preview"] == (
+        "tools.vision_poc.m8_score_db_preview"
+    )
+    assert summary["database_readback_matches_preview_contract"] is True
+    assert summary["database_readback_mismatch_reasons"] == []
+    assert summary["write_preview_status_counts"] == {"inserted_to_file_preview": 1}
+
+    with sqlite3.connect(output_db_path) as connection:
+        stored_row = connection.execute(
+            """
+            SELECT played_at_ms, song_id, chart_id, score, max_combo, ex_score,
+                   source_organized_file, identity_signal_source,
+                   m5_identity_signal_status, m5_jacket_match_status
+            FROM plays
+            """
+        ).fetchone()
+    assert stored_row == (
+        1000,
+        "song_fixture",
+        "chart_fixture_single_basic",
+        123456,
+        321,
+        789,
+        "result_score123456_c.png",
+        "jacket_feature",
+        "jacket_resolved_candidate",
+        "matched",
+    )
+
+
 def test_m7a_digit_save_candidate_summary_keeps_status_vocabulary(
     tmp_path: Path,
 ) -> None:
