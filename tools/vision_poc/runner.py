@@ -4762,6 +4762,36 @@ def read_m8_score_db_file_output_preview_metadata(
     }
 
 
+def evaluate_m8_score_db_file_output_preview_readback_contract(
+    database_readback: dict[str, object],
+) -> tuple[bool, list[str]]:
+    reasons: list[str] = []
+    database_schema_version = database_readback.get("database_schema_version")
+    if database_schema_version != M8_SCORE_DB_PREVIEW_SCHEMA_VERSION:
+        reasons.append("database_schema_version_mismatch")
+
+    preview_metadata = database_readback.get("database_preview_metadata", {})
+    if not isinstance(preview_metadata, dict):
+        return False, [
+            *reasons,
+            "database_preview_metadata_not_object",
+        ]
+
+    expected_metadata = {
+        "created_by_preview": M8_SCORE_DB_PREVIEW_CREATED_BY,
+        "schema_name": M8_SCORE_DB_PREVIEW_SCHEMA_NAME,
+        "schema_version": str(M8_SCORE_DB_PREVIEW_SCHEMA_VERSION),
+        "schema_version_source": "PRAGMA user_version",
+        "schema_table": "plays",
+    }
+    for key, expected_value in expected_metadata.items():
+        actual_value = preview_metadata.get(key)
+        if actual_value != expected_value:
+            reasons.append(f"database_preview_metadata.{key}_mismatch")
+
+    return not reasons, reasons
+
+
 def m8_score_db_write_preview_rows(
     planned_rows: Iterable[dict[str, str]],
 ) -> list[dict[str, str]]:
@@ -4938,6 +4968,10 @@ def summarize_m8_score_db_file_output_preview(
             representative_limit,
         )
     inserted_count = status_counts.get("inserted_to_file_preview", 0)
+    (
+        database_readback_matches_preview_contract,
+        database_readback_mismatch_reasons,
+    ) = evaluate_m8_score_db_file_output_preview_readback_contract(database_readback)
     return {
         "target_boundary": "m8 planned play record rows",
         "scope": "M8 explicit score DB file output preview",
@@ -4952,6 +4986,10 @@ def summarize_m8_score_db_file_output_preview(
         "created_by_preview": M8_SCORE_DB_PREVIEW_CREATED_BY,
         "database_schema_version": database_readback["database_schema_version"],
         "database_preview_metadata": database_readback["database_preview_metadata"],
+        "database_readback_matches_preview_contract": (
+            database_readback_matches_preview_contract
+        ),
+        "database_readback_mismatch_reasons": database_readback_mismatch_reasons,
         "target_count": len(row_list),
         "insert_target_count": inserted_count,
         "inserted_count": inserted_count,
@@ -4979,6 +5017,7 @@ def summarize_m8_score_db_file_output_preview(
             "created_by_preview marks this as a preview artifact only.",
             "schema_version identifies the preview schema contract only.",
             "database_* readback fields are diagnostics read from the preview DB.",
+            "database_readback_matches_preview_contract only compares preview identifiers.",
             "This is not production DB save success, confirmed IDs, or final values.",
             "song_id and chart_id remain identity_signal candidate observations.",
             "Digit values remain copied M7a recognized_digits candidates.",
@@ -5014,6 +5053,10 @@ def write_m8_score_db_file_output_preview_report(
         f"- database schema version readback: `{summary['database_schema_version']}`",
         f"- database preview metadata readback: "
         f"`{json.dumps(summary['database_preview_metadata'], ensure_ascii=False)}`",
+        f"- database readback matches preview contract: "
+        f"`{summary['database_readback_matches_preview_contract']}`",
+        f"- database readback mismatch reasons: "
+        f"`{json.dumps(summary['database_readback_mismatch_reasons'], ensure_ascii=False)}`",
         f"- target planned rows: {summary['target_count']}",
         f"- insert target count: {summary['insert_target_count']}",
         f"- inserted count: {summary['inserted_count']}",
@@ -5084,6 +5127,8 @@ def write_m8_score_db_file_output_preview_report(
             "- `schema_version` はpreviewスキーマ契約の識別子で、本番保存成功を意味しません。",
             "- `database_*` readback欄は実preview DBから読み戻した診断値で、"
             "本番保存成功を意味しません。",
+            "- readback一致診断はpreview識別欄の比較だけで、"
+            "本番保存成功や保存値確定を意味しません。",
             "- 入力は保存予定レコードに変換済みの行だけです。",
             "- `payload_ready` 以外は上流の planned records で止まり、このpreviewへ入りません。",
             "- `inserted_to_file_preview` は明示指定されたpreview DBへのinsert確認であり、"
