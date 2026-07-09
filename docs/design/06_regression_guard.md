@@ -256,7 +256,7 @@
 - `m8_planned_play_records.csv`、`m8_planned_play_records.json`、`m8_planned_play_records.md` は、`m8_save_payload_preview_rows` を入力にする。
 - 保存予定レコードへ変換するのは `payload_preview_status=payload_ready` の行だけにする。
 - `unsupported_preview_status`、`missing_identity_candidate`、`missing_digit_value` は保存予定レコードへ変換しない。
-- 最小 `plays` スキーマは in-memory SQLite fixtureで検証し、実ファイルDBは生成しない。
+- 最小 `plays` スキーマは in-memory SQLite fixtureで検証する。実ファイルDBは `--m8-score-db-output` 明示時だけ生成する。
 - `played_at_ms` は `timestamp_ms` 由来の暫定値で、timestampなし入力では `0` として扱う。
 - `song_id` / `chart_id` はM5候補観測であり、曲ID/譜面ID確定として扱わない。
 - `score`、`max_combo`、`marvelous`、`perfect`、`great`、`good`、`miss`、`ex_score` はM7a候補値であり、保存値確定として扱わない。
@@ -272,6 +272,17 @@
 - `inserted_in_memory` はDB insert境界のdry-run確認であり、本番DB保存成功、曲ID/譜面ID確定、保存値確定として扱わない。
 - `skipped_invalid_planned_record` は planned row contractの不足や整数列不正を示し、非ready payloadをここで再判定するための語彙ではない。
 - timestampなし入力の `played_at_ms=0` は暫定値のままinsert境界へ渡す。
+
+## M8 score DB file output preview
+
+- `--m8-score-db-output` は `--m7a-digit-recognition` と一緒に明示された場合だけ有効にする。
+- 出力先は `data/` 配下の新規SQLiteファイルに限定する。
+- 既定実行、`--m7a-digit-recognition` だけの実行、M5なし実行では実ファイルDBへ保存予定レコードをinsertしない。
+- 入力は `m8_planned_play_records_rows` だけにする。
+- 非ready payload、M5未実行、identity不足、digit不足の行をfile output側で再判定しない。
+- file output preview status は `inserted_to_file_preview`、`skipped_invalid_planned_record` に限る。
+- `inserted_to_file_preview` は明示指定されたpreview DBへのinsert確認であり、本番DB保存成功、曲ID/譜面ID確定、保存値確定として扱わない。
+- M5なしで planned rows が0件の場合は、空の `plays` スキーマDBと `inserted_count=0` として確認する。
 
 ## ROI方針
 

@@ -305,6 +305,8 @@ M8の保存予定レコードプレビューでは、`m8_save_payload_preview_ro
 
 M8のscore DB write previewでは、上記の保存予定レコードだけを新規 in-memory SQLite `plays` へinsertする。summaryでは `insert_target_count`、`inserted_count`、`row_count_after_insert`、`excluded_count` を出し、write preview status は `inserted_in_memory` / `skipped_invalid_planned_record` に限定する。これはDB insert境界のdry-run確認であり、実ファイルDB生成、本番DB保存成功、曲ID/譜面ID確定、保存値確定を意味しない。非ready payloadは上流で保存予定レコードへ変換されないため、このpreviewの入力にならない。
 
+M8のscore DB file output previewでは、`--m8-score-db-output` を明示した場合だけ、保存予定レコードを `data/` 配下の新規SQLiteファイルへinsertする。テーブルは同じ最小 `plays` スキーマを使い、summaryでは `database_kind=file sqlite under data/`、`insert_target_count`、`inserted_count`、`row_count_after_insert`、`excluded_count` を出す。file output preview status は `inserted_to_file_preview` / `skipped_invalid_planned_record` に限定する。これは明示オプション付きの実ファイル出力境界確認であり、本番DB保存成功、曲ID/譜面ID確定、保存値確定を意味しない。既定実行や `--m7a-digit-recognition` だけの実行では実ファイルDBを生成しない。
+
 ## 重複保存防止
 
 PoCでは簡易 `duplicate_key` を使うが、本番では以下を組み合わせる。

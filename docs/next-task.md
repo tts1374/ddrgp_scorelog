@@ -8,47 +8,52 @@ high
 
 ## 作業ブランチ
 
-今回の作業ブランチは `codex/m8-timestamped-write-preview` です。
+今回の作業ブランチは `codex/m8-file-db-output-preview` です。
 
 次の主作業もM8の続きです。作業開始時に以下を確認してください。
 
 - `git status --short --branch`
 - `git log --oneline -5`
-- このM8 timestamped write preview PRがmerge済みなら、最新 `main` から `codex/m8-file-db-output-preview` を作る。
-- 未mergeなら、`codex/m8-timestamped-write-preview` の先端を取り込んでから新ブランチを作るか、このPRのmergeを待つ。
+- このM8 file DB output preview PRがmerge済みなら、最新 `main` から `codex/m8-score-db-schema-preview` を作る。
+- 未mergeなら、`codex/m8-file-db-output-preview` の先端を取り込んでから新ブランチを作るか、このPRのmergeを待つ。
 - `metadata.csv`、`data/`、`logs/`、ローカル素材、ローカルDBがコミット対象に入っていないこと。
 
 ## 今回までの作業結果
 
-- M8 timestamped / manifest 相当の時刻境界fixtureを追加した。
-- `m8_save_payload_preview_rows` へ渡す最小の `preview_save_candidate` 行だけで、画像、ネットワーク、`metadata.csv`、ローカルDBに依存しないテストにした。
-- `confirmation_mode=time` と `timestamp_ms=345678` が payload summary、planned rows、planned CSV、planned summary representative、write preview rows、write preview CSV、write preview summary representative まで保持されることを固定した。
-- timestampなし入力では `played_at_ms=0` の暫定値を維持することを同じfixtureで固定した。
-- `source_confirmation_mode` は timestamped / manifest 相当では `time`、timestampなし相当では `frames` のまま planned / write preview へ渡る。
-- `m8_planned_play_records.json` と `m8_score_db_write_preview.json` の `reading_notes` に、timestamped / manifest 入力では `timestamp_ms` を `played_at_ms` として保持し、timestampなし入力では `played_at_ms=0` を暫定値として扱うことを追記した。
-- 実ファイルDB生成、明示オプション、本番insert、常時保存、低信頼度ログ本番仕様にはまだ進んでいない。
-- `inserted_in_memory` は引き続きDB保存成功、曲ID/譜面ID確定、保存値確定ではない。
+- `--m8-score-db-output data\...\ddrgp-scores.sqlite` を追加し、明示された場合だけ実ファイルSQLiteへ書くM8 file output previewを実装した。
+- 出力先は `data/` 配下の新規ファイルに限定した。`data/` 外と既存ファイルへの書き込みは拒否する。
+- `--m8-score-db-output` は `--m7a-digit-recognition` とセットでのみ使える。
+- 入力は `m8_planned_play_records_rows` に限定し、非ready payload、M5未実行、identity不足、digit不足をfile output側で再判定しない。
+- file output preview summary / Markdown は `m8_score_db_file_output_preview.json` と `m8_score_db_file_output_preview.md` として出す。
+- file output preview status は `inserted_to_file_preview` と `skipped_invalid_planned_record`。`inserted_to_file_preview` は明示指定されたpreview DBへのinsert確認であり、本番DB保存成功、曲ID/譜面ID確定、保存値確定ではない。
+- 既定実行、`--m7a-digit-recognition` だけの実行、M5なし実行では保存予定レコードがfile outputへ進まない境界をテストで固定した。
+- M5なし相当のfile output previewでは、planned rows 0件の空 `plays` スキーマDBと `inserted_count=0` を確認する。
+- `docs/design/03_event_and_save_boundary.md`、`04_data_model.md`、`05_storage_io_spec.md`、`06_regression_guard.md`、`docs/implementation-roadmap.md`、`tools/vision_poc/README.md` に、明示オプション、`data/` 制限、本番保存ではない読み方を反映した。
+- 生成した `data/vision_poc_m8_file_output_preview/ddrgp-scores.sqlite` はローカルDBであり、コミット対象外。
 
 2026-07-09時点のローカル確認:
 
-- `python -m pytest tests\test_vision_poc_ocr.py -k "m8"`: 3 passed。
-- `python -m pytest tests\test_vision_poc_ocr.py -k "m7_save_decision or m7_save_readiness or m7a or m8"`: 54 passed。
+- `python -m pytest tests\test_vision_poc_ocr.py -k "m8"`: 6 passed。
+- `python -m pytest tests\test_vision_poc_ocr.py -k "m7_save_decision or m7_save_readiness or m7a or m8"`: 57 passed。
 - `python -m ruff check tools\vision_poc pyproject.toml tests`: passed。
 - `python -m compileall master tools\vision_poc`: passed。
-- `python -m pytest tests`: 189 passed。
+- `python -m pytest tests`: 192 passed。
 - M5なし:
   - `python -m tools.vision_poc --m7a-digit-recognition --m7a-digit-rois score_digits max_combo marvelous perfect great good miss ex_score --no-ocr --no-rois --output data\vision_poc_m7_save_readiness`
   - 分類: 221/221 correct、false positives 0、false negatives 0。
   - `m8_planned_play_records.json`: `target_count=60`、`planned_record_count=0`、`excluded_payload_status_counts={"unsupported_preview_status":60}`。
-  - `m8_score_db_write_preview.json`: `target_count=0`、`insert_target_count=0`、`inserted_count=0`、`row_count_after_insert=0`、`excluded_count=0`、`write_preview_status_counts={}`。
+  - `m8_score_db_write_preview.json`: `target_count=0`、`insert_target_count=0`、`inserted_count=0`、`row_count_after_insert=0`。
 - M5あり:
   - `python -m tools.vision_poc --m5-jacket-match --m7a-digit-recognition --m7a-digit-rois score_digits max_combo marvelous perfect great good miss ex_score --no-ocr --no-rois --output data\vision_poc_m7_m5_readiness`
   - 分類: 221/221 correct、false positives 0、false negatives 0。
   - M5 jacket match: features 69、candidates 60、diagnostics 118。
-  - `m8_planned_play_records.json`: `target_count=60`、`planned_record_count=60`、`excluded_payload_status_counts={}`。
-  - `m8_score_db_write_preview.json`: `target_count=60`、`insert_target_count=60`、`inserted_count=60`、`row_count_after_insert=60`、`excluded_count=0`、`write_preview_status_counts={"inserted_in_memory":60}`。
+  - `m8_planned_play_records.json`: `target_count=60`、`planned_record_count=60`。
+  - `m8_score_db_write_preview.json`: `target_count=60`、`inserted_count=60`、`row_count_after_insert=60`、`write_preview_status_counts={"inserted_in_memory":60}`。
+- 明示file output:
+  - `python -m tools.vision_poc --m5-jacket-match --m7a-digit-recognition --m7a-digit-rois score_digits max_combo marvelous perfect great good miss ex_score --no-ocr --no-rois --output data\vision_poc_m8_file_output_preview --m8-score-db-output data\vision_poc_m8_file_output_preview\ddrgp-scores.sqlite`
+  - `m8_score_db_file_output_preview.json`: `target_count=60`、`inserted_count=60`、`row_count_after_insert=60`、`write_preview_status_counts={"inserted_to_file_preview":60}`。
+  - DB実体の `plays` 行数: 60。
 - `python -m tools.vision_poc --no-ocr`: 221/221 correct。
-- `git diff --check`: passed。
 
 ## 必読資料
 
@@ -83,7 +88,8 @@ high
 - Windows常駐アプリUI
 - 既定自動保存、常時保存処理、本番用の自動DB insert
 - 低信頼度ログ本番仕様
-- `payload_ready`、保存予定レコード、DB write preview、実ファイルDB出力プレビューを保存OK、DB保存成功、曲ID/譜面ID確定、保存値確定として扱うこと
+- file output previewを本番DB保存成功、曲ID/譜面ID確定、保存値確定として扱うこと
+- `payload_ready`、保存予定レコード、DB write previewを保存OK、DB保存成功、曲ID/譜面ID確定、保存値確定として扱うこと
 - M5 `identity_signal_*` から曲ID/譜面IDを保存用確定すること
 - M7aの `recognized_digits` を保存値確定として扱うこと
 - OCR結果やM7a認識結果から保存値を本番確定すること
@@ -93,36 +99,33 @@ high
 - M4 Releases配布の実装
 - プロジェクト専用Skill/Subagentの作成
 
-M7a/M5/M7/M8 dry-runで完了済みとして扱い、次チャットで蒸し返さないもの:
+完了済みとして蒸し返さないもの:
 
 - M7a 8 ROIの数字認識入口
-- M7a横持ち集約
 - M7 readiness / M7 decision preview
-- `m8_save_payload_preview.*` のCSV / JSON / Markdown出力
-- `m8_planned_play_records.*` のCSV / JSON / Markdown出力
-- `m8_score_db_write_preview.*` のCSV / JSON / Markdown出力
-- payload / planned / write preview の timestamped / manifest 相当 `played_at_ms` fixture
+- `m8_save_payload_preview.*`、`m8_planned_play_records.*`、`m8_score_db_write_preview.*`
+- `--m8-score-db-output` による明示file output preview
 - `payload_ready` 以外を保存予定レコードへ変換しない境界
-- 保存予定レコード以外を DB write preview へ入力しない境界
-- `plays` 最小スキーマの in-memory fixture
+- 保存予定レコード以外を DB write preview / file output preview へ入力しない境界
+- `plays` 最小スキーマの in-memory fixtureとfile output fixture
 
 ## 次に必ず進める実作業
 
-次は、実ファイルDBへの既定自動保存ではなく、明示オプション付きの実ファイルDB出力プレビューを小さく設計・実装する。
+次は、M8 file output previewの読み方を保ったまま、正式スキーマ前の小さなスキーマ識別足場を追加する。
 
 第一候補:
 
-- CLIに明示オプションを追加する。名前は例として `--m8-score-db-output data\...\ddrgp-scores.sqlite` のように、指定された場合だけ実ファイルDBへ書く。
-- 出力先は必ず `data/` 配下に限定し、`data/` 外や既存の任意DBへの誤書き込みを拒否する。
-- 既定実行、`--m7a-digit-recognition` だけの実行、M5なし実行では実ファイルDBを作らない。
-- 入力は `m8_planned_play_records_rows` に限定し、非ready payloadを実ファイルDB出力側で再判定しない。
-- まずは既存 in-memory `plays` 最小スキーマと同じ列でよい。`schema_version` や `source_timestamp_ms` を足す場合は、fixtureとdocsで意味を固定する。
-- テストは `tmp_path` 内に `data/...` を作り、DBファイルが生成されるケース、`data/` 外を拒否するケース、M5なしでinsert 0件になるケースを固定する。
-- 実ファイルDB出力も本番保存成功、曲ID/譜面ID確定、保存値確定ではないことを JSON / Markdown / docs に明記する。
+- `plays` 最小スキーマのpreview版として、DBまたはsummaryで `schema_version` を固定する。候補は `PRAGMA user_version`、`score_db_metadata` テーブル、または JSON / Markdown summary の `schema_version`。実装する場合はテストとdocsで意味を固定する。
+- `source_timestamp_ms` を足す場合は、既存の `played_at_ms` 暫定仕様と混同しないようにする。timestamped / manifest は元の `timestamp_ms` を保持し、timestampなしは空または `0` のどちらかを仕様化する。
+- `source_confirmation_mode` は既存列のまま維持し、`time` / `frames` の境界を壊さない。
+- `--m8-score-db-output` なしではDBファイルを作らないことを維持する。
+- 出力先は引き続き `data/` 配下の新規ファイルに限定する。
+- テストは `tmp_path` 内に `data/...` を作り、schema version / metadata / timestamp保持、`data/` 外拒否、0件insertの読み方を固定する。
+- docs/READMEでは、schema versionやmetadataも本番保存成功、曲ID/譜面ID確定、保存値確定ではないことを明記する。
 
 代替候補:
 
-- 実ファイルDB出力に入る前に、`plays` 最小スキーマへ `schema_version`、`source_timestamp_ms`、`source_confirmation_mode` の扱いをfixtureで追加固定する。ただしdocs整理だけで終えず、コードまたはテストの実行可能な成果物変更を含める。
+- 本番insertへ進む前に、file output previewのCLIエラー境界を強化する。例: 既存ファイル拒否、`--m8-score-db-output` 単独指定拒否、`data/` 外拒否、M5なし0件insertをCLI寄りのfixtureで固定する。ただしdocs整理だけで終えず、コードまたはテストの実行可能な成果物変更を含める。
 
 主作業完了後、今回の結果を踏まえて `docs/next-task.md` を次チャット用に更新する。
 
@@ -141,11 +144,14 @@ python -m pytest tests
 git diff --check
 ```
 
-実ファイルDB出力オプションを追加した場合は、追加で以下を確認する:
+M8 file output previewやschema versionを触った場合は、追加で以下を確認する:
 
 ```powershell
 python -m pytest tests\test_vision_poc_ocr.py -k "m8"
+python -m tools.vision_poc --m5-jacket-match --m7a-digit-recognition --m7a-digit-rois score_digits max_combo marvelous perfect great good miss ex_score --no-ocr --no-rois --output data\vision_poc_m8_file_output_preview --m8-score-db-output data\vision_poc_m8_file_output_preview\ddrgp-scores.sqlite
 ```
+
+上記file output確認は、同じDBファイルが既に存在すると拒否される。再実行する場合は別の `data/` 配下パスを使うか、生成物であることを確認してから掃除する。DBファイルはコミットしない。
 
 M4/M5境界やmaster DB生成へ触った場合は、`tests\test_master_match.py`、`tests\test_master_builder.py`、M5 jacket match のPoC実行も再確認すること。
 
@@ -156,27 +162,25 @@ M4/M5境界やmaster DB生成へ触った場合は、`tests\test_master_match.py
 - `samples/screenshots/organized/digit_templates/` などのM7aテンプレート画像はコミットしない。
 - `docs/next-task.md` は引き継ぎ仕様としてコミット対象に含める。
 - コード、README、docs、テストに変更がある場合のみ、今回作業分だけをステージしてコミットする。
-- `data/master/ddrgp-master.sqlite`、`data/master/master-summary.json`、M5/M7a/M7/M8 PoC出力、ROI画像、OCR画像、解析ログはステージしない。
-- 次作業でローカル個人スコアDBを生成した場合も、DBファイルはステージしない。
+- `data/master/ddrgp-master.sqlite`、`data/master/master-summary.json`、M5/M7a/M7/M8 PoC出力、ROI画像、OCR画像、解析ログ、`ddrgp-scores.sqlite` はステージしない。
 - 仕様語彙、出力ファイル名、summaryの読み方、保存境界、OCR/M7a/M7/M8対象境界を変えた場合は、関連する `docs/design/` または `tools/vision_poc/README.md` を同じコミットに含める。
 - コミットがある場合は作業ブランチをpushする。
 
 ## 完了条件
 
-- `m8_score_db_write_preview_rows` の入力が `m8_planned_play_records_rows` に限定されている。
-- `unsupported_preview_status`、`missing_identity_candidate`、`missing_digit_value` が保存予定レコードやDB write previewへ進まない。
-- timestamped / manifest 相当の `confirmation_mode=time` と `played_at_ms` が planned rows / write preview まで保持される。
+- `m8_score_db_write_preview_rows` とfile output previewの入力が `m8_planned_play_records_rows` に限定されている。
+- `unsupported_preview_status`、`missing_identity_candidate`、`missing_digit_value` が保存予定レコード、DB write preview、file output previewへ進まない。
+- timestamped / manifest 相当の `confirmation_mode=time` と `played_at_ms` が planned rows / write preview / file output preview まで保持される。
 - timestampなし入力の `played_at_ms=0` 暫定仕様が壊れていない。
-- 実ファイルDBへ書く場合は明示オプションで `data/` 配下に限定され、DBファイルをコミットしていない。
+- 実ファイルDBへ書く場合は明示オプションで `data/` 配下の新規ファイルに限定され、DBファイルをコミットしていない。
 - 明示オプションなしの既定実行では実ファイルDBを生成しない。
-- 実ファイルDB出力プレビューも、DB保存成功、曲ID/譜面ID確定、保存値確定として扱われていない。
-- `payload_ready`、保存予定レコード、DB write previewがDB保存成功、曲ID/譜面ID確定、保存値確定として扱われていない。
+- file output previewも、DB保存成功、曲ID/譜面ID確定、保存値確定として扱われていない。
 - `identity_signal_*`、`m5_identity_reviewable`、`blocked_identity_signal` が曲ID/譜面ID確定として扱われていない。
 - M7aの `recognized_digits`、`expected_value`、`match` が保存値確定として扱われていない。
 - 既存の `m7_save_readiness_review.*`、`m7_save_decision_preview.*`、`m8_save_payload_preview.*`、`m8_planned_play_records.*`、`m8_score_db_write_preview.*` のCSV列や意味を壊していない。
 - duplicate、`rejected_transition`、未確定候補、non-result が上流対象外のまま。
-- M5あり実行では、M5 identity reviewable + M7a all digits の行が `preview_save_candidate`、`payload_ready`、保存予定レコード、in-memory write previewへ進む。
-- M5未実行時は、preview上で `blocked_readiness` または `needs_identity_review` として止まり、M8 payload ready / 保存予定レコード / write preview対象にならない。
+- M5あり実行では、M5 identity reviewable + M7a all digits の行が `preview_save_candidate`、`payload_ready`、保存予定レコード、in-memory write preview、明示file output previewへ進む。
+- M5未実行時は、preview上で `blocked_readiness` または `needs_identity_review` として止まり、M8 payload ready / 保存予定レコード / write preview / file output preview対象にならない。
 - M7a 8 ROI 480/480 matchを壊していない。
 - 既存Tesseract OCR出力を壊していない。
 - M5の通常候補、診断出力、coverage summary、`identity_signal_*` の意味を変更していない。

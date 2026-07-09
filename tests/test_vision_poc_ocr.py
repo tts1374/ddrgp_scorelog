@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import json
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -2841,6 +2842,142 @@ def test_m8_score_db_write_preview_skips_invalid_planned_rows() -> None:
     assert summary["write_preview_status_counts"] == {
         "skipped_invalid_planned_record": 1
     }
+
+
+def test_m8_score_db_file_output_preview_writes_explicit_data_db(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    output_db_path = Path("data/m8_preview/ddrgp-scores.sqlite")
+    planned_row = {
+        field: "1" for field in runner.M8_PLANNED_PLAY_RECORD_FIELDNAMES
+    }
+    planned_row.update(
+        {
+            "played_at_ms": "345678",
+            "song_id": "song_make",
+            "chart_id": "chart_make_single_difficult",
+            "score": "987650",
+            "max_combo": "456",
+            "marvelous": "700",
+            "perfect": "50",
+            "great": "4",
+            "good": "1",
+            "miss": "0",
+            "ex_score": "1450",
+            "source_organized_file": "result_make.png",
+            "source_confirmation_mode": "time",
+            "analysis_payload_status": "payload_ready",
+            "identity_signal_source": "jacket_feature",
+            "m5_identity_signal_status": "jacket_resolved_candidate",
+            "m5_jacket_match_status": "matched",
+        }
+    )
+
+    summary = runner.write_m8_score_db_file_output_preview(
+        output_db_path,
+        [planned_row],
+    )
+
+    assert output_db_path.exists()
+    assert summary["scope"] == "M8 explicit score DB file output preview"
+    assert summary["source"] == "m8_planned_play_records_rows"
+    assert summary["database"] == str(output_db_path)
+    assert summary["database_kind"] == "file sqlite under data/"
+    assert summary["target_count"] == 1
+    assert summary["insert_target_count"] == 1
+    assert summary["inserted_count"] == 1
+    assert summary["row_count_after_insert"] == 1
+    assert summary["write_preview_status_counts"] == {
+        "inserted_to_file_preview": 1
+    }
+    assert (
+        "This is not production DB save success, confirmed IDs, or final values."
+        in summary["reading_notes"]
+    )
+
+    with sqlite3.connect(output_db_path) as connection:
+        stored_row = connection.execute(
+            """
+            SELECT played_at_ms, song_id, chart_id, score, source_confirmation_mode
+            FROM plays
+            """
+        ).fetchone()
+    assert stored_row == (
+        345678,
+        "song_make",
+        "chart_make_single_difficult",
+        987650,
+        "time",
+    )
+
+    report_path = Path("data/m8_preview/m8_score_db_file_output_preview.md")
+    runner.write_m8_score_db_file_output_preview_report(report_path, summary)
+    report = report_path.read_text(encoding="utf-8")
+    assert "# M8 Score DB File Output Preview" in report
+    assert "`--m8-score-db-output`" in report
+    assert "本番DB保存成功ではありません" in report
+
+
+def test_m8_score_db_file_output_preview_rejects_outside_data(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    with pytest.raises(ValueError, match="--m8-score-db-output must be under data/"):
+        runner.write_m8_score_db_file_output_preview(
+            Path("ddrgp-scores.sqlite"),
+            [],
+        )
+
+    assert not Path("ddrgp-scores.sqlite").exists()
+
+
+def test_m8_score_db_file_output_preview_accepts_zero_planned_rows_after_no_m5(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    digit_rois = list(runner.M8_SAVE_PAYLOAD_DIGIT_ROIS)
+    preview_row = {
+        "organized_file": "needs_identity_review.png",
+        "timestamp_ms": "1000",
+        "confirmation_mode": "time",
+        "preview_status": "needs_identity_review",
+        "preview_reason": "m5_not_run",
+        "m5_identity_signal_song_id": "",
+        "m5_identity_signal_chart_id": "",
+        "m5_identity_signal_source": "",
+        "m5_identity_signal_status": "",
+        "m5_jacket_match_status": "",
+    }
+    for roi_name in digit_rois:
+        preview_row[f"{roi_name}_recognized_digits"] = "123"
+        preview_row[f"{roi_name}_expected_value"] = "123"
+        preview_row[f"{roi_name}_match"] = "True"
+    payload_rows = runner.m8_save_payload_preview_rows([preview_row], digit_rois)
+    planned_rows = runner.m8_planned_play_record_rows(payload_rows)
+
+    assert payload_rows[0]["payload_preview_status"] == "unsupported_preview_status"
+    assert planned_rows == []
+
+    output_db_path = Path("data/m8_preview/no_m5.sqlite")
+    summary = runner.write_m8_score_db_file_output_preview(
+        output_db_path,
+        planned_rows,
+    )
+
+    assert output_db_path.exists()
+    assert summary["target_count"] == 0
+    assert summary["insert_target_count"] == 0
+    assert summary["inserted_count"] == 0
+    assert summary["row_count_after_insert"] == 0
+    assert summary["write_preview_status_counts"] == {}
+    with sqlite3.connect(output_db_path) as connection:
+        row_count = connection.execute("SELECT COUNT(*) FROM plays").fetchone()[0]
+    assert row_count == 0
 
 
 def test_m7a_digit_save_candidate_summary_keeps_status_vocabulary(
