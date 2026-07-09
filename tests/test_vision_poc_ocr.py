@@ -240,6 +240,35 @@ def stub_profile_preprocess(
     )
 
 
+def write_m8_cli_manifest_fixture(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    digits: str = "123456",
+) -> Path:
+    frame_root = tmp_path / "frames"
+    for suffix in ("a", "b", "c"):
+        write_score_digit_image(frame_root / f"result_score{digits}_{suffix}.png", digits)
+    manifest_path = tmp_path / "manifest.csv"
+    manifest_path.write_text(
+        "image_path,timestamp_ms,screen_type,expected_score\n"
+        f"result_score{digits}_a.png,0,result,{digits}\n"
+        f"result_score{digits}_b.png,500,result,{digits}\n"
+        f"result_score{digits}_c.png,1000,result,{digits}\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        runner,
+        "classify",
+        lambda _image, row: classification(
+            row["organized_file"],
+            result_candidate=True,
+            screen_type="result",
+        ),
+    )
+    return manifest_path
+
+
 def test_expected_score_prefers_metadata_score() -> None:
     row = {
         "organized_file": "organized/result_score111111_sample.png",
@@ -2987,6 +3016,153 @@ def test_m8_score_db_file_output_preview_accepts_zero_planned_rows_after_no_m5(
     assert summary["schema_name"] == "m8_score_db_preview"
     assert summary["schema_version"] == 1
     assert summary["write_preview_status_counts"] == {}
+    with sqlite3.connect(output_db_path) as connection:
+        schema_version = connection.execute("PRAGMA user_version").fetchone()[0]
+        row_count = connection.execute("SELECT COUNT(*) FROM plays").fetchone()[0]
+    assert schema_version == 1
+    assert row_count == 0
+
+
+def test_m8_score_db_output_cli_requires_m7a_digit_recognition(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    output_db_path = Path("data/m8_cli/ddrgp-scores.sqlite")
+
+    with pytest.raises(
+        ValueError,
+        match="--m8-score-db-output requires --m7a-digit-recognition",
+    ):
+        runner.main(["--m8-score-db-output", str(output_db_path)])
+
+    assert not output_db_path.exists()
+
+
+def test_m8_score_db_output_cli_rejects_outside_data_before_writing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    output_db_path = Path("ddrgp-scores.sqlite")
+
+    with pytest.raises(ValueError, match="--m8-score-db-output must be under data/"):
+        runner.main(
+            [
+                "--m8-score-db-output",
+                str(output_db_path),
+                "--m7a-digit-recognition",
+            ]
+        )
+
+    assert not output_db_path.exists()
+
+
+def test_m8_score_db_output_cli_rejects_existing_file_without_overwrite(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    manifest_path = write_m8_cli_manifest_fixture(tmp_path, monkeypatch)
+    output_db_path = Path("data/m8_cli/existing.sqlite")
+    output_db_path.parent.mkdir(parents=True, exist_ok=True)
+    output_db_path.write_bytes(b"existing-preview-db")
+
+    with pytest.raises(ValueError, match="--m8-score-db-output already exists"):
+        runner.main(
+            [
+                "--sequence-mode",
+                "manifest",
+                "--frame-manifest",
+                str(manifest_path),
+                "--frame-root",
+                str(tmp_path / "frames"),
+                "--output",
+                str(tmp_path / "output"),
+                "--m7a-digit-recognition",
+                "--no-ocr",
+                "--no-rois",
+                "--m8-score-db-output",
+                str(output_db_path),
+            ]
+        )
+
+    assert output_db_path.read_bytes() == b"existing-preview-db"
+
+
+def test_m8_score_db_output_cli_without_explicit_option_writes_no_file_preview(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    manifest_path = write_m8_cli_manifest_fixture(tmp_path, monkeypatch)
+    output_dir = tmp_path / "output"
+
+    assert (
+        runner.main(
+            [
+                "--sequence-mode",
+                "manifest",
+                "--frame-manifest",
+                str(manifest_path),
+                "--frame-root",
+                str(tmp_path / "frames"),
+                "--output",
+                str(output_dir),
+                "--m7a-digit-recognition",
+                "--no-ocr",
+                "--no-rois",
+            ]
+        )
+        == 0
+    )
+
+    assert (output_dir / "m8_score_db_write_preview.json").exists()
+    assert not (output_dir / "m8_score_db_file_output_preview.json").exists()
+    assert not (output_dir / "m8_score_db_file_output_preview.md").exists()
+    assert not Path("data/m8_cli/ddrgp-scores.sqlite").exists()
+
+
+def test_m8_score_db_output_cli_writes_empty_schema_for_no_m5_planned_rows(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    manifest_path = write_m8_cli_manifest_fixture(tmp_path, monkeypatch)
+    output_dir = tmp_path / "output"
+    output_db_path = Path("data/m8_cli/no-m5.sqlite")
+
+    assert (
+        runner.main(
+            [
+                "--sequence-mode",
+                "manifest",
+                "--frame-manifest",
+                str(manifest_path),
+                "--frame-root",
+                str(tmp_path / "frames"),
+                "--output",
+                str(output_dir),
+                "--m7a-digit-recognition",
+                "--no-ocr",
+                "--no-rois",
+                "--m8-score-db-output",
+                str(output_db_path),
+            ]
+        )
+        == 0
+    )
+
+    assert output_db_path.exists()
+    summary = json.loads(
+        (output_dir / "m8_score_db_file_output_preview.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert summary["target_count"] == 0
+    assert summary["inserted_count"] == 0
+    assert summary["row_count_after_insert"] == 0
+    assert summary["schema_version"] == 1
     with sqlite3.connect(output_db_path) as connection:
         schema_version = connection.execute("PRAGMA user_version").fetchone()[0]
         row_count = connection.execute("SELECT COUNT(*) FROM plays").fetchone()[0]
