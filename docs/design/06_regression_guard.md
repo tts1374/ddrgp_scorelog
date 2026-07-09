@@ -292,8 +292,11 @@
 - summary/report の `database_readback_matches_preview_contract` と `database_readback_mismatch_reasons` は、`database_schema_version` と `database_preview_metadata` がpreview契約と一致するかの診断欄として維持する。
 - `database_readback_mismatch_reasons` では、`database_preview_metadata.<key>_missing` は期待key欠落、`database_preview_metadata.<key>_mismatch` はkeyはあるが値が違う状態として読み分ける。
 - summary/report の `database_plays_row_count` は実DBの `plays` 行数readbackとして維持し、`database_plays_row_count_matches_insert_counts` と `database_plays_row_count_mismatch_reasons` で `inserted_count` / `row_count_after_insert` との一致だけを診断する。
-- readback一致診断欄を本番DB保存成功、曲ID/譜面ID確定、保存値確定として扱わない。
-- planned rows が0件の明示file outputでも、readback一致診断欄は `true` と空理由にする。
+- summary/report の `database_plays_schema_columns` は実DBの `PRAGMA table_info(plays)` 由来のschema readback診断欄として維持する。
+- summary/report の `database_plays_insert_columns_match_planned_contract`、`database_plays_integer_fields_match_preview_contract`、`database_plays_schema_mismatch_reasons` は、実ファイルpreview DBの列順、`play_id` / `created_at` のDB側補助列境界、preview INTEGER列がpreview最小 `plays` 契約と一致するかだけを診断する。
+- `database_plays_schema_mismatch_reasons` では、列順不一致、`play_id` / `created_at` 欠落またはplanned contract混入、integer列不一致を読み分けられる状態にする。
+- readback一致診断欄、row count一致診断欄、schema readback診断欄を本番DB保存成功、正式スキーマ確定、曲ID/譜面ID確定、保存値確定として扱わない。
+- planned rows が0件の明示file outputでも、readback一致診断欄、row count一致診断欄、schema readback診断欄は `true` と空理由にする。
 - 既定実行、`--m7a-digit-recognition` だけの実行、M5なし実行では実ファイルDBへ保存予定レコードをinsertしない。
 - 入力は `m8_planned_play_records_rows` だけにする。
 - 非ready payload、M5未実行、identity不足、digit不足の行をfile output側で再判定しない。

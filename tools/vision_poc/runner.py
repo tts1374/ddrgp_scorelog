@@ -4761,11 +4761,30 @@ def read_m8_score_db_file_output_preview_metadata(
         ).fetchall()
     )
     plays_row_count = connection.execute("SELECT COUNT(*) FROM plays").fetchone()[0]
+    plays_schema_columns = read_m8_score_db_plays_schema_columns(connection)
     return {
         "database_schema_version": int(schema_version),
         "database_preview_metadata": preview_metadata,
         "database_plays_row_count": int(plays_row_count),
+        "database_plays_schema_columns": plays_schema_columns,
     }
+
+
+def read_m8_score_db_plays_schema_columns(
+    connection: sqlite3.Connection,
+) -> list[dict[str, object]]:
+    table_info = connection.execute("PRAGMA table_info(plays)").fetchall()
+    return [
+        {
+            "cid": int(row[0]),
+            "name": str(row[1]),
+            "type": str(row[2]).upper(),
+            "notnull": int(row[3]),
+            "default": None if row[4] is None else str(row[4]),
+            "primary_key": int(row[5]),
+        }
+        for row in table_info
+    ]
 
 
 def evaluate_m8_score_db_file_output_preview_readback_contract(
@@ -4801,6 +4820,65 @@ def evaluate_m8_score_db_file_output_preview_readback_contract(
             reasons.append(f"database_preview_metadata.{key}_mismatch")
 
     return not reasons, reasons
+
+
+def evaluate_m8_score_db_file_output_preview_schema_readback(
+    database_readback: dict[str, object],
+) -> tuple[bool, bool, list[str]]:
+    reasons: list[str] = []
+    schema_columns = database_readback.get("database_plays_schema_columns", [])
+    if not isinstance(schema_columns, list):
+        return False, False, ["database_plays_schema_columns_not_list"]
+
+    column_names = [
+        str(column.get("name", ""))
+        for column in schema_columns
+        if isinstance(column, dict)
+    ]
+    expected_column_names = [
+        "play_id",
+        *M8_PLANNED_PLAY_RECORD_FIELDNAMES,
+        "created_at",
+    ]
+    if "play_id" not in column_names:
+        reasons.append("database_plays_schema.play_id_missing")
+    if "created_at" not in column_names:
+        reasons.append("database_plays_schema.created_at_missing")
+    if "play_id" in M8_PLANNED_PLAY_RECORD_FIELDNAMES:
+        reasons.append("database_plays_schema.play_id_in_planned_contract")
+    if "created_at" in M8_PLANNED_PLAY_RECORD_FIELDNAMES:
+        reasons.append("database_plays_schema.created_at_in_planned_contract")
+    if column_names != expected_column_names:
+        reasons.append("database_plays_schema_column_order_mismatch")
+
+    insert_columns_match_planned_contract = (
+        len(column_names) >= 2
+        and column_names[1:-1] == M8_PLANNED_PLAY_RECORD_FIELDNAMES
+        and "play_id" not in M8_PLANNED_PLAY_RECORD_FIELDNAMES
+        and "created_at" not in M8_PLANNED_PLAY_RECORD_FIELDNAMES
+    )
+
+    column_types = {
+        str(column.get("name", "")): str(column.get("type", "")).upper()
+        for column in schema_columns
+        if isinstance(column, dict)
+    }
+    integer_fields = [
+        field
+        for field in M8_PLANNED_PLAY_RECORD_FIELDNAMES
+        if column_types.get(field) == "INTEGER"
+    ]
+    integer_fields_match_preview_contract = (
+        integer_fields == list(M8_SCORE_DB_WRITE_PREVIEW_INTEGER_FIELDS)
+    )
+    if not integer_fields_match_preview_contract:
+        reasons.append("database_plays_integer_fields_mismatch")
+
+    return (
+        insert_columns_match_planned_contract,
+        integer_fields_match_preview_contract,
+        reasons,
+    )
 
 
 def evaluate_m8_score_db_file_output_preview_row_count_readback(
@@ -5010,6 +5088,15 @@ def summarize_m8_score_db_file_output_preview(
         inserted_count=inserted_count,
         row_count_after_insert=row_count_after_insert,
     )
+    (
+        database_plays_insert_columns_match_planned_contract,
+        database_plays_integer_fields_match_preview_contract,
+        database_plays_schema_mismatch_reasons,
+    ) = evaluate_m8_score_db_file_output_preview_schema_readback(database_readback)
+    database_plays_schema_columns = database_readback.get(
+        "database_plays_schema_columns",
+        [],
+    )
     return {
         "target_boundary": "m8 planned play record rows",
         "scope": "M8 explicit score DB file output preview",
@@ -5027,6 +5114,7 @@ def summarize_m8_score_db_file_output_preview(
         "database_schema_version": database_readback["database_schema_version"],
         "database_preview_metadata": database_readback["database_preview_metadata"],
         "database_plays_row_count": database_readback["database_plays_row_count"],
+        "database_plays_schema_columns": database_plays_schema_columns,
         "database_readback_matches_preview_contract": (
             database_readback_matches_preview_contract
         ),
@@ -5036,6 +5124,15 @@ def summarize_m8_score_db_file_output_preview(
         ),
         "database_plays_row_count_mismatch_reasons": (
             database_plays_row_count_mismatch_reasons
+        ),
+        "database_plays_insert_columns_match_planned_contract": (
+            database_plays_insert_columns_match_planned_contract
+        ),
+        "database_plays_integer_fields_match_preview_contract": (
+            database_plays_integer_fields_match_preview_contract
+        ),
+        "database_plays_schema_mismatch_reasons": (
+            database_plays_schema_mismatch_reasons
         ),
         "target_count": len(row_list),
         "insert_target_count": inserted_count,
@@ -5068,6 +5165,7 @@ def summarize_m8_score_db_file_output_preview(
             "database_* readback fields are diagnostics read from the preview DB.",
             "database_readback_matches_preview_contract only compares preview identifiers.",
             "database_plays_row_count only checks preview DB row count readback.",
+            "database_plays_schema_* fields only check preview minimal plays schema readback.",
             "This is not production DB save success, confirmed IDs, or final values.",
             "song_id and chart_id remain identity_signal candidate observations.",
             "Digit values remain copied M7a recognized_digits candidates.",
@@ -5114,6 +5212,14 @@ def write_m8_score_db_file_output_preview_report(
         f"`{summary['database_plays_row_count_matches_insert_counts']}`",
         f"- database plays row count mismatch reasons: "
         f"`{json.dumps(summary['database_plays_row_count_mismatch_reasons'], ensure_ascii=False)}`",
+        f"- database plays schema columns readback: "
+        f"`{json.dumps(summary['database_plays_schema_columns'], ensure_ascii=False)}`",
+        f"- database plays insert columns match planned contract: "
+        f"`{summary['database_plays_insert_columns_match_planned_contract']}`",
+        f"- database plays integer fields match preview contract: "
+        f"`{summary['database_plays_integer_fields_match_preview_contract']}`",
+        f"- database plays schema mismatch reasons: "
+        f"`{json.dumps(summary['database_plays_schema_mismatch_reasons'], ensure_ascii=False)}`",
         f"- target planned rows: {summary['target_count']}",
         f"- insert target count: {summary['insert_target_count']}",
         f"- inserted count: {summary['inserted_count']}",
