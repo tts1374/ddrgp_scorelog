@@ -262,6 +262,17 @@
 - `score`、`max_combo`、`marvelous`、`perfect`、`great`、`good`、`miss`、`ex_score` はM7a候補値であり、保存値確定として扱わない。
 - 保存予定レコードは DB保存可能、DB保存成功、低信頼度ログ本番仕様として扱わない。
 
+## M8 score DB write preview
+
+- `m8_score_db_write_preview.csv`、`m8_score_db_write_preview.json`、`m8_score_db_write_preview.md` は、`m8_planned_play_records_rows` だけを入力にする。
+- 非ready payloadは上流の planned records で止め、このpreviewへ入力しない。
+- 新規 in-memory SQLite `plays` テーブルへinsertし、実ファイルDBは生成しない。
+- `insert_target_count`、`inserted_count`、`row_count_after_insert`、`excluded_count` をsummaryで確認できる。
+- write preview status は `inserted_in_memory`、`skipped_invalid_planned_record` に限る。
+- `inserted_in_memory` はDB insert境界のdry-run確認であり、本番DB保存成功、曲ID/譜面ID確定、保存値確定として扱わない。
+- `skipped_invalid_planned_record` は planned row contractの不足や整数列不正を示し、非ready payloadをここで再判定するための語彙ではない。
+- timestampなし入力の `played_at_ms=0` は暫定値のままinsert境界へ渡す。
+
 ## ROI方針
 
 - ROI座標は 1280x720 基準。

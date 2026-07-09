@@ -303,6 +303,8 @@ M8の保存予定レコードプレビューでは、`m8_save_payload_preview_ro
 
 `played_at_ms` は `timestamp_ms` 由来の暫定値で、timestampなし入力では `0` として扱う。`song_id` / `chart_id` はM5 `identity_signal_*` 由来の候補観測、スコア・判定数はM7a `recognized_digits` 由来の候補値であり、保存用確定IDや保存値確定ではない。この最小契約はin-memory SQLite fixtureで `plays` スキーマへ挿入できることを確認するためのもので、実DBファイル生成やDB保存成功を意味しない。
 
+M8のscore DB write previewでは、上記の保存予定レコードだけを新規 in-memory SQLite `plays` へinsertする。summaryでは `insert_target_count`、`inserted_count`、`row_count_after_insert`、`excluded_count` を出し、write preview status は `inserted_in_memory` / `skipped_invalid_planned_record` に限定する。これはDB insert境界のdry-run確認であり、実ファイルDB生成、本番DB保存成功、曲ID/譜面ID確定、保存値確定を意味しない。非ready payloadは上流で保存予定レコードへ変換されないため、このpreviewの入力にならない。
+
 ## 重複保存防止
 
 PoCでは簡易 `duplicate_key` を使うが、本番では以下を組み合わせる。

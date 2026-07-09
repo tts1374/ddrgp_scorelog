@@ -364,6 +364,7 @@ M7_SAVE_DECISION_PREVIEW_REPRESENTATIVE_LIMIT = 3
 M8_SAVE_PAYLOAD_PREVIEW_REPRESENTATIVE_LIMIT = 3
 M8_SAVE_PAYLOAD_DIGIT_ROIS = OCR_ROIS
 M8_PLANNED_PLAY_RECORD_REPRESENTATIVE_LIMIT = 3
+M8_SCORE_DB_WRITE_PREVIEW_REPRESENTATIVE_LIMIT = 3
 M8_PLANNED_PLAY_RECORD_FIELDNAMES = [
     "played_at_ms",
     "song_id",
@@ -383,6 +384,23 @@ M8_PLANNED_PLAY_RECORD_FIELDNAMES = [
     "m5_identity_signal_status",
     "m5_jacket_match_status",
 ]
+M8_SCORE_DB_WRITE_PREVIEW_FIELDNAMES = [
+    "write_preview_status",
+    "write_preview_reason",
+    "inserted_rowid",
+    *M8_PLANNED_PLAY_RECORD_FIELDNAMES,
+]
+M8_SCORE_DB_WRITE_PREVIEW_INTEGER_FIELDS = (
+    "played_at_ms",
+    "score",
+    "max_combo",
+    "marvelous",
+    "perfect",
+    "great",
+    "good",
+    "miss",
+    "ex_score",
+)
 M8_PLAYS_SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS plays (
   play_id INTEGER PRIMARY KEY,
@@ -4636,6 +4654,259 @@ def write_m8_save_payload_preview_report(
 
 def create_m8_score_db_schema(connection: sqlite3.Connection) -> None:
     connection.execute(M8_PLAYS_SCHEMA_SQL)
+
+
+def validate_m8_planned_play_record(row: dict[str, str]) -> str:
+    for field in M8_PLANNED_PLAY_RECORD_FIELDNAMES:
+        if not row.get(field, ""):
+            return f"missing_required_field:{field}"
+    for field in M8_SCORE_DB_WRITE_PREVIEW_INTEGER_FIELDS:
+        value = row.get(field, "")
+        if not value.isdigit():
+            return f"invalid_integer:{field}"
+    return ""
+
+
+def insert_m8_planned_play_record(
+    connection: sqlite3.Connection,
+    row: dict[str, str],
+) -> int:
+    columns = ", ".join(M8_PLANNED_PLAY_RECORD_FIELDNAMES)
+    placeholders = ", ".join(f":{field}" for field in M8_PLANNED_PLAY_RECORD_FIELDNAMES)
+    cursor = connection.execute(
+        f"INSERT INTO plays ({columns}) VALUES ({placeholders})",
+        {field: row.get(field, "") for field in M8_PLANNED_PLAY_RECORD_FIELDNAMES},
+    )
+    rowid = cursor.lastrowid
+    return int(rowid) if rowid is not None else 0
+
+
+def m8_score_db_write_preview_rows(
+    planned_rows: Iterable[dict[str, str]],
+) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    with sqlite3.connect(":memory:") as connection:
+        create_m8_score_db_schema(connection)
+        for planned_row in planned_rows:
+            reason = validate_m8_planned_play_record(planned_row)
+            if reason:
+                rows.append(
+                    {
+                        "write_preview_status": "skipped_invalid_planned_record",
+                        "write_preview_reason": reason,
+                        "inserted_rowid": "",
+                        **{
+                            field: planned_row.get(field, "")
+                            for field in M8_PLANNED_PLAY_RECORD_FIELDNAMES
+                        },
+                    }
+                )
+                continue
+            inserted_rowid = insert_m8_planned_play_record(connection, planned_row)
+            rows.append(
+                {
+                    "write_preview_status": "inserted_in_memory",
+                    "write_preview_reason": "",
+                    "inserted_rowid": str(inserted_rowid),
+                    **{
+                        field: planned_row.get(field, "")
+                        for field in M8_PLANNED_PLAY_RECORD_FIELDNAMES
+                    },
+                }
+            )
+    return rows
+
+
+def write_m8_score_db_write_preview_csv(
+    path: Path,
+    rows: Iterable[dict[str, str]],
+) -> None:
+    with path.open("w", encoding="utf-8", newline="") as file:
+        writer = csv.DictWriter(file, fieldnames=M8_SCORE_DB_WRITE_PREVIEW_FIELDNAMES)
+        writer.writeheader()
+        for row in rows:
+            writer.writerow(
+                {
+                    field: row.get(field, "")
+                    for field in M8_SCORE_DB_WRITE_PREVIEW_FIELDNAMES
+                }
+            )
+
+
+def m8_score_db_write_preview_representative(
+    row: dict[str, str],
+) -> dict[str, str]:
+    return {field: row.get(field, "") for field in M8_SCORE_DB_WRITE_PREVIEW_FIELDNAMES}
+
+
+def append_m8_score_db_write_representative(
+    bucket: dict[str, object],
+    row: dict[str, str],
+    representative_limit: int,
+) -> None:
+    bucket["count"] = int(bucket["count"]) + 1
+    representatives = bucket["representatives"]
+    assert isinstance(representatives, list)
+    if len(representatives) < representative_limit:
+        representatives.append(m8_score_db_write_preview_representative(row))
+
+
+def summarize_m8_score_db_write_preview(
+    rows: Iterable[dict[str, str]],
+    representative_limit: int = M8_SCORE_DB_WRITE_PREVIEW_REPRESENTATIVE_LIMIT,
+) -> dict[str, object]:
+    row_list = list(rows)
+    status_counts: dict[str, int] = {}
+    reason_counts: dict[str, int] = {}
+    groups: dict[tuple[str, str], dict[str, object]] = {}
+    for row in row_list:
+        status = row.get("write_preview_status", "")
+        reason = row.get("write_preview_reason", "")
+        count_preview_value(status_counts, status)
+        if reason:
+            count_preview_value(reason_counts, reason)
+        key = (status, reason)
+        bucket = groups.setdefault(
+            key,
+            {
+                "write_preview_status": status,
+                "write_preview_reason": reason,
+                "count": 0,
+                "representatives": [],
+            },
+        )
+        append_m8_score_db_write_representative(
+            bucket,
+            row,
+            representative_limit,
+        )
+    inserted_count = status_counts.get("inserted_in_memory", 0)
+    excluded_count = len(row_list) - inserted_count
+    return {
+        "target_boundary": "m8 planned play record rows",
+        "scope": "M8 in-memory score DB write preview",
+        "source": "m8_planned_play_records_rows",
+        "database": "in-memory sqlite",
+        "schema_table": "plays",
+        "target_count": len(row_list),
+        "insert_target_count": inserted_count,
+        "inserted_count": inserted_count,
+        "row_count_after_insert": inserted_count,
+        "excluded_count": excluded_count,
+        "write_preview_status_counts": dict(sorted(status_counts.items())),
+        "write_preview_reason_counts": dict(sorted(reason_counts.items())),
+        "fieldnames": M8_SCORE_DB_WRITE_PREVIEW_FIELDNAMES,
+        "representative_limit_per_group": representative_limit,
+        "groups": sorted(
+            groups.values(),
+            key=lambda item: (
+                str(item["write_preview_status"]),
+                str(item["write_preview_reason"]),
+            ),
+        ),
+        "status_vocabulary": [
+            "inserted_in_memory",
+            "skipped_invalid_planned_record",
+        ],
+        "reading_notes": [
+            "Only planned play record rows are input to this write preview.",
+            "Rows are inserted into a fresh in-memory SQLite plays table only.",
+            "This is not production DB output, DB save success, confirmed IDs, or final values.",
+            "played_at_ms=0 remains the timestamp-less provisional value.",
+        ],
+    }
+
+
+def write_m8_score_db_write_preview_report(
+    path: Path,
+    summary: dict[str, object],
+) -> None:
+    groups = summary["groups"]
+    assert isinstance(groups, list)
+    lines = [
+        "# M8 Score DB Write Preview",
+        "",
+        "`m8_planned_play_records` の行だけを、新規の in-memory SQLite `plays` "
+        "テーブルへinsertして境界を確認するdry-runレポートです。",
+        "実ファイルDB生成、本番保存、曲ID/譜面ID確定、保存値確定には進みません。",
+        "",
+        f"- target boundary: `{summary['target_boundary']}`",
+        f"- source: `{summary['source']}`",
+        f"- database: `{summary['database']}`",
+        f"- schema table: `{summary['schema_table']}`",
+        f"- target planned rows: {summary['target_count']}",
+        f"- insert target count: {summary['insert_target_count']}",
+        f"- inserted count: {summary['inserted_count']}",
+        f"- row count after insert: {summary['row_count_after_insert']}",
+        f"- excluded count: {summary['excluded_count']}",
+        f"- status counts: "
+        f"`{json.dumps(summary['write_preview_status_counts'], ensure_ascii=False)}`",
+        f"- reason counts: "
+        f"`{json.dumps(summary['write_preview_reason_counts'], ensure_ascii=False)}`",
+        "",
+        "## Status Groups",
+        "",
+        "| status | reason | count |",
+        "|---|---|---:|",
+    ]
+    for group in groups:
+        assert isinstance(group, dict)
+        reason = group["write_preview_reason"] or "(none)"
+        lines.append(
+            f"| `{group['write_preview_status']}` | `{reason}` | {group['count']} |"
+        )
+
+    lines.extend(["", "## Representatives", ""])
+    for group in groups:
+        assert isinstance(group, dict)
+        representatives = group["representatives"]
+        assert isinstance(representatives, list)
+        lines.extend(
+            [
+                (
+                    f"### status `{group['write_preview_status']}` / "
+                    f"reason `{group['write_preview_reason'] or '(none)'}`"
+                ),
+                "",
+                "| rowid | source file | played_at_ms | song_id | chart_id | score | "
+                "combo | judgments | ex |",
+                "|---:|---|---:|---|---|---:|---:|---|---:|",
+            ]
+        )
+        if not representatives:
+            lines.append("|  |  |  |  |  |  |  |  |  |")
+        for representative in representatives:
+            assert isinstance(representative, dict)
+            judgments = " / ".join(
+                str(representative.get(field, ""))
+                for field in ("marvelous", "perfect", "great", "good", "miss")
+            )
+            lines.append(
+                f"| `{representative.get('inserted_rowid', '')}` | "
+                f"`{representative.get('source_organized_file', '')}` | "
+                f"`{representative.get('played_at_ms', '')}` | "
+                f"`{representative.get('song_id', '')}` | "
+                f"`{representative.get('chart_id', '')}` | "
+                f"`{representative.get('score', '')}` | "
+                f"`{representative.get('max_combo', '')}` | "
+                f"`{judgments}` | "
+                f"`{representative.get('ex_score', '')}` |"
+            )
+        lines.append("")
+
+    lines.extend(
+        [
+            "## Reading Notes",
+            "",
+            "- 入力は保存予定レコードに変換済みの行だけです。",
+            "- `payload_ready` 以外は上流の planned records で止まり、このpreviewへ入りません。",
+            "- `inserted_in_memory` はin-memory fixtureへのinsert確認であり、"
+            "本番DB保存成功ではありません。",
+            "- `song_id` / `chart_id` はM5候補観測、数字列はM7a候補値のままです。",
+            "- timestampなし入力の `played_at_ms=0` は暫定値のままinsert境界へ渡します。",
+        ]
+    )
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def provisional_played_at_ms(payload_row: dict[str, str]) -> str:
@@ -9528,6 +9799,25 @@ def main(argv: list[str] | None = None) -> int:
         write_m8_planned_play_records_report(
             output_dir / "m8_planned_play_records.md",
             m8_planned_play_summary,
+        )
+        m8_score_db_write_preview = m8_score_db_write_preview_rows(
+            m8_planned_play_rows,
+        )
+        write_m8_score_db_write_preview_csv(
+            output_dir / "m8_score_db_write_preview.csv",
+            m8_score_db_write_preview,
+        )
+        m8_score_db_write_preview_summary = summarize_m8_score_db_write_preview(
+            m8_score_db_write_preview,
+        )
+        (output_dir / "m8_score_db_write_preview.json").write_text(
+            json.dumps(m8_score_db_write_preview_summary, ensure_ascii=False, indent=2)
+            + "\n",
+            encoding="utf-8",
+        )
+        write_m8_score_db_write_preview_report(
+            output_dir / "m8_score_db_write_preview.md",
+            m8_score_db_write_preview_summary,
         )
     summary = summarize(classifications)
     (output_dir / "summary.json").write_text(

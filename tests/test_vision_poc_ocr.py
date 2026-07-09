@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import csv
 import json
-import sqlite3
 from pathlib import Path
 
 import pytest
@@ -2651,23 +2650,75 @@ def test_m8_save_payload_preview_uses_m7_preview_rows(tmp_path: Path) -> None:
     assert "`payload_ready` 以外は保存予定レコードへ変換しません" in planned_report
     assert "保存値確定" in planned_report
 
-    with sqlite3.connect(":memory:") as connection:
-        runner.create_m8_score_db_schema(connection)
-        placeholders = ", ".join(f":{field}" for field in runner.M8_PLANNED_PLAY_RECORD_FIELDNAMES)
-        columns = ", ".join(runner.M8_PLANNED_PLAY_RECORD_FIELDNAMES)
-        connection.execute(
-            f"INSERT INTO plays ({columns}) VALUES ({placeholders})",
-            planned_rows[0],
-        )
-        stored_row = connection.execute(
-            "SELECT song_id, chart_id, score, analysis_payload_status FROM plays"
-        ).fetchone()
-    assert stored_row == (
-        "song_make",
-        "chart_make_single_difficult",
-        123,
-        "payload_ready",
+    write_preview_rows = runner.m8_score_db_write_preview_rows(planned_rows)
+    assert len(write_preview_rows) == 1
+    assert write_preview_rows[0]["write_preview_status"] == "inserted_in_memory"
+    assert write_preview_rows[0]["write_preview_reason"] == ""
+    assert write_preview_rows[0]["inserted_rowid"] == "1"
+    assert write_preview_rows[0]["source_organized_file"] == "payload_ready.png"
+
+    write_preview_csv_path = tmp_path / "m8_score_db_write_preview.csv"
+    runner.write_m8_score_db_write_preview_csv(write_preview_csv_path, write_preview_rows)
+    write_preview_csv_rows = read_csv_rows(write_preview_csv_path)
+    assert write_preview_csv_rows[0]["write_preview_status"] == "inserted_in_memory"
+    assert write_preview_csv_rows[0]["score"] == "123"
+
+    write_preview_summary = runner.summarize_m8_score_db_write_preview(write_preview_rows)
+    assert write_preview_summary["scope"] == "M8 in-memory score DB write preview"
+    assert write_preview_summary["source"] == "m8_planned_play_records_rows"
+    assert write_preview_summary["database"] == "in-memory sqlite"
+    assert write_preview_summary["target_count"] == 1
+    assert write_preview_summary["insert_target_count"] == 1
+    assert write_preview_summary["inserted_count"] == 1
+    assert write_preview_summary["row_count_after_insert"] == 1
+    assert write_preview_summary["excluded_count"] == 0
+    assert write_preview_summary["write_preview_status_counts"] == {
+        "inserted_in_memory": 1
+    }
+
+    write_preview_report_path = tmp_path / "m8_score_db_write_preview.md"
+    runner.write_m8_score_db_write_preview_report(
+        write_preview_report_path,
+        write_preview_summary,
     )
+    write_preview_report = write_preview_report_path.read_text(encoding="utf-8")
+    assert "# M8 Score DB Write Preview" in write_preview_report
+    assert "`payload_ready` 以外は上流の planned records で止まり" in write_preview_report
+    assert "本番DB保存成功ではありません" in write_preview_report
+
+
+def test_m8_score_db_write_preview_skips_invalid_planned_rows() -> None:
+    planned_row = {
+        field: "1" for field in runner.M8_PLANNED_PLAY_RECORD_FIELDNAMES
+    }
+    planned_row.update(
+        {
+            "song_id": "song_make",
+            "chart_id": "chart_make_single_difficult",
+            "score": "",
+            "source_organized_file": "invalid_score.png",
+            "source_confirmation_mode": "time",
+            "analysis_payload_status": "payload_ready",
+            "identity_signal_source": "jacket_feature",
+            "m5_identity_signal_status": "jacket_resolved_candidate",
+            "m5_jacket_match_status": "matched",
+        }
+    )
+
+    rows = runner.m8_score_db_write_preview_rows([planned_row])
+
+    assert rows[0]["write_preview_status"] == "skipped_invalid_planned_record"
+    assert rows[0]["write_preview_reason"] == "missing_required_field:score"
+    assert rows[0]["inserted_rowid"] == ""
+    summary = runner.summarize_m8_score_db_write_preview(rows)
+    assert summary["target_count"] == 1
+    assert summary["insert_target_count"] == 0
+    assert summary["inserted_count"] == 0
+    assert summary["row_count_after_insert"] == 0
+    assert summary["excluded_count"] == 1
+    assert summary["write_preview_status_counts"] == {
+        "skipped_invalid_planned_record": 1
+    }
 
 
 def test_m7a_digit_save_candidate_summary_keeps_status_vocabulary(
