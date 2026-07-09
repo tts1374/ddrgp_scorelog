@@ -268,10 +268,13 @@
 - 非ready payloadは上流の planned records で止め、このpreviewへ入力しない。
 - 新規 in-memory SQLite `plays` テーブルへinsertし、実ファイルDBは生成しない。
 - summary/report の `schema_name=m8_score_db_preview`、`schema_version=1`、`schema_version_source=PRAGMA user_version` を維持する。
+- summary/report の `created_by_preview=tools.vision_poc.m8_score_db_preview` と `preview_metadata_table=preview_metadata` を維持する。
+- SQLite側の `preview_metadata` 表はpreview生成物識別だけに使い、正式マイグレーションや本番保存成功の根拠として扱わない。
 - `insert_target_count`、`inserted_count`、`row_count_after_insert`、`excluded_count` をsummaryで確認できる。
 - write preview status は `inserted_in_memory`、`skipped_invalid_planned_record` に限る。
 - `inserted_in_memory` はDB insert境界のdry-run確認であり、本番DB保存成功、曲ID/譜面ID確定、保存値確定として扱わない。
 - `schema_version=1` はpreviewスキーマ契約の識別子であり、本番DB保存成功、曲ID/譜面ID確定、保存値確定として扱わない。
+- `created_by_preview` はpreview生成物識別子であり、本番DB保存成功、曲ID/譜面ID確定、保存値確定として扱わない。
 - `skipped_invalid_planned_record` は planned row contractの不足や整数列不正を示し、非ready payloadをここで再判定するための語彙ではない。
 - timestampなし入力の `played_at_ms=0` は暫定値のままinsert境界へ渡す。
 
@@ -280,12 +283,14 @@
 - `--m8-score-db-output` は `--m7a-digit-recognition` と一緒に明示された場合だけ有効にする。
 - 出力先は `data/` 配下の新規SQLiteファイルに限定する。
 - 実ファイルDBの `PRAGMA user_version` は `1` にし、summary/report の `schema_version=1` と一致させる。
+- 実ファイルDBの `preview_metadata.created_by_preview` は `tools.vision_poc.m8_score_db_preview` にし、summary/report の `created_by_preview` と一致させる。
 - 既定実行、`--m7a-digit-recognition` だけの実行、M5なし実行では実ファイルDBへ保存予定レコードをinsertしない。
 - 入力は `m8_planned_play_records_rows` だけにする。
 - 非ready payload、M5未実行、identity不足、digit不足の行をfile output側で再判定しない。
 - file output preview status は `inserted_to_file_preview`、`skipped_invalid_planned_record` に限る。
 - `inserted_to_file_preview` は明示指定されたpreview DBへのinsert確認であり、本番DB保存成功、曲ID/譜面ID確定、保存値確定として扱わない。
 - file output preview の `schema_version=1` はpreviewスキーマ契約の識別子であり、本番DB保存成功、曲ID/譜面ID確定、保存値確定として扱わない。
+- file output preview の `created_by_preview` はpreview生成物識別子であり、本番DB保存成功、曲ID/譜面ID確定、保存値確定として扱わない。
 - M5なしで planned rows が0件の場合は、空の `plays` スキーマDBと `inserted_count=0` として確認する。
 
 ## ROI方針

@@ -10,7 +10,7 @@ high
 
 今回の作業ブランチは `codex/m8-score-db-schema-version-preview` です。
 
-このブランチは、2026-07-09時点で未mergeの `codex/m8-file-db-output-preview` 先端から作成され、M8 preview schema versionとM8 file output CLI境界テストまで含みます。次チャット開始時に以下を確認してください。
+2026-07-09時点で、このブランチはM8 preview schema version、M8 file output CLI境界テスト、M8 preview metadata足場まで含みます。次チャット開始時に以下を確認してください。
 
 - `git status --short --branch`
 - `git log --oneline -5`
@@ -21,23 +21,18 @@ high
 
 ## 今回までの作業結果
 
-- `--m8-score-db-output data\...\ddrgp-scores.sqlite` は、明示された場合だけ実ファイルSQLiteへ書くM8 file output previewとして実装済み。
-- 出力先は `data/` 配下の新規ファイルに限定し、`data/` 外と既存ファイルへの書き込みは拒否する。
-- `--m8-score-db-output` は `--m7a-digit-recognition` とセットでのみ使える。
-- 入力は `m8_planned_play_records_rows` に限定し、非ready payload、M5未実行、identity不足、digit不足をfile output側で再判定しない。
-- in-memory write previewとfile output previewの両方で `schema_name=m8_score_db_preview`、`schema_version=1`、`schema_version_source=PRAGMA user_version` を出す。
-- 実ファイルSQLiteには `PRAGMA user_version=1` を設定し、0件insertのfile output DBでも `plays` スキーマと `PRAGMA user_version=1` を作る。
-- `schema_version=1` はpreviewスキーマ契約の識別子であり、本番DB保存成功、曲ID/譜面ID確定、保存値確定を意味しない。
-- `runner.main()` 経由のCLI fixtureで、`--m8-score-db-output` 単独指定が `--m7a-digit-recognition` 必須エラーになることを固定した。
-- CLI fixtureで、`--m8-score-db-output` の `data/` 外指定を拒否し、DBファイルを作らないことを固定した。
-- CLI fixtureで、既存DBファイル指定を拒否し、既存ファイルを上書きしないことを固定した。
-- CLI fixtureで、明示オプションなしの `--m7a-digit-recognition` 実行では `m8_score_db_file_output_preview.*` と実DBファイルを作らないことを固定した。
-- CLI fixtureで、M5なし0件insert相当の明示file outputが空 `plays` スキーマ、`PRAGMA user_version=1`、`inserted_count=0` を維持することを固定した。
-- 生成した `data/vision_poc_m8_cli_boundary_20260709/ddrgp-scores.sqlite` はローカルDBであり、コミット対象外。
+- `m8_score_db_write_preview.*` と `m8_score_db_file_output_preview.*` のsummary/reportに `created_by_preview=tools.vision_poc.m8_score_db_preview` と `preview_metadata_table=preview_metadata` を追加した。
+- in-memory preview と明示file output previewのSQLite schema作成時に、軽量な `preview_metadata` 表を作成するようにした。
+- `preview_metadata` には `created_by_preview`、`schema_name`、`schema_version`、`schema_version_source`、`schema_table` を保存する。
+- `preview_metadata` はpreview生成物識別用であり、正式マイグレーション、本番DB保存成功、曲ID/譜面ID確定、保存値確定を意味しない。
+- `schema_name=m8_score_db_preview`、`schema_version=1`、`schema_version_source=PRAGMA user_version`、`database_kind=file sqlite under data/`、`inserted_to_file_preview` の読み方は維持した。
+- 0件insertの明示file output DBでも、空 `plays`、`PRAGMA user_version=1`、`preview_metadata.created_by_preview=tools.vision_poc.m8_score_db_preview` を作ることを固定した。
+- `tests/test_vision_poc_ocr.py` でsummary/report、実ファイルDB、CLI 0件insert経路の preview metadata を固定した。
+- `docs/design/03_event_and_save_boundary.md`、`04_data_model.md`、`05_storage_io_spec.md`、`06_regression_guard.md`、`tools/vision_poc/README.md` にpreview metadataの読み方を反映した。
 
 2026-07-09時点のローカル確認:
 
-- `python -m pytest tests\test_vision_poc_ocr.py -k "m8_score_db_output_cli or m8_score_db_file_output_preview"`: 8 passed。
+- `python -m pytest tests\test_vision_poc_ocr.py -k "m8_score_db_output_cli or m8_score_db_file_output_preview or m8_score_db_write_preview"`: 9 passed。
 - `python -m pytest tests\test_vision_poc_ocr.py -k "m7_save_decision or m7_save_readiness or m7a or m8"`: 62 passed。
 - `python -m ruff check tools\vision_poc pyproject.toml tests`: passed。
 - `python -m compileall master tools\vision_poc`: passed。
@@ -52,12 +47,13 @@ high
   - 分類: 221/221 correct、false positives 0、false negatives 0。
   - M5 jacket match: features 69、candidates 60、diagnostics 118。
   - `m8_planned_play_records.json`: `target_count=60`、`planned_record_count=60`。
-  - `m8_score_db_write_preview.json`: `target_count=60`、`inserted_count=60`、`row_count_after_insert=60`、`schema_name=m8_score_db_preview`、`schema_version=1`、`write_preview_status_counts={"inserted_in_memory":60}`。
+  - `m8_score_db_write_preview.json`: `target_count=60`、`inserted_count=60`、`row_count_after_insert=60`、`schema_version=1`、`created_by_preview=tools.vision_poc.m8_score_db_preview`、`write_preview_status_counts={"inserted_in_memory":60}`。
 - 明示file output:
-  - `python -m tools.vision_poc --m5-jacket-match --m7a-digit-recognition --m7a-digit-rois score_digits max_combo marvelous perfect great good miss ex_score --no-ocr --no-rois --output data\vision_poc_m8_cli_boundary_20260709 --m8-score-db-output data\vision_poc_m8_cli_boundary_20260709\ddrgp-scores.sqlite`
-  - `m8_score_db_file_output_preview.json`: `target_count=60`、`inserted_count=60`、`row_count_after_insert=60`、`schema_name=m8_score_db_preview`、`schema_version=1`、`write_preview_status_counts={"inserted_to_file_preview":60}`。
-  - DB実体: `PRAGMA user_version=1`、`plays` 行数 60。
+  - `python -m tools.vision_poc --m5-jacket-match --m7a-digit-recognition --m7a-digit-rois score_digits max_combo marvelous perfect great good miss ex_score --no-ocr --no-rois --output data\vision_poc_m8_preview_metadata_20260709 --m8-score-db-output data\vision_poc_m8_preview_metadata_20260709\ddrgp-scores.sqlite`
+  - `m8_score_db_file_output_preview.json`: `target_count=60`、`inserted_count=60`、`row_count_after_insert=60`、`schema_version=1`、`created_by_preview=tools.vision_poc.m8_score_db_preview`、`write_preview_status_counts={"inserted_to_file_preview":60}`。
+  - DB実体: `PRAGMA user_version=1`、`plays` 行数 60、`preview_metadata.created_by_preview=tools.vision_poc.m8_score_db_preview`。
 - `python -m tools.vision_poc --no-ocr`: 221/221 correct。
+- 生成した `data/vision_poc_m8_preview_metadata_20260709/ddrgp-scores.sqlite` はローカルDBであり、コミット対象外。
 
 ## 必読資料
 
@@ -93,7 +89,7 @@ high
 - 既定自動保存、常時保存処理、本番用の自動DB insert
 - 低信頼度ログ本番仕様
 - 正式マイグレーション、正式個人スコアDBスキーマ、duplicate key の本格差し替え
-- file output previewや `schema_version` を本番DB保存成功、曲ID/譜面ID確定、保存値確定として扱うこと
+- file output preview、`schema_version`、`created_by_preview`、`preview_metadata` を本番DB保存成功、曲ID/譜面ID確定、保存値確定として扱うこと
 - `payload_ready`、保存予定レコード、DB write previewを保存OK、DB保存成功、曲ID/譜面ID確定、保存値確定として扱うこと
 - M5 `identity_signal_*` から曲ID/譜面IDを保存用確定すること
 - M7aの `recognized_digits` を保存値確定として扱うこと
@@ -110,6 +106,7 @@ high
 - `m8_save_payload_preview.*`、`m8_planned_play_records.*`、`m8_score_db_write_preview.*`
 - `--m8-score-db-output` による明示file output preview
 - `schema_version=1` と `PRAGMA user_version=1` によるM8 previewスキーマ識別
+- `created_by_preview=tools.vision_poc.m8_score_db_preview` と `preview_metadata` によるpreview生成物識別
 - `--m8-score-db-output` のCLI境界テスト
 - `payload_ready` 以外を保存予定レコードへ変換しない境界
 - 保存予定レコード以外を DB write preview / file output preview へ入力しない境界
@@ -117,21 +114,21 @@ high
 
 ## 次に必ず進める実作業
 
-次は、M8 file output previewの読み方を保ったまま、本番insertへ進む前の小さなpreview metadata足場を追加する。
+次は、今回追加したpreview metadataを保ったまま、file output preview summaryが「定数として出したmetadata」と「実DBから読み戻したmetadata」を混同しないようにする。
 
 第一候補:
 
-- in-memory write preview summary / report と file output preview summary / report に、preview生成物であることを機械的に識別できる `created_by_preview` 相当の固定値を追加する。
-- 実ファイルSQLiteにも、正式マイグレーションではない軽量なmetadata表または既存summaryだけで同等の識別を持たせるかを小さく決める。DBへ足す場合は `plays` 本体の正式スキーマ化に進まず、preview用の最小metadataに留める。
-- `created_at` を足す場合は、テストが不安定にならないよう注入可能な時刻または形式だけを固定する。timestamped / manifest の `timestamp_ms` や planned rows の `played_at_ms` と混同しない名前にする。
-- `schema_version=1`、`schema_version_source=PRAGMA user_version`、`database_kind`、`inserted_to_file_preview` の読み方を変えない。
-- 追加するmetadataは、本番DB保存成功、曲ID/譜面ID確定、保存値確定の根拠として扱わない。
+- `write_m8_score_db_file_output_preview()` でDB書き込み後に `PRAGMA user_version` と `preview_metadata` を読み戻す小さなhelperを追加する。
+- file output summaryに、実DBから読んだ `database_schema_version`、`database_preview_metadata`、または同等のreadback欄を追加する。
+- readback欄は `schema_version=1`、`created_by_preview=tools.vision_poc.m8_score_db_preview` と一致確認するための診断であり、本番DB保存成功、曲ID/譜面ID確定、保存値確定の根拠として扱わない。
+- DB readback欄を足す場合も、`schema_version=1`、`schema_version_source=PRAGMA user_version`、`database_kind`、`inserted_to_file_preview`、`preview_metadata` の読み方を変えない。
+- 0件insertの明示file outputでも readback欄が空にならず、`plays` 空スキーマ、`PRAGMA user_version=1`、`preview_metadata` が読めることを固定する。
 - 仕様語彙を足した場合は、`docs/design/03_event_and_save_boundary.md`、`04_data_model.md`、`05_storage_io_spec.md`、`06_regression_guard.md`、`tools/vision_poc/README.md` の該当箇所も更新する。
 
 代替候補:
 
-- CLI fixtureをもう一段だけ増やし、M5ありの明示file outputが `runner.main()` 経由でも `inserted_count=60`、`PRAGMA user_version=1`、`plays` 60行になることを固定する。ただし重いローカル素材依存になりすぎる場合は、関数単体テストと今回のPoC実行確認で十分として第一候補へ進む。
-- `source_timestamp_ms` を足す場合は、既存の `played_at_ms` 暫定仕様と混同しないようにする。timestamped / manifest は元の `timestamp_ms` を保持し、timestampなしは空または `0` のどちらかを仕様化する。
+- CLI fixtureをもう一段だけ増やし、M5ありの明示file outputが `runner.main()` 経由でも `inserted_count=60`、`PRAGMA user_version=1`、`preview_metadata.created_by_preview=tools.vision_poc.m8_score_db_preview`、`plays` 60行になることを固定する。ただし重いローカル素材依存になりすぎる場合は、関数単体テストとPoC実行確認で十分として第一候補へ進む。
+- `preview_metadata` のkey/value語彙を増やす場合は、本番正式スキーマではなくpreview識別に限定し、`created_at` のような不安定な時刻値は入れない。時刻を足すなら注入可能な値または形式だけを固定し、timestamped / manifest の `timestamp_ms` や planned rows の `played_at_ms` と混同しない名前にする。
 
 主作業完了後、今回の結果を踏まえて `docs/next-task.md` を次チャット用に更新する。
 
@@ -178,12 +175,12 @@ M4/M5境界やmaster DB生成へ触った場合は、`tests\test_master_match.py
 - `unsupported_preview_status`、`missing_identity_candidate`、`missing_digit_value` が保存予定レコード、DB write preview、file output previewへ進まない。
 - timestamped / manifest 相当の `confirmation_mode=time` と `played_at_ms` が planned rows / write preview / file output preview まで保持される。
 - timestampなし入力の `played_at_ms=0` 暫定仕様が壊れていない。
-- in-memory write previewとfile output previewのsummary/reportで `schema_version=1` が維持される。
-- 実ファイルDBへ書く場合は `PRAGMA user_version=1` が維持される。
+- in-memory write previewとfile output previewのsummary/reportで `schema_version=1` と `created_by_preview=tools.vision_poc.m8_score_db_preview` が維持される。
+- 実ファイルDBへ書く場合は `PRAGMA user_version=1` と `preview_metadata.created_by_preview=tools.vision_poc.m8_score_db_preview` が維持される。
 - 実ファイルDBへ書く場合は明示オプションで `data/` 配下の新規ファイルに限定され、DBファイルをコミットしていない。
 - 既存DBファイルを上書きしない。
 - 明示オプションなしの既定実行では実ファイルDBと `m8_score_db_file_output_preview.*` を生成しない。
-- preview metadataを足す場合も、本番DB保存成功、曲ID/譜面ID確定、保存値確定として扱われていない。
+- preview metadataやDB readback欄を足す場合も、本番DB保存成功、曲ID/譜面ID確定、保存値確定として扱われていない。
 - `identity_signal_*`、`m5_identity_reviewable`、`blocked_identity_signal` が曲ID/譜面ID確定として扱われていない。
 - M7aの `recognized_digits`、`expected_value`、`match` が保存値確定として扱われていない。
 - 既存の `m7_save_readiness_review.*`、`m7_save_decision_preview.*`、`m8_save_payload_preview.*`、`m8_planned_play_records.*`、`m8_score_db_write_preview.*` のCSV列や意味を壊していない。
