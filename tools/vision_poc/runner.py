@@ -391,6 +391,8 @@ M8_SCORE_DB_WRITE_PREVIEW_FIELDNAMES = [
     *M8_PLANNED_PLAY_RECORD_FIELDNAMES,
 ]
 M8_SCORE_DB_FILE_OUTPUT_PREVIEW_REPRESENTATIVE_LIMIT = 3
+M8_SCORE_DB_PREVIEW_SCHEMA_NAME = "m8_score_db_preview"
+M8_SCORE_DB_PREVIEW_SCHEMA_VERSION = 1
 M8_SCORE_DB_WRITE_PREVIEW_INTEGER_FIELDS = (
     "played_at_ms",
     "score",
@@ -4655,6 +4657,7 @@ def write_m8_save_payload_preview_report(
 
 def create_m8_score_db_schema(connection: sqlite3.Connection) -> None:
     connection.execute(M8_PLAYS_SCHEMA_SQL)
+    connection.execute(f"PRAGMA user_version = {M8_SCORE_DB_PREVIEW_SCHEMA_VERSION}")
 
 
 def validate_m8_planned_play_record(row: dict[str, str]) -> str:
@@ -4824,6 +4827,9 @@ def summarize_m8_score_db_write_preview(
         "scope": "M8 in-memory score DB write preview",
         "source": "m8_planned_play_records_rows",
         "database": "in-memory sqlite",
+        "schema_name": M8_SCORE_DB_PREVIEW_SCHEMA_NAME,
+        "schema_version": M8_SCORE_DB_PREVIEW_SCHEMA_VERSION,
+        "schema_version_source": "PRAGMA user_version",
         "schema_table": "plays",
         "target_count": len(row_list),
         "insert_target_count": inserted_count,
@@ -4848,6 +4854,7 @@ def summarize_m8_score_db_write_preview(
         "reading_notes": [
             "Only planned play record rows are input to this write preview.",
             "Rows are inserted into a fresh in-memory SQLite plays table only.",
+            "schema_version identifies the preview schema contract only.",
             "This is not production DB output, DB save success, confirmed IDs, or final values.",
             "timestamped and manifest inputs keep timestamp_ms as played_at_ms.",
             "played_at_ms=0 remains the timestamp-less provisional value.",
@@ -4893,6 +4900,9 @@ def summarize_m8_score_db_file_output_preview(
         "source": "m8_planned_play_records_rows",
         "database": str(output_db_path),
         "database_kind": "file sqlite under data/",
+        "schema_name": M8_SCORE_DB_PREVIEW_SCHEMA_NAME,
+        "schema_version": M8_SCORE_DB_PREVIEW_SCHEMA_VERSION,
+        "schema_version_source": "PRAGMA user_version",
         "schema_table": "plays",
         "target_count": len(row_list),
         "insert_target_count": inserted_count,
@@ -4918,6 +4928,7 @@ def summarize_m8_score_db_file_output_preview(
             "This file DB output runs only when --m8-score-db-output is explicitly specified.",
             "The output path is restricted to data/ and must be a new file.",
             "Only planned play record rows are input to this file output preview.",
+            "schema_version identifies the preview schema contract only.",
             "This is not production DB save success, confirmed IDs, or final values.",
             "song_id and chart_id remain identity_signal candidate observations.",
             "Digit values remain copied M7a recognized_digits candidates.",
@@ -4944,6 +4955,9 @@ def write_m8_score_db_file_output_preview_report(
         f"- source: `{summary['source']}`",
         f"- database: `{summary['database']}`",
         f"- database kind: `{summary['database_kind']}`",
+        f"- schema name: `{summary['schema_name']}`",
+        f"- schema version: `{summary['schema_version']}`",
+        f"- schema version source: `{summary['schema_version_source']}`",
         f"- schema table: `{summary['schema_table']}`",
         f"- target planned rows: {summary['target_count']}",
         f"- insert target count: {summary['insert_target_count']}",
@@ -5011,6 +5025,7 @@ def write_m8_score_db_file_output_preview_report(
             "",
             "- 明示オプションなしでは実ファイルDBを生成しません。",
             "- 出力先は `data/` 配下の新規ファイルに限定します。",
+            "- `schema_version` はpreviewスキーマ契約の識別子で、本番保存成功を意味しません。",
             "- 入力は保存予定レコードに変換済みの行だけです。",
             "- `payload_ready` 以外は上流の planned records で止まり、このpreviewへ入りません。",
             "- `inserted_to_file_preview` は明示指定されたpreview DBへのinsert確認であり、"
@@ -5038,6 +5053,9 @@ def write_m8_score_db_write_preview_report(
         f"- target boundary: `{summary['target_boundary']}`",
         f"- source: `{summary['source']}`",
         f"- database: `{summary['database']}`",
+        f"- schema name: `{summary['schema_name']}`",
+        f"- schema version: `{summary['schema_version']}`",
+        f"- schema version source: `{summary['schema_version_source']}`",
         f"- schema table: `{summary['schema_table']}`",
         f"- target planned rows: {summary['target_count']}",
         f"- insert target count: {summary['insert_target_count']}",
@@ -5104,6 +5122,7 @@ def write_m8_score_db_write_preview_report(
             "## Reading Notes",
             "",
             "- 入力は保存予定レコードに変換済みの行だけです。",
+            "- `schema_version` はpreviewスキーマ契約の識別子で、本番保存成功を意味しません。",
             "- `payload_ready` 以外は上流の planned records で止まり、このpreviewへ入りません。",
             "- `inserted_in_memory` はin-memory fixtureへのinsert確認であり、"
             "本番DB保存成功ではありません。",

@@ -321,7 +321,7 @@ M5完了時点で固定すること:
 - `m8_save_payload_preview.csv`、`m8_save_payload_preview.json`、`m8_save_payload_preview.md` で、M7 preview行から将来DB保存へ渡すならどの材料になるかをdry-run payloadとして確認する入口を追加済み。入力は `m7_save_decision_preview_rows` で、`preview_save_candidate` 以外は `unsupported_preview_status` としてpayload材料から除外する。
 - M8 dry-run status は `payload_ready`、`missing_identity_candidate`、`missing_digit_value`、`unsupported_preview_status`。`payload_ready` はM8本実装前の仮payload材料が揃った状態であり、DB保存可能、保存成功、曲ID/譜面ID確定、保存値確定ではない。
 - `m8_planned_play_records.csv`、`m8_planned_play_records.json`、`m8_planned_play_records.md` で、`payload_ready` 行だけを個人スコアDB `plays` 相当の最小row contractへ変換する入口を追加済み。`unsupported_preview_status`、`missing_identity_candidate`、`missing_digit_value` は保存予定レコードへ変換しない。
-- `m8_score_db_write_preview.csv`、`m8_score_db_write_preview.json`、`m8_score_db_write_preview.md` で、保存予定レコードだけを新規 in-memory SQLite `plays` へinsertするdry-run入口を追加済み。非ready payloadは上流の planned records で止まり、write previewへ進まない。
+- `m8_score_db_write_preview.csv`、`m8_score_db_write_preview.json`、`m8_score_db_write_preview.md` で、保存予定レコードだけを新規 in-memory SQLite `plays` へinsertするdry-run入口を追加済み。非ready payloadは上流の planned records で止まり、write previewへ進まない。previewスキーマ識別として `schema_version=1` をsummary/reportへ出し、SQLite側は `PRAGMA user_version=1` にする。
 - `--m8-score-db-output data\...\ddrgp-scores.sqlite` を明示した場合だけ、保存予定レコードを `data/` 配下の新規SQLiteファイルへinsertするfile output previewを追加済み。出力DBはGit管理せず、`inserted_to_file_preview` は本番保存成功、曲ID/譜面ID確定、保存値確定として扱わない。
 - 最小 `plays` スキーマとinsert境界は in-memory SQLite fixtureと明示オプション付きfile output previewで固定している。`song_id` / `chart_id` はM5候補観測、数字列はM7a候補値のまま扱う。
 - 現時点では本番insert、低確信度ログ本番仕様、保存値本番確定には進んでいない。
@@ -385,8 +385,8 @@ M5完了時点で固定すること:
 - `payload_ready` は候補IDとM7a数字列が揃ったdry-run状態であり、保存OKやDB保存成功ではない。
 - `preview_save_candidate` 以外は `excluded_preview_status_counts` と代表で読み、payload材料へ昇格しない。
 - `m8_planned_play_records.*` は `payload_ready` だけを `plays` 最小列へ写す保存予定レコードプレビューで、DB保存成功、曲ID/譜面ID確定、保存値確定ではない。
-- `m8_score_db_write_preview.*` は保存予定レコードだけを新規 in-memory SQLite `plays` へinsertするdry-runプレビューで、insert対象件数、insert後件数、除外件数、代表行を確認する。実ファイルDBは生成せず、本番DB保存成功として扱わない。
-- `--m8-score-db-output data\...\ddrgp-scores.sqlite` は、明示した場合だけ保存予定レコードを `data/` 配下の新規SQLiteファイルへinsertするfile output preview。`m8_score_db_file_output_preview.*` は出力DBへのinsert件数確認であり、本番DB保存成功として扱わない。
+- `m8_score_db_write_preview.*` は保存予定レコードだけを新規 in-memory SQLite `plays` へinsertするdry-runプレビューで、insert対象件数、insert後件数、除外件数、代表行、`schema_version=1` を確認する。実ファイルDBは生成せず、本番DB保存成功として扱わない。
+- `--m8-score-db-output data\...\ddrgp-scores.sqlite` は、明示した場合だけ保存予定レコードを `data/` 配下の新規SQLiteファイルへinsertするfile output preview。`m8_score_db_file_output_preview.*` は出力DBへのinsert件数と `schema_version=1` の確認であり、本番DB保存成功として扱わない。SQLite側は `PRAGMA user_version=1` を設定する。
 - `plays` の最小スキーマとinsert境界は in-memory SQLite fixtureと明示オプション付きfile output previewで検証し、生成したローカルDBファイルはGit管理しない。
 
 やること:

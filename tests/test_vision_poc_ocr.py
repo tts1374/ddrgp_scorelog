@@ -2668,6 +2668,9 @@ def test_m8_save_payload_preview_uses_m7_preview_rows(tmp_path: Path) -> None:
     assert write_preview_summary["scope"] == "M8 in-memory score DB write preview"
     assert write_preview_summary["source"] == "m8_planned_play_records_rows"
     assert write_preview_summary["database"] == "in-memory sqlite"
+    assert write_preview_summary["schema_name"] == "m8_score_db_preview"
+    assert write_preview_summary["schema_version"] == 1
+    assert write_preview_summary["schema_version_source"] == "PRAGMA user_version"
     assert write_preview_summary["target_count"] == 1
     assert write_preview_summary["insert_target_count"] == 1
     assert write_preview_summary["inserted_count"] == 1
@@ -2684,6 +2687,7 @@ def test_m8_save_payload_preview_uses_m7_preview_rows(tmp_path: Path) -> None:
     )
     write_preview_report = write_preview_report_path.read_text(encoding="utf-8")
     assert "# M8 Score DB Write Preview" in write_preview_report
+    assert "schema version: `1`" in write_preview_report
     assert "`payload_ready` 以外は上流の planned records で止まり" in write_preview_report
     assert "本番DB保存成功ではありません" in write_preview_report
 
@@ -2885,6 +2889,9 @@ def test_m8_score_db_file_output_preview_writes_explicit_data_db(
     assert summary["source"] == "m8_planned_play_records_rows"
     assert summary["database"] == str(output_db_path)
     assert summary["database_kind"] == "file sqlite under data/"
+    assert summary["schema_name"] == "m8_score_db_preview"
+    assert summary["schema_version"] == 1
+    assert summary["schema_version_source"] == "PRAGMA user_version"
     assert summary["target_count"] == 1
     assert summary["insert_target_count"] == 1
     assert summary["inserted_count"] == 1
@@ -2898,12 +2905,14 @@ def test_m8_score_db_file_output_preview_writes_explicit_data_db(
     )
 
     with sqlite3.connect(output_db_path) as connection:
+        schema_version = connection.execute("PRAGMA user_version").fetchone()[0]
         stored_row = connection.execute(
             """
             SELECT played_at_ms, song_id, chart_id, score, source_confirmation_mode
             FROM plays
             """
         ).fetchone()
+    assert schema_version == 1
     assert stored_row == (
         345678,
         "song_make",
@@ -2917,6 +2926,7 @@ def test_m8_score_db_file_output_preview_writes_explicit_data_db(
     report = report_path.read_text(encoding="utf-8")
     assert "# M8 Score DB File Output Preview" in report
     assert "`--m8-score-db-output`" in report
+    assert "schema version: `1`" in report
     assert "本番DB保存成功ではありません" in report
 
 
@@ -2974,9 +2984,13 @@ def test_m8_score_db_file_output_preview_accepts_zero_planned_rows_after_no_m5(
     assert summary["insert_target_count"] == 0
     assert summary["inserted_count"] == 0
     assert summary["row_count_after_insert"] == 0
+    assert summary["schema_name"] == "m8_score_db_preview"
+    assert summary["schema_version"] == 1
     assert summary["write_preview_status_counts"] == {}
     with sqlite3.connect(output_db_path) as connection:
+        schema_version = connection.execute("PRAGMA user_version").fetchone()[0]
         row_count = connection.execute("SELECT COUNT(*) FROM plays").fetchone()[0]
+    assert schema_version == 1
     assert row_count == 0
 
 

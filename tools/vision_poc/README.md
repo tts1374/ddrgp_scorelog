@@ -46,9 +46,9 @@ python -m pip install -e ".[vision]"
 
 `m8_planned_play_records.csv`、`m8_planned_play_records.json`、`m8_planned_play_records.md` は、M8 payload previewの `payload_ready` 行だけを個人スコアDB `plays` 相当の最小row contractへ変換するプレビューです。`unsupported_preview_status`、`missing_identity_candidate`、`missing_digit_value` は保存予定レコードへ変換しません。`song_id` / `chart_id` はM5候補観測、数字列はM7a候補値であり、保存用確定IDや保存値確定ではありません。
 
-`m8_score_db_write_preview.csv`、`m8_score_db_write_preview.json`、`m8_score_db_write_preview.md` は、保存予定レコードだけを新規の in-memory SQLite `plays` テーブルへinsertするdry-runプレビューです。入力は `m8_planned_play_records_rows` に限定し、非ready payloadは上流の planned records で止まります。`inserted_in_memory` はスキーマとinsert境界の確認であり、実ファイルDB生成、本番DB保存成功、曲ID/譜面ID確定、保存値確定ではありません。timestampなし入力の `played_at_ms=0` は暫定値のままinsert境界へ渡します。
+`m8_score_db_write_preview.csv`、`m8_score_db_write_preview.json`、`m8_score_db_write_preview.md` は、保存予定レコードだけを新規の in-memory SQLite `plays` テーブルへinsertするdry-runプレビューです。入力は `m8_planned_play_records_rows` に限定し、非ready payloadは上流の planned records で止まります。summary/report には `schema_name=m8_score_db_preview`、`schema_version=1`、`schema_version_source=PRAGMA user_version` を出します。`inserted_in_memory` と `schema_version` はスキーマとinsert境界の確認であり、実ファイルDB生成、本番DB保存成功、曲ID/譜面ID確定、保存値確定ではありません。timestampなし入力の `played_at_ms=0` は暫定値のままinsert境界へ渡します。
 
-`--m8-score-db-output data\...\ddrgp-scores.sqlite` は、明示指定された場合だけ実ファイルSQLiteへ書くM8出力プレビューです。出力先は `data/` 配下の新規ファイルに限定し、`data/` 外や既存ファイルへの書き込みは拒否します。入力は `m8_planned_play_records_rows` だけで、非ready payloadやM5未実行で止まった行をここで再判定しません。出力DBの `plays` は既存 in-memory preview と同じ最小列で、`m8_score_db_file_output_preview.json` / Markdown では `inserted_to_file_preview` を使います。この状態も本番DB保存成功、曲ID/譜面ID確定、保存値確定ではありません。
+`--m8-score-db-output data\...\ddrgp-scores.sqlite` は、明示指定された場合だけ実ファイルSQLiteへ書くM8出力プレビューです。出力先は `data/` 配下の新規ファイルに限定し、`data/` 外や既存ファイルへの書き込みは拒否します。入力は `m8_planned_play_records_rows` だけで、非ready payloadやM5未実行で止まった行をここで再判定しません。出力DBの `plays` は既存 in-memory preview と同じ最小列で、`PRAGMA user_version=1` を設定します。`m8_score_db_file_output_preview.json` / Markdown では `schema_version=1` と `inserted_to_file_preview` を使います。この状態も本番DB保存成功、曲ID/譜面ID確定、保存値確定ではありません。
 
 テンプレート探索はROI別ディレクトリを最優先し、判定数系の `marvelous`、`perfect`、`great`、`good`、`miss` は共有 `digit_templates/judgment_counts/<digit>.png` も参照します。`max_combo` と `ex_score` は、フォント共通化候補として共有 `digit_templates/combo_ex_score/<digit>.png` も参照します。さらに `ex_score` は、`combo_ex_score` がない環境でも既存 `digit_templates/max_combo/<digit>.png` をfallbackとして参照します。ROI別テンプレートを残したまま共有ディレクトリや `max_combo` fallbackを試せるため、ローカル素材の削除や移動をしなくても共通化可否を検証できます。2026-07-08時点のローカル確認では、`miss` は共有 `judgment_counts` だけだと分割数は期待桁数と一致するものの、60件中58件が `ambiguous` になるため、ROI別 `digit_templates/miss/` テンプレートを使います。同日時点で `ex_score` は右側数字領域へのcomponent分割と `max_combo` fallbackにより、ROI別 `ex_score` テンプレートなしで60/60 `recognized` / matchです。
 
@@ -529,8 +529,8 @@ python -m pytest tests
 - M7 save decision previewは `m7_save_readiness_review_rows` を入力にし、`preview_save_candidate` / `needs_identity_review` / `needs_digit_review` / `blocked_readiness` / `missing_required_material` を保存判定プレビューとして分け、M5 source / jacket status別代表、identity review理由別代表、digit review ROI別代表を出し、DB保存や曲ID/譜面ID確定に進まない
 - M8 save payload previewは `m7_save_decision_preview_rows` を入力にし、`payload_ready` / `missing_identity_candidate` / `missing_digit_value` / `unsupported_preview_status` をdry-run payload語彙として分け、`preview_save_candidate` 以外をpayload材料にせず、DB insertや保存値確定に進まない
 - M8 planned play recordsは `payload_ready` だけを `plays` 最小row contractへ変換し、非ready payloadを保存予定レコードへ進めない
-- M8 score DB write previewは保存予定レコードだけを in-memory SQLite `plays` へinsertし、実DBファイル生成や本番保存成功として扱わない
-- M8 score DB file output previewは `--m8-score-db-output` 明示時だけ `data/` 配下の新規SQLiteファイルへ保存予定レコードをinsertし、本番保存成功として扱わない
+- M8 score DB write previewは保存予定レコードだけを in-memory SQLite `plays` へinsertし、`schema_version=1` を出し、実DBファイル生成や本番保存成功として扱わない
+- M8 score DB file output previewは `--m8-score-db-output` 明示時だけ `data/` 配下の新規SQLiteファイルへ保存予定レコードをinsertし、DBの `PRAGMA user_version=1` とsummary/reportの `schema_version=1` を確認でき、本番保存成功として扱わない
 - ローカル素材がある環境では `score_digits` の前処理画像を生成できる
 - 曲・譜面情報の目視確認用ROIとして `play_style`、`difficulty`、`level`、`rank`、`song_title`、`artist` を `rois/` に生成できる
 - M3 chart-field 抽出評価は confirmed-events 境界だけを対象にし、duplicate / rejected_transition / unconfirmed / non-result を `skipped` として区別できる
