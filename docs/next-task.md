@@ -1,6 +1,6 @@
 # 次チャット用タスク
 
-`C:\work\ddrgp_scorelog` で作業してください。必ず `AGENTS.md` のプロジェクトルールに従ってください。`docs/next-task.md` は次チャット用の引き継ぎ仕様として扱い、実装・検証が終わった後に更新してください。`docs/next-task.md` の更新だけで作業完了扱いにしないでください。
+`C:\work\ddrgp_scorelog` で作業してください。必ず `AGENTS.md` のプロジェクトルールに従ってください。このファイルは次チャット用の引き継ぎ仕様です。作業では `docs/next-task.md` の更新だけで完了扱いにせず、コード、テスト、CLI、README、workflow、または設計docsなど、実行可能な成果物変更を1つ以上進めてください。
 
 ## 推論レベル
 
@@ -8,43 +8,72 @@ high
 
 ## 作業ブランチ
 
-今回の作業ブランチは `codex/m8-score-db-schema-version-preview` です。
+M8 preview完了PRはmerge済みです。次チャットでは最新 `main` から、正式M8用の新ブランチを作ってください。
 
-次チャット開始時に以下を確認してください。
+推奨ブランチ:
+
+```powershell
+codex/m8-personal-score-db-schema-design
+```
+
+開始時に以下を確認してください。
 
 - `git status --short --branch`
 - `git log --oneline -5`
 - `git fetch --all --prune`
-- このPRがmerge済みなら、最新 `main` から次フェーズ用の `codex/m8-personal-score-db-schema-design` ブランチを作る。
-- 未mergeなら、`codex/m8-score-db-schema-version-preview` の先端を取り込んでから新ブランチを作るか、このPRのmergeを待つ。
+- `main` が最新であること。
 - `metadata.csv`、`data/`、`logs/`、ローカル素材、ローカルDBがコミット対象に入っていないこと。
 
-## 今回までの作業結果
+## 現在地
 
-- M8 previewは、`m8_save_payload_preview.*`、`m8_planned_play_records.*`、`m8_score_db_write_preview.*`、明示file output preview、DB readback診断まで揃ったため一区切り。
-- file output preview summary/reportでは、`database_schema_version`、`database_preview_metadata`、`database_plays_row_count`、`database_plays_schema_columns` と、metadata / row count / schema の一致診断を読める。
-- 実SQLite readback経路の metadata mismatch / row count mismatch / schema mismatch fixtureは維持済み。
-- 今回、これら3種の負例summaryを `write_m8_score_db_file_output_preview_report` に渡し、Markdown report上で mismatch reason がそのまま読めるfixtureを追加した。
-- `docs/implementation-roadmap.md` に、M8 preview完了範囲と、次フェーズが正式個人スコアDBスキーマ設計・migration方針・本番insert境界・duplicate key本格化・保存成功/スキップログ設計であることを反映済み。
-- 正式個人スコアDB保存、本番insert、正式migration、duplicate key本格差し替えにはまだ踏み込んでいない。
+M8 previewは完了済みとして扱います。
 
-2026-07-09時点のローカル確認:
+完了済みのM8 preview範囲:
 
-- `python -m pytest tests\test_vision_poc_ocr.py -k "m8_score_db_file_output_preview_report_shows_real_db_readback_mismatch_reasons or m8_score_db_file_output_preview_reports_metadata_mismatch_from_real_db_readback or m8_score_db_file_output_preview_reports_row_count_mismatch_from_real_db_readback or m8_score_db_file_output_preview_reports_schema_mismatch_from_real_db_readback"`: 4 passed。
-- `python -m pytest tests\test_vision_poc_ocr.py -k "m8"`: 20 passed。
-- `python -m pytest tests\test_vision_poc_ocr.py -k "m7_save_decision or m7_save_readiness or m7a or m8"`: 71 passed。
-- `python -m ruff check tools\vision_poc pyproject.toml tests`: passed。
-- `python -m compileall master tools\vision_poc`: passed。
-- `python -m pytest tests`: 206 passed。
-- `git diff --check`: passed。
-- `python -m tools.vision_poc --no-ocr`: 221/221 correct、false positives 0、false negatives 0。
-- `python -m tools.vision_poc --m7a-digit-recognition --m7a-digit-rois score_digits max_combo marvelous perfect great good miss ex_score --no-ocr --no-rois --output data\vision_poc_m7_save_readiness`: 221/221 correct、false positives 0、false negatives 0。
-- `python -m tools.vision_poc --m5-jacket-match --m7a-digit-recognition --m7a-digit-rois score_digits max_combo marvelous perfect great good miss ex_score --no-ocr --no-rois --output data\vision_poc_m7_m5_readiness`: 221/221 correct、false positives 0、false negatives 0、M5 jacket match features 69、candidates 60、diagnostics 118。
-- M5あり明示file output:
-  - `python -m tools.vision_poc --m5-jacket-match --m7a-digit-recognition --m7a-digit-rois score_digits max_combo marvelous perfect great good miss ex_score --no-ocr --no-rois --output data\vision_poc_m8_report_readback_20260709_codex --m8-score-db-output data\vision_poc_m8_report_readback_20260709_codex\ddrgp-scores.sqlite`
-  - 分類: 221/221 correct、false positives 0、false negatives 0。
-  - `m8_score_db_file_output_preview.json`: `target_count=60`、`inserted_count=60`、`row_count_after_insert=60`、`database_plays_row_count=60`、`database_readback_matches_preview_contract=true`、`database_readback_mismatch_reasons=[]`、`database_plays_row_count_matches_insert_counts=true`、`database_plays_row_count_mismatch_reasons=[]`、`database_plays_insert_columns_match_planned_contract=true`、`database_plays_integer_fields_match_preview_contract=true`、`database_plays_schema_mismatch_reasons=[]`。
-- 生成した `data/vision_poc_m8_report_readback_20260709_codex/ddrgp-scores.sqlite` はローカルDBであり、コミット対象外。
+- `m8_save_payload_preview.*`
+- `m8_planned_play_records.*`
+- `m8_score_db_write_preview.*`
+- `--m8-score-db-output` による明示file output preview
+- `schema_version=1` と `PRAGMA user_version=1` によるpreviewスキーマ識別
+- `created_by_preview=tools.vision_poc.m8_score_db_preview` と `preview_metadata` によるpreview生成物識別
+- `schema_contract_scope=preview_minimal_plays` と `production_schema_status=not_production_schema` によるpreview専用最小スキーマ識別
+- file output previewの `database_schema_version`、`database_preview_metadata`、`database_plays_row_count`、`database_plays_schema_columns`
+- metadata / row count / schema readback mismatch fixture
+- Markdown report上のreadback mismatch reason表示fixture
+
+M8 previewで確認した重要な境界:
+
+- `payload_ready`、保存予定レコード、write preview、file output previewは、本番DB保存成功ではない。
+- M8 preview最小 `plays` は正式個人スコアDBスキーマではない。
+- `identity_signal_*` は曲ID/譜面IDの候補観測であり、保存用確定IDではない。
+- M7a `recognized_digits` は保存値候補であり、保存値確定ではない。
+- DB readback診断欄はpreview DBの内部整合確認であり、正式スキーマ確定ではない。
+
+## 次に必ず進める実作業
+
+次はM8本体の最初の作業として、正式個人スコアDBのスキーマ設計とmigration境界を固めます。まだ本番insert実装へは進まないでください。
+
+第一候補:
+
+- `docs/design/10_personal_score_db_schema.md` を新規追加する。
+- 正式 `ddrgp-scores.sqlite` の初期スキーマ案を整理する。
+- M8 preview最小 `plays` と正式個人スコアDB `plays` を明確に別物として書く。
+- `plays`、保存スキップ/解析ログ、DB metadata、migration metadata、source capture reference の責務を分ける。
+- `PRAGMA user_version`、metadata table、互換チェック、既存DB拒否/移行のmigration方針を整理する。
+- 設計と連動する小さな検証成果物を追加する。例: schema定数、schema contract test、または設計docの必須語彙を守る軽量テスト。
+
+初回M8本体で決めたい候補:
+
+- 正式 `plays` に含める列: `play_id`、`played_at`、`master_version`、`song_id`、`chart_id`、`score`、`max_combo`、`marvelous`、`perfect`、`great`、`good`、`miss`、`ex_score`、`rank`、`clear_type`、`capture_hash`、`duplicate_key`、`analysis_confidence`、`app_version`、`created_at`。
+- OCR raw / normalized、M5 identity signal、M7a recognized digits、preview statusなどを正式 `plays` に直接入れるか、解析ログ側に逃がすか。
+- 保存成功ログ、保存スキップログ、低信頼度ログをDB内tableにするか、JSONログ参照にするか。
+- 既存DBがpreview DBだった場合に拒否するか、正式DBとは別物として扱うか。
+- duplicate key本格化をDBスキーマ設計へどこまで含めるか。
+
+代替候補:
+
+- 先に `docs/design/10_personal_score_db_schema.md` ではなく `docs/design/10_save_and_migration_boundary.md` として、保存成功/スキップ、migration、既存DB拒否条件を中心に整理する。
+- ただし、どちらの場合も本番DB insert、既定自動保存、duplicate key本格実装、低信頼度ログ本番保存はまだ実装しない。
 
 ## 必読資料
 
@@ -55,15 +84,12 @@ high
 - `docs/design/04_data_model.md`
 - `docs/design/05_storage_io_spec.md`
 - `docs/design/06_regression_guard.md`
+- `docs/design/08_master_db_generation.md`
+- `docs/design/09_master_match_poc.md`
 - `tools/vision_poc/README.md`
 - `tools/vision_poc/runner.py`
 - `tests/test_vision_poc_ocr.py`
 - `tests/test_vision_poc_result_events.py`
-
-正式スコアDB、マスタID保存、またはmigration方針に触る場合は追加で読む資料:
-
-- `docs/design/08_master_db_generation.md`
-- `docs/design/09_master_match_poc.md`
 - `master/README.md`
 - `master/builder.py`
 - `master/inspect.py`
@@ -77,8 +103,9 @@ high
 - `samples/screenshots/organized/digit_templates/` などのM7aテンプレート画像コミット
 - 本番キャプチャAPI、実キャプチャデバイス依存コード、常駐監視ループ、非同期処理
 - Windows常駐アプリUI
-- 低信頼度ログ本番仕様の実装
-- 正式個人スコアDBへの実insert、自動保存、既定保存
+- 正式個人スコアDBへの実insert
+- 既定自動保存、常時保存処理、本番用の自動DB insert
+- 低信頼度ログ本番保存の実装
 - duplicate key の本格差し替え実装
 - M5 `identity_signal_*` から曲ID/譜面IDを保存用確定すること
 - M7aの `recognized_digits` を保存値確定として扱うこと
@@ -88,45 +115,9 @@ high
 - M4 Releases配布の実装
 - プロジェクト専用Skill/Subagentの作成
 
-完了済みとして蒸し返さないもの:
-
-- M7a 8 ROIの数字認識入口
-- M7 readiness / M7 decision preview
-- `m8_save_payload_preview.*`、`m8_planned_play_records.*`、`m8_score_db_write_preview.*`
-- `--m8-score-db-output` による明示file output preview
-- `schema_version=1` と `PRAGMA user_version=1` によるM8 previewスキーマ識別
-- `created_by_preview=tools.vision_poc.m8_score_db_preview` と `preview_metadata` によるpreview生成物識別
-- `schema_contract_scope=preview_minimal_plays` と `production_schema_status=not_production_schema` によるpreview専用最小スキーマ識別
-- `database_schema_version` と `database_preview_metadata` によるfile output preview readback診断
-- `database_readback_matches_preview_contract` と `database_readback_mismatch_reasons` によるfile output preview readback一致診断
-- `database_plays_row_count` と `database_plays_row_count_matches_insert_counts` / `database_plays_row_count_mismatch_reasons` によるfile output preview row count readback診断
-- `database_plays_schema_columns`、`database_plays_insert_columns_match_planned_contract`、`database_plays_integer_fields_match_preview_contract`、`database_plays_schema_mismatch_reasons` によるfile output preview schema readback診断
-- 実DB readback経路による metadata mismatch / row count mismatch / schema mismatch fixture
-- Markdown report上の readback mismatch reason 表示fixture
-
-## 次に必ず進める実作業
-
-次はM8 preview後の正式個人スコアDBフェーズに入る。ただし、最初の1チャットでは本番insert実装へ進まず、正式スキーマとmigration境界の設計・回帰ガードを固める。
-
-第一候補:
-
-- `docs/design/10_personal_score_db_schema.md` などの新規design docを追加し、正式 `ddrgp-scores.sqlite` の初期スキーマ案を整理する。
-- `plays`、保存スキップ/解析ログ、DB metadata、migration metadata、source capture reference の責務を分ける。
-- M8 preview最小 `plays` と正式個人スコアDB `plays` を明確に別物として書く。
-- 正式スキーマ候補には、`play_id`、`played_at`、`master_version`、`song_id`、`chart_id`、スコア/判定数、rank/clear_type候補、capture hash、duplicate key、analysis confidence、app version、created_at などを含めるかを検討する。
-- migration方針は、`PRAGMA user_version`、metadata table、互換チェック、既存DB拒否/移行のどれを使うかを設計する。
-- 実装可能な成果物として、スキーマ契約の小さなテスト、定数、またはREADME/設計と連動する検証コードを1つ以上追加する。docsだけで終える場合は、なぜ実装へ入らないのかをコミット前に明示する。
-
-代替候補:
-
-- まず正式DBの保存成功/スキップログ設計を `docs/design/` に追加し、M7 decision previewから正式保存境界へ渡す項目を整理する。
-- ただし、本番DB insert、既定自動保存、duplicate key本格実装、低信頼度ログ本番保存はまだ実装しない。
-
-主作業完了後、今回の結果を踏まえて `docs/next-task.md` を次チャット用に更新する。
-
 ## 検証コマンド
 
-次チャットで最低限実行するコマンド:
+最低限実行するコマンド:
 
 ```powershell
 python -m pytest tests\test_vision_poc_ocr.py -k "m8"
@@ -137,15 +128,15 @@ python -m pytest tests
 git diff --check
 ```
 
-正式スコアDB設計やmigration境界に触った場合は、追加で関連する新規テストを明示的に実行すること。
+正式DB schema定数やmigration境界のテストを追加した場合は、その新規テストを明示的に実行してください。
 
-M8 preview既存契約を触った場合は、追加で以下を確認する。既存DBファイルがあると拒否されるため、実行ごとに新しい `data/` 配下パスを使うこと:
+M8 preview既存契約を触った場合は、追加で以下を確認してください。既存DBファイルがあると拒否されるため、実行ごとに新しい `data/` 配下パスを使うこと。
 
 ```powershell
 python -m tools.vision_poc --m5-jacket-match --m7a-digit-recognition --m7a-digit-rois score_digits max_combo marvelous perfect great good miss ex_score --no-ocr --no-rois --output data\vision_poc_m8_next_check --m8-score-db-output data\vision_poc_m8_next_check\ddrgp-scores.sqlite
 ```
 
-画像PoCや分類境界へ触った場合は、追加で以下も確認する。
+画像PoCや分類境界へ触った場合は、追加で以下も確認してください。
 
 ```powershell
 python -m tools.vision_poc --no-ocr
@@ -153,7 +144,7 @@ python -m tools.vision_poc --m7a-digit-recognition --m7a-digit-rois score_digits
 python -m tools.vision_poc --m5-jacket-match --m7a-digit-recognition --m7a-digit-rois score_digits max_combo marvelous perfect great good miss ex_score --no-ocr --no-rois --output data\vision_poc_m7_m5_readiness
 ```
 
-M4/M5境界やmaster DB生成へ触った場合は、`tests\test_master_match.py`、`tests\test_master_builder.py`、M5 jacket match のPoC実行も再確認すること。
+M4/M5境界やmaster DB生成へ触った場合は、`tests\test_master_match.py`、`tests\test_master_builder.py`、M5 jacket match のPoC実行も再確認してください。
 
 ## コミット/Push方針
 
@@ -168,21 +159,11 @@ M4/M5境界やmaster DB生成へ触った場合は、`tests\test_master_match.py
 
 ## 完了条件
 
-- M8 previewは完了済みとして扱い、正式個人スコアDBフェーズの設計または検証強化が1つ以上進んでいる。
-- `docs/next-task.md` と必要な設計docs上で、次に残る作業が明確になっている。
+- M8 previewは完了済みとして扱い、正式M8のスキーマ設計またはmigration境界が1つ以上進んでいる。
+- `docs/design/`、コード、テスト、READMEのいずれかに、次の実装へつながる成果物変更がある。
 - 正式個人スコアDB保存の実insertにはまだ踏み込んでいない。
 - M8 preview最小 `plays` と正式個人スコアDBスキーマを混同していない。
-- preview `plays` のinsert対象列が `M8_PLANNED_PLAY_RECORD_FIELDNAMES` と同じ順序で維持されている。
-- preview `plays` の整数列が `M8_SCORE_DB_WRITE_PREVIEW_INTEGER_FIELDS` と矛盾していない。
-- 0件insertの明示file outputでも、空 `plays`、`preview_metadata`、readback欄、一致診断欄、schema readback診断欄が `true` / 空理由になる。
-- M5ありCLI明示file outputでは、`payload_ready` から保存予定レコードが生成され、実ファイルpreview DBへ1件以上insertされる。
-- 実ファイルDBへ書く場合は明示オプションで `data/` 配下の新規ファイルに限定され、DBファイルをコミットしていない。
-- 既存DBファイルを上書きしない。
-- 明示オプションなしの既定実行では実ファイルDBと `m8_score_db_file_output_preview.*` を生成しない。
-- readback診断欄を、本番DB保存成功、正式スキーマ確定、曲ID/譜面ID確定、保存値確定として扱っていない。
-- `m8_score_db_write_preview_rows` とfile output previewの入力が `m8_planned_play_records_rows` に限定されている。
-- timestamped / manifest 相当の `confirmation_mode=time` と `played_at_ms` が planned rows / write preview / file output preview まで保持される。
-- timestampなし入力の `played_at_ms=0` 暫定仕様が壊れていない。
+- preview DB readback診断を正式スキーマ確定や保存成功として扱っていない。
 - `identity_signal_*`、`m5_identity_reviewable`、`blocked_identity_signal` が曲ID/譜面ID確定として扱われていない。
 - M7aの `recognized_digits`、`expected_value`、`match` が保存値確定として扱われていない。
 - duplicate、`rejected_transition`、未確定候補、non-result が上流対象外のまま。
