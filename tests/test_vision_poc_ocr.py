@@ -2917,6 +2917,14 @@ def test_m8_score_db_file_output_preview_writes_explicit_data_db(
         }
     )
 
+    expected_preview_metadata = {
+        "created_by_preview": "tools.vision_poc.m8_score_db_preview",
+        "schema_name": "m8_score_db_preview",
+        "schema_table": "plays",
+        "schema_version": "1",
+        "schema_version_source": "PRAGMA user_version",
+    }
+
     summary = runner.write_m8_score_db_file_output_preview(
         output_db_path,
         [planned_row],
@@ -2932,6 +2940,8 @@ def test_m8_score_db_file_output_preview_writes_explicit_data_db(
     assert summary["schema_version_source"] == "PRAGMA user_version"
     assert summary["preview_metadata_table"] == "preview_metadata"
     assert summary["created_by_preview"] == "tools.vision_poc.m8_score_db_preview"
+    assert summary["database_schema_version"] == 1
+    assert summary["database_preview_metadata"] == expected_preview_metadata
     assert summary["target_count"] == 1
     assert summary["insert_target_count"] == 1
     assert summary["inserted_count"] == 1
@@ -2965,13 +2975,7 @@ def test_m8_score_db_file_output_preview_writes_explicit_data_db(
         987650,
         "time",
     )
-    assert preview_metadata == {
-        "created_by_preview": "tools.vision_poc.m8_score_db_preview",
-        "schema_name": "m8_score_db_preview",
-        "schema_table": "plays",
-        "schema_version": "1",
-        "schema_version_source": "PRAGMA user_version",
-    }
+    assert preview_metadata == expected_preview_metadata
 
     report_path = Path("data/m8_preview/m8_score_db_file_output_preview.md")
     runner.write_m8_score_db_file_output_preview_report(report_path, summary)
@@ -2980,6 +2984,8 @@ def test_m8_score_db_file_output_preview_writes_explicit_data_db(
     assert "`--m8-score-db-output`" in report
     assert "schema version: `1`" in report
     assert "preview metadata table: `preview_metadata`" in report
+    assert "database schema version readback: `1`" in report
+    assert "database preview metadata readback" in report
     assert "本番DB保存成功ではありません" in report
 
 
@@ -3040,6 +3046,10 @@ def test_m8_score_db_file_output_preview_accepts_zero_planned_rows_after_no_m5(
     assert summary["schema_name"] == "m8_score_db_preview"
     assert summary["schema_version"] == 1
     assert summary["created_by_preview"] == "tools.vision_poc.m8_score_db_preview"
+    assert summary["database_schema_version"] == 1
+    assert summary["database_preview_metadata"]["created_by_preview"] == (
+        "tools.vision_poc.m8_score_db_preview"
+    )
     assert summary["write_preview_status_counts"] == {}
     with sqlite3.connect(output_db_path) as connection:
         schema_version = connection.execute("PRAGMA user_version").fetchone()[0]
@@ -3196,6 +3206,10 @@ def test_m8_score_db_output_cli_writes_empty_schema_for_no_m5_planned_rows(
     assert summary["row_count_after_insert"] == 0
     assert summary["schema_version"] == 1
     assert summary["created_by_preview"] == "tools.vision_poc.m8_score_db_preview"
+    assert summary["database_schema_version"] == 1
+    assert summary["database_preview_metadata"]["created_by_preview"] == (
+        "tools.vision_poc.m8_score_db_preview"
+    )
     with sqlite3.connect(output_db_path) as connection:
         schema_version = connection.execute("PRAGMA user_version").fetchone()[0]
         row_count = connection.execute("SELECT COUNT(*) FROM plays").fetchone()[0]

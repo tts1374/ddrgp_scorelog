@@ -284,6 +284,7 @@
 - 出力先は `data/` 配下の新規SQLiteファイルに限定する。
 - 実ファイルDBの `PRAGMA user_version` は `1` にし、summary/report の `schema_version=1` と一致させる。
 - 実ファイルDBの `preview_metadata.created_by_preview` は `tools.vision_poc.m8_score_db_preview` にし、summary/report の `created_by_preview` と一致させる。
+- summary/report の `database_schema_version` と `database_preview_metadata` は実DBから読み戻した診断欄として維持し、定数のpreview識別欄と混同しない。
 - 既定実行、`--m7a-digit-recognition` だけの実行、M5なし実行では実ファイルDBへ保存予定レコードをinsertしない。
 - 入力は `m8_planned_play_records_rows` だけにする。
 - 非ready payload、M5未実行、identity不足、digit不足の行をfile output側で再判定しない。
@@ -291,7 +292,7 @@
 - `inserted_to_file_preview` は明示指定されたpreview DBへのinsert確認であり、本番DB保存成功、曲ID/譜面ID確定、保存値確定として扱わない。
 - file output preview の `schema_version=1` はpreviewスキーマ契約の識別子であり、本番DB保存成功、曲ID/譜面ID確定、保存値確定として扱わない。
 - file output preview の `created_by_preview` はpreview生成物識別子であり、本番DB保存成功、曲ID/譜面ID確定、保存値確定として扱わない。
-- M5なしで planned rows が0件の場合は、空の `plays` スキーマDBと `inserted_count=0` として確認する。
+- M5なしで planned rows が0件の場合は、空の `plays` スキーマDB、`preview_metadata`、readback欄、`inserted_count=0` として確認する。
 
 ## ROI方針
 

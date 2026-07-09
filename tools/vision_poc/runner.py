@@ -4747,6 +4747,21 @@ def insert_m8_planned_play_records(
     return rows
 
 
+def read_m8_score_db_file_output_preview_metadata(
+    connection: sqlite3.Connection,
+) -> dict[str, object]:
+    schema_version = connection.execute("PRAGMA user_version").fetchone()[0]
+    preview_metadata = dict(
+        connection.execute(
+            "SELECT key, value FROM preview_metadata ORDER BY key"
+        ).fetchall()
+    )
+    return {
+        "database_schema_version": int(schema_version),
+        "database_preview_metadata": preview_metadata,
+    }
+
+
 def m8_score_db_write_preview_rows(
     planned_rows: Iterable[dict[str, str]],
 ) -> list[dict[str, str]]:
@@ -4773,10 +4788,12 @@ def write_m8_score_db_file_output_preview(
             inserted_status="inserted_to_file_preview",
         )
         row_count_after_insert = connection.execute("SELECT COUNT(*) FROM plays").fetchone()[0]
+        database_readback = read_m8_score_db_file_output_preview_metadata(connection)
     return summarize_m8_score_db_file_output_preview(
         rows,
         output_db_path,
         int(row_count_after_insert),
+        database_readback,
     )
 
 
@@ -4892,6 +4909,7 @@ def summarize_m8_score_db_file_output_preview(
     rows: Iterable[dict[str, str]],
     output_db_path: Path,
     row_count_after_insert: int,
+    database_readback: dict[str, object],
     representative_limit: int = M8_SCORE_DB_FILE_OUTPUT_PREVIEW_REPRESENTATIVE_LIMIT,
 ) -> dict[str, object]:
     row_list = list(rows)
@@ -4932,6 +4950,8 @@ def summarize_m8_score_db_file_output_preview(
         "schema_table": "plays",
         "preview_metadata_table": M8_SCORE_DB_PREVIEW_METADATA_TABLE,
         "created_by_preview": M8_SCORE_DB_PREVIEW_CREATED_BY,
+        "database_schema_version": database_readback["database_schema_version"],
+        "database_preview_metadata": database_readback["database_preview_metadata"],
         "target_count": len(row_list),
         "insert_target_count": inserted_count,
         "inserted_count": inserted_count,
@@ -4958,6 +4978,7 @@ def summarize_m8_score_db_file_output_preview(
             "Only planned play record rows are input to this file output preview.",
             "created_by_preview marks this as a preview artifact only.",
             "schema_version identifies the preview schema contract only.",
+            "database_* readback fields are diagnostics read from the preview DB.",
             "This is not production DB save success, confirmed IDs, or final values.",
             "song_id and chart_id remain identity_signal candidate observations.",
             "Digit values remain copied M7a recognized_digits candidates.",
@@ -4990,6 +5011,9 @@ def write_m8_score_db_file_output_preview_report(
         f"- schema table: `{summary['schema_table']}`",
         f"- preview metadata table: `{summary['preview_metadata_table']}`",
         f"- created by preview: `{summary['created_by_preview']}`",
+        f"- database schema version readback: `{summary['database_schema_version']}`",
+        f"- database preview metadata readback: "
+        f"`{json.dumps(summary['database_preview_metadata'], ensure_ascii=False)}`",
         f"- target planned rows: {summary['target_count']}",
         f"- insert target count: {summary['insert_target_count']}",
         f"- inserted count: {summary['inserted_count']}",
@@ -5058,6 +5082,8 @@ def write_m8_score_db_file_output_preview_report(
             "- 出力先は `data/` 配下の新規ファイルに限定します。",
             "- `created_by_preview` はpreview生成物であることだけを示す固定値です。",
             "- `schema_version` はpreviewスキーマ契約の識別子で、本番保存成功を意味しません。",
+            "- `database_*` readback欄は実preview DBから読み戻した診断値で、"
+            "本番保存成功を意味しません。",
             "- 入力は保存予定レコードに変換済みの行だけです。",
             "- `payload_ready` 以外は上流の planned records で止まり、このpreviewへ入りません。",
             "- `inserted_to_file_preview` は明示指定されたpreview DBへのinsert確認であり、"
