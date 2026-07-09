@@ -3229,6 +3229,87 @@ def test_m8_score_db_file_output_preview_reports_schema_readback_mismatch() -> N
     ]
 
 
+def test_m8_score_db_file_output_preview_reports_schema_mismatch_from_real_db_readback() -> None:
+    rows = [
+        {
+            "write_preview_status": "inserted_to_file_preview",
+            "write_preview_reason": "",
+            "inserted_rowid": "1",
+            **{field: "1" for field in runner.M8_PLANNED_PLAY_RECORD_FIELDNAMES},
+        }
+    ]
+
+    with sqlite3.connect(":memory:") as connection:
+        runner.create_m8_score_db_schema(connection)
+        connection.execute("DROP TABLE plays")
+        connection.execute(
+            """
+            CREATE TABLE plays (
+              played_at_ms INTEGER NOT NULL,
+              song_id TEXT NOT NULL,
+              chart_id TEXT NOT NULL,
+              score TEXT NOT NULL,
+              max_combo INTEGER NOT NULL,
+              marvelous INTEGER NOT NULL,
+              perfect INTEGER NOT NULL,
+              great INTEGER NOT NULL,
+              good INTEGER NOT NULL,
+              miss INTEGER NOT NULL,
+              ex_score INTEGER NOT NULL,
+              source_organized_file TEXT NOT NULL,
+              source_confirmation_mode TEXT NOT NULL,
+              analysis_payload_status TEXT NOT NULL,
+              identity_signal_source TEXT NOT NULL,
+              m5_identity_signal_status TEXT NOT NULL,
+              m5_jacket_match_status TEXT NOT NULL
+            )
+            """
+        )
+        connection.execute(
+            f"""
+            INSERT INTO plays ({", ".join(runner.M8_PLANNED_PLAY_RECORD_FIELDNAMES)})
+            VALUES ({", ".join("?" for _ in runner.M8_PLANNED_PLAY_RECORD_FIELDNAMES)})
+            """,
+            ["1" for _field in runner.M8_PLANNED_PLAY_RECORD_FIELDNAMES],
+        )
+        database_readback = runner.read_m8_score_db_file_output_preview_metadata(
+            connection
+        )
+
+    schema_columns = database_readback["database_plays_schema_columns"]
+    assert isinstance(schema_columns, list)
+    assert [column["name"] for column in schema_columns] == (
+        runner.M8_PLANNED_PLAY_RECORD_FIELDNAMES
+    )
+    assert {
+        column["name"]: column["type"]
+        for column in schema_columns
+        if isinstance(column, dict)
+    }["score"] == "TEXT"
+
+    summary = runner.summarize_m8_score_db_file_output_preview(
+        rows,
+        Path("data/m8_preview/real-schema-mismatch.sqlite"),
+        1,
+        database_readback,
+    )
+
+    assert summary["database_schema_version"] == 1
+    assert summary["database_readback_matches_preview_contract"] is True
+    assert summary["database_readback_mismatch_reasons"] == []
+    assert summary["database_plays_row_count"] == 1
+    assert summary["database_plays_row_count_matches_insert_counts"] is True
+    assert summary["database_plays_row_count_mismatch_reasons"] == []
+    assert summary["database_plays_insert_columns_match_planned_contract"] is False
+    assert summary["database_plays_integer_fields_match_preview_contract"] is False
+    assert summary["database_plays_schema_mismatch_reasons"] == [
+        "database_plays_schema.play_id_missing",
+        "database_plays_schema.created_at_missing",
+        "database_plays_schema_column_order_mismatch",
+        "database_plays_integer_fields_mismatch",
+    ]
+
+
 def test_m8_score_db_file_output_preview_rejects_outside_data(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
