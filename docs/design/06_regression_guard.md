@@ -269,6 +269,7 @@
 - 新規 in-memory SQLite `plays` テーブルへinsertし、実ファイルDBは生成しない。
 - summary/report の `schema_name=m8_score_db_preview`、`schema_version=1`、`schema_version_source=PRAGMA user_version` を維持する。
 - summary/report の `schema_contract_scope=preview_minimal_plays` と `production_schema_status=not_production_schema` を維持し、preview専用最小 `plays` 契約であって正式個人スコアDBスキーマではないことを確認できる。
+- preview `plays` のinsert対象列は `play_id` と `created_at` を除いた列として `M8_PLANNED_PLAY_RECORD_FIELDNAMES` と同じ順序に保ち、integer列は `M8_SCORE_DB_WRITE_PREVIEW_INTEGER_FIELDS` と一致させる。この確認はpreview最小スキーマの内部整合ガードであり、正式個人スコアDBスキーマ確定ではない。
 - summary/report の `created_by_preview=tools.vision_poc.m8_score_db_preview` と `preview_metadata_table=preview_metadata` を維持する。
 - SQLite側の `preview_metadata` 表はpreview生成物識別だけに使い、正式マイグレーションや本番保存成功の根拠として扱わない。
 - `insert_target_count`、`inserted_count`、`row_count_after_insert`、`excluded_count` をsummaryで確認できる。

@@ -2890,6 +2890,57 @@ def test_m8_score_db_write_preview_skips_invalid_planned_rows() -> None:
     }
 
 
+def test_m8_score_db_preview_schema_matches_planned_record_contract() -> None:
+    with sqlite3.connect(":memory:") as connection:
+        runner.create_m8_score_db_schema(connection)
+        table_info = connection.execute("PRAGMA table_info(plays)").fetchall()
+
+    schema_columns = [row[1] for row in table_info]
+    assert schema_columns == [
+        "play_id",
+        *runner.M8_PLANNED_PLAY_RECORD_FIELDNAMES,
+        "created_at",
+    ]
+    assert "play_id" not in runner.M8_PLANNED_PLAY_RECORD_FIELDNAMES
+    assert "created_at" not in runner.M8_PLANNED_PLAY_RECORD_FIELDNAMES
+    assert schema_columns[1:-1] == runner.M8_PLANNED_PLAY_RECORD_FIELDNAMES
+
+    column_info = {
+        row[1]: {
+            "type": row[2].upper(),
+            "notnull": row[3],
+            "default": row[4],
+            "primary_key": row[5],
+        }
+        for row in table_info
+    }
+    assert column_info["play_id"]["type"] == "INTEGER"
+    assert column_info["play_id"]["primary_key"] == 1
+    assert column_info["created_at"]["type"] == "TEXT"
+    assert column_info["created_at"]["default"] == "CURRENT_TIMESTAMP"
+
+    insert_integer_fields = [
+        column_name
+        for column_name in runner.M8_PLANNED_PLAY_RECORD_FIELDNAMES
+        if column_info[column_name]["type"] == "INTEGER"
+    ]
+    assert insert_integer_fields == list(runner.M8_SCORE_DB_WRITE_PREVIEW_INTEGER_FIELDS)
+    assert {
+        field: column_info[field]["type"]
+        for field in runner.M8_SCORE_DB_WRITE_PREVIEW_INTEGER_FIELDS
+    } == {
+        "played_at_ms": "INTEGER",
+        "score": "INTEGER",
+        "max_combo": "INTEGER",
+        "marvelous": "INTEGER",
+        "perfect": "INTEGER",
+        "great": "INTEGER",
+        "good": "INTEGER",
+        "miss": "INTEGER",
+        "ex_score": "INTEGER",
+    }
+
+
 def test_m8_score_db_file_output_preview_writes_explicit_data_db(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
