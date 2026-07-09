@@ -3058,6 +3058,44 @@ def test_m8_score_db_file_output_preview_reports_readback_contract_mismatch() ->
     assert summary["inserted_count"] == 1
 
 
+def test_m8_score_db_file_output_preview_reports_missing_metadata_keys() -> None:
+    rows = [
+        {
+            "write_preview_status": "inserted_to_file_preview",
+            "write_preview_reason": "",
+            "inserted_rowid": "1",
+            **{field: "1" for field in runner.M8_PLANNED_PLAY_RECORD_FIELDNAMES},
+        }
+    ]
+    database_readback = {
+        "database_schema_version": 1,
+        "database_plays_row_count": 1,
+        "database_preview_metadata": {
+            "schema_name": "m8_score_db_preview",
+            "schema_version_source": "PRAGMA user_version",
+        },
+    }
+
+    summary = runner.summarize_m8_score_db_file_output_preview(
+        rows,
+        Path("data/m8_preview/missing-metadata.sqlite"),
+        1,
+        database_readback,
+    )
+
+    assert summary["database_readback_matches_preview_contract"] is False
+    assert summary["database_readback_mismatch_reasons"] == [
+        "database_preview_metadata.created_by_preview_missing",
+        "database_preview_metadata.schema_version_missing",
+        "database_preview_metadata.schema_table_missing",
+        "database_preview_metadata.schema_contract_scope_missing",
+        "database_preview_metadata.production_schema_status_missing",
+    ]
+    assert summary["database_plays_row_count_matches_insert_counts"] is True
+    assert summary["database_plays_row_count_mismatch_reasons"] == []
+    assert summary["inserted_count"] == 1
+
+
 def test_m8_score_db_file_output_preview_rejects_outside_data(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

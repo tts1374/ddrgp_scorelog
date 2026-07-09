@@ -289,6 +289,7 @@
 - 実ファイルDBの `preview_metadata.schema_contract_scope` は `preview_minimal_plays`、`preview_metadata.production_schema_status` は `not_production_schema` にし、summary/report の同名欄と一致させる。
 - summary/report の `database_schema_version` と `database_preview_metadata` は実DBから読み戻した診断欄として維持し、定数のpreview識別欄と混同しない。
 - summary/report の `database_readback_matches_preview_contract` と `database_readback_mismatch_reasons` は、`database_schema_version` と `database_preview_metadata` がpreview契約と一致するかの診断欄として維持する。
+- `database_readback_mismatch_reasons` では、`database_preview_metadata.<key>_missing` は期待key欠落、`database_preview_metadata.<key>_mismatch` はkeyはあるが値が違う状態として読み分ける。
 - summary/report の `database_plays_row_count` は実DBの `plays` 行数readbackとして維持し、`database_plays_row_count_matches_insert_counts` と `database_plays_row_count_mismatch_reasons` で `inserted_count` / `row_count_after_insert` との一致だけを診断する。
 - readback一致診断欄を本番DB保存成功、曲ID/譜面ID確定、保存値確定として扱わない。
 - planned rows が0件の明示file outputでも、readback一致診断欄は `true` と空理由にする。

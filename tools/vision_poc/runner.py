@@ -4793,7 +4793,10 @@ def evaluate_m8_score_db_file_output_preview_readback_contract(
         "production_schema_status": M8_SCORE_DB_PREVIEW_PRODUCTION_SCHEMA_STATUS,
     }
     for key, expected_value in expected_metadata.items():
-        actual_value = preview_metadata.get(key)
+        if key not in preview_metadata:
+            reasons.append(f"database_preview_metadata.{key}_missing")
+            continue
+        actual_value = preview_metadata[key]
         if actual_value != expected_value:
             reasons.append(f"database_preview_metadata.{key}_mismatch")
 
