@@ -124,6 +124,40 @@ M8 preview最小 `plays` は以下の用途に限定する。
 - unknown schema、preview schema、metadata欠損DBは本番保存前に拒否する。
 - migration実行前に必ずbackup方針を決める。
 
+## 互換チェックと拒否理由語彙
+
+正式DBへ本番insertする前に、`inspect_personal_score_db_schema()` で既存DBまたは新規接続の状態を検査する。検査結果は以下を返す。
+
+- `user_version`
+- 既存table一覧
+- `score_db_metadata`
+- 欠落している必須table
+- `personal_score_db_compatibility_errors()` と同じ拒否理由
+- `migration_plan_status`
+- `migration_plan_reason`
+
+`assert_personal_score_db_compatible()` は同じ検査を行い、互換エラーがあれば `ValueError` で止める。これは正式DBとして開いてよいかの入口であり、migration実行や本番insertはまだ行わない。
+
+互換チェックの主な拒否理由は以下。
+
+- `schema_version_mismatch`: `PRAGMA user_version` が正式schema versionと一致しない。
+- `m8_preview_database_not_supported`: `preview_metadata` を持つM8 preview DB。正式DBとしては拒否する。
+- `unknown_database_not_supported`: tableはあるが `score_db_metadata` がなく、正式DBともpreview DBとも識別できない。
+- `missing_table:<table>`: 正式DB必須tableが欠落している。
+- `score_db_metadata_missing`: `score_db_metadata` がない。
+- `score_db_metadata.<key>_missing`: 必須metadata keyがない。
+- `score_db_metadata.<key>_mismatch`: 必須metadata valueが期待値と違う。
+
+`migration_plan_status` は現時点では自動migrationではなく、次の扱い候補を示すだけにする。
+
+- `compatible`: そのまま正式DBとして扱える。
+- `initialize_empty_database`: user tableがない空DB。初期化候補だが、既存DBの自動migrationではない。
+- `manual_migration_required`: 正式metadataで識別できるが、versionや必須tableが合わない。backup方針と明示確認を決めるまで自動変更しない。
+- `reject_m8_preview_database`: M8 preview DB。正式DBへ自動昇格しない。
+- `reject_unknown_database`: metadata欠損DB、metadata identity mismatch、未知schema。正式DBとして開かない。
+
+metadata identity は `created_by`、`schema_name`、`schema_contract_scope`、`production_schema_status` を見る。これらが一致しないDBは、`user_version=1` や似たtable名があっても正式DBとして扱わない。`schema_version` だけの不一致は、正式metadata identityが揃っている場合に限り `manual_migration_required` の候補として読む。
+
 ## 未決事項
 
 - `play_id` と `duplicate_key` の本格生成方式。
@@ -136,4 +170,5 @@ M8 preview最小 `plays` は以下の用途に限定する。
 
 - `tests/test_personal_score_db_schema.py` は正式schema contractを作成し、必須tableとmetadataを確認する。
 - 同テストは M8 preview DB を正式個人スコアDBとして拒否する。
+- 同テストは空DB、未知DB、metadata identity mismatch、必須table欠落、`user_version` mismatch の検査結果と `migration_plan_status` を固定する。
 - 同テストは preview列、M7a raw候補、OCR raw/normalized が正式 `plays` に混入しないことを確認する。

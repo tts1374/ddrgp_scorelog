@@ -392,6 +392,7 @@ M5完了時点で固定すること:
 - metadata mismatch、row count mismatch、schema mismatch の負例は実SQLite readback経路で固定済みで、Markdown report上にも mismatch reason がそのまま出ることをfixtureで確認する。
 - 2026-07-09時点でM8 previewは、`m8_save_payload_preview.*`、`m8_planned_play_records.*`、`m8_score_db_write_preview.*`、明示file output preview、readback診断までを一区切りの完了範囲として扱う。
 - 2026-07-10時点で、正式 `ddrgp-scores.sqlite` の初期schema contractを `tools/vision_poc/personal_score_db_schema.py` と `docs/design/10_personal_score_db_schema.md` に追加した。正式 `plays`、`analysis_logs`、`source_captures`、`score_db_metadata`、`schema_migrations` の責務を分け、M8 preview DBを正式個人スコアDBとして拒否する軽量テストを追加済み。これは本番insert実装ではない。
+- 2026-07-10時点で、正式DB検査用の `inspect_personal_score_db_schema()` と `assert_personal_score_db_compatible()` を追加し、空DB、未知DB、M8 preview DB、metadata identity mismatch、必須table欠落、`user_version` mismatch の拒否理由と `migration_plan_status` をテストで固定した。これは互換チェックの入口であり、自動migrationや本番insertではない。
 
 やること:
 
