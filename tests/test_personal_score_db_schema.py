@@ -405,6 +405,10 @@ def test_personal_score_db_cli_diagnostic_output_writes_markdown_under_data(
     assert expected_fragment in stdout
     assert expected_fragment in output_text
     assert len(log_records) == 1
+    assert set(log_records[0]) == set(
+        runner.PERSONAL_SCORE_DB_DIAGNOSTIC_LOG_REQUIRED_KEYS
+    )
+    assert runner.personal_score_db_diagnostic_log_schema_errors(log_records[0]) == []
     assert log_records[0]["event_type"] == "personal_score_db_diagnostic"
     assert log_records[0]["log_schema_version"] == 1
     assert log_records[0]["mode"] == diagnostic_mode
@@ -456,6 +460,7 @@ def test_personal_score_db_cli_diagnostic_output_writes_json_under_data(
     assert log_record["exit_code"] == 0
     assert log_record["diagnostic_output_path"] == str(output_path)
     assert log_record["diagnostic"] == file_diagnostic
+    assert runner.personal_score_db_diagnostic_log_schema_errors(log_record) == []
 
 
 def test_personal_score_db_cli_diagnostic_log_output_appends_jsonl_under_logs(
@@ -484,11 +489,14 @@ def test_personal_score_db_cli_diagnostic_log_output_appends_jsonl_under_logs(
         )
         capsys.readouterr()
 
-    log_records = [
-        json.loads(line)
-        for line in log_output_path.read_text(encoding="utf-8").splitlines()
-    ]
+    log_lines = log_output_path.read_text(encoding="utf-8").splitlines()
+    assert all(log_lines)
+    log_records = [json.loads(line) for line in log_lines]
     assert len(log_records) == 2
+    assert all(
+        runner.personal_score_db_diagnostic_log_schema_errors(record) == []
+        for record in log_records
+    )
     assert [record["event_type"] for record in log_records] == [
         "personal_score_db_diagnostic",
         "personal_score_db_diagnostic",
@@ -497,6 +505,78 @@ def test_personal_score_db_cli_diagnostic_log_output_appends_jsonl_under_logs(
         "compatible",
         "compatible",
     ]
+
+
+def test_personal_score_db_diagnostic_log_schema_errors_reject_invalid_records(
+    tmp_path: Path,
+) -> None:
+    with sqlite3.connect(":memory:") as connection:
+        score_schema.create_personal_score_db_schema(connection)
+        diagnostic = score_schema.personal_score_db_schema_inspection_diagnostic(
+            score_schema.inspect_personal_score_db_schema(connection)
+        )
+    record = runner.personal_score_db_diagnostic_log_record(
+        diagnostic,
+        db_path=tmp_path / "compatible.sqlite",
+        mode="inspect",
+        output_format="markdown",
+        diagnostic_output_path=None,
+        exit_code=0,
+    )
+
+    assert set(record) == set(runner.PERSONAL_SCORE_DB_DIAGNOSTIC_LOG_REQUIRED_KEYS)
+    assert runner.personal_score_db_diagnostic_log_schema_errors(record) == []
+
+    missing_format = dict(record)
+    del missing_format["format"]
+    assert "missing_key:format" in (
+        runner.personal_score_db_diagnostic_log_schema_errors(missing_format)
+    )
+
+    mismatched_exit_code = dict(record)
+    mismatched_exit_code["exit_code"] = 1
+    mismatched_exit_code["status"] = "rejected"
+    assert "exit_code_diagnostic_mismatch" in (
+        runner.personal_score_db_diagnostic_log_schema_errors(mismatched_exit_code)
+    )
+    assert "status_diagnostic_mismatch" in (
+        runner.personal_score_db_diagnostic_log_schema_errors(mismatched_exit_code)
+    )
+
+    invalid_diagnostic = dict(record)
+    invalid_diagnostic["diagnostic"] = {}
+    assert "diagnostic.is_compatible_missing" in (
+        runner.personal_score_db_diagnostic_log_schema_errors(invalid_diagnostic)
+    )
+
+
+def test_personal_score_db_diagnostic_log_output_rejects_invalid_record_before_write(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    log_output_path = Path("logs/diagnostics/personal-score-db.jsonl")
+
+    with pytest.raises(
+        ValueError,
+        match="personal score DB diagnostic log record is invalid",
+    ):
+        runner.append_personal_score_db_diagnostic_log_output(
+            log_output_path,
+            record={
+                "log_schema_version": 1,
+                "event_type": "personal_score_db_diagnostic",
+                "mode": "inspect",
+                "format": "markdown",
+                "exit_code": 0,
+                "status": "rejected",
+                "db_path": "db.sqlite",
+                "diagnostic_output_path": "",
+                "diagnostic": {"is_compatible": True},
+            },
+        )
+
+    assert not log_output_path.exists()
 
 
 def test_personal_score_db_cli_diagnostic_output_rejects_outside_data(

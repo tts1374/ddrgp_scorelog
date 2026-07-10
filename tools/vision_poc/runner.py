@@ -31,7 +31,23 @@ PERSONAL_SCORE_DB_DIAGNOSTIC_OUTPUT_SUFFIXES = {
     "markdown": (".md", ".markdown"),
     "json": (".json",),
 }
+PERSONAL_SCORE_DB_DIAGNOSTIC_MODES = ("inspect", "prepare-write")
+PERSONAL_SCORE_DB_DIAGNOSTIC_FORMATS = ("markdown", "json")
+PERSONAL_SCORE_DB_DIAGNOSTIC_LOG_SCHEMA_VERSION = 1
+PERSONAL_SCORE_DB_DIAGNOSTIC_LOG_EVENT_TYPE = "personal_score_db_diagnostic"
 PERSONAL_SCORE_DB_DIAGNOSTIC_LOG_SUFFIXES = (".jsonl",)
+PERSONAL_SCORE_DB_DIAGNOSTIC_LOG_STATUSES = ("compatible", "rejected")
+PERSONAL_SCORE_DB_DIAGNOSTIC_LOG_REQUIRED_KEYS = (
+    "log_schema_version",
+    "event_type",
+    "mode",
+    "format",
+    "exit_code",
+    "status",
+    "db_path",
+    "diagnostic_output_path",
+    "diagnostic",
+)
 
 
 ROI_DEFINITIONS: dict[str, tuple[int, int, int, int]] = {
@@ -9463,8 +9479,8 @@ def personal_score_db_diagnostic_log_record(
     exit_code: int,
 ) -> dict[str, object]:
     return {
-        "log_schema_version": 1,
-        "event_type": "personal_score_db_diagnostic",
+        "log_schema_version": PERSONAL_SCORE_DB_DIAGNOSTIC_LOG_SCHEMA_VERSION,
+        "event_type": PERSONAL_SCORE_DB_DIAGNOSTIC_LOG_EVENT_TYPE,
         "mode": mode,
         "format": output_format,
         "exit_code": exit_code,
@@ -9477,12 +9493,68 @@ def personal_score_db_diagnostic_log_record(
     }
 
 
+def personal_score_db_diagnostic_log_schema_errors(
+    record: dict[str, object],
+) -> list[str]:
+    errors: list[str] = []
+    for key in PERSONAL_SCORE_DB_DIAGNOSTIC_LOG_REQUIRED_KEYS:
+        if key not in record:
+            errors.append(f"missing_key:{key}")
+
+    if record.get("log_schema_version") != PERSONAL_SCORE_DB_DIAGNOSTIC_LOG_SCHEMA_VERSION:
+        errors.append("log_schema_version_mismatch")
+    if record.get("event_type") != PERSONAL_SCORE_DB_DIAGNOSTIC_LOG_EVENT_TYPE:
+        errors.append("event_type_mismatch")
+    if record.get("mode") not in PERSONAL_SCORE_DB_DIAGNOSTIC_MODES:
+        errors.append("mode_invalid")
+    if record.get("format") not in PERSONAL_SCORE_DB_DIAGNOSTIC_FORMATS:
+        errors.append("format_invalid")
+
+    exit_code = record.get("exit_code")
+    if exit_code not in (0, 1):
+        errors.append("exit_code_invalid")
+
+    status = record.get("status")
+    if status not in PERSONAL_SCORE_DB_DIAGNOSTIC_LOG_STATUSES:
+        errors.append("status_invalid")
+    elif exit_code in (0, 1):
+        expected_status = "compatible" if exit_code == 0 else "rejected"
+        if status != expected_status:
+            errors.append("status_exit_code_mismatch")
+
+    diagnostic = record.get("diagnostic")
+    if not isinstance(diagnostic, dict):
+        errors.append("diagnostic_not_mapping")
+        return errors
+
+    diagnostic_is_compatible = diagnostic.get("is_compatible")
+    if not isinstance(diagnostic_is_compatible, bool):
+        errors.append("diagnostic.is_compatible_missing")
+        return errors
+
+    expected_exit_code = 0 if diagnostic_is_compatible else 1
+    expected_status = "compatible" if diagnostic_is_compatible else "rejected"
+    if exit_code in (0, 1) and exit_code != expected_exit_code:
+        errors.append("exit_code_diagnostic_mismatch")
+    if status in PERSONAL_SCORE_DB_DIAGNOSTIC_LOG_STATUSES and status != expected_status:
+        errors.append("status_diagnostic_mismatch")
+
+    return errors
+
+
 def append_personal_score_db_diagnostic_log_output(
     path: Path,
     *,
     record: dict[str, object],
 ) -> None:
     validate_personal_score_db_diagnostic_log_output_path(path)
+    schema_errors = personal_score_db_diagnostic_log_schema_errors(record)
+    if schema_errors:
+        joined_errors = ", ".join(schema_errors)
+        raise ValueError(
+            "personal score DB diagnostic log record is invalid: "
+            f"{joined_errors}"
+        )
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8", newline="\n") as file:
         file.write(json.dumps(record, ensure_ascii=False, sort_keys=True))
@@ -9644,7 +9716,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--personal-score-db-diagnostic-mode",
-        choices=("inspect", "prepare-write"),
+        choices=PERSONAL_SCORE_DB_DIAGNOSTIC_MODES,
         default="inspect",
         help=(
             "Diagnostic mode. inspect reads an existing DB without initialization; "
@@ -9654,7 +9726,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--personal-score-db-diagnostic-format",
-        choices=("markdown", "json"),
+        choices=PERSONAL_SCORE_DB_DIAGNOSTIC_FORMATS,
         default="markdown",
         help="Output format for --personal-score-db-diagnostic.",
     )
