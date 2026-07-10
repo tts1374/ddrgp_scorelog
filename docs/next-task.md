@@ -109,6 +109,14 @@ diagnosticで読める主な項目:
 
 次は正式DBへ書く前の「検査結果をどうCLI/ログで見せるか」を進めてください。本番insertはまだ実装しないでください。
 
+手数感の目安:
+
+- 1手目: diagnosticのCLI入口を作る。DB pathを受け取り、既存のdiagnostic dict / Markdownを標準出力または軽い戻り値で確認できるようにする。本番insertやmigrationはしない。
+- 2手目: compatible、空DB初期化、M8 preview拒否、unknown拒否、manual migration required、非SQLite/ディレクトリ拒否のCLI経由テストを固定する。特に `manual_migration_required` は自動修復しない。
+- 3手目: 必要なら `data/` 配下へのMarkdown/JSON風ファイル出力や将来ログ連携へ広げる。標準出力だけで十分なら後続へ回してよい。
+
+次チャットではまず1〜2手目まで、つまり「CLIで見える」「代表ケースのテストがある」「保存やmigrationには進んでいない」までを一区切りにするのが適量です。
+
 第一候補:
 
 - `personal_score_db_schema_inspection_diagnostic()` / `format_personal_score_db_schema_diagnostic_markdown()` を使い、正式DB diagnosticをCLIまたは軽い書き出し関数から見られる入口を追加する。
