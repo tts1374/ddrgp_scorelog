@@ -27,6 +27,10 @@ DUPLICATE_WINDOW_FRAMES = 90
 DUPLICATE_WINDOW_MS = 90_000
 FRAME_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
 OCR_TARGET_MODES = ("result-candidate", "confirmed-events")
+PERSONAL_SCORE_DB_DIAGNOSTIC_OUTPUT_SUFFIXES = {
+    "markdown": (".md", ".markdown"),
+    "json": (".json",),
+}
 
 
 ROI_DEFINITIONS: dict[str, tuple[int, int, int, int]] = {
@@ -9382,28 +9386,73 @@ def prepare_personal_score_db_file_for_cli(path: Path) -> dict[str, object]:
     return score_schema.personal_score_db_file_preparation_diagnostic(result)
 
 
-def print_personal_score_db_diagnostic(
+def format_personal_score_db_diagnostic_for_cli(
     diagnostic: dict[str, object],
     *,
     output_format: str,
-) -> None:
+) -> str:
     if output_format == "json":
-        print(json.dumps(diagnostic, ensure_ascii=False, indent=2))
+        return f"{json.dumps(diagnostic, ensure_ascii=False, indent=2)}\n"
+    return score_schema.format_personal_score_db_schema_diagnostic_markdown(diagnostic)
+
+
+def validate_personal_score_db_diagnostic_output_path(
+    path: Path,
+    *,
+    output_format: str,
+) -> None:
+    ensure_data_output_path(
+        path,
+        argument_name="--personal-score-db-diagnostic-output",
+    )
+    allowed_suffixes = PERSONAL_SCORE_DB_DIAGNOSTIC_OUTPUT_SUFFIXES[output_format]
+    if path.suffix.lower() in allowed_suffixes:
         return
-    print(score_schema.format_personal_score_db_schema_diagnostic_markdown(diagnostic))
+    joined_suffixes = ", ".join(allowed_suffixes)
+    raise ValueError(
+        "--personal-score-db-diagnostic-output extension must match "
+        "--personal-score-db-diagnostic-format "
+        f"{output_format}: expected {joined_suffixes}"
+    )
+
+
+def write_personal_score_db_diagnostic_output(
+    path: Path,
+    *,
+    text: str,
+    output_format: str,
+) -> None:
+    validate_personal_score_db_diagnostic_output_path(
+        path,
+        output_format=output_format,
+    )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8", newline="\n")
 
 
 def run_personal_score_db_diagnostic_cli(args: argparse.Namespace) -> int:
     db_path = args.personal_score_db_diagnostic
+    if args.personal_score_db_diagnostic_output is not None:
+        validate_personal_score_db_diagnostic_output_path(
+            args.personal_score_db_diagnostic_output,
+            output_format=args.personal_score_db_diagnostic_format,
+        )
     if args.personal_score_db_diagnostic_mode == "prepare-write":
         diagnostic = prepare_personal_score_db_file_for_cli(db_path)
     else:
         diagnostic = inspect_personal_score_db_file_for_cli(db_path)
 
-    print_personal_score_db_diagnostic(
+    diagnostic_text = format_personal_score_db_diagnostic_for_cli(
         diagnostic,
         output_format=args.personal_score_db_diagnostic_format,
     )
+    if args.personal_score_db_diagnostic_output is not None:
+        write_personal_score_db_diagnostic_output(
+            args.personal_score_db_diagnostic_output,
+            text=diagnostic_text,
+            output_format=args.personal_score_db_diagnostic_format,
+        )
+    print(diagnostic_text, end="")
     return 0 if diagnostic["is_compatible"] else 1
 
 
@@ -9532,6 +9581,15 @@ def build_parser() -> argparse.ArgumentParser:
         choices=("markdown", "json"),
         default="markdown",
         help="Output format for --personal-score-db-diagnostic.",
+    )
+    parser.add_argument(
+        "--personal-score-db-diagnostic-output",
+        type=Path,
+        default=None,
+        help=(
+            "Optional diagnostic file output under data/. The extension must match "
+            "--personal-score-db-diagnostic-format (.md/.markdown or .json)."
+        ),
     )
     parser.add_argument(
         "--timestamp-start-ms",

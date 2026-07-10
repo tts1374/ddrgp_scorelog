@@ -307,6 +307,16 @@
 - file output preview の `created_by_preview` はpreview生成物識別子であり、本番DB保存成功、曲ID/譜面ID確定、保存値確定として扱わない。
 - M5なしで planned rows が0件の場合は、空の `plays` スキーマDB、`preview_metadata`、readback欄、`inserted_count=0` として確認する。
 
+## 正式個人スコアDB diagnostic
+
+- `--personal-score-db-diagnostic` の既定 `inspect` mode は読み取り専用に保つ。
+- `--personal-score-db-diagnostic-mode prepare-write` は新規DBファイルまたは0 byte空ファイルだけ正式初期schemaへ進める。
+- compatible DB、空DB初期化、M8 preview拒否、unknown拒否、manual migration required、非SQLiteファイル、ディレクトリ拒否の診断語彙を維持する。
+- `--personal-score-db-diagnostic-output` は標準出力と同じ診断を `data/` 配下へ保存するだけにする。
+- diagnostic output のMarkdownは `.md` / `.markdown`、JSONは `.json` に限定し、formatと拡張子の不一致を拒否する。
+- diagnostic output の `data/` 外指定はDB準備より前に拒否し、prepare-write対象の新規DBを作らない。
+- diagnostic output は本番insert、自動migration、既定自動保存、`logs/` 連携、低信頼度ログ本番保存として扱わない。
+
 ## ROI方針
 
 - ROI座標は 1280x720 基準。

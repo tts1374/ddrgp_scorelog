@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 from pathlib import Path
 
@@ -308,6 +309,179 @@ def test_personal_score_db_cli_prepare_diagnostic_initializes_new_database(
     assert "- initial_migration_plan_status: `initialize_empty_database`" in output
     with sqlite3.connect(db_path) as connection:
         assert score_schema.inspect_personal_score_db_schema(connection).is_compatible
+
+
+@pytest.mark.parametrize(
+    (
+        "fixture_name",
+        "diagnostic_mode",
+        "expected_exit_code",
+        "expected_fragment",
+    ),
+    [
+        ("compatible", "inspect", 0, "- migration_plan_status: `compatible`"),
+        ("empty_prepare", "prepare-write", 0, "- initialized: `true`"),
+        (
+            "m8_preview",
+            "prepare-write",
+            1,
+            "- migration_plan_status: `reject_m8_preview_database`",
+        ),
+        (
+            "unknown",
+            "prepare-write",
+            1,
+            "- migration_plan_status: `reject_unknown_database`",
+        ),
+        (
+            "manual_migration",
+            "prepare-write",
+            1,
+            "- migration_plan_status: `manual_migration_required`",
+        ),
+        ("non_sqlite", "prepare-write", 1, "- `invalid_sqlite_database`"),
+        ("directory", "prepare-write", 1, "- `path_is_directory`"),
+    ],
+)
+def test_personal_score_db_cli_diagnostic_output_writes_markdown_under_data(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    fixture_name: str,
+    diagnostic_mode: str,
+    expected_exit_code: int,
+    expected_fragment: str,
+) -> None:
+    db_path = tmp_path / f"{fixture_name}.sqlite"
+    if fixture_name == "compatible":
+        with sqlite3.connect(db_path) as connection:
+            score_schema.create_personal_score_db_schema(connection)
+    elif fixture_name == "empty_prepare":
+        pass
+    elif fixture_name == "m8_preview":
+        with sqlite3.connect(db_path) as connection:
+            runner.create_m8_score_db_schema(connection)
+    elif fixture_name == "unknown":
+        with sqlite3.connect(db_path) as connection:
+            connection.execute("PRAGMA user_version = 1")
+            connection.execute("CREATE TABLE unrelated_table (id INTEGER PRIMARY KEY)")
+    elif fixture_name == "manual_migration":
+        with sqlite3.connect(db_path) as connection:
+            score_schema.create_personal_score_db_schema(connection)
+            connection.execute("DROP TABLE analysis_logs")
+    elif fixture_name == "non_sqlite":
+        db_path.write_bytes(b"not a sqlite database")
+    elif fixture_name == "directory":
+        db_path.mkdir()
+    else:
+        raise AssertionError(f"unknown fixture: {fixture_name}")
+
+    monkeypatch.chdir(tmp_path)
+    output_path = Path("data/diagnostics") / f"{fixture_name}.md"
+
+    exit_code = runner.main(
+        [
+            "--personal-score-db-diagnostic",
+            str(db_path),
+            "--personal-score-db-diagnostic-mode",
+            diagnostic_mode,
+            "--personal-score-db-diagnostic-output",
+            str(output_path),
+        ]
+    )
+    stdout = capsys.readouterr().out
+    output_text = output_path.read_text(encoding="utf-8")
+
+    assert exit_code == expected_exit_code
+    assert "# Personal Score DB Diagnostic" in stdout
+    assert "# Personal Score DB Diagnostic" in output_text
+    assert expected_fragment in stdout
+    assert expected_fragment in output_text
+
+
+def test_personal_score_db_cli_diagnostic_output_writes_json_under_data(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    db_path = tmp_path / "compatible.sqlite"
+    with sqlite3.connect(db_path) as connection:
+        score_schema.create_personal_score_db_schema(connection)
+
+    monkeypatch.chdir(tmp_path)
+    output_path = Path("data/diagnostics/compatible.json")
+
+    exit_code = runner.main(
+        [
+            "--personal-score-db-diagnostic",
+            str(db_path),
+            "--personal-score-db-diagnostic-format",
+            "json",
+            "--personal-score-db-diagnostic-output",
+            str(output_path),
+        ]
+    )
+
+    stdout_diagnostic = json.loads(capsys.readouterr().out)
+    file_diagnostic = json.loads(output_path.read_text(encoding="utf-8"))
+
+    assert exit_code == 0
+    assert stdout_diagnostic == file_diagnostic
+    assert file_diagnostic["is_compatible"] is True
+    assert file_diagnostic["migration_plan_status"] == "compatible"
+
+
+def test_personal_score_db_cli_diagnostic_output_rejects_outside_data(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db_path = tmp_path / "new-formal.sqlite"
+    monkeypatch.chdir(tmp_path)
+
+    with pytest.raises(
+        ValueError,
+        match="--personal-score-db-diagnostic-output must be under data/",
+    ):
+        runner.main(
+            [
+                "--personal-score-db-diagnostic",
+                str(db_path),
+                "--personal-score-db-diagnostic-mode",
+                "prepare-write",
+                "--personal-score-db-diagnostic-output",
+                str(tmp_path / "diagnostic.md"),
+            ]
+        )
+
+    assert not db_path.exists()
+
+
+def test_personal_score_db_cli_diagnostic_output_rejects_format_extension_mismatch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db_path = tmp_path / "new-formal.sqlite"
+    monkeypatch.chdir(tmp_path)
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            "--personal-score-db-diagnostic-output extension must match "
+            "--personal-score-db-diagnostic-format markdown"
+        ),
+    ):
+        runner.main(
+            [
+                "--personal-score-db-diagnostic",
+                str(db_path),
+                "--personal-score-db-diagnostic-mode",
+                "prepare-write",
+                "--personal-score-db-diagnostic-output",
+                "data/diagnostics/diagnostic.json",
+            ]
+        )
+
+    assert not db_path.exists()
 
 
 @pytest.mark.parametrize(
