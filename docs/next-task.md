@@ -1,6 +1,6 @@
 # 次チャット用タスク
 
-`C:\work\ddrgp_scorelog` で作業してください。必ず `AGENTS.md` のプロジェクトルールに従ってください。このファイルは次チャット用の引き継ぎ仕様です。作業では `docs/next-task.md` の更新だけで完了扱いにせず、コード、テスト、CLI、README、workflow、または設計docsなど、実行可能な成果物変更を1つ以上進めてください。
+`C:\work\ddrgp_scorelog` で作業してください。必ず `AGENTS.md` のプロジェクトルールに従ってください。このファイルは次チャット用の引き継ぎ仕様です。作業では `docs/next-task.md` の更新だけで完了扱いにせず、コード、テスト、CLI、README、workflow、または設計docsなど、実行可能な成果物変更を1つ以上進めてください。`docs/next-task.md` は実装・検証が終わった後の引き継ぎ更新として扱ってください。
 
 ## 推論レベル
 
@@ -14,12 +14,12 @@ high
 codex/m8-personal-score-db-diagnostic-boundary
 ```
 
-このPR/ブランチがmerge済みなら、次チャットでは最新 `main` から次フェーズ用の新ブランチを作ってください。未mergeなら、このブランチの先端を取り込んでから続きのブランチを作るか、このPRのmergeを待ってください。
+このブランチがmerge済みなら、次チャットでは最新 `main` から次フェーズ用の新ブランチを作ってください。未mergeなら、このブランチの先端を取り込んでから続けてください。
 
 推奨ブランチ:
 
 ```powershell
-codex/m8-personal-score-db-cli-diagnostic
+codex/m8-personal-score-db-diagnostic-output
 ```
 
 開始時に以下を確認してください。
@@ -32,72 +32,31 @@ codex/m8-personal-score-db-cli-diagnostic
 
 ## 今回までの作業結果
 
-M8 previewは完了済みとして扱います。正式M8本体では、正式個人スコアDBのschema contract、互換チェック、空DB初期化境界、connection単位の書き込み前準備入口、ファイルパス単位の準備境界、inspection結果のdiagnostic表示足場まで進んでいます。
+M8 previewは完了済みとして扱います。正式個人スコアDB本体では、schema contract、互換チェック、空DB初期化境界、connection/file path単位のwrite前準備境界、diagnostic dict / Markdown投影、CLI表示入口まで進んでいます。本番insert、既定自動保存、既存DB migration実行にはまだ進んでいません。
 
-今回追加したもの:
+今回追加・更新したもの:
 
-- `personal_score_db_schema_inspection_diagnostic(inspection, path=None)`
-- `format_personal_score_db_schema_diagnostic_markdown(diagnostic)`
-- `personal_score_db_file_preparation_diagnostic(result)`
-- compatible / initialize_empty_database / reject_m8_preview_database / reject_unknown_database / manual_migration_required の代表fixture diagnosticテスト
-- 新規DB file preparation result のsummary diagnosticテスト
-- `docs/design/10_personal_score_db_schema.md`、`docs/design/05_storage_io_spec.md`、`tools/vision_poc/README.md`、`docs/implementation-roadmap.md` へのdiagnostic境界反映
+- `python -m tools.vision_poc --personal-score-db-diagnostic <path>`
+- `--personal-score-db-diagnostic-mode inspect|prepare-write`
+- `--personal-score-db-diagnostic-format markdown|json`
+- `inspect` mode は既存DBを読み取り専用で検査し、標準出力へdiagnosticを出す。
+- `prepare-write` mode は `prepare_personal_score_db_file_for_write(path)` と同じ境界で、新規DBファイルまたは0 byte空ファイルだけ正式初期schemaへ初期化する。
+- file preparation diagnostic Markdown に `## File Preparation` を表示する。
+- CLI経由テストで compatible、空DB初期化、M8 preview拒否、unknown拒否、manual migration required、非SQLiteファイル拒否、ディレクトリ拒否を固定した。
+- `tools/vision_poc/README.md`、`docs/design/05_storage_io_spec.md`、`docs/design/10_personal_score_db_schema.md`、`docs/implementation-roadmap.md` にCLI境界を反映した。
 
-diagnosticで読める主な項目:
+固定済みの主なCLI境界:
 
-- `path`
-- `schema_name`
-- `expected_schema_version`
-- `user_version`
-- `is_compatible`
-- `migration_plan_status`
-- `migration_plan_reason`
-- `compatibility_errors`
-- `required_tables.present`
-- `required_tables.missing`
-- `metadata_identity.<key>.expected`
-- `metadata_identity.<key>.actual`
-- `metadata_identity.<key>.status`
-- `table_names`
-- `file_preparation.existed_before`
-- `file_preparation.size_before`
-- `file_preparation.initialized`
-- `file_preparation.initial_migration_plan_status`
-- `file_preparation.final_migration_plan_status`
-
-固定済みの主な語彙:
-
-- `compatible`
-- `initialize_empty_database`
-- `manual_migration_required`
-- `reject_m8_preview_database`
-- `reject_unknown_database`
-- `schema_version_mismatch`
-- `m8_preview_database_not_supported`
-- `unknown_database_not_supported`
-- `missing_table:<table>`
-- `score_db_metadata_missing`
-- `score_db_metadata.<key>_missing`
-- `score_db_metadata.<key>_mismatch`
-- `invalid_sqlite_database`
-
-固定済みの境界:
-
-- M8 preview最小 `plays` と正式個人スコアDB `plays` は別物。
-- 正式DB候補は `score_db_metadata`、`schema_migrations`、`source_captures`、`plays`、`analysis_logs` を持つ。
-- 正式DB互換チェックは `PRAGMA user_version` だけではなく、metadata table と必須tableも見る。
-- 空DBだけ `initialize_personal_score_db_if_empty()` で正式初期schemaを作成できる。
-- `prepare_personal_score_db_for_write()` は空DBなら初期化し、互換エラーが残るDBは `ValueError` で止める。
-- `prepare_personal_score_db_file_for_write(path)` は新規ファイルまたは0 byte空ファイルだけ初期化し、既存の正式DBは変更せずに通す。
-- diagnostic関数は検査済み結果を人間向けに投影するだけで、DB再検査、DB変更、本番insert、自動migration、低信頼度ログ本番保存を行わない。
+- `inspect` mode は存在しないpathや非SQLiteファイルを正式DBとして作成・変更しない。
+- `prepare-write` mode は空DBだけ初期化し、M8 preview DB、unknown DB、metadata identity mismatch、manual migration候補、非SQLiteファイル、ディレクトリを自動修復しない。
+- CLI diagnosticは標準出力だけで、Markdown/JSONファイル生成、解析ログ連携、本番insert、自動migration、低信頼度ログ本番保存を行わない。
 - `manual_migration_required` は backup方針と明示確認を決めるまで欠落table作成や `user_version` 修正をしない。
-- 正式個人スコアDBへの本番insert、既定自動保存、既存DB migration実行にはまだ進んでいない。
-- preview列、M7a raw候補、OCR raw/normalized は正式 `plays` に混入させない。
-- `analysis_logs` は review状態やskip理由を持つが、保存値を二重管理しない。
+- M8 preview最小 `plays` と正式個人スコアDB `plays` は別物。
 
 まだ進めていないこと:
 
-- 正式DB diagnostic のCLI/Markdownファイル出力入口
+- 正式DB diagnostic のMarkdown/JSONファイル出力入口
+- diagnosticと `logs/` 配下の解析ログ連携
 - 正式個人スコアDBへの本番insert
 - 既定自動保存
 - duplicate key本格実装
@@ -107,35 +66,27 @@ diagnosticで読める主な項目:
 
 ## 次に必ず進める実作業
 
-次は正式DBへ書く前の「検査結果をどうCLI/ログで見せるか」を進めてください。本番insertはまだ実装しないでください。
-
-手数感の目安:
-
-- 1手目: diagnosticのCLI入口を作る。DB pathを受け取り、既存のdiagnostic dict / Markdownを標準出力または軽い戻り値で確認できるようにする。本番insertやmigrationはしない。
-- 2手目: compatible、空DB初期化、M8 preview拒否、unknown拒否、manual migration required、非SQLite/ディレクトリ拒否のCLI経由テストを固定する。特に `manual_migration_required` は自動修復しない。
-- 3手目: 必要なら `data/` 配下へのMarkdown/JSON風ファイル出力や将来ログ連携へ広げる。標準出力だけで十分なら後続へ回してよい。
-
-次チャットではまず1〜2手目まで、つまり「CLIで見える」「代表ケースのテストがある」「保存やmigrationには進んでいない」までを一区切りにするのが適量です。
+次は正式DB diagnosticを標準出力から、ファイル出力またはログ連携の手前まで広げてください。本番insertはまだ実装しないでください。
 
 第一候補:
 
-- `personal_score_db_schema_inspection_diagnostic()` / `format_personal_score_db_schema_diagnostic_markdown()` を使い、正式DB diagnosticをCLIまたは軽い書き出し関数から見られる入口を追加する。
-- 出力先を作る場合は `data/` 配下に限定し、生成物はGit管理しない。
-- compatible / empty initialized / preview rejection / unknown rejection / manual migration required の代表をテストする。
-- CLI表示は本番insert、自動migration、低信頼度ログ本番保存、画像保存処理には進めない。
+- `--personal-score-db-diagnostic-output <path>` のような軽い書き出し入口を追加する。
+- 出力先は `data/` 配下に限定し、MarkdownまたはJSONを選べるようにする。
+- 生成物はGit管理しない。
+- compatible、空DB初期化、M8 preview拒否、unknown拒否、manual migration required、非SQLite/ディレクトリ拒否の代表ケースで、標準出力とファイル出力の境界をテストする。
+- file outputはdiagnosticを保存するだけで、本番insert、自動migration、低信頼度ログ本番保存には進めない。
 
 第二候補:
 
-- `prepare_personal_score_db_file_for_write(path)` の拒否時にも、可能な範囲でdiagnosticを取り出せる例外/summary境界を設計する。
-- 非SQLiteファイルやディレクトリ拒否は、正式DBとして開かず `invalid_sqlite_database` や directory path の読みやすさを保つ。
+- ファイル出力を急がない場合は、diagnostic CLIの戻り値・終了コード・JSON schema相当の読み方をREADME/docsでさらに固定する。
+- ただし `docs/next-task.md` 更新だけで終えず、CLI、テスト、README、設計docsのいずれかに実行可能な成果物変更を含める。
 
 このフェーズで決めたい候補:
 
-- diagnostic CLIを既存 `tools.vision_poc` のオプションに置くか、正式DB用の小さな別入口に置くか。
-- Markdown文字列を標準出力に出すか、`data/` 配下へ保存するか。
-- `manual_migration_required` を自動変更せず、backup/明示確認待ちにする表示語彙。
-- 既存ファイルが空DBか未知DBかをdiagnostic上でどう区別するか。
-- `rank` / `clear_type` が未取得の場合に正式insertを止めるか、unknown語彙で保存するか。
+- diagnostic file outputを `data/` 配下に限定する具体ルール。
+- `--personal-score-db-diagnostic-format json` と出力拡張子の不一致を許すか拒否するか。
+- `prepare-write` modeで新規DBを初期化した場合、diagnostic file outputを同じ `data/` 配下へまとめるか、DB pathとは独立に指定させるか。
+- `logs/` 連携を後続に回す場合、README/docs上で「標準出力/file outputまで」を明記する。
 
 ## 必読資料
 
@@ -146,8 +97,6 @@ diagnosticで読める主な項目:
 - `docs/design/04_data_model.md`
 - `docs/design/05_storage_io_spec.md`
 - `docs/design/06_regression_guard.md`
-- `docs/design/08_master_db_generation.md`
-- `docs/design/09_master_match_poc.md`
 - `docs/design/10_personal_score_db_schema.md`
 - `tools/vision_poc/README.md`
 - `tools/vision_poc/runner.py`
@@ -155,11 +104,6 @@ diagnosticで読める主な項目:
 - `tests/test_personal_score_db_schema.py`
 - `tests/test_vision_poc_ocr.py`
 - `tests/test_vision_poc_result_events.py`
-- `master/README.md`
-- `master/builder.py`
-- `master/inspect.py`
-- `tests/test_master_builder.py`
-- `tests/test_master_match.py`
 
 ## スコープ外
 
@@ -198,31 +142,15 @@ git diff --check
 
 今回の確認結果:
 
-- `python -m pytest tests\test_personal_score_db_schema.py`: 32 passed
+- `python -m pytest tests\test_personal_score_db_schema.py`: 39 passed
 - `python -m pytest tests\test_vision_poc_ocr.py -k "m8"`: 20 passed
 - `python -m pytest tests\test_vision_poc_ocr.py -k "m7_save_decision or m7_save_readiness or m7a or m8"`: 71 passed
 - `python -m ruff check tools\vision_poc pyproject.toml tests`: passed
 - `python -m compileall master tools\vision_poc`: passed
-- `python -m pytest tests`: 238 passed
+- `python -m pytest tests`: 245 passed
 - `git diff --check`: passed
 
-正式DB schema定数、migration境界、初期化境界、ファイルパス境界、diagnostic表示、CLI表示のテストを追加した場合は、その新規テストを明示的に実行してください。
-
-M8 preview既存契約を触った場合は、追加で以下を確認してください。既存DBファイルがあると拒否されるため、実行ごとに新しい `data/` 配下パスを使うこと。
-
-```powershell
-python -m tools.vision_poc --m5-jacket-match --m7a-digit-recognition --m7a-digit-rois score_digits max_combo marvelous perfect great good miss ex_score --no-ocr --no-rois --output data\vision_poc_m8_next_check --m8-score-db-output data\vision_poc_m8_next_check\ddrgp-scores.sqlite
-```
-
-画像PoCや分類境界へ触った場合は、追加で以下も確認してください。
-
-```powershell
-python -m tools.vision_poc --no-ocr
-python -m tools.vision_poc --m7a-digit-recognition --m7a-digit-rois score_digits max_combo marvelous perfect great good miss ex_score --no-ocr --no-rois --output data\vision_poc_m7_save_readiness
-python -m tools.vision_poc --m5-jacket-match --m7a-digit-recognition --m7a-digit-rois score_digits max_combo marvelous perfect great good miss ex_score --no-ocr --no-rois --output data\vision_poc_m7_m5_readiness
-```
-
-M4/M5境界やmaster DB生成へ触った場合は、`tests\test_master_match.py`、`tests\test_master_builder.py`、M5 jacket match のPoC実行も再確認してください。
+正式DB diagnostic CLIや出力境界を触った場合は、`tests\test_personal_score_db_schema.py` を明示的に実行してください。
 
 ## コミット/Push方針
 
@@ -237,13 +165,12 @@ M4/M5境界やmaster DB生成へ触った場合は、`tests\test_master_match.py
 
 ## 完了条件
 
-- 正式個人スコアDBのdiagnostic表示、CLI/ログ境界、解析ログ境界、source capture参照境界、または次のオープン境界が1つ以上進んでいる。
+- 正式個人スコアDBのdiagnostic表示、file output境界、CLI/ログ境界、解析ログ境界、source capture参照境界、または次のオープン境界が1つ以上進んでいる。
 - `docs/design/`、コード、テスト、READMEのいずれかに、次の実装へつながる成果物変更がある。
 - 正式個人スコアDB保存の実insertにはまだ踏み込んでいない。
 - 既存DBの自動migrationを実行していない。
 - 空DB以外を正式schema初期化として自動変更していない。
 - M8 preview最小 `plays` と正式個人スコアDBスキーマを混同していない。
-- preview DB readback診断を正式スキーマ確定や保存成功として扱っていない。
 - M8 preview DBを正式個人スコアDBとして受け入れていない。
 - unknown DBやmetadata identity mismatchを正式DBとして受け入れていない。
 - `manual_migration_required` をbackup/明示確認なしで自動変更していない。

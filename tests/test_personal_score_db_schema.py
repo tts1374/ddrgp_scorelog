@@ -261,6 +261,154 @@ def test_personal_score_db_file_preparation_diagnostic_reports_file_summary(
         "initial_migration_plan_status": "initialize_empty_database",
         "final_migration_plan_status": "compatible",
     }
+    markdown = score_schema.format_personal_score_db_schema_diagnostic_markdown(
+        diagnostic
+    )
+    assert "## File Preparation" in markdown
+    assert "- initialized: `true`" in markdown
+
+
+def test_personal_score_db_cli_diagnostic_reports_compatible_database(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    db_path = tmp_path / "compatible.sqlite"
+    with sqlite3.connect(db_path) as connection:
+        score_schema.create_personal_score_db_schema(connection)
+
+    exit_code = runner.main(["--personal-score-db-diagnostic", str(db_path)])
+    output = capsys.readouterr().out
+
+    assert exit_code == 0
+    assert "# Personal Score DB Diagnostic" in output
+    assert "- compatible: `true`" in output
+    assert "- migration_plan_status: `compatible`" in output
+
+
+def test_personal_score_db_cli_prepare_diagnostic_initializes_new_database(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    db_path = tmp_path / "new-formal.sqlite"
+
+    exit_code = runner.main(
+        [
+            "--personal-score-db-diagnostic",
+            str(db_path),
+            "--personal-score-db-diagnostic-mode",
+            "prepare-write",
+        ]
+    )
+    output = capsys.readouterr().out
+
+    assert exit_code == 0
+    assert db_path.exists()
+    assert "## File Preparation" in output
+    assert "- initialized: `true`" in output
+    assert "- initial_migration_plan_status: `initialize_empty_database`" in output
+    with sqlite3.connect(db_path) as connection:
+        assert score_schema.inspect_personal_score_db_schema(connection).is_compatible
+
+
+@pytest.mark.parametrize(
+    ("fixture_name", "expected_status", "expected_error"),
+    [
+        (
+            "m8_preview",
+            "reject_m8_preview_database",
+            "m8_preview_database_not_supported",
+        ),
+        (
+            "unknown",
+            "reject_unknown_database",
+            "unknown_database_not_supported",
+        ),
+        (
+            "manual_migration",
+            "manual_migration_required",
+            "missing_table:analysis_logs",
+        ),
+    ],
+)
+def test_personal_score_db_cli_prepare_diagnostic_rejects_without_modifying(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    fixture_name: str,
+    expected_status: str,
+    expected_error: str,
+) -> None:
+    db_path = tmp_path / f"{fixture_name}.sqlite"
+    with sqlite3.connect(db_path) as connection:
+        if fixture_name == "m8_preview":
+            runner.create_m8_score_db_schema(connection)
+        elif fixture_name == "unknown":
+            connection.execute("PRAGMA user_version = 1")
+            connection.execute("CREATE TABLE unrelated_table (id INTEGER PRIMARY KEY)")
+        elif fixture_name == "manual_migration":
+            score_schema.create_personal_score_db_schema(connection)
+            connection.execute("DROP TABLE analysis_logs")
+        else:
+            raise AssertionError(f"unknown fixture: {fixture_name}")
+        before = score_schema.inspect_personal_score_db_schema(connection)
+
+    exit_code = runner.main(
+        [
+            "--personal-score-db-diagnostic",
+            str(db_path),
+            "--personal-score-db-diagnostic-mode",
+            "prepare-write",
+        ]
+    )
+    output = capsys.readouterr().out
+
+    with sqlite3.connect(db_path) as connection:
+        after = score_schema.inspect_personal_score_db_schema(connection)
+
+    assert exit_code == 1
+    assert f"- migration_plan_status: `{expected_status}`" in output
+    assert f"- `{expected_error}`" in output
+    assert after == before
+
+
+def test_personal_score_db_cli_prepare_diagnostic_rejects_non_sqlite_file(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    db_path = tmp_path / "not-sqlite.sqlite"
+    original_bytes = b"not a sqlite database"
+    db_path.write_bytes(original_bytes)
+
+    exit_code = runner.main(
+        [
+            "--personal-score-db-diagnostic",
+            str(db_path),
+            "--personal-score-db-diagnostic-mode",
+            "prepare-write",
+        ]
+    )
+    output = capsys.readouterr().out
+
+    assert exit_code == 1
+    assert "- `invalid_sqlite_database`" in output
+    assert db_path.read_bytes() == original_bytes
+
+
+def test_personal_score_db_cli_prepare_diagnostic_rejects_directory(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    exit_code = runner.main(
+        [
+            "--personal-score-db-diagnostic",
+            str(tmp_path),
+            "--personal-score-db-diagnostic-mode",
+            "prepare-write",
+        ]
+    )
+    output = capsys.readouterr().out
+
+    assert exit_code == 1
+    assert "- `path_is_directory`" in output
 
 
 def test_personal_score_db_file_prepare_initializes_empty_existing_file(

@@ -305,6 +305,25 @@ def format_personal_score_db_schema_diagnostic_markdown(
             f"{_diagnostic_code_or_none(row['actual'])} | "
             f"`{row['status']}` |"
         )
+    if "file_preparation" in diagnostic:
+        file_preparation = _diagnostic_mapping(diagnostic["file_preparation"])
+        lines.extend(
+            [
+                "",
+                "## File Preparation",
+                f"- existed_before: `{str(file_preparation['existed_before']).lower()}`",
+                f"- size_before: {_diagnostic_code_or_none(file_preparation['size_before'])}",
+                f"- initialized: `{str(file_preparation['initialized']).lower()}`",
+                (
+                    "- initial_migration_plan_status: "
+                    f"`{file_preparation['initial_migration_plan_status']}`"
+                ),
+                (
+                    "- final_migration_plan_status: "
+                    f"`{file_preparation['final_migration_plan_status']}`"
+                ),
+            ]
+        )
     lines.append("")
     return "\n".join(lines)
 

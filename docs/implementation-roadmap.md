@@ -396,11 +396,12 @@ M5完了時点で固定すること:
 - 2026-07-10時点で、正式DBオープン前段として `initialize_personal_score_db_if_empty()` と `prepare_personal_score_db_for_write()` を追加した。空DBだけ正式初期schemaを作成し、compatible DBは変更せず、M8 preview DB、unknown DB、metadata identity mismatch、manual migration候補は自動変更しないことをテストで固定した。これは既存DB migrationや本番insertではない。
 - 2026-07-10時点で、正式DBファイルパス境界として `prepare_personal_score_db_file_for_write(path)` を追加した。新規ファイルと0 byte空ファイルだけ正式初期schemaへ進め、既存compatible DBは変更せず、M8 preview DB、unknown DB、metadata identity mismatch、manual migration候補、非SQLiteファイル、ディレクトリを拒否して自動変更しないことをテストで固定した。これは `--m8-score-db-output` のpreview出力とは別であり、本番insertや既定自動保存ではない。
 - 2026-07-10時点で、正式DB inspection / file preparation result をJSON風dictとMarkdownへ投影するdiagnostic関数を追加した。compatible、空DB、M8 preview DB、unknown DB、manual migration候補について、path、`migration_plan_status`、`migration_plan_reason`、拒否理由、必須table欠落、metadata identity、ファイル準備summaryを人間が読める形で固定した。これはCLI表示前の足場であり、本番insert、自動migration、低信頼度ログ本番保存ではない。
+- 2026-07-10時点で、正式DB diagnosticを `python -m tools.vision_poc --personal-score-db-diagnostic <path>` からMarkdownまたはJSON風dictで標準出力へ出せるようにした。既定inspect modeは読み取り専用、`--personal-score-db-diagnostic-mode prepare-write` は新規DBファイルまたは0 byte空ファイルだけ正式初期schemaへ進める。compatible、空DB初期化、M8 preview拒否、unknown拒否、manual migration required、非SQLiteファイル、ディレクトリ拒否をCLI経由テストで固定した。これは本番insert、自動migration、既定自動保存、低信頼度ログ本番保存ではない。
 
 やること:
 
 - dry-run payload preview、保存予定レコードプレビュー、in-memory write preview、明示オプション付きfile output preview、readback診断の読み方を保ったまま、次に本番DB insert境界を別フェーズとして設計する。
-- 正式DB diagnosticをCLI/ログへ出す入口を設計する。
+- 正式DB diagnosticのMarkdown/JSONファイル出力やログ連携が必要なら、標準出力CLIとは別に `data/` / `logs/` 配下の生成物境界として設計する。
 - `plays` テーブルのマイグレーション、insert、保存スキップ境界を設計してから実装する。
 - マスタDBバージョン、曲ID、譜面ID、OCR結果、スコア、判定数、画像ハッシュ、解析確信度を保存する。
 - 重複保存防止をDB保存直前にも適用する。

@@ -17,6 +17,7 @@ import numpy as np
 from PIL import Image, ImageFilter, ImageOps
 
 from . import master_match
+from . import personal_score_db_schema as score_schema
 
 BASE_WIDTH = 1280
 BASE_HEIGHT = 720
@@ -9312,6 +9313,100 @@ def print_summary(summary: dict[str, object], output_dir: Path) -> None:
     )
 
 
+def open_sqlite_readonly(path: Path) -> sqlite3.Connection:
+    uri = f"{path.resolve().as_uri()}?mode=ro"
+    return sqlite3.connect(uri, uri=True)
+
+
+def personal_score_db_cli_error_diagnostic(
+    path: Path,
+    *,
+    reason: str,
+) -> dict[str, object]:
+    return {
+        "path": str(path),
+        "schema_name": score_schema.PERSONAL_SCORE_DB_SCHEMA_NAME,
+        "expected_schema_version": score_schema.PERSONAL_SCORE_DB_SCHEMA_VERSION,
+        "user_version": "",
+        "is_compatible": False,
+        "migration_plan_status": "reject_unknown_database",
+        "migration_plan_reason": reason,
+        "compatibility_errors": [reason],
+        "required_tables": {
+            "present": [],
+            "missing": list(score_schema.PERSONAL_SCORE_DB_REQUIRED_TABLES),
+        },
+        "metadata_identity": {
+            key: {
+                "expected": score_schema.PERSONAL_SCORE_DB_METADATA[key],
+                "actual": "",
+                "status": "missing",
+            }
+            for key in score_schema.PERSONAL_SCORE_DB_IDENTITY_METADATA_KEYS
+        },
+        "metadata": {},
+        "table_names": [],
+    }
+
+
+def inspect_personal_score_db_file_for_cli(path: Path) -> dict[str, object]:
+    if path.is_dir():
+        return personal_score_db_cli_error_diagnostic(
+            path,
+            reason="path_is_directory",
+        )
+    if not path.exists():
+        return personal_score_db_cli_error_diagnostic(
+            path,
+            reason="path_does_not_exist",
+        )
+    try:
+        with open_sqlite_readonly(path) as connection:
+            inspection = score_schema.inspect_personal_score_db_schema(connection)
+    except sqlite3.DatabaseError:
+        return personal_score_db_cli_error_diagnostic(
+            path,
+            reason="invalid_sqlite_database",
+        )
+    return score_schema.personal_score_db_schema_inspection_diagnostic(
+        inspection,
+        path=path,
+    )
+
+
+def prepare_personal_score_db_file_for_cli(path: Path) -> dict[str, object]:
+    try:
+        result = score_schema.prepare_personal_score_db_file_for_write(path)
+    except ValueError:
+        return inspect_personal_score_db_file_for_cli(path)
+    return score_schema.personal_score_db_file_preparation_diagnostic(result)
+
+
+def print_personal_score_db_diagnostic(
+    diagnostic: dict[str, object],
+    *,
+    output_format: str,
+) -> None:
+    if output_format == "json":
+        print(json.dumps(diagnostic, ensure_ascii=False, indent=2))
+        return
+    print(score_schema.format_personal_score_db_schema_diagnostic_markdown(diagnostic))
+
+
+def run_personal_score_db_diagnostic_cli(args: argparse.Namespace) -> int:
+    db_path = args.personal_score_db_diagnostic
+    if args.personal_score_db_diagnostic_mode == "prepare-write":
+        diagnostic = prepare_personal_score_db_file_for_cli(db_path)
+    else:
+        diagnostic = inspect_personal_score_db_file_for_cli(db_path)
+
+    print_personal_score_db_diagnostic(
+        diagnostic,
+        output_format=args.personal_score_db_diagnostic_format,
+    )
+    return 0 if diagnostic["is_compatible"] else 1
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Evaluate OCR-free DDR GP result screen signals.")
     parser.add_argument(
@@ -9412,6 +9507,31 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=None,
         help="Directory for CSV/JSON logs and cropped ROI images.",
+    )
+    parser.add_argument(
+        "--personal-score-db-diagnostic",
+        type=Path,
+        default=None,
+        help=(
+            "Inspect a formal personal score DB path and print a diagnostic, then exit. "
+            "This does not insert play rows or run migrations."
+        ),
+    )
+    parser.add_argument(
+        "--personal-score-db-diagnostic-mode",
+        choices=("inspect", "prepare-write"),
+        default="inspect",
+        help=(
+            "Diagnostic mode. inspect reads an existing DB without initialization; "
+            "prepare-write runs the write-preparation boundary, initializing only a new or "
+            "0 byte empty DB."
+        ),
+    )
+    parser.add_argument(
+        "--personal-score-db-diagnostic-format",
+        choices=("markdown", "json"),
+        default="markdown",
+        help="Output format for --personal-score-db-diagnostic.",
     )
     parser.add_argument(
         "--timestamp-start-ms",
@@ -9576,6 +9696,8 @@ def resolve_ocr_profiles(values: list[str]) -> tuple[str, ...]:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if args.personal_score_db_diagnostic is not None:
+        return run_personal_score_db_diagnostic_cli(args)
     if args.capture_dry_run and args.capture_dry_run_scenario is not None:
         raise ValueError("--capture-dry-run and --capture-dry-run-scenario are mutually exclusive")
     if args.m8_score_db_output is not None and not args.m7a_digit_recognition:

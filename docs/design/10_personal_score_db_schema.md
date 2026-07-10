@@ -150,6 +150,10 @@ M8 preview最小 `plays` は以下の用途に限定する。
 
 `personal_score_db_file_preparation_diagnostic()` は `PersonalScoreDbFilePreparationResult` のsummaryを同じdiagnostic dictへ重ねる。`existed_before`、`size_before`、`initialized`、初期/最終 `migration_plan_status` を表示できるようにするが、これもファイル準備済み結果の説明であり、本番insertや追加migrationを行わない。
 
+CLI表示入口は `python -m tools.vision_poc --personal-score-db-diagnostic <path>` に置く。既定の `inspect` mode は既存DBを読み取り専用で検査し、Markdownまたは `--personal-score-db-diagnostic-format json` のJSON風dictを標準出力へ出す。存在しないpath、非SQLiteファイル、ディレクトリは正式DBとして開かず、診断上の拒否理由として表示する。
+
+`--personal-score-db-diagnostic-mode prepare-write` は `prepare_personal_score_db_file_for_write(path)` と同じファイル準備境界をCLIから確認するための入口である。新規DBファイルまたは0 byte空ファイルだけ正式初期schemaへ初期化し、`file_preparation` summaryを表示する。既存compatible DBは変更しない。M8 preview DB、unknown DB、metadata identity mismatch、`manual_migration_required` 候補、非SQLiteファイル、ディレクトリは拒否診断を出し、自動修復しない。このCLI入口も本番insert、既定自動保存、既存DB migration、低信頼度ログ本番保存には進まない。
+
 互換チェックの主な拒否理由は以下。
 
 - `schema_version_mismatch`: `PRAGMA user_version` が正式schema versionと一致しない。
