@@ -24,6 +24,9 @@ M8 preview完了後の正式 `ddrgp-scores.sqlite` 初期スキーマ案と、mi
 - `initialize_personal_score_db_if_empty()`
 - `prepare_personal_score_db_for_write()`
 - `prepare_personal_score_db_file_for_write(path)`
+- `personal_score_db_schema_inspection_diagnostic()`
+- `format_personal_score_db_schema_diagnostic_markdown()`
+- `personal_score_db_file_preparation_diagnostic()`
 
 これはCLIから本番DBへinsertする入口ではない。次フェーズで保存処理を実装する前に、正式DBとして作るべきtableと、preview DBを拒否する条件をテストできるようにするためのschema contractである。
 
@@ -141,6 +144,12 @@ M8 preview最小 `plays` は以下の用途に限定する。
 
 `assert_personal_score_db_compatible()` は同じ検査を行い、互換エラーがあれば `ValueError` で止める。これは正式DBとして開いてよいかの入口であり、migration実行や本番insertはまだ行わない。
 
+`personal_score_db_schema_inspection_diagnostic()` は、検査済みの `PersonalScoreDbSchemaInspection` をJSON風のdictへ変換する表示用の投影である。対象path、期待schema version、実 `PRAGMA user_version`、互換可否、`migration_plan_status`、`migration_plan_reason`、拒否理由、必須tableの present/missing、metadata identity の expected/actual/status をまとめる。これはDBを再検査したり変更したりせず、CLIやログで人間が読める形にするための境界である。
+
+`format_personal_score_db_schema_diagnostic_markdown()` は同じdiagnostic dictをMarkdown文字列へ整形する。Markdownには `compatible`、`migration_plan_status`、`migration_plan_reason`、`user_version`、`compatibility_errors`、必須table、metadata identity table を出す。`manual_migration_required` は backup方針と明示確認が必要な状態として表示し、自動migrationや欠落table作成の指示にはしない。
+
+`personal_score_db_file_preparation_diagnostic()` は `PersonalScoreDbFilePreparationResult` のsummaryを同じdiagnostic dictへ重ねる。`existed_before`、`size_before`、`initialized`、初期/最終 `migration_plan_status` を表示できるようにするが、これもファイル準備済み結果の説明であり、本番insertや追加migrationを行わない。
+
 互換チェックの主な拒否理由は以下。
 
 - `schema_version_mismatch`: `PRAGMA user_version` が正式schema versionと一致しない。
@@ -193,4 +202,5 @@ metadata identity は `created_by`、`schema_name`、`schema_contract_scope`、`
 - 同テストは空DB、未知DB、metadata identity mismatch、必須table欠落、`user_version` mismatch の検査結果と `migration_plan_status` を固定する。
 - 同テストは空DBだけ初期schemaを作成し、M8 preview DB、unknown DB、metadata identity mismatch、manual migration候補を自動変更しないことを固定する。
 - 同テストはファイルパス境界として、新規DBファイルと0 byte空ファイルだけ正式schemaへ初期化でき、compatible DBは変更せず、M8 preview DB、unknown DB、metadata identity mismatch、manual migration候補、非SQLiteファイル、ディレクトリを自動変更しないことを固定する。
+- 同テストは compatible、空DB、M8 preview DB、unknown DB、manual migration候補のdiagnostic dict / Markdown表示を固定し、拒否理由、必須table欠落、metadata identity、path情報、ファイル準備summaryを人間が読める形に保つ。
 - 同テストは preview列、M7a raw候補、OCR raw/normalized が正式 `plays` に混入しないことを確認する。

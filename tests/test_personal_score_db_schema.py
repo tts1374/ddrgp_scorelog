@@ -3,6 +3,8 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
+import pytest
+
 from tools.vision_poc import personal_score_db_schema as score_schema
 from tools.vision_poc import runner
 
@@ -51,6 +53,39 @@ def test_personal_score_db_schema_creates_formal_tables_and_metadata() -> None:
         assert score_schema.assert_personal_score_db_compatible(connection) == inspection
 
 
+def test_personal_score_db_schema_diagnostic_reports_compatible_database(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "ddrgp-scores.sqlite"
+    with sqlite3.connect(":memory:") as connection:
+        score_schema.create_personal_score_db_schema(connection)
+        inspection = score_schema.inspect_personal_score_db_schema(connection)
+
+    diagnostic = score_schema.personal_score_db_schema_inspection_diagnostic(
+        inspection,
+        path=db_path,
+    )
+    markdown = score_schema.format_personal_score_db_schema_diagnostic_markdown(
+        diagnostic
+    )
+
+    assert diagnostic["path"] == str(db_path)
+    assert diagnostic["is_compatible"] is True
+    assert diagnostic["migration_plan_status"] == "compatible"
+    assert diagnostic["compatibility_errors"] == []
+    assert diagnostic["required_tables"] == {
+        "present": list(score_schema.PERSONAL_SCORE_DB_REQUIRED_TABLES),
+        "missing": [],
+    }
+    assert all(
+        identity_diagnostic["status"] == "match"
+        for identity_diagnostic in diagnostic["metadata_identity"].values()
+    )
+    assert "- migration_plan_status: `compatible`" in markdown
+    assert "- `(none)`" in markdown
+    assert f"- path: `{db_path}`" in markdown
+
+
 def test_personal_score_db_schema_rejects_m8_preview_database() -> None:
     with sqlite3.connect(":memory:") as connection:
         runner.create_m8_score_db_schema(connection)
@@ -65,6 +100,87 @@ def test_personal_score_db_schema_rejects_m8_preview_database() -> None:
     assert "missing_table:analysis_logs" in errors
     assert inspection.migration_plan_status == "reject_m8_preview_database"
     assert inspection.migration_plan_reason == "preview_schema_is_not_production"
+
+
+def test_personal_score_db_schema_diagnostic_reports_initializable_empty_database() -> None:
+    with sqlite3.connect(":memory:") as connection:
+        inspection = score_schema.inspect_personal_score_db_schema(connection)
+
+    diagnostic = score_schema.personal_score_db_schema_inspection_diagnostic(inspection)
+    markdown = score_schema.format_personal_score_db_schema_diagnostic_markdown(
+        diagnostic
+    )
+
+    assert diagnostic["path"] == ""
+    assert diagnostic["is_compatible"] is False
+    assert diagnostic["migration_plan_status"] == "initialize_empty_database"
+    assert diagnostic["migration_plan_reason"] == "no_user_tables"
+    assert diagnostic["required_tables"]["present"] == []
+    assert diagnostic["required_tables"]["missing"] == list(
+        score_schema.PERSONAL_SCORE_DB_REQUIRED_TABLES
+    )
+    assert {
+        identity_diagnostic["status"]
+        for identity_diagnostic in diagnostic["metadata_identity"].values()
+    } == {"missing"}
+    assert "- path: `(none)`" in markdown
+    assert "- migration_plan_status: `initialize_empty_database`" in markdown
+    assert "`score_db_metadata`" in markdown
+
+
+@pytest.mark.parametrize(
+    ("fixture_name", "expected_status", "expected_reason", "expected_error"),
+    [
+        (
+            "m8_preview",
+            "reject_m8_preview_database",
+            "preview_schema_is_not_production",
+            "m8_preview_database_not_supported",
+        ),
+        (
+            "unknown",
+            "reject_unknown_database",
+            "metadata_does_not_identify_formal_schema",
+            "unknown_database_not_supported",
+        ),
+        (
+            "manual_migration",
+            "manual_migration_required",
+            "formal_schema_contract_mismatch",
+            "missing_table:analysis_logs",
+        ),
+    ],
+)
+def test_personal_score_db_schema_diagnostic_reports_rejection_fixtures(
+    fixture_name: str,
+    expected_status: str,
+    expected_reason: str,
+    expected_error: str,
+) -> None:
+    with sqlite3.connect(":memory:") as connection:
+        if fixture_name == "m8_preview":
+            runner.create_m8_score_db_schema(connection)
+        elif fixture_name == "unknown":
+            connection.execute("PRAGMA user_version = 1")
+            connection.execute("CREATE TABLE unrelated_table (id INTEGER PRIMARY KEY)")
+        elif fixture_name == "manual_migration":
+            score_schema.create_personal_score_db_schema(connection)
+            connection.execute("DROP TABLE analysis_logs")
+        else:
+            raise AssertionError(f"unknown fixture: {fixture_name}")
+        inspection = score_schema.inspect_personal_score_db_schema(connection)
+
+    diagnostic = score_schema.personal_score_db_schema_inspection_diagnostic(inspection)
+    markdown = score_schema.format_personal_score_db_schema_diagnostic_markdown(
+        diagnostic
+    )
+
+    assert diagnostic["is_compatible"] is False
+    assert diagnostic["migration_plan_status"] == expected_status
+    assert diagnostic["migration_plan_reason"] == expected_reason
+    assert expected_error in diagnostic["compatibility_errors"]
+    assert f"- migration_plan_status: `{expected_status}`" in markdown
+    assert f"- `{expected_error}`" in markdown
 
 
 def test_personal_score_db_schema_inspects_empty_database_as_initializable() -> None:
@@ -126,6 +242,25 @@ def test_personal_score_db_file_prepare_initializes_new_database(tmp_path: Path)
         assert score_schema.read_score_db_metadata(connection) == (
             score_schema.PERSONAL_SCORE_DB_METADATA
         )
+
+
+def test_personal_score_db_file_preparation_diagnostic_reports_file_summary(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "ddrgp-scores.sqlite"
+
+    result = score_schema.prepare_personal_score_db_file_for_write(db_path)
+
+    diagnostic = score_schema.personal_score_db_file_preparation_diagnostic(result)
+    assert diagnostic["path"] == str(db_path)
+    assert diagnostic["migration_plan_status"] == "compatible"
+    assert diagnostic["file_preparation"] == {
+        "existed_before": False,
+        "size_before": None,
+        "initialized": True,
+        "initial_migration_plan_status": "initialize_empty_database",
+        "final_migration_plan_status": "compatible",
+    }
 
 
 def test_personal_score_db_file_prepare_initializes_empty_existing_file(

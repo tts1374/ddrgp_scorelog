@@ -218,6 +218,160 @@ class PersonalScoreDbFilePreparationResult:
         return self.initialization.initialized
 
 
+def personal_score_db_schema_inspection_diagnostic(
+    inspection: PersonalScoreDbSchemaInspection,
+    *,
+    path: Path | None = None,
+) -> dict[str, object]:
+    present_required_tables = tuple(
+        table_name
+        for table_name in PERSONAL_SCORE_DB_REQUIRED_TABLES
+        if table_name in inspection.table_names
+    )
+    metadata_identity = {
+        key: {
+            "expected": expected_value,
+            "actual": inspection.metadata.get(key, ""),
+            "status": _metadata_identity_diagnostic_status(
+                actual_value=inspection.metadata.get(key),
+                expected_value=expected_value,
+            ),
+        }
+        for key, expected_value in PERSONAL_SCORE_DB_METADATA.items()
+        if key in PERSONAL_SCORE_DB_IDENTITY_METADATA_KEYS
+    }
+    return {
+        "path": str(path) if path is not None else "",
+        "schema_name": PERSONAL_SCORE_DB_SCHEMA_NAME,
+        "expected_schema_version": PERSONAL_SCORE_DB_SCHEMA_VERSION,
+        "user_version": inspection.user_version,
+        "is_compatible": inspection.is_compatible,
+        "migration_plan_status": inspection.migration_plan_status,
+        "migration_plan_reason": inspection.migration_plan_reason,
+        "compatibility_errors": list(inspection.compatibility_errors),
+        "required_tables": {
+            "present": list(present_required_tables),
+            "missing": list(inspection.missing_required_tables),
+        },
+        "metadata_identity": metadata_identity,
+        "metadata": dict(sorted(inspection.metadata.items())),
+        "table_names": list(inspection.table_names),
+    }
+
+
+def format_personal_score_db_schema_diagnostic_markdown(
+    diagnostic: dict[str, object],
+) -> str:
+    required_tables = _diagnostic_mapping(diagnostic["required_tables"])
+    metadata_identity = _diagnostic_mapping(diagnostic["metadata_identity"])
+    compatibility_errors = _diagnostic_list(diagnostic["compatibility_errors"])
+    missing_tables = _diagnostic_list(required_tables["missing"])
+    present_tables = _diagnostic_list(required_tables["present"])
+
+    lines = [
+        "# Personal Score DB Diagnostic",
+        "",
+        f"- path: {_diagnostic_code_or_none(diagnostic['path'])}",
+        f"- compatible: `{str(diagnostic['is_compatible']).lower()}`",
+        f"- migration_plan_status: `{diagnostic['migration_plan_status']}`",
+        f"- migration_plan_reason: `{diagnostic['migration_plan_reason']}`",
+        (
+            "- user_version: "
+            f"`{diagnostic['user_version']}` "
+            f"(expected `{diagnostic['expected_schema_version']}`)"
+        ),
+        "",
+        "## Compatibility Errors",
+    ]
+    lines.extend(_markdown_bullets_or_none(compatibility_errors))
+    lines.extend(
+        [
+            "",
+            "## Required Tables",
+            f"- missing: {_diagnostic_inline_list_or_none(missing_tables)}",
+            f"- present: {_diagnostic_inline_list_or_none(present_tables)}",
+            "",
+            "## Metadata Identity",
+            "| key | expected | actual | status |",
+            "| --- | --- | --- | --- |",
+        ]
+    )
+    for key in PERSONAL_SCORE_DB_IDENTITY_METADATA_KEYS:
+        row = _diagnostic_mapping(metadata_identity[key])
+        lines.append(
+            "| "
+            f"`{key}` | "
+            f"`{row['expected']}` | "
+            f"{_diagnostic_code_or_none(row['actual'])} | "
+            f"`{row['status']}` |"
+        )
+    lines.append("")
+    return "\n".join(lines)
+
+
+def personal_score_db_file_preparation_diagnostic(
+    result: PersonalScoreDbFilePreparationResult,
+) -> dict[str, object]:
+    diagnostic = personal_score_db_schema_inspection_diagnostic(
+        result.inspection,
+        path=result.path,
+    )
+    diagnostic["file_preparation"] = {
+        "existed_before": result.existed_before,
+        "size_before": result.size_before,
+        "initialized": result.initialized,
+        "initial_migration_plan_status": (
+            result.initialization.before.migration_plan_status
+        ),
+        "final_migration_plan_status": result.inspection.migration_plan_status,
+    }
+    return diagnostic
+
+
+def _metadata_identity_diagnostic_status(
+    *,
+    actual_value: str | None,
+    expected_value: str,
+) -> str:
+    if actual_value is None:
+        return "missing"
+    if actual_value != expected_value:
+        return "mismatch"
+    return "match"
+
+
+def _diagnostic_mapping(value: object) -> dict[str, object]:
+    if not isinstance(value, dict):
+        msg = f"diagnostic value must be a mapping: {value!r}"
+        raise TypeError(msg)
+    return value
+
+
+def _diagnostic_list(value: object) -> list[object]:
+    if not isinstance(value, list):
+        msg = f"diagnostic value must be a list: {value!r}"
+        raise TypeError(msg)
+    return value
+
+
+def _diagnostic_code_or_none(value: object) -> str:
+    if value in ("", None):
+        return "`(none)`"
+    return f"`{value}`"
+
+
+def _diagnostic_inline_list_or_none(values: list[object]) -> str:
+    if not values:
+        return "`(none)`"
+    return ", ".join(f"`{value}`" for value in values)
+
+
+def _markdown_bullets_or_none(values: list[object]) -> list[str]:
+    if not values:
+        return ["- `(none)`"]
+    return [f"- `{value}`" for value in values]
+
+
 def create_personal_score_db_schema(connection: sqlite3.Connection) -> None:
     connection.executescript(PERSONAL_SCORE_DB_SCHEMA_SQL)
     connection.execute(f"PRAGMA user_version = {PERSONAL_SCORE_DB_SCHEMA_VERSION}")

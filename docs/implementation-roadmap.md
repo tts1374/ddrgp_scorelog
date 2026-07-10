@@ -395,11 +395,12 @@ M5完了時点で固定すること:
 - 2026-07-10時点で、正式DB検査用の `inspect_personal_score_db_schema()` と `assert_personal_score_db_compatible()` を追加し、空DB、未知DB、M8 preview DB、metadata identity mismatch、必須table欠落、`user_version` mismatch の拒否理由と `migration_plan_status` をテストで固定した。これは互換チェックの入口であり、自動migrationや本番insertではない。
 - 2026-07-10時点で、正式DBオープン前段として `initialize_personal_score_db_if_empty()` と `prepare_personal_score_db_for_write()` を追加した。空DBだけ正式初期schemaを作成し、compatible DBは変更せず、M8 preview DB、unknown DB、metadata identity mismatch、manual migration候補は自動変更しないことをテストで固定した。これは既存DB migrationや本番insertではない。
 - 2026-07-10時点で、正式DBファイルパス境界として `prepare_personal_score_db_file_for_write(path)` を追加した。新規ファイルと0 byte空ファイルだけ正式初期schemaへ進め、既存compatible DBは変更せず、M8 preview DB、unknown DB、metadata identity mismatch、manual migration候補、非SQLiteファイル、ディレクトリを拒否して自動変更しないことをテストで固定した。これは `--m8-score-db-output` のpreview出力とは別であり、本番insertや既定自動保存ではない。
+- 2026-07-10時点で、正式DB inspection / file preparation result をJSON風dictとMarkdownへ投影するdiagnostic関数を追加した。compatible、空DB、M8 preview DB、unknown DB、manual migration候補について、path、`migration_plan_status`、`migration_plan_reason`、拒否理由、必須table欠落、metadata identity、ファイル準備summaryを人間が読める形で固定した。これはCLI表示前の足場であり、本番insert、自動migration、低信頼度ログ本番保存ではない。
 
 やること:
 
 - dry-run payload preview、保存予定レコードプレビュー、in-memory write preview、明示オプション付きfile output preview、readback診断の読み方を保ったまま、次に本番DB insert境界を別フェーズとして設計する。
-- `ddrgp-scores.sqlite` の正式スキーマを定義する。
+- 正式DB diagnosticをCLI/ログへ出す入口を設計する。
 - `plays` テーブルのマイグレーション、insert、保存スキップ境界を設計してから実装する。
 - マスタDBバージョン、曲ID、譜面ID、OCR結果、スコア、判定数、画像ハッシュ、解析確信度を保存する。
 - 重複保存防止をDB保存直前にも適用する。
