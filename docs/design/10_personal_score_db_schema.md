@@ -21,6 +21,8 @@ M8 preview完了後の正式 `ddrgp-scores.sqlite` 初期スキーマ案と、mi
 - `analysis_logs`
 - `create_personal_score_db_schema()`
 - `personal_score_db_compatibility_errors()`
+- `initialize_personal_score_db_if_empty()`
+- `prepare_personal_score_db_for_write()`
 
 これはCLIから本番DBへinsertする入口ではない。次フェーズで保存処理を実装する前に、正式DBとして作るべきtableと、preview DBを拒否する条件をテストできるようにするためのschema contractである。
 
@@ -158,6 +160,19 @@ M8 preview最小 `plays` は以下の用途に限定する。
 
 metadata identity は `created_by`、`schema_name`、`schema_contract_scope`、`production_schema_status` を見る。これらが一致しないDBは、`user_version=1` や似たtable名があっても正式DBとして扱わない。`schema_version` だけの不一致は、正式metadata identityが揃っている場合に限り `manual_migration_required` の候補として読む。
 
+## 初期化とオープン前段
+
+`initialize_personal_score_db_if_empty()` は、検査結果が `initialize_empty_database` の場合だけ `create_personal_score_db_schema()` を実行する。初期化後は再検査し、正式metadata、`PRAGMA user_version`、必須tableがそろった `compatible` 状態として返す。
+
+以下は自動変更しない。
+
+- `compatible`: 既存の正式DBとして扱い、schema再作成やmetadata上書きはしない。
+- `reject_m8_preview_database`: M8 preview DBを正式DBへ自動昇格しない。
+- `reject_unknown_database`: metadata欠損DBやidentity mismatch DBを正式DBへ寄せない。
+- `manual_migration_required`: backup方針と明示確認を決めるまで、欠落tableの作成や `user_version` 修正をしない。
+
+`prepare_personal_score_db_for_write()` は、本番insert実装前のオープン前段である。空DBなら初期化してから互換性を確認し、`compatible` なら検査結果を返す。互換エラーが残るDBは `migration_plan_status` と拒否理由を含む `ValueError` で止める。これはまだ `plays` へのinsert、低信頼度ログ保存、既存DB migrationを行わない。
+
 ## 未決事項
 
 - `play_id` と `duplicate_key` の本格生成方式。
@@ -171,4 +186,5 @@ metadata identity は `created_by`、`schema_name`、`schema_contract_scope`、`
 - `tests/test_personal_score_db_schema.py` は正式schema contractを作成し、必須tableとmetadataを確認する。
 - 同テストは M8 preview DB を正式個人スコアDBとして拒否する。
 - 同テストは空DB、未知DB、metadata identity mismatch、必須table欠落、`user_version` mismatch の検査結果と `migration_plan_status` を固定する。
+- 同テストは空DBだけ初期schemaを作成し、M8 preview DB、unknown DB、metadata identity mismatch、manual migration候補を自動変更しないことを固定する。
 - 同テストは preview列、M7a raw候補、OCR raw/normalized が正式 `plays` に混入しないことを確認する。

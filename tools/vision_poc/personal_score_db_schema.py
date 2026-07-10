@@ -197,6 +197,13 @@ class PersonalScoreDbSchemaInspection:
         return not self.compatibility_errors
 
 
+@dataclass(frozen=True)
+class PersonalScoreDbInitializationResult:
+    before: PersonalScoreDbSchemaInspection
+    after: PersonalScoreDbSchemaInspection
+    initialized: bool
+
+
 def create_personal_score_db_schema(connection: sqlite3.Connection) -> None:
     connection.executescript(PERSONAL_SCORE_DB_SCHEMA_SQL)
     connection.execute(f"PRAGMA user_version = {PERSONAL_SCORE_DB_SCHEMA_VERSION}")
@@ -356,5 +363,40 @@ def assert_personal_score_db_compatible(
     if inspection.compatibility_errors:
         joined_errors = ", ".join(inspection.compatibility_errors)
         msg = f"personal score DB is not compatible: {joined_errors}"
+        raise ValueError(msg)
+    return inspection
+
+
+def initialize_personal_score_db_if_empty(
+    connection: sqlite3.Connection,
+) -> PersonalScoreDbInitializationResult:
+    before = inspect_personal_score_db_schema(connection)
+    if before.migration_plan_status != "initialize_empty_database":
+        return PersonalScoreDbInitializationResult(
+            before=before,
+            after=before,
+            initialized=False,
+        )
+
+    create_personal_score_db_schema(connection)
+    after = inspect_personal_score_db_schema(connection)
+    return PersonalScoreDbInitializationResult(
+        before=before,
+        after=after,
+        initialized=True,
+    )
+
+
+def prepare_personal_score_db_for_write(
+    connection: sqlite3.Connection,
+) -> PersonalScoreDbSchemaInspection:
+    initialization = initialize_personal_score_db_if_empty(connection)
+    inspection = initialization.after
+    if inspection.compatibility_errors:
+        joined_errors = ", ".join(inspection.compatibility_errors)
+        msg = (
+            "personal score DB cannot be opened for write: "
+            f"{inspection.migration_plan_status}: {joined_errors}"
+        )
         raise ValueError(msg)
     return inspection

@@ -85,6 +85,44 @@ def test_personal_score_db_schema_inspects_empty_database_as_initializable() -> 
     assert inspection.migration_plan_reason == "no_user_tables"
 
 
+def test_personal_score_db_initializes_empty_database_only() -> None:
+    with sqlite3.connect(":memory:") as connection:
+        result = score_schema.initialize_personal_score_db_if_empty(connection)
+        inspection = score_schema.inspect_personal_score_db_schema(connection)
+
+    assert result.initialized
+    assert result.before.migration_plan_status == "initialize_empty_database"
+    assert result.after == inspection
+    assert inspection.is_compatible
+    assert inspection.migration_plan_status == "compatible"
+    assert inspection.table_names == tuple(
+        sorted(score_schema.PERSONAL_SCORE_DB_REQUIRED_TABLES)
+    )
+    assert inspection.metadata == score_schema.PERSONAL_SCORE_DB_METADATA
+
+
+def test_personal_score_db_prepare_for_write_initializes_empty_database() -> None:
+    with sqlite3.connect(":memory:") as connection:
+        inspection = score_schema.prepare_personal_score_db_for_write(connection)
+
+    assert inspection.is_compatible
+    assert inspection.migration_plan_status == "compatible"
+
+
+def test_personal_score_db_initialization_keeps_compatible_database_unchanged() -> None:
+    with sqlite3.connect(":memory:") as connection:
+        score_schema.create_personal_score_db_schema(connection)
+        before = score_schema.inspect_personal_score_db_schema(connection)
+
+        result = score_schema.initialize_personal_score_db_if_empty(connection)
+        after = score_schema.inspect_personal_score_db_schema(connection)
+
+    assert not result.initialized
+    assert result.before == before
+    assert result.after == before
+    assert after == before
+
+
 def test_personal_score_db_schema_rejects_unknown_database_without_metadata() -> None:
     with sqlite3.connect(":memory:") as connection:
         connection.execute("PRAGMA user_version = 1")
@@ -98,6 +136,22 @@ def test_personal_score_db_schema_rejects_unknown_database_without_metadata() ->
     assert inspection.migration_plan_reason == (
         "metadata_does_not_identify_formal_schema"
     )
+
+
+def test_personal_score_db_initialization_does_not_modify_unknown_database() -> None:
+    with sqlite3.connect(":memory:") as connection:
+        connection.execute("PRAGMA user_version = 1")
+        connection.execute("CREATE TABLE unrelated_table (id INTEGER PRIMARY KEY)")
+        before = score_schema.inspect_personal_score_db_schema(connection)
+
+        result = score_schema.initialize_personal_score_db_if_empty(connection)
+        after = score_schema.inspect_personal_score_db_schema(connection)
+
+    assert not result.initialized
+    assert result.before == before
+    assert result.after == before
+    assert after == before
+    assert after.table_names == ("unrelated_table",)
 
 
 def test_personal_score_db_schema_rejects_metadata_identity_mismatch() -> None:
@@ -120,6 +174,32 @@ def test_personal_score_db_schema_rejects_metadata_identity_mismatch() -> None:
     assert inspection.migration_plan_status == "reject_unknown_database"
 
 
+def test_personal_score_db_prepare_for_write_rejects_metadata_identity_mismatch() -> None:
+    with sqlite3.connect(":memory:") as connection:
+        score_schema.create_personal_score_db_schema(connection)
+        connection.execute(
+            """
+            UPDATE score_db_metadata
+            SET value = ?
+            WHERE key = 'schema_contract_scope'
+            """,
+            ("preview_minimal_plays",),
+        )
+
+        try:
+            score_schema.prepare_personal_score_db_for_write(connection)
+        except ValueError as error:
+            message = str(error)
+        else:
+            raise AssertionError("expected incompatible DB to raise")
+
+        inspection = score_schema.inspect_personal_score_db_schema(connection)
+
+    assert "reject_unknown_database" in message
+    assert "score_db_metadata.schema_contract_scope_mismatch" in message
+    assert inspection.metadata["schema_contract_scope"] == "preview_minimal_plays"
+
+
 def test_personal_score_db_schema_marks_missing_table_for_manual_migration() -> None:
     with sqlite3.connect(":memory:") as connection:
         score_schema.create_personal_score_db_schema(connection)
@@ -131,6 +211,23 @@ def test_personal_score_db_schema_marks_missing_table_for_manual_migration() -> 
     assert inspection.compatibility_errors == ("missing_table:analysis_logs",)
     assert inspection.migration_plan_status == "manual_migration_required"
     assert inspection.migration_plan_reason == "formal_schema_contract_mismatch"
+
+
+def test_personal_score_db_initialization_does_not_modify_manual_migration_candidate() -> None:
+    with sqlite3.connect(":memory:") as connection:
+        score_schema.create_personal_score_db_schema(connection)
+        connection.execute("DROP TABLE analysis_logs")
+        before = score_schema.inspect_personal_score_db_schema(connection)
+
+        result = score_schema.initialize_personal_score_db_if_empty(connection)
+        after = score_schema.inspect_personal_score_db_schema(connection)
+
+    assert before.migration_plan_status == "manual_migration_required"
+    assert not result.initialized
+    assert result.before == before
+    assert result.after == before
+    assert after == before
+    assert "analysis_logs" not in after.table_names
 
 
 def test_personal_score_db_schema_marks_user_version_mismatch_for_manual_migration() -> None:
@@ -160,6 +257,23 @@ def test_personal_score_db_schema_assertion_reports_rejection_reasons() -> None:
     assert "personal score DB is not compatible" in message
     assert "unknown_database_not_supported" in message
     assert "score_db_metadata_missing" in message
+
+
+def test_personal_score_db_initialization_does_not_modify_m8_preview_database() -> None:
+    with sqlite3.connect(":memory:") as connection:
+        runner.create_m8_score_db_schema(connection)
+        before = score_schema.inspect_personal_score_db_schema(connection)
+
+        result = score_schema.initialize_personal_score_db_if_empty(connection)
+        after = score_schema.inspect_personal_score_db_schema(connection)
+
+    assert before.migration_plan_status == "reject_m8_preview_database"
+    assert not result.initialized
+    assert result.before == before
+    assert result.after == before
+    assert after == before
+    assert "preview_metadata" in after.table_names
+    assert score_schema.PERSONAL_SCORE_DB_METADATA_TABLE not in after.table_names
 
 
 def test_personal_score_db_plays_keeps_preview_and_raw_candidate_columns_out() -> None:
