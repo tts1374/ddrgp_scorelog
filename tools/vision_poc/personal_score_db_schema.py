@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sqlite3
 from dataclasses import dataclass
+from pathlib import Path
 
 PERSONAL_SCORE_DB_SCHEMA_NAME = "personal_score_db"
 PERSONAL_SCORE_DB_SCHEMA_VERSION = 1
@@ -204,6 +205,19 @@ class PersonalScoreDbInitializationResult:
     initialized: bool
 
 
+@dataclass(frozen=True)
+class PersonalScoreDbFilePreparationResult:
+    path: Path
+    existed_before: bool
+    size_before: int | None
+    initialization: PersonalScoreDbInitializationResult
+    inspection: PersonalScoreDbSchemaInspection
+
+    @property
+    def initialized(self) -> bool:
+        return self.initialization.initialized
+
+
 def create_personal_score_db_schema(connection: sqlite3.Connection) -> None:
     connection.executescript(PERSONAL_SCORE_DB_SCHEMA_SQL)
     connection.execute(f"PRAGMA user_version = {PERSONAL_SCORE_DB_SCHEMA_VERSION}")
@@ -400,3 +414,40 @@ def prepare_personal_score_db_for_write(
         )
         raise ValueError(msg)
     return inspection
+
+
+def prepare_personal_score_db_file_for_write(
+    path: Path,
+) -> PersonalScoreDbFilePreparationResult:
+    db_path = Path(path)
+    existed_before = db_path.exists()
+    size_before = db_path.stat().st_size if existed_before else None
+    if existed_before and db_path.is_dir():
+        raise ValueError(f"personal score DB path is a directory: {db_path}")
+
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with sqlite3.connect(db_path) as connection:
+            initialization = initialize_personal_score_db_if_empty(connection)
+            inspection = initialization.after
+            if inspection.compatibility_errors:
+                joined_errors = ", ".join(inspection.compatibility_errors)
+                msg = (
+                    "personal score DB file cannot be opened for write: "
+                    f"{db_path}: {inspection.migration_plan_status}: {joined_errors}"
+                )
+                raise ValueError(msg)
+    except sqlite3.DatabaseError as exc:
+        msg = (
+            "personal score DB file cannot be opened for write: "
+            f"{db_path}: invalid_sqlite_database"
+        )
+        raise ValueError(msg) from exc
+
+    return PersonalScoreDbFilePreparationResult(
+        path=db_path,
+        existed_before=existed_before,
+        size_before=size_before,
+        initialization=initialization,
+        inspection=inspection,
+    )

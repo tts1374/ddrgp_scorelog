@@ -23,6 +23,7 @@ M8 preview完了後の正式 `ddrgp-scores.sqlite` 初期スキーマ案と、mi
 - `personal_score_db_compatibility_errors()`
 - `initialize_personal_score_db_if_empty()`
 - `prepare_personal_score_db_for_write()`
+- `prepare_personal_score_db_file_for_write(path)`
 
 これはCLIから本番DBへinsertする入口ではない。次フェーズで保存処理を実装する前に、正式DBとして作るべきtableと、preview DBを拒否する条件をテストできるようにするためのschema contractである。
 
@@ -173,6 +174,10 @@ metadata identity は `created_by`、`schema_name`、`schema_contract_scope`、`
 
 `prepare_personal_score_db_for_write()` は、本番insert実装前のオープン前段である。空DBなら初期化してから互換性を確認し、`compatible` なら検査結果を返す。互換エラーが残るDBは `migration_plan_status` と拒否理由を含む `ValueError` で止める。これはまだ `plays` へのinsert、低信頼度ログ保存、既存DB migrationを行わない。
 
+`prepare_personal_score_db_file_for_write(path)` は、正式DBファイルをパス単位で検査する前段である。新規ファイル、または既存の0 byte空ファイルだけSQLiteとして開いた後に `initialize_empty_database` へ進め、正式初期schemaを作成できる。既存の compatible DB はそのまま通し、schema再作成やmetadata上書きはしない。既存のM8 preview DB、unknown DB、metadata identity mismatch、`manual_migration_required` 候補、SQLiteとして読めないファイル、ディレクトリは拒否し、自動変更しない。戻り値には、対象path、既存ファイルだったか、既存サイズ、初期化結果、最終inspectionを含める。
+
+このファイル境界は、正式 `ddrgp-scores.sqlite` をどこで検査して開くかを固定する足場であり、M8 preview の `--m8-score-db-output` とは別物として扱う。正式DBの本番insert、既定自動保存、既存DB migration実行にはまだ進まない。
+
 ## 未決事項
 
 - `play_id` と `duplicate_key` の本格生成方式。
@@ -187,4 +192,5 @@ metadata identity は `created_by`、`schema_name`、`schema_contract_scope`、`
 - 同テストは M8 preview DB を正式個人スコアDBとして拒否する。
 - 同テストは空DB、未知DB、metadata identity mismatch、必須table欠落、`user_version` mismatch の検査結果と `migration_plan_status` を固定する。
 - 同テストは空DBだけ初期schemaを作成し、M8 preview DB、unknown DB、metadata identity mismatch、manual migration候補を自動変更しないことを固定する。
+- 同テストはファイルパス境界として、新規DBファイルと0 byte空ファイルだけ正式schemaへ初期化でき、compatible DBは変更せず、M8 preview DB、unknown DB、metadata identity mismatch、manual migration候補、非SQLiteファイル、ディレクトリを自動変更しないことを固定する。
 - 同テストは preview列、M7a raw候補、OCR raw/normalized が正式 `plays` に混入しないことを確認する。

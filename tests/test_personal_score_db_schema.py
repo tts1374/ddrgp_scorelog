@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sqlite3
+from pathlib import Path
 
 from tools.vision_poc import personal_score_db_schema as score_schema
 from tools.vision_poc import runner
@@ -109,6 +110,57 @@ def test_personal_score_db_prepare_for_write_initializes_empty_database() -> Non
     assert inspection.migration_plan_status == "compatible"
 
 
+def test_personal_score_db_file_prepare_initializes_new_database(tmp_path: Path) -> None:
+    db_path = tmp_path / "ddrgp-scores.sqlite"
+
+    result = score_schema.prepare_personal_score_db_file_for_write(db_path)
+
+    assert not result.existed_before
+    assert result.size_before is None
+    assert result.initialized
+    assert result.path == db_path
+    assert result.inspection.is_compatible
+    assert result.inspection.migration_plan_status == "compatible"
+    with sqlite3.connect(db_path) as connection:
+        assert table_names(connection) >= set(score_schema.PERSONAL_SCORE_DB_REQUIRED_TABLES)
+        assert score_schema.read_score_db_metadata(connection) == (
+            score_schema.PERSONAL_SCORE_DB_METADATA
+        )
+
+
+def test_personal_score_db_file_prepare_initializes_empty_existing_file(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "ddrgp-scores.sqlite"
+    db_path.write_bytes(b"")
+
+    result = score_schema.prepare_personal_score_db_file_for_write(db_path)
+
+    assert result.existed_before
+    assert result.size_before == 0
+    assert result.initialized
+    assert result.initialization.before.migration_plan_status == "initialize_empty_database"
+    assert result.inspection.is_compatible
+
+
+def test_personal_score_db_file_prepare_keeps_compatible_database(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "ddrgp-scores.sqlite"
+    with sqlite3.connect(db_path) as connection:
+        score_schema.create_personal_score_db_schema(connection)
+        before = score_schema.inspect_personal_score_db_schema(connection)
+
+    result = score_schema.prepare_personal_score_db_file_for_write(db_path)
+
+    assert result.existed_before
+    assert not result.initialized
+    assert result.initialization.before == before
+    assert result.inspection == before
+    with sqlite3.connect(db_path) as connection:
+        assert score_schema.inspect_personal_score_db_schema(connection) == before
+
+
 def test_personal_score_db_initialization_keeps_compatible_database_unchanged() -> None:
     with sqlite3.connect(":memory:") as connection:
         score_schema.create_personal_score_db_schema(connection)
@@ -150,6 +202,31 @@ def test_personal_score_db_initialization_does_not_modify_unknown_database() -> 
     assert not result.initialized
     assert result.before == before
     assert result.after == before
+    assert after == before
+    assert after.table_names == ("unrelated_table",)
+
+
+def test_personal_score_db_file_prepare_does_not_modify_unknown_database(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "unknown.sqlite"
+    with sqlite3.connect(db_path) as connection:
+        connection.execute("PRAGMA user_version = 1")
+        connection.execute("CREATE TABLE unrelated_table (id INTEGER PRIMARY KEY)")
+        before = score_schema.inspect_personal_score_db_schema(connection)
+
+    try:
+        score_schema.prepare_personal_score_db_file_for_write(db_path)
+    except ValueError as error:
+        message = str(error)
+    else:
+        raise AssertionError("expected unknown DB to raise")
+
+    with sqlite3.connect(db_path) as connection:
+        after = score_schema.inspect_personal_score_db_schema(connection)
+
+    assert "reject_unknown_database" in message
+    assert "unknown_database_not_supported" in message
     assert after == before
     assert after.table_names == ("unrelated_table",)
 
@@ -200,6 +277,37 @@ def test_personal_score_db_prepare_for_write_rejects_metadata_identity_mismatch(
     assert inspection.metadata["schema_contract_scope"] == "preview_minimal_plays"
 
 
+def test_personal_score_db_file_prepare_does_not_modify_metadata_identity_mismatch(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "identity-mismatch.sqlite"
+    with sqlite3.connect(db_path) as connection:
+        score_schema.create_personal_score_db_schema(connection)
+        connection.execute(
+            """
+            UPDATE score_db_metadata
+            SET value = ?
+            WHERE key = 'schema_contract_scope'
+            """,
+            ("preview_minimal_plays",),
+        )
+        before = score_schema.inspect_personal_score_db_schema(connection)
+
+    try:
+        score_schema.prepare_personal_score_db_file_for_write(db_path)
+    except ValueError as error:
+        message = str(error)
+    else:
+        raise AssertionError("expected identity mismatch DB to raise")
+
+    with sqlite3.connect(db_path) as connection:
+        after = score_schema.inspect_personal_score_db_schema(connection)
+
+    assert "reject_unknown_database" in message
+    assert "score_db_metadata.schema_contract_scope_mismatch" in message
+    assert after == before
+
+
 def test_personal_score_db_schema_marks_missing_table_for_manual_migration() -> None:
     with sqlite3.connect(":memory:") as connection:
         score_schema.create_personal_score_db_schema(connection)
@@ -226,6 +334,31 @@ def test_personal_score_db_initialization_does_not_modify_manual_migration_candi
     assert not result.initialized
     assert result.before == before
     assert result.after == before
+    assert after == before
+    assert "analysis_logs" not in after.table_names
+
+
+def test_personal_score_db_file_prepare_does_not_modify_manual_migration_candidate(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "manual-migration.sqlite"
+    with sqlite3.connect(db_path) as connection:
+        score_schema.create_personal_score_db_schema(connection)
+        connection.execute("DROP TABLE analysis_logs")
+        before = score_schema.inspect_personal_score_db_schema(connection)
+
+    try:
+        score_schema.prepare_personal_score_db_file_for_write(db_path)
+    except ValueError as error:
+        message = str(error)
+    else:
+        raise AssertionError("expected manual migration candidate to raise")
+
+    with sqlite3.connect(db_path) as connection:
+        after = score_schema.inspect_personal_score_db_schema(connection)
+
+    assert "manual_migration_required" in message
+    assert "missing_table:analysis_logs" in message
     assert after == before
     assert "analysis_logs" not in after.table_names
 
@@ -274,6 +407,60 @@ def test_personal_score_db_initialization_does_not_modify_m8_preview_database() 
     assert after == before
     assert "preview_metadata" in after.table_names
     assert score_schema.PERSONAL_SCORE_DB_METADATA_TABLE not in after.table_names
+
+
+def test_personal_score_db_file_prepare_does_not_modify_m8_preview_database(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "preview.sqlite"
+    with sqlite3.connect(db_path) as connection:
+        runner.create_m8_score_db_schema(connection)
+        before = score_schema.inspect_personal_score_db_schema(connection)
+
+    try:
+        score_schema.prepare_personal_score_db_file_for_write(db_path)
+    except ValueError as error:
+        message = str(error)
+    else:
+        raise AssertionError("expected preview DB to raise")
+
+    with sqlite3.connect(db_path) as connection:
+        after = score_schema.inspect_personal_score_db_schema(connection)
+
+    assert "reject_m8_preview_database" in message
+    assert "m8_preview_database_not_supported" in message
+    assert after == before
+    assert "preview_metadata" in after.table_names
+    assert score_schema.PERSONAL_SCORE_DB_METADATA_TABLE not in after.table_names
+
+
+def test_personal_score_db_file_prepare_rejects_non_sqlite_file(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "not-sqlite.sqlite"
+    original_bytes = b"not a sqlite database"
+    db_path.write_bytes(original_bytes)
+
+    try:
+        score_schema.prepare_personal_score_db_file_for_write(db_path)
+    except ValueError as error:
+        message = str(error)
+    else:
+        raise AssertionError("expected non-SQLite file to raise")
+
+    assert "invalid_sqlite_database" in message
+    assert db_path.read_bytes() == original_bytes
+
+
+def test_personal_score_db_file_prepare_rejects_directory(tmp_path: Path) -> None:
+    try:
+        score_schema.prepare_personal_score_db_file_for_write(tmp_path)
+    except ValueError as error:
+        message = str(error)
+    else:
+        raise AssertionError("expected directory path to raise")
+
+    assert "personal score DB path is a directory" in message
 
 
 def test_personal_score_db_plays_keeps_preview_and_raw_candidate_columns_out() -> None:

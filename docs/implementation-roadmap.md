@@ -394,6 +394,7 @@ M5完了時点で固定すること:
 - 2026-07-10時点で、正式 `ddrgp-scores.sqlite` の初期schema contractを `tools/vision_poc/personal_score_db_schema.py` と `docs/design/10_personal_score_db_schema.md` に追加した。正式 `plays`、`analysis_logs`、`source_captures`、`score_db_metadata`、`schema_migrations` の責務を分け、M8 preview DBを正式個人スコアDBとして拒否する軽量テストを追加済み。これは本番insert実装ではない。
 - 2026-07-10時点で、正式DB検査用の `inspect_personal_score_db_schema()` と `assert_personal_score_db_compatible()` を追加し、空DB、未知DB、M8 preview DB、metadata identity mismatch、必須table欠落、`user_version` mismatch の拒否理由と `migration_plan_status` をテストで固定した。これは互換チェックの入口であり、自動migrationや本番insertではない。
 - 2026-07-10時点で、正式DBオープン前段として `initialize_personal_score_db_if_empty()` と `prepare_personal_score_db_for_write()` を追加した。空DBだけ正式初期schemaを作成し、compatible DBは変更せず、M8 preview DB、unknown DB、metadata identity mismatch、manual migration候補は自動変更しないことをテストで固定した。これは既存DB migrationや本番insertではない。
+- 2026-07-10時点で、正式DBファイルパス境界として `prepare_personal_score_db_file_for_write(path)` を追加した。新規ファイルと0 byte空ファイルだけ正式初期schemaへ進め、既存compatible DBは変更せず、M8 preview DB、unknown DB、metadata identity mismatch、manual migration候補、非SQLiteファイル、ディレクトリを拒否して自動変更しないことをテストで固定した。これは `--m8-score-db-output` のpreview出力とは別であり、本番insertや既定自動保存ではない。
 
 やること:
 
