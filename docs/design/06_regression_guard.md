@@ -315,7 +315,10 @@
 - `--personal-score-db-diagnostic-output` は標準出力と同じ診断を `data/` 配下へ保存するだけにする。
 - diagnostic output のMarkdownは `.md` / `.markdown`、JSONは `.json` に限定し、formatと拡張子の不一致を拒否する。
 - diagnostic output の `data/` 外指定はDB準備より前に拒否し、prepare-write対象の新規DBを作らない。
-- diagnostic output は本番insert、自動migration、既定自動保存、`logs/` 連携、低信頼度ログ本番保存として扱わない。
+- `--personal-score-db-diagnostic-log-output` は診断1回につき1行のJSONLを `logs/` 配下へappendするだけにする。
+- diagnostic log output は `.jsonl` に限定し、`logs/` 外指定や拡張子不一致をDB準備より前に拒否し、prepare-write対象の新規DBを作らない。
+- diagnostic log record は `event_type=personal_score_db_diagnostic`、mode、format、exit code相当status、対象DB path、diagnostic output path、diagnostic dictを持つ。
+- diagnostic output / diagnostic log output は本番insert、自動migration、既定自動保存、低信頼度ログ本番保存、source capture保存として扱わない。
 
 ## ROI方針
 

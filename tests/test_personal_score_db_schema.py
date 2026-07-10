@@ -378,6 +378,7 @@ def test_personal_score_db_cli_diagnostic_output_writes_markdown_under_data(
 
     monkeypatch.chdir(tmp_path)
     output_path = Path("data/diagnostics") / f"{fixture_name}.md"
+    log_output_path = Path("logs/diagnostics") / "personal-score-db.jsonl"
 
     exit_code = runner.main(
         [
@@ -387,16 +388,34 @@ def test_personal_score_db_cli_diagnostic_output_writes_markdown_under_data(
             diagnostic_mode,
             "--personal-score-db-diagnostic-output",
             str(output_path),
+            "--personal-score-db-diagnostic-log-output",
+            str(log_output_path),
         ]
     )
     stdout = capsys.readouterr().out
     output_text = output_path.read_text(encoding="utf-8")
+    log_records = [
+        json.loads(line)
+        for line in log_output_path.read_text(encoding="utf-8").splitlines()
+    ]
 
     assert exit_code == expected_exit_code
     assert "# Personal Score DB Diagnostic" in stdout
     assert "# Personal Score DB Diagnostic" in output_text
     assert expected_fragment in stdout
     assert expected_fragment in output_text
+    assert len(log_records) == 1
+    assert log_records[0]["event_type"] == "personal_score_db_diagnostic"
+    assert log_records[0]["log_schema_version"] == 1
+    assert log_records[0]["mode"] == diagnostic_mode
+    assert log_records[0]["format"] == "markdown"
+    assert log_records[0]["exit_code"] == expected_exit_code
+    assert log_records[0]["status"] == (
+        "compatible" if expected_exit_code == 0 else "rejected"
+    )
+    assert log_records[0]["db_path"] == str(db_path)
+    assert log_records[0]["diagnostic_output_path"] == str(output_path)
+    assert log_records[0]["diagnostic"]["migration_plan_status"] in stdout
 
 
 def test_personal_score_db_cli_diagnostic_output_writes_json_under_data(
@@ -410,6 +429,7 @@ def test_personal_score_db_cli_diagnostic_output_writes_json_under_data(
 
     monkeypatch.chdir(tmp_path)
     output_path = Path("data/diagnostics/compatible.json")
+    log_output_path = Path("logs/diagnostics/personal-score-db.jsonl")
 
     exit_code = runner.main(
         [
@@ -419,16 +439,64 @@ def test_personal_score_db_cli_diagnostic_output_writes_json_under_data(
             "json",
             "--personal-score-db-diagnostic-output",
             str(output_path),
+            "--personal-score-db-diagnostic-log-output",
+            str(log_output_path),
         ]
     )
 
     stdout_diagnostic = json.loads(capsys.readouterr().out)
     file_diagnostic = json.loads(output_path.read_text(encoding="utf-8"))
+    log_record = json.loads(log_output_path.read_text(encoding="utf-8"))
 
     assert exit_code == 0
     assert stdout_diagnostic == file_diagnostic
     assert file_diagnostic["is_compatible"] is True
     assert file_diagnostic["migration_plan_status"] == "compatible"
+    assert log_record["format"] == "json"
+    assert log_record["exit_code"] == 0
+    assert log_record["diagnostic_output_path"] == str(output_path)
+    assert log_record["diagnostic"] == file_diagnostic
+
+
+def test_personal_score_db_cli_diagnostic_log_output_appends_jsonl_under_logs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    db_path = tmp_path / "compatible.sqlite"
+    with sqlite3.connect(db_path) as connection:
+        score_schema.create_personal_score_db_schema(connection)
+
+    monkeypatch.chdir(tmp_path)
+    log_output_path = Path("logs/diagnostics/personal-score-db.jsonl")
+
+    for _ in range(2):
+        assert (
+            runner.main(
+                [
+                    "--personal-score-db-diagnostic",
+                    str(db_path),
+                    "--personal-score-db-diagnostic-log-output",
+                    str(log_output_path),
+                ]
+            )
+            == 0
+        )
+        capsys.readouterr()
+
+    log_records = [
+        json.loads(line)
+        for line in log_output_path.read_text(encoding="utf-8").splitlines()
+    ]
+    assert len(log_records) == 2
+    assert [record["event_type"] for record in log_records] == [
+        "personal_score_db_diagnostic",
+        "personal_score_db_diagnostic",
+    ]
+    assert [record["diagnostic"]["migration_plan_status"] for record in log_records] == [
+        "compatible",
+        "compatible",
+    ]
 
 
 def test_personal_score_db_cli_diagnostic_output_rejects_outside_data(
@@ -450,6 +518,56 @@ def test_personal_score_db_cli_diagnostic_output_rejects_outside_data(
                 "prepare-write",
                 "--personal-score-db-diagnostic-output",
                 str(tmp_path / "diagnostic.md"),
+            ]
+        )
+
+    assert not db_path.exists()
+
+
+def test_personal_score_db_cli_diagnostic_log_output_rejects_outside_logs_before_prepare(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db_path = tmp_path / "new-formal.sqlite"
+    monkeypatch.chdir(tmp_path)
+
+    with pytest.raises(
+        ValueError,
+        match="--personal-score-db-diagnostic-log-output must be under logs/",
+    ):
+        runner.main(
+            [
+                "--personal-score-db-diagnostic",
+                str(db_path),
+                "--personal-score-db-diagnostic-mode",
+                "prepare-write",
+                "--personal-score-db-diagnostic-log-output",
+                str(tmp_path / "diagnostic.jsonl"),
+            ]
+        )
+
+    assert not db_path.exists()
+
+
+def test_personal_score_db_cli_diagnostic_log_output_rejects_non_jsonl_before_prepare(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    db_path = tmp_path / "new-formal.sqlite"
+    monkeypatch.chdir(tmp_path)
+
+    with pytest.raises(
+        ValueError,
+        match="--personal-score-db-diagnostic-log-output extension must be JSONL",
+    ):
+        runner.main(
+            [
+                "--personal-score-db-diagnostic",
+                str(db_path),
+                "--personal-score-db-diagnostic-mode",
+                "prepare-write",
+                "--personal-score-db-diagnostic-log-output",
+                "logs/diagnostics/diagnostic.json",
             ]
         )
 

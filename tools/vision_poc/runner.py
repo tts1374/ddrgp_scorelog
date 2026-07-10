@@ -31,6 +31,7 @@ PERSONAL_SCORE_DB_DIAGNOSTIC_OUTPUT_SUFFIXES = {
     "markdown": (".md", ".markdown"),
     "json": (".json",),
 }
+PERSONAL_SCORE_DB_DIAGNOSTIC_LOG_SUFFIXES = (".jsonl",)
 
 
 ROI_DEFINITIONS: dict[str, tuple[int, int, int, int]] = {
@@ -822,6 +823,14 @@ def ensure_data_output_path(path: Path, *, argument_name: str) -> None:
     if resolved_path == data_root or data_root in resolved_path.parents:
         return
     raise ValueError(f"{argument_name} must be under data/: {path}")
+
+
+def ensure_logs_output_path(path: Path, *, argument_name: str) -> None:
+    logs_root = (Path.cwd() / "logs").resolve()
+    resolved_path = path.resolve()
+    if resolved_path == logs_root or logs_root in resolved_path.parents:
+        return
+    raise ValueError(f"{argument_name} must be under logs/: {path}")
 
 
 def iter_dry_run_capture_frames(frame_root: Path, fps: float) -> Iterable[DryRunCaptureFrame]:
@@ -9430,12 +9439,66 @@ def write_personal_score_db_diagnostic_output(
     path.write_text(text, encoding="utf-8", newline="\n")
 
 
+def validate_personal_score_db_diagnostic_log_output_path(path: Path) -> None:
+    ensure_logs_output_path(
+        path,
+        argument_name="--personal-score-db-diagnostic-log-output",
+    )
+    if path.suffix.lower() in PERSONAL_SCORE_DB_DIAGNOSTIC_LOG_SUFFIXES:
+        return
+    joined_suffixes = ", ".join(PERSONAL_SCORE_DB_DIAGNOSTIC_LOG_SUFFIXES)
+    raise ValueError(
+        "--personal-score-db-diagnostic-log-output extension must be JSONL: "
+        f"expected {joined_suffixes}"
+    )
+
+
+def personal_score_db_diagnostic_log_record(
+    diagnostic: dict[str, object],
+    *,
+    db_path: Path,
+    mode: str,
+    output_format: str,
+    diagnostic_output_path: Path | None,
+    exit_code: int,
+) -> dict[str, object]:
+    return {
+        "log_schema_version": 1,
+        "event_type": "personal_score_db_diagnostic",
+        "mode": mode,
+        "format": output_format,
+        "exit_code": exit_code,
+        "status": "compatible" if exit_code == 0 else "rejected",
+        "db_path": str(db_path),
+        "diagnostic_output_path": (
+            str(diagnostic_output_path) if diagnostic_output_path is not None else ""
+        ),
+        "diagnostic": diagnostic,
+    }
+
+
+def append_personal_score_db_diagnostic_log_output(
+    path: Path,
+    *,
+    record: dict[str, object],
+) -> None:
+    validate_personal_score_db_diagnostic_log_output_path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8", newline="\n") as file:
+        file.write(json.dumps(record, ensure_ascii=False, sort_keys=True))
+        file.write("\n")
+
+
 def run_personal_score_db_diagnostic_cli(args: argparse.Namespace) -> int:
     db_path = args.personal_score_db_diagnostic
     if args.personal_score_db_diagnostic_output is not None:
         validate_personal_score_db_diagnostic_output_path(
             args.personal_score_db_diagnostic_output,
             output_format=args.personal_score_db_diagnostic_format,
+        )
+    if args.personal_score_db_diagnostic_log_output is not None:
+        validate_personal_score_db_diagnostic_log_output_path(
+            args.personal_score_db_diagnostic_log_output
         )
     if args.personal_score_db_diagnostic_mode == "prepare-write":
         diagnostic = prepare_personal_score_db_file_for_cli(db_path)
@@ -9452,8 +9515,21 @@ def run_personal_score_db_diagnostic_cli(args: argparse.Namespace) -> int:
             text=diagnostic_text,
             output_format=args.personal_score_db_diagnostic_format,
         )
+    exit_code = 0 if diagnostic["is_compatible"] else 1
+    if args.personal_score_db_diagnostic_log_output is not None:
+        append_personal_score_db_diagnostic_log_output(
+            args.personal_score_db_diagnostic_log_output,
+            record=personal_score_db_diagnostic_log_record(
+                diagnostic,
+                db_path=db_path,
+                mode=args.personal_score_db_diagnostic_mode,
+                output_format=args.personal_score_db_diagnostic_format,
+                diagnostic_output_path=args.personal_score_db_diagnostic_output,
+                exit_code=exit_code,
+            ),
+        )
     print(diagnostic_text, end="")
-    return 0 if diagnostic["is_compatible"] else 1
+    return exit_code
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -9589,6 +9665,15 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Optional diagnostic file output under data/. The extension must match "
             "--personal-score-db-diagnostic-format (.md/.markdown or .json)."
+        ),
+    )
+    parser.add_argument(
+        "--personal-score-db-diagnostic-log-output",
+        type=Path,
+        default=None,
+        help=(
+            "Optional JSONL diagnostic log output under logs/. This appends one "
+            "personal score DB diagnostic record and does not insert play rows."
         ),
     )
     parser.add_argument(

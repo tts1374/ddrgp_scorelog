@@ -398,11 +398,12 @@ M5完了時点で固定すること:
 - 2026-07-10時点で、正式DB inspection / file preparation result をJSON風dictとMarkdownへ投影するdiagnostic関数を追加した。compatible、空DB、M8 preview DB、unknown DB、manual migration候補について、path、`migration_plan_status`、`migration_plan_reason`、拒否理由、必須table欠落、metadata identity、ファイル準備summaryを人間が読める形で固定した。これはCLI表示前の足場であり、本番insert、自動migration、低信頼度ログ本番保存ではない。
 - 2026-07-10時点で、正式DB diagnosticを `python -m tools.vision_poc --personal-score-db-diagnostic <path>` からMarkdownまたはJSON風dictで標準出力へ出せるようにした。既定inspect modeは読み取り専用、`--personal-score-db-diagnostic-mode prepare-write` は新規DBファイルまたは0 byte空ファイルだけ正式初期schemaへ進める。compatible、空DB初期化、M8 preview拒否、unknown拒否、manual migration required、非SQLiteファイル、ディレクトリ拒否をCLI経由テストで固定した。これは本番insert、自動migration、既定自動保存、低信頼度ログ本番保存ではない。
 - 2026-07-10時点で、正式DB diagnosticに `--personal-score-db-diagnostic-output <path>` を追加し、標準出力と同じMarkdown/JSON診断を `data/` 配下へ保存できるようにした。Markdownは `.md` / `.markdown`、JSONは `.json` に限定し、formatと拡張子の不一致や `data/` 外出力は拒否する。これは診断ファイル生成だけであり、本番insert、自動migration、既定自動保存、`logs/` 連携、低信頼度ログ本番保存ではない。
+- 2026-07-10時点で、正式DB diagnosticに `--personal-score-db-diagnostic-log-output <path>` を追加し、診断1回につき1行のJSONLを `logs/` 配下へappendできるようにした。ログレコードはdiagnostic dict、mode、format、exit code相当status、対象DB path、diagnostic output pathを持ち、`.jsonl` 以外や `logs/` 外指定はDB準備より前に拒否する。これは診断ログ入口だけであり、本番insert、自動migration、既定自動保存、低信頼度ログ本番保存、source capture保存ではない。
 
 やること:
 
 - dry-run payload preview、保存予定レコードプレビュー、in-memory write preview、明示オプション付きfile output preview、readback診断の読み方を保ったまま、次に本番DB insert境界を別フェーズとして設計する。
-- 正式DB diagnosticのMarkdown/JSONファイル出力は `data/` 配下の明示出力として追加済み。次にログ連携が必要なら、標準出力/file outputとは別に `logs/` 配下の解析ログ境界として設計する。
+- 正式DB diagnosticのMarkdown/JSONファイル出力は `data/` 配下の明示出力として追加済み。診断ログ入口は `logs/` 配下のJSONL appendとして追加済み。次はこの診断ログを低信頼度ログ本番仕様やsource capture保存とどう分けるかを設計してから、DB insert境界へ進む。
 - `plays` テーブルのマイグレーション、insert、保存スキップ境界を設計してから実装する。
 - マスタDBバージョン、曲ID、譜面ID、OCR結果、スコア、判定数、画像ハッシュ、解析確信度を保存する。
 - 重複保存防止をDB保存直前にも適用する。

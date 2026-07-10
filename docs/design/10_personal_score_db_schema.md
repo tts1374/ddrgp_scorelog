@@ -154,7 +154,9 @@ CLI表示入口は `python -m tools.vision_poc --personal-score-db-diagnostic <p
 
 `--personal-score-db-diagnostic-mode prepare-write` は `prepare_personal_score_db_file_for_write(path)` と同じファイル準備境界をCLIから確認するための入口である。新規DBファイルまたは0 byte空ファイルだけ正式初期schemaへ初期化し、`file_preparation` summaryを表示する。既存compatible DBは変更しない。M8 preview DB、unknown DB、metadata identity mismatch、`manual_migration_required` 候補、非SQLiteファイル、ディレクトリは拒否診断を出し、自動修復しない。このCLI入口も本番insert、既定自動保存、既存DB migration、低信頼度ログ本番保存には進まない。
 
-`--personal-score-db-diagnostic-output <path>` は、標準出力と同じ診断をファイルへ残す軽い生成物入口である。出力先は `data/` 配下だけを許可し、format と拡張子の不一致を拒否する。Markdown は `.md` / `.markdown`、JSON は `.json` だけを許可する。`prepare-write` modeで新規DBを初期化する場合も、診断ファイルはDB pathとは独立に明示指定された `data/` 配下へだけ保存する。この入口は診断結果の保存であり、`logs/` 連携、解析ログ本番保存、本番insert、自動migrationには進まない。
+`--personal-score-db-diagnostic-output <path>` は、標準出力と同じ診断をファイルへ残す軽い生成物入口である。出力先は `data/` 配下だけを許可し、format と拡張子の不一致を拒否する。Markdown は `.md` / `.markdown`、JSON は `.json` だけを許可する。`prepare-write` modeで新規DBを初期化する場合も、診断ファイルはDB pathとは独立に明示指定された `data/` 配下へだけ保存する。この入口は診断結果の保存であり、解析ログ本番保存、本番insert、自動migrationには進まない。
+
+`--personal-score-db-diagnostic-log-output <path>` は、同じdiagnostic dictを `logs/` 配下のJSONLへappendする解析ログ入口である。1回のCLI実行につき1行だけ追加し、`log_schema_version=1`、`event_type=personal_score_db_diagnostic`、mode、format、exit code相当status、対象DB path、diagnostic output path、diagnostic dictを記録する。log output先は `.jsonl` に限定し、`logs/` 外指定や拡張子不一致は `prepare-write` のDB作成・初期化より前に拒否する。log outputは診断を記録するだけで、本番insert、既定自動保存、既存DB migration、低信頼度ログ本番保存、source capture保存には進まない。
 
 互換チェックの主な拒否理由は以下。
 
