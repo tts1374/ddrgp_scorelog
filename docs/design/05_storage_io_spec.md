@@ -266,7 +266,9 @@ M8のscore DB file output previewでは、`--m8-score-db-output data\...\ddrgp-s
 
 ## Analysis artifact path contract
 
-`tools.vision_poc.personal_score_db_analysis_artifacts` は副作用のないversion 1契約だけを提供する。`analysis_logs.log_path` は空文字、またはリポジトリroot基準のPOSIX相対path `logs/analysis_details/**/*.json` とする。絶対path、`..`、backslash、`logs/` 外、別拡張子をDB準備・ファイル生成より前に拒否する。相対pathはcheckoutの移動可能性と個人環境pathの非記録を優先した形式である。
+`tools.vision_poc.personal_score_db_analysis_artifacts` はversion 1のpure contractに加え、検査済みpayloadを明示された新規pathへ1件だけ生成する `write_analysis_detail_file()` を提供する。`analysis_logs.log_path` は空文字、またはリポジトリroot基準のPOSIX相対path `logs/analysis_details/**/*.json` とする。絶対path、`..`、backslash、`logs/` 外、別拡張子、既存outputをdirectory作成より前に拒否する。出力はUTF-8 BOMなし、LF、sort済みkey、末尾改行とし、同一directoryの完成済み一時ファイルをatomicに公開して部分JSONを残さない。
+
+CLIは `--personal-score-db-analysis-detail-input <json>` と `--personal-score-db-analysis-detail-output <logs/analysis_details/...json>` の必須ペアだけで実行する。save、diagnostic、validation、template、receipt、通常PoC optionとの混在を副作用前に終了コード2で拒否し、成功は `status=created` / 終了コード0とする。DB、`data/`、failure image、通常PoC生成物は作成・変更せず、save workflowへ自動連鎖しない。
 
 任意の失敗画像は詳細JSON内の `failure_image_path` で `logs/analysis_failures/**/*.{png,jpg,jpeg,webp}` を参照する。これは `log_path`、元フレーム用 `source_captures.source_path`、`data/` 配下のvalidation receipt、`logs/` 配下のDB diagnostic JSONLと相互代用しない。
 

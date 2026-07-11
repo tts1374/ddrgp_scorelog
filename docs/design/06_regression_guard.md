@@ -336,6 +336,9 @@
 - failure imageは詳細JSONの別fieldで `logs/analysis_failures/` だけを参照し、source captureやdiagnostic logと混同しない。
 - path traversal、絶対path、backslash、namespace外、想定外拡張子を副作用前に拒否する。
 - retentionはUTC基準のpure計算に留め、既存ファイルの作成・削除やcleanupを開始しない。
+- 明示生成はvalid payloadと安全な新規outputだけを受け付け、UTF-8 BOMなし、LF、決定的key順、末尾改行でatomicに1件を公開する。
+- invalid schema、unsafe path、拡張子不正、既存output、option混在では親directoryを作らず、publish失敗では一時/部分ファイルを残さない。
+- failure image pathはcontract検査だけを行い、画像の生成・copyをしない。artifact生成だけでDB insertせず、saveだけでartifactを暗黙生成しない。
 - validationだけではDB、`data/`、`logs/`、画像を作成・変更しない。
 
 ## 正式個人スコアDB save input / transaction

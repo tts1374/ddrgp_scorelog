@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import json
+import os
+import tempfile
 from datetime import UTC, datetime, timedelta
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 ANALYSIS_DETAIL_SCHEMA_VERSION = 1
@@ -143,6 +146,63 @@ def validate_analysis_detail_log_path(log_path: str) -> None:
     )
 
 
+def load_analysis_detail(path: Path) -> dict[str, object]:
+    """Load and validate one version 1 analysis detail JSON object."""
+    try:
+        text = Path(path).read_text(encoding="utf-8")
+    except (OSError, UnicodeError) as exc:
+        raise ValueError(f"analysis detail input could not be read: {exc}") from exc
+    try:
+        payload = json.loads(text, object_pairs_hook=_object_without_duplicate_keys)
+    except (json.JSONDecodeError, ValueError) as exc:
+        raise ValueError(f"analysis detail input is invalid JSON: {exc}") from exc
+    validate_analysis_detail(payload)
+    return payload
+
+
+def write_analysis_detail_file(
+    payload: object,
+    output_path: str,
+    *,
+    repository_root: Path | None = None,
+) -> Path:
+    """Validate and atomically publish one new analysis detail JSON file."""
+    validate_analysis_detail(payload)
+    validate_analysis_detail_log_path(output_path)
+    relative_path = PurePosixPath(output_path)
+    root = (Path.cwd() if repository_root is None else Path(repository_root)).resolve()
+    target = root.joinpath(*relative_path.parts)
+    resolved_target = target.resolve()
+    if root not in resolved_target.parents:
+        raise ValueError("analysis detail output resolves outside the repository root")
+    if target.exists():
+        raise ValueError(f"analysis detail output already exists: {output_path}")
+
+    content = (
+        json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+    ).encode("utf-8")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    temporary_path: Path | None = None
+    try:
+        descriptor, temporary_name = tempfile.mkstemp(
+            dir=target.parent,
+            prefix=f".{target.name}.",
+            suffix=".tmp",
+        )
+        temporary_path = Path(temporary_name)
+        with os.fdopen(descriptor, "wb") as output_file:
+            output_file.write(content)
+            output_file.flush()
+            os.fsync(output_file.fileno())
+        os.link(temporary_path, target)
+    except FileExistsError as exc:
+        raise ValueError(f"analysis detail output already exists: {output_path}") from exc
+    finally:
+        if temporary_path is not None:
+            temporary_path.unlink(missing_ok=True)
+    return target
+
+
 def validate_analysis_failure_image_path(image_path: str | None) -> None:
     if image_path is None:
         return
@@ -269,6 +329,15 @@ def _require_object(value: object, field_name: str) -> dict[str, Any]:
     if not isinstance(value, dict) or not all(isinstance(key, str) for key in value):
         raise ValueError(f"{field_name} must be an object")
     return value
+
+
+def _object_without_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate JSON key: {key}")
+        result[key] = value
+    return result
 
 
 def _require_exact_keys(value: dict[str, Any], expected: set[str], field_name: str) -> None:

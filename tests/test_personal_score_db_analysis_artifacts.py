@@ -12,6 +12,14 @@ from tools.vision_poc import personal_score_db_save as score_save
 FIXTURE_ROOT = Path(__file__).parent / "fixtures/personal_score_db_analysis_artifacts"
 
 
+def _vision_runner() -> object:
+    pytest.importorskip("numpy")
+    pytest.importorskip("PIL")
+    from tools.vision_poc import runner
+
+    return runner
+
+
 def _fixture(name: str) -> dict[str, object]:
     return json.loads((FIXTURE_ROOT / name).read_text(encoding="utf-8"))
 
@@ -176,3 +184,185 @@ def test_pure_contract_does_not_change_filesystem(tmp_path: Path) -> None:
         "logs/analysis_details/2026/07/analysis-low-001.json"
     )
     assert sorted(tmp_path.rglob("*")) == before
+
+
+@pytest.mark.parametrize("name", ["low-confidence-v1.json", "error-v1.json"])
+def test_explicit_api_writes_stable_new_json(tmp_path: Path, name: str) -> None:
+    payload = _fixture(name)
+    relative = f"logs/analysis_details/2026/07/{name}"
+
+    output = artifacts.write_analysis_detail_file(
+        payload, relative, repository_root=tmp_path
+    )
+
+    assert json.loads(output.read_text(encoding="utf-8")) == payload
+    content = output.read_bytes()
+    assert content.endswith(b"\n")
+    assert not content.startswith(b"\xef\xbb\xbf")
+    assert b"\r\n" not in content
+    assert content == (
+        json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
+    ).encode()
+    failure_path = payload["failure_image_path"]
+    if failure_path is not None:
+        assert not tmp_path.joinpath(*Path(failure_path).parts).exists()
+
+
+def test_explicit_api_rejects_invalid_before_creating_directories(tmp_path: Path) -> None:
+    payload = _fixture("low-confidence-v1.json")
+    payload["unknown"] = True
+
+    with pytest.raises(ValueError, match="keys are invalid"):
+        artifacts.write_analysis_detail_file(
+            payload,
+            "logs/analysis_details/new/detail.json",
+            repository_root=tmp_path,
+        )
+
+    assert not (tmp_path / "logs").exists()
+
+
+def test_explicit_api_preserves_existing_output(tmp_path: Path) -> None:
+    target = tmp_path / "logs/analysis_details/detail.json"
+    target.parent.mkdir(parents=True)
+    target.write_text("keep\n", encoding="utf-8", newline="\n")
+
+    with pytest.raises(ValueError, match="already exists"):
+        artifacts.write_analysis_detail_file(
+            _fixture("low-confidence-v1.json"),
+            "logs/analysis_details/detail.json",
+            repository_root=tmp_path,
+        )
+
+    assert target.read_text(encoding="utf-8") == "keep\n"
+
+
+def test_explicit_api_rejects_existing_symlink_escape(tmp_path: Path) -> None:
+    outside = tmp_path.parent / f"{tmp_path.name}-outside"
+    outside.mkdir()
+    logs = tmp_path / "logs"
+    logs.mkdir()
+    try:
+        (logs / "analysis_details").symlink_to(outside, target_is_directory=True)
+    except OSError as exc:
+        pytest.skip(f"directory symlinks are unavailable: {exc}")
+
+    with pytest.raises(ValueError, match="outside the repository root"):
+        artifacts.write_analysis_detail_file(
+            _fixture("low-confidence-v1.json"),
+            "logs/analysis_details/detail.json",
+            repository_root=tmp_path,
+        )
+
+    assert not (outside / "detail.json").exists()
+
+
+def test_explicit_api_cleans_temporary_file_on_publish_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def fail_link(source: object, target: object) -> None:
+        raise OSError("fixture publish failure")
+
+    monkeypatch.setattr(artifacts.os, "link", fail_link)
+    with pytest.raises(OSError, match="fixture publish failure"):
+        artifacts.write_analysis_detail_file(
+            _fixture("error-v1.json"),
+            "logs/analysis_details/error.json",
+            repository_root=tmp_path,
+        )
+
+    assert not list(tmp_path.rglob("*.tmp"))
+    assert not (tmp_path / "logs/analysis_details/error.json").exists()
+
+
+def test_explicit_cli_creates_one_artifact_without_other_side_effects(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    input_path = (FIXTURE_ROOT / "low-confidence-v1.json").resolve()
+    output_path = "logs/analysis_details/manual/detail.json"
+
+    exit_code = _vision_runner().main(
+        [
+            "--personal-score-db-analysis-detail-input",
+            str(input_path),
+            "--personal-score-db-analysis-detail-output",
+            output_path,
+        ]
+    )
+
+    assert exit_code == 0
+    assert json.loads(capsys.readouterr().out)["status"] == "created"
+    assert (tmp_path / output_path).is_file()
+    assert not (tmp_path / "data").exists()
+    assert not list(tmp_path.rglob("*.sqlite"))
+    assert not (tmp_path / "logs/analysis_failures").exists()
+
+
+def test_explicit_cli_rejects_existing_output_before_reading_input(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    output = tmp_path / "logs/analysis_details/detail.json"
+    output.parent.mkdir(parents=True)
+    output.write_text("keep\n", encoding="utf-8", newline="\n")
+
+    exit_code = _vision_runner().main(
+        [
+            "--personal-score-db-analysis-detail-input",
+            "missing-input.json",
+            "--personal-score-db-analysis-detail-output",
+            "logs/analysis_details/detail.json",
+        ]
+    )
+
+    assert exit_code == 2
+    assert "already exists" in json.loads(capsys.readouterr().err)["reasons"][0]
+    assert output.read_text(encoding="utf-8") == "keep\n"
+
+
+@pytest.mark.parametrize(
+    ("args", "reason"),
+    [
+        ([], "specified together"),
+        (["--personal-score-db-analysis-detail-output", "logs/other/a.json"], "must be under"),
+        (
+            ["--personal-score-db-analysis-detail-output", "logs/analysis_details/a.txt"],
+            "unsupported extension",
+        ),
+        (
+            ["--personal-score-db-analysis-detail-output", "logs/analysis_details/../a.json"],
+            "unsafe path",
+        ),
+        (
+            [
+                "--personal-score-db-analysis-detail-output",
+                "logs/analysis_details/a.json",
+                "--output",
+                "data/poc",
+            ],
+            "cannot be combined",
+        ),
+    ],
+)
+def test_explicit_cli_rejects_invalid_options_before_side_effects(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    args: list[str],
+    reason: str,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    input_path = (FIXTURE_ROOT / "low-confidence-v1.json").resolve()
+    exit_code = _vision_runner().main(
+        ["--personal-score-db-analysis-detail-input", str(input_path), *args]
+    )
+
+    assert exit_code == 2
+    assert reason in json.loads(capsys.readouterr().err)["reasons"][0]
+    assert not (tmp_path / "logs").exists()
+    assert not (tmp_path / "data").exists()

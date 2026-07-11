@@ -12,13 +12,18 @@ import sys
 import tempfile
 from collections.abc import Iterable
 from dataclasses import asdict, dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import numpy as np
 from PIL import Image, ImageFilter, ImageOps
 
 from . import master_match
 from . import personal_score_db_schema as score_schema
+from .personal_score_db_analysis_artifacts import (
+    load_analysis_detail,
+    validate_analysis_detail_log_path,
+    write_analysis_detail_file,
+)
 from .personal_score_db_cli_save import (
     emit_personal_score_db_save_input_template_invalid,
     emit_personal_score_db_save_input_validation_invalid,
@@ -9757,6 +9762,17 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--personal-score-db-analysis-detail-input",
+        type=Path,
+        default=None,
+        help="Validated version 1 analysis detail JSON input for one explicit file output.",
+    )
+    parser.add_argument(
+        "--personal-score-db-analysis-detail-output",
+        default=None,
+        help="New POSIX-relative logs/analysis_details/**/*.json output path.",
+    )
+    parser.add_argument(
         "--personal-score-db-save-input",
         type=Path,
         default=None,
@@ -9967,6 +9983,70 @@ def resolve_ocr_profiles(values: list[str]) -> tuple[str, ...]:
 def main(argv: list[str] | None = None) -> int:
     raw_argv = list(sys.argv[1:] if argv is None else argv)
     args = build_parser().parse_args(raw_argv)
+    analysis_options = {
+        "--personal-score-db-analysis-detail-input",
+        "--personal-score-db-analysis-detail-output",
+    }
+    analysis_option_count = sum(
+        value is not None
+        for value in (
+            args.personal_score_db_analysis_detail_input,
+            args.personal_score_db_analysis_detail_output,
+        )
+    )
+    if analysis_option_count:
+        input_path = args.personal_score_db_analysis_detail_input or Path("")
+        mixed_options = sorted(
+            {
+                token.split("=", maxsplit=1)[0]
+                for token in raw_argv
+                if token.startswith("--")
+            }
+            - analysis_options
+        )
+        try:
+            if analysis_option_count != 2:
+                raise ValueError("analysis detail input and output must be specified together")
+            if mixed_options:
+                raise ValueError(
+                    "analysis detail output cannot be combined with: "
+                    + ", ".join(mixed_options)
+                )
+            output_path = args.personal_score_db_analysis_detail_output
+            validate_analysis_detail_log_path(output_path)
+            target = Path.cwd().joinpath(*PurePosixPath(output_path).parts)
+            if target.exists():
+                raise ValueError(f"analysis detail output already exists: {output_path}")
+            payload = load_analysis_detail(input_path)
+            write_analysis_detail_file(payload, output_path)
+        except (OSError, ValueError) as exc:
+            print(
+                json.dumps(
+                    {
+                        "status": "invalid",
+                        "input_path": str(input_path),
+                        "output_path": args.personal_score_db_analysis_detail_output,
+                        "reasons": [str(exc)],
+                    },
+                    ensure_ascii=False,
+                    sort_keys=True,
+                ),
+                file=sys.stderr,
+            )
+            return 2
+        print(
+            json.dumps(
+                {
+                    "status": "created",
+                    "input_path": str(input_path),
+                    "output_path": output_path,
+                    "reasons": [],
+                },
+                ensure_ascii=False,
+                sort_keys=True,
+            )
+        )
+        return 0
     if args.personal_score_db_save_input_template is not None:
         mixed_options = sorted(
             {
