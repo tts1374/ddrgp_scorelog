@@ -217,6 +217,8 @@ CLI診断は `python -m tools.vision_poc --personal-score-db-diagnostic <path>` 
 
 正式connectionへの最小write境界は `write_personal_score_db_save(connection, save_input)` で扱う。入力検査をDB準備より前に行い、確定済み入力だけを受け付ける。保存成功は `source_captures`、`plays`、`analysis_logs`、保存除外は `source_captures` と `analysis_logs` を同じtransactionでinsertする。途中失敗時は同じ呼び出しの全rowをrollbackする。
 
+write前の `adapt_personal_score_db_save_input()` はpure functionであり、DB connectionや出力pathを受け取らない。戻り値が `ready` または `excluded` の場合だけ正式 `PersonalScoreDbSaveInput` を持ち、`unresolved` は不足・不正理由だけを返す。adapterの追加によって既定自動保存、実ファイル作成、既存DB migrationは開始しない。
+
 この入口はin-memory SQLiteを含む明示connection用であり、実ファイルの既定自動保存、常駐監視、CLI保存を開始しない。ファイルwriterを追加するときは `prepare_personal_score_db_file_for_write(path)` と同じ拒否境界を使い、backup/migration方針を別途確認する。
 
 M8の保存予定レコードプレビューでは、まず in-memory SQLite fixtureで `plays` 最小スキーマとrow contractを確認する。実ファイルDBを生成する場合は必ず `data/` 配下に置き、Git管理しない。

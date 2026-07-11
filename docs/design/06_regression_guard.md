@@ -328,6 +328,8 @@
 
 - 正式保存入力はM8 preview payload/rowを直接受け取らず、timezone付き時刻、master version、正式ID、rank、clear type、正式duplicate key、confidence、app versionが確定済みであることを要求する。
 - timestampなしpreviewの `played_at_ms=0`、PoCの `score:` / `file:` duplicate key、`source_kind=unknown` を正式writerへ渡さない。
+- pure adapterは `candidate_material` の `identity_signal_*`、M7a `recognized_digits`、`played_at_ms` / `timestamp_ms` を正式play値へ暗黙昇格せず、正式値不足時に `unresolved` から保存入力を返さない。
+- duplicateと明示された低信頼度/error/skipはadapterで `excluded` となり、`play=None` を維持する。
 - 保存成功は `confirmed_result=true`、`duplicate=false`、`event_type=confirmed`、`analysis_status=saved`、`save_boundary_status=save_ready` に限る。
 - duplicate、低信頼度、error、その他skipは `plays` を作らず、source captureとanalysisだけを記録する。
 - source capture、play、analysisのID/hash/app version/confidenceが一致しない入力はDB準備前に拒否する。

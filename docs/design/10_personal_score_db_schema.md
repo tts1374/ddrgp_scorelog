@@ -40,6 +40,16 @@ M8 preview完了後の正式 `ddrgp-scores.sqlite` 初期スキーマ、migratio
 
 schema moduleは正式DB識別と準備、save moduleは確定済み入力の検査とtransaction writeを担当する。save moduleはCLIや既定自動保存ではなく、in-memory SQLiteを含む明示connection向けの最小縦断入口である。
 
+preview候補材料と正式値の間のpure adapterは `tools/vision_poc/personal_score_db_save_adapter.py` に置く。
+
+- `PersonalScoreDbFormalPlayValues`
+- `PersonalScoreDbSaveExclusion`
+- `PersonalScoreDbSaveAdapterInput`
+- `PersonalScoreDbSaveAdapterResult`
+- `adapt_personal_score_db_save_input()`
+
+adapterは `candidate_material` を正式値の由来として自動採用しない。正式play値は別入力で明示し、結果を `ready` / `unresolved` / `excluded` に分ける。`ready` だけplayつき正式入力、`excluded` はplayなし正式analysis入力を返し、`unresolved` は正式入力を返さない。
+
 ## 正式保存入力契約
 
 `PersonalScoreDbSaveInput` はM8 preview payloadを直接受け取らない。M5/M7a由来の候補材料を上流で確認し、正式値へ確定した後だけ生成する。
@@ -249,3 +259,4 @@ metadata identity は `created_by`、`schema_name`、`schema_contract_scope`、`
 - `tests/test_personal_score_db_save.py` は正式保存入力の必須値、timezone、正式duplicate key、source/play/analysisの参照整合を固定する。
 - 同テストは正常保存で3tableへ1 transactionでinsertし、duplicate/低信頼度では `plays` を0件のままsource captureとanalysisだけを記録する。
 - 同テストは入力不整合をschema作成前に拒否し、play insert失敗時に同じ呼び出しのsource captureとanalysisをrollbackする。
+- `tests/test_personal_score_db_save_adapter.py` は候補ID/数字/相対時刻を正式値へ昇格しないこと、正式値不足を `unresolved` に保つこと、duplicate/低信頼度をplayなしの `excluded` にすることを固定する。
