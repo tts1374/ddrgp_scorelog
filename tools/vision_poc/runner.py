@@ -8,6 +8,7 @@ import re
 import shutil
 import sqlite3
 import subprocess
+import sys
 import tempfile
 from collections.abc import Iterable
 from dataclasses import asdict, dataclass
@@ -18,7 +19,11 @@ from PIL import Image, ImageFilter, ImageOps
 
 from . import master_match
 from . import personal_score_db_schema as score_schema
-from .personal_score_db_cli_save import run_personal_score_db_save_cli
+from .personal_score_db_cli_save import (
+    emit_personal_score_db_save_input_validation_invalid,
+    run_personal_score_db_save_cli,
+    run_personal_score_db_save_input_validation_cli,
+)
 
 BASE_WIDTH = 1280
 BASE_HEIGHT = 720
@@ -9759,6 +9764,16 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--personal-score-db-save-input-validate",
+        type=Path,
+        default=None,
+        help=(
+            "Strictly load and adapt one formal save input, print a validation result, "
+            "and exit without opening or changing a database. This option cannot be "
+            "combined with any other option."
+        ),
+    )
+    parser.add_argument(
         "--personal-score-db-save-database",
         type=Path,
         default=None,
@@ -9929,7 +9944,28 @@ def resolve_ocr_profiles(values: list[str]) -> tuple[str, ...]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    raw_argv = list(sys.argv[1:] if argv is None else argv)
+    args = build_parser().parse_args(raw_argv)
+    if args.personal_score_db_save_input_validate is not None:
+        mixed_options = sorted(
+            {
+                token.split("=", maxsplit=1)[0]
+                for token in raw_argv
+                if token.startswith("--")
+            }
+            - {"--personal-score-db-save-input-validate"}
+        )
+        if mixed_options:
+            return emit_personal_score_db_save_input_validation_invalid(
+                input_path=args.personal_score_db_save_input_validate,
+                reason=(
+                    "--personal-score-db-save-input-validate cannot be combined with: "
+                    + ", ".join(mixed_options)
+                ),
+            )
+        return run_personal_score_db_save_input_validation_cli(
+            input_path=args.personal_score_db_save_input_validate
+        )
     save_option_count = sum(
         value is not None
         for value in (

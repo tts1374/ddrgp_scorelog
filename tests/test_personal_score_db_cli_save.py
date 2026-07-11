@@ -35,6 +35,161 @@ def row_counts(db_path: Path) -> tuple[int, int, int]:
         )
 
 
+def assert_validation_has_no_output_side_effects(tmp_path: Path) -> None:
+    assert not (tmp_path / "data").exists()
+    assert not (tmp_path / "logs").exists()
+    assert not (tmp_path / "formal.sqlite").exists()
+
+
+def test_validation_cli_reports_ready_without_database_or_output_side_effects(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    input_path = FIXTURE_PATH.resolve()
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = runner.main(
+        ["--personal-score-db-save-input-validate", str(input_path)]
+    )
+
+    assert exit_code == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result == {
+        "validation_result_schema_version": 1,
+        "input_path": str(input_path),
+        "adapter_status": "ready",
+        "save_input_constructed": True,
+        "reasons": [],
+    }
+    assert_validation_has_no_output_side_effects(tmp_path)
+
+
+def test_validation_cli_loads_and_adapts_exactly_once(
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = {"load": 0, "adapt": 0}
+    original_load = cli_save.load_personal_score_db_save_input
+    original_adapt = cli_save.adapt_personal_score_db_save_input
+
+    def counted_load(path: Path) -> object:
+        calls["load"] += 1
+        return original_load(path)
+
+    def counted_adapt(adapter_input: object) -> object:
+        calls["adapt"] += 1
+        return original_adapt(adapter_input)
+
+    monkeypatch.setattr(cli_save, "load_personal_score_db_save_input", counted_load)
+    monkeypatch.setattr(cli_save, "adapt_personal_score_db_save_input", counted_adapt)
+
+    assert (
+        cli_save.run_personal_score_db_save_input_validation_cli(
+            input_path=FIXTURE_PATH
+        )
+        == 0
+    )
+    capsys.readouterr()
+    assert calls == {"load": 1, "adapt": 1}
+
+
+def test_validation_cli_reports_excluded_without_replaying_formal_values(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    value = fixture_input()
+    value["formal_play"] = None
+    value["exclusion"] = {"kind": "low_confidence", "reason": "manual_review"}
+    input_path = write_input(tmp_path, value)
+
+    exit_code = runner.main(
+        ["--personal-score-db-save-input-validate", str(input_path)]
+    )
+
+    assert exit_code == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["adapter_status"] == "excluded"
+    assert result["save_input_constructed"] is True
+    assert result["reasons"] == ["manual_review"]
+    assert "formal_play" not in result
+    assert "candidate_material" not in result
+
+
+def test_validation_cli_reports_unresolved_with_exit_code_one(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    value = fixture_input()
+    value["formal_play"] = None
+    input_path = write_input(tmp_path, value)
+
+    exit_code = runner.main(
+        ["--personal-score-db-save-input-validate", str(input_path)]
+    )
+
+    assert exit_code == 1
+    result = json.loads(capsys.readouterr().out)
+    assert result["adapter_status"] == "unresolved"
+    assert result["save_input_constructed"] is False
+    assert result["reasons"] == ["formal_play_required"]
+    assert_validation_has_no_output_side_effects(tmp_path)
+
+
+def test_validation_cli_reuses_strict_loader_for_invalid_json(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    input_path = tmp_path / "invalid.json"
+    input_path.write_text('{"input_schema_version": 1,', encoding="utf-8", newline="\n")
+
+    exit_code = runner.main(
+        ["--personal-score-db-save-input-validate", str(input_path)]
+    )
+
+    assert exit_code == 2
+    result = json.loads(capsys.readouterr().err)
+    assert result["adapter_status"] == "invalid"
+    assert result["save_input_constructed"] is False
+    assert "invalid JSON" in result["reasons"][0]
+    assert_validation_has_no_output_side_effects(tmp_path)
+
+
+@pytest.mark.parametrize(
+    "mixed_args",
+    [
+        [
+            "--personal-score-db-save-input",
+            "save-input.json",
+            "--personal-score-db-save-database",
+            "formal.sqlite",
+        ],
+        ["--personal-score-db-save-database", "formal.sqlite"],
+        ["--personal-score-db-diagnostic", "formal.sqlite"],
+        ["--output", "data/poc"],
+        ["--m8-score-db-output", "data/preview.sqlite"],
+    ],
+)
+def test_validation_cli_rejects_option_mixing_before_side_effects(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    mixed_args: list[str],
+) -> None:
+    input_path = FIXTURE_PATH.resolve()
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = runner.main(
+        ["--personal-score-db-save-input-validate", str(input_path), *mixed_args]
+    )
+
+    assert exit_code == 2
+    result = json.loads(capsys.readouterr().err)
+    assert result["adapter_status"] == "invalid"
+    assert "cannot be combined" in result["reasons"][0]
+    assert_validation_has_no_output_side_effects(tmp_path)
+
+
 @pytest.mark.parametrize("existing_empty_file", [False, True])
 def test_cli_saves_ready_input_to_new_or_zero_byte_database(
     tmp_path: Path,

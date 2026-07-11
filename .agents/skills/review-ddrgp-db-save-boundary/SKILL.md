@@ -40,6 +40,8 @@ description: DDRGP scorelogの保存可否、正式個人スコアDB、duplicate
 - duplicate collision結果は `excluded` / `written=true` / `play_id=null` とし、完全同一ID再送を冪等成功へ丸めず、UNIQUE拒否時に部分rowを残さない。
 - 明示CLI保存は入力JSON pathと正式DB pathの必須ペアだけで動かし、JSON loaderで必須/未知key、nested object/null、bool/intを含む型をadapter前に検査する。
 - 明示CLI保存は候補材料や相対時刻を `formal_play` へ暗黙コピーせず、`unresolved` と不正JSONでDBファイルや親ディレクトリを作成・変更しない。
+- 保存前validation CLIは既存strict loaderとadapterだけを再利用し、DB pathを受け取らず、DB、`data/`、`logs/`、diagnostic outputを作成・変更しない。
+- validationの `ready` はsave input構築可能だけを表し、DB互換性、DB内duplicate、並行writer、実保存成功を保証しない。結果へ正式値や候補材料を再掲しない。
 - PoCのscore/file由来 `duplicate_key` を正式duplicate keyとして扱わない。
 - DB diagnostic output/logはDB検査の記録であり、本番insert、低信頼度ログ、source capture保存ではない。
 - `source_captures` は元フレーム参照を持ち、解析ログ本文やDB診断ログを持たない。

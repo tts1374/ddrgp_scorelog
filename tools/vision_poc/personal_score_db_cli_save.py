@@ -15,10 +15,12 @@ from .personal_score_db_save_adapter import (
     PersonalScoreDbFormalPlayValues,
     PersonalScoreDbSaveAdapterInput,
     PersonalScoreDbSaveExclusion,
+    adapt_personal_score_db_save_input,
 )
 
 PERSONAL_SCORE_DB_SAVE_INPUT_SCHEMA_VERSION = 1
 PERSONAL_SCORE_DB_SAVE_RESULT_SCHEMA_VERSION = 1
+PERSONAL_SCORE_DB_SAVE_INPUT_VALIDATION_RESULT_SCHEMA_VERSION = 1
 
 _TOP_LEVEL_REQUIRED_KEYS = frozenset(
     {
@@ -174,6 +176,59 @@ def personal_score_db_file_save_result_json(
         "analysis_id": result.analysis_id,
         "reasons": list(result.reasons),
     }
+
+
+def personal_score_db_save_input_validation_result_json(
+    *,
+    input_path: Path,
+    adapter_status: str,
+    save_input_constructed: bool,
+    reasons: tuple[str, ...],
+) -> dict[str, object]:
+    return {
+        "validation_result_schema_version": (
+            PERSONAL_SCORE_DB_SAVE_INPUT_VALIDATION_RESULT_SCHEMA_VERSION
+        ),
+        "input_path": str(input_path),
+        "adapter_status": adapter_status,
+        "save_input_constructed": save_input_constructed,
+        "reasons": list(reasons),
+    }
+
+
+def emit_personal_score_db_save_input_validation_invalid(
+    *, input_path: Path, reason: str
+) -> int:
+    """Emit one invalid validation result without reading input or touching a DB."""
+    result = personal_score_db_save_input_validation_result_json(
+        input_path=input_path,
+        adapter_status="invalid",
+        save_input_constructed=False,
+        reasons=(reason,),
+    )
+    print(json.dumps(result, ensure_ascii=False, sort_keys=True), file=sys.stderr)
+    return 2
+
+
+def run_personal_score_db_save_input_validation_cli(*, input_path: Path) -> int:
+    """Strictly load and adapt one formal save input without opening a database."""
+    try:
+        adapter_input = load_personal_score_db_save_input(input_path)
+        adapter_result = adapt_personal_score_db_save_input(adapter_input)
+    except (OSError, ValueError) as exc:
+        return emit_personal_score_db_save_input_validation_invalid(
+            input_path=input_path,
+            reason=str(exc),
+        )
+
+    result = personal_score_db_save_input_validation_result_json(
+        input_path=input_path,
+        adapter_status=adapter_result.status,
+        save_input_constructed=adapter_result.save_input is not None,
+        reasons=adapter_result.reasons,
+    )
+    print(json.dumps(result, ensure_ascii=False, sort_keys=True))
+    return 1 if adapter_result.status == "unresolved" else 0
 
 
 def run_personal_score_db_save_cli(*, input_path: Path, db_path: Path) -> int:

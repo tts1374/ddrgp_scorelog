@@ -343,6 +343,10 @@
 - 単発CLIは入力JSON pathと正式DB pathの必須ペアだけから明示ファイル保存APIを1回呼び、通常PoC、timestamped/manifest runner、`--m8-score-db-output`、既定自動保存へ接続しない。
 - CLI JSON loaderはversion、必須/未知key、nested object/null、厳密な型をadapter前に検査し、boolとintを混同しない。
 - CLI loaderはM5 `identity_signal_*`、M7a `recognized_digits`、`played_at_ms` / `timestamp_ms` を `formal_play` へ暗黙コピーしない。
+- 保存前validation CLIは同じstrict loaderとadapterだけを各1回使い、ready/excluded/unresolved/invalidと終了コード0/0/1/2を固定する。
+- validation結果は入力path、adapter status、save input構築可否、理由だけを返し、正式値や候補材料を再掲しない。
+- validation optionとsave pair、diagnostic、通常PoC/M8 preview optionの混在を副作用前に拒否し、DB、親ディレクトリ、`data/`、`logs/`、diagnostic outputを作らない。
+- validation readyをDB互換性、DB内duplicateなし、並行writer安全性、実保存成功として扱わない。
 - 片方だけのCLI option、入力schema不正、`unresolved` はDB作成・変更前に非0終了する。`ready` / `excluded` だけが終了コード0でtransaction完了し、結果JSONの `play_id` でplay有無を区別する。
 - CLI経由でも新規/0 byte/compatible正式DBだけを許可し、preview / unknown / metadata identity mismatch / manual migration候補 / 非SQLite / ディレクトリを変更せず拒否する。
 

@@ -76,6 +76,14 @@ python -m tools.vision_poc `
 
 loaderは `candidate_material.identity_signal_*` / `recognized_digits` / `played_at_ms` やtop-level `timestamp_ms` を `formal_play` へコピーしません。入力schema不正はadapterやDB準備前に終了コード2、adapterの `unresolved` はDB作成・変更前に結果JSONを出して終了コード1、`ready` / `excluded` のtransaction完了は終了コード0です。結果JSONは `result_schema_version`、`db_path`、`adapter_status`、`written`、`play_id`、`source_capture_id`、`analysis_id`、`reasons` を持ちます。既存DBとのduplicate collisionも終了コード0で、`adapter_status=excluded`、`written=true`、`play_id=null`、`reasons=[duplicate_key_already_saved]` を返します。collision入力には新しい一意な `capture_id` / `analysis_id` が必要で、完全同一ID再送の冪等化は行いません。並行writer制御は現フェーズ外で、race時は既存UNIQUE制約により今回transactionをrollbackします。DB拒否時も自動repair/migration、diagnostic output、低信頼度ログファイルを生成しません。入力JSONやDBの既定pathはありません。
 
+人手レビュー後の正式JSONは、保存前に次の単独validation CLIで機械検査できます。
+
+```powershell
+python -m tools.vision_poc --personal-score-db-save-input-validate <reviewed-input.json>
+```
+
+このmodeは既存のstrict loaderとadapterを各1回だけ実行し、DB pathを受け取らず、DB、親ディレクトリ、`data/`、`logs/`、diagnostic outputを作成・変更しません。結果JSONは `validation_result_schema_version=1`、入力path、`adapter_status`、`save_input_constructed`、`reasons` だけを返し、正式値や候補材料を再掲しません。`ready` / `excluded` は終了コード0、`unresolved` は1、不正JSON/schemaまたは他optionとの混在は2です。`ready` はレビュー済み正式値からsave inputを構築できたことだけを表し、DB互換性、既存DB内duplicate、並行writer race、実保存成功は保証しません。`excluded` はplayなしの正式analysis入力を構築できた状態です。validationは正式JSONを自動生成・補完せず、候補値、preview duplicate key、相対時刻を正式値へ昇格しません。
+
 テンプレート探索はROI別ディレクトリを最優先し、判定数系の `marvelous`、`perfect`、`great`、`good`、`miss` は共有 `digit_templates/judgment_counts/<digit>.png` も参照します。`max_combo` と `ex_score` は、フォント共通化候補として共有 `digit_templates/combo_ex_score/<digit>.png` も参照します。さらに `ex_score` は、`combo_ex_score` がない環境でも既存 `digit_templates/max_combo/<digit>.png` をfallbackとして参照します。ROI別テンプレートを残したまま共有ディレクトリや `max_combo` fallbackを試せるため、ローカル素材の削除や移動をしなくても共通化可否を検証できます。2026-07-08時点のローカル確認では、`miss` は共有 `judgment_counts` だけだと分割数は期待桁数と一致するものの、60件中58件が `ambiguous` になるため、ROI別 `digit_templates/miss/` テンプレートを使います。同日時点で `ex_score` は右側数字領域へのcomponent分割と `max_combo` fallbackにより、ROI別 `ex_score` テンプレートなしで60/60 `recognized` / matchです。
 
 `--m5-jacket-match` 指定時は、通常の保存候補出力 `jacket_match_candidates.csv` / summary / Markdown に加えて、`jacket_match_diagnostics.csv`、`jacket_match_diagnostics_summary.json`、`jacket_match_diagnostics.md` も生成します。通常候補は引き続き `confirmed_result=true` かつ `duplicate=false` のM3保存候補だけを対象にします。診断出力は別ファイルで、metadata上のresult行、未確定result、duplicateを含め、`m5_target_boundary_reason` で `save_candidate` / `unconfirmed` / `duplicate` などを分けます。診断行の曲名と譜面3項目はローカルmetadata期待値を `metadata-expected-diagnostic` として使う観察用入力であり、保存候補への昇格やDB保存可能判定を意味しません。
