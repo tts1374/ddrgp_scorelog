@@ -420,10 +420,10 @@ M5完了時点で固定すること:
 - 2026-07-11時点で、`--personal-score-db-save-input-validate` を追加した。既存strict loaderとadapterだけを各1回実行し、ready/excluded/unresolved/invalidをJSONと終了コードで返す。DB pathを受け取らず、DB、`data/`、`logs/`、diagnostic outputを作成・変更しない。readyはsave input構築可能だけを意味し、DB互換性、DB内duplicate、並行writer、実保存は保証しない。
 - 2026-07-11時点で、`--personal-score-db-save-input-template` を追加した。`data/` 配下の新規JSONへschema version 1の空review templateを生成し、既存loader互換と未編集時 `unresolved` を固定した。候補値、preview、metadata、DBを読まず、正式値の自動生成、validationや保存への自動連鎖は行わない。
 - 2026-07-11時点で、`--personal-score-db-save-input-validate-output` をvalidation inputとの必須ペアとして追加した。標準出力と同じvalidation投影だけを `data/` 配下の新規JSONへ固定形式で保存し、正式値・候補材料・DB情報を記録しない。従来validationの副作用なし、status/終了コード、strict loader/adapter各1回を維持する。
+- 2026-07-12時点で、template生成、未編集時のunresolved receipt、人手編集相当、ready receipt、明示saveを既存CLI入口だけで順に実行するE2E fixtureを追加した。READMEにも同じ6段階のPowerShell手順を固定し、receiptは承認・認可・保存成功証明・save入力ではなく、save CLIが要求・消費しないことを明記した。
 
 やること:
 
-- template作成、手入力、validation receipt確認、明示保存を人手で順に実施する最小レビュー手順をCLI/README上で固定する。入力/出力/DBの既定pathや自動連鎖には進まない。
 - 低信頼度analysisの詳細JSONと失敗画像の保存先、保持期間、`analysis_logs.log_path` の参照契約を決める。
 - マイグレーション方針を決める。
 
