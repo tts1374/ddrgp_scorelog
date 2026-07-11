@@ -317,7 +317,7 @@ def personal_score_db_save_input_validation_result_json(
 
 
 def emit_personal_score_db_save_input_validation_invalid(
-    *, input_path: Path, reason: str
+    *, input_path: Path, reason: str, output_path: Path | None = None
 ) -> int:
     """Emit one invalid validation result without reading input or touching a DB."""
     result = personal_score_db_save_input_validation_result_json(
@@ -326,12 +326,88 @@ def emit_personal_score_db_save_input_validation_invalid(
         save_input_constructed=False,
         reasons=(reason,),
     )
-    print(json.dumps(result, ensure_ascii=False, sort_keys=True), file=sys.stderr)
-    return 2
+    return _emit_personal_score_db_save_input_validation_result(
+        result,
+        output_path=output_path,
+        exit_code=2,
+        stderr=True,
+    )
 
 
-def run_personal_score_db_save_input_validation_cli(*, input_path: Path) -> int:
+def validate_personal_score_db_save_input_validation_output_path(path: Path) -> None:
+    """Reject an unsafe receipt path before reading the validation input."""
+    output_path = Path(path)
+    data_root = (Path.cwd() / "data").resolve()
+    resolved_path = output_path.resolve()
+    if output_path.suffix.lower() != ".json":
+        raise ValueError(
+            "--personal-score-db-save-input-validate-output must end in .json: "
+            f"{output_path}"
+        )
+    if resolved_path == data_root or data_root not in resolved_path.parents:
+        raise ValueError(
+            "--personal-score-db-save-input-validate-output must be under data/: "
+            f"{output_path}"
+        )
+    if output_path.exists():
+        raise ValueError(
+            f"personal score DB save input validation receipt already exists: {output_path}"
+        )
+
+
+def _write_personal_score_db_save_input_validation_receipt(
+    path: Path, result: dict[str, object]
+) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("x", encoding="utf-8", newline="\n") as output_file:
+        json.dump(result, output_file, ensure_ascii=False, indent=2)
+        output_file.write("\n")
+
+
+def _emit_personal_score_db_save_input_validation_result(
+    result: dict[str, object],
+    *,
+    output_path: Path | None,
+    exit_code: int,
+    stderr: bool,
+) -> int:
+    if output_path is not None:
+        try:
+            _write_personal_score_db_save_input_validation_receipt(output_path, result)
+        except (OSError, ValueError) as exc:
+            receipt_error = personal_score_db_save_input_validation_result_json(
+                input_path=Path(str(result["input_path"])),
+                adapter_status="invalid",
+                save_input_constructed=False,
+                reasons=(
+                    "personal score DB save input validation receipt could not be "
+                    f"created: {exc}",
+                ),
+            )
+            print(
+                json.dumps(receipt_error, ensure_ascii=False, sort_keys=True),
+                file=sys.stderr,
+            )
+            return 2
+    print(
+        json.dumps(result, ensure_ascii=False, sort_keys=True),
+        file=sys.stderr if stderr else sys.stdout,
+    )
+    return exit_code
+
+
+def run_personal_score_db_save_input_validation_cli(
+    *, input_path: Path, output_path: Path | None = None
+) -> int:
     """Strictly load and adapt one formal save input without opening a database."""
+    if output_path is not None:
+        try:
+            validate_personal_score_db_save_input_validation_output_path(output_path)
+        except ValueError as exc:
+            return emit_personal_score_db_save_input_validation_invalid(
+                input_path=input_path,
+                reason=str(exc),
+            )
     try:
         adapter_input = load_personal_score_db_save_input(input_path)
         adapter_result = adapt_personal_score_db_save_input(adapter_input)
@@ -339,6 +415,7 @@ def run_personal_score_db_save_input_validation_cli(*, input_path: Path) -> int:
         return emit_personal_score_db_save_input_validation_invalid(
             input_path=input_path,
             reason=str(exc),
+            output_path=output_path,
         )
 
     result = personal_score_db_save_input_validation_result_json(
@@ -347,8 +424,13 @@ def run_personal_score_db_save_input_validation_cli(*, input_path: Path) -> int:
         save_input_constructed=adapter_result.save_input is not None,
         reasons=adapter_result.reasons,
     )
-    print(json.dumps(result, ensure_ascii=False, sort_keys=True))
-    return 1 if adapter_result.status == "unresolved" else 0
+    exit_code = 1 if adapter_result.status == "unresolved" else 0
+    return _emit_personal_score_db_save_input_validation_result(
+        result,
+        output_path=output_path,
+        exit_code=exit_code,
+        stderr=False,
+    )
 
 
 def run_personal_score_db_save_cli(*, input_path: Path, db_path: Path) -> int:

@@ -6,7 +6,7 @@
 
 GPT-5.6 Sol
 
-モデルはCodexのモデルピッカーで手動選択します。この記載だけでは自動切替されません。validation結果の記録は正式値の非再掲、出力副作用、既存validation契約を同時に扱うため、品質優先でSolを推奨します。
+モデルはCodexのモデルピッカーで手動選択します。この記載だけでは自動切替されません。人手レビュー手順と正式保存境界をまたぐ回帰を扱うため、品質優先でSolを推奨します。
 
 ## 推論レベル
 
@@ -17,13 +17,13 @@ high
 今回の完了ブランチ:
 
 ```powershell
-codex/m8-personal-score-db-review-template-cli
+codex/m8-personal-score-db-validation-receipt
 ```
 
 merge済みなら最新 `main` から次のブランチを作成してください。未mergeなら、このブランチの先端を取り込んでから作成してください。
 
 ```powershell
-codex/m8-personal-score-db-validation-receipt
+codex/m8-personal-score-db-review-workflow-regression
 ```
 
 開始時に確認:
@@ -36,32 +36,32 @@ git fetch --all --prune
 
 ## 今回までの結果と固定した判断
 
-- `--personal-score-db-save-input-template <path>` は `data/` 配下の新規 `.json` だけへ、schema version 1の空review templateを1件生成する。
-- templateはUTF-8 BOMなし、LF、固定key順、末尾改行付きで、現行strict loaderの全必須top-level keyと全 `formal_play` keyを持つ。
-- `candidate_material={}`、正式文字列は空文字、正式整数と任意値はnull、`exclusion=null` とし、未編集templateはadapter/validationで `unresolved` になる。
-- template生成はmetadata、M5/M7a、M8 preview、manifest、画像、DBを読まず、候補値、正式ID、正式数字、時刻、duplicate keyを生成・補完・転記しない。
-- templateの成功結果は生成path、`template_schema_version=1`、status、理由だけを返し、template本文や正式値を標準出力へ再掲しない。
-- `.json` 以外、`data/` 外、既存ファイル、validation/save/diagnostic/通常PoC/M8 previewを含む他option混在は出力副作用前に終了コード2で拒否する。
-- template生成はレビュー完了、保存可能、DB互換性、既存DB内duplicate非衝突、並行writer安全性、実保存成功を意味しない。
-- `--personal-score-db-save-input-validate` のready/excluded/unresolved/invalid、終了コード0/0/1/2、strict loaderとadapter各1回、DB非参照の契約は変更していない。
-- 正式DB保存、duplicate preflight、collision時のsource/analysis記録、transaction rollback、DB拒否境界は変更していない。
+- `--personal-score-db-save-input-validate-output <path>` は `--personal-score-db-save-input-validate <path>` とだけ組み合わせる明示optionとして追加した。
+- receiptは標準出力または標準エラーと同じ `validation_result_schema_version=1`、入力path、`adapter_status`、`save_input_constructed`、`reasons` の5 keyだけを持つ。
+- receiptはUTF-8 BOMなし、LF、固定key順、末尾改行付きで、明示された `data/` 配下の新規 `.json` に1件だけ生成する。既存ファイルは上書きしない。
+- output path、拡張子、既存ファイル、必須ペア、他mode排他はinput loadと出力作成より先に検査する。
+- receiptの有無でready/excluded/unresolved/invalid、終了コード0/0/1/2、strict loaderとadapter各1回の契約を変えない。
+- invalid input JSON/schemaでも、出力先が有効ならinvalid validation投影をreceiptへ記録する。
+- receiptは正式値、候補材料、template本文、DB path/schema/row、duplicate照会結果を持たない。
+- receiptはレビュー結果の記録であり、レビュー承認、DB互換性、既存DB内duplicate非衝突、並行writer安全性、実保存成功を保証しない。
+- receipt outputを指定しない従来validationは、引き続きDB、`data/`、`logs/`、diagnostic outputを作成・変更しない。
+- template生成、strict loader/adapter、明示DB保存、duplicate preflight、collision時のsource/analysis記録、transaction rollback、DB拒否境界は変更していない。
 
 ## 次に進める実作業
 
-人手レビューの証跡をローカルに残せるよう、保存前validation結果の明示的なreceipt出力を追加してください。receiptは標準出力と同じ機械可読なvalidation投影だけを保持し、正式値や候補材料を含めません。入力JSONやDBの既定path、自動validation、自動保存には進めません。
+template生成から明示保存までを自動連鎖させず、人が各段階を明示実行する最小レビュー手順を回帰として固定してください。新しい保存機能やschemaは追加せず、既存CLIを組み合わせたend-to-end fixtureテストと、コピー可能なREADME手順を主成果物にします。
 
 必須境界:
 
-- `--personal-score-db-save-input-validate-output <path>` のような明示optionを、`--personal-score-db-save-input-validate <path>` と必須ペアで追加する。
-- receipt出力先は明示された `data/` 配下の新規 `.json` に限定し、既存ファイルを上書きしない。`logs/`、DB、画像、diagnostic outputは作成しない。
-- receipt本文は標準出力と同じ `validation_result_schema_version=1`、入力path、`adapter_status`、`save_input_constructed`、`reasons` だけに限定する。正式値、候補材料、template本文、DB情報を追加しない。
-- ready/excluded/unresolved/invalidの終了コード0/0/1/2を維持する。receiptの有無でadapter statusや終了コードを変えない。
-- 出力pathとoption排他は入力読込や出力作成より先に検査する。validation/output pair以外のsave、template、diagnostic、通常PoC、M8 preview optionとの混在を拒否する。
-- UTF-8 BOMなし、LF、固定key順、末尾改行で新規作成し、既存ファイル競合を安全に拒否する。
-- receipt出力を明示しない従来validationは、引き続きDB、`data/`、`logs/`、diagnostic outputを作成・変更しない。
-- receiptはレビュー記録であって、レビュー承認、DB互換性、DB内duplicate非衝突、並行writer安全性、実保存成功を保証しない。
-- ready、unresolved、invalid input schema、既存ファイル、`data/` 外、拡張子不正、option排他、従来の副作用なしvalidationをfixtureでテストする。
-- README、設計docs、DB保存境界Skillへreceiptの責務境界と読み方を同期する。
+- `tests/test_personal_score_db_cli_save.py` または専用の小さなCLI workflowテストで、空template生成、fixture相当の人手編集、validation receipt生成、明示DB保存を順に実行する。
+- 未編集templateはvalidationで `unresolved` のまま、receiptが生成されても保存へ自動遷移しないことを固定する。
+- 編集済みready入力はvalidation receiptで `ready` を記録できるが、receipt生成だけではDBファイルや `logs/` を作らないことを固定する。
+- 実保存は `--personal-score-db-save-input` と `--personal-score-db-save-database` を別途明示したときだけ行い、新規正式DBにsource/play/analysis各1件を記録することを固定する。
+- save CLIはreceiptを入力や承認証明として要求・消費しない。正式入力JSONだけをstrict loadし、receipt pathや内容から正式値を補完しない。
+- invalid/unresolved validation receiptから保存を自動実行しない。既存の終了コードと副作用境界を維持する。
+- READMEへtemplate生成、ローカルでの人手編集、validation receipt確認、明示保存、DB diagnostic確認の順をコピー可能なコマンドで記載する。
+- READMEでは各段階が独立した明示操作であり、receiptは承認や保存成功の証明ではないことを明記する。
+- 設計docsとDB保存境界Skillは、既存契約で不足する境界が見つかった場合だけ最小更新する。新しいSkill/Subagentは作らない。
 
 ## 必読資料
 
@@ -84,12 +84,14 @@ git fetch --all --prune
 
 ## スコープ外
 
-- receiptへの正式値、候補材料、template本文、DB schema/row、duplicate照会結果の記録
+- template、validation、receipt、save、diagnosticの1コマンド自動連鎖
+- receiptを承認証明、署名、認可token、保存可否判定として扱う変更
+- receiptへの正式値、候補材料、template本文、input hash、DB schema/row、duplicate照会結果の記録
 - receiptの `logs/` 出力、append/JSONL化、署名、承認者情報、履歴管理
+- save CLIがreceiptを必須入力として検証・消費する変更
 - templateへの候補値、preview値、metadata値、相対時刻の自動転記
 - 正式値、duplicate key、ID、時刻、rank、clear typeの自動生成・補完
-- template生成からのvalidation、DB検査、duplicate照会、DB保存の自動連鎖
-- input/validation/template result schema version 2、既定入力/出力/DB path
+- input/validation/template/result schema version 2、既定入力/出力/DB path
 - duplicate key生成方式の本格実装・差し替え
 - 完全同一リクエスト再送の冪等化
 - 並行writer、ロック戦略、常駐監視、非同期処理、Windows UI
@@ -121,13 +123,13 @@ git diff --check
 
 今回実際に実行した結果:
 
-- CLI save/template/validation: 45 passed
+- CLI save/template/validation/receipt: 54 passed
 - file save: 15 passed
 - adapter: 7 passed
 - formal writer: 10 passed
 - schema/diagnostic: 55 passed
 - M7/M8回帰: 71 passed、44 deselected
-- 全テスト: 338 passed
+- 全テスト: 347 passed
 - Ruff: passed
 - compileall: passed
 - Skill validator: `Skill is valid!`
@@ -135,25 +137,23 @@ git diff --check
 - `git diff --check`: passed
 - 実行不能な検証: なし
 
-pytest実行時に `pytest_chalice` から `pkg_resources` deprecated warningが出るが、テスト失敗ではない。既知の機能リスクは、validationがDBを開かないためDB互換性とDB内duplicateを判定しないこと、並行writer間でduplicate preflight後・insert前に同じkeyが書かれた場合は2件目がUNIQUE拒否・transaction rollbackになること。これらはvalidation/templateの保証外としてREADMEと設計docsに明記済み。
+pytest実行時に `pytest_chalice` から `pkg_resources` deprecated warningが出るが、テスト失敗ではない。既知の機能リスクは、validation/receiptがDBを開かないためDB互換性とDB内duplicateを判定しないこと、並行writer間でduplicate preflight後・insert前に同じkeyが書かれた場合は2件目がUNIQUE拒否・transaction rollbackになること。receiptは入力内容hashを持たないため、receipt生成後に入力JSONが変更されていないことも証明しない。これらはreceiptの保証外としてREADMEと設計docsに明記済みである。
 
 ## コミット/Push方針
 
 - 今回作業分だけをパス単位でステージする。
 - `docs/next-task.md` は引き継ぎ仕様として同じコミットへ含める。
 - 画像、`metadata.csv`、`data/`、`logs/`、ローカルDB、実入力JSON、生成物をステージしない。
-- コード、テスト、README、設計docs、Skillの関連契約を同じコミットへ含める。
+- コード、テスト、README、必要な設計docs/Skillの関連契約を同じコミットへ含める。
 - staged diffを確認してからコミットし、通常pushする。force-pushしない。
 
 ## 完了条件
 
-- 明示validation/output pairから、新規receipt JSONを1件だけ生成できる。
-- receiptは標準出力と同じvalidation投影だけを持ち、正式値、候補材料、template本文、DB情報を含まない。
-- ready/excluded/unresolved/invalidと終了コード0/0/1/2、strict loader/adapter契約を維持する。
-- receipt出力は `data/` 配下の新規JSONだけで、既存ファイル、DB、`logs/`、画像、diagnostic outputを変更しない。
-- receiptを明示しない従来validationは出力副作用なしを維持する。
-- option pair、path、拡張子、既存ファイル、他mode排他を副作用前に検査する。
-- receiptをレビュー承認、保存可能、DB互換、duplicate非衝突、実保存成功と誤認させない。
-- 既存template、validation、duplicate preflight、DB拒否、transaction rollback、CLI save結果の契約を壊していない。
-- 関連README、設計docs、DB保存境界Skillを同期している。
+- templateから明示保存までの人手主導シーケンスを、既存CLIだけで再現するfixtureテストが通る。
+- 未編集templateとinvalid/unresolved receiptが保存へ自動遷移しない。
+- ready receipt生成だけではDBや `logs/` が作成・変更されない。
+- 明示save pairを別途実行した場合だけ正式DBへsource/play/analysisが記録される。
+- save CLIがreceiptから正式値を補完せず、receiptを承認証明として扱わない。
+- READMEのコピー可能な手順とコード/テストの副作用境界が一致する。
+- 既存template、validation/receipt status、duplicate preflight、DB拒否、transaction rollback、CLI save結果の契約を壊していない。
 - 検証が通り、Git管理外ファイルをコミットしていない。
