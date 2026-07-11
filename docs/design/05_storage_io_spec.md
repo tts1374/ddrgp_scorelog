@@ -229,6 +229,8 @@ CLIからは `--personal-score-db-save-input <utf8-json>` と `--personal-score-
 
 `--personal-score-db-save-input-validate <utf8-json>` は保存CLIと同じloaderとadapterだけを各1回実行する単独modeである。DB pathを受け取らず、DBファイル、親ディレクトリ、`data/`、`logs/`、diagnostic outputを作成・変更しない。結果はvalidation schema version、入力path、adapter status、正式save input構築可否、理由だけをJSONで返し、正式値や候補材料を再掲しない。ready/excludedは0、unresolvedは1、不正JSON/schemaまたは他option混在は2とする。DBを開かないため、DB互換性、既存duplicate collision、並行writer、実保存成功は保証しない。
 
+`--personal-score-db-save-input-template <path>` は、`data/` 配下の新規 `.json` へ空のschema version 1 review templateを1件だけ生成する単独modeである。既存ファイルを上書きせず、UTF-8 BOMなし、LF、固定key順、末尾改行で書く。出力はtemplate JSON以外のDB、`logs/`、画像、diagnosticを作らず、標準出力も生成path、template schema version、status、理由だけに限定する。metadata、M5/M7a、M8 preview、manifest、画像、DBは入力にせず、候補・相対時刻・duplicate keyを正式値へ転記しない。他optionとの混在、`data/` 外、`.json` 以外、既存出力は作成前に終了コード2で拒否する。
+
 M8の保存予定レコードプレビューでは、まず in-memory SQLite fixtureで `plays` 最小スキーマとrow contractを確認する。実ファイルDBを生成する場合は必ず `data/` 配下に置き、Git管理しない。
 
 M8のscore DB write previewでは、保存予定レコードだけを新規 in-memory SQLite `plays` テーブルへinsertし、`m8_score_db_write_preview.*` としてpreview `schema_version=1`、`schema_contract_scope=preview_minimal_plays`、`production_schema_status=not_production_schema`、`created_by_preview=tools.vision_poc.m8_score_db_preview`、insert対象件数、insert後件数、除外件数、代表行を確認する。これは実ファイルDB生成ではなく、ローカルDBファイルは作らない。SQLite側の `preview_metadata` 表はpreview生成物識別用の軽量表であり、正式マイグレーションではない。`schema_contract_scope` と `production_schema_status` は、M8の `plays` が正式個人スコアDB候補列を持つ本番スキーマではなく、preview専用最小スキーマであることを示す読み間違い防止欄です。

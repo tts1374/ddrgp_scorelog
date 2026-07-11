@@ -20,8 +20,10 @@ from PIL import Image, ImageFilter, ImageOps
 from . import master_match
 from . import personal_score_db_schema as score_schema
 from .personal_score_db_cli_save import (
+    emit_personal_score_db_save_input_template_invalid,
     emit_personal_score_db_save_input_validation_invalid,
     run_personal_score_db_save_cli,
+    run_personal_score_db_save_input_template_cli,
     run_personal_score_db_save_input_validation_cli,
 )
 
@@ -9774,6 +9776,15 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--personal-score-db-save-input-template",
+        type=Path,
+        default=None,
+        help=(
+            "Create one new empty formal save input review template under data/, then "
+            "exit. This option cannot be combined with any other option."
+        ),
+    )
+    parser.add_argument(
         "--personal-score-db-save-database",
         type=Path,
         default=None,
@@ -9946,6 +9957,26 @@ def resolve_ocr_profiles(values: list[str]) -> tuple[str, ...]:
 def main(argv: list[str] | None = None) -> int:
     raw_argv = list(sys.argv[1:] if argv is None else argv)
     args = build_parser().parse_args(raw_argv)
+    if args.personal_score_db_save_input_template is not None:
+        mixed_options = sorted(
+            {
+                token.split("=", maxsplit=1)[0]
+                for token in raw_argv
+                if token.startswith("--")
+            }
+            - {"--personal-score-db-save-input-template"}
+        )
+        if mixed_options:
+            return emit_personal_score_db_save_input_template_invalid(
+                output_path=args.personal_score_db_save_input_template,
+                reason=(
+                    "--personal-score-db-save-input-template cannot be combined with: "
+                    + ", ".join(mixed_options)
+                ),
+            )
+        return run_personal_score_db_save_input_template_cli(
+            output_path=args.personal_score_db_save_input_template
+        )
     if args.personal_score_db_save_input_validate is not None:
         mixed_options = sorted(
             {

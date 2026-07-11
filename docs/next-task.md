@@ -6,7 +6,7 @@
 
 GPT-5.6 Sol
 
-モデルはCodexのモデルピッカーで手動選択します。この記載だけでは自動切替されません。正式保存入力の人手レビュー境界と、空templateが正式値を自動生成しないことを扱うため、品質優先でSolを推奨します。
+モデルはCodexのモデルピッカーで手動選択します。この記載だけでは自動切替されません。validation結果の記録は正式値の非再掲、出力副作用、既存validation契約を同時に扱うため、品質優先でSolを推奨します。
 
 ## 推論レベル
 
@@ -17,13 +17,13 @@ high
 今回の完了ブランチ:
 
 ```powershell
-codex/m8-personal-score-db-input-validation-cli
+codex/m8-personal-score-db-review-template-cli
 ```
 
 merge済みなら最新 `main` から次のブランチを作成してください。未mergeなら、このブランチの先端を取り込んでから作成してください。
 
 ```powershell
-codex/m8-personal-score-db-review-template-cli
+codex/m8-personal-score-db-validation-receipt
 ```
 
 開始時に確認:
@@ -36,33 +36,32 @@ git fetch --all --prune
 
 ## 今回までの結果と固定した判断
 
-- `--personal-score-db-save-input-validate <path>` は既存 `load_personal_score_db_save_input()` と `adapt_personal_score_db_save_input()` だけを各1回実行する。
-- validation結果は `validation_result_schema_version=1`、入力path、`adapter_status`、`save_input_constructed`、`reasons` だけを返し、正式値や候補材料を標準出力へ再掲しない。
-- validationの `ready` / `excluded` は終了コード0、`unresolved` は1、不正JSON/schemaまたは他option混在は2に固定した。
-- validationはDB pathを受け取らず、DBファイル、親ディレクトリ、`data/`、`logs/`、diagnostic outputを作成・変更しない。
-- validation optionはsave pair、DB diagnostic、通常PoC、M8 previewを含む他の全optionと排他で、副作用前に拒否する。
-- validation `ready` は正式save inputを構築できたことだけを表し、DB互換性、既存DB内duplicate、並行writer、実保存成功を保証しない。
-- `excluded` はplayなし正式analysis入力を構築できた状態、`unresolved` は正式save inputを構築できない状態として既存adapter語彙を維持した。
-- strict loaderの `input_schema_version=1`、必須/未知key、重複key、object/null、bool/int/number/string検査は変更していない。
-- M5/M7a候補、preview duplicate key、相対時刻を正式値へ昇格せず、validationから正式JSONを生成・補完しない。
+- `--personal-score-db-save-input-template <path>` は `data/` 配下の新規 `.json` だけへ、schema version 1の空review templateを1件生成する。
+- templateはUTF-8 BOMなし、LF、固定key順、末尾改行付きで、現行strict loaderの全必須top-level keyと全 `formal_play` keyを持つ。
+- `candidate_material={}`、正式文字列は空文字、正式整数と任意値はnull、`exclusion=null` とし、未編集templateはadapter/validationで `unresolved` になる。
+- template生成はmetadata、M5/M7a、M8 preview、manifest、画像、DBを読まず、候補値、正式ID、正式数字、時刻、duplicate keyを生成・補完・転記しない。
+- templateの成功結果は生成path、`template_schema_version=1`、status、理由だけを返し、template本文や正式値を標準出力へ再掲しない。
+- `.json` 以外、`data/` 外、既存ファイル、validation/save/diagnostic/通常PoC/M8 previewを含む他option混在は出力副作用前に終了コード2で拒否する。
+- template生成はレビュー完了、保存可能、DB互換性、既存DB内duplicate非衝突、並行writer安全性、実保存成功を意味しない。
+- `--personal-score-db-save-input-validate` のready/excluded/unresolved/invalid、終了コード0/0/1/2、strict loaderとadapter各1回、DB非参照の契約は変更していない。
 - 正式DB保存、duplicate preflight、collision時のsource/analysis記録、transaction rollback、DB拒否境界は変更していない。
 
 ## 次に進める実作業
 
-レビュー済み正式JSONを人が安全に作り始めるための「空のreview template CLI」を追加してください。templateは候補値やpreview出力を取り込まず、全項目を人手で確認・入力するための構造だけを明示生成します。validation CLIと組み合わせる入口であり、自動補完やDB保存には進めません。
+人手レビューの証跡をローカルに残せるよう、保存前validation結果の明示的なreceipt出力を追加してください。receiptは標準出力と同じ機械可読なvalidation投影だけを保持し、正式値や候補材料を含めません。入力JSONやDBの既定path、自動validation、自動保存には進めません。
 
 必須境界:
 
-- `--personal-score-db-save-input-template <path>` のような単独の明示optionで、`input_schema_version=1` と現行strict loaderが受け取る全必須keyを持つUTF-8 JSON templateを1件生成する。
-- 出力先は明示された `data/` 配下の新規 `.json` に限定し、既存ファイルを上書きしない。`logs/`、DB、画像、diagnostic outputは作成しない。
-- template生成はmetadata、M5/M7a出力、M8 preview、manifest、画像、DBを読まない。候補ID、候補数字、相対時刻、preview duplicate keyを転記しない。
-- `candidate_material` は空object、`formal_play` は全正式fieldを明示した空文字/nullのobject、`exclusion` はnullを既定とし、レビュー前templateがvalidationで `unresolved` になることを固定する。
-- boolやsource/analysisの構造上必要なfieldにも値を置く必要がある場合は、安全な未確定値を使い、それを正式値・保存可能値と誤認させない。adapterが `ready` になるtemplateを生成しない。
-- template JSONのkey順と末尾改行を固定し、UTF-8 BOMなし・LFで書く。別validatorや別schema定義を複製せず、現行loaderで読み戻して構造互換をテストする。
-- template生成optionはvalidation、save pair、DB diagnostic、通常PoC、M8 previewを含む他optionと明示的に排他にし、副作用前に拒否する。
-- 結果は生成pathとtemplate schema versionを機械可読JSONで返す。正式値や空template本文を標準出力へ再掲しない。
-- 人手で確認・入力する正式値一覧、candidate materialは由来メモに留めること、template生成がレビュー完了や保存可能を意味しないことをREADMEと設計docsへ同期する。
-- fixtureで新規生成、loader互換、validation unresolved、既存ファイル拒否、`data/` 外拒否、option排他、DB/`logs/`非生成をテストする。
+- `--personal-score-db-save-input-validate-output <path>` のような明示optionを、`--personal-score-db-save-input-validate <path>` と必須ペアで追加する。
+- receipt出力先は明示された `data/` 配下の新規 `.json` に限定し、既存ファイルを上書きしない。`logs/`、DB、画像、diagnostic outputは作成しない。
+- receipt本文は標準出力と同じ `validation_result_schema_version=1`、入力path、`adapter_status`、`save_input_constructed`、`reasons` だけに限定する。正式値、候補材料、template本文、DB情報を追加しない。
+- ready/excluded/unresolved/invalidの終了コード0/0/1/2を維持する。receiptの有無でadapter statusや終了コードを変えない。
+- 出力pathとoption排他は入力読込や出力作成より先に検査する。validation/output pair以外のsave、template、diagnostic、通常PoC、M8 preview optionとの混在を拒否する。
+- UTF-8 BOMなし、LF、固定key順、末尾改行で新規作成し、既存ファイル競合を安全に拒否する。
+- receipt出力を明示しない従来validationは、引き続きDB、`data/`、`logs/`、diagnostic outputを作成・変更しない。
+- receiptはレビュー記録であって、レビュー承認、DB互換性、DB内duplicate非衝突、並行writer安全性、実保存成功を保証しない。
+- ready、unresolved、invalid input schema、既存ファイル、`data/` 外、拡張子不正、option排他、従来の副作用なしvalidationをfixtureでテストする。
+- README、設計docs、DB保存境界Skillへreceiptの責務境界と読み方を同期する。
 
 ## 必読資料
 
@@ -85,11 +84,12 @@ git fetch --all --prune
 
 ## スコープ外
 
+- receiptへの正式値、候補材料、template本文、DB schema/row、duplicate照会結果の記録
+- receiptの `logs/` 出力、append/JSONL化、署名、承認者情報、履歴管理
 - templateへの候補値、preview値、metadata値、相対時刻の自動転記
 - 正式値、duplicate key、ID、時刻、rank、clear typeの自動生成・補完
 - template生成からのvalidation、DB検査、duplicate照会、DB保存の自動連鎖
-- input schema version 2、save/validation result schema変更、既定入力/DB path
-- validation CLIのDB作成、DB検査、duplicate照会、DB保存
+- input/validation/template result schema version 2、既定入力/出力/DB path
 - duplicate key生成方式の本格実装・差し替え
 - 完全同一リクエスト再送の冪等化
 - 並行writer、ロック戦略、常駐監視、非同期処理、Windows UI
@@ -121,22 +121,21 @@ git diff --check
 
 今回実際に実行した結果:
 
-- CLI save/validation: 35 passed
+- CLI save/template/validation: 45 passed
 - file save: 15 passed
 - adapter: 7 passed
 - formal writer: 10 passed
 - schema/diagnostic: 55 passed
 - M7/M8回帰: 71 passed、44 deselected
-- 全テスト: 328 passed
+- 全テスト: 338 passed
 - Ruff: passed
 - compileall: passed
 - Skill validator: `Skill is valid!`
-- validation CLI実コマンド: ready JSON、終了コード0
 - `python -m tools.vision_poc`: 221/221 correct、accuracy 1.000、false positive 0、false negative 0、transition countup shape candidates 3
 - `git diff --check`: passed
 - 実行不能な検証: なし
 
-pytest実行時に `pytest_chalice` から `pkg_resources` deprecated warningが出るが、テスト失敗ではない。既知の機能リスクは、validationがDBを開かないためDB互換性とDB内duplicateを判定しないこと、並行writer間でduplicate preflight後・insert前に同じkeyが書かれた場合は2件目がUNIQUE拒否・transaction rollbackになること。これらはvalidationの保証外としてREADMEと設計docsに明記済み。
+pytest実行時に `pytest_chalice` から `pkg_resources` deprecated warningが出るが、テスト失敗ではない。既知の機能リスクは、validationがDBを開かないためDB互換性とDB内duplicateを判定しないこと、並行writer間でduplicate preflight後・insert前に同じkeyが書かれた場合は2件目がUNIQUE拒否・transaction rollbackになること。これらはvalidation/templateの保証外としてREADMEと設計docsに明記済み。
 
 ## コミット/Push方針
 
@@ -148,12 +147,13 @@ pytest実行時に `pytest_chalice` から `pkg_resources` deprecated warningが
 
 ## 完了条件
 
-- 明示optionから新規の空review templateを1件だけ生成できる。
-- templateは現行strict loaderとschema version 1に互換で、未編集状態ではadapter/validationが `unresolved` になる。
-- templateは候補値、preview値、metadata値を読み込まず、正式値を自動生成・補完しない。
-- 出力は明示された `data/` 配下の新規JSONだけで、既存ファイル、DB、`logs/`、画像、diagnostic outputを変更しない。
-- template modeとvalidation/save/diagnostic/通常PoC/M8 previewのoption排他を副作用前に検査する。
-- template生成をレビュー完了、保存可能、DB保存成功と誤認させない。
-- 既存validation、duplicate preflight、DB拒否、transaction rollback、CLI save結果の契約を壊していない。
+- 明示validation/output pairから、新規receipt JSONを1件だけ生成できる。
+- receiptは標準出力と同じvalidation投影だけを持ち、正式値、候補材料、template本文、DB情報を含まない。
+- ready/excluded/unresolved/invalidと終了コード0/0/1/2、strict loader/adapter契約を維持する。
+- receipt出力は `data/` 配下の新規JSONだけで、既存ファイル、DB、`logs/`、画像、diagnostic outputを変更しない。
+- receiptを明示しない従来validationは出力副作用なしを維持する。
+- option pair、path、拡張子、既存ファイル、他mode排他を副作用前に検査する。
+- receiptをレビュー承認、保存可能、DB互換、duplicate非衝突、実保存成功と誤認させない。
+- 既存template、validation、duplicate preflight、DB拒否、transaction rollback、CLI save結果の契約を壊していない。
 - 関連README、設計docs、DB保存境界Skillを同期している。
 - 検証が通り、Git管理外ファイルをコミットしていない。
