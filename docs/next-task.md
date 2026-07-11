@@ -56,7 +56,9 @@ git fetch --all --prune
 必須境界:
 
 - 既存compatible正式DBの `plays.duplicate_key` を保存直前に確認し、衝突時は新しいplay rowを作らない。
-- 衝突を汎用DB errorや成功playへ丸めず、duplicateとして機械可読に返す。source captureとanalysisを記録するか、完全無変更で返すかは、既存 `excluded` 契約、ID衝突、transaction原子性を比較して先に決め、docsとテストで一意に固定する。
+- 衝突は `excluded/duplicate` として扱い、新しいplay rowを作らず、今回入力のsource captureとanalysisだけを同じtransactionで記録する。結果は `adapter_status=excluded`、`written=true`、`play_id=null` として機械可読に返す。
+- duplicate collisionのanalysisは `analysis_status=skipped`、`save_boundary_status=duplicate`、`skip_reason=duplicate_key_already_saved`、`duplicate=true` に固定する。汎用DB errorや成功playへ丸めない。
+- collision入力の `capture_id` / `analysis_id` は新しい一意なIDを要求する。既存rowと同じIDを使う完全同一リクエスト再送の冪等化はこのタスクに含めず、UNIQUE拒否時に部分rowを残さない既存rollback契約を維持する。
 - 新規/0 byte DBではpreflightのために余分な既定path、ログ、diagnostic outputを作らない。
 - preview DB、unknown DB、metadata identity mismatch、manual migration、非SQLite、ディレクトリの拒否境界を変えない。
 - adapterの `unresolved` と不正JSONは、duplicate照会やDB準備より前に止める。
@@ -103,6 +105,7 @@ git fetch --all --prune
 - OCR confidenceから保存しきい値を新規決定する処理
 - ROI座標の大変更、OCR方式全面刷新
 - CLI JSON schema version 2や既定入力/DB pathの導入
+- 同じ `capture_id` / `analysis_id` を使う完全同一リクエスト再送の冪等化
 - 画像、`metadata.csv`、`data/`、`logs/`、ローカルDB、実入力JSONのコミット
 - 追加のプロジェクト専用Skill/Subagent作成
 
@@ -154,7 +157,8 @@ pytest実行時に `pytest_chalice` から `pkg_resources` deprecated warningが
 
 - 既存compatible正式DBで明示duplicate keyの衝突を保存直前に検出できる。
 - duplicate collisionで2件目のplay rowを作らず、結果を機械可読に区別できる。
-- collision時のsource capture / analysisの扱いとtransaction境界がdocs、Python API、CLI、テストで一致する。
+- collision時は `excluded/duplicate` としてsource capture / analysisだけを1 transactionで記録し、結果とDB rowの語彙がdocs、Python API、CLI、テストで一致する。
+- 完全同一ID再送を自動成功へ丸めず、UNIQUE拒否時に部分rowを残さない。
 - `unresolved` / 不正JSONはDB照会・作成・変更前に止まる。
 - 新規/0 byte/compatible DBと各拒否DBの既存契約を維持する。
 - candidate値、preview duplicate key、相対時刻を正式値へ暗黙昇格しない。
