@@ -261,6 +261,202 @@ def test_validation_cli_reports_ready_without_database_or_output_side_effects(
     assert_validation_has_no_output_side_effects(tmp_path)
 
 
+def test_validation_cli_writes_ready_receipt_with_stable_utf8_projection(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    input_path = FIXTURE_PATH.resolve()
+    monkeypatch.chdir(tmp_path)
+    output_path = Path("data/reviews/ready.json")
+
+    exit_code = runner.main(
+        [
+            "--personal-score-db-save-input-validate",
+            str(input_path),
+            "--personal-score-db-save-input-validate-output",
+            str(output_path),
+        ]
+    )
+
+    assert exit_code == 0
+    result = json.loads(capsys.readouterr().out)
+    receipt_result = json.loads(output_path.read_text(encoding="utf-8"))
+    assert receipt_result == result
+    assert list(receipt_result) == [
+        "validation_result_schema_version",
+        "input_path",
+        "adapter_status",
+        "save_input_constructed",
+        "reasons",
+    ]
+    receipt = output_path.read_bytes()
+    assert receipt.startswith(b"{\n")
+    assert receipt.endswith(b"\n")
+    assert not receipt.startswith(b"\xef\xbb\xbf")
+    assert b"\r\n" not in receipt
+    assert "formal_play" not in result
+    assert "candidate_material" not in result
+    assert not (tmp_path / "logs").exists()
+    assert not (tmp_path / "formal.sqlite").exists()
+
+
+def test_validation_cli_writes_unresolved_receipt_without_changing_exit_code(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    value = fixture_input()
+    value["formal_play"] = None
+    input_path = write_input(tmp_path, value)
+    monkeypatch.chdir(tmp_path)
+    output_path = Path("data/unresolved.json")
+
+    exit_code = runner.main(
+        [
+            "--personal-score-db-save-input-validate",
+            str(input_path),
+            "--personal-score-db-save-input-validate-output",
+            str(output_path),
+        ]
+    )
+
+    assert exit_code == 1
+    result = json.loads(capsys.readouterr().out)
+    assert result["adapter_status"] == "unresolved"
+    assert json.loads(output_path.read_text(encoding="utf-8")) == result
+
+
+def test_validation_cli_writes_excluded_receipt_without_formal_values(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    value = fixture_input()
+    value["formal_play"] = None
+    value["exclusion"] = {"kind": "low_confidence", "reason": "manual_review"}
+    input_path = write_input(tmp_path, value)
+    monkeypatch.chdir(tmp_path)
+    output_path = Path("data/excluded.json")
+
+    exit_code = runner.main(
+        [
+            "--personal-score-db-save-input-validate",
+            str(input_path),
+            "--personal-score-db-save-input-validate-output",
+            str(output_path),
+        ]
+    )
+
+    assert exit_code == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["adapter_status"] == "excluded"
+    assert json.loads(output_path.read_text(encoding="utf-8")) == result
+    assert "formal_play" not in result
+    assert "candidate_material" not in result
+
+
+def test_validation_cli_writes_invalid_schema_receipt_without_formal_values(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    input_path = tmp_path / "invalid.json"
+    input_path.write_text('{"input_schema_version": 1,', encoding="utf-8", newline="\n")
+    monkeypatch.chdir(tmp_path)
+    output_path = Path("data/invalid.json")
+
+    exit_code = runner.main(
+        [
+            "--personal-score-db-save-input-validate",
+            str(input_path),
+            "--personal-score-db-save-input-validate-output",
+            str(output_path),
+        ]
+    )
+
+    assert exit_code == 2
+    result = json.loads(capsys.readouterr().err)
+    assert result["adapter_status"] == "invalid"
+    assert json.loads(output_path.read_text(encoding="utf-8")) == result
+    assert "formal_play" not in result
+    assert "candidate_material" not in result
+
+
+@pytest.mark.parametrize(
+    ("output_name", "expected_error"),
+    [
+        ("outside.json", "must be under data/"),
+        ("data/receipt.txt", "must end in .json"),
+    ],
+)
+def test_validation_receipt_rejects_invalid_output_before_reading_input(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    output_name: str,
+    expected_error: str,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = runner.main(
+        [
+            "--personal-score-db-save-input-validate",
+            "missing-input.json",
+            "--personal-score-db-save-input-validate-output",
+            output_name,
+        ]
+    )
+
+    assert exit_code == 2
+    result = json.loads(capsys.readouterr().err)
+    assert expected_error in result["reasons"][0]
+    assert not (tmp_path / "data").exists()
+
+
+def test_validation_receipt_rejects_existing_file_without_overwrite(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    output_path = Path("data/receipt.json")
+    output_path.parent.mkdir()
+    output_path.write_text("keep\n", encoding="utf-8", newline="\n")
+
+    exit_code = runner.main(
+        [
+            "--personal-score-db-save-input-validate",
+            "missing-input.json",
+            "--personal-score-db-save-input-validate-output",
+            str(output_path),
+        ]
+    )
+
+    assert exit_code == 2
+    result = json.loads(capsys.readouterr().err)
+    assert "already exists" in result["reasons"][0]
+    assert output_path.read_text(encoding="utf-8") == "keep\n"
+
+
+def test_validation_receipt_output_requires_validation_input_before_creation(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    output_path = Path("data/receipt.json")
+
+    exit_code = runner.main(
+        ["--personal-score-db-save-input-validate-output", str(output_path)]
+    )
+
+    assert exit_code == 2
+    result = json.loads(capsys.readouterr().err)
+    assert "requires --personal-score-db-save-input-validate" in result["reasons"][0]
+    assert not (tmp_path / "data").exists()
+
+
 def test_validation_cli_loads_and_adapts_exactly_once(
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
@@ -364,6 +560,12 @@ def test_validation_cli_reuses_strict_loader_for_invalid_json(
         ["--personal-score-db-diagnostic", "formal.sqlite"],
         ["--output", "data/poc"],
         ["--m8-score-db-output", "data/preview.sqlite"],
+        [
+            "--personal-score-db-save-input-validate-output",
+            "data/receipt.json",
+            "--personal-score-db-diagnostic",
+            "formal.sqlite",
+        ],
     ],
 )
 def test_validation_cli_rejects_option_mixing_before_side_effects(

@@ -95,6 +95,16 @@ python -m tools.vision_poc --personal-score-db-save-input-validate <reviewed-inp
 
 このmodeは既存のstrict loaderとadapterを各1回だけ実行し、DB pathを受け取らず、DB、親ディレクトリ、`data/`、`logs/`、diagnostic outputを作成・変更しません。結果JSONは `validation_result_schema_version=1`、入力path、`adapter_status`、`save_input_constructed`、`reasons` だけを返し、正式値や候補材料を再掲しません。`ready` / `excluded` は終了コード0、`unresolved` は1、不正JSON/schemaまたは他optionとの混在は2です。`ready` はレビュー済み正式値からsave inputを構築できたことだけを表し、DB互換性、既存DB内duplicate、並行writer race、実保存成功は保証しません。`excluded` はplayなしの正式analysis入力を構築できた状態です。validationは正式JSONを自動生成・補完せず、候補値、preview duplicate key、相対時刻を正式値へ昇格しません。
 
+validation結果を明示的なレビュー証跡として残す場合だけ、次の必須ペアを使います。
+
+```powershell
+python -m tools.vision_poc `
+  --personal-score-db-save-input-validate <reviewed-input.json> `
+  --personal-score-db-save-input-validate-output data\personal_score_db\validation-receipt.json
+```
+
+receiptは標準出力と同じ5 keyのvalidation投影だけを、`data/` 配下の新規 `.json` へUTF-8 BOMなし・LF・固定key順・末尾改行付きで1件保存します。既存ファイルを上書きせず、output単独指定、`data/` 外、拡張子不正、他modeとの混在は入力読込や出力作成前に終了コード2で拒否します。ready/excluded/unresolved/invalidのstatusと終了コードはreceiptの有無で変わりません。receiptは人手レビューの結果記録であり、レビュー承認、DB互換性、DB内duplicate非衝突、並行writer安全性、実保存成功を保証せず、正式値、候補材料、template本文、DB情報を保持しません。outputを指定しない従来validationは引き続き出力副作用なしです。
+
 テンプレート探索はROI別ディレクトリを最優先し、判定数系の `marvelous`、`perfect`、`great`、`good`、`miss` は共有 `digit_templates/judgment_counts/<digit>.png` も参照します。`max_combo` と `ex_score` は、フォント共通化候補として共有 `digit_templates/combo_ex_score/<digit>.png` も参照します。さらに `ex_score` は、`combo_ex_score` がない環境でも既存 `digit_templates/max_combo/<digit>.png` をfallbackとして参照します。ROI別テンプレートを残したまま共有ディレクトリや `max_combo` fallbackを試せるため、ローカル素材の削除や移動をしなくても共通化可否を検証できます。2026-07-08時点のローカル確認では、`miss` は共有 `judgment_counts` だけだと分割数は期待桁数と一致するものの、60件中58件が `ambiguous` になるため、ROI別 `digit_templates/miss/` テンプレートを使います。同日時点で `ex_score` は右側数字領域へのcomponent分割と `max_combo` fallbackにより、ROI別 `ex_score` テンプレートなしで60/60 `recognized` / matchです。
 
 `--m5-jacket-match` 指定時は、通常の保存候補出力 `jacket_match_candidates.csv` / summary / Markdown に加えて、`jacket_match_diagnostics.csv`、`jacket_match_diagnostics_summary.json`、`jacket_match_diagnostics.md` も生成します。通常候補は引き続き `confirmed_result=true` かつ `duplicate=false` のM3保存候補だけを対象にします。診断出力は別ファイルで、metadata上のresult行、未確定result、duplicateを含め、`m5_target_boundary_reason` で `save_candidate` / `unconfirmed` / `duplicate` などを分けます。診断行の曲名と譜面3項目はローカルmetadata期待値を `metadata-expected-diagnostic` として使う観察用入力であり、保存候補への昇格やDB保存可能判定を意味しません。

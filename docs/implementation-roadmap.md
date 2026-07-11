@@ -15,7 +15,7 @@ Windows常駐アプリが DDR GRAND PRIX のゲームウィンドウを直接キ
 
 ## 現在地
 
-現在は画像解析PoC、マスタDB生成、マスタ照合PoC、保存判定previewを経て、M8の正式個人スコアDB保存境界へ進んでいます。正式schema、互換検査、DB準備、diagnostic、確定済み入力を使うtransaction writer、明示DB pathへの単発保存API、保存前validation CLIまで実装済みです。
+現在は画像解析PoC、マスタDB生成、マスタ照合PoC、保存判定previewを経て、M8の正式個人スコアDB保存境界へ進んでいます。正式schema、互換検査、DB準備、diagnostic、確定済み入力を使うtransaction writer、明示DB pathへの単発保存API、保存前validation CLI、明示validation receiptまで実装済みです。
 
 完了済みの主な足場:
 
@@ -62,7 +62,7 @@ manifestまたはmanual入力
   -> 保存成功または保存除外analysis
 ```
 
-2026-07-11時点では、preview候補材料とレビュー済み正式値を分離するpure adapterから、確定済み正式保存入力を経て、明示された新規/0 byte/compatible正式DBファイルへ1件書く契約まで通っている。明示JSON入力と明示DB pathの必須ペアから1回だけ呼ぶCLIに加え、同じstrict loaderとadapterだけを使う保存前validation CLIも追加済みである。既存正式playとのduplicate key衝突は2件目のplayを作らずsource/analysisだけを記録する。通常PoC、timestamped/manifest runner、既定自動保存には接続していない。
+2026-07-11時点では、preview候補材料とレビュー済み正式値を分離するpure adapterから、確定済み正式保存入力を経て、明示された新規/0 byte/compatible正式DBファイルへ1件書く契約まで通っている。明示JSON入力と明示DB pathの必須ペアから1回だけ呼ぶCLIに加え、同じstrict loaderとadapterだけを使う保存前validation CLIと、結果投影だけを `data/` 配下の新規JSONへ残す明示receiptも追加済みである。既存正式playとのduplicate key衝突は2件目のplayを作らずsource/analysisだけを記録する。通常PoC、timestamped/manifest runner、既定自動保存には接続していない。
 
 ## マイルストーン
 
@@ -419,10 +419,11 @@ M5完了時点で固定すること:
 - 2026-07-11時点で、正式DB保存直前のduplicate preflightを追加した。レビュー済み明示 `duplicate_key` が既存playと衝突した場合は2件目のplayを作らず、新しいsource captureと `skipped/duplicate/duplicate_key_already_saved` analysisだけを同じtransactionで記録し、Python API/CLIは `excluded/written/play_id=null` を返す。完全同一ID再送の冪等化と並行writer制御は未実装で、UNIQUE制約とrollbackを維持する。
 - 2026-07-11時点で、`--personal-score-db-save-input-validate` を追加した。既存strict loaderとadapterだけを各1回実行し、ready/excluded/unresolved/invalidをJSONと終了コードで返す。DB pathを受け取らず、DB、`data/`、`logs/`、diagnostic outputを作成・変更しない。readyはsave input構築可能だけを意味し、DB互換性、DB内duplicate、並行writer、実保存は保証しない。
 - 2026-07-11時点で、`--personal-score-db-save-input-template` を追加した。`data/` 配下の新規JSONへschema version 1の空review templateを生成し、既存loader互換と未編集時 `unresolved` を固定した。候補値、preview、metadata、DBを読まず、正式値の自動生成、validationや保存への自動連鎖は行わない。
+- 2026-07-11時点で、`--personal-score-db-save-input-validate-output` をvalidation inputとの必須ペアとして追加した。標準出力と同じvalidation投影だけを `data/` 配下の新規JSONへ固定形式で保存し、正式値・候補材料・DB情報を記録しない。従来validationの副作用なし、status/終了コード、strict loader/adapter各1回を維持する。
 
 やること:
 
-- 空templateへ人手入力した正式JSONのレビュー手順と、validation結果をレビュー記録へどう残すかを整理する。候補材料からの自動入力や通常runnerからの暗黙生成には進まない。
+- template作成、手入力、validation receipt確認、明示保存を人手で順に実施する最小レビュー手順をCLI/README上で固定する。入力/出力/DBの既定pathや自動連鎖には進まない。
 - 低信頼度analysisの詳細JSONと失敗画像の保存先、保持期間、`analysis_logs.log_path` の参照契約を決める。
 - マイグレーション方針を決める。
 

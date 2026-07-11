@@ -9776,6 +9776,16 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--personal-score-db-save-input-validate-output",
+        type=Path,
+        default=None,
+        help=(
+            "Optional new validation receipt JSON under data/. Requires "
+            "--personal-score-db-save-input-validate and contains only the printed "
+            "validation result projection."
+        ),
+    )
+    parser.add_argument(
         "--personal-score-db-save-input-template",
         type=Path,
         default=None,
@@ -9977,6 +9987,17 @@ def main(argv: list[str] | None = None) -> int:
         return run_personal_score_db_save_input_template_cli(
             output_path=args.personal_score_db_save_input_template
         )
+    if (
+        args.personal_score_db_save_input_validate_output is not None
+        and args.personal_score_db_save_input_validate is None
+    ):
+        return emit_personal_score_db_save_input_validation_invalid(
+            input_path=Path(""),
+            reason=(
+                "--personal-score-db-save-input-validate-output requires "
+                "--personal-score-db-save-input-validate"
+            ),
+        )
     if args.personal_score_db_save_input_validate is not None:
         mixed_options = sorted(
             {
@@ -9984,7 +10005,10 @@ def main(argv: list[str] | None = None) -> int:
                 for token in raw_argv
                 if token.startswith("--")
             }
-            - {"--personal-score-db-save-input-validate"}
+            - {
+                "--personal-score-db-save-input-validate",
+                "--personal-score-db-save-input-validate-output",
+            }
         )
         if mixed_options:
             return emit_personal_score_db_save_input_validation_invalid(
@@ -9995,7 +10019,8 @@ def main(argv: list[str] | None = None) -> int:
                 ),
             )
         return run_personal_score_db_save_input_validation_cli(
-            input_path=args.personal_score_db_save_input_validate
+            input_path=args.personal_score_db_save_input_validate,
+            output_path=args.personal_score_db_save_input_validate_output,
         )
     save_option_count = sum(
         value is not None

@@ -42,6 +42,7 @@ description: DDRGP scorelogの保存可否、正式個人スコアDB、duplicate
 - 明示CLI保存は候補材料や相対時刻を `formal_play` へ暗黙コピーせず、`unresolved` と不正JSONでDBファイルや親ディレクトリを作成・変更しない。
 - 保存前validation CLIは既存strict loaderとadapterだけを再利用し、DB pathを受け取らず、DB、`data/`、`logs/`、diagnostic outputを作成・変更しない。
 - validationの `ready` はsave input構築可能だけを表し、DB互換性、DB内duplicate、並行writer、実保存成功を保証しない。結果へ正式値や候補材料を再掲しない。
+- validation receiptは入力path、status、save input構築可否、理由だけの同一投影を `data/` 配下の新規JSONへ明示保存し、正式値、候補材料、template本文、DB情報を持たない。path/optionをinput load前に検査し、receiptの有無でstatus、終了コード、loader/adapter回数を変えない。
 - review templateは現行strict loader互換の空構造だけを `data/` 配下の新規JSONへ生成し、候補値や正式値を自動入力しない。未編集状態を `unresolved` に保ち、既存ファイル上書き、他option混在、DB/`logs/`/diagnostic生成を副作用前に拒否する。
 - PoCのscore/file由来 `duplicate_key` を正式duplicate keyとして扱わない。
 - DB diagnostic output/logはDB検査の記録であり、本番insert、低信頼度ログ、source capture保存ではない。

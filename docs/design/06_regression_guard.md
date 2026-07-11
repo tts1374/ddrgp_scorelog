@@ -40,6 +40,10 @@
 - 未確定の `result_candidate=true` は保存しない。
 - `result_shape_candidate=true` だけでは保存しない。
 - 現行 `duplicate_key` はファイル名由来のローカルPoC簡易キーのまま維持し、M1では本格キーへ差し替えない。
+- 保存前validation receiptは標準出力と同じ5 keyの投影だけを持ち、正式値、候補材料、template本文、DB情報を持たない。
+- receipt出力はvalidation inputとの明示ペア、`data/` 配下の新規 `.json` に限定し、path/拡張子/既存ファイル/option排他をinput load前に拒否する。
+- receiptの有無でready/excluded/unresolved/invalid、終了コード0/0/1/2、strict loader/adapter各1回の契約を変えない。
+- receiptなしの従来validationはDB、`data/`、`logs/`、diagnostic outputを作成・変更しない。
 
 ## transition_countup
 
