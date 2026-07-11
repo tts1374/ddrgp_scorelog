@@ -10,11 +10,11 @@ GPT-5.6 Sol
 
 ## 推論レベル
 
-high
+medium
 
-低信頼度analysis詳細JSON、失敗画像、保持期間、`analysis_logs.log_path` の責務を分離し、複数設計文書と正式DB保存境界を同期する必要があるため `high` を推奨します。
+既存の正式DB保存境界に沿ったpure contract、fixtureテスト、README・設計docs同期が中心であり、正式DB schema、writer、transaction、migrationを変更しないため `medium` を推奨します。
 
-推論レベルを理由にmigrationや自動保存へ範囲を広げないでください。正式DB schema、migration、transaction、並行writer、保存境界の再設計が必要になった場合は、現在のPRを無理に拡張せず後続候補へ送ってください。
+実装中に正式DB schema、migration、transaction、並行writer、保存境界の再設計、または複数設計文書の重大な矛盾が見つかった場合は、推論レベルだけを上げて現在のPRを拡張せず、必要に応じて次の実行で `high` を検討してください。
 
 ## 作業ブランチ
 
