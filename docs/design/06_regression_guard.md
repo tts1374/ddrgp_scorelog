@@ -321,6 +321,8 @@
 - diagnostic log record の必須key、schema version、event type、mode、format、exit code、status、`diagnostic.is_compatible` の整合をappend前に検査する。
 - diagnostic log output は複数回appendしても空行を出さず、1行1JSONとして読める状態に保つ。
 - diagnostic output / diagnostic log output は本番insert、自動migration、既定自動保存、低信頼度ログ本番保存、source capture保存として扱わない。
+- diagnostic log output はDB診断ログであり、`analysis_logs.log_path` が将来参照する本番解析ログや低信頼度ログとは別ファイルとして扱う。
+- `source_captures` は元フレーム参照だけを保持し、解析ログ本文、DB診断ログ、低信頼度ログ本文を持たない。
 
 ## ROI方針
 

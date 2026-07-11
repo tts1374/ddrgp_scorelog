@@ -68,6 +68,17 @@ PERSONAL_SCORE_DB_PLAYS_COLUMNS = (
     "created_at",
 )
 
+PERSONAL_SCORE_DB_SOURCE_CAPTURE_COLUMNS = (
+    "capture_id",
+    "capture_hash",
+    "captured_at",
+    "source_kind",
+    "source_path",
+    "manifest_image_path",
+    "frame_index",
+    "created_at",
+)
+
 PERSONAL_SCORE_DB_ANALYSIS_LOG_COLUMNS = (
     "analysis_id",
     "play_id",

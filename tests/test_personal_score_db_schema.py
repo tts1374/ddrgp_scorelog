@@ -40,6 +40,10 @@ def test_personal_score_db_schema_creates_formal_tables_and_metadata() -> None:
             == list(score_schema.PERSONAL_SCORE_DB_PLAYS_COLUMNS)
         )
         assert (
+            table_column_names(connection, "source_captures")
+            == list(score_schema.PERSONAL_SCORE_DB_SOURCE_CAPTURE_COLUMNS)
+        )
+        assert (
             table_column_names(connection, "analysis_logs")
             == list(score_schema.PERSONAL_SCORE_DB_ANALYSIS_LOG_COLUMNS)
         )
@@ -1146,5 +1150,40 @@ def test_personal_score_db_plays_keeps_preview_and_raw_candidate_columns_out() -
 def test_personal_score_db_analysis_logs_hold_review_status_not_save_values() -> None:
     log_columns = set(score_schema.PERSONAL_SCORE_DB_ANALYSIS_LOG_COLUMNS)
 
-    assert {"identity_signal_status", "digit_review_status", "skip_reason"} <= log_columns
-    assert {"score", "chart_id", "recognized_digits"}.isdisjoint(log_columns)
+    assert {
+        "source_capture_id",
+        "identity_signal_status",
+        "digit_review_status",
+        "skip_reason",
+        "analysis_summary_json",
+        "log_path",
+    } <= log_columns
+    assert {
+        "score",
+        "chart_id",
+        "recognized_digits",
+        "diagnostic",
+        "diagnostic_output_path",
+    }.isdisjoint(log_columns)
+
+
+def test_personal_score_db_source_captures_hold_frame_references_not_logs() -> None:
+    source_capture_columns = set(score_schema.PERSONAL_SCORE_DB_SOURCE_CAPTURE_COLUMNS)
+
+    assert {
+        "capture_id",
+        "capture_hash",
+        "captured_at",
+        "source_kind",
+        "source_path",
+        "manifest_image_path",
+        "frame_index",
+    } <= source_capture_columns
+    assert {
+        "analysis_status",
+        "skip_reason",
+        "analysis_summary_json",
+        "log_path",
+        "diagnostic",
+        "diagnostic_output_path",
+    }.isdisjoint(source_capture_columns)

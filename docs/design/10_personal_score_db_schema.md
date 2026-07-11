@@ -93,6 +93,8 @@ M8 preview最小 `plays` は以下の用途に限定する。
 
 `analysis_logs` は保存判定の説明と再調査の入口であり、正式保存値を二重管理する場所ではない。OCR raw、M5 identity signal、M7a recognized digits などの詳細材料をどこまでJSONに含めるかは、低信頼度ログ本番仕様の段階で決める。
 
+`analysis_logs.log_path` は将来の本番解析ログ、低信頼度ログ、または詳細JSONL/Markdownの参照先を残すための列である。`--personal-score-db-diagnostic-log-output` が出す `event_type=personal_score_db_diagnostic` のJSONLは、正式DBファイルを開く前後のDB診断ログであり、`analysis_logs` の本番解析ログや低信頼度ログとして読まない。将来の低信頼度ログ本番仕様は、diagnostic JSONLとは別ファイルにし、同じJSONLへ `event_type` だけで混在させない方針で進める。
+
 ## Source Capture Reference
 
 `source_captures` は、保存またはスキップ判断の元になったフレーム参照を保持する。
@@ -109,6 +111,8 @@ M8 preview最小 `plays` は以下の用途に限定する。
 - `created_at`
 
 画像そのものはGit管理しない。正式アプリではローカルアプリデータ配下またはログディレクトリに置き、DBにはhashと参照だけを残す方針にする。
+
+`source_captures` はフレームやキャプチャの参照を保持するtableであり、解析ログ本文、DB診断ログ、低信頼度ログ本文を持たない。`plays.source_capture_id` と `analysis_logs.source_capture_id` は同じ capture reference を指せるが、`source_path` / `manifest_image_path` は入力フレーム参照であり、`analysis_logs.log_path` や diagnostic JSONL のパスとは別物として扱う。
 
 ## Metadata と Migration
 
@@ -156,7 +160,7 @@ CLI表示入口は `python -m tools.vision_poc --personal-score-db-diagnostic <p
 
 `--personal-score-db-diagnostic-output <path>` は、標準出力と同じ診断をファイルへ残す軽い生成物入口である。出力先は `data/` 配下だけを許可し、format と拡張子の不一致を拒否する。Markdown は `.md` / `.markdown`、JSON は `.json` だけを許可する。`prepare-write` modeで新規DBを初期化する場合も、診断ファイルはDB pathとは独立に明示指定された `data/` 配下へだけ保存する。この入口は診断結果の保存であり、解析ログ本番保存、本番insert、自動migrationには進まない。
 
-`--personal-score-db-diagnostic-log-output <path>` は、同じdiagnostic dictを `logs/` 配下のJSONLへappendする解析ログ入口である。1回のCLI実行につき1行だけ追加し、`log_schema_version=1`、`event_type=personal_score_db_diagnostic`、mode、format、exit code相当status、対象DB path、diagnostic output path、diagnostic dictを記録する。これらのkeyは必須で、書き込み前に schema version、event type、mode、format、status、exit code、`diagnostic.is_compatible` との整合を検査する。log output先は `.jsonl` に限定し、`logs/` 外指定や拡張子不一致は `prepare-write` のDB作成・初期化より前に拒否する。log outputは診断を記録するだけで、本番insert、既定自動保存、既存DB migration、低信頼度ログ本番保存、source capture保存には進まない。
+`--personal-score-db-diagnostic-log-output <path>` は、同じdiagnostic dictを `logs/` 配下のJSONLへappendするDB診断ログ入口である。1回のCLI実行につき1行だけ追加し、`log_schema_version=1`、`event_type=personal_score_db_diagnostic`、mode、format、exit code相当status、対象DB path、diagnostic output path、diagnostic dictを記録する。これらのkeyは必須で、書き込み前に schema version、event type、mode、format、status、exit code、`diagnostic.is_compatible` との整合を検査する。log output先は `.jsonl` に限定し、`logs/` 外指定や拡張子不一致は `prepare-write` のDB作成・初期化より前に拒否する。log outputはDB診断を記録するだけで、`analysis_logs.log_path` が将来参照する本番解析ログではなく、本番insert、既定自動保存、既存DB migration、低信頼度ログ本番保存、source capture保存には進まない。
 
 互換チェックの主な拒否理由は以下。
 
@@ -200,7 +204,7 @@ metadata identity は `created_by`、`schema_name`、`schema_contract_scope`、`
 - `play_id` と `duplicate_key` の本格生成方式。
 - `rank` / `clear_type` 未取得時の保存可否。
 - OCR raw、normalized、M5候補観測、M7a候補値の詳細ログ粒度。
-- 低信頼度ログと失敗画像をDB内tableへ寄せるか、JSONログ参照に留めるか。
+- 低信頼度ログと失敗画像をDB内tableへ寄せるか、diagnostic JSONLとは別のJSONログ参照に留めるか。
 - マスタDBの互換方針が固まった後の `master_version` と `song_id` / `chart_id` の扱い。
 
 ## 回帰ガード
@@ -212,3 +216,4 @@ metadata identity は `created_by`、`schema_name`、`schema_contract_scope`、`
 - 同テストはファイルパス境界として、新規DBファイルと0 byte空ファイルだけ正式schemaへ初期化でき、compatible DBは変更せず、M8 preview DB、unknown DB、metadata identity mismatch、manual migration候補、非SQLiteファイル、ディレクトリを自動変更しないことを固定する。
 - 同テストは compatible、空DB、M8 preview DB、unknown DB、manual migration候補のdiagnostic dict / Markdown表示を固定し、拒否理由、必須table欠落、metadata identity、path情報、ファイル準備summaryを人間が読める形に保つ。
 - 同テストは preview列、M7a raw候補、OCR raw/normalized が正式 `plays` に混入しないことを確認する。
+- 同テストは `source_captures` がフレーム参照列だけを持ち、`analysis_logs.log_path` や diagnostic JSONL と混同しないことを確認する。
