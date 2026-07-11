@@ -14,8 +14,8 @@
 
 - 指定された作業は、1つのレビュー可能かつmerge可能なPRとして完成させるまで自走する。
 - 作業開始時に、依頼内容、`docs/next-task.md`、関連設計docsから、PRの目的、成果物、完了条件、スコープ外を確認する。
-- 既存資料から一意に判断できる事項はユーザーへ再確認しない。
-- 主実装後も、必要なテスト、README・設計docs同期、セルフレビュー、修正、全体検証、diff確認まで続行する。
+- 既存資料から一意に判断できる事項は、ユーザーへ再確認しない。
+- 主実装後も、必要なテスト、README・設計docs同期、セルフレビュー、修正、検証、diff確認まで続行する。
 - テスト失敗、lint失敗、fixture不足、今回変更による文書不整合は、安全に解決できる限りユーザーへ戻さず修正する。
 - 追加変更は、次をすべて満たす場合だけ同じPRへ含める。
   - 現在のPR目的とタイトルのまま説明できる。
@@ -79,19 +79,52 @@
 - モデルと推論レベルはCodexの実行設定であり、本文だけでは自動切替されない。
 - 通常の実装、テスト追加、README・設計docs同期、既存契約に沿った回帰修正は `GPT-5.6 Sol / medium` を基準とする。
 - 既存方針に沿う低リスクの小規模変更は `GPT-5.6 Terra / medium` も選択肢とする。
-- `high` は、正式DB schema、migration、保存境界、transaction、並行性、難しい原因調査、複数設計文書の矛盾解消、最終監査など、追加推論による品質向上が期待できる作業に使う。
+- `GPT-5.6 Luna` は、限定的な検索、定型確認、低リスクの単純変更に限る。
+- `high` は、正式DB schema、migration、保存境界、transaction、並行性、難しい原因調査、複数設計文書の矛盾解消、最終監査など、追加推論の価値が明確な作業に使う。
 - `xhigh` または `max` は、代表的な作業で `high` より明確な品質向上が確認できる場合か、最も難しい品質優先作業に限定する。
 - 推論レベルを上げることを、タスク範囲を広げる理由にしない。
-- モデル名や推論レベルをアプリ本体のAPI model ID、依存関係、実装設定へ混入させない。
+- モデル名や推論レベルを、アプリ本体のAPI model ID、依存関係、実装設定へ混入させない。
+
+## Validation Policy
+
+- 実装中は、変更箇所に直接関係する最小の対象テストを優先する。
+- PR完成前に、変更した責務とその直接依存を対象とする影響範囲テストを実行する。
+- コード変更を含むPRでは、原則としてRuff、構文検査、`git diff --check` を実行する。
+- 全テストは常に必須とはしない。次の場合にPR完成前に1回実行する。
+  - 共通runner、CLI option解析、共通loaderを変更した。
+  - 正式DB schema、writer、transaction、duplicate処理を変更した。
+  - 共通fixtureまたは複数モジュールへ影響するhelperを変更した。
+  - 対象テストで予期しない回帰が見つかった。
+  - 依存関係、`pyproject.toml`、共通テスト設定を変更した。
+  - read-onlyレビューで影響範囲が想定より広いと判断した。
+  - マイルストーンの区切り、または明示的な全体検証要求がある。
+- `python -m tools.vision_poc` は、次に影響する変更時だけ実行する。
+  - 画像分類
+  - ROI
+  - OCRまたはdigit recognition
+  - profile評価
+  - confirmed-events生成
+  - PoC runner全体
+  - PoC出力集計またはreport生成
+  - 画像処理に影響する共通コード
+- 条件付きの全テストやVision PoCを省略した場合は、完了報告に省略理由と残るリスクを記載する。
+- テスト件数の増減自体を失敗とみなさない。既存テストの意図しない削除、skip、失敗がないことを確認する。
+- `pytest_chalice` 由来の `pkg_resources` deprecated warningは、既知warningとしてテスト失敗と区別する。
 
 ## Development Commands
 
 基本検証:
 
 ```powershell
+python -m ruff check tools\vision_poc pyproject.toml tests
+python -m compileall master tools\vision_poc
+git diff --check
+```
+
+Vision PoC変更時:
+
+```powershell
 python -m tools.vision_poc
-python -m ruff check tools\vision_poc pyproject.toml
-python -m compileall tools\vision_poc
 ```
 
 PoC用の画像処理依存がない環境では次を使う。ただし、現状のフラット構成では `python -m pip install -e ".[dev]"` がsetuptoolsの自動パッケージ探索で失敗する可能性がある。
@@ -162,7 +195,7 @@ python -m pip install --user "ruff>=0.9.0"
 python -X utf8 "$env:USERPROFILE\.codex\skills\.system\skill-creator\scripts\quick_validate.py" ".agents\skills\review-ddrgp-db-save-boundary"
 ```
 
-- 実装後はbranch diffをread-onlyでレビューする。利用可能なら `/review` を使い、DB保存境界Skillの観点を適用する。
+- 実装後はbranch diffをread-onlyでレビューする。利用可能なら `/review` を使い、関連Skillの観点を適用する。
 - 重大度medium以上の指摘は、現在のPR範囲内なら修正して再検証する。範囲外なら次PR候補へ送る。
 - read-onlyサブエージェントは、diffレビュー、テストギャップ調査、READMEとCLIの整合確認に限って必要時に使う。
 - 実装変更は原則として親エージェントが統合して行う。
@@ -175,6 +208,7 @@ python -X utf8 "$env:USERPROFILE\.codex\skills\.system\skill-creator\scripts\qui
 - 変更した責務と主要ファイル
 - 維持した不変条件
 - 実行した検証と結果
+- 省略した条件付き検証、その理由、残るリスク
 - セルフレビュー結果
 - 未解決事項と次PR候補
 - コミットSHA、push先branch、作成したPR
