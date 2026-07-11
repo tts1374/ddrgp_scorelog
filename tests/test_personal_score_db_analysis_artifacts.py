@@ -8,9 +8,16 @@ import pytest
 
 from tools.vision_poc import personal_score_db_analysis_artifacts as artifacts
 from tools.vision_poc import personal_score_db_save as score_save
-from tools.vision_poc import runner
 
 FIXTURE_ROOT = Path(__file__).parent / "fixtures/personal_score_db_analysis_artifacts"
+
+
+def _vision_runner() -> object:
+    pytest.importorskip("numpy")
+    pytest.importorskip("PIL")
+    from tools.vision_poc import runner
+
+    return runner
 
 
 def _fixture(name: str) -> dict[str, object]:
@@ -277,7 +284,7 @@ def test_explicit_cli_creates_one_artifact_without_other_side_effects(
     input_path = (FIXTURE_ROOT / "low-confidence-v1.json").resolve()
     output_path = "logs/analysis_details/manual/detail.json"
 
-    exit_code = runner.main(
+    exit_code = _vision_runner().main(
         [
             "--personal-score-db-analysis-detail-input",
             str(input_path),
@@ -304,7 +311,7 @@ def test_explicit_cli_rejects_existing_output_before_reading_input(
     output.parent.mkdir(parents=True)
     output.write_text("keep\n", encoding="utf-8", newline="\n")
 
-    exit_code = runner.main(
+    exit_code = _vision_runner().main(
         [
             "--personal-score-db-analysis-detail-input",
             "missing-input.json",
@@ -351,7 +358,7 @@ def test_explicit_cli_rejects_invalid_options_before_side_effects(
 ) -> None:
     monkeypatch.chdir(tmp_path)
     input_path = (FIXTURE_ROOT / "low-confidence-v1.json").resolve()
-    exit_code = runner.main(
+    exit_code = _vision_runner().main(
         ["--personal-score-db-analysis-detail-input", str(input_path), *args]
     )
 
