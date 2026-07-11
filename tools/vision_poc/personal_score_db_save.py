@@ -5,6 +5,7 @@ import sqlite3
 from dataclasses import dataclass, replace
 from datetime import datetime
 
+from .personal_score_db_analysis_artifacts import validate_analysis_detail_log_path
 from .personal_score_db_schema import prepare_personal_score_db_for_write
 
 PERSONAL_SCORE_DB_WRITABLE_SOURCE_KINDS = (
@@ -138,6 +139,10 @@ def personal_score_db_save_input_errors(
         allow_none=True,
     )
     _validate_summary_json(errors, analysis.analysis_summary_json)
+    try:
+        validate_analysis_detail_log_path(analysis.log_path)
+    except ValueError:
+        errors.append("analysis.log_path_invalid")
 
     if analysis.source_capture_id != source.capture_id:
         errors.append("analysis.source_capture_id_mismatch")

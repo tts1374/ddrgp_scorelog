@@ -424,7 +424,9 @@ M5完了時点で固定すること:
 
 やること:
 
-- 低信頼度analysisの詳細JSONと失敗画像の保存先、保持期間、`analysis_logs.log_path` の参照契約を決める。
+- 2026-07-12時点で、低信頼度/error analysisのversion 1詳細JSON、`logs/analysis_details/` と `logs/analysis_failures/` の相対path境界、7日/30日/期限なしのretention metadataをpure contractとfixtureで固定した。正式play値、receipt、DB diagnosticを混入させず、自動生成・削除・save連鎖は行わない。
+- analysis artifact contractを使う明示ファイル生成入口と、save workflowへの接続可否を検討する。
+- 正式個人スコアDBのmigration方針、backup前提、互換version遷移を設計する。
 - マイグレーション方針を決める。
 
 完了条件:
