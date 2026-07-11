@@ -66,6 +66,67 @@ M7/M8 preview材料から正式保存入力へ進めるpure adapterは `tools.vi
 
 単発CLI保存は、保存先と入力を明示した場合だけ実行します。通常PoCやtimestamped/manifest runnerからは呼びません。
 
+### 人手主導の最小レビューworkflow
+
+template、validation receipt、正式保存、DB diagnosticは独立した明示操作です。次のPowerShell例では、Git管理外の `data/` 配下に入力、receipt、ローカルDBを置きます。
+
+```powershell
+$reviewInput = "data\personal_score_db\review-input-v1.json"
+$receipt = "data\personal_score_db\validation-receipt-ready.json"
+$scoreDb = "data\personal_score_db\ddrgp-scores.sqlite"
+```
+
+1. 空templateを新規生成します。
+
+```powershell
+python -m tools.vision_poc `
+  --personal-score-db-save-input-template $reviewInput
+```
+
+2. templateをローカルで開き、人手で正式値を確認・入力して保存します。
+
+```powershell
+notepad.exe $reviewInput
+```
+
+`source_captures` / `analysis_logs` 相当のtop-level値と、timezone付き `played_at`、`master_version`、曲・譜面ID、8個の数字、`rank`、`clear_type`、正式 `duplicate_key` を持つ `formal_play` を利用者が確認します。候補値、preview値、metadata値、相対時刻を正式値へ暗黙昇格させてはいけません。実保存前にも、この正式入力JSONが意図した内容であることを利用者が確認してください。
+
+3. 編集済み入力をvalidationし、receiptを新規生成します。
+
+```powershell
+python -m tools.vision_poc `
+  --personal-score-db-save-input-validate $reviewInput `
+  --personal-score-db-save-input-validate-output $receipt
+```
+
+4. receipt内容を確認します。
+
+```powershell
+Get-Content -Raw -Encoding UTF8 $receipt
+```
+
+未編集templateは `adapter_status=unresolved`、`save_input_constructed=false` となります。`ready` は、現在の正式入力JSONからsave inputを構築できることだけを意味します。receiptは承認、署名、認可token、保存成功証明ではなく、正式値や候補材料も保持しません。validationはDBを開かないため、DB互換性、DB内duplicate、並行writer、実保存成功を保証しません。receipt生成後に正式入力JSONが変更されていないことも保証しません。
+
+5. receiptとは別に、正式入力JSONと保存先DBの必須ペアを明示して保存します。
+
+```powershell
+python -m tools.vision_poc `
+  --personal-score-db-save-input $reviewInput `
+  --personal-score-db-save-database $scoreDb
+```
+
+save CLIはreceiptを要求、検証、消費、参照しません。receiptを `--personal-score-db-save-input` へ渡しても、正式入力JSONとしては受理されません。validationやreceiptのstatusから保存へ自動遷移せず、この明示save操作だけがDB保存を実行します。
+
+6. 保存後に正式DBのdiagnosticを読み取り専用で確認します。
+
+```powershell
+python -m tools.vision_poc `
+  --personal-score-db-diagnostic $scoreDb `
+  --personal-score-db-diagnostic-format json
+```
+
+diagnosticはDB互換性の確認であり、receiptの承認や保存内容の再validationではありません。
+
 レビューを始める空JSONは、次の単独modeで `data/` 配下の新規 `.json` に1件だけ生成できます。
 
 ```powershell

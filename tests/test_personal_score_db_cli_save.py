@@ -41,6 +41,109 @@ def assert_validation_has_no_output_side_effects(tmp_path: Path) -> None:
     assert not (tmp_path / "formal.sqlite").exists()
 
 
+def test_human_review_workflow_from_template_to_explicit_save(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ready_fixture = fixture_input()
+    monkeypatch.chdir(tmp_path)
+    input_path = Path("data/personal_score_db/review-input-v1.json")
+    unresolved_receipt_path = Path(
+        "data/personal_score_db/validation-receipt-unresolved.json"
+    )
+    ready_receipt_path = Path("data/personal_score_db/validation-receipt-ready.json")
+    db_path = Path("data/personal_score_db/ddrgp-scores.sqlite")
+
+    assert (
+        runner.main(["--personal-score-db-save-input-template", str(input_path)])
+        == 0
+    )
+    capsys.readouterr()
+
+    unresolved_exit_code = runner.main(
+        [
+            "--personal-score-db-save-input-validate",
+            str(input_path),
+            "--personal-score-db-save-input-validate-output",
+            str(unresolved_receipt_path),
+        ]
+    )
+
+    assert unresolved_exit_code == 1
+    unresolved_result = json.loads(capsys.readouterr().out)
+    assert unresolved_result["adapter_status"] == "unresolved"
+    assert unresolved_result["save_input_constructed"] is False
+    assert json.loads(unresolved_receipt_path.read_text(encoding="utf-8")) == (
+        unresolved_result
+    )
+    assert not db_path.exists()
+    assert not (tmp_path / "logs").exists()
+
+    reviewed_input = json.loads(input_path.read_text(encoding="utf-8"))
+    reviewed_input.update(ready_fixture)
+    input_path.write_text(
+        json.dumps(reviewed_input, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    ready_exit_code = runner.main(
+        [
+            "--personal-score-db-save-input-validate",
+            str(input_path),
+            "--personal-score-db-save-input-validate-output",
+            str(ready_receipt_path),
+        ]
+    )
+
+    assert ready_exit_code == 0
+    ready_result = json.loads(capsys.readouterr().out)
+    assert ready_result == {
+        "validation_result_schema_version": 1,
+        "input_path": str(input_path),
+        "adapter_status": "ready",
+        "save_input_constructed": True,
+        "reasons": [],
+    }
+    assert json.loads(ready_receipt_path.read_text(encoding="utf-8")) == ready_result
+    assert not db_path.exists()
+    assert not (tmp_path / "logs").exists()
+
+    rejected_receipt_db_path = tmp_path / "receipt-must-not-be-save-input.sqlite"
+    assert (
+        runner.main(
+            [
+                "--personal-score-db-save-input",
+                str(ready_receipt_path),
+                "--personal-score-db-save-database",
+                str(rejected_receipt_db_path),
+            ]
+        )
+        == 2
+    )
+    rejected_result = json.loads(capsys.readouterr().err)
+    assert rejected_result["adapter_status"] == "invalid"
+    assert not rejected_receipt_db_path.exists()
+
+    ready_receipt_path.unlink()
+    save_exit_code = runner.main(
+        [
+            "--personal-score-db-save-input",
+            str(input_path),
+            "--personal-score-db-save-database",
+            str(db_path),
+        ]
+    )
+
+    assert save_exit_code == 0
+    save_result = json.loads(capsys.readouterr().out)
+    assert save_result["adapter_status"] == "ready"
+    assert save_result["written"] is True
+    assert row_counts(db_path) == (1, 1, 1)
+    assert not (tmp_path / "logs").exists()
+
+
 def test_template_cli_creates_loader_compatible_unresolved_review_input(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
