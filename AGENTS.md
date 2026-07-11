@@ -18,6 +18,17 @@
 - 実装に入らずdocs整理だけで終える必要がある場合は、コミット前にその理由を明示する。
 - `docs/next-task.md` は、実装・検証が終わった後の引き継ぎ更新として扱う。
 
+## Model And Reasoning Guidance
+
+- `docs/next-task.md` には、次チャット向けの `推奨モデル` と `推論レベル` を分けて記載する。
+- モデルと推論レベルはCodexのモデルピッカーでユーザーが選ぶ実行設定であり、`AGENTS.md` や `docs/next-task.md` の本文だけでは自動切替されない。
+- 次チャットの既定推奨は `GPT-5.6 Sol / high` とする。保存境界、DB schema、OCR採用判断、複数設計文書にまたがる変更など、品質優先の作業に使う。
+- 既存方針に沿う小規模な実装、テスト追加、README/docs更新は `GPT-5.6 Terra / high` でもよい。
+- `GPT-5.6 Luna` は、限定的な検索、定型確認、低リスクの単純変更に限る。後続作業全体の既定にはしない。
+- `max` は、広範な設計変更、難しい原因調査、最終レビューなど、追加推論の価値が明確な場合だけ推奨する。通常の後続作業は `high` を維持する。
+- 開始時の選択モデルが推奨と異なっても、エージェントはモデルを自動変更できない。相違だけを理由に作業を止めず、品質上の懸念がある場合は高リスクな判断へ入る前にユーザーへ明示する。
+- モデル名や推論レベルはCodex実行環境の指定として扱い、アプリ本体のAPI model ID、依存関係、実装設定へ混入させない。
+
 ## Development Commands
 
 基本検証:
@@ -91,11 +102,13 @@ python -m pip install --user "ruff>=0.9.0"
 
 ## Skills And Subagents
 
-- 現時点ではプロジェクト専用SkillやSubagentは作らない。
-- まずはこの `AGENTS.md` と `docs/design/` で運用ルールを育て、安定した反復作業になってからSkill化を検討する。
+- DB保存境界レビューSkillとして `.agents/skills/review-ddrgp-db-save-boundary/SKILL.md` を使う。
+- M7/M8の保存判定、正式個人スコアDB schema/保存入力、duplicate、DB diagnostic、低信頼度ログ、`source_captures`、`analysis_logs` を変更またはレビューするときに呼び出す。
+- Skillを変更したら、`python -X utf8 "$env:USERPROFILE\.codex\skills\.system\skill-creator\scripts\quick_validate.py" ".agents\skills\review-ddrgp-db-save-boundary"` で構造を検証する。
+- 追加のプロジェクト専用SkillやSubagentは、対象作業が独立した反復手順として安定してから作る。
 - confirmed-events OCR評価Skill: M2完了後、summary / coverage / profile report の読み方が安定した時点で検討する。
 - OCR/profile調整レビューSkill: 前処理profileやROI別採用判断のレビュー観点が増えた時点で検討する。
 - マスタ照合Skill: M5で曲名正規化、譜面候補絞り込み、曖昧一致の判断が独立して大きくなった時点で検討する。
-- DB保存境界レビューSkill: M7/M8で保存可否、低確信度ログ、重複防止、個人スコアDB保存のレビュー観点が固まった時点で検討する。
+- DB保存境界レビューSkill: M7/M8で固まったレビュー観点を初版Skillへ反映済み。実運用で不足した境界だけを小さく追記する。
 - 実キャプチャSkill: M6以降、本番キャプチャAPIやmanifest互換dry-run出力の作業が独立して大きくなった時点で検討する。
 - 追加する場合は、このファイルに用途、呼び出しタイミング、検証コマンドを追記する。

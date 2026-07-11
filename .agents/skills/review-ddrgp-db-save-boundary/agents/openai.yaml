@@ -1,0 +1,4 @@
+interface:
+  display_name: "DDRGP DB Save Boundary Review"
+  short_description: "Review DDRGP save, log, and source-capture boundaries"
+  default_prompt: "Use $review-ddrgp-db-save-boundary to review this DDRGP DB save-boundary change."

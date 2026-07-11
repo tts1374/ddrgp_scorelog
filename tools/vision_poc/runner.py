@@ -8,6 +8,7 @@ import re
 import shutil
 import sqlite3
 import subprocess
+import sys
 import tempfile
 from collections.abc import Iterable
 from dataclasses import asdict, dataclass
@@ -17,6 +18,12 @@ import numpy as np
 from PIL import Image, ImageFilter, ImageOps
 
 from . import master_match
+from . import personal_score_db_schema as score_schema
+from .personal_score_db_cli_save import (
+    emit_personal_score_db_save_input_validation_invalid,
+    run_personal_score_db_save_cli,
+    run_personal_score_db_save_input_validation_cli,
+)
 
 BASE_WIDTH = 1280
 BASE_HEIGHT = 720
@@ -26,6 +33,27 @@ DUPLICATE_WINDOW_FRAMES = 90
 DUPLICATE_WINDOW_MS = 90_000
 FRAME_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
 OCR_TARGET_MODES = ("result-candidate", "confirmed-events")
+PERSONAL_SCORE_DB_DIAGNOSTIC_OUTPUT_SUFFIXES = {
+    "markdown": (".md", ".markdown"),
+    "json": (".json",),
+}
+PERSONAL_SCORE_DB_DIAGNOSTIC_MODES = ("inspect", "prepare-write")
+PERSONAL_SCORE_DB_DIAGNOSTIC_FORMATS = ("markdown", "json")
+PERSONAL_SCORE_DB_DIAGNOSTIC_LOG_SCHEMA_VERSION = 1
+PERSONAL_SCORE_DB_DIAGNOSTIC_LOG_EVENT_TYPE = "personal_score_db_diagnostic"
+PERSONAL_SCORE_DB_DIAGNOSTIC_LOG_SUFFIXES = (".jsonl",)
+PERSONAL_SCORE_DB_DIAGNOSTIC_LOG_STATUSES = ("compatible", "rejected")
+PERSONAL_SCORE_DB_DIAGNOSTIC_LOG_REQUIRED_KEYS = (
+    "log_schema_version",
+    "event_type",
+    "mode",
+    "format",
+    "exit_code",
+    "status",
+    "db_path",
+    "diagnostic_output_path",
+    "diagnostic",
+)
 
 
 ROI_DEFINITIONS: dict[str, tuple[int, int, int, int]] = {
@@ -817,6 +845,14 @@ def ensure_data_output_path(path: Path, *, argument_name: str) -> None:
     if resolved_path == data_root or data_root in resolved_path.parents:
         return
     raise ValueError(f"{argument_name} must be under data/: {path}")
+
+
+def ensure_logs_output_path(path: Path, *, argument_name: str) -> None:
+    logs_root = (Path.cwd() / "logs").resolve()
+    resolved_path = path.resolve()
+    if resolved_path == logs_root or logs_root in resolved_path.parents:
+        return
+    raise ValueError(f"{argument_name} must be under logs/: {path}")
 
 
 def iter_dry_run_capture_frames(frame_root: Path, fps: float) -> Iterable[DryRunCaptureFrame]:
@@ -9312,6 +9348,268 @@ def print_summary(summary: dict[str, object], output_dir: Path) -> None:
     )
 
 
+def open_sqlite_readonly(path: Path) -> sqlite3.Connection:
+    uri = f"{path.resolve().as_uri()}?mode=ro"
+    return sqlite3.connect(uri, uri=True)
+
+
+def personal_score_db_cli_error_diagnostic(
+    path: Path,
+    *,
+    reason: str,
+) -> dict[str, object]:
+    return {
+        "path": str(path),
+        "schema_name": score_schema.PERSONAL_SCORE_DB_SCHEMA_NAME,
+        "expected_schema_version": score_schema.PERSONAL_SCORE_DB_SCHEMA_VERSION,
+        "user_version": "",
+        "is_compatible": False,
+        "migration_plan_status": "reject_unknown_database",
+        "migration_plan_reason": reason,
+        "compatibility_errors": [reason],
+        "required_tables": {
+            "present": [],
+            "missing": list(score_schema.PERSONAL_SCORE_DB_REQUIRED_TABLES),
+        },
+        "metadata_identity": {
+            key: {
+                "expected": score_schema.PERSONAL_SCORE_DB_METADATA[key],
+                "actual": "",
+                "status": "missing",
+            }
+            for key in score_schema.PERSONAL_SCORE_DB_IDENTITY_METADATA_KEYS
+        },
+        "metadata": {},
+        "table_names": [],
+    }
+
+
+def inspect_personal_score_db_file_for_cli(path: Path) -> dict[str, object]:
+    if path.is_dir():
+        return personal_score_db_cli_error_diagnostic(
+            path,
+            reason="path_is_directory",
+        )
+    if not path.exists():
+        return personal_score_db_cli_error_diagnostic(
+            path,
+            reason="path_does_not_exist",
+        )
+    try:
+        with open_sqlite_readonly(path) as connection:
+            inspection = score_schema.inspect_personal_score_db_schema(connection)
+    except sqlite3.DatabaseError:
+        return personal_score_db_cli_error_diagnostic(
+            path,
+            reason="invalid_sqlite_database",
+        )
+    return score_schema.personal_score_db_schema_inspection_diagnostic(
+        inspection,
+        path=path,
+    )
+
+
+def prepare_personal_score_db_file_for_cli(path: Path) -> dict[str, object]:
+    try:
+        result = score_schema.prepare_personal_score_db_file_for_write(path)
+    except ValueError:
+        return inspect_personal_score_db_file_for_cli(path)
+    return score_schema.personal_score_db_file_preparation_diagnostic(result)
+
+
+def format_personal_score_db_diagnostic_for_cli(
+    diagnostic: dict[str, object],
+    *,
+    output_format: str,
+) -> str:
+    if output_format == "json":
+        return f"{json.dumps(diagnostic, ensure_ascii=False, indent=2)}\n"
+    return score_schema.format_personal_score_db_schema_diagnostic_markdown(diagnostic)
+
+
+def validate_personal_score_db_diagnostic_output_path(
+    path: Path,
+    *,
+    output_format: str,
+) -> None:
+    ensure_data_output_path(
+        path,
+        argument_name="--personal-score-db-diagnostic-output",
+    )
+    allowed_suffixes = PERSONAL_SCORE_DB_DIAGNOSTIC_OUTPUT_SUFFIXES[output_format]
+    if path.suffix.lower() in allowed_suffixes:
+        return
+    joined_suffixes = ", ".join(allowed_suffixes)
+    raise ValueError(
+        "--personal-score-db-diagnostic-output extension must match "
+        "--personal-score-db-diagnostic-format "
+        f"{output_format}: expected {joined_suffixes}"
+    )
+
+
+def write_personal_score_db_diagnostic_output(
+    path: Path,
+    *,
+    text: str,
+    output_format: str,
+) -> None:
+    validate_personal_score_db_diagnostic_output_path(
+        path,
+        output_format=output_format,
+    )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8", newline="\n")
+
+
+def validate_personal_score_db_diagnostic_log_output_path(path: Path) -> None:
+    ensure_logs_output_path(
+        path,
+        argument_name="--personal-score-db-diagnostic-log-output",
+    )
+    if path.suffix.lower() in PERSONAL_SCORE_DB_DIAGNOSTIC_LOG_SUFFIXES:
+        return
+    joined_suffixes = ", ".join(PERSONAL_SCORE_DB_DIAGNOSTIC_LOG_SUFFIXES)
+    raise ValueError(
+        "--personal-score-db-diagnostic-log-output extension must be JSONL: "
+        f"expected {joined_suffixes}"
+    )
+
+
+def personal_score_db_diagnostic_log_record(
+    diagnostic: dict[str, object],
+    *,
+    db_path: Path,
+    mode: str,
+    output_format: str,
+    diagnostic_output_path: Path | None,
+    exit_code: int,
+) -> dict[str, object]:
+    return {
+        "log_schema_version": PERSONAL_SCORE_DB_DIAGNOSTIC_LOG_SCHEMA_VERSION,
+        "event_type": PERSONAL_SCORE_DB_DIAGNOSTIC_LOG_EVENT_TYPE,
+        "mode": mode,
+        "format": output_format,
+        "exit_code": exit_code,
+        "status": "compatible" if exit_code == 0 else "rejected",
+        "db_path": str(db_path),
+        "diagnostic_output_path": (
+            str(diagnostic_output_path) if diagnostic_output_path is not None else ""
+        ),
+        "diagnostic": diagnostic,
+    }
+
+
+def personal_score_db_diagnostic_log_schema_errors(
+    record: dict[str, object],
+) -> list[str]:
+    errors: list[str] = []
+    for key in PERSONAL_SCORE_DB_DIAGNOSTIC_LOG_REQUIRED_KEYS:
+        if key not in record:
+            errors.append(f"missing_key:{key}")
+
+    if record.get("log_schema_version") != PERSONAL_SCORE_DB_DIAGNOSTIC_LOG_SCHEMA_VERSION:
+        errors.append("log_schema_version_mismatch")
+    if record.get("event_type") != PERSONAL_SCORE_DB_DIAGNOSTIC_LOG_EVENT_TYPE:
+        errors.append("event_type_mismatch")
+    if record.get("mode") not in PERSONAL_SCORE_DB_DIAGNOSTIC_MODES:
+        errors.append("mode_invalid")
+    if record.get("format") not in PERSONAL_SCORE_DB_DIAGNOSTIC_FORMATS:
+        errors.append("format_invalid")
+
+    exit_code = record.get("exit_code")
+    if exit_code not in (0, 1):
+        errors.append("exit_code_invalid")
+
+    status = record.get("status")
+    if status not in PERSONAL_SCORE_DB_DIAGNOSTIC_LOG_STATUSES:
+        errors.append("status_invalid")
+    elif exit_code in (0, 1):
+        expected_status = "compatible" if exit_code == 0 else "rejected"
+        if status != expected_status:
+            errors.append("status_exit_code_mismatch")
+
+    diagnostic = record.get("diagnostic")
+    if not isinstance(diagnostic, dict):
+        errors.append("diagnostic_not_mapping")
+        return errors
+
+    diagnostic_is_compatible = diagnostic.get("is_compatible")
+    if not isinstance(diagnostic_is_compatible, bool):
+        errors.append("diagnostic.is_compatible_missing")
+        return errors
+
+    expected_exit_code = 0 if diagnostic_is_compatible else 1
+    expected_status = "compatible" if diagnostic_is_compatible else "rejected"
+    if exit_code in (0, 1) and exit_code != expected_exit_code:
+        errors.append("exit_code_diagnostic_mismatch")
+    if status in PERSONAL_SCORE_DB_DIAGNOSTIC_LOG_STATUSES and status != expected_status:
+        errors.append("status_diagnostic_mismatch")
+
+    return errors
+
+
+def append_personal_score_db_diagnostic_log_output(
+    path: Path,
+    *,
+    record: dict[str, object],
+) -> None:
+    validate_personal_score_db_diagnostic_log_output_path(path)
+    schema_errors = personal_score_db_diagnostic_log_schema_errors(record)
+    if schema_errors:
+        joined_errors = ", ".join(schema_errors)
+        raise ValueError(
+            "personal score DB diagnostic log record is invalid: "
+            f"{joined_errors}"
+        )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8", newline="\n") as file:
+        file.write(json.dumps(record, ensure_ascii=False, sort_keys=True))
+        file.write("\n")
+
+
+def run_personal_score_db_diagnostic_cli(args: argparse.Namespace) -> int:
+    db_path = args.personal_score_db_diagnostic
+    if args.personal_score_db_diagnostic_output is not None:
+        validate_personal_score_db_diagnostic_output_path(
+            args.personal_score_db_diagnostic_output,
+            output_format=args.personal_score_db_diagnostic_format,
+        )
+    if args.personal_score_db_diagnostic_log_output is not None:
+        validate_personal_score_db_diagnostic_log_output_path(
+            args.personal_score_db_diagnostic_log_output
+        )
+    if args.personal_score_db_diagnostic_mode == "prepare-write":
+        diagnostic = prepare_personal_score_db_file_for_cli(db_path)
+    else:
+        diagnostic = inspect_personal_score_db_file_for_cli(db_path)
+
+    diagnostic_text = format_personal_score_db_diagnostic_for_cli(
+        diagnostic,
+        output_format=args.personal_score_db_diagnostic_format,
+    )
+    if args.personal_score_db_diagnostic_output is not None:
+        write_personal_score_db_diagnostic_output(
+            args.personal_score_db_diagnostic_output,
+            text=diagnostic_text,
+            output_format=args.personal_score_db_diagnostic_format,
+        )
+    exit_code = 0 if diagnostic["is_compatible"] else 1
+    if args.personal_score_db_diagnostic_log_output is not None:
+        append_personal_score_db_diagnostic_log_output(
+            args.personal_score_db_diagnostic_log_output,
+            record=personal_score_db_diagnostic_log_record(
+                diagnostic,
+                db_path=db_path,
+                mode=args.personal_score_db_diagnostic_mode,
+                output_format=args.personal_score_db_diagnostic_format,
+                diagnostic_output_path=args.personal_score_db_diagnostic_output,
+                exit_code=exit_code,
+            ),
+        )
+    print(diagnostic_text, end="")
+    return exit_code
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Evaluate OCR-free DDR GP result screen signals.")
     parser.add_argument(
@@ -9412,6 +9710,77 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=None,
         help="Directory for CSV/JSON logs and cropped ROI images.",
+    )
+    parser.add_argument(
+        "--personal-score-db-diagnostic",
+        type=Path,
+        default=None,
+        help=(
+            "Inspect a formal personal score DB path and print a diagnostic, then exit. "
+            "This does not insert play rows or run migrations."
+        ),
+    )
+    parser.add_argument(
+        "--personal-score-db-diagnostic-mode",
+        choices=PERSONAL_SCORE_DB_DIAGNOSTIC_MODES,
+        default="inspect",
+        help=(
+            "Diagnostic mode. inspect reads an existing DB without initialization; "
+            "prepare-write runs the write-preparation boundary, initializing only a new or "
+            "0 byte empty DB."
+        ),
+    )
+    parser.add_argument(
+        "--personal-score-db-diagnostic-format",
+        choices=PERSONAL_SCORE_DB_DIAGNOSTIC_FORMATS,
+        default="markdown",
+        help="Output format for --personal-score-db-diagnostic.",
+    )
+    parser.add_argument(
+        "--personal-score-db-diagnostic-output",
+        type=Path,
+        default=None,
+        help=(
+            "Optional diagnostic file output under data/. The extension must match "
+            "--personal-score-db-diagnostic-format (.md/.markdown or .json)."
+        ),
+    )
+    parser.add_argument(
+        "--personal-score-db-diagnostic-log-output",
+        type=Path,
+        default=None,
+        help=(
+            "Optional JSONL diagnostic log output under logs/. This appends one "
+            "personal score DB diagnostic record and does not insert play rows."
+        ),
+    )
+    parser.add_argument(
+        "--personal-score-db-save-input",
+        type=Path,
+        default=None,
+        help=(
+            "UTF-8 JSON input for one explicit formal personal score DB save. "
+            "Requires --personal-score-db-save-database and exits without running the PoC."
+        ),
+    )
+    parser.add_argument(
+        "--personal-score-db-save-input-validate",
+        type=Path,
+        default=None,
+        help=(
+            "Strictly load and adapt one formal save input, print a validation result, "
+            "and exit without opening or changing a database. This option cannot be "
+            "combined with any other option."
+        ),
+    )
+    parser.add_argument(
+        "--personal-score-db-save-database",
+        type=Path,
+        default=None,
+        help=(
+            "Formal personal score DB path for --personal-score-db-save-input. "
+            "No default path is used."
+        ),
     )
     parser.add_argument(
         "--timestamp-start-ms",
@@ -9575,7 +9944,57 @@ def resolve_ocr_profiles(values: list[str]) -> tuple[str, ...]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    raw_argv = list(sys.argv[1:] if argv is None else argv)
+    args = build_parser().parse_args(raw_argv)
+    if args.personal_score_db_save_input_validate is not None:
+        mixed_options = sorted(
+            {
+                token.split("=", maxsplit=1)[0]
+                for token in raw_argv
+                if token.startswith("--")
+            }
+            - {"--personal-score-db-save-input-validate"}
+        )
+        if mixed_options:
+            return emit_personal_score_db_save_input_validation_invalid(
+                input_path=args.personal_score_db_save_input_validate,
+                reason=(
+                    "--personal-score-db-save-input-validate cannot be combined with: "
+                    + ", ".join(mixed_options)
+                ),
+            )
+        return run_personal_score_db_save_input_validation_cli(
+            input_path=args.personal_score_db_save_input_validate
+        )
+    save_option_count = sum(
+        value is not None
+        for value in (
+            args.personal_score_db_save_input,
+            args.personal_score_db_save_database,
+        )
+    )
+    if save_option_count == 1:
+        raise ValueError(
+            "--personal-score-db-save-input and "
+            "--personal-score-db-save-database must be specified together"
+        )
+    if save_option_count == 2:
+        if (
+            args.personal_score_db_diagnostic is not None
+            or args.personal_score_db_diagnostic_output is not None
+            or args.personal_score_db_diagnostic_log_output is not None
+            or args.personal_score_db_diagnostic_mode != "inspect"
+            or args.personal_score_db_diagnostic_format != "markdown"
+        ):
+            raise ValueError(
+                "personal score DB save and diagnostic modes are mutually exclusive"
+            )
+        return run_personal_score_db_save_cli(
+            input_path=args.personal_score_db_save_input,
+            db_path=args.personal_score_db_save_database,
+        )
+    if args.personal_score_db_diagnostic is not None:
+        return run_personal_score_db_diagnostic_cli(args)
     if args.capture_dry_run and args.capture_dry_run_scenario is not None:
         raise ValueError("--capture-dry-run and --capture-dry-run-scenario are mutually exclusive")
     if args.m8_score_db_output is not None and not args.m7a_digit_recognition:

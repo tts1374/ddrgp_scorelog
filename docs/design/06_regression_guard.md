@@ -307,6 +307,49 @@
 - file output preview の `created_by_preview` はpreview生成物識別子であり、本番DB保存成功、曲ID/譜面ID確定、保存値確定として扱わない。
 - M5なしで planned rows が0件の場合は、空の `plays` スキーマDB、`preview_metadata`、readback欄、`inserted_count=0` として確認する。
 
+## 正式個人スコアDB diagnostic
+
+- `--personal-score-db-diagnostic` の既定 `inspect` mode は読み取り専用に保つ。
+- `--personal-score-db-diagnostic-mode prepare-write` は新規DBファイルまたは0 byte空ファイルだけ正式初期schemaへ進める。
+- compatible DB、空DB初期化、M8 preview拒否、unknown拒否、manual migration required、非SQLiteファイル、ディレクトリ拒否の診断語彙を維持する。
+- `--personal-score-db-diagnostic-output` は標準出力と同じ診断を `data/` 配下へ保存するだけにする。
+- diagnostic output のMarkdownは `.md` / `.markdown`、JSONは `.json` に限定し、formatと拡張子の不一致を拒否する。
+- diagnostic output の `data/` 外指定はDB準備より前に拒否し、prepare-write対象の新規DBを作らない。
+- `--personal-score-db-diagnostic-log-output` は診断1回につき1行のJSONLを `logs/` 配下へappendするだけにする。
+- diagnostic log output は `.jsonl` に限定し、`logs/` 外指定や拡張子不一致をDB準備より前に拒否し、prepare-write対象の新規DBを作らない。
+- diagnostic log record は `event_type=personal_score_db_diagnostic`、mode、format、exit code相当status、対象DB path、diagnostic output path、diagnostic dictを持つ。
+- diagnostic log record の必須key、schema version、event type、mode、format、exit code、status、`diagnostic.is_compatible` の整合をappend前に検査する。
+- diagnostic log output は複数回appendしても空行を出さず、1行1JSONとして読める状態に保つ。
+- diagnostic output / diagnostic log output は本番insert、自動migration、既定自動保存、低信頼度ログ本番保存、source capture保存として扱わない。
+- diagnostic log output はDB診断ログであり、`analysis_logs.log_path` が将来参照する本番解析ログや低信頼度ログとは別ファイルとして扱う。
+- `source_captures` は元フレーム参照だけを保持し、解析ログ本文、DB診断ログ、低信頼度ログ本文を持たない。
+
+## 正式個人スコアDB save input / transaction
+
+- 正式保存入力はM8 preview payload/rowを直接受け取らず、timezone付き時刻、master version、正式ID、rank、clear type、正式duplicate key、confidence、app versionが確定済みであることを要求する。
+- timestampなしpreviewの `played_at_ms=0`、PoCの `score:` / `file:` duplicate key、`source_kind=unknown` を正式writerへ渡さない。
+- pure adapterは `candidate_material` の `identity_signal_*`、M7a `recognized_digits`、`played_at_ms` / `timestamp_ms` を正式play値へ暗黙昇格せず、正式値不足時に `unresolved` から保存入力を返さない。
+- duplicateと明示された低信頼度/error/skipはadapterで `excluded` となり、`play=None` を維持する。
+- 保存成功は `confirmed_result=true`、`duplicate=false`、`event_type=confirmed`、`analysis_status=saved`、`save_boundary_status=save_ready` に限る。
+- duplicate、低信頼度、error、その他skipは `plays` を作らず、source captureとanalysisだけを記録する。
+- source capture、play、analysisのID/hash/app version/confidenceが一致しない入力はDB準備前に拒否する。
+- `source_captures`、任意の `plays`、`analysis_logs` は1 transactionで書き、途中失敗では同じ呼び出しのrowを残さない。
+- 明示ファイル保存APIはadapterをDB準備より先に実行し、`unresolved` ではDBファイルも親ディレクトリも作らない。
+- 明示ファイル保存APIは新規/0 byte/compatible正式DBだけへ書き、preview / unknown / metadata identity mismatch / manual migration候補 / 非SQLite / ディレクトリを変更せず拒否する。
+- 明示ファイル保存APIの `written=true` はtransaction完了を表し、play rowの有無は `play_id` で区別する。`excluded` を保存成功playへ丸めない。
+- 既存正式playと明示 `duplicate_key` が衝突したready入力は、2件目のplayを作らず `skipped` / `duplicate` / `duplicate_key_already_saved` / `duplicate=true` のanalysisへ変換する。Python API/CLIは `excluded` / `written=true` / `play_id=null` を返す。
+- duplicate collisionのsource capture / analysis IDは新規一意値を要求し、完全同一ID再送を冪等成功へ丸めない。UNIQUE拒否や他のinsert失敗では今回の部分rowを残さない。
+- DB保存直前preflight後の並行writer raceはこの単一プロセスPoCでは制御せず、`plays.duplicate_key` のUNIQUE制約とrollbackを維持する。
+- 単発CLIは入力JSON pathと正式DB pathの必須ペアだけから明示ファイル保存APIを1回呼び、通常PoC、timestamped/manifest runner、`--m8-score-db-output`、既定自動保存へ接続しない。
+- CLI JSON loaderはversion、必須/未知key、nested object/null、厳密な型をadapter前に検査し、boolとintを混同しない。
+- CLI loaderはM5 `identity_signal_*`、M7a `recognized_digits`、`played_at_ms` / `timestamp_ms` を `formal_play` へ暗黙コピーしない。
+- 保存前validation CLIは同じstrict loaderとadapterだけを各1回使い、ready/excluded/unresolved/invalidと終了コード0/0/1/2を固定する。
+- validation結果は入力path、adapter status、save input構築可否、理由だけを返し、正式値や候補材料を再掲しない。
+- validation optionとsave pair、diagnostic、通常PoC/M8 preview optionの混在を副作用前に拒否し、DB、親ディレクトリ、`data/`、`logs/`、diagnostic outputを作らない。
+- validation readyをDB互換性、DB内duplicateなし、並行writer安全性、実保存成功として扱わない。
+- 片方だけのCLI option、入力schema不正、`unresolved` はDB作成・変更前に非0終了する。`ready` / `excluded` だけが終了コード0でtransaction完了し、結果JSONの `play_id` でplay有無を区別する。
+- CLI経由でも新規/0 byte/compatible正式DBだけを許可し、preview / unknown / metadata identity mismatch / manual migration候補 / 非SQLite / ディレクトリを変更せず拒否する。
+
 ## ROI方針
 
 - ROI座標は 1280x720 基準。

@@ -15,7 +15,7 @@ Windows常駐アプリが DDR GRAND PRIX のゲームウィンドウを直接キ
 
 ## 現在地
 
-現在は実キャプチャAPIやDB保存へ入る前の画像解析PoC段階です。
+現在は画像解析PoC、マスタDB生成、マスタ照合PoC、保存判定previewを経て、M8の正式個人スコアDB保存境界へ進んでいます。正式schema、互換検査、DB準備、diagnostic、確定済み入力を使うtransaction writer、明示DB pathへの単発保存API、保存前validation CLIまで実装済みです。
 
 完了済みの主な足場:
 
@@ -44,12 +44,25 @@ Windows常駐アプリが DDR GRAND PRIX のゲームウィンドウを直接キ
 - 常駐監視ループ
 - 非同期処理
 - 曲名、プレースタイル、難易度、レベルの本格OCR
-- マスタDB生成
-- マスタ照合
-- 個人スコアDB保存
+- preview材料と明示的な正式値を分離して正式保存入力を組み立てるpure adapter（実装済み。runner/CLI未接続）
+- 明示指定された新規/0 byte/compatible正式個人スコアDBへの単発実ファイル保存（実装済み。runner/CLI未接続）
 - 低確信度ログと失敗画像の本番保存
 - Windows常駐アプリUI
 - 配布形態
+
+## 直近MVP
+
+常駐監視や実キャプチャの前に、次の縦断経路を最初の利用可能版とする。
+
+```text
+manifestまたはmanual入力
+  -> confirmed event
+  -> 確定済み正式保存入力
+  -> 正式個人スコアDB
+  -> 保存成功または保存除外analysis
+```
+
+2026-07-11時点では、preview候補材料とレビュー済み正式値を分離するpure adapterから、確定済み正式保存入力を経て、明示された新規/0 byte/compatible正式DBファイルへ1件書く契約まで通っている。明示JSON入力と明示DB pathの必須ペアから1回だけ呼ぶCLIに加え、同じstrict loaderとadapterだけを使う保存前validation CLIも追加済みである。既存正式playとのduplicate key衝突は2件目のplayを作らずsource/analysisだけを記録する。通常PoC、timestamped/manifest runner、既定自動保存には接続していない。
 
 ## マイルストーン
 
@@ -391,14 +404,25 @@ M5完了時点で固定すること:
 - file output previewでは、実DB readback由来の `database_schema_version`、`database_preview_metadata`、`database_plays_row_count`、`database_plays_schema_columns` と、metadata / row count / schema の一致診断をJSONとMarkdown reportの両方で確認できる。
 - metadata mismatch、row count mismatch、schema mismatch の負例は実SQLite readback経路で固定済みで、Markdown report上にも mismatch reason がそのまま出ることをfixtureで確認する。
 - 2026-07-09時点でM8 previewは、`m8_save_payload_preview.*`、`m8_planned_play_records.*`、`m8_score_db_write_preview.*`、明示file output preview、readback診断までを一区切りの完了範囲として扱う。
+- 2026-07-10時点で、正式 `ddrgp-scores.sqlite` の初期schema contractを `tools/vision_poc/personal_score_db_schema.py` と `docs/design/10_personal_score_db_schema.md` に追加した。正式 `plays`、`analysis_logs`、`source_captures`、`score_db_metadata`、`schema_migrations` の責務を分け、M8 preview DBを正式個人スコアDBとして拒否する軽量テストを追加済み。これは本番insert実装ではない。
+- 2026-07-10時点で、正式DB検査用の `inspect_personal_score_db_schema()` と `assert_personal_score_db_compatible()` を追加し、空DB、未知DB、M8 preview DB、metadata identity mismatch、必須table欠落、`user_version` mismatch の拒否理由と `migration_plan_status` をテストで固定した。これは互換チェックの入口であり、自動migrationや本番insertではない。
+- 2026-07-10時点で、正式DBオープン前段として `initialize_personal_score_db_if_empty()` と `prepare_personal_score_db_for_write()` を追加した。空DBだけ正式初期schemaを作成し、compatible DBは変更せず、M8 preview DB、unknown DB、metadata identity mismatch、manual migration候補は自動変更しないことをテストで固定した。これは既存DB migrationや本番insertではない。
+- 2026-07-10時点で、正式DBファイルパス境界として `prepare_personal_score_db_file_for_write(path)` を追加した。新規ファイルと0 byte空ファイルだけ正式初期schemaへ進め、既存compatible DBは変更せず、M8 preview DB、unknown DB、metadata identity mismatch、manual migration候補、非SQLiteファイル、ディレクトリを拒否して自動変更しないことをテストで固定した。これは `--m8-score-db-output` のpreview出力とは別であり、本番insertや既定自動保存ではない。
+- 2026-07-10時点で、正式DB inspection / file preparation result をJSON風dictとMarkdownへ投影するdiagnostic関数を追加した。compatible、空DB、M8 preview DB、unknown DB、manual migration候補について、path、`migration_plan_status`、`migration_plan_reason`、拒否理由、必須table欠落、metadata identity、ファイル準備summaryを人間が読める形で固定した。これはCLI表示前の足場であり、本番insert、自動migration、低信頼度ログ本番保存ではない。
+- 2026-07-10時点で、正式DB diagnosticを `python -m tools.vision_poc --personal-score-db-diagnostic <path>` からMarkdownまたはJSON風dictで標準出力へ出せるようにした。既定inspect modeは読み取り専用、`--personal-score-db-diagnostic-mode prepare-write` は新規DBファイルまたは0 byte空ファイルだけ正式初期schemaへ進める。compatible、空DB初期化、M8 preview拒否、unknown拒否、manual migration required、非SQLiteファイル、ディレクトリ拒否をCLI経由テストで固定した。これは本番insert、自動migration、既定自動保存、低信頼度ログ本番保存ではない。
+- 2026-07-10時点で、正式DB diagnosticに `--personal-score-db-diagnostic-output <path>` を追加し、標準出力と同じMarkdown/JSON診断を `data/` 配下へ保存できるようにした。Markdownは `.md` / `.markdown`、JSONは `.json` に限定し、formatと拡張子の不一致や `data/` 外出力は拒否する。これは診断ファイル生成だけであり、本番insert、自動migration、既定自動保存、`logs/` 連携、低信頼度ログ本番保存ではない。
+- 2026-07-10時点で、正式DB diagnosticに `--personal-score-db-diagnostic-log-output <path>` を追加し、診断1回につき1行のJSONLを `logs/` 配下へappendできるようにした。ログレコードはdiagnostic dict、mode、format、exit code相当status、対象DB path、diagnostic output pathを持ち、必須keyと `diagnostic.is_compatible` / exit code / status の整合をappend前に検査する。`.jsonl` 以外や `logs/` 外指定はDB準備より前に拒否する。これは診断ログ入口だけであり、本番insert、自動migration、既定自動保存、低信頼度ログ本番保存、source capture保存ではない。
+- 2026-07-11時点で、`PersonalScoreDbSaveInput` と `write_personal_score_db_save()` を追加した。timezone付き時刻、master version、rank/clear type、正式duplicate key、参照整合を検査し、正常保存はsource/play/analysis、duplicate/低信頼度はsource/analysisだけを1 transactionでin-memory正式DBへinsertする。入力拒否とrollbackもfixtureで固定済み。これは確定済み入力からの最小縦断であり、previewからの自動昇格、実ファイル既定保存、CLI保存ではない。
+- 2026-07-11時点で、`adapt_personal_score_db_save_input()` を追加した。M8 payload/planned rowは候補材料としてだけ受け取り、正式時刻、master version、ID、数字、rank/clear type、正式duplicate keyを別の明示入力として要求する。不足・不正は `unresolved`、duplicate/低信頼度/その他skipは `play=None` の `excluded`、全条件を満たす場合だけ `ready` とするpure contractをfixtureで固定した。runner/CLI、実ファイル保存、候補値の自動昇格には接続していない。
+- 2026-07-11時点で、`save_personal_score_db_file(db_path, adapter_input)` を追加した。adapterをDB準備より先に評価し、unresolvedはファイル/親ディレクトリを作らず理由を返す。readyはsource/play/analysis、excludedはsource/analysisだけを、明示された新規/0 byte/compatible正式DBへ既存writerで記録する。preview/unknown/identity mismatch/manual migration/non-SQLite/directory拒否とrollbackをfixtureで固定し、通常runner/CLI、既定自動保存、自動migrationには接続していない。
+- 2026-07-11時点で、`--personal-score-db-save-input` と `--personal-score-db-save-database` の必須ペアを追加した。`input_schema_version=1` のUTF-8 JSONを厳格に読み、候補材料を正式playへ昇格せず、ready/excludedだけ単発保存する。通常PoC、timestamped/manifest runner、既定path、diagnostic/低信頼度ログ自動出力には接続していない。
+- 2026-07-11時点で、正式DB保存直前のduplicate preflightを追加した。レビュー済み明示 `duplicate_key` が既存playと衝突した場合は2件目のplayを作らず、新しいsource captureと `skipped/duplicate/duplicate_key_already_saved` analysisだけを同じtransactionで記録し、Python API/CLIは `excluded/written/play_id=null` を返す。完全同一ID再送の冪等化と並行writer制御は未実装で、UNIQUE制約とrollbackを維持する。
+- 2026-07-11時点で、`--personal-score-db-save-input-validate` を追加した。既存strict loaderとadapterだけを各1回実行し、ready/excluded/unresolved/invalidをJSONと終了コードで返す。DB pathを受け取らず、DB、`data/`、`logs/`、diagnostic outputを作成・変更しない。readyはsave input構築可能だけを意味し、DB互換性、DB内duplicate、並行writer、実保存は保証しない。
 
 やること:
 
-- dry-run payload preview、保存予定レコードプレビュー、in-memory write preview、明示オプション付きfile output preview、readback診断の読み方を保ったまま、次に本番DB insert境界を別フェーズとして設計する。
-- `ddrgp-scores.sqlite` の正式スキーマを定義する。
-- `plays` テーブルのマイグレーション、insert、保存スキップ境界を設計してから実装する。
-- マスタDBバージョン、曲ID、譜面ID、OCR結果、スコア、判定数、画像ハッシュ、解析確信度を保存する。
-- 重複保存防止をDB保存直前にも適用する。
+- CLIへ渡すレビュー済み正式JSONを上流で作る責務と、人手レビュー手順を決める。validation結果をレビュー記録へどう残すかを整理し、通常runnerからの暗黙生成には進まない。
+- 低信頼度analysisの詳細JSONと失敗画像の保存先、保持期間、`analysis_logs.log_path` の参照契約を決める。
 - マイグレーション方針を決める。
 
 完了条件:

@@ -209,6 +209,26 @@ data/master/ddrgp-master.sqlite
 ddrgp-scores.sqlite
 ```
 
+正式個人スコアDBのファイル準備境界は `prepare_personal_score_db_file_for_write(path)` で扱う。新規DBファイルと0 byte空ファイルだけ正式初期schemaを作成でき、既存の正式DBは変更せずに互換確認だけ行う。M8 preview DB、unknown DB、metadata identity mismatch、manual migration候補、SQLiteとして読めないファイル、ディレクトリは正式DBとして開かず、自動変更しない。この入口は本番insertや既定自動保存ではなく、正式DBファイルを開いてよいかを説明する前段である。検査済み結果は `personal_score_db_schema_inspection_diagnostic()` / `format_personal_score_db_schema_diagnostic_markdown()` / `personal_score_db_file_preparation_diagnostic()` で、path、status、拒否理由、必須table、metadata identity、初期化有無を人間が読める診断へ投影できるが、diagnostic生成自体はDBやファイルを追加変更しない。
+
+CLI診断は `python -m tools.vision_poc --personal-score-db-diagnostic <path>` で標準出力へ出す。既定のinspect modeは読み取り専用で、`--personal-score-db-diagnostic-mode prepare-write` は新規DBファイルまたは0 byte空ファイルだけ正式初期schemaを作成する。出力はMarkdown既定で、`--personal-score-db-diagnostic-format json` も選べる。`--personal-score-db-diagnostic-output <path>` を指定した場合は、標準出力と同じ診断テキストをファイルへ保存する。出力先は `data/` 配下に限定し、Markdown format は `.md` / `.markdown`、JSON format は `.json` の拡張子だけを許可する。この出力は診断の保存だけであり、本番insert、既定自動保存、既存DB migration、低信頼度ログ本番保存には進まない。
+
+`--personal-score-db-diagnostic-log-output <path>` を指定した場合は、診断1回につき1行のJSONLログを `logs/` 配下へappendする。拡張子は `.jsonl` に限定する。ログレコードは `log_schema_version=1`、`event_type=personal_score_db_diagnostic`、diagnostic mode、format、exit code相当status、対象DB path、任意の diagnostic output path、diagnostic dictを必須keyとして持つ。書き込み前に必須key、mode、format、event type、schema version、`diagnostic.is_compatible` と exit code / status の整合を検査する。これは標準出力や `data/` file outputとは別のDB診断ログ入口であり、本番insert、既定自動保存、既存DB migration、低信頼度ログ本番保存、source capture保存には進まない。`logs/` 外指定や `.jsonl` 以外はDB準備より前に拒否し、prepare-write対象の新規DBを作らない。将来の低信頼度ログ本番仕様や `analysis_logs.log_path` から参照する本番解析ログは、このdiagnostic JSONLとは別ファイルとして扱い、同じJSONLへ `event_type` だけで混在させない。
+
+正式connectionへの最小write境界は `write_personal_score_db_save(connection, save_input)` で扱う。入力検査をDB準備より前に行い、確定済み入力だけを受け付ける。保存成功は `source_captures`、`plays`、`analysis_logs`、保存除外は `source_captures` と `analysis_logs` を同じtransactionでinsertする。ready入力の明示 `duplicate_key` はDB準備後・source insert前に既存 `plays` へ照会し、衝突時はplayをinsertせず、sourceと `skipped/duplicate/duplicate_key_already_saved` のanalysisだけを同じtransactionで記録する。途中失敗時は同じ呼び出しの全rowをrollbackする。
+
+write前の `adapt_personal_score_db_save_input()` はpure functionであり、DB connectionや出力pathを受け取らない。戻り値が `ready` または `excluded` の場合だけ正式 `PersonalScoreDbSaveInput` を持ち、`unresolved` は不足・不正理由だけを返す。adapterの追加によって既定自動保存、実ファイル作成、既存DB migrationは開始しない。
+
+明示ファイル保存は `save_personal_score_db_file(db_path, adapter_input)` で扱う。adapterを最初に実行し、`unresolved` はDBファイルや親ディレクトリの作成・変更前に理由付き結果として返す。`ready` / `excluded` だけ `prepare_personal_score_db_file_for_write(path)` と同じ拒否境界を通り、既存writerへ渡す。新規/0 byte/compatible正式DBだけを許可し、preview / unknown / metadata identity mismatch / manual migration候補 / 非SQLite / ディレクトリは自動修復せず拒否する。duplicate collisionは結果を `excluded` / `written=true` / `play_id=null` とし、新しい一意なsource capture / analysisだけを残す。同一IDの完全再送は冪等化せず、writer途中失敗では同じ呼び出しのsource/play/analysis rowをrollbackする。
+
+この入口は呼び出し元がpathとadapter入力を明示する単発Python APIであり、実ファイルの既定自動保存、常駐監視、既存DB migrationを開始しない。DB診断ファイルやdiagnostic JSONLも自動出力しない。
+
+CLIからは `--personal-score-db-save-input <utf8-json>` と `--personal-score-db-save-database <sqlite>` を必須ペアとして明示した場合だけ、同じAPIを1回呼ぶ。JSON外部形式は `input_schema_version=1` とし、`candidate_material`、source/analysis値、object/nullの `formal_play`、object/nullの `exclusion` を分離する。全階層の必須key、未知key、object/null、bool/integer/number/string型はファイル準備前に検査し、boolをintegerとして通さない。`candidate_material` と `timestamp_ms` は由来情報のまま保持し、正式playへコピーしない。
+
+終了コードはtransaction完了した `ready` / `excluded` が0、adapterの `unresolved` が1、入力/DB拒否が2とする。結果JSONはDB path、adapter status、written、任意のplay ID、source capture ID、analysis ID、理由を持つ。duplicate collisionも終了コード0で `adapter_status=excluded`、`reasons=[duplicate_key_already_saved]` として区別する。CLI専用output file、diagnostic JSONL、低信頼度ログは生成せず、通常PoC、timestamped/manifest runner、`--m8-score-db-output` へ接続しない。
+
+`--personal-score-db-save-input-validate <utf8-json>` は保存CLIと同じloaderとadapterだけを各1回実行する単独modeである。DB pathを受け取らず、DBファイル、親ディレクトリ、`data/`、`logs/`、diagnostic outputを作成・変更しない。結果はvalidation schema version、入力path、adapter status、正式save input構築可否、理由だけをJSONで返し、正式値や候補材料を再掲しない。ready/excludedは0、unresolvedは1、不正JSON/schemaまたは他option混在は2とする。DBを開かないため、DB互換性、既存duplicate collision、並行writer、実保存成功は保証しない。
+
 M8の保存予定レコードプレビューでは、まず in-memory SQLite fixtureで `plays` 最小スキーマとrow contractを確認する。実ファイルDBを生成する場合は必ず `data/` 配下に置き、Git管理しない。
 
 M8のscore DB write previewでは、保存予定レコードだけを新規 in-memory SQLite `plays` テーブルへinsertし、`m8_score_db_write_preview.*` としてpreview `schema_version=1`、`schema_contract_scope=preview_minimal_plays`、`production_schema_status=not_production_schema`、`created_by_preview=tools.vision_poc.m8_score_db_preview`、insert対象件数、insert後件数、除外件数、代表行を確認する。これは実ファイルDB生成ではなく、ローカルDBファイルは作らない。SQLite側の `preview_metadata` 表はpreview生成物識別用の軽量表であり、正式マイグレーションではない。`schema_contract_scope` と `production_schema_status` は、M8の `plays` が正式個人スコアDB候補列を持つ本番スキーマではなく、preview専用最小スキーマであることを示す読み間違い防止欄です。
