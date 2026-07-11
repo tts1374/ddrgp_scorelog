@@ -21,6 +21,7 @@ from .personal_score_db_save_adapter import (
 PERSONAL_SCORE_DB_SAVE_INPUT_SCHEMA_VERSION = 1
 PERSONAL_SCORE_DB_SAVE_RESULT_SCHEMA_VERSION = 1
 PERSONAL_SCORE_DB_SAVE_INPUT_VALIDATION_RESULT_SCHEMA_VERSION = 1
+PERSONAL_SCORE_DB_SAVE_INPUT_TEMPLATE_RESULT_SCHEMA_VERSION = 1
 
 _TOP_LEVEL_REQUIRED_KEYS = frozenset(
     {
@@ -76,6 +77,125 @@ _FORMAL_PLAY_INTEGER_KEYS = (
 )
 _FORMAL_PLAY_KEYS = frozenset(_FORMAL_PLAY_TEXT_KEYS + _FORMAL_PLAY_INTEGER_KEYS)
 _EXCLUSION_KEYS = frozenset({"kind", "reason"})
+
+
+def personal_score_db_save_input_template() -> dict[str, object]:
+    """Return one empty review template without deriving any formal value."""
+    return {
+        "input_schema_version": PERSONAL_SCORE_DB_SAVE_INPUT_SCHEMA_VERSION,
+        "candidate_material": {},
+        "capture_id": "",
+        "capture_hash": "",
+        "captured_at": "",
+        "source_kind": "",
+        "source_path": "",
+        "analysis_id": "",
+        "event_type": "",
+        "confirmed_result": False,
+        "duplicate": False,
+        "confirmation_mode": "",
+        "identity_signal_status": "",
+        "digit_review_status": "",
+        "analysis_confidence": None,
+        "analysis_summary_json": "",
+        "app_version": "",
+        "formal_play": {
+            "play_id": "",
+            "played_at": "",
+            "master_version": "",
+            "song_id": "",
+            "chart_id": "",
+            "score": None,
+            "max_combo": None,
+            "marvelous": None,
+            "perfect": None,
+            "great": None,
+            "good": None,
+            "miss": None,
+            "ex_score": None,
+            "rank": "",
+            "clear_type": "",
+            "duplicate_key": "",
+        },
+        "exclusion": None,
+        "manifest_image_path": "",
+        "frame_index": None,
+        "timestamp_ms": None,
+        "candidate_duration_ms": None,
+        "log_path": "",
+    }
+
+
+def personal_score_db_save_input_template_result_json(
+    *, output_path: Path, status: str, reasons: tuple[str, ...] = ()
+) -> dict[str, object]:
+    return {
+        "template_result_schema_version": (
+            PERSONAL_SCORE_DB_SAVE_INPUT_TEMPLATE_RESULT_SCHEMA_VERSION
+        ),
+        "output_path": str(output_path),
+        "template_schema_version": PERSONAL_SCORE_DB_SAVE_INPUT_SCHEMA_VERSION,
+        "status": status,
+        "reasons": list(reasons),
+    }
+
+
+def emit_personal_score_db_save_input_template_invalid(
+    *, output_path: Path, reason: str
+) -> int:
+    """Emit one invalid template result without creating output files."""
+    result = personal_score_db_save_input_template_result_json(
+        output_path=output_path,
+        status="invalid",
+        reasons=(reason,),
+    )
+    print(json.dumps(result, ensure_ascii=False, sort_keys=True), file=sys.stderr)
+    return 2
+
+
+def run_personal_score_db_save_input_template_cli(*, output_path: Path) -> int:
+    """Create one new empty UTF-8 review template under data/."""
+    path = Path(output_path)
+    data_root = (Path.cwd() / "data").resolve()
+    resolved_path = path.resolve()
+    if path.suffix.lower() != ".json":
+        return emit_personal_score_db_save_input_template_invalid(
+            output_path=path,
+            reason=f"--personal-score-db-save-input-template must end in .json: {path}",
+        )
+    if resolved_path == data_root or data_root not in resolved_path.parents:
+        return emit_personal_score_db_save_input_template_invalid(
+            output_path=path,
+            reason=f"--personal-score-db-save-input-template must be under data/: {path}",
+        )
+    if path.exists():
+        return emit_personal_score_db_save_input_template_invalid(
+            output_path=path,
+            reason=f"personal score DB save input template already exists: {path}",
+        )
+
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("x", encoding="utf-8", newline="\n") as output_file:
+            json.dump(
+                personal_score_db_save_input_template(),
+                output_file,
+                ensure_ascii=False,
+                indent=2,
+            )
+            output_file.write("\n")
+    except (OSError, ValueError) as exc:
+        return emit_personal_score_db_save_input_template_invalid(
+            output_path=path,
+            reason=f"personal score DB save input template could not be created: {exc}",
+        )
+
+    result = personal_score_db_save_input_template_result_json(
+        output_path=path,
+        status="created",
+    )
+    print(json.dumps(result, ensure_ascii=False, sort_keys=True))
+    return 0
 
 
 def load_personal_score_db_save_input(path: Path) -> PersonalScoreDbSaveAdapterInput:

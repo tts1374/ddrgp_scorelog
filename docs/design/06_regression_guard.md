@@ -347,6 +347,10 @@
 - validation結果は入力path、adapter status、save input構築可否、理由だけを返し、正式値や候補材料を再掲しない。
 - validation optionとsave pair、diagnostic、通常PoC/M8 preview optionの混在を副作用前に拒否し、DB、親ディレクトリ、`data/`、`logs/`、diagnostic outputを作らない。
 - validation readyをDB互換性、DB内duplicateなし、並行writer安全性、実保存成功として扱わない。
+- review templateは `input_schema_version=1` と現行loaderの全必須構造を固定順で持ち、UTF-8 BOMなし・LF・末尾改行付きで生成する。
+- review templateは `candidate_material={}`、未確定の全 `formal_play` field、`exclusion=null` を持ち、未編集状態をadapter/validationで `unresolved` に保つ。
+- template生成はmetadata、M5/M7a/M8 preview、manifest、画像、DBを読まず、候補値、相対時刻、正式ID、正式duplicate keyを生成・補完しない。
+- template optionは `data/` 配下の新規 `.json` だけを許可し、既存ファイル、`data/` 外、他option混在を出力副作用前に拒否する。DB、`logs/`、画像、diagnostic outputを作らない。
 - 片方だけのCLI option、入力schema不正、`unresolved` はDB作成・変更前に非0終了する。`ready` / `excluded` だけが終了コード0でtransaction完了し、結果JSONの `play_id` でplay有無を区別する。
 - CLI経由でも新規/0 byte/compatible正式DBだけを許可し、preview / unknown / metadata identity mismatch / manual migration候補 / 非SQLite / ディレクトリを変更せず拒否する。
 

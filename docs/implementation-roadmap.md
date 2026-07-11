@@ -418,10 +418,11 @@ M5完了時点で固定すること:
 - 2026-07-11時点で、`--personal-score-db-save-input` と `--personal-score-db-save-database` の必須ペアを追加した。`input_schema_version=1` のUTF-8 JSONを厳格に読み、候補材料を正式playへ昇格せず、ready/excludedだけ単発保存する。通常PoC、timestamped/manifest runner、既定path、diagnostic/低信頼度ログ自動出力には接続していない。
 - 2026-07-11時点で、正式DB保存直前のduplicate preflightを追加した。レビュー済み明示 `duplicate_key` が既存playと衝突した場合は2件目のplayを作らず、新しいsource captureと `skipped/duplicate/duplicate_key_already_saved` analysisだけを同じtransactionで記録し、Python API/CLIは `excluded/written/play_id=null` を返す。完全同一ID再送の冪等化と並行writer制御は未実装で、UNIQUE制約とrollbackを維持する。
 - 2026-07-11時点で、`--personal-score-db-save-input-validate` を追加した。既存strict loaderとadapterだけを各1回実行し、ready/excluded/unresolved/invalidをJSONと終了コードで返す。DB pathを受け取らず、DB、`data/`、`logs/`、diagnostic outputを作成・変更しない。readyはsave input構築可能だけを意味し、DB互換性、DB内duplicate、並行writer、実保存は保証しない。
+- 2026-07-11時点で、`--personal-score-db-save-input-template` を追加した。`data/` 配下の新規JSONへschema version 1の空review templateを生成し、既存loader互換と未編集時 `unresolved` を固定した。候補値、preview、metadata、DBを読まず、正式値の自動生成、validationや保存への自動連鎖は行わない。
 
 やること:
 
-- CLIへ渡すレビュー済み正式JSONを上流で作る責務と、人手レビュー手順を決める。validation結果をレビュー記録へどう残すかを整理し、通常runnerからの暗黙生成には進まない。
+- 空templateへ人手入力した正式JSONのレビュー手順と、validation結果をレビュー記録へどう残すかを整理する。候補材料からの自動入力や通常runnerからの暗黙生成には進まない。
 - 低信頼度analysisの詳細JSONと失敗画像の保存先、保持期間、`analysis_logs.log_path` の参照契約を決める。
 - マイグレーション方針を決める。
 

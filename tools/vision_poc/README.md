@@ -66,6 +66,17 @@ M7/M8 preview材料から正式保存入力へ進めるpure adapterは `tools.vi
 
 単発CLI保存は、保存先と入力を明示した場合だけ実行します。通常PoCやtimestamped/manifest runnerからは呼びません。
 
+レビューを始める空JSONは、次の単独modeで `data/` 配下の新規 `.json` に1件だけ生成できます。
+
+```powershell
+python -m tools.vision_poc `
+  --personal-score-db-save-input-template data\personal_score_db\review-input-v1.json
+```
+
+templateは `input_schema_version=1`、現行strict loaderの全必須top-level key、全 `formal_play` keyを固定順で持ち、UTF-8 BOMなし・LF・末尾改行付きで生成されます。`candidate_material` は空object、`formal_play` の文字列は空文字・整数はnull、`exclusion` はnullです。既存ファイル、`.json` 以外、`data/` 外、他optionとの混在は作成前に終了コード2で拒否し、成功時は生成path、`template_schema_version=1`、`status=created` だけを結果JSONへ出します。template本文や正式値は標準出力へ再掲しません。
+
+このtemplateは候補値、preview、metadata、manifest、画像、DBを読みません。未編集状態は必ずvalidationで `unresolved` となり、レビュー完了、保存可能、DB互換、duplicate非衝突、実保存成功を意味しません。人手で source capture値、analysis値、timezone付き時刻、master version、曲/譜面ID、8個の数字、rank、clear type、正式duplicate keyを確認して入力します。`candidate_material` を使う場合も由来メモに留め、そこから正式値をコピーする自動処理はありません。
+
 ```powershell
 python -m tools.vision_poc `
   --personal-score-db-save-input path\to\reviewed-save-v1.json `

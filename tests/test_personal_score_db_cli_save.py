@@ -41,6 +41,202 @@ def assert_validation_has_no_output_side_effects(tmp_path: Path) -> None:
     assert not (tmp_path / "formal.sqlite").exists()
 
 
+def test_template_cli_creates_loader_compatible_unresolved_review_input(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    output_path = Path("data/review/save-input-v1.json")
+
+    exit_code = runner.main(
+        ["--personal-score-db-save-input-template", str(output_path)]
+    )
+
+    assert exit_code == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result == {
+        "template_result_schema_version": 1,
+        "output_path": str(output_path),
+        "template_schema_version": 1,
+        "status": "created",
+        "reasons": [],
+    }
+    assert output_path.read_bytes().startswith(b"{\n")
+    assert output_path.read_bytes().endswith(b"\n")
+    assert not output_path.read_bytes().startswith(b"\xef\xbb\xbf")
+    assert b"\r\n" not in output_path.read_bytes()
+
+    template = json.loads(output_path.read_text(encoding="utf-8"))
+    assert list(template) == [
+        "input_schema_version",
+        "candidate_material",
+        "capture_id",
+        "capture_hash",
+        "captured_at",
+        "source_kind",
+        "source_path",
+        "analysis_id",
+        "event_type",
+        "confirmed_result",
+        "duplicate",
+        "confirmation_mode",
+        "identity_signal_status",
+        "digit_review_status",
+        "analysis_confidence",
+        "analysis_summary_json",
+        "app_version",
+        "formal_play",
+        "exclusion",
+        "manifest_image_path",
+        "frame_index",
+        "timestamp_ms",
+        "candidate_duration_ms",
+        "log_path",
+    ]
+    assert list(template["formal_play"]) == [
+        "play_id",
+        "played_at",
+        "master_version",
+        "song_id",
+        "chart_id",
+        "score",
+        "max_combo",
+        "marvelous",
+        "perfect",
+        "great",
+        "good",
+        "miss",
+        "ex_score",
+        "rank",
+        "clear_type",
+        "duplicate_key",
+    ]
+    assert template["candidate_material"] == {}
+    assert template["exclusion"] is None
+    assert all(
+        value in ("", None)
+        for value in template["formal_play"].values()
+    )
+    loaded = cli_save.load_personal_score_db_save_input(output_path)
+    adapted = cli_save.adapt_personal_score_db_save_input(loaded)
+    assert adapted.status == "unresolved"
+    assert adapted.save_input is None
+    assert "formal_play.play_id_required" in adapted.reasons
+    assert not (tmp_path / "logs").exists()
+    assert not (tmp_path / "formal.sqlite").exists()
+
+
+def test_unedited_template_is_unresolved_through_validation_cli(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    output_path = Path("data/save-input-v1.json")
+    assert (
+        runner.main(["--personal-score-db-save-input-template", str(output_path)])
+        == 0
+    )
+    capsys.readouterr()
+
+    exit_code = runner.main(
+        ["--personal-score-db-save-input-validate", str(output_path)]
+    )
+
+    assert exit_code == 1
+    result = json.loads(capsys.readouterr().out)
+    assert result["adapter_status"] == "unresolved"
+    assert result["save_input_constructed"] is False
+
+
+@pytest.mark.parametrize(
+    ("output_name", "expected_error"),
+    [
+        ("outside.json", "must be under data/"),
+        ("data/review.txt", "must end in .json"),
+    ],
+)
+def test_template_cli_rejects_invalid_output_before_side_effects(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    output_name: str,
+    expected_error: str,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    output_path = Path(output_name)
+
+    exit_code = runner.main(
+        ["--personal-score-db-save-input-template", str(output_path)]
+    )
+
+    assert exit_code == 2
+    result = json.loads(capsys.readouterr().err)
+    assert result["status"] == "invalid"
+    assert expected_error in result["reasons"][0]
+    assert not (tmp_path / "data").exists()
+    assert not (tmp_path / "logs").exists()
+
+
+def test_template_cli_rejects_existing_file_without_overwrite(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    output_path = Path("data/save-input-v1.json")
+    output_path.parent.mkdir()
+    output_path.write_text("keep\n", encoding="utf-8", newline="\n")
+
+    exit_code = runner.main(
+        ["--personal-score-db-save-input-template", str(output_path)]
+    )
+
+    assert exit_code == 2
+    result = json.loads(capsys.readouterr().err)
+    assert result["status"] == "invalid"
+    assert "already exists" in result["reasons"][0]
+    assert output_path.read_text(encoding="utf-8") == "keep\n"
+
+
+@pytest.mark.parametrize(
+    "mixed_args",
+    [
+        ["--personal-score-db-save-input-validate", "save-input.json"],
+        [
+            "--personal-score-db-save-input",
+            "save-input.json",
+            "--personal-score-db-save-database",
+            "formal.sqlite",
+        ],
+        ["--personal-score-db-diagnostic", "formal.sqlite"],
+        ["--output", "data/poc"],
+        ["--m8-score-db-output", "data/preview.sqlite"],
+    ],
+)
+def test_template_cli_rejects_option_mixing_before_side_effects(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+    mixed_args: list[str],
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    output_path = Path("data/save-input-v1.json")
+
+    exit_code = runner.main(
+        ["--personal-score-db-save-input-template", str(output_path), *mixed_args]
+    )
+
+    assert exit_code == 2
+    result = json.loads(capsys.readouterr().err)
+    assert result["status"] == "invalid"
+    assert "cannot be combined" in result["reasons"][0]
+    assert not (tmp_path / "data").exists()
+    assert not (tmp_path / "logs").exists()
+    assert not (tmp_path / "formal.sqlite").exists()
+
+
 def test_validation_cli_reports_ready_without_database_or_output_side_effects(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
