@@ -219,7 +219,9 @@ CLI診断は `python -m tools.vision_poc --personal-score-db-diagnostic <path>` 
 
 write前の `adapt_personal_score_db_save_input()` はpure functionであり、DB connectionや出力pathを受け取らない。戻り値が `ready` または `excluded` の場合だけ正式 `PersonalScoreDbSaveInput` を持ち、`unresolved` は不足・不正理由だけを返す。adapterの追加によって既定自動保存、実ファイル作成、既存DB migrationは開始しない。
 
-この入口はin-memory SQLiteを含む明示connection用であり、実ファイルの既定自動保存、常駐監視、CLI保存を開始しない。ファイルwriterを追加するときは `prepare_personal_score_db_file_for_write(path)` と同じ拒否境界を使い、backup/migration方針を別途確認する。
+明示ファイル保存は `save_personal_score_db_file(db_path, adapter_input)` で扱う。adapterを最初に実行し、`unresolved` はDBファイルや親ディレクトリの作成・変更前に理由付き結果として返す。`ready` / `excluded` だけ `prepare_personal_score_db_file_for_write(path)` と同じ拒否境界を通り、既存writerへ渡す。新規/0 byte/compatible正式DBだけを許可し、preview / unknown / metadata identity mismatch / manual migration候補 / 非SQLite / ディレクトリは自動修復せず拒否する。writer途中失敗では同じ呼び出しのsource/play/analysis rowをrollbackする。
+
+この入口は呼び出し元がpathとadapter入力を明示する単発Python APIであり、実ファイルの既定自動保存、常駐監視、runner/CLI保存、既存DB migrationを開始しない。DB診断ファイルやdiagnostic JSONLも自動出力しない。
 
 M8の保存予定レコードプレビューでは、まず in-memory SQLite fixtureで `plays` 最小スキーマとrow contractを確認する。実ファイルDBを生成する場合は必ず `data/` 配下に置き、Git管理しない。
 

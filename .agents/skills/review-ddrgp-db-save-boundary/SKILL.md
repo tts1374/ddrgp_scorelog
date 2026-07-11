@@ -34,6 +34,8 @@ description: DDRGP scorelogの保存可否、正式個人スコアDB、duplicate
 - M5 `identity_signal_*`、`m5_identity_reviewable`、M7a `recognized_digits`、`expected_value`、`match` は候補材料であり、曲ID、譜面ID、正式保存値ではない。
 - 正式保存入力はM8 preview payload/rowを直接受け取らず、未解決の時刻、rank、clear type、master version、duplicate keyを暗黙補完しない。
 - previewから正式入力へのadapterは候補材料と明示的な正式値を分け、`unresolved` から保存入力を返さず、`excluded` からplayを作らない。
+- 明示ファイル保存はadapterをDB準備より先に評価し、`unresolved` でDBファイルや親ディレクトリを作成・変更しない。
+- 明示ファイル保存は新規/0 byte/compatible正式DBだけを受け入れ、preview、unknown、metadata identity mismatch、`manual_migration_required`、非SQLite、ディレクトリを自動修復しない。
 - PoCのscore/file由来 `duplicate_key` を正式duplicate keyとして扱わない。
 - DB diagnostic output/logはDB検査の記録であり、本番insert、低信頼度ログ、source capture保存ではない。
 - `source_captures` は元フレーム参照を持ち、解析ログ本文やDB診断ログを持たない。
@@ -57,6 +59,7 @@ description: DDRGP scorelogの保存可否、正式個人スコアDB、duplicate
 ```powershell
 python -m pytest tests\test_personal_score_db_save.py
 python -m pytest tests\test_personal_score_db_save_adapter.py
+python -m pytest tests\test_personal_score_db_file_save.py
 python -m pytest tests\test_personal_score_db_schema.py
 python -m pytest tests\test_vision_poc_ocr.py -k "m7_save_decision or m7_save_readiness or m7a or m8"
 python -m ruff check tools\vision_poc pyproject.toml tests

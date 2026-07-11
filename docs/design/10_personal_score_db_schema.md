@@ -1,6 +1,6 @@
 # M8 正式個人スコアDBスキーマ設計
 
-M8 preview完了後の正式 `ddrgp-scores.sqlite` 初期スキーマ、migration境界、正式保存入力、connection単位のtransaction write境界を固定する。実ファイルへの既定自動保存、CLI保存、duplicate key生成、低信頼度ログファイル本番保存はまだ実装しない。
+M8 preview完了後の正式 `ddrgp-scores.sqlite` 初期スキーマ、migration境界、正式保存入力、connection単位のtransaction write境界、明示path単位の単発保存APIを固定する。実ファイルへの既定自動保存、CLI保存、duplicate key生成、低信頼度ログファイル本番保存はまだ実装しない。
 
 ## 目的
 
@@ -49,6 +49,13 @@ preview候補材料と正式値の間のpure adapterは `tools/vision_poc/person
 - `adapt_personal_score_db_save_input()`
 
 adapterは `candidate_material` を正式値の由来として自動採用しない。正式play値は別入力で明示し、結果を `ready` / `unresolved` / `excluded` に分ける。`ready` だけplayつき正式入力、`excluded` はplayなし正式analysis入力を返し、`unresolved` は正式入力を返さない。
+
+明示path単位の保存APIは `tools/vision_poc/personal_score_db_file_save.py` に置く。
+
+- `PersonalScoreDbFileSaveResult`
+- `save_personal_score_db_file(db_path, adapter_input)`
+
+このAPIはadapterをDB準備より先に評価する。`unresolved` は理由付き `written=false` としてDBファイルや親ディレクトリを作らず返す。`ready` / `excluded` だけがファイル準備とtransaction writerへ進む。結果はDB path、adapter status、理由、write完了有無、source capture ID、analysis ID、任意のplay IDを持つ。`written=true` はsource/analysisを含むtransactionが完了したことを表し、正式play保存の有無は `play_id` で区別する。
 
 ## 正式保存入力契約
 
@@ -237,7 +244,9 @@ metadata identity は `created_by`、`schema_name`、`schema_contract_scope`、`
 
 `prepare_personal_score_db_file_for_write(path)` は、正式DBファイルをパス単位で検査する前段である。新規ファイル、または既存の0 byte空ファイルだけSQLiteとして開いた後に `initialize_empty_database` へ進め、正式初期schemaを作成できる。既存の compatible DB はそのまま通し、schema再作成やmetadata上書きはしない。既存のM8 preview DB、unknown DB、metadata identity mismatch、`manual_migration_required` 候補、SQLiteとして読めないファイル、ディレクトリは拒否し、自動変更しない。戻り値には、対象path、既存ファイルだったか、既存サイズ、初期化結果、最終inspectionを含める。
 
-このファイル境界は、正式 `ddrgp-scores.sqlite` をどこで検査して開くかを固定する足場であり、M8 preview の `--m8-score-db-output` とは別物として扱う。正式DBの本番insert、既定自動保存、既存DB migration実行にはまだ進まない。
+`save_personal_score_db_file()` はこのファイル境界と既存writerを合成し、明示された新規/0 byte/compatible正式DBへ1件だけ記録する。readyはsource/play/analysis、excludedはsource/analysisだけを保存する。M8 preview DB、unknown DB、metadata identity mismatch、`manual_migration_required`、非SQLite、ディレクトリは同じ拒否理由で止め、自動修復しない。writer失敗時は同じ呼び出しのrowをrollbackする。
+
+この明示ファイル保存はM8 preview の `--m8-score-db-output` とは別物として扱う。通常runner/CLIへの接続、既定自動保存、既存DB migration、DB診断の自動ファイル出力には進まない。
 
 ## 未決事項
 
@@ -260,3 +269,4 @@ metadata identity は `created_by`、`schema_name`、`schema_contract_scope`、`
 - 同テストは正常保存で3tableへ1 transactionでinsertし、duplicate/低信頼度では `plays` を0件のままsource captureとanalysisだけを記録する。
 - 同テストは入力不整合をschema作成前に拒否し、play insert失敗時に同じ呼び出しのsource captureとanalysisをrollbackする。
 - `tests/test_personal_score_db_save_adapter.py` は候補ID/数字/相対時刻を正式値へ昇格しないこと、正式値不足を `unresolved` に保つこと、duplicate/低信頼度をplayなしの `excluded` にすることを固定する。
+- `tests/test_personal_score_db_file_save.py` は新規/0 byte/compatible正式DBへのready保存、excludedのplayなし保存、unresolvedの無変更拒否、preview/unknown/identity mismatch/manual migration/non-SQLite/directory拒否、writer失敗時rollbackを固定する。

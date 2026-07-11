@@ -334,6 +334,10 @@
 - duplicate、低信頼度、error、その他skipは `plays` を作らず、source captureとanalysisだけを記録する。
 - source capture、play、analysisのID/hash/app version/confidenceが一致しない入力はDB準備前に拒否する。
 - `source_captures`、任意の `plays`、`analysis_logs` は1 transactionで書き、途中失敗では同じ呼び出しのrowを残さない。
+- 明示ファイル保存APIはadapterをDB準備より先に実行し、`unresolved` ではDBファイルも親ディレクトリも作らない。
+- 明示ファイル保存APIは新規/0 byte/compatible正式DBだけへ書き、preview / unknown / metadata identity mismatch / manual migration候補 / 非SQLite / ディレクトリを変更せず拒否する。
+- 明示ファイル保存APIの `written=true` はtransaction完了を表し、play rowの有無は `play_id` で区別する。`excluded` を保存成功playへ丸めない。
+- 明示ファイル保存APIを通常runner/CLI、`--m8-score-db-output`、既定自動保存へ接続しない。
 
 ## ROI方針
 
