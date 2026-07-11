@@ -324,6 +324,15 @@
 - diagnostic log output はDB診断ログであり、`analysis_logs.log_path` が将来参照する本番解析ログや低信頼度ログとは別ファイルとして扱う。
 - `source_captures` は元フレーム参照だけを保持し、解析ログ本文、DB診断ログ、低信頼度ログ本文を持たない。
 
+## 正式個人スコアDB save input / transaction
+
+- 正式保存入力はM8 preview payload/rowを直接受け取らず、timezone付き時刻、master version、正式ID、rank、clear type、正式duplicate key、confidence、app versionが確定済みであることを要求する。
+- timestampなしpreviewの `played_at_ms=0`、PoCの `score:` / `file:` duplicate key、`source_kind=unknown` を正式writerへ渡さない。
+- 保存成功は `confirmed_result=true`、`duplicate=false`、`event_type=confirmed`、`analysis_status=saved`、`save_boundary_status=save_ready` に限る。
+- duplicate、低信頼度、error、その他skipは `plays` を作らず、source captureとanalysisだけを記録する。
+- source capture、play、analysisのID/hash/app version/confidenceが一致しない入力はDB準備前に拒否する。
+- `source_captures`、任意の `plays`、`analysis_logs` は1 transactionで書き、途中失敗では同じ呼び出しのrowを残さない。
+
 ## ROI方針
 
 - ROI座標は 1280x720 基準。

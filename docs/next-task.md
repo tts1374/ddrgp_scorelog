@@ -1,12 +1,12 @@
 # 次チャット用タスク
 
-`C:\work\ddrgp_scorelog` で作業してください。必ず `AGENTS.md` のプロジェクトルールに従ってください。このファイルは次チャット用の引き継ぎ仕様です。作業では `docs/next-task.md` の更新だけで完了扱いにせず、コード、テスト、CLI、README、workflow、または設計docsなど、実行可能な成果物変更を1つ以上進めてください。`docs/next-task.md` は実装・検証が終わった後の引き継ぎ更新として扱ってください。
+`C:\work\ddrgp_scorelog` で作業してください。`AGENTS.md` とDB保存境界Skillに従い、実装・検証後にこのファイルを更新してください。画像、`metadata.csv`、`data/`、`logs/`、ローカルDBはGit管理しません。
 
 ## 推奨モデル
 
 GPT-5.6 Sol
 
-正式DB保存入力契約は、保存境界、DB schema、M5/M7a/M7/M8の責務をまたぐため、品質優先で `GPT-5.6 Sol` を推奨します。モデルはCodexのモデルピッカーでユーザーが選ぶ実行設定であり、このファイルの記載だけでは自動切替されません。既存方針に沿う小規模なテストやdocs修正だけにスコープを縮める場合は `GPT-5.6 Terra / high` でも構いません。
+モデルはCodexのモデルピッカーで手動選択します。この記載だけでは自動切替されません。小規模なテスト/docs修正だけならTerraでも構いません。
 
 ## 推論レベル
 
@@ -14,143 +14,112 @@ high
 
 ## 作業ブランチ
 
-今回の作業ブランチは以下です。
-
-```powershell
-codex/m8-personal-score-db-log-boundary
-```
-
-このブランチがmerge済みなら、次チャットでは最新 `main` から次フェーズ用の新ブランチを作ってください。未mergeなら、このブランチの先端を取り込んでから続けてください。
-
-次の推奨ブランチ:
+今回の完了ブランチ:
 
 ```powershell
 codex/m8-personal-score-db-save-input-contract
 ```
 
-開始時に以下を確認してください。
+merge済みなら最新 `main` から次のブランチを作成してください。未mergeなら、このブランチの先端を取り込んでから作成してください。
 
-- `git status --short --branch`
-- `git log --oneline -5`
-- `git fetch --all --prune`
-- `main` または継続元ブランチが最新であること。
-- `metadata.csv`、`data/`、`logs/`、ローカル素材、ローカルDBがコミット対象に入っていないこと。
+```powershell
+codex/m8-personal-score-db-save-input-adapter
+```
 
-## 今回までの作業結果
+開始時に確認:
 
-M8 previewは完了済みとして扱います。正式個人スコアDB本体では、schema contract、互換チェック、空DB初期化境界、connection/file path単位のwrite前準備境界、diagnostic dict / Markdown投影、CLI標準出力入口、`data/` 配下へのdiagnostic file output、`logs/` 配下へのdiagnostic JSONL log output、diagnostic log schema検査まで進んでいます。本番insert、既定自動保存、既存DB migration実行、低信頼度ログ本番保存、source capture実保存にはまだ進んでいません。
+```powershell
+git status --short --branch
+git log --oneline -5
+git fetch --all --prune
+```
 
-今回追加・更新したもの:
+## 今回までの結果
 
-- `AGENTS.md` に `Model And Reasoning Guidance` を追加し、次チャットの既定推奨を `GPT-5.6 Sol / high` とした。
-- モデルと推論レベルはCodexのモデルピッカーで手動選択する実行設定で、`AGENTS.md` や `docs/next-task.md` の本文だけでは自動切替されないことを明記した。
-- 小規模な実装やテスト/docs更新は `GPT-5.6 Terra / high` でもよく、`GPT-5.6 Luna` は限定的な低リスク作業に限る運用とした。
-- `max` は広範な設計変更、難しい原因調査、最終レビューなどに限定し、通常は `high` を維持する方針とした。
-- リポジトリ固有Skill `.agents/skills/review-ddrgp-db-save-boundary/SKILL.md` を追加した。
-- DB保存境界レビューSkillは、M7/M8保存判定、正式DB schema/保存入力、duplicate、DB diagnostic、低信頼度ログ、`source_captures`、`analysis_logs` の変更・レビュー時に使う。
-- Skillは候補材料、正式保存値、DB診断、本番解析ログ、元フレーム参照の責務混同を防ぐレビュー手順に限定し、OCR精度調整だけの作業には呼び出さない。
-- SkillのWindows検証はUTF-8 modeが必要なため、`python -X utf8 ...quick_validate.py` を使う。
-- 追加のプロジェクト専用Skill/Subagentは、対象作業が独立した反復手順として安定するまで作成しない。
-- `PERSONAL_SCORE_DB_SOURCE_CAPTURE_COLUMNS` を追加し、正式 `source_captures` tableの列契約をコード側で参照できるようにした。
-- `tests/test_personal_score_db_schema.py` で `source_captures` の列順を実DB schemaと照合するようにした。
-- `analysis_logs` は `source_capture_id`、`analysis_summary_json`、`log_path` を持つが、保存値やdiagnostic dictを二重管理しないことをテストで固定した。
-- `source_captures` は元フレーム参照だけを持ち、`analysis_status`、`skip_reason`、`analysis_summary_json`、`log_path`、diagnostic output pathを持たないことをテストで固定した。
-- `docs/design/10_personal_score_db_schema.md`、`docs/design/04_data_model.md`、`docs/design/05_storage_io_spec.md`、`docs/design/06_regression_guard.md`、`tools/vision_poc/README.md` に、DB診断JSONL、将来の本番解析ログ、低信頼度ログ、source capture参照の責務分離を反映した。
-- `--personal-score-db-diagnostic-log-output` はDB診断ログとして完了扱いにし、将来 `analysis_logs.log_path` から参照する本番解析ログや低信頼度ログとは別ファイルとして扱う方針にした。
-- 将来の低信頼度ログ本番仕様は diagnostic JSONL と同じファイルへ `event_type` だけで混在させない方針にした。
+- `tools/vision_poc/personal_score_db_save.py` に正式保存入力dataclass、pure validation、connection単位のtransaction writerを追加した。
+- 正常保存は `source_captures`、`plays`、`analysis_logs` を1 transactionでinsertする。
+- duplicate、低信頼度、error、その他skipは `play=None` とし、source captureとanalysisだけを記録する。
+- timezoneなし時刻、空のmaster version/rank/clear type、PoC形式のduplicate key、参照不整合をDB準備前に拒否する。
+- play insert失敗時に、同じ呼び出しのsource captureとanalysisもrollbackする。
+- M8 preview payload/rowは正式入力へ直接変換しない。M5/M7aの値は引き続き候補材料である。
+- `docs/implementation-roadmap.md` の現在地と直近MVPをM8正式writerまで更新した。
+- DB保存境界Skillへ正式writerテストとpreview非昇格チェックを追加し、実タスクで初回運用した。
 
-固定済みの主な境界:
+固定した判断:
 
-- diagnostic outputは診断テキストの保存だけで、本番insert、自動migration、既定自動保存、低信頼度ログ本番保存には進まない。
-- diagnostic log outputはDB診断ログのappendだけで、本番insert、自動migration、既定自動保存、低信頼度ログ本番保存、source capture保存には進まない。
-- `analysis_logs.log_path` は将来の本番解析ログ、低信頼度ログ、または詳細JSONL/Markdownの参照先であり、DB診断JSONLやsource capture画像参照を指す列ではない。
-- `source_captures` は入力フレームやキャプチャのhash/path参照を持つtableで、解析ログ本文、DB診断ログ、低信頼度ログ本文を持たない。
-- `plays.source_capture_id` と `analysis_logs.source_capture_id` は同じ capture reference を指せるが、`source_captures.source_path` / `manifest_image_path` と `analysis_logs.log_path` は別責務として読む。
-- M8 preview最小 `plays` と正式個人スコアDB `plays` は別物。
-- `manual_migration_required` は backup方針と明示確認を決めるまで欠落table作成や `user_version` 修正をしない。
+- `played_at` / `captured_at` はtimezone付きISO 8601を必須にする。
+- `rank` / `clear_type` 未取得時は空文字で保存せず、保存成功へ進めない。
+- 正式writerの `source_kind` は `manifest` / `timestamped` / `capture` / `manual` に限定し、`unknown` を拒否する。
+- PoCの `score:` / `file:` duplicate keyを正式保存に使わない。
+- DB diagnostic JSONL、本番analysis log、source capture pathの責務を分ける。
 
-まだ進めていないこと:
+## 次に進める実作業
 
-- 正式個人スコアDBへの本番insert。
-- 既定自動保存。
-- duplicate key本格実装。
-- 低信頼度ログ本番保存。
-- 既存DBの実migration実行。
-- source capture参照の実保存。
-- 失敗画像保存。
-- 正式保存処理へ渡す入力payloadのコード上の契約固定。
+M7/M8 preview材料と明示的な正式値から、`PersonalScoreDbSaveInput` を組み立てられるか判定するpure adapterを追加してください。実ファイルへの既定保存はまだ行いません。
 
-## 次に必ず進める実作業
+adapterで明示する入力:
 
-次は正式DB insertへ進む直前の入力契約を進めてください。本番insertはまだ実装しないでください。
+- M8 payload/planned recordの候補材料
+- 実時刻として確定した `played_at` / `captured_at`
+- `master_version`
+- 確定済み `rank` / `clear_type`
+- `capture_id` / `capture_hash` / source reference
+- 正式 `duplicate_key`
+- `analysis_confidence`
+- `app_version`
 
-第一候補:
+adapterの出力候補:
 
-- M8 planned records / save payload preview / diagnostic result のどこから正式保存処理へ渡すかを、docs とテストで固定する。
-- `payload_ready`、M5 identity candidate、M7a recognized digits、timestamp由来値を正式保存入力の「候補材料」として受け取る境界を明示する。
-- 正式 `plays` へ入れる前に必要な未解決項目、たとえば `played_at` の正式時刻、`master_version`、`rank` / `clear_type` 未取得時の扱い、`capture_hash`、`source_capture_id`、`duplicate_key`、`analysis_confidence`、`app_version` を、入力契約上の required / unresolved / out-of-scope に分ける。
-- 可能なら、正式保存入力へ渡せる/渡せない状態を小さなpure functionまたはschema helperで表し、実DB insertなしのテストで固定する。
+- `ready`: 正式 `PersonalScoreDbSaveInput` を返せる。
+- `unresolved`: 正式入力は返さず、不足/未確定理由を列挙する。
+- `excluded`: duplicate、低信頼度、その他skipとして `play=None` のanalysis入力を返せる。
 
-第二候補:
+必須ガード:
 
-- source capture実保存の前段として、`source_captures` に渡す入力候補の必須項目と、manifest/timestamped/capture/manualの `source_kind` 語彙をdocs/testsで固定する。
-- ただし `source_captures` へのinsert、画像コピー、失敗画像保存、source capture実保存にはまだ進まない。
+- `played_at_ms=0` や相対 `timestamp_ms` を実時刻へ暗黙変換しない。
+- `identity_signal_*` を確定song/chart IDへ暗黙昇格しない。
+- M7a `recognized_digits` をレビューなしで正式数字へ暗黙昇格しない。
+- rank、clear type、master version、正式duplicate keyを既定値で埋めない。
+- unresolvedを保存成功入力へ変換しない。
+- duplicate/低信頼度を `plays` rowへ変換しない。
 
-このフェーズで決めたい候補:
-
-- `diagnostic_output_path` は未指定時の空文字を維持するか、次フェーズでnull相当へ変える必要があるか。
-- prepare-writeで新規DBを初期化した場合、log側では最終diagnostic内の `file_preparation` で十分か、初期/最終statusをトップレベルにも出すか。
-- 正式保存入力で `rank` / `clear_type` 未取得を空文字で許すか、insert前に未対応として止めるか。
-- 正式保存入力で `played_at_ms=0` をどこで正式時刻へ置き換えるか。
+adapter契約がテストで固定できた場合だけ、第二候補として明示指定の新規/compatible正式DBファイルへ同じwriterで保存する薄い入口を検討してください。既定自動保存や既存DB migrationには進みません。
 
 ## 必読資料
 
 - `AGENTS.md`
-- `docs/next-task.md`
 - `.agents/skills/review-ddrgp-db-save-boundary/SKILL.md`
+- `docs/next-task.md`
 - `docs/implementation-roadmap.md`
 - `docs/design/03_event_and_save_boundary.md`
 - `docs/design/04_data_model.md`
 - `docs/design/05_storage_io_spec.md`
 - `docs/design/06_regression_guard.md`
 - `docs/design/10_personal_score_db_schema.md`
-- `tools/vision_poc/README.md`
-- `tools/vision_poc/runner.py`
+- `tools/vision_poc/personal_score_db_save.py`
 - `tools/vision_poc/personal_score_db_schema.py`
+- `tools/vision_poc/runner.py`
+- `tests/test_personal_score_db_save.py`
 - `tests/test_personal_score_db_schema.py`
 - `tests/test_vision_poc_ocr.py`
-- `tests/test_vision_poc_result_events.py`
 
 ## スコープ外
 
-- スクリーンショット画像、`samples/screenshots/metadata.csv`、`data/`、`logs/`、ローカル素材、ローカルDBのGit管理
-- `samples/screenshots/cropped/` と `samples/screenshots/organized/` 配下のローカル追加画像コミット
-- `samples/screenshots/organized/digit_templates/` などのM7aテンプレート画像コミット
-- 本番キャプチャAPI、実キャプチャデバイス依存コード、常駐監視ループ、非同期処理
-- Windows常駐アプリUI
-- 正式個人スコアDBへの実insert
-- 既定自動保存、常時保存処理、本番用の自動DB insert
-- `source_captures` への実insert
-- 低信頼度ログ本番保存の実装
-- source captureの実保存、失敗画像保存
-- duplicate key の本格差し替え実装
-- 既存DBの自動migration実行
+- 実キャプチャAPI、常駐監視、非同期処理、Windows UI
+- 既定自動保存、常時保存、既存DBの自動migration
 - `manual_migration_required` DBの自動変更
-- M5 `identity_signal_*` から曲ID/譜面IDを保存用確定すること
-- M7aの `recognized_digits` を保存値確定として扱うこと
-- OCR結果やM7a認識結果から保存値を本番確定すること
-- ROI座標定義の大変更
-- Tesseract OCR全体の撤去やOCR方式全面刷新
-- M4 Releases配布の実装
-- 追加のプロジェクト専用Skill/Subagentの作成
+- duplicate key生成方式の本格実装
+- 低信頼度ログファイルと失敗画像の本番保存
+- M5/M7a候補を確定ID/値へ暗黙昇格する処理
+- ROI座標の大変更、OCR方式全面刷新
+- 画像、`metadata.csv`、`data/`、`logs/`、ローカルDB、ローカルテンプレートのコミット
+- 追加のプロジェクト専用Skill/Subagent作成
 
 ## 検証コマンド
 
-最低限実行するコマンド:
-
 ```powershell
+python -m pytest tests\test_personal_score_db_save.py
 python -m pytest tests\test_personal_score_db_schema.py
-python -m pytest tests\test_vision_poc_ocr.py -k "m8"
 python -m pytest tests\test_vision_poc_ocr.py -k "m7_save_decision or m7_save_readiness or m7a or m8"
 python -m ruff check tools\vision_poc pyproject.toml tests
 python -m compileall master tools\vision_poc
@@ -159,53 +128,31 @@ python -X utf8 "$env:USERPROFILE\.codex\skills\.system\skill-creator\scripts\qui
 git diff --check
 ```
 
-今回の確認結果:
+今回の結果:
 
-- `AGENTS.md` 更新後の `git diff --check -- AGENTS.md`: passed
-- モデル選択ルールの構造レビュー: 自動切替との混同、通常時と高リスク時の既定、アプリ実装へのmodel ID混入禁止を確認
-- `python -X utf8 "$env:USERPROFILE\.codex\skills\.system\skill-creator\scripts\quick_validate.py" ".agents\skills\review-ddrgp-db-save-boundary"`: Skill is valid
-- DB保存境界レビューSkillの構造レビュー: trigger範囲、非trigger範囲、現在フェーズのscope gate、責務チェック、検証コマンドを確認
-- empirical prompt evaluation: fresh executorを利用できないため未実施。次回以降の実タスクでforward-testする
-- `python -m pytest tests\test_personal_score_db_schema.py`: 55 passed
-- `python -m pytest tests\test_vision_poc_ocr.py -k "m8"`: 20 passed
-- `python -m pytest tests\test_vision_poc_ocr.py -k "m7_save_decision or m7_save_readiness or m7a or m8"`: 71 passed
-- `python -m ruff check tools\vision_poc pyproject.toml tests`: passed
-- `python -m compileall master tools\vision_poc`: passed
-- `python -m pytest tests`: 261 passed
+- formal save/schema対象: 63 passed
+- 全テスト: 269 passed
+- Ruff: passed
+- compileall: passed
+- Skill validator: `Skill is valid!`
+- `python -m tools.vision_poc`: 221/221 correct、accuracy 1.000
 - `git diff --check`: passed
-
-正式DB schema、diagnostic CLI、source capture/analysis log境界を触った場合は、`tests\test_personal_score_db_schema.py` を明示的に実行してください。`docs/next-task.md` 更新後に `git diff --check` も実行してください。
 
 ## コミット/Push方針
 
-- `metadata.csv`、`data/`、`logs/`、ローカル素材、ローカルDBはコミットしない。
-- `samples/screenshots/cropped/` と `samples/screenshots/organized/` 配下の画像はローカル素材扱いでコミットしない。
-- `samples/screenshots/organized/digit_templates/` などのM7aテンプレート画像はコミットしない。
-- `docs/next-task.md` は引き継ぎ仕様としてコミット対象に含める。
-- コード、README、docs、テストに変更がある場合のみ、今回作業分だけをステージしてコミットする。
-- `data/master/ddrgp-master.sqlite`、`data/master/master-summary.json`、M5/M7a/M7/M8 PoC出力、ROI画像、OCR画像、解析ログ、`ddrgp-scores.sqlite` はステージしない。
-- 仕様語彙、出力ファイル名、summaryの読み方、保存境界、OCR/M7a/M7/M8対象境界を変えた場合は、関連する `docs/design/` または `tools/vision_poc/README.md` を同じコミットに含める。
-- コミットがある場合は作業ブランチをpushする。
+- 今回作業分だけをステージする。
+- `docs/next-task.md` は引き継ぎ仕様として含める。
+- 画像、`metadata.csv`、`data/`、`logs/`、ローカルDB、生成物をステージしない。
+- コード、テスト、README、docs、Skillを変更した場合は関連する契約を同じコミットへ含める。
+- コミットしたら作業ブランチをpushする。
 
 ## 完了条件
 
-- `docs/next-task.md` に `推奨モデル` と `推論レベル` が分けて記載され、モデルピッカーでの手動選択が必要だと読める。
-- DB保存境界を変更またはレビューする場合、`.agents/skills/review-ddrgp-db-save-boundary/SKILL.md` を使用し、Skillの不足があれば実運用結果に基づいて小さく更新する。
-- 正式個人スコアDBの保存入力契約、source capture参照境界、解析ログ境界、または次のオープン境界が1つ以上進んでいる。
-- `docs/design/`、コード、テスト、READMEのいずれかに、次の実装へつながる成果物変更がある。
-- 正式個人スコアDB保存の実insertにはまだ踏み込んでいない。
-- `source_captures` への実insertや画像保存にはまだ踏み込んでいない。
-- 既存DBの自動migrationを実行していない。
-- 空DB以外を正式schema初期化として自動変更していない。
-- M8 preview最小 `plays` と正式個人スコアDBスキーマを混同していない。
-- M8 preview DBを正式個人スコアDBとして受け入れていない。
-- unknown DBやmetadata identity mismatchを正式DBとして受け入れていない。
-- `manual_migration_required` をbackup/明示確認なしで自動変更していない。
-- diagnostic output / diagnostic log output を本番insert、低信頼度ログ本番保存、source capture保存として扱っていない。
-- DB診断JSONLを、将来の本番解析ログや低信頼度ログと同じファイルへ混在させていない。
-- `identity_signal_*`、`m5_identity_reviewable`、`blocked_identity_signal` が曲ID/譜面ID確定として扱われていない。
-- M7aの `recognized_digits`、`expected_value`、`match` が保存値確定として扱われていない。
-- duplicate、`rejected_transition`、未確定候補、non-result が上流対象外のまま。
-- 生成DB、テンプレート素材、PoC出力、`metadata.csv` 実体や画像をコミットしていない。
-- 検証コマンドが通っている。
-- コミット/Pushする場合は、Git管理対象外ファイルを含めていない。
+- preview/解析材料から正式入力へ進める条件と、進めない理由をpure adapterで判定できる。
+- unresolved値を暗黙補完せず、正式 `PersonalScoreDbSaveInput` を返さない。
+- duplicate/低信頼度は `plays` を作らない。
+- 正常、unresolved、excludedのテストがある。
+- M8 preview DBと正式DBを混同しない。
+- 既存DB migrationや既定自動保存を開始していない。
+- 関連docs、README、Skillを同期している。
+- 検証が通り、Git管理外ファイルをコミットしていない。

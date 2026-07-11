@@ -215,6 +215,10 @@ CLI診断は `python -m tools.vision_poc --personal-score-db-diagnostic <path>` 
 
 `--personal-score-db-diagnostic-log-output <path>` を指定した場合は、診断1回につき1行のJSONLログを `logs/` 配下へappendする。拡張子は `.jsonl` に限定する。ログレコードは `log_schema_version=1`、`event_type=personal_score_db_diagnostic`、diagnostic mode、format、exit code相当status、対象DB path、任意の diagnostic output path、diagnostic dictを必須keyとして持つ。書き込み前に必須key、mode、format、event type、schema version、`diagnostic.is_compatible` と exit code / status の整合を検査する。これは標準出力や `data/` file outputとは別のDB診断ログ入口であり、本番insert、既定自動保存、既存DB migration、低信頼度ログ本番保存、source capture保存には進まない。`logs/` 外指定や `.jsonl` 以外はDB準備より前に拒否し、prepare-write対象の新規DBを作らない。将来の低信頼度ログ本番仕様や `analysis_logs.log_path` から参照する本番解析ログは、このdiagnostic JSONLとは別ファイルとして扱い、同じJSONLへ `event_type` だけで混在させない。
 
+正式connectionへの最小write境界は `write_personal_score_db_save(connection, save_input)` で扱う。入力検査をDB準備より前に行い、確定済み入力だけを受け付ける。保存成功は `source_captures`、`plays`、`analysis_logs`、保存除外は `source_captures` と `analysis_logs` を同じtransactionでinsertする。途中失敗時は同じ呼び出しの全rowをrollbackする。
+
+この入口はin-memory SQLiteを含む明示connection用であり、実ファイルの既定自動保存、常駐監視、CLI保存を開始しない。ファイルwriterを追加するときは `prepare_personal_score_db_file_for_write(path)` と同じ拒否境界を使い、backup/migration方針を別途確認する。
+
 M8の保存予定レコードプレビューでは、まず in-memory SQLite fixtureで `plays` 最小スキーマとrow contractを確認する。実ファイルDBを生成する場合は必ず `data/` 配下に置き、Git管理しない。
 
 M8のscore DB write previewでは、保存予定レコードだけを新規 in-memory SQLite `plays` テーブルへinsertし、`m8_score_db_write_preview.*` としてpreview `schema_version=1`、`schema_contract_scope=preview_minimal_plays`、`production_schema_status=not_production_schema`、`created_by_preview=tools.vision_poc.m8_score_db_preview`、insert対象件数、insert後件数、除外件数、代表行を確認する。これは実ファイルDB生成ではなく、ローカルDBファイルは作らない。SQLite側の `preview_metadata` 表はpreview生成物識別用の軽量表であり、正式マイグレーションではない。`schema_contract_scope` と `production_schema_status` は、M8の `plays` が正式個人スコアDB候補列を持つ本番スキーマではなく、preview専用最小スキーマであることを示す読み間違い防止欄です。

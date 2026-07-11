@@ -15,7 +15,7 @@ Windows常駐アプリが DDR GRAND PRIX のゲームウィンドウを直接キ
 
 ## 現在地
 
-現在は実キャプチャAPIやDB保存へ入る前の画像解析PoC段階です。
+現在は画像解析PoC、マスタDB生成、マスタ照合PoC、保存判定previewを経て、M8の正式個人スコアDB保存境界へ進んでいます。正式schema、互換検査、DB準備、diagnostic、確定済み入力を使うin-memory transaction writerまで実装済みです。
 
 完了済みの主な足場:
 
@@ -44,12 +44,25 @@ Windows常駐アプリが DDR GRAND PRIX のゲームウィンドウを直接キ
 - 常駐監視ループ
 - 非同期処理
 - 曲名、プレースタイル、難易度、レベルの本格OCR
-- マスタDB生成
-- マスタ照合
-- 個人スコアDB保存
+- preview材料から正式保存入力を組み立てる本番adapter
+- 正式個人スコアDBへの実ファイル保存
 - 低確信度ログと失敗画像の本番保存
 - Windows常駐アプリUI
 - 配布形態
+
+## 直近MVP
+
+常駐監視や実キャプチャの前に、次の縦断経路を最初の利用可能版とする。
+
+```text
+manifestまたはmanual入力
+  -> confirmed event
+  -> 確定済み正式保存入力
+  -> 正式個人スコアDB
+  -> 保存成功または保存除外analysis
+```
+
+2026-07-11時点では、確定済み正式保存入力からin-memory正式DBへ書く部分まで通っている。次はpreview/解析結果から正式保存入力を組み立てるadapterを、未解決値を暗黙補完しない形で追加し、その後に明示指定の実ファイル保存へ進む。
 
 ## マイルストーン
 
@@ -399,13 +412,13 @@ M5完了時点で固定すること:
 - 2026-07-10時点で、正式DB diagnosticを `python -m tools.vision_poc --personal-score-db-diagnostic <path>` からMarkdownまたはJSON風dictで標準出力へ出せるようにした。既定inspect modeは読み取り専用、`--personal-score-db-diagnostic-mode prepare-write` は新規DBファイルまたは0 byte空ファイルだけ正式初期schemaへ進める。compatible、空DB初期化、M8 preview拒否、unknown拒否、manual migration required、非SQLiteファイル、ディレクトリ拒否をCLI経由テストで固定した。これは本番insert、自動migration、既定自動保存、低信頼度ログ本番保存ではない。
 - 2026-07-10時点で、正式DB diagnosticに `--personal-score-db-diagnostic-output <path>` を追加し、標準出力と同じMarkdown/JSON診断を `data/` 配下へ保存できるようにした。Markdownは `.md` / `.markdown`、JSONは `.json` に限定し、formatと拡張子の不一致や `data/` 外出力は拒否する。これは診断ファイル生成だけであり、本番insert、自動migration、既定自動保存、`logs/` 連携、低信頼度ログ本番保存ではない。
 - 2026-07-10時点で、正式DB diagnosticに `--personal-score-db-diagnostic-log-output <path>` を追加し、診断1回につき1行のJSONLを `logs/` 配下へappendできるようにした。ログレコードはdiagnostic dict、mode、format、exit code相当status、対象DB path、diagnostic output pathを持ち、必須keyと `diagnostic.is_compatible` / exit code / status の整合をappend前に検査する。`.jsonl` 以外や `logs/` 外指定はDB準備より前に拒否する。これは診断ログ入口だけであり、本番insert、自動migration、既定自動保存、低信頼度ログ本番保存、source capture保存ではない。
+- 2026-07-11時点で、`PersonalScoreDbSaveInput` と `write_personal_score_db_save()` を追加した。timezone付き時刻、master version、rank/clear type、正式duplicate key、参照整合を検査し、正常保存はsource/play/analysis、duplicate/低信頼度はsource/analysisだけを1 transactionでin-memory正式DBへinsertする。入力拒否とrollbackもfixtureで固定済み。これは確定済み入力からの最小縦断であり、previewからの自動昇格、実ファイル既定保存、CLI保存ではない。
 
 やること:
 
-- dry-run payload preview、保存予定レコードプレビュー、in-memory write preview、明示オプション付きfile output preview、readback診断の読み方を保ったまま、次に本番DB insert境界を別フェーズとして設計する。
-- 正式DB diagnosticのMarkdown/JSONファイル出力は `data/` 配下の明示出力として追加済み。診断ログ入口は `logs/` 配下のJSONL appendとして追加済み。次はこの診断ログを低信頼度ログ本番仕様やsource capture保存とどう分けるかを設計してから、DB insert境界へ進む。
-- `plays` テーブルのマイグレーション、insert、保存スキップ境界を設計してから実装する。
-- マスタDBバージョン、曲ID、譜面ID、OCR結果、スコア、判定数、画像ハッシュ、解析確信度を保存する。
+- M7/M8 preview材料から正式保存入力を組み立てるadapterを追加し、候補ID/数字、timestampなし時刻、rank/clear type未取得を暗黙に確定しない。
+- 明示指定された新規またはcompatible正式DBファイルへ、同じtransaction writerで保存する入口を追加する。
+- 低信頼度analysisの詳細JSONと失敗画像の保存先、保持期間、`analysis_logs.log_path` の参照契約を決める。
 - 重複保存防止をDB保存直前にも適用する。
 - マイグレーション方針を決める。
 

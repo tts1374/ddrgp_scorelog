@@ -1,6 +1,6 @@
 # M8 正式個人スコアDBスキーマ設計
 
-M8 preview完了後の正式 `ddrgp-scores.sqlite` 初期スキーマ案と、migration境界を固定する。ここで扱うのはスキーマ契約と互換チェックであり、本番insert、既定自動保存、duplicate key本格実装、低信頼度ログ本番保存はまだ実装しない。
+M8 preview完了後の正式 `ddrgp-scores.sqlite` 初期スキーマ、migration境界、正式保存入力、connection単位のtransaction write境界を固定する。実ファイルへの既定自動保存、CLI保存、duplicate key生成、低信頼度ログファイル本番保存はまだ実装しない。
 
 ## 目的
 
@@ -28,7 +28,37 @@ M8 preview完了後の正式 `ddrgp-scores.sqlite` 初期スキーマ案と、mi
 - `format_personal_score_db_schema_diagnostic_markdown()`
 - `personal_score_db_file_preparation_diagnostic()`
 
-これはCLIから本番DBへinsertする入口ではない。次フェーズで保存処理を実装する前に、正式DBとして作るべきtableと、preview DBを拒否する条件をテストできるようにするためのschema contractである。
+正式保存入力とconnection単位のtransaction writerは `tools/vision_poc/personal_score_db_save.py` に置く。
+
+- `PersonalScoreDbSourceCaptureInput`
+- `PersonalScoreDbPlayInput`
+- `PersonalScoreDbAnalysisInput`
+- `PersonalScoreDbSaveInput`
+- `personal_score_db_save_input_errors()`
+- `validate_personal_score_db_save_input()`
+- `write_personal_score_db_save()`
+
+schema moduleは正式DB識別と準備、save moduleは確定済み入力の検査とtransaction writeを担当する。save moduleはCLIや既定自動保存ではなく、in-memory SQLiteを含む明示connection向けの最小縦断入口である。
+
+## 正式保存入力契約
+
+`PersonalScoreDbSaveInput` はM8 preview payloadを直接受け取らない。M5/M7a由来の候補材料を上流で確認し、正式値へ確定した後だけ生成する。
+
+保存成功入力では以下を必須にする。
+
+- timezone付きISO 8601の `played_at` / `captured_at`
+- 空でない `master_version`、`song_id`、`chart_id`
+- 範囲検査済みのscore/判定数/EX SCORE
+- 空でない `rank` / `clear_type`
+- 同じsource captureを指す `capture_hash` / `source_capture_id`
+- PoCの `score:` / `file:` 形式ではない正式 `duplicate_key`
+- 0.0から1.0の `analysis_confidence`
+- 一致する `app_version`
+- `analysis_status=saved`、`save_boundary_status=save_ready`、`event_type=confirmed`、`confirmed_result=true`、`duplicate=false`
+
+duplicate、低信頼度、error、その他skipでは `play=None` とし、`source_captures` と `analysis_logs` だけを同じtransactionで記録する。非保存analysisには `skip_reason` を必須にし、duplicateは `analysis_status=skipped`、`save_boundary_status=duplicate` とする。これらを成功した `plays` rowへ丸めない。
+
+`write_personal_score_db_save()` は呼び出し元connectionにactive transactionがないことを要求し、正式DBを準備した後、`source_captures`、任意の `plays`、`analysis_logs` を1 transactionでinsertする。途中のUNIQUE/FK/CHECK違反では、同じ呼び出し内のsource captureとanalysisもrollbackする。
 
 ## M8 previewとの境界
 
@@ -60,7 +90,7 @@ M8 preview最小 `plays` は以下の用途に限定する。
 - `master_version`: 保存時に参照したマスタDB version。
 - `song_id` / `chart_id`: 保存判定後のID。M5 `identity_signal_*` をそのまま確定ID扱いしない。
 - `score`、`max_combo`、`marvelous`、`perfect`、`great`、`good`、`miss`、`ex_score`: 保存判定後の数値。
-- `rank`、`clear_type`: 初期は空で逃がさず、未取得時の扱いをinsert前に決める。
+- `rank`、`clear_type`: 空文字を正式入力として許可しない。未取得時は保存成功へ進めず、上流の未解決/低信頼度として扱う。
 - `capture_hash`: 元キャプチャ参照と重複防止用のhash。
 - `source_capture_id`: `source_captures` への参照。
 - `duplicate_key`: 本番重複判定用key。現行PoCのscore由来簡易keyとは別物にする。
@@ -104,7 +134,7 @@ M8 preview最小 `plays` は以下の用途に限定する。
 - `capture_id`
 - `capture_hash`
 - `captured_at`
-- `source_kind`: `manifest` / `timestamped` / `capture` / `manual` / `unknown`
+- `source_kind`: schema互換用語彙は `manifest` / `timestamped` / `capture` / `manual` / `unknown`。正式writer入力では由来不明の `unknown` を拒否する。
 - `source_path`
 - `manifest_image_path`
 - `frame_index`
@@ -193,7 +223,7 @@ metadata identity は `created_by`、`schema_name`、`schema_contract_scope`、`
 - `reject_unknown_database`: metadata欠損DBやidentity mismatch DBを正式DBへ寄せない。
 - `manual_migration_required`: backup方針と明示確認を決めるまで、欠落tableの作成や `user_version` 修正をしない。
 
-`prepare_personal_score_db_for_write()` は、本番insert実装前のオープン前段である。空DBなら初期化してから互換性を確認し、`compatible` なら検査結果を返す。互換エラーが残るDBは `migration_plan_status` と拒否理由を含む `ValueError` で止める。これはまだ `plays` へのinsert、低信頼度ログ保存、既存DB migrationを行わない。
+`prepare_personal_score_db_for_write()` は、正式writerのオープン前段である。空DBなら初期化してから互換性を確認し、`compatible` なら検査結果を返す。互換エラーが残るDBは `migration_plan_status` と拒否理由を含む `ValueError` で止める。この関数単体はinsertを行わず、`write_personal_score_db_save()` が検査済みconnectionへtransaction writeする。
 
 `prepare_personal_score_db_file_for_write(path)` は、正式DBファイルをパス単位で検査する前段である。新規ファイル、または既存の0 byte空ファイルだけSQLiteとして開いた後に `initialize_empty_database` へ進め、正式初期schemaを作成できる。既存の compatible DB はそのまま通し、schema再作成やmetadata上書きはしない。既存のM8 preview DB、unknown DB、metadata identity mismatch、`manual_migration_required` 候補、SQLiteとして読めないファイル、ディレクトリは拒否し、自動変更しない。戻り値には、対象path、既存ファイルだったか、既存サイズ、初期化結果、最終inspectionを含める。
 
@@ -202,7 +232,6 @@ metadata identity は `created_by`、`schema_name`、`schema_contract_scope`、`
 ## 未決事項
 
 - `play_id` と `duplicate_key` の本格生成方式。
-- `rank` / `clear_type` 未取得時の保存可否。
 - OCR raw、normalized、M5候補観測、M7a候補値の詳細ログ粒度。
 - 低信頼度ログと失敗画像をDB内tableへ寄せるか、diagnostic JSONLとは別のJSONログ参照に留めるか。
 - マスタDBの互換方針が固まった後の `master_version` と `song_id` / `chart_id` の扱い。
@@ -217,3 +246,6 @@ metadata identity は `created_by`、`schema_name`、`schema_contract_scope`、`
 - 同テストは compatible、空DB、M8 preview DB、unknown DB、manual migration候補のdiagnostic dict / Markdown表示を固定し、拒否理由、必須table欠落、metadata identity、path情報、ファイル準備summaryを人間が読める形に保つ。
 - 同テストは preview列、M7a raw候補、OCR raw/normalized が正式 `plays` に混入しないことを確認する。
 - 同テストは `source_captures` がフレーム参照列だけを持ち、`analysis_logs.log_path` や diagnostic JSONL と混同しないことを確認する。
+- `tests/test_personal_score_db_save.py` は正式保存入力の必須値、timezone、正式duplicate key、source/play/analysisの参照整合を固定する。
+- 同テストは正常保存で3tableへ1 transactionでinsertし、duplicate/低信頼度では `plays` を0件のままsource captureとanalysisだけを記録する。
+- 同テストは入力不整合をschema作成前に拒否し、play insert失敗時に同じ呼び出しのsource captureとanalysisをrollbackする。
