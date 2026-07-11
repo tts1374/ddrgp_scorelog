@@ -1,26 +1,28 @@
-# 次チャット用タスク
+# 次PR作業仕様
 
-`C:\work\ddrgp_scorelog` で作業してください。`AGENTS.md` とDB保存境界Skillに従い、実装・検証後にこのファイルを更新してください。画像、`metadata.csv`、`data/`、`logs/`、実入力JSON、ローカルDBはGit管理しません。
+`C:\work\ddrgp_scorelog` で作業してください。`AGENTS.md` と `.agents/skills/review-ddrgp-db-save-boundary/SKILL.md` に従い、このPRをレビュー可能かつmerge可能な状態まで完成させてください。
 
 ## 推奨モデル
 
 GPT-5.6 Sol
 
-モデルはCodexのモデルピッカーで手動選択します。この記載だけでは自動切替されません。人手レビュー手順と正式保存境界をまたぐ回帰を扱うため、品質優先でSolを推奨します。
-
 ## 推論レベル
 
-high
+medium
+
+既存CLIと固定済み保存境界を使ったE2E回帰、README同期、検証が中心であり、新しいschemaや保存設計を含まないため `medium` を推奨します。
+
+正式DB schema、migration、transaction境界の再設計、原因不明の重大な回帰など、現在のPRを完了できない複雑な問題が見つかった場合は、作業を無理に拡張せず、必要に応じて次の実行で `high` を検討してください。
 
 ## 作業ブランチ
 
-今回の完了ブランチ:
+前回完了ブランチ:
 
 ```powershell
 codex/m8-personal-score-db-validation-receipt
 ```
 
-merge済みなら最新 `main` から次のブランチを作成してください。未mergeなら、このブランチの先端を取り込んでから作成してください。
+merge済みなら最新 `main` から、未mergeなら前回完了ブランチの先端を取り込んでから、次のブランチを作成してください。
 
 ```powershell
 codex/m8-personal-score-db-review-workflow-regression
@@ -34,77 +36,133 @@ git log --oneline -5
 git fetch --all --prune
 ```
 
-## 今回までの結果と固定した判断
+既存の未コミット変更を上書き、削除、同梱しないでください。
 
-- `--personal-score-db-save-input-validate-output <path>` は `--personal-score-db-save-input-validate <path>` とだけ組み合わせる明示optionとして追加した。
-- receiptは標準出力または標準エラーと同じ `validation_result_schema_version=1`、入力path、`adapter_status`、`save_input_constructed`、`reasons` の5 keyだけを持つ。
-- receiptはUTF-8 BOMなし、LF、固定key順、末尾改行付きで、明示された `data/` 配下の新規 `.json` に1件だけ生成する。既存ファイルは上書きしない。
-- output path、拡張子、既存ファイル、必須ペア、他mode排他はinput loadと出力作成より先に検査する。
-- receiptの有無でready/excluded/unresolved/invalid、終了コード0/0/1/2、strict loaderとadapter各1回の契約を変えない。
-- invalid input JSON/schemaでも、出力先が有効ならinvalid validation投影をreceiptへ記録する。
-- receiptは正式値、候補材料、template本文、DB path/schema/row、duplicate照会結果を持たない。
-- receiptはレビュー結果の記録であり、レビュー承認、DB互換性、既存DB内duplicate非衝突、並行writer安全性、実保存成功を保証しない。
-- receipt outputを指定しない従来validationは、引き続きDB、`data/`、`logs/`、diagnostic outputを作成・変更しない。
-- template生成、strict loader/adapter、明示DB保存、duplicate preflight、collision時のsource/analysis記録、transaction rollback、DB拒否境界は変更していない。
+## Goal
 
-## 次に進める実作業
+template生成、ローカルでの人手編集相当、validation receipt確認、明示DB保存という人手主導の操作を、既存CLIだけで再現できるE2E fixtureテストとコピー可能なREADME手順として固定します。
 
-template生成から明示保存までを自動連鎖させず、人が各段階を明示実行する最小レビュー手順を回帰として固定してください。新しい保存機能やschemaは追加せず、既存CLIを組み合わせたend-to-end fixtureテストと、コピー可能なREADME手順を主成果物にします。
+このPRでは、新しい保存機能、schema、自動連鎖、承認機構を追加しません。
 
-必須境界:
+## Context
 
-- `tests/test_personal_score_db_cli_save.py` または専用の小さなCLI workflowテストで、空template生成、fixture相当の人手編集、validation receipt生成、明示DB保存を順に実行する。
-- 未編集templateはvalidationで `unresolved` のまま、receiptが生成されても保存へ自動遷移しないことを固定する。
-- 編集済みready入力はvalidation receiptで `ready` を記録できるが、receipt生成だけではDBファイルや `logs/` を作らないことを固定する。
-- 実保存は `--personal-score-db-save-input` と `--personal-score-db-save-database` を別途明示したときだけ行い、新規正式DBにsource/play/analysis各1件を記録することを固定する。
-- save CLIはreceiptを入力や承認証明として要求・消費しない。正式入力JSONだけをstrict loadし、receipt pathや内容から正式値を補完しない。
-- invalid/unresolved validation receiptから保存を自動実行しない。既存の終了コードと副作用境界を維持する。
-- READMEへtemplate生成、ローカルでの人手編集、validation receipt確認、明示保存、DB diagnostic確認の順をコピー可能なコマンドで記載する。
-- READMEでは各段階が独立した明示操作であり、receiptは承認や保存成功の証明ではないことを明記する。
-- 設計docsとDB保存境界Skillは、既存契約で不足する境界が見つかった場合だけ最小更新する。新しいSkill/Subagentは作らない。
+現在はM8「個人スコアDB保存」の範囲です。
 
-## 必読資料
+次は実装済みです。
 
-- `AGENTS.md`
-- `.agents/skills/review-ddrgp-db-save-boundary/SKILL.md`
-- `docs/next-task.md`
-- `docs/implementation-roadmap.md`
-- `docs/design/03_event_and_save_boundary.md`
-- `docs/design/04_data_model.md`
-- `docs/design/05_storage_io_spec.md`
-- `docs/design/06_regression_guard.md`
-- `docs/design/10_personal_score_db_schema.md`
-- `tools/vision_poc/personal_score_db_cli_save.py`
-- `tools/vision_poc/personal_score_db_save_adapter.py`
-- `tools/vision_poc/personal_score_db_file_save.py`
-- `tools/vision_poc/runner.py`
-- `tools/vision_poc/README.md`
-- `tests/test_personal_score_db_cli_save.py`
-- `tests/fixtures/personal_score_db_cli/ready-v1.json`
+- 正式個人スコアDB schemaと互換検査
+- DB準備、diagnostic、transaction writer
+- preview材料と正式値を分離するadapter
+- 明示DB pathへの単発保存
+- strict JSON loaderを使うsave CLI
+- duplicate preflight
+- 副作用のないvalidation CLI
+- 空review template生成CLI
+- validation receiptの明示出力
 
-## スコープ外
+今回扱うロードマップ項目:
 
-- template、validation、receipt、save、diagnosticの1コマンド自動連鎖
-- receiptを承認証明、署名、認可token、保存可否判定として扱う変更
-- receiptへの正式値、候補材料、template本文、input hash、DB schema/row、duplicate照会結果の記録
-- receiptの `logs/` 出力、append/JSONL化、署名、承認者情報、履歴管理
-- save CLIがreceiptを必須入力として検証・消費する変更
-- templateへの候補値、preview値、metadata値、相対時刻の自動転記
-- 正式値、duplicate key、ID、時刻、rank、clear typeの自動生成・補完
-- input/validation/template/result schema version 2、既定入力/出力/DB path
-- duplicate key生成方式の本格実装・差し替え
-- 完全同一リクエスト再送の冪等化
-- 並行writer、ロック戦略、常駐監視、非同期処理、Windows UI
-- 実キャプチャAPI、実キャプチャデバイス依存コード
-- 既定自動保存、通常PoC/timestamped/manifest runnerからの暗黙保存
-- M5/M7a/M8 previewからの正式値・duplicate key自動確定
-- 既存DBの自動migration、backup/migration実行、自動repair
-- 低信頼度ログファイル、失敗画像、diagnostic output/logの自動保存
-- ROI座標の大変更、OCR方式全面刷新
-- 画像、`metadata.csv`、`data/`、`logs/`、ローカルDB、実入力JSONのコミット
-- 追加のプロジェクト専用Skill/Subagent作成
+> template作成、手入力、validation receipt確認、明示保存を人手で順に実施する最小レビュー手順をCLI/README上で固定する。
 
-## 検証コマンド
+M8内の次項目は今回のPRに含めません。
+
+- 低信頼度analysis詳細JSON、失敗画像、保持期間、`analysis_logs.log_path` の契約
+- migration方針
+
+## Deliverables
+
+### 1. E2E workflow fixture test
+
+`tests/test_personal_score_db_cli_save.py` または責務を限定した専用テストで、利用者と同じCLI入口を使って次を固定してください。
+
+1. 空templateを生成する。
+2. 未編集templateをvalidationし、`unresolved` を確認する。
+3. unresolved receiptを生成しても保存されないことを確認する。
+4. fixture相当の正式値を人手編集相当としてtemplateへ設定する。
+5. validation receiptへ `ready` を記録する。
+6. receipt生成だけではDBや `logs/` が作成・変更されないことを確認する。
+7. 明示save pairを別操作として実行する。
+8. 新規正式DBへ `source_captures`、`plays`、`analysis_logs` が各1件記録されることを確認する。
+9. save CLIがreceiptを要求または参照していないことを確認する。
+
+### 2. Boundary regression
+
+既存テストと重複しすぎない範囲で、次を固定してください。
+
+- 未編集templateは `unresolved`。
+- unresolvedまたはinvalid receiptから保存へ自動遷移しない。
+- ready receipt生成だけではDBや `logs/` を作らない。
+- receiptを正式save inputとして受理しない。
+- validation、receipt、saveは独立した明示操作である。
+- 既存status、終了コード、副作用順序を維持する。
+
+### 3. README workflow
+
+`tools/vision_poc/README.md` に、次をコピー可能なPowerShellコマンドで記載してください。
+
+1. template生成
+2. ローカルでの人手編集
+3. validation receipt生成
+4. receipt内容確認
+5. 明示save
+6. DB diagnostic確認
+
+READMEには次を明記してください。
+
+- 各段階は独立した明示操作である。
+- receiptは承認、署名、認可token、保存成功証明ではない。
+- `ready` はsave input構築可能だけを意味する。
+- validationはDB互換性、DB内duplicate、並行writer、実保存成功を保証しない。
+- receipt生成後に入力JSONが変更されていないことも保証しない。
+- save CLIはreceiptを要求・消費しない。
+- 実保存前に利用者が正式入力JSONを確認する。
+- コマンド例はGit管理外の `data/` とローカルDBを使う。
+
+### 4. Minimal documentation sync
+
+既存の設計docsまたはDB保存境界Skillで今回のworkflowを正確に説明できない場合だけ、最小限更新してください。
+
+新しいSkillやSubagentは作成しません。
+
+## Invariants
+
+詳細な正本は `.agents/skills/review-ddrgp-db-save-boundary/SKILL.md` と関連設計docsです。特に次を維持してください。
+
+- templateへ候補値、preview値、metadata値、相対時刻、正式値を自動転記しない。
+- 未編集templateは `unresolved`。
+- validationはstrict loaderとadapterだけを再利用し、DBを開かない。
+- receiptはvalidation投影だけを持ち、正式値、候補材料、DB情報を持たない。
+- receiptは承認証明やsave入力ではない。
+- ready receipt生成だけではDBや `logs/` を作らない。
+- save CLIは正式入力JSONだけをstrict loadする。
+- 実保存は明示save pairを指定した場合だけ行う。
+- preview候補材料を正式値へ暗黙昇格させない。
+- duplicate preflight、DB拒否、transaction rollbackの既存契約を変えない。
+- M8 preview DBと正式個人スコアDBを相互に受け入れない。
+- 画像、`metadata.csv`、`data/`、`logs/`、実入力JSON、ローカルDB、生成物をコミットしない。
+
+## Non-goals
+
+- template、validation、receipt、save、diagnosticの自動連鎖
+- validation成功後の自動save
+- receiptの承認証明、署名、認可token化
+- receiptへの正式値、候補材料、input hash、DB情報の追加
+- save CLIによるreceiptの検証または消費
+- templateへの候補値や正式値の自動入力
+- schema version 2
+- 既定入力、出力、DB path
+- duplicate key方式の差し替え
+- 冪等化、並行writer、ロック戦略
+- migration方針またはmigration実装
+- 低信頼度ログ、失敗画像、保持期間の新規契約
+- 実キャプチャ、常駐監視、非同期処理、Windows UI
+- OCR方式刷新、ROI座標の大変更
+- 無関係なリファクタリングや別領域の修正
+- 次PR相当の作業
+
+## Validation
+
+変更に近いテストから実行し、完了前に全体検証を行ってください。
 
 ```powershell
 python -m pytest tests\test_personal_score_db_cli_save.py
@@ -119,41 +177,98 @@ python -m pytest tests
 python -m tools.vision_poc
 python -X utf8 "$env:USERPROFILE\.codex\skills\.system\skill-creator\scripts\quick_validate.py" ".agents\skills\review-ddrgp-db-save-boundary"
 git diff --check
+git status --short
 ```
 
-今回実際に実行した結果:
+READMEに記載したコマンドも、Git管理外の一時pathを使って実行可能性を確認してください。
 
-- CLI save/template/validation/receipt: 54 passed
-- file save: 15 passed
-- adapter: 7 passed
-- formal writer: 10 passed
-- schema/diagnostic: 55 passed
-- M7/M8回帰: 71 passed、44 deselected
-- 全テスト: 347 passed
-- Ruff: passed
-- compileall: passed
-- Skill validator: `Skill is valid!`
-- `python -m tools.vision_poc`: 221/221 correct、accuracy 1.000、false positive 0、false negative 0、transition countup shape candidates 3
-- `git diff --check`: passed
-- 実行不能な検証: なし
+既知の `pytest_chalice` / `pkg_resources` deprecated warningは、テスト失敗と区別してください。
 
-pytest実行時に `pytest_chalice` から `pkg_resources` deprecated warningが出るが、テスト失敗ではない。既知の機能リスクは、validation/receiptがDBを開かないためDB互換性とDB内duplicateを判定しないこと、並行writer間でduplicate preflight後・insert前に同じkeyが書かれた場合は2件目がUNIQUE拒否・transaction rollbackになること。receiptは入力内容hashを持たないため、receipt生成後に入力JSONが変更されていないことも証明しない。これらはreceiptの保証外としてREADMEと設計docsに明記済みである。
+## Review
 
-## コミット/Push方針
+実装後、`main` との差分をread-onlyでレビューしてください。利用可能なら `/review` を使い、DB保存境界Skillの観点を適用します。
 
-- 今回作業分だけをパス単位でステージする。
-- `docs/next-task.md` は引き継ぎ仕様として同じコミットへ含める。
-- 画像、`metadata.csv`、`data/`、`logs/`、ローカルDB、実入力JSON、生成物をステージしない。
-- コード、テスト、README、必要な設計docs/Skillの関連契約を同じコミットへ含める。
-- staged diffを確認してからコミットし、通常pushする。force-pushしない。
+少なくとも次を確認してください。
 
-## 完了条件
+- receiptを承認証明またはsave入力として扱っていない。
+- template、validation、receipt、saveが独立操作のままである。
+- ready receipt生成だけでDBや `logs/` を作らない。
+- E2EテストがCLI利用経路を表している。
+- READMEコマンドと実CLI optionが一致する。
+- READMEの保証範囲が実装より強くない。
+- 不要なschema、公開CLI、migration、低信頼度ログ契約を追加していない。
+- Git管理外ファイルがdiffやstaged filesへ混入していない。
 
-- templateから明示保存までの人手主導シーケンスを、既存CLIだけで再現するfixtureテストが通る。
-- 未編集templateとinvalid/unresolved receiptが保存へ自動遷移しない。
-- ready receipt生成だけではDBや `logs/` が作成・変更されない。
-- 明示save pairを別途実行した場合だけ正式DBへsource/play/analysisが記録される。
-- save CLIがreceiptから正式値を補完せず、receiptを承認証明として扱わない。
-- READMEのコピー可能な手順とコード/テストの副作用境界が一致する。
-- 既存template、validation/receipt status、duplicate preflight、DB拒否、transaction rollback、CLI save結果の契約を壊していない。
-- 検証が通り、Git管理外ファイルをコミットしていない。
+重大度medium以上の指摘は、このPR範囲内なら修正して再検証してください。範囲外なら実装せず、次PR候補へ送ってください。
+
+## Authorization
+
+`AGENTS.md` の事前許可に基づき、次まで実施してください。
+
+- 今回の変更だけをcommit
+- 指定した `codex/*` ブランチへ通常push
+- draft PR作成
+
+次は実施しません。
+
+- `main` への直接push
+- force-push
+- PR merge
+- tag、release作成
+- issueや既存PRへの書込み
+- migration、データ削除、既存DB修復
+
+## Acceptance Criteria
+
+### Functionality
+
+- templateから明示保存までの人手主導workflowを、既存CLIだけで再現するE2E fixtureテストが通る。
+- 未編集templateは `unresolved`。
+- unresolvedまたはinvalid receiptから保存へ進まない。
+- ready receipt生成だけではDBや `logs/` を作成・変更しない。
+- 明示save pairを別途実行した場合だけ正式DBへsource、play、analysisが各1件記録される。
+- save CLIがreceiptを要求、検証、消費、参照しない。
+- 既存status、終了コード、duplicate preflight、DB拒否、rollbackを壊していない。
+
+### Documentation
+
+- READMEにコピー可能な6段階のworkflowが記載されている。
+- READMEが操作の独立性とreceiptの非保証範囲を説明している。
+- README、E2Eテスト、実CLIの操作順と副作用境界が一致する。
+
+### PR Quality
+
+- 対象テストと全体検証が通る。
+- Ruff、compileall、PoC実行、Skill validator、`git diff --check` が通る。
+- read-onlyレビューでmedium以上の未対応指摘がない。
+- staged diffがこのPR目的に限定されている。
+- Git管理外ファイルをコミットしていない。
+- commit、通常push、draft PR作成が完了している。
+- 次PR相当の作業へ着手していない。
+
+## Required Completion Report
+
+完了報告には次を含めてください。
+
+- 変更したファイルと責務
+- 固定したworkflow
+- 維持した保存境界
+- 実行した検証と結果
+- read-onlyレビュー結果
+- コミットSHA
+- push先branch
+- draft PR番号またはURL
+- 未解決事項
+- 次PR候補
+- `ユーザー対応が必要` または `現時点でユーザー対応はありません`
+
+## Next Task Update
+
+このPR完了後、`docs/next-task.md` は次PRの作業仕様へ更新してください。
+
+現時点のM8後続候補:
+
+1. 低信頼度analysis詳細JSON、失敗画像、保持期間、`analysis_logs.log_path` の参照契約
+2. migration方針
+
+優先順位を既存資料から一意に決められない場合は、候補を比較して `ユーザー対応が必要` としてください。今回のPRでは実装しません。
