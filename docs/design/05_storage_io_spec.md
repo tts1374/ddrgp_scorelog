@@ -263,3 +263,11 @@ M8のscore DB file output previewでは、`--m8-score-db-output data\...\ddrgp-s
 - ログローテーション
 - DBバックアップ方針
 - manifest dry-run 出力を本番でも残す期間
+
+## Analysis artifact path contract
+
+`tools.vision_poc.personal_score_db_analysis_artifacts` は副作用のないversion 1契約だけを提供する。`analysis_logs.log_path` は空文字、またはリポジトリroot基準のPOSIX相対path `logs/analysis_details/**/*.json` とする。絶対path、`..`、backslash、`logs/` 外、別拡張子をDB準備・ファイル生成より前に拒否する。相対pathはcheckoutの移動可能性と個人環境pathの非記録を優先した形式である。
+
+任意の失敗画像は詳細JSON内の `failure_image_path` で `logs/analysis_failures/**/*.{png,jpg,jpeg,webp}` を参照する。これは `log_path`、元フレーム用 `source_captures.source_path`、`data/` 配下のvalidation receipt、`logs/` 配下のDB diagnostic JSONLと相互代用しない。
+
+retention classは `short=7日`、`standard=30日`、`indefinite=期限なし` とする。UTCの `basis_at` から `expires_at` を決定的に計算し、期限なしだけnullにする。同じ詳細JSONとそこから参照する失敗画像へ同じretention metadataを適用する。この契約は将来cleanupの判断材料だけであり、ファイル作成、削除、scheduler、起動時掃除を行わない。

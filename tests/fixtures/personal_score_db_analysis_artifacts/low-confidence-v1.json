@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "generated_by": "tools.vision_poc.personal_score_db_analysis_artifacts",
+  "generated_at": "2026-07-12T01:00:00Z",
+  "app_version": "test-v1",
+  "analysis_id": "analysis-low-001",
+  "source_capture_id": "capture-001",
+  "analysis_status": "low_confidence",
+  "save_boundary_status": "excluded",
+  "skip_reason": "identity_below_threshold",
+  "event": {
+    "confirmed_result": true,
+    "duplicate": false,
+    "event_type": "confirmed",
+    "confirmation_mode": "time",
+    "timestamp_ms": 1000,
+    "candidate_duration_ms": 1000
+  },
+  "review": {
+    "identity_status": "ambiguous",
+    "digit_status": "recognized",
+    "analysis_confidence": 0.42
+  },
+  "investigation": {
+    "candidate_material": [
+      {"kind": "identity", "status": "ambiguous", "summary": "top candidates too close"}
+    ],
+    "diagnostic_summary": ["identity threshold was not met"]
+  },
+  "failure_image_path": "logs/analysis_failures/2026/07/analysis-low-001.png",
+  "retention": {
+    "retention_class": "standard",
+    "basis_at": "2026-07-12T01:00:00Z",
+    "expires_at": "2026-08-11T01:00:00Z"
+  }
+}

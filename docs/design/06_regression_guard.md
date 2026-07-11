@@ -328,6 +328,16 @@
 - diagnostic log output はDB診断ログであり、`analysis_logs.log_path` が将来参照する本番解析ログや低信頼度ログとは別ファイルとして扱う。
 - `source_captures` は元フレーム参照だけを保持し、解析ログ本文、DB診断ログ、低信頼度ログ本文を持たない。
 
+## Analysis artifact contract
+
+- version 1詳細JSONはstrictな必須key・型・status整合で検査し、unknown keyを拒否する。
+- 正式play値、validation receipt key、DB diagnostic payloadを詳細JSONへ混入させない。
+- `analysis_logs.log_path` は空文字または `logs/analysis_details/**/*.json` だけを許可する。
+- failure imageは詳細JSONの別fieldで `logs/analysis_failures/` だけを参照し、source captureやdiagnostic logと混同しない。
+- path traversal、絶対path、backslash、namespace外、想定外拡張子を副作用前に拒否する。
+- retentionはUTC基準のpure計算に留め、既存ファイルの作成・削除やcleanupを開始しない。
+- validationだけではDB、`data/`、`logs/`、画像を作成・変更しない。
+
 ## 正式個人スコアDB save input / transaction
 
 - 正式保存入力はM8 preview payload/rowを直接受け取らず、timezone付き時刻、master version、正式ID、rank、clear type、正式duplicate key、confidence、app versionが確定済みであることを要求する。
