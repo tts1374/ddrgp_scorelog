@@ -36,6 +36,8 @@ description: DDRGP scorelogの保存可否、正式個人スコアDB、duplicate
 - previewから正式入力へのadapterは候補材料と明示的な正式値を分け、`unresolved` から保存入力を返さず、`excluded` からplayを作らない。
 - 明示ファイル保存はadapterをDB準備より先に評価し、`unresolved` でDBファイルや親ディレクトリを作成・変更しない。
 - 明示ファイル保存は新規/0 byte/compatible正式DBだけを受け入れ、preview、unknown、metadata identity mismatch、`manual_migration_required`、非SQLite、ディレクトリを自動修復しない。
+- ready入力の明示 `duplicate_key` は正式DB保存直前に既存 `plays` と照合し、衝突時はplayを作らず、`skipped` / `duplicate` / `duplicate_key_already_saved` / `duplicate=true` のanalysisとsource captureだけを同じtransactionで記録する。
+- duplicate collision結果は `excluded` / `written=true` / `play_id=null` とし、完全同一ID再送を冪等成功へ丸めず、UNIQUE拒否時に部分rowを残さない。
 - 明示CLI保存は入力JSON pathと正式DB pathの必須ペアだけで動かし、JSON loaderで必須/未知key、nested object/null、bool/intを含む型をadapter前に検査する。
 - 明示CLI保存は候補材料や相対時刻を `formal_play` へ暗黙コピーせず、`unresolved` と不正JSONでDBファイルや親ディレクトリを作成・変更しない。
 - PoCのscore/file由来 `duplicate_key` を正式duplicate keyとして扱わない。

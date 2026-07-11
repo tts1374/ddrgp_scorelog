@@ -49,10 +49,16 @@ def save_personal_score_db_file(
     with sqlite3.connect(path) as connection:
         write_result = write_personal_score_db_save(connection, save_input)
 
+    adapter_status = adapter_result.status
+    reasons = adapter_result.reasons
+    if adapter_status == "ready" and write_result.duplicate:
+        adapter_status = "excluded"
+        reasons = (write_result.skip_reason,)
+
     return PersonalScoreDbFileSaveResult(
         db_path=path,
-        adapter_status=adapter_result.status,
-        reasons=adapter_result.reasons,
+        adapter_status=adapter_status,
+        reasons=reasons,
         written=True,
         source_capture_id=write_result.source_capture_id,
         analysis_id=write_result.analysis_id,

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 
 from .personal_score_db_schema import prepare_personal_score_db_for_write
@@ -20,6 +20,7 @@ PERSONAL_SCORE_DB_ANALYSIS_STATUSES = (
     "error",
 )
 PERSONAL_SCORE_DB_SAVE_READY_STATUS = "save_ready"
+PERSONAL_SCORE_DB_DUPLICATE_SKIP_REASON = "duplicate_key_already_saved"
 
 
 @dataclass(frozen=True)
@@ -92,6 +93,9 @@ class PersonalScoreDbWriteResult:
     analysis_id: str
     play_id: str | None
     analysis_status: str
+    save_boundary_status: str
+    skip_reason: str
+    duplicate: bool
 
     @property
     def saved(self) -> bool:
@@ -206,6 +210,19 @@ def write_personal_score_db_save(
     play = save_input.play
 
     with connection:
+        if play is not None and _duplicate_key_already_saved(
+            connection,
+            play.duplicate_key,
+        ):
+            play = None
+            analysis = replace(
+                analysis,
+                play_id=None,
+                analysis_status="skipped",
+                save_boundary_status="duplicate",
+                skip_reason=PERSONAL_SCORE_DB_DUPLICATE_SKIP_REASON,
+                duplicate=True,
+            )
         connection.execute(
             """
             INSERT INTO source_captures (
@@ -233,7 +250,21 @@ def write_personal_score_db_save(
         analysis_id=analysis.analysis_id,
         play_id=play.play_id if play is not None else None,
         analysis_status=analysis.analysis_status,
+        save_boundary_status=analysis.save_boundary_status,
+        skip_reason=analysis.skip_reason,
+        duplicate=analysis.duplicate,
     )
+
+
+def _duplicate_key_already_saved(
+    connection: sqlite3.Connection,
+    duplicate_key: str,
+) -> bool:
+    row = connection.execute(
+        "SELECT 1 FROM plays WHERE duplicate_key = ? LIMIT 1",
+        (duplicate_key,),
+    ).fetchone()
+    return row is not None
 
 
 def _validate_play(errors: list[str], play: PersonalScoreDbPlayInput) -> None:

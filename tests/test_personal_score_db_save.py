@@ -292,6 +292,77 @@ def test_personal_score_db_writer_rejects_invalid_input_before_schema_creation()
     assert table_names == []
 
 
+def test_personal_score_db_writer_records_duplicate_key_collision_without_play() -> None:
+    first_input = saved_input("first")
+    collision_input = saved_input("collision")
+    assert first_input.play is not None
+    assert collision_input.play is not None
+    collision_input = replace(
+        collision_input,
+        play=replace(
+            collision_input.play,
+            duplicate_key=first_input.play.duplicate_key,
+        ),
+    )
+
+    with sqlite3.connect(":memory:") as connection:
+        score_save.write_personal_score_db_save(connection, first_input)
+        result = score_save.write_personal_score_db_save(connection, collision_input)
+
+        assert row_count(connection, "source_captures") == 2
+        assert row_count(connection, "plays") == 1
+        assert row_count(connection, "analysis_logs") == 2
+        collision_analysis = connection.execute(
+            """
+            SELECT play_id, analysis_status, save_boundary_status, skip_reason,
+                   duplicate, source_capture_id
+            FROM analysis_logs
+            WHERE analysis_id = ?
+            """,
+            (collision_input.analysis.analysis_id,),
+        ).fetchone()
+
+    assert not result.saved
+    assert result.play_id is None
+    assert result.analysis_status == "skipped"
+    assert result.save_boundary_status == "duplicate"
+    assert result.skip_reason == "duplicate_key_already_saved"
+    assert result.duplicate
+    assert collision_analysis == (
+        None,
+        "skipped",
+        "duplicate",
+        "duplicate_key_already_saved",
+        1,
+        "capture-collision",
+    )
+
+
+def test_duplicate_collision_retry_with_same_ids_rolls_back_new_rows() -> None:
+    first_input = saved_input("first")
+    collision_input = saved_input("collision")
+    assert first_input.play is not None
+    assert collision_input.play is not None
+    collision_input = replace(
+        collision_input,
+        play=replace(
+            collision_input.play,
+            duplicate_key=first_input.play.duplicate_key,
+        ),
+    )
+
+    with sqlite3.connect(":memory:") as connection:
+        score_save.write_personal_score_db_save(connection, first_input)
+        score_save.write_personal_score_db_save(connection, collision_input)
+
+        with pytest.raises(sqlite3.IntegrityError, match="UNIQUE constraint failed"):
+            score_save.write_personal_score_db_save(connection, collision_input)
+
+        assert row_count(connection, "source_captures") == 2
+        assert row_count(connection, "plays") == 1
+        assert row_count(connection, "analysis_logs") == 2
+
+
 def test_personal_score_db_writer_rolls_back_source_when_play_insert_fails() -> None:
     first_input = saved_input("first")
     second_input = saved_input("second")
@@ -301,8 +372,9 @@ def test_personal_score_db_writer_rolls_back_source_when_play_insert_fails() -> 
         second_input,
         play=replace(
             second_input.play,
-            duplicate_key=first_input.play.duplicate_key,
+            play_id=first_input.play.play_id,
         ),
+        analysis=replace(second_input.analysis, play_id=first_input.play.play_id),
     )
 
     with sqlite3.connect(":memory:") as connection:

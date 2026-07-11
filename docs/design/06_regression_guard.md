@@ -337,6 +337,9 @@
 - 明示ファイル保存APIはadapterをDB準備より先に実行し、`unresolved` ではDBファイルも親ディレクトリも作らない。
 - 明示ファイル保存APIは新規/0 byte/compatible正式DBだけへ書き、preview / unknown / metadata identity mismatch / manual migration候補 / 非SQLite / ディレクトリを変更せず拒否する。
 - 明示ファイル保存APIの `written=true` はtransaction完了を表し、play rowの有無は `play_id` で区別する。`excluded` を保存成功playへ丸めない。
+- 既存正式playと明示 `duplicate_key` が衝突したready入力は、2件目のplayを作らず `skipped` / `duplicate` / `duplicate_key_already_saved` / `duplicate=true` のanalysisへ変換する。Python API/CLIは `excluded` / `written=true` / `play_id=null` を返す。
+- duplicate collisionのsource capture / analysis IDは新規一意値を要求し、完全同一ID再送を冪等成功へ丸めない。UNIQUE拒否や他のinsert失敗では今回の部分rowを残さない。
+- DB保存直前preflight後の並行writer raceはこの単一プロセスPoCでは制御せず、`plays.duplicate_key` のUNIQUE制約とrollbackを維持する。
 - 単発CLIは入力JSON pathと正式DB pathの必須ペアだけから明示ファイル保存APIを1回呼び、通常PoC、timestamped/manifest runner、`--m8-score-db-output`、既定自動保存へ接続しない。
 - CLI JSON loaderはversion、必須/未知key、nested object/null、厳密な型をadapter前に検査し、boolとintを混同しない。
 - CLI loaderはM5 `identity_signal_*`、M7a `recognized_digits`、`played_at_ms` / `timestamp_ms` を `formal_play` へ暗黙コピーしない。

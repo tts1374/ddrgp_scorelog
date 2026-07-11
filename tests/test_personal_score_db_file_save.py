@@ -94,6 +94,46 @@ def test_file_save_appends_to_compatible_database(tmp_path: Path) -> None:
     assert row_counts(db_path) == (2, 2, 2)
 
 
+def test_file_save_records_duplicate_key_collision_as_excluded(tmp_path: Path) -> None:
+    db_path = tmp_path / "formal.sqlite"
+    first = adapter_input("first")
+    collision = adapter_input("collision")
+    assert first.formal_play is not None
+    assert collision.formal_play is not None
+    collision = replace(
+        collision,
+        formal_play=replace(
+            collision.formal_play,
+            duplicate_key=first.formal_play.duplicate_key,
+        ),
+    )
+
+    file_save.save_personal_score_db_file(db_path, first)
+    result = file_save.save_personal_score_db_file(db_path, collision)
+
+    assert result.adapter_status == "excluded"
+    assert result.reasons == ("duplicate_key_already_saved",)
+    assert result.written
+    assert result.source_capture_id == "capture-collision"
+    assert result.analysis_id == "analysis-collision"
+    assert result.play_id is None
+    assert row_counts(db_path) == (2, 1, 2)
+    with sqlite3.connect(db_path) as connection:
+        analysis_row = connection.execute(
+            """
+            SELECT analysis_status, save_boundary_status, skip_reason, duplicate
+            FROM analysis_logs
+            WHERE analysis_id = 'analysis-collision'
+            """
+        ).fetchone()
+    assert analysis_row == (
+        "skipped",
+        "duplicate",
+        "duplicate_key_already_saved",
+        1,
+    )
+
+
 @pytest.mark.parametrize(
     ("exclusion", "duplicate", "expected_status"),
     [
@@ -228,7 +268,7 @@ def test_file_save_preserves_writer_rollback_on_insert_failure(tmp_path: Path) -
         second,
         formal_play=replace(
             second.formal_play,
-            duplicate_key=first.formal_play.duplicate_key,
+            play_id=first.formal_play.play_id,
         ),
     )
     file_save.save_personal_score_db_file(db_path, first)

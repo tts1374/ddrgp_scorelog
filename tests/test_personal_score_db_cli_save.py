@@ -92,6 +92,55 @@ def test_cli_appends_to_compatible_database(
     assert row_counts(db_path) == (1, 1, 1)
 
 
+def test_cli_records_duplicate_key_collision_as_excluded(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    db_path = tmp_path / "formal.sqlite"
+    first = fixture_input()
+    collision = fixture_input()
+    collision["capture_id"] = "capture-cli-collision"
+    collision["capture_hash"] = "sha256:cli-collision"
+    collision["source_path"] = "fixtures/cli-collision.png"
+    collision["analysis_id"] = "analysis-cli-collision"
+    collision["formal_play"]["play_id"] = "play-cli-collision"
+
+    assert (
+        runner.main(
+            [
+                "--personal-score-db-save-input",
+                str(write_input(tmp_path, first)),
+                "--personal-score-db-save-database",
+                str(db_path),
+            ]
+        )
+        == 0
+    )
+    capsys.readouterr()
+    exit_code = runner.main(
+        [
+            "--personal-score-db-save-input",
+            str(write_input(tmp_path, collision)),
+            "--personal-score-db-save-database",
+            str(db_path),
+        ]
+    )
+
+    assert exit_code == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result == {
+        "result_schema_version": 1,
+        "db_path": str(db_path),
+        "adapter_status": "excluded",
+        "written": True,
+        "play_id": None,
+        "source_capture_id": "capture-cli-collision",
+        "analysis_id": "analysis-cli-collision",
+        "reasons": ["duplicate_key_already_saved"],
+    }
+    assert row_counts(db_path) == (2, 1, 2)
+
+
 @pytest.mark.parametrize("kind", ["duplicate", "low_confidence", "skipped", "error"])
 def test_cli_saves_excluded_analysis_without_play(
     tmp_path: Path,

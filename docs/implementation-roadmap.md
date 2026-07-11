@@ -62,7 +62,7 @@ manifestまたはmanual入力
   -> 保存成功または保存除外analysis
 ```
 
-2026-07-11時点では、preview候補材料とレビュー済み正式値を分離するpure adapterから、確定済み正式保存入力を経て、明示された新規/0 byte/compatible正式DBファイルへ1件書く契約まで通っている。明示JSON入力と明示DB pathの必須ペアから1回だけ呼ぶCLIも追加済みで、通常PoC、timestamped/manifest runner、既定自動保存には接続していない。
+2026-07-11時点では、preview候補材料とレビュー済み正式値を分離するpure adapterから、確定済み正式保存入力を経て、明示された新規/0 byte/compatible正式DBファイルへ1件書く契約まで通っている。明示JSON入力と明示DB pathの必須ペアから1回だけ呼ぶCLIも追加済みで、既存正式playとのduplicate key衝突は2件目のplayを作らずsource/analysisだけを記録する。通常PoC、timestamped/manifest runner、既定自動保存には接続していない。
 
 ## マイルストーン
 
@@ -416,12 +416,12 @@ M5完了時点で固定すること:
 - 2026-07-11時点で、`adapt_personal_score_db_save_input()` を追加した。M8 payload/planned rowは候補材料としてだけ受け取り、正式時刻、master version、ID、数字、rank/clear type、正式duplicate keyを別の明示入力として要求する。不足・不正は `unresolved`、duplicate/低信頼度/その他skipは `play=None` の `excluded`、全条件を満たす場合だけ `ready` とするpure contractをfixtureで固定した。runner/CLI、実ファイル保存、候補値の自動昇格には接続していない。
 - 2026-07-11時点で、`save_personal_score_db_file(db_path, adapter_input)` を追加した。adapterをDB準備より先に評価し、unresolvedはファイル/親ディレクトリを作らず理由を返す。readyはsource/play/analysis、excludedはsource/analysisだけを、明示された新規/0 byte/compatible正式DBへ既存writerで記録する。preview/unknown/identity mismatch/manual migration/non-SQLite/directory拒否とrollbackをfixtureで固定し、通常runner/CLI、既定自動保存、自動migrationには接続していない。
 - 2026-07-11時点で、`--personal-score-db-save-input` と `--personal-score-db-save-database` の必須ペアを追加した。`input_schema_version=1` のUTF-8 JSONを厳格に読み、候補材料を正式playへ昇格せず、ready/excludedだけ単発保存する。通常PoC、timestamped/manifest runner、既定path、diagnostic/低信頼度ログ自動出力には接続していない。
+- 2026-07-11時点で、正式DB保存直前のduplicate preflightを追加した。レビュー済み明示 `duplicate_key` が既存playと衝突した場合は2件目のplayを作らず、新しいsource captureと `skipped/duplicate/duplicate_key_already_saved` analysisだけを同じtransactionで記録し、Python API/CLIは `excluded/written/play_id=null` を返す。完全同一ID再送の冪等化と並行writer制御は未実装で、UNIQUE制約とrollbackを維持する。
 
 やること:
 
 - CLIへ渡すレビュー済み正式JSONを上流で作る責務と、人手レビュー手順を決める。通常runnerからの暗黙生成には進まない。
 - 低信頼度analysisの詳細JSONと失敗画像の保存先、保持期間、`analysis_logs.log_path` の参照契約を決める。
-- 重複保存防止をDB保存直前にも適用する。
 - マイグレーション方針を決める。
 
 完了条件:

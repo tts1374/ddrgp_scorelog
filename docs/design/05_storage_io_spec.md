@@ -215,17 +215,17 @@ CLI診断は `python -m tools.vision_poc --personal-score-db-diagnostic <path>` 
 
 `--personal-score-db-diagnostic-log-output <path>` を指定した場合は、診断1回につき1行のJSONLログを `logs/` 配下へappendする。拡張子は `.jsonl` に限定する。ログレコードは `log_schema_version=1`、`event_type=personal_score_db_diagnostic`、diagnostic mode、format、exit code相当status、対象DB path、任意の diagnostic output path、diagnostic dictを必須keyとして持つ。書き込み前に必須key、mode、format、event type、schema version、`diagnostic.is_compatible` と exit code / status の整合を検査する。これは標準出力や `data/` file outputとは別のDB診断ログ入口であり、本番insert、既定自動保存、既存DB migration、低信頼度ログ本番保存、source capture保存には進まない。`logs/` 外指定や `.jsonl` 以外はDB準備より前に拒否し、prepare-write対象の新規DBを作らない。将来の低信頼度ログ本番仕様や `analysis_logs.log_path` から参照する本番解析ログは、このdiagnostic JSONLとは別ファイルとして扱い、同じJSONLへ `event_type` だけで混在させない。
 
-正式connectionへの最小write境界は `write_personal_score_db_save(connection, save_input)` で扱う。入力検査をDB準備より前に行い、確定済み入力だけを受け付ける。保存成功は `source_captures`、`plays`、`analysis_logs`、保存除外は `source_captures` と `analysis_logs` を同じtransactionでinsertする。途中失敗時は同じ呼び出しの全rowをrollbackする。
+正式connectionへの最小write境界は `write_personal_score_db_save(connection, save_input)` で扱う。入力検査をDB準備より前に行い、確定済み入力だけを受け付ける。保存成功は `source_captures`、`plays`、`analysis_logs`、保存除外は `source_captures` と `analysis_logs` を同じtransactionでinsertする。ready入力の明示 `duplicate_key` はDB準備後・source insert前に既存 `plays` へ照会し、衝突時はplayをinsertせず、sourceと `skipped/duplicate/duplicate_key_already_saved` のanalysisだけを同じtransactionで記録する。途中失敗時は同じ呼び出しの全rowをrollbackする。
 
 write前の `adapt_personal_score_db_save_input()` はpure functionであり、DB connectionや出力pathを受け取らない。戻り値が `ready` または `excluded` の場合だけ正式 `PersonalScoreDbSaveInput` を持ち、`unresolved` は不足・不正理由だけを返す。adapterの追加によって既定自動保存、実ファイル作成、既存DB migrationは開始しない。
 
-明示ファイル保存は `save_personal_score_db_file(db_path, adapter_input)` で扱う。adapterを最初に実行し、`unresolved` はDBファイルや親ディレクトリの作成・変更前に理由付き結果として返す。`ready` / `excluded` だけ `prepare_personal_score_db_file_for_write(path)` と同じ拒否境界を通り、既存writerへ渡す。新規/0 byte/compatible正式DBだけを許可し、preview / unknown / metadata identity mismatch / manual migration候補 / 非SQLite / ディレクトリは自動修復せず拒否する。writer途中失敗では同じ呼び出しのsource/play/analysis rowをrollbackする。
+明示ファイル保存は `save_personal_score_db_file(db_path, adapter_input)` で扱う。adapterを最初に実行し、`unresolved` はDBファイルや親ディレクトリの作成・変更前に理由付き結果として返す。`ready` / `excluded` だけ `prepare_personal_score_db_file_for_write(path)` と同じ拒否境界を通り、既存writerへ渡す。新規/0 byte/compatible正式DBだけを許可し、preview / unknown / metadata identity mismatch / manual migration候補 / 非SQLite / ディレクトリは自動修復せず拒否する。duplicate collisionは結果を `excluded` / `written=true` / `play_id=null` とし、新しい一意なsource capture / analysisだけを残す。同一IDの完全再送は冪等化せず、writer途中失敗では同じ呼び出しのsource/play/analysis rowをrollbackする。
 
 この入口は呼び出し元がpathとadapter入力を明示する単発Python APIであり、実ファイルの既定自動保存、常駐監視、既存DB migrationを開始しない。DB診断ファイルやdiagnostic JSONLも自動出力しない。
 
 CLIからは `--personal-score-db-save-input <utf8-json>` と `--personal-score-db-save-database <sqlite>` を必須ペアとして明示した場合だけ、同じAPIを1回呼ぶ。JSON外部形式は `input_schema_version=1` とし、`candidate_material`、source/analysis値、object/nullの `formal_play`、object/nullの `exclusion` を分離する。全階層の必須key、未知key、object/null、bool/integer/number/string型はファイル準備前に検査し、boolをintegerとして通さない。`candidate_material` と `timestamp_ms` は由来情報のまま保持し、正式playへコピーしない。
 
-終了コードはtransaction完了した `ready` / `excluded` が0、adapterの `unresolved` が1、入力/DB拒否が2とする。結果JSONはDB path、adapter status、written、任意のplay ID、source capture ID、analysis ID、理由を持つ。CLI専用output file、diagnostic JSONL、低信頼度ログは生成せず、通常PoC、timestamped/manifest runner、`--m8-score-db-output` へ接続しない。
+終了コードはtransaction完了した `ready` / `excluded` が0、adapterの `unresolved` が1、入力/DB拒否が2とする。結果JSONはDB path、adapter status、written、任意のplay ID、source capture ID、analysis ID、理由を持つ。duplicate collisionも終了コード0で `adapter_status=excluded`、`reasons=[duplicate_key_already_saved]` として区別する。CLI専用output file、diagnostic JSONL、低信頼度ログは生成せず、通常PoC、timestamped/manifest runner、`--m8-score-db-output` へ接続しない。
 
 M8の保存予定レコードプレビューでは、まず in-memory SQLite fixtureで `plays` 最小スキーマとrow contractを確認する。実ファイルDBを生成する場合は必ず `data/` 配下に置き、Git管理しない。
 
