@@ -83,7 +83,7 @@ logs/
 
 Git管理しない。
 
-`logs/` には用途の違うログが入る。`--personal-score-db-diagnostic-log-output` のJSONLは正式DBを開いてよいかを説明するDB診断ログであり、低信頼度analysis詳細やsource capture保存とは別物として読む。version 1のanalysis詳細JSONは `logs/analysis_details/`、任意の失敗画像は `logs/analysis_failures/` に分け、DB診断JSONLへ混在させない。
+`logs/` には用途の違うログが入る。`--personal-score-db-diagnostic-log-output` のJSONLは正式DBを開いてよいかを説明するDB診断ログであり、低信頼度analysis詳細やsource capture保存とは別物として読む。version 1のanalysis詳細JSONは明示入口で `logs/analysis_details/` の新規 `.json` へ1件だけatomicに生成できる。任意の失敗画像は `logs/analysis_failures/` の参照に分け、画像生成やcopy、DB診断JSONLへの混在は行わない。
 
 ## マスタDB概念モデル
 
