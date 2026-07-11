@@ -1,6 +1,6 @@
 # M8 正式個人スコアDBスキーマ設計
 
-M8 preview完了後の正式 `ddrgp-scores.sqlite` 初期スキーマ、migration境界、正式保存入力、connection単位のtransaction write境界、明示path単位の単発保存APIを固定する。実ファイルへの既定自動保存、CLI保存、duplicate key生成、低信頼度ログファイル本番保存はまだ実装しない。
+M8 preview完了後の正式 `ddrgp-scores.sqlite` 初期スキーマ、migration境界、正式保存入力、connection単位のtransaction write境界、明示path単位の単発保存APIと明示JSON単発CLIを固定する。実ファイルへの既定自動保存、duplicate key生成、低信頼度ログファイル本番保存はまだ実装しない。
 
 ## 目的
 
@@ -246,7 +246,9 @@ metadata identity は `created_by`、`schema_name`、`schema_contract_scope`、`
 
 `save_personal_score_db_file()` はこのファイル境界と既存writerを合成し、明示された新規/0 byte/compatible正式DBへ1件だけ記録する。readyはsource/play/analysis、excludedはsource/analysisだけを保存する。M8 preview DB、unknown DB、metadata identity mismatch、`manual_migration_required`、非SQLite、ディレクトリは同じ拒否理由で止め、自動修復しない。writer失敗時は同じ呼び出しのrowをrollbackする。
 
-この明示ファイル保存はM8 preview の `--m8-score-db-output` とは別物として扱う。通常runner/CLIへの接続、既定自動保存、既存DB migration、DB診断の自動ファイル出力には進まない。
+この明示ファイル保存はM8 preview の `--m8-score-db-output` とは別物として扱う。`--personal-score-db-save-input` と `--personal-score-db-save-database` の必須ペアを指定した単発CLIだけが1回呼べる。通常PoC、timestamped/manifest runner、既定自動保存、既存DB migration、DB診断の自動ファイル出力には進まない。
+
+CLI入力はUTF-8 JSONの `input_schema_version=1` objectとする。候補材料、source/analysis値、任意の `formal_play`、任意の `exclusion` を別構造にし、全階層の必須/未知keyと型をadapter前に検査する。M5 `identity_signal_*`、M7a `recognized_digits`、`played_at_ms` / `timestamp_ms` は正式playへ暗黙コピーしない。不正入力は終了コード2、adapterの `unresolved` は終了コード1でDB準備前に止め、transaction完了した `ready` / `excluded` だけ終了コード0とする。
 
 ## 未決事項
 

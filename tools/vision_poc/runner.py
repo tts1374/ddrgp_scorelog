@@ -18,6 +18,7 @@ from PIL import Image, ImageFilter, ImageOps
 
 from . import master_match
 from . import personal_score_db_schema as score_schema
+from .personal_score_db_cli_save import run_personal_score_db_save_cli
 
 BASE_WIDTH = 1280
 BASE_HEIGHT = 720
@@ -9749,6 +9750,24 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--personal-score-db-save-input",
+        type=Path,
+        default=None,
+        help=(
+            "UTF-8 JSON input for one explicit formal personal score DB save. "
+            "Requires --personal-score-db-save-database and exits without running the PoC."
+        ),
+    )
+    parser.add_argument(
+        "--personal-score-db-save-database",
+        type=Path,
+        default=None,
+        help=(
+            "Formal personal score DB path for --personal-score-db-save-input. "
+            "No default path is used."
+        ),
+    )
+    parser.add_argument(
         "--timestamp-start-ms",
         type=int,
         default=0,
@@ -9911,6 +9930,33 @@ def resolve_ocr_profiles(values: list[str]) -> tuple[str, ...]:
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    save_option_count = sum(
+        value is not None
+        for value in (
+            args.personal_score_db_save_input,
+            args.personal_score_db_save_database,
+        )
+    )
+    if save_option_count == 1:
+        raise ValueError(
+            "--personal-score-db-save-input and "
+            "--personal-score-db-save-database must be specified together"
+        )
+    if save_option_count == 2:
+        if (
+            args.personal_score_db_diagnostic is not None
+            or args.personal_score_db_diagnostic_output is not None
+            or args.personal_score_db_diagnostic_log_output is not None
+            or args.personal_score_db_diagnostic_mode != "inspect"
+            or args.personal_score_db_diagnostic_format != "markdown"
+        ):
+            raise ValueError(
+                "personal score DB save and diagnostic modes are mutually exclusive"
+            )
+        return run_personal_score_db_save_cli(
+            input_path=args.personal_score_db_save_input,
+            db_path=args.personal_score_db_save_database,
+        )
     if args.personal_score_db_diagnostic is not None:
         return run_personal_score_db_diagnostic_cli(args)
     if args.capture_dry_run and args.capture_dry_run_scenario is not None:

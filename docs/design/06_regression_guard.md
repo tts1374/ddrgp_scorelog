@@ -337,7 +337,11 @@
 - 明示ファイル保存APIはadapterをDB準備より先に実行し、`unresolved` ではDBファイルも親ディレクトリも作らない。
 - 明示ファイル保存APIは新規/0 byte/compatible正式DBだけへ書き、preview / unknown / metadata identity mismatch / manual migration候補 / 非SQLite / ディレクトリを変更せず拒否する。
 - 明示ファイル保存APIの `written=true` はtransaction完了を表し、play rowの有無は `play_id` で区別する。`excluded` を保存成功playへ丸めない。
-- 明示ファイル保存APIを通常runner/CLI、`--m8-score-db-output`、既定自動保存へ接続しない。
+- 単発CLIは入力JSON pathと正式DB pathの必須ペアだけから明示ファイル保存APIを1回呼び、通常PoC、timestamped/manifest runner、`--m8-score-db-output`、既定自動保存へ接続しない。
+- CLI JSON loaderはversion、必須/未知key、nested object/null、厳密な型をadapter前に検査し、boolとintを混同しない。
+- CLI loaderはM5 `identity_signal_*`、M7a `recognized_digits`、`played_at_ms` / `timestamp_ms` を `formal_play` へ暗黙コピーしない。
+- 片方だけのCLI option、入力schema不正、`unresolved` はDB作成・変更前に非0終了する。`ready` / `excluded` だけが終了コード0でtransaction完了し、結果JSONの `play_id` でplay有無を区別する。
+- CLI経由でも新規/0 byte/compatible正式DBだけを許可し、preview / unknown / metadata identity mismatch / manual migration候補 / 非SQLite / ディレクトリを変更せず拒否する。
 
 ## ROI方針
 
