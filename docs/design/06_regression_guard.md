@@ -425,6 +425,6 @@ dry-run sequence scenario 入口を変更した場合も、生成manifestを man
 - ROI座標定義の大変更
 ## Personal score DB migration contract guard
 
-`tests/test_personal_score_db_migration_contract.py` と `tests/fixtures/personal_score_db_migration/plan-matrix-v1.json` は、current / older supported / newer unsupported / unknown / preview / identity mismatch / partial state、backup path安全性と既存file conflict、dry-run無変更、明示確認、終了コードを固定する。全execution stepの失敗について、backup検証前はsource無変更、commit前のtransaction失敗はrollback、commit以後はmanual recoveryとなることも固定する。
+`tests/test_personal_score_db_migration_contract.py` と `tests/fixtures/personal_score_db_migration/plan-matrix-v1.json` は、current / older supported / newer unsupported / unknown / preview / identity mismatch / partial state、登録済みtransition以外のtarget拒否、backup path安全性と既存file conflict、dry-run無変更、明示確認、終了コードを固定する。全execution stepの失敗について、backup検証前はsource無変更、commit前のtransaction失敗はrollback、commit以後はmanual recoveryとなることも固定する。
 
 このcontractテストは実DB backupやmigrationを生成しない。既存save/orchestration/diagnostic CLIの回帰は従来テストで維持し、migration contractをそれらへ接続しないことを前提とする。

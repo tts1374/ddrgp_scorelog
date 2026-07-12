@@ -4,6 +4,10 @@ from dataclasses import dataclass
 
 MIGRATION_CONTRACT_VERSION = 1
 CURRENT_SCHEMA_VERSION = 1
+# A transition is actionable only after its schema steps are explicitly registered.
+# Version 1 -> 2 is the design contract exercised by this phase; its writer is not
+# implemented here.
+SUPPORTED_MIGRATION_TRANSITIONS = ((1, 2),)
 
 DATABASE_STATES = (
     "compatible_current",
@@ -92,6 +96,10 @@ def plan_personal_score_db_migration(request: MigrationRequest) -> MigrationPlan
         return _plan("rejected", "source_version_missing", 2)
     if request.source_version >= request.target_version:
         return _plan("rejected", "source_version_must_be_older", 2)
+    if (request.source_version, request.target_version) not in (
+        SUPPORTED_MIGRATION_TRANSITIONS
+    ):
+        return _plan("rejected", "unsupported_migration_transition", 2)
     if not request.backup_path_is_safe:
         return _plan("rejected", "unsafe_backup_path", 2)
     if not request.backup_path_is_new:
