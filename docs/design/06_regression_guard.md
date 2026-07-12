@@ -340,9 +340,9 @@
 - invalid schema、unsafe path、拡張子不正、既存output、option混在では親directoryを作らず、publish失敗では一時/部分ファイルを残さない。
 - failure image pathはcontract検査だけを行い、画像の生成・copyをしない。artifact生成だけでDB insertせず、saveだけでartifactを暗黙生成しない。
 
-### Artifact/save orchestration design guard
+### Artifact/save orchestration guard
 
-- 現行artifact CLIとsave CLIの独立性、status、終了コードを変えず、接続は後続の単発明示orchestration入口だけが担当する。
+- 現行artifact CLIとsave CLIの独立性、status、終了コードを変えず、接続は単発明示orchestration入口だけが担当する。
 - 入力/adapter、artifact要否と共有ID/status/path、DB互換性、早期duplicate予告、artifact publish、DB transactionの順に進む。早期衝突でも停止せず、transaction内duplicate preflightでsource/analysisを記録し、UNIQUE制約も維持する。
 - 低信頼度/errorの`excluded`だけartifact必須、ready・その他skip・DB duplicateは任意、unresolved/invalidは生成禁止とする。
 - orchestration入口がartifact output pathと `analysis_logs.log_path` の一致を副作用前に保証する。

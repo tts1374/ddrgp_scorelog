@@ -210,6 +210,11 @@ def load_personal_score_db_save_input(path: Path) -> PersonalScoreDbSaveAdapterI
     except (json.JSONDecodeError, ValueError) as exc:
         raise ValueError(f"personal score DB save input is invalid JSON: {exc}") from exc
 
+    return parse_personal_score_db_save_input(value)
+
+
+def parse_personal_score_db_save_input(value: object) -> PersonalScoreDbSaveAdapterInput:
+    """Strictly validate one already-decoded adapter input object."""
     root = _require_object(value, "input")
     _validate_keys(
         root,

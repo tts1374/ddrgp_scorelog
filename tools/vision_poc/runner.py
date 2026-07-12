@@ -31,6 +31,7 @@ from .personal_score_db_cli_save import (
     run_personal_score_db_save_input_template_cli,
     run_personal_score_db_save_input_validation_cli,
 )
+from .personal_score_db_workflow import run_personal_score_db_workflow_cli
 
 BASE_WIDTH = 1280
 BASE_HEIGHT = 720
@@ -9820,6 +9821,23 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--personal-score-db-workflow-input",
+        type=Path,
+        default=None,
+        help="Version 1 analysis artifact/formal save workflow input.",
+    )
+    parser.add_argument(
+        "--personal-score-db-workflow-artifact-output",
+        default=None,
+        help="Optional POSIX-relative analysis detail output for workflow mode.",
+    )
+    parser.add_argument(
+        "--personal-score-db-workflow-database",
+        type=Path,
+        default=None,
+        help="Formal personal score DB path for workflow mode.",
+    )
+    parser.add_argument(
         "--timestamp-start-ms",
         type=int,
         default=0,
@@ -9983,6 +10001,70 @@ def resolve_ocr_profiles(values: list[str]) -> tuple[str, ...]:
 def main(argv: list[str] | None = None) -> int:
     raw_argv = list(sys.argv[1:] if argv is None else argv)
     args = build_parser().parse_args(raw_argv)
+    workflow_options = {
+        "--personal-score-db-workflow-input",
+        "--personal-score-db-workflow-artifact-output",
+        "--personal-score-db-workflow-database",
+    }
+    workflow_option_count = sum(
+        value is not None
+        for value in (
+            args.personal_score_db_workflow_input,
+            args.personal_score_db_workflow_artifact_output,
+            args.personal_score_db_workflow_database,
+        )
+    )
+    if workflow_option_count:
+        mixed_options = sorted(
+            {
+                token.split("=", maxsplit=1)[0]
+                for token in raw_argv
+                if token.startswith("--")
+            }
+            - workflow_options
+        )
+        if (
+            args.personal_score_db_workflow_input is None
+            or args.personal_score_db_workflow_database is None
+            or mixed_options
+        ):
+            reason = "workflow input and database must be specified together"
+            if mixed_options:
+                reason = (
+                    "personal score DB workflow cannot be combined with: "
+                    + ", ".join(mixed_options)
+                )
+            print(
+                json.dumps(
+                    {
+                        "result_schema_version": 1,
+                        "workflow_status": "invalid",
+                        "artifact_status": "not_requested",
+                        "adapter_status": "invalid",
+                        "db_status": "not_checked",
+                        "written": False,
+                        "source_capture_id": None,
+                        "analysis_id": None,
+                        "play_id": None,
+                        "reasons": [reason],
+                        "artifact_path": (
+                            args.personal_score_db_workflow_artifact_output
+                        ),
+                        "db_path": str(
+                            args.personal_score_db_workflow_database or ""
+                        ),
+                    },
+                    ensure_ascii=False,
+                    sort_keys=True,
+                ),
+                file=sys.stderr,
+            )
+            return 2
+        return run_personal_score_db_workflow_cli(
+            input_path=args.personal_score_db_workflow_input,
+            artifact_output=args.personal_score_db_workflow_artifact_output,
+            db_path=args.personal_score_db_workflow_database,
+        )
     analysis_options = {
         "--personal-score-db-analysis-detail-input",
         "--personal-score-db-analysis-detail-output",
