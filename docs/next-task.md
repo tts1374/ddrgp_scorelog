@@ -10,32 +10,33 @@ GPT-5.6 Sol
 
 high
 
-正式DB schemaと互換遷移の設計を複数の保存契約・migration契約と整合させるためです。
+正式DB version 1の複数入口と設計文書を、リリース前の保存境界として横断監査するためです。
 
 ## 作業ブランチ
 
 ```powershell
-codex/m8-personal-score-db-v2-schema-transition-design
+codex/m8-personal-score-db-v1-release-readiness
 ```
 
 ## Goal
 
-実DBを変更せずに、正式個人スコアDB version 2の必要性とversion 1からの互換遷移を実装前の設計・pure contractとして固定します。
+初回リリースまで正式個人スコアDBをversion 1に固定し、既存の保存・backup・diagnostic・orchestration契約が同じv1境界を維持していることを回帰テストとリリース前チェックで固定します。
 
 ## Deliverables
 
-- version 2で追加・変更する責務と、version 1のまま維持する責務を設計docsへ明記する。
-- version 1からversion 2への前方遷移、拒否状態、履歴・metadata・`PRAGMA user_version` の期待状態をpure contractで固定する。
-- supported transition登録とfixture matrixを同期する。
-- backup検証完了後だけsource transactionへ進める既存順序を維持する。
+- schema定数、metadata、`PRAGMA user_version`、migration historyが全入口でversion 1に固定されていることを横断テストで確認する。
+- save、workflow、diagnostic、migration status、verified backupのCLI/APIがv1 compatible DBを同じ正式DBとして扱うことを確認する。
+- preview/unknown/identity mismatch/newer unsupported/partial stateの拒否が入口間で一致することを確認する。
+- v1の正式保存値、`source_captures`、`analysis_logs`、duplicate、失敗時原子性の既存不変条件をリリース前チェックリストへ整理する。
 - README、設計docs、roadmapを同期する。
 
 ## Invariants
 
+- 正式DB schema versionを1から変更しない。
+- version 2 schema、supported transition、migration SQL、schema writerを設計・実装しない。
 - 実DB、backup、`data/`、`logs/`を作成・変更・削除しない。
-- migration SQL、schema writer、実migration、restore、repairを実装しない。
-- version 1のsave/orchestration/diagnostic/backup CLI契約と終了コードを変えない。
-- preview/unknown/identity mismatch/newer unsupported/partial stateを正式遷移候補へ昇格しない。
+- 既存CLIのoption、出力語彙、終了コードを非互換変更しない。
+- preview材料を正式保存値へ昇格せず、保存不可・duplicate・失敗を成功playへ丸めない。
 
 ## Validation
 
@@ -43,15 +44,15 @@ codex/m8-personal-score-db-v2-schema-transition-design
 
 ## Non-goals
 
-- 実DB migration、migration SQL、version 2 schema writer
-- 実backup作成境界の変更、backup retention、自動restore/repair
-- save/orchestration/diagnosticからの自動migration
-- OCR、ROI、画像分類、通常PoCへの接続
+- version 2の検討、設計、実装
+- 実DB migration、migration SQL、restore、repair
+- backup retention、複数世代管理
+- OCR、ROI、画像分類、Windows常駐アプリへの接続
 
 ## Acceptance Criteria
 
-- version 2の目的とversion 1との差分がレビュー可能で、正式保存値・source capture・analysis logの責務境界を崩さない。
-- pure contractとfixtureが同じsupported transitionと拒否語彙を表す。
+- 初回リリースまで正式DBがversion 1に固定されることをコード、テスト、docsから一意に確認できる。
+- 全正式DB入口がv1 compatible/rejected状態について矛盾しない。
 - read-onlyレビューでmedium以上の未対応指摘がない。
 
 完了後は次PR仕様へ更新し、今回変更だけをcommit、通常pushしてdraft PRを作成してください。

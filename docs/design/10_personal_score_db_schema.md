@@ -167,6 +167,8 @@ M8 preview最小 `plays` は以下の用途に限定する。
 
 ## Metadata と Migration
 
+初回リリースまでは正式個人スコアDBをversion 1に固定する。リリース前の機能追加や回帰修正は、既存version 1 schemaと保存契約の範囲で行い、version 2 schema、supported transition、migration SQL、schema writerへ進めない。version変更の必要性は初回リリース後に、実運用で確認された要件を根拠として別途判断する。
+
 正式DB判定は以下の全てを見る。
 
 - `PRAGMA user_version`

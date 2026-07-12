@@ -430,7 +430,7 @@ M5完了時点で固定すること:
 - 2026-07-12時点で、正式個人スコアDBのmigration/backup/version遷移をpure contractとfixture matrixで固定した。preview/unknown/identity mismatch/newer unsupported/partial stateを拒否し、verified backupをsource transactionより前に必須化し、migration履歴・metadata・`PRAGMA user_version` の更新順とrollback、dry-run/明示確認/status/終了コードを定義した。実DB migration/backup writerやversion 2 schemaは未実装である。
 - 2026-07-12時点で、既存schema inspectionとpure migration contractを合成するread-only status/dry-run CLIを追加した。DB path、target version、明示backup pathを必須とし、JSON/Markdownへ状態、理由、version、backup path検査、予定step、終了コードを表示する。preview/unknown/identity mismatch/newer/partialを拒否し、DB、backup、`data/`、`logs/`を変更しない。
 - 2026-07-12時点で、compatibleな現行正式DBからverified backupを明示的に1件作成する独立API/CLIを追加した。新規pathのexclusive create、SQLite source snapshot copy、flush、read-only再open、integrity、formal identity/version/history/row count照合を行い、失敗時は不完全な新規backupだけを除去する。migration、source変更、自動restoreには接続していない。
-- version 2 schema候補とversion 1からの互換遷移を、実DB migrationより先に設計・pure contract・fixtureで固定する。
+- 初回リリースまでは正式個人スコアDBをversion 1に固定し、version 2 schema、supported transition、migration SQL、schema writerには進まない。次はversion 1の保存・backup・diagnostic・orchestration契約をリリース前回帰として監査する。
 
 完了条件:
 
