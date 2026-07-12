@@ -425,7 +425,7 @@ M5完了時点で固定すること:
 やること:
 
 - 2026-07-12時点で、低信頼度/error analysisのversion 1詳細JSON、`logs/analysis_details/` と `logs/analysis_failures/` の相対path境界、7日/30日/期限なしのretention metadataをpure contractとfixtureで固定した。さらに明示API/CLIから新規 `logs/analysis_details/**/*.json` へ1件だけatomic生成できるようにし、既存output、unsafe path、option混在を副作用前に拒否した。failure image生成、DB insert、save連鎖は行わない。
-- 2026-07-12時点で、現行CLIを独立のまま維持し、後続の単発明示orchestration入口で接続する設計を固定した。入力/adapter、共有ID/status/path、DB互換性と早期duplicate、artifact atomic publish、DB transactionの順とし、低信頼度/errorだけartifact必須とする。DB失敗時はartifactを保持して同一payloadだけ再利用し、partial successを保存成功へ丸めない。production orchestration実装は後続PRとする。
+- 2026-07-12時点で、現行CLIを独立のまま維持する単発明示orchestration API/CLIを実装した。入力/adapter、共有ID/status/path、DB互換性と早期duplicate、artifact atomic publish/reuse、既存file saveの順とし、低信頼度/errorだけartifact必須とする。DB失敗時はartifactを保持して同一payloadだけ再利用し、partial successを保存成功へ丸めない。
 - 正式個人スコアDBのmigration方針、backup前提、互換version遷移を設計する。
 - マイグレーション方針を決める。
 

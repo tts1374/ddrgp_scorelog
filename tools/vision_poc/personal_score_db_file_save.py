@@ -7,6 +7,7 @@ from pathlib import Path
 from .personal_score_db_save import write_personal_score_db_save
 from .personal_score_db_save_adapter import (
     PersonalScoreDbSaveAdapterInput,
+    PersonalScoreDbSaveAdapterResult,
     adapt_personal_score_db_save_input,
 )
 from .personal_score_db_schema import prepare_personal_score_db_file_for_write
@@ -28,8 +29,16 @@ def save_personal_score_db_file(
     adapter_input: PersonalScoreDbSaveAdapterInput,
 ) -> PersonalScoreDbFileSaveResult:
     """Adapt and write one explicit event to a formal personal score DB file."""
-    path = Path(db_path)
     adapter_result = adapt_personal_score_db_save_input(adapter_input)
+    return save_personal_score_db_file_adapted(db_path, adapter_result)
+
+
+def save_personal_score_db_file_adapted(
+    db_path: Path,
+    adapter_result: PersonalScoreDbSaveAdapterResult,
+) -> PersonalScoreDbFileSaveResult:
+    """Write one already-adapted event without evaluating the adapter again."""
+    path = Path(db_path)
     if adapter_result.status == "unresolved":
         return PersonalScoreDbFileSaveResult(
             db_path=path,

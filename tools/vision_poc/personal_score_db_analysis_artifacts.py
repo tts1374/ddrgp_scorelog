@@ -231,17 +231,23 @@ def validate_analysis_detail(payload: object) -> None:
     _require_text(root["analysis_id"], "analysis_id")
     _require_text(root["source_capture_id"], "source_capture_id")
     analysis_status = _require_text(root["analysis_status"], "analysis_status")
-    if analysis_status not in {"low_confidence", "error", "skipped"}:
-        raise ValueError("analysis_status must be low_confidence, error, or skipped")
+    if analysis_status not in {"saved", "low_confidence", "error", "skipped"}:
+        raise ValueError("analysis_status must be saved, low_confidence, error, or skipped")
     save_status = _require_text(root["save_boundary_status"], "save_boundary_status")
-    if save_status == "save_ready":
-        raise ValueError("analysis detail must not represent a save-ready play")
-    skip_reason = _require_text(root["skip_reason"], "skip_reason")
+    skip_reason = _require_text(
+        root["skip_reason"],
+        "skip_reason",
+        allow_empty=analysis_status == "saved",
+    )
+    if analysis_status == "saved" and (save_status != "save_ready" or skip_reason):
+        raise ValueError("saved detail requires save_ready without a skip reason")
 
     event = _require_object(root["event"], "event")
     _require_exact_keys(event, _EVENT_KEYS, "event")
     confirmed = _require_bool(event["confirmed_result"], "event.confirmed_result")
     duplicate = _require_bool(event["duplicate"], "event.duplicate")
+    if analysis_status == "saved" and duplicate:
+        raise ValueError("saved detail must not be duplicate")
     _require_text(event["event_type"], "event.event_type")
     confirmation_mode = _require_text(event["confirmation_mode"], "event.confirmation_mode")
     if confirmation_mode not in {"frames", "time"}:
