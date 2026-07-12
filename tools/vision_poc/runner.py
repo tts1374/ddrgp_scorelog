@@ -10120,11 +10120,7 @@ def main(argv: list[str] | None = None) -> int:
         "--personal-score-db-backup-format",
     }
     backup_requested = any(
-        (
-            args.personal_score_db_backup_source is not None,
-            args.personal_score_db_backup_output is not None,
-            args.personal_score_db_backup_format != "markdown",
-        )
+        token.split("=", maxsplit=1)[0] in backup_options for token in raw_argv
     )
     if backup_requested:
         mixed_options = sorted(

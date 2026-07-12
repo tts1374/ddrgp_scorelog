@@ -42,6 +42,7 @@ def create_verified_personal_score_db_backup(
     try:
         source_uri = f"{source_path.resolve().as_uri()}?mode=ro"
         with closing(sqlite3.connect(source_uri, uri=True)) as source:
+            source.execute("BEGIN")
             inspection = score_schema.inspect_personal_score_db_schema(source)
             if not inspection.is_compatible:
                 reason = inspection.migration_plan_reason

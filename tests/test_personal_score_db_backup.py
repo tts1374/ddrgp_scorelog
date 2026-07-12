@@ -104,6 +104,17 @@ def test_backup_cli_requires_pair_and_reports_verified(
         runner.main(["--personal-score-db-backup-source", str(source)])
 
 
+def test_explicit_default_backup_format_still_requires_paths(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    with pytest.raises(ValueError):
+        runner.main(["--personal-score-db-backup-format", "markdown"])
+
+    assert not (tmp_path / "data").exists()
+
+
 def test_backup_cli_is_exclusive(tmp_path: Path) -> None:
     with pytest.raises(ValueError):
         runner.main(
@@ -137,3 +148,37 @@ def test_failure_removes_only_incomplete_new_backup(
     assert error.value.reason == "backup_copy_or_readback_failed"
     assert not target.exists()
     assert _digest(source) == before
+
+
+def test_backup_uses_same_snapshot_when_source_changes_concurrently(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = tmp_path / "source.sqlite"
+    target = tmp_path / "backup.sqlite"
+    _formal_db(source)
+    with sqlite3.connect(source) as connection:
+        connection.execute("PRAGMA journal_mode = WAL")
+
+    original_copy = backup._copy_database
+
+    def copy_after_concurrent_write(
+        source_connection: sqlite3.Connection, backup_path: Path
+    ) -> None:
+        with sqlite3.connect(source) as writer:
+            writer.execute(
+                "INSERT INTO source_captures "
+                "(capture_id, capture_hash, captured_at, source_kind, source_path) "
+                "VALUES ('capture-concurrent', 'hash-concurrent', "
+                "'2026-07-12T12:00:00+00:00', 'manual', 'concurrent.png')"
+            )
+        original_copy(source_connection, backup_path)
+
+    monkeypatch.setattr(backup, "_copy_database", copy_after_concurrent_write)
+
+    result = backup.create_verified_personal_score_db_backup(source, target)
+
+    assert result.table_row_counts["source_captures"] == 0
+    with sqlite3.connect(target) as connection:
+        assert connection.execute("SELECT COUNT(*) FROM source_captures").fetchone() == (0,)
+    with sqlite3.connect(source) as connection:
+        assert connection.execute("SELECT COUNT(*) FROM source_captures").fetchone() == (1,)
