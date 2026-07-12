@@ -160,6 +160,6 @@ def _plan(
         reason=reason,
         exit_code=exit_code,
         may_create_backup=may_create_backup,
-        may_modify_source=status == "ready",
+        may_modify_source=status in {"ready", "manual_recovery_required"},
         steps=steps,
     )

@@ -87,7 +87,7 @@ def test_each_failure_step_has_a_fixed_recovery_boundary(failed_step: str) -> No
     else:
         assert result.status == "manual_recovery_required"
         assert result.may_create_backup
-        assert not result.may_modify_source
+        assert result.may_modify_source
 
 
 def test_fixture_contract_version_matches_code() -> None:
