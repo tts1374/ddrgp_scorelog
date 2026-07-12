@@ -35,6 +35,12 @@ def test_personal_score_db_schema_creates_formal_tables_and_metadata() -> None:
         assert score_schema.read_score_db_metadata(connection) == (
             score_schema.PERSONAL_SCORE_DB_METADATA
         )
+        assert tuple(
+            connection.execute(
+                "SELECT migration_id, schema_version FROM schema_migrations "
+                "ORDER BY schema_version, migration_id"
+            )
+        ) == score_schema.PERSONAL_SCORE_DB_MIGRATION_HISTORY
         assert (
             table_column_names(connection, "plays")
             == list(score_schema.PERSONAL_SCORE_DB_PLAYS_COLUMNS)

@@ -38,7 +38,8 @@ def test_verified_backup_matches_formal_source_snapshot(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(
-    "kind", ["preview", "unknown", "identity", "partial", "history"]
+    "kind",
+    ["preview", "unknown", "identity", "partial", "history", "migration-id"],
 )
 def test_rejected_source_does_not_create_backup(tmp_path: Path, kind: str) -> None:
     source = tmp_path / "source.sqlite"
@@ -56,8 +57,12 @@ def test_rejected_source_does_not_create_backup(tmp_path: Path, kind: str) -> No
                 )
             elif kind == "partial":
                 connection.execute("PRAGMA user_version = 2")
-            else:
+            elif kind == "history":
                 connection.execute("DELETE FROM schema_migrations")
+            else:
+                connection.execute(
+                    "UPDATE schema_migrations SET migration_id = '001_tampered'"
+                )
     target = tmp_path / "backup.sqlite"
 
     with pytest.raises(backup.PersonalScoreDbBackupError) as error:

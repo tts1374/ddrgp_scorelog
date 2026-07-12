@@ -33,6 +33,9 @@ PERSONAL_SCORE_DB_IDENTITY_METADATA_KEYS = (
     "schema_contract_scope",
     "production_schema_status",
 )
+PERSONAL_SCORE_DB_MIGRATION_HISTORY = (
+    ("001_initial_personal_score_db_schema", 1),
+)
 
 PERSONAL_SCORE_DB_METADATA = {
     "created_by": PERSONAL_SCORE_DB_CREATED_BY,
@@ -420,8 +423,8 @@ def create_personal_score_db_schema(connection: sqlite3.Connection) -> None:
         VALUES (?, ?, ?, ?)
         """,
         (
-            "001_initial_personal_score_db_schema",
-            PERSONAL_SCORE_DB_SCHEMA_VERSION,
+            PERSONAL_SCORE_DB_MIGRATION_HISTORY[0][0],
+            PERSONAL_SCORE_DB_MIGRATION_HISTORY[0][1],
             "schema-contract",
             "Initial formal personal score DB schema contract.",
         ),

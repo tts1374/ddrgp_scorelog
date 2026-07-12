@@ -120,14 +120,14 @@ def _assert_version_history(snapshot: dict[str, object], reason: str) -> None:
         raise PersonalScoreDbBackupError(reason, "formal_version_history_mismatch")
     try:
         metadata_version = int(metadata.get("schema_version", ""))
-        history_versions = tuple(int(row[1]) for row in history)
+        actual_history = tuple((str(row[0]), int(row[1])) for row in history)
     except (TypeError, ValueError):
         raise PersonalScoreDbBackupError(
             reason, "formal_version_history_mismatch"
         ) from None
     if (
         metadata_version != schema_version
-        or history_versions != tuple(range(1, schema_version + 1))
+        or actual_history != score_schema.PERSONAL_SCORE_DB_MIGRATION_HISTORY
     ):
         raise PersonalScoreDbBackupError(reason, "formal_version_history_mismatch")
 
