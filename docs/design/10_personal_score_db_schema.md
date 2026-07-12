@@ -167,6 +167,8 @@ M8 preview最小 `plays` は以下の用途に限定する。
 
 ## Metadata と Migration
 
+初回リリースまでは正式個人スコアDBをversion 1に固定する。リリース前の機能追加や回帰修正は、既存version 1 schemaと保存契約の範囲で行い、version 2 schema、supported transition、migration SQL、schema writerへ進めない。version変更の必要性は初回リリース後に、実運用で確認された要件を根拠として別途判断する。
+
 正式DB判定は以下の全てを見る。
 
 - `PRAGMA user_version`
@@ -174,6 +176,7 @@ M8 preview最小 `plays` は以下の用途に限定する。
 - `score_db_metadata.schema_contract_scope=production_personal_score_db`
 - `score_db_metadata.production_schema_status=production_schema`
 - 必須tableの存在
+- 必須tableの正式version 1 `CREATE TABLE` 定義
 - `schema_migrations` の適用履歴
 
 `PRAGMA user_version=1` だけでは正式DB扱いしない。M8 preview DBも `user_version=1` を使うため、`preview_metadata` があるDB、`score_db_metadata` がないDB、`production_schema_status=not_production_schema` のDBは正式DBとして拒否する。
@@ -219,6 +222,7 @@ CLI表示入口は `python -m tools.vision_poc --personal-score-db-diagnostic <p
 - `m8_preview_database_not_supported`: `preview_metadata` を持つM8 preview DB。正式DBとしては拒否する。
 - `unknown_database_not_supported`: tableはあるが `score_db_metadata` がなく、正式DBともpreview DBとも識別できない。
 - `missing_table:<table>`: 正式DB必須tableが欠落している。
+- `table_schema_mismatch:<table>`: 必須table名は存在するが、列、制約、参照を含む正式version 1の `CREATE TABLE` 定義と一致しない。
 - `score_db_metadata_missing`: `score_db_metadata` がない。
 - `score_db_metadata.<key>_missing`: 必須metadata keyがない。
 - `score_db_metadata.<key>_mismatch`: 必須metadata valueが期待値と違う。
@@ -298,4 +302,10 @@ transaction内のversion遷移順はschema step、`schema_migrations` insert、`
 
 `personal_score_db_migration_status` は既存schema inspectionとpure migration contractを合成するread-only projectionである。専用CLIはDB path、target version、明示backup pathを必須とし、statusまたはdry-runをJSON/Markdownへ表示する。formal identityが一致しても `PRAGMA user_version`、metadata version、連続した `schema_migrations` 履歴が一致しなければpartial stateとして拒否する。backup path検査はsourceと別の未作成pathで親directoryが存在するかの観測だけで、backup作成やsource変更を行わない。現行version 1ではcurrent表示または拒否となり、将来current versionと登録済みtransitionが一致した場合だけ予定stepを表示できる。
 
+`create_verified_personal_score_db_backup(source_path, backup_path)` はmigration statusとは分離した、検証済みbackupを1件作る専用境界である。sourceをread-onlyで開き、現行正式schemaのcompatibilityを満たす場合だけ同じ接続のSQLite snapshotをbackup APIでコピーする。backup pathはsourceと異なり、親directoryが存在する新規pathへOSのexclusive createで確保する。コピー後に接続を閉じてファイルをflushし、read-onlyで再openしてSQLite integrity、formal identity、`PRAGMA user_version`、metadata、migration history、必須tableのrow countと全row内容hashがsource snapshotと一致することを検査する。全検査後だけverified結果を返し、copy、flush、readback、contract照合の失敗時は今回作った不完全backupだけを除去する。既存backupは上書きも削除もせず、source DBを変更しない。
+
+専用CLIは `--personal-score-db-backup-source` と `--personal-score-db-backup-output` の必須ペアで1回だけAPIを呼び、MarkdownまたはJSONを標準出力へ出す。他modeとは排他で、migration、source transaction、restore/repair、retention、自動実行へ進まない。preview、unknown、identity mismatch、newer unsupported、version/history不一致を含む非compatible sourceはbackup元にしない。
+
 `tests/test_personal_score_db_migration_status.py` はcurrent、将来supported dry-run、存在しないpath、非SQLite、directory、preview、identity mismatch、newer unsupported、partial state、backup path検査、CLI option排他とDB/backup無変更を固定する。
+
+`tests/test_personal_score_db_backup.py` は成功時のformal identity/version/history/integrity/source snapshot対応、source拒否、既存backup conflict、copy/readback失敗時の不完全backup清掃、source/既存backup不変、CLI必須ペアと排他を固定する。
