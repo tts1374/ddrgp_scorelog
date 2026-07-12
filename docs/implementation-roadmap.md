@@ -428,7 +428,8 @@ M5完了時点で固定すること:
 - 2026-07-12時点で、現行CLIを独立のまま維持する単発明示orchestration API/CLIを実装した。入力/adapter、共有ID/status/path、DB互換性と早期duplicate、artifact atomic publish/reuse、既存file saveの順とし、低信頼度/errorだけartifact必須とする。DB失敗時はartifactを保持して同一payloadだけ再利用し、partial successを保存成功へ丸めない。
 - 正式個人スコアDBのmigration方針、backup前提、互換version遷移を設計する。
 - 2026-07-12時点で、正式個人スコアDBのmigration/backup/version遷移をpure contractとfixture matrixで固定した。preview/unknown/identity mismatch/newer unsupported/partial stateを拒否し、verified backupをsource transactionより前に必須化し、migration履歴・metadata・`PRAGMA user_version` の更新順とrollback、dry-run/明示確認/status/終了コードを定義した。実DB migration/backup writerやversion 2 schemaは未実装である。
-- マイグレーション方針を決める。
+- 2026-07-12時点で、既存schema inspectionとpure migration contractを合成するread-only status/dry-run CLIを追加した。DB path、target version、明示backup pathを必須とし、JSON/Markdownへ状態、理由、version、backup path検査、予定step、終了コードを表示する。preview/unknown/identity mismatch/newer/partialを拒否し、DB、backup、`data/`、`logs/`を変更しない。
+- verified backupを明示的に1件作成する独立境界を実装する。migration、source変更、自動restoreには接続しない。
 
 完了条件:
 
