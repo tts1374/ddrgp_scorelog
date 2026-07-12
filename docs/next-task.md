@@ -10,49 +10,56 @@ GPT-5.6 Sol
 
 high
 
-正式DB version 1の複数入口と設計文書を、リリース前の保存境界として横断監査するためです。
+正式DB version 1を変更せず、保存済みスコアがユーザー価値として見える最小ビューアを作るためです。
 
 ## 作業ブランチ
 
 ```powershell
-codex/m8-personal-score-db-v1-release-readiness
+codex/m9-minimal-score-viewer
 ```
 
 ## Goal
 
-初回リリースまで正式個人スコアDBをversion 1に固定し、既存の保存・backup・diagnostic・orchestration契約が同じv1境界を維持していることを回帰テストとリリース前チェックで固定します。
+正式個人スコアDB version 1をread-onlyで開き、保存済みプレー履歴、プレー詳細、譜面別自己ベストを確認できる最小WPFスコアビューアを追加します。
 
 ## Deliverables
 
-- schema定数、metadata、`PRAGMA user_version`、migration historyが全入口でversion 1に固定されていることを横断テストで確認する。
-- save、workflow、diagnostic、migration status、verified backupのCLI/APIがv1 compatible DBを同じ正式DBとして扱うことを確認する。
-- preview/unknown/identity mismatch/newer unsupported/partial stateの拒否が入口間で一致することを確認する。
-- v1の正式保存値、`source_captures`、`analysis_logs`、duplicate、失敗時原子性の既存不変条件をリリース前チェックリストへ整理する。
-- README、設計docs、roadmapを同期する。
+- `app/` にC# / .NET 10 / WPFの最小プロジェクトを作成する。
+- ユーザーが明示選択したv1 DBと生成済みマスタDBをread-onlyで開き、それぞれのidentity/versionを検査する。
+- `song_id` / `chart_id` でマスタDBを参照し、`plays` の新しい順の履歴一覧に、日時、曲名、SP/DP、難易度、レベル、score、rank、clear typeを表示する。
+- 選択プレーの判定数、MAX COMBO、EX SCORE、保存日時を詳細表示する。
+- 保存済み全履歴から譜面別自己ベストをqueryで算出し、履歴rowを変更せず表示する。
+- compatible DB、空履歴、マスタ参照欠落、拒否DB、読取失敗をfixtureまたは一時DBでテストする。
+- `app/README.md`、利用手順、設計docs、roadmapを同期する。
 
 ## Invariants
 
 - 正式DB schema versionを1から変更しない。
 - version 2 schema、supported transition、migration SQL、schema writerを設計・実装しない。
-- 実DB、backup、`data/`、`logs/`を作成・変更・削除しない。
-- 既存CLIのoption、出力語彙、終了コードを非互換変更しない。
-- preview材料を正式保存値へ昇格せず、保存不可・duplicate・失敗を成功playへ丸めない。
+- viewerはDBをread-onlyで開き、schema初期化、save、migration、backup、repairを実行しない。
+- マスタ参照が欠ける履歴も失わず、IDと参照欠落状態を表示する。
+- 自己ベストは全履歴から算出し、自己ベスト専用rowやtableを作らない。
+- preview/unknown/identity mismatch/newer unsupported/partial stateを表示対象DBとして受け入れない。
+- 既存Python CLI/API契約と終了コードを変えない。
 
 ## Validation
 
-対象テスト、全テスト、Ruff、compileall、`git diff --check` を実行してください。画像処理を変更しない限りVision PoCは省略します。
+.NET build/test、対象Pythonテスト、全Pythonテスト、Ruff、compileall、`git diff --check` を実行してください。画像処理を変更しない限りVision PoCは省略します。
 
 ## Non-goals
 
-- version 2の検討、設計、実装
-- 実DB migration、migration SQL、restore、repair
-- backup retention、複数世代管理
-- OCR、ROI、画像分類、Windows常駐アプリへの接続
+- DBへの書込み、save、migration、backup、restore、repair
+- 自動キャプチャ、常駐監視、タスクトレイ、ROI調整
+- マスタDB更新、検索、絞り込み、グラフ、統計高度化
+- OCR、画像分類、解析pipelineとの自動接続
+- installer、self-contained配布
 
 ## Acceptance Criteria
 
-- 初回リリースまで正式DBがversion 1に固定されることをコード、テスト、docsから一意に確認できる。
-- 全正式DB入口がv1 compatible/rejected状態について矛盾しない。
+- compatibleなv1 DBの全プレー履歴を、マスタDB由来の曲・譜面表示と詳細つきでread-only閲覧できる。
+- 譜面別自己ベストが保存済み履歴から正しく算出される。
+- viewer操作の前後でDB内容hashが変わらない。
+- 非compatible DBを変更せず、理由を表示して拒否する。
 - read-onlyレビューでmedium以上の未対応指摘がない。
 
 完了後は次PR仕様へ更新し、今回変更だけをcommit、通常pushしてdraft PRを作成してください。

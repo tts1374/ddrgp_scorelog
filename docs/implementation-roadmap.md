@@ -15,7 +15,7 @@ Windows常駐アプリが DDR GRAND PRIX のゲームウィンドウを直接キ
 
 ## 現在地
 
-現在は画像解析PoC、マスタDB生成、マスタ照合PoC、保存判定previewを経て、M8の正式個人スコアDB保存境界へ進んでいます。正式schema、互換検査、DB準備、diagnostic、確定済み入力を使うtransaction writer、明示DB pathへの単発保存API、保存前validation CLI、明示validation receiptまで実装済みです。
+現在は画像解析PoC、マスタDB生成、マスタ照合PoCを経て、M8の正式個人スコアDB version 1へ安全に1件保存できる境界まで実装済みです。DB基盤の追加高度化はいったん止め、次は保存済みスコアを閲覧できる最小ビューアへ進みます。その後、既存PoCからv1 DBへの縦断接続、実キャプチャ、常駐監視の順で最終系へ近づけます。
 
 完了済みの主な足場:
 
@@ -52,17 +52,18 @@ Windows常駐アプリが DDR GRAND PRIX のゲームウィンドウを直接キ
 
 ## 直近MVP
 
-常駐監視や実キャプチャの前に、次の縦断経路を最初の利用可能版とする。
+常駐監視や実キャプチャの前に、既存v1 DBをread-onlyで閲覧できる最小WPFスコアビューアを最初のユーザー価値とする。
 
 ```text
-manifestまたはmanual入力
-  -> confirmed event
-  -> 確定済み正式保存入力
-  -> 正式個人スコアDB
-  -> 保存成功または保存除外analysis
+正式個人スコアDB v1
+  -> compatible read-only open
+  -> マスタDBread-only参照
+  -> 曲・譜面情報つき全プレー履歴一覧
+  -> プレー詳細
+  -> 譜面別自己ベスト集計
 ```
 
-2026-07-11時点では、preview候補材料とレビュー済み正式値を分離するpure adapterから、確定済み正式保存入力を経て、明示された新規/0 byte/compatible正式DBファイルへ1件書く契約まで通っている。明示JSON入力と明示DB pathの必須ペアから1回だけ呼ぶCLIに加え、同じstrict loaderとadapterだけを使う保存前validation CLIと、結果投影だけを `data/` 配下の新規JSONへ残す明示receiptも追加済みである。既存正式playとのduplicate key衝突は2件目のplayを作らずsource/analysisだけを記録する。通常PoC、timestamped/manifest runner、既定自動保存には接続していない。
+ビューアの次に、`manifest/manual -> confirmed event -> 解析済み正式値 -> v1 DB -> viewer` の縦断経路を接続する。最小ビューアは生成済みマスタDBをread-only参照して曲・譜面情報を表示するが、自動キャプチャ、常駐、マスタDB更新、検索、グラフは同時実装しない。
 
 ## マイルストーン
 
@@ -430,7 +431,7 @@ M5完了時点で固定すること:
 - 2026-07-12時点で、正式個人スコアDBのmigration/backup/version遷移をpure contractとfixture matrixで固定した。preview/unknown/identity mismatch/newer unsupported/partial stateを拒否し、verified backupをsource transactionより前に必須化し、migration履歴・metadata・`PRAGMA user_version` の更新順とrollback、dry-run/明示確認/status/終了コードを定義した。実DB migration/backup writerやversion 2 schemaは未実装である。
 - 2026-07-12時点で、既存schema inspectionとpure migration contractを合成するread-only status/dry-run CLIを追加した。DB path、target version、明示backup pathを必須とし、JSON/Markdownへ状態、理由、version、backup path検査、予定step、終了コードを表示する。preview/unknown/identity mismatch/newer/partialを拒否し、DB、backup、`data/`、`logs/`を変更しない。
 - 2026-07-12時点で、compatibleな現行正式DBからverified backupを明示的に1件作成する独立API/CLIを追加した。新規pathのexclusive create、SQLite source snapshot copy、flush、read-only再open、integrity、formal identity/version/history/row count照合を行い、失敗時は不完全な新規backupだけを除去する。migration、source変更、自動restoreには接続していない。
-- 初回リリースまでは正式個人スコアDBをversion 1に固定し、version 2 schema、supported transition、migration SQL、schema writerには進まない。次はversion 1の保存・backup・diagnostic・orchestration契約をリリース前回帰として監査する。
+- 初回リリースまでは正式個人スコアDBをversion 1に固定し、version 2 schema、supported transition、migration SQL、schema writerには進まない。M8の追加監査やdiagnostic高度化を独立した直近PRにせず、次はv1 DBをread-onlyで見る最小スコアビューアへ進む。
 
 完了条件:
 
@@ -444,7 +445,9 @@ M5完了時点で固定すること:
 
 やること:
 
-- WPFを第一候補として最小UIを作る。
+- 第1段階として、生成済みマスタDBを参照し、v1 DBの保存済み履歴・詳細・譜面別自己ベストをread-only表示する最小WPFビューアを作る。
+- 第2段階として、既存PoCからv1 DBへの縦断接続を行う。
+- 第3段階として、実キャプチャと監視状態を接続する。
 - タスクトレイ常駐を実装する。
 - 監視状態、対象ウィンドウ状態、最新保存結果を表示する。
 - マスタDB更新状態を表示する。
@@ -476,15 +479,12 @@ M5完了時点で固定すること:
 
 ## 近い順の推奨作業
 
-1. dry-run capture sequence scenario を追加する。
-2. 保存直前イベント境界の仕様とテストを固める。
-3. confirmed-events の数字OCR評価母数を増やす。
-4. 曲・譜面情報ROIの抽出PoCへ進む。
-5. マスタDB生成を始める。
-6. マスタ照合PoCを作る。
-7. M5の参照カバレッジ明示と完了判定を固める。
-8. M7aとしてスコア系数字認識のOCR脱却PoCを切る。
-9. 実キャプチャAPIの最小接続、保存判定、個人スコアDB保存へ進む。
+1. v1 DBをread-onlyで開く最小WPFスコアビューアを作る。
+2. manifest/manual入力からv1 DB保存、viewer表示までの縦断経路を接続する。
+3. 曲・譜面同定と数字認識を実キャプチャ投入可能な品質へ上げる。
+4. Windows Graphics Capture APIの最小接続を行う。
+5. 監視ループ、保存結果表示、失敗ログをWPFアプリへ統合する。
+6. 実機検証と配布準備を行う。
 
 ## しばらく守る境界
 
