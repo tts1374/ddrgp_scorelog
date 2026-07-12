@@ -74,15 +74,6 @@ MIGRATION_EXECUTION_STEPS = (
 def plan_personal_score_db_migration(request: MigrationRequest) -> MigrationPlan:
     if request.database_state not in DATABASE_STATES:
         raise ValueError(f"unknown database state: {request.database_state}")
-    if request.target_version <= CURRENT_SCHEMA_VERSION:
-        if (
-            request.database_state == "compatible_current"
-            and request.source_version == request.target_version
-        ):
-            return _plan("current", "already_at_target_version", 0)
-        return _plan("rejected", "target_version_must_be_newer", 2)
-    if request.database_state == "compatible_current":
-        return _plan("rejected", "no_supported_migration_path", 2)
     rejection_reasons = {
         "newer_unsupported": "newer_schema_not_supported",
         "unknown": "unknown_database_not_supported",
@@ -92,6 +83,15 @@ def plan_personal_score_db_migration(request: MigrationRequest) -> MigrationPlan
     }
     if request.database_state in rejection_reasons:
         return _plan("rejected", rejection_reasons[request.database_state], 2)
+    if request.target_version <= CURRENT_SCHEMA_VERSION:
+        if (
+            request.database_state == "compatible_current"
+            and request.source_version == request.target_version
+        ):
+            return _plan("current", "already_at_target_version", 0)
+        return _plan("rejected", "target_version_must_be_newer", 2)
+    if request.database_state == "compatible_current":
+        return _plan("rejected", "no_supported_migration_path", 2)
     if request.source_version is None:
         return _plan("rejected", "source_version_missing", 2)
     if request.source_version >= request.target_version:
