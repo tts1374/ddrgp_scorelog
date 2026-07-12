@@ -68,6 +68,27 @@ def test_explicit_plan_orders_backup_verification_before_source_change() -> None
     assert plan.steps[-2:] == ("commit_transaction", "reinspect_source_read_only")
 
 
+def test_registered_transition_can_target_future_current_schema(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(contract, "CURRENT_SCHEMA_VERSION", 2)
+
+    plan = contract.plan_personal_score_db_migration(
+        contract.MigrationRequest(
+            database_state="older_supported",
+            source_version=1,
+            target_version=2,
+            dry_run=True,
+            explicit_confirmation=False,
+            backup_path_is_safe=True,
+            backup_path_is_new=True,
+        )
+    )
+
+    assert plan.status == "dry_run_ready"
+    assert plan.steps == contract.MIGRATION_EXECUTION_STEPS
+
+
 @pytest.mark.parametrize("failed_step", contract.MIGRATION_EXECUTION_STEPS)
 def test_each_failure_step_has_a_fixed_recovery_boundary(failed_step: str) -> None:
     result = contract.migration_failure_result(failed_step)

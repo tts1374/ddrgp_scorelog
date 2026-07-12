@@ -83,13 +83,14 @@ def plan_personal_score_db_migration(request: MigrationRequest) -> MigrationPlan
     }
     if request.database_state in rejection_reasons:
         return _plan("rejected", rejection_reasons[request.database_state], 2)
-    if request.target_version <= CURRENT_SCHEMA_VERSION:
+    if request.target_version < CURRENT_SCHEMA_VERSION:
+        return _plan("rejected", "target_version_must_be_newer", 2)
+    if request.target_version == CURRENT_SCHEMA_VERSION:
         if (
             request.database_state == "compatible_current"
             and request.source_version == request.target_version
         ):
             return _plan("current", "already_at_target_version", 0)
-        return _plan("rejected", "target_version_must_be_newer", 2)
     if request.database_state == "compatible_current":
         return _plan("rejected", "no_supported_migration_path", 2)
     if request.source_version is None:
