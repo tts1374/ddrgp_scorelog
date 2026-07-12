@@ -45,7 +45,10 @@ def test_migration_plan_fixture_matrix(case: dict[str, object]) -> None:
         assert plan.steps == contract.MIGRATION_EXECUTION_STEPS
 
 
-def test_explicit_plan_orders_backup_verification_before_source_change() -> None:
+def test_explicit_plan_orders_backup_verification_before_source_change(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(contract, "CURRENT_SCHEMA_VERSION", 2)
     plan = contract.plan_personal_score_db_migration(
         contract.MigrationRequest(
             database_state="older_supported",
@@ -87,6 +90,60 @@ def test_registered_transition_can_target_future_current_schema(
 
     assert plan.status == "dry_run_ready"
     assert plan.steps == contract.MIGRATION_EXECUTION_STEPS
+
+
+@pytest.mark.parametrize(
+    ("backup_path_is_safe", "backup_path_is_new", "expected_status", "expected_reason"),
+    [
+        (True, True, "ready", "explicit_migration_preflight_passed"),
+        (False, True, "rejected", "unsafe_backup_path"),
+        (True, False, "rejected", "backup_path_conflict"),
+    ],
+)
+def test_current_version_transition_checks_confirmation_and_backup(
+    monkeypatch: pytest.MonkeyPatch,
+    backup_path_is_safe: bool,
+    backup_path_is_new: bool,
+    expected_status: str,
+    expected_reason: str,
+) -> None:
+    monkeypatch.setattr(contract, "CURRENT_SCHEMA_VERSION", 2)
+
+    plan = contract.plan_personal_score_db_migration(
+        contract.MigrationRequest(
+            database_state="older_supported",
+            source_version=1,
+            target_version=2,
+            dry_run=False,
+            explicit_confirmation=True,
+            backup_path_is_safe=backup_path_is_safe,
+            backup_path_is_new=backup_path_is_new,
+        )
+    )
+
+    assert plan.status == expected_status
+    assert plan.reason == expected_reason
+
+
+def test_unregistered_transition_is_rejected_when_target_is_current(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(contract, "CURRENT_SCHEMA_VERSION", 3)
+
+    plan = contract.plan_personal_score_db_migration(
+        contract.MigrationRequest(
+            database_state="older_supported",
+            source_version=1,
+            target_version=3,
+            dry_run=True,
+            explicit_confirmation=False,
+            backup_path_is_safe=True,
+            backup_path_is_new=True,
+        )
+    )
+
+    assert plan.status == "rejected"
+    assert plan.reason == "unsupported_migration_transition"
 
 
 @pytest.mark.parametrize("failed_step", contract.MIGRATION_EXECUTION_STEPS)
