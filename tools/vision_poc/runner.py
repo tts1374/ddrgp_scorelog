@@ -17,7 +17,7 @@ from pathlib import Path, PurePosixPath
 import numpy as np
 from PIL import Image, ImageFilter, ImageOps
 
-from . import master_match
+from . import master_match, personal_score_db_backup
 from . import personal_score_db_schema as score_schema
 from .personal_score_db_analysis_artifacts import (
     load_analysis_detail,
@@ -67,6 +67,7 @@ PERSONAL_SCORE_DB_DIAGNOSTIC_LOG_REQUIRED_KEYS = (
     "diagnostic",
 )
 PERSONAL_SCORE_DB_MIGRATION_STATUS_FORMATS = ("markdown", "json")
+PERSONAL_SCORE_DB_BACKUP_FORMATS = ("markdown", "json")
 
 
 ROI_DEFINITIONS: dict[str, tuple[int, int, int, int]] = {
@@ -9638,6 +9639,51 @@ def run_personal_score_db_migration_status_cli(args: argparse.Namespace) -> int:
     return int(projection["exit_code"])
 
 
+def run_personal_score_db_backup_cli(args: argparse.Namespace) -> int:
+    try:
+        result = personal_score_db_backup.create_verified_personal_score_db_backup(
+            args.personal_score_db_backup_source,
+            args.personal_score_db_backup_output,
+        )
+        projection = {
+            "backup_result_schema_version": 1,
+            "status": "verified",
+            "reason": "backup_verified",
+            "source_path": str(result.source_path),
+            "backup_path": str(result.backup_path),
+            "schema_version": result.schema_version,
+            "migration_history": [list(row) for row in result.migration_history],
+            "table_row_counts": result.table_row_counts,
+            "table_content_hashes": result.table_content_hashes,
+        }
+        exit_code = 0
+    except personal_score_db_backup.PersonalScoreDbBackupError as exc:
+        projection = {
+            "backup_result_schema_version": 1,
+            "status": "rejected",
+            "reason": exc.reason,
+            "source_path": str(args.personal_score_db_backup_source),
+            "backup_path": str(args.personal_score_db_backup_output),
+        }
+        exit_code = 2
+    if args.personal_score_db_backup_format == "json":
+        output = json.dumps(projection, ensure_ascii=False, indent=2) + "\n"
+    else:
+        output = "\n".join(
+            [
+                "# Personal Score DB Verified Backup",
+                "",
+                f"- status: `{projection['status']}`",
+                f"- reason: `{projection['reason']}`",
+                f"- source_path: `{projection['source_path']}`",
+                f"- backup_path: `{projection['backup_path']}`",
+                "",
+            ]
+        )
+    print(output, end="")
+    return exit_code
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Evaluate OCR-free DDR GP result screen signals.")
     parser.add_argument(
@@ -9753,6 +9799,24 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=None,
         help="Read-only migration status/dry-run inspection for one formal DB path.",
+    )
+    parser.add_argument(
+        "--personal-score-db-backup-source",
+        type=Path,
+        default=None,
+        help="Required compatible formal DB source for one verified backup.",
+    )
+    parser.add_argument(
+        "--personal-score-db-backup-output",
+        type=Path,
+        default=None,
+        help="Required new path created exclusively for one verified backup.",
+    )
+    parser.add_argument(
+        "--personal-score-db-backup-format",
+        choices=PERSONAL_SCORE_DB_BACKUP_FORMATS,
+        default="markdown",
+        help="Output format for the verified backup result.",
     )
     parser.add_argument(
         "--personal-score-db-migration-target-version",
@@ -10050,6 +10114,38 @@ def resolve_ocr_profiles(values: list[str]) -> tuple[str, ...]:
 def main(argv: list[str] | None = None) -> int:
     raw_argv = list(sys.argv[1:] if argv is None else argv)
     args = build_parser().parse_args(raw_argv)
+    backup_options = {
+        "--personal-score-db-backup-source",
+        "--personal-score-db-backup-output",
+        "--personal-score-db-backup-format",
+    }
+    backup_requested = any(
+        (
+            args.personal_score_db_backup_source is not None,
+            args.personal_score_db_backup_output is not None,
+            args.personal_score_db_backup_format != "markdown",
+        )
+    )
+    if backup_requested:
+        mixed_options = sorted(
+            {
+                token.split("=", maxsplit=1)[0]
+                for token in raw_argv
+                if token.startswith("--")
+            }
+            - backup_options
+        )
+        if (
+            args.personal_score_db_backup_source is None
+            or args.personal_score_db_backup_output is None
+        ):
+            raise ValueError("backup source and output path must be specified together")
+        if mixed_options:
+            raise ValueError(
+                "personal score DB backup cannot be combined with: "
+                + ", ".join(mixed_options)
+            )
+        return run_personal_score_db_backup_cli(args)
     migration_options = {
         "--personal-score-db-migration-status",
         "--personal-score-db-migration-target-version",
