@@ -12,108 +12,112 @@ GPT-5.6 Sol
 
 high
 
-analysis artifact生成と正式saveの責務・失敗順序・整合性を設計し、複数設計文書の境界を揃える作業です。正式DB schemaやmigrationは変更しませんが、transaction外artifactとDB transactionの接続可否を比較するため `high` を推奨します。
+transaction外artifactと正式DB transactionを接続し、partial success、duplicate race、既存artifact再利用を同時に守る実装です。既存CLI互換と副作用順序の監査が必要なため `high` を推奨します。
 
 ## 作業ブランチ
 
 前回完了ブランチ:
 
 ```powershell
-codex/m8-personal-score-db-analysis-artifact-file-output
+codex/m8-personal-score-db-analysis-artifact-save-connection-design
 ```
 
 前回ブランチがmerge済みなら最新 `main` から、未mergeなら前回ブランチの先端を取り込んでから、次を作成してください。
 
 ```powershell
-codex/m8-personal-score-db-analysis-artifact-save-connection-design
+codex/m8-personal-score-db-analysis-artifact-save-orchestration
 ```
 
 ## Goal
 
-version 1 analysis artifactの明示生成と正式save workflowを独立操作のまま接続する可否を設計し、順序、入力共有、失敗時の扱い、再実行、利用者workflowを実装可能な契約へ固定します。
+設計済みのanalysis artifact / 正式save接続契約を、既存の独立CLIを変えず、単発の明示orchestration API/CLIとして実装します。
 
-## Context
-
-実装済み:
-
-- 正式個人スコアDB schema、transaction writer、duplicate preflight、明示単発save
-- strict save input、validation、review template、receipt、E2E人手workflow
-- version 1 analysis詳細JSON strict contract
-- 新規 `logs/analysis_details/**/*.json` だけへ1件をatomic生成する明示API/CLI
-- failure imageは参照検査だけで、画像生成・copyなし
-
-artifact fileとDB transactionは別の永続化単位です。今回の設計では、片方だけ成功した場合を成功playへ丸めず、暗黙生成や自動補償を導入しない前提で接続可否を決めます。
-
-## Deliverables
-
-### 1. Responsibility and ordering design
-
-- artifact生成、save input validation、DB compatibility、duplicate preflight、transaction writeの順序候補を比較する。
-- artifact必須/任意、ready/excluded/duplicate/error別の適用範囲を固定する。
-- artifact pathと `analysis_logs.log_path` の一致を誰が保証するか固定する。
-- file成功/DB失敗、file失敗/DB未実行、再実行、既存artifactの扱いを状態表で定義する。
-
-### 2. User workflow contract
-
-- 現行の独立CLIを維持した手順、または新しい明示orchestration入口の必要性を決める。
-- 入力JSONの共有範囲と、正式play値・candidate material・analysis detail間の投影禁止を固定する。
-- status、終了コード、再試行手順、利用者が確認する生成物を定義する。
-
-### 3. Verifiable specification
+## Source of truth
 
 - `docs/design/04_data_model.md`
-- `docs/design/05_storage_io_spec.md`
+- `docs/design/05_storage_io_spec.md` の「Analysis artifactと正式saveの接続契約」
 - `docs/design/06_regression_guard.md`
 - `docs/design/10_personal_score_db_schema.md`
 - `tools/vision_poc/README.md`
-- `docs/implementation-roadmap.md`
 
-設計判断を上記へ同期し、後続実装のfixture行列とacceptance criteriaを記載してください。設計だけで安全に固定できる範囲を超えてproduction orchestrationを実装しないでください。
+## Deliverables
+
+### 1. Pure workflow validation
+
+- artifact payloadとstrict save inputを別objectとしてload/validateするversion 1 workflow inputを追加する。
+- `analysis_id`、`source_capture_id`、保存境界status、artifact output path / `analysis_logs.log_path` の一致を副作用前に検査する。
+- candidate material、正式play値、analysis detail本文を相互投影しない。
+- ready、低信頼度/error、その他skip、unresolvedについてartifact必須/任意/禁止を設計表どおり判定する。
+
+### 2. Explicit orchestration API
+
+- 入力/adapter、共有値、DB互換性、早期duplicate、artifact publish/reuse、既存file saveの順で1回だけ実行する。
+- 早期duplicateは予告分類だけに使い、衝突時も既存file saveへ進めてsource/analysisを記録する。transaction内preflightとUNIQUE制約を置き換えない。
+- artifact失敗時はDBを呼ばず、artifact成功後のDB失敗はDB rowをrollbackしてartifactを保持する。
+- 既存artifactはstrict load後の正規化payloadが完全一致するときだけ再利用し、不一致fileを上書き・削除しない。
+- `workflow_status`、`artifact_status`、adapter/DB status、ID、理由、artifact/DB pathだけを結果へ投影する。
+
+### 3. Explicit CLI and docs
+
+- workflow input、artifact output、正式DB pathの明示optionだけで動く単独modeを追加する。
+- 現行artifact、save、validation、template、diagnostic、通常PoC optionとの混在を副作用前に拒否する。
+- 設計済みstatusと終了コードを実装し、既存CLIのstatus/終了コードを変更しない。
+- README、設計docs、roadmapへ実装済み契約と利用者の確認手順を同期する。
 
 ## Invariants
 
 - `confirmed_result=true` かつ `duplicate=false` の保存候補境界を変えない。
 - 低信頼度/error/skip/duplicateを成功playへ丸めない。
 - 正式play値、receipt、DB diagnostic payloadをanalysis詳細へ混入させない。
-- artifact生成だけでDBへinsertせず、saveだけでartifactを暗黙生成しない現行挙動を、設計決定前に変更しない。
+- artifact writerとDB writerは互いを暗黙実行しない。
 - `analysis_logs.log_path` 空文字互換、failure image、source capture、DB diagnosticの責務分離を維持する。
-- 既存ファイル上書き、retentionによる削除、自動migration、自動修復を行わない。
+- 既存file上書き、artifact自動削除、自動補償、自動migration、自動修復を行わない。
 - duplicate preflight、transaction rollback、既存CLI終了コードを変えない。
+
+## Fixture matrix
+
+- ready: artifactなし / 新規生成 / 同一artifact再利用
+- excluded: 低信頼度 / errorのartifact必須、その他skipのartifact任意
+- duplicate: 早期衝突 / transaction時衝突のどちらもsource/analysisを記録し、`play_id=null`
+- rejection: invalid / unresolved / DB非互換 / unsafe path / 共有ID・status・path不一致
+- failure: artifact publish失敗 / artifact後DB失敗 / 既存artifact conflict
+- side effects: 各失敗点でartifact、DB、親directory、既存fileが設計表どおり不変
+- compatibility: 既存artifact/save/validation/template/diagnostic CLIの結果と終了コードが不変
 
 ## Non-goals
 
-- 正式DB schema変更、migration、backup実装、DB修復
-- cleanup、scheduler、保持期限による削除
-- failure imageの生成、copy、capture
+- 正式DB schema変更、migration、backup、DB修復
+- cleanup、scheduler、retentionによる削除、自動補償
+- failure image生成、copy、capture
 - duplicate key差し替え、並行writer、lock戦略
-- 通常PoC、OCR、ROI、画像分類の変更
-- 設計で決めた後続production orchestrationの先行実装
+- 通常PoC、OCR、ROI、画像分類、常駐監視への接続
 
 ## Validation
 
-文書変更が中心なら、関連fixtureテストと次を実行してください。
+対象テストを先に実行し、共通CLI option解析を変更するため全テストも実行してください。
 
 ```powershell
 python -m pytest tests\test_personal_score_db_analysis_artifacts.py tests\test_personal_score_db_cli_save.py tests\test_personal_score_db_file_save.py tests\test_personal_score_db_save.py
+python -m pytest tests
 python -m ruff check tools\vision_poc pyproject.toml tests
 python -m compileall master tools\vision_poc
 git diff --check
 ```
 
-コード、CLI option解析、共通runnerを変更した場合は `python -m pytest tests` も実行してください。画像処理を変更しない限り `python -m tools.vision_poc` は省略し、理由と残るリスクを報告してください。
+画像処理を変更しない限り `python -m tools.vision_poc` は省略し、理由と残るリスクを報告してください。
 
 ## Review
 
-実装後は `main` との差分をread-onlyでレビューし、保存境界Skillの観点を適用してください。特に二重書込みのpartial success、責務混在、正式値の暗黙投影、既存CLI互換、再実行時の既存artifact保護を確認してください。
+実装後は `main` との差分をread-onlyでレビューし、保存境界Skillの観点を適用してください。特に副作用前validation、二重書込みのpartial success、transaction内duplicate再検査、正式値の暗黙投影、既存CLI互換、既存artifact保護を確認してください。
 
 ## Acceptance Criteria
 
-- artifactとDBの責務、順序、partial success、再実行が状態表または同等の検証可能な形で固定される。
-- `analysis_logs.log_path` とartifact output pathの整合責任が明記される。
-- 後続実装のfixture行列、status、終了コード、非目標が一意に読める。
-- docs/READMEの語彙が一致し、read-onlyレビューでmedium以上の未対応指摘がない。
+- 設計済み順序、status、終了コード、artifact必須/任意、partial success、再実行がfixtureで固定される。
+- `analysis_logs.log_path` とartifact output pathの整合をorchestration入口が保証する。
+- artifact後のDB失敗を成功へ丸めず、同一payloadの既存artifactだけ安全に再利用できる。
+- 現行CLI互換と責務分離を維持し、read-onlyレビューでmedium以上の未対応指摘がない。
 - 今回変更だけをcommit、通常pushし、draft PRを作成する。
 
 ## Next Task Update
 
-完了後、`docs/next-task.md` を設計結果に基づく実装PR、または正式個人スコアDBのmigration/backup/version遷移設計のうち、既存資料から優先順位を一意に決められる方へ更新してください。更新後の作業には着手しません。
+完了後、`docs/next-task.md` を正式個人スコアDBのmigration/backup/version遷移設計へ更新してください。更新後の作業には着手しません。
