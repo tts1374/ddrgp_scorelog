@@ -176,6 +176,7 @@ M8 preview最小 `plays` は以下の用途に限定する。
 - `score_db_metadata.schema_contract_scope=production_personal_score_db`
 - `score_db_metadata.production_schema_status=production_schema`
 - 必須tableの存在
+- 必須tableの正式version 1 `CREATE TABLE` 定義
 - `schema_migrations` の適用履歴
 
 `PRAGMA user_version=1` だけでは正式DB扱いしない。M8 preview DBも `user_version=1` を使うため、`preview_metadata` があるDB、`score_db_metadata` がないDB、`production_schema_status=not_production_schema` のDBは正式DBとして拒否する。
@@ -221,6 +222,7 @@ CLI表示入口は `python -m tools.vision_poc --personal-score-db-diagnostic <p
 - `m8_preview_database_not_supported`: `preview_metadata` を持つM8 preview DB。正式DBとしては拒否する。
 - `unknown_database_not_supported`: tableはあるが `score_db_metadata` がなく、正式DBともpreview DBとも識別できない。
 - `missing_table:<table>`: 正式DB必須tableが欠落している。
+- `table_schema_mismatch:<table>`: 必須table名は存在するが、列、制約、参照を含む正式version 1の `CREATE TABLE` 定義と一致しない。
 - `score_db_metadata_missing`: `score_db_metadata` がない。
 - `score_db_metadata.<key>_missing`: 必須metadata keyがない。
 - `score_db_metadata.<key>_mismatch`: 必須metadata valueが期待値と違う。

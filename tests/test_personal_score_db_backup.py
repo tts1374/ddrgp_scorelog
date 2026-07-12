@@ -39,7 +39,16 @@ def test_verified_backup_matches_formal_source_snapshot(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize(
     "kind",
-    ["preview", "unknown", "identity", "partial", "history", "migration-id"],
+    [
+        "preview",
+        "unknown",
+        "identity",
+        "partial",
+        "history",
+        "migration-id",
+        "plays-schema",
+        "migration-schema",
+    ],
 )
 def test_rejected_source_does_not_create_backup(tmp_path: Path, kind: str) -> None:
     source = tmp_path / "source.sqlite"
@@ -59,10 +68,16 @@ def test_rejected_source_does_not_create_backup(tmp_path: Path, kind: str) -> No
                 connection.execute("PRAGMA user_version = 2")
             elif kind == "history":
                 connection.execute("DELETE FROM schema_migrations")
-            else:
+            elif kind == "migration-id":
                 connection.execute(
                     "UPDATE schema_migrations SET migration_id = '001_tampered'"
                 )
+            elif kind == "plays-schema":
+                connection.execute("DROP TABLE plays")
+                connection.execute("CREATE TABLE plays (x TEXT)")
+            else:
+                connection.execute("DROP TABLE schema_migrations")
+                connection.execute("CREATE TABLE schema_migrations (x TEXT)")
     target = tmp_path / "backup.sqlite"
 
     with pytest.raises(backup.PersonalScoreDbBackupError) as error:
@@ -118,6 +133,25 @@ def test_explicit_default_backup_format_still_requires_paths(
         runner.main(["--personal-score-db-backup-format", "markdown"])
 
     assert not (tmp_path / "data").exists()
+
+
+def test_abbreviated_backup_options_are_rejected_without_side_effects(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    with pytest.raises(SystemExit):
+        runner.main(
+            [
+                "--personal-score-db-backup-s",
+                "source.sqlite",
+                "--personal-score-db-backup-o",
+                "backup.sqlite",
+            ]
+        )
+
+    assert not (tmp_path / "data").exists()
+    assert not (tmp_path / "backup.sqlite").exists()
 
 
 def test_backup_cli_is_exclusive(tmp_path: Path) -> None:

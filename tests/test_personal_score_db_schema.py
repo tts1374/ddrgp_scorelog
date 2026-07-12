@@ -113,6 +113,22 @@ def test_personal_score_db_schema_rejects_m8_preview_database() -> None:
     assert inspection.migration_plan_reason == "preview_schema_is_not_production"
 
 
+@pytest.mark.parametrize("table_name", ["plays", "schema_migrations"])
+def test_personal_score_db_schema_rejects_malformed_required_table(
+    table_name: str,
+) -> None:
+    with sqlite3.connect(":memory:") as connection:
+        score_schema.create_personal_score_db_schema(connection)
+        connection.execute(f"DROP TABLE {table_name}")
+        connection.execute(f"CREATE TABLE {table_name} (x TEXT)")
+
+        inspection = score_schema.inspect_personal_score_db_schema(connection)
+
+    assert inspection.is_compatible is False
+    assert f"table_schema_mismatch:{table_name}" in inspection.compatibility_errors
+    assert inspection.migration_plan_status == "manual_migration_required"
+
+
 def test_personal_score_db_schema_diagnostic_reports_initializable_empty_database() -> None:
     with sqlite3.connect(":memory:") as connection:
         inspection = score_schema.inspect_personal_score_db_schema(connection)

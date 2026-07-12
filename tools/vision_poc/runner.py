@@ -9685,7 +9685,10 @@ def run_personal_score_db_backup_cli(args: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Evaluate OCR-free DDR GP result screen signals.")
+    parser = argparse.ArgumentParser(
+        description="Evaluate OCR-free DDR GP result screen signals.",
+        allow_abbrev=False,
+    )
     parser.add_argument(
         "--sequence-mode",
         choices=("metadata", "timestamped", "manifest"),

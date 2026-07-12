@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import sqlite3
+from contextlib import closing
 from dataclasses import dataclass
+from functools import cache
 from pathlib import Path
 
 PERSONAL_SCORE_DB_SCHEMA_NAME = "personal_score_db"
@@ -461,12 +463,43 @@ def sqlite_table_exists(connection: sqlite3.Connection, table_name: str) -> bool
 def read_score_db_metadata(connection: sqlite3.Connection) -> dict[str, str]:
     if not sqlite_table_exists(connection, PERSONAL_SCORE_DB_METADATA_TABLE):
         return {}
-    return {
-        str(key): str(value)
-        for key, value in connection.execute(
-            "SELECT key, value FROM score_db_metadata ORDER BY key"
-        )
-    }
+    try:
+        return {
+            str(key): str(value)
+            for key, value in connection.execute(
+                "SELECT key, value FROM score_db_metadata ORDER BY key"
+            )
+        }
+    except sqlite3.DatabaseError:
+        return {}
+
+
+def _normalized_table_sql(sql: str) -> str:
+    return " ".join(sql.lower().split())
+
+
+@cache
+def _formal_table_sql() -> dict[str, str]:
+    with closing(sqlite3.connect(":memory:")) as connection:
+        connection.executescript(PERSONAL_SCORE_DB_SCHEMA_SQL)
+        return {
+            str(name): _normalized_table_sql(str(sql))
+            for name, sql in connection.execute(
+                "SELECT name, sql FROM sqlite_master "
+                "WHERE type = 'table' AND name IN ({})".format(
+                    ", ".join("?" for _ in PERSONAL_SCORE_DB_REQUIRED_TABLES)
+                ),
+                PERSONAL_SCORE_DB_REQUIRED_TABLES,
+            )
+        }
+
+
+def _table_sql(connection: sqlite3.Connection, table_name: str) -> str:
+    row = connection.execute(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?",
+        (table_name,),
+    ).fetchone()
+    return "" if row is None or row[0] is None else _normalized_table_sql(str(row[0]))
 
 
 def _personal_score_db_migration_plan_status(
@@ -516,6 +549,8 @@ def personal_score_db_compatibility_errors(
     for table_name in PERSONAL_SCORE_DB_REQUIRED_TABLES:
         if table_name not in table_names:
             errors.append(f"missing_table:{table_name}")
+        elif _table_sql(connection, table_name) != _formal_table_sql()[table_name]:
+            errors.append(f"table_schema_mismatch:{table_name}")
 
     if not metadata:
         errors.append("score_db_metadata_missing")
