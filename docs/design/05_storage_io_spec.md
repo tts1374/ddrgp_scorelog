@@ -327,3 +327,12 @@ orchestration入口がartifact output pathと `analysis_logs.log_path` の一致
 - 正式値、candidate material、analysis detail、receipt、DB diagnostic、failure image、source captureの責務分離をfixtureで検証する。
 
 後続実装でも通常PoC、常駐監視、migration、backup、cleanup、並行writer制御、failure image生成へは接続しない。
+## Migration backup and explicit execution boundary
+
+正式個人スコアDB migrationは通常save、analysis artifact orchestration、diagnostic、DB openから暗黙実行しない。将来の専用CLI/APIだけが、source DB、target version、新規backup path、明示確認をすべて受け取って1回実行できる。dry-runとstatusはread-onlyで、DB、backup、`data/`、`logs/`を作成・変更しない。
+
+backup pathはsourceと別pathで、既存file・directory・symlink相当の競合がなく、許可されたローカルbackup namespace内の新規fileに限定する。exclusive createで作成し、SQLite整合copy、flush、再open、identity/version/history/整合性検査、sourceとの対応確認が完了するまでsource DBを変更しない。既存backupやsourceを上書き・削除せず、backup作成途中の失敗はsource無変更として終了する。
+
+実行順序は `inspect source read-only` → identity/history/path preflight → backup exclusive create/flush/verify → `BEGIN IMMEDIATE` → schema steps → migration履歴 → metadata version → `PRAGMA user_version` → transaction内検証 → commit → read-only再検査とする。backup検証前のsource writeは禁止する。commit前のtransaction失敗はrollbackする。commit失敗またはcommit後検証失敗はsource状態を推測せず `manual_recovery_required` とし、検証済みbackupを上書きせず保持する。
+
+pure contractのstatus/終了コードは、`current` / `dry_run_ready` / `ready` / `completed` が0、`confirmation_required` が1、入力・互換性・path・partial state拒否が2、backup I/Oまたはmigration実行失敗が3である。`manual_recovery_required` はsourceが変更済みまたは変更有無を確定できない状態として扱い、検証済みbackupを使う人手復旧を促す。再実行時、既にtargetなら `current`、同じbackup pathが存在すればconflict、partial stateならmanual recovery拒否とし、暗黙の再開・repair・backup再利用をしない。

@@ -366,3 +366,10 @@ PoCでは簡易 `duplicate_key` を使うが、本番では以下を組み合わ
 - 失敗画像の保存期間
 - 画像ハッシュ方式
 - duplicate key の本格方式
+## Migration version state contract
+
+Migration contract version 1は `tools.vision_poc.personal_score_db_migration_contract` を正本とし、実DB writerを持たないpure contractである。DB状態は `compatible_current`、`older_supported`、`newer_unsupported`、`unknown`、`preview`、`identity_mismatch`、`partial_migration` を区別する。将来versionへの対応pathが登録された正式DBだけを `older_supported` とし、登録済みtargetがその時点のcurrent schema versionと等しい場合はmigration候補として扱う。現行version 1から任意の未知versionへ進めてよいとは解釈しない。
+
+`PRAGMA user_version`、`score_db_metadata.schema_version`、`schema_migrations` の最新履歴は同じversionを示す必要がある。いずれかだけが先行した状態は `partial_migration` として保存・migrationを拒否し、人手でbackupと状態を確認する。preview、unknown、identity mismatchはversion番号が一致しても正式DBへ昇格しない。
+
+version更新は1 transaction内で、schema step、`schema_migrations` 履歴追加、metadata version更新、`PRAGMA user_version` 更新、target contract検証の順に行い、全て成功した後だけcommitする。commit前の失敗はtransaction全体をrollbackし、3種のversion表現をsource versionへ戻す。commit失敗で完了可否を確定できない場合とcommit後read-only再検査の不一致は、自動repairや再migrationを行わず、backupを保持して人手復旧へ送る。
