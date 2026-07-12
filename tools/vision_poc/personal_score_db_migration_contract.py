@@ -105,7 +105,12 @@ def plan_personal_score_db_migration(request: MigrationRequest) -> MigrationPlan
     if not request.backup_path_is_new:
         return _plan("rejected", "backup_path_conflict", 2)
     if request.dry_run:
-        return _plan("dry_run_ready", "preflight_passed_without_side_effects", 0)
+        return _plan(
+            "dry_run_ready",
+            "preflight_passed_without_side_effects",
+            0,
+            steps=MIGRATION_EXECUTION_STEPS,
+        )
     if not request.explicit_confirmation:
         return _plan("confirmation_required", "explicit_confirmation_required", 1)
     return _plan(

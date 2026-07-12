@@ -42,7 +42,7 @@ def test_migration_plan_fixture_matrix(case: dict[str, object]) -> None:
         assert not plan.may_modify_source
     if plan.status == "dry_run_ready":
         assert not plan.may_create_backup
-        assert plan.steps == ()
+        assert plan.steps == contract.MIGRATION_EXECUTION_STEPS
 
 
 def test_explicit_plan_orders_backup_verification_before_source_change() -> None:
