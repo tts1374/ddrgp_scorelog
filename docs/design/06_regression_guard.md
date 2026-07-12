@@ -339,6 +339,16 @@
 - 明示生成はvalid payloadと安全な新規outputだけを受け付け、UTF-8 BOMなし、LF、決定的key順、末尾改行でatomicに1件を公開する。
 - invalid schema、unsafe path、拡張子不正、既存output、option混在では親directoryを作らず、publish失敗では一時/部分ファイルを残さない。
 - failure image pathはcontract検査だけを行い、画像の生成・copyをしない。artifact生成だけでDB insertせず、saveだけでartifactを暗黙生成しない。
+
+### Artifact/save orchestration design guard
+
+- 現行artifact CLIとsave CLIの独立性、status、終了コードを変えず、接続は後続の単発明示orchestration入口だけが担当する。
+- 入力/adapter、artifact要否と共有ID/status/path、DB互換性、早期duplicate予告、artifact publish、DB transactionの順に進む。早期衝突でも停止せず、transaction内duplicate preflightでsource/analysisを記録し、UNIQUE制約も維持する。
+- 低信頼度/errorの`excluded`だけartifact必須、ready・その他skip・DB duplicateは任意、unresolved/invalidは生成禁止とする。
+- orchestration入口がartifact output pathと `analysis_logs.log_path` の一致を副作用前に保証する。
+- artifact失敗ではDB未実行、artifact成功後のDB失敗ではrowをrollbackしてartifactを保持する。同一payloadだけ再利用し、既存fileを上書き・削除しない。
+- `artifact_created_db_failed` を保存成功へ丸めず、`duplicate` / `excluded` の `play_id=null` を成功playとして扱わない。
+- candidate material、正式play値、analysis detail本文を相互投影せず、receipt、DB diagnostic、failure image、source captureの責務を混ぜない。
 - validationだけではDB、`data/`、`logs/`、画像を作成・変更しない。
 
 ## 正式個人スコアDB save input / transaction

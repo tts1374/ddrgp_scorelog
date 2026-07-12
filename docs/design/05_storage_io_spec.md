@@ -273,3 +273,57 @@ CLIは `--personal-score-db-analysis-detail-input <json>` と `--personal-score-
 任意の失敗画像は詳細JSON内の `failure_image_path` で `logs/analysis_failures/**/*.{png,jpg,jpeg,webp}` を参照する。これは `log_path`、元フレーム用 `source_captures.source_path`、`data/` 配下のvalidation receipt、`logs/` 配下のDB diagnostic JSONLと相互代用しない。
 
 retention classは `short=7日`、`standard=30日`、`indefinite=期限なし` とする。UTCの `basis_at` から `expires_at` を決定的に計算し、期限なしだけnullにする。同じ詳細JSONとそこから参照する失敗画像へ同じretention metadataを適用する。この契約は将来cleanupの判断材料だけであり、ファイル作成、削除、scheduler、起動時掃除を行わない。
+
+## Analysis artifactと正式saveの接続契約
+
+現行のartifact CLIとsave CLIは独立操作のまま維持する。利用者がpath、ID、statusを二重入力して不整合を作る余地があるため、production接続は既存CLIの暗黙連鎖ではなく、後続PRで追加する単発の明示orchestration入口が担当する。入口は1つのworkflow入力を受けるが、artifact payloadとstrict save inputを別objectのままloaderへ渡し、候補材料、analysis detail、正式play値を相互投影しない。
+
+### 適用範囲
+
+| adapter / DB結果 | play | artifact | `analysis_logs.log_path` |
+|---|---:|---|---|
+| `ready`、duplicate非衝突 | あり | 任意 | 生成時はartifact output path、未生成時は空文字 |
+| 明示された低信頼度またはerrorの`excluded` | なし | 必須 | artifact output path |
+| その他skipの`excluded` | なし | 任意 | 生成時はartifact output path、未生成時は空文字 |
+| DB duplicate collision | なし | 任意 | 事前に生成済みならそのpath、なければ空文字 |
+| `unresolved`またはinvalid input | なし | 生成しない | DB writeなし |
+
+上流の保存候補は引き続き `confirmed_result=true` かつ `duplicate=false` である。表のDB duplicate collisionは、その境界通過後に正式 `duplicate_key` が既存playと衝突した場合だけを指す。artifact必須は「DBへplayを作る」条件ではなく、低信頼度/errorを再調査可能にする条件である。
+
+### 順序と整合責任
+
+順序候補のうち、save後にartifactを生成する方式はDBが存在しないfileを参照し得るため不採用、artifactを全検査より前に生成する方式はinvalid/非互換DBでも不要fileを残すため不採用とする。採用順序は次のとおり。
+
+1. workflow optionとartifact output pathを副作用前に検査する。
+2. artifact payloadとstrict save inputを独立にload/validateし、adapterを1回評価する。
+3. artifact要否、共有する `analysis_id` / `source_capture_id` / 保存境界status、save inputの `analysis.log_path` と指定output pathの一致を検査する。正式play値、candidate material、analysis detail間の補完はしない。
+4. 正式DBの存在種別とschema互換性を検査し、readyなら既存playに対するduplicate preflightを行う。このpreflightは利用者向けの予告分類であり、衝突時も処理を止めず、transaction内の既存preflightでsource/analysisを記録する。transaction内preflightとUNIQUE制約を置き換えない。
+5. artifactが必要または明示されていれば、新規fileをatomic生成する。再試行時に既存fileがある場合は、UTF-8 JSONをstrict loadし、正規化したversion 1 payloadが今回入力と完全一致するときだけ `artifact_status=reused` とする。不一致、非JSON、unsafe pathは拒否し、上書き・削除しない。
+6. artifactが生成済みまたは再利用済み、あるいは表で任意かつ未指定の場合だけ、既存の正式file saveを1回呼ぶ。writerはduplicateを再検査し、source、任意play、analysisを1 transactionでcommitする。
+
+orchestration入口がartifact output pathと `analysis_logs.log_path` の一致を保証する。artifact writerはpath安全性とfile内容、DB writerは渡された `log_path` のschema制約とtransactionだけを担当し、どちらも相手の副作用を暗黙実行しない。
+
+### Partial success、再実行、status
+
+| 到達状態 | workflow status | 終了コード | 永続状態 | 再試行 |
+|---|---|---:|---|---|
+| 入力、path、共有値、adapterが不正 | `invalid` / `unresolved` | 2 / 1 | file/DBとも変更なし | 入力を修正 |
+| DB非互換、artifact未生成 | `db_rejected` | 2 | file/DBとも変更なし | DBを選び直す |
+| artifact生成失敗 | `artifact_failed` | 2 | DB未実行。完成artifactなし | 原因を除去して同じ入力で再試行 |
+| artifact成功後にDB失敗 | `artifact_created_db_failed` | 2 | artifactは残り、今回のDB rowはrollback。新規/0 byte DBは初期schema準備済みの場合あり | fileを削除せず、同一payloadを`reused`としてDB段階を再試行 |
+| 既存artifactが入力と不一致 | `artifact_conflict` | 2 | 既存file/DBとも変更なし | 新しいpathを選ぶか入力を正す |
+| transaction完了（早期またはtransaction内duplicateを含む） | `saved` / `excluded` / `duplicate` | 0 | DB row群は原子的。duplicateはsource/analysisだけ、artifactは指定時だけ存在 | 完了。`play_id=null`を成功playと読まない |
+
+終了結果は `workflow_status`、`artifact_status=not_requested|created|reused|failed|conflict`、`adapter_status`、`db_status`、既存save resultと同じID、理由、artifact path、DB pathを返す。正式play値、candidate material、analysis detail本文は結果へ再掲しない。利用者は終了コードだけでなく、`workflow_status`、`artifact_status`、`written`、`play_id`、artifact file、正式DB diagnosticを確認する。自動補償、artifact削除、既存file上書き、DB自動修復は行わない。
+
+### 後続実装のfixture行列とacceptance criteria
+
+- readyのartifactなし/あり、低信頼度とerrorのartifact必須、その他skipの任意、DB duplicate collisionの各分岐を固定する。
+- unsafe path、入力不正、共有ID/status不一致、`log_path` 不一致をfile/DB副作用前に拒否する。
+- DB非互換ではartifactを作らない。早期duplicateは停止せず既存writerへ渡し、transaction内再検査でもplayを作らずsource/analysisを記録する。raceでduplicateになった場合も生成済みartifactを保持する。
+- artifact write失敗ではDBを呼ばず、DB失敗ではrowをrollbackしてartifactを残す。
+- 同一payloadの既存artifactだけ再利用し、不一致fileを上書き・削除しない。
+- loader、adapter、artifact writer、file saveの呼出回数を固定し、現行CLIのstatusと終了コードを変えない。
+- 正式値、candidate material、analysis detail、receipt、DB diagnostic、failure image、source captureの責務分離をfixtureで検証する。
+
+後続実装でも通常PoC、常駐監視、migration、backup、cleanup、並行writer制御、failure image生成へは接続しない。
