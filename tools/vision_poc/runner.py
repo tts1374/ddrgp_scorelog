@@ -68,6 +68,13 @@ PERSONAL_SCORE_DB_DIAGNOSTIC_LOG_REQUIRED_KEYS = (
 )
 PERSONAL_SCORE_DB_MIGRATION_STATUS_FORMATS = ("markdown", "json")
 PERSONAL_SCORE_DB_BACKUP_FORMATS = ("markdown", "json")
+PERSONAL_SCORE_DB_BACKUP_OPTIONS = frozenset(
+    {
+        "--personal-score-db-backup-source",
+        "--personal-score-db-backup-output",
+        "--personal-score-db-backup-format",
+    }
+)
 
 
 ROI_DEFINITIONS: dict[str, tuple[int, int, int, int]] = {
@@ -9685,10 +9692,7 @@ def run_personal_score_db_backup_cli(args: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        description="Evaluate OCR-free DDR GP result screen signals.",
-        allow_abbrev=False,
-    )
+    parser = argparse.ArgumentParser(description="Evaluate OCR-free DDR GP result screen signals.")
     parser.add_argument(
         "--sequence-mode",
         choices=("metadata", "timestamped", "manifest"),
@@ -10114,16 +10118,27 @@ def resolve_ocr_profiles(values: list[str]) -> tuple[str, ...]:
     return tuple(dict.fromkeys(values))
 
 
+def _reject_abbreviated_backup_options(raw_argv: list[str]) -> None:
+    for token in raw_argv:
+        option_name = token.split("=", maxsplit=1)[0]
+        if (
+            option_name.startswith("--")
+            and option_name not in PERSONAL_SCORE_DB_BACKUP_OPTIONS
+            and any(
+                backup_option.startswith(option_name)
+                for backup_option in PERSONAL_SCORE_DB_BACKUP_OPTIONS
+            )
+        ):
+            raise ValueError(f"abbreviated personal score DB backup option: {option_name}")
+
+
 def main(argv: list[str] | None = None) -> int:
     raw_argv = list(sys.argv[1:] if argv is None else argv)
+    _reject_abbreviated_backup_options(raw_argv)
     args = build_parser().parse_args(raw_argv)
-    backup_options = {
-        "--personal-score-db-backup-source",
-        "--personal-score-db-backup-output",
-        "--personal-score-db-backup-format",
-    }
     backup_requested = any(
-        token.split("=", maxsplit=1)[0] in backup_options for token in raw_argv
+        token.split("=", maxsplit=1)[0] in PERSONAL_SCORE_DB_BACKUP_OPTIONS
+        for token in raw_argv
     )
     if backup_requested:
         mixed_options = sorted(
@@ -10132,7 +10147,7 @@ def main(argv: list[str] | None = None) -> int:
                 for token in raw_argv
                 if token.startswith("--")
             }
-            - backup_options
+            - PERSONAL_SCORE_DB_BACKUP_OPTIONS
         )
         if (
             args.personal_score_db_backup_source is None

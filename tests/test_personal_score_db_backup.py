@@ -140,7 +140,7 @@ def test_abbreviated_backup_options_are_rejected_without_side_effects(
 ) -> None:
     monkeypatch.chdir(tmp_path)
 
-    with pytest.raises(SystemExit):
+    with pytest.raises(ValueError, match="abbreviated personal score DB backup option"):
         runner.main(
             [
                 "--personal-score-db-backup-s",
@@ -152,6 +152,14 @@ def test_abbreviated_backup_options_are_rejected_without_side_effects(
 
     assert not (tmp_path / "data").exists()
     assert not (tmp_path / "backup.sqlite").exists()
+
+
+def test_existing_non_backup_option_abbreviation_remains_supported() -> None:
+    args = runner.build_parser().parse_args(
+        ["--personal-score-db-diagnostic-f", "json"]
+    )
+
+    assert args.personal_score_db_diagnostic_format == "json"
 
 
 def test_backup_cli_is_exclusive(tmp_path: Path) -> None:
