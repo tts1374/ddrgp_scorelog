@@ -90,6 +90,8 @@ def plan_personal_score_db_migration(request: MigrationRequest) -> MigrationPlan
         return _plan("rejected", rejection_reasons[request.database_state], 2)
     if request.source_version is None:
         return _plan("rejected", "source_version_missing", 2)
+    if request.source_version >= request.target_version:
+        return _plan("rejected", "source_version_must_be_older", 2)
     if not request.backup_path_is_safe:
         return _plan("rejected", "unsafe_backup_path", 2)
     if not request.backup_path_is_new:
