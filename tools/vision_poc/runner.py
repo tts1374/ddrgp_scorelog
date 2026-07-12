@@ -31,6 +31,10 @@ from .personal_score_db_cli_save import (
     run_personal_score_db_save_input_template_cli,
     run_personal_score_db_save_input_validation_cli,
 )
+from .personal_score_db_migration_status import (
+    format_personal_score_db_migration_status_markdown,
+    project_personal_score_db_migration_status,
+)
 from .personal_score_db_workflow import run_personal_score_db_workflow_cli
 
 BASE_WIDTH = 1280
@@ -62,6 +66,7 @@ PERSONAL_SCORE_DB_DIAGNOSTIC_LOG_REQUIRED_KEYS = (
     "diagnostic_output_path",
     "diagnostic",
 )
+PERSONAL_SCORE_DB_MIGRATION_STATUS_FORMATS = ("markdown", "json")
 
 
 ROI_DEFINITIONS: dict[str, tuple[int, int, int, int]] = {
@@ -9618,6 +9623,21 @@ def run_personal_score_db_diagnostic_cli(args: argparse.Namespace) -> int:
     return exit_code
 
 
+def run_personal_score_db_migration_status_cli(args: argparse.Namespace) -> int:
+    projection = project_personal_score_db_migration_status(
+        args.personal_score_db_migration_status,
+        target_version=args.personal_score_db_migration_target_version,
+        backup_path=args.personal_score_db_migration_backup,
+        dry_run=args.personal_score_db_migration_dry_run,
+    )
+    if args.personal_score_db_migration_format == "json":
+        output = json.dumps(projection, ensure_ascii=False, indent=2) + "\n"
+    else:
+        output = format_personal_score_db_migration_status_markdown(projection)
+    print(output, end="")
+    return int(projection["exit_code"])
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Evaluate OCR-free DDR GP result screen signals.")
     parser.add_argument(
@@ -9727,6 +9747,35 @@ def build_parser() -> argparse.ArgumentParser:
             "Inspect a formal personal score DB path and print a diagnostic, then exit. "
             "This does not insert play rows or run migrations."
         ),
+    )
+    parser.add_argument(
+        "--personal-score-db-migration-status",
+        type=Path,
+        default=None,
+        help="Read-only migration status/dry-run inspection for one formal DB path.",
+    )
+    parser.add_argument(
+        "--personal-score-db-migration-target-version",
+        type=int,
+        default=None,
+        help="Required target schema version for migration status/dry-run.",
+    )
+    parser.add_argument(
+        "--personal-score-db-migration-backup",
+        type=Path,
+        default=None,
+        help="Required explicit backup path to inspect without creating it.",
+    )
+    parser.add_argument(
+        "--personal-score-db-migration-dry-run",
+        action="store_true",
+        help="Project the same migration contract in dry-run mode without side effects.",
+    )
+    parser.add_argument(
+        "--personal-score-db-migration-format",
+        choices=PERSONAL_SCORE_DB_MIGRATION_STATUS_FORMATS,
+        default="markdown",
+        help="Output format for migration status/dry-run.",
     )
     parser.add_argument(
         "--personal-score-db-diagnostic-mode",
@@ -10001,6 +10050,47 @@ def resolve_ocr_profiles(values: list[str]) -> tuple[str, ...]:
 def main(argv: list[str] | None = None) -> int:
     raw_argv = list(sys.argv[1:] if argv is None else argv)
     args = build_parser().parse_args(raw_argv)
+    migration_options = {
+        "--personal-score-db-migration-status",
+        "--personal-score-db-migration-target-version",
+        "--personal-score-db-migration-backup",
+        "--personal-score-db-migration-dry-run",
+        "--personal-score-db-migration-format",
+    }
+    migration_requested = any(
+        (
+            args.personal_score_db_migration_status is not None,
+            args.personal_score_db_migration_target_version is not None,
+            args.personal_score_db_migration_backup is not None,
+            args.personal_score_db_migration_dry_run,
+            args.personal_score_db_migration_format != "markdown",
+        )
+    )
+    if migration_requested:
+        mixed_options = sorted(
+            {
+                token.split("=", maxsplit=1)[0]
+                for token in raw_argv
+                if token.startswith("--")
+            }
+            - migration_options
+        )
+        if (
+            args.personal_score_db_migration_status is None
+            or args.personal_score_db_migration_target_version is None
+            or args.personal_score_db_migration_backup is None
+        ):
+            raise ValueError(
+                "migration status, target version, and backup path must be specified together"
+            )
+        if args.personal_score_db_migration_target_version < 1:
+            raise ValueError("migration target version must be at least 1")
+        if mixed_options:
+            raise ValueError(
+                "personal score DB migration status cannot be combined with: "
+                + ", ".join(mixed_options)
+            )
+        return run_personal_score_db_migration_status_cli(args)
     workflow_options = {
         "--personal-score-db-workflow-input",
         "--personal-score-db-workflow-artifact-output",

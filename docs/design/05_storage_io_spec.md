@@ -336,3 +336,5 @@ backup pathはsourceと別pathで、既存file・directory・symlink相当の競
 実行順序は `inspect source read-only` → identity/history/path preflight → backup exclusive create/flush/verify → `BEGIN IMMEDIATE` → schema steps → migration履歴 → metadata version → `PRAGMA user_version` → transaction内検証 → commit → read-only再検査とする。backup検証前のsource writeは禁止する。commit前のtransaction失敗はrollbackする。commit失敗またはcommit後検証失敗はsource状態を推測せず `manual_recovery_required` とし、検証済みbackupを上書きせず保持する。
 
 pure contractのstatus/終了コードは、`current` / `dry_run_ready` / `ready` / `completed` が0、`confirmation_required` が1、入力・互換性・path・partial state拒否が2、backup I/Oまたはmigration実行失敗が3である。`manual_recovery_required` はsourceが変更済みまたは変更有無を確定できない状態として扱い、検証済みbackupを使う人手復旧を促す。再実行時、既にtargetなら `current`、同じbackup pathが存在すればconflict、partial stateならmanual recovery拒否とし、暗黙の再開・repair・backup再利用をしない。
+
+status/dry-run専用CLIはDB path、target version、明示backup pathの必須組だけを受ける。SQLiteはURI `mode=ro` で開き、backup pathは存在・source同一性・親directoryだけを観測する。JSON/Markdownは同じprojectionを使い、終了コードはpure contractの値を返す。DB、backup、`data/`、`logs/`を作成・変更せず、save/orchestration/diagnosticや通常PoCと混在させない。

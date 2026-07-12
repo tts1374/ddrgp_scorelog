@@ -10,32 +10,32 @@ GPT-5.6 Sol
 
 high
 
-pure migration contractを副作用のないstatus/dry-run表示へ接続し、既存CLI排他と保存境界を維持するためです。
+source DBを変更せずに、exclusive createとreadback検証を伴うbackup境界を実装するためです。
 
 ## 作業ブランチ
 
 ```powershell
-codex/m8-personal-score-db-migration-status-dry-run-cli
+codex/m8-personal-score-db-verified-backup-cli
 ```
 
 ## Goal
 
-正式個人スコアDBのmigration可否をread-onlyで表示するstatus/dry-run CLIを追加します。
+正式個人スコアDBから検証済みbackupを明示的に1件作成する専用API/CLIを追加します。
 
 ## Deliverables
 
-- 既存schema inspectionとmigration pure contractを合成するread-only projectionを追加する。
-- DB path、target version、明示backup pathを受ける専用status/dry-run CLIを追加する。
-- status、reason、source/target version、backup path検査結果、予定step、終了コードをJSON/Markdownで表示する。
-- CLI option排他、存在しない/非SQLite/directory、preview/unknown/identity mismatch/newer unsupported/partial stateをfixtureで固定する。
+- compatibleな正式DBだけをsourceとして受けるverified backup APIを追加する。
+- source DB pathと新規backup pathを必須とする専用CLIを追加する。
+- exclusive create、flush、再open、SQLite integrity、formal identity/version/history、source snapshot対応を検証する。
+- 成功・source拒否・backup conflict・copy/readback失敗をfixtureで固定する。
 - README、設計docs、roadmapを同期する。
 
 ## Invariants
 
-- DB、backup、`data/`、`logs/`を作成・変更しない。
-- migration、backup、repairを実行せず、既存save/orchestration/diagnosticへ暗黙接続しない。
-- preview/unknown/identity mismatch DBを正式DBへ昇格しない。
-- source/play/analysis保存境界、duplicate transaction、既存CLI終了コードを変えない。
+- source DB、既存backup、`data/`、`logs/`を変更・削除しない。
+- migration、schema変更、restore、repairを実行しない。
+- preview/unknown/identity mismatch/newer unsupported/partial stateをbackup元として受け入れない。
+- save/orchestration/diagnostic/migration statusの既存CLI契約と終了コードを変えない。
 
 ## Validation
 
@@ -43,15 +43,15 @@ codex/m8-personal-score-db-migration-status-dry-run-cli
 
 ## Non-goals
 
-- 実DB migration/backup writer、既存DBの変更、restore/repair
-- schema version 2、migration SQL、backup retention
+- 実DB migration、version 2 schema、migration SQL
+- backup retention、複数世代管理、自動restore/repair
 - save/orchestration/diagnosticからの自動実行
 - OCR、ROI、画像分類、通常PoCへの接続
 
 ## Acceptance Criteria
 
-- status/dry-runが同じpure contractを使い、副作用なしで再現可能な判定を返す。
-- 現行/拒否/将来supported pathの表示と終了コードがfixtureで検証できる。
+- 成功したbackupがsourceのformal identity/version/historyと対応し、SQLite integrity検査を通る。
+- 失敗時にsourceと既存backupを変更せず、不完全な新規backupを残さない。
 - read-onlyレビューでmedium以上の未対応指摘がない。
 
 完了後は次PR仕様へ更新し、今回変更だけをcommit、通常pushしてdraft PRを作成してください。
