@@ -1,0 +1,14 @@
+<UserControl x:Class="DDRGpScoreViewer.Controls.StatePanel"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Border Style="{StaticResource CardStyle}" Padding="32" HorizontalAlignment="Stretch">
+        <StackPanel HorizontalAlignment="Center" MaxWidth="560">
+            <TextBlock Text="{Binding Title, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                       FontSize="18" FontWeight="SemiBold" TextAlignment="Center"
+                       Foreground="{StaticResource TextPrimaryBrush}" />
+            <TextBlock Text="{Binding Message, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                       Margin="0,8,0,0" TextWrapping="Wrap" TextAlignment="Center"
+                       Foreground="{StaticResource TextSecondaryBrush}" />
+        </StackPanel>
+    </Border>
+</UserControl>

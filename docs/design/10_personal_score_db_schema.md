@@ -2,6 +2,16 @@
 
 M8 preview完了後の正式 `ddrgp-scores.sqlite` 初期スキーマ、migration境界、正式保存入力、transaction write境界、明示単発保存、analysis詳細JSONのpure contractを固定する。実ファイルへの既定自動保存、duplicate key生成、analysis artifact自動生成はまだ実装しない。
 
+## M9 read-only viewer boundary
+
+`app/src/DDRGpScoreViewer` は正式個人スコアDB version 1を表示するread-only consumerである。個人DBと生成済みマスタDBをユーザーがそれぞれ明示選択し、別々のSQLite `ReadOnly` connectionで開く。viewerはschema初期化、save、migration、backup、repairを呼ばず、connection poolingも使わない。
+
+個人DBは `PRAGMA user_version=1`、正式 `score_db_metadata` identity、必須tableとversion 1列順、初期migration履歴を検査する。preview、unknown、identity mismatch、newer unsupported、必須table/列欠落、migration history不整合は、ファイルを変更せず表示対象から拒否する。これは既存Python writerの互換判定を置き換えず、viewer側で同じ正式identityを再確認する入口である。
+
+履歴は `plays` を1プレー1rowのまま新しい順で読む。`source_captures` は取得元表示にだけ参照し、`analysis_logs` の候補材料や詳細JSONを正式play値へ投影しない。譜面別自己ベストは保存済み全履歴への `GROUP BY song_id, chart_id` と `MAX(score)` / `MAX(ex_score)` で算出し、自己ベスト専用row、table、viewをDBへ追加しない。
+
+曲・譜面表示はマスタDBの `charts` / `songs` を `chart_id` と `song_id` の両方が一致する場合だけ採用する。参照欠落またはID不一致の履歴も失わず、正式play rowのIDと参照欠落状態を表示する。正式v1 `plays` にない値は推測・補完せず、画面仕様が求める `O.K.` は `—` と表示する。
+
 ## 目的
 
 - M8 preview最小 `plays` と正式個人スコアDB `plays` を別物として扱う。

@@ -10,71 +10,60 @@ GPT-5.6 Sol
 
 high
 
-正式DB version 1を変更せず、保存済みスコアがユーザー価値として見える最小ビューアを作るためです。
+既存のmanifest/manual境界、正式保存入力、transaction、viewerのread-only境界を維持したまま、最初の縦断経路を1つに限定して接続するためです。
 
 ## 作業ブランチ
 
 ```powershell
-codex/m9-minimal-score-viewer
+codex/m9-manual-save-viewer-vertical-slice
 ```
 
 ## Goal
 
-正式個人スコアDB version 1をread-onlyで開き、保存済みプレー履歴、プレー詳細、譜面別自己ベストを確認できる最小WPFスコアビューアを追加します。
-
-## UI仕様の参照順
-
-実装前に次をすべて確認してください。
-
-1. `docs/wireframe/screen-spec.md`: 表示情報、画面状態、操作、文言、画面遷移の正本
-2. `docs/wireframe/design-system.md`: 色トークン、余白、タイポグラフィ、コンポーネント、アクセシビリティの正本
-3. `docs/wireframe/wireframe1.png`: サイドバー、ホーム、自己ベスト、譜面詳細、プレー履歴の配置と情報優先順位の参考
-4. `docs/wireframe/wireframe2.png`: 要確認、全体遷移、共通凡例の配置と情報優先順位の参考
-
-文書と画像が矛盾する場合は `screen-spec.md`、`design-system.md`、PNGの順で優先します。PNGのピクセル完全一致、画像内の誤字・不自然な値・仕様外要素の再現は求めません。
-
-wireframeはアプリ全体の将来像を含みますが、今回実装するのは下記DeliverablesとAcceptance Criteriaに必要な共通レイアウト、プレー履歴、プレー詳細、自己ベスト表示だけです。ホームの全KPI、グラフ、要確認、設定、データ管理、自動記録状態、常駐機能へ範囲を広げません。
+既存のstrictな正式保存入力JSONを明示的に選び、正式個人スコアDB version 1へ既存workflowで単発保存し、その結果を最小WPF viewerで再読込して確認できるmanual縦断sliceを追加します。
 
 ## Deliverables
 
-- `app/` にC# / .NET 10 / WPFの最小プロジェクトを作成する。
-- wireframeのテーマトークンと共通table/badge/empty/error stateを、後続画面でも再利用できるWPF resource/componentとして実装する。
-- ユーザーが明示選択したv1 DBと生成済みマスタDBをread-onlyで開き、それぞれのidentity/versionを検査する。
-- `song_id` / `chart_id` でマスタDBを参照し、`plays` の新しい順の履歴一覧に、日時、曲名、SP/DP、難易度、レベル、score、rank、clear typeを表示する。
-- 選択プレーの判定数、MAX COMBO、EX SCORE、保存日時を詳細表示する。
-- 保存済み全履歴から譜面別自己ベストをqueryで算出し、履歴rowを変更せず表示する。
-- compatible DB、空履歴、マスタ参照欠落、拒否DB、読取失敗をfixtureまたは一時DBでテストする。
-- `app/README.md`、利用手順、設計docs、roadmapを同期する。
+- WPFアプリから既存version 1 workflow入力JSONと保存先v1 DBをユーザーが明示選択できる入口を追加する。
+- Python側の既存strict loader、adapter、analysis artifact orchestration、file saveを再実装せず、境界が明確な単発process/API adapterで1回だけ呼ぶ。
+- ready、excluded、duplicate、unresolved、invalid、DB拒否、artifact partial successをユーザー向け状態へ写像する。
+- transaction完了したreadyだけviewer履歴へ反映し、excluded/duplicateを成功playとして表示しない。
+- 成功後は同じread-only repositoryでDBを再読込し、保存playを履歴・詳細・自己ベストへ反映する。
+- compatible DB、unresolved、duplicate、invalid input、preview/unknown DB、workflow失敗を一時DB/fixtureでテストする。
+- `app/README.md`、保存境界design docs、roadmapを同期する。
 
 ## Invariants
 
 - 正式DB schema versionを1から変更しない。
 - version 2 schema、supported transition、migration SQL、schema writerを設計・実装しない。
-- viewerはDBをread-onlyで開き、schema初期化、save、migration、backup、repairを実行しない。
-- マスタ参照が欠ける履歴も失わず、IDと参照欠落状態を表示する。
-- 自己ベストは全履歴から算出し、自己ベスト専用rowやtableを作らない。
-- preview/unknown/identity mismatch/newer unsupported/partial stateを表示対象DBとして受け入れない。
+- 候補材料、M5 identity signal、M7a recognized digits、相対時刻を正式値へ暗黙昇格しない。
+- 保存直前境界 `confirmed_result=true` かつ `duplicate=false` を維持する。
+- source capture、任意play、analysisを既存の1 transactionで書き、別writerを作らない。
+- unresolved/invalid/DB拒否ではDB、artifact、`data/`、`logs/`を新たに変更しない。
+- duplicate/excludedはplay rowを作らず、`play_id=null` を成功playとして扱わない。
+- viewerの通常閲覧は引き続きread-onlyとし、閲覧操作から保存を暗黙実行しない。
 - 既存Python CLI/API契約と終了コードを変えない。
 
 ## Validation
 
-.NET build/test、対象Pythonテスト、全Pythonテスト、Ruff、compileall、`git diff --check` を実行してください。画像処理を変更しない限りVision PoCは省略します。
+.NET build/test、対象Python workflow/saveテスト、全Pythonテスト、Ruff、compileall、`git diff --check` を実行してください。画像処理を変更しない限りVision PoCは省略します。
 
 ## Non-goals
 
-- DBへの書込み、save、migration、backup、restore、repair
-- 自動キャプチャ、常駐監視、タスクトレイ、ROI調整
-- マスタDB更新、検索、絞り込み、グラフ、統計高度化
-- OCR、画像分類、解析pipelineとの自動接続
+- manifestやPoC runnerからの自動保存
+- 自動キャプチャ、常駐監視、タスクトレイ
+- save inputのUI編集、候補値の自動補完
+- migration、backup、restore、repair
+- master DB更新、検索、絞り込み、グラフ
 - installer、self-contained配布
 
 ## Acceptance Criteria
 
-- compatibleなv1 DBの全プレー履歴を、マスタDB由来の曲・譜面表示と詳細つきでread-only閲覧できる。
-- 譜面別自己ベストが保存済み履歴から正しく算出される。
-- viewer操作の前後でDB内容hashが変わらない。
-- 非compatible DBを変更せず、理由を表示して拒否する。
-- `screen-spec.md`の対象画面仕様と`design-system.md`のトークンを満たし、PNGと同等の情報優先順位を目視確認できる。
+- 明示選択したvalid workflow inputから既存境界で1件を正式v1 DBへ保存し、同じアプリでread-only再表示できる。
+- unresolved、invalid、preview/unknown DBは副作用なしで拒否される。
+- duplicate/excludedはplay履歴へ追加されず、状態と理由をユーザーが確認できる。
+- artifact生成後のDB失敗を保存成功へ丸めず、既存workflowのpartial success契約を維持する。
+- 既存viewer操作だけではDB hashが変わらない。
 - read-onlyレビューでmedium以上の未対応指摘がない。
 
 完了後は次PR仕様へ更新し、今回変更だけをcommit、通常pushしてdraft PRを作成してください。

@@ -1,0 +1,38 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Color x:Key="BackgroundPrimaryColor">#F7F9FC</Color>
+    <Color x:Key="BackgroundSidebarColor">#152238</Color>
+    <Color x:Key="SurfacePrimaryColor">#FFFFFF</Color>
+    <Color x:Key="SurfaceSecondaryColor">#F3F6FA</Color>
+    <Color x:Key="BorderDefaultColor">#DDE4EE</Color>
+    <Color x:Key="BorderStrongColor">#C4CEDB</Color>
+    <Color x:Key="TextPrimaryColor">#152033</Color>
+    <Color x:Key="TextSecondaryColor">#657289</Color>
+    <Color x:Key="TextMutedColor">#8B96A8</Color>
+    <Color x:Key="AccentPrimaryColor">#1769E8</Color>
+    <Color x:Key="AccentHoverColor">#0F5ACB</Color>
+    <Color x:Key="AccentSubtleColor">#EAF2FF</Color>
+    <Color x:Key="DangerColor">#D6384B</Color>
+    <Color x:Key="FocusRingColor">#5A9CFF</Color>
+
+    <SolidColorBrush x:Key="BackgroundPrimaryBrush" Color="{StaticResource BackgroundPrimaryColor}" />
+    <SolidColorBrush x:Key="BackgroundSidebarBrush" Color="{StaticResource BackgroundSidebarColor}" />
+    <SolidColorBrush x:Key="SurfacePrimaryBrush" Color="{StaticResource SurfacePrimaryColor}" />
+    <SolidColorBrush x:Key="SurfaceSecondaryBrush" Color="{StaticResource SurfaceSecondaryColor}" />
+    <SolidColorBrush x:Key="BorderDefaultBrush" Color="{StaticResource BorderDefaultColor}" />
+    <SolidColorBrush x:Key="BorderStrongBrush" Color="{StaticResource BorderStrongColor}" />
+    <SolidColorBrush x:Key="TextPrimaryBrush" Color="{StaticResource TextPrimaryColor}" />
+    <SolidColorBrush x:Key="TextSecondaryBrush" Color="{StaticResource TextSecondaryColor}" />
+    <SolidColorBrush x:Key="TextMutedBrush" Color="{StaticResource TextMutedColor}" />
+    <SolidColorBrush x:Key="AccentPrimaryBrush" Color="{StaticResource AccentPrimaryColor}" />
+    <SolidColorBrush x:Key="AccentHoverBrush" Color="{StaticResource AccentHoverColor}" />
+    <SolidColorBrush x:Key="AccentSubtleBrush" Color="{StaticResource AccentSubtleColor}" />
+    <SolidColorBrush x:Key="DangerBrush" Color="{StaticResource DangerColor}" />
+    <SolidColorBrush x:Key="FocusRingBrush" Color="{StaticResource FocusRingColor}" />
+
+    <SolidColorBrush x:Key="BeginnerBrush" Color="#5FB8E8" />
+    <SolidColorBrush x:Key="BasicBrush" Color="#F3A621" />
+    <SolidColorBrush x:Key="DifficultBrush" Color="#E64949" />
+    <SolidColorBrush x:Key="ExpertBrush" Color="#27A85A" />
+    <SolidColorBrush x:Key="ChallengeBrush" Color="#8C55C9" />
+</ResourceDictionary>
