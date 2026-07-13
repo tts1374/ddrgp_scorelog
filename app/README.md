@@ -22,6 +22,17 @@
 
 pickerとWindows Graphics Captureは明示操作時だけ起動します。取得後に分類、OCR、identity解決、workflow、正式DB保存、viewer再読込を自動実行しません。同じprocessで再度ボタンを押すと、resourceを作り直して別の1フレームを取得します。
 
+生成した1行manifestは、manifest directoryを基準に `frame.png` を解決してそのまま再実行できます。
+
+```powershell
+python -m tools.vision_poc `
+  --sequence-mode manifest `
+  --frame-manifest data\windows_capture\capture-<id>\frame_manifest.csv `
+  --output data\windows_capture_replay
+```
+
+単発manifestは `confirmation_mode=time` ですが、1フレームだけではconfirmed resultになりません。実captureのconfirmed-events評価では、同じresultを1秒以上空けて複数回取得し、`data/` 配下のローカル評価manifestへ時刻順にまとめます。`screen_type` と期待値列は評価用manifest側で補い、capture原本のmanifest、画像、metadataは変更しません。
+
 ## Build / test / run
 
 ```powershell
