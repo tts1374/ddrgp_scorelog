@@ -53,7 +53,7 @@ public sealed class PythonPersonalScoreDbWorkflowRunner : IPersonalScoreDbWorkfl
             var startInfo = new ProcessStartInfo
             {
                 FileName = pythonExecutable,
-                WorkingDirectory = repositoryRoot ?? FindRepositoryRoot(),
+                WorkingDirectory = repositoryRoot ?? RepositoryRootLocator.Find(),
                 UseShellExecute = false,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
@@ -133,26 +133,4 @@ public sealed class PythonPersonalScoreDbWorkflowRunner : IPersonalScoreDbWorkfl
             "process_failed", "not_requested", "invalid", "not_checked", false,
             null, null, null, [reason], null, databasePath);
 
-    private static string FindRepositoryRoot()
-    {
-        foreach (var start in new[] { Environment.CurrentDirectory, AppContext.BaseDirectory })
-        {
-            var directory = new DirectoryInfo(start);
-            while (directory is not null)
-            {
-                if (File.Exists(Path.Combine(directory.FullName, "pyproject.toml")) &&
-                    File.Exists(Path.Combine(
-                        directory.FullName,
-                        "tools",
-                        "vision_poc",
-                        "personal_score_db_workflow_app.py")))
-                {
-                    return directory.FullName;
-                }
-                directory = directory.Parent;
-            }
-        }
-        throw new InvalidOperationException(
-            "Repository root was not found. Start the application from the repository checkout.");
-    }
 }

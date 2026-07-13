@@ -50,6 +50,8 @@
             </Grid.RowDefinitions>
             <DockPanel Grid.Row="0">
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                    <Button Content="1フレーム取得" Margin="0,0,8,0"
+                            Style="{StaticResource PrimaryButtonStyle}" Click="CaptureOneFrame_Click" />
                     <Button Content="単発保存" Margin="0,0,8,0"
                             Style="{StaticResource PrimaryButtonStyle}" Click="SaveOnePlay_Click" />
                     <Button Content="データを選択"
@@ -63,14 +65,24 @@
                 </StackPanel>
             </DockPanel>
 
-            <Border Grid.Row="2" Visibility="{Binding SaveStatusVisibility}"
-                    Background="#E8F0FA" CornerRadius="6" Padding="12">
-                <StackPanel>
-                    <TextBlock Text="{Binding SaveStatusTitle}" FontWeight="SemiBold" />
-                    <TextBlock Text="{Binding SaveStatusMessage}" Margin="0,4,0,0"
-                               Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" />
-                </StackPanel>
-            </Border>
+            <StackPanel Grid.Row="2">
+                <Border Visibility="{Binding CaptureStatusVisibility}"
+                        Background="#E8F0FA" CornerRadius="6" Padding="12" Margin="0,0,0,8">
+                    <StackPanel>
+                        <TextBlock Text="{Binding CaptureStatusTitle}" FontWeight="SemiBold" />
+                        <TextBlock Text="{Binding CaptureStatusMessage}" Margin="0,4,0,0"
+                                   Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" />
+                    </StackPanel>
+                </Border>
+                <Border Visibility="{Binding SaveStatusVisibility}"
+                        Background="#E8F0FA" CornerRadius="6" Padding="12">
+                    <StackPanel>
+                        <TextBlock Text="{Binding SaveStatusTitle}" FontWeight="SemiBold" />
+                        <TextBlock Text="{Binding SaveStatusMessage}" Margin="0,4,0,0"
+                                   Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" />
+                    </StackPanel>
+                </Border>
+            </StackPanel>
 
             <controls:StatePanel Grid.Row="4" Visibility="{Binding StatusVisibility}"
                                  Title="{Binding StatusTitle}" Message="{Binding StatusMessage}" />

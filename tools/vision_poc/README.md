@@ -274,6 +274,8 @@ python -m tools.vision_poc --sequence-mode manifest --frame-manifest data/vision
 
 実キャプチャAPI導入時は provider の入力元だけを実デバイスや録画前段に差し替え、manifest互換 dry-run 出力はしばらく維持します。これにより、`FrameInput` 契約、`timestamp_ms` の単調増加、manifest expected columns の保持、`confirmation_mode=time`、confirmed-events の保存境界を同じコマンドで再確認できます。
 
+WPFの `1フレーム取得` は `data/windows_capture/capture-*/frame_manifest.csv` と同directoryの `frame.png` を出力します。この1行manifestは `image_path,timestamp_ms` の既存必須列に加え、`screen_type=unknown`、capture source、幅、高さ、UTC取得時刻を任意列として持つため、`--sequence-mode manifest --frame-manifest <path>` でそのまま読めます。取得ボタンだけではこのコマンド、分類、OCR、confirmed-events、正式保存を自動実行しません。
+
 生成した manifest はそのまま manifest モードで処理できます。
 
 ```powershell

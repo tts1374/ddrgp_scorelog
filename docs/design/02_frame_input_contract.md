@@ -159,6 +159,28 @@ metadata互換の任意列を保持する辞書。
 - 生成manifestは `--sequence-mode manifest` でそのまま読める。
 - 本番キャプチャAPI、実デバイス、常駐監視、非同期処理、DB保存、OCR刷新は含まない。
 
+### WPF single-frame capture
+
+目的:
+
+- ユーザーがWindows pickerで明示選択したwindowから1フレームだけ取得する。
+- 実captureを既存manifest modeへ手動で渡せる再実行可能なローカル入力にする。
+
+出力:
+
+```text
+data/windows_capture/capture-<UTC>-<unique>/
+  frame.png
+  frame_manifest.csv
+  capture_metadata.json
+```
+
+`frame_manifest.csv` は1行だけを持ち、`image_path=frame.png` はmanifest directory相対、`timestamp_ms` はWindows processの単調増加ミリ秒値とする。`screen_type=unknown`、`capture_source`、`width`、`height`、`captured_at_utc` は任意列として保持される。UTC wall-clock時刻は監査用metadataであり、time-based confirmationに渡す `timestamp_ms` と混同しない。
+
+Windows Graphics Capture adapterはpicker、D3D11 device、free-threaded frame pool、capture session、PNG encodingを担当する。UIはowner HWNDを渡して結果statusを表示し、writerは画像内容を解釈しない。成功・失敗・cancelの全経路でframe、frame pool、session、D3D device、WinRT streamを解放し、取得ごとにresourceを新規作成する。
+
+writerは `data/` 直下のstaging directoryへ画像、manifest、metadataを書き、3ファイル完成後に一意な最終directoryへrenameする。既存出力は上書きせず、失敗時はstagingを削除する。captureだけでmanifest reader、分類、OCR、confirmed event、正式save input、DB、viewer履歴を呼び出さない。
+
 ## manifest CSV仕様
 
 最小列:
@@ -197,5 +219,6 @@ frames/result_a.png,0,result,935730,111,1,552
 - manifest mode は `image_path,timestamp_ms` の最小CSVを読める。
 - timestamped が出す manifest は expected columns を保持する。
 - dry-run capture provider が出す manifest は manifest mode で読める。
+- WPF single-frame capture が出す1行manifestはmanifest directory相対で読め、capture補助列を `FrameInput.row` に保持する。
 - timestamp 付き入力は `confirmation_mode=time` になる。
 - `--ocr-target confirmed-events` は `confirmed_result=true` かつ `duplicate=false` のみを対象にする。

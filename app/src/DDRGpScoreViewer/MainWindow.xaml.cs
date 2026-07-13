@@ -1,4 +1,6 @@
 using System.Windows;
+using System.Windows.Interop;
+using DDRGpScoreViewer.Capture;
 using DDRGpScoreViewer.Data;
 using DDRGpScoreViewer.ViewModels;
 using Microsoft.Win32;
@@ -7,14 +9,27 @@ namespace DDRGpScoreViewer;
 
 public partial class MainWindow : Window
 {
-    private readonly MainViewModel viewModel = new(
-        new ScoreViewerRepository(),
-        new PythonPersonalScoreDbWorkflowRunner());
+    private readonly MainViewModel viewModel;
 
     public MainWindow()
     {
         InitializeComponent();
+        viewModel = new MainViewModel(
+            new ScoreViewerRepository(),
+            new PythonPersonalScoreDbWorkflowRunner(),
+            new SingleFrameCaptureService(
+                new WindowsGraphicsCaptureAdapter(),
+                new RepositoryCaptureOutputWriter()));
         DataContext = viewModel;
+    }
+
+    private async void CaptureOneFrame_Click(object sender, RoutedEventArgs e)
+    {
+        if (viewModel.IsCapturing)
+        {
+            return;
+        }
+        await viewModel.CaptureOneFrameAsync(new WindowInteropHelper(this).EnsureHandle());
     }
 
     private async void SaveOnePlay_Click(object sender, RoutedEventArgs e)

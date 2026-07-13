@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using DDRGpScoreViewer.Capture;
 using DDRGpScoreViewer.Data;
 using DDRGpScoreViewer.Models;
 
@@ -10,6 +11,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 {
     private readonly ScoreViewerRepository repository;
     private readonly IPersonalScoreDbWorkflowRunner workflowRunner;
+    private readonly ISingleFrameCaptureService? captureService;
     private PlayHistoryItem? selectedPlay;
     private string statusTitle = "プレーデータを選択してください";
     private string statusMessage =
@@ -20,13 +22,19 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private string saveStatusMessage = "";
     private bool hasSaveStatus;
     private bool isSaving;
+    private string captureStatusTitle = "";
+    private string captureStatusMessage = "";
+    private bool hasCaptureStatus;
+    private bool isCapturing;
 
     public MainViewModel(
         ScoreViewerRepository repository,
-        IPersonalScoreDbWorkflowRunner workflowRunner)
+        IPersonalScoreDbWorkflowRunner workflowRunner,
+        ISingleFrameCaptureService? captureService = null)
     {
         this.repository = repository;
         this.workflowRunner = workflowRunner;
+        this.captureService = captureService;
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -108,6 +116,81 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public System.Windows.Visibility SaveStatusVisibility =>
         HasSaveStatus ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
+
+    public string CaptureStatusTitle
+    {
+        get => captureStatusTitle;
+        private set => SetProperty(ref captureStatusTitle, value);
+    }
+
+    public string CaptureStatusMessage
+    {
+        get => captureStatusMessage;
+        private set => SetProperty(ref captureStatusMessage, value);
+    }
+
+    public bool HasCaptureStatus
+    {
+        get => hasCaptureStatus;
+        private set
+        {
+            if (SetProperty(ref hasCaptureStatus, value))
+            {
+                OnPropertyChanged(nameof(CaptureStatusVisibility));
+            }
+        }
+    }
+
+    public bool IsCapturing
+    {
+        get => isCapturing;
+        private set => SetProperty(ref isCapturing, value);
+    }
+
+    public System.Windows.Visibility CaptureStatusVisibility =>
+        HasCaptureStatus ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
+
+    public async Task CaptureOneFrameAsync(nint ownerWindowHandle)
+    {
+        if (IsCapturing)
+        {
+            return;
+        }
+        if (captureService is null)
+        {
+            HasCaptureStatus = true;
+            CaptureStatusTitle = "画面キャプチャを利用できません";
+            CaptureStatusMessage = "capture serviceが構成されていません。";
+            return;
+        }
+
+        IsCapturing = true;
+        HasCaptureStatus = true;
+        CaptureStatusTitle = "対象windowを選択してください";
+        CaptureStatusMessage = "選択したwindowから1フレームだけ取得します。解析やDB保存は実行しません。";
+        try
+        {
+            var result = await captureService.CaptureAsync(ownerWindowHandle);
+            CaptureStatusTitle = result.Status switch
+            {
+                CaptureOperationStatus.Saved => "1フレームを保存しました",
+                CaptureOperationStatus.Cancelled => "画面キャプチャをキャンセルしました",
+                CaptureOperationStatus.Unsupported => "画面キャプチャを利用できません",
+                CaptureOperationStatus.AccessDenied => "画面キャプチャが拒否されました",
+                CaptureOperationStatus.TargetClosed => "対象windowが終了しました",
+                CaptureOperationStatus.InvalidSize => "対象windowを取得できません",
+                CaptureOperationStatus.Resized => "対象windowのサイズが変わりました",
+                CaptureOperationStatus.DeviceLost => "GPU deviceが失われました",
+                CaptureOperationStatus.WriteFailed => "キャプチャ出力に失敗しました",
+                _ => "1フレーム取得に失敗しました",
+            };
+            CaptureStatusMessage = result.UserMessage;
+        }
+        finally
+        {
+            IsCapturing = false;
+        }
+    }
 
     public void Load(string scoreDatabasePath, string masterDatabasePath)
     {

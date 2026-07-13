@@ -511,6 +511,31 @@ def test_read_frame_manifest_preserves_optional_row_columns(tmp_path: Path) -> N
     }
 
 
+def test_read_frame_manifest_accepts_windows_capture_writer_columns(tmp_path: Path) -> None:
+    image_path = tmp_path / "frame.png"
+    write_test_image(image_path)
+    manifest_path = tmp_path / "frame_manifest.csv"
+    manifest_path.write_text(
+        "image_path,timestamp_ms,screen_type,capture_source,width,height,captured_at_utc\n"
+        'frame.png,12345,unknown,"DDR GRAND PRIX, result",1280,720,'
+        "2026-07-13T01:02:03.0000000+00:00\n",
+        encoding="utf-8",
+    )
+
+    frames = runner.read_frame_manifest(manifest_path)
+
+    assert frames[0].image_path == image_path
+    assert frames[0].timestamp_ms == 12345
+    assert frames[0].row == {
+        "organized_file": "frame.png",
+        "screen_type": "unknown",
+        "capture_source": "DDR GRAND PRIX, result",
+        "width": "1280",
+        "height": "720",
+        "captured_at_utc": "2026-07-13T01:02:03.0000000+00:00",
+    }
+
+
 def test_make_frame_manifest_writes_sorted_strictly_increasing_timestamps(tmp_path: Path) -> None:
     frame_root = tmp_path / "frames"
     write_test_image(frame_root / "frame_002.jpg")
