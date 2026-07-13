@@ -408,6 +408,7 @@
 - target終了、0x0、resize、device lost、access拒否、write失敗を保存成功へ丸めない。
 - 成功・失敗・cancel後にframe、frame pool、capture session、D3D device、streamを解放し、同一processで次の明示captureを実行できるようにする。
 - outputは `data/windows_capture/` 配下の一意directoryへatomicに公開し、既存出力を上書きせず、失敗時にstagingや部分manifestを残さない。
+- capture output rootは操作時にrepository rootから解決し、process cwdへprivate画像を逸脱させず、探索失敗で通常viewer起動を妨げない。
 - manifestは `image_path,timestamp_ms` を維持し、`screen_type=unknown` とcapture補助列を任意列としてmanifest readerへ渡す。
 - captureだけではVision PoC、workflow、正式DB schema/writer/duplicate、artifact、viewer履歴を変更しない。
 - `.NET build/test` とcapture列を読む対象Python testを実行する。画像分類・ROI・OCR・confirmed-events生成を変更しない場合、Vision PoC本体の再実行は不要とする。

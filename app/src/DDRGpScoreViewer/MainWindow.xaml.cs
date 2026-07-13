@@ -1,4 +1,3 @@
-using System.IO;
 using System.Windows;
 using System.Windows.Interop;
 using DDRGpScoreViewer.Capture;
@@ -15,15 +14,12 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
-        var dataRoot = Path.GetFullPath("data");
         viewModel = new MainViewModel(
             new ScoreViewerRepository(),
             new PythonPersonalScoreDbWorkflowRunner(),
             new SingleFrameCaptureService(
                 new WindowsGraphicsCaptureAdapter(),
-                new AtomicCaptureOutputWriter(
-                    Path.Combine(dataRoot, "windows_capture"),
-                    dataRoot)));
+                new RepositoryCaptureOutputWriter()));
         DataContext = viewModel;
     }
 

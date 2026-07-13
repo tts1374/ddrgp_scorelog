@@ -167,6 +167,8 @@ data/windows_capture/capture-<UTC>-<unique>/
 制約:
 
 - output rootは `data/` の子directoryに限定する。
+- current directoryまたはapp配置場所からrepository rootをcapture操作時に探索し、process cwdに関係なくrepository root直下の `data/windows_capture/` を使う。
+- repository root探索失敗はwrite失敗として扱い、通常viewer起動やread-only閲覧を妨げない。
 - captureごとに一意な新規directoryを使い、既存ファイルや既存capture directoryを上書きしない。
 - 3ファイルは同一filesystem上のstaging directoryへ書き、directory rename後だけ完成出力として扱う。
 - cancel、capture失敗、write失敗ではstagingを削除し、空画像、部分manifest、temp directoryを完成出力へ残さない。

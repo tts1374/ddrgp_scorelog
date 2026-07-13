@@ -50,6 +50,39 @@ public sealed class CaptureTests
     }
 
     [Fact]
+    public async Task Repository_writer_resolves_root_lazily_and_uses_root_data_directory()
+    {
+        using var fixture = new CaptureDirectoryFixture();
+        var resolverCalls = 0;
+        var writer = new RepositoryCaptureOutputWriter(() =>
+        {
+            resolverCalls++;
+            return fixture.Root;
+        });
+
+        Assert.Equal(0, resolverCalls);
+        var output = await writer.WriteAsync(Frame("fixture"));
+
+        Assert.Equal(1, resolverCalls);
+        Assert.StartsWith(fixture.OutputRoot, output.DirectoryPath, StringComparison.OrdinalIgnoreCase);
+        Assert.True(File.Exists(output.ManifestPath));
+    }
+
+    [Fact]
+    public async Task Repository_writer_maps_missing_repository_to_write_failure()
+    {
+        var service = new SingleFrameCaptureService(
+            new StubAdapter([Frame("fixture")]),
+            new RepositoryCaptureOutputWriter(
+                () => throw new InvalidOperationException("repository missing")));
+
+        var result = await service.CaptureAsync(123);
+
+        Assert.Equal(CaptureOperationStatus.WriteFailed, result.Status);
+        Assert.Null(result.Output);
+    }
+
+    [Fact]
     public void Atomic_writer_rejects_output_outside_data_root()
     {
         using var fixture = new CaptureDirectoryFixture();
