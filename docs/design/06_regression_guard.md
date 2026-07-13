@@ -348,6 +348,9 @@
 - orchestration入口がartifact output pathと `analysis_logs.log_path` の一致を副作用前に保証する。
 - artifact失敗ではDB未実行、artifact成功後のDB失敗ではrowをrollbackしてartifactを保持する。同一payloadだけ再利用し、既存fileを上書き・削除しない。
 - `artifact_created_db_failed` を保存成功へ丸めず、`duplicate` / `excluded` の `play_id=null` を成功playとして扱わない。
+- M9 manual WPF入口はworkflow入力、正式DB、表示用master DBを明示選択し、既存workflowを1回だけ呼ぶ。C#側でstrict入力や正式値を再構築しない。
+- UIは `saved` / `written=true` / 非null `play_id` だけread-only再読込し、再読込履歴に同じIDがあることを確認する。excluded、duplicate、unresolved、invalid、DB拒否、artifact partial successではplay反映を行わない。
+- viewer単独のDB選択、履歴、詳細、自己ベスト操作はwrite processを起動せず、個人DBとmaster DBのhashを変えない。
 - candidate material、正式play値、analysis detail本文を相互投影せず、receipt、DB diagnostic、failure image、source captureの責務を混ぜない。
 - validationだけではDB、`data/`、`logs/`、画像を作成・変更しない。
 

@@ -446,7 +446,7 @@ M5完了時点で固定すること:
 やること:
 
 - 2026-07-13時点で第1段階の最小WPFビューアを追加した。正式v1 DBと生成済みマスタDBをread-onlyで検査し、全履歴、選択プレー詳細、全履歴query由来の譜面別自己ベスト、参照欠落、空・拒否・読取失敗状態を表示する。viewer前後のDB hash不変をfixtureで固定し、save、migration、backup、repair、自動記録には接続していない。
-- 第2段階として、既存PoCからv1 DBへの縦断接続を行う。
+- 2026-07-13時点で第2段階のmanual縦断sliceを追加した。明示選択したstrict workflow入力と正式v1 DBを既存Python orchestrationで1回だけ処理し、saved playだけ同じread-only repositoryで履歴・詳細・自己ベストへ再反映する。excluded / duplicate / unresolved / invalid / DB拒否 / artifact partial successをUIで区別し、候補材料の昇格、自動保存、常駐監視には進んでいない。
 - 第3段階として、実キャプチャと監視状態を接続する。
 - タスクトレイ常駐を実装する。
 - 監視状態、対象ウィンドウ状態、最新保存結果を表示する。
@@ -479,11 +479,10 @@ M5完了時点で固定すること:
 
 ## 近い順の推奨作業
 
-1. manifest/manual入力からv1 DB保存、viewer表示までの縦断経路を接続する。
-2. 曲・譜面同定と数字認識を実キャプチャ投入可能な品質へ上げる。
-3. Windows Graphics Capture APIの最小接続を行う。
-4. 監視ループ、保存結果表示、失敗ログをWPFアプリへ統合する。
-5. 実機検証と配布準備を行う。
+1. 曲・譜面同定と数字認識を実キャプチャ投入可能な品質へ上げる。
+2. Windows Graphics Capture APIの最小接続を行う。
+3. 監視ループ、保存結果表示、失敗ログをWPFアプリへ統合する。
+4. 実機検証と配布準備を行う。
 
 ## しばらく守る境界
 

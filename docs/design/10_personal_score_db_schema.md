@@ -12,6 +12,8 @@ M8 preview完了後の正式 `ddrgp-scores.sqlite` 初期スキーマ、migratio
 
 曲・譜面表示はマスタDBの `charts` / `songs` を `chart_id` と `song_id` の両方が一致する場合だけ採用する。参照欠落またはID不一致の履歴も失わず、正式play rowのIDと参照欠落状態を表示する。正式v1 `plays` にない値は推測・補完せず、画面仕様が求める `O.K.` は `—` と表示する。
 
+M9のmanual保存入口だけは、ユーザーがversion 1 workflow入力、保存先正式v1 DB、表示用master DBを明示選択して既存Python workflowを1回起動する。これはviewer repositoryへwrite責務を追加するものではない。保存processが `saved` / `written=true` / 非null `play_id` を返した後だけ別のread-only connectionで再読込し、そのIDが履歴に存在することを確認する。`excluded` / `duplicate` のnull play、unresolved/invalid/DB拒否、`artifact_created_db_failed` をplayとして表示しない。
+
 ## 目的
 
 - M8 preview最小 `plays` と正式個人スコアDB `plays` を別物として扱う。

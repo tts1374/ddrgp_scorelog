@@ -15,8 +15,8 @@
                 <StackPanel DockPanel.Dock="Bottom" Margin="8,0,8,16">
                     <Border Background="#263A56" CornerRadius="8" Padding="12" Margin="0,8">
                         <StackPanel>
-                            <TextBlock Text="閲覧モード" Foreground="White" FontWeight="SemiBold" />
-                            <TextBlock Text="データは読み取り専用です" Foreground="#CBD5E1"
+                            <TextBlock Text="明示操作モード" Foreground="White" FontWeight="SemiBold" />
+                            <TextBlock Text="閲覧はread-only、保存は単発操作です" Foreground="#CBD5E1"
                                        FontSize="12" Margin="0,4,0,0" TextWrapping="Wrap" />
                         </StackPanel>
                     </Border>
@@ -43,12 +43,18 @@
         <Grid Grid.Column="1" Margin="24">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
-                <RowDefinition Height="24" />
+                <RowDefinition Height="12" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="12" />
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
             <DockPanel Grid.Row="0">
-                <Button DockPanel.Dock="Right" Content="データを選択"
-                        Style="{StaticResource PrimaryButtonStyle}" Click="SelectDatabases_Click" />
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                    <Button Content="単発保存" Margin="0,0,8,0"
+                            Style="{StaticResource PrimaryButtonStyle}" Click="SaveOnePlay_Click" />
+                    <Button Content="データを選択"
+                            Style="{StaticResource PrimaryButtonStyle}" Click="SelectDatabases_Click" />
+                </StackPanel>
                 <StackPanel>
                     <TextBlock x:Name="PageTitle" Text="自己ベスト" FontSize="24" FontWeight="SemiBold" />
                     <TextBlock Foreground="{StaticResource TextSecondaryBrush}" FontSize="12" Margin="0,4,0,0">
@@ -57,10 +63,19 @@
                 </StackPanel>
             </DockPanel>
 
-            <controls:StatePanel Grid.Row="2" Visibility="{Binding StatusVisibility}"
+            <Border Grid.Row="2" Visibility="{Binding SaveStatusVisibility}"
+                    Background="#E8F0FA" CornerRadius="6" Padding="12">
+                <StackPanel>
+                    <TextBlock Text="{Binding SaveStatusTitle}" FontWeight="SemiBold" />
+                    <TextBlock Text="{Binding SaveStatusMessage}" Margin="0,4,0,0"
+                               Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" />
+                </StackPanel>
+            </Border>
+
+            <controls:StatePanel Grid.Row="4" Visibility="{Binding StatusVisibility}"
                                  Title="{Binding StatusTitle}" Message="{Binding StatusMessage}" />
 
-            <TabControl x:Name="ContentTabs" Grid.Row="2" Visibility="{Binding DataVisibility}"
+            <TabControl x:Name="ContentTabs" Grid.Row="4" Visibility="{Binding DataVisibility}"
                         Background="Transparent" BorderThickness="0" SelectedIndex="0">
                 <TabControl.Resources>
                     <Style TargetType="TabItem"><Setter Property="Visibility" Value="Collapsed" /></Style>

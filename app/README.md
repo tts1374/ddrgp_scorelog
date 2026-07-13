@@ -1,11 +1,12 @@
 # DDR GP Score Tracker WPF app
 
-正式個人スコアDB version 1を読み取り専用で開き、保存済みプレー履歴、プレー詳細、譜面別自己ベストを確認する最小WPFビューアです。自動キャプチャ、保存、migration、backup、repairはまだ接続しません。
+正式個人スコアDB version 1を読み取り専用で開き、保存済みプレー履歴、プレー詳細、譜面別自己ベストを確認する最小WPFビューアです。明示選択したversion 1 workflow入力JSONを既存Python workflowで1回だけ保存するmanual入口も持ちます。自動キャプチャ、常駐監視、migration、backup、repairはまだ接続しません。
 
 ## 必要環境
 
 - Windows 11
 - .NET 10 SDK
+- Python 3（`python`、または `DDRGP_PYTHON` 環境変数で指定）
 - 正式個人スコアDB version 1（例: `ddrgp-scores.sqlite`）
 - `python -m master` またはmaster DB生成workflowで作られたマスタDB
 
@@ -29,6 +30,17 @@ dotnet run --project app\src\DDRGpScoreViewer\DDRGpScoreViewer.csproj --no-build
 5. プレー履歴の行を選び、判定数、MAX COMBO、EX SCORE、保存日時、データ取得元を確認する。
 
 個人DBとマスタDBは別々のSQLite read-only connectionで開きます。viewerはschema初期化、insert、update、migration、backup、repairを実行せず、connection poolingも使いません。
+
+## 単発保存
+
+1. `単発保存` を押す。
+2. `workflow_schema_version=1` の既存strict workflow入力JSONを選ぶ。
+3. 新規、0 byte、またはcompatibleな正式v1 DBを保存先として選ぶ。
+4. 保存後の表示に使う生成済みマスタDBを選ぶ。
+
+アプリは `python -m tools.vision_poc.personal_score_db_workflow_app` をリポジトリrootで1回だけ実行します。この薄いprocess adapterは入力内の既存 `log_path` をartifact出力先として渡すだけで、strict loader、save adapter、artifact orchestration、file saveをC#で再実装しません。起動時のcurrent directoryまたはapp配置場所の親からリポジトリrootを検出できない場合は実行を拒否します。
+
+`saved` かつtransaction完了済みの `play_id` が返った場合だけ、同じ `ScoreViewerRepository` でDBをread-only再読込し、履歴・詳細・自己ベストへ反映します。`excluded` / `duplicate` はsource captureとanalysisが記録されても成功playとして表示せず、`unresolved` / `invalid` / DB拒否 / artifact失敗は理由を表示します。`artifact_created_db_failed` はartifactが残ったpartial successとして表示し、DB保存成功へ丸めません。
 
 ## 表示契約
 
@@ -58,4 +70,4 @@ dotnet run --project app\src\DDRGpScoreViewer\DDRGpScoreViewer.csproj --no-build
 - `Resources/Components.xaml`: button、sidebar、card、table、badgeの共通style
 - `Controls/StatePanel.xaml`: 空状態・エラー状態の共通component
 
-今回の画面範囲は共通sidebar、自己ベスト、プレー履歴、プレー詳細です。ホーム、検索・絞り込み、グラフ、要確認、設定、データ管理、自動記録状態、常駐機能は後続PRへ分けます。
+今回の画面範囲は共通sidebar、自己ベスト、プレー履歴、プレー詳細、明示単発保存です。ホーム、検索・絞り込み、グラフ、要確認、設定、データ管理、自動記録状態、常駐機能は後続PRへ分けます。

@@ -1,6 +1,6 @@
 # 次PR作業仕様
 
-`C:\work\ddrgp_scorelog` で作業してください。`AGENTS.md` と保存境界Skillを読み、既存のローカルDB、backup、`data/`、`logs/`、生成物を保護してください。
+`C:\work\ddrgp_scorelog` で作業してください。`AGENTS.md`、frame input設計、Vision PoCのmanifest契約を読み、既存のローカル画像、DB、backup、`data/`、`logs/`、生成物を保護してください。
 
 ## 推奨モデル
 
@@ -10,60 +10,60 @@ GPT-5.6 Sol
 
 high
 
-既存のmanifest/manual境界、正式保存入力、transaction、viewerのread-only境界を維持したまま、最初の縦断経路を1つに限定して接続するためです。
+Windows Graphics Capture、WPFのUI thread、GPU resource解放、既存manifest互換性を、保存や常駐監視へ範囲拡大せず接続するためです。
 
 ## 作業ブランチ
 
 ```powershell
-codex/m9-manual-save-viewer-vertical-slice
+codex/m9-windows-capture-manifest-slice
 ```
 
 ## Goal
 
-既存のstrictな正式保存入力JSONを明示的に選び、正式個人スコアDB version 1へ既存workflowで単発保存し、その結果を最小WPF viewerで再読込して確認できるmanual縦断sliceを追加します。
+ユーザーがWPFアプリから対象windowを明示選択し、Windows Graphics Captureで1フレームだけ取得して、既存manifest入力へ再利用できるローカル画像とmetadataを `data/` 配下へ安全に出力する最小capture sliceを追加します。
 
 ## Deliverables
 
-- WPFアプリから既存version 1 workflow入力JSONと保存先v1 DBをユーザーが明示選択できる入口を追加する。
-- Python側の既存strict loader、adapter、analysis artifact orchestration、file saveを再実装せず、境界が明確な単発process/API adapterで1回だけ呼ぶ。
-- ready、excluded、duplicate、unresolved、invalid、DB拒否、artifact partial successをユーザー向け状態へ写像する。
-- transaction完了したreadyだけviewer履歴へ反映し、excluded/duplicateを成功playとして表示しない。
-- 成功後は同じread-only repositoryでDBを再読込し、保存playを履歴・詳細・自己ベストへ反映する。
-- compatible DB、unresolved、duplicate、invalid input、preview/unknown DB、workflow失敗を一時DB/fixtureでテストする。
-- `app/README.md`、保存境界design docs、roadmapを同期する。
+- WPFアプリに、ユーザー操作で開始する対象window pickerと1フレーム取得入口を追加する。
+- capture実装をUI、Windows Graphics Capture adapter、出力writerの境界へ分け、テスト可能なinterfaceを設ける。
+- 取得時刻、画像path、幅、高さ、capture sourceの最小metadataを、既存timestamped/manifest入力へ変換可能な形で出力する。
+- 出力先を `data/` 配下の新規directoryへ限定し、既存ファイルを上書きしない。
+- picker cancel、対象window終了、0x0/resize、device lost、access拒否、write失敗をユーザー向け状態へ写像する。
+- frame pool、capture session、D3D device、streamを成功・失敗・cancelの全経路で解放する。
+- capture APIを使わないfixture/fake中心の.NETテストと、可能な範囲のWindows integration境界テストを追加する。
+- `app/README.md`、`docs/design/02_frame_input_contract.md`、storage/regression docs、roadmapを同期する。
 
 ## Invariants
 
-- 正式DB schema versionを1から変更しない。
-- version 2 schema、supported transition、migration SQL、schema writerを設計・実装しない。
-- 候補材料、M5 identity signal、M7a recognized digits、相対時刻を正式値へ暗黙昇格しない。
-- 保存直前境界 `confirmed_result=true` かつ `duplicate=false` を維持する。
-- source capture、任意play、analysisを既存の1 transactionで書き、別writerを作らない。
-- unresolved/invalid/DB拒否ではDB、artifact、`data/`、`logs/`を新たに変更しない。
-- duplicate/excludedはplay rowを作らず、`play_id=null` を成功playとして扱わない。
-- viewerの通常閲覧は引き続きread-onlyとし、閲覧操作から保存を暗黙実行しない。
-- 既存Python CLI/API契約と終了コードを変えない。
+- capture結果を分類、OCR、identity解決、正式保存入力、DB saveへ自動接続しない。
+- 保存直前境界 `confirmed_result=true` かつ `duplicate=false` を変更しない。
+- 正式DB schema version 1、writer、duplicate、analysis artifact、manual save/viewer縦断sliceを変更しない。
+- 既存manifest/timestampedの列、時刻単位、path解決、expected columns保持契約を壊さない。
+- screenshot画像と実capture metadataはGit管理せず、`data/` 配下のローカル生成物に留める。
+- 常駐監視、連続capture、background loop、task tray、auto restartを実装しない。
+- capture失敗やcancelで空画像、部分manifest、temp fileを残さない。
+- 通常viewer閲覧とmanual保存はcaptureを暗黙実行しない。
 
 ## Validation
 
-.NET build/test、対象Python workflow/saveテスト、全Pythonテスト、Ruff、compileall、`git diff --check` を実行してください。画像処理を変更しない限りVision PoCは省略します。
+.NET build/test、capture writer/manifest互換の対象Pythonテスト、Ruff、compileall、`git diff --check` を実行してください。画像分類・ROI・OCR・confirmed-events生成を変更しない限り `python -m tools.vision_poc` は省略します。実window pickerの自動テストができない場合はfixture検証を完了し、必要な目視確認を `ユーザー対応が必要` として具体的に記載してください。
 
 ## Non-goals
 
-- manifestやPoC runnerからの自動保存
-- 自動キャプチャ、常駐監視、タスクトレイ
-- save inputのUI編集、候補値の自動補完
-- migration、backup、restore、repair
-- master DB更新、検索、絞り込み、グラフ
-- installer、self-contained配布
+- 連続capture、FPS制御、監視loop
+- 分類、ROI、OCR、曲・譜面同定の精度変更
+- manifestからの自動保存、正式save input生成
+- DB保存、migration、backup、restore、repair
+- task tray、起動時自動監視、対象window自動再接続
+- audio capture、video recording、installer、self-contained配布
 
 ## Acceptance Criteria
 
-- 明示選択したvalid workflow inputから既存境界で1件を正式v1 DBへ保存し、同じアプリでread-only再表示できる。
-- unresolved、invalid、preview/unknown DBは副作用なしで拒否される。
-- duplicate/excludedはplay履歴へ追加されず、状態と理由をユーザーが確認できる。
-- artifact生成後のDB失敗を保存成功へ丸めず、既存workflowのpartial success契約を維持する。
-- 既存viewer操作だけではDB hashが変わらない。
+- 明示pickerで選んだwindowから1フレームを取得し、新規 `data/` 出力へ画像とmetadataをatomicに残せる。
+- 出力を既存manifest/timestamped入力へ渡せることをfixtureで確認できる。
+- cancel、対象消失、capture/write失敗で既存ファイルを変更せず、部分生成物を残さない。
+- capture完了後にGPU/capture resourceが残らず、同一processで再度明示captureできる。
+- captureだけではVision PoC、workflow、正式DB、artifact、viewer履歴が変化しない。
 - read-onlyレビューでmedium以上の未対応指摘がない。
 
 完了後は次PR仕様へ更新し、今回変更だけをcommit、通常pushしてdraft PRを作成してください。
