@@ -278,16 +278,19 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public async Task StopContinuousCaptureAsync()
     {
-        if (!IsContinuousCapturing || IsStoppingCapture || continuousCaptureService is null)
+        if (!IsContinuousCapturing || continuousCaptureService is null)
         {
             return;
         }
 
-        IsStoppingCapture = true;
         var captureFinished = continuousCaptureFinished;
-        CaptureStatusTitle = "連続キャプチャを停止しています";
-        CaptureStatusMessage = "取得済みフレームのmanifestを完成させて安全に公開します。";
-        await continuousCaptureService.StopAsync();
+        if (!IsStoppingCapture)
+        {
+            IsStoppingCapture = true;
+            CaptureStatusTitle = "連続キャプチャを停止しています";
+            CaptureStatusMessage = "取得済みフレームのmanifestを完成させて安全に公開します。";
+            await continuousCaptureService.StopAsync();
+        }
         if (captureFinished is not null)
         {
             await captureFinished.Task;

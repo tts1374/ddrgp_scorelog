@@ -391,6 +391,32 @@ public sealed class CaptureTests
         Assert.Equal("連続キャプチャを保存しました", viewModel.CaptureStatusTitle);
     }
 
+    [Fact]
+    public async Task View_model_repeated_stop_waits_for_in_flight_completion()
+    {
+        var captureService = new StubContinuousCaptureService(completeOnStop: false);
+        var viewModel = new MainViewModel(
+            new ScoreViewerRepository(),
+            new StubWorkflowRunner(),
+            continuousCaptureService: captureService);
+
+        var run = viewModel.StartContinuousCaptureAsync(123);
+        await captureService.RunStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        var firstStop = viewModel.StopContinuousCaptureAsync();
+        await captureService.StopRequested.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        var repeatedStop = viewModel.StopContinuousCaptureAsync();
+
+        Assert.False(firstStop.IsCompleted);
+        Assert.False(repeatedStop.IsCompleted);
+        Assert.Equal(1, captureService.StopCount);
+
+        captureService.Complete();
+        await Task.WhenAll(firstStop, repeatedStop, run);
+
+        Assert.False(viewModel.IsContinuousCapturing);
+        Assert.False(viewModel.IsStoppingCapture);
+    }
+
     private static CapturedFrame Frame(string source, long timestampMs = 12345) =>
         new(
             PngFixture,
@@ -494,12 +520,15 @@ public sealed class CaptureTests
         }
     }
 
-    private sealed class StubContinuousCaptureService : IContinuousCaptureService
+    private sealed class StubContinuousCaptureService(bool completeOnStop = true)
+        : IContinuousCaptureService
     {
         private readonly TaskCompletionSource<CaptureSessionOperationResult> completion = new(
             TaskCreationOptions.RunContinuationsAsynchronously);
 
         public TaskCompletionSource RunStarted { get; } = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource StopRequested { get; } = new(
             TaskCreationOptions.RunContinuationsAsynchronously);
         public bool IsRunning { get; private set; }
         public int RunCount { get; private set; }
@@ -525,11 +554,20 @@ public sealed class CaptureTests
         public Task StopAsync()
         {
             StopCount++;
+            StopRequested.TrySetResult();
+            if (completeOnStop)
+            {
+                Complete();
+            }
+            return Task.CompletedTask;
+        }
+
+        public void Complete()
+        {
             completion.TrySetResult(new CaptureSessionOperationResult(
                 CaptureOperationStatus.Saved,
                 "saved",
                 new CaptureSessionOutput("session", "manifest", "metadata", 2)));
-            return Task.CompletedTask;
         }
     }
 
