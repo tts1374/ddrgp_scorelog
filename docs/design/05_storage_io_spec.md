@@ -175,6 +175,28 @@ data/windows_capture/capture-<UTC>-<unique>/
 - capture画像とmetadataはGit管理しない。
 - capture出力を分類、OCR、正式save input、DBへ自動接続しない。
 
+### WPF continuous capture session
+
+既定:
+
+```text
+data/windows_capture/session-<UTC>-<unique>/
+```
+
+主な出力:
+
+- `frames/frame-*.png`
+- `frame_manifest.csv`
+- `capture_session_metadata.json`
+
+制約:
+
+- session開始時は `data/` 直下の一意staging directoryだけを作り、明示停止かつ1frame以上の場合だけ最終directoryへrenameする。
+- frameは連番で保存し、manifestの `image_path` はdirectory相対、`timestamp_ms` はstrictly increasingとする。
+- 0frame、cancel、target closed、resize、device lost、write失敗はstagingを削除し、完成sessionとして公開しない。
+- 既存capture/session directoryを上書きせず、画像、metadata、manifest実出力をGit管理しない。
+- session出力を分類、OCR、identity、confirmed event、正式save input、DBへ自動接続しない。
+
 ## manifest
 
 manifest はフレーム列を再実行可能にするCSV。

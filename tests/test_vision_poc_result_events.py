@@ -539,6 +539,32 @@ def test_read_frame_manifest_accepts_windows_capture_writer_columns(tmp_path: Pa
     }
 
 
+def test_read_continuous_capture_manifest_preserves_order_paths_and_columns(
+    tmp_path: Path,
+) -> None:
+    first_path = tmp_path / "frames" / "frame-000001.png"
+    second_path = tmp_path / "frames" / "frame-000002.png"
+    write_test_image(first_path)
+    write_test_image(second_path)
+    manifest_path = tmp_path / "frame_manifest.csv"
+    manifest_path.write_text(
+        "image_path,timestamp_ms,screen_type,capture_source,width,height,captured_at_utc,"
+        "expected_score\n"
+        '"frames/frame-000001.png",12345,unknown,"DDR GRAND PRIX",1280,720,'
+        "2026-07-13T01:02:03.0000000+00:00,988930\n"
+        '"frames/frame-000002.png",12346,unknown,"DDR GRAND PRIX",1280,720,'
+        "2026-07-13T01:02:03.0160000+00:00,988930\n",
+        encoding="utf-8",
+    )
+
+    frames = runner.read_frame_manifest(manifest_path)
+
+    assert [frame.image_path for frame in frames] == [first_path, second_path]
+    assert [frame.timestamp_ms for frame in frames] == [12345, 12346]
+    assert all(frame.row["capture_source"] == "DDR GRAND PRIX" for frame in frames)
+    assert all(frame.row["expected_score"] == "988930" for frame in frames)
+
+
 def test_make_frame_manifest_writes_sorted_strictly_increasing_timestamps(tmp_path: Path) -> None:
     frame_root = tmp_path / "frames"
     write_test_image(frame_root / "frame_002.jpg")

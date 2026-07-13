@@ -3,6 +3,7 @@ namespace DDRGpScoreViewer.Capture;
 public enum CaptureOperationStatus
 {
     Saved,
+    AlreadyRunning,
     Cancelled,
     Unsupported,
     AccessDenied,
@@ -11,6 +12,15 @@ public enum CaptureOperationStatus
     Resized,
     DeviceLost,
     WriteFailed,
+    Failed,
+}
+
+public enum CaptureSessionEndReason
+{
+    Stopped,
+    TargetClosed,
+    Resized,
+    DeviceLost,
     Failed,
 }
 
@@ -33,6 +43,17 @@ public sealed record CaptureOperationResult(
     string UserMessage,
     CaptureOutput? Output = null);
 
+public sealed record CaptureSessionOutput(
+    string DirectoryPath,
+    string ManifestPath,
+    string MetadataPath,
+    int FrameCount);
+
+public sealed record CaptureSessionOperationResult(
+    CaptureOperationStatus Status,
+    string UserMessage,
+    CaptureSessionOutput? Output = null);
+
 public interface IGraphicsCaptureAdapter
 {
     bool IsSupported { get; }
@@ -54,6 +75,54 @@ public interface ISingleFrameCaptureService
     Task<CaptureOperationResult> CaptureAsync(
         nint ownerWindowHandle,
         CancellationToken cancellationToken = default);
+}
+
+public interface IContinuousGraphicsCaptureAdapter
+{
+    bool IsSupported { get; }
+
+    Task<IContinuousFrameSource?> StartSessionAsync(
+        nint ownerWindowHandle,
+        CancellationToken cancellationToken = default);
+}
+
+public interface IContinuousFrameSource : IAsyncDisposable
+{
+    IAsyncEnumerable<CapturedFrame> ReadFramesAsync(
+        CancellationToken cancellationToken = default);
+
+    Task<CaptureSessionEndReason> Completion { get; }
+
+    Task StopAsync();
+}
+
+public interface ICaptureSessionOutputWriter
+{
+    Task<ICaptureSessionOutputTransaction> BeginAsync(
+        CancellationToken cancellationToken = default);
+}
+
+public interface ICaptureSessionOutputTransaction : IAsyncDisposable
+{
+    int FrameCount { get; }
+
+    Task WriteFrameAsync(
+        CapturedFrame frame,
+        CancellationToken cancellationToken = default);
+
+    Task<CaptureSessionOutput> CompleteAsync(
+        CancellationToken cancellationToken = default);
+}
+
+public interface IContinuousCaptureService
+{
+    bool IsRunning { get; }
+
+    Task<CaptureSessionOperationResult> RunAsync(
+        nint ownerWindowHandle,
+        CancellationToken cancellationToken = default);
+
+    Task StopAsync();
 }
 
 public abstract class CaptureBoundaryException(string message, Exception? innerException = null)

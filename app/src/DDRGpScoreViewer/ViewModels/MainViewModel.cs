@@ -12,6 +12,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private readonly ScoreViewerRepository repository;
     private readonly IPersonalScoreDbWorkflowRunner workflowRunner;
     private readonly ISingleFrameCaptureService? captureService;
+    private readonly IContinuousCaptureService? continuousCaptureService;
     private PlayHistoryItem? selectedPlay;
     private string statusTitle = "プレーデータを選択してください";
     private string statusMessage =
@@ -26,15 +27,20 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private string captureStatusMessage = "";
     private bool hasCaptureStatus;
     private bool isCapturing;
+    private bool isContinuousCapturing;
+    private bool isStoppingCapture;
+    private TaskCompletionSource? continuousCaptureFinished;
 
     public MainViewModel(
         ScoreViewerRepository repository,
         IPersonalScoreDbWorkflowRunner workflowRunner,
-        ISingleFrameCaptureService? captureService = null)
+        ISingleFrameCaptureService? captureService = null,
+        IContinuousCaptureService? continuousCaptureService = null)
     {
         this.repository = repository;
         this.workflowRunner = workflowRunner;
         this.captureService = captureService;
+        this.continuousCaptureService = continuousCaptureService;
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -147,12 +153,24 @@ public sealed class MainViewModel : INotifyPropertyChanged
         private set => SetProperty(ref isCapturing, value);
     }
 
+    public bool IsContinuousCapturing
+    {
+        get => isContinuousCapturing;
+        private set => SetProperty(ref isContinuousCapturing, value);
+    }
+
+    public bool IsStoppingCapture
+    {
+        get => isStoppingCapture;
+        private set => SetProperty(ref isStoppingCapture, value);
+    }
+
     public System.Windows.Visibility CaptureStatusVisibility =>
         HasCaptureStatus ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
 
     public async Task CaptureOneFrameAsync(nint ownerWindowHandle)
     {
-        if (IsCapturing)
+        if (IsCapturing || IsContinuousCapturing)
         {
             return;
         }
@@ -189,6 +207,90 @@ public sealed class MainViewModel : INotifyPropertyChanged
         finally
         {
             IsCapturing = false;
+        }
+    }
+
+    public async Task StartContinuousCaptureAsync(nint ownerWindowHandle)
+    {
+        if (IsStoppingCapture)
+        {
+            HasCaptureStatus = true;
+            CaptureStatusTitle = "連続キャプチャを停止しています";
+            CaptureStatusMessage = "停止完了後にもう一度開始してください。";
+            return;
+        }
+        if (IsContinuousCapturing)
+        {
+            HasCaptureStatus = true;
+            CaptureStatusTitle = "連続キャプチャは開始済みです";
+            CaptureStatusMessage = "現在のsessionを停止してから再選択してください。";
+            return;
+        }
+        if (IsCapturing)
+        {
+            HasCaptureStatus = true;
+            CaptureStatusTitle = "1フレーム取得中です";
+            CaptureStatusMessage = "取得完了後に連続キャプチャを開始してください。";
+            return;
+        }
+        if (continuousCaptureService is null)
+        {
+            HasCaptureStatus = true;
+            CaptureStatusTitle = "連続キャプチャを利用できません";
+            CaptureStatusMessage = "continuous capture serviceが構成されていません。";
+            return;
+        }
+
+        IsContinuousCapturing = true;
+        continuousCaptureFinished = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        HasCaptureStatus = true;
+        CaptureStatusTitle = "対象windowを選択してください";
+        CaptureStatusMessage =
+            "選択したwindowを明示停止まで取得します。解析やDB保存は実行しません。";
+        try
+        {
+            var result = await continuousCaptureService.RunAsync(ownerWindowHandle);
+            CaptureStatusTitle = result.Status switch
+            {
+                CaptureOperationStatus.Saved => "連続キャプチャを保存しました",
+                CaptureOperationStatus.Cancelled => "連続キャプチャをキャンセルしました",
+                CaptureOperationStatus.Unsupported => "画面キャプチャを利用できません",
+                CaptureOperationStatus.AccessDenied => "画面キャプチャが拒否されました",
+                CaptureOperationStatus.TargetClosed => "対象windowが終了しました",
+                CaptureOperationStatus.InvalidSize => "対象windowを取得できません",
+                CaptureOperationStatus.Resized => "対象windowのサイズが変わりました",
+                CaptureOperationStatus.DeviceLost => "GPU deviceが失われました",
+                CaptureOperationStatus.WriteFailed => "session outputに失敗しました",
+                CaptureOperationStatus.AlreadyRunning => "連続キャプチャは開始済みです",
+                _ => "連続キャプチャに失敗しました",
+            };
+            CaptureStatusMessage = result.UserMessage;
+        }
+        finally
+        {
+            IsContinuousCapturing = false;
+            IsStoppingCapture = false;
+            continuousCaptureFinished?.TrySetResult();
+            continuousCaptureFinished = null;
+        }
+    }
+
+    public async Task StopContinuousCaptureAsync()
+    {
+        if (!IsContinuousCapturing || IsStoppingCapture || continuousCaptureService is null)
+        {
+            return;
+        }
+
+        IsStoppingCapture = true;
+        var captureFinished = continuousCaptureFinished;
+        CaptureStatusTitle = "連続キャプチャを停止しています";
+        CaptureStatusMessage = "取得済みフレームのmanifestを完成させて安全に公開します。";
+        await continuousCaptureService.StopAsync();
+        if (captureFinished is not null)
+        {
+            await captureFinished.Task;
         }
     }
 
