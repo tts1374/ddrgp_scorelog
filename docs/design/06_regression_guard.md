@@ -401,6 +401,17 @@
 - ローカルDBをコミットしない。
 - PoC出力や解析ログをコミットしない。
 
+## WPF single-frame capture guard
+
+- pickerはユーザーの `1フレーム取得` 操作でだけ開き、viewer閲覧やmanual保存から暗黙実行しない。
+- capture adapter、output writer、UI status mappingをinterfaceで分離し、Windows APIを使わないfakeでcancelと主要失敗statusを固定する。
+- target終了、0x0、resize、device lost、access拒否、write失敗を保存成功へ丸めない。
+- 成功・失敗・cancel後にframe、frame pool、capture session、D3D device、streamを解放し、同一processで次の明示captureを実行できるようにする。
+- outputは `data/windows_capture/` 配下の一意directoryへatomicに公開し、既存出力を上書きせず、失敗時にstagingや部分manifestを残さない。
+- manifestは `image_path,timestamp_ms` を維持し、`screen_type=unknown` とcapture補助列を任意列としてmanifest readerへ渡す。
+- captureだけではVision PoC、workflow、正式DB schema/writer/duplicate、artifact、viewer履歴を変更しない。
+- `.NET build/test` とcapture列を読む対象Python testを実行する。画像分類・ROI・OCR・confirmed-events生成を変更しない場合、Vision PoC本体の再実行は不要とする。
+
 ## 代表検証コマンド
 
 ```powershell

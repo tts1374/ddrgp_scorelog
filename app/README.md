@@ -1,6 +1,6 @@
 # DDR GP Score Tracker WPF app
 
-正式個人スコアDB version 1を読み取り専用で開き、保存済みプレー履歴、プレー詳細、譜面別自己ベストを確認する最小WPFビューアです。明示選択したversion 1 workflow入力JSONを既存Python workflowで1回だけ保存するmanual入口も持ちます。自動キャプチャ、常駐監視、migration、backup、repairはまだ接続しません。
+正式個人スコアDB version 1を読み取り専用で開き、保存済みプレー履歴、プレー詳細、譜面別自己ベストを確認する最小WPFビューアです。明示選択したversion 1 workflow入力JSONを既存Python workflowで1回だけ保存するmanual入口に加え、明示pickerで選んだwindowから1フレームだけ取得する入口を持ちます。連続キャプチャ、自動解析・保存、常駐監視、migration、backup、repairはまだ接続しません。
 
 ## 必要環境
 
@@ -11,6 +11,16 @@
 - `python -m master` またはmaster DB生成workflowで作られたマスタDB
 
 ローカルDBはGit管理しません。`data/` 配下など、既存のローカル保存場所に置いたまま明示選択してください。
+
+## 1フレーム取得
+
+1. アプリ右上の `1フレーム取得` を押す。
+2. Windowsのpickerで取得対象のwindowを明示選択する。
+3. 完了表示に出た `data/windows_capture/capture-*/` を確認する。
+
+各capture directoryには `frame.png`、`frame_manifest.csv`、`capture_metadata.json` をまとめて出力します。manifestの必須列は既存契約と同じ `image_path,timestamp_ms` で、`screen_type=unknown`、capture source、幅、高さ、UTC取得時刻を任意列として付けます。画像pathはmanifest directory相対です。staging directoryで3ファイルを書いた後にdirectory単位で公開するため、cancel、対象終了、0x0/resize、device lost、access拒否、write失敗では空画像や部分manifestを最終出力へ残しません。既存capture directoryは上書きしません。
+
+pickerとWindows Graphics Captureは明示操作時だけ起動します。取得後に分類、OCR、identity解決、workflow、正式DB保存、viewer再読込を自動実行しません。同じprocessで再度ボタンを押すと、resourceを作り直して別の1フレームを取得します。
 
 ## Build / test / run
 
@@ -70,4 +80,4 @@ dotnet run --project app\src\DDRGpScoreViewer\DDRGpScoreViewer.csproj --no-build
 - `Resources/Components.xaml`: button、sidebar、card、table、badgeの共通style
 - `Controls/StatePanel.xaml`: 空状態・エラー状態の共通component
 
-今回の画面範囲は共通sidebar、自己ベスト、プレー履歴、プレー詳細、明示単発保存です。ホーム、検索・絞り込み、グラフ、要確認、設定、データ管理、自動記録状態、常駐機能は後続PRへ分けます。
+今回の画面範囲は共通sidebar、自己ベスト、プレー履歴、プレー詳細、明示単発保存、明示1フレーム取得です。ホーム、検索・絞り込み、グラフ、要確認、設定、データ管理、自動記録状態、連続capture、常駐機能は後続PRへ分けます。

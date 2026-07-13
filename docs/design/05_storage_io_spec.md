@@ -150,6 +150,29 @@ data/vision_poc_capture_dry_run/
 
 - `--capture-dry-run-output` は `data/` 配下に限定する。
 
+### WPF single-frame capture
+
+既定:
+
+```text
+data/windows_capture/capture-<UTC>-<unique>/
+```
+
+主な出力:
+
+- `frame.png`
+- `frame_manifest.csv`
+- `capture_metadata.json`
+
+制約:
+
+- output rootは `data/` の子directoryに限定する。
+- captureごとに一意な新規directoryを使い、既存ファイルや既存capture directoryを上書きしない。
+- 3ファイルは同一filesystem上のstaging directoryへ書き、directory rename後だけ完成出力として扱う。
+- cancel、capture失敗、write失敗ではstagingを削除し、空画像、部分manifest、temp directoryを完成出力へ残さない。
+- capture画像とmetadataはGit管理しない。
+- capture出力を分類、OCR、正式save input、DBへ自動接続しない。
+
 ## manifest
 
 manifest はフレーム列を再実行可能にするCSV。
