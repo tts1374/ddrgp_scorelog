@@ -1,6 +1,6 @@
 # DDR GP Score Tracker WPF app
 
-正式個人スコアDB version 1を読み取り専用で開き、保存済みプレー履歴、プレー詳細、譜面別自己ベストを確認する最小WPFビューアです。明示選択したversion 1 workflow入力JSONを既存Python workflowで1回だけ保存するmanual入口に加え、明示pickerで選んだwindowから1フレームだけ取得する入口を持ちます。連続キャプチャ、自動解析・保存、常駐監視、migration、backup、repairはまだ接続しません。
+正式個人スコアDB version 1を読み取り専用で開き、保存済みプレー履歴、プレー詳細、譜面別自己ベストを確認する最小WPFビューアです。明示選択したversion 1 workflow入力JSONを既存Python workflowで1回だけ保存するmanual入口に加え、明示pickerで選んだwindowから1フレームまたは停止までの連続フレームを取得できます。capture後の自動解析・保存、常駐監視、migration、backup、repairはまだ接続しません。
 
 ## 必要環境
 
@@ -32,6 +32,26 @@ python -m tools.vision_poc `
 ```
 
 単発manifestは `confirmation_mode=time` ですが、1フレームだけではconfirmed resultになりません。実captureのconfirmed-events評価では、同じresultを1秒以上空けて複数回取得し、`data/` 配下のローカル評価manifestへ時刻順にまとめます。`screen_type` と期待値列は評価用manifest側で補い、capture原本のmanifest、画像、metadataは変更しません。
+
+## 連続フレーム取得
+
+1. アプリ右上の `連続取得を開始` を押す。
+2. Windowsのpickerで対象windowを明示選択する。
+3. 必要な区間を取得したら `連続取得を停止` を押す。
+4. 完了表示に出た `data/windows_capture/session-*/` を確認する。
+
+session directoryには `frames/frame-*.png`、`frame_manifest.csv`、`capture_session_metadata.json` を出力します。manifestの各行はdirectory相対pathとstrictly increasingな単調時刻ミリ秒を持ち、capture補助列も単発と同じです。明示停止かつ1フレーム以上取得済みの場合だけ、`data/` 直下のstagingからdirectory renameで公開します。停止前のframeは完成出力に見せず、0フレーム、picker cancel、access拒否、対象終了、resize、device lost、write失敗ではstagingごと破棄します。
+
+session中は最初に選択したcapture itemとD3D11 device、frame pool、capture sessionを維持します。resizeには自動追従せず安全側でsessionを停止するため、windowを目的のサイズに戻してから再選択してください。開始済みの二重開始と停止中の再操作は無視し、明示停止とwindow close時の停止は冪等にresourceを解放します。取得frameがPNG encodingより速い場合は、resourceを無制限に保持しないため満杯のframe queueで中間frameをdropします。
+
+生成manifestはそのまま既存manifest modeへ渡せます。これを実行しても分類・OCR・identity・confirmed event・正式save input・DB保存はcapture UIから自動起動しません。
+
+```powershell
+python -m tools.vision_poc `
+  --sequence-mode manifest `
+  --frame-manifest data\windows_capture\session-<id>\frame_manifest.csv `
+  --output data\windows_capture_session_replay
+```
 
 ## Build / test / run
 
@@ -91,4 +111,4 @@ dotnet run --project app\src\DDRGpScoreViewer\DDRGpScoreViewer.csproj --no-build
 - `Resources/Components.xaml`: button、sidebar、card、table、badgeの共通style
 - `Controls/StatePanel.xaml`: 空状態・エラー状態の共通component
 
-今回の画面範囲は共通sidebar、自己ベスト、プレー履歴、プレー詳細、明示単発保存、明示1フレーム取得です。ホーム、検索・絞り込み、グラフ、要確認、設定、データ管理、自動記録状態、連続capture、常駐機能は後続PRへ分けます。
+今回の画面範囲は共通sidebar、自己ベスト、プレー履歴、プレー詳細、明示単発保存、明示1フレーム取得、明示開始・停止の連続captureです。ホーム、検索・絞り込み、グラフ、要確認、設定、データ管理、自動解析・保存状態、タスクトレイ常駐は後続PRへ分けます。

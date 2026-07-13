@@ -18,6 +18,8 @@
 - WPF single-frame manifestのdirectory相対 `image_path` を読める。
 - WPF補助列 `capture_source`、`width`、`height`、`captured_at_utc` と、同じ行へ追加したexpected columnsを `FrameInput.row` に保持する。
 - 1280x720のWPF実captureはDPI scaleを二重適用せず、既存1280x720 ROIへそのまま渡す。
+- WPF連続session manifestは複数のdirectory相対 `frames/frame-*.png` を取得順に解決し、capture補助列と追加expected columnsを保持する。
+- WPF連続sessionの `timestamp_ms` はstrictly increasingで、manifest再読込は `confirmation_mode=time` を維持する。
 
 ## confirmation
 
@@ -30,6 +32,7 @@
 - 十分な継続時間を満たした result candidate は確定する。
 - 複数screen_type混在シナリオでも short result は未確定、sustained result は確定、duplicate result は `duplicate=true` になる。
 - WPF単発manifest 1行だけではresult candidateをconfirmed resultへ昇格しない。
+- WPF連続sessionはcapture UIだけで分類やconfirmed result生成を起動しない。
 
 ## 保存境界
 
@@ -414,6 +417,16 @@
 - outputは `data/windows_capture/` 配下の一意directoryへatomicに公開し、既存出力を上書きせず、失敗時にstagingや部分manifestを残さない。
 - capture output rootは操作時にrepository rootから解決し、process cwdへprivate画像を逸脱させず、探索失敗で通常viewer起動を妨げない。
 - manifestは `image_path,timestamp_ms` を維持し、`screen_type=unknown` とcapture補助列を任意列としてmanifest readerへ渡す。
+
+## WPF continuous capture session guard
+
+- pickerで選択した1つのwindowに対し、session中は同じcapture item、D3D11 device、frame pool、capture sessionを所有する。
+- 明示停止かつ1frame以上の場合だけ、staging上のframes、manifest、metadataを一意なfinal directoryへatomicに公開する。
+- cancel、0frame停止、resize、target closed、device lost、write失敗ではstagingとqueued frameを破棄し、成功sessionへ丸めない。
+- resizeは自動追従せず `Resized` で停止し、再選択を求める。
+- 二重開始を拒否し、停止は冪等に扱い、event購読とWinRT/D3D resourceを一度だけ解放する。
+- bounded queueで中間frameをdropしても、保存frameの順序とstrictly increasing timestampを維持する。
+- capture UIは分類、OCR、identity、confirmed event、正式save input、workflow、正式DB、viewer履歴を自動起動しない。
 - captureだけではVision PoC、workflow、正式DB schema/writer/duplicate、artifact、viewer履歴を変更しない。
 - `.NET build/test` とcapture列を読む対象Python testを実行する。画像分類・ROI・OCR・confirmed-events生成を変更しない場合、Vision PoC本体の再実行は不要とする。
 

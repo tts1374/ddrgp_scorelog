@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Windows;
 using System.Windows.Interop;
 using DDRGpScoreViewer.Capture;
@@ -10,6 +11,7 @@ namespace DDRGpScoreViewer;
 public partial class MainWindow : Window
 {
     private readonly MainViewModel viewModel;
+    private bool closeAfterCaptureStop;
 
     public MainWindow()
     {
@@ -19,8 +21,34 @@ public partial class MainWindow : Window
             new PythonPersonalScoreDbWorkflowRunner(),
             new SingleFrameCaptureService(
                 new WindowsGraphicsCaptureAdapter(),
-                new RepositoryCaptureOutputWriter()));
+                new RepositoryCaptureOutputWriter()),
+            new ContinuousCaptureService(
+                new ContinuousWindowsGraphicsCaptureAdapter(),
+                new RepositoryCaptureSessionOutputWriter()));
         DataContext = viewModel;
+    }
+
+    private async void StartContinuousCapture_Click(object sender, RoutedEventArgs e)
+    {
+        await viewModel.StartContinuousCaptureAsync(new WindowInteropHelper(this).EnsureHandle());
+    }
+
+    private async void StopContinuousCapture_Click(object sender, RoutedEventArgs e)
+    {
+        await viewModel.StopContinuousCaptureAsync();
+    }
+
+    protected override async void OnClosing(CancelEventArgs e)
+    {
+        if (viewModel.IsContinuousCapturing && !closeAfterCaptureStop)
+        {
+            e.Cancel = true;
+            await viewModel.StopContinuousCaptureAsync();
+            closeAfterCaptureStop = true;
+            Close();
+            return;
+        }
+        base.OnClosing(e);
     }
 
     private async void CaptureOneFrame_Click(object sender, RoutedEventArgs e)
