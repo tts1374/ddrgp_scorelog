@@ -1,36 +1,61 @@
-# Windows常駐アプリ
+# DDR GP Score Tracker WPF app
 
-DanceDanceRevolution GRAND PRIX のウィンドウを直接キャプチャし、リザルト画面からスコア情報を抽出してローカルDBに保存するアプリをここに実装する。
+正式個人スコアDB version 1を読み取り専用で開き、保存済みプレー履歴、プレー詳細、譜面別自己ベストを確認する最小WPFビューアです。自動キャプチャ、保存、migration、backup、repairはまだ接続しません。
 
-## Planned Stack
+## 必要環境
 
-- C# / .NET 10 LTS
-- WPF
-- Windows Graphics Capture API
-- OpenCvSharp
-- Tesseract OCR
-- SQLite
+- Windows 11
+- .NET 10 SDK
+- 正式個人スコアDB version 1（例: `ddrgp-scores.sqlite`）
+- `python -m master` またはmaster DB生成workflowで作られたマスタDB
 
-## Planned Behavior
+ローカルDBはGit管理しません。`data/` 配下など、既存のローカル保存場所に置いたまま明示選択してください。
 
-- DDR GPウィンドウを検出する。
-- リザルト画面を自動検出する。
-- 固定ROI + 解像度正規化で読み取り対象領域を切り出す。
-- OCR/画像処理でスコア、判定数、曲名、SP/DP、難易度を取得する。
-- マスタDBと照合し、一意に特定できる場合のみ保存する。
-- 低確信度の場合はDB保存せず、画像とログを残す。
+## Build / test / run
 
-## First Viewer Slice
+```powershell
+dotnet restore app\tests\DDRGpScoreViewer.Tests\DDRGpScoreViewer.Tests.csproj
+dotnet build app\src\DDRGpScoreViewer\DDRGpScoreViewer.csproj --no-restore
+dotnet test app\tests\DDRGpScoreViewer.Tests\DDRGpScoreViewer.Tests.csproj --no-restore
+dotnet run --project app\src\DDRGpScoreViewer\DDRGpScoreViewer.csproj --no-build
+```
 
-最初のWPF実装は、自動キャプチャや常駐監視より先に、正式個人スコアDB version 1をread-onlyで閲覧する最小スコアビューアとする。
+## 利用手順
 
-- 明示選択したcompatibleなv1 DBと生成済みマスタDBをread-onlyで開く。
-- 全プレー履歴を、マスタDB由来の曲名、SP/DP、難易度、レベルとともに新しい順で表示する。
-- 選択プレーのスコア、ランク、クリア種別、判定数、MAX COMBO、EX SCOREを表示する。
-- 譜面別自己ベストは保存済み全履歴からqueryで算出する。
-- DB初期化、保存、migration、backup、repairは実行しない。
-- マスタDB更新、検索、グラフ、常駐、実キャプチャは後続へ分ける。
+1. アプリ右上の `データを選択` を押す。
+2. 正式個人スコアDB version 1を選ぶ。
+3. 生成済みマスタDBを選ぶ。
+4. `自己ベスト` または `プレー履歴` を開く。
+5. プレー履歴の行を選び、判定数、MAX COMBO、EX SCORE、保存日時、データ取得元を確認する。
 
-## Local Notes
+個人DBとマスタDBは別々のSQLite read-only connectionで開きます。viewerはschema初期化、insert、update、migration、backup、repairを実行せず、connection poolingも使いません。
 
-現環境には.NET runtimeだけがあり、.NET SDKは未導入である。次PRの開始前に.NET 10 SDKを導入し、`net10.0-windows` のWPFプロジェクトを作成する。
+## 表示契約
+
+- 履歴と最終プレー日時は `plays.played_at` のtimezone offsetを考慮した時系列順で表示する。
+- timezone付き時刻は端末のローカル時刻へ変換し、SQLite `CURRENT_TIMESTAMP` 由来のoffsetなし `created_at` はUTCとして変換する。
+- 曲名、SP/DP、難易度、レベルは `chart_id` と `song_id` が一致するマスタ行から表示する。
+- マスタ参照が欠ける行は捨てず、`song_id` / `chart_id` と `参照情報なし` を表示する。
+- 譜面別自己ベストは `plays` 全履歴を `song_id` / `chart_id` ごとに集計し、通常スコアとEX SCOREをそれぞれ `MAX` で算出する。
+- v1に列がない `O.K.` は値を補完せず `—` と表示する。
+- 空履歴では、次の行動を示す空状態を表示する。
+
+## DB検査と拒否
+
+個人DBは次を検査します。
+
+- `PRAGMA user_version = 1`
+- 正式 `score_db_metadata` identity
+- v1必須tableと列順
+- `001_initial_personal_score_db_schema` とversionの一致
+- M8 preview DBでないこと
+
+マスタDBは必須table、必須metadata、曲・譜面件数、source snapshotのURL/hash整合を検査します。preview、unknown、identity mismatch、newer unsupported、partial state、非SQLite、読取失敗は変更せず拒否し、ユーザー向けの理由を表示します。
+
+## UI resources
+
+- `Resources/Theme.xaml`: light themeの色トークンと難易度色
+- `Resources/Components.xaml`: button、sidebar、card、table、badgeの共通style
+- `Controls/StatePanel.xaml`: 空状態・エラー状態の共通component
+
+今回の画面範囲は共通sidebar、自己ベスト、プレー履歴、プレー詳細です。ホーム、検索・絞り込み、グラフ、要確認、設定、データ管理、自動記録状態、常駐機能は後続PRへ分けます。

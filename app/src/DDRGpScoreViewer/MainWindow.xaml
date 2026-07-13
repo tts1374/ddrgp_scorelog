@@ -1,0 +1,186 @@
+<Window x:Class="DDRGpScoreViewer.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:controls="clr-namespace:DDRGpScoreViewer.Controls"
+        Title="DDR GP Score Tracker" Width="1280" Height="760"
+        MinWidth="960" MinHeight="640" WindowStartupLocation="CenterScreen">
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="184" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <Border Grid.Column="0" Background="{StaticResource BackgroundSidebarBrush}">
+            <DockPanel LastChildFill="True">
+                <StackPanel DockPanel.Dock="Bottom" Margin="8,0,8,16">
+                    <Border Background="#263A56" CornerRadius="8" Padding="12" Margin="0,8">
+                        <StackPanel>
+                            <TextBlock Text="閲覧モード" Foreground="White" FontWeight="SemiBold" />
+                            <TextBlock Text="データは読み取り専用です" Foreground="#CBD5E1"
+                                       FontSize="12" Margin="0,4,0,0" TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+                <StackPanel>
+                    <StackPanel Margin="20,20,16,16">
+                        <TextBlock Text="DDR GP" Foreground="White" FontSize="20" FontWeight="Bold" />
+                        <TextBlock Text="Score Tracker" Foreground="#CBD5E1" FontSize="12" />
+                    </StackPanel>
+                    <Button Content="ホーム" Style="{StaticResource SidebarButtonStyle}" IsEnabled="False" />
+                    <Button x:Name="BestNavigation" Content="自己ベスト" Tag="Selected"
+                            Style="{StaticResource SidebarButtonStyle}" Click="ShowBest_Click" />
+                    <Button Content="楽曲・譜面" Style="{StaticResource SidebarButtonStyle}" IsEnabled="False" />
+                    <Button x:Name="HistoryNavigation" Content="プレー履歴"
+                            Style="{StaticResource SidebarButtonStyle}" Click="ShowHistory_Click" />
+                    <Separator Margin="16,10" Background="#50627B" />
+                    <Button Content="要確認" Style="{StaticResource SidebarButtonStyle}" IsEnabled="False" />
+                    <Button Content="設定" Style="{StaticResource SidebarButtonStyle}" IsEnabled="False" />
+                    <Button Content="データ管理" Style="{StaticResource SidebarButtonStyle}" IsEnabled="False" />
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <Grid Grid.Column="1" Margin="24">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="24" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+            <DockPanel Grid.Row="0">
+                <Button DockPanel.Dock="Right" Content="データを選択"
+                        Style="{StaticResource PrimaryButtonStyle}" Click="SelectDatabases_Click" />
+                <StackPanel>
+                    <TextBlock x:Name="PageTitle" Text="自己ベスト" FontSize="24" FontWeight="SemiBold" />
+                    <TextBlock Foreground="{StaticResource TextSecondaryBrush}" FontSize="12" Margin="0,4,0,0">
+                        <Run Text="楽曲データ: " /><Run Text="{Binding MasterVersion, Mode=OneWay}" />
+                    </TextBlock>
+                </StackPanel>
+            </DockPanel>
+
+            <controls:StatePanel Grid.Row="2" Visibility="{Binding StatusVisibility}"
+                                 Title="{Binding StatusTitle}" Message="{Binding StatusMessage}" />
+
+            <TabControl x:Name="ContentTabs" Grid.Row="2" Visibility="{Binding DataVisibility}"
+                        Background="Transparent" BorderThickness="0" SelectedIndex="0">
+                <TabControl.Resources>
+                    <Style TargetType="TabItem"><Setter Property="Visibility" Value="Collapsed" /></Style>
+                </TabControl.Resources>
+                <TabItem>
+                    <Border Style="{StaticResource CardStyle}" Padding="0">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+                            <TextBlock Text="保存済み全履歴から算出した譜面別ベスト"
+                                       Margin="16" FontSize="18" FontWeight="SemiBold" />
+                            <DataGrid Grid.Row="1" ItemsSource="{Binding ChartBests}"
+                                      Style="{StaticResource ViewerDataGridStyle}">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="曲名" Binding="{Binding SongTitle}" Width="2*" />
+                                    <DataGridTextColumn Header="スタイル" Binding="{Binding PlayStyleDisplay}" Width="70" />
+                                    <DataGridTemplateColumn Header="難易度" Width="120">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <Border Style="{StaticResource DifficultyBadgeStyle}">
+                                                    <TextBlock Text="{Binding Difficulty}"
+                                                               Style="{StaticResource DifficultyBadgeTextStyle}" />
+                                                </Border>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                    <DataGridTextColumn Header="レベル" Binding="{Binding LevelDisplay}" Width="76" />
+                                    <DataGridTextColumn Header="SCORE BEST" Binding="{Binding BestScoreDisplay}" Width="120" />
+                                    <DataGridTextColumn Header="EX SCORE BEST" Binding="{Binding BestExScoreDisplay}" Width="120" />
+                                    <DataGridTextColumn Header="プレー回数" Binding="{Binding PlayCount}" Width="90" />
+                                    <DataGridTextColumn Header="最終プレー" Binding="{Binding LastPlayedAtDisplay}" Width="150" />
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </Grid>
+                    </Border>
+                </TabItem>
+                <TabItem>
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="3*" />
+                            <RowDefinition Height="16" />
+                            <RowDefinition Height="2*" MinHeight="220" />
+                        </Grid.RowDefinitions>
+                        <Border Grid.Row="0" Style="{StaticResource CardStyle}" Padding="0">
+                            <DataGrid ItemsSource="{Binding Plays}" SelectedItem="{Binding SelectedPlay}"
+                                      Style="{StaticResource ViewerDataGridStyle}">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="日時" Binding="{Binding PlayedAtDisplay}" Width="150" />
+                                    <DataGridTextColumn Header="曲名" Binding="{Binding SongTitle}" Width="2*" />
+                                    <DataGridTextColumn Header="SP/DP" Binding="{Binding PlayStyleDisplay}" Width="64" />
+                                    <DataGridTemplateColumn Header="難易度" Width="116">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <Border Style="{StaticResource DifficultyBadgeStyle}">
+                                                    <TextBlock Text="{Binding Difficulty}"
+                                                               Style="{StaticResource DifficultyBadgeTextStyle}" />
+                                                </Border>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                    <DataGridTextColumn Header="Lv." Binding="{Binding LevelDisplay}" Width="64" />
+                                    <DataGridTextColumn Header="SCORE" Binding="{Binding ScoreDisplay}" Width="100" />
+                                    <DataGridTextColumn Header="EX SCORE" Binding="{Binding ExScoreDisplay}" Width="92" />
+                                    <DataGridTextColumn Header="ランク" Binding="{Binding Rank}" Width="70" />
+                                    <DataGridTextColumn Header="CLEAR" Binding="{Binding ClearType}" Width="90" />
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </Border>
+
+                        <Border Grid.Row="2" Style="{StaticResource CardStyle}" DataContext="{Binding SelectedPlay}">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="2*" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Margin="0,0,20,0">
+                                    <TextBlock Text="プレー詳細" FontSize="18" FontWeight="SemiBold" />
+                                    <TextBlock Text="{Binding SongTitle}" FontSize="18" FontWeight="SemiBold" Margin="0,12,0,0" />
+                                    <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                        <TextBlock Text="{Binding PlayStyleDisplay}" FontWeight="SemiBold" />
+                                        <TextBlock Text=" / " />
+                                        <TextBlock Text="{Binding Difficulty}" FontWeight="SemiBold" />
+                                        <TextBlock Text=" / " />
+                                        <TextBlock Text="{Binding LevelDisplay}" FontWeight="SemiBold" />
+                                    </StackPanel>
+                                    <TextBlock Text="{Binding ScoreDisplay}" FontSize="32" FontWeight="Bold" Margin="0,14,0,0" />
+                                    <TextBlock Margin="0,4,0,0">
+                                        <Run Text="EX SCORE  " /><Run Text="{Binding ExScoreDisplay, Mode=OneWay}" FontWeight="Bold" />
+                                        <Run Text="    RANK  " /><Run Text="{Binding Rank, Mode=OneWay}" FontWeight="Bold" />
+                                        <Run Text="    CLEAR  " /><Run Text="{Binding ClearType, Mode=OneWay}" FontWeight="Bold" />
+                                    </TextBlock>
+                                    <TextBlock Text="{Binding MasterReferenceStatus}" Margin="0,10,0,0"
+                                               Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" />
+                                </StackPanel>
+                                <Grid Grid.Column="1" Margin="0,34,20,0">
+                                    <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition /></Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition /><RowDefinition /><RowDefinition /><RowDefinition />
+                                    </Grid.RowDefinitions>
+                                    <TextBlock Text="MARVELOUS" /><TextBlock Grid.Column="1" Text="{Binding Marvelous}" HorizontalAlignment="Right" FontWeight="SemiBold" />
+                                    <TextBlock Grid.Row="1" Text="PERFECT" /><TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding Perfect}" HorizontalAlignment="Right" FontWeight="SemiBold" />
+                                    <TextBlock Grid.Row="2" Text="GREAT" /><TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding Great}" HorizontalAlignment="Right" FontWeight="SemiBold" />
+                                    <TextBlock Grid.Row="3" Text="GOOD" /><TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding Good}" HorizontalAlignment="Right" FontWeight="SemiBold" />
+                                </Grid>
+                                <StackPanel Grid.Column="2" Margin="0,34,0,0">
+                                    <DockPanel LastChildFill="False"><TextBlock Text="O.K." /><TextBlock Text="—" FontWeight="SemiBold" DockPanel.Dock="Right" /></DockPanel>
+                                    <DockPanel LastChildFill="False" Margin="0,8,0,0"><TextBlock Text="MISS" /><TextBlock Text="{Binding Miss}" FontWeight="SemiBold" DockPanel.Dock="Right" /></DockPanel>
+                                    <DockPanel LastChildFill="False" Margin="0,8,0,0"><TextBlock Text="MAX COMBO" /><TextBlock Text="{Binding MaxCombo}" FontWeight="SemiBold" DockPanel.Dock="Right" /></DockPanel>
+                                    <Separator Margin="0,10" />
+                                    <TextBlock Text="{Binding SavedAtDisplay, StringFormat=保存日時: {0}}" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" />
+                                    <TextBlock Text="{Binding SourceKindDisplay, StringFormat=データ取得元: {0}}" FontSize="12" Foreground="{StaticResource TextSecondaryBrush}" Margin="0,4,0,0" />
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+                    </Grid>
+                </TabItem>
+            </TabControl>
+        </Grid>
+    </Grid>
+</Window>

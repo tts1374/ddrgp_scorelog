@@ -19,9 +19,9 @@ obj/
 *.rsuser
 
 # Local app data
-data/
-logs/
-failed-captures/
+/data/
+/logs/
+/failed-captures/
 *.sqlite
 *.sqlite3
 *.db
@@ -37,4 +37,3 @@ samples/screenshots/metadata.csv
 # OS / editor
 .DS_Store
 Thumbs.db
-
