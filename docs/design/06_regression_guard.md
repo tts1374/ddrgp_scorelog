@@ -15,6 +15,9 @@
 - dry-run capture provider の生成manifestは manifest mode で読める。
 - dry-run sequence scenario は複数 `screen_type`、OCR期待値列、補助列を保持したmanifestを生成できる。
 - dry-run sequence scenario の生成manifestは manifest mode で読める。
+- WPF single-frame manifestのdirectory相対 `image_path` を読める。
+- WPF補助列 `capture_source`、`width`、`height`、`captured_at_utc` と、同じ行へ追加したexpected columnsを `FrameInput.row` に保持する。
+- 1280x720のWPF実captureはDPI scaleを二重適用せず、既存1280x720 ROIへそのまま渡す。
 
 ## confirmation
 
@@ -26,6 +29,7 @@
 - 短時間に偏った連続フレームは、枚数が多くても確定しない。
 - 十分な継続時間を満たした result candidate は確定する。
 - 複数screen_type混在シナリオでも short result は未確定、sustained result は確定、duplicate result は `duplicate=true` になる。
+- WPF単発manifest 1行だけではresult candidateをconfirmed resultへ昇格しない。
 
 ## 保存境界
 

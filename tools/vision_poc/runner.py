@@ -87,7 +87,7 @@ ROI_DEFINITIONS: dict[str, tuple[int, int, int, int]] = {
     "score_digits": (250, 278, 210, 48),
     "jacket": (532, 54, 216, 216),
     "song_select_grid_preview_jacket": (812, 28, 150, 150),
-    "song_title": (488, 274, 304, 52),
+    "song_title": (488, 274, 304, 32),
     "artist": (548, 306, 184, 26),
     "detail_result_panel": (662, 330, 462, 288),
     "detail_result_header": (662, 330, 194, 36),
@@ -535,6 +535,7 @@ M3_TEXT_TESSERACT_CONFIGS: dict[str, TesseractConfig] = {
     "song_title": TesseractConfig(psm=6, dpi=300, whitelist=None),
     "artist": TesseractConfig(psm=7, dpi=300, whitelist=None),
 }
+M3_SONG_TITLE_OCR_FALLBACK_ROI = (488, 274, 304, 52)
 JUDGMENT_OCR_ROIS = tuple(roi for roi in OCR_ROIS if roi != "score_digits")
 OCR_DIGIT_FOCUS_LEFT_FRACTIONS: dict[str, float] = {
     "miss": 0.35,
@@ -2013,12 +2014,16 @@ def normalize_m3_text_ocr_for_review(value: str) -> str:
     return normalize_expected_text(value.replace("\r", " ").replace("\n", " ").replace("\t", " "))
 
 
-def preprocess_m3_text_ocr_roi(image: Image.Image, field_name: str) -> OcrPreprocessedImages:
+def preprocess_m3_text_ocr_roi(
+    image: Image.Image,
+    field_name: str,
+    roi: tuple[int, int, int, int] | None = None,
+) -> OcrPreprocessedImages:
     if field_name not in M3_SONG_ARTIST_OCR_FIELDS:
         joined = ", ".join(M3_SONG_ARTIST_OCR_FIELDS)
         raise ValueError(f"unsupported M3 text OCR field: {field_name}; expected one of: {joined}")
 
-    original = crop_roi(image, ROI_DEFINITIONS[field_name]).convert("RGB")
+    original = crop_roi(image, ROI_DEFINITIONS[field_name] if roi is None else roi).convert("RGB")
     scale = 4 if field_name == "song_title" else 5
     enlarged = original.resize(
         (original.width * scale, original.height * scale),
@@ -2036,6 +2041,40 @@ def preprocess_m3_text_ocr_roi(image: Image.Image, field_name: str) -> OcrPrepro
         enlarged=enlarged.convert("RGB"),
         binary=binary,
     )
+
+
+def run_m3_text_ocr(
+    image: Image.Image,
+    field_name: str,
+) -> tuple[OcrPreprocessedImages, str, str, str, str]:
+    preprocessed = preprocess_m3_text_ocr_roi(image, field_name)
+    result = run_tesseract(
+        preprocessed.binary,
+        field_name,
+        M3_TEXT_TESSERACT_CONFIGS[field_name],
+    )
+    raw, _engine, status, _error = result
+    if (
+        field_name != "song_title"
+        or status != "ok"
+        or normalize_m3_text_ocr_for_review(raw)
+    ):
+        return preprocessed, *result
+
+    fallback = preprocess_m3_text_ocr_roi(
+        image,
+        field_name,
+        M3_SONG_TITLE_OCR_FALLBACK_ROI,
+    )
+    fallback_result = run_tesseract(
+        fallback.binary,
+        field_name,
+        M3_TEXT_TESSERACT_CONFIGS[field_name],
+    )
+    fallback_raw, _fallback_engine, fallback_status, _fallback_error = fallback_result
+    if fallback_status == "ok" and normalize_m3_text_ocr_for_review(fallback_raw):
+        return fallback, *fallback_result
+    return preprocessed, *result
 
 
 def m3_song_artist_ocr_failure_reason(
@@ -2065,7 +2104,7 @@ def process_m3_song_artist_ocr_field(
     target_dir = output_dir / "m3_song_artist_ocr_images" / frame.image_path.stem
     target_dir.mkdir(parents=True, exist_ok=True)
 
-    preprocessed = preprocess_m3_text_ocr_roi(image, field_name)
+    preprocessed, raw, engine, status, error = run_m3_text_ocr(image, field_name)
     original_path = target_dir / f"{field_name}_original.png"
     enlarged_path = target_dir / f"{field_name}_enlarged.png"
     binary_path = target_dir / f"{field_name}_binary.png"
@@ -2073,11 +2112,6 @@ def process_m3_song_artist_ocr_field(
     preprocessed.enlarged.save(enlarged_path)
     preprocessed.binary.save(binary_path)
 
-    raw, engine, status, error = run_tesseract(
-        preprocessed.binary,
-        field_name,
-        M3_TEXT_TESSERACT_CONFIGS[field_name],
-    )
     pre_normalized_text = normalize_m3_text_ocr_for_review(raw)
     expected_value = expected_m3_metadata_value_from_row(frame.row, field_name)
     failure_reason = m3_song_artist_ocr_failure_reason(

@@ -424,6 +424,60 @@ def count_dark_pixels(image: Image.Image) -> int:
     return sum(1 for value in image.convert("L").tobytes() if value < 128)
 
 
+def test_song_title_roi_stops_before_artist_roi() -> None:
+    image = Image.new("RGB", (1280, 720), "black")
+
+    assert runner.scaled_box(image, runner.ROI_DEFINITIONS["song_title"]) == (
+        488,
+        274,
+        792,
+        306,
+    )
+    assert runner.scaled_box(image, runner.ROI_DEFINITIONS["artist"])[1] == 306
+
+
+def test_m3_song_title_ocr_falls_back_to_legacy_roi_only_when_primary_is_empty(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    attempts = iter(
+        [
+            ("", "tesseract", "ok", ""),
+            ("FALLBACK TITLE", "tesseract", "ok", ""),
+        ]
+    )
+    monkeypatch.setattr(runner, "run_tesseract", lambda *_args, **_kwargs: next(attempts))
+
+    preprocessed, raw, engine, status, error = runner.run_m3_text_ocr(
+        Image.new("RGB", (1280, 720), "black"),
+        "song_title",
+    )
+
+    assert preprocessed.original.size == (304, 52)
+    assert (raw, engine, status, error) == ("FALLBACK TITLE", "tesseract", "ok", "")
+
+
+def test_m3_song_title_ocr_keeps_primary_roi_when_it_has_text(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = 0
+
+    def fake_tesseract(*_args: object, **_kwargs: object) -> tuple[str, str, str, str]:
+        nonlocal calls
+        calls += 1
+        return "PRIMARY TITLE", "tesseract", "ok", ""
+
+    monkeypatch.setattr(runner, "run_tesseract", fake_tesseract)
+
+    preprocessed, raw, _engine, _status, _error = runner.run_m3_text_ocr(
+        Image.new("RGB", (1280, 720), "black"),
+        "song_title",
+    )
+
+    assert calls == 1
+    assert preprocessed.original.size == (304, 32)
+    assert raw == "PRIMARY TITLE"
+
+
 def test_expected_ocr_value_uses_optional_judgment_columns() -> None:
     row = {
         "organized_file": "organized/result_score111111_sample.png",

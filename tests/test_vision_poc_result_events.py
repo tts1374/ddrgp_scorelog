@@ -516,9 +516,10 @@ def test_read_frame_manifest_accepts_windows_capture_writer_columns(tmp_path: Pa
     write_test_image(image_path)
     manifest_path = tmp_path / "frame_manifest.csv"
     manifest_path.write_text(
-        "image_path,timestamp_ms,screen_type,capture_source,width,height,captured_at_utc\n"
+        "image_path,timestamp_ms,screen_type,capture_source,width,height,captured_at_utc,"
+        "expected_score,expected_song_title\n"
         'frame.png,12345,unknown,"DDR GRAND PRIX, result",1280,720,'
-        "2026-07-13T01:02:03.0000000+00:00\n",
+        "2026-07-13T01:02:03.0000000+00:00,988930,IN BETWEEN\n",
         encoding="utf-8",
     )
 
@@ -533,6 +534,8 @@ def test_read_frame_manifest_accepts_windows_capture_writer_columns(tmp_path: Pa
         "width": "1280",
         "height": "720",
         "captured_at_utc": "2026-07-13T01:02:03.0000000+00:00",
+        "expected_score": "988930",
+        "expected_song_title": "IN BETWEEN",
     }
 
 

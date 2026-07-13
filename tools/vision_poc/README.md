@@ -20,6 +20,21 @@ python -m pip install -e ".[vision]"
 - 入力画像: `samples/screenshots/organized/`
 - 出力先: `data/vision_poc/`
 
+### WPF実captureの再実行
+
+`data/windows_capture/capture-*/frame_manifest.csv` は既存manifest modeでそのまま読めます。
+
+```powershell
+python -m tools.vision_poc `
+  --sequence-mode manifest `
+  --frame-manifest data\windows_capture\capture-<id>\frame_manifest.csv `
+  --output data\windows_capture_replay
+```
+
+1行manifestではtime-based confirmationの継続時間を満たさないため、confirmed-events評価では複数のcapture行を時刻順にまとめたローカル評価manifestを `data/` 配下へ置きます。capture原本は変更せず、評価manifestだけに `screen_type`、OCR期待値列、M3期待値列、song selectの `song_select_view=grid` を追加します。期待値が不足する場合は出力された `ocr_expected_template.csv` と `m3_metadata_expected_template.csv` を埋め、`no_expected_values` や `partially_evaluated` を成功扱いにしません。
+
+2026-07-13の1280x720実capture 5枚では、song select、menu、clear transition、同一result 2枚を評価し、分類5/5、confirmed result 1件、M7a数字8 ROI 8/8、chart-field 3/3、master matchとjacket match各1/1が期待値に一致しました。`song_title` ROIはartist行を含めない高さへ局所調整し、実capture OCRを `IN BETWEEN` の1行にしました。狭いROIが空読みの場合だけ従来52px高ROIへ戻し、既存素材の読み取り可能性を維持します。Tesseract既定profileは `ex_score=963` を `9687` と誤読しましたが、既存 `low-threshold` profileとM7aは `963` に一致しました。この結果は候補材料の評価であり、正式値、正式save input、DB保存へ昇格しません。
+
 出力先には `results.csv`、`result_events.csv`、`result_events_summary.json`、`summary.json`、`misclassifications.md`、`m3_metadata_expected_coverage.md`、`m3_metadata_expected_template.csv`、`m3_chart_fields.csv`、`m3_chart_fields_summary.json`、`m3_chart_field_extraction.csv`、`m3_chart_field_extraction_summary.json`、`m3_chart_field_image_feature_extraction.csv`、`m3_chart_field_image_feature_extraction_summary.json`、`m3_chart_field_image_feature_diagnostics.md`、`m3_chart_field_template_extraction.csv`、`m3_chart_field_template_extraction_summary.json`、`m3_chart_field_template_diagnostics.md`、`m3_chart_field_template_holdout_extraction.csv`、`m3_chart_field_template_holdout_extraction_summary.json`、`m3_chart_field_template_holdout_diagnostics.md`、`m3_chart_field_adoption_candidates_summary.json`、`m3_chart_field_adoption_candidates.md`、`m3_save_candidate_summary.csv`、`m3_save_candidate_summary.json`、`m3_save_candidate_summary.md`、`m3_save_candidate_blockers_summary.json`、`m3_save_candidate_blockers_summary.md`、`m3_save_candidate_blocker_resolution_plan.json`、`m3_save_candidate_blocker_resolution_plan.md`、`rois/<画像名>/` 配下の主要ROI画像が生成されます。`--m3-song-artist-ocr` 指定時は `m3_song_artist_ocr_entry_failures_summary.json` と `m3_song_artist_ocr_entry_failures.md` も生成します。`--m5-master-match` 指定時は `master_match_candidates.csv`、`master_match_summary.json`、`master_match_report.md` も生成します。`--m5-jacket-match` 指定時は `jacket_feature_master.csv`、`jacket_feature_master_summary.json`、`jacket_feature_label_template.csv`、`jacket_match_candidates.csv`、`jacket_match_summary.json`、`jacket_match_report.md`、`jacket_match_diagnostics.csv`、`jacket_match_diagnostics_summary.json`、`jacket_match_diagnostics.md`、`jacket_reference_coverage.csv`、`jacket_reference_coverage_summary.json`、`jacket_reference_coverage_missing_representatives.csv`、`jacket_reference_coverage_report.md`、`jacket_reference_diagnostics_coverage.csv`、`jacket_reference_diagnostics_coverage_summary.json`、`jacket_reference_diagnostics_coverage_missing_representatives.csv`、`jacket_reference_diagnostics_coverage_report.md` も生成します。`data/` はGit管理対象外です。`rois/<画像名>/` には分類確認用ROIに加えて、M3入口の目視確認用として `play_style`、`difficulty`、`level`、`rank`、`song_title`、`artist` も出力します。この段階では切り出し足場、ファイル名由来 baseline、ROI画像特徴の軽い比較、ローカルテンプレート素材との最近傍比較を中心にし、M5のマスタ照合もPoC観察に留めます。
 
 `--m3-song-artist-ocr` を指定した場合は、追加で `m3_song_artist_ocr.csv`、`m3_song_artist_ocr_summary.json`、`m3_song_artist_ocr.md`、`m3_song_artist_ocr_entry_failures_summary.json`、`m3_song_artist_ocr_entry_failures.md`、`m3_song_artist_ocr_images/<画像名>/` が生成されます。これはM3-4の曲名/artist OCR入口とM3-9のOCR入口失敗代表整理で、confirmed-events 境界だけを対象にし、マスタ照合、ファジーマッチ、曲名正規化の成功扱いにはしません。
