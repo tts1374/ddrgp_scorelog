@@ -310,6 +310,29 @@ public sealed class CaptureTests
     }
 
     [Theory]
+    [InlineData(nameof(SessionWriterFailureStage.Begin))]
+    [InlineData(nameof(SessionWriterFailureStage.Write))]
+    [InlineData(nameof(SessionWriterFailureStage.Complete))]
+    [InlineData(nameof(SessionWriterFailureStage.Dispose))]
+    public async Task Continuous_service_maps_output_permission_failures_as_write_failures(
+        string failureStageName)
+    {
+        var failureStage = Enum.Parse<SessionWriterFailureStage>(failureStageName);
+        var service = new ContinuousCaptureService(
+            new StubContinuousAdapter(new StubFrameSource(
+                [Frame("fixture", 100)],
+                CaptureSessionEndReason.Stopped)),
+            new FailingSessionWriter(
+                new UnauthorizedAccessException("denied"),
+                failureStage));
+
+        var result = await service.RunAsync(123);
+
+        Assert.Equal(CaptureOperationStatus.WriteFailed, result.Status);
+        Assert.Null(result.Output);
+    }
+
+    [Theory]
     [InlineData(true, CaptureOperationStatus.AccessDenied)]
     [InlineData(false, CaptureOperationStatus.InvalidSize)]
     public async Task Continuous_service_maps_start_failures(
@@ -564,24 +587,52 @@ public sealed class CaptureTests
         }
     }
 
-    private sealed class FailingSessionWriter(Exception? failure = null)
+    private sealed class FailingSessionWriter(
+        Exception? failure = null,
+        SessionWriterFailureStage failureStage = SessionWriterFailureStage.Begin)
         : ICaptureSessionOutputWriter
     {
         public Task<ICaptureSessionOutputTransaction> BeginAsync(
             CancellationToken cancellationToken = default) =>
-            failure is null
-                ? Task.FromResult<ICaptureSessionOutputTransaction>(new FailingTransaction())
-                : Task.FromException<ICaptureSessionOutputTransaction>(failure);
+            failure is not null && failureStage == SessionWriterFailureStage.Begin
+                ? Task.FromException<ICaptureSessionOutputTransaction>(failure)
+                : Task.FromResult<ICaptureSessionOutputTransaction>(
+                    new FailingTransaction(failure, failureStage));
 
-        private sealed class FailingTransaction : ICaptureSessionOutputTransaction
+        private sealed class FailingTransaction(
+            Exception? failure,
+            SessionWriterFailureStage failureStage) : ICaptureSessionOutputTransaction
         {
-            public int FrameCount => 0;
-            public Task WriteFrameAsync(CapturedFrame frame, CancellationToken cancellationToken = default) =>
-                Task.CompletedTask;
+            public int FrameCount { get; private set; }
+
+            public Task WriteFrameAsync(CapturedFrame frame, CancellationToken cancellationToken = default)
+            {
+                if (failure is not null && failureStage == SessionWriterFailureStage.Write)
+                {
+                    return Task.FromException(failure);
+                }
+                FrameCount++;
+                return Task.CompletedTask;
+            }
+
             public Task<CaptureSessionOutput> CompleteAsync(CancellationToken cancellationToken = default) =>
-                throw new NotSupportedException();
-            public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+                failure is not null && failureStage == SessionWriterFailureStage.Complete
+                    ? Task.FromException<CaptureSessionOutput>(failure)
+                    : Task.FromResult(new CaptureSessionOutput("output", "manifest", "metadata", FrameCount));
+
+            public ValueTask DisposeAsync() =>
+                failure is not null && failureStage == SessionWriterFailureStage.Dispose
+                    ? ValueTask.FromException(failure)
+                    : ValueTask.CompletedTask;
         }
+    }
+
+    private enum SessionWriterFailureStage
+    {
+        Begin,
+        Write,
+        Complete,
+        Dispose,
     }
 
     private sealed class StubWorkflowRunner : IPersonalScoreDbWorkflowRunner

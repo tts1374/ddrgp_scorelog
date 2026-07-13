@@ -89,29 +89,36 @@ public sealed class ContinuousCaptureService(
                     "開始処理中に停止しました。session outputは作成していません。");
             }
 
-            await using var transaction = await outputWriter.BeginAsync(cancellationToken);
-            await foreach (var frame in source.ReadFramesAsync(cancellationToken))
+            var transaction = await BeginOutputAsync(cancellationToken);
+            try
             {
-                await transaction.WriteFrameAsync(frame, cancellationToken);
-            }
+                await foreach (var frame in source.ReadFramesAsync(cancellationToken))
+                {
+                    await WriteFrameAsync(transaction, frame, cancellationToken);
+                }
 
-            var endReason = await source.Completion;
-            if (endReason != CaptureSessionEndReason.Stopped)
-            {
-                return EndReasonResult(endReason);
-            }
-            if (transaction.FrameCount == 0)
-            {
-                return Result(
-                    CaptureOperationStatus.Cancelled,
-                    "フレーム取得前に停止しました。session outputは作成していません。");
-            }
+                var endReason = await source.Completion;
+                if (endReason != CaptureSessionEndReason.Stopped)
+                {
+                    return EndReasonResult(endReason);
+                }
+                if (transaction.FrameCount == 0)
+                {
+                    return Result(
+                        CaptureOperationStatus.Cancelled,
+                        "フレーム取得前に停止しました。session outputは作成していません。");
+                }
 
-            var output = await transaction.CompleteAsync(cancellationToken);
-            return new CaptureSessionOperationResult(
-                CaptureOperationStatus.Saved,
-                $"{output.FrameCount}フレームを保存しました: {output.DirectoryPath}",
-                output);
+                var output = await CompleteOutputAsync(transaction, cancellationToken);
+                return new CaptureSessionOperationResult(
+                    CaptureOperationStatus.Saved,
+                    $"{output.FrameCount}フレームを保存しました: {output.DirectoryPath}",
+                    output);
+            }
+            finally
+            {
+                await DisposeOutputAsync(transaction);
+            }
         }
         catch (OperationCanceledException)
         {
@@ -222,6 +229,64 @@ public sealed class ContinuousCaptureService(
 
     private static bool IsDeviceLost(int hresult) =>
         hresult is DxgiDeviceRemovedHResult or DxgiDeviceHungHResult or DxgiDeviceResetHResult;
+
+    private async Task<ICaptureSessionOutputTransaction> BeginOutputAsync(
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await outputWriter.BeginAsync(cancellationToken);
+        }
+        catch (UnauthorizedAccessException exception)
+        {
+            throw OutputAccessException(exception);
+        }
+    }
+
+    private static async Task WriteFrameAsync(
+        ICaptureSessionOutputTransaction transaction,
+        CapturedFrame frame,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await transaction.WriteFrameAsync(frame, cancellationToken);
+        }
+        catch (UnauthorizedAccessException exception)
+        {
+            throw OutputAccessException(exception);
+        }
+    }
+
+    private static async Task<CaptureSessionOutput> CompleteOutputAsync(
+        ICaptureSessionOutputTransaction transaction,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await transaction.CompleteAsync(cancellationToken);
+        }
+        catch (UnauthorizedAccessException exception)
+        {
+            throw OutputAccessException(exception);
+        }
+    }
+
+    private static async ValueTask DisposeOutputAsync(
+        ICaptureSessionOutputTransaction transaction)
+    {
+        try
+        {
+            await transaction.DisposeAsync();
+        }
+        catch (UnauthorizedAccessException exception)
+        {
+            throw OutputAccessException(exception);
+        }
+    }
+
+    private static IOException OutputAccessException(UnauthorizedAccessException exception) =>
+        new("Capture session output access was denied.", exception);
 
     private static CaptureSessionOperationResult Result(
         CaptureOperationStatus status,
