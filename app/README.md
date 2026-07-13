@@ -38,7 +38,7 @@ dotnet run --project app\src\DDRGpScoreViewer\DDRGpScoreViewer.csproj --no-build
 3. 新規、0 byte、またはcompatibleな正式v1 DBを保存先として選ぶ。
 4. 保存後の表示に使う生成済みマスタDBを選ぶ。
 
-アプリは `python -m tools.vision_poc.personal_score_db_workflow_app` をリポジトリrootで1回だけ実行します。この薄いprocess adapterは入力内の既存 `log_path` をartifact出力先として渡すだけで、strict loader、save adapter、artifact orchestration、file saveをC#で再実装しません。起動時のcurrent directoryまたはapp配置場所の親からリポジトリrootを検出できない場合は実行を拒否します。
+アプリは `python -m tools.vision_poc.personal_score_db_workflow_app` をリポジトリrootで1回だけ実行します。この薄いprocess adapterは入力内の既存 `log_path` をartifact出力先として渡すだけで、strict loader、save adapter、artifact orchestration、file saveをC#で再実装しません。repository root探索は `単発保存` 実行時まで遅延し、current directoryまたはapp配置場所の親から検出できない場合は保存だけを失敗状態にします。read-only viewerの起動と `データを選択` はPythonやrepository配置を必要としません。
 
 `saved` かつtransaction完了済みの `play_id` が返った場合だけ、同じ `ScoreViewerRepository` でDBをread-only再読込し、履歴・詳細・自己ベストへ反映します。`excluded` / `duplicate` はsource captureとanalysisが記録されても成功playとして表示せず、`unresolved` / `invalid` / DB拒否 / artifact失敗は理由を表示します。`artifact_created_db_failed` はartifactが残ったpartial successとして表示し、DB保存成功へ丸めません。
 

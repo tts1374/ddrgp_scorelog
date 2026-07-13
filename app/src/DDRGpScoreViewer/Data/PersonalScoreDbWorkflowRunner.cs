@@ -28,19 +28,19 @@ public interface IPersonalScoreDbWorkflowRunner
 public sealed class PythonPersonalScoreDbWorkflowRunner : IPersonalScoreDbWorkflowRunner
 {
     private readonly string pythonExecutable;
-    private readonly string repositoryRoot;
+    private readonly string? repositoryRoot;
 
     public PythonPersonalScoreDbWorkflowRunner()
-        : this(
-            Environment.GetEnvironmentVariable("DDRGP_PYTHON") ?? "python",
-            FindRepositoryRoot())
+        : this(Environment.GetEnvironmentVariable("DDRGP_PYTHON") ?? "python", null)
     {
     }
 
-    public PythonPersonalScoreDbWorkflowRunner(string pythonExecutable, string repositoryRoot)
+    public PythonPersonalScoreDbWorkflowRunner(
+        string pythonExecutable,
+        string? repositoryRoot)
     {
         this.pythonExecutable = pythonExecutable;
-        this.repositoryRoot = Path.GetFullPath(repositoryRoot);
+        this.repositoryRoot = repositoryRoot is null ? null : Path.GetFullPath(repositoryRoot);
     }
 
     public async Task<PersonalScoreDbWorkflowResult> RunAsync(
@@ -48,25 +48,25 @@ public sealed class PythonPersonalScoreDbWorkflowRunner : IPersonalScoreDbWorkfl
         string scoreDatabasePath,
         CancellationToken cancellationToken = default)
     {
-        var startInfo = new ProcessStartInfo
-        {
-            FileName = pythonExecutable,
-            WorkingDirectory = repositoryRoot,
-            UseShellExecute = false,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            CreateNoWindow = true,
-        };
-        startInfo.ArgumentList.Add("-m");
-        startInfo.ArgumentList.Add("tools.vision_poc.personal_score_db_workflow_app");
-        startInfo.ArgumentList.Add("--input");
-        startInfo.ArgumentList.Add(Path.GetFullPath(workflowInputPath));
-        startInfo.ArgumentList.Add("--database");
-        startInfo.ArgumentList.Add(Path.GetFullPath(scoreDatabasePath));
-
-        using var process = new Process { StartInfo = startInfo };
         try
         {
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = pythonExecutable,
+                WorkingDirectory = repositoryRoot ?? FindRepositoryRoot(),
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true,
+            };
+            startInfo.ArgumentList.Add("-m");
+            startInfo.ArgumentList.Add("tools.vision_poc.personal_score_db_workflow_app");
+            startInfo.ArgumentList.Add("--input");
+            startInfo.ArgumentList.Add(Path.GetFullPath(workflowInputPath));
+            startInfo.ArgumentList.Add("--database");
+            startInfo.ArgumentList.Add(Path.GetFullPath(scoreDatabasePath));
+
+            using var process = new Process { StartInfo = startInfo };
             if (!process.Start())
             {
                 throw new InvalidOperationException("Python process could not be started.");

@@ -6,6 +6,14 @@ namespace DDRGpScoreViewer.Tests;
 
 public sealed class PersonalScoreDbWorkflowRunnerTests
 {
+    [Fact]
+    public void Default_constructor_does_not_require_repository_lookup()
+    {
+        var exception = Record.Exception(() => new PythonPersonalScoreDbWorkflowRunner());
+
+        Assert.Null(exception);
+    }
+
     [Theory]
     [InlineData("saved", "play-1")]
     [InlineData("duplicate", null)]
