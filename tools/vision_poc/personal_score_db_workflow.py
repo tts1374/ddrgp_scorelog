@@ -257,10 +257,17 @@ def personal_score_db_workflow_result_json(
 
 
 def run_personal_score_db_workflow_cli(
-    *, input_path: Path, artifact_output: str | None, db_path: Path
+    *,
+    input_path: Path,
+    artifact_output: str | None,
+    db_path: Path,
+    use_input_log_path: bool = False,
 ) -> int:
     try:
         workflow = load_personal_score_db_workflow_input(input_path)
+        if use_input_log_path:
+            log_path = workflow.save_input.get("log_path")
+            artifact_output = log_path if isinstance(log_path, str) and log_path else None
         result = run_personal_score_db_workflow(
             workflow, artifact_output=artifact_output, db_path=db_path
         )

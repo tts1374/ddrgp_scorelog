@@ -446,12 +446,23 @@ M5完了時点で固定すること:
 やること:
 
 - 2026-07-13時点で第1段階の最小WPFビューアを追加した。正式v1 DBと生成済みマスタDBをread-onlyで検査し、全履歴、選択プレー詳細、全履歴query由来の譜面別自己ベスト、参照欠落、空・拒否・読取失敗状態を表示する。viewer前後のDB hash不変をfixtureで固定し、save、migration、backup、repair、自動記録には接続していない。
-- 第2段階として、既存PoCからv1 DBへの縦断接続を行う。
+- 2026-07-13時点で第2段階のmanual縦断sliceを追加した。明示選択したstrict workflow入力と正式v1 DBを既存Python orchestrationで1回だけ処理し、saved playだけ同じread-only repositoryで履歴・詳細・自己ベストへ再反映する。excluded / duplicate / unresolved / invalid / DB拒否 / artifact partial successをUIで区別し、候補材料の昇格、自動保存、常駐監視には進んでいない。
 - 第3段階として、実キャプチャと監視状態を接続する。
 - タスクトレイ常駐を実装する。
 - 監視状態、対象ウィンドウ状態、最新保存結果を表示する。
 - マスタDB更新状態を表示する。
 - ROI調整画面、失敗ログ一覧、保存済み履歴の簡易一覧を段階的に追加する。
+
+M9残り実行順（PR #21 merge後、原則1項目1PR）:
+
+1. Windows Graphics Captureで、ユーザーが明示選択した任意windowから1フレームを取得し、既存manifest互換のローカル入力として `data/` 配下へ安全に残す。DDR GRAND PRIXの自動特定、連続capture、解析、保存には進まない。
+2. 実capture画像をmanifestで再実行できる状態を固定し、曲・譜面同定と数字認識を実capture投入可能な品質へ上げる。認識結果を正式値へ暗黙昇格させない。
+3. 明示選択したwindowに対する連続capture sessionを追加し、resize、対象終了、再選択、device lost、resource解放を扱う。監視結果からの自動保存はまだ行わない。
+4. capture、分類、confirmed event、既存正式保存workflowを接続し、保存成功、duplicate、excluded、解析失敗を既存境界のまま1件ずつ処理する。
+5. 監視状態、対象window状態、最新保存結果、保存skip、解析失敗ログをWPFへ統合し、タスクトレイから開始・停止・状態確認できるようにする。
+6. マスタDB更新状態、長時間動作、再起動・再接続、resource leak、失敗復旧を検証し、M9完了条件を満たす運用状態へ固める。installer、配布、精度保証値の確定はM10へ残す。
+
+この6項目はM9を約6PRで完了させるための基準順である。各PRは現在の目的、完了条件、検証セットでmerge可能な単位に保ち、独立した次項目へ同じPR内で進まない。実測で安全に統合・分割する必要が出た場合も、capture、認識品質、正式保存、常駐監視の責務境界は混ぜない。M10の初期版リリース準備は、この後さらに2から3PRを目安とする。
 
 完了条件:
 
@@ -479,11 +490,11 @@ M5完了時点で固定すること:
 
 ## 近い順の推奨作業
 
-1. manifest/manual入力からv1 DB保存、viewer表示までの縦断経路を接続する。
-2. 曲・譜面同定と数字認識を実キャプチャ投入可能な品質へ上げる。
-3. Windows Graphics Capture APIの最小接続を行う。
-4. 監視ループ、保存結果表示、失敗ログをWPFアプリへ統合する。
-5. 実機検証と配布準備を行う。
+1. Windows Graphics Capture APIの1フレームsliceを、「M9残り実行順」の1項目目として完了する。
+2. 以降は同実行順の2から6に従い、実capture認識品質、連続capture、正式保存接続、監視UI・タスクトレイ、長時間運用を1項目ずつ進める。
+3. M9完了後にM10の実機検証と配布準備へ進む。
+
+各チャットの具体的な次PR仕様は `docs/next-task.md` を優先し、上記順序と矛盾する古い候補へ戻らない。
 
 ## しばらく守る境界
 

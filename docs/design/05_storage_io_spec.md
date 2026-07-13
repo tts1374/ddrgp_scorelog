@@ -316,6 +316,8 @@ orchestration入口がartifact output pathと `analysis_logs.log_path` の一致
 
 終了結果は `workflow_status`、`artifact_status=not_requested|created|reused|failed|conflict`、`adapter_status`、`db_status`、既存save resultと同じID、理由、artifact path、DB pathを返す。正式play値、candidate material、analysis detail本文は結果へ再掲しない。利用者は終了コードだけでなく、`workflow_status`、`artifact_status`、`written`、`play_id`、artifact file、正式DB diagnosticを確認する。自動補償、artifact削除、既存file上書き、DB自動修復は行わない。
 
+M9 WPFは `personal_score_db_workflow_app` を別processで起動する。このUI adapterはユーザーが選択したworkflow入力とDB pathだけを受け、入力内の `save_input.log_path` を既存orchestrationのartifact outputへ渡す。C#側にJSON save loader、DB writer、artifact writerを持たない。`saved` かつtransaction完了済みplayだけ同じread-only repositoryで再openし、通常の閲覧操作は引き続きwrite processを起動しない。
+
 ### 後続実装のfixture行列とacceptance criteria
 
 - readyのartifactなし/あり、低信頼度とerrorのartifact必須、その他skipの任意、DB duplicate collisionの各分岐を固定する。
