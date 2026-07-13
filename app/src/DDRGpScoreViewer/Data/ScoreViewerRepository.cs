@@ -381,11 +381,20 @@ public sealed class ScoreViewerRepository
         using var command = connection.CreateCommand();
         command.CommandText =
             """
-            SELECT song_id, chart_id, MAX(score), MAX(ex_score),
-                   MAX(played_at), COUNT(*)
-            FROM plays
-            GROUP BY song_id, chart_id
-            ORDER BY MAX(score) DESC, song_id, chart_id;
+            SELECT p.song_id, p.chart_id, MAX(p.score), MAX(p.ex_score),
+                   (
+                     SELECT recent.played_at
+                     FROM plays recent
+                     WHERE recent.song_id = p.song_id AND recent.chart_id = p.chart_id
+                     ORDER BY julianday(recent.played_at) DESC,
+                              recent.played_at DESC,
+                              recent.play_id DESC
+                     LIMIT 1
+                   ),
+                   COUNT(*)
+            FROM plays p
+            GROUP BY p.song_id, p.chart_id
+            ORDER BY MAX(p.score) DESC, p.song_id, p.chart_id;
             """;
         using var reader = command.ExecuteReader();
         var result = new List<ChartBestItem>();

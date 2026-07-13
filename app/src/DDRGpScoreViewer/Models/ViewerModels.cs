@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace DDRGpScoreViewer.Models;
 
 public sealed record PlayHistoryItem(
@@ -47,9 +49,7 @@ public sealed record PlayHistoryItem(
     };
 
     private static string FormatTimestamp(string value) =>
-        DateTimeOffset.TryParse(value, out var timestamp)
-            ? timestamp.ToLocalTime().ToString("yyyy/MM/dd HH:mm:ss")
-            : value;
+        ViewerTimestampFormatter.Format(value, "yyyy/MM/dd HH:mm:ss");
 }
 
 public sealed record ChartBestItem(
@@ -75,9 +75,19 @@ public sealed record ChartBestItem(
     public string BestScoreDisplay => BestScore.ToString("N0");
     public string BestExScoreDisplay => BestExScore.ToString("N0");
     public string LastPlayedAtDisplay =>
-        DateTimeOffset.TryParse(LastPlayedAt, out var timestamp)
-            ? timestamp.ToLocalTime().ToString("yyyy/MM/dd HH:mm")
-            : LastPlayedAt;
+        ViewerTimestampFormatter.Format(LastPlayedAt, "yyyy/MM/dd HH:mm");
+}
+
+internal static class ViewerTimestampFormatter
+{
+    public static string Format(string value, string format) =>
+        DateTimeOffset.TryParse(
+            value,
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.AllowWhiteSpaces | DateTimeStyles.AssumeUniversal,
+            out var timestamp)
+            ? timestamp.ToLocalTime().ToString(format, CultureInfo.CurrentCulture)
+            : value;
 }
 
 public sealed record ViewerData(

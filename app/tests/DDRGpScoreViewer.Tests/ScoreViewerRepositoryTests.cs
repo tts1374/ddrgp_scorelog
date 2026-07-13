@@ -30,8 +30,43 @@ public sealed class ScoreViewerRepositoryTests
         Assert.Equal(990_000, best.BestScore);
         Assert.Equal(2_500, best.BestExScore);
         Assert.Equal(2, best.PlayCount);
+        Assert.Equal("2026-07-12T11:00:00+00:00", best.LastPlayedAt);
         Assert.Equal(scoreHashBefore, Hash(fixture.ScorePath));
         Assert.Equal(masterHashBefore, Hash(fixture.MasterPath));
+    }
+
+    [Fact]
+    public void Load_treats_offsetless_schema_timestamp_as_utc_for_display()
+    {
+        using var fixture = new DatabaseFixture();
+        fixture.AddPlay("saved", "2026-07-13T10:00:00+00:00", 990_000, 2_400);
+        fixture.ExecuteScoreSql(
+            "UPDATE plays SET created_at = '2026-07-13 12:00:00' WHERE play_id = 'saved';");
+
+        var play = Assert.Single(
+            new ScoreViewerRepository().Load(fixture.ScorePath, fixture.MasterPath).Plays);
+        var expected = new DateTimeOffset(2026, 7, 13, 12, 0, 0, TimeSpan.Zero)
+            .ToLocalTime()
+            .ToString("yyyy/MM/dd HH:mm:ss");
+
+        Assert.Equal(expected, play.SavedAtDisplay);
+    }
+
+    [Fact]
+    public void Load_computes_last_play_by_instant_across_different_offsets()
+    {
+        using var fixture = new DatabaseFixture();
+        fixture.AddPlay(
+            "lexically-newer-but-earlier", "2026-07-13T00:30:00+09:00", 990_000, 2_400);
+        fixture.AddPlay(
+            "lexically-older-but-later", "2026-07-12T16:00:00+00:00", 980_000, 2_500);
+
+        var data = new ScoreViewerRepository().Load(fixture.ScorePath, fixture.MasterPath);
+
+        Assert.Equal(
+            ["lexically-older-but-later", "lexically-newer-but-earlier"],
+            data.Plays.Select(play => play.PlayId));
+        Assert.Equal("2026-07-12T16:00:00+00:00", Assert.Single(data.ChartBests).LastPlayedAt);
     }
 
     [Fact]
