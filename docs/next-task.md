@@ -22,6 +22,8 @@ codex/m9-windows-capture-manifest-slice
 
 ユーザーがWPFアプリから対象windowを明示選択し、Windows Graphics Captureで1フレームだけ取得して、既存manifest入力へ再利用できるローカル画像とmetadataを `data/` 配下へ安全に出力する最小capture sliceを追加します。
 
+このPRは `docs/implementation-roadmap.md` の「M9残り実行順」6項目中の1項目です。後続の実capture認識品質、連続capture、正式保存接続、監視UI・タスクトレイ、長時間運用の項目には進みません。
+
 ## Deliverables
 
 - WPFアプリに、ユーザー操作で開始する対象window pickerと1フレーム取得入口を追加する。
