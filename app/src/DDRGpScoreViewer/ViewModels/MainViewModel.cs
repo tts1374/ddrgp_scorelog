@@ -13,6 +13,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private readonly IPersonalScoreDbWorkflowRunner workflowRunner;
     private readonly ISingleFrameCaptureService? captureService;
     private readonly IContinuousCaptureService? continuousCaptureService;
+    private readonly ICaptureSaveWorkflowRunner? captureSaveWorkflowRunner;
     private PlayHistoryItem? selectedPlay;
     private string statusTitle = "プレーデータを選択してください";
     private string statusMessage =
@@ -35,12 +36,14 @@ public sealed class MainViewModel : INotifyPropertyChanged
         ScoreViewerRepository repository,
         IPersonalScoreDbWorkflowRunner workflowRunner,
         ISingleFrameCaptureService? captureService = null,
-        IContinuousCaptureService? continuousCaptureService = null)
+        IContinuousCaptureService? continuousCaptureService = null,
+        ICaptureSaveWorkflowRunner? captureSaveWorkflowRunner = null)
     {
         this.repository = repository;
         this.workflowRunner = workflowRunner;
         this.captureService = captureService;
         this.continuousCaptureService = continuousCaptureService;
+        this.captureSaveWorkflowRunner = captureSaveWorkflowRunner;
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -212,6 +215,25 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public async Task StartContinuousCaptureAsync(nint ownerWindowHandle)
     {
+        await StartContinuousCaptureCoreAsync(ownerWindowHandle, null, null);
+    }
+
+    public async Task StartContinuousCaptureAndSaveAsync(
+        nint ownerWindowHandle,
+        string scoreDatabasePath,
+        string masterDatabasePath)
+    {
+        await StartContinuousCaptureCoreAsync(
+            ownerWindowHandle,
+            scoreDatabasePath,
+            masterDatabasePath);
+    }
+
+    private async Task StartContinuousCaptureCoreAsync(
+        nint ownerWindowHandle,
+        string? scoreDatabasePath,
+        string? masterDatabasePath)
+    {
         if (IsStoppingCapture)
         {
             HasCaptureStatus = true;
@@ -247,7 +269,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
         HasCaptureStatus = true;
         CaptureStatusTitle = "対象windowを選択してください";
         CaptureStatusMessage =
-            "選択したwindowを明示停止まで取得します。解析やDB保存は実行しません。";
+            scoreDatabasePath is null
+                ? "選択したwindowを明示停止まで取得します。解析やDB保存は実行しません。"
+                : "選択したwindowを明示停止まで取得し、完成manifestだけを解析・正式保存境界へ渡します。";
         try
         {
             var result = await continuousCaptureService.RunAsync(ownerWindowHandle);
@@ -266,6 +290,17 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 _ => "連続キャプチャに失敗しました",
             };
             CaptureStatusMessage = result.UserMessage;
+            if (
+                result.Status == CaptureOperationStatus.Saved
+                && result.Output is not null
+                && scoreDatabasePath is not null
+                && masterDatabasePath is not null)
+            {
+                await RunCaptureSaveWorkflowAsync(
+                    result.Output.ManifestPath,
+                    scoreDatabasePath,
+                    masterDatabasePath);
+            }
         }
         finally
         {
@@ -274,6 +309,75 @@ public sealed class MainViewModel : INotifyPropertyChanged
             continuousCaptureFinished?.TrySetResult();
             continuousCaptureFinished = null;
         }
+    }
+
+    private async Task RunCaptureSaveWorkflowAsync(
+        string manifestPath,
+        string scoreDatabasePath,
+        string masterDatabasePath)
+    {
+        HasSaveStatus = true;
+        IsSaving = true;
+        SaveStatusTitle = "キャプチャを解析しています";
+        SaveStatusMessage = "confirmed eventを取得順に1件ずつ正式保存境界で処理しています。";
+        try
+        {
+            if (captureSaveWorkflowRunner is null)
+            {
+                SaveStatusTitle = "自動保存workflowを利用できません";
+                SaveStatusMessage = "capture save workflow runnerが構成されていません。";
+                return;
+            }
+            var result = await captureSaveWorkflowRunner.RunAsync(
+                manifestPath,
+                scoreDatabasePath,
+                masterDatabasePath);
+            if (result.Status != "completed")
+            {
+                SaveStatusTitle = "キャプチャ解析に失敗しました";
+                SaveStatusMessage = result.Reasons.Count == 0
+                    ? "解析結果を取得できませんでした。"
+                    : string.Join(" / ", result.Reasons);
+                return;
+            }
+
+            if (result.SavedPlayIds.Count > 0)
+            {
+                var data = repository.Load(scoreDatabasePath, masterDatabasePath);
+                if (result.SavedPlayIds.Any(id => data.Plays.All(play => play.PlayId != id)))
+                {
+                    SaveStatusTitle = "保存結果を確認できませんでした";
+                    SaveStatusMessage = "transaction後のread-only再読込で保存済みplayを確認できませんでした。";
+                    return;
+                }
+                ApplyData(data);
+            }
+
+            SaveStatusTitle = result.SavedPlayIds.Count > 0
+                ? $"{result.SavedPlayIds.Count}件のプレーを保存しました"
+                : "保存できるプレーはありませんでした";
+            SaveStatusMessage = CaptureSaveStatusMessage(result);
+        }
+        catch (ViewerDatabaseException exception)
+        {
+            SaveStatusTitle = "保存後の再読込に失敗しました";
+            SaveStatusMessage = exception.UserMessage;
+        }
+        finally
+        {
+            IsSaving = false;
+        }
+    }
+
+    private static string CaptureSaveStatusMessage(CaptureSaveWorkflowResult result)
+    {
+        var counts = result.StatusCounts.Count == 0
+            ? "対象eventなし"
+            : string.Join(
+                ", ",
+                result.StatusCounts.OrderBy(item => item.Key)
+                    .Select(item => $"{item.Key}={item.Value}"));
+        return $"event={result.EventCount}: {counts}。saved以外は成功保存として表示していません。";
     }
 
     public async Task StopContinuousCaptureAsync()

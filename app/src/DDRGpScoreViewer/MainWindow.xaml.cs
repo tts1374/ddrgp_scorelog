@@ -24,7 +24,8 @@ public partial class MainWindow : Window
                 new RepositoryCaptureOutputWriter()),
             new ContinuousCaptureService(
                 new ContinuousWindowsGraphicsCaptureAdapter(),
-                new RepositoryCaptureSessionOutputWriter()));
+                new RepositoryCaptureSessionOutputWriter()),
+            new PythonCaptureSaveWorkflowRunner());
         DataContext = viewModel;
     }
 
@@ -36,6 +37,37 @@ public partial class MainWindow : Window
     private async void StopContinuousCapture_Click(object sender, RoutedEventArgs e)
     {
         await viewModel.StopContinuousCaptureAsync();
+    }
+
+    private async void StartContinuousCaptureAndSave_Click(object sender, RoutedEventArgs e)
+    {
+        var scoreDialog = new SaveFileDialog
+        {
+            Title = "保存先の正式v1プレーデータを選択",
+            Filter = "SQLite database (*.sqlite)|*.sqlite|All files (*.*)|*.*",
+            AddExtension = true,
+            DefaultExt = ".sqlite",
+            OverwritePrompt = false,
+            CreatePrompt = false,
+        };
+        if (scoreDialog.ShowDialog(this) != true)
+        {
+            return;
+        }
+        var masterDialog = new OpenFileDialog
+        {
+            Title = "認識と再表示に使う生成済み楽曲データを選択",
+            Filter = "SQLite database (*.sqlite;*.sqlite3;*.db)|*.sqlite;*.sqlite3;*.db|All files (*.*)|*.*",
+            CheckFileExists = true,
+        };
+        if (masterDialog.ShowDialog(this) != true)
+        {
+            return;
+        }
+        await viewModel.StartContinuousCaptureAndSaveAsync(
+            new WindowInteropHelper(this).EnsureHandle(),
+            scoreDialog.FileName,
+            masterDialog.FileName);
     }
 
     protected override async void OnClosing(CancelEventArgs e)

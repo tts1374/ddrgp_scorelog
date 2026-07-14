@@ -304,6 +304,20 @@ M3-4の曲名/artist OCR入口では、`m3_song_artist_ocr.csv`、`m3_song_artis
 M3-5の保存候補向け集約では、`m3_save_candidate_summary.csv`、`m3_save_candidate_summary.json`、`m3_save_candidate_summary.md` を読み、confirmed-events 1件につき曲名、artist、`play_style`、`difficulty`、`level` が保存前向け状態へ集約されていることを確認する。この集約はレポート同士の読み分けを助けるためのもので、DB保存、マスタ照合、ファジーマッチ、曲名正規化の成功扱いにはしない。
 M3-6の保存候補ブロッカー代表整理では、`m3_save_candidate_blockers_summary.json` と `m3_save_candidate_blockers_summary.md` を読み、M3-5集約内の未ready項目からfield別・理由別の代表 `organized_file` と `roi_path` を確認する。これは保存前に止まる理由のレビュー補助であり、保存可否判定そのものではない。
 
+## Continuous capture save workflow
+
+明示停止で完成したWPF session manifestは `capture_save_workflow` が既存manifest modeへ渡す。入力順とstrictly increasingな `timestamp_ms` を維持し、分類、confirmed event、M5候補観測、M7a数字候補を再利用する。capture sessionの停止・失敗statusはこの解析statusと別で、captureが `Saved` でない場合は解析も正式workflowも起動しない。
+
+event処理は入力順の直列で、次の3段階を混同しない。
+
+1. 未確定、non-result、`rejected_transition` は正式workflow前に `policy_excluded` とする。
+2. confirmed eventは自動formal昇格adapterでfield別根拠を検査する。duplicate eventはplayなしの除外入力、non-duplicateは全正式根拠が揃う場合だけformal inputを構築する。
+3. 既存 `personal_score_db_workflow` をeventにつき最大1回呼び、`saved`、DB `duplicate`、`excluded`、`unresolved`、`invalid`、artifact failure、DB拒否をそのまま返す。
+
+自動formal根拠は候補値の存在だけでは足りない。played_atはcapture UTC、master versionはmaster metadata、identityは採用済みM5根拠、数字は採用済みM7a profile、rank/clear typeはそれぞれ採用済みrecognizer、duplicate keyは正式capture-event方式というfield固有sourceと最低confidenceを要求する。expected値、`match`、M8 preview、raw OCR、相対時刻はsourceにできない。現行解析でrank/clear type等の採用済み根拠がないeventは `unresolved` であり、play rowを作らない。
+
+正式DB transaction後に `saved` と `play_id` が返ったeventだけviewerをread-only再読込する。他statusはevent集計に残しても成功playへ丸めない。manual reviewed JSONは従来入口を維持し、自動capture由来のadapter入力と混同しない。
+
 ## M0/M1で固定すること
 
 - 保存境界は `confirmed_result=true` かつ `duplicate=false`。

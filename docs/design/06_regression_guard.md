@@ -426,9 +426,14 @@
 - resizeは自動追従せず `Resized` で停止し、再選択を求める。
 - 二重開始を拒否し、停止は冪等に扱い、event購読とWinRT/D3D resourceを一度だけ解放する。
 - bounded queueで中間frameをdropしても、保存frameの順序とstrictly increasing timestampを維持する。
-- capture UIは分類、OCR、identity、confirmed event、正式save input、workflow、正式DB、viewer履歴を自動起動しない。
-- captureだけではVision PoC、workflow、正式DB schema/writer/duplicate、artifact、viewer履歴を変更しない。
+- `連続取得を開始` のcapture-only UIは分類、OCR、identity、confirmed event、正式save input、workflow、正式DB、viewer履歴を起動しない。
+- `連続取得・保存` だけが完成manifest後に解析を起動し、capture失敗時は解析・workflowを呼ばない。
+- capture saveは未確定/transitionをworkflow前で除外し、confirmed eventを直列に最大1回ずつ既存workflowへ渡す。
+- candidate/raw/expected/preview/相対時刻はformal値へコピーせず、採用済みfield source、confidence、完全性不足を `unresolved` に保つ。
+- DB duplicate、excluded、unresolved、invalid、artifact partial failure、DB拒否をsavedへ丸めず、transaction済みplayだけread-only再読込する。
+- capture接続は正式DB schema version 1、writer transaction、duplicate、manual workflow入口を変更しない。
 - `.NET build/test` とcapture列を読む対象Python testを実行する。画像分類・ROI・OCR・confirmed-events生成を変更しない場合、Vision PoC本体の再実行は不要とする。
+- capture save接続を変更した場合は、保存候補境界、formal昇格negative、workflow status写像、DB duplicate、viewer再読込のPython/.NET testと、利用可能な実capture manifestのdry-runを実行する。
 
 ## 代表検証コマンド
 

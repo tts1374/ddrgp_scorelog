@@ -321,6 +321,12 @@ CLIは `--personal-score-db-analysis-detail-input <json>` と `--personal-score-
 
 retention classは `short=7日`、`standard=30日`、`indefinite=期限なし` とする。UTCの `basis_at` から `expires_at` を決定的に計算し、期限なしだけnullにする。同じ詳細JSONとそこから参照する失敗画像へ同じretention metadataを適用する。この契約は将来cleanupの判断材料だけであり、ファイル作成、削除、scheduler、起動時掃除を行わない。
 
+## Capture save workflow output
+
+continuous capture原本は `data/windows_capture/session-*/` に保持し、解析生成物は別の一意directory `data/capture_save_workflow/<session>-<id>/` に出力する。画像原本やmanifestを解析出力へ移動・上書きしない。出力directoryは既存Vision PoCのCSV/JSON/ROI artifactであり、正式DB、`source_captures` 本文、`analysis_logs.log_path`、DB diagnostic logの代用にしない。
+
+正式DB pathとmaster DB pathはWPFの `連続取得・保存` ごとに明示し、capture-only操作には既定DB pathを導入しない。unconfirmed/rejectedと自動formal `unresolved` はDBを開かず、正式workflowへ進むconfirmed eventも既存file-save境界だけが新規/0 byte/compatible DBを準備する。`saved` transactionの後だけviewerが同じ正式DBをread-onlyで開き直す。
+
 ## Analysis artifactと正式saveの接続契約
 
 現行のartifact CLIとsave CLIは独立操作のまま維持する。production接続は既存CLIの暗黙連鎖ではなく、`personal_score_db_workflow` の単発明示orchestration入口が担当する。入口はversion 1 workflow入力を受け、artifact payloadとstrict save inputを別objectのままloaderへ渡し、候補材料、analysis detail、正式play値を相互投影しない。
