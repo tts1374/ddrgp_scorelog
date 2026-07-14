@@ -15,7 +15,7 @@
 - 指定された作業は、1つのレビュー可能かつmerge可能なPRとして完成させるまで自走する。
 - 作業開始時に、依頼内容、`docs/next-task.md`、関連設計docsから、PRの目的、成果物、完了条件、スコープ外を確認する。
 - 既存資料から一意に判断できる事項は、ユーザーへ再確認しない。
-- 主実装後も、必要なテスト、README・設計docs同期、セルフレビュー、修正、検証、diff確認まで続行する。
+- 主実装後も、必要なテスト、README・設計docs同期、実装担当と独立したread-only branch diffレビュー、修正後の再レビュー、検証、diff確認まで続行する。
 - テスト失敗、lint失敗、fixture不足、今回変更による文書不整合は、安全に解決できる限りユーザーへ戻さず修正する。
 - 追加変更は、次をすべて満たす場合だけ同じPRへ含める。
   - 現在のPR目的とタイトルのまま説明できる。
@@ -195,8 +195,11 @@ python -m pip install --user "ruff>=0.9.0"
 python -X utf8 "$env:USERPROFILE\.codex\skills\.system\skill-creator\scripts\quick_validate.py" ".agents\skills\review-ddrgp-db-save-boundary"
 ```
 
-- 実装後はbranch diffをread-onlyでレビューする。利用可能なら `/review` を使い、関連Skillの観点を適用する。
-- 重大度medium以上の指摘は、現在のPR範囲内なら修正して再検証する。範囲外なら次PR候補へ送る。
+- commit・push・GitHubレビュー依頼の前に、base branchとのbranch diff全体を専用reviewerまたはread-onlyサブエージェントでレビューする。利用可能なら `/review` を使い、実装担当と同じ文脈のセルフレビューだけで完了扱いにしない。
+- レビューでは、変更責務に該当する正常系、空/欠損、重複、競合、再投入、旧version、部分失敗、option混在を境界条件マトリクスとして列挙し、各行の期待結果と回帰testの有無を確認する。該当しない軸は理由を示して除外してよい。
+- schema、field、status、option、永続化形式を変更した場合は、書く側だけでなく、それを読む全consumer、集計、再読込、互換経路を検索し、旧値・旧versionを現行値として誤解しないことを確認する。
+- validation、duplicate、skip、互換性拒否、option不整合などの早期returnを追加・変更した場合は、returnより前に起こり得る入力読込、directory/file作成、DB準備・書込み、log/artifact出力を列挙し、拒否時に副作用がないtestを置く。
+- 重大度medium以上の指摘は、現在のPR範囲内なら修正して再検証し、修正後のdiffをもう一度read-onlyレビューする。範囲外なら次PR候補へ送る。
 - read-onlyサブエージェントは、diffレビュー、テストギャップ調査、READMEとCLIの整合確認に限って必要時に使う。
 - 実装変更は原則として親エージェントが統合して行う。
 - 新しいプロジェクト専用SkillやSubagentは、対象作業が独立した反復手順として安定してから追加する。

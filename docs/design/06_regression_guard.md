@@ -394,6 +394,15 @@
 
 ## M5b jacket catalog guard
 
+M5bの変更では、少なくとも次の境界条件マトリクスをfixtureで固定する。
+
+| 境界 | 入力/前提 | 期待する不変条件 |
+| --- | --- | --- |
+| 再投入 | 同じcapture/hashを無変更、監査値だけ追加、title/artist/statusを訂正、`image_kind` を訂正 | 無変更は `existing`、監査値だけなら紐付け不変、identity訂正は候補と解決結果を同一referenceで更新、kind訂正だけ特徴量を再計算し、いずれも不要なreferenceを増やさない |
+| 同一画像・別song | 同じ画像bytesを別の解決済みsongへ投入 | source hashが同じでもsongごとの別referenceを保持し、各songのcoverageとM5候補から欠落させない |
+| 候補coverage | `song_id` 未確定だがGP songの候補あり、GP候補なし、orphanあり | 候補songは確定へ昇格せず `needs_review`、候補なしだけを未割当へ数え、orphanと分母を混同・二重計上しない |
+| CLI option混在 | `--m5-jacket-catalog` と正式DB save pairを、`--m5-jacket-match` なし/ありの両方で併用 | mutually-exclusiveとして入力読込・directory/DB準備・正式保存より前に拒否し、DBと `data/` を作らない |
+
 - catalog identity/schema version、safe `data/` path、新規作成、read-only open、非catalog・破損catalog拒否をfixtureで固定する。
 - capture idとsource hash + 解決identityの冪等性、同一song 1:N、同一画像bytesを共有する別songの別reference保持、capture idと画像bytesの矛盾拒否、`image_kind` と全768 thumbnail値の永続化・復元を固定する。同一画像のkind訂正ではreferenceを増やさず特徴量を再計算し、同じkindの再投入では更新しない。
 - canonical title + artist、一意aliasだけをauto-confirmし、artist不一致、曖昧alias、複数候補、観測/feature失敗を `needs_review` / `unresolved` に保つ。
