@@ -49,6 +49,36 @@ public sealed class MainViewModelTests
         Assert.Equal("master更新取消", canceled.StatusTitle);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ClearsPreviouslyDisplayedProjectionWhenNextLoadFailsOrIsCanceled(
+        bool cancel)
+    {
+        var projectionService = new SequenceProjectionService(
+            Projection(),
+            cancel ? new OperationCanceledException() : new InvalidOperationException("invalid projection"));
+        var viewModel = new MainViewModel(
+            new StubMasterUpdateService(),
+            projectionService);
+        await viewModel.LoadProjectionAsync("master-v1.sqlite", "catalog-v1.sqlite");
+        viewModel.SelectedCoverageStatus = "needs_review";
+        viewModel.SelectedReason = "opaque reason";
+
+        await Assert.ThrowsAnyAsync<Exception>(
+            () => viewModel.LoadProjectionAsync("master-v2.sqlite", "catalog-v2.sqlite"));
+
+        Assert.Equal(cancel ? "取消" : "読込失敗", viewModel.StatusTitle);
+        Assert.Equal("未選択", viewModel.MasterVersion);
+        Assert.Equal("未選択", viewModel.CatalogIdentity);
+        Assert.Equal("—", viewModel.CoverageSummary);
+        Assert.Empty(viewModel.Songs);
+        Assert.Empty(viewModel.ReviewReferences);
+        Assert.Equal(["all"], viewModel.ReasonOptions);
+        Assert.Equal("all", viewModel.SelectedCoverageStatus);
+        Assert.Equal("all", viewModel.SelectedReason);
+    }
+
     private static ReviewProjection Projection() => new()
     {
         ProjectionSchemaVersion = 1,
@@ -107,6 +137,24 @@ public sealed class MainViewModelTests
             string masterPath,
             string catalogPath,
             CancellationToken cancellationToken) => Task.FromResult(projection);
+    }
+
+    private sealed class SequenceProjectionService(
+        ReviewProjection first,
+        Exception second) : IProjectionService
+    {
+        private int callCount;
+
+        public Task<ReviewProjection> LoadAsync(
+            string masterPath,
+            string catalogPath,
+            CancellationToken cancellationToken)
+        {
+            callCount++;
+            return callCount == 1
+                ? Task.FromResult(first)
+                : Task.FromException<ReviewProjection>(second);
+        }
     }
 
     private sealed class StubMasterUpdateService(Exception? exception = null) : IMasterUpdateService

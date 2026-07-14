@@ -90,7 +90,11 @@ public sealed class MainViewModel(
         StatusMessage = "master と catalog を read-only で検証しています。";
         try
         {
-            projection = await projectionService.LoadAsync(masterPath, catalogPath, cancellationToken);
+            var loadedProjection = await projectionService.LoadAsync(
+                masterPath,
+                catalogPath,
+                cancellationToken);
+            projection = loadedProjection;
             RebuildFilterOptions();
             ApplyFilters();
             NotifyProjectionProperties();
@@ -99,12 +103,14 @@ public sealed class MainViewModel(
         }
         catch (OperationCanceledException)
         {
+            ClearProjection();
             StatusTitle = "取消";
             StatusMessage = "読込を取り消しました。DBは変更していません。";
             throw;
         }
         catch (Exception exception)
         {
+            ClearProjection();
             StatusTitle = "読込失敗";
             StatusMessage = exception.Message;
             throw;
@@ -195,6 +201,18 @@ public sealed class MainViewModel(
         OnPropertyChanged(nameof(CatalogSchema));
         OnPropertyChanged(nameof(CoverageSummary));
         OnPropertyChanged(nameof(OrphanSummary));
+    }
+
+    private void ClearProjection()
+    {
+        projection = null;
+        Songs.Clear();
+        ReviewReferences.Clear();
+        ReasonOptions.Clear();
+        ReasonOptions.Add("all");
+        SelectedCoverageStatus = "all";
+        SelectedReason = "all";
+        NotifyProjectionProperties();
     }
 
     private static string FormatSummary(MasterSummary summary) =>
