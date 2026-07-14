@@ -5,7 +5,7 @@ namespace DDRGpScoreViewer.Capture;
 
 public sealed class ContinuousCaptureService(
     IContinuousGraphicsCaptureAdapter captureAdapter,
-    ICaptureSessionOutputWriter outputWriter) : IContinuousCaptureService
+    ICaptureSessionOutputWriter outputWriter) : IMonitoringContinuousCaptureService
 {
     private const int AccessDeniedHResult = unchecked((int)0x80070005);
     private const int DxgiDeviceRemovedHResult = unchecked((int)0x887A0005);
@@ -30,7 +30,19 @@ public sealed class ContinuousCaptureService(
 
     public async Task<CaptureSessionOperationResult> RunAsync(
         nint ownerWindowHandle,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        await RunCoreAsync(ownerWindowHandle, null, cancellationToken);
+
+    public async Task<CaptureSessionOperationResult> RunAsync(
+        nint ownerWindowHandle,
+        IProgress<CaptureSessionProgress> progress,
+        CancellationToken cancellationToken = default) =>
+        await RunCoreAsync(ownerWindowHandle, progress, cancellationToken);
+
+    private async Task<CaptureSessionOperationResult> RunCoreAsync(
+        nint ownerWindowHandle,
+        IProgress<CaptureSessionProgress>? progress,
+        CancellationToken cancellationToken)
     {
         lock (stateLock)
         {
@@ -89,12 +101,28 @@ public sealed class ContinuousCaptureService(
                     "開始処理中に停止しました。session outputは作成していません。");
             }
 
+            var startedAtUtc = DateTimeOffset.UtcNow;
+            var target = source is IContinuousFrameSourceMetadata metadata
+                ? metadata.Target
+                : new CaptureTargetInfo("選択済みwindow", 0, 0);
+            progress?.Report(new CaptureSessionProgress(
+                target,
+                0,
+                startedAtUtc,
+                startedAtUtc));
+
             var transaction = await BeginOutputAsync(cancellationToken);
             try
             {
                 await foreach (var frame in source.ReadFramesAsync(cancellationToken))
                 {
                     await WriteFrameAsync(transaction, frame, cancellationToken);
+                    target = new CaptureTargetInfo(frame.CaptureSource, frame.Width, frame.Height);
+                    progress?.Report(new CaptureSessionProgress(
+                        target,
+                        transaction.FrameCount,
+                        startedAtUtc,
+                        frame.CapturedAtUtc));
                 }
 
                 var endReason = await source.Completion;
