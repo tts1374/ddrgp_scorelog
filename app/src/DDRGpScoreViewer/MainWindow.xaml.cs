@@ -3,15 +3,19 @@ using System.Windows;
 using System.Windows.Interop;
 using DDRGpScoreViewer.Capture;
 using DDRGpScoreViewer.Data;
+using DDRGpScoreViewer.Models;
+using DDRGpScoreViewer.Tray;
 using DDRGpScoreViewer.ViewModels;
-using Microsoft.Win32;
+using OpenFileDialog = Microsoft.Win32.OpenFileDialog;
+using SaveFileDialog = Microsoft.Win32.SaveFileDialog;
 
 namespace DDRGpScoreViewer;
 
-public partial class MainWindow : Window
+public partial class MainWindow : System.Windows.Window
 {
     private readonly MainViewModel viewModel;
-    private bool closeAfterCaptureStop;
+    private readonly AsyncOperationGate monitoringStartGate = new();
+    private bool applicationExitRequested;
 
     public MainWindow()
     {
@@ -29,6 +33,8 @@ public partial class MainWindow : Window
         DataContext = viewModel;
     }
 
+    internal MainViewModel ViewModel => viewModel;
+
     private async void StartContinuousCapture_Click(object sender, RoutedEventArgs e)
     {
         await viewModel.StartContinuousCaptureAsync(new WindowInteropHelper(this).EnsureHandle());
@@ -41,50 +47,88 @@ public partial class MainWindow : Window
 
     private async void StartContinuousCaptureAndSave_Click(object sender, RoutedEventArgs e)
     {
-        if (viewModel.IsSaving)
-        {
-            return;
-        }
-        var scoreDialog = new SaveFileDialog
-        {
-            Title = "保存先の正式v1プレーデータを選択",
-            Filter = "SQLite database (*.sqlite)|*.sqlite|All files (*.*)|*.*",
-            AddExtension = true,
-            DefaultExt = ".sqlite",
-            OverwritePrompt = false,
-            CreatePrompt = false,
-        };
-        if (scoreDialog.ShowDialog(this) != true)
-        {
-            return;
-        }
-        var masterDialog = new OpenFileDialog
-        {
-            Title = "認識と再表示に使う生成済み楽曲データを選択",
-            Filter = "SQLite database (*.sqlite;*.sqlite3;*.db)|*.sqlite;*.sqlite3;*.db|All files (*.*)|*.*",
-            CheckFileExists = true,
-        };
-        if (masterDialog.ShowDialog(this) != true)
-        {
-            return;
-        }
-        await viewModel.StartContinuousCaptureAndSaveAsync(
-            new WindowInteropHelper(this).EnsureHandle(),
-            scoreDialog.FileName,
-            masterDialog.FileName);
+        await StartMonitoringAsync();
     }
 
-    protected override async void OnClosing(CancelEventArgs e)
+    internal Task StartMonitoringFromTrayAsync() => StartMonitoringAsync();
+
+    private Task StartMonitoringAsync() => monitoringStartGate.RunAsync(StartMonitoringCoreAsync);
+
+    private async Task StartMonitoringCoreAsync(CancellationToken cancellationToken)
     {
-        if (viewModel.IsContinuousCapturing && !closeAfterCaptureStop)
+        if (viewModel.IsSaving || cancellationToken.IsCancellationRequested)
+        {
+            return;
+        }
+        viewModel.SetMonitoringStartPending(true);
+        try
+        {
+            var scoreDialog = new SaveFileDialog
+            {
+                Title = "保存先の正式v1プレーデータを選択",
+                Filter = "SQLite database (*.sqlite)|*.sqlite|All files (*.*)|*.*",
+                AddExtension = true,
+                DefaultExt = ".sqlite",
+                OverwritePrompt = false,
+                CreatePrompt = false,
+            };
+            if (scoreDialog.ShowDialog(this) != true || cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+            var masterDialog = new OpenFileDialog
+            {
+                Title = "認識と再表示に使う生成済み楽曲データを選択",
+                Filter = "SQLite database (*.sqlite;*.sqlite3;*.db)|*.sqlite;*.sqlite3;*.db|All files (*.*)|*.*",
+                CheckFileExists = true,
+            };
+            if (masterDialog.ShowDialog(this) != true || cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+            await viewModel.StartContinuousCaptureAndSaveAsync(
+                new WindowInteropHelper(this).EnsureHandle(),
+                scoreDialog.FileName,
+                masterDialog.FileName);
+        }
+        finally
+        {
+            viewModel.SetMonitoringStartPending(false);
+        }
+    }
+
+    internal async Task StopMonitoringAsync()
+    {
+        monitoringStartGate.Cancel();
+        await viewModel.StopContinuousCaptureAsync();
+        await monitoringStartGate.WaitAsync();
+    }
+
+    internal void PrepareForApplicationExit()
+    {
+        applicationExitRequested = true;
+        monitoringStartGate.Dispose();
+    }
+
+    protected override void OnClosing(CancelEventArgs e)
+    {
+        if (WindowLifecyclePolicy.HideOnClose(applicationExitRequested))
         {
             e.Cancel = true;
-            await viewModel.StopContinuousCaptureAsync();
-            closeAfterCaptureStop = true;
-            Close();
+            Hide();
             return;
         }
         base.OnClosing(e);
+    }
+
+    protected override void OnStateChanged(EventArgs e)
+    {
+        base.OnStateChanged(e);
+        if (WindowState == WindowState.Minimized &&
+            WindowLifecyclePolicy.HideOnMinimize(applicationExitRequested))
+        {
+            Hide();
+        }
     }
 
     private async void CaptureOneFrame_Click(object sender, RoutedEventArgs e)

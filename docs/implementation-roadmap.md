@@ -487,9 +487,8 @@ Status: Completed on 2026-07-14.
 - 2026-07-13時点で第4段階の実capture認識品質を確認した。WPF manifestを既存manifest modeで再実行し、1280x720実capture 5枚で分類5/5、confirmed result 1件、M7a主要数字8/8、chart-field 3/3、master/jacket match各1/1を期待値付きで確認した。曲名ROIをartist行から局所分離し、空読み時だけ従来ROIへ戻す。既存 `low-threshold` profileでEX SCOREの実capture差分を吸収した。候補材料を正式値やDB保存へ昇格していない。
 - 2026-07-13時点で第5段階の連続capture sessionを追加した。明示選択windowを明示停止まで同じWindows Graphics Capture resourceで取得し、strictly increasing timestampのmanifest互換bundleをstagingからatomicに公開する。resize、target closed、device lost、write失敗は部分sessionを破棄し、解析、自動保存、常駐監視には接続していない。
 - 2026-07-14時点で第6段階の正式保存workflow接続を追加した。明示した `連続取得・保存` だけが完成session manifestを既存分類・confirmed event・M5/M7a候補へ渡し、eventを直列に既存正式workflowで処理する。採用済みfield根拠、confidence、完全性が揃わないeventは `unresolved` に保ち、DB duplicate・excluded・解析/DB失敗をsavedへ丸めない。transaction済みplayだけread-only再読込する。現行pipelineの候補値を正式値へ暗黙昇格せず、常駐監視・task trayには進んでいない。
-- 第7段階としてM5b jacket参照カタログを追加済み。次は監視状態を接続する。
-- タスクトレイ常駐を実装する。
-- 監視状態、対象ウィンドウ状態、最新保存結果を表示する。
+- 第7段階としてM5b jacket参照カタログを追加済み。
+- 2026-07-14時点で第8段階の監視UIとtask trayを追加した。明示pickerと既存capture-saveを `idle` から終了・失敗までの監視状態へ投影し、対象window、frame数、時刻、saved/skip/解析・DB失敗をWPFで表示する。通常close/最小化はtrayへ隠し、明示終了だけがstop完了とcapture/tray resource解放を待つ。自動探索、自動再接続、長時間soak、正式DB schema・保存境界変更には進んでいない。
 - マスタDB更新状態を表示する。
 - ROI調整画面、失敗ログ一覧、保存済み履歴の簡易一覧を段階的に追加する。
 
@@ -499,7 +498,7 @@ M9残り実行順（PR #21 merge後、原則1項目1PR）:
 2. 完了: 実capture画像をmanifestで再実行できる状態を固定し、曲・譜面同定と数字認識を実capture投入可能な品質へ上げる。認識結果を正式値へ暗黙昇格させない。
 3. 完了: 明示選択したwindowに対する連続capture sessionを追加し、resize、対象終了、再選択、device lost、resource解放を扱う。監視結果からの自動保存はまだ行わない。
 4. 完了: capture、分類、confirmed event、既存正式保存workflowを接続し、保存成功、duplicate、excluded、解析失敗を既存境界のまま1件ずつ処理する。
-5. 監視状態、対象window状態、最新保存結果、保存skip、解析失敗ログをWPFへ統合し、タスクトレイから開始・停止・状態確認できるようにする。
+5. 完了: 監視状態、対象window状態、最新保存結果、保存skip、解析失敗をWPFへ統合し、タスクトレイから開始・停止・状態確認できるようにする。
 6. マスタDB更新状態、長時間動作、再起動・再接続、resource leak、失敗復旧を検証し、M9完了条件を満たす運用状態へ固める。installer、配布、精度保証値の確定はM10へ残す。
 
 4項目目の正式保存workflow接続後、5項目目の監視UI・タスクトレイへ進む前に、M5b「ローカルjacket参照カタログ整備」を独立PRとして差し込む。M5bでは正式保存workflow、監視UI、正式個人スコアDB schemaを変更しない。
@@ -532,9 +531,8 @@ M9残り実行順（PR #21 merge後、原則1項目1PR）:
 
 ## 近い順の推奨作業
 
-1. `M9残り実行順` の5として、監視UI・タスクトレイへ状態表示と明示開始・停止を接続する。
-2. 続いて6の長時間運用、再起動・再接続、resource leak、失敗復旧を独立PRで固める。
-3. M9完了後にM10の実機検証と配布準備へ進む。
+1. `M9残り実行順` の6として、長時間運用、再起動・再接続、resource leak、失敗復旧を独立PRで固める。
+2. M9完了後にM10の実機検証と配布準備へ進む。
 
 各チャットの具体的な次PR仕様は `docs/next-task.md` を優先し、上記順序と矛盾する古い候補へ戻らない。
 

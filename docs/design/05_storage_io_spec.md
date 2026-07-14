@@ -335,6 +335,14 @@ continuous capture原本は `data/windows_capture/session-*/` に保持し、解
 
 正式DB pathとmaster DB pathはWPFの `連続取得・保存` ごとに明示し、capture-only操作には既定DB pathを導入しない。unconfirmed/rejectedと自動formal `unresolved` はDBを開かず、正式workflowへ進むconfirmed eventも既存file-save境界だけが新規/0 byte/compatible DBを準備する。`saved` transactionの後だけviewerが同じ正式DBをread-onlyで開き直す。
 
+## WPF monitoringとtask tray lifecycle
+
+監視開始はWPFまたはtask trayの明示操作からだけ行い、正式DB、master DB、対象windowを都度ユーザーが選ぶ。window title、幅、高さは選択済み対象の表示にだけ使い、自動探索や自動再接続のkeyにしない。監視surfaceはcapture progressのframe数、開始UTC、最新frame UTCと、capture-save結果の `saved`、`duplicate`、`excluded`、`unresolved`、`analysis_failed`、`db_rejected`、`workflow_failed` を投影する。これは新しい永続化形式ではなく、終了後に破棄可能なprocess内状態である。
+
+通常のmain window closeと最小化はwindowを非表示にし、capture sessionとworkflowのownerをApp/ViewModelに残す。task trayは開始、停止、window表示、明示終了を提供する。WPFとtrayの開始要求は正式DB/master DB pickerを開く前から1つのoperation gateで直列化し、picker中の再Startを同じTaskへ合流させる。明示終了はpending pickerをcancel状態にしてその終端と停止の冪等操作、in-flight capture/workflow完了を待ってから、NotifyIcon、context menu、window、processをこの順で終了する。stop自体が例外になった場合も理由を通知してtrayをdisposeし、process終了でOS resourceを残さない。stop、target closed、resize、device lost、capture/write失敗で既存capture resourceを一度だけ解放し、tray resourceはアプリ終了時に一度だけdisposeする。
+
+通知はtransaction済みsavedが1件以上ある完了と、target closed、resize、device lost、capture失敗、workflow失敗だけに限定する。duplicate、excluded、unresolved、analysis failureの反復を個別通知せず、WPF/trayから最新状態を確認可能にする。monitoring state、tray menu enable状態、close-to-tray、明示exitのstop待機はWindows Graphics Captureなしのfixtureで固定する。
+
 ## Analysis artifactと正式saveの接続契約
 
 現行のartifact CLIとsave CLIは独立操作のまま維持する。production接続は既存CLIの暗黙連鎖ではなく、`personal_score_db_workflow` の単発明示orchestration入口が担当する。入口はversion 1 workflow入力を受け、artifact payloadとstrict save inputを別objectのままloaderへ渡し、候補材料、analysis detail、正式play値を相互投影しない。
