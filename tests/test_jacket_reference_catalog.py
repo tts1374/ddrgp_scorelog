@@ -279,6 +279,64 @@ def test_ingest_is_idempotent_supports_one_to_many_and_rejects_capture_conflict(
         )
 
 
+def test_identical_jacket_pixels_can_reference_distinct_songs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    master_db, catalog_path = setup_paths(tmp_path, monkeypatch)
+    shared_image = tmp_path / "shared-jacket.png"
+    write_image(shared_image, (20, 40, 80))
+
+    alpha = catalog.ingest_observation(
+        catalog_path,
+        master_db,
+        source_image_path=shared_image,
+        source_capture_id="",
+        observed_title="Alpha",
+        observed_artist="Artist A",
+        image_kind="jacket_crop",
+    )
+    beta = catalog.ingest_observation(
+        catalog_path,
+        master_db,
+        source_image_path=shared_image,
+        source_capture_id="",
+        observed_title="Beta",
+        observed_artist="Artist B",
+        image_kind="jacket_crop",
+    )
+    alpha_repeated = catalog.ingest_observation(
+        catalog_path,
+        master_db,
+        source_image_path=shared_image,
+        source_capture_id="",
+        observed_title="Alpha",
+        observed_artist="Artist A",
+        image_kind="jacket_crop",
+    )
+    beta_repeated = catalog.ingest_observation(
+        catalog_path,
+        master_db,
+        source_image_path=shared_image,
+        source_capture_id="",
+        observed_title="Beta",
+        observed_artist="Artist B",
+        image_kind="jacket_crop",
+    )
+
+    assert (alpha.disposition, beta.disposition) == ("created", "created")
+    assert (alpha_repeated.disposition, beta_repeated.disposition) == (
+        "existing",
+        "existing",
+    )
+    assert alpha.reference_id != beta.reference_id
+    with sqlite3.connect(catalog_path) as connection:
+        rows = connection.execute(
+            "SELECT song_id, source_image_hash FROM jacket_references ORDER BY song_id"
+        ).fetchall()
+    assert [row[0] for row in rows] == ["song-1", "song-2"]
+    assert rows[0][1] == rows[1][1]
+
+
 def test_reingest_updates_corrected_identity_and_audit_without_adding_reference(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

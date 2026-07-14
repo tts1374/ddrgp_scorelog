@@ -159,9 +159,13 @@ CREATE TABLE jacket_references (
   observation_status TEXT NOT NULL,
   expected_song_id TEXT NOT NULL,
   created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL,
-  UNIQUE (source_image_hash, feature_extractor_version)
+  updated_at TEXT NOT NULL
 );
+CREATE INDEX idx_jacket_references_hash
+ON jacket_references(source_image_hash, feature_extractor_version);
+CREATE UNIQUE INDEX idx_jacket_references_hash_song
+ON jacket_references(source_image_hash, feature_extractor_version, song_id)
+WHERE song_id IS NOT NULL;
 CREATE UNIQUE INDEX idx_jacket_references_capture
 ON jacket_references(source_capture_id, feature_extractor_version)
 WHERE source_capture_id IS NOT NULL;
@@ -297,7 +301,7 @@ def _validate_catalog(connection: sqlite3.Connection) -> None:
     reference_unique = _unique_index_columns(connection, "jacket_references")
     expected_reference_unique = {
         ("reference_id",),
-        ("source_image_hash", "feature_extractor_version"),
+        ("source_image_hash", "feature_extractor_version", "song_id"),
         ("source_capture_id", "feature_extractor_version"),
     }
     if not expected_reference_unique <= reference_unique:
@@ -541,8 +545,22 @@ def _feature_json(values: np.ndarray) -> str:
     return json.dumps([float(value) for value in values], separators=(",", ":"))
 
 
-def _reference_id(source_hash: str) -> str:
-    return hashlib.sha256(f"{FEATURE_EXTRACTOR_VERSION}:{source_hash}".encode()).hexdigest()
+def _reference_id(
+    source_hash: str,
+    *,
+    capture_id: str | None,
+    song_id: str | None,
+    observed_title: str,
+    observed_artist: str,
+) -> str:
+    if capture_id is not None:
+        identity = f"capture:{capture_id}"
+    elif song_id is not None:
+        identity = f"song:{song_id}"
+    else:
+        identity = f"observation:{observed_title}\0{observed_artist}"
+    material = f"{FEATURE_EXTRACTOR_VERSION}:{source_hash}:{identity}"
+    return hashlib.sha256(material.encode()).hexdigest()
 
 
 def ingest_observation(
@@ -578,27 +596,59 @@ def ingest_observation(
         observation_status=observation_status,
         feature_available=feature is not None,
     )
-    reference_id = _reference_id(source_hash)
     timestamp = now or utc_now()
     capture_id = source_capture_id.strip() or None
+    resolved_song_id = None if resolution.song is None else resolution.song.song_id
+    reference_id = _reference_id(
+        source_hash,
+        capture_id=capture_id,
+        song_id=resolved_song_id,
+        observed_title=observed_title,
+        observed_artist=observed_artist,
+    )
     with closing(sqlite3.connect(catalog_path)) as connection, connection:
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA foreign_keys = ON")
         _validate_catalog(connection)
-        existing = connection.execute(
-            """
-            SELECT *
-            FROM jacket_references
-            WHERE (source_image_hash = ? AND feature_extractor_version = ?)
-               OR (source_capture_id IS ? AND source_capture_id IS NOT NULL
-                   AND feature_extractor_version = ?)
-            """,
-            (source_hash, FEATURE_EXTRACTOR_VERSION, capture_id, FEATURE_EXTRACTOR_VERSION),
-        ).fetchall()
-        if existing:
-            if any(str(row["source_image_hash"]) != source_hash for row in existing):
+        row = None
+        if capture_id is not None:
+            row = connection.execute(
+                """
+                SELECT *
+                FROM jacket_references
+                WHERE source_capture_id = ? AND feature_extractor_version = ?
+                """,
+                (capture_id, FEATURE_EXTRACTOR_VERSION),
+            ).fetchone()
+            if row is not None and str(row["source_image_hash"]) != source_hash:
                 raise ValueError("source_capture_id was already used with different image bytes")
-            row = existing[0]
+        if row is None and resolved_song_id is not None:
+            row = connection.execute(
+                """
+                SELECT *
+                FROM jacket_references
+                WHERE source_image_hash = ? AND feature_extractor_version = ?
+                  AND song_id = ?
+                """,
+                (source_hash, FEATURE_EXTRACTOR_VERSION, resolved_song_id),
+            ).fetchone()
+        if row is None and resolved_song_id is None:
+            row = connection.execute(
+                """
+                SELECT *
+                FROM jacket_references
+                WHERE source_image_hash = ? AND feature_extractor_version = ?
+                  AND song_id IS NULL
+                  AND observed_title = ? AND observed_artist = ?
+                """,
+                (
+                    source_hash,
+                    FEATURE_EXTRACTOR_VERSION,
+                    observed_title,
+                    observed_artist,
+                ),
+            ).fetchone()
+        if row is not None:
             existing_reference_id = str(row["reference_id"])
             desired_capture_id = row["source_capture_id"] or capture_id
             desired_expected_song_id = expected_song_id or str(row["expected_song_id"])
