@@ -725,6 +725,34 @@ def test_cli_saves_ready_input_to_new_or_zero_byte_database(
     assert row_counts(db_path) == (1, 1, 1)
 
 
+@pytest.mark.parametrize("with_m5_match", [False, True])
+def test_cli_rejects_jacket_catalog_before_formal_database_write(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    with_m5_match: bool,
+) -> None:
+    input_path = FIXTURE_PATH.resolve()
+    monkeypatch.chdir(tmp_path)
+    db_path = tmp_path / "formal.sqlite"
+    catalog_args = ["--m5-jacket-catalog", "data/catalog.sqlite"]
+    if with_m5_match:
+        catalog_args.insert(0, "--m5-jacket-match")
+
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        runner.main(
+            [
+                "--personal-score-db-save-input",
+                str(input_path),
+                "--personal-score-db-save-database",
+                str(db_path),
+                *catalog_args,
+            ]
+        )
+
+    assert not db_path.exists()
+    assert not (tmp_path / "data").exists()
+
+
 def test_cli_appends_to_compatible_database(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],

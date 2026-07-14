@@ -168,6 +168,18 @@ title line-hashでは、result `song_title` ROIのうち曲名行だけを対象
 
 全曲ジャケット画像取得、配布可否、画像キャッシュ方針は別フェーズとして残す。ジャケット特徴量やtitle補助を入れる場合も、初回は保存成功判定ではなく、M7以降の保存判定へ渡す曲同定候補観測として始める。
 
+## M5b ローカルjacket参照カタログ
+
+M5bでは、一時的な `jacket_feature_master.csv` とは別に、`data/` 配下の明示SQLite pathへローカル参照カタログversion 1を生成する。catalogは `catalog_identity=ddrgp-local-jacket-reference-catalog`、schema version、専用table/columnをstrictに検査し、M4 master DB、M8 preview DB、正式個人スコアDB、unknown SQLiteを相互受入れしない。
+
+観測入力は `source_image_path`、`observed_title`、`observed_artist` を必須とし、`source_capture_id`、`observation_status`、`image_kind=full_frame|jacket_crop`、監査専用 `expected_song_id` を任意とする。full frameは1280x720基準のsong select grid右上preview ROIを線形scaleして切り出す。feature extractor version 1は、特徴量生成条件である `image_kind`、16x16 RGBの全768値、24値のRGB histogram、64bit dHash相当とsource image SHA-256をlossless JSON配列として保持する。生画像、crop、catalog、coverageはローカル非共有データである。
+
+自動確定条件は正規化後のcanonical title + artist完全一致、またはalias title + artistの一意完全一致だけに限定する。artist不一致、複数候補、観測失敗、feature抽出失敗は候補と理由を保持して `needs_review` / `unresolved` にする。`expected_song_id`、近傍候補、OCR rawは自動確定に使わず、expectedは確定後の既知誤確定監査にだけ使う。同一capture、または同一source hashと同一解決song/未解決観測の再投入はreferenceを増やさず、同じ画像bytesを共有する別songは別referenceとして保持する。captureを維持したtitle・artist・observation statusの明示修正では同じreferenceの解決結果と候補をcurrent masterに対して更新し、`image_kind` が変わった場合は同じreferenceの特徴量を訂正後の境界で再計算し、expectedだけの追加は監査値だけを更新する。観測とkindが不変の通常再実行ではmaster driftを暗黙再確定せず、特徴量も更新しない。異なるhashは同一songへ複数referenceとして追加できる。
+
+`jacket_catalog_song_coverage.csv` は対象masterの `grand_prix_play_available=true` 全songを分母に、各songを `referenced` / `needs_review` / `uncollected` / `unresolved` の1状態へ数える。確定 `song_id` がなくてもGP対象の `reference_candidates` があれば、そのsongを自動確定せず `needs_review` として数える。旧 `feature_extractor_version` のreferenceも現行照合へ利用可能な `referenced` とはせず `needs_review / feature_extractor_version_changed` とする。候補songもない未解決観測と、song消失・GP対象外化によるorphanは別集計にする。master version、canonical identity、GP可否のdriftはread-onlyで検査し、自動で別songへ付け替えない。capture済み観測全体を分母にしたcurrent auto-confirm rateはdrift/orphanを成功へ数えず、投入時点rateを別列にする。理由別非確定件数、監査済み/未監査件数、既知誤確定件数もJSON/Markdownへ出す。
+
+`--m5-jacket-catalog` を `--m5-jacket-match` と併用すると、current masterで有効かつ現行 `feature_extractor_version` と一致する `auto_confirmed` referenceだけを永続特徴量から復元し、既存 `match_jacket_save_candidate_rows` へ渡す。旧extractorのreferenceはcatalogへ共存できても現行matcherの距離計算へ混入させない。参照元画像を削除した後も既存の距離計算と候補境界を再実行できるが、catalog statusやM5 matchは正式曲ID・正式play・保存可否への昇格ではない。
+
 ## スコープ外
 
 - OCR方式刷新。

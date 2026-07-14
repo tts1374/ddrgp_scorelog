@@ -270,7 +270,7 @@ write前の `adapt_personal_score_db_save_input()` はpure functionであり、D
 
 この入口は呼び出し元がpathとadapter入力を明示する単発Python APIであり、実ファイルの既定自動保存、常駐監視、既存DB migrationを開始しない。DB診断ファイルやdiagnostic JSONLも自動出力しない。
 
-CLIからは `--personal-score-db-save-input <utf8-json>` と `--personal-score-db-save-database <sqlite>` を必須ペアとして明示した場合だけ、同じAPIを1回呼ぶ。JSON外部形式は `input_schema_version=1` とし、`candidate_material`、source/analysis値、object/nullの `formal_play`、object/nullの `exclusion` を分離する。全階層の必須key、未知key、object/null、bool/integer/number/string型はファイル準備前に検査し、boolをintegerとして通さない。`candidate_material` と `timestamp_ms` は由来情報のまま保持し、正式playへコピーしない。
+CLIからは `--personal-score-db-save-input <utf8-json>` と `--personal-score-db-save-database <sqlite>` を必須ペアとして明示した場合だけ、同じAPIを1回呼ぶ。通常M5候補観測の `--m5-jacket-catalog` が混在する場合は、入力JSON読込やDB準備より前に拒否し、無視したまま正式saveへ進めない。JSON外部形式は `input_schema_version=1` とし、`candidate_material`、source/analysis値、object/nullの `formal_play`、object/nullの `exclusion` を分離する。全階層の必須key、未知key、object/null、bool/integer/number/string型はファイル準備前に検査し、boolをintegerとして通さない。`candidate_material` と `timestamp_ms` は由来情報のまま保持し、正式playへコピーしない。
 
 終了コードはtransaction完了した `ready` / `excluded` が0、adapterの `unresolved` が1、入力/DB拒否が2とする。結果JSONはDB path、adapter status、written、任意のplay ID、source capture ID、analysis ID、理由を持つ。duplicate collisionも終了コード0で `adapter_status=excluded`、`reasons=[duplicate_key_already_saved]` として区別する。CLI専用output file、diagnostic JSONL、低信頼度ログは生成せず、通常PoC、timestamped/manifest runner、`--m8-score-db-output` へ接続しない。
 
@@ -287,6 +287,14 @@ M8のscore DB write previewでは、保存予定レコードだけを新規 in-m
 M8のscore DB file output previewでは、`--m8-score-db-output data\...\ddrgp-scores.sqlite` を明示した場合だけ、保存予定レコードを指定された新規SQLiteファイルへinsertする。出力先は `data/` 配下に限定し、`data/` 外や既存ファイルへの書き込みは拒否する。実ファイルDBには `PRAGMA user_version=1` と `preview_metadata.created_by_preview=tools.vision_poc.m8_score_db_preview`、`preview_metadata.schema_contract_scope=preview_minimal_plays`、`preview_metadata.production_schema_status=not_production_schema` を設定し、summary/reportの `schema_version=1`、`schema_contract_scope`、`production_schema_status`、`created_by_preview` に一致させる。summary/reportの `database_schema_version`、`database_preview_metadata`、`database_plays_row_count`、`database_plays_schema_columns` は実DBから読み戻した診断欄で、`database_readback_matches_preview_contract`、`database_readback_mismatch_reasons`、`database_plays_row_count_matches_insert_counts`、`database_plays_row_count_mismatch_reasons`、`database_plays_insert_columns_match_planned_contract`、`database_plays_integer_fields_match_preview_contract`、`database_plays_schema_mismatch_reasons` はreadback値とpreview識別契約、insert件数、preview最小 `plays` schemaの一致診断として扱い、定数として出すpreview識別欄とは分けて扱う。`m8_score_db_file_output_preview.json` / Markdown はpreview DBへのinsert件数とpreviewスキーマ識別の確認であり、本番DB保存成功、正式スキーマ確定、曲ID/譜面ID確定、保存値確定として扱わない。生成したDBファイルはローカルDBとしてGit管理しない。
 
 開発中に生成したDB、取得元HTML snapshot、解析ログはGit管理しない。配布用マスタDBはGitHub Releases成果物として扱う。
+
+## M5b jacket catalog
+
+ローカルjacket catalogは `data/` 配下の明示SQLite pathだけへ作成する。専用identity、schema version、exact tables/columns、metadata、index、foreign keyをstrictに検査し、既存の非catalog SQLite、破損catalog、正式個人スコアDB、M8 preview DB、M4 master DBを変更しない。source image hashは画像内容の監査値であり単独のreference一意keyにはせず、captureまたは解決song/未解決観測と組み合わせて同じ画像bytesを共有する別songを保持する。特徴量生成条件の `image_kind` もreferenceへ永続化し、同一画像のkind訂正時は同じreferenceの特徴量をtransaction内で置換する。CSV一括投入は同じ `data/` directoryのstaging catalogへ完了させてからatomic replaceし、新規・既存のどちらでも途中失敗による部分catalogを公開しない。
+
+観測CSVとcoverage出力もローカル運用物とし、catalog、source capture、crop、16x16 RGBを含む特徴量、review結果、coverage JSON/CSV/MarkdownをGit、CI artifact、Release、通常analysis logへ含めない。生captureとcropはcatalog投入後も自動削除しない。catalogは `source_captures`、`plays`、`analysis_logs`、DB diagnostic output/logを受け入れず、M5候補観測向けの参照特徴量だけを保持する。
+
+coverageは `data/` 配下の明示directoryへ `jacket_catalog_song_coverage.csv`、`jacket_catalog_coverage_summary.json`、`jacket_catalog_coverage.md` を生成する。確定songがないreferenceでもGP対象の `reference_candidates` は候補songの `needs_review` として数え、候補のない観測だけを未割当集計へ残す。候補を確定songへ昇格せず、masterはread-only URIで開き、coverage・orphan検査の前後で変更しない。
 
 ## 削除・移動のルール
 

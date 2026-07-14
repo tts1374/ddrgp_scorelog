@@ -17,7 +17,7 @@ from pathlib import Path, PurePosixPath
 import numpy as np
 from PIL import Image, ImageFilter, ImageOps
 
-from . import master_match, personal_score_db_backup
+from . import jacket_reference_catalog, master_match, personal_score_db_backup
 from . import personal_score_db_schema as score_schema
 from .personal_score_db_analysis_artifacts import (
     load_analysis_detail,
@@ -10101,6 +10101,15 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--m5-jacket-catalog",
+        type=Path,
+        default=None,
+        help=(
+            "Optional read-only M5b catalog under data/. With --m5-jacket-match, use its "
+            "persisted confirmed features instead of transient song_select references."
+        ),
+    )
+    parser.add_argument(
         "--master-db",
         type=Path,
         default=Path("data/master/ddrgp-master.sqlite"),
@@ -10431,6 +10440,10 @@ def main(argv: list[str] | None = None) -> int:
             "--personal-score-db-save-database must be specified together"
         )
     if save_option_count == 2:
+        if args.m5_jacket_catalog is not None:
+            raise ValueError(
+                "personal score DB save and --m5-jacket-catalog are mutually exclusive"
+            )
         if (
             args.personal_score_db_diagnostic is not None
             or args.personal_score_db_diagnostic_output is not None
@@ -10453,6 +10466,14 @@ def main(argv: list[str] | None = None) -> int:
         raise ValueError("--m8-score-db-output requires --m7a-digit-recognition")
     if args.m8_score_db_output is not None:
         ensure_data_output_path(args.m8_score_db_output, argument_name="--m8-score-db-output")
+    if args.m5_jacket_catalog is not None:
+        if not args.m5_jacket_match:
+            raise ValueError("--m5-jacket-catalog requires --m5-jacket-match")
+        jacket_reference_catalog.ensure_data_path(
+            args.m5_jacket_catalog,
+            argument_name="--m5-jacket-catalog",
+        )
+        jacket_reference_catalog.validate_catalog(args.m5_jacket_catalog)
 
     if args.capture_dry_run_scenario is not None:
         manifest_path, frame_count = write_capture_dry_run_scenario(
@@ -10853,11 +10874,38 @@ def main(argv: list[str] | None = None) -> int:
     if args.m5_jacket_match:
         if not args.master_db.exists():
             raise FileNotFoundError(f"--master-db does not exist: {args.master_db}")
-        jacket_feature_rows, jacket_feature_entries = build_m5_jacket_feature_master_rows(
-            frames,
-            args.master_db,
-            m5_jacket_song_select_preview_features,
-        )
+        if args.m5_jacket_catalog is None:
+            jacket_feature_rows, jacket_feature_entries = build_m5_jacket_feature_master_rows(
+                frames,
+                args.master_db,
+                m5_jacket_song_select_preview_features,
+            )
+        else:
+            jacket_feature_entries = jacket_reference_catalog.load_m5_feature_entries(
+                args.m5_jacket_catalog,
+                args.master_db,
+            )
+            jacket_feature_rows = [
+                {
+                    "organized_file": entry.organized_file,
+                    "source_song_title": entry.source_song_title,
+                    "normalized_song_title": master_match.normalize_song_title(
+                        entry.source_song_title
+                    ),
+                    "song_id": entry.song_id,
+                    "title": entry.title,
+                    "artist": entry.artist,
+                    "feature_status": "accepted",
+                    "failure_reason": "",
+                    "dhash_hex": entry.feature.dhash_hex,
+                    "histogram": master_match.serialize_float_vector(entry.feature.histogram),
+                    "thumbnail_rgb": master_match.serialize_float_vector(
+                        entry.feature.thumbnail,
+                        limit=192,
+                    ),
+                }
+                for entry in jacket_feature_entries
+            ]
         jacket_feature_summary = master_match.write_jacket_feature_master_outputs(
             output_dir,
             jacket_feature_rows,

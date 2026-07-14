@@ -295,6 +295,8 @@ M5完了時点で固定すること:
 
 ### M5b: ローカルjacket参照カタログ整備
 
+Status: Completed on 2026-07-14.
+
 目的は、M5 jacket照合をGPプレー可能な全曲へ広げるため、song select grid由来のjacket、title、artistを開発者本人のローカル環境で収集し、M4マスタへ安全に紐付けた参照カタログを生成することです。本マイルストーンはM9のcapture・分類・confirmed event・正式保存workflow接続を完了した後、監視UI・タスクトレイへ進む前に独立PRとして実施します。
 
 固定する方針:
@@ -309,6 +311,14 @@ M5完了時点で固定すること:
 - 自動確定率90%以上を必須目標、95%以上を努力目標とする。ただし既知の誤自動確定0件を優先し、自動確定率のために一意性条件を緩めない。capture済み対象song全体を分母とし、OCRや照合の失敗行を分母から除外しない。
 - runtime identityはjacketを主信号とし、chart fieldsで候補を絞った後にjacket照合する。jacket参照なし、曖昧、未解決ではtitle / artistだけのfallbackを行わず、正式playへ昇格しない。
 - 参照カタログは正式個人スコアDB、`source_captures`、`analysis_logs`、`plays` と分離し、M5 identity候補観測を供給する責務だけを持つ。
+
+実績:
+
+- 専用identity/schema versionを持つlocal SQLite catalog、strict create/open、captureとsource hash + 解決identityの冪等性、song 1:N、同一画像bytesを共有する別songの保持、`image_kind` と全768 thumbnail・histogram・dHash永続化を追加した。kind訂正時は同じreferenceの特徴量を再計算する。
+- canonical title + artist完全一致と一意alias完全一致だけをauto-confirmし、曖昧・artist不一致・観測/feature失敗を候補理由付きでレビュー状態へ残す。
+- 全GP songの4状態coverage、候補songのneeds-review投影、候補なし未割当観測、master drift/orphan、capture分母のauto-confirm rateとknown-false auditをJSON/CSV/Markdownへ出す。
+- `--m5-jacket-catalog` からcurrent masterと現行extractor versionで有効な永続特徴量だけを既存M5 jacket照合へ供給し、旧extractor混入を防ぎ、参照生画像削除後の再実行を固定した。
+- catalog、特徴量、review、coverageは `data/` 配下のローカル非共有物のまま、正式保存workflow・正式個人スコアDB schema・WPF監視UIを変更していない。
 
 完了条件:
 
@@ -477,7 +487,7 @@ M5完了時点で固定すること:
 - 2026-07-13時点で第4段階の実capture認識品質を確認した。WPF manifestを既存manifest modeで再実行し、1280x720実capture 5枚で分類5/5、confirmed result 1件、M7a主要数字8/8、chart-field 3/3、master/jacket match各1/1を期待値付きで確認した。曲名ROIをartist行から局所分離し、空読み時だけ従来ROIへ戻す。既存 `low-threshold` profileでEX SCOREの実capture差分を吸収した。候補材料を正式値やDB保存へ昇格していない。
 - 2026-07-13時点で第5段階の連続capture sessionを追加した。明示選択windowを明示停止まで同じWindows Graphics Capture resourceで取得し、strictly increasing timestampのmanifest互換bundleをstagingからatomicに公開する。resize、target closed、device lost、write失敗は部分sessionを破棄し、解析、自動保存、常駐監視には接続していない。
 - 2026-07-14時点で第6段階の正式保存workflow接続を追加した。明示した `連続取得・保存` だけが完成session manifestを既存分類・confirmed event・M5/M7a候補へ渡し、eventを直列に既存正式workflowで処理する。採用済みfield根拠、confidence、完全性が揃わないeventは `unresolved` に保ち、DB duplicate・excluded・解析/DB失敗をsavedへ丸めない。transaction済みplayだけread-only再読込する。現行pipelineの候補値を正式値へ暗黙昇格せず、常駐監視・task trayには進んでいない。
-- 第7段階以降として、M5b jacket参照カタログ、監視状態を順に接続する。
+- 第7段階としてM5b jacket参照カタログを追加済み。次は監視状態を接続する。
 - タスクトレイ常駐を実装する。
 - 監視状態、対象ウィンドウ状態、最新保存結果を表示する。
 - マスタDB更新状態を表示する。
@@ -522,8 +532,8 @@ M9残り実行順（PR #21 merge後、原則1項目1PR）:
 
 ## 近い順の推奨作業
 
-1. 正式保存workflow接続後の独立PRとして、M5bローカルjacket参照カタログを整備し、GPプレー可能曲のcoverageと安全な自動紐付けを固定する。
-2. 以降は `M9残り実行順` の5から6に従い、監視UI・タスクトレイ、長時間運用を1項目ずつ進める。
+1. `M9残り実行順` の5として、監視UI・タスクトレイへ状態表示と明示開始・停止を接続する。
+2. 続いて6の長時間運用、再起動・再接続、resource leak、失敗復旧を独立PRで固める。
 3. M9完了後にM10の実機検証と配布準備へ進む。
 
 各チャットの具体的な次PR仕様は `docs/next-task.md` を優先し、上記順序と矛盾する古い候補へ戻らない。
