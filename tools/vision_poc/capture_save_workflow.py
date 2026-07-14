@@ -30,6 +30,16 @@ CAPTURE_SAVE_DIGIT_FIELDS = (
     "miss",
     "ex_score",
 )
+CAPTURE_SAVE_WORKFLOW_FAILURE_STATUSES = frozenset(
+    {
+        "invalid",
+        "artifact_failed",
+        "artifact_conflict",
+        "artifact_created_db_failed",
+        "db_rejected",
+        "process_failed",
+    }
+)
 _ACCEPTED_EVIDENCE_SOURCES = {
     "play_id": "capture_event_v1",
     "played_at": "capture_utc",
@@ -258,9 +268,29 @@ def run_capture_save_session(
             )
         events = load_capture_analyzed_events(manifest_path, output)
         results = run_capture_save_events(events, manifest_path=manifest_path, db_path=db_path)
-        return CaptureSaveSessionResult("completed", output, results)
+        return summarize_capture_save_events(output, results)
     except Exception as exc:
         return CaptureSaveSessionResult("analysis_failed", output, (), (str(exc),))
+
+
+def summarize_capture_save_events(
+    analysis_output: Path,
+    event_results: Iterable[CaptureEventWorkflowResult],
+) -> CaptureSaveSessionResult:
+    results = tuple(event_results)
+    failed = tuple(
+        item
+        for item in results
+        if item.event_status in CAPTURE_SAVE_WORKFLOW_FAILURE_STATUSES
+    )
+    if not failed:
+        return CaptureSaveSessionResult("completed", analysis_output, results)
+    reasons = tuple(
+        f"frame_{item.frame_index}:{item.event_status}:{reason}"
+        for item in failed
+        for reason in (item.reasons or ("workflow_failed",))
+    )
+    return CaptureSaveSessionResult("workflow_failed", analysis_output, results, reasons)
 
 
 def load_capture_analyzed_events(

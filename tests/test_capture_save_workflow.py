@@ -6,11 +6,15 @@ from pathlib import Path
 
 import pytest
 
+from tools.vision_poc import capture_save_workflow_app
 from tools.vision_poc.capture_save_workflow import (
     AutomaticFormalEvidence,
     CaptureAnalyzedEvent,
+    CaptureEventWorkflowResult,
+    CaptureSaveSessionResult,
     promote_automatic_formal_values,
     run_capture_save_events,
+    summarize_capture_save_events,
 )
 from tools.vision_poc.personal_score_db_save_adapter import (
     PersonalScoreDbFormalPlayValues,
@@ -307,3 +311,69 @@ def test_workflow_failure_status_is_preserved(
 
     assert result.event_status == workflow_status
     assert not result.play_id
+
+
+def test_session_promotes_fatal_event_status_and_keeps_saved_play() -> None:
+    result = summarize_capture_save_events(
+        Path("data/run"),
+        [
+            CaptureEventWorkflowResult(2, "saved", True, "saved", "play-1", ()),
+            CaptureEventWorkflowResult(
+                3, "db_rejected", True, "db_rejected", None, ("incompatible DB",)
+            ),
+        ],
+    )
+
+    assert result.status == "workflow_failed"
+    assert [item.play_id for item in result.event_results] == ["play-1", None]
+    assert result.reasons == ("frame_3:db_rejected:incompatible DB",)
+
+
+@pytest.mark.parametrize("event_status", ["unresolved", "excluded", "duplicate"])
+def test_session_keeps_expected_non_saved_statuses_completed(event_status: str) -> None:
+    result = summarize_capture_save_events(
+        Path("data/run"),
+        [CaptureEventWorkflowResult(2, event_status, True, event_status, None, ("reason",))],
+    )
+
+    assert result.status == "completed"
+
+
+def test_app_returns_nonzero_for_workflow_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(
+        capture_save_workflow_app,
+        "run_capture_save_session",
+        lambda **kwargs: CaptureSaveSessionResult(
+            "workflow_failed",
+            tmp_path / "analysis",
+            (
+                CaptureEventWorkflowResult(
+                    2,
+                    "db_rejected",
+                    True,
+                    "db_rejected",
+                    None,
+                    ("incompatible DB",),
+                ),
+            ),
+            ("frame_2:db_rejected:incompatible DB",),
+        ),
+    )
+
+    exit_code = capture_save_workflow_app.main(
+        [
+            "--manifest",
+            str(tmp_path / "manifest.csv"),
+            "--master-database",
+            str(tmp_path / "master.sqlite"),
+            "--database",
+            str(tmp_path / "score.sqlite"),
+        ]
+    )
+
+    assert exit_code == 2
+    assert '"status": "workflow_failed"' in capsys.readouterr().err

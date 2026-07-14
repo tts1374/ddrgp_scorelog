@@ -332,7 +332,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 manifestPath,
                 scoreDatabasePath,
                 masterDatabasePath);
-            if (result.Status != "completed")
+            if (result.Status is not ("completed" or "workflow_failed"))
             {
                 SaveStatusTitle = "キャプチャ解析に失敗しました";
                 SaveStatusMessage = result.Reasons.Count == 0
@@ -353,10 +353,23 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 ApplyData(data);
             }
 
-            SaveStatusTitle = result.SavedPlayIds.Count > 0
-                ? $"{result.SavedPlayIds.Count}件のプレーを保存しました"
-                : "保存できるプレーはありませんでした";
-            SaveStatusMessage = CaptureSaveStatusMessage(result);
+            if (result.Status == "workflow_failed")
+            {
+                SaveStatusTitle = result.SavedPlayIds.Count > 0
+                    ? $"{result.SavedPlayIds.Count}件を保存し、一部の保存処理に失敗しました"
+                    : "保存workflowに失敗しました";
+                var reasons = result.Reasons.Count == 0
+                    ? "失敗理由を取得できませんでした。"
+                    : string.Join(" / ", result.Reasons);
+                SaveStatusMessage = $"{CaptureSaveStatusMessage(result)} {reasons}";
+            }
+            else
+            {
+                SaveStatusTitle = result.SavedPlayIds.Count > 0
+                    ? $"{result.SavedPlayIds.Count}件のプレーを保存しました"
+                    : "保存できるプレーはありませんでした";
+                SaveStatusMessage = CaptureSaveStatusMessage(result);
+            }
         }
         catch (ViewerDatabaseException exception)
         {
