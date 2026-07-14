@@ -192,6 +192,16 @@ collection sessionは開始時のmaster version/hashとfeature extractor version
 
 title/artist取得方式、OCR採用、confidence閾値、jacketと文字領域の更新ずれ対策は実capture評価まで保留する。未採用、失敗、不一致は観測を失わずreviewへ残し、自動確定率のために一意性条件を緩めない。
 
+### M5c-1 read-only projection
+
+M5c-1では `tools/jacket_catalog_collector/` に公開appと独立したWPF app/testを追加した。UIはcatalog tableを直接解釈せず、`python -m tools.vision_poc.jacket_catalog_review_projection` がM4 masterとM5b catalogをstrict/read-onlyで検査し、UTF-8 stdoutへ単一JSONを出す。projection version 1のtop-level必須fieldは `projection_schema_version`、`master`、`catalog`、`coverage`、`songs`、`review_references` とする。
+
+`master` はpath、version、source hash、song/chart/GP件数、`catalog` はpath、identity、schema、created time、current extractor、`coverage` は4状態件数、orphan件数/理由、候補なし未割当件数を持つ。`songs` はM5bと同じGP分母の `referenced` / `needs_review` / `uncollected` / `unresolved` 行を持つ。`review_references` はcurrent stateが `needs_review` / `unresolved` / `orphaned` のreferenceについて、ID、観測title/artist/status、opaque reason、master drift、extractor、割当song、候補songとopaque candidate reasonを持つ。
+
+C# loaderはversion、未知field、必須field、null/型、coverage/review status、候補配列、GP分母、summaryとsong status histogramの一致をstrictに検査する。unsupported older/newer version、空/truncated stdout、Python非0終了を部分成功へ丸めない。一方、現行M5bのreason/candidate reasonと任意observation statusは意味を再実装せず、未知文字列をそのまま表示する。projectionはtemporary fileを作らず、表示前後でmaster/catalog byteを変更しない。生成中にいずれかのDBのfile identity、size、mtime、hashが変わった場合は、複数接続由来のsnapshotを混在させず失敗として再読込を求める。
+
+M5c-1はcoverage/reviewの表示だけであり、`manual_confirmed`、reject/reassignment history、catalog schema migration、capture、OCR、runtime matcherへのmanual reference供給はM5c-2以降へ残す。
+
 ## M5b/M5c共通スコープ外
 
 - OCR方式刷新。

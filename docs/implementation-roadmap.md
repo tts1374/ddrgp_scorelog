@@ -331,7 +331,7 @@ Status: Completed on 2026-07-14.
 
 ### M5c: 開発者専用jacket catalog collector
 
-Status: Planned. M5c-1 branch started on 2026-07-14.
+Status: In progress. M5c-1 completed on 2026-07-14; M5c-2以降は未着手。
 
 目的は、M5b catalogを約1200曲の手作業画像保存・CSV記入に依存せず運用するため、公開WPF appと分離した開発者専用collectorを追加することです。開発者はsong select gridを手動巡回し、ツールがmaster更新、coverage、review、capture、jacket安定検出、観測生成、M4照合を担当します。ゲーム操作は自動化しません。
 
@@ -357,7 +357,7 @@ Status: Planned. M5c-1 branch started on 2026-07-14.
 
 実行順:
 
-1. M5c-1: 独立developer app、既存M4 master build/update、read-only coverage/review queueを追加する。catalog mutation、capture、OCRは行わない。
+1. M5c-1: 完了。`tools/jacket_catalog_collector/` に独立developer app/testを追加し、既存M4 master build/inspectをstaging + atomic publishで実行する。M5b catalogはPythonのversion 1 read-only projectionを介してcoverage/review queueを表示し、catalog mutation、capture、OCRは行わない。
 2. M5c-2: catalog次version、`manual_confirmed`、reject/reassignment history、手動紐付け、取り消し可能なreview操作を追加する。
 3. M5c-3a: DDR GP window候補検出、preview付き確認、Windows Graphics Captureの明示開始・停止、raw frame ring buffer、window/resource lifecycleを追加する。catalog観測生成は行わない。
 4. M5c-3b: jacket ROI変化/安定検出、同一preview制御、session checkpoint、中断・再開、観測自動生成、catalog投入を追加する。実装前にcapture lifecycleとsession永続化が同じ検証セットで扱えるか再確認し、必要ならさらに分割する。
@@ -369,6 +369,13 @@ Status: Planned. M5c-1 branch started on 2026-07-14.
 - capture済み対象song全体を分母にauto-confirm率90%以上、95%以上を努力目標として確認でき、既知誤自動確定0件を優先する。
 - 中断・再開、同一session/frame再投入、同じ画像を共有する別song、master/extractor driftを安全に扱える。
 - 公開app、正式保存workflow、正式個人スコアDB、ゲーム操作へ接続せず、local dataを公開成果物へ混入させない。
+
+M5c-1で固定した境界:
+
+- 既存非空masterはnetwork/build前にinspectionし、新規/0 byte/compatible targetはinspection済みstagingだけを明示publishする。失敗・取消ではtarget、temporary file、新規の空parentを残さない。
+- UIはcatalog schemaを直接解釈せず、Pythonがstrict read-only validationとcoverage/review projectionを担当する。C#はversion 1 JSONを未知field/statusも含めstrictに読むが、reason文字列はopaqueに保持する。
+- master/catalog選択と表示はDB byteを変更せず、旧extractor、master drift、orphan、候補なし未割当観測を成功へ丸めない。
+- developer projectは公開 `app/` のproject/resource/Releaseへ依存せず、通常solutionやinstallerへ追加しない。
 
 ### M6: 本番キャプチャAPIの最小接続
 

@@ -161,3 +161,11 @@ M4ではまだ扱わないもの:
 - 候補一覧と照合スコア。
 - OCR結果から曲ID/譜面IDを一意に決める処理。
 - 個人スコアDB保存。
+
+## M5c developer collectorからの更新契約
+
+M5c-1のdeveloper-only collectorはparser、schema、writerを再実装せず、`python -m master` と `python -m master.inspect` をprocess境界で再利用する。既存targetが非空ならnetwork/build前にinspectionし、M4互換でないfileまたはdirectoryを拒否する。0 byte fileは明示placeholderとして扱い、成功時だけ置換できる。
+
+buildはOS temporary directoryのstagingへ出力し、staging inspectionがversion、source hash、song/chart/GP件数を返した後にだけtarget親directoryを作る。stagingをtarget directory内のpublish fileへcopyし、同一directory内のatomic renameでtargetへ公開する。build、inspection、cancel、publishの失敗時は既存targetまたは0 byte targetを維持し、新規target、temporary staging/summary/publish file、新規に作った空parentを残さない。部分DBはdiagnosticとして保持しない。
+
+この入口は開発者の明示操作専用であり、通常viewer起動、Release、CI artifact生成を変更しない。実network成功は通常testのmerge条件にせず、fake process/publisherで成功・各段階失敗・取消・既存target・0 byte target・publish失敗を固定する。

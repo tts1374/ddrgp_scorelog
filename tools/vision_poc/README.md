@@ -648,6 +648,16 @@ python -m tools.vision_poc --m5-jacket-match `
 
 current masterで有効かつ現行 `feature_extractor_version` と一致する `auto_confirmed` referenceだけを永続特徴量から復元します。旧extractorのreferenceはcatalog内に保持しても現行M5照合へ混入させません。このため参照元の生画像を削除したfixtureでもM5照合を再実行できます。catalog、観測CSV、画像、crop、特徴量、review結果、coverageはローカル非共有物であり、Git、CI artifact、Release、通常ログへ含めません。生画像やcropの自動削除は行いません。
 
+M5c-1 developer collectorのread-only表示では、catalog tableをC#側で直接読まず、次のprojectionを使います。
+
+```powershell
+python -m tools.vision_poc.jacket_catalog_review_projection `
+  --catalog data\jacket_catalog\catalog.sqlite `
+  --master-db data\master\ddrgp-master.sqlite
+```
+
+projection version 1はUTF-8 stdoutの単一JSONで、`master` / `catalog` identity、同じGP分母のcoverage song行、needs-review/unresolved/orphan review行、候補とopaque reasonを返します。master/catalogはstrictかつread-onlyで開き、temporary projection file、coverage CSV、logを生成しません。unsupported schemaや破損DBでは非0終了になり、collectorは部分表示しません。詳細なapp実行方法とC# strict loader契約は `tools/jacket_catalog_collector/README.md` を参照してください。
+
 ## テスト
 
 ローカル素材がある環境では、metadataを真値として分類結果を検証します。
