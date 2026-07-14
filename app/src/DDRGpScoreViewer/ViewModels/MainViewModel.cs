@@ -223,10 +223,22 @@ public sealed class MainViewModel : INotifyPropertyChanged
         string scoreDatabasePath,
         string masterDatabasePath)
     {
-        await StartContinuousCaptureCoreAsync(
-            ownerWindowHandle,
-            scoreDatabasePath,
-            masterDatabasePath);
+        if (IsSaving)
+        {
+            return;
+        }
+        IsSaving = true;
+        try
+        {
+            await StartContinuousCaptureCoreAsync(
+                ownerWindowHandle,
+                scoreDatabasePath,
+                masterDatabasePath);
+        }
+        finally
+        {
+            IsSaving = false;
+        }
     }
 
     private async Task StartContinuousCaptureCoreAsync(
@@ -317,7 +329,6 @@ public sealed class MainViewModel : INotifyPropertyChanged
         string masterDatabasePath)
     {
         HasSaveStatus = true;
-        IsSaving = true;
         SaveStatusTitle = "キャプチャを解析しています";
         SaveStatusMessage = "confirmed eventを取得順に1件ずつ正式保存境界で処理しています。";
         try
@@ -375,10 +386,6 @@ public sealed class MainViewModel : INotifyPropertyChanged
         {
             SaveStatusTitle = "保存後の再読込に失敗しました";
             SaveStatusMessage = exception.UserMessage;
-        }
-        finally
-        {
-            IsSaving = false;
         }
     }
 
@@ -450,6 +457,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
         string scoreDatabasePath,
         string masterDatabasePath)
     {
+        if (IsSaving)
+        {
+            return;
+        }
         IsSaving = true;
         HasSaveStatus = true;
         SaveStatusTitle = "保存処理を実行しています";

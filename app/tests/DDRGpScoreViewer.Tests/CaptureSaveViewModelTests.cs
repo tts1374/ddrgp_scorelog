@@ -76,6 +76,60 @@ public sealed class CaptureSaveViewModelTests
     }
 
     [Fact]
+    public async Task Capture_save_does_not_start_while_manual_save_is_running()
+    {
+        var manualWorkflow = new BlockingManualWorkflowRunner();
+        var captureService = new StubContinuousCaptureService(CaptureOperationStatus.Saved);
+        var captureWorkflow = new StubCaptureSaveWorkflowRunner((_, _, _) =>
+            throw new InvalidOperationException("must not run"));
+        var viewModel = new MainViewModel(
+            new ScoreViewerRepository(),
+            manualWorkflow,
+            continuousCaptureService: captureService,
+            captureSaveWorkflowRunner: captureWorkflow);
+
+        var manualSave = viewModel.SaveAndReloadAsync(
+            "workflow.json", "score.sqlite", "master.sqlite");
+        await manualWorkflow.Started.Task;
+
+        await viewModel.StartContinuousCaptureAndSaveAsync(
+            123, "score.sqlite", "master.sqlite");
+
+        Assert.True(viewModel.IsSaving);
+        Assert.Equal(0, captureService.CallCount);
+        Assert.Equal(0, captureWorkflow.CallCount);
+
+        manualWorkflow.Complete();
+        await manualSave;
+        Assert.False(viewModel.IsSaving);
+    }
+
+    [Fact]
+    public async Task Capture_save_reserves_save_state_until_capture_and_workflow_finish()
+    {
+        var captureService = new BlockingContinuousCaptureService();
+        var viewModel = new MainViewModel(
+            new ScoreViewerRepository(),
+            new UnusedManualWorkflowRunner(),
+            continuousCaptureService: captureService,
+            captureSaveWorkflowRunner: new StubCaptureSaveWorkflowRunner((_, _, _) =>
+                new CaptureSaveWorkflowResult(
+                    "completed", 0, new Dictionary<string, int>(), [], [], "data/run")));
+
+        var captureSave = viewModel.StartContinuousCaptureAndSaveAsync(
+            123, "score.sqlite", "master.sqlite");
+        await captureService.Started.Task;
+
+        Assert.True(viewModel.IsSaving);
+        await viewModel.SaveAndReloadAsync(
+            "workflow.json", "score.sqlite", "master.sqlite");
+
+        captureService.Complete(CaptureOperationStatus.Cancelled);
+        await captureSave;
+        Assert.False(viewModel.IsSaving);
+    }
+
+    [Fact]
     public async Task Workflow_failure_is_surfaced_instead_of_no_saveable_plays()
     {
         var workflow = new StubCaptureSaveWorkflowRunner((_, _, _) =>
@@ -136,20 +190,48 @@ public sealed class CaptureSaveViewModelTests
     private sealed class StubContinuousCaptureService(CaptureOperationStatus status)
         : IContinuousCaptureService
     {
+        public int CallCount { get; private set; }
         public bool IsRunning => false;
 
         public Task<CaptureSessionOperationResult> RunAsync(
             nint ownerWindowHandle,
-            CancellationToken cancellationToken = default) =>
-            Task.FromResult(new CaptureSessionOperationResult(
+            CancellationToken cancellationToken = default)
+        {
+            CallCount++;
+            return Task.FromResult(new CaptureSessionOperationResult(
                 status,
                 status == CaptureOperationStatus.Saved ? "saved" : "capture failed",
                 status == CaptureOperationStatus.Saved
                     ? new CaptureSessionOutput(
                         "session", "session/frame_manifest.csv", "session/metadata.json", 3)
                     : null));
+        }
 
         public Task StopAsync() => Task.CompletedTask;
+    }
+
+    private sealed class BlockingContinuousCaptureService : IContinuousCaptureService
+    {
+        private readonly TaskCompletionSource<CaptureSessionOperationResult> completion =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public TaskCompletionSource Started { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public bool IsRunning => !completion.Task.IsCompleted;
+
+        public Task<CaptureSessionOperationResult> RunAsync(
+            nint ownerWindowHandle,
+            CancellationToken cancellationToken = default)
+        {
+            Started.TrySetResult();
+            return completion.Task;
+        }
+
+        public Task StopAsync() => Task.CompletedTask;
+
+        public void Complete(CaptureOperationStatus status) =>
+            completion.TrySetResult(new CaptureSessionOperationResult(
+                status, "completed", null));
     }
 
     private sealed class StubCaptureSaveWorkflowRunner(
@@ -176,5 +258,36 @@ public sealed class CaptureSaveViewModelTests
             string scoreDatabasePath,
             CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
+    }
+
+    private sealed class BlockingManualWorkflowRunner : IPersonalScoreDbWorkflowRunner
+    {
+        private readonly TaskCompletionSource<PersonalScoreDbWorkflowResult> completion =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public TaskCompletionSource Started { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public Task<PersonalScoreDbWorkflowResult> RunAsync(
+            string workflowInputPath,
+            string scoreDatabasePath,
+            CancellationToken cancellationToken = default)
+        {
+            Started.TrySetResult();
+            return completion.Task;
+        }
+
+        public void Complete() => completion.TrySetResult(new PersonalScoreDbWorkflowResult(
+            "excluded",
+            "not_requested",
+            "excluded",
+            "written",
+            true,
+            "capture-manual",
+            "analysis-manual",
+            null,
+            ["fixture_excluded"],
+            null,
+            "score.sqlite"));
     }
 }

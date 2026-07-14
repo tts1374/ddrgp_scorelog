@@ -41,6 +41,10 @@ public partial class MainWindow : Window
 
     private async void StartContinuousCaptureAndSave_Click(object sender, RoutedEventArgs e)
     {
+        if (viewModel.IsSaving)
+        {
+            return;
+        }
         var scoreDialog = new SaveFileDialog
         {
             Title = "保存先の正式v1プレーデータを選択",

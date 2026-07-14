@@ -308,6 +308,8 @@ M3-6の保存候補ブロッカー代表整理では、`m3_save_candidate_blocke
 
 明示停止で完成したWPF session manifestは `capture_save_workflow` が既存manifest modeへ渡す。入力順とstrictly increasingな `timestamp_ms` を維持し、分類、confirmed event、M5候補観測、M7a数字候補を再利用する。capture sessionの停止・失敗statusはこの解析statusと別で、captureが `Saved` でない場合は解析も正式workflowも起動しない。
 
+manual単発保存とcapture-saveはWPF ViewModelの `IsSaving` を共通排他にする。capture-saveはDB picker前に既存保存を拒否し、capture開始から完成manifestの解析・workflow終了まで排他を保持する。この間はmanual保存も開始せず、同一正式DBの並行writerとsave status競合を防ぐ。capture-onlyはDB writerを起動しないため対象外とする。
+
 event処理は入力順の直列で、次の3段階を混同しない。
 
 1. 未確定、non-result、`rejected_transition` は正式workflow前に `policy_excluded` とする。

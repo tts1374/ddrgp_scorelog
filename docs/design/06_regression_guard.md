@@ -428,6 +428,7 @@
 - bounded queueで中間frameをdropしても、保存frameの順序とstrictly increasing timestampを維持する。
 - `連続取得を開始` のcapture-only UIは分類、OCR、identity、confirmed event、正式save input、workflow、正式DB、viewer履歴を起動しない。
 - `連続取得・保存` だけが完成manifest後に解析を起動し、capture失敗時は解析・workflowを呼ばない。
+- manual保存とcapture-saveは `IsSaving` を共通排他にし、既存保存中はDB pickerもcapture-saveも起動しない。capture-saveはcapture開始からworkflow完了まで排他を保持し、同一DB writerとsave statusの競合を防ぐ。
 - capture saveは未確定/transitionをworkflow前で除外し、confirmed eventを直列に最大1回ずつ既存workflowへ渡す。
 - `screen_type=unknown` の実capture manifestはVision PoCの評価用終了コード1で中断せず、生成済みeventを `unresolved` / saved等の後続境界へ渡す。解析例外とその他の失敗は `analysis_failed` を維持する。
 - candidate/raw/expected/preview/相対時刻はformal値へコピーせず、採用済みfield source、confidence、完全性不足を `unresolved` に保つ。
