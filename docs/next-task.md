@@ -1,6 +1,6 @@
 # 次PR作業仕様
 
-`C:\work\ddrgp_scorelog` で作業してください。`AGENTS.md`、`docs/implementation-roadmap.md` の M9残り実行順5、WPF capture/session/save workflow設計、`app/src/DDRGpScoreViewer` と関連testsを読み、既存のローカルcapture、正式個人スコアDB、master DB、`data/`、`logs/`、生成物を保護してください。
+`C:\work\ddrgp_scorelog` で作業してください。`AGENTS.md`、`docs/implementation-roadmap.md` の M5b/M5c、`docs/design/09_master_match_poc.md`、`tools/vision_poc/jacket_reference_catalog.py`、`tools/vision_poc/jacket_catalog_review_projection.py`、`tools/jacket_catalog_collector/` と関連testsを読み、既存のmaster DB、catalog v1、capture、crop、`data/`、`logs/`、生成物を保護してください。
 
 ## 推奨モデル
 
@@ -8,70 +8,140 @@ GPT-5.6 Sol
 
 ## 推論レベル
 
-high
+xhigh
 
-長寿命の監視状態、WPF UI thread、capture resource、明示開始・停止、manual/capture-save排他、task tray lifecycle、保存結果の状態写像を同時に扱うためです。正式DB schemaや保存値昇格policyは変更しないため、通常はxhighまで上げません。
+catalog schema version 2、v1からの非破壊移行、manual provenance、review history、transaction、再投入・競合・旧projection互換を同時に固定するためです。capture/OCR/window lifecycleへは進みません。
 
 ## 作業ブランチ
 
 ```powershell
-codex/m9-monitoring-ui-task-tray
+codex/m5c-manual-jacket-review-workflow
 ```
 
-## Goal
+## Normalized Summary
 
-既存の明示continuous capture + save workflowを、WPFの監視状態モデルとtask trayから安全に開始・停止・確認できるようにします。対象window状態、capture状態、最新の保存成功・skip・解析失敗を1つの監視surfaceへ統合し、windowを閉じてもユーザーが明示終了するまではtrayから状態確認と停止を行えるようにします。
+M5c-1で完成したdeveloper-only collectorのread-only coverage/review queueを、取り消し可能で監査可能な手動review workflowへ進めます。catalog v1を直接破壊せずversion 2へcopy-on-write移行し、`manual_confirmed`、reject、reopen、reassignment historyをcollectorから明示操作できるようにします。
 
-このPRはM9残り実行順5です。長時間soak、再起動・自動再接続、resource leak最終監査、installer、配布、M10精度保証には進みません。
+このPRはmanual mutationだけを扱います。window探索、live capture、jacket安定検出、title/artist OCR、物理削除、source image削除は後続PRへ残します。
+
+## In Scope
+
+- catalog schema version 2とstrict validationを追加する。
+- v1 sourceを変更しない明示的なv1→v2 copy-on-write migrationを追加し、staging検証成功後だけ新規v2 targetへatomic publishする。
+- referenceにcurrent review status、manual provenance、monotonic revisionを持たせ、review action historyをappend-onlyで保持する。
+- collectorで候補・観測・master driftを確認し、明示song選択によるmanual confirm/reassign、reject、reopenを実行する。
+- mutationはcurrent projectionのreference revisionをpreconditionにし、stale UI、二重click、再投入、競合を安全に拒否または冪等処理する。
+- manual confirm先はcurrent masterに存在し、GP対象であるsongだけを受け入れる。候補配列外のsongも明示検索・選択できるが、暗黙選択しない。
+- `auto_confirmed` と `manual_confirmed` を区別し、manual referenceをruntime matcherへ渡す条件をcurrent master、current extractor、GP可否、rejectedでないこととして固定する。
+- Python projectionをversion 2へ拡張し、catalog v1はread-only/migration-required、v2はmutation capabilityとrevision/historyを返す。C# loaderはversion 1 fixtureのread-only表示互換を維持し、version 2をstrictに読む。
+- fake process、fixture DB、temporary `data/` rootでmigration、service、ViewModel、strict loader、mutation side-effect testを追加する。
+- `docs/implementation-roadmap.md`、`docs/design/09_master_match_poc.md`、`tools/vision_poc/README.md`、collector READMEを同期する。
+
+## Out of Scope
+
+- 公開 `DDRGpScoreViewer`、正式保存workflow、正式個人スコアDB、M9 monitoring/trayの変更
+- v1 catalogのin-place migration、既存v1 fileの上書き・削除
+- reference row、history row、capture、crop、source imageの物理削除
+- purge、retention、cleanup UI
+- DDR GP window探索、Windows Graphics Capture、連続capture、ring buffer、jacket変化/安定検出
+- title/artist OCR、confidence閾値、観測自動生成、auto-confirm条件の緩和
+- grid操作、キー入力、focus移動、ゲーム操作自動化
+- installer、Release、telemetry、GitHub Actions artifactへのcollector追加
+
+## Fixed Decisions
+
+- catalog v1はimmutable sourceとして扱い、migrationは別pathのv2 catalogをstaging生成・strict検証・atomic publishする。失敗、取消、競合時はv1と既存v2 targetを変更しない。
+- v2 status語彙は `auto_confirmed`、`manual_confirmed`、`needs_review`、`unresolved`、`rejected` とする。master/extractor driftは保存statusを暗黙更新せずprojection上のcurrent state/reasonとして示す。
+- manual action語彙は `manual_confirm`、`reassign`、`reject`、`reopen` とし、各actionはreference ID、before/after status・song、opaque reason/note、UTC timestamp、before/after revisionをappend-only historyへ記録する。
+- `manual_confirm` は未確定またはreopen済みreferenceを明示songへ確定する。確定済みreferenceの別song変更は `reassign` として区別する。
+- `reject` は取り消し可能な論理状態であり、reference、特徴量、候補、観測、historyを削除しない。`reopen` は直前確定songを自動復元せず、review対象へ戻す。
+- mutationは1 transactionでcurrent rowとhistoryを更新する。historyだけ/current rowだけの部分成功を許さない。
+- requestはexpected revision、expected current state、action IDを持つ。同一action ID・同一payloadの再投入は冪等成功、同一IDの異なるpayloadとstale revisionは副作用なしで拒否する。
+- reason/note、candidate reason、observation statusはopaque UTF-8文字列として保持し、未知値を拒否・解釈しない。status/action/versionは閉じた語彙としてstrictに検査する。
+- expected song ID、OCR raw、近傍候補をmanual songへ暗黙昇格しない。manual確定は開発者の明示選択だけで行う。
+- same image bytesを共有する別songの別reference、song 1:N、current extractorだけをruntime matcherへ渡すM5b境界を維持する。
+
+## Pending Decisions
+
+- 完全削除、source image削除、retention、欠損capture/cropの最終操作契約
+- live collection sessionのcheckpoint、ring buffer、採用frame、診断frame保持方針
+- title/artist取得方式、OCR精度評価、auto-confirm採用閾値、更新ずれ対策
+- DDR GP window候補条件、誤検出評価、handle消失後の再選択契約
+
+これらは後続PRの仕様判断であり、このPRを止めない。
 
 ## Deliverables
 
-- `idle`、`selecting_target`、`monitoring`、`stopping`、`stopped`、`target_closed`、`resized`、`device_lost`、`capture_failed`、`workflow_failed` を区別する監視状態modelと状態遷移を追加する。
-- 既存continuous captureとcapture-save workflowを再利用し、開始・停止を明示操作だけに限定する。二重開始、停止競合、manual saveとの共通排他を維持する。
-- 対象windowの選択済み/閉鎖/resize/device lost、取得frame数、開始時刻、最新event時刻をWPFへ表示する。window titleなど取得可能な識別情報は表示用に限定し、対象自動探索へ使わない。
-- 最新保存結果を `saved`、`duplicate`、`excluded`、`unresolved`、`analysis_failed`、`db_rejected`、`workflow_failed` の件数・時刻・理由で表示し、savedだけを成功playとして扱う。
-- task tray iconとcontext menuを追加し、監視開始、監視停止、メインwindow表示、アプリ終了を提供する。trayの終了は監視停止とresource解放を待ってからprocessを終了する。
-- メインwindowのclose/最小化とtray常駐の契約を明示し、通常closeで監視中resourceやworkflowを孤立させない。ユーザーの明示終了と単なるwindow非表示を区別する。
-- 通知は保存成功、監視停止を要する重大失敗など最小限にし、duplicate/unresolvedの連続通知spamを避ける。通知なしでもUI/trayから最新状態を確認できる。
-- 監視状態とtray操作のunit test、ViewModel test、capture fakeを使った状態遷移testを追加し、Windows Graphics Capture実機を通常testの必須条件にしない。
-- `docs/implementation-roadmap.md`、関連 `docs/design/`、WPF README/画面仕様を実績に同期する。
+- catalog v2 schema、strict validator、v1→v2 copy-on-write migrator
+- append-only review history、revision/action IDによるtransaction・冪等・競合契約
+- manual confirm/reassign/reject/reopen Python service/CLI境界
+- collectorのmigration導線、song検索・明示選択、確認、成功/失敗/競合表示、history read-only表示
+- projection v2 producerとC# strict loader、projection v1 read-only互換
+- runtime feature loaderのmanual reference採用条件と回帰test
+- empty v1、compatible v1、既存v2 target、破損/別種DB、unsupported schema、master drift、旧extractor、stale revision、同一action再投入、transaction failure fixture
+- README・設計docs・次PR仕様の同期
 
 ## Invariants
 
-- pickerと監視開始はユーザーの明示操作でだけ実行し、DDR GRAND PRIX window自動探索、ゲーム操作自動化、自動再接続を行わない。
-- `連続取得・保存` の既存manifest、分類、confirmed event、candidate/formal値境界、正式workflow、DB transaction、duplicate keyを変更しない。
-- candidate、OCR raw、expected、preview、相対時刻を正式playへ暗黙昇格しない。
-- `saved` かつtransaction済み非null `play_id` だけをviewerへ再読込し、duplicate、excluded、unresolved、解析/DB失敗を成功表示しない。
-- manual saveとmonitoring capture-saveの `IsSaving` 共通排他を維持し、同一正式DBへの並行writerを開始しない。
-- stop、target closed、resize、device lost、app exitでcapture session、frame pool、queue、event購読、tray resourceを一度だけ解放する。
-- 正式個人スコアDB schema version 1、M4 master DB、M5b jacket catalogを変更しない。
-- ローカルcapture、DB、ログ、status履歴をGit、CI artifact、Releaseへ含めない。
+- 公開app、monitoring/tray、正式保存workflow、正式個人スコアDBを変更しない。
+- v1 source、既存v2 target、master DB、capture、crop、`data/`、`logs/` は成功条件を満たす前に変更しない。
+- reject/reopen/reassignでreference evidenceやhistoryを失わない。
+- candidate、expected、OCR raw、近傍候補を明示操作なしで確定songへ昇格しない。
+- current masterにないsong、GP対象外song、旧extractor、orphan、rejected referenceをruntime matcherへ渡さない。
+- local DB、capture、crop、review結果、process logをGit、CI artifact、Releaseへ含めない。
+- collectorを通常solution build、installer、公開app packageへ暗黙追加しない。
+
+## Boundary Condition Matrix
+
+| 状態/操作 | 期待結果 | 副作用境界/test |
+| --- | --- | --- |
+| compatible v1→新規v2 | 全row/evidenceを保持してv2をatomic publish | v1 hash不変、temporaryなし |
+| empty catalog v1 | 有効な空v2を生成 | coverage/review空、history空 |
+| migration parse/validate/cancel/publish失敗 | v2を公開しない | v1/既存target hash不変、parent/tempなし |
+| targetが既存v2/非catalog/directory | 実行前拒否 | source/target不変、migration開始なし |
+| manual confirm/reassign | current GP songへrevision+1、history 1件 | current row/history同一transaction |
+| reject/reopen | evidenceを保持して論理状態だけ更新 | 物理削除なし、history 1件 |
+| stale revision/state | conflict表示 | DB hash不変、historyなし |
+| 同一action ID・同一payload再投入 | 冪等に同じreceipt | revision/history増加なし |
+| 同一action ID・異なるpayload | conflict拒否 | DB hash不変 |
+| transaction途中失敗 | 全rollback | current row/history片側更新なし |
+| master missing/GP対象外 song | manual action拒否 | catalog/master不変 |
+| master/extractor drift | review表示、manual再確認要求 | 暗黙status/song更新なし |
+| projection v1/v2 | v1はread-only、v2はcapability/revision/history表示 | unknown field/status/versionは拒否、opaque reasonは保持 |
 
 ## Validation
 
-- 状態遷移、二重開始、停止冪等性、stop中再開始拒否、0frame停止、target closed、resize、device lost、capture/write/workflow失敗をfakeで固定する。
-- manual save中の監視開始拒否、監視中のmanual save拒否、終了時stop待機、commit済みpartial successの表示を確認する。
-- tray menuの開始/停止enable状態、window表示、close-to-tray、明示exit、resource disposeをfixtureで確認する。
-- saved/duplicate/excluded/unresolved/analysis_failed/db_rejected/workflow_failedの表示写像と、savedだけのread-only reloadを確認する。
-- 関連 .NET test、`dotnet build`、影響するPython workflow test、Ruff、compileall、`git diff --check` を実行する。
-- 利用可能なら実windowで明示開始・停止・tray復帰を1回目視確認する。実機/GUI確認が必須になった場合は `AGENTS.md` の `ユーザー対応が必要` 形式で依頼し、fixture検証を止めない。
-- 画像分類、ROI、OCR、M5/M7a、confirmed-events生成を変更しない場合は `python -m tools.vision_poc` 本体を省略し、理由と残るリスクを報告する。
-
-## Non-goals
-
-- 対象window自動探索、自動再接続、ゲーム操作自動化
-- 長時間soak、再起動復旧、resource leak最終監査、M9完了判定
-- installer、auto-update、Release、配布、telemetry
-- 正式個人スコアDB schema/migration/backup/repair、保存workflow変更
-- M5b catalog収集・review UI、master DB更新実装
-- OCR、ROI、identity、数字認識、正式値昇格policyの変更
+- Python: migration、schema、mutation、runtime loader、projectionの対象testと関連M5b test。
+- .NET: projection v1/v2 strict loader、migration/mutation fake service、ViewModel filter/action/history/競合test。
+- migration/mutation前後でsource/target/catalog/master hash、row、history、revisionを確認する。
+- unsupported version、必須/未知field、null/型不正、未知status/action、candidate/history配列不正、truncated JSON、空stdout、Python非0終了を副作用なしで拒否する。
+- `dotnet build`、collector全test、関連Python test、Ruff、compileall、`git diff --check` を実行する。
+- catalog schema、transaction、runtime loaderを変更するためPython全テストを1回実行する。
+- capture、画像分類、ROI、OCR、confirmed-eventsを変更しないため `python -m tools.vision_poc` 本体は省略し、理由と残るリスクを報告する。
 
 ## Acceptance Criteria
 
-- ユーザーがWPFまたはtrayから監視を明示開始・停止でき、現在状態、対象window状態、最新保存/skip/失敗を確認できる。
-- 二重開始、停止競合、manual saveとの並行実行が発生せず、終了時にcapture/tray resourceが解放される。
-- savedだけが成功playとしてviewerへ反映され、duplicate、excluded、unresolved、解析/DB失敗が成功へ丸められない。
-- target closed、resize、device lost、capture/write/workflow失敗が個別状態と理由で残り、安全に停止する。
-- fixtureで主要状態遷移とtray lifecycleを再現でき、read-onlyレビューでmedium以上の未対応指摘がない。
+- v1を変更せず、明示操作でだけ検証済みv2 catalogを新規作成できる。
+- manual confirm/reassign/reject/reopenがrevision preconditionとappend-only historyを伴う1 transactionで実行される。
+- stale UI、二重click、同一action再投入、部分失敗でsilent overwriteやhistory重複が起きない。
+- current master/GP/extractor/review状態を満たすauto/manual referenceだけをruntime matcherへ渡す。
+- collectorで候補外を含むcurrent GP songを検索・明示選択できるが、候補やexpectedから暗黙確定しない。
+- projection v1のread-only表示互換とprojection v2のstrict mutation capabilityがtestで固定される。
+- physical delete、capture、OCR、window探索が混入していない。
+- read-only branch diffレビューでmedium以上の未対応指摘がない。
 
-完了後は次PR仕様へ更新し、今回変更だけをcommit、現在のbranchへ通常pushしてdraft PRを作成してください。
+## Open Risks / Blockers
+
+- catalog v2はlocal-onlyでも将来のcapture sessionとruntime matcherが読むため、schema fieldとstatus consumerを全検索し、v1をv2として誤解しないことを確認する。
+- v1 local catalogはGit管理外なので、migration testはfixture DBで固定し、実local DB migrationをmerge条件にしない。
+- Draft PR #27など別trackもroadmap/next-taskを変更し得る。後からmergeするbranchが最新mainを取り込み、M5cとM9の両方を残してdocs競合を解消する。
+
+## Issue Body Patch Or Append Text
+
+M5c第2段階として、catalog v1を保持するcopy-on-write v2 migrationと、revision・append-only historyを持つmanual confirm/reassign/reject/reopen workflowをdeveloper-only collectorへ追加する。capture、OCR、window探索、物理削除は後続PRとする。
+
+## Issue Comment Draft
+
+M5c-1のread-only collectorを土台に、次はcatalog v2と監査可能なmanual reviewだけを実装します。v1は上書きせず、stale UI・再投入・transaction部分失敗を副作用なしで扱い、live capture/OCRは別PRへ維持します。
+
+完了後はM5c-3aのwindow候補検出・明示capture lifecycleを独立した次PR仕様へ更新し、今回変更だけをcommit、現在のbranchへ通常pushしてdraft PRを作成してください。
