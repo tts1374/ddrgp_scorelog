@@ -293,22 +293,22 @@ M5完了時点で固定すること:
 - 生成DB、PoC出力、OCR画像、`metadata.csv`、ローカル素材、ローカルDBをGit管理していない。
 - この条件を満たした後、次フェーズは M7a「スコア系数字認識のOCR脱却」または M6「本番キャプチャAPIの最小接続」へ切り分ける。
 
-### M5b: ローカルjacket参照カタログ整備
+### M5b: ローカルjacket参照カタログ基盤
 
 Status: Completed on 2026-07-14.
 
-目的は、M5 jacket照合をGPプレー可能な全曲へ広げるため、song select grid由来のjacket、title、artistを開発者本人のローカル環境で収集し、M4マスタへ安全に紐付けた参照カタログを生成することです。本マイルストーンはM9のcapture・分類・confirmed event・正式保存workflow接続を完了した後、監視UI・タスクトレイへ進む前に独立PRとして実施します。
+目的は、M5 jacket照合をGPプレー可能な全曲へ広げるため、song select grid由来のjacket、title、artist観測をM4マスタへ安全に紐付けて永続化するlocal catalog基盤を固定することです。実用的なcapture、review UI、master更新、約1200曲の収集workflowはM5cへ分けます。
 
 固定する方針:
 
-- ユーザーが手動でsong select gridを巡回し、ツールはcapture、主要ROI抽出、同一観測の重複排除、title / artist取得、M4マスタとの照合を行う。ゲーム操作の自動化や公式サイトからの画像scrapingは行わない。
+- M5bの入力はlocal observation CSVとし、主要ROI抽出、同一観測の重複排除、M4マスタ照合、永続特徴量、coverageを固定する。capture、title / artist取得、review UIはM5cで扱う。
 - 利用範囲は開発者本人のローカル利用に限定し、capture、crop、特徴量カタログを第三者へ共有しない。Git、GitHub Actions artifact、Releaseにも含めない。
 - 対象は、対象master versionで `grand_prix_play_available=true` となる全songとする。未収集、参照済み、要レビュー、未解決を分けてcoverageを集計する。
 - 生の全画面captureとjacket cropはレビュー完了までローカル保持できるようにし、レビュー後の削除は明示cleanupとする。自動削除は初期範囲に含めない。
 - 現行M5互換のjacket照合に必要な `thumbnail_rgb`、histogram、dHash相当、feature extractor version、source image hash、`song_id`、master version、review statusをローカル参照カタログへ永続保存する。16x16 RGB縮小値を含む特徴量も画像由来の非共有データとして扱う。
 - songとjacket referenceは1:Nとし、同一songに複数の有効参照を保持できるようにする。同一captureの再投入では参照件数を増やさない。
 - canonical title + artist完全一致、一意alias一致など安全な一意照合だけを自動確定し、複数候補、低確度、取得失敗は候補と理由を付けて人手レビューへ送る。
-- 自動確定率90%以上を必須目標、95%以上を努力目標とする。ただし既知の誤自動確定0件を優先し、自動確定率のために一意性条件を緩めない。capture済み対象song全体を分母とし、OCRや照合の失敗行を分母から除外しない。
+- 自動確定率、既知誤確定、理由別件数を同じcapture観測分母で計測できるようにする。90%以上の必須目標と95%以上の努力目標は実用収集を行うM5cの運用完了条件とし、率のために一意性条件を緩めない。
 - runtime identityはjacketを主信号とし、chart fieldsで候補を絞った後にjacket照合する。jacket参照なし、曖昧、未解決ではtitle / artistだけのfallbackを行わず、正式playへ昇格しない。
 - 参照カタログは正式個人スコアDB、`source_captures`、`analysis_logs`、`plays` と分離し、M5 identity候補観測を供給する責務だけを持つ。
 
@@ -322,12 +322,53 @@ Status: Completed on 2026-07-14.
 
 完了条件:
 
-- GPプレー可能な全songについて、参照済み、要レビュー、未収集、未解決のいずれかを機械的に確認できる。
-- 自動確定率90%以上を満たし、95%未満の場合は理由別件数と改善候補を確認できる。
-- 自動確定行の監査で既知の誤確定が0件であり、曖昧候補を近傍の別曲へ寄せて解消扱いにしない。
+- local observation CSVからstrict catalogを再現生成し、GPプレー可能な全songを参照済み、要レビュー、未収集、未解決のいずれかへ機械的に分類できる。
+- 自動確定率、理由別件数、監査済み/未監査、既知誤確定を同じdeduplicated observation集合から確認できる。
+- fixture監査で既知の誤確定がなく、曖昧候補を近傍の別曲へ寄せて解消扱いにしない。
 - 同一入力の再実行、複数jacket reference、master version更新時のorphan・再レビュー対象を検査できる。
 - 生画像削除後も永続特徴量からM5 jacket照合を再実行できる。
 - capture、crop、特徴量、レビュー結果、ローカルカタログがGit管理、CI artifact、Release、通常ログへ混入しない。
+
+### M5c: 開発者専用jacket catalog collector
+
+Status: Planned. M5c-1 branch started on 2026-07-14.
+
+目的は、M5b catalogを約1200曲の手作業画像保存・CSV記入に依存せず運用するため、公開WPF appと分離した開発者専用collectorを追加することです。開発者はsong select gridを手動巡回し、ツールがmaster更新、coverage、review、capture、jacket安定検出、観測生成、M4照合を担当します。ゲーム操作は自動化しません。
+
+固定する方針:
+
+- collectorは `tools/` 配下の独立appとし、公開 `DDRGpScoreViewer`、M9 monitoring/tray、installer、Releaseへ含めない。
+- Wiki譜面表と公式収録曲一覧からのmaster生成・inspectionは既存M4 builderを再利用し、staging検証成功後の明示操作だけでatomic publishする。
+- master version/hash、GP対象曲、catalog identity/schema、参照済み、要レビュー、未収集、未解決、orphan、旧extractorを1つの開発者画面で確認できるようにする。
+- 曖昧referenceは元capture/crop、観測title/artist、候補、理由を表示し、将来の手動確定を `auto_confirmed` と異なるprovenanceで保持する。
+- 将来のcollection sessionは開始時のmaster version/hashとfeature extractor versionを固定し、中断・再開と冪等再投入を前提にする。
+- DDR GP window自動特定はdeveloper-only collectorで先行評価してよいが、候補根拠と誤検出を観測可能にし、ゲームへの入力、focus操作、grid自動巡回は行わない。
+- 同一画像hashだけで全観測をskipせず、同じ画像bytesを共有する別songを別referenceとして保持するM5b境界を維持する。
+- capture、crop、特徴量、review、master/catalog DB、source snapshotはlocal dataとし、Git、CI artifact、Release、通常公開logへ含めない。
+
+保留事項:
+
+- title/artist取得方式、OCR精度、auto-confirm閾値、jacketと文字領域の更新ずれ対策
+- `manual_confirmed`、`rejected`、review/reassignment historyを持つcatalog次versionとv1移行/再構築方針
+- reject、取り消し、完全削除、source image削除を分ける操作契約
+- window自動特定の候補条件、初回確認、handle消失・再起動後の再選択契約
+- ring buffer、採用frame、診断frame、crop保持、明示cleanup policy
+- catalog referenceとlocal source capture/cropを再表示可能に結ぶlocator、retention、欠損時表示の契約
+
+実行順:
+
+1. M5c-1: 独立developer app、既存M4 master build/update、read-only coverage/review queueを追加する。catalog mutation、capture、OCRは行わない。
+2. M5c-2: catalog次version、`manual_confirmed`、reject/reassignment history、手動紐付け、取り消し可能なreview操作を追加する。
+3. M5c-3a: DDR GP window候補検出、preview付き確認、Windows Graphics Captureの明示開始・停止、raw frame ring buffer、window/resource lifecycleを追加する。catalog観測生成は行わない。
+4. M5c-3b: jacket ROI変化/安定検出、同一preview制御、session checkpoint、中断・再開、観測自動生成、catalog投入を追加する。実装前にcapture lifecycleとsession永続化が同じ検証セットで扱えるか再確認し、必要ならさらに分割する。
+5. M5c-4: 実captureでtitle/artist取得を評価し、採用条件を満たす方式だけauto-confirmへ接続する。未採用・不一致はreviewへ残す。
+
+完了条件:
+
+- 開発者がCSVを通常編集せず、master更新、coverage確認、曖昧review、手動紐付け、grid手動巡回によるcollectionを独立appで実施できる。
+- capture済み対象song全体を分母にauto-confirm率90%以上、95%以上を努力目標として確認でき、既知誤自動確定0件を優先する。
+- 中断・再開、同一session/frame再投入、同じ画像を共有する別song、master/extractor driftを安全に扱える。
+- 公開app、正式保存workflow、正式個人スコアDB、ゲーム操作へ接続せず、local dataを公開成果物へ混入させない。
 
 ### M6: 本番キャプチャAPIの最小接続
 
@@ -487,7 +528,7 @@ Status: Completed on 2026-07-14.
 - 2026-07-13時点で第4段階の実capture認識品質を確認した。WPF manifestを既存manifest modeで再実行し、1280x720実capture 5枚で分類5/5、confirmed result 1件、M7a主要数字8/8、chart-field 3/3、master/jacket match各1/1を期待値付きで確認した。曲名ROIをartist行から局所分離し、空読み時だけ従来ROIへ戻す。既存 `low-threshold` profileでEX SCOREの実capture差分を吸収した。候補材料を正式値やDB保存へ昇格していない。
 - 2026-07-13時点で第5段階の連続capture sessionを追加した。明示選択windowを明示停止まで同じWindows Graphics Capture resourceで取得し、strictly increasing timestampのmanifest互換bundleをstagingからatomicに公開する。resize、target closed、device lost、write失敗は部分sessionを破棄し、解析、自動保存、常駐監視には接続していない。
 - 2026-07-14時点で第6段階の正式保存workflow接続を追加した。明示した `連続取得・保存` だけが完成session manifestを既存分類・confirmed event・M5/M7a候補へ渡し、eventを直列に既存正式workflowで処理する。採用済みfield根拠、confidence、完全性が揃わないeventは `unresolved` に保ち、DB duplicate・excluded・解析/DB失敗をsavedへ丸めない。transaction済みplayだけread-only再読込する。現行pipelineの候補値を正式値へ暗黙昇格せず、常駐監視・task trayには進んでいない。
-- 第7段階としてM5b jacket参照カタログを追加済み。次は監視状態を接続する。
+- 第7段階としてM5b jacket参照カタログ基盤を追加済み。実用収集は独立M5cへ分離する。
 - タスクトレイ常駐を実装する。
 - 監視状態、対象ウィンドウ状態、最新保存結果を表示する。
 - マスタDB更新状態を表示する。
@@ -503,6 +544,8 @@ M9残り実行順（PR #21 merge後、原則1項目1PR）:
 6. マスタDB更新状態、長時間動作、再起動・再接続、resource leak、失敗復旧を検証し、M9完了条件を満たす運用状態へ固める。installer、配布、精度保証値の確定はM10へ残す。
 
 4項目目の正式保存workflow接続後、5項目目の監視UI・タスクトレイへ進む前に、M5b「ローカルjacket参照カタログ整備」を独立PRとして差し込む。M5bでは正式保存workflow、監視UI、正式個人スコアDB schemaを変更しない。
+
+M9監視UIはDraft PR #27で独立して進行中である。M5cは最新mainから別branchで開始し、公開WPF appやM9監視ファイルを変更せず、M5c-1を先にmerge可能な単位へ分ける。M5c-1とPR #27の後続merge順は固定せず、後からmergeするbranchが最新mainを取り込み、M5c milestoneとM9残り作業の両方を残してdocs競合を解消する。M5c-2以降とM9残り作業も独立trackとして進める。
 
 この6項目はM9を約6PRで完了させるための基準順であり、M5bは追加の独立PRとして扱う。各PRは現在の目的、完了条件、検証セットでmerge可能な単位に保ち、独立した次項目へ同じPR内で進まない。実測で安全に統合・分割する必要が出た場合も、capture、認識品質、正式保存、jacket参照カタログ、常駐監視の責務境界は混ぜない。M10の初期版リリース準備は、この後さらに2から3PRを目安とする。
 
@@ -532,9 +575,10 @@ M9残り実行順（PR #21 merge後、原則1項目1PR）:
 
 ## 近い順の推奨作業
 
-1. `M9残り実行順` の5として、監視UI・タスクトレイへ状態表示と明示開始・停止を接続する。
-2. 続いて6の長時間運用、再起動・再接続、resource leak、失敗復旧を独立PRで固める。
-3. M9完了後にM10の実機検証と配布準備へ進む。
+1. M5c-1として、独立developer app、master build/update、read-only coverage/review queueを追加する。
+2. Draft PR #27のM9監視UIとM5c-1は独立trackとしてレビュー・mergeし、相互の完了待ちを必須にしない。
+3. M5c-2以降のmanual review、capture、collection、title/artist評価と、M9の長時間運用・失敗復旧をそれぞれ独立PRで進める。
+4. M9とM5cの完了後にM10の実機検証と配布準備へ進む。
 
 各チャットの具体的な次PR仕様は `docs/next-task.md` を優先し、上記順序と矛盾する古い候補へ戻らない。
 
@@ -545,4 +589,5 @@ M9残り実行順（PR #21 merge後、原則1項目1PR）:
 - 保存直前境界は `confirmed_result=true` かつ `duplicate=false` を維持する。
 - `transition_countup_*` は `result_shape_candidate=true` でも保存対象外にする。
 - DB保存、常駐監視、非同期処理、スコア系数字認識のOCR脱却は、それぞれ独立したフェーズとして扱う。
+- developer-only collectorのwindow候補自動検出は公開appの自動探索採用を意味せず、実測結果と誤検出を分けて評価する。ゲームへの入力・focus操作・grid自動巡回は行わない。
 - ローカル素材、`samples/screenshots/metadata.csv`、PoC出力、解析ログ、ローカルDBはGit管理しない。
