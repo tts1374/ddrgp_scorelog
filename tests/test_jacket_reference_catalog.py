@@ -279,6 +279,86 @@ def test_ingest_is_idempotent_supports_one_to_many_and_rejects_capture_conflict(
         )
 
 
+def test_reingest_updates_corrected_identity_and_audit_without_adding_reference(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    master_db, catalog_path = setup_paths(tmp_path, monkeypatch)
+    image_path = tmp_path / "corrected.png"
+    write_image(image_path, (40, 80, 120))
+
+    created = catalog.ingest_observation(
+        catalog_path,
+        master_db,
+        source_image_path=image_path,
+        source_capture_id="capture-correction",
+        observed_title="Alpha",
+        observed_artist="wrong artist",
+        image_kind="jacket_crop",
+        now="2026-07-14T01:00:00+00:00",
+    )
+    audit_updated = catalog.ingest_observation(
+        catalog_path,
+        master_db,
+        source_image_path=image_path,
+        source_capture_id="capture-correction",
+        observed_title="Alpha",
+        observed_artist="wrong artist",
+        image_kind="jacket_crop",
+        expected_song_id="song-1",
+        now="2026-07-14T01:30:00+00:00",
+    )
+    updated = catalog.ingest_observation(
+        catalog_path,
+        master_db,
+        source_image_path=image_path,
+        source_capture_id="capture-correction",
+        observed_title="Alpha",
+        observed_artist="Artist A",
+        image_kind="jacket_crop",
+        expected_song_id="song-1",
+        now="2026-07-14T02:00:00+00:00",
+    )
+    repeated = catalog.ingest_observation(
+        catalog_path,
+        master_db,
+        source_image_path=image_path,
+        source_capture_id="capture-correction",
+        observed_title="Alpha",
+        observed_artist="Artist A",
+        image_kind="jacket_crop",
+        expected_song_id="song-1",
+        now="2026-07-14T03:00:00+00:00",
+    )
+
+    assert (created.disposition, created.review_status) == ("created", "needs_review")
+    assert (audit_updated.disposition, audit_updated.review_status) == (
+        "updated",
+        "needs_review",
+    )
+    assert (updated.disposition, updated.review_status) == ("updated", "auto_confirmed")
+    assert repeated.disposition == "existing"
+    with sqlite3.connect(catalog_path) as connection:
+        connection.row_factory = sqlite3.Row
+        row = connection.execute("SELECT * FROM jacket_references").fetchone()
+        assert connection.execute("SELECT COUNT(*) FROM jacket_references").fetchone()[0] == 1
+        assert row["song_id"] == "song-1"
+        assert row["observed_artist"] == "Artist A"
+        assert row["expected_song_id"] == "song-1"
+        assert row["review_status"] == "auto_confirmed"
+        assert row["updated_at"] == "2026-07-14T02:00:00+00:00"
+        assert [
+            candidate["song_id"]
+            for candidate in connection.execute(
+                "SELECT song_id FROM reference_candidates"
+            ).fetchall()
+        ] == ["song-1"]
+
+    _rows, summary = catalog.build_coverage(catalog_path, master_db)
+    assert summary["auto_confirm_rate"] == 1.0
+    assert summary["known_false_auto_confirm_audit_status"] == "evaluated"
+    assert summary["known_false_auto_confirm_audit_passed"]
+
+
 def test_persisted_features_replay_existing_m5_match_after_reference_image_deleted(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

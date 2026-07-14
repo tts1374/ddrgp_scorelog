@@ -580,11 +580,12 @@ def ingest_observation(
     timestamp = now or utc_now()
     capture_id = source_capture_id.strip() or None
     with closing(sqlite3.connect(catalog_path)) as connection, connection:
+        connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA foreign_keys = ON")
         _validate_catalog(connection)
         existing = connection.execute(
             """
-            SELECT reference_id, source_image_hash, review_status, resolution_reason
+            SELECT *
             FROM jacket_references
             WHERE (source_image_hash = ? AND feature_extractor_version = ?)
                OR (source_capture_id IS ? AND source_capture_id IS NOT NULL
@@ -593,10 +594,93 @@ def ingest_observation(
             (source_hash, FEATURE_EXTRACTOR_VERSION, capture_id, FEATURE_EXTRACTOR_VERSION),
         ).fetchall()
         if existing:
-            if any(str(row[1]) != source_hash for row in existing):
+            if any(str(row["source_image_hash"]) != source_hash for row in existing):
                 raise ValueError("source_capture_id was already used with different image bytes")
             row = existing[0]
-            return IngestResult(str(row[0]), "existing", str(row[2]), str(row[3]))
+            existing_reference_id = str(row["reference_id"])
+            desired_capture_id = row["source_capture_id"] or capture_id
+            desired_expected_song_id = expected_song_id or str(row["expected_song_id"])
+            identity_changed = (
+                observed_title != str(row["observed_title"])
+                or observed_artist != str(row["observed_artist"])
+                or observation_status != str(row["observation_status"])
+            )
+            audit_or_capture_changed = desired_capture_id != row[
+                "source_capture_id"
+            ] or desired_expected_song_id != str(row["expected_song_id"])
+            if not identity_changed and not audit_or_capture_changed:
+                return IngestResult(
+                    existing_reference_id,
+                    "existing",
+                    str(row["review_status"]),
+                    str(row["resolution_reason"]),
+                )
+            if identity_changed:
+                song = resolution.song
+                connection.execute(
+                    """
+                    UPDATE jacket_references
+                    SET source_capture_id = ?, master_version = ?, song_id = ?,
+                        canonical_title_snapshot = ?, canonical_artist_snapshot = ?,
+                        review_status = ?, resolution_reason = ?, resolution_basis = ?,
+                        observed_title = ?, observed_artist = ?, observation_status = ?,
+                        expected_song_id = ?, updated_at = ?
+                    WHERE reference_id = ?
+                    """,
+                    (
+                        desired_capture_id,
+                        master.version,
+                        None if song is None else song.song_id,
+                        "" if song is None else song.title,
+                        "" if song is None else song.artist,
+                        resolution.status,
+                        resolution.reason,
+                        resolution.basis,
+                        observed_title,
+                        observed_artist,
+                        observation_status,
+                        desired_expected_song_id,
+                        timestamp,
+                        existing_reference_id,
+                    ),
+                )
+                connection.execute(
+                    "DELETE FROM reference_candidates WHERE reference_id = ?",
+                    (existing_reference_id,),
+                )
+                connection.executemany(
+                    "INSERT INTO reference_candidates "
+                    "(reference_id, song_id, candidate_reason) VALUES (?, ?, ?)",
+                    (
+                        (existing_reference_id, song_id, resolution.reason)
+                        for song_id in resolution.candidate_song_ids
+                    ),
+                )
+                return IngestResult(
+                    existing_reference_id,
+                    "updated",
+                    resolution.status,
+                    resolution.reason,
+                )
+            connection.execute(
+                """
+                UPDATE jacket_references
+                SET source_capture_id = ?, expected_song_id = ?, updated_at = ?
+                WHERE reference_id = ?
+                """,
+                (
+                    desired_capture_id,
+                    desired_expected_song_id,
+                    timestamp,
+                    existing_reference_id,
+                ),
+            )
+            return IngestResult(
+                existing_reference_id,
+                "updated",
+                str(row["review_status"]),
+                str(row["resolution_reason"]),
+            )
         song = resolution.song
         reason = resolution.reason
         connection.execute(
@@ -994,8 +1078,11 @@ def main(argv: list[str] | None = None) -> int:
         rows, summary = build_coverage(args.catalog, args.master_db)
         write_coverage_outputs(args.coverage_output, rows, summary)
         created = sum(result.disposition == "created" for result in results)
+        updated = sum(result.disposition == "updated" for result in results)
+        existing = len(results) - created - updated
         print(
-            f"Jacket catalog: {args.catalog} ({created} created, {len(results) - created} existing)"
+            f"Jacket catalog: {args.catalog} "
+            f"({created} created, {updated} updated, {existing} existing)"
         )
         return 0
     ensure_data_path(args.catalog, argument_name="--catalog")
