@@ -180,6 +180,8 @@ public sealed class ProjectionService(
             new ProcessRequest(
                 pythonExecutable,
                 [
+                    "-X",
+                    "utf8",
                     "-m",
                     "tools.vision_poc.jacket_catalog_review_projection",
                     "--catalog",

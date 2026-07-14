@@ -38,4 +38,24 @@ public sealed class ProcessRunnerTests : IDisposable
         File.Delete(lockedPath);
         Assert.False(File.Exists(lockedPath));
     }
+
+    [Fact]
+    public async Task DecodesUtf8ModePythonStdoutWithoutLosingJapaneseText()
+    {
+        var runner = new ProcessRunner();
+
+        var result = await runner.RunAsync(
+            new ProcessRequest(
+                "python",
+                ["-X", "utf8", "-c", "import sys; print(sys.flags.utf8_mode); print('日本語')"],
+                root),
+            CancellationToken.None);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Equal(
+            ["1", "日本語"],
+            result.StandardOutput.Split(
+                Environment.NewLine,
+                StringSplitOptions.RemoveEmptyEntries));
+    }
 }

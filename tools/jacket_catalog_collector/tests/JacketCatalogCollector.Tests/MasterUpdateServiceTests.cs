@@ -24,6 +24,9 @@ public sealed class MasterUpdateServiceTests : IDisposable
         Assert.Equal("staged-master", File.ReadAllText(target));
         Assert.Equal(2, runner.Requests.Count);
         Assert.All(
+            runner.Requests,
+            request => Assert.Equal(["-X", "utf8", "-m"], request.Arguments.Take(3)));
+        Assert.All(
             runner.Requests.SelectMany(request => request.Arguments)
                 .Where(argument => argument.Contains("ddrgp-jacket-collector-", StringComparison.Ordinal)),
             path => Assert.False(Directory.Exists(Path.GetDirectoryName(path))));
@@ -217,6 +220,59 @@ public sealed class MasterUpdateServiceTests : IDisposable
         Assert.Equal(before, Hash(target));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task CancellationAfterSuccessfulStagingInspectionDoesNotPublish(
+        bool existingTarget)
+    {
+        var target = existingTarget
+            ? Path.Combine(root, "cancel-before-publish.sqlite")
+            : Path.Combine(root, "new-cancel-parent", "master.sqlite");
+        string? before = null;
+        if (existingTarget)
+        {
+            File.WriteAllText(target, "existing-master");
+            before = Hash(target);
+        }
+        using var cancellation = new CancellationTokenSource();
+        var inspectionCount = 0;
+        var runner = new StubProcessRunner((request, _) =>
+        {
+            if (request.Arguments.Contains("master.inspect"))
+            {
+                inspectionCount++;
+                var stagingInspection = inspectionCount == (existingTarget ? 2 : 1);
+                if (stagingInspection)
+                {
+                    cancellation.Cancel();
+                }
+                return Task.FromResult(new ProcessResult(
+                    0,
+                    SummaryJson(stagingInspection ? "master-v2" : "master-v1"),
+                    ""));
+            }
+            File.WriteAllText(request.Arguments[^1], "staged-master");
+            return Task.FromResult(new ProcessResult(0, "built", ""));
+        });
+        var service = new MasterUpdateService(runner, new FailIfCalledPublisher(), root);
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => service.UpdateAsync(target, cancellation.Token));
+
+        if (existingTarget)
+        {
+            Assert.Equal(before, Hash(target));
+            Assert.Equal(2, inspectionCount);
+        }
+        else
+        {
+            Assert.False(File.Exists(target));
+            Assert.False(Directory.Exists(Path.GetDirectoryName(target)!));
+            Assert.Equal(1, inspectionCount);
+        }
+    }
+
     [Fact]
     public async Task PublishFailurePreservesExistingTargetAndCleansPublishFile()
     {
@@ -275,5 +331,11 @@ public sealed class MasterUpdateServiceTests : IDisposable
     private sealed class FailingPublisher : IMasterPublisher
     {
         public void Publish(string stagedPath, string targetPath) => throw new IOException("publish failed");
+    }
+
+    private sealed class FailIfCalledPublisher : IMasterPublisher
+    {
+        public void Publish(string stagedPath, string targetPath) =>
+            throw new Xunit.Sdk.XunitException("Publish must not run after cancellation.");
     }
 }

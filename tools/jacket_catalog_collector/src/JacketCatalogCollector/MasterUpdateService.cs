@@ -74,7 +74,7 @@ public sealed class MasterUpdateService(
             var buildResult = await processRunner.RunAsync(
                 new ProcessRequest(
                     pythonExecutable,
-                    ["-m", "master", "--output", stagedPath],
+                    ["-X", "utf8", "-m", "master", "--output", stagedPath],
                     repositoryRoot),
                 cancellationToken);
             EnsureSuccess(buildResult, "Master build");
@@ -84,9 +84,11 @@ public sealed class MasterUpdateService(
             }
 
             var after = await InspectAsync(stagedPath, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
             Directory.CreateDirectory(targetParent);
             try
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 publisher.Publish(stagedPath, fullTarget);
             }
             catch
@@ -110,7 +112,7 @@ public sealed class MasterUpdateService(
         var result = await processRunner.RunAsync(
             new ProcessRequest(
                 pythonExecutable,
-                ["-m", "master.inspect", path],
+                ["-X", "utf8", "-m", "master.inspect", path],
                 repositoryRoot),
             cancellationToken);
         EnsureSuccess(result, "Master inspection");

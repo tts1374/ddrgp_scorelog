@@ -13,7 +13,7 @@ dotnet test tools\jacket_catalog_collector\tests\JacketCatalogCollector.Tests\Ja
 dotnet run --project tools\jacket_catalog_collector\src\JacketCatalogCollector\JacketCatalogCollector.csproj --no-build
 ```
 
-appはカレントディレクトリをリポジトリrootとして `python -m master`、`python -m master.inspect`、`python -m tools.vision_poc.jacket_catalog_review_projection` を実行します。Python環境には既存M4/M5bと同じ依存が必要です。
+appはカレントディレクトリをリポジトリrootとして `python -X utf8 -m master`、`python -X utf8 -m master.inspect`、`python -X utf8 -m tools.vision_poc.jacket_catalog_review_projection` を実行します。子processのstdout/stderrはWindows localeに依存させずUTF-8として扱います。Python環境には既存M4/M5bと同じ依存が必要です。
 
 ## Master update boundary
 

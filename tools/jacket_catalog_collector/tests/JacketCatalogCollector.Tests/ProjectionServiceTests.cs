@@ -14,6 +14,7 @@ public sealed class ProjectionServiceTests
 
         Assert.Contains("broken catalog", exception.Message);
         Assert.Single(runner.Requests);
+        Assert.Equal(["-X", "utf8", "-m"], runner.Requests[0].Arguments.Take(3));
     }
 }
 
