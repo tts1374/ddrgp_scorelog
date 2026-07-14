@@ -359,6 +359,76 @@ def test_reingest_updates_corrected_identity_and_audit_without_adding_reference(
     assert summary["known_false_auto_confirm_audit_passed"]
 
 
+def test_reingest_recomputes_features_when_image_kind_changes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    master_db, catalog_path = setup_paths(tmp_path, monkeypatch)
+    image_path = tmp_path / "full-frame.png"
+    image = Image.new("RGB", (1280, 720), (255, 0, 0))
+    image.paste((0, 0, 255), (812, 28, 962, 178))
+    image.save(image_path)
+
+    created = catalog.ingest_observation(
+        catalog_path,
+        master_db,
+        source_image_path=image_path,
+        source_capture_id="capture-image-kind",
+        observed_title="Alpha",
+        observed_artist="Artist A",
+        image_kind="full_frame",
+        now="2026-07-14T04:00:00+00:00",
+    )
+    with sqlite3.connect(catalog_path) as connection:
+        initial_thumbnail = connection.execute(
+            "SELECT thumbnail_rgb_json FROM jacket_references"
+        ).fetchone()[0]
+
+    updated = catalog.ingest_observation(
+        catalog_path,
+        master_db,
+        source_image_path=image_path,
+        source_capture_id="capture-image-kind",
+        observed_title="Alpha",
+        observed_artist="Artist A",
+        image_kind="jacket_crop",
+        now="2026-07-14T05:00:00+00:00",
+    )
+    repeated = catalog.ingest_observation(
+        catalog_path,
+        master_db,
+        source_image_path=image_path,
+        source_capture_id="capture-image-kind",
+        observed_title="Alpha",
+        observed_artist="Artist A",
+        image_kind="jacket_crop",
+        now="2026-07-14T06:00:00+00:00",
+    )
+
+    with Image.open(image_path) as source_image:
+        expected_feature = master_match.extract_jacket_feature(source_image)
+    with sqlite3.connect(catalog_path) as connection:
+        connection.row_factory = sqlite3.Row
+        row = connection.execute("SELECT * FROM jacket_references").fetchone()
+        assert connection.execute("SELECT COUNT(*) FROM jacket_references").fetchone()[0] == 1
+        assert row["image_kind"] == "jacket_crop"
+        assert row["thumbnail_rgb_json"] != initial_thumbnail
+        assert json.loads(row["thumbnail_rgb_json"]) == pytest.approx(
+            expected_feature.thumbnail.tolist()
+        )
+        assert json.loads(row["histogram_json"]) == pytest.approx(
+            expected_feature.histogram.tolist()
+        )
+        assert json.loads(row["dhash_bits_json"]) == pytest.approx(
+            expected_feature.dhash_bits.tolist()
+        )
+        assert row["dhash_hex"] == expected_feature.dhash_hex
+        assert row["updated_at"] == "2026-07-14T05:00:00+00:00"
+
+    assert created.disposition == "created"
+    assert updated.disposition == "updated"
+    assert repeated.disposition == "existing"
+
+
 def test_persisted_features_replay_existing_m5_match_after_reference_image_deleted(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

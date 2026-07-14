@@ -314,7 +314,7 @@ Status: Completed on 2026-07-14.
 
 実績:
 
-- 専用identity/schema versionを持つlocal SQLite catalog、strict create/open、source hash/capture id冪等性、song 1:N、全768 thumbnail・histogram・dHash永続化を追加した。
+- 専用identity/schema versionを持つlocal SQLite catalog、strict create/open、source hash/capture id冪等性、song 1:N、`image_kind` と全768 thumbnail・histogram・dHash永続化を追加した。kind訂正時は同じreferenceの特徴量を再計算する。
 - canonical title + artist完全一致と一意alias完全一致だけをauto-confirmし、曖昧・artist不一致・観測/feature失敗を候補理由付きでレビュー状態へ残す。
 - 全GP songの4状態coverage、未割当unresolved観測、master drift/orphan、capture分母のauto-confirm rateとknown-false auditをJSON/CSV/Markdownへ出す。
 - `--m5-jacket-catalog` からcurrent masterで有効な永続特徴量だけを既存M5 jacket照合へ供給し、参照生画像削除後の再実行を固定した。

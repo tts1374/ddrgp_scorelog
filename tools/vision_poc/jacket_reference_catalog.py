@@ -58,6 +58,7 @@ CATALOG_TABLE_COLUMNS = {
         "resolution_reason",
         "resolution_basis",
         "feature_extractor_version",
+        "image_kind",
         "thumbnail_rgb_json",
         "histogram_json",
         "dhash_bits_json",
@@ -148,6 +149,7 @@ CREATE TABLE jacket_references (
   resolution_reason TEXT NOT NULL,
   resolution_basis TEXT NOT NULL,
   feature_extractor_version TEXT NOT NULL,
+  image_kind TEXT NOT NULL CHECK (image_kind IN ('full_frame', 'jacket_crop')),
   thumbnail_rgb_json TEXT,
   histogram_json TEXT,
   dhash_bits_json TEXT,
@@ -605,17 +607,18 @@ def ingest_observation(
                 or observed_artist != str(row["observed_artist"])
                 or observation_status != str(row["observation_status"])
             )
+            feature_changed = image_kind != str(row["image_kind"])
             audit_or_capture_changed = desired_capture_id != row[
                 "source_capture_id"
             ] or desired_expected_song_id != str(row["expected_song_id"])
-            if not identity_changed and not audit_or_capture_changed:
+            if not identity_changed and not feature_changed and not audit_or_capture_changed:
                 return IngestResult(
                     existing_reference_id,
                     "existing",
                     str(row["review_status"]),
                     str(row["resolution_reason"]),
                 )
-            if identity_changed:
+            if identity_changed or feature_changed:
                 song = resolution.song
                 connection.execute(
                     """
@@ -623,6 +626,8 @@ def ingest_observation(
                     SET source_capture_id = ?, master_version = ?, song_id = ?,
                         canonical_title_snapshot = ?, canonical_artist_snapshot = ?,
                         review_status = ?, resolution_reason = ?, resolution_basis = ?,
+                        image_kind = ?, thumbnail_rgb_json = ?, histogram_json = ?,
+                        dhash_bits_json = ?, dhash_hex = ?,
                         observed_title = ?, observed_artist = ?, observation_status = ?,
                         expected_song_id = ?, updated_at = ?
                     WHERE reference_id = ?
@@ -636,6 +641,21 @@ def ingest_observation(
                         resolution.status,
                         resolution.reason,
                         resolution.basis,
+                        image_kind if feature_changed else str(row["image_kind"]),
+                        (
+                            None if feature is None else _feature_json(feature.thumbnail)
+                        )
+                        if feature_changed
+                        else row["thumbnail_rgb_json"],
+                        (None if feature is None else _feature_json(feature.histogram))
+                        if feature_changed
+                        else row["histogram_json"],
+                        (None if feature is None else _feature_json(feature.dhash_bits))
+                        if feature_changed
+                        else row["dhash_bits_json"],
+                        ("" if feature is None else feature.dhash_hex)
+                        if feature_changed
+                        else str(row["dhash_hex"]),
                         observed_title,
                         observed_artist,
                         observation_status,
@@ -689,10 +709,10 @@ def ingest_observation(
               reference_id, source_capture_id, source_image_hash, master_version, song_id,
               canonical_title_snapshot, canonical_artist_snapshot, review_status,
               resolution_reason, resolution_basis, feature_extractor_version,
-              thumbnail_rgb_json, histogram_json, dhash_bits_json, dhash_hex,
+              image_kind, thumbnail_rgb_json, histogram_json, dhash_bits_json, dhash_hex,
               observed_title, observed_artist, observation_status, expected_song_id,
               created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 reference_id,
@@ -706,6 +726,7 @@ def ingest_observation(
                 reason,
                 resolution.basis,
                 FEATURE_EXTRACTOR_VERSION,
+                image_kind,
                 None if feature is None else _feature_json(feature.thumbnail),
                 None if feature is None else _feature_json(feature.histogram),
                 None if feature is None else _feature_json(feature.dhash_bits),

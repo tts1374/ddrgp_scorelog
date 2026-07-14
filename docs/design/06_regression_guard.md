@@ -395,7 +395,7 @@
 ## M5b jacket catalog guard
 
 - catalog identity/schema version、safe `data/` path、新規作成、read-only open、非catalog・破損catalog拒否をfixtureで固定する。
-- source hash/capture idの冪等性、同一song 1:N、capture idと画像bytesの矛盾拒否、全768 thumbnail値の永続化・復元を固定する。
+- source hash/capture idの冪等性、同一song 1:N、capture idと画像bytesの矛盾拒否、`image_kind` と全768 thumbnail値の永続化・復元を固定する。同一画像のkind訂正ではreferenceを増やさず特徴量を再計算し、同じkindの再投入では更新しない。
 - canonical title + artist、一意aliasだけをauto-confirmし、artist不一致、曖昧alias、複数候補、観測/feature失敗を `needs_review` / `unresolved` に保つ。
 - 全GP song分母の4状態、未割当unresolved観測、orphan、auto-confirm分母、理由別件数、known-false auditを同じdeduplicated observation集合から検査する。
 - master version、song消失、GP対象外、identity変更をread-only検出し、自動付替えやmaster書込みを行わない。

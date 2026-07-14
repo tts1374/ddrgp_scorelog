@@ -290,7 +290,7 @@ M8のscore DB file output previewでは、`--m8-score-db-output data\...\ddrgp-s
 
 ## M5b jacket catalog
 
-ローカルjacket catalogは `data/` 配下の明示SQLite pathだけへ作成する。専用identity、schema version、exact tables/columns、metadata、index、foreign keyをstrictに検査し、既存の非catalog SQLite、破損catalog、正式個人スコアDB、M8 preview DB、M4 master DBを変更しない。CSV一括投入は同じ `data/` directoryのstaging catalogへ完了させてからatomic replaceし、新規・既存のどちらでも途中失敗による部分catalogを公開しない。
+ローカルjacket catalogは `data/` 配下の明示SQLite pathだけへ作成する。専用identity、schema version、exact tables/columns、metadata、index、foreign keyをstrictに検査し、既存の非catalog SQLite、破損catalog、正式個人スコアDB、M8 preview DB、M4 master DBを変更しない。特徴量生成条件の `image_kind` もreferenceへ永続化し、同一画像のkind訂正時は同じreferenceの特徴量をtransaction内で置換する。CSV一括投入は同じ `data/` directoryのstaging catalogへ完了させてからatomic replaceし、新規・既存のどちらでも途中失敗による部分catalogを公開しない。
 
 観測CSVとcoverage出力もローカル運用物とし、catalog、source capture、crop、16x16 RGBを含む特徴量、review結果、coverage JSON/CSV/MarkdownをGit、CI artifact、Release、通常analysis logへ含めない。生captureとcropはcatalog投入後も自動削除しない。catalogは `source_captures`、`plays`、`analysis_logs`、DB diagnostic output/logを受け入れず、M5候補観測向けの参照特徴量だけを保持する。
 
