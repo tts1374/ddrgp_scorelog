@@ -122,7 +122,7 @@ M8 preview最小 `plays` は以下の用途に限定する。
 - `song_id` / `chart_id`: 保存判定後のID。M5 `identity_signal_*` をそのまま確定ID扱いしない。
 - `score`、`max_combo`、`marvelous`、`perfect`、`great`、`good`、`miss`、`ex_score`: 保存判定後の数値。
 - `rank`、`clear_type`: 空文字を正式入力として許可しない。未取得時は保存成功へ進めず、上流の未解決/低信頼度として扱う。
-- `capture_hash`: 元キャプチャ参照と重複防止用のhash。
+- `capture_hash`: 元キャプチャ参照と同一capture event再送防止用のhash。capture-save由来は安定 `capture_id` と画像bytesを含め、byte-identicalな別frameを同一sourceに丸めない。
 - `source_capture_id`: `source_captures` への参照。
 - `duplicate_key`: 本番重複判定用key。現行PoCのscore由来簡易keyとは別物にする。
 - `analysis_confidence`: 保存判定後の総合信頼度。

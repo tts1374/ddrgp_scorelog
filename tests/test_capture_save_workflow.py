@@ -255,6 +255,48 @@ def test_confirmed_event_duplicate_is_recorded_without_play(tmp_path: Path) -> N
         assert connection.execute("SELECT duplicate FROM analysis_logs").fetchone()[0] == 1
 
 
+def test_byte_identical_duplicate_frames_have_distinct_capture_event_hashes(
+    tmp_path: Path,
+) -> None:
+    manifest = tmp_path / "frame_manifest.csv"
+    manifest.write_text(
+        "image_path,timestamp_ms\nframe-1.png,2000\nframe-2.png,2500\n",
+        encoding="utf-8",
+    )
+    db_path = tmp_path / "score.sqlite"
+    first = _event(
+        tmp_path,
+        event_type="duplicate",
+        duplicate=True,
+        formal_evidence=None,
+        manifest_image_path="frame-1.png",
+    )
+    second_image = tmp_path / "frame-2.png"
+    second_image.write_bytes(first.image_path.read_bytes())
+    second = replace(
+        first,
+        frame_index=3,
+        manifest_image_path="frame-2.png",
+        image_path=second_image,
+    )
+
+    results = run_capture_save_events(
+        [first, second],
+        manifest_path=manifest,
+        db_path=db_path,
+    )
+
+    assert [result.event_status for result in results] == ["excluded", "excluded"]
+    with sqlite3.connect(db_path) as connection:
+        rows = connection.execute(
+            "SELECT capture_id, capture_hash FROM source_captures ORDER BY frame_index"
+        ).fetchall()
+        assert len(rows) == 2
+        assert rows[0][0] != rows[1][0]
+        assert rows[0][1] != rows[1][1]
+        assert connection.execute("SELECT COUNT(*) FROM plays").fetchone()[0] == 0
+
+
 def test_database_duplicate_is_not_reported_as_saved(tmp_path: Path) -> None:
     manifest = tmp_path / "frame_manifest.csv"
     manifest.write_text("image_path,timestamp_ms\nframe.png,2000\n", encoding="utf-8")

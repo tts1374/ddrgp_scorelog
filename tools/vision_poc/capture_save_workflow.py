@@ -189,7 +189,7 @@ def run_capture_save_events(
             "input_schema_version": 1,
             "candidate_material": dict(event.candidate_material),
             "capture_id": capture_id,
-            "capture_hash": _sha256(event.image_path),
+            "capture_hash": _capture_event_hash(event.image_path, capture_id),
             "captured_at": event.captured_at,
             "source_kind": "capture",
             "source_path": str(manifest_path.parent),
@@ -404,8 +404,13 @@ def _stable_id(prefix: str, manifest_path: Path, frame_index: int) -> str:
     return f"{prefix}-{hashlib.sha256(value).hexdigest()[:24]}"
 
 
-def _sha256(path: Path) -> str:
-    return "sha256:" + hashlib.sha256(path.read_bytes()).hexdigest()
+def _capture_event_hash(path: Path, capture_id: str) -> str:
+    digest = hashlib.sha256()
+    digest.update(b"capture-event-v1\0")
+    digest.update(capture_id.encode("utf-8"))
+    digest.update(b"\0")
+    digest.update(path.read_bytes())
+    return "sha256:" + digest.hexdigest()
 
 
 def _read_csv(path: Path) -> list[dict[str, str]]:

@@ -432,6 +432,7 @@
 - `screen_type=unknown` の実capture manifestはVision PoCの評価用終了コード1で中断せず、生成済みeventを `unresolved` / saved等の後続境界へ渡す。解析例外とその他の失敗は `analysis_failed` を維持する。
 - candidate/raw/expected/preview/相対時刻はformal値へコピーせず、採用済みfield source、confidence、完全性不足を `unresolved` に保つ。
 - DB duplicate、excluded、unresolved、invalid、artifact partial failure、DB拒否をsavedへ丸めず、transaction済みplayだけread-only再読込する。
+- byte-identicalな連続frameでもcapture-event scoped hashはframeごとに一意とし、duplicate eventをplayなしのsource capture + analysisとして記録する。同一manifest/frameの再送拒否は維持する。
 - fatal event statusはsession `workflow_failed` とCLI非0終了へ伝播し、同sessionのcommit済みplayと失敗理由を両方表示する。
 - capture接続は正式DB schema version 1、writer transaction、duplicate、manual workflow入口を変更しない。
 - `.NET build/test` とcapture列を読む対象Python testを実行する。画像分類・ROI・OCR・confirmed-events生成を変更しない場合、Vision PoC本体の再実行は不要とする。

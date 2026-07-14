@@ -320,6 +320,8 @@ event処理は入力順の直列で、次の3段階を混同しない。
 
 continuous capture manifestの `screen_type=unknown` は正解ラベルではない。capture-save orchestrationはVision PoCが評価不一致として終了コード1を返しても生成済み解析成果を読み取る。解析例外とその他の非0終了は `analysis_failed` のままとする。
 
+capture-save由来の `capture_hash` は `capture_id` と画像bytesを入力とするcapture-event version 1 hashとする。同じmanifest/frameの再実行は同一hashとなり、byte-identicalでも別frame indexは別hashとなる。これにより、静止リザルトの連続duplicate eventをplayなしのsource capture + analysisとして記録しつつ、同一capture event再送のUNIQUE拒否は維持する。
+
 ## M0/M1で固定すること
 
 - 保存境界は `confirmed_result=true` かつ `duplicate=false`。
