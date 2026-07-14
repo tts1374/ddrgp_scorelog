@@ -480,6 +480,15 @@ M5bの変更では、少なくとも次のcurrent-only境界をfixtureで固定�
 - `.NET build/test` とcapture列を読む対象Python testを実行する。画像分類・ROI・OCR・confirmed-events生成を変更しない場合、Vision PoC本体の再実行は不要とする。
 - capture save接続を変更した場合は、保存候補境界、formal昇格negative、workflow status写像、DB duplicate、viewer再読込のPython/.NET testと、利用可能な実capture manifestのdry-runを実行する。
 
+## WPF monitoring / task tray guard
+
+- `idle`、`selecting_target`、`monitoring`、`stopping`、`stopped`、`target_closed`、`resized`、`device_lost`、`capture_failed`、`workflow_failed` を別状態としてfixtureで固定する。
+- capture progressは選択済みwindowの表示名・surface size、write済みframe数、開始時刻、最新event時刻だけをUIへ渡し、自動window探索や正式値生成へ使わない。
+- saved、duplicate、excluded、unresolved、analysis_failed、db_rejected、workflow_failedの件数を別々に投影し、saved IDだけをread-only再読込する。commit済みpartial successとfatal reasonを同時に失わない。
+- manual保存中の監視開始、監視capture-save中のmanual保存、capture-only session中のmanual保存を拒否し、二重開始、stop中再開始、反復stopでwriterやresourceを増やさない。
+- trayの開始/停止enable状態はpicker開始待ち、ViewModelの保存・capture状態を含めて更新する。picker中の再Startを同じTaskへ合流させ、通常close/最小化はwindow非表示、明示exitはpending pickerのcancel/終端とstop完了を待ってtrayをdisposeする。stop例外でもdisposeとprocess終了を決定的にし、duplicate/unresolvedだけで通知しない。
+- Windows Graphics Capture、実window、実DBを必須にせず、progress fake、workflow fake、tray fakeで通常CIを完結させる。実windowでのpicker、tray復帰、終了確認は任意の目視確認として別記録する。
+
 ## 代表検証コマンド
 
 ```powershell

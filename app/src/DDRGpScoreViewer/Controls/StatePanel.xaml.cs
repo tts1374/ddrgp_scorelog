@@ -3,7 +3,7 @@ using System.Windows.Controls;
 
 namespace DDRGpScoreViewer.Controls;
 
-public partial class StatePanel : UserControl
+public partial class StatePanel : System.Windows.Controls.UserControl
 {
     public static readonly DependencyProperty TitleProperty = DependencyProperty.Register(
         nameof(Title), typeof(string), typeof(StatePanel), new PropertyMetadata(string.Empty));

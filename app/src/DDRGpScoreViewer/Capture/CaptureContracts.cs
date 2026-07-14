@@ -54,6 +54,17 @@ public sealed record CaptureSessionOperationResult(
     string UserMessage,
     CaptureSessionOutput? Output = null);
 
+public sealed record CaptureTargetInfo(
+    string DisplayName,
+    int Width,
+    int Height);
+
+public sealed record CaptureSessionProgress(
+    CaptureTargetInfo Target,
+    int FrameCount,
+    DateTimeOffset StartedAtUtc,
+    DateTimeOffset LatestEventAtUtc);
+
 public interface IGraphicsCaptureAdapter
 {
     bool IsSupported { get; }
@@ -96,6 +107,11 @@ public interface IContinuousFrameSource : IAsyncDisposable
     Task StopAsync();
 }
 
+public interface IContinuousFrameSourceMetadata
+{
+    CaptureTargetInfo Target { get; }
+}
+
 public interface ICaptureSessionOutputWriter
 {
     Task<ICaptureSessionOutputTransaction> BeginAsync(
@@ -123,6 +139,14 @@ public interface IContinuousCaptureService
         CancellationToken cancellationToken = default);
 
     Task StopAsync();
+}
+
+public interface IMonitoringContinuousCaptureService : IContinuousCaptureService
+{
+    Task<CaptureSessionOperationResult> RunAsync(
+        nint ownerWindowHandle,
+        IProgress<CaptureSessionProgress> progress,
+        CancellationToken cancellationToken = default);
 }
 
 public abstract class CaptureBoundaryException(string message, Exception? innerException = null)
