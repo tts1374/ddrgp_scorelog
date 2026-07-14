@@ -270,7 +270,7 @@ write前の `adapt_personal_score_db_save_input()` はpure functionであり、D
 
 この入口は呼び出し元がpathとadapter入力を明示する単発Python APIであり、実ファイルの既定自動保存、常駐監視、既存DB migrationを開始しない。DB診断ファイルやdiagnostic JSONLも自動出力しない。
 
-CLIからは `--personal-score-db-save-input <utf8-json>` と `--personal-score-db-save-database <sqlite>` を必須ペアとして明示した場合だけ、同じAPIを1回呼ぶ。JSON外部形式は `input_schema_version=1` とし、`candidate_material`、source/analysis値、object/nullの `formal_play`、object/nullの `exclusion` を分離する。全階層の必須key、未知key、object/null、bool/integer/number/string型はファイル準備前に検査し、boolをintegerとして通さない。`candidate_material` と `timestamp_ms` は由来情報のまま保持し、正式playへコピーしない。
+CLIからは `--personal-score-db-save-input <utf8-json>` と `--personal-score-db-save-database <sqlite>` を必須ペアとして明示した場合だけ、同じAPIを1回呼ぶ。通常M5候補観測の `--m5-jacket-catalog` が混在する場合は、入力JSON読込やDB準備より前に拒否し、無視したまま正式saveへ進めない。JSON外部形式は `input_schema_version=1` とし、`candidate_material`、source/analysis値、object/nullの `formal_play`、object/nullの `exclusion` を分離する。全階層の必須key、未知key、object/null、bool/integer/number/string型はファイル準備前に検査し、boolをintegerとして通さない。`candidate_material` と `timestamp_ms` は由来情報のまま保持し、正式playへコピーしない。
 
 終了コードはtransaction完了した `ready` / `excluded` が0、adapterの `unresolved` が1、入力/DB拒否が2とする。結果JSONはDB path、adapter status、written、任意のplay ID、source capture ID、analysis ID、理由を持つ。duplicate collisionも終了コード0で `adapter_status=excluded`、`reasons=[duplicate_key_already_saved]` として区別する。CLI専用output file、diagnostic JSONL、低信頼度ログは生成せず、通常PoC、timestamped/manifest runner、`--m8-score-db-output` へ接続しない。
 
@@ -294,7 +294,7 @@ M8のscore DB file output previewでは、`--m8-score-db-output data\...\ddrgp-s
 
 観測CSVとcoverage出力もローカル運用物とし、catalog、source capture、crop、16x16 RGBを含む特徴量、review結果、coverage JSON/CSV/MarkdownをGit、CI artifact、Release、通常analysis logへ含めない。生captureとcropはcatalog投入後も自動削除しない。catalogは `source_captures`、`plays`、`analysis_logs`、DB diagnostic output/logを受け入れず、M5候補観測向けの参照特徴量だけを保持する。
 
-coverageは `data/` 配下の明示directoryへ `jacket_catalog_song_coverage.csv`、`jacket_catalog_coverage_summary.json`、`jacket_catalog_coverage.md` を生成する。masterはread-only URIで開き、coverage・orphan検査の前後で変更しない。
+coverageは `data/` 配下の明示directoryへ `jacket_catalog_song_coverage.csv`、`jacket_catalog_coverage_summary.json`、`jacket_catalog_coverage.md` を生成する。確定songがないreferenceでもGP対象の `reference_candidates` は候補songの `needs_review` として数え、候補のない観測だけを未割当集計へ残す。候補を確定songへ昇格せず、masterはread-only URIで開き、coverage・orphan検査の前後で変更しない。
 
 ## 削除・移動のルール
 

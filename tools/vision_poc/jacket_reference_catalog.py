@@ -885,6 +885,7 @@ def build_coverage(
     validate_catalog(catalog_path)
     master = load_master_identity(master_db)
     gp_songs = [song for song in master.songs if song.grand_prix_play_available]
+    gp_song_ids = {song.song_id for song in gp_songs}
     references_by_song: dict[str, list[tuple[str, str]]] = {}
     orphan_reasons: Counter[str] = Counter()
     failure_reasons: Counter[str] = Counter()
@@ -898,6 +899,13 @@ def build_coverage(
     with closing(_connect_read_only(catalog_path)) as connection:
         connection.row_factory = sqlite3.Row
         rows = list(connection.execute("SELECT * FROM jacket_references ORDER BY reference_id"))
+        candidate_song_ids_by_reference: dict[str, set[str]] = {}
+        for candidate in connection.execute(
+            "SELECT reference_id, song_id FROM reference_candidates"
+        ):
+            candidate_song_ids_by_reference.setdefault(
+                str(candidate["reference_id"]), set()
+            ).add(str(candidate["song_id"]))
         total_observations = len(rows)
         for row in rows:
             state, reason = _reference_state(row, master)
@@ -918,7 +926,16 @@ def build_coverage(
             if song_id:
                 references_by_song.setdefault(song_id, []).append((state, reason))
             else:
-                unresolved_observations += 1
+                candidate_song_ids = candidate_song_ids_by_reference.get(
+                    str(row["reference_id"]), set()
+                ) & gp_song_ids
+                if candidate_song_ids:
+                    for candidate_song_id in candidate_song_ids:
+                        references_by_song.setdefault(candidate_song_id, []).append(
+                            (state, reason)
+                        )
+                else:
+                    unresolved_observations += 1
             if state == "auto_confirmed":
                 current_auto_confirmed += 1
             else:

@@ -616,6 +616,35 @@ def test_coverage_counts_all_gp_songs_failures_and_read_only_master_drift(
     }
 
 
+def test_coverage_marks_candidate_songs_as_needing_review(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    master_db, catalog_path = setup_paths(tmp_path, monkeypatch)
+    image_path = tmp_path / "artist-mismatch.png"
+    write_image(image_path, (80, 40, 20))
+    catalog.ingest_observation(
+        catalog_path,
+        master_db,
+        source_image_path=image_path,
+        source_capture_id="candidate-alpha",
+        observed_title="Alpha",
+        observed_artist="wrong artist",
+        image_kind="jacket_crop",
+    )
+
+    rows, summary = catalog.build_coverage(catalog_path, master_db)
+
+    alpha = next(row for row in rows if row["song_id"] == "song-1")
+    assert alpha["coverage_status"] == "needs_review"
+    assert alpha["reference_count"] == "1"
+    assert alpha["reason"] == "title_match_artist_mismatch"
+    assert summary["coverage_status_counts"] == {
+        "needs_review": 1,
+        "uncollected": 5,
+    }
+    assert summary["unassigned_unresolved_observation_count"] == 0
+
+
 def test_build_cli_writes_local_catalog_and_coverage(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

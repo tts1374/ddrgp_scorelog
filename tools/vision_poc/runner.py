@@ -10440,6 +10440,10 @@ def main(argv: list[str] | None = None) -> int:
             "--personal-score-db-save-database must be specified together"
         )
     if save_option_count == 2:
+        if args.m5_jacket_catalog is not None:
+            raise ValueError(
+                "personal score DB save and --m5-jacket-catalog are mutually exclusive"
+            )
         if (
             args.personal_score_db_diagnostic is not None
             or args.personal_score_db_diagnostic_output is not None

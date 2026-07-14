@@ -146,7 +146,7 @@ python -m tools.vision_poc `
   --personal-score-db-save-database $scoreDb
 ```
 
-save CLIはreceiptを要求、検証、消費、参照しません。receiptを `--personal-score-db-save-input` へ渡しても、正式入力JSONとしては受理されません。validationやreceiptのstatusから保存へ自動遷移せず、この明示save操作だけがDB保存を実行します。
+save CLIはreceiptを要求、検証、消費、参照しません。receiptを `--personal-score-db-save-input` へ渡しても、正式入力JSONとしては受理されません。validationやreceiptのstatusから保存へ自動遷移せず、この明示save操作だけがDB保存を実行します。`--m5-jacket-catalog` は通常のM5候補観測optionであり、正式DB save pairとの混在は入力読込・DB作成前に拒否します。
 
 6. 保存後に正式DBのdiagnosticを読み取り専用で確認します。
 
@@ -636,7 +636,7 @@ python -m tools.vision_poc.jacket_reference_catalog build `
 
 catalogとcoverageの出力pathは `data/` 配下だけを受け入れます。同一capture id、または同一source image hashと同一解決song/未解決観測の再投入はreferenceを増やしません。同じ画像bytesを共有する別songは別referenceとして保持します。capture idを維持したtitle・artist・observation statusの訂正は同じreferenceの解決結果と候補を更新し、監査用 `expected_song_id` の後日追加も反映します。`image_kind` は特徴量と一緒に永続化し、同じ画像を別のkindへ訂正して再投入した場合は同じreferenceの特徴量を訂正後の切り出し境界で再計算します。観測とkindが同じ通常再実行ではmaster driftを暗黙再確定せず、特徴量も更新しません。capture idが同じなのに画像bytesが異なる入力は矛盾として拒否します。別画像は同一songへ複数referenceとして追加できます。canonical title + artist完全一致または一意alias title + artist完全一致だけを `auto_confirmed` にし、曖昧・artist不一致・観測/feature失敗は `needs_review` / `unresolved` の理由と候補を残します。expected値は既知誤確定監査専用で、紐付けには使いません。
 
-coverageは `jacket_catalog_song_coverage.csv`、`jacket_catalog_coverage_summary.json`、`jacket_catalog_coverage.md` を出します。対象masterのGPプレー可能songを `referenced` / `needs_review` / `uncollected` / `unresolved` のどれかへ1回だけ数え、songへ割当不能な未解決観測とorphanを別集計します。current auto-confirm rateはdeduplicate済みの全capture観測を分母にし、失敗観測、master driftによる再レビュー、orphanを除外しません。投入時点のrateは `ingest_auto_confirm_rate` へ分けます。master version・identity・GP可否の変更はread-onlyで検出し、別songへ自動付替えしません。
+coverageは `jacket_catalog_song_coverage.csv`、`jacket_catalog_coverage_summary.json`、`jacket_catalog_coverage.md` を出します。対象masterのGPプレー可能songを `referenced` / `needs_review` / `uncollected` / `unresolved` のどれかへ1回だけ数えます。確定 `song_id` がなくても `reference_candidates` にGP songがあれば、そのsongを自動割当せず `needs_review` として数えます。候補songもない未解決観測とorphanは別集計します。current auto-confirm rateはdeduplicate済みの全capture観測を分母にし、失敗観測、master driftによる再レビュー、orphanを除外しません。投入時点のrateは `ingest_auto_confirm_rate` へ分けます。master version・identity・GP可否の変更はread-onlyで検出し、別songへ自動付替えしません。
 
 既存M5 jacket照合でcatalogを使う場合は、通常の実行へ次を追加します。
 
