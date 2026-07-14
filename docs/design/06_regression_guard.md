@@ -392,6 +392,16 @@
 - 片方だけのCLI option、入力schema不正、`unresolved` はDB作成・変更前に非0終了する。`ready` / `excluded` だけが終了コード0でtransaction完了し、結果JSONの `play_id` でplay有無を区別する。
 - CLI経由でも新規/0 byte/compatible正式DBだけを許可し、preview / unknown / metadata identity mismatch / manual migration候補 / 非SQLite / ディレクトリを変更せず拒否する。
 
+## M5b jacket catalog guard
+
+- catalog identity/schema version、safe `data/` path、新規作成、read-only open、非catalog・破損catalog拒否をfixtureで固定する。
+- source hash/capture idの冪等性、同一song 1:N、capture idと画像bytesの矛盾拒否、全768 thumbnail値の永続化・復元を固定する。
+- canonical title + artist、一意aliasだけをauto-confirmし、artist不一致、曖昧alias、複数候補、観測/feature失敗を `needs_review` / `unresolved` に保つ。
+- 全GP song分母の4状態、未割当unresolved観測、orphan、auto-confirm分母、理由別件数、known-false auditを同じdeduplicated observation集合から検査する。
+- master version、song消失、GP対象外、identity変更をread-only検出し、自動付替えやmaster書込みを行わない。
+- 参照画像を削除したfixtureでcatalog featureを再読込し、既存M5 jacket distanceが元featureと一致することを確認する。
+- runnerの `--m5-jacket-catalog` は `--m5-jacket-match` なしで拒否し、明示catalog指定時だけ一時song select referenceを置き換える。confirmed-events、duplicate、unconfirmedの既存対象境界は変更しない。
+
 ## ROI方針
 
 - ROI座標は 1280x720 基準。

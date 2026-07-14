@@ -622,6 +622,32 @@ python -m tools.vision_poc --m7a-digit-recognition --no-ocr --output data\vision
 
 この設定では、現ローカル素材の `score_digits` は `score_ocr.csv` 上で16件すべて `match=true` です。判定数ROIも同じ前処理とTesseract設定で実行できます。metadata に `max_combo` や `expected_marvelous` のような真値列があれば `match_count` / `mismatch_count` で評価し、真値列がないROIは `no_expected_value_count` と画像、`score_ocr_raw` の目視確認を次の精度確認に使います。
 
+## M5b ローカルjacket参照カタログ
+
+song select gridの右上jacket previewとtitle/artist観測を、正式DB群とは別のローカルSQLite catalogへ保存できます。入力CSVは `source_image_path`、`observed_title`、`observed_artist` が必須で、`source_capture_id`、`observation_status`、`image_kind`、監査専用 `expected_song_id` を任意で持ちます。`image_kind` は全画面captureなら `full_frame`、切り出し済みjacketなら `jacket_crop` です。
+
+```powershell
+python -m tools.vision_poc.jacket_reference_catalog build `
+  --catalog data\jacket_catalog\catalog.sqlite `
+  --master-db data\master\ddrgp-master.sqlite `
+  --observations data\jacket_catalog\observations.csv `
+  --coverage-output data\jacket_catalog\coverage
+```
+
+catalogとcoverageの出力pathは `data/` 配下だけを受け入れます。同一source image hashまたは同一capture idの再投入はreferenceを増やしません。capture idが同じなのに画像bytesが異なる入力は矛盾として拒否します。別画像は同一songへ複数referenceとして追加できます。canonical title + artist完全一致または一意alias title + artist完全一致だけを `auto_confirmed` にし、曖昧・artist不一致・観測/feature失敗は `needs_review` / `unresolved` の理由と候補を残します。expected値は既知誤確定監査専用で、紐付けには使いません。
+
+coverageは `jacket_catalog_song_coverage.csv`、`jacket_catalog_coverage_summary.json`、`jacket_catalog_coverage.md` を出します。対象masterのGPプレー可能songを `referenced` / `needs_review` / `uncollected` / `unresolved` のどれかへ1回だけ数え、songへ割当不能な未解決観測とorphanを別集計します。current auto-confirm rateはdeduplicate済みの全capture観測を分母にし、失敗観測、master driftによる再レビュー、orphanを除外しません。投入時点のrateは `ingest_auto_confirm_rate` へ分けます。master version・identity・GP可否の変更はread-onlyで検出し、別songへ自動付替えしません。
+
+既存M5 jacket照合でcatalogを使う場合は、通常の実行へ次を追加します。
+
+```powershell
+python -m tools.vision_poc --m5-jacket-match `
+  --m5-jacket-catalog data\jacket_catalog\catalog.sqlite `
+  --master-db data\master\ddrgp-master.sqlite
+```
+
+current masterで有効な `auto_confirmed` referenceだけを永続特徴量から復元します。このため参照元の生画像を削除したfixtureでもM5照合を再実行できます。catalog、観測CSV、画像、crop、特徴量、review結果、coverageはローカル非共有物であり、Git、CI artifact、Release、通常ログへ含めません。生画像やcropの自動削除は行いません。
+
 ## テスト
 
 ローカル素材がある環境では、metadataを真値として分類結果を検証します。
