@@ -429,6 +429,7 @@
 - `連続取得を開始` のcapture-only UIは分類、OCR、identity、confirmed event、正式save input、workflow、正式DB、viewer履歴を起動しない。
 - `連続取得・保存` だけが完成manifest後に解析を起動し、capture失敗時は解析・workflowを呼ばない。
 - capture saveは未確定/transitionをworkflow前で除外し、confirmed eventを直列に最大1回ずつ既存workflowへ渡す。
+- `screen_type=unknown` の実capture manifestはVision PoCの評価用終了コード1で中断せず、生成済みeventを `unresolved` / saved等の後続境界へ渡す。解析例外とその他の失敗は `analysis_failed` を維持する。
 - candidate/raw/expected/preview/相対時刻はformal値へコピーせず、採用済みfield source、confidence、完全性不足を `unresolved` に保つ。
 - DB duplicate、excluded、unresolved、invalid、artifact partial failure、DB拒否をsavedへ丸めず、transaction済みplayだけread-only再読込する。
 - fatal event statusはsession `workflow_failed` とCLI非0終了へ伝播し、同sessionのcommit済みplayと失敗理由を両方表示する。

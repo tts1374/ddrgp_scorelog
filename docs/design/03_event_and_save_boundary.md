@@ -318,6 +318,8 @@ event処理は入力順の直列で、次の3段階を混同しない。
 
 正式DB transaction後に `saved` と `play_id` が返ったeventだけviewerをread-only再読込する。sessionが `workflow_failed` でも、それ以前にcommit済みのsaved playは再読込し、部分成功件数とfatal status・理由を同時に表示する。他statusを成功playへ丸めない。manual reviewed JSONは従来入口を維持し、自動capture由来のadapter入力と混同しない。
 
+continuous capture manifestの `screen_type=unknown` は正解ラベルではない。capture-save orchestrationはVision PoCが評価不一致として終了コード1を返しても生成済み解析成果を読み取る。解析例外とその他の非0終了は `analysis_failed` のままとする。
+
 ## M0/M1で固定すること
 
 - 保存境界は `confirmed_result=true` かつ `duplicate=false`。

@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from tools.vision_poc import capture_save_workflow_app
+from tools.vision_poc import capture_save_workflow, capture_save_workflow_app
 from tools.vision_poc.capture_save_workflow import (
     AutomaticFormalEvidence,
     CaptureAnalyzedEvent,
@@ -14,6 +14,7 @@ from tools.vision_poc.capture_save_workflow import (
     CaptureSaveSessionResult,
     promote_automatic_formal_values,
     run_capture_save_events,
+    run_capture_save_session,
     summarize_capture_save_events,
 )
 from tools.vision_poc.personal_score_db_save_adapter import (
@@ -337,6 +338,58 @@ def test_session_keeps_expected_non_saved_statuses_completed(event_status: str) 
     )
 
     assert result.status == "completed"
+
+
+def test_session_continues_after_evaluation_only_exit_one(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    analyzed_event = _event(tmp_path)
+    event_result = CaptureEventWorkflowResult(
+        analyzed_event.frame_index,
+        "unresolved",
+        True,
+        "unresolved",
+        None,
+        ("formal_evidence.rank_missing",),
+    )
+    monkeypatch.setattr(capture_save_workflow, "run_vision_poc", lambda args: 1)
+    monkeypatch.setattr(
+        capture_save_workflow,
+        "load_capture_analyzed_events",
+        lambda manifest_path, analysis_output: (analyzed_event,),
+    )
+    monkeypatch.setattr(
+        capture_save_workflow,
+        "run_capture_save_events",
+        lambda events, **kwargs: (event_result,),
+    )
+
+    result = run_capture_save_session(
+        manifest_path=tmp_path / "manifest.csv",
+        master_db_path=tmp_path / "master.sqlite",
+        db_path=tmp_path / "score.sqlite",
+        repository_root=tmp_path,
+    )
+
+    assert result.status == "completed"
+    assert result.event_results == (event_result,)
+
+
+def test_session_keeps_non_evaluation_runner_failure_fatal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(capture_save_workflow, "run_vision_poc", lambda args: 2)
+
+    result = run_capture_save_session(
+        manifest_path=tmp_path / "manifest.csv",
+        master_db_path=tmp_path / "master.sqlite",
+        db_path=tmp_path / "score.sqlite",
+        repository_root=tmp_path,
+    )
+
+    assert result.status == "analysis_failed"
+    assert result.event_results == ()
+    assert result.reasons == ("vision_poc_exit_2",)
 
 
 def test_app_returns_nonzero_for_workflow_failure(

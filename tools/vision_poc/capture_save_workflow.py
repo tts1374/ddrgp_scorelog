@@ -20,6 +20,7 @@ from .runner import main as run_vision_poc
 
 CAPTURE_SAVE_RESULT_SCHEMA_VERSION = 1
 CAPTURE_SAVE_APP_VERSION = "0.1.0"
+VISION_POC_EVALUATION_MISMATCH_EXIT_CODE = 1
 CAPTURE_SAVE_DIGIT_FIELDS = (
     "score",
     "max_combo",
@@ -262,7 +263,7 @@ def run_capture_save_session(
     ]
     try:
         exit_code = run_vision_poc(args)
-        if exit_code != 0:
+        if exit_code not in (0, VISION_POC_EVALUATION_MISMATCH_EXIT_CODE):
             return CaptureSaveSessionResult(
                 "analysis_failed", output, (), (f"vision_poc_exit_{exit_code}",)
             )
