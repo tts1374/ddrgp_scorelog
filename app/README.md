@@ -1,6 +1,6 @@
 # DDR GP Score Tracker WPF app
 
-正式個人スコアDB version 1を読み取り専用で開き、保存済みプレー履歴、プレー詳細、譜面別自己ベストを確認する最小WPFビューアです。明示選択したversion 1 workflow入力JSONを既存Python workflowで1回だけ保存するmanual入口に加え、明示pickerで選んだwindowから1フレームまたは停止までの連続フレームを取得できます。capture後の自動解析・保存、常駐監視、migration、backup、repairはまだ接続しません。
+正式個人スコアDB version 1を読み取り専用で開き、保存済みプレー履歴、プレー詳細、譜面別自己ベストを確認する最小WPFビューアです。明示選択したversion 1 workflow入力JSONを既存Python workflowで1回だけ保存するmanual入口に加え、明示pickerで選んだwindowから1フレームまたは停止までの連続フレームを取得できます。`連続取得・保存` を明示した場合だけ、完成したsession manifestを既存解析pipelineと正式保存workflowへ接続します。常駐監視、task tray、migration、backup、repairはまだ接続しません。
 
 ## 必要環境
 
@@ -44,7 +44,7 @@ session directoryには `frames/frame-*.png`、`frame_manifest.csv`、`capture_s
 
 session中は最初に選択したcapture itemとD3D11 device、frame pool、capture sessionを維持します。resizeには自動追従せず安全側でsessionを停止するため、windowを目的のサイズに戻してから再選択してください。開始済みの二重開始と停止中の再操作は無視し、明示停止とwindow close時の停止は冪等にresourceを解放します。取得frameがPNG encodingより速い場合は、resourceを無制限に保持しないため満杯のframe queueで中間frameをdropします。
 
-生成manifestはそのまま既存manifest modeへ渡せます。これを実行しても分類・OCR・identity・confirmed event・正式save input・DB保存はcapture UIから自動起動しません。
+生成manifestはそのまま既存manifest modeへ渡せます。`連続取得を開始` は従来どおりcapture bundle生成だけで、分類・OCR・identity・confirmed event・正式save input・DB保存を起動しません。
 
 ```powershell
 python -m tools.vision_poc `
@@ -52,6 +52,21 @@ python -m tools.vision_poc `
   --frame-manifest data\windows_capture\session-<id>\frame_manifest.csv `
   --output data\windows_capture_session_replay
 ```
+
+## 連続取得から正式保存workflowへ接続
+
+1. `連続取得・保存` を押す。
+2. 新規、0 byte、またはcompatibleな正式v1 DBと、生成済みマスタDBを明示選択する。
+3. pickerで対象windowを選び、必要区間の後に `連続取得を停止` を押す。
+4. capture statusと、event status別の保存結果を確認する。
+
+capture成功時だけ `python -m tools.vision_poc.capture_save_workflow_app` を起動します。完成manifestを取得順・`timestamp_ms` 順のまま既存manifest modeへ渡し、M5 jacket候補観測とM7a全数字ROIを生成します。`confirmed_result=true` かつ `duplicate=false` だけを通常の昇格候補とし、eventを直列に処理します。capture失敗、0 frame、resize、target close、device lost、write失敗では解析processを起動しません。
+
+自動formal昇格はfieldごとの採用済み根拠sourceとconfidence、全必須値の完全性をpure adapterで検査します。M5 `identity_signal_*`、M7a `recognized_digits`、expected値、M8 preview payload、相対 `timestamp_ms` は候補材料のままです。現行pipelineにはrank/clear typeを含む全必須項目の採用済み根拠がまだないため、実captureで根拠が欠けるeventは `unresolved` となりplayを作りません。これはcandidateを正式値へ暗黙昇格しないための意図した停止です。manualのreviewed workflow入力は従来の `単発保存` に残り、自動由来と混同しません。
+
+各confirmed eventは既存正式workflowを1回だけ呼びます。DB内duplicate、policy excluded、unresolved、invalid、artifact failure、DB拒否をstatusのまま集計し、`invalid`、artifact failure、DB拒否などが1件でもあればsessionを `workflow_failed` として非0終了します。同じsessionにtransaction済みの `saved` playがある場合はそれだけread-only再読込し、部分成功件数と失敗理由を同時に表示します。解析出力は `data/capture_save_workflow/`、画像原本は `data/windows_capture/`、正式DBは明示pathに分離します。
+
+`IsSaving` はmanual単発保存と `連続取得・保存` 全体の共通排他です。既存保存中はDB選択ダイアログを開かず、capture-save中はmanual保存を開始しません。capture開始からworkflow完了まで状態を保持し、同じ正式DBへの並行writerとsave statusの競合を防ぎます。capture-only入口はこの保存排他に含めません。
 
 ## Build / test / run
 
@@ -111,4 +126,4 @@ dotnet run --project app\src\DDRGpScoreViewer\DDRGpScoreViewer.csproj --no-build
 - `Resources/Components.xaml`: button、sidebar、card、table、badgeの共通style
 - `Controls/StatePanel.xaml`: 空状態・エラー状態の共通component
 
-今回の画面範囲は共通sidebar、自己ベスト、プレー履歴、プレー詳細、明示単発保存、明示1フレーム取得、明示開始・停止の連続captureです。ホーム、検索・絞り込み、グラフ、要確認、設定、データ管理、自動解析・保存状態、タスクトレイ常駐は後続PRへ分けます。
+今回の画面範囲は共通sidebar、自己ベスト、プレー履歴、プレー詳細、明示単発保存、明示1フレーム取得、明示開始・停止の連続capture、明示した連続capture後のevent単位保存workflowです。ホーム、検索・絞り込み、グラフ、要確認、設定、データ管理、常駐監視dashboard、タスクトレイ常駐は後続PRへ分けます。

@@ -253,6 +253,8 @@ M9 manual保存は新しいDB modelを追加しない。既存workflow結果の 
 
 `source_captures` は画像やmanifest上のフレーム参照を持ち、解析ログ本文やDB診断ログ本文は持たない。`plays` と `analysis_logs` は `source_capture_id` で同じ元フレームを参照できるが、`analysis_logs.log_path` とは責務を分ける。
 
+capture-save由来の `capture_hash` は、安定した `capture_id` と画像bytesを含むevent-scoped hashとする。byte-identicalな別frameを同一source rowに丸めず、別の解析事実として記録する。同じmanifest/frameの再実行は同一 `capture_id` / `capture_hash` となり、既存UNIQUE制約で再送を拒否する。
+
 artifactと正式saveを接続する後続の明示orchestrationでは、1つのworkflow入力内でもartifact payloadとstrict save inputを別objectとして扱う。共有を許すのは `analysis_id`、`source_capture_id`、保存境界status、artifact output pathだけであり、入口が `analysis_logs.log_path` とoutput pathの完全一致を副作用前に保証する。candidate material、正式play値、analysis detail本文を相互に投影しない。
 
 DB rowから未生成artifactを参照させないため、入力・adapter・DB互換性・早期duplicate検査後にartifactをatomic生成し、その後でDB transactionを実行する。DB失敗時はartifactを再試行資産として保持し、同じversion 1 payloadだけ再利用できる。artifact失敗時はDBを実行せず、既存artifactの不一致時は上書きしない。

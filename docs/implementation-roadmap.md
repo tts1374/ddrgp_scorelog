@@ -476,7 +476,8 @@ M5完了時点で固定すること:
 - 2026-07-13時点で第3段階のsingle-frame capture sliceを追加した。Windows pickerで明示選択したwindowからWindows Graphics Captureで1フレームだけ取得し、画像、既存manifest互換CSV、最小metadataを `data/windows_capture/` の一意directoryへatomicに出力する。主要失敗状態とresource解放を独立境界で扱い、連続capture、解析、自動保存、常駐監視には接続していない。
 - 2026-07-13時点で第4段階の実capture認識品質を確認した。WPF manifestを既存manifest modeで再実行し、1280x720実capture 5枚で分類5/5、confirmed result 1件、M7a主要数字8/8、chart-field 3/3、master/jacket match各1/1を期待値付きで確認した。曲名ROIをartist行から局所分離し、空読み時だけ従来ROIへ戻す。既存 `low-threshold` profileでEX SCOREの実capture差分を吸収した。候補材料を正式値やDB保存へ昇格していない。
 - 2026-07-13時点で第5段階の連続capture sessionを追加した。明示選択windowを明示停止まで同じWindows Graphics Capture resourceで取得し、strictly increasing timestampのmanifest互換bundleをstagingからatomicに公開する。resize、target closed、device lost、write失敗は部分sessionを破棄し、解析、自動保存、常駐監視には接続していない。
-- 第6段階以降として、正式保存接続、監視状態を順に接続する。
+- 2026-07-14時点で第6段階の正式保存workflow接続を追加した。明示した `連続取得・保存` だけが完成session manifestを既存分類・confirmed event・M5/M7a候補へ渡し、eventを直列に既存正式workflowで処理する。採用済みfield根拠、confidence、完全性が揃わないeventは `unresolved` に保ち、DB duplicate・excluded・解析/DB失敗をsavedへ丸めない。transaction済みplayだけread-only再読込する。現行pipelineの候補値を正式値へ暗黙昇格せず、常駐監視・task trayには進んでいない。
+- 第7段階以降として、M5b jacket参照カタログ、監視状態を順に接続する。
 - タスクトレイ常駐を実装する。
 - 監視状態、対象ウィンドウ状態、最新保存結果を表示する。
 - マスタDB更新状態を表示する。
@@ -487,7 +488,7 @@ M9残り実行順（PR #21 merge後、原則1項目1PR）:
 1. 完了: Windows Graphics Captureで、ユーザーが明示選択した任意windowから1フレームを取得し、既存manifest互換のローカル入力として `data/` 配下へ安全に残す。DDR GRAND PRIXの自動特定、連続capture、解析、保存には進まない。
 2. 完了: 実capture画像をmanifestで再実行できる状態を固定し、曲・譜面同定と数字認識を実capture投入可能な品質へ上げる。認識結果を正式値へ暗黙昇格させない。
 3. 完了: 明示選択したwindowに対する連続capture sessionを追加し、resize、対象終了、再選択、device lost、resource解放を扱う。監視結果からの自動保存はまだ行わない。
-4. capture、分類、confirmed event、既存正式保存workflowを接続し、保存成功、duplicate、excluded、解析失敗を既存境界のまま1件ずつ処理する。
+4. 完了: capture、分類、confirmed event、既存正式保存workflowを接続し、保存成功、duplicate、excluded、解析失敗を既存境界のまま1件ずつ処理する。
 5. 監視状態、対象window状態、最新保存結果、保存skip、解析失敗ログをWPFへ統合し、タスクトレイから開始・停止・状態確認できるようにする。
 6. マスタDB更新状態、長時間動作、再起動・再接続、resource leak、失敗復旧を検証し、M9完了条件を満たす運用状態へ固める。installer、配布、精度保証値の確定はM10へ残す。
 
@@ -521,10 +522,9 @@ M9残り実行順（PR #21 merge後、原則1項目1PR）:
 
 ## 近い順の推奨作業
 
-1. `M9残り実行順` の4項目目として、capture、分類、confirmed event、既存正式保存workflowを既存保存境界のまま接続する。
-2. 正式保存workflow接続後、M5bとしてローカルjacket参照カタログを整備し、GPプレー可能曲のcoverageと安全な自動紐付けを固定する。
-3. 以降は同実行順の5から6に従い、監視UI・タスクトレイ、長時間運用を1項目ずつ進める。
-4. M9完了後にM10の実機検証と配布準備へ進む。
+1. 正式保存workflow接続後の独立PRとして、M5bローカルjacket参照カタログを整備し、GPプレー可能曲のcoverageと安全な自動紐付けを固定する。
+2. 以降は `M9残り実行順` の5から6に従い、監視UI・タスクトレイ、長時間運用を1項目ずつ進める。
+3. M9完了後にM10の実機検証と配布準備へ進む。
 
 各チャットの具体的な次PR仕様は `docs/next-task.md` を優先し、上記順序と矛盾する古い候補へ戻らない。
 

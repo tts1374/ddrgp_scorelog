@@ -54,6 +54,9 @@
                             Style="{StaticResource PrimaryButtonStyle}" Click="CaptureOneFrame_Click" />
                     <Button Content="連続取得を開始" Margin="0,0,8,0"
                             Style="{StaticResource PrimaryButtonStyle}" Click="StartContinuousCapture_Click" />
+                    <Button Content="連続取得・保存" Margin="0,0,8,0"
+                            Style="{StaticResource PrimaryButtonStyle}"
+                            Click="StartContinuousCaptureAndSave_Click" />
                     <Button Content="連続取得を停止" Margin="0,0,8,0"
                             Style="{StaticResource PrimaryButtonStyle}" Click="StopContinuousCapture_Click" />
                     <Button Content="単発保存" Margin="0,0,8,0"
