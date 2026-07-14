@@ -539,6 +539,59 @@ def test_persisted_features_replay_existing_m5_match_after_reference_image_delet
         catalog.load_m5_feature_entries(catalog_path, master_db)
 
 
+def test_m5_feature_loader_ignores_stale_extractor_versions(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    master_db, catalog_path = setup_paths(tmp_path, monkeypatch)
+    image_path = tmp_path / "versioned-reference.png"
+    write_image(image_path, (60, 90, 120))
+    catalog.ingest_observation(
+        catalog_path,
+        master_db,
+        source_image_path=image_path,
+        source_capture_id="current-version",
+        observed_title="Alpha",
+        observed_artist="Artist A",
+        image_kind="jacket_crop",
+    )
+    with sqlite3.connect(catalog_path) as connection:
+        connection.execute(
+            """
+            INSERT INTO jacket_references (
+              reference_id, source_capture_id, source_image_hash, master_version, song_id,
+              canonical_title_snapshot, canonical_artist_snapshot, review_status,
+              resolution_reason, resolution_basis, feature_extractor_version,
+              image_kind, thumbnail_rgb_json, histogram_json, dhash_bits_json, dhash_hex,
+              observed_title, observed_artist, observation_status, expected_song_id,
+              created_at, updated_at
+            )
+            SELECT
+              'stale-reference', NULL, source_image_hash, master_version, 'song-2',
+              'Beta', 'Artist B', review_status, resolution_reason, resolution_basis,
+              'm5-jacket-v0', image_kind, thumbnail_rgb_json, histogram_json,
+              dhash_bits_json, dhash_hex, 'Beta', 'Artist B', observation_status, '',
+              created_at, updated_at
+            FROM jacket_references
+            WHERE feature_extractor_version = ?
+            """,
+            (catalog.FEATURE_EXTRACTOR_VERSION,),
+        )
+        assert connection.execute("SELECT COUNT(*) FROM jacket_references").fetchone()[0] == 2
+
+    entries = catalog.load_m5_feature_entries(catalog_path, master_db)
+
+    assert len(entries) == 1
+    assert entries[0].song_id == "song-1"
+    assert entries[0].organized_file != "catalog:stale-reference"
+    coverage_rows, summary = catalog.build_coverage(catalog_path, master_db)
+    beta = next(row for row in coverage_rows if row["song_id"] == "song-2")
+    assert beta["coverage_status"] == "needs_review"
+    assert beta["reason"] == "feature_extractor_version_changed"
+    assert summary["current_reference_state_reason_counts"] == {
+        "feature_extractor_version_changed": 1
+    }
+
+
 def test_coverage_counts_all_gp_songs_failures_and_read_only_master_drift(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

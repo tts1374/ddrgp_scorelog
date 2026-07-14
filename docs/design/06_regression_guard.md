@@ -398,8 +398,8 @@
 - capture idとsource hash + 解決identityの冪等性、同一song 1:N、同一画像bytesを共有する別songの別reference保持、capture idと画像bytesの矛盾拒否、`image_kind` と全768 thumbnail値の永続化・復元を固定する。同一画像のkind訂正ではreferenceを増やさず特徴量を再計算し、同じkindの再投入では更新しない。
 - canonical title + artist、一意aliasだけをauto-confirmし、artist不一致、曖昧alias、複数候補、観測/feature失敗を `needs_review` / `unresolved` に保つ。
 - 全GP song分母の4状態、候補GP songの `needs_review` 投影、候補なし未割当観測、orphan、auto-confirm分母、理由別件数、known-false auditを同じdeduplicated observation集合から検査する。候補を確定songへ昇格しない。
-- master version、song消失、GP対象外、identity変更をread-only検出し、自動付替えやmaster書込みを行わない。
-- 参照画像を削除したfixtureでcatalog featureを再読込し、既存M5 jacket distanceが元featureと一致することを確認する。
+- master version、feature extractor version、song消失、GP対象外、identity変更をread-only検出し、自動付替えやmaster書込みを行わない。旧extractor referenceはcoverageでも `needs_review` に保つ。
+- 参照画像を削除したfixtureでcatalog featureを再読込し、既存M5 jacket distanceが元featureと一致することを確認する。異なる `feature_extractor_version` の同長vectorはcatalog内に存在しても現行M5 matcherへ供給しない。
 - runnerの `--m5-jacket-catalog` は `--m5-jacket-match` なしで拒否し、明示catalog指定時だけ一時song select referenceを置き換える。confirmed-events、duplicate、unconfirmedの既存対象境界は変更しない。
 
 ## ROI方針

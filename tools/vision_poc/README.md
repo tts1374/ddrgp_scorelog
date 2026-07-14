@@ -636,7 +636,7 @@ python -m tools.vision_poc.jacket_reference_catalog build `
 
 catalogとcoverageの出力pathは `data/` 配下だけを受け入れます。同一capture id、または同一source image hashと同一解決song/未解決観測の再投入はreferenceを増やしません。同じ画像bytesを共有する別songは別referenceとして保持します。capture idを維持したtitle・artist・observation statusの訂正は同じreferenceの解決結果と候補を更新し、監査用 `expected_song_id` の後日追加も反映します。`image_kind` は特徴量と一緒に永続化し、同じ画像を別のkindへ訂正して再投入した場合は同じreferenceの特徴量を訂正後の切り出し境界で再計算します。観測とkindが同じ通常再実行ではmaster driftを暗黙再確定せず、特徴量も更新しません。capture idが同じなのに画像bytesが異なる入力は矛盾として拒否します。別画像は同一songへ複数referenceとして追加できます。canonical title + artist完全一致または一意alias title + artist完全一致だけを `auto_confirmed` にし、曖昧・artist不一致・観測/feature失敗は `needs_review` / `unresolved` の理由と候補を残します。expected値は既知誤確定監査専用で、紐付けには使いません。
 
-coverageは `jacket_catalog_song_coverage.csv`、`jacket_catalog_coverage_summary.json`、`jacket_catalog_coverage.md` を出します。対象masterのGPプレー可能songを `referenced` / `needs_review` / `uncollected` / `unresolved` のどれかへ1回だけ数えます。確定 `song_id` がなくても `reference_candidates` にGP songがあれば、そのsongを自動割当せず `needs_review` として数えます。候補songもない未解決観測とorphanは別集計します。current auto-confirm rateはdeduplicate済みの全capture観測を分母にし、失敗観測、master driftによる再レビュー、orphanを除外しません。投入時点のrateは `ingest_auto_confirm_rate` へ分けます。master version・identity・GP可否の変更はread-onlyで検出し、別songへ自動付替えしません。
+coverageは `jacket_catalog_song_coverage.csv`、`jacket_catalog_coverage_summary.json`、`jacket_catalog_coverage.md` を出します。対象masterのGPプレー可能songを `referenced` / `needs_review` / `uncollected` / `unresolved` のどれかへ1回だけ数えます。確定 `song_id` がなくても `reference_candidates` にGP songがあれば、そのsongを自動割当せず `needs_review` として数えます。旧 `feature_extractor_version` のreferenceも現行照合に利用可能な `referenced` とはせず `needs_review` にします。候補songもない未解決観測とorphanは別集計します。current auto-confirm rateはdeduplicate済みの全capture観測を分母にし、失敗観測、master driftによる再レビュー、orphanを除外しません。投入時点のrateは `ingest_auto_confirm_rate` へ分けます。master version・identity・GP可否の変更はread-onlyで検出し、別songへ自動付替えしません。
 
 既存M5 jacket照合でcatalogを使う場合は、通常の実行へ次を追加します。
 
@@ -646,7 +646,7 @@ python -m tools.vision_poc --m5-jacket-match `
   --master-db data\master\ddrgp-master.sqlite
 ```
 
-current masterで有効な `auto_confirmed` referenceだけを永続特徴量から復元します。このため参照元の生画像を削除したfixtureでもM5照合を再実行できます。catalog、観測CSV、画像、crop、特徴量、review結果、coverageはローカル非共有物であり、Git、CI artifact、Release、通常ログへ含めません。生画像やcropの自動削除は行いません。
+current masterで有効かつ現行 `feature_extractor_version` と一致する `auto_confirmed` referenceだけを永続特徴量から復元します。旧extractorのreferenceはcatalog内に保持しても現行M5照合へ混入させません。このため参照元の生画像を削除したfixtureでもM5照合を再実行できます。catalog、観測CSV、画像、crop、特徴量、review結果、coverageはローカル非共有物であり、Git、CI artifact、Release、通常ログへ含めません。生画像やcropの自動削除は行いません。
 
 ## テスト
 

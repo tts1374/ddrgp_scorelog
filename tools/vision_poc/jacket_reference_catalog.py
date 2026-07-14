@@ -827,6 +827,8 @@ def _reference_state(row: sqlite3.Row, master: MasterIdentity) -> tuple[str, str
         return "orphaned", "master_song_missing"
     if not song.grand_prix_play_available:
         return "orphaned", "song_not_grand_prix_available"
+    if str(row["feature_extractor_version"]) != FEATURE_EXTRACTOR_VERSION:
+        return "needs_review", "feature_extractor_version_changed"
     review_status = str(row["review_status"])
     if review_status != "auto_confirmed":
         return review_status, str(row["resolution_reason"])
@@ -851,7 +853,15 @@ def load_m5_feature_entries(
     with closing(_connect_read_only(catalog_path)) as connection:
         connection.row_factory = sqlite3.Row
         _validate_catalog(connection)
-        for row in connection.execute("SELECT * FROM jacket_references ORDER BY reference_id"):
+        for row in connection.execute(
+            """
+            SELECT *
+            FROM jacket_references
+            WHERE feature_extractor_version = ?
+            ORDER BY reference_id
+            """,
+            (FEATURE_EXTRACTOR_VERSION,),
+        ):
             state, _ = _reference_state(row, master)
             if state != "auto_confirmed":
                 continue
@@ -982,6 +992,9 @@ def build_coverage(
         "master_identity_changed": "review the changed canonical identity",
         "song_not_grand_prix_available": "keep as orphan unless GP availability is restored",
         "master_song_missing": "keep as orphan and inspect the master update",
+        "feature_extractor_version_changed": (
+            "re-extract the reference with the current feature extractor"
+        ),
     }
     improvement_reasons = sorted(
         set(failure_reasons) | set(current_state_reasons) | set(orphan_reasons)
