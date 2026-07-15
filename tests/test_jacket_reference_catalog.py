@@ -282,6 +282,69 @@ def test_manual_review_is_transactional_idempotent_and_runtime_eligible(
     assert hashlib.sha256(catalog_v2.read_bytes()).hexdigest() == before
 
 
+def test_idempotent_review_replay_precedes_current_master_validation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    master_db, catalog_v2, reference_id = migrate_fixture_catalog(tmp_path, monkeypatch)
+    request = catalog.ReviewMutationRequest(
+        action_id="action-replay-without-master",
+        reference_id=reference_id,
+        action="manual_confirm",
+        expected_revision=0,
+        expected_status="needs_review",
+        expected_song_id=None,
+        song_id="song-2",
+        reason="developer selected",
+    )
+    original = catalog.apply_review_mutation(catalog_v2, master_db, request)
+
+    with sqlite3.connect(master_db) as connection:
+        connection.execute(
+            "UPDATE songs SET grand_prix_play_available = 0 WHERE song_id = 'song-2'"
+        )
+    replay_after_gp_removal = catalog.apply_review_mutation(catalog_v2, master_db, request)
+    missing_master = tmp_path / "missing-master.sqlite"
+    replay_without_master = catalog.apply_review_mutation(
+        catalog_v2, missing_master, request
+    )
+
+    assert original.idempotent is False
+    assert replay_after_gp_removal == replay_without_master
+    assert replay_without_master == catalog.ReviewMutationReceipt(
+        action_id=request.action_id,
+        reference_id=reference_id,
+        action="manual_confirm",
+        status="manual_confirmed",
+        song_id="song-2",
+        revision=1,
+        idempotent=True,
+    )
+    with pytest.raises(ValueError, match="different payload"):
+        catalog.apply_review_mutation(
+            catalog_v2,
+            missing_master,
+            catalog.ReviewMutationRequest(**{**request.__dict__, "note": "changed"}),
+        )
+    with pytest.raises(ValueError, match="master DB is not a file"):
+        catalog.apply_review_mutation(
+            catalog_v2,
+            missing_master,
+            catalog.ReviewMutationRequest(
+                **{**request.__dict__, "action_id": "new-action-without-master"}
+            ),
+        )
+    with sqlite3.connect(catalog_v2) as connection:
+        assert connection.execute(
+            "SELECT review_status, review_revision FROM jacket_references "
+            "WHERE reference_id = ?",
+            (reference_id,),
+        ).fetchone() == ("manual_confirmed", 1)
+        assert (
+            connection.execute("SELECT COUNT(*) FROM reference_review_history").fetchone()[0]
+            == 1
+        )
+
+
 def test_manual_confirm_rejects_featureless_reference_without_side_effects(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

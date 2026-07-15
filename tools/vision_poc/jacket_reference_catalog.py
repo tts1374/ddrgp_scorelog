@@ -763,6 +763,21 @@ def _receipt_from_json(raw: str, *, idempotent: bool) -> ReviewMutationReceipt:
     )
 
 
+def _existing_review_receipt(
+    connection: sqlite3.Connection, *, action_id: str, payload: str
+) -> ReviewMutationReceipt | None:
+    prior = connection.execute(
+        "SELECT request_payload_json, receipt_json FROM reference_review_history "
+        "WHERE action_id = ?",
+        (action_id,),
+    ).fetchone()
+    if prior is None:
+        return None
+    if str(prior["request_payload_json"]) != payload:
+        raise ValueError("action_id was already used with a different payload")
+    return _receipt_from_json(str(prior["receipt_json"]), idempotent=True)
+
+
 def apply_review_mutation(
     catalog_path: Path,
     master_db: Path,
@@ -779,15 +794,9 @@ def apply_review_mutation(
     if request.expected_status not in REVIEW_STATUSES_V2 or request.expected_revision < 0:
         raise ValueError("invalid expected review state")
     payload = _mutation_payload(request)
-    master = load_master_identity(master_db)
-    songs_by_id = {song.song_id: song for song in master.songs}
-    selected_song = None
     if request.action in {"manual_confirm", "reassign"}:
         if not request.song_id:
             raise ValueError(f"{request.action} requires an explicit song_id")
-        selected_song = songs_by_id.get(request.song_id)
-        if selected_song is None or not selected_song.grand_prix_play_available:
-            raise ValueError("manual song must exist in the current master and be GP-available")
     elif request.song_id is not None:
         raise ValueError(f"{request.action} does not accept song_id")
     timestamp = request.action_at or utc_now()
@@ -798,21 +807,32 @@ def apply_review_mutation(
     if parsed_timestamp.tzinfo is None or parsed_timestamp.utcoffset() is None:
         raise ValueError("action_at must include a UTC offset")
 
+    with closing(_connect_read_only(catalog_path)) as connection:
+        connection.row_factory = sqlite3.Row
+        receipt = _existing_review_receipt(
+            connection, action_id=request.action_id, payload=payload
+        )
+        if receipt is not None:
+            return receipt
+
+    master = load_master_identity(master_db)
+    songs_by_id = {song.song_id: song for song in master.songs}
+    selected_song = None
+    if request.action in {"manual_confirm", "reassign"}:
+        selected_song = songs_by_id.get(request.song_id)
+        if selected_song is None or not selected_song.grand_prix_play_available:
+            raise ValueError("manual song must exist in the current master and be GP-available")
+
     with closing(sqlite3.connect(catalog_path)) as connection:
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA foreign_keys = ON")
         connection.execute("BEGIN IMMEDIATE")
         try:
             _validate_catalog(connection)
-            prior = connection.execute(
-                "SELECT request_payload_json, receipt_json FROM reference_review_history "
-                "WHERE action_id = ?",
-                (request.action_id,),
-            ).fetchone()
-            if prior is not None:
-                if str(prior["request_payload_json"]) != payload:
-                    raise ValueError("action_id was already used with a different payload")
-                receipt = _receipt_from_json(str(prior["receipt_json"]), idempotent=True)
+            receipt = _existing_review_receipt(
+                connection, action_id=request.action_id, payload=payload
+            )
+            if receipt is not None:
                 connection.rollback()
                 return receipt
             row = connection.execute(

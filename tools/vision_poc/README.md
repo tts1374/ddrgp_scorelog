@@ -674,7 +674,7 @@ python -m tools.vision_poc.jacket_reference_catalog review `
   --song-id SONG_ID --reason "developer selected" --note "manual review"
 ```
 
-mutationはexpected revision/status/songをpreconditionにし、同一action ID・同一payloadだけを冪等再投入として扱います。manual confirm/reassignはcurrent extractorの完全な永続特徴量も要求し、`feature_extraction_failed` や欠損/不正vectorを確定状態へ進めません。current rowとhistoryは1 transactionで更新し、候補・expected値を暗黙song選択に使いません。外部変更などで確定後に不正になったmanual referenceは、保存済みstatus、revision、historyを保ったままcoverageとreview projectionで `needs_review` / `persisted_feature_invalid` とし、runtimeからそのrowだけを除外して他の有効reference読込を継続します。詳細なapp実行方法とC# strict loader契約は `tools/jacket_catalog_collector/README.md` を参照してください。
+mutationはexpected revision/status/songをpreconditionにし、同一action ID・同一payloadだけを冪等再投入として扱います。保存済みreceiptはcurrent masterの再検証より先に返すため、commit後にmasterが一時利用不能、曲削除、GP対象外化しても同一retryは成功します。異なるpayloadの同一ID再利用と、未保存actionのmaster不整合は引き続き拒否します。manual confirm/reassignはcurrent extractorの完全な永続特徴量も要求し、`feature_extraction_failed` や欠損/不正vectorを確定状態へ進めません。current rowとhistoryは1 transactionで更新し、候補・expected値を暗黙song選択に使いません。外部変更などで確定後に不正になったmanual referenceは、保存済みstatus、revision、historyを保ったままcoverageとreview projectionで `needs_review` / `persisted_feature_invalid` とし、runtimeからそのrowだけを除外して他の有効reference読込を継続します。詳細なapp実行方法とC# strict loader契約は `tools/jacket_catalog_collector/README.md` を参照してください。
 
 ## テスト
 

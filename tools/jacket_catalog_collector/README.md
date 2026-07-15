@@ -45,7 +45,7 @@ top-level必須fieldは `projection_schema_version`、`master`、`catalog`、`co
 
 `v1→v2移行` は現在選択中のcatalog v1を上書きせず、別の新規 `data/` pathへv2 stagingを生成・strict検証してからexclusive publishします。既存target、unsupported/破損source、失敗、取消ではv1と既存targetを変更しません。
 
-v2ではreview行を選び、current GP曲をsong ID/title/artistで検索して明示選択します。`confirm` と `reassign` は選択songとcurrent extractorの完全な永続特徴量を必要とし、`feature_extraction_failed` や欠損vectorは確定できません。`reject` と `reopen` はsongを受け取りません。実行前にreference ID、revision、action、songを確認dialogへ表示します。requestはprojectionのrevision/stored status/assigned songをpreconditionにし、競合は `review更新失敗/競合` として再読込を促します。current rowとhistoryはPython側の1 transactionで更新され、同一action ID・同一payloadだけが冪等成功です。候補、expected song、OCR rawは明示選択へ昇格しません。
+v2ではreview行を選び、current GP曲をsong ID/title/artistで検索して明示選択します。`confirm` と `reassign` は選択songとcurrent extractorの完全な永続特徴量を必要とし、`feature_extraction_failed` や欠損vectorは確定できません。`reject` と `reopen` はsongを受け取りません。実行前にreference ID、revision、action、songを確認dialogへ表示します。requestはprojectionのrevision/stored status/assigned songをpreconditionにし、競合は `review更新失敗/競合` として再読込を促します。current rowとhistoryはPython側の1 transactionで更新され、同一action ID・同一payloadだけが冪等成功です。保存済みreceiptはcurrent master検証より先に返すため、commit後のmaster一時障害や曲の削除・GP対象外化でretryを妨げません。異なるpayloadの同一ID再利用と未保存actionのmaster不整合は拒否します。候補、expected song、OCR rawは明示選択へ昇格しません。
 
 ## Scope boundary
 
