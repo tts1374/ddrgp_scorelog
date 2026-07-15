@@ -1,6 +1,6 @@
 # Jacket Catalog Collector (developer-only)
 
-M5c のローカル jacket catalog 運用を支援する、公開 `DDRGpScoreViewer` とは独立した Windows WPF app です。master DB の明示更新、coverage/review projection、catalog v1からv2への非破壊移行、監査可能なmanual confirm/reassign/reject/reopenを扱います。通常の公開app build、installer、Release、GitHub Actions artifactには含めません。
+M5c のローカル jacket catalog 運用を支援する、公開 `DDRGpScoreViewer` とは独立した Windows WPF app です。master DB の明示更新、coverage/review projection、catalog v1からv2への非破壊移行、監査可能なmanual reviewに加え、DDR GRAND PRIX window候補の確認とmemory-only capture lifecycle観測を扱います。通常の公開app build、installer、Release、GitHub Actions artifactには含めません。
 
 ## 実行
 
@@ -47,6 +47,14 @@ top-level必須fieldは `projection_schema_version`、`master`、`catalog`、`co
 
 v2ではreview行を選び、current GP曲をsong ID/title/artistで検索して明示選択します。`confirm` と `reassign` は選択songとcurrent extractorの完全な永続特徴量を必要とし、`feature_extraction_failed` や欠損vectorは確定できません。`reject` と `reopen` はsongを受け取りません。実行前にreference ID、revision、action、songを確認dialogへ表示します。requestはprojectionのrevision/stored status/assigned songをpreconditionにし、競合は `review更新失敗/競合` として再読込を促します。current rowとhistoryはPython側の1 transactionで更新され、同一action ID・同一payloadだけが冪等成功です。保存済みreceiptはcurrent master検証より先に返すため、commit後のmaster一時障害や曲の削除・GP対象外化でretryを妨げません。異なるpayloadの同一ID再利用と未保存actionのmaster不整合は拒否します。候補、expected song、OCR rawは明示選択へ昇格しません。
 
+## Window capture lifecycle
+
+`Window capture (memory only)` はtop-level windowを列挙し、titleまたはprocess名からDDR GRAND PRIX候補になった理由、handle、PID、process start identity、title/class、client size、visible/minimized状態と取得可能なpreviewを表示します。候補が1件でも自動選択・自動開始しません。開発者が行を選び、preview、根拠、identityを確認dialogで再確認した場合だけWindows Graphics Captureを開始します。
+
+開始直前と各frame受領時にhandle、PID、process start、process名、title/class、client size、visible/minimized状態を再検査します。stale候補、handle再利用、resize、identity drift、最小化、対象終了では暗黙に別windowを選択・再開始せず、終了理由を表示します。二重開始を拒否し、停止・開始取消・window close・device loss・capture例外は冪等停止としてin-flight callbackをdrainしてからresourceを1回だけ解放します。collector終了時もactive sessionの停止完了を待ちます。
+
+WGCのnative frame queueとimmutable PNG ring bufferは固定上限です。満杯時はframeをdropして `captured` / `dropped` を表示し、producerをUI描画やdisk I/Oで無制限にblockしません。latest preview、件数、開始時/現在size、resource状態は観測専用です。このPRではframe、preview、diagnosticをdiskへ保存せず、catalog reference、観測、OCR入力、正式値へ昇格しません。
+
 ## Scope boundary
 
-このapp/project/testは `tools/jacket_catalog_collector/` 内で完結し、`app/src/DDRGpScoreViewer` を参照しません。物理削除、source image削除、capture、window探索、OCR、ゲーム操作は実装しません。これらは後続M5cへ分離します。
+このapp/project/testは `tools/jacket_catalog_collector/` 内で完結し、`app/src/DDRGpScoreViewer` を参照しません。物理削除、source image削除、jacket変化/安定検出、checkpoint、観測生成、catalog投入、OCR、ゲーム操作は実装しません。これらは後続M5cへ分離します。

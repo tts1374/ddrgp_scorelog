@@ -210,6 +210,14 @@ projection producerはversion 2となり、catalog v1を `migration_required=tru
 
 runtime loaderはcurrent feature extractorかつcurrent masterに存在するGP対象の `auto_confirmed` / `manual_confirmed` だけを供給する。`rejected`、orphan、GP対象外、旧extractorを渡さず、外部変更などで永続特徴量が不正になったmanual referenceは派生状態を `needs_review` / `persisted_feature_invalid` としてcoverageとreview projectionへ表示し、そのrowだけをruntimeから除外して他の有効reference読込を継続する。保存済みstatus、revision、historyは変更しない。auto-confirmed rowの特徴量破損はcatalog corruptionとして従来どおり失敗させる。M5c-2はcapture、window探索、title/artist OCR、物理削除、公開app、正式保存workflow、正式個人スコアDBを変更しない。これらとsource capture locator/retentionはM5c-3以降へ残す。
 
+### M5c-3a window capture lifecycle
+
+collectorはtop-level windowを列挙し、title/process由来のDDR GRAND PRIX候補についてhandle、PID、process start identity、process名、title/class、client size、visible/minimized状態、候補理由、取得可能なpreviewを表示する。候補は1件でも自動確定せず、開発者がpreviewと根拠を確認した1件を明示選択し、同じidentityを開始直前に再検査した場合だけWindows Graphics Captureを開始する。handleだけをidentityとせず、stale UIやhandle再利用から別windowを誤captureしない。
+
+capture開始時のidentityとclient sizeを固定し、各immutable PNG frameを受け取る前に同じwindow snapshotを再検査する。title/class/process identity drift、resize、最小化、非表示、対象終了では明示終了理由を残し、暗黙再選択・再開始しない。通常停止、開始取消、device loss、capture例外、collector終了は同じidempotent停止境界へ集約し、in-flight callbackが返った後でevent、frame pool、session、D3D device、queued native frameを1回だけ解放する。停止要求後に完了したframeはUI/ring/catalogへ渡さない。
+
+native frame queueとimmutable PNG ring bufferは固定上限とし、producerはUI描画やdisk I/Oで無制限にblockしない。満杯時はframeをdropし、latest preview、captured/drop件数、開始時/現在size、window/resource stateをdeveloper UIへ表示する。この段階のpreview/frame/diagnosticはmemory-onlyであり、disk、catalog reference、観測、OCR入力、正式値へ昇格しない。jacket変化/安定検出、同一preview判定、採用frame、checkpoint、観測生成、catalog投入、source locator/retentionはM5c-3b以降へ残す。
+
 ## M5b/M5c共通スコープ外
 
 - OCR方式刷新。
