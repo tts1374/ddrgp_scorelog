@@ -217,6 +217,34 @@ def test_projection_v2_exposes_revision_capability_and_append_only_history(
     )
     assert reviewed["history"][0]["action"] == "manual_confirm"
 
+    with sqlite3.connect(target) as connection:
+        connection.execute(
+            "UPDATE jacket_references SET thumbnail_rgb_json = 123 WHERE reference_id = ?",
+            (reference["reference_id"],),
+        )
+
+    corrupted = projection.build_review_projection(target, master_db)
+    reviewed_after_corruption = next(
+        item
+        for item in corrupted["review_references"]
+        if item["reference_id"] == reference["reference_id"]
+    )
+    assert (
+        reviewed_after_corruption["stored_status"],
+        reviewed_after_corruption["review_status"],
+        reviewed_after_corruption["reason"],
+        reviewed_after_corruption["revision"],
+    ) == (
+        "manual_confirmed",
+        "needs_review",
+        "persisted_feature_invalid",
+        1,
+    )
+    assert reviewed_after_corruption["history"] == reviewed["history"]
+    assert next(
+        row for row in corrupted["songs"] if row["song_id"] == "song-1"
+    )["coverage_status"] == "needs_review"
+
 
 def test_projection_handles_empty_catalog_orphan_old_extractor_and_unassigned(
     tmp_path: Path, monkeypatch

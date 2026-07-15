@@ -39,7 +39,7 @@ python -m tools.vision_poc.jacket_catalog_review_projection `
 
 top-level必須fieldは `projection_schema_version`、`master`、`catalog`、`coverage`、`songs`、`review_references` です。C# loaderはversion、全object/arrayの未知field、必須field、型、coverage/review status語彙、候補/history配列、revision連続性、capability/schema、分母整合をstrictに検査します。unsupported version、空/truncated stdout、Python非0終了は部分表示せず失敗にします。一方、`reason`、`note`、`candidate.reason`、`observation_status` はopaqueな診断文字列として未知値をそのまま表示します。
 
-表示とfilterは、GP対象songを `referenced` / `needs_review` / `uncollected` / `unresolved` の同じ分母・同じstatus histogramで数えます。orphan、候補なし未割当観測、旧extractor、master driftは別のreview状態・理由として表示します。生成中にmaster/catalogのfile identity、size、mtime、hashが変わった場合はsnapshotを混在させず再読込要求として拒否します。表示前後でmaster/catalog、capture、crop、`data/`、`logs/`を変更しません。
+表示とfilterは、GP対象songを `referenced` / `needs_review` / `uncollected` / `unresolved` の同じ分母・同じstatus histogramで数えます。orphan、候補なし未割当観測、旧extractor、master driftに加え、破損したmanual referenceを `needs_review` / `persisted_feature_invalid` として表示します。この派生状態で保存済みstatus、revision、historyは変更しません。生成中にmaster/catalogのfile identity、size、mtime、hashが変わった場合はsnapshotを混在させず再読込要求として拒否します。表示前後でmaster/catalog、capture、crop、`data/`、`logs/`を変更しません。
 
 ## v2 migrationとmanual review
 

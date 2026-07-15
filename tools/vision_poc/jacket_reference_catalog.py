@@ -1456,6 +1456,10 @@ def _reference_state(row: sqlite3.Row, master: MasterIdentity) -> tuple[str, str
         return "needs_review", "feature_extractor_version_changed"
     review_status = str(row["review_status"])
     if review_status == "manual_confirmed":
+        try:
+            _decode_persisted_feature(row)
+        except ValueError:
+            return "needs_review", "persisted_feature_invalid"
         return review_status, str(row["resolution_reason"])
     if review_status != "auto_confirmed":
         return review_status, str(row["resolution_reason"])
@@ -1617,6 +1621,9 @@ def build_coverage(
         "master_song_missing": "keep as orphan and inspect the master update",
         "feature_extractor_version_changed": (
             "re-extract the reference with the current feature extractor"
+        ),
+        "persisted_feature_invalid": (
+            "recapture or re-extract the manually confirmed reference"
         ),
     }
     improvement_reasons = sorted(

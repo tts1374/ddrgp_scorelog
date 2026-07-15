@@ -484,8 +484,16 @@ def test_runtime_loader_skips_corrupt_manual_reference_without_hiding_valid_auto
         )
 
     entries = catalog.load_m5_feature_entries(target, master_db)
+    coverage_rows, summary = catalog.build_coverage(target, master_db)
+    beta_coverage = next(row for row in coverage_rows if row["song_id"] == "song-2")
 
     assert [entry.song_id for entry in entries] == ["song-1"]
+    assert beta_coverage["coverage_status"] == "needs_review"
+    assert beta_coverage["reason"] == "persisted_feature_invalid"
+    assert summary["current_reference_state_reason_counts"] == {
+        "persisted_feature_invalid": 1
+    }
+
 
 def test_reject_and_reopen_preserve_evidence_and_append_history(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
