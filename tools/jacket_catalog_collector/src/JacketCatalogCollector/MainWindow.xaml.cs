@@ -1,4 +1,5 @@
 using System.Windows;
+using System.ComponentModel;
 using System.IO;
 using Microsoft.Win32;
 
@@ -8,17 +9,102 @@ public partial class MainWindow : Window
 {
     private readonly MainViewModel viewModel;
     private CancellationTokenSource? operationCancellation;
+    private bool captureShutdownComplete;
 
     public MainWindow()
     {
         InitializeComponent();
         var repositoryRoot = Directory.GetCurrentDirectory();
         var runner = new ProcessRunner();
+        var windowEnumerator = new NativeWindowEnumerator();
+        var captureCoordinator = new WindowCaptureCoordinator(
+            windowEnumerator,
+            new WindowsGraphicsCaptureSessionFactory(),
+            new WpfCaptureDispatcher(Dispatcher));
         viewModel = new MainViewModel(
             new MasterUpdateService(runner, new AtomicMasterPublisher(), repositoryRoot),
             new ProjectionService(runner, new ProjectionJsonLoader(), repositoryRoot),
-            new ReviewWorkflowService(runner, repositoryRoot));
+            new ReviewWorkflowService(runner, repositoryRoot),
+            new WindowCaptureViewModel(windowEnumerator, captureCoordinator));
         DataContext = viewModel;
+    }
+
+    private async void RefreshWindows_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            await viewModel.WindowCapture!.RefreshCandidatesAsync();
+        }
+        catch (Exception exception)
+        {
+            MessageBox.Show(this, exception.Message, "window候補取得失敗");
+        }
+    }
+
+    private async void StartCapture_Click(object sender, RoutedEventArgs e)
+    {
+        var capture = viewModel.WindowCapture!;
+        var candidate = capture.SelectedCandidate;
+        if (candidate is null)
+        {
+            MessageBox.Show(this, "候補のpreviewと根拠を確認して1件を明示選択してください。");
+            return;
+        }
+        var identity = candidate.Identity;
+        if (MessageBox.Show(
+            this,
+            $"次のwindowだけをcaptureします。自動再選択・disk保存は行いません。\n\n"
+            + $"{candidate.DisplayName}\nreason: {candidate.CandidateReason}\n"
+            + $"process start: {identity.ProcessStartTicks}\nclass: {identity.ClassName}",
+            "capture開始確認",
+            MessageBoxButton.OKCancel,
+            MessageBoxImage.Warning) != MessageBoxResult.OK)
+        {
+            return;
+        }
+        try
+        {
+            await capture.StartAsync();
+        }
+        catch (Exception exception)
+        {
+            MessageBox.Show(this, exception.Message, "capture開始失敗");
+        }
+    }
+
+    private async void StopCapture_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            await viewModel.WindowCapture!.StopAsync();
+        }
+        catch (Exception exception)
+        {
+            MessageBox.Show(this, exception.Message, "capture停止失敗");
+        }
+    }
+
+    protected override async void OnClosing(CancelEventArgs e)
+    {
+        var state = viewModel.WindowCapture?.Lifecycle.State;
+        if (!captureShutdownComplete
+            && state is CaptureLifecycleState.Starting
+                or CaptureLifecycleState.Capturing
+                or CaptureLifecycleState.Stopping)
+        {
+            e.Cancel = true;
+            try
+            {
+                await viewModel.WindowCapture!.StopAsync();
+            }
+            finally
+            {
+                captureShutdownComplete = true;
+                Close();
+            }
+            return;
+        }
+        base.OnClosing(e);
     }
 
     private async void UpdateMaster_Click(object sender, RoutedEventArgs e)

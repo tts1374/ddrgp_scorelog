@@ -8,7 +8,8 @@ namespace JacketCatalogCollector;
 public sealed class MainViewModel(
     IMasterUpdateService masterUpdateService,
     IProjectionService projectionService,
-    IReviewWorkflowService? reviewWorkflowService = null) : INotifyPropertyChanged
+    IReviewWorkflowService? reviewWorkflowService = null,
+    WindowCaptureViewModel? windowCapture = null) : INotifyPropertyChanged
 {
     private ReviewProjection? projection;
     private string selectedCoverageStatus = "all";
@@ -27,6 +28,7 @@ public sealed class MainViewModel(
     public event PropertyChangedEventHandler? PropertyChanged;
 
     public ObservableCollection<ProjectionSong> Songs { get; } = [];
+    public WindowCaptureViewModel? WindowCapture { get; } = windowCapture;
     public ObservableCollection<ReviewReference> ReviewReferences { get; } = [];
     public ObservableCollection<string> CoverageStatusOptions { get; } =
         ["all", "referenced", "needs_review", "uncollected", "unresolved", "orphaned"];

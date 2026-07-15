@@ -1,8 +1,8 @@
 # 次PR作業仕様
 
-直近の運用整備PRで、既存PR上の `@codex fix the issues from the latest review` 起動時に、未解決thread取得、指摘修正、検証、独立read-onlyレビュー、通常push、`@codex review` 再依頼までを行う権限と停止境界を `AGENTS.md` に追加した。以下のM5c-3a仕様と作業branchは変更しない。
+直近のM5c-3a PRで、developer-only jacket catalog collectorへDDR GRAND PRIX window候補検出、preview付き明示選択、strict identity再検査、Windows Graphics Capture lifecycle、bounded memory-only frame ring buffer、drop/size/resource状態表示を追加した。frame、preview、diagnosticはdisk/catalogへ保存せず、停止・取消・対象終了・resize・device loss・例外・collector終了時のcallback drainとresource解放をfake testで固定した。
 
-`C:\work\ddrgp_scorelog` で作業してください。`AGENTS.md`、`docs/implementation-roadmap.md` の M5c、`docs/design/09_master_match_poc.md`、`tools/jacket_catalog_collector/`、公開app側の既存Windows Graphics Capture実装をread-only参照し、master/catalog DB、capture、crop、`data/`、`logs/`、生成物を保護してください。
+`C:\work\ddrgp_scorelog` で作業してください。`AGENTS.md`、`docs/implementation-roadmap.md` の M5b/M5c、`docs/design/09_master_match_poc.md`、`tools/jacket_catalog_collector/`、`tools/vision_poc/jacket_reference_catalog.py` を読み、master/catalog DB、既存capture/crop、`data/`、`logs/`、生成物を保護してください。
 
 ## 推奨モデル
 
@@ -12,105 +12,114 @@ GPT-5.6 Sol
 
 xhigh
 
-window候補識別、明示確認、capture resource lifecycle、ring buffer、中断・対象終了・device lossの競合を同時に固定するためです。catalog観測生成やOCRへは進みません。
+capture lifecycleを維持しながら、frame dedupe、安定判定、checkpoint、atomic local artifact、catalog再投入の副作用境界を同時に固定するためです。title/artist OCRや公開app連携へは進みません。
 
 ## 作業ブランチ
 
 ```powershell
-codex/m5c-window-capture-lifecycle
+codex/m5c-jacket-observation-session
 ```
 
 ## Normalized Summary
 
-M5c-3aとしてdeveloper-only jacket catalog collectorへ、DDR GRAND PRIX window候補検出、preview付きの明示選択、Windows Graphics Captureの明示開始・停止、bounded raw-frame ring buffer、window/resource lifecycleを追加します。
+M5c-3bとしてdeveloper-only collectorへ、song select jacket ROIの変化/安定検出、同一preview抑制、明示採用、session checkpointと中断再開、local observation artifact生成、既存M5b catalogへの冪等投入を追加します。
 
-このPRはcapture lifecycleの観測と安全な停止だけを扱います。jacket変化/安定検出、session checkpoint、観測自動生成、catalog投入、title/artist OCR、ゲーム操作は後続PRへ残します。
+このPRは収集sessionと観測evidenceの安全な生成・再投入だけを扱います。title/artist OCR、auto-confirm条件の緩和、ゲーム操作、公開app、正式保存workflowには接続しません。実装前に、検出・checkpoint・catalog投入を1つのtransaction/検証セットで安全にレビューできないと判明した場合は、観測生成までとcatalog投入を分割し、後半を `docs/next-task.md` の次PRへ残してください。
 
 ## In Scope
 
-- top-level windowを列挙し、DDR GRAND PRIX候補のhandle、process、title、client size、visible/minimized状態、候補理由をdeveloper UIへ表示する。
-- 自動候補は確定windowとして扱わず、開発者がpreviewと根拠を確認して1件を明示選択する。
-- 選択windowに対しWindows Graphics Captureを明示開始・明示停止し、最新preview、取得件数、drop件数、開始時/現在のsize、window/resource状態を表示する。
-- raw frameは固定上限のin-memory ring bufferに保持し、古いframeをdropする。通常停止・取消・window消失・resize・device loss・capture例外でresourceを決定的に解放する。
-- handle再利用、選択後のprocess/title/size変化、最小化、閉鎖、再選択、二重開始、二重停止、停止中のin-flight frameを安全に扱う。
-- fake window enumerator/capture session/frame source/dispatcherで通常系、空候補、誤候補、競合、resource解放をテストする。
-- capture frame、preview、diagnosticを既定でdiskへ保存しない。明示diagnostic exportを追加する場合も `data/` 配下の新規pathに限定し、catalogへ接続しない。
+- M5c-3aの明示選択済みcapture sessionだけを入力とし、1280x720基準のsong select jacket ROIを実frame sizeへ線形scaleして抽出する。
+- jacket ROIの変化候補と安定状態を、固定version付きfeature/hash/差分指標、連続frame数、最小継続時間で判定する。閾値と判定根拠をUI/diagnosticへ表示する。
+- 同一preview/同一安定jacketの連続frameをsession内で抑制し、ring buffer dropと「同一なので採用しない」を区別する。
+- 安定候補は自動でcatalogへ投入せず、開発者の明示採用でcapture/crop/observationをlocal stagingへ生成してからatomic publishする。
+- session開始時にmaster version/hash、catalog identity/schema、feature extractor version、window identity、ROI/detector versionを固定する。
+- checkpointでsession ID、固定identity/version、最後の安定候補、採用済みobservation ID/source hash、進捗を保持し、中断・再開時にstrict再検査する。
+- 同一session/observationの再投入は冪等にし、同じaction/observation IDの異なるpayload、master/catalog/extractor drift、破損checkpointを副作用なしで拒否する。
+- local source capture、jacket crop、manifest/checkpoint/observationは `data/jacket_catalog_collector/` 配下のsession固有pathに限定し、`logs/` や通常stdoutへimage bytes/pathを漏らさない。
+- 既存M5b catalog APIを再利用し、観測title/artistを自動推測しない。title/artist未取得の観測はauto-confirmせず、候補/evidenceを保持した `needs_review` / `unresolved` 境界へ送る。既存APIが空title/artist観測を安全に受けられない場合はAPI契約を推測で緩めず、catalog投入を次PRへ分割する。
+- fake frame clock/source、detector、checkpoint store、artifact publisher、catalog adapterで正常系、重複、競合、再開、部分失敗、side-effect境界をテストする。
 - collector README、`docs/implementation-roadmap.md`、`docs/design/09_master_match_poc.md` を同期する。
 
 ## Out of Scope
 
-- jacket ROI変化/安定検出、同一preview dedupe、採用frame判定
-- session checkpoint、中断再開、観測自動生成、catalog ingest/mutation
-- title/artist OCR、auto-confirm条件、manual review契約の変更
+- title/artist OCR、外部metadata取得、OCR confidence/auto-confirm閾値
+- 候補title/artist、expected song、近傍候補からの暗黙song確定
+- catalog v3、新しい正式schema、M5 runtime matcher契約変更
+- window候補条件、WGC resource ownership、公開 `DDRGpScoreViewer` のcapture契約変更
 - windowへの入力、focus移動、grid巡回、ゲーム操作自動化
-- 公開 `DDRGpScoreViewer` のwindow探索契約変更、M9 monitoring/tray、正式保存workflow、正式個人スコアDB
-- capture/crop/source imageのretention、cleanup、物理削除
+- 正式個人スコアDB、`source_captures`、`analysis_logs`、`plays`、正式保存workflow
+- retention期限、既存source/cropのcleanup・物理削除
 - installer、Release、telemetry、GitHub Actions artifact
 
 ## Fixed Decisions
 
-- 候補検出と選択確定を分け、候補が1件でも自動開始しない。開始には現在表示中の候補identityと明示選択を要求する。
-- window identityは生handleだけでなくprocess ID、process start identity、title/class、client sizeなど再検査可能なsnapshotを持ち、handle再利用を同一対象と誤認しない。
-- capture開始時にwindow identityとsizeを固定し、resize、identity drift、対象終了はsession終了理由として扱う。暗黙再選択・暗黙再開始しない。
-- ring bufferはboundedで、producerをUI描画やdisk I/Oで無制限にblockしない。frame/resource ownershipとdispose担当を1箇所に固定する。
-- stop/cancel/failureはidempotentで、in-flight callback完了後にresourceを1回だけ解放する。停止後frameをUI/catalogへ渡さない。
-- previewは観測用であり、catalog reference、正式値、保存候補、OCR入力へ自動昇格しない。
-- 公開appの既存captureコードは再利用可能性を確認するが、developer候補検出の採用を公開appへ逆流させない。
+- detectorはM5c-3aの停止/identity/size/resource lifecycleより下流に置き、停止後frameや異常終了sessionからartifact/catalog side effectを発生させない。
+- change candidate、stable candidate、adopted observation、catalog ingestedを別状態にし、stableを自動採用・自動確定しない。
+- detector version、ROI、閾値、frame clockはcheckpoint/observationへ記録し、異なるversionのcheckpointを現行sessionとして黙って再開しない。
+- checkpointとartifactはstagingをstrict検証した後だけatomic publishする。失敗・取消・競合では既存checkpoint/catalogと完成済みartifactを変更しない。
+- observation/action IDとcanonical payloadで冪等性を判定し、同じ画像hashだけで別song候補や別sessionの観測を統合しない。
+- capture/cropはlocal evidenceであり、Git、CI artifact、Release、通常公開logへ含めない。cleanupは明示操作を別PRで設計するまで自動実行しない。
+- title/artistがない観測はauto-confirmしない。M5c-4の取得方式評価前に一意性条件を緩めない。
 
 ## Pending Decisions
 
-- jacket変化/安定閾値、同一preview判定、採用frame契約
-- checkpoint schema、session再開、frame locator、capture/crop retention
-- title/artist取得方式、OCR採用条件、auto-confirm閾値
-- developer候補条件を公開appへ採用するかどうか
+- jacket change/stableの具体的閾値と必要frame/継続時間
+- session内同一previewのfeature/hash組合せと許容差
+- title/artist未取得観測を既存catalogへ保持する最小互換経路。安全な既存経路がなければcatalog投入を次PRへ分割する
+- source capture/crop retention期限、cleanup UX、欠損locator表示
+- title/artist取得方式とauto-confirm採用条件
 
-これらは後続PRの仕様判断であり、このPRを止めない。
+これらはfixture/実測と既存契約からPR内で安全に決められる範囲だけ固定し、公開契約やcatalog schema変更が必要なら後続PRへ送ります。
 
 ## Deliverables
 
-- window candidate model/enumerator/strict identity revalidation
-- preview付き明示選択UIと開始前確認
-- capture session coordinator、bounded frame ring buffer、状態/終了理由model
-- start/stop/cancel/window close/resize/device loss/exception時の決定的resource cleanup
-- fake依存によるlifecycle・競合・drop・side-effect test
+- versioned jacket ROI detector、change/stable state machine、同一preview抑制
+- 明示採用UIと採用候補/evidence表示
+- versioned checkpoint model/store、strict resume/reject、atomic artifact publisher
+- observation manifest/source capture/jacket cropのlocal session layout
+- 冪等catalog adapterまたは、安全な既存契約がない場合の明示分割結果
+- fake依存によるdetector・checkpoint・resume・競合・side-effect test
 - README・設計docs・次PR仕様の同期
 
 ## Boundary Condition Matrix
 
 | 状態/操作 | 期待結果 | 副作用境界/test |
 | --- | --- | --- |
-| 候補0件 | empty state表示 | capture resource未作成 |
-| 候補1件/複数件 | 根拠とpreviewを表示、明示選択待ち | 自動開始なし |
-| stale候補で開始 | identity再検査で拒否 | session/ring buffer未作成 |
-| 正常開始→frame→停止 | bounded preview/countを更新し停止 | 全resource 1回dispose |
-| 二重開始 | 2件目を拒否 | active sessionを維持 |
-| 二重停止/取消競合 | 冪等完了 | dispose重複なし |
-| ring buffer満杯 | oldestをdropしcount表示 | memory上限維持 |
-| resize/handle drift/window close | 明示終了理由で停止 | 暗黙再選択なし |
-| device loss/capture例外 | failure表示し停止 | partial catalog/data出力なし |
-| stop中in-flight frame | callback drain後破棄 | 停止後UI/catalog更新なし |
+| frameなし/ROI不正 | stable候補なし、診断表示 | artifact/checkpoint/catalog作成なし |
+| 同一preview継続 | 1候補として安定度更新 | observation重複なし、dropと別集計 |
+| jacket変化→安定 | change/stable根拠を表示 | 明示採用前はdisk/catalog変更なし |
+| 安定前に次jacketへ変化 | 前候補を不採用で破棄 | partial crop/observationなし |
+| 明示採用 | staging検証後にsession artifact公開 | source/crop/manifest整合 |
+| 同じobservation再投入 | 同一receipt/既存結果を返す | reference/history重複なし |
+| 同じID・異なるpayload | 競合拒否 | checkpoint/artifact/catalog不変 |
+| 中断→compatible resume | 固定version/identityを再検査して継続 | 採用済みobservation再生成なし |
+| corrupt/旧version/drift checkpoint | 再開拒否、明示新規session待ち | 暗黙migration/上書きなし |
+| artifact publish途中失敗 | staging cleanup、失敗表示 | 完成session/checkpoint/catalog不変 |
+| catalog投入失敗 | evidence/checkpointから安全にretry可能 | saved扱い・部分成功へ丸めない |
+| capture stop/resize/close/device loss | detector停止、終了理由を維持 | 停止後artifact/catalog更新なし |
 
 ## Validation
 
-- .NET: candidate enumeration、identity、ViewModel selection、capture coordinator、ring buffer、resource cleanupの対象testとcollector全test。
+- .NET: detector、dedupe、adoption ViewModel、checkpoint、artifact publisher、catalog adapterの対象testとcollector全test。
+- Python: jacket reference catalog/projectionの関連test。Python側catalog APIを変更した場合はその責務とconsumerの影響範囲testを実行する。
 - `dotnet build`、collector全test、関連Python test、Ruff、compileall、`git diff --check` を実行する。
-- 共通capture helperを変更した場合は公開app側の関連capture testとsolution buildも実行する。
-- catalog schema/runtime loaderを変更しないためPython全テストは原則不要。共通helperへ影響した場合は全テストを実行する。
-- 画像分類、ROI、OCR、confirmed-eventsを変更しないため `python -m tools.vision_poc` 本体は省略し、理由と残るリスクを報告する。
-- 実window/実captureの任意目視確認はmerge条件にせず、fake lifecycle testを必須にする。
+- 共通catalog schema/loader/helperを変更した場合はPython全テストを実行する。
+- jacket ROI/detectorを変更するため、collector用fixtureだけでなく `python -m tools.vision_poc` が同じ画像処理共通コードへ影響する場合はVision PoC本体を実行する。collector内独立実装で既存PoCへ影響しない場合は省略理由と残る実capture riskを報告する。
+- 実window/実captureの任意目視確認はmerge条件にせず、deterministic fake clock/frame fixtureを必須にする。
 
 ## Acceptance Criteria
 
-- window候補が自動確定・自動開始されず、preview/根拠を見た明示選択だけでcaptureを開始できる。
-- bounded ring bufferが上限とdropをテストで固定し、disk/catalogへ暗黙出力しない。
-- stop/cancel/close/resize/device loss/例外でresource leak、二重dispose、停止後frame反映が起きない。
-- handle再利用やstale UIから別windowを誤captureしない。
-- catalog v1/v2、manual history、runtime matcher、公開app、正式保存workflowを変更していない。
+- 同一preview、変化中、安定候補、明示採用を機械的に区別し、stableだけでdisk/catalogへ自動昇格しない。
+- checkpoint再開がversion/identity/driftをstrictに検査し、再投入・競合・部分失敗でobservation/referenceを重複させない。
+- 完成artifactだけが `data/jacket_catalog_collector/` 配下へatomic publishされ、停止後frameや失敗stagingがcatalogへ届かない。
+- title/artist OCRなしにauto-confirm条件を緩めず、既存M5b catalog/runtime/manual historyの不変条件を維持する。
+- capture lifecycle、公開app、正式保存workflow、正式個人スコアDBを変更していない。
 - read-only branch diffレビューでmedium以上の未対応指摘がない。
 
 ## Open Risks / Blockers
 
-- Windows Graphics CaptureはOS/driver/window状態に依存するため、実機確認は任意補助とし、merge gateはfake resource ownershipと既存capture testに置く。
-- Draft PR #27など別trackもroadmapを変更し得る。後からmergeするbranchが最新mainを取り込み、M5cとM9の両方を残してdocs競合を解消する。
+- 実gameのjacket切替速度とanimationはfixtureだけで完全再現できないため、閾値はversion付き・診断可能にし、実機確認は任意補助とする。
+- title/artist未取得観測を既存catalogへ安全に保持できない場合、catalog schemaを推測で変更せず、M5c-3bをartifact/checkpointまででmerge可能にしてcatalog投入を独立次PRへ分割する。
+- capture/cropはlocal dataであり、retention/cleanup未確定の間は自動削除しないため、disk使用量が増える。明示cleanupは別PRとする。
 
-完了後はM5c-3bのjacket変化/安定検出・checkpoint・観測生成を独立した次PR仕様へ更新し、今回変更だけをcommit、現在のbranchへ通常pushしてdraft PRを作成してください。更新後のM5c-3bには着手しないでください。
+完了後はM5c-4のtitle/artist取得方式・auto-confirm採用条件の実capture評価、または上記分割が必要ならM5c-3c catalog投入を独立した次PR仕様へ更新し、今回変更だけをcommit、現在のbranchへ通常pushしてdraft PRを作成してください。更新後の次PRには着手しないでください。
