@@ -26,10 +26,14 @@ public sealed class WindowCaptureViewModel : INotifyPropertyChanged
         {
             Lifecycle = value;
             Preview = ToBitmap(value.LatestPreviewPng);
+            LifecycleChanged?.Invoke(this, value);
         };
+        coordinator.FrameReceived += (_, frame) => FrameReceived?.Invoke(this, frame);
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
+    public event EventHandler<RawCaptureFrame>? FrameReceived;
+    public event EventHandler<CaptureLifecycleSnapshot>? LifecycleChanged;
 
     public ObservableCollection<WindowCandidate> Candidates { get; } = [];
 
@@ -100,8 +104,13 @@ public sealed class WindowCaptureViewModel : INotifyPropertyChanged
     {
         var selected = SelectedCandidate
             ?? throw new InvalidOperationException("previewと根拠を確認した候補を明示選択してください。");
-        return coordinator.StartAsync(selected, cancellationToken);
+        return StartAsync(selected, cancellationToken);
     }
+
+    public Task<bool> StartAsync(
+        WindowCandidate candidate,
+        CancellationToken cancellationToken = default) =>
+        coordinator.StartAsync(candidate, cancellationToken);
 
     public Task StopAsync() => coordinator.StopAsync();
 

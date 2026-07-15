@@ -9,7 +9,8 @@ public sealed class MainViewModel(
     IMasterUpdateService masterUpdateService,
     IProjectionService projectionService,
     IReviewWorkflowService? reviewWorkflowService = null,
-    WindowCaptureViewModel? windowCapture = null) : INotifyPropertyChanged
+    WindowCaptureViewModel? windowCapture = null,
+    JacketObservationViewModel? observation = null) : INotifyPropertyChanged
 {
     private ReviewProjection? projection;
     private string selectedCoverageStatus = "all";
@@ -29,6 +30,7 @@ public sealed class MainViewModel(
 
     public ObservableCollection<ProjectionSong> Songs { get; } = [];
     public WindowCaptureViewModel? WindowCapture { get; } = windowCapture;
+    public JacketObservationViewModel? Observation { get; } = observation;
     public ObservableCollection<ReviewReference> ReviewReferences { get; } = [];
     public ObservableCollection<string> CoverageStatusOptions { get; } =
         ["all", "referenced", "needs_review", "uncollected", "unresolved", "orphaned"];
@@ -309,6 +311,45 @@ public sealed class MainViewModel(
             IsBusy = false;
         }
     }
+
+    public Task StartObservationSessionAsync(
+        WindowCandidate candidate,
+        CancellationToken cancellationToken = default)
+    {
+        if (Observation is null || projection is null || masterPath is null || catalogPath is null)
+        {
+            throw new InvalidOperationException(
+                "master/catalogを先に読み込み、window候補を明示選択してください。");
+        }
+        return Observation.StartSessionAsync(
+            projection.Master,
+            projection.Catalog,
+            candidate,
+            masterPath,
+            catalogPath,
+            cancellationToken);
+    }
+
+    public Task ResumeObservationSessionAsync(
+        WindowCandidate candidate,
+        CancellationToken cancellationToken = default)
+    {
+        if (Observation is null || projection is null || masterPath is null || catalogPath is null)
+        {
+            throw new InvalidOperationException(
+                "master/catalogを先に読み込み、window候補を明示選択してください。");
+        }
+        return Observation.ResumeSessionAsync(
+            projection.Master,
+            projection.Catalog,
+            candidate,
+            masterPath,
+            catalogPath,
+            cancellationToken);
+    }
+
+    public Task StopObservationSessionAsync(CancellationToken cancellationToken = default) =>
+        Observation?.StopAsync(cancellationToken) ?? Task.CompletedTask;
 
     private void RebuildFilterOptions()
     {
