@@ -79,9 +79,50 @@ public sealed class MainViewModelTests
         Assert.Equal("all", viewModel.SelectedReason);
     }
 
-    private static ReviewProjection Projection() => new()
+    [Fact]
+    public async Task AppliesExplicitSongMutationAndReloadsProjection()
     {
-        ProjectionSchemaVersion = 1,
+        var projection = Projection(2);
+        var workflow = new StubReviewWorkflowService();
+        var viewModel = new MainViewModel(
+            new StubMasterUpdateService(),
+            new StubProjectionService(projection),
+            workflow);
+        await viewModel.LoadProjectionAsync("master.sqlite", "catalog.sqlite");
+        viewModel.SelectedReference = viewModel.ReviewReferences[0];
+        viewModel.SelectedSong = viewModel.SongChoices[1];
+        viewModel.ReviewReason = "explicit";
+        viewModel.ReviewNote = "opaque";
+
+        await viewModel.ApplyReviewAsync("manual_confirm");
+
+        var mutation = Assert.Single(workflow.Mutations);
+        Assert.Equal(("ref-1", "song-2", 0, "needs_review"),
+            (mutation.ReferenceId, mutation.SongId, mutation.ExpectedRevision, mutation.ExpectedStatus));
+        Assert.Equal("review更新完了", viewModel.StatusTitle);
+    }
+
+    [Fact]
+    public async Task MigratesOnlyReadOnlyV1ProjectionAndLoadsTarget()
+    {
+        var workflow = new StubReviewWorkflowService();
+        var viewModel = new MainViewModel(
+            new StubMasterUpdateService(),
+            new StubProjectionService(Projection(2, migrationRequired: true)),
+            workflow);
+        await viewModel.LoadProjectionAsync("master.sqlite", "catalog-v1.sqlite");
+
+        await viewModel.MigrateCatalogAsync("catalog-v2.sqlite");
+
+        Assert.Equal(("catalog-v1.sqlite", "catalog-v2.sqlite"), workflow.Migrations[0]);
+        Assert.Equal("catalog移行完了", viewModel.StatusTitle);
+    }
+
+    private static ReviewProjection Projection(
+        int version = 1,
+        bool migrationRequired = false) => new()
+    {
+        ProjectionSchemaVersion = version,
         Master = new ProjectionMaster
         {
             Path = "master.sqlite",
@@ -95,9 +136,13 @@ public sealed class MainViewModelTests
         {
             Path = "catalog.sqlite",
             CatalogIdentity = "ddrgp-local-jacket-reference-catalog",
-            SchemaVersion = 1,
+            SchemaVersion = version == 1 || migrationRequired ? 1 : 2,
             CreatedAt = "now",
             CurrentFeatureExtractorVersion = "m5-jacket-v1",
+            MigrationRequired = version == 1 ? null : migrationRequired,
+            MutationCapability = version == 1
+                ? null
+                : (migrationRequired ? "read_only" : "manual_review_v2"),
         },
         Coverage = new ProjectionCoverage
         {
@@ -127,6 +172,10 @@ public sealed class MainViewModelTests
                 ReferenceId = "ref-1", ReviewStatus = "needs_review", Reason = "opaque reason",
                 ObservedTitle = "Alpha", ObservedArtist = "?", ObservationStatus = "ok",
                 MasterDrift = false, FeatureExtractorVersion = "m5-jacket-v1", Candidates = [],
+                StoredStatus = version == 1 ? null : "needs_review",
+                Revision = version == 1 ? null : 0,
+                ManualNote = version == 1 ? null : "",
+                History = version == 1 ? null : [],
             },
         ],
     };
@@ -168,6 +217,35 @@ public sealed class MainViewModelTests
             return Task.FromResult(new MasterUpdateResult(
                 new MasterSummary("master-v1", "old", 1, 1, 1),
                 new MasterSummary("master-v2", "new", 2, 2, 2)));
+        }
+    }
+
+    private sealed class StubReviewWorkflowService : IReviewWorkflowService
+    {
+        public List<(string Source, string Target)> Migrations { get; } = [];
+        public List<ReviewMutation> Mutations { get; } = [];
+
+        public Task MigrateAsync(string sourcePath, string targetPath, CancellationToken cancellationToken)
+        {
+            Migrations.Add((Path.GetFileName(sourcePath), Path.GetFileName(targetPath)));
+            return Task.CompletedTask;
+        }
+
+        public Task<ReviewMutationReceipt> ApplyAsync(
+            string masterPath,
+            string catalogPath,
+            ReviewMutation mutation,
+            CancellationToken cancellationToken)
+        {
+            Mutations.Add(mutation);
+            return Task.FromResult(new ReviewMutationReceipt(
+                mutation.ActionId,
+                mutation.ReferenceId,
+                mutation.Action,
+                "manual_confirmed",
+                mutation.SongId,
+                mutation.ExpectedRevision + 1,
+                false));
         }
     }
 }

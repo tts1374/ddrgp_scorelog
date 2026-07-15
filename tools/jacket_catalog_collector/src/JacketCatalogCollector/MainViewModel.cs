@@ -1,12 +1,14 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.IO;
 using System.Runtime.CompilerServices;
 
 namespace JacketCatalogCollector;
 
 public sealed class MainViewModel(
     IMasterUpdateService masterUpdateService,
-    IProjectionService projectionService) : INotifyPropertyChanged
+    IProjectionService projectionService,
+    IReviewWorkflowService? reviewWorkflowService = null) : INotifyPropertyChanged
 {
     private ReviewProjection? projection;
     private string selectedCoverageStatus = "all";
@@ -14,6 +16,13 @@ public sealed class MainViewModel(
     private string statusTitle = "準備完了";
     private string statusMessage = "master DB と jacket catalog を選択してください。";
     private bool isBusy;
+    private string? masterPath;
+    private string? catalogPath;
+    private ReviewReference? selectedReference;
+    private ProjectionSong? selectedSong;
+    private string songSearch = "";
+    private string reviewReason = "";
+    private string reviewNote = "";
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -22,6 +31,7 @@ public sealed class MainViewModel(
     public ObservableCollection<string> CoverageStatusOptions { get; } =
         ["all", "referenced", "needs_review", "uncollected", "unresolved", "orphaned"];
     public ObservableCollection<string> ReasonOptions { get; } = ["all"];
+    public ObservableCollection<ProjectionSong> SongChoices { get; } = [];
 
     public string MasterVersion => projection?.Master.MasterVersion ?? "未選択";
     public string MasterSourceHash => projection?.Master.SourceHash ?? "—";
@@ -39,6 +49,45 @@ public sealed class MainViewModel(
     public string OrphanSummary => projection is null
         ? "—"
         : $"orphan: {projection.Coverage.OrphanedReferenceCount}, 未割当 unresolved: {projection.Coverage.UnassignedUnresolvedObservationCount}";
+    public string MutationCapability => projection?.Catalog.MutationCapability
+        ?? (projection?.ProjectionSchemaVersion == 1 ? "read_only" : "未選択");
+    public bool MigrationRequired => projection?.Catalog.MigrationRequired == true;
+
+    public ReviewReference? SelectedReference
+    {
+        get => selectedReference;
+        set => SetField(ref selectedReference, value);
+    }
+
+    public ProjectionSong? SelectedSong
+    {
+        get => selectedSong;
+        set => SetField(ref selectedSong, value);
+    }
+
+    public string SongSearch
+    {
+        get => songSearch;
+        set
+        {
+            if (SetField(ref songSearch, value))
+            {
+                ApplySongSearch();
+            }
+        }
+    }
+
+    public string ReviewReason
+    {
+        get => reviewReason;
+        set => SetField(ref reviewReason, value);
+    }
+
+    public string ReviewNote
+    {
+        get => reviewNote;
+        set => SetField(ref reviewNote, value);
+    }
 
     public string SelectedCoverageStatus
     {
@@ -95,8 +144,11 @@ public sealed class MainViewModel(
                 catalogPath,
                 cancellationToken);
             projection = loadedProjection;
+            this.masterPath = Path.GetFullPath(masterPath);
+            this.catalogPath = Path.GetFullPath(catalogPath);
             RebuildFilterOptions();
             ApplyFilters();
+            ApplySongSearch();
             NotifyProjectionProperties();
             StatusTitle = "読込完了";
             StatusMessage = $"GP対象 {projection.Coverage.GrandPrixSongCount} 曲を表示しました。";
@@ -119,6 +171,108 @@ public sealed class MainViewModel(
         {
             IsBusy = false;
         }
+    }
+
+    public async Task MigrateCatalogAsync(
+        string targetPath,
+        CancellationToken cancellationToken = default)
+    {
+        if (reviewWorkflowService is null || catalogPath is null || masterPath is null)
+        {
+            throw new InvalidOperationException("移行元catalogとmasterを先に読み込んでください。");
+        }
+        if (!MigrationRequired)
+        {
+            throw new InvalidOperationException("選択中catalogはv1移行対象ではありません。");
+        }
+        IsBusy = true;
+        StatusTitle = "catalog移行中";
+        StatusMessage = "v1を保持したままv2 stagingを検証しています。";
+        try
+        {
+            await reviewWorkflowService.MigrateAsync(catalogPath, targetPath, cancellationToken);
+            await LoadProjectionCoreAsync(masterPath, targetPath, cancellationToken);
+            StatusTitle = "catalog移行完了";
+            StatusMessage = "v1を変更せずv2 catalogを公開し、v2を読み込みました。";
+        }
+        catch (Exception exception)
+        {
+            StatusTitle = exception is OperationCanceledException ? "catalog移行取消" : "catalog移行失敗";
+            StatusMessage = exception.Message;
+            throw;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    public async Task ApplyReviewAsync(
+        string action,
+        CancellationToken cancellationToken = default)
+    {
+        if (reviewWorkflowService is null || projection is null || masterPath is null || catalogPath is null)
+        {
+            throw new InvalidOperationException("v2 catalogを先に読み込んでください。");
+        }
+        if (projection.Catalog.MutationCapability != "manual_review_v2"
+            || SelectedReference?.Revision is null
+            || SelectedReference.StoredStatus is null)
+        {
+            throw new InvalidOperationException("選択中projectionはmanual reviewに対応していません。");
+        }
+        var selectedSongId = action is "manual_confirm" or "reassign"
+            ? SelectedSong?.SongId
+                ?? throw new InvalidOperationException("GP対象songを明示選択してください。")
+            : null;
+        var mutation = new ReviewMutation(
+            Guid.NewGuid().ToString("D"),
+            SelectedReference.ReferenceId,
+            action,
+            SelectedReference.Revision.Value,
+            SelectedReference.StoredStatus,
+            SelectedReference.AssignedSong?.SongId,
+            selectedSongId,
+            ReviewReason,
+            ReviewNote);
+        IsBusy = true;
+        StatusTitle = "review更新中";
+        StatusMessage = $"{action} をrevision precondition付きで実行しています。";
+        try
+        {
+            var receipt = await reviewWorkflowService.ApplyAsync(
+                masterPath, catalogPath, mutation, cancellationToken);
+            await LoadProjectionCoreAsync(masterPath, catalogPath, cancellationToken);
+            SelectedReference = projection.ReviewReferences.FirstOrDefault(
+                item => item.ReferenceId == receipt.ReferenceId);
+            StatusTitle = "review更新完了";
+            StatusMessage = $"{receipt.Action}: {receipt.Status}, revision={receipt.Revision}";
+        }
+        catch (Exception exception)
+        {
+            StatusTitle = exception is OperationCanceledException ? "review更新取消" : "review更新失敗/競合";
+            StatusMessage = exception.Message;
+            throw;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private async Task LoadProjectionCoreAsync(
+        string masterPathValue,
+        string catalogPathValue,
+        CancellationToken cancellationToken)
+    {
+        projection = await projectionService.LoadAsync(
+            masterPathValue, catalogPathValue, cancellationToken);
+        masterPath = Path.GetFullPath(masterPathValue);
+        catalogPath = Path.GetFullPath(catalogPathValue);
+        RebuildFilterOptions();
+        ApplyFilters();
+        ApplySongSearch();
+        NotifyProjectionProperties();
     }
 
     public async Task UpdateMasterAsync(
@@ -192,6 +346,23 @@ public sealed class MainViewModel(
         }
     }
 
+    private void ApplySongSearch()
+    {
+        SongChoices.Clear();
+        if (projection is null)
+        {
+            return;
+        }
+        foreach (var song in projection.Songs.Where(song =>
+                     string.IsNullOrWhiteSpace(SongSearch)
+                     || song.SongId.Contains(SongSearch, StringComparison.OrdinalIgnoreCase)
+                     || song.Title.Contains(SongSearch, StringComparison.OrdinalIgnoreCase)
+                     || song.Artist.Contains(SongSearch, StringComparison.OrdinalIgnoreCase)))
+        {
+            SongChoices.Add(song);
+        }
+    }
+
     private void NotifyProjectionProperties()
     {
         OnPropertyChanged(nameof(MasterVersion));
@@ -201,6 +372,8 @@ public sealed class MainViewModel(
         OnPropertyChanged(nameof(CatalogSchema));
         OnPropertyChanged(nameof(CoverageSummary));
         OnPropertyChanged(nameof(OrphanSummary));
+        OnPropertyChanged(nameof(MutationCapability));
+        OnPropertyChanged(nameof(MigrationRequired));
     }
 
     private void ClearProjection()
@@ -208,6 +381,11 @@ public sealed class MainViewModel(
         projection = null;
         Songs.Clear();
         ReviewReferences.Clear();
+        SongChoices.Clear();
+        SelectedReference = null;
+        SelectedSong = null;
+        masterPath = null;
+        catalogPath = null;
         ReasonOptions.Clear();
         ReasonOptions.Add("all");
         SelectedCoverageStatus = "all";

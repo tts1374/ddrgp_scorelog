@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
 import sqlite3
 from pathlib import Path
@@ -114,6 +115,334 @@ def setup_paths(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, 
     catalog_path = tmp_path / "data" / "catalog.sqlite"
     catalog.create_catalog(catalog_path)
     return master_db, catalog_path
+
+
+def migrate_fixture_catalog(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> tuple[Path, Path, str]:
+    master_db, source = setup_paths(tmp_path, monkeypatch)
+    image = tmp_path / "data" / "review.png"
+    write_image(image, (10, 20, 30))
+    result = catalog.ingest_observation(
+        source,
+        master_db,
+        source_image_path=image,
+        source_capture_id="review-capture",
+        observed_title="Alpha",
+        observed_artist="wrong",
+        image_kind="jacket_crop",
+    )
+    target = tmp_path / "data" / "catalog-v2.sqlite"
+    catalog.migrate_catalog_v1_to_v2(source, target)
+    return master_db, target, result.reference_id
+
+
+def test_v1_to_v2_migration_is_copy_on_write_and_strict(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    master_db, source = setup_paths(tmp_path, monkeypatch)
+    source_hash = hashlib.sha256(source.read_bytes()).hexdigest()
+    target = tmp_path / "data" / "catalog-v2.sqlite"
+
+    catalog.migrate_catalog_v1_to_v2(source, target)
+
+    assert catalog.catalog_schema_version(target) == 2
+    assert hashlib.sha256(source.read_bytes()).hexdigest() == source_hash
+    with sqlite3.connect(target) as connection:
+        assert connection.execute("SELECT COUNT(*) FROM jacket_references").fetchone()[0] == 0
+        assert (
+            connection.execute("SELECT COUNT(*) FROM reference_review_history").fetchone()[0]
+            == 0
+        )
+    target_hash = hashlib.sha256(target.read_bytes()).hexdigest()
+    with pytest.raises(ValueError, match="already exists"):
+        catalog.migrate_catalog_v1_to_v2(source, target)
+    assert hashlib.sha256(target.read_bytes()).hexdigest() == target_hash
+    with pytest.raises(ValueError, match="version 1"):
+        catalog.migrate_catalog_v1_to_v2(target, tmp_path / "data" / "other.sqlite")
+
+
+def test_v1_to_v2_migration_holds_one_source_read_snapshot(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _master_db, source = setup_paths(tmp_path, monkeypatch)
+    target = tmp_path / "data" / "catalog-v2.sqlite"
+    original_create = catalog._create_catalog_v2
+    exclusive_blocked = False
+
+    def create_while_checking_lock(path: Path, *, created_at: str) -> None:
+        nonlocal exclusive_blocked
+        with sqlite3.connect(source, timeout=0) as competing:
+            with pytest.raises(sqlite3.OperationalError, match="locked"):
+                competing.execute("BEGIN EXCLUSIVE")
+            exclusive_blocked = True
+        original_create(path, created_at=created_at)
+
+    monkeypatch.setattr(catalog, "_create_catalog_v2", create_while_checking_lock)
+
+    catalog.migrate_catalog_v1_to_v2(source, target)
+
+    assert exclusive_blocked is True
+    assert catalog.catalog_schema_version(target) == 2
+
+
+def test_manual_review_is_transactional_idempotent_and_runtime_eligible(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    master_db, catalog_v2, reference_id = migrate_fixture_catalog(tmp_path, monkeypatch)
+    request = catalog.ReviewMutationRequest(
+        action_id="action-confirm",
+        reference_id=reference_id,
+        action="manual_confirm",
+        expected_revision=0,
+        expected_status="needs_review",
+        expected_song_id=None,
+        song_id="song-2",
+        reason="developer selected / 日本語",
+        note="opaque note",
+        action_at="2026-07-15T00:00:00+00:00",
+    )
+
+    receipt = catalog.apply_review_mutation(catalog_v2, master_db, request)
+    replay = catalog.apply_review_mutation(catalog_v2, master_db, request)
+
+    assert (receipt.status, receipt.song_id, receipt.revision, receipt.idempotent) == (
+        "manual_confirmed",
+        "song-2",
+        1,
+        False,
+    )
+    assert replay.idempotent is True
+    with sqlite3.connect(catalog_v2) as connection:
+        row = connection.execute(
+            "SELECT review_status, song_id, review_revision, manual_note "
+            "FROM jacket_references WHERE reference_id = ?",
+            (reference_id,),
+        ).fetchone()
+        assert row == ("manual_confirmed", "song-2", 1, "opaque note")
+        assert (
+            connection.execute("SELECT COUNT(*) FROM reference_review_history").fetchone()[0]
+            == 1
+        )
+    assert [entry.song_id for entry in catalog.load_m5_feature_entries(catalog_v2, master_db)] == [
+        "song-2"
+    ]
+
+    before_ingest = hashlib.sha256(catalog_v2.read_bytes()).hexdigest()
+    with pytest.raises(ValueError, match="schema version 1"):
+        catalog.ingest_observation(
+            catalog_v2,
+            master_db,
+            source_image_path=tmp_path / "data" / "review.png",
+            source_capture_id="review-capture",
+            observed_title="Gamma",
+            observed_artist="Artist C",
+            image_kind="jacket_crop",
+        )
+    assert hashlib.sha256(catalog_v2.read_bytes()).hexdigest() == before_ingest
+
+    before = hashlib.sha256(catalog_v2.read_bytes()).hexdigest()
+    with pytest.raises(ValueError, match="different payload"):
+        catalog.apply_review_mutation(
+            catalog_v2,
+            master_db,
+            catalog.ReviewMutationRequest(**{**request.__dict__, "note": "changed"}),
+        )
+    with pytest.raises(ValueError, match="stale"):
+        catalog.apply_review_mutation(
+            catalog_v2,
+            master_db,
+            catalog.ReviewMutationRequest(
+                action_id="action-stale",
+                reference_id=reference_id,
+                action="reassign",
+                expected_revision=0,
+                expected_status="manual_confirmed",
+                expected_song_id="song-2",
+                song_id="song-3",
+            ),
+        )
+    assert hashlib.sha256(catalog_v2.read_bytes()).hexdigest() == before
+
+    with pytest.raises(RuntimeError, match="injected"):
+        catalog.apply_review_mutation(
+            catalog_v2,
+            master_db,
+            catalog.ReviewMutationRequest(
+                action_id="action-fail",
+                reference_id=reference_id,
+                action="reject",
+                expected_revision=1,
+                expected_status="manual_confirmed",
+                expected_song_id="song-2",
+            ),
+            fail_after_current_update=True,
+        )
+    assert hashlib.sha256(catalog_v2.read_bytes()).hexdigest() == before
+
+
+def test_reject_and_reopen_preserve_evidence_and_append_history(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    master_db, catalog_v2, reference_id = migrate_fixture_catalog(tmp_path, monkeypatch)
+    before_evidence: tuple[object, ...]
+    with sqlite3.connect(catalog_v2) as connection:
+        before_evidence = connection.execute(
+            "SELECT source_image_hash, thumbnail_rgb_json, histogram_json, dhash_bits_json "
+            "FROM jacket_references WHERE reference_id = ?",
+            (reference_id,),
+        ).fetchone()
+    rejected = catalog.apply_review_mutation(
+        catalog_v2,
+        master_db,
+        catalog.ReviewMutationRequest(
+            action_id="reject-1",
+            reference_id=reference_id,
+            action="reject",
+            expected_revision=0,
+            expected_status="needs_review",
+            expected_song_id=None,
+            reason="not useful",
+        ),
+    )
+    reopened = catalog.apply_review_mutation(
+        catalog_v2,
+        master_db,
+        catalog.ReviewMutationRequest(
+            action_id="reopen-1",
+            reference_id=reference_id,
+            action="reopen",
+            expected_revision=1,
+            expected_status="rejected",
+            expected_song_id=None,
+            note="try again",
+        ),
+    )
+    assert (rejected.status, reopened.status, reopened.song_id, reopened.revision) == (
+        "rejected",
+        "needs_review",
+        None,
+        2,
+    )
+    with sqlite3.connect(catalog_v2) as connection:
+        after_evidence = connection.execute(
+            "SELECT source_image_hash, thumbnail_rgb_json, histogram_json, dhash_bits_json "
+            "FROM jacket_references WHERE reference_id = ?",
+            (reference_id,),
+        ).fetchone()
+        assert after_evidence == before_evidence
+        assert (
+            connection.execute("SELECT COUNT(*) FROM reference_review_history").fetchone()[0]
+            == 2
+        )
+
+
+def test_v2_validator_rejects_audit_chain_and_payload_drift(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    master_db, catalog_v2, reference_id = migrate_fixture_catalog(tmp_path, monkeypatch)
+    catalog.apply_review_mutation(
+        catalog_v2,
+        master_db,
+        catalog.ReviewMutationRequest(
+            action_id="audit-1",
+            reference_id=reference_id,
+            action="manual_confirm",
+            expected_revision=0,
+            expected_status="needs_review",
+            expected_song_id=None,
+            song_id="song-1",
+        ),
+    )
+    with sqlite3.connect(catalog_v2) as connection:
+        connection.execute(
+            "UPDATE reference_review_history SET receipt_json = ?",
+            ('{"action_id":"audit-1"}',),
+        )
+    with pytest.raises(ValueError, match="review receipt fields"):
+        catalog.validate_catalog(catalog_v2)
+
+
+def test_v2_validator_rejects_discontinuous_history_and_manual_state_without_history(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    master_db, catalog_v2, reference_id = migrate_fixture_catalog(tmp_path, monkeypatch)
+    catalog.apply_review_mutation(
+        catalog_v2,
+        master_db,
+        catalog.ReviewMutationRequest(
+            action_id="reject-chain",
+            reference_id=reference_id,
+            action="reject",
+            expected_revision=0,
+            expected_status="needs_review",
+            expected_song_id=None,
+        ),
+    )
+    catalog.apply_review_mutation(
+        catalog_v2,
+        master_db,
+        catalog.ReviewMutationRequest(
+            action_id="reopen-chain",
+            reference_id=reference_id,
+            action="reopen",
+            expected_revision=1,
+            expected_status="rejected",
+            expected_song_id=None,
+        ),
+    )
+    with sqlite3.connect(catalog_v2) as connection:
+        connection.execute(
+            "UPDATE reference_review_history SET before_status = 'unresolved' "
+            "WHERE action_id = 'reopen-chain'"
+        )
+    with pytest.raises(ValueError, match="state discontinuity"):
+        catalog.validate_catalog(catalog_v2)
+
+    second = tmp_path / "second"
+    second.mkdir()
+    _master_db, clean_v2, clean_reference_id = migrate_fixture_catalog(second, monkeypatch)
+    with sqlite3.connect(clean_v2) as connection:
+        connection.execute(
+            "UPDATE jacket_references SET review_status = 'manual_confirmed' "
+            "WHERE reference_id = ?",
+            (clean_reference_id,),
+        )
+    with pytest.raises(ValueError, match="manual state without history"):
+        catalog.validate_catalog(clean_v2)
+
+
+def test_v2_validator_rejects_history_action_from_impossible_source_state(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    master_db, catalog_v2, reference_id = migrate_fixture_catalog(tmp_path, monkeypatch)
+    catalog.apply_review_mutation(
+        catalog_v2,
+        master_db,
+        catalog.ReviewMutationRequest(
+            action_id="invalid-source",
+            reference_id=reference_id,
+            action="manual_confirm",
+            expected_revision=0,
+            expected_status="needs_review",
+            expected_song_id=None,
+            song_id="song-1",
+        ),
+    )
+    with sqlite3.connect(catalog_v2) as connection:
+        raw = connection.execute(
+            "SELECT request_payload_json FROM reference_review_history "
+            "WHERE action_id = 'invalid-source'"
+        ).fetchone()[0]
+        payload = json.loads(raw)
+        payload["expected_status"] = "rejected"
+        connection.execute(
+            "UPDATE reference_review_history SET before_status = 'rejected', "
+            "request_payload_json = ? WHERE action_id = 'invalid-source'",
+            (json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")),),
+        )
+    with pytest.raises(ValueError, match="action source"):
+        catalog.validate_catalog(catalog_v2)
 
 
 def test_catalog_create_is_strict_and_safe(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

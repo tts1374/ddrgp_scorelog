@@ -54,6 +54,10 @@ public sealed class ProjectionCatalog
     public required string CreatedAt { get; init; }
     [JsonPropertyName("current_feature_extractor_version")]
     public required string CurrentFeatureExtractorVersion { get; init; }
+    [JsonPropertyName("migration_required")]
+    public bool? MigrationRequired { get; init; }
+    [JsonPropertyName("mutation_capability")]
+    public string? MutationCapability { get; init; }
 }
 
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
@@ -113,11 +117,53 @@ public sealed class ReviewReference
     public AssignedSong? AssignedSong { get; init; }
     [JsonPropertyName("candidates")]
     public required List<ReviewCandidate> Candidates { get; init; }
+    [JsonPropertyName("stored_status")]
+    public string? StoredStatus { get; init; }
+    [JsonPropertyName("revision")]
+    public int? Revision { get; init; }
+    [JsonPropertyName("manual_action_id")]
+    public string? ManualActionId { get; init; }
+    [JsonPropertyName("manual_note")]
+    public string? ManualNote { get; init; }
+    [JsonPropertyName("history")]
+    public List<ReviewHistory>? History { get; init; }
 
     [JsonIgnore]
     public string CandidateDisplay => string.Join(
         "; ",
         Candidates.Select(candidate => $"{candidate.Title ?? candidate.SongId} ({candidate.Reason})"));
+
+    [JsonIgnore]
+    public string HistoryDisplay => string.Join(
+        "; ",
+        (History ?? []).Select(item => $"r{item.AfterRevision} {item.Action} ({item.Note})"));
+}
+
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+public sealed class ReviewHistory
+{
+    [JsonPropertyName("action_id")]
+    public required string ActionId { get; init; }
+    [JsonPropertyName("action")]
+    public required string Action { get; init; }
+    [JsonPropertyName("before_status")]
+    public required string BeforeStatus { get; init; }
+    [JsonPropertyName("after_status")]
+    public required string AfterStatus { get; init; }
+    [JsonPropertyName("before_song_id")]
+    public string? BeforeSongId { get; init; }
+    [JsonPropertyName("after_song_id")]
+    public string? AfterSongId { get; init; }
+    [JsonPropertyName("reason")]
+    public required string Reason { get; init; }
+    [JsonPropertyName("note")]
+    public required string Note { get; init; }
+    [JsonPropertyName("action_at")]
+    public required string ActionAt { get; init; }
+    [JsonPropertyName("before_revision")]
+    public required int BeforeRevision { get; init; }
+    [JsonPropertyName("after_revision")]
+    public required int AfterRevision { get; init; }
 }
 
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
