@@ -844,6 +844,13 @@ def apply_review_mutation(
                 raise ValueError("reference is already rejected")
             if request.action == "reopen" and before_status != "rejected":
                 raise ValueError("reopen requires a rejected reference")
+            if request.action in {"manual_confirm", "reassign"}:
+                try:
+                    _decode_persisted_feature(row)
+                except ValueError as exc:
+                    raise ValueError(
+                        "manual review requires complete persisted jacket features"
+                    ) from exc
 
             after_status = {
                 "manual_confirm": "manual_confirmed",
@@ -1398,16 +1405,39 @@ def _decode_vector(raw: str | None, *, length: int, field_name: str) -> np.ndarr
         raise ValueError(f"catalog reference is missing {field_name}")
     try:
         values = json.loads(raw)
-    except json.JSONDecodeError as exc:
+    except (json.JSONDecodeError, TypeError, UnicodeDecodeError) as exc:
         raise ValueError(f"catalog reference has invalid {field_name}") from exc
     if not isinstance(values, list) or len(values) != length:
         raise ValueError(f"catalog reference has invalid {field_name} length")
     if any(isinstance(value, bool) or not isinstance(value, (int, float)) for value in values):
         raise ValueError(f"catalog reference has invalid {field_name} values")
-    vector = np.asarray(values, dtype=np.float32)
+    try:
+        vector = np.asarray(values, dtype=np.float32)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError(f"catalog reference has invalid {field_name} values") from exc
     if not np.isfinite(vector).all() or ((vector < 0) | (vector > 1)).any():
         raise ValueError(f"catalog reference has out-of-range {field_name} values")
     return vector
+
+
+def _decode_persisted_feature(row: sqlite3.Row) -> master_match.JacketFeature:
+    dhash_hex = str(row["dhash_hex"])
+    try:
+        if len(dhash_hex) != 16:
+            raise ValueError
+        int(dhash_hex, 16)
+    except ValueError as exc:
+        raise ValueError("catalog reference has invalid dhash_hex") from exc
+    return master_match.JacketFeature(
+        thumbnail=_decode_vector(
+            row["thumbnail_rgb_json"], length=768, field_name="thumbnail_rgb"
+        ),
+        histogram=_decode_vector(row["histogram_json"], length=24, field_name="histogram"),
+        dhash_bits=_decode_vector(
+            row["dhash_bits_json"], length=64, field_name="dhash_bits"
+        ),
+        dhash_hex=dhash_hex,
+    )
 
 
 def _reference_state(row: sqlite3.Row, master: MasterIdentity) -> tuple[str, str]:
@@ -1461,16 +1491,12 @@ def load_m5_feature_entries(
             if state not in {"auto_confirmed", "manual_confirmed"}:
                 continue
             song = songs_by_id[str(row["song_id"])]
-            feature = master_match.JacketFeature(
-                thumbnail=_decode_vector(
-                    row["thumbnail_rgb_json"], length=768, field_name="thumbnail_rgb"
-                ),
-                histogram=_decode_vector(row["histogram_json"], length=24, field_name="histogram"),
-                dhash_bits=_decode_vector(
-                    row["dhash_bits_json"], length=64, field_name="dhash_bits"
-                ),
-                dhash_hex=str(row["dhash_hex"]),
-            )
+            try:
+                feature = _decode_persisted_feature(row)
+            except ValueError:
+                if state == "manual_confirmed":
+                    continue
+                raise
             entries.append(
                 master_match.JacketFeatureMasterEntry(
                     organized_file=f"catalog:{row['reference_id']}",

@@ -4,6 +4,7 @@ import csv
 import hashlib
 import json
 import sqlite3
+from contextlib import closing
 from pathlib import Path
 
 import pytest
@@ -29,7 +30,7 @@ def write_master(
         ("song-alias", "RЁVOLUTION", "TЁЯRA"),
     ]
     gp_overrides = gp_overrides or {}
-    with sqlite3.connect(path) as connection:
+    with closing(sqlite3.connect(path)) as connection, connection:
         master_builder.create_schema(connection)
         connection.executemany(
             "INSERT INTO songs VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -280,6 +281,146 @@ def test_manual_review_is_transactional_idempotent_and_runtime_eligible(
         )
     assert hashlib.sha256(catalog_v2.read_bytes()).hexdigest() == before
 
+
+def test_manual_confirm_rejects_featureless_reference_without_side_effects(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    master_db, source = setup_paths(tmp_path, monkeypatch)
+    broken = tmp_path / "data" / "broken.png"
+    broken.write_bytes(b"not an image")
+    ingested = catalog.ingest_observation(
+        source,
+        master_db,
+        source_image_path=broken,
+        source_capture_id="featureless",
+        observed_title="Beta",
+        observed_artist="Artist B",
+        image_kind="jacket_crop",
+    )
+    assert (ingested.review_status, ingested.reason) == (
+        "unresolved",
+        "feature_extraction_failed",
+    )
+    target = tmp_path / "data" / "catalog-v2.sqlite"
+    catalog.migrate_catalog_v1_to_v2(source, target)
+    before = hashlib.sha256(target.read_bytes()).hexdigest()
+
+    with pytest.raises(ValueError, match="complete persisted jacket features"):
+        catalog.apply_review_mutation(
+            target,
+            master_db,
+            catalog.ReviewMutationRequest(
+                action_id="featureless-confirm",
+                reference_id=ingested.reference_id,
+                action="manual_confirm",
+                expected_revision=0,
+                expected_status="unresolved",
+                expected_song_id="song-2",
+                song_id="song-2",
+            ),
+        )
+
+    assert hashlib.sha256(target.read_bytes()).hexdigest() == before
+    with sqlite3.connect(target) as connection:
+        assert connection.execute(
+            "SELECT review_status, review_revision FROM jacket_references "
+            "WHERE reference_id = ?",
+            (ingested.reference_id,),
+        ).fetchone() == ("unresolved", 0)
+        assert (
+            connection.execute("SELECT COUNT(*) FROM reference_review_history").fetchone()[0]
+            == 0
+        )
+
+
+def test_manual_confirm_rejects_typed_vector_corruption_without_side_effects(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    master_db, target, reference_id = migrate_fixture_catalog(tmp_path, monkeypatch)
+    with sqlite3.connect(target) as connection:
+        connection.execute(
+            "UPDATE jacket_references SET thumbnail_rgb_json = 123 WHERE reference_id = ?",
+            (reference_id,),
+        )
+    before = hashlib.sha256(target.read_bytes()).hexdigest()
+
+    with pytest.raises(ValueError, match="complete persisted jacket features"):
+        catalog.apply_review_mutation(
+            target,
+            master_db,
+            catalog.ReviewMutationRequest(
+                action_id="typed-corruption",
+                reference_id=reference_id,
+                action="manual_confirm",
+                expected_revision=0,
+                expected_status="needs_review",
+                expected_song_id=None,
+                song_id="song-1",
+            ),
+        )
+
+    assert hashlib.sha256(target.read_bytes()).hexdigest() == before
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [123, b"\xff", json.dumps([10**1000])],
+)
+def test_decode_vector_normalizes_external_type_unicode_and_overflow_errors(raw: object) -> None:
+    with pytest.raises(ValueError, match="invalid test_vector"):
+        catalog._decode_vector(raw, length=1, field_name="test_vector")  # type: ignore[arg-type]
+
+
+def test_runtime_loader_skips_corrupt_manual_reference_without_hiding_valid_auto_reference(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    master_db, source = setup_paths(tmp_path, monkeypatch)
+    alpha = tmp_path / "data" / "alpha.png"
+    beta = tmp_path / "data" / "beta.png"
+    write_image(alpha, (10, 20, 30))
+    write_image(beta, (40, 50, 60))
+    catalog.ingest_observation(
+        source,
+        master_db,
+        source_image_path=alpha,
+        source_capture_id="alpha-auto",
+        observed_title="Alpha",
+        observed_artist="Artist A",
+        image_kind="jacket_crop",
+    )
+    review = catalog.ingest_observation(
+        source,
+        master_db,
+        source_image_path=beta,
+        source_capture_id="beta-review",
+        observed_title="Beta",
+        observed_artist="wrong",
+        image_kind="jacket_crop",
+    )
+    target = tmp_path / "data" / "catalog-v2.sqlite"
+    catalog.migrate_catalog_v1_to_v2(source, target)
+    catalog.apply_review_mutation(
+        target,
+        master_db,
+        catalog.ReviewMutationRequest(
+            action_id="beta-confirm",
+            reference_id=review.reference_id,
+            action="manual_confirm",
+            expected_revision=0,
+            expected_status="needs_review",
+            expected_song_id=None,
+            song_id="song-2",
+        ),
+    )
+    with sqlite3.connect(target) as connection:
+        connection.execute(
+            "UPDATE jacket_references SET thumbnail_rgb_json = 123 WHERE reference_id = ?",
+            (review.reference_id,),
+        )
+
+    entries = catalog.load_m5_feature_entries(target, master_db)
+
+    assert [entry.song_id for entry in entries] == ["song-1"]
 
 def test_reject_and_reopen_preserve_evidence_and_append_history(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -863,8 +1004,8 @@ def test_persisted_features_replay_existing_m5_match_after_reference_image_delet
     assert match["identity_signal_status"] == "jacket_resolved_candidate"
 
     with sqlite3.connect(catalog_path) as connection:
-        connection.execute("UPDATE jacket_references SET thumbnail_rgb_json = '[0.0]'")
-    with pytest.raises(ValueError, match="thumbnail_rgb length"):
+        connection.execute("UPDATE jacket_references SET thumbnail_rgb_json = 123")
+    with pytest.raises(ValueError, match="invalid thumbnail_rgb"):
         catalog.load_m5_feature_entries(catalog_path, master_db)
 
 

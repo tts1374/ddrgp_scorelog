@@ -674,7 +674,7 @@ python -m tools.vision_poc.jacket_reference_catalog review `
   --song-id SONG_ID --reason "developer selected" --note "manual review"
 ```
 
-mutationはexpected revision/status/songをpreconditionにし、同一action ID・同一payloadだけを冪等再投入として扱います。current rowとhistoryは1 transactionで更新し、候補・expected値を暗黙song選択に使いません。詳細なapp実行方法とC# strict loader契約は `tools/jacket_catalog_collector/README.md` を参照してください。
+mutationはexpected revision/status/songをpreconditionにし、同一action ID・同一payloadだけを冪等再投入として扱います。manual confirm/reassignはcurrent extractorの完全な永続特徴量も要求し、`feature_extraction_failed` や欠損/不正vectorを確定状態へ進めません。current rowとhistoryは1 transactionで更新し、候補・expected値を暗黙song選択に使いません。runtime loaderも、外部変更などで不正になったmanual referenceだけを除外し、他の有効reference読込を継続します。詳細なapp実行方法とC# strict loader契約は `tools/jacket_catalog_collector/README.md` を参照してください。
 
 ## テスト
 
