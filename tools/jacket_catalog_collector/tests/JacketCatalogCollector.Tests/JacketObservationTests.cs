@@ -531,6 +531,77 @@ public sealed class JacketObservationTests : IDisposable
     }
 
     [Fact]
+    public async Task Retry_pending_catalog_rejects_identity_drift_before_ingest_or_checkpoint_update()
+    {
+        var identity = Identity("session-retry-preflight");
+        var checkpointStore = new AtomicObservationCheckpointStore(root);
+        var publisher = new AtomicObservationArtifactPublisher(root);
+        var catalog = new FakeCatalogAdapter(
+            new CatalogIngestReceipt(CatalogIngestDisposition.Failed, null, "temporary failure"))
+        {
+            ValidationFailure = new ObservationIdentityDriftException("retry drift"),
+            FailValidationOnCall = 3,
+        };
+        await using var session = new JacketObservationSession(
+            new JacketObservationDetector(new JacketDetectorOptions(0.01, 2, TimeSpan.Zero)),
+            checkpointStore,
+            publisher,
+            catalog);
+        await session.StartAsync(identity, "master.sqlite", "catalog.sqlite");
+        await session.ObserveFrameAsync(Frame(40, 1, 0));
+        await session.ObserveFrameAsync(Frame(40, 2, 150));
+        var adopted = await session.AdoptLastStableAsync();
+        var checkpointPath = Path.Combine(root, identity.SessionId, "checkpoint.json");
+        var checkpointBytes = await File.ReadAllBytesAsync(checkpointPath);
+
+        await Assert.ThrowsAsync<ObservationIdentityDriftException>(
+            () => session.RetryPendingCatalogAsync());
+
+        Assert.Equal(3, catalog.ValidationCallCount);
+        Assert.Equal(1, catalog.CallCount);
+        Assert.Equal(checkpointBytes, await File.ReadAllBytesAsync(checkpointPath));
+        Assert.Equal("pending", session.Checkpoint!.Observations.Single().CatalogStatus);
+        Assert.Equal("pending", adopted.Checkpoint.Observations.Single().CatalogStatus);
+    }
+
+    [Fact]
+    public async Task Retry_catalog_is_noop_for_deferred_only_checkpoint_without_validation()
+    {
+        var identity = Identity("session-retry-no-pending") with { CatalogSchemaVersion = 2 };
+        var checkpointStore = new AtomicObservationCheckpointStore(root);
+        var publisher = new AtomicObservationArtifactPublisher(root);
+        var catalog = new FakeCatalogAdapter(
+            new CatalogIngestReceipt(
+                CatalogIngestDisposition.DeferredUnsupportedSchema,
+                null,
+                "deferred"))
+        {
+            ValidationFailure = new ObservationIdentityDriftException("unexpected retry validation"),
+            FailValidationOnCall = 3,
+        };
+        await using var session = new JacketObservationSession(
+            new JacketObservationDetector(new JacketDetectorOptions(0.01, 2, TimeSpan.Zero)),
+            checkpointStore,
+            publisher,
+            catalog);
+        await session.StartAsync(identity, "master.sqlite", "catalog.sqlite");
+        await session.ObserveFrameAsync(Frame(40, 1, 0));
+        await session.ObserveFrameAsync(Frame(40, 2, 150));
+        var adopted = await session.AdoptLastStableAsync();
+        var checkpointPath = Path.Combine(root, identity.SessionId, "checkpoint.json");
+        var checkpointBytes = await File.ReadAllBytesAsync(checkpointPath);
+
+        var retried = await session.RetryPendingCatalogAsync();
+
+        Assert.Empty(retried);
+        Assert.Equal(2, catalog.ValidationCallCount);
+        Assert.Equal(1, catalog.CallCount);
+        Assert.Equal(checkpointBytes, await File.ReadAllBytesAsync(checkpointPath));
+        Assert.Equal("deferred", session.Checkpoint!.Observations.Single().CatalogStatus);
+        Assert.Equal("deferred", adopted.Checkpoint.Observations.Single().CatalogStatus);
+    }
+
+    [Fact]
     public async Task Revisited_preview_adopts_the_candidate_shown_in_the_ui()
     {
         var identity = Identity("session-revisited-preview");

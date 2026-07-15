@@ -1259,13 +1259,24 @@ public sealed class JacketObservationSession(
             {
                 throw new InvalidOperationException("observation session is not resumable");
             }
+            var pendingObservations = checkpoint.Observations
+                .Where(item => item.CatalogStatus == "pending")
+                .ToList();
+            if (pendingObservations.Count == 0)
+            {
+                return [];
+            }
             if (artifactPublisher is not IObservationArtifactReader reader)
             {
                 throw new InvalidOperationException("artifact reader is unavailable for catalog retry");
             }
+            await catalogAdapter.ValidateSessionAsync(
+                identity,
+                catalogPath,
+                masterPath,
+                cancellationToken);
             var results = new List<ObservationAdoptionResult>();
-            foreach (var pending in checkpoint.Observations.Where(
-                         item => item.CatalogStatus == "pending"))
+            foreach (var pending in pendingObservations)
             {
                 var artifact = await reader.LoadAsync(identity, pending.ObservationId, cancellationToken);
                 var catalog = await catalogAdapter.IngestAsync(
