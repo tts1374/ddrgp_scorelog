@@ -221,7 +221,9 @@ python -X utf8 "$env:USERPROFILE\.codex\skills\.system\skill-creator\scripts\qui
 ### Background Model Routing
 
 - Codex Appのbackground taskとworkerごとのmodel / reasoning指定を、実装準備済みPRで使うことを事前許可する。利用可能な場合は `$codex-model-routing-team` のlead-agent verification、health probe、bounded worker、thread lifecycleを使う。
-- 単一workstreamでも、Sol leadによる計画・仕様固定・検証とLuna workerによる実装を分離することで、必要品質を維持しつつ遅延またはコストの改善が見込める場合はrouting対象にできる。並列化自体を目的にworkerを増やさない。
+- 汎用的な`team / reduced review / Lead only / parallel workers`の選択条件、reviewer model、並列条件は `$codex-model-routing-team` のrouting policyを唯一の事実源とし、このfileで再定義しない。
+- DDRGPでは、保存可否の判定条件、正式個人スコアDB schema、transaction semantics、duplicate境界、並行処理のownership・ordering、部分失敗contractを変更する作業を高リスクとしてrouting team対象にする。未確定のschema、migration、transaction判断はworkerへ推測させず、leadが固定・統合する。
+- routing modeにかかわらず、下記のbase branchとのbranch diff全体に対する独立read-only review gateは省略しない。`team不使用`を`独立review不要`と解釈しない。
 - leadは依頼内容、`docs/next-task.md`、関連設計docsからPR目的、成果物、完了条件、スコープ外、固定判断、境界条件、検証、所有file、開始git stateをtask packetへ固定し、委譲可否とworker数を決める。最初の実workerをhealth probeとして読み取れれば、1 workerだけで完結してよい。
 - 通常実装workerは `GPT-5.6 Luna / xhigh` を基準とし、難度は高いが判断境界が固定済みの実装だけ `Luna / max` を候補にする。新しい仕様判断、非互換変更、重大なdocs矛盾、正式DB schemaやmigrationの未確定事項が判明したら実装を広げずleadへ返す。
 - 書込みworkerは、対象project、正確な開始branch / commit / working tree、統合経路を確認できる隔離worktreeで実行する。同じfileの同時writerを禁止し、密結合した責務を調整コストに見合わない複数workerへ分割しない。dirty state、開始点、所有権、統合経路を安全に確定できない場合は委譲しない。
