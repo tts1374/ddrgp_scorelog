@@ -844,8 +844,32 @@ public sealed class JacketObservationTests : IDisposable
             await session.StopAsync();
         }
         var checkpointPath = Path.Combine(root, identity.SessionId, "checkpoint.json");
-        var document = JsonNode.Parse(await File.ReadAllTextAsync(checkpointPath))!;
-        var originalSourceHash = document["observations"]![0]!["source_image_hash"]!.GetValue<string>();
+        var originalCheckpoint = await File.ReadAllTextAsync(checkpointPath);
+        var nullHashMutations = new Action<JsonNode>[]
+        {
+            node => node["observations"]![0]!["source_image_hash"] = null,
+            node => node["stable_feature_hashes"]![0] = null,
+        };
+        var validationCallsBeforeNullHashes = validCatalog.ValidationCallCount;
+        var ingestCallsBeforeNullHashes = validCatalog.CallCount;
+        foreach (var mutate in nullHashMutations)
+        {
+            var nullHashDocument = JsonNode.Parse(originalCheckpoint)!;
+            mutate(nullHashDocument);
+            await File.WriteAllTextAsync(checkpointPath, nullHashDocument.ToJsonString());
+            var corruptBytes = await File.ReadAllBytesAsync(checkpointPath);
+            await using var nullHashCorrupt = new JacketObservationSession(
+                new JacketObservationDetector(), checkpointStore, publisher, validCatalog);
+
+            Assert.False((await nullHashCorrupt.ResumeAsync(
+                ResumeRequest(identity), "master.sqlite", "catalog.sqlite")).Compatible);
+            Assert.False(nullHashCorrupt.IsActive);
+            Assert.Equal(corruptBytes, await File.ReadAllBytesAsync(checkpointPath));
+            Assert.Equal(validationCallsBeforeNullHashes, validCatalog.ValidationCallCount);
+            Assert.Equal(ingestCallsBeforeNullHashes, validCatalog.CallCount);
+        }
+
+        var document = JsonNode.Parse(originalCheckpoint)!;
         document["observations"]![0]!["source_image_hash"] = new string('0', 64);
         await File.WriteAllTextAsync(checkpointPath, document.ToJsonString());
         await using (var semanticCorrupt = new JacketObservationSession(
@@ -855,7 +879,7 @@ public sealed class JacketObservationTests : IDisposable
                 ResumeRequest(identity), "master.sqlite", "catalog.sqlite")).Compatible);
         }
 
-        document["observations"]![0]!["source_image_hash"] = originalSourceHash;
+        document = JsonNode.Parse(originalCheckpoint)!;
         document["observations"]![0]!["artifact_path"] = Path.Combine(root, "outside");
         await File.WriteAllTextAsync(checkpointPath, document.ToJsonString());
         await using var corrupt = new JacketObservationSession(
@@ -897,6 +921,7 @@ public sealed class JacketObservationTests : IDisposable
             node => node["sample_width"] = 8,
             node => node["roi_x"] = 0,
             node => node["created_at_utc"] = "1970-01-01T00:00:00+00:00",
+            node => node["feature_hash"] = null,
         };
         foreach (var mutate in mutations)
         {

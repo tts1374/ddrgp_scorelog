@@ -87,7 +87,7 @@ public sealed class AtomicObservationCheckpointStore(string evidenceRoot)
         }
     }
 
-    internal static bool IsSha256(string value) => value.Length == 64
+    internal static bool IsSha256(string? value) => value is not null && value.Length == 64
         && value.All(character => character is >= '0' and <= '9' or >= 'a' and <= 'f');
 
     private void ValidateObservationPaths(ObservationCheckpoint checkpoint)
