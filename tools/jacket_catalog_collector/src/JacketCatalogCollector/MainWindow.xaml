@@ -205,7 +205,7 @@
                                              Text="{Binding Observation.ResumeSessionId, UpdateSourceTrigger=PropertyChanged}" />
                                     <Button Content="session再開" IsEnabled="{Binding Observation.CanResume}" Margin="4" Padding="12,6" Click="ResumeCapture_Click" />
                                     <Button Content="候補を採用" IsEnabled="{Binding Observation.CanAdopt}" Margin="4" Padding="12,6" Click="AdoptObservation_Click" />
-                                    <Button Content="catalog retry" Margin="4" Padding="12,6" Click="RetryCatalog_Click" />
+                                    <Button Content="catalog retry (pending/deferred)" Margin="4" Padding="12,6" Click="RetryCatalog_Click" />
                                 </StackPanel>
                             </Grid>
                         </Border>

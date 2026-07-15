@@ -773,43 +773,61 @@ public sealed class PythonCatalogObservationAdapter(
         string masterPath,
         CancellationToken cancellationToken = default)
     {
-        if (artifact.Session.CatalogSchemaVersion != 1)
+        if (artifact.Session.CatalogSchemaVersion is not (1 or 2))
         {
-            return new CatalogIngestReceipt(
-                CatalogIngestDisposition.DeferredUnsupportedSchema,
-                null,
-                "catalog schema v2 has no safe empty-title observation ingest path; kept local for review");
+            throw new ObservationIdentityDriftException(
+                $"unsupported catalog schema version: {artifact.Session.CatalogSchemaVersion}");
         }
+        var isV2 = artifact.Session.CatalogSchemaVersion == 2;
+        var arguments = new List<string>
+        {
+            "-X", "utf8", "-m", "tools.vision_poc.jacket_reference_catalog",
+            isV2 ? "ingest-v2" : "ingest",
+            "--catalog", Path.GetFullPath(catalogPath),
+            "--master-db", Path.GetFullPath(masterPath),
+            "--source-image", Path.GetFullPath(sourceImagePath),
+        };
+        if (isV2)
+        {
+            arguments.AddRange(
+            [
+                "--observation-id", artifact.ObservationId,
+                "--expected-image-hash", artifact.JacketCropHash,
+            ]);
+        }
+        else
+        {
+            arguments.AddRange(
+            [
+                "--source-capture-id", artifact.ObservationId,
+                "--observed-title", artifact.ObservedTitle,
+                "--observed-artist", artifact.ObservedArtist,
+                "--observation-status", artifact.ObservationStatus,
+            ]);
+        }
+        arguments.AddRange(
+        [
+            "--image-kind", "jacket_crop",
+            "--expected-master-version", artifact.Session.MasterVersion,
+            "--expected-master-source-hash", artifact.Session.MasterSourceHash,
+            "--expected-feature-extractor-version", artifact.Session.FeatureExtractorVersion,
+            "--expected-catalog-identity", artifact.Session.CatalogIdentity,
+            "--expected-catalog-schema-version", artifact.Session.CatalogSchemaVersion.ToString(
+                System.Globalization.CultureInfo.InvariantCulture),
+            "--expected-catalog-created-at", artifact.Session.CatalogCreatedAt,
+        ]);
         var result = await processRunner.RunAsync(
-            new ProcessRequest(
-                pythonExecutable,
-                [
-                    "-X", "utf8", "-m", "tools.vision_poc.jacket_reference_catalog", "ingest",
-                    "--catalog", Path.GetFullPath(catalogPath),
-                    "--master-db", Path.GetFullPath(masterPath),
-                    "--source-image", Path.GetFullPath(sourceImagePath),
-                    "--source-capture-id", artifact.ObservationId,
-                    "--observed-title", artifact.ObservedTitle,
-                    "--observed-artist", artifact.ObservedArtist,
-                    "--observation-status", artifact.ObservationStatus,
-                    "--image-kind", "jacket_crop",
-                    "--expected-master-version", artifact.Session.MasterVersion,
-                    "--expected-master-source-hash", artifact.Session.MasterSourceHash,
-                    "--expected-feature-extractor-version", artifact.Session.FeatureExtractorVersion,
-                    "--expected-catalog-identity", artifact.Session.CatalogIdentity,
-                    "--expected-catalog-schema-version", artifact.Session.CatalogSchemaVersion.ToString(
-                        System.Globalization.CultureInfo.InvariantCulture),
-                    "--expected-catalog-created-at", artifact.Session.CatalogCreatedAt,
-                ],
-                repositoryRoot),
+            new ProcessRequest(pythonExecutable, arguments, repositoryRoot),
             cancellationToken);
         if (result.ExitCode != 0)
         {
             if (result.StandardError.Contains("drift", StringComparison.OrdinalIgnoreCase)
-                || result.StandardError.Contains("schema version 1", StringComparison.OrdinalIgnoreCase))
+                || result.StandardError.Contains("schema version", StringComparison.OrdinalIgnoreCase)
+                || result.StandardError.Contains("canonical payload", StringComparison.OrdinalIgnoreCase)
+                || result.StandardError.Contains("collides with", StringComparison.OrdinalIgnoreCase))
             {
                 throw new ObservationIdentityDriftException(
-                    $"catalog identity drift detected during ingest (exit {result.ExitCode})");
+                    $"catalog identity/payload conflict detected during ingest (exit {result.ExitCode})");
             }
             return new CatalogIngestReceipt(
                 CatalogIngestDisposition.Failed,
@@ -1259,8 +1277,15 @@ public sealed class JacketObservationSession(
             {
                 throw new InvalidOperationException("observation session is not resumable");
             }
+            var retryableStatuses = identity.CatalogSchemaVersion switch
+            {
+                1 => new[] { "pending" },
+                2 => new[] { "pending", "deferred" },
+                _ => throw new ObservationIdentityDriftException(
+                    $"unsupported catalog schema version: {identity.CatalogSchemaVersion}"),
+            };
             var pendingObservations = checkpoint.Observations
-                .Where(item => item.CatalogStatus == "pending")
+                .Where(item => retryableStatuses.Contains(item.CatalogStatus, StringComparer.Ordinal))
                 .ToList();
             if (pendingObservations.Count == 0)
             {

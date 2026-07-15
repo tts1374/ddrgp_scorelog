@@ -123,7 +123,7 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
         StatusTitle = "観測session開始";
         StatusMessage = catalog.SchemaVersion == 1
             ? "jacket change/stableを検出します。stableは自動採用されません。"
-            : "catalog v2は投入を保留し、local artifact/checkpointだけを生成します。";
+            : "catalog v2へ未解決observationを投入します。既存deferred/pendingはcatalog retryで再処理します。";
         OnPropertyChanged(nameof(SessionId));
         OnPropertyChanged(nameof(IsActive));
         OnPropertyChanged(nameof(CanAdopt));

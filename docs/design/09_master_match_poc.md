@@ -224,9 +224,17 @@ M5c-3aのcapture coordinatorから受けたframeだけを下流のobservation se
 
 detectorの状態は `change_candidate`、`stable_candidate`、`duplicate_preview`、`invalid_frame` を分ける。同一stable hashは別jacketを挟んだ再出現も含めsession内で一度だけ候補とし、stable到達だけでは保存しない。開発者の明示採用時にだけ、current master/catalog/extractorを再検査し、source frame、jacket crop、feature/hash、空の観測title/artist、`observation_status=unresolved` をsession固有のlocal stagingへ書き、strict検証後に `data/jacket_catalog_collector/<session-id>/` へatomic publishする。失敗staging、停止後frame、ROI不正frameは完成artifactやcatalogへ届かない。
 
-checkpointは最初の明示採用と同時に作成し、停止時にはsession ID、固定identity/version、stable feature集合、last stable feature、processed/drop count、採用済みobservation ID/source hash、catalog statusをatomic更新する。UIのsession ID入力から行うcompatible resumeはcheckpoint identityと全artifact manifest/hashをstrict再検査し、既存observationを再生成しない。破損・旧version・master/catalog/extractor/window/ROI/detector drift、同一observation IDの異payloadは副作用なしで拒否する。catalog v1では非空observation IDを冪等keyとして既存M5b `ingest_observation` の未解決経路を再利用し、空title/artistを自動推測せず、別sessionの同一画像を統合しない。catalog v2は投入を `deferred` とし、v2 schema変更やauto-confirm緩和はM5c-3cへ分離する。catalog failureはpending checkpointとlocal evidenceから明示retryする。
+checkpointは最初の明示採用と同時に作成し、停止時にはsession ID、固定identity/version、stable feature集合、last stable feature、processed/drop count、採用済みobservation ID/source hash、catalog statusをatomic更新する。UIのsession ID入力から行うcompatible resumeはcheckpoint identityと全artifact manifest/hashをstrict再検査し、既存observationを再生成しない。破損・旧version・master/catalog/extractor/window/ROI/detector drift、同一observation IDの異payloadは副作用なしで拒否する。catalog v1では非空observation IDを冪等keyとして既存M5b `ingest_observation` の未解決経路を再利用し、空title/artistを自動推測せず、別sessionの同一画像を統合しない。catalog v2はM5c-3bで `deferred` としてcheckpointへ保持し、M5c-3cの明示retryへ渡す。catalog failureはpending checkpointとlocal evidenceから明示retryする。
 
 capture coordinatorの停止・resize・close・device loss・例外・取消通知をsession停止境界へ接続し、停止後はdetector、artifact publisher、catalog adapterを呼ばない。local source/crop/manifest/checkpointはGit、CI artifact、通常log/stdout、公開app、正式個人スコアDBへ出力せず、retention/cleanupは別PRで扱う。
+
+### M5c-3c v2 unresolved observation ingest
+
+catalog schema 2は既存の`jacket_references`列だけで未解決observationの初期状態を表現できる。collectorはv1 `ingest`へ暗黙fallbackせず、Python `ingest-v2`をsession schemaから明示選択する。入力は非空observation ID、artifact image bytes/hash、空title/artist、`observation_status=unresolved`、`image_kind`、監査用expected song、session開始時に固定したmaster version/source hash、catalog identity/schema/created-at、feature extractorで構成する。
+
+v2 writerはsource capture IDへobservation IDを保存し、新規rowを`song_id=NULL`、`review_status=unresolved`、`review_revision=0`、`manual_action_id=NULL`、空manual note、candidate/history 0件で作る。同一ID・同一canonical payloadは同じreference receiptを返すが、異payload、空ID、欠損/改変artifact、current master/catalog/extractor driftはtransactionの副作用なしで拒否する。別IDの同一画像bytesはsource hashだけで統合せず別referenceにする。manual review済みrowと同じobservation IDが衝突してもcurrent row/revision/historyは上書きしない。
+
+collector retryはschemaを境界として、v1の`pending`とv2の`pending/deferred`だけを対象にする。catalog mutation成功後のcheckpoint保存失敗は、次回v2 retryが既存referenceを`existing`として返し、reference/historyを増やさずcheckpointを`ingested`へ収束させる。v2 ingestはtitle/artist OCR、auto-confirm、song assignment、manual action/history生成を行わない。
 
 ## M5b/M5c共通スコープ外
 
