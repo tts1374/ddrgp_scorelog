@@ -8,6 +8,7 @@ namespace JacketCatalogCollector;
 public partial class MainWindow : Window
 {
     private readonly MainViewModel viewModel;
+    private readonly CaptureObservationController captureObservationController;
     private CancellationTokenSource? operationCancellation;
     private bool captureShutdownComplete;
 
@@ -35,6 +36,13 @@ public partial class MainWindow : Window
             new ReviewWorkflowService(runner, repositoryRoot),
             windowCapture,
             new JacketObservationViewModel(windowCapture, observationSession, dispatcher));
+        captureObservationController = new CaptureObservationController(
+            viewModel.StartObservationSessionAsync,
+            viewModel.ResumeObservationSessionAsync,
+            viewModel.StopObservationSessionAsync,
+            windowCapture.StartAsync,
+            windowCapture.StopAsync,
+            () => windowCapture.Lifecycle.State);
         DataContext = viewModel;
     }
 
@@ -73,15 +81,13 @@ public partial class MainWindow : Window
         }
         try
         {
-            await viewModel.StartObservationSessionAsync(candidate);
-            if (!await capture.StartAsync())
+            if (!await captureObservationController.StartAsync(candidate))
             {
-                await viewModel.StopObservationSessionAsync();
+                return;
             }
         }
         catch (Exception exception)
         {
-            await viewModel.StopObservationSessionAsync();
             MessageBox.Show(this, exception.Message, "capture開始失敗");
         }
     }
@@ -90,8 +96,7 @@ public partial class MainWindow : Window
     {
         try
         {
-            await viewModel.WindowCapture!.StopAsync();
-            await viewModel.StopObservationSessionAsync();
+            await captureObservationController.StopAsync();
         }
         catch (Exception exception)
         {
@@ -110,22 +115,13 @@ public partial class MainWindow : Window
         }
         try
         {
-            if (!await capture.StartAsync())
+            if (!await captureObservationController.ResumeAsync(candidate))
             {
                 return;
-            }
-            await viewModel.ResumeObservationSessionAsync(candidate);
-            if (capture.Lifecycle.State is CaptureLifecycleState.Stopped
-                or CaptureLifecycleState.Failed)
-            {
-                throw new InvalidOperationException(
-                    "capture ended while the observation checkpoint was being resumed");
             }
         }
         catch (Exception exception)
         {
-            await capture.StopAsync();
-            await viewModel.StopObservationSessionAsync();
             MessageBox.Show(this, exception.Message, "session再開失敗");
         }
     }
@@ -164,17 +160,12 @@ public partial class MainWindow : Window
 
     protected override async void OnClosing(CancelEventArgs e)
     {
-        var state = viewModel.WindowCapture?.Lifecycle.State;
-        if (!captureShutdownComplete
-            && state is CaptureLifecycleState.Starting
-                or CaptureLifecycleState.Capturing
-                or CaptureLifecycleState.Stopping)
+        if (!captureShutdownComplete)
         {
             e.Cancel = true;
             try
             {
-                await viewModel.WindowCapture!.StopAsync();
-                await viewModel.StopObservationSessionAsync();
+                await captureObservationController.StopAsync();
             }
             catch (Exception exception)
             {
