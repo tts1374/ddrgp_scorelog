@@ -99,11 +99,12 @@ review-fix起動時は次の順序で進める。
 
 - `docs/next-task.md` には、次チャット向けの `推奨モデル` と `推論レベル` を分けて記載する。
 - モデルと推論レベルはCodexの実行設定であり、本文だけでは自動切替されない。
-- 通常の実装、テスト追加、README・設計docs同期、既存契約に沿った回帰修正は `GPT-5.6 Sol / medium` を基準とする。
+- 主エージェントによるPR計画、仕様固定、成果統合、最終判断は `GPT-5.6 Sol / high` を基準とする。小さく明確な定型PRでは `medium` へ下げてよい。
 - `GPT-5.6 Terra` は、代表的な作業で必要品質を維持できる場合の性能とコストのバランス候補とする。
-- `GPT-5.6 Luna` は、高頻度、定型、低リスクで、遅延やコストを重視する作業に限定する。
-- `high` または `xhigh` は、正式DB schema、migration、保存境界、transaction、並行性、難しい原因調査、複数設計文書の矛盾解消、最終監査などで、代表的な作業における追加推論の品質向上が確認できる場合に使う。
-- `max` は最も難しい品質優先作業に限定し、可能なら `xhigh` と品質、遅延、コストを比較する。
+- 仕様、スコープ、固定判断、境界条件、受入基準が既存資料から確定した通常の実装、テスト追加、README・設計docs同期、既存契約に沿った回帰修正は、`GPT-5.6 Luna / xhigh` への委譲を標準候補とする。高頻度、定型、低リスクの作業は `Luna / high` へ下げてよい。
+- `Luna / max` は、判断境界が固定済みで難度が高く、時効性より実行品質を優先する実装候補に限る。未確定の仕様判断を推測で補わせない。
+- `Sol / high` または `Sol / xhigh` は、高曖昧度の計画、architecture、正式DB schema、migration、保存境界、transaction、並行性、難しい原因調査、複数設計文書の矛盾解消、重要レビュー、最終監査などで、代表的な作業における追加推論の品質向上が確認できる場合に使う。
+- `Sol / max` は最も難しい品質優先の単一判断または監査に限定し、可能なら `xhigh` と品質、遅延、コストを比較する。
 - 推論レベルを上げることを、タスク範囲を広げる理由にしない。
 - モデル名や推論レベルを、アプリ本体のAPI model ID、依存関係、実装設定へ混入させない。
 
@@ -217,13 +218,25 @@ python -m pip install --user "ruff>=0.9.0"
 python -X utf8 "$env:USERPROFILE\.codex\skills\.system\skill-creator\scripts\quick_validate.py" ".agents\skills\review-ddrgp-db-save-boundary"
 ```
 
+### Background Model Routing
+
+- Codex Appのbackground taskとworkerごとのmodel / reasoning指定を、実装準備済みPRで使うことを事前許可する。利用可能な場合は `$codex-model-routing-team` のlead-agent verification、health probe、bounded worker、thread lifecycleを使う。
+- 単一workstreamでも、Sol leadによる計画・仕様固定・検証とLuna workerによる実装を分離することで、必要品質を維持しつつ遅延またはコストの改善が見込める場合はrouting対象にできる。並列化自体を目的にworkerを増やさない。
+- leadは依頼内容、`docs/next-task.md`、関連設計docsからPR目的、成果物、完了条件、スコープ外、固定判断、境界条件、検証、所有file、開始git stateをtask packetへ固定し、委譲可否とworker数を決める。最初の実workerをhealth probeとして読み取れれば、1 workerだけで完結してよい。
+- 通常実装workerは `GPT-5.6 Luna / xhigh` を基準とし、難度は高いが判断境界が固定済みの実装だけ `Luna / max` を候補にする。新しい仕様判断、非互換変更、重大なdocs矛盾、正式DB schemaやmigrationの未確定事項が判明したら実装を広げずleadへ返す。
+- 書込みworkerは、対象project、正確な開始branch / commit / working tree、統合経路を確認できる隔離worktreeで実行する。同じfileの同時writerを禁止し、密結合した責務を調整コストに見合わない複数workerへ分割しない。dirty state、開始点、所有権、統合経路を安全に確定できない場合は委譲しない。
+- workerは子taskやsubagentを作らず、指定scopeの実装、test、docs同期、検証、明示許可された場合のlocal handoff commitまでを担当できる。push、PR作成、GitHub comment、外部サービス書込み、merge、release、削除、migration実行はleadだけが既存の許可境界内で行う。
+- background workerへのtask packet、workerの報告、leadの統合報告、ユーザー向け完了報告は日本語で記述する。コード、schema、CLI、固有識別子は既存表記を維持する。
+- leadはworkerの成果をそのまま採用せず、diff、対象test、影響範囲test、docs整合、境界条件、不変条件を確認して統合する。不足は同じworkerへ1回だけ具体的に差し戻し、その後も満たせない場合、設計判断が必要な場合、またはscope逸脱がある場合はSol leadが引き取る。
+- 採用したcompleted / idle taskだけをrouting Skillの契約に従って1件ずつarchiveし、失敗、争点、未採用taskは確認可能な状態に残す。完了報告にはworker数、model / reasoning、担当範囲、採否、再試行・昇格、archive状態を含める。
+
 - commit・push・GitHubレビュー依頼の前に、base branchとのbranch diff全体を専用reviewerまたはread-onlyサブエージェントでレビューする。利用可能なら `/review` を使い、実装担当と同じ文脈のセルフレビューだけで完了扱いにしない。
 - レビューでは、変更責務に該当する正常系、空/欠損、重複、競合、再投入、旧version、部分失敗、option混在を境界条件マトリクスとして列挙し、各行の期待結果と回帰testの有無を確認する。該当しない軸は理由を示して除外してよい。
 - schema、field、status、option、永続化形式を変更した場合は、書く側だけでなく、それを読む全consumer、集計、再読込、互換経路を検索し、旧値・旧versionを現行値として誤解しないことを確認する。
 - validation、duplicate、skip、互換性拒否、option不整合などの早期returnを追加・変更した場合は、returnより前に起こり得る入力読込、directory/file作成、DB準備・書込み、log/artifact出力を列挙し、拒否時に副作用がないtestを置く。
 - 重大度medium以上の指摘は、現在のPR範囲内なら修正して再検証し、修正後のdiffをもう一度read-onlyレビューする。範囲外なら次PR候補へ送る。
-- read-onlyサブエージェントは、diffレビュー、テストギャップ調査、READMEとCLIの整合確認に限って必要時に使う。
-- 実装変更は原則として親エージェントが統合して行う。
+- read-only reviewerまたはread-onlyサブエージェントは、diffレビュー、テストギャップ調査、READMEとCLIの整合確認に限って必要時に使う。書込みを委譲するbackground workerには上記routing境界を適用する。
+- 実装変更は親エージェントが自ら行うか、上記routing境界でbackground workerへ委譲し、親エージェントが採否と統合に責任を持つ。
 - 新しいプロジェクト専用SkillやSubagentは、対象作業が独立した反復手順として安定してから追加する。
 
 ## Completion Report
