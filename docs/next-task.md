@@ -1,5 +1,7 @@
 # 次PR作業仕様
 
+直近の運用整備PRで、既存PR上の `@codex fix the issues from the latest review` 起動時に、未解決thread取得、指摘修正、検証、独立read-onlyレビュー、通常push、`@codex review` 再依頼までを行う権限と停止境界を `AGENTS.md` に追加した。以下のM5c-3a仕様と作業branchは変更しない。
+
 `C:\work\ddrgp_scorelog` で作業してください。`AGENTS.md`、`docs/implementation-roadmap.md` の M5c、`docs/design/09_master_match_poc.md`、`tools/jacket_catalog_collector/`、公開app側の既存Windows Graphics Capture実装をread-only参照し、master/catalog DB、capture、crop、`data/`、`logs/`、生成物を保護してください。
 
 ## 推奨モデル
