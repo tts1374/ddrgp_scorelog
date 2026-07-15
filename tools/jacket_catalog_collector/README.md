@@ -53,8 +53,18 @@ v2ではreview行を選び、current GP曲をsong ID/title/artistで検索して
 
 開始直前と各frame受領時にhandle、PID、process start、process名、title/class、client size、visible/minimized状態を再検査します。stale候補、handle再利用、resize、identity drift、最小化、対象終了では暗黙に別windowを選択・再開始せず、終了理由を表示します。二重開始を拒否し、停止・開始取消・window close・device loss・capture例外は冪等停止としてin-flight callbackをdrainしてからresourceを1回だけ解放します。collector終了時もactive sessionの停止完了を待ちます。
 
-WGCのnative frame queueとimmutable PNG ring bufferは固定上限です。満杯時はframeをdropして `captured` / `dropped` を表示し、producerをUI描画やdisk I/Oで無制限にblockしません。latest preview、件数、開始時/現在size、resource状態は観測専用です。このPRではframe、preview、diagnosticをdiskへ保存せず、catalog reference、観測、OCR入力、正式値へ昇格しません。
+WGCのnative frame queueとimmutable PNG ring bufferは固定上限です。満杯時はframeをdropして `captured` / `dropped` を表示し、producerをUI描画やdisk I/Oで無制限にblockしません。latest preview、件数、開始時/現在size、resource状態は観測専用です。capture単独ではdiskへ保存せず、後述の明示採用だけが選択したsource/cropをlocal evidenceへ昇格します。
+
+## Jacket observation session (M5c-3b)
+
+capture開始前にmaster/catalogのprojectionを読み込み、選択windowのidentity、master version/source hash、catalog identity/schema/created-at、feature extractor、`m5c-capture-utc-clock-v1` frame clock、ROI/detector versionをsessionへ固定します。capture frameは1280x720基準の `(812,28,150,150)` ROIを実サイズへ線形scaleし、16x16 RGB feature、SHA-256 hash、mean absolute differenceを作ります。既定の安定判定は差分 `<=0.08`、連続3 frame、最小100msです。値はversion付きでobservation manifestへ記録します。
+
+`change_candidate`、`stable_candidate`、`duplicate_preview` は別状態です。session内で一度stableになったfeature hashは、別jacketを挟んで再出現しても既存候補として扱います。stable候補は自動採用せず、capture tabの `候補を採用` を明示的に押したときだけ、`data/jacket_catalog_collector/<session-id>/observations/<observation-id>/` に `source.png`、`jacket-crop.png`、`observation.json` と checkpoint をstagingからatomic publishします。publish前にcurrent master/catalog/extractorを再検査し、失敗stagingは残しません。source/crop/hashの不一致、同一observation IDの異なるpayload、破損・旧version・identity drift checkpointは副作用なしで拒否します。
+
+checkpointは最初の明示採用と同時に作成し、それ以前のframeをdiskへ書きません。以後は停止時にも、`session_id`、master/catalog/extractor/window/ROI/detector identity、session内stable feature集合、最後のstable feature、処理frame/drop件数、採用済みobservation ID/source hash、catalog statusをatomic更新します。capture tabへ既存session IDを入力して `session再開` を押すと、current projection・選択window・全artifact manifest/hashが一致するcompatible checkpointだけを再開します。catalog v1にはtitle/artistを推測せず空文字と `unresolved` で既存M5b ingest APIを呼び、非空observation IDを冪等keyとして別sessionの同一画像を統合しません。catalog v2はlocal artifact/checkpointを `deferred` とし、v2 schemaやauto-confirm条件は変更しません。catalog failureは `pending` checkpointから明示 retryできます。
+
+capture停止、resize、close、device loss、例外、取消ではsessionを停止し、停止後frameをdetector、artifact、catalogへ渡しません。source/crop/manifest/checkpointはこのcollectorのlocal dataだけで、`logs/`、通常stdout、Git、公開app、正式個人スコアDBへ出力しません。
 
 ## Scope boundary
 
-このapp/project/testは `tools/jacket_catalog_collector/` 内で完結し、`app/src/DDRGpScoreViewer` を参照しません。物理削除、source image削除、jacket変化/安定検出、checkpoint、観測生成、catalog投入、OCR、ゲーム操作は実装しません。これらは後続M5cへ分離します。
+このapp/project/testは `tools/jacket_catalog_collector/` 内で完結し、`app/src/DDRGpScoreViewer` を参照しません。物理削除、source image削除、retention cleanup、title/artist OCR、ゲーム操作、公開app、正式保存workflow、正式個人スコアDBは実装しません。

@@ -331,7 +331,7 @@ Status: Completed on 2026-07-14.
 
 ### M5c: 開発者専用jacket catalog collector
 
-Status: In progress. M5c-1 completed on 2026-07-14; M5c-2 completed on 2026-07-15; M5c-3a completed on 2026-07-15; M5c-3b以降は未着手。
+Status: In progress. M5c-1 completed on 2026-07-14; M5c-2 completed on 2026-07-15; M5c-3a/M5c-3b completed on 2026-07-15; M5c-3c以降は未着手。
 
 目的は、M5b catalogを約1200曲の手作業画像保存・CSV記入に依存せず運用するため、公開WPF appと分離した開発者専用collectorを追加することです。開発者はsong select gridを手動巡回し、ツールがmaster更新、coverage、review、capture、jacket安定検出、観測生成、M4照合を担当します。ゲーム操作は自動化しません。
 
@@ -352,7 +352,7 @@ Status: In progress. M5c-1 completed on 2026-07-14; M5c-2 completed on 2026-07-1
 - 完了: `manual_confirmed`、`rejected`、review/reassignment historyを持つcatalog v2と、v1を不変に保つcopy-on-write移行
 - reject、取り消し、完全削除、source image削除を分ける操作契約
 - 完了: window候補条件、preview付き初回確認、strict identity再検査、handle消失・再起動後の明示再選択契約
-- 完了: memory-only raw frame ring buffer、drop観測、capture resource lifecycle。採用frame、診断frame、crop保持、明示cleanup policyはM5c-3b以降
+- 完了: memory-only raw frame ring buffer、drop観測、capture resource lifecycle、明示採用source/crop、checkpoint/resume。診断frame保持と明示cleanup policyは後続
 - catalog referenceとlocal source capture/cropを再表示可能に結ぶlocator、retention、欠損時表示の契約
 
 実行順:
@@ -360,8 +360,9 @@ Status: In progress. M5c-1 completed on 2026-07-14; M5c-2 completed on 2026-07-1
 1. M5c-1: 完了。`tools/jacket_catalog_collector/` に独立developer app/testを追加し、既存M4 master build/inspectをstaging + atomic publishで実行する。M5b catalogはPythonのversion 1 read-only projectionを介してcoverage/review queueを表示し、catalog mutation、capture、OCRは行わない。
 2. M5c-2: 完了。catalog v2、strict validator、v1からのcopy-on-write移行、revision/action IDによる競合・再投入契約、append-only history、手動confirm/reassign/reject/reopenを追加した。projection v2とcollectorは明示GP song検索・確認・history表示を提供し、runtimeはcurrent master/GP/current extractorを満たすauto/manual referenceだけを読む。
 3. M5c-3a: 完了。DDR GP window候補検出、preview付き確認、strict identity再検査、Windows Graphics Captureの明示開始・停止、bounded memory-only raw frame ring buffer、window/resource lifecycleを追加した。catalog観測生成は行わない。
-4. M5c-3b: jacket ROI変化/安定検出、同一preview制御、session checkpoint、中断・再開、観測自動生成、catalog投入を追加する。実装前にcapture lifecycleとsession永続化が同じ検証セットで扱えるか再確認し、必要ならさらに分割する。
-5. M5c-4: 実captureでtitle/artist取得を評価し、採用条件を満たす方式だけauto-confirmへ接続する。未採用・不一致はreviewへ残す。
+4. M5c-3b: 完了。jacket ROI変化/安定検出、session全体の同一preview制御、明示採用、atomic local artifact、checkpoint、中断・strict再開、catalog v1冪等投入を追加した。catalog v2は安全な既存投入経路がないため `deferred` とした。
+5. M5c-3c: catalog v2へ未解決observationを安全に投入し、M5c-3bの `deferred` checkpointを冪等に再処理する。v1、manual review history、auto-confirm条件は変更しない。
+6. M5c-4: 実captureでtitle/artist取得を評価し、採用条件を満たす方式だけauto-confirmへ接続する。未採用・不一致はreviewへ残す。
 
 完了条件:
 
@@ -391,6 +392,13 @@ M5c-3aで固定した境界:
 - capture開始前とframe受領時にidentity/size/stateを再検査し、stale候補、handle再利用、resize、最小化、対象終了では暗黙再選択・再開始しない。
 - WGC native frame queueとimmutable PNG ring bufferはboundedとし、満杯時のdropを表示する。通常停止、取消、対象終了、device loss、例外、collector終了ではin-flight callback後にresourceを1回だけ解放する。
 - frame/preview/diagnosticはmemory-onlyで、disk、catalog、観測、OCR、公開app、正式保存workflowへ接続しない。
+
+M5c-3bで固定した境界:
+
+- M5c-3aの明示選択済みcapture sessionからだけframeを受け、song select jacket ROIを実frame sizeへscaleする。差分 `<=0.08`、連続3 frame、最小100msのversion付きdetectorでchange/stableを分け、同一stable hashはsession内でduplicateとして抑制する。
+- stableは自動採用しない。capture tabの明示操作だけがsource frame、jacket crop、observation manifest、checkpointを `data/jacket_catalog_collector/<session-id>/` のstagingからatomic publishする。初回採用前の停止・異常終了・取消・ROI不正ではartifact、checkpoint、catalog副作用を発生させず、初回採用後の停止は既存checkpointのprogressだけをatomic更新する。
+- checkpointは最初の明示採用と同時に作成し、以後の停止時にmaster version/source hash、catalog identity/schema/created-at、feature extractor、`m5c-capture-utc-clock-v1` frame clock、window identity、ROI/detector version、stable feature集合、last stable feature、processed/drop count、adopted observation/source hash/catalog statusを更新する。UIからcompatible identityと全artifactをstrict検査してresumeし、corrupt/old/drift checkpointと同一ID異payloadは拒否する。
+- catalog v1は既存M5b ingest APIを再利用し、title/artistを自動推測せず空文字・`unresolved` として冪等投入する。v2はschema変更なしの安全な空identity経路がないため投入を保留し、artifact/checkpointを `deferred` として後続reviewへ渡す。OCR、auto-confirm緩和、catalog v3、runtime matcher、正式保存workflowは変更しない。
 
 ### M6: 本番キャプチャAPIの最小接続
 

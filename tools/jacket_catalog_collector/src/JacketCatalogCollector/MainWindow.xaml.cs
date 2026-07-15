@@ -17,15 +17,24 @@ public partial class MainWindow : Window
         var repositoryRoot = Directory.GetCurrentDirectory();
         var runner = new ProcessRunner();
         var windowEnumerator = new NativeWindowEnumerator();
+        var dispatcher = new WpfCaptureDispatcher(Dispatcher);
         var captureCoordinator = new WindowCaptureCoordinator(
             windowEnumerator,
             new WindowsGraphicsCaptureSessionFactory(),
-            new WpfCaptureDispatcher(Dispatcher));
+            dispatcher);
+        var windowCapture = new WindowCaptureViewModel(windowEnumerator, captureCoordinator);
+        var evidenceRoot = Path.Combine(repositoryRoot, "data", "jacket_catalog_collector");
+        var observationSession = new JacketObservationSession(
+            new JacketObservationDetector(),
+            new AtomicObservationCheckpointStore(evidenceRoot),
+            new AtomicObservationArtifactPublisher(evidenceRoot),
+            new PythonCatalogObservationAdapter(runner, repositoryRoot));
         viewModel = new MainViewModel(
             new MasterUpdateService(runner, new AtomicMasterPublisher(), repositoryRoot),
             new ProjectionService(runner, new ProjectionJsonLoader(), repositoryRoot),
             new ReviewWorkflowService(runner, repositoryRoot),
-            new WindowCaptureViewModel(windowEnumerator, captureCoordinator));
+            windowCapture,
+            new JacketObservationViewModel(windowCapture, observationSession, dispatcher));
         DataContext = viewModel;
     }
 
@@ -64,10 +73,15 @@ public partial class MainWindow : Window
         }
         try
         {
-            await capture.StartAsync();
+            await viewModel.StartObservationSessionAsync(candidate);
+            if (!await capture.StartAsync())
+            {
+                await viewModel.StopObservationSessionAsync();
+            }
         }
         catch (Exception exception)
         {
+            await viewModel.StopObservationSessionAsync();
             MessageBox.Show(this, exception.Message, "capture開始失敗");
         }
     }
@@ -77,10 +91,74 @@ public partial class MainWindow : Window
         try
         {
             await viewModel.WindowCapture!.StopAsync();
+            await viewModel.StopObservationSessionAsync();
         }
         catch (Exception exception)
         {
             MessageBox.Show(this, exception.Message, "capture停止失敗");
+        }
+    }
+
+    private async void ResumeCapture_Click(object sender, RoutedEventArgs e)
+    {
+        var capture = viewModel.WindowCapture!;
+        var candidate = capture.SelectedCandidate;
+        if (candidate is null)
+        {
+            MessageBox.Show(this, "再開するwindow候補を明示選択してください。");
+            return;
+        }
+        try
+        {
+            if (!await capture.StartAsync())
+            {
+                return;
+            }
+            await viewModel.ResumeObservationSessionAsync(candidate);
+            if (capture.Lifecycle.State is CaptureLifecycleState.Stopped
+                or CaptureLifecycleState.Failed)
+            {
+                throw new InvalidOperationException(
+                    "capture ended while the observation checkpoint was being resumed");
+            }
+        }
+        catch (Exception exception)
+        {
+            await capture.StopAsync();
+            await viewModel.StopObservationSessionAsync();
+            MessageBox.Show(this, exception.Message, "session再開失敗");
+        }
+    }
+
+    private async void AdoptObservation_Click(object sender, RoutedEventArgs e)
+    {
+        if (viewModel.Observation is null || !viewModel.Observation.CanAdopt)
+        {
+            return;
+        }
+        try
+        {
+            await viewModel.Observation.AdoptAsync();
+        }
+        catch (Exception exception)
+        {
+            MessageBox.Show(this, exception.Message, "観測採用失敗");
+        }
+    }
+
+    private async void RetryCatalog_Click(object sender, RoutedEventArgs e)
+    {
+        if (viewModel.Observation is null)
+        {
+            return;
+        }
+        try
+        {
+            await viewModel.Observation.RetryCatalogAsync();
+        }
+        catch (Exception exception)
+        {
+            MessageBox.Show(this, exception.Message, "catalog retry失敗");
         }
     }
 
@@ -96,6 +174,11 @@ public partial class MainWindow : Window
             try
             {
                 await viewModel.WindowCapture!.StopAsync();
+                await viewModel.StopObservationSessionAsync();
+            }
+            catch (Exception exception)
+            {
+                MessageBox.Show(this, exception.Message, "collector終了時のcheckpoint保存失敗");
             }
             finally
             {

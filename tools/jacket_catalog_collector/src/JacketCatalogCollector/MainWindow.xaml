@@ -162,24 +162,54 @@
                             <Image Source="{Binding WindowCapture.Preview}" Stretch="Uniform" />
                         </Border>
                     </Grid>
-                    <Border Grid.Row="2" Margin="0,10,0,0" Padding="10" Background="#EEF3F8">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="2*" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
-                            <StackPanel>
-                                <TextBlock Text="{Binding WindowCapture.SelectedIdentity}" FontFamily="Consolas" TextWrapping="Wrap" />
-                                <TextBlock Text="{Binding WindowCapture.SelectedReason}" Foreground="DimGray" />
-                                <TextBlock Text="{Binding WindowCapture.Lifecycle.Message}" TextWrapping="Wrap" />
-                            </StackPanel>
-                            <StackPanel Grid.Column="1">
-                                <TextBlock Text="{Binding WindowCapture.CaptureState}" />
-                                <TextBlock Text="{Binding WindowCapture.CaptureCounts}" />
-                                <TextBlock Text="{Binding WindowCapture.CaptureSizes}" />
-                            </StackPanel>
-                        </Grid>
-                    </Border>
+                    <StackPanel Grid.Row="2" Margin="0,10,0,0">
+                        <Border Padding="10" Background="#EEF3F8">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="2*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBlock Text="{Binding WindowCapture.SelectedIdentity}" FontFamily="Consolas" TextWrapping="Wrap" />
+                                    <TextBlock Text="{Binding WindowCapture.SelectedReason}" Foreground="DimGray" />
+                                    <TextBlock Text="{Binding WindowCapture.Lifecycle.Message}" TextWrapping="Wrap" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="1">
+                                    <TextBlock Text="{Binding WindowCapture.CaptureState}" />
+                                    <TextBlock Text="{Binding WindowCapture.CaptureCounts}" />
+                                    <TextBlock Text="{Binding WindowCapture.CaptureSizes}" />
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+                        <Border Margin="0,8,0,0" Padding="10" Background="#FFF7E6">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="2*" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBlock Text="{Binding Observation.StatusTitle}" FontWeight="Bold" />
+                                    <TextBlock Text="{Binding Observation.StatusMessage}" TextWrapping="Wrap" />
+                                    <TextBlock Text="{Binding Observation.StableCandidate}" FontFamily="Consolas" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="1">
+                                    <TextBlock><Run Text="session: " /><Run Text="{Binding Observation.SessionId}" /></TextBlock>
+                                    <TextBlock Text="{Binding Observation.DetectorState}" />
+                                    <TextBlock Text="{Binding Observation.DetectorProgress}" />
+                                    <TextBlock><Run Text="catalog: " /><Run Text="{Binding Observation.LastCatalogReceipt}" /></TextBlock>
+                                </StackPanel>
+                                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBox Width="220" Margin="4" Padding="6"
+                                             ToolTip="compatible checkpointのsession ID"
+                                             Text="{Binding Observation.ResumeSessionId, UpdateSourceTrigger=PropertyChanged}" />
+                                    <Button Content="session再開" IsEnabled="{Binding Observation.CanResume}" Margin="4" Padding="12,6" Click="ResumeCapture_Click" />
+                                    <Button Content="候補を採用" IsEnabled="{Binding Observation.CanAdopt}" Margin="4" Padding="12,6" Click="AdoptObservation_Click" />
+                                    <Button Content="catalog retry" Margin="4" Padding="12,6" Click="RetryCatalog_Click" />
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+                    </StackPanel>
                 </Grid>
             </TabItem>
         </TabControl>

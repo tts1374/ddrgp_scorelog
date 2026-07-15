@@ -1,0 +1,358 @@
+using System.ComponentModel;
+using System.Runtime.CompilerServices;
+
+namespace JacketCatalogCollector;
+
+public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncDisposable
+{
+    private readonly WindowCaptureViewModel capture;
+    private readonly JacketObservationSession session;
+    private readonly ICaptureDispatcher dispatcher;
+    private readonly object frameSync = new();
+    private Task frameTail = Task.CompletedTask;
+    private RawCaptureFrame? pendingFrame;
+    private bool frameWorkerRunning;
+    private long observationDroppedFrameCount;
+    private JacketDetectionResult detection = new(
+        JacketDetectionState.NoFrame, null, "session is not started", 0, 0, 0);
+    private string statusTitle = "観測session未開始";
+    private string statusMessage = "capture開始前に明示的に観測sessionを作成します。";
+    private string? sessionId;
+    private string resumeSessionId = "";
+    private string? lastCatalogReceipt;
+    private bool captureEnded = true;
+
+    public JacketObservationViewModel(
+        WindowCaptureViewModel capture,
+        JacketObservationSession session,
+        ICaptureDispatcher dispatcher)
+    {
+        this.capture = capture;
+        this.session = session;
+        this.dispatcher = dispatcher;
+        capture.FrameReceived += OnFrameReceived;
+        capture.LifecycleChanged += OnLifecycleChanged;
+    }
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+
+    public JacketDetectionResult Detection
+    {
+        get => detection;
+        private set
+        {
+            if (SetField(ref detection, value))
+            {
+                OnPropertyChanged(nameof(DetectorState));
+                OnPropertyChanged(nameof(DetectorProgress));
+                OnPropertyChanged(nameof(CanAdopt));
+            }
+        }
+    }
+
+    public string StatusTitle
+    {
+        get => statusTitle;
+        private set => SetField(ref statusTitle, value);
+    }
+
+    public string StatusMessage
+    {
+        get => statusMessage;
+        private set => SetField(ref statusMessage, value);
+    }
+
+    public string SessionId => sessionId ?? "未開始";
+    public string ResumeSessionId
+    {
+        get => resumeSessionId;
+        set
+        {
+            if (SetField(ref resumeSessionId, value))
+            {
+                OnPropertyChanged(nameof(CanResume));
+            }
+        }
+    }
+    public string DetectorState => Detection.State.ToString();
+    public string DetectorProgress =>
+        $"frames={Detection.ProcessedFrameCount} / invalid={Detection.InvalidFrameCount} "
+        + $"/ duplicate={Detection.DuplicatePreviewCount} / observation_drop={observationDroppedFrameCount}";
+    public string StableCandidate => Detection.Candidate is null
+        ? "—"
+        : $"feature={Detection.Candidate.FeatureHash}, stable={Detection.Candidate.StableFrameCount} frames / {Detection.Candidate.StableDuration.TotalMilliseconds:0}ms";
+    public string LastCatalogReceipt => lastCatalogReceipt ?? "未投入";
+    public bool IsActive => session.IsActive;
+    public bool CanAdopt => !captureEnded && session.HasAdoptableCandidate;
+    public bool CanResume => !session.IsActive && ResumeSessionId.Trim().Length > 0;
+
+    public async Task StartSessionAsync(
+        ProjectionMaster master,
+        ProjectionCatalog catalog,
+        WindowCandidate candidate,
+        string masterPath,
+        string catalogPath,
+        CancellationToken cancellationToken = default)
+    {
+        if (catalog.CatalogIdentity != "ddrgp-local-jacket-reference-catalog")
+        {
+            throw new InvalidOperationException("catalog identity is unsupported for observation session");
+        }
+        var identity = new ObservationSessionIdentity(
+            Guid.NewGuid().ToString("N"),
+            master.MasterVersion,
+            master.SourceHash,
+            catalog.CatalogIdentity,
+            catalog.SchemaVersion,
+            catalog.CurrentFeatureExtractorVersion,
+            JacketObservationVersions.Detector,
+            JacketObservationVersions.Roi,
+            candidate.Identity,
+            DateTimeOffset.UtcNow,
+            JacketObservationVersions.FrameClock,
+            catalog.CreatedAt);
+        await session.StartAsync(identity, masterPath, catalogPath, cancellationToken);
+        ResetFrameQueueForStart();
+        Detection = session.LastDetection;
+        sessionId = identity.SessionId;
+        lastCatalogReceipt = null;
+        StatusTitle = "観測session開始";
+        StatusMessage = catalog.SchemaVersion == 1
+            ? "jacket change/stableを検出します。stableは自動採用されません。"
+            : "catalog v2は投入を保留し、local artifact/checkpointだけを生成します。";
+        OnPropertyChanged(nameof(SessionId));
+        OnPropertyChanged(nameof(IsActive));
+        OnPropertyChanged(nameof(CanAdopt));
+        OnPropertyChanged(nameof(CanResume));
+    }
+
+    public async Task ResumeSessionAsync(
+        ProjectionMaster master,
+        ProjectionCatalog catalog,
+        WindowCandidate candidate,
+        string masterPath,
+        string catalogPath,
+        CancellationToken cancellationToken = default)
+    {
+        var requestedSessionId = ResumeSessionId.Trim();
+        if (requestedSessionId.Length == 0)
+        {
+            throw new InvalidOperationException("再開するsession IDを入力してください。");
+        }
+        var result = await session.ResumeAsync(
+            new ObservationResumeRequest(
+                requestedSessionId,
+                master.MasterVersion,
+                master.SourceHash,
+                catalog.CatalogIdentity,
+                catalog.SchemaVersion,
+                catalog.CurrentFeatureExtractorVersion,
+                JacketObservationVersions.Detector,
+                JacketObservationVersions.Roi,
+                candidate.Identity,
+                JacketObservationVersions.FrameClock,
+                catalog.CreatedAt),
+            masterPath,
+            catalogPath,
+            cancellationToken);
+        if (!result.Compatible || result.Checkpoint is null)
+        {
+            throw new InvalidOperationException(result.Message);
+        }
+        ResetFrameQueueForStart();
+        Detection = session.LastDetection;
+        sessionId = result.Checkpoint.Session.SessionId;
+        lastCatalogReceipt = null;
+        StatusTitle = "観測session再開";
+        StatusMessage = result.Message;
+        OnPropertyChanged(nameof(SessionId));
+        OnPropertyChanged(nameof(IsActive));
+        OnPropertyChanged(nameof(CanAdopt));
+        OnPropertyChanged(nameof(CanResume));
+    }
+
+    public async Task<ObservationAdoptionResult> AdoptAsync(
+        CancellationToken cancellationToken = default)
+    {
+        if (captureEnded)
+        {
+            throw new InvalidOperationException("capture終了後の候補は採用できません。");
+        }
+        var result = await session.AdoptLastStableAsync(cancellationToken);
+        lastCatalogReceipt = result.Catalog.Message;
+        StatusTitle = result.Catalog.Disposition switch
+        {
+            CatalogIngestDisposition.Created or CatalogIngestDisposition.Existing => "観測採用・catalog投入完了",
+            CatalogIngestDisposition.DeferredUnsupportedSchema => "観測採用・catalog投入保留",
+            _ => "観測採用・catalog retry待ち",
+        };
+        StatusMessage = result.Catalog.Message;
+        OnPropertyChanged(nameof(LastCatalogReceipt));
+        return result;
+    }
+
+    public async Task<IReadOnlyList<ObservationAdoptionResult>> RetryCatalogAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var results = await session.RetryPendingCatalogAsync(cancellationToken);
+        lastCatalogReceipt = results.Count == 0
+            ? "retry対象なし"
+            : string.Join("; ", results.Select(result => result.Catalog.Message));
+        StatusTitle = "catalog retry完了";
+        StatusMessage = lastCatalogReceipt;
+        OnPropertyChanged(nameof(LastCatalogReceipt));
+        return results;
+    }
+
+    public async Task StopAsync(CancellationToken cancellationToken = default)
+    {
+        Task pendingFrames;
+        lock (frameSync)
+        {
+            captureEnded = true;
+            pendingFrames = frameTail;
+        }
+        try
+        {
+            await pendingFrames.WaitAsync(cancellationToken);
+            await session.StopAsync(cancellationToken);
+            StatusTitle = "観測session停止";
+            StatusMessage = "停止後frameはdetector/artifact/catalogへ渡しません。";
+        }
+        finally
+        {
+            Detection = session.LastDetection;
+            OnPropertyChanged(nameof(IsActive));
+            OnPropertyChanged(nameof(CanAdopt));
+            OnPropertyChanged(nameof(CanResume));
+        }
+    }
+
+    public ValueTask DisposeAsync() => session.DisposeAsync();
+
+    private void OnFrameReceived(object? sender, RawCaptureFrame frame)
+    {
+        lock (frameSync)
+        {
+            if (captureEnded || !session.IsActive)
+            {
+                return;
+            }
+            if (pendingFrame is not null)
+            {
+                observationDroppedFrameCount++;
+            }
+            pendingFrame = frame;
+            if (!frameWorkerRunning)
+            {
+                frameWorkerRunning = true;
+                frameTail = Task.Run(ProcessFrameLoopAsync);
+            }
+        }
+    }
+
+    private async Task ProcessFrameLoopAsync()
+    {
+        while (true)
+        {
+            RawCaptureFrame? frame;
+            lock (frameSync)
+            {
+                frame = pendingFrame;
+                pendingFrame = null;
+                if (frame is null)
+                {
+                    frameWorkerRunning = false;
+                    return;
+                }
+            }
+            await ProcessFrameAsync(frame);
+        }
+    }
+
+    private async Task ProcessFrameAsync(RawCaptureFrame frame)
+    {
+        try
+        {
+            var value = await session.ObserveFrameAsync(frame);
+            await dispatcher.InvokeAsync(() =>
+            {
+                Detection = value;
+                StatusTitle = value.HasStableCandidate
+                    ? "安定候補（明示採用待ち）"
+                    : "jacket detector";
+                StatusMessage = value.Diagnostic;
+            });
+        }
+        catch (Exception exception)
+        {
+            await dispatcher.InvokeAsync(() =>
+            {
+                StatusTitle = "detector失敗";
+                StatusMessage = exception.Message;
+            });
+        }
+    }
+
+    private async void OnLifecycleChanged(object? sender, CaptureLifecycleSnapshot value)
+    {
+        var terminal = value.State is CaptureLifecycleState.Stopping
+            or CaptureLifecycleState.Stopped
+            or CaptureLifecycleState.Failed;
+        if (terminal)
+        {
+            lock (frameSync)
+            {
+                captureEnded = true;
+            }
+            OnPropertyChanged(nameof(CanAdopt));
+        }
+        try
+        {
+            if (session.IsActive)
+            {
+                await session.UpdateDroppedFrameCountAsync(value.DroppedCount);
+            }
+            if (terminal)
+            {
+                await StopAsync();
+            }
+        }
+        catch (Exception exception)
+        {
+            StatusTitle = "観測session停止失敗";
+            StatusMessage = exception.Message;
+        }
+    }
+
+    private void ResetFrameQueueForStart()
+    {
+        lock (frameSync)
+        {
+            if (frameWorkerRunning || pendingFrame is not null)
+            {
+                throw new InvalidOperationException("previous observation frame queue is not drained");
+            }
+            captureEnded = false;
+            observationDroppedFrameCount = 0;
+        }
+        OnPropertyChanged(nameof(DetectorProgress));
+    }
+
+    private bool SetField<T>(
+        ref T field,
+        T value,
+        [CallerMemberName] string? name = null)
+    {
+        if (EqualityComparer<T>.Default.Equals(field, value))
+        {
+            return false;
+        }
+        field = value;
+        OnPropertyChanged(name);
+        return true;
+    }
+
+    private void OnPropertyChanged([CallerMemberName] string? name = null) =>
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+}

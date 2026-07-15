@@ -26,10 +26,14 @@ public sealed class WindowCaptureViewModel : INotifyPropertyChanged
         {
             Lifecycle = value;
             Preview = ToBitmap(value.LatestPreviewPng);
+            LifecycleChanged?.Invoke(this, value);
         };
+        coordinator.FrameReceived += (_, frame) => FrameReceived?.Invoke(this, frame);
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
+    public event EventHandler<RawCaptureFrame>? FrameReceived;
+    public event EventHandler<CaptureLifecycleSnapshot>? LifecycleChanged;
 
     public ObservableCollection<WindowCandidate> Candidates { get; } = [];
 

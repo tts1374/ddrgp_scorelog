@@ -778,7 +778,6 @@ def test_resolver_only_auto_confirms_exact_canonical_or_unique_alias(tmp_path: P
     master_db = tmp_path / "master.sqlite"
     write_master(master_db)
     master = catalog.load_master_identity(master_db)
-
     exact = catalog.resolve_observation(master, "Alpha", "Artist A")
     alias = catalog.resolve_observation(master, "RËVOLUTION", "TËЯRA")
     artist_mismatch = catalog.resolve_observation(master, "Alpha", "wrong")
@@ -883,6 +882,179 @@ def test_ingest_is_idempotent_supports_one_to_many_and_rejects_capture_conflict(
             observed_artist="Artist A",
             image_kind="jacket_crop",
         )
+
+
+def test_developer_observation_ingest_preserves_empty_identity_and_strict_guards(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    master_db, catalog_path = setup_paths(tmp_path, monkeypatch)
+    image = tmp_path / "data" / "observation.png"
+    write_image(image, (30, 40, 50))
+    master = catalog.load_master_identity(master_db)
+    with sqlite3.connect(catalog_path) as connection:
+        catalog_created_at = connection.execute(
+            "SELECT value FROM catalog_metadata WHERE key = 'created_at'"
+        ).fetchone()[0]
+    validated = catalog.validate_observation_session(
+        catalog_path,
+        master_db,
+        expected_catalog_identity=catalog.CATALOG_IDENTITY,
+        expected_catalog_schema_version=catalog.CATALOG_SCHEMA_VERSION,
+        expected_catalog_created_at=catalog_created_at,
+        expected_master_version=master.version,
+        expected_master_source_hash=master.source_hash,
+        expected_feature_extractor_version=catalog.FEATURE_EXTRACTOR_VERSION,
+    )
+    assert validated["master_source_hash"] == master.source_hash
+    before_preflight = catalog_path.read_bytes()
+    with pytest.raises(ValueError, match="catalog schema drift"):
+        catalog.validate_observation_session(
+            catalog_path,
+            master_db,
+            expected_catalog_identity=catalog.CATALOG_IDENTITY,
+            expected_catalog_schema_version=99,
+            expected_catalog_created_at=catalog_created_at,
+            expected_master_version=master.version,
+            expected_master_source_hash=master.source_hash,
+            expected_feature_extractor_version=catalog.FEATURE_EXTRACTOR_VERSION,
+        )
+    assert catalog_path.read_bytes() == before_preflight
+    first = catalog.ingest_observation(
+        catalog_path,
+        master_db,
+        source_image_path=image,
+        source_capture_id="observation-1",
+        observed_title="",
+        observed_artist="",
+        observation_status="unresolved",
+        image_kind="jacket_crop",
+        expected_master_version=master.version,
+        expected_master_source_hash=master.source_hash,
+        expected_feature_extractor_version=catalog.FEATURE_EXTRACTOR_VERSION,
+        strict_capture_payload=True,
+    )
+    repeated = catalog.ingest_observation(
+        catalog_path,
+        master_db,
+        source_image_path=image,
+        source_capture_id="observation-1",
+        observed_title="",
+        observed_artist="",
+        observation_status="unresolved",
+        image_kind="jacket_crop",
+        expected_master_version=master.version,
+        expected_master_source_hash=master.source_hash,
+        expected_feature_extractor_version=catalog.FEATURE_EXTRACTOR_VERSION,
+        strict_capture_payload=True,
+    )
+
+    assert first.disposition == "created"
+    assert repeated.disposition == "existing"
+    receipt = catalog.validate_observation_receipt(
+        catalog_path,
+        observation_id="observation-1",
+        catalog_status="ingested",
+        catalog_reference_id=first.reference_id,
+        jacket_crop_hash=hashlib.sha256(image.read_bytes()).hexdigest(),
+        expected_feature_extractor_version=catalog.FEATURE_EXTRACTOR_VERSION,
+        expected_catalog_schema_version=catalog.CATALOG_SCHEMA_VERSION,
+        expected_catalog_created_at=catalog_created_at,
+    )
+    assert receipt["catalog_status"] == "ingested"
+    with pytest.raises(ValueError, match="does not match"):
+        catalog.validate_observation_receipt(
+            catalog_path,
+            observation_id="observation-1",
+            catalog_status="ingested",
+            catalog_reference_id="forged-reference",
+            jacket_crop_hash=hashlib.sha256(image.read_bytes()).hexdigest(),
+            expected_feature_extractor_version=catalog.FEATURE_EXTRACTOR_VERSION,
+            expected_catalog_schema_version=catalog.CATALOG_SCHEMA_VERSION,
+            expected_catalog_created_at=catalog_created_at,
+        )
+    distinct_observation = catalog.ingest_observation(
+        catalog_path,
+        master_db,
+        source_image_path=image,
+        source_capture_id="observation-2",
+        observed_title="",
+        observed_artist="",
+        observation_status="unresolved",
+        image_kind="jacket_crop",
+        expected_master_version=master.version,
+        expected_master_source_hash=master.source_hash,
+        expected_feature_extractor_version=catalog.FEATURE_EXTRACTOR_VERSION,
+        strict_capture_payload=True,
+    )
+    assert distinct_observation.disposition == "created"
+    with sqlite3.connect(catalog_path) as connection:
+        rows = connection.execute(
+            "SELECT observed_title, observed_artist, review_status, resolution_reason "
+            "FROM jacket_references ORDER BY source_capture_id"
+        ).fetchall()
+    assert rows == [
+        ("", "", "unresolved", "observation_unresolved"),
+        ("", "", "unresolved", "observation_unresolved"),
+    ]
+
+    before_conflict = catalog_path.read_bytes()
+    with pytest.raises(ValueError, match="different observation payload"):
+        catalog.ingest_observation(
+            catalog_path,
+            master_db,
+            source_image_path=image,
+            source_capture_id="observation-1",
+            observed_title="changed",
+            observed_artist="",
+            observation_status="unresolved",
+            image_kind="jacket_crop",
+            expected_master_version=master.version,
+            expected_master_source_hash=master.source_hash,
+            expected_feature_extractor_version=catalog.FEATURE_EXTRACTOR_VERSION,
+            strict_capture_payload=True,
+        )
+    assert catalog_path.read_bytes() == before_conflict
+
+    before = catalog_path.read_bytes()
+    with pytest.raises(ValueError, match="master version drift"):
+        catalog.ingest_observation(
+            catalog_path,
+            master_db,
+            source_image_path=image,
+            source_capture_id="observation-2",
+            observed_title="",
+            observed_artist="",
+            observation_status="unresolved",
+            image_kind="jacket_crop",
+            expected_master_version="master-drift",
+            expected_master_source_hash=master.source_hash,
+            expected_feature_extractor_version=catalog.FEATURE_EXTRACTOR_VERSION,
+        )
+    assert catalog_path.read_bytes() == before
+
+    v2_path = tmp_path / "data" / "catalog-v2.sqlite"
+    catalog.migrate_catalog_v1_to_v2(catalog_path, v2_path)
+    before_v2 = v2_path.read_bytes()
+    monkeypatch.setattr(catalog, "catalog_schema_version", lambda _path: 1)
+    with pytest.raises(ValueError, match="requires catalog schema version 1"):
+        catalog.ingest_observation(
+            v2_path,
+            master_db,
+            source_image_path=image,
+            source_capture_id="race-observation",
+            observed_title="",
+            observed_artist="",
+            observation_status="unresolved",
+            image_kind="jacket_crop",
+            expected_master_version=master.version,
+            expected_master_source_hash=master.source_hash,
+            expected_feature_extractor_version=catalog.FEATURE_EXTRACTOR_VERSION,
+            expected_catalog_identity=catalog.CATALOG_IDENTITY,
+            expected_catalog_schema_version=1,
+            expected_catalog_created_at=catalog_created_at,
+            strict_capture_payload=True,
+        )
+    assert v2_path.read_bytes() == before_v2
 
 
 def test_identical_jacket_pixels_can_reference_distinct_songs(

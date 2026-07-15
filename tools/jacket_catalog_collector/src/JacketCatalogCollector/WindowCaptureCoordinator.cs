@@ -7,9 +7,11 @@ public sealed class WindowCaptureCoordinator(
     int ringCapacity = 8)
 {
     private readonly Lock sync = new();
+    private readonly AsyncLocal<bool> inFrameCallback = new();
     private Task? runTask;
     private IWindowCaptureFrameSource? activeSource;
     private BoundedFrameRingBuffer? ringBuffer;
+    private InFlightCallbackDrain? frameCallbackDrain;
     private WindowIdentitySnapshot? target;
     private CancellationTokenSource? startCancellation;
     private TaskCompletionSource? startFinished;
@@ -22,6 +24,7 @@ public sealed class WindowCaptureCoordinator(
     private CaptureLifecycleSnapshot snapshot = CaptureLifecycleSnapshot.Idle;
 
     public event EventHandler<CaptureLifecycleSnapshot>? SnapshotChanged;
+    public event EventHandler<RawCaptureFrame>? FrameReceived;
 
     public CaptureLifecycleSnapshot Snapshot
     {
@@ -135,6 +138,7 @@ public sealed class WindowCaptureCoordinator(
             {
                 target = current;
                 ringBuffer = new BoundedFrameRingBuffer(ringCapacity);
+                frameCallbackDrain = new InFlightCallbackDrain();
                 activeSource = source;
                 stopRequested = false;
                 capturedCount = 0;
@@ -161,16 +165,22 @@ public sealed class WindowCaptureCoordinator(
 
     public async Task StopAsync()
     {
+        if (inFrameCallback.Value)
+        {
+            throw new InvalidOperationException("capture stop cannot be called reentrantly from FrameReceived");
+        }
         while (true)
         {
             IWindowCaptureFrameSource? source;
             Task? running;
             Task? pendingStart;
+            InFlightCallbackDrain? callbacks;
             lock (sync)
             {
                 source = activeSource;
                 running = runTask;
                 pendingStart = startFinished?.Task;
+                callbacks = frameCallbackDrain;
                 if (source is null || running is null)
                 {
                     startCancellation?.Cancel();
@@ -192,7 +202,9 @@ public sealed class WindowCaptureCoordinator(
             await PublishCurrentAsync(
                 CaptureLifecycleState.Stopping, CaptureEndReason.None,
                 "stopping", "in-flight callbackの完了を待って停止しています。");
+            var callbackDrain = callbacks?.CloseAndWaitAsync() ?? Task.CompletedTask;
             await source.StopAsync();
+            await callbackDrain;
             await running;
             return;
         }
@@ -265,14 +277,31 @@ public sealed class WindowCaptureCoordinator(
                     await source.StopAsync();
                     break;
                 }
+                InFlightCallbackDrain? callbackDrain;
                 lock (sync)
                 {
-                    if (stopRequested)
+                    callbackDrain = frameCallbackDrain;
+                    if (stopRequested || callbackDrain is null || !callbackDrain.TryEnter())
                     {
                         continue;
                     }
                     ringBuffer!.Add(frame);
                     capturedCount++;
+                }
+                try
+                {
+                    inFrameCallback.Value = true;
+                    FrameReceived?.Invoke(this, frame);
+                }
+                catch
+                {
+                    // Observation is downstream of capture; a faulty observer must not
+                    // bypass the capture lifecycle cleanup boundary.
+                }
+                finally
+                {
+                    inFrameCallback.Value = false;
+                    callbackDrain.Exit();
                 }
                 await PublishCurrentAsync(
                     CaptureLifecycleState.Capturing, CaptureEndReason.None,
@@ -308,6 +337,15 @@ public sealed class WindowCaptureCoordinator(
         }
         finally
         {
+            InFlightCallbackDrain? callbacks;
+            lock (sync)
+            {
+                callbacks = frameCallbackDrain;
+            }
+            if (callbacks is not null)
+            {
+                await callbacks.CloseAndWaitAsync();
+            }
             try
             {
                 await source.DisposeAsync();
@@ -321,6 +359,7 @@ public sealed class WindowCaptureCoordinator(
             {
                 sourceDroppedCount = source.DroppedCount;
                 activeSource = null;
+                frameCallbackDrain = null;
                 target = null;
                 runTask = null;
                 sessionClaimed = false;

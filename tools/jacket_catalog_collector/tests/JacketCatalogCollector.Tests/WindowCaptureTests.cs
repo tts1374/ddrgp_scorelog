@@ -199,6 +199,8 @@ public sealed class WindowCaptureTests
         var source = new InFlightFrameSource(Frame(1));
         var coordinator = new WindowCaptureCoordinator(
             windows, new FakeSessionFactory(source), new RecordingDispatcher());
+        var forwardedFrames = 0;
+        coordinator.FrameReceived += (_, _) => forwardedFrames++;
         Assert.True(await coordinator.StartAsync(candidate));
         await source.ReaderStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
 
@@ -207,8 +209,68 @@ public sealed class WindowCaptureTests
         await stop;
 
         Assert.Equal(0, coordinator.Snapshot.CapturedCount);
+        Assert.Equal(0, forwardedFrames);
         Assert.Equal(CaptureEndReason.ExplicitStop, coordinator.Snapshot.EndReason);
         Assert.Equal(1, source.DisposeCount);
+    }
+
+    [Fact]
+    public async Task Stop_waits_for_an_accepted_frame_callback_before_crossing_boundary()
+    {
+        var candidate = Candidate();
+        var windows = new FakeWindowEnumerator([candidate]);
+        var source = new FakeFrameSource();
+        var coordinator = new WindowCaptureCoordinator(
+            windows, new FakeSessionFactory(source), new RecordingDispatcher());
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var forwardedFrames = 0;
+        coordinator.FrameReceived += (_, _) =>
+        {
+            forwardedFrames++;
+            entered.TrySetResult();
+            release.Task.GetAwaiter().GetResult();
+        };
+        Assert.True(await coordinator.StartAsync(candidate));
+        source.Write(Frame(1));
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        var stop = Task.Run(async () => await coordinator.StopAsync());
+        Assert.False(stop.IsCompleted);
+        release.TrySetResult();
+        await stop;
+
+        Assert.Equal(1, forwardedFrames);
+        Assert.Equal(CaptureEndReason.ExplicitStop, coordinator.Snapshot.EndReason);
+    }
+
+    [Fact]
+    public async Task Reentrant_stop_from_frame_callback_is_rejected_without_deadlock()
+    {
+        var candidate = Candidate();
+        var windows = new FakeWindowEnumerator([candidate]);
+        var source = new FakeFrameSource();
+        var coordinator = new WindowCaptureCoordinator(
+            windows, new FakeSessionFactory(source), new RecordingDispatcher());
+        Exception? rejection = null;
+        coordinator.FrameReceived += (_, _) =>
+        {
+            try
+            {
+                coordinator.StopAsync().GetAwaiter().GetResult();
+            }
+            catch (Exception exception)
+            {
+                rejection = exception;
+            }
+        };
+        Assert.True(await coordinator.StartAsync(candidate));
+        source.Write(Frame(1));
+        await WaitUntilAsync(() => coordinator.Snapshot.CapturedCount == 1);
+        await coordinator.StopAsync();
+
+        Assert.IsType<InvalidOperationException>(rejection);
+        Assert.Equal(CaptureEndReason.ExplicitStop, coordinator.Snapshot.EndReason);
     }
 
     [Fact]

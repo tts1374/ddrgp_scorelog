@@ -291,6 +291,7 @@ class MasterIdentity:
     version: str
     songs: tuple[master_match.MasterSong, ...]
     aliases: tuple[tuple[str, str, str], ...]
+    source_hash: str = ""
 
 
 @dataclass(frozen=True)
@@ -354,6 +355,17 @@ def ensure_data_path(path: Path, *, argument_name: str, directory: bool = False)
         raise ValueError(f"{argument_name} must not be the data/ directory itself")
     if not directory and candidate.suffix.lower() not in {".sqlite", ".sqlite3", ".db"}:
         raise ValueError(f"{argument_name} must be a SQLite file under data/: {path}")
+
+
+def ensure_data_file_path(path: Path, *, argument_name: str) -> None:
+    root = _resolved(Path.cwd() / "data")
+    candidate = _resolved(path)
+    try:
+        relative = candidate.relative_to(root)
+    except ValueError as exc:
+        raise ValueError(f"{argument_name} must be under data/: {path}") from exc
+    if not relative.parts:
+        raise ValueError(f"{argument_name} must not be the data/ directory itself")
 
 
 def _connect_read_only(path: Path) -> sqlite3.Connection:
@@ -1036,7 +1048,12 @@ def load_master_identity(path: Path) -> MasterIdentity:
             )
     except sqlite3.DatabaseError as exc:
         raise ValueError(f"invalid M4 master database: {path}") from exc
-    return MasterIdentity(version=version, songs=songs, aliases=aliases)
+    return MasterIdentity(
+        version=version,
+        songs=songs,
+        aliases=aliases,
+        source_hash=metadata["source_hash"],
+    )
 
 
 def _normalized_pair(title: str, artist: str) -> tuple[str, str]:
@@ -1196,10 +1213,27 @@ def ingest_observation(
     image_kind: str = "full_frame",
     expected_song_id: str = "",
     now: str | None = None,
+    expected_master_version: str | None = None,
+    expected_master_source_hash: str | None = None,
+    expected_feature_extractor_version: str | None = None,
+    expected_catalog_identity: str | None = None,
+    expected_catalog_schema_version: int | None = None,
+    expected_catalog_created_at: str | None = None,
+    strict_capture_payload: bool = False,
 ) -> IngestResult:
     if catalog_schema_version(catalog_path) != CATALOG_SCHEMA_VERSION:
         raise ValueError("observation ingest requires catalog schema version 1")
     master = load_master_identity(master_db)
+    if expected_master_version is not None and master.version != expected_master_version:
+        raise ValueError("master version drift detected during observation ingest")
+    if expected_master_source_hash is not None and (
+        master.source_hash != expected_master_source_hash
+    ):
+        raise ValueError("master source hash drift detected during observation ingest")
+    if expected_feature_extractor_version is not None and (
+        expected_feature_extractor_version != FEATURE_EXTRACTOR_VERSION
+    ):
+        raise ValueError("feature extractor version drift detected during observation ingest")
     if not source_image_path.is_file():
         raise ValueError(f"source image does not exist: {source_image_path}")
     image_bytes = source_image_path.read_bytes()
@@ -1229,9 +1263,33 @@ def ingest_observation(
         observed_artist=observed_artist,
     )
     with closing(sqlite3.connect(catalog_path)) as connection, connection:
+        connection.execute("BEGIN IMMEDIATE")
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA foreign_keys = ON")
-        _validate_catalog(connection)
+        write_schema_version = _validate_catalog(connection)
+        if write_schema_version != CATALOG_SCHEMA_VERSION:
+            raise ValueError("observation ingest requires catalog schema version 1")
+        write_metadata = dict(
+            connection.execute("SELECT key, value FROM catalog_metadata")
+        )
+        if expected_catalog_identity is not None and (
+            write_metadata["catalog_identity"] != expected_catalog_identity
+        ):
+            raise ValueError("catalog identity drift detected during observation ingest")
+        if expected_catalog_schema_version is not None and (
+            write_schema_version != expected_catalog_schema_version
+        ):
+            raise ValueError("catalog schema drift detected during observation ingest")
+        if expected_catalog_created_at is not None and (
+            write_metadata["created_at"] != expected_catalog_created_at
+        ):
+            raise ValueError("catalog file identity drift detected during observation ingest")
+        current_master = load_master_identity(master_db)
+        if (
+            current_master.version != master.version
+            or current_master.source_hash != master.source_hash
+        ):
+            raise ValueError("master drift detected during observation ingest transaction")
         row = None
         if capture_id is not None:
             row = connection.execute(
@@ -1244,7 +1302,17 @@ def ingest_observation(
             ).fetchone()
             if row is not None and str(row["source_image_hash"]) != source_hash:
                 raise ValueError("source_capture_id was already used with different image bytes")
-        if row is None and resolved_song_id is not None:
+            if row is not None and strict_capture_payload and (
+                observed_title != str(row["observed_title"])
+                or observed_artist != str(row["observed_artist"])
+                or observation_status != str(row["observation_status"])
+                or image_kind != str(row["image_kind"])
+                or expected_song_id != str(row["expected_song_id"])
+            ):
+                raise ValueError(
+                    "source_capture_id was already used with different observation payload"
+                )
+        if row is None and capture_id is None and resolved_song_id is not None:
             row = connection.execute(
                 """
                 SELECT *
@@ -1254,7 +1322,7 @@ def ingest_observation(
                 """,
                 (source_hash, FEATURE_EXTRACTOR_VERSION, resolved_song_id),
             ).fetchone()
-        if row is None and resolved_song_id is None:
+        if row is None and capture_id is None and resolved_song_id is None:
             row = connection.execute(
                 """
                 SELECT *
@@ -1460,6 +1528,105 @@ def _decode_persisted_feature(row: sqlite3.Row) -> master_match.JacketFeature:
         ),
         dhash_hex=dhash_hex,
     )
+
+
+def validate_observation_session(
+    catalog_path: Path,
+    master_db: Path,
+    *,
+    expected_catalog_identity: str,
+    expected_catalog_schema_version: int,
+    expected_catalog_created_at: str,
+    expected_master_version: str,
+    expected_master_source_hash: str,
+    expected_feature_extractor_version: str,
+) -> dict[str, str | int]:
+    with closing(_connect_read_only(catalog_path)) as connection:
+        schema_version = _validate_catalog(connection)
+        catalog_created_at = str(
+            connection.execute(
+                "SELECT value FROM catalog_metadata WHERE key = 'created_at'"
+            ).fetchone()[0]
+        )
+    if expected_catalog_identity != CATALOG_IDENTITY:
+        raise ValueError("catalog identity drift detected for observation session")
+    if schema_version != expected_catalog_schema_version:
+        raise ValueError("catalog schema drift detected for observation session")
+    if catalog_created_at != expected_catalog_created_at:
+        raise ValueError("catalog file identity drift detected for observation session")
+    master = load_master_identity(master_db)
+    if master.version != expected_master_version:
+        raise ValueError("master version drift detected for observation session")
+    if master.source_hash != expected_master_source_hash:
+        raise ValueError("master source hash drift detected for observation session")
+    if expected_feature_extractor_version != FEATURE_EXTRACTOR_VERSION:
+        raise ValueError("feature extractor version drift detected for observation session")
+    return {
+        "catalog_identity": CATALOG_IDENTITY,
+        "catalog_schema_version": schema_version,
+        "catalog_created_at": catalog_created_at,
+        "master_version": master.version,
+        "master_source_hash": master.source_hash,
+        "feature_extractor_version": FEATURE_EXTRACTOR_VERSION,
+    }
+
+
+def validate_observation_receipt(
+    catalog_path: Path,
+    *,
+    observation_id: str,
+    catalog_status: str,
+    catalog_reference_id: str | None,
+    jacket_crop_hash: str,
+    expected_feature_extractor_version: str,
+    expected_catalog_schema_version: int,
+    expected_catalog_created_at: str,
+) -> dict[str, str | int]:
+    with closing(_connect_read_only(catalog_path)) as connection:
+        connection.row_factory = sqlite3.Row
+        schema_version = _validate_catalog(connection)
+        created_at = str(
+            connection.execute(
+                "SELECT value FROM catalog_metadata WHERE key = 'created_at'"
+            ).fetchone()[0]
+        )
+        if (
+            schema_version != expected_catalog_schema_version
+            or created_at != expected_catalog_created_at
+        ):
+            raise ValueError("catalog receipt identity drift detected")
+        if expected_feature_extractor_version != FEATURE_EXTRACTOR_VERSION:
+            raise ValueError("catalog receipt extractor drift detected")
+        if catalog_status == "pending":
+            if catalog_reference_id is not None:
+                raise ValueError("pending catalog receipt must not have a reference id")
+        elif catalog_status == "deferred":
+            if schema_version != CATALOG_SCHEMA_VERSION_V2 or catalog_reference_id is not None:
+                raise ValueError("deferred catalog receipt is incompatible")
+        elif catalog_status == "ingested":
+            if schema_version != CATALOG_SCHEMA_VERSION or not catalog_reference_id:
+                raise ValueError("ingested catalog receipt is incompatible")
+            row = connection.execute(
+                "SELECT * FROM jacket_references WHERE reference_id = ?",
+                (catalog_reference_id,),
+            ).fetchone()
+            if row is None or (
+                str(row["source_capture_id"]) != observation_id
+                or str(row["source_image_hash"]) != jacket_crop_hash
+                or str(row["feature_extractor_version"]) != expected_feature_extractor_version
+                or str(row["observed_title"]) != ""
+                or str(row["observed_artist"]) != ""
+                or str(row["observation_status"]) != "unresolved"
+                or str(row["review_status"]) != "unresolved"
+            ):
+                raise ValueError("ingested catalog receipt does not match its observation")
+        else:
+            raise ValueError("unsupported catalog receipt status")
+    return {
+        "catalog_status": catalog_status,
+        "catalog_schema_version": schema_version,
+        "catalog_created_at": created_at,
+    }
 
 
 def _reference_state(row: sqlite3.Row, master: MasterIdentity) -> tuple[str, str]:
@@ -1832,6 +1999,49 @@ def build_parser() -> argparse.ArgumentParser:
     review.add_argument("--song-id", default="")
     review.add_argument("--reason", default="")
     review.add_argument("--note", default="")
+    ingest = subparsers.add_parser(
+        "ingest", help="Ingest one developer-only observation into catalog v1."
+    )
+    ingest.add_argument("--catalog", type=Path, required=True)
+    ingest.add_argument("--master-db", type=Path, required=True)
+    ingest.add_argument("--source-image", type=Path, required=True)
+    ingest.add_argument("--source-capture-id", required=True)
+    ingest.add_argument("--observed-title", default="")
+    ingest.add_argument("--observed-artist", default="")
+    ingest.add_argument("--observation-status", default="unresolved")
+    ingest.add_argument(
+        "--image-kind", choices=("full_frame", "jacket_crop"), default="jacket_crop"
+    )
+    ingest.add_argument("--expected-master-version", required=True)
+    ingest.add_argument("--expected-master-source-hash", required=True)
+    ingest.add_argument("--expected-feature-extractor-version", required=True)
+    ingest.add_argument("--expected-catalog-identity", required=True)
+    ingest.add_argument("--expected-catalog-schema-version", type=int, required=True)
+    ingest.add_argument("--expected-catalog-created-at", required=True)
+    validate_session = subparsers.add_parser(
+        "validate-session", help="Strictly validate a developer observation session identity."
+    )
+    validate_session.add_argument("--catalog", type=Path, required=True)
+    validate_session.add_argument("--master-db", type=Path, required=True)
+    validate_session.add_argument("--expected-catalog-identity", required=True)
+    validate_session.add_argument("--expected-catalog-schema-version", type=int, required=True)
+    validate_session.add_argument("--expected-catalog-created-at", required=True)
+    validate_session.add_argument("--expected-master-version", required=True)
+    validate_session.add_argument("--expected-master-source-hash", required=True)
+    validate_session.add_argument("--expected-feature-extractor-version", required=True)
+    validate_receipt = subparsers.add_parser(
+        "validate-receipt", help="Validate one persisted observation catalog receipt."
+    )
+    validate_receipt.add_argument("--catalog", type=Path, required=True)
+    validate_receipt.add_argument("--observation-id", required=True)
+    validate_receipt.add_argument(
+        "--catalog-status", choices=("pending", "ingested", "deferred"), required=True
+    )
+    validate_receipt.add_argument("--catalog-reference-id")
+    validate_receipt.add_argument("--jacket-crop-hash", required=True)
+    validate_receipt.add_argument("--expected-feature-extractor-version", required=True)
+    validate_receipt.add_argument("--expected-catalog-schema-version", type=int, required=True)
+    validate_receipt.add_argument("--expected-catalog-created-at", required=True)
     return parser
 
 
@@ -1869,6 +2079,57 @@ def main(argv: list[str] | None = None) -> int:
             ),
         )
         print(json.dumps(receipt.__dict__, ensure_ascii=False, separators=(",", ":")))
+        return 0
+    if args.command == "ingest":
+        ensure_data_path(args.catalog, argument_name="--catalog")
+        ensure_data_file_path(args.source_image, argument_name="--source-image")
+        result = ingest_observation(
+            args.catalog,
+            args.master_db,
+            source_image_path=args.source_image,
+            source_capture_id=args.source_capture_id,
+            observed_title=args.observed_title,
+            observed_artist=args.observed_artist,
+            observation_status=args.observation_status,
+            image_kind=args.image_kind,
+            expected_master_version=args.expected_master_version,
+            expected_master_source_hash=args.expected_master_source_hash,
+            expected_feature_extractor_version=args.expected_feature_extractor_version,
+            expected_catalog_identity=args.expected_catalog_identity,
+            expected_catalog_schema_version=args.expected_catalog_schema_version,
+            expected_catalog_created_at=args.expected_catalog_created_at,
+            strict_capture_payload=True,
+        )
+        print(json.dumps(result.__dict__, ensure_ascii=False, separators=(",", ":")))
+        return 0
+    if args.command == "validate-session":
+        ensure_data_path(args.catalog, argument_name="--catalog")
+        ensure_data_path(args.master_db, argument_name="--master-db")
+        result = validate_observation_session(
+            args.catalog,
+            args.master_db,
+            expected_catalog_identity=args.expected_catalog_identity,
+            expected_catalog_schema_version=args.expected_catalog_schema_version,
+            expected_catalog_created_at=args.expected_catalog_created_at,
+            expected_master_version=args.expected_master_version,
+            expected_master_source_hash=args.expected_master_source_hash,
+            expected_feature_extractor_version=args.expected_feature_extractor_version,
+        )
+        print(json.dumps(result, ensure_ascii=False, separators=(",", ":")))
+        return 0
+    if args.command == "validate-receipt":
+        ensure_data_path(args.catalog, argument_name="--catalog")
+        result = validate_observation_receipt(
+            args.catalog,
+            observation_id=args.observation_id,
+            catalog_status=args.catalog_status,
+            catalog_reference_id=args.catalog_reference_id,
+            jacket_crop_hash=args.jacket_crop_hash,
+            expected_feature_extractor_version=args.expected_feature_extractor_version,
+            expected_catalog_schema_version=args.expected_catalog_schema_version,
+            expected_catalog_created_at=args.expected_catalog_created_at,
+        )
+        print(json.dumps(result, ensure_ascii=False, separators=(",", ":")))
         return 0
     if args.command == "build":
         ensure_data_path(args.catalog, argument_name="--catalog")
