@@ -845,6 +845,8 @@ def apply_review_mutation(
             if request.action == "reopen" and before_status != "rejected":
                 raise ValueError("reopen requires a rejected reference")
             if request.action in {"manual_confirm", "reassign"}:
+                if str(row["feature_extractor_version"]) != FEATURE_EXTRACTOR_VERSION:
+                    raise ValueError("manual review requires the current feature extractor")
                 try:
                     _decode_persisted_feature(row)
                 except ValueError as exc:

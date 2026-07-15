@@ -363,6 +363,71 @@ def test_manual_confirm_rejects_typed_vector_corruption_without_side_effects(
 
 
 @pytest.mark.parametrize(
+    ("action", "observed_artist", "expected_status", "expected_song_id"),
+    [
+        ("manual_confirm", "wrong", "needs_review", None),
+        ("reassign", "Artist A", "auto_confirmed", "song-1"),
+    ],
+)
+def test_manual_review_rejects_stale_extractor_without_side_effects(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    action: str,
+    observed_artist: str,
+    expected_status: str,
+    expected_song_id: str | None,
+) -> None:
+    master_db, source = setup_paths(tmp_path, monkeypatch)
+    image = tmp_path / "data" / "stale.png"
+    write_image(image, (12, 34, 56))
+    ingested = catalog.ingest_observation(
+        source,
+        master_db,
+        source_image_path=image,
+        source_capture_id=f"stale-{action}",
+        observed_title="Alpha",
+        observed_artist=observed_artist,
+        image_kind="jacket_crop",
+    )
+    target = tmp_path / "data" / "catalog-v2.sqlite"
+    catalog.migrate_catalog_v1_to_v2(source, target)
+    with sqlite3.connect(target) as connection:
+        connection.execute(
+            "UPDATE jacket_references SET feature_extractor_version = 'm5-jacket-v0' "
+            "WHERE reference_id = ?",
+            (ingested.reference_id,),
+        )
+    before = hashlib.sha256(target.read_bytes()).hexdigest()
+
+    with pytest.raises(ValueError, match="current feature extractor"):
+        catalog.apply_review_mutation(
+            target,
+            master_db,
+            catalog.ReviewMutationRequest(
+                action_id=f"stale-{action}",
+                reference_id=ingested.reference_id,
+                action=action,
+                expected_revision=0,
+                expected_status=expected_status,
+                expected_song_id=expected_song_id,
+                song_id="song-2",
+            ),
+        )
+
+    assert hashlib.sha256(target.read_bytes()).hexdigest() == before
+    with sqlite3.connect(target) as connection:
+        assert connection.execute(
+            "SELECT review_status, review_revision FROM jacket_references "
+            "WHERE reference_id = ?",
+            (ingested.reference_id,),
+        ).fetchone() == (expected_status, 0)
+        assert (
+            connection.execute("SELECT COUNT(*) FROM reference_review_history").fetchone()[0]
+            == 0
+        )
+
+
+@pytest.mark.parametrize(
     "raw",
     [123, b"\xff", json.dumps([10**1000])],
 )
