@@ -1,6 +1,8 @@
+using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json.Nodes;
+using System.Threading.Channels;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 
@@ -41,6 +43,368 @@ public sealed class JacketObservationTests : IDisposable
         Assert.Equal(JacketDetectionState.ChangeCandidate, changed.State);
         Assert.Equal(1, duplicate.DuplicatePreviewCount);
         Assert.NotEqual(stable.Candidate!.FeatureHash, changed.Candidate!.FeatureHash);
+    }
+
+    [Fact]
+    public async Task Observation_queue_drops_are_persisted_with_capture_drops_after_stop()
+    {
+        var checkpointStore = new AtomicObservationCheckpointStore(root);
+        var source = new TestFrameSource();
+        var candidate = Candidate();
+        var windows = new TestWindowEnumerator(candidate);
+        var coordinator = new WindowCaptureCoordinator(
+            windows,
+            new TestSessionFactory(source),
+            new ImmediateCaptureDispatcher(),
+            ringCapacity: 2);
+        var capture = new WindowCaptureViewModel(windows, coordinator);
+        var dispatcher = new BlockingObservationDispatcher();
+        var session = new JacketObservationSession(
+            new JacketObservationDetector(new JacketDetectorOptions(0.01, 2, TimeSpan.Zero)),
+            checkpointStore,
+            new AtomicObservationArtifactPublisher(root),
+            new FakeCatalogAdapter());
+        await using var viewModel = new JacketObservationViewModel(
+            capture,
+            session,
+            dispatcher);
+
+        await viewModel.StartSessionAsync(
+            Master(), Catalog(), candidate, "master.sqlite", "catalog.sqlite");
+        Assert.True(await coordinator.StartAsync(candidate));
+
+        var initialChange = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var initialStable = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        viewModel.PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName != nameof(viewModel.StableCandidate))
+            {
+                return;
+            }
+            if (viewModel.Detection.State == JacketDetectionState.ChangeCandidate)
+            {
+                initialChange.TrySetResult();
+            }
+            if (viewModel.Detection.State == JacketDetectionState.StableCandidate)
+            {
+                initialStable.TrySetResult();
+            }
+        };
+
+        var delivered = 0;
+        var allFramesDelivered = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        capture.FrameReceived += (_, _) =>
+        {
+            if (Interlocked.Increment(ref delivered) == 6)
+            {
+                allFramesDelivered.TrySetResult();
+            }
+        };
+
+        source.Write(Frame(20, 1, 0));
+        await initialChange.Task;
+        source.Write(Frame(20, 2, 100));
+        await initialStable.Task;
+        await viewModel.AdoptAsync();
+
+        dispatcher.BlockNext();
+        source.Write(Frame(20, 3, 200));
+        await dispatcher.Entered;
+        source.Write(Frame(20, 4, 300));
+        source.Write(Frame(20, 5, 400));
+        source.Write(Frame(20, 6, 500));
+        await allFramesDelivered.Task;
+
+        Assert.Contains("observation_drop=2", viewModel.DetectorProgress);
+
+        var stopping = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var inactive = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        viewModel.PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName == nameof(viewModel.IsActive) && !viewModel.IsActive)
+            {
+                inactive.TrySetResult();
+            }
+        };
+        capture.LifecycleChanged += (_, value) =>
+        {
+            if (value.State == CaptureLifecycleState.Stopping)
+            {
+                stopping.TrySetResult();
+            }
+        };
+
+        var stop = coordinator.StopAsync();
+        await stopping.Task;
+        dispatcher.Release();
+        await stop;
+        await inactive.Task;
+
+        var persisted = await checkpointStore.LoadAsync(viewModel.SessionId);
+        Assert.Equal(4, persisted.ProcessedFrameCount);
+        Assert.Equal(6, persisted.DroppedFrameCount);
+
+        await using var resumed = new JacketObservationSession(
+            new JacketObservationDetector(new JacketDetectorOptions(0.01, 2, TimeSpan.Zero)),
+            checkpointStore,
+            new AtomicObservationArtifactPublisher(root),
+            new FakeCatalogAdapter());
+        var resume = await resumed.ResumeAsync(
+            ResumeRequest(persisted.Session), "master.sqlite", "catalog.sqlite");
+        Assert.True(resume.Compatible);
+        Assert.Equal(6, resume.Checkpoint!.DroppedFrameCount);
+        await resumed.StopAsync();
+    }
+
+    [Fact]
+    public async Task Stopping_waits_for_final_source_drop_before_checkpoint_save()
+    {
+        var checkpointStore = new AtomicObservationCheckpointStore(root);
+        var source = new TestFrameSource(droppedOnStop: 3);
+        var candidate = Candidate();
+        var windows = new TestWindowEnumerator(candidate);
+        var coordinator = new WindowCaptureCoordinator(
+            windows,
+            new TestSessionFactory(source),
+            new ImmediateCaptureDispatcher(),
+            ringCapacity: 32);
+        var capture = new WindowCaptureViewModel(windows, coordinator);
+        var dispatcher = new BlockingObservationDispatcher();
+        var session = new JacketObservationSession(
+            new JacketObservationDetector(new JacketDetectorOptions(0.01, 2, TimeSpan.Zero)),
+            checkpointStore,
+            new AtomicObservationArtifactPublisher(root),
+            new FakeCatalogAdapter());
+        await using var viewModel = new JacketObservationViewModel(
+            capture,
+            session,
+            dispatcher);
+
+        await viewModel.StartSessionAsync(
+            Master(), Catalog(), candidate, "master.sqlite", "catalog.sqlite");
+        Assert.True(await coordinator.StartAsync(candidate));
+
+        var initialChange = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var initialStable = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        viewModel.PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName != nameof(viewModel.StableCandidate))
+            {
+                return;
+            }
+            if (viewModel.Detection.State == JacketDetectionState.ChangeCandidate)
+            {
+                initialChange.TrySetResult();
+            }
+            if (viewModel.Detection.State == JacketDetectionState.StableCandidate)
+            {
+                initialStable.TrySetResult();
+            }
+        };
+
+        var delivered = 0;
+        var allFramesDelivered = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        capture.FrameReceived += (_, _) =>
+        {
+            if (Interlocked.Increment(ref delivered) == 5)
+            {
+                allFramesDelivered.TrySetResult();
+            }
+        };
+
+        source.Write(Frame(20, 1, 0));
+        await initialChange.Task;
+        source.Write(Frame(20, 2, 100));
+        await initialStable.Task;
+        await viewModel.AdoptAsync();
+
+        dispatcher.BlockNext();
+        source.Write(Frame(20, 3, 200));
+        await dispatcher.Entered;
+        source.Write(Frame(20, 4, 300));
+        source.Write(Frame(20, 5, 400));
+        await allFramesDelivered.Task;
+        Assert.Contains("observation_drop=1", viewModel.DetectorProgress);
+
+        var stopping = new TaskCompletionSource<CaptureLifecycleSnapshot>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var stopped = new TaskCompletionSource<CaptureLifecycleSnapshot>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var inactive = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        viewModel.PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName == nameof(viewModel.IsActive) && !viewModel.IsActive)
+            {
+                inactive.TrySetResult();
+            }
+        };
+        capture.LifecycleChanged += (_, value) =>
+        {
+            if (value.State == CaptureLifecycleState.Stopping)
+            {
+                stopping.TrySetResult(value);
+            }
+            else if (value.State is CaptureLifecycleState.Stopped or CaptureLifecycleState.Failed)
+            {
+                stopped.TrySetResult(value);
+            }
+        };
+
+        var stop = coordinator.StopAsync();
+        var stoppingSnapshot = await stopping.Task;
+        Assert.Equal(0, stoppingSnapshot.DroppedCount);
+        Assert.True(viewModel.IsActive);
+        Assert.Equal(0, (await checkpointStore.LoadAsync(viewModel.SessionId)).DroppedFrameCount);
+
+        dispatcher.Release();
+        var stoppedSnapshot = await stopped.Task;
+        Assert.Equal(3, stoppedSnapshot.DroppedCount);
+        await stop;
+        await inactive.Task;
+        Assert.False(viewModel.IsActive);
+
+        var persisted = await checkpointStore.LoadAsync(viewModel.SessionId);
+        Assert.Equal(4, persisted.DroppedFrameCount);
+        var checkpointBytes = await File.ReadAllBytesAsync(
+            Path.Combine(root, viewModel.SessionId, "checkpoint.json"));
+        await viewModel.StopAsync();
+        Assert.Equal(
+            checkpointBytes,
+            await File.ReadAllBytesAsync(Path.Combine(root, viewModel.SessionId, "checkpoint.json")));
+        Assert.Equal(4, (await checkpointStore.LoadAsync(viewModel.SessionId)).DroppedFrameCount);
+    }
+
+    [Fact]
+    public async Task Detection_changes_notify_stable_candidate_and_adopt_displayed_feature()
+    {
+        var checkpointStore = new AtomicObservationCheckpointStore(root);
+        var source = new TestFrameSource();
+        var candidate = Candidate();
+        var windows = new TestWindowEnumerator(candidate);
+        var coordinator = new WindowCaptureCoordinator(
+            windows,
+            new TestSessionFactory(source),
+            new ImmediateCaptureDispatcher(),
+            ringCapacity: 32);
+        var capture = new WindowCaptureViewModel(windows, coordinator);
+        var viewModel = new JacketObservationViewModel(
+            capture,
+            new JacketObservationSession(
+                new JacketObservationDetector(new JacketDetectorOptions(0.01, 2, TimeSpan.Zero)),
+                checkpointStore,
+                new AtomicObservationArtifactPublisher(root),
+                new FakeCatalogAdapter()),
+            new ImmediateCaptureDispatcher());
+        await using (viewModel)
+        {
+            var firstStable = new TaskCompletionSource<JacketDetectionResult>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            var firstChange = new TaskCompletionSource(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            var duplicate = new TaskCompletionSource<JacketDetectionResult>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            var changedFeature = new TaskCompletionSource<string>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            var secondStable = new TaskCompletionSource<JacketDetectionResult>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            var clearedAfterStop = new TaskCompletionSource(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            JacketDetectionResult? firstStableResult = null;
+            var expectCleared = false;
+            viewModel.PropertyChanged += (_, args) =>
+            {
+                if (args.PropertyName != nameof(viewModel.StableCandidate))
+                {
+                    return;
+                }
+                var value = viewModel.Detection;
+                if (value.State == JacketDetectionState.StableCandidate
+                    && value.Candidate is not null)
+                {
+                    if (firstStableResult is null)
+                    {
+                        firstStableResult = value;
+                        firstStable.TrySetResult(value);
+                    }
+                    else if (value.Candidate.FeatureHash != firstStableResult.Candidate?.FeatureHash)
+                    {
+                        secondStable.TrySetResult(value);
+                    }
+                }
+                else if (value.State == JacketDetectionState.DuplicatePreview)
+                {
+                    duplicate.TrySetResult(value);
+                }
+                else if (value.State == JacketDetectionState.ChangeCandidate
+                    && value.Candidate is not null
+                    && firstStableResult is not null
+                    && value.Candidate.FeatureHash != firstStableResult.Candidate?.FeatureHash)
+                {
+                    changedFeature.TrySetResult(viewModel.StableCandidate);
+                }
+                else if (expectCleared && value.State == JacketDetectionState.NoFrame)
+                {
+                    clearedAfterStop.TrySetResult();
+                }
+                else if (value.State == JacketDetectionState.ChangeCandidate
+                    && firstStableResult is null)
+                {
+                    firstChange.TrySetResult();
+                }
+            };
+
+            await viewModel.StartSessionAsync(
+                Master(), Catalog(), candidate, "master.sqlite", "catalog.sqlite");
+            Assert.Equal("—", viewModel.StableCandidate);
+            Assert.True(await coordinator.StartAsync(candidate));
+
+            source.Write(Frame(20, 1, 0));
+            await firstChange.Task;
+            source.Write(Frame(20, 2, 100));
+            var stableA = await firstStable.Task;
+            Assert.Contains($"feature={stableA.Candidate!.FeatureHash}", viewModel.StableCandidate);
+
+            source.Write(Frame(20, 3, 200));
+            var duplicateResult = await duplicate.Task;
+            Assert.Equal(stableA.Candidate.FeatureHash, duplicateResult.Candidate!.FeatureHash);
+
+            source.Write(Frame(80, 4, 300));
+            var changedDisplay = await changedFeature.Task;
+            Assert.Contains($"feature={stableA.Candidate.FeatureHash}", changedDisplay);
+            Assert.True(viewModel.CanAdopt);
+            var adoptedDuringSettling = await viewModel.AdoptAsync();
+            Assert.Equal(
+                stableA.Candidate.FeatureHash,
+                adoptedDuringSettling.Checkpoint.Observations.Single(
+                    observation => observation.ObservationId == adoptedDuringSettling.ObservationId).FeatureHash);
+
+            source.Write(Frame(80, 5, 400));
+            var stableB = await secondStable.Task;
+            Assert.NotEqual(stableA.Candidate.FeatureHash, stableB.Candidate!.FeatureHash);
+            Assert.Contains($"feature={stableB.Candidate.FeatureHash}", viewModel.StableCandidate);
+            Assert.True(viewModel.CanAdopt);
+
+            var adopted = await viewModel.AdoptAsync();
+            Assert.Equal(
+                stableB.Candidate.FeatureHash,
+                adopted.Checkpoint.Observations.Single(
+                    observation => observation.ObservationId == adopted.ObservationId).FeatureHash);
+
+            expectCleared = true;
+            await viewModel.StopAsync();
+            await clearedAfterStop.Task;
+            Assert.Equal("—", viewModel.StableCandidate);
+            await coordinator.StopAsync();
+        }
     }
 
     [Fact]
@@ -498,6 +862,129 @@ public sealed class JacketObservationTests : IDisposable
         Assert.Contains("validate-session", runner.Requests[0].Arguments);
         Assert.Contains("--expected-catalog-created-at", runner.Requests[0].Arguments);
         Assert.Contains(identity.CatalogCreatedAt, runner.Requests[0].Arguments);
+    }
+
+    private static ProjectionMaster Master() => new()
+    {
+        Path = "master.sqlite",
+        MasterVersion = "master-v1",
+        SourceHash = "master-hash",
+        SongCount = 1,
+        ChartCount = 1,
+        GrandPrixSongCount = 1,
+    };
+
+    private static ProjectionCatalog Catalog() => new()
+    {
+        Path = "catalog.sqlite",
+        CatalogIdentity = "ddrgp-local-jacket-reference-catalog",
+        SchemaVersion = 1,
+        CreatedAt = "catalog-created",
+        CurrentFeatureExtractorVersion = JacketObservationVersions.FeatureExtractor,
+    };
+
+    private static WindowCandidate Candidate() => new(
+        new WindowIdentitySnapshot(
+            (nint)0x1234,
+            42,
+            100,
+            "ddrgp",
+            "DDR GRAND PRIX",
+            "game",
+            1280,
+            720,
+            true,
+            false),
+        "test candidate",
+        null);
+
+    private sealed class TestWindowEnumerator(WindowCandidate candidate) : IWindowEnumerator
+    {
+        public Task<IReadOnlyList<WindowCandidate>> EnumerateAsync(
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<WindowCandidate>>([candidate]);
+
+        public WindowIdentitySnapshot? TryGetSnapshot(nint handle) => candidate.Identity;
+    }
+
+    private sealed class TestSessionFactory(IWindowCaptureFrameSource source)
+        : IWindowCaptureSessionFactory
+    {
+        public bool IsSupported => true;
+
+        public Task<IWindowCaptureFrameSource> StartAsync(
+            WindowIdentitySnapshot target,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(source);
+    }
+
+    private sealed class TestFrameSource : IWindowCaptureFrameSource
+    {
+        private readonly long droppedOnStop;
+        private readonly Channel<RawCaptureFrame> frames = Channel.CreateUnbounded<RawCaptureFrame>();
+        private readonly TaskCompletionSource<CaptureEndReason> completion = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        private long droppedCount;
+        private int stopped;
+
+        public TestFrameSource(long droppedOnStop = 0) => this.droppedOnStop = droppedOnStop;
+
+        public long DroppedCount => Interlocked.Read(ref droppedCount);
+        public Task<CaptureEndReason> Completion => completion.Task;
+
+        public void Write(RawCaptureFrame frame) => frames.Writer.TryWrite(frame);
+
+        public async IAsyncEnumerable<RawCaptureFrame> ReadFramesAsync(
+            [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            await foreach (var frame in frames.Reader.ReadAllAsync(cancellationToken))
+            {
+                yield return frame;
+            }
+        }
+
+        public Task StopAsync()
+        {
+            if (Interlocked.Exchange(ref stopped, 1) == 0)
+            {
+                Interlocked.Add(ref droppedCount, droppedOnStop);
+                completion.TrySetResult(CaptureEndReason.ExplicitStop);
+                frames.Writer.TryComplete();
+            }
+            return Task.CompletedTask;
+        }
+
+        public ValueTask DisposeAsync()
+        {
+            completion.TrySetResult(CaptureEndReason.ExplicitStop);
+            frames.Writer.TryComplete();
+            return ValueTask.CompletedTask;
+        }
+    }
+
+    private sealed class BlockingObservationDispatcher : ICaptureDispatcher
+    {
+        private readonly TaskCompletionSource entered = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource release = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        private int blockNext;
+
+        public Task Entered => entered.Task;
+
+        public void BlockNext() => Volatile.Write(ref blockNext, 1);
+
+        public async Task InvokeAsync(Action action)
+        {
+            if (Interlocked.Exchange(ref blockNext, 0) == 1)
+            {
+                entered.TrySetResult();
+                await release.Task;
+            }
+            action();
+        }
+
+        public void Release() => release.TrySetResult();
     }
 
     private ObservationArtifact Artifact(

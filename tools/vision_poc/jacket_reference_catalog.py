@@ -1312,7 +1312,7 @@ def ingest_observation(
                 raise ValueError(
                     "source_capture_id was already used with different observation payload"
                 )
-        if row is None and capture_id is None and resolved_song_id is not None:
+        if row is None and not strict_capture_payload and resolved_song_id is not None:
             row = connection.execute(
                 """
                 SELECT *
@@ -1322,7 +1322,7 @@ def ingest_observation(
                 """,
                 (source_hash, FEATURE_EXTRACTOR_VERSION, resolved_song_id),
             ).fetchone()
-        if row is None and capture_id is None and resolved_song_id is None:
+        if row is None and not strict_capture_payload and resolved_song_id is None:
             row = connection.execute(
                 """
                 SELECT *

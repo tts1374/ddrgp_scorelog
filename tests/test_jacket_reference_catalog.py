@@ -884,6 +884,86 @@ def test_ingest_is_idempotent_supports_one_to_many_and_rejects_capture_conflict(
         )
 
 
+def test_non_strict_ingest_reuses_resolved_source_hash_with_new_capture_id(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    master_db, catalog_path = setup_paths(tmp_path, monkeypatch)
+    image_path = tmp_path / "resolved.png"
+    write_image(image_path, (10, 20, 30))
+
+    first = catalog.ingest_observation(
+        catalog_path,
+        master_db,
+        source_image_path=image_path,
+        source_capture_id="capture-1",
+        observed_title="Alpha",
+        observed_artist="Artist A",
+        image_kind="jacket_crop",
+    )
+    repeated = catalog.ingest_observation(
+        catalog_path,
+        master_db,
+        source_image_path=image_path,
+        source_capture_id="capture-2",
+        observed_title="Alpha",
+        observed_artist="Artist A",
+        image_kind="jacket_crop",
+    )
+
+    assert first.reference_id == repeated.reference_id
+    assert (first.disposition, repeated.disposition, repeated.review_status) == (
+        "created",
+        "existing",
+        "auto_confirmed",
+    )
+    with sqlite3.connect(catalog_path) as connection:
+        assert connection.execute("SELECT COUNT(*) FROM jacket_references").fetchone()[0] == 1
+        assert connection.execute(
+            "SELECT source_capture_id FROM jacket_references"
+        ).fetchone()[0] == "capture-1"
+
+
+def test_non_strict_ingest_reuses_unresolved_source_hash_title_with_new_capture_id(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    master_db, catalog_path = setup_paths(tmp_path, monkeypatch)
+    image_path = tmp_path / "unresolved.png"
+    write_image(image_path, (10, 20, 30))
+
+    first = catalog.ingest_observation(
+        catalog_path,
+        master_db,
+        source_image_path=image_path,
+        source_capture_id="capture-1",
+        observed_title="",
+        observed_artist="",
+        observation_status="unresolved",
+        image_kind="jacket_crop",
+    )
+    repeated = catalog.ingest_observation(
+        catalog_path,
+        master_db,
+        source_image_path=image_path,
+        source_capture_id="capture-2",
+        observed_title="",
+        observed_artist="",
+        observation_status="unresolved",
+        image_kind="jacket_crop",
+    )
+
+    assert first.reference_id == repeated.reference_id
+    assert (first.disposition, repeated.disposition, repeated.review_status) == (
+        "created",
+        "existing",
+        "unresolved",
+    )
+    with sqlite3.connect(catalog_path) as connection:
+        assert connection.execute("SELECT COUNT(*) FROM jacket_references").fetchone()[0] == 1
+        assert connection.execute(
+            "SELECT source_capture_id FROM jacket_references"
+        ).fetchone()[0] == "capture-1"
+
+
 def test_developer_observation_ingest_preserves_empty_identity_and_strict_guards(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

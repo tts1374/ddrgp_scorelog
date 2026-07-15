@@ -13,6 +13,9 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
     private RawCaptureFrame? pendingFrame;
     private bool frameWorkerRunning;
     private long observationDroppedFrameCount;
+    private long captureDroppedFrameCount;
+    private long persistedDroppedFrameCount;
+    private JacketObservationCandidate? stableCandidate;
     private JacketDetectionResult detection = new(
         JacketDetectionState.NoFrame, null, "session is not started", 0, 0, 0);
     private string statusTitle = "観測session未開始";
@@ -45,6 +48,7 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
             {
                 OnPropertyChanged(nameof(DetectorState));
                 OnPropertyChanged(nameof(DetectorProgress));
+                OnPropertyChanged(nameof(StableCandidate));
                 OnPropertyChanged(nameof(CanAdopt));
             }
         }
@@ -78,9 +82,9 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
     public string DetectorProgress =>
         $"frames={Detection.ProcessedFrameCount} / invalid={Detection.InvalidFrameCount} "
         + $"/ duplicate={Detection.DuplicatePreviewCount} / observation_drop={observationDroppedFrameCount}";
-    public string StableCandidate => Detection.Candidate is null
+    public string StableCandidate => stableCandidate is null
         ? "—"
-        : $"feature={Detection.Candidate.FeatureHash}, stable={Detection.Candidate.StableFrameCount} frames / {Detection.Candidate.StableDuration.TotalMilliseconds:0}ms";
+        : $"feature={stableCandidate.FeatureHash}, stable={stableCandidate.StableFrameCount} frames / {stableCandidate.StableDuration.TotalMilliseconds:0}ms";
     public string LastCatalogReceipt => lastCatalogReceipt ?? "未投入";
     public bool IsActive => session.IsActive;
     public bool CanAdopt => !captureEnded && session.HasAdoptableCandidate;
@@ -159,7 +163,7 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
         {
             throw new InvalidOperationException(result.Message);
         }
-        ResetFrameQueueForStart();
+        ResetFrameQueueForStart(result.Checkpoint.DroppedFrameCount);
         Detection = session.LastDetection;
         sessionId = result.Checkpoint.Session.SessionId;
         lastCatalogReceipt = null;
@@ -215,13 +219,28 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
         try
         {
             await pendingFrames.WaitAsync(cancellationToken);
+            long droppedFrameCount;
+            lock (frameSync)
+            {
+                droppedFrameCount = checked(
+                    persistedDroppedFrameCount
+                    + captureDroppedFrameCount
+                    + observationDroppedFrameCount);
+            }
+            await session.UpdateDroppedFrameCountAsync(droppedFrameCount, cancellationToken);
             await session.StopAsync(cancellationToken);
             StatusTitle = "観測session停止";
             StatusMessage = "停止後frameはdetector/artifact/catalogへ渡しません。";
         }
         finally
         {
+            var hadStableCandidate = stableCandidate is not null;
+            stableCandidate = null;
             Detection = session.LastDetection;
+            if (hadStableCandidate)
+            {
+                OnPropertyChanged(nameof(StableCandidate));
+            }
             OnPropertyChanged(nameof(IsActive));
             OnPropertyChanged(nameof(CanAdopt));
             OnPropertyChanged(nameof(CanResume));
@@ -277,6 +296,10 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
             var value = await session.ObserveFrameAsync(frame);
             await dispatcher.InvokeAsync(() =>
             {
+                if (value.HasStableCandidate && value.Candidate is not null)
+                {
+                    stableCandidate = value.Candidate;
+                }
                 Detection = value;
                 StatusTitle = value.HasStableCandidate
                     ? "安定候補（明示採用待ち）"
@@ -296,10 +319,14 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
 
     private async void OnLifecycleChanged(object? sender, CaptureLifecycleSnapshot value)
     {
-        var terminal = value.State is CaptureLifecycleState.Stopping
-            or CaptureLifecycleState.Stopped
+        var stopping = value.State == CaptureLifecycleState.Stopping;
+        var terminal = value.State is CaptureLifecycleState.Stopped
             or CaptureLifecycleState.Failed;
-        if (terminal)
+        lock (frameSync)
+        {
+            captureDroppedFrameCount = Math.Max(captureDroppedFrameCount, value.DroppedCount);
+        }
+        if (stopping || terminal)
         {
             lock (frameSync)
             {
@@ -311,7 +338,13 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
         {
             if (session.IsActive)
             {
-                await session.UpdateDroppedFrameCountAsync(value.DroppedCount);
+                long droppedFrameCount;
+                lock (frameSync)
+                {
+                    droppedFrameCount = checked(
+                        persistedDroppedFrameCount + captureDroppedFrameCount);
+                }
+                await session.UpdateDroppedFrameCountAsync(droppedFrameCount);
             }
             if (terminal)
             {
@@ -325,7 +358,7 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
         }
     }
 
-    private void ResetFrameQueueForStart()
+    private void ResetFrameQueueForStart(long persistedDropCount = 0)
     {
         lock (frameSync)
         {
@@ -335,8 +368,12 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
             }
             captureEnded = false;
             observationDroppedFrameCount = 0;
+            captureDroppedFrameCount = 0;
+            persistedDroppedFrameCount = persistedDropCount;
+            stableCandidate = null;
         }
         OnPropertyChanged(nameof(DetectorProgress));
+        OnPropertyChanged(nameof(StableCandidate));
     }
 
     private bool SetField<T>(
