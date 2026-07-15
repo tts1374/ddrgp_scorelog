@@ -964,6 +964,47 @@ def test_non_strict_ingest_reuses_unresolved_source_hash_title_with_new_capture_
         ).fetchone()[0] == "capture-1"
 
 
+def test_validate_session_cli_accepts_read_only_master_outside_data(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    master_db, catalog_path = setup_paths(tmp_path, monkeypatch)
+    master = catalog.load_master_identity(master_db)
+    with sqlite3.connect(catalog_path) as connection:
+        catalog_created_at = connection.execute(
+            "SELECT value FROM catalog_metadata WHERE key = 'created_at'"
+        ).fetchone()[0]
+    master_before = master_db.read_bytes()
+    catalog_before = catalog_path.read_bytes()
+    root_entries_before = sorted(path.relative_to(tmp_path) for path in tmp_path.rglob("*"))
+
+    exit_code = catalog.main(
+        [
+            "validate-session",
+            "--catalog",
+            str(catalog_path),
+            "--master-db",
+            str(master_db),
+            "--expected-catalog-identity",
+            catalog.CATALOG_IDENTITY,
+            "--expected-catalog-schema-version",
+            str(catalog.CATALOG_SCHEMA_VERSION),
+            "--expected-catalog-created-at",
+            catalog_created_at,
+            "--expected-master-version",
+            master.version,
+            "--expected-master-source-hash",
+            master.source_hash,
+            "--expected-feature-extractor-version",
+            catalog.FEATURE_EXTRACTOR_VERSION,
+        ]
+    )
+
+    assert exit_code == 0
+    assert master_db.read_bytes() == master_before
+    assert catalog_path.read_bytes() == catalog_before
+    assert sorted(path.relative_to(tmp_path) for path in tmp_path.rglob("*")) == root_entries_before
+
+
 def test_developer_observation_ingest_preserves_empty_identity_and_strict_guards(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

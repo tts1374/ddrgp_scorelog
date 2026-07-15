@@ -2104,7 +2104,6 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.command == "validate-session":
         ensure_data_path(args.catalog, argument_name="--catalog")
-        ensure_data_path(args.master_db, argument_name="--master-db")
         result = validate_observation_session(
             args.catalog,
             args.master_db,
