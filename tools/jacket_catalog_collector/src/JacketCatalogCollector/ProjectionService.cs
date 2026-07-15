@@ -9,6 +9,12 @@ public sealed class ProjectionJsonLoader
         ["referenced", "needs_review", "uncollected", "unresolved"];
     private static readonly HashSet<string> ReviewStatuses =
         ["needs_review", "unresolved", "orphaned"];
+    private static readonly HashSet<string> ReviewStatusesV2 =
+        ["auto_confirmed", "manual_confirmed", "needs_review", "unresolved", "rejected", "orphaned"];
+    private static readonly HashSet<string> StoredStatusesV2 =
+        ["auto_confirmed", "manual_confirmed", "needs_review", "unresolved", "rejected"];
+    private static readonly HashSet<string> ReviewActions =
+        ["manual_confirm", "reassign", "reject", "reopen"];
     private static readonly JsonSerializerOptions Options = new()
     {
         PropertyNameCaseInsensitive = false,
@@ -37,7 +43,7 @@ public sealed class ProjectionJsonLoader
 
     private static void Validate(ReviewProjection projection)
     {
-        if (projection.ProjectionSchemaVersion != 1)
+        if (projection.ProjectionSchemaVersion is not (1 or 2))
         {
             throw new InvalidOperationException(
                 $"Unsupported projection schema version: {projection.ProjectionSchemaVersion}");
@@ -65,9 +71,39 @@ public sealed class ProjectionJsonLoader
             projection.Catalog.CurrentFeatureExtractorVersion,
             "catalog.current_feature_extractor_version");
         if (projection.Catalog.CatalogIdentity != "ddrgp-local-jacket-reference-catalog"
-            || projection.Catalog.SchemaVersion != 1)
+            || projection.Catalog.SchemaVersion is not (1 or 2))
         {
             throw new InvalidOperationException("Projection catalog identity or schema is unsupported.");
+        }
+        if (projection.ProjectionSchemaVersion == 1 && projection.Catalog.SchemaVersion != 1)
+        {
+            throw new InvalidOperationException("Projection v1 can only describe catalog v1.");
+        }
+        if (projection.ProjectionSchemaVersion == 1
+            && (projection.Catalog.MigrationRequired is not null
+                || projection.Catalog.MutationCapability is not null
+                || projection.ReviewReferences.Any(review =>
+                    review.StoredStatus is not null
+                    || review.Revision is not null
+                    || review.ManualActionId is not null
+                    || review.ManualNote is not null
+                    || review.History is not null)))
+        {
+            throw new InvalidOperationException("Projection v1 contains v2-only fields.");
+        }
+        if (projection.ProjectionSchemaVersion == 2)
+        {
+            if (projection.Catalog.MigrationRequired is null
+                || projection.Catalog.MutationCapability is not ("read_only" or "manual_review_v2")
+                || (projection.Catalog.SchemaVersion == 1
+                    && (projection.Catalog.MigrationRequired != true
+                        || projection.Catalog.MutationCapability != "read_only"))
+                || (projection.Catalog.SchemaVersion == 2
+                    && (projection.Catalog.MigrationRequired != false
+                        || projection.Catalog.MutationCapability != "manual_review_v2")))
+            {
+                throw new InvalidOperationException("Projection mutation capability is inconsistent.");
+            }
         }
         if (projection.Master.GrandPrixSongCount != projection.Coverage.GrandPrixSongCount
             || projection.Songs.Count != projection.Coverage.GrandPrixSongCount)
@@ -115,7 +151,10 @@ public sealed class ProjectionJsonLoader
             RequireString(review.ObservationStatus, "review_references.observation_status");
             RequireText(review.FeatureExtractorVersion, "review_references.feature_extractor_version");
             RequireValue(review.Candidates, "review_references.candidates");
-            if (!ReviewStatuses.Contains(review.ReviewStatus))
+            var allowedStatuses = projection.ProjectionSchemaVersion == 1
+                ? ReviewStatuses
+                : ReviewStatusesV2;
+            if (!allowedStatuses.Contains(review.ReviewStatus))
             {
                 throw new InvalidOperationException("Projection review status is invalid.");
             }
@@ -128,6 +167,92 @@ public sealed class ProjectionJsonLoader
                 RequireValue(candidate, "review_references.candidates row");
                 RequireText(candidate.SongId, "review_references.candidates.song_id");
                 RequireString(candidate.Reason, "review_references.candidates.reason");
+            }
+            if (projection.ProjectionSchemaVersion == 2)
+            {
+                RequireString(review.StoredStatus, "review_references.stored_status");
+                RequireString(review.ManualNote, "review_references.manual_note");
+                RequireValue(review.History, "review_references.history");
+                if (review.Revision is null or < 0
+                    || !StoredStatusesV2.Contains(review.StoredStatus!))
+                {
+                    throw new InvalidOperationException("Projection review revision or stored status is invalid.");
+                }
+                var expectedRevision = 0;
+                string? previousStatus = null;
+                string? previousSongId = null;
+                foreach (var history in review.History!)
+                {
+                    RequireText(history.ActionId, "review_references.history.action_id");
+                    RequireString(history.Reason, "review_references.history.reason");
+                    RequireString(history.Note, "review_references.history.note");
+                    RequireText(history.ActionAt, "review_references.history.action_at");
+                    if (!ReviewActions.Contains(history.Action)
+                        || !StoredStatusesV2.Contains(history.BeforeStatus)
+                        || !StoredStatusesV2.Contains(history.AfterStatus)
+                        || history.BeforeRevision != expectedRevision
+                        || history.AfterRevision != history.BeforeRevision + 1)
+                    {
+                        throw new InvalidOperationException("Projection review history is invalid.");
+                    }
+                    if (expectedRevision > 0
+                        && (history.BeforeStatus != previousStatus
+                            || history.BeforeSongId != previousSongId))
+                    {
+                        throw new InvalidOperationException(
+                            "Projection review history state is discontinuous.");
+                    }
+                    if ((history.Action is "manual_confirm" or "reassign"
+                            && (history.AfterSongId is null
+                                || history.AfterStatus != "manual_confirmed"))
+                        || (history.Action == "reject"
+                            && (history.AfterSongId != history.BeforeSongId
+                                || history.AfterStatus != "rejected"))
+                        || (history.Action == "reopen"
+                            && (history.AfterSongId is not null
+                                || history.AfterStatus != "needs_review")))
+                    {
+                        throw new InvalidOperationException(
+                            "Projection review history action semantics are invalid.");
+                    }
+                    if ((history.Action == "manual_confirm"
+                            && history.BeforeStatus is not ("needs_review" or "unresolved"))
+                        || (history.Action == "reassign"
+                            && history.BeforeStatus is not ("auto_confirmed" or "manual_confirmed"))
+                        || (history.Action == "reject" && history.BeforeStatus == "rejected")
+                        || (history.Action == "reopen" && history.BeforeStatus != "rejected"))
+                    {
+                        throw new InvalidOperationException(
+                            "Projection review history action source is invalid.");
+                    }
+                    previousStatus = history.AfterStatus;
+                    previousSongId = history.AfterSongId;
+                    expectedRevision = history.AfterRevision;
+                }
+                if (expectedRevision != review.Revision)
+                {
+                    throw new InvalidOperationException("Projection review history revision is inconsistent.");
+                }
+                if (review.History.Count > 0)
+                {
+                    var last = review.History[^1];
+                    if (review.StoredStatus != last.AfterStatus
+                        || review.AssignedSong?.SongId != last.AfterSongId
+                        || review.ManualActionId != last.ActionId
+                        || review.ManualNote != last.Note)
+                    {
+                        throw new InvalidOperationException(
+                            "Projection current review state does not match history.");
+                    }
+                }
+                else if (review.Revision != 0
+                    || review.StoredStatus is "manual_confirmed" or "rejected"
+                    || review.ManualActionId is not null
+                    || review.ManualNote != "")
+                {
+                    throw new InvalidOperationException(
+                        "Projection review row has manual state without history.");
+                }
             }
         }
     }

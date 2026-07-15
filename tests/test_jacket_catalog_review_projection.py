@@ -106,10 +106,12 @@ def test_projection_contains_strict_read_only_review_contract(tmp_path: Path, mo
 
     result = projection.build_review_projection(catalog_db, master_db)
 
-    assert result["projection_schema_version"] == 1
+    assert result["projection_schema_version"] == 2
     assert result["master"]["master_version"] == "master-v1"
     assert result["master"]["source_hash"] == "fixture-source-hash"
     assert result["catalog"]["catalog_identity"] == catalog.CATALOG_IDENTITY
+    assert result["catalog"]["migration_required"] is True
+    assert result["catalog"]["mutation_capability"] == "read_only"
     assert result["coverage"]["grand_prix_song_count"] == 3
     assert sum(result["coverage"]["status_counts"].values()) == 3
     assert {row["coverage_status"] for row in result["songs"]} <= {
@@ -123,6 +125,8 @@ def test_projection_contains_strict_read_only_review_contract(tmp_path: Path, mo
     assert review["reason"] == "title_match_artist_mismatch"
     assert review["observed_title"] == "Alpha"
     assert review["candidates"][0]["song_id"] == "song-1"
+    assert review["revision"] == 0
+    assert review["history"] == []
     assert master_db.read_bytes() == master_before
     assert catalog_db.read_bytes() == catalog_before
 
@@ -168,7 +172,78 @@ def test_projection_cli_writes_one_json_document(tmp_path: Path, monkeypatch, ca
     assert projection.main(["--catalog", str(catalog_db), "--master-db", str(master_db)]) == 0
     output = capsys.readouterr().out
     assert output.count("\n") == 1
-    assert json.loads(output)["projection_schema_version"] == 1
+    assert json.loads(output)["projection_schema_version"] == 2
+
+
+def test_projection_v2_exposes_revision_capability_and_append_only_history(
+    tmp_path: Path, monkeypatch
+) -> None:
+    master_db, catalog_db = _setup(tmp_path, monkeypatch)
+    target = tmp_path / "data" / "catalog-v2.sqlite"
+    catalog.migrate_catalog_v1_to_v2(catalog_db, target)
+    initial = projection.build_review_projection(target, master_db)
+    reference = initial["review_references"][0]
+    catalog.apply_review_mutation(
+        target,
+        master_db,
+        catalog.ReviewMutationRequest(
+            action_id="projection-confirm",
+            reference_id=reference["reference_id"],
+            action="manual_confirm",
+            expected_revision=0,
+            expected_status="needs_review",
+            expected_song_id=None,
+            song_id="song-1",
+            reason="explicit selection",
+            note="opaque / 日本語",
+            action_at="2026-07-15T00:00:00+00:00",
+        ),
+    )
+
+    result = projection.build_review_projection(target, master_db)
+
+    assert result["catalog"]["schema_version"] == 2
+    assert result["catalog"]["migration_required"] is False
+    assert result["catalog"]["mutation_capability"] == "manual_review_v2"
+    reviewed = next(
+        item
+        for item in result["review_references"]
+        if item["reference_id"] == reference["reference_id"]
+    )
+    assert (reviewed["stored_status"], reviewed["revision"], reviewed["manual_note"]) == (
+        "manual_confirmed",
+        1,
+        "opaque / 日本語",
+    )
+    assert reviewed["history"][0]["action"] == "manual_confirm"
+
+    with sqlite3.connect(target) as connection:
+        connection.execute(
+            "UPDATE jacket_references SET thumbnail_rgb_json = 123 WHERE reference_id = ?",
+            (reference["reference_id"],),
+        )
+
+    corrupted = projection.build_review_projection(target, master_db)
+    reviewed_after_corruption = next(
+        item
+        for item in corrupted["review_references"]
+        if item["reference_id"] == reference["reference_id"]
+    )
+    assert (
+        reviewed_after_corruption["stored_status"],
+        reviewed_after_corruption["review_status"],
+        reviewed_after_corruption["reason"],
+        reviewed_after_corruption["revision"],
+    ) == (
+        "manual_confirmed",
+        "needs_review",
+        "persisted_feature_invalid",
+        1,
+    )
+    assert reviewed_after_corruption["history"] == reviewed["history"]
+    assert next(
+        row for row in corrupted["songs"] if row["song_id"] == "song-1"
+    )["coverage_status"] == "needs_review"
 
 
 def test_projection_handles_empty_catalog_orphan_old_extractor_and_unassigned(

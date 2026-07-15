@@ -646,7 +646,7 @@ python -m tools.vision_poc --m5-jacket-match `
   --master-db data\master\ddrgp-master.sqlite
 ```
 
-current masterで有効かつ現行 `feature_extractor_version` と一致する `auto_confirmed` referenceだけを永続特徴量から復元します。旧extractorのreferenceはcatalog内に保持しても現行M5照合へ混入させません。このため参照元の生画像を削除したfixtureでもM5照合を再実行できます。catalog、観測CSV、画像、crop、特徴量、review結果、coverageはローカル非共有物であり、Git、CI artifact、Release、通常ログへ含めません。生画像やcropの自動削除は行いません。
+current masterで有効なGP対象songかつ現行 `feature_extractor_version` と一致する `auto_confirmed` / `manual_confirmed` referenceだけを永続特徴量から復元します。`rejected`、orphan、GP対象外、旧extractorのreferenceはcatalog内に保持しても現行M5照合へ混入させません。外部変更などで永続特徴量が不正になったmanual referenceは、保存済みstatusを変えず派生状態を `needs_review` / `persisted_feature_invalid` としてcoverageとreview projectionへ表示し、runtimeから除外します。このため参照元の生画像を削除したfixtureでもM5照合を再実行できます。catalog、観測CSV、画像、crop、特徴量、review結果、coverageはローカル非共有物であり、Git、CI artifact、Release、通常ログへ含めません。生画像やcropの自動削除は行いません。
 
 M5c-1 developer collectorのread-only表示では、catalog tableをC#側で直接読まず、次のprojectionを使います。
 
@@ -656,7 +656,25 @@ python -m tools.vision_poc.jacket_catalog_review_projection `
   --master-db data\master\ddrgp-master.sqlite
 ```
 
-projection version 1はUTF-8 stdoutの単一JSONで、`master` / `catalog` identity、同じGP分母のcoverage song行、needs-review/unresolved/orphan review行、候補とopaque reasonを返します。master/catalogはstrictかつread-onlyで開き、temporary projection file、coverage CSV、logを生成しません。unsupported schemaや破損DBでは非0終了になり、collectorは部分表示しません。詳細なapp実行方法とC# strict loader契約は `tools/jacket_catalog_collector/README.md` を参照してください。
+producerのprojection version 2はUTF-8 stdoutの単一JSONで、`master` / `catalog` identity、同じGP分母のcoverage song行、current/stored review state、revision、候補、manual provenance、append-only historyを返します。catalog v1は `migration_required=true` / `read_only`、v2は `manual_review_v2` capabilityです。C# loaderは旧version 1 fixtureのread-only互換も維持します。master/catalogはstrictかつread-onlyで開き、temporary projection file、coverage CSV、logを生成しません。unsupported schemaや破損DBでは非0終了になり、collectorは部分表示しません。
+
+v1を変更せず別pathへv2を作る明示migrationと、v2の単発manual actionは次のCLI境界です。出力先は `data/` 配下に限定され、既存targetを上書きしません。
+
+```powershell
+python -m tools.vision_poc.jacket_reference_catalog migrate-v2 `
+  --source-catalog data\jacket_catalog\catalog.sqlite `
+  --target-catalog data\jacket_catalog\catalog-v2.sqlite
+
+python -m tools.vision_poc.jacket_reference_catalog review `
+  --catalog data\jacket_catalog\catalog-v2.sqlite `
+  --master-db data\master\ddrgp-master.sqlite `
+  --action-id 11111111-1111-1111-1111-111111111111 `
+  --reference-id REFERENCE_ID --action manual_confirm `
+  --expected-revision 0 --expected-status needs_review `
+  --song-id SONG_ID --reason "developer selected" --note "manual review"
+```
+
+mutationはexpected revision/status/songをpreconditionにし、同一action ID・同一payloadだけを冪等再投入として扱います。保存済みreceiptはcurrent masterの再検証より先に返すため、commit後にmasterが一時利用不能、曲削除、GP対象外化しても同一retryは成功します。異なるpayloadの同一ID再利用と、未保存actionのmaster不整合は引き続き拒否します。manual confirm/reassignはcurrent extractorの完全な永続特徴量も要求し、`feature_extraction_failed` や欠損/不正vectorを確定状態へ進めません。current rowとhistoryは1 transactionで更新し、候補・expected値を暗黙song選択に使いません。外部変更などで確定後に不正になったmanual referenceは、保存済みstatus、revision、historyを保ったままcoverageとreview projectionで `needs_review` / `persisted_feature_invalid` とし、runtimeからそのrowだけを除外して他の有効reference読込を継続します。詳細なapp実行方法とC# strict loader契約は `tools/jacket_catalog_collector/README.md` を参照してください。
 
 ## テスト
 

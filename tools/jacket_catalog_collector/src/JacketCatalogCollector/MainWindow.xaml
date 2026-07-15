@@ -13,12 +13,13 @@
         <DockPanel>
             <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
                 <Button Content="masterを更新" Margin="0,0,8,0" Padding="14,8" Click="UpdateMaster_Click" />
+                <Button Content="v1→v2移行" Margin="0,0,8,0" Padding="14,8" Click="MigrateCatalog_Click" />
                 <Button Content="master/catalogを選択" Margin="0,0,8,0" Padding="14,8" Click="SelectDatabases_Click" />
                 <Button Content="処理を取消" Padding="14,8" Click="CancelOperation_Click" />
             </StackPanel>
             <StackPanel>
                 <TextBlock Text="Jacket Catalog Collector" FontSize="24" FontWeight="SemiBold" />
-                <TextBlock Text="Developer-only / read-only coverage &amp; review projection" Foreground="DimGray" />
+                <TextBlock Text="Developer-only / audited manual jacket review" Foreground="DimGray" />
             </StackPanel>
         </DockPanel>
 
@@ -37,6 +38,7 @@
                 <StackPanel Grid.Column="1">
                     <TextBlock Text="catalog" FontWeight="Bold" />
                     <TextBlock><Run Text="{Binding CatalogIdentity}" /><Run Text=" / " /><Run Text="{Binding CatalogSchema}" /></TextBlock>
+                    <TextBlock><Run Text="capability: " /><Run Text="{Binding MutationCapability}" /></TextBlock>
                     <TextBlock Text="{Binding CoverageSummary}" TextWrapping="Wrap" />
                     <TextBlock Text="{Binding OrphanSummary}" TextWrapping="Wrap" />
                 </StackPanel>
@@ -72,17 +74,56 @@
                 </DataGrid>
             </TabItem>
             <TabItem Header="Review queue">
-                <DataGrid ItemsSource="{Binding ReviewReferences}" IsReadOnly="True" AutoGenerateColumns="False">
-                    <DataGrid.Columns>
-                        <DataGridTextColumn Header="status" Binding="{Binding ReviewStatus}" Width="110" />
-                        <DataGridTextColumn Header="observed title" Binding="{Binding ObservedTitle}" Width="*" />
-                        <DataGridTextColumn Header="observed artist" Binding="{Binding ObservedArtist}" Width="*" />
-                        <DataGridTextColumn Header="reason" Binding="{Binding Reason}" Width="*" />
-                        <DataGridCheckBoxColumn Header="drift" Binding="{Binding MasterDrift}" Width="60" />
-                        <DataGridTextColumn Header="candidates" Binding="{Binding CandidateDisplay}" Width="2*" />
-                        <DataGridTextColumn Header="reference_id" Binding="{Binding ReferenceId}" Width="*" />
-                    </DataGrid.Columns>
-                </DataGrid>
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <Grid Margin="8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="130" />
+                            <ColumnDefinition Width="220" />
+                            <ColumnDefinition Width="260" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="song検索" />
+                            <TextBox Text="{Binding SongSearch, UpdateSourceTrigger=PropertyChanged}" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Margin="8,0,0,0">
+                            <TextBlock Text="明示選択song" />
+                            <ComboBox ItemsSource="{Binding SongChoices}" SelectedItem="{Binding SelectedSong}"
+                                      DisplayMemberPath="Title" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="2" Margin="8,0,0,0">
+                            <TextBlock Text="reason / note（opaque）" />
+                            <DockPanel>
+                                <TextBox Width="120" Text="{Binding ReviewReason, UpdateSourceTrigger=PropertyChanged}" />
+                                <TextBox Margin="6,0,0,0" Text="{Binding ReviewNote, UpdateSourceTrigger=PropertyChanged}" />
+                            </DockPanel>
+                        </StackPanel>
+                        <WrapPanel Grid.Column="3" HorizontalAlignment="Right" VerticalAlignment="Bottom">
+                            <Button Content="confirm" Tag="manual_confirm" Margin="4" Padding="10,5" Click="ReviewAction_Click" />
+                            <Button Content="reassign" Tag="reassign" Margin="4" Padding="10,5" Click="ReviewAction_Click" />
+                            <Button Content="reject" Tag="reject" Margin="4" Padding="10,5" Click="ReviewAction_Click" />
+                            <Button Content="reopen" Tag="reopen" Margin="4" Padding="10,5" Click="ReviewAction_Click" />
+                        </WrapPanel>
+                    </Grid>
+                    <DataGrid Grid.Row="1" ItemsSource="{Binding ReviewReferences}"
+                              SelectedItem="{Binding SelectedReference}" IsReadOnly="True" AutoGenerateColumns="False">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="status" Binding="{Binding ReviewStatus}" Width="110" />
+                            <DataGridTextColumn Header="rev" Binding="{Binding Revision}" Width="45" />
+                            <DataGridTextColumn Header="observed title" Binding="{Binding ObservedTitle}" Width="*" />
+                            <DataGridTextColumn Header="observed artist" Binding="{Binding ObservedArtist}" Width="*" />
+                            <DataGridTextColumn Header="reason" Binding="{Binding Reason}" Width="*" />
+                            <DataGridCheckBoxColumn Header="drift" Binding="{Binding MasterDrift}" Width="60" />
+                            <DataGridTextColumn Header="candidates" Binding="{Binding CandidateDisplay}" Width="2*" />
+                            <DataGridTextColumn Header="history" Binding="{Binding HistoryDisplay}" Width="2*" />
+                            <DataGridTextColumn Header="reference_id" Binding="{Binding ReferenceId}" Width="*" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Grid>
             </TabItem>
         </TabControl>
     </Grid>

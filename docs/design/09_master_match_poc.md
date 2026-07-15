@@ -200,7 +200,15 @@ M5c-1では `tools/jacket_catalog_collector/` に公開appと独立したWPF app
 
 C# loaderはversion、未知field、必須field、null/型、coverage/review status、候補配列、GP分母、summaryとsong status histogramの一致をstrictに検査する。unsupported older/newer version、空/truncated stdout、Python非0終了を部分成功へ丸めない。一方、現行M5bのreason/candidate reasonと任意observation statusは意味を再実装せず、未知文字列をそのまま表示する。projectionはtemporary fileを作らず、表示前後でmaster/catalog byteを変更しない。生成中にいずれかのDBのfile identity、size、mtime、hashが変わった場合は、複数接続由来のsnapshotを混在させず失敗として再読込を求める。
 
-M5c-1はcoverage/reviewの表示だけであり、`manual_confirmed`、reject/reassignment history、catalog schema migration、capture、OCR、runtime matcherへのmanual reference供給はM5c-2以降へ残す。
+### M5c-2 catalog v2 manual review
+
+catalog version 2はv1の全reference/candidate/evidenceを保持し、各referenceへ閉じたstatus語彙、monotonic `review_revision`、最後のmanual action ID/noteを追加する。`reference_review_history` は `manual_confirm` / `reassign` / `reject` / `reopen` ごとにbefore/after status・song・revision、opaque reason/note、UTC時刻、canonical request/receiptをappend-onlyで持つ。v1は上書きせず、別pathのstaging v2をstrict検証した後にexclusive publishする。既存target、unsupported source、検証・publish失敗ではv1と既存targetを変更しない。
+
+mutation requestはreference ID、action ID、expected revision/status/songを必須にする。同一action ID・同一payloadの再投入はcurrent masterを再検証する前に保存済みreceiptを冪等に返すため、commit後にmasterが一時利用不能、曲削除、GP対象外化しても安全なretryを妨げない。同じIDの異なるpayload、未保存actionのstale revision/state、current masterにないsong、GP対象外songはcurrent row/historyの副作用なしで拒否する。manual confirm/reassignはcurrent extractorの完全な永続特徴量も必須とし、feature抽出失敗や欠損/不正vectorを確定状態へ進めない。current row更新とhistory insertは1 transactionであり、片側成功を許さない。reject/reopen/reassignはreference、特徴量、候補、観測、historyを物理削除せず、reopenは直前songを暗黙復元しない。
+
+projection producerはversion 2となり、catalog v1を `migration_required=true` / `read_only`、catalog v2を `manual_review_v2` capabilityとして返す。v2 referenceはstored/current status、revision、manual provenance、historyを持ち、C# loaderはversion 1 fixtureのread-only互換を残しながらversion 2の未知field、閉じたstatus/action、revision連続性、capability/schema整合をstrictに検査する。collectorはcurrent GP song全体を検索して明示選択し、確認後にだけ4操作を実行する。候補配列、expected song、OCR rawからの暗黙選択は行わない。
+
+runtime loaderはcurrent feature extractorかつcurrent masterに存在するGP対象の `auto_confirmed` / `manual_confirmed` だけを供給する。`rejected`、orphan、GP対象外、旧extractorを渡さず、外部変更などで永続特徴量が不正になったmanual referenceは派生状態を `needs_review` / `persisted_feature_invalid` としてcoverageとreview projectionへ表示し、そのrowだけをruntimeから除外して他の有効reference読込を継続する。保存済みstatus、revision、historyは変更しない。auto-confirmed rowの特徴量破損はcatalog corruptionとして従来どおり失敗させる。M5c-2はcapture、window探索、title/artist OCR、物理削除、公開app、正式保存workflow、正式個人スコアDBを変更しない。これらとsource capture locator/retentionはM5c-3以降へ残す。
 
 ## M5b/M5c共通スコープ外
 

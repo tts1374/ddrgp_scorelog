@@ -16,7 +16,8 @@ public partial class MainWindow : Window
         var runner = new ProcessRunner();
         viewModel = new MainViewModel(
             new MasterUpdateService(runner, new AtomicMasterPublisher(), repositoryRoot),
-            new ProjectionService(runner, new ProjectionJsonLoader(), repositoryRoot));
+            new ProjectionService(runner, new ProjectionJsonLoader(), repositoryRoot),
+            new ReviewWorkflowService(runner, repositoryRoot));
         DataContext = viewModel;
     }
 
@@ -101,4 +102,76 @@ public partial class MainWindow : Window
 
     private void CancelOperation_Click(object sender, RoutedEventArgs e) =>
         operationCancellation?.Cancel();
+
+    private async void MigrateCatalog_Click(object sender, RoutedEventArgs e)
+    {
+        if (viewModel.IsBusy)
+        {
+            return;
+        }
+        var dialog = new SaveFileDialog
+        {
+            Title = "新規v2 jacket catalogの保存先",
+            Filter = "SQLite database (*.sqlite)|*.sqlite|All files (*.*)|*.*",
+            AddExtension = true,
+            DefaultExt = ".sqlite",
+            OverwritePrompt = true,
+        };
+        if (dialog.ShowDialog(this) != true
+            || MessageBox.Show(
+                this,
+                "v1 catalogは変更せず、選択した別pathへv2を作成します。実行しますか？",
+                "catalog v2 migration",
+                MessageBoxButton.OKCancel,
+                MessageBoxImage.Question) != MessageBoxResult.OK)
+        {
+            return;
+        }
+        await RunOperationAsync(token => viewModel.MigrateCatalogAsync(dialog.FileName, token));
+    }
+
+    private async void ReviewAction_Click(object sender, RoutedEventArgs e)
+    {
+        if (viewModel.IsBusy || sender is not FrameworkElement { Tag: string action })
+        {
+            return;
+        }
+        var reference = viewModel.SelectedReference;
+        if (reference is null)
+        {
+            MessageBox.Show(this, "review対象referenceを選択してください。");
+            return;
+        }
+        var songText = viewModel.SelectedSong is null
+            ? "song変更なし"
+            : $"song={viewModel.SelectedSong.Title} ({viewModel.SelectedSong.SongId})";
+        if (MessageBox.Show(
+            this,
+            $"{action} / reference={reference.ReferenceId} / revision={reference.Revision} / {songText}",
+            "manual review確認",
+            MessageBoxButton.OKCancel,
+            MessageBoxImage.Warning) != MessageBoxResult.OK)
+        {
+            return;
+        }
+        await RunOperationAsync(token => viewModel.ApplyReviewAsync(action, token));
+    }
+
+    private async Task RunOperationAsync(Func<CancellationToken, Task> operation)
+    {
+        try
+        {
+            operationCancellation = new CancellationTokenSource();
+            await operation(operationCancellation.Token);
+        }
+        catch (Exception)
+        {
+            // The ViewModel exposes the actionable diagnostic in the status panel.
+        }
+        finally
+        {
+            operationCancellation?.Dispose();
+            operationCancellation = null;
+        }
+    }
 }

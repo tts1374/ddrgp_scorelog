@@ -9,6 +9,9 @@ public sealed class ProjectionJsonLoaderTests
     private static string FixtureJson() =>
         File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "fixtures", "v1.json"));
 
+    private static string FixtureV2Json() =>
+        File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "fixtures", "v2.json"));
+
     [Fact]
     public void LoadsVersionOneProducerFixtureAndPreservesOpaqueReasons()
     {
@@ -20,9 +23,54 @@ public sealed class ProjectionJsonLoaderTests
         Assert.Equal("candidate opaque reason", projection.ReviewReferences[0].Candidates[0].Reason);
     }
 
+    [Fact]
+    public void LoadsVersionTwoMutationProjectionAndHistory()
+    {
+        var projection = loader.Load(FixtureV2Json());
+
+        Assert.Equal(2, projection.ProjectionSchemaVersion);
+        Assert.Equal("manual_review_v2", projection.Catalog.MutationCapability);
+        Assert.False(projection.Catalog.MigrationRequired);
+        Assert.Equal(1, projection.ReviewReferences[0].Revision);
+        Assert.Equal("manual_confirm", projection.ReviewReferences[0].History![0].Action);
+        Assert.Contains("日本語", projection.ReviewReferences[0].ManualNote);
+    }
+
+    [Fact]
+    public void RejectsInconsistentVersionTwoCapabilityAndHistory()
+    {
+        var badCapability = JsonNode.Parse(FixtureV2Json())!.AsObject();
+        badCapability["catalog"]!["mutation_capability"] = "read_only";
+        Assert.Throws<InvalidOperationException>(() => loader.Load(badCapability.ToJsonString()));
+
+        var badHistory = JsonNode.Parse(FixtureV2Json())!.AsObject();
+        badHistory["review_references"]![0]!["history"]![0]!["after_revision"] = 2;
+        Assert.Throws<InvalidOperationException>(() => loader.Load(badHistory.ToJsonString()));
+
+        var unknownStatus = JsonNode.Parse(FixtureV2Json())!.AsObject();
+        unknownStatus["review_references"]![0]!["stored_status"] = "future";
+        Assert.Throws<InvalidOperationException>(() => loader.Load(unknownStatus.ToJsonString()));
+
+        var currentMismatch = JsonNode.Parse(FixtureV2Json())!.AsObject();
+        currentMismatch["review_references"]![0]!["manual_action_id"] = "different";
+        Assert.Throws<InvalidOperationException>(() => loader.Load(currentMismatch.ToJsonString()));
+
+        var semanticMismatch = JsonNode.Parse(FixtureV2Json())!.AsObject();
+        semanticMismatch["review_references"]![0]!["history"]![0]!["after_song_id"] = null;
+        Assert.Throws<InvalidOperationException>(() => loader.Load(semanticMismatch.ToJsonString()));
+
+        var sourceMismatch = JsonNode.Parse(FixtureV2Json())!.AsObject();
+        sourceMismatch["review_references"]![0]!["history"]![0]!["before_status"] = "rejected";
+        Assert.Throws<InvalidOperationException>(() => loader.Load(sourceMismatch.ToJsonString()));
+
+        var v2FieldInV1 = JsonNode.Parse(FixtureJson())!.AsObject();
+        v2FieldInV1["catalog"]!["mutation_capability"] = "manual_review_v2";
+        Assert.Throws<InvalidOperationException>(() => loader.Load(v2FieldInV1.ToJsonString()));
+    }
+
     [Theory]
     [InlineData(0)]
-    [InlineData(2)]
+    [InlineData(3)]
     public void RejectsUnsupportedProjectionVersions(int version)
     {
         var root = JsonNode.Parse(FixtureJson())!.AsObject();

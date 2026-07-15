@@ -18,5 +18,7 @@
     <ProjectReference Include="..\..\src\JacketCatalogCollector\JacketCatalogCollector.csproj" />
     <None Include="..\..\..\..\tests\fixtures\jacket_catalog_review_projection\v1.json"
           Link="fixtures\v1.json" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\..\..\tests\fixtures\jacket_catalog_review_projection\v2.json"
+          Link="fixtures\v2.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>
