@@ -324,6 +324,44 @@ def test_low_confidence_and_partial_failure_never_auto_confirm() -> None:
     assert empty.status != "ok"
 
 
+def test_expected_text_with_low_confidence_is_not_counted_as_pair_exact(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    master_path, catalog_path, artifact_root = fixture_paths(tmp_path, monkeypatch)
+    manifest = write_artifact(artifact_root, catalog_path, index=1)
+    dataset = tmp_path / "data/dataset.json"
+    write_dataset(dataset, [entry(manifest)])
+    artifacts = evaluation.load_artifacts(
+        evaluation.load_dataset(dataset),
+        artifact_root=artifact_root,
+        master=catalog.load_master_identity(master_path),
+        catalog=evaluation.load_catalog_identity(catalog_path),
+    )
+
+    def low_confidence_expected(
+        _image: Image.Image, field: str, _method: str
+    ) -> evaluation.FieldExtraction:
+        raw = "Alpha" if field == "title" else "Artist A"
+        return evaluation.FieldExtraction(
+            raw,
+            evaluation.master_match.normalize_song_title(raw),
+            0.5,
+            "low_confidence",
+            "below_confidence_gate",
+        )
+
+    rows = evaluation.evaluate(
+        artifacts,
+        master=catalog.load_master_identity(master_path),
+        extractor=low_confidence_expected,
+    )
+    summary = evaluation.summarize(rows)
+
+    assert all(row["pair_exact"] is False for row in rows)
+    assert all(row["auto_confirm_eligible"] is False for row in rows)
+    assert all(method["pair_exact_count"] == 0 for method in summary["methods"])
+
+
 def test_tesseract_tsv_confidence_and_engine_failure_are_explicit(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

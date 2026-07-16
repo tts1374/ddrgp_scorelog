@@ -610,7 +610,8 @@ def evaluate(
             pair_exact = (
                 None
                 if coverage_status(artifact.entry) != "evaluated"
-                else title.normalized == expected_title_key
+                else observation_ok
+                and title.normalized == expected_title_key
                 and artist.normalized == expected_artist_key
             )
             known_false = bool(
