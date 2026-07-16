@@ -106,11 +106,11 @@ M5c-3cとして、M5c-3bがcatalog v2に対して `deferred` とした未解決o
 - 同一ID replay、異payload conflict、別ID同一画像、catalog成功後checkpoint失敗を機械的に区別する。
 - v1、manual review revision/history、runtimeのcurrent reference条件、auto-confirm境界を変更しない。
 - drift/旧version/corrupt入力の拒否時にcatalog/checkpoint副作用がない。
-- read-only branch diffレビューでmedium以上の未対応指摘がない。
+- ルート `AGENTS.md` のReview Policyに従った独立review gateで、P1/P2の未対応指摘がない。
 
 ## Open Risks / Blockers
 
 - v2 schemaが未解決observationの安全な初期状態を既に表現できない場合、schema/migration判断が必要になる。既存資料から一意に決まらなければ「ユーザー対応が必要」として停止する。
 - 実local DBの修復・migrationはこのPRで実行しないため、fixtureでのtransaction検証と実運用データ適用は分ける。
 
-完了後は今回作業分だけをstageし、diff、対象/影響範囲/全体test、独立read-onlyレビューを完了してからcommit、現在の `codex/*` branchへ通常pushし、draft PRを作成してください。次PR仕様は実績に基づいてM5c-4または必要な分割PRへ更新し、更新後の作業には着手しないでください。
+完了後は今回作業分だけをstageし、diff、対象/影響範囲/全体test、ルート `AGENTS.md` のReview Policyに従った独立review gateを完了してからcommit、現在の `codex/*` branchへ通常pushし、draft PRを作成してください。次PR仕様は実績に基づいてM5c-4または必要な分割PRへ更新し、更新後の作業には着手しないでください。
