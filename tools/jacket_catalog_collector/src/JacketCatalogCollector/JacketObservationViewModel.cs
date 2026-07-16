@@ -8,6 +8,7 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
     private readonly WindowCaptureViewModel capture;
     private readonly JacketObservationSession session;
     private readonly ICaptureDispatcher dispatcher;
+    private readonly InformationTitleLineDetector informationDetector;
     private readonly object frameSync = new();
     private Task frameTail = Task.CompletedTask;
     private RawCaptureFrame? pendingFrame;
@@ -18,6 +19,8 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
     private JacketObservationCandidate? stableCandidate;
     private JacketDetectionResult detection = new(
         JacketDetectionState.NoFrame, null, "session is not started", 0, 0, 0);
+    private InformationTitleLineDetectionResult informationDetection =
+        InformationTitleLineDetectionResult.Empty("session is not started");
     private string statusTitle = "観測session未開始";
     private string statusMessage = "capture開始前に明示的に観測sessionを作成します。";
     private string? sessionId;
@@ -28,11 +31,13 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
     public JacketObservationViewModel(
         WindowCaptureViewModel capture,
         JacketObservationSession session,
-        ICaptureDispatcher dispatcher)
+        ICaptureDispatcher dispatcher,
+        InformationTitleLineDetector? informationDetector = null)
     {
         this.capture = capture;
         this.session = session;
         this.dispatcher = dispatcher;
+        this.informationDetector = informationDetector ?? new InformationTitleLineDetector();
         capture.FrameReceived += OnFrameReceived;
         capture.LifecycleChanged += OnLifecycleChanged;
     }
@@ -84,6 +89,28 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
     public string DetectorProgress =>
         $"frames={Detection.ProcessedFrameCount} / invalid={Detection.InvalidFrameCount} "
         + $"/ duplicate={Detection.DuplicatePreviewCount} / observation_drop={observationDroppedFrameCount}";
+    public InformationTitleLineDetectionResult InformationDetection
+    {
+        get => informationDetection;
+        private set
+        {
+            if (SetField(ref informationDetection, value))
+            {
+                OnPropertyChanged(nameof(InformationPanelDisplay));
+                OnPropertyChanged(nameof(InformationTitleLineStability));
+                OnPropertyChanged(nameof(InformationTitleLineHash));
+                OnPropertyChanged(nameof(InformationDiagnostic));
+            }
+        }
+    }
+    public string InformationPanelDisplay => InformationDetection.IsDisplayed ? "表示あり" : "表示なし";
+    public string InformationTitleLineStability => InformationDetection.IsStable
+        ? "安定"
+        : InformationDetection.IsDisplayed ? "確認中" : "—";
+    public string InformationTitleLineHash => InformationDetection.TitleLineHash ?? "—";
+    public string InformationDiagnostic =>
+        $"{InformationDetection.DetectorVersion} / {InformationDetection.FeatureVersion}: "
+        + InformationDetection.Diagnostic;
     public string StableCandidate => stableCandidate is null
         ? "—"
         : $"feature={stableCandidate.FeatureHash}, stable={stableCandidate.StableFrameCount} frames / {stableCandidate.StableDuration.TotalMilliseconds:0}ms";
@@ -295,6 +322,8 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
         {
             var hadStableCandidate = stableCandidate is not null;
             stableCandidate = null;
+            informationDetector.Reset();
+            InformationDetection = InformationTitleLineDetectionResult.Empty("capture is stopped");
             Detection = session.LastDetection;
             if (hadStableCandidate)
             {
@@ -352,8 +381,10 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
 
     private async Task ProcessFrameAsync(RawCaptureFrame frame)
     {
+        InformationTitleLineDetectionResult? information = null;
         try
         {
+            information = informationDetector.Observe(frame);
             var value = await session.ObserveFrameAsync(frame);
             await dispatcher.InvokeAsync(() =>
             {
@@ -361,6 +392,7 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
                 {
                     stableCandidate = value.Candidate;
                 }
+                InformationDetection = information;
                 Detection = value;
                 StatusTitle = value.HasStableCandidate
                     ? "安定候補（明示採用待ち）"
@@ -372,6 +404,10 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
         {
             await dispatcher.InvokeAsync(() =>
             {
+                if (information is not null)
+                {
+                    InformationDetection = information;
+                }
                 StatusTitle = "detector失敗";
                 StatusMessage = exception.Message;
             });
@@ -434,7 +470,9 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
             captureDroppedFrameCount = 0;
             persistedDroppedFrameCount = persistedDropCount;
             stableCandidate = null;
+            informationDetector.Reset();
         }
+        InformationDetection = InformationTitleLineDetectionResult.Empty("waiting for capture frame");
         OnPropertyChanged(nameof(DetectorProgress));
         OnPropertyChanged(nameof(StableCandidate));
         OnPropertyChanged(nameof(CollectionStateTitle));

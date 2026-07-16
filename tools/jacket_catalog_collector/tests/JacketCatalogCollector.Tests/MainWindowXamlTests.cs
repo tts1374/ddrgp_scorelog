@@ -78,6 +78,27 @@ public sealed class MainWindowXamlTests
         Assert.DoesNotContain("DuplicatePreview", xaml, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void InformationTitleLineObservationIsVisibleButReadOnly()
+    {
+        var document = LoadMainWindow();
+        var textValues = document
+            .Descendants()
+            .Where(element => element.Name.LocalName is "TextBlock" or "Run")
+            .Select(element => element.Attribute("Text")?.Value)
+            .Where(value => value is not null)
+            .Cast<string>()
+            .ToList();
+
+        Assert.Contains("{Binding Observation.InformationPanelDisplay, Mode=OneWay}", textValues);
+        Assert.Contains("{Binding Observation.InformationTitleLineStability, Mode=OneWay}", textValues);
+        Assert.Contains("{Binding Observation.InformationTitleLineHash}", textValues);
+        Assert.DoesNotContain(
+            document.Descendants().Where(element => element.Name.LocalName == "Button"),
+            element => element.Attributes().Any(attribute =>
+                attribute.Value.Contains("InformationTitleLine", StringComparison.Ordinal)));
+    }
+
     private static XDocument LoadMainWindow() => XDocument.Load(GetMainWindowPath());
 
     private static string GetMainWindowPath()

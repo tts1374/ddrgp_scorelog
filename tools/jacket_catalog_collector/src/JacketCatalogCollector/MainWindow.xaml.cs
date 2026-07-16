@@ -40,7 +40,11 @@ public partial class MainWindow : Window
             new ProjectionService(runner, new ProjectionJsonLoader(), repositoryRoot),
             new ReviewWorkflowService(runner, repositoryRoot),
             windowCapture,
-            new JacketObservationViewModel(windowCapture, observationSession, dispatcher),
+            new JacketObservationViewModel(
+                windowCapture,
+                observationSession,
+                dispatcher,
+                new InformationTitleLineDetector()),
             new JsonCollectorDatabasePathStore(JsonCollectorDatabasePathStore.GetDefaultPath()));
         captureObservationController = new CaptureObservationController(
             viewModel.StartObservationSessionAsync,

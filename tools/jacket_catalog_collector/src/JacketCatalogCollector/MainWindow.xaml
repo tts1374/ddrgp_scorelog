@@ -129,6 +129,14 @@
                                 <TextBlock Text="2. DDR GPで曲を移動" FontSize="16" FontWeight="SemiBold" />
                                 <TextBlock Text="ジャケットが安定すると、上の保存ボタンが押せるようになります。"
                                            Foreground="#5F6B7A" Margin="0,4,0,0" TextWrapping="Wrap" />
+                                <TextBlock Margin="0,8,0,0">
+                                    <Run Text="INFORMATION: " />
+                                    <Run Text="{Binding Observation.InformationPanelDisplay, Mode=OneWay}" />
+                                    <Run Text="   曲名行: " />
+                                    <Run Text="{Binding Observation.InformationTitleLineStability, Mode=OneWay}" />
+                                </TextBlock>
+                                <TextBlock Text="{Binding Observation.InformationTitleLineHash}"
+                                           FontFamily="Consolas" FontSize="11" TextWrapping="Wrap" />
                             </StackPanel>
                         </Border>
 
@@ -139,6 +147,8 @@
                                 <TextBlock Text="{Binding WindowCapture.CaptureCounts}" FontFamily="Consolas" FontSize="11" />
                                 <TextBlock Text="{Binding Observation.DetectorProgress}" FontFamily="Consolas" FontSize="11" />
                                 <TextBlock Text="{Binding Observation.StableCandidate}" FontFamily="Consolas" FontSize="11" />
+                                <TextBlock Text="{Binding Observation.InformationDiagnostic}"
+                                           FontFamily="Consolas" FontSize="11" TextWrapping="Wrap" />
                                 <TextBlock Margin="0,8,0,2">
                                     <Run Text="session: " /><Run Text="{Binding Observation.SessionId, Mode=OneWay}" />
                                 </TextBlock>

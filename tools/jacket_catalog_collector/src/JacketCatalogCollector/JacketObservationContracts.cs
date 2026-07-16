@@ -11,6 +11,10 @@ public static class JacketObservationVersions
     public const string FeatureExtractor = "m5-jacket-v1";
     public const string SessionCheckpoint = "m5c-observation-checkpoint-v1";
     public const string ObservationManifest = "m5c-observation-manifest-v1";
+    public const string InformationDetector = "m5c-information-title-line-detector-v1";
+    public const string InformationPanelRoi = "m5c-song-select-information-panel-roi-v1";
+    public const string InformationTitleLineFeature =
+        "m5c-information-title-line-binary-sha256-v1";
 }
 
 public readonly record struct JacketRoi(int X, int Y, int Width, int Height)
