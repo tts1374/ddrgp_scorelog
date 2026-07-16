@@ -821,13 +821,11 @@ public sealed class PythonCatalogObservationAdapter(
             cancellationToken);
         if (result.ExitCode != 0)
         {
-            if (result.StandardError.Contains("drift", StringComparison.OrdinalIgnoreCase)
-                || result.StandardError.Contains("schema version", StringComparison.OrdinalIgnoreCase)
-                || result.StandardError.Contains("canonical payload", StringComparison.OrdinalIgnoreCase)
-                || result.StandardError.Contains("collides with", StringComparison.OrdinalIgnoreCase))
+            if (IsIdentityDriftFailure(result.StandardError))
             {
                 throw new ObservationIdentityDriftException(
-                    $"catalog identity/payload conflict detected during ingest (exit {result.ExitCode})");
+                    $"catalog identity/payload/artifact conflict detected during ingest "
+                    + $"(exit {result.ExitCode})");
             }
             return new CatalogIngestReceipt(
                 CatalogIngestDisposition.Failed,
@@ -876,6 +874,14 @@ public sealed class PythonCatalogObservationAdapter(
                 exception.Message);
         }
     }
+
+    private static bool IsIdentityDriftFailure(string standardError) =>
+        standardError.Contains("drift", StringComparison.OrdinalIgnoreCase)
+        || standardError.Contains("schema version", StringComparison.OrdinalIgnoreCase)
+        || standardError.Contains("canonical payload", StringComparison.OrdinalIgnoreCase)
+        || standardError.Contains("collides with", StringComparison.OrdinalIgnoreCase)
+        || standardError.Contains("observation artifact image", StringComparison.OrdinalIgnoreCase)
+        || standardError.Contains("source image does not exist", StringComparison.OrdinalIgnoreCase);
 }
 
 public sealed class JacketObservationSession(

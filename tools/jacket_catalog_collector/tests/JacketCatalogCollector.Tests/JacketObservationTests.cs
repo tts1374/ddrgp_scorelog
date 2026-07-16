@@ -980,6 +980,34 @@ public sealed class JacketObservationTests : IDisposable
     }
 
     [Fact]
+    public async Task Ingest_identity_drift_rolls_back_published_artifact_and_checkpoint()
+    {
+        var identity = Identity("session-ingest-drift");
+        var checkpointStore = new AtomicObservationCheckpointStore(root);
+        var publisher = new AtomicObservationArtifactPublisher(root);
+        var catalog = new FakeCatalogAdapter
+        {
+            IngestFailure = new ObservationIdentityDriftException("artifact hash mismatch"),
+        };
+        await using var session = new JacketObservationSession(
+            new JacketObservationDetector(new JacketDetectorOptions(0.01, 2, TimeSpan.Zero)),
+            checkpointStore,
+            publisher,
+            catalog);
+        await session.StartAsync(identity, "master.sqlite", "catalog.sqlite");
+        await session.ObserveFrameAsync(Frame(20, 1, 0));
+        await session.ObserveFrameAsync(Frame(20, 2, 100));
+
+        await Assert.ThrowsAsync<ObservationIdentityDriftException>(
+            () => session.AdoptLastStableAsync());
+
+        Assert.Equal(1, catalog.CallCount);
+        Assert.False(Directory.Exists(Path.Combine(root, identity.SessionId)));
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => checkpointStore.LoadAsync(identity.SessionId));
+    }
+
+    [Fact]
     public async Task Python_adapter_selects_explicit_v2_ingest_and_passes_artifact_hash()
     {
         var runner = new StubProcessRunner((_, _) => Task.FromResult(
@@ -1007,6 +1035,46 @@ public sealed class JacketObservationTests : IDisposable
         Assert.Contains(artifact.ObservationId, runner.Requests[1].Arguments);
         Assert.Contains("--expected-image-hash", runner.Requests[1].Arguments);
         Assert.Contains(artifact.JacketCropHash, runner.Requests[1].Arguments);
+    }
+
+    [Theory]
+    [InlineData("observation artifact image hash does not match its checkpoint")]
+    [InlineData("observation artifact image is empty")]
+    [InlineData("observation artifact image is invalid")]
+    [InlineData("source image does not exist: crop.png")]
+    [InlineData("master source hash drift detected during v2 observation ingest")]
+    [InlineData("observation id was already used with different canonical payload")]
+    public async Task Python_adapter_classifies_artifact_and_identity_rejections_as_drift(
+        string standardError)
+    {
+        var runner = new StubProcessRunner((_, _) => Task.FromResult(
+            new ProcessResult(1, "", standardError)));
+        var adapter = new PythonCatalogObservationAdapter(runner, root);
+        var identity = Identity("session-adapter-rejected") with { CatalogSchemaVersion = 2 };
+        var artifact = Artifact(identity, [1, 2], [3, 4]);
+
+        var exception = await Assert.ThrowsAsync<ObservationIdentityDriftException>(
+            () => adapter.IngestAsync(artifact, "crop.png", "catalog.sqlite", "master.sqlite"));
+
+        Assert.Contains("identity/payload/artifact conflict", exception.Message);
+        Assert.Single(runner.Requests);
+    }
+
+    [Fact]
+    public async Task Python_adapter_keeps_transient_ingest_failures_retryable()
+    {
+        var runner = new StubProcessRunner((_, _) => Task.FromResult(
+            new ProcessResult(1, "", "database is locked")));
+        var adapter = new PythonCatalogObservationAdapter(runner, root);
+        var identity = Identity("session-adapter-transient") with { CatalogSchemaVersion = 2 };
+        var artifact = Artifact(identity, [1, 2], [3, 4]);
+
+        var receipt = await adapter.IngestAsync(
+            artifact, "crop.png", "catalog.sqlite", "master.sqlite");
+
+        Assert.Equal(CatalogIngestDisposition.Failed, receipt.Disposition);
+        Assert.Null(receipt.CatalogReferenceId);
+        Assert.Single(runner.Requests);
     }
 
     [Fact]
@@ -1313,6 +1381,7 @@ public sealed class JacketObservationTests : IDisposable
         public int CallCount { get; private set; }
         public int ValidationCallCount { get; private set; }
         public Exception? ValidationFailure { get; init; }
+        public Exception? IngestFailure { get; init; }
         public int FailValidationOnCall { get; init; } = 1;
         public int CancelIngestOnCall { get; set; }
 
@@ -1345,6 +1414,10 @@ public sealed class JacketObservationTests : IDisposable
             if (CallCount == CancelIngestOnCall)
             {
                 throw new OperationCanceledException("injected ingest cancellation");
+            }
+            if (IngestFailure is not null)
+            {
+                throw IngestFailure;
             }
             return Task.FromResult(
                 receipts.Count == 0

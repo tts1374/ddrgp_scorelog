@@ -1407,6 +1407,50 @@ def test_v2_observation_ingest_is_strict_idempotent_and_review_safe(
     assert catalog_path.read_bytes() == before_reviewed_collision
 
 
+def test_v2_ingest_cli_does_not_create_a_missing_catalog(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    master_db, _ = setup_paths(tmp_path, monkeypatch)
+    image = tmp_path / "data" / "missing-catalog-observation.png"
+    write_image(image, (20, 40, 80))
+    missing_catalog = tmp_path / "data" / "missing-catalog-v2.sqlite"
+    master = catalog.load_master_identity(master_db)
+    image_hash = hashlib.sha256(image.read_bytes()).hexdigest()
+    data_entries_before = set(missing_catalog.parent.iterdir())
+
+    with pytest.raises(ValueError, match="catalog is not a file"):
+        catalog.main(
+            [
+                "ingest-v2",
+                "--catalog",
+                str(missing_catalog),
+                "--master-db",
+                str(master_db),
+                "--source-image",
+                str(image),
+                "--observation-id",
+                "missing-catalog-observation",
+                "--expected-image-hash",
+                image_hash,
+                "--expected-master-version",
+                master.version,
+                "--expected-master-source-hash",
+                master.source_hash,
+                "--expected-feature-extractor-version",
+                catalog.FEATURE_EXTRACTOR_VERSION,
+                "--expected-catalog-identity",
+                catalog.CATALOG_IDENTITY,
+                "--expected-catalog-schema-version",
+                str(catalog.CATALOG_SCHEMA_VERSION_V2),
+                "--expected-catalog-created-at",
+                "2026-07-16T00:00:00+00:00",
+            ]
+        )
+
+    assert not missing_catalog.exists()
+    assert set(missing_catalog.parent.iterdir()) == data_entries_before
+
+
 def test_v2_ingest_uses_one_image_snapshot_and_rejects_replaced_payload(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

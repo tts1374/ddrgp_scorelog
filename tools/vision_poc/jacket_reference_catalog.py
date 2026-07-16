@@ -375,6 +375,12 @@ def _connect_read_only(path: Path) -> sqlite3.Connection:
     return sqlite3.connect(f"file:{path.resolve().as_posix()}?mode=ro", uri=True)
 
 
+def _connect_read_write(path: Path) -> sqlite3.Connection:
+    if not path.is_file():
+        raise ValueError(f"catalog is not a file: {path}")
+    return sqlite3.connect(f"file:{path.resolve().as_posix()}?mode=rw", uri=True)
+
+
 def _table_columns(connection: sqlite3.Connection, table: str) -> set[str]:
     return {str(row[1]) for row in connection.execute(f"PRAGMA table_info({table})")}
 
@@ -836,7 +842,7 @@ def apply_review_mutation(
         if selected_song is None or not selected_song.grand_prix_play_available:
             raise ValueError("manual song must exist in the current master and be GP-available")
 
-    with closing(sqlite3.connect(catalog_path)) as connection:
+    with closing(_connect_read_write(catalog_path)) as connection:
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA foreign_keys = ON")
         connection.execute("BEGIN IMMEDIATE")
@@ -1269,7 +1275,7 @@ def ingest_observation(
         observed_title=observed_title,
         observed_artist=observed_artist,
     )
-    with closing(sqlite3.connect(catalog_path)) as connection, connection:
+    with closing(_connect_read_write(catalog_path)) as connection, connection:
         connection.execute("BEGIN IMMEDIATE")
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA foreign_keys = ON")
@@ -1537,6 +1543,12 @@ def ingest_observation_v2(
         expected_feature_extractor_version != FEATURE_EXTRACTOR_VERSION
     ):
         raise ValueError("feature extractor version drift detected during v2 observation ingest")
+    if expected_catalog_schema_version is not None and (
+        expected_catalog_schema_version != CATALOG_SCHEMA_VERSION_V2
+    ):
+        raise ValueError("v2 observation ingest requires catalog schema version 2")
+    if catalog_schema_version(catalog_path) != CATALOG_SCHEMA_VERSION_V2:
+        raise ValueError("v2 observation ingest requires catalog schema version 2")
     if not source_image_path.is_file():
         raise ValueError(f"source image does not exist: {source_image_path}")
     image_bytes = source_image_path.read_bytes()
@@ -1557,11 +1569,6 @@ def ingest_observation_v2(
         master.source_hash != expected_master_source_hash
     ):
         raise ValueError("master source hash drift detected during v2 observation ingest")
-    if expected_catalog_schema_version is not None and (
-        expected_catalog_schema_version != CATALOG_SCHEMA_VERSION_V2
-    ):
-        raise ValueError("v2 observation ingest requires catalog schema version 2")
-
     reference_id = _reference_id(
         source_hash,
         capture_id=observation_id,
@@ -1570,7 +1577,7 @@ def ingest_observation_v2(
         observed_artist="",
     )
     timestamp = now or utc_now()
-    with closing(sqlite3.connect(catalog_path)) as connection, connection:
+    with closing(_connect_read_write(catalog_path)) as connection, connection:
         connection.execute("BEGIN IMMEDIATE")
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA foreign_keys = ON")
