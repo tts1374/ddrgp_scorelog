@@ -90,6 +90,7 @@
                                     <DataGridTextColumn Header="ウィンドウ" Binding="{Binding DisplayName}" Width="2*" />
                                     <DataGridTextColumn Header="検出理由" Binding="{Binding CandidateReason}" Width="*" />
                                     <DataGridCheckBoxColumn Header="表示中" Binding="{Binding Identity.IsVisible}" Width="65" />
+                                    <DataGridCheckBoxColumn Header="最小化" Binding="{Binding Identity.IsMinimized}" Width="65" />
                                 </DataGrid.Columns>
                             </DataGrid>
                         </Grid>

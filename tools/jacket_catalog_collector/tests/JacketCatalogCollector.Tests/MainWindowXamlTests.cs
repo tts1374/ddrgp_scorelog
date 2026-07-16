@@ -49,6 +49,11 @@ public sealed class MainWindowXamlTests
         Assert.Contains("収集を開始", buttonLabels);
         Assert.Contains("収集を終了", buttonLabels);
         Assert.Contains("管理・設定", tabs);
+        Assert.Contains(
+            document.Descendants().Where(element => element.Name.LocalName == "DataGridCheckBoxColumn"),
+            element => element.Attribute("Header")?.Value == "最小化"
+                && element.Attributes().Any(attribute =>
+                    attribute.Value.Contains("Identity.IsMinimized", StringComparison.Ordinal)));
     }
 
     [Fact]
