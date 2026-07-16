@@ -57,6 +57,18 @@ public sealed class MainWindowXamlTests
     }
 
     [Fact]
+    public void WindowStartupBindsRememberedDatabaseReload()
+    {
+        var document = LoadMainWindow();
+        var window = document.Root!;
+
+        Assert.Equal("MainWindow_Loaded", window.Attribute("Loaded")?.Value);
+        Assert.Contains(
+            document.Descendants().Where(element => element.Name.LocalName == "TextBlock"),
+            element => element.Attribute("Text")?.Value == "{Binding StatusMessage}");
+    }
+
+    [Fact]
     public void InternalDetectorStateIsNotShownInThePrimaryLayout()
     {
         var xaml = File.ReadAllText(GetMainWindowPath());

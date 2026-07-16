@@ -15,6 +15,7 @@ public partial class MainWindow : Window
     private bool titleArtistEvaluationBusy;
     private CancellationTokenSource? operationCancellation;
     private bool captureShutdownComplete;
+    private bool startupInitializationStarted;
 
     public MainWindow()
     {
@@ -39,7 +40,8 @@ public partial class MainWindow : Window
             new ProjectionService(runner, new ProjectionJsonLoader(), repositoryRoot),
             new ReviewWorkflowService(runner, repositoryRoot),
             windowCapture,
-            new JacketObservationViewModel(windowCapture, observationSession, dispatcher));
+            new JacketObservationViewModel(windowCapture, observationSession, dispatcher),
+            new JsonCollectorDatabasePathStore(JsonCollectorDatabasePathStore.GetDefaultPath()));
         captureObservationController = new CaptureObservationController(
             viewModel.StartObservationSessionAsync,
             viewModel.ResumeObservationSessionAsync,
@@ -49,6 +51,29 @@ public partial class MainWindow : Window
             () => windowCapture.Lifecycle.State);
         titleArtistEvaluationService = new TitleArtistEvaluationService(runner, repositoryRoot);
         DataContext = viewModel;
+    }
+
+    private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (startupInitializationStarted || operationCancellation is not null)
+        {
+            return;
+        }
+        startupInitializationStarted = true;
+        try
+        {
+            operationCancellation = new CancellationTokenSource();
+            await viewModel.InitializeRememberedProjectionAsync(operationCancellation.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            // The ViewModel exposes the actionable diagnostic in the status panel.
+        }
+        finally
+        {
+            operationCancellation?.Dispose();
+            operationCancellation = null;
+        }
     }
 
     private async void RefreshWindows_Click(object sender, RoutedEventArgs e)

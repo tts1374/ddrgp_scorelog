@@ -1,81 +1,33 @@
 # 現在PR完了記録
 
-developer-only jacket collectorの収集画面を、通常の作業順序が分かるcollection-first UIへ再構成した。detector、capture lifecycle、artifact/checkpoint publish、catalog ingest、DB schemaは変更していない。
+developer-only jacket collectorが前回正常に読み込んだmaster/catalogのpathを端末ユーザー単位で記憶し、次回起動時に同じ組合せをstrict read-only projectionで再検証して自動読込するようにした。DB本体、schema、capture、catalog writerは変更していない。
 
 ## 今回の完了範囲
 
-- 初期表示を `ジャケット収集` とし、preview、window選択、収集開始、曲移動、明示保存を1画面へ集約した。
-- 主操作を `このジャケットを保存` に固定し、再開・catalog retryは `詳細・復旧操作`、master/catalog操作、migration、title/artist評価は `管理・設定` へ分離した。
-- `DuplicatePreview` などのdetector内部状態を通常画面へ露出せず、未保存stable候補は `新しいジャケットを検出`、保存後は `このジャケットは保存済み` と次操作を表示するpresentation stateを追加した。
-- detectorが同じpreviewをduplicateとして扱っても既存のadoptable candidateを維持し、A→B→Aの再訪時もcheckpointの保存済み観測集合から `保存済み` と表示する境界を回帰testで固定した。
-- 別jacketへの切替中は直前のstable候補を保存ボタンへ流用せず、表示中jacketがstableまたはduplicateとして確定した場合だけ明示保存を許可する。
-- 明示開始前に候補のvisible/minimized状態を確認できる表示を維持した。
-- 収集タブが先頭であること、主操作と開始・終了操作が存在すること、内部状態をprimary layoutへbindingしないことをXAML回帰testで固定した。
-- READMEへ初回DB選択から収集終了までの基本操作を同期した。
-- collector全test、build、実際のWPF起動とcollection-first layoutを確認した。
-- ローカルmaster/catalog、source/crop/checkpoint、実capture画像、評価dataset/report、その他生成物は変更していない。
+- `%LOCALAPPDATA%\DDRGpScorelog\JacketCatalogCollector\database-paths.v1.json` に、setting schema versionとmaster/catalogのabsolute pathだけをUTF-8 JSONでatomic保存するloader/storeを追加した。
+- setting未作成の初回起動はfile/directoryを作らず、従来どおり手動選択を案内する。
+- `master/catalogを選択` のstrict read-only projectionが両方成功した場合だけ保存pathを更新し、dialog完了やprojection失敗では最後に正常だったsettingを変更しない。
+- collector起動時に保存pathを同じprojection経路で再検証し、両方が有効な場合だけ自動読込する。current master versionとcatalog schemaは従来の画面で確認でき、手動変更も維持した。
+- setting未設定、破損、unknown field、version不一致、relative path、読取権限不足相当、DB欠損・非互換・組合せ不整合ではcollectorを終了せず、settingとDBを変更しないまま手動選択へ戻す。
+- setting保存だけが失敗した場合は、正常検証済みのread-only projectionを利用可能なままactionableな診断を表示する。
+- 起動時の自動読込を既存`IsBusy`と共通の取消tokenへ接続し、Loaded eventの多重実行を抑止した。
+- setting store、ViewModel起動/手動読込、XAML startup bindingの回帰testとREADMEを同期した。
+- testはOS temporary directoryとin-memory stubだけを使い、既存local setting、master/catalog、capture画像、artifact/checkpoint、評価dataset/reportを変更していない。
 
 ## 維持した境界
 
-- window候補の列挙、明示選択・開始確認、暗黙再選択禁止、capture resource lifecycleを変更していない。
-- stable/duplicate判定、明示採用、artifact atomic publish、checkpoint/resume/retry、catalog v1/v2 ingestを変更していない。
-- catalog schema、manual review revision/history、runtime current reference、正式個人スコアDBを変更していない。
-- ゲーム操作、focus操作、grid自動巡回、公開 `DDRGpScoreViewer`、cleanup/retentionへ進んでいない。
+- path以外のDB内容、認証情報、将来の自動保存optionをsettingへ保存していない。
+- projection schema、catalog schema、manual review revision/history、observation artifact/checkpoint、capture lifecycleを変更していない。
+- 自動読込したDBへのmutation、DBのコピー・移動・作成・修復・migration・削除を行っていない。
+- `INFORMATION` detector、複合identity、既存artifact backfill、opt-in自動保存へ進んでいない。
+- 公開 `DDRGpScoreViewer`、正式個人スコアDB、ゲーム操作、cleanup/retentionへ接続していない。
 
 ## 未決事項
 
-- 実captureのexpected付き評価母数を収集し、M5c-4の固定gateを満たすtitle/artist取得方式があるか確認する作業は未実施。
-- animation、言語、解像度差を含む追加方式/局所前処理が必要かは実測後に判断する。
-- gateを満たす方式が得られた場合のcatalog auto-confirm mutation契約、observation receipt version、manual review競合時の接続方法は未固定。
-- source locator/retention、reject/cleanupの操作契約は引き続き別責務。
-
-## 次PR仕様: master/catalog選択の記憶
-
-### 正規化概要
-
-collectorが前回正常に読み込んだmaster/catalogのpathを端末ユーザー単位で記憶し、次回起動時に同じ組合せをread-onlyで再検証して自動読込する。DB本体、schema、capture、catalog writerは変更しない。
-
-### In scope
-
-- 正常に読込済みのmaster/catalog absolute pathだけを、repositoryと`data/`の外にあるユーザー単位のlocal app settingへ保存する。
-- collector起動時に保存pathの存在と現行projection互換性を再検証し、両方が有効な場合だけ自動読込する。
-- `master/catalogを選択`で別の有効な組合せを正常読込した場合だけ、保存pathを置き換える。
-- 未設定、欠損、権限不足、破損、version不一致、組合せ不整合を安全に処理し、手動選択へ戻せるactionableな状態を表示する。
-- setting loader/storeの対象test、起動時bindingのtest、README同期を含める。
-
-### Out of scope
-
-- DB本体のコピー、移動、作成、修復、migration、削除。
-- catalog schema、projection schema、manual review、observation artifact/checkpoint、capture lifecycleの変更。
-- `INFORMATION`検出、複合identity、自動保存、既存artifactのbackfill。
-- 自動選択したDBに対する暗黙mutation。
-
-### Fixed decisions
-
-- 記憶対象はpathだけとし、DB内容や認証情報をsettingへ複製しない。
-- path保存は両DBの正常なread-only projection完了後に行い、選択dialogの完了だけでは更新しない。
-- 起動時再検証に失敗してもcollectorを終了せず、DBと既存settingを変更せずに手動選択を案内する。
-- 自動読込後も現在のmaster/catalog versionとschemaを画面で確認でき、手動で別pathへ変更できる。
-- setting、local DB、診断出力をGit管理しない。
-
-### Pending decisions
-
-- settingの具体的な保存API/形式とapp version更新時の保持方法は、上記境界を満たす範囲で実装時に選定する。
-- 自動保存の有効/無効設定を将来同じsettingへ保存するかは後続PRで決める。
-
-### Acceptance criteria
-
-- setting未作成の初回起動は現行どおり手動選択を案内し、settingやDBを作成しない。
-- 正常読込後にcollectorを再起動すると、同じmaster/catalogが自動的にread-only読込される。
-- 一方または両方のpathが欠損・非互換・読取不能でも起動でき、DB byteを変更せず手動選択へ復帰できる。
-- 読込失敗した別pathを選択しても、最後に正常だった保存pathを上書きしない。
-- 新しい有効な組合せを正常読込した場合は、次回起動でその組合せが使われる。
-- test実行前後でfixture DBと既存local DBがbyte不変であり、settingと生成物がGit差分へ混入しない。
-
-### Open risks / blockers
-
-- 起動時の自動読込と手動読込が同時実行されないよう、既存`IsBusy`/取消境界との整合が必要。
-- removable/network pathの一時欠損時に保存pathを消去すると復帰不能になるため、再検証失敗だけではsettingを削除しない。
+- 次PR候補は下記の合意済み順序では`INFORMATION` panel/title line detectorだが、ROI、line-hash方式、連続frame数、animation安定条件を固定する実capture fixtureが未整備であり、現時点では実装可能な次PR仕様へ昇格しない。
+- 実captureのexpected付き評価母数と、M5c-4の固定gateを満たすtitle/artist取得方式は未確認。
+- source locator/retention、reject/cleanupの操作契約、自動保存opt-inをsession単位または端末settingへ置く判断は引き続き未固定。
+- 下記の合意済み後続仕様は順序と境界の記録に限定し、必要fixtureと各契約が固定された後に個別のIssue/PR仕様へ昇格する。
 
 ## 合意済み後続仕様（次PRでは着手しない）
 
