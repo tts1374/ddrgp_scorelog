@@ -27,6 +27,113 @@ public sealed class MainViewModelTests
     }
 
     [Fact]
+    public async Task RemembersPathsOnlyAfterSuccessfulManualProjectionLoad()
+    {
+        var store = new StubDatabasePathStore();
+        var projectionService = new SequenceProjectionService(
+            Projection(),
+            new InvalidOperationException("invalid projection"));
+        var viewModel = new MainViewModel(
+            new StubMasterUpdateService(),
+            projectionService,
+            databasePathStore: store);
+
+        await viewModel.LoadProjectionAsync("master-ok.sqlite", "catalog-ok.sqlite");
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => viewModel.LoadProjectionAsync("master-bad.sqlite", "catalog-bad.sqlite"));
+
+        var saved = Assert.Single(store.Saved);
+        Assert.Equal(Path.GetFullPath("master-ok.sqlite"), saved.MasterPath);
+        Assert.Equal(Path.GetFullPath("catalog-ok.sqlite"), saved.CatalogPath);
+    }
+
+    [Fact]
+    public async Task AutomaticallyReloadsRememberedPathsWithoutRewritingSetting()
+    {
+        var remembered = new CollectorDatabasePaths(
+            Path.GetFullPath("remembered-master.sqlite"),
+            Path.GetFullPath("remembered-catalog.sqlite"));
+        var store = new StubDatabasePathStore(remembered);
+        var projectionService = new RecordingProjectionService(Projection());
+        var viewModel = new MainViewModel(
+            new StubMasterUpdateService(),
+            projectionService,
+            databasePathStore: store);
+
+        await viewModel.InitializeRememberedProjectionAsync();
+
+        Assert.Equal((remembered.MasterPath, remembered.CatalogPath), projectionService.Loads[0]);
+        Assert.Empty(store.Saved);
+        Assert.Equal("前回DBを自動読込", viewModel.StatusTitle);
+        Assert.Equal("master-v1", viewModel.MasterVersion);
+        Assert.False(viewModel.IsBusy);
+    }
+
+    [Fact]
+    public async Task MissingSettingKeepsFirstLaunchManualAndCreatesNothing()
+    {
+        var store = new StubDatabasePathStore();
+        var projectionService = new RecordingProjectionService(Projection());
+        var viewModel = new MainViewModel(
+            new StubMasterUpdateService(),
+            projectionService,
+            databasePathStore: store);
+
+        await viewModel.InitializeRememberedProjectionAsync();
+
+        Assert.Empty(projectionService.Loads);
+        Assert.Empty(store.Saved);
+        Assert.Equal("準備完了", viewModel.StatusTitle);
+        Assert.Equal("未選択", viewModel.MasterVersion);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task FailedAutomaticReloadKeepsSettingAndReturnsToManualSelection(
+        bool settingFailure)
+    {
+        var remembered = new CollectorDatabasePaths(
+            Path.GetFullPath("remembered-master.sqlite"),
+            Path.GetFullPath("remembered-catalog.sqlite"));
+        var store = new StubDatabasePathStore(
+            remembered,
+            loadException: settingFailure ? new UnauthorizedAccessException("denied") : null);
+        IProjectionService projectionService = settingFailure
+            ? new RecordingProjectionService(Projection())
+            : new FailingProjectionService(new InvalidOperationException("incompatible"));
+        var viewModel = new MainViewModel(
+            new StubMasterUpdateService(),
+            projectionService,
+            databasePathStore: store);
+
+        await viewModel.InitializeRememberedProjectionAsync();
+
+        Assert.Empty(store.Saved);
+        Assert.Equal("前回DBの自動読込失敗", viewModel.StatusTitle);
+        Assert.Contains("手動選択", viewModel.StatusMessage, StringComparison.Ordinal);
+        Assert.Equal("未選択", viewModel.MasterVersion);
+        Assert.False(viewModel.IsBusy);
+    }
+
+    [Fact]
+    public async Task SettingSaveFailureKeepsValidatedProjectionAvailable()
+    {
+        var store = new StubDatabasePathStore(
+            saveException: new UnauthorizedAccessException("denied"));
+        var viewModel = new MainViewModel(
+            new StubMasterUpdateService(),
+            new StubProjectionService(Projection()),
+            databasePathStore: store);
+
+        await viewModel.LoadProjectionAsync("master.sqlite", "catalog.sqlite");
+
+        Assert.Equal("読込完了（path記憶失敗）", viewModel.StatusTitle);
+        Assert.Equal("master-v1", viewModel.MasterVersion);
+        Assert.NotEmpty(viewModel.Songs);
+    }
+
+    [Fact]
     public async Task ReportsMasterSuccessFailureAndCancellationStates()
     {
         var success = new MainViewModel(
@@ -203,6 +310,54 @@ public sealed class MainViewModelTests
             return callCount == 1
                 ? Task.FromResult(first)
                 : Task.FromException<ReviewProjection>(second);
+        }
+    }
+
+    private sealed class RecordingProjectionService(ReviewProjection projection) : IProjectionService
+    {
+        public List<(string Master, string Catalog)> Loads { get; } = [];
+
+        public Task<ReviewProjection> LoadAsync(
+            string masterPath,
+            string catalogPath,
+            CancellationToken cancellationToken)
+        {
+            Loads.Add((masterPath, catalogPath));
+            return Task.FromResult(projection);
+        }
+    }
+
+    private sealed class FailingProjectionService(Exception exception) : IProjectionService
+    {
+        public Task<ReviewProjection> LoadAsync(
+            string masterPath,
+            string catalogPath,
+            CancellationToken cancellationToken) =>
+            Task.FromException<ReviewProjection>(exception);
+    }
+
+    private sealed class StubDatabasePathStore(
+        CollectorDatabasePaths? remembered = null,
+        Exception? loadException = null,
+        Exception? saveException = null) : ICollectorDatabasePathStore
+    {
+        public List<CollectorDatabasePaths> Saved { get; } = [];
+
+        public Task<CollectorDatabasePaths?> LoadAsync(CancellationToken cancellationToken) =>
+            loadException is null
+                ? Task.FromResult(remembered)
+                : Task.FromException<CollectorDatabasePaths?>(loadException);
+
+        public Task SaveAsync(
+            CollectorDatabasePaths paths,
+            CancellationToken cancellationToken)
+        {
+            if (saveException is not null)
+            {
+                return Task.FromException(saveException);
+            }
+            Saved.Add(paths);
+            return Task.CompletedTask;
         }
     }
 

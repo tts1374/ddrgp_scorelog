@@ -10,7 +10,8 @@ public sealed class MainViewModel(
     IProjectionService projectionService,
     IReviewWorkflowService? reviewWorkflowService = null,
     WindowCaptureViewModel? windowCapture = null,
-    JacketObservationViewModel? observation = null) : INotifyPropertyChanged
+    JacketObservationViewModel? observation = null,
+    ICollectorDatabasePathStore? databasePathStore = null) : INotifyPropertyChanged
 {
     private ReviewProjection? projection;
     private string selectedCoverageStatus = "all";
@@ -145,19 +146,24 @@ public sealed class MainViewModel(
         StatusMessage = "master と catalog を read-only で検証しています。";
         try
         {
-            var loadedProjection = await projectionService.LoadAsync(
-                masterPath,
-                catalogPath,
-                cancellationToken);
-            projection = loadedProjection;
-            this.masterPath = Path.GetFullPath(masterPath);
-            this.catalogPath = Path.GetFullPath(catalogPath);
-            RebuildFilterOptions();
-            ApplyFilters();
-            ApplySongSearch();
-            NotifyProjectionProperties();
+            await LoadProjectionCoreAsync(masterPath, catalogPath, cancellationToken);
             StatusTitle = "読込完了";
-            StatusMessage = $"GP対象 {projection.Coverage.GrandPrixSongCount} 曲を表示しました。";
+            StatusMessage = $"GP対象 {projection!.Coverage.GrandPrixSongCount} 曲を表示しました。";
+            if (databasePathStore is not null)
+            {
+                try
+                {
+                    await databasePathStore.SaveAsync(
+                        new CollectorDatabasePaths(this.masterPath!, this.catalogPath!),
+                        cancellationToken);
+                }
+                catch (Exception exception)
+                {
+                    StatusTitle = "読込完了（path記憶失敗）";
+                    StatusMessage =
+                        $"DBはread-onlyで読込済みです。pathを記憶できませんでした: {exception.Message}";
+                }
+            }
         }
         catch (OperationCanceledException)
         {
@@ -172,6 +178,58 @@ public sealed class MainViewModel(
             StatusTitle = "読込失敗";
             StatusMessage = exception.Message;
             throw;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    public async Task InitializeRememberedProjectionAsync(
+        CancellationToken cancellationToken = default)
+    {
+        if (databasePathStore is null)
+        {
+            return;
+        }
+        if (IsBusy)
+        {
+            throw new InvalidOperationException("別の処理を実行中です。");
+        }
+
+        IsBusy = true;
+        StatusTitle = "前回DBを確認中";
+        StatusMessage = "記憶したmaster/catalogをread-onlyで再検証しています。";
+        try
+        {
+            var remembered = await databasePathStore.LoadAsync(cancellationToken);
+            if (remembered is null)
+            {
+                StatusTitle = "準備完了";
+                StatusMessage = "master DB と jacket catalog を選択してください。";
+                return;
+            }
+            await LoadProjectionCoreAsync(
+                remembered.MasterPath,
+                remembered.CatalogPath,
+                cancellationToken);
+            StatusTitle = "前回DBを自動読込";
+            StatusMessage =
+                $"記憶したmaster/catalogをread-onlyで再検証し、GP対象 {projection!.Coverage.GrandPrixSongCount} 曲を表示しました。";
+        }
+        catch (OperationCanceledException)
+        {
+            ClearProjection();
+            StatusTitle = "自動読込取消";
+            StatusMessage = "自動読込を取り消しました。DBと保存pathは変更していません。";
+            throw;
+        }
+        catch (Exception exception)
+        {
+            ClearProjection();
+            StatusTitle = "前回DBの自動読込失敗";
+            StatusMessage =
+                $"保存pathは保持しています。master/catalogを手動選択してください: {exception.Message}";
         }
         finally
         {

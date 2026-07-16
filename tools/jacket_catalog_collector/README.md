@@ -21,13 +21,19 @@ appはカレントディレクトリをリポジトリrootとして `python -X u
 
 初期表示の `ジャケット収集` タブだけで通常の収集を進められます。
 
-1. 初回またはDBを変更するときは `管理・設定` で `master/catalogを選択` を押し、互換なmasterとcatalogを読み込む。
+1. 初回またはDBを変更するときは `管理・設定` で `master/catalogを選択` を押し、互換なmasterとcatalogを読み込む。正常読込後は次回起動時に同じ組合せをread-onlyで自動再検証する。
 2. DDR GRAND PRIXを曲選択画面にし、`ウィンドウを再検索` を押す。
 3. 左下の一覧から表示中のDDR GPを1件選び、previewを確認して `収集を開始` を押す。
 4. DDR GPで曲を移動し、`新しいジャケットを検出` と表示されたら `このジャケットを保存` を押す。
 5. `このジャケットは保存済み` と表示されたら、DDR GPで次の曲へ移動する。終了時は `収集を終了` を押す。
 
 detectorの内部状態は通常画面へ表示しません。同じ画像が連続する間も未保存のstable候補は保存可能なまま維持し、保存後は次の曲へ移動する案内を表示します。session再開とcatalog retryは `詳細・復旧操作`、master更新、catalog移行、title/artist評価は `管理・設定` にあります。
+
+## Master/catalog path setting
+
+`master/catalogを選択` で両DBのstrict read-only projectionが成功した場合だけ、absolute pathを端末ユーザーの `%LOCALAPPDATA%\DDRGpScorelog\JacketCatalogCollector\database-paths.v1.json` へatomic保存します。設定にはschema versionと2つのpathだけを含め、DB内容や認証情報は複製しません。app versionを更新してもsetting schema version 1が互換な間はそのまま保持します。
+
+初回起動はsettingやDBを作成しません。次回起動では保存pathを同じprojection経路で再検証し、両方が有効な場合だけ自動読込します。未設定、欠損、読取権限不足、破損、setting/projection version不一致、master/catalog組合せ不整合ではcollectorを終了せず、保存済みsettingとDBを変更しないまま手動選択を案内します。別の組合せの読込に失敗しても最後に正常だったpathは維持します。setting保存だけに失敗した場合は、検証済みのread-only projectionを利用可能なまま診断を表示します。
 
 ## Master update boundary
 
