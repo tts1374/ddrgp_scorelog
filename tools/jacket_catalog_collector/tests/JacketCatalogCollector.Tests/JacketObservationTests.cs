@@ -876,45 +876,6 @@ public sealed class JacketObservationTests : IDisposable
     }
 
     [Fact]
-    public async Task Retry_catalog_explicitly_reprocesses_deferred_v2_checkpoint()
-    {
-        var identity = Identity("session-retry-no-pending") with { CatalogSchemaVersion = 2 };
-        var checkpointStore = new AtomicObservationCheckpointStore(root);
-        var publisher = new AtomicObservationArtifactPublisher(root);
-        var catalog = new FakeCatalogAdapter(
-            new CatalogIngestReceipt(
-                CatalogIngestDisposition.DeferredUnsupportedSchema,
-                null,
-                "deferred"),
-            new CatalogIngestReceipt(
-                CatalogIngestDisposition.Existing,
-                "reference-v2",
-                "same receipt"));
-        await using var session = new JacketObservationSession(
-            new JacketObservationDetector(new JacketDetectorOptions(0.01, 2, TimeSpan.Zero)),
-            checkpointStore,
-            publisher,
-            catalog);
-        await session.StartAsync(identity, "master.sqlite", "catalog.sqlite");
-        await session.ObserveFrameAsync(Frame(40, 1, 0));
-        await session.ObserveFrameAsync(Frame(40, 2, 150));
-        var adopted = await session.AdoptLastStableAsync();
-        var checkpointPath = Path.Combine(root, identity.SessionId, "checkpoint.json");
-        var checkpointBytes = await File.ReadAllBytesAsync(checkpointPath);
-
-        var retried = await session.RetryPendingCatalogAsync();
-
-        Assert.Single(retried);
-        Assert.Equal(CatalogIngestDisposition.Existing, retried[0].Catalog.Disposition);
-        Assert.Equal(3, catalog.ValidationCallCount);
-        Assert.Equal(2, catalog.CallCount);
-        Assert.NotEqual(checkpointBytes, await File.ReadAllBytesAsync(checkpointPath));
-        Assert.Equal("ingested", session.Checkpoint!.Observations.Single().CatalogStatus);
-        Assert.Equal("deferred", adopted.Checkpoint.Observations.Single().CatalogStatus);
-        Assert.Equal("reference-v2", session.Checkpoint.Observations.Single().CatalogReferenceId);
-    }
-
-    [Fact]
     public async Task Revisited_preview_adopts_the_candidate_shown_in_the_ui()
     {
         var identity = Identity("session-revisited-preview");
@@ -1296,75 +1257,37 @@ public sealed class JacketObservationTests : IDisposable
     }
 
     [Fact]
-    public async Task Python_adapter_selects_explicit_v2_ingest_and_passes_artifact_hash()
+    public async Task Python_adapter_uses_current_ingest_with_identity_and_artifact_hash()
     {
         var runner = new StubProcessRunner((_, _) => Task.FromResult(
             new ProcessResult(
                 0,
-                "{\"disposition\":\"created\",\"reference_id\":\"reference-v2\","
+                "{\"disposition\":\"created\",\"reference_id\":\"reference-current\","
                     + "\"review_status\":\"unresolved\",\"reason\":\"observation_unresolved\"}",
                 "")));
         var adapter = new PythonCatalogObservationAdapter(runner, root);
-        var identity = Identity("session-adapter") with { CatalogSchemaVersion = 2 };
-        var artifact = Artifact(identity, [1, 2], [3, 4]);
+        var identity = Identity("session-adapter");
+        var artifact = CurrentArtifact(identity, [1, 2], [3, 4]);
 
         await adapter.ValidateSessionAsync(identity, "catalog.sqlite", "master.sqlite");
         var receipt = await adapter.IngestAsync(
             artifact, "crop.png", "catalog.sqlite", "master.sqlite");
 
         Assert.Equal(CatalogIngestDisposition.Created, receipt.Disposition);
-        Assert.Equal("reference-v2", receipt.CatalogReferenceId);
+        Assert.Equal("reference-current", receipt.CatalogReferenceId);
         Assert.Equal(2, runner.Requests.Count);
         Assert.Contains("validate-session", runner.Requests[0].Arguments);
         Assert.Contains("--expected-catalog-created-at", runner.Requests[0].Arguments);
         Assert.Contains(identity.CatalogCreatedAt, runner.Requests[0].Arguments);
-        Assert.Contains("ingest-v2", runner.Requests[1].Arguments);
+        Assert.Contains("ingest", runner.Requests[1].Arguments);
+        Assert.DoesNotContain("ingest-v2", runner.Requests[1].Arguments);
         Assert.Contains("--observation-id", runner.Requests[1].Arguments);
         Assert.Contains(artifact.ObservationId, runner.Requests[1].Arguments);
         Assert.Contains("--expected-image-hash", runner.Requests[1].Arguments);
         Assert.Contains(artifact.JacketCropHash, runner.Requests[1].Arguments);
-    }
-
-    [Fact]
-    public async Task Python_adapter_passes_required_composite_identity_for_catalog_v3()
-    {
-        var runner = new StubProcessRunner((_, _) => Task.FromResult(
-            new ProcessResult(
-                0,
-                "{\"disposition\":\"created\",\"reference_id\":\"reference-v3\","
-                    + "\"review_status\":\"unresolved\",\"reason\":\"observation_unresolved\"}",
-                "")));
-        var adapter = new PythonCatalogObservationAdapter(runner, root);
-        var identity = Identity("session-adapter-v3") with { CatalogSchemaVersion = 3 };
-        var titleHash = Hash(Encoding.UTF8.GetBytes("title"));
-        var composite = CompositeObservationIdentityBuilder.Create(
-            JacketObservationVersions.FrameFeature,
-            TestFeatureHash,
-            JacketObservationVersions.InformationTitleLineFeature,
-            titleHash);
-        var artifact = Artifact(identity, [1, 2], [3, 4]) with
-        {
-            TitleLineFeature = new TitleLineFeatureObservation(
-                JacketObservationVersions.InformationTitleLineFeature,
-                titleHash,
-                1,
-                DateTimeOffset.UtcNow,
-                JacketObservationVersions.InformationDetector,
-                JacketObservationVersions.InformationPanelRoi),
-            CompositeIdentity = composite,
-        };
-
-        var receipt = await adapter.IngestAsync(
-            artifact, "crop.png", "catalog.sqlite", "master.sqlite");
-
-        Assert.Equal(CatalogIngestDisposition.Created, receipt.Disposition);
-        Assert.Contains("ingest-v2", runner.Requests[0].Arguments);
-        Assert.Contains("--jacket-feature-hash", runner.Requests[0].Arguments);
-        Assert.Contains(TestFeatureHash, runner.Requests[0].Arguments);
-        Assert.Contains("--title-line-hash", runner.Requests[0].Arguments);
-        Assert.Contains(titleHash, runner.Requests[0].Arguments);
-        Assert.Contains("--composite-identity-hash", runner.Requests[0].Arguments);
-        Assert.Contains(composite.IdentityHash, runner.Requests[0].Arguments);
+        Assert.Contains("--jacket-feature-hash", runner.Requests[1].Arguments);
+        Assert.Contains("--title-line-hash", runner.Requests[1].Arguments);
+        Assert.Contains("--composite-identity-hash", runner.Requests[1].Arguments);
     }
 
     [Theory]
@@ -1372,7 +1295,7 @@ public sealed class JacketObservationTests : IDisposable
     [InlineData("observation artifact image is empty")]
     [InlineData("observation artifact image is invalid")]
     [InlineData("source image does not exist: crop.png")]
-    [InlineData("master source hash drift detected during v2 observation ingest")]
+    [InlineData("master source hash drift detected during observation ingest")]
     [InlineData("observation id was already used with different canonical payload")]
     [InlineData("observation composite identity is invalid")]
     public async Task Python_adapter_classifies_artifact_and_identity_rejections_as_drift(
@@ -1381,8 +1304,8 @@ public sealed class JacketObservationTests : IDisposable
         var runner = new StubProcessRunner((_, _) => Task.FromResult(
             new ProcessResult(1, "", standardError)));
         var adapter = new PythonCatalogObservationAdapter(runner, root);
-        var identity = Identity("session-adapter-rejected") with { CatalogSchemaVersion = 2 };
-        var artifact = Artifact(identity, [1, 2], [3, 4]);
+        var identity = Identity("session-adapter-rejected");
+        var artifact = CurrentArtifact(identity, [1, 2], [3, 4]);
 
         var exception = await Assert.ThrowsAsync<ObservationIdentityDriftException>(
             () => adapter.IngestAsync(artifact, "crop.png", "catalog.sqlite", "master.sqlite"));
@@ -1397,8 +1320,8 @@ public sealed class JacketObservationTests : IDisposable
         var runner = new StubProcessRunner((_, _) => Task.FromResult(
             new ProcessResult(1, "", "database is locked")));
         var adapter = new PythonCatalogObservationAdapter(runner, root);
-        var identity = Identity("session-adapter-transient") with { CatalogSchemaVersion = 2 };
-        var artifact = Artifact(identity, [1, 2], [3, 4]);
+        var identity = Identity("session-adapter-transient");
+        var artifact = CurrentArtifact(identity, [1, 2], [3, 4]);
 
         var receipt = await adapter.IngestAsync(
             artifact, "crop.png", "catalog.sqlite", "master.sqlite");
@@ -1406,43 +1329,6 @@ public sealed class JacketObservationTests : IDisposable
         Assert.Equal(CatalogIngestDisposition.Failed, receipt.Disposition);
         Assert.Null(receipt.CatalogReferenceId);
         Assert.Single(runner.Requests);
-    }
-
-    [Fact]
-    public async Task Python_adapter_keeps_v1_ingest_command_and_observation_options()
-    {
-        var runner = new StubProcessRunner((request, _) => Task.FromResult(
-            request.Arguments.Contains("validate-session")
-                ? new ProcessResult(0, "", "")
-                : new ProcessResult(
-                    0,
-                    "{\"disposition\":\"created\",\"reference_id\":\"reference-v1\","
-                        + "\"review_status\":\"unresolved\",\"reason\":\"created\"}",
-                    "")));
-        var adapter = new PythonCatalogObservationAdapter(runner, root);
-        var identity = Identity("session-adapter-v1");
-        var artifact = Artifact(identity, [1, 2], [3, 4]) with
-        {
-            ObservedTitle = "Observed title",
-            ObservedArtist = "Observed artist",
-        };
-
-        await adapter.ValidateSessionAsync(identity, "catalog.sqlite", "master.sqlite");
-        var receipt = await adapter.IngestAsync(
-            artifact, "crop.png", "catalog.sqlite", "master.sqlite");
-
-        Assert.Equal(CatalogIngestDisposition.Created, receipt.Disposition);
-        Assert.Equal(2, runner.Requests.Count);
-        Assert.Contains("ingest", runner.Requests[1].Arguments);
-        Assert.DoesNotContain("ingest-v2", runner.Requests[1].Arguments);
-        Assert.Contains("--source-capture-id", runner.Requests[1].Arguments);
-        Assert.Contains(artifact.ObservationId, runner.Requests[1].Arguments);
-        Assert.Contains("--observed-title", runner.Requests[1].Arguments);
-        Assert.Contains(artifact.ObservedTitle, runner.Requests[1].Arguments);
-        Assert.Contains("--observed-artist", runner.Requests[1].Arguments);
-        Assert.Contains(artifact.ObservedArtist, runner.Requests[1].Arguments);
-        Assert.Contains("--observation-status", runner.Requests[1].Arguments);
-        Assert.Contains(artifact.ObservationStatus, runner.Requests[1].Arguments);
     }
 
     [Fact]
@@ -1622,6 +1508,29 @@ public sealed class JacketObservationTests : IDisposable
         "",
         "unresolved",
         DateTimeOffset.UtcNow);
+
+    private ObservationArtifact CurrentArtifact(
+        ObservationSessionIdentity identity,
+        byte[] source,
+        byte[] crop)
+    {
+        var titleHash = Hash(Encoding.UTF8.GetBytes($"title:{identity.SessionId}"));
+        return Artifact(identity, source, crop) with
+        {
+            TitleLineFeature = new TitleLineFeatureObservation(
+                JacketObservationVersions.InformationTitleLineFeature,
+                titleHash,
+                1,
+                DateTimeOffset.UtcNow,
+                JacketObservationVersions.InformationDetector,
+                JacketObservationVersions.InformationPanelRoi),
+            CompositeIdentity = CompositeObservationIdentityBuilder.Create(
+                JacketObservationVersions.FrameFeature,
+                TestFeatureHash,
+                JacketObservationVersions.InformationTitleLineFeature,
+                titleHash),
+        };
+    }
 
     private static ObservationCheckpoint Checkpoint(
         ObservationSessionIdentity identity,

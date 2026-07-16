@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import csv
 import hashlib
-import json
 import sqlite3
 from contextlib import closing
 from pathlib import Path
@@ -12,24 +10,10 @@ from PIL import Image
 
 from master import builder as master_builder
 from tools.vision_poc import jacket_reference_catalog as catalog
-from tools.vision_poc import master_match, runner
 
 
-def write_master(
-    path: Path,
-    *,
-    version: str = "master-v1",
-    gp_overrides: dict[str, bool] | None = None,
-) -> None:
-    songs = [
-        ("song-1", "Alpha", "Artist A"),
-        ("song-2", "Beta", "Artist B"),
-        ("song-3", "Gamma", "Artist C"),
-        ("song-4", "Delta", "Artist D"),
-        ("song-5", "Epsilon", "Artist E"),
-        ("song-alias", "RЁVOLUTION", "TЁЯRA"),
-    ]
-    gp_overrides = gp_overrides or {}
+def write_master(path: Path) -> None:
+    songs = [("song-1", "Alpha", "Artist A"), ("song-2", "Beta", "Artist B")]
     with closing(sqlite3.connect(path)) as connection, connection:
         master_builder.create_schema(connection)
         connection.executemany(
@@ -46,11 +30,11 @@ def write_master(
                     "",
                     "",
                     0,
-                    int(gp_overrides.get(song_id, True)),
+                    1,
                     "title_artist",
                     "",
-                    "2026-07-14T00:00:00+00:00",
-                    "2026-07-14T00:00:00+00:00",
+                    "2026-07-16T00:00:00+00:00",
+                    "2026-07-16T00:00:00+00:00",
                 )
                 for song_id, title, artist in songs
             ],
@@ -58,33 +42,18 @@ def write_master(
         connection.executemany(
             "INSERT INTO charts VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
-                (
-                    f"chart-{song_id}",
-                    song_id,
-                    "SINGLE",
-                    "BASIC",
-                    1,
-                    "1",
-                    0,
-                    0,
-                    0,
-                    "",
-                )
+                (f"chart-{song_id}", song_id, "SINGLE", "BASIC", 1, "1", 0, 0, 0, "")
                 for song_id, _title, _artist in songs
             ],
-        )
-        connection.execute(
-            "INSERT INTO song_aliases VALUES (?, ?, ?, ?, ?, ?)",
-            ("alias-1", "song-alias", "RËVOLUTION", "TËЯRA", "wiki", "fixture"),
         )
         source_url = "https://example.test/master"
         source_hash = "fixture-source-hash"
         connection.executemany(
             "INSERT INTO master_metadata VALUES (?, ?)",
             (
-                ("master_version", version),
+                ("master_version", "master-v1"),
                 ("source_url", source_url),
-                ("generated_at", "2026-07-14T00:00:00+00:00"),
+                ("generated_at", "2026-07-16T00:00:00+00:00"),
                 ("generator_version", "fixture-v1"),
                 ("source_hash", source_hash),
                 ("song_count", str(len(songs))),
@@ -96,7 +65,7 @@ def write_master(
             (
                 "snapshot-1",
                 source_url,
-                "2026-07-14T00:00:00+00:00",
+                "2026-07-16T00:00:00+00:00",
                 source_hash,
                 "fixture-v1",
                 "<html></html>",
@@ -104,2276 +73,351 @@ def write_master(
         )
 
 
-def write_image(path: Path, color: tuple[int, int, int]) -> None:
-    Image.new("RGB", (64, 64), color).save(path)
-
-
-def write_observation_artifact(
-    root: Path,
-    *,
-    observation_id: str,
-    crop_path: Path,
-    manifest_version: str = "m5c-observation-manifest-v1",
-) -> tuple[Path, str]:
-    artifact = root / "session-fixture" / "observations" / observation_id
-    artifact.mkdir(parents=True)
-    source = Image.new("RGB", (1280, 720), (0, 0, 0))
-    for x in range(286, 420):
-        for y in range(35, 58):
-            source.putpixel((x, y), (255, 255, 255))
-    for x in range(300, 500):
-        for y in range(68, 78):
-            source.putpixel((x, y), (255, 255, 255))
-    source_path = artifact / "source.png"
-    source.save(source_path)
-    crop_bytes = crop_path.read_bytes()
-    (artifact / "jacket-crop.png").write_bytes(crop_bytes)
-    source_bytes = source_path.read_bytes()
-    jacket_hash, roi = catalog._sample_rgb_feature_hash(source)
-    title_hash = catalog._title_line_hash_from_source(source)
-    identity_hash = catalog.composite_identity_hash(
-        catalog.JACKET_FRAME_FEATURE_VERSION,
-        jacket_hash,
-        catalog.TITLE_LINE_FEATURE_VERSION,
-        title_hash,
-    )
-    manifest: dict[str, object] = {
-        "manifest_version": manifest_version,
-        "session_id": "session-fixture",
-        "observation_id": observation_id,
-        "source_image": "source.png",
-        "jacket_crop": "jacket-crop.png",
-        "source_image_hash": hashlib.sha256(source_bytes).hexdigest(),
-        "jacket_crop_hash": hashlib.sha256(crop_bytes).hexdigest(),
-        "source_width": 1280,
-        "source_height": 720,
-        "source_sequence": 3,
-        "captured_at_utc": "2026-07-16T00:00:00+00:00",
-        "feature_version": catalog.JACKET_FRAME_FEATURE_VERSION,
-        "roi_version": "m5c-song-select-jacket-roi-v1",
-        "master_version": "master-v1",
-        "master_source_hash": "fixture-source-hash",
-        "catalog_identity": catalog.CATALOG_IDENTITY,
-        "catalog_schema_version": 2,
-        "catalog_created_at": "2026-07-16T00:00:00+00:00",
-        "feature_extractor_version": catalog.FEATURE_EXTRACTOR_VERSION,
-        "detector_version": "m5c-3b-jacket-detector-v1",
-        "frame_clock_version": "m5c-capture-utc-clock-v1",
-        "window": {},
-        "change_threshold": 0.08,
-        "stable_frame_count_required": 3,
-        "minimum_stable_duration_milliseconds": 100,
-        "roi_x": roi[0],
-        "roi_y": roi[1],
-        "roi_width": roi[2],
-        "roi_height": roi[3],
-        "feature_hash": jacket_hash,
-        "mean_absolute_difference": 0.0,
-        "sample_width": 16,
-        "sample_height": 16,
-        "observed_title": "",
-        "observed_artist": "",
-        "observation_status": "unresolved",
-        "created_at_utc": "2026-07-16T00:00:01+00:00",
-    }
-    if manifest_version == "m5c-observation-manifest-v2":
-        manifest.update(
-            {
-                "title_line_feature_version": catalog.TITLE_LINE_FEATURE_VERSION,
-                "title_line_hash": title_hash,
-                "title_line_detector_version": "m5c-information-title-line-detector-v1",
-                "title_line_roi_version": "m5c-song-select-information-panel-roi-v1",
-                "title_line_source_sequence": 3,
-                "title_line_captured_at_utc": "2026-07-16T00:00:00+00:00",
-                "composite_identity_version": catalog.COMPOSITE_IDENTITY_VERSION,
-                "composite_identity_hash": identity_hash,
-            }
-        )
-    (artifact / "observation.json").write_text(
-        json.dumps(manifest, ensure_ascii=False), encoding="utf-8", newline="\n"
-    )
-    return artifact, identity_hash
-
-
-def setup_paths(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path]:
+def setup_paths(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path, Path]:
     monkeypatch.chdir(tmp_path)
     (tmp_path / "data").mkdir()
     master_db = tmp_path / "master.sqlite"
     write_master(master_db)
-    catalog_path = tmp_path / "data" / "catalog.sqlite"
+    catalog_path = tmp_path / "data/catalog.sqlite"
     catalog.create_catalog(catalog_path)
-    return master_db, catalog_path
-
-
-def migrate_fixture_catalog(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> tuple[Path, Path, str]:
-    master_db, source = setup_paths(tmp_path, monkeypatch)
-    image = tmp_path / "data" / "review.png"
-    write_image(image, (10, 20, 30))
-    result = catalog.ingest_observation(
-        source,
-        master_db,
-        source_image_path=image,
-        source_capture_id="review-capture",
-        observed_title="Alpha",
-        observed_artist="wrong",
-        image_kind="jacket_crop",
-    )
-    target = tmp_path / "data" / "catalog-v2.sqlite"
-    catalog.migrate_catalog_v1_to_v2(source, target)
-    return master_db, target, result.reference_id
-
-
-def test_v1_to_v2_migration_is_copy_on_write_and_strict(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    master_db, source = setup_paths(tmp_path, monkeypatch)
-    source_hash = hashlib.sha256(source.read_bytes()).hexdigest()
-    target = tmp_path / "data" / "catalog-v2.sqlite"
-
-    catalog.migrate_catalog_v1_to_v2(source, target)
-
-    assert catalog.catalog_schema_version(target) == 2
-    assert hashlib.sha256(source.read_bytes()).hexdigest() == source_hash
-    with sqlite3.connect(target) as connection:
-        assert connection.execute("SELECT COUNT(*) FROM jacket_references").fetchone()[0] == 0
-        assert (
-            connection.execute("SELECT COUNT(*) FROM reference_review_history").fetchone()[0]
-            == 0
-        )
-    target_hash = hashlib.sha256(target.read_bytes()).hexdigest()
-    with pytest.raises(ValueError, match="already exists"):
-        catalog.migrate_catalog_v1_to_v2(source, target)
-    assert hashlib.sha256(target.read_bytes()).hexdigest() == target_hash
-    with pytest.raises(ValueError, match="version 1"):
-        catalog.migrate_catalog_v1_to_v2(target, tmp_path / "data" / "other.sqlite")
-
-
-def test_v1_to_v2_migration_holds_one_source_read_snapshot(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    _master_db, source = setup_paths(tmp_path, monkeypatch)
-    target = tmp_path / "data" / "catalog-v2.sqlite"
-    original_create = catalog._create_catalog_v2
-    exclusive_blocked = False
-
-    def create_while_checking_lock(path: Path, *, created_at: str) -> None:
-        nonlocal exclusive_blocked
-        with sqlite3.connect(source, timeout=0) as competing:
-            with pytest.raises(sqlite3.OperationalError, match="locked"):
-                competing.execute("BEGIN EXCLUSIVE")
-            exclusive_blocked = True
-        original_create(path, created_at=created_at)
-
-    monkeypatch.setattr(catalog, "_create_catalog_v2", create_while_checking_lock)
-
-    catalog.migrate_catalog_v1_to_v2(source, target)
-
-    assert exclusive_blocked is True
-    assert catalog.catalog_schema_version(target) == 2
-
-
-def test_v2_to_v3_migration_backfills_verified_source_without_mutating_inputs(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    master_db, source_v1 = setup_paths(tmp_path, monkeypatch)
-    source_v2 = tmp_path / "data" / "catalog-v2.sqlite"
-    catalog.migrate_catalog_v1_to_v2(source_v1, source_v2)
-    crop = tmp_path / "data" / "crop.png"
-    write_image(crop, (20, 40, 80))
-    master = catalog.load_master_identity(master_db)
-    with sqlite3.connect(source_v2) as connection:
-        created_at = connection.execute(
-            "SELECT value FROM catalog_metadata WHERE key = 'created_at'"
-        ).fetchone()[0]
-    observation_id = "legacy-observation"
-    catalog.ingest_observation_v2(
-        source_v2,
-        master_db,
-        source_image_path=crop,
-        observation_id=observation_id,
-        expected_image_hash=hashlib.sha256(crop.read_bytes()).hexdigest(),
-        expected_master_version=master.version,
-        expected_master_source_hash=master.source_hash,
-        expected_feature_extractor_version=catalog.FEATURE_EXTRACTOR_VERSION,
-        expected_catalog_identity=catalog.CATALOG_IDENTITY,
-        expected_catalog_schema_version=2,
-        expected_catalog_created_at=created_at,
-    )
-    artifact_root = tmp_path / "data" / "artifacts"
-    artifact, identity_hash = write_observation_artifact(
-        artifact_root, observation_id=observation_id, crop_path=crop
-    )
-    source_catalog_before = source_v2.read_bytes()
-    source_image_before = (artifact / "source.png").read_bytes()
-    target = tmp_path / "data" / "catalog-v3.sqlite"
-
-    receipt = catalog.migrate_catalog_v2_to_v3(source_v2, target, artifact_root)
-
-    assert receipt["counts"] == {"backfilled": 1}
-    assert catalog.catalog_schema_version(target) == 3
-    assert source_v2.read_bytes() == source_catalog_before
-    assert (artifact / "source.png").read_bytes() == source_image_before
-    assert catalog.load_composite_identities(target) == {
-        (catalog.COMPOSITE_IDENTITY_VERSION, identity_hash)
-    }
-    with sqlite3.connect(target) as connection:
-        assert connection.execute(
-            "SELECT jacket_feature_version, title_line_feature_version, "
-            "composite_identity_version, composite_identity_hash FROM jacket_references"
-        ).fetchone() == (
-            catalog.JACKET_FRAME_FEATURE_VERSION,
-            catalog.TITLE_LINE_FEATURE_VERSION,
-            catalog.COMPOSITE_IDENTITY_VERSION,
-            identity_hash,
-        )
-
-
-def test_v2_to_v3_migration_reports_missing_or_invalid_artifacts_without_source_write(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    master_db, source_v1 = setup_paths(tmp_path, monkeypatch)
-    source_v2 = tmp_path / "data" / "catalog-v2.sqlite"
-    catalog.migrate_catalog_v1_to_v2(source_v1, source_v2)
-    crop = tmp_path / "data" / "crop.png"
-    write_image(crop, (20, 40, 80))
-    master = catalog.load_master_identity(master_db)
-    with sqlite3.connect(source_v2) as connection:
-        created_at = connection.execute(
-            "SELECT value FROM catalog_metadata WHERE key = 'created_at'"
-        ).fetchone()[0]
-    for observation_id in ("missing-artifact", "invalid-artifact"):
-        catalog.ingest_observation_v2(
-            source_v2,
-            master_db,
-            source_image_path=crop,
-            observation_id=observation_id,
-            expected_image_hash=hashlib.sha256(crop.read_bytes()).hexdigest(),
-            expected_master_version=master.version,
-            expected_master_source_hash=master.source_hash,
-            expected_feature_extractor_version=catalog.FEATURE_EXTRACTOR_VERSION,
-            expected_catalog_identity=catalog.CATALOG_IDENTITY,
-            expected_catalog_schema_version=2,
-            expected_catalog_created_at=created_at,
-        )
-    artifact_root = tmp_path / "data" / "artifacts"
-    invalid, _identity = write_observation_artifact(
-        artifact_root, observation_id="invalid-artifact", crop_path=crop
-    )
-    (invalid / "source.png").write_bytes(b"corrupt")
-    before = source_v2.read_bytes()
-    target = tmp_path / "data" / "catalog-v3.sqlite"
-
-    receipt = catalog.migrate_catalog_v2_to_v3(source_v2, target, artifact_root)
-
-    assert receipt["counts"] == {"artifact_invalid": 1, "artifact_missing": 1}
-    assert source_v2.read_bytes() == before
-    assert catalog.load_composite_identities(target) == frozenset()
-    with sqlite3.connect(target) as connection:
-        assert connection.execute(
-            "SELECT COUNT(*) FROM jacket_references WHERE composite_identity_hash IS NOT NULL"
-        ).fetchone()[0] == 0
-
-
-def test_manual_review_is_transactional_idempotent_and_runtime_eligible(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    master_db, catalog_v2, reference_id = migrate_fixture_catalog(tmp_path, monkeypatch)
-    request = catalog.ReviewMutationRequest(
-        action_id="action-confirm",
-        reference_id=reference_id,
-        action="manual_confirm",
-        expected_revision=0,
-        expected_status="needs_review",
-        expected_song_id=None,
-        song_id="song-2",
-        reason="developer selected / 日本語",
-        note="opaque note",
-        action_at="2026-07-15T00:00:00+00:00",
-    )
-
-    receipt = catalog.apply_review_mutation(catalog_v2, master_db, request)
-    replay = catalog.apply_review_mutation(catalog_v2, master_db, request)
-
-    assert (receipt.status, receipt.song_id, receipt.revision, receipt.idempotent) == (
-        "manual_confirmed",
-        "song-2",
-        1,
-        False,
-    )
-    assert replay.idempotent is True
-    with sqlite3.connect(catalog_v2) as connection:
-        row = connection.execute(
-            "SELECT review_status, song_id, review_revision, manual_note "
-            "FROM jacket_references WHERE reference_id = ?",
-            (reference_id,),
-        ).fetchone()
-        assert row == ("manual_confirmed", "song-2", 1, "opaque note")
-        assert (
-            connection.execute("SELECT COUNT(*) FROM reference_review_history").fetchone()[0]
-            == 1
-        )
-    assert [entry.song_id for entry in catalog.load_m5_feature_entries(catalog_v2, master_db)] == [
-        "song-2"
-    ]
-
-    before_ingest = hashlib.sha256(catalog_v2.read_bytes()).hexdigest()
-    with pytest.raises(ValueError, match="schema version 1"):
-        catalog.ingest_observation(
-            catalog_v2,
-            master_db,
-            source_image_path=tmp_path / "data" / "review.png",
-            source_capture_id="review-capture",
-            observed_title="Gamma",
-            observed_artist="Artist C",
-            image_kind="jacket_crop",
-        )
-    assert hashlib.sha256(catalog_v2.read_bytes()).hexdigest() == before_ingest
-
-    before = hashlib.sha256(catalog_v2.read_bytes()).hexdigest()
-    with pytest.raises(ValueError, match="different payload"):
-        catalog.apply_review_mutation(
-            catalog_v2,
-            master_db,
-            catalog.ReviewMutationRequest(**{**request.__dict__, "note": "changed"}),
-        )
-    with pytest.raises(ValueError, match="stale"):
-        catalog.apply_review_mutation(
-            catalog_v2,
-            master_db,
-            catalog.ReviewMutationRequest(
-                action_id="action-stale",
-                reference_id=reference_id,
-                action="reassign",
-                expected_revision=0,
-                expected_status="manual_confirmed",
-                expected_song_id="song-2",
-                song_id="song-3",
-            ),
-        )
-    assert hashlib.sha256(catalog_v2.read_bytes()).hexdigest() == before
-
-    with pytest.raises(RuntimeError, match="injected"):
-        catalog.apply_review_mutation(
-            catalog_v2,
-            master_db,
-            catalog.ReviewMutationRequest(
-                action_id="action-fail",
-                reference_id=reference_id,
-                action="reject",
-                expected_revision=1,
-                expected_status="manual_confirmed",
-                expected_song_id="song-2",
-            ),
-            fail_after_current_update=True,
-        )
-    assert hashlib.sha256(catalog_v2.read_bytes()).hexdigest() == before
-
-
-def test_idempotent_review_replay_precedes_current_master_validation(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    master_db, catalog_v2, reference_id = migrate_fixture_catalog(tmp_path, monkeypatch)
-    request = catalog.ReviewMutationRequest(
-        action_id="action-replay-without-master",
-        reference_id=reference_id,
-        action="manual_confirm",
-        expected_revision=0,
-        expected_status="needs_review",
-        expected_song_id=None,
-        song_id="song-2",
-        reason="developer selected",
-    )
-    original = catalog.apply_review_mutation(catalog_v2, master_db, request)
-
-    with sqlite3.connect(master_db) as connection:
-        connection.execute(
-            "UPDATE songs SET grand_prix_play_available = 0 WHERE song_id = 'song-2'"
-        )
-    replay_after_gp_removal = catalog.apply_review_mutation(catalog_v2, master_db, request)
-    missing_master = tmp_path / "missing-master.sqlite"
-    replay_without_master = catalog.apply_review_mutation(
-        catalog_v2, missing_master, request
-    )
-
-    assert original.idempotent is False
-    assert replay_after_gp_removal == replay_without_master
-    assert replay_without_master == catalog.ReviewMutationReceipt(
-        action_id=request.action_id,
-        reference_id=reference_id,
-        action="manual_confirm",
-        status="manual_confirmed",
-        song_id="song-2",
-        revision=1,
-        idempotent=True,
-    )
-    with pytest.raises(ValueError, match="different payload"):
-        catalog.apply_review_mutation(
-            catalog_v2,
-            missing_master,
-            catalog.ReviewMutationRequest(**{**request.__dict__, "note": "changed"}),
-        )
-    with pytest.raises(ValueError, match="master DB is not a file"):
-        catalog.apply_review_mutation(
-            catalog_v2,
-            missing_master,
-            catalog.ReviewMutationRequest(
-                **{**request.__dict__, "action_id": "new-action-without-master"}
-            ),
-        )
-    with sqlite3.connect(catalog_v2) as connection:
-        assert connection.execute(
-            "SELECT review_status, review_revision FROM jacket_references "
-            "WHERE reference_id = ?",
-            (reference_id,),
-        ).fetchone() == ("manual_confirmed", 1)
-        assert (
-            connection.execute("SELECT COUNT(*) FROM reference_review_history").fetchone()[0]
-            == 1
-        )
-
-
-def test_manual_confirm_rejects_featureless_reference_without_side_effects(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    master_db, source = setup_paths(tmp_path, monkeypatch)
-    broken = tmp_path / "data" / "broken.png"
-    broken.write_bytes(b"not an image")
-    ingested = catalog.ingest_observation(
-        source,
-        master_db,
-        source_image_path=broken,
-        source_capture_id="featureless",
-        observed_title="Beta",
-        observed_artist="Artist B",
-        image_kind="jacket_crop",
-    )
-    assert (ingested.review_status, ingested.reason) == (
-        "unresolved",
-        "feature_extraction_failed",
-    )
-    target = tmp_path / "data" / "catalog-v2.sqlite"
-    catalog.migrate_catalog_v1_to_v2(source, target)
-    before = hashlib.sha256(target.read_bytes()).hexdigest()
-
-    with pytest.raises(ValueError, match="complete persisted jacket features"):
-        catalog.apply_review_mutation(
-            target,
-            master_db,
-            catalog.ReviewMutationRequest(
-                action_id="featureless-confirm",
-                reference_id=ingested.reference_id,
-                action="manual_confirm",
-                expected_revision=0,
-                expected_status="unresolved",
-                expected_song_id="song-2",
-                song_id="song-2",
-            ),
-        )
-
-    assert hashlib.sha256(target.read_bytes()).hexdigest() == before
-    with sqlite3.connect(target) as connection:
-        assert connection.execute(
-            "SELECT review_status, review_revision FROM jacket_references "
-            "WHERE reference_id = ?",
-            (ingested.reference_id,),
-        ).fetchone() == ("unresolved", 0)
-        assert (
-            connection.execute("SELECT COUNT(*) FROM reference_review_history").fetchone()[0]
-            == 0
-        )
-
-
-def test_manual_confirm_rejects_typed_vector_corruption_without_side_effects(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    master_db, target, reference_id = migrate_fixture_catalog(tmp_path, monkeypatch)
-    with sqlite3.connect(target) as connection:
-        connection.execute(
-            "UPDATE jacket_references SET thumbnail_rgb_json = 123 WHERE reference_id = ?",
-            (reference_id,),
-        )
-    before = hashlib.sha256(target.read_bytes()).hexdigest()
-
-    with pytest.raises(ValueError, match="complete persisted jacket features"):
-        catalog.apply_review_mutation(
-            target,
-            master_db,
-            catalog.ReviewMutationRequest(
-                action_id="typed-corruption",
-                reference_id=reference_id,
-                action="manual_confirm",
-                expected_revision=0,
-                expected_status="needs_review",
-                expected_song_id=None,
-                song_id="song-1",
-            ),
-        )
-
-    assert hashlib.sha256(target.read_bytes()).hexdigest() == before
-
-
-@pytest.mark.parametrize(
-    ("action", "observed_artist", "expected_status", "expected_song_id"),
-    [
-        ("manual_confirm", "wrong", "needs_review", None),
-        ("reassign", "Artist A", "auto_confirmed", "song-1"),
-    ],
-)
-def test_manual_review_rejects_stale_extractor_without_side_effects(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    action: str,
-    observed_artist: str,
-    expected_status: str,
-    expected_song_id: str | None,
-) -> None:
-    master_db, source = setup_paths(tmp_path, monkeypatch)
-    image = tmp_path / "data" / "stale.png"
-    write_image(image, (12, 34, 56))
-    ingested = catalog.ingest_observation(
-        source,
-        master_db,
-        source_image_path=image,
-        source_capture_id=f"stale-{action}",
-        observed_title="Alpha",
-        observed_artist=observed_artist,
-        image_kind="jacket_crop",
-    )
-    target = tmp_path / "data" / "catalog-v2.sqlite"
-    catalog.migrate_catalog_v1_to_v2(source, target)
-    with sqlite3.connect(target) as connection:
-        connection.execute(
-            "UPDATE jacket_references SET feature_extractor_version = 'm5-jacket-v0' "
-            "WHERE reference_id = ?",
-            (ingested.reference_id,),
-        )
-    before = hashlib.sha256(target.read_bytes()).hexdigest()
-
-    with pytest.raises(ValueError, match="current feature extractor"):
-        catalog.apply_review_mutation(
-            target,
-            master_db,
-            catalog.ReviewMutationRequest(
-                action_id=f"stale-{action}",
-                reference_id=ingested.reference_id,
-                action=action,
-                expected_revision=0,
-                expected_status=expected_status,
-                expected_song_id=expected_song_id,
-                song_id="song-2",
-            ),
-        )
-
-    assert hashlib.sha256(target.read_bytes()).hexdigest() == before
-    with sqlite3.connect(target) as connection:
-        assert connection.execute(
-            "SELECT review_status, review_revision FROM jacket_references "
-            "WHERE reference_id = ?",
-            (ingested.reference_id,),
-        ).fetchone() == (expected_status, 0)
-        assert (
-            connection.execute("SELECT COUNT(*) FROM reference_review_history").fetchone()[0]
-            == 0
-        )
-
-
-@pytest.mark.parametrize(
-    "raw",
-    [123, b"\xff", json.dumps([10**1000])],
-)
-def test_decode_vector_normalizes_external_type_unicode_and_overflow_errors(raw: object) -> None:
-    with pytest.raises(ValueError, match="invalid test_vector"):
-        catalog._decode_vector(raw, length=1, field_name="test_vector")  # type: ignore[arg-type]
-
-
-def test_runtime_loader_skips_corrupt_manual_reference_without_hiding_valid_auto_reference(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    master_db, source = setup_paths(tmp_path, monkeypatch)
-    alpha = tmp_path / "data" / "alpha.png"
-    beta = tmp_path / "data" / "beta.png"
-    write_image(alpha, (10, 20, 30))
-    write_image(beta, (40, 50, 60))
-    catalog.ingest_observation(
-        source,
-        master_db,
-        source_image_path=alpha,
-        source_capture_id="alpha-auto",
-        observed_title="Alpha",
-        observed_artist="Artist A",
-        image_kind="jacket_crop",
-    )
-    review = catalog.ingest_observation(
-        source,
-        master_db,
-        source_image_path=beta,
-        source_capture_id="beta-review",
-        observed_title="Beta",
-        observed_artist="wrong",
-        image_kind="jacket_crop",
-    )
-    target = tmp_path / "data" / "catalog-v2.sqlite"
-    catalog.migrate_catalog_v1_to_v2(source, target)
-    catalog.apply_review_mutation(
-        target,
-        master_db,
-        catalog.ReviewMutationRequest(
-            action_id="beta-confirm",
-            reference_id=review.reference_id,
-            action="manual_confirm",
-            expected_revision=0,
-            expected_status="needs_review",
-            expected_song_id=None,
-            song_id="song-2",
-        ),
-    )
-    with sqlite3.connect(target) as connection:
-        connection.execute(
-            "UPDATE jacket_references SET thumbnail_rgb_json = 123 WHERE reference_id = ?",
-            (review.reference_id,),
-        )
-
-    entries = catalog.load_m5_feature_entries(target, master_db)
-    coverage_rows, summary = catalog.build_coverage(target, master_db)
-    beta_coverage = next(row for row in coverage_rows if row["song_id"] == "song-2")
-
-    assert [entry.song_id for entry in entries] == ["song-1"]
-    assert beta_coverage["coverage_status"] == "needs_review"
-    assert beta_coverage["reason"] == "persisted_feature_invalid"
-    assert summary["current_reference_state_reason_counts"] == {
-        "persisted_feature_invalid": 1
-    }
-
-
-def test_reject_and_reopen_preserve_evidence_and_append_history(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    master_db, catalog_v2, reference_id = migrate_fixture_catalog(tmp_path, monkeypatch)
-    before_evidence: tuple[object, ...]
-    with sqlite3.connect(catalog_v2) as connection:
-        before_evidence = connection.execute(
-            "SELECT source_image_hash, thumbnail_rgb_json, histogram_json, dhash_bits_json "
-            "FROM jacket_references WHERE reference_id = ?",
-            (reference_id,),
-        ).fetchone()
-    rejected = catalog.apply_review_mutation(
-        catalog_v2,
-        master_db,
-        catalog.ReviewMutationRequest(
-            action_id="reject-1",
-            reference_id=reference_id,
-            action="reject",
-            expected_revision=0,
-            expected_status="needs_review",
-            expected_song_id=None,
-            reason="not useful",
-        ),
-    )
-    reopened = catalog.apply_review_mutation(
-        catalog_v2,
-        master_db,
-        catalog.ReviewMutationRequest(
-            action_id="reopen-1",
-            reference_id=reference_id,
-            action="reopen",
-            expected_revision=1,
-            expected_status="rejected",
-            expected_song_id=None,
-            note="try again",
-        ),
-    )
-    assert (rejected.status, reopened.status, reopened.song_id, reopened.revision) == (
-        "rejected",
-        "needs_review",
-        None,
-        2,
-    )
-    with sqlite3.connect(catalog_v2) as connection:
-        after_evidence = connection.execute(
-            "SELECT source_image_hash, thumbnail_rgb_json, histogram_json, dhash_bits_json "
-            "FROM jacket_references WHERE reference_id = ?",
-            (reference_id,),
-        ).fetchone()
-        assert after_evidence == before_evidence
-        assert (
-            connection.execute("SELECT COUNT(*) FROM reference_review_history").fetchone()[0]
-            == 2
-        )
-
-
-def test_v2_validator_rejects_audit_chain_and_payload_drift(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    master_db, catalog_v2, reference_id = migrate_fixture_catalog(tmp_path, monkeypatch)
-    catalog.apply_review_mutation(
-        catalog_v2,
-        master_db,
-        catalog.ReviewMutationRequest(
-            action_id="audit-1",
-            reference_id=reference_id,
-            action="manual_confirm",
-            expected_revision=0,
-            expected_status="needs_review",
-            expected_song_id=None,
-            song_id="song-1",
-        ),
-    )
-    with sqlite3.connect(catalog_v2) as connection:
-        connection.execute(
-            "UPDATE reference_review_history SET receipt_json = ?",
-            ('{"action_id":"audit-1"}',),
-        )
-    with pytest.raises(ValueError, match="review receipt fields"):
-        catalog.validate_catalog(catalog_v2)
-
-
-def test_v2_validator_rejects_discontinuous_history_and_manual_state_without_history(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    master_db, catalog_v2, reference_id = migrate_fixture_catalog(tmp_path, monkeypatch)
-    catalog.apply_review_mutation(
-        catalog_v2,
-        master_db,
-        catalog.ReviewMutationRequest(
-            action_id="reject-chain",
-            reference_id=reference_id,
-            action="reject",
-            expected_revision=0,
-            expected_status="needs_review",
-            expected_song_id=None,
-        ),
-    )
-    catalog.apply_review_mutation(
-        catalog_v2,
-        master_db,
-        catalog.ReviewMutationRequest(
-            action_id="reopen-chain",
-            reference_id=reference_id,
-            action="reopen",
-            expected_revision=1,
-            expected_status="rejected",
-            expected_song_id=None,
-        ),
-    )
-    with sqlite3.connect(catalog_v2) as connection:
-        connection.execute(
-            "UPDATE reference_review_history SET before_status = 'unresolved' "
-            "WHERE action_id = 'reopen-chain'"
-        )
-    with pytest.raises(ValueError, match="state discontinuity"):
-        catalog.validate_catalog(catalog_v2)
-
-    second = tmp_path / "second"
-    second.mkdir()
-    _master_db, clean_v2, clean_reference_id = migrate_fixture_catalog(second, monkeypatch)
-    with sqlite3.connect(clean_v2) as connection:
-        connection.execute(
-            "UPDATE jacket_references SET review_status = 'manual_confirmed' "
-            "WHERE reference_id = ?",
-            (clean_reference_id,),
-        )
-    with pytest.raises(ValueError, match="manual state without history"):
-        catalog.validate_catalog(clean_v2)
-
-
-def test_v2_validator_rejects_history_action_from_impossible_source_state(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    master_db, catalog_v2, reference_id = migrate_fixture_catalog(tmp_path, monkeypatch)
-    catalog.apply_review_mutation(
-        catalog_v2,
-        master_db,
-        catalog.ReviewMutationRequest(
-            action_id="invalid-source",
-            reference_id=reference_id,
-            action="manual_confirm",
-            expected_revision=0,
-            expected_status="needs_review",
-            expected_song_id=None,
-            song_id="song-1",
-        ),
-    )
-    with sqlite3.connect(catalog_v2) as connection:
-        raw = connection.execute(
-            "SELECT request_payload_json FROM reference_review_history "
-            "WHERE action_id = 'invalid-source'"
-        ).fetchone()[0]
-        payload = json.loads(raw)
-        payload["expected_status"] = "rejected"
-        connection.execute(
-            "UPDATE reference_review_history SET before_status = 'rejected', "
-            "request_payload_json = ? WHERE action_id = 'invalid-source'",
-            (json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")),),
-        )
-    with pytest.raises(ValueError, match="action source"):
-        catalog.validate_catalog(catalog_v2)
-
-
-def test_catalog_create_is_strict_and_safe(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.chdir(tmp_path)
-    (tmp_path / "data").mkdir()
-    catalog_path = tmp_path / "data" / "catalog.sqlite"
-
-    catalog.create_catalog(catalog_path)
-    catalog.validate_catalog(catalog_path)
-
-    with sqlite3.connect(catalog_path) as connection:
-        metadata = dict(connection.execute("SELECT key, value FROM catalog_metadata"))
-        assert metadata["catalog_identity"] == catalog.CATALOG_IDENTITY
-        assert metadata["schema_version"] == "1"
-        assert connection.execute("PRAGMA user_version").fetchone()[0] == 1
-
-    with pytest.raises(ValueError, match="already exists"):
-        catalog.create_catalog(catalog_path)
-    with pytest.raises(ValueError, match="under data"):
-        catalog.create_catalog(tmp_path / "outside.sqlite")
-
-    with sqlite3.connect(catalog_path) as connection:
-        connection.execute("CREATE TABLE plays (play_id TEXT)")
-    with pytest.raises(ValueError, match="exact schema mismatch"):
-        catalog.validate_catalog(catalog_path)
-
-    noncatalog = tmp_path / "data" / "other.sqlite"
-    with sqlite3.connect(noncatalog) as connection:
-        connection.execute("CREATE TABLE plays (play_id TEXT)")
-    with pytest.raises(ValueError, match="not a jacket reference catalog"):
-        catalog.validate_catalog(noncatalog)
-    with pytest.raises(ValueError, match="not a compatible M4 master database"):
-        catalog.load_master_identity(noncatalog)
-
-    wrong_fk = tmp_path / "data" / "wrong-fk.sqlite"
-    wrong_fk_sql = catalog.CATALOG_SCHEMA_SQL.replace(
-        "reference_id TEXT NOT NULL REFERENCES jacket_references(reference_id)\n"
-        "    ON DELETE CASCADE",
-        "reference_id TEXT NOT NULL REFERENCES jacket_references(song_id)",
-    )
-    with sqlite3.connect(wrong_fk) as connection:
-        connection.executescript(wrong_fk_sql)
-        connection.executemany(
-            "INSERT INTO catalog_metadata VALUES (?, ?)",
-            (
-                ("catalog_identity", catalog.CATALOG_IDENTITY),
-                ("schema_version", str(catalog.CATALOG_SCHEMA_VERSION)),
-                ("created_at", "2026-07-14T00:00:00+00:00"),
-            ),
-        )
-    with pytest.raises(ValueError, match="exact schema mismatch"):
-        catalog.validate_catalog(wrong_fk)
-
-
-def test_resolver_only_auto_confirms_exact_canonical_or_unique_alias(tmp_path: Path) -> None:
-    master_db = tmp_path / "master.sqlite"
-    write_master(master_db)
-    master = catalog.load_master_identity(master_db)
-    exact = catalog.resolve_observation(master, "Alpha", "Artist A")
-    alias = catalog.resolve_observation(master, "RËVOLUTION", "TËЯRA")
-    artist_mismatch = catalog.resolve_observation(master, "Alpha", "wrong")
-    missing = catalog.resolve_observation(master, "", "Artist A")
-    ambiguous_alias_master = catalog.MasterIdentity(
-        version=master.version,
-        songs=master.songs,
-        aliases=(*master.aliases, ("song-1", "RËVOLUTION", "TËЯRA")),
-    )
-    ambiguous_alias = catalog.resolve_observation(ambiguous_alias_master, "RËVOLUTION", "TËЯRA")
-
-    assert (exact.status, exact.song.song_id, exact.basis) == (
-        "auto_confirmed",
-        "song-1",
-        "canonical_exact",
-    )
-    assert (alias.status, alias.song.song_id, alias.basis) == (
-        "auto_confirmed",
-        "song-alias",
-        "unique_alias",
-    )
-    assert artist_mismatch.status == "needs_review"
-    assert artist_mismatch.candidate_song_ids == ("song-1",)
-    assert missing.status == "unresolved"
-    assert ambiguous_alias.status == "needs_review"
-    assert ambiguous_alias.reason == "ambiguous_alias_title_artist"
-
-    with sqlite3.connect(master_db) as connection:
-        connection.execute("UPDATE master_metadata SET value = '999' WHERE key = 'song_count'")
-    with pytest.raises(ValueError, match="metadata count mismatch"):
-        catalog.load_master_identity(master_db)
-    with sqlite3.connect(master_db) as connection:
-        connection.execute(
-            "UPDATE master_metadata SET value = ? WHERE key = 'song_count'",
-            ("6",),
-        )
-        connection.execute(
-            "INSERT INTO master_metadata VALUES ('official_source_url', 'https://official.test')"
-        )
-    with pytest.raises(ValueError, match="complete pair"):
-        catalog.load_master_identity(master_db)
-
-
-def test_ingest_is_idempotent_supports_one_to_many_and_rejects_capture_conflict(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    master_db, catalog_path = setup_paths(tmp_path, monkeypatch)
-    first_image = tmp_path / "first.png"
-    second_image = tmp_path / "second.png"
-    write_image(first_image, (255, 0, 0))
-    write_image(second_image, (250, 0, 0))
-
-    first = catalog.ingest_observation(
-        catalog_path,
-        master_db,
-        source_image_path=first_image,
-        source_capture_id="capture-1",
-        observed_title="Alpha",
-        observed_artist="Artist A",
-        image_kind="jacket_crop",
-    )
-    repeated = catalog.ingest_observation(
-        catalog_path,
-        master_db,
-        source_image_path=first_image,
-        source_capture_id="capture-1",
-        observed_title="Alpha",
-        observed_artist="Artist A",
-        image_kind="jacket_crop",
-    )
-    second = catalog.ingest_observation(
-        catalog_path,
-        master_db,
-        source_image_path=second_image,
-        source_capture_id="capture-2",
-        observed_title="Alpha",
-        observed_artist="Artist A",
-        image_kind="jacket_crop",
-    )
-
-    assert (first.disposition, repeated.disposition, second.disposition) == (
-        "created",
-        "existing",
-        "created",
-    )
-    with sqlite3.connect(catalog_path) as connection:
-        assert connection.execute("SELECT COUNT(*) FROM jacket_references").fetchone()[0] == 2
-        assert (
-            connection.execute(
-                "SELECT COUNT(*) FROM jacket_references WHERE song_id = 'song-1'"
-            ).fetchone()[0]
-            == 2
-        )
-
-    with pytest.raises(ValueError, match="different image bytes"):
-        catalog.ingest_observation(
-            catalog_path,
-            master_db,
-            source_image_path=second_image,
-            source_capture_id="capture-1",
-            observed_title="Alpha",
-            observed_artist="Artist A",
-            image_kind="jacket_crop",
-        )
-
-
-def test_non_strict_ingest_reuses_resolved_source_hash_with_new_capture_id(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    master_db, catalog_path = setup_paths(tmp_path, monkeypatch)
-    image_path = tmp_path / "resolved.png"
-    write_image(image_path, (10, 20, 30))
-
-    first = catalog.ingest_observation(
-        catalog_path,
-        master_db,
-        source_image_path=image_path,
-        source_capture_id="capture-1",
-        observed_title="Alpha",
-        observed_artist="Artist A",
-        image_kind="jacket_crop",
-    )
-    repeated = catalog.ingest_observation(
-        catalog_path,
-        master_db,
-        source_image_path=image_path,
-        source_capture_id="capture-2",
-        observed_title="Alpha",
-        observed_artist="Artist A",
-        image_kind="jacket_crop",
-    )
-
-    assert first.reference_id == repeated.reference_id
-    assert (first.disposition, repeated.disposition, repeated.review_status) == (
-        "created",
-        "existing",
-        "auto_confirmed",
-    )
-    with sqlite3.connect(catalog_path) as connection:
-        assert connection.execute("SELECT COUNT(*) FROM jacket_references").fetchone()[0] == 1
-        assert connection.execute(
-            "SELECT source_capture_id FROM jacket_references"
-        ).fetchone()[0] == "capture-1"
-
-
-def test_non_strict_ingest_reuses_unresolved_source_hash_title_with_new_capture_id(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    master_db, catalog_path = setup_paths(tmp_path, monkeypatch)
-    image_path = tmp_path / "unresolved.png"
-    write_image(image_path, (10, 20, 30))
-
-    first = catalog.ingest_observation(
-        catalog_path,
-        master_db,
-        source_image_path=image_path,
-        source_capture_id="capture-1",
-        observed_title="",
-        observed_artist="",
-        observation_status="unresolved",
-        image_kind="jacket_crop",
-    )
-    repeated = catalog.ingest_observation(
-        catalog_path,
-        master_db,
-        source_image_path=image_path,
-        source_capture_id="capture-2",
-        observed_title="",
-        observed_artist="",
-        observation_status="unresolved",
-        image_kind="jacket_crop",
-    )
-
-    assert first.reference_id == repeated.reference_id
-    assert (first.disposition, repeated.disposition, repeated.review_status) == (
-        "created",
-        "existing",
-        "unresolved",
-    )
-    with sqlite3.connect(catalog_path) as connection:
-        assert connection.execute("SELECT COUNT(*) FROM jacket_references").fetchone()[0] == 1
-        assert connection.execute(
-            "SELECT source_capture_id FROM jacket_references"
-        ).fetchone()[0] == "capture-1"
-
-
-def test_validate_session_cli_accepts_read_only_master_outside_data(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    master_db, catalog_path = setup_paths(tmp_path, monkeypatch)
-    master = catalog.load_master_identity(master_db)
-    with sqlite3.connect(catalog_path) as connection:
-        catalog_created_at = connection.execute(
-            "SELECT value FROM catalog_metadata WHERE key = 'created_at'"
-        ).fetchone()[0]
-    master_before = master_db.read_bytes()
-    catalog_before = catalog_path.read_bytes()
-    root_entries_before = sorted(path.relative_to(tmp_path) for path in tmp_path.rglob("*"))
-
-    exit_code = catalog.main(
-        [
-            "validate-session",
-            "--catalog",
-            str(catalog_path),
-            "--master-db",
-            str(master_db),
-            "--expected-catalog-identity",
-            catalog.CATALOG_IDENTITY,
-            "--expected-catalog-schema-version",
-            str(catalog.CATALOG_SCHEMA_VERSION),
-            "--expected-catalog-created-at",
-            catalog_created_at,
-            "--expected-master-version",
-            master.version,
-            "--expected-master-source-hash",
-            master.source_hash,
-            "--expected-feature-extractor-version",
-            catalog.FEATURE_EXTRACTOR_VERSION,
-        ]
-    )
-
-    assert exit_code == 0
-    assert master_db.read_bytes() == master_before
-    assert catalog_path.read_bytes() == catalog_before
-    assert sorted(path.relative_to(tmp_path) for path in tmp_path.rglob("*")) == root_entries_before
-
-
-def test_developer_observation_ingest_preserves_empty_identity_and_strict_guards(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    master_db, catalog_path = setup_paths(tmp_path, monkeypatch)
-    image = tmp_path / "data" / "observation.png"
-    write_image(image, (30, 40, 50))
-    master = catalog.load_master_identity(master_db)
-    with sqlite3.connect(catalog_path) as connection:
-        catalog_created_at = connection.execute(
-            "SELECT value FROM catalog_metadata WHERE key = 'created_at'"
-        ).fetchone()[0]
-    validated = catalog.validate_observation_session(
-        catalog_path,
-        master_db,
-        expected_catalog_identity=catalog.CATALOG_IDENTITY,
-        expected_catalog_schema_version=catalog.CATALOG_SCHEMA_VERSION,
-        expected_catalog_created_at=catalog_created_at,
-        expected_master_version=master.version,
-        expected_master_source_hash=master.source_hash,
-        expected_feature_extractor_version=catalog.FEATURE_EXTRACTOR_VERSION,
-    )
-    assert validated["master_source_hash"] == master.source_hash
-    before_preflight = catalog_path.read_bytes()
-    with pytest.raises(ValueError, match="catalog schema drift"):
-        catalog.validate_observation_session(
-            catalog_path,
-            master_db,
-            expected_catalog_identity=catalog.CATALOG_IDENTITY,
-            expected_catalog_schema_version=99,
-            expected_catalog_created_at=catalog_created_at,
-            expected_master_version=master.version,
-            expected_master_source_hash=master.source_hash,
-            expected_feature_extractor_version=catalog.FEATURE_EXTRACTOR_VERSION,
-        )
-    assert catalog_path.read_bytes() == before_preflight
-    first = catalog.ingest_observation(
-        catalog_path,
-        master_db,
-        source_image_path=image,
-        source_capture_id="observation-1",
-        observed_title="",
-        observed_artist="",
-        observation_status="unresolved",
-        image_kind="jacket_crop",
-        expected_master_version=master.version,
-        expected_master_source_hash=master.source_hash,
-        expected_feature_extractor_version=catalog.FEATURE_EXTRACTOR_VERSION,
-        strict_capture_payload=True,
-    )
-    repeated = catalog.ingest_observation(
-        catalog_path,
-        master_db,
-        source_image_path=image,
-        source_capture_id="observation-1",
-        observed_title="",
-        observed_artist="",
-        observation_status="unresolved",
-        image_kind="jacket_crop",
-        expected_master_version=master.version,
-        expected_master_source_hash=master.source_hash,
-        expected_feature_extractor_version=catalog.FEATURE_EXTRACTOR_VERSION,
-        strict_capture_payload=True,
-    )
-
-    assert first.disposition == "created"
-    assert repeated.disposition == "existing"
-    receipt = catalog.validate_observation_receipt(
-        catalog_path,
-        observation_id="observation-1",
-        catalog_status="ingested",
-        catalog_reference_id=first.reference_id,
-        jacket_crop_hash=hashlib.sha256(image.read_bytes()).hexdigest(),
-        expected_feature_extractor_version=catalog.FEATURE_EXTRACTOR_VERSION,
-        expected_catalog_schema_version=catalog.CATALOG_SCHEMA_VERSION,
-        expected_catalog_created_at=catalog_created_at,
-    )
-    assert receipt["catalog_status"] == "ingested"
-    with pytest.raises(ValueError, match="does not match"):
-        catalog.validate_observation_receipt(
-            catalog_path,
-            observation_id="observation-1",
-            catalog_status="ingested",
-            catalog_reference_id="forged-reference",
-            jacket_crop_hash=hashlib.sha256(image.read_bytes()).hexdigest(),
-            expected_feature_extractor_version=catalog.FEATURE_EXTRACTOR_VERSION,
-            expected_catalog_schema_version=catalog.CATALOG_SCHEMA_VERSION,
-            expected_catalog_created_at=catalog_created_at,
-        )
-    distinct_observation = catalog.ingest_observation(
-        catalog_path,
-        master_db,
-        source_image_path=image,
-        source_capture_id="observation-2",
-        observed_title="",
-        observed_artist="",
-        observation_status="unresolved",
-        image_kind="jacket_crop",
-        expected_master_version=master.version,
-        expected_master_source_hash=master.source_hash,
-        expected_feature_extractor_version=catalog.FEATURE_EXTRACTOR_VERSION,
-        strict_capture_payload=True,
-    )
-    assert distinct_observation.disposition == "created"
-    with sqlite3.connect(catalog_path) as connection:
-        rows = connection.execute(
-            "SELECT observed_title, observed_artist, review_status, resolution_reason "
-            "FROM jacket_references ORDER BY source_capture_id"
-        ).fetchall()
-    assert rows == [
-        ("", "", "unresolved", "observation_unresolved"),
-        ("", "", "unresolved", "observation_unresolved"),
-    ]
-
-    before_conflict = catalog_path.read_bytes()
-    with pytest.raises(ValueError, match="different observation payload"):
-        catalog.ingest_observation(
-            catalog_path,
-            master_db,
-            source_image_path=image,
-            source_capture_id="observation-1",
-            observed_title="changed",
-            observed_artist="",
-            observation_status="unresolved",
-            image_kind="jacket_crop",
-            expected_master_version=master.version,
-            expected_master_source_hash=master.source_hash,
-            expected_feature_extractor_version=catalog.FEATURE_EXTRACTOR_VERSION,
-            strict_capture_payload=True,
-        )
-    assert catalog_path.read_bytes() == before_conflict
-
-    before = catalog_path.read_bytes()
-    with pytest.raises(ValueError, match="master version drift"):
-        catalog.ingest_observation(
-            catalog_path,
-            master_db,
-            source_image_path=image,
-            source_capture_id="observation-2",
-            observed_title="",
-            observed_artist="",
-            observation_status="unresolved",
-            image_kind="jacket_crop",
-            expected_master_version="master-drift",
-            expected_master_source_hash=master.source_hash,
-            expected_feature_extractor_version=catalog.FEATURE_EXTRACTOR_VERSION,
-        )
-    assert catalog_path.read_bytes() == before
-
-    v2_path = tmp_path / "data" / "catalog-v2.sqlite"
-    catalog.migrate_catalog_v1_to_v2(catalog_path, v2_path)
-    before_v2 = v2_path.read_bytes()
-    monkeypatch.setattr(catalog, "catalog_schema_version", lambda _path: 1)
-    with pytest.raises(ValueError, match="requires catalog schema version 1"):
-        catalog.ingest_observation(
-            v2_path,
-            master_db,
-            source_image_path=image,
-            source_capture_id="race-observation",
-            observed_title="",
-            observed_artist="",
-            observation_status="unresolved",
-            image_kind="jacket_crop",
-            expected_master_version=master.version,
-            expected_master_source_hash=master.source_hash,
-            expected_feature_extractor_version=catalog.FEATURE_EXTRACTOR_VERSION,
-            expected_catalog_identity=catalog.CATALOG_IDENTITY,
-            expected_catalog_schema_version=1,
-            expected_catalog_created_at=catalog_created_at,
-            strict_capture_payload=True,
-        )
-    assert v2_path.read_bytes() == before_v2
-
-
-def test_v2_observation_ingest_is_strict_idempotent_and_review_safe(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    master_db, source_catalog = setup_paths(tmp_path, monkeypatch)
-    image = tmp_path / "data" / "v2-observation.png"
-    write_image(image, (20, 40, 80))
-    catalog_path = tmp_path / "data" / "catalog-v2.sqlite"
-    catalog.migrate_catalog_v1_to_v2(source_catalog, catalog_path)
-    master = catalog.load_master_identity(master_db)
-    with sqlite3.connect(catalog_path) as connection:
-        catalog_created_at = connection.execute(
-            "SELECT value FROM catalog_metadata WHERE key = 'created_at'"
-        ).fetchone()[0]
-    image_hash = hashlib.sha256(image.read_bytes()).hexdigest()
-    cli_args = [
-        "ingest-v2",
-        "--catalog",
-        str(catalog_path),
-        "--master-db",
-        str(master_db),
-        "--source-image",
-        str(image),
-        "--observation-id",
-        "v2-observation-1",
-        "--expected-song-id",
-        "song-1",
-        "--expected-image-hash",
-        image_hash,
-        "--expected-master-version",
-        master.version,
-        "--expected-master-source-hash",
-        master.source_hash,
-        "--expected-feature-extractor-version",
-        catalog.FEATURE_EXTRACTOR_VERSION,
-        "--expected-catalog-identity",
-        catalog.CATALOG_IDENTITY,
-        "--expected-catalog-schema-version",
-        str(catalog.CATALOG_SCHEMA_VERSION_V2),
-        "--expected-catalog-created-at",
-        catalog_created_at,
-    ]
-
-    assert catalog.main(cli_args) == 0
-    created = json.loads(capsys.readouterr().out)
-    assert created["disposition"] == "created"
-    assert created["review_status"] == "unresolved"
-    with sqlite3.connect(catalog_path) as connection:
-        connection.row_factory = sqlite3.Row
-        row = connection.execute(
-            "SELECT song_id, canonical_title_snapshot, canonical_artist_snapshot, "
-            "review_status, resolution_reason, observation_status, expected_song_id, "
-            "review_revision, manual_action_id, manual_note FROM jacket_references"
-        ).fetchone()
-        assert row is not None
-        assert tuple(row) == (
-            None,
-            "",
-            "",
-            "unresolved",
-            "observation_unresolved",
-            "unresolved",
-            "song-1",
-            0,
-            None,
-            "",
-        )
-        assert connection.execute("SELECT COUNT(*) FROM reference_candidates").fetchone()[0] == 0
-        assert (
-            connection.execute("SELECT COUNT(*) FROM reference_review_history").fetchone()[0]
-            == 0
-        )
-
-    receipt = catalog.validate_observation_receipt(
-        catalog_path,
-        observation_id="v2-observation-1",
-        catalog_status="ingested",
-        catalog_reference_id=created["reference_id"],
-        jacket_crop_hash=image_hash,
-        expected_feature_extractor_version=catalog.FEATURE_EXTRACTOR_VERSION,
-        expected_catalog_schema_version=catalog.CATALOG_SCHEMA_VERSION_V2,
-        expected_catalog_created_at=catalog_created_at,
-    )
-    assert receipt["catalog_status"] == "ingested"
-
-    before_replay = catalog_path.read_bytes()
-    replay = catalog.ingest_observation_v2(
-        catalog_path,
-        master_db,
-        source_image_path=image,
-        observation_id="v2-observation-1",
-        expected_song_id="song-1",
-        expected_image_hash=image_hash,
-        expected_master_version=master.version,
-        expected_master_source_hash=master.source_hash,
-        expected_feature_extractor_version=catalog.FEATURE_EXTRACTOR_VERSION,
-        expected_catalog_identity=catalog.CATALOG_IDENTITY,
-        expected_catalog_schema_version=catalog.CATALOG_SCHEMA_VERSION_V2,
-        expected_catalog_created_at=catalog_created_at,
-    )
-    assert (replay.reference_id, replay.disposition) == (
-        created["reference_id"],
-        "existing",
-    )
-    assert catalog_path.read_bytes() == before_replay
-
-    distinct = catalog.ingest_observation_v2(
-        catalog_path,
-        master_db,
-        source_image_path=image,
-        observation_id="v2-observation-2",
-        expected_song_id="song-1",
-        expected_image_hash=image_hash,
-        expected_master_version=master.version,
-        expected_master_source_hash=master.source_hash,
-        expected_feature_extractor_version=catalog.FEATURE_EXTRACTOR_VERSION,
-        expected_catalog_identity=catalog.CATALOG_IDENTITY,
-        expected_catalog_schema_version=catalog.CATALOG_SCHEMA_VERSION_V2,
-        expected_catalog_created_at=catalog_created_at,
-    )
-    assert distinct.disposition == "created"
-    assert distinct.reference_id != created["reference_id"]
-
-    before_conflict = catalog_path.read_bytes()
-    with pytest.raises(ValueError, match="canonical payload"):
-        catalog.ingest_observation_v2(
-            catalog_path,
-            master_db,
-            source_image_path=image,
-            observation_id="v2-observation-1",
-            expected_song_id="song-2",
-            expected_image_hash=image_hash,
-            expected_master_version=master.version,
-            expected_master_source_hash=master.source_hash,
-            expected_feature_extractor_version=catalog.FEATURE_EXTRACTOR_VERSION,
-            expected_catalog_identity=catalog.CATALOG_IDENTITY,
-            expected_catalog_schema_version=catalog.CATALOG_SCHEMA_VERSION_V2,
-            expected_catalog_created_at=catalog_created_at,
-        )
-    assert catalog_path.read_bytes() == before_conflict
-
-    with pytest.raises(ValueError, match="empty observed title"):
-        catalog.ingest_observation_v2(
-            catalog_path,
-            master_db,
-            source_image_path=image,
-            observation_id="v2-observation-3",
-            observed_title="forged title",
-            expected_image_hash=image_hash,
-        )
-    with pytest.raises(ValueError, match="does not match its checkpoint"):
-        catalog.ingest_observation_v2(
-            catalog_path,
-            master_db,
-            source_image_path=image,
-            observation_id="v2-observation-3",
-            expected_image_hash="0" * 64,
-        )
-
-    catalog.apply_review_mutation(
-        catalog_path,
-        master_db,
-        catalog.ReviewMutationRequest(
-            action_id="manual-v2-observation-1",
-            reference_id=created["reference_id"],
-            action="manual_confirm",
-            expected_revision=0,
-            expected_status="unresolved",
-            expected_song_id=None,
-            song_id="song-1",
-            reason="fixture review",
-            note="reviewed after ingest",
-        ),
-    )
-    reviewed_receipt = catalog.validate_observation_receipt(
-        catalog_path,
-        observation_id="v2-observation-1",
-        catalog_status="ingested",
-        catalog_reference_id=created["reference_id"],
-        jacket_crop_hash=image_hash,
-        expected_feature_extractor_version=catalog.FEATURE_EXTRACTOR_VERSION,
-        expected_catalog_schema_version=catalog.CATALOG_SCHEMA_VERSION_V2,
-        expected_catalog_created_at=catalog_created_at,
-    )
-    assert reviewed_receipt["catalog_status"] == "ingested"
-    catalog.apply_review_mutation(
-        catalog_path,
-        master_db,
-        catalog.ReviewMutationRequest(
-            action_id="reassign-v2-observation-1",
-            reference_id=created["reference_id"],
-            action="reassign",
-            expected_revision=1,
-            expected_status="manual_confirmed",
-            expected_song_id="song-1",
-            song_id="song-2",
-            reason="fixture reassignment",
-            note="reassigned after review",
-        ),
-    )
-    reassigned_receipt = catalog.validate_observation_receipt(
-        catalog_path,
-        observation_id="v2-observation-1",
-        catalog_status="ingested",
-        catalog_reference_id=created["reference_id"],
-        jacket_crop_hash=image_hash,
-        expected_feature_extractor_version=catalog.FEATURE_EXTRACTOR_VERSION,
-        expected_catalog_schema_version=catalog.CATALOG_SCHEMA_VERSION_V2,
-        expected_catalog_created_at=catalog_created_at,
-    )
-    assert reassigned_receipt["catalog_status"] == "ingested"
-    before_reviewed_collision = catalog_path.read_bytes()
-    with pytest.raises(ValueError, match="collides"):
-        catalog.ingest_observation_v2(
-            catalog_path,
-            master_db,
-            source_image_path=image,
-            observation_id="v2-observation-1",
-            expected_song_id="song-1",
-            expected_image_hash=image_hash,
-            expected_master_version=master.version,
-            expected_master_source_hash=master.source_hash,
-            expected_feature_extractor_version=catalog.FEATURE_EXTRACTOR_VERSION,
-            expected_catalog_identity=catalog.CATALOG_IDENTITY,
-            expected_catalog_schema_version=catalog.CATALOG_SCHEMA_VERSION_V2,
-            expected_catalog_created_at=catalog_created_at,
-        )
-    assert catalog_path.read_bytes() == before_reviewed_collision
-
-
-def test_v3_ingest_persists_and_transactionally_deduplicates_composite_identity(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    master_db, source_v1 = setup_paths(tmp_path, monkeypatch)
-    source_v2 = tmp_path / "data" / "catalog-v2.sqlite"
-    catalog.migrate_catalog_v1_to_v2(source_v1, source_v2)
-    artifact_root = tmp_path / "data" / "artifacts"
-    artifact_root.mkdir()
-    catalog_path = tmp_path / "data" / "catalog-v3.sqlite"
-    catalog.migrate_catalog_v2_to_v3(source_v2, catalog_path, artifact_root)
-    image = tmp_path / "data" / "v3-observation.png"
-    write_image(image, (20, 40, 80))
-    master = catalog.load_master_identity(master_db)
-    with sqlite3.connect(catalog_path) as connection:
-        created_at = connection.execute(
-            "SELECT value FROM catalog_metadata WHERE key = 'created_at'"
-        ).fetchone()[0]
-    jacket_hash = "1" * 64
-    title_hash = "2" * 64
-    identity_hash = catalog.composite_identity_hash(
-        catalog.JACKET_FRAME_FEATURE_VERSION,
-        jacket_hash,
-        catalog.TITLE_LINE_FEATURE_VERSION,
-        title_hash,
-    )
-    context = {
-        "catalog_path": catalog_path,
-        "master_db": master_db,
-        "source_image_path": image,
-        "expected_image_hash": hashlib.sha256(image.read_bytes()).hexdigest(),
-        "expected_master_version": master.version,
-        "expected_master_source_hash": master.source_hash,
-        "expected_feature_extractor_version": catalog.FEATURE_EXTRACTOR_VERSION,
-        "expected_catalog_identity": catalog.CATALOG_IDENTITY,
-        "expected_catalog_schema_version": 3,
-        "expected_catalog_created_at": created_at,
+    image_path = tmp_path / "data/jacket.png"
+    Image.new("RGB", (64, 64), (10, 20, 30)).save(image_path)
+    return master_db, catalog_path, image_path
+
+
+def identity(seed: str) -> dict[str, str]:
+    jacket_hash = hashlib.sha256(f"jacket:{seed}".encode()).hexdigest()
+    title_hash = hashlib.sha256(f"title:{seed}".encode()).hexdigest()
+    return {
         "jacket_feature_version": catalog.JACKET_FRAME_FEATURE_VERSION,
         "jacket_feature_hash": jacket_hash,
         "title_line_feature_version": catalog.TITLE_LINE_FEATURE_VERSION,
         "title_line_hash": title_hash,
         "composite_identity_version": catalog.COMPOSITE_IDENTITY_VERSION,
-        "expected_composite_identity_hash": identity_hash,
+        "expected_composite_identity_hash": catalog.composite_identity_hash(
+            catalog.JACKET_FRAME_FEATURE_VERSION,
+            jacket_hash,
+            catalog.TITLE_LINE_FEATURE_VERSION,
+            title_hash,
+        ),
     }
 
-    created = catalog.ingest_observation_v2(**context, observation_id="v3-first")
-    catalog.apply_review_mutation(
+
+def created_at(path: Path) -> str:
+    with sqlite3.connect(path) as connection:
+        return str(
+            connection.execute(
+                "SELECT value FROM catalog_metadata WHERE key = 'created_at'"
+            ).fetchone()[0]
+        )
+
+
+def ingest(
+    catalog_path: Path,
+    master_db: Path,
+    image_path: Path,
+    *,
+    observation_id: str,
+    seed: str,
+) -> catalog.IngestResult:
+    return catalog.ingest_observation(
         catalog_path,
         master_db,
-        catalog.ReviewMutationRequest(
-            action_id="reject-v3-first",
-            reference_id=created.reference_id,
-            action="reject",
-            expected_revision=0,
-            expected_status="unresolved",
-            expected_song_id=None,
-        ),
+        source_image_path=image_path,
+        observation_id=observation_id,
+        expected_image_hash=hashlib.sha256(image_path.read_bytes()).hexdigest(),
+        expected_master_version="master-v1",
+        expected_master_source_hash="fixture-source-hash",
+        expected_feature_extractor_version=catalog.FEATURE_EXTRACTOR_VERSION,
+        expected_catalog_identity=catalog.CATALOG_IDENTITY,
+        expected_catalog_schema_version=1,
+        expected_catalog_created_at=created_at(catalog_path),
+        **identity(seed),
     )
-    duplicate = catalog.ingest_observation_v2(**context, observation_id="v3-second")
 
-    assert created.disposition == "created"
-    assert duplicate == catalog.IngestResult(
-        created.reference_id,
-        "existing",
-        "rejected",
-        "composite_identity_already_cataloged",
-    )
-    assert catalog.load_composite_identities(catalog_path) == {
-        (catalog.COMPOSITE_IDENTITY_VERSION, identity_hash)
-    }
+
+def test_current_create_has_exact_composite_schema(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _master, catalog_path, _image = setup_paths(tmp_path, monkeypatch)
+
+    catalog.validate_catalog(catalog_path)
+
+    with sqlite3.connect(catalog_path) as connection:
+        metadata = dict(connection.execute("SELECT key, value FROM catalog_metadata"))
+        columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(jacket_references)")
+        }
+        indexes = {
+            row[1] for row in connection.execute("PRAGMA index_list(jacket_references)")
+        }
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 1
+    assert metadata["schema_version"] == "1"
+    assert {
+        "jacket_feature_version",
+        "jacket_feature_hash",
+        "title_line_feature_version",
+        "title_line_hash",
+        "composite_identity_version",
+        "composite_identity_hash",
+    } <= columns
+    assert "idx_jacket_references_composite_identity" in indexes
+    assert catalog.load_composite_identities(catalog_path) == frozenset()
+
+
+def test_old_catalog_version_is_read_only_rejected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    master_db, catalog_path, image_path = setup_paths(tmp_path, monkeypatch)
+    with sqlite3.connect(catalog_path) as connection:
+        connection.execute("PRAGMA user_version = 3")
+        connection.execute(
+            "UPDATE catalog_metadata SET value = '3' WHERE key = 'schema_version'"
+        )
     before = catalog_path.read_bytes()
-    with pytest.raises(ValueError, match="composite identity is invalid"):
-        catalog.ingest_observation_v2(
-            **(context | {"expected_composite_identity_hash": "0" * 64}),
-            observation_id="v3-invalid",
+
+    with pytest.raises(ValueError, match="unsupported"):
+        catalog.validate_catalog(catalog_path)
+    with pytest.raises(ValueError, match="unsupported"):
+        catalog.ingest_observation(
+            catalog_path,
+            master_db,
+            source_image_path=image_path,
+            observation_id="old-schema",
+            expected_image_hash=hashlib.sha256(image_path.read_bytes()).hexdigest(),
+            **identity("old-schema"),
         )
     assert catalog_path.read_bytes() == before
 
 
-def test_v2_ingest_cli_does_not_create_a_missing_catalog(
+def test_ingest_rejects_incomplete_or_noncanonical_identity_before_write(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    master_db, _ = setup_paths(tmp_path, monkeypatch)
-    image = tmp_path / "data" / "missing-catalog-observation.png"
-    write_image(image, (20, 40, 80))
-    missing_catalog = tmp_path / "data" / "missing-catalog-v2.sqlite"
-    master = catalog.load_master_identity(master_db)
-    image_hash = hashlib.sha256(image.read_bytes()).hexdigest()
-    data_entries_before = set(missing_catalog.parent.iterdir())
+    master_db, catalog_path, image_path = setup_paths(tmp_path, monkeypatch)
+    base = identity("strict")
+    before = catalog_path.read_bytes()
 
-    with pytest.raises(ValueError, match="catalog is not a file"):
-        catalog.main(
-            [
-                "ingest-v2",
-                "--catalog",
-                str(missing_catalog),
-                "--master-db",
-                str(master_db),
-                "--source-image",
-                str(image),
-                "--observation-id",
-                "missing-catalog-observation",
-                "--expected-image-hash",
-                image_hash,
-                "--expected-master-version",
-                master.version,
-                "--expected-master-source-hash",
-                master.source_hash,
-                "--expected-feature-extractor-version",
-                catalog.FEATURE_EXTRACTOR_VERSION,
-                "--expected-catalog-identity",
-                catalog.CATALOG_IDENTITY,
-                "--expected-catalog-schema-version",
-                str(catalog.CATALOG_SCHEMA_VERSION_V2),
-                "--expected-catalog-created-at",
-                "2026-07-16T00:00:00+00:00",
-            ]
-        )
+    for field in base:
+        invalid = dict(base)
+        invalid[field] = None  # type: ignore[assignment]
+        with pytest.raises(ValueError, match="requires composite identity"):
+            catalog.ingest_observation(
+                catalog_path,
+                master_db,
+                source_image_path=image_path,
+                observation_id=f"missing-{field}",
+                **invalid,
+            )
+        assert catalog_path.read_bytes() == before
 
-    assert not missing_catalog.exists()
-    assert set(missing_catalog.parent.iterdir()) == data_entries_before
+    for field, value, message in (
+        ("jacket_feature_hash", "A" * 64, "feature fields are invalid"),
+        ("title_line_feature_version", "unknown", "feature fields are invalid"),
+        ("expected_composite_identity_hash", "0" * 64, "composite identity is invalid"),
+    ):
+        invalid = dict(base)
+        invalid[field] = value
+        with pytest.raises(ValueError, match=message):
+            catalog.ingest_observation(
+                catalog_path,
+                master_db,
+                source_image_path=image_path,
+                observation_id=f"invalid-{field}",
+                **invalid,
+            )
+        assert catalog_path.read_bytes() == before
 
 
-def test_v2_ingest_uses_one_image_snapshot_and_rejects_replaced_payload(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+def apply_status(
+    catalog_path: Path, master_db: Path, reference_id: str, target: str
 ) -> None:
-    master_db, source_catalog = setup_paths(tmp_path, monkeypatch)
-    image = tmp_path / "data" / "snapshot.png"
-    replacement = tmp_path / "data" / "replacement.png"
-    write_image(image, (20, 40, 80))
-    write_image(replacement, (200, 10, 30))
-    catalog_path = tmp_path / "data" / "catalog-v2.sqlite"
-    catalog.migrate_catalog_v1_to_v2(source_catalog, catalog_path)
-    master = catalog.load_master_identity(master_db)
-    with sqlite3.connect(catalog_path) as connection:
-        catalog_created_at = connection.execute(
-            "SELECT value FROM catalog_metadata WHERE key = 'created_at'"
-        ).fetchone()[0]
-    original_bytes = image.read_bytes()
-    original_hash = hashlib.sha256(original_bytes).hexdigest()
-    original_feature = catalog._extract_feature_from_bytes(original_bytes, "jacket_crop")
-    path_helper_calls: list[Path] = []
-    original_path_helper = catalog._extract_feature
-
-    def replace_and_extract(path: Path, image_kind: str) -> master_match.JacketFeature:
-        path_helper_calls.append(path)
-        path.write_bytes(replacement.read_bytes())
-        return original_path_helper(path, image_kind)
-
-    monkeypatch.setattr(catalog, "_extract_feature", replace_and_extract)
-    context = {
-        "catalog_path": catalog_path,
-        "master_db": master_db,
-        "source_image_path": image,
-        "expected_master_version": master.version,
-        "expected_master_source_hash": master.source_hash,
-        "expected_feature_extractor_version": catalog.FEATURE_EXTRACTOR_VERSION,
-        "expected_catalog_identity": catalog.CATALOG_IDENTITY,
-        "expected_catalog_schema_version": catalog.CATALOG_SCHEMA_VERSION_V2,
-        "expected_catalog_created_at": catalog_created_at,
-    }
-    created = catalog.ingest_observation_v2(
-        **context,
-        observation_id="snapshot-observation",
-        expected_image_hash=original_hash,
+    if target == "unresolved":
+        return
+    if target == "auto_confirmed":
+        with sqlite3.connect(catalog_path) as connection:
+            connection.execute(
+                "UPDATE jacket_references SET review_status = 'auto_confirmed', "
+                "song_id = 'song-1', canonical_title_snapshot = 'Alpha', "
+                "canonical_artist_snapshot = 'Artist A' WHERE reference_id = ?",
+                (reference_id,),
+            )
+        return
+    catalog.apply_review_mutation(
+        catalog_path,
+        master_db,
+        catalog.ReviewMutationRequest(
+            action_id=f"confirm-{target}",
+            reference_id=reference_id,
+            action="manual_confirm",
+            expected_revision=0,
+            expected_status="unresolved",
+            expected_song_id=None,
+            song_id="song-1",
+        ),
+    )
+    if target == "manual_confirmed":
+        return
+    catalog.apply_review_mutation(
+        catalog_path,
+        master_db,
+        catalog.ReviewMutationRequest(
+            action_id=f"reject-{target}",
+            reference_id=reference_id,
+            action="reject",
+            expected_revision=1,
+            expected_status="manual_confirmed",
+            expected_song_id="song-1",
+        ),
+    )
+    if target == "rejected":
+        return
+    catalog.apply_review_mutation(
+        catalog_path,
+        master_db,
+        catalog.ReviewMutationRequest(
+            action_id="reopen-needs-review",
+            reference_id=reference_id,
+            action="reopen",
+            expected_revision=2,
+            expected_status="rejected",
+            expected_song_id="song-1",
+        ),
     )
 
-    assert created.disposition == "created"
-    assert path_helper_calls == []
-    assert image.read_bytes() == original_bytes
-    with sqlite3.connect(catalog_path) as connection:
-        row = connection.execute(
-            "SELECT source_image_hash, dhash_hex FROM jacket_references "
-            "WHERE reference_id = ?",
-            (created.reference_id,),
-        ).fetchone()
-    assert row == (original_hash, original_feature.dhash_hex)
 
+@pytest.mark.parametrize(
+    "status",
+    ["unresolved", "auto_confirmed", "manual_confirmed", "needs_review", "rejected"],
+)
+def test_duplicate_identity_converges_for_all_review_statuses(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, status: str
+) -> None:
+    master_db, catalog_path, image_path = setup_paths(tmp_path, monkeypatch)
+    first = ingest(
+        catalog_path,
+        master_db,
+        image_path,
+        observation_id="first-observation",
+        seed="shared",
+    )
+    apply_status(catalog_path, master_db, first.reference_id, status)
+
+    duplicate = ingest(
+        catalog_path,
+        master_db,
+        image_path,
+        observation_id="second-observation",
+        seed="shared",
+    )
+
+    assert duplicate.reference_id == first.reference_id
+    assert duplicate.disposition == "existing"
+    assert duplicate.review_status == status
+    with sqlite3.connect(catalog_path) as connection:
+        assert connection.execute("SELECT COUNT(*) FROM jacket_references").fetchone()[0] == 1
+
+
+def test_replay_conflict_and_review_failure_leave_catalog_bytes_unchanged(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    master_db, catalog_path, image_path = setup_paths(tmp_path, monkeypatch)
+    result = ingest(
+        catalog_path,
+        master_db,
+        image_path,
+        observation_id="same-observation",
+        seed="same",
+    )
+    replay = ingest(
+        catalog_path,
+        master_db,
+        image_path,
+        observation_id="same-observation",
+        seed="same",
+    )
+    assert replay.disposition == "existing"
     before_conflict = catalog_path.read_bytes()
-    image.write_bytes(replacement.read_bytes())
-    replacement_hash = hashlib.sha256(image.read_bytes()).hexdigest()
-    with pytest.raises(ValueError, match="canonical payload"):
-        catalog.ingest_observation_v2(
-            **context,
-            observation_id="snapshot-observation",
-            expected_image_hash=replacement_hash,
+    with pytest.raises(ValueError, match="different canonical payload"):
+        ingest(
+            catalog_path,
+            master_db,
+            image_path,
+            observation_id="same-observation",
+            seed="different",
         )
     assert catalog_path.read_bytes() == before_conflict
 
-
-def test_v2_ingest_rejects_invalid_artifacts_and_drift_without_side_effects(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    master_db, source_catalog = setup_paths(tmp_path, monkeypatch)
-    image = tmp_path / "data" / "strict-v2.png"
-    write_image(image, (20, 40, 80))
-    catalog_path = tmp_path / "data" / "catalog-v2.sqlite"
-    catalog.migrate_catalog_v1_to_v2(source_catalog, catalog_path)
-    master = catalog.load_master_identity(master_db)
-    with sqlite3.connect(catalog_path) as connection:
-        catalog_created_at = connection.execute(
-            "SELECT value FROM catalog_metadata WHERE key = 'created_at'"
-        ).fetchone()[0]
-    context = {
-        "catalog_path": catalog_path,
-        "master_db": master_db,
-        "source_image_path": image,
-        "expected_image_hash": hashlib.sha256(image.read_bytes()).hexdigest(),
-        "expected_master_version": master.version,
-        "expected_master_source_hash": master.source_hash,
-        "expected_feature_extractor_version": catalog.FEATURE_EXTRACTOR_VERSION,
-        "expected_catalog_identity": catalog.CATALOG_IDENTITY,
-        "expected_catalog_schema_version": catalog.CATALOG_SCHEMA_VERSION_V2,
-        "expected_catalog_created_at": catalog_created_at,
-    }
-    invalid_cases = [
-        ({"observation_id": ""}, "non-empty"),
-        (
-            {
-                "observation_id": "missing-image",
-                "source_image_path": tmp_path / "data" / "missing.png",
-            },
-            "does not exist",
-        ),
-        (
-            {"observation_id": "master-drift", "expected_master_version": "master-drift"},
-            "master version drift",
-        ),
-        (
-            {"observation_id": "catalog-drift", "expected_catalog_identity": "wrong"},
-            "catalog identity drift",
-        ),
-        (
-            {
-                "observation_id": "extractor-drift",
-                "expected_feature_extractor_version": "old-feature",
-            },
-            "feature extractor version drift",
-        ),
-    ]
-    for overrides, message in invalid_cases:
-        before = catalog_path.read_bytes()
-        with pytest.raises(ValueError, match=message):
-            catalog.ingest_observation_v2(**(context | overrides))
-        assert catalog_path.read_bytes() == before
-
-    before_mixed_schema = source_catalog.read_bytes()
-    with pytest.raises(ValueError, match="requires catalog schema version 2"):
-        catalog.ingest_observation_v2(
-            **(context | {"catalog_path": source_catalog, "observation_id": "mixed-schema"})
-        )
-    assert source_catalog.read_bytes() == before_mixed_schema
-
-
-def test_identical_jacket_pixels_can_reference_distinct_songs(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    master_db, catalog_path = setup_paths(tmp_path, monkeypatch)
-    shared_image = tmp_path / "shared-jacket.png"
-    write_image(shared_image, (20, 40, 80))
-
-    alpha = catalog.ingest_observation(
-        catalog_path,
-        master_db,
-        source_image_path=shared_image,
-        source_capture_id="",
-        observed_title="Alpha",
-        observed_artist="Artist A",
-        image_kind="jacket_crop",
+    request = catalog.ReviewMutationRequest(
+        action_id="manual-confirm",
+        reference_id=result.reference_id,
+        action="manual_confirm",
+        expected_revision=0,
+        expected_status="unresolved",
+        expected_song_id=None,
+        song_id="song-2",
+        note="日本語 note",
     )
-    beta = catalog.ingest_observation(
-        catalog_path,
-        master_db,
-        source_image_path=shared_image,
-        source_capture_id="",
-        observed_title="Beta",
-        observed_artist="Artist B",
-        image_kind="jacket_crop",
-    )
-    alpha_repeated = catalog.ingest_observation(
-        catalog_path,
-        master_db,
-        source_image_path=shared_image,
-        source_capture_id="",
-        observed_title="Alpha",
-        observed_artist="Artist A",
-        image_kind="jacket_crop",
-    )
-    beta_repeated = catalog.ingest_observation(
-        catalog_path,
-        master_db,
-        source_image_path=shared_image,
-        source_capture_id="",
-        observed_title="Beta",
-        observed_artist="Artist B",
-        image_kind="jacket_crop",
-    )
-
-    assert (alpha.disposition, beta.disposition) == ("created", "created")
-    assert (alpha_repeated.disposition, beta_repeated.disposition) == (
-        "existing",
-        "existing",
-    )
-    assert alpha.reference_id != beta.reference_id
-    with sqlite3.connect(catalog_path) as connection:
-        rows = connection.execute(
-            "SELECT song_id, source_image_hash FROM jacket_references ORDER BY song_id"
-        ).fetchall()
-    assert [row[0] for row in rows] == ["song-1", "song-2"]
-    assert rows[0][1] == rows[1][1]
-
-
-def test_reingest_updates_corrected_identity_and_audit_without_adding_reference(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    master_db, catalog_path = setup_paths(tmp_path, monkeypatch)
-    image_path = tmp_path / "corrected.png"
-    write_image(image_path, (40, 80, 120))
-
-    created = catalog.ingest_observation(
-        catalog_path,
-        master_db,
-        source_image_path=image_path,
-        source_capture_id="capture-correction",
-        observed_title="Alpha",
-        observed_artist="wrong artist",
-        image_kind="jacket_crop",
-        now="2026-07-14T01:00:00+00:00",
-    )
-    audit_updated = catalog.ingest_observation(
-        catalog_path,
-        master_db,
-        source_image_path=image_path,
-        source_capture_id="capture-correction",
-        observed_title="Alpha",
-        observed_artist="wrong artist",
-        image_kind="jacket_crop",
-        expected_song_id="song-1",
-        now="2026-07-14T01:30:00+00:00",
-    )
-    updated = catalog.ingest_observation(
-        catalog_path,
-        master_db,
-        source_image_path=image_path,
-        source_capture_id="capture-correction",
-        observed_title="Alpha",
-        observed_artist="Artist A",
-        image_kind="jacket_crop",
-        expected_song_id="song-1",
-        now="2026-07-14T02:00:00+00:00",
-    )
-    repeated = catalog.ingest_observation(
-        catalog_path,
-        master_db,
-        source_image_path=image_path,
-        source_capture_id="capture-correction",
-        observed_title="Alpha",
-        observed_artist="Artist A",
-        image_kind="jacket_crop",
-        expected_song_id="song-1",
-        now="2026-07-14T03:00:00+00:00",
-    )
-
-    assert (created.disposition, created.review_status) == ("created", "needs_review")
-    assert (audit_updated.disposition, audit_updated.review_status) == (
-        "updated",
-        "needs_review",
-    )
-    assert (updated.disposition, updated.review_status) == ("updated", "auto_confirmed")
-    assert repeated.disposition == "existing"
-    with sqlite3.connect(catalog_path) as connection:
-        connection.row_factory = sqlite3.Row
-        row = connection.execute("SELECT * FROM jacket_references").fetchone()
-        assert connection.execute("SELECT COUNT(*) FROM jacket_references").fetchone()[0] == 1
-        assert row["song_id"] == "song-1"
-        assert row["observed_artist"] == "Artist A"
-        assert row["expected_song_id"] == "song-1"
-        assert row["review_status"] == "auto_confirmed"
-        assert row["updated_at"] == "2026-07-14T02:00:00+00:00"
-        assert [
-            candidate["song_id"]
-            for candidate in connection.execute(
-                "SELECT song_id FROM reference_candidates"
-            ).fetchall()
-        ] == ["song-1"]
-
-    _rows, summary = catalog.build_coverage(catalog_path, master_db)
-    assert summary["auto_confirm_rate"] == 1.0
-    assert summary["known_false_auto_confirm_audit_status"] == "evaluated"
-    assert summary["known_false_auto_confirm_audit_passed"]
-
-
-def test_reingest_recomputes_features_when_image_kind_changes(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    master_db, catalog_path = setup_paths(tmp_path, monkeypatch)
-    image_path = tmp_path / "full-frame.png"
-    image = Image.new("RGB", (1280, 720), (255, 0, 0))
-    image.paste((0, 0, 255), (812, 28, 962, 178))
-    image.save(image_path)
-
-    created = catalog.ingest_observation(
-        catalog_path,
-        master_db,
-        source_image_path=image_path,
-        source_capture_id="capture-image-kind",
-        observed_title="Alpha",
-        observed_artist="Artist A",
-        image_kind="full_frame",
-        now="2026-07-14T04:00:00+00:00",
-    )
-    with sqlite3.connect(catalog_path) as connection:
-        initial_thumbnail = connection.execute(
-            "SELECT thumbnail_rgb_json FROM jacket_references"
-        ).fetchone()[0]
-
-    updated = catalog.ingest_observation(
-        catalog_path,
-        master_db,
-        source_image_path=image_path,
-        source_capture_id="capture-image-kind",
-        observed_title="Alpha",
-        observed_artist="Artist A",
-        image_kind="jacket_crop",
-        now="2026-07-14T05:00:00+00:00",
-    )
-    repeated = catalog.ingest_observation(
-        catalog_path,
-        master_db,
-        source_image_path=image_path,
-        source_capture_id="capture-image-kind",
-        observed_title="Alpha",
-        observed_artist="Artist A",
-        image_kind="jacket_crop",
-        now="2026-07-14T06:00:00+00:00",
-    )
-
-    with Image.open(image_path) as source_image:
-        expected_feature = master_match.extract_jacket_feature(source_image)
-    with sqlite3.connect(catalog_path) as connection:
-        connection.row_factory = sqlite3.Row
-        row = connection.execute("SELECT * FROM jacket_references").fetchone()
-        assert connection.execute("SELECT COUNT(*) FROM jacket_references").fetchone()[0] == 1
-        assert row["image_kind"] == "jacket_crop"
-        assert row["thumbnail_rgb_json"] != initial_thumbnail
-        assert json.loads(row["thumbnail_rgb_json"]) == pytest.approx(
-            expected_feature.thumbnail.tolist()
-        )
-        assert json.loads(row["histogram_json"]) == pytest.approx(
-            expected_feature.histogram.tolist()
-        )
-        assert json.loads(row["dhash_bits_json"]) == pytest.approx(
-            expected_feature.dhash_bits.tolist()
-        )
-        assert row["dhash_hex"] == expected_feature.dhash_hex
-        assert row["updated_at"] == "2026-07-14T05:00:00+00:00"
-
-    assert created.disposition == "created"
-    assert updated.disposition == "updated"
-    assert repeated.disposition == "existing"
-
-
-def test_persisted_features_replay_existing_m5_match_after_reference_image_deleted(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    master_db, catalog_path = setup_paths(tmp_path, monkeypatch)
-    image_path = tmp_path / "reference.png"
-    write_image(image_path, (30, 120, 240))
-    expected_feature = master_match.extract_jacket_feature(Image.open(image_path))
-    catalog.ingest_observation(
-        catalog_path,
-        master_db,
-        source_image_path=image_path,
-        source_capture_id="capture-replay",
-        observed_title="Alpha",
-        observed_artist="Artist A",
-        image_kind="jacket_crop",
-    )
-    image_path.unlink()
-
-    entries = catalog.load_m5_feature_entries(catalog_path, master_db)
-
-    assert len(entries) == 1
-    assert entries[0].song_id == "song-1"
-    assert master_match.jacket_feature_distance(entries[0].feature, expected_feature) == 0.0
-    match_row = {
-        "frame_index": "0",
-        "organized_file": "result.png",
-        "song_title_status": "ready",
-        "song_title_extracted_value": "Alpha",
-        "song_title_expected_value": "Alpha",
-        "play_style_status": "ready",
-        "play_style_extracted_value": "SINGLE",
-        "difficulty_status": "ready",
-        "difficulty_extracted_value": "BASIC",
-        "level_status": "ready",
-        "level_extracted_value": "1",
-    }
-    match = master_match.match_jacket_save_candidate_row(
-        match_row,
-        master_db,
-        expected_feature,
-        entries,
-    )
-    assert match["jacket_match_status"] == "matched"
-    assert match["top_song_id"] == "song-1"
-    assert match["identity_signal_status"] == "jacket_resolved_candidate"
-
-    with sqlite3.connect(catalog_path) as connection:
-        connection.execute("UPDATE jacket_references SET thumbnail_rgb_json = 123")
-    with pytest.raises(ValueError, match="invalid thumbnail_rgb"):
-        catalog.load_m5_feature_entries(catalog_path, master_db)
-
-
-def test_m5_feature_loader_ignores_stale_extractor_versions(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    master_db, catalog_path = setup_paths(tmp_path, monkeypatch)
-    image_path = tmp_path / "versioned-reference.png"
-    write_image(image_path, (60, 90, 120))
-    catalog.ingest_observation(
-        catalog_path,
-        master_db,
-        source_image_path=image_path,
-        source_capture_id="current-version",
-        observed_title="Alpha",
-        observed_artist="Artist A",
-        image_kind="jacket_crop",
-    )
-    with sqlite3.connect(catalog_path) as connection:
-        connection.execute(
-            """
-            INSERT INTO jacket_references (
-              reference_id, source_capture_id, source_image_hash, master_version, song_id,
-              canonical_title_snapshot, canonical_artist_snapshot, review_status,
-              resolution_reason, resolution_basis, feature_extractor_version,
-              image_kind, thumbnail_rgb_json, histogram_json, dhash_bits_json, dhash_hex,
-              observed_title, observed_artist, observation_status, expected_song_id,
-              created_at, updated_at
-            )
-            SELECT
-              'stale-reference', NULL, source_image_hash, master_version, 'song-2',
-              'Beta', 'Artist B', review_status, resolution_reason, resolution_basis,
-              'm5-jacket-v0', image_kind, thumbnail_rgb_json, histogram_json,
-              dhash_bits_json, dhash_hex, 'Beta', 'Artist B', observation_status, '',
-              created_at, updated_at
-            FROM jacket_references
-            WHERE feature_extractor_version = ?
-            """,
-            (catalog.FEATURE_EXTRACTOR_VERSION,),
-        )
-        assert connection.execute("SELECT COUNT(*) FROM jacket_references").fetchone()[0] == 2
-
-    entries = catalog.load_m5_feature_entries(catalog_path, master_db)
-
-    assert len(entries) == 1
-    assert entries[0].song_id == "song-1"
-    assert entries[0].organized_file != "catalog:stale-reference"
-    coverage_rows, summary = catalog.build_coverage(catalog_path, master_db)
-    beta = next(row for row in coverage_rows if row["song_id"] == "song-2")
-    assert beta["coverage_status"] == "needs_review"
-    assert beta["reason"] == "feature_extractor_version_changed"
-    assert summary["current_reference_state_reason_counts"] == {
-        "feature_extractor_version_changed": 1
-    }
-
-
-def test_coverage_counts_all_gp_songs_failures_and_read_only_master_drift(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    master_db, catalog_path = setup_paths(tmp_path, monkeypatch)
-    alpha = tmp_path / "alpha.png"
-    gamma = tmp_path / "gamma.png"
-    epsilon = tmp_path / "epsilon.png"
-    broken = tmp_path / "broken.png"
-    write_image(alpha, (255, 0, 0))
-    write_image(gamma, (0, 255, 0))
-    write_image(epsilon, (0, 0, 255))
-    broken.write_bytes(b"not an image")
-
-    for path, capture_id, title, artist, expected in (
-        (alpha, "a", "Alpha", "Artist A", "song-1"),
-        (broken, "b", "Beta", "Artist B", "song-2"),
-        (epsilon, "e", "Epsilon", "Artist E", "song-5"),
-    ):
-        catalog.ingest_observation(
+    receipt = catalog.apply_review_mutation(catalog_path, master_db, request)
+    assert receipt.status == "manual_confirmed"
+    assert catalog.apply_review_mutation(catalog_path, master_db, request).idempotent
+    before_failure = catalog_path.read_bytes()
+    with pytest.raises(RuntimeError, match="injected"):
+        catalog.apply_review_mutation(
             catalog_path,
             master_db,
-            source_image_path=path,
-            source_capture_id=capture_id,
-            observed_title=title,
-            observed_artist=artist,
-            image_kind="jacket_crop",
-            expected_song_id=expected,
+            catalog.ReviewMutationRequest(
+                action_id="reassign-rollback",
+                reference_id=result.reference_id,
+                action="reassign",
+                expected_revision=1,
+                expected_status="manual_confirmed",
+                expected_song_id="song-2",
+                song_id="song-1",
+            ),
+            fail_after_current_update=True,
         )
+    assert catalog_path.read_bytes() == before_failure
+    entries = catalog.load_m5_feature_entries(catalog_path, master_db)
+    assert [entry.song_id for entry in entries] == ["song-2"]
 
-    master_db.unlink()
-    write_master(master_db, version="master-v2", gp_overrides={"song-5": False})
-    catalog.ingest_observation(
+
+def test_current_receipt_coverage_and_cli_contract(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    master_db, catalog_path, image_path = setup_paths(tmp_path, monkeypatch)
+    result = ingest(
         catalog_path,
         master_db,
-        source_image_path=gamma,
-        source_capture_id="g",
-        observed_title="Gamma",
-        observed_artist="Artist C",
-        image_kind="jacket_crop",
-        expected_song_id="song-3",
+        image_path,
+        observation_id="original-observation",
+        seed="receipt",
     )
-    before = master_db.read_bytes()
+    identity_values = identity("receipt")
 
-    rows, summary = catalog.build_coverage(catalog_path, master_db)
-
-    assert master_db.read_bytes() == before
-    statuses = {row["song_id"]: row["coverage_status"] for row in rows}
-    assert statuses == {
-        "song-1": "needs_review",
-        "song-2": "unresolved",
-        "song-3": "referenced",
-        "song-4": "uncollected",
-        "song-alias": "uncollected",
-    }
-    assert summary["grand_prix_song_count"] == 5
-    assert summary["coverage_status_counts"] == {
-        "needs_review": 1,
-        "referenced": 1,
-        "uncollected": 2,
-        "unresolved": 1,
-    }
-    assert summary["captured_observation_count"] == 4
-    assert summary["auto_confirmed_observation_count"] == 1
-    assert summary["auto_confirm_rate"] == 0.25
-    assert summary["ingest_auto_confirmed_observation_count"] == 3
-    assert summary["ingest_auto_confirm_rate"] == 0.75
-    assert summary["orphan_reason_counts"] == {"song_not_grand_prix_available": 1}
-    assert summary["known_false_auto_confirm_count"] == 0
-    assert summary["known_false_auto_confirm_audit_status"] == "evaluated"
-    assert summary["known_false_auto_confirm_audit_passed"]
-    assert {item["reason"] for item in summary["improvement_candidates"]} >= {
-        "feature_extraction_failed",
-        "master_version_changed",
-        "song_not_grand_prix_available",
-    }
-
-
-def test_coverage_marks_candidate_songs_as_needing_review(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    master_db, catalog_path = setup_paths(tmp_path, monkeypatch)
-    image_path = tmp_path / "artist-mismatch.png"
-    write_image(image_path, (80, 40, 20))
-    catalog.ingest_observation(
+    receipt = catalog.validate_observation_receipt(
         catalog_path,
-        master_db,
-        source_image_path=image_path,
-        source_capture_id="candidate-alpha",
-        observed_title="Alpha",
-        observed_artist="wrong artist",
-        image_kind="jacket_crop",
+        observation_id="duplicate-observation",
+        catalog_status="ingested",
+        catalog_reference_id=result.reference_id,
+        jacket_crop_hash=hashlib.sha256(image_path.read_bytes()).hexdigest(),
+        expected_feature_extractor_version=catalog.FEATURE_EXTRACTOR_VERSION,
+        expected_catalog_schema_version=1,
+        expected_catalog_created_at=created_at(catalog_path),
+        composite_identity_version=catalog.COMPOSITE_IDENTITY_VERSION,
+        composite_identity_hash_value=identity_values["expected_composite_identity_hash"],
     )
-
     rows, summary = catalog.build_coverage(catalog_path, master_db)
+    subcommands = catalog.build_parser()._subparsers._group_actions[0].choices
 
-    alpha = next(row for row in rows if row["song_id"] == "song-1")
-    assert alpha["coverage_status"] == "needs_review"
-    assert alpha["reference_count"] == "1"
-    assert alpha["reason"] == "title_match_artist_mismatch"
-    assert summary["coverage_status_counts"] == {
-        "needs_review": 1,
-        "uncollected": 5,
-    }
-    assert summary["unassigned_unresolved_observation_count"] == 0
-
-
-def test_build_cli_writes_local_catalog_and_coverage(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.chdir(tmp_path)
-    (tmp_path / "data").mkdir()
-    master_db = tmp_path / "master.sqlite"
-    write_master(master_db)
-    image_path = tmp_path / "alpha.png"
-    write_image(image_path, (10, 20, 30))
-    observations = tmp_path / "observations.csv"
-    with observations.open("w", encoding="utf-8", newline="") as file:
-        writer = csv.DictWriter(
-            file,
-            fieldnames=[
-                "source_image_path",
-                "source_capture_id",
-                "observed_title",
-                "observed_artist",
-                "image_kind",
-                "expected_song_id",
-            ],
-        )
-        writer.writeheader()
-        writer.writerow(
-            {
-                "source_image_path": str(image_path),
-                "source_capture_id": "cli-1",
-                "observed_title": "Alpha",
-                "observed_artist": "Artist A",
-                "image_kind": "jacket_crop",
-                "expected_song_id": "song-1",
-            }
-        )
-
-    exit_code = catalog.main(
-        [
-            "build",
-            "--catalog",
-            "data/catalog.sqlite",
-            "--master-db",
-            str(master_db),
-            "--observations",
-            str(observations),
-            "--coverage-output",
-            "data/coverage",
-        ]
-    )
-
-    assert exit_code == 0
-    summary = json.loads(
-        (tmp_path / "data/coverage/jacket_catalog_coverage_summary.json").read_text(
-            encoding="utf-8"
-        )
-    )
-    assert summary["auto_confirm_rate"] == 1.0
-    assert summary["known_false_auto_confirm_audit_status"] == "evaluated"
-    assert summary["known_false_auto_confirm_audit_passed"]
-    assert (tmp_path / "data/coverage/jacket_catalog_song_coverage.csv").is_file()
-    assert (tmp_path / "data/coverage/jacket_catalog_coverage.md").is_file()
-
-
-def test_csv_build_does_not_publish_partial_new_or_existing_catalog(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    master_db, existing_catalog = setup_paths(tmp_path, monkeypatch)
-    image_path = tmp_path / "alpha.png"
-    write_image(image_path, (10, 20, 30))
-    observations = tmp_path / "observations.csv"
-    with observations.open("w", encoding="utf-8", newline="") as file:
-        writer = csv.DictWriter(
-            file,
-            fieldnames=["source_image_path", "observed_title", "observed_artist"],
-        )
-        writer.writeheader()
-        writer.writerows(
-            [
-                {
-                    "source_image_path": str(image_path),
-                    "observed_title": "Alpha",
-                    "observed_artist": "Artist A",
-                },
-                {
-                    "source_image_path": str(tmp_path / "missing.png"),
-                    "observed_title": "Beta",
-                    "observed_artist": "Artist B",
-                },
-            ]
-        )
-
-    before = existing_catalog.read_bytes()
-    with pytest.raises(ValueError, match="source image does not exist"):
-        catalog.build_from_observation_csv(existing_catalog, master_db, observations)
-    assert existing_catalog.read_bytes() == before
-
-    new_catalog = tmp_path / "data" / "new.sqlite"
-    with pytest.raises(ValueError, match="source image does not exist"):
-        catalog.build_from_observation_csv(new_catalog, master_db, observations)
-    assert not new_catalog.exists()
-    assert not list((tmp_path / "data").glob(".*.sqlite"))
-
-
-def test_runner_catalog_option_requires_explicit_m5_jacket_match(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.chdir(tmp_path)
-    (tmp_path / "data").mkdir()
-
-    with pytest.raises(ValueError, match="requires --m5-jacket-match"):
-        runner.main(["--m5-jacket-catalog", "data/catalog.sqlite"])
+    assert receipt["catalog_schema_version"] == 1
+    assert len(rows) == 2
+    assert summary["schema_version"] == 1
+    assert {
+        "create",
+        "coverage",
+        "review",
+        "ingest",
+        "validate-session",
+        "validate-receipt",
+    } == set(subcommands)
+    assert {"migrate-v2", "migrate-v3", "ingest-v2"}.isdisjoint(subcommands)

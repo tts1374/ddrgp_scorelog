@@ -331,88 +331,34 @@ Status: Completed on 2026-07-14.
 
 ### M5c: 開発者専用jacket catalog collector
 
-Status: In progress. M5c-1 completed on 2026-07-14; M5c-2 completed on 2026-07-15; M5c-3a/M5c-3b/M5c-3c completed on 2026-07-15; M5c-4 evaluation path completed on 2026-07-16, real-capture adoption remains pending.
+Status: In progress. master更新、projection/manual review、window capture lifecycle、observation session/current ingest、title/artist evaluation pathは完了。実capture方式採用は保留。
 
-目的は、M5b catalogを約1200曲の手作業画像保存・CSV記入に依存せず運用するため、公開WPF appと分離した開発者専用collectorを追加することです。開発者はsong select gridを手動巡回し、ツールがmaster更新、coverage、review、capture、jacket安定検出、観測生成、M4照合を担当します。ゲーム操作は自動化しません。
+目的は、公開WPF appと分離したdeveloper-only collectorで、master更新、coverage/review、DDR GP window候補確認、memory-only capture、明示observation採用、manual reviewを行うことです。ゲーム操作、focus移動、grid自動巡回は行いません。
 
-固定する方針:
+current catalog contract:
 
-- collectorは `tools/` 配下の独立appとし、公開 `DDRGpScoreViewer`、M9 monitoring/tray、installer、Releaseへ含めない。
-- Wiki譜面表と公式収録曲一覧からのmaster生成・inspectionは既存M4 builderを再利用し、staging検証成功後の明示操作だけでatomic publishする。
-- master version/hash、GP対象曲、catalog identity/schema、参照済み、要レビュー、未収集、未解決、orphan、旧extractorを1つの開発者画面で確認できるようにする。
-- 曖昧referenceは元capture/crop、観測title/artist、候補、理由を表示し、将来の手動確定を `auto_confirmed` と異なるprovenanceで保持する。
-- 将来のcollection sessionは開始時のmaster version/hashとfeature extractor versionを固定し、中断・再開と冪等再投入を前提にする。
-- DDR GP window自動特定はdeveloper-only collectorで先行評価してよいが、候補根拠と誤検出を観測可能にし、ゲームへの入力、focus操作、grid自動巡回は行わない。
-- 同一画像hashだけで全観測をskipせず、同じ画像bytesを共有する別songを別referenceとして保持するM5b境界を維持する。
-- capture、crop、特徴量、review、master/catalog DB、source snapshotはlocal dataとし、Git、CI artifact、Release、通常公開logへ含めない。
+- 初回リリース向けcatalog schemaはversion 1だけとし、manual review state/historyとjacket/title-line/composite identityを同じexact schemaへ持つ。
+- 旧catalog schemaのruntime/projection/collector互換、migration、read-only fallbackは持たず、副作用なしでunsupportedとして拒否する。
+- projection version 3とC# loaderはcurrent catalogだけを受け入れ、stored/current state、revision、candidate、manual provenance/historyをstrictに検査する。
+- current `ingest`は完全なcomposite identityを必須とし、同一observation ID再送を冪等化し、異なるobservation IDの同一identityを全review statusで既存referenceへ収束させる。
+- current master/GP/current extractorを満たすauto/manual referenceだけをruntime matcherへ供給し、candidate、expected song、OCR rawを暗黙昇格しない。
+- artifact manifest/checkpoint v1/v2、resume/retry状態機械はcatalog schema再採番と別契約として維持する。old catalog由来sessionはcatalog identity/schema/created-at driftで拒否する。
 
-保留事項:
+collector boundary:
 
-- title/artist取得方式、OCR精度、auto-confirm閾値、jacketと文字領域の更新ずれ対策
-- 完了: `manual_confirmed`、`rejected`、review/reassignment historyを持つcatalog v2と、v1を不変に保つcopy-on-write移行
-- reject、取り消し、完全削除、source image削除を分ける操作契約
-- 完了: window候補条件、preview付き初回確認、strict identity再検査、handle消失・再起動後の明示再選択契約
-- 完了: memory-only raw frame ring buffer、drop観測、capture resource lifecycle、明示採用source/crop、checkpoint/resume。診断frame保持と明示cleanup policyは後続
-- catalog referenceとlocal source capture/cropを再表示可能に結ぶlocator、retention、欠損時表示の契約
-
-実行順:
-
-1. M5c-1: 完了。`tools/jacket_catalog_collector/` に独立developer app/testを追加し、既存M4 master build/inspectをstaging + atomic publishで実行する。M5b catalogはPythonのversion 1 read-only projectionを介してcoverage/review queueを表示し、catalog mutation、capture、OCRは行わない。
-2. M5c-2: 完了。catalog v2、strict validator、v1からのcopy-on-write移行、revision/action IDによる競合・再投入契約、append-only history、手動confirm/reassign/reject/reopenを追加した。projection v2とcollectorは明示GP song検索・確認・history表示を提供し、runtimeはcurrent master/GP/current extractorを満たすauto/manual referenceだけを読む。
-3. M5c-3a: 完了。DDR GP window候補検出、preview付き確認、strict identity再検査、Windows Graphics Captureの明示開始・停止、bounded memory-only raw frame ring buffer、window/resource lifecycleを追加した。catalog観測生成は行わない。
-4. M5c-3b: 完了。jacket ROI変化/安定検出、session全体の同一preview制御、明示採用、atomic local artifact、checkpoint、中断・strict再開、catalog v1冪等投入を追加した。catalog v2はM5c-3c向けに `deferred` として保持した。
-5. M5c-3c: 完了。schema変更なしの明示version-aware v2 unresolved observation ingest、同一ID canonical payload冪等、異payload/manual review衝突拒否、catalog成功後checkpoint失敗のretry収束、v1 pending/v2 deferredのcollector retryを追加した。v1、manual review history、auto-confirm条件は変更しない。
-6. M5c-4: 完了。明示採用artifactのstrict local dataset、2方式のtitle/artist取得、M4候補評価、expected coverage、byte-stable report、collector実行入口、採用gateを追加した。採用済み実capture datasetがないため両方式は`not_adopted`で、auto-confirmへ接続せず既存unresolved/manual reviewを維持した。
+- 既存非空masterはnetwork/build前にinspectし、inspection済みstagingだけを明示publishする。failure/cancelではtargetやtemporary fileを残さない。
+- DDR GP window候補はhandle、PID、process start、title/class、client size/state、根拠を表示するが、自動選択・自動開始しない。
+- capture queue/ringはboundedとし、停止、取消、window loss、device loss、例外でin-flight callbackをdrainしてresourceを1回だけ解放する。
+- stable candidateは自動採用せず、明示操作だけがsource/crop/manifest/checkpointを `data/jacket_catalog_collector/` へatomic publishする。
+- catalog failureはpending checkpointとlocal evidenceから明示retryし、catalog成功後checkpoint failureは同じreceiptでcheckpointだけを収束させる。
+- title/artist方式採用は実capture evaluated 30件以上、pair exact 95%以上、field confidence 0.90以上、候補precision 100%、既知誤自動確定0件を要求する。条件未達ではcurrent unresolved/manual reviewを維持する。
+- capture、crop、artifact、checkpoint、特徴量、review、master/catalog DB、source snapshotはlocal dataとし、Git、CI artifact、Release、通常公開logへ含めない。
 
 完了条件:
 
-- 開発者がCSVを通常編集せず、master更新、coverage確認、曖昧review、手動紐付け、grid手動巡回によるcollectionを独立appで実施できる。
-- capture済み対象song全体を分母にauto-confirm率90%以上、95%以上を努力目標として確認でき、既知誤自動確定0件を優先する。
-- 中断・再開、同一session/frame再投入、同じ画像を共有する別song、master/extractor driftを安全に扱える。
+- 開発者がCSVを通常編集せず、master更新、coverage確認、manual review、grid手動巡回によるcollectionを独立appで実施できる。
+- 中断・再開、同一session/frame再投入、composite duplicate、master/catalog/extractor driftを安全に扱える。
 - 公開app、正式保存workflow、正式個人スコアDB、ゲーム操作へ接続せず、local dataを公開成果物へ混入させない。
-
-M5c-1で固定した境界:
-
-- 既存非空masterはnetwork/build前にinspectionし、新規/0 byte/compatible targetはinspection済みstagingだけを明示publishする。失敗・取消ではtarget、temporary file、新規の空parentを残さない。
-- UIはcatalog schemaを直接解釈せず、Pythonがstrict read-only validationとcoverage/review projectionを担当する。C#はversion 1 JSONを未知field/statusも含めstrictに読むが、reason文字列はopaqueに保持する。
-- master/catalog選択と表示はDB byteを変更せず、旧extractor、master drift、orphan、候補なし未割当観測を成功へ丸めない。
-- developer projectは公開 `app/` のproject/resource/Releaseへ依存せず、通常solutionやinstallerへ追加しない。
-
-M5c-2で固定した境界:
-
-- catalog v1はimmutable sourceとし、別pathのv2 stagingをstrict検証した後だけexclusive publishする。既存target、失敗、取消、競合ではsource/targetを変更しない。
-- v2 mutationはexpected revision/status/songとaction IDを要求し、current row更新とappend-only historyを1 transactionにする。同一ID・同一payloadは冪等、異なるpayloadとstale stateは副作用なしで拒否する。
-- manual confirm/reassignはcurrent masterのGP対象songを明示選択した場合だけ行い、candidate、expected、OCR rawを暗黙昇格しない。reject/reopenはevidenceを物理削除しない。
-- projection v1 fixtureはread-only互換として残し、producer v2はcatalog v1をmigration-required/read-only、catalog v2をmanual-review capableとしてstrictに投影する。
-- capture、window探索、title/artist OCR、物理削除、公開app、正式保存workflow、正式個人スコアDBは変更しない。
-
-M5c-3aで固定した境界:
-
-- title/process由来の候補はhandle、PID、process start、title/class、client size、visible/minimized snapshotとpreview/根拠を表示するが、自動選択・自動開始しない。
-- capture開始前とframe受領時にidentity/size/stateを再検査し、stale候補、handle再利用、resize、最小化、対象終了では暗黙再選択・再開始しない。
-- WGC native frame queueとimmutable PNG ring bufferはboundedとし、満杯時のdropを表示する。通常停止、取消、対象終了、device loss、例外、collector終了ではin-flight callback後にresourceを1回だけ解放する。
-- frame/preview/diagnosticはmemory-onlyで、disk、catalog、観測、OCR、公開app、正式保存workflowへ接続しない。
-
-M5c-3bで固定した境界:
-
-- M5c-3aの明示選択済みcapture sessionからだけframeを受け、song select jacket ROIを実frame sizeへscaleする。差分 `<=0.08`、連続3 frame、最小100msのversion付きdetectorでchange/stableを分け、同一stable hashはsession内でduplicateとして抑制する。
-- stableは自動採用しない。capture tabの明示操作だけがsource frame、jacket crop、observation manifest、checkpointを `data/jacket_catalog_collector/<session-id>/` のstagingからatomic publishする。初回採用前の停止・異常終了・取消・ROI不正ではartifact、checkpoint、catalog副作用を発生させず、初回採用後の停止は既存checkpointのprogressだけをatomic更新する。
-- checkpointは最初の明示採用と同時に作成し、以後の停止時にmaster version/source hash、catalog identity/schema/created-at、feature extractor、`m5c-capture-utc-clock-v1` frame clock、window identity、ROI/detector version、stable feature集合、last stable feature、processed/drop count、adopted observation/source hash/catalog statusを更新する。UIからcompatible identityと全artifactをstrict検査してresumeし、corrupt/old/drift checkpointと同一ID異payloadは拒否する。
-- catalog v1は既存M5b ingest APIを再利用し、title/artistを自動推測せず空文字・`unresolved` として冪等投入する。v2はM5c-3c向けにartifact/checkpointを一時 `deferred` として保持する。OCR、auto-confirm緩和、catalog v3、runtime matcher、正式保存workflowは変更しない。
-
-M5c-3cで固定した境界:
-
-- Python `ingest-v2`はv1 `ingest`と独立した明示CLI/APIとし、既存schema 2の列だけで`source_capture_id=observation_id`、`song_id=NULL`、空title/artist、`unresolved`、revision/history/candidateなしを1 transactionで作る。schema変更、migration、v1 writer変更は行わない。
-- observation IDは非空の冪等keyとし、同一ID・同一canonical payloadは同じreceipt、同一ID・異payloadはDB byte不変の拒否、別ID・同一画像bytesは別referenceとする。manual review済みrowへの同一ID衝突もcurrent row/revision/historyを上書きしない。
-- current master/catalog/extractor、artifact image hash、catalog created-atをstrict検査し、drift、旧schema、欠損・改変artifactの拒否時にcatalog/checkpoint副作用を残さない。catalog success後のcheckpoint失敗は、v1 pendingまたはv2 deferred/pendingの明示retryで同じreceiptへ収束する。
-- collector adapterはsession schemaに応じてv1 `ingest` / v2 `ingest-v2`を選び、retryはv1 `pending`、v2 `pending/deferred`だけを対象にする。candidate、expected song、OCR rawからsong assignmentやmanual actionを暗黙生成しない。
-
-M5c-4で固定した境界:
-
-- collectorでdeveloperが明示採用したimmutable artifactだけをstrict local datasetから評価し、memory preview、未採用frame、旧/欠損/改変/root外artifactをreportやcatalogへ昇格しない。
-- local Tesseractのversion付き2前処理を比較し、raw/normalized値、confidence、failure、M4のtitle-primary/artist tie-breaker候補を監査可能にする。expected coverage不足はaccuracy分母へ混入しない。
-- 採用gateは実capture evaluated 30件以上、pair exact 95%以上、field confidence 0.90以上、auto-confirm候補precision 100%、既知誤自動確定0件とする。fixtureだけ、実capture datasetなし、条件未達では方式を採用しない。
-- 評価はread-onlyで、catalog schema、reference、manual revision/history、checkpointを変更しない。2026-07-16時点ではauto-confirm接続を行わず、v2 unresolved/manual review fallbackを維持する。
 
 ### M6: 本番キャプチャAPIの最小接続
 

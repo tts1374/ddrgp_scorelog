@@ -85,12 +85,10 @@ def fixture_paths(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path
     (tmp_path / "data").mkdir()
     master = tmp_path / "data" / "master.sqlite"
     write_master(master)
-    catalog_v1 = tmp_path / "data" / "catalog-v1.sqlite"
-    catalog.create_catalog(catalog_v1)
-    catalog_v2 = tmp_path / "data" / "catalog-v2.sqlite"
-    catalog.migrate_catalog_v1_to_v2(catalog_v1, catalog_v2)
+    catalog_path = tmp_path / "data" / "catalog.sqlite"
+    catalog.create_catalog(catalog_path)
     artifact_root = tmp_path / "data" / "jacket_catalog_collector"
-    return master, catalog_v2, artifact_root
+    return master, catalog_path, artifact_root
 
 
 def catalog_created_at(path: Path) -> str:
@@ -137,7 +135,7 @@ def write_artifact(
         "master_version": "master-v1",
         "master_source_hash": "fixture-source-hash",
         "catalog_identity": catalog.CATALOG_IDENTITY,
-        "catalog_schema_version": 2,
+        "catalog_schema_version": 1,
         "catalog_created_at": catalog_created_at(catalog_path),
         "feature_extractor_version": catalog.FEATURE_EXTRACTOR_VERSION,
         "detector_version": "m5c-3b-jacket-detector-v1",

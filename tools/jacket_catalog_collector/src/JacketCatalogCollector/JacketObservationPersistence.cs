@@ -909,11 +909,11 @@ public sealed class PythonCatalogObservationAdapter(
             arguments.Add("--catalog-reference-id");
             arguments.Add(observation.CatalogReferenceId);
         }
-        if (artifact.Session.CatalogSchemaVersion == 3)
+        if (artifact.Session.CatalogSchemaVersion == 1)
         {
             if (artifact.CompositeIdentity is null)
             {
-                throw new InvalidOperationException("catalog v3 receipt requires composite identity");
+                throw new InvalidOperationException("current catalog receipt requires composite identity");
             }
             arguments.AddRange(
             [
@@ -937,38 +937,21 @@ public sealed class PythonCatalogObservationAdapter(
         string masterPath,
         CancellationToken cancellationToken = default)
     {
-        if (artifact.Session.CatalogSchemaVersion is not (1 or 2 or 3))
+        if (artifact.Session.CatalogSchemaVersion != 1)
         {
             throw new ObservationIdentityDriftException(
                 $"unsupported catalog schema version: {artifact.Session.CatalogSchemaVersion}");
         }
-        var isVersioned = artifact.Session.CatalogSchemaVersion is 2 or 3;
         var arguments = new List<string>
         {
             "-X", "utf8", "-m", "tools.vision_poc.jacket_reference_catalog",
-            isVersioned ? "ingest-v2" : "ingest",
+            "ingest",
             "--catalog", Path.GetFullPath(catalogPath),
             "--master-db", Path.GetFullPath(masterPath),
             "--source-image", Path.GetFullPath(sourceImagePath),
+            "--observation-id", artifact.ObservationId,
+            "--expected-image-hash", artifact.JacketCropHash,
         };
-        if (isVersioned)
-        {
-            arguments.AddRange(
-            [
-                "--observation-id", artifact.ObservationId,
-                "--expected-image-hash", artifact.JacketCropHash,
-            ]);
-        }
-        else
-        {
-            arguments.AddRange(
-            [
-                "--source-capture-id", artifact.ObservationId,
-                "--observed-title", artifact.ObservedTitle,
-                "--observed-artist", artifact.ObservedArtist,
-                "--observation-status", artifact.ObservationStatus,
-            ]);
-        }
         arguments.AddRange(
         [
             "--image-kind", "jacket_crop",
@@ -980,12 +963,12 @@ public sealed class PythonCatalogObservationAdapter(
                 System.Globalization.CultureInfo.InvariantCulture),
             "--expected-catalog-created-at", artifact.Session.CatalogCreatedAt,
         ]);
-        if (artifact.Session.CatalogSchemaVersion == 3)
+        if (artifact.Session.CatalogSchemaVersion == 1)
         {
             if (artifact.TitleLineFeature is null || artifact.CompositeIdentity is null)
             {
                 throw new ObservationIdentityDriftException(
-                    "catalog schema version 3 requires composite observation identity");
+                    "current catalog requires composite observation identity");
             }
             arguments.AddRange(
             [
@@ -1507,14 +1490,12 @@ public sealed class JacketObservationSession(
             {
                 throw new InvalidOperationException("observation session is not resumable");
             }
-            var retryableStatuses = identity.CatalogSchemaVersion switch
+            if (identity.CatalogSchemaVersion != 1)
             {
-                1 => new[] { "pending" },
-                2 => new[] { "pending", "deferred" },
-                3 => new[] { "pending" },
-                _ => throw new ObservationIdentityDriftException(
-                    $"unsupported catalog schema version: {identity.CatalogSchemaVersion}"),
-            };
+                throw new ObservationIdentityDriftException(
+                    $"unsupported catalog schema version: {identity.CatalogSchemaVersion}");
+            }
+            string[] retryableStatuses = ["pending"];
             var pendingObservations = checkpoint.Observations
                 .Where(item => retryableStatuses.Contains(item.CatalogStatus, StringComparer.Ordinal))
                 .ToList();

@@ -361,33 +361,6 @@ public partial class MainWindow : Window
     private void CancelOperation_Click(object sender, RoutedEventArgs e) =>
         operationCancellation?.Cancel();
 
-    private async void MigrateCatalog_Click(object sender, RoutedEventArgs e)
-    {
-        if (viewModel.IsBusy)
-        {
-            return;
-        }
-        var dialog = new SaveFileDialog
-        {
-            Title = "新規v2 jacket catalogの保存先",
-            Filter = "SQLite database (*.sqlite)|*.sqlite|All files (*.*)|*.*",
-            AddExtension = true,
-            DefaultExt = ".sqlite",
-            OverwritePrompt = true,
-        };
-        if (dialog.ShowDialog(this) != true
-            || MessageBox.Show(
-                this,
-                "v1 catalogは変更せず、選択した別pathへv2を作成します。実行しますか？",
-                "catalog v2 migration",
-                MessageBoxButton.OKCancel,
-                MessageBoxImage.Question) != MessageBoxResult.OK)
-        {
-            return;
-        }
-        await RunOperationAsync(token => viewModel.MigrateCatalogAsync(dialog.FileName, token));
-    }
-
     private async void ReviewAction_Click(object sender, RoutedEventArgs e)
     {
         if (viewModel.IsBusy || sender is not FrameworkElement { Tag: string action })

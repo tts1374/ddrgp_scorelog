@@ -274,9 +274,6 @@
                                     <Run Text="{Binding CatalogIdentity, Mode=OneWay}" />
                                     <Run Text=" / " /><Run Text="{Binding CatalogSchema, Mode=OneWay}" />
                                 </TextBlock>
-                                <TextBlock>
-                                    <Run Text="capability: " /><Run Text="{Binding MutationCapability, Mode=OneWay}" />
-                                </TextBlock>
                                 <TextBlock Text="{Binding OrphanSummary}" TextWrapping="Wrap" />
                             </StackPanel>
                         </Grid>
@@ -284,7 +281,6 @@
                     <WrapPanel>
                         <Button Content="master/catalogを選択" Click="SelectDatabases_Click" />
                         <Button Content="masterを更新" Click="UpdateMaster_Click" />
-                        <Button Content="v1→v2移行" Click="MigrateCatalog_Click" />
                         <Button Content="title/artist評価" Click="EvaluateTitleArtist_Click" />
                         <Button Content="処理を取消" Click="CancelOperation_Click" />
                     </WrapPanel>

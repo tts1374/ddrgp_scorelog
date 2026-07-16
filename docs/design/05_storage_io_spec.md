@@ -290,15 +290,17 @@ M8のscore DB file output previewでは、`--m8-score-db-output data\...\ddrgp-s
 
 ## M5b jacket catalog
 
-ローカルjacket catalogは `data/` 配下の明示SQLite pathだけへ作成する。専用identity、schema version、exact tables/columns、metadata、index、foreign keyをstrictに検査し、既存の非catalog SQLite、破損catalog、正式個人スコアDB、M8 preview DB、M4 master DBを変更しない。source image hashは画像内容の監査値であり単独のreference一意keyにはせず、captureまたは解決song/未解決観測と組み合わせて同じ画像bytesを共有する別songを保持する。特徴量生成条件の `image_kind` もreferenceへ永続化し、同一画像のkind訂正時は同じreferenceの特徴量をtransaction内で置換する。CSV一括投入は同じ `data/` directoryのstaging catalogへ完了させてからatomic replaceし、新規・既存のどちらでも途中失敗による部分catalogを公開しない。
+ローカルjacket catalogは `data/` 配下の明示SQLite pathだけへ新規作成する。初回リリース向けcurrent schemaのversionは1で、専用identity、`PRAGMA user_version=1`、metadata schema version 1、exact tables/columns/constraints/index/foreign keyをstrictに検査する。current schemaとexact一致しない旧catalog、非catalog SQLite、破損catalog、正式個人スコアDB、M8 preview DB、M4 master DBは読み取り専用検査でunsupportedとして拒否し、作成、修復、migrationを行わない。
 
-観測CSVとcoverage出力もローカル運用物とし、catalog、source capture、crop、16x16 RGBを含む特徴量、review結果、coverage JSON/CSV/MarkdownをGit、CI artifact、Release、通常analysis logへ含めない。生captureとcropはcatalog投入後も自動削除しない。catalogは `source_captures`、`plays`、`analysis_logs`、DB diagnostic output/logを受け入れず、M5候補観測向けの参照特徴量だけを保持する。
+current referenceはmanual review revision/historyと、`jacket_feature_version/hash`、`title_line_feature_version/hash`、`composite_identity_version/hash`を全nullまたは全非nullの1組として保持する。通常observation ingestは完全な非null組を必須とし、既知version、lower SHA-256、UTF-8 NUL区切りcanonical hashを検査する。`(composite_identity_version, composite_identity_hash)`はcatalog全体で一意とし、read-only identity集合には`unresolved`、review待ち、確定、再割当、`reopen`、`rejected`をすべて含める。
 
-catalog schema version 3はversion 2のmanual review state/historyを維持したまま、`jacket_feature_version/hash`、`title_line_feature_version/hash`、`composite_identity_version/hash`を全nullまたは全非nullの1組としてreferenceへ保持する。非null組は既知version、lower SHA-256、NUL区切りcanonical hashをstrict検証し、`(composite_identity_version, composite_identity_hash)`をcatalog全体で一意にする。read-only identity集合には`unresolved`、review待ち、確定、再割当、`reopen`、`rejected`をすべて含める。
+current `ingest`は非空observation ID、artifact image bytes/hash、空title/artist、`unresolved`、session開始時のmaster version/source hash、catalog identity/schema/created-at、current extractor、完全なcomposite identityをcatalog変更前に検査する。同一observation ID・同一payloadは冪等、異payloadは拒否する。異なるobservation IDでも同じcomposite identityなら、review statusに関係なくtransaction内で既存reference receiptへ収束させ、2件目を作らない。新規rowはsong未割当、revision 0、manual provenance/history/candidateなしとする。
 
-version 2→3 migrationは明示したsource catalog、未作成target、local artifact rootを受ける専用copy-on-write入口だけで行う。sourceをread transactionで固定し、別stagingへ全reference/candidate/historyを複製した後、`observation_id=source_capture_id`で一意に見つかる`observation.json`、`source.png`、`jacket-crop.png`のversion・hash・寸法・jacket featureを検査する。manifest v1は同じ固定ROI/binary maskからtitle-line hashとcomposite identityを再計算し、manifest v2は保存値との一致も検査する。欠損、改変、unknown version、複数artifact、identity競合は当該rowをnullのままreportし、推測で埋めない。staging全体のstrict検証後だけ新規targetをexclusive publishし、source catalog、artifact、既存targetを上書き・修復・削除しない。
+projectionとmanual review、coverage、M5 feature loader、title/artist evaluationはcurrent catalogだけを受け入れる。projectionはversion 3でcurrent/stored state、revision、candidate、manual provenance、append-only historyを返し、旧migration/capability fieldを持たない。manual mutationはexpected revision/status/songをpreconditionにし、同一action ID・同一payloadだけを冪等成功とし、current row/historyを同じtransactionで更新する。candidate、expected song、OCR rawを確定songへ昇格しない。
 
-coverageは `data/` 配下の明示directoryへ `jacket_catalog_song_coverage.csv`、`jacket_catalog_coverage_summary.json`、`jacket_catalog_coverage.md` を生成する。確定songがないreferenceでもGP対象の `reference_candidates` は候補songの `needs_review` として数え、候補のない観測だけを未割当集計へ残す。候補を確定songへ昇格せず、masterはread-only URIで開き、coverage・orphan検査の前後で変更しない。
+coverageは `data/` 配下の明示directoryへ `jacket_catalog_song_coverage.csv`、`jacket_catalog_coverage_summary.json`、`jacket_catalog_coverage.md` を生成する。確定songがないreferenceでもGP対象candidateは `needs_review` として数え、候補のない観測だけを未割当集計へ残す。current master/GP/current extractorを満たす `auto_confirmed` / `manual_confirmed` referenceだけをM5 matcherへ供給し、`rejected`、orphan、旧extractor、不正persisted featureを除外する。
+
+catalog、observation artifact/checkpoint、source/crop画像、特徴量、review結果、coverageはローカル運用物とし、Git、CI artifact、Release、通常analysis logへ含めない。既存local DB/artifact/checkpoint/source/crop画像を削除、上書き、in-place repairしない。artifact manifest/checkpoint v1/v2、resume/retry状態機械はcatalog schema version再採番と独立して維持する。
 
 ## 削除・移動のルール
 

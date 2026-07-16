@@ -56,9 +56,6 @@ public sealed class MainViewModel(
     public string OrphanSummary => projection is null
         ? "—"
         : $"orphan: {projection.Coverage.OrphanedReferenceCount}, 未割当 unresolved: {projection.Coverage.UnassignedUnresolvedObservationCount}";
-    public string MutationCapability => projection?.Catalog.MutationCapability
-        ?? (projection?.ProjectionSchemaVersion == 1 ? "read_only" : "未選択");
-    public bool MigrationRequired => projection?.Catalog.MigrationRequired == true;
 
     public ReviewReference? SelectedReference
     {
@@ -237,51 +234,15 @@ public sealed class MainViewModel(
         }
     }
 
-    public async Task MigrateCatalogAsync(
-        string targetPath,
-        CancellationToken cancellationToken = default)
-    {
-        if (reviewWorkflowService is null || catalogPath is null || masterPath is null)
-        {
-            throw new InvalidOperationException("移行元catalogとmasterを先に読み込んでください。");
-        }
-        if (!MigrationRequired)
-        {
-            throw new InvalidOperationException("選択中catalogはv1移行対象ではありません。");
-        }
-        IsBusy = true;
-        StatusTitle = "catalog移行中";
-        StatusMessage = "v1を保持したままv2 stagingを検証しています。";
-        try
-        {
-            await reviewWorkflowService.MigrateAsync(catalogPath, targetPath, cancellationToken);
-            await LoadProjectionCoreAsync(masterPath, targetPath, cancellationToken);
-            StatusTitle = "catalog移行完了";
-            StatusMessage = "v1を変更せずv2 catalogを公開し、v2を読み込みました。";
-        }
-        catch (Exception exception)
-        {
-            StatusTitle = exception is OperationCanceledException ? "catalog移行取消" : "catalog移行失敗";
-            StatusMessage = exception.Message;
-            throw;
-        }
-        finally
-        {
-            IsBusy = false;
-        }
-    }
-
     public async Task ApplyReviewAsync(
         string action,
         CancellationToken cancellationToken = default)
     {
         if (reviewWorkflowService is null || projection is null || masterPath is null || catalogPath is null)
         {
-            throw new InvalidOperationException("v2 catalogを先に読み込んでください。");
+            throw new InvalidOperationException("current catalogを先に読み込んでください。");
         }
-        if (projection.Catalog.MutationCapability != "manual_review_v2"
-            || SelectedReference?.Revision is null
-            || SelectedReference.StoredStatus is null)
+        if (SelectedReference is null)
         {
             throw new InvalidOperationException("選択中projectionはmanual reviewに対応していません。");
         }
@@ -293,7 +254,7 @@ public sealed class MainViewModel(
             Guid.NewGuid().ToString("D"),
             SelectedReference.ReferenceId,
             action,
-            SelectedReference.Revision.Value,
+            SelectedReference.Revision,
             SelectedReference.StoredStatus,
             SelectedReference.AssignedSong?.SongId,
             selectedSongId,
@@ -475,8 +436,6 @@ public sealed class MainViewModel(
         OnPropertyChanged(nameof(CatalogSchema));
         OnPropertyChanged(nameof(CoverageSummary));
         OnPropertyChanged(nameof(OrphanSummary));
-        OnPropertyChanged(nameof(MutationCapability));
-        OnPropertyChanged(nameof(MigrationRequired));
     }
 
     private void ClearProjection()

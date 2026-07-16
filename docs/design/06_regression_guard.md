@@ -394,25 +394,24 @@
 
 ## M5b jacket catalog guard
 
-M5bの変更では、少なくとも次の境界条件マトリクスをfixtureで固定する。
+M5bの変更では、少なくとも次のcurrent-only境界をfixtureで固定する。
 
 | 境界 | 入力/前提 | 期待する不変条件 |
 | --- | --- | --- |
-| 再投入 | 同じcapture/hashを無変更、監査値だけ追加、title/artist/statusを訂正、`image_kind` を訂正 | 無変更は `existing`、監査値だけなら紐付け不変、identity訂正は候補と解決結果を同一referenceで更新、kind訂正だけ特徴量を再計算し、いずれも不要なreferenceを増やさない |
-| 同一画像・別song | 同じ画像bytesを別の解決済みsongへ投入 | source hashが同じでもsongごとの別referenceを保持し、各songのcoverageとM5候補から欠落させない |
-| 候補coverage | `song_id` 未確定だがGP songの候補あり、GP候補なし、orphanあり | 候補songは確定へ昇格せず `needs_review`、候補なしだけを未割当へ数え、orphanと分母を混同・二重計上しない |
-| CLI option混在 | `--m5-jacket-catalog` と正式DB save pairを、`--m5-jacket-match` なし/ありの両方で併用 | mutually-exclusiveとして入力読込・directory/DB準備・正式保存より前に拒否し、DBと `data/` を作らない |
-| composite migration | v2 rowに正常v1/v2 artifact、欠損、改変、unknown version、同一identity競合を混在 | 検証成功rowだけv3へbackfillし、その他は理由付き未適用、source catalog/artifact/既存targetはbyte不変 |
-| composite ingest競合 | 異なるobservation IDが同じversion付きcomposite identityを同時または再試行で投入 | transaction内のcatalog一意境界で既存reference receiptへ収束し、review statusに関係なく2件目を作らない |
+| current create | 新規 `data/` path | `PRAGMA user_version=1`、metadata version 1、composite identityを含むexact schemaを作る |
+| unsupported catalog | 旧schema version、exact schema不一致、破損/非catalog | projection、review、ingest、collector preflightがDB byteを変更せず拒否する |
+| identity validation | missing/null/empty、unknown version、非lower SHA-256、canonical hash不一致 | catalog transaction開始前に拒否し、row、history、file byteを変更しない |
+| observation replay | 同一observation IDの同一payload/異payload | 同一payloadは同じreceipt、異payloadは副作用なしで拒否する |
+| composite duplicate | 異なるobservation IDが同一identityをretry/競合で投入 | `unresolved`、review待ち、確定、再割当、`reopen`、`rejected`の全状態で既存referenceへ収束し、2件目を作らない |
+| manual review | stale revision、同一action ID再送/異payload、transaction途中失敗 | 同一payloadだけ冪等、stale/異payloadは拒否、途中失敗はcurrent row/historyをrollbackする |
+| projection/consumer | current catalog、旧projection/catalog fixture、unknown field | Python/C#双方がcurrentだけを受け入れ、coverage分母、revision/history、opaque診断文字列を一致させる |
+| artifact/checkpoint境界 | manifest/checkpoint v1/v2、old catalog由来session、partial failure | version形式を再採番せず、catalog identity/schema/created-at driftを拒否し、artifact/checkpointを削除・修復しない |
 
-- catalog identity/schema version、safe `data/` path、新規作成、read-only open、非catalog・破損catalog拒否をfixtureで固定する。
-- capture idとsource hash + 解決identityの冪等性、同一song 1:N、同一画像bytesを共有する別songの別reference保持、capture idと画像bytesの矛盾拒否、`image_kind` と全768 thumbnail値の永続化・復元を固定する。同一画像のkind訂正ではreferenceを増やさず特徴量を再計算し、同じkindの再投入では更新しない。
-- canonical title + artist、一意aliasだけをauto-confirmし、artist不一致、曖昧alias、複数候補、観測/feature失敗を `needs_review` / `unresolved` に保つ。
-- 全GP song分母の4状態、候補GP songの `needs_review` 投影、候補なし未割当観測、orphan、auto-confirm分母、理由別件数、known-false auditを同じdeduplicated observation集合から検査する。候補を確定songへ昇格しない。
-- master version、feature extractor version、song消失、GP対象外、identity変更をread-only検出し、自動付替えやmaster書込みを行わない。旧extractor referenceはcoverageでも `needs_review` に保つ。
-- 参照画像を削除したfixtureでcatalog featureを再読込し、既存M5 jacket distanceが元featureと一致することを確認する。異なる `feature_extractor_version` の同長vectorはcatalog内に存在しても現行M5 matcherへ供給しない。
-- runnerの `--m5-jacket-catalog` は `--m5-jacket-match` なしで拒否し、明示catalog指定時だけ一時song select referenceを置き換える。confirmed-events、duplicate、unconfirmedの既存対象境界は変更しない。
-- schema v3のcomposite fieldは全null/全非null、既知version、canonical hash、一意indexを固定し、read-only identity集合が`rejected`を含む全referenceを返すことを確認する。v2→v3 migrationは別targetへのcopy-on-write、正常v1再計算、v2保存値照合、欠損/改変/競合report、staging failure/target race時のsource byte不変を固定する。
+- catalog create、strict validation、projection、manual review、coverage、M5 feature load、observation ingest、receipt validationをcurrent schemaで通す。
+- exact schema、composite全null/全非nullconstraint、既知version、canonical hash、catalog全体の一意index、`rejected`を含むidentity集合を検査する。
+- current master/GP/current extractorを満たすauto/manual referenceだけをM5 matcherへ供給し、orphan、旧extractor、不正persisted featureをread-only派生状態として扱う。
+- 旧`migrate-v2` / `migrate-v3` / legacy ingest、migration capability projection、旧catalog fixtureを通常runtime/CLI/READMEへ残さない。
+- test前後で既存local DB、artifact、checkpoint、source/crop画像のbyte不変と、生成物がGit差分へ混入していないことを確認する。
 
 ## ROI方針
 

@@ -26,14 +26,12 @@ public sealed class ReviewWorkflowServiceTests
     }
 
     [Fact]
-    public async Task MigrationAndMutationFailuresDoNotParseStdoutAsSuccess()
+    public async Task MutationFailureDoesNotParseStdoutAsSuccess()
     {
         var runner = new StubProcessRunner((_, _) => Task.FromResult(
             new ProcessResult(2, "{}", "stale review state")));
         var service = new ReviewWorkflowService(runner, Directory.GetCurrentDirectory());
 
-        await Assert.ThrowsAsync<InvalidOperationException>(
-            () => service.MigrateAsync("v1.sqlite", "v2.sqlite", CancellationToken.None));
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(
             () => service.ApplyAsync(
                 "master.sqlite",

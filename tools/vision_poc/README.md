@@ -624,31 +624,43 @@ python -m tools.vision_poc --m7a-digit-recognition --no-ocr --output data\vision
 
 ## M5b ローカルjacket参照カタログ
 
-song select gridの右上jacket previewとtitle/artist観測を、正式DB群とは別のローカルSQLite catalogへ保存できます。入力CSVは `source_image_path`、`observed_title`、`observed_artist` が必須で、`source_capture_id`、`observation_status`、`image_kind`、監査専用 `expected_song_id` を任意で持ちます。`image_kind` は全画面captureなら `full_frame`、切り出し済みjacketなら `jacket_crop` です。
+初回リリース前のdeveloper-only catalogはcurrent schema version 1だけを受け入れます。current schemaはmanual review revision/historyと、`jacket_feature_version/hash`、`title_line_feature_version/hash`、`composite_identity_version/hash`を持ちます。composite fieldsは全nullまたは全非nullの1組で、通常observation ingestは完全な非null組を必須にします。既知version、lower SHA-256、UTF-8 NUL区切りcanonical hash、catalog全体のcomposite identity一意性をstrictに検査します。
+
+新規catalogは `data/` 配下の未作成pathへ明示作成します。
 
 ```powershell
-python -m tools.vision_poc.jacket_reference_catalog build `
+python -m tools.vision_poc.jacket_reference_catalog create `
+  --catalog data\jacket_catalog\catalog.sqlite
+```
+
+旧catalog schema 1/2/3のruntime互換、read-only fallback、`migrate-v2`、`migrate-v3`、legacy ingestはありません。現行schemaとexact一致しない既存DBは副作用なしでunsupportedとして拒否します。既存local DB、artifact、checkpoint、source/crop画像は削除・上書き・in-place修復せず、必要な観測はcurrent catalogへ明示的に再構築します。
+
+collector observationはcurrent `ingest`だけを使い、非空observation ID、artifact image hash、current master version/source hash、catalog identity/schema/created-at、current feature extractor、jacket/title-line/composite identity一式を検査します。新規rowは空title/artist、`unresolved`、revision 0、history/candidateなしです。同じobservation ID・同じpayloadは冪等で、異payloadは拒否します。異なるobservation IDでも同じcomposite identityなら、`unresolved`、review待ち、確定、再割当、`reopen`、`rejected`の全状態で既存reference receiptへtransaction内で収束します。
+
+```powershell
+python -m tools.vision_poc.jacket_reference_catalog ingest `
   --catalog data\jacket_catalog\catalog.sqlite `
   --master-db data\master\ddrgp-master.sqlite `
-  --observations data\jacket_catalog\observations.csv `
-  --coverage-output data\jacket_catalog\coverage
+  --source-image data\jacket_catalog_collector\...\jacket-crop.png `
+  --observation-id OBSERVATION_ID `
+  --expected-image-hash JACKET_CROP_SHA256 `
+  --expected-master-version MASTER_VERSION `
+  --expected-master-source-hash MASTER_SOURCE_HASH `
+  --expected-feature-extractor-version m5-jacket-v1 `
+  --expected-catalog-identity ddrgp-local-jacket-reference-catalog `
+  --expected-catalog-schema-version 1 `
+  --expected-catalog-created-at CREATED_AT `
+  --jacket-feature-version m5c-jacket-rgb-grid-v1 `
+  --jacket-feature-hash JACKET_FEATURE_SHA256 `
+  --title-line-feature-version m5c-information-title-line-binary-sha256-v1 `
+  --title-line-hash TITLE_LINE_SHA256 `
+  --composite-identity-version m5c-jacket-title-composite-identity-v1 `
+  --composite-identity-hash COMPOSITE_SHA256
 ```
 
-catalogとcoverageの出力pathは `data/` 配下だけを受け入れます。同一capture id、または同一source image hashと同一解決song/未解決観測の再投入はreferenceを増やしません。同じ画像bytesを共有する別songは別referenceとして保持します。capture idを維持したtitle・artist・observation statusの訂正は同じreferenceの解決結果と候補を更新し、監査用 `expected_song_id` の後日追加も反映します。`image_kind` は特徴量と一緒に永続化し、同じ画像を別のkindへ訂正して再投入した場合は同じreferenceの特徴量を訂正後の切り出し境界で再計算します。観測とkindが同じ通常再実行ではmaster driftを暗黙再確定せず、特徴量も更新しません。capture idが同じなのに画像bytesが異なる入力は矛盾として拒否します。別画像は同一songへ複数referenceとして追加できます。canonical title + artist完全一致または一意alias title + artist完全一致だけを `auto_confirmed` にし、曖昧・artist不一致・観測/feature失敗は `needs_review` / `unresolved` の理由と候補を残します。expected値は既知誤確定監査専用で、紐付けには使いません。
+coverageは `coverage` subcommandで `jacket_catalog_song_coverage.csv`、`jacket_catalog_coverage_summary.json`、`jacket_catalog_coverage.md` を `data/` 配下へ生成します。GP対象songを `referenced` / `needs_review` / `uncollected` / `unresolved` のどれかへ1回だけ数え、候補を確定songへ昇格しません。current master/GP/current extractorを満たす `auto_confirmed` / `manual_confirmed` referenceだけをM5 jacket matcherへ供給し、`rejected`、orphan、旧extractor、不正永続featureは除外します。
 
-coverageは `jacket_catalog_song_coverage.csv`、`jacket_catalog_coverage_summary.json`、`jacket_catalog_coverage.md` を出します。対象masterのGPプレー可能songを `referenced` / `needs_review` / `uncollected` / `unresolved` のどれかへ1回だけ数えます。確定 `song_id` がなくても `reference_candidates` にGP songがあれば、そのsongを自動割当せず `needs_review` として数えます。旧 `feature_extractor_version` のreferenceも現行照合に利用可能な `referenced` とはせず `needs_review` にします。候補songもない未解決観測とorphanは別集計します。current auto-confirm rateはdeduplicate済みの全capture観測を分母にし、失敗観測、master driftによる再レビュー、orphanを除外しません。投入時点のrateは `ingest_auto_confirm_rate` へ分けます。master version・identity・GP可否の変更はread-onlyで検出し、別songへ自動付替えしません。
-
-既存M5 jacket照合でcatalogを使う場合は、通常の実行へ次を追加します。
-
-```powershell
-python -m tools.vision_poc --m5-jacket-match `
-  --m5-jacket-catalog data\jacket_catalog\catalog.sqlite `
-  --master-db data\master\ddrgp-master.sqlite
-```
-
-current masterで有効なGP対象songかつ現行 `feature_extractor_version` と一致する `auto_confirmed` / `manual_confirmed` referenceだけを永続特徴量から復元します。`rejected`、orphan、GP対象外、旧extractorのreferenceはcatalog内に保持しても現行M5照合へ混入させません。外部変更などで永続特徴量が不正になったmanual referenceは、保存済みstatusを変えず派生状態を `needs_review` / `persisted_feature_invalid` としてcoverageとreview projectionへ表示し、runtimeから除外します。このため参照元の生画像を削除したfixtureでもM5照合を再実行できます。catalog、観測CSV、画像、crop、特徴量、review結果、coverageはローカル非共有物であり、Git、CI artifact、Release、通常ログへ含めません。生画像やcropの自動削除は行いません。
-
-M5c-1 developer collectorのread-only表示では、catalog tableをC#側で直接読まず、次のprojectionを使います。
+review projectionはversion 3のcurrent-only JSONです。catalog SQLite tableをC#側で直接解釈せず、master/catalogをstrict read-onlyで検査し、current/stored review state、revision、候補、manual provenance、append-only historyを投影します。`migration_required`、`read_only`、`manual_review_v2`など旧catalog capability fieldは出しません。C# loaderもprojection version 3とcatalog schema version 1だけを受け入れます。
 
 ```powershell
 python -m tools.vision_poc.jacket_catalog_review_projection `
@@ -656,32 +668,19 @@ python -m tools.vision_poc.jacket_catalog_review_projection `
   --master-db data\master\ddrgp-master.sqlite
 ```
 
-producerのprojection version 2はUTF-8 stdoutの単一JSONで、`master` / `catalog` identity、同じGP分母のcoverage song行、current/stored review state、revision、候補、manual provenance、append-only historyを返します。catalog v1は `migration_required=true` / `read_only`、v2/v3は `manual_review_v2` capabilityです。v3のcomposite identityはtableを直接解釈せず`load_composite_identities()`でstrict read-only取得します。C# loaderは旧version 1 fixtureのread-only互換も維持します。master/catalogはstrictかつread-onlyで開き、temporary projection file、coverage CSV、logを生成しません。unsupported schemaや破損DBでは非0終了になり、collectorは部分表示しません。
-
-v1を変更せず別pathへv2を作る明示migrationと、v2の単発manual actionは次のCLI境界です。出力先は `data/` 配下に限定され、既存targetを上書きしません。
+manual mutationはexpected revision/status/songをpreconditionにし、同一action ID・同一payloadだけを冪等再投入として扱います。manual confirm/reassignはcurrent extractorの完全な永続特徴量と明示song選択を要求し、current rowとhistoryを1 transactionで更新します。候補、expected値、OCR rawは暗黙song選択に使いません。
 
 ```powershell
-python -m tools.vision_poc.jacket_reference_catalog migrate-v2 `
-  --source-catalog data\jacket_catalog\catalog.sqlite `
-  --target-catalog data\jacket_catalog\catalog-v2.sqlite
-
-python -m tools.vision_poc.jacket_reference_catalog migrate-v3 `
-  --source-catalog data\jacket_catalog\catalog-v2.sqlite `
-  --target-catalog data\jacket_catalog\catalog-v3.sqlite `
-  --artifact-root data\jacket_catalog_collector
-
 python -m tools.vision_poc.jacket_reference_catalog review `
-  --catalog data\jacket_catalog\catalog-v2.sqlite `
+  --catalog data\jacket_catalog\catalog.sqlite `
   --master-db data\master\ddrgp-master.sqlite `
   --action-id 11111111-1111-1111-1111-111111111111 `
   --reference-id REFERENCE_ID --action manual_confirm `
-  --expected-revision 0 --expected-status needs_review `
+  --expected-revision 0 --expected-status unresolved `
   --song-id SONG_ID --reason "developer selected" --note "manual review"
 ```
 
-`migrate-v3`はv2 catalogとartifactを変更せず、別pathへv3をstaging・strict検証後にpublishします。`source_capture_id`に対応する一意なmanifestと`source.png`/`jacket-crop.png`を検証できたrowだけをbackfillします。v1 manifestは固定済みjacket/title-line featureをsourceから再計算し、v2 manifestは保存済みcomposite identityまで照合します。欠損、改変、unknown version、複数locator、identity競合は`counts`/`rows`へ未適用理由を出し、元rowのreview state/historyを維持したままcomposite fieldをnullにします。
-
-mutationはexpected revision/status/songをpreconditionにし、同一action ID・同一payloadだけを冪等再投入として扱います。保存済みreceiptはcurrent masterの再検証より先に返すため、commit後にmasterが一時利用不能、曲削除、GP対象外化しても同一retryは成功します。異なるpayloadの同一ID再利用と、未保存actionのmaster不整合は引き続き拒否します。manual confirm/reassignはcurrent extractorの完全な永続特徴量も要求し、`feature_extraction_failed` や欠損/不正vectorを確定状態へ進めません。current rowとhistoryは1 transactionで更新し、候補・expected値を暗黙song選択に使いません。外部変更などで確定後に不正になったmanual referenceは、保存済みstatus、revision、historyを保ったままcoverageとreview projectionで `needs_review` / `persisted_feature_invalid` とし、runtimeからそのrowだけを除外して他の有効reference読込を継続します。詳細なapp実行方法とC# strict loader契約は `tools/jacket_catalog_collector/README.md` を参照してください。
+catalog、artifact、checkpoint、source/crop画像、特徴量、review結果、coverageはローカル非共有物であり、Git、CI artifact、Release、通常logへ含めません。生画像やcropの自動削除は行いません。artifact manifest/checkpointのv1/v2 contractとresume/retry状態機械は、このcatalog schema再採番では変更していません。
 
 ## テスト
 
