@@ -24,7 +24,7 @@ developer-only jacket catalog collectorへ、current checkpointとcurrent catalo
 - `python -m pytest -q tests`: passed。
 - `python -m ruff check tools/vision_poc pyproject.toml tests`: passed。
 - `python -m compileall -q master tools/vision_poc`: passed。
-- `dotnet test tools/jacket_catalog_collector/tests/JacketCatalogCollector.Tests/JacketCatalogCollector.Tests.csproj --no-restore`: passed。
+- `dotnet test tools/jacket_catalog_collector/tests/JacketCatalogCollector.Tests/JacketCatalogCollector.Tests.csproj --no-restore`: 135 passed。
 - `git diff --check`: passed。
 - Python testの既知warningとして`pytest_chalice`経由の`pkg_resources` deprecated warningだけを確認した。
 - 画像分類、ROI、OCR logicは変更していないため、local screenshot素材を使う`python -m tools.vision_poc`は実行条件外とした。

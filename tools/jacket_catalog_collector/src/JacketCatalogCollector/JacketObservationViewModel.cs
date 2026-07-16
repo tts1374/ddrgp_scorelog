@@ -343,6 +343,7 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
             captureEnded = true;
             pendingFrames = frameTail;
         }
+        AutoSaveEnabled = false;
         try
         {
             await pendingFrames.WaitAsync(cancellationToken);
@@ -361,7 +362,6 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
         }
         finally
         {
-            AutoSaveEnabled = false;
             var hadStableCandidate = stableCandidate is not null;
             stableCandidate = null;
             informationDetector.Reset();
@@ -476,6 +476,7 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
             {
                 captureEnded = true;
             }
+            AutoSaveEnabled = false;
             OnPropertyChanged(nameof(CanAdopt));
             OnPropertyChanged(nameof(CanConfigureAutoSave));
             OnPropertyChanged(nameof(CollectionStateTitle));
@@ -570,6 +571,7 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
             return;
         }
         if (preflight.Disposition != ObservationSavePreflightDisposition.Eligible
+            || IsCaptureEnded()
             || !AutoSaveEnabled
             || !autoSaveAttemptedIdentityKeys.Add(candidateKey))
         {
@@ -640,6 +642,14 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
         session.RequiresCompositeIdentity
             ? candidate.CompositeIdentity?.IdentityHash ?? ""
             : candidate.FeatureHash;
+
+    private bool IsCaptureEnded()
+    {
+        lock (frameSync)
+        {
+            return captureEnded;
+        }
+    }
 
     private bool SetField<T>(
         ref T field,

@@ -768,6 +768,57 @@ public sealed class JacketObservationTests : IDisposable
     }
 
     [Fact]
+    public async Task Stop_request_gates_in_flight_auto_save_before_adoption()
+    {
+        var checkpointStore = new AtomicObservationCheckpointStore(root);
+        var source = new TestFrameSource();
+        var candidate = Candidate();
+        var windows = new TestWindowEnumerator(candidate);
+        var coordinator = new WindowCaptureCoordinator(
+            windows,
+            new TestSessionFactory(source),
+            new ImmediateCaptureDispatcher(),
+            ringCapacity: 32);
+        var capture = new WindowCaptureViewModel(windows, coordinator);
+        var identitySetEntered = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var identitySetRelease = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var catalog = new FakeCatalogAdapter
+        {
+            IdentitySetEntered = identitySetEntered,
+            IdentitySetRelease = identitySetRelease.Task,
+        };
+        await using var viewModel = new JacketObservationViewModel(
+            capture,
+            new JacketObservationSession(
+                new JacketObservationDetector(new JacketDetectorOptions(0.01, 2, TimeSpan.Zero)),
+                checkpointStore,
+                new AtomicObservationArtifactPublisher(root),
+                catalog),
+            new ImmediateCaptureDispatcher(),
+            StableInformationDetector());
+        await viewModel.StartSessionAsync(
+            Master(), Catalog(), candidate, "master.sqlite", "catalog.sqlite");
+        viewModel.AutoSaveEnabled = true;
+        Assert.True(await coordinator.StartAsync(candidate));
+        source.Write(CompositeFrame(20, 1, 1, 0));
+        source.Write(CompositeFrame(20, 1, 2, 100));
+        await identitySetEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        var stop = viewModel.StopAsync();
+        Assert.False(viewModel.AutoSaveEnabled);
+        identitySetRelease.TrySetResult();
+        await stop;
+
+        Assert.Equal(0, catalog.CallCount);
+        Assert.False(Directory.Exists(Path.Combine(root, viewModel.SessionId)));
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => checkpointStore.LoadAsync(viewModel.SessionId));
+        await coordinator.StopAsync();
+    }
+
+    [Fact]
     public void Invalid_roi_never_becomes_a_stable_candidate()
     {
         var detector = new JacketObservationDetector(
@@ -1853,14 +1904,21 @@ public sealed class JacketObservationTests : IDisposable
         public int FailValidationOnCall { get; init; } = 1;
         public int CancelIngestOnCall { get; set; }
 
-        public Task<IReadOnlySet<CompositeObservationIdentity>> LoadCompositeIdentitySetAsync(
+        public TaskCompletionSource? IdentitySetEntered { get; init; }
+        public Task? IdentitySetRelease { get; init; }
+
+        public async Task<IReadOnlySet<CompositeObservationIdentity>> LoadCompositeIdentitySetAsync(
             ObservationSessionIdentity session,
             string catalogPath,
             CancellationToken cancellationToken = default)
         {
             IdentitySetCallCount++;
-            return Task.FromResult<IReadOnlySet<CompositeObservationIdentity>>(
-                new HashSet<CompositeObservationIdentity>(CompositeIdentities));
+            IdentitySetEntered?.TrySetResult();
+            if (IdentitySetRelease is not null)
+            {
+                await IdentitySetRelease.WaitAsync(cancellationToken);
+            }
+            return new HashSet<CompositeObservationIdentity>(CompositeIdentities);
         }
 
         public Task ValidateSessionAsync(
