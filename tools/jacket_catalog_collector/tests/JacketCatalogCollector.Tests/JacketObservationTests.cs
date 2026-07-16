@@ -397,17 +397,18 @@ public sealed class JacketObservationTests : IDisposable
             var duplicateResult = await duplicate.Task;
             Assert.Equal(stableA.Candidate.FeatureHash, duplicateResult.Candidate!.FeatureHash);
             Assert.Equal("新しいジャケットを検出", viewModel.CollectionStateTitle);
+            var adoptedA = await viewModel.AdoptAsync();
+            Assert.Equal(
+                stableA.Candidate.FeatureHash,
+                adoptedA.Checkpoint.Observations.Single(
+                    observation => observation.ObservationId == adoptedA.ObservationId).FeatureHash);
+            Assert.False(viewModel.CanAdopt);
 
             source.Write(Frame(80, 4, 300));
             var changedDisplay = await changedFeature.Task;
             Assert.Contains($"feature={stableA.Candidate.FeatureHash}", changedDisplay);
-            Assert.True(viewModel.CanAdopt);
-            var adoptedDuringSettling = await viewModel.AdoptAsync();
-            Assert.Equal(
-                stableA.Candidate.FeatureHash,
-                adoptedDuringSettling.Checkpoint.Observations.Single(
-                    observation => observation.ObservationId == adoptedDuringSettling.ObservationId).FeatureHash);
             Assert.Equal("ジャケットを確認中", viewModel.CollectionStateTitle);
+            Assert.False(viewModel.CanAdopt);
 
             source.Write(Frame(80, 5, 400));
             var stableB = await secondStable.Task;

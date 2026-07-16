@@ -92,6 +92,8 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
     public bool CanAdopt => !captureEnded
         && session.HasAdoptableCandidate
         && stableCandidate is not null
+        && Detection.State is JacketDetectionState.StableCandidate
+            or JacketDetectionState.DuplicatePreview
         && !IsSaved(stableCandidate.FeatureHash);
     public bool CanResume => !session.IsActive && ResumeSessionId.Trim().Length > 0;
     public string CollectionStateTitle
