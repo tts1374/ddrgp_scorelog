@@ -236,6 +236,16 @@ v2 writerはsource capture IDへobservation IDを保存し、新規rowを`song_i
 
 collector retryはschemaを境界として、v1の`pending`とv2の`pending/deferred`だけを対象にする。catalog mutation成功後のcheckpoint保存失敗は、次回v2 retryが既存referenceを`existing`として返し、reference/historyを増やさずcheckpointを`ingested`へ収束させる。v2 ingestはtitle/artist OCR、auto-confirm、song assignment、manual action/history生成を行わない。
 
+### M5c-4 title/artist evaluation
+
+collectorでdeveloperが明示採用したM5c-3b artifactだけを、Git管理外のstrict datasetから評価する。dataset entryはartifact root内の相対`observation.json`と、nullableなexpected title/artist/song IDだけを持つ。manifest/source/crop hash、source dimensions、current master version/source hash、catalog v2 identity/created-at、current feature extractorを評価前に検査し、欠損、改変、root外path、old version、identity driftはreport生成前に拒否する。
+
+取得方式は追加packageを増やさないlocal Tesseractの`m5c-song-select-title-artist-roi-v1`に限定し、`tesseract-autocontrast-v1`と`tesseract-white-threshold-v1`を比較する。raw/normalized値、confidence、field status/failureを保持し、空、engine failure、confidence 0.90未満を成功へ丸めない。候補生成は既存M4/M5bの`resolve_observation()`を再利用し、title primary、artist tie-breaker、current GP対象、canonical/alias完全一致を維持する。artist単独、image hash単独、近傍候補への寄せは行わない。
+
+expected title/artistが両方あるartifactを`evaluated`、片方だけを`partially_evaluated`、両方ないものを`no_expected_values`とし、accuracy/adoption gateの分母は`evaluated`だけとする。同じ入力のCSV/JSON/Markdownは順序、float表現、改行を固定してbyte-stableに生成する。別observation IDの同一画像bytesは別行を維持し、評価再実行はcatalog reference、revision、history、checkpointを変更しない。
+
+方式採用はrepository fixture gateに加え、実captureのevaluated 30件以上、title/artist pair exact 95%以上、field confidence 0.90以上、auto-confirm候補precision 100%、既知誤自動確定0件をすべて要求する。実capture dataset不在または条件未達では`not_adopted`とし、collectorのv2 unresolved/manual review fallbackを維持する。2026-07-16時点では採用済みcollector artifact datasetがローカルに存在しないため、評価経路だけを追加し、auto-confirm writerやcatalog schemaは変更していない。
+
 ## M5b/M5c共通スコープ外
 
 - OCR方式刷新。

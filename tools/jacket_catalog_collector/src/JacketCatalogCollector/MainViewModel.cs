@@ -36,6 +36,8 @@ public sealed class MainViewModel(
         ["all", "referenced", "needs_review", "uncollected", "unresolved", "orphaned"];
     public ObservableCollection<string> ReasonOptions { get; } = ["all"];
     public ObservableCollection<ProjectionSong> SongChoices { get; } = [];
+    public string? CurrentMasterPath => masterPath;
+    public string? CurrentCatalogPath => catalogPath;
 
     public string MasterVersion => projection?.Master.MasterVersion ?? "未選択";
     public string MasterSourceHash => projection?.Master.SourceHash ?? "—";
