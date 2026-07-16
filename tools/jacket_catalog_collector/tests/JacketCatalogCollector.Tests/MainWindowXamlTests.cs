@@ -29,5 +29,51 @@ public sealed class MainWindowXamlTests
         Assert.All(runBindings, binding => Assert.Contains("Mode=OneWay", binding));
     }
 
+    [Fact]
+    public void CollectionWorkflowIsThePrimaryUserFacingScreen()
+    {
+        var document = LoadMainWindow();
+        var tabs = document
+            .Descendants()
+            .Where(element => element.Name.LocalName == "TabItem")
+            .Select(element => element.Attribute("Header")?.Value)
+            .ToList();
+        var buttonLabels = document
+            .Descendants()
+            .Where(element => element.Name.LocalName == "Button")
+            .Select(element => element.Attribute("Content")?.Value)
+            .ToList();
+
+        Assert.Equal("ジャケット収集", tabs.First());
+        Assert.Contains("このジャケットを保存", buttonLabels);
+        Assert.Contains("収集を開始", buttonLabels);
+        Assert.Contains("収集を終了", buttonLabels);
+        Assert.Contains("管理・設定", tabs);
+    }
+
+    [Fact]
+    public void InternalDetectorStateIsNotShownInThePrimaryLayout()
+    {
+        var xaml = File.ReadAllText(GetMainWindowPath());
+
+        Assert.DoesNotContain("Window capture (memory only)", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("Observation.DetectorState", xaml, StringComparison.Ordinal);
+        Assert.DoesNotContain("DuplicatePreview", xaml, StringComparison.Ordinal);
+    }
+
+    private static XDocument LoadMainWindow() => XDocument.Load(GetMainWindowPath());
+
+    private static string GetMainWindowPath()
+    {
+        var testSourcePath = GetTestSourcePath();
+        return Path.GetFullPath(Path.Combine(
+            Path.GetDirectoryName(testSourcePath)!,
+            "..",
+            "..",
+            "src",
+            "JacketCatalogCollector",
+            "MainWindow.xaml"));
+    }
+
     private static string GetTestSourcePath([CallerFilePath] string path = "") => path;
 }

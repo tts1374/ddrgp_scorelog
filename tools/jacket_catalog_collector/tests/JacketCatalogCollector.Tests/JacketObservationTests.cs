@@ -365,17 +365,21 @@ public sealed class JacketObservationTests : IDisposable
             await viewModel.StartSessionAsync(
                 Master(), Catalog(), candidate, "master.sqlite", "catalog.sqlite");
             Assert.Equal("—", viewModel.StableCandidate);
+            Assert.Equal("DDR GPの曲選択画面を待っています", viewModel.CollectionStateTitle);
             Assert.True(await coordinator.StartAsync(candidate));
 
             source.Write(Frame(20, 1, 0));
             await firstChange.Task;
+            Assert.Equal("ジャケットを確認中", viewModel.CollectionStateTitle);
             source.Write(Frame(20, 2, 100));
             var stableA = await firstStable.Task;
             Assert.Contains($"feature={stableA.Candidate!.FeatureHash}", viewModel.StableCandidate);
+            Assert.Equal("新しいジャケットを検出", viewModel.CollectionStateTitle);
 
             source.Write(Frame(20, 3, 200));
             var duplicateResult = await duplicate.Task;
             Assert.Equal(stableA.Candidate.FeatureHash, duplicateResult.Candidate!.FeatureHash);
+            Assert.Equal("新しいジャケットを検出", viewModel.CollectionStateTitle);
 
             source.Write(Frame(80, 4, 300));
             var changedDisplay = await changedFeature.Task;
@@ -386,6 +390,7 @@ public sealed class JacketObservationTests : IDisposable
                 stableA.Candidate.FeatureHash,
                 adoptedDuringSettling.Checkpoint.Observations.Single(
                     observation => observation.ObservationId == adoptedDuringSettling.ObservationId).FeatureHash);
+            Assert.Equal("ジャケットを確認中", viewModel.CollectionStateTitle);
 
             source.Write(Frame(80, 5, 400));
             var stableB = await secondStable.Task;
@@ -398,11 +403,13 @@ public sealed class JacketObservationTests : IDisposable
                 stableB.Candidate.FeatureHash,
                 adopted.Checkpoint.Observations.Single(
                     observation => observation.ObservationId == adopted.ObservationId).FeatureHash);
+            Assert.Equal("このジャケットは保存済み", viewModel.CollectionStateTitle);
 
             expectCleared = true;
             await viewModel.StopAsync();
             await clearedAfterStop.Task;
             Assert.Equal("—", viewModel.StableCandidate);
+            Assert.Equal("収集は停止中", viewModel.CollectionStateTitle);
             await coordinator.StopAsync();
         }
     }
