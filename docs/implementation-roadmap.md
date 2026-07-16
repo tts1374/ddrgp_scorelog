@@ -331,7 +331,7 @@ Status: Completed on 2026-07-14.
 
 ### M5c: 開発者専用jacket catalog collector
 
-Status: In progress. M5c-1 completed on 2026-07-14; M5c-2 completed on 2026-07-15; M5c-3a/M5c-3b/M5c-3c completed on 2026-07-15; M5c-4以降は未着手。
+Status: In progress. M5c-1 completed on 2026-07-14; M5c-2 completed on 2026-07-15; M5c-3a/M5c-3b/M5c-3c completed on 2026-07-15; M5c-4 evaluation path completed on 2026-07-16, real-capture adoption remains pending.
 
 目的は、M5b catalogを約1200曲の手作業画像保存・CSV記入に依存せず運用するため、公開WPF appと分離した開発者専用collectorを追加することです。開発者はsong select gridを手動巡回し、ツールがmaster更新、coverage、review、capture、jacket安定検出、観測生成、M4照合を担当します。ゲーム操作は自動化しません。
 
@@ -362,7 +362,7 @@ Status: In progress. M5c-1 completed on 2026-07-14; M5c-2 completed on 2026-07-1
 3. M5c-3a: 完了。DDR GP window候補検出、preview付き確認、strict identity再検査、Windows Graphics Captureの明示開始・停止、bounded memory-only raw frame ring buffer、window/resource lifecycleを追加した。catalog観測生成は行わない。
 4. M5c-3b: 完了。jacket ROI変化/安定検出、session全体の同一preview制御、明示採用、atomic local artifact、checkpoint、中断・strict再開、catalog v1冪等投入を追加した。catalog v2はM5c-3c向けに `deferred` として保持した。
 5. M5c-3c: 完了。schema変更なしの明示version-aware v2 unresolved observation ingest、同一ID canonical payload冪等、異payload/manual review衝突拒否、catalog成功後checkpoint失敗のretry収束、v1 pending/v2 deferredのcollector retryを追加した。v1、manual review history、auto-confirm条件は変更しない。
-6. M5c-4: 実captureでtitle/artist取得を評価し、採用条件を満たす方式だけauto-confirmへ接続する。未採用・不一致はreviewへ残す。
+6. M5c-4: 完了。明示採用artifactのstrict local dataset、2方式のtitle/artist取得、M4候補評価、expected coverage、byte-stable report、collector実行入口、採用gateを追加した。採用済み実capture datasetがないため両方式は`not_adopted`で、auto-confirmへ接続せず既存unresolved/manual reviewを維持した。
 
 完了条件:
 
@@ -406,6 +406,13 @@ M5c-3cで固定した境界:
 - observation IDは非空の冪等keyとし、同一ID・同一canonical payloadは同じreceipt、同一ID・異payloadはDB byte不変の拒否、別ID・同一画像bytesは別referenceとする。manual review済みrowへの同一ID衝突もcurrent row/revision/historyを上書きしない。
 - current master/catalog/extractor、artifact image hash、catalog created-atをstrict検査し、drift、旧schema、欠損・改変artifactの拒否時にcatalog/checkpoint副作用を残さない。catalog success後のcheckpoint失敗は、v1 pendingまたはv2 deferred/pendingの明示retryで同じreceiptへ収束する。
 - collector adapterはsession schemaに応じてv1 `ingest` / v2 `ingest-v2`を選び、retryはv1 `pending`、v2 `pending/deferred`だけを対象にする。candidate、expected song、OCR rawからsong assignmentやmanual actionを暗黙生成しない。
+
+M5c-4で固定した境界:
+
+- collectorでdeveloperが明示採用したimmutable artifactだけをstrict local datasetから評価し、memory preview、未採用frame、旧/欠損/改変/root外artifactをreportやcatalogへ昇格しない。
+- local Tesseractのversion付き2前処理を比較し、raw/normalized値、confidence、failure、M4のtitle-primary/artist tie-breaker候補を監査可能にする。expected coverage不足はaccuracy分母へ混入しない。
+- 採用gateは実capture evaluated 30件以上、pair exact 95%以上、field confidence 0.90以上、auto-confirm候補precision 100%、既知誤自動確定0件とする。fixtureだけ、実capture datasetなし、条件未達では方式を採用しない。
+- 評価はread-onlyで、catalog schema、reference、manual revision/history、checkpointを変更しない。2026-07-16時点ではauto-confirm接続を行わず、v2 unresolved/manual review fallbackを維持する。
 
 ### M6: 本番キャプチャAPIの最小接続
 

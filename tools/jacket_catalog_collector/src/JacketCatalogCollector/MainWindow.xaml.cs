@@ -9,13 +9,17 @@ public partial class MainWindow : Window
 {
     private readonly MainViewModel viewModel;
     private readonly CaptureObservationController captureObservationController;
+    private readonly ITitleArtistEvaluationService titleArtistEvaluationService;
+    private readonly string repositoryRoot;
+    private readonly string evidenceRoot;
+    private bool titleArtistEvaluationBusy;
     private CancellationTokenSource? operationCancellation;
     private bool captureShutdownComplete;
 
     public MainWindow()
     {
         InitializeComponent();
-        var repositoryRoot = Directory.GetCurrentDirectory();
+        repositoryRoot = Directory.GetCurrentDirectory();
         var runner = new ProcessRunner();
         var windowEnumerator = new NativeWindowEnumerator();
         var dispatcher = new WpfCaptureDispatcher(Dispatcher);
@@ -24,7 +28,7 @@ public partial class MainWindow : Window
             new WindowsGraphicsCaptureSessionFactory(),
             dispatcher);
         var windowCapture = new WindowCaptureViewModel(windowEnumerator, captureCoordinator);
-        var evidenceRoot = Path.Combine(repositoryRoot, "data", "jacket_catalog_collector");
+        evidenceRoot = Path.Combine(repositoryRoot, "data", "jacket_catalog_collector");
         var observationSession = new JacketObservationSession(
             new JacketObservationDetector(),
             new AtomicObservationCheckpointStore(evidenceRoot),
@@ -43,6 +47,7 @@ public partial class MainWindow : Window
             windowCapture.StartAsync,
             windowCapture.StopAsync,
             () => windowCapture.Lifecycle.State);
+        titleArtistEvaluationService = new TitleArtistEvaluationService(runner, repositoryRoot);
         DataContext = viewModel;
     }
 
@@ -155,6 +160,62 @@ public partial class MainWindow : Window
         catch (Exception exception)
         {
             MessageBox.Show(this, exception.Message, "catalog retry失敗");
+        }
+    }
+
+    private async void EvaluateTitleArtist_Click(object sender, RoutedEventArgs e)
+    {
+        if (titleArtistEvaluationBusy)
+        {
+            return;
+        }
+        if (viewModel.CurrentMasterPath is null || viewModel.CurrentCatalogPath is null)
+        {
+            MessageBox.Show(this, "masterとcatalogを先にread-only読込してください。");
+            return;
+        }
+        var dialog = new OpenFileDialog
+        {
+            Title = "local title/artist evaluation datasetを選択",
+            Filter = "JSON (*.json)|*.json",
+            InitialDirectory = Path.Combine(repositoryRoot, "data"),
+            CheckFileExists = true,
+        };
+        if (dialog.ShowDialog(this) != true)
+        {
+            return;
+        }
+        var output = Path.Combine(evidenceRoot, "title-artist-evaluation");
+        titleArtistEvaluationBusy = true;
+        try
+        {
+            var receipt = await titleArtistEvaluationService.RunAsync(
+                dialog.FileName,
+                evidenceRoot,
+                viewModel.CurrentMasterPath,
+                viewModel.CurrentCatalogPath,
+                output);
+            var methods = string.Join(
+                "\n",
+                receipt.Methods.Select(method =>
+                    $"{method.MethodVersion}: {method.AdoptionStatus}, "
+                    + $"evaluated={method.EvaluatedCount}, "
+                    + $"known false={method.KnownFalseAutoConfirmCount}, "
+                    + $"reasons={string.Join('/', method.AdoptionFailureReasons)}"));
+            MessageBox.Show(
+                this,
+                $"report: {receipt.ReportDirectory}\n"
+                + $"adopted: {string.Join(", ", receipt.AdoptedMethods.DefaultIfEmpty("none"))}\n\n"
+                + methods,
+                "title/artist評価完了");
+        }
+        catch (Exception exception)
+        {
+            MessageBox.Show(this, exception.Message, "title/artist評価失敗");
+        }
+        finally
+        {
+            titleArtistEvaluationBusy = false;
         }
     }
 
