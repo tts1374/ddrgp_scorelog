@@ -312,6 +312,10 @@ public sealed class JacketObservationTests : IDisposable
                 TaskCreationOptions.RunContinuationsAsynchronously);
             var duplicate = new TaskCompletionSource<JacketDetectionResult>(
                 TaskCreationOptions.RunContinuationsAsynchronously);
+            var revisitedSaved = new TaskCompletionSource<JacketDetectionResult>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            var revisitChange = new TaskCompletionSource(
+                TaskCreationOptions.RunContinuationsAsynchronously);
             var changedFeature = new TaskCompletionSource<string>(
                 TaskCreationOptions.RunContinuationsAsynchronously);
             var secondStable = new TaskCompletionSource<JacketDetectionResult>(
@@ -320,6 +324,7 @@ public sealed class JacketObservationTests : IDisposable
                 TaskCreationOptions.RunContinuationsAsynchronously);
             JacketDetectionResult? firstStableResult = null;
             var expectCleared = false;
+            var expectRevisitedSaved = false;
             viewModel.PropertyChanged += (_, args) =>
             {
                 if (args.PropertyName != nameof(viewModel.StableCandidate))
@@ -342,7 +347,14 @@ public sealed class JacketObservationTests : IDisposable
                 }
                 else if (value.State == JacketDetectionState.DuplicatePreview)
                 {
-                    duplicate.TrySetResult(value);
+                    if (expectRevisitedSaved)
+                    {
+                        revisitedSaved.TrySetResult(value);
+                    }
+                    else
+                    {
+                        duplicate.TrySetResult(value);
+                    }
                 }
                 else if (value.State == JacketDetectionState.ChangeCandidate
                     && value.Candidate is not null
@@ -350,6 +362,11 @@ public sealed class JacketObservationTests : IDisposable
                     && value.Candidate.FeatureHash != firstStableResult.Candidate?.FeatureHash)
                 {
                     changedFeature.TrySetResult(viewModel.StableCandidate);
+                }
+                else if (expectRevisitedSaved
+                    && value.State == JacketDetectionState.ChangeCandidate)
+                {
+                    revisitChange.TrySetResult();
                 }
                 else if (expectCleared && value.State == JacketDetectionState.NoFrame)
                 {
@@ -365,27 +382,33 @@ public sealed class JacketObservationTests : IDisposable
             await viewModel.StartSessionAsync(
                 Master(), Catalog(), candidate, "master.sqlite", "catalog.sqlite");
             Assert.Equal("—", viewModel.StableCandidate);
+            Assert.Equal("DDR GPの曲選択画面を待っています", viewModel.CollectionStateTitle);
             Assert.True(await coordinator.StartAsync(candidate));
 
             source.Write(Frame(20, 1, 0));
             await firstChange.Task;
+            Assert.Equal("ジャケットを確認中", viewModel.CollectionStateTitle);
             source.Write(Frame(20, 2, 100));
             var stableA = await firstStable.Task;
             Assert.Contains($"feature={stableA.Candidate!.FeatureHash}", viewModel.StableCandidate);
+            Assert.Equal("新しいジャケットを検出", viewModel.CollectionStateTitle);
 
             source.Write(Frame(20, 3, 200));
             var duplicateResult = await duplicate.Task;
             Assert.Equal(stableA.Candidate.FeatureHash, duplicateResult.Candidate!.FeatureHash);
+            Assert.Equal("新しいジャケットを検出", viewModel.CollectionStateTitle);
+            var adoptedA = await viewModel.AdoptAsync();
+            Assert.Equal(
+                stableA.Candidate.FeatureHash,
+                adoptedA.Checkpoint.Observations.Single(
+                    observation => observation.ObservationId == adoptedA.ObservationId).FeatureHash);
+            Assert.False(viewModel.CanAdopt);
 
             source.Write(Frame(80, 4, 300));
             var changedDisplay = await changedFeature.Task;
             Assert.Contains($"feature={stableA.Candidate.FeatureHash}", changedDisplay);
-            Assert.True(viewModel.CanAdopt);
-            var adoptedDuringSettling = await viewModel.AdoptAsync();
-            Assert.Equal(
-                stableA.Candidate.FeatureHash,
-                adoptedDuringSettling.Checkpoint.Observations.Single(
-                    observation => observation.ObservationId == adoptedDuringSettling.ObservationId).FeatureHash);
+            Assert.Equal("ジャケットを確認中", viewModel.CollectionStateTitle);
+            Assert.False(viewModel.CanAdopt);
 
             source.Write(Frame(80, 5, 400));
             var stableB = await secondStable.Task;
@@ -398,11 +421,23 @@ public sealed class JacketObservationTests : IDisposable
                 stableB.Candidate.FeatureHash,
                 adopted.Checkpoint.Observations.Single(
                     observation => observation.ObservationId == adopted.ObservationId).FeatureHash);
+            Assert.Equal("このジャケットは保存済み", viewModel.CollectionStateTitle);
+            Assert.False(viewModel.CanAdopt);
+
+            expectRevisitedSaved = true;
+            source.Write(Frame(20, 6, 500));
+            await revisitChange.Task;
+            source.Write(Frame(20, 7, 600));
+            var revisitedA = await revisitedSaved.Task;
+            Assert.Equal(stableA.Candidate.FeatureHash, revisitedA.Candidate!.FeatureHash);
+            Assert.Equal("このジャケットは保存済み", viewModel.CollectionStateTitle);
+            Assert.False(viewModel.CanAdopt);
 
             expectCleared = true;
             await viewModel.StopAsync();
             await clearedAfterStop.Task;
             Assert.Equal("—", viewModel.StableCandidate);
+            Assert.Equal("収集は停止中", viewModel.CollectionStateTitle);
             await coordinator.StopAsync();
         }
     }

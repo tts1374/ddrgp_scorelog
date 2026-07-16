@@ -50,6 +50,8 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
                 OnPropertyChanged(nameof(DetectorProgress));
                 OnPropertyChanged(nameof(StableCandidate));
                 OnPropertyChanged(nameof(CanAdopt));
+                OnPropertyChanged(nameof(CollectionStateTitle));
+                OnPropertyChanged(nameof(CollectionStateMessage));
             }
         }
     }
@@ -87,8 +89,62 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
         : $"feature={stableCandidate.FeatureHash}, stable={stableCandidate.StableFrameCount} frames / {stableCandidate.StableDuration.TotalMilliseconds:0}ms";
     public string LastCatalogReceipt => lastCatalogReceipt ?? "未投入";
     public bool IsActive => session.IsActive;
-    public bool CanAdopt => !captureEnded && session.HasAdoptableCandidate;
+    public bool CanAdopt => !captureEnded
+        && session.HasAdoptableCandidate
+        && stableCandidate is not null
+        && Detection.State is JacketDetectionState.StableCandidate
+            or JacketDetectionState.DuplicatePreview
+        && !IsSaved(stableCandidate.FeatureHash);
     public bool CanResume => !session.IsActive && ResumeSessionId.Trim().Length > 0;
+    public string CollectionStateTitle
+    {
+        get
+        {
+            if (captureEnded)
+            {
+                return "収集は停止中";
+            }
+            if (Detection.State == JacketDetectionState.ChangeCandidate)
+            {
+                return "ジャケットを確認中";
+            }
+            if (stableCandidate is not null
+                && IsSaved(stableCandidate.FeatureHash))
+            {
+                return "このジャケットは保存済み";
+            }
+            if (stableCandidate is not null)
+            {
+                return "新しいジャケットを検出";
+            }
+            return "DDR GPの曲選択画面を待っています";
+        }
+    }
+
+    public string CollectionStateMessage
+    {
+        get
+        {
+            if (captureEnded)
+            {
+                return "DDR GPのウィンドウを選び、収集を開始してください。";
+            }
+            if (Detection.State == JacketDetectionState.ChangeCandidate)
+            {
+                return "同じ曲をそのまま表示してください。安定すると保存できるようになります。";
+            }
+            if (stableCandidate is not null
+                && IsSaved(stableCandidate.FeatureHash))
+            {
+                return "DDR GPで別の曲へ移動してください。新しいジャケットを自動で確認します。";
+            }
+            if (stableCandidate is not null)
+            {
+                return "内容を確認して「このジャケットを保存」を押してください。";
+            }
+            return "DDR GPで曲選択画面を表示してください。";
+        }
+    }
 
     public async Task StartSessionAsync(
         ProjectionMaster master,
@@ -192,6 +248,9 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
         };
         StatusMessage = result.Catalog.Message;
         OnPropertyChanged(nameof(LastCatalogReceipt));
+        OnPropertyChanged(nameof(CanAdopt));
+        OnPropertyChanged(nameof(CollectionStateTitle));
+        OnPropertyChanged(nameof(CollectionStateMessage));
         return result;
     }
 
@@ -244,6 +303,8 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
             OnPropertyChanged(nameof(IsActive));
             OnPropertyChanged(nameof(CanAdopt));
             OnPropertyChanged(nameof(CanResume));
+            OnPropertyChanged(nameof(CollectionStateTitle));
+            OnPropertyChanged(nameof(CollectionStateMessage));
         }
     }
 
@@ -333,6 +394,8 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
                 captureEnded = true;
             }
             OnPropertyChanged(nameof(CanAdopt));
+            OnPropertyChanged(nameof(CollectionStateTitle));
+            OnPropertyChanged(nameof(CollectionStateMessage));
         }
         try
         {
@@ -374,7 +437,13 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
         }
         OnPropertyChanged(nameof(DetectorProgress));
         OnPropertyChanged(nameof(StableCandidate));
+        OnPropertyChanged(nameof(CollectionStateTitle));
+        OnPropertyChanged(nameof(CollectionStateMessage));
     }
+
+    private bool IsSaved(string featureHash) =>
+        session.Checkpoint?.Observations.Any(
+            observation => observation.FeatureHash == featureHash) == true;
 
     private bool SetField<T>(
         ref T field,
