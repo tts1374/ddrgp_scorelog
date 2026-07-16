@@ -192,21 +192,21 @@ collection sessionは開始時のmaster version/hashとfeature extractor version
 
 title/artist取得方式、OCR採用、confidence閾値、jacketと文字領域の更新ずれ対策は実capture評価まで保留する。未採用、失敗、不一致は観測を失わずreviewへ残し、自動確定率のために一意性条件を緩めない。
 
-### M5c-1 read-only projection
+### M5c-1 current-only read-only projection
 
-M5c-1では `tools/jacket_catalog_collector/` に公開appと独立したWPF app/testを追加した。UIはcatalog tableを直接解釈せず、`python -m tools.vision_poc.jacket_catalog_review_projection` がM4 masterとM5b catalogをstrict/read-onlyで検査し、UTF-8 stdoutへ単一JSONを出す。projection version 1のtop-level必須fieldは `projection_schema_version`、`master`、`catalog`、`coverage`、`songs`、`review_references` とする。
+`tools/jacket_catalog_collector/` のUIはcatalog tableを直接解釈せず、`python -m tools.vision_poc.jacket_catalog_review_projection` がM4 masterとcurrent M5b catalogをstrict/read-onlyで検査し、UTF-8 stdoutへprojection version 3の単一JSONを出す。top-level必須fieldは `projection_schema_version`、`master`、`catalog`、`coverage`、`songs`、`review_references` とする。
 
-`master` はpath、version、source hash、song/chart/GP件数、`catalog` はpath、identity、schema、created time、current extractor、`coverage` は4状態件数、orphan件数/理由、候補なし未割当件数を持つ。`songs` はM5bと同じGP分母の `referenced` / `needs_review` / `uncollected` / `unresolved` 行を持つ。`review_references` はcurrent stateが `needs_review` / `unresolved` / `orphaned` のreferenceについて、ID、観測title/artist/status、opaque reason、master drift、extractor、割当song、候補songとopaque candidate reasonを持つ。
+`master` はpath、version、source hash、song/chart/GP件数、`catalog` はpath、identity、schema version 1、created time、current extractor、`coverage` は4状態件数、orphan件数/理由、候補なし未割当件数を持つ。`songs` は同じGP分母の4状態行を持つ。`review_references` はcurrent/stored state、revision、manual provenance/history、観測、opaque reason、master drift、extractor、割当song、候補を持つ。旧migration/capability fieldは持たない。
 
-C# loaderはversion、未知field、必須field、null/型、coverage/review status、候補配列、GP分母、summaryとsong status histogramの一致をstrictに検査する。unsupported older/newer version、空/truncated stdout、Python非0終了を部分成功へ丸めない。一方、現行M5bのreason/candidate reasonと任意observation statusは意味を再実装せず、未知文字列をそのまま表示する。projectionはtemporary fileを作らず、表示前後でmaster/catalog byteを変更しない。生成中にいずれかのDBのfile identity、size、mtime、hashが変わった場合は、複数接続由来のsnapshotを混在させず失敗として再読込を求める。
+C# loaderはprojection version 3とcatalog schema version 1だけを受け入れ、未知field、必須field、null/型、coverage/review status、候補/history、revision連続性、GP分母、summaryとsong status histogramの一致をstrictに検査する。unsupported version、空/truncated stdout、Python非0終了を部分成功へ丸めない。opaque reason/note/statusは意味を再実装せず表示する。projectionはtemporary fileを作らず、生成中のDB fingerprint変化をsnapshot混在として拒否する。
 
-### M5c-2 catalog v2 manual review
+### M5c-2 current catalog manual review
 
-catalog version 2はv1の全reference/candidate/evidenceを保持し、各referenceへ閉じたstatus語彙、monotonic `review_revision`、最後のmanual action ID/noteを追加する。`reference_review_history` は `manual_confirm` / `reassign` / `reject` / `reopen` ごとにbefore/after status・song・revision、opaque reason/note、UTC時刻、canonical request/receiptをappend-onlyで持つ。v1は上書きせず、別pathのstaging v2をstrict検証した後にexclusive publishする。既存target、unsupported source、検証・publish失敗ではv1と既存targetを変更しない。
+current catalog schema version 1は閉じたstatus語彙、monotonic `review_revision`、最後のmanual action ID/noteを持つ。`reference_review_history` は `manual_confirm` / `reassign` / `reject` / `reopen` ごとにbefore/after status・song・revision、opaque reason/note、UTC時刻、canonical request/receiptをappend-onlyで持つ。旧catalogはmigrationやread-only fallbackを行わずunsupportedとして拒否する。
 
 mutation requestはreference ID、action ID、expected revision/status/songを必須にする。同一action ID・同一payloadの再投入はcurrent masterを再検証する前に保存済みreceiptを冪等に返すため、commit後にmasterが一時利用不能、曲削除、GP対象外化しても安全なretryを妨げない。同じIDの異なるpayload、未保存actionのstale revision/state、current masterにないsong、GP対象外songはcurrent row/historyの副作用なしで拒否する。manual confirm/reassignはcurrent extractorの完全な永続特徴量も必須とし、feature抽出失敗や欠損/不正vectorを確定状態へ進めない。current row更新とhistory insertは1 transactionであり、片側成功を許さない。reject/reopen/reassignはreference、特徴量、候補、観測、historyを物理削除せず、reopenは直前songを暗黙復元しない。
 
-projection producerはversion 2となり、catalog v1を `migration_required=true` / `read_only`、catalog v2を `manual_review_v2` capabilityとして返す。v2 referenceはstored/current status、revision、manual provenance、historyを持ち、C# loaderはversion 1 fixtureのread-only互換を残しながらversion 2の未知field、閉じたstatus/action、revision連続性、capability/schema整合をstrictに検査する。collectorはcurrent GP song全体を検索して明示選択し、確認後にだけ4操作を実行する。候補配列、expected song、OCR rawからの暗黙選択は行わない。
+projection producerはcurrent-only version 3でstored/current status、revision、manual provenance、historyを返す。collectorはcurrent GP song全体を検索して明示選択し、確認後にだけ4操作を実行する。候補配列、expected song、OCR rawからの暗黙選択は行わない。
 
 runtime loaderはcurrent feature extractorかつcurrent masterに存在するGP対象の `auto_confirmed` / `manual_confirmed` だけを供給する。`rejected`、orphan、GP対象外、旧extractorを渡さず、外部変更などで永続特徴量が不正になったmanual referenceは派生状態を `needs_review` / `persisted_feature_invalid` としてcoverageとreview projectionへ表示し、そのrowだけをruntimeから除外して他の有効reference読込を継続する。保存済みstatus、revision、historyは変更しない。auto-confirmed rowの特徴量破損はcatalog corruptionとして従来どおり失敗させる。M5c-2はcapture、window探索、title/artist OCR、物理削除、公開app、正式保存workflow、正式個人スコアDBを変更しない。これらとsource capture locator/retentionはM5c-3以降へ残す。
 
@@ -224,27 +224,27 @@ M5c-3aのcapture coordinatorから受けたframeだけを下流のobservation se
 
 detectorの状態は `change_candidate`、`stable_candidate`、`duplicate_preview`、`invalid_frame` を分ける。同一stable hashは別jacketを挟んだ再出現も含めsession内で一度だけ候補とし、stable到達だけでは保存しない。開発者の明示採用時にだけ、current master/catalog/extractorを再検査し、source frame、jacket crop、feature/hash、空の観測title/artist、`observation_status=unresolved` をsession固有のlocal stagingへ書き、strict検証後に `data/jacket_catalog_collector/<session-id>/` へatomic publishする。失敗staging、停止後frame、ROI不正frameは完成artifactやcatalogへ届かない。
 
-checkpointは最初の明示採用と同時に作成し、停止時にはsession ID、固定identity/version、stable feature集合、last stable feature、processed/drop count、採用済みobservation ID/source hash、catalog statusをatomic更新する。UIのsession ID入力から行うcompatible resumeはcheckpoint identityと全artifact manifest/hashをstrict再検査し、既存observationを再生成しない。破損・旧version・master/catalog/extractor/window/ROI/detector drift、同一observation IDの異payloadは副作用なしで拒否する。catalog v1では非空observation IDを冪等keyとして既存M5b `ingest_observation` の未解決経路を再利用し、空title/artistを自動推測せず、別sessionの同一画像を統合しない。catalog v2はM5c-3bで `deferred` としてcheckpointへ保持し、M5c-3cの明示retryへ渡す。catalog failureはpending checkpointとlocal evidenceから明示retryする。
+checkpointは最初の明示採用と同時に作成し、停止時にはsession ID、固定identity/version、stable feature集合、last stable feature、processed/drop count、採用済みobservation ID/source hash、catalog statusをatomic更新する。compatible resumeはcheckpoint identityと全artifact manifest/hashをstrict再検査し、既存observationを再生成しない。破損・旧version・master/catalog/extractor/window/ROI/detector drift、同一observation IDの異payloadは副作用なしで拒否する。artifact manifest/checkpoint v1/v2は再採番せず、current catalogへのfresh ingestはmanifest v2の完全なcomposite identityを必須とする。catalog failureはpending checkpointとlocal evidenceから明示retryする。
 
 capture coordinatorの停止・resize・close・device loss・例外・取消通知をsession停止境界へ接続し、停止後はdetector、artifact publisher、catalog adapterを呼ばない。local source/crop/manifest/checkpointはGit、CI artifact、通常log/stdout、公開app、正式個人スコアDBへ出力せず、retention/cleanupは別PRで扱う。
 
-### M5c-3c v2 unresolved observation ingest
+### M5c-3c current unresolved observation ingest
 
-catalog schema 2は既存の`jacket_references`列だけで未解決observationの初期状態を表現できる。collectorはv1 `ingest`へ暗黙fallbackせず、Python `ingest-v2`をsession schemaから明示選択する。入力は非空observation ID、artifact image bytes/hash、空title/artist、`observation_status=unresolved`、`image_kind`、監査用expected song、session開始時に固定したmaster version/source hash、catalog identity/schema/created-at、feature extractorで構成する。
+collectorはPython current `ingest`だけを使う。入力は非空observation ID、artifact image bytes/hash、空title/artist、`observation_status=unresolved`、`image_kind`、監査用expected song、session開始時に固定したmaster version/source hash、catalog identity/schema/created-at、feature extractor、jacket/title-line/composite identity一式で構成する。
 
-v2 writerはsource capture IDへobservation IDを保存し、新規rowを`song_id=NULL`、`review_status=unresolved`、`review_revision=0`、`manual_action_id=NULL`、空manual note、candidate/history 0件で作る。同一ID・同一canonical payloadは同じreference receiptを返すが、異payload、空ID、欠損/改変artifact、current master/catalog/extractor driftはtransactionの副作用なしで拒否する。別IDの同一画像bytesはsource hashだけで統合せず別referenceにする。manual review済みrowと同じobservation IDが衝突してもcurrent row/revision/historyは上書きしない。
+current writerはsource capture IDへobservation IDを保存し、新規rowを`song_id=NULL`、`review_status=unresolved`、`review_revision=0`、`manual_action_id=NULL`、空manual note、candidate/history 0件で作る。同一ID・同一canonical payloadは同じreference receiptを返すが、異payload、空ID、identity欠損/不正、欠損/改変artifact、current master/catalog/extractor driftはtransactionの副作用なしで拒否する。異なるobservation IDでも同じcomposite identityならreview statusに関係なく既存referenceへ収束する。
 
-collector retryはschemaを境界として、v1の`pending`とv2の`pending/deferred`だけを対象にする。catalog mutation成功後のcheckpoint保存失敗は、次回v2 retryが既存referenceを`existing`として返し、reference/historyを増やさずcheckpointを`ingested`へ収束させる。v2 ingestはtitle/artist OCR、auto-confirm、song assignment、manual action/history生成を行わない。
+collector retryはcurrent sessionの`pending`だけを対象にする。catalog mutation成功後のcheckpoint保存失敗は、次回retryが既存referenceを`existing`として返し、reference/historyを増やさずcheckpointを`ingested`へ収束させる。current ingestはtitle/artist OCR、auto-confirm、song assignment、manual action/history生成を行わない。
 
 ### M5c-4 title/artist evaluation
 
-collectorでdeveloperが明示採用したM5c-3b artifactだけを、Git管理外のstrict datasetから評価する。dataset entryはartifact root内の相対`observation.json`と、nullableなexpected title/artist/song IDだけを持つ。manifest/source/crop hash、source dimensions、current master version/source hash、catalog v2 identity/created-at、current feature extractorを評価前に検査し、欠損、改変、root外path、old version、identity driftはreport生成前に拒否する。
+collectorでdeveloperが明示採用したM5c-3b artifactだけを、Git管理外のstrict datasetから評価する。dataset entryはartifact root内の相対`observation.json`と、nullableなexpected title/artist/song IDだけを持つ。manifest/source/crop hash、source dimensions、current master version/source hash、current catalog schema version 1 identity/created-at、current feature extractorを評価前に検査し、欠損、改変、root外path、old version、identity driftはreport生成前に拒否する。
 
 取得方式は追加packageを増やさないlocal Tesseractの`m5c-song-select-title-artist-roi-v1`に限定し、`tesseract-autocontrast-v1`と`tesseract-white-threshold-v1`を比較する。raw/normalized値、confidence、field status/failureを保持し、空、engine failure、confidence 0.90未満を成功へ丸めない。候補生成は既存M4/M5bの`resolve_observation()`を再利用し、title primary、artist tie-breaker、current GP対象、canonical/alias完全一致を維持する。artist単独、image hash単独、近傍候補への寄せは行わない。
 
 expected title/artistが両方あるartifactを`evaluated`、片方だけを`partially_evaluated`、両方ないものを`no_expected_values`とし、accuracy/adoption gateの分母は`evaluated`だけとする。同じ入力のCSV/JSON/Markdownは順序、float表現、改行を固定してbyte-stableに生成する。別observation IDの同一画像bytesは別行を維持し、評価再実行はcatalog reference、revision、history、checkpointを変更しない。
 
-方式採用はrepository fixture gateに加え、実captureのevaluated 30件以上、title/artist pair exact 95%以上、field confidence 0.90以上、auto-confirm候補precision 100%、既知誤自動確定0件をすべて要求する。実capture dataset不在または条件未達では`not_adopted`とし、collectorのv2 unresolved/manual review fallbackを維持する。2026-07-16時点では採用済みcollector artifact datasetがローカルに存在しないため、評価経路だけを追加し、auto-confirm writerやcatalog schemaは変更していない。
+方式採用はrepository fixture gateに加え、実captureのevaluated 30件以上、title/artist pair exact 95%以上、field confidence 0.90以上、auto-confirm候補precision 100%、既知誤自動確定0件をすべて要求する。実capture dataset不在または条件未達では`not_adopted`とし、current unresolved/manual review経路を維持する。評価はauto-confirm writerやcatalog schemaを変更しない。
 
 ## M5b/M5c共通スコープ外
 

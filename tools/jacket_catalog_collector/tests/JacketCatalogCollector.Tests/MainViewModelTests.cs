@@ -173,7 +173,7 @@ public sealed class MainViewModelTests
         viewModel.SelectedReason = "opaque reason";
 
         await Assert.ThrowsAnyAsync<Exception>(
-            () => viewModel.LoadProjectionAsync("master-v2.sqlite", "catalog-v2.sqlite"));
+            () => viewModel.LoadProjectionAsync("other-master.sqlite", "other-catalog.sqlite"));
 
         Assert.Equal(cancel ? "取消" : "読込失敗", viewModel.StatusTitle);
         Assert.Equal("未選択", viewModel.MasterVersion);
@@ -189,7 +189,7 @@ public sealed class MainViewModelTests
     [Fact]
     public async Task AppliesExplicitSongMutationAndReloadsProjection()
     {
-        var projection = Projection(2);
+        var projection = Projection();
         var workflow = new StubReviewWorkflowService();
         var viewModel = new MainViewModel(
             new StubMasterUpdateService(),
@@ -209,27 +209,9 @@ public sealed class MainViewModelTests
         Assert.Equal("review更新完了", viewModel.StatusTitle);
     }
 
-    [Fact]
-    public async Task MigratesOnlyReadOnlyV1ProjectionAndLoadsTarget()
+    private static ReviewProjection Projection() => new()
     {
-        var workflow = new StubReviewWorkflowService();
-        var viewModel = new MainViewModel(
-            new StubMasterUpdateService(),
-            new StubProjectionService(Projection(2, migrationRequired: true)),
-            workflow);
-        await viewModel.LoadProjectionAsync("master.sqlite", "catalog-v1.sqlite");
-
-        await viewModel.MigrateCatalogAsync("catalog-v2.sqlite");
-
-        Assert.Equal(("catalog-v1.sqlite", "catalog-v2.sqlite"), workflow.Migrations[0]);
-        Assert.Equal("catalog移行完了", viewModel.StatusTitle);
-    }
-
-    private static ReviewProjection Projection(
-        int version = 1,
-        bool migrationRequired = false) => new()
-    {
-        ProjectionSchemaVersion = version,
+        ProjectionSchemaVersion = 3,
         Master = new ProjectionMaster
         {
             Path = "master.sqlite",
@@ -243,13 +225,9 @@ public sealed class MainViewModelTests
         {
             Path = "catalog.sqlite",
             CatalogIdentity = "ddrgp-local-jacket-reference-catalog",
-            SchemaVersion = version == 1 || migrationRequired ? 1 : 2,
+            SchemaVersion = 1,
             CreatedAt = "now",
             CurrentFeatureExtractorVersion = "m5-jacket-v1",
-            MigrationRequired = version == 1 ? null : migrationRequired,
-            MutationCapability = version == 1
-                ? null
-                : (migrationRequired ? "read_only" : "manual_review_v2"),
         },
         Coverage = new ProjectionCoverage
         {
@@ -279,10 +257,11 @@ public sealed class MainViewModelTests
                 ReferenceId = "ref-1", ReviewStatus = "needs_review", Reason = "opaque reason",
                 ObservedTitle = "Alpha", ObservedArtist = "?", ObservationStatus = "ok",
                 MasterDrift = false, FeatureExtractorVersion = "m5-jacket-v1", Candidates = [],
-                StoredStatus = version == 1 ? null : "needs_review",
-                Revision = version == 1 ? null : 0,
-                ManualNote = version == 1 ? null : "",
-                History = version == 1 ? null : [],
+                StoredStatus = "needs_review",
+                Revision = 0,
+                ManualActionId = null,
+                ManualNote = "",
+                History = [],
             },
         ],
     };
@@ -377,14 +356,7 @@ public sealed class MainViewModelTests
 
     private sealed class StubReviewWorkflowService : IReviewWorkflowService
     {
-        public List<(string Source, string Target)> Migrations { get; } = [];
         public List<ReviewMutation> Mutations { get; } = [];
-
-        public Task MigrateAsync(string sourcePath, string targetPath, CancellationToken cancellationToken)
-        {
-            Migrations.Add((Path.GetFileName(sourcePath), Path.GetFileName(targetPath)));
-            return Task.CompletedTask;
-        }
 
         public Task<ReviewMutationReceipt> ApplyAsync(
             string masterPath,

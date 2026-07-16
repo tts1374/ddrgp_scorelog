@@ -284,8 +284,8 @@ def load_catalog_identity(path: Path) -> CatalogIdentity:
     if not path.is_file():
         raise ValueError(f"catalog DB is not a file: {path}")
     schema_version = jacket_reference_catalog.catalog_schema_version(path)
-    if schema_version not in {2, 3}:
-        raise ValueError("title/artist evaluation requires catalog schema version 2 or 3")
+    if schema_version != jacket_reference_catalog.CATALOG_SCHEMA_VERSION:
+        raise ValueError("title/artist evaluation requires the current catalog schema")
     try:
         uri = f"file:{path.resolve().as_posix()}?mode=ro"
         with closing(sqlite3.connect(uri, uri=True)) as connection:
@@ -464,12 +464,7 @@ def _validate_manifest(
         value["master_version"] != master.version
         or value["master_source_hash"] != master.source_hash
         or value["catalog_identity"] != catalog.identity
-        or (
-            value["catalog_schema_version"] != catalog.schema_version
-            and not (
-                catalog.schema_version == 3 and value["catalog_schema_version"] == 2
-            )
-        )
+        or value["catalog_schema_version"] != catalog.schema_version
         or value["catalog_created_at"] != catalog.created_at
         or value["feature_extractor_version"] != jacket_reference_catalog.FEATURE_EXTRACTOR_VERSION
     ):

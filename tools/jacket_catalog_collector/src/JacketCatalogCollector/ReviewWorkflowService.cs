@@ -27,7 +27,6 @@ public sealed record ReviewMutationReceipt(
 
 public interface IReviewWorkflowService
 {
-    Task MigrateAsync(string sourcePath, string targetPath, CancellationToken cancellationToken);
     Task<ReviewMutationReceipt> ApplyAsync(
         string masterPath,
         string catalogPath,
@@ -45,31 +44,6 @@ public sealed class ReviewWorkflowService(
         PropertyNameCaseInsensitive = false,
         UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
     };
-
-    public async Task MigrateAsync(
-        string sourcePath,
-        string targetPath,
-        CancellationToken cancellationToken)
-    {
-        var result = await RunAsync(
-            [
-                "migrate-v2",
-                "--source-catalog", Path.GetFullPath(sourcePath),
-                "--target-catalog", Path.GetFullPath(targetPath),
-            ],
-            cancellationToken);
-        if (result.ExitCode != 0)
-        {
-            throw new InvalidOperationException(
-                $"Catalog migration failed (exit {result.ExitCode}): {result.StandardError.Trim()}");
-        }
-        using var document = JsonDocument.Parse(result.StandardOutput);
-        if (document.RootElement.GetProperty("status").GetString() != "migrated"
-            || document.RootElement.GetProperty("schema_version").GetInt32() != 2)
-        {
-            throw new InvalidOperationException("Catalog migration receipt is invalid.");
-        }
-    }
 
     public async Task<ReviewMutationReceipt> ApplyAsync(
         string masterPath,

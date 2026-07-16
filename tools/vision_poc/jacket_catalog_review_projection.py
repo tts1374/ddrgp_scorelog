@@ -10,7 +10,7 @@ from typing import Any
 
 from tools.vision_poc import jacket_reference_catalog as catalog
 
-PROJECTION_SCHEMA_VERSION = 2
+PROJECTION_SCHEMA_VERSION = 3
 
 
 def _database_fingerprint(path: Path) -> tuple[int, int, int, str]:
@@ -47,7 +47,7 @@ def _candidate_projection(
 def build_review_projection(catalog_path: Path, master_db: Path) -> dict[str, Any]:
     initial_catalog_fingerprint = _database_fingerprint(catalog_path)
     initial_master_fingerprint = _database_fingerprint(master_db)
-    catalog_version = catalog.catalog_schema_version(catalog_path)
+    catalog.validate_catalog(catalog_path)
     master = catalog.load_master_identity(master_db)
     coverage_rows, coverage_summary = catalog.build_coverage(catalog_path, master_db)
     master_metadata = _read_master_metadata(master_db)
@@ -72,35 +72,29 @@ def build_review_projection(catalog_path: Path, master_db: Path) -> dict[str, An
             ).append(_candidate_projection(candidate_row, songs_by_id))
 
         history_by_reference: dict[str, list[dict[str, Any]]] = {}
-        if catalog_version in {
-            catalog.CATALOG_SCHEMA_VERSION_V2,
-            catalog.CATALOG_SCHEMA_VERSION_V3,
-        }:
-            for history_row in connection.execute(
-                "SELECT * FROM reference_review_history ORDER BY reference_id, history_id"
-            ):
-                history_by_reference.setdefault(str(history_row["reference_id"]), []).append(
-                    {
-                        "action_id": str(history_row["action_id"]),
-                        "action": str(history_row["action"]),
-                        "before_status": str(history_row["before_status"]),
-                        "after_status": str(history_row["after_status"]),
-                        "before_song_id": history_row["before_song_id"],
-                        "after_song_id": history_row["after_song_id"],
-                        "reason": str(history_row["reason"]),
-                        "note": str(history_row["note"]),
-                        "action_at": str(history_row["action_at"]),
-                        "before_revision": int(history_row["before_revision"]),
-                        "after_revision": int(history_row["after_revision"]),
-                    }
-                )
+        for history_row in connection.execute(
+            "SELECT * FROM reference_review_history ORDER BY reference_id, history_id"
+        ):
+            history_by_reference.setdefault(str(history_row["reference_id"]), []).append(
+                {
+                    "action_id": str(history_row["action_id"]),
+                    "action": str(history_row["action"]),
+                    "before_status": str(history_row["before_status"]),
+                    "after_status": str(history_row["after_status"]),
+                    "before_song_id": history_row["before_song_id"],
+                    "after_song_id": history_row["after_song_id"],
+                    "reason": str(history_row["reason"]),
+                    "note": str(history_row["note"]),
+                    "action_at": str(history_row["action_at"]),
+                    "before_revision": int(history_row["before_revision"]),
+                    "after_revision": int(history_row["after_revision"]),
+                }
+            )
         review_references: list[dict[str, Any]] = []
         for row in connection.execute(
             "SELECT * FROM jacket_references ORDER BY reference_id"
         ):
             status, reason = catalog._reference_state(row, master)
-            if catalog_version == catalog.CATALOG_SCHEMA_VERSION and status == "auto_confirmed":
-                continue
             assigned_song_id = str(row["song_id"] or "")
             assigned_song = songs_by_id.get(assigned_song_id)
             item = {
@@ -135,33 +129,9 @@ def build_review_projection(catalog_path: Path, master_db: Path) -> dict[str, An
             item.update(
                 {
                     "stored_status": str(row["review_status"]),
-                    "revision": (
-                        int(row["review_revision"])
-                        if catalog_version
-                        in {
-                            catalog.CATALOG_SCHEMA_VERSION_V2,
-                            catalog.CATALOG_SCHEMA_VERSION_V3,
-                        }
-                        else 0
-                    ),
-                    "manual_action_id": (
-                        row["manual_action_id"]
-                        if catalog_version
-                        in {
-                            catalog.CATALOG_SCHEMA_VERSION_V2,
-                            catalog.CATALOG_SCHEMA_VERSION_V3,
-                        }
-                        else None
-                    ),
-                    "manual_note": (
-                        str(row["manual_note"])
-                        if catalog_version
-                        in {
-                            catalog.CATALOG_SCHEMA_VERSION_V2,
-                            catalog.CATALOG_SCHEMA_VERSION_V3,
-                        }
-                        else ""
-                    ),
+                    "revision": int(row["review_revision"]),
+                    "manual_action_id": row["manual_action_id"],
+                    "manual_note": str(row["manual_note"]),
                     "history": history_by_reference.get(str(row["reference_id"]), []),
                 }
             )
@@ -198,20 +168,6 @@ def build_review_projection(catalog_path: Path, master_db: Path) -> dict[str, An
         "songs": coverage_rows,
         "review_references": review_references,
     }
-    result["catalog"].update(
-        {
-            "migration_required": catalog_version == catalog.CATALOG_SCHEMA_VERSION,
-            "mutation_capability": (
-                "manual_review_v2"
-                if catalog_version
-                in {
-                    catalog.CATALOG_SCHEMA_VERSION_V2,
-                    catalog.CATALOG_SCHEMA_VERSION_V3,
-                }
-                else "read_only"
-            ),
-        }
-    )
     if _database_fingerprint(catalog_path) != initial_catalog_fingerprint:
         raise ValueError("catalog changed while the read-only projection was generated")
     if _database_fingerprint(master_db) != initial_master_fingerprint:
