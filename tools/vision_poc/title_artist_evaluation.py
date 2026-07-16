@@ -86,6 +86,16 @@ MANIFEST_KEYS = {
     "observation_status",
     "created_at_utc",
 }
+COMPOSITE_MANIFEST_KEYS = MANIFEST_KEYS | {
+    "title_line_feature_version",
+    "title_line_hash",
+    "title_line_detector_version",
+    "title_line_roi_version",
+    "title_line_source_sequence",
+    "title_line_captured_at_utc",
+    "composite_identity_version",
+    "composite_identity_hash",
+}
 WINDOW_KEYS = {
     "handle",
     "process_id",
@@ -298,7 +308,13 @@ def _validate_manifest(
 ) -> ArtifactInput:
     if not isinstance(value, dict):
         raise ValueError("observation manifest must be an object")
-    _require_exact_keys(value, MANIFEST_KEYS, "observation manifest")
+    manifest_version = value.get("manifest_version")
+    if manifest_version == "m5c-observation-manifest-v1":
+        _require_exact_keys(value, MANIFEST_KEYS, "observation manifest")
+    elif manifest_version == "m5c-observation-manifest-v2":
+        _require_exact_keys(value, COMPOSITE_MANIFEST_KEYS, "observation manifest")
+    else:
+        raise ValueError("observation manifest version is unsupported")
     window = value["window"]
     if not isinstance(window, dict):
         raise ValueError("observation manifest window must be an object")
@@ -333,8 +349,7 @@ def _validate_manifest(
         round(150 * value["source_height"] / BASE_SIZE[1]),
     )
     if (
-        value["manifest_version"] != "m5c-observation-manifest-v1"
-        or not _is_sha256(observation_id)
+        not _is_sha256(observation_id)
         or manifest_dir.name != observation_id
         or value["source_image"] != "source.png"
         or value["jacket_crop"] != "jacket-crop.png"
@@ -375,6 +390,49 @@ def _validate_manifest(
         or created_at < captured_at
     ):
         raise ValueError("observation manifest immutable identity is invalid")
+    if manifest_version == "m5c-observation-manifest-v2":
+        composite_string_fields = (
+            "title_line_feature_version",
+            "title_line_hash",
+            "title_line_detector_version",
+            "title_line_roi_version",
+            "composite_identity_version",
+            "composite_identity_hash",
+        )
+        if any(not isinstance(value[field], str) for field in composite_string_fields):
+            raise ValueError("observation manifest composite identity is invalid")
+        if not isinstance(value["title_line_source_sequence"], int) or isinstance(
+            value["title_line_source_sequence"], bool
+        ):
+            raise ValueError("observation manifest composite identity is invalid")
+        title_line_captured_at = _timestamp(
+            value["title_line_captured_at_utc"], "title_line_captured_at_utc"
+        )
+        canonical = "\0".join(
+            (
+                "m5c-jacket-title-composite-identity-v1",
+                value["feature_version"],
+                value["feature_hash"],
+                value["title_line_feature_version"],
+                value["title_line_hash"],
+            )
+        ).encode("utf-8")
+        if (
+            value["title_line_feature_version"]
+            != "m5c-information-title-line-binary-sha256-v1"
+            or value["title_line_detector_version"]
+            != "m5c-information-title-line-detector-v1"
+            or value["title_line_roi_version"]
+            != "m5c-song-select-information-panel-roi-v1"
+            or value["composite_identity_version"]
+            != "m5c-jacket-title-composite-identity-v1"
+            or not _is_sha256(value["title_line_hash"])
+            or not _is_sha256(value["composite_identity_hash"])
+            or value["title_line_source_sequence"] != value["source_sequence"]
+            or title_line_captured_at != captured_at
+            or hashlib.sha256(canonical).hexdigest() != value["composite_identity_hash"]
+        ):
+            raise ValueError("observation manifest composite identity is invalid")
     required_window_strings = ("handle", "process_name")
     integer_window_fields = (
         "process_id",

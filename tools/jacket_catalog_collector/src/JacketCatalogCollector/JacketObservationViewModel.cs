@@ -113,7 +113,9 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
         + InformationDetection.Diagnostic;
     public string StableCandidate => stableCandidate is null
         ? "—"
-        : $"feature={stableCandidate.FeatureHash}, stable={stableCandidate.StableFrameCount} frames / {stableCandidate.StableDuration.TotalMilliseconds:0}ms";
+        : $"jacket={stableCandidate.FeatureHash}, title={stableCandidate.TitleLineFeature?.FeatureHash ?? "—"}, "
+            + $"composite={stableCandidate.CompositeIdentity?.IdentityHash ?? "—"}, "
+            + $"stable={stableCandidate.StableFrameCount} frames / {stableCandidate.StableDuration.TotalMilliseconds:0}ms";
     public string LastCatalogReceipt => lastCatalogReceipt ?? "未投入";
     public bool IsActive => session.IsActive;
     public bool CanAdopt => !captureEnded
@@ -121,7 +123,8 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
         && stableCandidate is not null
         && Detection.State is JacketDetectionState.StableCandidate
             or JacketDetectionState.DuplicatePreview
-        && !IsSaved(stableCandidate.FeatureHash);
+        && (!session.RequiresCompositeIdentity || stableCandidate.CompositeIdentity is not null)
+        && !IsSaved(CandidateIdentityKey(stableCandidate));
     public bool CanResume => !session.IsActive && ResumeSessionId.Trim().Length > 0;
     public string CollectionStateTitle
     {
@@ -136,9 +139,15 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
                 return "ジャケットを確認中";
             }
             if (stableCandidate is not null
-                && IsSaved(stableCandidate.FeatureHash))
+                && IsSaved(CandidateIdentityKey(stableCandidate)))
             {
                 return "このジャケットは保存済み";
+            }
+            if (stableCandidate is not null
+                && session.RequiresCompositeIdentity
+                && stableCandidate.CompositeIdentity is null)
+            {
+                return "曲名行を確認中";
             }
             if (stableCandidate is not null)
             {
@@ -161,9 +170,15 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
                 return "同じ曲をそのまま表示してください。安定すると保存できるようになります。";
             }
             if (stableCandidate is not null
-                && IsSaved(stableCandidate.FeatureHash))
+                && IsSaved(CandidateIdentityKey(stableCandidate)))
             {
                 return "DDR GPで別の曲へ移動してください。新しいジャケットを自動で確認します。";
+            }
+            if (stableCandidate is not null
+                && session.RequiresCompositeIdentity
+                && stableCandidate.CompositeIdentity is null)
+            {
+                return "同じframeの安定したINFORMATION曲名行が確認できるまで保存できません。";
             }
             if (stableCandidate is not null)
             {
@@ -198,7 +213,12 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
             DateTimeOffset.UtcNow,
             JacketObservationVersions.FrameClock,
             catalog.CreatedAt);
-        await session.StartAsync(identity, masterPath, catalogPath, cancellationToken);
+        await session.StartAsync(
+            identity,
+            masterPath,
+            catalogPath,
+            cancellationToken,
+            requireCompositeIdentity: true);
         ResetFrameQueueForStart();
         Detection = session.LastDetection;
         sessionId = identity.SessionId;
@@ -385,7 +405,7 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
         try
         {
             information = informationDetector.Observe(frame);
-            var value = await session.ObserveFrameAsync(frame);
+            var value = await session.ObserveFrameAsync(frame, information: information);
             await dispatcher.InvokeAsync(() =>
             {
                 if (value.HasStableCandidate && value.Candidate is not null)
@@ -479,9 +499,16 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
         OnPropertyChanged(nameof(CollectionStateMessage));
     }
 
-    private bool IsSaved(string featureHash) =>
+    private bool IsSaved(string compositeIdentityHash) =>
         session.Checkpoint?.Observations.Any(
-            observation => observation.FeatureHash == featureHash) == true;
+            observation => (session.RequiresCompositeIdentity
+                    ? observation.CompositeIdentityHash
+                    : observation.FeatureHash) == compositeIdentityHash) == true;
+
+    private string CandidateIdentityKey(JacketObservationCandidate candidate) =>
+        session.RequiresCompositeIdentity
+            ? candidate.CompositeIdentity?.IdentityHash ?? ""
+            : candidate.FeatureHash;
 
     private bool SetField<T>(
         ref T field,

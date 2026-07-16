@@ -103,6 +103,121 @@ public sealed class JacketObservationTests : IDisposable
     }
 
     [Fact]
+    public void Composite_identity_is_deterministic_and_separates_title_line_hashes()
+    {
+        var jacketHash = Hash(Encoding.UTF8.GetBytes("shared-jacket"));
+        var titleA = Hash(Encoding.UTF8.GetBytes("New York EVOLVED Type A"));
+        var titleB = Hash(Encoding.UTF8.GetBytes("New York EVOLVED Type B"));
+
+        var first = CompositeObservationIdentityBuilder.Create(
+            JacketObservationVersions.FrameFeature,
+            jacketHash,
+            JacketObservationVersions.InformationTitleLineFeature,
+            titleA);
+        var restarted = CompositeObservationIdentityBuilder.Create(
+            JacketObservationVersions.FrameFeature,
+            jacketHash,
+            JacketObservationVersions.InformationTitleLineFeature,
+            titleA);
+        var variant = CompositeObservationIdentityBuilder.Create(
+            JacketObservationVersions.FrameFeature,
+            jacketHash,
+            JacketObservationVersions.InformationTitleLineFeature,
+            titleB);
+
+        Assert.Equal(first, restarted);
+        Assert.NotEqual(first.IdentityHash, variant.IdentityHash);
+        Assert.Equal(JacketObservationVersions.CompositeIdentity, first.IdentityVersion);
+    }
+
+    [Fact]
+    public async Task Composite_session_requires_same_frame_title_and_persists_distinct_shared_jacket_variants()
+    {
+        var identity = Identity("session-composite");
+        var checkpointStore = new AtomicObservationCheckpointStore(root);
+        var publisher = new AtomicObservationArtifactPublisher(root);
+        var informationDetector = StableInformationDetector();
+        await using var session = new JacketObservationSession(
+            new JacketObservationDetector(new JacketDetectorOptions(0.01, 2, TimeSpan.Zero)),
+            checkpointStore,
+            publisher,
+            new FakeCatalogAdapter());
+        await session.StartAsync(
+            identity,
+            "master.sqlite",
+            "catalog.sqlite",
+            requireCompositeIdentity: true);
+
+        var firstFrame = CompositeFrame(40, 1, 1, 0);
+        await session.ObserveFrameAsync(
+            firstFrame,
+            information: informationDetector.Observe(firstFrame));
+        var mismatchedInformation = informationDetector.Observe(
+            CompositeFrame(40, 1, 2, 100));
+        var stableJacketWithoutPair = await session.ObserveFrameAsync(
+            CompositeFrame(40, 1, 3, 100),
+            information: mismatchedInformation);
+        Assert.Null(stableJacketWithoutPair.Candidate!.CompositeIdentity);
+        Assert.False(session.HasAdoptableCandidate);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => session.AdoptLastStableAsync());
+        Assert.False(Directory.Exists(Path.Combine(root, identity.SessionId)));
+
+        var pairedA = CompositeFrame(40, 1, 4, 200);
+        var stableA = await session.ObserveFrameAsync(
+            pairedA,
+            information: informationDetector.Observe(pairedA));
+        var adoptedA = await session.AdoptLastStableAsync();
+        var pairedB1 = CompositeFrame(40, 2, 5, 300);
+        await session.ObserveFrameAsync(
+            pairedB1,
+            information: informationDetector.Observe(pairedB1));
+        var pairedB2 = CompositeFrame(40, 2, 6, 400);
+        var stableB = await session.ObserveFrameAsync(
+            pairedB2,
+            information: informationDetector.Observe(pairedB2));
+        var adoptedB = await session.AdoptLastStableAsync();
+
+        Assert.Equal(stableA.Candidate!.FeatureHash, stableB.Candidate!.FeatureHash);
+        Assert.NotEqual(
+            stableA.Candidate.CompositeIdentity!.IdentityHash,
+            stableB.Candidate.CompositeIdentity!.IdentityHash);
+        Assert.NotEqual(adoptedA.ObservationId, adoptedB.ObservationId);
+        Assert.Equal(2, adoptedB.Checkpoint.Observations.Count);
+        Assert.All(adoptedB.Checkpoint.Observations, observation =>
+        {
+            Assert.Equal(JacketObservationVersions.FrameFeature, observation.JacketFeatureVersion);
+            Assert.Equal(
+                JacketObservationVersions.InformationTitleLineFeature,
+                observation.TitleLineFeatureVersion);
+            Assert.Equal(JacketObservationVersions.CompositeIdentity, observation.CompositeIdentityVersion);
+        });
+        var manifest = JsonNode.Parse(await File.ReadAllTextAsync(
+            Path.Combine(adoptedB.Artifact.ArtifactPath, "observation.json")))!;
+        Assert.Equal(JacketObservationVersions.ObservationManifest, manifest["manifest_version"]!.GetValue<string>());
+        Assert.Equal(
+            stableB.Candidate.CompositeIdentity.IdentityHash,
+            manifest["composite_identity_hash"]!.GetValue<string>());
+        Assert.Equal(stableB.Candidate.TitleLineFeature!.FeatureHash, manifest["title_line_hash"]!.GetValue<string>());
+
+        await session.StopAsync();
+        var checkpointPath = Path.Combine(root, identity.SessionId, "checkpoint.json");
+        var originalCheckpoint = await File.ReadAllBytesAsync(checkpointPath);
+        var corrupt = JsonNode.Parse(await File.ReadAllTextAsync(checkpointPath))!;
+        corrupt["observations"]![0]!["composite_identity_hash"] = null;
+        await File.WriteAllTextAsync(checkpointPath, corrupt.ToJsonString());
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => checkpointStore.LoadAsync(identity.SessionId));
+        await File.WriteAllBytesAsync(checkpointPath, originalCheckpoint);
+
+        await using var resumed = new JacketObservationSession(
+            new JacketObservationDetector(), checkpointStore, publisher, new FakeCatalogAdapter());
+        var resume = await resumed.ResumeAsync(
+            ResumeRequest(identity), "master.sqlite", "catalog.sqlite");
+        Assert.True(resume.Compatible);
+        Assert.True(resumed.RequiresCompositeIdentity);
+    }
+
+    [Fact]
     public async Task Observation_queue_drops_are_persisted_with_capture_drops_after_stop()
     {
         var checkpointStore = new AtomicObservationCheckpointStore(root);
@@ -124,7 +239,8 @@ public sealed class JacketObservationTests : IDisposable
         await using var viewModel = new JacketObservationViewModel(
             capture,
             session,
-            dispatcher);
+            dispatcher,
+            StableInformationDetector());
 
         await viewModel.StartSessionAsync(
             Master(), Catalog(), candidate, "master.sqlite", "catalog.sqlite");
@@ -161,18 +277,18 @@ public sealed class JacketObservationTests : IDisposable
             }
         };
 
-        source.Write(Frame(20, 1, 0));
+        source.Write(CompositeFrame(20, 1, 1, 0));
         await initialChange.Task;
-        source.Write(Frame(20, 2, 100));
+        source.Write(CompositeFrame(20, 1, 2, 100));
         await initialStable.Task;
         await viewModel.AdoptAsync();
 
         dispatcher.BlockNext();
-        source.Write(Frame(20, 3, 200));
+        source.Write(CompositeFrame(20, 1, 3, 200));
         await dispatcher.Entered;
-        source.Write(Frame(20, 4, 300));
-        source.Write(Frame(20, 5, 400));
-        source.Write(Frame(20, 6, 500));
+        source.Write(CompositeFrame(20, 1, 4, 300));
+        source.Write(CompositeFrame(20, 1, 5, 400));
+        source.Write(CompositeFrame(20, 1, 6, 500));
         await allFramesDelivered.Task;
 
         Assert.Contains("observation_drop=2", viewModel.DetectorProgress);
@@ -240,7 +356,8 @@ public sealed class JacketObservationTests : IDisposable
         await using var viewModel = new JacketObservationViewModel(
             capture,
             session,
-            dispatcher);
+            dispatcher,
+            StableInformationDetector());
 
         await viewModel.StartSessionAsync(
             Master(), Catalog(), candidate, "master.sqlite", "catalog.sqlite");
@@ -277,17 +394,17 @@ public sealed class JacketObservationTests : IDisposable
             }
         };
 
-        source.Write(Frame(20, 1, 0));
+        source.Write(CompositeFrame(20, 1, 1, 0));
         await initialChange.Task;
-        source.Write(Frame(20, 2, 100));
+        source.Write(CompositeFrame(20, 1, 2, 100));
         await initialStable.Task;
         await viewModel.AdoptAsync();
 
         dispatcher.BlockNext();
-        source.Write(Frame(20, 3, 200));
+        source.Write(CompositeFrame(20, 1, 3, 200));
         await dispatcher.Entered;
-        source.Write(Frame(20, 4, 300));
-        source.Write(Frame(20, 5, 400));
+        source.Write(CompositeFrame(20, 1, 4, 300));
+        source.Write(CompositeFrame(20, 1, 5, 400));
         await allFramesDelivered.Task;
         Assert.Contains("observation_drop=1", viewModel.DetectorProgress);
 
@@ -360,7 +477,8 @@ public sealed class JacketObservationTests : IDisposable
                 checkpointStore,
                 new AtomicObservationArtifactPublisher(root),
                 new FakeCatalogAdapter()),
-            new ImmediateCaptureDispatcher());
+            new ImmediateCaptureDispatcher(),
+            StableInformationDetector());
         await using (viewModel)
         {
             var firstStable = new TaskCompletionSource<JacketDetectionResult>(
@@ -442,15 +560,15 @@ public sealed class JacketObservationTests : IDisposable
             Assert.Equal("DDR GPの曲選択画面を待っています", viewModel.CollectionStateTitle);
             Assert.True(await coordinator.StartAsync(candidate));
 
-            source.Write(Frame(20, 1, 0));
+            source.Write(CompositeFrame(20, 1, 1, 0));
             await firstChange.Task;
             Assert.Equal("ジャケットを確認中", viewModel.CollectionStateTitle);
-            source.Write(Frame(20, 2, 100));
+            source.Write(CompositeFrame(20, 1, 2, 100));
             var stableA = await firstStable.Task;
-            Assert.Contains($"feature={stableA.Candidate!.FeatureHash}", viewModel.StableCandidate);
+            Assert.Contains($"jacket={stableA.Candidate!.FeatureHash}", viewModel.StableCandidate);
             Assert.Equal("新しいジャケットを検出", viewModel.CollectionStateTitle);
 
-            source.Write(Frame(20, 3, 200));
+            source.Write(CompositeFrame(20, 1, 3, 200));
             var duplicateResult = await duplicate.Task;
             Assert.Equal(stableA.Candidate.FeatureHash, duplicateResult.Candidate!.FeatureHash);
             Assert.Equal("新しいジャケットを検出", viewModel.CollectionStateTitle);
@@ -461,16 +579,16 @@ public sealed class JacketObservationTests : IDisposable
                     observation => observation.ObservationId == adoptedA.ObservationId).FeatureHash);
             Assert.False(viewModel.CanAdopt);
 
-            source.Write(Frame(80, 4, 300));
+            source.Write(CompositeFrame(80, 1, 4, 300));
             var changedDisplay = await changedFeature.Task;
-            Assert.Contains($"feature={stableA.Candidate.FeatureHash}", changedDisplay);
+            Assert.Contains($"jacket={stableA.Candidate.FeatureHash}", changedDisplay);
             Assert.Equal("ジャケットを確認中", viewModel.CollectionStateTitle);
             Assert.False(viewModel.CanAdopt);
 
-            source.Write(Frame(80, 5, 400));
+            source.Write(CompositeFrame(80, 1, 5, 400));
             var stableB = await secondStable.Task;
             Assert.NotEqual(stableA.Candidate.FeatureHash, stableB.Candidate!.FeatureHash);
-            Assert.Contains($"feature={stableB.Candidate.FeatureHash}", viewModel.StableCandidate);
+            Assert.Contains($"jacket={stableB.Candidate.FeatureHash}", viewModel.StableCandidate);
             Assert.True(viewModel.CanAdopt);
 
             var adopted = await viewModel.AdoptAsync();
@@ -482,9 +600,9 @@ public sealed class JacketObservationTests : IDisposable
             Assert.False(viewModel.CanAdopt);
 
             expectRevisitedSaved = true;
-            source.Write(Frame(20, 6, 500));
+            source.Write(CompositeFrame(20, 1, 6, 500));
             await revisitChange.Task;
-            source.Write(Frame(20, 7, 600));
+            source.Write(CompositeFrame(20, 1, 7, 600));
             var revisitedA = await revisitedSaved.Task;
             Assert.Equal(stableA.Candidate.FeatureHash, revisitedA.Candidate!.FeatureHash);
             Assert.Equal("このジャケットは保存済み", viewModel.CollectionStateTitle);
@@ -901,12 +1019,26 @@ public sealed class JacketObservationTests : IDisposable
             catalog);
         Assert.True((await resumed.ResumeAsync(
             ResumeRequest(identity), "master.sqlite", "catalog.sqlite")).Compatible);
-        await resumed.ObserveFrameAsync(Frame(80, 5, 400));
+        var resumedFrame1 = Frame(80, 5, 400);
+        await resumed.ObserveFrameAsync(
+            resumedFrame1,
+            information: StableInformation(resumedFrame1));
+        var resumedFrame2 = Frame(80, 6, 500);
         Assert.Equal(
             JacketDetectionState.DuplicatePreview,
-            (await resumed.ObserveFrameAsync(Frame(80, 6, 500))).State);
+            (await resumed.ObserveFrameAsync(
+                resumedFrame2,
+                information: StableInformation(resumedFrame2))).State);
         var adoptedAfterResume = await resumed.AdoptLastStableAsync();
         Assert.Equal(2, adoptedAfterResume.Checkpoint.Observations.Count);
+        Assert.Equal(
+            JacketObservationVersions.LegacySessionCheckpoint,
+            adoptedAfterResume.Checkpoint.CheckpointVersion);
+        var legacyManifest = JsonNode.Parse(await File.ReadAllTextAsync(
+            Path.Combine(adoptedAfterResume.Artifact.ArtifactPath, "observation.json")))!;
+        Assert.Equal(
+            JacketObservationVersions.LegacyObservationManifest,
+            legacyManifest["manifest_version"]!.GetValue<string>());
         Assert.Equal(adoptedAfterResume.Checkpoint.LastStableFeatureHash,
             adoptedAfterResume.Checkpoint.Observations[1].FeatureHash);
     }
@@ -1452,7 +1584,7 @@ public sealed class JacketObservationTests : IDisposable
         ObservationSessionIdentity identity,
         ObservationArtifact artifact,
         string artifactPath) => new(
-        JacketObservationVersions.SessionCheckpoint,
+        JacketObservationVersions.LegacySessionCheckpoint,
         identity,
         artifact.Feature.FeatureHash,
         [artifact.Feature.FeatureHash],
@@ -1510,7 +1642,34 @@ public sealed class JacketObservationTests : IDisposable
         sequence,
         DateTimeOffset.UnixEpoch.AddMilliseconds(milliseconds));
 
-    private static byte[] EncodeInformationPng(byte titleVariant)
+    private static RawCaptureFrame CompositeFrame(
+        byte jacketValue,
+        byte titleVariant,
+        long sequence,
+        long milliseconds) => new(
+        EncodeInformationPng(titleVariant, jacketValue),
+        1280,
+        720,
+        sequence,
+        DateTimeOffset.UnixEpoch.AddMilliseconds(milliseconds));
+
+    private static InformationTitleLineDetector StableInformationDetector() => new(
+        new InformationTitleLineDetectorOptions(
+            StableFrameCount: 2,
+            MinimumStableDuration: TimeSpan.Zero));
+
+    private static InformationTitleLineDetectionResult StableInformation(RawCaptureFrame frame) => new(
+        InformationTitleLineState.Stable,
+        Hash(Encoding.UTF8.GetBytes("legacy-compatible-title")),
+        3,
+        TimeSpan.FromMilliseconds(100),
+        "stable fixture",
+        1,
+        0,
+        SourceSequence: frame.Sequence,
+        CapturedAtUtc: frame.CapturedAtUtc);
+
+    private static byte[] EncodeInformationPng(byte titleVariant, byte jacketValue = 0)
     {
         var pixels = new byte[1280 * 720 * 4];
         for (var index = 3; index < pixels.Length; index += 4)
@@ -1522,6 +1681,7 @@ public sealed class JacketObservationTests : IDisposable
         var titleX = titleVariant == 1 ? 300 : 360;
         PaintWhiteRectangle(pixels, 1280, titleX, 69, 28, 10);
         PaintWhiteRectangle(pixels, 1280, titleX + 36, 69, 20, 10);
+        PaintRectangle(pixels, 1280, 812, 28, 150, 150, jacketValue);
         var source = BitmapSource.Create(
             1280, 720, 96, 96, PixelFormats.Bgra32, null, pixels, 1280 * 4);
         source.Freeze();
@@ -1548,6 +1708,27 @@ public sealed class JacketObservationTests : IDisposable
                 pixels[offset] = 255;
                 pixels[offset + 1] = 255;
                 pixels[offset + 2] = 255;
+            }
+        }
+    }
+
+    private static void PaintRectangle(
+        byte[] pixels,
+        int width,
+        int x,
+        int y,
+        int rectangleWidth,
+        int rectangleHeight,
+        byte value)
+    {
+        for (var row = y; row < y + rectangleHeight; row++)
+        {
+            for (var column = x; column < x + rectangleWidth; column++)
+            {
+                var offset = (row * width + column) * 4;
+                pixels[offset] = value;
+                pixels[offset + 1] = value;
+                pixels[offset + 2] = value;
             }
         }
     }

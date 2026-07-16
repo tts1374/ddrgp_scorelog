@@ -108,6 +108,7 @@ def write_artifact(
     *,
     index: int,
     source_color: tuple[int, int, int] = (10, 20, 30),
+    composite: bool = False,
 ) -> str:
     observation_id = hashlib.sha256(f"observation-{index}".encode()).hexdigest()
     relative = Path("session-1") / "observations" / observation_id / "observation.json"
@@ -169,6 +170,31 @@ def write_artifact(
         "observation_status": "unresolved",
         "created_at_utc": "2026-07-16T00:00:01+00:00",
     }
+    if composite:
+        title_line_hash = hashlib.sha256(f"title-line-{index}".encode()).hexdigest()
+        composite_version = "m5c-jacket-title-composite-identity-v1"
+        canonical = "\0".join(
+            (
+                composite_version,
+                manifest["feature_version"],
+                manifest["feature_hash"],
+                "m5c-information-title-line-binary-sha256-v1",
+                title_line_hash,
+            )
+        ).encode("utf-8")
+        manifest.update(
+            {
+                "manifest_version": "m5c-observation-manifest-v2",
+                "title_line_feature_version": "m5c-information-title-line-binary-sha256-v1",
+                "title_line_hash": title_line_hash,
+                "title_line_detector_version": "m5c-information-title-line-detector-v1",
+                "title_line_roi_version": "m5c-song-select-information-panel-roi-v1",
+                "title_line_source_sequence": index,
+                "title_line_captured_at_utc": manifest["captured_at_utc"],
+                "composite_identity_version": composite_version,
+                "composite_identity_hash": hashlib.sha256(canonical).hexdigest(),
+            }
+        )
     (directory / "observation.json").write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8", newline="\n"
     )
@@ -249,6 +275,42 @@ def test_strict_loader_distinguishes_expected_coverage_and_preserves_same_image_
     }
     assert len({row["observation_id"] for row in report["rows"]}) == 3
     assert receipt["adopted_methods"] == []
+
+
+def test_composite_manifest_v2_is_accepted_and_identity_drift_is_rejected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    master_path, catalog_path, artifact_root = fixture_paths(tmp_path, monkeypatch)
+    manifest = write_artifact(artifact_root, catalog_path, index=1, composite=True)
+    dataset = tmp_path / "data/dataset.json"
+    write_dataset(dataset, [entry(manifest)])
+    output = tmp_path / "data/report"
+
+    evaluation.run_evaluation(
+        dataset_path=dataset,
+        artifact_root=artifact_root,
+        master_db=master_path,
+        catalog_db=catalog_path,
+        output_dir=output,
+        extractor=alpha_extractor,
+    )
+    assert (output / "title_artist_evaluation.json").is_file()
+
+    manifest_path = artifact_root / manifest
+    value = json.loads(manifest_path.read_text(encoding="utf-8"))
+    value["composite_identity_hash"] = "0" * 64
+    manifest_path.write_text(json.dumps(value), encoding="utf-8", newline="\n")
+    drift_output = tmp_path / "data/drift-report"
+    with pytest.raises(ValueError, match="composite identity"):
+        evaluation.run_evaluation(
+            dataset_path=dataset,
+            artifact_root=artifact_root,
+            master_db=master_path,
+            catalog_db=catalog_path,
+            output_dir=drift_output,
+            extractor=alpha_extractor,
+        )
+    assert not drift_output.exists()
 
 
 def test_title_is_primary_and_artist_mismatch_remains_review_candidate(

@@ -86,7 +86,9 @@ public sealed record InformationTitleLineDetectionResult(
     long InvalidFrameCount,
     string DetectorVersion = JacketObservationVersions.InformationDetector,
     string RoiVersion = JacketObservationVersions.InformationPanelRoi,
-    string FeatureVersion = JacketObservationVersions.InformationTitleLineFeature)
+    string FeatureVersion = JacketObservationVersions.InformationTitleLineFeature,
+    long SourceSequence = -1,
+    DateTimeOffset CapturedAtUtc = default)
 {
     public bool IsDisplayed => State is InformationTitleLineState.Settling
         or InformationTitleLineState.Stable;
@@ -136,7 +138,7 @@ public sealed class InformationTitleLineDetector
                 InformationTitleLineState.InvalidFrame,
                 null,
                 TimeSpan.Zero,
-                $"frame/INFORMATION ROI invalid: {exception.Message}");
+                $"frame/INFORMATION ROI invalid: {exception.Message}", frame);
         }
 
         if (previousCapturedAtUtc is not null
@@ -148,7 +150,7 @@ public sealed class InformationTitleLineDetector
                 InformationTitleLineState.InvalidFrame,
                 null,
                 TimeSpan.Zero,
-                "frame timestamp moved backwards");
+                "frame timestamp moved backwards", frame);
         }
         previousCapturedAtUtc = frame.CapturedAtUtc;
 
@@ -160,7 +162,7 @@ public sealed class InformationTitleLineDetector
                 InformationTitleLineState.NotDisplayed,
                 null,
                 TimeSpan.Zero,
-                "INFORMATION panel/title line is not displayed");
+                "INFORMATION panel/title line is not displayed", frame);
         }
 
         if (!string.Equals(previousHash, sample.TitleLineHash, StringComparison.Ordinal))
@@ -185,7 +187,8 @@ public sealed class InformationTitleLineDetector
                     + $"{stableDuration.TotalMilliseconds:0}ms)"
                 : $"INFORMATION title line settling ({consecutiveFrameCount}/{options.StableFrameCount} "
                     + $"frames, {stableDuration.TotalMilliseconds:0}ms/"
-                    + $"{options.MinimumStableDurationValue.TotalMilliseconds:0}ms)");
+                    + $"{options.MinimumStableDurationValue.TotalMilliseconds:0}ms)",
+            frame);
     }
 
     public void Reset()
@@ -302,14 +305,17 @@ public sealed class InformationTitleLineDetector
         InformationTitleLineState state,
         string? titleLineHash,
         TimeSpan stableDuration,
-        string diagnostic) => new(
+        string diagnostic,
+        RawCaptureFrame frame) => new(
         state,
         titleLineHash,
         consecutiveFrameCount,
         stableDuration,
         diagnostic,
         processedFrameCount,
-        invalidFrameCount);
+        invalidFrameCount,
+        SourceSequence: frame.Sequence,
+        CapturedAtUtc: frame.CapturedAtUtc);
 
     private sealed record BinaryMask(byte[] PackedBits, int PixelCount);
     private sealed record MaskSample(

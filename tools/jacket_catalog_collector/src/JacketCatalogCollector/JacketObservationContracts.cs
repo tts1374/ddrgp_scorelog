@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json.Serialization;
 
 namespace JacketCatalogCollector;
@@ -9,12 +11,46 @@ public static class JacketObservationVersions
     public const string FrameFeature = "m5c-jacket-rgb-grid-v1";
     public const string FrameClock = "m5c-capture-utc-clock-v1";
     public const string FeatureExtractor = "m5-jacket-v1";
-    public const string SessionCheckpoint = "m5c-observation-checkpoint-v1";
-    public const string ObservationManifest = "m5c-observation-manifest-v1";
+    public const string LegacySessionCheckpoint = "m5c-observation-checkpoint-v1";
+    public const string SessionCheckpoint = "m5c-observation-checkpoint-v2";
+    public const string LegacyObservationManifest = "m5c-observation-manifest-v1";
+    public const string ObservationManifest = "m5c-observation-manifest-v2";
     public const string InformationDetector = "m5c-information-title-line-detector-v1";
     public const string InformationPanelRoi = "m5c-song-select-information-panel-roi-v1";
     public const string InformationTitleLineFeature =
         "m5c-information-title-line-binary-sha256-v1";
+    public const string CompositeIdentity = "m5c-jacket-title-composite-identity-v1";
+}
+
+public static class CompositeObservationIdentityBuilder
+{
+    public static CompositeObservationIdentity Create(
+        string jacketFeatureVersion,
+        string jacketFeatureHash,
+        string titleLineFeatureVersion,
+        string titleLineHash)
+    {
+        if (jacketFeatureVersion != JacketObservationVersions.FrameFeature
+            || titleLineFeatureVersion != JacketObservationVersions.InformationTitleLineFeature
+            || !IsSha256(jacketFeatureHash)
+            || !IsSha256(titleLineHash))
+        {
+            throw new InvalidOperationException("composite observation feature identity is invalid");
+        }
+        var canonical = string.Join('\0',
+            JacketObservationVersions.CompositeIdentity,
+            jacketFeatureVersion,
+            jacketFeatureHash,
+            titleLineFeatureVersion,
+            titleLineHash);
+        return new CompositeObservationIdentity(
+            JacketObservationVersions.CompositeIdentity,
+            Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(canonical))).ToLowerInvariant());
+    }
+
+    public static bool IsSha256(string? value) => value is not null
+        && value.Length == 64
+        && value.All(character => character is >= '0' and <= '9' or >= 'a' and <= 'f');
 }
 
 public readonly record struct JacketRoi(int X, int Y, int Width, int Height)
@@ -95,7 +131,21 @@ public sealed record JacketObservationCandidate(
     byte[] JacketCropPng,
     JacketFeatureObservation Feature,
     int StableFrameCount,
-    TimeSpan StableDuration);
+    TimeSpan StableDuration,
+    TitleLineFeatureObservation? TitleLineFeature = null,
+    CompositeObservationIdentity? CompositeIdentity = null);
+
+public sealed record TitleLineFeatureObservation(
+    string FeatureVersion,
+    string FeatureHash,
+    long SourceSequence,
+    DateTimeOffset CapturedAtUtc,
+    string DetectorVersion,
+    string RoiVersion);
+
+public sealed record CompositeObservationIdentity(
+    string IdentityVersion,
+    string IdentityHash);
 
 public sealed record JacketDetectionResult(
     JacketDetectionState State,
@@ -145,7 +195,12 @@ public sealed record ObservationCheckpointObservation(
     string CatalogStatus,
     string? CatalogReferenceId,
     string ArtifactPath,
-    DateTimeOffset AdoptedAtUtc);
+    DateTimeOffset AdoptedAtUtc,
+    string? JacketFeatureVersion = null,
+    string? TitleLineFeatureVersion = null,
+    string? TitleLineHash = null,
+    string? CompositeIdentityVersion = null,
+    string? CompositeIdentityHash = null);
 
 public sealed record ObservationCheckpoint(
     string CheckpointVersion,
@@ -169,7 +224,9 @@ public sealed record ObservationArtifact(
     string ObservedArtist,
     string ObservationStatus,
     DateTimeOffset CreatedAtUtc,
-    string? PublishedArtifactPath = null);
+    string? PublishedArtifactPath = null,
+    TitleLineFeatureObservation? TitleLineFeature = null,
+    CompositeObservationIdentity? CompositeIdentity = null);
 
 public enum ArtifactDisposition
 {
