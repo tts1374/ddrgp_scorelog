@@ -106,7 +106,7 @@ M5c-3cとして、M5c-3bがcatalog v2に対して `deferred` とした未解決o
 - 同一ID replay、異payload conflict、別ID同一画像、catalog成功後checkpoint失敗を機械的に区別する。
 - v1、manual review revision/history、runtimeのcurrent reference条件、auto-confirm境界を変更しない。
 - drift/旧version/corrupt入力の拒否時にcatalog/checkpoint副作用がない。
-- ルート `AGENTS.md` のReview Policyに従った独立review gateで、P1/P2の未対応指摘がない。
+- ルート `AGENTS.md` のReview Policyに従った独立review gateで、P0/P1/P2の未対応指摘がない。
 
 ## Open Risks / Blockers
 
