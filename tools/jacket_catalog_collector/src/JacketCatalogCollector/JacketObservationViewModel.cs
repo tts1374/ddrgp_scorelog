@@ -32,6 +32,7 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
     private readonly HashSet<string> autoSaveAttemptedIdentityKeys = new(StringComparer.Ordinal);
     private readonly Dictionary<string, ObservationSavePreflightDisposition> savePreflightByIdentity =
         new(StringComparer.Ordinal);
+    private CancellationTokenSource autoSaveCancellation = new();
 
     public JacketObservationViewModel(
         WindowCaptureViewModel capture,
@@ -343,7 +344,7 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
             captureEnded = true;
             pendingFrames = frameTail;
         }
-        AutoSaveEnabled = false;
+        CancelAutoSave();
         try
         {
             await pendingFrames.WaitAsync(cancellationToken);
@@ -380,7 +381,12 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
         }
     }
 
-    public ValueTask DisposeAsync() => session.DisposeAsync();
+    public async ValueTask DisposeAsync()
+    {
+        autoSaveCancellation.Cancel();
+        autoSaveCancellation.Dispose();
+        await session.DisposeAsync();
+    }
 
     private void OnFrameReceived(object? sender, RawCaptureFrame frame)
     {
@@ -476,7 +482,7 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
             {
                 captureEnded = true;
             }
-            AutoSaveEnabled = false;
+            CancelAutoSave();
             OnPropertyChanged(nameof(CanAdopt));
             OnPropertyChanged(nameof(CanConfigureAutoSave));
             OnPropertyChanged(nameof(CollectionStateTitle));
@@ -539,6 +545,7 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
     private async Task InspectAndMaybeAutoSaveAsync(JacketObservationCandidate candidate)
     {
         var candidateKey = CandidateIdentityKey(candidate);
+        var autoSaveToken = autoSaveCancellation.Token;
         ObservationSavePreflight preflight;
         if (savePreflightByIdentity.TryGetValue(candidateKey, out var cachedDisposition))
         {
@@ -548,7 +555,7 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
         {
             try
             {
-                preflight = await session.InspectLastStableSavePreflightAsync();
+                preflight = await session.InspectLastStableSavePreflightAsync(autoSaveToken);
                 savePreflightByIdentity[candidateKey] = preflight.Disposition;
             }
             catch (Exception exception)
@@ -579,8 +586,13 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
         }
         try
         {
-            var result = await session.AdoptLastStableAsync();
+            autoSaveToken.ThrowIfCancellationRequested();
+            var result = await session.AdoptLastStableAsync(autoSaveToken);
             await dispatcher.InvokeAsync(() => ApplyAdoptionResult(result, automatic: true));
+        }
+        catch (OperationCanceledException) when (autoSaveToken.IsCancellationRequested)
+        {
+            return;
         }
         catch (ObservationAlreadyCatalogedException exception)
         {
@@ -632,10 +644,19 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
 
     private void ResetSavePreflightState()
     {
+        autoSaveCancellation.Cancel();
+        autoSaveCancellation.Dispose();
+        autoSaveCancellation = new CancellationTokenSource();
         AutoSaveEnabled = false;
         catalogSavedIdentityKeys.Clear();
         autoSaveAttemptedIdentityKeys.Clear();
         savePreflightByIdentity.Clear();
+    }
+
+    private void CancelAutoSave()
+    {
+        AutoSaveEnabled = false;
+        autoSaveCancellation.Cancel();
     }
 
     private string CandidateIdentityKey(JacketObservationCandidate candidate) =>

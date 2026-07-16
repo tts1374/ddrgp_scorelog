@@ -1461,6 +1461,7 @@ public sealed class JacketObservationSession(
                 catalogPath,
                 masterPath,
                 cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
             var checkpointValue = NewCheckpoint(observations, candidate.FeatureHash);
             var publishReceipt = await artifactPublisher.PublishAsync(
                 artifact,
@@ -1499,6 +1500,7 @@ public sealed class JacketObservationSession(
                     catalogPath,
                     masterPath,
                     cancellationToken);
+                cancellationToken.ThrowIfCancellationRequested();
                 catalog = await catalogAdapter.IngestAsync(
                     artifact,
                     sourceImagePath,

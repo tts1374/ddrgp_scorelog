@@ -768,7 +768,7 @@ public sealed class JacketObservationTests : IDisposable
     }
 
     [Fact]
-    public async Task Stop_request_gates_in_flight_auto_save_before_adoption()
+    public async Task Stop_request_cancels_auto_save_after_preflight_gate()
     {
         var checkpointStore = new AtomicObservationCheckpointStore(root);
         var source = new TestFrameSource();
@@ -786,6 +786,7 @@ public sealed class JacketObservationTests : IDisposable
             TaskCreationOptions.RunContinuationsAsynchronously);
         var catalog = new FakeCatalogAdapter
         {
+            BlockIdentitySetOnCall = 2,
             IdentitySetEntered = identitySetEntered,
             IdentitySetRelease = identitySetRelease.Task,
         };
@@ -1906,6 +1907,7 @@ public sealed class JacketObservationTests : IDisposable
 
         public TaskCompletionSource? IdentitySetEntered { get; init; }
         public Task? IdentitySetRelease { get; init; }
+        public int BlockIdentitySetOnCall { get; init; } = 1;
 
         public async Task<IReadOnlySet<CompositeObservationIdentity>> LoadCompositeIdentitySetAsync(
             ObservationSessionIdentity session,
@@ -1913,10 +1915,13 @@ public sealed class JacketObservationTests : IDisposable
             CancellationToken cancellationToken = default)
         {
             IdentitySetCallCount++;
-            IdentitySetEntered?.TrySetResult();
-            if (IdentitySetRelease is not null)
+            if (IdentitySetCallCount == BlockIdentitySetOnCall)
             {
-                await IdentitySetRelease.WaitAsync(cancellationToken);
+                IdentitySetEntered?.TrySetResult();
+                if (IdentitySetRelease is not null)
+                {
+                    await IdentitySetRelease.WaitAsync(cancellationToken);
+                }
             }
             return new HashSet<CompositeObservationIdentity>(CompositeIdentities);
         }
