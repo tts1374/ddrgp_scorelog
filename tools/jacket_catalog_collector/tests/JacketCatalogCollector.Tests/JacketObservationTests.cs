@@ -46,6 +46,63 @@ public sealed class JacketObservationTests : IDisposable
     }
 
     [Fact]
+    public void Information_detector_reports_presence_stability_and_title_hash_changes()
+    {
+        var detector = new InformationTitleLineDetector(
+            new InformationTitleLineDetectorOptions(
+                StableFrameCount: 3,
+                MinimumStableDuration: TimeSpan.FromMilliseconds(100)));
+
+        var first = detector.Observe(InformationFrame(1, 1, 0));
+        var settling = detector.Observe(InformationFrame(1, 2, 50));
+        var stable = detector.Observe(InformationFrame(1, 3, 150));
+        var changed = detector.Observe(InformationFrame(2, 4, 200));
+
+        Assert.Equal(InformationTitleLineState.Settling, first.State);
+        Assert.Equal(InformationTitleLineState.Settling, settling.State);
+        Assert.Equal(InformationTitleLineState.Stable, stable.State);
+        Assert.True(stable.IsDisplayed);
+        Assert.True(stable.IsStable);
+        Assert.Equal(64, stable.TitleLineHash!.Length);
+        Assert.Equal(JacketObservationVersions.InformationTitleLineFeature, stable.FeatureVersion);
+        Assert.Equal(InformationTitleLineState.Settling, changed.State);
+        Assert.NotEqual(stable.TitleLineHash, changed.TitleLineHash);
+        Assert.Equal(1, changed.ConsecutiveFrameCount);
+    }
+
+    [Fact]
+    public void Information_detector_rejects_absent_and_non_monotonic_frames()
+    {
+        var detector = new InformationTitleLineDetector(
+            new InformationTitleLineDetectorOptions(
+                StableFrameCount: 2,
+                MinimumStableDuration: TimeSpan.Zero));
+
+        var absent = detector.Observe(Frame(20, 1, 0));
+        detector.Observe(InformationFrame(1, 2, 100));
+        var stable = detector.Observe(InformationFrame(1, 3, 200));
+        var backwards = detector.Observe(InformationFrame(1, 4, 150));
+        var restarted = detector.Observe(InformationFrame(1, 5, 300));
+        var invalid = detector.Observe(new RawCaptureFrame(
+            [1, 2, 3],
+            1280,
+            720,
+            6,
+            DateTimeOffset.UnixEpoch.AddMilliseconds(400)));
+
+        Assert.Equal(InformationTitleLineState.NotDisplayed, absent.State);
+        Assert.False(absent.IsDisplayed);
+        Assert.Null(absent.TitleLineHash);
+        Assert.Equal(InformationTitleLineState.Stable, stable.State);
+        Assert.Equal(InformationTitleLineState.InvalidFrame, backwards.State);
+        Assert.Equal(1, backwards.InvalidFrameCount);
+        Assert.Equal(InformationTitleLineState.Settling, restarted.State);
+        Assert.Equal(1, restarted.ConsecutiveFrameCount);
+        Assert.Equal(InformationTitleLineState.InvalidFrame, invalid.State);
+        Assert.Equal(2, invalid.InvalidFrameCount);
+    }
+
+    [Fact]
     public async Task Observation_queue_drops_are_persisted_with_capture_drops_after_stop()
     {
         var checkpointStore = new AtomicObservationCheckpointStore(root);
@@ -440,6 +497,70 @@ public sealed class JacketObservationTests : IDisposable
             Assert.Equal("収集は停止中", viewModel.CollectionStateTitle);
             await coordinator.StopAsync();
         }
+    }
+
+    [Fact]
+    public async Task Information_detection_updates_view_model_without_persisting_observation()
+    {
+        var checkpointStore = new AtomicObservationCheckpointStore(root);
+        var source = new TestFrameSource();
+        var candidate = Candidate();
+        var windows = new TestWindowEnumerator(candidate);
+        var coordinator = new WindowCaptureCoordinator(
+            windows,
+            new TestSessionFactory(source),
+            new ImmediateCaptureDispatcher(),
+            ringCapacity: 32);
+        var capture = new WindowCaptureViewModel(windows, coordinator);
+        await using var viewModel = new JacketObservationViewModel(
+            capture,
+            new JacketObservationSession(
+                new JacketObservationDetector(new JacketDetectorOptions(0.01, 2, TimeSpan.Zero)),
+                checkpointStore,
+                new AtomicObservationArtifactPublisher(root),
+                new FakeCatalogAdapter()),
+            new ImmediateCaptureDispatcher(),
+            new InformationTitleLineDetector(
+                new InformationTitleLineDetectorOptions(
+                    StableFrameCount: 2,
+                    MinimumStableDuration: TimeSpan.Zero)));
+        var settling = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var stable = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        viewModel.PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName != nameof(viewModel.InformationTitleLineHash))
+            {
+                return;
+            }
+            if (viewModel.InformationDetection.State == InformationTitleLineState.Settling)
+            {
+                settling.TrySetResult();
+            }
+            else if (viewModel.InformationDetection.State == InformationTitleLineState.Stable)
+            {
+                stable.TrySetResult();
+            }
+        };
+
+        await viewModel.StartSessionAsync(
+            Master(), Catalog(), candidate, "master.sqlite", "catalog.sqlite");
+        Assert.True(await coordinator.StartAsync(candidate));
+        source.Write(InformationFrame(1, 1, 0));
+        await settling.Task;
+        source.Write(InformationFrame(1, 2, 100));
+        await stable.Task;
+
+        Assert.Equal("表示あり", viewModel.InformationPanelDisplay);
+        Assert.Equal("安定", viewModel.InformationTitleLineStability);
+        Assert.Equal(64, viewModel.InformationTitleLineHash.Length);
+        Assert.False(Directory.Exists(Path.Combine(root, viewModel.SessionId)));
+
+        await viewModel.StopAsync();
+        Assert.Equal("表示なし", viewModel.InformationPanelDisplay);
+        Assert.Equal("—", viewModel.InformationTitleLineHash);
+        await coordinator.StopAsync();
     }
 
     [Fact]
@@ -1378,6 +1499,58 @@ public sealed class JacketObservationTests : IDisposable
 
     private static RawCaptureFrame Frame(byte value, long sequence, long milliseconds) =>
         new(EncodePng(value), 1280, 720, sequence, DateTimeOffset.UnixEpoch.AddMilliseconds(milliseconds));
+
+    private static RawCaptureFrame InformationFrame(
+        byte titleVariant,
+        long sequence,
+        long milliseconds) => new(
+        EncodeInformationPng(titleVariant),
+        1280,
+        720,
+        sequence,
+        DateTimeOffset.UnixEpoch.AddMilliseconds(milliseconds));
+
+    private static byte[] EncodeInformationPng(byte titleVariant)
+    {
+        var pixels = new byte[1280 * 720 * 4];
+        for (var index = 3; index < pixels.Length; index += 4)
+        {
+            pixels[index] = 255;
+        }
+        PaintWhiteRectangle(pixels, 1280, 292, 39, 22, 8);
+        PaintWhiteRectangle(pixels, 1280, 324, 39, 18, 8);
+        var titleX = titleVariant == 1 ? 300 : 360;
+        PaintWhiteRectangle(pixels, 1280, titleX, 69, 28, 10);
+        PaintWhiteRectangle(pixels, 1280, titleX + 36, 69, 20, 10);
+        var source = BitmapSource.Create(
+            1280, 720, 96, 96, PixelFormats.Bgra32, null, pixels, 1280 * 4);
+        source.Freeze();
+        var encoder = new PngBitmapEncoder();
+        encoder.Frames.Add(BitmapFrame.Create(source));
+        using var stream = new MemoryStream();
+        encoder.Save(stream);
+        return stream.ToArray();
+    }
+
+    private static void PaintWhiteRectangle(
+        byte[] pixels,
+        int width,
+        int x,
+        int y,
+        int rectangleWidth,
+        int rectangleHeight)
+    {
+        for (var row = y; row < y + rectangleHeight; row++)
+        {
+            for (var column = x; column < x + rectangleWidth; column++)
+            {
+                var offset = (row * width + column) * 4;
+                pixels[offset] = 255;
+                pixels[offset + 1] = 255;
+                pixels[offset + 2] = 255;
+            }
+        }
+    }
 
     private static byte[] EncodePng(byte value)
     {
