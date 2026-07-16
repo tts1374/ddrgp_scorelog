@@ -17,6 +17,8 @@ public sealed class AtomicObservationCheckpointStore(string evidenceRoot)
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        var validated = FromDocument(ToDocument(checkpoint));
+        ValidateObservationPaths(validated);
         var sessionDirectory = SessionDirectory(checkpoint.Session.SessionId);
         Directory.CreateDirectory(sessionDirectory);
         var target = Path.Combine(sessionDirectory, "checkpoint.json");
@@ -90,7 +92,7 @@ public sealed class AtomicObservationCheckpointStore(string evidenceRoot)
     internal static bool IsSha256(string? value) => value is not null && value.Length == 64
         && value.All(character => character is >= '0' and <= '9' or >= 'a' and <= 'f');
 
-    private void ValidateObservationPaths(ObservationCheckpoint checkpoint)
+    internal void ValidateObservationPaths(ObservationCheckpoint checkpoint)
     {
         var observationsDirectory = Path.Combine(
             SessionDirectory(checkpoint.Session.SessionId), "observations");
@@ -139,7 +141,27 @@ public sealed class AtomicObservationCheckpointStore(string evidenceRoot)
             ObservationId = item.ObservationId,
             SourceImageHash = item.SourceImageHash,
             JacketCropHash = item.JacketCropHash,
-            FeatureHash = item.FeatureHash,
+            FeatureHash = value.CheckpointVersion == JacketObservationVersions.LegacySessionCheckpoint
+                ? item.FeatureHash
+                : null,
+            JacketFeatureVersion = value.CheckpointVersion == JacketObservationVersions.SessionCheckpoint
+                ? item.JacketFeatureVersion
+                : null,
+            JacketFeatureHash = value.CheckpointVersion == JacketObservationVersions.SessionCheckpoint
+                ? item.FeatureHash
+                : null,
+            TitleLineFeatureVersion = value.CheckpointVersion == JacketObservationVersions.SessionCheckpoint
+                ? item.TitleLineFeatureVersion
+                : null,
+            TitleLineHash = value.CheckpointVersion == JacketObservationVersions.SessionCheckpoint
+                ? item.TitleLineHash
+                : null,
+            CompositeIdentityVersion = value.CheckpointVersion == JacketObservationVersions.SessionCheckpoint
+                ? item.CompositeIdentityVersion
+                : null,
+            CompositeIdentityHash = value.CheckpointVersion == JacketObservationVersions.SessionCheckpoint
+                ? item.CompositeIdentityHash
+                : null,
             CatalogStatus = item.CatalogStatus,
             CatalogReferenceId = item.CatalogReferenceId,
             ArtifactPath = item.ArtifactPath,
@@ -150,7 +172,9 @@ public sealed class AtomicObservationCheckpointStore(string evidenceRoot)
 
     internal static ObservationCheckpoint FromDocument(CheckpointDocument value)
     {
-        if (value.CheckpointVersion != JacketObservationVersions.SessionCheckpoint)
+        if (value.CheckpointVersion is not (
+                JacketObservationVersions.LegacySessionCheckpoint
+                or JacketObservationVersions.SessionCheckpoint))
         {
             throw new InvalidOperationException("observation checkpoint version is unsupported");
         }
@@ -179,11 +203,32 @@ public sealed class AtomicObservationCheckpointStore(string evidenceRoot)
         {
             throw new InvalidOperationException("observation checkpoint observation ids are invalid");
         }
+        var isComposite = value.CheckpointVersion == JacketObservationVersions.SessionCheckpoint;
         if (observations.Any(item => item.CatalogStatus is not ("pending" or "ingested" or "deferred")
             || !IsSha256(item.SourceImageHash)
             || !IsSha256(item.JacketCropHash)
-            || !IsSha256(item.FeatureHash)
-            || !stableFeatureHashes.Contains(item.FeatureHash, StringComparer.Ordinal)
+            || !IsSha256(isComposite ? item.JacketFeatureHash : item.FeatureHash)
+            || !stableFeatureHashes.Contains(
+                isComposite ? item.JacketFeatureHash! : item.FeatureHash!, StringComparer.Ordinal)
+            || isComposite && (
+                item.FeatureHash is not null
+                || item.JacketFeatureVersion != JacketObservationVersions.FrameFeature
+                || item.TitleLineFeatureVersion != JacketObservationVersions.InformationTitleLineFeature
+                || !IsSha256(item.TitleLineHash)
+                || item.CompositeIdentityVersion != JacketObservationVersions.CompositeIdentity
+                || !IsSha256(item.CompositeIdentityHash)
+                || CompositeObservationIdentityBuilder.Create(
+                    item.JacketFeatureVersion,
+                    item.JacketFeatureHash!,
+                    item.TitleLineFeatureVersion,
+                    item.TitleLineHash!).IdentityHash != item.CompositeIdentityHash)
+            || !isComposite && (
+                item.JacketFeatureVersion is not null
+                || item.JacketFeatureHash is not null
+                || item.TitleLineFeatureVersion is not null
+                || item.TitleLineHash is not null
+                || item.CompositeIdentityVersion is not null
+                || item.CompositeIdentityHash is not null)
             || string.IsNullOrWhiteSpace(item.ArtifactPath)
             || item.CatalogStatus == "ingested" && string.IsNullOrWhiteSpace(item.CatalogReferenceId)
             || item.CatalogStatus is "pending" or "deferred" && item.CatalogReferenceId is not null))
@@ -201,11 +246,16 @@ public sealed class AtomicObservationCheckpointStore(string evidenceRoot)
                 item.ObservationId,
                 item.SourceImageHash,
                 item.JacketCropHash,
-                item.FeatureHash,
+                isComposite ? item.JacketFeatureHash! : item.FeatureHash!,
                 item.CatalogStatus,
                 item.CatalogReferenceId,
                 item.ArtifactPath,
-                item.AdoptedAtUtc)).ToList(),
+                item.AdoptedAtUtc,
+                item.JacketFeatureVersion,
+                item.TitleLineFeatureVersion,
+                item.TitleLineHash,
+                item.CompositeIdentityVersion,
+                item.CompositeIdentityHash)).ToList(),
             value.UpdatedAtUtc);
     }
 
@@ -362,6 +412,9 @@ public sealed class AtomicObservationArtifactPublisher(string evidenceRoot)
                     ? item with { ArtifactPath = observationDirectory }
                     : item).ToList(),
             };
+            var validatedCheckpoint = AtomicObservationCheckpointStore.FromDocument(
+                AtomicObservationCheckpointStore.ToDocument(checkpointToPublish));
+            store.ValidateObservationPaths(validatedCheckpoint);
             if (File.Exists(documentPath))
             {
                 var existing = AtomicObservationCheckpointStore.ReadJson<ObservationDocument>(documentPath);
@@ -458,7 +511,10 @@ public sealed class AtomicObservationArtifactPublisher(string evidenceRoot)
             throw new InvalidOperationException("observation artifact image hash mismatch");
         }
         var expectedRoi = JacketRoi.Base.ScaleTo(document.SourceWidth, document.SourceHeight);
-        if (document.ManifestVersion != JacketObservationVersions.ObservationManifest
+        var isComposite = document.ManifestVersion == JacketObservationVersions.ObservationManifest;
+        if (document.ManifestVersion is not (
+                JacketObservationVersions.LegacyObservationManifest
+                or JacketObservationVersions.ObservationManifest)
             || document.SessionId != session.SessionId
             || document.ObservationId != observationId
             || document.SourceImage != "source.png"
@@ -498,6 +554,36 @@ public sealed class AtomicObservationArtifactPublisher(string evidenceRoot)
         {
             throw new InvalidOperationException("observation artifact manifest is invalid");
         }
+        if (isComposite)
+        {
+            if (document.TitleLineFeatureVersion != JacketObservationVersions.InformationTitleLineFeature
+                || !AtomicObservationCheckpointStore.IsSha256(document.TitleLineHash)
+                || document.TitleLineDetectorVersion != JacketObservationVersions.InformationDetector
+                || document.TitleLineRoiVersion != JacketObservationVersions.InformationPanelRoi
+                || document.CompositeIdentityVersion != JacketObservationVersions.CompositeIdentity
+                || !AtomicObservationCheckpointStore.IsSha256(document.CompositeIdentityHash)
+                || document.TitleLineSourceSequence != document.SourceSequence
+                || document.TitleLineCapturedAtUtc != document.CapturedAtUtc
+                || CompositeObservationIdentityBuilder.Create(
+                    document.FeatureVersion,
+                    document.FeatureHash,
+                    document.TitleLineFeatureVersion,
+                    document.TitleLineHash!).IdentityHash != document.CompositeIdentityHash)
+            {
+                throw new InvalidOperationException("observation artifact composite identity is invalid");
+            }
+        }
+        else if (document.TitleLineFeatureVersion is not null
+            || document.TitleLineHash is not null
+            || document.TitleLineDetectorVersion is not null
+            || document.TitleLineRoiVersion is not null
+            || document.TitleLineSourceSequence is not null
+            || document.TitleLineCapturedAtUtc is not null
+            || document.CompositeIdentityVersion is not null
+            || document.CompositeIdentityHash is not null)
+        {
+            throw new InvalidOperationException("legacy observation artifact contains composite identity fields");
+        }
         if (document.MasterVersion != session.MasterVersion
             || document.MasterSourceHash != session.MasterSourceHash
             || document.CatalogIdentity != session.CatalogIdentity
@@ -516,6 +602,20 @@ public sealed class AtomicObservationArtifactPublisher(string evidenceRoot)
         {
             throw new InvalidOperationException("observation artifact identity drift was detected");
         }
+        var titleLineFeature = isComposite
+            ? new TitleLineFeatureObservation(
+                document.TitleLineFeatureVersion!,
+                document.TitleLineHash!,
+                document.TitleLineSourceSequence!.Value,
+                document.TitleLineCapturedAtUtc!.Value,
+                document.TitleLineDetectorVersion!,
+                document.TitleLineRoiVersion!)
+            : null;
+        var compositeIdentity = isComposite
+            ? new CompositeObservationIdentity(
+                document.CompositeIdentityVersion!,
+                document.CompositeIdentityHash!)
+            : null;
         return new ObservationArtifact(
             document.ObservationId,
             session,
@@ -544,7 +644,9 @@ public sealed class AtomicObservationArtifactPublisher(string evidenceRoot)
             document.ObservedArtist,
             document.ObservationStatus,
             document.CreatedAtUtc,
-            observationDirectory);
+            observationDirectory,
+            titleLineFeature,
+            compositeIdentity);
     }
 
     public async Task RollbackAsync(
@@ -624,11 +726,51 @@ public sealed class AtomicObservationArtifactPublisher(string evidenceRoot)
         {
             throw new InvalidOperationException("observation artifact/checkpoint identity is invalid");
         }
+        if (checkpoint.CheckpointVersion is not (
+                JacketObservationVersions.LegacySessionCheckpoint
+                or JacketObservationVersions.SessionCheckpoint))
+        {
+            throw new InvalidOperationException("observation artifact/checkpoint version route is invalid");
+        }
+        var isComposite = checkpoint.CheckpointVersion == JacketObservationVersions.SessionCheckpoint;
+        if (isComposite != (artifact.CompositeIdentity is not null)
+            || isComposite != (artifact.TitleLineFeature is not null))
+        {
+            throw new InvalidOperationException("observation artifact/checkpoint version route is invalid");
+        }
+        if (isComposite && (
+                artifact.Feature.FeatureVersion != JacketObservationVersions.FrameFeature
+                || artifact.TitleLineFeature!.FeatureVersion
+                    != JacketObservationVersions.InformationTitleLineFeature
+                || artifact.TitleLineFeature.DetectorVersion
+                    != JacketObservationVersions.InformationDetector
+                || artifact.TitleLineFeature.RoiVersion
+                    != JacketObservationVersions.InformationPanelRoi
+                || artifact.TitleLineFeature.SourceSequence != artifact.SourceFrame.Sequence
+                || artifact.TitleLineFeature.CapturedAtUtc != artifact.SourceFrame.CapturedAtUtc
+                || artifact.CompositeIdentity!.IdentityVersion
+                    != JacketObservationVersions.CompositeIdentity
+                || artifact.CompositeIdentity.IdentityHash
+                    != CompositeObservationIdentityBuilder.Create(
+                        artifact.Feature.FeatureVersion,
+                        artifact.Feature.FeatureHash,
+                        artifact.TitleLineFeature.FeatureVersion,
+                        artifact.TitleLineFeature.FeatureHash).IdentityHash))
+        {
+            throw new InvalidOperationException("observation artifact composite identity is invalid");
+        }
         if (!checkpoint.Observations.Any(item =>
                 item.ObservationId == artifact.ObservationId
                 && item.SourceImageHash == artifact.SourceImageHash
                 && item.JacketCropHash == artifact.JacketCropHash
-                && item.FeatureHash == artifact.Feature.FeatureHash))
+                && item.FeatureHash == artifact.Feature.FeatureHash
+                && item.JacketFeatureVersion == (isComposite
+                    ? artifact.Feature.FeatureVersion
+                    : null)
+                && item.TitleLineFeatureVersion == artifact.TitleLineFeature?.FeatureVersion
+                && item.TitleLineHash == artifact.TitleLineFeature?.FeatureHash
+                && item.CompositeIdentityVersion == artifact.CompositeIdentity?.IdentityVersion
+                && item.CompositeIdentityHash == artifact.CompositeIdentity?.IdentityHash))
         {
             throw new InvalidOperationException("observation checkpoint does not contain the artifact");
         }
@@ -646,7 +788,9 @@ public sealed class AtomicObservationArtifactPublisher(string evidenceRoot)
 
     private static ObservationDocument ToDocument(ObservationArtifact value) => new()
     {
-        ManifestVersion = JacketObservationVersions.ObservationManifest,
+        ManifestVersion = value.CompositeIdentity is null
+            ? JacketObservationVersions.LegacyObservationManifest
+            : JacketObservationVersions.ObservationManifest,
         SessionId = value.Session.SessionId,
         ObservationId = value.ObservationId,
         SourceImage = "source.png",
@@ -676,6 +820,14 @@ public sealed class AtomicObservationArtifactPublisher(string evidenceRoot)
         RoiWidth = value.Feature.Roi.Width,
         RoiHeight = value.Feature.Roi.Height,
         FeatureHash = value.Feature.FeatureHash,
+        TitleLineFeatureVersion = value.TitleLineFeature?.FeatureVersion,
+        TitleLineHash = value.TitleLineFeature?.FeatureHash,
+        TitleLineDetectorVersion = value.TitleLineFeature?.DetectorVersion,
+        TitleLineRoiVersion = value.TitleLineFeature?.RoiVersion,
+        TitleLineSourceSequence = value.TitleLineFeature?.SourceSequence,
+        TitleLineCapturedAtUtc = value.TitleLineFeature?.CapturedAtUtc,
+        CompositeIdentityVersion = value.CompositeIdentity?.IdentityVersion,
+        CompositeIdentityHash = value.CompositeIdentity?.IdentityHash,
         MeanAbsoluteDifference = value.Feature.MeanAbsoluteDifference,
         SampleWidth = value.Feature.SampleWidth,
         SampleHeight = value.Feature.SampleHeight,
@@ -902,19 +1054,23 @@ public sealed class JacketObservationSession(
     private bool active;
     private long droppedFrameCount;
     private bool checkpointSavePending;
+    private bool compositeIdentityRequired;
 
     public event EventHandler<JacketDetectionResult>? DetectionChanged;
 
     public JacketDetectionResult LastDetection => lastDetection;
     public ObservationCheckpoint? Checkpoint => checkpoint;
     public bool IsActive => active;
-    public bool HasAdoptableCandidate => active && lastStableCandidate is not null;
+    public bool RequiresCompositeIdentity => compositeIdentityRequired;
+    public bool HasAdoptableCandidate => active && lastStableCandidate is not null
+        && (!compositeIdentityRequired || lastStableCandidate.CompositeIdentity is not null);
 
     public async Task StartAsync(
         ObservationSessionIdentity session,
         string masterDbPath,
         string catalogDbPath,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        bool requireCompositeIdentity = false)
     {
         ValidateSession(session);
         await gate.WaitAsync(cancellationToken);
@@ -932,6 +1088,7 @@ public sealed class JacketObservationSession(
             droppedFrameCount = 0;
             processedFrameBase = 0;
             checkpointSavePending = false;
+            compositeIdentityRequired = requireCompositeIdentity;
             lastStableCandidate = null;
             lastDetection = new JacketDetectionResult(
                 JacketDetectionState.NoFrame,
@@ -1010,6 +1167,12 @@ public sealed class JacketObservationSession(
                     if (artifact.SourceImageHash != observation.SourceImageHash
                         || artifact.JacketCropHash != observation.JacketCropHash
                         || artifact.Feature.FeatureHash != observation.FeatureHash
+                        || artifact.Feature.FeatureVersion != (observation.JacketFeatureVersion
+                            ?? artifact.Feature.FeatureVersion)
+                        || artifact.TitleLineFeature?.FeatureVersion != observation.TitleLineFeatureVersion
+                        || artifact.TitleLineFeature?.FeatureHash != observation.TitleLineHash
+                        || artifact.CompositeIdentity?.IdentityVersion != observation.CompositeIdentityVersion
+                        || artifact.CompositeIdentity?.IdentityHash != observation.CompositeIdentityHash
                         || artifact.PublishedArtifactPath != observation.ArtifactPath
                         || artifact.CreatedAtUtc != observation.AdoptedAtUtc)
                     {
@@ -1038,6 +1201,7 @@ public sealed class JacketObservationSession(
             droppedFrameCount = loaded.DroppedFrameCount;
             processedFrameBase = loaded.ProcessedFrameCount;
             checkpointSavePending = false;
+            compositeIdentityRequired = loaded.CheckpointVersion == JacketObservationVersions.SessionCheckpoint;
             lastStableCandidate = null;
             lastDetection = new JacketDetectionResult(
                 JacketDetectionState.NoFrame,
@@ -1057,7 +1221,8 @@ public sealed class JacketObservationSession(
 
     public async Task<JacketDetectionResult> ObserveFrameAsync(
         RawCaptureFrame frame,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        InformationTitleLineDetectionResult? information = null)
     {
         await gate.WaitAsync(cancellationToken);
         try
@@ -1073,6 +1238,15 @@ public sealed class JacketObservationSession(
                     lastDetection.DuplicatePreviewCount);
             }
             var detectorResult = detector.Observe(frame);
+            if (compositeIdentityRequired
+                && detectorResult.HasStableCandidate
+                && detectorResult.Candidate is not null)
+            {
+                detectorResult = detectorResult with
+                {
+                    Candidate = EnrichCandidate(detectorResult.Candidate, frame, information),
+                };
+            }
             lastDetection = detectorResult with
             {
                 ProcessedFrameCount = processedFrameBase + detectorResult.ProcessedFrameCount,
@@ -1107,8 +1281,15 @@ public sealed class JacketObservationSession(
                 throw new InvalidOperationException("stable candidate is not ready for explicit adoption");
             }
             var candidate = lastStableCandidate;
+            if (compositeIdentityRequired
+                && (candidate.TitleLineFeature is null || candidate.CompositeIdentity is null))
+            {
+                throw new InvalidOperationException(
+                    "stable title-line feature from the same frame is required for explicit adoption");
+            }
             var previousCheckpoint = checkpoint;
-            var observationId = BuildObservationId(identity.SessionId, candidate.FeatureHash);
+            var observationKey = candidate.CompositeIdentity?.IdentityHash ?? candidate.FeatureHash;
+            var observationId = BuildObservationId(identity.SessionId, observationKey);
             var existing = checkpoint?.Observations.FirstOrDefault(
                 item => item.ObservationId == observationId);
             ObservationArtifact artifact;
@@ -1134,7 +1315,9 @@ public sealed class JacketObservationSession(
                     "",
                     "",
                     "unresolved",
-                    DateTimeOffset.UtcNow);
+                    DateTimeOffset.UtcNow,
+                    TitleLineFeature: candidate.TitleLineFeature,
+                    CompositeIdentity: candidate.CompositeIdentity);
             }
             var sourceHash = artifact.SourceImageHash;
             var cropHash = artifact.JacketCropHash;
@@ -1148,12 +1331,23 @@ public sealed class JacketObservationSession(
                     "pending",
                     null,
                     "",
-                    artifact.CreatedAtUtc)
+                    artifact.CreatedAtUtc,
+                    compositeIdentityRequired ? artifact.Feature.FeatureVersion : null,
+                    compositeIdentityRequired ? artifact.TitleLineFeature?.FeatureVersion : null,
+                    compositeIdentityRequired ? artifact.TitleLineFeature?.FeatureHash : null,
+                    compositeIdentityRequired ? artifact.CompositeIdentity?.IdentityVersion : null,
+                    compositeIdentityRequired ? artifact.CompositeIdentity?.IdentityHash : null)
                 : existing;
             if (existing is not null
                 && (existing.SourceImageHash != sourceHash
                     || existing.JacketCropHash != cropHash
-                    || existing.FeatureHash != artifact.Feature.FeatureHash))
+                    || existing.FeatureHash != artifact.Feature.FeatureHash
+                    || compositeIdentityRequired && (
+                        existing.JacketFeatureVersion != artifact.Feature.FeatureVersion
+                        || existing.TitleLineFeatureVersion != artifact.TitleLineFeature?.FeatureVersion
+                        || existing.TitleLineHash != artifact.TitleLineFeature?.FeatureHash
+                        || existing.CompositeIdentityVersion != artifact.CompositeIdentity?.IdentityVersion
+                        || existing.CompositeIdentityHash != artifact.CompositeIdentity?.IdentityHash)))
             {
                 throw new InvalidOperationException(
                     "observation id is already used with a different payload");
@@ -1408,7 +1602,9 @@ public sealed class JacketObservationSession(
     private ObservationCheckpoint NewCheckpoint(
         IReadOnlyList<ObservationCheckpointObservation> observations,
         string? lastStableFeatureHash) => new(
-        JacketObservationVersions.SessionCheckpoint,
+        compositeIdentityRequired
+            ? JacketObservationVersions.SessionCheckpoint
+            : JacketObservationVersions.LegacySessionCheckpoint,
         identity ?? throw new InvalidOperationException("session identity is missing"),
         lastStableFeatureHash,
         detector.StableFeatureHashes,
@@ -1423,6 +1619,40 @@ public sealed class JacketObservationSession(
 
     private static string Hash(byte[] bytes) =>
         Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
+
+    private static JacketObservationCandidate EnrichCandidate(
+        JacketObservationCandidate candidate,
+        RawCaptureFrame frame,
+        InformationTitleLineDetectionResult? information)
+    {
+        if (information is null
+            || !information.IsStable
+            || information.SourceSequence != frame.Sequence
+            || information.CapturedAtUtc != frame.CapturedAtUtc
+            || information.DetectorVersion != JacketObservationVersions.InformationDetector
+            || information.RoiVersion != JacketObservationVersions.InformationPanelRoi
+            || information.FeatureVersion != JacketObservationVersions.InformationTitleLineFeature
+            || !CompositeObservationIdentityBuilder.IsSha256(information.TitleLineHash))
+        {
+            return candidate with { TitleLineFeature = null, CompositeIdentity = null };
+        }
+        var titleLine = new TitleLineFeatureObservation(
+            information.FeatureVersion,
+            information.TitleLineHash!,
+            frame.Sequence,
+            frame.CapturedAtUtc,
+            information.DetectorVersion,
+            information.RoiVersion);
+        return candidate with
+        {
+            TitleLineFeature = titleLine,
+            CompositeIdentity = CompositeObservationIdentityBuilder.Create(
+                candidate.Feature.FeatureVersion,
+                candidate.Feature.FeatureHash,
+                titleLine.FeatureVersion,
+                titleLine.FeatureHash),
+        };
+    }
 
     private static void ValidateSession(ObservationSessionIdentity value)
     {
@@ -1506,7 +1736,26 @@ internal sealed class CheckpointObservationDocument
     [JsonPropertyName("jacket_crop_hash")]
     public required string JacketCropHash { get; init; }
     [JsonPropertyName("feature_hash")]
-    public required string FeatureHash { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? FeatureHash { get; init; }
+    [JsonPropertyName("jacket_feature_version")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? JacketFeatureVersion { get; init; }
+    [JsonPropertyName("jacket_feature_hash")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? JacketFeatureHash { get; init; }
+    [JsonPropertyName("title_line_feature_version")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? TitleLineFeatureVersion { get; init; }
+    [JsonPropertyName("title_line_hash")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? TitleLineHash { get; init; }
+    [JsonPropertyName("composite_identity_version")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? CompositeIdentityVersion { get; init; }
+    [JsonPropertyName("composite_identity_hash")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? CompositeIdentityHash { get; init; }
     [JsonPropertyName("catalog_status")]
     public required string CatalogStatus { get; init; }
     [JsonPropertyName("catalog_reference_id")]
@@ -1634,6 +1883,30 @@ internal sealed class ObservationDocument
     public int RoiHeight { get; init; }
     [JsonPropertyName("feature_hash")]
     public required string FeatureHash { get; init; }
+    [JsonPropertyName("title_line_feature_version")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? TitleLineFeatureVersion { get; init; }
+    [JsonPropertyName("title_line_hash")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? TitleLineHash { get; init; }
+    [JsonPropertyName("title_line_detector_version")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? TitleLineDetectorVersion { get; init; }
+    [JsonPropertyName("title_line_roi_version")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? TitleLineRoiVersion { get; init; }
+    [JsonPropertyName("title_line_source_sequence")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public long? TitleLineSourceSequence { get; init; }
+    [JsonPropertyName("title_line_captured_at_utc")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public DateTimeOffset? TitleLineCapturedAtUtc { get; init; }
+    [JsonPropertyName("composite_identity_version")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? CompositeIdentityVersion { get; init; }
+    [JsonPropertyName("composite_identity_hash")]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? CompositeIdentityHash { get; init; }
     [JsonPropertyName("mean_absolute_difference")]
     public double MeanAbsoluteDifference { get; init; }
     [JsonPropertyName("sample_width")]
