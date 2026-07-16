@@ -163,6 +163,19 @@ def test_current_create_has_exact_composite_schema(
     } <= columns
     assert "idx_jacket_references_composite_identity" in indexes
     assert catalog.load_composite_identities(catalog_path) == frozenset()
+    identity_set = catalog.load_observation_composite_identity_set(
+        catalog_path,
+        expected_catalog_identity=catalog.CATALOG_IDENTITY,
+        expected_catalog_schema_version=1,
+        expected_catalog_created_at=metadata["created_at"],
+    )
+    assert identity_set == {
+        "identity_set_schema_version": "m5c-catalog-composite-identity-set-v1",
+        "catalog_identity": catalog.CATALOG_IDENTITY,
+        "catalog_schema_version": 1,
+        "catalog_created_at": metadata["created_at"],
+        "identities": [],
+    }
 
 
 def test_old_catalog_version_is_read_only_rejected(
@@ -178,6 +191,13 @@ def test_old_catalog_version_is_read_only_rejected(
 
     with pytest.raises(ValueError, match="unsupported"):
         catalog.validate_catalog(catalog_path)
+    with pytest.raises(ValueError, match="unsupported"):
+        catalog.load_observation_composite_identity_set(
+            catalog_path,
+            expected_catalog_identity=catalog.CATALOG_IDENTITY,
+            expected_catalog_schema_version=1,
+            expected_catalog_created_at=created_at(catalog_path),
+        )
     with pytest.raises(ValueError, match="unsupported"):
         catalog.ingest_observation(
             catalog_path,
@@ -315,6 +335,18 @@ def test_duplicate_identity_converges_for_all_review_statuses(
     assert duplicate.review_status == status
     with sqlite3.connect(catalog_path) as connection:
         assert connection.execute("SELECT COUNT(*) FROM jacket_references").fetchone()[0] == 1
+    identity_set = catalog.load_observation_composite_identity_set(
+        catalog_path,
+        expected_catalog_identity=catalog.CATALOG_IDENTITY,
+        expected_catalog_schema_version=1,
+        expected_catalog_created_at=created_at(catalog_path),
+    )
+    assert identity_set["identities"] == [
+        {
+            "identity_version": catalog.COMPOSITE_IDENTITY_VERSION,
+            "identity_hash": identity("shared")["expected_composite_identity_hash"],
+        }
+    ]
 
 
 def test_replay_conflict_and_review_failure_leave_catalog_bytes_unchanged(
@@ -419,5 +451,6 @@ def test_current_receipt_coverage_and_cli_contract(
         "ingest",
         "validate-session",
         "validate-receipt",
+        "identity-set",
     } == set(subcommands)
     assert {"migrate-v2", "migrate-v3", "ingest-v2"}.isdisjoint(subcommands)

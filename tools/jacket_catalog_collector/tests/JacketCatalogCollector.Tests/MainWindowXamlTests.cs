@@ -48,6 +48,12 @@ public sealed class MainWindowXamlTests
         Assert.Contains("このジャケットを保存", buttonLabels);
         Assert.Contains("収集を開始", buttonLabels);
         Assert.Contains("収集を終了", buttonLabels);
+        Assert.Contains(
+            document.Descendants().Where(element => element.Name.LocalName == "CheckBox"),
+            element => element.Attribute("Content")?.Value
+                    == "このsessionで保存前照合済み候補を自動保存する（既定OFF）"
+                && element.Attribute("IsChecked")?.Value
+                    == "{Binding Observation.AutoSaveEnabled, Mode=TwoWay}");
         Assert.Contains("管理・設定", tabs);
         Assert.Contains(
             document.Descendants().Where(element => element.Name.LocalName == "DataGridCheckBoxColumn"),

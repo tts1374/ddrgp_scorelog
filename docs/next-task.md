@@ -1,34 +1,31 @@
 # 現在PR完了記録
 
-初回リリース前のdeveloper-only jacket catalogをcurrent composite schema 1件へ統一し、旧catalog schemaの通常runtime互換、migration、legacy ingest、read-only projection fallbackを削除した。既存local DB/artifact/checkpoint/source/crop画像は変更せず、current catalogとexact一致しないDBを副作用なしでunsupportedとして拒否する。
+developer-only jacket catalog collectorへ、current checkpointとcurrent catalogのcomposite identity集合を保存前に照合する、session単位・既定OFFの明示opt-in自動保存を追加した。既存local catalog、artifact、checkpoint、source/crop画像を移行、削除、上書き、repairせず、catalogに既存identityがある候補は新規artifact/checkpointを作らない。
 
 ## 今回の完了範囲
 
-- 現行composite identity付きschemaを唯一のcatalog schema version 1として定義した。新規catalogは`PRAGMA user_version=1`、metadata schema version 1、manual review state/history、jacket/title-line/composite identity列・constraint・一意indexを持つ。
-- `CATALOG_SCHEMA_VERSION`を1件へ統一し、旧schema SQL、v1/v2/v3分岐、v1→v2/v2→v3 migration API/CLI、CSV legacy build/ingestを削除した。`create` CLIで`data/`配下の未作成pathへcurrent catalogを作成できる。
-- current `ingest`は非空observation ID、artifact image hash、current master/catalog/extractor identity、jacket/title-line/composite identity一式を必須にする。missing/null、unknown version、非lower SHA-256、canonical hash不一致をcatalog変更前に拒否する。
-- 同一observation ID・同一payloadは冪等、異payloadは副作用なしで拒否する。異なるobservation IDでも同じcomposite identityなら、`unresolved`、`auto_confirmed`、`manual_confirmed`、`needs_review`、`rejected`を含む全review状態で既存reference receiptへtransaction内で収束する。
-- create、strict validation、manual review、coverage、M5 feature load、read-only identity lookup、observation session/receipt validationをcurrent schemaだけへ統一した。
-- projectionをcurrent-only version 3へ更新し、`migration_required`、`read_only`、`manual_review_v2`など旧compatibility fieldを削除した。C# loader、model、ViewModel、fixture、UIから旧projection/catalog互換とmigration操作を削除した。
-- collector adapterはcatalog schema version 1のcurrent `ingest`だけを呼び、manifest v2の完全なcomposite identityを渡す。unsupported catalog sessionをPython実行前またはstrict preflightで拒否する。
-- title/artist evaluationはcurrent catalog schema version 1だけを受け入れ、旧catalog schema identityへのfallbackを削除した。artifact manifest v1/v2自体の検査契約は維持した。
-- `docs/design/05_storage_io_spec.md`、`docs/design/06_regression_guard.md`、`docs/design/09_master_match_poc.md`、implementation roadmap、vision PoC/collector READMEをcurrent-only契約へ同期した。
+- current catalog schema version 1をstrict read-onlyで開き、catalog identity/schema/created-atを同じ接続で照合してから、`rejected`を含む全review状態のcomposite identity集合を返すversion付きJSON契約を追加した。
+- 手動保存と自動保存のartifact publish前に、現在のsession checkpointと上記catalog identity集合を照合する。checkpointにあるidentityは既存receipt/retry経路へ留め、catalogだけにあるidentityは保存済み表示にして新規artifact/checkpointを作らない。
+- 自動保存はfresh session、resume、stopの境界でOFFへ戻るsession単位opt-inとし、端末設定へ永続化しない。明示的に有効化したsessionだけ、stable composite候補をidentityごとに1回自動試行する。
+- 自動保存は既存のartifact atomic publish、current catalog ingest、checkpoint receipt、明示catalog retryを再利用する。失敗後の暗黙再試行は行わず、明示保存またはcatalog retryへ送る。
+- 保存前照合後の別processとの競合は、current catalogのcomposite identity一意制約と冪等ingestで既存referenceへ収束させる。forceful ownershipや別writerを追加していない。
+- collector UIへ既定OFFのcheckboxを追加し、catalog/checkpoint保存済み候補では保存ボタンを無効化する。公開`DDRGpScoreViewer`、正式個人スコアDB、ゲーム操作へ接続していない。
+- `docs/design/05_storage_io_spec.md`、`docs/design/06_regression_guard.md`、implementation roadmap、collector READMEを同じ契約へ同期した。
 
 ## 維持した境界
 
-- 既存local catalog、artifact、checkpoint、source/crop画像をmigration、削除、移動、上書き、in-place repairしていない。
-- artifact manifest/checkpoint v1/v2のversion、保存内容、atomic publish、resume/retry状態機械をcatalog schema versionと同時に再採番していない。
-- backfill不能観測を別identityへ推測せず、title-line hashをOCR文字列、master song/chart ID、正式保存値へ昇格していない。
-- manual review revision/history、candidate、coverage、M5永続特徴量の責務を維持した。
-- current checkpointとcatalog identity集合の保存前照合、保存ボタン無効化、opt-in自動保存、ゲーム操作、正式個人スコアDB、公開`DDRGpScoreViewer`へ進んでいない。
-- 実local DB/artifactを使用するmigrationやrepairは実行していない。testはtemporary synthetic DB/imageだけを使用した。
+- artifact manifest/checkpoint v1/v2、observation ID、current ingest payload、catalog schema、manual review、resume/retry、catalog commit後checkpoint failureの状態機械を再採番・変更していない。
+- title-line hashとcomposite identityをOCR文字列、master song/chart ID、正式個人スコアDBの保存値へ昇格していない。
+- capture開始、window選択、ゲーム操作は自動化していない。自動保存opt-inだけでcapture開始や別window選択を起動しない。
+- 既存local DB、artifact、checkpoint、source/crop画像、実入力JSON、生成物をtest入力やGit差分へ含めていない。testはtemporary synthetic DB/imageだけを使用した。
 
 ## 検証実績
 
-- `python -m pytest -q`: 538 passed。
+- `python -m pytest -q tests`: passed。
 - `python -m ruff check tools/vision_poc pyproject.toml tests`: passed。
 - `python -m compileall -q master tools/vision_poc`: passed。
-- `dotnet test tools/jacket_catalog_collector/tests/JacketCatalogCollector.Tests/JacketCatalogCollector.Tests.csproj --no-restore`: 131 passed。
+- `dotnet test tools/jacket_catalog_collector/tests/JacketCatalogCollector.Tests/JacketCatalogCollector.Tests.csproj --no-restore`: 135 passed。
+- `git diff --check`: passed。
 - Python testの既知warningとして`pytest_chalice`経由の`pkg_resources` deprecated warningだけを確認した。
 - 画像分類、ROI、OCR logicは変更していないため、local screenshot素材を使う`python -m tools.vision_poc`は実行条件外とした。
 
@@ -36,15 +33,11 @@
 
 次PRの実装仕様は未確定。今回PR完了後に自動的に着手しない。
 
-既存資料上の後続候補は、current checkpointとcurrent catalogのcomposite identity集合を保存前に照合する明示opt-in自動保存だが、次のproduct/状態遷移判断が固定されていないため、この記録では受入条件を推測しない。
-
 ## 未決事項
 
-- opt-in設定の保存場所、既定値、session単位か端末単位か。
-- current catalogに存在しないidentityだけを保存可能とするUI表示と、backfill不能/unsupported旧sessionの表示。
-- 保存前read、writer receipt、checkpoint update、retry/replay、catalog commit後checkpoint failureの状態遷移。
-- 保存ボタン無効化と明示手動保存の優先関係。
-- 実capture false-positive gateと、auto-saveを有効化できる評価条件。
-- concurrent session/processが同じidentityを保存する場合のownership、ordering、UI receipt表示。
+- 実capture false-positive gateと、自動保存を実運用で有効化できる評価条件。
+- 複数collector processが同じidentityを同時に観測した場合のUI上のownership、ordering、receipt表示。DB整合性は一意制約と冪等ingestで維持するが、process間調停は未実装。
+- sessionを越えて自動保存opt-inを保持するproduct要件。今回の安全側契約はsession単位・既定OFF・非永続。
+- grid自動巡回、ゲーム操作、公開app連携、正式個人スコアDB接続。
 
-これらを固定するまでは、opt-in自動保存、保存前照合UI、公開app/正式個人スコアDB接続、ゲーム操作へ進まない。
+これらの受入条件が固定されるまでは推測実装しない。

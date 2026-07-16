@@ -296,6 +296,8 @@ current referenceはmanual review revision/historyと、`jacket_feature_version/
 
 current `ingest`は非空observation ID、artifact image bytes/hash、空title/artist、`unresolved`、session開始時のmaster version/source hash、catalog identity/schema/created-at、current extractor、完全なcomposite identityをcatalog変更前に検査する。同一observation ID・同一payloadは冪等、異payloadは拒否する。異なるobservation IDでも同じcomposite identityなら、review statusに関係なくtransaction内で既存reference receiptへ収束させ、2件目を作らない。新規rowはsong未割当、revision 0、manual provenance/history/candidateなしとする。
 
+collectorの手動保存と明示opt-in自動保存は、artifact publish前にcurrent checkpointとcurrent catalogのcomposite identity集合を照合する。identity集合はcatalog identity/schema/created-atと同じread-only接続で検査し、`rejected`を含む全review状態を対象にする。checkpoint既存identityは新規観測を作らず既存receipt/retryへ留め、catalogだけにあるidentityはartifact/checkpointを作らない。自動保存はsession単位・既定OFFで、fresh/resume/stop時にOFFへ戻し、端末設定へ永続化しない。1 identityにつき自動試行は1回とし、失敗後は明示保存またはcatalog retryを使う。照合後の並行投入はcatalogの一意制約と冪等ingestで既存referenceへ収束させる。
+
 projectionとmanual review、coverage、M5 feature loader、title/artist evaluationはcurrent catalogだけを受け入れる。projectionはversion 3でcurrent/stored state、revision、candidate、manual provenance、append-only historyを返し、旧migration/capability fieldを持たない。manual mutationはexpected revision/status/songをpreconditionにし、同一action ID・同一payloadだけを冪等成功とし、current row/historyを同じtransactionで更新する。candidate、expected song、OCR rawを確定songへ昇格しない。
 
 coverageは `data/` 配下の明示directoryへ `jacket_catalog_song_coverage.csv`、`jacket_catalog_coverage_summary.json`、`jacket_catalog_coverage.md` を生成する。確定songがないreferenceでもGP対象candidateは `needs_review` として数え、候補のない観測だけを未割当集計へ残す。current master/GP/current extractorを満たす `auto_confirmed` / `manual_confirmed` referenceだけをM5 matcherへ供給し、`rejected`、orphan、旧extractor、不正persisted featureを除外する。
