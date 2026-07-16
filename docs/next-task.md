@@ -1,26 +1,27 @@
 # 現在PR完了記録
 
-developer-only jacket collectorのfresh observation保存経路へ、stable jacket featureと同じcapture frameのstable `INFORMATION`曲名行featureを組み合わせるversion付きcomposite identityを追加した。local observation manifest/checkpointだけをv2へ更新し、catalog schema/writer、自動保存、公開app、正式個人スコアDBは変更していない。
+developer-only jacket catalogへversion付きcomposite identityを保持・検索するschema v3と、既存local observation artifactからのcopy-on-write migration/backfillを追加した。明示保存writerはv3 identityをtransaction内で一意化するが、checkpoint/catalog照合UIとopt-in自動保存には進んでいない。
 
 ## 今回の完了範囲
 
-- `m5c-jacket-title-composite-identity-v1`を追加し、composite identity version、jacket feature version/hash、title-line feature version/hashをこの順のUTF-8 NUL区切りbyte列としてSHA-256 lower hexを決定的に生成する。
-- stable jacket候補とtitle-line detector結果のcapture sequence/timestampを照合し、同じframeかつ既知versionのstable title-lineだけを候補へ関連付ける。
-- title-line未表示・未安定、unknown detector/ROI/feature version、非lower-hex、frame不一致ではcomposite identityを作らず、fresh sessionの明示採用を副作用なしで拒否する。
-- fresh sessionを`m5c-observation-manifest-v2` / `m5c-observation-checkpoint-v2`へ更新し、jacket feature version/hash、title-line feature version/hash、composite identity version/hashをstrictな必須fieldとして保存する。
-- unknown/missing/null/empty/非lower-hex、version不一致、canonical hash不一致、manifest/checkpoint identity drift、同一observation ID異payloadを拒否する。
-- observation IDのlower SHA-256形式とcatalog ingest APIを維持しつつ、fresh sessionではcomposite identityを決定的ID入力として同一jacket・異title-lineを別observationにする。
-- 既存v1 artifact/checkpointを変更・backfill・削除せず、legacy resume/retryはv1のまま、新規v2 resume/retryはv2のまま処理する。
-- atomic artifact publish、checkpoint save、rollback、catalog receipt後のcheckpoint retry、resume時の全artifact照合を既存経路のまま維持した。
-- title/artist評価consumerをv1/v2の明示分岐へ更新し、v2 composite identityをstrict検証する。
-- synthetic frameで決定性、同一jacket・異title-line、同frame制約、保存内容、corrupt/drift拒否、v2 resumeを回帰testへ追加した。
+- catalog schema v3へjacket feature version/hash、title-line feature version/hash、composite identity version/hashを全nullまたは全非nullの1組として追加した。
+- 非null identityは既知version、lower SHA-256、既存NUL区切りcanonical hashをstrict検証し、`(composite_identity_version, composite_identity_hash)`のpartial unique indexでcatalog全体を一意化した。
+- `load_composite_identities()`を追加し、`unresolved`、review待ち、確定、再割当、`reopen`、`rejected`を区別せず、存在する全identityをstrict read-only集合として取得できるようにした。
+- v2 source catalog、未作成v3 target、local artifact rootを明示する`migrate-v3`を追加した。source read snapshotから別stagingへreference/candidate/review historyを複製し、strict検証後だけ新規targetをexclusive publishする。
+- `source_capture_id`に対応する一意な`observation.json`、`source.png`、`jacket-crop.png`のversion、hash、寸法、jacket featureを検証する。manifest v1は固定済みROI/binary maskからtitle-line featureとcomposite identityを再計算し、manifest v2は保存済みidentityとも照合する。
+- artifact欠損、改変、unknown version、複数locator、identity競合は推測でbackfillせず、rowをnullのままreceiptの`counts`/`rows`へ理由付きで残す。
+- v3 fresh ingestはmanifest v2のidentity一式を必須にし、同じidentityの別observation/retry/競合をreview statusに関係なく既存reference receiptへtransaction内で収束させる。
+- projection/manual review/title-artist evaluation/collector adapterをv3互換へ更新した。v2→v3でcatalog created-atを維持した場合だけ、元v2 schema identityを持つimmutable artifactをevaluationで許容する。
+- schema、migration、missing/corrupt artifact、canonical validation、identity lookup、transactional duplicate、projection、collector adapterの回帰testと設計docs/READMEを同期した。
 
 ## 維持した境界
 
-- composite identityをOCR文字列、master song/chart ID、catalog field/index、catalog重複判定、保存可否の自動判定として扱っていない。
-- catalog schema/migration/backfill、checkpointとcatalogを横断するduplicate、自動保存、ゲーム操作へ進んでいない。
-- 既存v1 artifact/checkpointを暗黙migrationせず、source/crop画像、catalog/master DB、local DB、実capture素材、評価dataset/reportを作成・変更・移動・削除していない。
+- v1/v2 catalog、local artifact、checkpoint、source/crop画像、master DBを上書き・修復・削除していない。migration targetは常に別の未作成pathとする。
+- backfill不能rowを別identityへ推測せず、title-line hashをOCR文字列、master song/chart ID、正式保存値へ昇格していない。
+- manual review revision/history、候補、確定song、`rejected`をmigrationで変更していない。
+- current checkpointとcatalog identity集合を保存前に照合するUI、保存ボタン無効化、opt-in自動保存、ゲーム操作へ進んでいない。
 - 公開`DDRGpScoreViewer`、正式個人スコアDB、M7/M8保存判定、cleanup/retentionへ接続していない。
+- 実local catalog/artifact migrationは実行しておらず、testはtemporary synthetic artifactだけを使用した。
 
 # 次PR仕様
 
@@ -28,13 +29,14 @@ developer-only jacket collectorのfresh observation保存経路へ、stable jack
 
 ## 既存資料から確定している順序
 
-次の候補は、catalogへcomposite identityを保持・検索できるschemaと、既存local `source.png`からの非破壊migration/backfillを追加する1件である。その後に、current checkpointとcatalogのidentity集合を保存前に照合する明示opt-in自動保存を別PRとして扱う。
+次の候補は、current checkpointとcatalogのcomposite identity集合を保存前に照合する、明示opt-inの自動保存1件である。
 
 ## 未決事項
 
-- catalogのfield/index、schema version、canonical uniquenessと既存jacket feature keyの責務分担。
-- migration/backfillの入力artifact version、再開・失敗・競合時のtransaction/publish境界。
-- title-lineを再計算できない、欠損、破損、旧version artifactの扱いとreport契約。
-- catalog consumer、projection、manual review、ingest互換経路の変更範囲と受入条件。
+- opt-inをsession単位にするか端末settingへ記憶するか。
+- catalogにidentityがないbackfill不能rowを通常画面でどう表示し、明示再収集をどの操作として許可するか。
+- 保存前read、writer競合receipt、artifact publish、checkpoint updateの状態遷移と、partial failure/retry時の表示契約。
+- 登録済みidentityで保存ボタンを無効化する範囲、manual saveとの関係、同じidentity表示中の再判定解除条件。
+- 実capture fixtureでのfalse-positive 0件確認を自動保存開始の必須gateにする具体的な母数と手順。
 
 これらを既存資料だけから一意に決められないため、次PR着手前に仕様と受入条件を固定する。

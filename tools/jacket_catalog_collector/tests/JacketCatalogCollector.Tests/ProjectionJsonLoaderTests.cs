@@ -37,6 +37,19 @@ public sealed class ProjectionJsonLoaderTests
     }
 
     [Fact]
+    public void LoadsCatalogVersionThreeThroughVersionTwoProjectionContract()
+    {
+        var root = JsonNode.Parse(FixtureV2Json())!.AsObject();
+        root["catalog"]!["schema_version"] = 3;
+
+        var projection = loader.Load(root.ToJsonString());
+
+        Assert.Equal(3, projection.Catalog.SchemaVersion);
+        Assert.Equal("manual_review_v2", projection.Catalog.MutationCapability);
+        Assert.False(projection.Catalog.MigrationRequired);
+    }
+
+    [Fact]
     public void RejectsInconsistentVersionTwoCapabilityAndHistory()
     {
         var badCapability = JsonNode.Parse(FixtureV2Json())!.AsObject();

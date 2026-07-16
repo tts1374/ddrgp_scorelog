@@ -71,7 +71,7 @@ public sealed class ProjectionJsonLoader
             projection.Catalog.CurrentFeatureExtractorVersion,
             "catalog.current_feature_extractor_version");
         if (projection.Catalog.CatalogIdentity != "ddrgp-local-jacket-reference-catalog"
-            || projection.Catalog.SchemaVersion is not (1 or 2))
+            || projection.Catalog.SchemaVersion is not (1 or 2 or 3))
         {
             throw new InvalidOperationException("Projection catalog identity or schema is unsupported.");
         }
@@ -99,6 +99,9 @@ public sealed class ProjectionJsonLoader
                     && (projection.Catalog.MigrationRequired != true
                         || projection.Catalog.MutationCapability != "read_only"))
                 || (projection.Catalog.SchemaVersion == 2
+                    && (projection.Catalog.MigrationRequired != false
+                        || projection.Catalog.MutationCapability != "manual_review_v2"))
+                || (projection.Catalog.SchemaVersion == 3
                     && (projection.Catalog.MigrationRequired != false
                         || projection.Catalog.MutationCapability != "manual_review_v2")))
             {

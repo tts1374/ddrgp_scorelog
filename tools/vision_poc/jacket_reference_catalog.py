@@ -25,7 +25,11 @@ from tools.vision_poc import master_match
 CATALOG_IDENTITY = "ddrgp-local-jacket-reference-catalog"
 CATALOG_SCHEMA_VERSION = 1
 CATALOG_SCHEMA_VERSION_V2 = 2
+CATALOG_SCHEMA_VERSION_V3 = 3
 FEATURE_EXTRACTOR_VERSION = "m5-jacket-v1"
+JACKET_FRAME_FEATURE_VERSION = "m5c-jacket-rgb-grid-v1"
+TITLE_LINE_FEATURE_VERSION = "m5c-information-title-line-binary-sha256-v1"
+COMPOSITE_IDENTITY_VERSION = "m5c-jacket-title-composite-identity-v1"
 BASE_SIZE = (1280, 720)
 SONG_SELECT_JACKET_ROI = (812, 28, 150, 150)
 REVIEW_STATUSES = ("auto_confirmed", "needs_review", "unresolved")
@@ -105,6 +109,19 @@ CATALOG_V2_TABLE_COLUMNS = {
         "request_payload_json",
         "receipt_json",
     },
+}
+COMPOSITE_IDENTITY_COLUMNS = {
+    "jacket_feature_version",
+    "jacket_feature_hash",
+    "title_line_feature_version",
+    "title_line_hash",
+    "composite_identity_version",
+    "composite_identity_hash",
+}
+CATALOG_V3_TABLE_COLUMNS = {
+    **CATALOG_V2_TABLE_COLUMNS,
+    "jacket_references": CATALOG_V2_TABLE_COLUMNS["jacket_references"]
+    | COMPOSITE_IDENTITY_COLUMNS,
 }
 MASTER_TABLE_COLUMNS = {
     "songs": {
@@ -286,6 +303,41 @@ CREATE INDEX idx_reference_review_history_reference
 ON reference_review_history(reference_id, history_id);
 """
 
+CATALOG_SCHEMA_V3_SQL = CATALOG_SCHEMA_V2_SQL.replace(
+    f"PRAGMA user_version = {CATALOG_SCHEMA_VERSION_V2};",
+    f"PRAGMA user_version = {CATALOG_SCHEMA_VERSION_V3};",
+).replace(
+    "  manual_note TEXT NOT NULL,\n  created_at TEXT NOT NULL,",
+    """  manual_note TEXT NOT NULL,
+  jacket_feature_version TEXT,
+  jacket_feature_hash TEXT,
+  title_line_feature_version TEXT,
+  title_line_hash TEXT,
+  composite_identity_version TEXT,
+  composite_identity_hash TEXT,
+  created_at TEXT NOT NULL,""",
+).replace(
+    "  created_at TEXT NOT NULL,\n  updated_at TEXT NOT NULL\n);",
+    """  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  CHECK (
+    (jacket_feature_version IS NULL AND jacket_feature_hash IS NULL
+      AND title_line_feature_version IS NULL AND title_line_hash IS NULL
+      AND composite_identity_version IS NULL AND composite_identity_hash IS NULL)
+    OR
+    (jacket_feature_version IS NOT NULL AND jacket_feature_hash IS NOT NULL
+      AND title_line_feature_version IS NOT NULL AND title_line_hash IS NOT NULL
+      AND composite_identity_version IS NOT NULL AND composite_identity_hash IS NOT NULL)
+  )
+);""",
+).replace(
+    "CREATE INDEX idx_jacket_references_song ON jacket_references(song_id);",
+    """CREATE INDEX idx_jacket_references_song ON jacket_references(song_id);
+CREATE UNIQUE INDEX idx_jacket_references_composite_identity
+ON jacket_references(composite_identity_version, composite_identity_hash)
+WHERE composite_identity_version IS NOT NULL AND composite_identity_hash IS NOT NULL;""",
+)
+
 
 @dataclass(frozen=True)
 class MasterIdentity:
@@ -436,6 +488,72 @@ def _json_object(raw: str, *, field_name: str, expected_keys: set[str]) -> dict[
     if not isinstance(value, dict) or set(value) != expected_keys:
         raise ValueError(f"jacket reference catalog has invalid {field_name} fields")
     return value
+
+
+def _is_sha256(value: object) -> bool:
+    return isinstance(value, str) and len(value) == 64 and all(
+        character in "0123456789abcdef" for character in value
+    )
+
+
+def composite_identity_hash(
+    jacket_feature_version: str,
+    jacket_feature_hash: str,
+    title_line_feature_version: str,
+    title_line_hash: str,
+) -> str:
+    if (
+        jacket_feature_version != JACKET_FRAME_FEATURE_VERSION
+        or title_line_feature_version != TITLE_LINE_FEATURE_VERSION
+        or not _is_sha256(jacket_feature_hash)
+        or not _is_sha256(title_line_hash)
+    ):
+        raise ValueError("composite identity feature fields are invalid")
+    canonical = "\0".join(
+        (
+            COMPOSITE_IDENTITY_VERSION,
+            jacket_feature_version,
+            jacket_feature_hash,
+            title_line_feature_version,
+            title_line_hash,
+        )
+    ).encode("utf-8")
+    return hashlib.sha256(canonical).hexdigest()
+
+
+def _validate_catalog_v3_identities(connection: sqlite3.Connection) -> None:
+    seen: set[tuple[str, str]] = set()
+    for row in connection.execute(
+        "SELECT reference_id, jacket_feature_version, jacket_feature_hash, "
+        "title_line_feature_version, title_line_hash, composite_identity_version, "
+        "composite_identity_hash FROM jacket_references"
+    ):
+        values = tuple(row[index] for index in range(1, 7))
+        if all(value is None for value in values):
+            continue
+        if any(value is None for value in values):
+            raise ValueError("jacket reference catalog has partial composite identity")
+        (
+            jacket_version,
+            jacket_hash,
+            title_version,
+            title_hash,
+            identity_version,
+            identity_hash,
+        ) = (str(value) for value in values)
+        if (
+            identity_version != COMPOSITE_IDENTITY_VERSION
+            or not _is_sha256(identity_hash)
+            or composite_identity_hash(
+                jacket_version, jacket_hash, title_version, title_hash
+            )
+            != identity_hash
+        ):
+            raise ValueError("jacket reference catalog has invalid composite identity")
+        key = (identity_version, identity_hash)
+        if key in seen:
+            raise ValueError("jacket reference catalog has duplicate composite identity")
+        seen.add(key)
 
 
 def _validate_catalog_v2_content(connection: sqlite3.Connection) -> None:
@@ -597,6 +715,9 @@ def _validate_catalog(connection: sqlite3.Connection) -> int:
     elif version == CATALOG_SCHEMA_VERSION_V2:
         schema_sql = CATALOG_SCHEMA_V2_SQL
         expected_columns_by_table = CATALOG_V2_TABLE_COLUMNS
+    elif version == CATALOG_SCHEMA_VERSION_V3:
+        schema_sql = CATALOG_SCHEMA_V3_SQL
+        expected_columns_by_table = CATALOG_V3_TABLE_COLUMNS
     else:
         raise ValueError("unsupported jacket reference catalog schema version")
     with closing(sqlite3.connect(":memory:")) as expected:
@@ -629,7 +750,7 @@ def _validate_catalog(connection: sqlite3.Connection) -> int:
     foreign_keys = list(connection.execute("PRAGMA foreign_key_list(reference_candidates)"))
     if len(foreign_keys) != 1 or str(foreign_keys[0][2]) != "jacket_references":
         raise ValueError("jacket reference catalog candidate foreign key mismatch")
-    if version == CATALOG_SCHEMA_VERSION_V2:
+    if version in {CATALOG_SCHEMA_VERSION_V2, CATALOG_SCHEMA_VERSION_V3}:
         history_unique = _unique_index_columns(connection, "reference_review_history")
         if ("action_id",) not in history_unique:
             raise ValueError("jacket reference catalog review history uniqueness mismatch")
@@ -640,6 +761,8 @@ def _validate_catalog(connection: sqlite3.Connection) -> int:
             raise ValueError("jacket reference catalog review history foreign key mismatch")
         connection.row_factory = sqlite3.Row
         _validate_catalog_v2_content(connection)
+        if version == CATALOG_SCHEMA_VERSION_V3:
+            _validate_catalog_v3_identities(connection)
     return version
 
 
@@ -681,6 +804,24 @@ def catalog_schema_version(path: Path) -> int:
         raise ValueError(f"invalid jacket reference catalog: {path}") from exc
 
 
+def load_composite_identities(path: Path) -> frozenset[tuple[str, str]]:
+    """Return the complete v3 identity set, including rejected references."""
+    try:
+        with closing(_connect_read_only(path)) as connection:
+            if _validate_catalog(connection) != CATALOG_SCHEMA_VERSION_V3:
+                raise ValueError("composite identity lookup requires catalog schema version 3")
+            return frozenset(
+                (str(version), str(identity_hash))
+                for version, identity_hash in connection.execute(
+                    "SELECT composite_identity_version, composite_identity_hash "
+                    "FROM jacket_references WHERE composite_identity_version IS NOT NULL "
+                    "ORDER BY composite_identity_version, composite_identity_hash"
+                )
+            )
+    except sqlite3.DatabaseError as exc:
+        raise ValueError(f"invalid jacket reference catalog: {path}") from exc
+
+
 def _create_catalog_v2(path: Path, *, created_at: str) -> None:
     with closing(sqlite3.connect(path)) as connection, connection:
         connection.execute("PRAGMA foreign_keys = ON")
@@ -690,6 +831,20 @@ def _create_catalog_v2(path: Path, *, created_at: str) -> None:
             (
                 ("catalog_identity", CATALOG_IDENTITY),
                 ("schema_version", str(CATALOG_SCHEMA_VERSION_V2)),
+                ("created_at", created_at),
+            ),
+        )
+
+
+def _create_catalog_v3(path: Path, *, created_at: str) -> None:
+    with closing(sqlite3.connect(path)) as connection, connection:
+        connection.execute("PRAGMA foreign_keys = ON")
+        connection.executescript(CATALOG_SCHEMA_V3_SQL)
+        connection.executemany(
+            "INSERT INTO catalog_metadata (key, value) VALUES (?, ?)",
+            (
+                ("catalog_identity", CATALOG_IDENTITY),
+                ("schema_version", str(CATALOG_SCHEMA_VERSION_V3)),
                 ("created_at", created_at),
             ),
         )
@@ -750,6 +905,337 @@ def migrate_catalog_v1_to_v2(source_path: Path, target_path: Path) -> None:
         raise
 
 
+_OBSERVATION_MANIFEST_COMMON_KEYS = {
+    "manifest_version",
+    "session_id",
+    "observation_id",
+    "source_image",
+    "jacket_crop",
+    "source_image_hash",
+    "jacket_crop_hash",
+    "source_width",
+    "source_height",
+    "source_sequence",
+    "captured_at_utc",
+    "feature_version",
+    "roi_version",
+    "master_version",
+    "master_source_hash",
+    "catalog_identity",
+    "catalog_schema_version",
+    "catalog_created_at",
+    "feature_extractor_version",
+    "detector_version",
+    "frame_clock_version",
+    "window",
+    "change_threshold",
+    "stable_frame_count_required",
+    "minimum_stable_duration_milliseconds",
+    "roi_x",
+    "roi_y",
+    "roi_width",
+    "roi_height",
+    "feature_hash",
+    "mean_absolute_difference",
+    "sample_width",
+    "sample_height",
+    "observed_title",
+    "observed_artist",
+    "observation_status",
+    "created_at_utc",
+}
+_OBSERVATION_MANIFEST_COMPOSITE_KEYS = {
+    "title_line_feature_version",
+    "title_line_hash",
+    "title_line_detector_version",
+    "title_line_roi_version",
+    "title_line_source_sequence",
+    "title_line_captured_at_utc",
+    "composite_identity_version",
+    "composite_identity_hash",
+}
+
+
+def _scaled_region(
+    width: int, height: int, region: tuple[int, int, int, int]
+) -> tuple[int, int, int, int]:
+    x, y, region_width, region_height = region
+    return (
+        round(x * width / BASE_SIZE[0]),
+        round(y * height / BASE_SIZE[1]),
+        max(1, round(region_width * width / BASE_SIZE[0])),
+        max(1, round(region_height * height / BASE_SIZE[1])),
+    )
+
+
+def _sample_rgb_feature_hash(image: Image.Image) -> tuple[str, tuple[int, int, int, int]]:
+    rgb = image.convert("RGB")
+    roi = _scaled_region(rgb.width, rgb.height, SONG_SELECT_JACKET_ROI)
+    x, y, width, height = roi
+    if x < 0 or y < 0 or x + width > rgb.width or y + height > rgb.height:
+        raise ValueError("scaled jacket ROI is outside source image")
+    sample = bytearray()
+    for sample_y in range(16):
+        source_y = y + min(height - 1, sample_y * height // 16)
+        for sample_x in range(16):
+            source_x = x + min(width - 1, sample_x * width // 16)
+            sample.extend(rgb.getpixel((source_x, source_y)))
+    return hashlib.sha256(sample).hexdigest(), roi
+
+
+def _binary_mask(
+    image: Image.Image, region: tuple[int, int, int, int]
+) -> tuple[bytes, int]:
+    rgb = image.convert("RGB")
+    base_x, base_y, base_width, base_height = region
+    x, y, width, height = _scaled_region(rgb.width, rgb.height, region)
+    if x < 0 or y < 0 or x + width > rgb.width or y + height > rgb.height:
+        raise ValueError("scaled INFORMATION ROI is outside source image")
+    packed = bytearray((base_width * base_height + 7) // 8)
+    white_count = 0
+    bit_index = 0
+    for target_y in range(base_height):
+        source_y = y + min(height - 1, target_y * height // base_height)
+        for target_x in range(base_width):
+            source_x = x + min(width - 1, target_x * width // base_width)
+            red, green, blue = rgb.getpixel((source_x, source_y))
+            if min(red, green, blue) >= 170 and max(red, green, blue) - min(
+                red, green, blue
+            ) <= 45:
+                packed[bit_index // 8] |= 1 << (7 - bit_index % 8)
+                white_count += 1
+            bit_index += 1
+    return bytes(packed), white_count
+
+
+def _title_line_hash_from_source(image: Image.Image) -> str:
+    _marker_mask, marker_count = _binary_mask(image, (286, 35, 134, 23))
+    title_mask, title_count = _binary_mask(image, (286, 64, 504, 25))
+    if marker_count < 100 or title_count < 32:
+        raise ValueError("INFORMATION panel/title line is not displayed")
+    return hashlib.sha256(title_mask).hexdigest()
+
+
+def _load_backfill_identity(
+    manifest_path: Path, *, reference: sqlite3.Row
+) -> tuple[str, str, str, str, str, str]:
+    try:
+        value = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError("observation manifest is unreadable") from exc
+    if not isinstance(value, dict):
+        raise ValueError("observation manifest must be an object")
+    manifest_version = value.get("manifest_version")
+    expected_keys = _OBSERVATION_MANIFEST_COMMON_KEYS | (
+        _OBSERVATION_MANIFEST_COMPOSITE_KEYS
+        if manifest_version == "m5c-observation-manifest-v2"
+        else set()
+    )
+    if manifest_version not in {
+        "m5c-observation-manifest-v1",
+        "m5c-observation-manifest-v2",
+    } or set(value) != expected_keys:
+        raise ValueError("observation manifest version or fields are unsupported")
+    observation_id = str(value["observation_id"])
+    if observation_id != str(reference["source_capture_id"]):
+        raise ValueError("observation manifest id does not match catalog row")
+    if value["source_image"] != "source.png" or value["jacket_crop"] != "jacket-crop.png":
+        raise ValueError("observation manifest image names are invalid")
+    source_path = manifest_path.parent / "source.png"
+    crop_path = manifest_path.parent / "jacket-crop.png"
+    try:
+        source_bytes = source_path.read_bytes()
+        crop_bytes = crop_path.read_bytes()
+    except OSError as exc:
+        raise ValueError("observation source artifact is missing") from exc
+    if (
+        not source_bytes
+        or not crop_bytes
+        or hashlib.sha256(source_bytes).hexdigest() != value["source_image_hash"]
+        or hashlib.sha256(crop_bytes).hexdigest() != value["jacket_crop_hash"]
+        or value["jacket_crop_hash"] != reference["source_image_hash"]
+    ):
+        raise ValueError("observation artifact image hash mismatch")
+    try:
+        with Image.open(BytesIO(source_bytes)) as source_image:
+            source_image.load()
+            if (
+                source_image.width != value["source_width"]
+                or source_image.height != value["source_height"]
+            ):
+                raise ValueError("observation source dimensions mismatch")
+            jacket_hash, roi = _sample_rgb_feature_hash(source_image)
+            title_hash = _title_line_hash_from_source(source_image)
+    except (OSError, TypeError) as exc:
+        raise ValueError("observation source image is invalid") from exc
+    if (
+        value["feature_version"] != JACKET_FRAME_FEATURE_VERSION
+        or value["feature_hash"] != jacket_hash
+        or value["sample_width"] != 16
+        or value["sample_height"] != 16
+        or tuple(value[key] for key in ("roi_x", "roi_y", "roi_width", "roi_height"))
+        != roi
+        or value["feature_extractor_version"] != reference["feature_extractor_version"]
+        or value["master_version"] != reference["master_version"]
+    ):
+        raise ValueError("observation jacket feature identity mismatch")
+    identity_hash = composite_identity_hash(
+        JACKET_FRAME_FEATURE_VERSION,
+        jacket_hash,
+        TITLE_LINE_FEATURE_VERSION,
+        title_hash,
+    )
+    if manifest_version == "m5c-observation-manifest-v2" and (
+        value["title_line_feature_version"] != TITLE_LINE_FEATURE_VERSION
+        or value["title_line_hash"] != title_hash
+        or value["title_line_source_sequence"] != value["source_sequence"]
+        or value["title_line_captured_at_utc"] != value["captured_at_utc"]
+        or value["composite_identity_version"] != COMPOSITE_IDENTITY_VERSION
+        or value["composite_identity_hash"] != identity_hash
+    ):
+        raise ValueError("observation composite identity mismatch")
+    return (
+        JACKET_FRAME_FEATURE_VERSION,
+        jacket_hash,
+        TITLE_LINE_FEATURE_VERSION,
+        title_hash,
+        COMPOSITE_IDENTITY_VERSION,
+        identity_hash,
+    )
+
+
+def migrate_catalog_v2_to_v3(
+    source_path: Path, target_path: Path, artifact_root: Path
+) -> dict[str, Any]:
+    ensure_data_path(source_path, argument_name="--source-catalog")
+    ensure_data_path(target_path, argument_name="--target-catalog")
+    ensure_data_path(artifact_root, argument_name="--artifact-root", directory=True)
+    if _resolved(source_path) == _resolved(target_path):
+        raise ValueError("v2 source and v3 target must be different paths")
+    if target_path.exists():
+        raise ValueError(f"v3 target already exists: {target_path}")
+    if not target_path.parent.is_dir():
+        raise ValueError(f"v3 target parent does not exist: {target_path.parent}")
+    if not artifact_root.is_dir():
+        raise ValueError(f"artifact root is not a directory: {artifact_root}")
+    if catalog_schema_version(source_path) != CATALOG_SCHEMA_VERSION_V2:
+        raise ValueError("migration source must be a catalog schema version 2 database")
+    manifests: dict[str, list[Path]] = {}
+    for manifest_path in sorted(artifact_root.rglob("observation.json")):
+        try:
+            raw = json.loads(manifest_path.read_text(encoding="utf-8"))
+            observation_id = raw.get("observation_id") if isinstance(raw, dict) else None
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            continue
+        if isinstance(observation_id, str) and observation_id:
+            manifests.setdefault(observation_id, []).append(manifest_path)
+
+    staging_path = target_path.with_name(f".{target_path.name}.{uuid.uuid4().hex}.staging")
+    rows: list[dict[str, str]] = []
+    try:
+        with closing(_connect_read_only(source_path)) as source:
+            source.row_factory = sqlite3.Row
+            source.execute("BEGIN")
+            _validate_catalog(source)
+            created_at = dict(
+                source.execute("SELECT key, value FROM catalog_metadata")
+            )["created_at"]
+            _create_catalog_v3(staging_path, created_at=created_at)
+            with closing(sqlite3.connect(staging_path)) as target, target:
+                target.row_factory = sqlite3.Row
+                target.execute("PRAGMA foreign_keys = ON")
+                reference_columns = sorted(CATALOG_V2_TABLE_COLUMNS["jacket_references"])
+                placeholders = ", ".join("?" for _ in reference_columns)
+                target.executemany(
+                    f"INSERT INTO jacket_references ({', '.join(reference_columns)}) "
+                    f"VALUES ({placeholders})",
+                    (
+                        tuple(row[column] for column in reference_columns)
+                        for row in source.execute(
+                            "SELECT * FROM jacket_references ORDER BY reference_id"
+                        )
+                    ),
+                )
+                target.executemany(
+                    "INSERT INTO reference_candidates "
+                    "(reference_id, song_id, candidate_reason) VALUES (?, ?, ?)",
+                    source.execute(
+                        "SELECT reference_id, song_id, candidate_reason "
+                        "FROM reference_candidates ORDER BY reference_id, song_id"
+                    ),
+                )
+                history_columns = sorted(
+                    CATALOG_V2_TABLE_COLUMNS["reference_review_history"]
+                )
+                history_placeholders = ", ".join("?" for _ in history_columns)
+                target.executemany(
+                    f"INSERT INTO reference_review_history ({', '.join(history_columns)}) "
+                    f"VALUES ({history_placeholders})",
+                    (
+                        tuple(row[column] for column in history_columns)
+                        for row in source.execute(
+                            "SELECT * FROM reference_review_history ORDER BY history_id"
+                        )
+                    ),
+                )
+                seen_identities: set[tuple[str, str]] = set()
+                for reference in source.execute(
+                    "SELECT * FROM jacket_references ORDER BY reference_id"
+                ):
+                    reference_id = str(reference["reference_id"])
+                    observation_id = reference["source_capture_id"]
+                    matches = manifests.get(str(observation_id), []) if observation_id else []
+                    if len(matches) != 1:
+                        status = "artifact_missing" if not matches else "artifact_ambiguous"
+                        rows.append({"reference_id": reference_id, "status": status})
+                        continue
+                    try:
+                        identity = _load_backfill_identity(matches[0], reference=reference)
+                    except (ValueError, KeyError) as exc:
+                        rows.append(
+                            {
+                                "reference_id": reference_id,
+                                "status": "artifact_invalid",
+                                "reason": str(exc),
+                            }
+                        )
+                        continue
+                    identity_key = (identity[4], identity[5])
+                    if identity_key in seen_identities:
+                        rows.append(
+                            {"reference_id": reference_id, "status": "identity_conflict"}
+                        )
+                        continue
+                    target.execute(
+                        "UPDATE jacket_references SET jacket_feature_version = ?, "
+                        "jacket_feature_hash = ?, title_line_feature_version = ?, "
+                        "title_line_hash = ?, composite_identity_version = ?, "
+                        "composite_identity_hash = ? WHERE reference_id = ?",
+                        (*identity, reference_id),
+                    )
+                    seen_identities.add(identity_key)
+                    rows.append({"reference_id": reference_id, "status": "backfilled"})
+        validate_catalog(staging_path)
+        try:
+            os.link(staging_path, target_path)
+        except FileExistsError as exc:
+            raise ValueError(f"v3 target appeared during migration: {target_path}") from exc
+        staging_path.unlink()
+    except Exception:
+        staging_path.unlink(missing_ok=True)
+        raise
+    counts = dict(Counter(row["status"] for row in rows))
+    return {
+        "status": "migrated",
+        "source_catalog": str(source_path.resolve()),
+        "target_catalog": str(target_path.resolve()),
+        "artifact_root": str(artifact_root.resolve()),
+        "schema_version": CATALOG_SCHEMA_VERSION_V3,
+        "counts": counts,
+        "rows": rows,
+    }
+
+
 def _mutation_payload(request: ReviewMutationRequest) -> str:
     return json.dumps(
         {
@@ -804,8 +1290,11 @@ def apply_review_mutation(
     *,
     fail_after_current_update: bool = False,
 ) -> ReviewMutationReceipt:
-    if catalog_schema_version(catalog_path) != CATALOG_SCHEMA_VERSION_V2:
-        raise ValueError("manual review requires catalog schema version 2")
+    if catalog_schema_version(catalog_path) not in {
+        CATALOG_SCHEMA_VERSION_V2,
+        CATALOG_SCHEMA_VERSION_V3,
+    }:
+        raise ValueError("manual review requires catalog schema version 2 or 3")
     if not request.action_id.strip() or not request.reference_id.strip():
         raise ValueError("action_id and reference_id must be non-empty")
     if request.action not in REVIEW_ACTIONS:
@@ -1522,8 +2011,14 @@ def ingest_observation_v2(
     expected_catalog_identity: str | None = None,
     expected_catalog_schema_version: int | None = None,
     expected_catalog_created_at: str | None = None,
+    jacket_feature_version: str | None = None,
+    jacket_feature_hash: str | None = None,
+    title_line_feature_version: str | None = None,
+    title_line_hash: str | None = None,
+    composite_identity_version: str | None = None,
+    expected_composite_identity_hash: str | None = None,
 ) -> IngestResult:
-    """Ingest one unresolved collector observation into an existing v2 catalog.
+    """Ingest one unresolved collector observation into an existing v2/v3 catalog.
 
     The v2 path deliberately does not call the v1 resolver or create candidates.
     ``source_capture_id`` is the persisted observation ID because the v2 schema
@@ -1543,12 +2038,39 @@ def ingest_observation_v2(
         expected_feature_extractor_version != FEATURE_EXTRACTOR_VERSION
     ):
         raise ValueError("feature extractor version drift detected during v2 observation ingest")
+    schema_version = catalog_schema_version(catalog_path)
+    if schema_version not in {CATALOG_SCHEMA_VERSION_V2, CATALOG_SCHEMA_VERSION_V3}:
+        raise ValueError("versioned observation ingest requires catalog schema version 2 or 3")
     if expected_catalog_schema_version is not None and (
-        expected_catalog_schema_version != CATALOG_SCHEMA_VERSION_V2
+        expected_catalog_schema_version != schema_version
     ):
-        raise ValueError("v2 observation ingest requires catalog schema version 2")
-    if catalog_schema_version(catalog_path) != CATALOG_SCHEMA_VERSION_V2:
-        raise ValueError("v2 observation ingest requires catalog schema version 2")
+        raise ValueError("catalog schema drift detected during versioned observation ingest")
+    identity_values = (
+        jacket_feature_version,
+        jacket_feature_hash,
+        title_line_feature_version,
+        title_line_hash,
+        composite_identity_version,
+        expected_composite_identity_hash,
+    )
+    if schema_version == CATALOG_SCHEMA_VERSION_V2:
+        if any(value is not None for value in identity_values):
+            raise ValueError("catalog schema version 2 does not accept composite identity")
+    else:
+        if any(value is None for value in identity_values):
+            raise ValueError("catalog schema version 3 requires composite identity")
+        assert all(value is not None for value in identity_values)
+        if (
+            composite_identity_version != COMPOSITE_IDENTITY_VERSION
+            or composite_identity_hash(
+                jacket_feature_version,
+                jacket_feature_hash,
+                title_line_feature_version,
+                title_line_hash,
+            )
+            != expected_composite_identity_hash
+        ):
+            raise ValueError("observation composite identity is invalid")
     if not source_image_path.is_file():
         raise ValueError(f"source image does not exist: {source_image_path}")
     image_bytes = source_image_path.read_bytes()
@@ -1582,8 +2104,8 @@ def ingest_observation_v2(
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA foreign_keys = ON")
         write_schema_version = _validate_catalog(connection)
-        if write_schema_version != CATALOG_SCHEMA_VERSION_V2:
-            raise ValueError("v2 observation ingest requires catalog schema version 2")
+        if write_schema_version != schema_version:
+            raise ValueError("catalog schema drift detected during versioned observation ingest")
         write_metadata = dict(connection.execute("SELECT key, value FROM catalog_metadata"))
         if expected_catalog_identity is not None and (
             write_metadata["catalog_identity"] != expected_catalog_identity
@@ -1615,6 +2137,18 @@ def ingest_observation_v2(
                 and str(row["observation_status"]) == "unresolved"
                 and str(row["expected_song_id"]) == expected_song_id
             )
+            if schema_version == CATALOG_SCHEMA_VERSION_V3:
+                same_payload = same_payload and tuple(
+                    row[column]
+                    for column in (
+                        "jacket_feature_version",
+                        "jacket_feature_hash",
+                        "title_line_feature_version",
+                        "title_line_hash",
+                        "composite_identity_version",
+                        "composite_identity_hash",
+                    )
+                ) == identity_values
             if not same_payload:
                 raise ValueError(
                     "observation id was already used with different canonical payload"
@@ -1647,8 +2181,23 @@ def ingest_observation_v2(
                 "observation_unresolved",
             )
 
-        connection.execute(
-            """
+        if schema_version == CATALOG_SCHEMA_VERSION_V3:
+            existing_identity = connection.execute(
+                "SELECT reference_id, review_status FROM jacket_references "
+                "WHERE composite_identity_version = ? AND composite_identity_hash = ?",
+                (composite_identity_version, expected_composite_identity_hash),
+            ).fetchone()
+            if existing_identity is not None:
+                return IngestResult(
+                    str(existing_identity["reference_id"]),
+                    "existing",
+                    str(existing_identity["review_status"]),
+                    "composite_identity_already_cataloged",
+                )
+
+        if schema_version == CATALOG_SCHEMA_VERSION_V2:
+            connection.execute(
+                """
             INSERT INTO jacket_references (
               reference_id, source_capture_id, source_image_hash, master_version, song_id,
               canonical_title_snapshot, canonical_artist_snapshot, review_status,
@@ -1658,23 +2207,56 @@ def ingest_observation_v2(
               created_at, updated_at, review_revision, manual_action_id, manual_note
             ) VALUES (?, ?, ?, ?, NULL, '', '', 'unresolved', 'observation_unresolved', '',
                       ?, ?, ?, ?, ?, ?, '', '', 'unresolved', ?, ?, ?, 0, NULL, '')
-            """,
-            (
-                reference_id,
-                observation_id,
-                source_hash,
-                master.version,
-                FEATURE_EXTRACTOR_VERSION,
-                image_kind,
-                _feature_json(feature.thumbnail),
-                _feature_json(feature.histogram),
-                _feature_json(feature.dhash_bits),
-                feature.dhash_hex,
-                expected_song_id,
-                timestamp,
-                timestamp,
-            ),
-        )
+                """,
+                (
+                    reference_id,
+                    observation_id,
+                    source_hash,
+                    master.version,
+                    FEATURE_EXTRACTOR_VERSION,
+                    image_kind,
+                    _feature_json(feature.thumbnail),
+                    _feature_json(feature.histogram),
+                    _feature_json(feature.dhash_bits),
+                    feature.dhash_hex,
+                    expected_song_id,
+                    timestamp,
+                    timestamp,
+                ),
+            )
+        else:
+            connection.execute(
+                """
+                INSERT INTO jacket_references (
+                  reference_id, source_capture_id, source_image_hash, master_version, song_id,
+                  canonical_title_snapshot, canonical_artist_snapshot, review_status,
+                  resolution_reason, resolution_basis, feature_extractor_version,
+                  image_kind, thumbnail_rgb_json, histogram_json, dhash_bits_json, dhash_hex,
+                  observed_title, observed_artist, observation_status, expected_song_id,
+                  created_at, updated_at, review_revision, manual_action_id, manual_note,
+                  jacket_feature_version, jacket_feature_hash, title_line_feature_version,
+                  title_line_hash, composite_identity_version, composite_identity_hash
+                ) VALUES (?, ?, ?, ?, NULL, '', '', 'unresolved', 'observation_unresolved', '',
+                          ?, ?, ?, ?, ?, ?, '', '', 'unresolved', ?, ?, ?, 0, NULL, '',
+                          ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    reference_id,
+                    observation_id,
+                    source_hash,
+                    master.version,
+                    FEATURE_EXTRACTOR_VERSION,
+                    image_kind,
+                    _feature_json(feature.thumbnail),
+                    _feature_json(feature.histogram),
+                    _feature_json(feature.dhash_bits),
+                    feature.dhash_hex,
+                    expected_song_id,
+                    timestamp,
+                    timestamp,
+                    *identity_values,
+                ),
+            )
     return IngestResult(reference_id, "created", "unresolved", "observation_unresolved")
 
 
@@ -1769,6 +2351,8 @@ def validate_observation_receipt(
     expected_feature_extractor_version: str,
     expected_catalog_schema_version: int,
     expected_catalog_created_at: str,
+    composite_identity_version: str | None = None,
+    composite_identity_hash_value: str | None = None,
 ) -> dict[str, str | int]:
     with closing(_connect_read_only(catalog_path)) as connection:
         connection.row_factory = sqlite3.Row
@@ -1793,7 +2377,12 @@ def validate_observation_receipt(
                 raise ValueError("deferred catalog receipt is incompatible")
         elif catalog_status == "ingested":
             if (
-                schema_version not in {CATALOG_SCHEMA_VERSION, CATALOG_SCHEMA_VERSION_V2}
+                schema_version
+                not in {
+                    CATALOG_SCHEMA_VERSION,
+                    CATALOG_SCHEMA_VERSION_V2,
+                    CATALOG_SCHEMA_VERSION_V3,
+                }
                 or not catalog_reference_id
             ):
                 raise ValueError("ingested catalog receipt is incompatible")
@@ -1801,10 +2390,26 @@ def validate_observation_receipt(
                 "SELECT * FROM jacket_references WHERE reference_id = ?",
                 (catalog_reference_id,),
             ).fetchone()
-            if row is None or (
+            if row is None or str(row["feature_extractor_version"]) != (
+                expected_feature_extractor_version
+            ):
+                raise ValueError("ingested catalog receipt does not match its observation")
+            if schema_version == CATALOG_SCHEMA_VERSION_V3:
+                if (
+                    composite_identity_version != COMPOSITE_IDENTITY_VERSION
+                    or not _is_sha256(composite_identity_hash_value)
+                    or row["composite_identity_version"] != composite_identity_version
+                    or row["composite_identity_hash"] != composite_identity_hash_value
+                ):
+                    raise ValueError("ingested catalog receipt composite identity mismatch")
+            elif (
+                composite_identity_version is not None
+                or composite_identity_hash_value is not None
+            ):
+                raise ValueError("legacy catalog receipt contains composite identity")
+            if schema_version != CATALOG_SCHEMA_VERSION_V3 and (
                 str(row["source_capture_id"]) != observation_id
                 or str(row["source_image_hash"]) != jacket_crop_hash
-                or str(row["feature_extractor_version"]) != expected_feature_extractor_version
                 or str(row["observed_title"]) != ""
                 or str(row["observed_artist"]) != ""
                 or str(row["observation_status"]) != "unresolved"
@@ -2181,6 +2786,13 @@ def build_parser() -> argparse.ArgumentParser:
     migrate = subparsers.add_parser("migrate-v2", help="Copy a v1 catalog to a new v2 catalog.")
     migrate.add_argument("--source-catalog", type=Path, required=True)
     migrate.add_argument("--target-catalog", type=Path, required=True)
+    migrate_v3 = subparsers.add_parser(
+        "migrate-v3",
+        help="Copy a v2 catalog to v3 and backfill verified local observation artifacts.",
+    )
+    migrate_v3.add_argument("--source-catalog", type=Path, required=True)
+    migrate_v3.add_argument("--target-catalog", type=Path, required=True)
+    migrate_v3.add_argument("--artifact-root", type=Path, required=True)
     review = subparsers.add_parser("review", help="Apply one explicit v2 manual review action.")
     review.add_argument("--catalog", type=Path, required=True)
     review.add_argument("--master-db", type=Path, required=True)
@@ -2233,6 +2845,12 @@ def build_parser() -> argparse.ArgumentParser:
     ingest_v2.add_argument("--expected-catalog-identity", required=True)
     ingest_v2.add_argument("--expected-catalog-schema-version", type=int, required=True)
     ingest_v2.add_argument("--expected-catalog-created-at", required=True)
+    ingest_v2.add_argument("--jacket-feature-version")
+    ingest_v2.add_argument("--jacket-feature-hash")
+    ingest_v2.add_argument("--title-line-feature-version")
+    ingest_v2.add_argument("--title-line-hash")
+    ingest_v2.add_argument("--composite-identity-version")
+    ingest_v2.add_argument("--composite-identity-hash")
     validate_session = subparsers.add_parser(
         "validate-session", help="Strictly validate a developer observation session identity."
     )
@@ -2257,6 +2875,8 @@ def build_parser() -> argparse.ArgumentParser:
     validate_receipt.add_argument("--expected-feature-extractor-version", required=True)
     validate_receipt.add_argument("--expected-catalog-schema-version", type=int, required=True)
     validate_receipt.add_argument("--expected-catalog-created-at", required=True)
+    validate_receipt.add_argument("--composite-identity-version")
+    validate_receipt.add_argument("--composite-identity-hash")
     return parser
 
 
@@ -2276,6 +2896,12 @@ def main(argv: list[str] | None = None) -> int:
                 separators=(",", ":"),
             )
         )
+        return 0
+    if args.command == "migrate-v3":
+        receipt = migrate_catalog_v2_to_v3(
+            args.source_catalog, args.target_catalog, args.artifact_root
+        )
+        print(json.dumps(receipt, ensure_ascii=False, separators=(",", ":")))
         return 0
     if args.command == "review":
         receipt = apply_review_mutation(
@@ -2337,6 +2963,12 @@ def main(argv: list[str] | None = None) -> int:
             expected_catalog_identity=args.expected_catalog_identity,
             expected_catalog_schema_version=args.expected_catalog_schema_version,
             expected_catalog_created_at=args.expected_catalog_created_at,
+            jacket_feature_version=args.jacket_feature_version,
+            jacket_feature_hash=args.jacket_feature_hash,
+            title_line_feature_version=args.title_line_feature_version,
+            title_line_hash=args.title_line_hash,
+            composite_identity_version=args.composite_identity_version,
+            expected_composite_identity_hash=args.composite_identity_hash,
         )
         print(json.dumps(result.__dict__, ensure_ascii=False, separators=(",", ":")))
         return 0
@@ -2365,6 +2997,8 @@ def main(argv: list[str] | None = None) -> int:
             expected_feature_extractor_version=args.expected_feature_extractor_version,
             expected_catalog_schema_version=args.expected_catalog_schema_version,
             expected_catalog_created_at=args.expected_catalog_created_at,
+            composite_identity_version=args.composite_identity_version,
+            composite_identity_hash_value=args.composite_identity_hash,
         )
         print(json.dumps(result, ensure_ascii=False, separators=(",", ":")))
         return 0
