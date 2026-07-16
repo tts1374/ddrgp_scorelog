@@ -27,6 +27,11 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
     private string resumeSessionId = "";
     private string? lastCatalogReceipt;
     private bool captureEnded = true;
+    private bool autoSaveEnabled;
+    private readonly HashSet<string> catalogSavedIdentityKeys = new(StringComparer.Ordinal);
+    private readonly HashSet<string> autoSaveAttemptedIdentityKeys = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, ObservationSavePreflightDisposition> savePreflightByIdentity =
+        new(StringComparer.Ordinal);
 
     public JacketObservationViewModel(
         WindowCaptureViewModel capture,
@@ -118,6 +123,18 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
             + $"stable={stableCandidate.StableFrameCount} frames / {stableCandidate.StableDuration.TotalMilliseconds:0}ms";
     public string LastCatalogReceipt => lastCatalogReceipt ?? "未投入";
     public bool IsActive => session.IsActive;
+    public bool AutoSaveEnabled
+    {
+        get => autoSaveEnabled;
+        set
+        {
+            if (SetField(ref autoSaveEnabled, value))
+            {
+                OnPropertyChanged(nameof(CollectionStateMessage));
+            }
+        }
+    }
+    public bool CanConfigureAutoSave => !captureEnded && session.IsActive;
     public bool CanAdopt => !captureEnded
         && session.HasAdoptableCandidate
         && stableCandidate is not null
@@ -182,6 +199,10 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
             }
             if (stableCandidate is not null)
             {
+                if (AutoSaveEnabled)
+                {
+                    return "current checkpointとcatalog identity集合を再照合して自動保存します。";
+                }
                 return "内容を確認して「このジャケットを保存」を押してください。";
             }
             return "DDR GPで曲選択画面を表示してください。";
@@ -223,13 +244,15 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
         Detection = session.LastDetection;
         sessionId = identity.SessionId;
         lastCatalogReceipt = null;
+        ResetSavePreflightState();
         StatusTitle = "観測session開始";
         StatusMessage =
-            "jacket change/stableを検出します。stableは自動採用されません。";
+            "自動保存は既定OFFです。明示的に有効化したsessionだけ保存前照合後に自動保存します。";
         OnPropertyChanged(nameof(SessionId));
         OnPropertyChanged(nameof(IsActive));
         OnPropertyChanged(nameof(CanAdopt));
         OnPropertyChanged(nameof(CanResume));
+        OnPropertyChanged(nameof(CanConfigureAutoSave));
     }
 
     public async Task ResumeSessionAsync(
@@ -269,12 +292,14 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
         Detection = session.LastDetection;
         sessionId = result.Checkpoint.Session.SessionId;
         lastCatalogReceipt = null;
+        ResetSavePreflightState();
         StatusTitle = "観測session再開";
         StatusMessage = result.Message;
         OnPropertyChanged(nameof(SessionId));
         OnPropertyChanged(nameof(IsActive));
         OnPropertyChanged(nameof(CanAdopt));
         OnPropertyChanged(nameof(CanResume));
+        OnPropertyChanged(nameof(CanConfigureAutoSave));
     }
 
     public async Task<ObservationAdoptionResult> AdoptAsync(
@@ -284,20 +309,17 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
         {
             throw new InvalidOperationException("capture終了後の候補は採用できません。");
         }
-        var result = await session.AdoptLastStableAsync(cancellationToken);
-        lastCatalogReceipt = result.Catalog.Message;
-        StatusTitle = result.Catalog.Disposition switch
+        try
         {
-            CatalogIngestDisposition.Created or CatalogIngestDisposition.Existing => "観測採用・catalog投入完了",
-            CatalogIngestDisposition.DeferredUnsupportedSchema => "観測採用・catalog投入保留",
-            _ => "観測採用・catalog retry待ち",
-        };
-        StatusMessage = result.Catalog.Message;
-        OnPropertyChanged(nameof(LastCatalogReceipt));
-        OnPropertyChanged(nameof(CanAdopt));
-        OnPropertyChanged(nameof(CollectionStateTitle));
-        OnPropertyChanged(nameof(CollectionStateMessage));
-        return result;
+            var result = await session.AdoptLastStableAsync(cancellationToken);
+            ApplyAdoptionResult(result, automatic: false);
+            return result;
+        }
+        catch (ObservationAlreadyCatalogedException exception)
+        {
+            MarkCatalogExisting(exception.IdentityHash);
+            throw;
+        }
     }
 
     public async Task<IReadOnlyList<ObservationAdoptionResult>> RetryCatalogAsync(
@@ -339,6 +361,7 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
         }
         finally
         {
+            AutoSaveEnabled = false;
             var hadStableCandidate = stableCandidate is not null;
             stableCandidate = null;
             informationDetector.Reset();
@@ -351,6 +374,7 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
             OnPropertyChanged(nameof(IsActive));
             OnPropertyChanged(nameof(CanAdopt));
             OnPropertyChanged(nameof(CanResume));
+            OnPropertyChanged(nameof(CanConfigureAutoSave));
             OnPropertyChanged(nameof(CollectionStateTitle));
             OnPropertyChanged(nameof(CollectionStateMessage));
         }
@@ -418,6 +442,10 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
                     : "jacket detector";
                 StatusMessage = value.Diagnostic;
             });
+            if (value.HasStableCandidate && value.Candidate?.CompositeIdentity is not null)
+            {
+                await InspectAndMaybeAutoSaveAsync(value.Candidate);
+            }
         }
         catch (Exception exception)
         {
@@ -449,6 +477,7 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
                 captureEnded = true;
             }
             OnPropertyChanged(nameof(CanAdopt));
+            OnPropertyChanged(nameof(CanConfigureAutoSave));
             OnPropertyChanged(nameof(CollectionStateTitle));
             OnPropertyChanged(nameof(CollectionStateMessage));
         }
@@ -496,13 +525,116 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
         OnPropertyChanged(nameof(StableCandidate));
         OnPropertyChanged(nameof(CollectionStateTitle));
         OnPropertyChanged(nameof(CollectionStateMessage));
+        OnPropertyChanged(nameof(CanConfigureAutoSave));
     }
 
     private bool IsSaved(string compositeIdentityHash) =>
-        session.Checkpoint?.Observations.Any(
+        catalogSavedIdentityKeys.Contains(compositeIdentityHash)
+        || session.Checkpoint?.Observations.Any(
             observation => (session.RequiresCompositeIdentity
                     ? observation.CompositeIdentityHash
                     : observation.FeatureHash) == compositeIdentityHash) == true;
+
+    private async Task InspectAndMaybeAutoSaveAsync(JacketObservationCandidate candidate)
+    {
+        var candidateKey = CandidateIdentityKey(candidate);
+        ObservationSavePreflight preflight;
+        if (savePreflightByIdentity.TryGetValue(candidateKey, out var cachedDisposition))
+        {
+            preflight = new ObservationSavePreflight(cachedDisposition, candidateKey);
+        }
+        else
+        {
+            try
+            {
+                preflight = await session.InspectLastStableSavePreflightAsync();
+                savePreflightByIdentity[candidateKey] = preflight.Disposition;
+            }
+            catch (Exception exception)
+            {
+                await dispatcher.InvokeAsync(() =>
+                {
+                    StatusTitle = "保存前照合失敗";
+                    StatusMessage = exception.Message;
+                });
+                return;
+            }
+        }
+        if (preflight.CompositeIdentityHash != candidateKey)
+        {
+            return;
+        }
+        if (preflight.Disposition == ObservationSavePreflightDisposition.CatalogExisting)
+        {
+            await dispatcher.InvokeAsync(() => MarkCatalogExisting(candidateKey));
+            return;
+        }
+        if (preflight.Disposition != ObservationSavePreflightDisposition.Eligible
+            || !AutoSaveEnabled
+            || !autoSaveAttemptedIdentityKeys.Add(candidateKey))
+        {
+            return;
+        }
+        try
+        {
+            var result = await session.AdoptLastStableAsync();
+            await dispatcher.InvokeAsync(() => ApplyAdoptionResult(result, automatic: true));
+        }
+        catch (ObservationAlreadyCatalogedException exception)
+        {
+            await dispatcher.InvokeAsync(() => MarkCatalogExisting(exception.IdentityHash));
+        }
+        catch (Exception exception)
+        {
+            await dispatcher.InvokeAsync(() =>
+            {
+                StatusTitle = "自動保存失敗";
+                StatusMessage = $"自動再試行はしません。明示保存またはcatalog retryを使用してください: {exception.Message}";
+            });
+        }
+    }
+
+    private void ApplyAdoptionResult(ObservationAdoptionResult result, bool automatic)
+    {
+        lastCatalogReceipt = result.Catalog.Message;
+        StatusTitle = result.Catalog.Disposition switch
+        {
+            CatalogIngestDisposition.Created or CatalogIngestDisposition.Existing => automatic
+                ? "自動保存・catalog投入完了"
+                : "観測採用・catalog投入完了",
+            CatalogIngestDisposition.DeferredUnsupportedSchema => automatic
+                ? "自動保存・catalog投入保留"
+                : "観測採用・catalog投入保留",
+            _ => automatic ? "自動保存・catalog retry待ち" : "観測採用・catalog retry待ち",
+        };
+        StatusMessage = result.Catalog.Message;
+        OnPropertyChanged(nameof(LastCatalogReceipt));
+        NotifySaveStateChanged();
+    }
+
+    private void MarkCatalogExisting(string identityHash)
+    {
+        catalogSavedIdentityKeys.Add(identityHash);
+        savePreflightByIdentity[identityHash] = ObservationSavePreflightDisposition.CatalogExisting;
+        StatusTitle = "catalog保存済み";
+        StatusMessage = "current catalogに同じcomposite identityがあるため、artifact/checkpointは作成しません。";
+        NotifySaveStateChanged();
+    }
+
+    private void NotifySaveStateChanged()
+    {
+        OnPropertyChanged(nameof(CanAdopt));
+        OnPropertyChanged(nameof(CollectionStateTitle));
+        OnPropertyChanged(nameof(CollectionStateMessage));
+    }
+
+    private void ResetSavePreflightState()
+    {
+        AutoSaveEnabled = false;
+        catalogSavedIdentityKeys.Clear();
+        autoSaveAttemptedIdentityKeys.Clear();
+        savePreflightByIdentity.Clear();
+    }
 
     private string CandidateIdentityKey(JacketObservationCandidate candidate) =>
         session.RequiresCompositeIdentity

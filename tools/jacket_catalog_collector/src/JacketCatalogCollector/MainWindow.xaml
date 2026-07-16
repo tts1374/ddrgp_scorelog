@@ -102,9 +102,13 @@
                             <StackPanel>
                                 <TextBlock Text="{Binding Observation.CollectionStateTitle}"
                                            FontSize="21" FontWeight="SemiBold" TextWrapping="Wrap" />
-                                <TextBlock Text="{Binding Observation.CollectionStateMessage}"
-                                           Margin="0,8,0,14" Foreground="#44505F" FontSize="14"
-                                           TextWrapping="Wrap" />
+                                 <TextBlock Text="{Binding Observation.CollectionStateMessage}"
+                                            Margin="0,8,0,14" Foreground="#44505F" FontSize="14"
+                                            TextWrapping="Wrap" />
+                                <CheckBox Content="このsessionで保存前照合済み候補を自動保存する（既定OFF）"
+                                          IsChecked="{Binding Observation.AutoSaveEnabled, Mode=TwoWay}"
+                                          IsEnabled="{Binding Observation.CanConfigureAutoSave}"
+                                          Margin="0,0,0,10" />
                                 <Button Content="このジャケットを保存"
                                         Style="{StaticResource PrimaryButton}"
                                         IsEnabled="{Binding Observation.CanAdopt}"

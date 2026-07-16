@@ -24,10 +24,10 @@ appはカレントディレクトリをリポジトリrootとして `python -X u
 1. 初回またはDBを変更するときは `管理・設定` で `master/catalogを選択` を押し、互換なmasterとcatalogを読み込む。正常読込後は次回起動時に同じ組合せをread-onlyで自動再検証する。
 2. DDR GRAND PRIXを曲選択画面にし、`ウィンドウを再検索` を押す。
 3. 左下の一覧から表示中のDDR GPを1件選び、previewを確認して `収集を開始` を押す。
-4. DDR GPで曲を移動し、`新しいジャケットを検出` と表示されたら `このジャケットを保存` を押す。
+4. DDR GPで曲を移動し、`新しいジャケットを検出` と表示されたら `このジャケットを保存` を押す。session単位の自動保存を使う場合だけ、開始後に既定OFFのcheckboxを明示的に有効化する。
 5. `このジャケットは保存済み` と表示されたら、DDR GPで次の曲へ移動する。終了時は `収集を終了` を押す。
 
-detectorの内部状態は通常画面へ表示しません。同じ画像が連続する間も未保存のstable候補は保存可能なまま維持し、保存後は次の曲へ移動する案内を表示します。session再開とcatalog retryは `詳細・復旧操作`、master更新とtitle/artist評価は `管理・設定` にあります。
+detectorの内部状態は通常画面へ表示しません。同じ画像が連続する間も未保存のstable候補は保存可能なまま維持し、保存後は次の曲へ移動する案内を表示します。自動保存は起動時・fresh session・resumeのたびにOFFへ戻り、端末設定へ保存しません。session再開とcatalog retryは `詳細・復旧操作`、master更新とtitle/artist評価は `管理・設定` にあります。
 
 ## Master/catalog path setting
 
@@ -83,7 +83,7 @@ capture開始前にmaster/catalogのprojectionを読み込み、選択windowのi
 
 fresh sessionでは、stable jacketと同じcapture sequence/timestampのstable曲名行だけを組み合わせます。`m5c-jacket-title-composite-identity-v1`、jacket feature version/hash、title-line feature version/hashをこの順のUTF-8 NUL区切りbyte列にし、SHA-256 lower hexをlocal composite identityとします。title-line未表示・未安定、version不明、frame不一致ではidentityを作らず、明示保存を許可しません。難易度など曲名行ROI外だけの変更はidentityへ含めません。曲名行hashやcomposite identityをOCR文字列、master song/chart ID、catalog field、保存可否の自動判定としては扱いません。
 
-`change_candidate`、`stable_candidate`、`duplicate_preview` は内部的には別状態です。session内で一度stableになったjacket feature hashは、別jacketを挟んで再出現しても既存候補として扱います。通常画面はこれらとtitle-line安定状態を `ジャケットを確認中`、`曲名行を確認中`、`新しいジャケットを検出`、`このジャケットは保存済み` などの操作案内へ変換します。stable候補は自動採用せず、`このジャケットを保存` を明示的に押したときだけ、`data/jacket_catalog_collector/<session-id>/observations/<observation-id>/` に `source.png`、`jacket-crop.png`、`observation.json` と checkpoint をstagingからatomic publishします。observation IDは従来どおりsession内の決定的なlower SHA-256 idempotency keyですが、fresh sessionでは同一jacketの別title-lineを共存させるためcomposite identityを入力にします。IDの形式とcatalog ingest APIは変更しません。publish前にcurrent master/catalog/extractorと各feature/composite identityを再検査し、失敗stagingは残しません。source/crop/hashの不一致、同一observation IDの異なるpayload、破損・旧version・identity drift checkpointは副作用なしで拒否します。
+`change_candidate`、`stable_candidate`、`duplicate_preview` は内部的には別状態です。session内で一度stableになったjacket feature hashは、別jacketを挟んで再出現しても既存候補として扱います。通常画面はこれらとtitle-line安定状態を `ジャケットを確認中`、`曲名行を確認中`、`新しいジャケットを検出`、`このジャケットは保存済み` などの操作案内へ変換します。通常は`このジャケットを保存`を明示的に押したときだけ、明示opt-in時はstable composite候補ごとに1回だけ自動で、`data/jacket_catalog_collector/<session-id>/observations/<observation-id>/` に `source.png`、`jacket-crop.png`、`observation.json` と checkpoint をstagingからatomic publishします。どちらもpublish前にcurrent checkpointとcurrent catalogの全review状態を含むcomposite identity集合を照合します。checkpointにあるidentityは既存receipt/retry経路へ留め、catalogだけにあるidentityは保存済み表示にしてartifact/checkpointを新規作成しません。照合後に別processが同じidentityを投入してもcatalogの一意制約と冪等ingestへ収束します。observation IDは従来どおりsession内の決定的なlower SHA-256 idempotency keyですが、fresh sessionでは同一jacketの別title-lineを共存させるためcomposite identityを入力にします。IDの形式とcatalog ingest APIは変更しません。publish前にcurrent master/catalog/extractorと各feature/composite identityを再検査し、失敗stagingは残しません。source/crop/hashの不一致、同一observation IDの異なるpayload、破損・旧version・identity drift checkpointは副作用なしで拒否します。
 
 checkpointは最初の明示採用と同時に作成し、それ以前のframeをdiskへ書きません。fresh sessionは`m5c-observation-manifest-v2` / `m5c-observation-checkpoint-v2`を使い、jacket feature version/hash、title-line feature version/hash、composite identity version/hashを必須fieldとして保存します。unknown/missing/null/empty/非lower-hex、version不一致、canonical hash不一致、manifest/checkpoint driftを副作用なしで拒否します。以後は停止時にも、`session_id`、master/catalog/extractor/window/ROI/detector identity、session内stable jacket feature集合、最後のstable feature、処理frame/drop件数、採用済みobservation ID/source hash、catalog statusをatomic更新します。
 

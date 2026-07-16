@@ -720,6 +720,46 @@ def load_composite_identities(path: Path) -> frozenset[tuple[str, str]]:
         raise ValueError(f"invalid jacket reference catalog: {path}") from exc
 
 
+def load_observation_composite_identity_set(
+    catalog_path: Path,
+    *,
+    expected_catalog_identity: str,
+    expected_catalog_schema_version: int,
+    expected_catalog_created_at: str,
+) -> dict[str, object]:
+    """Load the current catalog identity set under the observation session identity."""
+    try:
+        with closing(_connect_read_only(catalog_path)) as connection:
+            schema_version = _validate_catalog(connection)
+            metadata = dict(connection.execute("SELECT key, value FROM catalog_metadata"))
+            if expected_catalog_identity != CATALOG_IDENTITY:
+                raise ValueError("catalog identity drift detected for identity set")
+            if schema_version != expected_catalog_schema_version:
+                raise ValueError("catalog schema drift detected for identity set")
+            if metadata["created_at"] != expected_catalog_created_at:
+                raise ValueError("catalog file identity drift detected for identity set")
+            identities = [
+                {
+                    "identity_version": str(version),
+                    "identity_hash": str(identity_hash),
+                }
+                for version, identity_hash in connection.execute(
+                    "SELECT composite_identity_version, composite_identity_hash "
+                    "FROM jacket_references WHERE composite_identity_version IS NOT NULL "
+                    "ORDER BY composite_identity_version, composite_identity_hash"
+                )
+            ]
+    except sqlite3.DatabaseError as exc:
+        raise ValueError(f"invalid jacket reference catalog: {catalog_path}") from exc
+    return {
+        "identity_set_schema_version": "m5c-catalog-composite-identity-set-v1",
+        "catalog_identity": CATALOG_IDENTITY,
+        "catalog_schema_version": schema_version,
+        "catalog_created_at": metadata["created_at"],
+        "identities": identities,
+    }
+
+
 def _mutation_payload(request: ReviewMutationRequest) -> str:
     return json.dumps(
         {
@@ -1916,6 +1956,13 @@ def build_parser() -> argparse.ArgumentParser:
     validate_receipt.add_argument("--expected-catalog-created-at", required=True)
     validate_receipt.add_argument("--composite-identity-version")
     validate_receipt.add_argument("--composite-identity-hash")
+    identity_set = subparsers.add_parser(
+        "identity-set", help="Read the current composite identity set for save preflight."
+    )
+    identity_set.add_argument("--catalog", type=Path, required=True)
+    identity_set.add_argument("--expected-catalog-identity", required=True)
+    identity_set.add_argument("--expected-catalog-schema-version", type=int, required=True)
+    identity_set.add_argument("--expected-catalog-created-at", required=True)
     return parser
 
 
@@ -2009,6 +2056,16 @@ def main(argv: list[str] | None = None) -> int:
             expected_catalog_created_at=args.expected_catalog_created_at,
             composite_identity_version=args.composite_identity_version,
             composite_identity_hash_value=args.composite_identity_hash,
+        )
+        print(json.dumps(result, ensure_ascii=False, separators=(",", ":")))
+        return 0
+    if args.command == "identity-set":
+        ensure_data_path(args.catalog, argument_name="--catalog")
+        result = load_observation_composite_identity_set(
+            args.catalog,
+            expected_catalog_identity=args.expected_catalog_identity,
+            expected_catalog_schema_version=args.expected_catalog_schema_version,
+            expected_catalog_created_at=args.expected_catalog_created_at,
         )
         print(json.dumps(result, ensure_ascii=False, separators=(",", ":")))
         return 0

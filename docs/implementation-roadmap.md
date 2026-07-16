@@ -349,7 +349,7 @@ collector boundary:
 - 既存非空masterはnetwork/build前にinspectし、inspection済みstagingだけを明示publishする。failure/cancelではtargetやtemporary fileを残さない。
 - DDR GP window候補はhandle、PID、process start、title/class、client size/state、根拠を表示するが、自動選択・自動開始しない。
 - capture queue/ringはboundedとし、停止、取消、window loss、device loss、例外でin-flight callbackをdrainしてresourceを1回だけ解放する。
-- stable candidateは自動採用せず、明示操作だけがsource/crop/manifest/checkpointを `data/jacket_catalog_collector/` へatomic publishする。
+- stable candidateは既定では自動採用しない。session単位・既定OFFの明示opt-in時だけ、current checkpointとcurrent catalogのcomposite identity集合にない候補をidentityごとに1回自動保存する。手動/自動とも同じatomic publish、current writer、retry境界を使う。
 - catalog failureはpending checkpointとlocal evidenceから明示retryし、catalog成功後checkpoint failureは同じreceiptでcheckpointだけを収束させる。
 - title/artist方式採用は実capture evaluated 30件以上、pair exact 95%以上、field confidence 0.90以上、候補precision 100%、既知誤自動確定0件を要求する。条件未達ではcurrent unresolved/manual reviewを維持する。
 - capture、crop、artifact、checkpoint、特徴量、review、master/catalog DB、source snapshotはlocal dataとし、Git、CI artifact、Release、通常公開logへ含めない。

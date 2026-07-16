@@ -854,6 +854,83 @@ public sealed class PythonCatalogObservationAdapter(
     string repositoryRoot,
     string pythonExecutable = "python") : IObservationCatalogAdapter
 {
+    public async Task<IReadOnlySet<CompositeObservationIdentity>> LoadCompositeIdentitySetAsync(
+        ObservationSessionIdentity session,
+        string catalogPath,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await processRunner.RunAsync(
+            new ProcessRequest(
+                pythonExecutable,
+                [
+                    "-X", "utf8", "-m", "tools.vision_poc.jacket_reference_catalog",
+                    "identity-set",
+                    "--catalog", Path.GetFullPath(catalogPath),
+                    "--expected-catalog-identity", session.CatalogIdentity,
+                    "--expected-catalog-schema-version", session.CatalogSchemaVersion.ToString(
+                        System.Globalization.CultureInfo.InvariantCulture),
+                    "--expected-catalog-created-at", session.CatalogCreatedAt,
+                ],
+                repositoryRoot),
+            cancellationToken);
+        if (result.ExitCode != 0)
+        {
+            throw new ObservationIdentityDriftException(
+                $"catalog identity set preflight failed (exit {result.ExitCode})");
+        }
+        try
+        {
+            using var document = JsonDocument.Parse(result.StandardOutput);
+            var root = document.RootElement;
+            var expectedRootProperties = new HashSet<string>(StringComparer.Ordinal)
+            {
+                "identity_set_schema_version",
+                "catalog_identity",
+                "catalog_schema_version",
+                "catalog_created_at",
+                "identities",
+            };
+            if (root.ValueKind != JsonValueKind.Object
+                || root.EnumerateObject().Any(property => !expectedRootProperties.Remove(property.Name))
+                || expectedRootProperties.Count != 0
+                || root.GetProperty("identity_set_schema_version").GetString()
+                    != "m5c-catalog-composite-identity-set-v1"
+                || root.GetProperty("catalog_identity").GetString() != session.CatalogIdentity
+                || root.GetProperty("catalog_schema_version").GetInt32() != session.CatalogSchemaVersion
+                || root.GetProperty("catalog_created_at").GetString() != session.CatalogCreatedAt
+                || root.GetProperty("identities").ValueKind != JsonValueKind.Array)
+            {
+                throw new InvalidOperationException("catalog identity set receipt is invalid");
+            }
+            var identities = new HashSet<CompositeObservationIdentity>();
+            foreach (var item in root.GetProperty("identities").EnumerateArray())
+            {
+                var properties = item.EnumerateObject().ToList();
+                if (item.ValueKind != JsonValueKind.Object
+                    || properties.Count != 2
+                    || properties.Select(property => property.Name).ToHashSet(StringComparer.Ordinal)
+                        .SetEquals(["identity_version", "identity_hash"]) is false)
+                {
+                    throw new InvalidOperationException("catalog identity set item is invalid");
+                }
+                var identity = new CompositeObservationIdentity(
+                    item.GetProperty("identity_version").GetString() ?? "",
+                    item.GetProperty("identity_hash").GetString() ?? "");
+                if (identity.IdentityVersion != JacketObservationVersions.CompositeIdentity
+                    || !CompositeObservationIdentityBuilder.IsSha256(identity.IdentityHash)
+                    || !identities.Add(identity))
+                {
+                    throw new InvalidOperationException("catalog identity set item is invalid");
+                }
+            }
+            return identities;
+        }
+        catch (JsonException exception)
+        {
+            throw new InvalidOperationException("catalog identity set returned invalid JSON", exception);
+        }
+    }
+
     public async Task ValidateSessionAsync(
         ObservationSessionIdentity session,
         string catalogPath,
@@ -1305,6 +1382,16 @@ public sealed class JacketObservationSession(
             var observationId = BuildObservationId(identity.SessionId, observationKey);
             var existing = checkpoint?.Observations.FirstOrDefault(
                 item => item.ObservationId == observationId);
+            if (compositeIdentityRequired && existing is null)
+            {
+                var catalogIdentities = await catalogAdapter.LoadCompositeIdentitySetAsync(
+                    identity, catalogPath, cancellationToken);
+                if (catalogIdentities.Contains(candidate.CompositeIdentity!))
+                {
+                    throw new ObservationAlreadyCatalogedException(
+                        candidate.CompositeIdentity!.IdentityHash);
+                }
+            }
             ObservationArtifact artifact;
             if (existing is not null)
             {
@@ -1473,6 +1560,40 @@ public sealed class JacketObservationSession(
                 publishReceipt,
                 catalog,
                 checkpoint ?? finalCheckpoint);
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
+    public async Task<ObservationSavePreflight> InspectLastStableSavePreflightAsync(
+        CancellationToken cancellationToken = default)
+    {
+        await gate.WaitAsync(cancellationToken);
+        try
+        {
+            if (!active || identity is null || catalogPath is null || lastStableCandidate is null
+                || lastStableCandidate.CompositeIdentity is null)
+            {
+                throw new InvalidOperationException("current composite identity candidate is not ready");
+            }
+            var candidateIdentity = lastStableCandidate.CompositeIdentity;
+            if (checkpoint?.Observations.Any(item =>
+                    item.CompositeIdentityVersion == candidateIdentity.IdentityVersion
+                    && item.CompositeIdentityHash == candidateIdentity.IdentityHash) == true)
+            {
+                return new ObservationSavePreflight(
+                    ObservationSavePreflightDisposition.CheckpointExisting,
+                    candidateIdentity.IdentityHash);
+            }
+            var catalogIdentities = await catalogAdapter.LoadCompositeIdentitySetAsync(
+                identity, catalogPath, cancellationToken);
+            return new ObservationSavePreflight(
+                catalogIdentities.Contains(candidateIdentity)
+                    ? ObservationSavePreflightDisposition.CatalogExisting
+                    : ObservationSavePreflightDisposition.Eligible,
+                candidateIdentity.IdentityHash);
         }
         finally
         {

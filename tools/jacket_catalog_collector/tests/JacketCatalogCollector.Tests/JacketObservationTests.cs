@@ -1,6 +1,7 @@
 using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading.Channels;
 using System.Windows.Media;
@@ -215,6 +216,41 @@ public sealed class JacketObservationTests : IDisposable
             ResumeRequest(identity), "master.sqlite", "catalog.sqlite");
         Assert.True(resume.Compatible);
         Assert.True(resumed.RequiresCompositeIdentity);
+    }
+
+    [Fact]
+    public async Task Current_catalog_identity_preflight_blocks_new_artifact_and_checkpoint()
+    {
+        var identity = Identity("session-catalog-existing");
+        var catalog = new FakeCatalogAdapter();
+        await using var session = new JacketObservationSession(
+            new JacketObservationDetector(new JacketDetectorOptions(0.01, 2, TimeSpan.Zero)),
+            new AtomicObservationCheckpointStore(root),
+            new AtomicObservationArtifactPublisher(root),
+            catalog);
+        await session.StartAsync(
+            identity,
+            "master.sqlite",
+            "catalog.sqlite",
+            requireCompositeIdentity: true);
+        var detector = StableInformationDetector();
+        var first = CompositeFrame(40, 1, 1, 0);
+        await session.ObserveFrameAsync(first, information: detector.Observe(first));
+        var second = CompositeFrame(40, 1, 2, 100);
+        var stable = await session.ObserveFrameAsync(second, information: detector.Observe(second));
+        var compositeIdentity = stable.Candidate!.CompositeIdentity!;
+        catalog.CompositeIdentities.Add(compositeIdentity);
+
+        var preflight = await session.InspectLastStableSavePreflightAsync();
+        var exception = await Assert.ThrowsAsync<ObservationAlreadyCatalogedException>(
+            () => session.AdoptLastStableAsync());
+
+        Assert.Equal(ObservationSavePreflightDisposition.CatalogExisting, preflight.Disposition);
+        Assert.Equal(compositeIdentity.IdentityHash, exception.IdentityHash);
+        Assert.Null(session.Checkpoint);
+        Assert.False(Directory.Exists(Path.Combine(root, identity.SessionId)));
+        Assert.Equal(0, catalog.CallCount);
+        Assert.Equal(2, catalog.IdentitySetCallCount);
     }
 
     [Fact]
@@ -679,6 +715,56 @@ public sealed class JacketObservationTests : IDisposable
         Assert.Equal("表示なし", viewModel.InformationPanelDisplay);
         Assert.Equal("—", viewModel.InformationTitleLineHash);
         await coordinator.StopAsync();
+    }
+
+    [Fact]
+    public async Task Explicit_session_opt_in_auto_saves_eligible_composite_candidate()
+    {
+        var checkpointStore = new AtomicObservationCheckpointStore(root);
+        var source = new TestFrameSource();
+        var candidate = Candidate();
+        var windows = new TestWindowEnumerator(candidate);
+        var coordinator = new WindowCaptureCoordinator(
+            windows,
+            new TestSessionFactory(source),
+            new ImmediateCaptureDispatcher(),
+            ringCapacity: 32);
+        var capture = new WindowCaptureViewModel(windows, coordinator);
+        await using var viewModel = new JacketObservationViewModel(
+            capture,
+            new JacketObservationSession(
+                new JacketObservationDetector(new JacketDetectorOptions(0.01, 2, TimeSpan.Zero)),
+                checkpointStore,
+                new AtomicObservationArtifactPublisher(root),
+                new FakeCatalogAdapter()),
+            new ImmediateCaptureDispatcher(),
+            StableInformationDetector());
+        var saved = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        viewModel.PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName == nameof(viewModel.StatusTitle)
+                && viewModel.StatusTitle == "自動保存・catalog投入完了")
+            {
+                saved.TrySetResult();
+            }
+        };
+
+        await viewModel.StartSessionAsync(
+            Master(), Catalog(), candidate, "master.sqlite", "catalog.sqlite");
+        Assert.False(viewModel.AutoSaveEnabled);
+        viewModel.AutoSaveEnabled = true;
+        Assert.True(await coordinator.StartAsync(candidate));
+        source.Write(CompositeFrame(20, 1, 1, 0));
+        source.Write(CompositeFrame(20, 1, 2, 100));
+        await saved.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        var checkpoint = await checkpointStore.LoadAsync(viewModel.SessionId);
+        Assert.Single(checkpoint.Observations);
+        Assert.Equal("ingested", checkpoint.Observations[0].CatalogStatus);
+        Assert.False(viewModel.CanAdopt);
+
+        await coordinator.StopAsync();
+        Assert.False(viewModel.AutoSaveEnabled);
     }
 
     [Fact]
@@ -1290,6 +1376,45 @@ public sealed class JacketObservationTests : IDisposable
         Assert.Contains("--composite-identity-hash", runner.Requests[1].Arguments);
     }
 
+    [Fact]
+    public async Task Python_adapter_strictly_reads_current_catalog_identity_set()
+    {
+        var identity = Identity("session-identity-set");
+        var composite = CompositeObservationIdentityBuilder.Create(
+            JacketObservationVersions.FrameFeature,
+            Hash(Encoding.UTF8.GetBytes("jacket")),
+            JacketObservationVersions.InformationTitleLineFeature,
+            Hash(Encoding.UTF8.GetBytes("title")));
+        var runner = new StubProcessRunner((_, _) => Task.FromResult(
+            new ProcessResult(
+                0,
+                JsonSerializer.Serialize(new
+                {
+                    identity_set_schema_version = "m5c-catalog-composite-identity-set-v1",
+                    catalog_identity = identity.CatalogIdentity,
+                    catalog_schema_version = identity.CatalogSchemaVersion,
+                    catalog_created_at = identity.CatalogCreatedAt,
+                    identities = new[]
+                    {
+                        new
+                        {
+                            identity_version = composite.IdentityVersion,
+                            identity_hash = composite.IdentityHash,
+                        },
+                    },
+                }),
+                "")));
+        var adapter = new PythonCatalogObservationAdapter(runner, root);
+
+        var values = await adapter.LoadCompositeIdentitySetAsync(
+            identity, "catalog.sqlite");
+
+        Assert.Contains(composite, values);
+        Assert.Single(runner.Requests);
+        Assert.Contains("identity-set", runner.Requests[0].Arguments);
+        Assert.Contains("--expected-catalog-created-at", runner.Requests[0].Arguments);
+    }
+
     [Theory]
     [InlineData("observation artifact image hash does not match its checkpoint")]
     [InlineData("observation artifact image is empty")]
@@ -1720,11 +1845,23 @@ public sealed class JacketObservationTests : IDisposable
         private readonly Queue<CatalogIngestReceipt> receipts = new(receipts);
 
         public int CallCount { get; private set; }
+        public int IdentitySetCallCount { get; private set; }
         public int ValidationCallCount { get; private set; }
+        public HashSet<CompositeObservationIdentity> CompositeIdentities { get; } = [];
         public Exception? ValidationFailure { get; init; }
         public Exception? IngestFailure { get; init; }
         public int FailValidationOnCall { get; init; } = 1;
         public int CancelIngestOnCall { get; set; }
+
+        public Task<IReadOnlySet<CompositeObservationIdentity>> LoadCompositeIdentitySetAsync(
+            ObservationSessionIdentity session,
+            string catalogPath,
+            CancellationToken cancellationToken = default)
+        {
+            IdentitySetCallCount++;
+            return Task.FromResult<IReadOnlySet<CompositeObservationIdentity>>(
+                new HashSet<CompositeObservationIdentity>(CompositeIdentities));
+        }
 
         public Task ValidateSessionAsync(
             ObservationSessionIdentity session,

@@ -287,6 +287,11 @@ public interface IObservationArtifactReader
 
 public interface IObservationCatalogAdapter
 {
+    Task<IReadOnlySet<CompositeObservationIdentity>> LoadCompositeIdentitySetAsync(
+        ObservationSessionIdentity session,
+        string catalogPath,
+        CancellationToken cancellationToken = default);
+
     Task ValidateSessionAsync(
         ObservationSessionIdentity session,
         string catalogPath,
@@ -314,6 +319,23 @@ public sealed record ObservationResumeValidation(
 
 public sealed class ObservationIdentityDriftException(string message)
     : InvalidOperationException(message);
+
+public sealed class ObservationAlreadyCatalogedException(string identityHash)
+    : InvalidOperationException("composite identity is already present in the current catalog")
+{
+    public string IdentityHash { get; } = identityHash;
+}
+
+public enum ObservationSavePreflightDisposition
+{
+    Eligible,
+    CheckpointExisting,
+    CatalogExisting,
+}
+
+public sealed record ObservationSavePreflight(
+    ObservationSavePreflightDisposition Disposition,
+    string CompositeIdentityHash);
 
 public sealed record ObservationAdoptionResult(
     string ObservationId,
