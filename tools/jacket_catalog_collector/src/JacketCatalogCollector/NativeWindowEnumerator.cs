@@ -78,12 +78,16 @@ public sealed class NativeWindowEnumerator : IWindowEnumerator
         }
     }
 
-    private static List<string> CandidateReasons(WindowIdentitySnapshot snapshot)
+    internal static List<string> CandidateReasons(WindowIdentitySnapshot snapshot)
     {
         var reasons = new List<string>();
         if (snapshot.Title.Contains("DDR GRAND PRIX", StringComparison.OrdinalIgnoreCase))
         {
             reasons.Add("title contains DDR GRAND PRIX");
+        }
+        if (snapshot.ProcessName.Equals("ddr-konaste", StringComparison.OrdinalIgnoreCase))
+        {
+            reasons.Add("process name is ddr-konaste");
         }
         if (snapshot.ProcessName.Contains("ddr", StringComparison.OrdinalIgnoreCase)
             && snapshot.ProcessName.Contains("gp", StringComparison.OrdinalIgnoreCase))
@@ -95,8 +99,7 @@ public sealed class NativeWindowEnumerator : IWindowEnumerator
 
     private static byte[]? TryCapturePreview(WindowIdentitySnapshot snapshot)
     {
-        if (!snapshot.IsVisible || snapshot.IsMinimized
-            || snapshot.ClientWidth <= 0 || snapshot.ClientHeight <= 0)
+        if (!ShouldAttemptPreview(snapshot))
         {
             return null;
         }
@@ -157,6 +160,13 @@ public sealed class NativeWindowEnumerator : IWindowEnumerator
             }
         }
     }
+
+    internal static bool ShouldAttemptPreview(WindowIdentitySnapshot snapshot) =>
+        !snapshot.ProcessName.Equals("ddr-konaste", StringComparison.OrdinalIgnoreCase)
+        && snapshot.IsVisible
+        && !snapshot.IsMinimized
+        && snapshot.ClientWidth > 0
+        && snapshot.ClientHeight > 0;
 
     private static string GetWindowTextValue(nint handle)
     {

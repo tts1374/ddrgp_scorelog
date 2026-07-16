@@ -1,11 +1,14 @@
 # 現在PR完了記録
 
-M5c-4 merge後に判明したdeveloper-only collectorの起動不能を修正した。read-only view-model propertyを表示する`Run.Text` bindingを明示的なone-way bindingへ統一し、同じ不具合の再混入を検出するXAML回帰testを追加した。
+M5c-4 merge後に判明したdeveloper-only collectorの起動不能と、実DDR GP windowを候補として認識できない問題を修正した。read-only view-model propertyを表示する`Run.Text` bindingを明示的なone-way bindingへ統一し、実行ファイル名`ddr-konaste`を限定的な候補根拠として追加した。
 
 ## 今回の完了範囲
 
 - catalog identity/schema/capabilityとobservation session/catalog receiptの`Run.Text` bindingに`Mode=OneWay`を指定した。
 - `Run.Text`へ追加されるbindingが明示的にone-wayであることを確認する回帰testを追加した。
+- 実環境の`ddr-konaste` / `DanceDanceRevolution`を候補として認識し、類似名やtitleだけの誤検出を避ける回帰testを追加した。
+- DDR GPが管理者権限で動作する環境ではcollectorも同等権限で起動する必要があり、権限不足時にprocess start identityを省略して候補化しない境界をREADMEへ明記した。
+- 保護された`ddr-konaste`へ応答しない`PrintWindow` previewを呼ばず、候補列挙を完了させる境界と回帰testを追加した。明示開始後のWindows Graphics Captureは変更していない。
 - collector全test、build、実際のウィンドウ起動と応答を確認した。
 - catalog schema、収集・評価処理、保存境界、ローカルDBや画像・生成物は変更していない。
 

@@ -6,6 +6,8 @@ M5c のローカル jacket catalog 運用を支援する、公開 `DDRGpScoreVie
 
 リポジトリrootで実行します。
 
+DDR GRAND PRIXが管理者権限で起動している環境では、windowのprocess start identityを検査できるよう、collectorも管理者として起動したPowerShellから実行してください。権限が不足するwindowは候補へ部分追加せず、0件として扱います。
+
 ```powershell
 dotnet restore tools\jacket_catalog_collector\tests\JacketCatalogCollector.Tests\JacketCatalogCollector.Tests.csproj
 dotnet build tools\jacket_catalog_collector\src\JacketCatalogCollector\JacketCatalogCollector.csproj --no-restore
@@ -50,6 +52,8 @@ v2ではreview行を選び、current GP曲をsong ID/title/artistで検索して
 ## Window capture lifecycle
 
 `Window capture (memory only)` はtop-level windowを列挙し、titleまたはprocess名からDDR GRAND PRIX候補になった理由、handle、PID、process start identity、title/class、client size、visible/minimized状態と取得可能なpreviewを表示します。候補が1件でも自動選択・自動開始しません。開発者が行を選び、preview、根拠、identityを確認dialogで再確認した場合だけWindows Graphics Captureを開始します。
+
+保護された`ddr-konaste` windowでは`PrintWindow`が応答しないため、候補一覧のpreview取得を試行せず、process名、handle/PID/process start、title/class、client size/stateを確認対象とします。これは明示開始後のWindows Graphics Captureを無効化するものではありません。
 
 開始直前と各frame受領時にhandle、PID、process start、process名、title/class、client size、visible/minimized状態を再検査します。stale候補、handle再利用、resize、identity drift、最小化、対象終了では暗黙に別windowを選択・再開始せず、終了理由を表示します。二重開始を拒否し、停止・開始取消・window close・device loss・capture例外は冪等停止としてin-flight callbackをdrainしてからresourceを1回だけ解放します。collector終了時もactive sessionの停止完了を待ちます。
 
