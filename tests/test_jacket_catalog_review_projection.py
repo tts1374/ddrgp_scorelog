@@ -320,3 +320,23 @@ def test_projection_rejects_non_catalog_and_concurrent_change(
     monkeypatch.setattr(projection.catalog, "build_coverage", mutate_during_projection)
     with pytest.raises(ValueError, match="changed while"):
         projection.build_review_projection(catalog_db, master_db)
+
+
+def test_projection_v3_preserves_manual_review_contract(
+    tmp_path: Path, monkeypatch
+) -> None:
+    master_db, catalog_db = _setup(tmp_path, monkeypatch)
+    catalog_v2 = tmp_path / "data" / "catalog-v2.sqlite"
+    catalog.migrate_catalog_v1_to_v2(catalog_db, catalog_v2)
+    artifact_root = tmp_path / "data" / "artifacts"
+    artifact_root.mkdir()
+    catalog_v3 = tmp_path / "data" / "catalog-v3.sqlite"
+    catalog.migrate_catalog_v2_to_v3(catalog_v2, catalog_v3, artifact_root)
+
+    result = projection.build_review_projection(catalog_v3, master_db)
+
+    assert result["catalog"]["schema_version"] == 3
+    assert result["catalog"]["migration_required"] is False
+    assert result["catalog"]["mutation_capability"] == "manual_review_v2"
+    assert result["review_references"][0]["revision"] == 0
+    assert result["review_references"][0]["history"] == []

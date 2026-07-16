@@ -72,7 +72,10 @@ def build_review_projection(catalog_path: Path, master_db: Path) -> dict[str, An
             ).append(_candidate_projection(candidate_row, songs_by_id))
 
         history_by_reference: dict[str, list[dict[str, Any]]] = {}
-        if catalog_version == catalog.CATALOG_SCHEMA_VERSION_V2:
+        if catalog_version in {
+            catalog.CATALOG_SCHEMA_VERSION_V2,
+            catalog.CATALOG_SCHEMA_VERSION_V3,
+        }:
             for history_row in connection.execute(
                 "SELECT * FROM reference_review_history ORDER BY reference_id, history_id"
             ):
@@ -134,17 +137,29 @@ def build_review_projection(catalog_path: Path, master_db: Path) -> dict[str, An
                     "stored_status": str(row["review_status"]),
                     "revision": (
                         int(row["review_revision"])
-                        if catalog_version == catalog.CATALOG_SCHEMA_VERSION_V2
+                        if catalog_version
+                        in {
+                            catalog.CATALOG_SCHEMA_VERSION_V2,
+                            catalog.CATALOG_SCHEMA_VERSION_V3,
+                        }
                         else 0
                     ),
                     "manual_action_id": (
                         row["manual_action_id"]
-                        if catalog_version == catalog.CATALOG_SCHEMA_VERSION_V2
+                        if catalog_version
+                        in {
+                            catalog.CATALOG_SCHEMA_VERSION_V2,
+                            catalog.CATALOG_SCHEMA_VERSION_V3,
+                        }
                         else None
                     ),
                     "manual_note": (
                         str(row["manual_note"])
-                        if catalog_version == catalog.CATALOG_SCHEMA_VERSION_V2
+                        if catalog_version
+                        in {
+                            catalog.CATALOG_SCHEMA_VERSION_V2,
+                            catalog.CATALOG_SCHEMA_VERSION_V3,
+                        }
                         else ""
                     ),
                     "history": history_by_reference.get(str(row["reference_id"]), []),
@@ -188,7 +203,11 @@ def build_review_projection(catalog_path: Path, master_db: Path) -> dict[str, An
             "migration_required": catalog_version == catalog.CATALOG_SCHEMA_VERSION,
             "mutation_capability": (
                 "manual_review_v2"
-                if catalog_version == catalog.CATALOG_SCHEMA_VERSION_V2
+                if catalog_version
+                in {
+                    catalog.CATALOG_SCHEMA_VERSION_V2,
+                    catalog.CATALOG_SCHEMA_VERSION_V3,
+                }
                 else "read_only"
             ),
         }

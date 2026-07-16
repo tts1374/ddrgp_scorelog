@@ -909,6 +909,18 @@ public sealed class PythonCatalogObservationAdapter(
             arguments.Add("--catalog-reference-id");
             arguments.Add(observation.CatalogReferenceId);
         }
+        if (artifact.Session.CatalogSchemaVersion == 3)
+        {
+            if (artifact.CompositeIdentity is null)
+            {
+                throw new InvalidOperationException("catalog v3 receipt requires composite identity");
+            }
+            arguments.AddRange(
+            [
+                "--composite-identity-version", artifact.CompositeIdentity.IdentityVersion,
+                "--composite-identity-hash", artifact.CompositeIdentity.IdentityHash,
+            ]);
+        }
         var result = await processRunner.RunAsync(
             new ProcessRequest(pythonExecutable, arguments, repositoryRoot), cancellationToken);
         if (result.ExitCode != 0)
@@ -925,21 +937,21 @@ public sealed class PythonCatalogObservationAdapter(
         string masterPath,
         CancellationToken cancellationToken = default)
     {
-        if (artifact.Session.CatalogSchemaVersion is not (1 or 2))
+        if (artifact.Session.CatalogSchemaVersion is not (1 or 2 or 3))
         {
             throw new ObservationIdentityDriftException(
                 $"unsupported catalog schema version: {artifact.Session.CatalogSchemaVersion}");
         }
-        var isV2 = artifact.Session.CatalogSchemaVersion == 2;
+        var isVersioned = artifact.Session.CatalogSchemaVersion is 2 or 3;
         var arguments = new List<string>
         {
             "-X", "utf8", "-m", "tools.vision_poc.jacket_reference_catalog",
-            isV2 ? "ingest-v2" : "ingest",
+            isVersioned ? "ingest-v2" : "ingest",
             "--catalog", Path.GetFullPath(catalogPath),
             "--master-db", Path.GetFullPath(masterPath),
             "--source-image", Path.GetFullPath(sourceImagePath),
         };
-        if (isV2)
+        if (isVersioned)
         {
             arguments.AddRange(
             [
@@ -968,6 +980,23 @@ public sealed class PythonCatalogObservationAdapter(
                 System.Globalization.CultureInfo.InvariantCulture),
             "--expected-catalog-created-at", artifact.Session.CatalogCreatedAt,
         ]);
+        if (artifact.Session.CatalogSchemaVersion == 3)
+        {
+            if (artifact.TitleLineFeature is null || artifact.CompositeIdentity is null)
+            {
+                throw new ObservationIdentityDriftException(
+                    "catalog schema version 3 requires composite observation identity");
+            }
+            arguments.AddRange(
+            [
+                "--jacket-feature-version", artifact.Feature.FeatureVersion,
+                "--jacket-feature-hash", artifact.Feature.FeatureHash,
+                "--title-line-feature-version", artifact.TitleLineFeature.FeatureVersion,
+                "--title-line-hash", artifact.TitleLineFeature.FeatureHash,
+                "--composite-identity-version", artifact.CompositeIdentity.IdentityVersion,
+                "--composite-identity-hash", artifact.CompositeIdentity.IdentityHash,
+            ]);
+        }
         var result = await processRunner.RunAsync(
             new ProcessRequest(pythonExecutable, arguments, repositoryRoot),
             cancellationToken);
@@ -1031,6 +1060,7 @@ public sealed class PythonCatalogObservationAdapter(
         standardError.Contains("drift", StringComparison.OrdinalIgnoreCase)
         || standardError.Contains("schema version", StringComparison.OrdinalIgnoreCase)
         || standardError.Contains("canonical payload", StringComparison.OrdinalIgnoreCase)
+        || standardError.Contains("composite identity", StringComparison.OrdinalIgnoreCase)
         || standardError.Contains("collides with", StringComparison.OrdinalIgnoreCase)
         || standardError.Contains("observation artifact image", StringComparison.OrdinalIgnoreCase)
         || standardError.Contains("source image does not exist", StringComparison.OrdinalIgnoreCase);
@@ -1481,6 +1511,7 @@ public sealed class JacketObservationSession(
             {
                 1 => new[] { "pending" },
                 2 => new[] { "pending", "deferred" },
+                3 => new[] { "pending" },
                 _ => throw new ObservationIdentityDriftException(
                     $"unsupported catalog schema version: {identity.CatalogSchemaVersion}"),
             };

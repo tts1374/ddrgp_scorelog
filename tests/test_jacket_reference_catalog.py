@@ -108,6 +108,93 @@ def write_image(path: Path, color: tuple[int, int, int]) -> None:
     Image.new("RGB", (64, 64), color).save(path)
 
 
+def write_observation_artifact(
+    root: Path,
+    *,
+    observation_id: str,
+    crop_path: Path,
+    manifest_version: str = "m5c-observation-manifest-v1",
+) -> tuple[Path, str]:
+    artifact = root / "session-fixture" / "observations" / observation_id
+    artifact.mkdir(parents=True)
+    source = Image.new("RGB", (1280, 720), (0, 0, 0))
+    for x in range(286, 420):
+        for y in range(35, 58):
+            source.putpixel((x, y), (255, 255, 255))
+    for x in range(300, 500):
+        for y in range(68, 78):
+            source.putpixel((x, y), (255, 255, 255))
+    source_path = artifact / "source.png"
+    source.save(source_path)
+    crop_bytes = crop_path.read_bytes()
+    (artifact / "jacket-crop.png").write_bytes(crop_bytes)
+    source_bytes = source_path.read_bytes()
+    jacket_hash, roi = catalog._sample_rgb_feature_hash(source)
+    title_hash = catalog._title_line_hash_from_source(source)
+    identity_hash = catalog.composite_identity_hash(
+        catalog.JACKET_FRAME_FEATURE_VERSION,
+        jacket_hash,
+        catalog.TITLE_LINE_FEATURE_VERSION,
+        title_hash,
+    )
+    manifest: dict[str, object] = {
+        "manifest_version": manifest_version,
+        "session_id": "session-fixture",
+        "observation_id": observation_id,
+        "source_image": "source.png",
+        "jacket_crop": "jacket-crop.png",
+        "source_image_hash": hashlib.sha256(source_bytes).hexdigest(),
+        "jacket_crop_hash": hashlib.sha256(crop_bytes).hexdigest(),
+        "source_width": 1280,
+        "source_height": 720,
+        "source_sequence": 3,
+        "captured_at_utc": "2026-07-16T00:00:00+00:00",
+        "feature_version": catalog.JACKET_FRAME_FEATURE_VERSION,
+        "roi_version": "m5c-song-select-jacket-roi-v1",
+        "master_version": "master-v1",
+        "master_source_hash": "fixture-source-hash",
+        "catalog_identity": catalog.CATALOG_IDENTITY,
+        "catalog_schema_version": 2,
+        "catalog_created_at": "2026-07-16T00:00:00+00:00",
+        "feature_extractor_version": catalog.FEATURE_EXTRACTOR_VERSION,
+        "detector_version": "m5c-3b-jacket-detector-v1",
+        "frame_clock_version": "m5c-capture-utc-clock-v1",
+        "window": {},
+        "change_threshold": 0.08,
+        "stable_frame_count_required": 3,
+        "minimum_stable_duration_milliseconds": 100,
+        "roi_x": roi[0],
+        "roi_y": roi[1],
+        "roi_width": roi[2],
+        "roi_height": roi[3],
+        "feature_hash": jacket_hash,
+        "mean_absolute_difference": 0.0,
+        "sample_width": 16,
+        "sample_height": 16,
+        "observed_title": "",
+        "observed_artist": "",
+        "observation_status": "unresolved",
+        "created_at_utc": "2026-07-16T00:00:01+00:00",
+    }
+    if manifest_version == "m5c-observation-manifest-v2":
+        manifest.update(
+            {
+                "title_line_feature_version": catalog.TITLE_LINE_FEATURE_VERSION,
+                "title_line_hash": title_hash,
+                "title_line_detector_version": "m5c-information-title-line-detector-v1",
+                "title_line_roi_version": "m5c-song-select-information-panel-roi-v1",
+                "title_line_source_sequence": 3,
+                "title_line_captured_at_utc": "2026-07-16T00:00:00+00:00",
+                "composite_identity_version": catalog.COMPOSITE_IDENTITY_VERSION,
+                "composite_identity_hash": identity_hash,
+            }
+        )
+    (artifact / "observation.json").write_text(
+        json.dumps(manifest, ensure_ascii=False), encoding="utf-8", newline="\n"
+    )
+    return artifact, identity_hash
+
+
 def setup_paths(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path]:
     monkeypatch.chdir(tmp_path)
     (tmp_path / "data").mkdir()
@@ -185,6 +272,108 @@ def test_v1_to_v2_migration_holds_one_source_read_snapshot(
 
     assert exclusive_blocked is True
     assert catalog.catalog_schema_version(target) == 2
+
+
+def test_v2_to_v3_migration_backfills_verified_source_without_mutating_inputs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    master_db, source_v1 = setup_paths(tmp_path, monkeypatch)
+    source_v2 = tmp_path / "data" / "catalog-v2.sqlite"
+    catalog.migrate_catalog_v1_to_v2(source_v1, source_v2)
+    crop = tmp_path / "data" / "crop.png"
+    write_image(crop, (20, 40, 80))
+    master = catalog.load_master_identity(master_db)
+    with sqlite3.connect(source_v2) as connection:
+        created_at = connection.execute(
+            "SELECT value FROM catalog_metadata WHERE key = 'created_at'"
+        ).fetchone()[0]
+    observation_id = "legacy-observation"
+    catalog.ingest_observation_v2(
+        source_v2,
+        master_db,
+        source_image_path=crop,
+        observation_id=observation_id,
+        expected_image_hash=hashlib.sha256(crop.read_bytes()).hexdigest(),
+        expected_master_version=master.version,
+        expected_master_source_hash=master.source_hash,
+        expected_feature_extractor_version=catalog.FEATURE_EXTRACTOR_VERSION,
+        expected_catalog_identity=catalog.CATALOG_IDENTITY,
+        expected_catalog_schema_version=2,
+        expected_catalog_created_at=created_at,
+    )
+    artifact_root = tmp_path / "data" / "artifacts"
+    artifact, identity_hash = write_observation_artifact(
+        artifact_root, observation_id=observation_id, crop_path=crop
+    )
+    source_catalog_before = source_v2.read_bytes()
+    source_image_before = (artifact / "source.png").read_bytes()
+    target = tmp_path / "data" / "catalog-v3.sqlite"
+
+    receipt = catalog.migrate_catalog_v2_to_v3(source_v2, target, artifact_root)
+
+    assert receipt["counts"] == {"backfilled": 1}
+    assert catalog.catalog_schema_version(target) == 3
+    assert source_v2.read_bytes() == source_catalog_before
+    assert (artifact / "source.png").read_bytes() == source_image_before
+    assert catalog.load_composite_identities(target) == {
+        (catalog.COMPOSITE_IDENTITY_VERSION, identity_hash)
+    }
+    with sqlite3.connect(target) as connection:
+        assert connection.execute(
+            "SELECT jacket_feature_version, title_line_feature_version, "
+            "composite_identity_version, composite_identity_hash FROM jacket_references"
+        ).fetchone() == (
+            catalog.JACKET_FRAME_FEATURE_VERSION,
+            catalog.TITLE_LINE_FEATURE_VERSION,
+            catalog.COMPOSITE_IDENTITY_VERSION,
+            identity_hash,
+        )
+
+
+def test_v2_to_v3_migration_reports_missing_or_invalid_artifacts_without_source_write(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    master_db, source_v1 = setup_paths(tmp_path, monkeypatch)
+    source_v2 = tmp_path / "data" / "catalog-v2.sqlite"
+    catalog.migrate_catalog_v1_to_v2(source_v1, source_v2)
+    crop = tmp_path / "data" / "crop.png"
+    write_image(crop, (20, 40, 80))
+    master = catalog.load_master_identity(master_db)
+    with sqlite3.connect(source_v2) as connection:
+        created_at = connection.execute(
+            "SELECT value FROM catalog_metadata WHERE key = 'created_at'"
+        ).fetchone()[0]
+    for observation_id in ("missing-artifact", "invalid-artifact"):
+        catalog.ingest_observation_v2(
+            source_v2,
+            master_db,
+            source_image_path=crop,
+            observation_id=observation_id,
+            expected_image_hash=hashlib.sha256(crop.read_bytes()).hexdigest(),
+            expected_master_version=master.version,
+            expected_master_source_hash=master.source_hash,
+            expected_feature_extractor_version=catalog.FEATURE_EXTRACTOR_VERSION,
+            expected_catalog_identity=catalog.CATALOG_IDENTITY,
+            expected_catalog_schema_version=2,
+            expected_catalog_created_at=created_at,
+        )
+    artifact_root = tmp_path / "data" / "artifacts"
+    invalid, _identity = write_observation_artifact(
+        artifact_root, observation_id="invalid-artifact", crop_path=crop
+    )
+    (invalid / "source.png").write_bytes(b"corrupt")
+    before = source_v2.read_bytes()
+    target = tmp_path / "data" / "catalog-v3.sqlite"
+
+    receipt = catalog.migrate_catalog_v2_to_v3(source_v2, target, artifact_root)
+
+    assert receipt["counts"] == {"artifact_invalid": 1, "artifact_missing": 1}
+    assert source_v2.read_bytes() == before
+    assert catalog.load_composite_identities(target) == frozenset()
+    with sqlite3.connect(target) as connection:
+        assert connection.execute(
+            "SELECT COUNT(*) FROM jacket_references WHERE composite_identity_hash IS NOT NULL"
+        ).fetchone()[0] == 0
 
 
 def test_manual_review_is_transactional_idempotent_and_runtime_eligible(
@@ -1405,6 +1594,84 @@ def test_v2_observation_ingest_is_strict_idempotent_and_review_safe(
             expected_catalog_created_at=catalog_created_at,
         )
     assert catalog_path.read_bytes() == before_reviewed_collision
+
+
+def test_v3_ingest_persists_and_transactionally_deduplicates_composite_identity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    master_db, source_v1 = setup_paths(tmp_path, monkeypatch)
+    source_v2 = tmp_path / "data" / "catalog-v2.sqlite"
+    catalog.migrate_catalog_v1_to_v2(source_v1, source_v2)
+    artifact_root = tmp_path / "data" / "artifacts"
+    artifact_root.mkdir()
+    catalog_path = tmp_path / "data" / "catalog-v3.sqlite"
+    catalog.migrate_catalog_v2_to_v3(source_v2, catalog_path, artifact_root)
+    image = tmp_path / "data" / "v3-observation.png"
+    write_image(image, (20, 40, 80))
+    master = catalog.load_master_identity(master_db)
+    with sqlite3.connect(catalog_path) as connection:
+        created_at = connection.execute(
+            "SELECT value FROM catalog_metadata WHERE key = 'created_at'"
+        ).fetchone()[0]
+    jacket_hash = "1" * 64
+    title_hash = "2" * 64
+    identity_hash = catalog.composite_identity_hash(
+        catalog.JACKET_FRAME_FEATURE_VERSION,
+        jacket_hash,
+        catalog.TITLE_LINE_FEATURE_VERSION,
+        title_hash,
+    )
+    context = {
+        "catalog_path": catalog_path,
+        "master_db": master_db,
+        "source_image_path": image,
+        "expected_image_hash": hashlib.sha256(image.read_bytes()).hexdigest(),
+        "expected_master_version": master.version,
+        "expected_master_source_hash": master.source_hash,
+        "expected_feature_extractor_version": catalog.FEATURE_EXTRACTOR_VERSION,
+        "expected_catalog_identity": catalog.CATALOG_IDENTITY,
+        "expected_catalog_schema_version": 3,
+        "expected_catalog_created_at": created_at,
+        "jacket_feature_version": catalog.JACKET_FRAME_FEATURE_VERSION,
+        "jacket_feature_hash": jacket_hash,
+        "title_line_feature_version": catalog.TITLE_LINE_FEATURE_VERSION,
+        "title_line_hash": title_hash,
+        "composite_identity_version": catalog.COMPOSITE_IDENTITY_VERSION,
+        "expected_composite_identity_hash": identity_hash,
+    }
+
+    created = catalog.ingest_observation_v2(**context, observation_id="v3-first")
+    catalog.apply_review_mutation(
+        catalog_path,
+        master_db,
+        catalog.ReviewMutationRequest(
+            action_id="reject-v3-first",
+            reference_id=created.reference_id,
+            action="reject",
+            expected_revision=0,
+            expected_status="unresolved",
+            expected_song_id=None,
+        ),
+    )
+    duplicate = catalog.ingest_observation_v2(**context, observation_id="v3-second")
+
+    assert created.disposition == "created"
+    assert duplicate == catalog.IngestResult(
+        created.reference_id,
+        "existing",
+        "rejected",
+        "composite_identity_already_cataloged",
+    )
+    assert catalog.load_composite_identities(catalog_path) == {
+        (catalog.COMPOSITE_IDENTITY_VERSION, identity_hash)
+    }
+    before = catalog_path.read_bytes()
+    with pytest.raises(ValueError, match="composite identity is invalid"):
+        catalog.ingest_observation_v2(
+            **(context | {"expected_composite_identity_hash": "0" * 64}),
+            observation_id="v3-invalid",
+        )
+    assert catalog_path.read_bytes() == before
 
 
 def test_v2_ingest_cli_does_not_create_a_missing_catalog(

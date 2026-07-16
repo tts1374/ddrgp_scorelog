@@ -294,6 +294,10 @@ M8のscore DB file output previewでは、`--m8-score-db-output data\...\ddrgp-s
 
 観測CSVとcoverage出力もローカル運用物とし、catalog、source capture、crop、16x16 RGBを含む特徴量、review結果、coverage JSON/CSV/MarkdownをGit、CI artifact、Release、通常analysis logへ含めない。生captureとcropはcatalog投入後も自動削除しない。catalogは `source_captures`、`plays`、`analysis_logs`、DB diagnostic output/logを受け入れず、M5候補観測向けの参照特徴量だけを保持する。
 
+catalog schema version 3はversion 2のmanual review state/historyを維持したまま、`jacket_feature_version/hash`、`title_line_feature_version/hash`、`composite_identity_version/hash`を全nullまたは全非nullの1組としてreferenceへ保持する。非null組は既知version、lower SHA-256、NUL区切りcanonical hashをstrict検証し、`(composite_identity_version, composite_identity_hash)`をcatalog全体で一意にする。read-only identity集合には`unresolved`、review待ち、確定、再割当、`reopen`、`rejected`をすべて含める。
+
+version 2→3 migrationは明示したsource catalog、未作成target、local artifact rootを受ける専用copy-on-write入口だけで行う。sourceをread transactionで固定し、別stagingへ全reference/candidate/historyを複製した後、`observation_id=source_capture_id`で一意に見つかる`observation.json`、`source.png`、`jacket-crop.png`のversion・hash・寸法・jacket featureを検査する。manifest v1は同じ固定ROI/binary maskからtitle-line hashとcomposite identityを再計算し、manifest v2は保存値との一致も検査する。欠損、改変、unknown version、複数artifact、identity競合は当該rowをnullのままreportし、推測で埋めない。staging全体のstrict検証後だけ新規targetをexclusive publishし、source catalog、artifact、既存targetを上書き・修復・削除しない。
+
 coverageは `data/` 配下の明示directoryへ `jacket_catalog_song_coverage.csv`、`jacket_catalog_coverage_summary.json`、`jacket_catalog_coverage.md` を生成する。確定songがないreferenceでもGP対象の `reference_candidates` は候補songの `needs_review` として数え、候補のない観測だけを未割当集計へ残す。候補を確定songへ昇格せず、masterはread-only URIで開き、coverage・orphan検査の前後で変更しない。
 
 ## 削除・移動のルール

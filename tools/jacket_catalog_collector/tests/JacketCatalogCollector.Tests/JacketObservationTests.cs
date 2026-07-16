@@ -1325,6 +1325,48 @@ public sealed class JacketObservationTests : IDisposable
         Assert.Contains(artifact.JacketCropHash, runner.Requests[1].Arguments);
     }
 
+    [Fact]
+    public async Task Python_adapter_passes_required_composite_identity_for_catalog_v3()
+    {
+        var runner = new StubProcessRunner((_, _) => Task.FromResult(
+            new ProcessResult(
+                0,
+                "{\"disposition\":\"created\",\"reference_id\":\"reference-v3\","
+                    + "\"review_status\":\"unresolved\",\"reason\":\"observation_unresolved\"}",
+                "")));
+        var adapter = new PythonCatalogObservationAdapter(runner, root);
+        var identity = Identity("session-adapter-v3") with { CatalogSchemaVersion = 3 };
+        var titleHash = Hash(Encoding.UTF8.GetBytes("title"));
+        var composite = CompositeObservationIdentityBuilder.Create(
+            JacketObservationVersions.FrameFeature,
+            TestFeatureHash,
+            JacketObservationVersions.InformationTitleLineFeature,
+            titleHash);
+        var artifact = Artifact(identity, [1, 2], [3, 4]) with
+        {
+            TitleLineFeature = new TitleLineFeatureObservation(
+                JacketObservationVersions.InformationTitleLineFeature,
+                titleHash,
+                1,
+                DateTimeOffset.UtcNow,
+                JacketObservationVersions.InformationDetector,
+                JacketObservationVersions.InformationPanelRoi),
+            CompositeIdentity = composite,
+        };
+
+        var receipt = await adapter.IngestAsync(
+            artifact, "crop.png", "catalog.sqlite", "master.sqlite");
+
+        Assert.Equal(CatalogIngestDisposition.Created, receipt.Disposition);
+        Assert.Contains("ingest-v2", runner.Requests[0].Arguments);
+        Assert.Contains("--jacket-feature-hash", runner.Requests[0].Arguments);
+        Assert.Contains(TestFeatureHash, runner.Requests[0].Arguments);
+        Assert.Contains("--title-line-hash", runner.Requests[0].Arguments);
+        Assert.Contains(titleHash, runner.Requests[0].Arguments);
+        Assert.Contains("--composite-identity-hash", runner.Requests[0].Arguments);
+        Assert.Contains(composite.IdentityHash, runner.Requests[0].Arguments);
+    }
+
     [Theory]
     [InlineData("observation artifact image hash does not match its checkpoint")]
     [InlineData("observation artifact image is empty")]
@@ -1332,6 +1374,7 @@ public sealed class JacketObservationTests : IDisposable
     [InlineData("source image does not exist: crop.png")]
     [InlineData("master source hash drift detected during v2 observation ingest")]
     [InlineData("observation id was already used with different canonical payload")]
+    [InlineData("observation composite identity is invalid")]
     public async Task Python_adapter_classifies_artifact_and_identity_rejections_as_drift(
         string standardError)
     {
@@ -1408,7 +1451,7 @@ public sealed class JacketObservationTests : IDisposable
         var runner = new StubProcessRunner((_, _) => Task.FromResult(
             new ProcessResult(0, "", "")));
         var adapter = new PythonCatalogObservationAdapter(runner, root);
-        var identity = Identity("session-adapter-unsupported") with { CatalogSchemaVersion = 3 };
+        var identity = Identity("session-adapter-unsupported") with { CatalogSchemaVersion = 4 };
         var artifact = Artifact(identity, [1, 2], [3, 4]);
 
         var exception = await Assert.ThrowsAsync<ObservationIdentityDriftException>(

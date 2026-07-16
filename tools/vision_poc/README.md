@@ -656,7 +656,7 @@ python -m tools.vision_poc.jacket_catalog_review_projection `
   --master-db data\master\ddrgp-master.sqlite
 ```
 
-producerのprojection version 2はUTF-8 stdoutの単一JSONで、`master` / `catalog` identity、同じGP分母のcoverage song行、current/stored review state、revision、候補、manual provenance、append-only historyを返します。catalog v1は `migration_required=true` / `read_only`、v2は `manual_review_v2` capabilityです。C# loaderは旧version 1 fixtureのread-only互換も維持します。master/catalogはstrictかつread-onlyで開き、temporary projection file、coverage CSV、logを生成しません。unsupported schemaや破損DBでは非0終了になり、collectorは部分表示しません。
+producerのprojection version 2はUTF-8 stdoutの単一JSONで、`master` / `catalog` identity、同じGP分母のcoverage song行、current/stored review state、revision、候補、manual provenance、append-only historyを返します。catalog v1は `migration_required=true` / `read_only`、v2/v3は `manual_review_v2` capabilityです。v3のcomposite identityはtableを直接解釈せず`load_composite_identities()`でstrict read-only取得します。C# loaderは旧version 1 fixtureのread-only互換も維持します。master/catalogはstrictかつread-onlyで開き、temporary projection file、coverage CSV、logを生成しません。unsupported schemaや破損DBでは非0終了になり、collectorは部分表示しません。
 
 v1を変更せず別pathへv2を作る明示migrationと、v2の単発manual actionは次のCLI境界です。出力先は `data/` 配下に限定され、既存targetを上書きしません。
 
@@ -664,6 +664,11 @@ v1を変更せず別pathへv2を作る明示migrationと、v2の単発manual act
 python -m tools.vision_poc.jacket_reference_catalog migrate-v2 `
   --source-catalog data\jacket_catalog\catalog.sqlite `
   --target-catalog data\jacket_catalog\catalog-v2.sqlite
+
+python -m tools.vision_poc.jacket_reference_catalog migrate-v3 `
+  --source-catalog data\jacket_catalog\catalog-v2.sqlite `
+  --target-catalog data\jacket_catalog\catalog-v3.sqlite `
+  --artifact-root data\jacket_catalog_collector
 
 python -m tools.vision_poc.jacket_reference_catalog review `
   --catalog data\jacket_catalog\catalog-v2.sqlite `
@@ -673,6 +678,8 @@ python -m tools.vision_poc.jacket_reference_catalog review `
   --expected-revision 0 --expected-status needs_review `
   --song-id SONG_ID --reason "developer selected" --note "manual review"
 ```
+
+`migrate-v3`はv2 catalogとartifactを変更せず、別pathへv3をstaging・strict検証後にpublishします。`source_capture_id`に対応する一意なmanifestと`source.png`/`jacket-crop.png`を検証できたrowだけをbackfillします。v1 manifestは固定済みjacket/title-line featureをsourceから再計算し、v2 manifestは保存済みcomposite identityまで照合します。欠損、改変、unknown version、複数locator、identity競合は`counts`/`rows`へ未適用理由を出し、元rowのreview state/historyを維持したままcomposite fieldをnullにします。
 
 mutationはexpected revision/status/songをpreconditionにし、同一action ID・同一payloadだけを冪等再投入として扱います。保存済みreceiptはcurrent masterの再検証より先に返すため、commit後にmasterが一時利用不能、曲削除、GP対象外化しても同一retryは成功します。異なるpayloadの同一ID再利用と、未保存actionのmaster不整合は引き続き拒否します。manual confirm/reassignはcurrent extractorの完全な永続特徴量も要求し、`feature_extraction_failed` や欠損/不正vectorを確定状態へ進めません。current rowとhistoryは1 transactionで更新し、候補・expected値を暗黙song選択に使いません。外部変更などで確定後に不正になったmanual referenceは、保存済みstatus、revision、historyを保ったままcoverageとreview projectionで `needs_review` / `persisted_feature_invalid` とし、runtimeからそのrowだけを除外して他の有効reference読込を継続します。詳細なapp実行方法とC# strict loader契約は `tools/jacket_catalog_collector/README.md` を参照してください。
 
