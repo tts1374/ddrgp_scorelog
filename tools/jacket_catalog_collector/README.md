@@ -61,9 +61,15 @@ capture開始前にmaster/catalogのprojectionを読み込み、選択windowのi
 
 `change_candidate`、`stable_candidate`、`duplicate_preview` は別状態です。session内で一度stableになったfeature hashは、別jacketを挟んで再出現しても既存候補として扱います。stable候補は自動採用せず、capture tabの `候補を採用` を明示的に押したときだけ、`data/jacket_catalog_collector/<session-id>/observations/<observation-id>/` に `source.png`、`jacket-crop.png`、`observation.json` と checkpoint をstagingからatomic publishします。publish前にcurrent master/catalog/extractorを再検査し、失敗stagingは残しません。source/crop/hashの不一致、同一observation IDの異なるpayload、破損・旧version・identity drift checkpointは副作用なしで拒否します。
 
-checkpointは最初の明示採用と同時に作成し、それ以前のframeをdiskへ書きません。以後は停止時にも、`session_id`、master/catalog/extractor/window/ROI/detector identity、session内stable feature集合、最後のstable feature、処理frame/drop件数、採用済みobservation ID/source hash、catalog statusをatomic更新します。capture tabへ既存session IDを入力して `session再開` を押すと、current projection・選択window・全artifact manifest/hashが一致するcompatible checkpointだけを再開します。catalog v1にはtitle/artistを推測せず空文字と `unresolved` で既存M5b ingest APIを呼び、非空observation IDを冪等keyとして別sessionの同一画像を統合しません。catalog v2はlocal artifact/checkpointを `deferred` とし、v2 schemaやauto-confirm条件は変更しません。catalog failureは `pending` checkpointから明示 retryできます。
+checkpointは最初の明示採用と同時に作成し、それ以前のframeをdiskへ書きません。以後は停止時にも、`session_id`、master/catalog/extractor/window/ROI/detector identity、session内stable feature集合、最後のstable feature、処理frame/drop件数、採用済みobservation ID/source hash、catalog statusをatomic更新します。capture tabへ既存session IDを入力して `session再開` を押すと、current projection・選択window・全artifact manifest/hashが一致するcompatible checkpointだけを再開します。catalog v1にはtitle/artistを推測せず空文字と `unresolved` で既存M5b ingest APIを呼び、非空observation IDを冪等keyとして別sessionの同一画像を統合しません。catalog v2には明示選択した `ingest-v2` 経路で空title/artist・`unresolved` のrowを投入します。旧M5c-3bで `deferred` になったv2 artifactとcatalog failure後の `pending` は、`catalog retry (pending/deferred)` からv2 writerへ明示再投入できます。
 
 capture停止、resize、close、device loss、例外、取消ではsessionを停止し、停止後frameをdetector、artifact、catalogへ渡しません。source/crop/manifest/checkpointはこのcollectorのlocal dataだけで、`logs/`、通常stdout、Git、公開app、正式個人スコアDBへ出力しません。
+
+## v2 unresolved observation ingest (M5c-3c)
+
+Pythonの`ingest-v2`はv1の`ingest`とは別のversion-aware CLIです。catalog schema 2、catalog identity/created-at、current master version/source hash、current feature extractor、artifact image hashをstrictに検査し、schema変更やv1 writerの暗黙変更は行いません。新規rowは`source_capture_id=observation_id`、`song_id=NULL`、空title/artist、`review_status=unresolved`、`review_revision=0`、manual action/noteなし、candidate/historyなしで作成されます。
+
+同一observation ID・同一canonical payloadは同じreference receiptを返し、異payload、空ID、空title/artist以外のstatus、欠損/改変artifact、driftはcatalog/checkpointを変更せず拒否します。別IDの同一image bytesは別referenceです。既にmanual reviewされたreferenceと同じobservation IDは、payloadが同じでもcurrent row/revision/historyを上書きせず衝突として拒否します。catalog mutation後のcheckpoint保存失敗は、次回retryでcatalog側の既存receiptを読み、checkpointだけを`ingested`へ収束させます。
 
 ## Scope boundary
 

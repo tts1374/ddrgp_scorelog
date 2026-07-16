@@ -531,6 +531,43 @@ public sealed class JacketObservationTests : IDisposable
     }
 
     [Fact]
+    public async Task Catalog_success_checkpoint_failure_retries_existing_and_converges_checkpoint()
+    {
+        var identity = Identity("session-catalog-checkpoint-retry");
+        var checkpointStore = new FailOnceCheckpointStore(root);
+        var publisher = new AtomicObservationArtifactPublisher(root);
+        var catalog = new FakeCatalogAdapter(
+            new CatalogIngestReceipt(CatalogIngestDisposition.Created, "reference-1", "created"),
+            new CatalogIngestReceipt(CatalogIngestDisposition.Existing, "reference-1", "existing"));
+        await using var session = new JacketObservationSession(
+            new JacketObservationDetector(new JacketDetectorOptions(0.01, 2, TimeSpan.Zero)),
+            checkpointStore,
+            publisher,
+            catalog);
+        await session.StartAsync(identity, "master.sqlite", "catalog.sqlite");
+        await session.ObserveFrameAsync(Frame(40, 1, 0));
+        await session.ObserveFrameAsync(Frame(40, 2, 150));
+        checkpointStore.FailNextSave = true;
+
+        var adopted = await session.AdoptLastStableAsync();
+
+        Assert.Equal(CatalogIngestDisposition.Failed, adopted.Catalog.Disposition);
+        Assert.Equal("reference-1", adopted.Catalog.CatalogReferenceId);
+        Assert.Equal("pending", adopted.Checkpoint.Observations.Single().CatalogStatus);
+        Assert.Equal(1, catalog.CallCount);
+
+        var retried = await session.RetryPendingCatalogAsync();
+
+        Assert.Single(retried);
+        Assert.Equal(CatalogIngestDisposition.Existing, retried[0].Catalog.Disposition);
+        Assert.Equal("reference-1", retried[0].Catalog.CatalogReferenceId);
+        Assert.Equal("ingested", retried[0].Checkpoint.Observations.Single().CatalogStatus);
+        Assert.Equal("ingested", session.Checkpoint!.Observations.Single().CatalogStatus);
+        Assert.Equal(2, catalog.CallCount);
+        Assert.Single(session.Checkpoint.Observations);
+    }
+
+    [Fact]
     public async Task Retry_pending_catalog_rejects_identity_drift_before_ingest_or_checkpoint_update()
     {
         var identity = Identity("session-retry-preflight");
@@ -565,7 +602,7 @@ public sealed class JacketObservationTests : IDisposable
     }
 
     [Fact]
-    public async Task Retry_catalog_is_noop_for_deferred_only_checkpoint_without_validation()
+    public async Task Retry_catalog_explicitly_reprocesses_deferred_v2_checkpoint()
     {
         var identity = Identity("session-retry-no-pending") with { CatalogSchemaVersion = 2 };
         var checkpointStore = new AtomicObservationCheckpointStore(root);
@@ -574,11 +611,11 @@ public sealed class JacketObservationTests : IDisposable
             new CatalogIngestReceipt(
                 CatalogIngestDisposition.DeferredUnsupportedSchema,
                 null,
-                "deferred"))
-        {
-            ValidationFailure = new ObservationIdentityDriftException("unexpected retry validation"),
-            FailValidationOnCall = 3,
-        };
+                "deferred"),
+            new CatalogIngestReceipt(
+                CatalogIngestDisposition.Existing,
+                "reference-v2",
+                "same receipt"));
         await using var session = new JacketObservationSession(
             new JacketObservationDetector(new JacketDetectorOptions(0.01, 2, TimeSpan.Zero)),
             checkpointStore,
@@ -593,12 +630,14 @@ public sealed class JacketObservationTests : IDisposable
 
         var retried = await session.RetryPendingCatalogAsync();
 
-        Assert.Empty(retried);
-        Assert.Equal(2, catalog.ValidationCallCount);
-        Assert.Equal(1, catalog.CallCount);
-        Assert.Equal(checkpointBytes, await File.ReadAllBytesAsync(checkpointPath));
-        Assert.Equal("deferred", session.Checkpoint!.Observations.Single().CatalogStatus);
+        Assert.Single(retried);
+        Assert.Equal(CatalogIngestDisposition.Existing, retried[0].Catalog.Disposition);
+        Assert.Equal(3, catalog.ValidationCallCount);
+        Assert.Equal(2, catalog.CallCount);
+        Assert.NotEqual(checkpointBytes, await File.ReadAllBytesAsync(checkpointPath));
+        Assert.Equal("ingested", session.Checkpoint!.Observations.Single().CatalogStatus);
         Assert.Equal("deferred", adopted.Checkpoint.Observations.Single().CatalogStatus);
+        Assert.Equal("reference-v2", session.Checkpoint.Observations.Single().CatalogReferenceId);
     }
 
     [Fact]
@@ -941,10 +980,42 @@ public sealed class JacketObservationTests : IDisposable
     }
 
     [Fact]
-    public async Task Python_adapter_preflights_v2_file_identity_before_deferred_receipt()
+    public async Task Ingest_identity_drift_rolls_back_published_artifact_and_checkpoint()
+    {
+        var identity = Identity("session-ingest-drift");
+        var checkpointStore = new AtomicObservationCheckpointStore(root);
+        var publisher = new AtomicObservationArtifactPublisher(root);
+        var catalog = new FakeCatalogAdapter
+        {
+            IngestFailure = new ObservationIdentityDriftException("artifact hash mismatch"),
+        };
+        await using var session = new JacketObservationSession(
+            new JacketObservationDetector(new JacketDetectorOptions(0.01, 2, TimeSpan.Zero)),
+            checkpointStore,
+            publisher,
+            catalog);
+        await session.StartAsync(identity, "master.sqlite", "catalog.sqlite");
+        await session.ObserveFrameAsync(Frame(20, 1, 0));
+        await session.ObserveFrameAsync(Frame(20, 2, 100));
+
+        await Assert.ThrowsAsync<ObservationIdentityDriftException>(
+            () => session.AdoptLastStableAsync());
+
+        Assert.Equal(1, catalog.CallCount);
+        Assert.False(Directory.Exists(Path.Combine(root, identity.SessionId)));
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => checkpointStore.LoadAsync(identity.SessionId));
+    }
+
+    [Fact]
+    public async Task Python_adapter_selects_explicit_v2_ingest_and_passes_artifact_hash()
     {
         var runner = new StubProcessRunner((_, _) => Task.FromResult(
-            new ProcessResult(0, "{}", "")));
+            new ProcessResult(
+                0,
+                "{\"disposition\":\"created\",\"reference_id\":\"reference-v2\","
+                    + "\"review_status\":\"unresolved\",\"reason\":\"observation_unresolved\"}",
+                "")));
         var adapter = new PythonCatalogObservationAdapter(runner, root);
         var identity = Identity("session-adapter") with { CatalogSchemaVersion = 2 };
         var artifact = Artifact(identity, [1, 2], [3, 4]);
@@ -953,11 +1024,126 @@ public sealed class JacketObservationTests : IDisposable
         var receipt = await adapter.IngestAsync(
             artifact, "crop.png", "catalog.sqlite", "master.sqlite");
 
-        Assert.Equal(CatalogIngestDisposition.DeferredUnsupportedSchema, receipt.Disposition);
-        Assert.Single(runner.Requests);
+        Assert.Equal(CatalogIngestDisposition.Created, receipt.Disposition);
+        Assert.Equal("reference-v2", receipt.CatalogReferenceId);
+        Assert.Equal(2, runner.Requests.Count);
         Assert.Contains("validate-session", runner.Requests[0].Arguments);
         Assert.Contains("--expected-catalog-created-at", runner.Requests[0].Arguments);
         Assert.Contains(identity.CatalogCreatedAt, runner.Requests[0].Arguments);
+        Assert.Contains("ingest-v2", runner.Requests[1].Arguments);
+        Assert.Contains("--observation-id", runner.Requests[1].Arguments);
+        Assert.Contains(artifact.ObservationId, runner.Requests[1].Arguments);
+        Assert.Contains("--expected-image-hash", runner.Requests[1].Arguments);
+        Assert.Contains(artifact.JacketCropHash, runner.Requests[1].Arguments);
+    }
+
+    [Theory]
+    [InlineData("observation artifact image hash does not match its checkpoint")]
+    [InlineData("observation artifact image is empty")]
+    [InlineData("observation artifact image is invalid")]
+    [InlineData("source image does not exist: crop.png")]
+    [InlineData("master source hash drift detected during v2 observation ingest")]
+    [InlineData("observation id was already used with different canonical payload")]
+    public async Task Python_adapter_classifies_artifact_and_identity_rejections_as_drift(
+        string standardError)
+    {
+        var runner = new StubProcessRunner((_, _) => Task.FromResult(
+            new ProcessResult(1, "", standardError)));
+        var adapter = new PythonCatalogObservationAdapter(runner, root);
+        var identity = Identity("session-adapter-rejected") with { CatalogSchemaVersion = 2 };
+        var artifact = Artifact(identity, [1, 2], [3, 4]);
+
+        var exception = await Assert.ThrowsAsync<ObservationIdentityDriftException>(
+            () => adapter.IngestAsync(artifact, "crop.png", "catalog.sqlite", "master.sqlite"));
+
+        Assert.Contains("identity/payload/artifact conflict", exception.Message);
+        Assert.Single(runner.Requests);
+    }
+
+    [Fact]
+    public async Task Python_adapter_keeps_transient_ingest_failures_retryable()
+    {
+        var runner = new StubProcessRunner((_, _) => Task.FromResult(
+            new ProcessResult(1, "", "database is locked")));
+        var adapter = new PythonCatalogObservationAdapter(runner, root);
+        var identity = Identity("session-adapter-transient") with { CatalogSchemaVersion = 2 };
+        var artifact = Artifact(identity, [1, 2], [3, 4]);
+
+        var receipt = await adapter.IngestAsync(
+            artifact, "crop.png", "catalog.sqlite", "master.sqlite");
+
+        Assert.Equal(CatalogIngestDisposition.Failed, receipt.Disposition);
+        Assert.Null(receipt.CatalogReferenceId);
+        Assert.Single(runner.Requests);
+    }
+
+    [Fact]
+    public async Task Python_adapter_keeps_v1_ingest_command_and_observation_options()
+    {
+        var runner = new StubProcessRunner((request, _) => Task.FromResult(
+            request.Arguments.Contains("validate-session")
+                ? new ProcessResult(0, "", "")
+                : new ProcessResult(
+                    0,
+                    "{\"disposition\":\"created\",\"reference_id\":\"reference-v1\","
+                        + "\"review_status\":\"unresolved\",\"reason\":\"created\"}",
+                    "")));
+        var adapter = new PythonCatalogObservationAdapter(runner, root);
+        var identity = Identity("session-adapter-v1");
+        var artifact = Artifact(identity, [1, 2], [3, 4]) with
+        {
+            ObservedTitle = "Observed title",
+            ObservedArtist = "Observed artist",
+        };
+
+        await adapter.ValidateSessionAsync(identity, "catalog.sqlite", "master.sqlite");
+        var receipt = await adapter.IngestAsync(
+            artifact, "crop.png", "catalog.sqlite", "master.sqlite");
+
+        Assert.Equal(CatalogIngestDisposition.Created, receipt.Disposition);
+        Assert.Equal(2, runner.Requests.Count);
+        Assert.Contains("ingest", runner.Requests[1].Arguments);
+        Assert.DoesNotContain("ingest-v2", runner.Requests[1].Arguments);
+        Assert.Contains("--source-capture-id", runner.Requests[1].Arguments);
+        Assert.Contains(artifact.ObservationId, runner.Requests[1].Arguments);
+        Assert.Contains("--observed-title", runner.Requests[1].Arguments);
+        Assert.Contains(artifact.ObservedTitle, runner.Requests[1].Arguments);
+        Assert.Contains("--observed-artist", runner.Requests[1].Arguments);
+        Assert.Contains(artifact.ObservedArtist, runner.Requests[1].Arguments);
+        Assert.Contains("--observation-status", runner.Requests[1].Arguments);
+        Assert.Contains(artifact.ObservationStatus, runner.Requests[1].Arguments);
+    }
+
+    [Fact]
+    public async Task Python_adapter_rejects_unsupported_schema_without_running_python()
+    {
+        var runner = new StubProcessRunner((_, _) => Task.FromResult(
+            new ProcessResult(0, "", "")));
+        var adapter = new PythonCatalogObservationAdapter(runner, root);
+        var identity = Identity("session-adapter-unsupported") with { CatalogSchemaVersion = 3 };
+        var artifact = Artifact(identity, [1, 2], [3, 4]);
+
+        var exception = await Assert.ThrowsAsync<ObservationIdentityDriftException>(
+            () => adapter.IngestAsync(artifact, "crop.png", "catalog.sqlite", "master.sqlite"));
+
+        Assert.Contains("unsupported catalog schema version", exception.Message);
+        Assert.Empty(runner.Requests);
+    }
+
+    [Fact]
+    public async Task Python_adapter_rejects_session_schema_drift_before_ingest()
+    {
+        var runner = new StubProcessRunner((_, _) => Task.FromResult(
+            new ProcessResult(1, "", "catalog schema version mismatch")));
+        var adapter = new PythonCatalogObservationAdapter(runner, root);
+        var identity = Identity("session-adapter-schema-drift") with { CatalogSchemaVersion = 2 };
+
+        var exception = await Assert.ThrowsAsync<ObservationIdentityDriftException>(
+            () => adapter.ValidateSessionAsync(identity, "catalog.sqlite", "master.sqlite"));
+
+        Assert.Contains("identity drift preflight failed", exception.Message);
+        Assert.Single(runner.Requests);
+        Assert.Contains("validate-session", runner.Requests[0].Arguments);
     }
 
     private static ProjectionMaster Master() => new()
@@ -1195,6 +1381,7 @@ public sealed class JacketObservationTests : IDisposable
         public int CallCount { get; private set; }
         public int ValidationCallCount { get; private set; }
         public Exception? ValidationFailure { get; init; }
+        public Exception? IngestFailure { get; init; }
         public int FailValidationOnCall { get; init; } = 1;
         public int CancelIngestOnCall { get; set; }
 
@@ -1227,6 +1414,10 @@ public sealed class JacketObservationTests : IDisposable
             if (CallCount == CancelIngestOnCall)
             {
                 throw new OperationCanceledException("injected ingest cancellation");
+            }
+            if (IngestFailure is not null)
+            {
+                throw IngestFailure;
             }
             return Task.FromResult(
                 receipts.Count == 0
