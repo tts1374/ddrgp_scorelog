@@ -132,6 +132,32 @@ public sealed class TitleArtistEvaluationServiceTests : IDisposable
         Assert.False(ran);
     }
 
+    [Fact]
+    public async Task PassesCancellationTokenToPythonProcessRunner()
+    {
+        var paths = CreatePaths();
+        CancellationToken observed = default;
+        var service = new TitleArtistEvaluationService(
+            new StubProcessRunner((_, token) =>
+            {
+                observed = token;
+                return Task.FromCanceled<ProcessResult>(token);
+            }),
+            root);
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => service.RunAsync(
+            paths.Dataset,
+            paths.Artifacts,
+            paths.Master,
+            paths.Catalog,
+            paths.Output,
+            cancellation.Token));
+
+        Assert.True(observed.IsCancellationRequested);
+    }
+
     private (string Dataset, string Artifacts, string Master, string Catalog, string Output)
         CreatePaths()
     {

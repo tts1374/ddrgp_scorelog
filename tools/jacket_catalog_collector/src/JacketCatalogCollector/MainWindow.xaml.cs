@@ -165,7 +165,7 @@ public partial class MainWindow : Window
 
     private async void EvaluateTitleArtist_Click(object sender, RoutedEventArgs e)
     {
-        if (titleArtistEvaluationBusy)
+        if (titleArtistEvaluationBusy || viewModel.IsBusy || operationCancellation is not null)
         {
             return;
         }
@@ -189,12 +189,14 @@ public partial class MainWindow : Window
         titleArtistEvaluationBusy = true;
         try
         {
+            operationCancellation = new CancellationTokenSource();
             var receipt = await titleArtistEvaluationService.RunAsync(
                 dialog.FileName,
                 evidenceRoot,
                 viewModel.CurrentMasterPath,
                 viewModel.CurrentCatalogPath,
-                output);
+                output,
+                operationCancellation.Token);
             var methods = string.Join(
                 "\n",
                 receipt.Methods.Select(method =>
@@ -209,12 +211,18 @@ public partial class MainWindow : Window
                 + methods,
                 "title/artist評価完了");
         }
+        catch (OperationCanceledException)
+        {
+            MessageBox.Show(this, "title/artist評価を取り消しました。", "title/artist評価取消");
+        }
         catch (Exception exception)
         {
             MessageBox.Show(this, exception.Message, "title/artist評価失敗");
         }
         finally
         {
+            operationCancellation?.Dispose();
+            operationCancellation = null;
             titleArtistEvaluationBusy = false;
         }
     }
