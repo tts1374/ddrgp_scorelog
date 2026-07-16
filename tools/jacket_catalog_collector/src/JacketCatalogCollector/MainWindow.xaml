@@ -215,6 +215,7 @@
                             <ColumnDefinition Width="130" />
                             <ColumnDefinition Width="220" />
                             <ColumnDefinition Width="260" />
+                            <ColumnDefinition Width="190" />
                             <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
                         <StackPanel>
@@ -233,7 +234,14 @@
                                 <TextBox Margin="6,0,0,0" Text="{Binding ReviewNote, UpdateSourceTrigger=PropertyChanged}" />
                             </DockPanel>
                         </StackPanel>
-                        <WrapPanel Grid.Column="3" HorizontalAlignment="Right" VerticalAlignment="Bottom">
+                        <StackPanel Grid.Column="3" Margin="8,0,0,0">
+                            <TextBlock Text="候補分類" />
+                            <ComboBox ItemsSource="{Binding CandidateClassificationOptions}"
+                                      SelectedItem="{Binding SelectedCandidateClassification}" />
+                        </StackPanel>
+                        <WrapPanel Grid.Column="4" HorizontalAlignment="Right" VerticalAlignment="Bottom">
+                            <Button Content="候補を再評価" Click="RefreshCandidates_Click" />
+                            <Button Content="候補report" Click="GenerateCandidateReport_Click" />
                             <Button Content="確定" Tag="manual_confirm" Click="ReviewAction_Click" />
                             <Button Content="再割当" Tag="reassign" Click="ReviewAction_Click" />
                             <Button Content="却下" Tag="reject" Click="ReviewAction_Click" />
@@ -243,13 +251,23 @@
                     <DataGrid Grid.Row="1" ItemsSource="{Binding ReviewReferences}"
                               SelectedItem="{Binding SelectedReference}" IsReadOnly="True" AutoGenerateColumns="False">
                         <DataGrid.Columns>
+                            <DataGridTemplateColumn Header="jacket" Width="90">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <Image Source="{Binding CandidateEvaluation.JacketPreviewPath}"
+                                               Width="72" Height="72" Stretch="Uniform" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
                             <DataGridTextColumn Header="状態" Binding="{Binding ReviewStatus}" Width="110" />
                             <DataGridTextColumn Header="rev" Binding="{Binding Revision}" Width="45" />
-                            <DataGridTextColumn Header="観測曲名" Binding="{Binding ObservedTitle}" Width="*" />
-                            <DataGridTextColumn Header="観測アーティスト" Binding="{Binding ObservedArtist}" Width="*" />
-                            <DataGridTextColumn Header="理由" Binding="{Binding Reason}" Width="*" />
+                            <DataGridTextColumn Header="observation ID" Binding="{Binding CandidateEvaluation.ObservationId}" Width="*" />
+                            <DataGridTextColumn Header="OCR曲名" Binding="{Binding CandidateEvaluation.Title.Display}" Width="*" />
+                            <DataGridTextColumn Header="OCR artist" Binding="{Binding CandidateEvaluation.Artist.Display}" Width="*" />
+                            <DataGridTextColumn Header="候補分類" Binding="{Binding CandidateEvaluation.Classification}" Width="120" />
+                            <DataGridTextColumn Header="候補理由/failure" Binding="{Binding CandidateEvaluation.Reason}" Width="*" />
                             <DataGridCheckBoxColumn Header="drift" Binding="{Binding MasterDrift}" Width="60" />
-                            <DataGridTextColumn Header="候補" Binding="{Binding CandidateDisplay}" Width="2*" />
+                            <DataGridTextColumn Header="候補song" Binding="{Binding CandidateEvaluationDisplay}" Width="2*" />
                             <DataGridTextColumn Header="履歴" Binding="{Binding HistoryDisplay}" Width="2*" />
                             <DataGridTextColumn Header="reference_id" Binding="{Binding ReferenceId}" Width="*" />
                         </DataGrid.Columns>

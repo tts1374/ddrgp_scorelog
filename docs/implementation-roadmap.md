@@ -331,7 +331,7 @@ Status: Completed on 2026-07-14.
 
 ### M5c: 開発者専用jacket catalog collector
 
-Status: In progress. master更新、projection/manual review、window capture lifecycle、observation session/current ingest、title/artist evaluation pathは完了。実capture方式採用は保留。
+Status: In progress. master更新、projection/manual review、window capture lifecycle、observation session/current ingest、title/artist evaluation path、current unresolved candidate projection/reportは完了。実capture方式改善は保留。
 
 目的は、公開WPF appと分離したdeveloper-only collectorで、master更新、coverage/review、DDR GP window候補確認、memory-only capture、明示observation採用、manual reviewを行うことです。ゲーム操作、focus移動、grid自動巡回は行いません。
 
@@ -339,7 +339,7 @@ current catalog contract:
 
 - 初回リリース向けcatalog schemaはversion 1だけとし、manual review state/historyとjacket/title-line/composite identityを同じexact schemaへ持つ。
 - 旧catalog schemaのruntime/projection/collector互換、migration、read-only fallbackは持たず、副作用なしでunsupportedとして拒否する。
-- projection version 3とC# loaderはcurrent catalogだけを受け入れ、stored/current state、revision、candidate、manual provenance/historyをstrictに検査する。
+- projection version 4とC# loaderはcurrent catalogだけを受け入れ、stored/current state、revision、candidate、manual provenance/historyとversion付きunresolved candidate evaluationをstrictに検査する。
 - current `ingest`は完全なcomposite identityを必須とし、同一observation ID再送を冪等化し、異なるobservation IDの同一identityを全review statusで既存referenceへ収束させる。
 - current master/GP/current extractorを満たすauto/manual referenceだけをruntime matcherへ供給し、candidate、expected song、OCR rawを暗黙昇格しない。
 - artifact manifest/checkpoint v1/v2、resume/retry状態機械はcatalog schema再採番と別契約として維持する。old catalog由来sessionはcatalog identity/schema/created-at driftで拒否する。
@@ -352,6 +352,7 @@ collector boundary:
 - stable candidateは既定では自動採用しない。session単位・既定OFFの明示opt-in時だけ、current checkpointとcurrent catalogのcomposite identity集合にない候補をidentityごとに1回自動保存する。手動/自動とも同じatomic publish、current writer、retry境界を使う。
 - catalog failureはpending checkpointとlocal evidenceから明示retryし、catalog成功後checkpoint failureは同じreceiptでcheckpointだけを収束させる。
 - title/artist方式採用は実capture evaluated 30件以上、pair exact 95%以上、field confidence 0.90以上、候補precision 100%、既知誤自動確定0件を要求する。条件未達ではcurrent unresolved/manual reviewを維持する。
+- current unresolved candidate evaluationはartifact/checkpoint/catalog/master/extractor identityをread-only照合し、一意canonical、一意alias、曖昧、候補なし、低confidence、OCR/evaluation失敗、評価不能、review済み対象外を区別する。候補表示、filter、sort、refresh、CSV/JSON/Markdown reportはcatalog stateを変更せず、明示manual reviewだけが既存transactionを使う。
 - capture、crop、artifact、checkpoint、特徴量、review、master/catalog DB、source snapshotはlocal dataとし、Git、CI artifact、Release、通常公開logへ含めない。
 
 完了条件:

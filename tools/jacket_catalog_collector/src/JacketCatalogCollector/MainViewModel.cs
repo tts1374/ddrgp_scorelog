@@ -26,6 +26,7 @@ public sealed class MainViewModel(
     private string songSearch = "";
     private string reviewReason = "";
     private string reviewNote = "";
+    private string selectedCandidateClassification = "all";
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -37,6 +38,7 @@ public sealed class MainViewModel(
         ["all", "referenced", "needs_review", "uncollected", "unresolved", "orphaned"];
     public ObservableCollection<string> ReasonOptions { get; } = ["all"];
     public ObservableCollection<ProjectionSong> SongChoices { get; } = [];
+    public ObservableCollection<string> CandidateClassificationOptions { get; } = ["all"];
     public string? CurrentMasterPath => masterPath;
     public string? CurrentCatalogPath => catalogPath;
 
@@ -111,6 +113,18 @@ public sealed class MainViewModel(
         set
         {
             if (SetField(ref selectedReason, value))
+            {
+                ApplyFilters();
+            }
+        }
+    }
+
+    public string SelectedCandidateClassification
+    {
+        get => selectedCandidateClassification;
+        set
+        {
+            if (SetField(ref selectedCandidateClassification, value))
             {
                 ApplyFilters();
             }
@@ -386,6 +400,16 @@ public sealed class MainViewModel(
         }
         SelectedCoverageStatus = "all";
         SelectedReason = "all";
+        CandidateClassificationOptions.Clear();
+        CandidateClassificationOptions.Add("all");
+        foreach (var classification in projection.ReviewReferences
+                     .Select(reference => reference.CandidateEvaluation.Classification)
+                     .Distinct(StringComparer.Ordinal)
+                     .Order(StringComparer.Ordinal))
+        {
+            CandidateClassificationOptions.Add(classification);
+        }
+        SelectedCandidateClassification = "all";
     }
 
     private void ApplyFilters()
@@ -404,7 +428,11 @@ public sealed class MainViewModel(
         ReviewReferences.Clear();
         foreach (var reference in projection.ReviewReferences.Where(
                      reference => (SelectedCoverageStatus == "all" || reference.ReviewStatus == SelectedCoverageStatus)
-                         && (SelectedReason == "all" || reference.Reason == SelectedReason)))
+                         && (SelectedReason == "all" || reference.Reason == SelectedReason)
+                         && (SelectedCandidateClassification == "all"
+                             || reference.CandidateEvaluation.Classification == SelectedCandidateClassification))
+                     .OrderBy(reference => reference.CandidateEvaluation.Classification, StringComparer.Ordinal)
+                     .ThenBy(reference => reference.CandidateEvaluation.ObservationId, StringComparer.Ordinal))
         {
             ReviewReferences.Add(reference);
         }
@@ -450,8 +478,11 @@ public sealed class MainViewModel(
         catalogPath = null;
         ReasonOptions.Clear();
         ReasonOptions.Add("all");
+        CandidateClassificationOptions.Clear();
+        CandidateClassificationOptions.Add("all");
         SelectedCoverageStatus = "all";
         SelectedReason = "all";
+        SelectedCandidateClassification = "all";
         NotifyProjectionProperties();
     }
 

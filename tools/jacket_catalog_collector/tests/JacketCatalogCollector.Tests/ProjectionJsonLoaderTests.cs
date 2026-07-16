@@ -14,7 +14,7 @@ public sealed class ProjectionJsonLoaderTests
     {
         var projection = loader.Load(FixtureJson());
 
-        Assert.Equal(3, projection.ProjectionSchemaVersion);
+        Assert.Equal(4, projection.ProjectionSchemaVersion);
         Assert.Equal(1, projection.Catalog.SchemaVersion);
         Assert.Equal("manual_confirm", projection.ReviewReferences[0].History[0].Action);
         Assert.Contains("日本語", projection.ReviewReferences[0].ManualNote);
@@ -23,7 +23,7 @@ public sealed class ProjectionJsonLoaderTests
     [Fact]
     public void RejectsLegacyProjectionCatalogAndCapabilityFields()
     {
-        foreach (var version in new[] { 1, 2 })
+        foreach (var version in new[] { 1, 2, 3 })
         {
             var legacyProjection = JsonNode.Parse(FixtureJson())!.AsObject();
             legacyProjection["projection_schema_version"] = version;
@@ -51,7 +51,7 @@ public sealed class ProjectionJsonLoaderTests
     [Fact]
     public void RejectsInvalidHistoryCurrentStateAndStrictJson()
     {
-        var invalidPayloads = new List<string> { "", "{\"projection_schema_version\":3" };
+        var invalidPayloads = new List<string> { "", "{\"projection_schema_version\":4" };
 
         var missing = JsonNode.Parse(FixtureJson())!.AsObject();
         missing.Remove("master");
@@ -77,6 +77,11 @@ public sealed class ProjectionJsonLoaderTests
         histogramMismatch["coverage"]!["status_counts"] =
             JsonNode.Parse("{\"uncollected\":1}");
         invalidPayloads.Add(histogramMismatch.ToJsonString());
+
+        var candidateMismatch = JsonNode.Parse(FixtureJson())!.AsObject();
+        candidateMismatch["review_references"]![0]!["candidate_evaluation"]![
+            "classification"] = "exact_unique";
+        invalidPayloads.Add(candidateMismatch.ToJsonString());
 
         foreach (var payload in invalidPayloads)
         {

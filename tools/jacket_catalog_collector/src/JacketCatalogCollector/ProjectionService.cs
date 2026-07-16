@@ -13,6 +13,11 @@ public sealed class ProjectionJsonLoader
         ["auto_confirmed", "manual_confirmed", "needs_review", "unresolved", "rejected"];
     private static readonly HashSet<string> ReviewActions =
         ["manual_confirm", "reassign", "reject", "reopen"];
+    private static readonly HashSet<string> CandidateClassifications =
+        ["exact_unique", "alias_unique", "ambiguous", "no_candidate", "low_confidence",
+            "evaluation_failed", "evaluation_unavailable", "not_eligible"];
+    private static readonly HashSet<string> CandidateFieldStatuses =
+        ["ok", "empty", "low_confidence", "engine_unavailable", "ocr_failed", "not_evaluated"];
     private static readonly JsonSerializerOptions Options = new()
     {
         PropertyNameCaseInsensitive = false,
@@ -41,7 +46,7 @@ public sealed class ProjectionJsonLoader
 
     private static void Validate(ReviewProjection projection)
     {
-        if (projection.ProjectionSchemaVersion != 3)
+        if (projection.ProjectionSchemaVersion != 4)
         {
             throw new InvalidOperationException(
                 $"Unsupported projection schema version: {projection.ProjectionSchemaVersion}");
@@ -136,6 +141,50 @@ public sealed class ProjectionJsonLoader
             RequireString(review.StoredStatus, "review_references.stored_status");
             RequireString(review.ManualNote, "review_references.manual_note");
             RequireValue(review.History, "review_references.history");
+            RequireValue(review.CandidateEvaluation, "review_references.candidate_evaluation");
+            var evaluation = review.CandidateEvaluation;
+            RequireText(evaluation.EvaluationSchemaVersion, "candidate_evaluation.evaluation_schema_version");
+            RequireText(evaluation.MethodVersion, "candidate_evaluation.method_version");
+            RequireString(evaluation.ObservationId, "candidate_evaluation.observation_id");
+            RequireText(evaluation.Reason, "candidate_evaluation.reason");
+            RequireValue(evaluation.Title, "candidate_evaluation.title");
+            RequireValue(evaluation.Artist, "candidate_evaluation.artist");
+            RequireValue(evaluation.Candidates, "candidate_evaluation.candidates");
+            if (evaluation.EvaluationSchemaVersion != "m5c-unresolved-candidate-evaluation-v1"
+                || !CandidateClassifications.Contains(evaluation.Classification)
+                || evaluation.Title.Confidence is < 0 or > 1
+                || evaluation.Artist.Confidence is < 0 or > 1
+                || !CandidateFieldStatuses.Contains(evaluation.Title.Status)
+                || !CandidateFieldStatuses.Contains(evaluation.Artist.Status))
+            {
+                throw new InvalidOperationException("Projection candidate evaluation is invalid.");
+            }
+            foreach (var field in new[] { evaluation.Title, evaluation.Artist })
+            {
+                RequireString(field.Raw, "candidate_evaluation field raw");
+                RequireString(field.Normalized, "candidate_evaluation field normalized");
+                RequireString(field.FailureReason, "candidate_evaluation field failure_reason");
+            }
+            foreach (var candidate in evaluation.Candidates)
+            {
+                RequireText(candidate.SongId, "candidate_evaluation.candidates.song_id");
+                RequireText(candidate.Title, "candidate_evaluation.candidates.title");
+                RequireText(candidate.Artist, "candidate_evaluation.candidates.artist");
+            }
+            if ((evaluation.Classification is "exact_unique" or "alias_unique"
+                    && evaluation.Candidates.Count != 1)
+                || (evaluation.Classification == "ambiguous" && evaluation.Candidates.Count < 1)
+                || (evaluation.Classification is "no_candidate" or "low_confidence"
+                        or "evaluation_failed" or "evaluation_unavailable" or "not_eligible"
+                    && evaluation.Candidates.Count != 0)
+                || (evaluation.Classification == "not_eligible"
+                    && review.StoredStatus == "unresolved")
+                || (evaluation.Classification != "not_eligible"
+                    && review.StoredStatus != "unresolved"))
+            {
+                throw new InvalidOperationException(
+                    "Projection candidate evaluation classification is inconsistent.");
+            }
             if (review.Revision < 0 || !StoredStatuses.Contains(review.StoredStatus))
             {
                 throw new InvalidOperationException("Projection review revision or stored status is invalid.");
@@ -255,26 +304,34 @@ public sealed class ProjectionService(
     IProcessRunner processRunner,
     ProjectionJsonLoader loader,
     string repositoryRoot,
-    string pythonExecutable = "python") : IProjectionService
+    string pythonExecutable = "python",
+    string? artifactRoot = null) : IProjectionService
 {
     public async Task<ReviewProjection> LoadAsync(
         string masterPath,
         string catalogPath,
         CancellationToken cancellationToken)
     {
+        var arguments = new List<string>
+        {
+            "-X",
+            "utf8",
+            "-m",
+            "tools.vision_poc.jacket_catalog_review_projection",
+            "--catalog",
+            Path.GetFullPath(catalogPath),
+            "--master-db",
+            Path.GetFullPath(masterPath),
+        };
+        if (artifactRoot is not null)
+        {
+            arguments.Add("--artifact-root");
+            arguments.Add(Path.GetFullPath(artifactRoot));
+        }
         var result = await processRunner.RunAsync(
             new ProcessRequest(
                 pythonExecutable,
-                [
-                    "-X",
-                    "utf8",
-                    "-m",
-                    "tools.vision_poc.jacket_catalog_review_projection",
-                    "--catalog",
-                    Path.GetFullPath(catalogPath),
-                    "--master-db",
-                    Path.GetFullPath(masterPath),
-                ],
+                arguments,
                 repositoryRoot),
             cancellationToken);
         if (result.ExitCode != 0)
@@ -283,5 +340,35 @@ public sealed class ProjectionService(
                 $"Catalog projection failed (exit {result.ExitCode}): {result.StandardError.Trim()}");
         }
         return loader.Load(result.StandardOutput);
+    }
+
+    public async Task GenerateReportAsync(
+        string masterPath,
+        string catalogPath,
+        string outputDirectory,
+        CancellationToken cancellationToken)
+    {
+        if (artifactRoot is null)
+        {
+            throw new InvalidOperationException("Candidate artifact root is not configured.");
+        }
+        var result = await processRunner.RunAsync(
+            new ProcessRequest(
+                pythonExecutable,
+                [
+                    "-X", "utf8", "-m", "tools.vision_poc.jacket_catalog_review_projection",
+                    "--catalog", Path.GetFullPath(catalogPath),
+                    "--master-db", Path.GetFullPath(masterPath),
+                    "--artifact-root", Path.GetFullPath(artifactRoot),
+                    "--report-output-dir", Path.GetFullPath(outputDirectory),
+                ],
+                repositoryRoot),
+            cancellationToken);
+        if (result.ExitCode != 0)
+        {
+            throw new InvalidOperationException(
+                $"Candidate report failed (exit {result.ExitCode}): {result.StandardError.Trim()}");
+        }
+        loader.Load(result.StandardOutput);
     }
 }

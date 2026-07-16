@@ -49,7 +49,7 @@ detectorの内部状態は通常画面へ表示しません。同じ画像が連
 
 ## Projection and manual review contract
 
-UIはcatalog SQLite tableを直接読みません。Python projectionがmasterとcurrent catalog schema version 1をstrictかつread-onlyで検証し、UTF-8 stdoutへprojection version 3の単一JSONを出します。temporary projection fileは作らず、stderrは診断専用です。旧catalog schemaや旧projection versionはfallback表示せずunsupportedとして拒否します。
+UIはcatalog SQLite tableを直接読みません。Python projectionがmasterとcurrent catalog schema version 1をstrictかつread-onlyで検証し、UTF-8 stdoutへprojection version 4の単一JSONを出します。temporary projection fileは作らず、stderrは診断専用です。旧catalog schemaや旧projection versionはfallback表示せずunsupportedとして拒否します。
 
 ```powershell
 python -m tools.vision_poc.jacket_catalog_review_projection `
@@ -57,11 +57,15 @@ python -m tools.vision_poc.jacket_catalog_review_projection `
   --catalog data\jacket_catalog\catalog.sqlite
 ```
 
-top-level必須fieldは `projection_schema_version`、`master`、`catalog`、`coverage`、`songs`、`review_references` です。catalog objectはidentity、schema version 1、created-at、current feature extractorを持ち、旧互換専用のmigration/capability fieldは持ちません。C# loaderは全object/arrayの未知field、必須field、型、coverage/review status、候補/history、revision連続性、schema、分母整合をstrictに検査します。unsupported version、空/truncated stdout、Python非0終了は部分表示しません。`reason`、`note`、`candidate.reason`、`observation_status` はopaque診断文字列として保持します。
+top-level必須fieldは `projection_schema_version`、`master`、`catalog`、`coverage`、`songs`、`review_references` です。catalog objectはidentity、schema version 1、created-at、current feature extractorを持ち、旧互換専用のmigration/capability fieldは持ちません。review rowのversion付き `candidate_evaluation` は、persisted status/revision、observation ID、jacket preview path、OCR title/artistとconfidence、候補song/reason、failure分類を持ちます。C# loaderは全object/arrayの未知field、必須field、型、coverage/review status、候補/history、candidate分類、revision連続性、schema、分母整合をstrictに検査します。unsupported version、空/truncated stdout、Python非0終了は部分表示しません。`reason`、`note`、`candidate.reason`、`observation_status` はopaque診断文字列として保持します。
 
 表示とfilterは、GP対象songを `referenced` / `needs_review` / `uncollected` / `unresolved` の同じ分母・status histogramで数えます。orphan、候補なし未割当観測、旧extractor、master drift、不正manual featureを派生状態で表示しても、保存済みstatus、revision、historyは変更しません。生成中にmaster/catalogのfile identity、size、mtime、hashが変わった場合はsnapshot混在を拒否します。
 
 review行ではcurrent GP曲をsong ID/title/artistで検索して明示選択します。`confirm` と `reassign` は選択songとcurrent extractorの完全な永続特徴量を必要とし、`reject` と `reopen` はsongを受け取りません。requestはprojectionのrevision/stored status/assigned songをpreconditionにし、current rowとhistoryをPython側の1 transactionで更新します。同一action ID・同一payloadだけが冪等成功です。候補、expected song、OCR rawは明示選択へ昇格しません。
+
+`unresolved` observationは `data/jacket_catalog_collector` のmanifest/source/crop/checkpointとcatalog rowのidentity/version/hashを照合してから、既存 `tesseract-autocontrast-v1` とM4 title-primary/artist tie-breakerへread-onlyで通します。`exact_unique`、`alias_unique`、`ambiguous`、`no_candidate`、`low_confidence`、`evaluation_failed`、`evaluation_unavailable`、`not_eligible`を丸めず表示し、候補filterと安定sort、明示refreshを提供します。候補表示・refreshはcatalog writerを呼びません。
+
+`候補report` は `data/jacket_catalog_collector/unresolved-candidate-evaluation/` へ `unresolved_candidates.csv/json/md` をatomic生成します。total/current unresolved/eligible/evaluated、候補分類、title/artist別statusとfailure reasonを集計します。expectedや人手確認がないrowを正解扱いせず、precisionを推測しません。
 
 旧catalogのv1→v2/v2→v3 migration UI/serviceはありません。current schemaとexact一致しない既存DBは副作用なしで拒否し、既存local DB、artifact、checkpoint、source/crop画像を削除・上書き・repairしません。
 

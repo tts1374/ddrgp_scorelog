@@ -9,8 +9,9 @@ from pathlib import Path
 from typing import Any
 
 from tools.vision_poc import jacket_reference_catalog as catalog
+from tools.vision_poc import title_artist_evaluation, unresolved_candidate_evaluation
 
-PROJECTION_SCHEMA_VERSION = 3
+PROJECTION_SCHEMA_VERSION = 4
 
 
 def _database_fingerprint(path: Path) -> tuple[int, int, int, str]:
@@ -30,9 +31,7 @@ def _read_master_metadata(path: Path) -> dict[str, str]:
         return dict(connection.execute("SELECT key, value FROM master_metadata"))
 
 
-def _candidate_projection(
-    row: sqlite3.Row, songs_by_id: dict[str, Any]
-) -> dict[str, Any]:
+def _candidate_projection(row: sqlite3.Row, songs_by_id: dict[str, Any]) -> dict[str, Any]:
     song_id = str(row["song_id"])
     song = songs_by_id.get(song_id)
     return {
@@ -44,7 +43,13 @@ def _candidate_projection(
     }
 
 
-def build_review_projection(catalog_path: Path, master_db: Path) -> dict[str, Any]:
+def build_review_projection(
+    catalog_path: Path,
+    master_db: Path,
+    *,
+    artifact_root: Path | None = None,
+    extractor: title_artist_evaluation.Extractor = title_artist_evaluation.extract_field,
+) -> dict[str, Any]:
     initial_catalog_fingerprint = _database_fingerprint(catalog_path)
     initial_master_fingerprint = _database_fingerprint(master_db)
     catalog.validate_catalog(catalog_path)
@@ -56,9 +61,7 @@ def build_review_projection(catalog_path: Path, master_db: Path) -> dict[str, An
     with closing(catalog._connect_read_only(catalog_path)) as connection:
         connection.row_factory = sqlite3.Row
         catalog._validate_catalog(connection)
-        catalog_metadata = dict(
-            connection.execute("SELECT key, value FROM catalog_metadata")
-        )
+        catalog_metadata = dict(connection.execute("SELECT key, value FROM catalog_metadata"))
         candidates_by_reference: dict[str, list[dict[str, Any]]] = {}
         for candidate_row in connection.execute(
             """
@@ -67,9 +70,9 @@ def build_review_projection(catalog_path: Path, master_db: Path) -> dict[str, An
             ORDER BY reference_id, song_id
             """
         ):
-            candidates_by_reference.setdefault(
-                str(candidate_row["reference_id"]), []
-            ).append(_candidate_projection(candidate_row, songs_by_id))
+            candidates_by_reference.setdefault(str(candidate_row["reference_id"]), []).append(
+                _candidate_projection(candidate_row, songs_by_id)
+            )
 
         history_by_reference: dict[str, list[dict[str, Any]]] = {}
         for history_row in connection.execute(
@@ -90,42 +93,53 @@ def build_review_projection(catalog_path: Path, master_db: Path) -> dict[str, An
                     "after_revision": int(history_row["after_revision"]),
                 }
             )
+        reference_rows = [
+            dict(row)
+            for row in connection.execute("SELECT * FROM jacket_references ORDER BY reference_id")
+        ]
+        evaluation_root = artifact_root or Path("__artifact_root_not_configured__")
+        candidate_evaluations = unresolved_candidate_evaluation.evaluate_references(
+            reference_rows,
+            artifact_root=evaluation_root,
+            master=master,
+            catalog_identity=title_artist_evaluation.CatalogIdentity(
+                catalog_metadata["catalog_identity"],
+                int(catalog_metadata["schema_version"]),
+                catalog_metadata["created_at"],
+            ),
+            extractor=extractor,
+        )
         review_references: list[dict[str, Any]] = []
-        for row in connection.execute(
-            "SELECT * FROM jacket_references ORDER BY reference_id"
-        ):
+        for row, candidate_evaluation in zip(reference_rows, candidate_evaluations, strict=True):
             status, reason = catalog._reference_state(row, master)
             assigned_song_id = str(row["song_id"] or "")
             assigned_song = songs_by_id.get(assigned_song_id)
             item = {
-                    "reference_id": str(row["reference_id"]),
-                    "review_status": status,
-                    "reason": reason,
-                    "observed_title": str(row["observed_title"]),
-                    "observed_artist": str(row["observed_artist"]),
-                    "observation_status": str(row["observation_status"]),
-                    "master_drift": reason
-                    in {
-                        "master_song_missing",
-                        "song_not_grand_prix_available",
-                        "master_identity_changed",
-                        "master_version_changed",
-                    },
-                    "feature_extractor_version": str(
-                        row["feature_extractor_version"]
-                    ),
-                    "assigned_song": None
-                    if not assigned_song_id
-                    else {
-                        "song_id": assigned_song_id,
-                        "title": None if assigned_song is None else assigned_song.title,
-                        "artist": None if assigned_song is None else assigned_song.artist,
-                        "master_song_missing": assigned_song is None,
-                    },
-                    "candidates": candidates_by_reference.get(
-                        str(row["reference_id"]), []
-                    ),
-                }
+                "reference_id": str(row["reference_id"]),
+                "review_status": status,
+                "reason": reason,
+                "observed_title": str(row["observed_title"]),
+                "observed_artist": str(row["observed_artist"]),
+                "observation_status": str(row["observation_status"]),
+                "master_drift": reason
+                in {
+                    "master_song_missing",
+                    "song_not_grand_prix_available",
+                    "master_identity_changed",
+                    "master_version_changed",
+                },
+                "feature_extractor_version": str(row["feature_extractor_version"]),
+                "assigned_song": None
+                if not assigned_song_id
+                else {
+                    "song_id": assigned_song_id,
+                    "title": None if assigned_song is None else assigned_song.title,
+                    "artist": None if assigned_song is None else assigned_song.artist,
+                    "master_song_missing": assigned_song is None,
+                },
+                "candidates": candidates_by_reference.get(str(row["reference_id"]), []),
+                "candidate_evaluation": candidate_evaluation,
+            }
             item.update(
                 {
                     "stored_status": str(row["review_status"]),
@@ -157,9 +171,7 @@ def build_review_projection(catalog_path: Path, master_db: Path) -> dict[str, An
         "coverage": {
             "grand_prix_song_count": coverage_summary["grand_prix_song_count"],
             "status_counts": coverage_summary["coverage_status_counts"],
-            "orphaned_reference_count": coverage_summary[
-                "orphaned_reference_count"
-            ],
+            "orphaned_reference_count": coverage_summary["orphaned_reference_count"],
             "orphan_reason_counts": coverage_summary["orphan_reason_counts"],
             "unassigned_unresolved_observation_count": coverage_summary[
                 "unassigned_unresolved_observation_count"
@@ -181,12 +193,32 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--catalog", required=True, type=Path)
     parser.add_argument("--master-db", required=True, type=Path)
+    parser.add_argument("--artifact-root", type=Path)
+    parser.add_argument("--report-output-dir", type=Path)
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    projection = build_review_projection(args.catalog, args.master_db)
+    if args.report_output_dir is not None and args.artifact_root is None:
+        raise ValueError("--report-output-dir requires --artifact-root")
+    if args.artifact_root is not None:
+        args.artifact_root = title_artist_evaluation._require_under_data(
+            args.artifact_root, "artifact root"
+        )
+    if args.report_output_dir is not None:
+        args.report_output_dir = title_artist_evaluation._require_under_data(
+            args.report_output_dir, "candidate report output"
+        )
+    projection = build_review_projection(
+        args.catalog,
+        args.master_db,
+        artifact_root=args.artifact_root,
+    )
+    if args.report_output_dir is not None:
+        unresolved_candidate_evaluation.write_reports(
+            args.report_output_dir, projection["review_references"]
+        )
     print(json.dumps(projection, ensure_ascii=False, separators=(",", ":")))
     return 0
 
