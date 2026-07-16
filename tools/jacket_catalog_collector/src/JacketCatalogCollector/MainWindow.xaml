@@ -37,8 +37,8 @@
                 </StackPanel>
                 <StackPanel Grid.Column="1">
                     <TextBlock Text="catalog" FontWeight="Bold" />
-                    <TextBlock><Run Text="{Binding CatalogIdentity}" /><Run Text=" / " /><Run Text="{Binding CatalogSchema}" /></TextBlock>
-                    <TextBlock><Run Text="capability: " /><Run Text="{Binding MutationCapability}" /></TextBlock>
+                    <TextBlock><Run Text="{Binding CatalogIdentity, Mode=OneWay}" /><Run Text=" / " /><Run Text="{Binding CatalogSchema, Mode=OneWay}" /></TextBlock>
+                    <TextBlock><Run Text="capability: " /><Run Text="{Binding MutationCapability, Mode=OneWay}" /></TextBlock>
                     <TextBlock Text="{Binding CoverageSummary}" TextWrapping="Wrap" />
                     <TextBlock Text="{Binding OrphanSummary}" TextWrapping="Wrap" />
                 </StackPanel>
@@ -194,10 +194,10 @@
                                     <TextBlock Text="{Binding Observation.StableCandidate}" FontFamily="Consolas" />
                                 </StackPanel>
                                 <StackPanel Grid.Column="1">
-                                    <TextBlock><Run Text="session: " /><Run Text="{Binding Observation.SessionId}" /></TextBlock>
+                                    <TextBlock><Run Text="session: " /><Run Text="{Binding Observation.SessionId, Mode=OneWay}" /></TextBlock>
                                     <TextBlock Text="{Binding Observation.DetectorState}" />
                                     <TextBlock Text="{Binding Observation.DetectorProgress}" />
-                                    <TextBlock><Run Text="catalog: " /><Run Text="{Binding Observation.LastCatalogReceipt}" /></TextBlock>
+                                    <TextBlock><Run Text="catalog: " /><Run Text="{Binding Observation.LastCatalogReceipt, Mode=OneWay}" /></TextBlock>
                                 </StackPanel>
                                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
                                     <TextBox Width="220" Margin="4" Padding="6"

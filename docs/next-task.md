@@ -1,8 +1,17 @@
 # 現在PR完了記録
 
-M5c-4として、developer-only collectorが明示採用したimmutable artifactからtitle/artist取得方式を比較する評価経路を追加した。
+M5c-4 merge後に判明したdeveloper-only collectorの起動不能を修正した。read-only view-model propertyを表示する`Run.Text` bindingを明示的なone-way bindingへ統一し、同じ不具合の再混入を検出するXAML回帰testを追加した。
 
-## 完了範囲
+## 今回の完了範囲
+
+- catalog identity/schema/capabilityとobservation session/catalog receiptの`Run.Text` bindingに`Mode=OneWay`を指定した。
+- `Run.Text`へ追加されるbindingが明示的にone-wayであることを確認する回帰testを追加した。
+- collector全test、build、実際のウィンドウ起動と応答を確認した。
+- catalog schema、収集・評価処理、保存境界、ローカルDBや画像・生成物は変更していない。
+
+## 前提となるM5c-4完了範囲
+
+M5c-4として、developer-only collectorが明示採用したimmutable artifactからtitle/artist取得方式を比較する評価経路を追加した。
 
 - Git管理外のlocal datasetを読むstrict loaderを追加した。artifact root外path、未知/欠損field、重複manifest/observation ID、欠損・改変画像、source dimensions不一致、master/catalog/extractor driftをreport生成前に拒否する。
 - `m5c-song-select-title-artist-roi-v1`に対して、追加Python packageを増やさないlocal Tesseractの`autocontrast` / `white-threshold`方式をversion付きで比較する。
