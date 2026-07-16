@@ -1,0 +1,4 @@
+interface:
+  display_name: "DDRGP GitHub Review Fix"
+  short_description: "Safely address authorized DDRGP PR review findings"
+  default_prompt: "Use $ddrgp-github-review-fix to address authorized actionable review findings on this DDRGP pull request."

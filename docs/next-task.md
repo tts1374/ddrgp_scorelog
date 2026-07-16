@@ -108,7 +108,7 @@ M5c-4として、developer-only collectorが明示採用した実capture artifac
 - 採用方式は固定した最低母数・精度・既知誤確定0件を満たし、曖昧/不一致/低信頼度はreviewへ残る。条件未達ならauto-confirmへ接続しない。
 - 同一入力/observation再投入、別ID同一画像、drift、old/corrupt入力、partial failureの副作用境界をtestで確認できる。
 - v1/v2 ingest、manual review revision/history、runtime current reference、ゲーム非操作、local artifact非Git管理を維持する。
-- read-only branch diffレビューでmedium以上の未対応指摘がない。
+- ルート `AGENTS.md` のReview Policyに従った独立review gateで、P0/P1/P2の未対応指摘がない。
 
 ## Open Risks / Blockers
 
@@ -116,4 +116,4 @@ M5c-4として、developer-only collectorが明示採用した実capture artifac
 - title/artist領域の画面状態、animation、言語、解像度差により方式別の追加評価が必要になる可能性がある。
 - 新しい外部service、認証情報、費用発生、非互換schema変更が必要なら実装を広げず「ユーザー対応が必要」として停止する。
 
-完了後は今回作業分だけをstageし、diff、対象/影響範囲/条件付き全体test、独立read-onlyレビューを完了してからcommit、現在の `codex/*` branchへ通常pushし、draft PRを作成してください。今回の実績から次PR仕様を更新し、更新後の作業には着手しないでください。
+完了後は今回作業分だけをstageし、diff、対象/影響範囲/条件付き全体test、ルート `AGENTS.md` のReview Policyに従った独立review gateを完了してからcommit、現在の `codex/*` branchへ通常pushし、draft PRを作成してください。今回の実績から次PR仕様を更新し、更新後の作業には着手しないでください。
