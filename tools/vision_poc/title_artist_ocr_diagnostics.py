@@ -490,7 +490,7 @@ def _representative_rows(rows: list[dict[str, Any]], limit: int) -> list[dict[st
 
 
 def render_contact_sheet(
-    representatives: list[dict[str, Any]], image_paths: dict[str, Path]
+    representatives: list[dict[str, Any]], image_bytes: dict[str, bytes]
 ) -> Image.Image:
     if not representatives:
         sheet = Image.new("RGB", (1200, 100), "white")
@@ -501,7 +501,7 @@ def render_contact_sheet(
     draw = ImageDraw.Draw(sheet)
     for index, row in enumerate(representatives):
         top = index * row_height
-        with Image.open(image_paths[row["observation_id"]]) as opened:
+        with Image.open(io.BytesIO(image_bytes[row["observation_id"]])) as opened:
             image = opened.convert("RGB")
         source = image.copy()
         source.thumbnail((320, 180), Image.Resampling.LANCZOS)
@@ -532,8 +532,9 @@ def write_reports(
     rows: list[dict[str, Any]],
     summary: dict[str, Any],
     *,
-    image_paths: dict[str, Path],
+    image_bytes: dict[str, bytes],
     representative_limit: int,
+    publish_guard: Callable[[], None] = lambda: None,
 ) -> None:
     output_dir = output_dir.resolve()
     output_dir.parent.mkdir(parents=True, exist_ok=True)
@@ -552,9 +553,10 @@ def write_reports(
             render_markdown(summary), encoding="utf-8", newline="\n"
         )
         sheet = render_contact_sheet(
-            _representative_rows(rows, representative_limit), image_paths
+            _representative_rows(rows, representative_limit), image_bytes
         )
         sheet.save(temporary / "representative_contact_sheet.png", format="PNG")
+        publish_guard()
         output_dir.mkdir(parents=True, exist_ok=True)
         for path in sorted(temporary.iterdir()):
             os.replace(path, output_dir / path.name)
@@ -649,14 +651,27 @@ def run_diagnostics(
         probe_failure=probe_failure,
         extractor=extractor,
     )
-    if any(unresolved._file_fingerprint(path) != before for path, before in fingerprints.items()):
-        raise ValueError("artifact/checkpoint changed during OCR diagnostics")
-    db_after = {
-        "master": evaluation._sha256_file(master_db),
-        "catalog": evaluation._sha256_file(catalog_db),
-    }
-    if db_before != db_after:
-        raise ValueError("master/catalog changed during OCR diagnostics")
+
+    def verify_snapshot() -> None:
+        try:
+            changed = any(
+                unresolved._file_fingerprint(path) != before
+                for path, before in fingerprints.items()
+            )
+        except OSError as exc:
+            raise ValueError(
+                "artifact/checkpoint changed during OCR diagnostics"
+            ) from exc
+        if changed:
+            raise ValueError("artifact/checkpoint changed during OCR diagnostics")
+        db_current = {
+            "master": evaluation._sha256_file(master_db),
+            "catalog": evaluation._sha256_file(catalog_db),
+        }
+        if db_before != db_current:
+            raise ValueError("master/catalog changed during OCR diagnostics")
+
+    verify_snapshot()
     summary = summarize(
         rows,
         total_references=len(projected["review_references"]),
@@ -666,12 +681,19 @@ def run_diagnostics(
         languages=languages,
         probe_failure=probe_failure,
     )
+    representatives = _representative_rows(rows, representative_limit)
+    representative_bytes = {
+        row["observation_id"]: image_paths[row["observation_id"]].read_bytes()
+        for row in representatives
+    }
+    verify_snapshot()
     write_reports(
         output_dir,
         rows,
         summary,
-        image_paths=image_paths,
+        image_bytes=representative_bytes,
         representative_limit=representative_limit,
+        publish_guard=verify_snapshot,
     )
     return {
         "receipt_schema_version": RECEIPT_SCHEMA_VERSION,

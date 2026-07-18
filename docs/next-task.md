@@ -13,7 +13,7 @@ current unresolved observation 516件を対象に、Tesseract installed language
 - `data/jacket_catalog_collector/title-artist-ocr-diagnostics/`へ`ocr_diagnostics.csv/json/md`と`representative_contact_sheet.png`をatomic生成する。
 - contact sheetは現行M5c baseline（title `psm=7`、artist 5倍sharpen）のtitle/artist statusとcandidate reasonの組合せから代表を安定選択し、source縮小、title ROI、artist ROIを並べる。
 - `--representative-limit 0`はsource/ROI代表を1件も選ばず、空状態のcontact sheetだけを生成する。
-- 診断前後でmaster/catalog hashとmanifest/source/crop/checkpoint fingerprintを再検査し、変化時はreportをpublishしない。
+- contact sheetは再openしたpathではなくfingerprint検証済みsource bytesから描画し、temp report完成後・publish直前にもmaster/catalog hashとmanifest/source/crop/checkpoint fingerprintを再検査する。変化時はreportをpublishしない。
 - 516枚を同時保持せず1枚ずつ読み込むstreaming処理にし、高倍率profile比較時のsource image memoryをboundedにした。
 - README、roadmap、storage/master-match designを診断契約へ同期した。
 

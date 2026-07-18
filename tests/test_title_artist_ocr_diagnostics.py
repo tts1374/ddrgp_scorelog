@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 import json
 import subprocess
 from collections import Counter
@@ -176,7 +177,7 @@ def test_reports_are_byte_stable_and_contact_sheet_contains_no_db_write(
         output,
         rows,
         summary,
-        image_paths={"observation-1": image_path},
+        image_bytes={"observation-1": image_path.read_bytes()},
         representative_limit=1,
     )
     first = {path.name: path.read_bytes() for path in output.iterdir()}
@@ -184,7 +185,7 @@ def test_reports_are_byte_stable_and_contact_sheet_contains_no_db_write(
         output,
         rows,
         summary,
-        image_paths={"observation-1": image_path},
+        image_bytes={"observation-1": image_path.read_bytes()},
         representative_limit=1,
     )
     second = {path.name: path.read_bytes() for path in output.iterdir()}
@@ -211,3 +212,39 @@ def test_zero_representative_limit_suppresses_source_rows() -> None:
 
     assert diagnostics._representative_rows(rows, 0) == []
     assert diagnostics.render_contact_sheet([], {}).size == (1200, 100)
+
+
+def test_publish_guard_failure_leaves_report_unpublished(tmp_path: Path) -> None:
+    rows = diagnostics.evaluate_images(
+        [("observation-1", Image.new("RGB", (1280, 720), "black"))],
+        master=_master(),
+        executable="tesseract",
+        languages={"eng"},
+        extractor=_ok_extractor,
+    )
+    summary = diagnostics.summarize(
+        rows,
+        total_references=1,
+        eligible_observations=1,
+        skipped_reasons=Counter(),
+        executable="tesseract",
+        languages={"eng"},
+        probe_failure="",
+    )
+    payload = io.BytesIO()
+    Image.new("RGB", (1280, 720), "black").save(payload, format="PNG")
+    output = tmp_path / "report"
+
+    with pytest.raises(ValueError, match="changed before publish"):
+        diagnostics.write_reports(
+            output,
+            rows,
+            summary,
+            image_bytes={"observation-1": payload.getvalue()},
+            representative_limit=1,
+            publish_guard=lambda: (_ for _ in ()).throw(
+                ValueError("changed before publish")
+            ),
+        )
+
+    assert not output.exists()
