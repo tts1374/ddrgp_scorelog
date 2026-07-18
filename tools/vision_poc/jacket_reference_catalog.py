@@ -6,6 +6,7 @@ import hashlib
 import json
 import sqlite3
 from collections import Counter
+from collections.abc import Callable
 from contextlib import closing
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -38,6 +39,11 @@ REVIEW_STATUSES = (
 )
 INITIAL_REVIEW_STATUSES = ("auto_confirmed", "needs_review", "unresolved")
 REVIEW_ACTIONS = ("manual_confirm", "reassign", "reject", "reopen")
+AUTO_CONFIRMATION_SOURCES = (
+    "jacket_gate",
+    "jacket_top3_title_ocr",
+    "ocr_title_artist_pair",
+)
 COVERAGE_FIELDNAMES = (
     "song_id",
     "title",
@@ -300,6 +306,24 @@ class ReviewMutationReceipt:
     idempotent: bool
 
 
+@dataclass(frozen=True)
+class AutoConfirmationRequest:
+    observation_id: str
+    song_id: str
+    confirmation_source: str
+    evidence_json: str
+    expected_state_sha256: str
+    applied_at: str
+
+
+@dataclass(frozen=True)
+class AutoConfirmationBatchReceipt:
+    requested_count: int
+    applied_count: int
+    no_op_count: int
+    observation_ids: tuple[str, ...]
+
+
 def utc_now() -> str:
     return datetime.now(UTC).isoformat(timespec="seconds")
 
@@ -399,6 +423,32 @@ def _json_object(raw: str, *, field_name: str, expected_keys: set[str]) -> dict[
     if not isinstance(value, dict) or set(value) != expected_keys:
         raise ValueError(f"jacket reference catalog has invalid {field_name} fields")
     return value
+
+
+AUTO_CONFIRMATION_STATE_FIELDS = (
+    "master_version",
+    "song_id",
+    "canonical_title_snapshot",
+    "canonical_artist_snapshot",
+    "review_status",
+    "resolution_reason",
+    "resolution_basis",
+    "review_revision",
+    "manual_action_id",
+    "manual_note",
+    "updated_at",
+)
+
+
+def auto_confirmation_state_sha256(row: sqlite3.Row | dict[str, Any]) -> str:
+    value = {field: row[field] for field in AUTO_CONFIRMATION_STATE_FIELDS}
+    payload = json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
 
 
 def _is_sha256(value: object) -> bool:
@@ -1002,6 +1052,143 @@ def apply_review_mutation(
         except Exception:
             connection.rollback()
             raise
+
+
+def apply_auto_confirmation_batch(
+    catalog_path: Path,
+    master_db: Path,
+    requests: list[AutoConfirmationRequest],
+    *,
+    transaction_guard: Callable[[sqlite3.Connection], None] | None = None,
+    before_commit: Callable[[], None] | None = None,
+    fail_after_updates: int | None = None,
+) -> AutoConfirmationBatchReceipt:
+    """Atomically auto-confirm a preflighted set of current catalog observations."""
+    if not requests:
+        if before_commit is not None:
+            before_commit()
+        return AutoConfirmationBatchReceipt(0, 0, 0, ())
+    observation_ids = [request.observation_id for request in requests]
+    if len(observation_ids) != len(set(observation_ids)):
+        raise ValueError("auto confirmation batch contains duplicate observations")
+    for request in requests:
+        if not request.observation_id or request.observation_id != request.observation_id.strip():
+            raise ValueError("auto confirmation observation id must be non-empty")
+        if not request.song_id or request.song_id != request.song_id.strip():
+            raise ValueError("auto confirmation song id must be non-empty")
+        if request.confirmation_source not in AUTO_CONFIRMATION_SOURCES:
+            raise ValueError("unsupported auto confirmation source")
+        if not _is_sha256(request.expected_state_sha256):
+            raise ValueError("auto confirmation expected state hash is invalid")
+        try:
+            evidence = json.loads(request.evidence_json)
+        except json.JSONDecodeError as exc:
+            raise ValueError("auto confirmation evidence must be valid JSON") from exc
+        if not isinstance(evidence, dict):
+            raise ValueError("auto confirmation evidence must be a JSON object")
+        if (
+            evidence.get("observation_id") != request.observation_id
+            or evidence.get("matched_song_id") != request.song_id
+            or evidence.get("confirmation_source") != request.confirmation_source
+        ):
+            raise ValueError("auto confirmation evidence identity mismatch")
+        timestamp = request.applied_at
+        try:
+            parsed_timestamp = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise ValueError("auto confirmation applied_at must be ISO-8601") from exc
+        if parsed_timestamp.tzinfo is None or parsed_timestamp.utcoffset() is None:
+            raise ValueError("auto confirmation applied_at must include a UTC offset")
+    if fail_after_updates is not None and fail_after_updates < 1:
+        raise ValueError("fail_after_updates must be positive")
+    if catalog_schema_version(catalog_path) != CATALOG_SCHEMA_VERSION:
+        raise ValueError("auto confirmation requires the current catalog schema")
+    master = load_master_identity(master_db)
+    songs_by_id = {song.song_id: song for song in master.songs}
+    selected_songs: dict[str, master_match.MasterSong] = {}
+    for request in requests:
+        song = songs_by_id.get(request.song_id)
+        if song is None or not song.grand_prix_play_available:
+            raise ValueError("auto confirmation song must exist in the current GP master")
+        selected_songs[request.song_id] = song
+
+    applied_count = 0
+    no_op_count = 0
+    with closing(_connect_read_write(catalog_path)) as connection:
+        connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA foreign_keys = ON")
+        connection.execute("BEGIN IMMEDIATE")
+        try:
+            _validate_catalog(connection)
+            if transaction_guard is not None:
+                transaction_guard(connection)
+            for request in sorted(requests, key=lambda item: item.observation_id):
+                row = connection.execute(
+                    "SELECT * FROM jacket_references WHERE source_capture_id = ?",
+                    (request.observation_id,),
+                ).fetchone()
+                if row is None:
+                    raise ValueError("auto confirmation observation does not exist")
+                song = selected_songs[request.song_id]
+                desired_matches = (
+                    str(row["master_version"]) == master.version
+                    and row["song_id"] == request.song_id
+                    and str(row["canonical_title_snapshot"]) == song.title
+                    and str(row["canonical_artist_snapshot"]) == song.artist
+                    and str(row["review_status"]) == "auto_confirmed"
+                    and str(row["resolution_reason"]) == request.evidence_json
+                    and str(row["resolution_basis"]) == request.confirmation_source
+                    and int(row["review_revision"]) == 0
+                    and row["manual_action_id"] is None
+                    and str(row["manual_note"]) == ""
+                )
+                if desired_matches:
+                    no_op_count += 1
+                    continue
+                if auto_confirmation_state_sha256(row) != request.expected_state_sha256:
+                    raise ValueError("stale or conflicting auto confirmation state")
+                if (
+                    str(row["review_status"]) not in {"unresolved", "needs_review"}
+                    or row["song_id"] is not None
+                    or int(row["review_revision"]) != 0
+                    or row["manual_action_id"] is not None
+                    or str(row["manual_note"]) != ""
+                ):
+                    raise ValueError("auto confirmation would overwrite existing confirmed state")
+                connection.execute(
+                    """
+                    UPDATE jacket_references
+                    SET master_version = ?, song_id = ?, canonical_title_snapshot = ?,
+                        canonical_artist_snapshot = ?, review_status = 'auto_confirmed',
+                        resolution_reason = ?, resolution_basis = ?, updated_at = ?
+                    WHERE reference_id = ?
+                    """,
+                    (
+                        master.version,
+                        request.song_id,
+                        song.title,
+                        song.artist,
+                        request.evidence_json,
+                        request.confirmation_source,
+                        request.applied_at,
+                        row["reference_id"],
+                    ),
+                )
+                applied_count += 1
+                if fail_after_updates == applied_count:
+                    raise RuntimeError("injected auto confirmation batch failure")
+            if before_commit is not None:
+                before_commit()
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+    return AutoConfirmationBatchReceipt(
+        requested_count=len(requests),
+        applied_count=applied_count,
+        no_op_count=no_op_count,
+        observation_ids=tuple(sorted(observation_ids)),
+    )
 
 
 def _validate_master_tables(connection: sqlite3.Connection) -> None:

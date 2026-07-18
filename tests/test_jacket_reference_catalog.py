@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import sqlite3
 from contextlib import closing
 from pathlib import Path
@@ -136,6 +137,39 @@ def ingest(
     )
 
 
+def auto_confirmation_request(
+    catalog_path: Path,
+    *,
+    observation_id: str,
+    song_id: str = "song-1",
+    source: str = "jacket_gate",
+) -> catalog.AutoConfirmationRequest:
+    with sqlite3.connect(catalog_path) as connection:
+        connection.row_factory = sqlite3.Row
+        row = connection.execute(
+            "SELECT * FROM jacket_references WHERE source_capture_id = ?",
+            (observation_id,),
+        ).fetchone()
+    assert row is not None
+    evidence = json.dumps(
+        {
+            "observation_id": observation_id,
+            "matched_song_id": song_id,
+            "confirmation_source": source,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return catalog.AutoConfirmationRequest(
+        observation_id=observation_id,
+        song_id=song_id,
+        confirmation_source=source,
+        evidence_json=evidence,
+        expected_state_sha256=catalog.auto_confirmation_state_sha256(row),
+        applied_at="2026-07-19T00:00:00+00:00",
+    )
+
+
 def test_current_create_has_exact_composite_schema(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -176,6 +210,147 @@ def test_current_create_has_exact_composite_schema(
         "catalog_created_at": metadata["created_at"],
         "identities": [],
     }
+
+
+def test_auto_confirmation_batch_is_atomic_and_idempotent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    master_db, catalog_path, image_path = setup_paths(tmp_path, monkeypatch)
+    ingest(catalog_path, master_db, image_path, observation_id="obs-1", seed="one")
+    ingest(catalog_path, master_db, image_path, observation_id="obs-2", seed="two")
+    requests = [
+        auto_confirmation_request(catalog_path, observation_id="obs-1"),
+        auto_confirmation_request(
+            catalog_path,
+            observation_id="obs-2",
+            song_id="song-2",
+            source="ocr_title_artist_pair",
+        ),
+    ]
+
+    receipt = catalog.apply_auto_confirmation_batch(catalog_path, master_db, requests)
+    repeated = catalog.apply_auto_confirmation_batch(catalog_path, master_db, requests)
+
+    assert (receipt.applied_count, receipt.no_op_count) == (2, 0)
+    assert (repeated.applied_count, repeated.no_op_count) == (0, 2)
+    with sqlite3.connect(catalog_path) as connection:
+        rows = connection.execute(
+            "SELECT source_capture_id, song_id, canonical_title_snapshot, review_status, "
+            "resolution_basis, resolution_reason, review_revision "
+            "FROM jacket_references ORDER BY source_capture_id"
+        ).fetchall()
+        history_count = connection.execute(
+            "SELECT COUNT(*) FROM reference_review_history"
+        ).fetchone()[0]
+    assert rows[0][:6] == (
+        "obs-1",
+        "song-1",
+        "Alpha",
+        "auto_confirmed",
+        "jacket_gate",
+        requests[0].evidence_json,
+    )
+    assert rows[1][:6] == (
+        "obs-2",
+        "song-2",
+        "Beta",
+        "auto_confirmed",
+        "ocr_title_artist_pair",
+        requests[1].evidence_json,
+    )
+    assert rows[0][6] == rows[1][6] == 0
+    assert history_count == 0
+    catalog.validate_catalog(catalog_path)
+
+
+def test_auto_confirmation_batch_rolls_back_every_row_on_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    master_db, catalog_path, image_path = setup_paths(tmp_path, monkeypatch)
+    ingest(catalog_path, master_db, image_path, observation_id="obs-1", seed="one")
+    ingest(catalog_path, master_db, image_path, observation_id="obs-2", seed="two")
+    requests = [
+        auto_confirmation_request(catalog_path, observation_id="obs-1"),
+        auto_confirmation_request(catalog_path, observation_id="obs-2"),
+    ]
+    before = hashlib.sha256(catalog_path.read_bytes()).hexdigest()
+
+    with pytest.raises(RuntimeError, match="injected auto confirmation batch failure"):
+        catalog.apply_auto_confirmation_batch(
+            catalog_path, master_db, requests, fail_after_updates=1
+        )
+
+    assert hashlib.sha256(catalog_path.read_bytes()).hexdigest() == before
+    with sqlite3.connect(catalog_path) as connection:
+        assert connection.execute(
+            "SELECT review_status, COUNT(*) FROM jacket_references GROUP BY review_status"
+        ).fetchall() == [("unresolved", 2)]
+
+
+def test_auto_confirmation_batch_rejects_stale_invalid_duplicate_and_conflicting_inputs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    master_db, catalog_path, image_path = setup_paths(tmp_path, monkeypatch)
+    ingest(catalog_path, master_db, image_path, observation_id="obs-1", seed="one")
+    request = auto_confirmation_request(catalog_path, observation_id="obs-1")
+    stale = catalog.AutoConfirmationRequest(
+        **{**request.__dict__, "expected_state_sha256": "0" * 64}
+    )
+    invalid_song = catalog.AutoConfirmationRequest(
+        **{**request.__dict__, "song_id": "missing-song"}
+    )
+    invalid_song = catalog.AutoConfirmationRequest(
+        **{
+            **invalid_song.__dict__,
+            "evidence_json": json.dumps(
+                {
+                    "observation_id": "obs-1",
+                    "matched_song_id": "missing-song",
+                    "confirmation_source": "jacket_gate",
+                },
+                sort_keys=True,
+                separators=(",", ":"),
+            ),
+        }
+    )
+
+    with pytest.raises(ValueError, match="stale or conflicting"):
+        catalog.apply_auto_confirmation_batch(catalog_path, master_db, [stale])
+    with pytest.raises(ValueError, match="current GP master"):
+        catalog.apply_auto_confirmation_batch(catalog_path, master_db, [invalid_song])
+    with pytest.raises(ValueError, match="duplicate observations"):
+        catalog.apply_auto_confirmation_batch(catalog_path, master_db, [request, request])
+
+    with sqlite3.connect(catalog_path) as connection, connection:
+        connection.execute(
+            "UPDATE jacket_references SET master_version = 'master-v1', song_id = 'song-2', "
+            "canonical_title_snapshot = 'Beta', canonical_artist_snapshot = 'Artist B', "
+            "review_status = 'auto_confirmed', resolution_reason = 'other evidence', "
+            "resolution_basis = 'jacket_gate' WHERE source_capture_id = 'obs-1'"
+        )
+    conflicting = auto_confirmation_request(catalog_path, observation_id="obs-1")
+    with pytest.raises(ValueError, match="overwrite existing confirmed state"):
+        catalog.apply_auto_confirmation_batch(catalog_path, master_db, [conflicting])
+
+
+def test_auto_confirmation_batch_commit_guard_failure_rolls_back(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    master_db, catalog_path, image_path = setup_paths(tmp_path, monkeypatch)
+    ingest(catalog_path, master_db, image_path, observation_id="obs-1", seed="one")
+    request = auto_confirmation_request(catalog_path, observation_id="obs-1")
+
+    def reject_commit() -> None:
+        raise ValueError("external revision changed")
+
+    with pytest.raises(ValueError, match="external revision changed"):
+        catalog.apply_auto_confirmation_batch(
+            catalog_path, master_db, [request], before_commit=reject_commit
+        )
+    with sqlite3.connect(catalog_path) as connection:
+        assert connection.execute(
+            "SELECT review_status FROM jacket_references"
+        ).fetchone()[0] == "unresolved"
 
 
 def test_old_catalog_version_is_read_only_rejected(
