@@ -27,6 +27,8 @@ FEATURE_EXTRACTOR_VERSION = "m5-jacket-v2"
 JACKET_FEATURE_VERSION = "m5c-jacket-rgb-grid-v1"
 IMAGE_KIND = "jacket_crop"
 TOP_K_VALUES = (1, 3, 5, 10)
+MAX_ODS_DATA_ROWS = 10_000
+MAX_ODS_DATA_COLUMNS = 256
 
 NS = {
     "office": "urn:oasis:names:tc:opendocument:xmlns:office:1.0",
@@ -141,18 +143,52 @@ def load_ods_sheets(path: Path) -> dict[str, list[list[Any]]]:
         name = table.get(_ods_attr("table", "name")) or ""
         rows: list[list[Any]] = []
         for row in table.findall("table:table-row", NS):
-            row_repeat = int(row.get(_ods_attr("table", "number-rows-repeated"), "1"))
+            try:
+                row_repeat = int(
+                    row.get(_ods_attr("table", "number-rows-repeated"), "1")
+                )
+            except ValueError as exc:
+                raise EvaluationError(f"ODS sheet has an invalid row repeat: {name}") from exc
+            if row_repeat < 1:
+                raise EvaluationError(f"ODS sheet has a non-positive row repeat: {name}")
             values: list[Any] = []
+            pending_blanks = 0
             for cell in list(row):
                 if cell.tag not in {
                     f"{{{NS['table']}}}table-cell",
                     f"{{{NS['table']}}}covered-table-cell",
                 }:
                     continue
-                repeat = int(cell.get(_ods_attr("table", "number-columns-repeated"), "1"))
-                values.extend([_ods_cell_value(cell)] * repeat)
-            while values and values[-1] is None:
-                values.pop()
+                try:
+                    repeat = int(
+                        cell.get(_ods_attr("table", "number-columns-repeated"), "1")
+                    )
+                except ValueError as exc:
+                    raise EvaluationError(
+                        f"ODS sheet has an invalid column repeat: {name}"
+                    ) from exc
+                if repeat < 1:
+                    raise EvaluationError(
+                        f"ODS sheet has a non-positive column repeat: {name}"
+                    )
+                value = _ods_cell_value(cell)
+                if value is None or value == "":
+                    pending_blanks += repeat
+                    continue
+                expanded_columns = len(values) + pending_blanks + repeat
+                if expanded_columns > MAX_ODS_DATA_COLUMNS:
+                    raise EvaluationError(
+                        f"ODS sheet exceeds {MAX_ODS_DATA_COLUMNS} data columns: {name}"
+                    )
+                values.extend([None] * pending_blanks)
+                values.extend([value] * repeat)
+                pending_blanks = 0
+            if not values:
+                continue
+            if len(rows) + row_repeat > MAX_ODS_DATA_ROWS:
+                raise EvaluationError(
+                    f"ODS sheet exceeds {MAX_ODS_DATA_ROWS} non-empty rows: {name}"
+                )
             rows.extend([list(values) for _ in range(row_repeat)])
         sheets[name] = rows
     return sheets

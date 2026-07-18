@@ -15,6 +15,7 @@ from tools.ddrworld_snapshot_evaluation.evaluator import (
     EvaluationConfig,
     EvaluationError,
     evaluate_snapshot,
+    load_ods_sheets,
 )
 from tools.vision_poc import master_match
 
@@ -33,7 +34,13 @@ def write_image(path: Path, color: tuple[int, int, int]) -> str:
     return sha256(path)
 
 
-def write_ods(path: Path, review_rows: list[list[object]]) -> None:
+def write_ods(
+    path: Path,
+    review_rows: list[list[object]],
+    *,
+    trailing_blank_repeat: int | None = None,
+    first_data_row_repeat: int | None = None,
+) -> None:
     ET.register_namespace("office", OFFICE)
     ET.register_namespace("table", TABLE)
     ET.register_namespace("text", TEXT)
@@ -53,8 +60,13 @@ def write_ods(path: Path, review_rows: list[list[object]]) -> None:
         "truth_artist",
         "observation_id",
     ]
-    for values in [headers, *review_rows]:
-        row = ET.SubElement(table, f"{{{TABLE}}}table-row")
+    for row_index, values in enumerate([headers, *review_rows]):
+        attributes = (
+            {f"{{{TABLE}}}number-rows-repeated": str(first_data_row_repeat)}
+            if row_index == 1 and first_data_row_repeat is not None
+            else {}
+        )
+        row = ET.SubElement(table, f"{{{TABLE}}}table-row", attributes)
         for value in values:
             cell = ET.SubElement(
                 row,
@@ -63,6 +75,20 @@ def write_ods(path: Path, review_rows: list[list[object]]) -> None:
             )
             paragraph = ET.SubElement(cell, f"{{{TEXT}}}p")
             paragraph.text = "" if value is None else str(value)
+    if trailing_blank_repeat is not None:
+        blank_row = ET.SubElement(
+            table,
+            f"{{{TABLE}}}table-row",
+            {f"{{{TABLE}}}number-rows-repeated": str(trailing_blank_repeat)},
+        )
+        ET.SubElement(
+            blank_row,
+            f"{{{TABLE}}}table-cell",
+            {
+                f"{{{OFFICE}}}value-type": "string",
+                f"{{{TABLE}}}number-columns-repeated": "16384",
+            },
+        )
     path.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(path, "w") as archive:
         archive.writestr("content.xml", ET.tostring(root, encoding="utf-8"))
@@ -291,6 +317,31 @@ def test_equal_official_features_are_held_as_ambiguous(tmp_path: Path) -> None:
     summary = json.loads((output / "summary.json").read_text(encoding="utf-8"))
     statuses = summary["jacket_metrics"]["decision_status_counts"]
     assert statuses["hold_ambiguous"] == 1
+
+
+def test_trailing_repeated_blank_ods_rows_are_not_materialized(tmp_path: Path) -> None:
+    path = tmp_path / "truth.ods"
+    write_ods(
+        path,
+        [[1, "confirmed", "song_red", "Red Song", "Red Artist", "obs-red"]],
+        trailing_blank_repeat=1_048_000,
+    )
+
+    sheets = load_ods_sheets(path)
+
+    assert len(sheets["Review"]) == 2
+
+
+def test_repeated_non_empty_ods_rows_are_bounded(tmp_path: Path) -> None:
+    path = tmp_path / "truth.ods"
+    write_ods(
+        path,
+        [[1, "confirmed", "song_red", "Red Song", "Red Artist", "obs-red"]],
+        first_data_row_repeat=10_001,
+    )
+
+    with pytest.raises(EvaluationError, match="exceeds 10000 non-empty rows"):
+        load_ods_sheets(path)
 
 
 def test_corrupt_snapshot_jacket_hash_is_rejected_without_output(tmp_path: Path) -> None:
