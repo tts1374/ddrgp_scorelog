@@ -112,12 +112,15 @@ def test_policy_routes_cover_normal_conflict_missing_ambiguous_top3_and_rejected
     ]
     ocr = {
         "obs-2": [_ocr_row("one", "A")],
-        "obs-3": [_ocr_row("one", "B")],
-        "obs-4": [_ocr_row("one", "PAIR")],
+        "obs-3": [_ocr_row("one", "B"), _ocr_row("two", "B")],
+        "obs-4": [_ocr_row("one", "PAIR"), _ocr_row("two", "PAIR")],
         "obs-5": [_ocr_row("one", "A"), _ocr_row("two", "B")],
-        "obs-6": [_ocr_row("one", "PAIR", artist_status="empty")],
-        "obs-7": [_ocr_row("one", "AMB")],
-        "obs-8": [_ocr_row("one", "C")],
+        "obs-6": [
+            _ocr_row("one", "PAIR", artist_status="empty"),
+            _ocr_row("two", "PAIR", artist_status="empty"),
+        ],
+        "obs-7": [_ocr_row("one", "AMB"), _ocr_row("two", "AMB")],
+        "obs-8": [_ocr_row("one", "C"), _ocr_row("two", "C")],
     }
 
     rows = evaluate_policy_rows(
@@ -161,3 +164,18 @@ def test_false_auto_decision_is_counted_and_enumerable() -> None:
     assert rows[0]["policy_decision"] == "auto_jacket_gate"
     assert rows[0]["outcome"] == "false"
     assert summarize_policy(rows)["by_route"]["auto_jacket_gate"]["false_decisions"] == 1
+
+
+def test_missing_ocr_method_forces_manual_other() -> None:
+    songs = {song.song_id: song for song in (_song("A", "A"), _song("B", "B"))}
+    rows = evaluate_policy_rows(
+        [_observation(1, "B")],
+        [_jacket_row(1, "hold_ambiguous", ["A", "B"])],
+        {"obs-1": [_ocr_row("one", "B")]},
+        build_master_indexes(songs, []),
+        set(songs),
+        snapshot_id="fixture",
+    )
+
+    assert rows[0]["policy_decision"] == "manual_other"
+    assert rows[0]["hold_reason"] == "ocr_profile_set_mismatch"

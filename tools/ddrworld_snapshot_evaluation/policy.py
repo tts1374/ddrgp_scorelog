@@ -284,17 +284,16 @@ def _resolve_ocr(
         "pair_conflict": len(pair_song_ids) > 1,
         "pair_ambiguous": pair_ambiguous,
         "pair_complete": pair_complete,
-        "unknown_version": any(
-            str(row["configuration_id"]) not in KNOWN_OCR_PROFILES for row in rows
-        ),
+        "profile_set_mismatch": {str(row["configuration_id"]) for row in rows}
+        != KNOWN_OCR_PROFILES,
     }
 
 
 def _route_hold(
     base: dict[str, Any], ocr: dict[str, Any], snapshot_song_ids: set[str]
 ) -> tuple[str, str, str]:
-    if ocr["unknown_version"]:
-        return "manual_other", "", "unknown_ocr_profile_version"
+    if ocr["profile_set_mismatch"]:
+        return "manual_other", "", "ocr_profile_set_mismatch"
     top3 = {item["song_id"] for item in json.loads(base["top_candidates"])[:3]}
     if ocr["title_conflict"] or ocr["pair_conflict"]:
         return "manual_jacket_ocr_conflict", "", "ocr_profile_song_id_conflict"
