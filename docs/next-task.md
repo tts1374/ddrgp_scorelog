@@ -1,59 +1,66 @@
-# 現在PR: DDR WORLD公式music snapshot取得
+# 現在PR完了記録: DDR WORLD snapshot jacket評価
 
-DDR WORLD公式収録曲一覧のHTMLとjacketを、一度だけローカルsnapshotへ取得するdeveloper-only
-Python CLIを追加する。snapshot評価、master/catalog対応付け、DB反映、OCR方式、ROI、
-INFORMATION gate、正式保存判定はこのPRへ含めない。
+完成済みDDR WORLD公式music snapshotのjacketと、`song_select` grid由来current ROI v2 jacketを
+networkなしで突き合わせるdeveloper-only評価CLIを追加した。snapshot取得、画像/ODS/XLSX/
+catalog/master DB更新、manual review反映、INFORMATION検出、正式保存判定は行っていない。
 
 ## 今回の完了範囲
 
-- `python -m tools.ddrworld_music_snapshot plan`で、network accessなしに想定page/jacket request数、
-  最低待機時間、出力先、上書き禁止を確認できる。
-- `fetch --allow-network`を同時指定した場合だけ公式sourceへ接続する。
-- sourceはDDR WORLD music listのHTTPS origin/pathと`filter=7`、`filtertype=0`、
-  `playmode=2`へ固定し、offsetは既知の0～25以内だけを許可する。
-- HTTPはconcurrency 1、request間最低2秒、automatic retry 0、redirectなし、既定connect timeout
-  10秒/read timeout 30秒とする。
-- HTMLの各曲からsource page、ページ内位置、official title/artist、jacket URLを抽出する。
-- page HTTP status/content type/空response、title/artist/jacket URL欠損、off-origin jacket URL、
-  jacket HTTP status/content type/signatureをstrictに検査する。
-- jacketはSHA-256 pathへ保存し、URL別のmetadataと同一画像hashをreportする。同一hashだけを理由に
-  同一曲や異常とは判定しない。
-- 取得中は`<snapshot-id>.incomplete/`だけを使い、全取得・検証成功時だけ
-  `<snapshot-id>/`へdirectory renameする。失敗snapshotは`status: incomplete`で分離する。
-- 既存の完成/未完成snapshotがあればnetwork access前に拒否し、上書き、追記、retry、cleanupを
-  自動実行しない。
-- mock responseとsynthetic HTMLだけを使うtestで正常、欠損、HTTP failure、content type/signature
-  mismatch、duplicate hash、incomplete publication、既存出力、network opt-inを固定する。
+- 完成済み`ddrworld-music-snapshot-manifest-v1`だけを受け入れ、manifest/summary、failure、
+  song/image件数、URL別metadata、local path、SHA-256、画像decodeをstrictに検査する。
+- authoritativeな`candidate_truth_audit_v2.ods`のReview sheetを読み、audit/observation一意性、
+  `confirmed` / `rejected`、confirmed truth必須値、M4 title/artist exact一致を検査する。
+- current ROI v2 catalogをread-only/immutableで開き、ODSと同じ292 observation集合、
+  `m5-jacket-v2`、`m5c-jacket-rgb-grid-v1`、`jacket_crop`だけを受け入れる。
+- 公式title/artistをM4 canonical/aliasへ保守的に対応付け、公式側unresolved、M4側
+  `ddrworld_present` / `grand_prix_only_candidate` / `not_in_ddrworld_candidate`を分ける。
+  unresolvedな公式表記が残る間は、M4側の未対応曲を未収録やGP専用と確定しない。
+- confirmed grid jacketを対応済み公式jacket全件へ順位付けし、top-1/3/5/10、truth rank/distance、
+  1位と2位のmargin、precision、coverage、誤一致、保留をCSV/JSON/Markdownへ出す。
+- 既存M5のdistance 0.24、ambiguity delta 0.015を診断値として維持し、今回実測に合わせた
+  threshold tuningやproduction採用を行わない。
+- 入力ODS、catalog/master DB、snapshot metadataのhashを評価前後で比較し、変化時はoutputを
+  publishしない。既存outputは上書きしない。
+- synthetic ODS/SQLite/image/snapshotだけを使うtestで正常、alias、ambiguity、corrupt hash、
+  incomplete snapshot、truth/catalog不整合、既存output、CLI失敗を固定する。
 
-## Local data boundary
+## 実データread-only評価
 
-出力はGit管理外の`data/ddrworld_music_snapshot/<snapshot-id>/`とし、次を保持する。
+`20260718-official-v1`は1272曲で、M4へのmappingはcanonical exact 1102件、alias exact 4件、
+canonical表記差9件、unresolved 157件だった。保守的に対応できた公式曲は1115件である。
+M4側の未対応はGP専用候補116件、その他のDDR WORLD未収録候補51件だが、公式側unresolvedが
+あるため確定分類ではない。
+`candidate_truth_audit_v2.ods`の292観測は`confirmed=285` / `rejected=7`で、7件の明確なcapture
+mismatchはjacket評価から除外した。
 
-- `manifest.json`
-- `pages/page-00.html`～`page-25.html`
-- `songs.jsonl`
-- `jackets/<sha256>.<ext>`
-- `summary.json`
+confirmed 285件のうちtruthが対応済みsnapshotにあるものは260件だった。
 
-公式HTML、jacket、snapshot metadataはローカル検証だけに使い、Git、PR、artifact、Releaseへ
-添付・再配布しない。既存ODS/XLSX、master/catalog DB、capture画像、監査成果物は読み書きしない。
+- top-1: 254/260（97.6923%）
+- top-3 / top-5 / top-10: 260/260（100%）
+- 既存M5 threshold: `matched_correct=249`、`matched_false=0`、`hold_ambiguous=11`、
+  `hold_truth_not_in_snapshot=25`
+- decision precision: 100%
+- confirmed全体に対するdecision coverage: 87.3684%
+- snapshot対応済みtruthに対するdecision coverage: 95.7692%
 
-## 実取得gate
+この実績はlocal snapshot/truth/catalog/masterの組合せに対するPoC評価であり、曲ID確定、
+正式保存可能、catalog/master更新、threshold採用を意味しない。生成したCSV/JSON/Markdown、
+公式jacket、grid/capture画像、ODS/XLSX、DBはGit、PR、artifact、Releaseへ含めない。
 
-collector実装、mock test、少数pageのread-only構造確認まではこのPRで実施する。26 pageと全jacketの
-一括取得は、実行直前に想定request数、最低待機時間、出力先、上書きしないことをユーザーへ提示し、
-明示確認を得るまで実行しない。規約上の自動取得許諾は未確認のため、確認前の本番取得をPR完了条件に
-しない。
+# 次PR
 
-# 次PR候補: 保存済みsnapshot評価
+## 完了状態
 
-次の実装単位は完成済みsnapshotだけを読み、networkへ接続しない。
+保存済み公式snapshotとconfirmed grid jacketのnetwork-free照合、top-k/precision/coverage/
+誤一致/保留評価は完了した。top-1誤り6件はすべて既存margin gateで保留され、採択誤りは0件だった。
+公式snapshot 157件は保守的なM4 title/artist対応でunresolvedのまま保持している。
 
-- official title/artistをM4 masterへ対応付ける。
-- DDR WORLD未収録、DDR GP専用、表記差、対応不明を分離する。
-- 整合済みconfirmed 285件を基準にjacket照合を評価する。
-- top-1、top-k、1位と2位の差、precision、coverage、誤一致、判定保留をreportする。
-- ODS/XLSX、catalog/master DB、manual reviewへ自動反映しない。
+## 未決事項
 
-その次の実装単位で、正常285件と明確なcapture mismatch 7件を使ってINFORMATION検出を評価する。
-座標や閾値を根拠なく固定せず、snapshot取得・snapshot評価PRへ混ぜない。
+- 公式snapshot側unresolved 157件のうち、実際のM4未収録と表記差を追加の根拠でどう分けるか。
+- `hold_ambiguous` 11件を、同一jacket、類似jacket、crop差、その他へ分類して後続信号を
+  評価するか。今回PRでは個別例外やthreshold tuningを行わない。
+- 正常285件とcapture mismatch 7件を使うINFORMATION検出評価の入力contract、report語彙、
+  座標・thresholdの採用条件。snapshot/grid jacket評価とは独立して扱う。
+
+次PRの実装仕様は上記未決事項から一意に決まらない。今回PR完了後は次機能へ進まない。
