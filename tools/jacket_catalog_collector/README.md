@@ -145,6 +145,20 @@ python -m tools.vision_poc.title_artist_evaluation `
 
 方式採用gateは、fixture gateに加えて実captureの`evaluated >= 30`、title/artist完全一致率95%以上、field confidence 0.90以上、auto-confirm候補precision 100%、既知誤自動確定0件です。条件未達では`not_adopted`となり、collectorは既存の空title/artist・`unresolved` ingest/manual review経路を維持します。現時点では採用済み実capture datasetがないため、どの方式もauto-confirmへ接続していません。
 
+## title/artist OCR診断比較 (M5c-6)
+
+current unresolved artifactを、catalog/master/checkpointとstrict read-onlyで照合したうえで、同じsource captureへtitleの`psm=6/7`、artistの現行5倍・追加2倍相当10倍・追加3倍相当15倍、sharpen有無、`eng` / `jpn+eng`を比較できます。実行前に`--list-langs`と各available language構成のTSV contractを実行probeし、language不足は別languageへfallbackせず`m5c-title-artist-ocr-diagnostics-report-v1`内の`profile.available=false`と`unavailable_reason=tesseract_language_unavailable_v1:<lang>`へ固定します。TSV config欠損、非0終了、invalid outputは516件処理前にfail-fastします。
+
+```powershell
+python -m tools.vision_poc.title_artist_ocr_diagnostics `
+  --artifact-root data\jacket_catalog_collector `
+  --master-db data\master\ddrgp-master.sqlite `
+  --catalog data\jacket_catalog\catalog.sqlite `
+  --output-dir data\jacket_catalog_collector\title-artist-ocr-diagnostics
+```
+
+`ocr_diagnostics.csv/json/md`はfield status組合せ、confidence分布、OCR raw、M4 candidate結果をprofile/configuration別に保持します。`representative_contact_sheet.png`は現行M5c baseline（title `psm=7`、artist 5倍sharpen）のstatus/candidate reason組合せから決定的に代表を選び、source縮小、title ROI、artist ROIを並べます。全出力はlocal reportであり、truth、precision、方式採用、auto-confirm、catalog/manual review更新の根拠へ自動昇格しません。ROI座標、confidence gate、catalog schema、writerは変更しません。
+
 ## Scope boundary
 
 このapp/project/testは `tools/jacket_catalog_collector/` と既存のdeveloper-only Python評価経路で完結し、`app/src/DDRGpScoreViewer` を参照しません。物理削除、source image削除、retention cleanup、ゲーム操作、公開app、正式保存workflow、正式個人スコアDBは実装しません。title/artist評価はlocal reportまでで、採用gate未達の方式をcatalog auto-confirmへ接続しません。

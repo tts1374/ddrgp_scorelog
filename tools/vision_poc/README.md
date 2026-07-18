@@ -660,7 +660,7 @@ python -m tools.vision_poc.jacket_reference_catalog ingest `
 
 coverageは `coverage` subcommandで `jacket_catalog_song_coverage.csv`、`jacket_catalog_coverage_summary.json`、`jacket_catalog_coverage.md` を `data/` 配下へ生成します。GP対象songを `referenced` / `needs_review` / `uncollected` / `unresolved` のどれかへ1回だけ数え、候補を確定songへ昇格しません。current master/GP/current extractorを満たす `auto_confirmed` / `manual_confirmed` referenceだけをM5 jacket matcherへ供給し、`rejected`、orphan、旧extractor、不正永続featureは除外します。
 
-review projectionはversion 3のcurrent-only JSONです。catalog SQLite tableをC#側で直接解釈せず、master/catalogをstrict read-onlyで検査し、current/stored review state、revision、候補、manual provenance、append-only historyを投影します。`migration_required`、`read_only`、`manual_review_v2`など旧catalog capability fieldは出しません。C# loaderもprojection version 3とcatalog schema version 1だけを受け入れます。
+review projectionはversion 4のcurrent-only JSONです。catalog SQLite tableをC#側で直接解釈せず、master/catalogをstrict read-onlyで検査し、current/stored review state、revision、候補、manual provenance、append-only history、version付きunresolved candidate evaluationを投影します。`migration_required`、`read_only`、`manual_review_v2`など旧catalog capability fieldは出しません。C# loaderもprojection version 4とcatalog schema version 1だけを受け入れます。
 
 ```powershell
 python -m tools.vision_poc.jacket_catalog_review_projection `
@@ -681,6 +681,18 @@ python -m tools.vision_poc.jacket_reference_catalog review `
 ```
 
 catalog、artifact、checkpoint、source/crop画像、特徴量、review結果、coverageはローカル非共有物であり、Git、CI artifact、Release、通常logへ含めません。生画像やcropの自動削除は行いません。artifact manifest/checkpointのv1/v2 contractとresume/retry状態機械は、このcatalog schema再採番では変更していません。
+
+current unresolved sourceのOCR失敗原因は、次のread-only診断CLIで比較します。titleは`psm=6/7`、artistは現行5倍と10/15倍、sharpen有無、両fieldは`eng` / `jpn+eng`を比較します。`tesseract --list-langs`に必要languageがないprofileは`m5c-title-artist-ocr-diagnostics-report-v1`の`tesseract_language_unavailable_v1:<lang>`となり、installed languageへの暗黙fallbackはしません。
+
+```powershell
+python -m tools.vision_poc.title_artist_ocr_diagnostics `
+  --artifact-root data\jacket_catalog_collector `
+  --master-db data\master\ddrgp-master.sqlite `
+  --catalog data\jacket_catalog\catalog.sqlite `
+  --output-dir data\jacket_catalog_collector\title-artist-ocr-diagnostics
+```
+
+出力は`ocr_diagnostics.csv/json/md`と`representative_contact_sheet.png`です。profile別のstatus/confidence、baselineとのfield status組合せ、OCR raw、M4 candidate結果を診断し、source/crop/checkpoint/master/catalogを変更しません。local reportはtruthやprecisionを主張せず、ROI、confidence gate、auto-confirm条件を変更しません。
 
 ## テスト
 

@@ -331,7 +331,7 @@ Status: Completed on 2026-07-14.
 
 ### M5c: 開発者専用jacket catalog collector
 
-Status: In progress. master更新、projection/manual review、window capture lifecycle、observation session/current ingest、title/artist evaluation path、current unresolved candidate projection/reportは完了。実capture方式改善は保留。
+Status: In progress. master更新、projection/manual review、window capture lifecycle、observation session/current ingest、title/artist evaluation path、current unresolved candidate projection/report、title/artist OCR失敗診断比較は完了。診断結果に基づく方式改善は保留。
 
 目的は、公開WPF appと分離したdeveloper-only collectorで、master更新、coverage/review、DDR GP window候補確認、memory-only capture、明示observation採用、manual reviewを行うことです。ゲーム操作、focus移動、grid自動巡回は行いません。
 
@@ -353,6 +353,7 @@ collector boundary:
 - catalog failureはpending checkpointとlocal evidenceから明示retryし、catalog成功後checkpoint failureは同じreceiptでcheckpointだけを収束させる。
 - title/artist方式採用は実capture evaluated 30件以上、pair exact 95%以上、field confidence 0.90以上、候補precision 100%、既知誤自動確定0件を要求する。条件未達ではcurrent unresolved/manual reviewを維持する。
 - current unresolved candidate evaluationはartifact/checkpoint/catalog/master/extractor identityをread-only照合し、一意canonical、一意alias、曖昧、候補なし、低confidence、OCR/evaluation失敗、評価不能、review済み対象外を区別する。候補表示、filter、sort、refresh、CSV/JSON/Markdown reportはcatalog stateを変更せず、明示manual reviewだけが既存transactionを使う。
+- OCR診断比較は同じ検証済みsourceへtitle `psm=6/7`、artist 5/10/15倍とsharpen有無、`eng` / `jpn+eng`を適用し、installed language不足をversion付きfailure reasonとして明示する。local report/contact sheetはstatus、confidence、raw、candidate結果の診断専用で、ROI、confidence gate、auto-confirm、catalog stateを変更しない。
 - capture、crop、artifact、checkpoint、特徴量、review、master/catalog DB、source snapshotはlocal dataとし、Git、CI artifact、Release、通常公開logへ含めない。
 
 完了条件:
