@@ -54,6 +54,14 @@ class SnapshotConfig:
                 "snapshot ID must be 1-80 characters using letters, digits, dot, "
                 "underscore, or hyphen"
             )
+        if (
+            self.filter_value != DEFAULT_FILTER
+            or self.filter_type != DEFAULT_FILTER_TYPE
+            or self.play_mode != DEFAULT_PLAY_MODE
+        ):
+            raise SnapshotError(
+                "source query is fixed to filter=7, filtertype=0, and playmode=2"
+            )
         if not 1 <= self.page_count <= DEFAULT_PAGE_COUNT:
             raise SnapshotError(f"page count must be between 1 and {DEFAULT_PAGE_COUNT}")
         if self.delay_seconds < DEFAULT_DELAY_SECONDS:

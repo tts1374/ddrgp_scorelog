@@ -228,6 +228,26 @@ def test_page_count_cannot_exceed_known_catalog_extent() -> None:
         SnapshotConfig(snapshot_id="too-many", page_count=27).validate()
 
 
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("filter_value", 6),
+        ("filter_type", 1),
+        ("play_mode", 1),
+    ],
+)
+def test_source_query_cannot_be_changed(field: str, value: int) -> None:
+    config_values = {field: value}
+    fetcher = FakeFetcher([])
+
+    with pytest.raises(SnapshotError, match="source query is fixed"):
+        SnapshotCollector(
+            SnapshotConfig(snapshot_id="wrong-query", **config_values), fetcher=fetcher
+        )
+
+    assert fetcher.urls == []
+
+
 def test_delay_cannot_be_reduced_below_safe_default() -> None:
     with pytest.raises(SnapshotError, match="at least 2 seconds"):
         SnapshotConfig(snapshot_id="too-fast", delay_seconds=1).validate()
