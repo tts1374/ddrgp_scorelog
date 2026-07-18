@@ -105,6 +105,31 @@ public sealed class MainWindowXamlTests
                 attribute.Value.Contains("InformationTitleLine", StringComparison.Ordinal)));
     }
 
+    [Fact]
+    public void ManualReviewShowsReadOnlyCandidateEvidenceAndExplicitActions()
+    {
+        var document = LoadMainWindow();
+        var bindings = document.Descendants()
+            .SelectMany(element => element.Attributes())
+            .Select(attribute => attribute.Value)
+            .ToList();
+        var buttons = document.Descendants()
+            .Where(element => element.Name.LocalName == "Button")
+            .Select(element => element.Attribute("Content")?.Value)
+            .ToList();
+
+        Assert.Contains(bindings, value => value.Contains(
+            "CandidateEvaluation.JacketPreviewPath", StringComparison.Ordinal));
+        Assert.Contains(bindings, value => value.Contains(
+            "CandidateEvaluation.Title.Display", StringComparison.Ordinal));
+        Assert.Contains(bindings, value => value.Contains(
+            "CandidateEvaluation.Classification", StringComparison.Ordinal));
+        Assert.Contains("候補を再評価", buttons);
+        Assert.Contains("候補report", buttons);
+        Assert.Contains("確定", buttons);
+        Assert.Contains("再割当", buttons);
+    }
+
     private static XDocument LoadMainWindow() => XDocument.Load(GetMainWindowPath());
 
     private static string GetMainWindowPath()

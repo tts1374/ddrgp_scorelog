@@ -10,6 +10,7 @@ public partial class MainWindow : Window
     private readonly MainViewModel viewModel;
     private readonly CaptureObservationController captureObservationController;
     private readonly ITitleArtistEvaluationService titleArtistEvaluationService;
+    private readonly ProjectionService candidateProjectionService;
     private readonly string repositoryRoot;
     private readonly string evidenceRoot;
     private bool titleArtistEvaluationBusy;
@@ -35,9 +36,14 @@ public partial class MainWindow : Window
             new AtomicObservationCheckpointStore(evidenceRoot),
             new AtomicObservationArtifactPublisher(evidenceRoot),
             new PythonCatalogObservationAdapter(runner, repositoryRoot));
+        candidateProjectionService = new ProjectionService(
+            runner,
+            new ProjectionJsonLoader(),
+            repositoryRoot,
+            artifactRoot: evidenceRoot);
         viewModel = new MainViewModel(
             new MasterUpdateService(runner, new AtomicMasterPublisher(), repositoryRoot),
-            new ProjectionService(runner, new ProjectionJsonLoader(), repositoryRoot),
+            candidateProjectionService,
             new ReviewWorkflowService(runner, repositoryRoot),
             windowCapture,
             new JacketObservationViewModel(
@@ -253,6 +259,56 @@ public partial class MainWindow : Window
             operationCancellation?.Dispose();
             operationCancellation = null;
             titleArtistEvaluationBusy = false;
+        }
+    }
+
+    private async void RefreshCandidates_Click(object sender, RoutedEventArgs e)
+    {
+        if (viewModel.IsBusy || operationCancellation is not null)
+        {
+            return;
+        }
+        if (viewModel.CurrentMasterPath is null || viewModel.CurrentCatalogPath is null)
+        {
+            MessageBox.Show(this, "masterとcatalogを先にread-only読込してください。");
+            return;
+        }
+        await RunOperationAsync(token => viewModel.LoadProjectionAsync(
+            viewModel.CurrentMasterPath,
+            viewModel.CurrentCatalogPath,
+            token));
+    }
+
+    private async void GenerateCandidateReport_Click(object sender, RoutedEventArgs e)
+    {
+        if (viewModel.IsBusy || operationCancellation is not null)
+        {
+            return;
+        }
+        if (viewModel.CurrentMasterPath is null || viewModel.CurrentCatalogPath is null)
+        {
+            MessageBox.Show(this, "masterとcatalogを先にread-only読込してください。");
+            return;
+        }
+        var output = Path.Combine(evidenceRoot, "unresolved-candidate-evaluation");
+        try
+        {
+            operationCancellation = new CancellationTokenSource();
+            await candidateProjectionService.GenerateReportAsync(
+                viewModel.CurrentMasterPath,
+                viewModel.CurrentCatalogPath,
+                output,
+                operationCancellation.Token);
+            MessageBox.Show(this, $"candidate report: {output}", "candidate report完了");
+        }
+        catch (Exception exception)
+        {
+            MessageBox.Show(this, exception.Message, "candidate report失敗");
+        }
+        finally
+        {
+            operationCancellation?.Dispose();
+            operationCancellation = null;
         }
     }
 

@@ -123,6 +123,8 @@ public sealed class ReviewReference
     public required string ManualNote { get; init; }
     [JsonPropertyName("history")]
     public required List<ReviewHistory> History { get; init; }
+    [JsonPropertyName("candidate_evaluation")]
+    public required CandidateEvaluation CandidateEvaluation { get; init; }
 
     [JsonIgnore]
     public string CandidateDisplay => string.Join(
@@ -133,6 +135,66 @@ public sealed class ReviewReference
     public string HistoryDisplay => string.Join(
         "; ",
         History.Select(item => $"r{item.AfterRevision} {item.Action} ({item.Note})"));
+
+    [JsonIgnore]
+    public string CandidateEvaluationDisplay => string.Join(
+        "; ",
+        CandidateEvaluation.Candidates.Select(candidate =>
+            $"{candidate.Title} / {candidate.Artist} ({candidate.SongId})"));
+}
+
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+public sealed class CandidateEvaluation
+{
+    [JsonPropertyName("evaluation_schema_version")]
+    public required string EvaluationSchemaVersion { get; init; }
+    [JsonPropertyName("method_version")]
+    public required string MethodVersion { get; init; }
+    [JsonPropertyName("observation_id")]
+    public required string ObservationId { get; init; }
+    [JsonPropertyName("classification")]
+    public required string Classification { get; init; }
+    [JsonPropertyName("reason")]
+    public required string Reason { get; init; }
+    [JsonPropertyName("jacket_preview_path")]
+    public string? JacketPreviewPath { get; init; }
+    [JsonPropertyName("title")]
+    public required CandidateEvaluationField Title { get; init; }
+    [JsonPropertyName("artist")]
+    public required CandidateEvaluationField Artist { get; init; }
+    [JsonPropertyName("candidates")]
+    public required List<CandidateEvaluationSong> Candidates { get; init; }
+}
+
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+public sealed class CandidateEvaluationField
+{
+    [JsonPropertyName("raw")]
+    public required string Raw { get; init; }
+    [JsonPropertyName("normalized")]
+    public required string Normalized { get; init; }
+    [JsonPropertyName("confidence")]
+    public double? Confidence { get; init; }
+    [JsonPropertyName("status")]
+    public required string Status { get; init; }
+    [JsonPropertyName("failure_reason")]
+    public required string FailureReason { get; init; }
+
+    [JsonIgnore]
+    public string Display => Confidence is null
+        ? $"{Raw} [{Status}]"
+        : $"{Raw} [{Confidence:P1}, {Status}]";
+}
+
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+public sealed class CandidateEvaluationSong
+{
+    [JsonPropertyName("song_id")]
+    public required string SongId { get; init; }
+    [JsonPropertyName("title")]
+    public required string Title { get; init; }
+    [JsonPropertyName("artist")]
+    public required string Artist { get; init; }
 }
 
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]

@@ -12,9 +12,7 @@ from tools.vision_poc import jacket_catalog_review_projection as projection
 from tools.vision_poc import jacket_reference_catalog as catalog
 
 
-def setup_projection(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> tuple[Path, Path, str]:
+def setup_projection(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path, str]:
     monkeypatch.chdir(tmp_path)
     (tmp_path / "data").mkdir()
     master_db = tmp_path / "master.sqlite"
@@ -63,7 +61,10 @@ def test_current_projection_exposes_manual_review_without_legacy_capabilities(
 
     result = projection.build_review_projection(catalog_db, master_db)
 
-    assert result["projection_schema_version"] == 3
+    assert result["projection_schema_version"] == 4
+    assert result["review_references"][0]["candidate_evaluation"]["classification"] == (
+        "not_eligible"
+    )
     assert result["catalog"]["schema_version"] == 1
     assert "migration_required" not in result["catalog"]
     assert "mutation_capability" not in result["catalog"]
@@ -81,9 +82,7 @@ def test_projection_rejects_unsupported_catalog_without_writing(
     master_db, catalog_db, _reference_id = setup_projection(tmp_path, monkeypatch)
     with sqlite3.connect(catalog_db) as connection:
         connection.execute("PRAGMA user_version = 3")
-        connection.execute(
-            "UPDATE catalog_metadata SET value = '3' WHERE key = 'schema_version'"
-        )
+        connection.execute("UPDATE catalog_metadata SET value = '3' WHERE key = 'schema_version'")
     before = catalog_db.read_bytes()
 
     with pytest.raises(ValueError, match="unsupported"):

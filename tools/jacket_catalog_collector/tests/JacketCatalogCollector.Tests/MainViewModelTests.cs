@@ -16,6 +16,7 @@ public sealed class MainViewModelTests
         Assert.Equal(2, viewModel.Songs.Count);
         Assert.Single(viewModel.ReviewReferences);
         Assert.Contains("opaque reason", viewModel.ReasonOptions);
+        Assert.Contains("ambiguous", viewModel.CandidateClassificationOptions);
 
         viewModel.SelectedCoverageStatus = "needs_review";
         Assert.Single(viewModel.Songs);
@@ -24,6 +25,9 @@ public sealed class MainViewModelTests
         viewModel.SelectedReason = "opaque reason";
         Assert.Single(viewModel.Songs);
         Assert.Single(viewModel.ReviewReferences);
+
+        viewModel.SelectedCandidateClassification = "exact_unique";
+        Assert.Empty(viewModel.ReviewReferences);
     }
 
     [Fact]
@@ -211,7 +215,7 @@ public sealed class MainViewModelTests
 
     private static ReviewProjection Projection() => new()
     {
-        ProjectionSchemaVersion = 3,
+        ProjectionSchemaVersion = 4,
         Master = new ProjectionMaster
         {
             Path = "master.sqlite",
@@ -262,6 +266,32 @@ public sealed class MainViewModelTests
                 ManualActionId = null,
                 ManualNote = "",
                 History = [],
+                CandidateEvaluation = new CandidateEvaluation
+                {
+                    EvaluationSchemaVersion = "m5c-unresolved-candidate-evaluation-v1",
+                    MethodVersion = "tesseract-autocontrast-v1",
+                    ObservationId = "observation-1",
+                    Classification = "ambiguous",
+                    Reason = "title_match_artist_mismatch",
+                    JacketPreviewPath = null,
+                    Title = new CandidateEvaluationField
+                    {
+                        Raw = "Alpha", Normalized = "alpha", Confidence = 0.95,
+                        Status = "ok", FailureReason = "",
+                    },
+                    Artist = new CandidateEvaluationField
+                    {
+                        Raw = "?", Normalized = "?", Confidence = 0.95,
+                        Status = "ok", FailureReason = "",
+                    },
+                    Candidates =
+                    [
+                        new CandidateEvaluationSong
+                        {
+                            SongId = "song-1", Title = "Alpha", Artist = "A",
+                        },
+                    ],
+                },
             },
         ],
     };
