@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import re
 import time
@@ -64,6 +65,15 @@ class SnapshotConfig:
             )
         if not 1 <= self.page_count <= DEFAULT_PAGE_COUNT:
             raise SnapshotError(f"page count must be between 1 and {DEFAULT_PAGE_COUNT}")
+        if not all(
+            math.isfinite(value)
+            for value in (
+                self.delay_seconds,
+                self.connect_timeout_seconds,
+                self.read_timeout_seconds,
+            )
+        ):
+            raise SnapshotError("HTTP delay and timeout values must be finite")
         if self.delay_seconds < DEFAULT_DELAY_SECONDS:
             raise SnapshotError(
                 f"delay must be at least {DEFAULT_DELAY_SECONDS:g} seconds"

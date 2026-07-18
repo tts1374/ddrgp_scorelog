@@ -35,8 +35,9 @@ python -X utf8 -m tools.ddrworld_music_snapshot fetch `
 ```
 
 HTTPはconcurrency 1、automatic retry 0、connect timeout 10秒、read timeout 30秒です。
-各requestの完了後から次requestまで最低2秒待機します。timeoutはoptionで延長できますが、
-delayを2秒未満にはできません。source origin、path、filter、filtertype、playmodeはcollector v1で
+各requestの完了後から次requestまで最低2秒待機します。delayとtimeoutは有限値だけを許可し、
+timeoutは正値のoptionで延長できますが、delayを2秒未満にはできません。source origin、path、
+filter、filtertype、playmodeはcollector v1で
 固定し、任意URLのcrawlerとしては動作しません。redirectは追跡しません。
 
 ## Output and publication boundary

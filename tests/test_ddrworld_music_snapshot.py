@@ -251,3 +251,45 @@ def test_source_query_cannot_be_changed(field: str, value: int) -> None:
 def test_delay_cannot_be_reduced_below_safe_default() -> None:
     with pytest.raises(SnapshotError, match="at least 2 seconds"):
         SnapshotConfig(snapshot_id="too-fast", delay_seconds=1).validate()
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        (field, value)
+        for field in (
+            "delay_seconds",
+            "connect_timeout_seconds",
+            "read_timeout_seconds",
+        )
+        for value in (float("nan"), float("inf"), float("-inf"))
+    ],
+)
+def test_http_timing_values_must_be_finite(field: str, value: float) -> None:
+    config_values = {field: value}
+    fetcher = FakeFetcher([])
+
+    with pytest.raises(SnapshotError, match="must be finite"):
+        SnapshotCollector(
+            SnapshotConfig(snapshot_id="non-finite", **config_values), fetcher=fetcher
+        )
+
+    assert fetcher.urls == []
+
+
+def test_fetch_rejects_nan_delay_before_network(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    exit_code = main(
+        [
+            "fetch",
+            "--allow-network",
+            "--snapshot-id",
+            "nan-delay",
+            "--delay-seconds",
+            "nan",
+        ]
+    )
+
+    assert exit_code == 2
+    assert "must be finite" in capsys.readouterr().err
