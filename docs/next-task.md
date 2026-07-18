@@ -1,48 +1,59 @@
-# 現在PR完了記録
+# 現在PR: DDR WORLD公式music snapshot取得
 
-M5c song select観測のjacketとartist ROIからpanel境界を除去し、ROI由来のjacket参照を旧契約と混在させないversion境界を追加した。OCR language、前処理profile、confidence gate、candidate昇格条件、catalog schemaは変更していない。
+DDR WORLD公式収録曲一覧のHTMLとjacketを、一度だけローカルsnapshotへ取得するdeveloper-only
+Python CLIを追加する。snapshot評価、master/catalog対応付け、DB反映、OCR方式、ROI、
+INFORMATION gate、正式保存判定はこのPRへ含めない。
 
 ## 今回の完了範囲
 
-- jacket ROIを1280x720基準 `(x=809, y=27, width=149, height=149)`、`m5c-song-select-jacket-roi-v2`へ更新した。
-- title/artist ROI contractを`m5c-song-select-title-artist-roi-v2`へ更新した。titleは `(306, 58, 470, 34)` のまま、artistは上5px・左3pxを除去した `(309, 97, 467, 23)` とした。
-- current jacket feature extractorを`m5-jacket-v2`、composite identityを`m5c-jacket-title-composite-identity-v2`へ更新し、旧ROIから生成したv1 referenceがcurrent matchingや重複収束へ混入しないようにした。
-- Python/C#双方のROI、manifest、ingest、fixture、docsを同じ契約へ同期した。
-- 旧v1 manifestをcurrent評価が副作用なしで拒否する回帰testと、1280x720および2倍scaleの座標testを追加した。
+- `python -m tools.ddrworld_music_snapshot plan`で、network accessなしに想定page/jacket request数、
+  最低待機時間、出力先、上書き禁止を確認できる。
+- `fetch --allow-network`を同時指定した場合だけ公式sourceへ接続する。
+- sourceはDDR WORLD music listのHTTPS origin/pathと`filter=7`、`filtertype=0`、
+  `playmode=2`へ固定し、offsetは既知の0～25以内だけを許可する。
+- HTTPはconcurrency 1、request間最低2秒、automatic retry 0、redirectなし、既定connect timeout
+  10秒/read timeout 30秒とする。
+- HTMLの各曲からsource page、ページ内位置、official title/artist、jacket URLを抽出する。
+- page HTTP status/content type/空response、title/artist/jacket URL欠損、off-origin jacket URL、
+  jacket HTTP status/content type/signatureをstrictに検査する。
+- jacketはSHA-256 pathへ保存し、URL別のmetadataと同一画像hashをreportする。同一hashだけを理由に
+  同一曲や異常とは判定しない。
+- 取得中は`<snapshot-id>.incomplete/`だけを使い、全取得・検証成功時だけ
+  `<snapshot-id>/`へdirectory renameする。失敗snapshotは`status: incomplete`で分離する。
+- 既存の完成/未完成snapshotがあればnetwork access前に拒否し、上書き、追記、retry、cleanupを
+  自動実行しない。
+- mock responseとsynthetic HTMLだけを使うtestで正常、欠損、HTTP failure、content type/signature
+  mismatch、duplicate hash、incomplete publication、既存出力、network opt-inを固定する。
 
-## 実画像とtruth監査の実績
+## Local data boundary
 
-Git管理外のcurrent source 57件を旧/new ROIで比較した。new jacket ROIは右端・下端のpanel境界を除去し、jacket本体の切れはなかった。new artist ROIは上部水平線と左側panel境界を除去し、文字の切れはなかった。既存source、crop、manifest、checkpoint、master/catalog DBは変更していない。
+出力はGit管理外の`data/ddrworld_music_snapshot/<snapshot-id>/`とし、次を保持する。
 
-`candidate_truth_audit.ods`の57件はすべて`confirmed`かつtruth title/artist/song ID入力済みで、M4 masterとのexact一致を確認した。候補precisionはいずれも100%で、候補正解数は次のとおりだった。
+- `manifest.json`
+- `pages/page-00.html`～`page-25.html`
+- `songs.jsonl`
+- `jackets/<sha256>.<ext>`
+- `summary.json`
 
-- 現行baseline: 43件（canonical exact 39件 + title match / artist mismatch 4件）。
-- title `jpn+eng`, `psm=6`: 44件（41件 + 3件）。
-- title `jpn+eng`, `psm=7`: 44件（41件 + 3件）。`psm=6/7`の候補集合は同一だった。
-- artist `jpn+eng`, 10倍sharpen: 38件（37件 + 1件）。
-- artist `jpn+eng`, 10倍no-sharpen: 40件（39件 + 1件）。
+公式HTML、jacket、snapshot metadataはローカル検証だけに使い、Git、PR、artifact、Releaseへ
+添付・再配布しない。既存ODS/XLSX、master/catalog DB、capture画像、監査成果物は読み書きしない。
 
-title `jpn+eng`の44件はbaseline候補集合に対して9件増・8件減であり、単純な上位互換ではない。artistも候補件数だけでは採用方式を一意に決められない。このPRではROIの目視上明確なpanel境界だけを修正し、OCR profile選択へ進んでいない。
+## 実取得gate
 
-## 維持した境界
+collector実装、mock test、少数pageのread-only構造確認まではこのPRで実施する。26 pageと全jacketの
+一括取得は、実行直前に想定request数、最低待機時間、出力先、上書きしないことをユーザーへ提示し、
+明示確認を得るまで実行しない。規約上の自動取得許諾は未確認のため、確認前の本番取得をPR完了条件に
+しない。
 
-- 旧v1のlocal artifact、reference、crop、checkpointを削除、移動、上書き、migrationしていない。
-- catalog schema version 1、projection version 4、M4 master、observation ID、manual review revision/historyを変更していない。
-- OCR language、title PSM、artist scale/sharpen、normalization、confidence 0.90 gate、candidate条件、auto-confirm条件を変更していない。
-- source/crop、master/catalog DB、persisted song/candidate/review statusを変更していない。
-- local ODS、画像、DB、report、contact sheetをGit管理していない。
+# 次PR候補: 保存済みsnapshot評価
 
-# 次PR
+次の実装単位は完成済みsnapshotだけを読み、networkへ接続しない。
 
-## 完了状態
+- official title/artistをM4 masterへ対応付ける。
+- DDR WORLD未収録、DDR GP専用、表記差、対応不明を分離する。
+- 整合済みconfirmed 285件を基準にjacket照合を評価する。
+- top-1、top-k、1位と2位の差、precision、coverage、誤一致、判定保留をreportする。
+- ODS/XLSX、catalog/master DB、manual reviewへ自動反映しない。
 
-57件のcandidate truth監査と、同じ57件でのjacket/artist ROI境界確認は完了した。現行ROIはv2として固定され、旧v1由来referenceとの混在をcurrent extractorとcomposite identityのversion境界で防いでいる。
-
-## 未決事項
-
-- title `eng`と`jpn+eng`のunionまたはfallbackを独立仕様にするか。監査57件ではunion候補は52件だが、採用条件、優先順位、競合時の扱いは未決である。
-- title `psm=6/7`は監査対象の候補集合が同一であり、どちらを採用するかは今回結果から一意に決まらない。
-- v2 ROIでlocal catalogを再収集・再構築する運用時期と対象範囲。既存v1 dataのin-place migrationは行わない。
-- v2 ROIで516件のfull diagnosticを再実行し、language、scale、sharpenの採用方式を再評価するか。
-
-次PRの仕様は既存資料と今回実測だけから一意に決まらない。上記の採用方式を推測して実装せず、今回PR完了後は次機能へ進まない。
+その次の実装単位で、正常285件と明確なcapture mismatch 7件を使ってINFORMATION検出を評価する。
+座標や閾値を根拠なく固定せず、snapshot取得・snapshot評価PRへ混ぜない。

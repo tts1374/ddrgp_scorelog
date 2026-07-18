@@ -29,13 +29,13 @@
 
 ## Authorization And Approval Boundaries
 
-通常タスクでは、リポジトリ内の読取り・編集、非破壊的なローカル検証、今回変更だけのlocal commit、指定された `codex/*` branchへの通常push、そのbranchからのdraft PR作成を事前許可として扱う。
+通常タスクでは、リポジトリ内の読取り・編集、非破壊的なローカル検証、今回変更だけのlocal commit、指定された `codex/*` branchへの通常push、そのbranchからのdraft PR作成、およびReview Policyの回数内で指定された現在PRのGitHub Codex Reviewを起動する操作を事前許可として扱う。GitHub Codex Reviewの起動について個別のユーザー承諾を待たない。
 
 次は許可されていない。必要なら停止して確認する。
 
 - `main` への直接push、force-push、PR merge
 - tag、release、公開成果物の作成
-- issue、既存PR、外部サービスへの書込み。ただし明示されたreview-fix起動とdraft PR作成は、それぞれ定められた範囲に限る。
+- issue、既存PR、外部サービスへの書込み。ただし明示されたreview-fix起動、draft PR作成、Review Policyに従う指定された現在PRのGitHub Codex Review起動は、それぞれ定められた範囲に限る。
 - migration、データ削除、既存DB修復などの破壊的操作
 - 認証情報、秘密情報、費用発生を伴う操作
 
