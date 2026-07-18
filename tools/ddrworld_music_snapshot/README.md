@@ -81,5 +81,9 @@ python -X utf8 -m ruff check tools/ddrworld_music_snapshot tests/test_ddrworld_m
 python -X utf8 -m compileall -q tools/ddrworld_music_snapshot
 ```
 
+完成済みsnapshotをcurrent ROI v2のgrid jacket truthへnetworkなしで照合する後続評価は、
+`tools/ddrworld_snapshot_evaluation/README.md`を参照してください。collector自体は評価、
+master/catalog対応付け、DB反映を行いません。
+
 snapshotを使ったmaster対応付けやjacket照合評価は別実装単位です。このcollectorはDB反映、
 OCR方式、ROI、INFORMATION gate、保存判定を変更しません。
