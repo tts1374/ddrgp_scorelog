@@ -50,12 +50,47 @@ current master/catalogとGit管理外artifact/checkpointをread-onlyで評価し
 
 ## 現在の判断材料
 
-516件評価ではOCR低confidence/emptyが主因で、master未一致やalias不足よりtitle/artist認識側が先行課題である。artist非ok 423件、title非ok 358件だが、同一observation内の失敗組合せ、画像状態、文字種、confidence分布、代表失敗の目視確認はまだ固定していない。
+516件評価ではOCR低confidence/emptyが主因で、master未一致やalias不足よりtitle/artist認識側の診断が先行課題である。artistはok 93件に対して非ok 423件で、titleの非ok 358件より悪い。titleを正しく読めてもartist失敗またはconfidence 0.90未満で候補化されない例が複数ある。
+
+日本語文字はOCR rawへほぼ出ていない。current M5c評価はTesseractの`lang`を明示せず、`M3_TEXT_TESSERACT_CONFIGS`もtitle/artistとも`lang=None`相当で実質default languageへ依存している。artist ROIはtitleより狭く、既存設計でも`auxiliary_clipped_reference`として扱われるため、language不足、ROI切れ、文字サイズ、前処理のいずれが支配的かはまだ分離できていない。
+
+canonical exact unique 39件とambiguous 4件は人手監査済みtruthではない。expectedまたは監査済みtruth setがないためcandidate precisionは主張できず、confidence閾値やauto-confirm条件を変更する根拠にもできない。
+
+## 優先順位
+
+1. `tesseract --list-langs`で実環境のinstalled languageと`jpn` traineddataの有無を確認し、実行時`-l jpn+eng`、language不足時の明示failure reasonを調べる。同じ実captureで`eng`と`jpn+eng`を比較する。
+2. 代表例のsource、artist ROI、enlarged、binary、OCR rawを並べ、ROI切れ、文字サイズ、装飾混入、二値化による線欠損を目視診断する。この段階ではROI変更を確定しない。
+3. normalized titleがmaster canonical titleと完全一致し一意な場合、artistが利用不能でも`title_exact_unique_artist_unavailable`等の理由付きmanual review candidateを提示できるか検討する。auto-confirmやpersisted state変更には使わず、titleが複数候補のときだけartistをtie-breakerとして扱う。診断後または独立PRで判断する。
+4. artistだけ現行scaleと2～3倍相当の追加拡大、sharpen有無、`psm=7`、`eng` / `jpn+eng`を比較し、empty率、confidence分布、OCR raw、候補結果を測る。titleは`psm=6` / `psm=7`も比較対象とする。
+5. confidence gateは最後に検討する。0.90を単純に下げず、normalized title完全一致、master上で一意、manual candidate限定などの複合条件と組み合わせ、auto-confirm条件へ昇格しない。
+
+## 次PR候補
+
+次PRは「日本語OCR環境確認とtitle/artist失敗原因の診断・比較評価」に限定する。OCR改善方式そのものはまだ確定しない。
+
+含める候補:
+
+- Tesseract installed languageとlanguage不足failure reasonの検査
+- 同一実captureでの`eng` / `jpn+eng`比較
+- titleの`psm=6` / `psm=7`比較
+- title/artistのstatus組合せ、confidence分布、OCR raw、候補結果の集計
+- source、ROI、enlarged、binaryのrepresentative local reportまたはcontact sheet
+- exact unique 39件とambiguous 4件を人手監査可能にする補助
+- local report、README、roadmap、design、`docs/next-task.md`の同期
+
+含めない:
+
+- auto-confirm、bulk review、confidence閾値の単純緩和
+- artist ROI変更の確定実装、OCR engine全面置換
+- catalog schema、manual review transaction、capture lifecycleの変更
+- 正式個人スコアDB接続、grid巡回、ゲーム操作
 
 ## 未決事項
 
-- artist単独改善、title/artist共通preprocessing、ROI、OCR engine/profileのどれを次の独立PRにするか。
-- 低confidenceとemptyを原因別にどう分割し、どのfixture/実capture代表を受入条件にするか。
-- canonical exact candidate 39件とambiguous 4件を人手監査し、recognition変更の回帰基準へ使えるか。
+- 実環境で`jpn+eng`を利用可能か、language不足をどのversion付きfailure reasonへ固定するか。
+- artist失敗の主因がlanguage、ROI切れ、scale、装飾、二値化のどれか。
+- title exact unique manual candidate化を診断PRに含めるか、診断後の独立PRにするか。
+- exact unique 39件とambiguous 4件をどこまで人手監査し、比較評価のtruth setへ使えるか。
+- 診断結果を受けてartist ROI、前処理、confidence gateのどれを後続PRへ選ぶか。
 
-次PRの受入条件と変更境界は既存資料だけでは一意に決まらない。上記の原因分析と代表目視を行って仕様を固定するまで、OCR改善、bulk review、auto-confirmには着手しない。
+実測結果なしにauto-confirm、bulk review、OCR全面刷新へ進まない。次PRではlanguage設定とartist ROI/前処理の診断・比較評価を先に行い、title exact unique manual candidate化は診断後または独立PR、confidence gate変更は最後に扱う。
