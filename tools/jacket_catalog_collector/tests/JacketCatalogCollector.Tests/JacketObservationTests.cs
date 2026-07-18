@@ -47,6 +47,18 @@ public sealed class JacketObservationTests : IDisposable
     }
 
     [Fact]
+    public void Current_jacket_roi_excludes_panel_boundary_and_scales()
+    {
+        Assert.Equal("m5c-song-select-jacket-roi-v2", JacketObservationVersions.Roi);
+        Assert.Equal("m5-jacket-v2", JacketObservationVersions.FeatureExtractor);
+        Assert.Equal(
+            "m5c-jacket-title-composite-identity-v2",
+            JacketObservationVersions.CompositeIdentity);
+        Assert.Equal(new JacketRoi(809, 27, 149, 149), JacketRoi.Base);
+        Assert.Equal(new JacketRoi(1618, 54, 298, 298), JacketRoi.Base.ScaleTo(2560, 1440));
+    }
+
+    [Fact]
     public void Information_detector_reports_presence_stability_and_title_hash_changes()
     {
         var detector = new InformationTitleLineDetector(
@@ -1437,6 +1449,9 @@ public sealed class JacketObservationTests : IDisposable
             Hash(Encoding.UTF8.GetBytes("jacket")),
             JacketObservationVersions.InformationTitleLineFeature,
             Hash(Encoding.UTF8.GetBytes("title")));
+        var legacy = new CompositeObservationIdentity(
+            JacketObservationVersions.LegacyCompositeIdentity,
+            Hash(Encoding.UTF8.GetBytes("legacy")));
         var runner = new StubProcessRunner((_, _) => Task.FromResult(
             new ProcessResult(
                 0,
@@ -1448,6 +1463,11 @@ public sealed class JacketObservationTests : IDisposable
                     catalog_created_at = identity.CatalogCreatedAt,
                     identities = new[]
                     {
+                        new
+                        {
+                            identity_version = legacy.IdentityVersion,
+                            identity_hash = legacy.IdentityHash,
+                        },
                         new
                         {
                             identity_version = composite.IdentityVersion,
@@ -1462,6 +1482,8 @@ public sealed class JacketObservationTests : IDisposable
             identity, "catalog.sqlite");
 
         Assert.Contains(composite, values);
+        Assert.DoesNotContain(legacy, values);
+        Assert.Single(values);
         Assert.Single(runner.Requests);
         Assert.Contains("identity-set", runner.Requests[0].Arguments);
         Assert.Contains("--expected-catalog-created-at", runner.Requests[0].Arguments);
@@ -1810,7 +1832,7 @@ public sealed class JacketObservationTests : IDisposable
         var titleX = titleVariant == 1 ? 300 : 360;
         PaintWhiteRectangle(pixels, 1280, titleX, 69, 28, 10);
         PaintWhiteRectangle(pixels, 1280, titleX + 36, 69, 20, 10);
-        PaintRectangle(pixels, 1280, 812, 28, 150, 150, jacketValue);
+        PaintRectangle(pixels, 1280, 809, 27, 149, 149, jacketValue);
         var source = BitmapSource.Create(
             1280, 720, 96, 96, PixelFormats.Bgra32, null, pixels, 1280 * 4);
         source.Freeze();

@@ -86,7 +86,7 @@ ROI_DEFINITIONS: dict[str, tuple[int, int, int, int]] = {
     "score_area": (170, 250, 320, 90),
     "score_digits": (250, 278, 210, 48),
     "jacket": (532, 54, 216, 216),
-    "song_select_grid_preview_jacket": (812, 28, 150, 150),
+    "song_select_grid_preview_jacket": (809, 27, 149, 149),
     "song_title": (488, 274, 304, 32),
     "artist": (548, 306, 184, 26),
     "detail_result_panel": (662, 330, 462, 288),

@@ -21,12 +21,14 @@ from tools.vision_poc import master_match
 
 CATALOG_IDENTITY = "ddrgp-local-jacket-reference-catalog"
 CATALOG_SCHEMA_VERSION = 1
-FEATURE_EXTRACTOR_VERSION = "m5-jacket-v1"
+FEATURE_EXTRACTOR_VERSION = "m5-jacket-v2"
 JACKET_FRAME_FEATURE_VERSION = "m5c-jacket-rgb-grid-v1"
 TITLE_LINE_FEATURE_VERSION = "m5c-information-title-line-binary-sha256-v1"
-COMPOSITE_IDENTITY_VERSION = "m5c-jacket-title-composite-identity-v1"
+LEGACY_COMPOSITE_IDENTITY_VERSION = "m5c-jacket-title-composite-identity-v1"
+COMPOSITE_IDENTITY_VERSION = "m5c-jacket-title-composite-identity-v2"
 BASE_SIZE = (1280, 720)
-SONG_SELECT_JACKET_ROI = (812, 28, 150, 150)
+SONG_SELECT_JACKET_ROI_VERSION = "m5c-song-select-jacket-roi-v2"
+SONG_SELECT_JACKET_ROI = (809, 27, 149, 149)
 REVIEW_STATUSES = (
     "auto_confirmed",
     "manual_confirmed",
@@ -410,9 +412,13 @@ def composite_identity_hash(
     jacket_feature_hash: str,
     title_line_feature_version: str,
     title_line_hash: str,
+    *,
+    identity_version: str = COMPOSITE_IDENTITY_VERSION,
 ) -> str:
     if (
-        jacket_feature_version != JACKET_FRAME_FEATURE_VERSION
+        identity_version
+        not in {LEGACY_COMPOSITE_IDENTITY_VERSION, COMPOSITE_IDENTITY_VERSION}
+        or jacket_feature_version != JACKET_FRAME_FEATURE_VERSION
         or title_line_feature_version != TITLE_LINE_FEATURE_VERSION
         or not _is_sha256(jacket_feature_hash)
         or not _is_sha256(title_line_hash)
@@ -420,7 +426,7 @@ def composite_identity_hash(
         raise ValueError("composite identity feature fields are invalid")
     canonical = "\0".join(
         (
-            COMPOSITE_IDENTITY_VERSION,
+            identity_version,
             jacket_feature_version,
             jacket_feature_hash,
             title_line_feature_version,
@@ -451,10 +457,15 @@ def _validate_catalog_identities(connection: sqlite3.Connection) -> None:
             identity_hash,
         ) = (str(value) for value in values)
         if (
-            identity_version != COMPOSITE_IDENTITY_VERSION
+            identity_version
+            not in {LEGACY_COMPOSITE_IDENTITY_VERSION, COMPOSITE_IDENTITY_VERSION}
             or not _is_sha256(identity_hash)
             or composite_identity_hash(
-                jacket_version, jacket_hash, title_version, title_hash
+                jacket_version,
+                jacket_hash,
+                title_version,
+                title_hash,
+                identity_version=identity_version,
             )
             != identity_hash
         ):

@@ -7,10 +7,10 @@ namespace JacketCatalogCollector;
 public static class JacketObservationVersions
 {
     public const string Detector = "m5c-3b-jacket-detector-v1";
-    public const string Roi = "m5c-song-select-jacket-roi-v1";
+    public const string Roi = "m5c-song-select-jacket-roi-v2";
     public const string FrameFeature = "m5c-jacket-rgb-grid-v1";
     public const string FrameClock = "m5c-capture-utc-clock-v1";
-    public const string FeatureExtractor = "m5-jacket-v1";
+    public const string FeatureExtractor = "m5-jacket-v2";
     public const string LegacySessionCheckpoint = "m5c-observation-checkpoint-v1";
     public const string SessionCheckpoint = "m5c-observation-checkpoint-v2";
     public const string LegacyObservationManifest = "m5c-observation-manifest-v1";
@@ -19,7 +19,8 @@ public static class JacketObservationVersions
     public const string InformationPanelRoi = "m5c-song-select-information-panel-roi-v1";
     public const string InformationTitleLineFeature =
         "m5c-information-title-line-binary-sha256-v1";
-    public const string CompositeIdentity = "m5c-jacket-title-composite-identity-v1";
+    public const string LegacyCompositeIdentity = "m5c-jacket-title-composite-identity-v1";
+    public const string CompositeIdentity = "m5c-jacket-title-composite-identity-v2";
 }
 
 public static class CompositeObservationIdentityBuilder
@@ -55,7 +56,7 @@ public static class CompositeObservationIdentityBuilder
 
 public readonly record struct JacketRoi(int X, int Y, int Width, int Height)
 {
-    public static JacketRoi Base { get; } = new(812, 28, 150, 150);
+    public static JacketRoi Base { get; } = new(809, 27, 149, 149);
 
     public JacketRoi ScaleTo(int frameWidth, int frameHeight)
     {

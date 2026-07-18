@@ -434,6 +434,10 @@ def test_song_title_roi_stops_before_artist_roi() -> None:
         306,
     )
     assert runner.scaled_box(image, runner.ROI_DEFINITIONS["artist"])[1] == 306
+    assert runner.scaled_box(
+        image,
+        runner.ROI_DEFINITIONS["song_select_grid_preview_jacket"],
+    ) == (809, 27, 958, 176)
 
 
 def test_m3_song_title_ocr_falls_back_to_legacy_roi_only_when_primary_is_empty(

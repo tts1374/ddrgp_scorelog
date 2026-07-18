@@ -454,3 +454,61 @@ def test_current_receipt_coverage_and_cli_contract(
         "identity-set",
     } == set(subcommands)
     assert {"migrate-v2", "migrate-v3", "ingest-v2"}.isdisjoint(subcommands)
+
+
+def test_current_identity_does_not_deduplicate_to_legacy_roi_reference(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    master_db, catalog_path, image_path = setup_paths(tmp_path, monkeypatch)
+    legacy = ingest(
+        catalog_path,
+        master_db,
+        image_path,
+        observation_id="legacy-observation",
+        seed="same-features",
+    )
+    values = identity("same-features")
+    legacy_hash = catalog.composite_identity_hash(
+        values["jacket_feature_version"],
+        values["jacket_feature_hash"],
+        values["title_line_feature_version"],
+        values["title_line_hash"],
+        identity_version=catalog.LEGACY_COMPOSITE_IDENTITY_VERSION,
+    )
+    with sqlite3.connect(catalog_path) as connection, connection:
+        connection.execute(
+            "UPDATE jacket_references SET feature_extractor_version = ?, "
+            "composite_identity_version = ?, composite_identity_hash = ? "
+            "WHERE reference_id = ?",
+            (
+                "m5-jacket-v1",
+                catalog.LEGACY_COMPOSITE_IDENTITY_VERSION,
+                legacy_hash,
+                legacy.reference_id,
+            ),
+        )
+
+    current = ingest(
+        catalog_path,
+        master_db,
+        image_path,
+        observation_id="current-observation",
+        seed="same-features",
+    )
+
+    assert current.disposition == "created"
+    assert current.reference_id != legacy.reference_id
+    with sqlite3.connect(catalog_path) as connection:
+        identities = connection.execute(
+            "SELECT feature_extractor_version, composite_identity_version, "
+            "composite_identity_hash FROM jacket_references "
+            "ORDER BY feature_extractor_version"
+        ).fetchall()
+    assert identities == [
+        ("m5-jacket-v1", catalog.LEGACY_COMPOSITE_IDENTITY_VERSION, legacy_hash),
+        (
+            catalog.FEATURE_EXTRACTOR_VERSION,
+            catalog.COMPOSITE_IDENTITY_VERSION,
+            values["expected_composite_identity_hash"],
+        ),
+    ]
