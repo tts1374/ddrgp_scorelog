@@ -21,12 +21,13 @@ from tools.vision_poc import master_match
 
 CATALOG_IDENTITY = "ddrgp-local-jacket-reference-catalog"
 CATALOG_SCHEMA_VERSION = 1
-FEATURE_EXTRACTOR_VERSION = "m5-jacket-v1"
+FEATURE_EXTRACTOR_VERSION = "m5-jacket-v2"
 JACKET_FRAME_FEATURE_VERSION = "m5c-jacket-rgb-grid-v1"
 TITLE_LINE_FEATURE_VERSION = "m5c-information-title-line-binary-sha256-v1"
 COMPOSITE_IDENTITY_VERSION = "m5c-jacket-title-composite-identity-v1"
 BASE_SIZE = (1280, 720)
-SONG_SELECT_JACKET_ROI = (812, 28, 150, 150)
+SONG_SELECT_JACKET_ROI_VERSION = "m5c-song-select-jacket-roi-v2"
+SONG_SELECT_JACKET_ROI = (809, 27, 149, 149)
 REVIEW_STATUSES = (
     "auto_confirmed",
     "manual_confirmed",

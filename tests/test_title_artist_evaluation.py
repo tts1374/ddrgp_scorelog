@@ -115,7 +115,7 @@ def write_artifact(
     source = directory / "source.png"
     crop = directory / "jacket-crop.png"
     Image.new("RGB", (1280, 720), source_color).save(source)
-    Image.new("RGB", (150, 150), source_color).save(crop)
+    Image.new("RGB", (149, 149), source_color).save(crop)
     source_hash = hashlib.sha256(source.read_bytes()).hexdigest()
     crop_hash = hashlib.sha256(crop.read_bytes()).hexdigest()
     manifest = {
@@ -131,7 +131,7 @@ def write_artifact(
         "source_sequence": index,
         "captured_at_utc": "2026-07-16T00:00:00+00:00",
         "feature_version": "m5c-jacket-rgb-grid-v1",
-        "roi_version": "m5c-song-select-jacket-roi-v1",
+        "roi_version": "m5c-song-select-jacket-roi-v2",
         "master_version": "master-v1",
         "master_source_hash": "fixture-source-hash",
         "catalog_identity": catalog.CATALOG_IDENTITY,
@@ -155,10 +155,10 @@ def write_artifact(
         "change_threshold": 0.08,
         "stable_frame_count_required": 3,
         "minimum_stable_duration_milliseconds": 100,
-        "roi_x": 812,
-        "roi_y": 28,
-        "roi_width": 150,
-        "roi_height": 150,
+        "roi_x": 809,
+        "roi_y": 27,
+        "roi_width": 149,
+        "roi_height": 149,
         "feature_hash": hashlib.sha256(f"feature-{index}".encode()).hexdigest(),
         "mean_absolute_difference": 0.01,
         "sample_width": 16,
@@ -273,6 +273,23 @@ def test_strict_loader_distinguishes_expected_coverage_and_preserves_same_image_
     }
     assert len({row["observation_id"] for row in report["rows"]}) == 3
     assert receipt["adopted_methods"] == []
+
+
+def test_current_roi_contract_excludes_jacket_and_artist_panel_boundaries() -> None:
+    assert catalog.SONG_SELECT_JACKET_ROI_VERSION == "m5c-song-select-jacket-roi-v2"
+    assert catalog.SONG_SELECT_JACKET_ROI == (809, 27, 149, 149)
+    assert catalog.FEATURE_EXTRACTOR_VERSION == "m5-jacket-v2"
+    assert evaluation.TITLE_ARTIST_ROI_VERSION == "m5c-song-select-title-artist-roi-v2"
+    assert evaluation.FIELD_ROIS == {
+        "title": (306, 58, 470, 34),
+        "artist": (309, 97, 467, 23),
+    }
+    assert evaluation._scaled_roi(Image.new("RGB", (2560, 1440)), "artist") == (
+        618,
+        194,
+        1552,
+        240,
+    )
 
 
 def test_composite_manifest_v2_is_accepted_and_identity_drift_is_rejected(
@@ -542,6 +559,40 @@ def test_duplicate_manifest_and_master_drift_are_strictly_rejected(
             master=catalog.load_master_identity(master_path),
             catalog=evaluation.load_catalog_identity(catalog_path),
         )
+
+
+def test_old_jacket_roi_manifest_is_rejected_without_artifact_side_effects(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    master_path, catalog_path, artifact_root = fixture_paths(tmp_path, monkeypatch)
+    manifest = write_artifact(artifact_root, catalog_path, index=1)
+    manifest_path = artifact_root / manifest
+    value = json.loads(manifest_path.read_text(encoding="utf-8"))
+    value.update(
+        {
+            "roi_version": "m5c-song-select-jacket-roi-v1",
+            "roi_x": 812,
+            "roi_y": 28,
+            "roi_width": 150,
+            "roi_height": 150,
+        }
+    )
+    manifest_path.write_text(json.dumps(value), encoding="utf-8", newline="\n")
+    dataset = tmp_path / "data/dataset.json"
+    write_dataset(dataset, [entry(manifest)])
+    output = tmp_path / "data/report"
+
+    with pytest.raises(ValueError, match="immutable identity"):
+        evaluation.run_evaluation(
+            dataset_path=dataset,
+            artifact_root=artifact_root,
+            master_db=master_path,
+            catalog_db=catalog_path,
+            output_dir=output,
+            extractor=alpha_extractor,
+        )
+
+    assert not output.exists()
 
 
 def test_expected_song_requires_complete_consistent_expected_pair(

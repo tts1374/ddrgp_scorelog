@@ -353,7 +353,7 @@ collector boundary:
 - catalog failureはpending checkpointとlocal evidenceから明示retryし、catalog成功後checkpoint failureは同じreceiptでcheckpointだけを収束させる。
 - title/artist方式採用は実capture evaluated 30件以上、pair exact 95%以上、field confidence 0.90以上、候補precision 100%、既知誤自動確定0件を要求する。条件未達ではcurrent unresolved/manual reviewを維持する。
 - current unresolved candidate evaluationはartifact/checkpoint/catalog/master/extractor identityをread-only照合し、一意canonical、一意alias、曖昧、候補なし、低confidence、OCR/evaluation失敗、評価不能、review済み対象外を区別する。候補表示、filter、sort、refresh、CSV/JSON/Markdown reportはcatalog stateを変更せず、明示manual reviewだけが既存transactionを使う。
-- OCR診断比較は同じ検証済みsourceへtitle `psm=6/7`、artist 5/10/15倍とsharpen有無、`eng` / `jpn+eng`を適用し、installed language不足をversion付きfailure reasonとして明示する。local report/contact sheetはstatus、confidence、raw、candidate結果の診断専用で、ROI、confidence gate、auto-confirm、catalog stateを変更しない。
+- OCR診断比較は同じ検証済みsourceへtitle `psm=6/7`、artist 5/10/15倍とsharpen有無、`eng` / `jpn+eng`を適用し、installed language不足をversion付きfailure reasonとして明示する。57件のtruth監査後、目視で明確なpanel境界だけを除くためjacket ROIを`(809, 27, 149, 149)`、artist ROIを`(309, 97, 467, 23)`へ修正し、ROIとjacket extractorをv2へ分離した。language、profile、confidence gate、auto-confirm、catalog stateは変更していない。
 - capture、crop、artifact、checkpoint、特徴量、review、master/catalog DB、source snapshotはlocal dataとし、Git、CI artifact、Release、通常公開logへ含めない。
 
 完了条件:

@@ -26,11 +26,11 @@ from tools.vision_poc import jacket_reference_catalog, master_match
 DATASET_SCHEMA_VERSION = "m5c-title-artist-evaluation-dataset-v1"
 REPORT_SCHEMA_VERSION = "m5c-title-artist-evaluation-report-v1"
 RECEIPT_SCHEMA_VERSION = "m5c-title-artist-evaluation-receipt-v1"
-TITLE_ARTIST_ROI_VERSION = "m5c-song-select-title-artist-roi-v1"
+TITLE_ARTIST_ROI_VERSION = "m5c-song-select-title-artist-roi-v2"
 BASE_SIZE = (1280, 720)
 FIELD_ROIS = {
     "title": (306, 58, 470, 34),
-    "artist": (306, 92, 470, 28),
+    "artist": (309, 97, 467, 23),
 }
 METHOD_VERSIONS = (
     "tesseract-autocontrast-v1",
@@ -343,11 +343,12 @@ def _validate_manifest(
     observation_id = value["observation_id"]
     captured_at = _timestamp(value["captured_at_utc"], "captured_at_utc")
     created_at = _timestamp(value["created_at_utc"], "created_at_utc")
+    roi_x, roi_y, roi_width, roi_height = jacket_reference_catalog.SONG_SELECT_JACKET_ROI
     expected_roi = (
-        round(812 * value["source_width"] / BASE_SIZE[0]),
-        round(28 * value["source_height"] / BASE_SIZE[1]),
-        round(150 * value["source_width"] / BASE_SIZE[0]),
-        round(150 * value["source_height"] / BASE_SIZE[1]),
+        round(roi_x * value["source_width"] / BASE_SIZE[0]),
+        round(roi_y * value["source_height"] / BASE_SIZE[1]),
+        round(roi_width * value["source_width"] / BASE_SIZE[0]),
+        round(roi_height * value["source_height"] / BASE_SIZE[1]),
     )
     if (
         not _is_sha256(observation_id)
@@ -365,7 +366,8 @@ def _validate_manifest(
         or isinstance(value["source_sequence"], bool)
         or value["source_sequence"] < 0
         or value["feature_version"] != "m5c-jacket-rgb-grid-v1"
-        or value["roi_version"] != "m5c-song-select-jacket-roi-v1"
+        or value["roi_version"]
+        != jacket_reference_catalog.SONG_SELECT_JACKET_ROI_VERSION
         or value["detector_version"] != "m5c-3b-jacket-detector-v1"
         or value["frame_clock_version"] != "m5c-capture-utc-clock-v1"
         or not _is_sha256(value["source_image_hash"])

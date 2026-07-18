@@ -231,7 +231,7 @@ public sealed class MainViewModelTests
             CatalogIdentity = "ddrgp-local-jacket-reference-catalog",
             SchemaVersion = 1,
             CreatedAt = "now",
-            CurrentFeatureExtractorVersion = "m5-jacket-v1",
+            CurrentFeatureExtractorVersion = "m5-jacket-v2",
         },
         Coverage = new ProjectionCoverage
         {
@@ -260,7 +260,7 @@ public sealed class MainViewModelTests
             {
                 ReferenceId = "ref-1", ReviewStatus = "needs_review", Reason = "opaque reason",
                 ObservedTitle = "Alpha", ObservedArtist = "?", ObservationStatus = "ok",
-                MasterDrift = false, FeatureExtractorVersion = "m5-jacket-v1", Candidates = [],
+                MasterDrift = false, FeatureExtractorVersion = "m5-jacket-v2", Candidates = [],
                 StoredStatus = "needs_review",
                 Revision = 0,
                 ManualActionId = null,
