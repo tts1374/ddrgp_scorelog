@@ -150,8 +150,11 @@ def load_truth_ocr_profiles(
                 **values,
             }
         )
-    if set(grouped) != expected_observation_ids:
-        raise EvaluationError("truth and Profile Details observation sets do not match")
+    extra_observation_ids = set(grouped) - expected_observation_ids
+    if extra_observation_ids:
+        raise EvaluationError("Profile Details contains observations outside truth")
+    for observation_id in expected_observation_ids:
+        grouped.setdefault(observation_id, [])
     for observation_id, rows in grouped.items():
         methods = [str(row["configuration_id"]) for row in rows]
         if len(methods) != len(set(methods)):

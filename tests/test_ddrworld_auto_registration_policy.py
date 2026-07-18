@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
+from tools.ddrworld_snapshot_evaluation import evaluator
 from tools.ddrworld_snapshot_evaluation.evaluator import (
     MasterSong,
     TruthObservation,
@@ -9,6 +11,7 @@ from tools.ddrworld_snapshot_evaluation.evaluator import (
 )
 from tools.ddrworld_snapshot_evaluation.policy import (
     evaluate_policy_rows,
+    load_truth_ocr_profiles,
     summarize_policy,
 )
 from tools.vision_poc import master_match
@@ -179,3 +182,20 @@ def test_missing_ocr_method_forces_manual_other() -> None:
 
     assert rows[0]["policy_decision"] == "manual_other"
     assert rows[0]["hold_reason"] == "ocr_profile_set_mismatch"
+
+
+def test_observation_with_no_ocr_rows_is_preserved_for_manual_route(monkeypatch) -> None:
+    monkeypatch.setattr(
+        evaluator,
+        "load_ods_sheets",
+        lambda _path: {"Profile Details": [["header"]]},
+    )
+    monkeypatch.setattr(
+        evaluator,
+        "rows_as_dicts",
+        lambda _rows, *, sheet_name: [],
+    )
+
+    grouped = load_truth_ocr_profiles(Path("truth.ods"), {"obs-missing"})
+
+    assert grouped == {"obs-missing": []}
