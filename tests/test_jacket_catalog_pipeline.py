@@ -151,6 +151,41 @@ def test_plan_loader_rejects_rehashed_inconsistent_counts(
         pipeline.load_plan(path)
 
 
+def test_plan_loader_rejects_non_object_manual_row(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "data").mkdir()
+    path = tmp_path / "data/plan.json"
+    plan = _plan()
+    plan["manual_reviews"] = ["invalid"]
+    plan["plan_id"] = pipeline._sha256_json(
+        {key: value for key, value in plan.items() if key != "plan_id"}
+    )
+    pipeline.write_plan(path, plan)
+
+    with pytest.raises(ValueError, match="list of objects"):
+        pipeline.load_plan(path)
+
+
+def test_plan_publish_race_preserves_competing_output(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "data").mkdir()
+    path = tmp_path / "data/plan.json"
+    original_link = pipeline.os.link
+
+    def competing_link(source: Path, target: Path) -> None:
+        target.write_bytes(b"competing plan")
+        original_link(source, target)
+
+    monkeypatch.setattr(pipeline.os, "link", competing_link)
+    with pytest.raises(ValueError, match="already exists"):
+        pipeline.write_plan(path, _plan())
+    assert path.read_bytes() == b"competing plan"
+
+
 def test_ods_bytes_have_stable_sha256(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -160,6 +195,24 @@ def test_ods_bytes_have_stable_sha256(
     pipeline.export_manual_ods(path, _plan())
     first = hashlib.sha256(path.read_bytes()).hexdigest()
     assert len(first) == 64
+
+
+def test_ods_publish_race_preserves_competing_output(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "data").mkdir()
+    path = tmp_path / "data/manual-review.ods"
+    original_link = pipeline.os.link
+
+    def competing_link(source: Path, target: Path) -> None:
+        target.write_bytes(b"competing ODS")
+        original_link(source, target)
+
+    monkeypatch.setattr(pipeline.os, "link", competing_link)
+    with pytest.raises(ValueError, match="already exists"):
+        pipeline.export_manual_ods(path, _plan())
+    assert path.read_bytes() == b"competing ODS"
 
 
 def test_commit_guard_rejects_input_changed_after_dry_run(

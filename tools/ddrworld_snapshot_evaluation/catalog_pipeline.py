@@ -431,9 +431,10 @@ def write_plan(path: Path, plan: dict[str, Any]) -> None:
             encoding="utf-8",
             newline="\n",
         )
-        if path.exists():
-            raise ValueError(f"plan output already exists: {path}")
-        os.replace(temporary, path)
+        try:
+            os.link(temporary, path)
+        except FileExistsError as exc:
+            raise ValueError(f"plan output already exists: {path}") from exc
     finally:
         temporary.unlink(missing_ok=True)
 
@@ -536,14 +537,15 @@ def load_plan(path: Path) -> dict[str, Any]:
     ids = [str(item.get("observation_id") or "") for item in confirmations]
     if not all(ids) or len(ids) != len(set(ids)):
         raise ValueError("registration plan contains duplicate observations")
-    manual_ids = [
-        str(item.get("observation_id") or "") for item in value["manual_reviews"]
-    ] if isinstance(value["manual_reviews"], list) else []
+    manual_reviews = value["manual_reviews"]
+    if not isinstance(manual_reviews, list) or any(
+        not isinstance(item, dict) for item in manual_reviews
+    ):
+        raise ValueError("registration plan manual reviews must be a list of objects")
+    manual_ids = [str(item.get("observation_id") or "") for item in manual_reviews]
     rejected_ids = value["rejected_observation_ids"]
     if (
-        not isinstance(value["manual_reviews"], list)
-        or any(not isinstance(item, dict) for item in value["manual_reviews"])
-        or not isinstance(value["rejected_observation_ids"], list)
+        not isinstance(value["rejected_observation_ids"], list)
         or not all(manual_ids)
         or len(manual_ids) != len(set(manual_ids))
         or not all(isinstance(item, str) and item for item in rejected_ids)

@@ -141,8 +141,9 @@ def write_ods(
             archive.writestr(_zip_info("styles.xml"), _styles_xml())
             archive.writestr(_zip_info("meta.xml"), _meta_xml())
             archive.writestr(_zip_info("META-INF/manifest.xml"), _manifest_xml())
-        if path.exists():
-            raise ValueError(f"manual review export already exists: {path}")
-        os.replace(temporary, path)
+        try:
+            os.link(temporary, path)
+        except FileExistsError as exc:
+            raise ValueError(f"manual review export already exists: {path}") from exc
     finally:
         temporary.unlink(missing_ok=True)
