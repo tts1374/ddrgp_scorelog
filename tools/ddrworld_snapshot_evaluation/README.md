@@ -70,10 +70,47 @@ top-1は254/260、top-3以降は260/260でした。既存M5 thresholdでは`matc
 `hold_ambiguous=11`、`hold_truth_not_in_snapshot=25`でした。これはlocal snapshot/truth/catalog/
 masterの組合せに対する実績であり、threshold採用や正式保存可能を意味しません。
 
+## Read-only auto-registration policy evaluation
+
+同じtruth ODSの`Profile Details`にある既存2方式のtitle/artist OCRをobservation IDで
+一意に対応付け、上記jacket rankingへ次の順で適用できます。
+
+1. `rejected` captureを`rejected_capture_mismatch`として除外する。
+2. 既存M5 jacket gateを通過したtop-1を`auto_jacket_gate`とする。OCR不一致は
+   jacket結果を上書きしない。
+3. holdでは、confidence gateを通過したtitle OCRをcanonical/alias exactまたは既存の安全な
+   正規化exactだけで解決し、方式間競合・複数候補がなくsong IDがjacket top-3内なら
+   `auto_jacket_top3_title_ocr`とする。
+4. title/artist pairが同じ非fuzzy規則で一意に解決し、方式間競合・複数候補がなく、そのsongに
+   snapshot referenceがなければ`auto_ocr_title_artist_pair`とする。
+5. その他を理由別`manual_*`へ残す。top-5/10、truthの正解候補、fuzzy一致は自動判定に使わない。
+
+```powershell
+python -X utf8 -m tools.ddrworld_snapshot_evaluation.policy_cli `
+  --snapshot data/ddrworld_music_snapshot/20260718-official-v1 `
+  --truth-ods data/jacket_catalog_collector/candidate-truth-audit-v2/candidate_truth_audit_v2.ods `
+  --catalog data/jacket_catalog/catalog-current-roi-v2.sqlite `
+  --master data/master/ddrgp-master.sqlite `
+  --output data/ddrworld_auto_registration_evaluation/20260719-policy-v1
+```
+
+`policy_evaluation.csv`、`false_decisions.csv`、`summary.json`、`report.md`を新規directoryへ
+出し、既存outputは上書きしません。各行はpolicy/snapshot/feature version、jacket
+distance/margin/rank、OCR方式別raw/normalized/candidate、matched song IDを保持します。これは将来の
+confirmation履歴契約候補であり、今回schema、catalog、master、ODS、snapshot、画像、manual reviewを
+変更しません。
+
+2026-07-19の実測は292件（confirmed 285 / capture mismatch 7）を一意に評価し、baseline
+`auto_jacket_gate=249`を再現しました。追加は`auto_jacket_top3_title_ocr=7`、
+`auto_ocr_title_artist_pair=8`で、全264自動判定がcorrect、false 0、precision 100%、confirmed
+coverage 92.6316%、manual残件21でした。経路別falseもすべて0です。この結果はproduction writerや
+正式保存判定の採用そのものではありません。
+
 ## Validation
 
 ```powershell
 python -X utf8 -m pytest tests/test_ddrworld_snapshot_evaluation.py -q
-python -X utf8 -m ruff check tools/ddrworld_snapshot_evaluation tests/test_ddrworld_snapshot_evaluation.py
+python -X utf8 -m pytest tests/test_ddrworld_auto_registration_policy.py -q
+python -X utf8 -m ruff check tools/ddrworld_snapshot_evaluation tests/test_ddrworld_snapshot_evaluation.py tests/test_ddrworld_auto_registration_policy.py
 python -X utf8 -m compileall -q tools/ddrworld_snapshot_evaluation
 ```
