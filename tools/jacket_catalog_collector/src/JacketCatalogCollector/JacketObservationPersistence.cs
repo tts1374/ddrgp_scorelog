@@ -902,7 +902,8 @@ public sealed class PythonCatalogObservationAdapter(
             {
                 throw new InvalidOperationException("catalog identity set receipt is invalid");
             }
-            var identities = new HashSet<CompositeObservationIdentity>();
+            var seenIdentities = new HashSet<CompositeObservationIdentity>();
+            var currentIdentities = new HashSet<CompositeObservationIdentity>();
             foreach (var item in root.GetProperty("identities").EnumerateArray())
             {
                 var properties = item.EnumerateObject().ToList();
@@ -916,14 +917,20 @@ public sealed class PythonCatalogObservationAdapter(
                 var identity = new CompositeObservationIdentity(
                     item.GetProperty("identity_version").GetString() ?? "",
                     item.GetProperty("identity_hash").GetString() ?? "");
-                if (identity.IdentityVersion != JacketObservationVersions.CompositeIdentity
+                if (identity.IdentityVersion is not (
+                        JacketObservationVersions.LegacyCompositeIdentity
+                        or JacketObservationVersions.CompositeIdentity)
                     || !CompositeObservationIdentityBuilder.IsSha256(identity.IdentityHash)
-                    || !identities.Add(identity))
+                    || !seenIdentities.Add(identity))
                 {
                     throw new InvalidOperationException("catalog identity set item is invalid");
                 }
+                if (identity.IdentityVersion == JacketObservationVersions.CompositeIdentity)
+                {
+                    currentIdentities.Add(identity);
+                }
             }
-            return identities;
+            return currentIdentities;
         }
         catch (JsonException exception)
         {

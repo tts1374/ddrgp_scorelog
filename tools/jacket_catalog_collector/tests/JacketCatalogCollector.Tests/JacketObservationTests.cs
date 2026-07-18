@@ -1449,6 +1449,9 @@ public sealed class JacketObservationTests : IDisposable
             Hash(Encoding.UTF8.GetBytes("jacket")),
             JacketObservationVersions.InformationTitleLineFeature,
             Hash(Encoding.UTF8.GetBytes("title")));
+        var legacy = new CompositeObservationIdentity(
+            JacketObservationVersions.LegacyCompositeIdentity,
+            Hash(Encoding.UTF8.GetBytes("legacy")));
         var runner = new StubProcessRunner((_, _) => Task.FromResult(
             new ProcessResult(
                 0,
@@ -1460,6 +1463,11 @@ public sealed class JacketObservationTests : IDisposable
                     catalog_created_at = identity.CatalogCreatedAt,
                     identities = new[]
                     {
+                        new
+                        {
+                            identity_version = legacy.IdentityVersion,
+                            identity_hash = legacy.IdentityHash,
+                        },
                         new
                         {
                             identity_version = composite.IdentityVersion,
@@ -1474,6 +1482,8 @@ public sealed class JacketObservationTests : IDisposable
             identity, "catalog.sqlite");
 
         Assert.Contains(composite, values);
+        Assert.DoesNotContain(legacy, values);
+        Assert.Single(values);
         Assert.Single(runner.Requests);
         Assert.Contains("identity-set", runner.Requests[0].Arguments);
         Assert.Contains("--expected-catalog-created-at", runner.Requests[0].Arguments);
