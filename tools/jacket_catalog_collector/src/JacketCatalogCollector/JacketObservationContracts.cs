@@ -19,7 +19,7 @@ public static class JacketObservationVersions
     public const string InformationPanelRoi = "m5c-song-select-information-panel-roi-v1";
     public const string InformationTitleLineFeature =
         "m5c-information-title-line-binary-sha256-v1";
-    public const string CompositeIdentity = "m5c-jacket-title-composite-identity-v1";
+    public const string CompositeIdentity = "m5c-jacket-title-composite-identity-v2";
 }
 
 public static class CompositeObservationIdentityBuilder

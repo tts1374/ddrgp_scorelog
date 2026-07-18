@@ -654,7 +654,7 @@ python -m tools.vision_poc.jacket_reference_catalog ingest `
   --jacket-feature-hash JACKET_FEATURE_SHA256 `
   --title-line-feature-version m5c-information-title-line-binary-sha256-v1 `
   --title-line-hash TITLE_LINE_SHA256 `
-  --composite-identity-version m5c-jacket-title-composite-identity-v1 `
+  --composite-identity-version m5c-jacket-title-composite-identity-v2 `
   --composite-identity-hash COMPOSITE_SHA256
 ```
 

@@ -51,6 +51,9 @@ public sealed class JacketObservationTests : IDisposable
     {
         Assert.Equal("m5c-song-select-jacket-roi-v2", JacketObservationVersions.Roi);
         Assert.Equal("m5-jacket-v2", JacketObservationVersions.FeatureExtractor);
+        Assert.Equal(
+            "m5c-jacket-title-composite-identity-v2",
+            JacketObservationVersions.CompositeIdentity);
         Assert.Equal(new JacketRoi(809, 27, 149, 149), JacketRoi.Base);
         Assert.Equal(new JacketRoi(1618, 54, 298, 298), JacketRoi.Base.ScaleTo(2560, 1440));
     }

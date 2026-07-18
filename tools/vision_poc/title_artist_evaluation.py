@@ -413,7 +413,7 @@ def _validate_manifest(
         )
         canonical = "\0".join(
             (
-                "m5c-jacket-title-composite-identity-v1",
+                jacket_reference_catalog.COMPOSITE_IDENTITY_VERSION,
                 value["feature_version"],
                 value["feature_hash"],
                 value["title_line_feature_version"],
@@ -428,7 +428,7 @@ def _validate_manifest(
             or value["title_line_roi_version"]
             != "m5c-song-select-information-panel-roi-v1"
             or value["composite_identity_version"]
-            != "m5c-jacket-title-composite-identity-v1"
+            != jacket_reference_catalog.COMPOSITE_IDENTITY_VERSION
             or not _is_sha256(value["title_line_hash"])
             or not _is_sha256(value["composite_identity_hash"])
             or value["title_line_source_sequence"] != value["source_sequence"]

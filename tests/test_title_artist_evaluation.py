@@ -170,7 +170,7 @@ def write_artifact(
     }
     if composite:
         title_line_hash = hashlib.sha256(f"title-line-{index}".encode()).hexdigest()
-        composite_version = "m5c-jacket-title-composite-identity-v1"
+        composite_version = catalog.COMPOSITE_IDENTITY_VERSION
         canonical = "\0".join(
             (
                 composite_version,
