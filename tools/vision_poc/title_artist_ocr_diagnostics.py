@@ -474,6 +474,8 @@ def render_markdown(summary: dict[str, Any]) -> str:
 
 
 def _representative_rows(rows: list[dict[str, Any]], limit: int) -> list[dict[str, Any]]:
+    if limit == 0:
+        return []
     baseline = [row for row in rows if row["configuration_id"] == BASELINE_TITLE_PROFILE]
     selected: list[dict[str, Any]] = []
     seen: set[tuple[str, str, str]] = set()

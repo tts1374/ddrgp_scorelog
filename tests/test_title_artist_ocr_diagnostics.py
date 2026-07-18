@@ -198,3 +198,16 @@ def test_reports_are_byte_stable_and_contact_sheet_contains_no_db_write(
     }
     report = json.loads((output / "ocr_diagnostics.json").read_text(encoding="utf-8"))
     assert report["report_schema_version"] == diagnostics.REPORT_SCHEMA_VERSION
+
+
+def test_zero_representative_limit_suppresses_source_rows() -> None:
+    rows = diagnostics.evaluate_images(
+        [("observation-1", Image.new("RGB", (1280, 720), "black"))],
+        master=_master(),
+        executable="tesseract",
+        languages={"eng"},
+        extractor=_ok_extractor,
+    )
+
+    assert diagnostics._representative_rows(rows, 0) == []
+    assert diagnostics.render_contact_sheet([], {}).size == (1200, 100)
