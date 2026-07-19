@@ -5,12 +5,13 @@ description: DDRGP scorelogの保存可否、正式個人スコアDB、duplicate
 
 # Review DDRGP DB Save Boundary
 
-保存候補の観測材料、正式保存値、DB診断、本番解析ログ、元フレーム参照を混同していないか確認する。現在のフェーズ制約を守りながら、コード、テスト、設計docsの契約を同期させる。
+保存候補の観測材料、正式保存値、DB診断、本番解析ログ、元フレーム参照を混同していないか確認する。現在のIssue契約を守りながら、コード、テスト、設計docsの契約を同期させる。
 
 ## Read First
 
 - `AGENTS.md`
-- `docs/next-task.md`
+- 指定されたGitHub Issue
+- 関連する親Issue
 - `docs/design/03_event_and_save_boundary.md`
 - `docs/design/04_data_model.md`
 - `docs/design/05_storage_io_spec.md`
@@ -21,12 +22,12 @@ description: DDRGP scorelogの保存可否、正式個人スコアDB、duplicate
 
 ## Workflow
 
-1. `docs/next-task.md` の現在フェーズとスコープ外を確認する。明示されていない本番insert、自動migration、既定自動保存へ進めない。
+1. 指定Issueと親IssueのScope、Non-scope、Acceptance criteria、Required testsを確認する。明示されていない本番insert、自動migration、既定自動保存へ進めない。
 2. 変更対象を次の責務へ分類する: イベント確定、候補材料、正式保存入力、`plays`、`source_captures`、`analysis_logs`、DB diagnostic output/log。
 3. 入力から出力までの値の由来を追い、候補値を正式保存値へ暗黙昇格させていないか確認する。
 4. 変更前に、影響する不変条件を既存テストで特定する。未固定なら最小の回帰テストを追加する。
-5. コード変更は現在フェーズに必要な最小境界へ留め、関連する `docs/design/` と `tools/vision_poc/README.md` を同じ作業で同期する。
-6. 対象別検証と全体検証を実行し、生成DB、画像、`data/`、`logs/`、`metadata.csv` をGit対象へ入れない。
+5. コード変更はIssue契約に必要な最小境界へ留め、公開契約や判定契約が変わる場合だけ関連する `docs/design/` と `tools/vision_poc/README.md` を同期する。
+6. 対象別検証を実行し、生成DB、画像、`data/`、`logs/`、`metadata.csv` をGit対象へ入れない。
 
 ## Boundary Checklist
 
@@ -62,7 +63,7 @@ description: DDRGP scorelogの保存可否、正式個人スコアDB、duplicate
 
 ## Validation
 
-変更対象に合わせて絞り込みを先に実行し、完了前に全体検証を実行する。
+変更対象に直接関係するテストを先に実行する。共通schema、writer、transaction、duplicate、共通fixture/helperへ影響する場合、予期しない回帰が出た場合、または影響範囲を限定できない場合だけ全テストを実行する。
 
 ```powershell
 python -m pytest tests\test_personal_score_db_save.py
@@ -72,15 +73,22 @@ python -m pytest tests\test_personal_score_db_schema.py
 python -m pytest tests\test_vision_poc_ocr.py -k "m7_save_decision or m7_save_readiness or m7a or m8"
 python -m ruff check tools\vision_poc pyproject.toml tests
 python -m compileall master tools\vision_poc
-python -m pytest tests
 git diff --check
 ```
 
-正式DB schema、diagnostic CLI、source capture、analysis logを触った場合は `tests\test_personal_score_db_schema.py` を省略しない。
+条件に該当する場合だけ追加で実行する。
+
+```powershell
+python -m pytest tests
+```
+
+正式DB schema、diagnostic CLI、source capture、analysis logを触った場合は `tests\test_personal_score_db_schema.py` を省略しない。IssueのRequired testsが上記より強い場合はIssueを優先する。
 
 ## Report
 
 - 変更した責務境界
 - 維持した不変条件
 - 実行した検証と結果
-- 未解決事項と次フェーズへ送る項目
+- 省略した検証と残るリスク
+- Issue仕様との差異
+- 未解決事項と別Issue候補
