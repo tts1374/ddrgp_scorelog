@@ -680,6 +680,15 @@ python -m tools.vision_poc.jacket_reference_catalog review `
   --song-id SONG_ID --reason "developer selected" --note "manual review"
 ```
 
+PR #53で評価済みの3経路を一括auto-confirmする場合だけ、
+`tools.ddrworld_snapshot_evaluation.catalog_pipeline_cli`を使います。内部の
+`apply_auto_confirmation_batch()`はcurrent schema validation、対象row state hash、Master song/GP可用性を
+検査し、全件を1つの`BEGIN IMMEDIATE` transactionで更新します。exactな同一根拠はno-op、stale state、
+既存manual/rejected/別根拠の確定、重複observation、不正songは全体拒否です。根拠は
+`resolution_basis`とversion付き`resolution_reason` JSONへ保持し、manual action/historyを生成しません。
+通常ingest、manual review、coverageからこのbatch writerを暗黙起動しません。dry-run/applyとODS exportの
+コマンド・revision guard・運用順は`tools/ddrworld_snapshot_evaluation/README.md`を参照してください。
+
 catalog、artifact、checkpoint、source/crop画像、特徴量、review結果、coverageはローカル非共有物であり、Git、CI artifact、Release、通常logへ含めません。生画像やcropの自動削除は行いません。artifact manifest/checkpointのv1/v2 contractとresume/retry状態機械は、このcatalog schema再採番では変更していません。
 
 current song select ROIは1280x720基準で、jacketが`m5c-song-select-jacket-roi-v2` / `(809, 27, 149, 149)`、title/artistが`m5c-song-select-title-artist-roi-v2` / title `(306, 58, 470, 34)` / artist `(309, 97, 467, 23)`です。current jacket feature extractorは`m5-jacket-v2`で、旧ROI由来のv1 manifest/referenceをcurrent matchingへ混在させません。既存local artifactやreferenceはmigration、削除、上書きせず保持します。

@@ -68,6 +68,15 @@ class StrictResolution:
     match_kind: str
 
 
+@dataclass(frozen=True)
+class PolicyEvaluationResult:
+    rows: list[dict[str, Any]]
+    metrics: dict[str, Any]
+    jacket_metrics: dict[str, Any]
+    input_revisions: dict[str, Any]
+    master_by_id: dict[str, Any]
+
+
 def add_artist_indexes(
     indexes: dict[str, dict[Any, set[str]]],
     songs: dict[str, Any],
@@ -323,6 +332,10 @@ def _candidate_at(candidates: list[dict[str, Any]], rank: int) -> str:
     return candidates[rank - 1]["song_id"] if len(candidates) >= rank else ""
 
 
+def _candidate_distance_at(candidates: list[dict[str, Any]], rank: int) -> float | None:
+    return candidates[rank - 1]["distance"] if len(candidates) >= rank else None
+
+
 def evaluate_policy_rows(
     observations: list[TruthObservation],
     jacket_rows: list[dict[str, Any]],
@@ -392,8 +405,11 @@ def evaluate_policy_rows(
                 if base
                 else "not_evaluated",
                 "jacket_top1_song_id": _candidate_at(candidates, 1),
+                "jacket_top1_distance": _candidate_distance_at(candidates, 1),
                 "jacket_top2_song_id": _candidate_at(candidates, 2),
+                "jacket_top2_distance": _candidate_distance_at(candidates, 2),
                 "jacket_top3_song_id": _candidate_at(candidates, 3),
+                "jacket_top3_distance": _candidate_distance_at(candidates, 3),
                 "jacket_distance": base.get("top_distance"),
                 "jacket_margin": base.get("top_margin"),
                 "title_ocr_profiles": json.dumps(
@@ -523,15 +539,11 @@ def build_policy_report(summary: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def evaluate_policy(config: PolicyEvaluationConfig) -> Path:
+def evaluate_policy_inputs(config: PolicyEvaluationConfig) -> PolicyEvaluationResult:
     snapshot = config.snapshot.resolve()
     truth_ods = config.truth_ods.resolve()
     catalog = config.catalog.resolve()
     master = config.master.resolve()
-    output = config.output.resolve()
-    incomplete = output.with_name(f"{output.name}.incomplete")
-    if output.exists() or incomplete.exists():
-        raise EvaluationError(f"evaluation output already exists; refusing to overwrite: {output}")
     inputs = (truth_ods, catalog, master)
     for path in (snapshot, *inputs):
         if not path.exists():
@@ -572,19 +584,21 @@ def evaluate_policy(config: PolicyEvaluationConfig) -> Path:
         raise EvaluationError(
             "read-only inputs changed during evaluation; output was not published"
         )
-    if {
+    current_snapshot_fingerprints = {
         "manifest_sha256": sha256_file(snapshot / "manifest.json"),
         "summary_sha256": sha256_file(snapshot / "summary.json"),
         "songs_sha256": sha256_file(snapshot / "songs.jsonl"),
-    } != snapshot_fingerprints:
+    }
+    if current_snapshot_fingerprints != snapshot_fingerprints:
         raise EvaluationError(
             "snapshot metadata changed during evaluation; output was not published"
         )
     verify_snapshot_images_unchanged(snapshot, snapshot_songs)
-    summary = {
-        "schema_version": SUMMARY_SCHEMA,
-        "policy_version": POLICY_VERSION,
-        "inputs": {
+    return PolicyEvaluationResult(
+        rows=policy_rows,
+        metrics=metrics,
+        jacket_metrics=jacket_metrics,
+        input_revisions={
             "snapshot": str(snapshot),
             "truth_ods": str(truth_ods),
             "catalog": str(catalog),
@@ -592,7 +606,23 @@ def evaluate_policy(config: PolicyEvaluationConfig) -> Path:
             "input_sha256": hashes_before,
             **snapshot_fingerprints,
         },
-        "jacket_baseline": jacket_metrics,
+        master_by_id=master_by_id,
+    )
+
+
+def evaluate_policy(config: PolicyEvaluationConfig) -> Path:
+    output = config.output.resolve()
+    incomplete = output.with_name(f"{output.name}.incomplete")
+    if output.exists() or incomplete.exists():
+        raise EvaluationError(f"evaluation output already exists; refusing to overwrite: {output}")
+    result = evaluate_policy_inputs(config)
+    policy_rows = result.rows
+    metrics = result.metrics
+    summary = {
+        "schema_version": SUMMARY_SCHEMA,
+        "policy_version": POLICY_VERSION,
+        "inputs": result.input_revisions,
+        "jacket_baseline": result.jacket_metrics,
         "metrics": metrics,
         "production_adoption": {
             route: metrics["by_route"][route]["false_decisions"] == 0 for route in AUTO_ROUTES

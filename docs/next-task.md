@@ -1,4 +1,65 @@
-# 現在PR完了記録: jacket自動登録policy read-only評価
+# 現在PR: production catalog自動登録 + manual ODS export
+
+PR #53のread-only policy実装を再利用し、developer-onlyの全曲収集後に使うcatalog登録pipelineを
+完成させた。schema migrationは行わず、current jacket catalog schema version 1の既存
+`auto_confirmed` / `resolution_basis` / `resolution_reason` / Master snapshot列を使う。
+
+## 実装範囲
+
+- `catalog_pipeline_cli`はdry-runを既定とし、新規preflight planへpolicy target、evidence、
+  source revision、対象row stateを固定する。`--apply`とplan inputの明示なしではDBを書かない。
+- apply時はPR #53 policyを再評価し、planのtarget/song/source/evidenceと一致することを再確認する。
+  plan IDを改変検出用hashとして使うが、plan自己申告だけを登録根拠にしない。
+- ODS、Master、snapshot metadata/全画像、policy rows、catalog logical guard、対象row stateを検査する。
+  dry-run後の変更、stale row、重複observation、不正song、既存manual/rejected/別根拠確定は拒否する。
+- すべてのauto targetを既存catalog writer moduleの1つの`BEGIN IMMEDIATE` transactionで更新し、
+  途中例外またはcommit直前external driftで全件rollbackする。
+- exact evidenceの再applyはno-opとする。auto-managed fieldsだけをlogical guardから正規化するため、
+  同じplanの適用済みstateを許しつつ、非対象row、candidate、history、identity driftを拒否する。
+- matched song IDを正本とし、canonical title/artistとmaster versionはcurrent Masterから取得する。
+  manual action/historyをauto-confirmへ偽装せず、既存初期auto state契約どおりrevision 0を維持する。
+- confirmation sourceは`jacket_gate`、`jacket_top3_title_ocr`、`ocr_title_artist_pair`に限定する。
+  version付きcanonical evidence JSONへpolicy/snapshot/feature、distance/margin/rank、OCR
+  profile/raw/normalized/candidate、matched song IDを保存する。
+- manual残件はread-onlyでLibreOffice互換ODSへexportする。MetadataとManual Review sheetに
+  schema/export/source revision、observation/revision、画像参照、jacket top-3、OCR、hold reason、
+  推奨song、編集用truth song ID/notesを持つ。同じplanからの再exportはbyte-identicalで、
+  既存fileを上書きしない。
+
+## 実データ検証
+
+local truth ODS、current ROI v2 catalog、M4 Master、2026-07-18公式snapshotのcopyを使い、292件を
+一意に処理した。
+
+| route | 件数 |
+|---|---:|
+| `jacket_gate` | 249 |
+| `jacket_top3_title_ocr` | 7 |
+| `ocr_title_artist_pair` | 8 |
+| auto合計 | 264 |
+| manual ODS | 21 |
+| capture mismatch reject | 7 |
+| false decision | 0 |
+
+- dry-runでは入力catalog/ODS/Master/snapshot/画像を変更しない。
+- validation copyへのapplyは264件だけを`auto_confirmed`へ更新し、manual 21件とrejected 7件を
+  変更しない。
+- 同じplanの2回目applyは264件すべてno-opである。
+- apply後の新しいdry-runも`apply=0 / no_op=264 / manual=21 / rejected=7`を再現する。
+- 100件目の注入例外でDB bytes不変、292件`unresolved`、`integrity_check=ok`を確認した。
+- non-target catalog driftとdry-run後のODS byte driftをapply前/transaction内guardで拒否し、
+  auto rowを残さないことを確認した。
+- ODSは21 data rows、capture mismatch 0、空のtruth input 21で、同一planの再exportが
+  byte-identicalである。
+- local DB、画像、snapshot、ODS、plan、reportは`data/`配下でGit除外される。
+
+## 次候補: ODS dry-run import + atomic apply
+
+編集済みODSのschema/export ID、catalog/master/observation revision、truth song ID、cell type、重複行を
+strict検査し、1件でも不正なら全体拒否する別PRを候補とする。既定dry-run、明示apply、単一transaction、
+`manual_ods_import` source、再import no-opを必須とし、今回のproduction writer/ODS export PRへ混ぜない。
+
+# 前PR完了記録: jacket自動登録policy read-only評価
 
 PR #52のDDR WORLD snapshot mapping / current ROI v2 jacket rankingを再利用し、authoritativeな
 `candidate_truth_audit_v2.ods`の同一observationに保存済みのtitle/artist OCR 2方式を対応付けて、
@@ -42,7 +103,7 @@ PR #52 baselineの`matched_correct=249`、`matched_false=0`、`hold_ambiguous=11
 これはlocal truth/snapshot/catalog/master/ODSの組合せに対する採用評価であり、catalog自動登録、
 正式保存可否、DB schema採用を意味しない。生成report、ODS、DB、snapshot、画像はGitやPRへ含めない。
 
-# 次Goal: 全曲収集を開始できるcatalog登録パイプラインの完成
+# 完了したGoal: 全曲収集を開始できるcatalog登録パイプラインの完成
 
 PR #53でfalse decision 0件を確認した3つの自動判定経路をproduction処理へ接続し、
 収集済みobservationから高信頼結果を安全にcatalogへ登録し、自動登録できない残件を

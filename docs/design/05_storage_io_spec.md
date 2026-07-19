@@ -306,6 +306,18 @@ coverageは `data/` 配下の明示directoryへ `jacket_catalog_song_coverage.cs
 
 catalog、observation artifact/checkpoint、source/crop画像、特徴量、review結果、coverageはローカル運用物とし、Git、CI artifact、Release、通常analysis logへ含めない。既存local DB/artifact/checkpoint/source/crop画像を削除、上書き、in-place repairしない。artifact manifest/checkpoint v1/v2、resume/retry状態機械はcatalog schema version再採番と独立して維持する。
 
+PR #53 policyのproduction auto-confirmは、`data/`配下へ新規preflight planを出す既定dry-runと、
+同じplanを明示するapplyを分離する。applyはcurrent schema version 1の既存rowだけを対象にし、
+`auto_confirmed`、Master由来song/title/artist、confirmation source、version付きevidence JSONを既存列へ
+保存する。schema追加やmigrationは行わず、manual historyをauto actionに流用しない。全対象は1つの
+`BEGIN IMMEDIATE` transactionで処理し、state/revision/input drift、既存確定との競合、途中例外では
+全件rollbackする。同一planのexact evidence再投入はno-opとする。
+
+manual残件ODSは同じdry-run planから`data/`配下の新規`.ods`へatomic publishする。catalog、Master、
+manual review stateを変更せず、同じplanからの再exportはbyte-identical、既存fileは上書きしない。
+capture mismatchはexport対象外とし、生成ODSとplanはGit管理しない。ODS importは別の明示transaction
+境界として後続PRへ分ける。
+
 ## 削除・移動のルール
 
 削除または移動前に確認すること:
