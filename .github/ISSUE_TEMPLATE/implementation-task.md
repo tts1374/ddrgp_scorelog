@@ -16,28 +16,28 @@ assignees: ""
 
 ## Scope
 
-- 
+- <!-- scope item -->
 
 ## Non-scope
 
-- 
+- <!-- non-scope item -->
 
 ## Acceptance criteria
 
-- 
+- <!-- acceptance criterion -->
 
 ## Required tests
 
 <!-- repository既定のGitHub Actionsは暗黙に実行する。ここには変更責務に固有の検証だけを書く。 -->
 
-- 
+- <!-- required validation -->
 
 ## Manual validation
 
 <!-- 実機、GUI、installerなど手動確認が必要な場合だけ残す。 -->
 
-- 
+- <!-- manual validation -->
 
 ## Deliverable
 
-- 
+- <!-- deliverable -->
