@@ -18,6 +18,17 @@
 - 親Issue、設計docs、nested `AGENTS.md`、Skillのchecklistは制約と確認観点であり、それ自体を追加実装や追加testのbacklogとして扱わない。変更していない責務をchecklistだけを理由にrefactorしない。
 - 既存の安全機構は今回の目的に不要でも壊さない。簡略化や削除は明示scopeがある場合だけ行う。
 
+## Issue Authoring
+
+- Issueは、現在確認できているユーザー価値、不具合、または実測で必要と判明した作業を、実装可能な粒度へ固定するために作成する。
+- Objective、Scope、Non-scope、Acceptance criteria、Required testsには今回必要な内容だけを書く。未観測の将来要件、将来consumer、将来version、理論上だけのedge caseを要件へ追加しない。
+- 複数の実装方式が成立する場合は、必要な外部挙動と制約だけを固定し、内部構造、抽象化方式、汎用frameworkを指定しない。
+- Required testsは主要正常系、現実に起こり得る失敗、今回修正する回帰へ限定する。網羅的な組合せ試験や全失敗点へのfailure injectionを慣例だけで要求しない。
+- 安全性と検証水準は、対象ディレクトリのnested `AGENTS.md`、実際の利用者、保存データ、障害時の実害に合わせる。
+- 「必要なら」「場合によっては」「将来を考慮して」など、実装者へ不要な選択肢を残す文言を避ける。必要性が未確定ならNon-scopeまたは別Issue候補とする。
+- 親Issueは背景、依存関係、保証範囲を示す。子Issueへ明示していない親Issueの項目を暗黙の実装要件にしない。
+- Issueには原則として `Objective`、必要な場合の `Product / implementation level`、`Scope`、`Non-scope`、`Acceptance criteria`、`Required tests`、`Validation`、`Deliverable` を置く。項目が不要なら形式維持のためだけに空節を作らない。
+
 ## Task Scope
 
 - 作業開始時に、指定されたGitHub Issue、関連する親Issue、関連docsを確認する。
