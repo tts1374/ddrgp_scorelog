@@ -4,7 +4,7 @@ Closes #
 
 <!-- Issue本文を再掲せず、実際の変更差分とユーザー・開発者への影響を書く。 -->
 
-- 
+- <!-- summary item -->
 
 ## Validation
 
