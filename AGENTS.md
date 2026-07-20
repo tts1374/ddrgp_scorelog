@@ -28,6 +28,8 @@
 - 「必要なら」「場合によっては」「将来を考慮して」など、実装者へ不要な選択肢を残す文言を避ける。必要性が未確定ならNon-scopeまたは別Issue候補とする。
 - 親Issueは背景、依存関係、保証範囲を示す。子Issueへ明示していない親Issueの項目を暗黙の実装要件にしない。
 - Issueには原則として `Objective`、必要な場合の `Product / implementation level`、`Scope`、`Non-scope`、`Acceptance criteria`、`Required tests`、`Validation`、`Deliverable` を置く。項目が不要なら形式維持のためだけに空節を作らない。
+- 対象directoryのnested `AGENTS.md`に既定の実装水準がある場合、Issueにはその全文を再掲せず、今回の例外または追加制約だけを書く。
+- repository既定のCIは暗黙に実行対象とし、IssueのRequired testsには変更責務に固有の検証と手動確認だけを書く。CIを一部省略する場合は理由を明示する。
 
 ## Task Scope
 
@@ -42,6 +44,9 @@
 ## GitHub Workflow
 
 - 原則として1 Issueを1 PRで実装する。
+- IssueとPRはrepositoryのtemplateを使い、不要な節は削除する。形式維持のためだけの空節や本文の重複を残さない。
 - PR本文で対象Issueを参照し、完了時に自動closeできる関係を明示する。
+- PR本文ではIssueのScopeやAcceptance criteriaを再掲せず、実装差分、検証結果、未実施項目、Issue仕様との差異、別Issue候補を記載する。
+- GitHub Actionsが設定されている場合は、対象PRの必須jobが成功してからmergeする。失敗を未確認のまま再実行だけで通過扱いにしない。
 - 長期的に参照する仕様や設計判断はIssueだけに閉じ込めず、必要に応じて関連docsまたはADRへ反映する。ADRは複数PRまたは複数componentへ影響し、後から変更しにくい公開契約や永続化境界の決定に限定する。
 - 作業状態、受け入れ条件、追加の実装判断はIssueまたはPR上に残す。

@@ -1,0 +1,115 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python:
+    name: Python
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          python - <<'PY'
+          import subprocess
+          import sys
+          import tomllib
+
+          with open("pyproject.toml", "rb") as source:
+              project = tomllib.load(source)
+
+          dependencies = list(project["project"]["dependencies"])
+          optional = project["project"]["optional-dependencies"]
+          dependencies.extend(optional["dev"])
+          dependencies.extend(optional["vision"])
+          subprocess.check_call([sys.executable, "-m", "pip", "install", *dependencies])
+          PY
+
+      - name: Ruff
+        run: python -m ruff check tools/vision_poc pyproject.toml tests
+
+      - name: Compile Python modules
+        run: python -m compileall master tools/vision_poc
+
+      - name: Test
+        run: python -m pytest tests
+
+  windows-app:
+    name: Windows app
+    runs-on: windows-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Restore
+        run: dotnet restore app\tests\DDRGpScoreViewer.Tests\DDRGpScoreViewer.Tests.csproj
+
+      - name: Build
+        run: dotnet build app\src\DDRGpScoreViewer\DDRGpScoreViewer.csproj --no-restore
+
+      - name: Test
+        run: dotnet test app\tests\DDRGpScoreViewer.Tests\DDRGpScoreViewer.Tests.csproj --no-restore
+
+      - name: Verify app formatting
+        run: dotnet format app\src\DDRGpScoreViewer\DDRGpScoreViewer.csproj --verify-no-changes --no-restore
+
+      - name: Verify test formatting
+        run: dotnet format app\tests\DDRGpScoreViewer.Tests\DDRGpScoreViewer.Tests.csproj --verify-no-changes --no-restore
+
+  repository-hygiene:
+    name: Repository hygiene
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check changed-file whitespace
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            git diff --check "${{ github.event.pull_request.base.sha }}...HEAD"
+          else
+            git diff --check HEAD^
+          fi
+
+      - name: Reject tracked local data
+        shell: bash
+        run: |
+          if git ls-files | grep -Ei '^(data|logs|failed-captures)/|^samples/screenshots/metadata\.csv$|^samples/screenshots/.*\.(png|jpe?g|bmp|webp)$|\.(sqlite3?|db)$'; then
+            echo "Local data, screenshots, or databases must not be tracked."
+            exit 1
+          fi
