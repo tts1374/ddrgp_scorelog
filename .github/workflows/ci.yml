@@ -30,9 +30,23 @@ jobs:
           cache: pip
 
       - name: Install dependencies
+        shell: bash
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -e ".[dev,vision]"
+          python - <<'PY'
+          import subprocess
+          import sys
+          import tomllib
+
+          with open("pyproject.toml", "rb") as source:
+              project = tomllib.load(source)
+
+          dependencies = list(project["project"]["dependencies"])
+          optional = project["project"]["optional-dependencies"]
+          dependencies.extend(optional["dev"])
+          dependencies.extend(optional["vision"])
+          subprocess.check_call([sys.executable, "-m", "pip", "install", *dependencies])
+          PY
 
       - name: Ruff
         run: python -m ruff check tools/vision_poc pyproject.toml tests
