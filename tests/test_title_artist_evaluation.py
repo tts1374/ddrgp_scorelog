@@ -83,9 +83,10 @@ def write_master(path: Path) -> None:
 def fixture_paths(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path, Path]:
     monkeypatch.chdir(tmp_path)
     (tmp_path / "data").mkdir()
+    (tmp_path / "databases").mkdir()
     master = tmp_path / "data" / "master.sqlite"
     write_master(master)
-    catalog_path = tmp_path / "data" / "catalog.sqlite"
+    catalog_path = tmp_path / "databases" / "catalog.sqlite"
     catalog.create_catalog(catalog_path)
     artifact_root = tmp_path / "data" / "jacket_catalog_collector"
     return master, catalog_path, artifact_root

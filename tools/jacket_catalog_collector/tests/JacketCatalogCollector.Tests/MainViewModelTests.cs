@@ -10,7 +10,7 @@ public sealed class MainViewModelTests
             new StubMasterUpdateService(),
             new StubProjectionService(projection));
 
-        await viewModel.LoadProjectionAsync("master.sqlite", "catalog.sqlite");
+        await viewModel.LoadProjectionAsync();
 
         Assert.Equal("master-v1", viewModel.MasterVersion);
         Assert.Equal(2, viewModel.Songs.Count);
@@ -31,133 +31,192 @@ public sealed class MainViewModelTests
     }
 
     [Fact]
-    public async Task RemembersPathsOnlyAfterSuccessfulManualProjectionLoad()
+    public async Task MissingMasterKeepsStartupReadOnlyAndDoesNotCreateCatalog()
     {
-        var store = new StubDatabasePathStore();
-        var projectionService = new SequenceProjectionService(
-            Projection(),
-            new InvalidOperationException("invalid projection"));
+        using var database = new TestDatabase();
+        var catalog = new StubCatalogInitializationService(database.Paths.CatalogPath);
+        var projection = new RecordingProjectionService(Projection());
         var viewModel = new MainViewModel(
             new StubMasterUpdateService(),
-            projectionService,
-            databasePathStore: store);
+            projection,
+            databasePaths: database.Paths,
+            catalogInitializationService: catalog);
 
-        await viewModel.LoadProjectionAsync("master-ok.sqlite", "catalog-ok.sqlite");
-        await Assert.ThrowsAsync<InvalidOperationException>(
-            () => viewModel.LoadProjectionAsync("master-bad.sqlite", "catalog-bad.sqlite"));
+        await viewModel.InitializeDatabasesAsync();
 
-        var saved = Assert.Single(store.Saved);
-        Assert.Equal(Path.GetFullPath("master-ok.sqlite"), saved.MasterPath);
-        Assert.Equal(Path.GetFullPath("catalog-ok.sqlite"), saved.CatalogPath);
-    }
-
-    [Fact]
-    public async Task AutomaticallyReloadsRememberedPathsWithoutRewritingSetting()
-    {
-        var remembered = new CollectorDatabasePaths(
-            Path.GetFullPath("remembered-master.sqlite"),
-            Path.GetFullPath("remembered-catalog.sqlite"));
-        var store = new StubDatabasePathStore(remembered);
-        var projectionService = new RecordingProjectionService(Projection());
-        var viewModel = new MainViewModel(
-            new StubMasterUpdateService(),
-            projectionService,
-            databasePathStore: store);
-
-        await viewModel.InitializeRememberedProjectionAsync();
-
-        Assert.Equal((remembered.MasterPath, remembered.CatalogPath), projectionService.Loads[0]);
-        Assert.Empty(store.Saved);
-        Assert.Equal("前回DBを自動読込", viewModel.StatusTitle);
-        Assert.Equal("master-v1", viewModel.MasterVersion);
-        Assert.False(viewModel.IsBusy);
-    }
-
-    [Fact]
-    public async Task MissingSettingKeepsFirstLaunchManualAndCreatesNothing()
-    {
-        var store = new StubDatabasePathStore();
-        var projectionService = new RecordingProjectionService(Projection());
-        var viewModel = new MainViewModel(
-            new StubMasterUpdateService(),
-            projectionService,
-            databasePathStore: store);
-
-        await viewModel.InitializeRememberedProjectionAsync();
-
-        Assert.Empty(projectionService.Loads);
-        Assert.Empty(store.Saved);
-        Assert.Equal("準備完了", viewModel.StatusTitle);
+        Assert.Equal("曲情報がありません", viewModel.StatusTitle);
         Assert.Equal("未選択", viewModel.MasterVersion);
-    }
-
-    [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public async Task FailedAutomaticReloadKeepsSettingAndReturnsToManualSelection(
-        bool settingFailure)
-    {
-        var remembered = new CollectorDatabasePaths(
-            Path.GetFullPath("remembered-master.sqlite"),
-            Path.GetFullPath("remembered-catalog.sqlite"));
-        var store = new StubDatabasePathStore(
-            remembered,
-            loadException: settingFailure ? new UnauthorizedAccessException("denied") : null);
-        IProjectionService projectionService = settingFailure
-            ? new RecordingProjectionService(Projection())
-            : new FailingProjectionService(new InvalidOperationException("incompatible"));
-        var viewModel = new MainViewModel(
-            new StubMasterUpdateService(),
-            projectionService,
-            databasePathStore: store);
-
-        await viewModel.InitializeRememberedProjectionAsync();
-
-        Assert.Empty(store.Saved);
-        Assert.Equal("前回DBの自動読込失敗", viewModel.StatusTitle);
-        Assert.Contains("手動選択", viewModel.StatusMessage, StringComparison.Ordinal);
-        Assert.Equal("未選択", viewModel.MasterVersion);
-        Assert.False(viewModel.IsBusy);
+        Assert.Empty(projection.Loads);
+        Assert.Equal(0, catalog.Calls);
     }
 
     [Fact]
-    public async Task SettingSaveFailureKeepsValidatedProjectionAvailable()
+    public async Task ValidMasterCreatesMissingCatalogAndLoadsFixedProjection()
     {
-        var store = new StubDatabasePathStore(
-            saveException: new UnauthorizedAccessException("denied"));
+        using var database = new TestDatabase(master: true);
+        var catalog = new StubCatalogInitializationService(database.Paths.CatalogPath);
+        var master = new StubMasterUpdateService();
+        var projection = new RecordingProjectionService(Projection());
+        var viewModel = new MainViewModel(
+            master,
+            projection,
+            databasePaths: database.Paths,
+            catalogInitializationService: catalog);
+
+        await viewModel.InitializeDatabasesAsync();
+
+        Assert.Equal("読込完了", viewModel.StatusTitle);
+        Assert.Equal((database.Paths.MasterPath, database.Paths.CatalogPath), projection.Loads[0]);
+        Assert.Equal(1, catalog.Calls);
+        Assert.Equal(database.Paths.MasterPath, master.InspectedPaths[0]);
+        Assert.True(File.Exists(database.Paths.CatalogPath));
+    }
+
+    [Fact]
+    public async Task ExistingCatalogIsValidatedAndNeverReplaced()
+    {
+        using var database = new TestDatabase(master: true, catalog: true);
+        var before = File.ReadAllBytes(database.Paths.CatalogPath);
+        var catalog = new StubCatalogInitializationService(database.Paths.CatalogPath);
         var viewModel = new MainViewModel(
             new StubMasterUpdateService(),
             new StubProjectionService(Projection()),
-            databasePathStore: store);
+            databasePaths: database.Paths,
+            catalogInitializationService: catalog);
 
-        await viewModel.LoadProjectionAsync("master.sqlite", "catalog.sqlite");
+        await viewModel.InitializeDatabasesAsync();
 
-        Assert.Equal("読込完了（path記憶失敗）", viewModel.StatusTitle);
-        Assert.Equal("master-v1", viewModel.MasterVersion);
-        Assert.NotEmpty(viewModel.Songs);
+        Assert.Equal(0, catalog.Calls);
+        Assert.Equal(before, File.ReadAllBytes(database.Paths.CatalogPath));
+    }
+
+    [Fact]
+    public async Task InvalidMasterStopsBeforeCatalogCreationOrProjection()
+    {
+        using var database = new TestDatabase(master: true);
+        var catalog = new StubCatalogInitializationService(database.Paths.CatalogPath);
+        var projection = new RecordingProjectionService(Projection());
+        var viewModel = new MainViewModel(
+            new StubMasterUpdateService(
+                inspectException: new InvalidOperationException("master is corrupt")),
+            projection,
+            databasePaths: database.Paths,
+            catalogInitializationService: catalog);
+
+        await viewModel.InitializeDatabasesAsync();
+
+        Assert.Equal("DB初期化/検証失敗", viewModel.StatusTitle);
+        Assert.Contains("master is corrupt", viewModel.StatusMessage, StringComparison.Ordinal);
+        Assert.Empty(projection.Loads);
+        Assert.Equal(0, catalog.Calls);
+    }
+
+    [Fact]
+    public async Task InvalidCatalogIsReportedWithoutReplacingExistingBytes()
+    {
+        using var database = new TestDatabase(master: true, catalog: true);
+        var before = File.ReadAllBytes(database.Paths.CatalogPath);
+        var projection = new FailingProjectionService(new InvalidOperationException("catalog is corrupt"));
+        var catalog = new StubCatalogInitializationService(database.Paths.CatalogPath);
+        var viewModel = new MainViewModel(
+            new StubMasterUpdateService(),
+            projection,
+            databasePaths: database.Paths,
+            catalogInitializationService: catalog);
+
+        await viewModel.InitializeDatabasesAsync();
+
+        Assert.Equal("DB初期化/検証失敗", viewModel.StatusTitle);
+        Assert.Contains("catalog is corrupt", viewModel.StatusMessage, StringComparison.Ordinal);
+        Assert.Equal(before, File.ReadAllBytes(database.Paths.CatalogPath));
+        Assert.Equal(0, catalog.Calls);
+    }
+
+    [Fact]
+    public async Task RemovesNewCatalogWhenStrictValidationFails()
+    {
+        using var database = new TestDatabase(master: true);
+        var catalog = new StubCatalogInitializationService(database.Paths.CatalogPath);
+        var viewModel = new MainViewModel(
+            new StubMasterUpdateService(),
+            new FailingProjectionService(new InvalidOperationException("catalog is invalid")),
+            databasePaths: database.Paths,
+            catalogInitializationService: catalog);
+
+        await viewModel.InitializeDatabasesAsync();
+
+        Assert.Equal("DB初期化/検証失敗", viewModel.StatusTitle);
+        Assert.Contains("catalog is invalid", viewModel.StatusMessage, StringComparison.Ordinal);
+        Assert.Equal(1, catalog.Calls);
+        Assert.False(File.Exists(database.Paths.CatalogPath));
     }
 
     [Fact]
     public async Task ReportsMasterSuccessFailureAndCancellationStates()
     {
+        using var successDatabase = new TestDatabase(master: true, catalog: true);
+        var successMaster = new StubMasterUpdateService();
+        var successProjection = new RecordingProjectionService(Projection());
         var success = new MainViewModel(
-            new StubMasterUpdateService(),
-            new StubProjectionService(Projection()));
-        await success.UpdateMasterAsync("master.sqlite");
+            successMaster,
+            successProjection,
+            databasePaths: successDatabase.Paths,
+            catalogInitializationService: new StubCatalogInitializationService(
+                successDatabase.Paths.CatalogPath));
+        await success.UpdateMasterAsync();
         Assert.Equal("master更新完了", success.StatusTitle);
+        Assert.Equal(successDatabase.Paths.MasterPath, Assert.Single(successMaster.UpdateTargets));
+        Assert.Equal(
+            (successDatabase.Paths.MasterPath, successDatabase.Paths.CatalogPath),
+            Assert.Single(successProjection.Loads));
 
         var failure = new MainViewModel(
             new StubMasterUpdateService(new IOException("build failed")),
             new StubProjectionService(Projection()));
-        await Assert.ThrowsAsync<IOException>(() => failure.UpdateMasterAsync("master.sqlite"));
+        await Assert.ThrowsAsync<IOException>(() => failure.UpdateMasterAsync());
         Assert.Equal("master更新失敗", failure.StatusTitle);
 
         var canceled = new MainViewModel(
             new StubMasterUpdateService(new OperationCanceledException()),
             new StubProjectionService(Projection()));
         await Assert.ThrowsAsync<OperationCanceledException>(
-            () => canceled.UpdateMasterAsync("master.sqlite"));
+            () => canceled.UpdateMasterAsync());
         Assert.Equal("master更新取消", canceled.StatusTitle);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ClearsProjectionWhenMasterUpdateReloadFailsOrIsCanceled(bool cancel)
+    {
+        using var database = new TestDatabase(master: true, catalog: true);
+        var projectionService = new SequenceProjectionService(
+            Projection(),
+            cancel ? new OperationCanceledException() : new InvalidOperationException("reload failed"));
+        var viewModel = new MainViewModel(
+            new StubMasterUpdateService(),
+            projectionService,
+            databasePaths: database.Paths);
+
+        await viewModel.LoadProjectionAsync();
+        viewModel.SelectedCoverageStatus = "needs_review";
+        viewModel.SelectedReason = "opaque reason";
+        Assert.Equal(database.Paths.MasterPath, viewModel.CurrentMasterPath);
+        Assert.Equal(database.Paths.CatalogPath, viewModel.CurrentCatalogPath);
+
+        await Assert.ThrowsAnyAsync<Exception>(() => viewModel.UpdateMasterAsync());
+
+        Assert.Equal(
+            cancel ? "master更新後の再読込取消" : "master更新後の再読込失敗",
+            viewModel.StatusTitle);
+        Assert.Equal("未選択", viewModel.MasterVersion);
+        Assert.Null(viewModel.CurrentMasterPath);
+        Assert.Null(viewModel.CurrentCatalogPath);
+        Assert.Empty(viewModel.Songs);
+        Assert.Empty(viewModel.ReviewReferences);
+        Assert.Equal(["all"], viewModel.ReasonOptions);
+        Assert.Equal("all", viewModel.SelectedCoverageStatus);
+        Assert.Equal("all", viewModel.SelectedReason);
     }
 
     [Theory]
@@ -172,14 +231,14 @@ public sealed class MainViewModelTests
         var viewModel = new MainViewModel(
             new StubMasterUpdateService(),
             projectionService);
-        await viewModel.LoadProjectionAsync("master-v1.sqlite", "catalog-v1.sqlite");
+        await viewModel.LoadProjectionAsync();
         viewModel.SelectedCoverageStatus = "needs_review";
         viewModel.SelectedReason = "opaque reason";
 
         await Assert.ThrowsAnyAsync<Exception>(
-            () => viewModel.LoadProjectionAsync("other-master.sqlite", "other-catalog.sqlite"));
+            () => viewModel.LoadProjectionAsync());
 
-        Assert.Equal(cancel ? "取消" : "読込失敗", viewModel.StatusTitle);
+        Assert.Equal(cancel ? "読込取消" : "読込失敗", viewModel.StatusTitle);
         Assert.Equal("未選択", viewModel.MasterVersion);
         Assert.Equal("未選択", viewModel.CatalogIdentity);
         Assert.Equal("—", viewModel.CoverageSummary);
@@ -199,7 +258,7 @@ public sealed class MainViewModelTests
             new StubMasterUpdateService(),
             new StubProjectionService(projection),
             workflow);
-        await viewModel.LoadProjectionAsync("master.sqlite", "catalog.sqlite");
+        await viewModel.LoadProjectionAsync();
         viewModel.SelectedReference = viewModel.ReviewReferences[0];
         viewModel.SelectedSong = viewModel.SongChoices[1];
         viewModel.ReviewReason = "explicit";
@@ -345,38 +404,80 @@ public sealed class MainViewModelTests
             Task.FromException<ReviewProjection>(exception);
     }
 
-    private sealed class StubDatabasePathStore(
-        CollectorDatabasePaths? remembered = null,
-        Exception? loadException = null,
-        Exception? saveException = null) : ICollectorDatabasePathStore
+    private sealed class TestDatabase : IDisposable
     {
-        public List<CollectorDatabasePaths> Saved { get; } = [];
-
-        public Task<CollectorDatabasePaths?> LoadAsync(CancellationToken cancellationToken) =>
-            loadException is null
-                ? Task.FromResult(remembered)
-                : Task.FromException<CollectorDatabasePaths?>(loadException);
-
-        public Task SaveAsync(
-            CollectorDatabasePaths paths,
-            CancellationToken cancellationToken)
+        public TestDatabase(bool master = false, bool catalog = false)
         {
-            if (saveException is not null)
+            Root = Path.Combine(
+                Path.GetTempPath(),
+                $"ddrgp-main-view-model-tests-{Guid.NewGuid():N}");
+            Directory.CreateDirectory(Root);
+            Paths = CollectorDatabasePaths.FromRepositoryRoot(Root);
+            if (master || catalog)
             {
-                return Task.FromException(saveException);
+                Directory.CreateDirectory(Path.GetDirectoryName(Paths.MasterPath)!);
             }
-            Saved.Add(paths);
+            if (master)
+            {
+                File.WriteAllText(Paths.MasterPath, "master");
+            }
+            if (catalog)
+            {
+                File.WriteAllText(Paths.CatalogPath, "catalog");
+            }
+        }
+
+        public string Root { get; }
+        public CollectorDatabasePaths Paths { get; }
+
+        public void Dispose()
+        {
+            if (Directory.Exists(Root))
+            {
+                Directory.Delete(Root, recursive: true);
+            }
+        }
+    }
+
+    private sealed class StubCatalogInitializationService(string catalogPath)
+        : ICatalogInitializationService
+    {
+        public int Calls { get; private set; }
+
+        public Task EnsureCreatedAsync(CancellationToken cancellationToken)
+        {
+            Calls++;
+            Directory.CreateDirectory(Path.GetDirectoryName(catalogPath)!);
+            File.WriteAllText(catalogPath, "created-catalog");
             return Task.CompletedTask;
         }
     }
 
-    private sealed class StubMasterUpdateService(Exception? exception = null) : IMasterUpdateService
+    private sealed class StubMasterUpdateService(
+        Exception? updateException = null,
+        Exception? inspectException = null) : IMasterUpdateService
     {
-        public Task<MasterUpdateResult> UpdateAsync(string targetPath, CancellationToken cancellationToken)
+        public List<string> InspectedPaths { get; } = [];
+        public List<string> UpdateTargets { get; } = [];
+
+        public Task<MasterSummary> InspectAsync(
+            string path,
+            CancellationToken cancellationToken)
         {
-            if (exception is not null)
+            InspectedPaths.Add(path);
+            return inspectException is null
+                ? Task.FromResult(new MasterSummary("master-v1", "hash", 1, 1, 1))
+                : Task.FromException<MasterSummary>(inspectException);
+        }
+
+        public Task<MasterUpdateResult> UpdateAsync(
+            string targetPath,
+            CancellationToken cancellationToken)
+        {
+            UpdateTargets.Add(targetPath);
+            if (updateException is not null)
             {
-                return Task.FromException<MasterUpdateResult>(exception);
+                return Task.FromException<MasterUpdateResult>(updateException);
             }
             return Task.FromResult(new MasterUpdateResult(
                 new MasterSummary("master-v1", "old", 1, 1, 1),

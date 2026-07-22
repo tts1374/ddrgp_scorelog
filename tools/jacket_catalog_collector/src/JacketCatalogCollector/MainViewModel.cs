@@ -11,16 +11,19 @@ public sealed class MainViewModel(
     IReviewWorkflowService? reviewWorkflowService = null,
     WindowCaptureViewModel? windowCapture = null,
     JacketObservationViewModel? observation = null,
-    ICollectorDatabasePathStore? databasePathStore = null) : INotifyPropertyChanged
+    CollectorDatabasePaths? databasePaths = null,
+    ICatalogInitializationService? catalogInitializationService = null) : INotifyPropertyChanged
 {
+    private readonly CollectorDatabasePaths fixedDatabasePaths =
+        databasePaths ?? CollectorDatabasePaths.Resolve();
+    private readonly ICatalogInitializationService catalogInitializer =
+        catalogInitializationService ?? CreateCatalogInitializer(databasePaths);
     private ReviewProjection? projection;
     private string selectedCoverageStatus = "all";
     private string selectedReason = "all";
     private string statusTitle = "準備完了";
-    private string statusMessage = "master DB と jacket catalog を選択してください。";
+    private string statusMessage = "固定pathの曲情報DBとジャケット情報DBを確認します。";
     private bool isBusy;
-    private string? masterPath;
-    private string? catalogPath;
     private ReviewReference? selectedReference;
     private ProjectionSong? selectedSong;
     private string songSearch = "";
@@ -39,8 +42,8 @@ public sealed class MainViewModel(
     public ObservableCollection<string> ReasonOptions { get; } = ["all"];
     public ObservableCollection<ProjectionSong> SongChoices { get; } = [];
     public ObservableCollection<string> CandidateClassificationOptions { get; } = ["all"];
-    public string? CurrentMasterPath => masterPath;
-    public string? CurrentCatalogPath => catalogPath;
+    public string? CurrentMasterPath => projection is null ? null : fixedDatabasePaths.MasterPath;
+    public string? CurrentCatalogPath => projection is null ? null : fixedDatabasePaths.CatalogPath;
 
     public string MasterVersion => projection?.Master.MasterVersion ?? "未選択";
     public string MasterSourceHash => projection?.Master.SourceHash ?? "—";
@@ -147,39 +150,67 @@ public sealed class MainViewModel(
         private set => SetField(ref isBusy, value);
     }
 
-    public async Task LoadProjectionAsync(
-        string masterPath,
-        string catalogPath,
+    public async Task InitializeDatabasesAsync(
         CancellationToken cancellationToken = default)
     {
+        if (IsBusy)
+        {
+            throw new InvalidOperationException("別の処理を実行中です。");
+        }
+
         IsBusy = true;
-        StatusTitle = "読込中";
-        StatusMessage = "master と catalog を read-only で検証しています。";
+        StatusTitle = "DB確認中";
+        StatusMessage = "固定pathの曲情報DBとジャケット情報DBをread-onlyで検証しています。";
         try
         {
-            await LoadProjectionCoreAsync(masterPath, catalogPath, cancellationToken);
-            StatusTitle = "読込完了";
-            StatusMessage = $"GP対象 {projection!.Coverage.GrandPrixSongCount} 曲を表示しました。";
-            if (databasePathStore is not null)
+            await InitializeDatabasesCoreAsync(cancellationToken);
+            if (projection is not null)
             {
-                try
-                {
-                    await databasePathStore.SaveAsync(
-                        new CollectorDatabasePaths(this.masterPath!, this.catalogPath!),
-                        cancellationToken);
-                }
-                catch (Exception exception)
-                {
-                    StatusTitle = "読込完了（path記憶失敗）";
-                    StatusMessage =
-                        $"DBはread-onlyで読込済みです。pathを記憶できませんでした: {exception.Message}";
-                }
+                StatusTitle = "読込完了";
+                StatusMessage =
+                    $"固定DBからGP対象 {projection.Coverage.GrandPrixSongCount} 曲を表示しました。";
             }
         }
         catch (OperationCanceledException)
         {
             ClearProjection();
-            StatusTitle = "取消";
+            StatusTitle = "DB確認取消";
+            StatusMessage = "DB確認を取り消しました。DBは変更していません。";
+            throw;
+        }
+        catch (Exception exception)
+        {
+            ClearProjection();
+            StatusTitle = "DB初期化/検証失敗";
+            StatusMessage = exception.Message;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    public async Task LoadProjectionAsync(
+        CancellationToken cancellationToken = default)
+    {
+        if (IsBusy)
+        {
+            throw new InvalidOperationException("別の処理を実行中です。");
+        }
+
+        IsBusy = true;
+        StatusTitle = "読込中";
+        StatusMessage = "固定pathのmasterとcatalogをread-onlyで検証しています。";
+        try
+        {
+            await LoadProjectionCoreAsync(cancellationToken);
+            StatusTitle = "読込完了";
+            StatusMessage = $"固定DBからGP対象 {projection!.Coverage.GrandPrixSongCount} 曲を表示しました。";
+        }
+        catch (OperationCanceledException)
+        {
+            ClearProjection();
+            StatusTitle = "読込取消";
             StatusMessage = "読込を取り消しました。DBは変更していません。";
             throw;
         }
@@ -196,63 +227,11 @@ public sealed class MainViewModel(
         }
     }
 
-    public async Task InitializeRememberedProjectionAsync(
-        CancellationToken cancellationToken = default)
-    {
-        if (databasePathStore is null)
-        {
-            return;
-        }
-        if (IsBusy)
-        {
-            throw new InvalidOperationException("別の処理を実行中です。");
-        }
-
-        IsBusy = true;
-        StatusTitle = "前回DBを確認中";
-        StatusMessage = "記憶したmaster/catalogをread-onlyで再検証しています。";
-        try
-        {
-            var remembered = await databasePathStore.LoadAsync(cancellationToken);
-            if (remembered is null)
-            {
-                StatusTitle = "準備完了";
-                StatusMessage = "master DB と jacket catalog を選択してください。";
-                return;
-            }
-            await LoadProjectionCoreAsync(
-                remembered.MasterPath,
-                remembered.CatalogPath,
-                cancellationToken);
-            StatusTitle = "前回DBを自動読込";
-            StatusMessage =
-                $"記憶したmaster/catalogをread-onlyで再検証し、GP対象 {projection!.Coverage.GrandPrixSongCount} 曲を表示しました。";
-        }
-        catch (OperationCanceledException)
-        {
-            ClearProjection();
-            StatusTitle = "自動読込取消";
-            StatusMessage = "自動読込を取り消しました。DBと保存pathは変更していません。";
-            throw;
-        }
-        catch (Exception exception)
-        {
-            ClearProjection();
-            StatusTitle = "前回DBの自動読込失敗";
-            StatusMessage =
-                $"保存pathは保持しています。master/catalogを手動選択してください: {exception.Message}";
-        }
-        finally
-        {
-            IsBusy = false;
-        }
-    }
-
     public async Task ApplyReviewAsync(
         string action,
         CancellationToken cancellationToken = default)
     {
-        if (reviewWorkflowService is null || projection is null || masterPath is null || catalogPath is null)
+        if (reviewWorkflowService is null || projection is null)
         {
             throw new InvalidOperationException("current catalogを先に読み込んでください。");
         }
@@ -280,8 +259,11 @@ public sealed class MainViewModel(
         try
         {
             var receipt = await reviewWorkflowService.ApplyAsync(
-                masterPath, catalogPath, mutation, cancellationToken);
-            await LoadProjectionCoreAsync(masterPath, catalogPath, cancellationToken);
+                fixedDatabasePaths.MasterPath,
+                fixedDatabasePaths.CatalogPath,
+                mutation,
+                cancellationToken);
+            await LoadProjectionCoreAsync(cancellationToken);
             SelectedReference = projection.ReviewReferences.FirstOrDefault(
                 item => item.ReferenceId == receipt.ReferenceId);
             StatusTitle = "review更新完了";
@@ -299,31 +281,102 @@ public sealed class MainViewModel(
         }
     }
 
-    private async Task LoadProjectionCoreAsync(
-        string masterPathValue,
-        string catalogPathValue,
-        CancellationToken cancellationToken)
+    private async Task LoadProjectionCoreAsync(CancellationToken cancellationToken)
     {
         projection = await projectionService.LoadAsync(
-            masterPathValue, catalogPathValue, cancellationToken);
-        masterPath = Path.GetFullPath(masterPathValue);
-        catalogPath = Path.GetFullPath(catalogPathValue);
+            fixedDatabasePaths.MasterPath,
+            fixedDatabasePaths.CatalogPath,
+            cancellationToken);
         RebuildFilterOptions();
         ApplyFilters();
         ApplySongSearch();
         NotifyProjectionProperties();
     }
 
-    public async Task UpdateMasterAsync(
-        string targetPath,
-        CancellationToken cancellationToken = default)
+    private async Task InitializeDatabasesCoreAsync(CancellationToken cancellationToken)
+    {
+        if (!File.Exists(fixedDatabasePaths.MasterPath))
+        {
+            ClearProjection();
+            StatusTitle = "曲情報がありません";
+            StatusMessage = "曲情報を更新すると固定pathへmaster DBを作成できます。";
+            return;
+        }
+
+        try
+        {
+            await masterUpdateService.InspectAsync(
+                fixedDatabasePaths.MasterPath,
+                cancellationToken);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            throw new InvalidOperationException(
+                $"曲情報DBの検証に失敗しました。catalog作成と収集は開始しません: {exception.Message}",
+                exception);
+        }
+
+        var catalogCreated = false;
+        try
+        {
+            if (!File.Exists(fixedDatabasePaths.CatalogPath))
+            {
+                StatusTitle = "ジャケット情報初期化中";
+                StatusMessage = "current schemaの空catalogを固定pathへ作成しています。";
+                await catalogInitializer.EnsureCreatedAsync(cancellationToken);
+                catalogCreated = true;
+            }
+
+            StatusTitle = "ジャケット情報確認中";
+            StatusMessage = "固定pathのcatalogをstrict read-only projectionで検証しています。";
+            await LoadProjectionCoreAsync(cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            DeleteCreatedCatalog(catalogCreated);
+            throw;
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            DeleteCreatedCatalog(catalogCreated);
+            throw new InvalidOperationException(
+                $"ジャケット情報DBの初期化または検証に失敗しました。既存fileは置換していません: {exception.Message}",
+                exception);
+        }
+    }
+
+    public async Task UpdateMasterAsync(CancellationToken cancellationToken = default)
     {
         IsBusy = true;
         StatusTitle = "master更新中";
         StatusMessage = "staging生成とinspectionを実行しています。";
+        var projectionReloadFailed = false;
         try
         {
-            var result = await masterUpdateService.UpdateAsync(targetPath, cancellationToken);
+            var result = await masterUpdateService.UpdateAsync(
+                fixedDatabasePaths.MasterPath,
+                cancellationToken);
+            try
+            {
+                await InitializeDatabasesCoreAsync(cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                ClearProjection();
+                projectionReloadFailed = true;
+                StatusTitle = "master更新後の再読込取消";
+                StatusMessage = "masterは更新済みですが、projection再読込を取り消しました。";
+                throw;
+            }
+            catch (Exception exception)
+            {
+                ClearProjection();
+                projectionReloadFailed = true;
+                StatusTitle = "master更新後の再読込失敗";
+                StatusMessage =
+                    $"masterは更新済みですが、catalog/projectionを再読込できません: {exception.Message}";
+                throw;
+            }
             StatusTitle = "master更新完了";
             StatusMessage = result.Before is null
                 ? $"新規 master {FormatSummary(result.After)} を公開しました。"
@@ -331,12 +384,20 @@ public sealed class MainViewModel(
         }
         catch (OperationCanceledException)
         {
+            if (projectionReloadFailed)
+            {
+                throw;
+            }
             StatusTitle = "master更新取消";
             StatusMessage = "更新を取り消しました。既存masterは変更していません。";
             throw;
         }
         catch (Exception exception)
         {
+            if (projectionReloadFailed)
+            {
+                throw;
+            }
             StatusTitle = "master更新失敗";
             StatusMessage = exception.Message;
             throw;
@@ -351,7 +412,7 @@ public sealed class MainViewModel(
         WindowCandidate candidate,
         CancellationToken cancellationToken = default)
     {
-        if (Observation is null || projection is null || masterPath is null || catalogPath is null)
+        if (Observation is null || projection is null)
         {
             throw new InvalidOperationException(
                 "master/catalogを先に読み込み、window候補を明示選択してください。");
@@ -360,8 +421,8 @@ public sealed class MainViewModel(
             projection.Master,
             projection.Catalog,
             candidate,
-            masterPath,
-            catalogPath,
+            fixedDatabasePaths.MasterPath,
+            fixedDatabasePaths.CatalogPath,
             cancellationToken);
     }
 
@@ -369,7 +430,7 @@ public sealed class MainViewModel(
         WindowCandidate candidate,
         CancellationToken cancellationToken = default)
     {
-        if (Observation is null || projection is null || masterPath is null || catalogPath is null)
+        if (Observation is null || projection is null)
         {
             throw new InvalidOperationException(
                 "master/catalogを先に読み込み、window候補を明示選択してください。");
@@ -378,8 +439,8 @@ public sealed class MainViewModel(
             projection.Master,
             projection.Catalog,
             candidate,
-            masterPath,
-            catalogPath,
+            fixedDatabasePaths.MasterPath,
+            fixedDatabasePaths.CatalogPath,
             cancellationToken);
     }
 
@@ -458,6 +519,8 @@ public sealed class MainViewModel(
     private void NotifyProjectionProperties()
     {
         OnPropertyChanged(nameof(MasterVersion));
+        OnPropertyChanged(nameof(CurrentMasterPath));
+        OnPropertyChanged(nameof(CurrentCatalogPath));
         OnPropertyChanged(nameof(MasterSourceHash));
         OnPropertyChanged(nameof(MasterCounts));
         OnPropertyChanged(nameof(CatalogIdentity));
@@ -474,8 +537,6 @@ public sealed class MainViewModel(
         SongChoices.Clear();
         SelectedReference = null;
         SelectedSong = null;
-        masterPath = null;
-        catalogPath = null;
         ReasonOptions.Clear();
         ReasonOptions.Add("all");
         CandidateClassificationOptions.Clear();
@@ -484,6 +545,24 @@ public sealed class MainViewModel(
         SelectedReason = "all";
         SelectedCandidateClassification = "all";
         NotifyProjectionProperties();
+    }
+
+    private void DeleteCreatedCatalog(bool catalogCreated)
+    {
+        if (catalogCreated && File.Exists(fixedDatabasePaths.CatalogPath))
+        {
+            File.Delete(fixedDatabasePaths.CatalogPath);
+        }
+    }
+
+    private static ICatalogInitializationService CreateCatalogInitializer(
+        CollectorDatabasePaths? paths)
+    {
+        var resolved = paths ?? CollectorDatabasePaths.Resolve();
+        return new CatalogInitializationService(
+            new ProcessRunner(),
+            resolved.RepositoryRoot,
+            resolved.CatalogPath);
     }
 
     private static string FormatSummary(MasterSummary summary) =>
