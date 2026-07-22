@@ -61,7 +61,7 @@ def test_current_projection_exposes_manual_review_without_legacy_capabilities(
 
     result = projection.build_review_projection(catalog_db, master_db)
 
-    assert result["projection_schema_version"] == 4
+    assert result["projection_schema_version"] == 5
     assert result["review_references"][0]["candidate_evaluation"]["classification"] == (
         "not_eligible"
     )

@@ -452,17 +452,7 @@ public partial class MainWindow : Window
         {
             return;
         }
-        try
-        {
-            await RunOperationAsync(async token =>
-            {
-                await viewModel.SaveSelectedDraftAsync(token);
-            });
-        }
-        catch (Exception exception)
-        {
-            MessageBox.Show(this, exception.Message, "下書き保存失敗");
-        }
+        await RunOperationAsync(token => viewModel.SaveDraftsAsync(token));
     }
 
     private async Task RunOperationAsync(Func<CancellationToken, Task> operation)

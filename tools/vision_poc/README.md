@@ -660,7 +660,7 @@ python -m tools.vision_poc.jacket_reference_catalog ingest `
 
 coverageは `coverage` subcommandで `jacket_catalog_song_coverage.csv`、`jacket_catalog_coverage_summary.json`、`jacket_catalog_coverage.md` を `data/` 配下へ生成します。GP対象songを `referenced` / `needs_review` / `uncollected` / `unresolved` のどれかへ1回だけ数え、候補を確定songへ昇格しません。current master/GP/current extractorを満たす `auto_confirmed` / `manual_confirmed` referenceだけをM5 jacket matcherへ供給し、`rejected`、orphan、旧extractor、不正永続featureは除外します。
 
-review projectionはversion 4のcurrent-only JSONです。catalog SQLite tableをC#側で直接解釈せず、master/catalogをstrict read-onlyで検査し、current/stored review state、revision、候補、manual provenance、append-only history、version付きunresolved candidate evaluationを投影します。`migration_required`、`read_only`、`manual_review_v2`など旧catalog capability fieldは出しません。C# loaderもprojection version 4とcatalog schema version 1だけを受け入れます。
+review projectionはversion 5のcurrent-only JSONです。catalog SQLite tableをC#側で直接解釈せず、master/catalogをstrict read-onlyで検査し、current/stored review state、revision、候補、manual provenance、append-only history、検証済みsource image path、version付きunresolved candidate evaluationを投影します。`migration_required`、`read_only`、`manual_review_v2`など旧catalog capability fieldは出しません。C# loaderもprojection version 5とcatalog schema version 1だけを受け入れます。
 
 ```powershell
 python -m tools.vision_poc.jacket_catalog_review_projection `

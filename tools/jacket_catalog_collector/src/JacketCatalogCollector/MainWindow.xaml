@@ -217,11 +217,9 @@
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
                             </Grid.RowDefinitions>
                             <DockPanel>
-                                <Button DockPanel.Dock="Right" Content="下書きを保存"
+                                <Button DockPanel.Dock="Right" Content="未保存の下書きを保存"
                                         Style="{StaticResource PrimaryButton}"
                                         Click="SaveDraft_Click" />
                                 <StackPanel>
@@ -230,79 +228,108 @@
                                                Foreground="#5F6B7A" />
                                 </StackPanel>
                             </DockPanel>
-                            <TextBlock Grid.Row="1" Margin="0,10,0,2">
-                                <Run Text="対象 observation: " />
-                                <Run Text="{Binding SelectedManualReviewRow.ObservationId, Mode=OneWay}" />
-                            </TextBlock>
-                            <Grid Grid.Row="2" Margin="0,0,0,6">
+                            <Grid Grid.Row="1" Margin="0,10,0,0">
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="160" />
-                                    <ColumnDefinition Width="280" />
                                     <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="220" />
+                                    <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
-                                <StackPanel>
-                                    <TextBlock Text="状態" />
-                                    <ComboBox ItemsSource="{Binding ManualReviewStatusOptions}"
-                                              SelectedItem="{Binding SelectedManualReviewRow.Status, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                <StackPanel Margin="0,0,8,0">
+                                    <TextBlock Text="選択行のタイトルROI" FontWeight="SemiBold" />
+                                    <Border Background="White" BorderBrush="#D5DCE5" BorderThickness="1" Padding="4">
+                                        <Image Source="{Binding SelectedManualReviewRow.TitleRoiImagePath, Converter={StaticResource ManualReviewRoiImageConverter}, ConverterParameter=title}"
+                                               Height="82" Stretch="Uniform" />
+                                    </Border>
                                 </StackPanel>
-                                <StackPanel Grid.Column="1" Margin="10,0,0,0">
-                                    <TextBlock Text="truth song" />
-                                    <ComboBox ItemsSource="{Binding SongChoices}"
-                                              SelectedValuePath="SongId"
-                                              SelectedValue="{Binding SelectedManualReviewRow.TruthSongId, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                              IsEditable="False">
-                                        <ComboBox.ItemTemplate>
-                                            <DataTemplate>
-                                                <StackPanel>
-                                                    <TextBlock Text="{Binding Title}" />
-                                                    <TextBlock Text="{Binding Artist}" Foreground="#5F6B7A" FontSize="11" />
-                                                </StackPanel>
-                                            </DataTemplate>
-                                        </ComboBox.ItemTemplate>
-                                    </ComboBox>
-                                </StackPanel>
-                                <StackPanel Grid.Column="2" Margin="10,0,0,0">
-                                    <TextBlock Text="notes" />
-                                    <TextBox Text="{Binding SelectedManualReviewRow.Notes, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                             MinHeight="52" AcceptsReturn="True" TextWrapping="Wrap" />
-                                </StackPanel>
-                                <StackPanel Grid.Column="3" Margin="10,0,0,0">
-                                    <TextBlock Text="Master検索（title / alias / artist / song ID）" />
-                                    <TextBox Text="{Binding SongSearch, UpdateSourceTrigger=PropertyChanged}" />
-                                    <TextBlock Text="{Binding SelectedManualReviewRow.TruthSongDisplay, Mode=OneWay}"
-                                               Foreground="#5F6B7A" TextWrapping="Wrap" />
+                                <StackPanel Grid.Column="1" Margin="8,0,0,0">
+                                    <TextBlock Text="選択行のアーティストROI" FontWeight="SemiBold" />
+                                    <Border Background="White" BorderBrush="#D5DCE5" BorderThickness="1" Padding="4">
+                                        <Image Source="{Binding SelectedManualReviewRow.ArtistRoiImagePath, Converter={StaticResource ManualReviewRoiImageConverter}, ConverterParameter=artist}"
+                                               Height="82" Stretch="Uniform" />
+                                    </Border>
                                 </StackPanel>
                             </Grid>
-                            <TextBlock Grid.Row="3" Text="{Binding SelectedManualReviewRow.DraftStateDisplay, Mode=OneWay}"
-                                       Foreground="#C62828" TextWrapping="Wrap" />
                         </Grid>
                     </Border>
                     <DataGrid Grid.Row="1" Margin="8" ItemsSource="{Binding ManualReviewRows}"
                               SelectedItem="{Binding SelectedManualReviewRow, Mode=TwoWay}"
-                              IsReadOnly="True" AutoGenerateColumns="False" SelectionMode="Single">
+                              IsReadOnly="False" AutoGenerateColumns="False" SelectionMode="Single"
+                              RowHeight="132" CanUserAddRows="False">
                         <DataGrid.Columns>
-                            <DataGridTemplateColumn Header="タイトルROI（内部切り出し画像）" Width="170">
+                            <DataGridTemplateColumn Header="タイトルROI" Width="165" IsReadOnly="True">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
                                         <Image Source="{Binding TitleRoiImagePath, Converter={StaticResource ManualReviewRoiImageConverter}, ConverterParameter=title}"
-                                               Width="150" Height="54" Stretch="Uniform" />
+                                               Width="155" Height="76" Stretch="Uniform" />
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
                             </DataGridTemplateColumn>
-                            <DataGridTemplateColumn Header="アーティストROI（内部切り出し画像）" Width="180">
+                            <DataGridTemplateColumn Header="アーティストROI" Width="175" IsReadOnly="True">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
                                         <Image Source="{Binding ArtistRoiImagePath, Converter={StaticResource ManualReviewRoiImageConverter}, ConverterParameter=artist}"
-                                               Width="160" Height="54" Stretch="Uniform" />
+                                               Width="165" Height="76" Stretch="Uniform" />
                                     </DataTemplate>
                                 </DataGridTemplateColumn.CellTemplate>
                             </DataGridTemplateColumn>
-                            <DataGridTextColumn Header="status" Binding="{Binding Status}" Width="110" />
-                            <DataGridTextColumn Header="truth song" Binding="{Binding TruthSongDisplay}" Width="2*" />
-                            <DataGridTextColumn Header="notes" Binding="{Binding Notes}" Width="2*" />
-                            <DataGridTextColumn Header="保存状態 / 入力エラー" Binding="{Binding DraftStateDisplay}" Width="190" />
-                            <DataGridTextColumn Header="observation_id" Binding="{Binding ObservationId}" Width="*" />
+                            <DataGridTemplateColumn Header="状態" Width="105">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <ComboBox ItemsSource="{Binding StatusOptions}"
+                                                  DisplayMemberPath="Display"
+                                                  SelectedValuePath="Value"
+                                                  SelectedValue="{Binding Status, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                            <DataGridTemplateColumn Header="確定曲（Master検索）" Width="290">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <StackPanel>
+                                            <TextBox Text="{Binding SongSearch, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                     ToolTip="title / alias / artist / song ID" />
+                                            <ComboBox ItemsSource="{Binding SongChoices}"
+                                                      SelectedItem="{Binding SelectedSearchResult, Mode=TwoWay}"
+                                                      IsEditable="False">
+                                                <ComboBox.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <StackPanel>
+                                                            <TextBlock Text="{Binding Title}" />
+                                                            <TextBlock Text="{Binding Artist}" Foreground="#5F6B7A" FontSize="11" />
+                                                        </StackPanel>
+                                                    </DataTemplate>
+                                                </ComboBox.ItemTemplate>
+                                            </ComboBox>
+                                            <TextBlock Text="{Binding TruthSongDisplay, Mode=OneWay}"
+                                                       Foreground="#5F6B7A" FontSize="11" TextWrapping="Wrap" />
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                            <DataGridTemplateColumn Header="メモ" Width="150">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBox Text="{Binding Notes, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                 MinHeight="100" AcceptsReturn="True" TextWrapping="Wrap" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                            <DataGridTemplateColumn Header="保存状態 / 入力エラー" Width="165" IsReadOnly="True">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding DraftStateDisplay}" Foreground="#C62828"
+                                                   TextWrapping="Wrap" Margin="4" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
+                            <DataGridTemplateColumn Header="observation_id" Width="100" IsReadOnly="True">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <TextBox Text="{Binding ObservationIdShort, Mode=OneWay}" ToolTip="{Binding ObservationId}"
+                                                 IsReadOnly="True" BorderThickness="0" Background="Transparent"
+                                                 FontFamily="Consolas" Margin="4" />
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
                         </DataGrid.Columns>
                     </DataGrid>
                 </Grid>

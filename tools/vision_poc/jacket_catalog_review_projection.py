@@ -11,7 +11,7 @@ from typing import Any
 from tools.vision_poc import jacket_reference_catalog as catalog
 from tools.vision_poc import title_artist_evaluation, unresolved_candidate_evaluation
 
-PROJECTION_SCHEMA_VERSION = 4
+PROJECTION_SCHEMA_VERSION = 5
 
 
 def _database_fingerprint(path: Path) -> tuple[int, int, int, str]:
@@ -104,19 +104,28 @@ def build_review_projection(
             for row in connection.execute("SELECT * FROM jacket_references ORDER BY reference_id")
         ]
         evaluation_root = artifact_root or Path("__artifact_root_not_configured__")
+        evaluation_catalog_identity = title_artist_evaluation.CatalogIdentity(
+            catalog_metadata["catalog_identity"],
+            int(catalog_metadata["schema_version"]),
+            catalog_metadata["created_at"],
+        )
         candidate_evaluations = unresolved_candidate_evaluation.evaluate_references(
             reference_rows,
             artifact_root=evaluation_root,
             master=master,
-            catalog_identity=title_artist_evaluation.CatalogIdentity(
-                catalog_metadata["catalog_identity"],
-                int(catalog_metadata["schema_version"]),
-                catalog_metadata["created_at"],
-            ),
+            catalog_identity=evaluation_catalog_identity,
             extractor=extractor,
         )
+        source_image_paths = unresolved_candidate_evaluation.resolve_source_image_paths(
+            reference_rows,
+            artifact_root=evaluation_root,
+            master=master,
+            catalog_identity=evaluation_catalog_identity,
+        )
         review_references: list[dict[str, Any]] = []
-        for row, candidate_evaluation in zip(reference_rows, candidate_evaluations, strict=True):
+        for row, candidate_evaluation, source_image_path in zip(
+            reference_rows, candidate_evaluations, source_image_paths, strict=True
+        ):
             status, reason = catalog._reference_state(row, master)
             assigned_song_id = str(row["song_id"] or "")
             assigned_song = songs_by_id.get(assigned_song_id)
@@ -145,6 +154,7 @@ def build_review_projection(
                 },
                 "candidates": candidates_by_reference.get(str(row["reference_id"]), []),
                 "candidate_evaluation": candidate_evaluation,
+                "source_image_path": source_image_path,
             }
             item.update(
                 {

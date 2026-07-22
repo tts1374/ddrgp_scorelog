@@ -49,7 +49,7 @@ detectorの内部状態は通常画面へ表示しません。同じ画像が連
 
 ## Projection and manual review contract
 
-UIはcatalog SQLite tableを直接読みません。Python projectionがmasterとcurrent catalog schema version 1をstrictかつread-onlyで検証し、UTF-8 stdoutへprojection version 4の単一JSONを出します。temporary projection fileは作らず、stderrは診断専用です。旧catalog schemaや旧projection versionはfallback表示せずunsupportedとして拒否します。
+UIはcatalog SQLite tableを直接読みません。Python projectionがmasterとcurrent catalog schema version 1をstrictかつread-onlyで検証し、UTF-8 stdoutへprojection version 5の単一JSONを出します。temporary projection fileは作らず、stderrは診断専用です。旧catalog schemaや旧projection versionはfallback表示せずunsupportedとして拒否します。
 
 ```powershell
 python -m tools.vision_poc.jacket_catalog_review_projection `
@@ -58,7 +58,7 @@ python -m tools.vision_poc.jacket_catalog_review_projection `
   --artifact-root data\jacket_catalog_collector
 ```
 
-top-level必須fieldは `projection_schema_version`、`master`、`catalog`、`coverage`、`songs`、`review_references` です。catalog objectはidentity、schema version 1、created-at、current feature extractorを持ち、旧互換専用のmigration/capability fieldは持ちません。song rowはcanonical title/artistに加えてtitle aliasの一覧を持ち、未レビュー下書きのtruth song検索へ利用します。review rowのversion付き `candidate_evaluation` は、persisted status/revision、observation ID、jacket preview path、OCR title/artistとconfidence、候補song/reason、failure分類を持ちます。C# loaderは全object/arrayの未知field、必須field、型、coverage/review status、候補/history、candidate分類、revision連続性、schema、分母整合をstrictに検査します。unsupported version、空/truncated stdout、Python非0終了は部分表示しません。`reason`、`note`、`candidate.reason`、`observation_status` はopaque診断文字列として保持します。
+top-level必須fieldは `projection_schema_version`、`master`、`catalog`、`coverage`、`songs`、`review_references` です。catalog objectはidentity、schema version 1、created-at、current feature extractorを持ち、旧互換専用のmigration/capability fieldは持ちません。song rowはcanonical title/artistに加えて必須のtitle alias一覧を持ち、未レビュー下書きのtruth song検索へ利用します。review rowはartifact/checkpoint照合済みのnullable `source_image_path` とversion付き `candidate_evaluation` を持ちます。`candidate_evaluation` はpersisted status/revision、observation ID、jacket preview path、OCR title/artistとconfidence、候補song/reason、failure分類を持ちます。C# loaderは全object/arrayの未知field、必須field、型、coverage/review status、候補/history、candidate分類、revision連続性、schema、分母整合をstrictに検査します。unsupported version、空/truncated stdout、Python非0終了は部分表示しません。`reason`、`note`、`candidate.reason`、`observation_status` はopaque診断文字列として保持します。
 
 表示とfilterは、GP対象songを `referenced` / `needs_review` / `uncollected` / `unresolved` の同じ分母・status histogramで数えます。orphan、候補なし未割当観測、旧extractor、master drift、不正manual featureを派生状態で表示しても、保存済みstatus、revision、historyは変更しません。生成中にmaster/catalogのfile identity、size、mtime、hashが変わった場合はsnapshot混在を拒否します。
 

@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
 using System.Runtime.CompilerServices;
@@ -14,6 +15,8 @@ public static class ManualReviewDraftStatuses
     public static bool IsValid(string? status) =>
         status is not null && Values.Contains(status, StringComparer.Ordinal);
 }
+
+public sealed record ManualReviewStatusOption(string Value, string Display);
 
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public sealed class ManualReviewDraft
@@ -193,11 +196,14 @@ public sealed class JsonManualReviewDraftStore(string draftPath) : IManualReview
 public sealed class ManualReviewDraftRow : INotifyPropertyChanged
 {
     private readonly IReadOnlyDictionary<string, ProjectionSong> songsById;
+    private readonly IReadOnlyList<ProjectionSong> songs;
     private string status;
     private string? truthSongId;
     private string notes;
     private bool isSaved;
     private string validationError = "";
+    private string songSearch = "";
+    private ProjectionSong? selectedSearchResult;
 
     public ManualReviewDraftRow(
         ReviewReference reference,
@@ -206,23 +212,66 @@ public sealed class ManualReviewDraftRow : INotifyPropertyChanged
     {
         Reference = reference;
         this.songsById = songsById;
+        songs = songsById.Values.ToList();
         ObservationId = reference.CandidateEvaluation.ObservationId;
         status = draft?.Status ?? "unreviewed";
         truthSongId = draft?.TruthSongId;
         notes = draft?.Notes ?? "";
         isSaved = draft is not null;
-        SourceImagePath = GetSourceImagePath(reference.CandidateEvaluation.JacketPreviewPath);
+        SourceImagePath = reference.SourceImagePath;
+        ApplySongSearch();
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
     public ReviewReference Reference { get; }
     public string ObservationId { get; }
+    public string ObservationIdShort => ObservationId.Length <= 12
+        ? ObservationId
+        : $"{ObservationId[..12]}…";
     public string ReferenceId => Reference.ReferenceId;
     public string StoredStatus => Reference.StoredStatus;
     public string? SourceImagePath { get; }
     public string? TitleRoiImagePath => SourceImagePath;
     public string? ArtistRoiImagePath => SourceImagePath;
+    public bool IsSaved => isSaved;
+    public ObservableCollection<ProjectionSong> SongChoices { get; } = [];
+    public IReadOnlyList<ManualReviewStatusOption> StatusOptions { get; } =
+    [
+        new("unreviewed", "未レビュー"),
+        new("confirmed", "確定"),
+        new("rejected", "却下"),
+        new("hold", "保留"),
+    ];
+
+    public string SongSearch
+    {
+        get => songSearch;
+        set
+        {
+            if (SetField(ref songSearch, value ?? ""))
+            {
+                ApplySongSearch();
+            }
+        }
+    }
+
+    public ProjectionSong? SelectedSearchResult
+    {
+        get => selectedSearchResult;
+        set
+        {
+            if (value is null)
+            {
+                SetField(ref selectedSearchResult, null);
+                return;
+            }
+            if (SetField(ref selectedSearchResult, value))
+            {
+                TruthSongId = value.SongId;
+            }
+        }
+    }
 
     public string Status
     {
@@ -340,26 +389,67 @@ public sealed class ManualReviewDraftRow : INotifyPropertyChanged
     public void MarkSaved()
     {
         isSaved = true;
+        OnPropertyChanged(nameof(IsSaved));
         ValidationError = "";
         OnPropertyChanged(nameof(DraftStateDisplay));
     }
 
     public void SetValidationError(string message) => ValidationError = message;
 
-    private static string? GetSourceImagePath(string? jacketPreviewPath)
+    private void ApplySongSearch()
     {
-        if (string.IsNullOrWhiteSpace(jacketPreviewPath))
+        SongChoices.Clear();
+        var query = SongSearch.Trim();
+        foreach (var song in songs
+                     .Select(song => (Song: song, Rank: SongSearchRank(song, query)))
+                     .Where(item => item.Rank is not null)
+                     .OrderBy(item => item.Rank)
+                     .ThenBy(item => item.Song.Title, StringComparer.OrdinalIgnoreCase)
+                     .ThenBy(item => item.Song.SongId, StringComparer.Ordinal))
         {
-            return null;
+            SongChoices.Add(song.Song);
         }
-        var previewPath = Path.GetFullPath(jacketPreviewPath);
-        var directory = Path.GetDirectoryName(previewPath);
-        return directory is null ? null : Path.Combine(directory, "source.png");
+        OnPropertyChanged(nameof(SelectedSearchResult));
+    }
+
+    private static int? SongSearchRank(ProjectionSong song, string query)
+    {
+        if (query.Length == 0)
+        {
+            return 0;
+        }
+        if (string.Equals(song.Title, query, StringComparison.OrdinalIgnoreCase))
+        {
+            return 0;
+        }
+        if (song.Aliases.Any(alias =>
+                string.Equals(alias, query, StringComparison.OrdinalIgnoreCase)))
+        {
+            return 1;
+        }
+        if (song.Title.StartsWith(query, StringComparison.OrdinalIgnoreCase))
+        {
+            return 2;
+        }
+        if (song.Title.Contains(query, StringComparison.OrdinalIgnoreCase))
+        {
+            return 3;
+        }
+        if (song.Artist.Contains(query, StringComparison.OrdinalIgnoreCase))
+        {
+            return 4;
+        }
+        if (song.SongId.Contains(query, StringComparison.OrdinalIgnoreCase))
+        {
+            return 5;
+        }
+        return null;
     }
 
     private void MarkDirty()
     {
         isSaved = false;
+        OnPropertyChanged(nameof(IsSaved));
         ValidationError = "";
         OnPropertyChanged(nameof(DraftStateDisplay));
     }

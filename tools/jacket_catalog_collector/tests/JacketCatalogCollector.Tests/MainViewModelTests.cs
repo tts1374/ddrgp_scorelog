@@ -284,6 +284,26 @@ public sealed class MainViewModelTests
     }
 
     [Fact]
+    public async Task RowSearchSelectionSurvivesChangingSearchText()
+    {
+        var viewModel = new MainViewModel(
+            new StubMasterUpdateService(),
+            new StubProjectionService(Projection()),
+            manualReviewDraftStore: new StubManualReviewDraftStore());
+
+        await viewModel.LoadProjectionAsync("master.sqlite", "catalog.sqlite");
+        var row = Assert.Single(viewModel.ManualReviewRows);
+        row.SongSearch = "Beta";
+        row.SelectedSearchResult = Assert.Single(row.SongChoices);
+
+        row.SongSearch = "Alpha";
+
+        Assert.Equal("song-2", row.TruthSongId);
+        Assert.Equal("confirmed", row.Status);
+        Assert.Contains("Beta", row.TruthSongDisplay, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task ConfirmedDraftWithoutTruthSongIsRejectedWithoutWriting()
     {
         var store = new StubManualReviewDraftStore();
@@ -296,14 +316,14 @@ public sealed class MainViewModelTests
         viewModel.SelectedManualReviewRow = Assert.Single(viewModel.ManualReviewRows);
         viewModel.SelectedManualReviewRow.Status = "confirmed";
 
-        Assert.False(await viewModel.SaveSelectedDraftAsync());
+        Assert.False(await viewModel.SaveDraftsAsync());
         Assert.Equal(0, store.SaveCalls);
         Assert.Contains("truth song", viewModel.StatusMessage, StringComparison.Ordinal);
         Assert.Contains("入力エラー", viewModel.SelectedManualReviewRow.DraftStateDisplay,
             StringComparison.Ordinal);
 
         viewModel.SelectedManualReviewRow.Status = "invalid";
-        Assert.False(await viewModel.SaveSelectedDraftAsync());
+        Assert.False(await viewModel.SaveDraftsAsync());
         Assert.Equal(0, store.SaveCalls);
     }
 
@@ -328,7 +348,7 @@ public sealed class MainViewModelTests
             viewModel.SelectedManualReviewRow.Status = "hold";
             viewModel.SelectedManualReviewRow.Notes = "keep this draft";
 
-            Assert.True(await viewModel.SaveSelectedDraftAsync());
+            Assert.True(await viewModel.SaveDraftsAsync());
             Assert.Equal("catalog sentinel", File.ReadAllText(catalogPath));
             Assert.Empty(workflow.Mutations);
             Assert.Equal("needs_review", projection.ReviewReferences[0].StoredStatus);
@@ -375,6 +395,54 @@ public sealed class MainViewModelTests
         Assert.Equal("song-2", viewModel.SongChoices.First().SongId);
     }
 
+    [Fact]
+    public async Task SummaryChangesImmediatelyAndSavePersistsEveryDirtyRow()
+    {
+        var projection = ProjectionWithVisibilityStates();
+        var store = new StubManualReviewDraftStore();
+        var viewModel = new MainViewModel(
+            new StubMasterUpdateService(),
+            new StubProjectionService(projection),
+            manualReviewDraftStore: store);
+        await viewModel.LoadProjectionAsync("master.sqlite", "catalog.sqlite");
+
+        Assert.Contains("未保存 4 件", viewModel.ManualReviewSummary, StringComparison.Ordinal);
+        foreach (var row in viewModel.ManualReviewRows)
+        {
+            row.Status = "hold";
+            row.Notes = $"note for {row.ObservationId}";
+        }
+
+        Assert.True(await viewModel.SaveDraftsAsync());
+
+        Assert.Equal(4, store.Drafts.Count);
+        Assert.All(viewModel.ManualReviewRows, row => Assert.True(row.IsSaved));
+        Assert.Contains("保存済み 4 件", viewModel.ManualReviewSummary, StringComparison.Ordinal);
+        Assert.Contains("未保存 0 件", viewModel.ManualReviewSummary, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task OneInvalidDirtyRowBlocksTheWholeDraftSaveAndShowsItsError()
+    {
+        var projection = ProjectionWithVisibilityStates();
+        var store = new StubManualReviewDraftStore();
+        var viewModel = new MainViewModel(
+            new StubMasterUpdateService(),
+            new StubProjectionService(projection),
+            manualReviewDraftStore: store);
+        await viewModel.LoadProjectionAsync("master.sqlite", "catalog.sqlite");
+        var invalid = viewModel.ManualReviewRows[0];
+        invalid.Status = "confirmed";
+        viewModel.ManualReviewRows[1].Notes = "also dirty";
+
+        Assert.False(await viewModel.SaveDraftsAsync());
+
+        Assert.Equal(0, store.SaveCalls);
+        Assert.Contains("入力エラー", invalid.DraftStateDisplay, StringComparison.Ordinal);
+        Assert.Contains("truth song", invalid.ValidationError, StringComparison.Ordinal);
+        Assert.False(viewModel.ManualReviewRows[1].IsSaved);
+    }
+
     private static ReviewProjection ProjectionWithVisibilityStates()
     {
         var projection = Projection();
@@ -413,6 +481,7 @@ public sealed class MainViewModelTests
         string storedStatus,
         string observationId) => new()
         {
+            SourceImagePath = @"C:\data\source.png",
             ReferenceId = referenceId,
             ReviewStatus = reviewStatus,
             Reason = "needs review",
@@ -460,7 +529,7 @@ public sealed class MainViewModelTests
 
     private static ReviewProjection Projection() => new()
     {
-        ProjectionSchemaVersion = 4,
+        ProjectionSchemaVersion = 5,
         Master = new ProjectionMaster
         {
             Path = "master.sqlite",
@@ -505,6 +574,7 @@ public sealed class MainViewModelTests
         [
             new ReviewReference
             {
+                SourceImagePath = @"C:\data\source.png",
                 ReferenceId = "ref-1", ReviewStatus = "needs_review", Reason = "opaque reason",
                 ObservedTitle = "Alpha", ObservedArtist = "?", ObservationStatus = "ok",
                 MasterDrift = false, FeatureExtractorVersion = "m5-jacket-v2", Candidates = [],

@@ -127,17 +127,23 @@ public sealed class MainWindowXamlTests
             .Where(element => element.Name.LocalName is "DataGridTextColumn" or "DataGridTemplateColumn")
             .Select(element => element.Attribute("Header")?.Value)
             .ToList();
+        var manualReviewGrid = Assert.Single(
+            document.Descendants().Where(element => element.Name.LocalName == "DataGrid"),
+            element => element.Attribute("ItemsSource")?.Value.Contains(
+                "ManualReviewRows", StringComparison.Ordinal) == true);
 
         Assert.Contains("未レビュー", tabs);
         Assert.DoesNotContain("レビュー", tabs);
         Assert.Contains(bindings, value => value.Contains(
             "ManualReviewRows", StringComparison.Ordinal));
         Assert.Contains(bindings, value => value.Contains(
+            "{Binding Status,", StringComparison.Ordinal));
+        Assert.Contains(bindings, value => value.Contains(
+            "SelectedSearchResult", StringComparison.Ordinal));
+        Assert.Contains(bindings, value => value.Contains(
+            "{Binding Notes,", StringComparison.Ordinal));
+        Assert.DoesNotContain(bindings, value => value.Contains(
             "SelectedManualReviewRow.Status", StringComparison.Ordinal));
-        Assert.Contains(bindings, value => value.Contains(
-            "SelectedManualReviewRow.TruthSongId", StringComparison.Ordinal));
-        Assert.Contains(bindings, value => value.Contains(
-            "SelectedManualReviewRow.Notes", StringComparison.Ordinal));
         Assert.Contains(bindings, value => value.Contains(
             "TitleRoiImagePath", StringComparison.Ordinal));
         Assert.Contains(bindings, value => value.Contains(
@@ -146,9 +152,18 @@ public sealed class MainWindowXamlTests
             "SongSearch", StringComparison.Ordinal));
         Assert.Contains(bindings, value => value.Contains(
             "SongChoices", StringComparison.Ordinal));
-        Assert.Contains("下書きを保存", buttons);
-        Assert.Contains("タイトルROI（内部切り出し画像）", headers);
-        Assert.Contains("アーティストROI（内部切り出し画像）", headers);
+        Assert.Contains("未保存の下書きを保存", buttons);
+        Assert.Contains("タイトルROI", headers);
+        Assert.Contains("アーティストROI", headers);
+        Assert.Contains("状態", headers);
+        Assert.Contains("確定曲（Master検索）", headers);
+        Assert.Contains("メモ", headers);
+        Assert.Contains(bindings, value => value.Contains(
+            "ObservationIdShort", StringComparison.Ordinal));
+        Assert.Contains(bindings, value => value.Contains(
+            "ObservationIdShort, Mode=OneWay", StringComparison.Ordinal));
+        Assert.Equal("False", manualReviewGrid.Attribute("IsReadOnly")?.Value);
+        Assert.Equal("132", manualReviewGrid.Attribute("RowHeight")?.Value);
         Assert.DoesNotContain("確定", buttons);
         Assert.DoesNotContain("再割当", buttons);
         Assert.DoesNotContain("却下", buttons);
