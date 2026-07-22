@@ -25,9 +25,11 @@ appは実行ファイルの配置場所からrepository rootを解決し、proce
 2. DDR GRAND PRIXを曲選択画面にし、`ウィンドウを再検索` を押す。
 3. 左下の一覧から表示中のDDR GPを1件選び、previewを確認して `収集を開始` を押す。
 4. DDR GPで曲を移動し、`新しいジャケットを検出` と表示されたら `このジャケットを保存` を押す。session単位の自動保存を使う場合だけ、開始後に既定OFFのcheckboxを明示的に有効化する。
-5. `このジャケットは保存済み` と表示されたら、DDR GPで次の曲へ移動する。終了時は `収集を終了` を押す。
+5. `このジャケットは保存済み` と表示されたら、DDR GPで次の曲へ移動する。終了時は `収集を終了` を押す。開始済みのframe処理と保存処理がdrainされた後、同じsessionのpendingだけが最終catalog retryされ、結果後にprojectionが再読込される。
 
 detectorの内部状態は通常画面へ表示しません。同じ画像が連続する間も未保存のstable候補は保存可能なまま維持し、保存後は次の曲へ移動する案内を表示します。自動保存は起動時・fresh session・resumeのたびにOFFへ戻り、端末設定へ保存しません。session再開とcatalog retryは `詳細・復旧操作`、master更新とtitle/artist評価は `管理・設定` にあります。
+
+`収集を終了`以外の停止（window終了、resize、device loss、capture failure、例外、collectorのwindow close）では安全停止だけを行い、自動catalog retryは開始しません。artifact、source/crop、manifest、checkpointとpending件数は保持されます。`詳細・復旧操作`へcompatibleなsession IDを入力して `catalog retry` を押すと、captureやwindow再選択を行わず、そのsessionのidentityとartifactを検証してからpendingだけを明示retryできます。drift、非互換checkpoint、artifact破損はcatalogを変更せず拒否します。
 
 ## Fixed master/catalog paths
 

@@ -215,6 +215,42 @@ public sealed class CaptureObservationControllerTests
     }
 
     [Fact]
+    public async Task Explicit_stop_runs_catalog_finalizer_after_safe_observation_stop()
+    {
+        var operations = new FakeOperations();
+
+        await operations.CreateController(withFinalizer: true).StopAsync();
+
+        Assert.Equal(
+            ["capture.stop", "observation.stop", "observation.finalize"],
+            operations.Calls);
+    }
+
+    [Fact]
+    public async Task Abort_does_not_run_catalog_finalizer()
+    {
+        var operations = new FakeOperations();
+
+        await operations.CreateController(withFinalizer: true).AbortAsync();
+
+        Assert.Equal(["capture.stop", "observation.stop"], operations.Calls);
+    }
+
+    [Fact]
+    public async Task Capture_stop_failure_does_not_run_catalog_finalizer()
+    {
+        var operations = new FakeOperations
+        {
+            StopCaptureException = new InvalidOperationException("capture stop failed"),
+        };
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => operations.CreateController(withFinalizer: true).StopAsync());
+
+        Assert.Equal(["capture.stop", "observation.stop"], operations.Calls);
+    }
+
+    [Fact]
     public async Task Cancellation_before_start_has_no_side_effects()
     {
         var operations = new FakeOperations();
@@ -261,14 +297,15 @@ public sealed class CaptureObservationControllerTests
         public TaskCompletionSource ResumeObservationRelease { get; } =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        public CaptureObservationController CreateController() =>
+        public CaptureObservationController CreateController(bool withFinalizer = false) =>
             new(
                 StartObservationAsync,
                 ResumeObservationAsync,
                 StopObservationAsync,
                 StartCaptureAsync,
                 StopCaptureAsync,
-                () => CaptureState);
+                () => CaptureState,
+                withFinalizer ? FinalizeObservationAsync : null);
 
         private async Task StartObservationAsync(
             WindowCandidate candidate,
@@ -297,6 +334,12 @@ public sealed class CaptureObservationControllerTests
         {
             Calls.Add("observation.stop");
             ActiveObservation = false;
+            return Task.CompletedTask;
+        }
+
+        private Task FinalizeObservationAsync(CancellationToken cancellationToken)
+        {
+            Calls.Add("observation.finalize");
             return Task.CompletedTask;
         }
 

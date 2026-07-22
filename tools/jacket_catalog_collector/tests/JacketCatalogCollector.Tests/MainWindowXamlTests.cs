@@ -49,6 +49,15 @@ public sealed class MainWindowXamlTests
         Assert.Contains("収集を開始", buttonLabels);
         Assert.Contains("収集を終了", buttonLabels);
         Assert.Contains(
+            document.Descendants().Where(element => element.Name.LocalName == "Button"),
+            element => element.Attribute("Content")?.Value == "catalog retry"
+                && element.Attribute("IsEnabled")?.Value
+                    == "{Binding Observation.CanRetryCatalog}");
+        Assert.Contains(
+            document.Descendants().Where(element => element.Name.LocalName == "TextBlock"),
+            element => element.Attribute("Text")?.Value
+                == "{Binding Observation.CollectionResult}");
+        Assert.Contains(
             document.Descendants().Where(element => element.Name.LocalName == "CheckBox"),
             element => element.Attribute("Content")?.Value
                     == "このsessionで保存前照合済み候補を自動保存する（既定OFF）"

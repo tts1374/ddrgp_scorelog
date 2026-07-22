@@ -10,6 +10,8 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
     private readonly ICaptureDispatcher dispatcher;
     private readonly InformationTitleLineDetector informationDetector;
     private readonly object frameSync = new();
+    private readonly SemaphoreSlim saveGate = new(1, 1);
+    private readonly SemaphoreSlim stopGate = new(1, 1);
     private Task frameTail = Task.CompletedTask;
     private RawCaptureFrame? pendingFrame;
     private bool frameWorkerRunning;
@@ -28,6 +30,10 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
     private string? lastCatalogReceipt;
     private bool captureEnded = true;
     private bool autoSaveEnabled;
+    private bool stopCompleted;
+    private CatalogRetrySummary? lastCatalogRetrySummary;
+    private readonly Dictionary<string, CatalogIngestDisposition> catalogOutcomeByObservation =
+        new(StringComparer.Ordinal);
     private readonly HashSet<string> catalogSavedIdentityKeys = new(StringComparer.Ordinal);
     private readonly HashSet<string> autoSaveAttemptedIdentityKeys = new(StringComparer.Ordinal);
     private readonly Dictionary<string, ObservationSavePreflightDisposition> savePreflightByIdentity =
@@ -80,6 +86,8 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
     }
 
     public string SessionId => sessionId ?? "未開始";
+    public CatalogRetrySummary? LastCatalogRetrySummary => lastCatalogRetrySummary;
+    public string CollectionResult => lastCatalogRetrySummary?.DisplayMessage ?? "—";
     public string ResumeSessionId
     {
         get => resumeSessionId;
@@ -144,6 +152,8 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
         && (!session.RequiresCompositeIdentity || stableCandidate.CompositeIdentity is not null)
         && !IsSaved(CandidateIdentityKey(stableCandidate));
     public bool CanResume => !session.IsActive && ResumeSessionId.Trim().Length > 0;
+    public bool CanRetryCatalog => !session.IsActive
+        && (session.Checkpoint is not null || ResumeSessionId.Trim().Length > 0);
     public string CollectionStateTitle
     {
         get
@@ -246,6 +256,7 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
         sessionId = identity.SessionId;
         lastCatalogReceipt = null;
         ResetSavePreflightState();
+        ResetSessionResultState();
         StatusTitle = "観測session開始";
         StatusMessage =
             "自動保存は既定OFFです。明示的に有効化したsessionだけ保存前照合後に自動保存します。";
@@ -254,6 +265,7 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
         OnPropertyChanged(nameof(CanAdopt));
         OnPropertyChanged(nameof(CanResume));
         OnPropertyChanged(nameof(CanConfigureAutoSave));
+        OnPropertyChanged(nameof(CanRetryCatalog));
     }
 
     public async Task ResumeSessionAsync(
@@ -294,6 +306,7 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
         sessionId = result.Checkpoint.Session.SessionId;
         lastCatalogReceipt = null;
         ResetSavePreflightState();
+        ResetSessionResultState();
         StatusTitle = "観測session再開";
         StatusMessage = result.Message;
         OnPropertyChanged(nameof(SessionId));
@@ -301,17 +314,20 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
         OnPropertyChanged(nameof(CanAdopt));
         OnPropertyChanged(nameof(CanResume));
         OnPropertyChanged(nameof(CanConfigureAutoSave));
+        OnPropertyChanged(nameof(CanRetryCatalog));
     }
 
     public async Task<ObservationAdoptionResult> AdoptAsync(
         CancellationToken cancellationToken = default)
     {
-        if (captureEnded)
-        {
-            throw new InvalidOperationException("capture終了後の候補は採用できません。");
-        }
+        await saveGate.WaitAsync(cancellationToken);
+        var saveGateHeld = true;
         try
         {
+            if (IsCaptureEnded())
+            {
+                throw new InvalidOperationException("capture終了後の候補は採用できません。");
+            }
             var result = await session.AdoptLastStableAsync(cancellationToken);
             ApplyAdoptionResult(result, automatic: false);
             return result;
@@ -321,22 +337,157 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
             MarkCatalogExisting(exception.IdentityHash);
             throw;
         }
+        catch (Exception exception)
+        {
+            saveGate.Release();
+            saveGateHeld = false;
+            await StopAfterProcessingFailureAsync(exception, fromFrameWorker: false);
+            throw;
+        }
+        finally
+        {
+            if (saveGateHeld)
+            {
+                saveGate.Release();
+            }
+        }
     }
 
     public async Task<IReadOnlyList<ObservationAdoptionResult>> RetryCatalogAsync(
         CancellationToken cancellationToken = default)
     {
-        var results = await session.RetryPendingCatalogAsync(cancellationToken);
-        lastCatalogReceipt = results.Count == 0
-            ? "retry対象なし"
-            : string.Join("; ", results.Select(result => result.Catalog.Message));
-        StatusTitle = "catalog retry完了";
-        StatusMessage = lastCatalogReceipt;
-        OnPropertyChanged(nameof(LastCatalogReceipt));
-        return results;
+        await stopGate.WaitAsync(cancellationToken);
+        try
+        {
+            if (session.IsActive)
+            {
+                throw new InvalidOperationException(
+                    "収集を終了してからcatalog retryを実行してください。");
+            }
+            var results = await session.RetryPendingCatalogAsync(cancellationToken);
+            ApplyRetryResults(results);
+            SetCatalogRetrySummary(BuildCatalogRetrySummary(results));
+            return results;
+        }
+        catch (Exception exception)
+        {
+            StatusTitle = "catalog retry拒否";
+            StatusMessage = exception.Message;
+            throw;
+        }
+        finally
+        {
+            stopGate.Release();
+        }
+    }
+
+    public async Task<CatalogRetrySummary> RetryCatalogAsync(
+        ProjectionMaster master,
+        ProjectionCatalog catalog,
+        string masterPath,
+        string catalogPath,
+        CancellationToken cancellationToken = default)
+    {
+        await stopGate.WaitAsync(cancellationToken);
+        try
+        {
+            if (session.IsActive)
+            {
+                throw new InvalidOperationException(
+                    "収集を終了してからcatalog retryを実行してください。");
+            }
+            var requestedSessionId = ResumeSessionId.Trim();
+            if (session.Checkpoint is null && requestedSessionId.Length == 0)
+            {
+                throw new InvalidOperationException(
+                    "retryするsession IDを入力してください。");
+            }
+            if (requestedSessionId.Length > 0)
+            {
+                var validation = await session.PrepareCatalogRetryAsync(
+                    new ObservationCatalogRetryRequest(
+                        requestedSessionId,
+                        master.MasterVersion,
+                        master.SourceHash,
+                        catalog.CatalogIdentity,
+                        catalog.SchemaVersion,
+                        catalog.CurrentFeatureExtractorVersion,
+                        catalog.CreatedAt),
+                    masterPath,
+                    catalogPath,
+                    cancellationToken);
+                if (!validation.Compatible || validation.Checkpoint is null)
+                {
+                    throw new InvalidOperationException(validation.Message);
+                }
+                sessionId = validation.Checkpoint.Session.SessionId;
+                ResetSessionResultState();
+                OnPropertyChanged(nameof(SessionId));
+            }
+            var results = await RetryPendingCatalogWithDrainAsync(cancellationToken);
+            ApplyRetryResults(results);
+            var summary = BuildCatalogRetrySummary(results);
+            SetCatalogRetrySummary(summary);
+            return summary;
+        }
+        catch (Exception exception)
+        {
+            StatusTitle = "catalog retry拒否";
+            StatusMessage = exception.Message;
+            throw;
+        }
+        finally
+        {
+            stopGate.Release();
+        }
+    }
+
+    public async Task<CatalogRetrySummary> FinalizeCatalogAsync(
+        CancellationToken cancellationToken = default)
+    {
+        await stopGate.WaitAsync(cancellationToken);
+        try
+        {
+            await StopCoreAsync(cancellationToken);
+            IReadOnlyList<ObservationAdoptionResult> results = [];
+            Exception? retryFailure = null;
+            try
+            {
+                results = await RetryPendingCatalogWithDrainAsync(cancellationToken);
+                ApplyRetryResults(results);
+            }
+            catch (Exception exception)
+            {
+                retryFailure = exception;
+            }
+            var summary = BuildCatalogRetrySummary(results, retryFailure?.Message);
+            SetCatalogRetrySummary(summary);
+            StatusTitle = summary.IsRejected
+                ? "収集終了・catalog retry拒否"
+                : "収集終了・catalog retry完了";
+            StatusMessage = summary.DisplayMessage;
+            return summary;
+        }
+        finally
+        {
+            stopGate.Release();
+        }
     }
 
     public async Task StopAsync(CancellationToken cancellationToken = default)
+    {
+        await stopGate.WaitAsync(cancellationToken);
+        try
+        {
+            await StopCoreAsync(cancellationToken);
+        }
+        finally
+        {
+            stopGate.Release();
+        }
+    }
+
+    private async Task StopCoreAsync(CancellationToken cancellationToken)
     {
         Task pendingFrames;
         lock (frameSync)
@@ -348,18 +499,30 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
         try
         {
             await pendingFrames.WaitAsync(cancellationToken);
-            long droppedFrameCount;
-            lock (frameSync)
+            await saveGate.WaitAsync(cancellationToken);
+            saveGate.Release();
+            var stoppedNow = false;
+            if (!stopCompleted)
             {
-                droppedFrameCount = checked(
-                    persistedDroppedFrameCount
-                    + captureDroppedFrameCount
-                    + observationDroppedFrameCount);
+                long droppedFrameCount;
+                lock (frameSync)
+                {
+                    droppedFrameCount = checked(
+                        persistedDroppedFrameCount
+                        + captureDroppedFrameCount
+                        + observationDroppedFrameCount);
+                }
+                await session.UpdateDroppedFrameCountAsync(droppedFrameCount, cancellationToken);
+                await session.StopAsync(cancellationToken);
+                stopCompleted = true;
+                stoppedNow = true;
             }
-            await session.UpdateDroppedFrameCountAsync(droppedFrameCount, cancellationToken);
-            await session.StopAsync(cancellationToken);
-            StatusTitle = "観測session停止";
-            StatusMessage = "停止後frameはdetector/artifact/catalogへ渡しません。";
+            if (stoppedNow || lastCatalogRetrySummary is null)
+            {
+                StatusTitle = "観測session停止";
+                StatusMessage =
+                    $"停止後frameはdetector/artifact/catalogへ渡しません。pending={PendingObservationCount()}";
+            }
         }
         finally
         {
@@ -376,6 +539,7 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
             OnPropertyChanged(nameof(CanAdopt));
             OnPropertyChanged(nameof(CanResume));
             OnPropertyChanged(nameof(CanConfigureAutoSave));
+            OnPropertyChanged(nameof(CanRetryCatalog));
             OnPropertyChanged(nameof(CollectionStateTitle));
             OnPropertyChanged(nameof(CollectionStateMessage));
         }
@@ -385,7 +549,17 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
     {
         autoSaveCancellation.Cancel();
         autoSaveCancellation.Dispose();
-        await session.DisposeAsync();
+        await stopGate.WaitAsync();
+        try
+        {
+            await session.DisposeAsync();
+        }
+        finally
+        {
+            stopGate.Release();
+            stopGate.Dispose();
+            saveGate.Dispose();
+        }
     }
 
     private void OnFrameReceived(object? sender, RawCaptureFrame frame)
@@ -464,6 +638,7 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
                 StatusTitle = "detector失敗";
                 StatusMessage = exception.Message;
             });
+            await StopAfterProcessingFailureAsync(exception, fromFrameWorker: true);
         }
     }
 
@@ -485,6 +660,7 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
             CancelAutoSave();
             OnPropertyChanged(nameof(CanAdopt));
             OnPropertyChanged(nameof(CanConfigureAutoSave));
+            OnPropertyChanged(nameof(CanRetryCatalog));
             OnPropertyChanged(nameof(CollectionStateTitle));
             OnPropertyChanged(nameof(CollectionStateMessage));
         }
@@ -503,6 +679,13 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
             if (terminal)
             {
                 await StopAsync();
+                if (lastCatalogRetrySummary is null)
+                {
+                    StatusTitle = "収集停止・自動catalog retryなし";
+                    StatusMessage =
+                        $"{value.Message} artifact/checkpointを保持しました。"
+                        + $" 詳細・復旧操作から明示retryできます。pending={PendingObservationCount()}";
+                }
             }
         }
         catch (Exception exception)
@@ -533,6 +716,7 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
         OnPropertyChanged(nameof(CollectionStateTitle));
         OnPropertyChanged(nameof(CollectionStateMessage));
         OnPropertyChanged(nameof(CanConfigureAutoSave));
+        OnPropertyChanged(nameof(CanRetryCatalog));
     }
 
     private bool IsSaved(string compositeIdentityHash) =>
@@ -544,8 +728,27 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
 
     private async Task InspectAndMaybeAutoSaveAsync(JacketObservationCandidate candidate)
     {
-        var candidateKey = CandidateIdentityKey(candidate);
         var autoSaveToken = autoSaveCancellation.Token;
+        await saveGate.WaitAsync(autoSaveToken);
+        try
+        {
+            await InspectAndMaybeAutoSaveCoreAsync(candidate, autoSaveToken);
+        }
+        catch (OperationCanceledException) when (autoSaveToken.IsCancellationRequested)
+        {
+            // Capture termination cancels an in-flight auto-save without making it a processing failure.
+        }
+        finally
+        {
+            saveGate.Release();
+        }
+    }
+
+    private async Task InspectAndMaybeAutoSaveCoreAsync(
+        JacketObservationCandidate candidate,
+        CancellationToken autoSaveToken)
+    {
+        var candidateKey = CandidateIdentityKey(candidate);
         ObservationSavePreflight preflight;
         if (savePreflightByIdentity.TryGetValue(candidateKey, out var cachedDisposition))
         {
@@ -565,7 +768,7 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
                     StatusTitle = "保存前照合失敗";
                     StatusMessage = exception.Message;
                 });
-                return;
+                throw;
             }
         }
         if (preflight.CompositeIdentityHash != candidateKey)
@@ -605,11 +808,48 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
                 StatusTitle = "自動保存失敗";
                 StatusMessage = $"自動再試行はしません。明示保存またはcatalog retryを使用してください: {exception.Message}";
             });
+            throw;
+        }
+    }
+
+    private async Task StopAfterProcessingFailureAsync(
+        Exception processingException,
+        bool fromFrameWorker)
+    {
+        try
+        {
+            Task captureStop;
+            using (ExecutionContext.SuppressFlow())
+            {
+                captureStop = Task.Run(capture.StopAsync);
+            }
+            await captureStop;
+        }
+        catch (Exception stopException)
+        {
+            StatusTitle = "観測処理失敗・capture安全停止失敗";
+            StatusMessage =
+                $"処理: {processingException.Message} / capture停止: {stopException.Message}";
+        }
+        if (fromFrameWorker)
+        {
+            return;
+        }
+        try
+        {
+            await StopAsync();
+        }
+        catch (Exception stopException)
+        {
+            StatusTitle = "観測処理失敗・session安全停止失敗";
+            StatusMessage =
+                $"処理: {processingException.Message} / session停止: {stopException.Message}";
         }
     }
 
     private void ApplyAdoptionResult(ObservationAdoptionResult result, bool automatic)
     {
+        RecordCatalogOutcome(result);
         lastCatalogReceipt = result.Catalog.Message;
         StatusTitle = result.Catalog.Disposition switch
         {
@@ -624,6 +864,93 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
         StatusMessage = result.Catalog.Message;
         OnPropertyChanged(nameof(LastCatalogReceipt));
         NotifySaveStateChanged();
+    }
+
+    private async Task<IReadOnlyList<ObservationAdoptionResult>> RetryPendingCatalogWithDrainAsync(
+        CancellationToken cancellationToken)
+    {
+        await saveGate.WaitAsync(cancellationToken);
+        try
+        {
+            return session.Checkpoint is null
+                ? []
+                : await session.RetryPendingCatalogAsync(cancellationToken);
+        }
+        finally
+        {
+            saveGate.Release();
+        }
+    }
+
+    private void ApplyRetryResults(IReadOnlyList<ObservationAdoptionResult> results)
+    {
+        foreach (var result in results)
+        {
+            RecordCatalogOutcome(result);
+            lastCatalogReceipt = result.Catalog.Message;
+        }
+        OnPropertyChanged(nameof(LastCatalogReceipt));
+    }
+
+    private CatalogRetrySummary BuildCatalogRetrySummary(string? rejectionMessage = null) =>
+        BuildCatalogRetrySummary([], rejectionMessage);
+
+    private CatalogRetrySummary BuildCatalogRetrySummary(
+        IReadOnlyList<ObservationAdoptionResult> results,
+        string? rejectionMessage = null)
+    {
+        var checkpoint = session.Checkpoint;
+        var outcomes = catalogOutcomeByObservation.Values;
+        var pendingCount = PendingObservationCount();
+        var failureCount = Math.Max(
+            pendingCount,
+            outcomes.Count(value => value == CatalogIngestDisposition.Failed));
+        var noOp = results.Count == 0 && rejectionMessage is null;
+        return new CatalogRetrySummary(
+            checkpoint?.Session.SessionId ?? sessionId ?? "未開始",
+            checkpoint?.Observations.Count ?? 0,
+            outcomes.Count(value => value == CatalogIngestDisposition.Created),
+            outcomes.Count(value => value == CatalogIngestDisposition.Existing),
+            failureCount,
+            pendingCount,
+            noOp,
+            rejectionMessage is not null,
+            rejectionMessage ?? (noOp ? "retry対象なし" : "retry結果をcheckpointへ反映しました"));
+    }
+
+    private void SetCatalogRetrySummary(CatalogRetrySummary summary)
+    {
+        lastCatalogRetrySummary = summary;
+        OnPropertyChanged(nameof(LastCatalogRetrySummary));
+        OnPropertyChanged(nameof(CollectionResult));
+        OnPropertyChanged(nameof(CanRetryCatalog));
+        lastCatalogReceipt = summary.Message;
+        OnPropertyChanged(nameof(LastCatalogReceipt));
+    }
+
+    private void RecordCatalogOutcome(ObservationAdoptionResult result)
+    {
+        if (result.Catalog.Disposition == CatalogIngestDisposition.Existing
+            && catalogOutcomeByObservation.TryGetValue(
+                result.ObservationId,
+                out var previous)
+            && previous == CatalogIngestDisposition.Created)
+        {
+            return;
+        }
+        catalogOutcomeByObservation[result.ObservationId] = result.Catalog.Disposition;
+    }
+
+    private int PendingObservationCount() => session.Checkpoint?.Observations.Count(
+        observation => observation.CatalogStatus == "pending") ?? 0;
+
+    private void ResetSessionResultState()
+    {
+        stopCompleted = false;
+        lastCatalogRetrySummary = null;
+        catalogOutcomeByObservation.Clear();
+        OnPropertyChanged(nameof(LastCatalogRetrySummary));
+        OnPropertyChanged(nameof(CollectionResult));
     }
 
     private void MarkCatalogExisting(string identityHash)
