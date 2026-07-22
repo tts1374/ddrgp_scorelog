@@ -316,6 +316,7 @@ public sealed class MainViewModel(
                 exception);
         }
 
+        var catalogCreated = false;
         try
         {
             if (!File.Exists(fixedDatabasePaths.CatalogPath))
@@ -323,14 +324,21 @@ public sealed class MainViewModel(
                 StatusTitle = "ジャケット情報初期化中";
                 StatusMessage = "current schemaの空catalogを固定pathへ作成しています。";
                 await catalogInitializer.EnsureCreatedAsync(cancellationToken);
+                catalogCreated = true;
             }
 
             StatusTitle = "ジャケット情報確認中";
             StatusMessage = "固定pathのcatalogをstrict read-only projectionで検証しています。";
             await LoadProjectionCoreAsync(cancellationToken);
         }
+        catch (OperationCanceledException)
+        {
+            DeleteCreatedCatalog(catalogCreated);
+            throw;
+        }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
+            DeleteCreatedCatalog(catalogCreated);
             throw new InvalidOperationException(
                 $"ジャケット情報DBの初期化または検証に失敗しました。既存fileは置換していません: {exception.Message}",
                 exception);
@@ -354,6 +362,7 @@ public sealed class MainViewModel(
             }
             catch (OperationCanceledException)
             {
+                ClearProjection();
                 projectionReloadFailed = true;
                 StatusTitle = "master更新後の再読込取消";
                 StatusMessage = "masterは更新済みですが、projection再読込を取り消しました。";
@@ -361,6 +370,7 @@ public sealed class MainViewModel(
             }
             catch (Exception exception)
             {
+                ClearProjection();
                 projectionReloadFailed = true;
                 StatusTitle = "master更新後の再読込失敗";
                 StatusMessage =
@@ -509,6 +519,8 @@ public sealed class MainViewModel(
     private void NotifyProjectionProperties()
     {
         OnPropertyChanged(nameof(MasterVersion));
+        OnPropertyChanged(nameof(CurrentMasterPath));
+        OnPropertyChanged(nameof(CurrentCatalogPath));
         OnPropertyChanged(nameof(MasterSourceHash));
         OnPropertyChanged(nameof(MasterCounts));
         OnPropertyChanged(nameof(CatalogIdentity));
@@ -533,6 +545,14 @@ public sealed class MainViewModel(
         SelectedReason = "all";
         SelectedCandidateClassification = "all";
         NotifyProjectionProperties();
+    }
+
+    private void DeleteCreatedCatalog(bool catalogCreated)
+    {
+        if (catalogCreated && File.Exists(fixedDatabasePaths.CatalogPath))
+        {
+            File.Delete(fixedDatabasePaths.CatalogPath);
+        }
     }
 
     private static ICatalogInitializationService CreateCatalogInitializer(

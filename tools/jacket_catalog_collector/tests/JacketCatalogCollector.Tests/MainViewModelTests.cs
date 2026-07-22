@@ -133,6 +133,25 @@ public sealed class MainViewModelTests
     }
 
     [Fact]
+    public async Task RemovesNewCatalogWhenStrictValidationFails()
+    {
+        using var database = new TestDatabase(master: true);
+        var catalog = new StubCatalogInitializationService(database.Paths.CatalogPath);
+        var viewModel = new MainViewModel(
+            new StubMasterUpdateService(),
+            new FailingProjectionService(new InvalidOperationException("catalog is invalid")),
+            databasePaths: database.Paths,
+            catalogInitializationService: catalog);
+
+        await viewModel.InitializeDatabasesAsync();
+
+        Assert.Equal("DB初期化/検証失敗", viewModel.StatusTitle);
+        Assert.Contains("catalog is invalid", viewModel.StatusMessage, StringComparison.Ordinal);
+        Assert.Equal(1, catalog.Calls);
+        Assert.False(File.Exists(database.Paths.CatalogPath));
+    }
+
+    [Fact]
     public async Task ReportsMasterSuccessFailureAndCancellationStates()
     {
         using var successDatabase = new TestDatabase(master: true, catalog: true);
@@ -163,6 +182,41 @@ public sealed class MainViewModelTests
         await Assert.ThrowsAsync<OperationCanceledException>(
             () => canceled.UpdateMasterAsync());
         Assert.Equal("master更新取消", canceled.StatusTitle);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ClearsProjectionWhenMasterUpdateReloadFailsOrIsCanceled(bool cancel)
+    {
+        using var database = new TestDatabase(master: true, catalog: true);
+        var projectionService = new SequenceProjectionService(
+            Projection(),
+            cancel ? new OperationCanceledException() : new InvalidOperationException("reload failed"));
+        var viewModel = new MainViewModel(
+            new StubMasterUpdateService(),
+            projectionService,
+            databasePaths: database.Paths);
+
+        await viewModel.LoadProjectionAsync();
+        viewModel.SelectedCoverageStatus = "needs_review";
+        viewModel.SelectedReason = "opaque reason";
+        Assert.Equal(database.Paths.MasterPath, viewModel.CurrentMasterPath);
+        Assert.Equal(database.Paths.CatalogPath, viewModel.CurrentCatalogPath);
+
+        await Assert.ThrowsAnyAsync<Exception>(() => viewModel.UpdateMasterAsync());
+
+        Assert.Equal(
+            cancel ? "master更新後の再読込取消" : "master更新後の再読込失敗",
+            viewModel.StatusTitle);
+        Assert.Equal("未選択", viewModel.MasterVersion);
+        Assert.Null(viewModel.CurrentMasterPath);
+        Assert.Null(viewModel.CurrentCatalogPath);
+        Assert.Empty(viewModel.Songs);
+        Assert.Empty(viewModel.ReviewReferences);
+        Assert.Equal(["all"], viewModel.ReasonOptions);
+        Assert.Equal("all", viewModel.SelectedCoverageStatus);
+        Assert.Equal("all", viewModel.SelectedReason);
     }
 
     [Theory]
