@@ -14,6 +14,7 @@ public sealed record MasterUpdateResult(MasterSummary? Before, MasterSummary Aft
 
 public interface IMasterUpdateService
 {
+    Task<MasterSummary> InspectAsync(string path, CancellationToken cancellationToken);
     Task<MasterUpdateResult> UpdateAsync(string targetPath, CancellationToken cancellationToken);
 }
 
@@ -105,14 +106,23 @@ public sealed class MasterUpdateService(
         }
     }
 
-    private async Task<MasterSummary> InspectAsync(
+    public async Task<MasterSummary> InspectAsync(
         string path,
         CancellationToken cancellationToken)
     {
+        var fullPath = Path.GetFullPath(path);
+        if (Directory.Exists(fullPath))
+        {
+            throw new InvalidOperationException("Master target must not be a directory.");
+        }
+        if (!File.Exists(fullPath))
+        {
+            throw new FileNotFoundException("Master database does not exist.", fullPath);
+        }
         var result = await processRunner.RunAsync(
             new ProcessRequest(
                 pythonExecutable,
-                ["-X", "utf8", "-m", "master.inspect", path],
+                ["-X", "utf8", "-m", "master.inspect", fullPath],
                 repositoryRoot),
             cancellationToken);
         EnsureSuccess(result, "Master inspection");

@@ -170,7 +170,7 @@ title line-hashでは、result `song_title` ROIのうち曲名行だけを対象
 
 ## M5b ローカルjacket参照カタログ
 
-M5bでは、一時的な `jacket_feature_master.csv` とは別に、`data/` 配下の明示SQLite pathへローカル参照カタログversion 1を生成する。catalogは `catalog_identity=ddrgp-local-jacket-reference-catalog`、schema version、専用table/columnをstrictに検査し、M4 master DB、M8 preview DB、正式個人スコアDB、unknown SQLiteを相互受入れしない。
+M5bでは、一時的な `jacket_feature_master.csv` とは別に、repository root直下の `databases/jacket-catalog.sqlite` へローカル参照カタログversion 1を生成する。M4 master DBのcollector正本は `databases/ddrgp-master.sqlite` とする。catalogは `catalog_identity=ddrgp-local-jacket-reference-catalog`、schema version、専用table/columnをstrictに検査し、M4 master DB、M8 preview DB、正式個人スコアDB、unknown SQLiteを相互受入れしない。
 
 観測入力は `source_image_path`、`observed_title`、`observed_artist` を必須とし、`source_capture_id`、`observation_status`、`image_kind=full_frame|jacket_crop`、監査専用 `expected_song_id` を任意とする。full frameは1280x720基準のsong select grid右上preview ROIを線形scaleして切り出す。feature extractor version 1は、特徴量生成条件である `image_kind`、16x16 RGBの全768値、24値のRGB histogram、64bit dHash相当とsource image SHA-256をlossless JSON配列として保持する。生画像、crop、catalog、coverageはローカル非共有データである。
 

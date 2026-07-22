@@ -10105,7 +10105,7 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=None,
         help=(
-            "Optional read-only M5b catalog under data/. With --m5-jacket-match, use its "
+            "Optional read-only M5b catalog under databases/. With --m5-jacket-match, use its "
             "persisted confirmed features instead of transient song_select references."
         ),
     )
@@ -10469,7 +10469,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.m5_jacket_catalog is not None:
         if not args.m5_jacket_match:
             raise ValueError("--m5-jacket-catalog requires --m5-jacket-match")
-        jacket_reference_catalog.ensure_data_path(
+        jacket_reference_catalog.ensure_catalog_path(
             args.m5_jacket_catalog,
             argument_name="--m5-jacket-catalog",
         )

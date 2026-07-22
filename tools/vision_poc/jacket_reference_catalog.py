@@ -345,6 +345,21 @@ def ensure_data_path(path: Path, *, argument_name: str, directory: bool = False)
         raise ValueError(f"{argument_name} must be a SQLite file under data/: {path}")
 
 
+def ensure_catalog_path(path: Path, *, argument_name: str) -> None:
+    root = _resolved(Path.cwd() / "databases")
+    candidate = _resolved(path)
+    try:
+        relative = candidate.relative_to(root)
+    except ValueError as exc:
+        raise ValueError(f"{argument_name} must be under databases/: {path}") from exc
+    if len(relative.parts) != 1:
+        raise ValueError(
+            f"{argument_name} must be a file directly under databases/: {path}"
+        )
+    if candidate.suffix.lower() not in {".sqlite", ".sqlite3", ".db"}:
+        raise ValueError(f"{argument_name} must be a SQLite file under databases/: {path}")
+
+
 def ensure_data_file_path(path: Path, *, argument_name: str) -> None:
     root = _resolved(Path.cwd() / "data")
     candidate = _resolved(path)
@@ -727,7 +742,7 @@ def _validate_catalog(connection: sqlite3.Connection) -> int:
 
 
 def create_catalog(path: Path) -> None:
-    ensure_data_path(path, argument_name="--catalog")
+    ensure_catalog_path(path, argument_name="--catalog")
     if path.exists():
         raise ValueError(f"catalog already exists: {path}")
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -2181,6 +2196,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 0
     if args.command == "review":
+        ensure_catalog_path(args.catalog, argument_name="--catalog")
         receipt = apply_review_mutation(
             args.catalog,
             args.master_db,
@@ -2199,7 +2215,7 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(receipt.__dict__, ensure_ascii=False, separators=(",", ":")))
         return 0
     if args.command == "ingest":
-        ensure_data_path(args.catalog, argument_name="--catalog")
+        ensure_catalog_path(args.catalog, argument_name="--catalog")
         ensure_data_file_path(args.source_image, argument_name="--source-image")
         result = ingest_observation(
             args.catalog,
@@ -2228,7 +2244,7 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(result.__dict__, ensure_ascii=False, separators=(",", ":")))
         return 0
     if args.command == "validate-session":
-        ensure_data_path(args.catalog, argument_name="--catalog")
+        ensure_catalog_path(args.catalog, argument_name="--catalog")
         result = validate_observation_session(
             args.catalog,
             args.master_db,
@@ -2242,7 +2258,7 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(result, ensure_ascii=False, separators=(",", ":")))
         return 0
     if args.command == "validate-receipt":
-        ensure_data_path(args.catalog, argument_name="--catalog")
+        ensure_catalog_path(args.catalog, argument_name="--catalog")
         result = validate_observation_receipt(
             args.catalog,
             observation_id=args.observation_id,
@@ -2258,7 +2274,7 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(result, ensure_ascii=False, separators=(",", ":")))
         return 0
     if args.command == "identity-set":
-        ensure_data_path(args.catalog, argument_name="--catalog")
+        ensure_catalog_path(args.catalog, argument_name="--catalog")
         result = load_observation_composite_identity_set(
             args.catalog,
             expected_catalog_identity=args.expected_catalog_identity,
@@ -2267,7 +2283,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         print(json.dumps(result, ensure_ascii=False, separators=(",", ":")))
         return 0
-    ensure_data_path(args.catalog, argument_name="--catalog")
+    ensure_catalog_path(args.catalog, argument_name="--catalog")
     ensure_data_path(args.output, argument_name="--output", directory=True)
     rows, summary = build_coverage(args.catalog, args.master_db)
     write_coverage_outputs(args.output, rows, summary)

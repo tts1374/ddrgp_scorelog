@@ -301,8 +301,7 @@
                         </Grid>
                     </Border>
                     <WrapPanel>
-                        <Button Content="master/catalogを選択" Click="SelectDatabases_Click" />
-                        <Button Content="masterを更新" Click="UpdateMaster_Click" />
+                        <Button Content="曲情報を更新" Click="UpdateMaster_Click" />
                         <Button Content="title/artist評価" Click="EvaluateTitleArtist_Click" />
                         <Button Content="処理を取消" Click="CancelOperation_Click" />
                     </WrapPanel>
