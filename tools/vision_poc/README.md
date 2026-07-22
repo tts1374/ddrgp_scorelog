@@ -708,21 +708,22 @@ python -m tools.vision_poc.title_artist_ocr_diagnostics `
 ## テスト
 
 ローカル素材がある環境では、metadataを真値として分類結果を検証します。
+テストはCIと同じUTF-8明示実行で行い、Windowsのlocale依存実行は検証結果に採用しません。
 
 ```powershell
-python -m pytest tests\test_vision_poc_classification.py
+python -X utf8 -m pytest tests\test_vision_poc_classification.py
 ```
 
 OCR前処理と正規化だけを確認するテストも追加しています。OCRエンジン本体の有無には依存しません。
 
 ```powershell
-python -m pytest tests\test_vision_poc_ocr.py
+python -X utf8 -m pytest tests\test_vision_poc_ocr.py
 ```
 
 全体確認は以下です。
 
 ```powershell
-python -m pytest tests
+python -X utf8 -m pytest tests
 ```
 
 テストでは以下を確認します。

@@ -7,8 +7,8 @@ M4マスタDBを生成する手動・定期実行workflow。
 - `workflow_dispatch` で手動実行できる。
 - 毎週土曜 03:17 UTC に定期実行する。
 - ネットワークに依存しない `tests/test_master_builder.py` を先に実行する。
-- `python -m master --output data/master/ddrgp-master.sqlite` でWiki譜面表と公式収録曲一覧の実HTMLからSQLiteを生成する。
-- `python -m master.inspect` で必須metadata、実テーブル件数、`source_snapshots` 件数、Wiki/公式source hash、source URLを検査する。
+- `python -X utf8 -m master --output data/master/ddrgp-master.sqlite` でWiki譜面表と公式収録曲一覧の実HTMLからSQLiteを生成する。
+- `python -X utf8 -m master.inspect` で必須metadata、実テーブル件数、`source_snapshots` 件数、Wiki/公式source hash、source URLを検査する。
 - `ddrgp-master-<run_number>` artifact として `ddrgp-master.sqlite` と `master-summary.json` をアップロードする。
 - `master-summary.json` にはテーブル件数、snapshot件数、Wiki/公式source hash、snapshot側source URL、parser version、公式プレー可否の突合件数を含める。
 

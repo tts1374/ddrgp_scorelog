@@ -50,12 +50,13 @@ main branchで利用できる主な機能:
 ### Python
 
 Python 3.13を使用します。依存固定が完了するまでは次の手順を使用します。
+Pythonの検証はCIと同じUTF-8明示実行だけを採用し、Windowsのlocale依存実行は検証結果に使いません。
 
 ```powershell
-python -m pip install -e ".[dev,vision]"
-python -m ruff check tools\vision_poc pyproject.toml tests
-python -m compileall master tools\vision_poc
-python -m pytest tests
+python -X utf8 -m pip install -e ".[dev,vision]"
+python -X utf8 -m ruff check tools\vision_poc pyproject.toml tests
+python -X utf8 -m compileall master tools\vision_poc
+python -X utf8 -m pytest tests
 ```
 
 Issue #66完了後は`uv.lock`を正本とし、通常の環境構築とCIをfrozen installへ移行します。

@@ -41,16 +41,16 @@
 画像分類、ROI、OCR/digit recognition、profile評価、confirmed-events、PoC runner、出力集計/report、または画像処理へ影響する共通コードを変更した場合だけ、通常の対象・影響範囲testに加えて次を実行する。
 
 ```powershell
-python -m ruff check tools\vision_poc pyproject.toml tests
-python -m compileall master tools\vision_poc
-python -m tools.vision_poc
+python -X utf8 -m ruff check tools\vision_poc pyproject.toml tests
+python -X utf8 -m compileall master tools\vision_poc
+python -X utf8 -m tools.vision_poc
 ```
 
 画像処理依存がない環境では、必要に応じて次を使う。現状のflat構成では `python -m pip install -e ".[dev]"` がsetuptoolsの自動package探索で失敗し得るため、Vision optional dependencyを使う。
 
 ```powershell
-python -m pip install -e ".[vision]"
-python -m pip install --user "ruff>=0.9.0"
+python -X utf8 -m pip install -e ".[vision]"
+python -X utf8 -m pip install --user "ruff>=0.9.0"
 ```
 
 `pytest_chalice` 由来の `pkg_resources` deprecated warningは既知warningとしてtest failureと区別する。PoCを省略した場合は、変更が上記実行条件に該当しない理由と残るリスクを報告する。
