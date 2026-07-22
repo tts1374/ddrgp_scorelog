@@ -51,7 +51,9 @@ public partial class MainWindow : Window
                 observationSession,
                 dispatcher,
                 new InformationTitleLineDetector()),
-            new JsonCollectorDatabasePathStore(JsonCollectorDatabasePathStore.GetDefaultPath()));
+            new JsonCollectorDatabasePathStore(JsonCollectorDatabasePathStore.GetDefaultPath()),
+            new JsonManualReviewDraftStore(
+                Path.Combine(evidenceRoot, "manual-review-drafts.v1.json")));
         captureObservationController = new CaptureObservationController(
             viewModel.StartObservationSessionAsync,
             viewModel.ResumeObservationSessionAsync,
@@ -442,6 +444,25 @@ public partial class MainWindow : Window
             return;
         }
         await RunOperationAsync(token => viewModel.ApplyReviewAsync(action, token));
+    }
+
+    private async void SaveDraft_Click(object sender, RoutedEventArgs e)
+    {
+        if (viewModel.IsBusy)
+        {
+            return;
+        }
+        try
+        {
+            await RunOperationAsync(async token =>
+            {
+                await viewModel.SaveSelectedDraftAsync(token);
+            });
+        }
+        catch (Exception exception)
+        {
+            MessageBox.Show(this, exception.Message, "下書き保存失敗");
+        }
     }
 
     private async Task RunOperationAsync(Func<CancellationToken, Task> operation)

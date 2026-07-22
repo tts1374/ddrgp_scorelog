@@ -57,6 +57,12 @@ def build_review_projection(
     coverage_rows, coverage_summary = catalog.build_coverage(catalog_path, master_db)
     master_metadata = _read_master_metadata(master_db)
     songs_by_id = {song.song_id: song for song in master.songs}
+    aliases_by_song: dict[str, list[str]] = {}
+    for song_id, alias_title, _alias_artist in master.aliases:
+        if alias_title and alias_title not in aliases_by_song.setdefault(song_id, []):
+            aliases_by_song[song_id].append(alias_title)
+    for row in coverage_rows:
+        row["aliases"] = aliases_by_song.get(str(row["song_id"]), [])
 
     with closing(catalog._connect_read_only(catalog_path)) as connection:
         connection.row_factory = sqlite3.Row

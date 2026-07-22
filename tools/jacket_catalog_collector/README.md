@@ -58,11 +58,17 @@ python -m tools.vision_poc.jacket_catalog_review_projection `
   --artifact-root data\jacket_catalog_collector
 ```
 
-top-level必須fieldは `projection_schema_version`、`master`、`catalog`、`coverage`、`songs`、`review_references` です。catalog objectはidentity、schema version 1、created-at、current feature extractorを持ち、旧互換専用のmigration/capability fieldは持ちません。review rowのversion付き `candidate_evaluation` は、persisted status/revision、observation ID、jacket preview path、OCR title/artistとconfidence、候補song/reason、failure分類を持ちます。C# loaderは全object/arrayの未知field、必須field、型、coverage/review status、候補/history、candidate分類、revision連続性、schema、分母整合をstrictに検査します。unsupported version、空/truncated stdout、Python非0終了は部分表示しません。`reason`、`note`、`candidate.reason`、`observation_status` はopaque診断文字列として保持します。
+top-level必須fieldは `projection_schema_version`、`master`、`catalog`、`coverage`、`songs`、`review_references` です。catalog objectはidentity、schema version 1、created-at、current feature extractorを持ち、旧互換専用のmigration/capability fieldは持ちません。song rowはcanonical title/artistに加えてtitle aliasの一覧を持ち、未レビュー下書きのtruth song検索へ利用します。review rowのversion付き `candidate_evaluation` は、persisted status/revision、observation ID、jacket preview path、OCR title/artistとconfidence、候補song/reason、failure分類を持ちます。C# loaderは全object/arrayの未知field、必須field、型、coverage/review status、候補/history、candidate分類、revision連続性、schema、分母整合をstrictに検査します。unsupported version、空/truncated stdout、Python非0終了は部分表示しません。`reason`、`note`、`candidate.reason`、`observation_status` はopaque診断文字列として保持します。
 
 表示とfilterは、GP対象songを `referenced` / `needs_review` / `uncollected` / `unresolved` の同じ分母・status histogramで数えます。orphan、候補なし未割当観測、旧extractor、master drift、不正manual featureを派生状態で表示しても、保存済みstatus、revision、historyは変更しません。生成中にmaster/catalogのfile identity、size、mtime、hashが変わった場合はsnapshot混在を拒否します。
 
-review行ではcurrent GP曲をsong ID/title/artistで検索して明示選択します。`confirm` と `reassign` は選択songとcurrent extractorの完全な永続特徴量を必要とし、`reject` と `reopen` はsongを受け取りません。requestはprojectionのrevision/stored status/assigned songをpreconditionにし、current rowとhistoryをPython側の1 transactionで更新します。同一action ID・同一payloadだけが冪等成功です。候補、expected song、OCR rawは明示選択へ昇格しません。
+既存のcatalog反映用manual review serviceは、projectionのrevision/stored status/assigned songをpreconditionにし、current rowとhistoryをPython側の1 transactionで更新します。同一action ID・同一payloadだけが冪等成功です。候補、expected song、OCR rawは明示選択へ昇格しません。未レビュー画面の下書き保存はこのserviceを呼び出さず、catalogのstatus、assigned song、revision、historyを変更しません。
+
+### 未レビュー下書き
+
+`未レビュー` タブは、catalogへ未反映の `needs_review` / `unresolved` / `orphaned` rowを表示し、title ROI、artist ROI、`status`、`truth song`、`notes`を1行ずつ編集します。自動登録済み（`auto_confirmed`）、manual確定済み（`manual_confirmed`）、reject反映済み（`rejected`）は表示しません。下書きのstatusは `unreviewed` / `confirmed` / `rejected` / `hold` で、truth songを選ぶと `confirmed` になり、`confirmed` はsong ID必須、`rejected` はsong IDを空にします。statusだけを変更しても未反映rowは一覧から消えません。
+
+保存先は `data/jacket_catalog_collector/manual-review-drafts.v1.json` です。ファイルには `observation_id`、`status`、`truth_song_id`、`notes`だけを保存し、再読込後も下書きを復元します。Master検索はcanonical title、title alias、canonical artist、song IDの順に、exact title、exact alias、title prefix、title partial、artist、IDの固定順位で行い、fuzzy matchingは行いません。ROIは既存のimmutable `source.png`を画面内で切り出し、追加の画像生成物は作りません。
 
 `unresolved` observationは `data/jacket_catalog_collector` のmanifest/source/crop/checkpointとcatalog rowのidentity/version/hashを照合してから、既存 `tesseract-autocontrast-v1` とM4 title-primary/artist tie-breakerへread-onlyで通します。`exact_unique`、`alias_unique`、`ambiguous`、`no_candidate`、`low_confidence`、`evaluation_failed`、`evaluation_unavailable`、`not_eligible`を丸めず表示し、候補filterと安定sort、明示refreshを提供します。候補表示・refreshはcatalog writerを呼びません。
 

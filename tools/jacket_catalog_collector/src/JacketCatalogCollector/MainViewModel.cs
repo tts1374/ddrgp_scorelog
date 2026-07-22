@@ -11,9 +11,12 @@ public sealed class MainViewModel(
     IReviewWorkflowService? reviewWorkflowService = null,
     WindowCaptureViewModel? windowCapture = null,
     JacketObservationViewModel? observation = null,
-    ICollectorDatabasePathStore? databasePathStore = null) : INotifyPropertyChanged
+    ICollectorDatabasePathStore? databasePathStore = null,
+    IManualReviewDraftStore? manualReviewDraftStore = null) : INotifyPropertyChanged
 {
     private ReviewProjection? projection;
+    private readonly Dictionary<string, ManualReviewDraft> manualReviewDrafts =
+        new(StringComparer.Ordinal);
     private string selectedCoverageStatus = "all";
     private string selectedReason = "all";
     private string statusTitle = "準備完了";
@@ -27,6 +30,7 @@ public sealed class MainViewModel(
     private string reviewReason = "";
     private string reviewNote = "";
     private string selectedCandidateClassification = "all";
+    private ManualReviewDraftRow? selectedManualReviewRow;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -34,13 +38,18 @@ public sealed class MainViewModel(
     public WindowCaptureViewModel? WindowCapture { get; } = windowCapture;
     public JacketObservationViewModel? Observation { get; } = observation;
     public ObservableCollection<ReviewReference> ReviewReferences { get; } = [];
+    public ObservableCollection<ManualReviewDraftRow> ManualReviewRows { get; } = [];
     public ObservableCollection<string> CoverageStatusOptions { get; } =
         ["all", "referenced", "needs_review", "uncollected", "unresolved", "orphaned"];
+    public ObservableCollection<string> ManualReviewStatusOptions { get; } =
+        ["unreviewed", "confirmed", "rejected", "hold"];
     public ObservableCollection<string> ReasonOptions { get; } = ["all"];
     public ObservableCollection<ProjectionSong> SongChoices { get; } = [];
     public ObservableCollection<string> CandidateClassificationOptions { get; } = ["all"];
     public string? CurrentMasterPath => masterPath;
     public string? CurrentCatalogPath => catalogPath;
+    public string ManualReviewSummary =>
+        $"未反映 {ManualReviewRows.Count} 行 / 下書き {ManualReviewRows.Count(row => string.Equals(row.DraftStateDisplay, "保存済み", StringComparison.Ordinal))} 件";
 
     public string MasterVersion => projection?.Master.MasterVersion ?? "未選択";
     public string MasterSourceHash => projection?.Master.SourceHash ?? "—";
@@ -69,6 +78,21 @@ public sealed class MainViewModel(
     {
         get => selectedSong;
         set => SetField(ref selectedSong, value);
+    }
+
+    public ManualReviewDraftRow? SelectedManualReviewRow
+    {
+        get => selectedManualReviewRow;
+        set
+        {
+            if (SetField(ref selectedManualReviewRow, value))
+            {
+                SelectedSong = value is null || projection is null
+                    ? null
+                    : projection.Songs.FirstOrDefault(
+                        song => song.SongId == value.TruthSongId);
+            }
+        }
     }
 
     public string SongSearch
@@ -299,17 +323,94 @@ public sealed class MainViewModel(
         }
     }
 
+    public async Task<bool> SaveSelectedDraftAsync(
+        CancellationToken cancellationToken = default)
+    {
+        if (manualReviewDraftStore is null)
+        {
+            throw new InvalidOperationException("manual review draft store is not configured.");
+        }
+        if (projection is null || SelectedManualReviewRow is null)
+        {
+            throw new InvalidOperationException("未レビュー対象の行を選択してください。");
+        }
+
+        var validSongIds = projection.Songs
+            .Select(song => song.SongId)
+            .ToHashSet(StringComparer.Ordinal);
+        var validationError = SelectedManualReviewRow.Validate(validSongIds);
+        if (validationError is not null)
+        {
+            SelectedManualReviewRow.SetValidationError(validationError);
+            StatusTitle = "下書きvalidation error";
+            StatusMessage = $"observation={SelectedManualReviewRow.ObservationId}: {validationError}";
+            return false;
+        }
+
+        IsBusy = true;
+        StatusTitle = "下書き保存中";
+        StatusMessage = $"observation={SelectedManualReviewRow.ObservationId} の下書きを保存しています。";
+        try
+        {
+            var nextDrafts = new Dictionary<string, ManualReviewDraft>(
+                manualReviewDrafts,
+                StringComparer.Ordinal)
+            {
+                [SelectedManualReviewRow.ObservationId] = SelectedManualReviewRow.ToDraft(),
+            };
+            await manualReviewDraftStore.SaveAsync(nextDrafts.Values, cancellationToken);
+            manualReviewDrafts.Clear();
+            foreach (var draft in nextDrafts)
+            {
+                manualReviewDrafts[draft.Key] = draft.Value;
+            }
+            SelectedManualReviewRow.MarkSaved();
+            StatusTitle = "下書き保存完了";
+            StatusMessage =
+                $"observation={SelectedManualReviewRow.ObservationId} を保存しました。catalog/historyは変更していません。";
+            OnPropertyChanged(nameof(ManualReviewSummary));
+            return true;
+        }
+        catch (OperationCanceledException)
+        {
+            StatusTitle = "下書き保存取消";
+            StatusMessage = "下書き保存を取り消しました。catalog/historyは変更していません。";
+            throw;
+        }
+        catch (Exception exception)
+        {
+            StatusTitle = "下書き保存失敗";
+            StatusMessage = exception.Message;
+            throw;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
     private async Task LoadProjectionCoreAsync(
         string masterPathValue,
         string catalogPathValue,
         CancellationToken cancellationToken)
     {
-        projection = await projectionService.LoadAsync(
+        var loadedProjection = await projectionService.LoadAsync(
             masterPathValue, catalogPathValue, cancellationToken);
+        var loadedDrafts = manualReviewDraftStore is null
+            ? new Dictionary<string, ManualReviewDraft>(StringComparer.Ordinal)
+            : (await manualReviewDraftStore.LoadAsync(cancellationToken))
+                .ToDictionary(item => item.Key, item => item.Value, StringComparer.Ordinal);
+        projection = loadedProjection;
+        manualReviewDrafts.Clear();
+        foreach (var draft in loadedDrafts)
+        {
+            manualReviewDrafts[draft.Key] = draft.Value;
+        }
         masterPath = Path.GetFullPath(masterPathValue);
         catalogPath = Path.GetFullPath(catalogPathValue);
         RebuildFilterOptions();
         ApplyFilters();
+        ApplyManualReviewRows();
         ApplySongSearch();
         NotifyProjectionProperties();
     }
@@ -438,6 +539,32 @@ public sealed class MainViewModel(
         }
     }
 
+    private void ApplyManualReviewRows()
+    {
+        ManualReviewRows.Clear();
+        SelectedManualReviewRow = null;
+        if (projection is null)
+        {
+            OnPropertyChanged(nameof(ManualReviewSummary));
+            return;
+        }
+
+        var songsById = projection.Songs.ToDictionary(song => song.SongId, StringComparer.Ordinal);
+        foreach (var reference in projection.ReviewReferences
+                     .Where(IsUnreflectedReviewTarget)
+                     .OrderBy(reference => reference.CandidateEvaluation.ObservationId, StringComparer.Ordinal)
+                     .ThenBy(reference => reference.ReferenceId, StringComparer.Ordinal))
+        {
+            var observationId = reference.CandidateEvaluation.ObservationId;
+            manualReviewDrafts.TryGetValue(observationId, out var draft);
+            ManualReviewRows.Add(new ManualReviewDraftRow(reference, draft, songsById));
+        }
+        OnPropertyChanged(nameof(ManualReviewSummary));
+    }
+
+    private static bool IsUnreflectedReviewTarget(ReviewReference reference) =>
+        reference.StoredStatus is not ("auto_confirmed" or "manual_confirmed" or "rejected");
+
     private void ApplySongSearch()
     {
         SongChoices.Clear();
@@ -445,14 +572,50 @@ public sealed class MainViewModel(
         {
             return;
         }
-        foreach (var song in projection.Songs.Where(song =>
-                     string.IsNullOrWhiteSpace(SongSearch)
-                     || song.SongId.Contains(SongSearch, StringComparison.OrdinalIgnoreCase)
-                     || song.Title.Contains(SongSearch, StringComparison.OrdinalIgnoreCase)
-                     || song.Artist.Contains(SongSearch, StringComparison.OrdinalIgnoreCase)))
+        var query = SongSearch.Trim();
+        foreach (var song in projection.Songs
+                     .Select(song => (Song: song, Rank: SongSearchRank(song, query)))
+                     .Where(item => item.Rank is not null)
+                     .OrderBy(item => item.Rank)
+                     .ThenBy(item => item.Song.Title, StringComparer.OrdinalIgnoreCase)
+                     .ThenBy(item => item.Song.SongId, StringComparer.Ordinal))
         {
-            SongChoices.Add(song);
+            SongChoices.Add(song.Song);
         }
+    }
+
+    private static int? SongSearchRank(ProjectionSong song, string query)
+    {
+        if (query.Length == 0)
+        {
+            return 0;
+        }
+        if (string.Equals(song.Title, query, StringComparison.OrdinalIgnoreCase))
+        {
+            return 0;
+        }
+        if (song.Aliases.Any(alias =>
+                string.Equals(alias, query, StringComparison.OrdinalIgnoreCase)))
+        {
+            return 1;
+        }
+        if (song.Title.StartsWith(query, StringComparison.OrdinalIgnoreCase))
+        {
+            return 2;
+        }
+        if (song.Title.Contains(query, StringComparison.OrdinalIgnoreCase))
+        {
+            return 3;
+        }
+        if (song.Artist.Contains(query, StringComparison.OrdinalIgnoreCase))
+        {
+            return 4;
+        }
+        if (song.SongId.Contains(query, StringComparison.OrdinalIgnoreCase))
+        {
+            return 5;
+        }
+        return null;
     }
 
     private void NotifyProjectionProperties()
@@ -471,9 +634,12 @@ public sealed class MainViewModel(
         projection = null;
         Songs.Clear();
         ReviewReferences.Clear();
+        ManualReviewRows.Clear();
         SongChoices.Clear();
         SelectedReference = null;
         SelectedSong = null;
+        SelectedManualReviewRow = null;
+        manualReviewDrafts.Clear();
         masterPath = null;
         catalogPath = null;
         ReasonOptions.Clear();
@@ -483,6 +649,7 @@ public sealed class MainViewModel(
         SelectedCoverageStatus = "all";
         SelectedReason = "all";
         SelectedCandidateClassification = "all";
+        OnPropertyChanged(nameof(ManualReviewSummary));
         NotifyProjectionProperties();
     }
 

@@ -88,6 +88,8 @@ public sealed class ProjectionSong
     public required string ReferenceCount { get; init; }
     [JsonPropertyName("reason")]
     public required string Reason { get; init; }
+    [JsonPropertyName("aliases")]
+    public List<string> Aliases { get; init; } = [];
 }
 
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]

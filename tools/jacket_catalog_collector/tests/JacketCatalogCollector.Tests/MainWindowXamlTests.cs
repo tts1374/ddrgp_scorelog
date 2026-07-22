@@ -106,7 +106,7 @@ public sealed class MainWindowXamlTests
     }
 
     [Fact]
-    public void ManualReviewShowsReadOnlyCandidateEvidenceAndExplicitActions()
+    public void UnreviewedScreenShowsDraftFieldsAndRoiColumns()
     {
         var document = LoadMainWindow();
         var bindings = document.Descendants()
@@ -117,17 +117,42 @@ public sealed class MainWindowXamlTests
             .Where(element => element.Name.LocalName == "Button")
             .Select(element => element.Attribute("Content")?.Value)
             .ToList();
+        var tabs = document
+            .Descendants()
+            .Where(element => element.Name.LocalName == "TabItem")
+            .Select(element => element.Attribute("Header")?.Value)
+            .ToList();
+        var headers = document
+            .Descendants()
+            .Where(element => element.Name.LocalName is "DataGridTextColumn" or "DataGridTemplateColumn")
+            .Select(element => element.Attribute("Header")?.Value)
+            .ToList();
 
+        Assert.Contains("未レビュー", tabs);
+        Assert.DoesNotContain("レビュー", tabs);
         Assert.Contains(bindings, value => value.Contains(
-            "CandidateEvaluation.JacketPreviewPath", StringComparison.Ordinal));
+            "ManualReviewRows", StringComparison.Ordinal));
         Assert.Contains(bindings, value => value.Contains(
-            "CandidateEvaluation.Title.Display", StringComparison.Ordinal));
+            "SelectedManualReviewRow.Status", StringComparison.Ordinal));
         Assert.Contains(bindings, value => value.Contains(
-            "CandidateEvaluation.Classification", StringComparison.Ordinal));
-        Assert.Contains("候補を再評価", buttons);
-        Assert.Contains("候補report", buttons);
-        Assert.Contains("確定", buttons);
-        Assert.Contains("再割当", buttons);
+            "SelectedManualReviewRow.TruthSongId", StringComparison.Ordinal));
+        Assert.Contains(bindings, value => value.Contains(
+            "SelectedManualReviewRow.Notes", StringComparison.Ordinal));
+        Assert.Contains(bindings, value => value.Contains(
+            "TitleRoiImagePath", StringComparison.Ordinal));
+        Assert.Contains(bindings, value => value.Contains(
+            "ArtistRoiImagePath", StringComparison.Ordinal));
+        Assert.Contains(bindings, value => value.Contains(
+            "SongSearch", StringComparison.Ordinal));
+        Assert.Contains(bindings, value => value.Contains(
+            "SongChoices", StringComparison.Ordinal));
+        Assert.Contains("下書きを保存", buttons);
+        Assert.Contains("タイトルROI（内部切り出し画像）", headers);
+        Assert.Contains("アーティストROI（内部切り出し画像）", headers);
+        Assert.DoesNotContain("確定", buttons);
+        Assert.DoesNotContain("再割当", buttons);
+        Assert.DoesNotContain("却下", buttons);
+        Assert.DoesNotContain("再開", buttons);
     }
 
     private static XDocument LoadMainWindow() => XDocument.Load(GetMainWindowPath());

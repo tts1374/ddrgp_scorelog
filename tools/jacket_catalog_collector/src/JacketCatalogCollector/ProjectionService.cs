@@ -97,6 +97,11 @@ public sealed class ProjectionJsonLoader
             RequireText(song.Artist, "songs.artist");
             RequireString(song.MasterVersion, "songs.master_version");
             RequireString(song.Reason, "songs.reason");
+            RequireValue(song.Aliases, "songs.aliases");
+            foreach (var alias in song.Aliases)
+            {
+                RequireString(alias, "songs.aliases row");
+            }
             if (!CoverageStatuses.Contains(song.CoverageStatus)
                 || !int.TryParse(song.ReferenceCount, out var referenceCount)
                 || referenceCount < 0)
