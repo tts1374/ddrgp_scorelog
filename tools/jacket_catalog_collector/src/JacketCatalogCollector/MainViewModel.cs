@@ -52,6 +52,10 @@ public sealed class MainViewModel(
     public string ManualReviewSummary =>
         $"未反映 {ManualReviewRows.Count} 行 / 保存済み {ManualReviewRows.Count(row => row.IsSaved)} 件"
         + $" / 未保存 {ManualReviewRows.Count(row => !row.IsSaved)} 件";
+    public int ManualReviewUnreviewedCount => CountManualReviewRows("unreviewed");
+    public int ManualReviewConfirmedCount => CountManualReviewRows("confirmed");
+    public int ManualReviewRejectedCount => CountManualReviewRows("rejected");
+    public int ManualReviewHoldCount => CountManualReviewRows("hold");
 
     public string MasterVersion => projection?.Master.MasterVersion ?? "未選択";
     public string MasterSourceHash => projection?.Master.SourceHash ?? "—";
@@ -373,7 +377,7 @@ public sealed class MainViewModel(
             StatusTitle = "下書き保存完了";
             StatusMessage =
                 $"{dirtyRows.Count}行を保存しました。catalog/historyは変更していません。";
-            OnPropertyChanged(nameof(ManualReviewSummary));
+            NotifyManualReviewSummary();
             return true;
         }
         catch (OperationCanceledException)
@@ -781,7 +785,7 @@ public sealed class MainViewModel(
         SelectedManualReviewRow = null;
         if (projection is null)
         {
-            OnPropertyChanged(nameof(ManualReviewSummary));
+            NotifyManualReviewSummary();
             return;
         }
 
@@ -797,7 +801,7 @@ public sealed class MainViewModel(
             row.PropertyChanged += ManualReviewRow_PropertyChanged;
             ManualReviewRows.Add(row);
         }
-        OnPropertyChanged(nameof(ManualReviewSummary));
+        NotifyManualReviewSummary();
     }
 
     private static bool IsUnreflectedReviewTarget(ReviewReference reference) =>
@@ -805,10 +809,23 @@ public sealed class MainViewModel(
 
     private void ManualReviewRow_PropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(ManualReviewDraftRow.IsSaved))
+        if (e.PropertyName is nameof(ManualReviewDraftRow.IsSaved)
+            or nameof(ManualReviewDraftRow.Status))
         {
-            OnPropertyChanged(nameof(ManualReviewSummary));
+            NotifyManualReviewSummary();
         }
+    }
+
+    private int CountManualReviewRows(string status) =>
+        ManualReviewRows.Count(row => row.Status == status);
+
+    private void NotifyManualReviewSummary()
+    {
+        OnPropertyChanged(nameof(ManualReviewSummary));
+        OnPropertyChanged(nameof(ManualReviewUnreviewedCount));
+        OnPropertyChanged(nameof(ManualReviewConfirmedCount));
+        OnPropertyChanged(nameof(ManualReviewRejectedCount));
+        OnPropertyChanged(nameof(ManualReviewHoldCount));
     }
 
     private void UnsubscribeManualReviewRows()
@@ -904,7 +921,7 @@ public sealed class MainViewModel(
         SelectedCoverageStatus = "all";
         SelectedReason = "all";
         SelectedCandidateClassification = "all";
-        OnPropertyChanged(nameof(ManualReviewSummary));
+        NotifyManualReviewSummary();
         NotifyProjectionProperties();
     }
 

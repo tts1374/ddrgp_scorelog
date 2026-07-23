@@ -497,12 +497,18 @@ public sealed class MainViewModelTests
         await viewModel.LoadProjectionAsync();
 
         Assert.Contains("未保存 4 件", viewModel.ManualReviewSummary, StringComparison.Ordinal);
+        Assert.Equal(4, viewModel.ManualReviewUnreviewedCount);
+        Assert.Equal(0, viewModel.ManualReviewConfirmedCount);
+        Assert.Equal(0, viewModel.ManualReviewRejectedCount);
+        Assert.Equal(0, viewModel.ManualReviewHoldCount);
         foreach (var row in viewModel.ManualReviewRows)
         {
             row.Status = "hold";
             row.Notes = $"note for {row.ObservationId}";
         }
 
+        Assert.Equal(0, viewModel.ManualReviewUnreviewedCount);
+        Assert.Equal(4, viewModel.ManualReviewHoldCount);
         Assert.True(await viewModel.SaveDraftsAsync());
 
         Assert.Equal(4, store.Drafts.Count);

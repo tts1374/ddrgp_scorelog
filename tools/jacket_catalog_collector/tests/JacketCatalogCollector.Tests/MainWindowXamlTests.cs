@@ -153,10 +153,23 @@ public sealed class MainWindowXamlTests
             element => element.Attribute("ItemsSource")?.Value.Contains(
                 "ManualReviewRows", StringComparison.Ordinal) == true);
 
+        Assert.Contains("レビュー", tabs);
         Assert.Contains("未レビュー", tabs);
-        Assert.DoesNotContain("レビュー", tabs);
+        Assert.Contains("レビュー済み (後続Issue)", tabs);
+        Assert.Contains(
+            document.Descendants().Where(element => element.Name.LocalName == "TabItem"),
+            element => element.Attribute("Header")?.Value == "レビュー済み (後続Issue)"
+                && element.Attribute("IsEnabled")?.Value == "False");
         Assert.Contains(bindings, value => value.Contains(
             "ManualReviewRows", StringComparison.Ordinal));
+        Assert.Contains(bindings, value => value.Contains(
+            "ManualReviewUnreviewedCount", StringComparison.Ordinal));
+        Assert.Contains(bindings, value => value.Contains(
+            "ManualReviewConfirmedCount", StringComparison.Ordinal));
+        Assert.Contains(bindings, value => value.Contains(
+            "ManualReviewRejectedCount", StringComparison.Ordinal));
+        Assert.Contains(bindings, value => value.Contains(
+            "ManualReviewHoldCount", StringComparison.Ordinal));
         Assert.Contains(bindings, value => value.Contains(
             "{Binding Status,", StringComparison.Ordinal));
         Assert.Contains(bindings, value => value.Contains(
@@ -174,17 +187,19 @@ public sealed class MainWindowXamlTests
         Assert.Contains(bindings, value => value.Contains(
             "SongChoices", StringComparison.Ordinal));
         Assert.Contains("未保存の下書きを保存", buttons);
-        Assert.Contains("タイトルROI", headers);
-        Assert.Contains("アーティストROI", headers);
+        Assert.Contains(headers, header => header?.StartsWith(
+            "タイトルROI", StringComparison.Ordinal) == true);
+        Assert.Contains(headers, header => header?.StartsWith(
+            "アーティストROI", StringComparison.Ordinal) == true);
         Assert.Contains("状態", headers);
-        Assert.Contains("確定曲（Master検索）", headers);
+        Assert.Contains("確定曲 (Master検索)", headers);
         Assert.Contains("メモ", headers);
         Assert.Contains(bindings, value => value.Contains(
             "ObservationIdShort", StringComparison.Ordinal));
         Assert.Contains(bindings, value => value.Contains(
             "ObservationIdShort, Mode=OneWay", StringComparison.Ordinal));
         Assert.Equal("False", manualReviewGrid.Attribute("IsReadOnly")?.Value);
-        Assert.Equal("132", manualReviewGrid.Attribute("RowHeight")?.Value);
+        Assert.Equal("96", manualReviewGrid.Attribute("RowHeight")?.Value);
         Assert.DoesNotContain("確定", buttons);
         Assert.DoesNotContain("再割当", buttons);
         Assert.DoesNotContain("却下", buttons);
