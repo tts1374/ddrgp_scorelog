@@ -486,7 +486,7 @@ public sealed class MainViewModelTests
     }
 
     [Fact]
-    public async Task SummaryChangesImmediatelyAndSavePersistsEveryDirtyRow()
+    public async Task StatusCountsChangeImmediatelyAndSavePersistsEveryDirtyRow()
     {
         var projection = ProjectionWithVisibilityStates();
         var store = new StubManualReviewDraftStore();
@@ -496,7 +496,6 @@ public sealed class MainViewModelTests
             manualReviewDraftStore: store);
         await viewModel.LoadProjectionAsync();
 
-        Assert.Contains("未保存 4 件", viewModel.ManualReviewSummary, StringComparison.Ordinal);
         Assert.Equal(4, viewModel.ManualReviewUnreviewedCount);
         Assert.Equal(0, viewModel.ManualReviewConfirmedCount);
         Assert.Equal(0, viewModel.ManualReviewRejectedCount);
@@ -513,8 +512,43 @@ public sealed class MainViewModelTests
 
         Assert.Equal(4, store.Drafts.Count);
         Assert.All(viewModel.ManualReviewRows, row => Assert.True(row.IsSaved));
-        Assert.Contains("保存済み 4 件", viewModel.ManualReviewSummary, StringComparison.Ordinal);
-        Assert.Contains("未保存 0 件", viewModel.ManualReviewSummary, StringComparison.Ordinal);
+        Assert.Equal(0, viewModel.ManualReviewUnreviewedCount);
+        Assert.Equal(4, viewModel.ManualReviewHoldCount);
+    }
+
+    [Fact]
+    public async Task BulkApplyDraftSaveKeepsConfirmedAndRejectedRowsInUnreviewedList()
+    {
+        var projection = ProjectionWithVisibilityStates();
+        var store = new StubManualReviewDraftStore();
+        var viewModel = new MainViewModel(
+            new StubMasterUpdateService(),
+            new StubProjectionService(projection),
+            manualReviewDraftStore: store);
+        await viewModel.LoadProjectionAsync();
+
+        var confirmed = Assert.Single(
+            viewModel.ManualReviewRows,
+            row => row.ObservationId == "observation-confirmed");
+        var rejected = Assert.Single(
+            viewModel.ManualReviewRows,
+            row => row.ObservationId == "observation-rejected");
+        confirmed.TruthSongId = "song-1";
+        rejected.Status = "rejected";
+
+        Assert.True(await viewModel.SaveDraftsAsync());
+
+        Assert.Equal(4, viewModel.ManualReviewRows.Count);
+        Assert.Equal("confirmed", confirmed.Status);
+        Assert.Equal("rejected", rejected.Status);
+        Assert.True(confirmed.IsSaved);
+        Assert.True(rejected.IsSaved);
+        Assert.Equal("needs_review", projection.ReviewReferences
+            .Single(reference => reference.CandidateEvaluation.ObservationId == "observation-confirmed")
+            .StoredStatus);
+        Assert.Equal("unresolved", projection.ReviewReferences
+            .Single(reference => reference.CandidateEvaluation.ObservationId == "observation-rejected")
+            .StoredStatus);
     }
 
     [Fact]

@@ -13,8 +13,8 @@ public sealed class ManualReviewRoiImageConverter : IValueConverter
     private static readonly IReadOnlyDictionary<string, (int X, int Y, int Width, int Height)> Rois =
         new Dictionary<string, (int X, int Y, int Width, int Height)>(StringComparer.Ordinal)
         {
-            ["title"] = (306, 58, 470, 34),
-            ["artist"] = (309, 97, 467, 23),
+            ["title"] = (309, 60, 467, 32),
+            ["artist"] = (309, 97, 467, 26),
         };
 
     public object? Convert(

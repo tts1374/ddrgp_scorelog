@@ -49,9 +49,6 @@ public sealed class MainViewModel(
     public ObservableCollection<string> CandidateClassificationOptions { get; } = ["all"];
     public string? CurrentMasterPath => projection is null ? null : fixedDatabasePaths.MasterPath;
     public string? CurrentCatalogPath => projection is null ? null : fixedDatabasePaths.CatalogPath;
-    public string ManualReviewSummary =>
-        $"未反映 {ManualReviewRows.Count} 行 / 保存済み {ManualReviewRows.Count(row => row.IsSaved)} 件"
-        + $" / 未保存 {ManualReviewRows.Count(row => !row.IsSaved)} 件";
     public int ManualReviewUnreviewedCount => CountManualReviewRows("unreviewed");
     public int ManualReviewConfirmedCount => CountManualReviewRows("confirmed");
     public int ManualReviewRejectedCount => CountManualReviewRows("rejected");
@@ -377,7 +374,7 @@ public sealed class MainViewModel(
             StatusTitle = "下書き保存完了";
             StatusMessage =
                 $"{dirtyRows.Count}行を保存しました。catalog/historyは変更していません。";
-            NotifyManualReviewSummary();
+            NotifyManualReviewCounts();
             return true;
         }
         catch (OperationCanceledException)
@@ -785,7 +782,7 @@ public sealed class MainViewModel(
         SelectedManualReviewRow = null;
         if (projection is null)
         {
-            NotifyManualReviewSummary();
+            NotifyManualReviewCounts();
             return;
         }
 
@@ -801,7 +798,7 @@ public sealed class MainViewModel(
             row.PropertyChanged += ManualReviewRow_PropertyChanged;
             ManualReviewRows.Add(row);
         }
-        NotifyManualReviewSummary();
+        NotifyManualReviewCounts();
     }
 
     private static bool IsUnreflectedReviewTarget(ReviewReference reference) =>
@@ -812,16 +809,15 @@ public sealed class MainViewModel(
         if (e.PropertyName is nameof(ManualReviewDraftRow.IsSaved)
             or nameof(ManualReviewDraftRow.Status))
         {
-            NotifyManualReviewSummary();
+            NotifyManualReviewCounts();
         }
     }
 
     private int CountManualReviewRows(string status) =>
         ManualReviewRows.Count(row => row.Status == status);
 
-    private void NotifyManualReviewSummary()
+    private void NotifyManualReviewCounts()
     {
-        OnPropertyChanged(nameof(ManualReviewSummary));
         OnPropertyChanged(nameof(ManualReviewUnreviewedCount));
         OnPropertyChanged(nameof(ManualReviewConfirmedCount));
         OnPropertyChanged(nameof(ManualReviewRejectedCount));
@@ -921,7 +917,7 @@ public sealed class MainViewModel(
         SelectedCoverageStatus = "all";
         SelectedReason = "all";
         SelectedCandidateClassification = "all";
-        NotifyManualReviewSummary();
+        NotifyManualReviewCounts();
         NotifyProjectionProperties();
     }
 

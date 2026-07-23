@@ -249,14 +249,14 @@
                                     <Border Background="#ECFDF5" BorderBrush="#A7F3D0" BorderThickness="1"
                                             CornerRadius="6" Padding="12,8" Margin="0,0,8,0">
                                         <TextBlock Foreground="#065F46" FontWeight="Bold">
-                                            <Run Text="確定予定  " />
+                                            <Run Text="確定  " />
                                             <Run Text="{Binding ManualReviewConfirmedCount, Mode=OneWay}" />
                                         </TextBlock>
                                     </Border>
                                     <Border Background="#FEF2F2" BorderBrush="#FCA5A5" BorderThickness="1"
                                             CornerRadius="6" Padding="12,8" Margin="0,0,8,0">
                                         <TextBlock Foreground="#991B1B" FontWeight="Bold">
-                                            <Run Text="却下予定  " />
+                                            <Run Text="却下  " />
                                             <Run Text="{Binding ManualReviewRejectedCount, Mode=OneWay}" />
                                         </TextBlock>
                                     </Border>
@@ -269,12 +269,9 @@
                                     </Border>
                                 </StackPanel>
                                 <StackPanel Grid.Column="1" HorizontalAlignment="Right">
-                                    <Button Content="未保存の下書きを保存"
+                                    <Button Content="一括反映"
                                             Style="{StaticResource PrimaryButton}"
                                             Click="SaveDraft_Click" />
-                                    <TextBlock Text="{Binding ManualReviewSummary, Mode=OneWay}"
-                                               Foreground="#6B7280" FontSize="12"
-                                               HorizontalAlignment="Right" />
                                 </StackPanel>
                             </Grid>
 
@@ -336,7 +333,7 @@
                                             </DataTemplate>
                                         </DataGridTemplateColumn.CellTemplate>
                                     </DataGridTemplateColumn>
-                                    <DataGridTemplateColumn Header="確定曲 (Master検索)" Width="290">
+                                    <DataGridTemplateColumn Header="確定曲" Width="290">
                                         <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
                                                 <StackPanel>

@@ -148,6 +148,13 @@ public sealed class MainWindowXamlTests
             .Where(element => element.Name.LocalName is "DataGridTextColumn" or "DataGridTemplateColumn")
             .Select(element => element.Attribute("Header")?.Value)
             .ToList();
+        var runTexts = document
+            .Descendants()
+            .Where(element => element.Name.LocalName == "Run")
+            .Select(element => element.Attribute("Text")?.Value)
+            .Where(value => value is not null)
+            .Cast<string>()
+            .ToList();
         var manualReviewGrid = Assert.Single(
             document.Descendants().Where(element => element.Name.LocalName == "DataGrid"),
             element => element.Attribute("ItemsSource")?.Value.Contains(
@@ -186,13 +193,20 @@ public sealed class MainWindowXamlTests
             "SongSearch", StringComparison.Ordinal));
         Assert.Contains(bindings, value => value.Contains(
             "SongChoices", StringComparison.Ordinal));
-        Assert.Contains("未保存の下書きを保存", buttons);
+        Assert.Contains("一括反映", buttons);
+        Assert.DoesNotContain("未保存の下書きを保存", buttons);
+        Assert.Contains("確定  ", runTexts);
+        Assert.Contains("却下  ", runTexts);
+        Assert.DoesNotContain("確定予定  ", runTexts);
+        Assert.DoesNotContain("却下予定  ", runTexts);
+        Assert.DoesNotContain(bindings, value => value.Contains(
+            "ManualReviewSummary", StringComparison.Ordinal));
         Assert.Contains(headers, header => header?.StartsWith(
             "タイトルROI", StringComparison.Ordinal) == true);
         Assert.Contains(headers, header => header?.StartsWith(
             "アーティストROI", StringComparison.Ordinal) == true);
         Assert.Contains("状態", headers);
-        Assert.Contains("確定曲 (Master検索)", headers);
+        Assert.Contains("確定曲", headers);
         Assert.Contains("メモ", headers);
         Assert.Contains(bindings, value => value.Contains(
             "ObservationIdShort", StringComparison.Ordinal));
