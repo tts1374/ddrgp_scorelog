@@ -3,18 +3,19 @@ namespace JacketCatalogCollector.Tests;
 public sealed class NativeWindowEnumeratorTests
 {
     [Theory]
-    [InlineData("ddr-konaste", "DanceDanceRevolution", true)]
-    [InlineData("DDRGP", "unrelated", true)]
-    [InlineData("launcher", "DDR GRAND PRIX", true)]
-    [InlineData("ddr-konaste-helper", "DanceDanceRevolution", false)]
-    [InlineData("launcher", "DanceDanceRevolution", false)]
+    [InlineData("ddr-konaste", 1280, 720, true)]
+    [InlineData("ddr-konaste", 1279, 720, false)]
+    [InlineData("DDRGP", 1280, 720, false)]
+    [InlineData("launcher", 1280, 720, false)]
+    [InlineData("ddr-konaste-helper", 1280, 720, false)]
     public void CandidateReasonsRecognizeOnlySupportedDdrGpIdentities(
         string processName,
-        string title,
+        int width,
+        int height,
         bool expected)
     {
         var snapshot = new WindowIdentitySnapshot(
-            1, 2, 3, processName, title, "class", 1280, 720, true, false);
+            1, 2, 3, processName, "unrelated title", "class", width, height, true, false);
 
         var reasons = NativeWindowEnumerator.CandidateReasons(snapshot);
 

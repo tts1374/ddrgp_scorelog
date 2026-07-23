@@ -1,4 +1,3 @@
-using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
 using System.Runtime.CompilerServices;
@@ -11,9 +10,9 @@ public sealed class WindowCaptureViewModel : INotifyPropertyChanged
 {
     private readonly IWindowEnumerator windowEnumerator;
     private readonly WindowCaptureCoordinator coordinator;
-    private WindowCandidate? selectedCandidate;
+    private WindowCandidate? detectedCandidate;
     private CaptureLifecycleSnapshot lifecycle = CaptureLifecycleSnapshot.Idle;
-    private string candidateStatus = "候補は未取得です。";
+    private string candidateStatus = "DDR GP未検出です。収集開始で自動検出します。";
     private BitmapImage? preview;
 
     public WindowCaptureViewModel(
@@ -35,22 +34,6 @@ public sealed class WindowCaptureViewModel : INotifyPropertyChanged
     public event EventHandler<RawCaptureFrame>? FrameReceived;
     public event EventHandler<CaptureLifecycleSnapshot>? LifecycleChanged;
 
-    public ObservableCollection<WindowCandidate> Candidates { get; } = [];
-
-    public WindowCandidate? SelectedCandidate
-    {
-        get => selectedCandidate;
-        set
-        {
-            if (SetField(ref selectedCandidate, value))
-            {
-                Preview = ToBitmap(value?.PreviewPng);
-                OnPropertyChanged(nameof(SelectedIdentity));
-                OnPropertyChanged(nameof(SelectedReason));
-            }
-        }
-    }
-
     public CaptureLifecycleSnapshot Lifecycle
     {
         get => lifecycle;
@@ -61,6 +44,7 @@ public sealed class WindowCaptureViewModel : INotifyPropertyChanged
                 OnPropertyChanged(nameof(CaptureCounts));
                 OnPropertyChanged(nameof(CaptureSizes));
                 OnPropertyChanged(nameof(CaptureState));
+                OnPropertyChanged(nameof(ConnectionDisplay));
             }
         }
     }
@@ -77,8 +61,29 @@ public sealed class WindowCaptureViewModel : INotifyPropertyChanged
         private set => SetField(ref preview, value);
     }
 
-    public string SelectedIdentity => SelectedCandidate?.DisplayName ?? "未選択";
-    public string SelectedReason => SelectedCandidate?.CandidateReason ?? "—";
+    public string TargetDisplay => detectedCandidate is null
+        ? "DDR GP 未検出"
+        : $"DDR GP（{TargetDetails(detectedCandidate)}）";
+    public string ConnectionDisplay
+    {
+        get
+        {
+            if (detectedCandidate is null)
+            {
+                return "DDR GP 未接続";
+            }
+            var details = TargetDetails(detectedCandidate);
+            return Lifecycle.State switch
+            {
+                CaptureLifecycleState.Starting => $"DDR GP 接続中（{details}）",
+                CaptureLifecycleState.Capturing => $"DDR GP 接続中（{details}）",
+                CaptureLifecycleState.Stopping => $"DDR GP 停止中（{details}）",
+                CaptureLifecycleState.Failed => $"DDR GP 接続停止（{Lifecycle.Message}）",
+                CaptureLifecycleState.Stopped => $"DDR GP 未接続（停止済み / {details}）",
+                _ => $"DDR GP 検出済み（{details}）",
+            };
+        }
+    }
     public string CaptureState =>
         $"{Lifecycle.State} / end={Lifecycle.EndReason} / resource={Lifecycle.ResourceState}";
     public string CaptureCounts =>
@@ -86,25 +91,30 @@ public sealed class WindowCaptureViewModel : INotifyPropertyChanged
     public string CaptureSizes =>
         $"client start={Lifecycle.StartWidth}x{Lifecycle.StartHeight} / latest frame={Lifecycle.CurrentWidth}x{Lifecycle.CurrentHeight}";
 
-    public async Task RefreshCandidatesAsync(CancellationToken cancellationToken = default)
+    public async Task<WindowCandidate?> DetectDdrGpAsync(
+        CancellationToken cancellationToken = default)
     {
         var items = await windowEnumerator.EnumerateAsync(cancellationToken);
-        Candidates.Clear();
-        SelectedCandidate = null;
-        foreach (var item in items)
+        var candidates = items
+            .Where(item => NativeWindowEnumerator.IsDdrGpTarget(item.Identity))
+            .ToList();
+        if (candidates.Count == 0)
         {
-            Candidates.Add(item);
+            SetDetectedCandidate(null);
+            CandidateStatus = "DDR GPのウィンドウが見つかりません。ゲームを起動してから再度実行してください。";
+            return null;
         }
-        CandidateStatus = items.Count == 0
-            ? "DDR GRAND PRIX候補は0件です。capture resourceは作成していません。"
-            : $"候補{items.Count}件。previewと根拠を確認し、1件を明示選択してください。自動開始しません。";
-    }
+        if (candidates.Count > 1)
+        {
+            SetDetectedCandidate(null);
+            CandidateStatus = "DDR GPのウィンドウが複数あるため開始できません。";
+            return null;
+        }
 
-    public Task<bool> StartAsync(CancellationToken cancellationToken = default)
-    {
-        var selected = SelectedCandidate
-            ?? throw new InvalidOperationException("previewと根拠を確認した候補を明示選択してください。");
-        return StartAsync(selected, cancellationToken);
+        var candidate = candidates[0];
+        SetDetectedCandidate(candidate);
+        CandidateStatus = $"DDR GPを検出しました（{TargetDetails(candidate)}）。";
+        return candidate;
     }
 
     public Task<bool> StartAsync(
@@ -113,6 +123,21 @@ public sealed class WindowCaptureViewModel : INotifyPropertyChanged
         coordinator.StartAsync(candidate, cancellationToken);
 
     public Task StopAsync() => coordinator.StopAsync();
+
+    private void SetDetectedCandidate(WindowCandidate? value)
+    {
+        if (ReferenceEquals(detectedCandidate, value))
+        {
+            return;
+        }
+        detectedCandidate = value;
+        Preview = ToBitmap(value?.PreviewPng);
+        OnPropertyChanged(nameof(TargetDisplay));
+        OnPropertyChanged(nameof(ConnectionDisplay));
+    }
+
+    private static string TargetDetails(WindowCandidate candidate) =>
+        $"{candidate.Identity.ProcessName} / {candidate.Identity.ClientWidth}×{candidate.Identity.ClientHeight}";
 
     private static BitmapImage? ToBitmap(byte[]? pngBytes)
     {

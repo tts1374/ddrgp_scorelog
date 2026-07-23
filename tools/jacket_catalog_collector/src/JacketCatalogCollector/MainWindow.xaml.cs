@@ -94,36 +94,20 @@ public partial class MainWindow : Window
         }
     }
 
-    private async void RefreshWindows_Click(object sender, RoutedEventArgs e)
-    {
-        try
-        {
-            await viewModel.WindowCapture!.RefreshCandidatesAsync();
-        }
-        catch (Exception exception)
-        {
-            MessageBox.Show(this, exception.Message, "window候補取得失敗");
-        }
-    }
-
     private async void StartCapture_Click(object sender, RoutedEventArgs e)
     {
         var capture = viewModel.WindowCapture!;
-        var candidate = capture.SelectedCandidate;
-        if (candidate is null)
+        WindowCandidate? candidate;
+        try
         {
-            MessageBox.Show(this, "候補のpreviewと根拠を確認して1件を明示選択してください。");
+            candidate = await capture.DetectDdrGpAsync();
+        }
+        catch (Exception exception)
+        {
+            MessageBox.Show(this, exception.Message, "DDR GP検出失敗");
             return;
         }
-        var identity = candidate.Identity;
-        if (MessageBox.Show(
-            this,
-            $"次のwindowだけをcaptureします。自動再選択・disk保存は行いません。\n\n"
-            + $"{candidate.DisplayName}\nreason: {candidate.CandidateReason}\n"
-            + $"process start: {identity.ProcessStartTicks}\nclass: {identity.ClassName}",
-            "capture開始確認",
-            MessageBoxButton.OKCancel,
-            MessageBoxImage.Warning) != MessageBoxResult.OK)
+        if (candidate is null)
         {
             return;
         }
@@ -155,10 +139,18 @@ public partial class MainWindow : Window
     private async void ResumeCapture_Click(object sender, RoutedEventArgs e)
     {
         var capture = viewModel.WindowCapture!;
-        var candidate = capture.SelectedCandidate;
+        WindowCandidate? candidate;
+        try
+        {
+            candidate = await capture.DetectDdrGpAsync();
+        }
+        catch (Exception exception)
+        {
+            MessageBox.Show(this, exception.Message, "DDR GP検出失敗");
+            return;
+        }
         if (candidate is null)
         {
-            MessageBox.Show(this, "再開するwindow候補を明示選択してください。");
             return;
         }
         try

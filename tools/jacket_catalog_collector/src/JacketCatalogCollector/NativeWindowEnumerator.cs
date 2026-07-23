@@ -11,6 +11,9 @@ namespace JacketCatalogCollector;
 public sealed class NativeWindowEnumerator : IWindowEnumerator
 {
     private const uint PrintWindowClientOnly = 0x00000001;
+    private const string TargetProcessName = "ddr-konaste";
+    private const int TargetClientWidth = 1280;
+    private const int TargetClientHeight = 720;
 
     public Task<IReadOnlyList<WindowCandidate>> EnumerateAsync(
         CancellationToken cancellationToken = default) => Task.Run<IReadOnlyList<WindowCandidate>>(() =>
@@ -80,22 +83,15 @@ public sealed class NativeWindowEnumerator : IWindowEnumerator
 
     internal static List<string> CandidateReasons(WindowIdentitySnapshot snapshot)
     {
-        var reasons = new List<string>();
-        if (snapshot.Title.Contains("DDR GRAND PRIX", StringComparison.OrdinalIgnoreCase))
-        {
-            reasons.Add("title contains DDR GRAND PRIX");
-        }
-        if (snapshot.ProcessName.Equals("ddr-konaste", StringComparison.OrdinalIgnoreCase))
-        {
-            reasons.Add("process name is ddr-konaste");
-        }
-        if (snapshot.ProcessName.Contains("ddr", StringComparison.OrdinalIgnoreCase)
-            && snapshot.ProcessName.Contains("gp", StringComparison.OrdinalIgnoreCase))
-        {
-            reasons.Add("process name contains DDR/GP");
-        }
-        return reasons;
+        return IsDdrGpTarget(snapshot)
+            ? ["process name is ddr-konaste and client size is 1280x720"]
+            : [];
     }
+
+    internal static bool IsDdrGpTarget(WindowIdentitySnapshot snapshot) =>
+        snapshot.ProcessName.Equals(TargetProcessName, StringComparison.OrdinalIgnoreCase)
+        && snapshot.ClientWidth == TargetClientWidth
+        && snapshot.ClientHeight == TargetClientHeight;
 
     private static byte[]? TryCapturePreview(WindowIdentitySnapshot snapshot)
     {
