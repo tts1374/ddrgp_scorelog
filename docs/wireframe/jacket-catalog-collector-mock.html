@@ -870,7 +870,7 @@
     function switchTab(tabId, evt) {
       document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
       document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
-      
+
       evt.target.classList.add('active');
       document.getElementById('tab-' + tabId).classList.add('active');
     }
