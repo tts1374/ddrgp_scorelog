@@ -660,7 +660,7 @@ python -m tools.vision_poc.jacket_reference_catalog ingest `
 
 coverageは `coverage` subcommandで `jacket_catalog_song_coverage.csv`、`jacket_catalog_coverage_summary.json`、`jacket_catalog_coverage.md` を `data/` 配下へ生成します。GP対象songを `referenced` / `needs_review` / `uncollected` / `unresolved` のどれかへ1回だけ数え、候補を確定songへ昇格しません。current master/GP/current extractorを満たす `auto_confirmed` / `manual_confirmed` referenceだけをM5 jacket matcherへ供給し、`rejected`、orphan、旧extractor、不正永続featureは除外します。
 
-review projectionはversion 5のcurrent-only JSONです。catalog SQLite tableをC#側で直接解釈せず、master/catalogをstrict read-onlyで検査し、current/stored review state、revision、候補、manual provenance、append-only history、検証済みsource image path、version付きunresolved candidate evaluationを投影します。`migration_required`、`read_only`、`manual_review_v2`など旧catalog capability fieldは出しません。C# loaderもprojection version 5とcatalog schema version 1だけを受け入れます。
+review projectionはversion 6のcurrent-only JSONです。catalog SQLite tableをC#側で直接解釈せず、master/catalogをstrict read-onlyで検査し、current/stored review state、current song、notes、登録経路、実行時刻、revision、候補、manual provenance、append-only history、検証済みsource image path、version付きunresolved candidate evaluationを投影します。`migration_required`、`read_only`、`manual_review_v2`など旧catalog capability fieldは出しません。C# loaderもprojection version 6とcatalog schema version 1だけを受け入れます。
 
 ```powershell
 python -m tools.vision_poc.jacket_catalog_review_projection `
@@ -686,8 +686,11 @@ PR #53で評価済みの3経路を一括auto-confirmする場合だけ、
 検査し、全件を1つの`BEGIN IMMEDIATE` transactionで更新します。exactな同一根拠はno-op、stale state、
 既存manual/rejected/別根拠の確定、重複observation、不正songは全体拒否です。根拠は
 `resolution_basis`とversion付き`resolution_reason` JSONへ保持し、manual action/historyを生成しません。
-通常ingest、manual review、coverageからこのbatch writerを暗黙起動しません。collectorの明示的な収集終了だけが、current projectionの`exact_unique` / `alias_unique`による既存#53 auto-confirm対象をこのbatch writerへ渡します。dry-run/applyとODS exportの
-コマンド・revision guard・運用順は`tools/ddrworld_snapshot_evaluation/README.md`を参照してください。
+通常ingest、manual review、coverageからこのbatch writerを暗黙起動しません。collectorの明示的な収集終了だけが、
+完成済みDDR WORLD snapshotの32x32公式jacket画像をcurrent masterへ対応付けた公式feature masterをread-onlyで読み、
+既存M5 jacket gate、続いてcurrent projectionの`exact_unique` / `alias_unique`による既存#53 auto-confirm対象をこのbatch writerへ渡します。
+ODSの再構築やjacket top3 routeの暗黙起動は行いません。dry-run/applyとODS exportのコマンド・revision guard・
+運用順は`tools/ddrworld_snapshot_evaluation/README.md`を参照してください。
 
 catalog、artifact、checkpoint、source/crop画像、特徴量、review結果、coverageはローカル非共有物であり、Git、CI artifact、Release、通常logへ含めません。生画像やcropの自動削除は行いません。artifact manifest/checkpointのv1/v2 contractとresume/retry状態機械は、このcatalog schema再採番では変更していません。
 

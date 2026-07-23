@@ -6,6 +6,7 @@ import sqlite3
 from pathlib import Path
 
 import pytest
+from PIL import Image
 from test_title_artist_evaluation import alpha_extractor, fixture_paths, write_artifact
 from test_unresolved_candidate_evaluation import _ingest_artifact
 
@@ -75,6 +76,8 @@ def _write_checkpoint(
 
 def _setup_collection(tmp_path: Path, monkeypatch, count: int = 1):
     master_path, catalog_path, artifact_root = fixture_paths(tmp_path, monkeypatch)
+    snapshot_path = tmp_path / "data" / "ddrworld_music_snapshot" / "fixture-v1"
+    _write_snapshot(snapshot_path, [("Unmapped", "Unknown Artist", (200, 200, 200))])
     manifests = []
     reference_ids = []
     for index in range(1, count + 1):
@@ -91,13 +94,165 @@ def _setup_collection(tmp_path: Path, monkeypatch, count: int = 1):
         manifests.append(manifest)
         reference_ids.append(reference_id)
     _write_checkpoint(artifact_root, manifests, reference_ids)
-    return master_path, catalog_path, artifact_root, manifests
+    return master_path, catalog_path, artifact_root, manifests, snapshot_path
+
+
+def _write_snapshot(
+    snapshot_path: Path,
+    entries: list[tuple[str, str, tuple[int, int, int]]],
+) -> None:
+    jacket_directory = snapshot_path / "jackets"
+    jacket_directory.mkdir(parents=True, exist_ok=True)
+    images = []
+    songs = []
+    for index, (title, artist, color) in enumerate(entries):
+        source_url = f"https://fixture.test/jacket/{index}"
+        image_path = jacket_directory / f"{index}.png"
+        Image.new("RGB", (32, 32), color).save(image_path)
+        image_hash = hashlib.sha256(image_path.read_bytes()).hexdigest()
+        relative_path = image_path.relative_to(snapshot_path).as_posix()
+        images.append(
+            {
+                "source_url": source_url,
+                "local_path": relative_path,
+                "sha256": image_hash,
+                "error": None,
+            }
+        )
+        songs.append(
+            {
+                "source_page": 0,
+                "page_position": index,
+                "title": title,
+                "artist": artist,
+                "jacket_source_url": source_url,
+                "jacket_local_path": relative_path,
+                "jacket_sha256": image_hash,
+                "jacket_error": None,
+            }
+        )
+    (snapshot_path / "manifest.json").write_text(
+        json.dumps(
+            {
+                "schema_version": "ddrworld-music-snapshot-manifest-v1",
+                "status": "complete",
+                "snapshot_id": "fixture-v1",
+                "failures": [],
+                "images": images,
+            },
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    (snapshot_path / "summary.json").write_text(
+        json.dumps(
+            {
+                "schema_version": "ddrworld-music-snapshot-summary-v1",
+                "status": "complete",
+                "snapshot_id": "fixture-v1",
+                "image_request_count": len(images),
+                "stored_jacket_count": len(images),
+                "song_count": len(songs),
+            },
+            ensure_ascii=False,
+        )
+        + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    (snapshot_path / "songs.jsonl").write_text(
+        "".join(json.dumps(song, ensure_ascii=False) + "\n" for song in songs),
+        encoding="utf-8",
+        newline="\n",
+    )
+
+
+def test_collection_end_prefers_unique_jacket_gate_over_ocr_pair(
+    tmp_path: Path, monkeypatch
+) -> None:
+    master_path, catalog_path, artifact_root, manifests, snapshot_path = _setup_collection(
+        tmp_path, monkeypatch
+    )
+    _write_snapshot(
+        snapshot_path,
+        [("Alpha", "Artist A", (11, 20, 30))],
+    )
+
+    def low_confidence_extractor(image, field: str, method: str):
+        return evaluation.FieldExtraction(
+            "", "", 0.1, "low_confidence", "below threshold"
+        )
+
+    result = auto_confirmation.apply_collection_auto_confirmation(
+        catalog_path,
+        master_path,
+        artifact_root,
+        "session-1",
+        snapshot_path=snapshot_path,
+        extractor=low_confidence_extractor,
+        applied_at="2026-07-23T00:00:00+00:00",
+    )
+
+    assert (result.requested_count, result.applied_count) == (1, 1)
+    observation_id = str(manifests[0]["observation_id"])
+    with sqlite3.connect(catalog_path) as connection:
+        row = connection.execute(
+            "SELECT review_status, resolution_basis, resolution_reason "
+            "FROM jacket_references WHERE source_capture_id = ?",
+            (observation_id,),
+        ).fetchone()
+    assert row[0:2] == ("auto_confirmed", "jacket_gate")
+    evidence = json.loads(row[2])
+    assert evidence["confirmation_source"] == "jacket_gate"
+    assert evidence["matched_song_id"] == "song-alpha"
+    assert 0.0 <= evidence["jacket_distance"] < 0.01
+    assert evidence["jacket_rank"] == 1
+    assert evidence["snapshot_id"] == "fixture-v1"
+    assert evidence["jacket_feature_source"].startswith("ddrworld:jackets/")
+
+
+def test_collection_end_keeps_ambiguous_jacket_for_existing_ocr_policy(
+    tmp_path: Path, monkeypatch
+) -> None:
+    master_path, catalog_path, artifact_root, manifests, snapshot_path = _setup_collection(
+        tmp_path, monkeypatch
+    )
+    _write_snapshot(
+        snapshot_path,
+        [
+            ("Alpha", "Artist A", (11, 20, 30)),
+            ("Beta", "Artist B", (11, 20, 30)),
+        ],
+    )
+
+    auto_confirmation.apply_collection_auto_confirmation(
+        catalog_path,
+        master_path,
+        artifact_root,
+        "session-1",
+        snapshot_path=snapshot_path,
+        extractor=alpha_extractor,
+    )
+
+    observation_id = str(manifests[0]["observation_id"])
+    with sqlite3.connect(catalog_path) as connection:
+        row = connection.execute(
+            "SELECT resolution_basis, resolution_reason "
+            "FROM jacket_references WHERE source_capture_id = ?",
+            (observation_id,),
+        ).fetchone()
+    assert row[0] == "ocr_title_artist_pair"
+    evidence = json.loads(row[1])
+    assert evidence["confirmation_source"] == "ocr_title_artist_pair"
+    assert evidence["jacket_distance"] is None
 
 
 def test_collection_end_auto_confirms_all_safe_rows_and_reports_zero_remaining(
     tmp_path: Path, monkeypatch
 ) -> None:
-    master_path, catalog_path, artifact_root, manifests = _setup_collection(
+    master_path, catalog_path, artifact_root, manifests, snapshot_path = _setup_collection(
         tmp_path, monkeypatch, count=2
     )
 
@@ -106,6 +261,7 @@ def test_collection_end_auto_confirms_all_safe_rows_and_reports_zero_remaining(
         master_path,
         artifact_root,
         "session-1",
+        snapshot_path=snapshot_path,
         extractor=alpha_extractor,
         applied_at="2026-07-23T00:00:00+00:00",
     )
@@ -131,7 +287,7 @@ def test_collection_end_auto_confirms_all_safe_rows_and_reports_zero_remaining(
 def test_collection_end_leaves_non_auto_rows_for_manual_review(
     tmp_path: Path, monkeypatch
 ) -> None:
-    master_path, catalog_path, artifact_root, _manifests = _setup_collection(
+    master_path, catalog_path, artifact_root, _manifests, snapshot_path = _setup_collection(
         tmp_path, monkeypatch, count=2
     )
 
@@ -145,6 +301,7 @@ def test_collection_end_leaves_non_auto_rows_for_manual_review(
         master_path,
         artifact_root,
         "session-1",
+        snapshot_path=snapshot_path,
         extractor=mixed_extractor,
         applied_at="2026-07-23T00:00:00+00:00",
     )
@@ -165,7 +322,7 @@ def test_collection_end_leaves_non_auto_rows_for_manual_review(
 def test_collection_end_does_not_auto_confirm_a_non_gp_master_song(
     tmp_path: Path, monkeypatch
 ) -> None:
-    master_path, catalog_path, artifact_root, _manifests = _setup_collection(
+    master_path, catalog_path, artifact_root, _manifests, snapshot_path = _setup_collection(
         tmp_path, monkeypatch
     )
     with sqlite3.connect(master_path) as connection, connection:
@@ -179,6 +336,7 @@ def test_collection_end_does_not_auto_confirm_a_non_gp_master_song(
         master_path,
         artifact_root,
         "session-1",
+        snapshot_path=snapshot_path,
         extractor=alpha_extractor,
     )
 
@@ -192,7 +350,7 @@ def test_collection_end_does_not_auto_confirm_a_non_gp_master_song(
 def test_collection_end_repeat_is_a_no_op_without_history_or_artifact_changes(
     tmp_path: Path, monkeypatch
 ) -> None:
-    master_path, catalog_path, artifact_root, _manifests = _setup_collection(
+    master_path, catalog_path, artifact_root, _manifests, snapshot_path = _setup_collection(
         tmp_path, monkeypatch
     )
     first_artifacts = sorted(
@@ -206,6 +364,7 @@ def test_collection_end_repeat_is_a_no_op_without_history_or_artifact_changes(
         master_path,
         artifact_root,
         "session-1",
+        snapshot_path=snapshot_path,
         extractor=alpha_extractor,
         applied_at="2026-07-23T00:00:00+00:00",
     )
@@ -214,6 +373,7 @@ def test_collection_end_repeat_is_a_no_op_without_history_or_artifact_changes(
         master_path,
         artifact_root,
         "session-1",
+        snapshot_path=snapshot_path,
         extractor=alpha_extractor,
         applied_at="2026-07-23T00:00:01+00:00",
     )
@@ -235,7 +395,7 @@ def test_collection_end_repeat_is_a_no_op_without_history_or_artifact_changes(
 def test_collection_end_rejects_pending_checkpoint_before_matching(
     tmp_path: Path, monkeypatch
 ) -> None:
-    master_path, catalog_path, artifact_root, _manifests = _setup_collection(
+    master_path, catalog_path, artifact_root, _manifests, snapshot_path = _setup_collection(
         tmp_path, monkeypatch
     )
     checkpoint_path = artifact_root / "session-1" / "checkpoint.json"
@@ -254,6 +414,7 @@ def test_collection_end_rejects_pending_checkpoint_before_matching(
             master_path,
             artifact_root,
             "session-1",
+            snapshot_path=snapshot_path,
             extractor=alpha_extractor,
         )
     except ValueError as exception:
@@ -280,7 +441,7 @@ def test_collection_end_keeps_non_auto_evaluation_classes_manual(
     reason: str,
     candidates: list[dict[str, str]],
 ) -> None:
-    master_path, catalog_path, artifact_root, manifests = _setup_collection(
+    master_path, catalog_path, artifact_root, manifests, snapshot_path = _setup_collection(
         tmp_path, monkeypatch
     )
     observation_id = str(manifests[0]["observation_id"])
@@ -310,6 +471,7 @@ def test_collection_end_keeps_non_auto_evaluation_classes_manual(
         master_path,
         artifact_root,
         "session-1",
+        snapshot_path=snapshot_path,
     )
 
     assert result.requested_count == 0
@@ -319,7 +481,7 @@ def test_collection_end_keeps_non_auto_evaluation_classes_manual(
 def test_collection_end_uses_the_writer_transaction_for_all_targets(
     tmp_path: Path, monkeypatch
 ) -> None:
-    master_path, catalog_path, artifact_root, _manifests = _setup_collection(
+    master_path, catalog_path, artifact_root, _manifests, snapshot_path = _setup_collection(
         tmp_path, monkeypatch, count=2
     )
     original_apply = auto_confirmation.catalog.apply_auto_confirmation_batch
@@ -341,6 +503,7 @@ def test_collection_end_uses_the_writer_transaction_for_all_targets(
             master_path,
             artifact_root,
             "session-1",
+            snapshot_path=snapshot_path,
             extractor=alpha_extractor,
         )
 

@@ -10,6 +10,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from tools.ddrworld_snapshot_evaluation import evaluator as snapshot_evaluation
 from tools.ddrworld_snapshot_evaluation.policy import AUTO_ROUTES, POLICY_VERSION
 from tools.vision_poc import (
     jacket_catalog_review_projection as projection,
@@ -18,17 +19,23 @@ from tools.vision_poc import (
     jacket_reference_catalog as catalog,
 )
 from tools.vision_poc import (
+    master_match,
     title_artist_evaluation,
     unresolved_candidate_evaluation,
 )
 
 COLLECTION_AUTO_CONFIRMATION_SCHEMA_VERSION = "m5c-collection-end-auto-confirmation-v1"
+JACKET_POLICY_ROUTE = "auto_jacket_gate"
+if JACKET_POLICY_ROUTE not in AUTO_ROUTES:
+    raise RuntimeError(f"existing auto-confirmation policy route is missing: {JACKET_POLICY_ROUTE}")
+JACKET_CONFIRMATION_SOURCE = JACKET_POLICY_ROUTE.removeprefix("auto_")
 AUTO_POLICY_ROUTE = "auto_ocr_title_artist_pair"
 if AUTO_POLICY_ROUTE not in AUTO_ROUTES:
     raise RuntimeError(f"existing auto-confirmation policy route is missing: {AUTO_POLICY_ROUTE}")
 CONFIRMATION_SOURCE = AUTO_POLICY_ROUTE.removeprefix("auto_")
 AUTO_CLASSIFICATIONS = {"exact_unique", "alias_unique"}
 MANUAL_REVIEW_STATUSES = {"unresolved", "needs_review", "orphaned"}
+DEFAULT_SNAPSHOT_ROOT = Path("data/ddrworld_music_snapshot")
 
 
 @dataclass(frozen=True)
@@ -126,7 +133,12 @@ def _checkpoint_observation_ids(artifact_root: Path, session_id: str) -> tuple[s
     return tuple(observation_ids)
 
 
-def _evidence(row: sqlite3.Row, evaluation: dict[str, Any]) -> str:
+def _evidence(
+    row: sqlite3.Row,
+    evaluation: dict[str, Any],
+    *,
+    snapshot_id: str | None,
+) -> str:
     candidate = evaluation["candidates"][0]
     song_id = candidate["song_id"]
     match_kind = (
@@ -155,7 +167,7 @@ def _evidence(row: sqlite3.Row, evaluation: dict[str, Any]) -> str:
         "confirmation_source": CONFIRMATION_SOURCE,
         "matched_song_id": song_id,
         "policy_version": POLICY_VERSION,
-        "snapshot_id": None,
+        "snapshot_id": snapshot_id,
         "feature_extractor_version": str(row["feature_extractor_version"]),
         "jacket_feature_version": str(row["jacket_feature_version"]),
         "jacket_distance": None,
@@ -180,6 +192,99 @@ def _evidence(row: sqlite3.Row, evaluation: dict[str, Any]) -> str:
         ],
     }
     return _canonical_json(value)
+
+
+def _jacket_evidence(
+    row: sqlite3.Row,
+    match: master_match.JacketReferenceMatch,
+    *,
+    snapshot_id: str,
+) -> str:
+    value = {
+        "evidence_schema_version": catalog.AUTO_CONFIRMATION_EVIDENCE_SCHEMA_VERSION,
+        "observation_id": str(row["source_capture_id"]),
+        "confirmation_source": JACKET_CONFIRMATION_SOURCE,
+        "matched_song_id": match.song_id,
+        "policy_version": POLICY_VERSION,
+        "snapshot_id": snapshot_id,
+        "feature_extractor_version": str(row["feature_extractor_version"]),
+        "jacket_feature_version": str(row["jacket_feature_version"]),
+        "jacket_distance": float(f"{match.distance:.6f}"),
+        "jacket_margin": (
+            None if match.margin is None else float(f"{match.margin:.6f}")
+        ),
+        "jacket_rank": match.rank,
+        "jacket_feature_source": match.feature_source,
+        "ocr_profile": None,
+        "title_ocr_profiles": [],
+        "artist_ocr_profiles": [],
+        "title_artist_pair_resolutions": [],
+    }
+    return _canonical_json(value)
+
+
+def _resolve_snapshot_path(
+    snapshot_path: Path | None,
+    snapshot_root: Path | None,
+) -> Path:
+    if snapshot_path is not None:
+        return snapshot_path.resolve()
+    root = (snapshot_root or DEFAULT_SNAPSHOT_ROOT).resolve()
+    if not root.is_dir():
+        raise ValueError(f"DDR WORLD snapshot root does not exist: {root}")
+    candidates = []
+    for candidate in sorted(root.iterdir(), key=lambda item: item.name):
+        if not candidate.is_dir():
+            continue
+        try:
+            snapshot_evaluation.load_snapshot(candidate)
+        except snapshot_evaluation.EvaluationError:
+            continue
+        candidates.append(candidate)
+    if not candidates:
+        raise ValueError(f"no complete DDR WORLD snapshot exists under: {root}")
+    return candidates[-1]
+
+
+def _load_ddrworld_feature_master(
+    snapshot_path: Path,
+    master_db: Path,
+) -> tuple[str, list[master_match.JacketFeatureMasterEntry]]:
+    try:
+        snapshot_rows, _fingerprints = snapshot_evaluation.load_snapshot(snapshot_path)
+        snapshot_songs = snapshot_evaluation.load_snapshot_features(
+            snapshot_path, snapshot_rows
+        )
+        master_songs, aliases = snapshot_evaluation.load_master(master_db)
+        indexes = snapshot_evaluation.build_master_indexes(master_songs, aliases)
+    except snapshot_evaluation.EvaluationError as exc:
+        raise ValueError(f"DDR WORLD snapshot cannot be used for jacket matching: {exc}") from exc
+
+    entries: list[master_match.JacketFeatureMasterEntry] = []
+    for snapshot_song in snapshot_songs:
+        mapping = snapshot_evaluation.resolve_snapshot_song(
+            snapshot_song.title,
+            snapshot_song.artist,
+            master_songs,
+            indexes,
+        )
+        if mapping.song is None or not mapping.song.grand_prix_play_available:
+            continue
+        entries.append(
+            master_match.JacketFeatureMasterEntry(
+                organized_file=f"ddrworld:{snapshot_song.jacket_path.as_posix()}",
+                source_song_title=snapshot_song.title,
+                song_id=mapping.song.song_id,
+                title=mapping.song.title,
+                artist=mapping.song.artist,
+                feature=snapshot_song.feature,
+            )
+        )
+    manifest = snapshot_evaluation.read_json(snapshot_path / "manifest.json")
+    snapshot_id = str(manifest.get("snapshot_id") or snapshot_path.name)
+    if not snapshot_id:
+        raise ValueError("DDR WORLD snapshot id is empty")
+    return snapshot_id, entries
 
 
 def _session_rows(
@@ -216,6 +321,8 @@ def apply_collection_auto_confirmation(
     artifact_root: Path,
     session_id: str,
     *,
+    snapshot_path: Path | None = None,
+    snapshot_root: Path | None = None,
     extractor: title_artist_evaluation.Extractor = title_artist_evaluation.extract_field,
     applied_at: str | None = None,
 ) -> CollectionAutoConfirmationResult:
@@ -228,6 +335,14 @@ def apply_collection_auto_confirmation(
         artifact_root=artifact_root,
         extractor=extractor,
     )
+    snapshot_id = None
+    feature_master_entries: list[master_match.JacketFeatureMasterEntry] = []
+    if observation_ids:
+        resolved_snapshot_path = _resolve_snapshot_path(snapshot_path, snapshot_root)
+        snapshot_id, feature_master_entries = _load_ddrworld_feature_master(
+            resolved_snapshot_path,
+            master_db,
+        )
     selected_ids = set(observation_ids)
     requests: list[catalog.AutoConfirmationRequest] = []
     placeholders = ",".join("?" for _ in observation_ids)
@@ -249,13 +364,50 @@ def apply_collection_auto_confirmation(
                 observation_id not in selected_ids
                 or reference["stored_status"] != "unresolved"
                 or reference["review_status"] != "unresolved"
-                or candidate["classification"] not in AUTO_CLASSIFICATIONS
-                or len(candidate["candidates"]) != 1
             ):
                 continue
             row = rows_by_observation.get(observation_id)
             if row is None:
                 raise ValueError("projection and catalog observations do not match")
+
+            jacket_match = None
+            if (
+                str(row["feature_extractor_version"]) == catalog.FEATURE_EXTRACTOR_VERSION
+                and str(row["jacket_feature_version"])
+                == catalog.JACKET_FRAME_FEATURE_VERSION
+            ):
+                try:
+                    jacket_feature = catalog.decode_persisted_feature(row)
+                except ValueError:
+                    jacket_feature = None
+                if jacket_feature is not None:
+                    jacket_match = master_match.match_jacket_reference_feature(
+                        jacket_feature,
+                        feature_master_entries,
+                    )
+            if jacket_match is not None:
+                requests.append(
+                    catalog.AutoConfirmationRequest(
+                        observation_id=observation_id,
+                        song_id=jacket_match.song_id,
+                        confirmation_source=JACKET_CONFIRMATION_SOURCE,
+                        evidence_json=_jacket_evidence(
+                            row,
+                            jacket_match,
+                            snapshot_id=str(snapshot_id),
+                        ),
+                        expected_state_sha256=catalog.auto_confirmation_state_sha256(row),
+                        applied_at=applied_at
+                        or datetime.now(UTC).isoformat(timespec="seconds"),
+                    )
+                )
+                continue
+
+            if (
+                candidate["classification"] not in AUTO_CLASSIFICATIONS
+                or len(candidate["candidates"]) != 1
+            ):
+                continue
             song_id = str(candidate["candidates"][0]["song_id"])
             if not any(
                 song.song_id == song_id and song.grand_prix_play_available
@@ -267,7 +419,11 @@ def apply_collection_auto_confirmation(
                     observation_id=observation_id,
                     song_id=song_id,
                     confirmation_source=CONFIRMATION_SOURCE,
-                    evidence_json=_evidence(row, candidate),
+                    evidence_json=_evidence(
+                        row,
+                        candidate,
+                        snapshot_id=snapshot_id,
+                    ),
                     expected_state_sha256=catalog.auto_confirmation_state_sha256(row),
                     applied_at=applied_at or datetime.now(UTC).isoformat(timespec="seconds"),
                 )
@@ -293,6 +449,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--master-db", required=True, type=Path)
     parser.add_argument("--artifact-root", required=True, type=Path)
     parser.add_argument("--session-id", required=True)
+    snapshot = parser.add_mutually_exclusive_group()
+    snapshot.add_argument("--snapshot", type=Path)
+    snapshot.add_argument("--snapshot-root", type=Path)
     return parser
 
 
@@ -303,11 +462,24 @@ def main(argv: list[str] | None = None) -> int:
     artifact_root = title_artist_evaluation._require_under_data(
         args.artifact_root, "artifact root"
     )
+    snapshot_path = (
+        None
+        if args.snapshot is None
+        else title_artist_evaluation._require_under_data(
+            args.snapshot, "DDR WORLD snapshot"
+        )
+    )
+    snapshot_root = title_artist_evaluation._require_under_data(
+        args.snapshot_root or DEFAULT_SNAPSHOT_ROOT,
+        "DDR WORLD snapshot root",
+    )
     result = apply_collection_auto_confirmation(
         args.catalog,
         args.master_db,
         artifact_root,
         args.session_id,
+        snapshot_path=snapshot_path,
+        snapshot_root=snapshot_root,
     )
     print(json.dumps(result.as_dict(), ensure_ascii=False, separators=(",", ":")))
     return 0

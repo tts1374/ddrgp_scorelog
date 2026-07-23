@@ -46,7 +46,7 @@ public sealed class ProjectionJsonLoader
 
     private static void Validate(ReviewProjection projection)
     {
-        if (projection.ProjectionSchemaVersion != 5)
+        if (projection.ProjectionSchemaVersion != 6)
         {
             throw new InvalidOperationException(
                 $"Unsupported projection schema version: {projection.ProjectionSchemaVersion}");
@@ -124,10 +124,14 @@ public sealed class ProjectionJsonLoader
             RequireValue(review, "review_references row");
             RequireText(review.ReferenceId, "review_references.reference_id");
             RequireString(review.Reason, "review_references.reason");
+            RequireString(review.CurrentStatus, "review_references.current_status");
             RequireString(review.ObservedTitle, "review_references.observed_title");
             RequireString(review.ObservedArtist, "review_references.observed_artist");
             RequireString(review.ObservationStatus, "review_references.observation_status");
             RequireText(review.FeatureExtractorVersion, "review_references.feature_extractor_version");
+            RequireString(review.Notes, "review_references.notes");
+            RequireString(review.RegisteredRoute, "review_references.registered_route");
+            RequireText(review.ProcessedAt, "review_references.processed_at");
             if (review.SourceImagePath is not null
                 && (string.IsNullOrWhiteSpace(review.SourceImagePath)
                     || !Path.IsPathFullyQualified(review.SourceImagePath)))
@@ -140,9 +144,19 @@ public sealed class ProjectionJsonLoader
             {
                 throw new InvalidOperationException("Projection review status is invalid.");
             }
+            if (!StoredStatuses.Contains(review.CurrentStatus)
+                || review.CurrentStatus != review.StoredStatus
+                || review.Notes != review.ManualNote)
+            {
+                throw new InvalidOperationException("Projection current review state is invalid.");
+            }
             if (review.AssignedSong is not null)
             {
                 RequireText(review.AssignedSong.SongId, "review_references.assigned_song.song_id");
+            }
+            if (review.CurrentSongId != review.AssignedSong?.SongId)
+            {
+                throw new InvalidOperationException("Projection current song state is invalid.");
             }
             foreach (var candidate in review.Candidates)
             {
@@ -239,10 +253,9 @@ public sealed class ProjectionJsonLoader
                         "Projection review history action semantics are invalid.");
                 }
                 if ((history.Action == "manual_confirm"
-                        && history.BeforeStatus is not ("needs_review" or "unresolved"))
+                        && history.BeforeStatus is not ("needs_review" or "unresolved" or "rejected"))
                     || (history.Action == "reassign"
                         && history.BeforeStatus is not ("auto_confirmed" or "manual_confirmed"))
-                    || (history.Action == "reject" && history.BeforeStatus == "rejected")
                     || (history.Action == "reopen" && history.BeforeStatus != "rejected"))
                 {
                     throw new InvalidOperationException(

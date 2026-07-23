@@ -293,6 +293,7 @@ class ReviewMutationRequest:
     song_id: str | None = None
     reason: str = ""
     note: str = ""
+    expected_note: str | None = None
     action_at: str | None = None
 
 
@@ -305,6 +306,14 @@ class ReviewMutationReceipt:
     song_id: str | None
     revision: int
     idempotent: bool
+
+
+@dataclass(frozen=True)
+class ReviewMutationBatchReceipt:
+    requested_count: int
+    applied_count: int
+    no_op_count: int
+    receipts: tuple[ReviewMutationReceipt, ...]
 
 
 @dataclass(frozen=True)
@@ -650,13 +659,11 @@ def _validate_catalog_content(connection: sqlite3.Connection) -> None:
                 raise ValueError("jacket reference catalog review action semantics mismatch")
             if (
                 action == "manual_confirm"
-                and history["before_status"] not in {"needs_review", "unresolved"}
+                and history["before_status"] not in {"needs_review", "unresolved", "rejected"}
             ) or (
                 action == "reassign"
                 and history["before_status"]
                 not in {"auto_confirmed", "manual_confirmed"}
-            ) or (
-                action == "reject" and history["before_status"] == "rejected"
             ) or (
                 action == "reopen" and history["before_status"] != "rejected"
             ):
@@ -869,6 +876,61 @@ def _receipt_from_json(raw: str, *, idempotent: bool) -> ReviewMutationReceipt:
     )
 
 
+def _validated_action_timestamp(action_at: str | None, *, default: str) -> str:
+    timestamp = action_at or default
+    try:
+        parsed_timestamp = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ValueError("action_at must be an ISO-8601 timestamp") from exc
+    if parsed_timestamp.tzinfo is None or parsed_timestamp.utcoffset() is None:
+        raise ValueError("action_at must include a UTC offset")
+    return timestamp
+
+
+def _validate_review_request(
+    request: ReviewMutationRequest,
+    songs_by_id: dict[str, master_match.MasterSong],
+) -> master_match.MasterSong | None:
+    if not request.action_id.strip() or not request.reference_id.strip():
+        raise ValueError("action_id and reference_id must be non-empty")
+    if request.action not in REVIEW_ACTIONS:
+        raise ValueError(f"unsupported review action: {request.action}")
+    if request.expected_status not in REVIEW_STATUSES or request.expected_revision < 0:
+        raise ValueError("invalid expected review state")
+    if request.expected_note is not None and not isinstance(request.expected_note, str):
+        raise ValueError("expected_note must be a string when provided")
+    if request.action in {"manual_confirm", "reassign"}:
+        if not request.song_id:
+            raise ValueError(f"{request.action} requires an explicit song_id")
+        selected_song = songs_by_id.get(request.song_id)
+        if selected_song is None or not selected_song.grand_prix_play_available:
+            raise ValueError("manual song must exist in the current master and be GP-available")
+        return selected_song
+    if request.song_id is not None:
+        raise ValueError(f"{request.action} does not accept song_id")
+    return None
+
+
+def _review_transition(
+    row: sqlite3.Row,
+    request: ReviewMutationRequest,
+    selected_song: master_match.MasterSong | None,
+) -> tuple[str, str | None]:
+    after_status = {
+        "manual_confirm": "manual_confirmed",
+        "reassign": "manual_confirmed",
+        "reject": "rejected",
+        "reopen": "needs_review",
+    }[request.action]
+    before_song_id = row["song_id"]
+    after_song_id = (
+        selected_song.song_id
+        if selected_song is not None
+        else (None if request.action == "reopen" else before_song_id)
+    )
+    return after_status, after_song_id
+
+
 def _existing_review_receipt(
     connection: sqlite3.Connection, *, action_id: str, payload: str
 ) -> ReviewMutationReceipt | None:
@@ -884,6 +946,146 @@ def _existing_review_receipt(
     return _receipt_from_json(str(prior["receipt_json"]), idempotent=True)
 
 
+def _apply_review_request_in_transaction(
+    connection: sqlite3.Connection,
+    request: ReviewMutationRequest,
+    selected_song: master_match.MasterSong | None,
+    *,
+    master_version: str,
+    timestamp: str,
+    fail_after_current_update: bool = False,
+) -> tuple[ReviewMutationReceipt, bool]:
+    row = connection.execute(
+        "SELECT * FROM jacket_references WHERE reference_id = ?",
+        (request.reference_id,),
+    ).fetchone()
+    if row is None:
+        raise ValueError("review reference does not exist")
+    before_status = str(row["review_status"])
+    before_song_id = row["song_id"]
+    before_note = str(row["manual_note"])
+    before_revision = int(row["review_revision"])
+    if (
+        before_revision != request.expected_revision
+        or before_status != request.expected_status
+        or before_song_id != request.expected_song_id
+        or (request.expected_note is not None and before_note != request.expected_note)
+    ):
+        raise ValueError("stale review state")
+
+    after_status, after_song_id = _review_transition(row, request, selected_song)
+    if (
+        before_status == after_status
+        and before_song_id == after_song_id
+        and before_note == request.note
+    ):
+        return (
+            ReviewMutationReceipt(
+                action_id=request.action_id,
+                reference_id=request.reference_id,
+                action=request.action,
+                status=before_status,
+                song_id=before_song_id,
+                revision=before_revision,
+                idempotent=True,
+            ),
+            False,
+        )
+
+    if request.action == "manual_confirm" and before_status not in {
+        "needs_review",
+        "unresolved",
+        "rejected",
+    }:
+        raise ValueError("manual_confirm requires an unconfirmed or rejected reference")
+    if request.action == "reassign" and before_status not in {
+        "auto_confirmed",
+        "manual_confirmed",
+    }:
+        raise ValueError("reassign requires a confirmed reference")
+    if request.action == "reopen" and before_status != "rejected":
+        raise ValueError("reopen requires a rejected reference")
+    if request.action in {"manual_confirm", "reassign"}:
+        if str(row["feature_extractor_version"]) != FEATURE_EXTRACTOR_VERSION:
+            raise ValueError("manual review requires the current feature extractor")
+        try:
+            _decode_persisted_feature(row)
+        except ValueError as exc:
+            raise ValueError("manual review requires complete persisted jacket features") from exc
+
+    after_revision = before_revision + 1
+    next_master_version = str(row["master_version"])
+    title = str(row["canonical_title_snapshot"])
+    artist = str(row["canonical_artist_snapshot"])
+    if selected_song is not None:
+        title = selected_song.title
+        artist = selected_song.artist
+        next_master_version = master_version
+    connection.execute(
+        """
+        UPDATE jacket_references
+        SET master_version = ?, song_id = ?, canonical_title_snapshot = ?,
+            canonical_artist_snapshot = ?, review_status = ?, resolution_reason = ?,
+            resolution_basis = ?, review_revision = ?, manual_action_id = ?,
+            manual_note = ?, updated_at = ?
+        WHERE reference_id = ?
+        """,
+        (
+            next_master_version,
+            after_song_id,
+            title,
+            artist,
+            after_status,
+            request.reason,
+            "manual_review",
+            after_revision,
+            request.action_id,
+            request.note,
+            timestamp,
+            request.reference_id,
+        ),
+    )
+    if fail_after_current_update:
+        raise RuntimeError("injected mutation failure")
+    receipt_value = {
+        "action_id": request.action_id,
+        "reference_id": request.reference_id,
+        "action": request.action,
+        "status": after_status,
+        "song_id": after_song_id,
+        "revision": after_revision,
+    }
+    receipt_json = json.dumps(
+        receipt_value, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    )
+    connection.execute(
+        """
+        INSERT INTO reference_review_history (
+          action_id, reference_id, action, before_status, after_status,
+          before_song_id, after_song_id, reason, note, action_at,
+          before_revision, after_revision, request_payload_json, receipt_json
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            request.action_id,
+            request.reference_id,
+            request.action,
+            before_status,
+            after_status,
+            before_song_id,
+            after_song_id,
+            request.reason,
+            request.note,
+            timestamp,
+            before_revision,
+            after_revision,
+            _mutation_payload(request),
+            receipt_json,
+        ),
+    )
+    return _receipt_from_json(receipt_json, idempotent=False), True
+
+
 def apply_review_mutation(
     catalog_path: Path,
     master_db: Path,
@@ -893,25 +1095,7 @@ def apply_review_mutation(
 ) -> ReviewMutationReceipt:
     if catalog_schema_version(catalog_path) != CATALOG_SCHEMA_VERSION:
         raise ValueError("manual review requires the current catalog schema")
-    if not request.action_id.strip() or not request.reference_id.strip():
-        raise ValueError("action_id and reference_id must be non-empty")
-    if request.action not in REVIEW_ACTIONS:
-        raise ValueError(f"unsupported review action: {request.action}")
-    if request.expected_status not in REVIEW_STATUSES or request.expected_revision < 0:
-        raise ValueError("invalid expected review state")
     payload = _mutation_payload(request)
-    if request.action in {"manual_confirm", "reassign"}:
-        if not request.song_id:
-            raise ValueError(f"{request.action} requires an explicit song_id")
-    elif request.song_id is not None:
-        raise ValueError(f"{request.action} does not accept song_id")
-    timestamp = request.action_at or utc_now()
-    try:
-        parsed_timestamp = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
-    except ValueError as exc:
-        raise ValueError("action_at must be an ISO-8601 timestamp") from exc
-    if parsed_timestamp.tzinfo is None or parsed_timestamp.utcoffset() is None:
-        raise ValueError("action_at must include a UTC offset")
 
     with closing(_connect_read_only(catalog_path)) as connection:
         connection.row_factory = sqlite3.Row
@@ -923,11 +1107,8 @@ def apply_review_mutation(
 
     master = load_master_identity(master_db)
     songs_by_id = {song.song_id: song for song in master.songs}
-    selected_song = None
-    if request.action in {"manual_confirm", "reassign"}:
-        selected_song = songs_by_id.get(request.song_id)
-        if selected_song is None or not selected_song.grand_prix_play_available:
-            raise ValueError("manual song must exist in the current master and be GP-available")
+    selected_song = _validate_review_request(request, songs_by_id)
+    timestamp = _validated_action_timestamp(request.action_at, default=utc_now())
 
     with closing(_connect_read_write(catalog_path)) as connection:
         connection.row_factory = sqlite3.Row
@@ -941,133 +1122,103 @@ def apply_review_mutation(
             if receipt is not None:
                 connection.rollback()
                 return receipt
-            row = connection.execute(
-                "SELECT * FROM jacket_references WHERE reference_id = ?",
-                (request.reference_id,),
-            ).fetchone()
-            if row is None:
-                raise ValueError("review reference does not exist")
-            before_status = str(row["review_status"])
-            before_song_id = row["song_id"]
-            before_revision = int(row["review_revision"])
-            if (
-                before_revision != request.expected_revision
-                or before_status != request.expected_status
-                or before_song_id != request.expected_song_id
-            ):
-                raise ValueError("stale review state")
-            if request.action == "manual_confirm" and before_status not in {
-                "needs_review",
-                "unresolved",
-            }:
-                raise ValueError("manual_confirm requires an unconfirmed reference")
-            if request.action == "reassign" and before_status not in {
-                "auto_confirmed",
-                "manual_confirmed",
-            }:
-                raise ValueError("reassign requires a confirmed reference")
-            if request.action == "reject" and before_status == "rejected":
-                raise ValueError("reference is already rejected")
-            if request.action == "reopen" and before_status != "rejected":
-                raise ValueError("reopen requires a rejected reference")
-            if request.action in {"manual_confirm", "reassign"}:
-                if str(row["feature_extractor_version"]) != FEATURE_EXTRACTOR_VERSION:
-                    raise ValueError("manual review requires the current feature extractor")
-                try:
-                    _decode_persisted_feature(row)
-                except ValueError as exc:
-                    raise ValueError(
-                        "manual review requires complete persisted jacket features"
-                    ) from exc
-
-            after_status = {
-                "manual_confirm": "manual_confirmed",
-                "reassign": "manual_confirmed",
-                "reject": "rejected",
-                "reopen": "needs_review",
-            }[request.action]
-            after_song_id = (
-                selected_song.song_id
-                if selected_song is not None
-                else (None if request.action == "reopen" else before_song_id)
-            )
-            after_revision = before_revision + 1
-            title = str(row["canonical_title_snapshot"])
-            artist = str(row["canonical_artist_snapshot"])
-            master_version = str(row["master_version"])
-            if selected_song is not None:
-                title, artist, master_version = (
-                    selected_song.title,
-                    selected_song.artist,
-                    master.version,
-                )
-            connection.execute(
-                """
-                UPDATE jacket_references
-                SET master_version = ?, song_id = ?, canonical_title_snapshot = ?,
-                    canonical_artist_snapshot = ?, review_status = ?, resolution_reason = ?,
-                    resolution_basis = ?, review_revision = ?, manual_action_id = ?,
-                    manual_note = ?, updated_at = ?
-                WHERE reference_id = ?
-                """,
-                (
-                    master_version,
-                    after_song_id,
-                    title,
-                    artist,
-                    after_status,
-                    request.reason,
-                    "manual_review",
-                    after_revision,
-                    request.action_id,
-                    request.note,
-                    timestamp,
-                    request.reference_id,
-                ),
-            )
-            if fail_after_current_update:
-                raise RuntimeError("injected mutation failure")
-            receipt_value = {
-                "action_id": request.action_id,
-                "reference_id": request.reference_id,
-                "action": request.action,
-                "status": after_status,
-                "song_id": after_song_id,
-                "revision": after_revision,
-            }
-            receipt_json = json.dumps(
-                receipt_value, ensure_ascii=False, sort_keys=True, separators=(",", ":")
-            )
-            connection.execute(
-                """
-                INSERT INTO reference_review_history (
-                  action_id, reference_id, action, before_status, after_status,
-                  before_song_id, after_song_id, reason, note, action_at,
-                  before_revision, after_revision, request_payload_json, receipt_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    request.action_id,
-                    request.reference_id,
-                    request.action,
-                    before_status,
-                    after_status,
-                    before_song_id,
-                    after_song_id,
-                    request.reason,
-                    request.note,
-                    timestamp,
-                    before_revision,
-                    after_revision,
-                    payload,
-                    receipt_json,
-                ),
+            receipt, _mutated = _apply_review_request_in_transaction(
+                connection,
+                request,
+                selected_song,
+                master_version=master.version,
+                timestamp=timestamp,
+                fail_after_current_update=fail_after_current_update,
             )
             connection.commit()
-            return _receipt_from_json(receipt_json, idempotent=False)
+            return receipt
         except Exception:
             connection.rollback()
             raise
+
+
+def apply_review_mutation_batch(
+    catalog_path: Path,
+    master_db: Path,
+    requests: list[ReviewMutationRequest],
+    *,
+    fail_after_updates: int | None = None,
+) -> ReviewMutationBatchReceipt:
+    """Apply reviewed manual changes in one catalog transaction."""
+    if catalog_schema_version(catalog_path) != CATALOG_SCHEMA_VERSION:
+        raise ValueError("manual review requires the current catalog schema")
+    if not requests:
+        return ReviewMutationBatchReceipt(0, 0, 0, ())
+    reference_ids = [request.reference_id for request in requests]
+    if len(reference_ids) != len(set(reference_ids)):
+        raise ValueError("review batch contains duplicate references")
+    action_ids = [request.action_id for request in requests]
+    if len(action_ids) != len(set(action_ids)):
+        raise ValueError("review batch contains duplicate action IDs")
+
+    master = load_master_identity(master_db)
+    songs_by_id = {song.song_id: song for song in master.songs}
+    selected_songs = [
+        _validate_review_request(request, songs_by_id) for request in requests
+    ]
+    batch_timestamp = utc_now()
+    timestamps = [
+        _validated_action_timestamp(request.action_at, default=batch_timestamp)
+        for request in requests
+    ]
+
+    applied_count = 0
+    no_op_count = 0
+    receipts: list[ReviewMutationReceipt] = []
+    with closing(_connect_read_write(catalog_path)) as connection:
+        connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA foreign_keys = ON")
+        connection.execute("BEGIN IMMEDIATE")
+        try:
+            _validate_catalog(connection)
+            for request, selected_song, timestamp in zip(
+                requests, selected_songs, timestamps, strict=True
+            ):
+                receipt = _existing_review_receipt(
+                    connection,
+                    action_id=request.action_id,
+                    payload=_mutation_payload(request),
+                )
+                if receipt is None:
+                    try:
+                        receipt, mutated = _apply_review_request_in_transaction(
+                            connection,
+                            request,
+                            selected_song,
+                            master_version=master.version,
+                            timestamp=timestamp,
+                        )
+                    except Exception as exc:
+                        raise ValueError(
+                            f"review batch failed for reference_id={request.reference_id}: {exc}"
+                        ) from exc
+                    if mutated:
+                        applied_count += 1
+                        if (
+                            fail_after_updates is not None
+                            and applied_count >= fail_after_updates
+                        ):
+                            raise RuntimeError("injected review batch failure")
+                    else:
+                        no_op_count += 1
+                else:
+                    no_op_count += 1
+                receipts.append(receipt)
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+    return ReviewMutationBatchReceipt(
+        requested_count=len(requests),
+        applied_count=applied_count,
+        no_op_count=no_op_count,
+        receipts=tuple(receipts),
+    )
 
 
 def apply_auto_confirmation_batch(
@@ -1705,6 +1856,11 @@ def _decode_persisted_feature(row: sqlite3.Row) -> master_match.JacketFeature:
     )
 
 
+def decode_persisted_feature(row: sqlite3.Row) -> master_match.JacketFeature:
+    """Decode one persisted current-catalog jacket feature for read-only matching."""
+    return _decode_persisted_feature(row)
+
+
 def validate_observation_session(
     catalog_path: Path,
     master_db: Path,
@@ -2117,6 +2273,12 @@ def build_parser() -> argparse.ArgumentParser:
     review.add_argument("--song-id", default="")
     review.add_argument("--reason", default="")
     review.add_argument("--note", default="")
+    review_batch = subparsers.add_parser(
+        "review-batch", help="Apply explicit manual review changes in one transaction."
+    )
+    review_batch.add_argument("--catalog", type=Path, required=True)
+    review_batch.add_argument("--master-db", type=Path, required=True)
+    review_batch.add_argument("--request-file", type=Path, required=True)
     ingest = subparsers.add_parser(
         "ingest", help="Ingest one unresolved observation into the current catalog."
     )
@@ -2214,6 +2376,81 @@ def main(argv: list[str] | None = None) -> int:
             ),
         )
         print(json.dumps(receipt.__dict__, ensure_ascii=False, separators=(",", ":")))
+        return 0
+    if args.command == "review-batch":
+        ensure_catalog_path(args.catalog, argument_name="--catalog")
+        try:
+            document = json.loads(args.request_file.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+            raise ValueError("review batch request file is invalid") from exc
+        if not isinstance(document, dict) or set(document) != {"requests"}:
+            raise ValueError("review batch request file must contain only requests")
+        raw_requests = document["requests"]
+        if not isinstance(raw_requests, list):
+            raise ValueError("review batch requests must be an array")
+        requests: list[ReviewMutationRequest] = []
+        request_keys = {
+            "action_id",
+            "reference_id",
+            "action",
+            "expected_revision",
+            "expected_status",
+            "expected_song_id",
+            "expected_note",
+            "song_id",
+            "reason",
+            "note",
+        }
+        for index, value in enumerate(raw_requests):
+            if not isinstance(value, dict) or set(value) != request_keys:
+                raise ValueError(f"review batch request {index} has invalid fields")
+            if not all(isinstance(value[key], str) for key in (
+                "action_id",
+                "reference_id",
+                "action",
+                "expected_status",
+                "reason",
+                "note",
+            )):
+                raise ValueError(f"review batch request {index} has invalid text fields")
+            if not isinstance(value["expected_revision"], int) or isinstance(
+                value["expected_revision"], bool
+            ):
+                raise ValueError(f"review batch request {index} has invalid revision")
+            if any(
+                value[key] is not None and not isinstance(value[key], str)
+                for key in ("expected_song_id", "expected_note", "song_id")
+            ):
+                raise ValueError(f"review batch request {index} has invalid nullable fields")
+            requests.append(
+                ReviewMutationRequest(
+                    action_id=value["action_id"],
+                    reference_id=value["reference_id"],
+                    action=value["action"],
+                    expected_revision=value["expected_revision"],
+                    expected_status=value["expected_status"],
+                    expected_song_id=value["expected_song_id"],
+                    song_id=value["song_id"],
+                    reason=value["reason"],
+                    note=value["note"],
+                    expected_note=value["expected_note"],
+                )
+            )
+        receipt = apply_review_mutation_batch(args.catalog, args.master_db, requests)
+        print(
+            json.dumps(
+                {
+                    "requested_count": receipt.requested_count,
+                    "applied_count": receipt.applied_count,
+                    "no_op_count": receipt.no_op_count,
+                    "receipts": [
+                        item.__dict__ for item in receipt.receipts
+                    ],
+                },
+                ensure_ascii=False,
+                separators=(",", ":"),
+            )
+        )
         return 0
     if args.command == "ingest":
         ensure_catalog_path(args.catalog, argument_name="--catalog")

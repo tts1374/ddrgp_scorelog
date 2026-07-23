@@ -14,8 +14,11 @@ public sealed class ProjectionJsonLoaderTests
     {
         var projection = loader.Load(FixtureJson());
 
-        Assert.Equal(5, projection.ProjectionSchemaVersion);
+        Assert.Equal(6, projection.ProjectionSchemaVersion);
         Assert.Equal(1, projection.Catalog.SchemaVersion);
+        Assert.Equal("manual_confirmed", projection.ReviewReferences[0].CurrentStatus);
+        Assert.Equal("song-1", projection.ReviewReferences[0].CurrentSongId);
+        Assert.Equal("manual_review", projection.ReviewReferences[0].RegisteredRoute);
         Assert.Equal("manual_confirm", projection.ReviewReferences[0].History[0].Action);
         Assert.Contains("日本語", projection.ReviewReferences[0].ManualNote);
     }
@@ -23,7 +26,7 @@ public sealed class ProjectionJsonLoaderTests
     [Fact]
     public void RejectsLegacyProjectionCatalogAndCapabilityFields()
     {
-        foreach (var version in new[] { 1, 2, 3, 4 })
+        foreach (var version in new[] { 1, 2, 3, 4, 5 })
         {
             var legacyProjection = JsonNode.Parse(FixtureJson())!.AsObject();
             legacyProjection["projection_schema_version"] = version;
@@ -51,7 +54,7 @@ public sealed class ProjectionJsonLoaderTests
     [Fact]
     public void RejectsInvalidHistoryCurrentStateAndStrictJson()
     {
-        var invalidPayloads = new List<string> { "", "{\"projection_schema_version\":5" };
+        var invalidPayloads = new List<string> { "", "{\"projection_schema_version\":6" };
 
         var missing = JsonNode.Parse(FixtureJson())!.AsObject();
         missing.Remove("master");

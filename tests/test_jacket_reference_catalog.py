@@ -622,6 +622,313 @@ def test_replay_conflict_and_review_failure_leave_catalog_bytes_unchanged(
     assert [entry.song_id for entry in entries] == ["song-2"]
 
 
+def test_review_batch_applies_mixed_changes_atomically_and_is_safe_to_replay(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    master_db, catalog_path, image_path = setup_paths(tmp_path, monkeypatch)
+    image_paths = [image_path]
+    for index, color in enumerate(((20, 30, 40), (30, 40, 50), (40, 50, 60)), start=2):
+        extra_image = tmp_path / f"data/batch-{index}.png"
+        Image.new("RGB", (64, 64), color).save(extra_image)
+        image_paths.append(extra_image)
+    first = ingest(
+        catalog_path,
+        master_db,
+        image_paths[0],
+        observation_id="batch-first",
+        seed="batch-first",
+    )
+    second = ingest(
+        catalog_path,
+        master_db,
+        image_paths[1],
+        observation_id="batch-second",
+        seed="batch-second",
+    )
+    third = ingest(
+        catalog_path,
+        master_db,
+        image_paths[2],
+        observation_id="batch-third",
+        seed="batch-third",
+    )
+    fourth = ingest(
+        catalog_path,
+        master_db,
+        image_paths[3],
+        observation_id="batch-fourth",
+        seed="batch-fourth",
+    )
+
+    def request(
+        action_id: str,
+        result: catalog.IngestResult,
+        *,
+        action: str,
+        revision: int,
+        status: str,
+        expected_song_id: str | None,
+        song_id: str | None,
+        expected_note: str,
+        note: str,
+    ) -> catalog.ReviewMutationRequest:
+        return catalog.ReviewMutationRequest(
+            action_id=action_id,
+            reference_id=result.reference_id,
+            action=action,
+            expected_revision=revision,
+            expected_status=status,
+            expected_song_id=expected_song_id,
+            song_id=song_id,
+            reason="batch review",
+            note=note,
+            expected_note=expected_note,
+        )
+
+    def state(result: catalog.IngestResult) -> tuple[object, ...]:
+        with sqlite3.connect(catalog_path) as connection:
+            return connection.execute(
+                "SELECT review_status, song_id, manual_note, review_revision "
+                "FROM jacket_references WHERE reference_id = ?",
+                (result.reference_id,),
+            ).fetchone()
+
+    mixed = catalog.apply_review_mutation_batch(
+        catalog_path,
+        master_db,
+        [
+            request(
+                "batch-confirm-first",
+                first,
+                action="manual_confirm",
+                revision=0,
+                status="unresolved",
+                expected_song_id=None,
+                song_id="song-1",
+                expected_note="",
+                note="first note",
+            ),
+            request(
+                "batch-reject-second",
+                second,
+                action="reject",
+                revision=0,
+                status="unresolved",
+                expected_song_id=None,
+                song_id=None,
+                expected_note="",
+                note="second note",
+            ),
+        ],
+    )
+    assert (mixed.requested_count, mixed.applied_count, mixed.no_op_count) == (2, 2, 0)
+    assert state(first) == ("manual_confirmed", "song-1", "first note", 1)
+    assert state(second) == ("rejected", None, "second note", 1)
+
+    no_op = catalog.apply_review_mutation_batch(
+        catalog_path,
+        master_db,
+        [
+            request(
+                "batch-no-op",
+                first,
+                action="reassign",
+                revision=1,
+                status="manual_confirmed",
+                expected_song_id="song-1",
+                song_id="song-1",
+                expected_note="first note",
+                note="first note",
+            )
+        ],
+    )
+    assert (no_op.applied_count, no_op.no_op_count) == (0, 1)
+    assert state(first)[-1] == 1
+
+    changed_song = catalog.apply_review_mutation_batch(
+        catalog_path,
+        master_db,
+        [
+            request(
+                "batch-change-song",
+                first,
+                action="reassign",
+                revision=1,
+                status="manual_confirmed",
+                expected_song_id="song-1",
+                song_id="song-2",
+                expected_note="first note",
+                note="changed song",
+            )
+        ],
+    )
+    assert changed_song.applied_count == 1
+    assert state(first) == ("manual_confirmed", "song-2", "changed song", 2)
+
+    catalog.apply_review_mutation_batch(
+        catalog_path,
+        master_db,
+        [
+            request(
+                "batch-confirm-rejected",
+                second,
+                action="manual_confirm",
+                revision=1,
+                status="rejected",
+                expected_song_id=None,
+                song_id="song-1",
+                expected_note="second note",
+                note="restored",
+            ),
+            request(
+                "batch-reject-confirmed",
+                first,
+                action="reject",
+                revision=2,
+                status="manual_confirmed",
+                expected_song_id="song-2",
+                song_id=None,
+                expected_note="changed song",
+                note="rejected again",
+            ),
+        ],
+    )
+    assert state(first) == ("rejected", "song-2", "rejected again", 3)
+    assert state(second) == ("manual_confirmed", "song-1", "restored", 2)
+
+    notes_only = catalog.apply_review_mutation_batch(
+        catalog_path,
+        master_db,
+        [
+            request(
+                "batch-notes-only",
+                second,
+                action="reassign",
+                revision=2,
+                status="manual_confirmed",
+                expected_song_id="song-1",
+                song_id="song-1",
+                expected_note="restored",
+                note="notes only",
+            )
+        ],
+    )
+    assert notes_only.applied_count == 1
+    assert state(second) == ("manual_confirmed", "song-1", "notes only", 3)
+
+    before_invalid = catalog_path.read_bytes()
+    with pytest.raises(ValueError, match="manual song must exist"):
+        catalog.apply_review_mutation_batch(
+            catalog_path,
+            master_db,
+            [
+                request(
+                    "batch-invalid-song",
+                    third,
+                    action="manual_confirm",
+                    revision=0,
+                    status="unresolved",
+                    expected_song_id=None,
+                    song_id="missing-song",
+                    expected_note="",
+                    note="invalid",
+                )
+            ],
+        )
+    assert catalog_path.read_bytes() == before_invalid
+
+    before_required = catalog_path.read_bytes()
+    with pytest.raises(ValueError, match="requires an explicit song_id"):
+        catalog.apply_review_mutation_batch(
+            catalog_path,
+            master_db,
+            [
+                request(
+                    "batch-missing-song",
+                    third,
+                    action="manual_confirm",
+                    revision=0,
+                    status="unresolved",
+                    expected_song_id=None,
+                    song_id=None,
+                    expected_note="",
+                    note="missing",
+                )
+            ],
+        )
+    assert catalog_path.read_bytes() == before_required
+
+    duplicate = request(
+        "batch-duplicate",
+        third,
+        action="reject",
+        revision=0,
+        status="unresolved",
+        expected_song_id=None,
+        song_id=None,
+        expected_note="",
+        note="duplicate",
+    )
+    with pytest.raises(ValueError, match="duplicate references"):
+        catalog.apply_review_mutation_batch(catalog_path, master_db, [duplicate, duplicate])
+
+    before_conflict = catalog_path.read_bytes()
+    with pytest.raises(ValueError, match="manual_confirm requires"):
+        catalog.apply_review_mutation_batch(
+            catalog_path,
+            master_db,
+            [
+                request(
+                    "batch-existing-confirmed-conflict",
+                    second,
+                    action="manual_confirm",
+                    revision=3,
+                    status="manual_confirmed",
+                    expected_song_id="song-1",
+                    song_id="song-2",
+                    expected_note="notes only",
+                    note="conflict",
+                )
+            ],
+        )
+    assert catalog_path.read_bytes() == before_conflict
+
+    before_rollback = catalog_path.read_bytes()
+    with pytest.raises(RuntimeError, match="injected review batch"):
+        catalog.apply_review_mutation_batch(
+            catalog_path,
+            master_db,
+            [
+                request(
+                    "batch-rollback-first",
+                    third,
+                    action="manual_confirm",
+                    revision=0,
+                    status="unresolved",
+                    expected_song_id=None,
+                    song_id="song-1",
+                    expected_note="",
+                    note="rollback",
+                ),
+                request(
+                    "batch-rollback-second",
+                    fourth,
+                    action="reject",
+                    revision=0,
+                    status="unresolved",
+                    expected_song_id=None,
+                    song_id=None,
+                    expected_note="",
+                    note="rollback",
+                ),
+            ],
+            fail_after_updates=1,
+        )
+    assert catalog_path.read_bytes() == before_rollback
+    assert state(third)[0] == "unresolved"
+    assert state(fourth)[0] == "unresolved"
+
+
 def test_current_receipt_coverage_and_cli_contract(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -657,6 +964,7 @@ def test_current_receipt_coverage_and_cli_contract(
         "create",
         "coverage",
         "review",
+        "review-batch",
         "ingest",
         "validate-session",
         "validate-receipt",
