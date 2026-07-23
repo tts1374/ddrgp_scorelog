@@ -1064,6 +1064,8 @@ public sealed class JacketObservationTests : IDisposable
         var catalog = new FakeCatalogAdapter(
             new CatalogIngestReceipt(CatalogIngestDisposition.Failed, null, "temporary failure"),
             new CatalogIngestReceipt(CatalogIngestDisposition.Existing, "reference-1", "existing"));
+        var finalizationEvents = new List<string>();
+        catalog.Events = finalizationEvents;
         var session = new JacketObservationSession(
             new JacketObservationDetector(new JacketDetectorOptions(0.01, 2, TimeSpan.Zero)),
             checkpointStore,
@@ -1083,10 +1085,12 @@ public sealed class JacketObservationTests : IDisposable
             new TestSessionFactory(source),
             new ImmediateCaptureDispatcher());
         var capture = new WindowCaptureViewModel(windows, coordinator);
+        var autoConfirmation = new StubAutoConfirmationService(finalizationEvents);
         await using var viewModel = new JacketObservationViewModel(
             capture,
             session,
-            new ImmediateCaptureDispatcher());
+            new ImmediateCaptureDispatcher(),
+            autoConfirmationService: autoConfirmation);
 
         var summary = await viewModel.FinalizeCatalogAsync();
 
@@ -1097,12 +1101,17 @@ public sealed class JacketObservationTests : IDisposable
         Assert.Equal(0, summary.CatalogFailureCount);
         Assert.Equal(0, summary.PendingObservationCount);
         Assert.False(summary.IsNoOp);
+        Assert.Equal(1, summary.AutoConfirmedCount);
+        Assert.Equal(0, summary.ManualReviewCount);
         Assert.Contains("pending=0", viewModel.CollectionResult, StringComparison.Ordinal);
+        Assert.Contains("auto-confirm=1", viewModel.CollectionResult, StringComparison.Ordinal);
 
         var repeated = await viewModel.FinalizeCatalogAsync();
 
         Assert.True(repeated.IsNoOp);
+        Assert.Equal(2, autoConfirmation.CallCount);
         Assert.Equal(2, catalog.CallCount);
+        Assert.Equal(["catalog", "catalog", "auto", "auto"], finalizationEvents);
     }
 
     [Fact]
@@ -2117,6 +2126,7 @@ public sealed class JacketObservationTests : IDisposable
         public Exception? IngestFailure { get; init; }
         public int FailValidationOnCall { get; init; } = 1;
         public int CancelIngestOnCall { get; set; }
+        public List<string>? Events { get; set; }
 
         public TaskCompletionSource? IdentitySetEntered { get; init; }
         public Task? IdentitySetRelease { get; init; }
@@ -2165,6 +2175,7 @@ public sealed class JacketObservationTests : IDisposable
             CancellationToken cancellationToken = default)
         {
             CallCount++;
+            Events?.Add("catalog");
             if (CallCount == CancelIngestOnCall)
             {
                 throw new OperationCanceledException("injected ingest cancellation");
@@ -2202,5 +2213,30 @@ public sealed class JacketObservationTests : IDisposable
             string sessionId,
             CancellationToken cancellationToken = default) =>
             inner.LoadAsync(sessionId, cancellationToken);
+    }
+
+    private sealed class StubAutoConfirmationService(List<string> events)
+        : ICollectionAutoConfirmationService
+    {
+        public int CallCount { get; private set; }
+
+        public Task<CollectionAutoConfirmationReceipt> ApplyAsync(
+            string sessionId,
+            CancellationToken cancellationToken = default)
+        {
+            CallCount++;
+            events.Add("auto");
+            var requestedCount = CallCount == 1 ? 1 : 0;
+            return Task.FromResult(new CollectionAutoConfirmationReceipt
+            {
+                SchemaVersion = "m5c-collection-end-auto-confirmation-v1",
+                SessionId = sessionId,
+                RequestedCount = requestedCount,
+                AppliedCount = requestedCount,
+                NoOpCount = 0,
+                AutoConfirmedCount = 1,
+                RemainingCount = 0,
+            });
+        }
     }
 }

@@ -32,7 +32,7 @@ from .policy import (
 )
 
 PLAN_SCHEMA_VERSION = "jacket-catalog-auto-registration-plan-v1"
-EVIDENCE_SCHEMA_VERSION = "jacket-catalog-auto-confirmation-evidence-v1"
+EVIDENCE_SCHEMA_VERSION = jacket_reference_catalog.AUTO_CONFIRMATION_EVIDENCE_SCHEMA_VERSION
 MANUAL_ODS_SCHEMA_VERSION = "jacket-catalog-manual-review-ods-v1"
 
 MANUAL_ODS_HEADERS = [

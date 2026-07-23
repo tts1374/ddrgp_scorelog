@@ -25,7 +25,9 @@ appは実行ファイルの配置場所からrepository rootを解決し、proce
 2. DDR GRAND PRIXを曲選択画面にし、`収集を開始` を押す。押下時にtop-level windowから、process名が`ddr-konaste`でclient領域が`1280x720`のwindowを自動検出する。
 3. 候補が1件だけの場合は手動選択なしでcaptureを開始する。0件の場合は「DDR GPのウィンドウが見つかりません」、複数件の場合は理由を表示して開始しない。
 4. DDR GPで曲を移動し、`新しいジャケットを検出` と表示されたら `このジャケットを保存` を押す。session単位の自動保存を使う場合だけ、開始後に既定OFFのcheckboxを明示的に有効化する。
-5. `このジャケットは保存済み` と表示されたら、DDR GPで次の曲へ移動する。終了時は `収集を終了` を押す。開始済みのframe処理と保存処理がdrainされた後、同じsessionのpendingだけが最終catalog retryされ、結果後にprojectionが再読込される。
+5. `このジャケットは保存済み` と表示されたら、DDR GPで次の曲へ移動する。終了時は `収集を終了` を押す。開始済みのframe処理と保存処理をdrainし、同じsessionのpendingを最終catalog retryした後、current projectionでmatchingを評価し、#53の既存auto-confirm対象だけを1 transactionで反映してからprojectionを再読込する。
+
+収集終了時の処理順は `pending確定 → matching評価 → auto-confirm一括transaction → projection再読込` です。`CollectionResult` には `auto-confirm` 件数と `manual残件` 件数が表示されます。`ambiguous`、`no_candidate`、`low_confidence`、評価失敗・評価不能、GP対象外などは自動確定せず、再読込後も未レビュー一覧に残ります。既存のauto/manual/rejected、revision、manual history、artifact、checkpointは上書きしません。同じ終了処理を再実行しても、同一根拠はno-opとして重複作成されません。
 
 detectorの内部状態は通常画面へ表示しません。同じ画像が連続する間も未保存のstable候補は保存可能なまま維持し、保存後は次の曲へ移動する案内を表示します。自動保存は起動時・fresh session・resumeのたびにOFFへ戻り、端末設定へ保存しません。session再開とcatalog retryは `詳細・復旧操作`、master更新とtitle/artist評価は `管理・設定` にあります。
 
@@ -165,7 +167,7 @@ python -m tools.vision_poc.title_artist_evaluation `
 
 `title_artist_evaluation.csv/json/md`は同じ入力でbyte-stableに生成され、raw/normalized title/artist、field confidence/status/failure、M4のtitle-primary・artist tie-breakerによる候補と理由、expected coverageを記録します。expectedが両方ある行だけ`evaluated`、片方だけは`partially_evaluated`、両方ない行は`no_expected_values`で、後二者はaccuracy gateへ混入しません。
 
-方式採用gateは、fixture gateに加えて実captureの`evaluated >= 30`、title/artist完全一致率95%以上、field confidence 0.90以上、auto-confirm候補precision 100%、既知誤自動確定0件です。条件未達では`not_adopted`となり、collectorは既存の空title/artist・`unresolved` ingest/manual review経路を維持します。現時点では採用済み実capture datasetがないため、どの方式もauto-confirmへ接続していません。
+方式採用gateは、fixture gateに加えて実captureの`evaluated >= 30`、title/artist完全一致率95%以上、field confidence 0.90以上、auto-confirm候補precision 100%、既知誤自動確定0件です。条件、matching policy、threshold、OCR方式は変更しません。#79では、明示的な`収集を終了`の中で既存projectionが返す`exact_unique` / `alias_unique`の#53 auto-confirm対象だけを既存writerへ渡し、それ以外は従来の空title/artist・`unresolved` ingest/manual review経路へ残します。snapshot/ODSを必要とするjacket gate/top3 routeの判定をcollector側で再構築することはありません。評価reportや通常のingest/manual review/coverageからauto-confirmを暗黙起動することもありません。
 
 ## title/artist OCR診断比較 (M5c-6)
 
@@ -183,4 +185,4 @@ python -m tools.vision_poc.title_artist_ocr_diagnostics `
 
 ## Scope boundary
 
-このapp/project/testは `tools/jacket_catalog_collector/` と既存のdeveloper-only Python評価経路で完結し、`app/src/DDRGpScoreViewer` を参照しません。物理削除、source image削除、retention cleanup、ゲーム操作、公開app、正式保存workflow、正式個人スコアDBは実装しません。title/artist評価はlocal reportまでで、採用gate未達の方式をcatalog auto-confirmへ接続しません。
+このapp/project/testは `tools/jacket_catalog_collector/` と既存のdeveloper-only Python評価経路で完結し、`app/src/DDRGpScoreViewer` を参照しません。物理削除、source image削除、retention cleanup、ゲーム操作、公開app、正式保存workflow、正式個人スコアDBは実装しません。title/artist評価reportはread-onlyのままで、auto-confirmは明示的な収集終了から既存projection・policy・writerへ接続する経路に限定します。
