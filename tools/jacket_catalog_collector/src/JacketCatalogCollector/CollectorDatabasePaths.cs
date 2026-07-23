@@ -21,6 +21,11 @@ public sealed record CollectorDatabasePaths
         "databases",
         "jacket-catalog.sqlite");
 
+    public string DdrWorldSnapshotRootPath => Path.Combine(
+        RepositoryRoot,
+        "data",
+        "ddrworld_music_snapshot");
+
     public static CollectorDatabasePaths FromRepositoryRoot(string repositoryRoot)
     {
         if (string.IsNullOrWhiteSpace(repositoryRoot))

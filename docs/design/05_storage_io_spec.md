@@ -318,12 +318,13 @@ manual review stateを変更せず、同じplanからの再exportはbyte-identic
 capture mismatchはexport対象外とし、生成ODSとplanはGit管理しない。ODS importは別の明示transaction
 境界として後続PRへ分ける。
 
-collectorの明示的な`収集を終了`は、snapshot/ODSを入力するproduction pipelineとは別に、同じ保存境界へ接続する
-live collection-end入口です。`pending`のcatalog retryが完了した後、current catalogの`auto_confirmed` /
-`manual_confirmed` referenceから復元した現行M5 jacket特徴量へ既存のdistance threshold / ambiguity gateを適用し、
-一意なjacket top-1だけを`jacket_gate` auto-confirm targetとして組み立てます。jacketで解決しない行は、current
+collectorの明示的な`収集を終了`は、完成済みDDR WORLD snapshotをread-only入力として同じ保存境界へ接続する
+live collection-end入口です。`data/ddrworld_music_snapshot/<snapshot-id>/` の`songs.jsonl`と32x32公式jacket画像を
+current masterへ対応付けて公式feature masterを作り、`pending`のcatalog retryが完了した後、収集したjacket観測へ
+既存のdistance threshold / ambiguity gateを適用し、一意なjacket top-1だけを`jacket_gate` auto-confirm targetとして
+組み立てます。jacketで解決しない行は、current
 projectionの`exact_unique` / `alias_unique`だけを既存#53の`ocr_title_artist_pair` auto-confirm targetとして組み立て、
-既存writerの1 transactionへ渡し、完了後にprojectionを再読込します。snapshot/ODSの再構築、jacket top3 routeや
+既存writerの1 transactionへ渡し、完了後にprojectionを再読込します。ODSの再構築、jacket top3 routeや
 OCR方式の変更は行いません。曖昧、候補なし、低confidence、評価失敗/不能、GP対象外、既存manual/rejected/revision
 stateはjacket単独では自動確定せず、既存manual review境界に残します。これはmatching policy、threshold、OCR、
 catalog schema、manual historyを変更せず、unsafe stop、通常のcatalog retry、manual review、coverageからは起動しません。

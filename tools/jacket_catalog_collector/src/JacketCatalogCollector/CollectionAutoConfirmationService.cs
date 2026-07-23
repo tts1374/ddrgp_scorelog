@@ -42,6 +42,7 @@ public sealed class PythonCollectionAutoConfirmationService(
     string artifactRoot,
     string masterPath,
     string catalogPath,
+    string? snapshotRootPath = null,
     string pythonExecutable = "python") : ICollectionAutoConfirmationService
 {
     private const string SchemaVersion = "m5c-collection-end-auto-confirmation-v1";
@@ -59,16 +60,23 @@ public sealed class PythonCollectionAutoConfirmationService(
         {
             throw new InvalidOperationException("collection auto-confirmation session id is empty.");
         }
+        var arguments = new List<string>
+        {
+            "-X", "utf8", "-m", "tools.vision_poc.collection_auto_confirmation",
+            "--catalog", Path.GetFullPath(catalogPath),
+            "--master-db", Path.GetFullPath(masterPath),
+            "--artifact-root", Path.GetFullPath(artifactRoot),
+            "--session-id", sessionId,
+        };
+        if (!string.IsNullOrWhiteSpace(snapshotRootPath))
+        {
+            arguments.Add("--snapshot-root");
+            arguments.Add(Path.GetFullPath(snapshotRootPath));
+        }
         var result = await processRunner.RunAsync(
             new ProcessRequest(
                 pythonExecutable,
-                [
-                    "-X", "utf8", "-m", "tools.vision_poc.collection_auto_confirmation",
-                    "--catalog", Path.GetFullPath(catalogPath),
-                    "--master-db", Path.GetFullPath(masterPath),
-                    "--artifact-root", Path.GetFullPath(artifactRoot),
-                    "--session-id", sessionId,
-                ],
+                arguments,
                 Path.GetFullPath(repositoryRoot)),
             cancellationToken);
         if (result.ExitCode != 0)

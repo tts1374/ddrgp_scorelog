@@ -558,7 +558,7 @@ def match_jacket_reference_feature(
     distance_threshold: float = DEFAULT_JACKET_DISTANCE_THRESHOLD,
     ambiguity_delta: float = DEFAULT_JACKET_AMBIGUITY_DELTA,
 ) -> JacketReferenceMatch | None:
-    """Return a unique current-catalog jacket match under the existing M5 gate."""
+    """Return a unique reference-master jacket match under the existing M5 gate."""
     best_by_song_id: dict[str, tuple[float, JacketFeatureMasterEntry]] = {}
     for entry in feature_master_entries:
         distance = jacket_feature_distance(result_feature, entry.feature)

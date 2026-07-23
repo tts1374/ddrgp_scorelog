@@ -57,7 +57,8 @@ public partial class MainWindow : Window
                     repositoryRoot,
                     evidenceRoot,
                     databasePaths.MasterPath,
-                    databasePaths.CatalogPath)),
+                    databasePaths.CatalogPath,
+                    snapshotRootPath: databasePaths.DdrWorldSnapshotRootPath)),
             databasePaths: databasePaths,
             catalogInitializationService: new CatalogInitializationService(
                 runner,

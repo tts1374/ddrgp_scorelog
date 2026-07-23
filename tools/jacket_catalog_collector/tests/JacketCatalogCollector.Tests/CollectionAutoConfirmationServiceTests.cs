@@ -14,6 +14,7 @@ public sealed class CollectionAutoConfirmationServiceTests
                     "--master-db", Path.GetFullPath("master.sqlite"),
                     "--artifact-root", Path.GetFullPath("artifacts"),
                     "--session-id", "session-1",
+                    "--snapshot-root", Path.GetFullPath("snapshot-root"),
                 ],
                 request.Arguments);
             return Task.FromResult(new ProcessResult(
@@ -26,7 +27,8 @@ public sealed class CollectionAutoConfirmationServiceTests
             Directory.GetCurrentDirectory(),
             "artifacts",
             "master.sqlite",
-            "catalog.sqlite");
+            "catalog.sqlite",
+            snapshotRootPath: "snapshot-root");
 
         var receipt = await service.ApplyAsync("session-1");
 
