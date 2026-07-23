@@ -188,6 +188,20 @@ public sealed record ObservationResumeRequest(
     string FrameClockVersion = JacketObservationVersions.FrameClock,
     string CatalogCreatedAt = "");
 
+public sealed record ObservationCatalogRetryRequest(
+    string SessionId,
+    string MasterVersion,
+    string MasterSourceHash,
+    string CatalogIdentity,
+    int CatalogSchemaVersion,
+    string FeatureExtractorVersion,
+    string CatalogCreatedAt = "");
+
+public sealed record ObservationCatalogRetryValidation(
+    bool Compatible,
+    string Message,
+    ObservationCheckpoint? Checkpoint);
+
 public sealed record ObservationCheckpointObservation(
     string ObservationId,
     string SourceImageHash,
@@ -343,3 +357,21 @@ public sealed record ObservationAdoptionResult(
     ArtifactPublishReceipt Artifact,
     CatalogIngestReceipt Catalog,
     ObservationCheckpoint Checkpoint);
+
+public sealed record CatalogRetrySummary(
+    string SessionId,
+    int SavedObservationCount,
+    int CatalogCreatedCount,
+    int CatalogExistingCount,
+    int CatalogFailureCount,
+    int PendingObservationCount,
+    bool IsNoOp,
+    bool IsRejected,
+    string Message)
+{
+    public string DisplayMessage =>
+        $"session={SessionId}, 保存済みobservation={SavedObservationCount}, "
+        + $"catalog新規={CatalogCreatedCount}, 既存/冪等no-op={CatalogExistingCount}, "
+        + $"catalog反映失敗={CatalogFailureCount}, pending={PendingObservationCount}"
+        + (string.IsNullOrWhiteSpace(Message) ? "" : $" / {Message}");
+}

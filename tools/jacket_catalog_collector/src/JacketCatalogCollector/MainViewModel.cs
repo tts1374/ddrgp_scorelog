@@ -447,6 +447,150 @@ public sealed class MainViewModel(
     public Task StopObservationSessionAsync(CancellationToken cancellationToken = default) =>
         Observation?.StopAsync(cancellationToken) ?? Task.CompletedTask;
 
+    public async Task FinalizeObservationSessionAsync(
+        CancellationToken cancellationToken = default)
+    {
+        if (Observation is null)
+        {
+            return;
+        }
+        if (IsBusy)
+        {
+            throw new InvalidOperationException("別の処理を実行中です。");
+        }
+        IsBusy = true;
+        StatusTitle = "収集終了・catalog retry中";
+        StatusMessage = "開始済みframe/保存処理をdrainしてpending observationをretryしています。";
+        CatalogRetrySummary? summary = null;
+        Exception? stopFailure = null;
+        try
+        {
+            summary = await Observation.FinalizeCatalogAsync(cancellationToken);
+        }
+        catch (Exception exception)
+        {
+            stopFailure = exception;
+        }
+
+        var projectionReloadMessage = "未実施";
+        var projectionReloaded = false;
+        if (stopFailure is OperationCanceledException stopCancellation)
+        {
+            ClearProjection();
+            projectionReloadMessage = $"未実施（停止取消: {stopCancellation.Message}）";
+        }
+        else
+        {
+            try
+            {
+                await LoadProjectionCoreAsync(cancellationToken);
+                projectionReloaded = true;
+                projectionReloadMessage = "成功";
+            }
+            catch (OperationCanceledException exception)
+            {
+                ClearProjection();
+                projectionReloadMessage = $"取消: {exception.Message}";
+            }
+            catch (Exception exception)
+            {
+                ClearProjection();
+                projectionReloadMessage = $"失敗: {exception.Message}";
+            }
+        }
+
+        try
+        {
+            if (stopFailure is not null)
+            {
+                StatusTitle = "収集終了・停止処理失敗";
+                StatusMessage =
+                    $"停止/checkpoint処理: {stopFailure.Message} / projection再読込: "
+                    + projectionReloadMessage;
+            }
+            else if (summary?.IsRejected == true)
+            {
+                StatusTitle = projectionReloaded
+                    ? "収集終了・catalog retry拒否"
+                    : "収集終了・catalog retry拒否/projection再読込失敗";
+                StatusMessage =
+                    $"catalog retry: {summary.DisplayMessage} / projection再読込: "
+                    + projectionReloadMessage;
+            }
+            else
+            {
+                StatusTitle = projectionReloaded
+                    ? "収集終了・projection再読込完了"
+                    : "収集終了・projection再読込失敗";
+                StatusMessage =
+                    $"catalog retry: {summary?.DisplayMessage ?? "結果なし"} / projection再読込: "
+                    + projectionReloadMessage;
+            }
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    public async Task RetryCatalogSessionAsync(CancellationToken cancellationToken = default)
+    {
+        if (Observation is null || projection is null)
+        {
+            throw new InvalidOperationException(
+                "master/catalogとprojectionを先に読み込んでください。");
+        }
+        if (IsBusy)
+        {
+            throw new InvalidOperationException("別の処理を実行中です。");
+        }
+        IsBusy = true;
+        StatusTitle = "catalog retry中";
+        StatusMessage = "指定sessionのcheckpoint/artifactを検証してcatalogへretryしています。";
+        try
+        {
+            var summary = await Observation.RetryCatalogAsync(
+                projection.Master,
+                projection.Catalog,
+                fixedDatabasePaths.MasterPath,
+                fixedDatabasePaths.CatalogPath,
+                cancellationToken);
+            try
+            {
+                await LoadProjectionCoreAsync(cancellationToken);
+                StatusTitle = "catalog retry・projection再読込完了";
+                StatusMessage =
+                    $"catalog retry: {summary.DisplayMessage} / projection再読込: 成功";
+            }
+            catch (OperationCanceledException exception)
+            {
+                ClearProjection();
+                StatusTitle = "catalog retry・projection再読込取消";
+                StatusMessage =
+                    $"catalog retry: {summary.DisplayMessage} / projection再読込: 取消: {exception.Message}";
+                throw;
+            }
+            catch (Exception exception)
+            {
+                ClearProjection();
+                StatusTitle = "catalog retry・projection再読込失敗";
+                StatusMessage =
+                    $"catalog retry: {summary.DisplayMessage} / projection再読込: 失敗: {exception.Message}";
+                throw;
+            }
+        }
+        catch (Exception exception) when (StatusTitle == "catalog retry中")
+        {
+            StatusTitle = "catalog retry失敗";
+            StatusMessage = exception.Message;
+            throw;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
     private void RebuildFilterOptions()
     {
         ReasonOptions.Clear();

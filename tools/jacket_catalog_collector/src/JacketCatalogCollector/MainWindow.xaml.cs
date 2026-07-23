@@ -63,7 +63,8 @@ public partial class MainWindow : Window
             viewModel.StopObservationSessionAsync,
             windowCapture.StartAsync,
             windowCapture.StopAsync,
-            () => windowCapture.Lifecycle.State);
+            () => windowCapture.Lifecycle.State,
+            viewModel.FinalizeObservationSessionAsync);
         titleArtistEvaluationService = new TitleArtistEvaluationService(runner, repositoryRoot);
         DataContext = viewModel;
     }
@@ -195,7 +196,7 @@ public partial class MainWindow : Window
         }
         try
         {
-            await viewModel.Observation.RetryCatalogAsync();
+            await viewModel.RetryCatalogSessionAsync();
         }
         catch (Exception exception)
         {
@@ -321,11 +322,11 @@ public partial class MainWindow : Window
             e.Cancel = true;
             try
             {
-                await captureObservationController.StopAsync();
+                await captureObservationController.AbortAsync();
             }
             catch (Exception exception)
             {
-                MessageBox.Show(this, exception.Message, "collector終了時のcheckpoint保存失敗");
+                MessageBox.Show(this, exception.Message, "collector終了時の安全停止失敗");
             }
             finally
             {

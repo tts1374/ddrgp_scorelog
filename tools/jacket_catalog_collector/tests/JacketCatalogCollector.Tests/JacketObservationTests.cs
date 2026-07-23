@@ -955,6 +955,196 @@ public sealed class JacketObservationTests : IDisposable
     }
 
     [Fact]
+    public async Task Final_retry_keeps_mixed_successes_and_only_retries_pending_observations()
+    {
+        var identity = Identity("session-final-retry-mixed");
+        var checkpointStore = new AtomicObservationCheckpointStore(root);
+        var publisher = new AtomicObservationArtifactPublisher(root);
+        var catalog = new FakeCatalogAdapter(
+            new CatalogIngestReceipt(CatalogIngestDisposition.Created, "reference-1", "created"),
+            new CatalogIngestReceipt(CatalogIngestDisposition.Failed, null, "temporary failure"),
+            new CatalogIngestReceipt(CatalogIngestDisposition.Existing, "reference-3", "existing"),
+            new CatalogIngestReceipt(CatalogIngestDisposition.Created, "reference-2", "created"));
+        await using var session = new JacketObservationSession(
+            new JacketObservationDetector(new JacketDetectorOptions(0.01, 2, TimeSpan.Zero)),
+            checkpointStore,
+            publisher,
+            catalog);
+        await session.StartAsync(identity, "master.sqlite", "catalog.sqlite");
+
+        await session.ObserveFrameAsync(Frame(20, 1, 0));
+        await session.ObserveFrameAsync(Frame(20, 2, 100));
+        var first = await session.AdoptLastStableAsync();
+        await session.ObserveFrameAsync(Frame(80, 3, 200));
+        await session.ObserveFrameAsync(Frame(80, 4, 300));
+        var second = await session.AdoptLastStableAsync();
+        await session.ObserveFrameAsync(Frame(120, 5, 400));
+        await session.ObserveFrameAsync(Frame(120, 6, 500));
+        var third = await session.AdoptLastStableAsync();
+        await session.StopAsync();
+
+        Assert.Equal(CatalogIngestDisposition.Created, first.Catalog.Disposition);
+        Assert.Equal(CatalogIngestDisposition.Failed, second.Catalog.Disposition);
+        Assert.Equal(CatalogIngestDisposition.Existing, third.Catalog.Disposition);
+        Assert.Equal(3, session.Checkpoint!.Observations.Count);
+        Assert.Single(session.Checkpoint.Observations, item => item.CatalogStatus == "pending");
+
+        var retried = await session.RetryPendingCatalogAsync();
+
+        Assert.Single(retried);
+        Assert.Equal(CatalogIngestDisposition.Created, retried[0].Catalog.Disposition);
+        Assert.All(session.Checkpoint.Observations, item => Assert.Equal("ingested", item.CatalogStatus));
+        Assert.Equal(4, catalog.CallCount);
+
+        var repeated = await session.RetryPendingCatalogAsync();
+
+        Assert.Empty(repeated);
+        Assert.Equal(4, catalog.CallCount);
+    }
+
+    [Fact]
+    public async Task Past_session_catalog_retry_loads_checkpoint_without_resuming_capture()
+    {
+        var identity = Identity("session-past-catalog-retry");
+        var checkpointStore = new AtomicObservationCheckpointStore(root);
+        var publisher = new AtomicObservationArtifactPublisher(root);
+        var catalog = new FakeCatalogAdapter(
+            new CatalogIngestReceipt(CatalogIngestDisposition.Failed, null, "temporary failure"),
+            new CatalogIngestReceipt(CatalogIngestDisposition.Existing, "reference-1", "existing"));
+        await using (var initial = new JacketObservationSession(
+                         new JacketObservationDetector(new JacketDetectorOptions(0.01, 2, TimeSpan.Zero)),
+                         checkpointStore,
+                         publisher,
+                         catalog))
+        {
+            await initial.StartAsync(identity, "master.sqlite", "catalog.sqlite");
+            await initial.ObserveFrameAsync(Frame(20, 1, 0));
+            await initial.ObserveFrameAsync(Frame(20, 2, 100));
+            var adopted = await initial.AdoptLastStableAsync();
+            Assert.Equal(CatalogIngestDisposition.Failed, adopted.Catalog.Disposition);
+            await initial.StopAsync();
+        }
+
+        await using var retrySession = new JacketObservationSession(
+            new JacketObservationDetector(),
+            checkpointStore,
+            publisher,
+            catalog);
+        var prepared = await retrySession.PrepareCatalogRetryAsync(
+            new ObservationCatalogRetryRequest(
+                identity.SessionId,
+                identity.MasterVersion,
+                identity.MasterSourceHash,
+                identity.CatalogIdentity,
+                identity.CatalogSchemaVersion,
+                identity.FeatureExtractorVersion,
+                identity.CatalogCreatedAt),
+            "master.sqlite",
+            "catalog.sqlite");
+
+        Assert.True(prepared.Compatible);
+        Assert.False(retrySession.IsActive);
+        Assert.Contains("capture was not resumed", retrySession.LastDetection.Diagnostic);
+
+        var retried = await retrySession.RetryPendingCatalogAsync();
+
+        Assert.Single(retried);
+        Assert.Equal(CatalogIngestDisposition.Existing, retried[0].Catalog.Disposition);
+        Assert.Equal("ingested", retrySession.Checkpoint!.Observations.Single().CatalogStatus);
+        Assert.Equal(2, catalog.CallCount);
+    }
+
+    [Fact]
+    public async Task Explicit_collection_finalizer_reports_catalog_counts_and_pending_rows()
+    {
+        var identity = Identity("session-finalizer-summary");
+        var checkpointStore = new AtomicObservationCheckpointStore(root);
+        var publisher = new AtomicObservationArtifactPublisher(root);
+        var catalog = new FakeCatalogAdapter(
+            new CatalogIngestReceipt(CatalogIngestDisposition.Failed, null, "temporary failure"),
+            new CatalogIngestReceipt(CatalogIngestDisposition.Existing, "reference-1", "existing"));
+        var session = new JacketObservationSession(
+            new JacketObservationDetector(new JacketDetectorOptions(0.01, 2, TimeSpan.Zero)),
+            checkpointStore,
+            publisher,
+            catalog);
+        await session.StartAsync(identity, "master.sqlite", "catalog.sqlite");
+        await session.ObserveFrameAsync(Frame(20, 1, 0));
+        await session.ObserveFrameAsync(Frame(20, 2, 100));
+        await session.AdoptLastStableAsync();
+        await session.StopAsync();
+
+        var candidate = Candidate();
+        var source = new TestFrameSource();
+        var windows = new TestWindowEnumerator(candidate);
+        var coordinator = new WindowCaptureCoordinator(
+            windows,
+            new TestSessionFactory(source),
+            new ImmediateCaptureDispatcher());
+        var capture = new WindowCaptureViewModel(windows, coordinator);
+        await using var viewModel = new JacketObservationViewModel(
+            capture,
+            session,
+            new ImmediateCaptureDispatcher());
+
+        var summary = await viewModel.FinalizeCatalogAsync();
+
+        Assert.Equal(identity.SessionId, summary.SessionId);
+        Assert.Equal(1, summary.SavedObservationCount);
+        Assert.Equal(0, summary.CatalogCreatedCount);
+        Assert.Equal(1, summary.CatalogExistingCount);
+        Assert.Equal(0, summary.CatalogFailureCount);
+        Assert.Equal(0, summary.PendingObservationCount);
+        Assert.False(summary.IsNoOp);
+        Assert.Contains("pending=0", viewModel.CollectionResult, StringComparison.Ordinal);
+
+        var repeated = await viewModel.FinalizeCatalogAsync();
+
+        Assert.True(repeated.IsNoOp);
+        Assert.Equal(2, catalog.CallCount);
+    }
+
+    [Fact]
+    public async Task Retry_artifact_corruption_is_rejected_before_any_catalog_ingest()
+    {
+        var identity = Identity("session-retry-artifact-corrupt");
+        var checkpointStore = new AtomicObservationCheckpointStore(root);
+        var publisher = new AtomicObservationArtifactPublisher(root);
+        var catalog = new FakeCatalogAdapter(
+            new CatalogIngestReceipt(CatalogIngestDisposition.Failed, null, "temporary failure"),
+            new CatalogIngestReceipt(CatalogIngestDisposition.Failed, null, "temporary failure"));
+        await using var session = new JacketObservationSession(
+            new JacketObservationDetector(new JacketDetectorOptions(0.01, 2, TimeSpan.Zero)),
+            checkpointStore,
+            publisher,
+            catalog);
+        await session.StartAsync(identity, "master.sqlite", "catalog.sqlite");
+        await session.ObserveFrameAsync(Frame(20, 1, 0));
+        await session.ObserveFrameAsync(Frame(20, 2, 100));
+        await session.AdoptLastStableAsync();
+        await session.ObserveFrameAsync(Frame(80, 3, 200));
+        await session.ObserveFrameAsync(Frame(80, 4, 300));
+        await session.AdoptLastStableAsync();
+        await session.StopAsync();
+
+        var checkpointPath = Path.Combine(root, identity.SessionId, "checkpoint.json");
+        var checkpointBytes = await File.ReadAllBytesAsync(checkpointPath);
+        var corruptPath = Path.Combine(
+            session.Checkpoint!.Observations[1].ArtifactPath,
+            "jacket-crop.png");
+        await File.WriteAllBytesAsync(corruptPath, [1, 2, 3]);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => session.RetryPendingCatalogAsync());
+
+        Assert.Equal(2, catalog.CallCount);
+        Assert.Equal(checkpointBytes, await File.ReadAllBytesAsync(checkpointPath));
+        Assert.All(
+            session.Checkpoint!.Observations,
+            observation => Assert.Equal("pending", observation.CatalogStatus));
+    }
+
+    [Fact]
     public async Task Catalog_success_checkpoint_failure_retries_existing_and_converges_checkpoint()
     {
         var identity = Identity("session-catalog-checkpoint-retry");

@@ -6,7 +6,8 @@ public sealed class CaptureObservationController(
     Func<CancellationToken, Task> stopObservation,
     Func<WindowCandidate, CancellationToken, Task<bool>> startCapture,
     Func<Task> stopCapture,
-    Func<CaptureLifecycleState> captureState)
+    Func<CaptureLifecycleState> captureState,
+    Func<CancellationToken, Task>? finalizeObservation = null)
 {
     private readonly SemaphoreSlim operationGate = new(1, 1);
     private readonly Lock operationSync = new();
@@ -49,6 +50,18 @@ public sealed class CaptureObservationController(
 
     public async Task StopAsync(CancellationToken cancellationToken = default)
     {
+        await StopCoreAsync(cancellationToken, finalize: true);
+    }
+
+    public async Task AbortAsync(CancellationToken cancellationToken = default)
+    {
+        await StopCoreAsync(cancellationToken, finalize: false);
+    }
+
+    private async Task StopCoreAsync(
+        CancellationToken cancellationToken,
+        bool finalize)
+    {
         RequestStop();
         try
         {
@@ -61,7 +74,7 @@ public sealed class CaptureObservationController(
         }
         try
         {
-            await StopResourcesAsync();
+            await StopResourcesAsync(finalize);
         }
         finally
         {
@@ -204,15 +217,29 @@ public sealed class CaptureObservationController(
         }
     }
 
-    private async Task StopResourcesAsync()
+    private async Task StopResourcesAsync(bool finalize)
     {
+        Exception? captureStopException = null;
         try
         {
             await stopCapture();
         }
+        catch (Exception exception)
+        {
+            captureStopException = exception;
+        }
         finally
         {
             await stopObservation(CancellationToken.None);
+        }
+        if (captureStopException is not null)
+        {
+            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(
+                captureStopException).Throw();
+        }
+        if (finalize && finalizeObservation is not null)
+        {
+            await finalizeObservation(CancellationToken.None);
         }
     }
 }

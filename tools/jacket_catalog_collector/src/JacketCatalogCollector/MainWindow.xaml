@@ -161,8 +161,11 @@
                                 <WrapPanel>
                                     <Button Content="session再開" IsEnabled="{Binding Observation.CanResume}"
                                             Click="ResumeCapture_Click" />
-                                    <Button Content="catalog retry" Click="RetryCatalog_Click" />
+                                    <Button Content="catalog retry" IsEnabled="{Binding Observation.CanRetryCatalog}"
+                                            Click="RetryCatalog_Click" />
                                 </WrapPanel>
+                                <TextBlock Text="{Binding Observation.CollectionResult}"
+                                           Foreground="#5F6B7A" TextWrapping="Wrap" Margin="0,6,0,0" />
                                 <TextBlock Text="{Binding Observation.StatusMessage}" Foreground="#5F6B7A"
                                            TextWrapping="Wrap" Margin="0,6,0,0" />
                             </StackPanel>

@@ -250,6 +250,44 @@ public sealed class MainViewModelTests
     }
 
     [Fact]
+    public async Task Final_collection_separates_retry_result_and_clears_projection_on_reload_failure()
+    {
+        var observationSession = new JacketObservationSession(
+            new JacketObservationDetector(),
+            new NoopCheckpointStore(),
+            new NoopArtifactPublisher(),
+            new NoopCatalogAdapter());
+        var capture = new WindowCaptureViewModel(
+            new EmptyWindowEnumerator(),
+            new WindowCaptureCoordinator(
+                new EmptyWindowEnumerator(),
+                new UnsupportedCaptureFactory(),
+                new ImmediateCaptureDispatcher()));
+        await using var observation = new JacketObservationViewModel(
+            capture,
+            observationSession,
+            new ImmediateCaptureDispatcher());
+        var projection = new SequenceProjectionService(
+            Projection(),
+            new InvalidOperationException("projection reload failed"));
+        var viewModel = new MainViewModel(
+            new StubMasterUpdateService(),
+            projection,
+            observation: observation);
+
+        await viewModel.LoadProjectionAsync();
+        await viewModel.FinalizeObservationSessionAsync();
+
+        Assert.Equal("収集終了・projection再読込失敗", viewModel.StatusTitle);
+        Assert.Contains("catalog retry:", viewModel.StatusMessage, StringComparison.Ordinal);
+        Assert.Contains("projection再読込: 失敗", viewModel.StatusMessage, StringComparison.Ordinal);
+        Assert.Null(viewModel.CurrentMasterPath);
+        Assert.Null(viewModel.CurrentCatalogPath);
+        Assert.Empty(viewModel.Songs);
+        Assert.Empty(viewModel.ReviewReferences);
+    }
+
+    [Fact]
     public async Task AppliesExplicitSongMutationAndReloadsProjection()
     {
         var projection = Projection();
@@ -402,6 +440,87 @@ public sealed class MainViewModelTests
             string catalogPath,
             CancellationToken cancellationToken) =>
             Task.FromException<ReviewProjection>(exception);
+    }
+
+    private sealed class EmptyWindowEnumerator : IWindowEnumerator
+    {
+        public Task<IReadOnlyList<WindowCandidate>> EnumerateAsync(
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<WindowCandidate>>([]);
+
+        public WindowIdentitySnapshot? TryGetSnapshot(nint handle) => null;
+    }
+
+    private sealed class UnsupportedCaptureFactory : IWindowCaptureSessionFactory
+    {
+        public bool IsSupported => false;
+
+        public Task<IWindowCaptureFrameSource> StartAsync(
+            WindowIdentitySnapshot target,
+            CancellationToken cancellationToken = default) =>
+            Task.FromException<IWindowCaptureFrameSource>(
+                new InvalidOperationException("capture is unsupported in test"));
+    }
+
+    private sealed class NoopCheckpointStore : IObservationCheckpointStore
+    {
+        public Task SaveAsync(
+            ObservationCheckpoint checkpoint,
+            CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+        public Task<ObservationCheckpoint> LoadAsync(
+            string sessionId,
+            CancellationToken cancellationToken = default) =>
+            Task.FromException<ObservationCheckpoint>(
+                new InvalidOperationException("checkpoint is not expected in test"));
+    }
+
+    private sealed class NoopArtifactPublisher : IObservationArtifactPublisher
+    {
+        public Task<ArtifactPublishReceipt> PublishAsync(
+            ObservationArtifact artifact,
+            ObservationCheckpoint checkpoint,
+            CancellationToken cancellationToken = default) =>
+            Task.FromException<ArtifactPublishReceipt>(
+                new InvalidOperationException("artifact publish is not expected in test"));
+
+        public Task RollbackAsync(
+            ArtifactPublishReceipt receipt,
+            ObservationCheckpoint? previousCheckpoint,
+            CancellationToken cancellationToken = default) => Task.CompletedTask;
+    }
+
+    private sealed class NoopCatalogAdapter : IObservationCatalogAdapter
+    {
+        public Task<IReadOnlySet<CompositeObservationIdentity>> LoadCompositeIdentitySetAsync(
+            ObservationSessionIdentity session,
+            string catalogPath,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlySet<CompositeObservationIdentity>>(
+                new HashSet<CompositeObservationIdentity>());
+
+        public Task ValidateSessionAsync(
+            ObservationSessionIdentity session,
+            string catalogPath,
+            string masterPath,
+            CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+        public Task ValidateReceiptAsync(
+            ObservationCheckpointObservation observation,
+            ObservationArtifact artifact,
+            string catalogPath,
+            CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+        public Task<CatalogIngestReceipt> IngestAsync(
+            ObservationArtifact artifact,
+            string sourceImagePath,
+            string catalogPath,
+            string masterPath,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(new CatalogIngestReceipt(
+                CatalogIngestDisposition.Existing,
+                "reference-test",
+                "existing"));
     }
 
     private sealed class TestDatabase : IDisposable
