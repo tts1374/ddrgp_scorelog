@@ -150,6 +150,14 @@
       border-bottom: 2px solid var(--primary-color);
     }
 
+    .sub-tab-content {
+      display: none;
+    }
+
+    .sub-tab-content.active {
+      display: block;
+    }
+
     /* Tab 1: ジャケット収集 */
     .collection-grid {
       display: grid;
@@ -459,18 +467,10 @@
       border: 1px solid #374151;
     }
 
-    .btn-action-primary {
-      padding: 8px 20px;
-      background-color: #0b66c3;
-      color: white;
-      font-weight: 700;
-      border: none;
-      border-radius: 6px;
-      cursor: pointer;
-    }
-
-    .btn-action-primary:hover {
-      background-color: #094e96;
+    .review-autosave-note {
+      color: var(--text-muted);
+      font-size: 12px;
+      text-align: right;
     }
 
     /* Tab 4: 管理・設定 */
@@ -523,22 +523,23 @@
       background-color: var(--primary-hover);
     }
 
-    .log-box {
-      background-color: #1e293b;
-      color: #cbd5e1;
+    .last-result {
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
       padding: 16px;
-      border-radius: 6px;
-      font-family: monospace;
-      font-size: 12px;
-      height: 120px;
-      overflow-y: auto;
+      background-color: #f9fafb;
+      color: var(--text-main);
     }
 
-    .details-toggle {
-      margin-top: 10px;
-      font-size: 12px;
+    .last-result h4 {
+      font-size: 13px;
       color: var(--text-muted);
-      cursor: pointer;
+      margin-bottom: 8px;
+    }
+
+    .last-result p {
+      font-weight: 600;
+      margin-bottom: 4px;
     }
   </style>
 </head>
@@ -618,9 +619,6 @@
             <button class="btn-secondary">収集を停止</button>
           </div>
 
-          <div class="details-toggle">
-            ▼ 詳細・復旧操作 (アコーディオン)
-          </div>
         </div>
       </div>
     </div>
@@ -658,11 +656,9 @@
             <option>収集済み</option>
             <option>レビュー待ち</option>
             <option>未収集</option>
+            <option>曲未特定</option>
+            <option>曲情報外</option>
           </select>
-        </div>
-        <div class="filter-group" style="flex: 1;">
-          <label>理由 (テキスト入力):</label>
-          <input type="text" placeholder="理由を入力して検索 (例: mismatch, 不明...)" style="width: 280px;">
         </div>
       </div>
 
@@ -717,15 +713,13 @@
       <!-- Action & Status Header -->
       <div class="review-action-header">
         <div class="review-status-badges">
-          <div class="review-stat-badge badge-unreviewed">未レビュー　120</div>
-          <div class="review-stat-badge badge-confirmed">確定予定　2</div>
-          <div class="review-stat-badge badge-rejected">却下予定　1</div>
-          <div class="review-stat-badge badge-hold">保留{1}</div>
+          <div class="review-stat-badge badge-unreviewed">未レビュー　10</div>
+          <div class="review-stat-badge badge-confirmed">確定予定　4</div>
+          <div class="review-stat-badge badge-rejected">却下予定　3</div>
+          <div class="review-stat-badge badge-hold">保留 3</div>
         </div>
-        <div style="display: flex; gap: 8px;">
-          <button class="btn-secondary">エクスポート</button>
-          <button class="btn-secondary">インポート</button>
-          <button class="btn-action-primary">一括反映</button>
+        <div class="review-autosave-note">
+          変更内容は自動保存されます
         </div>
       </div>
 
@@ -741,14 +735,14 @@
         </div>
       </div>
 
-      <div id="subtab-unreviewed">
+      <div id="subtab-unreviewed" class="sub-tab-content active">
         <table class="data-table">
           <thead>
             <tr>
               <th>タイトルROI <span style="font-size: 11px; font-weight: normal; color: var(--text-muted);">(切り出し画像)</span></th>
               <th>アーティストROI <span style="font-size: 11px; font-weight: normal; color: var(--text-muted);">(切り出し画像)</span></th>
               <th>状態</th>
-              <th>確定曲 (Master検索)</th>
+              <th>確定曲 (曲名検索)</th>
               <th>メモ</th>
               <th>保存状態 / エラー</th>
             </tr>
@@ -830,13 +824,18 @@
           </tbody>
         </table>
       </div>
+      <div id="subtab-reviewed" class="sub-tab-content">
+        <div class="panel-card">
+          レビュー済み画面は後続Issueで対応します。
+        </div>
+      </div>
     </div>
 
     <!-- TAB 4: 管理・設定 -->
     <div id="tab-admin" class="tab-content">
       <div class="admin-cards">
         <div class="admin-card">
-          <h3>🎵 曲情報 (Master)</h3>
+          <h3>🎵 曲情報</h3>
           <div class="info-list" style="margin-top: 12px;">
             <div class="info-row"><span class="info-label">更新日時:</span><span class="info-val">2026/07/19 10:00:00</span></div>
             <div class="info-row"><span class="info-label">曲数:</span><span class="info-val">1,181 曲</span></div>
@@ -845,23 +844,24 @@
         </div>
 
         <div class="admin-card">
-          <h3>🖼️ ジャケット情報 (Catalog)</h3>
+          <h3>🖼️ ジャケット収集状況</h3>
           <div class="info-list" style="margin-top: 12px;">
-            <div class="info-row"><span class="info-label">バージョン:</span><span class="info-val">v1</span></div>
-            <div class="info-row"><span class="info-label">収集状況:</span><span class="info-val">120 / 1,181 曲</span></div>
-            <div class="info-row"><span class="info-label">レビュー中:</span><span class="info-val">10 件</span></div>
+            <div class="info-row"><span class="info-label">ジャケット情報のバージョン:</span><span class="info-val">v1</span></div>
+            <div class="info-row"><span class="info-label">収集済み曲数:</span><span class="info-val">120 / 1,181 曲</span></div>
+            <div class="info-row"><span class="info-label">レビュー待ち件数:</span><span class="info-val">10 件</span></div>
           </div>
         </div>
       </div>
 
       <div class="update-action-area">
-        <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 12px;">曲情報DBを最新版へ更新します。収集中・初期化中は無効化されます。</p>
+        <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 12px;">使用する曲情報を最新版へ更新します。収集中は更新できません。</p>
         <button class="btn-update">🔄 曲情報を更新</button>
       </div>
 
-      <h4 style="font-size: 13px; margin-bottom: 8px; color: var(--text-muted);">直近の処理ログ</h4>
-      <div class="log-box">
-        [2026-07-23 17:20:00] 読込完了: 固定DBからGP対象 1181 曲を表示しました。
+      <div class="last-result">
+        <h4>最後の処理結果</h4>
+        <p>曲情報を更新しました。</p>
+        <div>更新日時: 2026/07/23 17:20</div>
       </div>
     </div>
   </div>
@@ -871,13 +871,16 @@
       document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
       document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
 
-      evt.target.classList.add('active');
+      evt.currentTarget.classList.add('active');
       document.getElementById('tab-' + tabId).classList.add('active');
     }
 
     function switchSubTab(subTabId, evt) {
       document.querySelectorAll('.sub-tab-btn').forEach(btn => btn.classList.remove('active'));
-      evt.target.classList.add('active');
+      document.querySelectorAll('.sub-tab-content').forEach(content => content.classList.remove('active'));
+
+      evt.currentTarget.classList.add('active');
+      document.getElementById('subtab-' + subTabId).classList.add('active');
     }
   </script>
 </body>
