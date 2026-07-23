@@ -88,11 +88,15 @@ public sealed class ProjectionSong
     public required string ReferenceCount { get; init; }
     [JsonPropertyName("reason")]
     public required string Reason { get; init; }
+    [JsonPropertyName("aliases")]
+    public required List<string> Aliases { get; init; }
 }
 
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public sealed class ReviewReference
 {
+    [JsonPropertyName("source_image_path")]
+    public required string? SourceImagePath { get; init; }
     [JsonPropertyName("reference_id")]
     public required string ReferenceId { get; init; }
     [JsonPropertyName("review_status")]

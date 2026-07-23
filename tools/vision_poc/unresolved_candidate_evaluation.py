@@ -256,6 +256,73 @@ def _unavailable_reason(exception: Exception) -> str:
     return "artifact_identity_or_version_invalid"
 
 
+def _validated_artifact(
+    reference: dict[str, Any],
+    *,
+    artifact_root: Path,
+    manifest_path: Path,
+    master: catalog.MasterIdentity,
+    catalog_identity: evaluation.CatalogIdentity,
+) -> tuple[evaluation.ArtifactInput, tuple[Path, ...], dict[Path, tuple[int, int, str]]]:
+    observation_id = str(reference["source_capture_id"] or "")
+    snapshot_paths = (
+        manifest_path,
+        manifest_path.parent / "source.png",
+        manifest_path.parent / "jacket-crop.png",
+        manifest_path.parents[2] / "checkpoint.json",
+    )
+    before_fingerprints = {path: _file_fingerprint(path) for path in snapshot_paths}
+    relative = manifest_path.resolve().relative_to(artifact_root.resolve()).as_posix()
+    entry = evaluation.DatasetEntry(relative, None, None, None)
+    artifact = evaluation._validate_manifest(
+        evaluation._read_strict_json(manifest_path),
+        entry=entry,
+        artifact_root=artifact_root,
+        master=master,
+        catalog=catalog_identity,
+    )
+    manifest = artifact.manifest
+    if (
+        manifest["observation_id"] != observation_id
+        or manifest["jacket_crop_hash"] != reference["source_image_hash"]
+        or manifest["feature_extractor_version"] != reference["feature_extractor_version"]
+        or manifest["feature_version"] != reference["jacket_feature_version"]
+        or manifest["feature_hash"] != reference["jacket_feature_hash"]
+        or manifest.get("title_line_feature_version") != reference["title_line_feature_version"]
+        or manifest.get("title_line_hash") != reference["title_line_hash"]
+        or manifest.get("composite_identity_version") != reference["composite_identity_version"]
+        or manifest.get("composite_identity_hash") != reference["composite_identity_hash"]
+    ):
+        raise ValueError("artifact/catalog identity drift detected")
+    _validate_checkpoint(manifest_path, manifest, reference)
+    return artifact, snapshot_paths, before_fingerprints
+
+
+def resolve_source_image_path(
+    reference: dict[str, Any],
+    *,
+    artifact_root: Path,
+    manifest_paths: list[Path],
+    master: catalog.MasterIdentity,
+    catalog_identity: evaluation.CatalogIdentity,
+) -> str | None:
+    if not reference["source_capture_id"] or len(manifest_paths) != 1:
+        return None
+    try:
+        _artifact, snapshot_paths, before_fingerprints = _validated_artifact(
+            reference,
+            artifact_root=artifact_root,
+            manifest_path=manifest_paths[0],
+            master=master,
+            catalog_identity=catalog_identity,
+        )
+        if any(_file_fingerprint(path) != before_fingerprints[path] for path in snapshot_paths):
+            raise ValueError("artifact/checkpoint changed during evaluation")
+    except (OSError, ValueError):
+        return None
+    return str((manifest_paths[0].parent / "source.png").resolve())
+
+
 def evaluate_reference(
     reference: dict[str, Any],
     *,
@@ -278,37 +345,14 @@ def evaluate_reference(
         reason = "artifact_not_found" if not manifest_paths else "duplicate_artifact_identity"
         return _result("evaluation_unavailable", reason, observation_id=observation_id)
     manifest_path = manifest_paths[0]
-    snapshot_paths = (
-        manifest_path,
-        manifest_path.parent / "source.png",
-        manifest_path.parent / "jacket-crop.png",
-        manifest_path.parents[2] / "checkpoint.json",
-    )
     try:
-        before_fingerprints = {path: _file_fingerprint(path) for path in snapshot_paths}
-        relative = manifest_path.resolve().relative_to(artifact_root.resolve()).as_posix()
-        entry = evaluation.DatasetEntry(relative, None, None, None)
-        artifact = evaluation._validate_manifest(
-            evaluation._read_strict_json(manifest_path),
-            entry=entry,
+        artifact, snapshot_paths, before_fingerprints = _validated_artifact(
+            reference,
             artifact_root=artifact_root,
             master=master,
-            catalog=catalog_identity,
+            catalog_identity=catalog_identity,
+            manifest_path=manifest_path,
         )
-        manifest = artifact.manifest
-        if (
-            manifest["observation_id"] != observation_id
-            or manifest["jacket_crop_hash"] != reference["source_image_hash"]
-            or manifest["feature_extractor_version"] != reference["feature_extractor_version"]
-            or manifest["feature_version"] != reference["jacket_feature_version"]
-            or manifest["feature_hash"] != reference["jacket_feature_hash"]
-            or manifest.get("title_line_feature_version") != reference["title_line_feature_version"]
-            or manifest.get("title_line_hash") != reference["title_line_hash"]
-            or manifest.get("composite_identity_version") != reference["composite_identity_version"]
-            or manifest.get("composite_identity_hash") != reference["composite_identity_hash"]
-        ):
-            raise ValueError("artifact/catalog identity drift detected")
-        _validate_checkpoint(manifest_path, manifest, reference)
         with Image.open(io.BytesIO(artifact.source_bytes)) as opened:
             image = opened.convert("RGB")
         title = extractor(image, "title", METHOD_VERSION)
@@ -387,6 +431,26 @@ def evaluate_references(
             master=master,
             catalog_identity=catalog_identity,
             extractor=extractor,
+        )
+        for reference in references
+    ]
+
+
+def resolve_source_image_paths(
+    references: Iterable[dict[str, Any]],
+    *,
+    artifact_root: Path,
+    master: catalog.MasterIdentity,
+    catalog_identity: evaluation.CatalogIdentity,
+) -> list[str | None]:
+    index = _manifest_index(artifact_root)
+    return [
+        resolve_source_image_path(
+            reference,
+            artifact_root=artifact_root,
+            manifest_paths=index.get(str(reference["source_capture_id"] or ""), []),
+            master=master,
+            catalog_identity=catalog_identity,
         )
         for reference in references
     ]

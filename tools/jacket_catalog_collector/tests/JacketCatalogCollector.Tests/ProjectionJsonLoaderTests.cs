@@ -14,7 +14,7 @@ public sealed class ProjectionJsonLoaderTests
     {
         var projection = loader.Load(FixtureJson());
 
-        Assert.Equal(4, projection.ProjectionSchemaVersion);
+        Assert.Equal(5, projection.ProjectionSchemaVersion);
         Assert.Equal(1, projection.Catalog.SchemaVersion);
         Assert.Equal("manual_confirm", projection.ReviewReferences[0].History[0].Action);
         Assert.Contains("日本語", projection.ReviewReferences[0].ManualNote);
@@ -23,7 +23,7 @@ public sealed class ProjectionJsonLoaderTests
     [Fact]
     public void RejectsLegacyProjectionCatalogAndCapabilityFields()
     {
-        foreach (var version in new[] { 1, 2, 3 })
+        foreach (var version in new[] { 1, 2, 3, 4 })
         {
             var legacyProjection = JsonNode.Parse(FixtureJson())!.AsObject();
             legacyProjection["projection_schema_version"] = version;
@@ -51,11 +51,19 @@ public sealed class ProjectionJsonLoaderTests
     [Fact]
     public void RejectsInvalidHistoryCurrentStateAndStrictJson()
     {
-        var invalidPayloads = new List<string> { "", "{\"projection_schema_version\":4" };
+        var invalidPayloads = new List<string> { "", "{\"projection_schema_version\":5" };
 
         var missing = JsonNode.Parse(FixtureJson())!.AsObject();
         missing.Remove("master");
         invalidPayloads.Add(missing.ToJsonString());
+
+        var missingAliases = JsonNode.Parse(FixtureJson())!.AsObject();
+        missingAliases["songs"]![0]!.AsObject().Remove("aliases");
+        invalidPayloads.Add(missingAliases.ToJsonString());
+
+        var missingSourceImagePath = JsonNode.Parse(FixtureJson())!.AsObject();
+        missingSourceImagePath["review_references"]![0]!.AsObject().Remove("source_image_path");
+        invalidPayloads.Add(missingSourceImagePath.ToJsonString());
 
         var unknown = JsonNode.Parse(FixtureJson())!.AsObject();
         unknown["unexpected"] = true;

@@ -1,0 +1,887 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DDR GP ジャケット収集 UI Mockup</title>
+  <style>
+    :root {
+      --bg-color: #f3f4f6;
+      --card-bg: #ffffff;
+      --text-main: #1f2937;
+      --text-muted: #6b7280;
+      --border-color: #e5e7eb;
+      --primary-color: #2563eb;
+      --primary-hover: #1d4ed8;
+      --success-color: #10b981;
+      --warning-color: #f59e0b;
+      --danger-color: #ef4444;
+      --badge-bg: #e0e7ff;
+      --badge-text: #3730a3;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    }
+
+    body {
+      background-color: var(--bg-color);
+      color: var(--text-main);
+      display: flex;
+      justify-content: center;
+      padding: 20px;
+      font-size: 14px;
+    }
+
+    .window-container {
+      width: 1150px;
+      background-color: var(--card-bg);
+      border-radius: 8px;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+      border: 1px solid var(--border-color);
+      overflow: hidden;
+    }
+
+    /* Window Header */
+    .window-header {
+      background-color: #fafafa;
+      padding: 16px 24px;
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .app-title-area h1 {
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--text-main);
+    }
+
+    .app-title-area p {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+
+    .header-badges {
+      display: flex;
+      gap: 10px;
+    }
+
+    .header-badge {
+      background-color: #f0fdf4;
+      border: 1px solid #bbf7d0;
+      color: #166534;
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+
+    /* Main Tab Navigation */
+    .nav-tabs {
+      display: flex;
+      background-color: #f9fafb;
+      border-bottom: 1px solid var(--border-color);
+      padding: 0 24px;
+    }
+
+    .tab-btn {
+      padding: 12px 20px;
+      border: none;
+      background: none;
+      font-size: 14px;
+      font-weight: 500;
+      color: var(--text-muted);
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      transition: all 0.2s;
+    }
+
+    .tab-btn:hover {
+      color: var(--text-main);
+    }
+
+    .tab-btn.active {
+      color: var(--primary-color);
+      border-bottom-color: var(--primary-color);
+      background-color: #ffffff;
+      font-weight: 600;
+    }
+
+    /* Content Area */
+    .tab-content {
+      padding: 24px;
+      display: none;
+    }
+
+    .tab-content.active {
+      display: block;
+    }
+
+    /* Sub Tabs (for Review Tab) */
+    .sub-tabs {
+      display: flex;
+      gap: 8px;
+      border-bottom: 1px solid var(--border-color);
+      margin-bottom: 16px;
+      padding-bottom: 4px;
+    }
+
+    .sub-tab-btn {
+      padding: 8px 16px;
+      border: 1px solid transparent;
+      background: none;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-muted);
+      cursor: pointer;
+      border-radius: 6px 6px 0 0;
+    }
+
+    .sub-tab-btn.active {
+      color: var(--primary-color);
+      border-color: var(--border-color) var(--border-color) #ffffff;
+      background-color: #ffffff;
+      border-bottom: 2px solid var(--primary-color);
+    }
+
+    .sub-tab-content {
+      display: none;
+    }
+
+    .sub-tab-content.active {
+      display: block;
+    }
+
+    /* Tab 1: ジャケット収集 */
+    .collection-grid {
+      display: grid;
+      grid-template-columns: 1fr 340px;
+      gap: 20px;
+    }
+
+    .preview-section {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .status-bar-inline {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--success-color);
+      background-color: #ecfdf5;
+      padding: 8px 12px;
+      border-radius: 6px;
+      border: 1px solid #a7f3d0;
+    }
+
+    .preview-box {
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      background-color: #111827;
+      border-radius: 8px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      color: #9ca3af;
+      position: relative;
+      overflow: hidden;
+      border: 2px solid #374151;
+    }
+
+    .preview-box .mock-jacket {
+      width: 220px;
+      height: 220px;
+      background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: bold;
+      font-size: 18px;
+      box-shadow: 0 8px 20px rgba(0,0,0,0.5);
+    }
+
+    .preview-box .mock-overlay {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: rgba(0,0,0,0.7);
+      color: white;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 11px;
+    }
+
+    .control-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .panel-card {
+      background-color: #ffffff;
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 16px;
+    }
+
+    .save-button-primary {
+      width: 100%;
+      padding: 16px;
+      background-color: #2563eb;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      box-shadow: 0 4px 6px rgba(37, 99, 235, 0.2);
+      transition: background-color 0.2s;
+    }
+
+    .save-button-primary:hover {
+      background-color: #1d4ed8;
+    }
+
+    .status-badge-card {
+      background-color: #eff6ff;
+      border: 1px solid #bfdbfe;
+      border-radius: 6px;
+      padding: 12px;
+      font-weight: 600;
+      color: #1e40af;
+      margin-bottom: 12px;
+      text-align: center;
+    }
+
+    .checkbox-label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      color: var(--text-main);
+      cursor: pointer;
+    }
+
+    .info-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      font-size: 13px;
+    }
+
+    .info-row {
+      display: flex;
+      justify-content: space-between;
+      padding-bottom: 6px;
+      border-bottom: 1px dashed var(--border-color);
+    }
+
+    .info-row:last-child {
+      border-bottom: none;
+      padding-bottom: 0;
+    }
+
+    .info-label {
+      color: var(--text-muted);
+    }
+
+    .info-val {
+      font-weight: 600;
+    }
+
+    .btn-group {
+      display: flex;
+      gap: 10px;
+    }
+
+    .btn-secondary {
+      flex: 1;
+      padding: 8px 14px;
+      background-color: #ffffff;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      font-weight: 600;
+      color: #374151;
+      cursor: pointer;
+      font-size: 13px;
+    }
+
+    .btn-secondary:hover {
+      background-color: #f3f4f6;
+    }
+
+    /* Tab 2: 収集状況 */
+    .summary-cards {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+
+    .summary-card {
+      background-color: #f9fafb;
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      padding: 12px;
+      text-align: center;
+    }
+
+    .summary-card .num {
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--primary-color);
+      margin-top: 4px;
+    }
+
+    .summary-card .label {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    .filter-bar {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 16px;
+      align-items: center;
+      background-color: #f9fafb;
+      padding: 12px 16px;
+      border-radius: 6px;
+      border: 1px solid var(--border-color);
+    }
+
+    .filter-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    select, input[type="text"] {
+      padding: 6px 12px;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      font-size: 13px;
+      background-color: white;
+    }
+
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    .data-table th, .data-table td {
+      padding: 10px 12px;
+      text-align: left;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    .data-table th {
+      background-color: #f9fafb;
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+
+    .status-tag {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    .tag-referenced { background-color: #d1fae5; color: #065f46; }
+    .tag-review { background-color: #fef3c7; color: #92400e; }
+    .tag-uncollected { background-color: #f3f4f6; color: #4b5563; }
+
+    /* Tab 3: レビュー */
+    .review-action-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+
+    .review-status-badges {
+      display: flex;
+      gap: 12px;
+    }
+
+    .review-stat-badge {
+      padding: 8px 16px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 700;
+      border: 1px solid transparent;
+    }
+
+    .badge-unreviewed { background-color: #eff6ff; border-color: #bfdbfe; color: #1e40af; }
+    .badge-confirmed { background-color: #ecfdf5; border-color: #a7f3d0; color: #065f46; }
+    .badge-rejected { background-color: #fef2f2; border-color: #fca5a5; color: #991b1b; }
+    .badge-hold { background-color: #fffbeb; border-color: #fde68a; color: #92400e; }
+
+    .roi-preview-container {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+
+    .roi-preview-box {
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      padding: 12px;
+      background-color: #fafafa;
+      text-align: center;
+    }
+
+    .roi-preview-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+    }
+
+    .roi-image-area {
+      height: 48px;
+      background-color: #111827;
+      color: #ffffff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: monospace;
+      font-size: 12px;
+      border-radius: 4px;
+      border: 1px solid #374151;
+    }
+
+    .review-autosave-note {
+      color: var(--text-muted);
+      font-size: 12px;
+      text-align: right;
+    }
+
+    /* Tab 4: 管理・設定 */
+    .admin-cards {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      margin-bottom: 24px;
+    }
+
+    .admin-card {
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 20px;
+      background-color: #ffffff;
+    }
+
+    .admin-card h3 {
+      font-size: 16px;
+      font-weight: 700;
+      margin-bottom: 12px;
+      padding-bottom: 8px;
+      border-bottom: 2px solid var(--primary-color);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .update-action-area {
+      text-align: center;
+      margin-bottom: 24px;
+      padding: 24px;
+      background-color: #f9fafb;
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+    }
+
+    .btn-update {
+      padding: 12px 32px;
+      background-color: var(--primary-color);
+      color: white;
+      font-size: 15px;
+      font-weight: 700;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+
+    .btn-update:hover {
+      background-color: var(--primary-hover);
+    }
+
+    .last-result {
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 16px;
+      background-color: #f9fafb;
+      color: var(--text-main);
+    }
+
+    .last-result h4 {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+    }
+
+    .last-result p {
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="window-container">
+    <!-- Header Bar -->
+    <header class="window-header">
+      <div class="app-title-area">
+        <h1>DDR GP ジャケット収集</h1>
+        <p>曲を切り替えながら、検出したジャケットを確認して保存します。</p>
+      </div>
+      <div class="header-badges">
+        <div class="header-badge">曲情報: 2026/07/19 10:00 更新</div>
+        <div class="header-badge" style="background-color: #eff6ff; border-color: #bfdbfe; color: #1e40af;">ジャケット情報: v1</div>
+      </div>
+    </header>
+
+    <!-- Main Tab Nav -->
+    <nav class="nav-tabs">
+      <button class="tab-btn active" onclick="switchTab('collect', event)">ジャケット収集</button>
+      <button class="tab-btn" onclick="switchTab('status', event)">収集状況</button>
+      <button class="tab-btn" onclick="switchTab('review', event)">レビュー</button>
+      <button class="tab-btn" onclick="switchTab('admin', event)">管理・設定</button>
+    </nav>
+
+    <!-- TAB 1: ジャケット収集 -->
+    <div id="tab-collect" class="tab-content active">
+      <div class="collection-grid">
+        <!-- Preview Section -->
+        <div class="preview-section">
+          <div class="status-bar-inline">
+            <span style="font-size: 16px;">🟢</span> DDR GP 接続中 (ddr-konaste / 1280x720)
+          </div>
+          <div class="preview-box">
+            <div class="mock-overlay">DDR GP Live Preview</div>
+            <div class="mock-jacket">
+              POSSESSION
+            </div>
+          </div>
+        </div>
+
+        <!-- Control Panel -->
+        <div class="control-panel">
+          <div class="panel-card">
+            <div class="status-badge-card">
+              収集は実行中
+            </div>
+            <label class="checkbox-label">
+              <input type="checkbox"> 保存前照合済み候補を自動保存 (既定OFF)
+            </label>
+          </div>
+
+          <button class="save-button-primary">
+            ★ このジャケットを保存
+          </button>
+
+          <div class="panel-card">
+            <h4 style="margin-bottom: 10px; font-size: 13px; color: var(--text-muted);">検出ステータス</h4>
+            <div class="info-list">
+              <div class="info-row">
+                <span class="info-label">曲名</span>
+                <span class="info-val">POSSESSION</span>
+              </div>
+              <div class="info-row">
+                <span class="info-label">アーティスト</span>
+                <span class="info-val">TAG underground</span>
+              </div>
+              <div class="info-row">
+                <span class="info-label">判定状態</span>
+                <span class="info-val" style="color: var(--success-color);">ジャケット安定 (保存可)</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="btn-group">
+            <button class="btn-secondary">収集を停止</button>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 2: 収集状況 -->
+    <div id="tab-status" class="tab-content">
+      <div class="summary-cards">
+        <div class="summary-card">
+          <div class="label">収集済み</div>
+          <div class="num">120</div>
+        </div>
+        <div class="summary-card">
+          <div class="label">レビュー待ち</div>
+          <div class="num" style="color: var(--warning-color);">10</div>
+        </div>
+        <div class="summary-card">
+          <div class="label">未収集</div>
+          <div class="num" style="color: var(--text-muted);">1,051</div>
+        </div>
+        <div class="summary-card">
+          <div class="label">曲未特定</div>
+          <div class="num">0</div>
+        </div>
+        <div class="summary-card">
+          <div class="label">曲情報外</div>
+          <div class="num">0</div>
+        </div>
+      </div>
+
+      <div class="filter-bar">
+        <div class="filter-group">
+          <label>状態:</label>
+          <select>
+            <option>すべて</option>
+            <option>収集済み</option>
+            <option>レビュー待ち</option>
+            <option>未収集</option>
+            <option>曲未特定</option>
+            <option>曲情報外</option>
+          </select>
+        </div>
+      </div>
+
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>状態</th>
+            <th>曲名</th>
+            <th>アーティスト</th>
+            <th>登録数</th>
+            <th>理由</th>
+            <th>songid</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="status-tag tag-referenced">収集済み</span></td>
+            <td>POSSESSION</td>
+            <td>TAG underground</td>
+            <td>1</td>
+            <td>-</td>
+            <td>song_001b59...</td>
+          </tr>
+          <tr>
+            <td><span class="status-tag tag-review">レビュー待ち</span></td>
+            <td>Love Again</td>
+            <td>NM feat. Mr. E.</td>
+            <td>0</td>
+            <td>capture mismatch: title</td>
+            <td>song_0158d6...</td>
+          </tr>
+          <tr>
+            <td><span class="status-tag tag-uncollected">未収集</span></td>
+            <td>Everything I Need</td>
+            <td>Brooke</td>
+            <td>0</td>
+            <td>-</td>
+            <td>song_0001b5...</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- TAB 3: レビュー -->
+    <div id="tab-review" class="tab-content">
+      <!-- Sub Tabs -->
+      <div class="sub-tabs">
+        <button class="sub-tab-btn active" onclick="switchSubTab('unreviewed', event)">未レビュー</button>
+        <button class="sub-tab-btn" onclick="switchSubTab('reviewed', event)" style="color: var(--text-muted);">レビュー済み <span style="font-size: 11px; color: #9ca3af;">(後続Issue)</span></button>
+      </div>
+
+      <!-- Action & Status Header -->
+      <div class="review-action-header">
+        <div class="review-status-badges">
+          <div class="review-stat-badge badge-unreviewed">未レビュー　10</div>
+          <div class="review-stat-badge badge-confirmed">確定予定　4</div>
+          <div class="review-stat-badge badge-rejected">却下予定　3</div>
+          <div class="review-stat-badge badge-hold">保留 3</div>
+        </div>
+        <div class="review-autosave-note">
+          変更内容は自動保存されます
+        </div>
+      </div>
+
+      <!-- Selected Row ROI Enlarged Preview Section -->
+      <div class="roi-preview-container">
+        <div class="roi-preview-box">
+          <div class="roi-preview-title">選択行のタイトルROI (拡大表示)</div>
+          <div class="roi-image-area">Grip & Break down !! [Enlarged Crop Image]</div>
+        </div>
+        <div class="roi-preview-box">
+          <div class="roi-preview-title">選択行のアーティストROI (拡大表示)</div>
+          <div class="roi-image-area">SOUND HOLIC feat. Nana Takahashi [Enlarged Crop Image]</div>
+        </div>
+      </div>
+
+      <div id="subtab-unreviewed" class="sub-tab-content active">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>タイトルROI <span style="font-size: 11px; font-weight: normal; color: var(--text-muted);">(切り出し画像)</span></th>
+              <th>アーティストROI <span style="font-size: 11px; font-weight: normal; color: var(--text-muted);">(切り出し画像)</span></th>
+              <th>状態</th>
+              <th>確定曲 (曲名検索)</th>
+              <th>メモ</th>
+              <th>保存状態 / エラー</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr style="background-color: #f0f9ff; font-weight: 500;">
+              <td>
+                <div style="width: 110px; height: 36px; background: #111; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 11px; border-radius: 4px;">Grip & Break...</div>
+              </td>
+              <td>
+                <div style="width: 110px; height: 36px; background: #111; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 11px; border-radius: 4px;">SOUND HOLIC...</div>
+              </td>
+              <td>
+                <select style="border-color: #3b82f6;">
+                  <option selected>未レビュー</option>
+                  <option>確定</option>
+                  <option>却下</option>
+                  <option>保留</option>
+                </select>
+              </td>
+              <td>
+                <select style="width: 180px;">
+                  <option>未選択 ⌄</option>
+                  <option>Grip & Break down !!</option>
+                </select>
+              </td>
+              <td><input type="text" placeholder="メモ入力" style="width: 100px;"></td>
+              <td><span style="color: var(--success-color); font-weight: 600;">✓ 保存済み</span></td>
+            </tr>
+            <tr>
+              <td>
+                <div style="width: 110px; height: 36px; background: #111; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 11px; border-radius: 4px;">POSSESSION</div>
+              </td>
+              <td>
+                <div style="width: 110px; height: 36px; background: #111; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 11px; border-radius: 4px;">TAG underg...</div>
+              </td>
+              <td>
+                <select style="border-color: #22a06b;">
+                  <option>未レビュー</option>
+                  <option selected>確定</option>
+                  <option>却下</option>
+                  <option>保留</option>
+                </select>
+              </td>
+              <td>
+                <select style="width: 180px; border-color: #22a06b;">
+                  <option selected>POSSESSION</option>
+                </select>
+              </td>
+              <td><input type="text" value="" style="width: 100px;"></td>
+              <td><span style="color: var(--success-color); font-weight: 600;">✓ 保存済み</span></td>
+            </tr>
+            <tr style="background-color: #fff5f5;">
+              <td>
+                <div style="width: 110px; height: 36px; background: #111; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 11px; border-radius: 4px;">Love Again</div>
+              </td>
+              <td>
+                <div style="width: 110px; height: 36px; background: #111; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 11px; border-radius: 4px;">NM feat...</div>
+              </td>
+              <td>
+                <select style="border-color: #22a06b;">
+                  <option>未レビュー</option>
+                  <option selected>確定</option>
+                  <option>却下</option>
+                  <option>保留</option>
+                </select>
+              </td>
+              <td>
+                <select style="width: 180px; border-color: #ef4444;">
+                  <option selected>未選択 ⌄</option>
+                </select>
+              </td>
+              <td><input type="text" placeholder="メモ" style="width: 100px;"></td>
+              <td>
+                <span style="color: var(--danger-color); font-weight: 600;">△ 入力エラー</span>
+                <div style="font-size: 10px; color: var(--danger-color);">確定曲を選択してください</div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div id="subtab-reviewed" class="sub-tab-content">
+        <div class="panel-card">
+          レビュー済み画面は後続Issueで対応します。
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 4: 管理・設定 -->
+    <div id="tab-admin" class="tab-content">
+      <div class="admin-cards">
+        <div class="admin-card">
+          <h3>🎵 曲情報</h3>
+          <div class="info-list" style="margin-top: 12px;">
+            <div class="info-row"><span class="info-label">更新日時:</span><span class="info-val">2026/07/19 10:00:00</span></div>
+            <div class="info-row"><span class="info-label">曲数:</span><span class="info-val">1,181 曲</span></div>
+            <div class="info-row"><span class="info-label">譜面数:</span><span class="info-val">9,594 譜面</span></div>
+          </div>
+        </div>
+
+        <div class="admin-card">
+          <h3>🖼️ ジャケット収集状況</h3>
+          <div class="info-list" style="margin-top: 12px;">
+            <div class="info-row"><span class="info-label">ジャケット情報のバージョン:</span><span class="info-val">v1</span></div>
+            <div class="info-row"><span class="info-label">収集済み曲数:</span><span class="info-val">120 / 1,181 曲</span></div>
+            <div class="info-row"><span class="info-label">レビュー待ち件数:</span><span class="info-val">10 件</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="update-action-area">
+        <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 12px;">使用する曲情報を最新版へ更新します。収集中は更新できません。</p>
+        <button class="btn-update">🔄 曲情報を更新</button>
+      </div>
+
+      <div class="last-result">
+        <h4>最後の処理結果</h4>
+        <p>曲情報を更新しました。</p>
+        <div>更新日時: 2026/07/23 17:20</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function switchTab(tabId, evt) {
+      document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+
+      evt.currentTarget.classList.add('active');
+      document.getElementById('tab-' + tabId).classList.add('active');
+    }
+
+    function switchSubTab(subTabId, evt) {
+      document.querySelectorAll('.sub-tab-btn').forEach(btn => btn.classList.remove('active'));
+      document.querySelectorAll('.sub-tab-content').forEach(content => content.classList.remove('active'));
+
+      evt.currentTarget.classList.add('active');
+      document.getElementById('subtab-' + subTabId).classList.add('active');
+    }
+  </script>
+</body>
+</html>

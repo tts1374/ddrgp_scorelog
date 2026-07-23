@@ -310,9 +310,356 @@ public sealed class MainViewModelTests
         Assert.Equal("review更新完了", viewModel.StatusTitle);
     }
 
+    [Fact]
+    public async Task ManualReviewRowsKeepUnreflectedDraftsAndHideAppliedStatuses()
+    {
+        var projection = ProjectionWithVisibilityStates();
+        var store = new StubManualReviewDraftStore(
+        [
+            new ManualReviewDraft
+            {
+                ObservationId = "observation-hold",
+                Status = "hold",
+                TruthSongId = null,
+                Notes = "hold note",
+            },
+            new ManualReviewDraft
+            {
+                ObservationId = "observation-confirmed",
+                Status = "confirmed",
+                TruthSongId = "song-1",
+                Notes = "confirmed draft",
+            },
+            new ManualReviewDraft
+            {
+                ObservationId = "observation-rejected",
+                Status = "rejected",
+                TruthSongId = null,
+                Notes = "rejected draft",
+            },
+        ]);
+        var viewModel = new MainViewModel(
+            new StubMasterUpdateService(),
+            new StubProjectionService(projection),
+            manualReviewDraftStore: store);
+
+        await viewModel.LoadProjectionAsync();
+
+        Assert.Equal(4, viewModel.ManualReviewRows.Count);
+        Assert.Contains(viewModel.ManualReviewRows, row => row.Status == "unreviewed");
+        Assert.Contains(viewModel.ManualReviewRows, row => row.Status == "hold");
+        Assert.Contains(viewModel.ManualReviewRows, row => row.Status == "confirmed");
+        Assert.Contains(viewModel.ManualReviewRows, row => row.Status == "rejected");
+        Assert.DoesNotContain(viewModel.ManualReviewRows, row => row.ReferenceId == "hidden-auto");
+        Assert.DoesNotContain(viewModel.ManualReviewRows, row => row.ReferenceId == "hidden-manual");
+        Assert.DoesNotContain(viewModel.ManualReviewRows, row => row.ReferenceId == "hidden-rejected");
+
+        var holdRow = Assert.Single(
+            viewModel.ManualReviewRows,
+            row => row.ObservationId == "observation-hold");
+        holdRow.Status = "unreviewed";
+        Assert.Equal(4, viewModel.ManualReviewRows.Count);
+    }
+
+    [Fact]
+    public async Task TruthSongSelectionSetsConfirmedAndRejectedClearsSong()
+    {
+        var viewModel = new MainViewModel(
+            new StubMasterUpdateService(),
+            new StubProjectionService(Projection()),
+            manualReviewDraftStore: new StubManualReviewDraftStore());
+
+        await viewModel.LoadProjectionAsync();
+        var row = Assert.Single(viewModel.ManualReviewRows);
+
+        row.TruthSongId = "song-2";
+        Assert.Equal("confirmed", row.Status);
+        Assert.Contains("Beta", row.TruthSongDisplay, StringComparison.Ordinal);
+
+        row.Status = "rejected";
+        Assert.Null(row.TruthSongId);
+    }
+
+    [Fact]
+    public async Task RowSearchSelectionSurvivesChangingSearchText()
+    {
+        var viewModel = new MainViewModel(
+            new StubMasterUpdateService(),
+            new StubProjectionService(Projection()),
+            manualReviewDraftStore: new StubManualReviewDraftStore());
+
+        await viewModel.LoadProjectionAsync();
+        var row = Assert.Single(viewModel.ManualReviewRows);
+        row.SongSearch = "Beta";
+        row.SelectedSearchResult = Assert.Single(row.SongChoices);
+
+        row.SongSearch = "Alpha";
+
+        Assert.Equal("song-2", row.TruthSongId);
+        Assert.Equal("confirmed", row.Status);
+        Assert.Contains("Beta", row.TruthSongDisplay, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ConfirmedDraftWithoutTruthSongIsRejectedWithoutWriting()
+    {
+        var store = new StubManualReviewDraftStore();
+        var viewModel = new MainViewModel(
+            new StubMasterUpdateService(),
+            new StubProjectionService(Projection()),
+            manualReviewDraftStore: store);
+
+        await viewModel.LoadProjectionAsync();
+        viewModel.SelectedManualReviewRow = Assert.Single(viewModel.ManualReviewRows);
+        viewModel.SelectedManualReviewRow.Status = "confirmed";
+
+        Assert.False(await viewModel.SaveDraftsAsync());
+        Assert.Equal(0, store.SaveCalls);
+        Assert.Contains("truth song", viewModel.StatusMessage, StringComparison.Ordinal);
+        Assert.Contains("入力エラー", viewModel.SelectedManualReviewRow.DraftStateDisplay,
+            StringComparison.Ordinal);
+
+        viewModel.SelectedManualReviewRow.Status = "invalid";
+        Assert.False(await viewModel.SaveDraftsAsync());
+        Assert.Equal(0, store.SaveCalls);
+    }
+
+    [Fact]
+    public async Task SavesAndReloadsDraftWithoutChangingCatalogReviewState()
+    {
+        using var database = new TestDatabase(catalog: true);
+        var projection = Projection();
+        var store = new StubManualReviewDraftStore();
+        var workflow = new StubReviewWorkflowService();
+        var viewModel = new MainViewModel(
+            new StubMasterUpdateService(),
+            new StubProjectionService(projection),
+            workflow,
+            databasePaths: database.Paths,
+            manualReviewDraftStore: store);
+        await viewModel.LoadProjectionAsync();
+        viewModel.SelectedManualReviewRow = Assert.Single(viewModel.ManualReviewRows);
+        viewModel.SelectedManualReviewRow.Status = "hold";
+        viewModel.SelectedManualReviewRow.Notes = "keep this draft";
+
+        Assert.True(await viewModel.SaveDraftsAsync());
+        Assert.Equal("catalog", File.ReadAllText(database.Paths.CatalogPath));
+        Assert.Empty(workflow.Mutations);
+        Assert.Equal("needs_review", projection.ReviewReferences[0].StoredStatus);
+        Assert.Equal(0, projection.ReviewReferences[0].Revision);
+        Assert.Empty(projection.ReviewReferences[0].History);
+        Assert.Null(projection.ReviewReferences[0].ManualActionId);
+
+        var reloaded = new MainViewModel(
+            new StubMasterUpdateService(),
+            new StubProjectionService(projection),
+            databasePaths: database.Paths,
+            manualReviewDraftStore: store);
+        await reloaded.LoadProjectionAsync();
+        var restored = Assert.Single(reloaded.ManualReviewRows);
+        Assert.Equal("hold", restored.Status);
+        Assert.Equal("keep this draft", restored.Notes);
+        Assert.Equal("保存済み", restored.DraftStateDisplay);
+    }
+
+    [Fact]
+    public async Task MasterSearchUsesCanonicalAliasPrefixPartialArtistAndIdOrder()
+    {
+        var viewModel = new MainViewModel(
+            new StubMasterUpdateService(),
+            new StubProjectionService(Projection()),
+            manualReviewDraftStore: new StubManualReviewDraftStore());
+        await viewModel.LoadProjectionAsync();
+
+        viewModel.SongSearch = "Alpha";
+        Assert.Equal("song-1", viewModel.SongChoices.First().SongId);
+        viewModel.SongSearch = "Alpha Alias";
+        Assert.Equal("song-1", viewModel.SongChoices.First().SongId);
+        viewModel.SongSearch = "Al";
+        Assert.Equal("song-1", viewModel.SongChoices.First().SongId);
+        viewModel.SongSearch = "pha";
+        Assert.Equal("song-1", viewModel.SongChoices.First().SongId);
+        viewModel.SongSearch = "Artist B";
+        Assert.Equal("song-2", viewModel.SongChoices.First().SongId);
+        viewModel.SongSearch = "song-2";
+        Assert.Equal("song-2", viewModel.SongChoices.First().SongId);
+    }
+
+    [Fact]
+    public async Task StatusCountsChangeImmediatelyAndSavePersistsEveryDirtyRow()
+    {
+        var projection = ProjectionWithVisibilityStates();
+        var store = new StubManualReviewDraftStore();
+        var viewModel = new MainViewModel(
+            new StubMasterUpdateService(),
+            new StubProjectionService(projection),
+            manualReviewDraftStore: store);
+        await viewModel.LoadProjectionAsync();
+
+        Assert.Equal(4, viewModel.ManualReviewUnreviewedCount);
+        Assert.Equal(0, viewModel.ManualReviewConfirmedCount);
+        Assert.Equal(0, viewModel.ManualReviewRejectedCount);
+        Assert.Equal(0, viewModel.ManualReviewHoldCount);
+        foreach (var row in viewModel.ManualReviewRows)
+        {
+            row.Status = "hold";
+            row.Notes = $"note for {row.ObservationId}";
+        }
+
+        Assert.Equal(0, viewModel.ManualReviewUnreviewedCount);
+        Assert.Equal(4, viewModel.ManualReviewHoldCount);
+        Assert.True(await viewModel.SaveDraftsAsync());
+
+        Assert.Equal(4, store.Drafts.Count);
+        Assert.All(viewModel.ManualReviewRows, row => Assert.True(row.IsSaved));
+        Assert.Equal(0, viewModel.ManualReviewUnreviewedCount);
+        Assert.Equal(4, viewModel.ManualReviewHoldCount);
+    }
+
+    [Fact]
+    public async Task BulkApplyDraftSaveKeepsConfirmedAndRejectedRowsInUnreviewedList()
+    {
+        var projection = ProjectionWithVisibilityStates();
+        var store = new StubManualReviewDraftStore();
+        var viewModel = new MainViewModel(
+            new StubMasterUpdateService(),
+            new StubProjectionService(projection),
+            manualReviewDraftStore: store);
+        await viewModel.LoadProjectionAsync();
+
+        var confirmed = Assert.Single(
+            viewModel.ManualReviewRows,
+            row => row.ObservationId == "observation-confirmed");
+        var rejected = Assert.Single(
+            viewModel.ManualReviewRows,
+            row => row.ObservationId == "observation-rejected");
+        confirmed.TruthSongId = "song-1";
+        rejected.Status = "rejected";
+
+        Assert.True(await viewModel.SaveDraftsAsync());
+
+        Assert.Equal(4, viewModel.ManualReviewRows.Count);
+        Assert.Equal("confirmed", confirmed.Status);
+        Assert.Equal("rejected", rejected.Status);
+        Assert.True(confirmed.IsSaved);
+        Assert.True(rejected.IsSaved);
+        Assert.Equal("needs_review", projection.ReviewReferences
+            .Single(reference => reference.CandidateEvaluation.ObservationId == "observation-confirmed")
+            .StoredStatus);
+        Assert.Equal("unresolved", projection.ReviewReferences
+            .Single(reference => reference.CandidateEvaluation.ObservationId == "observation-rejected")
+            .StoredStatus);
+    }
+
+    [Fact]
+    public async Task OneInvalidDirtyRowBlocksTheWholeDraftSaveAndShowsItsError()
+    {
+        var projection = ProjectionWithVisibilityStates();
+        var store = new StubManualReviewDraftStore();
+        var viewModel = new MainViewModel(
+            new StubMasterUpdateService(),
+            new StubProjectionService(projection),
+            manualReviewDraftStore: store);
+        await viewModel.LoadProjectionAsync();
+        var invalid = viewModel.ManualReviewRows[0];
+        invalid.Status = "confirmed";
+        viewModel.ManualReviewRows[1].Notes = "also dirty";
+
+        Assert.False(await viewModel.SaveDraftsAsync());
+
+        Assert.Equal(0, store.SaveCalls);
+        Assert.Contains("入力エラー", invalid.DraftStateDisplay, StringComparison.Ordinal);
+        Assert.Contains("truth song", invalid.ValidationError, StringComparison.Ordinal);
+        Assert.False(viewModel.ManualReviewRows[1].IsSaved);
+    }
+
+    private static ReviewProjection ProjectionWithVisibilityStates()
+    {
+        var projection = Projection();
+        projection.ReviewReferences.Clear();
+        projection.ReviewReferences.Add(ReferenceWithStatus(
+            "visible-unreviewed", "needs_review", "observation-unreviewed"));
+        projection.ReviewReferences.Add(ReferenceWithStatus(
+            "visible-hold", "unresolved", "observation-hold"));
+        projection.ReviewReferences.Add(ReferenceWithStatus(
+            "visible-confirmed", "needs_review", "observation-confirmed"));
+        projection.ReviewReferences.Add(ReferenceWithStatus(
+            "visible-rejected", "unresolved", "observation-rejected"));
+        projection.ReviewReferences.Add(ReferenceWithStatus(
+            "hidden-auto", "auto_confirmed", "observation-auto"));
+        projection.ReviewReferences.Add(ReferenceWithStatus(
+            "hidden-manual", "manual_confirmed", "observation-manual"));
+        projection.ReviewReferences.Add(ReferenceWithStatus(
+            "hidden-rejected", "rejected", "observation-applied-rejected"));
+        projection.ReviewReferences.Add(ReferenceWithStatuses(
+            "hidden-auto-drift", "needs_review", "auto_confirmed", "observation-auto-drift"));
+        projection.ReviewReferences.Add(ReferenceWithStatuses(
+            "hidden-manual-drift", "needs_review", "manual_confirmed", "observation-manual-drift"));
+        projection.ReviewReferences.Add(ReferenceWithStatuses(
+            "hidden-rejected-drift", "orphaned", "rejected", "observation-rejected-drift"));
+        return projection;
+    }
+
+    private static ReviewReference ReferenceWithStatus(
+        string referenceId,
+        string status,
+        string observationId) => ReferenceWithStatuses(referenceId, status, status, observationId);
+
+    private static ReviewReference ReferenceWithStatuses(
+        string referenceId,
+        string reviewStatus,
+        string storedStatus,
+        string observationId) => new()
+        {
+            SourceImagePath = @"C:\data\source.png",
+            ReferenceId = referenceId,
+            ReviewStatus = reviewStatus,
+            Reason = "needs review",
+            ObservedTitle = "Observed title",
+            ObservedArtist = "Observed artist",
+            ObservationStatus = "ok",
+            MasterDrift = false,
+            FeatureExtractorVersion = "m5-jacket-v2",
+            AssignedSong = null,
+            Candidates = [],
+            StoredStatus = storedStatus,
+            Revision = 0,
+            ManualActionId = null,
+            ManualNote = "",
+            History = [],
+            CandidateEvaluation = new CandidateEvaluation
+            {
+                EvaluationSchemaVersion = "m5c-unresolved-candidate-evaluation-v1",
+                MethodVersion = "tesseract-autocontrast-v1",
+                ObservationId = observationId,
+                Classification = storedStatus is "auto_confirmed" or "manual_confirmed" or "rejected"
+                ? "not_eligible"
+                : "ambiguous",
+                Reason = "needs_review",
+                JacketPreviewPath = null,
+                Title = new CandidateEvaluationField
+                {
+                    Raw = "Observed title",
+                    Normalized = "observed title",
+                    Confidence = 0.9,
+                    Status = "ok",
+                    FailureReason = "",
+                },
+                Artist = new CandidateEvaluationField
+                {
+                    Raw = "Observed artist",
+                    Normalized = "observed artist",
+                    Confidence = 0.9,
+                    Status = "ok",
+                    FailureReason = "",
+                },
+                Candidates = [],
+            },
+        };
+
     private static ReviewProjection Projection() => new()
     {
-        ProjectionSchemaVersion = 4,
+        ProjectionSchemaVersion = 5,
         Master = new ProjectionMaster
         {
             Path = "master.sqlite",
@@ -344,17 +691,20 @@ public sealed class MainViewModelTests
             {
                 SongId = "song-1", Title = "Alpha", Artist = "A", MasterVersion = "master-v1",
                 CoverageStatus = "needs_review", ReferenceCount = "1", Reason = "opaque reason",
+                Aliases = ["Alpha Alias"],
             },
             new ProjectionSong
             {
-                SongId = "song-2", Title = "Beta", Artist = "B", MasterVersion = "master-v1",
+                SongId = "song-2", Title = "Beta", Artist = "Artist B", MasterVersion = "master-v1",
                 CoverageStatus = "uncollected", ReferenceCount = "0", Reason = "",
+                Aliases = [],
             },
         ],
         ReviewReferences =
         [
             new ReviewReference
             {
+                SourceImagePath = @"C:\data\source.png",
                 ReferenceId = "ref-1", ReviewStatus = "needs_review", Reason = "opaque reason",
                 ObservedTitle = "Alpha", ObservedArtist = "?", ObservationStatus = "ok",
                 MasterDrift = false, FeatureExtractorVersion = "m5-jacket-v2", Candidates = [],
@@ -392,6 +742,36 @@ public sealed class MainViewModelTests
             },
         ],
     };
+
+    private sealed class StubManualReviewDraftStore(
+        IEnumerable<ManualReviewDraft>? initialDrafts = null) : IManualReviewDraftStore
+    {
+        public Dictionary<string, ManualReviewDraft> Drafts { get; } = (initialDrafts ?? [])
+            .ToDictionary(draft => draft.ObservationId, StringComparer.Ordinal);
+
+        public int SaveCalls { get; private set; }
+
+        public Task<IReadOnlyDictionary<string, ManualReviewDraft>> LoadAsync(
+            CancellationToken cancellationToken)
+        {
+            IReadOnlyDictionary<string, ManualReviewDraft> snapshot =
+                Drafts.ToDictionary(item => item.Key, item => item.Value, StringComparer.Ordinal);
+            return Task.FromResult(snapshot);
+        }
+
+        public Task SaveAsync(
+            IReadOnlyCollection<ManualReviewDraft> drafts,
+            CancellationToken cancellationToken)
+        {
+            SaveCalls++;
+            Drafts.Clear();
+            foreach (var draft in drafts)
+            {
+                Drafts[draft.ObservationId] = draft;
+            }
+            return Task.CompletedTask;
+        }
+    }
 
     private sealed class StubProjectionService(ReviewProjection projection) : IProjectionService
     {

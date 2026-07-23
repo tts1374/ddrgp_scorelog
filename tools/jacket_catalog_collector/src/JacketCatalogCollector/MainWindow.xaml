@@ -1,8 +1,9 @@
 <Window x:Class="JacketCatalogCollector.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:JacketCatalogCollector"
         Title="DDR GP ジャケット収集" Height="860" Width="1320"
-        MinHeight="700" MinWidth="1040" Background="#F5F7FA"
+        MinHeight="700" MinWidth="1040" Background="#F3F4F6"
         Loaded="MainWindow_Loaded">
     <Window.Resources>
         <Style TargetType="Button">
@@ -25,6 +26,13 @@
             <Setter Property="CornerRadius" Value="8" />
             <Setter Property="Padding" Value="14" />
         </Style>
+        <Style TargetType="DataGridColumnHeader">
+            <Setter Property="Background" Value="#F9FAFB" />
+            <Setter Property="Foreground" Value="#6B7280" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Padding" Value="10,8" />
+        </Style>
+        <local:ManualReviewRoiImageConverter x:Key="ManualReviewRoiImageConverter" />
     </Window.Resources>
 
     <Grid Margin="18">
@@ -34,16 +42,24 @@
         </Grid.RowDefinitions>
 
         <DockPanel Margin="0,0,0,14">
-            <Border DockPanel.Dock="Right" Padding="12,7" Background="#E8F5E9" CornerRadius="16">
-                <TextBlock>
-                    <Run Text="master: " /><Run Text="{Binding MasterVersion, Mode=OneWay}" />
-                    <Run Text="   catalog: " /><Run Text="{Binding CatalogSchema, Mode=OneWay}" />
-                </TextBlock>
-            </Border>
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                <Border Padding="12,7" Background="#F0FDF4" BorderBrush="#BBF7D0"
+                        BorderThickness="1" CornerRadius="16" Margin="0,0,8,0">
+                    <TextBlock Foreground="#166534">
+                        <Run Text="曲情報: " /><Run Text="{Binding MasterVersion, Mode=OneWay}" />
+                    </TextBlock>
+                </Border>
+                <Border Padding="12,7" Background="#EFF6FF" BorderBrush="#BFDBFE"
+                        BorderThickness="1" CornerRadius="16">
+                    <TextBlock Foreground="#1E40AF">
+                        <Run Text="ジャケット情報: " /><Run Text="{Binding CatalogSchema, Mode=OneWay}" />
+                    </TextBlock>
+                </Border>
+            </StackPanel>
             <StackPanel>
-                <TextBlock Text="DDR GP ジャケット収集" FontSize="24" FontWeight="SemiBold" />
+                <TextBlock Text="DDR GP ジャケット収集" FontSize="20" FontWeight="SemiBold" />
                 <TextBlock Text="曲を切り替えながら、検出したジャケットを確認して保存します。"
-                           Foreground="#5F6B7A" Margin="0,3,0,0" />
+                           Foreground="#6B7280" FontSize="12" Margin="0,3,0,0" />
             </StackPanel>
         </DockPanel>
 
@@ -208,76 +224,181 @@
             </TabItem>
 
             <TabItem Header="レビュー">
-                <Grid>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="*" />
-                    </Grid.RowDefinitions>
-                    <Grid Margin="8">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="130" />
-                            <ColumnDefinition Width="220" />
-                            <ColumnDefinition Width="260" />
-                            <ColumnDefinition Width="190" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-                        <StackPanel>
-                            <TextBlock Text="曲を検索" />
-                            <TextBox Text="{Binding SongSearch, UpdateSourceTrigger=PropertyChanged}" />
-                        </StackPanel>
-                        <StackPanel Grid.Column="1" Margin="8,0,0,0">
-                            <TextBlock Text="割り当てる曲" />
-                            <ComboBox ItemsSource="{Binding SongChoices}" SelectedItem="{Binding SelectedSong}"
-                                      DisplayMemberPath="Title" />
-                        </StackPanel>
-                        <StackPanel Grid.Column="2" Margin="8,0,0,0">
-                            <TextBlock Text="理由 / メモ" />
-                            <DockPanel>
-                                <TextBox Width="120" Text="{Binding ReviewReason, UpdateSourceTrigger=PropertyChanged}" />
-                                <TextBox Margin="6,0,0,0" Text="{Binding ReviewNote, UpdateSourceTrigger=PropertyChanged}" />
-                            </DockPanel>
-                        </StackPanel>
-                        <StackPanel Grid.Column="3" Margin="8,0,0,0">
-                            <TextBlock Text="候補分類" />
-                            <ComboBox ItemsSource="{Binding CandidateClassificationOptions}"
-                                      SelectedItem="{Binding SelectedCandidateClassification}" />
-                        </StackPanel>
-                        <WrapPanel Grid.Column="4" HorizontalAlignment="Right" VerticalAlignment="Bottom">
-                            <Button Content="候補を再評価" Click="RefreshCandidates_Click" />
-                            <Button Content="候補report" Click="GenerateCandidateReport_Click" />
-                            <Button Content="確定" Tag="manual_confirm" Click="ReviewAction_Click" />
-                            <Button Content="再割当" Tag="reassign" Click="ReviewAction_Click" />
-                            <Button Content="却下" Tag="reject" Click="ReviewAction_Click" />
-                            <Button Content="再開" Tag="reopen" Click="ReviewAction_Click" />
-                        </WrapPanel>
-                    </Grid>
-                    <DataGrid Grid.Row="1" ItemsSource="{Binding ReviewReferences}"
-                              SelectedItem="{Binding SelectedReference}" IsReadOnly="True" AutoGenerateColumns="False">
-                        <DataGrid.Columns>
-                            <DataGridTemplateColumn Header="jacket" Width="90">
-                                <DataGridTemplateColumn.CellTemplate>
-                                    <DataTemplate>
-                                        <Image Source="{Binding CandidateEvaluation.JacketPreviewPath}"
-                                               Width="72" Height="72" Stretch="Uniform" />
-                                    </DataTemplate>
-                                </DataGridTemplateColumn.CellTemplate>
-                            </DataGridTemplateColumn>
-                            <DataGridTextColumn Header="状態" Binding="{Binding ReviewStatus}" Width="110" />
-                            <DataGridTextColumn Header="rev" Binding="{Binding Revision}" Width="45" />
-                            <DataGridTextColumn Header="observation ID" Binding="{Binding CandidateEvaluation.ObservationId}" Width="*" />
-                            <DataGridTextColumn Header="OCR曲名" Binding="{Binding CandidateEvaluation.Title.Display}" Width="*" />
-                            <DataGridTextColumn Header="OCR artist" Binding="{Binding CandidateEvaluation.Artist.Display}" Width="*" />
-                            <DataGridTextColumn Header="候補分類" Binding="{Binding CandidateEvaluation.Classification}" Width="120" />
-                            <DataGridTextColumn Header="候補理由/failure" Binding="{Binding CandidateEvaluation.Reason}" Width="*" />
-                            <DataGridCheckBoxColumn Header="drift" Binding="{Binding MasterDrift}" Width="60" />
-                            <DataGridTextColumn Header="候補song" Binding="{Binding CandidateEvaluationDisplay}" Width="2*" />
-                            <DataGridTextColumn Header="履歴" Binding="{Binding HistoryDisplay}" Width="2*" />
-                            <DataGridTextColumn Header="reference_id" Binding="{Binding ReferenceId}" Width="*" />
-                        </DataGrid.Columns>
-                    </DataGrid>
-                </Grid>
-            </TabItem>
+                <TabControl Margin="0">
+                    <TabItem Header="未レビュー">
+                        <Grid Margin="14">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
 
+                            <Grid Grid.Row="0" Margin="0,0,0,16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <Border Background="#EFF6FF" BorderBrush="#BFDBFE" BorderThickness="1"
+                                            CornerRadius="6" Padding="12,8" Margin="0,0,8,0">
+                                        <TextBlock Foreground="#1E40AF" FontWeight="Bold">
+                                            <Run Text="未レビュー  " />
+                                            <Run Text="{Binding ManualReviewUnreviewedCount, Mode=OneWay}" />
+                                        </TextBlock>
+                                    </Border>
+                                    <Border Background="#ECFDF5" BorderBrush="#A7F3D0" BorderThickness="1"
+                                            CornerRadius="6" Padding="12,8" Margin="0,0,8,0">
+                                        <TextBlock Foreground="#065F46" FontWeight="Bold">
+                                            <Run Text="確定  " />
+                                            <Run Text="{Binding ManualReviewConfirmedCount, Mode=OneWay}" />
+                                        </TextBlock>
+                                    </Border>
+                                    <Border Background="#FEF2F2" BorderBrush="#FCA5A5" BorderThickness="1"
+                                            CornerRadius="6" Padding="12,8" Margin="0,0,8,0">
+                                        <TextBlock Foreground="#991B1B" FontWeight="Bold">
+                                            <Run Text="却下  " />
+                                            <Run Text="{Binding ManualReviewRejectedCount, Mode=OneWay}" />
+                                        </TextBlock>
+                                    </Border>
+                                    <Border Background="#FFFBEB" BorderBrush="#FDE68A" BorderThickness="1"
+                                            CornerRadius="6" Padding="12,8">
+                                        <TextBlock Foreground="#92400E" FontWeight="Bold">
+                                            <Run Text="保留  " />
+                                            <Run Text="{Binding ManualReviewHoldCount, Mode=OneWay}" />
+                                        </TextBlock>
+                                    </Border>
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" HorizontalAlignment="Right">
+                                    <Button Content="一括反映"
+                                            Style="{StaticResource PrimaryButton}"
+                                            Click="SaveDraft_Click" />
+                                </StackPanel>
+                            </Grid>
+
+                            <Grid Grid.Row="1" Margin="0,0,0,16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Margin="0,0,8,0">
+                                    <TextBlock Text="選択行のタイトルROI (拡大表示)" FontWeight="SemiBold"
+                                               Foreground="#6B7280" Margin="0,0,0,8" />
+                                    <Border Height="82" Background="#111827" BorderBrush="#374151"
+                                            BorderThickness="1" CornerRadius="6" Padding="4">
+                                        <Image Source="{Binding SelectedManualReviewRow.TitleRoiImagePath, Converter={StaticResource ManualReviewRoiImageConverter}, ConverterParameter=title}"
+                                               Stretch="Uniform" />
+                                    </Border>
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Margin="8,0,0,0">
+                                    <TextBlock Text="選択行のアーティストROI (拡大表示)" FontWeight="SemiBold"
+                                               Foreground="#6B7280" Margin="0,0,0,8" />
+                                    <Border Height="82" Background="#111827" BorderBrush="#374151"
+                                            BorderThickness="1" CornerRadius="6" Padding="4">
+                                        <Image Source="{Binding SelectedManualReviewRow.ArtistRoiImagePath, Converter={StaticResource ManualReviewRoiImageConverter}, ConverterParameter=artist}"
+                                               Stretch="Uniform" />
+                                    </Border>
+                                </StackPanel>
+                            </Grid>
+
+                            <DataGrid Grid.Row="2" ItemsSource="{Binding ManualReviewRows}"
+                                      SelectedItem="{Binding SelectedManualReviewRow, Mode=TwoWay}"
+                                      IsReadOnly="False" AutoGenerateColumns="False" SelectionMode="Single"
+                                      RowHeight="96" CanUserAddRows="False" HeadersVisibility="Column"
+                                      GridLinesVisibility="Horizontal" Background="White">
+                                <DataGrid.Columns>
+                                    <DataGridTemplateColumn Header="タイトルROI (切り出し画像)" Width="150" IsReadOnly="True">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <Image Source="{Binding TitleRoiImagePath, Converter={StaticResource ManualReviewRoiImageConverter}, ConverterParameter=title}"
+                                                       Width="120" Height="48" Stretch="Uniform" />
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                    <DataGridTemplateColumn Header="アーティストROI (切り出し画像)" Width="165" IsReadOnly="True">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <Image Source="{Binding ArtistRoiImagePath, Converter={StaticResource ManualReviewRoiImageConverter}, ConverterParameter=artist}"
+                                                       Width="130" Height="48" Stretch="Uniform" />
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                    <DataGridTemplateColumn Header="状態" Width="105">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <ComboBox ItemsSource="{Binding StatusOptions}"
+                                                          DisplayMemberPath="Display"
+                                                          SelectedValuePath="Value"
+                                                          SelectedValue="{Binding Status, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                          Margin="2" />
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                    <DataGridTemplateColumn Header="確定曲" Width="290">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <StackPanel>
+                                                    <TextBox Text="{Binding SongSearch, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                             ToolTip="title / alias / artist / song ID" />
+                                                    <ComboBox ItemsSource="{Binding SongChoices}"
+                                                              SelectedItem="{Binding SelectedSearchResult, Mode=TwoWay}"
+                                                              IsEditable="False">
+                                                        <ComboBox.ItemTemplate>
+                                                            <DataTemplate>
+                                                                <StackPanel>
+                                                                    <TextBlock Text="{Binding Title}" />
+                                                                    <TextBlock Text="{Binding Artist}" Foreground="#6B7280" FontSize="11" />
+                                                                </StackPanel>
+                                                            </DataTemplate>
+                                                        </ComboBox.ItemTemplate>
+                                                    </ComboBox>
+                                                    <TextBlock Text="{Binding TruthSongDisplay, Mode=OneWay}"
+                                                               Foreground="#6B7280" FontSize="11" TextWrapping="Wrap" />
+                                                </StackPanel>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                    <DataGridTemplateColumn Header="メモ" Width="150">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <TextBox Text="{Binding Notes, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                         MinHeight="58" AcceptsReturn="True" TextWrapping="Wrap" />
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                    <DataGridTemplateColumn Header="保存状態 / エラー" Width="165" IsReadOnly="True">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Text="{Binding DraftStateDisplay}" TextWrapping="Wrap" Margin="4">
+                                                    <TextBlock.Style>
+                                                        <Style TargetType="TextBlock">
+                                                            <Setter Property="Foreground" Value="#EF4444" />
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding IsSaved, Mode=OneWay}" Value="True">
+                                                                    <Setter Property="Foreground" Value="#10B981" />
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </TextBlock.Style>
+                                                </TextBlock>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                    <DataGridTemplateColumn Header="observation_id" Width="100" IsReadOnly="True">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <TextBox Text="{Binding ObservationIdShort, Mode=OneWay}" ToolTip="{Binding ObservationId}"
+                                                         IsReadOnly="True" BorderThickness="0" Background="Transparent"
+                                                         FontFamily="Consolas" Margin="4" />
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </Grid>
+                    </TabItem>
+                    <TabItem Header="レビュー済み (後続Issue)" IsEnabled="False" />
+                </TabControl>
+            </TabItem>
             <TabItem Header="管理・設定">
                 <StackPanel Margin="18" MaxWidth="900" HorizontalAlignment="Left">
                     <TextBlock Text="データベース" FontSize="20" FontWeight="SemiBold" />

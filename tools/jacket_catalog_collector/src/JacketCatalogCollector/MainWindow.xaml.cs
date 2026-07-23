@@ -56,7 +56,9 @@ public partial class MainWindow : Window
             catalogInitializationService: new CatalogInitializationService(
                 runner,
                 databasePaths.RepositoryRoot,
-                databasePaths.CatalogPath));
+                databasePaths.CatalogPath),
+            manualReviewDraftStore: new JsonManualReviewDraftStore(
+                Path.Combine(evidenceRoot, "manual-review-drafts.v1.json")));
         captureObservationController = new CaptureObservationController(
             viewModel.StartObservationSessionAsync,
             viewModel.ResumeObservationSessionAsync,
@@ -388,6 +390,15 @@ public partial class MainWindow : Window
             return;
         }
         await RunOperationAsync(token => viewModel.ApplyReviewAsync(action, token));
+    }
+
+    private async void SaveDraft_Click(object sender, RoutedEventArgs e)
+    {
+        if (viewModel.IsBusy)
+        {
+            return;
+        }
+        await RunOperationAsync(token => viewModel.SaveDraftsAsync(token));
     }
 
     private async Task RunOperationAsync(Func<CancellationToken, Task> operation)

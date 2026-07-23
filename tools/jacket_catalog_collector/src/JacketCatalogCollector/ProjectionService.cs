@@ -46,7 +46,7 @@ public sealed class ProjectionJsonLoader
 
     private static void Validate(ReviewProjection projection)
     {
-        if (projection.ProjectionSchemaVersion != 4)
+        if (projection.ProjectionSchemaVersion != 5)
         {
             throw new InvalidOperationException(
                 $"Unsupported projection schema version: {projection.ProjectionSchemaVersion}");
@@ -97,6 +97,11 @@ public sealed class ProjectionJsonLoader
             RequireText(song.Artist, "songs.artist");
             RequireString(song.MasterVersion, "songs.master_version");
             RequireString(song.Reason, "songs.reason");
+            RequireValue(song.Aliases, "songs.aliases");
+            foreach (var alias in song.Aliases)
+            {
+                RequireString(alias, "songs.aliases row");
+            }
             if (!CoverageStatuses.Contains(song.CoverageStatus)
                 || !int.TryParse(song.ReferenceCount, out var referenceCount)
                 || referenceCount < 0)
@@ -123,6 +128,13 @@ public sealed class ProjectionJsonLoader
             RequireString(review.ObservedArtist, "review_references.observed_artist");
             RequireString(review.ObservationStatus, "review_references.observation_status");
             RequireText(review.FeatureExtractorVersion, "review_references.feature_extractor_version");
+            if (review.SourceImagePath is not null
+                && (string.IsNullOrWhiteSpace(review.SourceImagePath)
+                    || !Path.IsPathFullyQualified(review.SourceImagePath)))
+            {
+                throw new InvalidOperationException(
+                    "Projection source_image_path must be null or an absolute path.");
+            }
             RequireValue(review.Candidates, "review_references.candidates");
             if (!ReviewStatuses.Contains(review.ReviewStatus))
             {
