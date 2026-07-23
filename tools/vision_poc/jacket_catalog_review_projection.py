@@ -11,7 +11,7 @@ from typing import Any
 from tools.vision_poc import jacket_reference_catalog as catalog
 from tools.vision_poc import title_artist_evaluation, unresolved_candidate_evaluation
 
-PROJECTION_SCHEMA_VERSION = 5
+PROJECTION_SCHEMA_VERSION = 6
 
 
 def _database_fingerprint(path: Path) -> tuple[int, int, int, str]:
@@ -132,6 +132,8 @@ def build_review_projection(
             item = {
                 "reference_id": str(row["reference_id"]),
                 "review_status": status,
+                "current_status": str(row["review_status"]),
+                "current_song_id": row["song_id"],
                 "reason": reason,
                 "observed_title": str(row["observed_title"]),
                 "observed_artist": str(row["observed_artist"]),
@@ -162,6 +164,9 @@ def build_review_projection(
                     "revision": int(row["review_revision"]),
                     "manual_action_id": row["manual_action_id"],
                     "manual_note": str(row["manual_note"]),
+                    "notes": str(row["manual_note"]),
+                    "registered_route": str(row["resolution_basis"]),
+                    "processed_at": str(row["updated_at"]),
                     "history": history_by_reference.get(str(row["reference_id"]), []),
                 }
             )

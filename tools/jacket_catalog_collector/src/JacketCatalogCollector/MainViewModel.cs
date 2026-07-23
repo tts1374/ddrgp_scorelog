@@ -34,6 +34,7 @@ public sealed class MainViewModel(
     private string reviewNote = "";
     private string selectedCandidateClassification = "all";
     private ManualReviewDraftRow? selectedManualReviewRow;
+    private ReviewedManualReviewRow? selectedReviewedManualReviewRow;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -42,6 +43,7 @@ public sealed class MainViewModel(
     public JacketObservationViewModel? Observation { get; } = observation;
     public ObservableCollection<ReviewReference> ReviewReferences { get; } = [];
     public ObservableCollection<ManualReviewDraftRow> ManualReviewRows { get; } = [];
+    public ObservableCollection<ReviewedManualReviewRow> ReviewedManualReviewRows { get; } = [];
     public ObservableCollection<string> CoverageStatusOptions { get; } =
         ["all", "referenced", "needs_review", "uncollected", "unresolved", "orphaned"];
     public ObservableCollection<string> ReasonOptions { get; } = ["all"];
@@ -96,6 +98,12 @@ public sealed class MainViewModel(
                         song => song.SongId == value.TruthSongId);
             }
         }
+    }
+
+    public ReviewedManualReviewRow? SelectedReviewedManualReviewRow
+    {
+        get => selectedReviewedManualReviewRow;
+        set => SetField(ref selectedReviewedManualReviewRow, value);
     }
 
     public string SongSearch
@@ -392,6 +400,292 @@ public sealed class MainViewModel(
         finally
         {
             IsBusy = false;
+        }
+    }
+
+    public async Task<bool> ApplyDraftsAsync(
+        CancellationToken cancellationToken = default)
+    {
+        if (manualReviewDraftStore is null)
+        {
+            throw new InvalidOperationException("manual review draft store is not configured.");
+        }
+        if (reviewWorkflowService is null || projection is null)
+        {
+            StatusTitle = "一括反映不可";
+            StatusMessage = "current catalogを先に読み込んでください。";
+            return false;
+        }
+
+        var validSongIds = projection.Songs
+            .Select(song => song.SongId)
+            .ToHashSet(StringComparer.Ordinal);
+        var dirtyUnreviewedRows = ManualReviewRows
+            .Where(row => !row.IsSaved)
+            .ToList();
+        var dirtyReviewedRows = ReviewedManualReviewRows
+            .Where(row => !row.IsSaved)
+            .ToList();
+        var plannedUnreviewedRows = ManualReviewRows
+            .Where(row => row.ShouldPersistDraft)
+            .ToList();
+        var plannedReviewedRows = ReviewedManualReviewRows
+            .Where(row => row.ShouldPersistDraft)
+            .ToList();
+
+        var validationErrors = new List<(string ReferenceId, string ObservationId, string Message)>();
+        foreach (var row in plannedUnreviewedRows)
+        {
+            var validationError = row.Validate(validSongIds);
+            row.SetValidationError(validationError ?? "");
+            if (validationError is not null)
+            {
+                validationErrors.Add((row.ReferenceId, row.ObservationId, validationError));
+            }
+        }
+        foreach (var row in plannedReviewedRows)
+        {
+            var validationError = row.Validate(validSongIds);
+            row.SetValidationError(validationError ?? "");
+            if (validationError is not null)
+            {
+                validationErrors.Add((row.ReferenceId, row.ObservationId, validationError));
+            }
+        }
+        if (validationErrors.Count > 0)
+        {
+            var first = validationErrors[0];
+            StatusTitle = "一括反映validation error";
+            StatusMessage =
+                $"{validationErrors.Count}行に入力エラーがあります。"
+                + $" reference={first.ReferenceId}, observation={first.ObservationId}: {first.Message}";
+            return false;
+        }
+
+        var nextDrafts = new Dictionary<string, ManualReviewDraft>(
+            manualReviewDrafts,
+            StringComparer.Ordinal);
+        foreach (var row in dirtyUnreviewedRows)
+        {
+            if (row.ShouldPersistDraft)
+            {
+                nextDrafts[row.ObservationId] = row.ToDraft();
+            }
+            else
+            {
+                nextDrafts.Remove(row.ObservationId);
+            }
+        }
+        foreach (var row in dirtyReviewedRows)
+        {
+            if (row.ShouldPersistDraft)
+            {
+                nextDrafts[row.ObservationId] = row.ToDraft();
+            }
+            else
+            {
+                nextDrafts.Remove(row.ObservationId);
+            }
+        }
+
+        var mutations = new List<ReviewMutation>();
+        var cleanupObservationIds = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var row in plannedUnreviewedRows)
+        {
+            var mutation = BuildUnreviewedMutation(row);
+            if (mutation is not null)
+            {
+                mutations.Add(mutation);
+                cleanupObservationIds.Add(row.ObservationId);
+            }
+        }
+        foreach (var row in plannedReviewedRows)
+        {
+            var mutation = BuildReviewedMutation(row);
+            if (mutation is not null)
+            {
+                mutations.Add(mutation);
+            }
+            if (row.DraftStatus is not "hold"
+                && (mutation is not null || row.IsCurrentPlan))
+            {
+                cleanupObservationIds.Add(row.ObservationId);
+            }
+        }
+
+        IsBusy = true;
+        StatusTitle = "review一括反映中";
+        StatusMessage = mutations.Count == 0
+            ? "下書きを保存し、catalog変更が必要な行を確認しています。"
+            : $"{mutations.Count}行を1 transactionで反映しています。";
+        try
+        {
+            if (dirtyUnreviewedRows.Count > 0 || dirtyReviewedRows.Count > 0)
+            {
+                await manualReviewDraftStore.SaveAsync(nextDrafts.Values, cancellationToken);
+                ReplaceManualReviewDrafts(nextDrafts);
+                foreach (var row in dirtyUnreviewedRows)
+                {
+                    if (row.ShouldPersistDraft)
+                    {
+                        row.MarkSaved();
+                    }
+                    else
+                    {
+                        row.MarkDraftRemoved();
+                    }
+                }
+                foreach (var row in dirtyReviewedRows)
+                {
+                    if (row.ShouldPersistDraft)
+                    {
+                        row.MarkSaved();
+                    }
+                    else
+                    {
+                        row.MarkDraftRemoved();
+                    }
+                }
+            }
+
+            ReviewMutationBatchReceipt? receipt = null;
+            if (mutations.Count > 0)
+            {
+                receipt = await reviewWorkflowService.ApplyBatchAsync(
+                    fixedDatabasePaths.MasterPath,
+                    fixedDatabasePaths.CatalogPath,
+                    mutations,
+                    cancellationToken);
+                await LoadProjectionCoreAsync(cancellationToken);
+            }
+
+            if (cleanupObservationIds.Count > 0)
+            {
+                foreach (var observationId in cleanupObservationIds)
+                {
+                    manualReviewDrafts.Remove(observationId);
+                }
+                await manualReviewDraftStore.SaveAsync(
+                    manualReviewDrafts.Values.ToList(),
+                    cancellationToken);
+            }
+            if (mutations.Count > 0 || cleanupObservationIds.Count > 0)
+            {
+                await LoadProjectionCoreAsync(cancellationToken);
+            }
+
+            if (receipt is null)
+            {
+                StatusTitle = "下書き保存完了";
+                StatusMessage =
+                    "下書きを保存しました。未レビュー・保留はcatalogへ反映していません。";
+            }
+            else
+            {
+                StatusTitle = "review一括反映完了";
+                StatusMessage =
+                    $"requested={receipt.RequestedCount}, applied={receipt.AppliedCount}, "
+                    + $"no-op={receipt.NoOpCount}。未レビューの反映対象を一覧から外しました。";
+            }
+            NotifyManualReviewCounts();
+            return true;
+        }
+        catch (OperationCanceledException)
+        {
+            StatusTitle = "review一括反映取消";
+            StatusMessage = "一括反映を取り消しました。catalog/historyは変更していません。";
+            throw;
+        }
+        catch (Exception exception)
+        {
+            foreach (var row in plannedUnreviewedRows)
+            {
+                if (exception.Message.Contains(row.ReferenceId, StringComparison.Ordinal)
+                    || exception.Message.Contains(row.ObservationId, StringComparison.Ordinal))
+                {
+                    row.SetValidationError(exception.Message);
+                }
+            }
+            foreach (var row in plannedReviewedRows)
+            {
+                if (exception.Message.Contains(row.ReferenceId, StringComparison.Ordinal)
+                    || exception.Message.Contains(row.ObservationId, StringComparison.Ordinal))
+                {
+                    row.SetValidationError(exception.Message);
+                }
+            }
+            StatusTitle = "review一括反映失敗/ロールバック";
+            StatusMessage = exception.Message;
+            throw;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private static ReviewMutation? BuildUnreviewedMutation(ManualReviewDraftRow row) =>
+        row.Status switch
+        {
+            "confirmed" => NewMutation(
+                row.Reference,
+                "manual_confirm",
+                row.TruthSongId,
+                row.Notes),
+            "rejected" => NewMutation(row.Reference, "reject", null, row.Notes),
+            _ => null,
+        };
+
+    private static ReviewMutation? BuildReviewedMutation(ReviewedManualReviewRow row)
+    {
+        if (row.DraftStatus == "hold")
+        {
+            return null;
+        }
+        if (row.DraftStatus == "unchanged" && row.Notes == row.Reference.Notes)
+        {
+            return null;
+        }
+        if (row.DraftStatus == "rejected")
+        {
+            return NewMutation(row.Reference, "reject", null, row.Notes);
+        }
+        if (row.DraftStatus == "confirmed")
+        {
+            var action = row.CurrentStatus == "rejected" ? "manual_confirm" : "reassign";
+            return NewMutation(row.Reference, action, row.DraftSongId, row.Notes);
+        }
+        if (row.DraftStatus == "unchanged")
+        {
+            var action = row.CurrentStatus == "rejected" ? "reject" : "reassign";
+            return NewMutation(row.Reference, action, row.CurrentSongId, row.Notes);
+        }
+        throw new InvalidOperationException($"unsupported reviewed draft status: {row.DraftStatus}");
+    }
+
+    private static ReviewMutation NewMutation(
+        ReviewReference reference,
+        string action,
+        string? songId,
+        string note) => new(
+            Guid.NewGuid().ToString("D"),
+            reference.ReferenceId,
+            action,
+            reference.Revision,
+            reference.CurrentStatus,
+            reference.CurrentSongId,
+            songId,
+            reference.Reason,
+            note,
+            reference.Notes);
+
+    private void ReplaceManualReviewDrafts(
+        IReadOnlyDictionary<string, ManualReviewDraft> drafts)
+    {
+        manualReviewDrafts.Clear();
+        foreach (var draft in drafts)
+        {
+            manualReviewDrafts[draft.Key] = draft.Value;
         }
     }
 
@@ -779,7 +1073,9 @@ public sealed class MainViewModel(
     {
         UnsubscribeManualReviewRows();
         ManualReviewRows.Clear();
+        ReviewedManualReviewRows.Clear();
         SelectedManualReviewRow = null;
+        SelectedReviewedManualReviewRow = null;
         if (projection is null)
         {
             NotifyManualReviewCounts();
@@ -798,11 +1094,25 @@ public sealed class MainViewModel(
             row.PropertyChanged += ManualReviewRow_PropertyChanged;
             ManualReviewRows.Add(row);
         }
+        foreach (var reference in projection.ReviewReferences
+                     .Where(IsReviewedManualReviewTarget)
+                     .OrderBy(reference => reference.ProcessedAt, StringComparer.Ordinal)
+                     .ThenBy(reference => reference.CandidateEvaluation.ObservationId, StringComparer.Ordinal)
+                     .ThenBy(reference => reference.ReferenceId, StringComparer.Ordinal))
+        {
+            var observationId = reference.CandidateEvaluation.ObservationId;
+            manualReviewDrafts.TryGetValue(observationId, out var draft);
+            var row = new ReviewedManualReviewRow(reference, draft, songsById);
+            ReviewedManualReviewRows.Add(row);
+        }
         NotifyManualReviewCounts();
     }
 
     private static bool IsUnreflectedReviewTarget(ReviewReference reference) =>
         reference.StoredStatus is not ("auto_confirmed" or "manual_confirmed" or "rejected");
+
+    private static bool IsReviewedManualReviewTarget(ReviewReference reference) =>
+        reference.CurrentStatus is "auto_confirmed" or "manual_confirmed" or "rejected";
 
     private void ManualReviewRow_PropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
@@ -905,10 +1215,12 @@ public sealed class MainViewModel(
         ReviewReferences.Clear();
         UnsubscribeManualReviewRows();
         ManualReviewRows.Clear();
+        ReviewedManualReviewRows.Clear();
         SongChoices.Clear();
         SelectedReference = null;
         SelectedSong = null;
         SelectedManualReviewRow = null;
+        SelectedReviewedManualReviewRow = null;
         manualReviewDrafts.Clear();
         ReasonOptions.Clear();
         ReasonOptions.Add("all");

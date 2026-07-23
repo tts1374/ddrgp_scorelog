@@ -362,6 +362,106 @@ public sealed class MainViewModelTests
     }
 
     [Fact]
+    public async Task ApplyDraftsUsesOneBatchAndLeavesHoldDraftsUnapplied()
+    {
+        var projection = ProjectionWithVisibilityStates();
+        var store = new StubManualReviewDraftStore(
+        [
+            new ManualReviewDraft
+            {
+                ObservationId = "observation-hold",
+                Status = "hold",
+                TruthSongId = null,
+                Notes = "keep",
+            },
+            new ManualReviewDraft
+            {
+                ObservationId = "observation-confirmed",
+                Status = "confirmed",
+                TruthSongId = "song-1",
+                Notes = "confirm",
+            },
+            new ManualReviewDraft
+            {
+                ObservationId = "observation-rejected",
+                Status = "rejected",
+                TruthSongId = null,
+                Notes = "reject",
+            },
+        ]);
+        var workflow = new StubReviewWorkflowService();
+        var viewModel = new MainViewModel(
+            new StubMasterUpdateService(),
+            new StubProjectionService(projection),
+            workflow,
+            manualReviewDraftStore: store);
+
+        await viewModel.LoadProjectionAsync();
+
+        Assert.True(await viewModel.ApplyDraftsAsync(), viewModel.StatusMessage);
+
+        Assert.Equal(2, workflow.Mutations.Count);
+        Assert.Contains(workflow.Mutations, mutation => mutation.Action == "manual_confirm");
+        Assert.Contains(workflow.Mutations, mutation => mutation.Action == "reject");
+        Assert.Equal("keep", store.Drafts["observation-hold"].Notes);
+        Assert.DoesNotContain("observation-confirmed", store.Drafts.Keys);
+        Assert.DoesNotContain("observation-rejected", store.Drafts.Keys);
+        Assert.Equal("review一括反映完了", viewModel.StatusTitle);
+    }
+
+    [Fact]
+    public async Task ReviewedRowsShowCurrentAndPlannedValuesAndBuildCorrections()
+    {
+        var projection = ProjectionWithVisibilityStates();
+        var store = new StubManualReviewDraftStore();
+        var workflow = new StubReviewWorkflowService();
+        var viewModel = new MainViewModel(
+            new StubMasterUpdateService(),
+            new StubProjectionService(projection),
+            workflow,
+            manualReviewDraftStore: store);
+
+        await viewModel.LoadProjectionAsync();
+
+        Assert.Equal(6, viewModel.ReviewedManualReviewRows.Count);
+        var confirmed = Assert.Single(
+            viewModel.ReviewedManualReviewRows,
+            row => row.ReferenceId == "hidden-manual");
+        Assert.Equal("manual_confirmed", confirmed.CurrentStatus);
+        Assert.Equal("song-1", confirmed.CurrentSongId);
+        Assert.Equal("manual_review", confirmed.RegisteredRoute);
+        Assert.Equal("2026-07-19T00:00:00+00:00", confirmed.ProcessedAt);
+
+        confirmed.DraftSongId = "song-2";
+        confirmed.Notes = "corrected note";
+        var rejected = Assert.Single(
+            viewModel.ReviewedManualReviewRows,
+            row => row.ReferenceId == "hidden-rejected");
+        rejected.DraftSongId = "song-1";
+
+        Assert.True(await viewModel.ApplyDraftsAsync(), viewModel.StatusMessage);
+
+        var confirmedMutation = Assert.Single(
+            workflow.Mutations,
+            mutation => mutation.ReferenceId == "hidden-manual");
+        Assert.Equal("reassign", confirmedMutation.Action);
+        Assert.Equal("song-1", confirmedMutation.ExpectedSongId);
+        Assert.Equal("song-2", confirmedMutation.SongId);
+        Assert.Equal("", confirmedMutation.ExpectedNote);
+        Assert.Equal("corrected note", confirmedMutation.Note);
+
+        var rejectedMutation = Assert.Single(
+            workflow.Mutations,
+            mutation => mutation.ReferenceId == "hidden-rejected");
+        Assert.Equal("manual_confirm", rejectedMutation.Action);
+        Assert.Equal("rejected", rejectedMutation.ExpectedStatus);
+        Assert.Null(rejectedMutation.ExpectedSongId);
+        Assert.Equal("song-1", rejectedMutation.SongId);
+        Assert.DoesNotContain("observation-manual", store.Drafts.Keys);
+        Assert.DoesNotContain("observation-applied-rejected", store.Drafts.Keys);
+    }
+
+    [Fact]
     public async Task TruthSongSelectionSetsConfirmedAndRejectedClearsSong()
     {
         var viewModel = new MainViewModel(
@@ -614,6 +714,10 @@ public sealed class MainViewModelTests
             SourceImagePath = @"C:\data\source.png",
             ReferenceId = referenceId,
             ReviewStatus = reviewStatus,
+            CurrentStatus = storedStatus,
+            CurrentSongId = storedStatus is "auto_confirmed" or "manual_confirmed"
+                ? "song-1"
+                : null,
             Reason = "needs review",
             ObservedTitle = "Observed title",
             ObservedArtist = "Observed artist",
@@ -626,6 +730,9 @@ public sealed class MainViewModelTests
             Revision = 0,
             ManualActionId = null,
             ManualNote = "",
+            Notes = "",
+            RegisteredRoute = storedStatus is "auto_confirmed" ? "jacket_gate" : "manual_review",
+            ProcessedAt = "2026-07-19T00:00:00+00:00",
             History = [],
             CandidateEvaluation = new CandidateEvaluation
             {
@@ -659,7 +766,7 @@ public sealed class MainViewModelTests
 
     private static ReviewProjection Projection() => new()
     {
-        ProjectionSchemaVersion = 5,
+        ProjectionSchemaVersion = 6,
         Master = new ProjectionMaster
         {
             Path = "master.sqlite",
@@ -706,12 +813,16 @@ public sealed class MainViewModelTests
             {
                 SourceImagePath = @"C:\data\source.png",
                 ReferenceId = "ref-1", ReviewStatus = "needs_review", Reason = "opaque reason",
+                CurrentStatus = "needs_review", CurrentSongId = null,
                 ObservedTitle = "Alpha", ObservedArtist = "?", ObservationStatus = "ok",
                 MasterDrift = false, FeatureExtractorVersion = "m5-jacket-v2", Candidates = [],
                 StoredStatus = "needs_review",
                 Revision = 0,
                 ManualActionId = null,
                 ManualNote = "",
+                Notes = "",
+                RegisteredRoute = "",
+                ProcessedAt = "2026-07-19T00:00:00+00:00",
                 History = [],
                 CandidateEvaluation = new CandidateEvaluation
                 {
@@ -1003,6 +1114,27 @@ public sealed class MainViewModelTests
                 mutation.SongId,
                 mutation.ExpectedRevision + 1,
                 false));
+        }
+
+        public Task<ReviewMutationBatchReceipt> ApplyBatchAsync(
+            string masterPath,
+            string catalogPath,
+            IReadOnlyCollection<ReviewMutation> mutations,
+            CancellationToken cancellationToken)
+        {
+            Mutations.AddRange(mutations);
+            return Task.FromResult(new ReviewMutationBatchReceipt(
+                mutations.Count,
+                mutations.Count,
+                0,
+                mutations.Select(mutation => new ReviewMutationReceipt(
+                    mutation.ActionId,
+                    mutation.ReferenceId,
+                    mutation.Action,
+                    mutation.Action == "reject" ? "rejected" : "manual_confirmed",
+                    mutation.SongId,
+                    mutation.ExpectedRevision + 1,
+                    false)).ToList()));
         }
     }
 }

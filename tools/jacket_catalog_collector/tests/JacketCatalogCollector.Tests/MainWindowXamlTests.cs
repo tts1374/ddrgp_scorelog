@@ -167,16 +167,15 @@ public sealed class MainWindowXamlTests
             .ToList();
         var manualReviewGrid = Assert.Single(
             document.Descendants().Where(element => element.Name.LocalName == "DataGrid"),
-            element => element.Attribute("ItemsSource")?.Value.Contains(
-                "ManualReviewRows", StringComparison.Ordinal) == true);
+            element => element.Attribute("ItemsSource")?.Value == "{Binding ManualReviewRows}");
 
         Assert.Contains("レビュー", tabs);
         Assert.Contains("未レビュー", tabs);
-        Assert.Contains("レビュー済み (後続Issue)", tabs);
+        Assert.Contains("レビュー済み", tabs);
         Assert.Contains(
             document.Descendants().Where(element => element.Name.LocalName == "TabItem"),
-            element => element.Attribute("Header")?.Value == "レビュー済み (後続Issue)"
-                && element.Attribute("IsEnabled")?.Value == "False");
+            element => element.Attribute("Header")?.Value == "レビュー済み"
+                && element.Attribute("IsEnabled") is null);
         Assert.Contains(bindings, value => value.Contains(
             "ManualReviewRows", StringComparison.Ordinal));
         Assert.Contains(bindings, value => value.Contains(
@@ -203,6 +202,18 @@ public sealed class MainWindowXamlTests
             "SongSearch", StringComparison.Ordinal));
         Assert.Contains(bindings, value => value.Contains(
             "SongChoices", StringComparison.Ordinal));
+        Assert.Contains(bindings, value => value.Contains(
+            "ReviewedManualReviewRows", StringComparison.Ordinal));
+        Assert.Contains(bindings, value => value.Contains(
+            "CurrentStatusDisplay", StringComparison.Ordinal));
+        Assert.Contains(bindings, value => value.Contains(
+            "CurrentSongDisplay", StringComparison.Ordinal));
+        Assert.Contains(bindings, value => value.Contains(
+            "DraftStatus", StringComparison.Ordinal));
+        Assert.Contains(bindings, value => value.Contains(
+            "RegisteredRoute", StringComparison.Ordinal));
+        Assert.Contains(bindings, value => value.Contains(
+            "ProcessedAt", StringComparison.Ordinal));
         Assert.Contains("一括反映", buttons);
         Assert.DoesNotContain("未保存の下書きを保存", buttons);
         Assert.Contains("確定  ", runTexts);

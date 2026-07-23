@@ -250,7 +250,7 @@
                                 <StackPanel Grid.Column="1" HorizontalAlignment="Right">
                                     <Button Content="一括反映"
                                             Style="{StaticResource PrimaryButton}"
-                                            Click="SaveDraft_Click" />
+                                            Click="ApplyDrafts_Click" />
                                 </StackPanel>
                             </Grid>
 
@@ -375,7 +375,108 @@
                             </DataGrid>
                         </Grid>
                     </TabItem>
-                    <TabItem Header="レビュー済み (後続Issue)" IsEnabled="False" />
+                    <TabItem Header="レビュー済み">
+                        <Grid Margin="14">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                            </Grid.RowDefinitions>
+                            <TextBlock Grid.Row="0" Margin="0,0,0,10"
+                                       Text="現在の登録内容と、次回の反映予定を比較できます。変更なし・確定・reject・保留を選択し、下の一括反映で確定します。"
+                                       Foreground="#5F6B7A" TextWrapping="Wrap" />
+                            <DataGrid Grid.Row="1" ItemsSource="{Binding ReviewedManualReviewRows}"
+                                      SelectedItem="{Binding SelectedReviewedManualReviewRow, Mode=TwoWay}"
+                                      IsReadOnly="False" AutoGenerateColumns="False" SelectionMode="Single"
+                                      RowHeight="104" CanUserAddRows="False" HeadersVisibility="Column"
+                                      GridLinesVisibility="Horizontal" Background="White">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="現在の状態" Binding="{Binding CurrentStatusDisplay}" Width="105"
+                                                        IsReadOnly="True" />
+                                    <DataGridTemplateColumn Header="現在のsong" Width="250" IsReadOnly="True">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Text="{Binding CurrentSongDisplay}" TextWrapping="Wrap" Margin="4" />
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                    <DataGridTemplateColumn Header="反映予定" Width="105">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <ComboBox ItemsSource="{Binding StatusOptions}"
+                                                          DisplayMemberPath="Display"
+                                                          SelectedValuePath="Value"
+                                                          SelectedValue="{Binding DraftStatus, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                          Margin="2" />
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                    <DataGridTemplateColumn Header="予定song" Width="290">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <StackPanel>
+                                                    <TextBox Text="{Binding SongSearch, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                             ToolTip="title / alias / artist / song ID" />
+                                                    <ComboBox ItemsSource="{Binding SongChoices}"
+                                                              SelectedItem="{Binding SelectedSearchResult, Mode=TwoWay}"
+                                                              IsEditable="False">
+                                                        <ComboBox.ItemTemplate>
+                                                            <DataTemplate>
+                                                                <StackPanel>
+                                                                    <TextBlock Text="{Binding Title}" />
+                                                                    <TextBlock Text="{Binding Artist}" Foreground="#6B7280" FontSize="11" />
+                                                                </StackPanel>
+                                                            </DataTemplate>
+                                                        </ComboBox.ItemTemplate>
+                                                    </ComboBox>
+                                                    <TextBlock Text="{Binding DraftSongDisplay, Mode=OneWay}"
+                                                               Foreground="#6B7280" FontSize="11" TextWrapping="Wrap" />
+                                                </StackPanel>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                    <DataGridTemplateColumn Header="メモ" Width="170">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <TextBox Text="{Binding Notes, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                         MinHeight="62" AcceptsReturn="True" TextWrapping="Wrap" />
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                    <DataGridTemplateColumn Header="登録経路 / 実行時刻" Width="210" IsReadOnly="True">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <StackPanel Margin="4">
+                                                    <TextBlock Text="{Binding RegisteredRoute}" TextWrapping="Wrap" />
+                                                    <TextBlock Text="{Binding ProcessedAt}" Foreground="#6B7280"
+                                                               FontSize="11" TextWrapping="Wrap" />
+                                                </StackPanel>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                    <DataGridTemplateColumn Header="保存状態 / エラー" Width="165" IsReadOnly="True">
+                                        <DataGridTemplateColumn.CellTemplate>
+                                            <DataTemplate>
+                                                <TextBlock Text="{Binding DraftStateDisplay}" TextWrapping="Wrap" Margin="4">
+                                                    <TextBlock.Style>
+                                                        <Style TargetType="TextBlock">
+                                                            <Setter Property="Foreground" Value="#EF4444" />
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding IsSaved, Mode=OneWay}" Value="True">
+                                                                    <Setter Property="Foreground" Value="#10B981" />
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </TextBlock.Style>
+                                                </TextBlock>
+                                            </DataTemplate>
+                                        </DataGridTemplateColumn.CellTemplate>
+                                    </DataGridTemplateColumn>
+                                    <DataGridTextColumn Header="observation_id" Binding="{Binding ObservationIdShort}" Width="110"
+                                                        IsReadOnly="True" />
+                                </DataGrid.Columns>
+                            </DataGrid>
+                        </Grid>
+                    </TabItem>
                 </TabControl>
             </TabItem>
             <TabItem Header="管理・設定">

@@ -101,6 +101,10 @@ public sealed class ReviewReference
     public required string ReferenceId { get; init; }
     [JsonPropertyName("review_status")]
     public required string ReviewStatus { get; init; }
+    [JsonPropertyName("current_status")]
+    public required string CurrentStatus { get; init; }
+    [JsonPropertyName("current_song_id")]
+    public string? CurrentSongId { get; init; }
     [JsonPropertyName("reason")]
     public required string Reason { get; init; }
     [JsonPropertyName("observed_title")]
@@ -125,6 +129,12 @@ public sealed class ReviewReference
     public required string? ManualActionId { get; init; }
     [JsonPropertyName("manual_note")]
     public required string ManualNote { get; init; }
+    [JsonPropertyName("notes")]
+    public required string Notes { get; init; }
+    [JsonPropertyName("registered_route")]
+    public required string RegisteredRoute { get; init; }
+    [JsonPropertyName("processed_at")]
+    public required string ProcessedAt { get; init; }
     [JsonPropertyName("history")]
     public required List<ReviewHistory> History { get; init; }
     [JsonPropertyName("candidate_evaluation")]

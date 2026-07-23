@@ -369,13 +369,13 @@ public partial class MainWindow : Window
         await RunOperationAsync(token => viewModel.ApplyReviewAsync(action, token));
     }
 
-    private async void SaveDraft_Click(object sender, RoutedEventArgs e)
+    private async void ApplyDrafts_Click(object sender, RoutedEventArgs e)
     {
         if (viewModel.IsBusy)
         {
             return;
         }
-        await RunOperationAsync(token => viewModel.SaveDraftsAsync(token));
+        await RunOperationAsync(token => viewModel.ApplyDraftsAsync(token));
     }
 
     private async Task RunOperationAsync(Func<CancellationToken, Task> operation)
