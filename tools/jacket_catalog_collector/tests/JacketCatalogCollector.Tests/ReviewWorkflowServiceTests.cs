@@ -83,4 +83,25 @@ public sealed class ReviewWorkflowServiceTests
         Assert.Contains("review-batch", runner.Requests[0].Arguments);
         Assert.DoesNotContain("--action-id", runner.Requests[0].Arguments);
     }
+
+    [Fact]
+    public async Task ClassifiesInvalidReceiptAfterSuccessfulBatchAsPostCommitFailure()
+    {
+        var runner = new StubProcessRunner((_, _) => Task.FromResult(
+            new ProcessResult(0, "not-json", "")));
+        var service = new ReviewWorkflowService(runner, Directory.GetCurrentDirectory());
+
+        var exception = await Assert.ThrowsAsync<ReviewBatchPostCommitException>(
+            () => service.ApplyBatchAsync(
+                "master.sqlite",
+                "catalog.sqlite",
+                [
+                    new ReviewMutation(
+                        "a1", "r1", "reject", 0, "needs_review", null, null, "reason", "note"),
+                ],
+                CancellationToken.None));
+
+        Assert.Contains("committed", exception.Message, StringComparison.Ordinal);
+        Assert.IsType<System.Text.Json.JsonException>(exception.InnerException);
+    }
 }

@@ -454,6 +454,45 @@ public sealed class MainViewModelTests
     }
 
     [Fact]
+    public async Task ReportsPostCommitReceiptFailureWithoutRollbackMessage()
+    {
+        var projection = ProjectionWithVisibilityStates();
+        var store = new StubManualReviewDraftStore(
+        [
+            new ManualReviewDraft
+            {
+                ObservationId = "observation-confirmed",
+                Status = "confirmed",
+                TruthSongId = "song-1",
+                Notes = "confirm",
+            },
+        ]);
+        var workflow = new StubReviewWorkflowService(
+            new ReviewBatchPostCommitException(
+                "Catalog review batch receipt is invalid after the catalog transaction committed.",
+                new InvalidOperationException("receipt parse failed")));
+        var viewModel = new MainViewModel(
+            new StubMasterUpdateService(),
+            new StubProjectionService(projection),
+            workflow,
+            manualReviewDraftStore: store);
+
+        await viewModel.LoadProjectionAsync();
+
+        await Assert.ThrowsAsync<ReviewBatchPostCommitException>(
+            () => viewModel.ApplyDraftsAsync());
+
+        Assert.Equal("review一括反映済み・後処理未完了", viewModel.StatusTitle);
+        Assert.Contains("catalog/historyは反映済み", viewModel.StatusMessage,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("ロールバック", viewModel.StatusMessage,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("変更していません", viewModel.StatusMessage,
+            StringComparison.Ordinal);
+        Assert.Contains("observation-confirmed", store.Drafts.Keys);
+    }
+
+    [Fact]
     public async Task ReviewedRowsShowCurrentAndPlannedValuesAndBuildCorrections()
     {
         var projection = ProjectionWithVisibilityStates();
@@ -1157,7 +1196,8 @@ public sealed class MainViewModelTests
         }
     }
 
-    private sealed class StubReviewWorkflowService : IReviewWorkflowService
+    private sealed class StubReviewWorkflowService(
+        Exception? batchException = null) : IReviewWorkflowService
     {
         public List<ReviewMutation> Mutations { get; } = [];
 
@@ -1185,6 +1225,10 @@ public sealed class MainViewModelTests
             CancellationToken cancellationToken)
         {
             Mutations.AddRange(mutations);
+            if (batchException is not null)
+            {
+                return Task.FromException<ReviewMutationBatchReceipt>(batchException);
+            }
             return Task.FromResult(new ReviewMutationBatchReceipt(
                 mutations.Count,
                 mutations.Count,

@@ -34,6 +34,14 @@ public sealed record ReviewMutationBatchReceipt(
     [property: JsonPropertyName("no_op_count")] int NoOpCount,
     [property: JsonPropertyName("receipts")] List<ReviewMutationReceipt> Receipts);
 
+public sealed class ReviewBatchPostCommitException : InvalidOperationException
+{
+    public ReviewBatchPostCommitException(string message, Exception innerException)
+        : base(message, innerException)
+    {
+    }
+}
+
 public interface IReviewWorkflowService
 {
     Task<ReviewMutationReceipt> ApplyAsync(
@@ -117,6 +125,7 @@ public sealed class ReviewWorkflowService(
 
         var temporaryPath = Path.Combine(
             Path.GetTempPath(), $"ddrgp-review-batch-{Guid.NewGuid():N}.json");
+        ProcessResult? processResult = null;
         try
         {
             var document = new ReviewMutationBatchDocument
@@ -136,27 +145,44 @@ public sealed class ReviewWorkflowService(
                 "--master-db", Path.GetFullPath(masterPath),
                 "--request-file", temporaryPath,
             };
-            var result = await RunAsync(arguments, cancellationToken);
-            if (result.ExitCode != 0)
+            processResult = await RunAsync(arguments, cancellationToken);
+            if (processResult.ExitCode != 0)
             {
                 throw new InvalidOperationException(
-                    $"Catalog review batch failed (exit {result.ExitCode}): {result.StandardError.Trim()}");
+                    $"Catalog review batch failed (exit {processResult.ExitCode}): "
+                    + processResult.StandardError.Trim());
             }
             try
             {
                 return JsonSerializer.Deserialize<ReviewMutationBatchReceipt>(
-                        result.StandardOutput, Options)
+                        processResult.StandardOutput, Options)
                     ?? throw new InvalidOperationException("Catalog review batch receipt is null.");
             }
-            catch (JsonException exception)
+            catch (Exception exception) when (
+                exception is JsonException or InvalidOperationException)
             {
-                throw new InvalidOperationException(
-                    "Catalog review batch receipt is invalid.", exception);
+                throw new ReviewBatchPostCommitException(
+                    "Catalog review batch receipt is invalid after the catalog transaction "
+                    + "committed.", exception);
             }
         }
         finally
         {
-            File.Delete(temporaryPath);
+            try
+            {
+                File.Delete(temporaryPath);
+            }
+            catch (Exception exception) when (
+                exception is IOException or UnauthorizedAccessException)
+            {
+                if (processResult?.ExitCode == 0)
+                {
+                    throw new ReviewBatchPostCommitException(
+                        "Catalog review batch committed, but temporary request cleanup failed.",
+                        exception);
+                }
+                throw;
+            }
         }
     }
 

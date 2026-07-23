@@ -610,6 +610,10 @@ public sealed class MainViewModel(
         }
         catch (Exception exception)
         {
+            if (exception is ReviewBatchPostCommitException)
+            {
+                catalogCommitted = true;
+            }
             if (!catalogCommitted)
             {
                 foreach (var row in plannedUnreviewedRows)
