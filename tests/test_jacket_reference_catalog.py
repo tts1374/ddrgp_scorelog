@@ -77,9 +77,10 @@ def write_master(path: Path) -> None:
 def setup_paths(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path, Path]:
     monkeypatch.chdir(tmp_path)
     (tmp_path / "data").mkdir()
+    (tmp_path / "databases").mkdir()
     master_db = tmp_path / "master.sqlite"
     write_master(master_db)
-    catalog_path = tmp_path / "data/catalog.sqlite"
+    catalog_path = tmp_path / "databases/catalog.sqlite"
     catalog.create_catalog(catalog_path)
     image_path = tmp_path / "data/jacket.png"
     Image.new("RGB", (64, 64), (10, 20, 30)).save(image_path)
@@ -210,6 +211,39 @@ def test_current_create_has_exact_composite_schema(
         "catalog_created_at": metadata["created_at"],
         "identities": [],
     }
+
+
+def test_catalog_path_uses_fixed_databases_directory_and_keeps_data_artifact_guard(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    databases = tmp_path / "databases"
+    data = tmp_path / "data"
+    databases.mkdir()
+    data.mkdir()
+
+    catalog_path = databases / "jacket-catalog.sqlite"
+    catalog.ensure_catalog_path(catalog_path, argument_name="--catalog")
+    catalog.create_catalog(catalog_path)
+
+    with pytest.raises(ValueError, match="under databases"):
+        catalog.ensure_catalog_path(data / "catalog.sqlite", argument_name="--catalog")
+    with pytest.raises(ValueError, match="under data"):
+        catalog.ensure_data_path(databases / "report", argument_name="--output", directory=True)
+
+
+def test_catalog_create_removes_partial_database_on_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "databases").mkdir()
+    catalog_path = tmp_path / "databases/catalog.sqlite"
+    monkeypatch.setattr(catalog, "CATALOG_SCHEMA_SQL", "CREATE TABLE partial (value TEXT);")
+
+    with pytest.raises(sqlite3.OperationalError):
+        catalog.create_catalog(catalog_path)
+
+    assert not catalog_path.exists()
 
 
 def test_auto_confirmation_batch_is_atomic_and_idempotent(

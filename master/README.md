@@ -31,25 +31,25 @@ https://p.eagate.573.jp/game/eacddr/konaddr/info/mlist.html
 ローカルHTML snapshotから生成:
 
 ```powershell
-python -m master --input data\master\source.html --output data\master\ddrgp-master.sqlite
+python -X utf8 -m master --input data\master\source.html --output data\master\ddrgp-master.sqlite
 ```
 
 現在の取得元URLから直接取得して生成:
 
 ```powershell
-python -m master --output data\master\ddrgp-master.sqlite
+python -X utf8 -m master --output data\master\ddrgp-master.sqlite
 ```
 
 ローカル公式収録曲一覧snapshotを使う場合:
 
 ```powershell
-python -m master --input data\master\source.html --official-input data\master\official-mlist.html --output data\master\ddrgp-master.sqlite
+python -X utf8 -m master --input data\master\source.html --official-input data\master\official-mlist.html --output data\master\ddrgp-master.sqlite
 ```
 
 生成DBを検査して、artifact用summaryを出力:
 
 ```powershell
-python -m master.inspect data\master\ddrgp-master.sqlite --summary data\master\master-summary.json
+python -X utf8 -m master.inspect data\master\ddrgp-master.sqlite --summary data\master\master-summary.json
 ```
 
 生成DB、取得元snapshot、解析ログはGit管理しません。ローカル生成物は原則 `data/` 配下に置きます。
@@ -58,7 +58,7 @@ python -m master.inspect data\master\ddrgp-master.sqlite --summary data\master\m
 
 `.github/workflows/build-master-db.yml` で、手動実行と週次定期実行のマスタDB生成を行います。
 
-workflowでは、ネットワークに依存しないfixtureテストを通した後、Wikiと公式の実HTMLから `data/master/ddrgp-master.sqlite` を生成し、`python -m master.inspect` で `master_metadata` とテーブル件数の整合、source snapshot件数とhashを検査します。生成DBと `master-summary.json` は `ddrgp-master-<run_number>` artifact としてアップロードし、リポジトリにはコミットしません。
+workflowでは、ネットワークに依存しないfixtureテストを通した後、Wikiと公式の実HTMLから `data/master/ddrgp-master.sqlite` を生成し、`python -X utf8 -m master.inspect` で `master_metadata` とテーブル件数の整合、source snapshot件数とhashを検査します。生成DBと `master-summary.json` は `ddrgp-master-<run_number>` artifact としてアップロードし、リポジトリにはコミットしません。
 
 `master.inspect` は、必須metadataキー、`songs` / `charts` の実件数、`source_snapshots` がWikiのみなら1件、公式プレー可否込みなら2件であること、Wiki/公式のsource hashとsource URLがmetadataとsnapshotで一致することを検査します。`master-summary.json` にはテーブル件数、snapshot件数、source hash、snapshot側のsource URL、parser version、公式プレー可否の突合件数を出力し、artifact単体でも生成元を確認できるようにします。
 

@@ -15,9 +15,10 @@ from tools.vision_poc import jacket_reference_catalog as catalog
 def setup_projection(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path, str]:
     monkeypatch.chdir(tmp_path)
     (tmp_path / "data").mkdir()
+    (tmp_path / "databases").mkdir()
     master_db = tmp_path / "master.sqlite"
     write_master(master_db)
-    catalog_db = tmp_path / "data/catalog.sqlite"
+    catalog_db = tmp_path / "databases/catalog.sqlite"
     catalog.create_catalog(catalog_db)
     image = tmp_path / "data/jacket.png"
     Image.new("RGB", (64, 64), (20, 30, 40)).save(image)

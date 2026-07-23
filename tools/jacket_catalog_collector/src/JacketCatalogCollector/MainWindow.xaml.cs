@@ -21,7 +21,8 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
-        repositoryRoot = Directory.GetCurrentDirectory();
+        var databasePaths = CollectorDatabasePaths.Resolve();
+        repositoryRoot = databasePaths.RepositoryRoot;
         var runner = new ProcessRunner();
         var windowEnumerator = new NativeWindowEnumerator();
         var dispatcher = new WpfCaptureDispatcher(Dispatcher);
@@ -51,8 +52,12 @@ public partial class MainWindow : Window
                 observationSession,
                 dispatcher,
                 new InformationTitleLineDetector()),
-            new JsonCollectorDatabasePathStore(JsonCollectorDatabasePathStore.GetDefaultPath()),
-            new JsonManualReviewDraftStore(
+            databasePaths: databasePaths,
+            catalogInitializationService: new CatalogInitializationService(
+                runner,
+                databasePaths.RepositoryRoot,
+                databasePaths.CatalogPath),
+            manualReviewDraftStore: new JsonManualReviewDraftStore(
                 Path.Combine(evidenceRoot, "manual-review-drafts.v1.json")));
         captureObservationController = new CaptureObservationController(
             viewModel.StartObservationSessionAsync,
@@ -60,7 +65,8 @@ public partial class MainWindow : Window
             viewModel.StopObservationSessionAsync,
             windowCapture.StartAsync,
             windowCapture.StopAsync,
-            () => windowCapture.Lifecycle.State);
+            () => windowCapture.Lifecycle.State,
+            viewModel.FinalizeObservationSessionAsync);
         titleArtistEvaluationService = new TitleArtistEvaluationService(runner, repositoryRoot);
         DataContext = viewModel;
     }
@@ -75,7 +81,7 @@ public partial class MainWindow : Window
         try
         {
             operationCancellation = new CancellationTokenSource();
-            await viewModel.InitializeRememberedProjectionAsync(operationCancellation.Token);
+            await viewModel.InitializeDatabasesAsync(operationCancellation.Token);
         }
         catch (OperationCanceledException)
         {
@@ -192,7 +198,7 @@ public partial class MainWindow : Window
         }
         try
         {
-            await viewModel.Observation.RetryCatalogAsync();
+            await viewModel.RetryCatalogSessionAsync();
         }
         catch (Exception exception)
         {
@@ -275,10 +281,7 @@ public partial class MainWindow : Window
             MessageBox.Show(this, "masterとcatalogを先にread-only読込してください。");
             return;
         }
-        await RunOperationAsync(token => viewModel.LoadProjectionAsync(
-            viewModel.CurrentMasterPath,
-            viewModel.CurrentCatalogPath,
-            token));
+        await RunOperationAsync(viewModel.LoadProjectionAsync);
     }
 
     private async void GenerateCandidateReport_Click(object sender, RoutedEventArgs e)
@@ -321,11 +324,11 @@ public partial class MainWindow : Window
             e.Cancel = true;
             try
             {
-                await captureObservationController.StopAsync();
+                await captureObservationController.AbortAsync();
             }
             catch (Exception exception)
             {
-                MessageBox.Show(this, exception.Message, "collector終了時のcheckpoint保存失敗");
+                MessageBox.Show(this, exception.Message, "collector終了時の安全停止失敗");
             }
             finally
             {
@@ -343,67 +346,10 @@ public partial class MainWindow : Window
         {
             return;
         }
-        var dialog = new SaveFileDialog
-        {
-            Title = "更新先master DBを選択",
-            Filter = "SQLite database (*.sqlite)|*.sqlite|All files (*.*)|*.*",
-            AddExtension = true,
-            DefaultExt = ".sqlite",
-            OverwritePrompt = false,
-        };
-        if (dialog.ShowDialog(this) != true)
-        {
-            return;
-        }
         try
         {
             operationCancellation = new CancellationTokenSource();
-            await viewModel.UpdateMasterAsync(dialog.FileName, operationCancellation.Token);
-        }
-        catch (Exception)
-        {
-            // The ViewModel exposes the actionable diagnostic in the status panel.
-        }
-        finally
-        {
-            operationCancellation?.Dispose();
-            operationCancellation = null;
-        }
-    }
-
-    private async void SelectDatabases_Click(object sender, RoutedEventArgs e)
-    {
-        if (viewModel.IsBusy)
-        {
-            return;
-        }
-        var masterDialog = new OpenFileDialog
-        {
-            Title = "M4 master DBを選択",
-            Filter = "SQLite database (*.sqlite;*.sqlite3;*.db)|*.sqlite;*.sqlite3;*.db|All files (*.*)|*.*",
-            CheckFileExists = true,
-        };
-        if (masterDialog.ShowDialog(this) != true)
-        {
-            return;
-        }
-        var catalogDialog = new OpenFileDialog
-        {
-            Title = "M5b jacket catalogを選択",
-            Filter = "SQLite database (*.sqlite;*.sqlite3;*.db)|*.sqlite;*.sqlite3;*.db|All files (*.*)|*.*",
-            CheckFileExists = true,
-        };
-        if (catalogDialog.ShowDialog(this) != true)
-        {
-            return;
-        }
-        try
-        {
-            operationCancellation = new CancellationTokenSource();
-            await viewModel.LoadProjectionAsync(
-                masterDialog.FileName,
-                catalogDialog.FileName,
-                operationCancellation.Token);
+            await viewModel.UpdateMasterAsync(operationCancellation.Token);
         }
         catch (Exception)
         {

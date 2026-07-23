@@ -76,12 +76,12 @@ M0「画像解析PoCの入力境界を固める」を完了扱いにするため
 
 ## 検証コマンド
 
-- [x] `python -m pytest tests`
-- [x] `python -m ruff check tools\vision_poc pyproject.toml`
-- [x] `python -m ruff check tests`
-- [x] `python -m compileall tools\vision_poc`
-- [x] `python -m tools.vision_poc --sequence-mode timestamped --ocr-target confirmed-events --ocr-rois all --ocr-profile all`
-- [x] `python -m tools.vision_poc --sequence-mode manifest --frame-manifest data\vision_poc_timestamped\frame_manifest.csv --frame-root samples\screenshots --ocr-target confirmed-events --ocr-rois all --ocr-profile all`
+- [x] `python -X utf8 -m pytest tests`
+- [x] `python -X utf8 -m ruff check tools\vision_poc pyproject.toml`
+- [x] `python -X utf8 -m ruff check tests`
+- [x] `python -X utf8 -m compileall tools\vision_poc`
+- [x] `python -X utf8 -m tools.vision_poc --sequence-mode timestamped --ocr-target confirmed-events --ocr-rois all --ocr-profile all`
+- [x] `python -X utf8 -m tools.vision_poc --sequence-mode manifest --frame-manifest data\vision_poc_timestamped\frame_manifest.csv --frame-root samples\screenshots --ocr-target confirmed-events --ocr-rois all --ocr-profile all`
 - [x] dry-run capture provider の生成manifestを manifest mode で再読込する。
 - [x] 複数screen_type混在 dry-run sequence の生成manifestを manifest mode で再読込する。
 

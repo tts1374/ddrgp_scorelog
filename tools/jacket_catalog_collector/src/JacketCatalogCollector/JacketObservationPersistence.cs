@@ -1316,6 +1316,104 @@ public sealed class JacketObservationSession(
         }
     }
 
+    public async Task<ObservationCatalogRetryValidation> PrepareCatalogRetryAsync(
+        ObservationCatalogRetryRequest expected,
+        string masterDbPath,
+        string catalogDbPath,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateCatalogRetryRequest(expected);
+        await gate.WaitAsync(cancellationToken);
+        try
+        {
+            if (active)
+            {
+                return new ObservationCatalogRetryValidation(
+                    false,
+                    "captureを終了してからcatalog retryを実行してください",
+                    null);
+            }
+
+            ObservationCheckpoint loaded;
+            try
+            {
+                loaded = await checkpointStore.LoadAsync(expected.SessionId, cancellationToken);
+            }
+            catch (Exception exception) when (
+                exception is InvalidOperationException or IOException or JsonException
+                    or ArgumentException or NotSupportedException)
+            {
+                return new ObservationCatalogRetryValidation(
+                    false,
+                    "checkpointが破損または利用できません",
+                    null);
+            }
+            if (!RetryIdentityMatches(expected, loaded.Session))
+            {
+                return new ObservationCatalogRetryValidation(
+                    false,
+                    "checkpointのmaster/catalog/extractor identity driftが検出されました",
+                    null);
+            }
+
+            var resolvedMasterPath = Path.GetFullPath(masterDbPath);
+            var resolvedCatalogPath = Path.GetFullPath(catalogDbPath);
+            try
+            {
+                await ValidateRetryStateAsync(
+                    loaded.Session,
+                    loaded,
+                    resolvedMasterPath,
+                    resolvedCatalogPath,
+                    cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (ObservationIdentityDriftException exception)
+            {
+                return new ObservationCatalogRetryValidation(false, exception.Message, null);
+            }
+            catch (Exception exception) when (
+                exception is InvalidOperationException or IOException or JsonException
+                    or ArgumentException or NotSupportedException)
+            {
+                return new ObservationCatalogRetryValidation(
+                    false,
+                    "checkpoint artifactが破損または利用できません",
+                    null);
+            }
+
+            detector.Reset();
+            detector.RestoreStableFeatureHashes(loaded.StableFeatureHashes);
+            identity = loaded.Session;
+            masterPath = resolvedMasterPath;
+            catalogPath = resolvedCatalogPath;
+            checkpoint = loaded;
+            droppedFrameCount = loaded.DroppedFrameCount;
+            processedFrameBase = loaded.ProcessedFrameCount;
+            checkpointSavePending = false;
+            compositeIdentityRequired = loaded.CheckpointVersion == JacketObservationVersions.SessionCheckpoint;
+            lastStableCandidate = null;
+            lastDetection = new JacketDetectionResult(
+                JacketDetectionState.NoFrame,
+                null,
+                "compatible checkpoint loaded for catalog retry; capture was not resumed",
+                loaded.ProcessedFrameCount,
+                0,
+                0);
+            return new ObservationCatalogRetryValidation(
+                true,
+                "compatible checkpoint loaded for catalog retry",
+                loaded);
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
     public async Task<JacketDetectionResult> ObserveFrameAsync(
         RawCaptureFrame frame,
         CancellationToken cancellationToken = default,
@@ -1616,7 +1714,8 @@ public sealed class JacketObservationSession(
         await gate.WaitAsync(cancellationToken);
         try
         {
-            if (!active || identity is null || masterPath is null || catalogPath is null || checkpoint is null)
+            var currentCheckpoint = checkpoint;
+            if (identity is null || masterPath is null || catalogPath is null || currentCheckpoint is null)
             {
                 throw new InvalidOperationException("observation session is not resumable");
             }
@@ -1626,32 +1725,48 @@ public sealed class JacketObservationSession(
                     $"unsupported catalog schema version: {identity.CatalogSchemaVersion}");
             }
             string[] retryableStatuses = ["pending"];
-            var pendingObservations = checkpoint.Observations
+            var pendingObservations = currentCheckpoint.Observations
                 .Where(item => retryableStatuses.Contains(item.CatalogStatus, StringComparer.Ordinal))
                 .ToList();
             if (pendingObservations.Count == 0)
             {
                 return [];
             }
-            if (artifactPublisher is not IObservationArtifactReader reader)
-            {
-                throw new InvalidOperationException("artifact reader is unavailable for catalog retry");
-            }
-            await catalogAdapter.ValidateSessionAsync(
+            var artifacts = await ValidateRetryStateAsync(
                 identity,
-                catalogPath,
+                currentCheckpoint,
                 masterPath,
+                catalogPath,
                 cancellationToken);
             var results = new List<ObservationAdoptionResult>();
             foreach (var pending in pendingObservations)
             {
-                var artifact = await reader.LoadAsync(identity, pending.ObservationId, cancellationToken);
-                var catalog = await catalogAdapter.IngestAsync(
-                    artifact,
-                    Path.Combine(pending.ArtifactPath, "jacket-crop.png"),
-                    catalogPath,
-                    masterPath,
-                    cancellationToken);
+                var artifact = artifacts[pending.ObservationId];
+                CatalogIngestReceipt catalog;
+                try
+                {
+                    catalog = await catalogAdapter.IngestAsync(
+                        artifact,
+                        Path.Combine(pending.ArtifactPath, "jacket-crop.png"),
+                        catalogPath,
+                        masterPath,
+                        cancellationToken);
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+                catch (ObservationIdentityDriftException)
+                {
+                    throw;
+                }
+                catch (Exception exception)
+                {
+                    catalog = new CatalogIngestReceipt(
+                        CatalogIngestDisposition.Failed,
+                        null,
+                        $"catalog ingest exception: {exception.Message}");
+                }
                 var status = catalog.Disposition switch
                 {
                     CatalogIngestDisposition.Created or CatalogIngestDisposition.Existing => "ingested",
@@ -1663,11 +1778,26 @@ public sealed class JacketObservationSession(
                     CatalogStatus = status,
                     CatalogReferenceId = catalog.CatalogReferenceId,
                 };
-                var observations = checkpoint.Observations.Select(item =>
+                var observations = currentCheckpoint.Observations.Select(item =>
                     item.ObservationId == pending.ObservationId ? updated : item).ToList();
-                var next = NewCheckpoint(observations, checkpoint.LastStableFeatureHash);
-                await checkpointStore.SaveAsync(next, cancellationToken);
-                checkpoint = next;
+                var next = NewCheckpoint(observations, currentCheckpoint.LastStableFeatureHash);
+                try
+                {
+                    await checkpointStore.SaveAsync(next, cancellationToken);
+                    checkpoint = next;
+                    currentCheckpoint = next;
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+                catch (Exception exception)
+                {
+                    catalog = new CatalogIngestReceipt(
+                        CatalogIngestDisposition.Failed,
+                        catalog.CatalogReferenceId,
+                        $"catalog receipt is pending checkpoint retry: {exception.Message}");
+                }
                 results.Add(new ObservationAdoptionResult(
                     pending.ObservationId,
                     new ArtifactPublishReceipt(
@@ -1677,7 +1807,7 @@ public sealed class JacketObservationSession(
                         pending.SourceImageHash,
                         pending.JacketCropHash),
                     catalog,
-                    next));
+                    currentCheckpoint));
             }
             return results;
         }
@@ -1685,6 +1815,54 @@ public sealed class JacketObservationSession(
         {
             gate.Release();
         }
+    }
+
+    private async Task<IReadOnlyDictionary<string, ObservationArtifact>> ValidateRetryStateAsync(
+        ObservationSessionIdentity retryIdentity,
+        ObservationCheckpoint retryCheckpoint,
+        string retryMasterPath,
+        string retryCatalogPath,
+        CancellationToken cancellationToken)
+    {
+        if (artifactPublisher is not IObservationArtifactReader reader)
+        {
+            throw new InvalidOperationException("artifact reader is unavailable for catalog retry");
+        }
+        await catalogAdapter.ValidateSessionAsync(
+            retryIdentity,
+            retryCatalogPath,
+            retryMasterPath,
+            cancellationToken);
+        var artifacts = new Dictionary<string, ObservationArtifact>(StringComparer.Ordinal);
+        foreach (var observation in retryCheckpoint.Observations)
+        {
+            var artifact = await reader.LoadAsync(
+                retryIdentity,
+                observation.ObservationId,
+                cancellationToken);
+            if (artifact.SourceImageHash != observation.SourceImageHash
+                || artifact.JacketCropHash != observation.JacketCropHash
+                || artifact.Feature.FeatureHash != observation.FeatureHash
+                || artifact.Feature.FeatureVersion != (observation.JacketFeatureVersion
+                    ?? artifact.Feature.FeatureVersion)
+                || artifact.TitleLineFeature?.FeatureVersion != observation.TitleLineFeatureVersion
+                || artifact.TitleLineFeature?.FeatureHash != observation.TitleLineHash
+                || artifact.CompositeIdentity?.IdentityVersion != observation.CompositeIdentityVersion
+                || artifact.CompositeIdentity?.IdentityHash != observation.CompositeIdentityHash
+                || artifact.PublishedArtifactPath != observation.ArtifactPath
+                || artifact.CreatedAtUtc != observation.AdoptedAtUtc)
+            {
+                throw new InvalidOperationException(
+                    "checkpoint ledger does not match its observation artifact");
+            }
+            await catalogAdapter.ValidateReceiptAsync(
+                observation,
+                artifact,
+                retryCatalogPath,
+                cancellationToken);
+            artifacts.Add(observation.ObservationId, artifact);
+        }
+        return artifacts;
     }
 
     public async Task StopAsync(CancellationToken cancellationToken = default)
@@ -1830,6 +2008,20 @@ public sealed class JacketObservationSession(
         }
     }
 
+    private static void ValidateCatalogRetryRequest(ObservationCatalogRetryRequest value)
+    {
+        AtomicObservationCheckpointStore.ValidateSessionId(value.SessionId);
+        if (string.IsNullOrWhiteSpace(value.MasterVersion)
+            || string.IsNullOrWhiteSpace(value.MasterSourceHash)
+            || string.IsNullOrWhiteSpace(value.CatalogIdentity)
+            || value.CatalogSchemaVersion <= 0
+            || string.IsNullOrWhiteSpace(value.CatalogCreatedAt)
+            || string.IsNullOrWhiteSpace(value.FeatureExtractorVersion))
+        {
+            throw new InvalidOperationException("observation catalog retry identity is incomplete");
+        }
+    }
+
     private static bool IdentityMatches(
         ObservationResumeRequest expected,
         ObservationSessionIdentity actual) =>
@@ -1845,6 +2037,17 @@ public sealed class JacketObservationSession(
         && expected.FrameClockVersion == actual.FrameClockVersion
         && expected.Window == actual.Window
         && expected.Window.IsSameTarget(actual.Window);
+
+    private static bool RetryIdentityMatches(
+        ObservationCatalogRetryRequest expected,
+        ObservationSessionIdentity actual) =>
+        expected.SessionId == actual.SessionId
+        && expected.MasterVersion == actual.MasterVersion
+        && expected.MasterSourceHash == actual.MasterSourceHash
+        && expected.CatalogIdentity == actual.CatalogIdentity
+        && expected.CatalogSchemaVersion == actual.CatalogSchemaVersion
+        && expected.CatalogCreatedAt == actual.CatalogCreatedAt
+        && expected.FeatureExtractorVersion == actual.FeatureExtractorVersion;
 }
 
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]

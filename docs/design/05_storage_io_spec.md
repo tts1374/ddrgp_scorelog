@@ -290,7 +290,7 @@ M8のscore DB file output previewでは、`--m8-score-db-output data\...\ddrgp-s
 
 ## M5b jacket catalog
 
-ローカルjacket catalogは `data/` 配下の明示SQLite pathだけへ新規作成する。初回リリース向けcurrent schemaのversionは1で、専用identity、`PRAGMA user_version=1`、metadata schema version 1、exact tables/columns/constraints/index/foreign keyをstrictに検査する。current schemaとexact一致しない旧catalog、非catalog SQLite、破損catalog、正式個人スコアDB、M8 preview DB、M4 master DBは読み取り専用検査でunsupportedとして拒否し、作成、修復、migrationを行わない。
+ローカルjacket catalogは repository root直下の `databases/` 配下の固定SQLite pathへ新規作成する。masterは `databases/ddrgp-master.sqlite`、catalogは `databases/jacket-catalog.sqlite` を正本とする。初回リリース向けcurrent schemaのversionは1で、専用identity、`PRAGMA user_version=1`、metadata schema version 1、exact tables/columns/constraints/index/foreign keyをstrictに検査する。current schemaとexact一致しない旧catalog、非catalog SQLite、破損catalog、正式個人スコアDB、M8 preview DB、M4 master DBは読み取り専用検査でunsupportedとして拒否し、作成、修復、migrationを行わない。
 
 current referenceはmanual review revision/historyと、`jacket_feature_version/hash`、`title_line_feature_version/hash`、`composite_identity_version/hash`を全nullまたは全非nullの1組として保持する。通常observation ingestは完全な非null組を必須とし、既知version、lower SHA-256、UTF-8 NUL区切りcanonical hashを検査する。`(composite_identity_version, composite_identity_hash)`はcatalog全体で一意とし、read-only identity集合には`unresolved`、review待ち、確定、再割当、`reopen`、`rejected`をすべて含める。
 

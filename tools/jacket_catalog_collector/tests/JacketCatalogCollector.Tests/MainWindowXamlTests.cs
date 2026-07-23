@@ -49,6 +49,15 @@ public sealed class MainWindowXamlTests
         Assert.Contains("収集を開始", buttonLabels);
         Assert.Contains("収集を終了", buttonLabels);
         Assert.Contains(
+            document.Descendants().Where(element => element.Name.LocalName == "Button"),
+            element => element.Attribute("Content")?.Value == "catalog retry"
+                && element.Attribute("IsEnabled")?.Value
+                    == "{Binding Observation.CanRetryCatalog}");
+        Assert.Contains(
+            document.Descendants().Where(element => element.Name.LocalName == "TextBlock"),
+            element => element.Attribute("Text")?.Value
+                == "{Binding Observation.CollectionResult}");
+        Assert.Contains(
             document.Descendants().Where(element => element.Name.LocalName == "CheckBox"),
             element => element.Attribute("Content")?.Value
                     == "このsessionで保存前照合済み候補を自動保存する（既定OFF）"
@@ -63,15 +72,27 @@ public sealed class MainWindowXamlTests
     }
 
     [Fact]
-    public void WindowStartupBindsRememberedDatabaseReload()
+    public void WindowStartupBindsFixedDatabaseInitializationWithoutSelection()
     {
         var document = LoadMainWindow();
         var window = document.Root!;
+        var code = File.ReadAllText(GetMainWindowCodePath());
 
         Assert.Equal("MainWindow_Loaded", window.Attribute("Loaded")?.Value);
         Assert.Contains(
             document.Descendants().Where(element => element.Name.LocalName == "TextBlock"),
             element => element.Attribute("Text")?.Value == "{Binding StatusMessage}");
+
+        var buttons = document
+            .Descendants()
+            .Where(element => element.Name.LocalName == "Button")
+            .Select(element => element.Attribute("Content")?.Value)
+            .ToList();
+        Assert.DoesNotContain("master/catalogを選択", buttons);
+        Assert.Contains("曲情報を更新", buttons);
+        Assert.Contains("CollectorDatabasePaths.Resolve()", code, StringComparison.Ordinal);
+        Assert.DoesNotContain("Directory.GetCurrentDirectory()", code, StringComparison.Ordinal);
+        Assert.DoesNotContain("database-paths.v1.json", code, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -183,6 +204,10 @@ public sealed class MainWindowXamlTests
             "JacketCatalogCollector",
             "MainWindow.xaml"));
     }
+
+    private static string GetMainWindowCodePath() => Path.Combine(
+        Path.GetDirectoryName(GetMainWindowPath())!,
+        "MainWindow.xaml.cs");
 
     private static string GetTestSourcePath([CallerFilePath] string path = "") => path;
 }

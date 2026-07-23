@@ -22,18 +22,18 @@ jobs:
 
       - name: Install runtime dependencies
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install beautifulsoup4 lxml requests pytest
+          python -X utf8 -m pip install --upgrade pip
+          python -X utf8 -m pip install beautifulsoup4 lxml requests pytest
 
       - name: Run master parser fixture tests
-        run: python -m pytest tests/test_master_builder.py
+        run: python -X utf8 -m pytest tests/test_master_builder.py
 
       - name: Build SQLite master database
-        run: python -m master --output data/master/ddrgp-master.sqlite
+        run: python -X utf8 -m master --output data/master/ddrgp-master.sqlite
 
       - name: Inspect generated database
         run: >
-          python -m master.inspect data/master/ddrgp-master.sqlite
+          python -X utf8 -m master.inspect data/master/ddrgp-master.sqlite
           --summary data/master/master-summary.json
 
       - name: Upload master database artifact
