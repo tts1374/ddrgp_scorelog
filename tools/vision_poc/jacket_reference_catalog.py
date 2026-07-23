@@ -44,6 +44,7 @@ AUTO_CONFIRMATION_SOURCES = (
     "jacket_top3_title_ocr",
     "ocr_title_artist_pair",
 )
+AUTO_CONFIRMATION_EVIDENCE_SCHEMA_VERSION = "jacket-catalog-auto-confirmation-evidence-v1"
 COVERAGE_FIELDNAMES = (
     "song_id",
     "title",

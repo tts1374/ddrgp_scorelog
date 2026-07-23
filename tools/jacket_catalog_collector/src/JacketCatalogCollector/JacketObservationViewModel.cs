@@ -9,6 +9,7 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
     private readonly JacketObservationSession session;
     private readonly ICaptureDispatcher dispatcher;
     private readonly InformationTitleLineDetector informationDetector;
+    private readonly ICollectionAutoConfirmationService? autoConfirmationService;
     private readonly object frameSync = new();
     private readonly SemaphoreSlim saveGate = new(1, 1);
     private readonly SemaphoreSlim stopGate = new(1, 1);
@@ -44,12 +45,14 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
         WindowCaptureViewModel capture,
         JacketObservationSession session,
         ICaptureDispatcher dispatcher,
-        InformationTitleLineDetector? informationDetector = null)
+        InformationTitleLineDetector? informationDetector = null,
+        ICollectionAutoConfirmationService? autoConfirmationService = null)
     {
         this.capture = capture;
         this.session = session;
         this.dispatcher = dispatcher;
         this.informationDetector = informationDetector ?? new InformationTitleLineDetector();
+        this.autoConfirmationService = autoConfirmationService;
         capture.FrameReceived += OnFrameReceived;
         capture.LifecycleChanged += OnLifecycleChanged;
     }
@@ -460,7 +463,37 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
             {
                 retryFailure = exception;
             }
-            var summary = BuildCatalogRetrySummary(results, retryFailure?.Message);
+            var preliminarySummary = BuildCatalogRetrySummary(results, retryFailure?.Message);
+            CollectionAutoConfirmationReceipt? autoConfirmation = null;
+            Exception? autoConfirmationFailure = null;
+            if (retryFailure is null
+                && preliminarySummary.PendingObservationCount == 0
+                && autoConfirmationService is not null
+                && session.Checkpoint is not null)
+            {
+                try
+                {
+                    autoConfirmation = await autoConfirmationService.ApplyAsync(
+                        preliminarySummary.SessionId,
+                        cancellationToken);
+                }
+                catch (Exception exception)
+                {
+                    autoConfirmationFailure = exception;
+                }
+            }
+            var summary = BuildCatalogRetrySummary(
+                results,
+                retryFailure?.Message ?? autoConfirmationFailure?.Message);
+            if (autoConfirmation is not null)
+            {
+                summary = summary with
+                {
+                    IsNoOp = summary.IsNoOp && autoConfirmation.RequestedCount == 0,
+                    AutoConfirmedCount = autoConfirmation.AutoConfirmedCount,
+                    ManualReviewCount = autoConfirmation.RemainingCount,
+                };
+            }
             SetCatalogRetrySummary(summary);
             StatusTitle = summary.IsRejected
                 ? "収集終了・catalog retry拒否"

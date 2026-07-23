@@ -51,7 +51,13 @@ public partial class MainWindow : Window
                 windowCapture,
                 observationSession,
                 dispatcher,
-                new InformationTitleLineDetector()),
+                new InformationTitleLineDetector(),
+                new PythonCollectionAutoConfirmationService(
+                    runner,
+                    repositoryRoot,
+                    evidenceRoot,
+                    databasePaths.MasterPath,
+                    databasePaths.CatalogPath)),
             databasePaths: databasePaths,
             catalogInitializationService: new CatalogInitializationService(
                 runner,

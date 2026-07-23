@@ -367,11 +367,16 @@ public sealed record CatalogRetrySummary(
     int PendingObservationCount,
     bool IsNoOp,
     bool IsRejected,
-    string Message)
+    string Message,
+    int? AutoConfirmedCount = null,
+    int? ManualReviewCount = null)
 {
     public string DisplayMessage =>
         $"session={SessionId}, 保存済みobservation={SavedObservationCount}, "
         + $"catalog新規={CatalogCreatedCount}, 既存/冪等no-op={CatalogExistingCount}, "
         + $"catalog反映失敗={CatalogFailureCount}, pending={PendingObservationCount}"
+        + (AutoConfirmedCount is null
+            ? ""
+            : $", auto-confirm={AutoConfirmedCount}, manual残件={ManualReviewCount ?? 0}")
         + (string.IsNullOrWhiteSpace(Message) ? "" : $" / {Message}");
 }
