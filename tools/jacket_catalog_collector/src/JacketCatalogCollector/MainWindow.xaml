@@ -248,6 +248,8 @@
                                     </Border>
                                 </StackPanel>
                                 <StackPanel Grid.Column="1" HorizontalAlignment="Right">
+                                    <Button Content="projection再読込"
+                                            Click="RefreshCandidates_Click" />
                                     <Button Content="一括反映"
                                             Style="{StaticResource PrimaryButton}"
                                             Click="ApplyDrafts_Click" />

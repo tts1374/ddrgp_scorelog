@@ -319,10 +319,13 @@ capture mismatchはexport対象外とし、生成ODSとplanはGit管理しない
 境界として後続PRへ分ける。
 
 collectorの明示的な`収集を終了`は、snapshot/ODSを入力するproduction pipelineとは別に、同じ保存境界へ接続する
-live collection-end入口です。`pending`のcatalog retryが完了した後、current projectionの`exact_unique` /
-`alias_unique`だけを既存#53の`ocr_title_artist_pair` auto-confirm targetとして組み立て、既存writerの1 transactionへ
-渡し、完了後にprojectionを再読込します。snapshot/ODSを必要とするjacket gate/top3 routeはcollector側で再構築しません。曖昧、候補なし、低confidence、評価失敗/不能、GP対象外、既存manual/
-rejected/revision stateは自動確定せず、既存manual review境界に残します。これはmatching policy、threshold、OCR、
+live collection-end入口です。`pending`のcatalog retryが完了した後、current catalogの`auto_confirmed` /
+`manual_confirmed` referenceから復元した現行M5 jacket特徴量へ既存のdistance threshold / ambiguity gateを適用し、
+一意なjacket top-1だけを`jacket_gate` auto-confirm targetとして組み立てます。jacketで解決しない行は、current
+projectionの`exact_unique` / `alias_unique`だけを既存#53の`ocr_title_artist_pair` auto-confirm targetとして組み立て、
+既存writerの1 transactionへ渡し、完了後にprojectionを再読込します。snapshot/ODSの再構築、jacket top3 routeや
+OCR方式の変更は行いません。曖昧、候補なし、低confidence、評価失敗/不能、GP対象外、既存manual/rejected/revision
+stateはjacket単独では自動確定せず、既存manual review境界に残します。これはmatching policy、threshold、OCR、
 catalog schema、manual historyを変更せず、unsafe stop、通常のcatalog retry、manual review、coverageからは起動しません。
 
 ## 削除・移動のルール

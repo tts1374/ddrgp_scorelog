@@ -215,6 +215,7 @@ public sealed class MainWindowXamlTests
         Assert.Contains(bindings, value => value.Contains(
             "ProcessedAt", StringComparison.Ordinal));
         Assert.Contains("一括反映", buttons);
+        Assert.Contains("projection再読込", buttons);
         Assert.DoesNotContain("未保存の下書きを保存", buttons);
         Assert.Contains("確定  ", runTexts);
         Assert.Contains("却下  ", runTexts);

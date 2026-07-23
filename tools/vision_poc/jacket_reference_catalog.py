@@ -1856,6 +1856,11 @@ def _decode_persisted_feature(row: sqlite3.Row) -> master_match.JacketFeature:
     )
 
 
+def decode_persisted_feature(row: sqlite3.Row) -> master_match.JacketFeature:
+    """Decode one persisted current-catalog jacket feature for read-only matching."""
+    return _decode_persisted_feature(row)
+
+
 def validate_observation_session(
     catalog_path: Path,
     master_db: Path,

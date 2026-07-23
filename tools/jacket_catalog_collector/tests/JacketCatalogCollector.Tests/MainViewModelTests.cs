@@ -410,6 +410,50 @@ public sealed class MainViewModelTests
     }
 
     [Fact]
+    public async Task ReportsCommittedCatalogAndAllowsResyncWhenPostCommitReloadFails()
+    {
+        var projection = ProjectionWithVisibilityStates();
+        var store = new StubManualReviewDraftStore(
+        [
+            new ManualReviewDraft
+            {
+                ObservationId = "observation-confirmed",
+                Status = "confirmed",
+                TruthSongId = "song-1",
+                Notes = "confirm",
+            },
+        ]);
+        var workflow = new StubReviewWorkflowService();
+        var projectionService = new FailOnceProjectionService(
+            projection,
+            new InvalidOperationException("projection reload failed"));
+        var viewModel = new MainViewModel(
+            new StubMasterUpdateService(),
+            projectionService,
+            workflow,
+            manualReviewDraftStore: store);
+
+        await viewModel.LoadProjectionAsync();
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => viewModel.ApplyDraftsAsync());
+
+        Assert.Equal("review一括反映済み・後処理未完了", viewModel.StatusTitle);
+        Assert.Contains("catalog/historyは反映済み", viewModel.StatusMessage,
+            StringComparison.Ordinal);
+        Assert.Contains("projection再読込", viewModel.StatusMessage,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("変更していません", viewModel.StatusMessage,
+            StringComparison.Ordinal);
+        Assert.Contains("observation-confirmed", store.Drafts.Keys);
+
+        await viewModel.LoadProjectionAsync();
+        Assert.Equal("読込完了", viewModel.StatusTitle);
+        Assert.True(await viewModel.ApplyDraftsAsync(), viewModel.StatusMessage);
+        Assert.DoesNotContain("observation-confirmed", store.Drafts.Keys);
+    }
+
+    [Fact]
     public async Task ReviewedRowsShowCurrentAndPlannedValuesAndBuildCorrections()
     {
         var projection = ProjectionWithVisibilityStates();
@@ -907,6 +951,24 @@ public sealed class MainViewModelTests
             return callCount == 1
                 ? Task.FromResult(first)
                 : Task.FromException<ReviewProjection>(second);
+        }
+    }
+
+    private sealed class FailOnceProjectionService(
+        ReviewProjection projection,
+        Exception failure) : IProjectionService
+    {
+        private int callCount;
+
+        public Task<ReviewProjection> LoadAsync(
+            string masterPath,
+            string catalogPath,
+            CancellationToken cancellationToken)
+        {
+            callCount++;
+            return callCount == 2
+                ? Task.FromException<ReviewProjection>(failure)
+                : Task.FromResult(projection);
         }
     }
 

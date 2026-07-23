@@ -214,6 +214,15 @@ class JacketFeatureMasterEntry:
 
 
 @dataclass(frozen=True)
+class JacketReferenceMatch:
+    song_id: str
+    distance: float
+    margin: float | None
+    rank: int
+    feature_source: str
+
+
+@dataclass(frozen=True)
 class TitleFeatureMasterEntry:
     organized_file: str
     source_song_title: str
@@ -539,6 +548,55 @@ def jacket_feature_distance(left: JacketFeature, right: JacketFeature) -> float:
     dhash_distance = float(np.mean(left.dhash_bits != right.dhash_bits))
     return (0.70 * thumbnail_distance) + (0.20 * histogram_distance) + (
         0.10 * dhash_distance
+    )
+
+
+def match_jacket_reference_feature(
+    result_feature: JacketFeature,
+    feature_master_entries: Iterable[JacketFeatureMasterEntry],
+    *,
+    distance_threshold: float = DEFAULT_JACKET_DISTANCE_THRESHOLD,
+    ambiguity_delta: float = DEFAULT_JACKET_AMBIGUITY_DELTA,
+) -> JacketReferenceMatch | None:
+    """Return a unique current-catalog jacket match under the existing M5 gate."""
+    best_by_song_id: dict[str, tuple[float, JacketFeatureMasterEntry]] = {}
+    for entry in feature_master_entries:
+        distance = jacket_feature_distance(result_feature, entry.feature)
+        current = best_by_song_id.get(entry.song_id)
+        if current is None or distance < current[0]:
+            best_by_song_id[entry.song_id] = (distance, entry)
+    if not best_by_song_id:
+        return None
+
+    ordered = sorted(
+        (
+            distance,
+            song_id,
+            entry,
+        )
+        for song_id, (distance, entry) in best_by_song_id.items()
+    )
+    top_distance, top_song_id, top_entry = ordered[0]
+    if top_distance > distance_threshold:
+        return None
+    if any(
+        distance - top_distance <= ambiguity_delta
+        for distance, song_id, _entry in ordered[1:]
+        if song_id != top_song_id
+    ):
+        return None
+
+    margin = (
+        None
+        if len(ordered) == 1
+        else ordered[1][0] - top_distance
+    )
+    return JacketReferenceMatch(
+        song_id=top_song_id,
+        distance=top_distance,
+        margin=margin,
+        rank=1,
+        feature_source=top_entry.organized_file,
     )
 
 

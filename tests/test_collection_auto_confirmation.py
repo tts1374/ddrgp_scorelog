@@ -10,6 +10,7 @@ from test_title_artist_evaluation import alpha_extractor, fixture_paths, write_a
 from test_unresolved_candidate_evaluation import _ingest_artifact
 
 from tools.vision_poc import collection_auto_confirmation as auto_confirmation
+from tools.vision_poc import jacket_reference_catalog as catalog
 from tools.vision_poc import title_artist_evaluation as evaluation
 from tools.vision_poc import unresolved_candidate_evaluation
 
@@ -92,6 +93,127 @@ def _setup_collection(tmp_path: Path, monkeypatch, count: int = 1):
         reference_ids.append(reference_id)
     _write_checkpoint(artifact_root, manifests, reference_ids)
     return master_path, catalog_path, artifact_root, manifests
+
+
+def _seed_manual_jacket_reference(
+    master_path: Path,
+    catalog_path: Path,
+    artifact_root: Path,
+    *,
+    index: int,
+    song_id: str,
+    source_color: tuple[int, int, int] = (11, 20, 31),
+) -> str:
+    relative = write_artifact(
+        artifact_root,
+        catalog_path,
+        index=index,
+        source_color=source_color,
+        composite=True,
+    )
+    _manifest, reference_id = _ingest_artifact(
+        master_path, catalog_path, artifact_root, relative
+    )
+    catalog.apply_review_mutation(
+        catalog_path,
+        master_path,
+        catalog.ReviewMutationRequest(
+            action_id=f"seed-manual-{index}",
+            reference_id=reference_id,
+            action="manual_confirm",
+            expected_revision=0,
+            expected_status="unresolved",
+            expected_song_id=None,
+            song_id=song_id,
+        ),
+    )
+    return reference_id
+
+
+def test_collection_end_prefers_unique_jacket_gate_over_ocr_pair(
+    tmp_path: Path, monkeypatch
+) -> None:
+    master_path, catalog_path, artifact_root, manifests = _setup_collection(
+        tmp_path, monkeypatch
+    )
+    _seed_manual_jacket_reference(
+        master_path,
+        catalog_path,
+        artifact_root,
+        index=2,
+        song_id="song-alpha",
+    )
+
+    def low_confidence_extractor(image, field: str, method: str):
+        return evaluation.FieldExtraction(
+            "", "", 0.1, "low_confidence", "below threshold"
+        )
+
+    result = auto_confirmation.apply_collection_auto_confirmation(
+        catalog_path,
+        master_path,
+        artifact_root,
+        "session-1",
+        extractor=low_confidence_extractor,
+        applied_at="2026-07-23T00:00:00+00:00",
+    )
+
+    assert (result.requested_count, result.applied_count) == (1, 1)
+    observation_id = str(manifests[0]["observation_id"])
+    with sqlite3.connect(catalog_path) as connection:
+        row = connection.execute(
+            "SELECT review_status, resolution_basis, resolution_reason "
+            "FROM jacket_references WHERE source_capture_id = ?",
+            (observation_id,),
+        ).fetchone()
+    assert row[0:2] == ("auto_confirmed", "jacket_gate")
+    evidence = json.loads(row[2])
+    assert evidence["confirmation_source"] == "jacket_gate"
+    assert evidence["matched_song_id"] == "song-alpha"
+    assert 0.0 <= evidence["jacket_distance"] < 0.01
+    assert evidence["jacket_rank"] == 1
+
+
+def test_collection_end_keeps_ambiguous_jacket_for_existing_ocr_policy(
+    tmp_path: Path, monkeypatch
+) -> None:
+    master_path, catalog_path, artifact_root, manifests = _setup_collection(
+        tmp_path, monkeypatch
+    )
+    _seed_manual_jacket_reference(
+        master_path,
+        catalog_path,
+        artifact_root,
+        index=2,
+        song_id="song-alpha",
+    )
+    _seed_manual_jacket_reference(
+        master_path,
+        catalog_path,
+        artifact_root,
+        index=3,
+        song_id="song-beta",
+    )
+
+    auto_confirmation.apply_collection_auto_confirmation(
+        catalog_path,
+        master_path,
+        artifact_root,
+        "session-1",
+        extractor=alpha_extractor,
+    )
+
+    observation_id = str(manifests[0]["observation_id"])
+    with sqlite3.connect(catalog_path) as connection:
+        row = connection.execute(
+            "SELECT resolution_basis, resolution_reason "
+            "FROM jacket_references WHERE source_capture_id = ?",
+            (observation_id,),
+        ).fetchone()
+    assert row[0] == "ocr_title_artist_pair"
+    evidence = json.loads(row[1])
+    assert evidence["confirmation_source"] == "ocr_title_artist_pair"
+    assert evidence["jacket_distance"] is None
 
 
 def test_collection_end_auto_confirms_all_safe_rows_and_reports_zero_remaining(

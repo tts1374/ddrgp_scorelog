@@ -518,6 +518,7 @@ public sealed class MainViewModel(
         StatusMessage = mutations.Count == 0
             ? "下書きを保存し、catalog変更が必要な行を確認しています。"
             : $"{mutations.Count}行を1 transactionで反映しています。";
+        var catalogCommitted = false;
         try
         {
             if (dirtyUnreviewedRows.Count > 0 || dirtyReviewedRows.Count > 0)
@@ -556,6 +557,7 @@ public sealed class MainViewModel(
                     fixedDatabasePaths.CatalogPath,
                     mutations,
                     cancellationToken);
+                catalogCommitted = true;
                 await LoadProjectionCoreAsync(cancellationToken);
             }
 
@@ -592,30 +594,53 @@ public sealed class MainViewModel(
         }
         catch (OperationCanceledException)
         {
-            StatusTitle = "review一括反映取消";
-            StatusMessage = "一括反映を取り消しました。catalog/historyは変更していません。";
+            if (catalogCommitted)
+            {
+                StatusTitle = "review一括反映済み・後処理未完了";
+                StatusMessage =
+                    "catalog/historyは反映済みです。取消はDB反映を戻していません。"
+                    + " projection再読込後、残っている下書きのcleanupを再試行してください。";
+            }
+            else
+            {
+                StatusTitle = "review一括反映取消";
+                StatusMessage = "一括反映を取り消しました。catalog/historyは変更していません。";
+            }
             throw;
         }
         catch (Exception exception)
         {
-            foreach (var row in plannedUnreviewedRows)
+            if (!catalogCommitted)
             {
-                if (exception.Message.Contains(row.ReferenceId, StringComparison.Ordinal)
-                    || exception.Message.Contains(row.ObservationId, StringComparison.Ordinal))
+                foreach (var row in plannedUnreviewedRows)
                 {
-                    row.SetValidationError(exception.Message);
+                    if (exception.Message.Contains(row.ReferenceId, StringComparison.Ordinal)
+                        || exception.Message.Contains(row.ObservationId, StringComparison.Ordinal))
+                    {
+                        row.SetValidationError(exception.Message);
+                    }
+                }
+                foreach (var row in plannedReviewedRows)
+                {
+                    if (exception.Message.Contains(row.ReferenceId, StringComparison.Ordinal)
+                        || exception.Message.Contains(row.ObservationId, StringComparison.Ordinal))
+                    {
+                        row.SetValidationError(exception.Message);
+                    }
                 }
             }
-            foreach (var row in plannedReviewedRows)
+            if (catalogCommitted)
             {
-                if (exception.Message.Contains(row.ReferenceId, StringComparison.Ordinal)
-                    || exception.Message.Contains(row.ObservationId, StringComparison.Ordinal))
-                {
-                    row.SetValidationError(exception.Message);
-                }
+                StatusTitle = "review一括反映済み・後処理未完了";
+                StatusMessage =
+                    "catalog/historyは反映済みです。projection再読込後、残っている下書きのcleanupを"
+                    + $"再試行してください。詳細: {exception.Message}";
             }
-            StatusTitle = "review一括反映失敗/ロールバック";
-            StatusMessage = exception.Message;
+            else
+            {
+                StatusTitle = "review一括反映失敗/ロールバック";
+                StatusMessage = exception.Message;
+            }
             throw;
         }
         finally
