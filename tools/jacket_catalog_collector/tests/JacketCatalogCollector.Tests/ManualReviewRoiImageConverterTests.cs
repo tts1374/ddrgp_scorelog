@@ -7,7 +7,7 @@ namespace JacketCatalogCollector.Tests;
 public sealed class ManualReviewRoiImageConverterTests
 {
     [Fact]
-    public void UsesTrimmedTitleAndExtendedArtistRois()
+    public void UsesTrimmedTitleAndArtistRois()
     {
         var path = Path.Combine(
             Path.GetTempPath(), $"ddrgp-review-roi-{Guid.NewGuid():N}.png");
@@ -22,7 +22,7 @@ public sealed class ManualReviewRoiImageConverterTests
                 converter.Convert(path, typeof(BitmapSource), "artist", null!));
 
             Assert.Equal(new Int32Rect(309, 60, 467, 32), title.SourceRect);
-            Assert.Equal(new Int32Rect(309, 97, 467, 26), artist.SourceRect);
+            Assert.Equal(new Int32Rect(309, 97, 467, 23), artist.SourceRect);
         }
         finally
         {
