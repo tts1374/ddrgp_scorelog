@@ -7,12 +7,14 @@ public sealed class CaptureObservationController(
     Func<WindowCandidate, CancellationToken, Task<bool>> startCapture,
     Func<Task> stopCapture,
     Func<CaptureLifecycleState> captureState,
-    Func<CancellationToken, Task>? finalizeObservation = null)
+    Func<CancellationToken, Task>? finalizeObservation = null,
+    Func<CancellationToken, Task<WindowCandidate?>>? detectCandidate = null)
 {
     private readonly SemaphoreSlim operationGate = new(1, 1);
     private readonly Lock operationSync = new();
     private CancellationTokenSource? operationCancellation;
     private int stopRequestCount;
+    private bool shutdownRequested;
 
     public async Task<bool> StartAsync(
         WindowCandidate candidate,
@@ -31,6 +33,9 @@ public sealed class CaptureObservationController(
         }
     }
 
+    public Task<bool> StartAsync(CancellationToken cancellationToken = default) =>
+        StartWithDetectionAsync(StartCoreAsync, cancellationToken);
+
     public async Task<bool> ResumeAsync(
         WindowCandidate candidate,
         CancellationToken cancellationToken = default)
@@ -48,6 +53,9 @@ public sealed class CaptureObservationController(
         }
     }
 
+    public Task<bool> ResumeAsync(CancellationToken cancellationToken = default) =>
+        StartWithDetectionAsync(ResumeCoreAsync, cancellationToken);
+
     public async Task StopAsync(CancellationToken cancellationToken = default)
     {
         await StopCoreAsync(cancellationToken, finalize: true);
@@ -55,7 +63,48 @@ public sealed class CaptureObservationController(
 
     public async Task AbortAsync(CancellationToken cancellationToken = default)
     {
+        lock (operationSync)
+        {
+            shutdownRequested = true;
+        }
         await StopCoreAsync(cancellationToken, finalize: false);
+    }
+
+    private async Task<bool> StartWithDetectionAsync(
+        Func<WindowCandidate, CancellationToken, Task<bool>> start,
+        CancellationToken cancellationToken)
+    {
+        if (detectCandidate is null)
+        {
+            throw new InvalidOperationException("DDR GP自動検出が設定されていません。");
+        }
+
+        await operationGate.WaitAsync(cancellationToken);
+        var operation = BeginOperation(cancellationToken);
+        try
+        {
+            operation.Token.ThrowIfCancellationRequested();
+            if (IsShutdownRequested()
+                || captureState() is CaptureLifecycleState.Starting
+                    or CaptureLifecycleState.Capturing
+                    or CaptureLifecycleState.Stopping)
+            {
+                return false;
+            }
+
+            var candidate = await detectCandidate(operation.Token);
+            if (candidate is null)
+            {
+                return false;
+            }
+            operation.Token.ThrowIfCancellationRequested();
+            return await start(candidate, operation.Token);
+        }
+        finally
+        {
+            EndOperation(operation);
+            operationGate.Release();
+        }
     }
 
     private async Task StopCoreAsync(
@@ -188,6 +237,14 @@ public sealed class CaptureObservationController(
         lock (operationSync)
         {
             stopRequestCount--;
+        }
+    }
+
+    private bool IsShutdownRequested()
+    {
+        lock (operationSync)
+        {
+            return shutdownRequested;
         }
     }
 

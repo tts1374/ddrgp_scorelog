@@ -97,7 +97,9 @@ public sealed class MainWindowXamlTests
         Assert.DoesNotContain("master/catalogを選択", buttons);
         Assert.Contains("曲情報を更新", buttons);
         Assert.Contains("CollectorDatabasePaths.Resolve()", code, StringComparison.Ordinal);
-        Assert.Contains("DetectDdrGpAsync()", code, StringComparison.Ordinal);
+        Assert.Contains("DetectDdrGpAsync", code, StringComparison.Ordinal);
+        Assert.Contains("captureObservationController.StartAsync()", code, StringComparison.Ordinal);
+        Assert.Contains("captureObservationController.ResumeAsync()", code, StringComparison.Ordinal);
         Assert.DoesNotContain("SelectedCandidate", code, StringComparison.Ordinal);
         Assert.DoesNotContain("Directory.GetCurrentDirectory()", code, StringComparison.Ordinal);
         Assert.DoesNotContain("database-paths.v1.json", code, StringComparison.Ordinal);

@@ -661,6 +661,7 @@ public sealed class JacketObservationTests : IDisposable
             await clearedAfterStop.Task;
             Assert.Equal("—", viewModel.StableCandidate);
             Assert.Equal("収集は停止中", viewModel.CollectionStateTitle);
+            Assert.Equal("DDR GPを起動し、「収集を開始」を押してください。", viewModel.CollectionStateMessage);
             await coordinator.StopAsync();
         }
     }

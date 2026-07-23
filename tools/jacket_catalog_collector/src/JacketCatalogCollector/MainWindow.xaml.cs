@@ -66,7 +66,8 @@ public partial class MainWindow : Window
             windowCapture.StartAsync,
             windowCapture.StopAsync,
             () => windowCapture.Lifecycle.State,
-            viewModel.FinalizeObservationSessionAsync);
+            viewModel.FinalizeObservationSessionAsync,
+            windowCapture.DetectDdrGpAsync);
         titleArtistEvaluationService = new TitleArtistEvaluationService(runner, repositoryRoot);
         DataContext = viewModel;
     }
@@ -96,27 +97,16 @@ public partial class MainWindow : Window
 
     private async void StartCapture_Click(object sender, RoutedEventArgs e)
     {
-        var capture = viewModel.WindowCapture!;
-        WindowCandidate? candidate;
         try
         {
-            candidate = await capture.DetectDdrGpAsync();
-        }
-        catch (Exception exception)
-        {
-            MessageBox.Show(this, exception.Message, "DDR GP検出失敗");
-            return;
-        }
-        if (candidate is null)
-        {
-            return;
-        }
-        try
-        {
-            if (!await captureObservationController.StartAsync(candidate))
+            if (!await captureObservationController.StartAsync())
             {
                 return;
             }
+        }
+        catch (OperationCanceledException)
+        {
+            // Window closing cancels detection/start without showing a late dialog.
         }
         catch (Exception exception)
         {
@@ -138,27 +128,16 @@ public partial class MainWindow : Window
 
     private async void ResumeCapture_Click(object sender, RoutedEventArgs e)
     {
-        var capture = viewModel.WindowCapture!;
-        WindowCandidate? candidate;
         try
         {
-            candidate = await capture.DetectDdrGpAsync();
-        }
-        catch (Exception exception)
-        {
-            MessageBox.Show(this, exception.Message, "DDR GP検出失敗");
-            return;
-        }
-        if (candidate is null)
-        {
-            return;
-        }
-        try
-        {
-            if (!await captureObservationController.ResumeAsync(candidate))
+            if (!await captureObservationController.ResumeAsync())
             {
                 return;
             }
+        }
+        catch (OperationCanceledException)
+        {
+            // Window closing cancels detection/resume without showing a late dialog.
         }
         catch (Exception exception)
         {

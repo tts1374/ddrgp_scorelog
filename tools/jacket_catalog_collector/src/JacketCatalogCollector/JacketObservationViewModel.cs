@@ -191,7 +191,7 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
         {
             if (captureEnded)
             {
-                return "DDR GPのウィンドウを選び、収集を開始してください。";
+                return "DDR GPを起動し、「収集を開始」を押してください。";
             }
             if (Detection.State == JacketDetectionState.ChangeCandidate)
             {
