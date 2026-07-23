@@ -547,7 +547,7 @@ public sealed class MainViewModel(
         if (Observation is null || projection is null)
         {
             throw new InvalidOperationException(
-                "master/catalogを先に読み込み、window候補を明示選択してください。");
+                "master/catalogを先に読み込み、DDR GPを検出してください。");
         }
         return Observation.StartSessionAsync(
             projection.Master,
@@ -565,7 +565,7 @@ public sealed class MainViewModel(
         if (Observation is null || projection is null)
         {
             throw new InvalidOperationException(
-                "master/catalogを先に読み込み、window候補を明示選択してください。");
+                "master/catalogを先に読み込み、DDR GPを検出してください。");
         }
         return Observation.ResumeSessionAsync(
             projection.Master,

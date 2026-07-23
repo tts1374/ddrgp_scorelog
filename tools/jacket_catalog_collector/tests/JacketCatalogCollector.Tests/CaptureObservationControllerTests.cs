@@ -75,6 +75,81 @@ public sealed class CaptureObservationControllerTests
     }
 
     [Fact]
+    public async Task Auto_detect_start_uses_the_existing_start_flow_inside_the_operation_gate()
+    {
+        var candidate = Candidate();
+        var operations = new FakeOperations
+        {
+            CaptureState = CaptureLifecycleState.Idle,
+            Detection = _ => Task.FromResult<WindowCandidate?>(candidate),
+        };
+
+        var result = await operations.CreateController().StartAsync();
+
+        Assert.True(result);
+        Assert.Equal(
+            ["window.detect", "observation.start", "capture.start"],
+            operations.Calls);
+        Assert.Equal(candidate.Identity, Assert.Single(operations.CaptureCandidates).Identity);
+    }
+
+    [Fact]
+    public async Task Auto_detect_does_not_start_again_while_capture_is_active()
+    {
+        var operations = new FakeOperations
+        {
+            Detection = _ => throw new InvalidOperationException("detection must not run"),
+        };
+
+        var result = await operations.CreateController().StartAsync();
+
+        Assert.False(result);
+        Assert.Empty(operations.Calls);
+    }
+
+    [Fact]
+    public async Task Abort_cancels_auto_detection_before_existing_start_flow()
+    {
+        var entered = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var operations = new FakeOperations
+        {
+            CaptureState = CaptureLifecycleState.Idle,
+            Detection = async cancellationToken =>
+            {
+                entered.TrySetResult();
+                await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+                return Candidate();
+            },
+        };
+        var controller = operations.CreateController();
+        var start = controller.StartAsync();
+
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        var abort = controller.AbortAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => start);
+        await abort;
+        Assert.Equal(["window.detect", "capture.stop", "observation.stop"], operations.Calls);
+    }
+
+    [Fact]
+    public async Task Auto_detect_does_not_run_after_abort_completes()
+    {
+        var operations = new FakeOperations
+        {
+            CaptureState = CaptureLifecycleState.Idle,
+            Detection = _ => throw new InvalidOperationException("detection must not run"),
+        };
+        var controller = operations.CreateController();
+
+        await controller.AbortAsync();
+
+        Assert.False(await controller.StartAsync());
+        Assert.DoesNotContain("window.detect", operations.Calls);
+    }
+
+    [Fact]
     public async Task Resume_starts_observation_before_capture()
     {
         var operations = new FakeOperations();
@@ -289,6 +364,7 @@ public sealed class CaptureObservationControllerTests
         public Exception? CaptureStartException { get; init; }
         public Exception? StopCaptureException { get; init; }
         public bool BlockResume { get; init; }
+        public Func<CancellationToken, Task<WindowCandidate?>>? Detection { get; init; }
         public WindowCandidate? SelectedCandidate { get; set; }
         public bool ActiveObservation { get; private set; }
         public bool ActiveCapture { get; private set; }
@@ -305,7 +381,14 @@ public sealed class CaptureObservationControllerTests
                 StartCaptureAsync,
                 StopCaptureAsync,
                 () => CaptureState,
-                withFinalizer ? FinalizeObservationAsync : null);
+                withFinalizer ? FinalizeObservationAsync : null,
+                Detection is null ? null : DetectCandidateAsync);
+
+        private Task<WindowCandidate?> DetectCandidateAsync(CancellationToken cancellationToken)
+        {
+            Calls.Add("window.detect");
+            return Detection!(cancellationToken);
+        }
 
         private async Task StartObservationAsync(
             WindowCandidate candidate,

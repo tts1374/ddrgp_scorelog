@@ -22,14 +22,21 @@ appは実行ファイルの配置場所からrepository rootを解決し、proce
 初期表示の `ジャケット収集` タブだけで通常の収集を進められます。
 
 1. 起動時に固定pathの曲情報DBとジャケット情報DBをread-onlyで検証・読込する。曲情報DBがない場合は `曲情報を更新` で作成し、曲情報DBが有効でジャケット情報DBがない場合はcurrent schemaの空catalogを自動作成する。
-2. DDR GRAND PRIXを曲選択画面にし、`ウィンドウを再検索` を押す。
-3. 左下の一覧から表示中のDDR GPを1件選び、previewを確認して `収集を開始` を押す。
+2. DDR GRAND PRIXを曲選択画面にし、`収集を開始` を押す。押下時にtop-level windowから、process名が`ddr-konaste`でclient領域が`1280x720`のwindowを自動検出する。
+3. 候補が1件だけの場合は手動選択なしでcaptureを開始する。0件の場合は「DDR GPのウィンドウが見つかりません」、複数件の場合は理由を表示して開始しない。
 4. DDR GPで曲を移動し、`新しいジャケットを検出` と表示されたら `このジャケットを保存` を押す。session単位の自動保存を使う場合だけ、開始後に既定OFFのcheckboxを明示的に有効化する。
 5. `このジャケットは保存済み` と表示されたら、DDR GPで次の曲へ移動する。終了時は `収集を終了` を押す。開始済みのframe処理と保存処理がdrainされた後、同じsessionのpendingだけが最終catalog retryされ、結果後にprojectionが再読込される。
 
 detectorの内部状態は通常画面へ表示しません。同じ画像が連続する間も未保存のstable候補は保存可能なまま維持し、保存後は次の曲へ移動する案内を表示します。自動保存は起動時・fresh session・resumeのたびにOFFへ戻り、端末設定へ保存しません。session再開とcatalog retryは `詳細・復旧操作`、master更新とtitle/artist評価は `管理・設定` にあります。
 
 `収集を終了`以外の停止（window終了、resize、device loss、capture failure、例外、collectorのwindow close）では安全停止だけを行い、自動catalog retryは開始しません。artifact、source/crop、manifest、checkpointとpending件数は保持されます。`詳細・復旧操作`へcompatibleなsession IDを入力して `catalog retry` を押すと、captureやwindow再選択を行わず、そのsessionのidentityとartifactを検証してからpendingだけを明示retryできます。drift、非互換checkpoint、artifact破損はcatalogを変更せず拒否します。
+
+## Issue #78 実環境確認
+
+1. DDR GPを終了した状態でcollectorを起動し、`収集を開始`を押す。`DDR GPのウィンドウが見つかりません。ゲームを起動してから再度実行してください。`が表示され、capture、detector、artifact、checkpoint、catalogが開始・変更されないことを確認する。
+2. DDR GPを起動して曲選択画面にし、`収集を開始`を押す。手動のwindow選択なしで `ddr-konaste / 1280x720` が検出され、captureが接続中になることを確認する。
+3. preview、ジャケット検出、明示保存または既定OFFの自動保存、`収集を終了`を従来どおり確認する。
+4. 収集中にDDR GPを終了する。対象window消失として安全停止し、自動再接続・自動再開・自動catalog retryを行わず、既存artifact/checkpointを保持することを確認する。
 
 ## Fixed master/catalog paths
 
@@ -95,9 +102,9 @@ python -m tools.vision_poc.jacket_catalog_review_projection `
 
 ## Window capture lifecycle
 
-`ジャケット収集` はtop-level windowを列挙し、titleまたはprocess名からDDR GRAND PRIX候補になった理由、handle、PID、process start identity、title/class、client size、visible/minimized状態と取得可能なpreviewを表示します。候補が1件でも自動選択・自動開始しません。開発者が行を選び、preview、根拠、identityを確認dialogで再確認した場合だけWindows Graphics Captureを開始します。
+`収集を開始` または明示的な `session再開` の押下時だけtop-level windowを列挙し、process名が`ddr-konaste`かつclient領域が`1280x720`のwindowをDDR GPとして検出します。候補が1件だけの場合に限り、検出したwindowを既存captureへ渡します。0件または複数件では収集を開始せず、通常画面に短い理由を表示します。手動の候補一覧、汎用window選択、自動開始は行いません。
 
-保護された`ddr-konaste` windowでは`PrintWindow`が応答しないため、候補一覧のpreview取得を試行せず、process名、handle/PID/process start、title/class、client size/stateを確認対象とします。これは明示開始後のWindows Graphics Captureを無効化するものではありません。
+保護された`ddr-konaste` windowでは`PrintWindow`が応答しないため、検出時のpreview取得を試行しません。capture開始後のWindows Graphics Captureでpreviewを取得します。
 
 開始直前と各frame受領時にhandle、PID、process start、process名、title/class、client size、visible/minimized状態を再検査します。stale候補、handle再利用、resize、identity drift、最小化、対象終了では暗黙に別windowを選択・再開始せず、終了理由を表示します。二重開始を拒否し、停止・開始取消・window close・device loss・capture例外は冪等停止としてin-flight callbackをdrainしてからresourceを1回だけ解放します。collector終了時もactive sessionの停止完了を待ちます。
 

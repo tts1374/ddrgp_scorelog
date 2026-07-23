@@ -91,7 +91,7 @@ public sealed record CaptureLifecycleSnapshot(
         0,
         "not_created",
         null,
-        "候補を更新し、previewと根拠を確認して明示選択してください。");
+        "収集開始でDDR GPを自動検出します。");
 }
 
 public interface IWindowEnumerator

@@ -66,7 +66,8 @@ public partial class MainWindow : Window
             windowCapture.StartAsync,
             windowCapture.StopAsync,
             () => windowCapture.Lifecycle.State,
-            viewModel.FinalizeObservationSessionAsync);
+            viewModel.FinalizeObservationSessionAsync,
+            windowCapture.DetectDdrGpAsync);
         titleArtistEvaluationService = new TitleArtistEvaluationService(runner, repositoryRoot);
         DataContext = viewModel;
     }
@@ -94,45 +95,18 @@ public partial class MainWindow : Window
         }
     }
 
-    private async void RefreshWindows_Click(object sender, RoutedEventArgs e)
-    {
-        try
-        {
-            await viewModel.WindowCapture!.RefreshCandidatesAsync();
-        }
-        catch (Exception exception)
-        {
-            MessageBox.Show(this, exception.Message, "window候補取得失敗");
-        }
-    }
-
     private async void StartCapture_Click(object sender, RoutedEventArgs e)
     {
-        var capture = viewModel.WindowCapture!;
-        var candidate = capture.SelectedCandidate;
-        if (candidate is null)
-        {
-            MessageBox.Show(this, "候補のpreviewと根拠を確認して1件を明示選択してください。");
-            return;
-        }
-        var identity = candidate.Identity;
-        if (MessageBox.Show(
-            this,
-            $"次のwindowだけをcaptureします。自動再選択・disk保存は行いません。\n\n"
-            + $"{candidate.DisplayName}\nreason: {candidate.CandidateReason}\n"
-            + $"process start: {identity.ProcessStartTicks}\nclass: {identity.ClassName}",
-            "capture開始確認",
-            MessageBoxButton.OKCancel,
-            MessageBoxImage.Warning) != MessageBoxResult.OK)
-        {
-            return;
-        }
         try
         {
-            if (!await captureObservationController.StartAsync(candidate))
+            if (!await captureObservationController.StartAsync())
             {
                 return;
             }
+        }
+        catch (OperationCanceledException)
+        {
+            // Window closing cancels detection/start without showing a late dialog.
         }
         catch (Exception exception)
         {
@@ -154,19 +128,16 @@ public partial class MainWindow : Window
 
     private async void ResumeCapture_Click(object sender, RoutedEventArgs e)
     {
-        var capture = viewModel.WindowCapture!;
-        var candidate = capture.SelectedCandidate;
-        if (candidate is null)
-        {
-            MessageBox.Show(this, "再開するwindow候補を明示選択してください。");
-            return;
-        }
         try
         {
-            if (!await captureObservationController.ResumeAsync(candidate))
+            if (!await captureObservationController.ResumeAsync())
             {
                 return;
             }
+        }
+        catch (OperationCanceledException)
+        {
+            // Window closing cancels detection/resume without showing a late dialog.
         }
         catch (Exception exception)
         {

@@ -48,6 +48,17 @@ public sealed class MainWindowXamlTests
         Assert.Contains("このジャケットを保存", buttonLabels);
         Assert.Contains("収集を開始", buttonLabels);
         Assert.Contains("収集を終了", buttonLabels);
+        Assert.DoesNotContain("ウィンドウを再検索", buttonLabels);
+        Assert.DoesNotContain(
+            document.Descendants().SelectMany(element => element.Attributes()),
+            attribute => attribute.Value.Contains("WindowCapture.Candidates", StringComparison.Ordinal)
+                || attribute.Value.Contains("WindowCapture.SelectedCandidate", StringComparison.Ordinal));
+        Assert.Contains(
+            document.Descendants().Where(element => element.Name.LocalName == "TextBlock"),
+            element => element.Attribute("Text")?.Value == "{Binding WindowCapture.TargetDisplay}");
+        Assert.Contains(
+            document.Descendants().Where(element => element.Name.LocalName == "TextBlock"),
+            element => element.Attribute("Text")?.Value == "{Binding WindowCapture.ConnectionDisplay}");
         Assert.Contains(
             document.Descendants().Where(element => element.Name.LocalName == "Button"),
             element => element.Attribute("Content")?.Value == "catalog retry"
@@ -64,11 +75,6 @@ public sealed class MainWindowXamlTests
                 && element.Attribute("IsChecked")?.Value
                     == "{Binding Observation.AutoSaveEnabled, Mode=TwoWay}");
         Assert.Contains("管理・設定", tabs);
-        Assert.Contains(
-            document.Descendants().Where(element => element.Name.LocalName == "DataGridCheckBoxColumn"),
-            element => element.Attribute("Header")?.Value == "最小化"
-                && element.Attributes().Any(attribute =>
-                    attribute.Value.Contains("Identity.IsMinimized", StringComparison.Ordinal)));
     }
 
     [Fact]
@@ -91,6 +97,10 @@ public sealed class MainWindowXamlTests
         Assert.DoesNotContain("master/catalogを選択", buttons);
         Assert.Contains("曲情報を更新", buttons);
         Assert.Contains("CollectorDatabasePaths.Resolve()", code, StringComparison.Ordinal);
+        Assert.Contains("DetectDdrGpAsync", code, StringComparison.Ordinal);
+        Assert.Contains("captureObservationController.StartAsync()", code, StringComparison.Ordinal);
+        Assert.Contains("captureObservationController.ResumeAsync()", code, StringComparison.Ordinal);
+        Assert.DoesNotContain("SelectedCandidate", code, StringComparison.Ordinal);
         Assert.DoesNotContain("Directory.GetCurrentDirectory()", code, StringComparison.Ordinal);
         Assert.DoesNotContain("database-paths.v1.json", code, StringComparison.Ordinal);
     }

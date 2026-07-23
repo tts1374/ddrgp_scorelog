@@ -35,7 +35,7 @@ public sealed class WindowCaptureTests
     }
 
     [Fact]
-    public async Task Empty_candidates_do_not_select_or_create_capture_resources()
+    public async Task No_detected_window_does_not_select_or_create_capture_resources()
     {
         var windows = new FakeWindowEnumerator([]);
         var factory = new FakeSessionFactory();
@@ -43,16 +43,16 @@ public sealed class WindowCaptureTests
             windows, factory, new RecordingDispatcher());
         var viewModel = new WindowCaptureViewModel(windows, coordinator);
 
-        await viewModel.RefreshCandidatesAsync();
+        var detected = await viewModel.DetectDdrGpAsync();
 
-        Assert.Empty(viewModel.Candidates);
-        Assert.Null(viewModel.SelectedCandidate);
-        Assert.Contains("0件", viewModel.CandidateStatus);
+        Assert.Null(detected);
+        Assert.Equal("DDR GP 未検出", viewModel.TargetDisplay);
+        Assert.Contains("ウィンドウが見つかりません", viewModel.CandidateStatus);
         Assert.Equal(0, factory.StartCount);
     }
 
     [Fact]
-    public async Task Refresh_never_auto_selects_or_starts_single_candidate()
+    public async Task Single_detected_window_is_selected_without_starting_capture()
     {
         var candidate = Candidate();
         var windows = new FakeWindowEnumerator([candidate]);
@@ -61,11 +61,73 @@ public sealed class WindowCaptureTests
             windows, factory, new RecordingDispatcher());
         var viewModel = new WindowCaptureViewModel(windows, coordinator);
 
-        await viewModel.RefreshCandidatesAsync();
+        var detected = await viewModel.DetectDdrGpAsync();
 
-        Assert.Single(viewModel.Candidates);
-        Assert.Null(viewModel.SelectedCandidate);
+        Assert.Equal(candidate, detected);
+        Assert.Contains("ddr-konaste / 1280×720", viewModel.TargetDisplay);
+        Assert.Contains("検出しました", viewModel.CandidateStatus);
         Assert.Equal(0, factory.StartCount);
+    }
+
+    [Fact]
+    public async Task Non_target_windows_are_ignored_during_detection()
+    {
+        var nonTarget = Candidate() with
+        {
+            Identity = Candidate().Identity with { ProcessName = "launcher" },
+        };
+        var windows = new FakeWindowEnumerator([nonTarget]);
+        var factory = new FakeSessionFactory();
+        var coordinator = new WindowCaptureCoordinator(
+            windows, factory, new RecordingDispatcher());
+        var viewModel = new WindowCaptureViewModel(windows, coordinator);
+
+        var detected = await viewModel.DetectDdrGpAsync();
+
+        Assert.Null(detected);
+        Assert.Contains("ウィンドウが見つかりません", viewModel.CandidateStatus);
+        Assert.Equal(0, factory.StartCount);
+    }
+
+    [Fact]
+    public async Task Multiple_detected_windows_are_rejected_without_starting_capture()
+    {
+        var first = Candidate();
+        var second = Candidate() with
+        {
+            Identity = Candidate().Identity with { Handle = (nint)0x5678 },
+        };
+        var windows = new FakeWindowEnumerator([first, second]);
+        var factory = new FakeSessionFactory();
+        var coordinator = new WindowCaptureCoordinator(
+            windows, factory, new RecordingDispatcher());
+        var viewModel = new WindowCaptureViewModel(windows, coordinator);
+
+        var detected = await viewModel.DetectDdrGpAsync();
+
+        Assert.Null(detected);
+        Assert.Equal("DDR GP 未検出", viewModel.TargetDisplay);
+        Assert.Contains("複数", viewModel.CandidateStatus);
+        Assert.Equal(0, factory.StartCount);
+    }
+
+    [Fact]
+    public async Task Detected_window_can_be_passed_to_existing_capture_start()
+    {
+        var candidate = Candidate();
+        var windows = new FakeWindowEnumerator([candidate]);
+        var source = new FakeFrameSource();
+        var factory = new FakeSessionFactory(source);
+        var coordinator = new WindowCaptureCoordinator(
+            windows, factory, new RecordingDispatcher());
+        var viewModel = new WindowCaptureViewModel(windows, coordinator);
+
+        var detected = await viewModel.DetectDdrGpAsync();
+
+        Assert.NotNull(detected);
+        Assert.True(await viewModel.StartAsync(detected!));
+        await coordinator.StopAsync();
+        Assert.Equal(1, factory.StartCount);
     }
 
     [Fact]
@@ -322,9 +384,9 @@ public sealed class WindowCaptureTests
     private static WindowCandidate Candidate()
     {
         var identity = new WindowIdentitySnapshot(
-            (nint)0x1234, 42, 100, "ddrgp", "DDR GRAND PRIX", "game",
+            (nint)0x1234, 42, 100, "ddr-konaste", "DDR GRAND PRIX", "game",
             1280, 720, true, false);
-        return new WindowCandidate(identity, "title contains DDR GRAND PRIX", [1, 2, 3]);
+        return new WindowCandidate(identity, "process name is ddr-konaste and client size is 1280x720", [1, 2, 3]);
     }
 
     private static RawCaptureFrame Frame(long sequence) =>

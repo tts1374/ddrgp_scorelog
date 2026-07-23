@@ -65,7 +65,7 @@ public sealed class WindowCaptureCoordinator(
                 candidate.Identity.ClientWidth, candidate.Identity.ClientHeight,
                 current?.ClientWidth ?? 0, current?.ClientHeight ?? 0,
                 "not_created", candidate.PreviewPng,
-                "候補identityが変化したため開始を拒否しました。候補を更新して再選択してください。"));
+                "候補identityが変化したため開始を拒否しました。収集開始を再実行してください。"));
             ReleaseStartClaim();
             return false;
         }

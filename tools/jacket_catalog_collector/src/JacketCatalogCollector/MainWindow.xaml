@@ -75,42 +75,19 @@
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="*" />
-                            <RowDefinition Height="190" />
                         </Grid.RowDefinitions>
-                        <DockPanel Margin="0,0,0,8">
-                            <Button DockPanel.Dock="Right" Content="ウィンドウを再検索"
-                                    Click="RefreshWindows_Click" />
-                            <StackPanel>
-                                <TextBlock Text="DDR GPの画面" FontSize="17" FontWeight="SemiBold" />
-                                <TextBlock Text="{Binding WindowCapture.CandidateStatus}"
-                                           Foreground="#5F6B7A" TextWrapping="Wrap" />
-                            </StackPanel>
-                        </DockPanel>
+                        <StackPanel Margin="0,0,0,8">
+                            <TextBlock Text="DDR GPの画面" FontSize="17" FontWeight="SemiBold" />
+                            <TextBlock Text="{Binding WindowCapture.TargetDisplay}"
+                                       FontWeight="SemiBold" Margin="0,3,0,0" />
+                            <TextBlock Text="{Binding WindowCapture.CandidateStatus}"
+                                       Foreground="#5F6B7A" TextWrapping="Wrap" />
+                        </StackPanel>
 
                         <Border Grid.Row="1" BorderBrush="#293340" BorderThickness="1"
                                 Background="#111820" CornerRadius="6">
                             <Image Source="{Binding WindowCapture.Preview}" Stretch="Uniform" />
                         </Border>
-
-                        <Grid Grid.Row="2" Margin="0,10,0,0">
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="*" />
-                            </Grid.RowDefinitions>
-                            <TextBlock Text="使用するDDR GPウィンドウを選択" FontWeight="SemiBold" />
-                            <DataGrid Grid.Row="1" Margin="0,6,0,0"
-                                      ItemsSource="{Binding WindowCapture.Candidates}"
-                                      SelectedItem="{Binding WindowCapture.SelectedCandidate}"
-                                      IsReadOnly="True" AutoGenerateColumns="False"
-                                      HeadersVisibility="Column" SelectionMode="Single">
-                                <DataGrid.Columns>
-                                    <DataGridTextColumn Header="ウィンドウ" Binding="{Binding DisplayName}" Width="2*" />
-                                    <DataGridTextColumn Header="検出理由" Binding="{Binding CandidateReason}" Width="*" />
-                                    <DataGridCheckBoxColumn Header="表示中" Binding="{Binding Identity.IsVisible}" Width="65" />
-                                    <DataGridCheckBoxColumn Header="最小化" Binding="{Binding Identity.IsMinimized}" Width="65" />
-                                </DataGrid.Columns>
-                            </DataGrid>
-                        </Grid>
                     </Grid>
 
                     <StackPanel Grid.Column="1">
@@ -135,8 +112,10 @@
                         <Border Style="{StaticResource Card}" Margin="0,12,0,0">
                             <StackPanel>
                                 <TextBlock Text="1. DDR GPへ接続" FontSize="16" FontWeight="SemiBold" />
-                                <TextBlock Text="左の一覧から表示中のDDR GPを選択して開始します。"
+                                <TextBlock Text="収集開始時にDDR GPを自動検出して接続します。"
                                            Foreground="#5F6B7A" Margin="0,4,0,8" TextWrapping="Wrap" />
+                                <TextBlock Text="{Binding WindowCapture.ConnectionDisplay}"
+                                           Margin="0,0,0,8" FontWeight="SemiBold" TextWrapping="Wrap" />
                                 <WrapPanel>
                                     <Button Content="収集を開始" Click="StartCapture_Click" />
                                     <Button Content="収集を終了" Click="StopCapture_Click" />
