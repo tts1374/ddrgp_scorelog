@@ -396,4 +396,35 @@ public sealed class ProjectionService(
         }
         loader.Load(result.StandardOutput);
     }
+
+    public async Task ExportManualReviewXlsxAsync(
+        string masterPath,
+        string catalogPath,
+        string outputPath,
+        CancellationToken cancellationToken)
+    {
+        if (artifactRoot is null)
+        {
+            throw new InvalidOperationException("Manual review XLSX export requires candidate artifact root.");
+        }
+        var result = await processRunner.RunAsync(
+            new ProcessRequest(
+                pythonExecutable,
+                [
+                    "-X", "utf8", "-m", "tools.vision_poc.jacket_catalog_review_projection",
+                    "--catalog", Path.GetFullPath(catalogPath),
+                    "--master-db", Path.GetFullPath(masterPath),
+                    "--artifact-root", Path.GetFullPath(artifactRoot),
+                    "--manual-xlsx-output", Path.GetFullPath(outputPath),
+                ],
+                repositoryRoot),
+            cancellationToken);
+        if (result.ExitCode != 0)
+        {
+            throw new InvalidOperationException(
+                $"Manual review XLSX export failed (exit {result.ExitCode}): "
+                + result.StandardError.Trim());
+        }
+        loader.Load(result.StandardOutput);
+    }
 }

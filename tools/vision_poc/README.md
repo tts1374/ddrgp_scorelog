@@ -668,6 +668,18 @@ python -m tools.vision_poc.jacket_catalog_review_projection `
   --master-db databases\ddrgp-master.sqlite
 ```
 
+未反映のmanual review対象をLibreOfficeで確認・編集する場合は、同じcurrent projectionにartifact rootを渡して、画像をXLSXへ埋め込みます。`needs_review` / `unresolved`だけを出力し、`source.png`がprojectionで検証できない対象はexportを拒否します。出力先は明示指定した任意の`.xlsx`ファイルで、既存fileは指定先へ生成結果を置き換えます。
+
+```powershell
+python -m tools.vision_poc.jacket_catalog_review_projection `
+  --catalog databases\jacket-catalog.sqlite `
+  --master-db databases\ddrgp-master.sqlite `
+  --artifact-root data\jacket_catalog_collector `
+  --manual-xlsx-output data\jacket_catalog_collector\manual-review-export.xlsx
+```
+
+生成XLSXは`Manual Review`、`Master Songs`、`Metadata`の3 sheetを持ち、Manual Reviewの編集列は`status`、`truth_song_id`、`notes`です。`status`は`unreviewed` / `confirmed` / `rejected` / `hold`の選択式です。title/artist ROIはXLSX packageへ埋め込まれるため、外部画像pathやobservation IDからの逆引きに依存しません。対象0件でもheader、current Master全曲、対象件数0のMetadataを出力します。
+
 manual mutationはexpected revision/status/songをpreconditionにし、同一action ID・同一payloadだけを冪等再投入として扱います。manual confirm/reassignはcurrent extractorの完全な永続特徴量と明示song選択を要求し、current rowとhistoryを1 transactionで更新します。候補、expected値、OCR rawは暗黙song選択に使いません。
 
 ```powershell
@@ -689,7 +701,7 @@ PR #53で評価済みの3経路を一括auto-confirmする場合だけ、
 通常ingest、manual review、coverageからこのbatch writerを暗黙起動しません。collectorの明示的な収集終了だけが、
 完成済みDDR WORLD snapshotの32x32公式jacket画像をcurrent masterへ対応付けた公式feature masterをread-onlyで読み、
 既存M5 jacket gate、続いてcurrent projectionの`exact_unique` / `alias_unique`による既存#53 auto-confirm対象をこのbatch writerへ渡します。
-ODSの再構築やjacket top3 routeの暗黙起動は行いません。dry-run/applyとODS exportのコマンド・revision guard・
+XLSXの再構築やjacket top3 routeの暗黙起動は行いません。dry-run/applyとXLSX exportのコマンド・revision guard・
 運用順は`tools/ddrworld_snapshot_evaluation/README.md`を参照してください。
 
 catalog、artifact、checkpoint、source/crop画像、特徴量、review結果、coverageはローカル非共有物であり、Git、CI artifact、Release、通常logへ含めません。生画像やcropの自動削除は行いません。artifact manifest/checkpointのv1/v2 contractとresume/retry状態機械は、このcatalog schema再採番では変更していません。

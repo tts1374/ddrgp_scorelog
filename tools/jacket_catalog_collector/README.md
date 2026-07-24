@@ -91,6 +91,22 @@ top-level必須fieldは `projection_schema_version`、`master`、`catalog`、`co
 
 保存先は `data/jacket_catalog_collector/manual-review-drafts.v1.json` です。ファイルには `observation_id`、`status`、`truth_song_id`、`notes`だけを保存し、再読込後も下書きを復元します。未レビュー側の一括反映は`confirmed` / `rejected`だけを対象にし、`unreviewed` / `hold`は残します。Master検索はcanonical title、title alias、canonical artist、song IDの順に、exact title、exact alias、title prefix、title partial、artist、IDの固定順位で行い、fuzzy matchingは行いません。ROIは既存のimmutable `source.png`を画面内で切り出し、追加の画像生成物は作りません。
 
+### Manual review XLSX export
+
+current projectionから未反映の`needs_review` / `unresolved`だけを、画像埋め込みの単一XLSXへ出力できます。保存先は明示指定した任意の`.xlsx`ファイルで、catalog、Master、下書き、source画像は変更されません。`source.png`がprojectionで検証できない対象は、画像を省略せずexportを拒否します。
+
+```powershell
+python -m tools.vision_poc.jacket_catalog_review_projection `
+  --master-db databases\ddrgp-master.sqlite `
+  --catalog databases\jacket-catalog.sqlite `
+  --artifact-root data\jacket_catalog_collector `
+  --manual-xlsx-output data\jacket_catalog_collector\manual-review-export.xlsx
+```
+
+XLSXは`Manual Review`（`observation_id`、埋め込み`title_roi` / `artist_roi`、`status`、`truth_song_id`、`notes`）、`Master Songs`（current Master全曲）、`Metadata`（XLSX schema/export ID/catalog version/master version/export日時/対象件数）の3 sheetです。編集対象は`status`、`truth_song_id`、`notes`だけで、`status`は`unreviewed` / `confirmed` / `rejected` / `hold`の選択式です。既存XLSXは、WPFの標準保存ダイアログで確認した場合に上書きされます。
+
+WPFの`未レビュー`画面では、`XLSXをエクスポート`を`一括反映`の左側から実行できます。`一括反映`の右側にある`↻`（projectionを更新）で、current master/catalogのprojectionを再読込します。保存先は標準保存ダイアログで任意に選べます。既定の表示先は`data/jacket_catalog_collector`です。
+
 ### レビュー済み訂正
 
 `レビュー済み` タブは、`auto_confirmed` / `manual_confirmed` / `rejected` のcurrent status、current song、下書き予定status/song、notes、登録経路、実行時刻を表示します。予定statusは `unchanged` / `confirmed` / `rejected` / `hold` です。`unchanged` はcurrent status/songを維持し、notesだけの変更はnotes更新として反映します。`hold` はstatus/song/notesを一切反映せず、下書きを残します。song変更、confirmedとrejectの相互変更、notes変更は未レビュー行と同じ一括transactionで処理し、成功した行の下書きだけを消去します。
@@ -174,7 +190,7 @@ python -m tools.vision_poc.title_artist_evaluation `
 
 `title_artist_evaluation.csv/json/md`は同じ入力でbyte-stableに生成され、raw/normalized title/artist、field confidence/status/failure、M4のtitle-primary・artist tie-breakerによる候補と理由、expected coverageを記録します。expectedが両方ある行だけ`evaluated`、片方だけは`partially_evaluated`、両方ない行は`no_expected_values`で、後二者はaccuracy gateへ混入しません。
 
-方式採用gateは、fixture gateに加えて実captureの`evaluated >= 30`、title/artist完全一致率95%以上、field confidence 0.90以上、auto-confirm候補precision 100%、既知誤自動確定0件です。条件、matching policy、threshold、OCR方式は変更しません。明示的な`収集を終了`では、完成済みDDR WORLD snapshotの32x32公式jacket画像をcurrent masterへ対応付けた公式feature masterをread-onlyで読み、既存のjacket gateをlive observationのauto-confirmへ接続します。jacketで解決しない行だけ、既存projectionが返す`exact_unique` / `alias_unique`の#53 auto-confirm対象を既存writerへ渡し、それ以外は従来の空title/artist・`unresolved` ingest/manual review経路へ残します。ODSの再構築、jacket top3 routeやOCR方式の変更は行いません。評価reportや通常のingest/manual review/coverageからauto-confirmを暗黙起動することもありません。
+方式採用gateは、fixture gateに加えて実captureの`evaluated >= 30`、title/artist完全一致率95%以上、field confidence 0.90以上、auto-confirm候補precision 100%、既知誤自動確定0件です。条件、matching policy、threshold、OCR方式は変更しません。明示的な`収集を終了`では、完成済みDDR WORLD snapshotの32x32公式jacket画像をcurrent masterへ対応付けた公式feature masterをread-onlyで読み、既存のjacket gateをlive observationのauto-confirmへ接続します。jacketで解決しない行だけ、既存projectionが返す`exact_unique` / `alias_unique`の#53 auto-confirm対象を既存writerへ渡し、それ以外は従来の空title/artist・`unresolved` ingest/manual review経路へ残します。XLSXの再構築、jacket top3 routeやOCR方式の変更は行いません。評価reportや通常のingest/manual review/coverageからauto-confirmを暗黙起動することもありません。
 
 ## title/artist OCR診断比較 (M5c-6)
 

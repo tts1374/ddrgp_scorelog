@@ -81,7 +81,7 @@ public partial class MainWindow : Window
 
     private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
     {
-        if (startupInitializationStarted || operationCancellation is not null)
+        if (startupInitializationStarted || !CanStartOperation())
         {
             return;
         }
@@ -186,7 +186,7 @@ public partial class MainWindow : Window
 
     private async void EvaluateTitleArtist_Click(object sender, RoutedEventArgs e)
     {
-        if (titleArtistEvaluationBusy || viewModel.IsBusy || operationCancellation is not null)
+        if (titleArtistEvaluationBusy || !CanStartOperation())
         {
             return;
         }
@@ -250,7 +250,7 @@ public partial class MainWindow : Window
 
     private async void RefreshCandidates_Click(object sender, RoutedEventArgs e)
     {
-        if (viewModel.IsBusy || operationCancellation is not null)
+        if (!CanStartOperation())
         {
             return;
         }
@@ -262,9 +262,65 @@ public partial class MainWindow : Window
         await RunOperationAsync(viewModel.LoadProjectionAsync);
     }
 
+    private async void ExportManualReview_Click(object sender, RoutedEventArgs e)
+    {
+        if (!CanStartOperation())
+        {
+            return;
+        }
+        if (viewModel.CurrentMasterPath is null || viewModel.CurrentCatalogPath is null)
+        {
+            MessageBox.Show(this, "masterとcatalogを先にread-only読込してください。");
+            return;
+        }
+
+        var dialog = new SaveFileDialog
+        {
+            Title = "manual review XLSXを保存",
+            Filter = "Excel Workbook (*.xlsx)|*.xlsx",
+            DefaultExt = ".xlsx",
+            AddExtension = true,
+            OverwritePrompt = true,
+            InitialDirectory = Directory.Exists(evidenceRoot)
+                ? evidenceRoot
+                : Path.Combine(repositoryRoot, "data"),
+            FileName = "manual-review-export.xlsx",
+        };
+        if (dialog.ShowDialog(this) != true)
+        {
+            return;
+        }
+
+        var output = Path.GetFullPath(dialog.FileName);
+
+        try
+        {
+            operationCancellation = new CancellationTokenSource();
+            await candidateProjectionService.ExportManualReviewXlsxAsync(
+                viewModel.CurrentMasterPath,
+                viewModel.CurrentCatalogPath,
+                output,
+                operationCancellation.Token);
+            MessageBox.Show(this, output, "XLSX export完了");
+        }
+        catch (OperationCanceledException)
+        {
+            MessageBox.Show(this, "manual review XLSX exportを取り消しました。", "XLSX export取消");
+        }
+        catch (Exception exception)
+        {
+            MessageBox.Show(this, exception.Message, "XLSX export失敗");
+        }
+        finally
+        {
+            operationCancellation?.Dispose();
+            operationCancellation = null;
+        }
+    }
+
     private async void GenerateCandidateReport_Click(object sender, RoutedEventArgs e)
     {
-        if (viewModel.IsBusy || operationCancellation is not null)
+        if (!CanStartOperation())
         {
             return;
         }
@@ -320,7 +376,7 @@ public partial class MainWindow : Window
 
     private async void UpdateMaster_Click(object sender, RoutedEventArgs e)
     {
-        if (viewModel.IsBusy)
+        if (!CanStartOperation())
         {
             return;
         }
@@ -345,7 +401,7 @@ public partial class MainWindow : Window
 
     private async void ReviewAction_Click(object sender, RoutedEventArgs e)
     {
-        if (viewModel.IsBusy || sender is not FrameworkElement { Tag: string action })
+        if (!CanStartOperation() || sender is not FrameworkElement { Tag: string action })
         {
             return;
         }
@@ -372,7 +428,7 @@ public partial class MainWindow : Window
 
     private async void ApplyDrafts_Click(object sender, RoutedEventArgs e)
     {
-        if (viewModel.IsBusy)
+        if (!CanStartOperation())
         {
             return;
         }
@@ -381,6 +437,10 @@ public partial class MainWindow : Window
 
     private async Task RunOperationAsync(Func<CancellationToken, Task> operation)
     {
+        if (!CanStartOperation())
+        {
+            return;
+        }
         try
         {
             operationCancellation = new CancellationTokenSource();
@@ -396,4 +456,10 @@ public partial class MainWindow : Window
             operationCancellation = null;
         }
     }
+
+    internal static bool CanStartOperation(bool isBusy, bool operationActive) =>
+        !isBusy && !operationActive;
+
+    private bool CanStartOperation() =>
+        CanStartOperation(viewModel.IsBusy, operationCancellation is not null);
 }

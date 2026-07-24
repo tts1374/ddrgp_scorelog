@@ -16,6 +16,32 @@ public sealed class ProjectionServiceTests
         Assert.Single(runner.Requests);
         Assert.Equal(["-X", "utf8", "-m"], runner.Requests[0].Arguments.Take(3));
     }
+
+    [Fact]
+    public async Task ExportsManualReviewXlsxThroughCurrentProjectionCommand()
+    {
+        var fixture = File.ReadAllText(Path.Combine(
+            AppContext.BaseDirectory, "fixtures", "current.json"));
+        var runner = new StubProcessRunner((_, _) => Task.FromResult(
+            new ProcessResult(0, fixture, "")));
+        var service = new ProjectionService(
+            runner,
+            new ProjectionJsonLoader(),
+            Directory.GetCurrentDirectory(),
+            artifactRoot: "artifacts");
+
+        await service.ExportManualReviewXlsxAsync(
+            "master.sqlite",
+            "catalog.sqlite",
+            "exports/manual-review.xlsx",
+            CancellationToken.None);
+
+        var arguments = Assert.Single(runner.Requests).Arguments;
+        Assert.Contains("--artifact-root", arguments);
+        Assert.Contains(Path.GetFullPath("artifacts"), arguments);
+        Assert.Contains("--manual-xlsx-output", arguments);
+        Assert.Contains(Path.GetFullPath("exports/manual-review.xlsx"), arguments);
+    }
 }
 
 internal sealed class StubProcessRunner(
