@@ -65,7 +65,8 @@ public partial class MainWindow : Window
                 databasePaths.RepositoryRoot,
                 databasePaths.CatalogPath),
             manualReviewDraftStore: new JsonManualReviewDraftStore(
-                Path.Combine(evidenceRoot, "manual-review-drafts.v1.json")));
+                Path.Combine(evidenceRoot, "manual-review-drafts.v1.json")),
+            manualReviewXlsxImportService: candidateProjectionService);
         captureObservationController = new CaptureObservationController(
             viewModel.StartObservationSessionAsync,
             viewModel.ResumeObservationSessionAsync,
@@ -310,6 +311,56 @@ public partial class MainWindow : Window
         catch (Exception exception)
         {
             MessageBox.Show(this, exception.Message, "XLSX export失敗");
+        }
+        finally
+        {
+            operationCancellation?.Dispose();
+            operationCancellation = null;
+        }
+    }
+
+    private async void ImportManualReview_Click(object sender, RoutedEventArgs e)
+    {
+        if (!CanStartOperation())
+        {
+            return;
+        }
+        if (viewModel.CurrentMasterPath is null || viewModel.CurrentCatalogPath is null)
+        {
+            MessageBox.Show(this, "masterとcatalogを先にread-only読込してください。");
+            return;
+        }
+
+        var dialog = new OpenFileDialog
+        {
+            Title = "編集済みmanual review XLSXを選択",
+            Filter = "Excel Workbook (*.xlsx)|*.xlsx",
+            CheckFileExists = true,
+            Multiselect = false,
+            InitialDirectory = Directory.Exists(evidenceRoot)
+                ? evidenceRoot
+                : Path.Combine(repositoryRoot, "data"),
+        };
+        if (dialog.ShowDialog(this) != true)
+        {
+            return;
+        }
+
+        try
+        {
+            operationCancellation = new CancellationTokenSource();
+            await viewModel.ImportManualReviewXlsxAsync(
+                Path.GetFullPath(dialog.FileName),
+                operationCancellation.Token);
+            MessageBox.Show(this, viewModel.StatusMessage, "XLSX import完了");
+        }
+        catch (OperationCanceledException)
+        {
+            MessageBox.Show(this, "manual review XLSX importを取り消しました。", "XLSX import取消");
+        }
+        catch (Exception exception)
+        {
+            MessageBox.Show(this, exception.Message, "XLSX import失敗");
         }
         finally
         {

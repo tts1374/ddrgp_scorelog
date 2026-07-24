@@ -13,7 +13,8 @@ public sealed class MainViewModel(
     JacketObservationViewModel? observation = null,
     CollectorDatabasePaths? databasePaths = null,
     ICatalogInitializationService? catalogInitializationService = null,
-    IManualReviewDraftStore? manualReviewDraftStore = null) : INotifyPropertyChanged
+    IManualReviewDraftStore? manualReviewDraftStore = null,
+    IManualReviewXlsxImportService? manualReviewXlsxImportService = null) : INotifyPropertyChanged
 {
     private readonly CollectorDatabasePaths fixedDatabasePaths =
         databasePaths ?? CollectorDatabasePaths.Resolve();
@@ -394,6 +395,113 @@ public sealed class MainViewModel(
         catch (Exception exception)
         {
             StatusTitle = "下書き保存失敗";
+            StatusMessage = exception.Message;
+            throw;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    public async Task<bool> ImportManualReviewXlsxAsync(
+        string inputPath,
+        CancellationToken cancellationToken = default)
+    {
+        if (manualReviewDraftStore is null)
+        {
+            throw new InvalidOperationException("manual review draft store is not configured.");
+        }
+        if (manualReviewXlsxImportService is null)
+        {
+            throw new InvalidOperationException("manual review XLSX import is not configured.");
+        }
+        if (projection is null)
+        {
+            StatusTitle = "XLSX import不可";
+            StatusMessage = "current catalogを先に読み込んでください。";
+            return false;
+        }
+        if (IsBusy)
+        {
+            throw new InvalidOperationException("別の処理を実行中です。");
+        }
+
+        IsBusy = true;
+        StatusTitle = "XLSX import中";
+        StatusMessage = "XLSX全行を検証しています。下書きはまだ変更していません。";
+        try
+        {
+            var result = await manualReviewXlsxImportService.ImportManualReviewXlsxAsync(
+                fixedDatabasePaths.MasterPath,
+                fixedDatabasePaths.CatalogPath,
+                inputPath,
+                cancellationToken);
+            if (result.Drafts is null)
+            {
+                throw new InvalidOperationException("Manual review XLSX import result has no drafts.");
+            }
+
+            var currentReferences = new Dictionary<string, ReviewReference>(StringComparer.Ordinal);
+            foreach (var reference in projection.ReviewReferences)
+            {
+                var observationId = reference.CandidateEvaluation.ObservationId;
+                if (!currentReferences.TryAdd(observationId, reference))
+                {
+                    throw new InvalidOperationException(
+                        $"current projection has a duplicate observation ID: {observationId}");
+                }
+            }
+
+            var importedObservationIds = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var draft in result.Drafts)
+            {
+                if (draft is null
+                    || string.IsNullOrWhiteSpace(draft.ObservationId)
+                    || !importedObservationIds.Add(draft.ObservationId))
+                {
+                    throw new InvalidOperationException(
+                        "Manual review XLSX import result has duplicate or empty observation IDs.");
+                }
+                if (!currentReferences.TryGetValue(draft.ObservationId, out var reference))
+                {
+                    throw new InvalidOperationException(
+                        $"Manual review XLSX observation is not in the current projection: "
+                        + draft.ObservationId);
+                }
+                if (reference.StoredStatus is "auto_confirmed" or "manual_confirmed" or "rejected")
+                {
+                    throw new InvalidOperationException(
+                        $"Manual review XLSX observation is already reviewed: {draft.ObservationId}");
+                }
+            }
+
+            var nextDrafts = new Dictionary<string, ManualReviewDraft>(
+                manualReviewDrafts,
+                StringComparer.Ordinal);
+            foreach (var draft in result.Drafts)
+            {
+                nextDrafts[draft.ObservationId] = draft;
+            }
+
+            await manualReviewDraftStore.SaveAsync(nextDrafts.Values, cancellationToken);
+            ReplaceManualReviewDrafts(nextDrafts);
+            ApplyManualReviewRows();
+            StatusTitle = "XLSX import完了";
+            StatusMessage =
+                $"{result.Drafts.Count}行を下書きへ反映しました。"
+                + " catalog/history/確定状態は変更していません。";
+            return true;
+        }
+        catch (OperationCanceledException)
+        {
+            StatusTitle = "XLSX import取消";
+            StatusMessage = "XLSX importを取り消しました。下書き・catalog/historyは変更していません。";
+            throw;
+        }
+        catch (Exception exception)
+        {
+            StatusTitle = "XLSX import失敗";
             StatusMessage = exception.Message;
             throw;
         }

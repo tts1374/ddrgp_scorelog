@@ -107,6 +107,22 @@ XLSXは`Manual Review`（`observation_id`、埋め込み`title_roi` / `artist_ro
 
 WPFの`未レビュー`画面では、`XLSXをエクスポート`を`一括反映`の左側から実行できます。`一括反映`の右側にある`↻`（projectionを更新）で、current master/catalogのprojectionを再読込します。保存先は標準保存ダイアログで任意に選べます。既定の表示先は`data/jacket_catalog_collector`です。
 
+### Manual review XLSX import
+
+編集済みXLSXは、WPFの`未レビュー`画面で`XLSXをインポート`から選択できます。import対象は`Manual Review`の`observation_id`、`status`、`truth_song_id`、`notes`だけで、ROI画像、catalog、Master、review history、確定状態は読み書きしません。`Manual Review`、`Master Songs`、`Metadata`の存在、schema version、必須column、observation ID、status、current Masterのsong ID、Metadataの対象件数を全件検証します。catalog versionとMaster versionは、export時とcurrentの差だけでは拒否しません。
+
+1行でも不正なら、XLSXの行番号、observation ID、理由を表示し、メモリ上・保存済みの下書きを変更しません。全行の検証成功後にだけ、既存の`manual-review-drafts.v1.json`へ一括保存し、画面へ下書きを再適用します。同じXLSXを再importしても同じ下書き値へ収束します。catalog writer、review transaction、history追加はimportから呼び出しません。
+
+CLIで同じread-only検証を行う場合は、次の形式です。
+
+```powershell
+python -m tools.vision_poc.jacket_catalog_review_projection `
+  --master-db databases\ddrgp-master.sqlite `
+  --catalog databases\jacket-catalog.sqlite `
+  --artifact-root data\jacket_catalog_collector `
+  --manual-xlsx-input data\jacket_catalog_collector\manual-review-export.xlsx
+```
+
 ### レビュー済み訂正
 
 `レビュー済み` タブは、`auto_confirmed` / `manual_confirmed` / `rejected` のcurrent status、current song、下書き予定status/song、notes、登録経路、実行時刻を表示します。予定statusは `unchanged` / `confirmed` / `rejected` / `hold` です。`unchanged` はcurrent status/songを維持し、notesだけの変更はnotes更新として反映します。`hold` はstatus/song/notesを一切反映せず、下書きを残します。song変更、confirmedとrejectの相互変更、notes変更は未レビュー行と同じ一括transactionで処理し、成功した行の下書きだけを消去します。

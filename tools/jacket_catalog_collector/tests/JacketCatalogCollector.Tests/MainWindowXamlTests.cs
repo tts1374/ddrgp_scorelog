@@ -19,12 +19,13 @@ public sealed class MainWindowXamlTests
     }
 
     [Fact]
-    public void ExportAndReviewMutationsUseTheSharedOperationGuard()
+    public void ReviewOperationsUseTheSharedOperationGuard()
     {
         var code = File.ReadAllText(GetMainWindowCodePath());
         foreach (var methodName in new[]
         {
             "ExportManualReview_Click",
+            "ImportManualReview_Click",
             "UpdateMaster_Click",
             "ReviewAction_Click",
             "ApplyDrafts_Click",
@@ -250,11 +251,13 @@ public sealed class MainWindowXamlTests
         Assert.Contains(bindings, value => value.Contains(
             "ProcessedAt", StringComparison.Ordinal));
         Assert.Contains("XLSXをエクスポート", buttons);
+        Assert.Contains("XLSXをインポート", buttons);
         Assert.Contains("一括反映", buttons);
         Assert.Contains("↻", buttons);
         Assert.DoesNotContain("projection再読込", buttons);
         Assert.True(
-            buttons.IndexOf("XLSXをエクスポート") < buttons.IndexOf("一括反映")
+            buttons.IndexOf("XLSXをエクスポート") < buttons.IndexOf("XLSXをインポート")
+                && buttons.IndexOf("XLSXをインポート") < buttons.IndexOf("一括反映")
                 && buttons.IndexOf("一括反映") < buttons.IndexOf("↻"));
         Assert.Contains(
             document.Descendants().Where(element => element.Name.LocalName == "Button"),
@@ -263,7 +266,9 @@ public sealed class MainWindowXamlTests
                 && element.Attribute("Click")?.Value == "RefreshCandidates_Click");
         var code = File.ReadAllText(GetMainWindowCodePath());
         Assert.Contains("ExportManualReview_Click", code, StringComparison.Ordinal);
+        Assert.Contains("ImportManualReview_Click", code, StringComparison.Ordinal);
         Assert.Contains("SaveFileDialog", code, StringComparison.Ordinal);
+        Assert.Contains("OpenFileDialog", code, StringComparison.Ordinal);
         Assert.Contains("OverwritePrompt = true", code, StringComparison.Ordinal);
         Assert.DoesNotContain("IsUnderDataDirectory", code, StringComparison.Ordinal);
         Assert.DoesNotContain("未保存の下書きを保存", buttons);

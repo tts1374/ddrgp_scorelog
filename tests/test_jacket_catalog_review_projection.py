@@ -12,6 +12,7 @@ from PIL import Image, ImageDraw
 from test_jacket_reference_catalog import created_at, identity, write_master
 
 from tools.ddrworld_snapshot_evaluation.evaluator import rows_as_dicts
+from tools.ddrworld_snapshot_evaluation.xlsx_export import EmbeddedImage, write_xlsx
 from tools.vision_poc import jacket_catalog_review_projection as projection
 from tools.vision_poc import jacket_reference_catalog as catalog
 
@@ -299,3 +300,201 @@ def test_manual_review_xlsx_embeds_rois_and_allows_existing_file(
     ]
     projection.export_manual_review_xlsx(path, _export_projection(master_db, sources))
     assert zipfile.is_zipfile(path)
+
+
+def _write_import_workbook(
+    path: Path,
+    master_db: Path,
+    rows: list[list[object]],
+    *,
+    target_count: int | None = None,
+    metadata_overrides: dict[str, object] | None = None,
+    include_manual_review: bool = True,
+    manual_headers: list[str] | None = None,
+) -> None:
+    master = catalog.load_master_identity(master_db)
+    metadata = {
+        "schema_version": projection.MANUAL_REVIEW_XLSX_SCHEMA_VERSION,
+        "export_id": "import-fixture",
+        "catalog_version": "1",
+        "master_version": master.version,
+        "exported_at": "2026-07-24T00:00:00+00:00",
+        "target_count": len(rows) if target_count is None else target_count,
+    }
+    if metadata_overrides:
+        metadata.update(metadata_overrides)
+    sheets = []
+    if include_manual_review:
+        sheets.append(
+            (
+                "Manual Review",
+                manual_headers or projection.MANUAL_REVIEW_XLSX_HEADERS,
+                rows,
+            )
+        )
+    sheets.extend(
+        [
+            (
+                "Master Songs",
+                ["song_id", "title", "artist"],
+                [[song.song_id, song.title, song.artist] for song in master.songs],
+            ),
+            ("Metadata", ["key", "value"], [[key, value] for key, value in metadata.items()]),
+        ]
+    )
+    write_xlsx(path, sheets)
+
+
+def _import_projection(master_db: Path, observation_count: int = 1) -> dict[str, object]:
+    return {
+        "master": {"path": str(master_db.resolve()), "master_version": "master-v1"},
+        "review_references": [
+            {
+                "reference_id": f"reference-{index}",
+                "stored_status": "unresolved",
+                "candidate_evaluation": {"observation_id": f"observation-{index}"},
+            }
+            for index in range(1, observation_count + 1)
+        ],
+    }
+
+
+def _editable_import_row(
+    observation_id: str = "observation-1",
+    status: str = "unreviewed",
+    truth_song_id: str | None = None,
+    notes: str = "edited note",
+) -> list[object]:
+    return [
+        observation_id,
+        EmbeddedImage("Pictures/title.png", b"png", 1, 1),
+        EmbeddedImage("Pictures/artist.png", b"png", 1, 1),
+        status,
+        truth_song_id,
+        notes,
+    ]
+
+
+def test_manual_review_xlsx_import_returns_all_drafts_and_accepts_version_drift(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    master_db = tmp_path / "master.sqlite"
+    write_master(master_db)
+    path = tmp_path / "manual-review-import.xlsx"
+    _write_import_workbook(
+        path,
+        master_db,
+        [_editable_import_row(status="confirmed", truth_song_id="song-2")],
+        metadata_overrides={
+            "catalog_version": "catalog-exported-before",
+            "master_version": "master-exported-before",
+        },
+    )
+
+    result = projection.import_manual_review_xlsx(path, _import_projection(master_db))
+
+    assert result["drafts"] == [
+        {
+            "observation_id": "observation-1",
+            "status": "confirmed",
+            "truth_song_id": "song-2",
+            "notes": "edited note",
+        }
+    ]
+    assert result["metadata"]["catalog_version"] == "catalog-exported-before"
+
+
+@pytest.mark.parametrize(
+    ("case", "match"),
+    [
+        ("missing_sheet", "missing sheet: Manual Review"),
+        ("missing_column", "missing required columns: notes"),
+        ("unsupported_schema", "unsupported schema version"),
+        ("duplicate_observation", "observation_id is duplicated"),
+        ("unknown_observation", "not present in the current projection"),
+        ("short_row_count", "data row count does not match"),
+        ("extra_row_count", "data row count does not match"),
+        ("invalid_status", "status is invalid"),
+        ("confirmed_without_song", "confirmed status requires truth_song_id"),
+        ("unknown_song", "not present in the current Master"),
+        ("rejected_with_song", "rejected status requires an empty truth_song_id"),
+    ],
+)
+def test_manual_review_xlsx_import_rejects_invalid_workbook(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    case: str,
+    match: str,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    master_db = tmp_path / "master.sqlite"
+    write_master(master_db)
+    path = tmp_path / f"manual-review-{case}.xlsx"
+    rows: list[list[object]] = [_editable_import_row()]
+    metadata_overrides: dict[str, object] = {}
+    include_manual_review = True
+    manual_headers: list[str] | None = None
+    projection_value = _import_projection(master_db)
+    if case == "missing_sheet":
+        include_manual_review = False
+    elif case == "missing_column":
+        manual_headers = ["observation_id", "title_roi", "artist_roi", "status", "truth_song_id"]
+        rows = [rows[0][: len(manual_headers)]]
+    elif case == "unsupported_schema":
+        metadata_overrides["schema_version"] = "unsupported"
+    elif case == "duplicate_observation":
+        rows.append(_editable_import_row())
+        metadata_overrides["target_count"] = 2
+    elif case == "unknown_observation":
+        rows = [_editable_import_row(observation_id="missing-observation")]
+    elif case == "short_row_count":
+        metadata_overrides["target_count"] = 2
+    elif case == "extra_row_count":
+        rows.append(_editable_import_row(observation_id="observation-2"))
+        metadata_overrides["target_count"] = 1
+    elif case == "invalid_status":
+        rows = [_editable_import_row(status="invalid")]
+    elif case == "confirmed_without_song":
+        rows = [_editable_import_row(status="confirmed")]
+    elif case == "unknown_song":
+        rows = [_editable_import_row(status="confirmed", truth_song_id="missing-song")]
+    elif case == "rejected_with_song":
+        rows = [_editable_import_row(status="rejected", truth_song_id="song-1")]
+    if case == "extra_row_count":
+        projection_value = _import_projection(master_db, observation_count=2)
+    _write_import_workbook(
+        path,
+        master_db,
+        rows,
+        metadata_overrides=metadata_overrides,
+        include_manual_review=include_manual_review,
+        manual_headers=manual_headers,
+    )
+
+    with pytest.raises(ValueError, match=match):
+        projection.import_manual_review_xlsx(path, projection_value)
+
+
+def test_manual_review_xlsx_import_is_idempotent_for_all_rows(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    master_db = tmp_path / "master.sqlite"
+    write_master(master_db)
+    path = tmp_path / "manual-review-extra.xlsx"
+    rows = [_editable_import_row(), _editable_import_row(observation_id="observation-2")]
+    _write_import_workbook(path, master_db, rows, target_count=2)
+    projection_value = _import_projection(master_db)
+    projection_value["review_references"].append(
+        {
+            "reference_id": "reference-2",
+            "stored_status": "unresolved",
+            "candidate_evaluation": {"observation_id": "observation-2"},
+        }
+    )
+
+    first = projection.import_manual_review_xlsx(path, projection_value)
+    second = projection.import_manual_review_xlsx(path, projection_value)
+
+    assert first == second

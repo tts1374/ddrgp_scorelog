@@ -646,6 +646,127 @@ public sealed class MainViewModelTests
     }
 
     [Fact]
+    public async Task ImportsValidatedDraftsThroughTheExistingStoreAndRefreshesTheScreen()
+    {
+        using var database = new TestDatabase(catalog: true);
+        var projection = Projection();
+        var catalogBefore = File.ReadAllBytes(database.Paths.CatalogPath);
+        var store = new StubManualReviewDraftStore(
+        [
+            new ManualReviewDraft
+            {
+                ObservationId = "observation-1",
+                Status = "hold",
+                TruthSongId = null,
+                Notes = "before import",
+            },
+        ]);
+        var importer = new StubManualReviewXlsxImportService(
+            new ManualReviewXlsxImportResult
+            {
+                Metadata = new Dictionary<string, string>
+                {
+                    ["schema_version"] = "m5c-manual-review-xlsx-v1",
+                },
+                Drafts =
+                [
+                    new ManualReviewDraft
+                    {
+                        ObservationId = "observation-1",
+                        Status = "confirmed",
+                        TruthSongId = "song-2",
+                        Notes = "from xlsx",
+                    },
+                ],
+            });
+        var viewModel = new MainViewModel(
+            new StubMasterUpdateService(),
+            new StubProjectionService(projection),
+            databasePaths: database.Paths,
+            manualReviewDraftStore: store,
+            manualReviewXlsxImportService: importer);
+
+        await viewModel.LoadProjectionAsync();
+        var beforeStatus = projection.ReviewReferences[0].StoredStatus;
+        var beforeRevision = projection.ReviewReferences[0].Revision;
+        var beforeHistoryCount = projection.ReviewReferences[0].History.Count;
+
+        Assert.True(await viewModel.ImportManualReviewXlsxAsync("edited.xlsx"));
+
+        var row = Assert.Single(viewModel.ManualReviewRows);
+        Assert.Equal("confirmed", row.Status);
+        Assert.Equal("song-2", row.TruthSongId);
+        Assert.Equal("from xlsx", row.Notes);
+        Assert.True(row.IsSaved);
+        Assert.Equal("from xlsx", store.Drafts["observation-1"].Notes);
+        Assert.Equal(1, store.SaveCalls);
+        Assert.Equal("XLSX import完了", viewModel.StatusTitle);
+        Assert.Equal(beforeStatus, projection.ReviewReferences[0].StoredStatus);
+        Assert.Equal(beforeRevision, projection.ReviewReferences[0].Revision);
+        Assert.Equal(beforeHistoryCount, projection.ReviewReferences[0].History.Count);
+        Assert.Equal(catalogBefore, File.ReadAllBytes(database.Paths.CatalogPath));
+        Assert.Equal(1, importer.Calls);
+    }
+
+    [Fact]
+    public async Task InvalidImportResultDoesNotChangeMemoryOrSavedDrafts()
+    {
+        var projection = Projection();
+        var store = new StubManualReviewDraftStore(
+        [
+            new ManualReviewDraft
+            {
+                ObservationId = "observation-1",
+                Status = "hold",
+                TruthSongId = null,
+                Notes = "existing draft",
+            },
+        ]);
+        var importer = new StubManualReviewXlsxImportService(
+            new ManualReviewXlsxImportResult
+            {
+                Metadata = new Dictionary<string, string>(),
+                Drafts =
+                [
+                    new ManualReviewDraft
+                    {
+                        ObservationId = "observation-1",
+                        Status = "confirmed",
+                        TruthSongId = "song-1",
+                        Notes = "would be changed",
+                    },
+                    new ManualReviewDraft
+                    {
+                        ObservationId = "missing-observation",
+                        Status = "hold",
+                        TruthSongId = null,
+                        Notes = "invalid row",
+                    },
+                ],
+            });
+        var viewModel = new MainViewModel(
+            new StubMasterUpdateService(),
+            new StubProjectionService(projection),
+            manualReviewDraftStore: store,
+            manualReviewXlsxImportService: importer);
+
+        await viewModel.LoadProjectionAsync();
+        var rowBefore = Assert.Single(viewModel.ManualReviewRows);
+        Assert.Equal("existing draft", rowBefore.Notes);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => viewModel.ImportManualReviewXlsxAsync("invalid.xlsx"));
+
+        var rowAfter = Assert.Single(viewModel.ManualReviewRows);
+        Assert.Equal("existing draft", rowAfter.Notes);
+        Assert.Equal("hold", rowAfter.Status);
+        Assert.Equal("existing draft", store.Drafts["observation-1"].Notes);
+        Assert.Equal(0, store.SaveCalls);
+        Assert.Equal("XLSX import失敗", viewModel.StatusTitle);
+        Assert.Contains("missing-observation", viewModel.StatusMessage, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task MasterSearchUsesCanonicalAliasPrefixPartialArtistAndIdOrder()
     {
         var viewModel = new MainViewModel(
@@ -964,6 +1085,22 @@ public sealed class MainViewModelTests
                 Drafts[draft.ObservationId] = draft;
             }
             return Task.CompletedTask;
+        }
+    }
+
+    private sealed class StubManualReviewXlsxImportService(
+        ManualReviewXlsxImportResult result) : IManualReviewXlsxImportService
+    {
+        public int Calls { get; private set; }
+
+        public Task<ManualReviewXlsxImportResult> ImportManualReviewXlsxAsync(
+            string masterPath,
+            string catalogPath,
+            string inputPath,
+            CancellationToken cancellationToken)
+        {
+            Calls++;
+            return Task.FromResult(result);
         }
     }
 
