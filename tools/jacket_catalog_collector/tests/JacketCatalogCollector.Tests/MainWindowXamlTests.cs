@@ -214,8 +214,21 @@ public sealed class MainWindowXamlTests
             "RegisteredRoute", StringComparison.Ordinal));
         Assert.Contains(bindings, value => value.Contains(
             "ProcessedAt", StringComparison.Ordinal));
+        Assert.Contains("ODSをエクスポート", buttons);
         Assert.Contains("一括反映", buttons);
-        Assert.Contains("projection再読込", buttons);
+        Assert.Contains("↻", buttons);
+        Assert.DoesNotContain("projection再読込", buttons);
+        Assert.True(
+            buttons.IndexOf("ODSをエクスポート") < buttons.IndexOf("一括反映")
+                && buttons.IndexOf("一括反映") < buttons.IndexOf("↻"));
+        Assert.Contains(
+            document.Descendants().Where(element => element.Name.LocalName == "Button"),
+            element => element.Attribute("Content")?.Value == "↻"
+                && element.Attribute("ToolTip")?.Value == "projectionを更新"
+                && element.Attribute("Click")?.Value == "RefreshCandidates_Click");
+        var code = File.ReadAllText(GetMainWindowCodePath());
+        Assert.Contains("ExportManualReview_Click", code, StringComparison.Ordinal);
+        Assert.Contains("SaveFileDialog", code, StringComparison.Ordinal);
         Assert.DoesNotContain("未保存の下書きを保存", buttons);
         Assert.Contains("確定  ", runTexts);
         Assert.Contains("却下  ", runTexts);

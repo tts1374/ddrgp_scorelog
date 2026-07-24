@@ -262,6 +262,87 @@ public partial class MainWindow : Window
         await RunOperationAsync(viewModel.LoadProjectionAsync);
     }
 
+    private async void ExportManualReview_Click(object sender, RoutedEventArgs e)
+    {
+        if (viewModel.IsBusy || operationCancellation is not null)
+        {
+            return;
+        }
+        if (viewModel.CurrentMasterPath is null || viewModel.CurrentCatalogPath is null)
+        {
+            MessageBox.Show(this, "masterとcatalogを先にread-only読込してください。");
+            return;
+        }
+
+        var dialog = new SaveFileDialog
+        {
+            Title = "manual review ODSを保存",
+            Filter = "ODS (*.ods)|*.ods",
+            DefaultExt = ".ods",
+            AddExtension = true,
+            OverwritePrompt = false,
+            InitialDirectory = Directory.Exists(evidenceRoot)
+                ? evidenceRoot
+                : Path.Combine(repositoryRoot, "data"),
+            FileName = "manual-review-export.ods",
+        };
+        if (dialog.ShowDialog(this) != true)
+        {
+            return;
+        }
+
+        var output = Path.GetFullPath(dialog.FileName);
+        if (!IsUnderDataDirectory(output))
+        {
+            MessageBox.Show(
+                this,
+                "ODSの保存先はrepositoryのdata配下を選択してください。",
+                "ODS export保存先エラー");
+            return;
+        }
+        if (File.Exists(output))
+        {
+            MessageBox.Show(
+                this,
+                "既存のODSは上書きしません。別のファイル名を選択してください。",
+                "ODS export保存先エラー");
+            return;
+        }
+
+        try
+        {
+            operationCancellation = new CancellationTokenSource();
+            await candidateProjectionService.ExportManualReviewAsync(
+                viewModel.CurrentMasterPath,
+                viewModel.CurrentCatalogPath,
+                output,
+                operationCancellation.Token);
+            MessageBox.Show(this, output, "ODS export完了");
+        }
+        catch (OperationCanceledException)
+        {
+            MessageBox.Show(this, "manual review ODS exportを取り消しました。", "ODS export取消");
+        }
+        catch (Exception exception)
+        {
+            MessageBox.Show(this, exception.Message, "ODS export失敗");
+        }
+        finally
+        {
+            operationCancellation?.Dispose();
+            operationCancellation = null;
+        }
+    }
+
+    private bool IsUnderDataDirectory(string path)
+    {
+        var dataRoot = Path.GetFullPath(Path.Combine(repositoryRoot, "data"));
+        var relative = Path.GetRelativePath(dataRoot, path);
+        return !Path.IsPathRooted(relative)
+            && relative != ".."
+            && !relative.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal);
+    }
+
     private async void GenerateCandidateReport_Click(object sender, RoutedEventArgs e)
     {
         if (viewModel.IsBusy || operationCancellation is not null)

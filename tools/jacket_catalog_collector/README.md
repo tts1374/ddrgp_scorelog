@@ -105,6 +105,8 @@ python -m tools.vision_poc.jacket_catalog_review_projection `
 
 ODSは`Manual Review`（`observation_id`、埋め込み`title_roi` / `artist_roi`、`status`、`truth_song_id`、`notes`）、`Master Songs`（current Master全曲）、`Metadata`（ODS schema/export ID/catalog version/master version/export日時/対象件数）の3 sheetです。編集対象は`status`、`truth_song_id`、`notes`だけです。既存ODSは暗黙に上書きしません。
 
+WPFの`未レビュー`画面では、`ODSをエクスポート`を`一括反映`の左側から実行できます。`一括反映`の右側にある`↻`（projectionを更新）で、current master/catalogのprojectionを再読込します。ODS exportの保存先は`data/`配下から選び、既存ODSは上書きしません。
+
 ### レビュー済み訂正
 
 `レビュー済み` タブは、`auto_confirmed` / `manual_confirmed` / `rejected` のcurrent status、current song、下書き予定status/song、notes、登録経路、実行時刻を表示します。予定statusは `unchanged` / `confirmed` / `rejected` / `hold` です。`unchanged` はcurrent status/songを維持し、notesだけの変更はnotes更新として反映します。`hold` はstatus/song/notesを一切反映せず、下書きを残します。song変更、confirmedとrejectの相互変更、notes変更は未レビュー行と同じ一括transactionで処理し、成功した行の下書きだけを消去します。
