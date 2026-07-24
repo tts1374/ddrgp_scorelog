@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import io
 import sqlite3
+import xml.etree.ElementTree as ET
 import zipfile
 from pathlib import Path
 
@@ -213,6 +214,12 @@ def test_manual_review_ods_embeds_rois_and_protects_existing_file(
         names = set(archive.namelist())
         content = archive.read("content.xml").decode("utf-8")
         manifest = archive.read("META-INF/manifest.xml").decode("utf-8")
+        content_root = ET.fromstring(content)
+        text_p = "{urn:oasis:names:tc:opendocument:xmlns:text:1.0}p"
+        draw_frame = "{urn:oasis:names:tc:opendocument:xmlns:drawing:1.0}frame"
+        assert sum(
+            len(paragraph.findall(draw_frame)) for paragraph in content_root.iter(text_p)
+        ) == target_count * 2
         for index in range(1, target_count + 1):
             for field in ("title", "artist"):
                 image_name = f"Pictures/{index:04d}-{field}.png"

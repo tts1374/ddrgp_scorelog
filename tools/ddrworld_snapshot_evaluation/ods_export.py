@@ -53,12 +53,13 @@ def _image_cell(image: EmbeddedImage, *, style: str = "") -> str:
     frame_name = f"frame-{image.name.replace('/', '-')}"
     return (
         f"<table:table-cell{style_attr}>"
+        "<text:p>"
         f"<draw:frame draw:name={quoteattr(frame_name)} text:anchor-type=\"as-char\" "
         f"svg:width={quoteattr(f'{image.width_cm:g}cm')} "
         f"svg:height={quoteattr(f'{image.height_cm:g}cm')} draw:z-index=\"0\">"
         f"<draw:image xlink:href={quoteattr(image.name)} xlink:type=\"simple\" "
         f"xlink:show=\"embed\" xlink:actuate=\"onLoad\"/>"
-        "</draw:frame></table:table-cell>"
+        "</draw:frame></text:p></table:table-cell>"
     )
 
 
