@@ -81,7 +81,7 @@ public partial class MainWindow : Window
 
     private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
     {
-        if (startupInitializationStarted || operationCancellation is not null)
+        if (startupInitializationStarted || !CanStartOperation())
         {
             return;
         }
@@ -186,7 +186,7 @@ public partial class MainWindow : Window
 
     private async void EvaluateTitleArtist_Click(object sender, RoutedEventArgs e)
     {
-        if (titleArtistEvaluationBusy || viewModel.IsBusy || operationCancellation is not null)
+        if (titleArtistEvaluationBusy || !CanStartOperation())
         {
             return;
         }
@@ -250,7 +250,7 @@ public partial class MainWindow : Window
 
     private async void RefreshCandidates_Click(object sender, RoutedEventArgs e)
     {
-        if (viewModel.IsBusy || operationCancellation is not null)
+        if (!CanStartOperation())
         {
             return;
         }
@@ -264,7 +264,7 @@ public partial class MainWindow : Window
 
     private async void ExportManualReview_Click(object sender, RoutedEventArgs e)
     {
-        if (viewModel.IsBusy || operationCancellation is not null)
+        if (!CanStartOperation())
         {
             return;
         }
@@ -320,7 +320,7 @@ public partial class MainWindow : Window
 
     private async void GenerateCandidateReport_Click(object sender, RoutedEventArgs e)
     {
-        if (viewModel.IsBusy || operationCancellation is not null)
+        if (!CanStartOperation())
         {
             return;
         }
@@ -376,7 +376,7 @@ public partial class MainWindow : Window
 
     private async void UpdateMaster_Click(object sender, RoutedEventArgs e)
     {
-        if (viewModel.IsBusy)
+        if (!CanStartOperation())
         {
             return;
         }
@@ -401,7 +401,7 @@ public partial class MainWindow : Window
 
     private async void ReviewAction_Click(object sender, RoutedEventArgs e)
     {
-        if (viewModel.IsBusy || sender is not FrameworkElement { Tag: string action })
+        if (!CanStartOperation() || sender is not FrameworkElement { Tag: string action })
         {
             return;
         }
@@ -428,7 +428,7 @@ public partial class MainWindow : Window
 
     private async void ApplyDrafts_Click(object sender, RoutedEventArgs e)
     {
-        if (viewModel.IsBusy)
+        if (!CanStartOperation())
         {
             return;
         }
@@ -437,6 +437,10 @@ public partial class MainWindow : Window
 
     private async Task RunOperationAsync(Func<CancellationToken, Task> operation)
     {
+        if (!CanStartOperation())
+        {
+            return;
+        }
         try
         {
             operationCancellation = new CancellationTokenSource();
@@ -452,4 +456,10 @@ public partial class MainWindow : Window
             operationCancellation = null;
         }
     }
+
+    internal static bool CanStartOperation(bool isBusy, bool operationActive) =>
+        !isBusy && !operationActive;
+
+    private bool CanStartOperation() =>
+        CanStartOperation(viewModel.IsBusy, operationCancellation is not null);
 }

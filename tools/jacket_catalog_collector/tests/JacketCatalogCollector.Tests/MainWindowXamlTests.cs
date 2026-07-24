@@ -5,6 +5,41 @@ namespace JacketCatalogCollector.Tests;
 
 public sealed class MainWindowXamlTests
 {
+    [Theory]
+    [InlineData(false, false, true)]
+    [InlineData(true, false, false)]
+    [InlineData(false, true, false)]
+    [InlineData(true, true, false)]
+    public void SharedOperationGuardBlocksConcurrentOperations(
+        bool isBusy,
+        bool operationActive,
+        bool expected)
+    {
+        Assert.Equal(expected, MainWindow.CanStartOperation(isBusy, operationActive));
+    }
+
+    [Fact]
+    public void ExportAndReviewMutationsUseTheSharedOperationGuard()
+    {
+        var code = File.ReadAllText(GetMainWindowCodePath());
+        foreach (var methodName in new[]
+        {
+            "ExportManualReview_Click",
+            "UpdateMaster_Click",
+            "ReviewAction_Click",
+            "ApplyDrafts_Click",
+        })
+        {
+            var start = code.IndexOf(
+                $"private async void {methodName}",
+                StringComparison.Ordinal);
+            Assert.True(start >= 0, $"handler not found: {methodName}");
+            var end = code.IndexOf("\n    private ", start + 1, StringComparison.Ordinal);
+            var body = code[start..(end >= 0 ? end : code.Length)];
+            Assert.Contains("CanStartOperation()", body, StringComparison.Ordinal);
+        }
+    }
+
     [Fact]
     public void RunTextBindingsAreExplicitlyOneWay()
     {
