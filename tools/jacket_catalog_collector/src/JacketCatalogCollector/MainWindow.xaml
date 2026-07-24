@@ -251,6 +251,8 @@
                                             HorizontalAlignment="Right">
                                     <Button Content="XLSXをエクスポート"
                                             Click="ExportManualReview_Click" />
+                                    <Button Content="XLSXをインポート"
+                                            Click="ImportManualReview_Click" />
                                     <Button Content="一括反映"
                                             Style="{StaticResource PrimaryButton}"
                                             Click="ApplyDrafts_Click" />

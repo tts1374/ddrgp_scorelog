@@ -42,6 +42,35 @@ public sealed class ProjectionServiceTests
         Assert.Contains("--manual-xlsx-output", arguments);
         Assert.Contains(Path.GetFullPath("exports/manual-review.xlsx"), arguments);
     }
+
+    [Fact]
+    public async Task ImportsManualReviewXlsxThroughReadOnlyProjectionCommand()
+    {
+        var runner = new StubProcessRunner((_, _) => Task.FromResult(
+            new ProcessResult(
+                0,
+                "{\"metadata\":{\"schema_version\":\"m5c-manual-review-xlsx-v1\"},"
+                + "\"drafts\":[{\"observation_id\":\"observation-1\","
+                + "\"status\":\"hold\",\"truth_song_id\":null,\"notes\":\"keep\"}]}",
+                "")));
+        var service = new ProjectionService(
+            runner,
+            new ProjectionJsonLoader(),
+            Directory.GetCurrentDirectory(),
+            artifactRoot: "artifacts");
+
+        var result = await service.ImportManualReviewXlsxAsync(
+            "master.sqlite",
+            "catalog.sqlite",
+            "imports/manual-review.xlsx",
+            CancellationToken.None);
+
+        Assert.Equal("m5c-manual-review-xlsx-v1", result.Metadata["schema_version"]);
+        Assert.Equal("observation-1", Assert.Single(result.Drafts).ObservationId);
+        var arguments = Assert.Single(runner.Requests).Arguments;
+        Assert.Contains("--manual-xlsx-input", arguments);
+        Assert.Contains(Path.GetFullPath("imports/manual-review.xlsx"), arguments);
+    }
 }
 
 internal sealed class StubProcessRunner(

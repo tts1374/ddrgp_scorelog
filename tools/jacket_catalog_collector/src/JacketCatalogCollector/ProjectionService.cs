@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.IO;
 
 namespace JacketCatalogCollector;
@@ -325,13 +326,37 @@ public interface IProjectionService
         CancellationToken cancellationToken);
 }
 
+public sealed class ManualReviewXlsxImportResult
+{
+    [JsonPropertyName("metadata")]
+    public required Dictionary<string, string> Metadata { get; init; }
+
+    [JsonPropertyName("drafts")]
+    public required List<ManualReviewDraft> Drafts { get; init; }
+}
+
+public interface IManualReviewXlsxImportService
+{
+    Task<ManualReviewXlsxImportResult> ImportManualReviewXlsxAsync(
+        string masterPath,
+        string catalogPath,
+        string inputPath,
+        CancellationToken cancellationToken);
+}
+
 public sealed class ProjectionService(
     IProcessRunner processRunner,
     ProjectionJsonLoader loader,
     string repositoryRoot,
     string pythonExecutable = "python",
-    string? artifactRoot = null) : IProjectionService
+    string? artifactRoot = null) : IProjectionService, IManualReviewXlsxImportService
 {
+    private static readonly JsonSerializerOptions ImportOptions = new()
+    {
+        PropertyNameCaseInsensitive = false,
+        UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
+    };
+
     public async Task<ReviewProjection> LoadAsync(
         string masterPath,
         string catalogPath,
@@ -426,5 +451,48 @@ public sealed class ProjectionService(
                 + result.StandardError.Trim());
         }
         loader.Load(result.StandardOutput);
+    }
+
+    public async Task<ManualReviewXlsxImportResult> ImportManualReviewXlsxAsync(
+        string masterPath,
+        string catalogPath,
+        string inputPath,
+        CancellationToken cancellationToken)
+    {
+        if (artifactRoot is null)
+        {
+            throw new InvalidOperationException("Manual review XLSX import requires candidate artifact root.");
+        }
+        var result = await processRunner.RunAsync(
+            new ProcessRequest(
+                pythonExecutable,
+                [
+                    "-X", "utf8", "-m", "tools.vision_poc.jacket_catalog_review_projection",
+                    "--catalog", Path.GetFullPath(catalogPath),
+                    "--master-db", Path.GetFullPath(masterPath),
+                    "--artifact-root", Path.GetFullPath(artifactRoot),
+                    "--manual-xlsx-input", Path.GetFullPath(inputPath),
+                ],
+                repositoryRoot),
+            cancellationToken);
+        if (result.ExitCode != 0)
+        {
+            throw new InvalidOperationException(
+                $"Manual review XLSX import failed (exit {result.ExitCode}): "
+                + result.StandardError.Trim());
+        }
+        try
+        {
+            return JsonSerializer.Deserialize<ManualReviewXlsxImportResult>(
+                       result.StandardOutput,
+                       ImportOptions)
+                   ?? throw new InvalidOperationException(
+                       "Manual review XLSX import result is null.");
+        }
+        catch (JsonException exception)
+        {
+            throw new InvalidOperationException(
+                "Manual review XLSX import result is invalid.", exception);
+        }
     }
 }
