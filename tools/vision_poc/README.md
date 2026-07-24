@@ -678,7 +678,7 @@ python -m tools.vision_poc.jacket_catalog_review_projection `
   --manual-xlsx-output data\jacket_catalog_collector\manual-review-export.xlsx
 ```
 
-生成XLSXは`Manual Review`、`Master Songs`、`Metadata`の3 sheetを持ち、Manual Reviewの編集列は`status`、`truth_song_id`、`notes`です。title/artist ROIはXLSX packageへ埋め込まれるため、外部画像pathやobservation IDからの逆引きに依存しません。対象0件でもheader、current Master全曲、対象件数0のMetadataを出力します。
+生成XLSXは`Manual Review`、`Master Songs`、`Metadata`の3 sheetを持ち、Manual Reviewの編集列は`status`、`truth_song_id`、`notes`です。`status`は`unreviewed` / `confirmed` / `rejected` / `hold`の選択式です。title/artist ROIはXLSX packageへ埋め込まれるため、外部画像pathやobservation IDからの逆引きに依存しません。対象0件でもheader、current Master全曲、対象件数0のMetadataを出力します。
 
 manual mutationはexpected revision/status/songをpreconditionにし、同一action ID・同一payloadだけを冪等再投入として扱います。manual confirm/reassignはcurrent extractorの完全な永続特徴量と明示song選択を要求し、current rowとhistoryを1 transactionで更新します。候補、expected値、OCR rawは暗黙song選択に使いません。
 

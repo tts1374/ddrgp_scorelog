@@ -97,7 +97,7 @@ def _image_anchors(
 def _cell(value: Any, *, reference: str, style: int = 0) -> str:
     style_attr = f' s="{style}"' if style else ""
     if isinstance(value, EmbeddedImage):
-        return f'<c r="{reference}"{style_attr}/>'
+        return f'<c r="{reference}" t="inlineStr"{style_attr}><is><t/></is></c>'
     if value is None:
         return f'<c r="{reference}"{style_attr}/>'
     if isinstance(value, bool):
@@ -115,7 +115,7 @@ def _cell(value: Any, *, reference: str, style: int = 0) -> str:
 
 
 def _sheet_columns(headers: list[str]) -> str:
-    widths = [22.0, 50.0, 50.0, 14.0, 20.0, 32.0]
+    widths = [28.0, 66.0, 66.0, 16.0, 20.0, 32.0]
     columns = []
     for index in range(len(headers)):
         width = widths[index] if index < len(widths) else 20.0
@@ -138,11 +138,14 @@ def _sheet_xml(
     for row_index, row in enumerate(all_rows):
         rendered_cells = []
         for column_index, value in enumerate(row):
-            style = 1 if row_index == 0 else 2 if headers[column_index] in {
-                "status",
-                "truth_song_id",
-                "notes",
-            } else 0
+            if row_index == 0:
+                style = 1
+            elif headers[column_index] in {"status", "truth_song_id", "notes"}:
+                style = 2
+            elif headers[column_index] == "observation_id":
+                style = 3
+            else:
+                style = 0
             rendered_cells.append(
                 _cell(
                     value,
@@ -162,6 +165,23 @@ def _sheet_xml(
     max_column = max(1, len(headers))
     dimension = f"A1:{_cell_reference(max_row - 1, max_column - 1)}"
     drawing = '<drawing r:id="rId1"/>' if drawing_relationship else ""
+    status_column = next(
+        (index for index, header in enumerate(headers) if header == "status"),
+        None,
+    )
+    data_validation = ""
+    if rows and status_column is not None:
+        status_range = (
+            f"{_cell_reference(1, status_column)}:"
+            f"{_cell_reference(len(rows), status_column)}"
+        )
+        data_validation = (
+            '<dataValidations count="1">'
+            f'<dataValidation type="list" allowBlank="0" '
+            f'showErrorMessage="1" showInputMessage="1" sqref={quoteattr(status_range)}>'
+            '<formula1>"unreviewed,confirmed,rejected,hold"</formula1>'
+            "</dataValidation></dataValidations>"
+        )
     xml = f'''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"
  xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
@@ -170,6 +190,7 @@ def _sheet_xml(
  <sheetFormatPr defaultRowHeight="15"/>
  {_sheet_columns(headers)}
  <sheetData>{"".join(rendered_rows)}</sheetData>
+ {data_validation}
  <pageMargins left="0.7" right="0.7" top="0.75" bottom="0.75" header="0.3" footer="0.3"/>
  {drawing}
 </worksheet>
@@ -229,10 +250,13 @@ def _styles_xml() -> bytes:
  </fills>
  <borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>
  <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
- <cellXfs count="3">
+ <cellXfs count="4">
   <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>
   <xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"/>
   <xf numFmtId="0" fontId="0" fillId="3" borderId="0" xfId="0" applyFill="1"/>
+  <xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1">
+   <alignment shrinkToFit="1" vertical="center"/>
+  </xf>
  </cellXfs>
  <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
  <dxfs count="0"/>

@@ -103,7 +103,7 @@ python -m tools.vision_poc.jacket_catalog_review_projection `
   --manual-xlsx-output data\jacket_catalog_collector\manual-review-export.xlsx
 ```
 
-XLSXは`Manual Review`（`observation_id`、埋め込み`title_roi` / `artist_roi`、`status`、`truth_song_id`、`notes`）、`Master Songs`（current Master全曲）、`Metadata`（XLSX schema/export ID/catalog version/master version/export日時/対象件数）の3 sheetです。編集対象は`status`、`truth_song_id`、`notes`だけです。既存XLSXは、WPFの標準保存ダイアログで確認した場合に上書きされます。
+XLSXは`Manual Review`（`observation_id`、埋め込み`title_roi` / `artist_roi`、`status`、`truth_song_id`、`notes`）、`Master Songs`（current Master全曲）、`Metadata`（XLSX schema/export ID/catalog version/master version/export日時/対象件数）の3 sheetです。編集対象は`status`、`truth_song_id`、`notes`だけで、`status`は`unreviewed` / `confirmed` / `rejected` / `hold`の選択式です。既存XLSXは、WPFの標準保存ダイアログで確認した場合に上書きされます。
 
 WPFの`未レビュー`画面では、`XLSXをエクスポート`を`一括反映`の左側から実行できます。`一括反映`の右側にある`↻`（projectionを更新）で、current master/catalogのprojectionを再読込します。保存先は標準保存ダイアログで任意に選べます。既定の表示先は`data/jacket_catalog_collector`です。
 

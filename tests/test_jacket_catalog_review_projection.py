@@ -267,12 +267,20 @@ def test_manual_review_xlsx_embeds_rois_and_allows_existing_file(
     with zipfile.ZipFile(path) as archive:
         names = set(archive.namelist())
         sheet = archive.read("xl/worksheets/sheet1.xml").decode("utf-8")
+        styles = archive.read("xl/styles.xml").decode("utf-8")
         drawing = archive.read("xl/drawings/drawing1.xml").decode("utf-8")
         drawing_relationships = archive.read(
             "xl/drawings/_rels/drawing1.xml.rels"
         ).decode("utf-8")
         assert drawing.count("<xdr:oneCellAnchor>") == target_count * 2
         assert sheet.count('s="2"') == target_count * 3
+        assert sheet.count('s="3"') == target_count
+        assert sheet.count('width="66"') == 2
+        assert sheet.count('t="inlineStr"><is><t/></is>') == target_count * 2
+        assert '<dataValidation type="list"' in sheet
+        assert f'sqref="D2:D{target_count + 1}"' in sheet
+        assert '<formula1>"unreviewed,confirmed,rejected,hold"</formula1>' in sheet
+        assert 'shrinkToFit="1"' in styles
         for index in range(1, target_count + 1):
             for field in ("title", "artist"):
                 image_name = f"xl/media/{index:04d}-{field}.png"
