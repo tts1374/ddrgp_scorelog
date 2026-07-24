@@ -302,6 +302,8 @@ projectionとmanual review、coverage、M5 feature loader、title/artist evaluat
 
 title/artist OCR診断は同じstrict projection検証済みsourceだけを読み、profile別raw/status/confidence/candidate結果と代表contact sheetを`data/`配下へatomic生成する。Tesseract installed language不足は`m5c-title-artist-ocr-diagnostics-report-v1`の`ocr_unavailable` / `tesseract_language_unavailable_v1:<lang>`へ固定し、別languageへfallbackしない。診断前後でmaster/catalog hashとmanifest/source/crop/checkpoint fingerprintを照合し、変化時はreportをpublishしない。診断はcatalog writer、manual review transaction、artifact/checkpoint writerを呼ばず、schema、revision、history、source/cropを変更しない。
 
+#58のmanual review ODS exportはproduction auto-registration planとは別のread-only projection exportとする。current projectionの`needs_review` / `unresolved`だけを対象に、既存のtitle/artist ROI定義で切り出した画像をODS package内へ埋め込む。`Manual Review`、current Master全曲の`Master Songs`、schema/export/catalog/master version・export日時・対象件数だけの`Metadata`を持ち、catalog、Master、下書き、source画像は変更しない。出力は`data/`配下の新規`.ods`に限定し、既存fileを暗黙に上書きせず、画像を検証できない対象があれば全体を拒否する。ODS importは別の明示transaction境界として後続Issueへ分ける。
+
 coverageは `data/` 配下の明示directoryへ `jacket_catalog_song_coverage.csv`、`jacket_catalog_coverage_summary.json`、`jacket_catalog_coverage.md` を生成する。確定songがないreferenceでもGP対象candidateは `needs_review` として数え、候補のない観測だけを未割当集計へ残す。current master/GP/current extractorを満たす `auto_confirmed` / `manual_confirmed` referenceだけをM5 matcherへ供給し、`rejected`、orphan、旧extractor、不正persisted featureを除外する。
 
 catalog、observation artifact/checkpoint、source/crop画像、特徴量、review結果、coverageはローカル運用物とし、Git、CI artifact、Release、通常analysis logへ含めない。既存local DB/artifact/checkpoint/source/crop画像を削除、上書き、in-place repairしない。artifact manifest/checkpoint v1/v2、resume/retry状態機械はcatalog schema version再採番と独立して維持する。

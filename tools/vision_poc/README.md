@@ -668,6 +668,18 @@ python -m tools.vision_poc.jacket_catalog_review_projection `
   --master-db databases\ddrgp-master.sqlite
 ```
 
+未反映のmanual review対象をLibreOfficeで確認・編集する場合は、同じcurrent projectionにartifact rootを渡して、画像をODSへ埋め込みます。`needs_review` / `unresolved`だけを出力し、`source.png`がprojectionで検証できない対象はexportを拒否します。出力先は`data/`配下の新規`.ods`に限定され、既存fileは上書きしません。
+
+```powershell
+python -m tools.vision_poc.jacket_catalog_review_projection `
+  --catalog databases\jacket-catalog.sqlite `
+  --master-db databases\ddrgp-master.sqlite `
+  --artifact-root data\jacket_catalog_collector `
+  --manual-ods-output data\jacket_catalog_collector\manual-review-export.ods
+```
+
+生成ODSは`Manual Review`、`Master Songs`、`Metadata`の3 sheetを持ち、Manual Reviewの編集列は`status`、`truth_song_id`、`notes`です。title/artist ROIはODS内の`Pictures/`へ埋め込まれるため、外部画像pathやobservation IDからの逆引きに依存しません。対象0件でもheader、current Master全曲、対象件数0のMetadataを出力します。
+
 manual mutationはexpected revision/status/songをpreconditionにし、同一action ID・同一payloadだけを冪等再投入として扱います。manual confirm/reassignはcurrent extractorの完全な永続特徴量と明示song選択を要求し、current rowとhistoryを1 transactionで更新します。候補、expected値、OCR rawは暗黙song選択に使いません。
 
 ```powershell

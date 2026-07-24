@@ -130,6 +130,11 @@ OCR raw/normalized/candidate、hold reason、推奨song、編集用`truth_song_i
 同じplanから別pathへ再exportしたODSはbyte-identicalです。既存outputは上書きせず、capture mismatchは
 ODSへ含めません。ODS、plan、DB、画像、snapshot、reportは`data/`配下のローカル生成物です。
 
+上記のproduction policy plan用ODSとは別に、current catalogの未反映manual reviewを画像付きで確認する
+`#58`のexportは `tools.vision_poc.jacket_catalog_review_projection` の `--manual-ods-output` を使います。
+こちらは`needs_review` / `unresolved`だけを対象に、`Manual Review`、`Master Songs`、`Metadata`の3 sheetを
+持つ単一ODSを生成します。ODS内へtitle/artist ROIを埋め込み、`data/`配下の既存fileは上書きしません。
+
 plan確認後だけ、同じ4入力とplanを明示してapplyします。
 
 ```powershell

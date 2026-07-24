@@ -2,16 +2,33 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import io
 import json
 import sqlite3
+import uuid
 from contextlib import closing
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from PIL import Image
+
+from tools.ddrworld_snapshot_evaluation.ods_export import EmbeddedImage, write_ods
 from tools.vision_poc import jacket_reference_catalog as catalog
 from tools.vision_poc import title_artist_evaluation, unresolved_candidate_evaluation
 
 PROJECTION_SCHEMA_VERSION = 6
+MANUAL_REVIEW_ODS_SCHEMA_VERSION = "m5c-manual-review-ods-v1"
+MANUAL_REVIEW_ODS_HEADERS = [
+    "observation_id",
+    "title_roi",
+    "artist_roi",
+    "status",
+    "truth_song_id",
+    "notes",
+]
+UNREFLECTED_REVIEW_STATUSES = frozenset({"needs_review", "unresolved"})
+ROI_WIDTH_CM = 12.0
 
 
 def _database_fingerprint(path: Path) -> tuple[int, int, int, str]:
@@ -208,6 +225,158 @@ def build_review_projection(
     return result
 
 
+def _manual_review_targets(projection: dict[str, Any]) -> list[dict[str, Any]]:
+    references = projection.get("review_references")
+    if not isinstance(references, list):
+        raise ValueError("review projection has no review references")
+    targets: list[dict[str, Any]] = []
+    seen_observation_ids: set[str] = set()
+    for reference in references:
+        if not isinstance(reference, dict):
+            raise ValueError("review projection contains an invalid review reference")
+        if reference.get("stored_status") not in UNREFLECTED_REVIEW_STATUSES:
+            continue
+        evaluation = reference.get("candidate_evaluation")
+        observation_id = "" if not isinstance(evaluation, dict) else str(
+            evaluation.get("observation_id") or ""
+        )
+        if not observation_id:
+            raise ValueError("manual review target has no observation ID")
+        if observation_id in seen_observation_ids:
+            raise ValueError(
+                f"manual review target has a duplicate observation ID: {observation_id}"
+            )
+        seen_observation_ids.add(observation_id)
+        targets.append(
+            {
+                "observation_id": observation_id,
+                "source_image_path": reference.get("source_image_path"),
+                "notes": str(reference.get("notes") or ""),
+                "reference_id": str(reference.get("reference_id") or ""),
+            }
+        )
+    return sorted(
+        targets,
+        key=lambda item: (item["observation_id"], item["reference_id"]),
+    )
+
+
+def _embed_roi(
+    source_path: Path | None,
+    *,
+    field: str,
+    observation_id: str,
+    image_name: str,
+) -> EmbeddedImage:
+    if source_path is None:
+        raise ValueError(
+            f"manual review observation has no validated source image: {observation_id}"
+        )
+    try:
+        with Image.open(source_path) as source:
+            source.load()
+            box = title_artist_evaluation._scaled_roi(source, field)
+            crop = source.crop(box).convert("RGB")
+            payload = io.BytesIO()
+            crop.save(payload, format="PNG")
+            width, height = crop.size
+    except (OSError, ValueError) as exc:
+        raise ValueError(
+            f"cannot create {field} ROI for manual review observation "
+            f"{observation_id}: {exc}"
+        ) from exc
+    return EmbeddedImage(
+        name=image_name,
+        data=payload.getvalue(),
+        width_cm=ROI_WIDTH_CM,
+        height_cm=ROI_WIDTH_CM * height / width,
+    )
+
+
+def export_manual_review_ods(
+    path: Path,
+    projection: dict[str, Any],
+    *,
+    master_path: Path | None = None,
+    export_id: str | None = None,
+    exported_at: str | None = None,
+) -> dict[str, Any]:
+    """Export current unreflected review rows with their ROI images embedded."""
+    path = title_artist_evaluation._require_under_data(path, "manual review ODS output")
+    if path.suffix.lower() != ".ods":
+        raise ValueError("manual review ODS output must be a .ods file")
+    if path.exists():
+        raise ValueError(f"manual review ODS output already exists: {path}")
+
+    master_info = projection.get("master")
+    catalog_info = projection.get("catalog")
+    if not isinstance(master_info, dict) or not isinstance(catalog_info, dict):
+        raise ValueError("review projection has incomplete master/catalog metadata")
+    if master_path is None:
+        raw_master_path = master_info.get("path")
+        if not raw_master_path:
+            raise ValueError("review projection has no master database path")
+        master_path = Path(str(raw_master_path))
+    master = catalog.load_master_identity(master_path)
+    projected_master_version = str(master_info.get("master_version") or "")
+    if projected_master_version != master.version:
+        raise ValueError("master changed after the review projection was generated")
+
+    targets = _manual_review_targets(projection)
+    rows: list[list[Any]] = []
+    for index, target in enumerate(targets, start=1):
+        source_path = (
+            None
+            if not target["source_image_path"]
+            else Path(str(target["source_image_path"]))
+        )
+        rows.append(
+            [
+                target["observation_id"],
+                _embed_roi(
+                    source_path,
+                    field="title",
+                    observation_id=target["observation_id"],
+                    image_name=f"Pictures/{index:04d}-title.png",
+                ),
+                _embed_roi(
+                    source_path,
+                    field="artist",
+                    observation_id=target["observation_id"],
+                    image_name=f"Pictures/{index:04d}-artist.png",
+                ),
+                "unreviewed",
+                None,
+                target["notes"],
+            ]
+        )
+
+    metadata = [
+        ["schema_version", MANUAL_REVIEW_ODS_SCHEMA_VERSION],
+        ["export_id", export_id or uuid.uuid4().hex],
+        ["catalog_version", str(catalog_info.get("schema_version") or "")],
+        ["master_version", master.version],
+        ["exported_at", exported_at or datetime.now(UTC).isoformat(timespec="seconds")],
+        ["target_count", len(rows)],
+    ]
+    write_ods(
+        path,
+        [
+            ("Manual Review", MANUAL_REVIEW_ODS_HEADERS, rows),
+            (
+                "Master Songs",
+                ["song_id", "title", "artist"],
+                [[song.song_id, song.title, song.artist] for song in master.songs],
+            ),
+            ("Metadata", ["key", "value"], metadata),
+        ],
+    )
+    return {key: value for key, value in metadata}
+
+
+export_manual_ods = export_manual_review_ods
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Print the strict read-only jacket catalog review projection."
@@ -216,6 +385,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--master-db", required=True, type=Path)
     parser.add_argument("--artifact-root", type=Path)
     parser.add_argument("--report-output-dir", type=Path)
+    parser.add_argument("--manual-ods-output", type=Path)
     return parser
 
 
@@ -231,6 +401,10 @@ def main(argv: list[str] | None = None) -> int:
         args.report_output_dir = title_artist_evaluation._require_under_data(
             args.report_output_dir, "candidate report output"
         )
+    if args.manual_ods_output is not None:
+        args.manual_ods_output = title_artist_evaluation._require_under_data(
+            args.manual_ods_output, "manual review ODS output"
+        )
     projection = build_review_projection(
         args.catalog,
         args.master_db,
@@ -239,6 +413,12 @@ def main(argv: list[str] | None = None) -> int:
     if args.report_output_dir is not None:
         unresolved_candidate_evaluation.write_reports(
             args.report_output_dir, projection["review_references"]
+        )
+    if args.manual_ods_output is not None:
+        export_manual_review_ods(
+            args.manual_ods_output,
+            projection,
+            master_path=args.master_db,
         )
     print(json.dumps(projection, ensure_ascii=False, separators=(",", ":")))
     return 0

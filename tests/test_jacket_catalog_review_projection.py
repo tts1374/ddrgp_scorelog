@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import sqlite3
+import zipfile
 from pathlib import Path
 
 import pytest
-from PIL import Image
+from PIL import Image, ImageDraw
 from test_jacket_reference_catalog import created_at, identity, write_master
 
+from tools.ddrworld_snapshot_evaluation.evaluator import load_ods_sheets, rows_as_dicts
 from tools.vision_poc import jacket_catalog_review_projection as projection
 from tools.vision_poc import jacket_reference_catalog as catalog
 
@@ -115,3 +118,121 @@ def test_projection_rejects_concurrent_catalog_change(
     monkeypatch.setattr(projection.catalog, "build_coverage", mutate_during_projection)
     with pytest.raises(ValueError, match="changed while"):
         projection.build_review_projection(catalog_db, master_db)
+
+
+def _export_projection(master_db: Path, sources: list[Path]) -> dict[str, object]:
+    return {
+        "master": {
+            "path": str(master_db.resolve()),
+            "master_version": "master-v1",
+        },
+        "catalog": {"schema_version": 1},
+        "review_references": [
+            {
+                "reference_id": f"reference-{index}",
+                "stored_status": "unresolved",
+                "source_image_path": str(source.resolve()),
+                "notes": f"note-{index}",
+                "candidate_evaluation": {"observation_id": f"observation-{index}"},
+            }
+            for index, source in enumerate(sources, start=1)
+        ],
+    }
+
+
+def _write_export_source(path: Path) -> None:
+    image = Image.new("RGB", (1280, 720), "black")
+    draw = ImageDraw.Draw(image)
+    draw.rectangle((306, 58, 775, 91), fill=(220, 20, 60))
+    draw.rectangle((309, 97, 775, 119), fill=(30, 144, 255))
+    image.save(path)
+
+
+def test_manual_review_ods_exports_empty_target_and_all_master_songs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "data").mkdir()
+    master_db = tmp_path / "master.sqlite"
+    write_master(master_db)
+    path = tmp_path / "data/manual-review-empty.ods"
+
+    metadata = projection.export_manual_review_ods(
+        path,
+        _export_projection(master_db, []),
+        export_id="export-empty",
+        exported_at="2026-07-24T00:00:00+00:00",
+    )
+
+    sheets = load_ods_sheets(path)
+    assert set(sheets) == {"Manual Review", "Master Songs", "Metadata"}
+    assert sheets["Manual Review"] == [projection.MANUAL_REVIEW_ODS_HEADERS]
+    assert sheets["Master Songs"] == [
+        ["song_id", "title", "artist"],
+        ["song-1", "Alpha", "Artist A"],
+        ["song-2", "Beta", "Artist B"],
+    ]
+    metadata_rows = {
+        row["key"]: row["value"]
+        for row in rows_as_dicts(sheets["Metadata"], sheet_name="Metadata")
+    }
+    assert metadata_rows == {
+        "schema_version": projection.MANUAL_REVIEW_ODS_SCHEMA_VERSION,
+        "export_id": "export-empty",
+        "catalog_version": "1",
+        "master_version": "master-v1",
+        "exported_at": "2026-07-24T00:00:00+00:00",
+        "target_count": 0,
+    }
+    assert metadata["target_count"] == 0
+
+
+@pytest.mark.parametrize("target_count", [1, 3])
+def test_manual_review_ods_embeds_rois_and_protects_existing_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, target_count: int
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "data").mkdir()
+    master_db = tmp_path / "master.sqlite"
+    write_master(master_db)
+    sources = []
+    for index in range(target_count):
+        source = tmp_path / f"source-{index}.png"
+        _write_export_source(source)
+        sources.append(source)
+    path = tmp_path / f"data/manual-review-{target_count}.ods"
+
+    projection.export_manual_review_ods(
+        path,
+        _export_projection(master_db, sources),
+        export_id=f"export-{target_count}",
+        exported_at="2026-07-24T00:00:00+00:00",
+    )
+
+    with zipfile.ZipFile(path) as archive:
+        names = set(archive.namelist())
+        content = archive.read("content.xml").decode("utf-8")
+        manifest = archive.read("META-INF/manifest.xml").decode("utf-8")
+        for index in range(1, target_count + 1):
+            for field in ("title", "artist"):
+                image_name = f"Pictures/{index:04d}-{field}.png"
+                assert image_name in names
+                assert f'xlink:href="{image_name}"' in content
+                assert f'manifest:full-path="{image_name}"' in manifest
+                with Image.open(io.BytesIO(archive.read(image_name))) as image:
+                    assert image.size == ((470, 34) if field == "title" else (467, 23))
+
+    sheets = load_ods_sheets(path)
+    rows = rows_as_dicts(sheets["Manual Review"], sheet_name="Manual Review")
+    assert len(rows) == target_count
+    assert [row["status"] for row in rows] == ["unreviewed"] * target_count
+    assert [row["truth_song_id"] for row in rows] == [None] * target_count
+    assert [row["notes"] for row in rows] == [
+        f"note-{index}" for index in range(1, target_count + 1)
+    ]
+    assert content.count('table:style-name="input"') == target_count * 3
+
+    original = path.read_bytes()
+    with pytest.raises(ValueError, match="already exists"):
+        projection.export_manual_review_ods(path, _export_projection(master_db, sources))
+    assert path.read_bytes() == original

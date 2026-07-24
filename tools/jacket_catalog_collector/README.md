@@ -91,6 +91,20 @@ top-level必須fieldは `projection_schema_version`、`master`、`catalog`、`co
 
 保存先は `data/jacket_catalog_collector/manual-review-drafts.v1.json` です。ファイルには `observation_id`、`status`、`truth_song_id`、`notes`だけを保存し、再読込後も下書きを復元します。未レビュー側の一括反映は`confirmed` / `rejected`だけを対象にし、`unreviewed` / `hold`は残します。Master検索はcanonical title、title alias、canonical artist、song IDの順に、exact title、exact alias、title prefix、title partial、artist、IDの固定順位で行い、fuzzy matchingは行いません。ROIは既存のimmutable `source.png`を画面内で切り出し、追加の画像生成物は作りません。
 
+### Manual review ODS export
+
+current projectionから未反映の`needs_review` / `unresolved`だけを、画像埋め込みの単一ODSへ出力できます。出力先は`data/`配下の新規ファイルに限定され、catalog、Master、下書き、source画像は変更されません。`source.png`がprojectionで検証できない対象は、画像を省略せずexportを拒否します。
+
+```powershell
+python -m tools.vision_poc.jacket_catalog_review_projection `
+  --master-db databases\ddrgp-master.sqlite `
+  --catalog databases\jacket-catalog.sqlite `
+  --artifact-root data\jacket_catalog_collector `
+  --manual-ods-output data\jacket_catalog_collector\manual-review-export.ods
+```
+
+ODSは`Manual Review`（`observation_id`、埋め込み`title_roi` / `artist_roi`、`status`、`truth_song_id`、`notes`）、`Master Songs`（current Master全曲）、`Metadata`（ODS schema/export ID/catalog version/master version/export日時/対象件数）の3 sheetです。編集対象は`status`、`truth_song_id`、`notes`だけです。既存ODSは暗黙に上書きしません。
+
 ### レビュー済み訂正
 
 `レビュー済み` タブは、`auto_confirmed` / `manual_confirmed` / `rejected` のcurrent status、current song、下書き予定status/song、notes、登録経路、実行時刻を表示します。予定statusは `unchanged` / `confirmed` / `rejected` / `hold` です。`unchanged` はcurrent status/songを維持し、notesだけの変更はnotes更新として反映します。`hold` はstatus/song/notesを一切反映せず、下書きを残します。song変更、confirmedとrejectの相互変更、notes変更は未レビュー行と同じ一括transactionで処理し、成功した行の下書きだけを消去します。
