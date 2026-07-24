@@ -18,7 +18,7 @@ public sealed class ProjectionServiceTests
     }
 
     [Fact]
-    public async Task ExportsManualReviewOdsThroughCurrentProjectionCommand()
+    public async Task ExportsManualReviewXlsxThroughCurrentProjectionCommand()
     {
         var fixture = File.ReadAllText(Path.Combine(
             AppContext.BaseDirectory, "fixtures", "current.json"));
@@ -30,17 +30,17 @@ public sealed class ProjectionServiceTests
             Directory.GetCurrentDirectory(),
             artifactRoot: "artifacts");
 
-        await service.ExportManualReviewAsync(
+        await service.ExportManualReviewXlsxAsync(
             "master.sqlite",
             "catalog.sqlite",
-            "data/manual-review.ods",
+            "exports/manual-review.xlsx",
             CancellationToken.None);
 
         var arguments = Assert.Single(runner.Requests).Arguments;
         Assert.Contains("--artifact-root", arguments);
         Assert.Contains(Path.GetFullPath("artifacts"), arguments);
-        Assert.Contains("--manual-ods-output", arguments);
-        Assert.Contains(Path.GetFullPath("data/manual-review.ods"), arguments);
+        Assert.Contains("--manual-xlsx-output", arguments);
+        Assert.Contains(Path.GetFullPath("exports/manual-review.xlsx"), arguments);
     }
 }
 

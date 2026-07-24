@@ -276,15 +276,15 @@ public partial class MainWindow : Window
 
         var dialog = new SaveFileDialog
         {
-            Title = "manual review ODSを保存",
-            Filter = "ODS (*.ods)|*.ods",
-            DefaultExt = ".ods",
+            Title = "manual review XLSXを保存",
+            Filter = "Excel Workbook (*.xlsx)|*.xlsx",
+            DefaultExt = ".xlsx",
             AddExtension = true,
-            OverwritePrompt = false,
+            OverwritePrompt = true,
             InitialDirectory = Directory.Exists(evidenceRoot)
                 ? evidenceRoot
                 : Path.Combine(repositoryRoot, "data"),
-            FileName = "manual-review-export.ods",
+            FileName = "manual-review-export.xlsx",
         };
         if (dialog.ShowDialog(this) != true)
         {
@@ -292,55 +292,30 @@ public partial class MainWindow : Window
         }
 
         var output = Path.GetFullPath(dialog.FileName);
-        if (!IsUnderDataDirectory(output))
-        {
-            MessageBox.Show(
-                this,
-                "ODSの保存先はrepositoryのdata配下を選択してください。",
-                "ODS export保存先エラー");
-            return;
-        }
-        if (File.Exists(output))
-        {
-            MessageBox.Show(
-                this,
-                "既存のODSは上書きしません。別のファイル名を選択してください。",
-                "ODS export保存先エラー");
-            return;
-        }
 
         try
         {
             operationCancellation = new CancellationTokenSource();
-            await candidateProjectionService.ExportManualReviewAsync(
+            await candidateProjectionService.ExportManualReviewXlsxAsync(
                 viewModel.CurrentMasterPath,
                 viewModel.CurrentCatalogPath,
                 output,
                 operationCancellation.Token);
-            MessageBox.Show(this, output, "ODS export完了");
+            MessageBox.Show(this, output, "XLSX export完了");
         }
         catch (OperationCanceledException)
         {
-            MessageBox.Show(this, "manual review ODS exportを取り消しました。", "ODS export取消");
+            MessageBox.Show(this, "manual review XLSX exportを取り消しました。", "XLSX export取消");
         }
         catch (Exception exception)
         {
-            MessageBox.Show(this, exception.Message, "ODS export失敗");
+            MessageBox.Show(this, exception.Message, "XLSX export失敗");
         }
         finally
         {
             operationCancellation?.Dispose();
             operationCancellation = null;
         }
-    }
-
-    private bool IsUnderDataDirectory(string path)
-    {
-        var dataRoot = Path.GetFullPath(Path.Combine(repositoryRoot, "data"));
-        var relative = Path.GetRelativePath(dataRoot, path);
-        return !Path.IsPathRooted(relative)
-            && relative != ".."
-            && !relative.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal);
     }
 
     private async void GenerateCandidateReport_Click(object sender, RoutedEventArgs e)

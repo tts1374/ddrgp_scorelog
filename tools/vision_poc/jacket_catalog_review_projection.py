@@ -13,13 +13,13 @@ from typing import Any
 
 from PIL import Image
 
-from tools.ddrworld_snapshot_evaluation.ods_export import EmbeddedImage, write_ods
+from tools.ddrworld_snapshot_evaluation.xlsx_export import EmbeddedImage, write_xlsx
 from tools.vision_poc import jacket_reference_catalog as catalog
 from tools.vision_poc import title_artist_evaluation, unresolved_candidate_evaluation
 
 PROJECTION_SCHEMA_VERSION = 6
-MANUAL_REVIEW_ODS_SCHEMA_VERSION = "m5c-manual-review-ods-v1"
-MANUAL_REVIEW_ODS_HEADERS = [
+MANUAL_REVIEW_XLSX_SCHEMA_VERSION = "m5c-manual-review-xlsx-v1"
+MANUAL_REVIEW_XLSX_HEADERS = [
     "observation_id",
     "title_roi",
     "artist_roi",
@@ -293,7 +293,7 @@ def _embed_roi(
     )
 
 
-def export_manual_review_ods(
+def export_manual_review_xlsx(
     path: Path,
     projection: dict[str, Any],
     *,
@@ -302,11 +302,8 @@ def export_manual_review_ods(
     exported_at: str | None = None,
 ) -> dict[str, Any]:
     """Export current unreflected review rows with their ROI images embedded."""
-    path = title_artist_evaluation._require_under_data(path, "manual review ODS output")
-    if path.suffix.lower() != ".ods":
-        raise ValueError("manual review ODS output must be a .ods file")
-    if path.exists():
-        raise ValueError(f"manual review ODS output already exists: {path}")
+    if path.suffix.lower() != ".xlsx":
+        raise ValueError("manual review XLSX output must be a .xlsx file")
 
     master_info = projection.get("master")
     catalog_info = projection.get("catalog")
@@ -352,17 +349,17 @@ def export_manual_review_ods(
         )
 
     metadata = [
-        ["schema_version", MANUAL_REVIEW_ODS_SCHEMA_VERSION],
+        ["schema_version", MANUAL_REVIEW_XLSX_SCHEMA_VERSION],
         ["export_id", export_id or uuid.uuid4().hex],
         ["catalog_version", str(catalog_info.get("schema_version") or "")],
         ["master_version", master.version],
         ["exported_at", exported_at or datetime.now(UTC).isoformat(timespec="seconds")],
         ["target_count", len(rows)],
     ]
-    write_ods(
+    write_xlsx(
         path,
         [
-            ("Manual Review", MANUAL_REVIEW_ODS_HEADERS, rows),
+            ("Manual Review", MANUAL_REVIEW_XLSX_HEADERS, rows),
             (
                 "Master Songs",
                 ["song_id", "title", "artist"],
@@ -374,7 +371,7 @@ def export_manual_review_ods(
     return {key: value for key, value in metadata}
 
 
-export_manual_ods = export_manual_review_ods
+export_manual_xlsx = export_manual_review_xlsx
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -385,7 +382,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--master-db", required=True, type=Path)
     parser.add_argument("--artifact-root", type=Path)
     parser.add_argument("--report-output-dir", type=Path)
-    parser.add_argument("--manual-ods-output", type=Path)
+    parser.add_argument("--manual-xlsx-output", type=Path)
     return parser
 
 
@@ -401,10 +398,6 @@ def main(argv: list[str] | None = None) -> int:
         args.report_output_dir = title_artist_evaluation._require_under_data(
             args.report_output_dir, "candidate report output"
         )
-    if args.manual_ods_output is not None:
-        args.manual_ods_output = title_artist_evaluation._require_under_data(
-            args.manual_ods_output, "manual review ODS output"
-        )
     projection = build_review_projection(
         args.catalog,
         args.master_db,
@@ -414,9 +407,9 @@ def main(argv: list[str] | None = None) -> int:
         unresolved_candidate_evaluation.write_reports(
             args.report_output_dir, projection["review_references"]
         )
-    if args.manual_ods_output is not None:
-        export_manual_review_ods(
-            args.manual_ods_output,
+    if args.manual_xlsx_output is not None:
+        export_manual_review_xlsx(
+            args.manual_xlsx_output,
             projection,
             master_path=args.master_db,
         )

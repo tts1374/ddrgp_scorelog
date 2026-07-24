@@ -11,9 +11,62 @@ import pytest
 from PIL import Image, ImageDraw
 from test_jacket_reference_catalog import created_at, identity, write_master
 
-from tools.ddrworld_snapshot_evaluation.evaluator import load_ods_sheets, rows_as_dicts
+from tools.ddrworld_snapshot_evaluation.evaluator import rows_as_dicts
 from tools.vision_poc import jacket_catalog_review_projection as projection
 from tools.vision_poc import jacket_reference_catalog as catalog
+
+XLSX_NS = {
+    "main": "http://schemas.openxmlformats.org/spreadsheetml/2006/main",
+    "office_rel": "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
+    "package_rel": "http://schemas.openxmlformats.org/package/2006/relationships",
+}
+
+
+def _xlsx_column_index(reference: str) -> int:
+    letters = "".join(character for character in reference if character.isalpha())
+    result = 0
+    for character in letters:
+        result = result * 26 + ord(character.upper()) - ord("A") + 1
+    return result - 1
+
+
+def _load_xlsx_sheets(path: Path) -> dict[str, list[list[object]]]:
+    with zipfile.ZipFile(path) as archive:
+        workbook = ET.fromstring(archive.read("xl/workbook.xml"))
+        workbook_relationships = ET.fromstring(
+            archive.read("xl/_rels/workbook.xml.rels")
+        )
+        targets = {
+            relationship.attrib["Id"]: relationship.attrib["Target"]
+            for relationship in workbook_relationships.findall(
+                f"{{{XLSX_NS['package_rel']}}}Relationship"
+            )
+        }
+        sheets: dict[str, list[list[object]]] = {}
+        for sheet in workbook.findall("main:sheets/main:sheet", XLSX_NS):
+            target = targets[sheet.attrib[f"{{{XLSX_NS['office_rel']}}}id"]]
+            root = ET.fromstring(archive.read(f"xl/{target}"))
+            rows: list[list[object]] = []
+            for row in root.findall("main:sheetData/main:row", XLSX_NS):
+                values: dict[int, object] = {}
+                for cell in row.findall("main:c", XLSX_NS):
+                    column_index = _xlsx_column_index(cell.attrib["r"])
+                    inline = cell.find("main:is/main:t", XLSX_NS)
+                    if inline is not None:
+                        value: object = "".join(inline.itertext())
+                    else:
+                        raw = cell.findtext("main:v", default="", namespaces=XLSX_NS)
+                        if cell.attrib.get("t") == "b":
+                            value = raw == "1"
+                        elif cell.attrib.get("t") == "n":
+                            value = float(raw) if "." in raw else int(raw)
+                        else:
+                            value = raw or None
+                    values[column_index] = value
+                if values:
+                    rows.append([values.get(index) for index in range(max(values) + 1)])
+            sheets[sheet.attrib["name"]] = rows
+    return sheets
 
 
 def setup_projection(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path, str]:
@@ -149,25 +202,25 @@ def _write_export_source(path: Path) -> None:
     image.save(path)
 
 
-def test_manual_review_ods_exports_empty_target_and_all_master_songs(
+def test_manual_review_xlsx_exports_empty_target_and_all_master_songs(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.chdir(tmp_path)
-    (tmp_path / "data").mkdir()
+    (tmp_path / "exports").mkdir()
     master_db = tmp_path / "master.sqlite"
     write_master(master_db)
-    path = tmp_path / "data/manual-review-empty.ods"
+    path = tmp_path / "exports/manual-review-empty.xlsx"
 
-    metadata = projection.export_manual_review_ods(
+    metadata = projection.export_manual_review_xlsx(
         path,
         _export_projection(master_db, []),
         export_id="export-empty",
         exported_at="2026-07-24T00:00:00+00:00",
     )
 
-    sheets = load_ods_sheets(path)
+    sheets = _load_xlsx_sheets(path)
     assert set(sheets) == {"Manual Review", "Master Songs", "Metadata"}
-    assert sheets["Manual Review"] == [projection.MANUAL_REVIEW_ODS_HEADERS]
+    assert sheets["Manual Review"] == [projection.MANUAL_REVIEW_XLSX_HEADERS]
     assert sheets["Master Songs"] == [
         ["song_id", "title", "artist"],
         ["song-1", "Alpha", "Artist A"],
@@ -178,7 +231,7 @@ def test_manual_review_ods_exports_empty_target_and_all_master_songs(
         for row in rows_as_dicts(sheets["Metadata"], sheet_name="Metadata")
     }
     assert metadata_rows == {
-        "schema_version": projection.MANUAL_REVIEW_ODS_SCHEMA_VERSION,
+        "schema_version": projection.MANUAL_REVIEW_XLSX_SCHEMA_VERSION,
         "export_id": "export-empty",
         "catalog_version": "1",
         "master_version": "master-v1",
@@ -189,11 +242,11 @@ def test_manual_review_ods_exports_empty_target_and_all_master_songs(
 
 
 @pytest.mark.parametrize("target_count", [1, 3])
-def test_manual_review_ods_embeds_rois_and_protects_existing_file(
+def test_manual_review_xlsx_embeds_rois_and_allows_existing_file(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, target_count: int
 ) -> None:
     monkeypatch.chdir(tmp_path)
-    (tmp_path / "data").mkdir()
+    (tmp_path / "exports").mkdir()
     master_db = tmp_path / "master.sqlite"
     write_master(master_db)
     sources = []
@@ -201,9 +254,10 @@ def test_manual_review_ods_embeds_rois_and_protects_existing_file(
         source = tmp_path / f"source-{index}.png"
         _write_export_source(source)
         sources.append(source)
-    path = tmp_path / f"data/manual-review-{target_count}.ods"
+    path = tmp_path / f"exports/manual-review-{target_count}.xlsx"
 
-    projection.export_manual_review_ods(
+    path.write_bytes(b"previous export")
+    projection.export_manual_review_xlsx(
         path,
         _export_projection(master_db, sources),
         export_id=f"export-{target_count}",
@@ -212,24 +266,22 @@ def test_manual_review_ods_embeds_rois_and_protects_existing_file(
 
     with zipfile.ZipFile(path) as archive:
         names = set(archive.namelist())
-        content = archive.read("content.xml").decode("utf-8")
-        manifest = archive.read("META-INF/manifest.xml").decode("utf-8")
-        content_root = ET.fromstring(content)
-        text_p = "{urn:oasis:names:tc:opendocument:xmlns:text:1.0}p"
-        draw_frame = "{urn:oasis:names:tc:opendocument:xmlns:drawing:1.0}frame"
-        assert sum(
-            len(paragraph.findall(draw_frame)) for paragraph in content_root.iter(text_p)
-        ) == target_count * 2
+        sheet = archive.read("xl/worksheets/sheet1.xml").decode("utf-8")
+        drawing = archive.read("xl/drawings/drawing1.xml").decode("utf-8")
+        drawing_relationships = archive.read(
+            "xl/drawings/_rels/drawing1.xml.rels"
+        ).decode("utf-8")
+        assert drawing.count("<xdr:oneCellAnchor>") == target_count * 2
+        assert sheet.count('s="2"') == target_count * 3
         for index in range(1, target_count + 1):
             for field in ("title", "artist"):
-                image_name = f"Pictures/{index:04d}-{field}.png"
+                image_name = f"xl/media/{index:04d}-{field}.png"
                 assert image_name in names
-                assert f'xlink:href="{image_name}"' in content
-                assert f'manifest:full-path="{image_name}"' in manifest
+                assert f"{index:04d}-{field}.png" in drawing_relationships
                 with Image.open(io.BytesIO(archive.read(image_name))) as image:
                     assert image.size == ((470, 34) if field == "title" else (467, 23))
 
-    sheets = load_ods_sheets(path)
+    sheets = _load_xlsx_sheets(path)
     rows = rows_as_dicts(sheets["Manual Review"], sheet_name="Manual Review")
     assert len(rows) == target_count
     assert [row["status"] for row in rows] == ["unreviewed"] * target_count
@@ -237,9 +289,5 @@ def test_manual_review_ods_embeds_rois_and_protects_existing_file(
     assert [row["notes"] for row in rows] == [
         f"note-{index}" for index in range(1, target_count + 1)
     ]
-    assert content.count('table:style-name="input"') == target_count * 3
-
-    original = path.read_bytes()
-    with pytest.raises(ValueError, match="already exists"):
-        projection.export_manual_review_ods(path, _export_projection(master_db, sources))
-    assert path.read_bytes() == original
+    projection.export_manual_review_xlsx(path, _export_projection(master_db, sources))
+    assert zipfile.is_zipfile(path)

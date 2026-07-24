@@ -397,7 +397,7 @@ public sealed class ProjectionService(
         loader.Load(result.StandardOutput);
     }
 
-    public async Task ExportManualReviewAsync(
+    public async Task ExportManualReviewXlsxAsync(
         string masterPath,
         string catalogPath,
         string outputPath,
@@ -405,7 +405,7 @@ public sealed class ProjectionService(
     {
         if (artifactRoot is null)
         {
-            throw new InvalidOperationException("Manual review ODS export requires candidate artifact root.");
+            throw new InvalidOperationException("Manual review XLSX export requires candidate artifact root.");
         }
         var result = await processRunner.RunAsync(
             new ProcessRequest(
@@ -415,14 +415,14 @@ public sealed class ProjectionService(
                     "--catalog", Path.GetFullPath(catalogPath),
                     "--master-db", Path.GetFullPath(masterPath),
                     "--artifact-root", Path.GetFullPath(artifactRoot),
-                    "--manual-ods-output", Path.GetFullPath(outputPath),
+                    "--manual-xlsx-output", Path.GetFullPath(outputPath),
                 ],
                 repositoryRoot),
             cancellationToken);
         if (result.ExitCode != 0)
         {
             throw new InvalidOperationException(
-                $"Manual review ODS export failed (exit {result.ExitCode}): "
+                $"Manual review XLSX export failed (exit {result.ExitCode}): "
                 + result.StandardError.Trim());
         }
         loader.Load(result.StandardOutput);

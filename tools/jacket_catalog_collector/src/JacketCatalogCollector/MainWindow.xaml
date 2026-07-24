@@ -249,7 +249,7 @@
                                 </StackPanel>
                                 <StackPanel Grid.Column="1" Orientation="Horizontal"
                                             HorizontalAlignment="Right">
-                                    <Button Content="ODSをエクスポート"
+                                    <Button Content="XLSXをエクスポート"
                                             Click="ExportManualReview_Click" />
                                     <Button Content="一括反映"
                                             Style="{StaticResource PrimaryButton}"
