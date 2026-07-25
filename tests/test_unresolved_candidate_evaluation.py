@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import zipfile
 from pathlib import Path
 
 from test_title_artist_evaluation import alpha_extractor, fixture_paths, write_artifact
@@ -154,6 +155,43 @@ def test_needs_review_projection_keeps_validated_source_image_path(
     )
     assert master_path.read_bytes() == master_before
     assert catalog_path.read_bytes() == catalog_before
+
+
+def test_review_projection_keeps_source_image_and_exports_after_master_drift(
+    tmp_path: Path, monkeypatch
+) -> None:
+    master_path, catalog_path, artifact_root = fixture_paths(tmp_path, monkeypatch)
+    relative = write_artifact(artifact_root, catalog_path, index=1, composite=True)
+    manifest, reference_id = _ingest_artifact(master_path, catalog_path, artifact_root, relative)
+    _write_checkpoint(artifact_root, manifest, reference_id)
+    with sqlite3.connect(master_path) as connection:
+        connection.execute(
+            "UPDATE master_metadata SET value = 'master-v2' WHERE key = 'master_version'"
+        )
+        connection.execute(
+            "UPDATE master_metadata SET value = 'fixture-source-hash-v2' WHERE key = 'source_hash'"
+        )
+        connection.execute(
+            "UPDATE source_snapshots SET content_hash = 'fixture-source-hash-v2'"
+        )
+    result = projection.build_review_projection(
+        catalog_path,
+        master_path,
+        artifact_root=artifact_root,
+        extractor=alpha_extractor,
+    )
+
+    reviewed = result["review_references"][0]
+    assert reviewed["candidate_evaluation"]["classification"] == "evaluation_unavailable"
+    assert reviewed["candidate_evaluation"]["reason"] == "master_identity_drift"
+    assert reviewed["source_image_path"] == str(
+        (artifact_root / relative).parent.joinpath("source.png").resolve()
+    )
+
+    output = tmp_path / "review-drift.xlsx"
+    metadata = projection.export_manual_review_xlsx(output, result)
+    assert metadata["target_count"] == 1
+    assert zipfile.is_zipfile(output)
 
 
 def test_checkpoint_drift_is_classified_without_candidate_or_database_write(

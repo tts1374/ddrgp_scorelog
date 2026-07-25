@@ -140,6 +140,43 @@ def test_current_projection_exposes_manual_review_without_legacy_capabilities(
     assert catalog_db.read_bytes() == catalog_before
 
 
+def test_confirmed_reference_stays_collected_after_master_update(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    master_db, catalog_db, reference_id = setup_projection(tmp_path, monkeypatch)
+    catalog.apply_review_mutation(
+        catalog_db,
+        master_db,
+        catalog.ReviewMutationRequest(
+            action_id="projection-confirm-drift",
+            reference_id=reference_id,
+            action="manual_confirm",
+            expected_revision=0,
+            expected_status="unresolved",
+            expected_song_id=None,
+            song_id="song-1",
+            note="confirmed before master update",
+        ),
+    )
+    with sqlite3.connect(master_db) as connection:
+        connection.execute(
+            "UPDATE master_metadata SET value = 'master-v2' WHERE key = 'master_version'"
+        )
+        connection.execute(
+            "UPDATE master_metadata SET value = 'fixture-source-hash-v2' WHERE key = 'source_hash'"
+        )
+        connection.execute(
+            "UPDATE source_snapshots SET content_hash = 'fixture-source-hash-v2'"
+        )
+
+    rows, summary = catalog.build_coverage(catalog_db, master_db)
+    result = projection.build_review_projection(catalog_db, master_db)
+
+    assert rows[0]["coverage_status"] == "referenced"
+    assert summary["coverage_status_counts"] == {"referenced": 1, "uncollected": 1}
+    assert result["review_references"][0]["current_status"] == "manual_confirmed"
+
+
 def test_projection_rejects_unsupported_catalog_without_writing(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

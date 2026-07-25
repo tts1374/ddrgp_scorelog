@@ -3,6 +3,73 @@ namespace JacketCatalogCollector.Tests;
 public sealed class MainViewModelTests
 {
     [Fact]
+    public async Task UserFacingProjectionDisplaysTimestampCoverageAndJapaneseLabels()
+    {
+        const string generatedAt = "2026-07-19T01:00:00+00:00";
+        var viewModel = new MainViewModel(
+            new StubMasterUpdateService(generatedAt: generatedAt),
+            new StubProjectionService(Projection()));
+
+        await viewModel.LoadProjectionAsync();
+
+        var expectedTimestamp = DateTimeOffset.Parse(generatedAt)
+            .ToLocalTime()
+            .ToString("yyyy/MM/dd HH:mm:ss");
+        Assert.Equal(expectedTimestamp, viewModel.MasterUpdatedAtLongDisplay);
+        Assert.Equal($"曲情報: {expectedTimestamp[..^3]} 更新", viewModel.MasterHeaderDisplay);
+        Assert.Equal("ジャケット情報: v1", viewModel.CatalogHeaderDisplay);
+        Assert.Equal("利用可能", viewModel.OperationStateDisplay);
+        Assert.Equal("0 / 2 曲", viewModel.CatalogCoverageDisplay);
+        Assert.Equal("1", viewModel.ReviewPendingSongCountDisplay);
+        Assert.Equal("1 件", viewModel.ReviewPendingCountDisplay);
+        Assert.Contains("収集済み: 0 / レビュー待ち: 1 / 未収集: 1 / 曲未特定: 0",
+            viewModel.CollectionSummaryDisplay,
+            StringComparison.Ordinal);
+        Assert.Equal("レビュー待ち", viewModel.Songs[0].CoverageStatusDisplay);
+        Assert.Equal("不明: opaque reason", viewModel.Songs[0].ReasonDisplay);
+    }
+
+    [Theory]
+    [InlineData("all", "すべて")]
+    [InlineData("referenced", "収集済み")]
+    [InlineData("needs_review", "レビュー待ち")]
+    [InlineData("uncollected", "未収集")]
+    [InlineData("unresolved", "曲未特定")]
+    [InlineData("orphaned", "曲情報に存在しないデータ")]
+    [InlineData("future_status", "不明: future_status")]
+    public void CoverageStatusLabelsHaveUnknownFallback(string value, string expected) =>
+        Assert.Equal(expected, CollectionDisplayLabels.Status(value));
+
+    [Theory]
+    [InlineData("observation_artifact_mismatch", "取得画面またはartifact不一致")]
+    [InlineData("missing_title_or_artist", "曲名を特定できない")]
+    [InlineData("duplicate_identity", "重複または既登録")]
+    [InlineData("feature_extraction_failed", "画像・artifact欠損")]
+    [InlineData("master_version_changed", "曲情報、ジャケット情報、checkpointの更新差異")]
+    [InlineData("future_reason", "不明: future_reason")]
+    public void CollectionReasonLabelsHaveUnknownFallback(string value, string expected) =>
+        Assert.Equal(expected, CollectionDisplayLabels.Reason(value));
+
+    [Fact]
+    public async Task MasterUpdateFailureKeepsExistingProjectionAndUsesShortResult()
+    {
+        var viewModel = new MainViewModel(
+            new StubMasterUpdateService(
+                updateException: new IOException("build failed"),
+                generatedAt: "2026-07-19T01:00:00+00:00"),
+            new StubProjectionService(Projection()));
+        await viewModel.LoadProjectionAsync();
+
+        await Assert.ThrowsAsync<IOException>(() => viewModel.UpdateMasterAsync());
+
+        Assert.Equal(2, viewModel.Songs.Count);
+        Assert.Equal("更新失敗", viewModel.OperationStateDisplay);
+        Assert.Equal("更新に失敗しました。", viewModel.MasterUserStatusDisplay);
+        Assert.Equal("曲情報を更新できませんでした。ログを確認してください。",
+            viewModel.LastOperationResultDisplay);
+    }
+
+    [Fact]
     public async Task LoadsProjectionAndUsesOneStatusReasonSetForBothLists()
     {
         var projection = Projection();
@@ -46,6 +113,7 @@ public sealed class MainViewModelTests
 
         Assert.Equal("曲情報がありません", viewModel.StatusTitle);
         Assert.Equal("未選択", viewModel.MasterVersion);
+        Assert.Equal("未作成", viewModel.OperationStateDisplay);
         Assert.Empty(projection.Loads);
         Assert.Equal(0, catalog.Calls);
     }
@@ -281,6 +349,12 @@ public sealed class MainViewModelTests
         Assert.Equal("収集終了・projection再読込失敗", viewModel.StatusTitle);
         Assert.Contains("catalog retry:", viewModel.StatusMessage, StringComparison.Ordinal);
         Assert.Contains("projection再読込: 失敗", viewModel.StatusMessage, StringComparison.Ordinal);
+        Assert.Contains("保存済み: 0", viewModel.CollectionEndResultDisplay, StringComparison.Ordinal);
+        Assert.Contains("保留中: 0", viewModel.CollectionEndResultDisplay, StringComparison.Ordinal);
+        Assert.Contains("表示の更新に失敗しました", viewModel.CollectionEndResultDisplay,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("session=", viewModel.CollectionEndResultDisplay, StringComparison.Ordinal);
+        Assert.DoesNotContain("auto-confirm", viewModel.CollectionEndResultDisplay, StringComparison.Ordinal);
         Assert.Null(viewModel.CurrentMasterPath);
         Assert.Null(viewModel.CurrentCatalogPath);
         Assert.Empty(viewModel.Songs);
@@ -1303,7 +1377,8 @@ public sealed class MainViewModelTests
 
     private sealed class StubMasterUpdateService(
         Exception? updateException = null,
-        Exception? inspectException = null) : IMasterUpdateService
+        Exception? inspectException = null,
+        string generatedAt = "") : IMasterUpdateService
     {
         public List<string> InspectedPaths { get; } = [];
         public List<string> UpdateTargets { get; } = [];
@@ -1314,7 +1389,7 @@ public sealed class MainViewModelTests
         {
             InspectedPaths.Add(path);
             return inspectException is null
-                ? Task.FromResult(new MasterSummary("master-v1", "hash", 1, 1, 1))
+                ? Task.FromResult(new MasterSummary("master-v1", "hash", 1, 1, 1, generatedAt))
                 : Task.FromException<MasterSummary>(inspectException);
         }
 
@@ -1328,8 +1403,8 @@ public sealed class MainViewModelTests
                 return Task.FromException<MasterUpdateResult>(updateException);
             }
             return Task.FromResult(new MasterUpdateResult(
-                new MasterSummary("master-v1", "old", 1, 1, 1),
-                new MasterSummary("master-v2", "new", 2, 2, 2)));
+                new MasterSummary("master-v1", "old", 1, 1, 1, generatedAt),
+                new MasterSummary("master-v2", "new", 2, 2, 2, generatedAt)));
         }
     }
 

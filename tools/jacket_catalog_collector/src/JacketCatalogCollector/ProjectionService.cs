@@ -6,8 +6,6 @@ namespace JacketCatalogCollector;
 
 public sealed class ProjectionJsonLoader
 {
-    private static readonly HashSet<string> CoverageStatuses =
-        ["referenced", "needs_review", "uncollected", "unresolved"];
     private static readonly HashSet<string> ReviewStatuses =
         ["auto_confirmed", "manual_confirmed", "needs_review", "unresolved", "rejected", "orphaned"];
     private static readonly HashSet<string> StoredStatuses =
@@ -84,7 +82,7 @@ public sealed class ProjectionJsonLoader
         {
             throw new InvalidOperationException("Projection GP coverage denominator is inconsistent.");
         }
-        if (projection.Coverage.StatusCounts.Keys.Any(status => !CoverageStatuses.Contains(status))
+        if (projection.Coverage.StatusCounts.Keys.Any(string.IsNullOrWhiteSpace)
             || projection.Coverage.StatusCounts.Values.Any(count => count < 0)
             || projection.Coverage.StatusCounts.Values.Sum() != projection.Coverage.GrandPrixSongCount)
         {
@@ -103,8 +101,7 @@ public sealed class ProjectionJsonLoader
             {
                 RequireString(alias, "songs.aliases row");
             }
-            if (!CoverageStatuses.Contains(song.CoverageStatus)
-                || !int.TryParse(song.ReferenceCount, out var referenceCount)
+            if (!int.TryParse(song.ReferenceCount, out var referenceCount)
                 || referenceCount < 0)
             {
                 throw new InvalidOperationException("Projection song row is invalid.");
@@ -113,9 +110,9 @@ public sealed class ProjectionJsonLoader
         var songStatusCounts = projection.Songs
             .GroupBy(song => song.CoverageStatus, StringComparer.Ordinal)
             .ToDictionary(group => group.Key, group => group.Count(), StringComparer.Ordinal);
-        if (CoverageStatuses.Any(
-                status => songStatusCounts.GetValueOrDefault(status)
-                    != projection.Coverage.StatusCounts.GetValueOrDefault(status)))
+        if (songStatusCounts.Count != projection.Coverage.StatusCounts.Count
+            || songStatusCounts.Any(
+                item => item.Value != projection.Coverage.StatusCounts.GetValueOrDefault(item.Key)))
         {
             throw new InvalidOperationException(
                 "Projection coverage counts do not match the song status histogram.");

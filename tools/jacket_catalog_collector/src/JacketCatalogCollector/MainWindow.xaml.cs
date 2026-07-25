@@ -105,6 +105,10 @@ public partial class MainWindow : Window
 
     private async void StartCapture_Click(object sender, RoutedEventArgs e)
     {
+        if (!viewModel.CanStartCollection)
+        {
+            return;
+        }
         try
         {
             if (!await captureObservationController.StartAsync())
@@ -124,6 +128,10 @@ public partial class MainWindow : Window
 
     private async void StopCapture_Click(object sender, RoutedEventArgs e)
     {
+        if (!viewModel.CanStopCollection)
+        {
+            return;
+        }
         try
         {
             await captureObservationController.StopAsync();
@@ -427,7 +435,7 @@ public partial class MainWindow : Window
 
     private async void UpdateMaster_Click(object sender, RoutedEventArgs e)
     {
-        if (!CanStartOperation())
+        if (!CanStartOperation() || !viewModel.CanUpdateMaster)
         {
             return;
         }

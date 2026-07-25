@@ -90,6 +90,12 @@ public sealed class ProjectionSong
     public required string Reason { get; init; }
     [JsonPropertyName("aliases")]
     public required List<string> Aliases { get; init; }
+
+    [JsonIgnore]
+    public string CoverageStatusDisplay => CollectionDisplayLabels.Status(CoverageStatus);
+
+    [JsonIgnore]
+    public string ReasonDisplay => CollectionDisplayLabels.Reason(Reason);
 }
 
 [JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]

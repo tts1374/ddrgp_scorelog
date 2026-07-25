@@ -1962,7 +1962,12 @@ def validate_observation_receipt(
     }
 
 
-def _reference_state(row: sqlite3.Row, master: MasterIdentity) -> tuple[str, str]:
+def _reference_state(
+    row: sqlite3.Row,
+    master: MasterIdentity,
+    *,
+    keep_confirmed_status: bool = False,
+) -> tuple[str, str]:
     song_id = str(row["song_id"] or "")
     if not song_id:
         return str(row["review_status"]), str(row["resolution_reason"])
@@ -1972,15 +1977,15 @@ def _reference_state(row: sqlite3.Row, master: MasterIdentity) -> tuple[str, str
         return "orphaned", "master_song_missing"
     if not song.grand_prix_play_available:
         return "orphaned", "song_not_grand_prix_available"
+    review_status = str(row["review_status"])
+    if keep_confirmed_status and review_status in {"auto_confirmed", "manual_confirmed"}:
+        # A confirmed catalog row remains collected when a later master or
+        # extractor update makes its capture stale.  The stored confirmation
+        # is still the catalog state. Matching continues to use the strict
+        # current-identity path below when this flag is not enabled.
+        return review_status, str(row["resolution_reason"])
     if str(row["feature_extractor_version"]) != FEATURE_EXTRACTOR_VERSION:
         return "needs_review", "feature_extractor_version_changed"
-    review_status = str(row["review_status"])
-    if review_status == "manual_confirmed":
-        try:
-            _decode_persisted_feature(row)
-        except ValueError:
-            return "needs_review", "persisted_feature_invalid"
-        return review_status, str(row["resolution_reason"])
     if review_status != "auto_confirmed":
         return review_status, str(row["resolution_reason"])
     if (song.title, song.artist) != (
@@ -2065,7 +2070,11 @@ def build_coverage(
             ).add(str(candidate["song_id"]))
         total_observations = len(rows)
         for row in rows:
-            state, reason = _reference_state(row, master)
+            state, reason = _reference_state(
+                row,
+                master,
+                keep_confirmed_status=True,
+            )
             original_status = str(row["review_status"])
             song_id = str(row["song_id"] or "")
             if original_status == "auto_confirmed":

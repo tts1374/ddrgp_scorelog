@@ -21,6 +21,7 @@ public sealed class MasterUpdateServiceTests : IDisposable
         var result = await service.UpdateAsync(target, CancellationToken.None);
 
         Assert.Equal("master-v2", result.After.MasterVersion);
+        Assert.Equal("2026-07-19T01:00:00+00:00", result.After.GeneratedAt);
         Assert.Equal("staged-master", File.ReadAllText(target));
         Assert.Equal(2, runner.Requests.Count);
         Assert.All(
@@ -322,7 +323,7 @@ public sealed class MasterUpdateServiceTests : IDisposable
     }
 
     private static string SummaryJson(string version) => $$"""
-        {"master_version":"{{version}}","source_hash":"hash-{{version}}","song_count":10,"chart_count":20,"grand_prix_play_available_song_count":"8"}
+        {"master_version":"{{version}}","source_hash":"hash-{{version}}","song_count":10,"chart_count":20,"grand_prix_play_available_song_count":"8","generated_at":"2026-07-19T01:00:00+00:00"}
         """;
 
     private static string Hash(string path) =>

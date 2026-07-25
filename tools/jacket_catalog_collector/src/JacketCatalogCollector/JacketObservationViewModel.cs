@@ -72,6 +72,7 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
                 OnPropertyChanged(nameof(CanAdopt));
                 OnPropertyChanged(nameof(CollectionStateTitle));
                 OnPropertyChanged(nameof(CollectionStateMessage));
+                OnPropertyChanged(nameof(CollectionJudgmentDisplay));
             }
         }
     }
@@ -128,6 +129,30 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
     public string InformationDiagnostic =>
         $"{InformationDetection.DetectorVersion} / {InformationDetection.FeatureVersion}: "
         + InformationDetection.Diagnostic;
+    public string DetectedTitleDisplay => "—";
+    public string DetectedArtistDisplay => "—";
+    public string CollectionJudgmentDisplay
+    {
+        get
+        {
+            if (captureEnded)
+            {
+                return "停止中";
+            }
+            if (CanAdopt)
+            {
+                return "ジャケット安定 (保存可)";
+            }
+            return Detection.State switch
+            {
+                JacketDetectionState.StableCandidate => "曲名情報を確認中",
+                JacketDetectionState.DuplicatePreview => "保存済み候補",
+                JacketDetectionState.ChangeCandidate => "ジャケット確認中",
+                JacketDetectionState.InvalidFrame => "画面を確認できません",
+                _ => "未検出",
+            };
+        }
+    }
     public string StableCandidate => stableCandidate is null
         ? "—"
         : $"jacket={stableCandidate.FeatureHash}, title={stableCandidate.TitleLineFeature?.FeatureHash ?? "—"}, "
@@ -194,7 +219,7 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
         {
             if (captureEnded)
             {
-                return "DDR GPを起動し、「収集を開始」を押してください。";
+                return "DDR GPを起動し、「収集開始」を押してください。";
             }
             if (Detection.State == JacketDetectionState.ChangeCandidate)
             {
@@ -215,7 +240,7 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
             {
                 if (AutoSaveEnabled)
                 {
-                    return "current checkpointとcatalog identity集合を再照合して自動保存します。";
+                    return "保存前に既存のジャケット情報と照合して自動保存します。";
                 }
                 return "内容を確認して「このジャケットを保存」を押してください。";
             }
@@ -269,6 +294,7 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
         OnPropertyChanged(nameof(CanResume));
         OnPropertyChanged(nameof(CanConfigureAutoSave));
         OnPropertyChanged(nameof(CanRetryCatalog));
+        OnPropertyChanged(nameof(CollectionJudgmentDisplay));
     }
 
     public async Task ResumeSessionAsync(
@@ -575,6 +601,7 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
             OnPropertyChanged(nameof(CanRetryCatalog));
             OnPropertyChanged(nameof(CollectionStateTitle));
             OnPropertyChanged(nameof(CollectionStateMessage));
+            OnPropertyChanged(nameof(CollectionJudgmentDisplay));
         }
     }
 
@@ -696,6 +723,7 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
             OnPropertyChanged(nameof(CanRetryCatalog));
             OnPropertyChanged(nameof(CollectionStateTitle));
             OnPropertyChanged(nameof(CollectionStateMessage));
+            OnPropertyChanged(nameof(CollectionJudgmentDisplay));
         }
         try
         {
@@ -1000,6 +1028,7 @@ public sealed class JacketObservationViewModel : INotifyPropertyChanged, IAsyncD
         OnPropertyChanged(nameof(CanAdopt));
         OnPropertyChanged(nameof(CollectionStateTitle));
         OnPropertyChanged(nameof(CollectionStateMessage));
+        OnPropertyChanged(nameof(CollectionJudgmentDisplay));
     }
 
     private void ResetSavePreflightState()

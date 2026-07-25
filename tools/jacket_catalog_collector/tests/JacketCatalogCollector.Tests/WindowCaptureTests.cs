@@ -405,6 +405,23 @@ public sealed class WindowCaptureTests
         }
     }
 
+    [Fact]
+    public async Task Detection_state_is_busy_only_while_window_enumeration_runs()
+    {
+        var windows = new BlockingWindowEnumerator();
+        var coordinator = new WindowCaptureCoordinator(
+            windows, new FakeSessionFactory(), new RecordingDispatcher());
+        var viewModel = new WindowCaptureViewModel(windows, coordinator);
+
+        var detection = viewModel.DetectDdrGpAsync();
+        await windows.Started.Task;
+        Assert.True(viewModel.IsDetecting);
+
+        windows.Release.TrySetResult();
+        Assert.Null(await detection);
+        Assert.False(viewModel.IsDetecting);
+    }
+
     private sealed class FakeWindowEnumerator(IReadOnlyList<WindowCandidate> candidates)
         : IWindowEnumerator
     {
@@ -414,6 +431,24 @@ public sealed class WindowCaptureTests
             CancellationToken cancellationToken = default) => Task.FromResult(candidates);
 
         public WindowIdentitySnapshot? TryGetSnapshot(nint handle) => Current;
+    }
+
+    private sealed class BlockingWindowEnumerator : IWindowEnumerator
+    {
+        public TaskCompletionSource Started { get; } = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        public TaskCompletionSource Release { get; } = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public async Task<IReadOnlyList<WindowCandidate>> EnumerateAsync(
+            CancellationToken cancellationToken = default)
+        {
+            Started.TrySetResult();
+            await Release.Task.WaitAsync(cancellationToken);
+            return [];
+        }
+
+        public WindowIdentitySnapshot? TryGetSnapshot(nint handle) => null;
     }
 
     private sealed class FakeSessionFactory(IWindowCaptureFrameSource? source = null)

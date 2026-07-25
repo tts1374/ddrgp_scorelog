@@ -1,26 +1,97 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Globalization;
 using System.IO;
 using System.Runtime.CompilerServices;
 
 namespace JacketCatalogCollector;
 
-public sealed class MainViewModel(
-    IMasterUpdateService masterUpdateService,
-    IProjectionService projectionService,
-    IReviewWorkflowService? reviewWorkflowService = null,
-    WindowCaptureViewModel? windowCapture = null,
-    JacketObservationViewModel? observation = null,
-    CollectorDatabasePaths? databasePaths = null,
-    ICatalogInitializationService? catalogInitializationService = null,
-    IManualReviewDraftStore? manualReviewDraftStore = null,
-    IManualReviewXlsxImportService? manualReviewXlsxImportService = null) : INotifyPropertyChanged
+public enum CollectorOperationState
 {
-    private readonly CollectorDatabasePaths fixedDatabasePaths =
-        databasePaths ?? CollectorDatabasePaths.Resolve();
-    private readonly ICatalogInitializationService catalogInitializer =
-        catalogInitializationService ?? CreateCatalogInitializer(databasePaths);
+    Ready,
+    LoadingDatabases,
+    InitializingCatalog,
+    UpdatingMaster,
+    Collecting,
+    FinalizingCollection,
+    RetryingCatalog,
+    ReloadingProjection,
+    NoMaster,
+    Failed,
+}
+
+public sealed record CoverageStatusOption(string Value, string Display);
+
+public static class CollectionDisplayLabels
+{
+    public static string Status(string value) => value switch
+    {
+        "all" => "すべて",
+        "referenced" => "収集済み",
+        "needs_review" => "レビュー待ち",
+        "uncollected" => "未収集",
+        "unresolved" => "曲未特定",
+        "orphan" or "orphaned" => "曲情報に存在しないデータ",
+        _ => $"不明: {value}",
+    };
+
+    public static string Reason(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return "-";
+        }
+
+        if (value.StartsWith("observation_", StringComparison.Ordinal)
+            || value == "title_match_artist_mismatch")
+        {
+            return "取得画面またはartifact不一致";
+        }
+        if (value is "missing_title_or_artist"
+            or "identity_not_found"
+            or "ambiguous_canonical_title_artist"
+            or "ambiguous_alias_title_artist")
+        {
+            return "曲名を特定できない";
+        }
+        if (value.Contains("duplicate", StringComparison.OrdinalIgnoreCase)
+            || value.Contains("already", StringComparison.OrdinalIgnoreCase)
+            || value.Contains("catalog_existing", StringComparison.OrdinalIgnoreCase))
+        {
+            return "重複または既登録";
+        }
+        if (value is "feature_extraction_failed" or "persisted_feature_invalid"
+            || value.Contains("image", StringComparison.OrdinalIgnoreCase)
+            || value.Contains("artifact", StringComparison.OrdinalIgnoreCase))
+        {
+            return "画像・artifact欠損";
+        }
+        if (value.Contains("drift", StringComparison.OrdinalIgnoreCase)
+            || value.Contains("stale", StringComparison.OrdinalIgnoreCase)
+            || value.Contains("changed", StringComparison.OrdinalIgnoreCase)
+            || value.Contains("version", StringComparison.OrdinalIgnoreCase)
+            || value.StartsWith("master_", StringComparison.Ordinal)
+            || value == "song_not_grand_prix_available"
+            || value == "master_song_missing")
+        {
+            return "曲情報、ジャケット情報、checkpointの更新差異";
+        }
+
+        return $"不明: {value}";
+    }
+}
+
+public sealed class MainViewModel : INotifyPropertyChanged
+{
+    private readonly IMasterUpdateService masterUpdateService;
+    private readonly IProjectionService projectionService;
+    private readonly IReviewWorkflowService? reviewWorkflowService;
+    private readonly CollectorDatabasePaths fixedDatabasePaths;
+    private readonly ICatalogInitializationService catalogInitializer;
+    private readonly IManualReviewDraftStore? manualReviewDraftStore;
+    private readonly IManualReviewXlsxImportService? manualReviewXlsxImportService;
     private ReviewProjection? projection;
+    private MasterSummary? masterSummary;
     private readonly Dictionary<string, ManualReviewDraft> manualReviewDrafts =
         new(StringComparer.Ordinal);
     private string selectedCoverageStatus = "all";
@@ -28,6 +99,9 @@ public sealed class MainViewModel(
     private string statusTitle = "準備完了";
     private string statusMessage = "固定pathの曲情報DBとジャケット情報DBを確認します。";
     private bool isBusy;
+    private CollectorOperationState operationState = CollectorOperationState.Ready;
+    private string lastOperationResult = "まだ処理結果がありません。";
+    private string collectionEndResult = "—";
     private ReviewReference? selectedReference;
     private ProjectionSong? selectedSong;
     private string songSearch = "";
@@ -37,16 +111,55 @@ public sealed class MainViewModel(
     private ManualReviewDraftRow? selectedManualReviewRow;
     private ReviewedManualReviewRow? selectedReviewedManualReviewRow;
 
+    public MainViewModel(
+        IMasterUpdateService masterUpdateService,
+        IProjectionService projectionService,
+        IReviewWorkflowService? reviewWorkflowService = null,
+        WindowCaptureViewModel? windowCapture = null,
+        JacketObservationViewModel? observation = null,
+        CollectorDatabasePaths? databasePaths = null,
+        ICatalogInitializationService? catalogInitializationService = null,
+        IManualReviewDraftStore? manualReviewDraftStore = null,
+        IManualReviewXlsxImportService? manualReviewXlsxImportService = null)
+    {
+        this.masterUpdateService = masterUpdateService;
+        this.projectionService = projectionService;
+        this.reviewWorkflowService = reviewWorkflowService;
+        this.manualReviewDraftStore = manualReviewDraftStore;
+        this.manualReviewXlsxImportService = manualReviewXlsxImportService;
+        fixedDatabasePaths = databasePaths ?? CollectorDatabasePaths.Resolve();
+        catalogInitializer = catalogInitializationService ?? CreateCatalogInitializer(databasePaths);
+        WindowCapture = windowCapture;
+        Observation = observation;
+        if (WindowCapture is not null)
+        {
+            WindowCapture.PropertyChanged += ChildViewModel_PropertyChanged;
+        }
+        if (Observation is not null)
+        {
+            Observation.PropertyChanged += ChildViewModel_PropertyChanged;
+        }
+    }
+
     public event PropertyChangedEventHandler? PropertyChanged;
 
     public ObservableCollection<ProjectionSong> Songs { get; } = [];
-    public WindowCaptureViewModel? WindowCapture { get; } = windowCapture;
-    public JacketObservationViewModel? Observation { get; } = observation;
+    public WindowCaptureViewModel? WindowCapture { get; }
+    public JacketObservationViewModel? Observation { get; }
     public ObservableCollection<ReviewReference> ReviewReferences { get; } = [];
     public ObservableCollection<ManualReviewDraftRow> ManualReviewRows { get; } = [];
     public ObservableCollection<ReviewedManualReviewRow> ReviewedManualReviewRows { get; } = [];
     public ObservableCollection<string> CoverageStatusOptions { get; } =
         ["all", "referenced", "needs_review", "uncollected", "unresolved", "orphaned"];
+    public ObservableCollection<CoverageStatusOption> CoverageFilterOptions { get; } =
+    [
+        new("all", "すべて"),
+        new("referenced", "収集済み"),
+        new("needs_review", "レビュー待ち"),
+        new("uncollected", "未収集"),
+        new("unresolved", "曲未特定"),
+        new("orphaned", "曲情報に存在しないデータ"),
+    ];
     public ObservableCollection<string> ReasonOptions { get; } = ["all"];
     public ObservableCollection<ProjectionSong> SongChoices { get; } = [];
     public ObservableCollection<string> CandidateClassificationOptions { get; } = ["all"];
@@ -57,6 +170,27 @@ public sealed class MainViewModel(
     public int ManualReviewRejectedCount => CountManualReviewRows("rejected");
     public int ManualReviewHoldCount => CountManualReviewRows("hold");
 
+    public CollectorOperationState OperationState
+    {
+        get => operationState;
+        private set
+        {
+            if (SetField(ref operationState, value))
+            {
+                NotifyOperationDisplayProperties();
+            }
+        }
+    }
+
+    public string OperationStateDisplay => OperationState switch
+    {
+        CollectorOperationState.NoMaster => "未作成",
+        CollectorOperationState.Collecting => "収集中",
+        CollectorOperationState.Failed => "更新失敗",
+        CollectorOperationState.Ready => projection is null ? "処理中" : "利用可能",
+        _ => "処理中",
+    };
+
     public string MasterVersion => projection?.Master.MasterVersion ?? "未選択";
     public string MasterSourceHash => projection?.Master.SourceHash ?? "—";
     public string MasterCounts => projection is null
@@ -64,6 +198,89 @@ public sealed class MainViewModel(
         : $"songs: {projection.Master.SongCount} / charts: {projection.Master.ChartCount} / GP: {projection.Master.GrandPrixSongCount}";
     public string CatalogIdentity => projection?.Catalog.CatalogIdentity ?? "未選択";
     public string CatalogSchema => projection is null ? "—" : $"v{projection.Catalog.SchemaVersion}";
+    public string MasterUpdatedAtDisplay => FormatLocalTimestamp(masterSummary?.GeneratedAt, "yyyy/MM/dd HH:mm");
+    public string MasterUpdatedAtLongDisplay => FormatLocalTimestamp(masterSummary?.GeneratedAt, "yyyy/MM/dd HH:mm:ss");
+    public string MasterHeaderDisplay => masterSummary is null
+        ? "曲情報: 未作成"
+        : $"曲情報: {MasterUpdatedAtDisplay} 更新";
+    public string CatalogHeaderDisplay => projection is null
+        ? "ジャケット情報: —"
+        : $"ジャケット情報: v{projection.Catalog.SchemaVersion}";
+    public string MasterUserStatusDisplay => OperationState switch
+    {
+        CollectorOperationState.LoadingDatabases
+            or CollectorOperationState.ReloadingProjection => "読み込み中…",
+        CollectorOperationState.UpdatingMaster => "曲情報を更新しています…",
+        CollectorOperationState.InitializingCatalog => "曲情報を確認中…",
+        CollectorOperationState.Failed when projection is not null => "更新に失敗しました。",
+        CollectorOperationState.Failed when masterSummary is not null => "利用可能",
+        CollectorOperationState.Failed => "更新に失敗しました。",
+        CollectorOperationState.NoMaster => "曲情報がありません。",
+        _ => projection is null ? "読み込み中…" : "利用可能",
+    };
+    public string CatalogUserStatusDisplay => OperationState switch
+    {
+        CollectorOperationState.LoadingDatabases
+            or CollectorOperationState.ReloadingProjection => "読み込み中…",
+        CollectorOperationState.InitializingCatalog => "初期情報を作成中…",
+        CollectorOperationState.UpdatingMaster when projection is null => "読み込み中…",
+        CollectorOperationState.Failed when projection is null => "更新に失敗しました。",
+        _ => projection is null ? "読み込み中…" : "利用可能",
+    };
+    public string MasterSongCountDisplay => projection is null ? "—" : $"{projection.Master.SongCount:N0} 曲";
+    public string MasterChartCountDisplay => projection is null ? "—" : $"{projection.Master.ChartCount:N0} 譜面";
+    public string CollectedCountDisplay => $"{CountCoverage("referenced"):N0}";
+    public string ReviewPendingSongCountDisplay => $"{CountCoverage("needs_review"):N0}";
+    public string UncollectedCountDisplay => $"{CountCoverage("uncollected"):N0}";
+    public string UnresolvedCountDisplay => $"{CountCoverage("unresolved"):N0}";
+    public string OrphanedCountDisplay => $"{projection?.Coverage.OrphanedReferenceCount ?? 0:N0}";
+    public string CatalogCoverageDisplay => projection is null
+        ? "—"
+        : $"{CountCoverage("referenced"):N0} / {projection.Coverage.GrandPrixSongCount:N0} 曲";
+    public string ReviewPendingCountDisplay => $"{ManualReviewRows.Count:N0} 件";
+    public string CollectionSummaryDisplay => projection is null
+        ? "収集状況を読み込み中…"
+        : $"収集済み: {CountCoverage("referenced"):N0} / レビュー待ち: {CountCoverage("needs_review"):N0}"
+            + $" / 未収集: {CountCoverage("uncollected"):N0} / 曲未特定: {CountCoverage("unresolved"):N0}";
+    public string CollectionOrphanSummaryDisplay => projection is null
+        ? ""
+        : $"曲情報に存在しないデータ: {projection.Coverage.OrphanedReferenceCount:N0}"
+            + $" / 未割当: {projection.Coverage.UnassignedUnresolvedObservationCount:N0}";
+    public string LastOperationResultDisplay => lastOperationResult;
+    public string CollectionEndResultDisplay => collectionEndResult;
+    public bool CanUpdateMaster => !IsBusy
+        && OperationState is not (CollectorOperationState.LoadingDatabases
+            or CollectorOperationState.InitializingCatalog
+            or CollectorOperationState.UpdatingMaster
+            or CollectorOperationState.Collecting
+            or CollectorOperationState.FinalizingCollection
+            or CollectorOperationState.RetryingCatalog
+            or CollectorOperationState.ReloadingProjection)
+        && WindowCapture?.IsDetecting != true
+        && WindowCapture?.Lifecycle.State is not (CaptureLifecycleState.Starting
+            or CaptureLifecycleState.Capturing
+            or CaptureLifecycleState.Stopping)
+        && Observation?.IsActive != true;
+    public bool CanStartCollection => !IsBusy
+        && OperationState is not (CollectorOperationState.LoadingDatabases
+            or CollectorOperationState.InitializingCatalog
+            or CollectorOperationState.UpdatingMaster
+            or CollectorOperationState.Collecting
+            or CollectorOperationState.FinalizingCollection
+            or CollectorOperationState.RetryingCatalog
+            or CollectorOperationState.ReloadingProjection)
+        && projection is not null
+        && WindowCapture?.IsDetecting != true
+        && WindowCapture?.Lifecycle.State is not (CaptureLifecycleState.Starting
+            or CaptureLifecycleState.Capturing
+            or CaptureLifecycleState.Stopping)
+        && Observation?.IsActive != true;
+    public bool CanStopCollection => WindowCapture?.IsDetecting == true
+        || Observation?.IsActive == true
+        || OperationState == CollectorOperationState.Collecting
+        || WindowCapture?.Lifecycle.State is CaptureLifecycleState.Starting
+            or CaptureLifecycleState.Capturing
+            or CaptureLifecycleState.Stopping;
     public string CoverageSummary => projection is null
         ? "—"
         : string.Join(
@@ -180,7 +397,13 @@ public sealed class MainViewModel(
     public bool IsBusy
     {
         get => isBusy;
-        private set => SetField(ref isBusy, value);
+        private set
+        {
+            if (SetField(ref isBusy, value))
+            {
+                NotifyOperationDisplayProperties();
+            }
+        }
     }
 
     public async Task InitializeDatabasesAsync(
@@ -192,6 +415,7 @@ public sealed class MainViewModel(
         }
 
         IsBusy = true;
+        OperationState = CollectorOperationState.LoadingDatabases;
         StatusTitle = "DB確認中";
         StatusMessage = "固定pathの曲情報DBとジャケット情報DBをread-onlyで検証しています。";
         try
@@ -199,9 +423,14 @@ public sealed class MainViewModel(
             await InitializeDatabasesCoreAsync(cancellationToken);
             if (projection is not null)
             {
+                OperationState = CollectorOperationState.Ready;
                 StatusTitle = "読込完了";
                 StatusMessage =
                     $"固定DBからGP対象 {projection.Coverage.GrandPrixSongCount} 曲を表示しました。";
+            }
+            else
+            {
+                OperationState = CollectorOperationState.NoMaster;
             }
         }
         catch (OperationCanceledException)
@@ -214,6 +443,7 @@ public sealed class MainViewModel(
         catch (Exception exception)
         {
             ClearProjection();
+            OperationState = CollectorOperationState.Failed;
             StatusTitle = "DB初期化/検証失敗";
             StatusMessage = exception.Message;
         }
@@ -232,17 +462,22 @@ public sealed class MainViewModel(
         }
 
         IsBusy = true;
+        OperationState = CollectorOperationState.ReloadingProjection;
         StatusTitle = "読込中";
         StatusMessage = "固定pathのmasterとcatalogをread-onlyで検証しています。";
         try
         {
             await LoadProjectionCoreAsync(cancellationToken);
+            OperationState = projection is null
+                ? CollectorOperationState.NoMaster
+                : CollectorOperationState.Ready;
             StatusTitle = "読込完了";
             StatusMessage = $"固定DBからGP対象 {projection!.Coverage.GrandPrixSongCount} 曲を表示しました。";
         }
         catch (OperationCanceledException)
         {
             ClearProjection();
+            OperationState = CollectorOperationState.Failed;
             StatusTitle = "読込取消";
             StatusMessage = "読込を取り消しました。DBは変更していません。";
             throw;
@@ -250,6 +485,7 @@ public sealed class MainViewModel(
         catch (Exception exception)
         {
             ClearProjection();
+            OperationState = CollectorOperationState.Failed;
             StatusTitle = "読込失敗";
             StatusMessage = exception.Message;
             throw;
@@ -830,20 +1066,25 @@ public sealed class MainViewModel(
         LoadProjectionCoreAsync(
             fixedDatabasePaths.MasterPath,
             fixedDatabasePaths.CatalogPath,
-            cancellationToken);
+            cancellationToken,
+            existingMasterSummary: null);
 
     private async Task LoadProjectionCoreAsync(
         string masterPathValue,
         string catalogPathValue,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        MasterSummary? existingMasterSummary = null)
     {
         var loadedProjection = await projectionService.LoadAsync(
             masterPathValue, catalogPathValue, cancellationToken);
+        var loadedMasterSummary = existingMasterSummary
+            ?? await masterUpdateService.InspectAsync(masterPathValue, cancellationToken);
         var loadedDrafts = manualReviewDraftStore is null
             ? new Dictionary<string, ManualReviewDraft>(StringComparer.Ordinal)
             : (await manualReviewDraftStore.LoadAsync(cancellationToken))
                 .ToDictionary(item => item.Key, item => item.Value, StringComparer.Ordinal);
         projection = loadedProjection;
+        masterSummary = loadedMasterSummary;
         manualReviewDrafts.Clear();
         foreach (var draft in loadedDrafts)
         {
@@ -866,11 +1107,13 @@ public sealed class MainViewModel(
             return;
         }
 
+        MasterSummary inspectedMaster;
         try
         {
-            await masterUpdateService.InspectAsync(
+            inspectedMaster = await masterUpdateService.InspectAsync(
                 fixedDatabasePaths.MasterPath,
                 cancellationToken);
+            masterSummary = inspectedMaster;
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
@@ -884,6 +1127,7 @@ public sealed class MainViewModel(
         {
             if (!File.Exists(fixedDatabasePaths.CatalogPath))
             {
+                OperationState = CollectorOperationState.InitializingCatalog;
                 StatusTitle = "ジャケット情報初期化中";
                 StatusMessage = "current schemaの空catalogを固定pathへ作成しています。";
                 await catalogInitializer.EnsureCreatedAsync(cancellationToken);
@@ -892,7 +1136,12 @@ public sealed class MainViewModel(
 
             StatusTitle = "ジャケット情報確認中";
             StatusMessage = "固定pathのcatalogをstrict read-only projectionで検証しています。";
-            await LoadProjectionCoreAsync(cancellationToken);
+            OperationState = CollectorOperationState.ReloadingProjection;
+            await LoadProjectionCoreAsync(
+                fixedDatabasePaths.MasterPath,
+                fixedDatabasePaths.CatalogPath,
+                cancellationToken,
+                inspectedMaster);
         }
         catch (OperationCanceledException)
         {
@@ -910,7 +1159,13 @@ public sealed class MainViewModel(
 
     public async Task UpdateMasterAsync(CancellationToken cancellationToken = default)
     {
+        if (!CanUpdateMaster)
+        {
+            throw new InvalidOperationException("曲情報を更新できない状態です。");
+        }
+
         IsBusy = true;
+        OperationState = CollectorOperationState.UpdatingMaster;
         StatusTitle = "master更新中";
         StatusMessage = "staging生成とinspectionを実行しています。";
         var projectionReloadFailed = false;
@@ -919,6 +1174,8 @@ public sealed class MainViewModel(
             var result = await masterUpdateService.UpdateAsync(
                 fixedDatabasePaths.MasterPath,
                 cancellationToken);
+            masterSummary = result.After;
+            NotifyProjectionProperties();
             try
             {
                 await InitializeDatabasesCoreAsync(cancellationToken);
@@ -926,24 +1183,40 @@ public sealed class MainViewModel(
             catch (OperationCanceledException)
             {
                 ClearProjection();
+                masterSummary = result.After;
+                NotifyProjectionProperties();
+                OperationState = CollectorOperationState.Failed;
                 projectionReloadFailed = true;
                 StatusTitle = "master更新後の再読込取消";
                 StatusMessage = "masterは更新済みですが、projection再読込を取り消しました。";
+                lastOperationResult = "曲情報を更新しましたが、表示を更新できませんでした。ログを確認してください。";
+                OnPropertyChanged(nameof(LastOperationResultDisplay));
                 throw;
             }
             catch (Exception exception)
             {
                 ClearProjection();
+                masterSummary = result.After;
+                NotifyProjectionProperties();
+                OperationState = CollectorOperationState.Failed;
                 projectionReloadFailed = true;
                 StatusTitle = "master更新後の再読込失敗";
                 StatusMessage =
                     $"masterは更新済みですが、catalog/projectionを再読込できません: {exception.Message}";
+                lastOperationResult = "曲情報を更新しましたが、表示を更新できませんでした。ログを確認してください。";
+                OnPropertyChanged(nameof(LastOperationResultDisplay));
                 throw;
             }
+            OperationState = projection is null
+                ? CollectorOperationState.NoMaster
+                : CollectorOperationState.Ready;
             StatusTitle = "master更新完了";
             StatusMessage = result.Before is null
                 ? $"新規 master {FormatSummary(result.After)} を公開しました。"
                 : $"before [{FormatSummary(result.Before)}] → after [{FormatSummary(result.After)}]";
+            lastOperationResult =
+                $"曲情報を更新しました。\n更新日時: {MasterUpdatedAtDisplay}";
+            OnPropertyChanged(nameof(LastOperationResultDisplay));
         }
         catch (OperationCanceledException)
         {
@@ -953,6 +1226,9 @@ public sealed class MainViewModel(
             }
             StatusTitle = "master更新取消";
             StatusMessage = "更新を取り消しました。既存masterは変更していません。";
+            OperationState = CollectorOperationState.Failed;
+            lastOperationResult = "曲情報を更新できませんでした。ログを確認してください。";
+            OnPropertyChanged(nameof(LastOperationResultDisplay));
             throw;
         }
         catch (Exception exception)
@@ -963,6 +1239,9 @@ public sealed class MainViewModel(
             }
             StatusTitle = "master更新失敗";
             StatusMessage = exception.Message;
+            OperationState = CollectorOperationState.Failed;
+            lastOperationResult = "曲情報を更新できませんでした。ログを確認してください。";
+            OnPropertyChanged(nameof(LastOperationResultDisplay));
             throw;
         }
         finally
@@ -975,7 +1254,7 @@ public sealed class MainViewModel(
         WindowCandidate candidate,
         CancellationToken cancellationToken = default)
     {
-        if (Observation is null || projection is null)
+        if (!CanStartCollection || Observation is null || projection is null)
         {
             throw new InvalidOperationException(
                 "master/catalogを先に読み込み、DDR GPを検出してください。");
@@ -1022,6 +1301,7 @@ public sealed class MainViewModel(
             throw new InvalidOperationException("別の処理を実行中です。");
         }
         IsBusy = true;
+        OperationState = CollectorOperationState.FinalizingCollection;
         StatusTitle = "収集終了・catalog retry中";
         StatusMessage = "開始済みframe/保存処理をdrainしてpending observationをretryしています。";
         CatalogRetrySummary? summary = null;
@@ -1046,6 +1326,7 @@ public sealed class MainViewModel(
         {
             try
             {
+                OperationState = CollectorOperationState.ReloadingProjection;
                 await LoadProjectionCoreAsync(cancellationToken);
                 projectionReloaded = true;
                 projectionReloadMessage = "成功";
@@ -1064,8 +1345,16 @@ public sealed class MainViewModel(
 
         try
         {
+            collectionEndResult = FormatCollectionEndResult(
+                summary,
+                stopFailure,
+                projectionReloaded);
+            lastOperationResult = collectionEndResult;
+            OnPropertyChanged(nameof(CollectionEndResultDisplay));
+            OnPropertyChanged(nameof(LastOperationResultDisplay));
             if (stopFailure is not null)
             {
+                OperationState = CollectorOperationState.Failed;
                 StatusTitle = "収集終了・停止処理失敗";
                 StatusMessage =
                     $"停止/checkpoint処理: {stopFailure.Message} / projection再読込: "
@@ -1073,6 +1362,9 @@ public sealed class MainViewModel(
             }
             else if (summary?.IsRejected == true)
             {
+                OperationState = projectionReloaded
+                    ? CollectorOperationState.Ready
+                    : CollectorOperationState.Failed;
                 StatusTitle = projectionReloaded
                     ? "収集終了・catalog retry拒否"
                     : "収集終了・catalog retry拒否/projection再読込失敗";
@@ -1082,6 +1374,9 @@ public sealed class MainViewModel(
             }
             else
             {
+                OperationState = projectionReloaded
+                    ? CollectorOperationState.Ready
+                    : CollectorOperationState.Failed;
                 StatusTitle = projectionReloaded
                     ? "収集終了・projection再読込完了"
                     : "収集終了・projection再読込失敗";
@@ -1108,6 +1403,7 @@ public sealed class MainViewModel(
             throw new InvalidOperationException("別の処理を実行中です。");
         }
         IsBusy = true;
+        OperationState = CollectorOperationState.RetryingCatalog;
         StatusTitle = "catalog retry中";
         StatusMessage = "指定sessionのcheckpoint/artifactを検証してcatalogへretryしています。";
         try
@@ -1120,7 +1416,9 @@ public sealed class MainViewModel(
                 cancellationToken);
             try
             {
+                OperationState = CollectorOperationState.ReloadingProjection;
                 await LoadProjectionCoreAsync(cancellationToken);
+                OperationState = CollectorOperationState.Ready;
                 StatusTitle = "catalog retry・projection再読込完了";
                 StatusMessage =
                     $"catalog retry: {summary.DisplayMessage} / projection再読込: 成功";
@@ -1128,6 +1426,7 @@ public sealed class MainViewModel(
             catch (OperationCanceledException exception)
             {
                 ClearProjection();
+                OperationState = CollectorOperationState.Failed;
                 StatusTitle = "catalog retry・projection再読込取消";
                 StatusMessage =
                     $"catalog retry: {summary.DisplayMessage} / projection再読込: 取消: {exception.Message}";
@@ -1136,6 +1435,7 @@ public sealed class MainViewModel(
             catch (Exception exception)
             {
                 ClearProjection();
+                OperationState = CollectorOperationState.Failed;
                 StatusTitle = "catalog retry・projection再読込失敗";
                 StatusMessage =
                     $"catalog retry: {summary.DisplayMessage} / projection再読込: 失敗: {exception.Message}";
@@ -1144,6 +1444,7 @@ public sealed class MainViewModel(
         }
         catch (Exception exception) when (StatusTitle == "catalog retry中")
         {
+            OperationState = CollectorOperationState.Failed;
             StatusTitle = "catalog retry失敗";
             StatusMessage = exception.Message;
             throw;
@@ -1269,6 +1570,9 @@ public sealed class MainViewModel(
         OnPropertyChanged(nameof(ManualReviewConfirmedCount));
         OnPropertyChanged(nameof(ManualReviewRejectedCount));
         OnPropertyChanged(nameof(ManualReviewHoldCount));
+        OnPropertyChanged(nameof(ReviewPendingCountDisplay));
+        OnPropertyChanged(nameof(ReviewPendingSongCountDisplay));
+        OnPropertyChanged(nameof(CollectionSummaryDisplay));
     }
 
     private void UnsubscribeManualReviewRows()
@@ -1343,11 +1647,27 @@ public sealed class MainViewModel(
         OnPropertyChanged(nameof(CatalogSchema));
         OnPropertyChanged(nameof(CoverageSummary));
         OnPropertyChanged(nameof(OrphanSummary));
+        OnPropertyChanged(nameof(MasterUpdatedAtDisplay));
+        OnPropertyChanged(nameof(MasterUpdatedAtLongDisplay));
+        OnPropertyChanged(nameof(MasterHeaderDisplay));
+        OnPropertyChanged(nameof(CatalogHeaderDisplay));
+        OnPropertyChanged(nameof(MasterSongCountDisplay));
+        OnPropertyChanged(nameof(MasterChartCountDisplay));
+        OnPropertyChanged(nameof(CollectedCountDisplay));
+        OnPropertyChanged(nameof(ReviewPendingSongCountDisplay));
+        OnPropertyChanged(nameof(UncollectedCountDisplay));
+        OnPropertyChanged(nameof(UnresolvedCountDisplay));
+        OnPropertyChanged(nameof(OrphanedCountDisplay));
+        OnPropertyChanged(nameof(CatalogCoverageDisplay));
+        OnPropertyChanged(nameof(CollectionSummaryDisplay));
+        OnPropertyChanged(nameof(CollectionOrphanSummaryDisplay));
+        NotifyOperationDisplayProperties();
     }
 
     private void ClearProjection()
     {
         projection = null;
+        masterSummary = null;
         Songs.Clear();
         ReviewReferences.Clear();
         UnsubscribeManualReviewRows();
@@ -1390,6 +1710,88 @@ public sealed class MainViewModel(
 
     private static string FormatSummary(MasterSummary summary) =>
         $"version={summary.MasterVersion}, hash={summary.SourceHash}, songs={summary.SongCount}, charts={summary.ChartCount}, GP={summary.GrandPrixSongCount}";
+
+    private int CountCoverage(string status) => projection?.Coverage.StatusCounts.GetValueOrDefault(status) ?? 0;
+
+    private static string FormatLocalTimestamp(string? value, string format)
+    {
+        if (string.IsNullOrWhiteSpace(value)
+            || !DateTimeOffset.TryParse(
+                value,
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal,
+                out var parsed))
+        {
+            return "—";
+        }
+        return parsed.ToLocalTime().ToString(format, CultureInfo.InvariantCulture);
+    }
+
+    private static string FormatCollectionEndResult(
+        CatalogRetrySummary? summary,
+        Exception? stopFailure,
+        bool projectionReloaded)
+    {
+        var display = summary is null
+            ? "収集を終了できませんでした。結果を取得できませんでした。"
+            : "収集を終了しました。\n"
+                + $"保存済み: {summary.SavedObservationCount} / "
+                + $"ジャケット新規登録: {summary.CatalogCreatedCount} / "
+                + $"登録済み: {summary.CatalogExistingCount} / "
+                + $"反映失敗: {summary.CatalogFailureCount} / "
+                + $"保留中: {summary.PendingObservationCount}";
+
+        if (stopFailure is not null || summary?.IsRejected == true)
+        {
+            display += "\n収集結果を確定できませんでした。ログを確認してください。";
+        }
+        if (!projectionReloaded)
+        {
+            display += "\n表示の更新に失敗しました。ログを確認してください。";
+        }
+        return display;
+    }
+
+    private void ChildViewModel_PropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        var collectionStateChanged =
+            (ReferenceEquals(sender, WindowCapture)
+                && (e.PropertyName is nameof(WindowCaptureViewModel.IsDetecting)
+                    or nameof(WindowCaptureViewModel.Lifecycle)))
+            || (ReferenceEquals(sender, Observation)
+                && e.PropertyName is nameof(JacketObservationViewModel.IsActive));
+        if (!collectionStateChanged)
+        {
+            return;
+        }
+
+        if (!IsBusy)
+        {
+            if (Observation?.IsActive == true
+                || WindowCapture?.Lifecycle.State is CaptureLifecycleState.Starting
+                    or CaptureLifecycleState.Capturing)
+            {
+                OperationState = CollectorOperationState.Collecting;
+            }
+            else if (OperationState == CollectorOperationState.Collecting)
+            {
+                OperationState = projection is null
+                    ? CollectorOperationState.NoMaster
+                    : CollectorOperationState.Ready;
+            }
+        }
+        NotifyOperationDisplayProperties();
+    }
+
+    private void NotifyOperationDisplayProperties()
+    {
+        OnPropertyChanged(nameof(OperationStateDisplay));
+        OnPropertyChanged(nameof(MasterUserStatusDisplay));
+        OnPropertyChanged(nameof(CatalogUserStatusDisplay));
+        OnPropertyChanged(nameof(CanUpdateMaster));
+        OnPropertyChanged(nameof(CanStartCollection));
+        OnPropertyChanged(nameof(CanStopCollection));
+    }
 
     private bool SetField<T>(ref T field, T value, [CallerMemberName] string? name = null)
     {

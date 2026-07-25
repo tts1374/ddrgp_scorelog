@@ -14,6 +14,7 @@ public sealed class WindowCaptureViewModel : INotifyPropertyChanged
     private CaptureLifecycleSnapshot lifecycle = CaptureLifecycleSnapshot.Idle;
     private string candidateStatus = "DDR GP未検出です。収集開始で自動検出します。";
     private BitmapImage? preview;
+    private bool isDetecting;
 
     public WindowCaptureViewModel(
         IWindowEnumerator windowEnumerator,
@@ -55,6 +56,12 @@ public sealed class WindowCaptureViewModel : INotifyPropertyChanged
         private set => SetField(ref candidateStatus, value);
     }
 
+    public bool IsDetecting
+    {
+        get => isDetecting;
+        private set => SetField(ref isDetecting, value);
+    }
+
     public BitmapImage? Preview
     {
         get => preview;
@@ -94,27 +101,35 @@ public sealed class WindowCaptureViewModel : INotifyPropertyChanged
     public async Task<WindowCandidate?> DetectDdrGpAsync(
         CancellationToken cancellationToken = default)
     {
-        var items = await windowEnumerator.EnumerateAsync(cancellationToken);
-        var candidates = items
-            .Where(item => NativeWindowEnumerator.IsDdrGpTarget(item.Identity))
-            .ToList();
-        if (candidates.Count == 0)
+        IsDetecting = true;
+        try
         {
-            SetDetectedCandidate(null);
-            CandidateStatus = "DDR GPのウィンドウが見つかりません。ゲームを起動してから再度実行してください。";
-            return null;
-        }
-        if (candidates.Count > 1)
-        {
-            SetDetectedCandidate(null);
-            CandidateStatus = "DDR GPのウィンドウが複数あるため開始できません。";
-            return null;
-        }
+            var items = await windowEnumerator.EnumerateAsync(cancellationToken);
+            var candidates = items
+                .Where(item => NativeWindowEnumerator.IsDdrGpTarget(item.Identity))
+                .ToList();
+            if (candidates.Count == 0)
+            {
+                SetDetectedCandidate(null);
+                CandidateStatus = "DDR GPのウィンドウが見つかりません。ゲームを起動してから再度実行してください。";
+                return null;
+            }
+            if (candidates.Count > 1)
+            {
+                SetDetectedCandidate(null);
+                CandidateStatus = "DDR GPのウィンドウが複数あるため開始できません。";
+                return null;
+            }
 
-        var candidate = candidates[0];
-        SetDetectedCandidate(candidate);
-        CandidateStatus = $"DDR GPを検出しました（{TargetDetails(candidate)}）。";
-        return candidate;
+            var candidate = candidates[0];
+            SetDetectedCandidate(candidate);
+            CandidateStatus = $"DDR GPを検出しました（{TargetDetails(candidate)}）。";
+            return candidate;
+        }
+        finally
+        {
+            IsDetecting = false;
+        }
     }
 
     public Task<bool> StartAsync(

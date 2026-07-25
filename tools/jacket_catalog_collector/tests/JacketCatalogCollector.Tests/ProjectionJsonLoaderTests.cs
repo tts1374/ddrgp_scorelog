@@ -24,6 +24,19 @@ public sealed class ProjectionJsonLoaderTests
     }
 
     [Fact]
+    public void PreservesUnknownCoverageStatusForUserFacingFallback()
+    {
+        var payload = JsonNode.Parse(FixtureJson())!.AsObject();
+        payload["coverage"]!["status_counts"] = JsonNode.Parse("{\"future_status\":1}");
+        payload["songs"]![0]!["coverage_status"] = "future_status";
+
+        var projection = loader.Load(payload.ToJsonString());
+
+        Assert.Equal("不明: future_status", CollectionDisplayLabels.Status(
+            projection.Songs[0].CoverageStatus));
+    }
+
+    [Fact]
     public void RejectsLegacyProjectionCatalogAndCapabilityFields()
     {
         foreach (var version in new[] { 1, 2, 3, 4, 5 })

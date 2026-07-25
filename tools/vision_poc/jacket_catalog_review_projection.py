@@ -164,7 +164,11 @@ def build_review_projection(
         for row, candidate_evaluation, source_image_path in zip(
             reference_rows, candidate_evaluations, source_image_paths, strict=True
         ):
-            status, reason = catalog._reference_state(row, master)
+            status, reason = catalog._reference_state(
+                row,
+                master,
+                keep_confirmed_status=True,
+            )
             assigned_song_id = str(row["song_id"] or "")
             assigned_song = songs_by_id.get(assigned_song_id)
             item = {

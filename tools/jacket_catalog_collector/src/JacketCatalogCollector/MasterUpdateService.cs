@@ -8,7 +8,8 @@ public sealed record MasterSummary(
     string SourceHash,
     int SongCount,
     int ChartCount,
-    int GrandPrixSongCount);
+    int GrandPrixSongCount,
+    string GeneratedAt = "");
 
 public sealed record MasterUpdateResult(MasterSummary? Before, MasterSummary After);
 
@@ -135,7 +136,8 @@ public sealed class MasterUpdateService(
                 RequiredString(root, "source_hash"),
                 root.GetProperty("song_count").GetInt32(),
                 root.GetProperty("chart_count").GetInt32(),
-                ParseRequiredCount(root, "grand_prix_play_available_song_count"));
+                ParseRequiredCount(root, "grand_prix_play_available_song_count"),
+                RequiredString(root, "generated_at"));
         }
         catch (Exception exception) when (exception is JsonException or InvalidOperationException or FormatException)
         {

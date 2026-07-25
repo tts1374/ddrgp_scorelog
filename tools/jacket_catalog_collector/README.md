@@ -22,22 +22,32 @@ appは実行ファイルの配置場所からrepository rootを解決し、proce
 初期表示の `ジャケット収集` タブだけで通常の収集を進められます。
 
 1. 起動時に固定pathの曲情報DBとジャケット情報DBをread-onlyで検証・読込する。曲情報DBがない場合は `曲情報を更新` で作成し、曲情報DBが有効でジャケット情報DBがない場合はcurrent schemaの空catalogを自動作成する。
-2. DDR GRAND PRIXを曲選択画面にし、`収集を開始` を押す。押下時にtop-level windowから、process名が`ddr-konaste`でclient領域が`1280x720`のwindowを自動検出する。
+2. DDR GRAND PRIXを曲選択画面にし、`収集開始` を押す。押下時にtop-level windowから、process名が`ddr-konaste`でclient領域が`1280x720`のwindowを自動検出する。
 3. 候補が1件だけの場合は手動選択なしでcaptureを開始する。0件の場合は「DDR GPのウィンドウが見つかりません」、複数件の場合は理由を表示して開始しない。
 4. DDR GPで曲を移動し、`新しいジャケットを検出` と表示されたら `このジャケットを保存` を押す。session単位の自動保存を使う場合だけ、開始後に既定OFFのcheckboxを明示的に有効化する。
-5. `このジャケットは保存済み` と表示されたら、DDR GPで次の曲へ移動する。終了時は `収集を終了` を押す。開始済みのframe処理と保存処理をdrainし、同じsessionのpendingを最終catalog retryした後、current projectionでmatchingを評価し、既存M5のjacket gateまたは#53の既存auto-confirm対象だけを1 transactionで反映してからprojectionを再読込する。
+5. `このジャケットは保存済み` と表示されたら、DDR GPで次の曲へ移動する。終了時は `収集を停止` を押す。開始済みのframe処理と保存処理をdrainし、同じsessionの保留を最終retryした後、current projectionでmatchingを評価し、既存M5のjacket gateまたは#53の既存auto-confirm対象だけを1 transactionで反映してからprojectionを再読込する。
 
-収集終了時の処理順は `pending確定 → matching評価 → auto-confirm一括transaction → projection再読込` です。完成済みDDR WORLD snapshotの`songs.jsonl`と32x32公式jacket画像をcurrent masterへ対応付けて公式feature masterを作り、収集したjacket特徴量へ既存のdistance threshold / ambiguity gateを適用します。他songと競合しないjacket top-1だけを`jacket_gate`として自動確定します。jacketで一意に決まらない行は、従来どおりprojectionの`exact_unique` / `alias_unique`だけを`ocr_title_artist_pair`として自動確定します。`CollectionResult` には `auto-confirm` 件数と `manual残件` 件数が表示されます。曖昧、候補なし、低confidence、評価失敗・評価不能、GP対象外などはjacket単独では自動確定せず、再読込後も未レビュー一覧に残ります。既存のauto/manual/rejected、revision、manual history、artifact、checkpointは上書きしません。同じ終了処理を再実行しても、同一根拠はno-opとして重複作成されません。
+収集終了時の内部処理順は `保留確定 → matching評価 → auto-confirm一括transaction → projection再読込` です。画面には保存済み件数、新規登録件数、登録済み件数、反映失敗件数、保留件数を短く表示し、auto-confirmやcheckpointの内部件数は表示しません。完成済みDDR WORLD snapshotの`songs.jsonl`と32x32公式jacket画像をcurrent masterへ対応付けて公式feature masterを作り、収集したjacket特徴量へ既存のdistance threshold / ambiguity gateを適用します。他songと競合しないjacket top-1だけを`jacket_gate`として自動確定します。jacketで一意に決まらない行は、従来どおりprojectionの`exact_unique` / `alias_unique`だけを`ocr_title_artist_pair`として自動確定します。曖昧、候補なし、低confidence、評価失敗・評価不能、GP対象外などはjacket単独では自動確定せず、再読込後も未レビュー一覧に残ります。既存のauto/manual/rejected、revision、manual history、artifact、checkpointは上書きしません。同じ終了処理を再実行しても、同一根拠はno-opとして重複作成されません。
 
-detectorの内部状態は通常画面へ表示しません。同じ画像が連続する間も未保存のstable候補は保存可能なまま維持し、保存後は次の曲へ移動する案内を表示します。自動保存は起動時・fresh session・resumeのたびにOFFへ戻り、端末設定へ保存しません。session再開とcatalog retryは `詳細・復旧操作`、master更新とtitle/artist評価は `管理・設定` にあります。
+detectorの内部状態は通常画面へ表示しません。同じ画像が連続する間も未保存のstable候補は保存可能なまま維持し、保存後は次の曲へ移動する案内を表示します。自動保存は起動時・fresh session・resumeのたびにOFFへ戻り、端末設定へ保存しません。session再開とcatalog retryは開発者向けの内部経路として保持しますが、通常画面には表示しません。管理・設定の通常ボタンは `曲情報を更新` だけです。
 
-`収集を終了`以外の停止（window終了、resize、device loss、capture failure、例外、collectorのwindow close）では安全停止だけを行い、自動catalog retryは開始しません。artifact、source/crop、manifest、checkpointとpending件数は保持されます。`詳細・復旧操作`へcompatibleなsession IDを入力して `catalog retry` を押すと、captureやwindow再選択を行わず、そのsessionのidentityとartifactを検証してからpendingだけを明示retryできます。drift、非互換checkpoint、artifact破損はcatalogを変更せず拒否します。
+## Issue #75 の通常画面表示契約
+
+通常画面の見た目・配置・見出し・ボタン文言は [`jacket-catalog-collector-mock.html`](../../docs/wireframe/jacket-catalog-collector-mock.html) を正とします。レビュー画面の固有UIは #56 以降の契約を維持します。
+
+- ヘッダーは `曲情報: <更新日時> 更新` と `ジャケット情報: v<version>` を表示する。更新日時はmaster metadataの`generated_at`であり、DBファイルのmtimeではない。
+- 収集状況は `収集済み`、`レビュー待ち`、`未収集`、`曲未特定`、`曲情報外`を日本語で表示し、状態だけをfilterできる。理由の内部値、hash、identity、revisionは通常画面へ出さない。
+- 一覧は `状態 / 曲名 / アーティスト / 登録ジャケット数 / 理由 / song ID` とし、`reference_count`を登録ジャケット数として表示する。
+- 状態・理由に未定義値があれば処理を止めず `不明: <内部値>` と表示する。詳細な診断はlocal logで確認する。
+- 曲名・アーティストのOCR文字列は現行collectorの取得契約にないため、通常収集画面では未取得として表示する。OCR表示は別Issueの対象とする。
+
+`収集を停止`以外の停止（window終了、resize、device loss、capture failure、例外、collectorのwindow close）では安全停止だけを行い、自動catalog retryは開始しません。artifact、source/crop、manifest、checkpointと保留件数は保持されます。互換なsession IDを使う開発者向け内部経路では、captureやwindow再選択を行わず、そのsessionのidentityとartifactを検証してから保留だけを明示retryできます。drift、非互換checkpoint、artifact破損はcatalogを変更せず拒否します。
 
 ## Issue #78 実環境確認
 
-1. DDR GPを終了した状態でcollectorを起動し、`収集を開始`を押す。`DDR GPのウィンドウが見つかりません。ゲームを起動してから再度実行してください。`が表示され、capture、detector、artifact、checkpoint、catalogが開始・変更されないことを確認する。
-2. DDR GPを起動して曲選択画面にし、`収集を開始`を押す。手動のwindow選択なしで `ddr-konaste / 1280x720` が検出され、captureが接続中になることを確認する。
-3. preview、ジャケット検出、明示保存または既定OFFの自動保存、`収集を終了`を従来どおり確認する。
+1. DDR GPを終了した状態でcollectorを起動し、`収集開始`を押す。`DDR GPのウィンドウが見つかりません。ゲームを起動してから再度実行してください。`が表示され、capture、detector、artifact、checkpoint、catalogが開始・変更されないことを確認する。
+2. DDR GPを起動して曲選択画面にし、`収集開始`を押す。手動のwindow選択なしで `ddr-konaste / 1280x720` が検出され、captureが接続中になることを確認する。
+3. preview、ジャケット検出、明示保存または既定OFFの自動保存、`収集を停止`を従来どおり確認する。
 4. 収集中にDDR GPを終了する。対象window消失として安全停止し、自動再接続・自動再開・自動catalog retryを行わず、既存artifact/checkpointを保持することを確認する。
 
 ## Fixed master/catalog paths
@@ -62,7 +72,7 @@ repository rootはアプリ配置場所の親directoryを`.git`まで探索し�
 
 1. 既存targetが非空なら、network/buildより前に `python -X utf8 -m master.inspect` で互換性を確認する。0 byte fileは明示placeholderとして許可する。
 2. OS temporary directoryで `python -X utf8 -m master --output <staging>` を実行する。
-3. stagingだけを `python -X utf8 -m master.inspect` し、version、source hash、song/chart/GP件数を読む。
+3. stagingだけを `python -X utf8 -m master.inspect` し、version、source hash、generated_at、song/chart/GP件数を読む。
 4. inspection成功後にだけtarget親directoryを作り、同じdirectoryのpublish fileをatomic renameしてtargetへ公開する。
 5. failure/cancel/publish failureではstaging、summary、publish fileを削除し、新規targetのためだけに作った空parentも削除する。取消時は子process treeの終了とstdout/stderr drainを待ってからcleanupする。
 
@@ -79,9 +89,9 @@ python -m tools.vision_poc.jacket_catalog_review_projection `
   --artifact-root data\jacket_catalog_collector
 ```
 
-top-level必須fieldは `projection_schema_version`、`master`、`catalog`、`coverage`、`songs`、`review_references` です。catalog objectはidentity、schema version 1、created-at、current feature extractorを持ち、旧互換専用のmigration/capability fieldは持ちません。song rowはcanonical title/artistに加えて必須のtitle alias一覧を持ち、未レビュー下書きのtruth song検索へ利用します。review rowはcurrent status/song、notes、登録経路、実行時刻、artifact/checkpoint照合済みのnullable `source_image_path` とversion付き `candidate_evaluation` を持ちます。`candidate_evaluation` はpersisted status/revision、observation ID、jacket preview path、OCR title/artistとconfidence、候補song/reason、failure分類を持ちます。C# loaderは全object/arrayの未知field、必須field、型、coverage/review status、候補/history、candidate分類、revision連続性、schema、分母整合をstrictに検査します。unsupported version、空/truncated stdout、Python非0終了は部分表示しません。`reason`、`note`、`candidate.reason`、`observation_status` はopaque診断文字列として保持します。
+top-level必須fieldは `projection_schema_version`、`master`、`catalog`、`coverage`、`songs`、`review_references` です。catalog objectはidentity、schema version 1、created-at、current feature extractorを持ち、旧互換専用のmigration/capability fieldは持ちません。song rowはcanonical title/artistに加えて必須のtitle alias一覧を持ち、未レビュー下書きのtruth song検索へ利用します。review rowはcurrent status/song、notes、登録経路、実行時刻、artifact/checkpoint照合済みのnullable `source_image_path` とversion付き `candidate_evaluation` を持ちます。`candidate_evaluation` はpersisted status/revision、observation ID、jacket preview path、OCR title/artistとconfidence、候補song/reason、failure分類を持ちます。C# loaderは全object/arrayの未知field、必須field、型、coverage histogram、review status、候補/history、candidate分類、revision連続性、schema、分母整合をstrictに検査します。coverage statusは分母・histogramと整合する限り未知値も保持し、画面で `不明: <内部値>` と表示します。unsupported version、空/truncated stdout、Python非0終了は部分表示しません。`reason`、`note`、`candidate.reason`、`observation_status` はopaque診断文字列として保持します。
 
-表示とfilterは、GP対象songを `referenced` / `needs_review` / `uncollected` / `unresolved` の同じ分母・status histogramで数えます。orphan、候補なし未割当観測、旧extractor、master drift、不正manual featureを派生状態で表示しても、保存済みstatus、revision、historyは変更しません。生成中にmaster/catalogのfile identity、size、mtime、hashが変わった場合はsnapshot混在を拒否します。
+表示とfilterは、GP対象songを `referenced` / `needs_review` / `uncollected` / `unresolved` の同じ分母・status histogramで数えます。保存済みの`auto_confirmed` / `manual_confirmed`は、後発のmaster・extractor差分だけでは通常画面上の`referenced`から`needs_review`へ戻しません。orphanと候補なし未割当観測は通常の曲集計とは別に扱い、保存済みstatus、revision、historyは変更しません。生成中にmaster/catalogのfile identity、size、mtime、hashが変わった場合はsnapshot混在を拒否します。ジャケット照合のcurrent master identity検証とruntime feature loaderの利用可否は、この表示制御とは別に厳格に行います。
 
 既存のcatalog反映用manual review serviceは、projectionのrevision/current status/current song/current notesをpreconditionにし、複数行の`confirmed` / `rejected`だけをPython側の1 transactionで更新します。1行でもvalidationまたは競合に失敗した場合は全行をrollbackし、未レビュー・`hold`はcatalogへ反映しません。同じ内容の再実行はno-opとして安全に収束し、候補、expected song、OCR rawは明示選択へ昇格しません。下書きは `data/jacket_catalog_collector/manual-review-drafts.v1.json` に保存し、catalog反映成功後に対象行だけ削除します。
 
@@ -93,7 +103,7 @@ top-level必須fieldは `projection_schema_version`、`master`、`catalog`、`co
 
 ### Manual review XLSX export
 
-current projectionから未反映の`needs_review` / `unresolved`だけを、画像埋め込みの単一XLSXへ出力できます。保存先は明示指定した任意の`.xlsx`ファイルで、catalog、Master、下書き、source画像は変更されません。`source.png`がprojectionで検証できない対象は、画像を省略せずexportを拒否します。
+current projectionから未反映の`needs_review` / `unresolved`だけを、画像埋め込みの単一XLSXへ出力できます。保存先は明示指定した任意の`.xlsx`ファイルで、catalog、Master、下書き、source画像は変更されません。`source.png`がcatalog identity、feature/composite identity、checkpoint、画像hashの検証を通過しない対象は、画像を省略せずexportを拒否します。capture時点のmaster version/source hashだけが後から変わった対象は、保存済みのartifact/checkpointを検証できる限りレビュー画像を表示・exportします。ただしcandidate評価はcurrent masterとのidentity driftとして未確定のまま扱います。
 
 ```powershell
 python -m tools.vision_poc.jacket_catalog_review_projection `
@@ -143,7 +153,7 @@ python -m tools.vision_poc.jacket_catalog_review_projection `
 
 ## Window capture lifecycle
 
-`収集を開始` または明示的な `session再開` の押下時だけtop-level windowを列挙し、process名が`ddr-konaste`かつclient領域が`1280x720`のwindowをDDR GPとして検出します。候補が1件だけの場合に限り、検出したwindowを既存captureへ渡します。0件または複数件では収集を開始せず、通常画面に短い理由を表示します。手動の候補一覧、汎用window選択、自動開始は行いません。
+`収集開始` または明示的な内部session再開の実行時だけtop-level windowを列挙し、process名が`ddr-konaste`かつclient領域が`1280x720`のwindowをDDR GPとして検出します。候補が1件だけの場合に限り、検出したwindowを既存captureへ渡します。0件または複数件では収集を開始せず、通常画面に短い理由を表示します。手動の候補一覧、汎用window選択、自動開始は行いません。
 
 保護された`ddr-konaste` windowでは`PrintWindow`が応答しないため、検出時のpreview取得を試行しません。capture開始後のWindows Graphics Captureでpreviewを取得します。
 
@@ -163,7 +173,7 @@ fresh sessionでは、stable jacketと同じcapture sequence/timestampのstable�
 
 checkpointは最初の明示採用と同時に作成し、それ以前のframeをdiskへ書きません。fresh sessionは`m5c-observation-manifest-v2` / `m5c-observation-checkpoint-v2`を使い、jacket feature version/hash、title-line feature version/hash、composite identity version/hashを必須fieldとして保存します。unknown/missing/null/empty/非lower-hex、version不一致、canonical hash不一致、manifest/checkpoint driftを副作用なしで拒否します。以後は停止時にも、`session_id`、master/catalog/extractor/window/ROI/detector identity、session内stable jacket feature集合、最後のstable feature、処理frame/drop件数、採用済みobservation ID/source hash、catalog statusをatomic更新します。
 
-capture tabへ既存session IDを入力して `session再開` を押すと、current projection・選択window・全artifact manifest/hashが一致するcompatible checkpointだけを再開します。artifact manifest/checkpointのv1/v2形式自体は変更せず、version混在やcatalog identity/schema/created-at driftを拒否します。current catalogへの投入はmanifest v2のjacket/title/composite identity一式を必須とし、全review status（`rejected`を含む）の同一identityを既存referenceへ収束させます。catalog failure後の `pending` は `catalog retry` からcurrent writerへ明示再投入できます。
+開発者向け内部経路で既存session IDを指定すると、current projection・選択window・全artifact manifest/hashが一致するcompatible checkpointだけを再開します。artifact manifest/checkpointのv1/v2形式自体は変更せず、version混在やcatalog identity/schema/created-at driftを拒否します。current catalogへの投入はmanifest v2のjacket/title/composite identity一式を必須とし、全review status（`rejected`を含む）の同一identityを既存referenceへ収束させます。catalog failure後の保留は内部retryからcurrent writerへ明示再投入できます。
 
 capture停止、resize、close、device loss、例外、取消ではsessionを停止し、停止後frameをdetector、artifact、catalogへ渡しません。source/crop/manifest/checkpointはこのcollectorのlocal dataだけで、`logs/`、通常stdout、Git、公開app、正式個人スコアDBへ出力しません。
 
@@ -206,7 +216,7 @@ python -m tools.vision_poc.title_artist_evaluation `
 
 `title_artist_evaluation.csv/json/md`は同じ入力でbyte-stableに生成され、raw/normalized title/artist、field confidence/status/failure、M4のtitle-primary・artist tie-breakerによる候補と理由、expected coverageを記録します。expectedが両方ある行だけ`evaluated`、片方だけは`partially_evaluated`、両方ない行は`no_expected_values`で、後二者はaccuracy gateへ混入しません。
 
-方式採用gateは、fixture gateに加えて実captureの`evaluated >= 30`、title/artist完全一致率95%以上、field confidence 0.90以上、auto-confirm候補precision 100%、既知誤自動確定0件です。条件、matching policy、threshold、OCR方式は変更しません。明示的な`収集を終了`では、完成済みDDR WORLD snapshotの32x32公式jacket画像をcurrent masterへ対応付けた公式feature masterをread-onlyで読み、既存のjacket gateをlive observationのauto-confirmへ接続します。jacketで解決しない行だけ、既存projectionが返す`exact_unique` / `alias_unique`の#53 auto-confirm対象を既存writerへ渡し、それ以外は従来の空title/artist・`unresolved` ingest/manual review経路へ残します。XLSXの再構築、jacket top3 routeやOCR方式の変更は行いません。評価reportや通常のingest/manual review/coverageからauto-confirmを暗黙起動することもありません。
+方式採用gateは、fixture gateに加えて実captureの`evaluated >= 30`、title/artist完全一致率95%以上、field confidence 0.90以上、auto-confirm候補precision 100%、既知誤自動確定0件です。条件、matching policy、threshold、OCR方式は変更しません。明示的な`収集を停止`では、完成済みDDR WORLD snapshotの32x32公式jacket画像をcurrent masterへ対応付けた公式feature masterをread-onlyで読み、既存のjacket gateをlive observationのauto-confirmへ接続します。jacketで解決しない行だけ、既存projectionが返す`exact_unique` / `alias_unique`の#53 auto-confirm対象を既存writerへ渡し、それ以外は従来の空title/artist・`unresolved` ingest/manual review経路へ残します。XLSXの再構築、jacket top3 routeやOCR方式の変更は行いません。評価reportや通常のingest/manual review/coverageからauto-confirmを暗黙起動することもありません。
 
 ## title/artist OCR診断比較 (M5c-6)
 

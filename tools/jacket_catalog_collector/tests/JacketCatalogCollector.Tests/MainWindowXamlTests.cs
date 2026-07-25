@@ -82,8 +82,9 @@ public sealed class MainWindowXamlTests
 
         Assert.Equal("ジャケット収集", tabs.First());
         Assert.Contains("このジャケットを保存", buttonLabels);
-        Assert.Contains("収集を開始", buttonLabels);
-        Assert.Contains("収集を終了", buttonLabels);
+        Assert.Contains("収集開始", buttonLabels);
+        Assert.Contains("収集を停止", buttonLabels);
+        Assert.DoesNotContain("収集を終了", buttonLabels);
         Assert.DoesNotContain("ウィンドウを再検索", buttonLabels);
         Assert.DoesNotContain(
             document.Descendants().SelectMany(element => element.Attributes()),
@@ -96,21 +97,73 @@ public sealed class MainWindowXamlTests
             document.Descendants().Where(element => element.Name.LocalName == "TextBlock"),
             element => element.Attribute("Text")?.Value == "{Binding WindowCapture.ConnectionDisplay}");
         Assert.Contains(
-            document.Descendants().Where(element => element.Name.LocalName == "Button"),
-            element => element.Attribute("Content")?.Value == "catalog retry"
-                && element.Attribute("IsEnabled")?.Value
-                    == "{Binding Observation.CanRetryCatalog}");
+            document.Descendants().Where(element => element.Name.LocalName == "TextBlock"),
+            element => element.Attribute("Text")?.Value
+                == "{Binding OperationStateDisplay}");
         Assert.Contains(
             document.Descendants().Where(element => element.Name.LocalName == "TextBlock"),
             element => element.Attribute("Text")?.Value
-                == "{Binding Observation.CollectionResult}");
+                == "{Binding CollectionEndResultDisplay, Mode=OneWay}");
         Assert.Contains(
             document.Descendants().Where(element => element.Name.LocalName == "CheckBox"),
             element => element.Attribute("Content")?.Value
-                    == "このsessionで保存前照合済み候補を自動保存する（既定OFF）"
+                    == "保存前照合済み候補を自動保存 (既定OFF)"
                 && element.Attribute("IsChecked")?.Value
                     == "{Binding Observation.AutoSaveEnabled, Mode=TwoWay}");
+        var normalLayoutValues = document
+            .Descendants()
+            .Where(element => element.Name.LocalName is "TextBlock" or "Button" or "Expander" or "TextBox")
+            .SelectMany(element => element.Attributes().Select(attribute => attribute.Value)
+                .Append(element.Attribute("Content")?.Value ?? ""))
+            .ToList();
+        Assert.DoesNotContain(normalLayoutValues, value => value.Contains("詳細・復旧操作", StringComparison.Ordinal));
+        Assert.DoesNotContain(normalLayoutValues, value => value.Contains("catalog retry", StringComparison.Ordinal));
+        Assert.DoesNotContain(normalLayoutValues, value => value.Contains("ResumeSessionId", StringComparison.Ordinal));
+        Assert.DoesNotContain(normalLayoutValues, value => value.Contains("MasterSourceHash", StringComparison.Ordinal));
+        Assert.DoesNotContain(normalLayoutValues, value => value.Contains("CatalogIdentity", StringComparison.Ordinal));
         Assert.Contains("管理・設定", tabs);
+    }
+
+    [Fact]
+    public void CollectionStatusUsesJapaneseStatusFilterAndUserFacingColumns()
+    {
+        var document = LoadMainWindow();
+        var statusFilter = Assert.Single(
+            document.Descendants().Where(element => element.Name.LocalName == "ComboBox"),
+            element => element.Attribute("ItemsSource")?.Value
+                == "{Binding CoverageFilterOptions}");
+        Assert.Null(statusFilter.Attribute("{http://schemas.microsoft.com/winfx/2006/xaml}Name"));
+        Assert.DoesNotContain(
+            document.Descendants().SelectMany(element => element.Attributes()),
+            attribute => attribute.Value.Contains("ReasonOptions", StringComparison.Ordinal));
+
+        var headers = document
+            .Descendants()
+            .Where(element => element.Name.LocalName is "DataGridTextColumn" or "DataGridTemplateColumn")
+            .Select(element => element.Attribute("Header")?.Value)
+            .ToList();
+        Assert.Contains("登録ジャケット数", headers);
+        Assert.Contains("song ID", headers);
+        Assert.Contains("理由", headers);
+        Assert.Contains(
+            document.Descendants().Where(element => element.Name.LocalName == "DataGridTextColumn"),
+            element => element.Attribute("Binding")?.Value == "{Binding CoverageStatusDisplay}");
+        Assert.Contains(
+            document.Descendants().Where(element => element.Name.LocalName == "DataGridTextColumn"),
+            element => element.Attribute("Binding")?.Value == "{Binding ReasonDisplay}");
+        Assert.DoesNotContain(
+            document.Descendants().SelectMany(element => element.Attributes()),
+            attribute => attribute.Value.Contains("CollectionSummaryDisplay", StringComparison.Ordinal));
+
+        var adminTab = Assert.Single(
+            document.Descendants().Where(element => element.Name.LocalName == "TabItem"),
+            element => element.Attribute("Header")?.Value == "管理・設定");
+        var adminButtons = adminTab.Descendants()
+            .Where(element => element.Name.LocalName == "Button")
+            .Select(element => element.Attribute("Content")?.Value)
+            .ToList();
+        Assert.Single(adminButtons);
+        Assert.Contains("曲情報を更新", adminButtons[0], StringComparison.Ordinal);
     }
 
     [Fact]
@@ -123,7 +176,8 @@ public sealed class MainWindowXamlTests
         Assert.Equal("MainWindow_Loaded", window.Attribute("Loaded")?.Value);
         Assert.Contains(
             document.Descendants().Where(element => element.Name.LocalName == "TextBlock"),
-            element => element.Attribute("Text")?.Value == "{Binding StatusMessage}");
+            element => element.Attribute("Text")?.Value
+                == "{Binding LastOperationResultDisplay, Mode=OneWay}");
 
         var buttons = document
             .Descendants()
@@ -131,7 +185,7 @@ public sealed class MainWindowXamlTests
             .Select(element => element.Attribute("Content")?.Value)
             .ToList();
         Assert.DoesNotContain("master/catalogを選択", buttons);
-        Assert.Contains("曲情報を更新", buttons);
+        Assert.Contains(buttons, label => label?.Contains("曲情報を更新", StringComparison.Ordinal) == true);
         Assert.Contains("CollectorDatabasePaths.Resolve()", code, StringComparison.Ordinal);
         Assert.Contains("DetectDdrGpAsync", code, StringComparison.Ordinal);
         Assert.Contains("captureObservationController.StartAsync()", code, StringComparison.Ordinal);
@@ -152,7 +206,7 @@ public sealed class MainWindowXamlTests
     }
 
     [Fact]
-    public void InformationTitleLineObservationIsVisibleButReadOnly()
+    public void DetectionStatusIsVisibleWithoutInternalIdentifiers()
     {
         var document = LoadMainWindow();
         var textValues = document
@@ -163,9 +217,11 @@ public sealed class MainWindowXamlTests
             .Cast<string>()
             .ToList();
 
-        Assert.Contains("{Binding Observation.InformationPanelDisplay, Mode=OneWay}", textValues);
-        Assert.Contains("{Binding Observation.InformationTitleLineStability, Mode=OneWay}", textValues);
-        Assert.Contains("{Binding Observation.InformationTitleLineHash}", textValues);
+        Assert.Contains("{Binding Observation.DetectedTitleDisplay, Mode=OneWay}", textValues);
+        Assert.Contains("{Binding Observation.DetectedArtistDisplay, Mode=OneWay}", textValues);
+        Assert.Contains("{Binding Observation.CollectionJudgmentDisplay, Mode=OneWay}", textValues);
+        Assert.DoesNotContain("{Binding Observation.InformationTitleLineHash}", textValues);
+        Assert.DoesNotContain("{Binding Observation.InformationDiagnostic}", textValues);
         Assert.DoesNotContain(
             document.Descendants().Where(element => element.Name.LocalName == "Button"),
             element => element.Attributes().Any(attribute =>

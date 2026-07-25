@@ -44,15 +44,15 @@
         <DockPanel Margin="0,0,0,14">
             <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
                 <Border Padding="12,7" Background="#F0FDF4" BorderBrush="#BBF7D0"
-                        BorderThickness="1" CornerRadius="16" Margin="0,0,8,0">
+                    BorderThickness="1" CornerRadius="16" Margin="0,0,8,0">
                     <TextBlock Foreground="#166534">
-                        <Run Text="曲情報: " /><Run Text="{Binding MasterVersion, Mode=OneWay}" />
+                        <Run Text="{Binding MasterHeaderDisplay, Mode=OneWay}" />
                     </TextBlock>
                 </Border>
                 <Border Padding="12,7" Background="#EFF6FF" BorderBrush="#BFDBFE"
-                        BorderThickness="1" CornerRadius="16">
+                    BorderThickness="1" CornerRadius="16">
                     <TextBlock Foreground="#1E40AF">
-                        <Run Text="ジャケット情報: " /><Run Text="{Binding CatalogSchema, Mode=OneWay}" />
+                        <Run Text="{Binding CatalogHeaderDisplay, Mode=OneWay}" />
                     </TextBlock>
                 </Border>
             </StackPanel>
@@ -80,6 +80,9 @@
                             <TextBlock Text="DDR GPの画面" FontSize="17" FontWeight="SemiBold" />
                             <TextBlock Text="{Binding WindowCapture.TargetDisplay}"
                                        FontWeight="SemiBold" Margin="0,3,0,0" />
+                            <TextBlock Text="{Binding WindowCapture.ConnectionDisplay}"
+                                       Foreground="#166534" FontWeight="SemiBold"
+                                       Margin="0,3,0,0" TextWrapping="Wrap" />
                             <TextBlock Text="{Binding WindowCapture.CandidateStatus}"
                                        Foreground="#5F6B7A" TextWrapping="Wrap" />
                         </StackPanel>
@@ -93,12 +96,12 @@
                     <StackPanel Grid.Column="1">
                         <Border Style="{StaticResource Card}" Background="#EEF6FF">
                             <StackPanel>
-                                <TextBlock Text="{Binding Observation.CollectionStateTitle}"
+                                <TextBlock Text="{Binding OperationStateDisplay}"
                                            FontSize="21" FontWeight="SemiBold" TextWrapping="Wrap" />
                                  <TextBlock Text="{Binding Observation.CollectionStateMessage}"
                                             Margin="0,8,0,14" Foreground="#44505F" FontSize="14"
                                             TextWrapping="Wrap" />
-                                <CheckBox Content="このsessionで保存前照合済み候補を自動保存する（既定OFF）"
+                                <CheckBox Content="保存前照合済み候補を自動保存 (既定OFF)"
                                           IsChecked="{Binding Observation.AutoSaveEnabled, Mode=TwoWay}"
                                           IsEnabled="{Binding Observation.CanConfigureAutoSave}"
                                           Margin="0,0,0,10" />
@@ -111,60 +114,49 @@
 
                         <Border Style="{StaticResource Card}" Margin="0,12,0,0">
                             <StackPanel>
-                                <TextBlock Text="1. DDR GPへ接続" FontSize="16" FontWeight="SemiBold" />
-                                <TextBlock Text="収集開始時にDDR GPを自動検出して接続します。"
-                                           Foreground="#5F6B7A" Margin="0,4,0,8" TextWrapping="Wrap" />
-                                <TextBlock Text="{Binding WindowCapture.ConnectionDisplay}"
-                                           Margin="0,0,0,8" FontWeight="SemiBold" TextWrapping="Wrap" />
-                                <WrapPanel>
-                                    <Button Content="収集を開始" Click="StartCapture_Click" />
-                                    <Button Content="収集を終了" Click="StopCapture_Click" />
-                                </WrapPanel>
+                                <TextBlock Text="検出ステータス" FontSize="13" Foreground="#6B7280"
+                                           FontWeight="SemiBold" Margin="0,0,0,10" />
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="100" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+                                    <TextBlock Text="曲名" FontWeight="SemiBold" />
+                                    <TextBlock Grid.Column="1" Text="{Binding Observation.DetectedTitleDisplay, Mode=OneWay}"
+                                               />
+                                    <TextBlock Grid.Row="1" Text="アーティスト" FontWeight="SemiBold"
+                                               Margin="0,8,0,0" />
+                                    <TextBlock Grid.Row="1" Grid.Column="1"
+                                               Text="{Binding Observation.DetectedArtistDisplay, Mode=OneWay}"
+                                               Margin="0,8,0,0" />
+                                    <TextBlock Grid.Row="2" Text="判定状態" FontWeight="SemiBold"
+                                               Margin="0,8,0,0" />
+                                    <TextBlock Grid.Row="2" Grid.Column="1"
+                                               Text="{Binding Observation.CollectionJudgmentDisplay, Mode=OneWay}"
+                                               Margin="0,8,0,0" Foreground="#166534" />
+                                </Grid>
                             </StackPanel>
                         </Border>
 
-                        <Border Style="{StaticResource Card}" Margin="0,12,0,0">
+                        <WrapPanel Margin="-4,8,0,0">
+                            <Button Content="収集開始" IsEnabled="{Binding CanStartCollection}"
+                                    Click="StartCapture_Click" />
+                            <Button Content="収集を停止" IsEnabled="{Binding CanStopCollection}"
+                                    Click="StopCapture_Click" />
+                        </WrapPanel>
+
+                        <Border Style="{StaticResource Card}" Margin="0,8,0,0">
                             <StackPanel>
-                                <TextBlock Text="2. DDR GPで曲を移動" FontSize="16" FontWeight="SemiBold" />
-                                <TextBlock Text="ジャケットが安定すると、上の保存ボタンが押せるようになります。"
-                                           Foreground="#5F6B7A" Margin="0,4,0,0" TextWrapping="Wrap" />
-                                <TextBlock Margin="0,8,0,0">
-                                    <Run Text="INFORMATION: " />
-                                    <Run Text="{Binding Observation.InformationPanelDisplay, Mode=OneWay}" />
-                                    <Run Text="   曲名行: " />
-                                    <Run Text="{Binding Observation.InformationTitleLineStability, Mode=OneWay}" />
-                                </TextBlock>
-                                <TextBlock Text="{Binding Observation.InformationTitleLineHash}"
-                                           FontFamily="Consolas" FontSize="11" TextWrapping="Wrap" />
+                                <TextBlock Text="収集終了結果" FontWeight="SemiBold" />
+                                <TextBlock Text="{Binding CollectionEndResultDisplay, Mode=OneWay}"
+                                           Foreground="#5F6B7A" TextWrapping="Wrap" Margin="0,6,0,0" />
                             </StackPanel>
                         </Border>
-
-                        <Expander Header="詳細・復旧操作" Margin="0,14,0,0">
-                            <StackPanel Margin="8">
-                                <TextBlock Text="{Binding WindowCapture.Lifecycle.Message}" TextWrapping="Wrap" />
-                                <TextBlock Text="{Binding WindowCapture.CaptureState}" FontFamily="Consolas" FontSize="11" />
-                                <TextBlock Text="{Binding WindowCapture.CaptureCounts}" FontFamily="Consolas" FontSize="11" />
-                                <TextBlock Text="{Binding Observation.DetectorProgress}" FontFamily="Consolas" FontSize="11" />
-                                <TextBlock Text="{Binding Observation.StableCandidate}" FontFamily="Consolas" FontSize="11" />
-                                <TextBlock Text="{Binding Observation.InformationDiagnostic}"
-                                           FontFamily="Consolas" FontSize="11" TextWrapping="Wrap" />
-                                <TextBlock Margin="0,8,0,2">
-                                    <Run Text="session: " /><Run Text="{Binding Observation.SessionId, Mode=OneWay}" />
-                                </TextBlock>
-                                <TextBox Padding="6" ToolTip="compatible checkpointのsession ID"
-                                         Text="{Binding Observation.ResumeSessionId, UpdateSourceTrigger=PropertyChanged}" />
-                                <WrapPanel>
-                                    <Button Content="session再開" IsEnabled="{Binding Observation.CanResume}"
-                                            Click="ResumeCapture_Click" />
-                                    <Button Content="catalog retry" IsEnabled="{Binding Observation.CanRetryCatalog}"
-                                            Click="RetryCatalog_Click" />
-                                </WrapPanel>
-                                <TextBlock Text="{Binding Observation.CollectionResult}"
-                                           Foreground="#5F6B7A" TextWrapping="Wrap" Margin="0,6,0,0" />
-                                <TextBlock Text="{Binding Observation.StatusMessage}" Foreground="#5F6B7A"
-                                           TextWrapping="Wrap" Margin="0,6,0,0" />
-                            </StackPanel>
-                        </Expander>
                     </StackPanel>
                 </Grid>
             </TabItem>
@@ -175,28 +167,66 @@
                         <RowDefinition Height="Auto" />
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
-                    <DockPanel Margin="0,0,0,10">
-                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
-                            <TextBlock Text="状態" VerticalAlignment="Center" Margin="0,0,6,0" />
-                            <ComboBox Width="150" ItemsSource="{Binding CoverageStatusOptions}"
-                                      SelectedItem="{Binding SelectedCoverageStatus}" Margin="0,0,12,0" />
-                            <TextBlock Text="理由" VerticalAlignment="Center" Margin="0,0,6,0" />
-                            <ComboBox Width="240" ItemsSource="{Binding ReasonOptions}"
-                                      SelectedItem="{Binding SelectedReason}" />
-                        </StackPanel>
-                        <StackPanel>
-                            <TextBlock Text="{Binding CoverageSummary}" FontWeight="SemiBold" />
-                            <TextBlock Text="{Binding OrphanSummary}" Foreground="#5F6B7A" />
-                        </StackPanel>
-                    </DockPanel>
+                    <StackPanel Margin="0,0,0,10">
+                        <UniformGrid Columns="5" Margin="0,0,0,10">
+                            <Border Style="{StaticResource Card}" Margin="0,0,6,0">
+                                <StackPanel>
+                                    <TextBlock Text="収集済み" Foreground="#6B7280" />
+                                    <TextBlock Text="{Binding CollectedCountDisplay, Mode=OneWay}"
+                                               FontSize="22" FontWeight="SemiBold" />
+                                </StackPanel>
+                            </Border>
+                            <Border Style="{StaticResource Card}" Margin="6,0">
+                                <StackPanel>
+                                    <TextBlock Text="レビュー待ち" Foreground="#6B7280" />
+                                    <TextBlock Text="{Binding ReviewPendingSongCountDisplay, Mode=OneWay}"
+                                               FontSize="22" FontWeight="SemiBold" Foreground="#B7791F" />
+                                </StackPanel>
+                            </Border>
+                            <Border Style="{StaticResource Card}" Margin="6,0">
+                                <StackPanel>
+                                    <TextBlock Text="未収集" Foreground="#6B7280" />
+                                    <TextBlock Text="{Binding UncollectedCountDisplay, Mode=OneWay}"
+                                               FontSize="22" FontWeight="SemiBold" />
+                                </StackPanel>
+                            </Border>
+                            <Border Style="{StaticResource Card}" Margin="6,0">
+                                <StackPanel>
+                                    <TextBlock Text="曲未特定" Foreground="#6B7280" />
+                                    <TextBlock Text="{Binding UnresolvedCountDisplay, Mode=OneWay}"
+                                               FontSize="22" FontWeight="SemiBold" />
+                                </StackPanel>
+                            </Border>
+                            <Border Style="{StaticResource Card}" Margin="6,0,0,0">
+                                <StackPanel>
+                                    <TextBlock Text="曲情報外" Foreground="#6B7280" />
+                                    <TextBlock Text="{Binding OrphanedCountDisplay, Mode=OneWay}"
+                                               FontSize="22" FontWeight="SemiBold" />
+                                </StackPanel>
+                            </Border>
+                        </UniformGrid>
+                        <DockPanel>
+                            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                                <TextBlock Text="状態" VerticalAlignment="Center" Margin="0,0,6,0" />
+                                <ComboBox Width="190" ItemsSource="{Binding CoverageFilterOptions}"
+                                          DisplayMemberPath="Display" SelectedValuePath="Value"
+                                          SelectedValue="{Binding SelectedCoverageStatus}"
+                                          Margin="0,0,12,0" />
+                            </StackPanel>
+                            <StackPanel Orientation="Vertical">
+                                <TextBlock Text="{Binding CollectionOrphanSummaryDisplay, Mode=OneWay}"
+                                           Foreground="#5F6B7A" />
+                            </StackPanel>
+                        </DockPanel>
+                    </StackPanel>
                     <DataGrid Grid.Row="1" ItemsSource="{Binding Songs}" IsReadOnly="True" AutoGenerateColumns="False">
                         <DataGrid.Columns>
-                            <DataGridTextColumn Header="状態" Binding="{Binding CoverageStatus}" Width="120" />
+                            <DataGridTextColumn Header="状態" Binding="{Binding CoverageStatusDisplay}" Width="150" />
                             <DataGridTextColumn Header="曲名" Binding="{Binding Title}" Width="2*" />
                             <DataGridTextColumn Header="アーティスト" Binding="{Binding Artist}" Width="*" />
-                            <DataGridTextColumn Header="登録数" Binding="{Binding ReferenceCount}" Width="70" />
-                            <DataGridTextColumn Header="理由" Binding="{Binding Reason}" Width="2*" />
-                            <DataGridTextColumn Header="song_id" Binding="{Binding SongId}" Width="*" />
+                            <DataGridTextColumn Header="登録ジャケット数" Binding="{Binding ReferenceCount}" Width="120" />
+                            <DataGridTextColumn Header="理由" Binding="{Binding ReasonDisplay}" Width="2*" />
+                            <DataGridTextColumn Header="song ID" Binding="{Binding SongId}" Width="*" />
                         </DataGrid.Columns>
                     </DataGrid>
                 </Grid>
@@ -493,39 +523,54 @@
             </TabItem>
             <TabItem Header="管理・設定">
                 <StackPanel Margin="18" MaxWidth="900" HorizontalAlignment="Left">
-                    <TextBlock Text="データベース" FontSize="20" FontWeight="SemiBold" />
-                    <Border Style="{StaticResource Card}" Margin="0,10,0,14" Width="880">
-                        <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*" />
-                                <ColumnDefinition Width="*" />
-                            </Grid.ColumnDefinitions>
+                    <TextBlock Text="管理・設定" FontSize="20" FontWeight="SemiBold" />
+                    <Grid Margin="0,10,0,14">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Border Style="{StaticResource Card}" Margin="0,0,7,0">
                             <StackPanel>
-                                <TextBlock Text="master" FontWeight="Bold" />
-                                <TextBlock Text="{Binding MasterVersion}" />
-                                <TextBlock Text="{Binding MasterSourceHash}" FontFamily="Consolas" FontSize="11" />
-                                <TextBlock Text="{Binding MasterCounts}" />
+                                <TextBlock Text="🎵 曲情報" FontWeight="Bold" FontSize="16" />
+                                <TextBlock Text="{Binding MasterUserStatusDisplay, Mode=OneWay}"
+                                           Foreground="#166534" Margin="0,6,0,8" />
+                                <TextBlock Text="更新日時" Foreground="#6B7280" />
+                                <TextBlock Text="{Binding MasterUpdatedAtLongDisplay, Mode=OneWay}"
+                                           FontWeight="SemiBold" />
+                                <TextBlock Text="曲数" Foreground="#6B7280" Margin="0,8,0,0" />
+                                <TextBlock Text="{Binding MasterSongCountDisplay, Mode=OneWay}" />
+                                <TextBlock Text="譜面数" Foreground="#6B7280" Margin="0,8,0,0" />
+                                <TextBlock Text="{Binding MasterChartCountDisplay, Mode=OneWay}" />
                             </StackPanel>
-                            <StackPanel Grid.Column="1">
-                                <TextBlock Text="catalog" FontWeight="Bold" />
-                                <TextBlock>
-                                    <Run Text="{Binding CatalogIdentity, Mode=OneWay}" />
-                                    <Run Text=" / " /><Run Text="{Binding CatalogSchema, Mode=OneWay}" />
-                                </TextBlock>
-                                <TextBlock Text="{Binding OrphanSummary}" TextWrapping="Wrap" />
+                        </Border>
+                        <Border Grid.Column="1" Style="{StaticResource Card}" Margin="7,0,0,0">
+                            <StackPanel>
+                                <TextBlock Text="🖼️ ジャケット収集状況" FontWeight="Bold" FontSize="16" />
+                                <TextBlock Text="{Binding CatalogUserStatusDisplay, Mode=OneWay}"
+                                           Foreground="#166534" Margin="0,6,0,8" />
+                                <TextBlock Text="ジャケット情報のバージョン" Foreground="#6B7280" />
+                                <TextBlock Text="{Binding CatalogSchema, Mode=OneWay}" FontWeight="SemiBold" />
+                                <TextBlock Text="収集済み曲数" Foreground="#6B7280" Margin="0,8,0,0" />
+                                <TextBlock Text="{Binding CatalogCoverageDisplay, Mode=OneWay}" />
+                                <TextBlock Text="レビュー待ち件数" Foreground="#6B7280" Margin="0,8,0,0" />
+                                <TextBlock Text="{Binding ReviewPendingCountDisplay, Mode=OneWay}" />
                             </StackPanel>
-                        </Grid>
-                    </Border>
-                    <WrapPanel>
-                        <Button Content="曲情報を更新" Click="UpdateMaster_Click" />
-                        <Button Content="title/artist評価" Click="EvaluateTitleArtist_Click" />
-                        <Button Content="処理を取消" Click="CancelOperation_Click" />
-                    </WrapPanel>
-                    <Border Style="{StaticResource Card}" Margin="0,18,0,0" Width="880">
+                        </Border>
+                    </Grid>
+                    <Border Style="{StaticResource Card}" Width="880">
                         <StackPanel>
-                            <TextBlock Text="直近の処理" FontWeight="SemiBold" />
-                            <TextBlock Text="{Binding StatusTitle}" Margin="0,6,0,0" />
-                            <TextBlock Text="{Binding StatusMessage}" Foreground="#5F6B7A" TextWrapping="Wrap" />
+                            <TextBlock Text="曲情報の更新" FontWeight="SemiBold" />
+                            <TextBlock Text="使用する曲情報を最新版へ更新します。収集中は更新できません。"
+                                       Foreground="#5F6B7A" Margin="0,6,0,8" TextWrapping="Wrap" />
+                            <Button Content="🔄 曲情報を更新" IsEnabled="{Binding CanUpdateMaster}"
+                                    Click="UpdateMaster_Click" HorizontalAlignment="Left" />
+                        </StackPanel>
+                    </Border>
+                    <Border Style="{StaticResource Card}" Margin="0,14,0,0" Width="880">
+                        <StackPanel>
+                            <TextBlock Text="最後の処理結果" FontWeight="SemiBold" />
+                            <TextBlock Text="{Binding LastOperationResultDisplay, Mode=OneWay}"
+                                       Foreground="#5F6B7A" TextWrapping="Wrap" Margin="0,6,0,0" />
                         </StackPanel>
                     </Border>
                 </StackPanel>

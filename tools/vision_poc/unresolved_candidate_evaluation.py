@@ -263,6 +263,7 @@ def _validated_artifact(
     manifest_path: Path,
     master: catalog.MasterIdentity,
     catalog_identity: evaluation.CatalogIdentity,
+    allow_master_drift: bool = False,
 ) -> tuple[evaluation.ArtifactInput, tuple[Path, ...], dict[Path, tuple[int, int, str]]]:
     observation_id = str(reference["source_capture_id"] or "")
     snapshot_paths = (
@@ -280,6 +281,7 @@ def _validated_artifact(
         artifact_root=artifact_root,
         master=master,
         catalog=catalog_identity,
+        validate_master_identity=not allow_master_drift,
     )
     manifest = artifact.manifest
     if (
@@ -315,6 +317,7 @@ def resolve_source_image_path(
             manifest_path=manifest_paths[0],
             master=master,
             catalog_identity=catalog_identity,
+            allow_master_drift=True,
         )
         if any(_file_fingerprint(path) != before_fingerprints[path] for path in snapshot_paths):
             raise ValueError("artifact/checkpoint changed during evaluation")

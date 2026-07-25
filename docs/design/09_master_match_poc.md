@@ -210,7 +210,7 @@ projection producerはcurrent-only version 5でstored/current status、revision�
 
 manual review XLSX exportはこのprojectionを直接再利用するdeveloper-only read-only入口である。stored statusが`needs_review` / `unresolved`のreferenceだけを`unreviewed`行として出力し、title/artist ROIは検証済み`source_image_path`からXLSX package内へ埋め込む。`Manual Review`の編集列はstatus、truth song、notesに限定し、`Master Songs`にはcurrent Master全曲を含める。対象0件でも3 sheetのheaderとMetadata対象件数0を作り、指定された既存XLSXは置き換える。
 
-runtime loaderはcurrent feature extractorかつcurrent masterに存在するGP対象の `auto_confirmed` / `manual_confirmed` だけを供給する。`rejected`、orphan、GP対象外、旧extractorを渡さず、外部変更などで永続特徴量が不正になったmanual referenceは派生状態を `needs_review` / `persisted_feature_invalid` としてcoverageとreview projectionへ表示し、そのrowだけをruntimeから除外して他の有効reference読込を継続する。保存済みstatus、revision、historyは変更しない。auto-confirmed rowの特徴量破損はcatalog corruptionとして従来どおり失敗させる。M5c-2はcapture、window探索、title/artist OCR、物理削除、公開app、正式保存workflow、正式個人スコアDBを変更しない。これらとsource capture locator/retentionはM5c-3以降へ残す。
+runtime loaderはcurrent feature extractorかつcurrent masterに存在するGP対象の `auto_confirmed` / `manual_confirmed` だけを供給する。`rejected`、orphan、GP対象外、旧extractorを渡さず、外部変更などで永続特徴量が不正になったreferenceはruntimeから除外する。一方、通常画面のcoverage/review projectionは、保存済みのconfirmed statusを後発のmaster・extractor差分だけで`needs_review`へ再分類しない。runtimeのcurrent identity・feature検証はこの表示制御とは別に厳格に行う。保存済みstatus、revision、historyは変更しない。auto-confirmed rowの特徴量破損はcatalog corruptionとして従来どおり失敗させる。M5c-2はcapture、window探索、title/artist OCR、物理削除、公開app、正式保存workflow、正式個人スコアDBを変更しない。これらとsource capture locator/retentionはM5c-3以降へ残す。
 
 ### M5c-3a window capture lifecycle
 

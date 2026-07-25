@@ -306,6 +306,7 @@ def _validate_manifest(
     artifact_root: Path,
     master: jacket_reference_catalog.MasterIdentity,
     catalog: CatalogIdentity,
+    validate_master_identity: bool = True,
 ) -> ArtifactInput:
     if not isinstance(value, dict):
         raise ValueError("observation manifest must be an object")
@@ -462,15 +463,25 @@ def _validate_manifest(
         or window["client_height"] != value["source_height"]
     ):
         raise ValueError("observation manifest window identity is invalid")
-    if (
+    if validate_master_identity and (
         value["master_version"] != master.version
         or value["master_source_hash"] != master.source_hash
-        or value["catalog_identity"] != catalog.identity
+    ):
+        raise ValueError(
+            "observation manifest reference identity drift detected: master identity drift"
+        )
+    if (
+        value["catalog_identity"] != catalog.identity
         or value["catalog_schema_version"] != catalog.schema_version
         or value["catalog_created_at"] != catalog.created_at
-        or value["feature_extractor_version"] != jacket_reference_catalog.FEATURE_EXTRACTOR_VERSION
     ):
-        raise ValueError("observation manifest reference identity drift detected")
+        raise ValueError(
+            "observation manifest reference identity drift detected: catalog identity drift"
+        )
+    if value["feature_extractor_version"] != jacket_reference_catalog.FEATURE_EXTRACTOR_VERSION:
+        raise ValueError(
+            "observation manifest reference identity drift detected: extractor identity drift"
+        )
     if not source_path.is_file() or not crop_path.is_file():
         raise ValueError("observation artifact image is missing")
     source_bytes = source_path.read_bytes()
