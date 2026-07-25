@@ -14,7 +14,8 @@ jacket featureをnetworkなしで突き合わせるdeveloper-only評価CLIです
 - M4 master DB
 
 snapshotはmanifest/summary/status/failure、song/image件数、URL別image metadata、local path、
-SHA-256、画像decodeを検査します。truth ODSはaudit/observationの一意性、
+SHA-256、画像decodeを検査します。固定root `data/ddrworld_music_snapshot/` を指定し、
+`stored_jacket_count` は重複hashを1画像として数える保存実数です。truth ODSはaudit/observationの一意性、
 `confirmed` / `rejected`語彙、confirmed truthの必須値とM4 exact一致を検査します。catalogは
 ODSと同じobservation集合、`m5-jacket-v2`、`m5c-jacket-rgb-grid-v1`、`jacket_crop`だけを
 受け入れます。
@@ -26,7 +27,7 @@ ODSと同じobservation集合、`m5-jacket-v2`、`m5c-jacket-rgb-grid-v1`、`jac
 
 ```powershell
 python -X utf8 -m tools.ddrworld_snapshot_evaluation `
-  --snapshot data/ddrworld_music_snapshot/20260718-official-v1 `
+  --snapshot data/ddrworld_music_snapshot `
   --truth-ods data/jacket_catalog_collector/candidate-truth-audit-v2/candidate_truth_audit_v2.ods `
   --catalog data/jacket_catalog/catalog-current-roi-v2.sqlite `
   --master data/master/ddrgp-master.sqlite `
@@ -87,7 +88,7 @@ masterの組合せに対する実績であり、threshold採用や正式保存�
 
 ```powershell
 python -X utf8 -m tools.ddrworld_snapshot_evaluation.policy_cli `
-  --snapshot data/ddrworld_music_snapshot/20260718-official-v1 `
+  --snapshot data/ddrworld_music_snapshot `
   --truth-ods data/jacket_catalog_collector/candidate-truth-audit-v2/candidate_truth_audit_v2.ods `
   --catalog data/jacket_catalog/catalog-current-roi-v2.sqlite `
   --master data/master/ddrgp-master.sqlite `
@@ -116,7 +117,7 @@ read-only操作で、catalog、Master、manual review stateを変更しません
 
 ```powershell
 python -X utf8 -m tools.ddrworld_snapshot_evaluation.catalog_pipeline_cli `
-  --snapshot data/ddrworld_music_snapshot/20260718-official-v1 `
+  --snapshot data/ddrworld_music_snapshot `
   --observations-ods data/jacket_catalog_collector/candidate-truth-audit-v2/candidate_truth_audit_v2.ods `
   --catalog data/jacket_catalog/catalog-current-roi-v2.sqlite `
   --master data/master/ddrgp-master.sqlite `
@@ -139,7 +140,7 @@ plan確認後だけ、同じ4入力とplanを明示してapplyします。
 
 ```powershell
 python -X utf8 -m tools.ddrworld_snapshot_evaluation.catalog_pipeline_cli `
-  --snapshot data/ddrworld_music_snapshot/20260718-official-v1 `
+  --snapshot data/ddrworld_music_snapshot `
   --observations-ods data/jacket_catalog_collector/candidate-truth-audit-v2/candidate_truth_audit_v2.ods `
   --catalog data/jacket_catalog/catalog-current-roi-v2.sqlite `
   --master data/master/ddrgp-master.sqlite `

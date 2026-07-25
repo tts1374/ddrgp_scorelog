@@ -21,15 +21,18 @@ python -X utf8 -m tools.ddrworld_music_snapshot plan `
 順次取得します。既定値では26ページと最大1,300 jacketで最大1,326リクエスト、リクエスト間の
 最低待機は2,650秒（約44分）です。通信時間は別途加わります。
 
-## Explicit one-time fetch
+## Explicit fixed-root fetch
 
 本番取得は公式サイトへの外部アクセスを伴います。実行者が規約・負荷・出力先を確認した後だけ、
-明示的な`fetch` commandと`--allow-network` optionを指定します。
+明示的な`fetch` commandと`--allow-network` optionを指定します。通常のcollector画面はこの
+fixed-root modeを使用し、snapshot IDや取得条件を画面から変更させません。
 
 ```powershell
 python -X utf8 -m tools.ddrworld_music_snapshot fetch `
   --allow-network `
-  --snapshot-id 20260718T120000Z `
+  --fixed-output `
+  --output-root data/ddrworld_music_snapshot `
+  --incomplete-root data/ddrworld_music_snapshot.incomplete `
   --page-count 26 `
   --delay-seconds 2
 ```
@@ -42,10 +45,11 @@ filter、filtertype、playmodeはcollector v1で
 
 ## Output and publication boundary
 
-既定出力は次の構成です。
+`--fixed-output`での出力は次の固定構成です。`snapshot-id`は内部の取得識別子として
+`manifest.json`と`summary.json`へ記録しますが、ディレクトリ名には使いません。
 
 ```text
-data/ddrworld_music_snapshot/<snapshot-id>/
+data/ddrworld_music_snapshot/
   manifest.json
   pages/page-00.html ... page-25.html
   songs.jsonl
@@ -53,17 +57,22 @@ data/ddrworld_music_snapshot/<snapshot-id>/
   summary.json
 ```
 
-取得中は`<snapshot-id>.incomplete/`だけを使います。全pageと全一意jacket URLの取得・検証が
-成功した場合だけ、directory renameで`<snapshot-id>/`へ公開します。page/画像取得、HTML解析、
-content type、画像signatureのいずれかが失敗した場合は`.incomplete/`のまま残し、
-`manifest.json`と`summary.json`を`status: incomplete`にします。既存の完成・未完成directoryが
-1つでもあればnetwork access前に拒否し、resume、retry、追記、上書き、cleanupは行いません。
+取得中は固定rootの隣にある`data/ddrworld_music_snapshot.incomplete/`だけを使います。
+全pageと全一意jacket URLの取得・検証が成功し、必須ファイル、status、件数を検証した場合だけ、
+directory renameで固定rootへ公開します。page/画像取得、HTML解析、content type、画像signatureの
+いずれかが失敗した場合は`.incomplete/`のまま残し、`manifest.json`と`summary.json`を
+`status: incomplete`にします。既存の完成rootは公開直前まで保持し、network access前に
+不完全なrootを上書きしません。次回実行時は前回の`.incomplete/`を破棄して最初から取得します。
+
+画面からのキャンセルはrequest境界で停止し、固定rootを公開しません。キャンセル時の診断は
+`.incomplete/`へ`status: cancelled`として残し、次回実行時に破棄します。
 
 `songs.jsonl`はsource page、ページ内位置、official title/artist、jacket source URL、local path、
 content type、byte size、SHA-256、失敗情報を保持します。`manifest.json`はsource条件、取得時刻、
 collector version、request policy、page/image単位のHTTP statusと検証結果を保持します。
-`summary.json`は件数、失敗、重複画像hashを集約します。同じhashを複数URLが返した場合は報告だけを
-行い、同一曲や異常とは判定しません。同じcontentはhash pathへ1回だけ保存します。
+`summary.json`は件数、失敗、重複画像hashを集約します。`stored_jacket_count`は保存された
+hash pathの実数であり、同じhashを複数URLが返した場合は報告だけを行い、同一曲や異常とは
+判定しません。同じcontentはhash pathへ1回だけ保存します。
 
 HTMLは`#data_tbl tr.data`だけを対象にし、各行の`td.music_tit`、`td.artist_nam`、
 `td.jk img[src]`を必須とします。page content typeはHTML、jacketはcontent typeとPNG/JPEG/GIF/WebP

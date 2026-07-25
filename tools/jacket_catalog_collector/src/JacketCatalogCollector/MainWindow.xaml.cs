@@ -66,7 +66,11 @@ public partial class MainWindow : Window
                 databasePaths.CatalogPath),
             manualReviewDraftStore: new JsonManualReviewDraftStore(
                 Path.Combine(evidenceRoot, "manual-review-drafts.v1.json")),
-            manualReviewXlsxImportService: candidateProjectionService);
+            manualReviewXlsxImportService: candidateProjectionService,
+            officialJacketSnapshotService: new PythonOfficialJacketSnapshotService(
+                runner,
+                repositoryRoot,
+                databasePaths.DdrWorldSnapshotRootPath));
         captureObservationController = new CaptureObservationController(
             viewModel.StartObservationSessionAsync,
             viewModel.ResumeObservationSessionAsync,
@@ -415,6 +419,7 @@ public partial class MainWindow : Window
         if (!captureShutdownComplete)
         {
             e.Cancel = true;
+            operationCancellation?.Cancel();
             try
             {
                 await captureObservationController.AbortAsync();
@@ -452,6 +457,36 @@ public partial class MainWindow : Window
         {
             operationCancellation?.Dispose();
             operationCancellation = null;
+        }
+    }
+
+    private async void UpdateOfficialSnapshot_Click(object sender, RoutedEventArgs e)
+    {
+        if (!CanStartOperation() || !viewModel.CanUpdateOfficialSnapshot)
+        {
+            return;
+        }
+        try
+        {
+            operationCancellation = new CancellationTokenSource();
+            await viewModel.UpdateOfficialSnapshotAsync(operationCancellation.Token);
+        }
+        catch (Exception)
+        {
+            // The ViewModel exposes the actionable diagnostic in the status panel.
+        }
+        finally
+        {
+            operationCancellation?.Dispose();
+            operationCancellation = null;
+        }
+    }
+
+    private void CancelOfficialSnapshot_Click(object sender, RoutedEventArgs e)
+    {
+        if (viewModel.CanCancelOfficialSnapshot)
+        {
+            operationCancellation?.Cancel();
         }
     }
 

@@ -1,6 +1,6 @@
 # Jacket Catalog Collector (developer-only)
 
-M5c のローカル jacket catalog 運用を支援する、公開 `DDRGpScoreViewer` とは独立した Windows WPF app です。master DB の明示更新、current-only coverage/review projection、監査可能なmanual review、DDR GRAND PRIX window候補の確認とmemory-only capture lifecycle観測を扱います。通常の公開app build、installer、Release、GitHub Actions artifactには含めません。
+M5c のローカル jacket catalog 運用と、DDR WORLD公式ジャケットsnapshotの明示更新を支援する、公開 `DDRGpScoreViewer` とは独立した Windows WPF app です。master DB の明示更新、current-only coverage/review projection、監査可能なmanual review、DDR GRAND PRIX window候補の確認とmemory-only capture lifecycle観測を扱います。通常の公開app build、installer、Release、GitHub Actions artifactには含めません。
 
 ## 実行
 
@@ -29,13 +29,17 @@ appは実行ファイルの配置場所からrepository rootを解決し、proce
 
 収集終了時の内部処理順は `保留確定 → matching評価 → auto-confirm一括transaction → projection再読込` です。画面には保存済み件数、新規登録件数、登録済み件数、反映失敗件数、保留件数を短く表示し、auto-confirmやcheckpointの内部件数は表示しません。完成済みDDR WORLD snapshotの`songs.jsonl`と32x32公式jacket画像をcurrent masterへ対応付けて公式feature masterを作り、収集したjacket特徴量へ既存のdistance threshold / ambiguity gateを適用します。他songと競合しないjacket top-1だけを`jacket_gate`として自動確定します。jacketで一意に決まらない行は、従来どおりprojectionの`exact_unique` / `alias_unique`だけを`ocr_title_artist_pair`として自動確定します。曖昧、候補なし、低confidence、評価失敗・評価不能、GP対象外などはjacket単独では自動確定せず、再読込後も未レビュー一覧に残ります。既存のauto/manual/rejected、revision、manual history、artifact、checkpointは上書きしません。同じ終了処理を再実行しても、同一根拠はno-opとして重複作成されません。
 
-detectorの内部状態は通常画面へ表示しません。同じ画像が連続する間も未保存のstable候補は保存可能なまま維持し、保存後は次の曲へ移動する案内を表示します。自動保存は起動時・fresh session・resumeのたびにOFFへ戻り、端末設定へ保存しません。session再開とcatalog retryは開発者向けの内部経路として保持しますが、通常画面には表示しません。管理・設定の通常ボタンは `曲情報を更新` だけです。
+6. `管理・設定` には公式ジャケット情報の更新日時、取得曲数、保存画像数、固定配置先を表示する。`公式ジャケット情報を更新` はネットワーク取得を開始する明示操作で、曲一覧取得後に取得済み曲数を表示し、続けてジャケット取得の進捗を表示する。キャンセルはrequest境界で停止し、既存の固定snapshot、master DB、catalog、reviewを変更しない。成功時だけ固定rootへ一式を公開し、master/catalog/reviewの自動確定やcatalog更新は行わない。
+
+detectorの内部状態は通常画面へ表示しません。同じ画像が連続する間も未保存のstable候補は保存可能なまま維持し、保存後は次の曲へ移動する案内を表示します。自動保存は起動時・fresh session・resumeのたびにOFFへ戻り、端末設定へ保存しません。session再開とcatalog retryは開発者向けの内部経路として保持しますが、通常画面には表示しません。管理・設定の通常更新ボタンは `曲情報を更新` と `公式ジャケット情報を更新` です。
 
 ## Issue #75 の通常画面表示契約
 
 通常画面の見た目・配置・見出し・ボタン文言は [`jacket-catalog-collector-mock.html`](../../docs/wireframe/jacket-catalog-collector-mock.html) を正とします。レビュー画面の固有UIは #56 以降の契約を維持します。
 
 - ヘッダーは `曲情報: <更新日時> 更新` と `ジャケット情報: v<version>` を表示する。更新日時はmaster metadataの`generated_at`であり、DBファイルのmtimeではない。
+- ヘッダーには `公式ジャケット: <更新日>` を追加し、管理・設定には公式snapshotの更新日時、取得曲数、保存画像数、固定配置先を表示する。未作成時は未作成として表示し、snapshot ID、source URL、hash、内部診断は通常画面へ出さない。
+- 管理・設定の `公式ジャケット情報を更新` は明示的なネットワーク操作で、`曲情報を更新` と同じ更新領域に配置する。取得中は曲一覧のページ進捗、HTML解析後にジャケットの `取得済み曲数 / 総曲数` を表示し、キャンセルボタンを提供する。
 - 収集状況は `収集済み`、`レビュー待ち`、`未収集`、`曲未特定`、`曲情報外`を日本語で表示し、状態だけをfilterできる。理由の内部値、hash、identity、revisionは通常画面へ出さない。
 - 一覧は `状態 / 曲名 / アーティスト / 登録ジャケット数 / 理由 / song ID` とし、`reference_count`を登録ジャケット数として表示する。
 - 状態・理由に未定義値があれば処理を止めず `不明: <内部値>` と表示する。詳細な診断はlocal logで確認する。
@@ -59,8 +63,20 @@ repository rootはアプリ配置場所の親directoryを`.git`まで探索し�
 <repository-root>/databases/jacket-catalog.sqlite
 ```
 
-収集終了時のjacket gateは、別管理の完成済みsnapshotから最新の有効な
-`<repository-root>/data/ddrworld_music_snapshot/<snapshot-id>/`をread-onlyで選び、DDR WORLD公式32x32 jacket画像を照合先に使います。snapshotがない場合はauto-confirmを完了扱いにせず、理由を表示して手動レビュー経路へ残します。
+公式ジャケットsnapshotの固定rootは次の構成です。取得中は隣の`.incomplete` rootを使い、検証成功時だけ固定rootを一式で置き換えます。起動時の既存snapshot読込はread-onlyです。
+
+```text
+<repository-root>/data/ddrworld_music_snapshot/
+<repository-root>/data/ddrworld_music_snapshot.incomplete/
+```
+
+初期提供された `data/ddrworld_music_snapshot/20260718-official-v1/` の内容は、利用開始前に
+固定root直下へ手動配置します。collectorはこの移行や削除を行いません。snapshotがない場合は
+公式情報を利用可能扱いにせず、理由を表示します。
+
+収集終了時のjacket gateは、固定rootの完成済みsnapshotをread-onlyで読み、DDR WORLD公式32x32
+jacket画像を照合先に使います。snapshotがない場合はauto-confirmを完了扱いにせず、理由を表示して
+手動レビュー経路へ残します。
 
 起動時はmasterをstrict read-onlyで検証します。masterがない場合は曲情報なしで起動を継続し、masterが非互換・破損・読取不可の場合は理由を表示してcatalog作成と収集を開始しません。有効なmasterがありcatalogがない場合だけcurrent schemaの空catalogを作成します。既存catalogは必ずread-only検証し、非互換・破損・読取不可でも空DBへ置換しません。
 

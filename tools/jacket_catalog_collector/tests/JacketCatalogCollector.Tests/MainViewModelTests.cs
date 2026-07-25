@@ -29,6 +29,120 @@ public sealed class MainViewModelTests
         Assert.Equal("不明: opaque reason", viewModel.Songs[0].ReasonDisplay);
     }
 
+    [Fact]
+    public async Task OfficialSnapshotMetadataAndUpdateAreDisplayedWithoutTouchingProjection()
+    {
+        const string completedAt = "2026-07-18T03:04:05+00:00";
+        var metadata = new OfficialJacketSnapshotMetadata(
+            "internal-run-id",
+            completedAt,
+            1287,
+            1241,
+            Path.Combine(Path.GetTempPath(), "ddrworld_music_snapshot"));
+        var official = new StubOfficialJacketSnapshotService(metadata, metadata);
+        var projectionService = new RecordingProjectionService(Projection());
+        var viewModel = new MainViewModel(
+            new StubMasterUpdateService(),
+            projectionService,
+            officialJacketSnapshotService: official);
+
+        await viewModel.LoadProjectionAsync();
+
+        var expectedTimestamp = DateTimeOffset.Parse(completedAt)
+            .ToLocalTime()
+            .ToString("yyyy/MM/dd HH:mm:ss");
+        Assert.Equal($"公式ジャケット: {expectedTimestamp[..10]}",
+            viewModel.OfficialSnapshotHeaderDisplay);
+        Assert.Equal(expectedTimestamp, viewModel.OfficialSnapshotUpdatedAtDisplay);
+        Assert.Equal("1,287 曲", viewModel.OfficialSnapshotSongCountDisplay);
+        Assert.Equal("1,241 画像", viewModel.OfficialSnapshotStoredImageCountDisplay);
+        Assert.Equal("data/ddrworld_music_snapshot", viewModel.OfficialSnapshotPathDisplay);
+        Assert.Equal("利用可能", viewModel.OfficialSnapshotUserStatusDisplay);
+        Assert.True(viewModel.CanUpdateOfficialSnapshot);
+
+        await viewModel.UpdateOfficialSnapshotAsync();
+
+        Assert.Equal(2, projectionService.Loads.Count);
+        Assert.Equal(
+            [
+                new OfficialJacketSnapshotProgress("pages", 1, 2),
+                new OfficialJacketSnapshotProgress("jackets", 1241, 1287),
+            ],
+            official.Progresses);
+        Assert.Contains("公式ジャケット情報を更新しました。",
+            viewModel.OfficialSnapshotLastResultDisplay,
+            StringComparison.Ordinal);
+        Assert.Contains("固定配置先: data/ddrworld_music_snapshot",
+            viewModel.OfficialSnapshotLastResultDisplay,
+            StringComparison.Ordinal);
+        Assert.Equal("利用可能", viewModel.OperationStateDisplay);
+        Assert.True(viewModel.CanUpdateOfficialSnapshot);
+    }
+
+    [Fact]
+    public async Task OfficialSnapshotCancellationKeepsPreviousMetadataAndShowsPreservation()
+    {
+        var metadata = new OfficialJacketSnapshotMetadata(
+            "existing",
+            "2026-07-18T03:04:05+00:00",
+            1287,
+            1241,
+            Path.Combine(Path.GetTempPath(), "ddrworld_music_snapshot"));
+        var official = new StubOfficialJacketSnapshotService(
+            metadata,
+            updateException: new OperationCanceledException());
+        var viewModel = new MainViewModel(
+            new StubMasterUpdateService(),
+            new StubProjectionService(Projection()),
+            officialJacketSnapshotService: official);
+        await viewModel.LoadProjectionAsync();
+
+        await Assert.ThrowsAsync<OperationCanceledException>(
+            () => viewModel.UpdateOfficialSnapshotAsync());
+
+        Assert.Equal("existing", official.LoadedMetadata?.SnapshotId);
+        Assert.Equal("1,287 曲", viewModel.OfficialSnapshotSongCountDisplay);
+        Assert.Contains("既存の公式ジャケット情報は維持されています。",
+            viewModel.OfficialSnapshotLastResultDisplay,
+            StringComparison.Ordinal);
+        Assert.Equal("利用可能", viewModel.OfficialSnapshotUserStatusDisplay);
+        Assert.Equal("利用可能", viewModel.OperationStateDisplay);
+    }
+
+    [Fact]
+    public async Task OfficialSnapshotFailureKeepsPreviousMetadataAndShowsFailureState()
+    {
+        var metadata = new OfficialJacketSnapshotMetadata(
+            "existing",
+            "2026-07-18T03:04:05+00:00",
+            1287,
+            1241,
+            Path.Combine(Path.GetTempPath(), "ddrworld_music_snapshot"));
+        var official = new StubOfficialJacketSnapshotService(
+            metadata,
+            updateException: new OfficialJacketSnapshotUpdateException(
+                "公式ジャケット情報の取得に失敗しました（ページ取得）。理由: network。",
+                "ページ取得"));
+        var viewModel = new MainViewModel(
+            new StubMasterUpdateService(),
+            new StubProjectionService(Projection()),
+            officialJacketSnapshotService: official);
+        await viewModel.LoadProjectionAsync();
+
+        await Assert.ThrowsAsync<OfficialJacketSnapshotUpdateException>(
+            () => viewModel.UpdateOfficialSnapshotAsync());
+
+        Assert.Equal("existing", official.LoadedMetadata?.SnapshotId);
+        Assert.Equal("1,287 曲", viewModel.OfficialSnapshotSongCountDisplay);
+        Assert.Equal("更新に失敗しました。", viewModel.OfficialSnapshotUserStatusDisplay);
+        Assert.Contains("ページ取得", viewModel.OfficialSnapshotLastResultDisplay,
+            StringComparison.Ordinal);
+        Assert.Contains("既存の公式ジャケット情報は維持されています。",
+            viewModel.OfficialSnapshotLastResultDisplay,
+            StringComparison.Ordinal);
+        Assert.Equal("更新失敗", viewModel.OperationStateDisplay);
+    }
+
     [Theory]
     [InlineData("all", "すべて")]
     [InlineData("referenced", "収集済み")]
@@ -1184,6 +1298,42 @@ public sealed class MainViewModelTests
             string masterPath,
             string catalogPath,
             CancellationToken cancellationToken) => Task.FromResult(projection);
+    }
+
+    private sealed class StubOfficialJacketSnapshotService(
+        OfficialJacketSnapshotMetadata? loadedMetadata,
+        OfficialJacketSnapshotMetadata? updatedMetadata = null,
+        Exception? updateException = null) : IOfficialJacketSnapshotService
+    {
+        public OfficialJacketSnapshotMetadata? LoadedMetadata { get; private set; }
+        public List<OfficialJacketSnapshotProgress> Progresses { get; } = [];
+
+        public Task<OfficialJacketSnapshotMetadata?> LoadAsync(
+            CancellationToken cancellationToken)
+        {
+            LoadedMetadata = loadedMetadata;
+            return Task.FromResult(loadedMetadata);
+        }
+
+        public Task<OfficialJacketSnapshotUpdateResult> UpdateAsync(
+            IProgress<OfficialJacketSnapshotProgress>? progress,
+            CancellationToken cancellationToken)
+        {
+            if (updateException is not null)
+            {
+                return Task.FromException<OfficialJacketSnapshotUpdateResult>(updateException);
+            }
+
+            var pageProgress = new OfficialJacketSnapshotProgress("pages", 1, 2);
+            var jacketProgress = new OfficialJacketSnapshotProgress("jackets", 1241, 1287);
+            Progresses.Add(pageProgress);
+            Progresses.Add(jacketProgress);
+            progress?.Report(pageProgress);
+            progress?.Report(jacketProgress);
+            return Task.FromResult(new OfficialJacketSnapshotUpdateResult(
+                updatedMetadata ?? loadedMetadata
+                    ?? throw new InvalidOperationException("updated metadata is missing")));
+        }
     }
 
     private sealed class SequenceProjectionService(
