@@ -27,7 +27,7 @@ public sealed class ManualReviewRoiImageConverter : IValueConverter
         {
             return null;
         }
-        if (!File.Exists(path) || !Rois.TryGetValue(roiName, out var roi))
+        if (!File.Exists(path))
         {
             return null;
         }
@@ -40,6 +40,15 @@ public sealed class ManualReviewRoiImageConverter : IValueConverter
             image.UriSource = new System.Uri(Path.GetFullPath(path), System.UriKind.Absolute);
             image.EndInit();
             image.Freeze();
+
+            if (string.Equals(roiName, "full", StringComparison.Ordinal))
+            {
+                return image;
+            }
+            if (!Rois.TryGetValue(roiName, out var roi))
+            {
+                return null;
+            }
 
             var left = (int)Math.Round(roi.X * image.PixelWidth / (double)BaseWidth);
             var top = (int)Math.Round(roi.Y * image.PixelHeight / (double)BaseHeight);

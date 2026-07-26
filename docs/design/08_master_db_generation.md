@@ -4,7 +4,8 @@ M4では、BEMANIWiki 由来の楽曲・譜面情報と、公式収録曲一覧�
 
 ## 目的
 
-- BEMANIWiki の全曲リストHTMLから `songs` と `charts` を生成する。
+- 公式収録曲一覧HTMLから `songs.title` / `songs.artist` を取得する。
+- BEMANIWiki の全曲リスト／新曲リストHTMLから `charts` と補助情報を生成する。
 - 公式収録曲一覧HTMLから `free_play_available` / `grand_prix_play_available` を付与する。
 - マスタDBと個人スコアDBを分離する。
 - 取得元HTMLのhashとsnapshotを残し、表構造変化を検出しやすくする。
@@ -16,6 +17,12 @@ M4では、BEMANIWiki 由来の楽曲・譜面情報と、公式収録曲一覧�
 
 ```text
 https://bemaniwiki.com/index.php?DanceDanceRevolution+GRAND+PRIX/%E5%85%A8%E6%9B%B2%E3%83%AA%E3%82%B9%E3%83%88
+```
+
+新曲リスト取得元URL:
+
+```text
+https://bemaniwiki.com/?DanceDanceRevolution+GRAND+PRIX/%E6%96%B0%E6%9B%B2%E3%83%AA%E3%82%B9%E3%83%88
 ```
 
 2026-07-04時点の対象表は、以下の2段ヘッダを持つ。
@@ -38,6 +45,8 @@ https://p.eagate.573.jp/game/eacddr/konaddr/info/mlist.html
 ```
 
 公式収録曲一覧では、`タイトル` / `アーティスト` / `フリープレー` / `グランプリプレー` を持つ表だけをプレー可否ソースとして扱う。`グランプリプレー` 列に `〇` がある曲を `songs.grand_prix_play_available=true` とする。アーケードプレーのみの表は、GP対象曲判定には使わない。
+
+公式収録曲一覧の `タイトル` / `アーティスト` は曲情報の正本として `songs.title` / `songs.artist` に保存する。公式アーティストが空の場合も空を保持し、Wiki側の版権元名へフォールバックしない。全曲リストと新曲リストは曲名・アーティストの正規化一致で統合し、新曲リストだけに存在する曲も `songs` / `charts` へ追加する。新曲リストのHTMLは `source_snapshots` と `new_song_source_url` / `new_song_source_hash` で追跡する。
 
 公式リストとWiki譜面マスタの突合は、まず曲名+artistの正規化一致で行い、artistが空または表記差がある場合は曲名が公式リスト内で一意な場合だけ曲名一致で補完する。`Ё` / `Ë` のような装飾記号差や一部のキリル/ラテン混在差はalias正規化でも照合し、`alias_title_artist` / `alias_unique_title` として区別する。公式に突合できた曲は `songs.title` / `songs.artist` を公式表記へ寄せ、Wiki由来表記差は `song_aliases` に `wiki_source` として保存する。突合結果は `official_availability_match` に残す。公式リストにない曲や曖昧な曲は `grand_prix_play_available=false` のままにし、M5の通常候補から除外する。
 
@@ -135,7 +144,7 @@ Releases配布は、artifactで生成結果と取得元構造変化検出を確�
 - 同一 `chart_id` の譜面行が食い違う。
 - SQLite制約に反するレベルや譜面種別が出る。
 - CI生成後の `master_metadata` 件数と実テーブル件数が一致しない。
-- CI生成後の `source_snapshots` がWikiのみなら1件、公式プレー可否込みなら2件ではない。
+- CI生成後の `source_snapshots` がWikiのみなら1件、公式プレー可否込みなら2件、新曲リスト込みなら最大3件ではない。
 - CI生成後の `master_metadata.source_hash` と `source_snapshots.content_hash` が一致しない。
 - CI生成後の `master_metadata.source_url` と `source_snapshots.source_url` が一致しない。
 - CI生成後の `master_metadata.official_source_hash` と公式 `source_snapshots.content_hash` が一致しない。

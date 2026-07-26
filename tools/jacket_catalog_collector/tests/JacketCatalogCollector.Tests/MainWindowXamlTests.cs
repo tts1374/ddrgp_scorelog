@@ -341,6 +341,8 @@ public sealed class MainWindowXamlTests
         Assert.Contains(bindings, value => value.Contains(
             "ReviewedManualReviewRows", StringComparison.Ordinal));
         Assert.Contains(bindings, value => value.Contains(
+            "CanUseManualReviewActions", StringComparison.Ordinal));
+        Assert.Contains(bindings, value => value.Contains(
             "CurrentStatusDisplay", StringComparison.Ordinal));
         Assert.Contains(bindings, value => value.Contains(
             "CurrentSongDisplay", StringComparison.Ordinal));
@@ -353,17 +355,11 @@ public sealed class MainWindowXamlTests
         Assert.Contains("XLSXをエクスポート", buttons);
         Assert.Contains("XLSXをインポート", buttons);
         Assert.Contains("一括反映", buttons);
-        Assert.Contains("↻", buttons);
-        Assert.DoesNotContain("projection再読込", buttons);
         Assert.True(
             buttons.IndexOf("XLSXをエクスポート") < buttons.IndexOf("XLSXをインポート")
-                && buttons.IndexOf("XLSXをインポート") < buttons.IndexOf("一括反映")
-                && buttons.IndexOf("一括反映") < buttons.IndexOf("↻"));
-        Assert.Contains(
-            document.Descendants().Where(element => element.Name.LocalName == "Button"),
-            element => element.Attribute("Content")?.Value == "↻"
-                && element.Attribute("ToolTip")?.Value == "projectionを更新"
-                && element.Attribute("Click")?.Value == "RefreshCandidates_Click");
+                && buttons.IndexOf("XLSXをインポート") < buttons.IndexOf("一括反映"));
+        Assert.DoesNotContain("↻", buttons);
+        Assert.DoesNotContain("RefreshCandidates_Click", File.ReadAllText(GetMainWindowCodePath()));
         var code = File.ReadAllText(GetMainWindowCodePath());
         Assert.Contains("ExportManualReview_Click", code, StringComparison.Ordinal);
         Assert.Contains("ImportManualReview_Click", code, StringComparison.Ordinal);
@@ -395,6 +391,36 @@ public sealed class MainWindowXamlTests
         Assert.DoesNotContain("再割当", buttons);
         Assert.DoesNotContain("却下", buttons);
         Assert.DoesNotContain("再開", buttons);
+    }
+
+    [Fact]
+    public void CollectionStatusShowsRegisteredJacketDetailsAndDeleteAction()
+    {
+        var document = LoadMainWindow();
+        var bindings = document.Descendants()
+            .SelectMany(element => element.Attributes())
+            .Select(attribute => attribute.Value)
+            .ToList();
+        var buttons = document.Descendants()
+            .Where(element => element.Name.LocalName == "Button")
+            .ToList();
+
+        Assert.Contains(bindings, value => value.Contains(
+            "SelectedCollectionSong", StringComparison.Ordinal));
+        Assert.Contains(bindings, value => value.Contains(
+            "CollectionReferenceDetails", StringComparison.Ordinal));
+        Assert.Contains(bindings, value => value.Contains(
+            "SelectedCollectionReference", StringComparison.Ordinal));
+        Assert.Contains(bindings, value => value.Contains(
+            "SourceImagePath", StringComparison.Ordinal));
+        Assert.Contains(bindings, value => value.Contains(
+            "ConverterParameter=full", StringComparison.Ordinal));
+        Assert.Contains(bindings, value => value.Contains(
+            "CanDeleteSelectedCollectionReference", StringComparison.Ordinal));
+        Assert.Contains(
+            buttons,
+            element => element.Attribute("Content")?.Value == "登録ジャケットを削除"
+                && element.Attribute("Click")?.Value == "DeleteCollectionReference_Click");
     }
 
     private static XDocument LoadMainWindow() => XDocument.Load(GetMainWindowPath());

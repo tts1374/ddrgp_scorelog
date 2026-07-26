@@ -6,6 +6,7 @@ import re
 import sqlite3
 import unicodedata
 from collections import defaultdict
+from contextlib import closing
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -16,8 +17,12 @@ SOURCE_URL = (
     "https://bemaniwiki.com/index.php?"
     "DanceDanceRevolution+GRAND+PRIX/%E5%85%A8%E6%9B%B2%E3%83%AA%E3%82%B9%E3%83%88"
 )
+NEW_SONGS_SOURCE_URL = (
+    "https://bemaniwiki.com/?"
+    "DanceDanceRevolution+GRAND+PRIX/%E6%96%B0%E6%9B%B2%E3%83%AA%E3%82%B9%E3%83%88"
+)
 OFFICIAL_MUSIC_LIST_URL = "https://p.eagate.573.jp/game/eacddr/konaddr/info/mlist.html"
-PARSER_VERSION = "m4-initial-html-table-v4"
+PARSER_VERSION = "m5-official-canonical-new-song-v1"
 DIFFICULTIES_BY_STYLE = {
     "SINGLE": ("BEGINNER", "BASIC", "DIFFICULT", "EXPERT", "CHALLENGE"),
     "DOUBLE": ("BASIC", "DIFFICULT", "EXPERT", "CHALLENGE"),
@@ -89,6 +94,7 @@ class MasterBuild:
     snapshot: SourceSnapshot
     song_aliases: tuple[MasterSongAlias, ...] = ()
     official_snapshot: SourceSnapshot | None = None
+    new_song_snapshot: SourceSnapshot | None = None
 
 
 def normalize_text(value: str) -> str:
@@ -104,7 +110,23 @@ def normalize_table_cell_text(cell) -> str:
 
 
 def normalize_availability_key(value: str) -> str:
-    normalized = unicodedata.normalize("NFKC", normalize_text(value)).casefold()
+    normalized = unicodedata.normalize("NFKC", normalize_text(value)).translate(
+        str.maketrans(
+            {
+                "’": "'",
+                "‘": "'",
+                "＇": "'",
+                "“": '"',
+                "”": '"',
+                "＂": '"',
+                "－": "-",
+                "–": "-",
+                "—": "-",
+                "～": "~",
+                "〜": "~",
+            }
+        )
+    ).casefold()
     return "".join(char for char in normalized if not char.isspace())
 
 
@@ -307,6 +329,119 @@ def parse_song_list_rows(rows: list[list[str]]) -> tuple[list[MasterSong], list[
     return songs, charts
 
 
+def parse_song_list_html(html: str) -> tuple[list[MasterSong], list[MasterChart]]:
+    """Parse every DDR GP song-list table in one Wiki page."""
+    soup = parse_soup(html)
+    songs: list[MasterSong] = []
+    charts: list[MasterChart] = []
+    song_table_count = 0
+    for table in soup.find_all("table"):
+        rows = expanded_table_rows(table)
+        if not is_song_list_table(rows):
+            continue
+        song_table_count += 1
+        table_songs, table_charts = parse_song_list_rows(rows)
+        songs.extend(table_songs)
+        charts.extend(table_charts)
+
+    if song_table_count == 0:
+        raise ValueError("source HTML does not contain DDR GP song list tables")
+    if not songs or not charts:
+        raise ValueError("source HTML did not produce songs and charts")
+    return songs, charts
+
+
+def _find_existing_song_id(
+    songs_by_id: dict[str, MasterSong],
+    candidate: MasterSong,
+) -> str | None:
+    exact_key = (
+        normalize_availability_key(candidate.title),
+        normalize_availability_key(candidate.artist),
+    )
+    exact_matches = [
+        song_id
+        for song_id, song in songs_by_id.items()
+        if (
+            normalize_availability_key(song.title),
+            normalize_availability_key(song.artist),
+        )
+        == exact_key
+    ]
+    if len(exact_matches) == 1:
+        return exact_matches[0]
+
+    alias_key = (
+        normalize_availability_alias_key(candidate.title),
+        normalize_availability_alias_key(candidate.artist),
+    )
+    alias_matches = [
+        song_id
+        for song_id, song in songs_by_id.items()
+        if (
+            normalize_availability_alias_key(song.title),
+            normalize_availability_alias_key(song.artist),
+        )
+        == alias_key
+    ]
+    return alias_matches[0] if len(alias_matches) == 1 else None
+
+
+def merge_song_list_data(
+    songs_by_id: dict[str, MasterSong],
+    charts_by_id: dict[str, MasterChart],
+    songs: list[MasterSong],
+    charts: list[MasterChart],
+) -> None:
+    """Merge a second Wiki list while retaining existing song IDs."""
+    song_id_map: dict[str, str] = {}
+    for song in songs:
+        target_song_id = _find_existing_song_id(songs_by_id, song)
+        if target_song_id is None:
+            target_song_id = song.song_id
+            songs_by_id.setdefault(target_song_id, song)
+        song_id_map[song.song_id] = target_song_id
+
+    for chart in charts:
+        target_song_id = song_id_map[chart.song_id]
+        chart_id = stable_id(
+            "chart", target_song_id, chart.play_style, chart.difficulty
+        )
+        merged_chart = MasterChart(
+            chart_id=chart_id,
+            song_id=target_song_id,
+            play_style=chart.play_style,
+            difficulty=chart.difficulty,
+            level=chart.level,
+            raw_level=chart.raw_level,
+            shock_arrow=chart.shock_arrow,
+            is_removed=chart.is_removed,
+            is_limited=chart.is_limited,
+            notes=chart.notes,
+        )
+        existing_chart = charts_by_id.get(chart_id)
+        if existing_chart is not None:
+            if (
+                existing_chart.level,
+                existing_chart.raw_level,
+                existing_chart.shock_arrow,
+            ) != (
+                merged_chart.level,
+                merged_chart.raw_level,
+                merged_chart.shock_arrow,
+            ):
+                raise ValueError(
+                    "source HTML contains conflicting chart levels for "
+                    f"{target_song_id} {chart.play_style} {chart.difficulty}"
+                )
+            # The new-song list is a level supplement.  Keep the primary
+            # all-song row's availability/annotation fields when the level is
+            # already present; those fields are not part of the Wiki level
+            # contract and may differ by list section.
+            continue
+        charts_by_id[chart_id] = merged_chart
+
+
 def parse_official_music_list_html(html: str) -> tuple[OfficialSongAvailability, ...]:
     soup = parse_soup(html)
     entries: dict[tuple[str, str], OfficialSongAvailability] = {}
@@ -368,12 +503,9 @@ def apply_official_availability(
             normalize_availability_key(entry.artist),
         ): entry
         for entry in availability_entries
-        if entry.artist
     }
     alias_by_title_artist: dict[tuple[str, str], list[OfficialSongAvailability]] = {}
     for entry in availability_entries:
-        if not entry.artist:
-            continue
         alias_by_title_artist.setdefault(
             (
                 normalize_availability_alias_key(entry.title),
@@ -426,7 +558,9 @@ def apply_official_availability(
                     else:
                         match_status = "not_found"
         title = song.title if entry is None else entry.title
-        artist = song.artist if entry is None or not entry.artist else entry.artist
+        # An empty official artist is intentional for some licensed songs.  Do
+        # not fall back to the Wiki/copyright artist in that case.
+        artist = song.artist if entry is None else entry.artist
         if entry is not None and (title != song.title or artist != song.artist):
             aliases.append(
                 MasterSongAlias(
@@ -473,35 +607,24 @@ def parse_master_html(
     *,
     source_url: str = SOURCE_URL,
     fetched_at: str | None = None,
+    new_song_html: str | None = None,
+    new_song_source_url: str = NEW_SONGS_SOURCE_URL,
     official_html: str | None = None,
     official_source_url: str = OFFICIAL_MUSIC_LIST_URL,
 ) -> MasterBuild:
-    soup = parse_soup(html)
     songs_by_id: dict[str, MasterSong] = {}
     charts_by_id: dict[str, MasterChart] = {}
-    song_table_count = 0
-
-    for table in soup.find_all("table"):
-        rows = expanded_table_rows(table)
-        if not is_song_list_table(rows):
-            continue
-        song_table_count += 1
-        songs, charts = parse_song_list_rows(rows)
-        for song in songs:
-            songs_by_id.setdefault(song.song_id, song)
-        for chart in charts:
-            existing_chart = charts_by_id.get(chart.chart_id)
-            if existing_chart is not None and existing_chart != chart:
-                raise ValueError(
-                    "source HTML contains conflicting chart rows for "
-                    f"{chart.song_id} {chart.play_style} {chart.difficulty}"
-                )
-            charts_by_id[chart.chart_id] = chart
-
-    if song_table_count == 0:
-        raise ValueError("source HTML does not contain DDR GP song list tables")
-    if not songs_by_id or not charts_by_id:
-        raise ValueError("source HTML did not produce songs and charts")
+    songs, charts = parse_song_list_html(html)
+    for song in songs:
+        songs_by_id.setdefault(song.song_id, song)
+    for chart in charts:
+        existing_chart = charts_by_id.get(chart.chart_id)
+        if existing_chart is not None and existing_chart != chart:
+            raise ValueError(
+                "source HTML contains conflicting chart rows for "
+                f"{chart.song_id} {chart.play_style} {chart.difficulty}"
+            )
+        charts_by_id[chart.chart_id] = chart
 
     snapshot = SourceSnapshot(
         source_url=source_url,
@@ -510,6 +633,17 @@ def parse_master_html(
         parser_version=PARSER_VERSION,
         html_content=html,
     )
+    new_song_snapshot = None
+    if new_song_html is not None:
+        new_songs, new_charts = parse_song_list_html(new_song_html)
+        merge_song_list_data(songs_by_id, charts_by_id, new_songs, new_charts)
+        new_song_snapshot = SourceSnapshot(
+            source_url=new_song_source_url,
+            fetched_at=fetched_at or datetime.now(UTC).isoformat(timespec="seconds"),
+            content_hash=hashlib.sha256(new_song_html.encode("utf-8")).hexdigest(),
+            parser_version=PARSER_VERSION,
+            html_content=new_song_html,
+        )
     official_snapshot = None
     songs = tuple(songs_by_id.values())
     song_aliases: tuple[MasterSongAlias, ...] = ()
@@ -531,6 +665,7 @@ def parse_master_html(
         snapshot=snapshot,
         song_aliases=song_aliases,
         official_snapshot=official_snapshot,
+        new_song_snapshot=new_song_snapshot,
     )
 
 
@@ -617,12 +752,16 @@ def write_master_database(
     generator_version: str = PARSER_VERSION,
 ) -> None:
     generated_at = generated_at or datetime.now(UTC).isoformat(timespec="seconds")
-    master_version = master_version or build.snapshot.content_hash[:12]
+    if master_version is None:
+        version_material = build.snapshot.content_hash
+        if build.new_song_snapshot is not None:
+            version_material += "\0" + build.new_song_snapshot.content_hash
+        master_version = hashlib.sha256(version_material.encode("ascii")).hexdigest()[:12]
     output_path.parent.mkdir(parents=True, exist_ok=True)
     if output_path.exists():
         output_path.unlink()
 
-    with sqlite3.connect(output_path) as connection:
+    with closing(sqlite3.connect(output_path)) as connection, connection:
         create_schema(connection)
         connection.executemany(
             """
@@ -733,11 +872,22 @@ def write_master_database(
                     "official_source_hash": build.official_snapshot.content_hash,
                 }
             )
+        if build.new_song_snapshot is not None:
+            metadata.update(
+                {
+                    "new_song_source_url": build.new_song_snapshot.source_url,
+                    "new_song_source_hash": build.new_song_snapshot.content_hash,
+                }
+            )
         connection.executemany(
             "INSERT INTO master_metadata (key, value) VALUES (?, ?)",
             sorted(metadata.items()),
         )
-        for snapshot in (build.snapshot, build.official_snapshot):
+        for snapshot in (
+            build.snapshot,
+            build.official_snapshot,
+            build.new_song_snapshot,
+        ):
             if snapshot is None:
                 continue
             snapshot_id = stable_id(
@@ -779,6 +929,9 @@ def summarize_build(build: MasterBuild) -> dict[str, object]:
         "official_source_hash": (
             None if build.official_snapshot is None else build.official_snapshot.content_hash
         ),
+        "new_song_source_hash": (
+            None if build.new_song_snapshot is None else build.new_song_snapshot.content_hash
+        ),
         "free_play_available_songs": sum(
             1 for song in build.songs if song.free_play_available
         ),
@@ -809,6 +962,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--source-url",
         default=SOURCE_URL,
         help="Source URL recorded in master_metadata and source_snapshots.",
+    )
+    parser.add_argument(
+        "--new-song-input",
+        type=Path,
+        help="Local BEMANIWiki new-song-list HTML snapshot. If omitted, the current URL is fetched.",
+    )
+    parser.add_argument(
+        "--new-song-source-url",
+        default=NEW_SONGS_SOURCE_URL,
+        help="New-song-list URL recorded in master_metadata and source_snapshots.",
     )
     parser.add_argument(
         "--official-input",
@@ -845,6 +1008,11 @@ def main(argv: list[str] | None = None) -> int:
         if args.input is not None
         else fetch_source_html(args.source_url)
     )
+    new_song_html = (
+        args.new_song_input.read_text(encoding="utf-8")
+        if args.new_song_input is not None
+        else fetch_source_html(args.new_song_source_url)
+    )
     official_html = None
     if not args.skip_official_availability:
         official_html = (
@@ -855,6 +1023,8 @@ def main(argv: list[str] | None = None) -> int:
     build = parse_master_html(
         html,
         source_url=args.source_url,
+        new_song_html=new_song_html,
+        new_song_source_url=args.new_song_source_url,
         official_html=official_html,
         official_source_url=args.official_source_url,
     )

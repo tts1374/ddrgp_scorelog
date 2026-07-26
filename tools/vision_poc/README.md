@@ -692,6 +692,17 @@ python -m tools.vision_poc.jacket_reference_catalog review `
   --song-id SONG_ID --reason "developer selected" --note "manual review"
 ```
 
+登録済みreferenceの削除は、collectorの`収集状況`画面または次のCLIから明示的に行います。revision、保存status、song IDを同時に確認し、current catalogのreference・候補・review historyを1 transactionで削除します。元画像、観測artifact、checkpoint、正式個人スコアDBは変更しません。古いprojectionからの削除や未登録referenceの削除は拒否します。
+
+```powershell
+python -m tools.vision_poc.jacket_reference_catalog delete-reference `
+  --catalog databases\jacket-catalog.sqlite `
+  --reference-id REFERENCE_ID `
+  --expected-revision REVISION `
+  --expected-status manual_confirmed `
+  --expected-song-id SONG_ID
+```
+
 PR #53で評価済みの3経路を一括auto-confirmする場合だけ、
 `tools.ddrworld_snapshot_evaluation.catalog_pipeline_cli`を使います。内部の
 `apply_auto_confirmation_batch()`はcurrent schema validation、対象row state hash、Master song/GP可用性を
@@ -706,7 +717,7 @@ XLSXの再構築やjacket top3 routeの暗黙起動は行いません。dry-run/
 
 catalog、artifact、checkpoint、source/crop画像、特徴量、review結果、coverageはローカル非共有物であり、Git、CI artifact、Release、通常logへ含めません。生画像やcropの自動削除は行いません。artifact manifest/checkpointのv1/v2 contractとresume/retry状態機械は、このcatalog schema再採番では変更していません。
 
-current song select ROIは1280x720基準で、jacketが`m5c-song-select-jacket-roi-v2` / `(809, 27, 149, 149)`、title/artistが`m5c-song-select-title-artist-roi-v2` / title `(306, 58, 470, 34)` / artist `(309, 97, 467, 23)`です。current jacket feature extractorは`m5-jacket-v2`で、旧ROI由来のv1 manifest/referenceをcurrent matchingへ混在させません。既存local artifactやreferenceはmigration、削除、上書きせず保持します。
+current song select ROIは1280x720基準で、jacketが`m5c-song-select-jacket-roi-v2` / `(809, 27, 149, 149)`、title/artistが`m5c-song-select-title-artist-roi-v2` / title `(306, 58, 470, 34)` / artist `(309, 97, 467, 23)`です。current jacket feature extractorは`m5-jacket-v2`で、旧ROI由来のv1 manifest/referenceをcurrent matchingへ混在させません。通常のmigration・repair・source image/artifact削除は行いませんが、前述の明示的な登録reference削除ではcatalog row・候補・review historyだけを削除します。
 
 current unresolved sourceのOCR失敗原因は、次のread-only診断CLIで比較します。titleは`psm=6/7`、artistは現行5倍と10/15倍、sharpen有無、両fieldは`eng` / `jpn+eng`を比較します。`tesseract --list-langs`に必要languageがないprofileは`m5c-title-artist-ocr-diagnostics-report-v1`の`tesseract_language_unavailable_v1:<lang>`となり、installed languageへの暗黙fallbackはしません。
 

@@ -558,6 +558,76 @@ def test_duplicate_identity_converges_for_all_review_statuses(
     ]
 
 
+def test_delete_registered_reference_removes_catalog_children_but_keeps_source_artifact(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    master_db, catalog_path, image_path = setup_paths(tmp_path, monkeypatch)
+    result = ingest(
+        catalog_path,
+        master_db,
+        image_path,
+        observation_id="delete-observation",
+        seed="delete",
+    )
+    apply_status(catalog_path, master_db, result.reference_id, "manual_confirmed")
+    before_image = image_path.read_bytes()
+    before_catalog = catalog_path.read_bytes()
+
+    with sqlite3.connect(catalog_path) as connection:
+        connection.row_factory = sqlite3.Row
+        row = connection.execute(
+            "SELECT review_status, review_revision, song_id FROM jacket_references "
+            "WHERE reference_id = ?",
+            (result.reference_id,),
+        ).fetchone()
+    assert row is not None
+    assert (row["review_status"], row["review_revision"], row["song_id"]) == (
+        "manual_confirmed",
+        1,
+        "song-1",
+    )
+
+    with pytest.raises(ValueError, match="stale reference state"):
+        catalog.delete_reference(
+            catalog_path,
+            reference_id=result.reference_id,
+            expected_revision=0,
+            expected_status="unresolved",
+            expected_song_id="song-1",
+        )
+    assert catalog_path.read_bytes() == before_catalog
+
+    deleted = catalog.delete_reference(
+        catalog_path,
+        reference_id=result.reference_id,
+        expected_revision=1,
+        expected_status="manual_confirmed",
+        expected_song_id="song-1",
+    )
+    assert deleted == catalog.ReferenceDeletionResult(
+        reference_id=result.reference_id,
+        deleted=True,
+        song_id="song-1",
+        review_status="manual_confirmed",
+        revision=1,
+    )
+    with sqlite3.connect(catalog_path) as connection:
+        assert connection.execute(
+            "SELECT COUNT(*) FROM jacket_references WHERE reference_id = ?",
+            (result.reference_id,),
+        ).fetchone()[0] == 0
+        assert connection.execute(
+            "SELECT COUNT(*) FROM reference_candidates WHERE reference_id = ?",
+            (result.reference_id,),
+        ).fetchone()[0] == 0
+        assert connection.execute(
+            "SELECT COUNT(*) FROM reference_review_history WHERE reference_id = ?",
+            (result.reference_id,),
+        ).fetchone()[0] == 0
+    catalog.validate_catalog(catalog_path)
+    assert image_path.read_bytes() == before_image
+
+
 def test_replay_conflict_and_review_failure_leave_catalog_bytes_unchanged(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -963,9 +1033,10 @@ def test_current_receipt_coverage_and_cli_contract(
     assert {
         "create",
         "coverage",
-        "review",
-        "review-batch",
-        "ingest",
+            "review",
+            "review-batch",
+            "delete-reference",
+            "ingest",
         "validate-session",
         "validate-receipt",
         "identity-set",

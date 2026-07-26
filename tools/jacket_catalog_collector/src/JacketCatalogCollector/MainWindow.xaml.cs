@@ -67,6 +67,10 @@ public partial class MainWindow : Window
             manualReviewDraftStore: new JsonManualReviewDraftStore(
                 Path.Combine(evidenceRoot, "manual-review-drafts.v1.json")),
             manualReviewXlsxImportService: candidateProjectionService,
+            manualReviewXlsxExportService: candidateProjectionService,
+            referenceDeletionService: new ReferenceDeletionService(
+                runner,
+                repositoryRoot),
             officialJacketSnapshotService: new PythonOfficialJacketSnapshotService(
                 runner,
                 repositoryRoot,
@@ -261,23 +265,9 @@ public partial class MainWindow : Window
         }
     }
 
-    private async void RefreshCandidates_Click(object sender, RoutedEventArgs e)
-    {
-        if (!CanStartOperation())
-        {
-            return;
-        }
-        if (viewModel.CurrentMasterPath is null || viewModel.CurrentCatalogPath is null)
-        {
-            MessageBox.Show(this, "masterとcatalogを先にread-only読込してください。");
-            return;
-        }
-        await RunOperationAsync(viewModel.LoadProjectionAsync);
-    }
-
     private async void ExportManualReview_Click(object sender, RoutedEventArgs e)
     {
-        if (!CanStartOperation())
+        if (!CanStartOperation() || !viewModel.CanUseManualReviewActions)
         {
             return;
         }
@@ -309,9 +299,7 @@ public partial class MainWindow : Window
         try
         {
             operationCancellation = new CancellationTokenSource();
-            await candidateProjectionService.ExportManualReviewXlsxAsync(
-                viewModel.CurrentMasterPath,
-                viewModel.CurrentCatalogPath,
+            await viewModel.ExportManualReviewXlsxAsync(
                 output,
                 operationCancellation.Token);
             MessageBox.Show(this, output, "XLSX export完了");
@@ -373,6 +361,48 @@ public partial class MainWindow : Window
         catch (Exception exception)
         {
             MessageBox.Show(this, exception.Message, "XLSX import失敗");
+        }
+        finally
+        {
+            operationCancellation?.Dispose();
+            operationCancellation = null;
+        }
+    }
+
+    private async void DeleteCollectionReference_Click(object sender, RoutedEventArgs e)
+    {
+        if (!CanStartOperation() || !viewModel.CanDeleteSelectedCollectionReference)
+        {
+            return;
+        }
+        var reference = viewModel.SelectedCollectionReference;
+        if (reference is null)
+        {
+            return;
+        }
+        var answer = MessageBox.Show(
+            this,
+            "登録ジャケットをcatalogから削除しますか？\n元画像・観測artifactは削除しません。",
+            "登録ジャケット削除確認",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning);
+        if (answer != MessageBoxResult.Yes)
+        {
+            return;
+        }
+        try
+        {
+            operationCancellation = new CancellationTokenSource();
+            await viewModel.DeleteSelectedCollectionReferenceAsync(
+                operationCancellation.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            // The ViewModel exposes whether the catalog mutation committed.
+        }
+        catch (Exception)
+        {
+            // The ViewModel exposes the actionable diagnostic in the status panel.
         }
         finally
         {

@@ -40,7 +40,7 @@ detectorの内部状態は通常画面へ表示しません。同じ画像が連
 - ヘッダーは `曲情報: <更新日時> 更新` と `ジャケット情報: v<version>` を表示する。更新日時はmaster metadataの`generated_at`であり、DBファイルのmtimeではない。
 - ヘッダーには `公式ジャケット: <更新日>` を追加し、管理・設定には公式snapshotの更新日時、取得曲数、保存画像数、固定配置先を表示する。未作成時は未作成として表示し、snapshot ID、source URL、hash、内部診断は通常画面へ出さない。
 - 管理・設定の `公式ジャケット情報を更新` は明示的なネットワーク操作で、`曲情報を更新` と同じ更新領域に配置する。取得中は曲一覧のページ進捗、HTML解析後にジャケットの `取得済み曲数 / 総曲数` を表示し、キャンセルボタンを提供する。
-- 収集状況は `収集済み`、`レビュー待ち`、`未収集`、`曲未特定`、`曲情報外`を日本語で表示し、状態だけをfilterできる。理由の内部値、hash、identity、revisionは通常画面へ出さない。
+- 収集状況は `収集済み`、`レビュー待ち`、`未収集`、`曲未特定`、`曲情報外`を日本語で表示し、状態だけをfilterできる。曲を選ぶと登録済みreferenceの画像、状態、登録経路、登録日時を確認できる。理由の内部値、hash、identity、revisionは通常画面へ出さない。
 - 一覧は `状態 / 曲名 / アーティスト / 登録ジャケット数 / 理由 / song ID` とし、`reference_count`を登録ジャケット数として表示する。
 - 状態・理由に未定義値があれば処理を止めず `不明: <内部値>` と表示する。詳細な診断はlocal logで確認する。
 - 曲名・アーティストのOCR文字列は現行collectorの取得契約にないため、通常収集画面では未取得として表示する。OCR表示は別Issueの対象とする。
@@ -134,7 +134,7 @@ python -m tools.vision_poc.jacket_catalog_review_projection `
 
 XLSXは`Manual Review`（`observation_id`、埋め込み`title_roi` / `artist_roi`、`status`、`truth_song_id`、`notes`）、`Master Songs`（current Master全曲）、`Metadata`（XLSX schema/export ID/catalog version/master version/export日時/対象件数）の3 sheetです。編集対象は`status`、`truth_song_id`、`notes`だけで、`status`は`unreviewed` / `confirmed` / `rejected` / `hold`の選択式です。既存XLSXは、WPFの標準保存ダイアログで確認した場合に上書きされます。
 
-WPFの`未レビュー`画面では、`XLSXをエクスポート`を`一括反映`の左側から実行できます。`一括反映`の右側にある`↻`（projectionを更新）で、current master/catalogのprojectionを再読込します。保存先は標準保存ダイアログで任意に選べます。既定の表示先は`data/jacket_catalog_collector`です。
+WPFの`未レビュー`画面では、`XLSXをエクスポート`を`一括反映`の左側から実行できます。起動時のmaster/catalog読込中と各XLSX処理中は、3つのXLSX操作を無効化し、ヘッダーへ処理名・状態を表示します。通常操作としてprojectionを更新するボタンは置かず、必要な再読込は反映・更新処理の完了時に行います。保存先は標準保存ダイアログで任意に選べます。既定の表示先は`data/jacket_catalog_collector`です。
 
 ### Manual review XLSX import
 
@@ -156,7 +156,22 @@ python -m tools.vision_poc.jacket_catalog_review_projection `
 
 `レビュー済み` タブは、`auto_confirmed` / `manual_confirmed` / `rejected` のcurrent status、current song、下書き予定status/song、notes、登録経路、実行時刻を表示します。予定statusは `unchanged` / `confirmed` / `rejected` / `hold` です。`unchanged` はcurrent status/songを維持し、notesだけの変更はnotes更新として反映します。`hold` はstatus/song/notesを一切反映せず、下書きを残します。song変更、confirmedとrejectの相互変更、notes変更は未レビュー行と同じ一括transactionで処理し、成功した行の下書きだけを消去します。
 
-`unresolved` observationは `data/jacket_catalog_collector` のmanifest/source/crop/checkpointとcatalog rowのidentity/version/hashを照合してから、既存 `tesseract-autocontrast-v1` とM4 title-primary/artist tie-breakerへread-onlyで通します。`exact_unique`、`alias_unique`、`ambiguous`、`no_candidate`、`low_confidence`、`evaluation_failed`、`evaluation_unavailable`、`not_eligible`を丸めず表示し、候補filterと安定sort、明示refreshを提供します。候補表示・refreshはcatalog writerを呼びません。
+`unresolved` observationは `data/jacket_catalog_collector` のmanifest/source/crop/checkpointとcatalog rowのidentity/version/hashを照合してから、既存 `tesseract-autocontrast-v1` とM4 title-primary/artist tie-breakerへread-onlyで通します。`exact_unique`、`alias_unique`、`ambiguous`、`no_candidate`、`low_confidence`、`evaluation_failed`、`evaluation_unavailable`、`not_eligible`を丸めず表示し、候補filterと安定sortを提供します。候補表示はcatalog writerを呼びません。
+
+### 収集状況の登録ジャケット詳細と削除
+
+`収集状況`で曲を選ぶと、その曲へ現在割り当てられている登録referenceの画像、状態、登録経路、登録日時を確認できます。referenceを選択して`登録ジャケットを削除`を実行すると、revision、保存状態、song IDをpreconditionとしてcurrent catalogのreference・候補・review historyを1 transactionで削除します。競合や古い表示からの削除は拒否します。
+
+削除対象はcatalog内の登録情報だけです。元画像、観測artifact、checkpointは削除せず、正式個人スコアDBも変更しません。CLIでの同じ操作は次の形式です。
+
+```powershell
+python -m tools.vision_poc.jacket_reference_catalog delete-reference `
+  --catalog databases\jacket-catalog.sqlite `
+  --reference-id REFERENCE_ID `
+  --expected-revision REVISION `
+  --expected-status manual_confirmed `
+  --expected-song-id SONG_ID
+```
 
 `候補report` は `data/jacket_catalog_collector/unresolved-candidate-evaluation/` へ `unresolved_candidates.csv/json/md` をatomic生成します。total/current unresolved/eligible/evaluated、候補分類、title/artist別statusとfailure reasonを集計します。expectedや人手確認がないrowを正解扱いせず、precisionを推測しません。
 
@@ -253,4 +268,4 @@ python -m tools.vision_poc.title_artist_ocr_diagnostics `
 
 ## Scope boundary
 
-このapp/project/testは `tools/jacket_catalog_collector/` と既存のdeveloper-only Python評価経路で完結し、`app/src/DDRGpScoreViewer` を参照しません。物理削除、source image削除、retention cleanup、ゲーム操作、公開app、正式保存workflow、正式個人スコアDBは実装しません。title/artist評価reportはread-onlyのままで、auto-confirmは明示的な収集終了から既存jacket gate・projection・policy・writerへ接続する経路に限定します。
+このapp/project/testは `tools/jacket_catalog_collector/` と既存のdeveloper-only Python評価経路で完結し、`app/src/DDRGpScoreViewer` を参照しません。source image削除、artifact retention cleanup、ゲーム操作、公開app、正式保存workflow、正式個人スコアDBは実装しません。明示的な登録reference削除だけはcatalog row・候補・review historyを対象にし、元画像とartifactを保持します。title/artist評価reportはread-onlyのままで、auto-confirmは明示的な収集終了から既存jacket gate・projection・policy・writerへ接続する経路に限定します。

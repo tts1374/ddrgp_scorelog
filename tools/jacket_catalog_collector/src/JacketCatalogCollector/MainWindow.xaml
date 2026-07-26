@@ -67,6 +67,16 @@
                 <TextBlock Text="DDR GP ジャケット収集" FontSize="20" FontWeight="SemiBold" />
                 <TextBlock Text="曲を切り替えながら、検出したジャケットを確認して保存します。"
                            Foreground="#6B7280" FontSize="12" Margin="0,3,0,0" />
+                <StackPanel Orientation="Horizontal" Margin="0,7,0,0">
+                    <TextBlock Text="{Binding StatusTitle, Mode=OneWay}"
+                               FontWeight="SemiBold" Foreground="#1E40AF" />
+                    <TextBlock Text="  " />
+                    <TextBlock Text="{Binding StatusMessage, Mode=OneWay}"
+                               Foreground="#5F6B7A" TextWrapping="Wrap" />
+                </StackPanel>
+                <ProgressBar Height="5" Margin="0,5,0,0" IsIndeterminate="True"
+                             Visibility="{Binding IsBusy,
+                                 Converter={StaticResource BooleanToVisibilityConverter}}" />
             </StackPanel>
         </DockPanel>
 
@@ -226,16 +236,77 @@
                             </StackPanel>
                         </DockPanel>
                     </StackPanel>
-                    <DataGrid Grid.Row="1" ItemsSource="{Binding Songs}" IsReadOnly="True" AutoGenerateColumns="False">
-                        <DataGrid.Columns>
-                            <DataGridTextColumn Header="状態" Binding="{Binding CoverageStatusDisplay}" Width="150" />
-                            <DataGridTextColumn Header="曲名" Binding="{Binding Title}" Width="2*" />
-                            <DataGridTextColumn Header="アーティスト" Binding="{Binding Artist}" Width="*" />
-                            <DataGridTextColumn Header="登録ジャケット数" Binding="{Binding ReferenceCount}" Width="120" />
-                            <DataGridTextColumn Header="理由" Binding="{Binding ReasonDisplay}" Width="2*" />
-                            <DataGridTextColumn Header="song ID" Binding="{Binding SongId}" Width="*" />
-                        </DataGrid.Columns>
-                    </DataGrid>
+                    <Grid Grid.Row="1">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="3*" />
+                            <ColumnDefinition Width="2*" />
+                        </Grid.ColumnDefinitions>
+                        <DataGrid ItemsSource="{Binding Songs}"
+                                  SelectedItem="{Binding SelectedCollectionSong, Mode=TwoWay}"
+                                  IsReadOnly="True" AutoGenerateColumns="False"
+                                  Margin="0,0,8,0">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="状態" Binding="{Binding CoverageStatusDisplay}" Width="150" />
+                                <DataGridTextColumn Header="曲名" Binding="{Binding Title}" Width="2*" />
+                                <DataGridTextColumn Header="アーティスト" Binding="{Binding Artist}" Width="*" />
+                                <DataGridTextColumn Header="登録ジャケット数" Binding="{Binding ReferenceCount}" Width="120" />
+                                <DataGridTextColumn Header="理由" Binding="{Binding ReasonDisplay}" Width="2*" />
+                                <DataGridTextColumn Header="song ID" Binding="{Binding SongId}" Width="*" />
+                            </DataGrid.Columns>
+                        </DataGrid>
+                        <Border Grid.Column="1" Style="{StaticResource Card}" Margin="8,0,0,0">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="*" />
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <TextBlock Text="登録ジャケット詳細" FontSize="15"
+                                           FontWeight="SemiBold" />
+                                <TextBlock Grid.Row="1"
+                                           Text="{Binding SelectedCollectionSongDisplay, Mode=OneWay}"
+                                           Foreground="#5F6B7A" TextWrapping="Wrap" Margin="0,6,0,8" />
+                                <DataGrid Grid.Row="2"
+                                          ItemsSource="{Binding CollectionReferenceDetails}"
+                                          SelectedItem="{Binding SelectedCollectionReference, Mode=TwoWay}"
+                                          IsReadOnly="True" AutoGenerateColumns="False"
+                                          HeadersVisibility="Column" CanUserAddRows="False"
+                                          RowHeight="76">
+                                    <DataGrid.Columns>
+                                        <DataGridTemplateColumn Header="登録内容" Width="100">
+                                            <DataGridTemplateColumn.CellTemplate>
+                                                <DataTemplate>
+                                                    <Image Source="{Binding SourceImagePath,
+                                                        Converter={StaticResource ManualReviewRoiImageConverter},
+                                                        ConverterParameter=full}"
+                                                           Width="78" Height="62" Stretch="Uniform" />
+                                                </DataTemplate>
+                                            </DataGridTemplateColumn.CellTemplate>
+                                        </DataGridTemplateColumn>
+                                        <DataGridTextColumn Header="状態"
+                                                            Binding="{Binding ReviewStatus}"
+                                                            Width="110" />
+                                        <DataGridTextColumn Header="登録経路"
+                                                            Binding="{Binding RegisteredRoute}"
+                                                            Width="110" />
+                                        <DataGridTextColumn Header="登録日時"
+                                                            Binding="{Binding ProcessedAt}"
+                                                            Width="160" />
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                                <TextBlock Grid.Row="3"
+                                           Text="{Binding SelectedCollectionReferenceDisplay, Mode=OneWay}"
+                                           Foreground="#5F6B7A" TextWrapping="Wrap" Margin="0,8,0,4" />
+                                <Button Grid.Row="4" Content="登録ジャケットを削除"
+                                        IsEnabled="{Binding CanDeleteSelectedCollectionReference}"
+                                        Click="DeleteCollectionReference_Click"
+                                        HorizontalAlignment="Right"
+                                        Background="#FEF2F2" Foreground="#991B1B" />
+                            </Grid>
+                        </Border>
+                    </Grid>
                 </Grid>
             </TabItem>
 
@@ -287,19 +358,15 @@
                                 <StackPanel Grid.Column="1" Orientation="Horizontal"
                                             HorizontalAlignment="Right">
                                     <Button Content="XLSXをエクスポート"
+                                            IsEnabled="{Binding CanUseManualReviewActions}"
                                             Click="ExportManualReview_Click" />
                                     <Button Content="XLSXをインポート"
+                                            IsEnabled="{Binding CanUseManualReviewActions}"
                                             Click="ImportManualReview_Click" />
                                     <Button Content="一括反映"
                                             Style="{StaticResource PrimaryButton}"
+                                            IsEnabled="{Binding CanUseManualReviewActions}"
                                             Click="ApplyDrafts_Click" />
-                                    <Button Content="↻"
-                                            FontSize="20"
-                                            Padding="10,2"
-                                            MinWidth="42"
-                                            ToolTip="projectionを更新"
-                                            AutomationProperties.Name="projectionを更新"
-                                            Click="RefreshCandidates_Click" />
                                 </StackPanel>
                             </Grid>
 

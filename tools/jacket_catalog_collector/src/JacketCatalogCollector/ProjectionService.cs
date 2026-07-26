@@ -341,12 +341,23 @@ public interface IManualReviewXlsxImportService
         CancellationToken cancellationToken);
 }
 
+public interface IManualReviewXlsxExportService
+{
+    Task ExportManualReviewXlsxAsync(
+        string masterPath,
+        string catalogPath,
+        string outputPath,
+        CancellationToken cancellationToken);
+}
+
 public sealed class ProjectionService(
     IProcessRunner processRunner,
     ProjectionJsonLoader loader,
     string repositoryRoot,
     string pythonExecutable = "python",
-    string? artifactRoot = null) : IProjectionService, IManualReviewXlsxImportService
+    string? artifactRoot = null) : IProjectionService,
+    IManualReviewXlsxImportService,
+    IManualReviewXlsxExportService
 {
     private static readonly JsonSerializerOptions ImportOptions = new()
     {
