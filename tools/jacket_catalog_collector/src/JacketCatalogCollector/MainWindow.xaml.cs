@@ -2,6 +2,9 @@ using System.Windows;
 using System.ComponentModel;
 using System.IO;
 using Microsoft.Win32;
+using System.Windows.Controls;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
 
 namespace JacketCatalogCollector;
 
@@ -408,6 +411,68 @@ public partial class MainWindow : Window
         {
             operationCancellation?.Dispose();
             operationCancellation = null;
+        }
+    }
+
+    private void PreviewCollectionReferenceImage_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement { DataContext: ReviewReference reference }
+            || string.IsNullOrWhiteSpace(reference.SourceImagePath))
+        {
+            MessageBox.Show(this, "登録画像が見つかりません。", "登録画像表示");
+            return;
+        }
+
+        var path = Path.GetFullPath(reference.SourceImagePath);
+        if (!File.Exists(path))
+        {
+            MessageBox.Show(this, $"登録画像が見つかりません: {path}", "登録画像表示");
+            return;
+        }
+
+        try
+        {
+            var source = new BitmapImage();
+            source.BeginInit();
+            source.CacheOption = BitmapCacheOption.OnLoad;
+            source.UriSource = new Uri(path, UriKind.Absolute);
+            source.EndInit();
+            source.Freeze();
+
+            var viewer = new Image
+            {
+                Source = source,
+                Stretch = Stretch.Uniform,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+            var previewWindow = new Window
+            {
+                Owner = this,
+                Title = $"登録ジャケット画像 - {reference.ReferenceId}",
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                Width = Math.Min(Math.Max(source.PixelWidth + 48, 480), 1400),
+                Height = Math.Min(Math.Max(source.PixelHeight + 72, 360), 900),
+                MinWidth = 480,
+                MinHeight = 360,
+                Background = Brushes.Black,
+                Content = new ScrollViewer
+                {
+                    Padding = new Thickness(12),
+                    HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+                    VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                    Content = viewer,
+                },
+            };
+            previewWindow.ShowDialog();
+        }
+        catch (Exception exception) when (
+            exception is IOException
+                or UnauthorizedAccessException
+                or InvalidOperationException
+                or NotSupportedException)
+        {
+            MessageBox.Show(this, $"登録画像を開けません: {exception.Message}", "登録画像表示");
         }
     }
 

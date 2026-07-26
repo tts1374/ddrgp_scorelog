@@ -160,7 +160,7 @@ python -m tools.vision_poc.jacket_catalog_review_projection `
 
 ### 収集状況の登録ジャケット詳細と削除
 
-`収集状況`で曲を選ぶと、その曲へ現在割り当てられている登録referenceの画像、状態、登録経路、登録日時を確認できます。referenceを選択して`登録ジャケットを削除`を実行すると、revision、保存状態、song IDをpreconditionとしてcurrent catalogのreference・候補・review historyを1 transactionで削除します。競合や古い表示からの削除は拒否します。
+`収集状況`で曲を選ぶと、その曲へ現在割り当てられている登録referenceの画像、状態、登録経路、登録日時を確認できます。登録内容画像のサムネイルをクリックすると、元画像を拡大表示して確認できます。referenceを選択して`登録ジャケットを削除`を実行すると、revision、保存状態、song IDをpreconditionとしてcurrent catalogのreference・候補・review historyを1 transactionで削除します。競合や古い表示からの削除は拒否します。
 
 削除対象はcatalog内の登録情報だけです。元画像、観測artifact、checkpointは削除せず、正式個人スコアDBも変更しません。CLIでの同じ操作は次の形式です。
 

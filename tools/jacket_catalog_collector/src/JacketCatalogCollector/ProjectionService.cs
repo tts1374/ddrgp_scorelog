@@ -93,7 +93,7 @@ public sealed class ProjectionJsonLoader
             RequireValue(song, "songs row");
             RequireText(song.SongId, "songs.song_id");
             RequireText(song.Title, "songs.title");
-            RequireText(song.Artist, "songs.artist");
+            RequireString(song.Artist, "songs.artist");
             RequireString(song.MasterVersion, "songs.master_version");
             RequireString(song.Reason, "songs.reason");
             RequireValue(song.Aliases, "songs.aliases");

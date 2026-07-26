@@ -278,10 +278,19 @@
                                         <DataGridTemplateColumn Header="登録内容" Width="100">
                                             <DataGridTemplateColumn.CellTemplate>
                                                 <DataTemplate>
-                                                    <Image Source="{Binding SourceImagePath,
-                                                        Converter={StaticResource ManualReviewRoiImageConverter},
-                                                        ConverterParameter=full}"
-                                                           Width="78" Height="62" Stretch="Uniform" />
+                                                    <Button Click="PreviewCollectionReferenceImage_Click"
+                                                            ToolTip="クリックで拡大表示"
+                                                            Background="Transparent"
+                                                            BorderBrush="Transparent"
+                                                            BorderThickness="0"
+                                                            Padding="0"
+                                                            HorizontalContentAlignment="Center"
+                                                            VerticalContentAlignment="Center">
+                                                        <Image Source="{Binding SourceImagePath,
+                                                            Converter={StaticResource ManualReviewRoiImageConverter},
+                                                            ConverterParameter=full}"
+                                                               Width="78" Height="62" Stretch="Uniform" />
+                                                    </Button>
                                                 </DataTemplate>
                                             </DataGridTemplateColumn.CellTemplate>
                                         </DataGridTemplateColumn>

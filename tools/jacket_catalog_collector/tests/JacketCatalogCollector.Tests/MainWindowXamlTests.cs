@@ -421,6 +421,11 @@ public sealed class MainWindowXamlTests
             buttons,
             element => element.Attribute("Content")?.Value == "登録ジャケットを削除"
                 && element.Attribute("Click")?.Value == "DeleteCollectionReference_Click");
+        Assert.Contains(
+            buttons,
+            element => element.Attribute("Click")?.Value
+                    == "PreviewCollectionReferenceImage_Click"
+                && element.Attribute("ToolTip")?.Value == "クリックで拡大表示");
     }
 
     private static XDocument LoadMainWindow() => XDocument.Load(GetMainWindowPath());
