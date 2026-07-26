@@ -35,7 +35,7 @@ public sealed record MonitoringResultSummary(
         IReadOnlyList<string> reasons) => new(
             Count(counts, "saved"),
             Count(counts, "duplicate"),
-            Count(counts, "excluded"),
+            Count(counts, "excluded") + Count(counts, "policy_excluded"),
             Count(counts, "unresolved"),
             Count(counts, "analysis_failed"),
             Count(counts, "db_rejected"),

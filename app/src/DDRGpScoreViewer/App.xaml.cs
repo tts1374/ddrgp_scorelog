@@ -26,7 +26,8 @@ public partial class App : System.Windows.Application
             StartMonitoringAsync,
             () => mainWindow.StopMonitoringAsync(),
             ShowMainWindow,
-            ShutdownApplication);
+            ShutdownApplication,
+            () => mainWindow.RequestApplicationExit());
         mainWindow.ViewModel.PropertyChanged += (_, args) =>
         {
             if (args.PropertyName is nameof(MainViewModel.CurrentMonitoringState) or

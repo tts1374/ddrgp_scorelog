@@ -21,6 +21,7 @@ public sealed class MonitoringTests
                 ["saved"] = 1,
                 ["duplicate"] = 2,
                 ["excluded"] = 3,
+                ["policy_excluded"] = 7,
                 ["unresolved"] = 4,
                 ["analysis_failed"] = 5,
                 ["db_rejected"] = 6,
@@ -45,7 +46,7 @@ public sealed class MonitoringTests
         Assert.Equal(12, viewModel.MonitoringFrameCount);
         Assert.Equal(1, viewModel.MonitoringResults.Saved);
         Assert.Equal(2, viewModel.MonitoringResults.Duplicate);
-        Assert.Equal(3, viewModel.MonitoringResults.Excluded);
+        Assert.Equal(10, viewModel.MonitoringResults.Excluded);
         Assert.Equal(4, viewModel.MonitoringResults.Unresolved);
         Assert.Equal(5, viewModel.MonitoringResults.AnalysisFailed);
         Assert.Equal(6, viewModel.MonitoringResults.DbRejected);
@@ -269,6 +270,109 @@ public sealed class MonitoringTests
     }
 
     [Fact]
+    public async Task Stop_failure_returns_to_retryable_capture_state()
+    {
+        var capture = new RetryableStopCaptureService();
+        var viewModel = new MainViewModel(
+            new ScoreViewerRepository(),
+            new UnusedManualWorkflowRunner(),
+            continuousCaptureService: capture);
+
+        var runTask = viewModel.StartContinuousCaptureAsync(123);
+        await capture.Started.Task;
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => viewModel.StopContinuousCaptureAsync());
+
+        Assert.True(viewModel.IsContinuousCapturing);
+        Assert.False(viewModel.IsStoppingCapture);
+        Assert.Equal(MonitoringState.CaptureFailed, viewModel.CurrentMonitoringState);
+        Assert.True(viewModel.CanStopMonitoring);
+
+        await viewModel.StopContinuousCaptureAsync();
+        await runTask;
+
+        Assert.Equal(2, capture.StopCount);
+        Assert.False(viewModel.IsContinuousCapturing);
+        Assert.Equal(MonitoringState.Stopped, viewModel.CurrentMonitoringState);
+    }
+
+    [Fact]
+    public async Task Tray_exit_blocks_new_start_before_stop_completes()
+    {
+        var stopCompletion = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var startCount = 0;
+        var exitRequested = false;
+        var shutdownCount = 0;
+        using var lifecycle = new ApplicationLifecycleCoordinator(
+            new FakeTrayIcon(),
+            () =>
+            {
+                startCount++;
+                return Task.CompletedTask;
+            },
+            async () => await stopCompletion.Task,
+            () => { },
+            () => shutdownCount++,
+            () => exitRequested = true);
+
+        var exitTask = lifecycle.ExitAsync();
+
+        Assert.True(exitRequested);
+        await lifecycle.StartAsync();
+        Assert.Equal(0, startCount);
+        Assert.False(exitTask.IsCompleted);
+
+        stopCompletion.SetResult();
+        await exitTask;
+
+        Assert.Equal(1, shutdownCount);
+    }
+
+    [Fact]
+    public async Task View_model_rejects_new_capture_after_exit_is_requested()
+    {
+        var capture = new SequenceMonitoringCaptureService(CaptureOperationStatus.Saved);
+        var viewModel = new MainViewModel(
+            new ScoreViewerRepository(),
+            new UnusedManualWorkflowRunner(),
+            continuousCaptureService: capture);
+
+        viewModel.RequestApplicationExit();
+        await viewModel.StartContinuousCaptureAsync(123);
+
+        Assert.Equal(0, capture.RunCount);
+        Assert.False(viewModel.CanStartMonitoring);
+    }
+
+    [Fact]
+    public async Task Exit_waits_for_in_flight_manual_workflow()
+    {
+        var workflow = new BlockingManualWorkflowRunner();
+        var viewModel = new MainViewModel(
+            new ScoreViewerRepository(),
+            workflow,
+            continuousCaptureService: new SequenceMonitoringCaptureService(
+                CaptureOperationStatus.Cancelled));
+
+        var saveTask = viewModel.SaveAndReloadAsync(
+            "input.json",
+            "score.sqlite",
+            "master.sqlite");
+        await workflow.Started.Task;
+
+        var waitTask = viewModel.WaitForOperationsAsync();
+        Assert.False(waitTask.IsCompleted);
+
+        workflow.Complete();
+        await saveTask;
+        await waitTask;
+
+        Assert.False(viewModel.IsSaving);
+    }
+
+    [Fact]
     public async Task Tray_commands_forward_start_stop_and_show()
     {
         var tray = new FakeTrayIcon();
@@ -422,6 +526,48 @@ public sealed class MonitoringTests
         }
     }
 
+    private sealed class RetryableStopCaptureService : IMonitoringContinuousCaptureService
+    {
+        private readonly TaskCompletionSource<CaptureSessionOperationResult> completion = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public TaskCompletionSource Started { get; } = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public bool IsRunning => true;
+        public int StopCount { get; private set; }
+
+        public Task<CaptureSessionOperationResult> RunAsync(
+            nint ownerWindowHandle,
+            CancellationToken cancellationToken = default)
+        {
+            Started.TrySetResult();
+            return completion.Task;
+        }
+
+        public Task<CaptureSessionOperationResult> RunAsync(
+            nint ownerWindowHandle,
+            IProgress<CaptureSessionProgress> progress,
+            CancellationToken cancellationToken = default)
+        {
+            Started.TrySetResult();
+            return completion.Task;
+        }
+
+        public Task StopAsync()
+        {
+            StopCount++;
+            if (StopCount == 1)
+            {
+                throw new InvalidOperationException("stop failed");
+            }
+            completion.TrySetResult(new CaptureSessionOperationResult(
+                CaptureOperationStatus.Cancelled,
+                "fixture stopped"));
+            return Task.CompletedTask;
+        }
+    }
+
     private sealed class UnusedManualWorkflowRunner : IPersonalScoreDbWorkflowRunner
     {
         public Task<PersonalScoreDbWorkflowResult> RunAsync(
@@ -429,6 +575,37 @@ public sealed class MonitoringTests
             string scoreDatabasePath,
             CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
+    }
+
+    private sealed class BlockingManualWorkflowRunner : IPersonalScoreDbWorkflowRunner
+    {
+        private readonly TaskCompletionSource<PersonalScoreDbWorkflowResult> completion = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public TaskCompletionSource Started { get; } = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public Task<PersonalScoreDbWorkflowResult> RunAsync(
+            string workflowInputPath,
+            string scoreDatabasePath,
+            CancellationToken cancellationToken = default)
+        {
+            Started.TrySetResult();
+            return completion.Task;
+        }
+
+        public void Complete() => completion.TrySetResult(new PersonalScoreDbWorkflowResult(
+            "excluded",
+            "not_requested",
+            "excluded",
+            "written",
+            true,
+            "capture-manual",
+            "analysis-manual",
+            null,
+            ["fixture_excluded"],
+            null,
+            "score.sqlite"));
     }
 
     private sealed class FakeTrayIcon : ITrayIconService

@@ -97,9 +97,11 @@ public sealed class ApplicationLifecycleCoordinator : IDisposable
     private readonly Func<Task> stopMonitoring;
     private readonly Action showWindow;
     private readonly Action shutdown;
+    private readonly Action beginExit;
     private readonly object exitLock = new();
     private Task? exitTask;
     private MonitoringState? lastNotifiedState;
+    private bool exitRequested;
     private int disposed;
 
     public ApplicationLifecycleCoordinator(
@@ -107,30 +109,57 @@ public sealed class ApplicationLifecycleCoordinator : IDisposable
         Func<Task> startMonitoring,
         Func<Task> stopMonitoring,
         Action showWindow,
-        Action shutdown)
+        Action shutdown,
+        Action? beginExit = null)
     {
         this.trayIcon = trayIcon;
         this.startMonitoring = startMonitoring;
         this.stopMonitoring = stopMonitoring;
         this.showWindow = showWindow;
         this.shutdown = shutdown;
+        this.beginExit = beginExit ?? (static () => { });
         trayIcon.StartRequested += TrayStartRequested;
         trayIcon.StopRequested += TrayStopRequested;
         trayIcon.ShowRequested += TrayShowRequested;
         trayIcon.ExitRequested += TrayExitRequested;
     }
 
-    public Task StartAsync() => startMonitoring();
+    public Task StartAsync()
+    {
+        lock (exitLock)
+        {
+            if (exitRequested || Volatile.Read(ref disposed) != 0)
+            {
+                return Task.CompletedTask;
+            }
+        }
+        return startMonitoring();
+    }
 
     public Task StopAsync() => stopMonitoring();
 
-    public void Show() => showWindow();
+    public void Show()
+    {
+        lock (exitLock)
+        {
+            if (exitRequested || Volatile.Read(ref disposed) != 0)
+            {
+                return;
+            }
+        }
+        showWindow();
+    }
 
     public Task ExitAsync()
     {
         lock (exitLock)
         {
-            return exitTask ??= ExitCoreAsync();
+            if (exitTask is not null)
+            {
+                return exitTask;
+            }
+            exitRequested = true;
+            return exitTask = ExitCoreAsync();
         }
     }
 
@@ -182,6 +211,7 @@ public sealed class ApplicationLifecycleCoordinator : IDisposable
     {
         try
         {
+            beginExit();
             await stopMonitoring();
         }
         catch (Exception exception)
