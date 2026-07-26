@@ -116,6 +116,25 @@ public sealed class JacketObservationTests : IDisposable
     }
 
     [Fact]
+    public void Information_detector_rejects_category_marker_false_positive()
+    {
+        var detector = new InformationTitleLineDetector(
+            new InformationTitleLineDetectorOptions(
+                StableFrameCount: 2,
+                MinimumStableDuration: TimeSpan.Zero));
+
+        var first = detector.Observe(CategoryFrame(1, 0));
+        var second = detector.Observe(CategoryFrame(2, 100));
+        var third = detector.Observe(CategoryFrame(3, 200));
+
+        Assert.Equal(InformationTitleLineState.NotDisplayed, first.State);
+        Assert.Equal(InformationTitleLineState.NotDisplayed, second.State);
+        Assert.Equal(InformationTitleLineState.NotDisplayed, third.State);
+        Assert.False(third.IsDisplayed);
+        Assert.Null(third.TitleLineHash);
+    }
+
+    [Fact]
     public void Composite_identity_is_deterministic_and_separates_title_line_hashes()
     {
         var jacketHash = Hash(Encoding.UTF8.GetBytes("shared-jacket"));
@@ -1993,6 +2012,13 @@ public sealed class JacketObservationTests : IDisposable
         sequence,
         DateTimeOffset.UnixEpoch.AddMilliseconds(milliseconds));
 
+    private static RawCaptureFrame CategoryFrame(long sequence, long milliseconds) => new(
+        EncodeCategoryPng(),
+        1280,
+        720,
+        sequence,
+        DateTimeOffset.UnixEpoch.AddMilliseconds(milliseconds));
+
     private static RawCaptureFrame CompositeFrame(
         byte jacketValue,
         byte titleVariant,
@@ -2027,12 +2053,36 @@ public sealed class JacketObservationTests : IDisposable
         {
             pixels[index] = 255;
         }
+        PaintWhiteRectangle(pixels, 1280, 286, 39, 120, 2);
         PaintWhiteRectangle(pixels, 1280, 292, 39, 22, 8);
         PaintWhiteRectangle(pixels, 1280, 324, 39, 18, 8);
         var titleX = titleVariant == 1 ? 300 : 360;
         PaintWhiteRectangle(pixels, 1280, titleX, 69, 28, 10);
         PaintWhiteRectangle(pixels, 1280, titleX + 36, 69, 20, 10);
         PaintRectangle(pixels, 1280, 809, 27, 149, 149, jacketValue);
+        var source = BitmapSource.Create(
+            1280, 720, 96, 96, PixelFormats.Bgra32, null, pixels, 1280 * 4);
+        source.Freeze();
+        var encoder = new PngBitmapEncoder();
+        encoder.Frames.Add(BitmapFrame.Create(source));
+        using var stream = new MemoryStream();
+        encoder.Save(stream);
+        return stream.ToArray();
+    }
+
+    private static byte[] EncodeCategoryPng()
+    {
+        var pixels = new byte[1280 * 720 * 4];
+        for (var index = 3; index < pixels.Length; index += 4)
+        {
+            pixels[index] = 255;
+        }
+        // This has enough scattered marker/title pixels for the old count-only gate,
+        // but not the horizontal INFORMATION ribbon used by the tightened gate.
+        PaintWhiteRectangle(pixels, 1280, 290, 41, 5, 4);
+        PaintWhiteRectangle(pixels, 1280, 310, 44, 13, 4);
+        PaintWhiteRectangle(pixels, 1280, 350, 44, 10, 3);
+        PaintWhiteRectangle(pixels, 1280, 350, 76, 67, 1);
         var source = BitmapSource.Create(
             1280, 720, 96, 96, PixelFormats.Bgra32, null, pixels, 1280 * 4);
         source.Freeze();

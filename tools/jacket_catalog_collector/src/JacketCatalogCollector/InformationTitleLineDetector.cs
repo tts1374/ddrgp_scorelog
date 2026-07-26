@@ -37,7 +37,8 @@ public sealed record InformationTitleLineDetectorOptions(
     int MinimumMarkerPixelCount = 100,
     int MinimumTitlePixelCount = 32,
     int StableFrameCount = 3,
-    TimeSpan? MinimumStableDuration = null)
+    TimeSpan? MinimumStableDuration = null,
+    int MinimumMarkerBandPixelCount = 120)
 {
     public TimeSpan MinimumStableDurationValue =>
         MinimumStableDuration ?? TimeSpan.FromMilliseconds(100);
@@ -55,6 +56,11 @@ public sealed record InformationTitleLineDetectorOptions(
                 * InformationRegion.TitleLine.Height)
         {
             throw new ArgumentOutOfRangeException(nameof(MinimumTitlePixelCount));
+        }
+        if (MinimumMarkerBandPixelCount < 1
+            || MinimumMarkerBandPixelCount > InformationRegion.PanelMarker.Width)
+        {
+            throw new ArgumentOutOfRangeException(nameof(MinimumMarkerBandPixelCount));
         }
         if (StableFrameCount < 2)
         {
@@ -155,6 +161,7 @@ public sealed class InformationTitleLineDetector
         previousCapturedAtUtc = frame.CapturedAtUtc;
 
         if (sample.MarkerPixelCount < options.MinimumMarkerPixelCount
+            || sample.MarkerBandPixelCount < options.MinimumMarkerBandPixelCount
             || sample.TitlePixelCount < options.MinimumTitlePixelCount)
         {
             ResetSettling();
@@ -162,7 +169,12 @@ public sealed class InformationTitleLineDetector
                 InformationTitleLineState.NotDisplayed,
                 null,
                 TimeSpan.Zero,
-                "INFORMATION panel/title line is not displayed", frame);
+                "INFORMATION panel/title line is not displayed "
+                    + $"(marker={sample.MarkerPixelCount}/{options.MinimumMarkerPixelCount}, "
+                    + $"marker_band={sample.MarkerBandPixelCount}/"
+                    + $"{options.MinimumMarkerBandPixelCount}, "
+                    + $"title={sample.TitlePixelCount}/{options.MinimumTitlePixelCount})",
+                frame);
         }
 
         if (!string.Equals(previousHash, sample.TitleLineHash, StringComparison.Ordinal))
@@ -246,6 +258,7 @@ public sealed class InformationTitleLineDetector
             InformationRegion.TitleLine);
         return new MaskSample(
             marker.PixelCount,
+            marker.MaximumRowPixelCount,
             title.PixelCount,
             Convert.ToHexString(SHA256.HashData(title.PackedBits)).ToLowerInvariant());
     }
@@ -267,9 +280,11 @@ public sealed class InformationTitleLineDetector
         var bitCount = checked(baseRegion.Width * baseRegion.Height);
         var packed = new byte[checked((bitCount + 7) / 8)];
         var whitePixelCount = 0;
+        var maximumRowPixelCount = 0;
         var bitIndex = 0;
         for (var y = 0; y < baseRegion.Height; y++)
         {
+            var rowPixelCount = 0;
             var sourceY = scaled.Y + Math.Min(
                 scaled.Height - 1,
                 y * scaled.Height / baseRegion.Height);
@@ -286,11 +301,13 @@ public sealed class InformationTitleLineDetector
                 {
                     packed[bitIndex / 8] |= (byte)(1 << (7 - bitIndex % 8));
                     whitePixelCount++;
+                    rowPixelCount++;
                 }
                 bitIndex++;
             }
+            maximumRowPixelCount = Math.Max(maximumRowPixelCount, rowPixelCount);
         }
-        return new BinaryMask(packed, whitePixelCount);
+        return new BinaryMask(packed, whitePixelCount, maximumRowPixelCount);
     }
 
     private bool IsWhite(byte red, byte green, byte blue)
@@ -317,9 +334,13 @@ public sealed class InformationTitleLineDetector
         SourceSequence: frame.Sequence,
         CapturedAtUtc: frame.CapturedAtUtc);
 
-    private sealed record BinaryMask(byte[] PackedBits, int PixelCount);
+    private sealed record BinaryMask(
+        byte[] PackedBits,
+        int PixelCount,
+        int MaximumRowPixelCount);
     private sealed record MaskSample(
         int MarkerPixelCount,
+        int MarkerBandPixelCount,
         int TitlePixelCount,
         string TitleLineHash);
 }
