@@ -46,6 +46,23 @@ public sealed class OfficialJacketSnapshotServiceTests : IDisposable
     }
 
     [Fact]
+    public void LoaderAcceptsLegacyRecordCountForSharedHashPath()
+    {
+        var snapshotRoot = Path.Combine(root, "data", "ddrworld_music_snapshot");
+        WriteCompleteSnapshot(
+            snapshotRoot,
+            "official-v1",
+            songCount: 2,
+            storedImageCount: 1,
+            imageRecordCount: 2,
+            summaryStoredImageCount: 2);
+
+        var metadata = OfficialJacketSnapshotMetadataLoader.ReadRequired(snapshotRoot);
+
+        Assert.Equal(1, metadata.StoredImageCount);
+    }
+
+    [Fact]
     public async Task AdapterUsesFixedOutputAndForwardsPageAndJacketProgress()
     {
         var snapshotRoot = Path.Combine(root, "data", "ddrworld_music_snapshot");
@@ -103,25 +120,47 @@ public sealed class OfficialJacketSnapshotServiceTests : IDisposable
         Assert.DoesNotContain(root, exception.Message, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task AdapterTreatsExitZeroAfterLateCancellationAsPublishedSuccess()
+    {
+        var snapshotRoot = Path.Combine(root, "data", "ddrworld_music_snapshot");
+        WriteCompleteSnapshot(snapshotRoot, "official-v2", 2, 1);
+        using var cancellation = new CancellationTokenSource();
+        var runner = new StreamingRunner();
+        runner.OnRun = cancellation.Cancel;
+        var service = new PythonOfficialJacketSnapshotService(
+            runner,
+            root,
+            Path.GetRelativePath(root, snapshotRoot));
+
+        var result = await service.UpdateAsync(null, cancellation.Token);
+
+        Assert.Equal("official-v2", result.Metadata.SnapshotId);
+        Assert.Equal(1, result.Metadata.StoredImageCount);
+    }
+
     private static void WriteCompleteSnapshot(
         string snapshotRoot,
         string snapshotId,
         int songCount,
-        int storedImageCount)
+        int storedImageCount,
+        int? imageRecordCount = null,
+        int? summaryStoredImageCount = null)
     {
         Directory.CreateDirectory(Path.Combine(snapshotRoot, "pages"));
         Directory.CreateDirectory(Path.Combine(snapshotRoot, "jackets"));
-        var images = Enumerable.Range(0, storedImageCount)
+        var recordCount = imageRecordCount ?? storedImageCount;
+        var images = Enumerable.Range(0, recordCount)
             .Select(index => new
             {
                 source_url = $"https://example.test/jacket/{index}",
-                local_path = $"jackets/{index}.png",
+                local_path = $"jackets/{index % storedImageCount}.png",
                 error = (string?)null,
             })
             .ToArray();
-        foreach (var image in images)
+        foreach (var localPath in images.Select(image => image.local_path).Distinct())
         {
-            File.WriteAllBytes(Path.Combine(snapshotRoot, image.local_path), [1, 2, 3]);
+            File.WriteAllBytes(Path.Combine(snapshotRoot, localPath), [1, 2, 3]);
         }
         File.WriteAllText(
             Path.Combine(snapshotRoot, "manifest.json"),
@@ -141,8 +180,8 @@ public sealed class OfficialJacketSnapshotServiceTests : IDisposable
                 snapshot_id = snapshotId,
                 song_count = songCount,
                 page_request_count = 0,
-                image_request_count = storedImageCount,
-                stored_jacket_count = storedImageCount,
+                image_request_count = recordCount,
+                stored_jacket_count = summaryStoredImageCount ?? storedImageCount,
             }));
         File.WriteAllText(
             Path.Combine(snapshotRoot, "songs.jsonl"),
@@ -160,6 +199,8 @@ public sealed class OfficialJacketSnapshotServiceTests : IDisposable
     {
         public List<ProcessRequest> Requests { get; } = [];
 
+        public Action? OnRun { get; set; }
+
         public Task<ProcessResult> RunAsync(
             ProcessRequest request,
             CancellationToken cancellationToken) =>
@@ -176,6 +217,7 @@ public sealed class OfficialJacketSnapshotServiceTests : IDisposable
             {
                 standardOutputLine(line);
             }
+            OnRun?.Invoke();
             return Task.FromResult(new ProcessResult(0, string.Join(Environment.NewLine, lines), ""));
         }
     }

@@ -43,6 +43,11 @@ timeoutは正値のoptionで延長できますが、delayを2秒未満にはで�
 filter、filtertype、playmodeはcollector v1で
 固定し、任意URLのcrawlerとしては動作しません。redirectは追跡しません。
 
+固定root modeでは既定の26ページを取得した後に次のpageも確認します。次ページに曲行が
+存在する、または境界確認の応答・解析に失敗した場合は、page数が増えた可能性があるため
+取得を失敗扱いにして既存の固定snapshotを維持します。page数が減った場合も途中pageの
+解析失敗として同じく公開しません。
+
 ## Output and publication boundary
 
 `--fixed-output`での出力は次の固定構成です。`snapshot-id`は内部の取得識別子として
@@ -70,9 +75,11 @@ directory renameで固定rootへ公開します。page/画像取得、HTML解析
 `songs.jsonl`はsource page、ページ内位置、official title/artist、jacket source URL、local path、
 content type、byte size、SHA-256、失敗情報を保持します。`manifest.json`はsource条件、取得時刻、
 collector version、request policy、page/image単位のHTTP statusと検証結果を保持します。
-`summary.json`は件数、失敗、重複画像hashを集約します。`stored_jacket_count`は保存された
-hash pathの実数であり、同じhashを複数URLが返した場合は報告だけを行い、同一曲や異常とは
-判定しません。同じcontentはhash pathへ1回だけ保存します。
+`summary.json`は件数、失敗、重複画像hashを集約します。新しく生成するsnapshotの
+`stored_jacket_count`は保存されたhash pathの実数であり、同じhashを複数URLが返した場合は
+報告だけを行い、同一曲や異常とは判定しません。同じcontentはhash pathへ1回だけ保存します。
+初期配置する旧v1 snapshotは成功したimage record数をこのfieldに保持する場合があるため、
+validatorは旧形式も読み込み、表示時の保存画像数はmanifestの一意local pathから算出します。
 
 HTMLは`#data_tbl tr.data`だけを対象にし、各行の`td.music_tit`、`td.artist_nam`、
 `td.jk img[src]`を必須とします。page content typeはHTML、jacketはcontent typeとPNG/JPEG/GIF/WebP
@@ -82,7 +89,8 @@ signatureの一致を要求します。ODS、XLSX、catalog/master DB、既存ca
 ## Tests
 
 実networkを使わず、synthetic HTMLとmock responseで解析、欠損、HTTP failure、画像検証、
-duplicate hash、incomplete境界、上書き拒否、network opt-inを確認します。
+duplicate hash、固定page上限の変更、incomplete境界、pathの包含関係、上書き拒否、network
+opt-inを確認します。
 
 ```powershell
 python -X utf8 -m pytest tests/test_ddrworld_music_snapshot.py -q

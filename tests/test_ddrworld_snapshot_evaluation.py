@@ -321,7 +321,11 @@ def test_equal_official_features_are_held_as_ambiguous(tmp_path: Path) -> None:
     assert statuses["hold_ambiguous"] == 1
 
 
-def test_snapshot_loader_accepts_shared_hash_path_for_multiple_urls(tmp_path: Path) -> None:
+@pytest.mark.parametrize("stored_count", [1, 2])
+def test_snapshot_loader_accepts_shared_hash_path_for_multiple_urls(
+    tmp_path: Path,
+    stored_count: int,
+) -> None:
     snapshot = tmp_path / "snapshot"
     write_snapshot(snapshot, blue_color=(255, 0, 0))
     rows = [
@@ -344,7 +348,7 @@ def test_snapshot_loader_accepts_shared_hash_path_for_multiple_urls(tmp_path: Pa
         json.dumps(manifest), encoding="utf-8", newline="\n"
     )
     summary = json.loads((snapshot / "summary.json").read_text(encoding="utf-8"))
-    summary["stored_jacket_count"] = 1
+    summary["stored_jacket_count"] = stored_count
     (snapshot / "summary.json").write_text(
         json.dumps(summary), encoding="utf-8", newline="\n"
     )

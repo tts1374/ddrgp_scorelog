@@ -74,6 +74,9 @@ repository rootはアプリ配置場所の親directoryを`.git`まで探索し�
 固定root直下へ手動配置します。collectorはこの移行や削除を行いません。snapshotがない場合は
 公式情報を利用可能扱いにせず、理由を表示します。
 
+公式snapshotの表示はmanifestの一意local pathから保存画像数を算出するため、旧v1の
+成功image record数を `stored_jacket_count` に持つ初期snapshotも読み込めます。
+
 収集終了時のjacket gateは、固定rootの完成済みsnapshotをread-onlyで読み、DDR WORLD公式32x32
 jacket画像を照合先に使います。snapshotがない場合はauto-confirmを完了扱いにせず、理由を表示して
 手動レビュー経路へ残します。

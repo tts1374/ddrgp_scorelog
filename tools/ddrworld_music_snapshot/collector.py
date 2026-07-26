@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import math
 import os
 import re
@@ -33,6 +34,7 @@ DEFAULT_CONNECT_TIMEOUT_SECONDS = 10.0
 DEFAULT_READ_TIMEOUT_SECONDS = 30.0
 USER_AGENT = "ddrgp-scorelog-local-snapshot/1.0"
 SNAPSHOT_ID_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}\Z")
+LOGGER = logging.getLogger(__name__)
 
 
 class SnapshotError(RuntimeError):
@@ -217,9 +219,21 @@ def build_page_url(config: SnapshotConfig, offset: int) -> str:
 
 
 def parse_page(html: bytes, *, page_offset: int, page_url: str) -> list[SongEntry]:
+    return _parse_page(html, page_offset=page_offset, page_url=page_url, allow_empty=False)
+
+
+def _parse_page(
+    html: bytes,
+    *,
+    page_offset: int,
+    page_url: str,
+    allow_empty: bool,
+) -> list[SongEntry]:
     soup = BeautifulSoup(html, "html.parser")
     rows = soup.select("#data_tbl tr.data")
     if not rows:
+        if allow_empty:
+            return []
         raise SnapshotError(f"page {page_offset} contains no music rows")
 
     songs: list[SongEntry] = []
@@ -373,7 +387,17 @@ class SnapshotCollector:
                         )
                 self._emit_progress(progress, "pages", offset + 1, self.config.page_count)
 
-            jacket_urls = list(dict.fromkeys(song.jacket_source_url for song in songs))
+            if self.config.fixed_output and not failures:
+                pagination_failure = self._check_fixed_page_boundary(self.config.page_count)
+                request_count += 1
+                if pagination_failure is not None:
+                    failures.append(pagination_failure)
+
+            jacket_urls = (
+                []
+                if failures
+                else list(dict.fromkeys(song.jacket_source_url for song in songs))
+            )
             songs_by_jacket_url = defaultdict(int)
             for song in songs:
                 songs_by_jacket_url[song.jacket_source_url] += 1
@@ -464,8 +488,10 @@ class SnapshotCollector:
                 incomplete_root,
                 self.config.repository_root,
             )
-            if output_root == incomplete_dir:
-                raise SnapshotError("fixed snapshot and incomplete paths must differ")
+            if self._paths_overlap(output_root, incomplete_dir):
+                raise SnapshotError(
+                    "fixed snapshot and incomplete paths must be separate, non-overlapping paths"
+                )
             return output_root, incomplete_dir
         return (
             output_root / self.config.snapshot_id,
@@ -500,7 +526,57 @@ class SnapshotCollector:
                 f"failed to publish fixed snapshot without exposing partial data: {exc}"
             ) from exc
         if backup_dir.exists():
-            shutil.rmtree(backup_dir)
+            try:
+                shutil.rmtree(backup_dir)
+            except OSError as exc:
+                LOGGER.warning(
+                    "published fixed snapshot successfully; previous snapshot backup "
+                    "was retained at %s: %s",
+                    backup_dir,
+                    exc,
+                )
+
+    @staticmethod
+    def _paths_overlap(first: Path, second: Path) -> bool:
+        return first == second or first in second.parents or second in first.parents
+
+    def _check_fixed_page_boundary(self, offset: int) -> dict[str, Any] | None:
+        """Fail closed when the fixed page limit no longer covers the catalog."""
+        self._check_cancelled()
+        url = build_page_url(self.config, offset)
+        result = self.fetcher.get(url, accept="text/html,application/xhtml+xml")
+        self._check_cancelled()
+        record = self._page_record(result, offset)
+        if record["error"] is not None:
+            return {
+                "resource": "pagination",
+                "offset": offset,
+                "error": f"fixed page boundary could not be validated: {record['error']}",
+            }
+        assert result.content is not None
+        try:
+            extra_songs = _parse_page(
+                result.content,
+                page_offset=offset,
+                page_url=url,
+                allow_empty=True,
+            )
+        except SnapshotError as exc:
+            return {
+                "resource": "pagination",
+                "offset": offset,
+                "error": f"fixed page boundary could not be parsed: {exc}",
+            }
+        if extra_songs:
+            return {
+                "resource": "pagination",
+                "offset": offset,
+                "error": (
+                    "fixed page limit is too small; an additional page contains "
+                    "music rows"
+                ),
+            }
+        return None
 
     def _check_cancelled(self) -> None:
         if self.cancel_check():
@@ -725,7 +801,22 @@ class SnapshotCollector:
         ):
             raise SnapshotError("snapshot stored image count is invalid")
         stored_files = [child for child in (path / "jackets").iterdir() if child.is_file()]
-        if len(stored_files) != summary["stored_jacket_count"]:
+        stored_paths = {
+            record.get("local_path")
+            for record in image_records
+            if record.get("error") is None and record.get("local_path")
+        }
+        legacy_stored_image_count = sum(
+            1
+            for record in image_records
+            if record.get("error") is None and record.get("local_path")
+        )
+        if len(stored_files) != len(stored_paths):
+            raise SnapshotError("snapshot stored image paths do not match jacket files")
+        if summary["stored_jacket_count"] not in {
+            len(stored_paths),
+            legacy_stored_image_count,
+        }:
             raise SnapshotError("snapshot stored image count does not match jacket files")
 
     @staticmethod

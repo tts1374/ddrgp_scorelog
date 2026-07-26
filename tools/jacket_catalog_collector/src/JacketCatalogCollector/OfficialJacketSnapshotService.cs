@@ -123,7 +123,6 @@ public static class OfficialJacketSnapshotMetadataLoader
         var songCount = NonNegativeInt(summaryRoot, "song_count", "summary");
         var pageRequestCount = NonNegativeInt(summaryRoot, "page_request_count", "summary");
         var imageRequestCount = NonNegativeInt(summaryRoot, "image_request_count", "summary");
-        var storedImageCount = NonNegativeInt(summaryRoot, "stored_jacket_count", "summary");
         var songsPath = Path.Combine(fullRoot, "songs.jsonl");
         var songLineCount = File.ReadLines(songsPath)
             .Count(line => !string.IsNullOrWhiteSpace(line));
@@ -166,7 +165,10 @@ public static class OfficialJacketSnapshotMetadataLoader
                 "*",
                 SearchOption.TopDirectoryOnly)
             .Count();
-        if (storedPaths.Count != storedImageCount || jacketFileCount != storedImageCount)
+        var storedImageCount = NonNegativeInt(summaryRoot, "stored_jacket_count", "summary");
+        if (jacketFileCount != storedPaths.Count
+            || (storedImageCount != storedPaths.Count
+                && storedImageCount != imageRecords.GetArrayLength()))
         {
             throw new InvalidDataException("summary stored_jacket_count does not match jackets.");
         }
@@ -174,7 +176,7 @@ public static class OfficialJacketSnapshotMetadataLoader
             snapshotId,
             completedAt,
             songCount,
-            storedImageCount,
+            storedPaths.Count,
             fullRoot);
     }
 
@@ -322,7 +324,7 @@ public sealed class PythonOfficialJacketSnapshotService(
                 result = await processRunner.RunAsync(request, cancellationToken);
             }
 
-            if (cancellationToken.IsCancellationRequested || result.ExitCode == CancelledExitCode)
+            if (result.ExitCode == CancelledExitCode)
             {
                 throw new OperationCanceledException(cancellationToken);
             }

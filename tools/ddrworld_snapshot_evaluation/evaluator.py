@@ -436,7 +436,15 @@ def load_snapshot(path: Path) -> tuple[list[dict[str, Any]], dict[str, str]]:
         for row in image_records.values()
         if row.get("error") is None and row.get("local_path")
     }
-    if summary.get("stored_jacket_count") != len(stored_paths):
+    legacy_stored_image_count = sum(
+        1
+        for row in image_records.values()
+        if row.get("error") is None and row.get("local_path")
+    )
+    if summary.get("stored_jacket_count") not in {
+        len(stored_paths),
+        legacy_stored_image_count,
+    }:
         raise EvaluationError("snapshot stored jacket count does not match manifest")
     song_urls: set[str] = set()
     for index, row in enumerate(rows):

@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+import tools.ddrworld_music_snapshot.collector as collector_module
 from tools.ddrworld_music_snapshot.cli import build_parser, config_from_args, main
 from tools.ddrworld_music_snapshot.collector import (
     FetchResult,
@@ -31,6 +32,7 @@ PAGE = """<!doctype html><html><body><table id="data_tbl">
   <td class="music_tit">曲　二</td><td class="artist_nam">作者　二</td>
 </tr>
 </table></body></html>""".encode()
+EMPTY_PAGE = b"<!doctype html><html><body><table id=\"data_tbl\"></table></body></html>"
 
 
 class FakeFetcher:
@@ -194,6 +196,7 @@ def test_fixed_output_reports_phases_and_publishes_required_root_files(tmp_path:
     fetcher = FakeFetcher(
         [
             response(PAGE, "text/html"),
+            response(EMPTY_PAGE, "text/html"),
             response(PNG, "image/png"),
             response(PNG, "image/png"),
         ]
@@ -250,7 +253,12 @@ def test_fixed_output_keeps_previous_snapshot_on_failure_and_discards_stale_inco
     SnapshotCollector(
         success_config,
         fetcher=FakeFetcher(
-            [response(PAGE, "text/html"), response(PNG, "image/png"), response(PNG, "image/png")]
+            [
+                response(PAGE, "text/html"),
+                response(EMPTY_PAGE, "text/html"),
+                response(PNG, "image/png"),
+                response(PNG, "image/png"),
+            ]
         ),
         now=lambda: NOW,
     ).collect()
@@ -270,6 +278,7 @@ def test_fixed_output_keeps_previous_snapshot_on_failure_and_discards_stale_inco
             fetcher=FakeFetcher(
                 [
                     response(PAGE, "text/html"),
+                    response(EMPTY_PAGE, "text/html"),
                     response(b"unavailable", "text/plain", error="HTTP 503"),
                     response(b"unavailable", "text/plain", error="HTTP 503"),
                 ]
@@ -299,7 +308,12 @@ def test_fixed_output_cancellation_keeps_previous_snapshot_and_stops_before_next
             page_count=1,
         ),
         fetcher=FakeFetcher(
-            [response(PAGE, "text/html"), response(PNG, "image/png"), response(PNG, "image/png")]
+            [
+                response(PAGE, "text/html"),
+                response(EMPTY_PAGE, "text/html"),
+                response(PNG, "image/png"),
+                response(PNG, "image/png"),
+            ]
         ),
         now=lambda: NOW,
     ).collect()
@@ -325,6 +339,200 @@ def test_fixed_output_cancellation_keeps_previous_snapshot_and_stops_before_next
     assert json.loads((incomplete_root / "manifest.json").read_text(encoding="utf-8"))[
         "status"
     ] == "cancelled"
+
+
+@pytest.mark.parametrize(
+    "incomplete_relative_path",
+    [
+        Path("data"),
+        Path("data/ddrworld_music_snapshot/staging"),
+    ],
+)
+def test_fixed_output_rejects_overlapping_paths_before_cleanup(
+    tmp_path: Path,
+    incomplete_relative_path: Path,
+) -> None:
+    data_root = tmp_path / "data"
+    data_root.mkdir()
+    sentinel = data_root / "must-survive.txt"
+    sentinel.write_text("keep", encoding="utf-8")
+    fetcher = FakeFetcher([])
+
+    with pytest.raises(SnapshotError, match="separate, non-overlapping"):
+        SnapshotCollector(
+            SnapshotConfig(
+                snapshot_id="overlap",
+                output_root=Path("data/ddrworld_music_snapshot"),
+                incomplete_root=incomplete_relative_path,
+                fixed_output=True,
+                repository_root=tmp_path,
+                page_count=1,
+            ),
+            fetcher=fetcher,
+        ).collect()
+
+    assert fetcher.urls == []
+    assert sentinel.read_text(encoding="utf-8") == "keep"
+
+
+def test_fixed_output_accepts_legacy_record_count_for_shared_hash_path(tmp_path: Path) -> None:
+    fixed_root = tmp_path / "data" / "ddrworld_music_snapshot"
+    incomplete_root = tmp_path / "data" / "ddrworld_music_snapshot.incomplete"
+    SnapshotCollector(
+        SnapshotConfig(
+            snapshot_id="legacy-source",
+            output_root=fixed_root,
+            incomplete_root=incomplete_root,
+            fixed_output=True,
+            page_count=1,
+        ),
+        fetcher=FakeFetcher(
+            [
+                response(PAGE, "text/html"),
+                response(EMPTY_PAGE, "text/html"),
+                response(PNG, "image/png"),
+                response(PNG, "image/png"),
+            ]
+        ),
+        now=lambda: NOW,
+    ).collect()
+    summary_path = fixed_root / "summary.json"
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    summary["stored_jacket_count"] = summary["image_request_count"]
+    summary_path.write_text(json.dumps(summary), encoding="utf-8")
+
+    assert SnapshotCollector._is_complete_snapshot(fixed_root)
+
+
+def test_fixed_output_rejects_an_additional_page_and_preserves_previous_snapshot(
+    tmp_path: Path,
+) -> None:
+    fixed_root = tmp_path / "data" / "ddrworld_music_snapshot"
+    incomplete_root = tmp_path / "data" / "ddrworld_music_snapshot.incomplete"
+    config = SnapshotConfig(
+        snapshot_id="first",
+        output_root=fixed_root,
+        incomplete_root=incomplete_root,
+        fixed_output=True,
+        page_count=1,
+    )
+    SnapshotCollector(
+        config,
+        fetcher=FakeFetcher(
+            [
+                response(PAGE, "text/html"),
+                response(EMPTY_PAGE, "text/html"),
+                response(PNG, "image/png"),
+                response(PNG, "image/png"),
+            ]
+        ),
+        now=lambda: NOW,
+    ).collect()
+    previous_summary = (fixed_root / "summary.json").read_bytes()
+
+    with pytest.raises(SnapshotError, match="snapshot is incomplete"):
+        SnapshotCollector(
+            SnapshotConfig(
+                snapshot_id="expanded",
+                output_root=fixed_root,
+                incomplete_root=incomplete_root,
+                fixed_output=True,
+                page_count=1,
+            ),
+            fetcher=FakeFetcher([response(PAGE, "text/html"), response(PAGE, "text/html")]),
+            now=lambda: NOW,
+        ).collect()
+
+    assert (fixed_root / "summary.json").read_bytes() == previous_summary
+    failures = json.loads(
+        (incomplete_root / "manifest.json").read_text(encoding="utf-8")
+    )["failures"]
+    assert failures[0]["resource"] == "pagination"
+
+
+def test_fixed_output_rejects_shorter_catalog_and_keeps_incomplete_diagnostic(
+    tmp_path: Path,
+) -> None:
+    fixed_root = tmp_path / "data" / "ddrworld_music_snapshot"
+    incomplete_root = tmp_path / "data" / "ddrworld_music_snapshot.incomplete"
+    with pytest.raises(SnapshotError, match="snapshot is incomplete"):
+        SnapshotCollector(
+            SnapshotConfig(
+                snapshot_id="shorter",
+                output_root=fixed_root,
+                incomplete_root=incomplete_root,
+                fixed_output=True,
+                page_count=1,
+            ),
+            fetcher=FakeFetcher([response(EMPTY_PAGE, "text/html")]),
+            now=lambda: NOW,
+        ).collect()
+
+    failures = json.loads(
+        (incomplete_root / "manifest.json").read_text(encoding="utf-8")
+    )["failures"]
+    assert failures[0]["resource"] == "page"
+
+
+def test_fixed_output_rejects_pagination_probe_failure(tmp_path: Path) -> None:
+    fixed_root = tmp_path / "data" / "ddrworld_music_snapshot"
+    incomplete_root = tmp_path / "data" / "ddrworld_music_snapshot.incomplete"
+
+    with pytest.raises(SnapshotError, match="snapshot is incomplete"):
+        SnapshotCollector(
+            SnapshotConfig(
+                snapshot_id="pagination-error",
+                output_root=fixed_root,
+                incomplete_root=incomplete_root,
+                fixed_output=True,
+                page_count=1,
+            ),
+            fetcher=FakeFetcher(
+                [
+                    response(PAGE, "text/html"),
+                    response(b"service unavailable", "text/plain", error="HTTP 503"),
+                ]
+            ),
+            now=lambda: NOW,
+        ).collect()
+
+    failures = json.loads(
+        (incomplete_root / "manifest.json").read_text(encoding="utf-8")
+    )["failures"]
+    assert failures[0]["resource"] == "pagination"
+
+
+def test_fixed_publish_success_survives_backup_cleanup_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    final_root = tmp_path / "data" / "ddrworld_music_snapshot"
+    incomplete_root = tmp_path / "data" / "ddrworld_music_snapshot.incomplete"
+    final_root.mkdir(parents=True)
+    (final_root / "old.txt").write_text("old", encoding="utf-8")
+    incomplete_root.mkdir(parents=True)
+    (incomplete_root / "new.txt").write_text("new", encoding="utf-8")
+    collector = SnapshotCollector(
+        SnapshotConfig(
+            snapshot_id="publish",
+            output_root=final_root,
+            incomplete_root=incomplete_root,
+            fixed_output=True,
+        ),
+        fetcher=FakeFetcher([]),
+    )
+    original_rmtree = collector_module.shutil.rmtree
+
+    def fail_previous_backup(path: Path, *args: object, **kwargs: object) -> None:
+        if path.name.startswith(".ddrworld_music_snapshot.previous-"):
+            raise OSError("previous snapshot is locked")
+        original_rmtree(path, *args, **kwargs)
+
+    monkeypatch.setattr(collector_module.shutil, "rmtree", fail_previous_backup)
+    collector._publish_fixed_snapshot(final_root, incomplete_root)
+
+    assert (final_root / "new.txt").read_text(encoding="utf-8") == "new"
+    assert list(final_root.parent.glob(".ddrworld_music_snapshot.previous-*"))
 
 
 def test_image_content_type_must_match_signature(tmp_path: Path) -> None:

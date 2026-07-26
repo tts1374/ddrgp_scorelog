@@ -15,7 +15,8 @@ jacket featureをnetworkなしで突き合わせるdeveloper-only評価CLIです
 
 snapshotはmanifest/summary/status/failure、song/image件数、URL別image metadata、local path、
 SHA-256、画像decodeを検査します。固定root `data/ddrworld_music_snapshot/` を指定し、
-`stored_jacket_count` は重複hashを1画像として数える保存実数です。truth ODSはaudit/observationの一意性、
+新形式の `stored_jacket_count` は重複hashを1画像として数える保存実数です。初期配置する旧v1の
+成功image record数も互換読み込みし、実ファイル数は一意local pathから算出します。truth ODSはaudit/observationの一意性、
 `confirmed` / `rejected`語彙、confirmed truthの必須値とM4 exact一致を検査します。catalogは
 ODSと同じobservation集合、`m5-jacket-v2`、`m5c-jacket-rgb-grid-v1`、`jacket_crop`だけを
 受け入れます。
