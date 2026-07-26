@@ -32,6 +32,8 @@ https://p.eagate.573.jp/game/eacddr/konaddr/info/mlist.html
 
 公式収録曲一覧の `グランプリプレー` 列に `〇` がある曲だけを、通常のM5候補として扱います。マスタDBには対象外曲も保持しますが、`songs.grand_prix_play_available` で候補から除外できます。公式リストとWiki譜面表の突合状態は `official_availability_match` に残します。
 
+公式の `グランプリプレー` 列に `〇` がある行がWiki側に存在しない場合も、公式の曲名・アーティスト・プレー可否だけで `songs` に追加します。この場合は `official_availability_match=official_only` とし、Wikiから取得できる譜面行がないため `charts` は作成しません。
+
 公式リストへ突合できた曲は、曲名/アーティスト名を公式表記へ寄せます。Wiki側に `RËVOLUTIФN` / `TËЯRA`、公式側に `RЁVOLUTIФN` / `TЁЯRA` のような表記差がある場合は、alias正規化で `alias_title_artist` として突合し、公式表記を `songs.title` / `songs.artist` に保存します。差分のあるWiki表記は `song_aliases` に `wiki_source` として保存し、ローカルmetadataや旧表記からの解決補助に使えます。
 
 ## Usage

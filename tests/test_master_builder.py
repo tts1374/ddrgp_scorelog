@@ -261,6 +261,33 @@ OFFICIAL_CANONICAL_FIXTURE_HTML = """
 </html>
 """
 
+OFFICIAL_GP_ONLY_FIXTURE_HTML = """
+<!doctype html>
+<html>
+<body>
+<table class="m_list">
+  <tr>
+    <th>タイトル</th><th>アーティスト</th><th>フリープレー</th><th>グランプリプレー</th>
+  </tr>
+  <tr>
+    <td>Din Don Dan (にじさんじダンス部 ver.)</td>
+    <td>レイン・パターソン &amp; 山神カルタ &amp; 東堂コハク</td>
+    <td>〇</td><td>〇</td>
+  </tr>
+  <tr>
+    <td>打打打打打打打打打打 (にじさんじダンス部 ver.)</td>
+    <td>長尾景 &amp; 倉持めると &amp; セラフ・ダズルガーデン</td>
+    <td>〇</td><td>〇</td>
+  </tr>
+  <tr><td>創聖のアクエリオン</td><td></td><td>〇</td><td>〇</td></tr>
+  <tr>
+    <td>Leaving…</td><td>seiya-murai meets “eimy”</td><td></td><td>〇</td>
+  </tr>
+</table>
+</body>
+</html>
+"""
+
 
 def test_parse_level_uses_first_numeric_token_without_joining_notes() -> None:
     assert builder.parse_level("10(旧9)") == 10
@@ -381,6 +408,50 @@ def test_parse_master_html_uses_official_empty_artist_and_preserves_remix_title(
     assert licensed.grand_prix_play_available
     assert any(alias.alias_title.endswith("Remix)") for alias in build.song_aliases)
     assert any(alias.alias_artist == "Copyright Artist" for alias in build.song_aliases)
+
+
+def test_parse_master_html_keeps_all_official_gp_rows_and_normalizes_ellipsis(
+    tmp_path: Path,
+) -> None:
+    wiki_html = FIXTURE_HTML.replace(
+        "<td>MAKE IT BETTER</td><td>mitsu-O!</td>",
+        "<td>Leaving･･･</td><td>seiya-murai meets “eimy”</td>",
+    )
+    build = builder.parse_master_html(
+        wiki_html,
+        source_url="https://example.test/source",
+        official_html=OFFICIAL_GP_ONLY_FIXTURE_HTML,
+        official_source_url="https://example.test/official",
+        fetched_at="2026-07-04T00:00:00+00:00",
+    )
+
+    leaving = next(song for song in build.songs if song.title == "Leaving…")
+    assert leaving.artist == "seiya-murai meets “eimy”"
+    assert leaving.grand_prix_play_available
+    assert leaving.official_availability_match == "title_artist"
+    assert any(alias.alias_title == "Leaving･･･" for alias in build.song_aliases)
+
+    official_only_titles = {
+        "Din Don Dan (にじさんじダンス部 ver.)",
+        "打打打打打打打打打打 (にじさんじダンス部 ver.)",
+        "創聖のアクエリオン",
+    }
+    official_only = [song for song in build.songs if song.title in official_only_titles]
+    assert {song.title for song in official_only} == official_only_titles
+    assert all(song.official_availability_match == "official_only" for song in official_only)
+    assert all(song.grand_prix_play_available for song in official_only)
+    assert next(song for song in official_only if song.title == "創聖のアクエリオン").artist == ""
+    assert all(
+        chart.song_id not in {song.song_id for song in official_only}
+        for chart in build.charts
+    )
+
+    output_path = tmp_path / "ddrgp-master.sqlite"
+    builder.write_master_database(output_path, build, master_version="fixture-v1")
+    with sqlite3.connect(output_path) as connection:
+        metadata = dict(connection.execute("SELECT key, value FROM master_metadata"))
+    assert metadata["grand_prix_play_available_song_count"] == "4"
+    assert metadata["official_availability_matched_song_count"] == "4"
 
 
 def test_parse_master_html_merges_new_song_levels_and_records_snapshot() -> None:

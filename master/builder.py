@@ -127,6 +127,7 @@ def normalize_availability_key(value: str) -> str:
             }
         )
     ).casefold()
+    normalized = re.sub(r"(?:\.{2,}|[…‥⋯]+|[・･]{2,})", "...", normalized)
     return "".join(char for char in normalized if not char.isspace())
 
 
@@ -493,6 +494,49 @@ def parse_official_music_list_html(html: str) -> tuple[OfficialSongAvailability,
     return tuple(entries.values())
 
 
+def add_official_only_songs(
+    songs: tuple[MasterSong, ...],
+    availability_entries: tuple[OfficialSongAvailability, ...],
+) -> tuple[MasterSong, ...]:
+    """Keep every official GP-available row even when Wiki has no song row."""
+    existing_keys = {
+        (
+            normalize_availability_key(song.title),
+            normalize_availability_key(song.artist),
+        )
+        for song in songs
+    }
+    result = list(songs)
+    for entry in availability_entries:
+        if not entry.grand_prix_play_available:
+            continue
+        key = (
+            normalize_availability_key(entry.title),
+            normalize_availability_key(entry.artist),
+        )
+        if key in existing_keys:
+            continue
+        result.append(
+            MasterSong(
+                song_id=stable_id("song", entry.title, entry.artist),
+                title=entry.title,
+                artist=entry.artist,
+                version="",
+                source_version="",
+                bpm="",
+                category="",
+                movie_stage="",
+                availability="",
+                free_play_available=entry.free_play_available,
+                grand_prix_play_available=True,
+                official_availability_match="official_only",
+                notes="official GP entry without BEMANIWiki chart data",
+            )
+        )
+        existing_keys.add(key)
+    return tuple(result)
+
+
 def apply_official_availability(
     songs: tuple[MasterSong, ...],
     availability_entries: tuple[OfficialSongAvailability, ...],
@@ -655,10 +699,12 @@ def parse_master_html(
             parser_version=PARSER_VERSION,
             html_content=official_html,
         )
+        official_entries = parse_official_music_list_html(official_html)
         songs, song_aliases = apply_official_availability(
             songs,
-            parse_official_music_list_html(official_html),
+            official_entries,
         )
+        songs = add_official_only_songs(songs, official_entries)
     return MasterBuild(
         songs=songs,
         charts=tuple(charts_by_id.values()),
@@ -867,6 +913,7 @@ def write_master_database(
                         "unique_title",
                         "alias_title_artist",
                         "alias_unique_title",
+                        "official_only",
                     }
                 )
             ),

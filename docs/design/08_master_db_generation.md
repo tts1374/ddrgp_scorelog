@@ -48,7 +48,9 @@ https://p.eagate.573.jp/game/eacddr/konaddr/info/mlist.html
 
 公式収録曲一覧の `タイトル` / `アーティスト` は曲情報の正本として `songs.title` / `songs.artist` に保存する。公式アーティストが空の場合も空を保持し、Wiki側の版権元名へフォールバックしない。全曲リストと新曲リストは曲名・アーティストの正規化一致で統合し、新曲リストだけに存在する曲も `songs` / `charts` へ追加する。新曲リストのHTMLは `source_snapshots` と `new_song_source_url` / `new_song_source_hash` で追跡する。
 
-公式リストとWiki譜面マスタの突合は、まず曲名+artistの正規化一致で行い、artistが空または表記差がある場合は曲名が公式リスト内で一意な場合だけ曲名一致で補完する。`Ё` / `Ë` のような装飾記号差や一部のキリル/ラテン混在差はalias正規化でも照合し、`alias_title_artist` / `alias_unique_title` として区別する。公式に突合できた曲は `songs.title` / `songs.artist` を公式表記へ寄せ、Wiki由来表記差は `song_aliases` に `wiki_source` として保存する。突合結果は `official_availability_match` に残す。公式リストにない曲や曖昧な曲は `grand_prix_play_available=false` のままにし、M5の通常候補から除外する。
+公式の `グランプリプレー` 列に `〇` がある行がWiki譜面マスタに存在しない場合も、公式の曲名・アーティスト・プレー可否だけで `songs` に追加する。この公式のみの行は `official_availability_match=official_only` とし、Wiki由来の分類・BPM・譜面レベルがないため、それらの補助項目は空、`charts` は未作成とする。
+
+公式リストとWiki譜面マスタの突合は、まず曲名+artistの正規化一致で行い、artistが空または表記差がある場合は曲名が公式リスト内で一意な場合だけ曲名一致で補完する。省略記号などの表記差も正規化して照合する。`Ё` / `Ë` のような装飾記号差や一部のキリル/ラテン混在差はalias正規化でも照合し、`alias_title_artist` / `alias_unique_title` として区別する。公式に突合できた曲は `songs.title` / `songs.artist` を公式表記へ寄せ、Wiki由来表記差は `song_aliases` に `wiki_source` として保存する。Wiki側にないGP対象曲は `official_only` として残す。突合結果は `official_availability_match` に残す。公式リストにない曲や曖昧な曲は `grand_prix_play_available=false` のままにし、M5の通常候補から除外する。
 
 ## 出力
 
@@ -79,7 +81,7 @@ Releases配布は、artifactで生成結果と取得元構造変化検出を確�
 - `availability`: 表の `分類` 列。
 - `free_play_available`: 公式収録曲一覧の `フリープレー` 列が `〇` か。
 - `grand_prix_play_available`: 公式収録曲一覧の `グランプリプレー` 列が `〇` か。
-- `official_availability_match`: 公式収録曲一覧との突合状態。`title_artist` / `unique_title` / `alias_title_artist` / `alias_unique_title` / `ambiguous_title` / `ambiguous_alias_title_artist` / `ambiguous_alias_title` / `not_found` / `not_checked`。
+- `official_availability_match`: 公式収録曲一覧との突合状態。`title_artist` / `unique_title` / `alias_title_artist` / `alias_unique_title` / `official_only` / `ambiguous_title` / `ambiguous_alias_title_artist` / `ambiguous_alias_title` / `not_found` / `not_checked`。
 - `notes`
 - `created_at`
 - `updated_at`
