@@ -71,22 +71,13 @@ public sealed class PythonPersonalScoreDbWorkflowRunner : IPersonalScoreDbWorkfl
             {
                 throw new InvalidOperationException("Python process could not be started.");
             }
-            var stdoutTask = process.StandardOutput.ReadToEndAsync();
-            var stderrTask = process.StandardError.ReadToEndAsync();
-            var outputTask = Task.WhenAll(stdoutTask, stderrTask);
-            try
-            {
-                await process.WaitForExitAsync(cancellationToken);
-                await outputTask.WaitAsync(cancellationToken);
-            }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-            {
-                await TerminateProcessTreeAsync(process);
-                await outputTask;
-                throw;
-            }
-            var stdout = stdoutTask.Result;
-            var stderr = stderrTask.Result;
+            var output = await WorkflowProcessLifecycle.WaitForExitAndOutputAsync(
+                process,
+                process.StandardOutput.ReadToEndAsync(),
+                process.StandardError.ReadToEndAsync(),
+                cancellationToken);
+            var stdout = output[0];
+            var stderr = output[1];
             var payload = process.ExitCode == 0 ? stdout : stderr;
             return ParseResult(payload);
         }
@@ -137,22 +128,6 @@ public sealed class PythonPersonalScoreDbWorkflowRunner : IPersonalScoreDbWorkfl
     {
         var value = root.GetProperty(propertyName);
         return value.ValueKind == JsonValueKind.Null ? null : value.GetString();
-    }
-
-    private static async Task TerminateProcessTreeAsync(Process process)
-    {
-        try
-        {
-            if (!process.HasExited)
-            {
-                process.Kill(entireProcessTree: true);
-            }
-        }
-        catch (InvalidOperationException) when (process.HasExited)
-        {
-            // The process exited between HasExited and Kill.
-        }
-        await process.WaitForExitAsync(CancellationToken.None);
     }
 
     private static PersonalScoreDbWorkflowResult FailedResult(string databasePath, string reason) =>

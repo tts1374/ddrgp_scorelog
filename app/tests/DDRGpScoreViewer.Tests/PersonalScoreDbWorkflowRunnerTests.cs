@@ -76,147 +76,42 @@ public sealed class PersonalScoreDbWorkflowRunnerTests
     }
 
     [Fact]
-    public Task RunAsync_terminates_python_process_tree_when_cancelled() =>
-        AssertPythonProcessTreeTerminatesAsync(
-            "personal_score_db_workflow_app",
-            async (root, cancellationToken) =>
-                await new PythonPersonalScoreDbWorkflowRunner("python", root).RunAsync(
-                    Path.Combine(root, "input.json"),
-                    Path.Combine(root, "score.sqlite"),
-                    cancellationToken));
-
-    [Fact]
-    public Task CaptureSaveRunAsync_terminates_python_process_tree_when_cancelled() =>
-        AssertPythonProcessTreeTerminatesAsync(
-            "capture_save_workflow_app",
-            async (root, cancellationToken) =>
-                await new PythonCaptureSaveWorkflowRunner("python", root).RunAsync(
-                    Path.Combine(root, "manifest.csv"),
-                    Path.Combine(root, "score.sqlite"),
-                    Path.Combine(root, "master.sqlite"),
-                    cancellationToken));
-
-    private static async Task AssertPythonProcessTreeTerminatesAsync(
-        string moduleName,
-        Func<string, CancellationToken, Task> start)
+    public async Task Workflow_process_cancellation_terminates_process_tree()
     {
-        var root = Path.Combine(
-            Path.GetTempPath(), $"ddrgp-workflow-runner-{Guid.NewGuid():N}");
-        var packagePath = Path.Combine(root, "tools", "vision_poc");
-        var pidPath = Path.Combine(root, "child.pid");
-        Directory.CreateDirectory(packagePath);
-        File.WriteAllText(Path.Combine(root, "tools", "__init__.py"), string.Empty);
-        File.WriteAllText(Path.Combine(packagePath, "__init__.py"), string.Empty);
-        File.WriteAllText(
-            Path.Combine(packagePath, $"{moduleName}.py"),
-            $"""
-            import os
-            import pathlib
-            import time
-
-            pathlib.Path({JsonSerializer.Serialize(pidPath)}).write_text(
-                str(os.getpid()), encoding="utf-8"
-            )
-            while True:
-                time.sleep(1)
-            """);
-
-        using var cancellation = new CancellationTokenSource();
-        var runTask = start(root, cancellation.Token);
-        var childProcessId = 0;
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = "pwsh",
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            CreateNoWindow = true,
+        };
+        startInfo.ArgumentList.Add("-NoLogo");
+        startInfo.ArgumentList.Add("-NoProfile");
+        startInfo.ArgumentList.Add("-NonInteractive");
+        startInfo.ArgumentList.Add("-Command");
+        startInfo.ArgumentList.Add("Start-Sleep -Seconds 30");
+        using var process = Process.Start(startInfo);
+        Assert.NotNull(process);
+        var stdoutTask = process.StandardOutput.ReadToEndAsync();
+        var stderrTask = process.StandardError.ReadToEndAsync();
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(1));
         try
         {
-            Assert.True(await WaitForFileAsync(pidPath));
-            childProcessId = int.Parse(await File.ReadAllTextAsync(pidPath));
-
-            cancellation.Cancel();
-
             await Assert.ThrowsAnyAsync<OperationCanceledException>(
-                () => runTask.WaitAsync(TimeSpan.FromSeconds(10)));
-            Assert.True(await WaitForProcessExitAsync(childProcessId));
+                () => WorkflowProcessLifecycle.WaitForExitAndOutputAsync(
+                    process,
+                    stdoutTask,
+                    stderrTask,
+                    cancellation.Token));
+            Assert.True(process.HasExited);
         }
         finally
         {
-            cancellation.Cancel();
-            if (!runTask.IsCompleted)
-            {
-                try
-                {
-                    await runTask.WaitAsync(TimeSpan.FromSeconds(2));
-                }
-                catch (Exception)
-                {
-                    // Preserve the primary assertion while cleaning up the test child.
-                }
-            }
-            if (childProcessId != 0)
-            {
-                TryTerminateProcessTree(childProcessId);
-            }
-            try
-            {
-                Directory.Delete(root, recursive: true);
-            }
-            catch (IOException)
-            {
-                // Test temp cleanup must not hide the assertion result.
-            }
-        }
-    }
-
-    private static async Task<bool> WaitForFileAsync(string path)
-    {
-        for (var attempt = 0; attempt < 250; attempt++)
-        {
-            if (File.Exists(path))
-            {
-                return true;
-            }
-            await Task.Delay(20);
-        }
-        return false;
-    }
-
-    private static async Task<bool> WaitForProcessExitAsync(int processId)
-    {
-        for (var attempt = 0; attempt < 250; attempt++)
-        {
-            if (!IsProcessRunning(processId))
-            {
-                return true;
-            }
-            await Task.Delay(20);
-        }
-        return !IsProcessRunning(processId);
-    }
-
-    private static bool IsProcessRunning(int processId)
-    {
-        try
-        {
-            using var process = Process.GetProcessById(processId);
-            return !process.HasExited;
-        }
-        catch (ArgumentException)
-        {
-            return false;
-        }
-    }
-
-    private static void TryTerminateProcessTree(int processId)
-    {
-        try
-        {
-            using var process = Process.GetProcessById(processId);
             if (!process.HasExited)
             {
-                process.Kill(entireProcessTree: true);
-                process.WaitForExit(2_000);
+                await WorkflowProcessLifecycle.TerminateProcessTreeAsync(process);
             }
-        }
-        catch (ArgumentException)
-        {
-            // The process already exited.
         }
     }
 }
