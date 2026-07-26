@@ -86,6 +86,8 @@ Releases配布はまだ未実装です。まずはartifactで生成結果と取�
 - `master_metadata`: `master_version`、Wiki全曲リスト／新曲リスト／公式リストのsource URL・hash、`generated_at`、`generator_version`、件数を保持する。
 - `source_snapshots`: 取得元URL、取得時刻、HTML hash、parser version、HTML本文を保持する。
 
+自動生成時の `master_version` は、存在する入力snapshotのhashを `primary` → `new-song` → `official` の固定順序と種別ラベルで計算する。CLIで `--master-version` を指定した場合は、その明示値を使用する。
+
 ## Current Boundaries
 
 - マスタDB生成と公式canonical／プレー可否付与までを扱い、ファジーマッチ、候補スコア、一意照合は別責務に残します。

@@ -526,6 +526,50 @@ def test_write_master_database_records_new_song_snapshot_and_inspects_it(
     assert summary["new_song_source_hash"] == build.new_song_snapshot.content_hash
 
 
+def test_auto_master_version_changes_when_only_official_snapshot_changes(
+    tmp_path: Path,
+) -> None:
+    changed_official_html = OFFICIAL_FIXTURE_HTML.replace(
+        "<td>MAKE IT BETTER</td><td>mitsu-O!</td><td>〇　※１</td><td>〇</td>",
+        "<td>MAKE IT BETTER</td><td>mitsu-O!</td><td>〇　※１</td><td></td>",
+    )
+    original_build = builder.parse_master_html(
+        FIXTURE_HTML,
+        source_url="https://example.test/source",
+        new_song_html=NEW_SONG_FIXTURE_HTML,
+        new_song_source_url="https://example.test/new-songs",
+        official_html=OFFICIAL_FIXTURE_HTML,
+        official_source_url="https://example.test/official",
+        fetched_at="2026-07-04T00:00:00+00:00",
+    )
+    changed_build = builder.parse_master_html(
+        FIXTURE_HTML,
+        source_url="https://example.test/source",
+        new_song_html=NEW_SONG_FIXTURE_HTML,
+        new_song_source_url="https://example.test/new-songs",
+        official_html=changed_official_html,
+        official_source_url="https://example.test/official",
+        fetched_at="2026-07-04T00:00:00+00:00",
+    )
+    original_path = tmp_path / "original.sqlite"
+    changed_path = tmp_path / "changed.sqlite"
+
+    builder.write_master_database(original_path, original_build)
+    builder.write_master_database(changed_path, changed_build)
+
+    with sqlite3.connect(original_path) as original_connection:
+        original_metadata = dict(
+            original_connection.execute("SELECT key, value FROM master_metadata")
+        )
+    with sqlite3.connect(changed_path) as changed_connection:
+        changed_metadata = dict(
+            changed_connection.execute("SELECT key, value FROM master_metadata")
+        )
+
+    assert original_metadata["official_source_hash"] != changed_metadata["official_source_hash"]
+    assert original_metadata["master_version"] != changed_metadata["master_version"]
+
+
 def test_write_master_database_records_song_aliases_for_official_canonical_match(
     tmp_path: Path,
 ) -> None:

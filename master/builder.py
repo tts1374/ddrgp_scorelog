@@ -753,9 +753,15 @@ def write_master_database(
 ) -> None:
     generated_at = generated_at or datetime.now(UTC).isoformat(timespec="seconds")
     if master_version is None:
-        version_material = build.snapshot.content_hash
-        if build.new_song_snapshot is not None:
-            version_material += "\0" + build.new_song_snapshot.content_hash
+        version_material = "\0".join(
+            f"{source_kind}\0{snapshot.content_hash}"
+            for source_kind, snapshot in (
+                ("primary", build.snapshot),
+                ("new-song", build.new_song_snapshot),
+                ("official", build.official_snapshot),
+            )
+            if snapshot is not None
+        )
         master_version = hashlib.sha256(version_material.encode("ascii")).hexdigest()[:12]
     output_path.parent.mkdir(parents=True, exist_ok=True)
     if output_path.exists():
@@ -966,7 +972,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--new-song-input",
         type=Path,
-        help="Local BEMANIWiki new-song-list HTML snapshot. If omitted, the current URL is fetched.",
+        help=(
+            "Local BEMANIWiki new-song-list HTML snapshot. "
+            "If omitted, the current URL is fetched."
+        ),
     )
     parser.add_argument(
         "--new-song-source-url",
