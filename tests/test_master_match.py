@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
 import sqlite3
 from pathlib import Path
 
+import pytest
 from PIL import Image
 
 from master import builder
@@ -265,8 +267,41 @@ def test_result_text_feature_record_is_deterministic_and_field_independent() -> 
     assert title_record["feature_hash"] != artist_record["feature_hash"]
     payload = title_record["payload"]
     assert isinstance(payload, dict)
+    assert payload["luma_shape"] == [1536]
+    assert payload["edge_shape"] == [1536]
+    assert payload["suffix_luma_shape"] == [640]
+    assert payload["suffix_edge_shape"] == [640]
     assert payload["dhash_hex"]
     assert payload["linehash_rows"]
+
+
+@pytest.mark.parametrize(
+    "field_name",
+    ("luma", "edge", "suffix_luma", "suffix_edge"),
+)
+def test_result_text_feature_record_rejects_unexpected_vector_shape(
+    field_name: str,
+) -> None:
+    record = master_match.result_text_feature_record(title_feature(60))
+    payload = dict(record["payload"])
+    values = payload[field_name]
+    assert isinstance(values, list)
+    payload[field_name] = values[:1]
+    payload[f"{field_name}_shape"] = [1]
+    canonical = json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    tampered_record = {
+        **record,
+        "feature_hash": hashlib.sha256(canonical).hexdigest(),
+        "payload": payload,
+    }
+
+    with pytest.raises(ValueError, match=f"invalid {field_name}"):
+        master_match.result_text_feature_from_record(tampered_record)
 
 
 def test_write_m7_result_text_feature_master_outputs(tmp_path: Path) -> None:

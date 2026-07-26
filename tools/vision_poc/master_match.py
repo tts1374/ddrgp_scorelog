@@ -50,6 +50,12 @@ TITLE_LINEHASH_SOURCE_HEIGHT = 28
 TITLE_LINEHASH_LUMA_THRESHOLD = 180
 TITLE_LINEHASH_CHANNEL_SPREAD_MAX = 80
 TITLE_LINEHASH_VARIABLE_BIT_WEIGHT = 5.0
+RESULT_TEXT_VECTOR_SHAPES = {
+    "luma": (TITLE_THUMBNAIL_SIZE[0] * TITLE_THUMBNAIL_SIZE[1],),
+    "edge": (TITLE_THUMBNAIL_SIZE[0] * TITLE_THUMBNAIL_SIZE[1],),
+    "suffix_luma": (40 * TITLE_THUMBNAIL_SIZE[1],),
+    "suffix_edge": (40 * TITLE_THUMBNAIL_SIZE[1],),
+}
 JACKET_MATCH_FIELDNAMES = [
     "frame_index",
     "organized_file",
@@ -648,6 +654,8 @@ def result_text_feature_record(feature: TitleImageFeature) -> dict[str, object]:
 def _decode_result_text_vector(
     payload: dict[str, object],
     field_name: str,
+    *,
+    expected_shape: tuple[int, ...],
 ) -> np.ndarray:
     shape_value = payload.get(f"{field_name}_shape")
     values = payload.get(field_name)
@@ -655,12 +663,13 @@ def _decode_result_text_vector(
         not isinstance(shape_value, list)
         or not shape_value
         or not all(isinstance(value, int) and value > 0 for value in shape_value)
+        or tuple(shape_value) != expected_shape
         or not isinstance(values, list)
-        or len(values) != int(np.prod(shape_value))
+        or len(values) != int(np.prod(expected_shape))
         or not all(isinstance(value, int) and 0 <= value <= 255 for value in values)
     ):
         raise ValueError(f"result text feature payload has invalid {field_name}")
-    return (np.asarray(values, dtype=np.float32) / 255.0).reshape(tuple(shape_value))
+    return (np.asarray(values, dtype=np.float32) / 255.0).reshape(expected_shape)
 
 
 def _decode_result_text_bits(value: object, *, bit_count: int, field_name: str) -> np.ndarray:
@@ -717,10 +726,26 @@ def result_text_feature_from_record(record: dict[str, object]) -> TitleImageFeat
         ]
     )
     return TitleImageFeature(
-        luma=_decode_result_text_vector(payload, "luma"),
-        edge=_decode_result_text_vector(payload, "edge"),
-        suffix_luma=_decode_result_text_vector(payload, "suffix_luma"),
-        suffix_edge=_decode_result_text_vector(payload, "suffix_edge"),
+        luma=_decode_result_text_vector(
+            payload,
+            "luma",
+            expected_shape=RESULT_TEXT_VECTOR_SHAPES["luma"],
+        ),
+        edge=_decode_result_text_vector(
+            payload,
+            "edge",
+            expected_shape=RESULT_TEXT_VECTOR_SHAPES["edge"],
+        ),
+        suffix_luma=_decode_result_text_vector(
+            payload,
+            "suffix_luma",
+            expected_shape=RESULT_TEXT_VECTOR_SHAPES["suffix_luma"],
+        ),
+        suffix_edge=_decode_result_text_vector(
+            payload,
+            "suffix_edge",
+            expected_shape=RESULT_TEXT_VECTOR_SHAPES["suffix_edge"],
+        ),
         dhash_bits=_decode_result_text_bits(
             payload["dhash_hex"],
             bit_count=64,
