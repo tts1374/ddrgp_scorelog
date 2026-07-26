@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 using DDRGpScoreViewer.Data;
 using Xunit;
@@ -72,5 +73,45 @@ public sealed class PersonalScoreDbWorkflowRunnerTests
         var result = PythonPersonalScoreDbWorkflowRunner.ParseResult(payload);
 
         Assert.Equal("unresolved", result.WorkflowStatus);
+    }
+
+    [Fact]
+    public async Task Workflow_process_cancellation_terminates_process_tree()
+    {
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = "pwsh",
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            CreateNoWindow = true,
+        };
+        startInfo.ArgumentList.Add("-NoLogo");
+        startInfo.ArgumentList.Add("-NoProfile");
+        startInfo.ArgumentList.Add("-NonInteractive");
+        startInfo.ArgumentList.Add("-Command");
+        startInfo.ArgumentList.Add("Start-Sleep -Seconds 30");
+        using var process = Process.Start(startInfo);
+        Assert.NotNull(process);
+        var stdoutTask = process.StandardOutput.ReadToEndAsync();
+        var stderrTask = process.StandardError.ReadToEndAsync();
+        using var cancellation = new CancellationTokenSource(TimeSpan.FromSeconds(1));
+        try
+        {
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(
+                () => WorkflowProcessLifecycle.WaitForExitAndOutputAsync(
+                    process,
+                    stdoutTask,
+                    stderrTask,
+                    cancellation.Token));
+            Assert.True(process.HasExited);
+        }
+        finally
+        {
+            if (!process.HasExited)
+            {
+                await WorkflowProcessLifecycle.TerminateProcessTreeAsync(process);
+            }
+        }
     }
 }

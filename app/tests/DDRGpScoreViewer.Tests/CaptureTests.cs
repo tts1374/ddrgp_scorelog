@@ -2,6 +2,7 @@ using System.IO;
 using System.Runtime.CompilerServices;
 using DDRGpScoreViewer.Capture;
 using DDRGpScoreViewer.Data;
+using DDRGpScoreViewer.Models;
 using DDRGpScoreViewer.ViewModels;
 using Xunit;
 
@@ -309,6 +310,28 @@ public sealed class CaptureTests
         Assert.Null(failedResult.Output);
     }
 
+    [Fact]
+    public async Task Continuous_service_reports_selected_target_and_written_frame_count()
+    {
+        using var fixture = new CaptureDirectoryFixture();
+        var source = new StubFrameSource(
+            [Frame("DDR GRAND PRIX", 100), Frame("DDR GRAND PRIX", 200)],
+            CaptureSessionEndReason.Stopped);
+        var service = new ContinuousCaptureService(
+            new StubContinuousAdapter(source),
+            new AtomicCaptureSessionOutputWriter(fixture.OutputRoot, fixture.DataRoot));
+        var progress = new CollectingProgress<CaptureSessionProgress>();
+
+        var result = await service.RunAsync(123, progress);
+
+        Assert.Equal(CaptureOperationStatus.Saved, result.Status);
+        Assert.Equal(3, progress.Values.Count);
+        Assert.Equal(0, progress.Values[0].FrameCount);
+        Assert.Equal("fixture target", progress.Values[0].Target.DisplayName);
+        Assert.Equal(2, progress.Values[^1].FrameCount);
+        Assert.Equal("DDR GRAND PRIX", progress.Values[^1].Target.DisplayName);
+    }
+
     [Theory]
     [InlineData(nameof(SessionWriterFailureStage.Begin))]
     [InlineData(nameof(SessionWriterFailureStage.Write))]
@@ -409,12 +432,14 @@ public sealed class CaptureTests
         Assert.False(firstStop.IsCompleted);
         Assert.False(repeatedStop.IsCompleted);
         Assert.Equal(1, captureService.StopCount);
+        Assert.Equal(MonitoringState.Stopping, viewModel.CurrentMonitoringState);
 
         captureService.Complete();
         await Task.WhenAll(firstStop, repeatedStop, run);
 
         Assert.False(viewModel.IsContinuousCapturing);
         Assert.False(viewModel.IsStoppingCapture);
+        Assert.Equal(MonitoringState.Stopped, viewModel.CurrentMonitoringState);
     }
 
     private static CapturedFrame Frame(string source, long timestampMs = 12345) =>
@@ -571,7 +596,7 @@ public sealed class CaptureTests
         }
     }
 
-    private sealed class StubFrameSource : IContinuousFrameSource
+    private sealed class StubFrameSource : IContinuousFrameSource, IContinuousFrameSourceMetadata
     {
         private readonly IReadOnlyList<CapturedFrame> frames;
         private readonly TaskCompletionSource<CaptureSessionEndReason> completion = new(
@@ -592,6 +617,7 @@ public sealed class CaptureTests
         public TaskCompletionSource ReaderStarted { get; } = new(
             TaskCreationOptions.RunContinuationsAsynchronously);
         public Task<CaptureSessionEndReason> Completion => completion.Task;
+        public CaptureTargetInfo Target => new("fixture target", 1280, 720);
         public int StopCount { get; private set; }
         public int DisposeCount { get; private set; }
 
@@ -623,6 +649,13 @@ public sealed class CaptureTests
             completion.TrySetResult(CaptureSessionEndReason.Stopped);
             return ValueTask.CompletedTask;
         }
+    }
+
+    private sealed class CollectingProgress<T> : IProgress<T>
+    {
+        public List<T> Values { get; } = [];
+
+        public void Report(T value) => Values.Add(value);
     }
 
     private sealed class FailingSessionWriter(

@@ -40,7 +40,7 @@ public sealed class ContinuousWindowsGraphicsCaptureAdapter : IContinuousGraphic
         return CaptureFrameSource.Start(item);
     }
 
-    private sealed class CaptureFrameSource : IContinuousFrameSource
+    private sealed class CaptureFrameSource : IContinuousFrameSource, IContinuousFrameSourceMetadata
     {
         private readonly GraphicsCaptureItem item;
         private readonly IDirect3DDevice device;
@@ -81,6 +81,7 @@ public sealed class ContinuousWindowsGraphicsCaptureAdapter : IContinuousGraphic
         }
 
         public Task<CaptureSessionEndReason> Completion => completion.Task;
+        public CaptureTargetInfo Target => new(captureSource, width, height);
 
         public static CaptureFrameSource Start(GraphicsCaptureItem item)
         {

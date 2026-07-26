@@ -54,11 +54,14 @@
                             Style="{StaticResource PrimaryButtonStyle}" Click="CaptureOneFrame_Click" />
                     <Button Content="連続取得を開始" Margin="0,0,8,0"
                             Style="{StaticResource PrimaryButtonStyle}" Click="StartContinuousCapture_Click" />
-                    <Button Content="連続取得・保存" Margin="0,0,8,0"
+                    <Button Content="監視開始" Margin="0,0,8,0"
                             Style="{StaticResource PrimaryButtonStyle}"
+                            IsEnabled="{Binding CanStartMonitoring}"
                             Click="StartContinuousCaptureAndSave_Click" />
-                    <Button Content="連続取得を停止" Margin="0,0,8,0"
-                            Style="{StaticResource PrimaryButtonStyle}" Click="StopContinuousCapture_Click" />
+                    <Button Content="監視停止" Margin="0,0,8,0"
+                            Style="{StaticResource PrimaryButtonStyle}"
+                            IsEnabled="{Binding CanStopMonitoring}"
+                            Click="StopContinuousCapture_Click" />
                     <Button Content="単発保存" Margin="0,0,8,0"
                             Style="{StaticResource PrimaryButtonStyle}" Click="SaveOnePlay_Click" />
                     <Button Content="データを選択"
@@ -73,6 +76,50 @@
             </DockPanel>
 
             <StackPanel Grid.Row="2">
+                <Border Background="#F8FAFC" BorderBrush="#CBD5E1" BorderThickness="1"
+                        CornerRadius="6" Padding="12" Margin="0,0,0,8">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="1.1*" />
+                            <ColumnDefinition Width="1.4*" />
+                            <ColumnDefinition Width="2.5*" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                            <TextBlock Text="監視状態" FontWeight="SemiBold" />
+                            <TextBlock Text="{Binding MonitoringStateDisplay}" FontSize="18"
+                                       FontWeight="SemiBold" Margin="0,4,0,0" />
+                            <TextBlock Text="{Binding MonitoringReason}" Margin="0,4,0,0"
+                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                       TextWrapping="Wrap" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Margin="0,0,16,0">
+                            <TextBlock Text="対象window" FontWeight="SemiBold" />
+                            <TextBlock Text="{Binding MonitoringTarget}" Margin="0,4,0,0"
+                                       TextTrimming="CharacterEllipsis" />
+                            <TextBlock Margin="0,3,0,0" Foreground="{StaticResource TextSecondaryBrush}">
+                                <Run Text="状態: " /><Run Text="{Binding MonitoringTargetStatus, Mode=OneWay}" />
+                                <Run Text="  サイズ: " /><Run Text="{Binding MonitoringTargetSize, Mode=OneWay}" />
+                            </TextBlock>
+                            <TextBlock Margin="0,3,0,0" Foreground="{StaticResource TextSecondaryBrush}">
+                                <Run Text="frame: " /><Run Text="{Binding MonitoringFrameCount, Mode=OneWay}" />
+                                <Run Text="  開始: " /><Run Text="{Binding MonitoringStartedAtDisplay, Mode=OneWay}" />
+                            </TextBlock>
+                            <TextBlock Margin="0,3,0,0" Foreground="{StaticResource TextSecondaryBrush}">
+                                <Run Text="最新event: " /><Run Text="{Binding MonitoringLatestEventAtDisplay, Mode=OneWay}" />
+                            </TextBlock>
+                        </StackPanel>
+                        <StackPanel Grid.Column="2">
+                            <TextBlock Text="最新保存・skip・失敗" FontWeight="SemiBold" />
+                            <TextBlock Text="{Binding MonitoringResultsDisplay}" Margin="0,4,0,0"
+                                       TextWrapping="Wrap" />
+                            <TextBlock Margin="0,3,0,0" Foreground="{StaticResource TextSecondaryBrush}">
+                                <Run Text="記録時刻: " /><Run Text="{Binding MonitoringResultAtDisplay, Mode=OneWay}" />
+                            </TextBlock>
+                            <TextBlock Text="savedだけを正式playとして再読込します。"
+                                       Margin="0,3,0,0" Foreground="{StaticResource TextSecondaryBrush}" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
                 <Border Visibility="{Binding CaptureStatusVisibility}"
                         Background="#E8F0FA" CornerRadius="6" Padding="12" Margin="0,0,0,8">
                     <StackPanel>

@@ -70,11 +70,13 @@ public sealed class PythonCaptureSaveWorkflowRunner : ICaptureSaveWorkflowRunner
             {
                 throw new InvalidOperationException("Python process could not be started.");
             }
-            var stdoutTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
-            var stderrTask = process.StandardError.ReadToEndAsync(cancellationToken);
-            await process.WaitForExitAsync(cancellationToken);
-            var stdout = await stdoutTask;
-            var stderr = await stderrTask;
+            var output = await WorkflowProcessLifecycle.WaitForExitAndOutputAsync(
+                process,
+                process.StandardOutput.ReadToEndAsync(),
+                process.StandardError.ReadToEndAsync(),
+                cancellationToken);
+            var stdout = output[0];
+            var stderr = output[1];
             return ParseResult(process.ExitCode == 0 ? stdout : stderr);
         }
         catch (Exception exception) when (
