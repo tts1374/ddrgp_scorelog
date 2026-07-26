@@ -27,6 +27,7 @@ public sealed class MainWindowXamlTests
             "ExportManualReview_Click",
             "ImportManualReview_Click",
             "UpdateMaster_Click",
+            "UpdateOfficialSnapshot_Click",
             "ReviewAction_Click",
             "ApplyDrafts_Click",
         })
@@ -162,8 +163,51 @@ public sealed class MainWindowXamlTests
             .Where(element => element.Name.LocalName == "Button")
             .Select(element => element.Attribute("Content")?.Value)
             .ToList();
-        Assert.Single(adminButtons);
-        Assert.Contains("曲情報を更新", adminButtons[0], StringComparison.Ordinal);
+        Assert.Contains(adminButtons, label => label?.Contains("曲情報を更新", StringComparison.Ordinal) == true);
+        Assert.Contains(adminButtons, label => label?.Contains(
+            "公式ジャケット情報を更新",
+            StringComparison.Ordinal) == true);
+    }
+
+    [Fact]
+    public void OfficialSnapshotUiUsesFixedRootMetadataAndSafeProgressFields()
+    {
+        var document = LoadMainWindow();
+        var values = document
+            .Descendants()
+            .Where(element => element.Name.LocalName is "TextBlock" or "Button")
+            .SelectMany(element => element.Attributes().Select(attribute => attribute.Value))
+            .ToList();
+
+        Assert.Contains(values, value => value.Contains(
+            "OfficialSnapshotUpdatedAtDisplay", StringComparison.Ordinal));
+        Assert.Contains(values, value => value.Contains(
+            "OfficialSnapshotSongCountDisplay", StringComparison.Ordinal));
+        Assert.Contains(values, value => value.Contains(
+            "OfficialSnapshotStoredImageCountDisplay", StringComparison.Ordinal));
+        Assert.Contains(values, value => value.Contains(
+            "OfficialSnapshotPathDisplay", StringComparison.Ordinal));
+        Assert.Contains(values, value => value.Contains(
+            "OfficialSnapshotProgressDetailDisplay", StringComparison.Ordinal));
+        Assert.Contains(values, value => value.Contains(
+            "CanCancelOfficialSnapshot", StringComparison.Ordinal));
+        Assert.DoesNotContain(values, value => value.Contains(
+            "snapshot_id", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(values, value => value.Contains(
+            "source_url", StringComparison.OrdinalIgnoreCase));
+        Assert.DoesNotContain(values, value => value.Contains(
+            "sha256", StringComparison.OrdinalIgnoreCase));
+
+        var buttons = document
+            .Descendants()
+            .Where(element => element.Name.LocalName == "Button")
+            .ToList();
+        Assert.Contains(buttons, button => button.Attribute("Click")?.Value
+            == "UpdateOfficialSnapshot_Click");
+        Assert.Contains(buttons, button => button.Attribute("Click")?.Value
+            == "CancelOfficialSnapshot_Click");
+        Assert.Contains(buttons, button => button.Attribute("Content")?.Value
+            == "取得をキャンセル");
     }
 
     [Fact]

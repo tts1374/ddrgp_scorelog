@@ -431,7 +431,20 @@ def load_snapshot(path: Path) -> tuple[list[dict[str, Any]], dict[str, str]]:
         raise EvaluationError("snapshot image manifest contains duplicate source URLs")
     if len(image_records) != summary.get("image_request_count"):
         raise EvaluationError("snapshot image manifest count does not match summary")
-    if summary.get("stored_jacket_count") != len(image_records):
+    stored_paths = {
+        str(row.get("local_path"))
+        for row in image_records.values()
+        if row.get("error") is None and row.get("local_path")
+    }
+    legacy_stored_image_count = sum(
+        1
+        for row in image_records.values()
+        if row.get("error") is None and row.get("local_path")
+    )
+    if summary.get("stored_jacket_count") not in {
+        len(stored_paths),
+        legacy_stored_image_count,
+    }:
         raise EvaluationError("snapshot stored jacket count does not match manifest")
     song_urls: set[str] = set()
     for index, row in enumerate(rows):

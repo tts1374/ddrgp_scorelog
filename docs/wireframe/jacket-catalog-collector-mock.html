@@ -89,7 +89,7 @@
       </div>
     </div>
 
-    <div class="result" id="lastResult"><h4>最後の処理結果</h4><p>公式ジャケット情報は利用可能です。</p><div>更新日時: 2026/07/18 22:10</div><div class="note">初期データ: data/ddrworld_music_snapshot/20260718-official-v1</div></div>
+    <div class="result" id="lastResult"><h4>最後の処理結果</h4><p>公式ジャケット情報は利用可能です。</p><div>更新日時: 2026/07/18 22:10</div><div class="note">固定配置先: data/ddrworld_music_snapshot</div></div>
   </section>
 </div>
 <script>
@@ -107,21 +107,21 @@
   const progressDetail=document.getElementById('progressDetail');
   const cancelButton=document.getElementById('cancelButton');
   const lastResult=document.getElementById('lastResult');
-  let timer=null; let current=0; const total=1287;
+  let timer=null; let current=0; const total=1287; cancelButton.disabled=true;
 
   officialButton.addEventListener('click',()=>{
-    current=0; progressBox.classList.add('active'); officialButton.disabled=true; masterButton.disabled=true;
+    current=0; progressBox.classList.add('active'); officialButton.disabled=true; masterButton.disabled=true; cancelButton.disabled=false;
     progressFill.style.width='0%'; progressPercent.textContent='0%'; progressDetail.textContent='曲一覧を取得中… 0 / 26ページ';
     let page=0;
     timer=setInterval(()=>{
       if(page<26){page++; const pct=Math.round((page/26)*12); progressFill.style.width=pct+'%'; progressPercent.textContent=pct+'%'; progressDetail.textContent=`曲一覧を取得中… ${page} / 26ページ`; return;}
       current=Math.min(total,current+37); const pct=12+Math.round((current/total)*88); progressFill.style.width=pct+'%'; progressPercent.textContent=pct+'%'; progressDetail.textContent=`ジャケットを取得中… ${current.toLocaleString()} / ${total.toLocaleString()}曲`;
-      if(current>=total){clearInterval(timer); officialButton.disabled=false; masterButton.disabled=false; cancelButton.disabled=true; progressDetail.textContent=`取得・検証完了… ${total.toLocaleString()} / ${total.toLocaleString()}曲`; lastResult.innerHTML='<h4>最後の処理結果</h4><p style="color:#065f46">公式ジャケット情報を更新しました。</p><div>1,287曲 / 1,241画像</div><div class="note">固定配置先: data/ddrworld_music_snapshot</div>'; setTimeout(()=>{progressBox.classList.remove('active');cancelButton.disabled=false},900);}
+      if(current>=total){clearInterval(timer); officialButton.disabled=false; masterButton.disabled=false; cancelButton.disabled=true; progressDetail.textContent=`取得・検証完了… ${total.toLocaleString()} / ${total.toLocaleString()}曲`; lastResult.innerHTML='<h4>最後の処理結果</h4><p style="color:#065f46">公式ジャケット情報を更新しました。</p><div>1,287曲 / 1,241画像</div><div class="note">固定配置先: data/ddrworld_music_snapshot</div>'; setTimeout(()=>{progressBox.classList.remove('active')},900);}
     },140);
   });
 
   cancelButton.addEventListener('click',()=>{
-    clearInterval(timer); officialButton.disabled=false; masterButton.disabled=false; progressBox.classList.remove('active');
+    clearInterval(timer); officialButton.disabled=false; masterButton.disabled=false; cancelButton.disabled=true; progressBox.classList.remove('active');
     lastResult.innerHTML='<h4>最後の処理結果</h4><p style="color:#b45309">公式ジャケット情報の取得をキャンセルしました。</p><div>既存の公式ジャケット情報は維持されています。</div><div class="note">途中データは完成済み情報として使用しません。</div>';
   });
 </script>

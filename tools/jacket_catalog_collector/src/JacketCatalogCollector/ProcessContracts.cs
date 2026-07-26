@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.IO;
 using System.Text;
 
 namespace JacketCatalogCollector;
@@ -15,10 +16,33 @@ public interface IProcessRunner
     Task<ProcessResult> RunAsync(ProcessRequest request, CancellationToken cancellationToken);
 }
 
-public sealed class ProcessRunner : IProcessRunner
+public interface IStreamingProcessRunner
+{
+    Task<ProcessResult> RunStreamingAsync(
+        ProcessRequest request,
+        Action<string> standardOutputLine,
+        CancellationToken cancellationToken);
+}
+
+public sealed class ProcessRunner : IProcessRunner, IStreamingProcessRunner
 {
     public async Task<ProcessResult> RunAsync(
         ProcessRequest request,
+        CancellationToken cancellationToken)
+        => await RunCoreAsync(request, standardOutputLine: null, cancellationToken);
+
+    public async Task<ProcessResult> RunStreamingAsync(
+        ProcessRequest request,
+        Action<string> standardOutputLine,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(standardOutputLine);
+        return await RunCoreAsync(request, standardOutputLine, cancellationToken);
+    }
+
+    private static async Task<ProcessResult> RunCoreAsync(
+        ProcessRequest request,
+        Action<string>? standardOutputLine,
         CancellationToken cancellationToken)
     {
         var startInfo = new ProcessStartInfo
@@ -42,7 +66,9 @@ public sealed class ProcessRunner : IProcessRunner
         {
             throw new InvalidOperationException($"Failed to start process: {request.FileName}");
         }
-        var stdoutTask = process.StandardOutput.ReadToEndAsync();
+        var stdoutTask = standardOutputLine is null
+            ? process.StandardOutput.ReadToEndAsync()
+            : ReadLinesAsync(process.StandardOutput, standardOutputLine);
         var stderrTask = process.StandardError.ReadToEndAsync();
         try
         {
@@ -66,5 +92,18 @@ public sealed class ProcessRunner : IProcessRunner
             throw;
         }
         return new ProcessResult(process.ExitCode, await stdoutTask, await stderrTask);
+    }
+
+    private static async Task<string> ReadLinesAsync(
+        StreamReader reader,
+        Action<string> standardOutputLine)
+    {
+        var output = new StringBuilder();
+        while (await reader.ReadLineAsync() is { } line)
+        {
+            output.AppendLine(line);
+            standardOutputLine(line);
+        }
+        return output.ToString();
     }
 }

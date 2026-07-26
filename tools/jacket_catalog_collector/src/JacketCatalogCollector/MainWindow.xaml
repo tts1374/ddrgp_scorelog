@@ -32,6 +32,7 @@
             <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="Padding" Value="10,8" />
         </Style>
+        <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
         <local:ManualReviewRoiImageConverter x:Key="ManualReviewRoiImageConverter" />
     </Window.Resources>
 
@@ -53,6 +54,12 @@
                     BorderThickness="1" CornerRadius="16">
                     <TextBlock Foreground="#1E40AF">
                         <Run Text="{Binding CatalogHeaderDisplay, Mode=OneWay}" />
+                    </TextBlock>
+                </Border>
+                <Border Padding="12,7" Background="#EFF6FF" BorderBrush="#BFDBFE"
+                    BorderThickness="1" CornerRadius="16" Margin="8,0,0,0">
+                    <TextBlock Foreground="#1E40AF">
+                        <Run Text="{Binding OfficialSnapshotHeaderDisplay, Mode=OneWay}" />
                     </TextBlock>
                 </Border>
             </StackPanel>
@@ -528,6 +535,7 @@
                         <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="*" />
                             <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="*" />
                         </Grid.ColumnDefinitions>
                         <Border Style="{StaticResource Card}" Margin="0,0,7,0">
                             <StackPanel>
@@ -556,19 +564,67 @@
                                 <TextBlock Text="{Binding ReviewPendingCountDisplay, Mode=OneWay}" />
                             </StackPanel>
                         </Border>
+                        <Border Grid.Column="2" Style="{StaticResource Card}" Margin="7,0,0,0">
+                            <StackPanel>
+                                <TextBlock Text="🖼️ 公式ジャケット情報" FontWeight="Bold" FontSize="16" />
+                                <TextBlock Text="{Binding OfficialSnapshotUserStatusDisplay, Mode=OneWay}"
+                                           Foreground="#166534" Margin="0,6,0,8" />
+                                <TextBlock Text="更新日時" Foreground="#6B7280" />
+                                <TextBlock Text="{Binding OfficialSnapshotUpdatedAtDisplay, Mode=OneWay}"
+                                           FontWeight="SemiBold" />
+                                <TextBlock Text="取得曲数" Foreground="#6B7280" Margin="0,8,0,0" />
+                                <TextBlock Text="{Binding OfficialSnapshotSongCountDisplay, Mode=OneWay}" />
+                                <TextBlock Text="保存画像数" Foreground="#6B7280" Margin="0,8,0,0" />
+                                <TextBlock Text="{Binding OfficialSnapshotStoredImageCountDisplay, Mode=OneWay}" />
+                                <TextBlock Text="保存先" Foreground="#6B7280" Margin="0,8,0,0" />
+                                <TextBlock Text="{Binding OfficialSnapshotPathDisplay, Mode=OneWay}"
+                                           FontFamily="Consolas" FontSize="11" TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
                     </Grid>
                     <Border Style="{StaticResource Card}" Width="880">
                         <StackPanel>
-                            <TextBlock Text="曲情報の更新" FontWeight="SemiBold" />
-                            <TextBlock Text="使用する曲情報を最新版へ更新します。収集中は更新できません。"
+                            <TextBlock Text="データ更新" FontWeight="SemiBold" />
+                            <TextBlock Text="収集中または他の更新処理中は実行できません。公式ジャケット情報の取得には時間がかかります。"
                                        Foreground="#5F6B7A" Margin="0,6,0,8" TextWrapping="Wrap" />
-                            <Button Content="🔄 曲情報を更新" IsEnabled="{Binding CanUpdateMaster}"
-                                    Click="UpdateMaster_Click" HorizontalAlignment="Left" />
+                            <StackPanel Orientation="Horizontal">
+                                <Button Content="🔄 曲情報を更新" IsEnabled="{Binding CanUpdateMaster}"
+                                        Click="UpdateMaster_Click" />
+                                <Button Content="公式ジャケット情報を更新"
+                                        IsEnabled="{Binding CanUpdateOfficialSnapshot}"
+                                        Click="UpdateOfficialSnapshot_Click" />
+                            </StackPanel>
+                            <Border Margin="0,14,0,0" Padding="14"
+                                    BorderBrush="#BFDBFE" BorderThickness="1" CornerRadius="8"
+                                    Visibility="{Binding IsOfficialSnapshotUpdating,
+                                        Converter={StaticResource BooleanToVisibilityConverter}}">
+                                <StackPanel>
+                                    <DockPanel Margin="0,0,0,8">
+                                        <TextBlock Text="{Binding OfficialSnapshotProgressPercentDisplay,
+                                            Mode=OneWay}" DockPanel.Dock="Right"
+                                                   FontWeight="SemiBold" />
+                                        <TextBlock Text="{Binding OfficialSnapshotProgressTitleDisplay,
+                                            Mode=OneWay}" Foreground="#1E40AF"
+                                                   FontWeight="SemiBold" />
+                                    </DockPanel>
+                                    <ProgressBar Minimum="0" Maximum="100" Height="12"
+                                                 Value="{Binding OfficialSnapshotProgressPercent,
+                                                     Mode=OneWay}" />
+                                    <TextBlock Text="{Binding OfficialSnapshotProgressDetailDisplay,
+                                        Mode=OneWay}" Foreground="#6B7280" Margin="0,7,0,0" />
+                                    <Button Content="取得をキャンセル"
+                                            IsEnabled="{Binding CanCancelOfficialSnapshot}"
+                                            Click="CancelOfficialSnapshot_Click"
+                                            HorizontalAlignment="Right" Margin="4,12,0,0" />
+                                </StackPanel>
+                            </Border>
                         </StackPanel>
                     </Border>
                     <Border Style="{StaticResource Card}" Margin="0,14,0,0" Width="880">
                         <StackPanel>
                             <TextBlock Text="最後の処理結果" FontWeight="SemiBold" />
+                            <TextBlock Text="{Binding OfficialSnapshotLastResultDisplay, Mode=OneWay}"
+                                       Foreground="#5F6B7A" TextWrapping="Wrap" Margin="0,6,0,0" />
                             <TextBlock Text="{Binding LastOperationResultDisplay, Mode=OneWay}"
                                        Foreground="#5F6B7A" TextWrapping="Wrap" Margin="0,6,0,0" />
                         </StackPanel>

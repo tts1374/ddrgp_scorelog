@@ -16,6 +16,8 @@ from tools.ddrworld_snapshot_evaluation.evaluator import (
     EvaluationError,
     evaluate_snapshot,
     load_ods_sheets,
+    load_snapshot,
+    load_snapshot_features,
 )
 from tools.vision_poc import master_match
 
@@ -317,6 +319,46 @@ def test_equal_official_features_are_held_as_ambiguous(tmp_path: Path) -> None:
     summary = json.loads((output / "summary.json").read_text(encoding="utf-8"))
     statuses = summary["jacket_metrics"]["decision_status_counts"]
     assert statuses["hold_ambiguous"] == 1
+
+
+@pytest.mark.parametrize("stored_count", [1, 2])
+def test_snapshot_loader_accepts_shared_hash_path_for_multiple_urls(
+    tmp_path: Path,
+    stored_count: int,
+) -> None:
+    snapshot = tmp_path / "snapshot"
+    write_snapshot(snapshot, blue_color=(255, 0, 0))
+    rows = [
+        json.loads(line)
+        for line in (snapshot / "songs.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    shared_path = rows[0]["jacket_local_path"]
+    shared_hash = rows[0]["jacket_sha256"]
+    rows[1]["jacket_local_path"] = shared_path
+    rows[1]["jacket_sha256"] = shared_hash
+    (snapshot / "songs.jsonl").write_text(
+        "".join(json.dumps(row) + "\n" for row in rows),
+        encoding="utf-8",
+        newline="\n",
+    )
+    manifest = json.loads((snapshot / "manifest.json").read_text(encoding="utf-8"))
+    manifest["images"][1]["local_path"] = shared_path
+    manifest["images"][1]["sha256"] = shared_hash
+    (snapshot / "manifest.json").write_text(
+        json.dumps(manifest), encoding="utf-8", newline="\n"
+    )
+    summary = json.loads((snapshot / "summary.json").read_text(encoding="utf-8"))
+    summary["stored_jacket_count"] = stored_count
+    (snapshot / "summary.json").write_text(
+        json.dumps(summary), encoding="utf-8", newline="\n"
+    )
+    (snapshot / "jackets/blue.jpg").unlink()
+
+    loaded_rows, _ = load_snapshot(snapshot)
+    features = load_snapshot_features(snapshot, loaded_rows)
+
+    assert len(features) == 2
+    assert {feature.jacket_sha256 for feature in features} == {shared_hash}
 
 
 def test_trailing_repeated_blank_ods_rows_are_not_materialized(tmp_path: Path) -> None:

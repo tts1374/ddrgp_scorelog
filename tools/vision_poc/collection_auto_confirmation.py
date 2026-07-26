@@ -10,6 +10,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from tools.ddrworld_music_snapshot.collector import resolve_repository_path
 from tools.ddrworld_snapshot_evaluation import evaluator as snapshot_evaluation
 from tools.ddrworld_snapshot_evaluation.policy import AUTO_ROUTES, POLICY_VERSION
 from tools.vision_poc import (
@@ -229,9 +230,15 @@ def _resolve_snapshot_path(
 ) -> Path:
     if snapshot_path is not None:
         return snapshot_path.resolve()
-    root = (snapshot_root or DEFAULT_SNAPSHOT_ROOT).resolve()
+    root = resolve_repository_path(snapshot_root or DEFAULT_SNAPSHOT_ROOT)
     if not root.is_dir():
         raise ValueError(f"DDR WORLD snapshot root does not exist: {root}")
+    try:
+        snapshot_evaluation.load_snapshot(root)
+    except snapshot_evaluation.EvaluationError:
+        pass
+    else:
+        return root
     candidates = []
     for candidate in sorted(root.iterdir(), key=lambda item: item.name):
         if not candidate.is_dir():

@@ -12,6 +12,7 @@ public enum CollectorOperationState
     LoadingDatabases,
     InitializingCatalog,
     UpdatingMaster,
+    UpdatingOfficialSnapshot,
     Collecting,
     FinalizingCollection,
     RetryingCatalog,
@@ -90,6 +91,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private readonly ICatalogInitializationService catalogInitializer;
     private readonly IManualReviewDraftStore? manualReviewDraftStore;
     private readonly IManualReviewXlsxImportService? manualReviewXlsxImportService;
+    private readonly IOfficialJacketSnapshotService officialJacketSnapshotService;
     private ReviewProjection? projection;
     private MasterSummary? masterSummary;
     private readonly Dictionary<string, ManualReviewDraft> manualReviewDrafts =
@@ -101,7 +103,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private bool isBusy;
     private CollectorOperationState operationState = CollectorOperationState.Ready;
     private string lastOperationResult = "まだ処理結果がありません。";
+    private string officialSnapshotLastResult = "公式ジャケット情報は未確認です。";
     private string collectionEndResult = "—";
+    private OfficialJacketSnapshotMetadata? officialSnapshotMetadata;
+    private OfficialJacketSnapshotProgress? officialSnapshotProgress;
+    private OfficialSnapshotOperationOutcome officialSnapshotOutcome =
+        OfficialSnapshotOperationOutcome.NotRun;
     private ReviewReference? selectedReference;
     private ProjectionSong? selectedSong;
     private string songSearch = "";
@@ -120,7 +127,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         CollectorDatabasePaths? databasePaths = null,
         ICatalogInitializationService? catalogInitializationService = null,
         IManualReviewDraftStore? manualReviewDraftStore = null,
-        IManualReviewXlsxImportService? manualReviewXlsxImportService = null)
+        IManualReviewXlsxImportService? manualReviewXlsxImportService = null,
+        IOfficialJacketSnapshotService? officialJacketSnapshotService = null)
     {
         this.masterUpdateService = masterUpdateService;
         this.projectionService = projectionService;
@@ -128,6 +136,11 @@ public sealed class MainViewModel : INotifyPropertyChanged
         this.manualReviewDraftStore = manualReviewDraftStore;
         this.manualReviewXlsxImportService = manualReviewXlsxImportService;
         fixedDatabasePaths = databasePaths ?? CollectorDatabasePaths.Resolve();
+        this.officialJacketSnapshotService = officialJacketSnapshotService
+            ?? new PythonOfficialJacketSnapshotService(
+                new ProcessRunner(),
+                fixedDatabasePaths.RepositoryRoot,
+                fixedDatabasePaths.DdrWorldSnapshotRootPath);
         catalogInitializer = catalogInitializationService ?? CreateCatalogInitializer(databasePaths);
         WindowCapture = windowCapture;
         Observation = observation;
@@ -186,6 +199,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     {
         CollectorOperationState.NoMaster => "未作成",
         CollectorOperationState.Collecting => "収集中",
+        CollectorOperationState.UpdatingOfficialSnapshot => "公式ジャケット情報を更新中",
         CollectorOperationState.Failed => "更新失敗",
         CollectorOperationState.Ready => projection is null ? "処理中" : "利用可能",
         _ => "処理中",
@@ -206,12 +220,68 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public string CatalogHeaderDisplay => projection is null
         ? "ジャケット情報: —"
         : $"ジャケット情報: v{projection.Catalog.SchemaVersion}";
+    public string OfficialSnapshotHeaderDisplay => officialSnapshotMetadata is null
+        ? "公式ジャケット: —"
+        : $"公式ジャケット: {FormatLocalTimestamp(officialSnapshotMetadata.CompletedAt, "yyyy/MM/dd")}";
+    public string OfficialSnapshotUpdatedAtDisplay =>
+        FormatLocalTimestamp(officialSnapshotMetadata?.CompletedAt, "yyyy/MM/dd HH:mm:ss");
+    public string OfficialSnapshotSongCountDisplay => officialSnapshotMetadata is null
+        ? "—"
+        : $"{officialSnapshotMetadata.SongCount:N0} 曲";
+    public string OfficialSnapshotStoredImageCountDisplay => officialSnapshotMetadata is null
+        ? "—"
+        : $"{officialSnapshotMetadata.StoredImageCount:N0} 画像";
+    public string OfficialSnapshotPathDisplay => "data/ddrworld_music_snapshot";
+    public string OfficialSnapshotUserStatusDisplay => OperationState switch
+    {
+        CollectorOperationState.UpdatingOfficialSnapshot => "更新中…",
+        _ when officialSnapshotOutcome == OfficialSnapshotOperationOutcome.Failed
+            => "更新に失敗しました。",
+        _ when officialSnapshotMetadata is null => "未作成",
+        _ => "利用可能",
+    };
+    public string OfficialSnapshotProgressTitleDisplay => "公式ジャケット情報を取得中";
+    public string OfficialSnapshotProgressPercentDisplay =>
+        $"{OfficialSnapshotProgressPercent:0}%";
+    public double OfficialSnapshotProgressPercent
+    {
+        get
+        {
+            if (officialSnapshotProgress is null || officialSnapshotProgress.Total <= 0)
+            {
+                return officialSnapshotProgress?.Phase == "jackets" ? 12 : 0;
+            }
+            return officialSnapshotProgress.Phase == "pages"
+                ? officialSnapshotProgress.Completed * 12d / officialSnapshotProgress.Total
+                : 12d + officialSnapshotProgress.Completed * 88d / officialSnapshotProgress.Total;
+        }
+    }
+    public string OfficialSnapshotProgressDetailDisplay
+    {
+        get
+        {
+            if (officialSnapshotProgress is null)
+            {
+                return "公式ジャケット情報を取得中…";
+            }
+            return officialSnapshotProgress.Phase == "pages"
+                ? $"曲一覧を取得中… {officialSnapshotProgress.Completed:N0} / "
+                    + $"{officialSnapshotProgress.Total:N0}ページ"
+                : $"ジャケットを取得中… {officialSnapshotProgress.Completed:N0} / "
+                    + $"{officialSnapshotProgress.Total:N0}曲";
+        }
+    }
+    public bool IsOfficialSnapshotUpdating =>
+        OperationState == CollectorOperationState.UpdatingOfficialSnapshot;
+    public bool CanCancelOfficialSnapshot => IsOfficialSnapshotUpdating && IsBusy;
+    public string OfficialSnapshotLastResultDisplay => officialSnapshotLastResult;
     public string MasterUserStatusDisplay => OperationState switch
     {
         CollectorOperationState.LoadingDatabases
             or CollectorOperationState.ReloadingProjection => "読み込み中…",
         CollectorOperationState.UpdatingMaster => "曲情報を更新しています…",
         CollectorOperationState.InitializingCatalog => "曲情報を確認中…",
+        CollectorOperationState.UpdatingOfficialSnapshot => "公式ジャケット情報を更新中…",
         CollectorOperationState.Failed when projection is not null => "更新に失敗しました。",
         CollectorOperationState.Failed when masterSummary is not null => "利用可能",
         CollectorOperationState.Failed => "更新に失敗しました。",
@@ -223,6 +293,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         CollectorOperationState.LoadingDatabases
             or CollectorOperationState.ReloadingProjection => "読み込み中…",
         CollectorOperationState.InitializingCatalog => "初期情報を作成中…",
+        CollectorOperationState.UpdatingOfficialSnapshot => "公式ジャケット情報を更新中…",
         CollectorOperationState.UpdatingMaster when projection is null => "読み込み中…",
         CollectorOperationState.Failed when projection is null => "更新に失敗しました。",
         _ => projection is null ? "読み込み中…" : "利用可能",
@@ -252,6 +323,21 @@ public sealed class MainViewModel : INotifyPropertyChanged
         && OperationState is not (CollectorOperationState.LoadingDatabases
             or CollectorOperationState.InitializingCatalog
             or CollectorOperationState.UpdatingMaster
+            or CollectorOperationState.UpdatingOfficialSnapshot
+            or CollectorOperationState.Collecting
+            or CollectorOperationState.FinalizingCollection
+            or CollectorOperationState.RetryingCatalog
+            or CollectorOperationState.ReloadingProjection)
+        && WindowCapture?.IsDetecting != true
+        && WindowCapture?.Lifecycle.State is not (CaptureLifecycleState.Starting
+            or CaptureLifecycleState.Capturing
+            or CaptureLifecycleState.Stopping)
+        && Observation?.IsActive != true;
+    public bool CanUpdateOfficialSnapshot => !IsBusy
+        && OperationState is not (CollectorOperationState.LoadingDatabases
+            or CollectorOperationState.InitializingCatalog
+            or CollectorOperationState.UpdatingMaster
+            or CollectorOperationState.UpdatingOfficialSnapshot
             or CollectorOperationState.Collecting
             or CollectorOperationState.FinalizingCollection
             or CollectorOperationState.RetryingCatalog
@@ -265,6 +351,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         && OperationState is not (CollectorOperationState.LoadingDatabases
             or CollectorOperationState.InitializingCatalog
             or CollectorOperationState.UpdatingMaster
+            or CollectorOperationState.UpdatingOfficialSnapshot
             or CollectorOperationState.Collecting
             or CollectorOperationState.FinalizingCollection
             or CollectorOperationState.RetryingCatalog
@@ -406,6 +493,29 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
     }
 
+    private async Task LoadOfficialSnapshotMetadataAsync(
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            officialSnapshotMetadata =
+                await officialJacketSnapshotService.LoadAsync(cancellationToken);
+            NotifyOfficialSnapshotProperties();
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception)
+        {
+            officialSnapshotMetadata = null;
+            officialSnapshotOutcome = OfficialSnapshotOperationOutcome.Failed;
+            officialSnapshotLastResult =
+                "公式ジャケット情報を読み込めませんでした。既存の情報は変更していません。";
+            NotifyOfficialSnapshotProperties();
+        }
+    }
+
     public async Task InitializeDatabasesAsync(
         CancellationToken cancellationToken = default)
     {
@@ -420,6 +530,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         StatusMessage = "固定pathの曲情報DBとジャケット情報DBをread-onlyで検証しています。";
         try
         {
+            await LoadOfficialSnapshotMetadataAsync(cancellationToken);
             await InitializeDatabasesCoreAsync(cancellationToken);
             if (projection is not null)
             {
@@ -467,6 +578,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         StatusMessage = "固定pathのmasterとcatalogをread-onlyで検証しています。";
         try
         {
+            await LoadOfficialSnapshotMetadataAsync(cancellationToken);
             await LoadProjectionCoreAsync(cancellationToken);
             OperationState = projection is null
                 ? CollectorOperationState.NoMaster
@@ -1250,6 +1362,145 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
     }
 
+    public async Task UpdateOfficialSnapshotAsync(
+        CancellationToken cancellationToken = default)
+    {
+        if (!CanUpdateOfficialSnapshot)
+        {
+            throw new InvalidOperationException(
+                "公式ジャケット情報を更新できない状態です。");
+        }
+
+        IsBusy = true;
+        OperationState = CollectorOperationState.UpdatingOfficialSnapshot;
+        officialSnapshotOutcome = OfficialSnapshotOperationOutcome.NotRun;
+        officialSnapshotProgress = null;
+        StatusTitle = "公式ジャケット情報更新中";
+        StatusMessage = "固定条件で曲一覧とjacketを取得・検証しています。";
+        NotifyOfficialSnapshotProperties();
+        var snapshotPublished = false;
+        try
+        {
+            var progress = new Progress<OfficialJacketSnapshotProgress>(value =>
+            {
+                officialSnapshotProgress = value;
+                OnPropertyChanged(nameof(OfficialSnapshotProgressPercent));
+                OnPropertyChanged(nameof(OfficialSnapshotProgressPercentDisplay));
+                OnPropertyChanged(nameof(OfficialSnapshotProgressDetailDisplay));
+            });
+            var result = await officialJacketSnapshotService.UpdateAsync(
+                progress,
+                cancellationToken);
+            snapshotPublished = true;
+            officialSnapshotMetadata = result.Metadata;
+            officialSnapshotOutcome = OfficialSnapshotOperationOutcome.Succeeded;
+            if (projection is not null)
+            {
+                try
+                {
+                    OperationState = CollectorOperationState.ReloadingProjection;
+                    StatusTitle = "公式ジャケット情報更新後の再読込中";
+                    StatusMessage = "固定snapshotと既存projectionを再読込しています。";
+                    await LoadProjectionCoreAsync(cancellationToken);
+                }
+                catch (OperationCanceledException)
+                {
+                    SetOfficialSnapshotPostPublishFailure(
+                        "公式ジャケット情報更新完了・projection再読込取消",
+                        "公式ジャケット情報は更新済みですが、表示の再読込を取り消しました。");
+                    throw;
+                }
+                catch (Exception)
+                {
+                    SetOfficialSnapshotPostPublishFailure(
+                        "公式ジャケット情報更新完了・projection再読込失敗",
+                        "公式ジャケット情報は更新済みですが、表示を再読込できませんでした。");
+                    throw;
+                }
+            }
+            officialSnapshotLastResult =
+                "公式ジャケット情報を更新しました。\n"
+                + $"更新日時: {OfficialSnapshotUpdatedAtDisplay}\n"
+                + $"{OfficialSnapshotSongCountDisplay} / "
+                + $"{OfficialSnapshotStoredImageCountDisplay}\n"
+                + $"固定配置先: {OfficialSnapshotPathDisplay}";
+            lastOperationResult = officialSnapshotLastResult;
+            StatusTitle = "公式ジャケット情報更新完了";
+            StatusMessage =
+                $"公式ジャケット情報 {OfficialSnapshotSongCountDisplay} / "
+                + $"{OfficialSnapshotStoredImageCountDisplay} を再読込しました。";
+            OperationState = projection is null
+                ? CollectorOperationState.NoMaster
+                : CollectorOperationState.Ready;
+            OnPropertyChanged(nameof(LastOperationResultDisplay));
+            NotifyOfficialSnapshotProperties();
+        }
+        catch (OperationCanceledException)
+        {
+            if (snapshotPublished)
+            {
+                throw;
+            }
+            officialSnapshotOutcome = OfficialSnapshotOperationOutcome.Canceled;
+            officialSnapshotLastResult =
+                "公式ジャケット情報の取得をキャンセルしました。\n"
+                + "既存の公式ジャケット情報は維持されています。\n"
+                + "途中データは完成済み情報として使用しません。";
+            lastOperationResult = officialSnapshotLastResult;
+            StatusTitle = "公式ジャケット情報更新取消";
+            StatusMessage = "既存の公式ジャケット情報は変更していません。";
+            OperationState = projection is null
+                ? CollectorOperationState.NoMaster
+                : CollectorOperationState.Ready;
+            OnPropertyChanged(nameof(LastOperationResultDisplay));
+            NotifyOfficialSnapshotProperties();
+            throw;
+        }
+        catch (Exception exception)
+        {
+            if (snapshotPublished)
+            {
+                throw;
+            }
+            officialSnapshotOutcome = OfficialSnapshotOperationOutcome.Failed;
+            var failureMessage = exception is OfficialJacketSnapshotUpdateException
+                ? exception.Message
+                : "取得処理を完了できませんでした。";
+            officialSnapshotLastResult =
+                "公式ジャケット情報の更新に失敗しました。\n"
+                + failureMessage + "\n"
+                + "既存の公式ジャケット情報は維持されています。";
+            lastOperationResult = officialSnapshotLastResult;
+            StatusTitle = "公式ジャケット情報更新失敗";
+            StatusMessage = failureMessage;
+            OperationState = CollectorOperationState.Failed;
+            OnPropertyChanged(nameof(LastOperationResultDisplay));
+            NotifyOfficialSnapshotProperties();
+            throw;
+        }
+        finally
+        {
+            officialSnapshotProgress = null;
+            IsBusy = false;
+            NotifyOfficialSnapshotProperties();
+        }
+    }
+
+    private void SetOfficialSnapshotPostPublishFailure(
+        string statusTitle,
+        string statusMessage)
+    {
+        ClearProjection();
+        OperationState = CollectorOperationState.Failed;
+        StatusTitle = statusTitle;
+        StatusMessage = statusMessage;
+        officialSnapshotLastResult =
+            "公式ジャケット情報を更新しましたが、表示を再読込できませんでした。";
+        lastOperationResult = officialSnapshotLastResult;
+        OnPropertyChanged(nameof(LastOperationResultDisplay));
+        NotifyOfficialSnapshotProperties();
+    }
+
     public Task StartObservationSessionAsync(
         WindowCandidate candidate,
         CancellationToken cancellationToken = default)
@@ -1664,6 +1915,21 @@ public sealed class MainViewModel : INotifyPropertyChanged
         NotifyOperationDisplayProperties();
     }
 
+    private void NotifyOfficialSnapshotProperties()
+    {
+        OnPropertyChanged(nameof(OfficialSnapshotHeaderDisplay));
+        OnPropertyChanged(nameof(OfficialSnapshotUpdatedAtDisplay));
+        OnPropertyChanged(nameof(OfficialSnapshotSongCountDisplay));
+        OnPropertyChanged(nameof(OfficialSnapshotStoredImageCountDisplay));
+        OnPropertyChanged(nameof(OfficialSnapshotPathDisplay));
+        OnPropertyChanged(nameof(OfficialSnapshotUserStatusDisplay));
+        OnPropertyChanged(nameof(OfficialSnapshotProgressPercent));
+        OnPropertyChanged(nameof(OfficialSnapshotProgressPercentDisplay));
+        OnPropertyChanged(nameof(OfficialSnapshotProgressDetailDisplay));
+        OnPropertyChanged(nameof(OfficialSnapshotLastResultDisplay));
+        NotifyOperationDisplayProperties();
+    }
+
     private void ClearProjection()
     {
         projection = null;
@@ -1789,8 +2055,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(MasterUserStatusDisplay));
         OnPropertyChanged(nameof(CatalogUserStatusDisplay));
         OnPropertyChanged(nameof(CanUpdateMaster));
+        OnPropertyChanged(nameof(CanUpdateOfficialSnapshot));
         OnPropertyChanged(nameof(CanStartCollection));
         OnPropertyChanged(nameof(CanStopCollection));
+        OnPropertyChanged(nameof(IsOfficialSnapshotUpdating));
+        OnPropertyChanged(nameof(CanCancelOfficialSnapshot));
+        OnPropertyChanged(nameof(OfficialSnapshotUserStatusDisplay));
     }
 
     private bool SetField<T>(ref T field, T value, [CallerMemberName] string? name = null)

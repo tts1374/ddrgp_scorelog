@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import math
 import os
 import re
+import shutil
 import time
 import uuid
 from collections import defaultdict
@@ -22,6 +24,7 @@ from requests.adapters import HTTPAdapter
 COLLECTOR_VERSION = "ddrworld-music-snapshot-v1"
 SOURCE_ORIGIN = "https://p.eagate.573.jp"
 SOURCE_PATH = "/game/ddr/ddrworld/music/index.html"
+DEFAULT_SNAPSHOT_ROOT = Path("data/ddrworld_music_snapshot")
 DEFAULT_FILTER = 7
 DEFAULT_FILTER_TYPE = 0
 DEFAULT_PLAY_MODE = 2
@@ -31,16 +34,47 @@ DEFAULT_CONNECT_TIMEOUT_SECONDS = 10.0
 DEFAULT_READ_TIMEOUT_SECONDS = 30.0
 USER_AGENT = "ddrgp-scorelog-local-snapshot/1.0"
 SNAPSHOT_ID_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,79}\Z")
+LOGGER = logging.getLogger(__name__)
 
 
 class SnapshotError(RuntimeError):
     """Raised when a snapshot cannot be collected or published safely."""
 
 
+class SnapshotCancelled(SnapshotError):
+    """Raised when a collection is cancelled at a request boundary."""
+
+
+@dataclass(frozen=True)
+class SnapshotProgress:
+    phase: str
+    completed: int
+    total: int
+
+
+def find_repository_root(start_directory: Path | None = None) -> Path:
+    start = (start_directory or Path(__file__)).resolve()
+    if start.is_file():
+        start = start.parent
+    for directory in (start, *start.parents):
+        git_path = directory / ".git"
+        if git_path.is_dir() or git_path.is_file():
+            return directory
+    raise SnapshotError(f"repository root cannot be resolved from: {start}")
+
+
+def resolve_repository_path(path: Path, repository_root: Path | None = None) -> Path:
+    root = (repository_root or find_repository_root()).resolve()
+    candidate = path if path.is_absolute() else root / path
+    # Normalize `..` without following a fixed output symlink. The collector
+    # must reject that link before it can publish or remove anything.
+    return Path(os.path.abspath(candidate))
+
+
 @dataclass(frozen=True)
 class SnapshotConfig:
     snapshot_id: str
-    output_root: Path = Path("data/ddrworld_music_snapshot")
+    output_root: Path = DEFAULT_SNAPSHOT_ROOT
     page_count: int = DEFAULT_PAGE_COUNT
     delay_seconds: float = DEFAULT_DELAY_SECONDS
     connect_timeout_seconds: float = DEFAULT_CONNECT_TIMEOUT_SECONDS
@@ -48,6 +82,10 @@ class SnapshotConfig:
     filter_value: int = DEFAULT_FILTER
     filter_type: int = DEFAULT_FILTER_TYPE
     play_mode: int = DEFAULT_PLAY_MODE
+    fixed_output: bool = False
+    incomplete_root: Path | None = None
+    repository_root: Path | None = None
+    cancel_file: Path | None = None
 
     def validate(self) -> None:
         if not SNAPSHOT_ID_PATTERN.fullmatch(self.snapshot_id):
@@ -112,12 +150,14 @@ class SerialFetcher:
         session: requests.Session | None = None,
         sleep: Callable[[float], None] = time.sleep,
         now: Callable[[], datetime] = lambda: datetime.now(UTC),
+        cancel_check: Callable[[], bool] | None = None,
     ) -> None:
         self.delay_seconds = delay_seconds
         self.timeout = timeout
         self.session = session or requests.Session()
         self.sleep = sleep
         self.now = now
+        self.cancel_check = cancel_check
         self._last_request_finished_at: float | None = None
         adapter = HTTPAdapter(max_retries=0, pool_connections=1, pool_maxsize=1)
         self.session.mount("https://", adapter)
@@ -128,6 +168,8 @@ class SerialFetcher:
             elapsed = time.monotonic() - self._last_request_finished_at
             if elapsed < self.delay_seconds:
                 self.sleep(self.delay_seconds - elapsed)
+        if self.cancel_check is not None and self.cancel_check():
+            raise SnapshotCancelled("snapshot collection cancelled")
         fetched_at = self.now().isoformat().replace("+00:00", "Z")
         try:
             response = self.session.get(
@@ -177,9 +219,21 @@ def build_page_url(config: SnapshotConfig, offset: int) -> str:
 
 
 def parse_page(html: bytes, *, page_offset: int, page_url: str) -> list[SongEntry]:
+    return _parse_page(html, page_offset=page_offset, page_url=page_url, allow_empty=False)
+
+
+def _parse_page(
+    html: bytes,
+    *,
+    page_offset: int,
+    page_url: str,
+    allow_empty: bool,
+) -> list[SongEntry]:
     soup = BeautifulSoup(html, "html.parser")
     rows = soup.select("#data_tbl tr.data")
     if not rows:
+        if allow_empty:
+            return []
         raise SnapshotError(f"page {page_offset} contains no music rows")
 
     songs: list[SongEntry] = []
@@ -270,25 +324,33 @@ class SnapshotCollector:
         *,
         fetcher: SerialFetcher | None = None,
         now: Callable[[], datetime] = lambda: datetime.now(UTC),
+        cancel_check: Callable[[], bool] | None = None,
     ) -> None:
         config.validate()
         self.config = config
+        self.cancel_check = cancel_check or self._cancel_file_exists
         self.fetcher = fetcher or SerialFetcher(
             delay_seconds=config.delay_seconds,
             timeout=(config.connect_timeout_seconds, config.read_timeout_seconds),
+            cancel_check=self.cancel_check,
         )
         self.now = now
 
-    def collect(self) -> Path:
-        output_root = self.config.output_root.resolve()
-        final_dir = output_root / self.config.snapshot_id
-        incomplete_dir = output_root / f"{self.config.snapshot_id}.incomplete"
-        if final_dir.exists() or incomplete_dir.exists():
+    def collect(
+        self,
+        *,
+        progress: Callable[[SnapshotProgress], None] | None = None,
+    ) -> Path:
+        final_dir, incomplete_dir = self._resolve_output_paths()
+        if self.config.fixed_output:
+            self._prepare_fixed_output(final_dir, incomplete_dir)
+        elif final_dir.exists() or incomplete_dir.exists():
             raise SnapshotError(
                 "snapshot output already exists; refusing to overwrite: "
                 f"{final_dir} or {incomplete_dir}"
             )
-        output_root.mkdir(parents=True, exist_ok=True)
+        final_dir.parent.mkdir(parents=True, exist_ok=True)
+        incomplete_dir.parent.mkdir(parents=True, exist_ok=True)
         incomplete_dir.mkdir()
 
         started_at = self.now().isoformat().replace("+00:00", "Z")
@@ -298,53 +360,279 @@ class SnapshotCollector:
         failures: list[dict[str, Any]] = []
         request_count = 0
 
-        for offset in range(self.config.page_count):
-            url = build_page_url(self.config, offset)
-            result = self.fetcher.get(url, accept="text/html,application/xhtml+xml")
-            request_count += 1
-            record = self._page_record(result, offset)
-            page_records.append(record)
-            if record["error"] is not None:
-                failures.append({"resource": "page", "offset": offset, "error": record["error"]})
-                continue
-            assert result.content is not None
-            atomic_write_bytes(incomplete_dir / f"pages/page-{offset:02d}.html", result.content)
-            try:
-                songs.extend(parse_page(result.content, page_offset=offset, page_url=url))
-            except SnapshotError as exc:
-                failures.append({"resource": "page", "offset": offset, "error": str(exc)})
+        try:
+            self._emit_progress(progress, "pages", 0, self.config.page_count)
+            for offset in range(self.config.page_count):
+                self._check_cancelled()
+                url = build_page_url(self.config, offset)
+                result = self.fetcher.get(url, accept="text/html,application/xhtml+xml")
+                request_count += 1
+                self._check_cancelled()
+                record = self._page_record(result, offset)
+                page_records.append(record)
+                if record["error"] is not None:
+                    failures.append(
+                        {"resource": "page", "offset": offset, "error": record["error"]}
+                    )
+                else:
+                    assert result.content is not None
+                    atomic_write_bytes(
+                        incomplete_dir / f"pages/page-{offset:02d}.html", result.content
+                    )
+                    try:
+                        songs.extend(parse_page(result.content, page_offset=offset, page_url=url))
+                    except SnapshotError as exc:
+                        failures.append(
+                            {"resource": "page", "offset": offset, "error": str(exc)}
+                        )
+                self._emit_progress(progress, "pages", offset + 1, self.config.page_count)
 
-        for jacket_url in dict.fromkeys(song.jacket_source_url for song in songs):
-            result = self.fetcher.get(jacket_url, accept="image/*")
-            request_count += 1
-            record = self._image_record(result)
-            image_records.append(record)
-            if record["error"] is not None:
-                failures.append({"resource": "image", "url": jacket_url, "error": record["error"]})
-                continue
-            assert result.content is not None
-            atomic_write_bytes(incomplete_dir / record["local_path"], result.content)
+            if self.config.fixed_output and not failures:
+                pagination_failure = self._check_fixed_page_boundary(self.config.page_count)
+                request_count += 1
+                if pagination_failure is not None:
+                    failures.append(pagination_failure)
 
-        images_by_url = {record["source_url"]: record for record in image_records}
-        song_records = []
-        for song in songs:
-            image = images_by_url.get(song.jacket_source_url)
-            song_records.append(
-                {
-                    **asdict(song),
-                    "jacket_local_path": image.get("local_path") if image else None,
-                    "jacket_content_type": image.get("content_type") if image else None,
-                    "jacket_byte_size": image.get("byte_size") if image else None,
-                    "jacket_sha256": image.get("sha256") if image else None,
-                    "jacket_error": image.get("error") if image else "image was not requested",
-                }
+            jacket_urls = (
+                []
+                if failures
+                else list(dict.fromkeys(song.jacket_source_url for song in songs))
             )
-        atomic_write_jsonl(incomplete_dir / "songs.jsonl", song_records)
+            songs_by_jacket_url = defaultdict(int)
+            for song in songs:
+                songs_by_jacket_url[song.jacket_source_url] += 1
+            jacket_total = len(songs)
+            jacket_completed = 0
+            self._emit_progress(progress, "jackets", 0, jacket_total)
+            for jacket_url in jacket_urls:
+                self._check_cancelled()
+                result = self.fetcher.get(jacket_url, accept="image/*")
+                request_count += 1
+                self._check_cancelled()
+                record = self._image_record(result)
+                image_records.append(record)
+                if record["error"] is not None:
+                    failures.append(
+                        {"resource": "image", "url": jacket_url, "error": record["error"]}
+                    )
+                else:
+                    assert result.content is not None
+                    atomic_write_bytes(incomplete_dir / record["local_path"], result.content)
+                jacket_completed += songs_by_jacket_url[jacket_url]
+                self._emit_progress(progress, "jackets", jacket_completed, jacket_total)
 
-        duplicate_hashes = self._duplicate_hashes(image_records)
-        status = "complete" if not failures else "incomplete"
-        completed_at = self.now().isoformat().replace("+00:00", "Z")
-        manifest = {
+            song_records = self._song_records(songs, image_records)
+            atomic_write_jsonl(incomplete_dir / "songs.jsonl", song_records)
+
+            duplicate_hashes = self._duplicate_hashes(image_records)
+            status = "complete" if not failures else "incomplete"
+            completed_at = self.now().isoformat().replace("+00:00", "Z")
+            manifest = self._manifest(
+                status=status,
+                started_at=started_at,
+                completed_at=completed_at,
+                page_records=page_records,
+                image_records=image_records,
+                failures=failures,
+            )
+            summary = self._summary(
+                status=status,
+                request_count=request_count,
+                page_records=page_records,
+                image_records=image_records,
+                songs=songs,
+                duplicate_hashes=duplicate_hashes,
+                snapshot_id=self.config.snapshot_id,
+                failures=failures,
+            )
+            atomic_write_json(incomplete_dir / "manifest.json", manifest)
+            atomic_write_json(incomplete_dir / "summary.json", summary)
+            if failures:
+                raise SnapshotError(
+                    f"snapshot is incomplete ({len(failures)} failures); "
+                    f"diagnostics retained at {incomplete_dir}"
+                )
+            self._check_cancelled()
+            self._validate_complete_snapshot(incomplete_dir)
+            if self.config.fixed_output:
+                self._publish_fixed_snapshot(final_dir, incomplete_dir)
+            else:
+                try:
+                    incomplete_dir.rename(final_dir)
+                except OSError as exc:
+                    raise SnapshotError(
+                        f"failed to publish snapshot without overwriting {final_dir}: {exc}"
+                    ) from exc
+            return final_dir
+        except SnapshotCancelled:
+            self._write_cancelled_diagnostics(
+                incomplete_dir,
+                started_at=started_at,
+                page_records=page_records,
+                image_records=image_records,
+                songs=songs,
+                request_count=request_count,
+            )
+            raise
+
+    def _resolve_output_paths(self) -> tuple[Path, Path]:
+        output_root = resolve_repository_path(
+            self.config.output_root,
+            self.config.repository_root,
+        )
+        if self.config.fixed_output:
+            incomplete_root = self.config.incomplete_root or Path(
+                output_root.parent / f"{output_root.name}.incomplete"
+            )
+            incomplete_dir = resolve_repository_path(
+                incomplete_root,
+                self.config.repository_root,
+            )
+            if self._paths_overlap(output_root, incomplete_dir):
+                raise SnapshotError(
+                    "fixed snapshot and incomplete paths must be separate, non-overlapping paths"
+                )
+            return output_root, incomplete_dir
+        return (
+            output_root / self.config.snapshot_id,
+            output_root / f"{self.config.snapshot_id}.incomplete",
+        )
+
+    def _prepare_fixed_output(self, final_dir: Path, incomplete_dir: Path) -> None:
+        if final_dir.is_symlink() or incomplete_dir.is_symlink():
+            raise SnapshotError("fixed snapshot paths must not be symbolic links")
+        if final_dir.exists() and not self._is_complete_snapshot(final_dir):
+            raise SnapshotError(
+                "fixed snapshot root is not a complete snapshot; refusing to overwrite: "
+                f"{final_dir}"
+            )
+        if incomplete_dir.exists():
+            if incomplete_dir.is_dir():
+                shutil.rmtree(incomplete_dir)
+            else:
+                incomplete_dir.unlink()
+
+    def _publish_fixed_snapshot(self, final_dir: Path, incomplete_dir: Path) -> None:
+        backup_dir = final_dir.with_name(f".{final_dir.name}.previous-{uuid.uuid4().hex}")
+        had_previous = final_dir.exists()
+        if had_previous:
+            final_dir.rename(backup_dir)
+        try:
+            incomplete_dir.rename(final_dir)
+        except OSError as exc:
+            if had_previous and backup_dir.exists():
+                backup_dir.rename(final_dir)
+            raise SnapshotError(
+                f"failed to publish fixed snapshot without exposing partial data: {exc}"
+            ) from exc
+        if backup_dir.exists():
+            try:
+                shutil.rmtree(backup_dir)
+            except OSError as exc:
+                LOGGER.warning(
+                    "published fixed snapshot successfully; previous snapshot backup "
+                    "was retained at %s: %s",
+                    backup_dir,
+                    exc,
+                )
+
+    @staticmethod
+    def _paths_overlap(first: Path, second: Path) -> bool:
+        return first == second or first in second.parents or second in first.parents
+
+    def _check_fixed_page_boundary(self, offset: int) -> dict[str, Any] | None:
+        """Fail closed when the fixed page limit no longer covers the catalog."""
+        self._check_cancelled()
+        url = build_page_url(self.config, offset)
+        result = self.fetcher.get(url, accept="text/html,application/xhtml+xml")
+        self._check_cancelled()
+        record = self._page_record(result, offset)
+        if record["error"] is not None:
+            return {
+                "resource": "pagination",
+                "offset": offset,
+                "error": f"fixed page boundary could not be validated: {record['error']}",
+            }
+        assert result.content is not None
+        try:
+            extra_songs = _parse_page(
+                result.content,
+                page_offset=offset,
+                page_url=url,
+                allow_empty=True,
+            )
+        except SnapshotError as exc:
+            return {
+                "resource": "pagination",
+                "offset": offset,
+                "error": f"fixed page boundary could not be parsed: {exc}",
+            }
+        if extra_songs:
+            return {
+                "resource": "pagination",
+                "offset": offset,
+                "error": (
+                    "fixed page limit is too small; an additional page contains "
+                    "music rows"
+                ),
+            }
+        return None
+
+    def _check_cancelled(self) -> None:
+        if self.cancel_check():
+            raise SnapshotCancelled("snapshot collection cancelled")
+
+    def _cancel_file_exists(self) -> bool:
+        return self.config.cancel_file is not None and self.config.cancel_file.exists()
+
+    @staticmethod
+    def _emit_progress(
+        progress: Callable[[SnapshotProgress], None] | None,
+        phase: str,
+        completed: int,
+        total: int,
+    ) -> None:
+        if progress is not None:
+            progress(SnapshotProgress(phase, completed, total))
+
+    @staticmethod
+    def _song_records(
+        songs: list[SongEntry],
+        image_records: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        images_by_url = {record["source_url"]: record for record in image_records}
+        return [
+            {
+                **asdict(song),
+                "jacket_local_path": (
+                    image.get("local_path") if image is not None else None
+                ),
+                "jacket_content_type": (
+                    image.get("content_type") if image is not None else None
+                ),
+                "jacket_byte_size": (
+                    image.get("byte_size") if image is not None else None
+                ),
+                "jacket_sha256": image.get("sha256") if image is not None else None,
+                "jacket_error": (
+                    image.get("error") if image is not None else "image was not requested"
+                ),
+            }
+            for song in songs
+            for image in [images_by_url.get(song.jacket_source_url)]
+        ]
+
+    def _manifest(
+        self,
+        *,
+        status: str,
+        started_at: str,
+        completed_at: str,
+        page_records: list[dict[str, Any]],
+        image_records: list[dict[str, Any]],
+        failures: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        return {
             "schema_version": "ddrworld-music-snapshot-manifest-v1",
             "status": status,
             "snapshot_id": self.config.snapshot_id,
@@ -371,34 +659,165 @@ class SnapshotCollector:
             "images": image_records,
             "failures": failures,
         }
-        summary = {
+
+    @staticmethod
+    def _summary(
+        *,
+        status: str,
+        request_count: int,
+        page_records: list[dict[str, Any]],
+        image_records: list[dict[str, Any]],
+        songs: list[SongEntry],
+        duplicate_hashes: list[dict[str, Any]],
+        snapshot_id: str,
+        failures: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        stored_paths = {
+            record["local_path"]
+            for record in image_records
+            if record["error"] is None and record["local_path"]
+        }
+        return {
             "schema_version": "ddrworld-music-snapshot-summary-v1",
             "status": status,
-            "snapshot_id": self.config.snapshot_id,
+            "snapshot_id": snapshot_id,
             "request_count": request_count,
             "page_request_count": len(page_records),
             "image_request_count": len(image_records),
             "song_count": len(songs),
             "unique_jacket_url_count": len(image_records),
-            "stored_jacket_count": sum(record["error"] is None for record in image_records),
+            "stored_jacket_count": len(stored_paths),
             "failure_count": len(failures),
             "duplicate_image_hash_count": len(duplicate_hashes),
             "duplicate_image_hashes": duplicate_hashes,
         }
-        atomic_write_json(incomplete_dir / "manifest.json", manifest)
-        atomic_write_json(incomplete_dir / "summary.json", summary)
-        if failures:
-            raise SnapshotError(
-                f"snapshot is incomplete ({len(failures)} failures); "
-                f"diagnostics retained at {incomplete_dir}"
-            )
+
+    def _write_cancelled_diagnostics(
+        self,
+        incomplete_dir: Path,
+        *,
+        started_at: str,
+        page_records: list[dict[str, Any]],
+        image_records: list[dict[str, Any]],
+        songs: list[SongEntry],
+        request_count: int,
+    ) -> None:
+        if not incomplete_dir.is_dir():
+            return
+        cancelled_at = self.now().isoformat().replace("+00:00", "Z")
         try:
-            incomplete_dir.rename(final_dir)
-        except OSError as exc:
-            raise SnapshotError(
-                f"failed to publish snapshot without overwriting {final_dir}: {exc}"
-            ) from exc
-        return final_dir
+            for name in ("manifest.json", "summary.json"):
+                (incomplete_dir / name).unlink(missing_ok=True)
+            atomic_write_json(
+                incomplete_dir / "manifest.json",
+                self._manifest(
+                    status="cancelled",
+                    started_at=started_at,
+                    completed_at=cancelled_at,
+                    page_records=page_records,
+                    image_records=image_records,
+                    failures=[{"resource": "collection", "error": "cancelled"}],
+                ),
+            )
+            duplicate_hashes = self._duplicate_hashes(image_records)
+            atomic_write_json(
+                incomplete_dir / "summary.json",
+                {
+                    **self._summary(
+                        status="cancelled",
+                        request_count=request_count,
+                        page_records=page_records,
+                        image_records=image_records,
+                        songs=songs,
+                        duplicate_hashes=duplicate_hashes,
+                        snapshot_id=self.config.snapshot_id,
+                        failures=[{"resource": "collection", "error": "cancelled"}],
+                    ),
+                    "failure_count": 1,
+                },
+            )
+        except (OSError, SnapshotError):
+            # Cancellation must never turn the preserved final snapshot into a failure.
+            return
+
+    @classmethod
+    def _is_complete_snapshot(cls, path: Path) -> bool:
+        try:
+            cls._validate_complete_snapshot(path)
+        except (OSError, SnapshotError, json.JSONDecodeError, TypeError, ValueError):
+            return False
+        return True
+
+    @staticmethod
+    def _validate_complete_snapshot(path: Path) -> None:
+        required_files = ("manifest.json", "pages", "songs.jsonl", "jackets", "summary.json")
+        if not path.is_dir():
+            raise SnapshotError(f"snapshot directory does not exist: {path}")
+        for name in required_files:
+            child = path / name
+            if name in {"pages", "jackets"}:
+                if not child.is_dir():
+                    raise SnapshotError(f"snapshot required directory is missing: {child}")
+            elif not child.is_file():
+                raise SnapshotError(f"snapshot required file is missing: {child}")
+        manifest = json.loads((path / "manifest.json").read_text(encoding="utf-8"))
+        summary = json.loads((path / "summary.json").read_text(encoding="utf-8"))
+        if manifest.get("status") != "complete" or summary.get("status") != "complete":
+            raise SnapshotError("snapshot status is not complete")
+        if not isinstance(manifest.get("snapshot_id"), str) or not manifest["snapshot_id"]:
+            raise SnapshotError("snapshot id is invalid")
+        if summary.get("snapshot_id") != manifest["snapshot_id"]:
+            raise SnapshotError("snapshot ids do not match")
+        if not isinstance(manifest.get("failures"), list) or manifest["failures"]:
+            raise SnapshotError("complete snapshot contains failures")
+        if not isinstance(summary.get("song_count"), int) or summary["song_count"] < 0:
+            raise SnapshotError("snapshot song count is invalid")
+        songs = [
+            json.loads(line)
+            for line in (path / "songs.jsonl").read_text(encoding="utf-8").splitlines()
+            if line
+        ]
+        if len(songs) != summary["song_count"]:
+            raise SnapshotError("snapshot song count does not match songs.jsonl")
+        if not isinstance(summary.get("page_request_count"), int) or summary[
+            "page_request_count"
+        ] < 0:
+            raise SnapshotError("snapshot page count is invalid")
+        page_files = [child for child in (path / "pages").iterdir() if child.is_file()]
+        if len(page_files) != summary["page_request_count"]:
+            raise SnapshotError("snapshot page count does not match page files")
+        image_records = manifest.get("images")
+        if not isinstance(image_records, list):
+            raise SnapshotError("snapshot image manifest is invalid")
+        if not isinstance(summary.get("image_request_count"), int) or summary[
+            "image_request_count"
+        ] < 0:
+            raise SnapshotError("snapshot image count is invalid")
+        if len(image_records) != summary["image_request_count"]:
+            raise SnapshotError("snapshot image count does not match manifest")
+        if (
+            not isinstance(summary.get("stored_jacket_count"), int)
+            or summary["stored_jacket_count"] < 0
+        ):
+            raise SnapshotError("snapshot stored image count is invalid")
+        stored_files = [child for child in (path / "jackets").iterdir() if child.is_file()]
+        stored_paths = {
+            record.get("local_path")
+            for record in image_records
+            if record.get("error") is None and record.get("local_path")
+        }
+        legacy_stored_image_count = sum(
+            1
+            for record in image_records
+            if record.get("error") is None and record.get("local_path")
+        )
+        if len(stored_files) != len(stored_paths):
+            raise SnapshotError("snapshot stored image paths do not match jacket files")
+        if summary["stored_jacket_count"] not in {
+            len(stored_paths),
+            legacy_stored_image_count,
+        }:
+            raise SnapshotError("snapshot stored image count does not match jacket files")
 
     @staticmethod
     def _page_record(result: FetchResult, offset: int) -> dict[str, Any]:
