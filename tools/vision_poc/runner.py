@@ -13,6 +13,7 @@ import tempfile
 from collections.abc import Iterable
 from dataclasses import asdict, dataclass
 from pathlib import Path, PurePosixPath
+from typing import Any
 
 import numpy as np
 from PIL import Image, ImageFilter, ImageOps
@@ -7267,7 +7268,12 @@ def build_m5_title_feature_master_entries(
         feature = title_features_by_file.get(organized_file)
         if source_song_title == "" or feature is None:
             continue
-        song, failure_reason = master_match.resolve_song_by_title(db_path, source_song_title)
+        source_artist = expected_m3_metadata_value_from_row(frame.row, "artist")
+        song, failure_reason = master_match.resolve_song_by_title_and_artist(
+            db_path,
+            source_song_title,
+            source_artist,
+        )
         if song is None or failure_reason:
             continue
         entries.append(
@@ -7281,6 +7287,129 @@ def build_m5_title_feature_master_entries(
             )
         )
     return entries
+
+
+def build_m7_result_text_feature_master_rows(
+    frames: Iterable[FrameInput],
+    db_path: Path,
+    title_features_by_file: dict[str, master_match.TitleImageFeature],
+    artist_features_by_file: dict[str, master_match.TitleImageFeature],
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    organized_files = sorted(set(title_features_by_file) | set(artist_features_by_file))
+    frames_by_file = {
+        frame.row.get("organized_file", ""): frame
+        for frame in frames
+        if frame.row.get("organized_file", "") in organized_files
+    }
+    for organized_file in organized_files:
+        frame = frames_by_file.get(organized_file)
+        if frame is None:
+            continue
+        title_feature = title_features_by_file.get(organized_file)
+        artist_feature = artist_features_by_file.get(organized_file)
+        source_song_title = expected_m3_metadata_value_from_row(frame.row, "song_title")
+        source_artist = expected_m3_metadata_value_from_row(frame.row, "artist")
+        row: dict[str, Any] = {
+            "organized_file": organized_file,
+            "source_song_title": source_song_title,
+            "source_artist": source_artist,
+            "song_id": "",
+            "title": "",
+            "artist": "",
+            "feature_status": "accepted",
+            "failure_reason": "",
+            "title_feature": (
+                None
+                if title_feature is None
+                else master_match.result_text_feature_record(title_feature)
+            ),
+            "artist_feature": (
+                None
+                if artist_feature is None
+                else master_match.result_text_feature_record(artist_feature)
+            ),
+        }
+        missing_features = [
+            field_name
+            for field_name, feature in (
+                ("title", title_feature),
+                ("artist", artist_feature),
+            )
+            if feature is None
+        ]
+        if missing_features:
+            row["feature_status"] = "missing_feature"
+            row["failure_reason"] = "missing_" + "_".join(missing_features) + "_feature"
+        elif not source_song_title:
+            row["feature_status"] = "missing_metadata"
+            missing_metadata = [
+                field_name
+                for field_name, value in (
+                    ("song_title", source_song_title),
+                )
+                if not value
+            ]
+            row["failure_reason"] = "missing_" + "_".join(missing_metadata)
+        else:
+            song, failure_reason = master_match.resolve_song_by_title_and_artist(
+                db_path,
+                source_song_title,
+                source_artist,
+            )
+            if song is None:
+                row["feature_status"] = "unresolved"
+                row["failure_reason"] = failure_reason
+            else:
+                row.update(
+                    {
+                        "song_id": song.song_id,
+                        "title": song.title,
+                        "artist": song.artist,
+                    }
+                )
+        rows.append(row)
+    return rows
+
+
+def build_m7_result_text_feature_entries(
+    rows: Iterable[dict[str, Any]],
+    *,
+    field_name: str,
+) -> list[master_match.TitleFeatureMasterEntry]:
+    if field_name not in {"title", "artist"}:
+        raise ValueError("M7 result text feature field_name must be title or artist")
+    entries: list[master_match.TitleFeatureMasterEntry] = []
+    for row in rows:
+        if row.get("feature_status") != "accepted":
+            continue
+        record = row.get(f"{field_name}_feature")
+        if not isinstance(record, dict):
+            raise ValueError(f"accepted M7 row is missing {field_name} feature")
+        entries.append(
+            master_match.TitleFeatureMasterEntry(
+                organized_file=str(row.get("organized_file", "")),
+                source_song_title=str(row.get("source_song_title", "")),
+                song_id=str(row.get("song_id", "")),
+                title=str(row.get("title", "")),
+                artist=str(row.get("artist", "")),
+                feature=master_match.result_text_feature_from_record(record),
+            )
+        )
+    return entries
+
+
+def merge_m7_result_text_feature_entries(
+    *entry_groups: Iterable[master_match.TitleFeatureMasterEntry],
+) -> list[master_match.TitleFeatureMasterEntry]:
+    entries_by_identity: dict[tuple[str, str], master_match.TitleFeatureMasterEntry] = {}
+    for entries in entry_groups:
+        for entry in entries:
+            feature_hash = str(
+                master_match.result_text_feature_record(entry.feature)["feature_hash"]
+            )
+            entries_by_identity.setdefault((entry.song_id, feature_hash), entry)
+    return list(entries_by_identity.values())
 
 
 def m3_chart_field_template_vector(image: Image.Image, field_name: str) -> np.ndarray:
@@ -10110,6 +10239,15 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--m7-result-text-feature-catalog",
+        type=Path,
+        default=None,
+        help=(
+            "Persist accepted M7 result title/artist image features in the same M5b jacket "
+            "catalog supplied by --m5-jacket-catalog."
+        ),
+    )
+    parser.add_argument(
         "--master-db",
         type=Path,
         default=Path("data/master/ddrgp-master.sqlite"),
@@ -10466,6 +10604,22 @@ def main(argv: list[str] | None = None) -> int:
         raise ValueError("--m8-score-db-output requires --m7a-digit-recognition")
     if args.m8_score_db_output is not None:
         ensure_data_output_path(args.m8_score_db_output, argument_name="--m8-score-db-output")
+    if args.m7_result_text_feature_catalog is not None:
+        if not args.m5_jacket_match:
+            raise ValueError("--m7-result-text-feature-catalog requires --m5-jacket-match")
+        if args.m5_jacket_catalog is None:
+            raise ValueError(
+                "--m7-result-text-feature-catalog requires --m5-jacket-catalog"
+            )
+        jacket_reference_catalog.ensure_catalog_path(
+            args.m7_result_text_feature_catalog,
+            argument_name="--m7-result-text-feature-catalog",
+        )
+        if args.m7_result_text_feature_catalog.resolve() != args.m5_jacket_catalog.resolve():
+            raise ValueError(
+                "--m7-result-text-feature-catalog must be the same file as "
+                "--m5-jacket-catalog"
+            )
     if args.m5_jacket_catalog is not None:
         if not args.m5_jacket_match:
             raise ValueError("--m5-jacket-catalog requires --m5-jacket-match")
@@ -10565,6 +10719,7 @@ def main(argv: list[str] | None = None) -> int:
     m5_jacket_result_features: dict[str, master_match.JacketFeature] = {}
     m5_jacket_song_select_preview_features: dict[str, master_match.JacketFeature] = {}
     m5_title_result_features: dict[str, master_match.TitleImageFeature] = {}
+    m7_artist_result_features: dict[str, master_match.TitleImageFeature] = {}
     for frame_index, frame in enumerate(frames):
         with Image.open(frame.image_path) as image:
             image = image.convert("RGB")
@@ -10587,6 +10742,11 @@ def main(argv: list[str] | None = None) -> int:
                 m5_title_result_features[organized_file] = (
                     master_match.extract_title_image_feature(
                         crop_roi(image, ROI_DEFINITIONS["song_title"])
+                    )
+                )
+                m7_artist_result_features[organized_file] = (
+                    master_match.extract_artist_image_feature(
+                        crop_roi(image, ROI_DEFINITIONS["artist"])
                     )
                 )
             if is_song_select_grid_frame(frame):
@@ -10919,6 +11079,70 @@ def main(argv: list[str] | None = None) -> int:
             args.master_db,
             m5_title_result_features,
         )
+        m7_result_text_feature_rows = build_m7_result_text_feature_master_rows(
+            frames,
+            args.master_db,
+            m5_title_result_features,
+            m7_artist_result_features,
+        )
+        m7_result_text_feature_summary = (
+            master_match.write_m7_result_text_feature_master_outputs(
+                output_dir,
+                m7_result_text_feature_rows,
+            )
+        )
+        current_m7_title_feature_entries = build_m7_result_text_feature_entries(
+            m7_result_text_feature_rows,
+            field_name="title",
+        )
+        current_m7_artist_feature_entries = build_m7_result_text_feature_entries(
+            m7_result_text_feature_rows,
+            field_name="artist",
+        )
+        m7_result_text_feature_catalog_summary: dict[str, Any] | None = None
+        if args.m7_result_text_feature_catalog is not None:
+            m7_result_text_feature_catalog_summary = (
+                jacket_reference_catalog.store_m7_result_text_feature_rows(
+                    args.m7_result_text_feature_catalog,
+                    args.master_db,
+                    m7_result_text_feature_rows,
+                )
+            )
+            (output_dir / "m7_result_text_feature_catalog_summary.json").write_text(
+                json.dumps(
+                    m7_result_text_feature_catalog_summary,
+                    ensure_ascii=False,
+                    indent=2,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+        catalog_m7_title_feature_entries: list[master_match.TitleFeatureMasterEntry] = []
+        catalog_m7_artist_feature_entries: list[master_match.TitleFeatureMasterEntry] = []
+        if args.m5_jacket_catalog is not None:
+            catalog_m7_title_feature_entries = (
+                jacket_reference_catalog.load_m7_result_text_feature_entries(
+                    args.m5_jacket_catalog,
+                    args.master_db,
+                    field_name="title",
+                )
+            )
+            catalog_m7_artist_feature_entries = (
+                jacket_reference_catalog.load_m7_result_text_feature_entries(
+                    args.m5_jacket_catalog,
+                    args.master_db,
+                    field_name="artist",
+                )
+            )
+        title_feature_entries = merge_m7_result_text_feature_entries(
+            title_feature_entries,
+            current_m7_title_feature_entries,
+            catalog_m7_title_feature_entries,
+        )
+        artist_feature_entries = merge_m7_result_text_feature_entries(
+            current_m7_artist_feature_entries,
+            catalog_m7_artist_feature_entries,
+        )
         title_ocr_observations = {
             result.organized_file: master_match.TitleOcrObservation(
                 raw=result.ocr_raw,
@@ -10934,9 +11158,11 @@ def main(argv: list[str] | None = None) -> int:
             args.master_db,
             m5_jacket_result_features,
             jacket_feature_entries,
-            m5_title_result_features,
-            title_feature_entries,
-            title_ocr_observations,
+            result_title_features_by_file=m5_title_result_features,
+            title_feature_master_entries=title_feature_entries,
+            result_artist_features_by_file=m7_artist_result_features,
+            artist_feature_master_entries=artist_feature_entries,
+            title_ocr_observations_by_file=title_ocr_observations,
         )
         jacket_match_summary = master_match.write_jacket_match_outputs(
             output_dir,
@@ -10963,9 +11189,11 @@ def main(argv: list[str] | None = None) -> int:
             args.master_db,
             m5_jacket_result_features,
             jacket_feature_entries,
-            m5_title_result_features,
-            title_feature_entries,
-            title_ocr_observations,
+            result_title_features_by_file=m5_title_result_features,
+            title_feature_master_entries=title_feature_entries,
+            result_artist_features_by_file=m7_artist_result_features,
+            artist_feature_master_entries=artist_feature_entries,
+            title_ocr_observations_by_file=title_ocr_observations,
         )
         jacket_diagnostic_rows = attach_m5_jacket_diagnostic_context(
             jacket_diagnostic_input_rows,
@@ -10992,9 +11220,10 @@ def main(argv: list[str] | None = None) -> int:
             )
         )
         print(
-            "Wrote M5 jacket match PoC: "
+            "Wrote M7 jacket validation outputs (legacy --m5-jacket-match): "
             f"{output_dir} "
             f"({jacket_feature_summary['status_counts'].get('accepted', 0)} features, "
+            f"{m7_result_text_feature_summary['accepted_count']} result text features, "
             f"{jacket_match_summary['target_count']} candidates, "
             f"{jacket_diagnostic_summary['target_count']} diagnostics, "
             f"{jacket_reference_coverage_summary['missing_feature_candidate_songs']} "

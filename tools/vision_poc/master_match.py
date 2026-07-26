@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
 import sqlite3
 import string
@@ -32,6 +33,9 @@ DEFAULT_JACKET_DISTANCE_THRESHOLD = 0.24
 DEFAULT_JACKET_AMBIGUITY_DELTA = 0.015
 DEFAULT_TITLE_AMBIGUITY_DELTA = 0.01
 DEFAULT_TITLE_LINEHASH_AMBIGUITY_DELTA = 0.01
+RESULT_TEXT_FEATURE_SCHEMA_VERSION = "m7-result-text-feature-master-v1"
+RESULT_TEXT_IMAGE_FEATURE_VERSION = "m7-result-text-image-v1"
+RESULT_TEXT_ROI_VERSION = "m7-result-title-artist-roi-v1"
 PUNCTUATION_TO_DROP = frozenset(
     string.punctuation + "　、。，．・･：；！？（）［］【】『』「」‘’“”"
 )
@@ -82,6 +86,16 @@ JACKET_MATCH_FIELDNAMES = [
     "title_top_candidates",
     "title_rerank_status",
     "title_rerank_reason",
+    "artist_candidate_feature_count",
+    "artist_top_song_id",
+    "artist_top_chart_id",
+    "artist_top_title",
+    "artist_top_score",
+    "artist_top_distance",
+    "artist_top_feature_source",
+    "artist_top_candidates",
+    "artist_rerank_status",
+    "artist_rerank_reason",
     "title_ocr_raw",
     "title_ocr_text",
     "title_ocr_suffix",
@@ -338,6 +352,47 @@ def resolve_song_by_title(
     return matches[0], ""
 
 
+def resolve_song_by_title_and_artist(
+    db_path: Path,
+    source_title: str,
+    source_artist: str,
+) -> tuple[MasterSong | None, str]:
+    """Resolve a result label without using artist as a standalone key."""
+    normalized_source_title = normalize_song_title(source_title)
+    if not normalized_source_title:
+        return None, "missing_label"
+
+    matches = [
+        song
+        for song in load_songs(db_path)
+        if normalize_song_title(song.title) == normalized_source_title
+    ]
+    if not matches:
+        matches = load_songs_by_alias_title(db_path, source_title)
+        if not matches:
+            return None, "title_not_found"
+        fallback_reason = "ambiguous_alias_title"
+    else:
+        fallback_reason = "ambiguous_title"
+
+    song_ids = {song.song_id for song in matches}
+    if len(song_ids) == 1:
+        return matches[0], ""
+
+    normalized_source_artist = normalize_song_title(source_artist)
+    if normalized_source_artist:
+        artist_matches = [
+            song
+            for song in matches
+            if normalize_song_title(song.artist) == normalized_source_artist
+        ]
+        artist_song_ids = {song.song_id for song in artist_matches}
+        if len(artist_song_ids) == 1:
+            return artist_matches[0], ""
+
+    return None, fallback_reason
+
+
 def load_songs_by_alias_title(db_path: Path, source_title: str) -> list[MasterSong]:
     normalized_source_title = normalize_song_title(source_title)
     if not normalized_source_title:
@@ -512,7 +567,7 @@ def extract_jacket_feature(image: Image.Image) -> JacketFeature:
     )
 
 
-def extract_title_image_feature(image: Image.Image) -> TitleImageFeature:
+def _extract_text_image_feature(image: Image.Image) -> TitleImageFeature:
     grayscale = ImageOps.autocontrast(image.convert("L"))
     resized = grayscale.resize(TITLE_THUMBNAIL_SIZE, Image.Resampling.LANCZOS)
     suffix_left = round(grayscale.width * 0.62)
@@ -537,6 +592,141 @@ def extract_title_image_feature(image: Image.Image) -> TitleImageFeature:
         suffix_edge=suffix_edge,
         dhash_bits=hash_bits,
         dhash_hex=bits_to_hex(hash_bits),
+        linehash_bits=linehash_bits,
+        linehash_rows=linehash_rows,
+    )
+
+
+def extract_title_image_feature(image: Image.Image) -> TitleImageFeature:
+    return _extract_text_image_feature(image)
+
+
+def extract_artist_image_feature(image: Image.Image) -> TitleImageFeature:
+    """Extract the same OCR-free image feature shape from the artist ROI."""
+    return _extract_text_image_feature(image)
+
+
+def _serialize_feature_vector(values: np.ndarray) -> list[int]:
+    return [max(0, min(255, int(round(float(value) * 255)))) for value in values]
+
+
+def result_text_feature_payload(feature: TitleImageFeature) -> dict[str, object]:
+    """Return a compact deterministic JSON payload used for M7 feature reuse."""
+    return {
+        "feature_version": RESULT_TEXT_IMAGE_FEATURE_VERSION,
+        "roi_version": RESULT_TEXT_ROI_VERSION,
+        "vector_encoding": "uint8_0_255",
+        "luma_shape": list(feature.luma.shape),
+        "luma": _serialize_feature_vector(feature.luma),
+        "edge_shape": list(feature.edge.shape),
+        "edge": _serialize_feature_vector(feature.edge),
+        "suffix_luma_shape": list(feature.suffix_luma.shape),
+        "suffix_luma": _serialize_feature_vector(feature.suffix_luma),
+        "suffix_edge_shape": list(feature.suffix_edge.shape),
+        "suffix_edge": _serialize_feature_vector(feature.suffix_edge),
+        "dhash_hex": feature.dhash_hex,
+        "linehash_rows": list(feature.linehash_rows),
+    }
+
+
+def result_text_feature_record(feature: TitleImageFeature) -> dict[str, object]:
+    payload = result_text_feature_payload(feature)
+    canonical = json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return {
+        "feature_version": RESULT_TEXT_IMAGE_FEATURE_VERSION,
+        "roi_version": RESULT_TEXT_ROI_VERSION,
+        "feature_hash": hashlib.sha256(canonical).hexdigest(),
+        "payload": payload,
+    }
+
+
+def _decode_result_text_vector(
+    payload: dict[str, object],
+    field_name: str,
+) -> np.ndarray:
+    shape_value = payload.get(f"{field_name}_shape")
+    values = payload.get(field_name)
+    if (
+        not isinstance(shape_value, list)
+        or not shape_value
+        or not all(isinstance(value, int) and value > 0 for value in shape_value)
+        or not isinstance(values, list)
+        or len(values) != int(np.prod(shape_value))
+        or not all(isinstance(value, int) and 0 <= value <= 255 for value in values)
+    ):
+        raise ValueError(f"result text feature payload has invalid {field_name}")
+    return (np.asarray(values, dtype=np.float32) / 255.0).reshape(tuple(shape_value))
+
+
+def _decode_result_text_bits(value: object, *, bit_count: int, field_name: str) -> np.ndarray:
+    if not isinstance(value, str) or len(value) != (bit_count + 3) // 4:
+        raise ValueError(f"result text feature payload has invalid {field_name}")
+    try:
+        integer = int(value, 16)
+    except ValueError as exc:
+        raise ValueError(f"result text feature payload has invalid {field_name}") from exc
+    return np.asarray(
+        [(integer >> (bit_count - index - 1)) & 1 for index in range(bit_count)],
+        dtype=np.float32,
+    )
+
+
+def result_text_feature_from_record(record: dict[str, object]) -> TitleImageFeature:
+    if (
+        record.get("feature_version") != RESULT_TEXT_IMAGE_FEATURE_VERSION
+        or record.get("roi_version") != RESULT_TEXT_ROI_VERSION
+        or not isinstance(record.get("feature_hash"), str)
+        or len(str(record["feature_hash"])) != 64
+        or not isinstance(record.get("payload"), dict)
+    ):
+        raise ValueError("result text feature record has invalid identity")
+    payload = record["payload"]
+    assert isinstance(payload, dict)
+    if (
+        payload.get("feature_version") != RESULT_TEXT_IMAGE_FEATURE_VERSION
+        or payload.get("roi_version") != RESULT_TEXT_ROI_VERSION
+        or payload.get("vector_encoding") != "uint8_0_255"
+        or not isinstance(payload.get("dhash_hex"), str)
+        or not isinstance(payload.get("linehash_rows"), list)
+        or len(payload["linehash_rows"]) != TITLE_LINEHASH_SIZE[1]
+        or not all(isinstance(value, str) for value in payload["linehash_rows"])
+    ):
+        raise ValueError("result text feature payload has invalid identity")
+    canonical = json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    if hashlib.sha256(canonical).hexdigest() != record["feature_hash"]:
+        raise ValueError("result text feature payload hash mismatch")
+    linehash_rows = tuple(str(value) for value in payload["linehash_rows"])
+    linehash_bits = np.concatenate(
+        [
+            _decode_result_text_bits(
+                value,
+                bit_count=TITLE_LINEHASH_SIZE[0],
+                field_name="linehash_rows",
+            )
+            for value in linehash_rows
+        ]
+    )
+    return TitleImageFeature(
+        luma=_decode_result_text_vector(payload, "luma"),
+        edge=_decode_result_text_vector(payload, "edge"),
+        suffix_luma=_decode_result_text_vector(payload, "suffix_luma"),
+        suffix_edge=_decode_result_text_vector(payload, "suffix_edge"),
+        dhash_bits=_decode_result_text_bits(
+            payload["dhash_hex"],
+            bit_count=64,
+            field_name="dhash_hex",
+        ),
+        dhash_hex=str(payload["dhash_hex"]),
         linehash_bits=linehash_bits,
         linehash_rows=linehash_rows,
     )
@@ -778,6 +968,21 @@ def empty_title_rerank_fields(status: str = "not_run", reason: str = "") -> dict
     }
 
 
+def empty_artist_rerank_fields(status: str = "not_run", reason: str = "") -> dict[str, str]:
+    return {
+        "artist_candidate_feature_count": "0",
+        "artist_top_song_id": "",
+        "artist_top_chart_id": "",
+        "artist_top_title": "",
+        "artist_top_score": "",
+        "artist_top_distance": "",
+        "artist_top_feature_source": "",
+        "artist_top_candidates": "",
+        "artist_rerank_status": status,
+        "artist_rerank_reason": reason,
+    }
+
+
 def identity_signal_empty_fields(
     status: str,
     reason: str,
@@ -833,6 +1038,15 @@ def identity_signal_fields(row: dict[str, str]) -> dict[str, str]:
                 "identity_signal_chart_id": row.get("title_top_chart_id", ""),
                 "identity_signal_title": row.get("title_top_title", ""),
                 "identity_signal_reason": "jacket_ambiguous_title_image_resolved",
+            }
+        if row.get("artist_rerank_status") == "resolved_candidate":
+            return {
+                "identity_signal_status": "composite_resolved_candidate",
+                "identity_signal_source": "artist_image_feature",
+                "identity_signal_song_id": row.get("artist_top_song_id", ""),
+                "identity_signal_chart_id": row.get("artist_top_chart_id", ""),
+                "identity_signal_title": row.get("artist_top_title", ""),
+                "identity_signal_reason": "jacket_ambiguous_artist_image_resolved",
             }
         return identity_signal_empty_fields(
             "unresolved_ambiguous",
@@ -947,23 +1161,29 @@ def title_ocr_rerank_fields_for_ambiguous_candidates(
     }
 
 
-def title_rerank_fields_for_ambiguous_candidates(
+def _text_image_feature_rerank_fields_for_ambiguous_candidates(
     *,
-    result_title_feature: TitleImageFeature | None,
-    title_feature_master_entries: Iterable[TitleFeatureMasterEntry],
+    field_prefix: str,
+    result_text_feature: TitleImageFeature | None,
+    text_feature_master_entries: Iterable[TitleFeatureMasterEntry],
     candidates: Iterable[MasterChartCandidate],
     ambiguous_song_ids: set[str],
     target_organized_file: str,
     ambiguity_delta: float = DEFAULT_TITLE_AMBIGUITY_DELTA,
 ) -> dict[str, str]:
-    if result_title_feature is None:
-        return empty_title_rerank_fields(
+    empty_fields = (
+        empty_artist_rerank_fields
+        if field_prefix == "artist"
+        else empty_title_rerank_fields
+    )
+    if result_text_feature is None:
+        return empty_fields(
             status="missing_feature",
-            reason="result_title_feature_unavailable",
+            reason=f"result_{field_prefix}_feature_unavailable",
         )
 
     entries_by_song_id: dict[str, list[TitleFeatureMasterEntry]] = {}
-    for entry in title_feature_master_entries:
+    for entry in text_feature_master_entries:
         if entry.organized_file == target_organized_file:
             continue
         if entry.song_id in ambiguous_song_ids:
@@ -976,16 +1196,16 @@ def title_rerank_fields_for_ambiguous_candidates(
         for entry in entries_by_song_id.get(candidate.song_id, []):
             scored_candidates.append(
                 (
-                    title_image_feature_distance(result_title_feature, entry.feature),
+                    title_image_feature_distance(result_text_feature, entry.feature),
                     candidate,
                     entry,
                 )
             )
 
     if not scored_candidates:
-        return empty_title_rerank_fields(
+        return empty_fields(
             status="missing_feature",
-            reason="no_candidate_title_features",
+            reason=f"no_candidate_{field_prefix}_features",
         )
 
     scored_candidates.sort(
@@ -999,19 +1219,59 @@ def title_rerank_fields_for_ambiguous_candidates(
         and item[1].song_id != top_candidate.song_id
     ]
     status = "ambiguous_candidate" if near_top else "resolved_candidate"
-    reason = "near_top_title_distance" if near_top else ""
+    reason = f"near_top_{field_prefix}_distance" if near_top else ""
     return {
-        "title_candidate_feature_count": str(len(scored_candidates)),
-        "title_top_song_id": top_candidate.song_id,
-        "title_top_chart_id": top_candidate.chart_id,
-        "title_top_title": top_candidate.title,
-        "title_top_score": f"{max(0.0, 1.0 - top_distance):.4f}",
-        "title_top_distance": f"{top_distance:.4f}",
-        "title_top_feature_source": top_feature_entry.organized_file,
-        "title_top_candidates": format_title_top_candidates(scored_candidates),
-        "title_rerank_status": status,
-        "title_rerank_reason": reason,
+        f"{field_prefix}_candidate_feature_count": str(len(scored_candidates)),
+        f"{field_prefix}_top_song_id": top_candidate.song_id,
+        f"{field_prefix}_top_chart_id": top_candidate.chart_id,
+        f"{field_prefix}_top_title": top_candidate.title,
+        f"{field_prefix}_top_score": f"{max(0.0, 1.0 - top_distance):.4f}",
+        f"{field_prefix}_top_distance": f"{top_distance:.4f}",
+        f"{field_prefix}_top_feature_source": top_feature_entry.organized_file,
+        f"{field_prefix}_top_candidates": format_title_top_candidates(scored_candidates),
+        f"{field_prefix}_rerank_status": status,
+        f"{field_prefix}_rerank_reason": reason,
     }
+
+
+def title_rerank_fields_for_ambiguous_candidates(
+    *,
+    result_title_feature: TitleImageFeature | None,
+    title_feature_master_entries: Iterable[TitleFeatureMasterEntry],
+    candidates: Iterable[MasterChartCandidate],
+    ambiguous_song_ids: set[str],
+    target_organized_file: str,
+    ambiguity_delta: float = DEFAULT_TITLE_AMBIGUITY_DELTA,
+) -> dict[str, str]:
+    return _text_image_feature_rerank_fields_for_ambiguous_candidates(
+        field_prefix="title",
+        result_text_feature=result_title_feature,
+        text_feature_master_entries=title_feature_master_entries,
+        candidates=candidates,
+        ambiguous_song_ids=ambiguous_song_ids,
+        target_organized_file=target_organized_file,
+        ambiguity_delta=ambiguity_delta,
+    )
+
+
+def artist_rerank_fields_for_ambiguous_candidates(
+    *,
+    result_artist_feature: TitleImageFeature | None,
+    artist_feature_master_entries: Iterable[TitleFeatureMasterEntry],
+    candidates: Iterable[MasterChartCandidate],
+    ambiguous_song_ids: set[str],
+    target_organized_file: str,
+    ambiguity_delta: float = DEFAULT_TITLE_AMBIGUITY_DELTA,
+) -> dict[str, str]:
+    return _text_image_feature_rerank_fields_for_ambiguous_candidates(
+        field_prefix="artist",
+        result_text_feature=result_artist_feature,
+        text_feature_master_entries=artist_feature_master_entries,
+        candidates=candidates,
+        ambiguous_song_ids=ambiguous_song_ids,
+        target_organized_file=target_organized_file,
+        ambiguity_delta=ambiguity_delta,
+    )
 
 
 def title_linehash_distance(
@@ -1298,6 +1558,8 @@ def match_jacket_save_candidate_row(
     feature_master_entries: Iterable[JacketFeatureMasterEntry],
     result_title_feature: TitleImageFeature | None = None,
     title_feature_master_entries: Iterable[TitleFeatureMasterEntry] = (),
+    result_artist_feature: TitleImageFeature | None = None,
+    artist_feature_master_entries: Iterable[TitleFeatureMasterEntry] = (),
     title_ocr_observation: TitleOcrObservation | None = None,
     *,
     distance_threshold: float = DEFAULT_JACKET_DISTANCE_THRESHOLD,
@@ -1340,6 +1602,7 @@ def match_jacket_save_candidate_row(
         "expected_jacket_rank": "",
         "jacket_top_margin": "",
         **empty_title_rerank_fields(),
+        **empty_artist_rerank_fields(),
         "jacket_match_status": "insufficient_input",
         "failure_reason": "",
     }
@@ -1475,10 +1738,25 @@ def match_jacket_save_candidate_row(
             ambiguous_song_ids=ambiguous_song_ids,
             target_organized_file=row.get("organized_file", ""),
         )
+        artist_rerank_fields = (
+            empty_artist_rerank_fields(
+                status="not_run",
+                reason="title_image_feature_resolved",
+            )
+            if title_rerank_fields.get("title_rerank_status") == "resolved_candidate"
+            else artist_rerank_fields_for_ambiguous_candidates(
+                result_artist_feature=result_artist_feature,
+                artist_feature_master_entries=artist_feature_master_entries,
+                candidates=candidates,
+                ambiguous_song_ids=ambiguous_song_ids,
+                target_organized_file=row.get("organized_file", ""),
+            )
+        )
         return with_identity_signal_fields(
             {
                 **result,
                 **title_rerank_fields,
+                **artist_rerank_fields,
                 **title_ocr_rerank_fields,
                 **title_linehash_rerank_fields,
                 "jacket_match_status": "ambiguous",
@@ -1510,6 +1788,8 @@ def match_jacket_save_candidate_rows(
     feature_master_entries: Iterable[JacketFeatureMasterEntry],
     result_title_features_by_file: dict[str, TitleImageFeature] | None = None,
     title_feature_master_entries: Iterable[TitleFeatureMasterEntry] = (),
+    result_artist_features_by_file: dict[str, TitleImageFeature] | None = None,
+    artist_feature_master_entries: Iterable[TitleFeatureMasterEntry] = (),
     title_ocr_observations_by_file: dict[str, TitleOcrObservation] | None = None,
     *,
     distance_threshold: float = DEFAULT_JACKET_DISTANCE_THRESHOLD,
@@ -1517,7 +1797,9 @@ def match_jacket_save_candidate_rows(
 ) -> list[dict[str, str]]:
     feature_master_entry_list = list(feature_master_entries)
     title_feature_master_entry_list = list(title_feature_master_entries)
+    artist_feature_master_entry_list = list(artist_feature_master_entries)
     result_title_features = result_title_features_by_file or {}
+    result_artist_features = result_artist_features_by_file or {}
     title_ocr_observations = title_ocr_observations_by_file or {}
     return [
         match_jacket_save_candidate_row(
@@ -1527,6 +1809,8 @@ def match_jacket_save_candidate_rows(
             feature_master_entry_list,
             result_title_features.get(row.get("organized_file", "")),
             title_feature_master_entry_list,
+            result_artist_features.get(row.get("organized_file", "")),
+            artist_feature_master_entry_list,
             title_ocr_observations.get(row.get("organized_file", "")),
             distance_threshold=distance_threshold,
             ambiguity_delta=ambiguity_delta,
@@ -1828,6 +2112,7 @@ def summarize_jacket_match_rows(rows: Iterable[dict[str, str]]) -> dict[str, Any
     expected_song_resolution_status_counts: dict[str, int] = {}
     expected_song_resolution_reason_counts: dict[str, int] = {}
     expected_song_grand_prix_play_available_counts: dict[str, int] = {}
+    artist_rerank_status_counts: dict[str, int] = {}
     for row in row_list:
         status = row["jacket_match_status"]
         status_counts[status] = status_counts.get(status, 0) + 1
@@ -1899,6 +2184,11 @@ def summarize_jacket_match_rows(rows: Iterable[dict[str, str]]) -> dict[str, Any
                 title_linehash_distance_status_counts.get(title_linehash_distance_status, 0)
                 + 1
             )
+        artist_status = row.get("artist_rerank_status", "")
+        if artist_status:
+            artist_rerank_status_counts[artist_status] = (
+                artist_rerank_status_counts.get(artist_status, 0) + 1
+            )
         failure_reason = row["failure_reason"]
         if failure_reason:
             failure_reason_counts[failure_reason] = (
@@ -1912,6 +2202,7 @@ def summarize_jacket_match_rows(rows: Iterable[dict[str, str]]) -> dict[str, Any
         "status_counts": dict(sorted(status_counts.items())),
         "failure_reason_counts": dict(sorted(failure_reason_counts.items())),
         "title_rerank_status_counts": dict(sorted(title_rerank_status_counts.items())),
+        "artist_rerank_status_counts": dict(sorted(artist_rerank_status_counts.items())),
         "title_ocr_rerank_status_counts": dict(
             sorted(title_ocr_rerank_status_counts.items())
         ),
@@ -1946,9 +2237,10 @@ def summarize_jacket_match_rows(rows: Iterable[dict[str, str]]) -> dict[str, Any
         "title_linehash_ambiguity_delta": DEFAULT_TITLE_LINEHASH_AMBIGUITY_DELTA,
         "reading_notes": [
             "matched means a unique PoC top jacket feature candidate, not DB-save readiness.",
-            "missing_feature means the local feature master lacks a usable reference.",
+            "missing_feature means the feature master/catalog lacks a usable reference.",
             "chart fields still only narrow candidates; jacket matching is an observation signal.",
             "title_rerank_status is a diagnostic for jacket ambiguous candidates only.",
+            "artist_rerank_status runs only after title image feature rerank remains unresolved.",
             "title_ocr_rerank_status only observes TYPE suffixes inside jacket ambiguous "
             "candidates.",
             "title_linehash dict/exact/distance statuses only rerank inside jacket "
@@ -2163,6 +2455,122 @@ def write_jacket_feature_label_template(
 
 def write_jacket_feature_master_summary(path: Path, summary: dict[str, Any]) -> None:
     path.write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def summarize_m7_result_text_feature_master_rows(
+    rows: Iterable[dict[str, Any]],
+) -> dict[str, Any]:
+    row_list = list(rows)
+    status_counts: dict[str, int] = {}
+    failure_reason_counts: dict[str, int] = {}
+    title_feature_count = 0
+    artist_feature_count = 0
+    for row in row_list:
+        status = str(row.get("feature_status", ""))
+        status_counts[status] = status_counts.get(status, 0) + 1
+        failure_reason = str(row.get("failure_reason", ""))
+        if failure_reason:
+            failure_reason_counts[failure_reason] = (
+                failure_reason_counts.get(failure_reason, 0) + 1
+            )
+        if row.get("title_feature") is not None:
+            title_feature_count += 1
+        if row.get("artist_feature") is not None:
+            artist_feature_count += 1
+    return {
+        "schema_version": RESULT_TEXT_FEATURE_SCHEMA_VERSION,
+        "scope": "M7 result title/artist image feature master",
+        "source": "result_candidate=true frames",
+        "target_count": len(row_list),
+        "accepted_count": status_counts.get("accepted", 0),
+        "title_feature_count": title_feature_count,
+        "artist_feature_count": artist_feature_count,
+        "status_counts": dict(sorted(status_counts.items())),
+        "failure_reason_counts": dict(sorted(failure_reason_counts.items())),
+        "reading_notes": [
+            "title_feature and artist_feature are OCR-free image observations.",
+            "feature_hash is an exact payload identity; payload is required for "
+            "distance comparison.",
+            "source labels and canonical song IDs are reference metadata, not formal save values.",
+            "JSON/CSV outputs are diagnostics; accepted payloads are stored in the M5b "
+            "jacket catalog.",
+        ],
+    }
+
+
+def write_m7_result_text_feature_master_outputs(
+    output_dir: Path,
+    rows: Iterable[dict[str, Any]],
+) -> dict[str, Any]:
+    row_list = list(rows)
+    summary = summarize_m7_result_text_feature_master_rows(row_list)
+    json_payload = {
+        "schema_version": RESULT_TEXT_FEATURE_SCHEMA_VERSION,
+        "feature_version": RESULT_TEXT_IMAGE_FEATURE_VERSION,
+        "roi_version": RESULT_TEXT_ROI_VERSION,
+        "entries": row_list,
+    }
+    (output_dir / "m7_result_text_feature_master.json").write_text(
+        json.dumps(json_payload, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    csv_fieldnames = [
+        "organized_file",
+        "source_song_title",
+        "source_artist",
+        "song_id",
+        "title",
+        "artist",
+        "feature_status",
+        "failure_reason",
+        "title_feature_version",
+        "title_feature_hash",
+        "artist_feature_version",
+        "artist_feature_hash",
+    ]
+    csv_rows: list[dict[str, str]] = []
+    for row in row_list:
+        title_feature = row.get("title_feature")
+        artist_feature = row.get("artist_feature")
+        csv_rows.append(
+            {
+                "organized_file": str(row.get("organized_file", "")),
+                "source_song_title": str(row.get("source_song_title", "")),
+                "source_artist": str(row.get("source_artist", "")),
+                "song_id": str(row.get("song_id", "")),
+                "title": str(row.get("title", "")),
+                "artist": str(row.get("artist", "")),
+                "feature_status": str(row.get("feature_status", "")),
+                "failure_reason": str(row.get("failure_reason", "")),
+                "title_feature_version": (
+                    "" if not isinstance(title_feature, dict)
+                    else str(title_feature.get("feature_version", ""))
+                ),
+                "title_feature_hash": (
+                    "" if not isinstance(title_feature, dict)
+                    else str(title_feature.get("feature_hash", ""))
+                ),
+                "artist_feature_version": (
+                    "" if not isinstance(artist_feature, dict)
+                    else str(artist_feature.get("feature_version", ""))
+                ),
+                "artist_feature_hash": (
+                    "" if not isinstance(artist_feature, dict)
+                    else str(artist_feature.get("feature_hash", ""))
+                ),
+            }
+        )
+    with (output_dir / "m7_result_text_feature_master.csv").open(
+        "w", encoding="utf-8", newline=""
+    ) as file:
+        writer = csv.DictWriter(file, fieldnames=csv_fieldnames)
+        writer.writeheader()
+        writer.writerows(csv_rows)
+    (output_dir / "m7_result_text_feature_master_summary.json").write_text(
+        json.dumps(summary, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    return summary
 
 
 def write_jacket_match_csv(path: Path, rows: Iterable[dict[str, str]]) -> None:
@@ -2618,6 +3026,8 @@ def write_jacket_match_report(
         f"- jacket_match_status: `{json.dumps(summary['status_counts'], sort_keys=True)}`",
         f"- title_rerank_status: "
         f"`{json.dumps(summary['title_rerank_status_counts'], sort_keys=True)}`",
+        f"- artist_rerank_status: "
+        f"`{json.dumps(summary['artist_rerank_status_counts'], sort_keys=True)}`",
         f"- title_ocr_rerank_status: "
         f"`{json.dumps(summary['title_ocr_rerank_status_counts'], sort_keys=True)}`",
         f"- title_linehash_dict_status: "

@@ -2,9 +2,95 @@
 
 DDR GP scorelog の設計、PoC、テストで使う主要用語を定義する。似た名前の概念が多いため、実装やレビューではこの定義を基準にする。
 
+この文書では、工程コード、入力field、画像feature、候補材料、正式保存値を分けて読む。工程コードは作業のまとまりを示すだけで、DB schema version、認識精度、保存可否を表さない。`M5jacket`、`M7title`、単独の `OCR` は曖昧な略称なので、新しいIssue・docs・Skillでは使わない。
+
+## 読み方の基本
+
+- `M5`、`M7` などはmilestone、`M5b` / `M5c` はその下位phase、`M5c-4` のような表記はphase内の作業単位を示す。
+- `song_title`、`artist`、`jacket`、`score_digits` などは入力ROIまたは観測fieldの名前であり、そこから曲ID・譜面ID・正式保存値が確定したことを意味しない。
+- `candidate`、`observation`、`feature`、`expected_value`、`match`、`recognized_digits` は、明示的に採用済みの正式値と区別する。
+- status名やCSV列名は英語のまま契約語彙として扱う。似た日本語へ勝手に統合しない。
+
+## 工程コード
+
+| 呼び方 | 正式な意味 | 主な対象・成果物 | この工程だけでは確定しないもの |
+| --- | --- | --- | --- |
+| `M0 input boundary` | frameを再現可能に受け取る入口 | `FrameInput`、manifest、timestamped、dry-run capture | result確定、OCR成功、DB保存 |
+| `M1 event boundary` | result形状・継続・重複・遷移を分ける工程 | `result_candidate`、`confirmed_result`、`duplicate`、`rejected_transition` | 曲・譜面ID、数値、正式play |
+| `M2 score OCR` | 数字ROIのTesseract OCRとprofile/expected coverageを評価する工程 | `score_ocr.*`、OCR profile、`evaluated` | 正式なスコア・判定数 |
+| `M3 result field observation` | result画面の曲名・artist・譜面条件を後工程へ渡せる観測にする工程 | `song_title`、`artist`、`play_style`、`difficulty`、`level`、M3レポート | 曲名照合、曲ID・譜面ID、正式保存値 |
+| `M4 master DB` | 楽曲・譜面のcanonical情報と照合対象を生成する工程 | `songs`、`charts`、`song_aliases`、`ddrgp-master.sqlite` | 入力画像の曲同定、個人スコア保存 |
+| `M5 master match` | M3観測値をM4へ照合し、曲・譜面候補と失敗理由を観測する工程 | title match、jacket match、`identity_signal_*` | 確定ID、保存OK、本番採用済み照合 |
+| `M5b jacket reference catalog` | jacket参照featureをcurrent masterと一緒に安全に保持・読む基盤 | `databases/jacket-catalog.sqlite`、coverage、runtime loader | 正式個人スコアDB、画像原本の代替 |
+| `M5c developer-only collector` | M5b catalogへ入れるjacket観測を収集・reviewする開発者専用工程 | collector、observation session、manual review、title/artist OCR評価 | 公開app、正式保存workflow、自動確定 |
+| `M6 payload/evidence boundary` | 保存候補payloadと解析根拠・sourceを分離する工程 | save payload、analysis/source、候補材料 | 候補の正式値昇格 |
+| `M7 save decision boundary` | 必須fieldの検証、保存前readiness、正式値変換の境界 | M7 readiness、save decision preview、formal evidence | previewだけでのDB保存 |
+| `M7a digit recognition` | 数字ROIをテンプレート/bitmap比較で読むM7内の非OCR工程 | `recognized_digits`、digit review、Tesseract comparison | 正式なスコア・判定数、保存OK |
+| `M7 result-text feature` | resultのtitle/artist ROIからOCRなしの画像featureを作る補助工程 | `jacket-catalog.sqlite` の `result_text_features`、`m7_result_text_feature_master.*` 診断出力 | OCR文字列、曲ID確定、正式保存値 |
+| `M8 formal personal score DB` | version 1正式DB、duplicate、transaction、明示単発保存を扱う工程 | `ddrgp-scores.sqlite`、formal save input | 候補材料の自動昇格、M8 preview DBの受入れ |
+| `M9 application/runtime` | viewer、Windows capture、capture-save、監視UI、task trayを接続する工程 | WPF app、capture-save workflow | 新しい解析方式やDB schema |
+| `M10 initial release` | 単一ユーザー向けの配布・依存固定・backup/restoreを固める工程 | installer/配布手順、lock file、運用docs | cloud運用、複数ユーザー、enterprise機能 |
+
+`M5c` の下位phaseは次の意味で読む。
+
+- `M5c-1`: current-only read-only review projection。
+- `M5c-2`: current catalog manual review。
+- `M5c-3a`: window capture lifecycle。preview/frameはmemory-only。
+- `M5c-3b`: jacket observation session。stable observationとcheckpointを扱う。
+- `M5c-3c`: current unresolved observation ingest。
+- `M5c-4`: collectorが明示採用したartifactのtitle/artist OCR方式評価。
+- `M5c-5`: unresolved candidate projection。候補表示でcatalog writerを呼ばない。
+- `M5c-6`: title/artist OCR failure diagnostics。profile比較と失敗理由の診断。
+
+## 曖昧になりやすい工程名
+
+| 曖昧な呼び方 | 用語集で使う呼び方 | 読む範囲 |
+| --- | --- | --- |
+| `M5jacket` / `M5 jacket` | `M5 jacket match` | result `jacket` ROIとsong-select由来のjacket referenceを、chart候補集合内で比較するPoC。`M5b` catalogや`M5c` collectorとは別。 |
+| `M5title` / `M5 title` | `M5 title match`、または `title OCR suffix` / `title line-hash` / `title image feature` | どの補助信号かを必ず明記する。M5 title matchはM3のresult `song_title`をM4へ照合する入口で、各補助信号は候補集合外から曲を拾わない。 |
+| `M7title` / `M7 title` / `M7 jacket validation result title/artist feature master` | `M7 result-text feature` または `M7 result title/artist image feature` | result `song_title` / `artist` ROIから作るOCR-free画像feature。M3 result OCR、M5 title補助、M5c song-select OCR、M5b catalogのtitle hashとは別。照合用payloadはM5b catalogへ保存する。 |
+| `jacket catalog` | `M5b jacket reference catalog` | `databases/jacket-catalog.sqlite` のcurrent reference、`result_text_features`、review状態。`data/`の診断出力や正式個人スコアDBではない。 |
+| `title line hash` | `M5b/M5c catalog: title_line_hash` または `M7 result feature: title_linehash_rows` | 前者はsong-select `INFORMATION`欄のcatalog identity、後者はresult title feature payloadの行別値。同じ名前のfeatureとして流用しない。 |
+
+`--m5-jacket-match` は現在の互換CLI入口であり、実行時にM5 jacket matchの出力とM7 result-text featureの診断出力を同時に生成する場合がある。`--m7-result-text-feature-catalog` を明示した場合だけ、acceptedなtitle/artist payloadをM5b catalogへ冪等保存する。CLI option名だけを見て、M7 result-text featureをM5 jacket featureや正式保存値と読み替えない。
+
+## OCR、数字認識、画像featureの区別
+
+`OCR` は画像を文字列へ変換する一般名であり、工程名ではない。対象を付けて次のように読む。
+
+| 正式な呼び方 | 対象 | 方式・入口 | 出力の意味 |
+| --- | --- | --- | --- |
+| `M2 score OCR` | resultのスコア・判定数など数字ROI | Tesseract OCR、profile評価、互換 `score_ocr` 出力 | raw/normalized数字候補とexpectedとの比較。正式数値ではない。 |
+| `M3 song/artist OCR` | resultの `song_title` / `artist` ROI | `--m3-song-artist-ocr`、OCR入口診断 | `ocr_raw`、`pre_normalized_text`、status、failure reason。曲名照合前の入口観測。 |
+| `M5 title OCR suffix` | M5でjacket候補が曖昧なときのresult title文字列 | M3 OCR結果から `TYPE1/2/3` 等を候補集合内で再順位付け | `title_ocr_rerank_status`。候補観測であり、M5 `matched`や確定IDではない。 |
+| `M5c title/artist OCR` | song-select observationのtitle/artist ROI | local Tesseract、`M5c-4` / `M5c-6` profile評価 | catalog/manual review用の候補評価。公開appや正式保存へ自動昇格しない。 |
+| `M7a digit recognition` | resultの可変桁数字ROI | template/bitmap比較。Tesseractとは別経路。 | `recognized_digits`、segment/status、expected/match。数字候補であり正式数値ではない。 |
+| `M7 result-text feature` | resultのtitle/artist ROI | OCR-freeのluma/edge/dHash/line-hash等の画像feature | distance比較に再利用するpayloadとhash。文字列や正式IDではない。 |
+
+`M3 song/artist OCR` と `M5c title/artist OCR` は、同じtitle/artistという言葉を含むが入力画面が異なる。前者はresult、後者はsong-select observationである。`M7 result-text feature` は文字列を読む処理ではないため、`M7title` をOCRの別名として扱わない。
+
+## feature、catalog、candidateの区別
+
+- `jacket ROI`: 画面から切り出したジャケット画像領域。画像原本や曲IDではない。
+- `jacket feature`: jacket ROIを縮小画像、色、hash、距離比較用ベクトルなどへ変換した観測値。
+- `feature hash`: feature payloadの同一性を示すhash。近似距離を計算するにはpayloadも必要で、hashだけで「似ている」とは判定しない。
+- `feature master`: featureと参照ラベルをCSV/JSONへ並べた診断出力。M5の一時出力とM7 result-text featureのJSON/CSVは診断用で、照合再利用用のM7 payloadはM5b catalogへ保存する。
+- `reference catalog`: current master、feature、review状態、historyをstrictに管理する永続的なローカルSQLite。現行ではM5b jacket reference catalogを指す。
+- `candidate observation`: M5 `identity_signal_*`、M7a `recognized_digits`、M7 previewなど、後続レビューへ渡す材料。候補が一意でも正式値ではない。
+- `formal value`: 採用済みsource、field別根拠、必要なvalidationを満たし、M8正式save inputへ明示的に配置された値。
+
+## OCR結果の読み方
+
+- `ocr_raw` はOCR engineの生文字列。空でないことは正解や照合成功を意味しない。
+- `pre_normalized_text` は改行と連続空白などを入口で整えた文字列。M5の曲名正規化、M4照合、保存値確定とは別段階。
+- `normalized` は出力ごとに定義された比較用文字列。どの正規化を使ったかは各設計docの契約を優先する。
+- `expected_value` はローカル評価用の期待値または診断ラベル。`match=true` は期待値との一致であり、正式値採用を意味しない。
+- `confidence` はそのfield/方式の信頼度指標。閾値以上でもcandidateをformalへ自動昇格しない限り保存可否は決まらない。
+- `missing_ocr`、`empty_ocr`、`ocr_failed`、`engine_unavailable`、`no_expected_value` は、OCR入口・engine・期待値不足を分ける語彙であり、マスタ照合失敗と混同しない。
+
 ## FrameInput
 
-分類、イベント確定、OCRへ渡す1フレーム分の入力契約。
+分類、イベント確定、OCR・数字認識・画像featureへ渡す1フレーム分の入力契約。
 
 構成:
 
@@ -123,7 +209,7 @@ metadata mode ではフレーム数ベース。timestamped、manifest、dry-run�
 
 ## confirmed-events
 
-保存直前OCR相当の評価対象。
+保存直前のOCR・数字認識・field抽出・画像feature評価対象。呼び名にOCRが残っていても、M7a digit recognitionやM7 result-text featureを除外する意味ではない。
 
 対象条件:
 
@@ -159,9 +245,9 @@ duplicate=false
 - 保存対象外
 - confirmed-events OCR対象外
 
-## expected columns
+## expected value / expected columns
 
-OCR評価に使う期待値列。
+OCR、field抽出、M5/M7の評価に使う期待値または診断ラベル列。期待値との `match` はローカル評価結果であり、M4 canonical、M5候補、M7 formal value、M8正式DBの値を自動的に決めない。
 
 例:
 
@@ -174,7 +260,7 @@ OCR評価に使う期待値列。
 - `ex_score`
 - `expected_ex_score`
 
-manifest や timestamped 出力で保持する。
+manifest や timestamped 出力で保持する。metadata由来の期待値は評価用の参照であり、実画面から採用済みの正式値とは分けて読む。
 
 M3入口では、数字OCRとは別に曲・譜面情報ROIの期待値列も扱う。
 
@@ -187,27 +273,42 @@ M3入口では、数字OCRとは別に曲・譜面情報ROIの期待値列も扱
 - `level` / `expected_level`
 - `rank` / `expected_rank`
 
-これらは `m3_metadata_expected_coverage.md` で confirmed-events 対象の列充足を見るための値であり、数字OCRの `ocr_expected_coverage.md` には含めない。
+これらは `m3_metadata_expected_coverage.md` で confirmed-events 対象の列充足を見るための値であり、数字OCRの `ocr_expected_coverage.md` には含めない。`song_title` / `artist` はM3 result field観測、`play_style` / `difficulty` / `level` はM3 chart-field観測として読む。M5の照合入力になっても、曲ID・譜面IDの確定値にはならない。
 
 ## evaluated
 
-対象ROIのすべてのOCR試行に期待値がある状態。
+対象ROIまたはfieldのすべての評価試行に期待値がある状態。`evaluated` は評価対象が揃っているという意味で、全件正解、方式採用、正式保存を意味しない。
 
 ## partially_evaluated
 
-対象ROIの一部のOCR試行に期待値があり、一部には期待値がない状態。採用判断は暫定扱いにする。
+対象ROIまたはfieldの一部の評価試行に期待値があり、一部には期待値がない状態。coverageや採用判断は暫定扱いにする。
 
 ## no_expected_values
 
-対象ROIのOCR試行に期待値がない状態。OCR成功扱いにしない。
+対象ROIまたはfieldの評価試行に期待値がない状態。OCR・抽出の成功扱いにせず、期待値不足として別に読む。
 
-## 保存境界
+## confirmed-events boundary
 
-DB保存へ進めてよい最小条件。
+M2以降のOCR・field抽出・M5/M7候補観測へ進める、保存直前イベントの最小対象条件。
 
 ```text
 confirmed_result=true
 duplicate=false
 ```
 
-M0/M1ではDB保存自体は実装しないが、この境界を崩さない。
+M0/M1で確定するのはこの解析対象境界であり、正式DBへの保存成功ではない。duplicate、rejected transition、未確定候補、non-resultをこの境界へ混ぜない。
+
+## M7 save readiness / decision preview
+
+M3、M5、M7aなどの候補材料を、M8正式保存の前に1件単位で束ねて不足やレビュー対象を示す状態。
+
+- `ready_for_save_review` はPoC材料がレビュー入口まで揃った状態。
+- `preview_save_candidate` はM8へ渡す候補材料が揃ったpreview状態。
+- `needs_identity_review`、`needs_digit_review`、`blocked_readiness`、`missing_required_material` はレビューや材料不足を示す。
+- どのstatusも、保存OK、DB保存成功、曲ID/譜面ID確定、数字の正式値確定を意味しない。
+
+## formal save boundary
+
+M8の明示的な正式保存入口。confirmed-eventsだけを対象にし、fieldごとの採用済みsource、formal play値、正式duplicate key、必要な時刻・master情報・rank/clear typeなどをstrictに検証した `PersonalScoreDbSaveInput` だけを受け取る。M5 `identity_signal_*`、M7a `recognized_digits`、expected値、raw OCR、M8 preview rowは、そのまま正式値へ昇格しない。
+
+正式DB保存の詳細は `docs/design/10_personal_score_db_schema.md` と `docs/design/05_storage_io_spec.md` を正本とする。

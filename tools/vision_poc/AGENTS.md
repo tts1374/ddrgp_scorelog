@@ -26,6 +26,7 @@
 - `evaluated` は対象ROIの全OCR試行に期待値がある状態とする。`reference_profiles` は目視参考であり、採用根拠に昇格させない。
 - profile採用は `score_ocr_summary.json`、`score_ocr_profiles_summary.json`、`ocr_expected_coverage.md`、`ocr_roi_report.md` を合わせて判断する。
 - legacy `score_ocr.csv` はdefault profileの互換出力として維持する。M2では局所前処理とprofile評価を優先し、OCR方式刷新やROI座標定義の大変更へ進まない。
+- OCR、画像feature、jacket catalog、M5/M7の略称は `docs/design/00_glossary.md` の対象別呼称に従う。特にM3のresult song/artist OCR、M5のtitle/jacket候補観測、M5cのsong-select title/artist OCR、M7aの数字認識、M7 result-text featureを同じ処理や正式値として扱わない。
 
 ## Outputs And Documentation
 

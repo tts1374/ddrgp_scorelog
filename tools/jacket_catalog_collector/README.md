@@ -108,7 +108,7 @@ python -m tools.vision_poc.jacket_catalog_review_projection `
   --artifact-root data\jacket_catalog_collector
 ```
 
-top-level必須fieldは `projection_schema_version`、`master`、`catalog`、`coverage`、`songs`、`review_references` です。catalog objectはidentity、schema version 1、created-at、current feature extractorを持ち、旧互換専用のmigration/capability fieldは持ちません。song rowはcanonical title/artistに加えて必須のtitle alias一覧を持ち、未レビュー下書きのtruth song検索へ利用します。review rowはcurrent status/song、notes、登録経路、実行時刻、artifact/checkpoint照合済みのnullable `source_image_path` とversion付き `candidate_evaluation` を持ちます。`candidate_evaluation` はpersisted status/revision、observation ID、jacket preview path、OCR title/artistとconfidence、候補song/reason、failure分類を持ちます。C# loaderは全object/arrayの未知field、必須field、型、coverage histogram、review status、候補/history、candidate分類、revision連続性、schema、分母整合をstrictに検査します。coverage statusは分母・histogramと整合する限り未知値も保持し、画面で `不明: <内部値>` と表示します。unsupported version、空/truncated stdout、Python非0終了は部分表示しません。`reason`、`note`、`candidate.reason`、`observation_status` はopaque診断文字列として保持します。
+top-level必須fieldは `projection_schema_version`、`master`、`catalog`、`coverage`、`songs`、`review_references` です。catalog objectはidentity、schema version 1、created-at、current feature extractorを持ち、旧互換専用のmigration/capability fieldは持ちません。current v1 catalogには、M7 result title/artist画像特徴量を照合用に保持する `result_text_features` tableも含まれますが、collectorのprojection/UIはこのtableを直接解釈・更新しません。song rowはcanonical title/artistに加えて必須のtitle alias一覧を持ち、未レビュー下書きのtruth song検索へ利用します。review rowはcurrent status/song、notes、登録経路、実行時刻、artifact/checkpoint照合済みのnullable `source_image_path` とversion付き `candidate_evaluation` を持ちます。`candidate_evaluation` はpersisted status/revision、observation ID、jacket preview path、OCR title/artistとconfidence、候補song/reason、failure分類を持ちます。C# loaderは全object/arrayの未知field、必須field、型、coverage histogram、review status、候補/history、candidate分類、revision連続性、schema、分母整合をstrictに検査します。coverage statusは分母・histogramと整合する限り未知値も保持し、画面で `不明: <内部値>` と表示します。unsupported version、空/truncated stdout、Python非0終了は部分表示しません。`reason`、`note`、`candidate.reason`、`observation_status` はopaque診断文字列として保持します。
 
 表示とfilterは、GP対象songを `referenced` / `needs_review` / `uncollected` / `unresolved` の同じ分母・status histogramで数えます。保存済みの`auto_confirmed` / `manual_confirmed`は、後発のmaster・extractor差分だけでは通常画面上の`referenced`から`needs_review`へ戻しません。orphanと候補なし未割当観測は通常の曲集計とは別に扱い、保存済みstatus、revision、historyは変更しません。生成中にmaster/catalogのfile identity、size、mtime、hashが変わった場合はsnapshot混在を拒否します。ジャケット照合のcurrent master identity検証とruntime feature loaderの利用可否は、この表示制御とは別に厳格に行います。
 
@@ -183,7 +183,7 @@ python -m tools.vision_poc.jacket_catalog_review_projection `
   --report-output-dir data\jacket_catalog_collector\unresolved-candidate-evaluation
 ```
 
-旧catalogのv1→v2/v2→v3 migration UI/serviceはありません。current schemaとexact一致しない既存DBは副作用なしで拒否し、既存local DB、artifact、checkpoint、source/crop画像を削除・上書き・repairしません。
+collectorに旧catalogのmigration UI/serviceや自動fallbackはありません。current schemaとexact一致しない既存DBは副作用なしで拒否します。初回リリース前の旧v1からcurrent v1への移行が必要な場合は、collector外の`jacket_reference_catalog migrate-v1`を明示実行し、未作成のoutputへコピーしてください。collectorは既存local DB、artifact、checkpoint、source/crop画像を削除・上書き・repairしません。
 
 ## Window capture lifecycle
 

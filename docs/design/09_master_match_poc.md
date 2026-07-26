@@ -138,7 +138,7 @@ result側のジャケットROIとタイトル画像ROIの特徴量は、metadata
 - `unresolved_ambiguous`: jacket曖昧候補を補助観測でも1件へ寄せられない。
 - `unresolved_insufficient_input` / `unresolved_missing_feature` / `unresolved_not_found`: M5入力、特徴量参照、候補距離の不足により候補観測を出せない。
 
-`identity_signal_source` は候補観測の出所を示す。優先順は `jacket_feature`、`title_linehash_dict`、`title_ocr_suffix`、`title_image_feature` とする。`title_linehash_exact_status` と `title_linehash_distance_status` は参考列に留め、`identity_signal_source` には使わない。
+`identity_signal_source` は候補観測の出所を示す。既存のline-hash/OCR補助を含む優先順は `jacket_feature`、`title_linehash_dict`、`title_ocr_suffix`、`title_image_feature`、`artist_image_feature` とする。M7 result-text featureの新しい補助信号内ではtitleを先に評価し、titleで解消しない場合だけartistを同じjacket候補集合へ適用する。`title_linehash_exact_status` と `title_linehash_distance_status` は参考列に留め、`identity_signal_source` には使わない。
 
 M7保存判定前レビューへ渡すM5側材料としては、`identity_signal_status=jacket_resolved_candidate` / `composite_resolved_candidate` だけをレビュー可能な候補観測として扱う。これはM7で曲ID/譜面IDが確定したという意味ではなく、M3材料とM7a数字材料に加えて保存前レビューで参照できる候補観測がある、という状態に留める。未解決の `unresolved_*` は M7 readiness 側で `blocked_identity_signal` として読む。
 
@@ -165,6 +165,14 @@ title line-hashでは、result `song_title` ROIのうち曲名行だけを対象
 `jacket_match_candidates.csv` へ追加するline-hash観測列は、`title_linehash_candidate_feature_count`、`title_linehash_diff_bit_count`、`title_linehash_dict_status`、`title_linehash_dict_top_*`、`title_linehash_dict_top_candidates`、`title_linehash_exact_status`、`title_linehash_distance_status`、`title_linehash_top_*`、`title_linehash_top_candidates`、`title_linehash_rerank_reason` を基本とする。`title_linehash_dict_status=resolved_candidate` は、line-hash辞書が曖昧候補集合内の再順位付け候補を出したというM5観測であり、`jacket_match_status` を変えたり、曲ID/譜面ID確定やDB保存可能を意味したりしない。line-hashが候補集合外にありそうな曲名形状を示しても、候補集合外から曲を拾わない。line-hash辞書で候補が出た場合は `identity_signal_status=composite_resolved_candidate` / `identity_signal_source=title_linehash_dict` として後続へ渡す。これは「jacket単体より低い信頼度」ではなく、jacket候補集合とtitle補助を合わせた曲同定候補観測であり、保存判定では引き続きM7以降の集約ルールを待つ。
 
 固定UI文字は最終的に汎用OCRより画像認識へ寄せる方針だが、スコア/判定数/EX SCORE のTesseract離脱や数字テンプレート認識は後続タスクに回す。M5の次作業では、まずtitle line-hashをjacket ambiguous候補内の補助信号として観測する。
+
+## M7 jacket validation result title/artist feature master
+
+M7 jacket validationでは、過去resultを含む`result_candidate=true`フレームの`song_title` / `artist` ROIから、OCRを使わず画像特徴量を抽出する。titleとartistは別々のfeatureとして扱い、同一jacket・同一title・artist違いの候補を後続で比較できる材料を残す。照合に再利用するaccepted featureはM5b `databases/jacket-catalog.sqlite` の `result_text_features` tableへ保存し、JSON/CSV/summaryは確認用の診断出力とする。artistは単独で候補集合を作る主キーにはせず、jacket候補内でtitleの後に使う。
+
+保存するfeature payloadの識別は`m7-result-text-feature-master-v1`で、catalogの各rowはsource label、current master versionで解決した`song_id` / canonical title / canonical artist snapshot、title/artistのfield、feature version、ROI version、payload hash、距離比較に再利用できる画像feature payloadを保持する。feature hashだけでは近似比較できないため、hashとpayloadを分けて保存する。source labelとcanonical song IDは照合用参照metadataであり、OCR文字列やM7正式保存値へ暗黙昇格させない。
+
+なお、collector catalogの`title_line_hash`はsong selectの`INFORMATION`欄のtitle lineを白画素二値化してSHA-256化した複合identity用の値であり、result titleの画像featureとは異なる。result feature payloadの`title_linehash_rows`はcatalogの`title_line_hash`へ流用せず、M5b catalogの`result_text_features.payload_json`内へ独立して保持する。
 
 全曲ジャケット画像取得、配布可否、画像キャッシュ方針は別フェーズとして残す。ジャケット特徴量やtitle補助を入れる場合も、初回は保存成功判定ではなく、M7以降の保存判定へ渡す曲同定候補観測として始める。
 
@@ -202,7 +210,7 @@ C# loaderはprojection version 6とcatalog schema version 1だけを受け入れ
 
 ### M5c-2 current catalog manual review
 
-current catalog schema version 1は閉じたstatus語彙、monotonic `review_revision`、最後のmanual action ID/noteを持つ。`reference_review_history` は `manual_confirm` / `reassign` / `reject` / `reopen` ごとにbefore/after status・song・revision、opaque reason/note、UTC時刻、canonical request/receiptをappend-onlyで持つ。旧catalogはmigrationやread-only fallbackを行わずunsupportedとして拒否する。
+current catalog schema version 1は閉じたstatus語彙、monotonic `review_revision`、最後のmanual action ID/noteを持つ。`reference_review_history` は `manual_confirm` / `reassign` / `reject` / `reopen` ごとにbefore/after status・song・revision、opaque reason/note、UTC時刻、canonical request/receiptをappend-onlyで持つ。runtimeとcollectorは旧catalogをmigrationやread-only fallbackなしでunsupportedとして拒否する。初回リリース前に限り、明示CLIの`migrate-v1`で旧v1 catalogを未作成のcurrent v1 outputへコピーでき、sourceを変更せずreference、candidate、review historyを保持する。
 
 mutation requestはreference ID、action ID、expected revision/status/songを必須にする。同一action ID・同一payloadの再投入はcurrent masterを再検証する前に保存済みreceiptを冪等に返すため、commit後にmasterが一時利用不能、曲削除、GP対象外化しても安全なretryを妨げない。同じIDの異なるpayload、未保存actionのstale revision/state、current masterにないsong、GP対象外songはcurrent row/historyの副作用なしで拒否する。manual confirm/reassignはcurrent extractorの完全な永続特徴量も必須とし、feature抽出失敗や欠損/不正vectorを確定状態へ進めない。current row更新とhistory insertは1 transactionであり、片側成功を許さない。reject/reopen/reassignはreference、特徴量、候補、観測、historyを物理削除せず、reopenは直前songを暗黙復元しない。
 
