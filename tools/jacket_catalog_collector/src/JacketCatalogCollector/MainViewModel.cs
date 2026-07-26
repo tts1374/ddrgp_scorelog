@@ -91,6 +91,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private readonly ICatalogInitializationService catalogInitializer;
     private readonly IManualReviewDraftStore? manualReviewDraftStore;
     private readonly IManualReviewXlsxImportService? manualReviewXlsxImportService;
+    private readonly IManualReviewXlsxExportService? manualReviewXlsxExportService;
+    private readonly IReferenceDeletionService? referenceDeletionService;
     private readonly IOfficialJacketSnapshotService officialJacketSnapshotService;
     private ReviewProjection? projection;
     private MasterSummary? masterSummary;
@@ -111,6 +113,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         OfficialSnapshotOperationOutcome.NotRun;
     private ReviewReference? selectedReference;
     private ProjectionSong? selectedSong;
+    private ProjectionSong? selectedCollectionSong;
+    private ReviewReference? selectedCollectionReference;
     private string songSearch = "";
     private string reviewReason = "";
     private string reviewNote = "";
@@ -128,13 +132,17 @@ public sealed class MainViewModel : INotifyPropertyChanged
         ICatalogInitializationService? catalogInitializationService = null,
         IManualReviewDraftStore? manualReviewDraftStore = null,
         IManualReviewXlsxImportService? manualReviewXlsxImportService = null,
-        IOfficialJacketSnapshotService? officialJacketSnapshotService = null)
+        IOfficialJacketSnapshotService? officialJacketSnapshotService = null,
+        IManualReviewXlsxExportService? manualReviewXlsxExportService = null,
+        IReferenceDeletionService? referenceDeletionService = null)
     {
         this.masterUpdateService = masterUpdateService;
         this.projectionService = projectionService;
         this.reviewWorkflowService = reviewWorkflowService;
         this.manualReviewDraftStore = manualReviewDraftStore;
         this.manualReviewXlsxImportService = manualReviewXlsxImportService;
+        this.manualReviewXlsxExportService = manualReviewXlsxExportService;
+        this.referenceDeletionService = referenceDeletionService;
         fixedDatabasePaths = databasePaths ?? CollectorDatabasePaths.Resolve();
         this.officialJacketSnapshotService = officialJacketSnapshotService
             ?? new PythonOfficialJacketSnapshotService(
@@ -160,6 +168,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public WindowCaptureViewModel? WindowCapture { get; }
     public JacketObservationViewModel? Observation { get; }
     public ObservableCollection<ReviewReference> ReviewReferences { get; } = [];
+    public ObservableCollection<ReviewReference> CollectionReferenceDetails { get; } = [];
     public ObservableCollection<ManualReviewDraftRow> ManualReviewRows { get; } = [];
     public ObservableCollection<ReviewedManualReviewRow> ReviewedManualReviewRows { get; } = [];
     public ObservableCollection<string> CoverageStatusOptions { get; } =
@@ -182,6 +191,16 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public int ManualReviewConfirmedCount => CountManualReviewRows("confirmed");
     public int ManualReviewRejectedCount => CountManualReviewRows("rejected");
     public int ManualReviewHoldCount => CountManualReviewRows("hold");
+    public bool CanUseManualReviewActions => !IsBusy
+        && projection is not null
+        && manualReviewDraftStore is not null
+        && manualReviewXlsxImportService is not null
+        && manualReviewXlsxExportService is not null
+        && reviewWorkflowService is not null;
+    public bool CanDeleteSelectedCollectionReference => !IsBusy
+        && projection is not null
+        && selectedCollectionReference is not null
+        && referenceDeletionService is not null;
 
     public CollectorOperationState OperationState
     {
@@ -389,6 +408,47 @@ public sealed class MainViewModel : INotifyPropertyChanged
         get => selectedSong;
         set => SetField(ref selectedSong, value);
     }
+
+    public ProjectionSong? SelectedCollectionSong
+    {
+        get => selectedCollectionSong;
+        set
+        {
+            if (SetField(ref selectedCollectionSong, value))
+            {
+                ApplyCollectionReferenceDetails();
+                OnPropertyChanged(nameof(SelectedCollectionSongDisplay));
+                NotifyOperationDisplayProperties();
+            }
+        }
+    }
+
+    public ReviewReference? SelectedCollectionReference
+    {
+        get => selectedCollectionReference;
+        set
+        {
+            if (SetField(ref selectedCollectionReference, value))
+            {
+                OnPropertyChanged(nameof(SelectedCollectionReferenceDisplay));
+                NotifyOperationDisplayProperties();
+            }
+        }
+    }
+
+    public string SelectedCollectionSongDisplay => selectedCollectionSong is null
+        ? "曲を選択すると、登録ジャケットの詳細を表示します。"
+        : $"{selectedCollectionSong.Title} / "
+            + $"{(string.IsNullOrWhiteSpace(selectedCollectionSong.Artist)
+                ? "アーティスト表記なし"
+                : selectedCollectionSong.Artist)}"
+            + $"（登録ジャケット {CollectionReferenceDetails.Count}件）";
+
+    public string SelectedCollectionReferenceDisplay => selectedCollectionReference is null
+        ? "登録ジャケットを選択してください。"
+        : $"{selectedCollectionReference.ReferenceId} / "
+            + $"{CollectionDisplayLabels.Status(selectedCollectionReference.ReviewStatus)} / "
+            + $"{selectedCollectionReference.RegisteredRoute}";
 
     public ManualReviewDraftRow? SelectedManualReviewRow
     {
@@ -859,6 +919,57 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
     }
 
+    public async Task<bool> ExportManualReviewXlsxAsync(
+        string outputPath,
+        CancellationToken cancellationToken = default)
+    {
+        if (manualReviewXlsxExportService is null)
+        {
+            throw new InvalidOperationException("manual review XLSX export is not configured.");
+        }
+        if (projection is null)
+        {
+            StatusTitle = "XLSX export不可";
+            StatusMessage = "current catalogを先に読み込んでください。";
+            return false;
+        }
+        if (IsBusy)
+        {
+            throw new InvalidOperationException("別の処理を実行中です。");
+        }
+
+        IsBusy = true;
+        StatusTitle = "XLSX export中";
+        StatusMessage = "レビュー行を検証してXLSXを作成しています。";
+        try
+        {
+            await manualReviewXlsxExportService.ExportManualReviewXlsxAsync(
+                fixedDatabasePaths.MasterPath,
+                fixedDatabasePaths.CatalogPath,
+                outputPath,
+                cancellationToken);
+            StatusTitle = "XLSX export完了";
+            StatusMessage = $"XLSXを出力しました: {outputPath}";
+            return true;
+        }
+        catch (OperationCanceledException)
+        {
+            StatusTitle = "XLSX export取消";
+            StatusMessage = "XLSX exportを取り消しました。catalog/historyは変更していません。";
+            throw;
+        }
+        catch (Exception exception)
+        {
+            StatusTitle = "XLSX export失敗";
+            StatusMessage = exception.Message;
+            throw;
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
     public async Task<bool> ApplyDraftsAsync(
         CancellationToken cancellationToken = default)
     {
@@ -1171,6 +1282,102 @@ public sealed class MainViewModel : INotifyPropertyChanged
         foreach (var draft in drafts)
         {
             manualReviewDrafts[draft.Key] = draft.Value;
+        }
+    }
+
+    public async Task DeleteSelectedCollectionReferenceAsync(
+        CancellationToken cancellationToken = default)
+    {
+        if (referenceDeletionService is null)
+        {
+            throw new InvalidOperationException("reference deletion is not configured.");
+        }
+        if (projection is null || selectedCollectionReference is null)
+        {
+            StatusTitle = "登録ジャケット削除不可";
+            StatusMessage = "収集状況から登録ジャケットを選択してください。";
+            return;
+        }
+        if (IsBusy)
+        {
+            throw new InvalidOperationException("別の処理を実行中です。");
+        }
+
+        var reference = selectedCollectionReference;
+        var selectedSongId = selectedCollectionSong?.SongId;
+        var deletionCommitted = false;
+        IsBusy = true;
+        OperationState = CollectorOperationState.ReloadingProjection;
+        StatusTitle = "登録ジャケット削除中";
+        StatusMessage = "登録状態を確認してcatalogからジャケット情報を削除しています。";
+        try
+        {
+            var receipt = await referenceDeletionService.DeleteAsync(
+                fixedDatabasePaths.CatalogPath,
+                reference.ReferenceId,
+                reference.Revision,
+                reference.StoredStatus,
+                reference.CurrentSongId,
+                cancellationToken);
+            if (!receipt.Deleted)
+            {
+                throw new InvalidOperationException("登録ジャケットの削除結果を確認できません。");
+            }
+            deletionCommitted = true;
+            await LoadProjectionCoreAsync(cancellationToken);
+            SelectedCollectionSong = projection?.Songs.FirstOrDefault(
+                song => song.SongId == selectedSongId);
+            OperationState = projection is null
+                ? CollectorOperationState.NoMaster
+                : CollectorOperationState.Ready;
+            StatusTitle = "登録ジャケット削除完了";
+            StatusMessage =
+                $"登録ジャケットを削除しました: {reference.ReferenceId}。"
+                + "元画像・観測artifactは削除していません。";
+        }
+        catch (OperationCanceledException)
+        {
+            if (deletionCommitted)
+            {
+                ClearProjection();
+                OperationState = CollectorOperationState.Failed;
+                StatusTitle = "登録ジャケット削除済み・表示更新取消";
+                StatusMessage =
+                    "catalogからは削除済みですが、表示の再読込を取り消しました。";
+            }
+            else
+            {
+                OperationState = projection is null
+                    ? CollectorOperationState.NoMaster
+                    : CollectorOperationState.Ready;
+                StatusTitle = "登録ジャケット削除取消";
+                StatusMessage = "登録ジャケットは変更していません。";
+            }
+            throw;
+        }
+        catch (Exception exception)
+        {
+            if (deletionCommitted)
+            {
+                ClearProjection();
+                OperationState = CollectorOperationState.Failed;
+                StatusTitle = "登録ジャケット削除済み・表示更新失敗";
+                StatusMessage =
+                    $"catalogからは削除済みですが、表示を再読込できません: {exception.Message}";
+            }
+            else
+            {
+                OperationState = projection is null
+                    ? CollectorOperationState.NoMaster
+                    : CollectorOperationState.Ready;
+                StatusTitle = "登録ジャケット削除失敗";
+                StatusMessage = exception.Message;
+            }
+            throw;
+        }
+        finally
+        {
+            IsBusy = false;
         }
     }
 
@@ -1738,6 +1945,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         {
             return;
         }
+        var selectedCollectionSongId = selectedCollectionSong?.SongId;
         Songs.Clear();
         foreach (var song in projection.Songs.Where(
                      song => (SelectedCoverageStatus == "all" || song.CoverageStatus == SelectedCoverageStatus)
@@ -1745,6 +1953,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
         {
             Songs.Add(song);
         }
+        SelectedCollectionSong = selectedCollectionSongId is null
+            ? null
+            : Songs.FirstOrDefault(song => song.SongId == selectedCollectionSongId);
         ReviewReferences.Clear();
         foreach (var reference in projection.ReviewReferences.Where(
                      reference => (SelectedCoverageStatus == "all" || reference.ReviewStatus == SelectedCoverageStatus)
@@ -1756,6 +1967,29 @@ public sealed class MainViewModel : INotifyPropertyChanged
         {
             ReviewReferences.Add(reference);
         }
+    }
+
+    private void ApplyCollectionReferenceDetails()
+    {
+        var selectedReferenceId = selectedCollectionReference?.ReferenceId;
+        CollectionReferenceDetails.Clear();
+        if (projection is not null && selectedCollectionSong is not null)
+        {
+            foreach (var reference in projection.ReviewReferences
+                         .Where(reference => reference.CurrentSongId == selectedCollectionSong.SongId)
+                         .OrderByDescending(reference => reference.ProcessedAt, StringComparer.Ordinal)
+                         .ThenBy(reference => reference.ReferenceId, StringComparer.Ordinal))
+            {
+                CollectionReferenceDetails.Add(reference);
+            }
+        }
+        SelectedCollectionReference = selectedReferenceId is null
+            ? CollectionReferenceDetails.FirstOrDefault()
+            : CollectionReferenceDetails.FirstOrDefault(
+                reference => reference.ReferenceId == selectedReferenceId);
+        OnPropertyChanged(nameof(SelectedCollectionSongDisplay));
+        OnPropertyChanged(nameof(SelectedCollectionReferenceDisplay));
+        NotifyOperationDisplayProperties();
     }
 
     private void ApplyManualReviewRows()
@@ -1912,6 +2146,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(CatalogCoverageDisplay));
         OnPropertyChanged(nameof(CollectionSummaryDisplay));
         OnPropertyChanged(nameof(CollectionOrphanSummaryDisplay));
+        OnPropertyChanged(nameof(SelectedCollectionSongDisplay));
+        OnPropertyChanged(nameof(SelectedCollectionReferenceDisplay));
         NotifyOperationDisplayProperties();
     }
 
@@ -1936,12 +2172,15 @@ public sealed class MainViewModel : INotifyPropertyChanged
         masterSummary = null;
         Songs.Clear();
         ReviewReferences.Clear();
+        CollectionReferenceDetails.Clear();
         UnsubscribeManualReviewRows();
         ManualReviewRows.Clear();
         ReviewedManualReviewRows.Clear();
         SongChoices.Clear();
         SelectedReference = null;
         SelectedSong = null;
+        SelectedCollectionSong = null;
+        SelectedCollectionReference = null;
         SelectedManualReviewRow = null;
         SelectedReviewedManualReviewRow = null;
         manualReviewDrafts.Clear();
@@ -2058,6 +2297,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(CanUpdateOfficialSnapshot));
         OnPropertyChanged(nameof(CanStartCollection));
         OnPropertyChanged(nameof(CanStopCollection));
+        OnPropertyChanged(nameof(CanUseManualReviewActions));
+        OnPropertyChanged(nameof(CanDeleteSelectedCollectionReference));
         OnPropertyChanged(nameof(IsOfficialSnapshotUpdating));
         OnPropertyChanged(nameof(CanCancelOfficialSnapshot));
         OnPropertyChanged(nameof(OfficialSnapshotUserStatusDisplay));

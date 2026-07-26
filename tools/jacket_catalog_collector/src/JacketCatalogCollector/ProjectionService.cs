@@ -93,7 +93,7 @@ public sealed class ProjectionJsonLoader
             RequireValue(song, "songs row");
             RequireText(song.SongId, "songs.song_id");
             RequireText(song.Title, "songs.title");
-            RequireText(song.Artist, "songs.artist");
+            RequireString(song.Artist, "songs.artist");
             RequireString(song.MasterVersion, "songs.master_version");
             RequireString(song.Reason, "songs.reason");
             RequireValue(song.Aliases, "songs.aliases");
@@ -341,12 +341,23 @@ public interface IManualReviewXlsxImportService
         CancellationToken cancellationToken);
 }
 
+public interface IManualReviewXlsxExportService
+{
+    Task ExportManualReviewXlsxAsync(
+        string masterPath,
+        string catalogPath,
+        string outputPath,
+        CancellationToken cancellationToken);
+}
+
 public sealed class ProjectionService(
     IProcessRunner processRunner,
     ProjectionJsonLoader loader,
     string repositoryRoot,
     string pythonExecutable = "python",
-    string? artifactRoot = null) : IProjectionService, IManualReviewXlsxImportService
+    string? artifactRoot = null) : IProjectionService,
+    IManualReviewXlsxImportService,
+    IManualReviewXlsxExportService
 {
     private static readonly JsonSerializerOptions ImportOptions = new()
     {

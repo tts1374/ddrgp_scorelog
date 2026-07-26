@@ -24,6 +24,17 @@ public sealed class ProjectionJsonLoaderTests
     }
 
     [Fact]
+    public void AllowsEmptySongArtist()
+    {
+        var payload = JsonNode.Parse(FixtureJson())!.AsObject();
+        payload["songs"]![0]!["artist"] = "";
+
+        var projection = loader.Load(payload.ToJsonString());
+
+        Assert.Empty(projection.Songs[0].Artist);
+    }
+
+    [Fact]
     public void PreservesUnknownCoverageStatusForUserFacingFallback()
     {
         var payload = JsonNode.Parse(FixtureJson())!.AsObject();

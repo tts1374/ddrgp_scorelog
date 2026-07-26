@@ -30,6 +30,61 @@ public sealed class MainViewModelTests
     }
 
     [Fact]
+    public async Task CollectionStatusShowsRegisteredReferenceDetailsForSelectedSong()
+    {
+        var viewModel = new MainViewModel(
+            new StubMasterUpdateService(),
+            new StubProjectionService(ProjectionWithVisibilityStates()));
+
+        await viewModel.LoadProjectionAsync();
+        viewModel.SelectedCollectionSong = Assert.Single(
+            viewModel.Songs,
+            song => song.SongId == "song-1");
+
+        Assert.Equal(4, viewModel.CollectionReferenceDetails.Count);
+        Assert.Contains(
+            viewModel.CollectionReferenceDetails,
+            reference => reference.ReferenceId == "hidden-manual");
+        Assert.NotNull(viewModel.SelectedCollectionReference);
+        Assert.Contains("Alpha", viewModel.SelectedCollectionSongDisplay,
+            StringComparison.Ordinal);
+        Assert.Contains("登録ジャケット 4件", viewModel.SelectedCollectionSongDisplay,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task DeleteSelectedCollectionReferenceUsesRevisionAndReloadsProjection()
+    {
+        var projection = ProjectionWithVisibilityStates();
+        var deletion = new StubReferenceDeletionService();
+        var projectionService = new RecordingProjectionService(projection);
+        using var database = new TestDatabase(catalog: true);
+        var viewModel = new MainViewModel(
+            new StubMasterUpdateService(),
+            projectionService,
+            databasePaths: database.Paths,
+            referenceDeletionService: deletion);
+
+        await viewModel.LoadProjectionAsync();
+        viewModel.SelectedCollectionSong = Assert.Single(
+            viewModel.Songs,
+            song => song.SongId == "song-1");
+        viewModel.SelectedCollectionReference = Assert.Single(
+            viewModel.CollectionReferenceDetails,
+            reference => reference.ReferenceId == "hidden-manual");
+
+        await viewModel.DeleteSelectedCollectionReferenceAsync();
+
+        Assert.Equal(
+            ("hidden-manual", 0, "manual_confirmed", "song-1"),
+            deletion.Request);
+        Assert.Equal(2, projectionService.Loads.Count);
+        Assert.Equal("登録ジャケット削除完了", viewModel.StatusTitle);
+        Assert.Contains("元画像・観測artifactは削除していません", viewModel.StatusMessage,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task OfficialSnapshotMetadataAndUpdateAreDisplayedWithoutTouchingProjection()
     {
         const string completedAt = "2026-07-18T03:04:05+00:00";
@@ -1289,6 +1344,28 @@ public sealed class MainViewModelTests
         {
             Calls++;
             return Task.FromResult(result);
+        }
+    }
+
+    private sealed class StubReferenceDeletionService : IReferenceDeletionService
+    {
+        public (string ReferenceId, int Revision, string Status, string? SongId) Request { get; private set; }
+
+        public Task<ReferenceDeletionReceipt> DeleteAsync(
+            string catalogPath,
+            string referenceId,
+            int expectedRevision,
+            string expectedStatus,
+            string? expectedSongId,
+            CancellationToken cancellationToken)
+        {
+            Request = (referenceId, expectedRevision, expectedStatus, expectedSongId);
+            return Task.FromResult(new ReferenceDeletionReceipt(
+                referenceId,
+                true,
+                expectedSongId ?? "song-1",
+                expectedStatus,
+                expectedRevision));
         }
     }
 

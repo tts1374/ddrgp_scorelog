@@ -283,6 +283,15 @@ class IngestResult:
 
 
 @dataclass(frozen=True)
+class ReferenceDeletionResult:
+    reference_id: str
+    deleted: bool
+    song_id: str
+    review_status: str
+    revision: int
+
+
+@dataclass(frozen=True)
 class ReviewMutationRequest:
     action_id: str
     reference_id: str
@@ -1383,8 +1392,8 @@ def _validate_master_content(connection: sqlite3.Connection) -> dict[str, str]:
     if metadata["song_count"] != str(song_count) or metadata["chart_count"] != str(chart_count):
         raise ValueError("M4 master metadata count mismatch")
     snapshots = list(connection.execute("SELECT source_url, content_hash FROM source_snapshots"))
-    if len(snapshots) not in {1, 2}:
-        raise ValueError("M4 master database must contain one or two source snapshots")
+    if len(snapshots) not in {1, 2, 3}:
+        raise ValueError("M4 master database must contain one to three source snapshots")
     snapshots_by_url = {str(row[0]): str(row[1]) for row in snapshots}
     if snapshots_by_url.get(metadata["source_url"]) != metadata["source_hash"]:
         raise ValueError("M4 master source metadata mismatch")
@@ -1394,6 +1403,15 @@ def _validate_master_content(connection: sqlite3.Connection) -> dict[str, str]:
         raise ValueError("M4 master official source metadata must be a complete pair")
     if official_url and snapshots_by_url.get(official_url) != official_hash:
         raise ValueError("M4 master official source metadata mismatch")
+    new_song_url = metadata.get("new_song_source_url", "")
+    new_song_hash = metadata.get("new_song_source_hash", "")
+    if bool(new_song_url) != bool(new_song_hash):
+        raise ValueError("M4 master new-song source metadata must be a complete pair")
+    if new_song_url and snapshots_by_url.get(new_song_url) != new_song_hash:
+        raise ValueError("M4 master new-song source metadata mismatch")
+    expected_snapshot_count = 1 + int(bool(official_url)) + int(bool(new_song_url))
+    if len(snapshots) != expected_snapshot_count:
+        raise ValueError("M4 master source snapshot count does not match source metadata")
     return metadata
 
 
@@ -1587,6 +1605,82 @@ def _reference_id(
         identity = f"observation:{observed_title}\0{observed_artist}"
     material = f"{FEATURE_EXTRACTOR_VERSION}:{source_hash}:{identity}"
     return hashlib.sha256(material.encode()).hexdigest()
+
+
+def delete_reference(
+    catalog_path: Path,
+    *,
+    reference_id: str,
+    expected_revision: int,
+    expected_status: str,
+    expected_song_id: str | None = None,
+) -> ReferenceDeletionResult:
+    """Delete one registered jacket row and its catalog-owned audit children.
+
+    Source images, observation artifacts, and checkpoints are deliberately not
+    touched.  The catalog row, candidates, and review history are removed in
+    one transaction after the current state preconditions are checked.
+    """
+    if not reference_id or reference_id != reference_id.strip():
+        raise ValueError("reference_id must be non-empty")
+    if expected_revision < 0 or expected_status not in REVIEW_STATUSES:
+        raise ValueError("invalid expected reference state")
+    if expected_song_id is not None and not expected_song_id.strip():
+        raise ValueError("expected_song_id must be non-empty when provided")
+    if catalog_schema_version(catalog_path) != CATALOG_SCHEMA_VERSION:
+        raise ValueError("reference deletion requires the current catalog schema")
+
+    with closing(_connect_read_write(catalog_path)) as connection:
+        connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA foreign_keys = ON")
+        connection.execute("BEGIN IMMEDIATE")
+        try:
+            _validate_catalog(connection)
+            row = connection.execute(
+                "SELECT reference_id, song_id, review_status, review_revision "
+                "FROM jacket_references WHERE reference_id = ?",
+                (reference_id,),
+            ).fetchone()
+            if row is None:
+                raise ValueError("reference does not exist")
+            song_id = str(row["song_id"] or "")
+            status = str(row["review_status"])
+            revision = int(row["review_revision"])
+            if not song_id:
+                raise ValueError("reference is not a registered jacket")
+            if (
+                revision != expected_revision
+                or status != expected_status
+                or (
+                    expected_song_id is not None
+                    and song_id != expected_song_id
+                )
+            ):
+                raise ValueError("stale reference state")
+
+            connection.execute(
+                "DELETE FROM reference_candidates WHERE reference_id = ?",
+                (reference_id,),
+            )
+            connection.execute(
+                "DELETE FROM reference_review_history WHERE reference_id = ?",
+                (reference_id,),
+            )
+            connection.execute(
+                "DELETE FROM jacket_references WHERE reference_id = ?",
+                (reference_id,),
+            )
+            connection.commit()
+            return ReferenceDeletionResult(
+                reference_id=reference_id,
+                deleted=True,
+                song_id=song_id,
+                review_status=status,
+                revision=revision,
+            )
+        except Exception:
+            connection.rollback()
+            raise
 
 
 def ingest_observation(
@@ -2288,6 +2382,17 @@ def build_parser() -> argparse.ArgumentParser:
     review_batch.add_argument("--catalog", type=Path, required=True)
     review_batch.add_argument("--master-db", type=Path, required=True)
     review_batch.add_argument("--request-file", type=Path, required=True)
+    delete_reference_parser = subparsers.add_parser(
+        "delete-reference",
+        help="Delete one registered jacket reference after state checks.",
+    )
+    delete_reference_parser.add_argument("--catalog", type=Path, required=True)
+    delete_reference_parser.add_argument("--reference-id", required=True)
+    delete_reference_parser.add_argument("--expected-revision", type=int, required=True)
+    delete_reference_parser.add_argument(
+        "--expected-status", choices=REVIEW_STATUSES, required=True
+    )
+    delete_reference_parser.add_argument("--expected-song-id")
     ingest = subparsers.add_parser(
         "ingest", help="Ingest one unresolved observation into the current catalog."
     )
@@ -2460,6 +2565,17 @@ def main(argv: list[str] | None = None) -> int:
                 separators=(",", ":"),
             )
         )
+        return 0
+    if args.command == "delete-reference":
+        ensure_catalog_path(args.catalog, argument_name="--catalog")
+        result = delete_reference(
+            args.catalog,
+            reference_id=args.reference_id,
+            expected_revision=args.expected_revision,
+            expected_status=args.expected_status,
+            expected_song_id=args.expected_song_id,
+        )
+        print(json.dumps(result.__dict__, ensure_ascii=False, separators=(",", ":")))
         return 0
     if args.command == "ingest":
         ensure_catalog_path(args.catalog, argument_name="--catalog")

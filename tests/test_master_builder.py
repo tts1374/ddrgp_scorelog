@@ -204,6 +204,90 @@ OFFICIAL_ALIAS_FIXTURE_HTML = """
 </html>
 """
 
+NEW_SONG_FIXTURE_HTML = """
+<!doctype html>
+<html>
+<body>
+<table class="style_table">
+  <tr>
+    <td rowspan="2">分類</td><td rowspan="2">曲名</td><td rowspan="2">アーティスト</td>
+    <td rowspan="2">出典</td><td rowspan="2">BPM</td><td rowspan="2">MV/St</td>
+    <td colspan="5">SINGLE</td><td colspan="4">DOUBLE</td>
+  </tr>
+  <tr>
+    <td>Be</td><td>Ba</td><td>Di</td><td>Ex</td><td>Ch</td>
+    <td>Ba</td><td>Di</td><td>Ex</td><td>Ch</td>
+  </tr>
+  <tr><td colspan="15">DDR GP New Songs</td></tr>
+  <tr>
+    <td>GP100</td><td>NEW ONLY</td><td>New Artist</td><td>DDR GP</td><td>150</td><td>-</td>
+    <td>5</td><td>9</td><td>-</td><td>13</td><td>-</td>
+    <td>9</td><td>-</td><td>13</td><td>-</td>
+  </tr>
+  <tr>
+    <td>GP101</td><td>Party Lights (Tommie Sunshine’s Brooklyn Fire Remix)</td>
+    <td>Tommie Sunshine</td><td>DDR GP</td><td>128</td><td>-</td>
+    <td>6</td><td>-</td><td>10</td><td>-</td><td>-</td>
+    <td>7</td><td>-</td><td>11</td><td>-</td>
+  </tr>
+  <tr>
+    <td>GP102</td><td>LICENSED EMPTY ARTIST</td><td>Copyright Artist</td>
+    <td>DDR GP</td><td>128</td><td>-</td>
+    <td>4</td><td>-</td><td>8</td><td>-</td><td>-</td>
+    <td>5</td><td>-</td><td>9</td><td>-</td>
+  </tr>
+</table>
+</body>
+</html>
+"""
+
+OFFICIAL_CANONICAL_FIXTURE_HTML = """
+<!doctype html>
+<html>
+<body>
+<table class="m_list">
+  <tr>
+    <th>タイトル</th><th>アーティスト</th><th>フリープレー</th><th>グランプリプレー</th>
+  </tr>
+  <tr>
+    <td>Party Lights (Tommie Sunshine's Brooklyn Fire Remix)</td>
+    <td>Tommie Sunshine</td><td></td><td>〇</td>
+  </tr>
+  <tr>
+    <td>LICENSED EMPTY ARTIST</td><td></td><td></td><td>〇</td>
+  </tr>
+</table>
+</body>
+</html>
+"""
+
+OFFICIAL_GP_ONLY_FIXTURE_HTML = """
+<!doctype html>
+<html>
+<body>
+<table class="m_list">
+  <tr>
+    <th>タイトル</th><th>アーティスト</th><th>フリープレー</th><th>グランプリプレー</th>
+  </tr>
+  <tr>
+    <td>Din Don Dan (にじさんじダンス部 ver.)</td>
+    <td>レイン・パターソン &amp; 山神カルタ &amp; 東堂コハク</td>
+    <td>〇</td><td>〇</td>
+  </tr>
+  <tr>
+    <td>打打打打打打打打打打 (にじさんじダンス部 ver.)</td>
+    <td>長尾景 &amp; 倉持めると &amp; セラフ・ダズルガーデン</td>
+    <td>〇</td><td>〇</td>
+  </tr>
+  <tr><td>創聖のアクエリオン</td><td></td><td>〇</td><td>〇</td></tr>
+  <tr>
+    <td>Leaving…</td><td>seiya-murai meets “eimy”</td><td></td><td>〇</td>
+  </tr>
+</table>
+</body>
+</html>
+"""
+
 
 def test_parse_level_uses_first_numeric_token_without_joining_notes() -> None:
     assert builder.parse_level("10(旧9)") == 10
@@ -304,6 +388,89 @@ def test_parse_master_html_uses_official_title_artist_as_canonical_alias_match()
     )
 
 
+def test_parse_master_html_uses_official_empty_artist_and_preserves_remix_title() -> None:
+    build = builder.parse_master_html(
+        NEW_SONG_FIXTURE_HTML,
+        source_url="https://example.test/source",
+        new_song_html=NEW_SONG_FIXTURE_HTML,
+        new_song_source_url="https://example.test/new-songs",
+        official_html=OFFICIAL_CANONICAL_FIXTURE_HTML,
+        official_source_url="https://example.test/official",
+        fetched_at="2026-07-04T00:00:00+00:00",
+    )
+
+    remix = next(song for song in build.songs if song.title.startswith("Party Lights"))
+    licensed = next(song for song in build.songs if song.title == "LICENSED EMPTY ARTIST")
+
+    assert remix.title == "Party Lights (Tommie Sunshine's Brooklyn Fire Remix)"
+    assert remix.artist == "Tommie Sunshine"
+    assert licensed.artist == ""
+    assert licensed.grand_prix_play_available
+    assert any(alias.alias_title.endswith("Remix)") for alias in build.song_aliases)
+    assert any(alias.alias_artist == "Copyright Artist" for alias in build.song_aliases)
+
+
+def test_parse_master_html_keeps_all_official_gp_rows_and_normalizes_ellipsis(
+    tmp_path: Path,
+) -> None:
+    wiki_html = FIXTURE_HTML.replace(
+        "<td>MAKE IT BETTER</td><td>mitsu-O!</td>",
+        "<td>Leaving･･･</td><td>seiya-murai meets “eimy”</td>",
+    )
+    build = builder.parse_master_html(
+        wiki_html,
+        source_url="https://example.test/source",
+        official_html=OFFICIAL_GP_ONLY_FIXTURE_HTML,
+        official_source_url="https://example.test/official",
+        fetched_at="2026-07-04T00:00:00+00:00",
+    )
+
+    leaving = next(song for song in build.songs if song.title == "Leaving…")
+    assert leaving.artist == "seiya-murai meets “eimy”"
+    assert leaving.grand_prix_play_available
+    assert leaving.official_availability_match == "title_artist"
+    assert any(alias.alias_title == "Leaving･･･" for alias in build.song_aliases)
+
+    official_only_titles = {
+        "Din Don Dan (にじさんじダンス部 ver.)",
+        "打打打打打打打打打打 (にじさんじダンス部 ver.)",
+        "創聖のアクエリオン",
+    }
+    official_only = [song for song in build.songs if song.title in official_only_titles]
+    assert {song.title for song in official_only} == official_only_titles
+    assert all(song.official_availability_match == "official_only" for song in official_only)
+    assert all(song.grand_prix_play_available for song in official_only)
+    assert next(song for song in official_only if song.title == "創聖のアクエリオン").artist == ""
+    assert all(
+        chart.song_id not in {song.song_id for song in official_only}
+        for chart in build.charts
+    )
+
+    output_path = tmp_path / "ddrgp-master.sqlite"
+    builder.write_master_database(output_path, build, master_version="fixture-v1")
+    with sqlite3.connect(output_path) as connection:
+        metadata = dict(connection.execute("SELECT key, value FROM master_metadata"))
+    assert metadata["grand_prix_play_available_song_count"] == "4"
+    assert metadata["official_availability_matched_song_count"] == "4"
+
+
+def test_parse_master_html_merges_new_song_levels_and_records_snapshot() -> None:
+    build = builder.parse_master_html(
+        FIXTURE_HTML,
+        source_url="https://example.test/source",
+        new_song_html=NEW_SONG_FIXTURE_HTML,
+        new_song_source_url="https://example.test/new-songs",
+        fetched_at="2026-07-04T00:00:00+00:00",
+    )
+
+    new_song = next(song for song in build.songs if song.title == "NEW ONLY")
+    charts = [chart for chart in build.charts if chart.song_id == new_song.song_id]
+    assert len(charts) == 5
+    assert {chart.level for chart in charts} == {5, 9, 13}
+    assert build.new_song_snapshot is not None
+    assert build.new_song_snapshot.source_url == "https://example.test/new-songs"
+
+
 def test_write_master_database_creates_expected_schema_and_metadata(tmp_path: Path) -> None:
     build = builder.parse_master_html(
         FIXTURE_HTML,
@@ -401,6 +568,77 @@ def test_write_master_database_records_official_availability_snapshot(
     assert summary["official_source_hash"] == build.official_snapshot.content_hash
     assert summary["grand_prix_play_available_song_count"] == "2"
     assert summary["song_alias_count"] == 0
+
+
+def test_write_master_database_records_new_song_snapshot_and_inspects_it(
+    tmp_path: Path,
+) -> None:
+    build = builder.parse_master_html(
+        FIXTURE_HTML,
+        source_url="https://example.test/source",
+        new_song_html=NEW_SONG_FIXTURE_HTML,
+        new_song_source_url="https://example.test/new-songs",
+        official_html=OFFICIAL_FIXTURE_HTML,
+        official_source_url="https://example.test/official",
+        fetched_at="2026-07-04T00:00:00+00:00",
+    )
+    output_path = tmp_path / "ddrgp-master.sqlite"
+    builder.write_master_database(output_path, build, master_version="fixture-v2")
+
+    with sqlite3.connect(output_path) as connection:
+        metadata = dict(connection.execute("SELECT key, value FROM master_metadata"))
+        assert metadata["new_song_source_url"] == "https://example.test/new-songs"
+        assert metadata["new_song_source_hash"] == build.new_song_snapshot.content_hash
+        assert connection.execute("SELECT COUNT(*) FROM source_snapshots").fetchone()[0] == 3
+
+    summary = master_inspect.inspect_master_database(output_path)
+    assert summary["snapshot_count"] == 3
+    assert summary["new_song_source_url"] == "https://example.test/new-songs"
+    assert summary["new_song_source_hash"] == build.new_song_snapshot.content_hash
+
+
+def test_auto_master_version_changes_when_only_official_snapshot_changes(
+    tmp_path: Path,
+) -> None:
+    changed_official_html = OFFICIAL_FIXTURE_HTML.replace(
+        "<td>MAKE IT BETTER</td><td>mitsu-O!</td><td>〇　※１</td><td>〇</td>",
+        "<td>MAKE IT BETTER</td><td>mitsu-O!</td><td>〇　※１</td><td></td>",
+    )
+    original_build = builder.parse_master_html(
+        FIXTURE_HTML,
+        source_url="https://example.test/source",
+        new_song_html=NEW_SONG_FIXTURE_HTML,
+        new_song_source_url="https://example.test/new-songs",
+        official_html=OFFICIAL_FIXTURE_HTML,
+        official_source_url="https://example.test/official",
+        fetched_at="2026-07-04T00:00:00+00:00",
+    )
+    changed_build = builder.parse_master_html(
+        FIXTURE_HTML,
+        source_url="https://example.test/source",
+        new_song_html=NEW_SONG_FIXTURE_HTML,
+        new_song_source_url="https://example.test/new-songs",
+        official_html=changed_official_html,
+        official_source_url="https://example.test/official",
+        fetched_at="2026-07-04T00:00:00+00:00",
+    )
+    original_path = tmp_path / "original.sqlite"
+    changed_path = tmp_path / "changed.sqlite"
+
+    builder.write_master_database(original_path, original_build)
+    builder.write_master_database(changed_path, changed_build)
+
+    with sqlite3.connect(original_path) as original_connection:
+        original_metadata = dict(
+            original_connection.execute("SELECT key, value FROM master_metadata")
+        )
+    with sqlite3.connect(changed_path) as changed_connection:
+        changed_metadata = dict(
+            changed_connection.execute("SELECT key, value FROM master_metadata")
+        )
+
+    assert original_metadata["official_source_hash"] != changed_metadata["official_source_hash"]
+    assert original_metadata["master_version"] != changed_metadata["master_version"]
 
 
 def test_write_master_database_records_song_aliases_for_official_canonical_match(

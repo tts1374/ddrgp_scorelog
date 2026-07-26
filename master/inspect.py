@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import sqlite3
+from contextlib import closing
 from pathlib import Path
 from typing import Any
 
@@ -21,7 +22,7 @@ def inspect_master_database(db_path: Path) -> dict[str, Any]:
     if not db_path.exists():
         raise FileNotFoundError(f"master database does not exist: {db_path}")
 
-    with sqlite3.connect(db_path) as connection:
+    with closing(sqlite3.connect(db_path)) as connection:
         metadata = dict(connection.execute("SELECT key, value FROM master_metadata"))
         song_count = connection.execute("SELECT COUNT(*) FROM songs").fetchone()[0]
         chart_count = connection.execute("SELECT COUNT(*) FROM charts").fetchone()[0]
@@ -55,8 +56,8 @@ def inspect_master_database(db_path: Path) -> dict[str, Any]:
         raise ValueError("master_metadata song_count does not match songs table")
     if metadata.get("chart_count") != str(chart_count):
         raise ValueError("master_metadata chart_count does not match charts table")
-    if snapshot_count not in {1, 2}:
-        raise ValueError("generated database must contain one or two source snapshots")
+    if snapshot_count not in {1, 2, 3}:
+        raise ValueError("generated database must contain one to three source snapshots")
 
     snapshots_by_url = {row[0]: row for row in snapshot_rows}
     source_url = metadata.get("source_url")
@@ -87,6 +88,32 @@ def inspect_master_database(db_path: Path) -> dict[str, Any]:
                 "master_metadata official_source_hash does not match source snapshot"
             )
 
+    new_song_source_url = metadata.get("new_song_source_url")
+    new_song_source_hash = metadata.get("new_song_source_hash")
+    new_song_snapshot_source_hash = None
+    new_song_snapshot_parser_version = None
+    if new_song_source_url or new_song_source_hash:
+        if not new_song_source_url or not new_song_source_hash:
+            raise ValueError("new-song source metadata must include URL and hash")
+        if new_song_source_url not in snapshots_by_url:
+            raise ValueError(
+                "master_metadata new_song_source_url does not match source snapshot"
+            )
+        _url, new_song_snapshot_source_hash, new_song_snapshot_parser_version = (
+            snapshots_by_url[new_song_source_url]
+        )
+        if new_song_source_hash != new_song_snapshot_source_hash:
+            raise ValueError(
+                "master_metadata new_song_source_hash does not match source snapshot"
+            )
+    expected_snapshot_count = 1 + int(bool(official_source_url)) + int(
+        bool(new_song_source_url)
+    )
+    if snapshot_count != expected_snapshot_count:
+        raise ValueError(
+            "generated database source snapshot count does not match source metadata"
+        )
+
     return {
         "database": str(db_path),
         "song_count": song_count,
@@ -101,6 +128,10 @@ def inspect_master_database(db_path: Path) -> dict[str, Any]:
         "official_snapshot_source_hash": official_snapshot_source_hash,
         "official_source_url": official_source_url,
         "official_snapshot_parser_version": official_snapshot_parser_version,
+        "new_song_source_hash": new_song_source_hash,
+        "new_song_snapshot_source_hash": new_song_snapshot_source_hash,
+        "new_song_source_url": new_song_source_url,
+        "new_song_snapshot_parser_version": new_song_snapshot_parser_version,
         "free_play_available_song_count": metadata.get("free_play_available_song_count"),
         "grand_prix_play_available_song_count": metadata.get(
             "grand_prix_play_available_song_count"
