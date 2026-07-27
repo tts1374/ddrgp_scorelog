@@ -86,6 +86,37 @@ def test_single_frame_result_candidate_is_not_confirmed() -> None:
     assert [event.event_type for event in events] == ["none", "none"]
 
 
+def test_preconfirmed_single_frame_result_candidate_bypasses_duration_gate() -> None:
+    events = runner.build_result_events(
+        [classification("organized/result_score123456_a.png", result_candidate=True)],
+        timestamps_ms=[5_000],
+        min_confirmed_duration_ms=0,
+    )
+
+    assert len(events) == 1
+    assert events[0].confirmed_result
+    assert events[0].event_type == "confirmed"
+    assert events[0].candidate_duration_ms == 0
+
+
+def test_preconfirmed_single_frame_still_requires_result_candidate() -> None:
+    events = runner.build_result_events(
+        [
+            classification(
+                "organized/song_select_a.png",
+                result_candidate=False,
+                result_shape_candidate=False,
+                screen_type="song_select",
+            )
+        ],
+        timestamps_ms=[5_000],
+        min_confirmed_duration_ms=0,
+    )
+
+    assert not events[0].confirmed_result
+    assert events[0].event_type == "none"
+
+
 def test_transition_countup_shape_candidate_is_rejected() -> None:
     events = runner.build_result_events(
         [

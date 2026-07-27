@@ -249,6 +249,8 @@ def run_capture_save_session(
     output_dir: Path | None = None,
     source_path: str | None = None,
     retain_image_reference: bool = True,
+    jacket_catalog_path: Path | None = None,
+    preconfirmed_candidate: bool = False,
 ) -> CaptureSaveSessionResult:
     output = output_dir or repository_root / "data" / "capture_save_workflow" / (
         f"{manifest_path.parent.name}-{uuid.uuid4().hex[:12]}"
@@ -270,6 +272,10 @@ def run_capture_save_session(
         "--master-db",
         str(master_db_path),
     ]
+    if jacket_catalog_path is not None:
+        args.extend(("--m5-jacket-catalog", str(jacket_catalog_path)))
+    if preconfirmed_candidate:
+        args.append("--preconfirmed-candidate")
     try:
         exit_code = run_vision_poc(args)
         if exit_code not in (0, VISION_POC_EVALUATION_MISMATCH_EXIT_CODE):

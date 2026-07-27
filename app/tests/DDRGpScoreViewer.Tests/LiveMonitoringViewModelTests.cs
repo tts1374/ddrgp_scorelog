@@ -44,6 +44,7 @@ public sealed class LiveMonitoringViewModelTests
 
         Assert.Equal(1, live.RunCount);
         Assert.Equal(1, workflow.CallCount);
+        Assert.Equal(fixture.CatalogPath, workflow.CatalogDatabasePath);
         Assert.Equal(1, viewModel.MonitoringResults.Saved);
         Assert.Contains(viewModel.Plays, play => play.PlayId == "live-play");
         Assert.Equal(MonitoringState.Stopped, viewModel.CurrentMonitoringState);
@@ -100,6 +101,7 @@ public sealed class LiveMonitoringViewModelTests
         : ICaptureSaveWorkflowRunner, ILiveCaptureSaveWorkflowRunner
     {
         public int CallCount { get; private set; }
+        public string? CatalogDatabasePath { get; private set; }
 
         public Task<CaptureSaveWorkflowResult> RunAsync(
             string manifestPath,
@@ -112,9 +114,11 @@ public sealed class LiveMonitoringViewModelTests
             CapturedFrame frame,
             string scoreDatabasePath,
             string masterDatabasePath,
+            string? catalogDatabasePath,
             CancellationToken cancellationToken = default)
         {
             CallCount++;
+            CatalogDatabasePath = catalogDatabasePath;
             return Task.FromResult(run());
         }
     }

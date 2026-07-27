@@ -417,6 +417,51 @@ def test_session_continues_after_evaluation_only_exit_one(
     assert result.event_results == (event_result,)
 
 
+def test_live_session_passes_catalog_and_preconfirmed_candidate_flags(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    captured_args: list[str] = []
+    analyzed_event = _event(tmp_path)
+    event_result = CaptureEventWorkflowResult(
+        analyzed_event.frame_index,
+        "unresolved",
+        True,
+        "unresolved",
+        None,
+        ("formal evidence remains incomplete",),
+    )
+    monkeypatch.setattr(
+        capture_save_workflow,
+        "run_vision_poc",
+        lambda args: captured_args.extend(args) or 1,
+    )
+    monkeypatch.setattr(
+        capture_save_workflow,
+        "load_capture_analyzed_events",
+        lambda manifest_path, analysis_output: (analyzed_event,),
+    )
+    monkeypatch.setattr(
+        capture_save_workflow,
+        "run_capture_save_events",
+        lambda events, **kwargs: (event_result,),
+    )
+
+    catalog_path = tmp_path / "jacket-catalog.sqlite"
+    result = run_capture_save_session(
+        manifest_path=tmp_path / "frame_manifest.csv",
+        master_db_path=tmp_path / "master.sqlite",
+        db_path=tmp_path / "score.sqlite",
+        repository_root=tmp_path,
+        jacket_catalog_path=catalog_path,
+        preconfirmed_candidate=True,
+    )
+
+    assert result.status == "completed"
+    assert "--m5-jacket-catalog" in captured_args
+    assert str(catalog_path) in captured_args
+    assert "--preconfirmed-candidate" in captured_args
+
+
 def test_session_keeps_non_evaluation_runner_failure_fatal(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -472,3 +517,38 @@ def test_app_returns_nonzero_for_workflow_failure(
 
     assert exit_code == 2
     assert '"status": "workflow_failed"' in capsys.readouterr().err
+
+
+def test_app_accepts_live_catalog_and_preconfirmed_options(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    captured: dict[str, object] = {}
+
+    def stub_run_capture_save_session(**kwargs: object) -> CaptureSaveSessionResult:
+        captured.update(kwargs)
+        return CaptureSaveSessionResult("completed", tmp_path / "analysis", ())
+
+    monkeypatch.setattr(
+        capture_save_workflow_app,
+        "run_capture_save_session",
+        stub_run_capture_save_session,
+    )
+    catalog_path = tmp_path / "jacket-catalog.sqlite"
+
+    exit_code = capture_save_workflow_app.main(
+        [
+            "--manifest",
+            str(tmp_path / "manifest.csv"),
+            "--master-database",
+            str(tmp_path / "master.sqlite"),
+            "--database",
+            str(tmp_path / "score.sqlite"),
+            "--m5-jacket-catalog",
+            str(catalog_path),
+            "--preconfirmed-candidate",
+        ]
+    )
+
+    assert exit_code == 0
+    assert captured["jacket_catalog_path"] == catalog_path.resolve()
+    assert captured["preconfirmed_candidate"] is True

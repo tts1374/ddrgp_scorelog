@@ -1226,6 +1226,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 frame,
                 scoreDatabasePath,
                 masterDatabasePath,
+                catalogDatabasePath,
                 cancellationToken);
             if (!CanRunMonitoringWork(sessionId, cancellationToken))
             {

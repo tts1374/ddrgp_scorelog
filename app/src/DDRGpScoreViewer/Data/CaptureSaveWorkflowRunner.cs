@@ -29,6 +29,7 @@ public interface ILiveCaptureSaveWorkflowRunner
         CapturedFrame frame,
         string scoreDatabasePath,
         string masterDatabasePath,
+        string? catalogDatabasePath,
         CancellationToken cancellationToken = default);
 }
 
@@ -70,6 +71,7 @@ public sealed class PythonCaptureSaveWorkflowRunner :
         CapturedFrame frame,
         string scoreDatabasePath,
         string masterDatabasePath,
+        string? catalogDatabasePath,
         CancellationToken cancellationToken = default)
     {
         var transientRoot = Path.Combine(
@@ -97,16 +99,23 @@ public sealed class PythonCaptureSaveWorkflowRunner :
                 cancellationToken);
 
             var sourceReference = $"live-memory://{Path.GetFileName(transientRoot)}";
-            return await RunPythonAsync(
-                [
-                    "-m", "tools.vision_poc.capture_save_workflow_app",
-                    "--manifest", manifestPath,
-                    "--database", Path.GetFullPath(scoreDatabasePath),
-                    "--master-database", Path.GetFullPath(masterDatabasePath),
-                    "--output", Path.Combine(transientRoot, "analysis"),
-                    "--transient-source", sourceReference,
-                ],
-                cancellationToken);
+            var arguments = new List<string>
+            {
+                "-m", "tools.vision_poc.capture_save_workflow_app",
+                "--manifest", manifestPath,
+                "--database", Path.GetFullPath(scoreDatabasePath),
+                "--master-database", Path.GetFullPath(masterDatabasePath),
+                "--output", Path.Combine(transientRoot, "analysis"),
+                "--transient-source", sourceReference,
+                "--preconfirmed-candidate",
+            };
+            if (!string.IsNullOrWhiteSpace(catalogDatabasePath))
+            {
+                arguments.Add("--m5-jacket-catalog");
+                arguments.Add(Path.GetFullPath(catalogDatabasePath));
+            }
+
+            return await RunPythonAsync(arguments, cancellationToken);
         }
         finally
         {

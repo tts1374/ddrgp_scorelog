@@ -18,6 +18,20 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--master-database", type=Path, required=True)
     parser.add_argument("--database", type=Path, required=True)
     parser.add_argument(
+        "--m5-jacket-catalog",
+        type=Path,
+        default=None,
+        help="Optional read-only M5b jacket reference catalog for live matching.",
+    )
+    parser.add_argument(
+        "--preconfirmed-candidate",
+        action="store_true",
+        help=(
+            "Treat the single manifest frame as already time-confirmed by the live monitor; "
+            "the RESULT classification gate remains required."
+        ),
+    )
+    parser.add_argument(
         "--output",
         type=Path,
         default=None,
@@ -37,6 +51,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         output_dir=args.output.resolve() if args.output is not None else None,
         source_path=args.transient_source,
         retain_image_reference=args.transient_source is None,
+        jacket_catalog_path=(
+            args.m5_jacket_catalog.resolve()
+            if args.m5_jacket_catalog is not None
+            else None
+        ),
+        preconfirmed_candidate=args.preconfirmed_candidate,
     )
     payload = capture_save_session_result_json(result)
     exit_code = 0 if result.status == "completed" else 2
