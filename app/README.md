@@ -1,6 +1,6 @@
 # DDR GP Score Tracker WPF app
 
-正式個人スコアDB version 1を読み取り専用で開き、保存済みプレー履歴、プレー詳細、譜面別自己ベストを確認するWPFビューアです。明示選択したversion 1 workflow入力JSONを既存Python workflowで1回だけ保存するmanual入口に加え、明示pickerで選んだwindowから1フレームまたは停止までの連続フレームを取得できます。`監視開始` を明示した場合だけ、完成したsession manifestを既存解析pipelineと正式保存workflowへ接続します。監視状態と最新結果はWPFとtask trayから確認できます。正式個人スコアDB、M4 master DB、M5b jacket reference catalogは環境ごとの固定pathで扱い、次回起動時に3つともread-only検証して再利用します。DBの任意path選択、自動window探索、自動再接続、migration、backup、repairは接続しません。
+正式個人スコアDB version 1を読み取り専用で開き、保存済みプレー履歴、プレー詳細、譜面別自己ベストを確認するWPFビューアです。明示選択したversion 1 workflow入力JSONを既存Python workflowで1回だけ保存するmanual入口に加え、明示pickerで選んだwindowから1フレームまたは停止までの連続フレームを取得できます。`監視開始` を明示した場合だけ、`process=ddr-konaste` かつ client `1280x720` のtop-level windowを自動特定し、該当1件だけへ接続して完成したsession manifestを既存解析pipelineと正式保存workflowへ渡します。該当windowが0件または複数件なら推測で選択せず、capture・解析・正式保存を開始しません。監視状態と最新結果はWPFとtask trayから確認できます。正式個人スコアDB、M4 master DB、M5b jacket reference catalogは環境ごとの固定pathで扱い、次回起動時に3つともread-only検証して再利用します。DBの任意path選択、汎用window探索、自動再接続、自動再開、起動時の自動監視、手動pickerへのfallback、migration、backup、repairは接続しません。
 
 ## 必要環境
 
@@ -59,8 +59,8 @@ python -m tools.vision_poc `
 
 1. WPFまたはtask trayの `監視開始` を押す。
 2. 起動時に現在の環境（repository rootを検出したdevelopment、またはLocalAppDataのproduction）の固定pathを使う。DBの任意pathへの切替操作はありません。
-3. 2種類のmaster DBの固定path、read-only読込可否、schema互換性が `compatible` であることを確認してから、pickerで対象windowを選ぶ。
-4. 必要区間の後にWPFまたはtrayの `監視停止` を押し、監視surfaceで状態、対象window、frame数、開始・最新event時刻、event status別の保存結果を確認する。
+3. `監視開始` が `process=ddr-konaste` かつ client `1280x720` のtop-level windowを確認する。該当1件だけなら既存の監視へ接続し、0件または複数件なら推測で選択せず、capture・解析・正式保存を開始しない。手動pickerへのfallbackはありません。
+4. 必要区間の後にWPFまたはtrayの `監視停止` を押し、監視surfaceで状態、対象window名・process・client size、frame数、開始・最新event時刻、event status別の保存結果を確認する。
 
 capture成功時だけ `python -m tools.vision_poc.capture_save_workflow_app` を起動します。完成manifestを取得順・`timestamp_ms` 順のまま既存manifest modeへ渡し、M5 jacket候補観測とM7a全数字ROIを生成します。`confirmed_result=true` かつ `duplicate=false` だけを通常の昇格候補とし、eventを直列に処理します。capture失敗、0 frame、resize、target close、device lost、write失敗では解析processを起動しません。
 
@@ -70,7 +70,7 @@ capture成功時だけ `python -m tools.vision_poc.capture_save_workflow_app` �
 
 `IsSaving` はmanual単発保存と監視capture-save全体の共通排他です。DB path変更操作はなく、監視中はmanual保存を開始しません。capture開始からworkflow完了まで状態を保持し、同じ正式DBへの並行writerとsave statusの競合を防ぎます。capture-only入口も監視開始と同じoperation gateへ入り、開始要求を二重実行しません。session世代が古いprogress callback、停止後のcallback、終了後の新しい解析・保存は受け付けません。
 
-監視状態は `idle`、`selecting_target`、`monitoring`、`stopping`、`stopped`、`target_closed`、`resized`、`device_lost`、`capture_failed`、`workflow_failed` を区別します。window titleは選択済み対象の表示だけに使い、自動探索には使いません。最新結果は `saved`、`duplicate`、`excluded`、`unresolved`、`analysis_failed`、`db_rejected`、`workflow_failed` を別々に数え、transaction済みのsaved playだけread-only再読込します。
+監視状態は `idle`、`selecting_target`、`monitoring`、`stopping`、`stopped`、`target_closed`、`resized`、`device_lost`、`capture_failed`、`workflow_failed` を区別します。検出したwindowのtitle、process、client sizeは監視surfaceへ表示し、auto-detectionの判定はprocess名とclient sizeだけで行います。最新結果は `saved`、`duplicate`、`excluded`、`unresolved`、`analysis_failed`、`db_rejected`、`workflow_failed` を別々に数え、transaction済みのsaved playだけread-only再読込します。
 
 通常のwindow closeと最小化はwindowを隠すだけで、監視とworkflowはtrayから確認・停止できます。tray menuは監視開始、監視停止、メインwindow表示、アプリ終了を提供します。アプリ終了だけがpending pickerのcancel、監視停止、in-flight workflowの完了またはcancelを待ち、tray iconとcontext menuをdisposeしてprocessを終了します。終了後のViewModel callbackはtrayへ反映しません。通知はsavedがある完了と、監視停止が必要な重大失敗だけです。duplicate、excluded、unresolvedの連続通知は行いません。
 
@@ -79,7 +79,7 @@ capture成功時だけ `python -m tools.vision_poc.capture_save_workflow_app` �
 - 正式個人スコアDB、M4 master DB、M5b jacket reference catalogの固定pathとdev/prod環境タグだけを `%LOCALAPPDATA%\DDRGpScoreViewer\viewer-paths.json` に保存します。この設定はGit管理外で、候補値、解析結果、保存statusは持ちません。旧形式、任意path、別環境のpathは暗黙復元せず、現在の既定pathだけを使用します。
 - 起動時、解析・正式保存開始直前に、M4 master DBとM5b jacket reference catalogを別々のread-only connectionで検査します。M4は必須table、metadata、曲・譜面件数、source snapshotのURL/hash整合を確認し、M5bはtable identity、column、metadata identity、schema version、unique index、foreign keyを確認します。両方とも `missing`、`read不可`、`schema incompatible`、`compatible` を区別します。
 - どちらか一方がmissing / read不可 / incompatibleなら、理由を表示して対象windowの解析と正式保存workflowを開始しません。capture後にも同じ2ファイルを再検証します。networkからの最新版確認やhashの継続監視は行いません。
-- `target_closed`、`resized`、`device_lost`、`capture_failed`、`workflow_failed` は監視状態として残ります。停止完了後に対象windowを再選択し、必要なmaster DBは現在の環境の固定pathへ用意してから `監視開始` を再実行してください。window終了、resize、capture失敗で古いsessionを再利用しません。
+- `target_closed`、`resized`、`device_lost`、`capture_failed`、`workflow_failed` は監視状態として残ります。停止完了後に必要なmaster DBを現在の環境の固定pathへ用意し、`監視開始` を明示的に再実行してください。再実行時も対象windowを1件だけ自動特定し、window終了、resize、capture失敗で古いsessionを再利用しません。`連続取得を開始` のcapture-only入口は従来どおり手動pickerで対象windowを選び直します。
 - saved、duplicate、excluded、unresolved、解析失敗、DB拒否、workflow失敗はprocess内の表示と既存workflowのartifact/logで追跡します。再起動時に保存されるのはtransaction完了した正式playだけで、過去のskip・拒否・失敗statusをsavedへ昇格するcheckpointはありません。
 
 ## M10-2 既定保存先と責務境界

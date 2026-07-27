@@ -13,7 +13,7 @@ main branchで利用できる主な機能:
 - 正式個人スコアDB version 1への明示的な単発保存
 - 正式DBとマスタDBをread-onlyで開くWPFスコアビューア
 - Windows Graphics Captureによる1フレーム取得、連続取得、取得後の保存workflow
-- 監視のstart / stop / exit、対象window再選択、環境ごとの固定path再検証、master DB read-only再検証
+- `監視開始` による `ddr-konaste` / client `1280x720` の対象window自動特定（該当1件だけ接続）、監視のstop / exit、capture-only入口の対象window再選択、環境ごとの固定path再検証、master DB read-only再検証
 - developer-onlyのjacket catalog収集・manual review支援
 
 進行中の主な作業:
