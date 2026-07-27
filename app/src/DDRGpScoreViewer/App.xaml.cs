@@ -18,7 +18,7 @@ public partial class App : System.Windows.Application
         ShutdownMode = ShutdownMode.OnExplicitShutdown;
     }
 
-    protected override void OnStartup(StartupEventArgs e)
+    protected override async void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
         mainWindow = new MainWindow();
@@ -39,7 +39,7 @@ public partial class App : System.Windows.Application
             }
         };
         mainWindow.ViewModel.PropertyChanged += viewModelPropertyChanged;
-        mainWindow.RestoreSavedPaths();
+        await mainWindow.RestoreSavedPathsAsync();
         UpdateTrayState();
         mainWindow.Show();
     }

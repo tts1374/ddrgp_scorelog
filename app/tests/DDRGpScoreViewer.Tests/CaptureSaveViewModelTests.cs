@@ -132,6 +132,30 @@ public sealed class CaptureSaveViewModelTests
     }
 
     [Fact]
+    public async Task Missing_jacket_catalog_does_not_start_capture_save_workflow()
+    {
+        using var fixture = new DatabaseFixture();
+        var workflow = new StubCaptureSaveWorkflowRunner((_, _, _) =>
+            throw new InvalidOperationException("workflow must not run"));
+        var viewModel = new MainViewModel(
+            new ScoreViewerRepository(),
+            new UnusedManualWorkflowRunner(),
+            continuousCaptureService: new StubContinuousCaptureService(
+                CaptureOperationStatus.Saved),
+            captureSaveWorkflowRunner: workflow);
+
+        await viewModel.StartContinuousCaptureAndSaveAsync(
+            123,
+            fixture.ScorePath,
+            fixture.MasterPath,
+            Path.Combine(fixture.DirectoryPath, "missing-catalog.sqlite"));
+
+        Assert.Equal(0, workflow.CallCount);
+        Assert.Equal(MasterDatabaseStatus.Missing, viewModel.CatalogDatabaseStatus);
+        Assert.Contains("解析・正式保存を開始しません", viewModel.SaveStatusMessage, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Capture_save_does_not_start_while_manual_save_is_running()
     {
         using var fixture = new DatabaseFixture();

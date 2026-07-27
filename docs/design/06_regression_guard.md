@@ -355,7 +355,7 @@
 - orchestration入口がartifact output pathと `analysis_logs.log_path` の一致を副作用前に保証する。
 - artifact失敗ではDB未実行、artifact成功後のDB失敗ではrowをrollbackしてartifactを保持する。同一payloadだけ再利用し、既存fileを上書き・削除しない。
 - `artifact_created_db_failed` を保存成功へ丸めず、`duplicate` / `excluded` の `play_id=null` を成功playとして扱わない。
-- M9 manual WPF入口はworkflow入力、正式DB、表示用master DBを明示選択し、既存workflowを1回だけ呼ぶ。C#側でstrict入力や正式値を再構築しない。
+- M9 manual WPF入口はworkflow入力だけを明示選択し、正式DBと表示用master DBは現在の環境の固定pathを使って既存workflowを1回だけ呼ぶ。C#側でstrict入力や正式値を再構築しない。
 - Python executableとrepository rootの探索は単発保存の実行時まで遅延し、探索失敗でread-only viewerの起動や通常閲覧を妨げない。
 - UIは `saved` / `written=true` / 非null `play_id` だけread-only再読込し、再読込履歴に同じIDがあることを確認する。excluded、duplicate、unresolved、invalid、DB拒否、artifact partial successではplay反映を行わない。
 - viewer単独のDB選択、履歴、詳細、自己ベスト操作はwrite processを起動せず、個人DBとmaster DBのhashを変えない。
@@ -469,7 +469,7 @@ M5bの変更では、少なくとも次のcurrent-only境界をfixtureで固定�
 - bounded queueで中間frameをdropしても、保存frameの順序とstrictly increasing timestampを維持する。
 - `連続取得を開始` のcapture-only UIは分類、OCR、identity、confirmed event、正式save input、workflow、正式DB、viewer履歴を起動しない。
 - `連続取得・保存` だけが完成manifest後に解析を起動し、capture失敗時は解析・workflowを呼ばない。
-- manual保存とcapture-saveは `IsSaving` を共通排他にし、既存保存中はDB pickerもcapture-saveも起動しない。capture-saveはcapture開始からworkflow完了まで排他を保持し、同一DB writerとsave statusの競合を防ぐ。
+- manual保存とcapture-saveは `IsSaving` を共通排他にし、既存保存中はDB path変更操作もcapture-saveも起動しない。capture-saveはcapture開始からworkflow完了まで排他を保持し、同一DB writerとsave statusの競合を防ぐ。
 - capture saveは未確定/transitionをworkflow前で除外し、confirmed eventを直列に最大1回ずつ既存workflowへ渡す。
 - `screen_type=unknown` の実capture manifestはVision PoCの評価用終了コード1で中断せず、生成済みeventを `unresolved` / saved等の後続境界へ渡す。解析例外とその他の失敗は `analysis_failed` を維持する。
 - candidate/raw/expected/preview/相対時刻はformal値へコピーせず、採用済みfield source、confidence、完全性不足を `unresolved` に保つ。
@@ -487,7 +487,7 @@ M5bの変更では、少なくとも次のcurrent-only境界をfixtureで固定�
 - saved、duplicate、excluded、unresolved、analysis_failed、db_rejected、workflow_failedの件数を別々に投影し、saved IDだけをread-only再読込する。commit済みpartial successとfatal reasonを同時に失わない。
 - manual保存中の監視開始、監視capture-save中のmanual保存、capture-only session中のmanual保存を拒否し、二重開始、stop中再開始、反復stopでwriterやresourceを増やさない。
 - trayの開始/停止enable状態はpicker開始待ち、ViewModelの保存・capture状態を含めて更新する。capture-onlyを含むpicker中の再Startを同じTaskへ合流させ、session世代とcancel状態で停止・exit後のprogress callback、二重capture、二重workflow起動を受け付けない。通常close/最小化はwindow非表示、明示exitはpending pickerのcancel/終端とstop完了を待ってtrayをdisposeする。stop例外でもdisposeとprocess終了を決定的にし、duplicate/unresolvedだけで通知しない。
-- 起動時、明示再読込時、保存開始時にmaster DBのpath、read-only読込可否、schema互換性を検査し、`missing`、`read不可`、`schema incompatible` をcapture解析・正式保存の開始前に拒否する。path以外の過去session statusを保存せず、再起動でfailed/skip/rejectedをsavedへ昇格させない。
+- 起動時、保存開始時に現在の環境の固定pathにあるmaster DBのpath、read-only読込可否、schema互換性を検査し、`missing`、`read不可`、`schema incompatible` をcapture解析・正式保存の開始前に拒否する。任意pathのDB選択操作を持たず、path以外の過去session statusを保存せず、再起動でfailed/skip/rejectedをsavedへ昇格させない。
 - Windows Graphics Capture、実window、実DBを必須にせず、progress fake、workflow fake、tray fakeで通常CIを完結させる。実windowでのpicker、tray復帰、終了確認は任意の目視確認として別記録する。
 
 ## 代表検証コマンド
@@ -523,3 +523,13 @@ dry-run sequence scenario 入口を変更した場合も、生成manifestを man
 このcontractテストは実DB backupやmigrationを生成しない。既存save/orchestration/diagnostic CLIの回帰は従来テストで維持し、migration contractをそれらへ接続しないことを前提とする。
 
 `tests/test_personal_score_db_migration_status.py` はschema inspectionからpure contractへの状態写像、JSON/Markdown projection、status/dry-runの同一contract利用、backup path read-only検査、専用CLI排他を固定する。fixtureの前後でsource DB hashが変わらず、backup pathが作成されないことを確認する。
+
+## M10-2 local storage and two-master guard
+
+- developmentの4 pathは `databases/ddrgp-master.sqlite`、`databases/jacket-catalog.sqlite`、`databases/score.dev.db`、`databases/evaluation.db` とし、productionの3 pathは `%LOCALAPPDATA%\DDRGpScoreViewer\data\master\ddrgp-master.sqlite`、同じ`master`配下の`jacket-catalog.sqlite`、`data\score\score.db`とする。developmentとproductionのpathを暗黙に混ぜない。
+- M4 master DBとM5b jacket reference catalogについて、normal / missing / read不可 / schema incompatibleを個別に検査し、検査前後でfile hashが変わらないことを確認する。
+- 2つのmaster DBのどちらかが不正なとき、manual save runnerとcapture-save runnerの呼出回数が0で、UIに対象DBの理由と「解析・正式保存を開始しない」旨が表示されることを確認する。capture後の再検証でも同じ境界を確認する。
+- 正常な正式個人スコアDBを再起動相当のread-only reloadで開いた前後にhash、play件数、pathが変わらず、master/catalog inspectionや評価用DB準備でscore DBが初期化・上書きされないことを確認する。
+- default directory preparationは親directoryを作成し、master/catalogのread-only検証に成功したときだけ固定score pathのmissing／0 byteを正式schemaへ初期化することを確認する。master、catalog、evaluationのSQLite fileは起動時に作成せず、既存の非空score DBは変更しない。
+- 保存済み設定に任意pathや別環境のpathが含まれていても復元せず、現在の環境のscore/master/catalog固定pathだけをloadやsave preflightで参照することを確認する。path保存にはdevelopment / productionの環境タグを含める。
+- M10-3評価用DBはdevelopment専用path、WPF非参照、明示initializer、先行backup、integrity check、別outputへの再実行という手順をdocsで固定する。評価用DBの初期化・退避をformal score DB writerへ接続しない。

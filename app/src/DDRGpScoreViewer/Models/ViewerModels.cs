@@ -95,4 +95,5 @@ public sealed record ViewerData(
     IReadOnlyList<ChartBestItem> ChartBests,
     string ScoreDatabasePath,
     string MasterDatabasePath,
-    string MasterVersion);
+    string MasterVersion,
+    string CatalogDatabasePath = "");

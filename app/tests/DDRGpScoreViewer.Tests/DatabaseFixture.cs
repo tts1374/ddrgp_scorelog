@@ -88,13 +88,16 @@ internal sealed class DatabaseFixture : IDisposable
         Directory.CreateDirectory(DirectoryPath);
         ScorePath = Path.Combine(DirectoryPath, "scores.sqlite");
         MasterPath = Path.Combine(DirectoryPath, "master.sqlite");
+        CatalogPath = Path.Combine(DirectoryPath, "jacket-catalog.sqlite");
         CreateScoreDatabase();
         CreateMasterDatabase();
+        CreateJacketCatalogDatabase();
     }
 
     public string DirectoryPath { get; }
     public string ScorePath { get; }
     public string MasterPath { get; }
+    public string CatalogPath { get; }
 
     public void AddPlay(
         string playId,
@@ -146,6 +149,15 @@ internal sealed class DatabaseFixture : IDisposable
     public void ExecuteMasterSql(string sql)
     {
         using var connection = OpenWritable(MasterPath);
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = sql;
+        command.ExecuteNonQuery();
+    }
+
+    public void ExecuteCatalogSql(string sql)
+    {
+        using var connection = OpenWritable(CatalogPath);
         connection.Open();
         using var command = connection.CreateCommand();
         command.CommandText = sql;
@@ -239,6 +251,77 @@ internal sealed class DatabaseFixture : IDisposable
             insert.Parameters.AddWithValue("$value", pair.Value);
             insert.ExecuteNonQuery();
         }
+    }
+
+    private void CreateJacketCatalogDatabase()
+    {
+        using var connection = OpenWritable(CatalogPath);
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            PRAGMA user_version = 1;
+            CREATE TABLE catalog_metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+            CREATE TABLE result_text_features (
+              feature_id TEXT PRIMARY KEY, song_id TEXT NOT NULL, field_name TEXT NOT NULL,
+              feature_version TEXT NOT NULL, roi_version TEXT NOT NULL, feature_hash TEXT NOT NULL,
+              payload_json TEXT NOT NULL, source_label TEXT NOT NULL, master_version TEXT NOT NULL,
+              canonical_title_snapshot TEXT NOT NULL, canonical_artist_snapshot TEXT NOT NULL,
+              created_at TEXT NOT NULL,
+              UNIQUE (song_id, field_name, feature_version, feature_hash)
+            );
+            CREATE INDEX idx_result_text_features_song_field
+              ON result_text_features(song_id, field_name, master_version);
+            CREATE TABLE jacket_references (
+              reference_id TEXT PRIMARY KEY, source_capture_id TEXT, source_image_hash TEXT NOT NULL,
+              master_version TEXT NOT NULL, song_id TEXT, canonical_title_snapshot TEXT NOT NULL,
+              canonical_artist_snapshot TEXT NOT NULL, review_status TEXT NOT NULL,
+              resolution_reason TEXT NOT NULL, resolution_basis TEXT NOT NULL,
+              feature_extractor_version TEXT NOT NULL, image_kind TEXT NOT NULL,
+              thumbnail_rgb_json TEXT, histogram_json TEXT, dhash_bits_json TEXT,
+              dhash_hex TEXT NOT NULL, observed_title TEXT NOT NULL, observed_artist TEXT NOT NULL,
+              observation_status TEXT NOT NULL, expected_song_id TEXT NOT NULL,
+              review_revision INTEGER NOT NULL, manual_action_id TEXT, manual_note TEXT NOT NULL,
+              jacket_feature_version TEXT, jacket_feature_hash TEXT,
+              title_line_feature_version TEXT, title_line_hash TEXT,
+              composite_identity_version TEXT, composite_identity_hash TEXT,
+              created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+            );
+            CREATE INDEX idx_jacket_references_hash
+              ON jacket_references(source_image_hash, feature_extractor_version);
+            CREATE UNIQUE INDEX idx_jacket_references_hash_song
+              ON jacket_references(source_image_hash, feature_extractor_version, song_id)
+              WHERE song_id IS NOT NULL;
+            CREATE UNIQUE INDEX idx_jacket_references_capture
+              ON jacket_references(source_capture_id, feature_extractor_version)
+              WHERE source_capture_id IS NOT NULL;
+            CREATE INDEX idx_jacket_references_song ON jacket_references(song_id);
+            CREATE UNIQUE INDEX idx_jacket_references_composite_identity
+              ON jacket_references(composite_identity_version, composite_identity_hash)
+              WHERE composite_identity_version IS NOT NULL
+                AND composite_identity_hash IS NOT NULL;
+            CREATE TABLE reference_candidates (
+              reference_id TEXT NOT NULL REFERENCES jacket_references(reference_id),
+              song_id TEXT NOT NULL, candidate_reason TEXT NOT NULL,
+              PRIMARY KEY (reference_id, song_id)
+            );
+            CREATE TABLE reference_review_history (
+              history_id INTEGER PRIMARY KEY AUTOINCREMENT, action_id TEXT NOT NULL UNIQUE,
+              reference_id TEXT NOT NULL REFERENCES jacket_references(reference_id),
+              action TEXT NOT NULL, before_status TEXT NOT NULL, after_status TEXT NOT NULL,
+              before_song_id TEXT, after_song_id TEXT, reason TEXT NOT NULL, note TEXT NOT NULL,
+              action_at TEXT NOT NULL, before_revision INTEGER NOT NULL,
+              after_revision INTEGER NOT NULL, request_payload_json TEXT NOT NULL,
+              receipt_json TEXT NOT NULL
+            );
+            CREATE INDEX idx_reference_review_history_reference
+              ON reference_review_history(reference_id, history_id);
+            INSERT INTO catalog_metadata (key, value) VALUES
+              ('catalog_identity', 'ddrgp-local-jacket-reference-catalog'),
+              ('schema_version', '1'),
+              ('created_at', '2026-07-13T00:00:00+00:00');
+            """;
+        command.ExecuteNonQuery();
     }
 
     private static SqliteConnection OpenWritable(string path) =>

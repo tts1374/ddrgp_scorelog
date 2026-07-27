@@ -33,16 +33,24 @@ DDR GP scorelog の設計、PoC、テストで使う主要用語を定義する�
 
 ## master DB inspection status
 
-WPFが選択pathをread-onlyで検査した結果を表す。これはmaster DBの内容を正式個人スコアへ保存するstatusではなく、保存workflowを開始してよいかの入口状態である。
+WPFが現在の環境の固定pathをread-onlyで検査した結果を表す。これはmaster DBの内容を正式個人スコアへ保存するstatusではなく、保存workflowを開始してよいかの入口状態である。
 
 | status | 正式な意味 |
 | --- | --- |
-| `missing` | 選択pathにmaster DBが存在しない。pathを再選択するまでcapture解析・正式保存を開始しない。 |
+| `missing` | 現在の環境の固定pathにmaster DBが存在しない。正しいDBが固定pathへ用意されるまでcapture解析・正式保存を開始しない。 |
 | `read不可` | pathはあるが、directory、SQLiteでない、アクセス権、I/Oなどの理由でread-only読込できない。 |
 | `schema incompatible` | SQLiteとして読めるが、必須table、metadata、件数、source snapshot、master生成schemaの整合が現行runtimeと一致しない。 |
 | `compatible` | 現行runtimeがread-onlyで検証でき、保存workflow開始前のmaster参照として利用できる。 |
 
-master DB inspectionは起動時・明示再読込時・保存開始時に行う。pathだけを再利用して、過去の保存結果、skip、拒否、失敗、候補をsavedへ昇格させるcheckpointは持たない。
+master DB inspectionは起動時・保存開始時に行う。固定pathだけを再利用して、過去の保存結果、skip、拒否、失敗、候補をsavedへ昇格させるcheckpointは持たない。
+
+## M10 local storage terms
+
+- `development environment`: 現在のdirectoryまたはapp配置場所の親からrepository rootを解決できる実行環境。既定DBはrepositoryの`databases/`配下に置く。
+- `production environment`: repository rootを解決できない実行環境。既定DBは`%LOCALAPPDATA%\DDRGpScoreViewer\data\`配下に置き、repositoryのDBへfallbackしない。
+- `M5b jacket reference catalog`: `ddrgp-master.sqlite`とは別の`jacket-catalog.sqlite`。current jacket feature、M7 result-text feature、review historyを持つ参照catalogで、正式個人スコアDBや画像原本ではない。
+- `evaluation DB`: M10-3が所有するdevelopment専用の評価SQLite。正式個人スコアDB、M4 master DB、M5b jacket reference catalogから分離し、WPF viewerは開かない。
+- `formal score DB protection boundary`: 起動時はmaster/catalog検証後の固定score pathに限り、missing／0 byteの新規正式schema準備だけを既存file-preparation契約へ委譲し、既存の非空正式個人スコアDBをread-only検証、上書き、migration、repairしない境界。正式writerの明示saveも同じ既存準備・transaction契約を使う。
 
 `M5c` の下位phaseは次の意味で読む。
 
