@@ -157,6 +157,8 @@ def run_capture_save_events(
     *,
     manifest_path: Path,
     db_path: Path,
+    source_path: str | None = None,
+    retain_image_reference: bool = True,
     workflow_runner: Callable[..., PersonalScoreDbWorkflowResult] = (
         run_personal_score_db_workflow
     ),
@@ -192,7 +194,7 @@ def run_capture_save_events(
             "capture_hash": _capture_event_hash(event.image_path, capture_id),
             "captured_at": event.captured_at,
             "source_kind": "capture",
-            "source_path": str(manifest_path.parent),
+            "source_path": source_path or str(manifest_path.parent),
             "analysis_id": analysis_id,
             "event_type": event.event_type,
             "confirmed_result": event.confirmed_result,
@@ -213,7 +215,7 @@ def run_capture_save_events(
             "app_version": CAPTURE_SAVE_APP_VERSION,
             "formal_play": _formal_play_json(formal_play),
             "exclusion": exclusion,
-            "manifest_image_path": event.manifest_image_path,
+            "manifest_image_path": event.manifest_image_path if retain_image_reference else "",
             "frame_index": event.frame_index,
             "timestamp_ms": event.timestamp_ms,
             "candidate_duration_ms": event.candidate_duration_ms,
@@ -239,9 +241,16 @@ def run_capture_save_events(
 
 
 def run_capture_save_session(
-    *, manifest_path: Path, master_db_path: Path, db_path: Path, repository_root: Path
+    *,
+    manifest_path: Path,
+    master_db_path: Path,
+    db_path: Path,
+    repository_root: Path,
+    output_dir: Path | None = None,
+    source_path: str | None = None,
+    retain_image_reference: bool = True,
 ) -> CaptureSaveSessionResult:
-    output = repository_root / "data" / "capture_save_workflow" / (
+    output = output_dir or repository_root / "data" / "capture_save_workflow" / (
         f"{manifest_path.parent.name}-{uuid.uuid4().hex[:12]}"
     )
     args = [
@@ -268,7 +277,13 @@ def run_capture_save_session(
                 "analysis_failed", output, (), (f"vision_poc_exit_{exit_code}",)
             )
         events = load_capture_analyzed_events(manifest_path, output)
-        results = run_capture_save_events(events, manifest_path=manifest_path, db_path=db_path)
+        results = run_capture_save_events(
+            events,
+            manifest_path=manifest_path,
+            db_path=db_path,
+            source_path=source_path,
+            retain_image_reference=retain_image_reference,
+        )
         return summarize_capture_save_events(output, results)
     except Exception as exc:
         return CaptureSaveSessionResult("analysis_failed", output, (), (str(exc),))

@@ -400,7 +400,7 @@ retention classは `short=7日`、`standard=30日`、`indefinite=期限なし` �
 
 ## Capture save workflow output
 
-continuous capture原本は `data/windows_capture/session-*/` に保持し、解析生成物は別の一意directory `data/capture_save_workflow/<session>-<id>/` に出力する。画像原本やmanifestを解析出力へ移動・上書きしない。出力directoryは既存Vision PoCのCSV/JSON/ROI artifactであり、正式DB、`source_captures` 本文、`analysis_logs.log_path`、DB diagnostic logの代用にしない。
+capture-onlyのcontinuous capture原本は `data/windows_capture/session-*/` に保持し、解析生成物は別の一意directory `data/capture_save_workflow/<session>-<id>/` に出力する。画像原本やmanifestを解析出力へ移動・上書きしない。通常のlive監視はsession原本を作らず、安定候補のPNG、1行manifest、Vision PoCのCSV/JSONをOS一時directoryへ置き、candidate workflow終了後に全て削除する。live candidateの正式DB source captureにはhashと論理 `live-memory://...` sourceだけを記録し、`manifest_image_path` は空にする。出力directoryは正式DB、`source_captures` 本文、`analysis_logs.log_path`、DB diagnostic logの代用にしない。
 
 正式DB、M4 master DB、M5b jacket reference catalogは、development / productionごとの既定pathを起動時に設定し、通常の監視・単発保存でpickerを開かない。DBの任意path切替は行わず、path保存も現在の環境の既定pathだけに限定する。capture-only操作はDBを開かず、正式workflowへ進むconfirmed eventも既存file-save境界だけが新規/0 byte/compatible DBを準備する。`saved` transactionの後だけviewerが3つのDBをread-onlyで開き直し、正常確認できた既定pathだけを次回起動用のローカル設定へ保存する。
 

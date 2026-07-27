@@ -306,7 +306,7 @@ M3-6の保存候補ブロッカー代表整理では、`m3_save_candidate_blocke
 
 ## Continuous capture save workflow
 
-明示停止で完成したWPF session manifestは `capture_save_workflow` が既存manifest modeへ渡す。入力順とstrictly increasingな `timestamp_ms` を維持し、分類、confirmed event、M5候補観測、M7a数字候補を再利用する。capture sessionの停止・失敗statusはこの解析statusと別で、captureが `Saved` でない場合は解析も正式workflowも起動しない。
+capture-onlyで明示停止して完成したWPF session manifestは `capture_save_workflow` が既存manifest modeへ渡す。入力順とstrictly increasingな `timestamp_ms` を維持し、分類、confirmed event、M5候補観測、M7a数字候補を再利用する。capture sessionの停止・失敗statusはこの解析statusと別で、captureが `Saved` でない場合は解析も正式workflowも起動しない。通常の `監視開始` はこのmanifest経路を使わず、1秒ごとに `results_header` を判定し、RESULT画面でSCOREが2サンプル連続して一致したframeだけを候補として既存workflowへ渡す。候補は処理中1件・待機1件に制限し、RESULTS 2回連続消失で同一結果の抑制をリセットする。
 
 manual単発保存とcapture-saveはWPF ViewModelの `IsSaving` を共通排他にする。capture-saveはDB picker前に既存保存を拒否し、capture開始から完成manifestの解析・workflow終了まで排他を保持する。この間はmanual保存も開始せず、同一正式DBの並行writerとsave status競合を防ぐ。capture-onlyはDB writerを起動しないため対象外とする。
 
@@ -322,7 +322,7 @@ event処理は入力順の直列で、次の3段階を混同しない。
 
 continuous capture manifestの `screen_type=unknown` は正解ラベルではない。capture-save orchestrationはVision PoCが評価不一致として終了コード1を返しても生成済み解析成果を読み取る。解析例外とその他の非0終了は `analysis_failed` のままとする。
 
-capture-save由来の `capture_hash` は `capture_id` と画像bytesを入力とするcapture-event version 1 hashとする。同じmanifest/frameの再実行は同一hashとなり、byte-identicalでも別frame indexは別hashとなる。これにより、静止リザルトの連続duplicate eventをplayなしのsource capture + analysisとして記録しつつ、同一capture event再送のUNIQUE拒否は維持する。
+capture-save由来の `capture_hash` は `capture_id` と画像bytesを入力とするcapture-event version 1 hashとする。同じmanifest/frameの再実行は同一hashとなり、byte-identicalでも別frame indexは別hashとなる。これにより、静止リザルトの連続duplicate eventをplayなしのsource capture + analysisとして記録しつつ、同一capture event再送のUNIQUE拒否は維持する。live監視のcandidateはPNGとmanifestをOS一時directoryへ置いてこのhashを計算するが、workflow完了後に一時directoryを削除する。live由来の `source_captures` は `source_path=live-memory://...` と空の `manifest_image_path` を記録し、画像の永続参照は残さない。
 
 ## M0/M1で固定すること
 

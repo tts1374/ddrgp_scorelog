@@ -63,7 +63,20 @@ public sealed record CaptureSessionProgress(
     CaptureTargetInfo Target,
     int FrameCount,
     DateTimeOffset StartedAtUtc,
-    DateTimeOffset LatestEventAtUtc);
+    DateTimeOffset LatestEventAtUtc,
+    int SampledFrameCount = 0,
+    int ResultFrameCount = 0,
+    int ConfirmedCandidateCount = 0,
+    int DiscardedFrameCount = 0,
+    int PendingCandidateCount = 0,
+    int CandidateQueueDropCount = 0,
+    string StatusMessage = "");
+
+public sealed record LiveResultObservation(
+    bool IsResultScreen,
+    string Score,
+    string TitleSignature,
+    string Reason);
 
 public interface IGraphicsCaptureAdapter
 {
@@ -155,6 +168,27 @@ public interface IMonitoringContinuousCaptureService : IContinuousCaptureService
         nint ownerWindowHandle,
         IProgress<CaptureSessionProgress> progress,
         CancellationToken cancellationToken = default);
+}
+
+public interface ILiveResultAnalyzer
+{
+    Task<LiveResultObservation> AnalyzeAsync(
+        CapturedFrame frame,
+        CancellationToken cancellationToken = default);
+}
+
+public interface ILiveMonitoringCaptureService
+{
+    bool IsRunning { get; }
+
+    Task<CaptureSessionOperationResult> RunAsync(
+        nint targetWindowHandle,
+        CaptureTargetInfo target,
+        IProgress<CaptureSessionProgress> progress,
+        Func<CapturedFrame, LiveResultObservation, CancellationToken, Task> processCandidate,
+        CancellationToken cancellationToken = default);
+
+    Task StopAsync();
 }
 
 public interface ITargetedMonitoringContinuousCaptureService

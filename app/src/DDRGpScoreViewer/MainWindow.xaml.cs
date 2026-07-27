@@ -33,7 +33,10 @@ public partial class MainWindow : System.Windows.Window
                 new ContinuousWindowsGraphicsCaptureAdapter(),
                 new RepositoryCaptureSessionOutputWriter()),
             new PythonCaptureSaveWorkflowRunner(),
-            new LocalViewerPathStore());
+            new LocalViewerPathStore(),
+            liveMonitoringService: new LiveMonitoringCaptureService(
+                new ContinuousWindowsGraphicsCaptureAdapter(),
+                new PythonLiveResultAnalyzer()));
         DataContext = viewModel;
     }
 

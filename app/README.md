@@ -1,6 +1,6 @@
 # DDR GP Score Tracker WPF app
 
-正式個人スコアDB version 1を読み取り専用で開き、保存済みプレー履歴、プレー詳細、譜面別自己ベストを確認するWPFビューアです。明示選択したversion 1 workflow入力JSONを既存Python workflowで1回だけ保存するmanual入口に加え、明示pickerで選んだwindowから1フレームまたは停止までの連続フレームを取得できます。`監視開始` を明示した場合だけ、`process=ddr-konaste` かつ client `1280x720` のtop-level windowを自動特定し、該当1件だけへ接続して完成したsession manifestを既存解析pipelineと正式保存workflowへ渡します。該当windowが0件または複数件なら推測で選択せず、capture・解析・正式保存を開始しません。監視状態と最新結果はWPFとtask trayから確認できます。正式個人スコアDB、M4 master DB、M5b jacket reference catalogは環境ごとの固定pathで扱い、次回起動時に3つともread-only検証して再利用します。DBの任意path選択、汎用window探索、自動再接続、自動再開、起動時の自動監視、手動pickerへのfallback、migration、backup、repairは接続しません。
+正式個人スコアDB version 1を読み取り専用で開き、保存済みプレー履歴、プレー詳細、譜面別自己ベストを確認するWPFビューアです。明示選択したversion 1 workflow入力JSONを既存Python workflowで1回だけ保存するmanual入口に加え、明示pickerで選んだwindowから1フレームまたは停止までの連続フレームを取得できます。`監視開始` を明示した場合だけ、`process=ddr-konaste` かつ client `1280x720` のtop-level windowを自動特定し、該当1件だけへ接続します。監視中は1秒ごとに `results_header` を確認し、RESULT画面でSCOREが2回連続して安定した候補だけを既存解析pipelineと正式保存workflowへ渡します。該当windowが0件または複数件なら推測で選択せず、capture・解析・正式保存を開始しません。監視中の候補画像はsession原本として保管せず、一時workflow入力の処理後に破棄します。監視状態と最新結果はWPFとtask trayから確認できます。正式個人スコアDB、M4 master DB、M5b jacket reference catalogは環境ごとの固定pathで扱い、次回起動時に3つともread-only検証して再利用します。DBの任意path選択、汎用window探索、自動再接続、自動再開、起動時の自動監視、手動pickerへのfallback、migration、backup、repairは接続しません。
 
 ## 必要環境
 
@@ -60,9 +60,9 @@ python -m tools.vision_poc `
 1. WPFまたはtask trayの `監視開始` を押す。
 2. 起動時に現在の環境（repository rootを検出したdevelopment、またはLocalAppDataのproduction）の固定pathを使う。DBの任意pathへの切替操作はありません。
 3. `監視開始` が `process=ddr-konaste` かつ client `1280x720` のtop-level windowを確認する。該当1件だけなら既存の監視へ接続し、0件または複数件なら推測で選択せず、capture・解析・正式保存を開始しない。手動pickerへのfallbackはありません。
-4. 必要区間の後にWPFまたはtrayの `監視停止` を押し、監視surfaceで状態、対象window名・process・client size、frame数、開始・最新event時刻、event status別の保存結果を確認する。
+4. 監視中にRESULT候補の解析・正式保存が進み、WPFまたはtrayの `監視停止` で現在の候補処理を完了して停止する。監視surfaceで状態、対象window名・process・client size、frame数、サンプリング数、RESULT検出数、候補・破棄・待機数、event status別の保存結果を確認する。
 
-capture成功時だけ `python -m tools.vision_poc.capture_save_workflow_app` を起動します。完成manifestを取得順・`timestamp_ms` 順のまま既存manifest modeへ渡し、M5 jacket候補観測とM7a全数字ROIを生成します。`confirmed_result=true` かつ `duplicate=false` だけを通常の昇格候補とし、eventを直列に処理します。capture失敗、0 frame、resize、target close、device lost、write失敗では解析processを起動しません。
+監視では1秒ごとの候補だけを対象に `python -m tools.vision_poc.capture_save_workflow_app` を起動します。RESULTSがないframe、SCOREを認識できないframe、同じSCOREとtitle ROI署名の結果は後続処理へ渡しません。SCOREが2サンプルで安定した候補は直ちにM5 jacket候補観測とM7a全数字ROIを含む既存workflowへ渡し、解析中は処理中1件と待機1件までに制限します。待機枠を超えた候補は理由付きで破棄します。candidate PNG、manifest、解析CSV/JSONはOS一時directoryだけに置き、workflow終了後に削除します。正式DBの`source_captures`にはhashと `live-memory://` の論理sourceだけを残し、画像pathは保持しません。capture-onlyの連続取得は従来どおり停止後に完成manifestを解析できます。capture失敗、resize、target close、device lost、write失敗では新しい解析・正式保存を開始しません。
 
 自動formal昇格はfieldごとの採用済み根拠sourceとconfidence、全必須値の完全性をpure adapterで検査します。M5 `identity_signal_*`、M7a `recognized_digits`、expected値、M8 preview payload、相対 `timestamp_ms` は候補材料のままです。現行pipelineにはrank/clear typeを含む全必須項目の採用済み根拠がまだないため、実captureで根拠が欠けるeventは `unresolved` となりplayを作りません。これはcandidateを正式値へ暗黙昇格しないための意図した停止です。manualのreviewed workflow入力は従来の `単発保存` に残り、自動由来と混同しません。
 
