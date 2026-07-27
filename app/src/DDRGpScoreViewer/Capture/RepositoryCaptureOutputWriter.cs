@@ -1,4 +1,5 @@
 using System.IO;
+using DDRGpScoreViewer.Data;
 
 namespace DDRGpScoreViewer.Capture;
 
@@ -7,7 +8,7 @@ public sealed class RepositoryCaptureOutputWriter : ICaptureOutputWriter
     private readonly Func<string> repositoryRootResolver;
 
     public RepositoryCaptureOutputWriter()
-        : this(RepositoryRootLocator.Find)
+        : this(() => ViewerDatabasePaths.ResolveDefault().ApplicationRootDirectory)
     {
     }
 

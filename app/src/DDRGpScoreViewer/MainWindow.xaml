@@ -64,18 +64,36 @@
                             Click="StopContinuousCapture_Click" />
                     <Button Content="単発保存" Margin="0,0,8,0"
                             Style="{StaticResource PrimaryButtonStyle}" Click="SaveOnePlay_Click" />
-                    <Button Content="データを選択"
-                            Style="{StaticResource PrimaryButtonStyle}" Click="SelectDatabases_Click" />
                 </StackPanel>
                 <StackPanel>
                     <TextBlock x:Name="PageTitle" Text="自己ベスト" FontSize="24" FontWeight="SemiBold" />
+                    <TextBlock Foreground="{StaticResource TextSecondaryBrush}" FontSize="12" Margin="0,4,0,0">
+                        <Run Text="環境: " /><Run Text="{Binding DatabaseEnvironmentDisplay, Mode=OneWay}" />
+                    </TextBlock>
                     <TextBlock Foreground="{StaticResource TextSecondaryBrush}" FontSize="12" Margin="0,4,0,0">
                         <Run Text="楽曲データ: " /><Run Text="{Binding MasterVersion, Mode=OneWay}" />
                     </TextBlock>
                     <TextBlock Foreground="{StaticResource TextSecondaryBrush}" FontSize="12" Margin="0,2,0,0"
                                TextTrimming="CharacterEllipsis">
+                        <Run Text="score DB: " /><Run Text="{Binding ScoreDatabasePath, Mode=OneWay}" />
+                    </TextBlock>
+                    <TextBlock Foreground="{StaticResource TextSecondaryBrush}" FontSize="12" Margin="0,2,0,0"
+                               TextTrimming="CharacterEllipsis">
                         <Run Text="master DB: " /><Run Text="{Binding MasterDatabaseStatusDisplay, Mode=OneWay}" />
                         <Run Text="  " /><Run Text="{Binding MasterDatabasePath, Mode=OneWay}" />
+                    </TextBlock>
+                    <TextBlock Foreground="{StaticResource TextSecondaryBrush}" FontSize="11" Margin="0,1,0,0"
+                               TextTrimming="CharacterEllipsis">
+                        <Run Text="master理由: " /><Run Text="{Binding MasterDatabaseReason, Mode=OneWay}" />
+                    </TextBlock>
+                    <TextBlock Foreground="{StaticResource TextSecondaryBrush}" FontSize="12" Margin="0,2,0,0"
+                               TextTrimming="CharacterEllipsis">
+                        <Run Text="jacket catalog: " /><Run Text="{Binding CatalogDatabaseStatusDisplay, Mode=OneWay}" />
+                        <Run Text="  " /><Run Text="{Binding CatalogDatabasePath, Mode=OneWay}" />
+                    </TextBlock>
+                    <TextBlock Foreground="{StaticResource TextSecondaryBrush}" FontSize="11" Margin="0,1,0,0"
+                               TextTrimming="CharacterEllipsis">
+                        <Run Text="catalog理由: " /><Run Text="{Binding CatalogDatabaseReason, Mode=OneWay}" />
                     </TextBlock>
                 </StackPanel>
             </DockPanel>

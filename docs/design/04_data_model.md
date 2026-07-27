@@ -2,6 +2,17 @@
 
 最終系で扱うデータの概念モデルです。現時点ではDB実装前の設計メモであり、SQLiteスキーマを固定するものではありません。マスタDBと個人スコアDBは分離し、PoC出力やローカル素材はGit管理しません。
 
+M10-2のruntime実装では、次の4つのSQLite責務を混在させない。M4 master DBとM5b jacket reference catalogは、同一master directoryに置く場合でも別file・別schema・別read-only検査で扱う。
+
+| 責務 | development既定path | production既定path | runtimeの扱い |
+| --- | --- | --- | --- |
+| M4 master DB | `databases/ddrgp-master.sqlite` | `%LOCALAPPDATA%\DDRGpScoreViewer\data\master\ddrgp-master.sqlite` | 曲・譜面canonical参照。read-only inspectionのみ |
+| M5b jacket reference catalog | `databases/jacket-catalog.sqlite` | `%LOCALAPPDATA%\DDRGpScoreViewer\data\master\jacket-catalog.sqlite` | jacket feature・result-text feature・review参照。M4とは別にread-only inspection |
+| 正式個人スコアDB | `databases/score.dev.db` | `%LOCALAPPDATA%\DDRGpScoreViewer\data\score\score.db` | `plays`、source、analysisの正式保存先。既存user dataを保護 |
+| 評価用DB | `databases/evaluation.db` | 既定pathなし | M10-3評価専用。WPF runtimeから参照しない |
+
+repository rootを解決できる実行をdevelopment、解決できない実行をproductionとする。既定pathの切替で別環境のDBへfallbackせず、保存済みpathにも環境タグを付けて別環境から暗黙復元しない。
+
 ## 目的
 
 - マスタ情報、プレー履歴、解析ログ、失敗画像を分ける。
@@ -367,7 +378,7 @@ PoCでは簡易 `duplicate_key` を使うが、本番では以下を組み合わ
 ## 未決事項
 
 - M4以降のスキーマ互換方針とマイグレーション方式
-- ローカルアプリデータ配下の最終保存パス
+- 評価用DBのschema、initializer、再実行CLI（M10-3）
 - 本番解析ログをDB内にどこまで持つか、DB診断JSONLとは別のJSONファイル参照にするか
 - 失敗画像の保存期間
 - 画像ハッシュ方式

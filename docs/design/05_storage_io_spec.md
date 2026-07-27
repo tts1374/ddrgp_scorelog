@@ -34,6 +34,38 @@
 - OCR前処理画像
 - PoC解析ログ
 
+## M10-2 local application storage boundary
+
+M10-2では、DBの責務と実行環境をpathで固定する。repository rootを現在のdirectoryまたはapp配置場所の親から解決できる実行をdevelopment、解決できない実行をproductionとし、両環境のDB pathをfallbackしない。
+
+| 責務 | development | production | 初期化・更新責務 |
+| --- | --- | --- | --- |
+| M4 master DB | `databases/ddrgp-master.sqlite` | `%LOCALAPPDATA%\DDRGpScoreViewer\data\master\ddrgp-master.sqlite` | 既存のread-only inspectionだけ。取得、同梱、自動更新、最新版照合は対象外 |
+| M5b jacket reference catalog | `databases/jacket-catalog.sqlite` | `%LOCALAPPDATA%\DDRGpScoreViewer\data\master\jacket-catalog.sqlite` | M4とは別のstrict schemaとしてread-only inspection。collector/updateは対象外 |
+| 正式個人スコアDB | `databases/score.dev.db` | `%LOCALAPPDATA%\DDRGpScoreViewer\data\score\score.db` | 固定pathのmissing／0 byteだけWPF側の正式schema初期化境界で初期化。既存formal DBは明示save以外で変更しない |
+| 評価用DB | `databases/evaluation.db` | 既定pathなし | M10-3評価器だけが明示的に初期化・再実行 |
+
+起動時はDB親directory、`data/`、`logs/`を作成し、M4 master DBとM5b jacket reference catalogのread-only検証に成功した場合だけ、現在の環境の固定score pathがmissingまたは0 byteのときWPF側の `PersonalScoreDbInitializer` が既存の正式schema、metadata、migration契約に従って初期schemaを作成する。既存の非空score DBはこの処理で開かず、後段のread-only検証へ進める。Python CLIの `prepare-write` 境界は明示CLIまたは既存Python save workflowで使用し、起動時bootstrapはrepository rootやPython module配置を必要としない。`data/windows_capture/`、`data/capture_save_workflow/`、`logs/analysis_details/`、`logs/analysis_failures/`は再生成・退避可能なlocal outputであり、formal `plays`の代替ではない。
+
+### 二つのmaster DBのread-only inspection
+
+M4 master DBは `songs`、`charts`、`song_aliases`、`master_metadata`、`source_snapshots`、metadataの必須値、song/chart件数、source URL/hash、optional source snapshotの整合を既存検査で確認する。M5b jacket reference catalogは別connectionで、`catalog_metadata`、`result_text_features`、`jacket_references`、`reference_candidates`、`reference_review_history`のtable identityとcolumn、`user_version=1`、catalog identity、unique index、foreign keyを確認する。どちらも `Mode=ReadOnly` と `PRAGMA query_only=ON`で開き、検査はファイルを変更しない。
+
+両方の結果を保存開始前にそろえて確認し、どちらかが `missing`、`read不可`、`schema incompatible` の場合は理由をUIへ表示してcapture解析・正式saveを開始しない。capture後のworkflow直前にも同じ検査を再実行する。DBの任意path切替はUIから許可せず、現在の環境の固定pathだけを使用する。過去sessionのstatusや候補値をDBへ昇格しない。
+
+### 評価用DBの初期化、退避、再実行
+
+評価用DBはdevelopment専用で、WPF viewer、正式個人スコアDB、M4 master DB、M5b jacket reference catalogから分離する。M10-3評価器がschemaとinitializerを所有し、M10-2のWPFは評価用DBを開いたり自動初期化したりしない。
+
+再実行は次の順序に固定する。
+
+1. WPFと評価processを停止し、評価用DBへのwriterがないことを確認する。
+2. `databases/evaluation.db` が存在する場合、`data/evaluation/backups/evaluation-<UTC timestamp>.db` という新規pathへcopyし、sourceとbackupのpath、file size、SQLite `PRAGMA integrity_check`をread-onlyで確認する。既存backupは上書き・削除しない。
+3. backup確認後にだけ、M10-3評価器の明示initializerで`databases/evaluation.db`を初期化する。initializerがない場合は、既存DBを変更せず未実施として終了する。
+4. 同じevaluation input、同じM4 master DB、同じM5b jacket reference catalogを明示して評価を再実行し、出力を新しい`data/`配下へ保存する。評価用DBを正式個人スコアDBのpathへ向けない。
+
+この手順は自動backup、cloud backup、正式個人スコアDB migration、master DB取得を追加しない。評価DBのschema変更・initializer実装はM10-3の別契約で固定する。
+
 ## 入力素材
 
 ### スクリーンショット
@@ -256,9 +288,9 @@ data/master/ddrgp-master.sqlite
 ddrgp-scores.sqlite
 ```
 
-正式個人スコアDBのファイル準備境界は `prepare_personal_score_db_file_for_write(path)` で扱う。新規DBファイルと0 byte空ファイルだけ正式初期schemaを作成でき、既存の正式DBは変更せずに互換確認だけ行う。M8 preview DB、unknown DB、metadata identity mismatch、manual migration候補、SQLiteとして読めないファイル、ディレクトリは正式DBとして開かず、自動変更しない。この入口は本番insertや既定自動保存ではなく、正式DBファイルを開いてよいかを説明する前段である。検査済み結果は `personal_score_db_schema_inspection_diagnostic()` / `format_personal_score_db_schema_diagnostic_markdown()` / `personal_score_db_file_preparation_diagnostic()` で、path、status、拒否理由、必須table、metadata identity、初期化有無を人間が読める診断へ投影できるが、diagnostic生成自体はDBやファイルを追加変更しない。
+正式個人スコアDBのPython側ファイル準備境界は `prepare_personal_score_db_file_for_write(path)` で扱う。新規DBファイルと0 byte空ファイルだけ正式初期schemaを作成でき、既存の正式DBは変更せずに互換確認だけ行う。M8 preview DB、unknown DB、metadata identity mismatch、manual migration候補、SQLiteとして読めないファイル、ディレクトリは正式DBとして開かず、自動変更しない。WPFの起動時bootstrapは `PersonalScoreDbInitializer` が同じ正式schema・metadata・拒否契約をアプリ側で使うため、このPython入口を呼び出さない。どちらの入口もplayのinsertや既定の監視保存は開始しない。検査済み結果は `personal_score_db_schema_inspection_diagnostic()` / `format_personal_score_db_schema_diagnostic_markdown()` / `personal_score_db_file_preparation_diagnostic()` で、path、status、拒否理由、必須table、metadata identity、初期化有無を人間が読める診断へ投影できるが、diagnostic生成自体はDBやファイルを追加変更しない。
 
-CLI診断は `python -m tools.vision_poc --personal-score-db-diagnostic <path>` で標準出力へ出す。既定のinspect modeは読み取り専用で、`--personal-score-db-diagnostic-mode prepare-write` は新規DBファイルまたは0 byte空ファイルだけ正式初期schemaを作成する。出力はMarkdown既定で、`--personal-score-db-diagnostic-format json` も選べる。`--personal-score-db-diagnostic-output <path>` を指定した場合は、標準出力と同じ診断テキストをファイルへ保存する。出力先は `data/` 配下に限定し、Markdown format は `.md` / `.markdown`、JSON format は `.json` の拡張子だけを許可する。この出力は診断の保存だけであり、本番insert、既定自動保存、既存DB migration、低信頼度ログ本番保存には進まない。
+CLI診断は `python -m tools.vision_poc --personal-score-db-diagnostic <path>` で標準出力へ出す。既定のinspect modeは読み取り専用で、`--personal-score-db-diagnostic-mode prepare-write` は新規DBファイルまたは0 byte空ファイルだけ正式初期schemaを作成する。出力はMarkdown既定で、`--personal-score-db-diagnostic-format json` も選べる。`--personal-score-db-diagnostic-output <path>` を指定した場合は、標準出力と同じ診断テキストをファイルへ保存する。出力先は `data/` 配下に限定し、Markdown format は `.md` / `.markdown`、JSON format は `.json` の拡張子だけを許可する。この出力は診断の保存だけであり、playの本番insert、既定の監視保存、既存DB migration、低信頼度ログ本番保存には進まない。
 
 `--personal-score-db-diagnostic-log-output <path>` を指定した場合は、診断1回につき1行のJSONLログを `logs/` 配下へappendする。拡張子は `.jsonl` に限定する。ログレコードは `log_schema_version=1`、`event_type=personal_score_db_diagnostic`、diagnostic mode、format、exit code相当status、対象DB path、任意の diagnostic output path、diagnostic dictを必須keyとして持つ。書き込み前に必須key、mode、format、event type、schema version、`diagnostic.is_compatible` と exit code / status の整合を検査する。これは標準出力や `data/` file outputとは別のDB診断ログ入口であり、本番insert、既定自動保存、既存DB migration、低信頼度ログ本番保存、source capture保存には進まない。`logs/` 外指定や `.jsonl` 以外はDB準備より前に拒否し、prepare-write対象の新規DBを作らない。将来の低信頼度ログ本番仕様や `analysis_logs.log_path` から参照する本番解析ログは、このdiagnostic JSONLとは別ファイルとして扱い、同じJSONLへ `event_type` だけで混在させない。
 
@@ -290,7 +322,7 @@ M8のscore DB file output previewでは、`--m8-score-db-output data\...\ddrgp-s
 
 ## M5b jacket catalog
 
-ローカルjacket catalogは repository root直下の `databases/` 配下の固定SQLite pathへ新規作成する。masterは `databases/ddrgp-master.sqlite`、catalogは `databases/jacket-catalog.sqlite` を正本とする。初回リリース向けcurrent schemaのversionは1で、専用identity、`PRAGMA user_version=1`、metadata schema version 1、exact tables/columns/constraints/index/foreign keyをstrictに検査する。runtimeはcurrent schemaとexact一致しない旧catalog、非catalog SQLite、破損catalog、正式個人スコアDB、M8 preview DB、M4 master DBを読み取り専用検査でunsupportedとして拒否し、自動作成・修復・migrationを行わない。初回リリース前の旧v1からcurrent v1への移行だけは、`jacket_reference_catalog migrate-v1 --source-catalog <old> --output-catalog <new>` の明示CLIで行い、sourceを変更せず、未作成のoutputへmetadata、reference、candidate、review historyをコピーする。`result_text_features`は移行先で空から開始する。
+ローカルjacket catalogはdevelopmentでは `databases/jacket-catalog.sqlite`、productionでは `%LOCALAPPDATA%\DDRGpScoreViewer\data\master\jacket-catalog.sqlite` を既定pathとする。M4 masterはそれぞれ `databases/ddrgp-master.sqlite`、`%LOCALAPPDATA%\DDRGpScoreViewer\data\master\ddrgp-master.sqlite` で、catalogとは別fileとして扱う。初回リリース向けcurrent schemaのversionは1で、専用identity、`PRAGMA user_version=1`、metadata schema version 1、exact tables/columns/constraints/index/foreign keyをstrictに検査する。runtimeはcurrent schemaとexact一致しない旧catalog、非catalog SQLite、破損catalog、正式個人スコアDB、M8 preview DB、M4 master DBを読み取り専用検査でunsupportedとして拒否し、自動作成・修復・migrationを行わない。既存の明示migration CLIがある場合も、WPF起動・master操作・正式save・評価DB準備から暗黙起動しない。
 
 current referenceはmanual review revision/historyと、`jacket_feature_version/hash`、`title_line_feature_version/hash`、`composite_identity_version/hash`を全nullまたは全非nullの1組として保持する。これに加えてM7 result-text featureのtitle/artist payloadを`result_text_features`へ、field、current master version、canonical title/artist snapshot、source label、payload hashと共に保存する。通常observation ingestは完全な非null組を必須とし、既知version、lower SHA-256、UTF-8 NUL区切りcanonical hashを検査する。`(composite_identity_version, composite_identity_hash)`はcatalog全体で一意とし、read-only identity集合には`unresolved`、review待ち、確定、再割当、`reopen`、`rejected`をすべて含める。
 
@@ -350,10 +382,10 @@ catalog schema、manual historyを変更せず、unsafe stop、通常のcatalog 
 
 ## 今後決めること
 
-- 本番アプリの正式なローカルデータ保存先
 - 失敗画像の保存期間と掃除方法
 - ログローテーション
-- DBバックアップ方針
+- 評価用DBのschemaとinitializer（M10-3）
+- 手動backupの保持期間
 - manifest dry-run 出力を本番でも残す期間
 
 ## Analysis artifact path contract
@@ -370,15 +402,15 @@ retention classは `short=7日`、`standard=30日`、`indefinite=期限なし` �
 
 continuous capture原本は `data/windows_capture/session-*/` に保持し、解析生成物は別の一意directory `data/capture_save_workflow/<session>-<id>/` に出力する。画像原本やmanifestを解析出力へ移動・上書きしない。出力directoryは既存Vision PoCのCSV/JSON/ROI artifactであり、正式DB、`source_captures` 本文、`analysis_logs.log_path`、DB diagnostic logの代用にしない。
 
-正式DB pathとmaster DB pathはWPFの `連続取得・保存` で明示するか、直前の正常read-only読込で保存したpathを再利用する。capture-only操作には既定DB pathを導入しない。unconfirmed/rejectedと自動formal `unresolved` はDBを開かず、正式workflowへ進むconfirmed eventも既存file-save境界だけが新規/0 byte/compatible DBを準備する。`saved` transactionの後だけviewerが同じ正式DBをread-onlyで開き直し、正常確認できたpathだけを次回起動用のローカル設定へ保存する。
+正式DB、M4 master DB、M5b jacket reference catalogは、development / productionごとの既定pathを起動時に設定し、通常の監視・単発保存でpickerを開かない。DBの任意path切替は行わず、path保存も現在の環境の既定pathだけに限定する。capture-only操作はDBを開かず、正式workflowへ進むconfirmed eventも既存file-save境界だけが新規/0 byte/compatible DBを準備する。`saved` transactionの後だけviewerが3つのDBをread-onlyで開き直し、正常確認できた既定pathだけを次回起動用のローカル設定へ保存する。
 
-WPFの起動時、明示した `データを選択` の再読込時、単発保存・連続取得の保存開始時は、選択されたmaster DBをread-onlyで再検査する。pathの存在・SQLite読込可否・必須table/metadata/count/source snapshotの整合を分けて `missing`、`read不可`、`schema incompatible`、`compatible` と表示し、前3状態ではcapture解析や正式保存を開始しない。保存するのはscore DB/master DBのpathだけで、capture、候補、skip、拒否、失敗、workflow結果のcheckpointは持たない。
+WPFの起動時、単発保存・連続取得の保存開始時は、現在の環境の固定pathにあるM4 master DBとM5b jacket reference catalogを別々にread-onlyで再検査する。pathの存在・SQLite読込可否・M4の必須table/metadata/count/source snapshot、M5bのtable/column/metadata/schema/index/foreign key整合を分けて `missing`、`read不可`、`schema incompatible`、`compatible` と表示し、前3状態ではcapture解析や正式保存を開始しない。保存するのはscore DB/M4 master/M5b catalogの既定pathと環境タグだけで、capture、候補、skip、拒否、失敗、workflow結果のcheckpointは持たない。
 
 ## WPF monitoringとtask tray lifecycle
 
-監視開始はWPFまたはtask trayの明示操作からだけ行い、正式DB、master DB、対象windowは、保存済みpathを再利用する場合を除いてユーザーが選ぶ。window title、幅、高さは選択済み対象の表示にだけ使い、自動探索や自動再接続のkeyにしない。監視surfaceはcapture progressのframe数、開始UTC、最新frame UTCと、capture-save結果の `saved`、`duplicate`、`excluded`、`unresolved`、`analysis_failed`、`db_rejected`、`workflow_failed` を投影する。これは結果を再開する新しい永続化形式ではなく、終了後に破棄可能なprocess内状態である。
+監視開始はWPFまたはtask trayの明示操作からだけ行い、正式DBと2種類のmaster DBは現在の環境の固定pathから取得し、対象windowだけをユーザーが選ぶ。window title、幅、高さは選択済み対象の表示にだけ使い、自動探索や自動再接続のkeyにしない。監視surfaceはcapture progressのframe数、開始UTC、最新frame UTCと、capture-save結果の `saved`、`duplicate`、`excluded`、`unresolved`、`analysis_failed`、`db_rejected`、`workflow_failed` を投影する。これは結果を再開する新しい永続化形式ではなく、終了後に破棄可能なprocess内状態である。
 
-通常のmain window closeと最小化はwindowを非表示にし、capture sessionとworkflowのownerをApp/ViewModelに残す。task trayは開始、停止、window表示、明示終了を提供する。WPFとtrayの開始要求は正式DB/master DB pickerを開く前から1つのoperation gateで直列化し、capture-onlyを含むpicker中の再Startを同じTaskへ合流させる。各capture sessionに世代を付け、停止・対象window終了・capture失敗・workflow失敗・終了後の古いprogress callbackは状態を再開・上書きしない。明示終了はpending pickerをcancel状態にしてその終端と停止の冪等操作、in-flight capture/workflow完了を待ってから、NotifyIcon、context menu、window、processをこの順で終了する。stop自体が例外になった場合も理由を通知してtrayをdisposeし、process終了でOS resourceを残さない。stop、target closed、resize、device lost、capture/write失敗で既存capture resourceを一度だけ解放し、tray resourceはアプリ終了時に一度だけdisposeする。
+通常のmain window closeと最小化はwindowを非表示にし、capture sessionとworkflowのownerをApp/ViewModelに残す。task trayは開始、停止、window表示、明示終了を提供する。WPFとtrayの開始要求は1つのoperation gateで直列化し、capture-onlyを含むpicker中の再Startを同じTaskへ合流させる。各capture sessionに世代を付け、停止・対象window終了・capture失敗・workflow失敗・終了後の古いprogress callbackは状態を再開・上書きしない。明示終了はpending pickerをcancel状態にしてその終端と停止の冪等操作、in-flight capture/workflow完了を待ってから、NotifyIcon、context menu、window、processをこの順で終了する。stop自体が例外になった場合も理由を通知してtrayをdisposeし、process終了でOS resourceを残さない。stop、target closed、resize、device lost、capture/write失敗で既存capture resourceを一度だけ解放し、tray resourceはアプリ終了時に一度だけdisposeする。
 
 通知はtransaction済みsavedが1件以上ある完了と、target closed、resize、device lost、capture失敗、workflow失敗だけに限定する。duplicate、excluded、unresolved、analysis failureの反復を個別通知せず、WPF/trayから最新状態を確認可能にする。monitoring state、tray menu enable状態、close-to-tray、明示exitのstop待機はWindows Graphics Captureなしのfixtureで固定する。
 

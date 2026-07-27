@@ -17,10 +17,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private readonly IContinuousCaptureService? continuousCaptureService;
     private readonly ICaptureSaveWorkflowRunner? captureSaveWorkflowRunner;
     private readonly IViewerPathStore? pathStore;
+    private readonly ViewerDatabasePaths defaultDatabasePaths;
+    private readonly IScoreDatabaseInitializer scoreDatabaseInitializer;
     private PlayHistoryItem? selectedPlay;
-    private string statusTitle = "プレーデータを選択してください";
+    private string statusTitle = "既定のDBを確認しています";
     private string statusMessage =
-        "正式なプレーデータと生成済みの楽曲データを選ぶと、履歴と自己ベストを表示します。";
+        "現在の環境に対応する既定pathのDBを検証して、履歴と自己ベストを表示します。";
     private bool hasData;
     private string masterVersion = "—";
     private string saveStatusTitle = "";
@@ -48,10 +50,15 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private bool applicationExitRequested;
     private string scoreDatabasePath = "—";
     private string masterDatabasePath = "—";
+    private string catalogDatabasePath = "—";
     private MasterDatabaseInspection masterDatabaseInspection =
         MasterDatabaseInspection.Missing(
             string.Empty,
-            "master DBが選択されていません。生成済みの楽曲データを選んでください。");
+            "master DBがまだ検証されていません。現在の環境の既定pathを確認してください。");
+    private JacketCatalogInspection jacketCatalogInspection =
+        JacketCatalogInspection.Missing(
+            string.Empty,
+            "jacket参照catalogがまだ検証されていません。現在の環境の既定pathを確認してください。");
     private long monitoringSessionSequence;
     private long activeMonitoringSession;
     private CancellationTokenSource? monitoringCancellation;
@@ -63,7 +70,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
         ISingleFrameCaptureService? captureService = null,
         IContinuousCaptureService? continuousCaptureService = null,
         ICaptureSaveWorkflowRunner? captureSaveWorkflowRunner = null,
-        IViewerPathStore? pathStore = null)
+        IViewerPathStore? pathStore = null,
+        ViewerDatabasePaths? defaultDatabasePaths = null,
+        IScoreDatabaseInitializer? scoreDatabaseInitializer = null)
     {
         this.repository = repository;
         this.workflowRunner = workflowRunner;
@@ -71,6 +80,11 @@ public sealed class MainViewModel : INotifyPropertyChanged
         this.continuousCaptureService = continuousCaptureService;
         this.captureSaveWorkflowRunner = captureSaveWorkflowRunner;
         this.pathStore = pathStore;
+        this.defaultDatabasePaths = defaultDatabasePaths ?? ViewerDatabasePaths.ResolveDefault();
+        this.scoreDatabaseInitializer = scoreDatabaseInitializer ?? new PersonalScoreDbInitializer();
+        scoreDatabasePath = this.defaultDatabasePaths.ScoreDatabasePath;
+        masterDatabasePath = this.defaultDatabasePaths.MasterDatabasePath;
+        catalogDatabasePath = this.defaultDatabasePaths.JacketCatalogDatabasePath;
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -132,18 +146,44 @@ public sealed class MainViewModel : INotifyPropertyChanged
         private set => SetProperty(ref masterDatabasePath, value);
     }
 
+    public string CatalogDatabasePath
+    {
+        get => catalogDatabasePath;
+        private set => SetProperty(ref catalogDatabasePath, value);
+    }
+
+    public string DatabaseEnvironmentDisplay => defaultDatabasePaths.Environment switch
+    {
+        ViewerDatabaseEnvironment.Development => "development（repository rootを検出）",
+        ViewerDatabaseEnvironment.Production => "production（LocalAppData）",
+        _ => "unknown",
+    };
+
     public MasterDatabaseStatus MasterDatabaseStatus => masterDatabaseInspection.Status;
 
     public string MasterDatabaseStatusDisplay => MasterDatabaseStatus switch
     {
-        MasterDatabaseStatus.Missing => "missing（再選択が必要）",
-        MasterDatabaseStatus.Unreadable => "read不可（再選択が必要）",
-        MasterDatabaseStatus.Incompatible => "schema incompatible（再選択が必要）",
+        MasterDatabaseStatus.Missing => "missing（既定pathを確認）",
+        MasterDatabaseStatus.Unreadable => "read不可（既定pathを確認）",
+        MasterDatabaseStatus.Incompatible => "schema incompatible（既定pathを確認）",
         MasterDatabaseStatus.Compatible => "compatible",
         _ => MasterDatabaseStatus.ToString(),
     };
 
     public string MasterDatabaseReason => masterDatabaseInspection.Message;
+
+    public MasterDatabaseStatus CatalogDatabaseStatus => jacketCatalogInspection.Status;
+
+    public string CatalogDatabaseStatusDisplay => CatalogDatabaseStatus switch
+    {
+        MasterDatabaseStatus.Missing => "missing（既定pathを確認）",
+        MasterDatabaseStatus.Unreadable => "read不可（既定pathを確認）",
+        MasterDatabaseStatus.Incompatible => "schema incompatible（既定pathを確認）",
+        MasterDatabaseStatus.Compatible => "compatible",
+        _ => CatalogDatabaseStatus.ToString(),
+    };
+
+    public string CatalogDatabaseReason => jacketCatalogInspection.Message;
 
     public string SaveStatusTitle
     {
@@ -387,32 +427,123 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
     }
 
-    public void RestoreSavedPaths()
-    {
-        if (pathStore is null)
-        {
-            return;
-        }
+    public void RestoreSavedPaths() =>
+        RestoreSavedPathsAsync().GetAwaiter().GetResult();
 
-        ViewerPathSelection? selection;
+    public async Task RestoreSavedPathsAsync(CancellationToken cancellationToken = default)
+    {
         try
         {
-            selection = pathStore.Load();
+            defaultDatabasePaths.EnsureDefaultDirectories();
         }
         catch (Exception exception) when (
-            exception is IOException or UnauthorizedAccessException or JsonException or ArgumentException)
+            exception is IOException or UnauthorizedAccessException or ArgumentException)
         {
             HasSaveStatus = true;
-            SaveStatusTitle = "保存済みpathを読み込めませんでした";
-            SaveStatusMessage = $"pathを再選択してください。{exception.Message}";
+            SaveStatusTitle = "既定の保存先を準備できませんでした";
+            SaveStatusMessage =
+                $"保存先のdirectoryを作成できません。表示された既定pathを確認してください。{exception.Message}";
             return;
         }
 
-        if (selection is not null)
+        ViewerPathSelection? selection = null;
+        if (pathStore is not null)
         {
-            Load(selection.ScoreDatabasePath, selection.MasterDatabasePath, persist: false);
+            try
+            {
+                selection = pathStore.Load();
+            }
+            catch (Exception exception) when (
+                exception is IOException or UnauthorizedAccessException or JsonException or ArgumentException)
+            {
+                HasSaveStatus = true;
+                SaveStatusTitle = "保存済みpathを読み込めませんでした";
+                SaveStatusMessage = $"保存済みpathを使用せず、既定pathを使います。{exception.Message}";
+            }
+        }
+
+        ScoreDatabasePath = SafeFullPath(defaultDatabasePaths.ScoreDatabasePath);
+        MasterDatabasePath = SafeFullPath(defaultDatabasePaths.MasterDatabasePath);
+        var masterInspection = repository.InspectMasterDatabase(
+            defaultDatabasePaths.MasterDatabasePath);
+        var catalogInspection = repository.InspectJacketCatalogDatabase(
+            defaultDatabasePaths.JacketCatalogDatabasePath);
+        ApplyMasterDatabaseInspection(masterInspection);
+        ApplyJacketCatalogInspection(catalogInspection);
+        if (!masterInspection.IsCompatible || !catalogInspection.IsCompatible)
+        {
+            ClearLoadedData();
+            HasSaveStatus = true;
+            SaveStatusTitle = "master DBを使用できません";
+            SaveStatusMessage = BuildMasterDatabaseBlockMessage(
+                masterInspection,
+                catalogInspection,
+                "起動時のscore DB初期化、解析、正式保存を開始しません。");
+            if (selection is not null && !MatchesDefaultDatabasePaths(selection))
+            {
+                SaveStatusMessage +=
+                    $" 保存済みpathは使用せず、現在の{defaultDatabasePaths.Environment}既定DBだけを使用しました。";
+            }
+            return;
+        }
+
+        ScoreDatabaseInitializationResult initialization;
+        try
+        {
+            initialization = await scoreDatabaseInitializer.InitializeIfMissingAsync(
+                defaultDatabasePaths.ScoreDatabasePath,
+                cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return;
+        }
+        catch (Exception exception)
+        {
+            initialization = new ScoreDatabaseInitializationResult(
+                false,
+                false,
+                $"score DBの初期化処理に失敗しました。{exception.Message}");
+        }
+        if (!initialization.Succeeded)
+        {
+            ClearLoadedData();
+            HasSaveStatus = true;
+            SaveStatusTitle = "score DBを準備できませんでした";
+            SaveStatusMessage =
+                $"{initialization.Message} 起動時の解析・正式保存を開始しません。";
+            if (selection is not null && !MatchesDefaultDatabasePaths(selection))
+            {
+                SaveStatusMessage +=
+                    $" 保存済みpathは使用せず、現在の{defaultDatabasePaths.Environment}既定DBだけを使用しました。";
+            }
+            return;
+        }
+
+        Load(
+            defaultDatabasePaths.ScoreDatabasePath,
+            defaultDatabasePaths.MasterDatabasePath,
+            defaultDatabasePaths.JacketCatalogDatabasePath,
+            persist: true);
+
+        if (selection is not null && !MatchesDefaultDatabasePaths(selection))
+        {
+            HasSaveStatus = true;
+            SaveStatusTitle = "保存済みpathは使用しませんでした";
+            SaveStatusMessage =
+                $"保存済みpathが現在の{defaultDatabasePaths.Environment}既定pathと一致しないため、現在の環境の既定DBだけを使用しました。";
         }
     }
+
+    public Task StartConfiguredContinuousCaptureAndSaveAsync(
+        nint ownerWindowHandle,
+        CancellationToken cancellationToken = default) =>
+        StartContinuousCaptureAndSaveCoreAsync(
+            ownerWindowHandle,
+            defaultDatabasePaths.ScoreDatabasePath,
+            defaultDatabasePaths.MasterDatabasePath,
+            defaultDatabasePaths.JacketCatalogDatabasePath,
+            cancellationToken);
 
     public async Task CaptureOneFrameAsync(
         nint ownerWindowHandle,
@@ -482,6 +613,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 ownerWindowHandle,
                 null,
                 null,
+                null,
                 cancellationToken);
         }
         finally
@@ -495,6 +627,36 @@ public sealed class MainViewModel : INotifyPropertyChanged
         string scoreDatabasePath,
         string masterDatabasePath,
         CancellationToken cancellationToken = default)
+    {
+        await StartContinuousCaptureAndSaveCoreAsync(
+            ownerWindowHandle,
+            scoreDatabasePath,
+            masterDatabasePath,
+            catalogDatabasePath: null,
+            cancellationToken: cancellationToken);
+    }
+
+    public async Task StartContinuousCaptureAndSaveAsync(
+        nint ownerWindowHandle,
+        string scoreDatabasePath,
+        string masterDatabasePath,
+        string catalogDatabasePath,
+        CancellationToken cancellationToken = default)
+    {
+        await StartContinuousCaptureAndSaveCoreAsync(
+            ownerWindowHandle,
+            scoreDatabasePath,
+            masterDatabasePath,
+            catalogDatabasePath,
+            cancellationToken);
+    }
+
+    private async Task StartContinuousCaptureAndSaveCoreAsync(
+        nint ownerWindowHandle,
+        string scoreDatabasePath,
+        string masterDatabasePath,
+        string? catalogDatabasePath,
+        CancellationToken cancellationToken)
     {
         if (applicationExitRequested || IsSaving || cancellationToken.IsCancellationRequested)
         {
@@ -511,6 +673,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 ownerWindowHandle,
                 scoreDatabasePath,
                 masterDatabasePath,
+                catalogDatabasePath,
                 cancellationToken);
         }
         finally
@@ -524,6 +687,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         nint ownerWindowHandle,
         string? scoreDatabasePath,
         string? masterDatabasePath,
+        string? catalogDatabasePath,
         CancellationToken cancellationToken)
     {
         if (applicationExitRequested || cancellationToken.IsCancellationRequested)
@@ -567,7 +731,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
 
         if (scoreDatabasePath is not null &&
-            (masterDatabasePath is null || !ValidateMasterDatabaseForSave(masterDatabasePath)))
+            (masterDatabasePath is null ||
+             !ValidateMasterDatabasesForSave(masterDatabasePath, catalogDatabasePath)))
         {
             return;
         }
@@ -627,6 +792,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
                         result.Output.ManifestPath,
                         scoreDatabasePath,
                         masterDatabasePath,
+                        catalogDatabasePath,
                         sessionId,
                         sessionCancellation.Token);
                 }
@@ -683,6 +849,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         string manifestPath,
         string scoreDatabasePath,
         string masterDatabasePath,
+        string? catalogDatabasePath,
         long sessionId,
         CancellationToken cancellationToken)
     {
@@ -696,7 +863,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         SaveStatusMessage = "confirmed eventを取得順に1件ずつ正式保存境界で処理しています。";
         try
         {
-            if (!ValidateMasterDatabaseForSave(masterDatabasePath) ||
+            if (!ValidateMasterDatabasesForSave(masterDatabasePath, catalogDatabasePath) ||
                 !CanRunMonitoringWork(sessionId, cancellationToken))
             {
                 return;
@@ -729,7 +896,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
             if (result.SavedPlayIds.Count > 0)
             {
-                var data = repository.Load(scoreDatabasePath, masterDatabasePath);
+                var data = catalogDatabasePath is null
+                    ? repository.Load(scoreDatabasePath, masterDatabasePath)
+                    : repository.Load(scoreDatabasePath, masterDatabasePath, catalogDatabasePath);
                 if (result.SavedPlayIds.Any(id => data.Plays.All(play => play.PlayId != id)))
                 {
                     SaveStatusTitle = "保存結果を確認できませんでした";
@@ -738,7 +907,18 @@ public sealed class MainViewModel : INotifyPropertyChanged
                     return;
                 }
                 ApplyData(data);
-                PersistPathsIfConfigured(data.ScoreDatabasePath, data.MasterDatabasePath, persist: true);
+                if (string.IsNullOrWhiteSpace(data.CatalogDatabasePath))
+                {
+                    PersistPathsIfConfigured(data.ScoreDatabasePath, data.MasterDatabasePath, persist: true);
+                }
+                else
+                {
+                    PersistPathsIfConfigured(
+                        data.ScoreDatabasePath,
+                        data.MasterDatabasePath,
+                        data.CatalogDatabasePath,
+                        persist: true);
+                }
             }
 
             if (result.Status == "workflow_failed")
@@ -836,14 +1016,58 @@ public sealed class MainViewModel : INotifyPropertyChanged
         string masterDatabasePath,
         bool persist = true)
     {
+        LoadCore(scoreDatabasePath, masterDatabasePath, catalogDatabasePath: null, persist);
+    }
+
+    public void Load(
+        string scoreDatabasePath,
+        string masterDatabasePath,
+        string catalogDatabasePath,
+        bool persist = true)
+    {
+        LoadCore(scoreDatabasePath, masterDatabasePath, catalogDatabasePath, persist);
+    }
+
+    private void LoadCore(
+        string scoreDatabasePath,
+        string masterDatabasePath,
+        string? catalogDatabasePath,
+        bool persist)
+    {
         ScoreDatabasePath = SafeFullPath(scoreDatabasePath);
         MasterDatabasePath = SafeFullPath(masterDatabasePath);
         ApplyMasterDatabaseInspection(repository.InspectMasterDatabase(masterDatabasePath));
+        if (catalogDatabasePath is null)
+        {
+            ApplyJacketCatalogInspection(
+                JacketCatalogInspection.Missing(
+                    string.Empty,
+                    "jacket参照catalogはこの旧path入口では検査していません。現在の環境の固定pathを使用してください."));
+        }
+        else
+        {
+            CatalogDatabasePath = SafeFullPath(catalogDatabasePath);
+            ApplyJacketCatalogInspection(
+                repository.InspectJacketCatalogDatabase(catalogDatabasePath));
+        }
         try
         {
-            var data = repository.Load(scoreDatabasePath, masterDatabasePath);
+            var data = catalogDatabasePath is null
+                ? repository.Load(scoreDatabasePath, masterDatabasePath)
+                : repository.Load(scoreDatabasePath, masterDatabasePath, catalogDatabasePath);
             ApplyData(data);
-            PersistPathsIfConfigured(data.ScoreDatabasePath, data.MasterDatabasePath, persist);
+            if (string.IsNullOrWhiteSpace(data.CatalogDatabasePath))
+            {
+                PersistPathsIfConfigured(data.ScoreDatabasePath, data.MasterDatabasePath, persist);
+            }
+            else
+            {
+                PersistPathsIfConfigured(
+                    data.ScoreDatabasePath,
+                    data.MasterDatabasePath,
+                    data.CatalogDatabasePath,
+                    persist);
+            }
             if (Plays.Count == 0)
             {
                 HasData = false;
@@ -856,21 +1080,57 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
         catch (ViewerDatabaseException exception)
         {
-            Plays.Clear();
-            ChartBests.Clear();
-            SelectedPlay = null;
-            MasterVersion = "—";
-            HasData = false;
+            ClearLoadedData();
             StatusTitle = "データを読み込めませんでした";
             StatusMessage = exception.UserMessage;
         }
     }
+
+    public Task SaveAndReloadConfiguredAsync(
+        string workflowInputPath,
+        CancellationToken cancellationToken = default) =>
+        SaveAndReloadCoreAsync(
+            workflowInputPath,
+            defaultDatabasePaths.ScoreDatabasePath,
+            defaultDatabasePaths.MasterDatabasePath,
+            defaultDatabasePaths.JacketCatalogDatabasePath,
+            cancellationToken);
 
     public async Task SaveAndReloadAsync(
         string workflowInputPath,
         string scoreDatabasePath,
         string masterDatabasePath,
         CancellationToken cancellationToken = default)
+    {
+        await SaveAndReloadCoreAsync(
+            workflowInputPath,
+            scoreDatabasePath,
+            masterDatabasePath,
+            catalogDatabasePath: null,
+            cancellationToken);
+    }
+
+    public async Task SaveAndReloadAsync(
+        string workflowInputPath,
+        string scoreDatabasePath,
+        string masterDatabasePath,
+        string catalogDatabasePath,
+        CancellationToken cancellationToken = default)
+    {
+        await SaveAndReloadCoreAsync(
+            workflowInputPath,
+            scoreDatabasePath,
+            masterDatabasePath,
+            catalogDatabasePath,
+            cancellationToken);
+    }
+
+    private async Task SaveAndReloadCoreAsync(
+        string workflowInputPath,
+        string scoreDatabasePath,
+        string masterDatabasePath,
+        string? catalogDatabasePath,
+        CancellationToken cancellationToken)
     {
         if (applicationExitRequested || IsSaving || IsContinuousCapturing ||
             cancellationToken.IsCancellationRequested)
@@ -886,7 +1146,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         SaveStatusMessage = "選択したworkflow入力を既存の正式保存境界で1回だけ処理しています。";
         try
         {
-            if (!ValidateMasterDatabaseForSave(masterDatabasePath))
+            if (!ValidateMasterDatabasesForSave(masterDatabasePath, catalogDatabasePath))
             {
                 return;
             }
@@ -896,7 +1156,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 cancellationToken);
             if (result.WorkflowStatus == "saved" && result.Written && result.PlayId is not null)
             {
-                var data = repository.Load(scoreDatabasePath, masterDatabasePath);
+                var data = catalogDatabasePath is null
+                    ? repository.Load(scoreDatabasePath, masterDatabasePath)
+                    : repository.Load(scoreDatabasePath, masterDatabasePath, catalogDatabasePath);
                 if (!data.Plays.Any(play => play.PlayId == result.PlayId))
                 {
                     SaveStatusTitle = "保存結果を確認できませんでした";
@@ -904,7 +1166,18 @@ public sealed class MainViewModel : INotifyPropertyChanged
                     return;
                 }
                 ApplyData(data);
-                PersistPathsIfConfigured(data.ScoreDatabasePath, data.MasterDatabasePath, persist: true);
+                if (string.IsNullOrWhiteSpace(data.CatalogDatabasePath))
+                {
+                    PersistPathsIfConfigured(data.ScoreDatabasePath, data.MasterDatabasePath, persist: true);
+                }
+                else
+                {
+                    PersistPathsIfConfigured(
+                        data.ScoreDatabasePath,
+                        data.MasterDatabasePath,
+                        data.CatalogDatabasePath,
+                        persist: true);
+                }
                 SaveStatusTitle = "プレーを保存しました";
                 SaveStatusMessage = "正式v1 DBをread-onlyで再読込し、履歴と自己ベストへ反映しました。";
                 return;
@@ -948,29 +1221,79 @@ public sealed class MainViewModel : INotifyPropertyChanged
         MasterVersion = data.MasterVersion;
         ScoreDatabasePath = data.ScoreDatabasePath;
         MasterDatabasePath = data.MasterDatabasePath;
+        if (!string.IsNullOrWhiteSpace(data.CatalogDatabasePath))
+        {
+            CatalogDatabasePath = data.CatalogDatabasePath;
+        }
         ApplyMasterDatabaseInspection(
             new MasterDatabaseInspection(
                 data.MasterDatabasePath,
                 MasterDatabaseStatus.Compatible,
                 $"master DBを読み込めます（schema compatible、version: {data.MasterVersion}）。",
                 data.MasterVersion));
+        if (!string.IsNullOrWhiteSpace(data.CatalogDatabasePath))
+        {
+            ApplyJacketCatalogInspection(
+                new JacketCatalogInspection(
+                    data.CatalogDatabasePath,
+                    MasterDatabaseStatus.Compatible,
+                    "jacket参照catalogをread-onlyで検証できます（schema compatible、version: 1）。",
+                    "1"));
+        }
         SelectedPlay = Plays.FirstOrDefault();
         HasData = Plays.Count > 0;
     }
 
-    private bool ValidateMasterDatabaseForSave(string path)
+    private void ClearLoadedData()
     {
-        var inspection = repository.InspectMasterDatabase(path);
-        ApplyMasterDatabaseInspection(inspection);
-        if (inspection.IsCompatible)
+        Plays.Clear();
+        ChartBests.Clear();
+        SelectedPlay = null;
+        MasterVersion = "—";
+        HasData = false;
+    }
+
+    private static string BuildMasterDatabaseBlockMessage(
+        MasterDatabaseInspection masterInspection,
+        JacketCatalogInspection catalogInspection,
+        string action)
+    {
+        return
+            $"master DB: {masterInspection.Message} / " +
+            $"jacket参照catalog: {catalogInspection.Message} " +
+            $"いずれかのmaster DBがmissing、read不可、またはschema incompatibleのため、{action}";
+    }
+
+    private bool ValidateMasterDatabasesForSave(string masterPath, string? catalogPath)
+    {
+        var masterInspection = repository.InspectMasterDatabase(masterPath);
+        ApplyMasterDatabaseInspection(masterInspection);
+        var catalogInspection = catalogPath is null
+            ? null
+            : repository.InspectJacketCatalogDatabase(catalogPath);
+        if (catalogInspection is not null)
+        {
+            ApplyJacketCatalogInspection(catalogInspection);
+        }
+
+        if (masterInspection.IsCompatible &&
+            (catalogInspection is null || catalogInspection.IsCompatible))
         {
             return true;
         }
 
         HasSaveStatus = true;
         SaveStatusTitle = "master DBを使用できません";
+        var reasons = new List<string>
+        {
+            $"master DB: {masterInspection.Message}",
+        };
+        if (catalogInspection is not null)
+        {
+            reasons.Add($"jacket参照catalog: {catalogInspection.Message}");
+        }
         SaveStatusMessage =
-            $"{inspection.Message} master DB異常時は解析・正式保存を開始しません。";
+            $"{string.Join(" / ", reasons)} いずれかのmaster DBがmissing、read不可、またはschema incompatibleのため、解析・正式保存を開始しません。";
         RecordWorkflowFailure(SaveStatusMessage);
         return false;
     }
@@ -983,6 +1306,15 @@ public sealed class MainViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(MasterDatabaseStatus));
         OnPropertyChanged(nameof(MasterDatabaseStatusDisplay));
         OnPropertyChanged(nameof(MasterDatabaseReason));
+    }
+
+    private void ApplyJacketCatalogInspection(JacketCatalogInspection inspection)
+    {
+        jacketCatalogInspection = inspection;
+        CatalogDatabasePath = inspection.Path is { Length: > 0 } path ? path : "—";
+        OnPropertyChanged(nameof(CatalogDatabaseStatus));
+        OnPropertyChanged(nameof(CatalogDatabaseStatusDisplay));
+        OnPropertyChanged(nameof(CatalogDatabaseReason));
     }
 
     private void PersistPathsIfConfigured(
@@ -1005,7 +1337,68 @@ public sealed class MainViewModel : INotifyPropertyChanged
             HasSaveStatus = true;
             SaveStatusTitle = "DBは読み込みましたがpathを保存できませんでした";
             SaveStatusMessage =
-                $"次回起動時はpathを再選択してください。{exception.Message}";
+                $"次回起動時は現在の環境の既定pathを使います。{exception.Message}";
+        }
+    }
+
+    private void PersistPathsIfConfigured(
+        string scorePath,
+        string masterPath,
+        string catalogPath,
+        bool persist)
+    {
+        if (!persist || pathStore is null)
+        {
+            return;
+        }
+
+        if (!MatchesDefaultDatabasePaths(
+                new ViewerPathSelection(
+                    scorePath,
+                    masterPath,
+                    catalogPath,
+                    defaultDatabasePaths.Environment)))
+        {
+            return;
+        }
+
+        try
+        {
+            pathStore.Save(
+                new ViewerPathSelection(
+                    scorePath,
+                    masterPath,
+                    catalogPath,
+                    defaultDatabasePaths.Environment));
+        }
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            HasSaveStatus = true;
+            SaveStatusTitle = "DBは読み込みましたがpathを保存できませんでした";
+            SaveStatusMessage =
+                $"次回起動時は現在の環境の既定pathを使います。{exception.Message}";
+        }
+    }
+
+    private bool MatchesDefaultDatabasePaths(ViewerPathSelection selection) =>
+        selection.Environment == defaultDatabasePaths.Environment &&
+        SamePath(selection.ScoreDatabasePath, defaultDatabasePaths.ScoreDatabasePath) &&
+        SamePath(selection.MasterDatabasePath, defaultDatabasePaths.MasterDatabasePath) &&
+        SamePath(selection.CatalogDatabasePath, defaultDatabasePaths.JacketCatalogDatabasePath);
+
+    private static bool SamePath(string left, string right)
+    {
+        try
+        {
+            return string.Equals(
+                Path.GetFullPath(left),
+                Path.GetFullPath(right),
+                StringComparison.OrdinalIgnoreCase);
+        }
+        catch (ArgumentException)
+        {
+            return false;
         }
     }
 

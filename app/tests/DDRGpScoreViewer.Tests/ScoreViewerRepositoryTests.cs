@@ -82,6 +82,21 @@ public sealed class ScoreViewerRepositoryTests
     }
 
     [Fact]
+    public void Load_validates_the_jacket_catalog_read_only_and_returns_its_path()
+    {
+        using var fixture = new DatabaseFixture();
+        var catalogHashBefore = Hash(fixture.CatalogPath);
+
+        var data = new ScoreViewerRepository().Load(
+            fixture.ScorePath,
+            fixture.MasterPath,
+            fixture.CatalogPath);
+
+        Assert.Equal(fixture.CatalogPath, data.CatalogDatabasePath);
+        Assert.Equal(catalogHashBefore, Hash(fixture.CatalogPath));
+    }
+
+    [Fact]
     public void Load_preserves_rows_with_missing_master_reference()
     {
         using var fixture = new DatabaseFixture();
@@ -164,6 +179,55 @@ public sealed class ScoreViewerRepositoryTests
         _ = new ScoreViewerRepository().InspectMasterDatabase(fixture.MasterPath);
 
         Assert.Equal(hashBefore, Hash(fixture.MasterPath));
+    }
+
+    [Fact]
+    public void InspectMasterDatabase_reports_non_sqlite_as_unreadable()
+    {
+        using var fixture = new DatabaseFixture();
+        var invalidPath = Path.Combine(fixture.DirectoryPath, "invalid-master.sqlite");
+        File.WriteAllText(invalidPath, "not sqlite");
+
+        var inspection = new ScoreViewerRepository().InspectMasterDatabase(invalidPath);
+
+        Assert.Equal(MasterDatabaseStatus.Unreadable, inspection.Status);
+        Assert.Contains("SQLite", inspection.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void InspectJacketCatalogDatabase_distinguishes_all_input_states()
+    {
+        using var fixture = new DatabaseFixture();
+        var repository = new ScoreViewerRepository();
+
+        var compatible = repository.InspectJacketCatalogDatabase(fixture.CatalogPath);
+        Assert.Equal(MasterDatabaseStatus.Compatible, compatible.Status);
+        Assert.Equal("1", compatible.Version);
+
+        var missing = repository.InspectJacketCatalogDatabase(
+            Path.Combine(fixture.DirectoryPath, "missing-catalog.sqlite"));
+        Assert.Equal(MasterDatabaseStatus.Missing, missing.Status);
+
+        var invalidPath = Path.Combine(fixture.DirectoryPath, "invalid-catalog.sqlite");
+        File.WriteAllText(invalidPath, "not sqlite");
+        var unreadable = repository.InspectJacketCatalogDatabase(invalidPath);
+        Assert.Equal(MasterDatabaseStatus.Unreadable, unreadable.Status);
+
+        fixture.ExecuteCatalogSql("DROP TABLE result_text_features;");
+        var incompatible = repository.InspectJacketCatalogDatabase(fixture.CatalogPath);
+        Assert.Equal(MasterDatabaseStatus.Incompatible, incompatible.Status);
+        Assert.False(incompatible.IsCompatible);
+    }
+
+    [Fact]
+    public void InspectJacketCatalogDatabase_does_not_modify_the_selected_file()
+    {
+        using var fixture = new DatabaseFixture();
+        var hashBefore = Hash(fixture.CatalogPath);
+
+        _ = new ScoreViewerRepository().InspectJacketCatalogDatabase(fixture.CatalogPath);
+
+        Assert.Equal(hashBefore, Hash(fixture.CatalogPath));
     }
 
     private static string Hash(string path) =>

@@ -10,7 +10,6 @@ using DDRGpScoreViewer.ViewModels;
 using Microsoft.Win32;
 using WpfFileDialog = Microsoft.Win32.FileDialog;
 using OpenFileDialog = Microsoft.Win32.OpenFileDialog;
-using SaveFileDialog = Microsoft.Win32.SaveFileDialog;
 
 namespace DDRGpScoreViewer;
 
@@ -40,7 +39,7 @@ public partial class MainWindow : System.Windows.Window
 
     internal MainViewModel ViewModel => viewModel;
 
-    internal void RestoreSavedPaths() => viewModel.RestoreSavedPaths();
+    internal Task RestoreSavedPathsAsync() => viewModel.RestoreSavedPathsAsync();
 
     private async void StartContinuousCapture_Click(object sender, RoutedEventArgs e)
     {
@@ -114,35 +113,8 @@ public partial class MainWindow : System.Windows.Window
         viewModel.SetMonitoringStartPending(true);
         try
         {
-            var scoreDialog = new SaveFileDialog
-            {
-                Title = "保存先の正式v1プレーデータを選択",
-                Filter = "SQLite database (*.sqlite)|*.sqlite|All files (*.*)|*.*",
-                AddExtension = true,
-                DefaultExt = ".sqlite",
-                OverwritePrompt = false,
-                CreatePrompt = false,
-            };
-            if (ShowFileDialog(scoreDialog, cancellationToken) != true ||
-                cancellationToken.IsCancellationRequested)
-            {
-                return;
-            }
-            var masterDialog = new OpenFileDialog
-            {
-                Title = "認識と再表示に使う生成済み楽曲データを選択",
-                Filter = "SQLite database (*.sqlite;*.sqlite3;*.db)|*.sqlite;*.sqlite3;*.db|All files (*.*)|*.*",
-                CheckFileExists = true,
-            };
-            if (ShowFileDialog(masterDialog, cancellationToken) != true ||
-                cancellationToken.IsCancellationRequested)
-            {
-                return;
-            }
-            await viewModel.StartContinuousCaptureAndSaveAsync(
+            await viewModel.StartConfiguredContinuousCaptureAndSaveAsync(
                 new WindowInteropHelper(this).EnsureHandle(),
-                scoreDialog.FileName,
-                masterDialog.FileName,
                 cancellationToken);
         }
         finally
@@ -258,65 +230,9 @@ public partial class MainWindow : System.Windows.Window
         {
             return;
         }
-        var scoreDialog = new SaveFileDialog
-        {
-            Title = "保存先の正式v1プレーデータを選択",
-            Filter = "SQLite database (*.sqlite)|*.sqlite|All files (*.*)|*.*",
-            AddExtension = true,
-            DefaultExt = ".sqlite",
-            OverwritePrompt = false,
-            CreatePrompt = false,
-        };
-        if (ShowFileDialog(scoreDialog, applicationExitCancellation.Token) != true)
-        {
-            return;
-        }
-        var masterDialog = new OpenFileDialog
-        {
-            Title = "再表示に使う生成済み楽曲データを選択",
-            Filter = "SQLite database (*.sqlite;*.sqlite3;*.db)|*.sqlite;*.sqlite3;*.db|All files (*.*)|*.*",
-            CheckFileExists = true,
-        };
-        if (ShowFileDialog(masterDialog, applicationExitCancellation.Token) != true)
-        {
-            return;
-        }
-        await viewModel.SaveAndReloadAsync(
+        await viewModel.SaveAndReloadConfiguredAsync(
             workflowDialog.FileName,
-            scoreDialog.FileName,
-            masterDialog.FileName,
             applicationExitCancellation.Token);
-    }
-
-    private void SelectDatabases_Click(object sender, RoutedEventArgs e)
-    {
-        if (applicationExitRequested)
-        {
-            return;
-        }
-        var scoreDialog = new OpenFileDialog
-        {
-            Title = "正式なプレーデータを選択",
-            Filter = "SQLite database (*.sqlite;*.sqlite3;*.db)|*.sqlite;*.sqlite3;*.db|All files (*.*)|*.*",
-            CheckFileExists = true,
-        };
-        if (ShowFileDialog(scoreDialog, applicationExitCancellation.Token) != true)
-        {
-            return;
-        }
-
-        var masterDialog = new OpenFileDialog
-        {
-            Title = "生成済みの楽曲データを選択",
-            Filter = "SQLite database (*.sqlite;*.sqlite3;*.db)|*.sqlite;*.sqlite3;*.db|All files (*.*)|*.*",
-            CheckFileExists = true,
-        };
-        if (ShowFileDialog(masterDialog, applicationExitCancellation.Token) != true)
-        {
-            return;
-        }
-
-        viewModel.Load(scoreDialog.FileName, masterDialog.FileName);
     }
 
     private void ShowBest_Click(object sender, RoutedEventArgs e)

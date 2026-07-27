@@ -136,6 +136,73 @@ public sealed class ScoreViewerRepository
                 """,
         };
 
+    internal static void InitializeEmptyScoreDatabase(string path)
+    {
+        var fullPath = Path.GetFullPath(path);
+        var parentDirectory = Path.GetDirectoryName(fullPath);
+        if (string.IsNullOrWhiteSpace(parentDirectory))
+        {
+            throw new InvalidOperationException($"Database parent directory could not be determined: {fullPath}");
+        }
+
+        Directory.CreateDirectory(parentDirectory);
+        using var connection = new SqliteConnection(new SqliteConnectionStringBuilder
+        {
+            DataSource = fullPath,
+            Mode = SqliteOpenMode.ReadWriteCreate,
+            Pooling = false,
+        }.ToString());
+        connection.Open();
+
+        using var pragma = connection.CreateCommand();
+        pragma.CommandText = "PRAGMA foreign_keys = ON;";
+        pragma.ExecuteNonQuery();
+
+        using var transaction = connection.BeginTransaction();
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = string.Join(";\n", ScoreTableSql.Values) +
+            """
+            ;
+            CREATE INDEX IF NOT EXISTS idx_plays_played_at ON plays(played_at);
+            CREATE INDEX IF NOT EXISTS idx_plays_song_chart ON plays(song_id, chart_id);
+            CREATE INDEX IF NOT EXISTS idx_plays_capture_hash ON plays(capture_hash);
+            CREATE INDEX IF NOT EXISTS idx_analysis_logs_play_id ON analysis_logs(play_id);
+            CREATE INDEX IF NOT EXISTS idx_analysis_logs_source_capture_id
+              ON analysis_logs(source_capture_id);
+            CREATE INDEX IF NOT EXISTS idx_source_captures_capture_hash
+              ON source_captures(capture_hash);
+            PRAGMA user_version = 1;
+            """;
+        command.ExecuteNonQuery();
+
+        foreach (var pair in ScoreMetadata.OrderBy(pair => pair.Key))
+        {
+            command.CommandText =
+                "INSERT INTO score_db_metadata (key, value) VALUES ($key, $value);";
+            command.Parameters.AddWithValue("$key", pair.Key);
+            command.Parameters.AddWithValue("$value", pair.Value);
+            command.ExecuteNonQuery();
+            command.Parameters.Clear();
+        }
+
+        command.CommandText =
+            """
+            INSERT INTO schema_migrations (
+              migration_id, schema_version, app_version, notes
+            )
+            VALUES ($migration_id, $schema_version, $app_version, $notes);
+            """;
+        command.Parameters.AddWithValue("$migration_id", "001_initial_personal_score_db_schema");
+        command.Parameters.AddWithValue("$schema_version", 1);
+        command.Parameters.AddWithValue("$app_version", "schema-contract");
+        command.Parameters.AddWithValue(
+            "$notes",
+            "Initial formal personal score DB schema contract.");
+        command.ExecuteNonQuery();
+        transaction.Commit();
+    }
+
     private static readonly string[] MasterTables =
         ["songs", "charts", "song_aliases", "master_metadata", "source_snapshots"];
 
@@ -143,10 +210,72 @@ public sealed class ScoreViewerRepository
         ["master_version", "source_url", "generated_at", "generator_version", "source_hash",
          "song_count", "chart_count"];
 
+    private const int SupportedJacketCatalogSchemaVersion = 1;
+    private const string JacketCatalogIdentity = "ddrgp-local-jacket-reference-catalog";
+
+    private static readonly string[] JacketCatalogTables =
+        [
+            "catalog_metadata",
+            "result_text_features",
+            "jacket_references",
+            "reference_candidates",
+            "reference_review_history",
+        ];
+
+    private static readonly IReadOnlyDictionary<string, string[]> JacketCatalogTableColumns =
+        new Dictionary<string, string[]>(StringComparer.Ordinal)
+        {
+            ["catalog_metadata"] = ["key", "value"],
+            ["result_text_features"] =
+            [
+                "feature_id", "song_id", "field_name", "feature_version", "roi_version",
+                "feature_hash", "payload_json", "source_label", "master_version",
+                "canonical_title_snapshot", "canonical_artist_snapshot", "created_at",
+            ],
+            ["jacket_references"] =
+            [
+                "reference_id", "source_capture_id", "source_image_hash", "master_version",
+                "song_id", "canonical_title_snapshot", "canonical_artist_snapshot", "review_status",
+                "resolution_reason", "resolution_basis", "feature_extractor_version", "image_kind",
+                "thumbnail_rgb_json", "histogram_json", "dhash_bits_json", "dhash_hex",
+                "observed_title", "observed_artist", "observation_status", "expected_song_id",
+                "review_revision", "manual_action_id", "manual_note", "jacket_feature_version",
+                "jacket_feature_hash", "title_line_feature_version", "title_line_hash",
+                "composite_identity_version", "composite_identity_hash", "created_at", "updated_at",
+            ],
+            ["reference_candidates"] = ["reference_id", "song_id", "candidate_reason"],
+            ["reference_review_history"] =
+            [
+                "history_id", "action_id", "reference_id", "action", "before_status",
+                "after_status", "before_song_id", "after_song_id", "reason", "note", "action_at",
+                "before_revision", "after_revision", "request_payload_json", "receipt_json",
+            ],
+        };
+
     public ViewerData Load(string scoreDatabasePath, string masterDatabasePath)
+    {
+        return LoadCore(scoreDatabasePath, masterDatabasePath, catalogDatabasePath: null);
+    }
+
+    public ViewerData Load(
+        string scoreDatabasePath,
+        string masterDatabasePath,
+        string catalogDatabasePath)
+    {
+        return LoadCore(scoreDatabasePath, masterDatabasePath, catalogDatabasePath);
+    }
+
+    private ViewerData LoadCore(
+        string scoreDatabasePath,
+        string masterDatabasePath,
+        string? catalogDatabasePath)
     {
         ValidateInputPath(scoreDatabasePath, "プレーデータ");
         ValidateInputPath(masterDatabasePath, "楽曲データ");
+        if (catalogDatabasePath is not null)
+        {
+            ValidateInputPath(catalogDatabasePath, "jacket参照catalog");
+        }
 
         try
         {
@@ -156,6 +285,11 @@ public sealed class ScoreViewerRepository
             using var masterConnection = OpenReadOnly(masterDatabasePath);
             var masterVersion = ValidateMasterDatabase(masterConnection);
             var masterCharts = ReadMasterCharts(masterConnection);
+            if (catalogDatabasePath is not null)
+            {
+                using var catalogConnection = OpenReadOnly(catalogDatabasePath);
+                ValidateJacketCatalogDatabase(catalogConnection);
+            }
 
             var plays = ReadPlays(scoreConnection, masterCharts);
             var chartBests = ReadChartBests(scoreConnection, masterCharts);
@@ -164,7 +298,8 @@ public sealed class ScoreViewerRepository
                 chartBests,
                 Path.GetFullPath(scoreDatabasePath),
                 Path.GetFullPath(masterDatabasePath),
-                masterVersion);
+                masterVersion,
+                catalogDatabasePath is null ? "" : Path.GetFullPath(catalogDatabasePath));
         }
         catch (ViewerDatabaseException)
         {
@@ -191,7 +326,7 @@ public sealed class ScoreViewerRepository
         catch (ArgumentException exception)
         {
             throw new ViewerDatabaseException(
-                "データのpathを読み込めませんでした。ファイルを選び直してください。",
+                "データのpathを読み込めませんでした。現在の環境の既定pathを確認してください。",
                 exception);
         }
     }
@@ -205,7 +340,7 @@ public sealed class ScoreViewerRepository
             {
                 return MasterDatabaseInspection.Missing(
                     string.Empty,
-                    "master DBが選択されていません。生成済みの楽曲データを選び直してください。");
+                    "master DBが既定pathにありません。生成済みの楽曲データを既定pathへ配置してください。");
             }
 
             fullPath = Path.GetFullPath(path);
@@ -215,7 +350,7 @@ public sealed class ScoreViewerRepository
             return new MasterDatabaseInspection(
                 path,
                 MasterDatabaseStatus.Unreadable,
-                $"master DBのpathを読み込めません。ファイルを選び直してください。{exception.Message}",
+                $"master DBのpathを読み込めません。既定pathとアクセス権を確認してください。{exception.Message}",
                 null);
         }
 
@@ -224,7 +359,7 @@ public sealed class ScoreViewerRepository
             return new MasterDatabaseInspection(
                 fullPath,
                 MasterDatabaseStatus.Unreadable,
-                "master DBのpathがdirectoryです。SQLite fileを選び直してください。",
+                "master DBのpathがdirectoryです。既定pathにSQLite fileを配置してください。",
                 null);
         }
 
@@ -232,12 +367,20 @@ public sealed class ScoreViewerRepository
         {
             return MasterDatabaseInspection.Missing(
                 fullPath,
-                "master DBが見つかりません。保存を開始せず、生成済みの楽曲データを選び直してください。");
+                "master DBが見つかりません。保存を開始せず、生成済みの楽曲データを既定pathへ配置してください。");
         }
 
         SqliteConnection connection;
         try
         {
+            if (!HasSqliteHeader(fullPath))
+            {
+                return new MasterDatabaseInspection(
+                    fullPath,
+                    MasterDatabaseStatus.Unreadable,
+                    "master DBをSQLiteとして読み込めません。対応する生成済みの楽曲データを既定pathへ配置してください。",
+                    null);
+            }
             connection = OpenReadOnly(fullPath);
         }
         catch (UnauthorizedAccessException exception)
@@ -261,7 +404,7 @@ public sealed class ScoreViewerRepository
             return new MasterDatabaseInspection(
                 fullPath,
                 MasterDatabaseStatus.Unreadable,
-                $"master DBをSQLiteとして読み込めません。生成済みの楽曲データを選び直してください。{exception.Message}",
+                $"master DBをSQLiteとして読み込めません。生成済みの楽曲データと既定pathを確認してください。{exception.Message}",
                 null);
         }
 
@@ -290,7 +433,122 @@ public sealed class ScoreViewerRepository
                 return new MasterDatabaseInspection(
                     fullPath,
                     MasterDatabaseStatus.Incompatible,
-                    $"master DBのschemaを読み込めません。対応する生成済みDBを選び直してください。{exception.Message}",
+                    $"master DBのschemaを読み込めません。対応する生成済みDBを既定pathへ配置してください。{exception.Message}",
+                    null);
+            }
+        }
+    }
+
+    public JacketCatalogInspection InspectJacketCatalogDatabase(string path)
+    {
+        string fullPath;
+        try
+        {
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                return JacketCatalogInspection.Missing(
+                    string.Empty,
+                    "jacket参照catalogが既定pathにありません。jacket-catalog.sqliteを既定pathへ配置してください。");
+            }
+
+            fullPath = Path.GetFullPath(path);
+        }
+        catch (ArgumentException exception)
+        {
+            return new JacketCatalogInspection(
+                path,
+                MasterDatabaseStatus.Unreadable,
+                $"jacket参照catalogのpathを読み込めません。既定pathとアクセス権を確認してください。{exception.Message}",
+                null);
+        }
+
+        if (Directory.Exists(fullPath))
+        {
+            return new JacketCatalogInspection(
+                fullPath,
+                MasterDatabaseStatus.Unreadable,
+                "jacket参照catalogのpathがdirectoryです。既定pathにSQLite fileを配置してください。",
+                null);
+        }
+
+        if (!File.Exists(fullPath))
+        {
+            return JacketCatalogInspection.Missing(
+                fullPath,
+                "jacket参照catalogが見つかりません。保存を開始せず、jacket-catalog.sqliteを既定pathへ配置してください。");
+        }
+
+        SqliteConnection connection;
+        try
+        {
+            if (!HasSqliteHeader(fullPath))
+            {
+                return new JacketCatalogInspection(
+                    fullPath,
+                    MasterDatabaseStatus.Unreadable,
+                    "jacket参照catalogをSQLiteとして読み込めません。対応するjacket-catalog.sqliteを既定pathへ配置してください。",
+                    null);
+            }
+            connection = OpenReadOnly(fullPath);
+        }
+        catch (UnauthorizedAccessException exception)
+        {
+            return new JacketCatalogInspection(
+                fullPath,
+                MasterDatabaseStatus.Unreadable,
+                $"jacket参照catalogを読み込めません。アクセス権を確認してください。{exception.Message}",
+                null);
+        }
+        catch (IOException exception)
+        {
+            return new JacketCatalogInspection(
+                fullPath,
+                MasterDatabaseStatus.Unreadable,
+                $"jacket参照catalogを読み込めません。ファイルを確認してください。{exception.Message}",
+                null);
+        }
+        catch (SqliteException exception)
+        {
+            return new JacketCatalogInspection(
+                fullPath,
+                MasterDatabaseStatus.Unreadable,
+                $"jacket参照catalogをSQLiteとして読み込めません。対応するjacket-catalog.sqliteと既定pathを確認してください。{exception.Message}",
+                null);
+        }
+        catch (ArgumentException exception)
+        {
+            return new JacketCatalogInspection(
+                fullPath,
+                MasterDatabaseStatus.Unreadable,
+                $"jacket参照catalogのpathを読み込めません。既定pathとアクセス権を確認してください。{exception.Message}",
+                null);
+        }
+
+        using (connection)
+        {
+            try
+            {
+                var version = ValidateJacketCatalogDatabase(connection);
+                return new JacketCatalogInspection(
+                    fullPath,
+                    MasterDatabaseStatus.Compatible,
+                    $"jacket参照catalogをread-onlyで検証できます（schema compatible、version: {version}）。",
+                    version.ToString());
+            }
+            catch (ViewerDatabaseException exception)
+            {
+                return new JacketCatalogInspection(
+                    fullPath,
+                    MasterDatabaseStatus.Incompatible,
+                    exception.UserMessage,
+                    null);
+            }
+            catch (SqliteException exception)
+            {
+                return new JacketCatalogInspection(
+                    fullPath,
+                    MasterDatabaseStatus.Incompatible,
+                    $"jacket参照catalogのschemaを読み込めません。対応するjacket-catalog.sqliteを既定pathへ配置してください。{exception.Message}",
                     null);
             }
         }
@@ -313,11 +571,19 @@ public sealed class ScoreViewerRepository
         return connection;
     }
 
+    private static bool HasSqliteHeader(string path)
+    {
+        using var stream = File.OpenRead(path);
+        Span<byte> header = stackalloc byte[16];
+        return stream.Read(header) == header.Length &&
+            header.SequenceEqual("SQLite format 3\0"u8);
+    }
+
     private static void ValidateInputPath(string path, string label)
     {
         if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
         {
-            throw new ViewerDatabaseException($"{label}ファイルが見つかりません。ファイルを選び直してください。");
+            throw new ViewerDatabaseException($"{label}ファイルが見つかりません。現在の環境の既定pathを確認してください。");
         }
     }
 
@@ -381,13 +647,84 @@ public sealed class ScoreViewerRepository
     private static ViewerDatabaseException RejectedScoreDatabase(string reason) =>
         new($"このプレーデータは開けません。{reason} ファイルは変更されていません。");
 
+    private static int ValidateJacketCatalogDatabase(SqliteConnection connection)
+    {
+        var tables = ReadUserTableNames(connection);
+        if (!tables.SetEquals(JacketCatalogTables))
+        {
+            throw RejectedJacketCatalog("table identityが一致しません。");
+        }
+
+        var userVersion = ExecuteInt64(connection, "PRAGMA user_version;");
+        if (userVersion != SupportedJacketCatalogSchemaVersion)
+        {
+            throw RejectedJacketCatalog("対応していないschema versionです。");
+        }
+
+        foreach (var (table, expectedColumns) in JacketCatalogTableColumns)
+        {
+            if (!ReadColumns(connection, table).SequenceEqual(expectedColumns))
+            {
+                throw RejectedJacketCatalog($"{table}のcolumnsが一致しません。");
+            }
+        }
+
+        var metadata = ReadMetadata(connection, "catalog_metadata");
+        if (!metadata.Keys.ToHashSet(StringComparer.Ordinal).SetEquals(
+                ["catalog_identity", "schema_version", "created_at"]) ||
+            !metadata.TryGetValue("catalog_identity", out var identity) ||
+            identity != JacketCatalogIdentity ||
+            !metadata.TryGetValue("schema_version", out var schemaVersion) ||
+            schemaVersion != SupportedJacketCatalogSchemaVersion.ToString() ||
+            !metadata.TryGetValue("created_at", out var createdAt) ||
+            string.IsNullOrWhiteSpace(createdAt))
+        {
+            throw RejectedJacketCatalog("metadata identityが一致しません。");
+        }
+
+        var referenceUnique = ReadUniqueIndexColumns(connection, "jacket_references");
+        var expectedReferenceUnique = new[]
+        {
+            "reference_id",
+            "source_image_hash\u001ffeature_extractor_version\u001fsong_id",
+            "source_capture_id\u001ffeature_extractor_version",
+            "composite_identity_version\u001fcomposite_identity_hash",
+        };
+        if (!expectedReferenceUnique.All(referenceUnique.Contains))
+        {
+            throw RejectedJacketCatalog("jacket_referencesのuniquenessが一致しません。");
+        }
+
+        var resultTextUnique = ReadUniqueIndexColumns(connection, "result_text_features");
+        if (!resultTextUnique.Contains("feature_id") ||
+            !resultTextUnique.Contains("song_id\u001ffield_name\u001ffeature_version\u001ffeature_hash"))
+        {
+            throw RejectedJacketCatalog("result_text_featuresのuniquenessが一致しません。");
+        }
+
+        if (!ReadUniqueIndexColumns(connection, "reference_candidates")
+                .Contains("reference_id\u001fsong_id") ||
+            !ReadUniqueIndexColumns(connection, "reference_review_history")
+                .Contains("action_id") ||
+            !HasForeignKeyTo(connection, "reference_candidates", "jacket_references") ||
+            !HasForeignKeyTo(connection, "reference_review_history", "jacket_references"))
+        {
+            throw RejectedJacketCatalog("catalog tableのuniquenessまたはforeign keyが一致しません。");
+        }
+
+        return checked((int)userVersion);
+    }
+
+    private static ViewerDatabaseException RejectedJacketCatalog(string reason) =>
+        new($"このjacket参照catalogは開けません。{reason} ファイルは変更されていません。");
+
     private static string ValidateMasterDatabase(SqliteConnection connection)
     {
         var tables = ReadTableNames(connection);
         if (MasterTables.Any(table => !tables.Contains(table)))
         {
             throw new ViewerDatabaseException(
-                "楽曲データを読み込めませんでした。生成済みの楽曲データを選び直してください。");
+                "楽曲データを読み込めませんでした。生成済みの楽曲データを現在の環境の既定pathで確認してください。");
         }
 
         var metadata = ReadMetadata(connection, "master_metadata");
@@ -395,7 +732,7 @@ public sealed class ScoreViewerRepository
                 !metadata.TryGetValue(key, out var value) || string.IsNullOrWhiteSpace(value)))
         {
             throw new ViewerDatabaseException(
-                "楽曲データの識別情報が完全ではありません。生成済みの楽曲データを選び直してください。");
+                "楽曲データの識別情報が完全ではありません。生成済みの楽曲データを確認してください。");
         }
 
         var songCount = ExecuteInt64(connection, "SELECT COUNT(*) FROM songs;");
@@ -405,7 +742,7 @@ public sealed class ScoreViewerRepository
             metadata["chart_count"] != chartCount.ToString())
         {
             throw new ViewerDatabaseException(
-                "楽曲データの件数が一致しません。生成済みの楽曲データを選び直してください。");
+                "楽曲データの件数が一致しません。生成済みの楽曲データを確認してください。");
         }
 
         using var snapshotCommand = connection.CreateCommand();
@@ -424,7 +761,7 @@ public sealed class ScoreViewerRepository
             sourceHash != metadata["source_hash"])
         {
             throw new ViewerDatabaseException(
-                "楽曲データの生成元情報が一致しません。生成済みの楽曲データを選び直してください。");
+                "楽曲データの生成元情報が一致しません。生成済みの楽曲データを確認してください。");
         }
 
         ValidateOptionalSourceMetadata(
@@ -451,7 +788,7 @@ public sealed class ScoreViewerRepository
         if (snapshotCount != expectedSnapshotCount)
         {
             throw new ViewerDatabaseException(
-                "楽曲データのsource snapshot件数がmetadataと一致しません。生成済みの楽曲データを選び直してください。");
+                "楽曲データのsource snapshot件数がmetadataと一致しません。生成済みの楽曲データを確認してください。");
         }
 
         return metadata["master_version"];
@@ -469,13 +806,13 @@ public sealed class ScoreViewerRepository
         if (hasUrl != hasHash)
         {
             throw new ViewerDatabaseException(
-                $"楽曲データの{label} metadataが不完全です。生成済みの楽曲データを選び直してください。");
+                $"楽曲データの{label} metadataが不完全です。生成済みの楽曲データを確認してください。");
         }
 
         if (hasUrl && (!snapshots.TryGetValue(url!, out var snapshotHash) || snapshotHash != hash))
         {
             throw new ViewerDatabaseException(
-                $"楽曲データの{label} metadataがsource snapshotと一致しません。生成済みの楽曲データを選び直してください。");
+                $"楽曲データの{label} metadataがsource snapshotと一致しません。生成済みの楽曲データを確認してください。");
         }
     }
 
@@ -589,6 +926,63 @@ public sealed class ScoreViewerRepository
             result.Add(reader.GetString(0));
         }
         return result;
+    }
+
+    private static HashSet<string> ReadUserTableNames(SqliteConnection connection) =>
+        ReadTableNames(connection)
+            .Where(name => !name.StartsWith("sqlite_", StringComparison.Ordinal))
+            .ToHashSet(StringComparer.Ordinal);
+
+    private static HashSet<string> ReadUniqueIndexColumns(
+        SqliteConnection connection,
+        string table)
+    {
+        using var listCommand = connection.CreateCommand();
+        listCommand.CommandText = $"PRAGMA index_list({table});";
+        using var indexes = listCommand.ExecuteReader();
+        var indexNames = new List<string>();
+        while (indexes.Read())
+        {
+            if (indexes.GetInt64(2) == 1)
+            {
+                indexNames.Add(indexes.GetString(1));
+            }
+        }
+        indexes.Dispose();
+
+        var result = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var rawIndexName in indexNames)
+        {
+            var indexName = rawIndexName.Replace("'", "''", StringComparison.Ordinal);
+            using var infoCommand = connection.CreateCommand();
+            infoCommand.CommandText = $"PRAGMA index_info('{indexName}');";
+            using var columns = infoCommand.ExecuteReader();
+            var names = new List<string>();
+            while (columns.Read())
+            {
+                names.Add(columns.GetString(2));
+            }
+            result.Add(string.Join('\u001f', names));
+        }
+        return result;
+    }
+
+    private static bool HasForeignKeyTo(
+        SqliteConnection connection,
+        string table,
+        string referencedTable)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText = $"PRAGMA foreign_key_list({table});";
+        using var foreignKeys = command.ExecuteReader();
+        while (foreignKeys.Read())
+        {
+            if (string.Equals(foreignKeys.GetString(2), referencedTable, StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static string[] ReadColumns(SqliteConnection connection, string table)

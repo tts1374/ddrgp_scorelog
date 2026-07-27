@@ -1,6 +1,6 @@
 # DDR GP Score Tracker WPF app
 
-正式個人スコアDB version 1を読み取り専用で開き、保存済みプレー履歴、プレー詳細、譜面別自己ベストを確認するWPFビューアです。明示選択したversion 1 workflow入力JSONを既存Python workflowで1回だけ保存するmanual入口に加え、明示pickerで選んだwindowから1フレームまたは停止までの連続フレームを取得できます。`監視開始` を明示した場合だけ、完成したsession manifestを既存解析pipelineと正式保存workflowへ接続します。監視状態と最新結果はWPFとtask trayから確認できます。最後に正常読込できた正式DBとmaster DBのpathはローカル設定へ保存し、次回起動時にread-only検証して再利用します。自動window探索、自動再接続、migration、backup、repairは接続しません。
+正式個人スコアDB version 1を読み取り専用で開き、保存済みプレー履歴、プレー詳細、譜面別自己ベストを確認するWPFビューアです。明示選択したversion 1 workflow入力JSONを既存Python workflowで1回だけ保存するmanual入口に加え、明示pickerで選んだwindowから1フレームまたは停止までの連続フレームを取得できます。`監視開始` を明示した場合だけ、完成したsession manifestを既存解析pipelineと正式保存workflowへ接続します。監視状態と最新結果はWPFとtask trayから確認できます。正式個人スコアDB、M4 master DB、M5b jacket reference catalogは環境ごとの固定pathで扱い、次回起動時に3つともread-only検証して再利用します。DBの任意path選択、自動window探索、自動再接続、migration、backup、repairは接続しません。
 
 ## 必要環境
 
@@ -9,9 +9,10 @@
 - Python 3（`python`、または `DDRGP_PYTHON` 環境変数で指定）
 - uv（Python依存のlock固定環境を構築する場合）
 - 正式個人スコアDB version 1（例: `ddrgp-scores.sqlite`）
-- `python -m master` またはmaster DB生成workflowで作られたマスタDB
+- `python -m master` またはmaster DB生成workflowで作られたM4 master DB
+- current schema version 1のM5b jacket reference catalog（`jacket-catalog.sqlite`）
 
-ローカルDBはGit管理しません。`data/` 配下など、既存のローカル保存場所に置いたまま明示選択してください。
+ローカルDBはGit管理しません。developmentでは`databases/`、productionでは`%LOCALAPPDATA%\DDRGpScoreViewer\data\`配下のIssue固定pathへ配置してください。DBのファイル選択はアプリから行いません。
 
 ## 1フレーム取得
 
@@ -57,8 +58,8 @@ python -m tools.vision_poc `
 ## 監視と正式保存workflow
 
 1. WPFまたはtask trayの `監視開始` を押す。
-2. 前回の正常読込pathを再利用するか、保存先の正式v1 DBと生成済みmaster DBを明示選択する。
-3. master DBのpath、読込可否、schema互換性が `compatible` であることを確認してから、pickerで対象windowを選ぶ。
+2. 起動時に現在の環境（repository rootを検出したdevelopment、またはLocalAppDataのproduction）の固定pathを使う。DBの任意pathへの切替操作はありません。
+3. 2種類のmaster DBの固定path、read-only読込可否、schema互換性が `compatible` であることを確認してから、pickerで対象windowを選ぶ。
 4. 必要区間の後にWPFまたはtrayの `監視停止` を押し、監視surfaceで状態、対象window、frame数、開始・最新event時刻、event status別の保存結果を確認する。
 
 capture成功時だけ `python -m tools.vision_poc.capture_save_workflow_app` を起動します。完成manifestを取得順・`timestamp_ms` 順のまま既存manifest modeへ渡し、M5 jacket候補観測とM7a全数字ROIを生成します。`confirmed_result=true` かつ `duplicate=false` だけを通常の昇格候補とし、eventを直列に処理します。capture失敗、0 frame、resize、target close、device lost、write失敗では解析processを起動しません。
@@ -67,7 +68,7 @@ capture成功時だけ `python -m tools.vision_poc.capture_save_workflow_app` �
 
 各confirmed eventは既存正式workflowを1回だけ呼びます。DB内duplicate、policy excluded、unresolved、invalid、artifact failure、DB拒否をstatusのまま集計し、`invalid`、artifact failure、DB拒否などが1件でもあればsessionを `workflow_failed` として非0終了します。同じsessionにtransaction済みの `saved` playがある場合はそれだけread-only再読込し、部分成功件数と失敗理由を同時に表示します。解析出力は `data/capture_save_workflow/`、画像原本は `data/windows_capture/`、正式DBは明示pathに分離します。
 
-`IsSaving` はmanual単発保存と監視capture-save全体の共通排他です。既存保存中は監視用DB選択ダイアログを開かず、監視中はmanual保存を開始しません。capture開始からworkflow完了まで状態を保持し、同じ正式DBへの並行writerとsave statusの競合を防ぎます。capture-only入口も監視開始と同じoperation gateへ入り、開始要求を二重実行しません。session世代が古いprogress callback、停止後のcallback、終了後の新しい解析・保存は受け付けません。
+`IsSaving` はmanual単発保存と監視capture-save全体の共通排他です。DB path変更操作はなく、監視中はmanual保存を開始しません。capture開始からworkflow完了まで状態を保持し、同じ正式DBへの並行writerとsave statusの競合を防ぎます。capture-only入口も監視開始と同じoperation gateへ入り、開始要求を二重実行しません。session世代が古いprogress callback、停止後のcallback、終了後の新しい解析・保存は受け付けません。
 
 監視状態は `idle`、`selecting_target`、`monitoring`、`stopping`、`stopped`、`target_closed`、`resized`、`device_lost`、`capture_failed`、`workflow_failed` を区別します。window titleは選択済み対象の表示だけに使い、自動探索には使いません。最新結果は `saved`、`duplicate`、`excluded`、`unresolved`、`analysis_failed`、`db_rejected`、`workflow_failed` を別々に数え、transaction済みのsaved playだけread-only再読込します。
 
@@ -75,20 +76,37 @@ capture成功時だけ `python -m tools.vision_poc.capture_save_workflow_app` �
 
 ## 再起動・path再検証・失敗からの復帰
 
-- 最後に正常読込できた正式DBとmaster DBのpathだけを `%LOCALAPPDATA%\DDRGpScoreViewer\viewer-paths.json` に保存します。この設定はGit管理外で、候補値、解析結果、保存statusは持ちません。
-- 起動時と `データを選択` の明示再読込時に、両pathの存在とread-only読込を検査します。master DBは必須table、metadata、件数、source snapshotの整合とschema互換性を再検証し、画面上で `missing`、`read不可`、`schema incompatible`、`compatible` を区別します。
-- missing / read不可 / incompatibleなmaster DBでは対象windowをcaptureしても解析・正式保存workflowを開始しません。capture中にmaster DBが失敗した場合もworkflow直前に再検証して停止します。networkからの最新版確認やhashの継続監視は行いません。
-- `target_closed`、`resized`、`device_lost`、`capture_failed`、`workflow_failed` は監視状態として残ります。停止完了後に対象windowとmaster DBを再選択して `監視開始` を再実行してください。window終了、resize、capture失敗で古いsessionを再利用しません。
+- 正式個人スコアDB、M4 master DB、M5b jacket reference catalogの固定pathとdev/prod環境タグだけを `%LOCALAPPDATA%\DDRGpScoreViewer\viewer-paths.json` に保存します。この設定はGit管理外で、候補値、解析結果、保存statusは持ちません。旧形式、任意path、別環境のpathは暗黙復元せず、現在の既定pathだけを使用します。
+- 起動時、解析・正式保存開始直前に、M4 master DBとM5b jacket reference catalogを別々のread-only connectionで検査します。M4は必須table、metadata、曲・譜面件数、source snapshotのURL/hash整合を確認し、M5bはtable identity、column、metadata identity、schema version、unique index、foreign keyを確認します。両方とも `missing`、`read不可`、`schema incompatible`、`compatible` を区別します。
+- どちらか一方がmissing / read不可 / incompatibleなら、理由を表示して対象windowの解析と正式保存workflowを開始しません。capture後にも同じ2ファイルを再検証します。networkからの最新版確認やhashの継続監視は行いません。
+- `target_closed`、`resized`、`device_lost`、`capture_failed`、`workflow_failed` は監視状態として残ります。停止完了後に対象windowを再選択し、必要なmaster DBは現在の環境の固定pathへ用意してから `監視開始` を再実行してください。window終了、resize、capture失敗で古いsessionを再利用しません。
 - saved、duplicate、excluded、unresolved、解析失敗、DB拒否、workflow失敗はprocess内の表示と既存workflowのartifact/logで追跡します。再起動時に保存されるのはtransaction完了した正式playだけで、過去のskip・拒否・失敗statusをsavedへ昇格するcheckpointはありません。
+
+## M10-2 既定保存先と責務境界
+
+実行環境は、現在のdirectoryまたはapp配置場所の親から既存のrepository rootを解決できる場合をdevelopment、それ以外をproductionとします。developmentとproductionのpathを相互にfallbackしません。
+
+| 対象 | development | production |
+| --- | --- | --- |
+| M4 master DB | `databases/ddrgp-master.sqlite` | `%LOCALAPPDATA%\DDRGpScoreViewer\data\master\ddrgp-master.sqlite` |
+| M5b jacket reference catalog | `databases/jacket-catalog.sqlite` | `%LOCALAPPDATA%\DDRGpScoreViewer\data\master\jacket-catalog.sqlite` |
+| 正式個人スコアDB | `databases/score.dev.db` | `%LOCALAPPDATA%\DDRGpScoreViewer\data\score\score.db` |
+| 評価用DB | `databases/evaluation.db`（M10-3専用） | 既定pathなし |
+
+M4 master DBとM5b jacket reference catalogは、同じdirectoryに置かれていても別ファイル・別責務です。master生成、catalog収集、catalog更新、最新版照合はこのアプリの責務ではありません。正式個人スコアDBは既存DBをアプリ更新、master DB操作、評価用DB初期化で上書き・初期化・migrationしません。固定score pathがmissingまたは0 byteの場合だけ、master 2種類の検証後に既存の正式DB準備境界を使って空の正式schemaを作成します。
+
+初回起動では親directory（`databases/`、またはproductionの`data/master/`・`data/score/`）と`data/`・`logs/`を作成し、master 2種類がcompatibleなら固定score pathのmissing／0 byteだけを初期化します。既存の非空score DBはread-only検証だけを行い、unknown、preview、identity mismatch、manual migration候補、非SQLite、directoryは変更せず拒否します。captureはdevelopmentでは`data/windows_capture/`、productionでは`%LOCALAPPDATA%\DDRGpScoreViewer\data\windows_capture/`へ出し、解析artifactは`data/capture_save_workflow/`、失敗画像と診断ログは`logs/`配下へ分離します。これらは再生成・退避可能なlocal dataで、Git管理しません。
+
+M10-3の評価用DBはdevelopmentでだけ使います。WPF viewerは評価用DBを開かず、正式個人スコアDBとの相互初期化も行いません。評価をやり直す場合は、評価processとWPFを停止し、既存の`databases/evaluation.db`を`data/evaluation/backups/evaluation-<UTC timestamp>.db`へ新規コピーしてから、M10-3評価器の明示initializerで同じpathを初期化します。backupの存在確認・SQLite integrity check・path確認後に評価を再実行し、既存backupを上書き・削除しません。M10-3のschema/initializerが未実装の環境では、DBを手作業で作り替えず、評価器の初期化を未実施として扱います。
 
 ## M9-6 validation record
 
 2026-07-27 JSTに次を確認しました。
 
 - 自動検証: `.NET build`、`.NET test` 106件、capture-save / personal-score workflow Python test 45件、Ruff、`compileall` はすべて成功。
-- Windows smoke: WPF起動、master DB未選択の `missing` 表示、capture target pickerの開始・キャンセルを2回実施。実windowを選択せず、解析・正式保存workflowは0回。キャンセル後は `停止済み` に戻り、アプリprocessを1つだけ確認。
+- Windows smoke: WPF起動、固定pathのmaster DB未配置による `missing` 表示、capture target pickerの開始・キャンセルを2回実施。実windowを選択せず、解析・正式保存workflowは0回。キャンセル後は `停止済み` に戻り、アプリprocessを1つだけ確認。
 - resource観測: 55.5秒、5秒間隔12サンプル。working setは164.33–164.75 MB、private memoryは97.02–97.29 MB、handle数は693–707、thread数は15–18で、観測中の単調増加はなし。確認後にprocessを明示終了し、残留processは0件。
-- 未実施: 実DDR GRAND PRIX windowを使う数時間soak、実capture中のtarget close/resize/device lost、成功したcapture-saveとPython subprocess、実task trayからのstart/stop/exit、実ファイルを使うアプリ再起動、GUI上でのmaster DB missing/incompatible選択。
+- 未実施: 実DDR GRAND PRIX windowを使う数時間soak、実capture中のtarget close/resize/device lost、成功したcapture-saveとPython subprocess、実task trayからのstart/stop/exit、実ファイルを使うアプリ再起動、固定pathへ配置したmaster DBのmissing/incompatible切替確認。
 - 残存リスク: Windows Graphics Capture、実ゲームwindow、GPU device、長時間のPython解析・DB保存、tray経由の終了順序は実機条件で追加確認が必要。これらはM10の初期版運用確認へ引き継ぐ。
 
 ## Build / test / run
@@ -102,22 +120,20 @@ dotnet run --project app\src\DDRGpScoreViewer\DDRGpScoreViewer.csproj --no-build
 
 ## 利用手順
 
-1. アプリ右上の `データを選択` を押す。
-2. 正式個人スコアDB version 1を選ぶ。
-3. 生成済みマスタDBを選ぶ。
-4. `自己ベスト` または `プレー履歴` を開く。
-5. プレー履歴の行を選び、判定数、MAX COMBO、EX SCORE、保存日時、データ取得元を確認する。
+1. アプリを起動する。現在の環境に対応する固定pathが自動的に設定される。
+2. 画面に表示されたscore DB、M4 master DB、M5b jacket reference catalogのpathと検証結果を確認する。
+3. `自己ベスト` または `プレー履歴` を開く。
+4. プレー履歴の行を選び、判定数、MAX COMBO、EX SCORE、保存日時、データ取得元を確認する。
 
-個人DBとマスタDBは別々のSQLite read-only connectionで開きます。viewerはschema初期化、insert、update、migration、backup、repairを実行せず、connection poolingも使いません。
+個人DBとマスタDBは別々のSQLite read-only connectionで開きます。起動時の固定score pathに対するmissing／0 byteの初期化だけはWPF側の正式schema初期化境界へ委譲し、初期化後のviewerはschema変更、insert、update、migration、backup、repairを実行しません。connection poolingも使いません。
 
 ## 単発保存
 
 1. `単発保存` を押す。
 2. `workflow_schema_version=1` の既存strict workflow入力JSONを選ぶ。
-3. 新規、0 byte、またはcompatibleな正式v1 DBを保存先として選ぶ。
-4. 保存後の表示に使う生成済みマスタDBを選ぶ。
+3. 現在の環境の固定score DBへ保存する。保存先DBを画面から変更する操作はない。
 
-アプリは `python -m tools.vision_poc.personal_score_db_workflow_app` をリポジトリrootで1回だけ実行します。この薄いprocess adapterは入力内の既存 `log_path` をartifact出力先として渡すだけで、strict loader、save adapter、artifact orchestration、file saveをC#で再実装しません。repository root探索は `単発保存` 実行時まで遅延し、current directoryまたはapp配置場所の親から検出できない場合は保存だけを失敗状態にします。read-only viewerの起動と `データを選択` はPythonやrepository配置を必要としません。
+アプリは `python -m tools.vision_poc.personal_score_db_workflow_app` をリポジトリrootで1回だけ実行します。この薄いprocess adapterは入力内の既存 `log_path` をartifact出力先として渡すだけで、strict loader、save adapter、artifact orchestration、file saveをC#で再実装しません。固定score pathがmissingまたは0 byteの場合の起動時初期化は、WPF側の `PersonalScoreDbInitializer` が既存の正式score DB schema契約を使って実行するため、production pathでもrepository rootやPython module配置を必要としません。repository root探索は `単発保存` または連続取得した結果の正式保存などPython workflowが必要な操作まで遅延し、current directoryまたはapp配置場所の親から検出できない場合はその操作だけを失敗状態にします。既存score DBのread-only viewer起動と起動時の空DB初期化はPythonを必要としません。
 
 `saved` かつtransaction完了済みの `play_id` が返った場合だけ、同じ `ScoreViewerRepository` でDBをread-only再読込し、履歴・詳細・自己ベストへ反映します。`excluded` / `duplicate` はsource captureとanalysisが記録されても成功playとして表示せず、`unresolved` / `invalid` / DB拒否 / artifact失敗は理由を表示します。`artifact_created_db_failed` はartifactが残ったpartial successとして表示し、DB保存成功へ丸めません。
 
