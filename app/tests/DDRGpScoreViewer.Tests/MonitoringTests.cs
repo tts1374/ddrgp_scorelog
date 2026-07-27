@@ -175,7 +175,7 @@ public sealed class MonitoringTests
     }
 
     [Fact]
-    public async Task Stop_before_capture_result_does_not_start_save_workflow()
+    public async Task Stop_after_capture_finalizes_saved_manifest_and_runs_save_workflow_once()
     {
         using var fixture = new DatabaseFixture();
         var capture = new StopReturnsSavedCaptureService();
@@ -196,13 +196,14 @@ public sealed class MonitoringTests
         await viewModel.StopContinuousCaptureAsync();
         await startTask;
 
-        Assert.Equal(0, workflow.CallCount);
+        Assert.Equal(1, capture.StopCount);
+        Assert.Equal(1, workflow.CallCount);
         Assert.Equal(MonitoringState.Stopped, viewModel.CurrentMonitoringState);
         Assert.False(viewModel.IsSaving);
     }
 
     [Fact]
-    public async Task Stop_during_capture_save_workflow_cancels_one_workflow_without_restarting_it()
+    public async Task Stop_during_capture_save_workflow_waits_without_cancelling_or_restarting_it()
     {
         using var fixture = new DatabaseFixture();
         var workflow = new BlockingCaptureWorkflowRunner();
@@ -218,13 +219,42 @@ public sealed class MonitoringTests
             fixture.MasterPath);
         await workflow.Started.Task;
 
-        await viewModel.StopContinuousCaptureAsync();
+        var stopTask = viewModel.StopContinuousCaptureAsync();
+        Assert.False(stopTask.IsCompleted);
+
+        workflow.Complete();
+        await stopTask;
+        await startTask;
+
+        Assert.Equal(1, workflow.CallCount);
+        Assert.False(workflow.CancellationToken.IsCancellationRequested);
+        Assert.Equal(MonitoringState.Stopped, viewModel.CurrentMonitoringState);
+        Assert.Equal(0, viewModel.MonitoringResults.Saved);
+    }
+
+    [Fact]
+    public async Task Application_exit_still_cancels_in_flight_capture_save_workflow()
+    {
+        using var fixture = new DatabaseFixture();
+        var workflow = new BlockingCaptureWorkflowRunner();
+        var viewModel = new MainViewModel(
+            new ScoreViewerRepository(),
+            new UnusedManualWorkflowRunner(),
+            continuousCaptureService: new MonitoringCaptureService(CaptureOperationStatus.Saved),
+            captureSaveWorkflowRunner: workflow);
+
+        var startTask = viewModel.StartContinuousCaptureAndSaveAsync(
+            123,
+            fixture.ScorePath,
+            fixture.MasterPath);
+        await workflow.Started.Task;
+
+        viewModel.RequestApplicationExit();
         await startTask;
 
         Assert.Equal(1, workflow.CallCount);
         Assert.True(workflow.CancellationToken.IsCancellationRequested);
-        Assert.Equal(MonitoringState.Stopped, viewModel.CurrentMonitoringState);
-        Assert.Equal(0, viewModel.MonitoringResults.Saved);
+        Assert.True(viewModel.IsApplicationExitRequested);
     }
 
     [Theory]
@@ -575,6 +605,9 @@ public sealed class MonitoringTests
 
     private sealed class BlockingCaptureWorkflowRunner : ICaptureSaveWorkflowRunner
     {
+        private readonly TaskCompletionSource<CaptureSaveWorkflowResult> completion = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
         public TaskCompletionSource Started { get; } = new(
             TaskCreationOptions.RunContinuationsAsynchronously);
 
@@ -590,10 +623,11 @@ public sealed class MonitoringTests
             CallCount++;
             CancellationToken = cancellationToken;
             Started.TrySetResult();
-            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
-            return new CaptureSaveWorkflowResult(
-                "completed", 0, new Dictionary<string, int>(), [], [], null);
+            return await completion.Task.WaitAsync(cancellationToken);
         }
+
+        public void Complete() => completion.TrySetResult(new CaptureSaveWorkflowResult(
+            "completed", 0, new Dictionary<string, int>(), [], [], null));
     }
 
     private sealed class SequenceMonitoringCaptureService(
@@ -663,6 +697,7 @@ public sealed class MonitoringTests
             TaskCreationOptions.RunContinuationsAsynchronously);
 
         public bool IsRunning => !completion.Task.IsCompleted;
+        public int StopCount { get; private set; }
 
         public Task<CaptureSessionOperationResult> RunAsync(
             nint ownerWindowHandle,
@@ -683,6 +718,7 @@ public sealed class MonitoringTests
 
         public Task StopAsync()
         {
+            StopCount++;
             completion.TrySetResult(new CaptureSessionOperationResult(
                 CaptureOperationStatus.Saved,
                 "fixture saved",

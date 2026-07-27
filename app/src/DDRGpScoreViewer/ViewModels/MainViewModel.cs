@@ -621,8 +621,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 && masterDatabasePath is not null)
             {
                 if (!sessionCancellation.IsCancellationRequested &&
-                    !applicationExitRequested &&
-                    CurrentMonitoringState != MonitoringState.Stopping)
+                    !applicationExitRequested)
                 {
                     await RunCaptureSaveWorkflowAsync(
                         result.Output.ManifestPath,
@@ -814,10 +813,6 @@ public sealed class MainViewModel : INotifyPropertyChanged
             try
             {
                 await continuousCaptureService.StopAsync();
-                if (!continuousCaptureService.IsRunning)
-                {
-                    monitoringCancellation?.Cancel();
-                }
             }
             catch (Exception exception)
             {
@@ -1100,7 +1095,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         IsContinuousCapturing &&
         !applicationExitRequested &&
         !cancellationToken.IsCancellationRequested &&
-        CurrentMonitoringState is MonitoringState.SelectingTarget or MonitoringState.Monitoring;
+        CurrentMonitoringState is MonitoringState.SelectingTarget or MonitoringState.Monitoring or MonitoringState.Stopping;
 
     private void RecordWorkflowResult(CaptureSaveWorkflowResult result, bool workflowFailed)
     {
