@@ -32,6 +32,9 @@ jobs:
           enable-cache: true
           cache-dependency-glob: uv.lock
 
+      - name: Check Python lock file
+        run: uv lock --check
+
       - name: Sync locked dependencies
         run: uv sync --frozen --extra dev --extra vision
 
