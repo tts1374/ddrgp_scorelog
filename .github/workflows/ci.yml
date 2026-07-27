@@ -18,46 +18,34 @@ jobs:
     name: Python
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      PYTHONUTF8: "1"
 
     steps:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Set up Python
-        uses: actions/setup-python@v7
+      - name: Set up Python and uv
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         with:
           python-version: "3.13"
-          cache: pip
+          enable-cache: true
+          cache-dependency-glob: uv.lock
 
-      - name: Install dependencies
-        shell: bash
-        run: |
-          python -X utf8 -m pip install --upgrade pip
-          python -X utf8 - <<'PY'
-          import subprocess
-          import sys
-          import tomllib
+      - name: Check Python lock file
+        run: uv lock --check
 
-          with open("pyproject.toml", "rb") as source:
-              project = tomllib.load(source)
-
-          dependencies = list(project["project"]["dependencies"])
-          optional = project["project"]["optional-dependencies"]
-          dependencies.extend(optional["dev"])
-          dependencies.extend(optional["vision"])
-          subprocess.check_call(
-              [sys.executable, "-X", "utf8", "-m", "pip", "install", *dependencies]
-          )
-          PY
+      - name: Sync locked dependencies
+        run: uv sync --frozen --extra dev --extra vision
 
       - name: Ruff
-        run: python -X utf8 -m ruff check tools/vision_poc pyproject.toml tests
+        run: uv run ruff check tools/vision_poc pyproject.toml tests
 
       - name: Compile Python modules
-        run: python -X utf8 -m compileall master tools/vision_poc
+        run: uv run python -m compileall master tools/vision_poc
 
       - name: Test
-        run: python -X utf8 -m pytest tests
+        run: uv run pytest tests
 
   windows-app:
     name: Windows app
@@ -74,7 +62,7 @@ jobs:
           dotnet-version: "10.0.x"
 
       - name: Restore
-        run: dotnet restore app\tests\DDRGpScoreViewer.Tests\DDRGpScoreViewer.Tests.csproj
+        run: dotnet restore app\tests\DDRGpScoreViewer.Tests\DDRGpScoreViewer.Tests.csproj --locked-mode
 
       - name: Build
         run: dotnet build app\src\DDRGpScoreViewer\DDRGpScoreViewer.csproj --no-restore
