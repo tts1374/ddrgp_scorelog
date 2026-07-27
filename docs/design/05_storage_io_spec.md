@@ -42,10 +42,10 @@ M10-2では、DBの責務と実行環境をpathで固定する。repository root
 | --- | --- | --- | --- |
 | M4 master DB | `databases/ddrgp-master.sqlite` | `%LOCALAPPDATA%\DDRGpScoreViewer\data\master\ddrgp-master.sqlite` | 既存のread-only inspectionだけ。取得、同梱、自動更新、最新版照合は対象外 |
 | M5b jacket reference catalog | `databases/jacket-catalog.sqlite` | `%LOCALAPPDATA%\DDRGpScoreViewer\data\master\jacket-catalog.sqlite` | M4とは別のstrict schemaとしてread-only inspection。collector/updateは対象外 |
-| 正式個人スコアDB | `databases/score.dev.db` | `%LOCALAPPDATA%\DDRGpScoreViewer\data\score\score.db` | 固定pathのmissing／0 byteだけ既存file preparationで初期化。既存formal DBは明示save以外で変更しない |
+| 正式個人スコアDB | `databases/score.dev.db` | `%LOCALAPPDATA%\DDRGpScoreViewer\data\score\score.db` | 固定pathのmissing／0 byteだけWPF側の正式schema初期化境界で初期化。既存formal DBは明示save以外で変更しない |
 | 評価用DB | `databases/evaluation.db` | 既定pathなし | M10-3評価器だけが明示的に初期化・再実行 |
 
-起動時はDB親directory、`data/`、`logs/`を作成し、M4 master DBとM5b jacket reference catalogのread-only検証に成功した場合だけ、現在の環境の固定score pathがmissingまたは0 byteのとき既存 `prepare_personal_score_db_file_for_write()` 境界へ委譲して正式初期schemaを作成する。既存の非空score DBはこの処理で開かず、後段のread-only検証へ進める。`data/windows_capture/`、`data/capture_save_workflow/`、`logs/analysis_details/`、`logs/analysis_failures/`は再生成・退避可能なlocal outputであり、formal `plays`の代替ではない。
+起動時はDB親directory、`data/`、`logs/`を作成し、M4 master DBとM5b jacket reference catalogのread-only検証に成功した場合だけ、現在の環境の固定score pathがmissingまたは0 byteのときWPF側の `PersonalScoreDbInitializer` が既存の正式schema、metadata、migration契約に従って初期schemaを作成する。既存の非空score DBはこの処理で開かず、後段のread-only検証へ進める。Python CLIの `prepare-write` 境界は明示CLIまたは既存Python save workflowで使用し、起動時bootstrapはrepository rootやPython module配置を必要としない。`data/windows_capture/`、`data/capture_save_workflow/`、`logs/analysis_details/`、`logs/analysis_failures/`は再生成・退避可能なlocal outputであり、formal `plays`の代替ではない。
 
 ### 二つのmaster DBのread-only inspection
 
@@ -288,7 +288,7 @@ data/master/ddrgp-master.sqlite
 ddrgp-scores.sqlite
 ```
 
-正式個人スコアDBのファイル準備境界は `prepare_personal_score_db_file_for_write(path)` で扱う。新規DBファイルと0 byte空ファイルだけ正式初期schemaを作成でき、既存の正式DBは変更せずに互換確認だけ行う。M8 preview DB、unknown DB、metadata identity mismatch、manual migration候補、SQLiteとして読めないファイル、ディレクトリは正式DBとして開かず、自動変更しない。この入口は固定score pathの起動時bootstrapと正式save前段で共有するが、playのinsertや既定の監視保存は開始しない。検査済み結果は `personal_score_db_schema_inspection_diagnostic()` / `format_personal_score_db_schema_diagnostic_markdown()` / `personal_score_db_file_preparation_diagnostic()` で、path、status、拒否理由、必須table、metadata identity、初期化有無を人間が読める診断へ投影できるが、diagnostic生成自体はDBやファイルを追加変更しない。
+正式個人スコアDBのPython側ファイル準備境界は `prepare_personal_score_db_file_for_write(path)` で扱う。新規DBファイルと0 byte空ファイルだけ正式初期schemaを作成でき、既存の正式DBは変更せずに互換確認だけ行う。M8 preview DB、unknown DB、metadata identity mismatch、manual migration候補、SQLiteとして読めないファイル、ディレクトリは正式DBとして開かず、自動変更しない。WPFの起動時bootstrapは `PersonalScoreDbInitializer` が同じ正式schema・metadata・拒否契約をアプリ側で使うため、このPython入口を呼び出さない。どちらの入口もplayのinsertや既定の監視保存は開始しない。検査済み結果は `personal_score_db_schema_inspection_diagnostic()` / `format_personal_score_db_schema_diagnostic_markdown()` / `personal_score_db_file_preparation_diagnostic()` で、path、status、拒否理由、必須table、metadata identity、初期化有無を人間が読める診断へ投影できるが、diagnostic生成自体はDBやファイルを追加変更しない。
 
 CLI診断は `python -m tools.vision_poc --personal-score-db-diagnostic <path>` で標準出力へ出す。既定のinspect modeは読み取り専用で、`--personal-score-db-diagnostic-mode prepare-write` は新規DBファイルまたは0 byte空ファイルだけ正式初期schemaを作成する。出力はMarkdown既定で、`--personal-score-db-diagnostic-format json` も選べる。`--personal-score-db-diagnostic-output <path>` を指定した場合は、標準出力と同じ診断テキストをファイルへ保存する。出力先は `data/` 配下に限定し、Markdown format は `.md` / `.markdown`、JSON format は `.json` の拡張子だけを許可する。この出力は診断の保存だけであり、playの本番insert、既定の監視保存、既存DB migration、低信頼度ログ本番保存には進まない。
 

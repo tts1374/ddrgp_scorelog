@@ -136,6 +136,73 @@ public sealed class ScoreViewerRepository
                 """,
         };
 
+    internal static void InitializeEmptyScoreDatabase(string path)
+    {
+        var fullPath = Path.GetFullPath(path);
+        var parentDirectory = Path.GetDirectoryName(fullPath);
+        if (string.IsNullOrWhiteSpace(parentDirectory))
+        {
+            throw new InvalidOperationException($"Database parent directory could not be determined: {fullPath}");
+        }
+
+        Directory.CreateDirectory(parentDirectory);
+        using var connection = new SqliteConnection(new SqliteConnectionStringBuilder
+        {
+            DataSource = fullPath,
+            Mode = SqliteOpenMode.ReadWriteCreate,
+            Pooling = false,
+        }.ToString());
+        connection.Open();
+
+        using var pragma = connection.CreateCommand();
+        pragma.CommandText = "PRAGMA foreign_keys = ON;";
+        pragma.ExecuteNonQuery();
+
+        using var transaction = connection.BeginTransaction();
+        using var command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = string.Join(";\n", ScoreTableSql.Values) +
+            """
+            ;
+            CREATE INDEX IF NOT EXISTS idx_plays_played_at ON plays(played_at);
+            CREATE INDEX IF NOT EXISTS idx_plays_song_chart ON plays(song_id, chart_id);
+            CREATE INDEX IF NOT EXISTS idx_plays_capture_hash ON plays(capture_hash);
+            CREATE INDEX IF NOT EXISTS idx_analysis_logs_play_id ON analysis_logs(play_id);
+            CREATE INDEX IF NOT EXISTS idx_analysis_logs_source_capture_id
+              ON analysis_logs(source_capture_id);
+            CREATE INDEX IF NOT EXISTS idx_source_captures_capture_hash
+              ON source_captures(capture_hash);
+            PRAGMA user_version = 1;
+            """;
+        command.ExecuteNonQuery();
+
+        foreach (var pair in ScoreMetadata.OrderBy(pair => pair.Key))
+        {
+            command.CommandText =
+                "INSERT INTO score_db_metadata (key, value) VALUES ($key, $value);";
+            command.Parameters.AddWithValue("$key", pair.Key);
+            command.Parameters.AddWithValue("$value", pair.Value);
+            command.ExecuteNonQuery();
+            command.Parameters.Clear();
+        }
+
+        command.CommandText =
+            """
+            INSERT INTO schema_migrations (
+              migration_id, schema_version, app_version, notes
+            )
+            VALUES ($migration_id, $schema_version, $app_version, $notes);
+            """;
+        command.Parameters.AddWithValue("$migration_id", "001_initial_personal_score_db_schema");
+        command.Parameters.AddWithValue("$schema_version", 1);
+        command.Parameters.AddWithValue("$app_version", "schema-contract");
+        command.Parameters.AddWithValue(
+            "$notes",
+            "Initial formal personal score DB schema contract.");
+        command.ExecuteNonQuery();
+        transaction.Commit();
+    }
+
     private static readonly string[] MasterTables =
         ["songs", "charts", "song_aliases", "master_metadata", "source_snapshots"];
 

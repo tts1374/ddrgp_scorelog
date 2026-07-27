@@ -11,9 +11,7 @@ public sealed class PersonalScoreDbInitializerTests
     {
         using var fixture = new DatabaseFixture();
         var scorePath = Path.Combine(fixture.DirectoryPath, "missing-score.sqlite");
-        var initializer = new PythonPersonalScoreDbInitializer(
-            "python",
-            RepositoryRootLocator.Find());
+        var initializer = new PersonalScoreDbInitializer();
 
         var result = await initializer.InitializeIfMissingAsync(scorePath);
 
@@ -33,9 +31,7 @@ public sealed class PersonalScoreDbInitializerTests
         using var fixture = new DatabaseFixture();
         var scorePath = Path.Combine(fixture.DirectoryPath, "zero-byte-score.sqlite");
         File.WriteAllBytes(scorePath, []);
-        var initializer = new PythonPersonalScoreDbInitializer(
-            "python",
-            RepositoryRootLocator.Find());
+        var initializer = new PersonalScoreDbInitializer();
 
         var result = await initializer.InitializeIfMissingAsync(scorePath);
 
@@ -53,9 +49,7 @@ public sealed class PersonalScoreDbInitializerTests
     {
         using var fixture = new DatabaseFixture();
         var before = SHA256.HashData(File.ReadAllBytes(fixture.ScorePath));
-        var initializer = new PythonPersonalScoreDbInitializer(
-            "python",
-            RepositoryRootLocator.Find());
+        var initializer = new PersonalScoreDbInitializer();
 
         var result = await initializer.InitializeIfMissingAsync(fixture.ScorePath);
 
@@ -65,24 +59,22 @@ public sealed class PersonalScoreDbInitializerTests
     }
 
     [Fact]
-    public void ParseResult_reads_preparation_summary_from_pretty_json()
+    public async Task Initializes_production_score_db_without_repository_root()
     {
-        const string payload = """
-            {
-              "is_compatible": true,
-              "compatibility_errors": [],
-              "file_preparation": {
-                "initialized": true
-              }
-            }
-            """;
+        using var fixture = new DatabaseFixture();
+        var productionPaths = ViewerDatabasePaths.ForProduction(
+            Path.Combine(fixture.DirectoryPath, "production-local-app-data"));
+        var initializer = new PersonalScoreDbInitializer();
 
-        var result = PythonPersonalScoreDbInitializer.ParseResult(
-            payload,
-            0,
-            "score.sqlite");
+        var result = await initializer.InitializeIfMissingAsync(productionPaths.ScoreDatabasePath);
 
         Assert.True(result.Succeeded);
         Assert.True(result.Initialized);
+        Assert.True(File.Exists(productionPaths.ScoreDatabasePath));
+        var data = new ScoreViewerRepository().Load(
+            productionPaths.ScoreDatabasePath,
+            fixture.MasterPath,
+            fixture.CatalogPath);
+        Assert.Empty(data.Plays);
     }
 }

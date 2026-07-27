@@ -125,7 +125,7 @@ dotnet run --project app\src\DDRGpScoreViewer\DDRGpScoreViewer.csproj --no-build
 3. `自己ベスト` または `プレー履歴` を開く。
 4. プレー履歴の行を選び、判定数、MAX COMBO、EX SCORE、保存日時、データ取得元を確認する。
 
-個人DBとマスタDBは別々のSQLite read-only connectionで開きます。起動時の固定score pathに対するmissing／0 byteの初期化だけは既存の正式DB準備境界へ委譲し、初期化後のviewerはschema変更、insert、update、migration、backup、repairを実行しません。connection poolingも使いません。
+個人DBとマスタDBは別々のSQLite read-only connectionで開きます。起動時の固定score pathに対するmissing／0 byteの初期化だけはWPF側の正式schema初期化境界へ委譲し、初期化後のviewerはschema変更、insert、update、migration、backup、repairを実行しません。connection poolingも使いません。
 
 ## 単発保存
 
@@ -133,7 +133,7 @@ dotnet run --project app\src\DDRGpScoreViewer\DDRGpScoreViewer.csproj --no-build
 2. `workflow_schema_version=1` の既存strict workflow入力JSONを選ぶ。
 3. 現在の環境の固定score DBへ保存する。保存先DBを画面から変更する操作はない。
 
-アプリは `python -m tools.vision_poc.personal_score_db_workflow_app` をリポジトリrootで1回だけ実行します。この薄いprocess adapterは入力内の既存 `log_path` をartifact出力先として渡すだけで、strict loader、save adapter、artifact orchestration、file saveをC#で再実装しません。固定score pathがmissingまたは0 byteの場合の起動時初期化も、既存の `prepare_personal_score_db_file_for_write()` と同じPython境界へ委譲します。repository root探索は `単発保存` または初期化が必要な起動時まで遅延し、current directoryまたはapp配置場所の親から検出できない場合は該当処理だけを失敗状態にします。既存score DBのread-only viewer起動はPythonを必要としません。
+アプリは `python -m tools.vision_poc.personal_score_db_workflow_app` をリポジトリrootで1回だけ実行します。この薄いprocess adapterは入力内の既存 `log_path` をartifact出力先として渡すだけで、strict loader、save adapter、artifact orchestration、file saveをC#で再実装しません。固定score pathがmissingまたは0 byteの場合の起動時初期化は、WPF側の `PersonalScoreDbInitializer` が既存の正式score DB schema契約を使って実行するため、production pathでもrepository rootやPython module配置を必要としません。repository root探索は `単発保存` または連続取得した結果の正式保存などPython workflowが必要な操作まで遅延し、current directoryまたはapp配置場所の親から検出できない場合はその操作だけを失敗状態にします。既存score DBのread-only viewer起動と起動時の空DB初期化はPythonを必要としません。
 
 `saved` かつtransaction完了済みの `play_id` が返った場合だけ、同じ `ScoreViewerRepository` でDBをread-only再読込し、履歴・詳細・自己ベストへ反映します。`excluded` / `duplicate` はsource captureとanalysisが記録されても成功playとして表示せず、`unresolved` / `invalid` / DB拒否 / artifact失敗は理由を表示します。`artifact_created_db_failed` はartifactが残ったpartial successとして表示し、DB保存成功へ丸めません。
 

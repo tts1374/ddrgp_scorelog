@@ -4,7 +4,7 @@ M8 preview完了後の正式 `ddrgp-scores.sqlite` 初期スキーマ、migratio
 
 ## M9 read-only viewer boundary
 
-`app/src/DDRGpScoreViewer` は正式個人スコアDB version 1を表示するread-only consumerである。個人DB、M4 master DB、M5b jacket reference catalogを別々のSQLite `ReadOnly` connectionで開く。起動時にmaster 2種類がcompatibleな場合だけ、固定score pathのmissing／0 byteを既存 `prepare_personal_score_db_file_for_write()` 境界へ委譲して初期化する。初期化後のviewerはschema変更、save、migration、backup、repairを呼ばず、connection poolingも使わない。M4 master DBとM5b jacket reference catalogは同じdirectoryにあっても別fileとして検査する。
+`app/src/DDRGpScoreViewer` は正式個人スコアDB version 1を表示するread-only consumerである。個人DB、M4 master DB、M5b jacket reference catalogを別々のSQLite `ReadOnly` connectionで開く。起動時にmaster 2種類がcompatibleな場合だけ、固定score pathのmissing／0 byteをWPF側の `PersonalScoreDbInitializer` が既存の正式schema・metadata・migration契約に従って初期化する。production pathの起動時bootstrapはrepository rootやPython module配置に依存しない。初期化後のviewerはschema変更、save、migration、backup、repairを呼ばず、connection poolingも使わない。M4 master DBとM5b jacket reference catalogは同じdirectoryにあっても別fileとして検査する。
 
 個人DBは `PRAGMA user_version=1`、正式 `score_db_metadata` identity、必須tableとversion 1列順、初期migration履歴を検査する。preview、unknown、identity mismatch、newer unsupported、必須table/列欠落、migration history不整合は、ファイルを変更せず表示対象から拒否する。これは既存Python writerの互換判定を置き換えず、viewer側で同じ正式identityを再確認する入口である。
 
@@ -18,7 +18,7 @@ M9のmanual保存入口は、既定または利用者が明示選択した正式
 
 developmentの正式個人スコアDBは `databases/score.dev.db`、productionの正式個人スコアDBは `%LOCALAPPDATA%\DDRGpScoreViewer\data\score\score.db` とする。repository rootを解決できる実行をdevelopment、それ以外をproductionとし、pathのcross-environment fallbackは行わない。
 
-正式DBの既存非空fileは、起動時のread-only viewer検査、M4 master DB検査、M5b jacket reference catalog検査、評価用DBの初期化・退避、アプリ更新のいずれからも変更しない。固定score pathのmissing／0 byteだけはmaster検証後に既存file preparation境界で初期化できる。既存formal DBのmigration、repair、backup writer、installer連携はこのIssueの対象外であり、互換DBのschema再作成やmetadata上書きは行わない。
+正式DBの既存非空fileは、起動時のread-only viewer検査、M4 master DB検査、M5b jacket reference catalog検査、評価用DBの初期化・退避、アプリ更新のいずれからも変更しない。固定score pathのmissing／0 byteだけはmaster検証後にWPF側の正式schema初期化境界で初期化できる。既存formal DBのmigration、repair、backup writer、installer連携はこのIssueの対象外であり、互換DBのschema再作成やmetadata上書きは行わない。
 
 formal DB、M4 master DB、M5b jacket reference catalogのいずれかが不正な場合、解析・正式保存を開始する前に理由を表示する。正式保存後のreloadもread-onlyで行い、既存playのhash・件数・pathを変えない。candidate observation、解析artifact、evaluation outputは正式 `plays` の保存値やDB初期化入力へ暗黙投影しない。
 
@@ -230,7 +230,7 @@ M8 preview最小 `plays` は以下の用途に限定する。
 
 CLI表示入口は `python -m tools.vision_poc --personal-score-db-diagnostic <path>` に置く。既定の `inspect` mode は既存DBを読み取り専用で検査し、Markdownまたは `--personal-score-db-diagnostic-format json` のJSON風dictを標準出力へ出す。存在しないpath、非SQLiteファイル、ディレクトリは正式DBとして開かず、診断上の拒否理由として表示する。
 
-`--personal-score-db-diagnostic-mode prepare-write` は `prepare_personal_score_db_file_for_write(path)` と同じファイル準備境界をCLIから確認するための入口である。新規DBファイルまたは0 byte空ファイルだけ正式初期schemaへ初期化し、`file_preparation` summaryを表示する。既存compatible DBは変更しない。M8 preview DB、unknown DB、metadata identity mismatch、`manual_migration_required` 候補、非SQLiteファイル、ディレクトリは拒否診断を出し、自動修復しない。固定score pathの起動時bootstrapと明示save前段はこの境界を共有するが、playの本番insert、既定の監視保存、既存DB migration、低信頼度ログ本番保存には進まない。
+`--personal-score-db-diagnostic-mode prepare-write` は `prepare_personal_score_db_file_for_write(path)` と同じファイル準備境界をCLIから確認するための入口である。新規DBファイルまたは0 byte空ファイルだけ正式初期schemaへ初期化し、`file_preparation` summaryを表示する。既存compatible DBは変更しない。M8 preview DB、unknown DB、metadata identity mismatch、`manual_migration_required` 候補、非SQLiteファイル、ディレクトリは拒否診断を出し、自動修復しない。固定score pathの起動時bootstrapはWPF側の `PersonalScoreDbInitializer` が同じ正式schema・拒否契約を使うため、このCLI境界を呼び出さない。明示save前段はこのCLI境界を使えるが、いずれもplayの本番insert、既定の監視保存、既存DB migration、低信頼度ログ本番保存には進まない。
 
 `--personal-score-db-diagnostic-output <path>` は、標準出力と同じ診断をファイルへ残す軽い生成物入口である。出力先は `data/` 配下だけを許可し、format と拡張子の不一致を拒否する。Markdown は `.md` / `.markdown`、JSON は `.json` だけを許可する。`prepare-write` modeで新規DBを初期化する場合も、診断ファイルはDB pathとは独立に明示指定された `data/` 配下へだけ保存する。この入口は診断結果の保存であり、解析ログ本番保存、本番insert、自動migrationには進まない。
 

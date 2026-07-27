@@ -81,7 +81,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         this.captureSaveWorkflowRunner = captureSaveWorkflowRunner;
         this.pathStore = pathStore;
         this.defaultDatabasePaths = defaultDatabasePaths ?? ViewerDatabasePaths.ResolveDefault();
-        this.scoreDatabaseInitializer = scoreDatabaseInitializer ?? new PythonPersonalScoreDbInitializer();
+        this.scoreDatabaseInitializer = scoreDatabaseInitializer ?? new PersonalScoreDbInitializer();
         scoreDatabasePath = this.defaultDatabasePaths.ScoreDatabasePath;
         masterDatabasePath = this.defaultDatabasePaths.MasterDatabasePath;
         catalogDatabasePath = this.defaultDatabasePaths.JacketCatalogDatabasePath;
