@@ -97,6 +97,14 @@ public interface IContinuousGraphicsCaptureAdapter
         CancellationToken cancellationToken = default);
 }
 
+public interface ITargetedContinuousGraphicsCaptureAdapter
+{
+    Task<IContinuousFrameSource?> StartSessionForWindowAsync(
+        nint targetWindowHandle,
+        CaptureTargetInfo target,
+        CancellationToken cancellationToken = default);
+}
+
 public interface IContinuousFrameSource : IAsyncDisposable
 {
     IAsyncEnumerable<CapturedFrame> ReadFramesAsync(
@@ -145,6 +153,15 @@ public interface IMonitoringContinuousCaptureService : IContinuousCaptureService
 {
     Task<CaptureSessionOperationResult> RunAsync(
         nint ownerWindowHandle,
+        IProgress<CaptureSessionProgress> progress,
+        CancellationToken cancellationToken = default);
+}
+
+public interface ITargetedMonitoringContinuousCaptureService
+{
+    Task<CaptureSessionOperationResult> RunAsync(
+        nint targetWindowHandle,
+        CaptureTargetInfo target,
         IProgress<CaptureSessionProgress> progress,
         CancellationToken cancellationToken = default);
 }

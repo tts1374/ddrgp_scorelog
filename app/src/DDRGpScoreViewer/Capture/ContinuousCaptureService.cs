@@ -5,7 +5,9 @@ namespace DDRGpScoreViewer.Capture;
 
 public sealed class ContinuousCaptureService(
     IContinuousGraphicsCaptureAdapter captureAdapter,
-    ICaptureSessionOutputWriter outputWriter) : IMonitoringContinuousCaptureService
+    ICaptureSessionOutputWriter outputWriter) :
+    IMonitoringContinuousCaptureService,
+    ITargetedMonitoringContinuousCaptureService
 {
     private const int AccessDeniedHResult = unchecked((int)0x80070005);
     private const int DxgiDeviceRemovedHResult = unchecked((int)0x887A0005);
@@ -39,10 +41,33 @@ public sealed class ContinuousCaptureService(
         CancellationToken cancellationToken = default) =>
         await RunCoreAsync(ownerWindowHandle, progress, cancellationToken);
 
+    public Task<CaptureSessionOperationResult> RunAsync(
+        nint targetWindowHandle,
+        CaptureTargetInfo target,
+        IProgress<CaptureSessionProgress> progress,
+        CancellationToken cancellationToken = default)
+    {
+        if (captureAdapter is not ITargetedContinuousGraphicsCaptureAdapter)
+        {
+            return Task.FromResult(Result(
+                CaptureOperationStatus.Unsupported,
+                "自動特定した対象windowへ接続できるcapture serviceが構成されていません。"));
+        }
+
+        return RunCoreAsync(
+            ownerWindowHandle: 0,
+            progress,
+            cancellationToken,
+            targetWindowHandle,
+            target);
+    }
+
     private async Task<CaptureSessionOperationResult> RunCoreAsync(
         nint ownerWindowHandle,
         IProgress<CaptureSessionProgress>? progress,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        nint? targetWindowHandle = null,
+        CaptureTargetInfo? requestedTarget = null)
     {
         lock (stateLock)
         {
@@ -72,12 +97,20 @@ public sealed class ContinuousCaptureService(
             {
                 startupToken = startupCancellation!.Token;
             }
-            source = await captureAdapter.StartSessionAsync(ownerWindowHandle, startupToken);
+            source = targetWindowHandle is { } targetHandle
+                ? await ((ITargetedContinuousGraphicsCaptureAdapter)captureAdapter)
+                    .StartSessionForWindowAsync(
+                        targetHandle,
+                        requestedTarget!,
+                        startupToken)
+                : await captureAdapter.StartSessionAsync(ownerWindowHandle, startupToken);
             if (source is null)
             {
                 return Result(
                     CaptureOperationStatus.Cancelled,
-                    "対象windowの選択をキャンセルしました。");
+                    targetWindowHandle is not null
+                        ? "自動特定した対象windowを取得できなかったため、監視を開始しませんでした。"
+                        : "対象windowの選択をキャンセルしました。");
             }
 
             lock (stateLock)
@@ -104,7 +137,7 @@ public sealed class ContinuousCaptureService(
             var startedAtUtc = DateTimeOffset.UtcNow;
             var target = source is IContinuousFrameSourceMetadata metadata
                 ? metadata.Target
-                : new CaptureTargetInfo("選択済みwindow", 0, 0);
+                : requestedTarget ?? new CaptureTargetInfo("選択済みwindow", 0, 0);
             progress?.Report(new CaptureSessionProgress(
                 target,
                 0,

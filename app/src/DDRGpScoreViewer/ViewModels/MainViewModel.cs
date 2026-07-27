@@ -19,6 +19,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private readonly IViewerPathStore? pathStore;
     private readonly ViewerDatabasePaths defaultDatabasePaths;
     private readonly IScoreDatabaseInitializer scoreDatabaseInitializer;
+    private readonly IDdrGpWindowEnumerator ddrGpWindowEnumerator;
     private PlayHistoryItem? selectedPlay;
     private string statusTitle = "既定のDBを確認しています";
     private string statusMessage =
@@ -72,7 +73,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         ICaptureSaveWorkflowRunner? captureSaveWorkflowRunner = null,
         IViewerPathStore? pathStore = null,
         ViewerDatabasePaths? defaultDatabasePaths = null,
-        IScoreDatabaseInitializer? scoreDatabaseInitializer = null)
+        IScoreDatabaseInitializer? scoreDatabaseInitializer = null,
+        IDdrGpWindowEnumerator? ddrGpWindowEnumerator = null)
     {
         this.repository = repository;
         this.workflowRunner = workflowRunner;
@@ -82,6 +84,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         this.pathStore = pathStore;
         this.defaultDatabasePaths = defaultDatabasePaths ?? ViewerDatabasePaths.ResolveDefault();
         this.scoreDatabaseInitializer = scoreDatabaseInitializer ?? new PersonalScoreDbInitializer();
+        this.ddrGpWindowEnumerator = ddrGpWindowEnumerator ?? new DdrGpWindowEnumerator();
         scoreDatabasePath = this.defaultDatabasePaths.ScoreDatabasePath;
         masterDatabasePath = this.defaultDatabasePaths.MasterDatabasePath;
         catalogDatabasePath = this.defaultDatabasePaths.JacketCatalogDatabasePath;
@@ -543,7 +546,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
             defaultDatabasePaths.ScoreDatabasePath,
             defaultDatabasePaths.MasterDatabasePath,
             defaultDatabasePaths.JacketCatalogDatabasePath,
-            cancellationToken);
+            cancellationToken,
+            automaticWindowDetection: true);
 
     public async Task CaptureOneFrameAsync(
         nint ownerWindowHandle,
@@ -614,7 +618,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 null,
                 null,
                 null,
-                cancellationToken);
+                cancellationToken,
+                automaticWindowDetection: false);
         }
         finally
         {
@@ -633,7 +638,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
             scoreDatabasePath,
             masterDatabasePath,
             catalogDatabasePath: null,
-            cancellationToken: cancellationToken);
+            cancellationToken: cancellationToken,
+            automaticWindowDetection: false);
     }
 
     public async Task StartContinuousCaptureAndSaveAsync(
@@ -648,7 +654,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
             scoreDatabasePath,
             masterDatabasePath,
             catalogDatabasePath,
-            cancellationToken);
+            cancellationToken,
+            automaticWindowDetection: false);
     }
 
     private async Task StartContinuousCaptureAndSaveCoreAsync(
@@ -656,7 +663,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         string scoreDatabasePath,
         string masterDatabasePath,
         string? catalogDatabasePath,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool automaticWindowDetection)
     {
         if (applicationExitRequested || IsSaving || cancellationToken.IsCancellationRequested)
         {
@@ -674,7 +682,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 scoreDatabasePath,
                 masterDatabasePath,
                 catalogDatabasePath,
-                cancellationToken);
+                cancellationToken,
+                automaticWindowDetection);
         }
         finally
         {
@@ -688,7 +697,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         string? scoreDatabasePath,
         string? masterDatabasePath,
         string? catalogDatabasePath,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool automaticWindowDetection)
     {
         if (applicationExitRequested || cancellationToken.IsCancellationRequested)
         {
@@ -730,6 +740,80 @@ public sealed class MainViewModel : INotifyPropertyChanged
             return;
         }
 
+        ITargetedMonitoringContinuousCaptureService? targetedMonitoringService = null;
+        DdrGpWindowCandidate? detectedTarget = null;
+        if (automaticWindowDetection)
+        {
+            targetedMonitoringService = continuousCaptureService as
+                ITargetedMonitoringContinuousCaptureService;
+            if (targetedMonitoringService is null)
+            {
+                HasCaptureStatus = true;
+                CaptureStatusTitle = "監視を開始できません";
+                CaptureStatusMessage =
+                    "自動特定した対象windowへ接続できるcapture serviceが構成されていません。";
+                SetMonitoringState(MonitoringState.Stopped, CaptureStatusMessage);
+                return;
+            }
+
+            ResetMonitoringSession();
+            SetMonitoringState(
+                MonitoringState.SelectingTarget,
+                "DDR GRAND PRIX windowを自動検出しています。");
+            HasCaptureStatus = true;
+            CaptureStatusTitle = "DDR GRAND PRIX windowを自動検出しています";
+            CaptureStatusMessage =
+                "process=ddr-konaste、client=1280 x 720のtop-level windowを確認しています。";
+
+            IReadOnlyList<DdrGpWindowCandidate> windows;
+            try
+            {
+                windows = await ddrGpWindowEnumerator.EnumerateAsync(cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+            catch (Exception exception)
+            {
+                var reason = $"DDR GRAND PRIX windowを確認できませんでした。{exception.Message}";
+                HasCaptureStatus = true;
+                CaptureStatusTitle = "監視を開始できません";
+                CaptureStatusMessage = reason;
+                SetMonitoringState(MonitoringState.CaptureFailed, reason);
+                return;
+            }
+
+            var candidates = windows
+                .Where(DdrGpWindowEnumerator.IsDdrGpTarget)
+                .ToList();
+            if (candidates.Count == 0)
+            {
+                var reason =
+                    "DDR GRAND PRIXの対象windowが見つかりません。ゲームの起動、process=ddr-konaste、client=1280 x 720、アクセス権を確認してから再度実行してください。";
+                HasCaptureStatus = true;
+                CaptureStatusTitle = "監視を開始できません";
+                CaptureStatusMessage = reason;
+                SetMonitoringState(MonitoringState.Stopped, reason);
+                return;
+            }
+            if (candidates.Count > 1)
+            {
+                var reason =
+                    $"条件に一致するDDR GRAND PRIX windowが{candidates.Count}件あるため、推測で選択せず監視を開始しません。不要なwindowを閉じてから再度実行してください。";
+                HasCaptureStatus = true;
+                CaptureStatusTitle = "監視を開始できません";
+                CaptureStatusMessage = reason;
+                SetMonitoringState(MonitoringState.Stopped, reason);
+                return;
+            }
+
+            detectedTarget = candidates[0];
+            MonitoringTarget = detectedTarget.DisplayName;
+            MonitoringTargetSize =
+                $"{detectedTarget.ClientWidth} x {detectedTarget.ClientHeight}";
+        }
+
         if (scoreDatabasePath is not null &&
             (masterDatabasePath is null ||
              !ValidateMasterDatabasesForSave(masterDatabasePath, catalogDatabasePath)))
@@ -737,8 +821,11 @@ public sealed class MainViewModel : INotifyPropertyChanged
             return;
         }
 
-        ResetMonitoringSession();
-        SetMonitoringState(MonitoringState.SelectingTarget, "対象windowの選択を待っています。");
+        if (!automaticWindowDetection)
+        {
+            ResetMonitoringSession();
+            SetMonitoringState(MonitoringState.SelectingTarget, "対象windowの選択を待っています。");
+        }
         IsContinuousCapturing = true;
         continuousCaptureFinished = new TaskCompletionSource(
             TaskCreationOptions.RunContinuationsAsynchronously);
@@ -747,23 +834,33 @@ public sealed class MainViewModel : INotifyPropertyChanged
         var sessionCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         monitoringCancellation = sessionCancellation;
         HasCaptureStatus = true;
-        CaptureStatusTitle = "対象windowを選択してください";
+        CaptureStatusTitle = automaticWindowDetection
+            ? "検出した対象windowへ接続しています"
+            : "対象windowを選択してください";
         CaptureStatusMessage =
-            scoreDatabasePath is null
-                ? "選択したwindowを明示停止まで取得します。解析やDB保存は実行しません。"
-                : "選択したwindowを明示停止まで取得し、完成manifestだけを解析・正式保存境界へ渡します。";
+            automaticWindowDetection
+                ? "検出したwindowを明示停止まで取得し、完成manifestだけを解析・正式保存境界へ渡します。"
+                : scoreDatabasePath is null
+                    ? "選択したwindowを明示停止まで取得します。解析やDB保存は実行しません。"
+                    : "選択したwindowを明示停止まで取得し、完成manifestだけを解析・正式保存境界へ渡します。";
         try
         {
             var progress = new CallbackProgress<CaptureSessionProgress>(
                 value => ApplyMonitoringProgress(sessionId, value));
-            var result = continuousCaptureService is IMonitoringContinuousCaptureService monitoringService
-                ? await monitoringService.RunAsync(
-                    ownerWindowHandle,
+            var result = automaticWindowDetection
+                ? await targetedMonitoringService!.RunAsync(
+                    detectedTarget!.Handle,
+                    detectedTarget.TargetInfo,
                     progress,
                     sessionCancellation.Token)
-                : await continuousCaptureService.RunAsync(
-                    ownerWindowHandle,
-                    sessionCancellation.Token);
+                : continuousCaptureService is IMonitoringContinuousCaptureService monitoringService
+                    ? await monitoringService.RunAsync(
+                        ownerWindowHandle,
+                        progress,
+                        sessionCancellation.Token)
+                    : await continuousCaptureService.RunAsync(
+                        ownerWindowHandle,
+                        sessionCancellation.Token);
             CaptureStatusTitle = result.Status switch
             {
                 CaptureOperationStatus.Saved => "連続キャプチャを保存しました",

@@ -11,12 +11,15 @@ using WinRT;
 
 namespace DDRGpScoreViewer.Capture;
 
-public sealed class ContinuousWindowsGraphicsCaptureAdapter : IContinuousGraphicsCaptureAdapter
+public sealed class ContinuousWindowsGraphicsCaptureAdapter :
+    IContinuousGraphicsCaptureAdapter,
+    ITargetedContinuousGraphicsCaptureAdapter
 {
     private const uint D3D11SdkVersion = 7;
     private const uint D3D11CreateDeviceBgraSupport = 0x20;
     private const int D3DDriverTypeHardware = 1;
     private static readonly Guid IdxgiDeviceGuid = new("54ec77fa-1377-44e6-8c32-88fd5f44c84c");
+    private static readonly Guid GraphicsCaptureItemGuid = new("79C3F95B-31F7-4EC2-A464-632EF5D30760");
 
     public bool IsSupported => GraphicsCaptureSession.IsSupported();
 
@@ -40,6 +43,21 @@ public sealed class ContinuousWindowsGraphicsCaptureAdapter : IContinuousGraphic
         return CaptureFrameSource.Start(item);
     }
 
+    public async Task<IContinuousFrameSource?> StartSessionForWindowAsync(
+        nint targetWindowHandle,
+        CaptureTargetInfo target,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var item = CreateItemForWindow(targetWindowHandle);
+        if (item.Size.Width <= 0 || item.Size.Height <= 0)
+        {
+            throw new CaptureInvalidSizeException("Capture item has a zero-sized surface.");
+        }
+
+        return CaptureFrameSource.Start(item, target.DisplayName);
+    }
+
     private sealed class CaptureFrameSource : IContinuousFrameSource, IContinuousFrameSourceMetadata
     {
         private readonly GraphicsCaptureItem item;
@@ -60,7 +78,8 @@ public sealed class ContinuousWindowsGraphicsCaptureAdapter : IContinuousGraphic
             GraphicsCaptureItem item,
             IDirect3DDevice device,
             Direct3D11CaptureFramePool framePool,
-            GraphicsCaptureSession session)
+            GraphicsCaptureSession session,
+            string? captureSourceOverride)
         {
             this.item = item;
             this.device = device;
@@ -68,9 +87,11 @@ public sealed class ContinuousWindowsGraphicsCaptureAdapter : IContinuousGraphic
             this.session = session;
             width = item.Size.Width;
             height = item.Size.Height;
-            captureSource = string.IsNullOrWhiteSpace(item.DisplayName)
-                ? "selected_window"
-                : item.DisplayName;
+            captureSource = string.IsNullOrWhiteSpace(captureSourceOverride)
+                ? string.IsNullOrWhiteSpace(item.DisplayName)
+                    ? "selected_window"
+                    : item.DisplayName
+                : captureSourceOverride;
             frames = Channel.CreateBounded<QueuedFrame>(
                 new BoundedChannelOptions(2)
                 {
@@ -83,7 +104,9 @@ public sealed class ContinuousWindowsGraphicsCaptureAdapter : IContinuousGraphic
         public Task<CaptureSessionEndReason> Completion => completion.Task;
         public CaptureTargetInfo Target => new(captureSource, width, height);
 
-        public static CaptureFrameSource Start(GraphicsCaptureItem item)
+        public static CaptureFrameSource Start(
+            GraphicsCaptureItem item,
+            string? captureSourceOverride = null)
         {
             IDirect3DDevice? device = null;
             Direct3D11CaptureFramePool? framePool = null;
@@ -98,7 +121,12 @@ public sealed class ContinuousWindowsGraphicsCaptureAdapter : IContinuousGraphic
                     2,
                     item.Size);
                 session = framePool.CreateCaptureSession(item);
-                source = new CaptureFrameSource(item, device, framePool, session);
+                source = new CaptureFrameSource(
+                    item,
+                    device,
+                    framePool,
+                    session,
+                    captureSourceOverride);
                 source.framePool.FrameArrived += source.FrameArrived;
                 source.item.Closed += source.ItemClosed;
                 source.session.StartCapture();
@@ -248,6 +276,40 @@ public sealed class ContinuousWindowsGraphicsCaptureAdapter : IContinuousGraphic
             Direct3D11CaptureFrame Frame,
             long TimestampMs,
             DateTimeOffset CapturedAtUtc);
+    }
+
+    private static GraphicsCaptureItem CreateItemForWindow(nint handle)
+    {
+        using var factory = ActivationFactory.Get(
+            "Windows.Graphics.Capture.GraphicsCaptureItem");
+        var interop = (IGraphicsCaptureItemInterop)Marshal.GetObjectForIUnknown(factory.ThisPtr);
+        nint pointer = 0;
+        try
+        {
+            Marshal.ThrowExceptionForHR(interop.CreateForWindow(
+                handle, in GraphicsCaptureItemGuid, out pointer));
+            return MarshalInterface<GraphicsCaptureItem>.FromAbi(pointer);
+        }
+        finally
+        {
+            if (pointer != 0)
+            {
+                Marshal.Release(pointer);
+            }
+            if (Marshal.IsComObject(interop))
+            {
+                Marshal.FinalReleaseComObject(interop);
+            }
+        }
+    }
+
+    [ComImport]
+    [Guid("3628E81B-3CAC-4C60-B7F4-23CE0E0C3356")]
+    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    private interface IGraphicsCaptureItemInterop
+    {
+        [PreserveSig]
+        int CreateForWindow(nint window, in Guid iid, out nint result);
     }
 
     private static async Task<byte[]> EncodePngAsync(
