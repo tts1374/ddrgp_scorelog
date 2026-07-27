@@ -33,7 +33,7 @@ public sealed class PythonLiveResultAnalyzer : ILiveResultAnalyzer, IAsyncDispos
         await processLock.WaitAsync(cancellationToken);
         try
         {
-            EnsureProcess();
+            await EnsureProcessAsync();
             var payload = JsonSerializer.Serialize(new
             {
                 png_base64 = Convert.ToBase64String(frame.PngBytes),
@@ -47,6 +47,11 @@ public sealed class PythonLiveResultAnalyzer : ILiveResultAnalyzer, IAsyncDispos
                     "live result analyzer ended without returning an observation.");
             }
             return ParseObservation(line);
+        }
+        catch (Exception) when (process is not null && process.HasExited)
+        {
+            await ResetExitedProcessAsync();
+            throw;
         }
         finally
         {
@@ -85,18 +90,22 @@ public sealed class PythonLiveResultAnalyzer : ILiveResultAnalyzer, IAsyncDispos
             OptionalString(root, "reason"));
     }
 
-    private void EnsureProcess()
+    private async Task EnsureProcessAsync()
     {
         if (process is not null)
         {
-            if (process.HasExited)
+            if (!process.HasExited)
             {
-                throw new InvalidOperationException(
-                    "live result analyzer process exited; restart monitoring explicitly.");
+                return;
             }
-            return;
+            await ResetExitedProcessAsync();
         }
 
+        StartProcess();
+    }
+
+    private void StartProcess()
+    {
         var startInfo = new ProcessStartInfo
         {
             FileName = pythonExecutable,
@@ -121,6 +130,31 @@ public sealed class PythonLiveResultAnalyzer : ILiveResultAnalyzer, IAsyncDispos
         }
         standardInput = process.StandardInput;
         standardError = process.StandardError.ReadToEndAsync();
+    }
+
+    private async Task ResetExitedProcessAsync()
+    {
+        var exitedProcess = process;
+        var exitedStandardError = standardError;
+        process = null;
+        standardInput = null;
+        standardError = null;
+        try
+        {
+            if (exitedStandardError is not null)
+            {
+                await exitedStandardError;
+            }
+        }
+        catch (Exception exception) when (
+            exception is IOException or ObjectDisposedException or InvalidOperationException)
+        {
+            // stderr is diagnostic only; a terminated analyzer must still be restartable.
+        }
+        finally
+        {
+            exitedProcess?.Dispose();
+        }
     }
 
     private static async Task TerminateProcessAsync(Process value)
