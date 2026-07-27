@@ -6,7 +6,7 @@ import hashlib
 import json
 import sqlite3
 from collections import Counter
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from contextlib import closing
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -56,6 +56,20 @@ COVERAGE_FIELDNAMES = (
 )
 CATALOG_TABLE_COLUMNS = {
     "catalog_metadata": {"key", "value"},
+    "result_text_features": {
+        "feature_id",
+        "song_id",
+        "field_name",
+        "feature_version",
+        "roi_version",
+        "feature_hash",
+        "payload_json",
+        "source_label",
+        "master_version",
+        "canonical_title_snapshot",
+        "canonical_artist_snapshot",
+        "created_at",
+    },
     "jacket_references": {
         "reference_id",
         "source_capture_id",
@@ -165,12 +179,31 @@ MASTER_REQUIRED_METADATA = {
     "song_count",
     "chart_count",
 }
+RESULT_TEXT_FEATURES_SCHEMA_SQL = """CREATE TABLE result_text_features (
+  feature_id TEXT PRIMARY KEY,
+  song_id TEXT NOT NULL,
+  field_name TEXT NOT NULL CHECK (field_name IN ('title', 'artist')),
+  feature_version TEXT NOT NULL,
+  roi_version TEXT NOT NULL,
+  feature_hash TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  source_label TEXT NOT NULL,
+  master_version TEXT NOT NULL,
+  canonical_title_snapshot TEXT NOT NULL,
+  canonical_artist_snapshot TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  UNIQUE (song_id, field_name, feature_version, feature_hash)
+);
+CREATE INDEX idx_result_text_features_song_field
+ON result_text_features(song_id, field_name, master_version);
+"""
 CATALOG_SCHEMA_SQL = f"""
 PRAGMA user_version = {CATALOG_SCHEMA_VERSION};
 CREATE TABLE catalog_metadata (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
 );
+{RESULT_TEXT_FEATURES_SCHEMA_SQL}
 CREATE TABLE jacket_references (
   reference_id TEXT PRIMARY KEY,
   source_capture_id TEXT,
@@ -255,6 +288,15 @@ CREATE TABLE reference_review_history (
 CREATE INDEX idx_reference_review_history_reference
 ON reference_review_history(reference_id, history_id);
 """
+LEGACY_CATALOG_SCHEMA_SQL = CATALOG_SCHEMA_SQL.replace(
+    RESULT_TEXT_FEATURES_SCHEMA_SQL,
+    "",
+)
+LEGACY_CATALOG_TABLE_COLUMNS = {
+    table: columns
+    for table, columns in CATALOG_TABLE_COLUMNS.items()
+    if table != "result_text_features"
+}
 
 
 @dataclass(frozen=True)
@@ -699,6 +741,94 @@ def _validate_catalog_content(connection: sqlite3.Connection) -> None:
             raise ValueError("jacket reference catalog has manual state without history")
 
 
+def _result_text_feature_id(
+    *,
+    master_version: str,
+    song_id: str,
+    field_name: str,
+    feature_version: str,
+    roi_version: str,
+    feature_hash: str,
+) -> str:
+    material = "\0".join(
+        (
+            master_match.RESULT_TEXT_FEATURE_SCHEMA_VERSION,
+            master_version,
+            song_id,
+            field_name,
+            feature_version,
+            roi_version,
+            feature_hash,
+        )
+    ).encode("utf-8")
+    return hashlib.sha256(material).hexdigest()
+
+
+def _validate_result_text_features(connection: sqlite3.Connection) -> None:
+    for row in connection.execute(
+        """
+        SELECT feature_id, song_id, field_name, feature_version, roi_version,
+               feature_hash, payload_json, source_label, master_version,
+               canonical_title_snapshot, canonical_artist_snapshot, created_at
+        FROM result_text_features
+        ORDER BY feature_id
+        """
+    ):
+        (
+            feature_id,
+            song_id,
+            field_name,
+            feature_version,
+            roi_version,
+            feature_hash,
+            payload_json,
+            source_label,
+            master_version,
+            canonical_title,
+            canonical_artist,
+            created_at,
+        ) = (str(value or "") for value in row)
+        if (
+            not _is_sha256(feature_id)
+            or not song_id
+            or field_name not in {"title", "artist"}
+            or feature_version != master_match.RESULT_TEXT_IMAGE_FEATURE_VERSION
+            or roi_version != master_match.RESULT_TEXT_ROI_VERSION
+            or not _is_sha256(feature_hash)
+            or not payload_json
+            or not source_label
+            or not master_version
+            or not canonical_title
+            or not created_at
+        ):
+            raise ValueError("jacket reference catalog has invalid result text feature identity")
+        try:
+            payload = json.loads(payload_json)
+        except json.JSONDecodeError as exc:
+            raise ValueError(
+                "jacket reference catalog has invalid result text feature payload"
+            ) from exc
+        record = {
+            "feature_version": feature_version,
+            "roi_version": roi_version,
+            "feature_hash": feature_hash,
+            "payload": payload,
+        }
+        try:
+            master_match.result_text_feature_from_record(record)
+        except ValueError as exc:
+            raise ValueError("jacket reference catalog has invalid result text feature") from exc
+        if _result_text_feature_id(
+            master_version=master_version,
+            song_id=song_id,
+            field_name=field_name,
+            feature_version=feature_version,
+            roi_version=roi_version,
+            feature_hash=feature_hash,
+        ) != feature_id:
+            raise ValueError("jacket reference catalog has invalid result text feature id")
+
+
 def _catalog_schema_version(connection: sqlite3.Connection) -> int:
     if "catalog_metadata" not in _user_tables(connection):
         raise ValueError("not a jacket reference catalog: metadata table missing")
@@ -739,6 +869,13 @@ def _validate_catalog(connection: sqlite3.Connection) -> int:
     }
     if not expected_reference_unique <= reference_unique:
         raise ValueError("jacket reference catalog reference uniqueness mismatch")
+    result_text_unique = _unique_index_columns(connection, "result_text_features")
+    expected_result_text_unique = {
+        ("feature_id",),
+        ("song_id", "field_name", "feature_version", "feature_hash"),
+    }
+    if not expected_result_text_unique <= result_text_unique:
+        raise ValueError("jacket reference catalog result text feature uniqueness mismatch")
     if ("reference_id", "song_id") not in _unique_index_columns(connection, "reference_candidates"):
         raise ValueError("jacket reference catalog candidate uniqueness mismatch")
     foreign_keys = list(connection.execute("PRAGMA foreign_key_list(reference_candidates)"))
@@ -752,6 +889,58 @@ def _validate_catalog(connection: sqlite3.Connection) -> int:
     )
     if len(history_foreign_keys) != 1 or str(history_foreign_keys[0][2]) != "jacket_references":
         raise ValueError("jacket reference catalog review history foreign key mismatch")
+    connection.row_factory = sqlite3.Row
+    _validate_catalog_content(connection)
+    _validate_catalog_identities(connection)
+    _validate_result_text_features(connection)
+    return version
+
+
+def _validate_legacy_catalog(connection: sqlite3.Connection) -> int:
+    version = _catalog_schema_version(connection)
+    if version != CATALOG_SCHEMA_VERSION:
+        raise ValueError("unsupported legacy jacket reference catalog schema version")
+    with closing(sqlite3.connect(":memory:")) as expected:
+        expected.executescript(LEGACY_CATALOG_SCHEMA_SQL)
+        if _schema_signature(connection) != _schema_signature(expected):
+            raise ValueError("legacy jacket reference catalog exact schema mismatch")
+    if _user_tables(connection) != set(LEGACY_CATALOG_TABLE_COLUMNS):
+        raise ValueError("legacy jacket reference catalog table identity mismatch")
+    for table, expected_columns in LEGACY_CATALOG_TABLE_COLUMNS.items():
+        if _table_columns(connection, table) != expected_columns:
+            raise ValueError(f"legacy jacket reference catalog {table} columns mismatch")
+    metadata = dict(connection.execute("SELECT key, value FROM catalog_metadata"))
+    if set(metadata) != {"catalog_identity", "schema_version", "created_at"}:
+        raise ValueError("legacy jacket reference catalog metadata keys mismatch")
+    if metadata.get("catalog_identity") != CATALOG_IDENTITY:
+        raise ValueError("legacy jacket reference catalog identity mismatch")
+    if connection.execute("PRAGMA user_version").fetchone()[0] != version:
+        raise ValueError("legacy jacket reference catalog user_version mismatch")
+    reference_unique = _unique_index_columns(connection, "jacket_references")
+    expected_reference_unique = {
+        ("reference_id",),
+        ("source_image_hash", "feature_extractor_version", "song_id"),
+        ("source_capture_id", "feature_extractor_version"),
+        ("composite_identity_version", "composite_identity_hash"),
+    }
+    if not expected_reference_unique <= reference_unique:
+        raise ValueError("legacy jacket reference catalog reference uniqueness mismatch")
+    if ("reference_id", "song_id") not in _unique_index_columns(
+        connection,
+        "reference_candidates",
+    ):
+        raise ValueError("legacy jacket reference catalog candidate uniqueness mismatch")
+    foreign_keys = list(connection.execute("PRAGMA foreign_key_list(reference_candidates)"))
+    if len(foreign_keys) != 1 or str(foreign_keys[0][2]) != "jacket_references":
+        raise ValueError("legacy jacket reference catalog candidate foreign key mismatch")
+    history_unique = _unique_index_columns(connection, "reference_review_history")
+    if ("action_id",) not in history_unique:
+        raise ValueError("legacy jacket reference catalog review history uniqueness mismatch")
+    history_foreign_keys = list(
+        connection.execute("PRAGMA foreign_key_list(reference_review_history)")
+    )
+    if len(history_foreign_keys) != 1 or str(history_foreign_keys[0][2]) != "jacket_references":
+        raise ValueError("legacy jacket reference catalog review history foreign key mismatch")
     connection.row_factory = sqlite3.Row
     _validate_catalog_content(connection)
     _validate_catalog_identities(connection)
@@ -794,6 +983,97 @@ def catalog_schema_version(path: Path) -> int:
             return _validate_catalog(connection)
     except sqlite3.DatabaseError as exc:
         raise ValueError(f"invalid jacket reference catalog: {path}") from exc
+
+
+def migrate_catalog_v1(source_path: Path, output_path: Path) -> dict[str, Any]:
+    """Copy the legacy v1 catalog into the current v1 schema without changing source."""
+    ensure_catalog_path(source_path, argument_name="--source-catalog")
+    ensure_catalog_path(output_path, argument_name="--output-catalog")
+    source_resolved = source_path.resolve()
+    output_resolved = output_path.resolve()
+    if source_resolved == output_resolved:
+        raise ValueError("source and output catalog paths must differ")
+    if output_path.exists():
+        raise ValueError(f"output catalog already exists: {output_path}")
+
+    table_order = (
+        "catalog_metadata",
+        "jacket_references",
+        "reference_candidates",
+        "reference_review_history",
+    )
+    source_counts: dict[str, int] = {}
+    output_created = False
+    try:
+        with closing(_connect_read_only(source_path)) as source_connection:
+            source_connection.row_factory = sqlite3.Row
+            _validate_legacy_catalog(source_connection)
+            source_metadata = list(
+                source_connection.execute(
+                    "SELECT key, value FROM catalog_metadata ORDER BY key"
+                )
+            )
+            source_rows = {
+                table: list(source_connection.execute(f"SELECT * FROM {table}"))
+                for table in table_order
+            }
+            source_counts = {table: len(rows) for table, rows in source_rows.items()}
+
+        create_catalog(output_path)
+        output_created = True
+        with closing(sqlite3.connect(output_path)) as output_connection:
+            output_connection.execute("PRAGMA foreign_keys = ON")
+            output_connection.execute("BEGIN IMMEDIATE")
+            try:
+                output_connection.execute("DELETE FROM catalog_metadata")
+                output_connection.executemany(
+                    "INSERT INTO catalog_metadata (key, value) VALUES (?, ?)",
+                    [tuple(row) for row in source_metadata],
+                )
+                for table in table_order[1:]:
+                    columns = [
+                        str(row[1])
+                        for row in output_connection.execute(f"PRAGMA table_info({table})")
+                    ]
+                    column_sql = ", ".join(columns)
+                    placeholders = ", ".join("?" for _ in columns)
+                    output_connection.executemany(
+                        f"INSERT INTO {table} ({column_sql}) VALUES ({placeholders})",
+                        [tuple(row) for row in source_rows[table]],
+                    )
+                output_connection.commit()
+            except Exception:
+                output_connection.rollback()
+                raise
+
+        validate_catalog(output_path)
+        with closing(sqlite3.connect(output_path)) as output_connection:
+            output_counts = {
+                table: int(output_connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0])
+                for table in table_order
+            }
+            result_text_feature_count = int(
+                output_connection.execute(
+                    "SELECT COUNT(*) FROM result_text_features"
+                ).fetchone()[0]
+            )
+        if output_counts != source_counts:
+            raise ValueError("catalog migration row counts do not match")
+        if result_text_feature_count != 0:
+            raise ValueError("catalog migration unexpectedly copied result text features")
+    except Exception:
+        if output_created:
+            output_path.unlink(missing_ok=True)
+        raise
+    return {
+        "status": "migrated",
+        "source_catalog": str(source_path),
+        "output_catalog": str(output_path),
+        "source_schema_version": CATALOG_SCHEMA_VERSION,
+        "output_schema_version": CATALOG_SCHEMA_VERSION,
+        "preserved_row_counts": source_counts,
+        "result_text_feature_count": 0,
+    }
 
 
 def load_composite_identities(path: Path) -> frozenset[tuple[str, str]]:
@@ -2135,6 +2415,197 @@ def load_m5_feature_entries(
     return entries
 
 
+def store_m7_result_text_feature_rows(
+    catalog_path: Path,
+    master_db: Path,
+    rows: Iterable[dict[str, Any]],
+) -> dict[str, Any]:
+    """Persist accepted M7 result title/artist image features in the M5b catalog."""
+    validate_catalog(catalog_path)
+    master = load_master_identity(master_db)
+    row_list = list(rows)
+    songs_by_id = {song.song_id: song for song in master.songs}
+    accepted_row_count = 0
+    inserted_feature_count = 0
+    duplicate_feature_count = 0
+    title_feature_count = 0
+    artist_feature_count = 0
+    timestamp = utc_now()
+    with closing(_connect_read_write(catalog_path)) as connection:
+        connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA foreign_keys = ON")
+        connection.execute("BEGIN IMMEDIATE")
+        try:
+            _validate_catalog(connection)
+            current_master = load_master_identity(master_db)
+            if (
+                current_master.version != master.version
+                or current_master.source_hash != master.source_hash
+            ):
+                raise ValueError("master drift detected during result text feature catalog write")
+            for row in row_list:
+                if row.get("feature_status") != "accepted":
+                    continue
+                accepted_row_count += 1
+                song_id = str(row.get("song_id", ""))
+                song = songs_by_id.get(song_id)
+                if song is None:
+                    raise ValueError("accepted result text feature row has unknown song_id")
+                if (str(row.get("title", "")), str(row.get("artist", ""))) != (
+                    song.title,
+                    song.artist,
+                ):
+                    raise ValueError(
+                        "accepted result text feature row has canonical snapshot drift"
+                    )
+                source_label = str(row.get("organized_file", ""))
+                if not source_label:
+                    raise ValueError("accepted result text feature row has empty source label")
+                for field_name in ("title", "artist"):
+                    record = row.get(f"{field_name}_feature")
+                    if not isinstance(record, dict):
+                        raise ValueError(
+                            f"accepted result text feature row has missing {field_name} feature"
+                        )
+                    master_match.result_text_feature_from_record(record)
+                    feature_version = str(record["feature_version"])
+                    roi_version = str(record["roi_version"])
+                    feature_hash = str(record["feature_hash"])
+                    feature_id = _result_text_feature_id(
+                        master_version=master.version,
+                        song_id=song_id,
+                        field_name=field_name,
+                        feature_version=feature_version,
+                        roi_version=roi_version,
+                        feature_hash=feature_hash,
+                    )
+                    cursor = connection.execute(
+                        """
+                        INSERT OR IGNORE INTO result_text_features (
+                          feature_id, song_id, field_name, feature_version, roi_version,
+                          feature_hash, payload_json, source_label, master_version,
+                          canonical_title_snapshot, canonical_artist_snapshot, created_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            feature_id,
+                            song_id,
+                            field_name,
+                            feature_version,
+                            roi_version,
+                            feature_hash,
+                            json.dumps(
+                                record["payload"],
+                                ensure_ascii=False,
+                                sort_keys=True,
+                                separators=(",", ":"),
+                            ),
+                            source_label,
+                            master.version,
+                            song.title,
+                            song.artist,
+                            timestamp,
+                        ),
+                    )
+                    if cursor.rowcount == 1:
+                        inserted_feature_count += 1
+                    else:
+                        duplicate_feature_count += 1
+                    if field_name == "title":
+                        title_feature_count += 1
+                    else:
+                        artist_feature_count += 1
+            stored_feature_count = int(
+                connection.execute(
+                    "SELECT COUNT(*) FROM result_text_features WHERE master_version = ?",
+                    (master.version,),
+                ).fetchone()[0]
+            )
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+    return {
+        "catalog": str(catalog_path),
+        "catalog_schema_version": CATALOG_SCHEMA_VERSION,
+        "master_version": master.version,
+        "input_row_count": len(row_list),
+        "accepted_row_count": accepted_row_count,
+        "inserted_feature_count": inserted_feature_count,
+        "duplicate_feature_count": duplicate_feature_count,
+        "stored_feature_count": stored_feature_count,
+        "title_feature_count": title_feature_count,
+        "artist_feature_count": artist_feature_count,
+    }
+
+
+def load_m7_result_text_feature_entries(
+    catalog_path: Path,
+    master_db: Path,
+    *,
+    field_name: str,
+) -> list[master_match.TitleFeatureMasterEntry]:
+    """Load current-master M7 result title or artist features from the M5b catalog."""
+    if field_name not in {"title", "artist"}:
+        raise ValueError("result text feature field_name must be title or artist")
+    validate_catalog(catalog_path)
+    master = load_master_identity(master_db)
+    songs_by_id = {song.song_id: song for song in master.songs}
+    entries: list[master_match.TitleFeatureMasterEntry] = []
+    with closing(_connect_read_only(catalog_path)) as connection:
+        connection.row_factory = sqlite3.Row
+        _validate_catalog(connection)
+        rows = connection.execute(
+            """
+            SELECT feature_id, song_id, feature_version, roi_version, feature_hash,
+                   payload_json, source_label, canonical_title_snapshot,
+                   canonical_artist_snapshot
+            FROM result_text_features
+            WHERE field_name = ? AND master_version = ?
+            ORDER BY song_id, source_label, feature_hash
+            """,
+            (field_name, master.version),
+        ).fetchall()
+    for row in rows:
+        song_id = str(row["song_id"])
+        song = songs_by_id.get(song_id)
+        canonical_title = str(row["canonical_title_snapshot"])
+        canonical_artist = str(row["canonical_artist_snapshot"])
+        if song is None or (song.title, song.artist) != (canonical_title, canonical_artist):
+            raise ValueError("result text feature canonical snapshot drift detected")
+        try:
+            payload = json.loads(str(row["payload_json"]))
+        except json.JSONDecodeError as exc:
+            raise ValueError("result text feature payload JSON is invalid") from exc
+        record = {
+            "feature_version": str(row["feature_version"]),
+            "roi_version": str(row["roi_version"]),
+            "feature_hash": str(row["feature_hash"]),
+            "payload": payload,
+        }
+        feature_id = _result_text_feature_id(
+            master_version=master.version,
+            song_id=song_id,
+            field_name=field_name,
+            feature_version=str(row["feature_version"]),
+            roi_version=str(row["roi_version"]),
+            feature_hash=str(row["feature_hash"]),
+        )
+        if feature_id != str(row["feature_id"]):
+            raise ValueError("result text feature id mismatch")
+        entries.append(
+            master_match.TitleFeatureMasterEntry(
+                organized_file=str(row["source_label"]),
+                source_song_title=canonical_title,
+                song_id=song_id,
+                title=song.title,
+                artist=song.artist,
+                feature=master_match.result_text_feature_from_record(record),
+            )
+        )
+    return entries
+
+
 def build_coverage(
     catalog_path: Path, master_db: Path
 ) -> tuple[list[dict[str, str]], dict[str, Any]]:
@@ -2360,6 +2831,12 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
     create = subparsers.add_parser("create", help="Create a new current jacket catalog.")
     create.add_argument("--catalog", type=Path, required=True)
+    migrate = subparsers.add_parser(
+        "migrate-v1",
+        help="Copy a legacy v1 catalog into the current v1 schema without changing the source.",
+    )
+    migrate.add_argument("--source-catalog", type=Path, required=True)
+    migrate.add_argument("--output-catalog", type=Path, required=True)
     coverage = subparsers.add_parser("coverage", help="Generate read-only master coverage.")
     coverage.add_argument("--catalog", type=Path, required=True)
     coverage.add_argument("--master-db", type=Path, required=True)
@@ -2471,6 +2948,10 @@ def main(argv: list[str] | None = None) -> int:
                 separators=(",", ":"),
             )
         )
+        return 0
+    if args.command == "migrate-v1":
+        result = migrate_catalog_v1(args.source_catalog, args.output_catalog)
+        print(json.dumps(result, ensure_ascii=False, separators=(",", ":")))
         return 0
     if args.command == "review":
         ensure_catalog_path(args.catalog, argument_name="--catalog")

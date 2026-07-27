@@ -2,6 +2,8 @@
 
 このディレクトリは、実装ロードマップを進めるときにブレやすい状態、入力契約、保存境界、データ、I/O、回帰ガードを固定するための設計資料です。
 
+工程コードと画像解析用語は `00_glossary.md` を正本とする。`M5jacket` や `M7title` のような省略名は使わず、`M5 jacket match`、`M5b jacket reference catalog`、`M5c title/artist OCR`、`M7 result-text feature`、`M7a digit recognition` のように対象を明記する。`OCR` も対象fieldと工程を付けて読む。
+
 ## 読む順番
 
 初めて読む場合は以下の順で読む。

@@ -10,6 +10,7 @@ description: DDRGP scorelogの保存可否、正式個人スコアDB、duplicate
 ## Read First
 
 - `AGENTS.md`
+- `docs/design/00_glossary.md`
 - 指定されたGitHub Issue
 - 関連する親Issue
 - `docs/design/03_event_and_save_boundary.md`
@@ -59,6 +60,7 @@ description: DDRGP scorelogの保存可否、正式個人スコアDB、duplicate
 - insert前フェーズでは、pure function、schema helper、diagnostic projectionなど、副作用のない契約を優先する。
 - insertが将来明示的にスコープへ入った場合も、トランザクション境界、duplicate、source capture参照、analysis log、失敗時の原子性を別々にテストする。
 - schemaや保存境界の語彙を変えたら、コード定数または型、schemaテスト、設計docs、READMEの読み方を揃える。
+- M5/M7の候補材料を読むときは `docs/design/00_glossary.md` の正式呼称を使う。`M5jacket`、`M7title`、単独の `OCR` を候補材料や正式保存値の名称として新たに固定しない。
 - レビュー依頼では、所感より先に重大度順の指摘とファイル/行参照を出す。問題がなければ、残るテスト不足や将来フェーズのリスクを明記する。
 
 ## Validation

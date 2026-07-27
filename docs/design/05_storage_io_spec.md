@@ -290,9 +290,9 @@ M8のscore DB file output previewでは、`--m8-score-db-output data\...\ddrgp-s
 
 ## M5b jacket catalog
 
-ローカルjacket catalogは repository root直下の `databases/` 配下の固定SQLite pathへ新規作成する。masterは `databases/ddrgp-master.sqlite`、catalogは `databases/jacket-catalog.sqlite` を正本とする。初回リリース向けcurrent schemaのversionは1で、専用identity、`PRAGMA user_version=1`、metadata schema version 1、exact tables/columns/constraints/index/foreign keyをstrictに検査する。current schemaとexact一致しない旧catalog、非catalog SQLite、破損catalog、正式個人スコアDB、M8 preview DB、M4 master DBは読み取り専用検査でunsupportedとして拒否し、作成、修復、migrationを行わない。
+ローカルjacket catalogは repository root直下の `databases/` 配下の固定SQLite pathへ新規作成する。masterは `databases/ddrgp-master.sqlite`、catalogは `databases/jacket-catalog.sqlite` を正本とする。初回リリース向けcurrent schemaのversionは1で、専用identity、`PRAGMA user_version=1`、metadata schema version 1、exact tables/columns/constraints/index/foreign keyをstrictに検査する。runtimeはcurrent schemaとexact一致しない旧catalog、非catalog SQLite、破損catalog、正式個人スコアDB、M8 preview DB、M4 master DBを読み取り専用検査でunsupportedとして拒否し、自動作成・修復・migrationを行わない。初回リリース前の旧v1からcurrent v1への移行だけは、`jacket_reference_catalog migrate-v1 --source-catalog <old> --output-catalog <new>` の明示CLIで行い、sourceを変更せず、未作成のoutputへmetadata、reference、candidate、review historyをコピーする。`result_text_features`は移行先で空から開始する。
 
-current referenceはmanual review revision/historyと、`jacket_feature_version/hash`、`title_line_feature_version/hash`、`composite_identity_version/hash`を全nullまたは全非nullの1組として保持する。通常observation ingestは完全な非null組を必須とし、既知version、lower SHA-256、UTF-8 NUL区切りcanonical hashを検査する。`(composite_identity_version, composite_identity_hash)`はcatalog全体で一意とし、read-only identity集合には`unresolved`、review待ち、確定、再割当、`reopen`、`rejected`をすべて含める。
+current referenceはmanual review revision/historyと、`jacket_feature_version/hash`、`title_line_feature_version/hash`、`composite_identity_version/hash`を全nullまたは全非nullの1組として保持する。これに加えてM7 result-text featureのtitle/artist payloadを`result_text_features`へ、field、current master version、canonical title/artist snapshot、source label、payload hashと共に保存する。通常observation ingestは完全な非null組を必須とし、既知version、lower SHA-256、UTF-8 NUL区切りcanonical hashを検査する。`(composite_identity_version, composite_identity_hash)`はcatalog全体で一意とし、read-only identity集合には`unresolved`、review待ち、確定、再割当、`reopen`、`rejected`をすべて含める。
 
 current `ingest`は非空observation ID、artifact image bytes/hash、空title/artist、`unresolved`、session開始時のmaster version/source hash、catalog identity/schema/created-at、current extractor、完全なcomposite identityをcatalog変更前に検査する。同一observation ID・同一payloadは冪等、異payloadは拒否する。異なるobservation IDでも同じcomposite identityなら、review statusに関係なくtransaction内で既存reference receiptへ収束させ、2件目を作らない。新規rowはsong未割当、revision 0、manual provenance/history/candidateなしとする。
 
@@ -308,7 +308,7 @@ title/artist OCR診断は同じstrict projection検証済みsourceだけを読�
 
 coverageは `data/` 配下の明示directoryへ `jacket_catalog_song_coverage.csv`、`jacket_catalog_coverage_summary.json`、`jacket_catalog_coverage.md` を生成する。確定songがないreferenceでもGP対象candidateは `needs_review` として数え、候補のない観測だけを未割当集計へ残す。current master/GP/current extractorを満たす `auto_confirmed` / `manual_confirmed` referenceだけをM5 matcherへ供給し、`rejected`、orphan、旧extractor、不正persisted featureを除外する。
 
-catalog、observation artifact/checkpoint、source/crop画像、特徴量、review結果、coverageはローカル運用物とし、Git、CI artifact、Release、通常analysis logへ含めない。既存local DB/artifact/checkpoint/source/crop画像を削除、上書き、in-place repairしない。artifact manifest/checkpoint v1/v2、resume/retry状態機械はcatalog schema version再採番と独立して維持する。
+照合に必要な`result_text_features`を含むjacket catalogはrelease時に配布する照合参照DBとし、collectorのcapture、observation artifact/checkpoint、source/crop画像、review用coverageやJSON/CSV診断出力はローカル運用物としてGit、CI artifact、通常analysis logへ含めない。既存local DB/artifact/checkpoint/source/crop画像を削除、上書き、in-place repairしない。artifact manifest/checkpoint v1/v2、resume/retry状態機械はcatalog schema version再採番と独立して維持する。
 
 PR #53 policyのproduction auto-confirmは、`data/`配下へ新規preflight planを出す既定dry-runと、
 同じplanを明示するapplyを分離する。applyはcurrent schema version 1の既存rowだけを対象にし、

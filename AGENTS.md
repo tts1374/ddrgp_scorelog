@@ -9,6 +9,7 @@
 - 既存の未コミット変更、ローカル素材、生成物を保護し、今回の変更へ混入させない。
 - 画像解析PoCは軽量に保ち、まずローカルで再現できる1コマンド実行を優先する。
 - 公開操作、CLI、永続化形式、ユーザー手順または判定契約を変えた場合だけ、関連docsを同期する。内部実装だけの変更ではdocs更新を必須にしない。
+- milestoneコード、field名、status名の読み方は `docs/design/00_glossary.md` を正本とする。`M5jacket`、`M7title`、単独の `OCR` のような省略名を新しいIssue・docs・Skillで使わず、対象と工程を付けた正式呼称（例: `M5 jacket match`、`M7 result-text feature`、`M3 song/artist OCR`）を使う。新しい工程名や内部コード名を追加した場合は、同じ変更で用語集へ追記する。
 
 ## Implementation Proportionality
 

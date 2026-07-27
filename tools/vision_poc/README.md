@@ -537,6 +537,10 @@ X-Special付き譜面のように、通常版と同一ジャケットを共有�
 
 固定UI文字は将来的に汎用OCRより画像認識へ寄せます。ただし、スコア、判定数、EX SCORE のTesseract離脱や数字テンプレート認識は後続タスクに回し、次のM5作業ではtitle line-hashを優先します。
 
+M7 jacket validationでは、`--m5-jacket-match` 実行時に result `song_title` / `artist` ROIのOCR-free画像特徴量を作ります。`m7_result_text_feature_master.json/csv/summary.json` は確認用の診断出力で、`--m7-result-text-feature-catalog databases\jacket-catalog.sqlite` を明示した場合だけ acceptedなtitle/artist payloadをM5b catalogの `result_text_features` tableへ冪等保存します。titleとartistは別featureとして、version、ROI version、payload hash、距離比較に再利用できるpayloadを保持します。resultのexpected title/artistは参照ラベルであり、候補集合外からの曲選択や正式DB保存には使いません。
+
+このresult feature payloadの`title_linehash_rows`はresult title ROIから作る画像特徴量の一部であり、jacket catalogの`title_line_hash`とは別物です。catalog側の`title_line_hash`はsong selectの`INFORMATION`欄を二値化したSHA-256 identityで、result title/artist featureへ流用しません。照合に必要なresult title/artist payloadはM5b catalogへ含め、JSON/CSV/summaryだけを`data/`配下の診断出力として扱います。正式個人スコアDBへは混在させません。
+
 `difficulty` は5種類の文字色が強い手がかりになるため、`roi-template-nearest` 内ではROI全体ピクセルではなく前景文字色の比率パターンで比較します。直近ローカル素材では `play_style`、`difficulty`、`level` は 60/60 match です。ただしこれは同分布内の leave-one-out 診断であり、抽出ロジックの採用判断には外部検証や参照/評価セット分割が必要です。
 
 2026-07-04時点の5件レビューでは、`difficulty` mismatch はすべてROI表示が metadata / ファイル名由来期待値と食い違うローカル期待値修正候補でした。ローカル `metadata.csv` はROI表示へ合わせて修正済みで、ファイル名は当面リネームしません。修正後は `roi-template-nearest` が 180/180 match、`filename-baseline` が difficulty 5件 mismatch になります。詳細は `docs/design/07_m3_chart_field_review.md` を参照します。`metadata.csv` とスクリーンショット画像はGit管理しないため、判断と修正内容は文書に残し、実体更新はローカル素材側で行います。
@@ -633,7 +637,15 @@ python -m tools.vision_poc.jacket_reference_catalog create `
   --catalog databases\jacket-catalog.sqlite
 ```
 
-旧catalog schema 1/2/3のruntime互換、read-only fallback、`migrate-v2`、`migrate-v3`、legacy ingestはありません。現行schemaとexact一致しない既存DBは副作用なしでunsupportedとして拒否します。既存local DB、artifact、checkpoint、source/crop画像は削除・上書き・in-place修復せず、必要な観測はcurrent catalogへ明示的に再構築します。
+runtimeとcollectorは旧catalogの自動migration、read-only fallback、legacy ingestを行いません。初回リリース前に旧v1 catalogを現行v1 catalogへ移す場合だけ、次の明示CLIを使えます。sourceはread-onlyで開き、outputは未作成pathに新規作成するため、in-place上書きは行いません。
+
+```powershell
+python -m tools.vision_poc.jacket_reference_catalog migrate-v1 `
+  --source-catalog databases\jacket-catalog.sqlite `
+  --output-catalog databases\jacket-catalog-migrated-v1.sqlite
+```
+
+移行では`catalog_metadata`、`jacket_references`、`reference_candidates`、`reference_review_history`を引き継ぎ、`result_text_features`は新形式の空テーブルとして作成します。sourceは変更せず、outputのcurrent schema検証が完了した後にだけ利用先を切り替えます。現行schemaとexact一致しないDBは通常runtimeでは副作用なしでunsupportedとして拒否し、既存local DB、artifact、checkpoint、source/crop画像の削除・上書き・in-place修復は行いません。
 
 collector observationはcurrent `ingest`だけを使い、非空observation ID、artifact image hash、current master version/source hash、catalog identity/schema/created-at、current feature extractor、jacket/title-line/composite identity一式を検査します。新規rowは空title/artist、`unresolved`、revision 0、history/candidateなしです。同じobservation ID・同じpayloadは冪等で、異payloadは拒否します。異なるobservation IDでも同じcomposite identityなら、`unresolved`、review待ち、確定、再割当、`reopen`、`rejected`の全状態で既存reference receiptへtransaction内で収束します。
 
@@ -717,7 +729,7 @@ XLSXの再構築やjacket top3 routeの暗黙起動は行いません。dry-run/
 
 catalog、artifact、checkpoint、source/crop画像、特徴量、review結果、coverageはローカル非共有物であり、Git、CI artifact、Release、通常logへ含めません。生画像やcropの自動削除は行いません。artifact manifest/checkpointのv1/v2 contractとresume/retry状態機械は、このcatalog schema再採番では変更していません。
 
-current song select ROIは1280x720基準で、jacketが`m5c-song-select-jacket-roi-v2` / `(809, 27, 149, 149)`、title/artistが`m5c-song-select-title-artist-roi-v2` / title `(306, 58, 470, 34)` / artist `(309, 97, 467, 23)`です。current jacket feature extractorは`m5-jacket-v2`で、旧ROI由来のv1 manifest/referenceをcurrent matchingへ混在させません。通常のmigration・repair・source image/artifact削除は行いませんが、前述の明示的な登録reference削除ではcatalog row・候補・review historyだけを削除します。
+current song select ROIは1280x720基準で、jacketが`m5c-song-select-jacket-roi-v2` / `(809, 27, 149, 149)`、title/artistが`m5c-song-select-title-artist-roi-v2` / title `(306, 58, 470, 34)` / artist `(309, 97, 467, 23)`です。current jacket feature extractorは`m5-jacket-v2`で、旧ROI由来のv1 manifest/referenceをcurrent matchingへ混在させません。通常runtimeのmigration・repair・source image/artifact削除は行いません。catalogのschema移行は前述の明示的な`migrate-v1`だけを使い、登録referenceの削除は明示操作としてcatalog row・候補・review historyだけを削除します。
 
 current unresolved sourceのOCR失敗原因は、次のread-only診断CLIで比較します。titleは`psm=6/7`、artistは現行5倍と10/15倍、sharpen有無、両fieldは`eng` / `jpn+eng`を比較します。`tesseract --list-langs`に必要languageがないprofileは`m5c-title-artist-ocr-diagnostics-report-v1`の`tesseract_language_unavailable_v1:<lang>`となり、installed languageへの暗黙fallbackはしません。
 

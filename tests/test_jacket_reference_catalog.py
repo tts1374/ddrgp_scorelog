@@ -11,6 +11,7 @@ from PIL import Image
 
 from master import builder as master_builder
 from tools.vision_poc import jacket_reference_catalog as catalog
+from tools.vision_poc import master_match
 
 
 def write_master(path: Path) -> None:
@@ -186,6 +187,13 @@ def test_current_create_has_exact_composite_schema(
         indexes = {
             row[1] for row in connection.execute("PRAGMA index_list(jacket_references)")
         }
+        result_text_columns = {
+            row[1] for row in connection.execute("PRAGMA table_info(result_text_features)")
+        }
+        result_text_indexes = {
+            row[1]
+            for row in connection.execute("PRAGMA index_list(result_text_features)")
+        }
         assert connection.execute("PRAGMA user_version").fetchone()[0] == 1
     assert metadata["schema_version"] == "1"
     assert {
@@ -197,6 +205,21 @@ def test_current_create_has_exact_composite_schema(
         "composite_identity_hash",
     } <= columns
     assert "idx_jacket_references_composite_identity" in indexes
+    assert {
+        "feature_id",
+        "song_id",
+        "field_name",
+        "feature_version",
+        "roi_version",
+        "feature_hash",
+        "payload_json",
+        "source_label",
+        "master_version",
+        "canonical_title_snapshot",
+        "canonical_artist_snapshot",
+        "created_at",
+    } == result_text_columns
+    assert "idx_result_text_features_song_field" in result_text_indexes
     assert catalog.load_composite_identities(catalog_path) == frozenset()
     identity_set = catalog.load_observation_composite_identity_set(
         catalog_path,
@@ -211,6 +234,120 @@ def test_current_create_has_exact_composite_schema(
         "catalog_created_at": metadata["created_at"],
         "identities": [],
     }
+
+
+def test_m7_result_text_features_round_trip_in_current_catalog(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    master_db, catalog_path, _image = setup_paths(tmp_path, monkeypatch)
+    title = master_match.extract_title_image_feature(Image.new("RGB", (160, 40), (220,) * 3))
+    artist = master_match.extract_artist_image_feature(Image.new("RGB", (160, 40), (80,) * 3))
+    rows = [
+        {
+            "organized_file": "organized/result/result_fixture.png",
+            "song_id": "song-1",
+            "title": "Alpha",
+            "artist": "Artist A",
+            "feature_status": "accepted",
+            "title_feature": master_match.result_text_feature_record(title),
+            "artist_feature": master_match.result_text_feature_record(artist),
+        }
+    ]
+
+    first = catalog.store_m7_result_text_feature_rows(catalog_path, master_db, rows)
+    second = catalog.store_m7_result_text_feature_rows(catalog_path, master_db, rows)
+
+    assert first["catalog_schema_version"] == 1
+    assert first["inserted_feature_count"] == 2
+    assert second["inserted_feature_count"] == 0
+    assert second["duplicate_feature_count"] == 2
+    title_entries = catalog.load_m7_result_text_feature_entries(
+        catalog_path,
+        master_db,
+        field_name="title",
+    )
+    artist_entries = catalog.load_m7_result_text_feature_entries(
+        catalog_path,
+        master_db,
+        field_name="artist",
+    )
+    assert [(entry.song_id, entry.title, entry.artist) for entry in title_entries] == [
+        ("song-1", "Alpha", "Artist A")
+    ]
+    assert [(entry.song_id, entry.title, entry.artist) for entry in artist_entries] == [
+        ("song-1", "Alpha", "Artist A")
+    ]
+    with sqlite3.connect(catalog_path) as connection:
+        assert connection.execute(
+            "SELECT COUNT(*) FROM result_text_features"
+        ).fetchone()[0] == 2
+
+
+def test_migrate_legacy_v1_catalog_preserves_references_and_history(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    master_db, catalog_path, image_path = setup_paths(tmp_path, monkeypatch)
+    ingested = ingest(
+        catalog_path,
+        master_db,
+        image_path,
+        observation_id="migration-observation",
+        seed="migration",
+    )
+    catalog.apply_review_mutation(
+        catalog_path,
+        master_db,
+        catalog.ReviewMutationRequest(
+            action_id="migration-confirm",
+            reference_id=ingested.reference_id,
+            action="manual_confirm",
+            expected_revision=0,
+            expected_status="unresolved",
+            expected_song_id=None,
+            song_id="song-1",
+            reason="migration fixture",
+            note="preserve history",
+        ),
+    )
+    source_bytes = catalog_path.read_bytes()
+    legacy_path = tmp_path / "databases/legacy-v1.sqlite"
+    with sqlite3.connect(catalog_path) as source, sqlite3.connect(legacy_path) as legacy:
+        legacy.executescript(catalog.LEGACY_CATALOG_SCHEMA_SQL)
+        for table in (
+            "catalog_metadata",
+            "jacket_references",
+            "reference_candidates",
+            "reference_review_history",
+        ):
+            columns = [
+                row[1]
+                for row in legacy.execute(f"PRAGMA table_info({table})")
+            ]
+            rows = source.execute(f"SELECT * FROM {table}").fetchall()
+            placeholders = ", ".join("?" for _ in columns)
+            column_sql = ", ".join(columns)
+            legacy.executemany(
+                f"INSERT INTO {table} ({column_sql}) VALUES ({placeholders})",
+                rows,
+            )
+    migrated_path = tmp_path / "databases/migrated-v1.sqlite"
+
+    result = catalog.migrate_catalog_v1(legacy_path, migrated_path)
+
+    assert catalog_path.read_bytes() == source_bytes
+    assert result["source_schema_version"] == 1
+    assert result["output_schema_version"] == 1
+    assert result["preserved_row_counts"]["jacket_references"] == 1
+    assert result["preserved_row_counts"]["reference_review_history"] == 1
+    catalog.validate_catalog(migrated_path)
+    assert len(catalog.load_m5_feature_entries(migrated_path, master_db)) == 1
+    with sqlite3.connect(migrated_path) as connection:
+        assert connection.execute(
+            "SELECT COUNT(*) FROM result_text_features"
+        ).fetchone()[0] == 0
+        assert connection.execute(
+            "SELECT value FROM catalog_metadata WHERE key = 'created_at'"
+        ).fetchone()[0] == created_at(catalog_path)
 
 
 def test_catalog_path_uses_fixed_databases_directory_and_keeps_data_artifact_guard(
@@ -1032,6 +1169,7 @@ def test_current_receipt_coverage_and_cli_contract(
     assert summary["schema_version"] == 1
     assert {
         "create",
+        "migrate-v1",
         "coverage",
             "review",
             "review-batch",

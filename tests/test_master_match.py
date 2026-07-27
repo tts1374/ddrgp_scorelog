@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import csv
+import hashlib
 import json
 import sqlite3
 from pathlib import Path
 
+import pytest
 from PIL import Image
 
 from master import builder
@@ -217,6 +220,120 @@ def test_resolve_song_by_title_uses_normalized_exact_title(tmp_path: Path) -> No
     assert failure_reason == ""
     assert song is not None
     assert song.song_id == "song_make"
+
+
+def test_resolve_song_by_title_and_artist_breaks_duplicate_title(
+    tmp_path: Path,
+) -> None:
+    db_path = write_fixture_master_db(tmp_path)
+    with sqlite3.connect(db_path) as connection:
+        connection.execute(
+            """
+            INSERT INTO songs (
+              song_id, title, artist, version, source_version, bpm, category,
+              movie_stage, availability, free_play_available,
+              grand_prix_play_available, official_availability_match,
+              notes, created_at, updated_at
+            )
+            VALUES (
+              'song_make_other_artist', 'MAKE IT BETTER', 'Other Artist',
+              'fixture', 'fixture', '', 'fixture', '', '',
+              1, 1, 'fixture', '', '2026-07-05T00:00:00+00:00',
+              '2026-07-05T00:00:00+00:00'
+            )
+            """
+        )
+
+    song, failure_reason = master_match.resolve_song_by_title_and_artist(
+        db_path,
+        "MAKE IT BETTER",
+        "Other Artist",
+    )
+
+    assert failure_reason == ""
+    assert song is not None
+    assert song.song_id == "song_make_other_artist"
+
+
+def test_result_text_feature_record_is_deterministic_and_field_independent() -> None:
+    title_record = master_match.result_text_feature_record(title_feature(60))
+    repeated_record = master_match.result_text_feature_record(title_feature(60))
+    artist_record = master_match.result_text_feature_record(title_feature(180))
+
+    assert title_record == repeated_record
+    assert title_record["feature_version"] == "m7-result-text-image-v1"
+    assert title_record["roi_version"] == "m7-result-title-artist-roi-v1"
+    assert len(title_record["feature_hash"]) == 64
+    assert title_record["feature_hash"] != artist_record["feature_hash"]
+    payload = title_record["payload"]
+    assert isinstance(payload, dict)
+    assert payload["luma_shape"] == [1536]
+    assert payload["edge_shape"] == [1536]
+    assert payload["suffix_luma_shape"] == [640]
+    assert payload["suffix_edge_shape"] == [640]
+    assert payload["dhash_hex"]
+    assert payload["linehash_rows"]
+
+
+@pytest.mark.parametrize(
+    "field_name",
+    ("luma", "edge", "suffix_luma", "suffix_edge"),
+)
+def test_result_text_feature_record_rejects_unexpected_vector_shape(
+    field_name: str,
+) -> None:
+    record = master_match.result_text_feature_record(title_feature(60))
+    payload = dict(record["payload"])
+    values = payload[field_name]
+    assert isinstance(values, list)
+    payload[field_name] = values[:1]
+    payload[f"{field_name}_shape"] = [1]
+    canonical = json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    tampered_record = {
+        **record,
+        "feature_hash": hashlib.sha256(canonical).hexdigest(),
+        "payload": payload,
+    }
+
+    with pytest.raises(ValueError, match=f"invalid {field_name}"):
+        master_match.result_text_feature_from_record(tampered_record)
+
+
+def test_write_m7_result_text_feature_master_outputs(tmp_path: Path) -> None:
+    row = {
+        "organized_file": "organized/result/result_text.png",
+        "source_song_title": "MAKE IT BETTER",
+        "source_artist": "mitsu-O!",
+        "song_id": "song_make",
+        "title": "MAKE IT BETTER",
+        "artist": "mitsu-O!",
+        "feature_status": "accepted",
+        "failure_reason": "",
+        "title_feature": master_match.result_text_feature_record(title_feature(60)),
+        "artist_feature": master_match.result_text_feature_record(title_feature(180)),
+    }
+
+    summary = master_match.write_m7_result_text_feature_master_outputs(tmp_path, [row])
+
+    assert summary["accepted_count"] == 1
+    assert summary["title_feature_count"] == 1
+    assert summary["artist_feature_count"] == 1
+    payload = json.loads(
+        (tmp_path / "m7_result_text_feature_master.json").read_text(encoding="utf-8")
+    )
+    assert payload["schema_version"] == "m7-result-text-feature-master-v1"
+    assert payload["entries"][0]["title_feature"]["feature_hash"]
+    with (tmp_path / "m7_result_text_feature_master.csv").open(
+        encoding="utf-8", newline=""
+    ) as file:
+        csv_row = next(csv.DictReader(file))
+    assert csv_row["title_feature_hash"]
+    assert csv_row["artist_feature_hash"]
 
 
 def test_resolve_song_by_title_uses_m4_song_aliases(tmp_path: Path) -> None:
@@ -496,6 +613,66 @@ def test_match_jacket_save_candidate_row_title_reranks_only_ambiguous_candidates
     )
     assert result["title_ocr_rerank_status"] == "missing_ocr"
     assert result["title_ocr_rerank_reason"] == "title_ocr_not_run"
+    assert result["artist_rerank_status"] == "not_run"
+    assert result["artist_rerank_reason"] == "title_image_feature_resolved"
+
+
+def test_match_jacket_save_candidate_row_artist_reranks_after_title_feature(
+    tmp_path: Path,
+) -> None:
+    db_path = write_fixture_master_db(tmp_path)
+    row = save_candidate_row(
+        title="",
+        play_style="SINGLE",
+        difficulty="CHALLENGE",
+        level="10",
+    )
+    row["organized_file"] = "organized/result/result_type2.png"
+    row["song_title_expected_value"] = "OSAKA TYPE2"
+
+    result = master_match.match_jacket_save_candidate_row(
+        row,
+        db_path,
+        solid_feature((120, 120, 120)),
+        [
+            jacket_entry(
+                song_id="song_type1",
+                title="OSAKA TYPE1",
+                artist="Unit O",
+                color=(120, 120, 120),
+            ),
+            jacket_entry(
+                song_id="song_type2",
+                title="OSAKA TYPE2",
+                artist="Unit O",
+                color=(120, 120, 120),
+            ),
+        ],
+        result_artist_feature=title_feature(220),
+        artist_feature_master_entries=[
+            title_entry(
+                song_id="song_type1",
+                title="OSAKA TYPE1",
+                artist="Unit O",
+                color=40,
+            ),
+            title_entry(
+                song_id="song_type2",
+                title="OSAKA TYPE2",
+                artist="Unit O",
+                color=220,
+            ),
+        ],
+    )
+
+    assert result["jacket_match_status"] == "ambiguous"
+    assert result["title_rerank_status"] == "missing_feature"
+    assert result["artist_rerank_status"] == "resolved_candidate"
+    assert result["artist_top_song_id"] == "song_type2"
+    assert result["identity_signal_status"] == "composite_resolved_candidate"
+    assert result["identity_signal_source"] == "artist_image_feature"
+    assert result["identity_signal_song_id"] == "song_type2"
+    assert result["identity_signal_reason"] == "jacket_ambiguous_artist_image_resolved"
 
 
 def test_match_jacket_save_candidate_row_title_ocr_suffix_reranks_only_ambiguous_candidates(
