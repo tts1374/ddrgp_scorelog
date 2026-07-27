@@ -7,6 +7,7 @@
 - Windows 11
 - .NET 10 SDK
 - Python 3（`python`、または `DDRGP_PYTHON` 環境変数で指定）
+- uv（Python依存のlock固定環境を構築する場合）
 - 正式個人スコアDB version 1（例: `ddrgp-scores.sqlite`）
 - `python -m master` またはmaster DB生成workflowで作られたマスタDB
 
@@ -93,7 +94,7 @@ capture成功時だけ `python -m tools.vision_poc.capture_save_workflow_app` �
 ## Build / test / run
 
 ```powershell
-dotnet restore app\tests\DDRGpScoreViewer.Tests\DDRGpScoreViewer.Tests.csproj
+dotnet restore app\tests\DDRGpScoreViewer.Tests\DDRGpScoreViewer.Tests.csproj --locked-mode
 dotnet build app\src\DDRGpScoreViewer\DDRGpScoreViewer.csproj --no-restore
 dotnet test app\tests\DDRGpScoreViewer.Tests\DDRGpScoreViewer.Tests.csproj --no-restore
 dotnet run --project app\src\DDRGpScoreViewer\DDRGpScoreViewer.csproj --no-build

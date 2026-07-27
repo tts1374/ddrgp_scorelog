@@ -25,7 +25,7 @@ M9の監視運用境界を実装・自動回帰確認まで完了し、M10で本
 - M9-5: Issue #61 / PR #27で監視UIとtask trayを受け入れ可能な状態へ収束済み
 - M9-6: Issue #62でstart / stop / exit、再起動、window再選択、master DB再検証の実装と自動回帰確認を完了
 - M10: Issue #63で配布・導入・backup・運用手順を初期版として固める
-- M10-1: Issue #66でPython / NuGet依存関係を固定し、再現可能なbuildへ移行する
+- M10-1: Issue #66でPython / NuGet依存関係を固定し、再現可能なbuildへ移行済み
 - M10前提: Issues #55〜#60でmanual review機能と実データ整備を完了する
 
 ## Milestone Status
@@ -91,9 +91,7 @@ M10では、単一ユーザーがローカルPCで継続利用できる初期版
 
 ## Dependency Management
 
-Issue #66完了前は`pyproject.toml`と`.csproj`を依存manifestとし、CIで通常のinstall / restoreを検証します。
-
-Issue #66で次へ移行します。
+Issue #66対応後は、manifestとlock fileをcommitし、CIと通常開発でlock固定のinstall / restoreを検証します。
 
 - Python: `uv.lock`をcommitし、通常開発とCIで`uv sync --frozen`を使用する
 - NuGet: appとtest projectの`packages.lock.json`をcommitし、locked restoreを使用する

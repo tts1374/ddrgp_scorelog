@@ -48,29 +48,41 @@ main branchで利用できる主な機能:
 
 ### Python
 
-Python 3.13を使用します。依存固定が完了するまでは次の手順を使用します。
+Python 3.13とuvを使用します。`uv.lock`を正本にして、固定済みの依存から環境を構築します。
 Pythonの検証はCIと同じUTF-8明示実行だけを採用し、Windowsのlocale依存実行は検証結果に使いません。
 
 ```powershell
-python -X utf8 -m pip install -e ".[dev,vision]"
-python -X utf8 -m ruff check tools\vision_poc pyproject.toml tests
-python -X utf8 -m compileall master tools\vision_poc
-python -X utf8 -m pytest tests
+$env:PYTHONUTF8 = "1"
+uv sync --frozen --extra dev --extra vision
+uv run ruff check tools\vision_poc pyproject.toml tests
+uv run python -m compileall master tools\vision_poc
+uv run pytest tests
 ```
-
-Issue #66完了後は`uv.lock`を正本とし、通常の環境構築とCIをfrozen installへ移行します。
 
 ### Windows app
 
 .NET 10 SDKとWindows 11を使用します。
 
 ```powershell
-dotnet restore app\tests\DDRGpScoreViewer.Tests\DDRGpScoreViewer.Tests.csproj
+dotnet restore app\tests\DDRGpScoreViewer.Tests\DDRGpScoreViewer.Tests.csproj --locked-mode
 dotnet build app\src\DDRGpScoreViewer\DDRGpScoreViewer.csproj --no-restore
 dotnet test app\tests\DDRGpScoreViewer.Tests\DDRGpScoreViewer.Tests.csproj --no-restore
 ```
 
 詳細な実行・操作手順は[WindowsアプリREADME](app/README.md)を参照してください。
+
+### Dependency updates
+
+依存を意図的に更新するときだけmanifestとlock fileを同じ変更へ含めます。Pythonは`pyproject.toml`を変更して`uv lock`を実行し、NuGetは対象`.csproj`の`PackageReference`を変更して、locked modeを一時的に無効にしたrestoreで`packages.lock.json`を更新します。更新後は次のlocked検証を実行します。
+
+```powershell
+uv lock
+uv sync --frozen --extra dev --extra vision
+dotnet restore app\tests\DDRGpScoreViewer.Tests\DDRGpScoreViewer.Tests.csproj -p:RestoreLockedMode=false
+dotnet restore app\tests\DDRGpScoreViewer.Tests\DDRGpScoreViewer.Tests.csproj --locked-mode
+```
+
+特定Python packageだけを更新する場合は`uv lock --upgrade-package PACKAGE_NAME`を使います。Dependabotの更新PRは自動mergeせず、lock差分とCI結果を確認します。
 
 ## Documents
 
