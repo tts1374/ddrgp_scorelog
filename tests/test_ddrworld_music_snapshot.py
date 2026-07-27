@@ -134,10 +134,13 @@ def test_collect_publishes_complete_snapshot_atomically(tmp_path: Path) -> None:
     jackets = list((output / "jackets").iterdir())
     assert len(jackets) == 1
     assert jackets[0].read_bytes() == PNG
-    songs = [json.loads(line) for line in (output / "songs.jsonl").read_text().splitlines()]
+    songs = [
+        json.loads(line)
+        for line in (output / "songs.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
     assert len(songs) == 2
     assert songs[0]["jacket_sha256"] == songs[1]["jacket_sha256"]
-    summary = json.loads((output / "summary.json").read_text())
+    summary = json.loads((output / "summary.json").read_text(encoding="utf-8"))
     assert summary == {
         "schema_version": "ddrworld-music-snapshot-summary-v1",
         "status": "complete",
@@ -175,7 +178,7 @@ def test_collect_retains_failed_run_only_as_incomplete(tmp_path: Path) -> None:
     assert not (tmp_path / "failed").exists()
     incomplete = tmp_path / "failed.incomplete"
     assert incomplete.is_dir()
-    manifest = json.loads((incomplete / "manifest.json").read_text())
+    manifest = json.loads((incomplete / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["status"] == "incomplete"
     assert manifest["failures"][0]["resource"] == "image"
 
@@ -547,7 +550,9 @@ def test_image_content_type_must_match_signature(tmp_path: Path) -> None:
             now=lambda: NOW,
         ).collect()
 
-    manifest = json.loads((tmp_path / "mismatch.incomplete/manifest.json").read_text())
+    manifest = json.loads(
+        (tmp_path / "mismatch.incomplete/manifest.json").read_text(encoding="utf-8")
+    )
     assert "content type/signature mismatch" in manifest["failures"][0]["error"]
 
 

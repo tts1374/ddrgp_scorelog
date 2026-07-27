@@ -266,7 +266,9 @@ def test_strict_loader_distinguishes_expected_coverage_and_preserves_same_image_
         extractor=alpha_extractor,
     )
 
-    report = json.loads((tmp_path / "data/report/title_artist_evaluation.json").read_text())
+    report = json.loads(
+        (tmp_path / "data/report/title_artist_evaluation.json").read_text(encoding="utf-8")
+    )
     assert {row["coverage_status"] for row in report["rows"]} == {
         "evaluated",
         "partially_evaluated",
@@ -549,7 +551,7 @@ def test_duplicate_manifest_and_master_drift_are_strictly_rejected(
         evaluation.load_dataset(dataset)
 
     document_path = artifact_root / manifest
-    document = json.loads(document_path.read_text())
+    document = json.loads(document_path.read_text(encoding="utf-8"))
     document["master_version"] = "old-master"
     document_path.write_text(json.dumps(document), encoding="utf-8", newline="\n")
     write_dataset(dataset, [entry(manifest)])
