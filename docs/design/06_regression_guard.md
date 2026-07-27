@@ -486,7 +486,8 @@ M5bの変更では、少なくとも次のcurrent-only境界をfixtureで固定�
 - capture progressは選択済みwindowの表示名・surface size、write済みframe数、開始時刻、最新event時刻だけをUIへ渡し、自動window探索や正式値生成へ使わない。
 - saved、duplicate、excluded、unresolved、analysis_failed、db_rejected、workflow_failedの件数を別々に投影し、saved IDだけをread-only再読込する。commit済みpartial successとfatal reasonを同時に失わない。
 - manual保存中の監視開始、監視capture-save中のmanual保存、capture-only session中のmanual保存を拒否し、二重開始、stop中再開始、反復stopでwriterやresourceを増やさない。
-- trayの開始/停止enable状態はpicker開始待ち、ViewModelの保存・capture状態を含めて更新する。picker中の再Startを同じTaskへ合流させ、通常close/最小化はwindow非表示、明示exitはpending pickerのcancel/終端とstop完了を待ってtrayをdisposeする。stop例外でもdisposeとprocess終了を決定的にし、duplicate/unresolvedだけで通知しない。
+- trayの開始/停止enable状態はpicker開始待ち、ViewModelの保存・capture状態を含めて更新する。capture-onlyを含むpicker中の再Startを同じTaskへ合流させ、session世代とcancel状態で停止・exit後のprogress callback、二重capture、二重workflow起動を受け付けない。通常close/最小化はwindow非表示、明示exitはpending pickerのcancel/終端とstop完了を待ってtrayをdisposeする。stop例外でもdisposeとprocess終了を決定的にし、duplicate/unresolvedだけで通知しない。
+- 起動時、明示再読込時、保存開始時にmaster DBのpath、read-only読込可否、schema互換性を検査し、`missing`、`read不可`、`schema incompatible` をcapture解析・正式保存の開始前に拒否する。path以外の過去session statusを保存せず、再起動でfailed/skip/rejectedをsavedへ昇格させない。
 - Windows Graphics Capture、実window、実DBを必須にせず、progress fake、workflow fake、tray fakeで通常CIを完結させる。実windowでのpicker、tray復帰、終了確認は任意の目視確認として別記録する。
 
 ## 代表検証コマンド

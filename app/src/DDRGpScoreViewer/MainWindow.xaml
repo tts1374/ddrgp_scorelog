@@ -72,6 +72,11 @@
                     <TextBlock Foreground="{StaticResource TextSecondaryBrush}" FontSize="12" Margin="0,4,0,0">
                         <Run Text="楽曲データ: " /><Run Text="{Binding MasterVersion, Mode=OneWay}" />
                     </TextBlock>
+                    <TextBlock Foreground="{StaticResource TextSecondaryBrush}" FontSize="12" Margin="0,2,0,0"
+                               TextTrimming="CharacterEllipsis">
+                        <Run Text="master DB: " /><Run Text="{Binding MasterDatabaseStatusDisplay, Mode=OneWay}" />
+                        <Run Text="  " /><Run Text="{Binding MasterDatabasePath, Mode=OneWay}" />
+                    </TextBlock>
                 </StackPanel>
             </DockPanel>
 

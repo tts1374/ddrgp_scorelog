@@ -33,11 +33,14 @@ public partial class MainWindow : System.Windows.Window
             new ContinuousCaptureService(
                 new ContinuousWindowsGraphicsCaptureAdapter(),
                 new RepositoryCaptureSessionOutputWriter()),
-            new PythonCaptureSaveWorkflowRunner());
+            new PythonCaptureSaveWorkflowRunner(),
+            new LocalViewerPathStore());
         DataContext = viewModel;
     }
 
     internal MainViewModel ViewModel => viewModel;
+
+    internal void RestoreSavedPaths() => viewModel.RestoreSavedPaths();
 
     private async void StartContinuousCapture_Click(object sender, RoutedEventArgs e)
     {
@@ -45,7 +48,32 @@ public partial class MainWindow : System.Windows.Window
         {
             return;
         }
-        await viewModel.StartContinuousCaptureAsync(new WindowInteropHelper(this).EnsureHandle());
+        await StartCaptureOnlyAsync();
+    }
+
+    private Task StartCaptureOnlyAsync() =>
+        applicationExitRequested
+            ? Task.CompletedTask
+            : monitoringStartGate.RunAsync(StartCaptureOnlyCoreAsync);
+
+    private async Task StartCaptureOnlyCoreAsync(CancellationToken cancellationToken)
+    {
+        if (applicationExitRequested || cancellationToken.IsCancellationRequested)
+        {
+            return;
+        }
+
+        viewModel.SetMonitoringStartPending(true);
+        try
+        {
+            await viewModel.StartContinuousCaptureAsync(
+                new WindowInteropHelper(this).EnsureHandle(),
+                cancellationToken);
+        }
+        finally
+        {
+            viewModel.SetMonitoringStartPending(false);
+        }
     }
 
     private async void StopContinuousCapture_Click(object sender, RoutedEventArgs e)
@@ -114,7 +142,8 @@ public partial class MainWindow : System.Windows.Window
             await viewModel.StartContinuousCaptureAndSaveAsync(
                 new WindowInteropHelper(this).EnsureHandle(),
                 scoreDialog.FileName,
-                masterDialog.FileName);
+                masterDialog.FileName,
+                cancellationToken);
         }
         finally
         {

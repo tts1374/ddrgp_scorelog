@@ -1,6 +1,6 @@
 # DDR GP Score Tracker WPF app
 
-正式個人スコアDB version 1を読み取り専用で開き、保存済みプレー履歴、プレー詳細、譜面別自己ベストを確認するWPFビューアです。明示選択したversion 1 workflow入力JSONを既存Python workflowで1回だけ保存するmanual入口に加え、明示pickerで選んだwindowから1フレームまたは停止までの連続フレームを取得できます。`監視開始` を明示した場合だけ、完成したsession manifestを既存解析pipelineと正式保存workflowへ接続します。監視状態と最新結果はWPFとtask trayから確認できます。自動window探索、自動再接続、migration、backup、repairは接続しません。
+正式個人スコアDB version 1を読み取り専用で開き、保存済みプレー履歴、プレー詳細、譜面別自己ベストを確認するWPFビューアです。明示選択したversion 1 workflow入力JSONを既存Python workflowで1回だけ保存するmanual入口に加え、明示pickerで選んだwindowから1フレームまたは停止までの連続フレームを取得できます。`監視開始` を明示した場合だけ、完成したsession manifestを既存解析pipelineと正式保存workflowへ接続します。監視状態と最新結果はWPFとtask trayから確認できます。最後に正常読込できた正式DBとmaster DBのpathはローカル設定へ保存し、次回起動時にread-only検証して再利用します。自動window探索、自動再接続、migration、backup、repairは接続しません。
 
 ## 必要環境
 
@@ -56,9 +56,9 @@ python -m tools.vision_poc `
 ## 監視と正式保存workflow
 
 1. WPFまたはtask trayの `監視開始` を押す。
-2. 新規、0 byte、またはcompatibleな正式v1 DBと、生成済みマスタDBを明示選択する。
-3. pickerで対象windowを選び、必要区間の後にWPFまたはtrayの `監視停止` を押す。
-4. 監視surfaceで状態、対象window、frame数、開始・最新event時刻、event status別の保存結果を確認する。
+2. 前回の正常読込pathを再利用するか、保存先の正式v1 DBと生成済みmaster DBを明示選択する。
+3. master DBのpath、読込可否、schema互換性が `compatible` であることを確認してから、pickerで対象windowを選ぶ。
+4. 必要区間の後にWPFまたはtrayの `監視停止` を押し、監視surfaceで状態、対象window、frame数、開始・最新event時刻、event status別の保存結果を確認する。
 
 capture成功時だけ `python -m tools.vision_poc.capture_save_workflow_app` を起動します。完成manifestを取得順・`timestamp_ms` 順のまま既存manifest modeへ渡し、M5 jacket候補観測とM7a全数字ROIを生成します。`confirmed_result=true` かつ `duplicate=false` だけを通常の昇格候補とし、eventを直列に処理します。capture失敗、0 frame、resize、target close、device lost、write失敗では解析processを起動しません。
 
@@ -66,11 +66,29 @@ capture成功時だけ `python -m tools.vision_poc.capture_save_workflow_app` �
 
 各confirmed eventは既存正式workflowを1回だけ呼びます。DB内duplicate、policy excluded、unresolved、invalid、artifact failure、DB拒否をstatusのまま集計し、`invalid`、artifact failure、DB拒否などが1件でもあればsessionを `workflow_failed` として非0終了します。同じsessionにtransaction済みの `saved` playがある場合はそれだけread-only再読込し、部分成功件数と失敗理由を同時に表示します。解析出力は `data/capture_save_workflow/`、画像原本は `data/windows_capture/`、正式DBは明示pathに分離します。
 
-`IsSaving` はmanual単発保存と監視capture-save全体の共通排他です。既存保存中は監視用DB選択ダイアログを開かず、監視中はmanual保存を開始しません。capture開始からworkflow完了まで状態を保持し、同じ正式DBへの並行writerとsave statusの競合を防ぎます。capture-only入口はDB writerを持ちませんが、session中のmanual保存は開始しません。
+`IsSaving` はmanual単発保存と監視capture-save全体の共通排他です。既存保存中は監視用DB選択ダイアログを開かず、監視中はmanual保存を開始しません。capture開始からworkflow完了まで状態を保持し、同じ正式DBへの並行writerとsave statusの競合を防ぎます。capture-only入口も監視開始と同じoperation gateへ入り、開始要求を二重実行しません。session世代が古いprogress callback、停止後のcallback、終了後の新しい解析・保存は受け付けません。
 
 監視状態は `idle`、`selecting_target`、`monitoring`、`stopping`、`stopped`、`target_closed`、`resized`、`device_lost`、`capture_failed`、`workflow_failed` を区別します。window titleは選択済み対象の表示だけに使い、自動探索には使いません。最新結果は `saved`、`duplicate`、`excluded`、`unresolved`、`analysis_failed`、`db_rejected`、`workflow_failed` を別々に数え、transaction済みのsaved playだけread-only再読込します。
 
-通常のwindow closeと最小化はwindowを隠すだけで、監視とworkflowはtrayから確認・停止できます。tray menuは監視開始、監視停止、メインwindow表示、アプリ終了を提供します。アプリ終了だけが監視停止完了とcapture resource解放を待ち、tray iconとcontext menuをdisposeしてprocessを終了します。通知はsavedがある完了と、監視停止が必要な重大失敗だけです。duplicate、excluded、unresolvedの連続通知は行いません。
+通常のwindow closeと最小化はwindowを隠すだけで、監視とworkflowはtrayから確認・停止できます。tray menuは監視開始、監視停止、メインwindow表示、アプリ終了を提供します。アプリ終了だけがpending pickerのcancel、監視停止、in-flight workflowの完了またはcancelを待ち、tray iconとcontext menuをdisposeしてprocessを終了します。終了後のViewModel callbackはtrayへ反映しません。通知はsavedがある完了と、監視停止が必要な重大失敗だけです。duplicate、excluded、unresolvedの連続通知は行いません。
+
+## 再起動・path再検証・失敗からの復帰
+
+- 最後に正常読込できた正式DBとmaster DBのpathだけを `%LOCALAPPDATA%\DDRGpScoreViewer\viewer-paths.json` に保存します。この設定はGit管理外で、候補値、解析結果、保存statusは持ちません。
+- 起動時と `データを選択` の明示再読込時に、両pathの存在とread-only読込を検査します。master DBは必須table、metadata、件数、source snapshotの整合とschema互換性を再検証し、画面上で `missing`、`read不可`、`schema incompatible`、`compatible` を区別します。
+- missing / read不可 / incompatibleなmaster DBでは対象windowをcaptureしても解析・正式保存workflowを開始しません。capture中にmaster DBが失敗した場合もworkflow直前に再検証して停止します。networkからの最新版確認やhashの継続監視は行いません。
+- `target_closed`、`resized`、`device_lost`、`capture_failed`、`workflow_failed` は監視状態として残ります。停止完了後に対象windowとmaster DBを再選択して `監視開始` を再実行してください。window終了、resize、capture失敗で古いsessionを再利用しません。
+- saved、duplicate、excluded、unresolved、解析失敗、DB拒否、workflow失敗はprocess内の表示と既存workflowのartifact/logで追跡します。再起動時に保存されるのはtransaction完了した正式playだけで、過去のskip・拒否・失敗statusをsavedへ昇格するcheckpointはありません。
+
+## M9-6 validation record
+
+2026-07-27 JSTに次を確認しました。
+
+- 自動検証: `.NET build`、`.NET test` 106件、capture-save / personal-score workflow Python test 45件、Ruff、`compileall` はすべて成功。
+- Windows smoke: WPF起動、master DB未選択の `missing` 表示、capture target pickerの開始・キャンセルを2回実施。実windowを選択せず、解析・正式保存workflowは0回。キャンセル後は `停止済み` に戻り、アプリprocessを1つだけ確認。
+- resource観測: 55.5秒、5秒間隔12サンプル。working setは164.33–164.75 MB、private memoryは97.02–97.29 MB、handle数は693–707、thread数は15–18で、観測中の単調増加はなし。確認後にprocessを明示終了し、残留processは0件。
+- 未実施: 実DDR GRAND PRIX windowを使う数時間soak、実capture中のtarget close/resize/device lost、成功したcapture-saveとPython subprocess、実task trayからのstart/stop/exit、実ファイルを使うアプリ再起動、GUI上でのmaster DB missing/incompatible選択。
+- 残存リスク: Windows Graphics Capture、実ゲームwindow、GPU device、長時間のPython解析・DB保存、tray経由の終了順序は実機条件で追加確認が必要。これらはM10の初期版運用確認へ引き継ぐ。
 
 ## Build / test / run
 
@@ -122,7 +140,7 @@ dotnet run --project app\src\DDRGpScoreViewer\DDRGpScoreViewer.csproj --no-build
 - `001_initial_personal_score_db_schema` とversionの一致
 - M8 preview DBでないこと
 
-マスタDBは必須table、必須metadata、曲・譜面件数、source snapshotのURL/hash整合を検査します。preview、unknown、identity mismatch、newer unsupported、partial state、非SQLite、読取失敗は変更せず拒否し、ユーザー向けの理由を表示します。
+マスタDBは必須table、必須metadata、曲・譜面件数、source snapshotのURL/hash整合、現在のmaster生成契約に対応するschemaをread-only検査します。missing、非SQLite、読取失敗、schema不一致、metadata不整合は変更せず拒否し、ユーザー向けの理由を表示します。保存開始時にも同じ検査を再実行します。
 
 ## UI resources
 
@@ -130,4 +148,4 @@ dotnet run --project app\src\DDRGpScoreViewer\DDRGpScoreViewer.csproj --no-build
 - `Resources/Components.xaml`: button、sidebar、card、table、badgeの共通style
 - `Controls/StatePanel.xaml`: 空状態・エラー状態の共通component
 
-今回の画面範囲は共通sidebar、自己ベスト、プレー履歴、プレー詳細、明示単発保存、明示1フレーム取得、capture-only連続取得、監視surface、明示した監視session後のevent単位保存workflow、task tray lifecycleです。ホーム、検索・絞り込み、グラフ、要確認、設定、データ管理、マスタDB更新状態、長時間soak、自動再接続、installerは後続PRへ分けます。
+今回の画面範囲は共通sidebar、自己ベスト、プレー履歴、プレー詳細、明示単発保存、明示1フレーム取得、capture-only連続取得、監視surface、master DB検証表示、明示した監視session後のevent単位保存workflow、task tray lifecycleです。ホーム、検索・絞り込み、グラフ、要確認、設定、データ管理、自動再接続、installerは後続PRへ分けます。厳密な精度保証、実機評価セット、配布・backup手順の固定はM10へ残ります。

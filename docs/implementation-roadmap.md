@@ -20,10 +20,10 @@ candidate、OCR raw、expected値、preview材料を正式値へ暗黙昇格さ�
 
 ## Current Phase
 
-現在はM9の監視運用を受け入れ可能な状態へ収束させ、その後M10で本人が継続利用できる初期版として固定する段階です。
+M9の監視運用境界を実装・自動回帰確認まで完了し、M10で本人が継続利用できる初期版として固定する段階です。実DDR GRAND PRIX windowを使う長時間soakなどの未実施項目は、M10の運用確認へ引き継ぎます。
 
-- M9-5: Issue #61でPR #27の監視UIとtask trayを受け入れ可能な状態へ収束させる
-- M9-6: Issue #62で長時間動作、再起動、window再選択、master DB再検証を確認する
+- M9-5: Issue #61 / PR #27で監視UIとtask trayを受け入れ可能な状態へ収束済み
+- M9-6: Issue #62でstart / stop / exit、再起動、window再選択、master DB再検証の実装と自動回帰確認を完了
 - M10: Issue #63で配布・導入・backup・運用手順を初期版として固める
 - M10-1: Issue #66でPython / NuGet依存関係を固定し、再現可能なbuildへ移行する
 - M10前提: Issues #55〜#60でmanual review機能と実データ整備を完了する
@@ -42,7 +42,7 @@ candidate、OCR raw、expected値、preview材料を正式値へ暗黙昇格さ�
 | M6 | 完了 | 保存直前payloadと解析根拠の分離 |
 | M7 | 完了 | 必須数字fieldの抽出・検証と正式値への変換境界 |
 | M8 | 完了 | 正式個人スコアDB version 1、duplicate、transaction、単発保存 |
-| M9 | 進行中 | WPF viewer、Windows capture、capture-save、監視UI、task tray、実運用確認 |
+| M9 | 完了（実window soakは未実施） | WPF viewer、Windows capture、capture-save、監視UI、task tray、再起動・master DB再検証の自動回帰 |
 | M10 | 未完了 | 初期版リリース、再現可能なbuild、導入・backup・復旧手順 |
 
 完了済みmilestoneの詳細な実装判断と検証結果は、関連するmerged PR、`docs/design/`、ADR、各component READMEを参照します。
@@ -58,8 +58,9 @@ M9では新しい解析方式やDB schemaを増やさず、既存のcapture-save
 - task trayから開始、停止、画面表示、明示終了を実行できる
 - close / minimizeで監視resourceを意図せず破棄しない
 - 明示終了時に新しい処理を開始せず、進行中resourceを既存契約の範囲で停止・解放する
-- 数時間程度の通常監視、app再起動、window再選択、master DB再検証から復帰できる
-- resource使用量が明らかに増え続けないことを確認する
+- master DBのpath、read-only読込可否、schema互換性を起動・明示再読込・保存開始時に再検証し、異常時に解析・正式保存を開始しない
+- app再起動、window再選択、master DB再検証から復帰でき、過去の失敗・skip・拒否statusをsavedへ昇格させない
+- 自動回帰と短時間Windows smokeでresource使用量が明らかに増え続けないことを確認する。実windowを使う数時間soakはM10運用確認へ残す
 
 M9では自動window探索、汎用scheduler、永続queue、複数process協調、厳密なSLA、長期間の耐久試験を要求しません。
 

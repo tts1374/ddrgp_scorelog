@@ -4,7 +4,7 @@ DanceDanceRevolution GRAND PRIX のゲーム画面を解析し、十分に確認
 
 ## Status
 
-現在はM9の受け入れ・実運用確認と、M10の初期版リリース準備へ進んでいます。具体的な作業内容と受け入れ条件はGitHub Issuesを正本とし、このREADMEはmain branchで利用できる機能と開発入口を要約します。
+M9の監視・再起動・master DB再検証の実装と自動回帰確認を完了し、M10の初期版リリース準備へ進んでいます。実DDR GRAND PRIX windowを使う長時間soakなどの残存リスクはWindowsアプリREADMEへ記録しています。具体的な作業内容と受け入れ条件はGitHub Issuesを正本とし、このREADMEはmain branchで利用できる機能と開発入口を要約します。
 
 main branchで利用できる主な機能:
 
@@ -13,12 +13,11 @@ main branchで利用できる主な機能:
 - 正式個人スコアDB version 1への明示的な単発保存
 - 正式DBとマスタDBをread-onlyで開くWPFスコアビューア
 - Windows Graphics Captureによる1フレーム取得、連続取得、取得後の保存workflow
+- 監視のstart / stop / exit、対象window再選択、path再起動復元、master DB read-only再検証
 - developer-onlyのjacket catalog収集・manual review支援
 
 進行中の主な作業:
 
-- M9-5: 監視UIとtask trayの受け入れ（Issue #61、PR #27）
-- M9-6: 長時間運用、再起動、window再選択、master DB再検証（Issue #62）
 - M10: 初期版リリース準備（Issue #63）
 - M10-1: Python / NuGet依存関係の固定（Issue #66）
 - M10前提のmanual reviewデータ整備（Issues #55〜#60）

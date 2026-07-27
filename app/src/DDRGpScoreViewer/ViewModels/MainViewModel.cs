@@ -1,6 +1,8 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.IO;
 using System.Runtime.CompilerServices;
+using System.Text.Json;
 using DDRGpScoreViewer.Capture;
 using DDRGpScoreViewer.Data;
 using DDRGpScoreViewer.Models;
@@ -14,6 +16,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private readonly ISingleFrameCaptureService? captureService;
     private readonly IContinuousCaptureService? continuousCaptureService;
     private readonly ICaptureSaveWorkflowRunner? captureSaveWorkflowRunner;
+    private readonly IViewerPathStore? pathStore;
     private PlayHistoryItem? selectedPlay;
     private string statusTitle = "プレーデータを選択してください";
     private string statusMessage =
@@ -43,19 +46,31 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private MonitoringResultSummary monitoringResults = MonitoringResultSummary.Empty;
     private bool isMonitoringStartPending;
     private bool applicationExitRequested;
+    private string scoreDatabasePath = "—";
+    private string masterDatabasePath = "—";
+    private MasterDatabaseInspection masterDatabaseInspection =
+        MasterDatabaseInspection.Missing(
+            string.Empty,
+            "master DBが選択されていません。生成済みの楽曲データを選んでください。");
+    private long monitoringSessionSequence;
+    private long activeMonitoringSession;
+    private CancellationTokenSource? monitoringCancellation;
+    private int monitoringOperationReserved;
 
     public MainViewModel(
         ScoreViewerRepository repository,
         IPersonalScoreDbWorkflowRunner workflowRunner,
         ISingleFrameCaptureService? captureService = null,
         IContinuousCaptureService? continuousCaptureService = null,
-        ICaptureSaveWorkflowRunner? captureSaveWorkflowRunner = null)
+        ICaptureSaveWorkflowRunner? captureSaveWorkflowRunner = null,
+        IViewerPathStore? pathStore = null)
     {
         this.repository = repository;
         this.workflowRunner = workflowRunner;
         this.captureService = captureService;
         this.continuousCaptureService = continuousCaptureService;
         this.captureSaveWorkflowRunner = captureSaveWorkflowRunner;
+        this.pathStore = pathStore;
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -104,6 +119,31 @@ public sealed class MainViewModel : INotifyPropertyChanged
         get => masterVersion;
         private set => SetProperty(ref masterVersion, value);
     }
+
+    public string ScoreDatabasePath
+    {
+        get => scoreDatabasePath;
+        private set => SetProperty(ref scoreDatabasePath, value);
+    }
+
+    public string MasterDatabasePath
+    {
+        get => masterDatabasePath;
+        private set => SetProperty(ref masterDatabasePath, value);
+    }
+
+    public MasterDatabaseStatus MasterDatabaseStatus => masterDatabaseInspection.Status;
+
+    public string MasterDatabaseStatusDisplay => MasterDatabaseStatus switch
+    {
+        MasterDatabaseStatus.Missing => "missing（再選択が必要）",
+        MasterDatabaseStatus.Unreadable => "read不可（再選択が必要）",
+        MasterDatabaseStatus.Incompatible => "schema incompatible（再選択が必要）",
+        MasterDatabaseStatus.Compatible => "compatible",
+        _ => MasterDatabaseStatus.ToString(),
+    };
+
+    public string MasterDatabaseReason => masterDatabaseInspection.Message;
 
     public string SaveStatusTitle
     {
@@ -321,6 +361,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         applicationExitRequested = true;
         OnPropertyChanged(nameof(IsApplicationExitRequested));
         OnPropertyChanged(nameof(CanStartMonitoring));
+        monitoringCancellation?.Cancel();
     }
 
     public async Task WaitForOperationsAsync()
@@ -343,6 +384,33 @@ public sealed class MainViewModel : INotifyPropertyChanged
         {
             isMonitoringStartPending = value;
             OnPropertyChanged(nameof(CanStartMonitoring));
+        }
+    }
+
+    public void RestoreSavedPaths()
+    {
+        if (pathStore is null)
+        {
+            return;
+        }
+
+        ViewerPathSelection? selection;
+        try
+        {
+            selection = pathStore.Load();
+        }
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException or JsonException or ArgumentException)
+        {
+            HasSaveStatus = true;
+            SaveStatusTitle = "保存済みpathを読み込めませんでした";
+            SaveStatusMessage = $"pathを再選択してください。{exception.Message}";
+            return;
+        }
+
+        if (selection is not null)
+        {
+            Load(selection.ScoreDatabasePath, selection.MasterDatabasePath, persist: false);
         }
     }
 
@@ -398,17 +466,41 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
     }
 
-    public async Task StartContinuousCaptureAsync(nint ownerWindowHandle)
+    public async Task StartContinuousCaptureAsync(
+        nint ownerWindowHandle,
+        CancellationToken cancellationToken = default)
     {
-        await StartContinuousCaptureCoreAsync(ownerWindowHandle, null, null);
+        if (applicationExitRequested || cancellationToken.IsCancellationRequested ||
+            Interlocked.CompareExchange(ref monitoringOperationReserved, 1, 0) != 0)
+        {
+            return;
+        }
+
+        try
+        {
+            await StartContinuousCaptureCoreAsync(
+                ownerWindowHandle,
+                null,
+                null,
+                cancellationToken);
+        }
+        finally
+        {
+            Interlocked.Exchange(ref monitoringOperationReserved, 0);
+        }
     }
 
     public async Task StartContinuousCaptureAndSaveAsync(
         nint ownerWindowHandle,
         string scoreDatabasePath,
-        string masterDatabasePath)
+        string masterDatabasePath,
+        CancellationToken cancellationToken = default)
     {
-        if (applicationExitRequested || IsSaving)
+        if (applicationExitRequested || IsSaving || cancellationToken.IsCancellationRequested)
+        {
+            return;
+        }
+        if (Interlocked.CompareExchange(ref monitoringOperationReserved, 1, 0) != 0)
         {
             return;
         }
@@ -418,20 +510,23 @@ public sealed class MainViewModel : INotifyPropertyChanged
             await StartContinuousCaptureCoreAsync(
                 ownerWindowHandle,
                 scoreDatabasePath,
-                masterDatabasePath);
+                masterDatabasePath,
+                cancellationToken);
         }
         finally
         {
             IsSaving = false;
+            Interlocked.Exchange(ref monitoringOperationReserved, 0);
         }
     }
 
     private async Task StartContinuousCaptureCoreAsync(
         nint ownerWindowHandle,
         string? scoreDatabasePath,
-        string? masterDatabasePath)
+        string? masterDatabasePath,
+        CancellationToken cancellationToken)
     {
-        if (applicationExitRequested)
+        if (applicationExitRequested || cancellationToken.IsCancellationRequested)
         {
             return;
         }
@@ -471,11 +566,21 @@ public sealed class MainViewModel : INotifyPropertyChanged
             return;
         }
 
+        if (scoreDatabasePath is not null &&
+            (masterDatabasePath is null || !ValidateMasterDatabaseForSave(masterDatabasePath)))
+        {
+            return;
+        }
+
         ResetMonitoringSession();
         SetMonitoringState(MonitoringState.SelectingTarget, "対象windowの選択を待っています。");
         IsContinuousCapturing = true;
         continuousCaptureFinished = new TaskCompletionSource(
             TaskCreationOptions.RunContinuationsAsynchronously);
+        var sessionId = Interlocked.Increment(ref monitoringSessionSequence);
+        Volatile.Write(ref activeMonitoringSession, sessionId);
+        var sessionCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        monitoringCancellation = sessionCancellation;
         HasCaptureStatus = true;
         CaptureStatusTitle = "対象windowを選択してください";
         CaptureStatusMessage =
@@ -484,10 +589,16 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 : "選択したwindowを明示停止まで取得し、完成manifestだけを解析・正式保存境界へ渡します。";
         try
         {
-            var progress = new CallbackProgress<CaptureSessionProgress>(ApplyMonitoringProgress);
+            var progress = new CallbackProgress<CaptureSessionProgress>(
+                value => ApplyMonitoringProgress(sessionId, value));
             var result = continuousCaptureService is IMonitoringContinuousCaptureService monitoringService
-                ? await monitoringService.RunAsync(ownerWindowHandle, progress)
-                : await continuousCaptureService.RunAsync(ownerWindowHandle);
+                ? await monitoringService.RunAsync(
+                    ownerWindowHandle,
+                    progress,
+                    sessionCancellation.Token)
+                : await continuousCaptureService.RunAsync(
+                    ownerWindowHandle,
+                    sessionCancellation.Token);
             CaptureStatusTitle = result.Status switch
             {
                 CaptureOperationStatus.Saved => "連続キャプチャを保存しました",
@@ -509,20 +620,60 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 && scoreDatabasePath is not null
                 && masterDatabasePath is not null)
             {
-                await RunCaptureSaveWorkflowAsync(
-                    result.Output.ManifestPath,
-                    scoreDatabasePath,
-                    masterDatabasePath);
+                if (!sessionCancellation.IsCancellationRequested &&
+                    !applicationExitRequested)
+                {
+                    await RunCaptureSaveWorkflowAsync(
+                        result.Output.ManifestPath,
+                        scoreDatabasePath,
+                        masterDatabasePath,
+                        sessionId,
+                        sessionCancellation.Token);
+                }
+                else
+                {
+                    ApplyCaptureCompletion(sessionId, result);
+                }
             }
             else
             {
-                ApplyCaptureCompletion(result);
+                ApplyCaptureCompletion(sessionId, result);
+            }
+        }
+        catch (OperationCanceledException) when (
+            sessionCancellation.IsCancellationRequested || applicationExitRequested)
+        {
+            if (!applicationExitRequested)
+            {
+                ApplyCaptureCompletion(
+                    sessionId,
+                    new CaptureSessionOperationResult(
+                        CaptureOperationStatus.Cancelled,
+                        "監視を停止しました。新しい解析・保存は開始していません。"));
+            }
+        }
+        catch (Exception exception)
+        {
+            if (!applicationExitRequested)
+            {
+                CaptureStatusTitle = "連続キャプチャに失敗しました";
+                CaptureStatusMessage = exception.Message;
+                SetMonitoringState(MonitoringState.CaptureFailed, exception.Message);
             }
         }
         finally
         {
             IsContinuousCapturing = false;
             IsStoppingCapture = false;
+            if (Volatile.Read(ref activeMonitoringSession) == sessionId)
+            {
+                Volatile.Write(ref activeMonitoringSession, 0);
+            }
+            if (ReferenceEquals(monitoringCancellation, sessionCancellation))
+            {
+                monitoringCancellation = null;
+            }
+            sessionCancellation.Dispose();
             continuousCaptureFinished?.TrySetResult();
             continuousCaptureFinished = null;
         }
@@ -531,13 +682,25 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private async Task RunCaptureSaveWorkflowAsync(
         string manifestPath,
         string scoreDatabasePath,
-        string masterDatabasePath)
+        string masterDatabasePath,
+        long sessionId,
+        CancellationToken cancellationToken)
     {
+        if (!CanRunMonitoringWork(sessionId, cancellationToken))
+        {
+            return;
+        }
+
         HasSaveStatus = true;
         SaveStatusTitle = "キャプチャを解析しています";
         SaveStatusMessage = "confirmed eventを取得順に1件ずつ正式保存境界で処理しています。";
         try
         {
+            if (!ValidateMasterDatabaseForSave(masterDatabasePath) ||
+                !CanRunMonitoringWork(sessionId, cancellationToken))
+            {
+                return;
+            }
             if (captureSaveWorkflowRunner is null)
             {
                 SaveStatusTitle = "自動保存workflowを利用できません";
@@ -548,7 +711,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
             var result = await captureSaveWorkflowRunner.RunAsync(
                 manifestPath,
                 scoreDatabasePath,
-                masterDatabasePath);
+                masterDatabasePath,
+                cancellationToken);
+            if (!CanRunMonitoringWork(sessionId, cancellationToken))
+            {
+                return;
+            }
             if (result.Status is not ("completed" or "workflow_failed"))
             {
                 SaveStatusTitle = "キャプチャ解析に失敗しました";
@@ -570,6 +738,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
                     return;
                 }
                 ApplyData(data);
+                PersistPathsIfConfigured(data.ScoreDatabasePath, data.MasterDatabasePath, persist: true);
             }
 
             if (result.Status == "workflow_failed")
@@ -590,6 +759,16 @@ public sealed class MainViewModel : INotifyPropertyChanged
                     : "保存できるプレーはありませんでした";
                 SaveStatusMessage = CaptureSaveStatusMessage(result);
                 RecordWorkflowResult(result, workflowFailed: false);
+            }
+        }
+        catch (OperationCanceledException) when (
+            cancellationToken.IsCancellationRequested || applicationExitRequested)
+        {
+            if (!applicationExitRequested)
+            {
+                SaveStatusTitle = "監視を停止しました";
+                SaveStatusMessage = "停止後の解析・保存は開始していません。";
+                SetMonitoringState(MonitoringState.Stopped, SaveStatusMessage);
             }
         }
         catch (ViewerDatabaseException exception)
@@ -652,15 +831,19 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
     }
 
-    public void Load(string scoreDatabasePath, string masterDatabasePath)
+    public void Load(
+        string scoreDatabasePath,
+        string masterDatabasePath,
+        bool persist = true)
     {
+        ScoreDatabasePath = SafeFullPath(scoreDatabasePath);
+        MasterDatabasePath = SafeFullPath(masterDatabasePath);
+        ApplyMasterDatabaseInspection(repository.InspectMasterDatabase(masterDatabasePath));
         try
         {
             var data = repository.Load(scoreDatabasePath, masterDatabasePath);
-            Replace(Plays, data.Plays);
-            Replace(ChartBests, data.ChartBests);
-            MasterVersion = data.MasterVersion;
-            SelectedPlay = Plays.FirstOrDefault();
+            ApplyData(data);
+            PersistPathsIfConfigured(data.ScoreDatabasePath, data.MasterDatabasePath, persist);
             if (Plays.Count == 0)
             {
                 HasData = false;
@@ -689,7 +872,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         string masterDatabasePath,
         CancellationToken cancellationToken = default)
     {
-        if (applicationExitRequested || IsSaving || IsContinuousCapturing)
+        if (applicationExitRequested || IsSaving || IsContinuousCapturing ||
+            cancellationToken.IsCancellationRequested)
         {
             return;
         }
@@ -702,6 +886,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
         SaveStatusMessage = "選択したworkflow入力を既存の正式保存境界で1回だけ処理しています。";
         try
         {
+            if (!ValidateMasterDatabaseForSave(masterDatabasePath))
+            {
+                return;
+            }
             var result = await workflowRunner.RunAsync(
                 workflowInputPath,
                 scoreDatabasePath,
@@ -716,11 +904,21 @@ public sealed class MainViewModel : INotifyPropertyChanged
                     return;
                 }
                 ApplyData(data);
+                PersistPathsIfConfigured(data.ScoreDatabasePath, data.MasterDatabasePath, persist: true);
                 SaveStatusTitle = "プレーを保存しました";
                 SaveStatusMessage = "正式v1 DBをread-onlyで再読込し、履歴と自己ベストへ反映しました。";
                 return;
             }
             (SaveStatusTitle, SaveStatusMessage) = Present(result);
+        }
+        catch (OperationCanceledException) when (
+            cancellationToken.IsCancellationRequested || applicationExitRequested)
+        {
+            if (!applicationExitRequested)
+            {
+                SaveStatusTitle = "保存処理をキャンセルしました";
+                SaveStatusMessage = "DBへ新しいplayは保存していません。";
+            }
         }
         catch (ViewerDatabaseException exception)
         {
@@ -748,8 +946,79 @@ public sealed class MainViewModel : INotifyPropertyChanged
         Replace(Plays, data.Plays);
         Replace(ChartBests, data.ChartBests);
         MasterVersion = data.MasterVersion;
+        ScoreDatabasePath = data.ScoreDatabasePath;
+        MasterDatabasePath = data.MasterDatabasePath;
+        ApplyMasterDatabaseInspection(
+            new MasterDatabaseInspection(
+                data.MasterDatabasePath,
+                MasterDatabaseStatus.Compatible,
+                $"master DBを読み込めます（schema compatible、version: {data.MasterVersion}）。",
+                data.MasterVersion));
         SelectedPlay = Plays.FirstOrDefault();
         HasData = Plays.Count > 0;
+    }
+
+    private bool ValidateMasterDatabaseForSave(string path)
+    {
+        var inspection = repository.InspectMasterDatabase(path);
+        ApplyMasterDatabaseInspection(inspection);
+        if (inspection.IsCompatible)
+        {
+            return true;
+        }
+
+        HasSaveStatus = true;
+        SaveStatusTitle = "master DBを使用できません";
+        SaveStatusMessage =
+            $"{inspection.Message} master DB異常時は解析・正式保存を開始しません。";
+        RecordWorkflowFailure(SaveStatusMessage);
+        return false;
+    }
+
+    private void ApplyMasterDatabaseInspection(MasterDatabaseInspection inspection)
+    {
+        masterDatabaseInspection = inspection;
+        MasterDatabasePath = inspection.Path is { Length: > 0 } path ? path : "—";
+        MasterVersion = inspection.Version ?? "—";
+        OnPropertyChanged(nameof(MasterDatabaseStatus));
+        OnPropertyChanged(nameof(MasterDatabaseStatusDisplay));
+        OnPropertyChanged(nameof(MasterDatabaseReason));
+    }
+
+    private void PersistPathsIfConfigured(
+        string scorePath,
+        string masterPath,
+        bool persist)
+    {
+        if (!persist || pathStore is null)
+        {
+            return;
+        }
+
+        try
+        {
+            pathStore.Save(new ViewerPathSelection(scorePath, masterPath));
+        }
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            HasSaveStatus = true;
+            SaveStatusTitle = "DBは読み込みましたがpathを保存できませんでした";
+            SaveStatusMessage =
+                $"次回起動時はpathを再選択してください。{exception.Message}";
+        }
+    }
+
+    private static string SafeFullPath(string path)
+    {
+        try
+        {
+            return string.IsNullOrWhiteSpace(path) ? "—" : Path.GetFullPath(path);
+        }
+        catch (ArgumentException)
+        {
+            return path;
+        }
     }
 
     private static (string Title, string Message) Present(PersonalScoreDbWorkflowResult result)
@@ -779,8 +1048,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
     }
 
-    private void ApplyMonitoringProgress(CaptureSessionProgress progress)
+    private void ApplyMonitoringProgress(long sessionId, CaptureSessionProgress progress)
     {
+        if (!CanApplyMonitoringCallback(sessionId))
+        {
+            return;
+        }
         MonitoringTarget = progress.Target.DisplayName;
         MonitoringTargetSize = progress.Target.Width > 0 && progress.Target.Height > 0
             ? $"{progress.Target.Width} x {progress.Target.Height}"
@@ -793,8 +1066,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
         SetMonitoringState(MonitoringState.Monitoring, "frameを取得しています。");
     }
 
-    private void ApplyCaptureCompletion(CaptureSessionOperationResult result)
+    private void ApplyCaptureCompletion(long sessionId, CaptureSessionOperationResult result)
     {
+        if (Volatile.Read(ref activeMonitoringSession) != sessionId || applicationExitRequested)
+        {
+            return;
+        }
         var state = result.Status switch
         {
             CaptureOperationStatus.Saved or CaptureOperationStatus.Cancelled => MonitoringState.Stopped,
@@ -806,6 +1083,19 @@ public sealed class MainViewModel : INotifyPropertyChanged
         };
         SetMonitoringState(state, result.UserMessage);
     }
+
+    private bool CanApplyMonitoringCallback(long sessionId) =>
+        Volatile.Read(ref activeMonitoringSession) == sessionId &&
+        IsContinuousCapturing &&
+        !applicationExitRequested &&
+        CurrentMonitoringState is MonitoringState.SelectingTarget or MonitoringState.Monitoring;
+
+    private bool CanRunMonitoringWork(long sessionId, CancellationToken cancellationToken) =>
+        Volatile.Read(ref activeMonitoringSession) == sessionId &&
+        IsContinuousCapturing &&
+        !applicationExitRequested &&
+        !cancellationToken.IsCancellationRequested &&
+        CurrentMonitoringState is MonitoringState.SelectingTarget or MonitoringState.Monitoring or MonitoringState.Stopping;
 
     private void RecordWorkflowResult(CaptureSaveWorkflowResult result, bool workflowFailed)
     {

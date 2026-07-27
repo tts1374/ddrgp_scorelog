@@ -182,6 +182,118 @@ public sealed class ScoreViewerRepository
                 "データを読み込めませんでした。ファイルを確認して、もう一度お試しください。",
                 exception);
         }
+        catch (UnauthorizedAccessException exception)
+        {
+            throw new ViewerDatabaseException(
+                "データを読み込めませんでした。ファイルのアクセス権を確認してください。",
+                exception);
+        }
+        catch (ArgumentException exception)
+        {
+            throw new ViewerDatabaseException(
+                "データのpathを読み込めませんでした。ファイルを選び直してください。",
+                exception);
+        }
+    }
+
+    public MasterDatabaseInspection InspectMasterDatabase(string path)
+    {
+        string fullPath;
+        try
+        {
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                return MasterDatabaseInspection.Missing(
+                    string.Empty,
+                    "master DBが選択されていません。生成済みの楽曲データを選び直してください。");
+            }
+
+            fullPath = Path.GetFullPath(path);
+        }
+        catch (ArgumentException exception)
+        {
+            return new MasterDatabaseInspection(
+                path,
+                MasterDatabaseStatus.Unreadable,
+                $"master DBのpathを読み込めません。ファイルを選び直してください。{exception.Message}",
+                null);
+        }
+
+        if (Directory.Exists(fullPath))
+        {
+            return new MasterDatabaseInspection(
+                fullPath,
+                MasterDatabaseStatus.Unreadable,
+                "master DBのpathがdirectoryです。SQLite fileを選び直してください。",
+                null);
+        }
+
+        if (!File.Exists(fullPath))
+        {
+            return MasterDatabaseInspection.Missing(
+                fullPath,
+                "master DBが見つかりません。保存を開始せず、生成済みの楽曲データを選び直してください。");
+        }
+
+        SqliteConnection connection;
+        try
+        {
+            connection = OpenReadOnly(fullPath);
+        }
+        catch (UnauthorizedAccessException exception)
+        {
+            return new MasterDatabaseInspection(
+                fullPath,
+                MasterDatabaseStatus.Unreadable,
+                $"master DBを読み込めません。アクセス権を確認してください。{exception.Message}",
+                null);
+        }
+        catch (IOException exception)
+        {
+            return new MasterDatabaseInspection(
+                fullPath,
+                MasterDatabaseStatus.Unreadable,
+                $"master DBを読み込めません。ファイルを確認してください。{exception.Message}",
+                null);
+        }
+        catch (SqliteException exception)
+        {
+            return new MasterDatabaseInspection(
+                fullPath,
+                MasterDatabaseStatus.Unreadable,
+                $"master DBをSQLiteとして読み込めません。生成済みの楽曲データを選び直してください。{exception.Message}",
+                null);
+        }
+
+        using (connection)
+        {
+            try
+            {
+                var version = ValidateMasterDatabase(connection);
+                _ = ReadMasterCharts(connection);
+                return new MasterDatabaseInspection(
+                    fullPath,
+                    MasterDatabaseStatus.Compatible,
+                    $"master DBを読み込めます（schema compatible、version: {version}）。",
+                    version);
+            }
+            catch (ViewerDatabaseException exception)
+            {
+                return new MasterDatabaseInspection(
+                    fullPath,
+                    MasterDatabaseStatus.Incompatible,
+                    exception.UserMessage,
+                    null);
+            }
+            catch (SqliteException exception)
+            {
+                return new MasterDatabaseInspection(
+                    fullPath,
+                    MasterDatabaseStatus.Incompatible,
+                    $"master DBのschemaを読み込めません。対応する生成済みDBを選び直してください。{exception.Message}",
+                    null);
+            }
+        }
     }
 
     private static SqliteConnection OpenReadOnly(string path)
@@ -300,12 +412,14 @@ public sealed class ScoreViewerRepository
         snapshotCommand.CommandText = "SELECT source_url, content_hash FROM source_snapshots;";
         using var snapshots = snapshotCommand.ExecuteReader();
         var snapshotMap = new Dictionary<string, string>(StringComparer.Ordinal);
+        var snapshotCount = 0;
         while (snapshots.Read())
         {
+            snapshotCount++;
             snapshotMap[snapshots.GetString(0)] = snapshots.GetString(1);
         }
 
-        if (snapshotMap.Count is < 1 or > 2 ||
+        if (snapshotCount is < 1 or > 3 || snapshotMap.Count != snapshotCount ||
             !snapshotMap.TryGetValue(metadata["source_url"], out var sourceHash) ||
             sourceHash != metadata["source_hash"])
         {
@@ -313,7 +427,56 @@ public sealed class ScoreViewerRepository
                 "楽曲データの生成元情報が一致しません。生成済みの楽曲データを選び直してください。");
         }
 
+        ValidateOptionalSourceMetadata(
+            metadata,
+            snapshotMap,
+            "official_source_url",
+            "official_source_hash",
+            "公式source");
+        ValidateOptionalSourceMetadata(
+            metadata,
+            snapshotMap,
+            "new_song_source_url",
+            "new_song_source_hash",
+            "新曲source");
+
+        var expectedSnapshotCount =
+            1 +
+            Convert.ToInt32(
+                metadata.TryGetValue("official_source_url", out var officialUrl) &&
+                !string.IsNullOrWhiteSpace(officialUrl)) +
+            Convert.ToInt32(
+                metadata.TryGetValue("new_song_source_url", out var newSongUrl) &&
+                !string.IsNullOrWhiteSpace(newSongUrl));
+        if (snapshotCount != expectedSnapshotCount)
+        {
+            throw new ViewerDatabaseException(
+                "楽曲データのsource snapshot件数がmetadataと一致しません。生成済みの楽曲データを選び直してください。");
+        }
+
         return metadata["master_version"];
+    }
+
+    private static void ValidateOptionalSourceMetadata(
+        IReadOnlyDictionary<string, string> metadata,
+        IReadOnlyDictionary<string, string> snapshots,
+        string urlKey,
+        string hashKey,
+        string label)
+    {
+        var hasUrl = metadata.TryGetValue(urlKey, out var url) && !string.IsNullOrWhiteSpace(url);
+        var hasHash = metadata.TryGetValue(hashKey, out var hash) && !string.IsNullOrWhiteSpace(hash);
+        if (hasUrl != hasHash)
+        {
+            throw new ViewerDatabaseException(
+                $"楽曲データの{label} metadataが不完全です。生成済みの楽曲データを選び直してください。");
+        }
+
+        if (hasUrl && (!snapshots.TryGetValue(url!, out var snapshotHash) || snapshotHash != hash))
+        {
+            throw new ViewerDatabaseException(
+                $"楽曲データの{label} metadataがsource snapshotと一致しません。生成済みの楽曲データを選び直してください。");
+        }
     }
 
     private static Dictionary<string, MasterChart> ReadMasterCharts(SqliteConnection connection)
