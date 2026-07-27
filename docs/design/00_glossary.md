@@ -31,6 +31,19 @@ DDR GP scorelog の設計、PoC、テストで使う主要用語を定義する�
 | `M9 application/runtime` | viewer、Windows capture、capture-save、監視UI、task trayを接続する工程 | WPF app、capture-save workflow | 新しい解析方式やDB schema |
 | `M10 initial release` | 単一ユーザー向けの配布・依存固定・backup/restoreを固める工程 | installer/配布手順、lock file、運用docs | cloud運用、複数ユーザー、enterprise機能 |
 
+## master DB inspection status
+
+WPFが選択pathをread-onlyで検査した結果を表す。これはmaster DBの内容を正式個人スコアへ保存するstatusではなく、保存workflowを開始してよいかの入口状態である。
+
+| status | 正式な意味 |
+| --- | --- |
+| `missing` | 選択pathにmaster DBが存在しない。pathを再選択するまでcapture解析・正式保存を開始しない。 |
+| `read不可` | pathはあるが、directory、SQLiteでない、アクセス権、I/Oなどの理由でread-only読込できない。 |
+| `schema incompatible` | SQLiteとして読めるが、必須table、metadata、件数、source snapshot、master生成schemaの整合が現行runtimeと一致しない。 |
+| `compatible` | 現行runtimeがread-onlyで検証でき、保存workflow開始前のmaster参照として利用できる。 |
+
+master DB inspectionは起動時・明示再読込時・保存開始時に行う。pathだけを再利用して、過去の保存結果、skip、拒否、失敗、候補をsavedへ昇格させるcheckpointは持たない。
+
 `M5c` の下位phaseは次の意味で読む。
 
 - `M5c-1`: current-only read-only review projection。

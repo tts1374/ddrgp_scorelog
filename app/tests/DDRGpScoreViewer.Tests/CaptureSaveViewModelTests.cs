@@ -1,5 +1,6 @@
 using DDRGpScoreViewer.Capture;
 using DDRGpScoreViewer.Data;
+using DDRGpScoreViewer.Models;
 using DDRGpScoreViewer.ViewModels;
 using Xunit;
 
@@ -19,12 +20,14 @@ public sealed class CaptureSaveViewModelTests
             fixture.AddPlay("capture-play", "2026-07-14T12:00:00+00:00", 999_500, 2_700);
             return Result("saved", "capture-play");
         });
+        var pathStore = new MemoryViewerPathStore();
         var viewModel = new MainViewModel(
             new ScoreViewerRepository(),
             new UnusedManualWorkflowRunner(),
             continuousCaptureService: new StubContinuousCaptureService(
                 CaptureOperationStatus.Saved),
-            captureSaveWorkflowRunner: workflow);
+            captureSaveWorkflowRunner: workflow,
+            pathStore: pathStore);
 
         await viewModel.StartContinuousCaptureAndSaveAsync(
             123, fixture.ScorePath, fixture.MasterPath);
@@ -32,11 +35,39 @@ public sealed class CaptureSaveViewModelTests
         Assert.Equal(1, workflow.CallCount);
         Assert.Equal("1件のプレーを保存しました", viewModel.SaveStatusTitle);
         Assert.Equal("capture-play", Assert.Single(viewModel.Plays).PlayId);
+        Assert.Equal(
+            new ViewerPathSelection(fixture.ScorePath, fixture.MasterPath),
+            pathStore.Selection);
+    }
+
+    [Fact]
+    public async Task Master_revalidation_blocks_workflow_after_capture_when_selected_file_changes()
+    {
+        using var fixture = new DatabaseFixture();
+        var workflow = new StubCaptureSaveWorkflowRunner((_, _, _) =>
+            throw new InvalidOperationException("workflow must not run"));
+        var capture = new StubContinuousCaptureService(
+            CaptureOperationStatus.Saved,
+            () => fixture.ExecuteMasterSql("DROP TABLE charts;"));
+        var viewModel = new MainViewModel(
+            new ScoreViewerRepository(),
+            new UnusedManualWorkflowRunner(),
+            continuousCaptureService: capture,
+            captureSaveWorkflowRunner: workflow);
+
+        await viewModel.StartContinuousCaptureAndSaveAsync(
+            123, fixture.ScorePath, fixture.MasterPath);
+
+        Assert.Equal(0, workflow.CallCount);
+        Assert.Equal(MasterDatabaseStatus.Incompatible, viewModel.MasterDatabaseStatus);
+        Assert.Equal(MonitoringState.WorkflowFailed, viewModel.CurrentMonitoringState);
+        Assert.Contains("解析・正式保存を開始しません", viewModel.SaveStatusMessage, StringComparison.Ordinal);
     }
 
     [Fact]
     public async Task Unresolved_events_are_not_reloaded_or_presented_as_success()
     {
+        using var fixture = new DatabaseFixture();
         var workflow = new StubCaptureSaveWorkflowRunner((_, _, _) =>
             new CaptureSaveWorkflowResult(
                 "completed", 1, new Dictionary<string, int> { ["unresolved"] = 1 },
@@ -49,7 +80,7 @@ public sealed class CaptureSaveViewModelTests
             captureSaveWorkflowRunner: workflow);
 
         await viewModel.StartContinuousCaptureAndSaveAsync(
-            123, "not-created.sqlite", "not-read.sqlite");
+            123, fixture.ScorePath, fixture.MasterPath);
 
         Assert.Equal("保存できるプレーはありませんでした", viewModel.SaveStatusTitle);
         Assert.Contains("unresolved=1", viewModel.SaveStatusMessage);
@@ -59,6 +90,7 @@ public sealed class CaptureSaveViewModelTests
     [Fact]
     public async Task Capture_failure_does_not_run_analysis_or_save_workflow()
     {
+        using var fixture = new DatabaseFixture();
         var workflow = new StubCaptureSaveWorkflowRunner((_, _, _) =>
             throw new InvalidOperationException("must not run"));
         var viewModel = new MainViewModel(
@@ -68,7 +100,7 @@ public sealed class CaptureSaveViewModelTests
                 CaptureOperationStatus.WriteFailed),
             captureSaveWorkflowRunner: workflow);
 
-        await viewModel.StartContinuousCaptureAndSaveAsync(123, "score.sqlite", "master.sqlite");
+        await viewModel.StartContinuousCaptureAndSaveAsync(123, fixture.ScorePath, fixture.MasterPath);
 
         Assert.Equal(0, workflow.CallCount);
         Assert.Equal("session outputに失敗しました", viewModel.CaptureStatusTitle);
@@ -76,8 +108,33 @@ public sealed class CaptureSaveViewModelTests
     }
 
     [Fact]
+    public async Task Missing_master_does_not_start_capture_or_workflow()
+    {
+        var capture = new StubContinuousCaptureService(CaptureOperationStatus.Saved);
+        var workflow = new StubCaptureSaveWorkflowRunner((_, _, _) =>
+            throw new InvalidOperationException("workflow must not run"));
+        var viewModel = new MainViewModel(
+            new ScoreViewerRepository(),
+            new UnusedManualWorkflowRunner(),
+            continuousCaptureService: capture,
+            captureSaveWorkflowRunner: workflow);
+
+        await viewModel.StartContinuousCaptureAndSaveAsync(
+            123,
+            "score.sqlite",
+            "missing-master.sqlite");
+
+        Assert.Equal(0, capture.CallCount);
+        Assert.Equal(0, workflow.CallCount);
+        Assert.Equal(MasterDatabaseStatus.Missing, viewModel.MasterDatabaseStatus);
+        Assert.Equal(MonitoringState.WorkflowFailed, viewModel.CurrentMonitoringState);
+        Assert.Contains("保存を開始しません", viewModel.SaveStatusMessage, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Capture_save_does_not_start_while_manual_save_is_running()
     {
+        using var fixture = new DatabaseFixture();
         var manualWorkflow = new BlockingManualWorkflowRunner();
         var captureService = new StubContinuousCaptureService(CaptureOperationStatus.Saved);
         var captureWorkflow = new StubCaptureSaveWorkflowRunner((_, _, _) =>
@@ -89,11 +146,11 @@ public sealed class CaptureSaveViewModelTests
             captureSaveWorkflowRunner: captureWorkflow);
 
         var manualSave = viewModel.SaveAndReloadAsync(
-            "workflow.json", "score.sqlite", "master.sqlite");
+            "workflow.json", fixture.ScorePath, fixture.MasterPath);
         await manualWorkflow.Started.Task;
 
         await viewModel.StartContinuousCaptureAndSaveAsync(
-            123, "score.sqlite", "master.sqlite");
+            123, fixture.ScorePath, fixture.MasterPath);
 
         Assert.True(viewModel.IsSaving);
         Assert.Equal(0, captureService.CallCount);
@@ -107,6 +164,7 @@ public sealed class CaptureSaveViewModelTests
     [Fact]
     public async Task Capture_save_reserves_save_state_until_capture_and_workflow_finish()
     {
+        using var fixture = new DatabaseFixture();
         var captureService = new BlockingContinuousCaptureService();
         var viewModel = new MainViewModel(
             new ScoreViewerRepository(),
@@ -117,12 +175,12 @@ public sealed class CaptureSaveViewModelTests
                     "completed", 0, new Dictionary<string, int>(), [], [], "data/run")));
 
         var captureSave = viewModel.StartContinuousCaptureAndSaveAsync(
-            123, "score.sqlite", "master.sqlite");
+            123, fixture.ScorePath, fixture.MasterPath);
         await captureService.Started.Task;
 
         Assert.True(viewModel.IsSaving);
         await viewModel.SaveAndReloadAsync(
-            "workflow.json", "score.sqlite", "master.sqlite");
+            "workflow.json", fixture.ScorePath, fixture.MasterPath);
 
         captureService.Complete(CaptureOperationStatus.Cancelled);
         await captureSave;
@@ -132,6 +190,7 @@ public sealed class CaptureSaveViewModelTests
     [Fact]
     public async Task Workflow_failure_is_surfaced_instead_of_no_saveable_plays()
     {
+        using var fixture = new DatabaseFixture();
         var workflow = new StubCaptureSaveWorkflowRunner((_, _, _) =>
             new CaptureSaveWorkflowResult(
                 "workflow_failed", 1,
@@ -145,7 +204,7 @@ public sealed class CaptureSaveViewModelTests
             captureSaveWorkflowRunner: workflow);
 
         await viewModel.StartContinuousCaptureAndSaveAsync(
-            123, "rejected.sqlite", "master.sqlite");
+            123, fixture.ScorePath, fixture.MasterPath);
 
         Assert.Equal("保存workflowに失敗しました", viewModel.SaveStatusTitle);
         Assert.Contains("db_rejected=1", viewModel.SaveStatusMessage);
@@ -187,7 +246,9 @@ public sealed class CaptureSaveViewModelTests
             "completed", 1, new Dictionary<string, int> { [status] = 1 },
             [playId], [], "data/run");
 
-    private sealed class StubContinuousCaptureService(CaptureOperationStatus status)
+    private sealed class StubContinuousCaptureService(
+        CaptureOperationStatus status,
+        Action? beforeResult = null)
         : IContinuousCaptureService
     {
         public int CallCount { get; private set; }
@@ -198,6 +259,7 @@ public sealed class CaptureSaveViewModelTests
             CancellationToken cancellationToken = default)
         {
             CallCount++;
+            beforeResult?.Invoke();
             return Task.FromResult(new CaptureSessionOperationResult(
                 status,
                 status == CaptureOperationStatus.Saved ? "saved" : "capture failed",
@@ -258,6 +320,15 @@ public sealed class CaptureSaveViewModelTests
             string scoreDatabasePath,
             CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
+    }
+
+    private sealed class MemoryViewerPathStore : IViewerPathStore
+    {
+        public ViewerPathSelection? Selection { get; private set; }
+
+        public ViewerPathSelection? Load() => Selection;
+
+        public void Save(ViewerPathSelection selection) => Selection = selection;
     }
 
     private sealed class BlockingManualWorkflowRunner : IPersonalScoreDbWorkflowRunner

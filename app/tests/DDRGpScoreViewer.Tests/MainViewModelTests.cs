@@ -1,4 +1,5 @@
 using DDRGpScoreViewer.Data;
+using DDRGpScoreViewer.Models;
 using DDRGpScoreViewer.ViewModels;
 using Xunit;
 
@@ -37,14 +38,61 @@ public sealed class MainViewModelTests
         string status,
         string expectedTitle)
     {
+        using var fixture = new DatabaseFixture();
         var runner = new StubWorkflowRunner((_, _) => Result(status));
         var viewModel = new MainViewModel(new ScoreViewerRepository(), runner);
 
-        await viewModel.SaveAndReloadAsync("workflow.json", "missing.sqlite", "missing-master.sqlite");
+        await viewModel.SaveAndReloadAsync("workflow.json", "missing.sqlite", fixture.MasterPath);
 
         Assert.Equal(expectedTitle, viewModel.SaveStatusTitle);
         Assert.Empty(viewModel.Plays);
         Assert.False(viewModel.HasData);
+    }
+
+    [Fact]
+    public async Task SaveAndReloadAsync_rejects_missing_master_before_starting_workflow()
+    {
+        var runner = new StubWorkflowRunner((_, _) =>
+            throw new InvalidOperationException("workflow must not start"));
+        var viewModel = new MainViewModel(new ScoreViewerRepository(), runner);
+
+        await viewModel.SaveAndReloadAsync(
+            "workflow.json",
+            "missing.sqlite",
+            "missing-master.sqlite");
+
+        Assert.Equal(0, runner.CallCount);
+        Assert.Equal(MasterDatabaseStatus.Missing, viewModel.MasterDatabaseStatus);
+        Assert.Contains("保存を開始しません", viewModel.SaveStatusMessage, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void RestoreSavedPaths_reuses_compatible_paths_but_keeps_invalid_paths_out_of_saved_state()
+    {
+        using var fixture = new DatabaseFixture();
+        var store = new MemoryViewerPathStore(new ViewerPathSelection(
+            fixture.ScorePath,
+            fixture.MasterPath));
+        var first = new MainViewModel(
+            new ScoreViewerRepository(),
+            new StubWorkflowRunner((_, _) => Result("excluded")),
+            pathStore: store);
+        first.RestoreSavedPaths();
+
+        Assert.Equal(MasterDatabaseStatus.Compatible, first.MasterDatabaseStatus);
+        Assert.Equal(fixture.MasterPath, first.MasterDatabasePath);
+
+        fixture.ExecuteMasterSql("DROP TABLE charts;");
+        var restarted = new MainViewModel(
+            new ScoreViewerRepository(),
+            new StubWorkflowRunner((_, _) => Result("excluded")),
+            pathStore: store);
+        restarted.RestoreSavedPaths();
+
+        Assert.Equal(MasterDatabaseStatus.Incompatible, restarted.MasterDatabaseStatus);
+        Assert.False(restarted.HasData);
+        Assert.Equal(MonitoringResultSummary.Empty, restarted.MonitoringResults);
+        Assert.Contains("選び直してください", restarted.StatusMessage, StringComparison.Ordinal);
     }
 
     private static PersonalScoreDbWorkflowResult Result(
@@ -68,10 +116,22 @@ public sealed class MainViewModelTests
         Func<string, string, PersonalScoreDbWorkflowResult> run)
         : IPersonalScoreDbWorkflowRunner
     {
+        public int CallCount { get; private set; }
+
         public Task<PersonalScoreDbWorkflowResult> RunAsync(
             string workflowInputPath,
             string scoreDatabasePath,
-            CancellationToken cancellationToken = default) =>
-            Task.FromResult(run(workflowInputPath, scoreDatabasePath));
+            CancellationToken cancellationToken = default)
+        {
+            CallCount++;
+            return Task.FromResult(run(workflowInputPath, scoreDatabasePath));
+        }
+    }
+
+    private sealed class MemoryViewerPathStore(ViewerPathSelection? selection) : IViewerPathStore
+    {
+        public ViewerPathSelection? Load() => selection;
+
+        public void Save(ViewerPathSelection value) => selection = value;
     }
 }

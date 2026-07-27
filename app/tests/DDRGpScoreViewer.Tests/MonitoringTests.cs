@@ -12,6 +12,7 @@ public sealed class MonitoringTests
     [Fact]
     public async Task Monitoring_progress_and_all_workflow_outcomes_are_projected()
     {
+        using var fixture = new DatabaseFixture();
         var capture = new MonitoringCaptureService(CaptureOperationStatus.Saved);
         var workflow = new CaptureWorkflowRunner(new CaptureSaveWorkflowResult(
             "completed",
@@ -37,8 +38,8 @@ public sealed class MonitoringTests
 
         await viewModel.StartContinuousCaptureAndSaveAsync(
             123,
-            "not-opened.sqlite",
-            "not-opened-master.sqlite");
+            fixture.ScorePath,
+            fixture.MasterPath);
 
         Assert.Equal(MonitoringState.Stopped, viewModel.CurrentMonitoringState);
         Assert.Equal("DDR GRAND PRIX", viewModel.MonitoringTarget);
@@ -66,6 +67,7 @@ public sealed class MonitoringTests
         CaptureOperationStatus captureStatus,
         MonitoringState expectedState)
     {
+        using var fixture = new DatabaseFixture();
         var workflow = new ThrowingCaptureWorkflowRunner();
         var viewModel = new MainViewModel(
             new ScoreViewerRepository(),
@@ -75,8 +77,8 @@ public sealed class MonitoringTests
 
         await viewModel.StartContinuousCaptureAndSaveAsync(
             123,
-            "not-opened.sqlite",
-            "not-opened-master.sqlite");
+            fixture.ScorePath,
+            fixture.MasterPath);
 
         Assert.Equal(expectedState, viewModel.CurrentMonitoringState);
         Assert.Equal(0, workflow.CallCount);
@@ -85,6 +87,7 @@ public sealed class MonitoringTests
     [Fact]
     public async Task Workflow_failure_preserves_committed_counts_and_reason()
     {
+        using var fixture = new DatabaseFixture();
         var workflow = new CaptureWorkflowRunner(new CaptureSaveWorkflowResult(
             "workflow_failed",
             2,
@@ -98,7 +101,7 @@ public sealed class MonitoringTests
             continuousCaptureService: new MonitoringCaptureService(CaptureOperationStatus.Saved),
             captureSaveWorkflowRunner: workflow);
 
-        await viewModel.StartContinuousCaptureAndSaveAsync(123, "score.sqlite", "master.sqlite");
+        await viewModel.StartContinuousCaptureAndSaveAsync(123, fixture.ScorePath, fixture.MasterPath);
 
         Assert.Equal(MonitoringState.WorkflowFailed, viewModel.CurrentMonitoringState);
         Assert.Equal(1, viewModel.MonitoringResults.Saved);
@@ -110,6 +113,7 @@ public sealed class MonitoringTests
     [Fact]
     public async Task Analysis_process_failure_is_counted_and_stops_monitoring()
     {
+        using var fixture = new DatabaseFixture();
         var workflow = new CaptureWorkflowRunner(new CaptureSaveWorkflowResult(
             "analysis_failed",
             0,
@@ -123,7 +127,7 @@ public sealed class MonitoringTests
             continuousCaptureService: new MonitoringCaptureService(CaptureOperationStatus.Saved),
             captureSaveWorkflowRunner: workflow);
 
-        await viewModel.StartContinuousCaptureAndSaveAsync(123, "score.sqlite", "master.sqlite");
+        await viewModel.StartContinuousCaptureAndSaveAsync(123, fixture.ScorePath, fixture.MasterPath);
 
         Assert.Equal(MonitoringState.WorkflowFailed, viewModel.CurrentMonitoringState);
         Assert.Equal(1, viewModel.MonitoringResults.AnalysisFailed);
@@ -150,6 +154,77 @@ public sealed class MonitoringTests
         Assert.Equal(2, capture.RunCount);
         Assert.Equal(MonitoringState.Stopped, viewModel.CurrentMonitoringState);
         Assert.True(viewModel.CanStartMonitoring);
+    }
+
+    [Fact]
+    public async Task Late_progress_after_capture_completion_cannot_reopen_monitoring()
+    {
+        var capture = new LateProgressCaptureService();
+        var viewModel = new MainViewModel(
+            new ScoreViewerRepository(),
+            new UnusedManualWorkflowRunner(),
+            continuousCaptureService: capture);
+
+        await viewModel.StartContinuousCaptureAsync(123);
+        var frameCountAfterStop = viewModel.MonitoringFrameCount;
+
+        capture.ReportLateProgress();
+
+        Assert.Equal(MonitoringState.Stopped, viewModel.CurrentMonitoringState);
+        Assert.Equal(frameCountAfterStop, viewModel.MonitoringFrameCount);
+    }
+
+    [Fact]
+    public async Task Stop_before_capture_result_does_not_start_save_workflow()
+    {
+        using var fixture = new DatabaseFixture();
+        var capture = new StopReturnsSavedCaptureService();
+        var workflow = new CaptureWorkflowRunner(new CaptureSaveWorkflowResult(
+            "completed", 1, new Dictionary<string, int> { ["saved"] = 1 }, [], [], "data/run"));
+        var viewModel = new MainViewModel(
+            new ScoreViewerRepository(),
+            new UnusedManualWorkflowRunner(),
+            continuousCaptureService: capture,
+            captureSaveWorkflowRunner: workflow);
+
+        var startTask = viewModel.StartContinuousCaptureAndSaveAsync(
+            123,
+            fixture.ScorePath,
+            fixture.MasterPath);
+        await capture.Started.Task;
+
+        await viewModel.StopContinuousCaptureAsync();
+        await startTask;
+
+        Assert.Equal(0, workflow.CallCount);
+        Assert.Equal(MonitoringState.Stopped, viewModel.CurrentMonitoringState);
+        Assert.False(viewModel.IsSaving);
+    }
+
+    [Fact]
+    public async Task Stop_during_capture_save_workflow_cancels_one_workflow_without_restarting_it()
+    {
+        using var fixture = new DatabaseFixture();
+        var workflow = new BlockingCaptureWorkflowRunner();
+        var viewModel = new MainViewModel(
+            new ScoreViewerRepository(),
+            new UnusedManualWorkflowRunner(),
+            continuousCaptureService: new MonitoringCaptureService(CaptureOperationStatus.Saved),
+            captureSaveWorkflowRunner: workflow);
+
+        var startTask = viewModel.StartContinuousCaptureAndSaveAsync(
+            123,
+            fixture.ScorePath,
+            fixture.MasterPath);
+        await workflow.Started.Task;
+
+        await viewModel.StopContinuousCaptureAsync();
+        await startTask;
+
+        Assert.Equal(1, workflow.CallCount);
+        Assert.True(workflow.CancellationToken.IsCancellationRequested);
+        Assert.Equal(MonitoringState.Stopped, viewModel.CurrentMonitoringState);
+        Assert.Equal(0, viewModel.MonitoringResults.Saved);
     }
 
     [Theory]
@@ -349,6 +424,7 @@ public sealed class MonitoringTests
     [Fact]
     public async Task Exit_waits_for_in_flight_manual_workflow()
     {
+        using var fixture = new DatabaseFixture();
         var workflow = new BlockingManualWorkflowRunner();
         var viewModel = new MainViewModel(
             new ScoreViewerRepository(),
@@ -358,8 +434,8 @@ public sealed class MonitoringTests
 
         var saveTask = viewModel.SaveAndReloadAsync(
             "input.json",
-            "score.sqlite",
-            "master.sqlite");
+            fixture.ScorePath,
+            fixture.MasterPath);
         await workflow.Started.Task;
 
         var waitTask = viewModel.WaitForOperationsAsync();
@@ -484,11 +560,40 @@ public sealed class MonitoringTests
     private sealed class CaptureWorkflowRunner(CaptureSaveWorkflowResult result)
         : ICaptureSaveWorkflowRunner
     {
+        public int CallCount { get; private set; }
+
         public Task<CaptureSaveWorkflowResult> RunAsync(
             string manifestPath,
             string scoreDatabasePath,
             string masterDatabasePath,
-            CancellationToken cancellationToken = default) => Task.FromResult(result);
+            CancellationToken cancellationToken = default)
+        {
+            CallCount++;
+            return Task.FromResult(result);
+        }
+    }
+
+    private sealed class BlockingCaptureWorkflowRunner : ICaptureSaveWorkflowRunner
+    {
+        public TaskCompletionSource Started { get; } = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public int CallCount { get; private set; }
+        public CancellationToken CancellationToken { get; private set; }
+
+        public async Task<CaptureSaveWorkflowResult> RunAsync(
+            string manifestPath,
+            string scoreDatabasePath,
+            string masterDatabasePath,
+            CancellationToken cancellationToken = default)
+        {
+            CallCount++;
+            CancellationToken = cancellationToken;
+            Started.TrySetResult();
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            return new CaptureSaveWorkflowResult(
+                "completed", 0, new Dictionary<string, int>(), [], [], null);
+        }
     }
 
     private sealed class SequenceMonitoringCaptureService(
@@ -509,6 +614,85 @@ public sealed class MonitoringTests
         }
 
         public Task StopAsync() => Task.CompletedTask;
+    }
+
+    private sealed class LateProgressCaptureService : IMonitoringContinuousCaptureService
+    {
+        private IProgress<CaptureSessionProgress>? progress;
+
+        public bool IsRunning => false;
+
+        public Task<CaptureSessionOperationResult> RunAsync(
+            nint ownerWindowHandle,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(new CaptureSessionOperationResult(
+                CaptureOperationStatus.Cancelled,
+                "fixture stopped"));
+
+        public Task<CaptureSessionOperationResult> RunAsync(
+            nint ownerWindowHandle,
+            IProgress<CaptureSessionProgress> progress,
+            CancellationToken cancellationToken = default)
+        {
+            this.progress = progress;
+            progress.Report(new CaptureSessionProgress(
+                new CaptureTargetInfo("DDR GRAND PRIX", 1280, 720),
+                1,
+                DateTimeOffset.UtcNow.AddSeconds(-1),
+                DateTimeOffset.UtcNow));
+            return Task.FromResult(new CaptureSessionOperationResult(
+                CaptureOperationStatus.Cancelled,
+                "fixture stopped"));
+        }
+
+        public void ReportLateProgress() => progress?.Report(new CaptureSessionProgress(
+            new CaptureTargetInfo("stale target", 640, 480),
+            99,
+            DateTimeOffset.UtcNow,
+            DateTimeOffset.UtcNow));
+
+        public Task StopAsync() => Task.CompletedTask;
+    }
+
+    private sealed class StopReturnsSavedCaptureService : IMonitoringContinuousCaptureService
+    {
+        private readonly TaskCompletionSource<CaptureSessionOperationResult> completion = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public TaskCompletionSource Started { get; } = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public bool IsRunning => !completion.Task.IsCompleted;
+
+        public Task<CaptureSessionOperationResult> RunAsync(
+            nint ownerWindowHandle,
+            CancellationToken cancellationToken = default)
+        {
+            Started.TrySetResult();
+            return completion.Task;
+        }
+
+        public Task<CaptureSessionOperationResult> RunAsync(
+            nint ownerWindowHandle,
+            IProgress<CaptureSessionProgress> progress,
+            CancellationToken cancellationToken = default)
+        {
+            Started.TrySetResult();
+            return completion.Task;
+        }
+
+        public Task StopAsync()
+        {
+            completion.TrySetResult(new CaptureSessionOperationResult(
+                CaptureOperationStatus.Saved,
+                "fixture saved",
+                new CaptureSessionOutput(
+                    "session",
+                    "session/frame_manifest.csv",
+                    "session/metadata.json",
+                    1)));
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class ThrowingCaptureWorkflowRunner : ICaptureSaveWorkflowRunner

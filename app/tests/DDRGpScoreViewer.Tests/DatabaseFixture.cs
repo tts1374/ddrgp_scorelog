@@ -143,6 +143,15 @@ internal sealed class DatabaseFixture : IDisposable
         command.ExecuteNonQuery();
     }
 
+    public void ExecuteMasterSql(string sql)
+    {
+        using var connection = OpenWritable(MasterPath);
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = sql;
+        command.ExecuteNonQuery();
+    }
+
     public void Dispose()
     {
         try

@@ -170,6 +170,10 @@ public sealed class ApplicationLifecycleCoordinator : IDisposable
         string reason,
         TrayMenuState? menuState = null)
     {
+        if (Volatile.Read(ref disposed) != 0)
+        {
+            return;
+        }
         trayIcon.UpdateMenu(menuState ?? TrayMenuState.FromMonitoringState(state), stateDisplay);
         if (lastNotifiedState == state)
         {

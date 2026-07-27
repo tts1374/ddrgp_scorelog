@@ -1,4 +1,5 @@
 using System.Windows;
+using System.ComponentModel;
 using DDRGpScoreViewer.Models;
 using DDRGpScoreViewer.Tray;
 using DDRGpScoreViewer.ViewModels;
@@ -9,6 +10,7 @@ public partial class App : System.Windows.Application
 {
     private MainWindow? mainWindow;
     private ApplicationLifecycleCoordinator? lifecycle;
+    private PropertyChangedEventHandler? viewModelPropertyChanged;
 
     public App()
     {
@@ -28,7 +30,7 @@ public partial class App : System.Windows.Application
             ShowMainWindow,
             ShutdownApplication,
             () => mainWindow.RequestApplicationExit());
-        mainWindow.ViewModel.PropertyChanged += (_, args) =>
+        viewModelPropertyChanged = (_, args) =>
         {
             if (args.PropertyName is nameof(MainViewModel.CurrentMonitoringState) or
                 nameof(MainViewModel.CanStartMonitoring) or nameof(MainViewModel.CanStopMonitoring))
@@ -36,6 +38,8 @@ public partial class App : System.Windows.Application
                 UpdateTrayState();
             }
         };
+        mainWindow.ViewModel.PropertyChanged += viewModelPropertyChanged;
+        mainWindow.RestoreSavedPaths();
         UpdateTrayState();
         mainWindow.Show();
     }
@@ -83,6 +87,11 @@ public partial class App : System.Windows.Application
 
     protected override void OnExit(ExitEventArgs e)
     {
+        if (mainWindow is not null && viewModelPropertyChanged is not null)
+        {
+            mainWindow.ViewModel.PropertyChanged -= viewModelPropertyChanged;
+            viewModelPropertyChanged = null;
+        }
         lifecycle?.Dispose();
         base.OnExit(e);
     }

@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using DDRGpScoreViewer.Data;
+using DDRGpScoreViewer.Models;
 using Xunit;
 
 namespace DDRGpScoreViewer.Tests;
@@ -132,6 +133,37 @@ public sealed class ScoreViewerRepositoryTests
 
         Assert.Contains("読み込めません", exception.UserMessage, StringComparison.Ordinal);
         Assert.Equal(hashBefore, Hash(invalidPath));
+    }
+
+    [Fact]
+    public void InspectMasterDatabase_distinguishes_missing_compatible_and_incompatible()
+    {
+        using var fixture = new DatabaseFixture();
+        var repository = new ScoreViewerRepository();
+
+        var compatible = repository.InspectMasterDatabase(fixture.MasterPath);
+        Assert.Equal(MasterDatabaseStatus.Compatible, compatible.Status);
+        Assert.Equal("master-v1", compatible.Version);
+
+        var missing = repository.InspectMasterDatabase(
+            Path.Combine(fixture.DirectoryPath, "missing-master.sqlite"));
+        Assert.Equal(MasterDatabaseStatus.Missing, missing.Status);
+
+        fixture.ExecuteMasterSql("DROP TABLE charts;");
+        var incompatible = repository.InspectMasterDatabase(fixture.MasterPath);
+        Assert.Equal(MasterDatabaseStatus.Incompatible, incompatible.Status);
+        Assert.False(incompatible.IsCompatible);
+    }
+
+    [Fact]
+    public void InspectMasterDatabase_does_not_modify_the_selected_file()
+    {
+        using var fixture = new DatabaseFixture();
+        var hashBefore = Hash(fixture.MasterPath);
+
+        _ = new ScoreViewerRepository().InspectMasterDatabase(fixture.MasterPath);
+
+        Assert.Equal(hashBefore, Hash(fixture.MasterPath));
     }
 
     private static string Hash(string path) =>
