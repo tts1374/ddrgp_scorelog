@@ -178,7 +178,7 @@ def recognize_rank_roi(image: Image.Image) -> RankRoiRecognition:
     """Classify only FAILED/E versus formally non-FAILED in the rank ROI.
 
     Normal rank glyphs are intentionally not decoded here.  The visual gate uses
-    the stable white FAILED glyph shape versus the gold normal-rank glyph; an
+    the stable white FAILED glyph shape versus a saturated normal-rank glyph; an
     unclear ROI remains unresolved so score cannot imply FAILED.
     """
     rgb = np.asarray(image.convert("RGB")).astype(np.float32)
@@ -201,25 +201,36 @@ def recognize_rank_roi(image: Image.Image) -> RankRoiRecognition:
         & (blue < 155)
         & (red > blue * 1.35)
     )
-    bright = luma > 145
+    maximum = rgb.max(axis=2)
+    minimum = rgb.min(axis=2)
+    delta = maximum - minimum
+    saturation = np.zeros_like(maximum)
+    np.divide(delta, maximum, out=saturation, where=maximum != 0)
+    chromatic = (saturation >= 0.25) & (maximum >= 64) & (luma >= 50)
     white_ratio = float(white.mean())
     yellow_ratio = float(yellow.mean())
-    foreground_ratio = float((bright & (white | yellow)).mean())
+    chromatic_ratio = float(chromatic.mean())
+    foreground_ratio = float((white | yellow | chromatic).mean())
 
     if foreground_ratio < 0.035:
         return RankRoiRecognition(
             "ambiguous", None, None, "rank_glyph_not_detected"
         )
     e_shape_score = _rank_e_shape_score(white)
-    if e_shape_score is not None and yellow_ratio <= 0.10:
+    if (
+        e_shape_score is not None
+        and yellow_ratio <= 0.10
+        and chromatic_ratio <= 0.20
+    ):
         return RankRoiRecognition(
             "failed",
             True,
             min(1.0, 0.985 + min(0.015, max(0.0, e_shape_score - 0.55) * 0.05)),
             "failed_e_glyph_shape",
         )
-    if yellow_ratio >= 0.12 and white_ratio <= 0.10:
-        margin = min((yellow_ratio - 0.12) / 0.18, (0.10 - white_ratio) / 0.10)
+    if (yellow_ratio >= 0.12 or chromatic_ratio >= 0.20) and white_ratio <= 0.10:
+        normal_strength = max(yellow_ratio / 0.12, chromatic_ratio / 0.20)
+        margin = max(0.0, min(1.0, normal_strength - 1.0))
         return RankRoiRecognition(
             "non_failed",
             False,
@@ -238,8 +249,12 @@ def _rank_e_shape_score(white_mask: np.ndarray) -> float | None:
     """
     roi_height, roi_width = white_mask.shape
     best_score: float | None = None
-    template = _rank_e_template()
-    for component, top, left in _rank_white_components(white_mask):
+    templates = _rank_e_templates()
+    components = _rank_white_components(white_mask)
+    candidates = list(components)
+    if len(components) > 1:
+        candidates.append(_rank_white_component_union(components))
+    for component, top, left in candidates:
         component_height, component_width = component.shape
         height_ratio = component_height / roi_height
         width_ratio = component_width / roi_width
@@ -255,7 +270,7 @@ def _rank_e_shape_score(white_mask: np.ndarray) -> float | None:
             continue
 
         occupancy = float(component.mean())
-        if not 0.12 <= occupancy <= 0.70:
+        if not 0.12 <= occupancy <= 0.78:
             continue
 
         normalized = np.asarray(
@@ -263,11 +278,13 @@ def _rank_e_shape_score(white_mask: np.ndarray) -> float | None:
                 (32, 48), resample=Image.Resampling.NEAREST
             )
         ) > 0
-        intersection = float(np.logical_and(normalized, template).sum())
-        union = float(np.logical_or(normalized, template).sum())
-        if union == 0:
+        iou = max(
+            float(np.logical_and(normalized, template).sum())
+            / float(np.logical_or(normalized, template).sum())
+            for template in templates
+        )
+        if not np.isfinite(iou):
             continue
-        iou = intersection / union
         row_occupancy = normalized.mean(axis=1)
         bar_presence = (
             float(row_occupancy[0:12].max()),
@@ -289,6 +306,43 @@ def _rank_e_template() -> np.ndarray:
     template[19:29, 2:26] = True
     template[39:48, 2:30] = True
     return template
+
+
+def _rank_e_disconnected_template() -> np.ndarray:
+    template = np.zeros((48, 32), dtype=bool)
+    template[:, 0:10] = True
+    template[0:12, 14:32] = True
+    template[16:32, 14:32] = True
+    template[36:48, 14:32] = True
+    return template
+
+
+def _rank_e_templates() -> tuple[np.ndarray, np.ndarray]:
+    return _rank_e_template(), _rank_e_disconnected_template()
+
+
+def _rank_white_component_union(
+    components: list[tuple[np.ndarray, int, int]],
+) -> tuple[np.ndarray, int, int]:
+    top = min(component_top for _component, component_top, _left in components)
+    left = min(component_left for _component, _top, component_left in components)
+    bottom = max(
+        component_top + component.shape[0] - 1
+        for component, component_top, _left in components
+    )
+    right = max(
+        component_left + component.shape[1] - 1
+        for component, _top, component_left in components
+    )
+    union = np.zeros((bottom - top + 1, right - left + 1), dtype=bool)
+    for component, component_top, component_left in components:
+        top_offset = component_top - top
+        left_offset = component_left - left
+        union[
+            top_offset : top_offset + component.shape[0],
+            left_offset : left_offset + component.shape[1],
+        ] |= component
+    return union, top, left
 
 
 def _rank_white_components(

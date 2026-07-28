@@ -41,10 +41,10 @@ def _e_rank_roi() -> Image.Image:
     image = Image.new("RGB", (160, 126), "black")
     draw = ImageDraw.Draw(image)
     color = (240, 240, 240)
-    draw.rectangle((20, 10, 35, 115), fill=color)
-    draw.rectangle((20, 10, 105, 25), fill=color)
-    draw.rectangle((20, 55, 95, 70), fill=color)
-    draw.rectangle((20, 100, 105, 115), fill=color)
+    draw.rectangle((20, 10, 47, 116), fill=color)
+    draw.rectangle((57, 10, 104, 34), fill=color)
+    draw.rectangle((57, 51, 104, 75), fill=color)
+    draw.rectangle((57, 91, 104, 116), fill=color)
     return image
 
 
@@ -107,6 +107,7 @@ def test_rank_from_score_rejects_invalid_formal_score(score: object) -> None:
 def test_rank_roi_only_decides_failed_e_or_non_failed() -> None:
     assert recognize_rank_roi(_e_rank_roi()).is_failed is True
     assert recognize_rank_roi(_rank_roi((255, 220, 0))).is_failed is False
+    assert recognize_rank_roi(_rank_roi((255, 40, 20))).is_failed is False
 
     ambiguous = Image.new("RGB", (160, 126), "black")
     assert recognize_rank_roi(ambiguous).is_failed is None
@@ -122,6 +123,42 @@ def test_rank_roi_does_not_treat_white_area_as_failed_e() -> None:
 def test_rank_roi_rejects_white_animation_around_normal_rank() -> None:
     recognition = recognize_rank_roi(_normal_rank_with_white_animation_roi())
     assert recognition.is_failed is not True
+
+
+def test_known_failed_result_samples_recognize_e_when_available() -> None:
+    root = Path("samples/screenshots/organized/result")
+    paths = [
+        root / "result_015_sp_difficult_lv08_score469980.png",
+        root / "result_026_sp_challenge_lv16_score180080.png",
+    ]
+    if not all(path.exists() for path in paths):
+        pytest.skip("known FAILED/E sample assets are not available")
+    for path in paths:
+        with Image.open(path) as image:
+            recognition = recognize_rank_roi(
+                runner.crop_roi(image, runner.ROI_DEFINITIONS["rank"])
+            )
+        assert recognition.status == "failed"
+        assert recognition.is_failed is True
+
+
+def test_known_normal_result_samples_recognize_non_failed_when_available() -> None:
+    root = Path("samples/screenshots/organized/result")
+    paths = [
+        root / "result_105_sp_beginner_lv06_chaos_score000000_rank_d.png",
+        root / "result_107_sp_basic_lv06_flow_true_style_score685330_rank_c_plus.png",
+        root / "result_110_sp_expert_lv16_meteora_meteor_score743770_rank_b.png",
+        root / "result_112_sp_challenge_lv16_thank_you_merry_christmas_score788020_rank_b_plus.png",
+    ]
+    if not all(path.exists() for path in paths):
+        pytest.skip("known normal-rank sample assets are not available")
+    for path in paths:
+        with Image.open(path) as image:
+            recognition = recognize_rank_roi(
+                runner.crop_roi(image, runner.ROI_DEFINITIONS["rank"])
+            )
+        assert recognition.status == "non_failed"
+        assert recognition.is_failed is False
 
 
 @pytest.mark.parametrize(
