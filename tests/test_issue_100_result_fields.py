@@ -37,6 +37,29 @@ def _rank_roi(color: tuple[int, int, int]) -> Image.Image:
     return image
 
 
+def _e_rank_roi() -> Image.Image:
+    image = Image.new("RGB", (160, 126), "black")
+    draw = ImageDraw.Draw(image)
+    color = (240, 240, 240)
+    draw.rectangle((20, 10, 35, 115), fill=color)
+    draw.rectangle((20, 10, 105, 25), fill=color)
+    draw.rectangle((20, 55, 95, 70), fill=color)
+    draw.rectangle((20, 100, 105, 115), fill=color)
+    return image
+
+
+def _normal_rank_with_white_animation_roi() -> Image.Image:
+    image = Image.new("RGB", (160, 126), "black")
+    draw = ImageDraw.Draw(image)
+    gold = (255, 220, 0)
+    draw.rectangle((24, 12, 38, 112), fill=gold)
+    draw.rectangle((24, 12, 102, 26), fill=gold)
+    draw.rectangle((24, 98, 102, 112), fill=gold)
+    draw.rectangle((88, 26, 102, 98), fill=gold)
+    draw.rectangle((108, 10, 150, 74), fill=(240, 240, 240))
+    return image
+
+
 @pytest.mark.parametrize(
     ("score", "expected"),
     [
@@ -82,11 +105,23 @@ def test_rank_from_score_rejects_invalid_formal_score(score: object) -> None:
 
 
 def test_rank_roi_only_decides_failed_e_or_non_failed() -> None:
-    assert recognize_rank_roi(_rank_roi((240, 240, 240))).is_failed is True
+    assert recognize_rank_roi(_e_rank_roi()).is_failed is True
     assert recognize_rank_roi(_rank_roi((255, 220, 0))).is_failed is False
 
     ambiguous = Image.new("RGB", (160, 126), "black")
     assert recognize_rank_roi(ambiguous).is_failed is None
+
+
+def test_rank_roi_does_not_treat_white_area_as_failed_e() -> None:
+    white_animation = _rank_roi((240, 240, 240))
+    recognition = recognize_rank_roi(white_animation)
+    assert recognition.is_failed is None
+    assert recognition.reason != "failed_e_glyph_shape"
+
+
+def test_rank_roi_rejects_white_animation_around_normal_rank() -> None:
+    recognition = recognize_rank_roi(_normal_rank_with_white_animation_roi())
+    assert recognition.is_failed is not True
 
 
 @pytest.mark.parametrize(
@@ -128,7 +163,7 @@ def test_clear_type_does_not_read_rank_effects() -> None:
 
 def test_failed_rank_overrides_score_and_count_in_result_fields() -> None:
     recognition = recognize_result_fields(
-        rank_roi=_rank_roi((240, 240, 240)),
+        rank_roi=_e_rank_roi(),
         flare_roi=Image.new("RGB", (120, 130), "black"),
         score=990_000,
         judgment_counts={},

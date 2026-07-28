@@ -178,8 +178,8 @@ def recognize_rank_roi(image: Image.Image) -> RankRoiRecognition:
     """Classify only FAILED/E versus formally non-FAILED in the rank ROI.
 
     Normal rank glyphs are intentionally not decoded here.  The visual gate uses
-    the stable white FAILED glyph versus the gold normal-rank glyph; an unclear
-    ROI remains unresolved so score cannot imply FAILED.
+    the stable white FAILED glyph shape versus the gold normal-rank glyph; an
+    unclear ROI remains unresolved so score cannot imply FAILED.
     """
     rgb = np.asarray(image.convert("RGB")).astype(np.float32)
     if rgb.size == 0:
@@ -210,13 +210,13 @@ def recognize_rank_roi(image: Image.Image) -> RankRoiRecognition:
         return RankRoiRecognition(
             "ambiguous", None, None, "rank_glyph_not_detected"
         )
-    if white_ratio >= 0.12 and yellow_ratio <= 0.055:
-        margin = min((white_ratio - 0.12) / 0.12, (0.055 - yellow_ratio) / 0.055)
+    e_shape_score = _rank_e_shape_score(white)
+    if e_shape_score is not None and yellow_ratio <= 0.10:
         return RankRoiRecognition(
             "failed",
             True,
-            min(1.0, 0.985 + max(0.0, min(1.0, margin)) * 0.015),
-            "failed_e_glyph",
+            min(1.0, 0.985 + min(0.015, max(0.0, e_shape_score - 0.55) * 0.05)),
+            "failed_e_glyph_shape",
         )
     if yellow_ratio >= 0.12 and white_ratio <= 0.10:
         margin = min((yellow_ratio - 0.12) / 0.18, (0.10 - white_ratio) / 0.10)
@@ -227,6 +227,112 @@ def recognize_rank_roi(image: Image.Image) -> RankRoiRecognition:
             "non_failed_rank_glyph",
         )
     return RankRoiRecognition("ambiguous", None, None, "rank_glyph_ambiguous")
+
+
+def _rank_e_shape_score(white_mask: np.ndarray) -> float | None:
+    """Return a shape-match score only for a sufficiently complete E glyph.
+
+    A large white area is not enough: RESULT animations can cover much of the
+    rank ROI.  Components are normalized to a small E template and checked for
+    the E's stem and three horizontal bars, with a centered, rank-sized bbox.
+    """
+    roi_height, roi_width = white_mask.shape
+    best_score: float | None = None
+    template = _rank_e_template()
+    for component, top, left in _rank_white_components(white_mask):
+        component_height, component_width = component.shape
+        height_ratio = component_height / roi_height
+        width_ratio = component_width / roi_width
+        center_x = (left + component_width / 2) / roi_width
+        center_y = (top + component_height / 2) / roi_height
+        if (
+            height_ratio < 0.45
+            or width_ratio < 0.10
+            or not 0.15 <= center_x <= 0.85
+            or not 0.20 <= center_y <= 0.80
+            or not 0.20 <= component_width / component_height <= 1.35
+        ):
+            continue
+
+        occupancy = float(component.mean())
+        if not 0.12 <= occupancy <= 0.70:
+            continue
+
+        normalized = np.asarray(
+            Image.fromarray(component.astype(np.uint8) * 255).resize(
+                (32, 48), resample=Image.Resampling.NEAREST
+            )
+        ) > 0
+        intersection = float(np.logical_and(normalized, template).sum())
+        union = float(np.logical_or(normalized, template).sum())
+        if union == 0:
+            continue
+        iou = intersection / union
+        row_occupancy = normalized.mean(axis=1)
+        bar_presence = (
+            float(row_occupancy[0:12].max()),
+            float(row_occupancy[16:32].max()),
+            float(row_occupancy[36:48].max()),
+        )
+        stem_presence = float(normalized[:, 2:10].mean())
+        if iou < 0.55 or min(bar_presence) < 0.55 or stem_presence < 0.55:
+            continue
+        score = 0.70 * iou + 0.20 * min(bar_presence) + 0.10 * stem_presence
+        best_score = score if best_score is None else max(best_score, score)
+    return best_score
+
+
+def _rank_e_template() -> np.ndarray:
+    template = np.zeros((48, 32), dtype=bool)
+    template[:, 2:10] = True
+    template[0:9, 2:30] = True
+    template[19:29, 2:26] = True
+    template[39:48, 2:30] = True
+    return template
+
+
+def _rank_white_components(
+    white_mask: np.ndarray,
+) -> list[tuple[np.ndarray, int, int]]:
+    """Return connected white components as cropped masks with top/left offsets."""
+    height, width = white_mask.shape
+    visited = np.zeros_like(white_mask, dtype=bool)
+    components: list[tuple[np.ndarray, int, int]] = []
+    for start_y, start_x in zip(*np.nonzero(white_mask), strict=True):
+        if visited[start_y, start_x]:
+            continue
+        stack = [(int(start_y), int(start_x))]
+        visited[start_y, start_x] = True
+        points: list[tuple[int, int]] = []
+        while stack:
+            y, x = stack.pop()
+            points.append((y, x))
+            for offset_y in (-1, 0, 1):
+                for offset_x in (-1, 0, 1):
+                    if offset_y == 0 and offset_x == 0:
+                        continue
+                    neighbor_y = y + offset_y
+                    neighbor_x = x + offset_x
+                    if not (
+                        0 <= neighbor_y < height
+                        and 0 <= neighbor_x < width
+                        and white_mask[neighbor_y, neighbor_x]
+                        and not visited[neighbor_y, neighbor_x]
+                    ):
+                        continue
+                    visited[neighbor_y, neighbor_x] = True
+                    stack.append((neighbor_y, neighbor_x))
+        if len(points) < 24:
+            continue
+        coordinates = np.asarray(points, dtype=np.int32)
+        top = int(coordinates[:, 0].min())
+        left = int(coordinates[:, 1].min())
+        bottom = int(coordinates[:, 0].max())
+        right = int(coordinates[:, 1].max())
+        component = np.zeros((bottom - top + 1, right - left + 1), dtype=bool)
+        component[coordinates[:, 0] - top, coordinates[:, 1] - left] = True
+        components.append((component, top, left))
+    return components
 
 
 def recognize_failed_rank(image: Image.Image) -> RankRoiRecognition:
@@ -317,7 +423,7 @@ def recognize_result_fields(
     if rank_evidence.status == "failed":
         rank = "E"
         rank_status = "recognized"
-        rank_reason = "failed_e_glyph"
+        rank_reason = rank_evidence.reason
         clear_type = "FAILED"
         clear_status = "recognized"
         clear_reason = "failed_rank_has_priority"
