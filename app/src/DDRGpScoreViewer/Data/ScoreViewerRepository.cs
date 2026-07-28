@@ -32,7 +32,7 @@ public sealed class ScoreViewerRepository
             ["plays"] =
                 ["play_id", "played_at", "master_version", "song_id", "chart_id", "score",
                  "max_combo", "marvelous", "perfect", "great", "good", "miss", "ex_score",
-                 "rank", "clear_type", "capture_hash", "source_capture_id", "duplicate_key",
+                 "rank", "clear_type", "flare_rank", "capture_hash", "source_capture_id", "duplicate_key",
                  "analysis_confidence", "app_version", "created_at"],
             ["analysis_logs"] =
                 ["analysis_id", "play_id", "source_capture_id", "analysis_status",
@@ -85,7 +85,7 @@ public sealed class ScoreViewerRepository
                   master_version TEXT NOT NULL,
                   song_id TEXT NOT NULL,
                   chart_id TEXT NOT NULL,
-                  score INTEGER NOT NULL CHECK (score BETWEEN 0 AND 1000000),
+                  score INTEGER NOT NULL CHECK (score BETWEEN 0 AND 1000000 AND score % 10 = 0),
                   max_combo INTEGER NOT NULL CHECK (max_combo >= 0),
                   marvelous INTEGER NOT NULL CHECK (marvelous >= 0),
                   perfect INTEGER NOT NULL CHECK (perfect >= 0),
@@ -95,6 +95,12 @@ public sealed class ScoreViewerRepository
                   ex_score INTEGER NOT NULL CHECK (ex_score >= 0),
                   rank TEXT NOT NULL,
                   clear_type TEXT NOT NULL,
+                  flare_rank TEXT CHECK (
+                    flare_rank IS NULL OR flare_rank IN (
+                      'I', 'II', 'III', 'IV', 'V', 'VI',
+                      'VII', 'VIII', 'IX', 'EX'
+                    )
+                  ),
                   capture_hash TEXT NOT NULL REFERENCES source_captures(capture_hash),
                   source_capture_id TEXT NOT NULL REFERENCES source_captures(capture_id),
                   duplicate_key TEXT NOT NULL UNIQUE,
@@ -847,7 +853,7 @@ public sealed class ScoreViewerRepository
         command.CommandText =
             """
             SELECT p.play_id, p.played_at, p.created_at, p.song_id, p.chart_id,
-                   p.score, p.ex_score, p.rank, p.clear_type, p.max_combo,
+                   p.score, p.ex_score, p.rank, p.clear_type, p.flare_rank, p.max_combo,
                    p.marvelous, p.perfect, p.great, p.good, p.miss,
                    COALESCE(sc.source_kind, 'unknown')
             FROM plays p
@@ -868,8 +874,9 @@ public sealed class ScoreViewerRepository
                 found ? chart!.Difficulty : "参照情報なし",
                 found ? chart!.Level : null,
                 reader.GetInt32(5), reader.GetInt32(6), reader.GetString(7), reader.GetString(8),
-                reader.GetInt32(9), reader.GetInt32(10), reader.GetInt32(11), reader.GetInt32(12),
-                reader.GetInt32(13), reader.GetInt32(14), reader.GetString(15), !found));
+                reader.IsDBNull(9) ? null : reader.GetString(9), reader.GetInt32(10),
+                reader.GetInt32(11), reader.GetInt32(12), reader.GetInt32(13), reader.GetInt32(14),
+                reader.GetInt32(15), reader.GetString(16), !found));
         }
         return result;
     }

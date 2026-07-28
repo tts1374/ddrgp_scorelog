@@ -12,7 +12,7 @@ public sealed class ScoreViewerRepositoryTests
     {
         using var fixture = new DatabaseFixture();
         fixture.AddPlay("older", "2026-07-12T10:00:00+00:00", 990_000, 2_400);
-        fixture.AddPlay("newer", "2026-07-12T11:00:00+00:00", 980_000, 2_500);
+        fixture.AddPlay("newer", "2026-07-12T11:00:00+00:00", 980_000, 2_500, flareRank: "EX");
         var scoreHashBefore = Hash(fixture.ScorePath);
         var masterHashBefore = Hash(fixture.MasterPath);
 
@@ -26,6 +26,8 @@ public sealed class ScoreViewerRepositoryTests
         Assert.Equal(500, data.Plays[0].MaxCombo);
         Assert.Equal(400, data.Plays[0].Marvelous);
         Assert.Equal("manual", data.Plays[0].SourceKind);
+        Assert.Equal("EX", data.Plays[0].FlareRank);
+        Assert.Equal("FLARE EX", data.Plays[0].FlareRankDisplay);
 
         var best = Assert.Single(data.ChartBests);
         Assert.Equal(990_000, best.BestScore);
@@ -120,7 +122,7 @@ public sealed class ScoreViewerRepositoryTests
     [InlineData("DELETE FROM schema_migrations;")]
     [InlineData("PRAGMA writable_schema = ON; " +
                 "UPDATE sqlite_schema SET sql = REPLACE(sql, " +
-                "'CHECK (score BETWEEN 0 AND 1000000)', '') WHERE name = 'plays'; " +
+                "'CHECK (score BETWEEN 0 AND 1000000 AND score % 10 = 0)', '') WHERE name = 'plays'; " +
                 "PRAGMA writable_schema = OFF; PRAGMA schema_version = 2;")]
     public void Load_rejects_incompatible_score_database_without_modifying_it(string mutation)
     {

@@ -16,6 +16,7 @@ public sealed record PlayHistoryItem(
     int ExScore,
     string Rank,
     string ClearType,
+    string? FlareRank,
     int MaxCombo,
     int Marvelous,
     int Perfect,
@@ -36,6 +37,8 @@ public sealed record PlayHistoryItem(
     public string LevelDisplay => Level is null ? "—" : $"Lv.{Level}";
     public string ScoreDisplay => Score.ToString("N0");
     public string ExScoreDisplay => ExScore.ToString("N0");
+    public string FlareRankDisplay =>
+        string.IsNullOrWhiteSpace(FlareRank) ? "—" : $"FLARE {FlareRank}";
     public string MasterReferenceStatus => MasterReferenceMissing
         ? $"参照情報なし（song_id: {SongId} / chart_id: {ChartId}）"
         : "参照済み";

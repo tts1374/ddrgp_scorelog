@@ -33,7 +33,7 @@ internal sealed class DatabaseFixture : IDisposable
           master_version TEXT NOT NULL,
           song_id TEXT NOT NULL,
           chart_id TEXT NOT NULL,
-          score INTEGER NOT NULL CHECK (score BETWEEN 0 AND 1000000),
+          score INTEGER NOT NULL CHECK (score BETWEEN 0 AND 1000000 AND score % 10 = 0),
           max_combo INTEGER NOT NULL CHECK (max_combo >= 0),
           marvelous INTEGER NOT NULL CHECK (marvelous >= 0),
           perfect INTEGER NOT NULL CHECK (perfect >= 0),
@@ -43,6 +43,12 @@ internal sealed class DatabaseFixture : IDisposable
           ex_score INTEGER NOT NULL CHECK (ex_score >= 0),
           rank TEXT NOT NULL,
           clear_type TEXT NOT NULL,
+          flare_rank TEXT CHECK (
+            flare_rank IS NULL OR flare_rank IN (
+              'I', 'II', 'III', 'IV', 'V', 'VI',
+              'VII', 'VIII', 'IX', 'EX'
+            )
+          ),
           capture_hash TEXT NOT NULL REFERENCES source_captures(capture_hash),
           source_capture_id TEXT NOT NULL REFERENCES source_captures(capture_id),
           duplicate_key TEXT NOT NULL UNIQUE,
@@ -105,7 +111,8 @@ internal sealed class DatabaseFixture : IDisposable
         int score,
         int exScore,
         string songId = "song-1",
-        string chartId = "chart-1")
+        string chartId = "chart-1",
+        string? flareRank = null)
     {
         using var connection = OpenWritable(ScorePath);
         connection.Open();
@@ -118,10 +125,10 @@ internal sealed class DatabaseFixture : IDisposable
             INSERT INTO plays (
               play_id, played_at, master_version, song_id, chart_id, score, max_combo,
               marvelous, perfect, great, good, miss, ex_score, rank, clear_type,
-              capture_hash, source_capture_id, duplicate_key, analysis_confidence, app_version
+              flare_rank, capture_hash, source_capture_id, duplicate_key, analysis_confidence, app_version
             ) VALUES (
               $play_id, $played_at, 'master-v1', $song_id, $chart_id, $score, 500,
-              400, 80, 10, 2, 1, $ex_score, 'AAA', 'CLEAR',
+              400, 80, 10, 2, 1, $ex_score, 'AAA', 'CLEAR', $flare_rank,
               $capture_hash, $capture_id, $duplicate_key, 0.99, 'test'
             );
             """;
@@ -133,6 +140,7 @@ internal sealed class DatabaseFixture : IDisposable
         command.Parameters.AddWithValue("$chart_id", chartId);
         command.Parameters.AddWithValue("$score", score);
         command.Parameters.AddWithValue("$ex_score", exScore);
+        command.Parameters.AddWithValue("$flare_rank", (object?)flareRank ?? DBNull.Value);
         command.Parameters.AddWithValue("$duplicate_key", $"duplicate-{playId}");
         command.ExecuteNonQuery();
     }

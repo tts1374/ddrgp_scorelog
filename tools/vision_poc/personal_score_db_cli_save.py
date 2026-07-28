@@ -65,6 +65,7 @@ _FORMAL_PLAY_TEXT_KEYS = (
     "clear_type",
     "duplicate_key",
 )
+_FORMAL_PLAY_OPTIONAL_TEXT_KEYS = ("flare_rank",)
 _FORMAL_PLAY_INTEGER_KEYS = (
     "score",
     "max_combo",
@@ -75,7 +76,9 @@ _FORMAL_PLAY_INTEGER_KEYS = (
     "miss",
     "ex_score",
 )
-_FORMAL_PLAY_KEYS = frozenset(_FORMAL_PLAY_TEXT_KEYS + _FORMAL_PLAY_INTEGER_KEYS)
+_FORMAL_PLAY_KEYS = frozenset(
+    _FORMAL_PLAY_TEXT_KEYS + _FORMAL_PLAY_INTEGER_KEYS + _FORMAL_PLAY_OPTIONAL_TEXT_KEYS
+)
 _EXCLUSION_KEYS = frozenset({"kind", "reason"})
 
 
@@ -115,6 +118,7 @@ def personal_score_db_save_input_template() -> dict[str, object]:
             "ex_score": None,
             "rank": "",
             "clear_type": "",
+            "flare_rank": None,
             "duplicate_key": "",
         },
         "exclusion": None,
@@ -483,6 +487,16 @@ def _load_formal_play(value: object) -> PersonalScoreDbFormalPlayValues | None:
     }
     values.update(
         {
+            key: _optional_str(
+                formal[key],
+                f"input.formal_play.{key}",
+                default=None,
+            )
+            for key in _FORMAL_PLAY_OPTIONAL_TEXT_KEYS
+        }
+    )
+    values.update(
+        {
             key: _optional_int(formal[key], f"input.formal_play.{key}")
             for key in _FORMAL_PLAY_INTEGER_KEYS
         }
@@ -542,7 +556,7 @@ def _require_str(value: object, field_name: str) -> str:
     return value
 
 
-def _optional_str(value: object, field_name: str, *, default: str) -> str:
+def _optional_str(value: object, field_name: str, *, default: str | None) -> str | None:
     if value is None:
         return default
     return _require_str(value, field_name)

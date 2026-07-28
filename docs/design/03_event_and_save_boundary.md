@@ -316,7 +316,7 @@ event処理は入力順の直列で、次の3段階を混同しない。
 2. confirmed eventは自動formal昇格adapterでfield別根拠を検査する。duplicate eventはplayなしの除外入力、non-duplicateは全正式根拠が揃う場合だけformal inputを構築する。
 3. 既存 `personal_score_db_workflow` をeventにつき最大1回呼び、`saved`、DB `duplicate`、`excluded`、`unresolved`、`invalid`、artifact failure、DB拒否をそのまま返す。`invalid`、artifact failure、DB拒否などのfatal statusが1件でもあればsessionは `workflow_failed` とし、CLIは非0終了する。
 
-自動formal根拠は候補値の存在だけでは足りない。played_atはcapture UTC、master versionはmaster metadata、identityは採用済みM5根拠、数字は採用済みM7a profile、rank/clear typeはそれぞれ採用済みrecognizer、duplicate keyは正式capture-event方式というfield固有sourceと最低confidenceを要求する。expected値、`match`、M8 preview、raw OCR、相対時刻はsourceにできない。現行解析でrank/clear type等の採用済み根拠がないeventは `unresolved` であり、play rowを作らない。
+自動formal根拠は候補値の存在だけでは足りない。played_atはcapture UTC、master versionはmaster metadata、identityは採用済みM5根拠、数字は採用済みM7a profile、rank/clear typeはそれぞれ採用済みrecognizer、duplicate keyは正式capture-event方式というfield固有sourceと最低confidenceを要求する。formal scoreは0〜1,000,000の10刻みで検証する。RESULTのrank ROIはFAILEDを示すE判定だけに使い、Eならrank=`E` / clear_type=`FAILED`とする。非FAILEDのrankはformal scoreの閾値表から算出し、clear_typeはMARVELOUS、PERFECT、GREAT、GOOD、O.K.、Missの6判定数だけから算出する。rank周囲のanimation表示やexpected値、`match`、M8 preview、raw OCR、相対時刻はsourceにできない。flare_rankはrankから独立したbadge ROIで認識できた場合だけ採用し、認識不能時は `null` として保存継続し、no-flareの証明にはしない。現行解析でrank/clear type等の採用済み根拠がないeventは `unresolved` であり、play rowを作らない。
 
 正式DB transaction後に `saved` と `play_id` が返ったeventだけviewerをread-only再読込する。sessionが `workflow_failed` でも、それ以前にcommit済みのsaved playは再読込し、部分成功件数とfatal status・理由を同時に表示する。他statusを成功playへ丸めない。manual reviewed JSONは従来入口を維持し、自動capture由来のadapter入力と混同しない。
 

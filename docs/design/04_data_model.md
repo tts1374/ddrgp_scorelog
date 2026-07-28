@@ -205,6 +205,7 @@ M4初期実装では、source snapshot は生成DB内に保存する。DB自体�
 - `score`
 - `rank`
 - `clear_type`
+- `flare_rank`
 - `max_combo`
 - `marvelous`
 - `perfect`
@@ -276,9 +277,9 @@ DB rowから未生成artifactを参照させないため、入力・adapter・DB
 
 保存成功時は `source_captures`、`plays`、`analysis_logs` を1 transactionで追加する。duplicate、低信頼度、error、その他skipは `play=None` とし、source captureとanalysisだけを記録する。これにより「解析したが保存しなかった」事実を、成功play rowへ混ぜずに追跡できる。ready入力の明示 `duplicate_key` が既存playと衝突した場合も同じ非保存モデルへ変換し、analysisを `skipped` / `duplicate` / `duplicate_key_already_saved` / `duplicate=true` に固定する。
 
-`played_at` / `captured_at` はtimezone付きISO 8601、`rank` / `clear_type` は空文字不可とする。timestampなしpreviewの `played_at_ms=0`、PoCの `score:` / `file:` duplicate key、由来不明の `source_kind=unknown` は正式writer入力として拒否する。
+`played_at` / `captured_at` はtimezone付きISO 8601、`rank` / `clear_type` は空文字不可とする。`flare_rank` は `I`〜`IX` / `EX` または `null` を許可し、認識不能を理由に保存全体を止めない。timestampなしpreviewの `played_at_ms=0`、PoCの `score:` / `file:` duplicate key、由来不明の `source_kind=unknown` は正式writer入力として拒否する。
 
-`tools.vision_poc.personal_score_db_save_adapter` はこの直前のpure境界を担当する。M8 payload/planned rowを `candidate_material` として受け取っても、その候補ID、候補数字、相対時刻は `PersonalScoreDbFormalPlayValues` へ転記しない。レビュー済み正式値が不足または正式入力検査に失敗する場合は `unresolved` として `PersonalScoreDbSaveInput` を返さない。duplicateまたは明示された低信頼度/error/skipは `excluded` とし、`plays` 値を持たないsource capture + analysis入力だけを返す。
+`tools.vision_poc.personal_score_db_save_adapter` はこの直前のpure境界を担当する。M8 payload/planned rowを `candidate_material` として受け取っても、その候補ID、候補数字、相対時刻は `PersonalScoreDbFormalPlayValues` へ転記しない。レビュー済み正式値にrank、clear type、任意のflare_rankを明示し、その他の正式値も揃った場合だけ `ready` として `PersonalScoreDbSaveInput` を返す。flare_rankを認識できない場合は `null` のまま扱い、candidate/raw/previewから補完しない。レビュー済み正式値が不足または正式入力検査に失敗する場合は `unresolved` として `PersonalScoreDbSaveInput` を返さない。duplicateまたは明示された低信頼度/error/skipは `excluded` とし、`plays` 値を持たないsource capture + analysis入力だけを返す。
 
 `tools.vision_poc.personal_score_db_file_save` はDB pathとadapter入力を明示的に受ける単発の副作用境界である。`PersonalScoreDbFileSaveResult` は `db_path`、`adapter_status`、`reasons`、`written`、`source_capture_id`、`analysis_id`、任意の `play_id` を返す。`written=true` はreadyまたはexcludedの正式row群をtransactionで記録できたことを表し、play保存の有無は `play_id` で区別する。DB保存直前duplicate collisionは `adapter_status=excluded`、理由 `duplicate_key_already_saved`、`play_id=None` として返す。`unresolved` は `written=false`、各IDなしのままDB準備前に返す。
 

@@ -65,6 +65,7 @@ _FORBIDDEN_KEYS = {
     "ex_score",
     "rank",
     "clear_type",
+    "flare_rank",
     "duplicate_key",
     "validation_result_schema_version",
     "adapter_status",

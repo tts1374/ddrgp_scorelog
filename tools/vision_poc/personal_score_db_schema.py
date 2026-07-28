@@ -65,6 +65,7 @@ PERSONAL_SCORE_DB_PLAYS_COLUMNS = (
     "ex_score",
     "rank",
     "clear_type",
+    "flare_rank",
     "capture_hash",
     "source_capture_id",
     "duplicate_key",
@@ -141,7 +142,7 @@ CREATE TABLE IF NOT EXISTS plays (
   master_version TEXT NOT NULL,
   song_id TEXT NOT NULL,
   chart_id TEXT NOT NULL,
-  score INTEGER NOT NULL CHECK (score BETWEEN 0 AND 1000000),
+  score INTEGER NOT NULL CHECK (score BETWEEN 0 AND 1000000 AND score % 10 = 0),
   max_combo INTEGER NOT NULL CHECK (max_combo >= 0),
   marvelous INTEGER NOT NULL CHECK (marvelous >= 0),
   perfect INTEGER NOT NULL CHECK (perfect >= 0),
@@ -151,6 +152,12 @@ CREATE TABLE IF NOT EXISTS plays (
   ex_score INTEGER NOT NULL CHECK (ex_score >= 0),
   rank TEXT NOT NULL,
   clear_type TEXT NOT NULL,
+  flare_rank TEXT CHECK (
+    flare_rank IS NULL OR flare_rank IN (
+      'I', 'II', 'III', 'IV', 'V', 'VI',
+      'VII', 'VIII', 'IX', 'EX'
+    )
+  ),
   capture_hash TEXT NOT NULL REFERENCES source_captures(capture_hash),
   source_capture_id TEXT NOT NULL REFERENCES source_captures(capture_id),
   duplicate_key TEXT NOT NULL UNIQUE,

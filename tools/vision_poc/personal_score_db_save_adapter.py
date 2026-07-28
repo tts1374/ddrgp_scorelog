@@ -38,6 +38,7 @@ class PersonalScoreDbFormalPlayValues:
     rank: str = ""
     clear_type: str = ""
     duplicate_key: str = ""
+    flare_rank: str | None = None
 
 
 @dataclass(frozen=True)
@@ -131,6 +132,7 @@ def adapt_personal_score_db_save_input(
         ex_score=_required_int(formal.ex_score),
         rank=formal.rank,
         clear_type=formal.clear_type,
+        flare_rank=formal.flare_rank,
         capture_hash=adapter_input.capture_hash,
         source_capture_id=adapter_input.capture_id,
         duplicate_key=formal.duplicate_key,

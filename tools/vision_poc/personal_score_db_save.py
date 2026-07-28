@@ -7,6 +7,11 @@ from datetime import datetime
 
 from .personal_score_db_analysis_artifacts import validate_analysis_detail_log_path
 from .personal_score_db_schema import prepare_personal_score_db_for_write
+from .result_fields import (
+    RESULT_CLEAR_TYPE_VALUES,
+    RESULT_FLARE_RANK_VALUES,
+    RESULT_RANK_VALUES,
+)
 
 PERSONAL_SCORE_DB_WRITABLE_SOURCE_KINDS = (
     "manifest",
@@ -57,6 +62,7 @@ class PersonalScoreDbPlayInput:
     duplicate_key: str
     analysis_confidence: float
     app_version: str
+    flare_rank: str | None = None
 
 
 @dataclass(frozen=True)
@@ -287,10 +293,19 @@ def _validate_play(errors: list[str], play: PersonalScoreDbPlayInput) -> None:
     ):
         _require_text(errors, f"play.{field_name}", getattr(play, field_name))
     _require_aware_timestamp(errors, "play.played_at", play.played_at)
+    if play.rank not in RESULT_RANK_VALUES:
+        errors.append("play.rank_invalid")
+    if play.clear_type not in RESULT_CLEAR_TYPE_VALUES:
+        errors.append("play.clear_type_invalid")
+    if play.flare_rank is not None:
+        if not isinstance(play.flare_rank, str) or play.flare_rank not in RESULT_FLARE_RANK_VALUES:
+            errors.append("play.flare_rank_invalid")
     if play.duplicate_key.startswith(("score:", "file:")):
         errors.append("play.duplicate_key_uses_preview_format")
     if not 0 <= play.score <= 1_000_000:
         errors.append("play.score_out_of_range")
+    elif play.score % 10 != 0:
+        errors.append("play.score_not_multiple_of_10")
     for field_name in (
         "max_combo",
         "marvelous",
@@ -367,10 +382,10 @@ def _insert_play(
         INSERT INTO plays (
           play_id, played_at, master_version, song_id, chart_id, score,
           max_combo, marvelous, perfect, great, good, miss, ex_score, rank,
-          clear_type, capture_hash, source_capture_id, duplicate_key,
+          clear_type, flare_rank, capture_hash, source_capture_id, duplicate_key,
           analysis_confidence, app_version
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             play.play_id,
@@ -388,6 +403,7 @@ def _insert_play(
             play.ex_score,
             play.rank,
             play.clear_type,
+            play.flare_rank,
             play.capture_hash,
             play.source_capture_id,
             play.duplicate_key,

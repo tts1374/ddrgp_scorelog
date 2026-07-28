@@ -906,3 +906,9 @@ DB保存はまだ実装しません。`confirmed-events` OCR対象選定が、�
 
 fixture matrixは `tests/fixtures/personal_score_db_migration/plan-matrix-v1.json` です。dry-runはpreflight結果だけを返してDB/backup/`data`/`logs`を変更せず、明示実行候補でもbackup検証がsource transactionより先です。preview/unknown/identity mismatch/newer unsupported/partial state、unsafe path、既存backup conflictは拒否します。
 pure contractのready判定は登録済みのversion transition (`1 -> 2`) に限定し、target versionの任意指定をmigration許可へ昇格させません。version 2のschema writerは次フェーズ以降です。
+
+## RESULT field recognition (Issue #100)
+
+`--m7a-digit-recognition --m7a-digit-rois all` は、同じ confirmed non-duplicate eventについて `result_field_recognition.csv` と `result_field_recognition_summary.json` も生成します。rank ROIはFAILEDを示すE判定専用で、通常rankはformal scoreの閾値表から算出します。clear_typeはMARVELOUS、PERFECT、GREAT、GOOD、O.K.、Missの6判定数から算出し、rank周囲のanimation表示は使いません。flare_rankはrankから独立したbadge ROIで認識できた場合だけ `I`〜`IX` / `EX` を採用し、認識不能時は `null` のまま保存を継続します。
+
+この出力はfield別formal evidenceの材料であり、expected値、candidate、raw OCR、M8 previewを正式値へ昇格させません。正式save inputは `flare_rank` keyを必須（値は文字列または `null`）として読み、version 1の正式schemaで `plays.flare_rank` へnullable保存します。サンプル画像、capture、metadata、CSV/JSON診断出力はGit管理せず、`samples/`、`data/`、`logs/` の既存境界を維持します。
