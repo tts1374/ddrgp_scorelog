@@ -15,11 +15,13 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private readonly IPersonalScoreDbWorkflowRunner workflowRunner;
     private readonly ISingleFrameCaptureService? captureService;
     private readonly IContinuousCaptureService? continuousCaptureService;
+    private readonly ILiveMonitoringCaptureService? liveMonitoringService;
     private readonly ICaptureSaveWorkflowRunner? captureSaveWorkflowRunner;
     private readonly IViewerPathStore? pathStore;
     private readonly ViewerDatabasePaths defaultDatabasePaths;
     private readonly IScoreDatabaseInitializer scoreDatabaseInitializer;
     private readonly IDdrGpWindowEnumerator ddrGpWindowEnumerator;
+    private readonly SynchronizationContext? uiSynchronizationContext;
     private PlayHistoryItem? selectedPlay;
     private string statusTitle = "既定のDBを確認しています";
     private string statusMessage =
@@ -43,6 +45,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private string monitoringTarget = "未選択";
     private string monitoringTargetSize = "—";
     private int monitoringFrameCount;
+    private int monitoringSampledFrameCount;
+    private int monitoringResultFrameCount;
+    private int monitoringConfirmedCandidateCount;
+    private int monitoringDiscardedFrameCount;
+    private int monitoringPendingCandidateCount;
+    private int monitoringCandidateQueueDropCount;
     private DateTimeOffset? monitoringStartedAtUtc;
     private DateTimeOffset? monitoringLatestEventAtUtc;
     private string monitoringReason = "—";
@@ -63,6 +71,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private long monitoringSessionSequence;
     private long activeMonitoringSession;
     private CancellationTokenSource? monitoringCancellation;
+    private ILiveMonitoringCaptureService? activeLiveMonitoringService;
     private int monitoringOperationReserved;
 
     public MainViewModel(
@@ -74,17 +83,20 @@ public sealed class MainViewModel : INotifyPropertyChanged
         IViewerPathStore? pathStore = null,
         ViewerDatabasePaths? defaultDatabasePaths = null,
         IScoreDatabaseInitializer? scoreDatabaseInitializer = null,
-        IDdrGpWindowEnumerator? ddrGpWindowEnumerator = null)
+        IDdrGpWindowEnumerator? ddrGpWindowEnumerator = null,
+        ILiveMonitoringCaptureService? liveMonitoringService = null)
     {
         this.repository = repository;
         this.workflowRunner = workflowRunner;
         this.captureService = captureService;
         this.continuousCaptureService = continuousCaptureService;
+        this.liveMonitoringService = liveMonitoringService;
         this.captureSaveWorkflowRunner = captureSaveWorkflowRunner;
         this.pathStore = pathStore;
         this.defaultDatabasePaths = defaultDatabasePaths ?? ViewerDatabasePaths.ResolveDefault();
         this.scoreDatabaseInitializer = scoreDatabaseInitializer ?? new PersonalScoreDbInitializer();
         this.ddrGpWindowEnumerator = ddrGpWindowEnumerator ?? new DdrGpWindowEnumerator();
+        uiSynchronizationContext = SynchronizationContext.Current;
         scoreDatabasePath = this.defaultDatabasePaths.ScoreDatabasePath;
         masterDatabasePath = this.defaultDatabasePaths.MasterDatabasePath;
         catalogDatabasePath = this.defaultDatabasePaths.JacketCatalogDatabasePath;
@@ -350,6 +362,42 @@ public sealed class MainViewModel : INotifyPropertyChanged
         private set => SetProperty(ref monitoringFrameCount, value);
     }
 
+    public int MonitoringSampledFrameCount
+    {
+        get => monitoringSampledFrameCount;
+        private set => SetProperty(ref monitoringSampledFrameCount, value);
+    }
+
+    public int MonitoringResultFrameCount
+    {
+        get => monitoringResultFrameCount;
+        private set => SetProperty(ref monitoringResultFrameCount, value);
+    }
+
+    public int MonitoringConfirmedCandidateCount
+    {
+        get => monitoringConfirmedCandidateCount;
+        private set => SetProperty(ref monitoringConfirmedCandidateCount, value);
+    }
+
+    public int MonitoringDiscardedFrameCount
+    {
+        get => monitoringDiscardedFrameCount;
+        private set => SetProperty(ref monitoringDiscardedFrameCount, value);
+    }
+
+    public int MonitoringPendingCandidateCount
+    {
+        get => monitoringPendingCandidateCount;
+        private set => SetProperty(ref monitoringPendingCandidateCount, value);
+    }
+
+    public int MonitoringCandidateQueueDropCount
+    {
+        get => monitoringCandidateQueueDropCount;
+        private set => SetProperty(ref monitoringCandidateQueueDropCount, value);
+    }
+
     public string MonitoringStartedAtDisplay => FormatMonitoringTime(monitoringStartedAtUtc);
     public string MonitoringLatestEventAtDisplay => FormatMonitoringTime(monitoringLatestEventAtUtc);
 
@@ -376,7 +424,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
         $"saved={MonitoringResults.Saved}, duplicate={MonitoringResults.Duplicate}, " +
         $"excluded={MonitoringResults.Excluded}, unresolved={MonitoringResults.Unresolved}, " +
         $"analysis_failed={MonitoringResults.AnalysisFailed}, db_rejected={MonitoringResults.DbRejected}, " +
-        $"workflow_failed={MonitoringResults.WorkflowFailed}";
+        $"workflow_failed={MonitoringResults.WorkflowFailed}, sampled={MonitoringSampledFrameCount}, " +
+        $"result={MonitoringResultFrameCount}, candidate={MonitoringConfirmedCandidateCount}, " +
+        $"discarded={MonitoringDiscardedFrameCount}, pending={MonitoringPendingCandidateCount}, " +
+        $"queue_dropped={MonitoringCandidateQueueDropCount}";
 
     public string MonitoringResultAtDisplay =>
         MonitoringResults.RecordedAtUtc == DateTimeOffset.MinValue
@@ -741,12 +792,14 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
 
         ITargetedMonitoringContinuousCaptureService? targetedMonitoringService = null;
+        var liveTargetedMonitoringService = liveMonitoringService;
+        var useLiveMonitoring = automaticWindowDetection && liveTargetedMonitoringService is not null;
         DdrGpWindowCandidate? detectedTarget = null;
         if (automaticWindowDetection)
         {
             targetedMonitoringService = continuousCaptureService as
                 ITargetedMonitoringContinuousCaptureService;
-            if (targetedMonitoringService is null)
+            if (!useLiveMonitoring && targetedMonitoringService is null)
             {
                 HasCaptureStatus = true;
                 CaptureStatusTitle = "監視を開始できません";
@@ -833,21 +886,41 @@ public sealed class MainViewModel : INotifyPropertyChanged
         Volatile.Write(ref activeMonitoringSession, sessionId);
         var sessionCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         monitoringCancellation = sessionCancellation;
+        activeLiveMonitoringService = useLiveMonitoring
+            ? liveTargetedMonitoringService
+            : null;
         HasCaptureStatus = true;
         CaptureStatusTitle = automaticWindowDetection
             ? "検出した対象windowへ接続しています"
             : "対象windowを選択してください";
         CaptureStatusMessage =
-            automaticWindowDetection
-                ? "検出したwindowを明示停止まで取得し、完成manifestだけを解析・正式保存境界へ渡します。"
+            useLiveMonitoring
+                ? "1秒ごとにRESULTSとSCOREを確認し、SCOREが2回安定した候補だけを解析・正式保存します。画像は保管しません。"
+                : automaticWindowDetection
+                    ? "検出したwindowを明示停止まで取得し、完成manifestだけを解析・正式保存境界へ渡します。"
                 : scoreDatabasePath is null
                     ? "選択したwindowを明示停止まで取得します。解析やDB保存は実行しません。"
                     : "選択したwindowを明示停止まで取得し、完成manifestだけを解析・正式保存境界へ渡します。";
         try
         {
             var progress = new CallbackProgress<CaptureSessionProgress>(
-                value => ApplyMonitoringProgress(sessionId, value));
-            var result = automaticWindowDetection
+                value => ApplyMonitoringProgress(sessionId, value),
+                uiSynchronizationContext);
+            var result = useLiveMonitoring
+                ? await liveTargetedMonitoringService!.RunAsync(
+                    detectedTarget!.Handle,
+                    detectedTarget.TargetInfo,
+                    progress,
+                    (frame, observation, token) => ProcessLiveCandidateAsync(
+                        sessionId,
+                        scoreDatabasePath!,
+                        masterDatabasePath!,
+                        catalogDatabasePath,
+                        frame,
+                        observation,
+                        token),
+                    sessionCancellation.Token)
+                : automaticWindowDetection
                 ? await targetedMonitoringService!.RunAsync(
                     detectedTarget!.Handle,
                     detectedTarget.TargetInfo,
@@ -863,6 +936,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
                         sessionCancellation.Token);
             CaptureStatusTitle = result.Status switch
             {
+                CaptureOperationStatus.Cancelled when useLiveMonitoring => "監視を停止しました",
                 CaptureOperationStatus.Saved => "連続キャプチャを保存しました",
                 CaptureOperationStatus.Cancelled => "連続キャプチャをキャンセルしました",
                 CaptureOperationStatus.Unsupported => "画面キャプチャを利用できません",
@@ -876,7 +950,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 _ => "連続キャプチャに失敗しました",
             };
             CaptureStatusMessage = result.UserMessage;
-            if (
+            if (!useLiveMonitoring &&
                 result.Status == CaptureOperationStatus.Saved
                 && result.Output is not null
                 && scoreDatabasePath is not null
@@ -935,6 +1009,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
             if (ReferenceEquals(monitoringCancellation, sessionCancellation))
             {
                 monitoringCancellation = null;
+            }
+            if (ReferenceEquals(activeLiveMonitoringService, liveTargetedMonitoringService))
+            {
+                activeLiveMonitoringService = null;
             }
             sessionCancellation.Dispose();
             continuousCaptureFinished?.TrySetResult();
@@ -1062,6 +1140,225 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
     }
 
+    private Task ProcessLiveCandidateAsync(
+        long sessionId,
+        string scoreDatabasePath,
+        string masterDatabasePath,
+        string? catalogDatabasePath,
+        CapturedFrame frame,
+        LiveResultObservation observation,
+        CancellationToken cancellationToken)
+    {
+        if (uiSynchronizationContext is null ||
+            ReferenceEquals(SynchronizationContext.Current, uiSynchronizationContext))
+        {
+            return ProcessLiveCandidateCoreAsync(
+                sessionId,
+                scoreDatabasePath,
+                masterDatabasePath,
+                catalogDatabasePath,
+                frame,
+                observation,
+                cancellationToken);
+        }
+
+        var completion = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        uiSynchronizationContext.Post(
+            async _ =>
+            {
+                try
+                {
+                    await ProcessLiveCandidateCoreAsync(
+                        sessionId,
+                        scoreDatabasePath,
+                        masterDatabasePath,
+                        catalogDatabasePath,
+                        frame,
+                        observation,
+                        cancellationToken);
+                    completion.TrySetResult();
+                }
+                catch (Exception exception)
+                {
+                    completion.TrySetException(exception);
+                }
+            },
+            null);
+        return completion.Task;
+    }
+
+    private async Task ProcessLiveCandidateCoreAsync(
+        long sessionId,
+        string scoreDatabasePath,
+        string masterDatabasePath,
+        string? catalogDatabasePath,
+        CapturedFrame frame,
+        LiveResultObservation observation,
+        CancellationToken cancellationToken)
+    {
+        if (!CanRunMonitoringWork(sessionId, cancellationToken))
+        {
+            return;
+        }
+
+        HasSaveStatus = true;
+        SaveStatusTitle = "RESULT候補を解析しています";
+        SaveStatusMessage =
+            $"SCORE={observation.Score}の候補を既存の正式保存境界で処理しています。";
+        try
+        {
+            if (!ValidateMasterDatabasesForSave(masterDatabasePath, catalogDatabasePath) ||
+                !CanRunMonitoringWork(sessionId, cancellationToken))
+            {
+                return;
+            }
+            if (captureSaveWorkflowRunner is not ILiveCaptureSaveWorkflowRunner liveRunner)
+            {
+                RecordLiveWorkflowFailure(
+                    sessionId,
+                    cancellationToken,
+                    "live candidate workflow runnerが構成されていません。");
+                return;
+            }
+
+            var result = await liveRunner.RunCandidateAsync(
+                frame,
+                scoreDatabasePath,
+                masterDatabasePath,
+                catalogDatabasePath,
+                cancellationToken);
+            if (!CanRunMonitoringWork(sessionId, cancellationToken))
+            {
+                return;
+            }
+            if (result.SavedPlayIds.Count > 0 &&
+                !ReloadSavedPlayData(
+                    result,
+                    scoreDatabasePath,
+                    masterDatabasePath,
+                    catalogDatabasePath))
+            {
+                RecordLiveWorkflowFailure(
+                    sessionId,
+                    cancellationToken,
+                    "transaction後のread-only再読込で保存済みplayを確認できませんでした。");
+                return;
+            }
+
+            RecordLiveWorkflowResult(result);
+        }
+        catch (OperationCanceledException) when (
+            cancellationToken.IsCancellationRequested || applicationExitRequested)
+        {
+            // Stop and abnormal capture boundaries do not start a new candidate save.
+        }
+        catch (ViewerDatabaseException exception)
+        {
+            RecordLiveWorkflowFailure(sessionId, cancellationToken, exception.UserMessage);
+        }
+        catch (Exception exception)
+        {
+            RecordLiveWorkflowFailure(sessionId, cancellationToken, exception.Message);
+        }
+    }
+
+    private bool ReloadSavedPlayData(
+        CaptureSaveWorkflowResult result,
+        string scoreDatabasePath,
+        string masterDatabasePath,
+        string? catalogDatabasePath)
+    {
+        var data = catalogDatabasePath is null
+            ? repository.Load(scoreDatabasePath, masterDatabasePath)
+            : repository.Load(scoreDatabasePath, masterDatabasePath, catalogDatabasePath);
+        if (result.SavedPlayIds.Any(id => data.Plays.All(play => play.PlayId != id)))
+        {
+            return false;
+        }
+
+        ApplyData(data);
+        if (string.IsNullOrWhiteSpace(data.CatalogDatabasePath))
+        {
+            PersistPathsIfConfigured(data.ScoreDatabasePath, data.MasterDatabasePath, persist: true);
+        }
+        else
+        {
+            PersistPathsIfConfigured(
+                data.ScoreDatabasePath,
+                data.MasterDatabasePath,
+                data.CatalogDatabasePath,
+                persist: true);
+        }
+        return true;
+    }
+
+    private void RecordLiveWorkflowResult(CaptureSaveWorkflowResult result)
+    {
+        var counts = new Dictionary<string, int>(result.StatusCounts);
+        if (result.Status == "analysis_failed" && !counts.ContainsKey("analysis_failed"))
+        {
+            counts["analysis_failed"] = 1;
+        }
+        var failed = result.Status is not ("completed" or "workflow_failed");
+        if (result.Status == "workflow_failed")
+        {
+            failed = true;
+        }
+        var incoming = MonitoringResultSummary.FromWorkflow(
+            counts,
+            failed,
+            DateTimeOffset.UtcNow,
+            result.Reasons);
+        var reasons = new[]
+        {
+            MonitoringResults.Reason == "—" ? string.Empty : MonitoringResults.Reason,
+            incoming.Reason == "—" ? string.Empty : incoming.Reason,
+        }.Where(value => !string.IsNullOrWhiteSpace(value));
+        var reason = string.Join(" / ", reasons);
+        MonitoringResults = new MonitoringResultSummary(
+            MonitoringResults.Saved + incoming.Saved,
+            MonitoringResults.Duplicate + incoming.Duplicate,
+            MonitoringResults.Excluded + incoming.Excluded,
+            MonitoringResults.Unresolved + incoming.Unresolved,
+            MonitoringResults.AnalysisFailed + incoming.AnalysisFailed,
+            MonitoringResults.DbRejected + incoming.DbRejected,
+            MonitoringResults.WorkflowFailed + incoming.WorkflowFailed,
+            incoming.RecordedAtUtc,
+            string.IsNullOrWhiteSpace(reason) ? "—" : reason);
+        OnPropertyChanged(nameof(MonitoringResultsDisplay));
+        SaveStatusTitle = result.SavedPlayIds.Count > 0
+            ? $"{result.SavedPlayIds.Count}件のプレーを保存しました"
+            : result.Status == "workflow_failed"
+                ? "保存workflowに失敗しました"
+                : result.Status == "completed"
+                    ? "RESULT候補を処理しました"
+                    : "RESULT候補の解析に失敗しました";
+        SaveStatusMessage = CaptureSaveStatusMessage(result);
+        if (CurrentMonitoringState == MonitoringState.Monitoring)
+        {
+            SetMonitoringState(MonitoringState.Monitoring, MonitoringResults.Reason);
+        }
+    }
+
+    private void RecordLiveWorkflowFailure(
+        long sessionId,
+        CancellationToken cancellationToken,
+        string reason)
+    {
+        if (!CanRunMonitoringWork(sessionId, cancellationToken))
+        {
+            return;
+        }
+        RecordLiveWorkflowResult(new CaptureSaveWorkflowResult(
+            "process_failed",
+            0,
+            new Dictionary<string, int>(),
+            [],
+            [reason],
+            null));
+    }
+
     private static string CaptureSaveStatusMessage(CaptureSaveWorkflowResult result)
     {
         var counts = result.StatusCounts.Count == 0
@@ -1075,7 +1372,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public async Task StopContinuousCaptureAsync()
     {
-        if (!IsContinuousCapturing || continuousCaptureService is null)
+        var liveStopService = activeLiveMonitoringService;
+        if (!IsContinuousCapturing ||
+            (liveStopService is null && continuousCaptureService is null))
         {
             return;
         }
@@ -1086,10 +1385,19 @@ public sealed class MainViewModel : INotifyPropertyChanged
             IsStoppingCapture = true;
             SetMonitoringState(MonitoringState.Stopping, "停止とresource解放を待っています。");
             CaptureStatusTitle = "連続キャプチャを停止しています";
-            CaptureStatusMessage = "取得済みフレームのmanifestを完成させて安全に公開します。";
+            CaptureStatusMessage = liveStopService is not null
+                ? "現在のRESULT候補を完了して監視を停止します。新しい候補は開始しません。"
+                : "取得済みフレームのmanifestを完成させて安全に公開します。";
             try
             {
-                await continuousCaptureService.StopAsync();
+                if (liveStopService is not null)
+                {
+                    await liveStopService.StopAsync();
+                }
+                else
+                {
+                    await continuousCaptureService!.StopAsync();
+                }
             }
             catch (Exception exception)
             {
@@ -1549,11 +1857,26 @@ public sealed class MainViewModel : INotifyPropertyChanged
             ? $"{progress.Target.Width} x {progress.Target.Height}"
             : "—";
         MonitoringFrameCount = progress.FrameCount;
+        MonitoringSampledFrameCount = progress.SampledFrameCount;
+        MonitoringResultFrameCount = progress.ResultFrameCount;
+        MonitoringConfirmedCandidateCount = progress.ConfirmedCandidateCount;
+        MonitoringDiscardedFrameCount = progress.DiscardedFrameCount;
+        MonitoringPendingCandidateCount = progress.PendingCandidateCount;
+        MonitoringCandidateQueueDropCount = progress.CandidateQueueDropCount;
         monitoringStartedAtUtc = progress.StartedAtUtc;
         monitoringLatestEventAtUtc = progress.LatestEventAtUtc;
         OnPropertyChanged(nameof(MonitoringStartedAtDisplay));
         OnPropertyChanged(nameof(MonitoringLatestEventAtDisplay));
-        SetMonitoringState(MonitoringState.Monitoring, "frameを取得しています。");
+        OnPropertyChanged(nameof(MonitoringResultsDisplay));
+        SetMonitoringState(
+            MonitoringState.Monitoring,
+            string.IsNullOrWhiteSpace(progress.StatusMessage)
+                ? "frameを取得しています。"
+                : progress.StatusMessage);
+        if (!string.IsNullOrWhiteSpace(progress.StatusMessage))
+        {
+            CaptureStatusMessage = progress.StatusMessage;
+        }
     }
 
     private void ApplyCaptureCompletion(long sessionId, CaptureSessionOperationResult result)
@@ -1619,9 +1942,16 @@ public sealed class MainViewModel : INotifyPropertyChanged
         MonitoringTarget = "未選択";
         MonitoringTargetSize = "—";
         MonitoringFrameCount = 0;
+        MonitoringSampledFrameCount = 0;
+        MonitoringResultFrameCount = 0;
+        MonitoringConfirmedCandidateCount = 0;
+        MonitoringDiscardedFrameCount = 0;
+        MonitoringPendingCandidateCount = 0;
+        MonitoringCandidateQueueDropCount = 0;
         monitoringStartedAtUtc = null;
         monitoringLatestEventAtUtc = null;
         MonitoringResults = MonitoringResultSummary.Empty;
+        OnPropertyChanged(nameof(MonitoringResultsDisplay));
         OnPropertyChanged(nameof(MonitoringStartedAtDisplay));
         OnPropertyChanged(nameof(MonitoringLatestEventAtDisplay));
     }
@@ -1635,9 +1965,20 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private static string FormatMonitoringTime(DateTimeOffset? value) =>
         value is null ? "—" : value.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss");
 
-    private sealed class CallbackProgress<T>(Action<T> callback) : IProgress<T>
+    private sealed class CallbackProgress<T>(
+        Action<T> callback,
+        SynchronizationContext? synchronizationContext) : IProgress<T>
     {
-        public void Report(T value) => callback(value);
+        public void Report(T value)
+        {
+            if (synchronizationContext is null ||
+                ReferenceEquals(SynchronizationContext.Current, synchronizationContext))
+            {
+                callback(value);
+                return;
+            }
+            synchronizationContext.Send(_ => callback(value), null);
+        }
     }
 
     private bool SetProperty<T>(ref T field, T value, [CallerMemberName] string? name = null)

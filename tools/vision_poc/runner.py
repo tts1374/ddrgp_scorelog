@@ -9885,6 +9885,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="CSV frame manifest for --sequence-mode manifest; requires image_path,timestamp_ms.",
     )
     parser.add_argument(
+        "--preconfirmed-candidate",
+        action="store_true",
+        help=(
+            "For a single manifest frame already confirmed by the live monitor, bypass only "
+            "the repeated-frame duration gate while retaining RESULT classification."
+        ),
+    )
+    parser.add_argument(
         "--frame-root",
         type=Path,
         default=None,
@@ -10710,6 +10718,13 @@ def main(argv: list[str] | None = None) -> int:
 
     if not frames:
         raise ValueError("input sequence contains no frames")
+    if args.preconfirmed_candidate:
+        if args.sequence_mode != "manifest":
+            raise ValueError("--preconfirmed-candidate requires --sequence-mode manifest")
+        if len(frames) != 1:
+            raise ValueError("--preconfirmed-candidate requires exactly one manifest frame")
+        if frames[0].timestamp_ms is None:
+            raise ValueError("--preconfirmed-candidate requires a timestamped manifest frame")
 
     write_ocr_expected_template(output_dir / "ocr_expected_template.csv", frames)
 
@@ -10760,7 +10775,13 @@ def main(argv: list[str] | None = None) -> int:
     timestamps_ms = (
         None if args.sequence_mode == "metadata" else [frame.timestamp_ms for frame in frames]
     )
-    result_events = build_result_events(classifications, timestamps_ms=timestamps_ms)
+    result_events = build_result_events(
+        classifications,
+        timestamps_ms=timestamps_ms,
+        min_confirmed_duration_ms=(
+            0 if args.preconfirmed_candidate else CONFIRMED_RESULT_MIN_DURATION_MS
+        ),
+    )
     write_result_events_csv(output_dir / "result_events.csv", result_events)
     result_events_summary = summarize_result_events(result_events)
     (output_dir / "result_events_summary.json").write_text(

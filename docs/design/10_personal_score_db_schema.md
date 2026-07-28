@@ -181,7 +181,7 @@ M8 preview最小 `plays` は以下の用途に限定する。
 - `frame_index`
 - `created_at`
 
-画像そのものはGit管理しない。正式アプリではローカルアプリデータ配下またはログディレクトリに置き、DBにはhashと参照だけを残す方針にする。
+画像そのものはGit管理しない。capture-onlyや手動入口では既存のローカル参照を保持できるが、通常のlive監視では画像を永続保管しない。live由来はDBにhashと `source_path=live-memory://...` の論理sourceを残し、`manifest_image_path` は空にする。これによりsource/analysis/formal DBの責務とhash・duplicate collisionのtransaction境界を維持しながら、監視で数GB以上の画像原本を蓄積しない。
 
 `source_captures` はフレームやキャプチャの参照を保持するtableであり、解析ログ本文、DB診断ログ、低信頼度ログ本文を持たない。`plays.source_capture_id` と `analysis_logs.source_capture_id` は同じ capture reference を指せるが、`source_path` / `manifest_image_path` は入力フレーム参照であり、`analysis_logs.log_path` や diagnostic JSONL のパスとは別物として扱う。
 
@@ -317,7 +317,7 @@ CLI入力はUTF-8 JSONの `input_schema_version=1` objectとする。候補材�
 
 自動formal evidenceはfieldごとの採用済みsourceとconfidenceを持つ。全ID、全数字、timezone付きplayed_at、master version、rank、clear type、正式duplicate keyのいずれかが未解決ならformal playを返さず `unresolved` とする。candidate、raw OCR、expected値、preview payload、相対 `played_at_ms` / `timestamp_ms` は正式値のfallbackにしない。
 
-既存 `source_captures`、`plays`、`analysis_logs` の列、参照、transaction、duplicate collision契約は変更しない。capture由来は `source_kind=capture` とmanifest/frame参照を持ち、manual reviewed入口は `source_kind=manual` 等の既存由来を維持する。DB duplicateやplayなし除外をsavedへ丸めず、`saved` transactionの `play_id` だけviewer再読込対象にする。
+既存 `source_captures`、`plays`、`analysis_logs` の列、参照、transaction、duplicate collision契約は変更しない。capture-only由来は `source_kind=capture` とmanifest/frame参照を持ち、live監視由来も `source_kind=capture` のまま論理sourceと空の画像参照を使い、manual reviewed入口は `source_kind=manual` 等の既存由来を維持する。DB duplicateやplayなし除外をsavedへ丸めず、`saved` transactionの `play_id` だけviewer再読込対象にする。
 
 - `tests/test_capture_save_workflow.py` はconfirmed/non-duplicate境界、採用済み根拠の完全昇格、candidate/raw/expected/preview非昇格、低confidence/不足値、直列workflow呼出し、DB duplicate、status保持を固定する。
 - `.NET` のcapture save runner/view model testはprocess result mapping、capture失敗時の非起動、saved playだけのread-only再読込を固定する。

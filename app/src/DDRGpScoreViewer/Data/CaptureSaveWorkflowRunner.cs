@@ -1,6 +1,8 @@
 using System.Diagnostics;
 using System.IO;
+using System.Text;
 using System.Text.Json;
+using DDRGpScoreViewer.Capture;
 
 namespace DDRGpScoreViewer.Data;
 
@@ -21,7 +23,19 @@ public interface ICaptureSaveWorkflowRunner
         CancellationToken cancellationToken = default);
 }
 
-public sealed class PythonCaptureSaveWorkflowRunner : ICaptureSaveWorkflowRunner
+public interface ILiveCaptureSaveWorkflowRunner
+{
+    Task<CaptureSaveWorkflowResult> RunCandidateAsync(
+        CapturedFrame frame,
+        string scoreDatabasePath,
+        string masterDatabasePath,
+        string? catalogDatabasePath,
+        CancellationToken cancellationToken = default);
+}
+
+public sealed class PythonCaptureSaveWorkflowRunner :
+    ICaptureSaveWorkflowRunner,
+    ILiveCaptureSaveWorkflowRunner
 {
     private readonly string pythonExecutable;
     private readonly string? repositoryRoot;
@@ -43,6 +57,76 @@ public sealed class PythonCaptureSaveWorkflowRunner : ICaptureSaveWorkflowRunner
         string masterDatabasePath,
         CancellationToken cancellationToken = default)
     {
+        return await RunPythonAsync(
+            [
+                "-m", "tools.vision_poc.capture_save_workflow_app",
+                "--manifest", Path.GetFullPath(manifestPath),
+                "--database", Path.GetFullPath(scoreDatabasePath),
+                "--master-database", Path.GetFullPath(masterDatabasePath),
+            ],
+            cancellationToken);
+    }
+
+    public async Task<CaptureSaveWorkflowResult> RunCandidateAsync(
+        CapturedFrame frame,
+        string scoreDatabasePath,
+        string masterDatabasePath,
+        string? catalogDatabasePath,
+        CancellationToken cancellationToken = default)
+    {
+        var transientRoot = Path.Combine(
+            Path.GetTempPath(),
+            "ddrgp-scorelog-live",
+            Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(transientRoot);
+            var imagePath = Path.Combine(transientRoot, "live_result.png");
+            var manifestPath = Path.Combine(transientRoot, "frame_manifest.csv");
+            await File.WriteAllBytesAsync(imagePath, frame.PngBytes, cancellationToken);
+            var capturedAt = frame.CapturedAtUtc.ToString("O");
+            var manifest = string.Join(
+                "\n",
+                [
+                    "image_path,timestamp_ms,captured_at_utc,screen_type,organized_file",
+                    $"live_result.png,{frame.TimestampMs},\"{capturedAt}\",result,live_result.png",
+                    string.Empty,
+                ]);
+            await File.WriteAllTextAsync(
+                manifestPath,
+                manifest,
+                new UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
+                cancellationToken);
+
+            var sourceReference = $"live-memory://{Path.GetFileName(transientRoot)}";
+            var arguments = new List<string>
+            {
+                "-m", "tools.vision_poc.capture_save_workflow_app",
+                "--manifest", manifestPath,
+                "--database", Path.GetFullPath(scoreDatabasePath),
+                "--master-database", Path.GetFullPath(masterDatabasePath),
+                "--output", Path.Combine(transientRoot, "analysis"),
+                "--transient-source", sourceReference,
+                "--preconfirmed-candidate",
+            };
+            if (!string.IsNullOrWhiteSpace(catalogDatabasePath))
+            {
+                arguments.Add("--m5-jacket-catalog");
+                arguments.Add(Path.GetFullPath(catalogDatabasePath));
+            }
+
+            return await RunPythonAsync(arguments, cancellationToken);
+        }
+        finally
+        {
+            DeleteTransientRoot(transientRoot);
+        }
+    }
+
+    private async Task<CaptureSaveWorkflowResult> RunPythonAsync(
+        IEnumerable<string> arguments,
+        CancellationToken cancellationToken)
+    {
         try
         {
             var startInfo = new ProcessStartInfo
@@ -54,13 +138,7 @@ public sealed class PythonCaptureSaveWorkflowRunner : ICaptureSaveWorkflowRunner
                 RedirectStandardError = true,
                 CreateNoWindow = true,
             };
-            foreach (var argument in new[]
-            {
-                "-m", "tools.vision_poc.capture_save_workflow_app",
-                "--manifest", Path.GetFullPath(manifestPath),
-                "--database", Path.GetFullPath(scoreDatabasePath),
-                "--master-database", Path.GetFullPath(masterDatabasePath),
-            })
+            foreach (var argument in arguments)
             {
                 startInfo.ArgumentList.Add(argument);
             }
@@ -83,6 +161,33 @@ public sealed class PythonCaptureSaveWorkflowRunner : ICaptureSaveWorkflowRunner
             exception is InvalidOperationException or System.ComponentModel.Win32Exception)
         {
             return FailedResult(exception.Message);
+        }
+    }
+
+    private static void DeleteTransientRoot(string path)
+    {
+        try
+        {
+            var tempRoot = Path.GetFullPath(Path.GetTempPath())
+                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                + Path.DirectorySeparatorChar;
+            var resolved = Path.GetFullPath(path);
+            if (!resolved.StartsWith(tempRoot, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+            if (Directory.Exists(resolved))
+            {
+                Directory.Delete(resolved, recursive: true);
+            }
+        }
+        catch (IOException)
+        {
+            // The transient directory is best-effort cleanup; no persistent output is published.
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // The transient directory is best-effort cleanup; no persistent output is published.
         }
     }
 
