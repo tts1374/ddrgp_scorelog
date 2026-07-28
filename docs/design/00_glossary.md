@@ -26,6 +26,7 @@ DDR GP scorelog の設計、PoC、テストで使う主要用語を定義する�
 | `M6 payload/evidence boundary` | 保存候補payloadと解析根拠・sourceを分離する工程 | save payload、analysis/source、候補材料 | 候補の正式値昇格 |
 | `M7 save decision boundary` | 必須fieldの検証、保存前readiness、正式値変換の境界 | M7 readiness、save decision preview、formal evidence | previewだけでのDB保存 |
 | `M7a digit recognition` | 数字ROIをテンプレート/bitmap比較で読むM7内の非OCR工程 | `recognized_digits`、digit review、Tesseract comparison | 正式なスコア・判定数、保存OK |
+| `M7 result field recognition` | RESULTのrank/clear_type/flare_rankを専用規則で認識し、field別formal evidenceへ接続する工程 | FAILED/E gate、score-derived rank、judgment-count clear type、independent flare badge | candidate/raw/previewのformal昇格 |
 | `M7 result-text feature` | resultのtitle/artist ROIからOCRなしの画像featureを作る補助工程 | `jacket-catalog.sqlite` の `result_text_features`、`m7_result_text_feature_master.*` 診断出力 | OCR文字列、曲ID確定、正式保存値 |
 | `M8 formal personal score DB` | version 1正式DB、duplicate、transaction、明示単発保存を扱う工程 | `ddrgp-scores.sqlite`、formal save input | 候補材料の自動昇格、M8 preview DBの受入れ |
 | `M9 application/runtime` | viewer、Windows capture、capture-save、監視UI、task trayを接続する工程 | WPF app、capture-save workflow | 新しい解析方式やDB schema |
@@ -99,6 +100,8 @@ master DB inspectionは起動時・保存開始時に行う。固定pathだけ�
 - `reference catalog`: current master、feature、review状態、historyをstrictに管理する永続的なローカルSQLite。現行ではM5b jacket reference catalogを指す。
 - `candidate observation`: M5 `identity_signal_*`、M7a `recognized_digits`、M7 previewなど、後続レビューへ渡す材料。候補が一意でも正式値ではない。
 - `formal value`: 採用済みsource、field別根拠、必要なvalidationを満たし、M8正式save inputへ明示的に配置された値。
+- `flare_rank`: RESULT右側の独立badgeから認識する正式field。値は `I`〜`IX` / `EX` に限定し、認識不能時は `null` のまま保存を妨げない。`null` は「no-flareの証明」ではない。
+- `M7 result field recognition evidence`: rank/clear_type/flare_rankの専用recognizerが出すfield別根拠。rankはROIでFAILED/Eだけを判定し、通常rankはformal scoreから算出する。clear_typeは6判定数から算出し、rank周囲のanimation表示を根拠にしない。
 
 ## OCR結果の読み方
 

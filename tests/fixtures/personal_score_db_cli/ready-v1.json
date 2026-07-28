@@ -36,6 +36,7 @@
     "ex_score": 1750,
     "rank": "AAA",
     "clear_type": "CLEAR",
+    "flare_rank": null,
     "duplicate_key": "play:v1:cli-ready"
   },
   "exclusion": null,

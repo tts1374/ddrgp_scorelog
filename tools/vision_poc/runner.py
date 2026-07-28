@@ -37,6 +37,13 @@ from .personal_score_db_migration_status import (
     project_personal_score_db_migration_status,
 )
 from .personal_score_db_workflow import run_personal_score_db_workflow_cli
+from .result_fields import (
+    CLEAR_TYPE_FORMAL_EVIDENCE_SOURCE,
+    FLARE_RANK_FORMAL_EVIDENCE_SOURCE,
+    RANK_FORMAL_EVIDENCE_SOURCE,
+    RESULT_JUDGMENT_COUNT_FIELDS,
+    recognize_result_fields,
+)
 
 BASE_WIDTH = 1280
 BASE_HEIGHT = 720
@@ -84,6 +91,7 @@ ROI_DEFINITIONS: dict[str, tuple[int, int, int, int]] = {
     "difficulty": (378, 80, 84, 24),
     "level": (380, 104, 52, 38),
     "rank": (170, 122, 160, 126),
+    "flare_rank": (385, 135, 120, 130),
     "score_area": (170, 250, 320, 90),
     "score_digits": (250, 278, 210, 48),
     "jacket": (532, 54, 216, 216),
@@ -111,6 +119,7 @@ PRIMARY_ROIS = (
     "difficulty",
     "level",
     "rank",
+    "flare_rank",
     "score_area",
     "score_digits",
     "song_title",
@@ -289,6 +298,30 @@ class M7aDigitRecognitionResult:
 
 
 @dataclass(frozen=True)
+class ResultFieldRecognitionResult:
+    frame_index: int
+    organized_file: str
+    event_type: str
+    confirmed_result: bool
+    duplicate: bool
+    rank: str
+    rank_status: str
+    rank_confidence: float | None
+    rank_source: str
+    rank_reason: str
+    clear_type: str
+    clear_type_status: str
+    clear_type_confidence: float | None
+    clear_type_source: str
+    clear_type_reason: str
+    flare_rank: str
+    flare_rank_status: str
+    flare_rank_confidence: float | None
+    flare_rank_source: str
+    flare_rank_reason: str
+
+
+@dataclass(frozen=True)
 class M3SongArtistOcrResult:
     organized_file: str
     screen_type: str
@@ -359,6 +392,7 @@ M7A_DIGIT_FOCUS_LEFT_FRACTIONS: dict[str, float] = {
     "perfect": 0.52,
     "great": 0.52,
     "good": 0.55,
+    "ok": 0.52,
     "miss": 0.55,
     "ex_score": 0.55,
 }
@@ -372,16 +406,17 @@ M7A_WHITE_FOREGROUND_ROIS = frozenset({"miss"})
 M7A_WHITE_FOREGROUND_LUMA_THRESHOLD = 180
 M7A_WHITE_FOREGROUND_CHANNEL_SPREAD_MAX = 50
 M7A_REJECT_BRIGHT_COLORED_BACKGROUND_ROIS = frozenset(
-    {"marvelous", "perfect", "great", "good", "miss"}
+    {"marvelous", "perfect", "great", "good", "ok", "miss"}
 )
 M7A_COMPONENT_SEGMENT_ROIS = frozenset(
-    {"max_combo", "marvelous", "perfect", "great", "good", "miss", "ex_score"}
+    {"max_combo", "marvelous", "perfect", "great", "good", "ok", "miss", "ex_score"}
 )
 M7A_DIGIT_TEMPLATE_GROUPS: dict[str, tuple[str, ...]] = {
     "marvelous": ("judgment_counts",),
     "perfect": ("judgment_counts",),
     "great": ("judgment_counts",),
     "good": ("judgment_counts",),
+    "ok": ("judgment_counts",),
     "miss": ("judgment_counts",),
     "max_combo": ("combo_ex_score",),
     "ex_score": ("combo_ex_score", "max_combo"),
@@ -413,6 +448,7 @@ M7_SAVE_READINESS_REVIEW_REPRESENTATIVE_LIMIT = 3
 M7_SAVE_DECISION_PREVIEW_REPRESENTATIVE_LIMIT = 3
 M8_SAVE_PAYLOAD_PREVIEW_REPRESENTATIVE_LIMIT = 3
 M8_SAVE_PAYLOAD_DIGIT_ROIS = OCR_ROIS
+M7A_DIGIT_ALL_ROIS = tuple(dict.fromkeys((*OCR_ROIS, "ok")))
 M8_PLANNED_PLAY_RECORD_REPRESENTATIVE_LIMIT = 3
 M8_SCORE_DB_WRITE_PREVIEW_REPRESENTATIVE_LIMIT = 3
 M8_PLANNED_PLAY_RECORD_FIELDNAMES = [
@@ -2680,6 +2716,139 @@ def summarize_m7a_digit_recognition(
 
 def format_optional_float(value: float | None) -> str:
     return "" if value is None else f"{value:.6f}"
+
+
+def result_field_recognition_rows(
+    frames: Iterable[FrameInput],
+    events: Iterable[ResultEvent],
+    digit_results: Iterable[M7aDigitRecognitionResult],
+) -> list[ResultFieldRecognitionResult]:
+    """Build strict RESULT rank/clear/flare evidence without using preview fields."""
+    result_by_key = {
+        (result.organized_file, result.roi_name): result for result in digit_results
+    }
+    rows: list[ResultFieldRecognitionResult] = []
+    for frame, event in zip(frames, events, strict=True):
+        if not is_save_candidate_event(event):
+            continue
+        digit_values = {
+            field_name: _formal_digit_value(
+                result_by_key.get((frame.row["organized_file"], field_name))
+            )
+            for field_name in (*RESULT_JUDGMENT_COUNT_FIELDS, "score_digits")
+        }
+        with Image.open(frame.image_path) as image:
+            image = image.convert("RGB")
+            recognition = recognize_result_fields(
+                rank_roi=crop_roi(image, ROI_DEFINITIONS["rank"]),
+                flare_roi=crop_roi(image, ROI_DEFINITIONS["flare_rank"]),
+                score=digit_values["score_digits"],
+                judgment_counts={
+                    field_name: digit_values[field_name]
+                    for field_name in RESULT_JUDGMENT_COUNT_FIELDS
+                },
+            )
+        rows.append(
+            ResultFieldRecognitionResult(
+                frame_index=event.frame_index,
+                organized_file=frame.row["organized_file"],
+                event_type=event.event_type,
+                confirmed_result=event.confirmed_result,
+                duplicate=event.duplicate,
+                rank=recognition.rank or "",
+                rank_status=recognition.rank_status,
+                rank_confidence=recognition.rank_confidence,
+                rank_source=(
+                    RANK_FORMAL_EVIDENCE_SOURCE if recognition.rank is not None else ""
+                ),
+                rank_reason=recognition.rank_reason,
+                clear_type=recognition.clear_type or "",
+                clear_type_status=recognition.clear_type_status,
+                clear_type_confidence=recognition.clear_type_confidence,
+                clear_type_source=(
+                    CLEAR_TYPE_FORMAL_EVIDENCE_SOURCE
+                    if recognition.clear_type is not None
+                    else ""
+                ),
+                clear_type_reason=recognition.clear_type_reason,
+                flare_rank=recognition.flare_rank or "",
+                flare_rank_status=recognition.flare_rank_status,
+                flare_rank_confidence=recognition.flare_rank_confidence,
+                flare_rank_source=(
+                    FLARE_RANK_FORMAL_EVIDENCE_SOURCE
+                    if recognition.flare_rank is not None
+                    else ""
+                ),
+                flare_rank_reason=recognition.flare_rank_reason,
+            )
+        )
+    return rows
+
+
+def _formal_digit_value(result: M7aDigitRecognitionResult | None) -> int | None:
+    if result is None or result.status != "recognized" or not result.recognized_digits:
+        return None
+    try:
+        return int(result.recognized_digits)
+    except ValueError:
+        return None
+
+
+def write_result_field_recognition_csv(
+    path: Path,
+    rows: Iterable[ResultFieldRecognitionResult],
+) -> None:
+    row_list = [asdict(row) for row in rows]
+    fieldnames = list(ResultFieldRecognitionResult.__dataclass_fields__)
+    with path.open("w", encoding="utf-8", newline="") as file:
+        writer = csv.DictWriter(file, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(row_list)
+
+
+def summarize_result_field_recognition(
+    rows: Iterable[ResultFieldRecognitionResult],
+) -> dict[str, object]:
+    row_list = list(rows)
+    fields = ("rank", "clear_type", "flare_rank")
+    status_counts = {
+        field_name: _count_result_field_statuses(row_list, field_name)
+        for field_name in fields
+    }
+    flare_values: dict[str, int] = {}
+    for row in row_list:
+        if row.flare_rank:
+            flare_values[row.flare_rank] = flare_values.get(row.flare_rank, 0) + 1
+    return {
+        "target_boundary": "confirmed_result=true and duplicate=false",
+        "scope": "formal RESULT rank/clear_type/flare_rank recognition evidence",
+        "target_count": len(row_list),
+        "status_counts": status_counts,
+        "flare_rank_value_counts": dict(sorted(flare_values.items())),
+        "formal_evidence_sources": {
+            "rank": RANK_FORMAL_EVIDENCE_SOURCE,
+            "clear_type": CLEAR_TYPE_FORMAL_EVIDENCE_SOURCE,
+            "flare_rank": FLARE_RANK_FORMAL_EVIDENCE_SOURCE,
+        },
+        "reading_notes": [
+            "rank ROI is used only to classify FAILED/E versus non-FAILED.",
+            "non-FAILED rank is calculated from formal score thresholds.",
+            "clear_type is calculated from six judgment counts including O.K.",
+            "flare_rank is independent badge evidence; unrecognized means null, not unused.",
+            "These rows are evidence material and do not bypass formal save input validation.",
+        ],
+    }
+
+
+def _count_result_field_statuses(
+    rows: Iterable[ResultFieldRecognitionResult],
+    field_name: str,
+) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for row in rows:
+        status = getattr(row, f"{field_name}_status")
+        counts[status] = counts.get(status, 0) + 1
+    return dict(sorted(counts.items()))
 
 
 def m7a_digit_save_candidate_summary_rows(
@@ -10192,7 +10361,8 @@ def build_parser() -> argparse.ArgumentParser:
         default=["score_digits"],
         help=(
             "Digit ROI names for --m7a-digit-recognition. Use 'all' for score_digits and "
-            f"judgment ROIs. Default: score_digits. Supported: {', '.join(OCR_ROIS)}"
+            f"judgment ROIs including O.K. Default: score_digits. Supported: "
+            f"{', '.join(M7A_DIGIT_ALL_ROIS)}"
         ),
     )
     parser.add_argument(
@@ -10291,7 +10461,16 @@ def resolve_ocr_rois(values: list[str]) -> tuple[str, ...]:
 
 
 def resolve_m7a_digit_rois(values: list[str]) -> tuple[str, ...]:
-    return resolve_ocr_rois(values)
+    if values == ["all"]:
+        return M7A_DIGIT_ALL_ROIS
+    unknown = [value for value in values if value not in M7A_DIGIT_ALL_ROIS]
+    if unknown:
+        joined_unknown = ", ".join(unknown)
+        joined_supported = ", ".join(M7A_DIGIT_ALL_ROIS)
+        raise ValueError(
+            f"unsupported M7a digit ROI(s): {joined_unknown}; expected: {joined_supported}"
+        )
+    return tuple(dict.fromkeys(values))
 
 
 def resolve_ocr_profiles(values: list[str]) -> tuple[str, ...]:
@@ -11333,6 +11512,24 @@ def main(argv: list[str] | None = None) -> int:
                             m7a_templates_by_roi[roi_name],
                         )
                     )
+        result_field_rows = result_field_recognition_rows(
+            frames,
+            result_events,
+            m7a_digit_results,
+        )
+        write_result_field_recognition_csv(
+            output_dir / "result_field_recognition.csv",
+            result_field_rows,
+        )
+        (output_dir / "result_field_recognition_summary.json").write_text(
+            json.dumps(
+                summarize_result_field_recognition(result_field_rows),
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
         write_m7a_digit_recognition_csv(
             output_dir / "m7a_digit_recognition.csv",
             m7a_digit_results,

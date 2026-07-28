@@ -16,6 +16,7 @@ from .personal_score_db_workflow import (
     PersonalScoreDbWorkflowResult,
     run_personal_score_db_workflow,
 )
+from .result_fields import RESULT_FLARE_RANK_VALUES
 from .runner import main as run_vision_poc
 
 CAPTURE_SAVE_RESULT_SCHEMA_VERSION = 1
@@ -57,6 +58,7 @@ _ACCEPTED_EVIDENCE_SOURCES = {
     "ex_score": "m7a_adopted_profile",
     "rank": "adopted_rank_recognizer",
     "clear_type": "adopted_clear_type_recognizer",
+    "flare_rank": "adopted_flare_rank_recognizer",
     "duplicate_key": "capture_event_v1",
 }
 
@@ -123,6 +125,8 @@ def promote_automatic_formal_values(
 
     reasons: list[str] = []
     for field_name, required_source in _ACCEPTED_EVIDENCE_SOURCES.items():
+        if field_name == "flare_rank" and evidence.values.flare_rank is None:
+            continue
         if evidence.sources.get(field_name) != required_source:
             reasons.append(f"formal_evidence.{field_name}_source_not_adopted")
         confidence = evidence.confidences.get(field_name)
@@ -134,6 +138,8 @@ def promote_automatic_formal_values(
         ):
             reasons.append(f"formal_evidence.{field_name}_confidence_insufficient")
     values = evidence.values
+    if values.flare_rank is not None and values.flare_rank not in RESULT_FLARE_RANK_VALUES:
+        reasons.append("formal_evidence.flare_rank_invalid")
     for field_name in (
         "play_id",
         "played_at",
@@ -208,6 +214,11 @@ def run_capture_save_events(
                     "contract": "capture-save-workflow-v1",
                     "promotion_status": "ready" if formal_play else "unresolved",
                     "promotion_reasons": list(promotion_reasons),
+                    "formal_evidence_sources": (
+                        dict(sorted(event.formal_evidence.sources.items()))
+                        if event.formal_evidence is not None
+                        else {}
+                    ),
                 },
                 ensure_ascii=False,
                 sort_keys=True,
@@ -324,6 +335,10 @@ def load_capture_analyzed_events(
         int(row["frame_index"]): row
         for row in _read_csv(analysis_output / "m7_save_decision_preview.csv")
     }
+    result_field_rows = {
+        int(row["frame_index"]): row
+        for row in _read_csv_if_exists(analysis_output / "result_field_recognition.csv")
+    }
     events: list[CaptureAnalyzedEvent] = []
     for row in event_rows:
         frame_index = int(row["frame_index"])
@@ -372,6 +387,9 @@ def load_capture_analyzed_events(
                 digit_review_status=decision.get("m7a_digit_aggregate_status", ""),
                 analysis_confidence=min(confidences) if confidences else None,
                 candidate_material=candidate_material,
+                formal_evidence=_formal_result_evidence(
+                    result_field_rows.get(frame_index)
+                ),
             )
         )
     return tuple(events)
@@ -415,6 +433,7 @@ def _formal_play_json(values: PersonalScoreDbFormalPlayValues | None) -> object:
             *CAPTURE_SAVE_DIGIT_FIELDS,
             "rank",
             "clear_type",
+            "flare_rank",
             "duplicate_key",
         )
     }
@@ -437,6 +456,49 @@ def _capture_event_hash(path: Path, capture_id: str) -> str:
 def _read_csv(path: Path) -> list[dict[str, str]]:
     with path.open(encoding="utf-8", newline="") as file:
         return list(csv.DictReader(file))
+
+
+def _read_csv_if_exists(path: Path) -> list[dict[str, str]]:
+    if not path.exists():
+        return []
+    return _read_csv(path)
+
+
+def _formal_result_evidence(
+    row: Mapping[str, str] | None,
+) -> AutomaticFormalEvidence | None:
+    """Project only strict RESULT recognizer output into partial formal evidence.
+
+    Other formal fields intentionally remain empty.  The save boundary will keep
+    the event unresolved until independent identity, time, score and digit evidence
+    are supplied; preview rows are never used as fallbacks here.
+    """
+    if not row:
+        return None
+    rank = row.get("rank", "")
+    clear_type = row.get("clear_type", "")
+    flare_rank = row.get("flare_rank", "") or None
+    sources: dict[str, str] = {}
+    confidences: dict[str, float] = {}
+    values = PersonalScoreDbFormalPlayValues(
+        rank=rank,
+        clear_type=clear_type,
+        flare_rank=flare_rank,
+    )
+    for field_name in ("rank", "clear_type", "flare_rank"):
+        value = getattr(values, field_name)
+        source = row.get(f"{field_name}_source", "")
+        confidence_text = row.get(f"{field_name}_confidence", "")
+        if value and source and confidence_text:
+            try:
+                confidence = float(confidence_text)
+            except ValueError:
+                continue
+            sources[field_name] = source
+            confidences[field_name] = confidence
+    if not sources:
+        return None
+    return AutomaticFormalEvidence(values=values, sources=sources, confidences=confidences)
 
 
 def _bool(value: str) -> bool:
