@@ -1,6 +1,6 @@
 # DDR GP Score Tracker WPF app
 
-正式個人スコアDB version 1を読み取り専用で開き、保存済みプレー履歴、プレー詳細、譜面別自己ベストを確認するWPFビューアです。明示選択したversion 1 workflow入力JSONを既存Python workflowで1回だけ保存するmanual入口に加え、明示pickerで選んだwindowから1フレームまたは停止までの連続フレームを取得できます。`監視開始` を明示した場合だけ、`process=ddr-konaste` かつ client `1280x720` のtop-level windowを自動特定し、該当1件だけへ接続します。監視中は1秒ごとに `results_header` を確認し、RESULT画面でSCOREが2回連続して安定した候補だけを既存解析pipelineと正式保存workflowへ渡します。該当windowが0件または複数件なら推測で選択せず、capture・解析・正式保存を開始しません。監視中の候補画像はsession原本として保管せず、一時workflow入力の処理後に破棄します。監視状態と最新結果はWPFとtask trayから確認できます。正式個人スコアDB、M4 master DB、M5b jacket reference catalogは環境ごとの固定pathで扱い、次回起動時に3つともread-only検証して再利用します。DBの任意path選択、汎用window探索、自動再接続、自動再開、起動時の自動監視、手動pickerへのfallback、migration、backup、repairは接続しません。
+正式個人スコアDB version 1を読み取り専用で開き、保存済みプレー履歴、プレー詳細、譜面別自己ベストを確認するWPFビューアです。通常画面は`監視開始`／`監視停止`による自動監視を提供し、Debug buildだけが開発者向け領域から1フレーム取得、連続取得、単発保存を提供します。`監視開始` を明示した場合だけ、`process=ddr-konaste` かつ client `1280x720` のtop-level windowを自動特定し、該当1件だけへ接続します。監視中は1秒ごとに `results_header` を確認し、RESULT画面でSCOREが2回連続して安定した候補だけを既存解析pipelineと正式保存workflowへ渡します。該当windowが0件または複数件なら推測で選択せず、capture・解析・正式保存を開始しません。監視中の候補画像はsession原本として保管せず、一時workflow入力の処理後に破棄します。監視状態と最新結果はWPFとtask trayから確認できます。正式個人スコアDB、M4 master DB、M5b jacket reference catalogは環境ごとの固定pathで扱い、次回起動時に3つともread-only検証して再利用します。DBの任意path選択、汎用window探索、自動再接続、自動再開、起動時の自動監視、手動pickerへのfallback、migration、backup、repairは接続しません。
 
 ## 必要環境
 
@@ -14,9 +14,21 @@
 
 ローカルDBはGit管理しません。developmentでは`databases/`、productionでは`%LOCALAPPDATA%\DDRGpScoreViewer\data\`配下のIssue固定pathへ配置してください。DBのファイル選択はアプリから行いません。
 
-## 1フレーム取得
+## Build configuration
 
-1. アプリ右上の `1フレーム取得` を押す。
+Debug buildでは、通常の監視操作と区別した開発者向け領域に、`1フレーム取得`、`連続取得を開始`、`単発保存`を表示します。Release buildではこの領域、button、menu、command入口を生成せず、`監視開始`と`監視停止`だけを通常画面とtask trayへ残します。
+
+```powershell
+dotnet build app\src\DDRGpScoreViewer\DDRGpScoreViewer.csproj --configuration Debug --no-restore
+dotnet build app\src\DDRGpScoreViewer\DDRGpScoreViewer.csproj --configuration Release --no-restore
+dotnet test app\tests\DDRGpScoreViewer.Tests\DDRGpScoreViewer.Tests.csproj --configuration Debug --no-restore
+```
+
+## Debug buildの開発者向け操作
+
+### 1フレーム取得
+
+1. Debug buildの開発者向け領域にある `1フレーム取得` を押す。
 2. Windowsのpickerで取得対象のwindowを明示選択する。
 3. 完了表示に出た `data/windows_capture/capture-*/` を確認する。
 
@@ -35,9 +47,9 @@ python -m tools.vision_poc `
 
 単発manifestは `confirmation_mode=time` ですが、1フレームだけではconfirmed resultになりません。実captureのconfirmed-events評価では、同じresultを1秒以上空けて複数回取得し、`data/` 配下のローカル評価manifestへ時刻順にまとめます。`screen_type` と期待値列は評価用manifest側で補い、capture原本のmanifest、画像、metadataは変更しません。
 
-## 連続フレーム取得
+### 連続フレーム取得
 
-1. アプリ右上の `連続取得を開始` を押す。
+1. Debug buildの開発者向け領域にある `連続取得を開始` を押す。
 2. Windowsのpickerで対象windowを明示選択する。
 3. 必要な区間を取得したら `監視停止` を押す。
 4. 完了表示に出た `data/windows_capture/session-*/` を確認する。
@@ -64,11 +76,11 @@ python -m tools.vision_poc `
 
 監視では1秒ごとの候補だけを対象に `python -m tools.vision_poc.capture_save_workflow_app` を起動します。RESULTSがないframe、SCOREを認識できないframe、同じSCOREとtitle ROI署名の結果は後続処理へ渡しません。SCOREが2サンプルで安定した候補は、C#側で確認済みの1フレームへ `--m5-jacket-catalog` と `--preconfirmed-candidate` を付け、M5b jacket reference catalogを使う既存workflowへ渡します。Python側はこの1フレームについて時間再確認を行わず、RESULT分類ゲートだけを維持します。解析中は処理中1件と待機1件までに制限します。待機枠を超えた候補は理由付きで破棄します。candidate PNG、manifest、解析CSV/JSONはOS一時directoryだけに置き、workflow終了後に削除します。正式DBの`source_captures`にはhashと `live-memory://` の論理sourceだけを残し、画像pathは保持しません。capture-onlyの連続取得は従来どおり停止後に完成manifestを解析できます。capture失敗、resize、target close、device lost、write失敗では新しい解析・正式保存を開始しません。
 
-自動formal昇格はfieldごとの採用済み根拠sourceとconfidence、全必須値の完全性をpure adapterで検査します。M5 `identity_signal_*`、M7a `recognized_digits`、expected値、M8 preview payload、相対 `timestamp_ms` は候補材料のままです。現行pipelineにはrank/clear typeを含む全必須項目の採用済み根拠がまだないため、実captureで根拠が欠けるeventは `unresolved` となりplayを作りません。これはcandidateを正式値へ暗黙昇格しないための意図した停止です。manualのreviewed workflow入力は従来の `単発保存` に残り、自動由来と混同しません。
+自動formal昇格はfieldごとの採用済み根拠sourceとconfidence、全必須値の完全性をpure adapterで検査します。M5 `identity_signal_*`、M7a `recognized_digits`、expected値、M8 preview payload、相対 `timestamp_ms` は候補材料のままです。現行pipelineにはrank/clear typeを含む全必須項目の採用済み根拠がまだないため、実captureで根拠が欠けるeventは `unresolved` となりplayを作りません。これはcandidateを正式値へ暗黙昇格しないための意図した停止です。Debug buildのreviewed workflow入力は開発者向け領域の `単発保存` から実行し、自動由来と混同しません。
 
 各confirmed eventは既存正式workflowを1回だけ呼びます。DB内duplicate、policy excluded、unresolved、invalid、artifact failure、DB拒否をstatusのまま集計し、`invalid`、artifact failure、DB拒否などが1件でもあればsessionを `workflow_failed` として非0終了します。同じsessionにtransaction済みの `saved` playがある場合はそれだけread-only再読込し、部分成功件数と失敗理由を同時に表示します。解析出力は `data/capture_save_workflow/`、画像原本は `data/windows_capture/`、正式DBは明示pathに分離します。
 
-`IsSaving` はmanual単発保存と監視capture-save全体の共通排他です。DB path変更操作はなく、監視中はmanual保存を開始しません。capture開始からworkflow完了まで状態を保持し、同じ正式DBへの並行writerとsave statusの競合を防ぎます。capture-only入口も監視開始と同じoperation gateへ入り、開始要求を二重実行しません。session世代が古いprogress callback、停止後のcallback、終了後の新しい解析・保存は受け付けません。
+`IsSaving` はDebug buildの単発保存と監視capture-save全体の共通排他です。DB path変更操作はなく、監視中は単発保存を開始しません。capture開始からworkflow完了まで状態を保持し、同じ正式DBへの並行writerとsave statusの競合を防ぎます。Debug buildのcapture-only入口も監視開始と同じoperation gateへ入り、開始要求を二重実行しません。session世代が古いprogress callback、停止後のcallback、終了後の新しい解析・保存は受け付けません。
 
 監視状態は `idle`、`selecting_target`、`monitoring`、`stopping`、`stopped`、`target_closed`、`resized`、`device_lost`、`capture_failed`、`workflow_failed` を区別します。検出したwindowのtitle、process、client sizeは監視surfaceへ表示し、auto-detectionの判定はprocess名とclient sizeだけで行います。最新結果は `saved`、`duplicate`、`excluded`、`unresolved`、`analysis_failed`、`db_rejected`、`workflow_failed` を別々に数え、transaction済みのsaved playだけread-only再読込します。
 
@@ -79,7 +91,7 @@ python -m tools.vision_poc `
 - 正式個人スコアDB、M4 master DB、M5b jacket reference catalogの固定pathとdev/prod環境タグだけを `%LOCALAPPDATA%\DDRGpScoreViewer\viewer-paths.json` に保存します。この設定はGit管理外で、候補値、解析結果、保存statusは持ちません。旧形式、任意path、別環境のpathは暗黙復元せず、現在の既定pathだけを使用します。
 - 起動時、解析・正式保存開始直前に、M4 master DBとM5b jacket reference catalogを別々のread-only connectionで検査します。M4は必須table、metadata、曲・譜面件数、source snapshotのURL/hash整合を確認し、M5bはtable identity、column、metadata identity、schema version、unique index、foreign keyを確認します。両方とも `missing`、`read不可`、`schema incompatible`、`compatible` を区別します。
 - どちらか一方がmissing / read不可 / incompatibleなら、理由を表示して対象windowの解析と正式保存workflowを開始しません。capture後にも同じ2ファイルを再検証します。networkからの最新版確認やhashの継続監視は行いません。
-- `target_closed`、`resized`、`device_lost`、`capture_failed`、`workflow_failed` は監視状態として残ります。停止完了後に必要なmaster DBを現在の環境の固定pathへ用意し、`監視開始` を明示的に再実行してください。再実行時も対象windowを1件だけ自動特定し、window終了、resize、capture失敗で古いsessionを再利用しません。`連続取得を開始` のcapture-only入口は従来どおり手動pickerで対象windowを選び直します。
+- `target_closed`、`resized`、`device_lost`、`capture_failed`、`workflow_failed` は監視状態として残ります。停止完了後に必要なmaster DBを現在の環境の固定pathへ用意し、`監視開始` を明示的に再実行してください。再実行時も対象windowを1件だけ自動特定し、window終了、resize、capture失敗で古いsessionを再利用しません。Debug buildの `連続取得を開始` はcapture-onlyの開発者向け入口として手動pickerで対象windowを選び直します。
 - saved、duplicate、excluded、unresolved、解析失敗、DB拒否、workflow失敗はprocess内の表示と既存workflowのartifact/logで追跡します。再起動時に保存されるのはtransaction完了した正式playだけで、過去のskip・拒否・失敗statusをsavedへ昇格するcheckpointはありません。
 
 ## M10-2 既定保存先と責務境界
@@ -113,9 +125,10 @@ M10-3の評価用DBはdevelopmentでだけ使います。WPF viewerは評価用D
 
 ```powershell
 dotnet restore app\tests\DDRGpScoreViewer.Tests\DDRGpScoreViewer.Tests.csproj --locked-mode
-dotnet build app\src\DDRGpScoreViewer\DDRGpScoreViewer.csproj --no-restore
-dotnet test app\tests\DDRGpScoreViewer.Tests\DDRGpScoreViewer.Tests.csproj --no-restore
-dotnet run --project app\src\DDRGpScoreViewer\DDRGpScoreViewer.csproj --no-build
+dotnet build app\src\DDRGpScoreViewer\DDRGpScoreViewer.csproj --configuration Debug --no-restore
+dotnet build app\src\DDRGpScoreViewer\DDRGpScoreViewer.csproj --configuration Release --no-restore
+dotnet test app\tests\DDRGpScoreViewer.Tests\DDRGpScoreViewer.Tests.csproj --configuration Debug --no-restore
+dotnet run --project app\src\DDRGpScoreViewer\DDRGpScoreViewer.csproj --configuration Debug --no-build
 ```
 
 ## 利用手順
@@ -127,9 +140,9 @@ dotnet run --project app\src\DDRGpScoreViewer\DDRGpScoreViewer.csproj --no-build
 
 個人DBとマスタDBは別々のSQLite read-only connectionで開きます。起動時の固定score pathに対するmissing／0 byteの初期化だけはWPF側の正式schema初期化境界へ委譲し、初期化後のviewerはschema変更、insert、update、migration、backup、repairを実行しません。connection poolingも使いません。
 
-## 単発保存
+## Debug buildの単発保存
 
-1. `単発保存` を押す。
+1. Debug buildの開発者向け領域にある `単発保存` を押す。
 2. `workflow_schema_version=1` の既存strict workflow入力JSONを選ぶ。
 3. 現在の環境の固定score DBへ保存する。保存先DBを画面から変更する操作はない。
 
@@ -165,4 +178,4 @@ dotnet run --project app\src\DDRGpScoreViewer\DDRGpScoreViewer.csproj --no-build
 - `Resources/Components.xaml`: button、sidebar、card、table、badgeの共通style
 - `Controls/StatePanel.xaml`: 空状態・エラー状態の共通component
 
-今回の画面範囲は共通sidebar、自己ベスト、プレー履歴、プレー詳細、明示単発保存、明示1フレーム取得、capture-only連続取得、監視surface、master DB検証表示、明示した監視session後のevent単位保存workflow、task tray lifecycleです。ホーム、検索・絞り込み、グラフ、要確認、設定、データ管理、自動再接続、installerは後続PRへ分けます。厳密な精度保証、実機評価セット、配布・backup手順の固定はM10へ残ります。
+今回の画面範囲は共通sidebar、自己ベスト、プレー履歴、プレー詳細、Debug buildの開発者向け単発操作、監視surface、master DB検証表示、明示した監視session後のevent単位保存workflow、task tray lifecycleです。Release buildの通常画面には開発者向け領域を含めず、`監視開始`と`監視停止`を残します。ホーム、検索・絞り込み、グラフ、要確認、設定、データ管理、自動再接続、installerは後続PRへ分けます。厳密な精度保証、実機評価セット、配布・backup手順の固定はM10へ残ります。

@@ -12,7 +12,7 @@ namespace DDRGpScoreViewer.ViewModels;
 public sealed class MainViewModel : INotifyPropertyChanged
 {
     private readonly ScoreViewerRepository repository;
-    private readonly IPersonalScoreDbWorkflowRunner workflowRunner;
+    private readonly IPersonalScoreDbWorkflowRunner? workflowRunner;
     private readonly ISingleFrameCaptureService? captureService;
     private readonly IContinuousCaptureService? continuousCaptureService;
     private readonly ILiveMonitoringCaptureService? liveMonitoringService;
@@ -39,8 +39,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private bool isContinuousCapturing;
     private bool isStoppingCapture;
     private TaskCompletionSource? continuousCaptureFinished;
+#if DEBUG
     private TaskCompletionSource? singleCaptureFinished;
     private TaskCompletionSource? manualSaveFinished;
+#endif
     private MonitoringState monitoringState = MonitoringState.Idle;
     private string monitoringTarget = "未選択";
     private string monitoringTargetSize = "—";
@@ -76,7 +78,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public MainViewModel(
         ScoreViewerRepository repository,
-        IPersonalScoreDbWorkflowRunner workflowRunner,
+        IPersonalScoreDbWorkflowRunner? workflowRunner = null,
         ISingleFrameCaptureService? captureService = null,
         IContinuousCaptureService? continuousCaptureService = null,
         ICaptureSaveWorkflowRunner? captureSaveWorkflowRunner = null,
@@ -232,6 +234,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             if (SetProperty(ref isSaving, value))
             {
                 OnPropertyChanged(nameof(CanStartMonitoring));
+                OnPropertyChanged(nameof(CanRunDeveloperOperations));
             }
         }
     }
@@ -271,6 +274,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             if (SetProperty(ref isCapturing, value))
             {
                 OnPropertyChanged(nameof(CanStartMonitoring));
+                OnPropertyChanged(nameof(CanRunDeveloperOperations));
             }
         }
     }
@@ -284,6 +288,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             {
                 OnPropertyChanged(nameof(CanStartMonitoring));
                 OnPropertyChanged(nameof(CanStopMonitoring));
+                OnPropertyChanged(nameof(CanRunDeveloperOperations));
             }
         }
     }
@@ -308,6 +313,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 OnPropertyChanged(nameof(MonitoringTargetStatus));
                 OnPropertyChanged(nameof(CanStartMonitoring));
                 OnPropertyChanged(nameof(CanStopMonitoring));
+                OnPropertyChanged(nameof(CanRunDeveloperOperations));
             }
         }
     }
@@ -439,6 +445,18 @@ public sealed class MainViewModel : INotifyPropertyChanged
         !IsSaving && !IsCapturing && !IsContinuousCapturing &&
         !isMonitoringStartPending && !applicationExitRequested;
 
+    public bool CanRunDeveloperOperations =>
+        !applicationExitRequested &&
+        !isMonitoringStartPending &&
+        Volatile.Read(ref monitoringOperationReserved) == 0 &&
+        !IsSaving &&
+        !IsCapturing &&
+        !IsContinuousCapturing &&
+        CurrentMonitoringState is not (
+            MonitoringState.SelectingTarget or
+            MonitoringState.Monitoring or
+            MonitoringState.Stopping);
+
     public bool CanStopMonitoring =>
         IsContinuousCapturing &&
         (TrayMenuState.FromMonitoringState(CurrentMonitoringState).CanStop ||
@@ -455,11 +473,13 @@ public sealed class MainViewModel : INotifyPropertyChanged
         applicationExitRequested = true;
         OnPropertyChanged(nameof(IsApplicationExitRequested));
         OnPropertyChanged(nameof(CanStartMonitoring));
+        OnPropertyChanged(nameof(CanRunDeveloperOperations));
         monitoringCancellation?.Cancel();
     }
 
     public async Task WaitForOperationsAsync()
     {
+#if DEBUG
         Task[] operations =
         [
             .. new[]
@@ -469,6 +489,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 continuousCaptureFinished?.Task,
             }.OfType<Task>(),
         ];
+#else
+        Task[] operations =
+        [
+            .. new[] { continuousCaptureFinished?.Task }.OfType<Task>(),
+        ];
+#endif
         await Task.WhenAll(operations);
     }
 
@@ -478,7 +504,37 @@ public sealed class MainViewModel : INotifyPropertyChanged
         {
             isMonitoringStartPending = value;
             OnPropertyChanged(nameof(CanStartMonitoring));
+            OnPropertyChanged(nameof(CanRunDeveloperOperations));
         }
+    }
+
+    private bool TryReserveDeveloperOperation()
+    {
+        if (!CanRunDeveloperOperations ||
+            Interlocked.CompareExchange(ref monitoringOperationReserved, 1, 0) != 0)
+        {
+            return false;
+        }
+
+        OnPropertyChanged(nameof(CanRunDeveloperOperations));
+        return true;
+    }
+
+    private bool TryReserveMonitoringOperation()
+    {
+        if (Interlocked.CompareExchange(ref monitoringOperationReserved, 1, 0) != 0)
+        {
+            return false;
+        }
+
+        OnPropertyChanged(nameof(CanRunDeveloperOperations));
+        return true;
+    }
+
+    private void ReleaseOperationReservation()
+    {
+        Interlocked.Exchange(ref monitoringOperationReserved, 0);
+        OnPropertyChanged(nameof(CanRunDeveloperOperations));
     }
 
     public void RestoreSavedPaths() =>
@@ -600,55 +656,64 @@ public sealed class MainViewModel : INotifyPropertyChanged
             cancellationToken,
             automaticWindowDetection: true);
 
+#if DEBUG
     public async Task CaptureOneFrameAsync(
         nint ownerWindowHandle,
         CancellationToken cancellationToken = default)
     {
-        if (applicationExitRequested || IsCapturing || IsContinuousCapturing)
+        if (!TryReserveDeveloperOperation())
         {
-            return;
-        }
-        if (captureService is null)
-        {
-            HasCaptureStatus = true;
-            CaptureStatusTitle = "画面キャプチャを利用できません";
-            CaptureStatusMessage = "capture serviceが構成されていません。";
             return;
         }
 
-        IsCapturing = true;
-        var captureFinished = new TaskCompletionSource(
-            TaskCreationOptions.RunContinuationsAsynchronously);
-        singleCaptureFinished = captureFinished;
-        HasCaptureStatus = true;
-        CaptureStatusTitle = "対象windowを選択してください";
-        CaptureStatusMessage = "選択したwindowから1フレームだけ取得します。解析やDB保存は実行しません。";
         try
         {
-            var result = await captureService.CaptureAsync(ownerWindowHandle, cancellationToken);
-            CaptureStatusTitle = result.Status switch
+            if (captureService is null)
             {
-                CaptureOperationStatus.Saved => "1フレームを保存しました",
-                CaptureOperationStatus.Cancelled => "画面キャプチャをキャンセルしました",
-                CaptureOperationStatus.Unsupported => "画面キャプチャを利用できません",
-                CaptureOperationStatus.AccessDenied => "画面キャプチャが拒否されました",
-                CaptureOperationStatus.TargetClosed => "対象windowが終了しました",
-                CaptureOperationStatus.InvalidSize => "対象windowを取得できません",
-                CaptureOperationStatus.Resized => "対象windowのサイズが変わりました",
-                CaptureOperationStatus.DeviceLost => "GPU deviceが失われました",
-                CaptureOperationStatus.WriteFailed => "キャプチャ出力に失敗しました",
-                _ => "1フレーム取得に失敗しました",
-            };
-            CaptureStatusMessage = result.UserMessage;
+                HasCaptureStatus = true;
+                CaptureStatusTitle = "画面キャプチャを利用できません";
+                CaptureStatusMessage = "capture serviceが構成されていません。";
+                return;
+            }
+
+            IsCapturing = true;
+            var captureFinished = new TaskCompletionSource(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            singleCaptureFinished = captureFinished;
+            HasCaptureStatus = true;
+            CaptureStatusTitle = "対象windowを選択してください";
+            CaptureStatusMessage = "選択したwindowから1フレームだけ取得します。解析やDB保存は実行しません。";
+            try
+            {
+                var result = await captureService.CaptureAsync(ownerWindowHandle, cancellationToken);
+                CaptureStatusTitle = result.Status switch
+                {
+                    CaptureOperationStatus.Saved => "1フレームを保存しました",
+                    CaptureOperationStatus.Cancelled => "画面キャプチャをキャンセルしました",
+                    CaptureOperationStatus.Unsupported => "画面キャプチャを利用できません",
+                    CaptureOperationStatus.AccessDenied => "画面キャプチャが拒否されました",
+                    CaptureOperationStatus.TargetClosed => "対象windowが終了しました",
+                    CaptureOperationStatus.InvalidSize => "対象windowを取得できません",
+                    CaptureOperationStatus.Resized => "対象windowのサイズが変わりました",
+                    CaptureOperationStatus.DeviceLost => "GPU deviceが失われました",
+                    CaptureOperationStatus.WriteFailed => "キャプチャ出力に失敗しました",
+                    _ => "1フレーム取得に失敗しました",
+                };
+                CaptureStatusMessage = result.UserMessage;
+            }
+            finally
+            {
+                IsCapturing = false;
+                if (ReferenceEquals(singleCaptureFinished, captureFinished))
+                {
+                    singleCaptureFinished = null;
+                }
+                captureFinished.TrySetResult();
+            }
         }
         finally
         {
-            IsCapturing = false;
-            if (ReferenceEquals(singleCaptureFinished, captureFinished))
-            {
-                singleCaptureFinished = null;
-            }
-            captureFinished.TrySetResult();
+            ReleaseOperationReservation();
         }
     }
 
@@ -657,7 +722,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         CancellationToken cancellationToken = default)
     {
         if (applicationExitRequested || cancellationToken.IsCancellationRequested ||
-            Interlocked.CompareExchange(ref monitoringOperationReserved, 1, 0) != 0)
+            !TryReserveDeveloperOperation())
         {
             return;
         }
@@ -674,9 +739,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
         finally
         {
-            Interlocked.Exchange(ref monitoringOperationReserved, 0);
+            ReleaseOperationReservation();
         }
     }
+#endif
 
     public async Task StartContinuousCaptureAndSaveAsync(
         nint ownerWindowHandle,
@@ -721,7 +787,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         {
             return;
         }
-        if (Interlocked.CompareExchange(ref monitoringOperationReserved, 1, 0) != 0)
+        if (!TryReserveMonitoringOperation())
         {
             return;
         }
@@ -739,7 +805,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         finally
         {
             IsSaving = false;
-            Interlocked.Exchange(ref monitoringOperationReserved, 0);
+            ReleaseOperationReservation();
         }
     }
 
@@ -1491,6 +1557,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
     }
 
+#if DEBUG
     public Task SaveAndReloadConfiguredAsync(
         string workflowInputPath,
         CancellationToken cancellationToken = default) =>
@@ -1542,6 +1609,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
         {
             return;
         }
+        if (!TryReserveDeveloperOperation())
+        {
+            return;
+        }
         var saveFinished = new TaskCompletionSource(
             TaskCreationOptions.RunContinuationsAsynchronously);
         manualSaveFinished = saveFinished;
@@ -1551,6 +1622,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
         SaveStatusMessage = "選択したworkflow入力を既存の正式保存境界で1回だけ処理しています。";
         try
         {
+            if (workflowRunner is null)
+            {
+                SaveStatusTitle = "保存workflowを利用できません";
+                SaveStatusMessage = "manual save workflowが構成されていません。";
+                return;
+            }
             if (!ValidateMasterDatabasesForSave(masterDatabasePath, catalogDatabasePath))
             {
                 return;
@@ -1616,8 +1693,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 manualSaveFinished = null;
             }
             saveFinished.TrySetResult();
+            ReleaseOperationReservation();
         }
     }
+#endif
 
     private void ApplyData(ViewerData data)
     {

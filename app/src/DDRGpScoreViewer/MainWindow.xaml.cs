@@ -1,14 +1,21 @@
 using System.ComponentModel;
 using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Data;
 using System.Windows.Interop;
+using System.Windows.Media;
 using DDRGpScoreViewer.Capture;
 using DDRGpScoreViewer.Data;
 using DDRGpScoreViewer.Models;
 using DDRGpScoreViewer.Tray;
 using DDRGpScoreViewer.ViewModels;
 using Microsoft.Win32;
+using WpfButton = System.Windows.Controls.Button;
+using WpfColor = System.Windows.Media.Color;
+using WpfBinding = System.Windows.Data.Binding;
 using WpfFileDialog = Microsoft.Win32.FileDialog;
+using WpfOrientation = System.Windows.Controls.Orientation;
 using OpenFileDialog = Microsoft.Win32.OpenFileDialog;
 
 namespace DDRGpScoreViewer;
@@ -25,28 +32,97 @@ public partial class MainWindow : System.Windows.Window
         InitializeComponent();
         viewModel = new MainViewModel(
             new ScoreViewerRepository(),
+            workflowRunner:
+#if DEBUG
             new PythonPersonalScoreDbWorkflowRunner(),
-            new SingleFrameCaptureService(
+#else
+            null,
+#endif
+#if DEBUG
+            captureService: new SingleFrameCaptureService(
                 new WindowsGraphicsCaptureAdapter(),
                 new RepositoryCaptureOutputWriter()),
-            new ContinuousCaptureService(
+#endif
+            continuousCaptureService: new ContinuousCaptureService(
                 new ContinuousWindowsGraphicsCaptureAdapter(),
                 new RepositoryCaptureSessionOutputWriter()),
-            new PythonCaptureSaveWorkflowRunner(),
-            new LocalViewerPathStore(),
+            captureSaveWorkflowRunner: new PythonCaptureSaveWorkflowRunner(),
+            pathStore: new LocalViewerPathStore(),
             liveMonitoringService: new LiveMonitoringCaptureService(
                 new ContinuousWindowsGraphicsCaptureAdapter(),
                 new PythonLiveResultAnalyzer()));
         DataContext = viewModel;
+#if DEBUG
+        AddDeveloperActions();
+#endif
     }
+
+#if DEBUG
+    private void AddDeveloperActions()
+    {
+        var buttons = new StackPanel { Orientation = WpfOrientation.Horizontal };
+        buttons.Children.Add(CreateDeveloperActionButton(
+            "1フレーム取得",
+            CaptureOneFrame_Click));
+        buttons.Children.Add(CreateDeveloperActionButton(
+            "連続取得を開始",
+            StartContinuousCapture_Click));
+        buttons.Children.Add(CreateDeveloperActionButton(
+            "単発保存",
+            SaveOnePlay_Click));
+
+        var content = new StackPanel();
+        content.Children.Add(new TextBlock
+        {
+            Text = "Debug build / 開発者向け操作",
+            FontWeight = FontWeights.SemiBold,
+            Margin = new Thickness(0, 0, 0, 3),
+        });
+        content.Children.Add(buttons);
+
+        var panel = new Border
+        {
+            Background = new SolidColorBrush(WpfColor.FromRgb(239, 246, 255)),
+            BorderBrush = new SolidColorBrush(WpfColor.FromRgb(147, 197, 253)),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(6),
+            Padding = new Thickness(8, 4, 8, 4),
+            Margin = new Thickness(0, 0, 12, 0),
+            Child = content,
+        };
+        DockPanel.SetDock(panel, Dock.Right);
+        ActionBar.Children.Insert(0, panel);
+    }
+
+    private WpfButton CreateDeveloperActionButton(
+        string content,
+        RoutedEventHandler clickHandler)
+    {
+        var button = new WpfButton
+        {
+            Content = content,
+            Margin = new Thickness(0, 0, 8, 0),
+            Style = (Style)FindResource("PrimaryButtonStyle"),
+        };
+        button.SetBinding(
+            WpfButton.IsEnabledProperty,
+            new WpfBinding(nameof(MainViewModel.CanRunDeveloperOperations))
+            {
+                Mode = BindingMode.OneWay,
+            });
+        button.Click += clickHandler;
+        return button;
+    }
+#endif
 
     internal MainViewModel ViewModel => viewModel;
 
     internal Task RestoreSavedPathsAsync() => viewModel.RestoreSavedPathsAsync();
 
+#if DEBUG
     private async void StartContinuousCapture_Click(object sender, RoutedEventArgs e)
     {
-        if (applicationExitRequested)
+        if (applicationExitRequested || !viewModel.CanRunDeveloperOperations)
         {
             return;
         }
@@ -77,6 +153,7 @@ public partial class MainWindow : System.Windows.Window
             viewModel.SetMonitoringStartPending(false);
         }
     }
+#endif
 
     private async void StopContinuousCapture_Click(object sender, RoutedEventArgs e)
     {
@@ -206,9 +283,10 @@ public partial class MainWindow : System.Windows.Window
         }
     }
 
+#if DEBUG
     private async void CaptureOneFrame_Click(object sender, RoutedEventArgs e)
     {
-        if (applicationExitRequested || viewModel.IsCapturing)
+        if (applicationExitRequested || !viewModel.CanRunDeveloperOperations)
         {
             return;
         }
@@ -219,7 +297,7 @@ public partial class MainWindow : System.Windows.Window
 
     private async void SaveOnePlay_Click(object sender, RoutedEventArgs e)
     {
-        if (applicationExitRequested || viewModel.IsSaving)
+        if (applicationExitRequested || !viewModel.CanRunDeveloperOperations)
         {
             return;
         }
@@ -237,6 +315,7 @@ public partial class MainWindow : System.Windows.Window
             workflowDialog.FileName,
             applicationExitCancellation.Token);
     }
+#endif
 
     private void ShowBest_Click(object sender, RoutedEventArgs e)
     {
@@ -254,6 +333,7 @@ public partial class MainWindow : System.Windows.Window
         HistoryNavigation.Tag = "Selected";
     }
 
+#if DEBUG
     private bool? ShowFileDialog(WpfFileDialog dialog, CancellationToken cancellationToken)
     {
         if (applicationExitRequested ||
@@ -275,8 +355,10 @@ public partial class MainWindow : System.Windows.Window
             ? false
             : result;
     }
+#endif
 }
 
+#if DEBUG
 internal static class NativeFileDialogCloser
 {
     private const uint WmClose = 0x0010;
@@ -301,3 +383,4 @@ internal static class NativeFileDialogCloser
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = false)]
     private static extern bool PostMessage(nint windowHandle, uint message, nint wParam, nint lParam);
 }
+#endif
