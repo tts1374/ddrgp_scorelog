@@ -64,11 +64,18 @@ jobs:
       - name: Restore
         run: dotnet restore app\tests\DDRGpScoreViewer.Tests\DDRGpScoreViewer.Tests.csproj --locked-mode
 
-      - name: Build
+      - name: Build Debug app
         run: dotnet build app\src\DDRGpScoreViewer\DDRGpScoreViewer.csproj --no-restore
 
+      - name: Build Release app
+        run: dotnet build app\src\DDRGpScoreViewer\DDRGpScoreViewer.csproj --configuration Release --no-restore
+
+      - name: Verify Release excludes developer operations
+        shell: pwsh
+        run: .\app\tests\VerifyReleaseBuild.ps1
+
       - name: Test
-        run: dotnet test app\tests\DDRGpScoreViewer.Tests\DDRGpScoreViewer.Tests.csproj --no-restore
+        run: dotnet test app\tests\DDRGpScoreViewer.Tests\DDRGpScoreViewer.Tests.csproj --configuration Debug --no-restore
 
       - name: Verify app formatting
         run: dotnet format app\src\DDRGpScoreViewer\DDRGpScoreViewer.csproj --verify-no-changes --no-restore
