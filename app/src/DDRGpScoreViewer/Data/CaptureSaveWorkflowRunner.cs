@@ -129,7 +129,7 @@ public sealed class AppOwnedCaptureSaveWorkflowRunner :
         var statusCounts = new Dictionary<string, int>(StringComparer.Ordinal);
         var savedPlayIds = new List<string>();
         var reasons = new List<string>();
-        var confirmedKeys = new HashSet<string>(StringComparer.Ordinal);
+        string? activeConfirmedKey = null;
         var workflowFailed = false;
         AppCaptureManifestRow? pending = null;
         CapturedFrame? pendingFrame = null;
@@ -160,6 +160,7 @@ public sealed class AppOwnedCaptureSaveWorkflowRunner :
             };
             if (!observation.IsResultScreen)
             {
+                activeConfirmedKey = null;
                 pending = null;
                 pendingFrame = null;
                 pendingObservation = null;
@@ -169,19 +170,10 @@ public sealed class AppOwnedCaptureSaveWorkflowRunner :
             var key = observation.TitleSignature.Length == 0
                 ? "result"
                 : observation.TitleSignature;
-            if (confirmedKeys.Contains(key))
+            if (string.Equals(activeConfirmedKey, key, StringComparison.Ordinal))
             {
-                eventCount++;
-                var duplicateResult = await ProcessEventAsync(
-                    frame,
-                    observation,
-                    scoreDatabasePath,
-                    row,
-                    manifestPath,
-                    candidateDurationMs: null,
-                    duplicate: true,
-                    cancellationToken);
-                workflowFailed |= MergeResult(duplicateResult, statusCounts, savedPlayIds, reasons);
+                // A stable RESULT with the same signature is a single event. Ignore
+                // later samples until a non-RESULT frame reopens the event boundary.
                 continue;
             }
 
@@ -191,7 +183,7 @@ public sealed class AppOwnedCaptureSaveWorkflowRunner :
                 row.TimestampMs - pending.TimestampMs >= 1_000)
             {
                 eventCount++;
-                confirmedKeys.Add(key);
+                activeConfirmedKey = key;
                 var duration = row.TimestampMs - pending.TimestampMs;
                 var confirmedResult = await ProcessEventAsync(
                     pendingFrame ?? frame,

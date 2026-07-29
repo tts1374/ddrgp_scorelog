@@ -46,7 +46,8 @@ public sealed class CaptureSaveWorkflowRunnerTests
                 manifestPath,
                 "image_path,timestamp_ms,screen_type,capture_source,width,height,captured_at_utc\n" +
                 "frame.png,1000,result,fixture,1280,720,2026-07-29T12:00:00+09:00\n" +
-                "frame.png,2000,result,fixture,1280,720,2026-07-29T12:00:01+09:00\n",
+                "frame.png,2000,result,fixture,1280,720,2026-07-29T12:00:01+09:00\n" +
+                "frame.png,3000,result,fixture,1280,720,2026-07-29T12:00:02+09:00\n",
                 new UTF8Encoding(false));
             var runner = new AppOwnedCaptureSaveWorkflowRunner();
 
