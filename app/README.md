@@ -1,15 +1,14 @@
 # DDR GP Score Tracker WPF app
 
-正式個人スコアDB version 1を読み取り専用で開き、保存済みプレー履歴、プレー詳細、譜面別自己ベストを確認するWPFビューアです。通常画面は`監視開始`／`監視停止`による自動監視を提供し、Debug buildだけが開発者向け領域から1フレーム取得、連続取得、単発保存を提供します。`監視開始` を明示した場合だけ、`process=ddr-konaste` かつ client `1280x720` のtop-level windowを自動特定し、該当1件だけへ接続します。監視中は1秒ごとに `results_header` を確認し、RESULT画面でSCOREが2回連続して安定した候補だけを既存解析pipelineと正式保存workflowへ渡します。該当windowが0件または複数件なら推測で選択せず、capture・解析・正式保存を開始しません。監視中の候補画像はsession原本として保管せず、一時workflow入力の処理後に破棄します。監視状態と最新結果はWPFとtask trayから確認できます。正式個人スコアDB、M4 master DB、M5b jacket reference catalogは環境ごとの固定pathで扱い、次回起動時に3つともread-only検証して再利用します。DBの任意path選択、汎用window探索、自動再接続、自動再開、起動時の自動監視、手動pickerへのfallback、migration、backup、repairは接続しません。
+正式個人スコアDB version 1を読み取り専用で開き、保存済みプレー履歴、プレー詳細、譜面別自己ベストを確認するWPFビューアです。通常画面は`監視開始`／`監視停止`による自動監視を提供し、Debug buildだけが開発者向け領域から1フレーム取得、連続取得、単発保存を提供します。`監視開始` を明示した場合だけ、`process=ddr-konaste` かつ client `1280x720` のtop-level windowを自動特定し、該当1件だけへ接続します。監視中は1秒ごとに `results_header` を確認し、RESULT画面の候補が2回連続して安定した場合だけ既存のevent boundaryと正式保存workflowへ渡します。該当windowが0件または複数件なら推測で選択せず、capture・解析・正式保存を開始しません。監視中の候補画像はsession原本として保管せず、一時workflow入力の処理後に破棄します。監視状態と最新結果はWPFとtask trayから確認できます。正式個人スコアDB、M4 master DB、M5b jacket reference catalogは環境ごとの固定pathで扱い、次回起動時に3つともread-only検証して再利用します。DBの任意path選択、汎用window探索、自動再接続、自動再開、起動時の自動監視、手動pickerへのfallback、migration、backup、repairは接続しません。
 
 ## 必要環境
 
 - Windows 11
 - .NET 10 SDK
-- Python 3（`python`、または `DDRGP_PYTHON` 環境変数で指定）
-- uv（Python依存のlock固定環境を構築する場合）
+- Release packageに含まれるapp-owned runtime資材（`RuntimeAssets/`）
 - 正式個人スコアDB version 1（例: `ddrgp-scores.sqlite`）
-- `python -m master` またはmaster DB生成workflowで作られたM4 master DB
+- 別のmaster DB生成workflowで作られたM4 master DB
 - current schema version 1のM5b jacket reference catalog（`jacket-catalog.sqlite`）
 
 ローカルDBはGit管理しません。developmentでは`databases/`、productionでは`%LOCALAPPDATA%\DDRGpScoreViewer\data\`配下のIssue固定pathへ配置してください。DBのファイル選択はアプリから行いません。
@@ -32,11 +31,13 @@ dotnet test app\tests\DDRGpScoreViewer.Tests\DDRGpScoreViewer.Tests.csproj --con
 2. Windowsのpickerで取得対象のwindowを明示選択する。
 3. 完了表示に出た `data/windows_capture/capture-*/` を確認する。
 
-各capture directoryには `frame.png`、`frame_manifest.csv`、`capture_metadata.json` をまとめて出力します。capture操作時にcurrent directoryとapp配置場所からrepository rootを探索し、process cwdに関係なくrepository rootの `data/windows_capture/` へ限定します。repository rootを見つけられない場合はwrite失敗として表示し、通常viewer起動は妨げません。manifestの必須列は既存契約と同じ `image_path,timestamp_ms` で、`screen_type=unknown`、capture source、幅、高さ、UTC取得時刻を任意列として付けます。画像pathはmanifest directory相対です。staging directoryで3ファイルを書いた後にdirectory単位で公開するため、cancel、対象終了、0x0/resize、device lost、access拒否、write失敗では空画像や部分manifestを最終出力へ残しません。既存capture directoryは上書きしません。
+各capture directoryには `frame.png`、`frame_manifest.csv`、`capture_metadata.json` をまとめて出力します。capture出力はappの既定data path（Debugの明示development root、またはReleaseの`%LOCALAPPDATA%\DDRGpScoreViewer\data\`）から解決し、repository rootを探索しません。runtime data pathが必要な場合は `DDRGP_SCORE_VIEWER_RUNTIME_DATA` に明示します。manifestの必須列は既存契約と同じ `image_path,timestamp_ms` で、`screen_type=unknown`、capture source、幅、高さ、UTC取得時刻を任意列として付けます。画像pathはmanifest directory相対です。staging directoryで3ファイルを書いた後にdirectory単位で公開するため、cancel、対象終了、0x0/resize、device lost、access拒否、write失敗では空画像や部分manifestを最終出力へ残しません。既存capture directoryは上書きしません。
 
 pickerとWindows Graphics Captureは明示操作時だけ起動します。取得後に分類、OCR、identity解決、workflow、正式DB保存、viewer再読込を自動実行しません。同じprocessで再度ボタンを押すと、resourceを作り直して別の1フレームを取得します。
 
 生成した1行manifestは、manifest directoryを基準に `frame.png` を解決してそのまま再実行できます。
+
+以下の`tools\vision_poc`コマンドはoffline PoCの再現・評価専用です。Score Viewer appのDebug/Release runtime、通常監視、capture-save、正式DB保存からは呼び出されません。
 
 ```powershell
 python -m tools.vision_poc `
@@ -60,6 +61,8 @@ session中は最初に選択したcapture itemとD3D11 device、frame pool、cap
 
 生成manifestはそのまま既存manifest modeへ渡せます。`連続取得を開始` は従来どおりcapture bundle生成だけで、分類・OCR・identity・confirmed event・正式save input・DB保存を起動しません。
 
+上記のmanifest replayはoffline PoCの評価用であり、app-owned runtimeの通常操作とは別工程です。
+
 ```powershell
 python -m tools.vision_poc `
   --sequence-mode manifest `
@@ -70,11 +73,11 @@ python -m tools.vision_poc `
 ## 監視と正式保存workflow
 
 1. WPFまたはtask trayの `監視開始` を押す。
-2. 起動時に現在の環境（repository rootを検出したdevelopment、またはLocalAppDataのproduction）の固定pathを使う。DBの任意pathへの切替操作はありません。
+2. 起動時に現在の環境（Debugで明示されたdevelopment root、またはReleaseのLocalAppData production）の固定pathを使う。DBの任意pathへの切替操作はありません。
 3. `監視開始` が `process=ddr-konaste` かつ client `1280x720` のtop-level windowを確認する。該当1件だけなら既存の監視へ接続し、0件または複数件なら推測で選択せず、capture・解析・正式保存を開始しない。手動pickerへのfallbackはありません。
 4. 監視中にRESULT候補の解析・正式保存が進み、WPFまたはtrayの `監視停止` で現在の候補処理を完了して停止する。監視surfaceで状態、対象window名・process・client size、frame数、サンプリング数、RESULT検出数、候補・破棄・待機数、event status別の保存結果を確認する。
 
-監視では1秒ごとの候補だけを対象に `python -m tools.vision_poc.capture_save_workflow_app` を起動します。RESULTSがないframe、SCOREを認識できないframe、同じSCOREとtitle ROI署名の結果は後続処理へ渡しません。SCOREが2サンプルで安定した候補は、C#側で確認済みの1フレームへ `--m5-jacket-catalog` と `--preconfirmed-candidate` を付け、M5b jacket reference catalogを使う既存workflowへ渡します。Python側はこの1フレームについて時間再確認を行わず、RESULT分類ゲートだけを維持します。解析中は処理中1件と待機1件までに制限します。待機枠を超えた候補は理由付きで破棄します。candidate PNG、manifest、解析CSV/JSONはOS一時directoryだけに置き、workflow終了後に削除します。正式DBの`source_captures`にはhashと `live-memory://` の論理sourceだけを残し、画像pathは保持しません。capture-onlyの連続取得は従来どおり停止後に完成manifestを解析できます。capture失敗、resize、target close、device lost、write失敗では新しい解析・正式保存を開始しません。
+監視では1秒ごとの候補をapp-owned runtimeで解析します。RESULTSがないframe、SCOREを認識できないframe、同じRESULT署名の結果は後続処理へ渡しません。候補のevent boundary、capture lifecycle、formal evidence、正式DB保存境界は既存契約を維持し、現在のruntimeで正式値が揃わない候補は `unresolved` のままplayを作りません。数字のscore・判定数・EX SCORE認識は#103で分離後runtimeへ追加します。candidate PNG、manifest、解析CSV/JSONはOS一時directoryまたはapp data pathだけに置き、workflow終了後に不要な一時入力を残しません。capture-onlyの連続取得は従来どおり停止後に完成manifestを解析できます。capture失敗、resize、target close、device lost、write失敗では新しい解析・正式保存を開始しません。
 
 自動formal昇格はfieldごとの採用済み根拠sourceとconfidence、全必須値の完全性をpure adapterで検査します。M5 `identity_signal_*`、M7a `recognized_digits`、expected値、M8 preview payload、相対 `timestamp_ms` は候補材料のままです。現行pipelineにはrank/clear typeを含む全必須項目の採用済み根拠がまだないため、実captureで根拠が欠けるeventは `unresolved` となりplayを作りません。これはcandidateを正式値へ暗黙昇格しないための意図した停止です。Debug buildのreviewed workflow入力は開発者向け領域の `単発保存` から実行し、自動由来と混同しません。
 
@@ -96,7 +99,7 @@ python -m tools.vision_poc `
 
 ## M10-2 既定保存先と責務境界
 
-実行環境は、現在のdirectoryまたはapp配置場所の親から既存のrepository rootを解決できる場合をdevelopment、それ以外をproductionとします。developmentとproductionのpathを相互にfallbackしません。
+実行環境は、Debugで`DDRGP_SCORE_VIEWER_DEVELOPMENT_ROOT`を明示した場合、またはDebugのcurrent directoryに`databases/`がある場合だけdevelopmentです。Releaseは常にproduction固定pathを使用し、repository rootやapp配置場所の親を探索しません。developmentとproductionのpathを相互にfallbackしません。
 
 | 対象 | development | production |
 | --- | --- | --- |
@@ -115,11 +118,11 @@ M10-3の評価用DBはdevelopmentでだけ使います。WPF viewerは評価用D
 
 2026-07-27 JSTに次を確認しました。
 
-- 自動検証: `.NET build`、`.NET test` 106件、capture-save / personal-score workflow Python test 45件、Ruff、`compileall` はすべて成功。
+- 自動検証: `.NET build`、`.NET test`、capture-save / personal-score workflowの回帰テスト、Ruff、`compileall` はすべて成功。
 - Windows smoke: WPF起動、固定pathのmaster DB未配置による `missing` 表示、capture target pickerの開始・キャンセルを2回実施。実windowを選択せず、解析・正式保存workflowは0回。キャンセル後は `停止済み` に戻り、アプリprocessを1つだけ確認。
 - resource観測: 55.5秒、5秒間隔12サンプル。working setは164.33–164.75 MB、private memoryは97.02–97.29 MB、handle数は693–707、thread数は15–18で、観測中の単調増加はなし。確認後にprocessを明示終了し、残留processは0件。
-- 未実施: 実DDR GRAND PRIX windowを使う数時間soak、実capture中のtarget close/resize/device lost、成功したcapture-saveとPython subprocess、実task trayからのstart/stop/exit、実ファイルを使うアプリ再起動、固定pathへ配置したmaster DBのmissing/incompatible切替確認。
-- 残存リスク: Windows Graphics Capture、実ゲームwindow、GPU device、長時間のPython解析・DB保存、tray経由の終了順序は実機条件で追加確認が必要。これらはM10の初期版運用確認へ引き継ぐ。
+- 未実施: 実DDR GRAND PRIX windowを使う数時間soak、実capture中のtarget close/resize/device lost、実task trayからのstart/stop/exit、実ファイルを使うアプリ再起動、固定pathへ配置したmaster DBのmissing/incompatible切替確認。
+- 残存リスク: Windows Graphics Capture、実ゲームwindow、GPU device、長時間のapp-owned解析・DB保存、tray経由の終了順序は実機条件で追加確認が必要。これらはM10の初期版運用確認へ引き継ぐ。
 
 ## Build / test / run
 
@@ -146,7 +149,7 @@ dotnet run --project app\src\DDRGpScoreViewer\DDRGpScoreViewer.csproj --configur
 2. `workflow_schema_version=1` の既存strict workflow入力JSONを選ぶ。
 3. 現在の環境の固定score DBへ保存する。保存先DBを画面から変更する操作はない。
 
-アプリは `python -m tools.vision_poc.personal_score_db_workflow_app` をリポジトリrootで1回だけ実行します。この薄いprocess adapterは入力内の既存 `log_path` をartifact出力先として渡すだけで、strict loader、save adapter、artifact orchestration、file saveをC#で再実装しません。固定score pathがmissingまたは0 byteの場合の起動時初期化は、WPF側の `PersonalScoreDbInitializer` が既存の正式score DB schema契約を使って実行するため、production pathでもrepository rootやPython module配置を必要としません。repository root探索は `単発保存` または連続取得した結果の正式保存などPython workflowが必要な操作まで遅延し、current directoryまたはapp配置場所の親から検出できない場合はその操作だけを失敗状態にします。既存score DBのread-only viewer起動と起動時の空DB初期化はPythonを必要としません。
+アプリはapp-ownedのstrict loader、save adapter、formal artifact orchestration、v1 file writerを同じprocess内で1回だけ実行します。candidate materialや未確認の数字をformal playへ補完せず、`saved` / `written=true` / 非null `play_id` がtransaction完了した場合だけread-only再読込します。固定score pathがmissingまたは0 byteの場合の起動時初期化と、単発保存時のfile preparationは、WPF側が既存の正式score DB schema契約を使って実行します。Release packageにはrepository root探索、repository内module、Python executable、Tesseract fallbackを持たず、必要な認識資材はapp packageまたは`DDRGP_SCORE_VIEWER_RUNTIME_DATA`で明示したdata pathから解決します。
 
 `saved` かつtransaction完了済みの `play_id` が返った場合だけ、同じ `ScoreViewerRepository` でDBをread-only再読込し、履歴・詳細・自己ベストへ反映します。`excluded` / `duplicate` はsource captureとanalysisが記録されても成功playとして表示せず、`unresolved` / `invalid` / DB拒否 / artifact失敗は理由を表示します。`artifact_created_db_failed` はartifactが残ったpartial successとして表示し、DB保存成功へ丸めません。
 

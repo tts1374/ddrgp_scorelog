@@ -52,14 +52,14 @@ public sealed class CaptureTests
     }
 
     [Fact]
-    public async Task Repository_writer_resolves_root_lazily_and_uses_root_data_directory()
+    public async Task Application_writer_resolves_paths_lazily_and_uses_app_data_directory()
     {
         using var fixture = new CaptureDirectoryFixture();
         var resolverCalls = 0;
-        var writer = new RepositoryCaptureOutputWriter(() =>
+        var writer = new ApplicationCaptureOutputWriter(() =>
         {
             resolverCalls++;
-            return fixture.Root;
+            return ViewerDatabasePaths.ForDevelopment(fixture.Root);
         });
 
         Assert.Equal(0, resolverCalls);
@@ -71,12 +71,12 @@ public sealed class CaptureTests
     }
 
     [Fact]
-    public async Task Repository_writer_maps_missing_repository_to_write_failure()
+    public async Task Application_writer_maps_missing_data_path_to_write_failure()
     {
         var service = new SingleFrameCaptureService(
             new StubAdapter([Frame("fixture")]),
-            new RepositoryCaptureOutputWriter(
-                () => throw new InvalidOperationException("repository missing")));
+            new ApplicationCaptureOutputWriter(
+                () => throw new InvalidOperationException("application data missing")));
 
         var result = await service.CaptureAsync(123);
 

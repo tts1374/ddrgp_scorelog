@@ -4,19 +4,19 @@ M8 preview完了後の正式 `ddrgp-scores.sqlite` 初期スキーマ、migratio
 
 ## M9 read-only viewer boundary
 
-`app/src/DDRGpScoreViewer` は正式個人スコアDB version 1を表示するread-only consumerである。個人DB、M4 master DB、M5b jacket reference catalogを別々のSQLite `ReadOnly` connectionで開く。起動時にmaster 2種類がcompatibleな場合だけ、固定score pathのmissing／0 byteをWPF側の `PersonalScoreDbInitializer` が既存の正式schema・metadata・migration契約に従って初期化する。production pathの起動時bootstrapはrepository rootやPython module配置に依存しない。初期化後のviewerはschema変更、save、migration、backup、repairを呼ばず、connection poolingも使わない。M4 master DBとM5b jacket reference catalogは同じdirectoryにあっても別fileとして検査する。
+`app/src/DDRGpScoreViewer` は正式個人スコアDB version 1を表示するread-only consumerであり、app-owned runtimeのcapture-saveと明示formal workflowも所有する。個人DB、M4 master DB、M5b jacket reference catalogを別々のSQLite `ReadOnly` connectionで開く。起動時にmaster 2種類がcompatibleな場合だけ、固定score pathのmissing／0 byteをWPF側の `PersonalScoreDbInitializer` が既存の正式schema・metadata・migration契約に従って初期化する。production pathの起動時bootstrapはrepository root、repository内module、Python、Tesseractに依存しない。初期化後のviewerはschema変更、migration、backup、repairを暗黙に呼ばず、通常閲覧はwrite workflowを起動しない。M4 master DBとM5b jacket reference catalogは同じdirectoryにあっても別fileとして検査する。
 
-個人DBは `PRAGMA user_version=1`、正式 `score_db_metadata` identity、必須tableとversion 1列順、初期migration履歴を検査する。preview、unknown、identity mismatch、newer unsupported、必須table/列欠落、migration history不整合は、ファイルを変更せず表示対象から拒否する。これは既存Python writerの互換判定を置き換えず、viewer側で同じ正式identityを再確認する入口である。
+個人DBは `PRAGMA user_version=1`、正式 `score_db_metadata` identity、必須tableとversion 1列順、初期migration履歴を検査する。preview、unknown、identity mismatch、newer unsupported、必須table/列欠落、migration history不整合は、ファイルを変更せず表示対象から拒否する。これはoffline PoCのwriterとの正式identityを変えず、app-owned runtime側でも同じ正式identityを再確認する入口である。
 
 履歴は `plays` を1プレー1rowのまま、`played_at` のtimezone offsetを考慮した時系列順で読む。譜面別の最終プレー日時も文字列最大値ではなく同じ時系列順で選ぶ。timezone付き時刻は端末のローカル時刻へ変換し、SQLite `CURRENT_TIMESTAMP` 由来のoffsetなし `created_at` はUTCとして解釈してから表示する。`source_captures` は取得元表示にだけ参照し、`analysis_logs` の候補材料や詳細JSONを正式play値へ投影しない。譜面別自己ベストは保存済み全履歴への `GROUP BY song_id, chart_id` と `MAX(score)` / `MAX(ex_score)` で算出し、自己ベスト専用row、table、viewをDBへ追加しない。
 
 曲・譜面表示はマスタDBの `charts` / `songs` を `chart_id` と `song_id` の両方が一致する場合だけ採用する。参照欠落またはID不一致の履歴も失わず、正式play rowのIDと参照欠落状態を表示する。正式v1 `plays` にない値は推測・補完せず、画面仕様が求める `O.K.` は `—` と表示する。
 
-M9のmanual保存入口は、既定または利用者が明示選択した正式v1 DB、M4 master DB、M5b jacket reference catalogを使って既存Python workflowを1回起動する。これはviewer repositoryへwrite責務を追加するものではない。保存processが `saved` / `written=true` / 非null `play_id` を返した後だけ別のread-only connectionで再読込し、そのIDが履歴に存在することを確認する。`excluded` / `duplicate` のnull play、unresolved/invalid/DB拒否、`artifact_created_db_failed` をplayとして表示しない。
+M9のmanual保存入口は、既定または利用者が明示選択した正式v1 DB、M4 master DB、M5b jacket reference catalogを使ってapp-owned formal workflowを1回実行する。これはDB schemaや保存境界を変更するものではない。workflowが `saved` / `written=true` / 非null `play_id` を返した後だけ別のread-only connectionで再読込し、そのIDが履歴に存在することを確認する。`excluded` / `duplicate` のnull play、unresolved/invalid/DB拒否、`artifact_created_db_failed` をplayとして表示しない。
 
 ## M10-2 formal score DB path and protection
 
-developmentの正式個人スコアDBは `databases/score.dev.db`、productionの正式個人スコアDBは `%LOCALAPPDATA%\DDRGpScoreViewer\data\score\score.db` とする。repository rootを解決できる実行をdevelopment、それ以外をproductionとし、pathのcross-environment fallbackは行わない。
+developmentの正式個人スコアDBは `databases/score.dev.db`、productionの正式個人スコアDBは `%LOCALAPPDATA%\DDRGpScoreViewer\data\score\score.db` とする。Debugで明示されたdevelopment root、またはDebugのcurrent directoryに`databases/`がある場合だけdevelopmentとし、Releaseはproduction固定pathを使う。Releaseではrepository rootを探索せず、pathのcross-environment fallbackも行わない。
 
 正式DBの既存非空fileは、起動時のread-only viewer検査、M4 master DB検査、M5b jacket reference catalog検査、評価用DBの初期化・退避、アプリ更新のいずれからも変更しない。固定score pathのmissing／0 byteだけはmaster検証後にWPF側の正式schema初期化境界で初期化できる。既存formal DBのmigration、repair、backup writer、installer連携はこのIssueの対象外であり、互換DBのschema再作成やmetadata上書きは行わない。
 

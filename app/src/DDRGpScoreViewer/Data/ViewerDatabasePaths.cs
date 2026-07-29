@@ -16,21 +16,32 @@ public sealed record ViewerDatabasePaths(
 {
     public static ViewerDatabasePaths ResolveDefault()
     {
-        try
+#if DEBUG
+        var explicitDevelopmentRoot =
+            System.Environment.GetEnvironmentVariable(
+                "DDRGP_SCORE_VIEWER_DEVELOPMENT_ROOT");
+        if (!string.IsNullOrWhiteSpace(explicitDevelopmentRoot))
         {
-            return ForDevelopment(RepositoryRootLocator.Find());
+            return ForDevelopment(explicitDevelopmentRoot);
         }
-        catch (InvalidOperationException)
+
+        // Debug may be launched from the checkout for developer-only operations.
+        // This is an explicit current-directory convention, not a parent search.
+        var currentDirectory = Path.GetFullPath(System.Environment.CurrentDirectory);
+        if (Directory.Exists(Path.Combine(currentDirectory, "databases")))
         {
-            return ForProduction(
-                System.Environment.GetFolderPath(
-                    System.Environment.SpecialFolder.LocalApplicationData));
+            return ForDevelopment(currentDirectory);
         }
+#endif
+
+        return ForProduction(
+            System.Environment.GetFolderPath(
+                System.Environment.SpecialFolder.LocalApplicationData));
     }
 
-    public static ViewerDatabasePaths ForDevelopment(string repositoryRoot)
+    public static ViewerDatabasePaths ForDevelopment(string developmentRoot)
     {
-        var root = FullPath(repositoryRoot, nameof(repositoryRoot));
+        var root = FullPath(developmentRoot, nameof(developmentRoot));
         var databaseDirectory = Path.Combine(root, "databases");
         var dataDirectory = Path.Combine(root, "data");
         return new ViewerDatabasePaths(

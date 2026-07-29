@@ -32,25 +32,20 @@ public partial class MainWindow : System.Windows.Window
         InitializeComponent();
         viewModel = new MainViewModel(
             new ScoreViewerRepository(),
-            workflowRunner:
-#if DEBUG
-            new PythonPersonalScoreDbWorkflowRunner(),
-#else
-            null,
-#endif
+            workflowRunner: new AppOwnedPersonalScoreDbWorkflowRunner(),
 #if DEBUG
             captureService: new SingleFrameCaptureService(
                 new WindowsGraphicsCaptureAdapter(),
-                new RepositoryCaptureOutputWriter()),
+                new ApplicationCaptureOutputWriter()),
 #endif
             continuousCaptureService: new ContinuousCaptureService(
                 new ContinuousWindowsGraphicsCaptureAdapter(),
-                new RepositoryCaptureSessionOutputWriter()),
-            captureSaveWorkflowRunner: new PythonCaptureSaveWorkflowRunner(),
+                new ApplicationCaptureSessionOutputWriter()),
+            captureSaveWorkflowRunner: new AppOwnedCaptureSaveWorkflowRunner(),
             pathStore: new LocalViewerPathStore(),
             liveMonitoringService: new LiveMonitoringCaptureService(
                 new ContinuousWindowsGraphicsCaptureAdapter(),
-                new PythonLiveResultAnalyzer()));
+                new AppOwnedLiveResultAnalyzer()));
         DataContext = viewModel;
 #if DEBUG
         AddDeveloperActions();

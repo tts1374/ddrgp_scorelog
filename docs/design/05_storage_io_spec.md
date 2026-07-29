@@ -36,7 +36,7 @@
 
 ## M10-2 local application storage boundary
 
-M10-2では、DBの責務と実行環境をpathで固定する。repository rootを現在のdirectoryまたはapp配置場所の親から解決できる実行をdevelopment、解決できない実行をproductionとし、両環境のDB pathをfallbackしない。
+M10-2では、DBの責務と実行環境をpathで固定する。Debugで明示されたdevelopment root、またはDebugのcurrent directoryに`databases/`がある場合だけdevelopmentとし、Releaseは常にproduction固定pathを使う。Releaseではrepository rootやapp配置場所の親を探索せず、両環境のDB pathをfallbackしない。
 
 | 責務 | development | production | 初期化・更新責務 |
 | --- | --- | --- | --- |
@@ -45,7 +45,7 @@ M10-2では、DBの責務と実行環境をpathで固定する。repository root
 | 正式個人スコアDB | `databases/score.dev.db` | `%LOCALAPPDATA%\DDRGpScoreViewer\data\score\score.db` | 固定pathのmissing／0 byteだけWPF側の正式schema初期化境界で初期化。既存formal DBは明示save以外で変更しない |
 | 評価用DB | `databases/evaluation.db` | 既定pathなし | M10-3評価器だけが明示的に初期化・再実行 |
 
-起動時はDB親directory、`data/`、`logs/`を作成し、M4 master DBとM5b jacket reference catalogのread-only検証に成功した場合だけ、現在の環境の固定score pathがmissingまたは0 byteのときWPF側の `PersonalScoreDbInitializer` が既存の正式schema、metadata、migration契約に従って初期schemaを作成する。既存の非空score DBはこの処理で開かず、後段のread-only検証へ進める。Python CLIの `prepare-write` 境界は明示CLIまたは既存Python save workflowで使用し、起動時bootstrapはrepository rootやPython module配置を必要としない。`data/windows_capture/`、`data/capture_save_workflow/`、`logs/analysis_details/`、`logs/analysis_failures/`は再生成・退避可能なlocal outputであり、formal `plays`の代替ではない。
+起動時はDB親directory、`data/`、`logs/`を作成し、M4 master DBとM5b jacket reference catalogのread-only検証に成功した場合だけ、現在の環境の固定score pathがmissingまたは0 byteのときWPF側の `PersonalScoreDbInitializer` が既存の正式schema、metadata、migration契約に従って初期schemaを作成する。既存の非空score DBはこの処理で開かず、後段のread-only検証へ進める。app-owned runtimeの明示saveも同じfile-preparation、adapter、transaction writer境界を使う。Release packageはrepository root、repository内module、外部Python executable、Tesseractをruntime依存にせず、認識資材はapp packageの`RuntimeAssets/`または`DDRGP_SCORE_VIEWER_RUNTIME_DATA`で明示したdata pathから解決する。`data/windows_capture/`、`data/capture_save_workflow/`、`logs/analysis_details/`、`logs/analysis_failures/`は再生成・退避可能なlocal outputであり、formal `plays`の代替ではない。
 
 ### 二つのmaster DBのread-only inspection
 
@@ -199,8 +199,8 @@ data/windows_capture/capture-<UTC>-<unique>/
 制約:
 
 - output rootは `data/` の子directoryに限定する。
-- current directoryまたはapp配置場所からrepository rootをcapture操作時に探索し、process cwdに関係なくrepository root直下の `data/windows_capture/` を使う。
-- repository root探索失敗はwrite失敗として扱い、通常viewer起動やread-only閲覧を妨げない。
+- Debugの明示development root、またはReleaseの固定production data pathからcapture output rootを解決し、process cwdへ依存しない。
+- Releaseではrepository root探索を行わず、app data pathが解決できない場合はwrite失敗として扱い、通常viewer起動やread-only閲覧を妨げない。
 - captureごとに一意な新規directoryを使い、既存ファイルや既存capture directoryを上書きしない。
 - 3ファイルは同一filesystem上のstaging directoryへ書き、directory rename後だけ完成出力として扱う。
 - cancel、capture失敗、write失敗ではstagingを削除し、空画像、部分manifest、temp directoryを完成出力へ残さない。
@@ -288,7 +288,7 @@ data/master/ddrgp-master.sqlite
 ddrgp-scores.sqlite
 ```
 
-正式個人スコアDBのPython側ファイル準備境界は `prepare_personal_score_db_file_for_write(path)` で扱う。新規DBファイルと0 byte空ファイルだけ正式初期schemaを作成でき、既存の正式DBは変更せずに互換確認だけ行う。M8 preview DB、unknown DB、metadata identity mismatch、manual migration候補、SQLiteとして読めないファイル、ディレクトリは正式DBとして開かず、自動変更しない。WPFの起動時bootstrapは `PersonalScoreDbInitializer` が同じ正式schema・metadata・拒否契約をアプリ側で使うため、このPython入口を呼び出さない。どちらの入口もplayのinsertや既定の監視保存は開始しない。検査済み結果は `personal_score_db_schema_inspection_diagnostic()` / `format_personal_score_db_schema_diagnostic_markdown()` / `personal_score_db_file_preparation_diagnostic()` で、path、status、拒否理由、必須table、metadata identity、初期化有無を人間が読める診断へ投影できるが、diagnostic生成自体はDBやファイルを追加変更しない。
+正式個人スコアDBのfile preparationは、app-owned runtimeとoffline PoCが同じ正式schema契約を使う。新規DBファイルと0 byte空ファイルだけ正式初期schemaを作成でき、既存の正式DBは変更せずに互換確認だけ行う。M8 preview DB、unknown DB、metadata identity mismatch、manual migration候補、SQLiteとして読めないファイル、ディレクトリは正式DBとして開かず、自動変更しない。WPFの起動時bootstrapは `PersonalScoreDbInitializer` が正式schema・metadata・拒否契約をアプリ側で使い、offline PoCのCLIやmoduleを呼び出さない。どちらの入口もplayのinsertや既定の監視保存を暗黙には開始しない。
 
 CLI診断は `python -m tools.vision_poc --personal-score-db-diagnostic <path>` で標準出力へ出す。既定のinspect modeは読み取り専用で、`--personal-score-db-diagnostic-mode prepare-write` は新規DBファイルまたは0 byte空ファイルだけ正式初期schemaを作成する。出力はMarkdown既定で、`--personal-score-db-diagnostic-format json` も選べる。`--personal-score-db-diagnostic-output <path>` を指定した場合は、標準出力と同じ診断テキストをファイルへ保存する。出力先は `data/` 配下に限定し、Markdown format は `.md` / `.markdown`、JSON format は `.json` の拡張子だけを許可する。この出力は診断の保存だけであり、playの本番insert、既定の監視保存、既存DB migration、低信頼度ログ本番保存には進まない。
 
@@ -456,7 +456,7 @@ orchestration入口がartifact output pathと `analysis_logs.log_path` の一致
 
 終了結果は `workflow_status`、`artifact_status=not_requested|created|reused|failed|conflict`、`adapter_status`、`db_status`、既存save resultと同じID、理由、artifact path、DB pathを返す。正式play値、candidate material、analysis detail本文は結果へ再掲しない。利用者は終了コードだけでなく、`workflow_status`、`artifact_status`、`written`、`play_id`、artifact file、正式DB diagnosticを確認する。自動補償、artifact削除、既存file上書き、DB自動修復は行わない。
 
-M9 WPFは `personal_score_db_workflow_app` を別processで起動する。このUI adapterはユーザーが選択したworkflow入力とDB pathだけを受け、入力内の `save_input.log_path` を既存orchestrationのartifact outputへ渡す。C#側にJSON save loader、DB writer、artifact writerを持たない。`saved` かつtransaction完了済みplayだけ同じread-only repositoryで再openし、通常の閲覧操作は引き続きwrite processを起動しない。
+M9 WPFはapp-owned runtimeのstrict workflowを同一processで1回実行する。このUI adapterはユーザーが選択したworkflow入力と固定DB pathだけを受け、candidate materialをformal値へ補完しない。`saved` かつtransaction完了済みplayだけ同じread-only repositoryで再openし、通常の閲覧操作はwrite workflowを起動しない。offline PoCのCLI/module、repository root、Python executable、Tesseractはこのruntimeから呼び出さない。
 
 ### 後続実装のfixture行列とacceptance criteria
 

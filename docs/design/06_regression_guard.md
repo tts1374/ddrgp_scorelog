@@ -355,8 +355,8 @@
 - orchestration入口がartifact output pathと `analysis_logs.log_path` の一致を副作用前に保証する。
 - artifact失敗ではDB未実行、artifact成功後のDB失敗ではrowをrollbackしてartifactを保持する。同一payloadだけ再利用し、既存fileを上書き・削除しない。
 - `artifact_created_db_failed` を保存成功へ丸めず、`duplicate` / `excluded` の `play_id=null` を成功playとして扱わない。
-- M9 manual WPF入口はworkflow入力だけを明示選択し、正式DBと表示用master DBは現在の環境の固定pathを使って既存workflowを1回だけ呼ぶ。C#側でstrict入力や正式値を再構築しない。
-- Python executableとrepository rootの探索は単発保存の実行時まで遅延し、探索失敗でread-only viewerの起動や通常閲覧を妨げない。
+- M9 manual WPF入口はworkflow入力だけを明示選択し、正式DBと表示用master DBは現在の環境の固定pathを使ってapp-owned workflowを1回だけ呼ぶ。C#側のstrict loader/adapterは入力契約と正式保存境界を検証するが、candidate materialや未確認の数字を正式値へ再構築しない。
+- Releaseの単発保存・通常監視はapp-owned runtimeを同一processで実行し、Python executable、Tesseract、repository root探索を行わない。必要なruntime資材が欠けた場合は明示エラーとし、read-only viewer起動や通常閲覧へimplicit fallbackしない。
 - UIは `saved` / `written=true` / 非null `play_id` だけread-only再読込し、再読込履歴に同じIDがあることを確認する。excluded、duplicate、unresolved、invalid、DB拒否、artifact partial successではplay反映を行わない。
 - viewer単独のDB選択、履歴、詳細、自己ベスト操作はwrite processを起動せず、個人DBとmaster DBのhashを変えない。
 - candidate material、正式play値、analysis detail本文を相互投影せず、receipt、DB diagnostic、failure image、source captureの責務を混ぜない。
@@ -456,8 +456,9 @@ M5bの変更では、少なくとも次のcurrent-only境界をfixtureで固定�
 - target終了、0x0、resize、device lost、access拒否、write失敗を保存成功へ丸めない。
 - 成功・失敗・cancel後にframe、frame pool、capture session、D3D device、streamを解放し、同一processで次の明示captureを実行できるようにする。
 - outputは `data/windows_capture/` 配下の一意directoryへatomicに公開し、既存出力を上書きせず、失敗時にstagingや部分manifestを残さない。
-- capture output rootは操作時にrepository rootから解決し、process cwdへprivate画像を逸脱させず、探索失敗で通常viewer起動を妨げない。
+- capture output rootはDebugの明示development rootまたはReleaseのapp data pathから解決し、process cwdへprivate画像を逸脱させず、Releaseではrepository root探索を行わない。
 - manifestは `image_path,timestamp_ms` を維持し、`screen_type=unknown` とcapture補助列を任意列としてmanifest readerへ渡す。
+- app-owned runtime境界テストは、clean temporary directoryでRelease packageを起動し、repository root、repository内module、Python executable、Tesseract processが不要であること、package/explicit data pathのruntime資材が解決できることを確認する。
 
 ## WPF continuous capture session guard
 
