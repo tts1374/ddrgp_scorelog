@@ -10,10 +10,10 @@ main branchで利用できる主な機能:
 
 - BEMANIWiki由来の楽曲・譜面マスタDB生成
 - リザルト候補分類、confirmed event生成、数字ROI OCR、曲・譜面候補照合
-- 正式個人スコアDB version 1への明示的な単発保存
+- Debug buildの開発者向け領域からの1フレーム取得、連続取得、正式個人スコアDB version 1への単発保存
 - 正式DBとマスタDBをread-onlyで開くWPFスコアビューア
-- Windows Graphics Captureによる1フレーム取得、連続取得、取得後の保存workflow
-- `監視開始` による `ddr-konaste` / client `1280x720` の対象window自動特定（該当1件だけ接続）、1秒ごとのRESULT/SCORE gateと候補のリアルタイム正式保存、監視のstop / exit、capture-only入口の対象window再選択、環境ごとの固定path再検証、master DB read-only再検証
+- Release buildの通常画面は、`監視開始`／`監視停止`、固定path再検証、master DB read-only再検証に限定
+- `監視開始` による `ddr-konaste` / client `1280x720` の対象window自動特定（該当1件だけ接続）、1秒ごとのRESULT/SCORE gateと候補のリアルタイム正式保存、監視のstop / exit
 - developer-onlyのjacket catalog収集・manual review支援
 
 進行中の主な作業:
@@ -65,9 +65,12 @@ uv run pytest tests
 
 ```powershell
 dotnet restore app\tests\DDRGpScoreViewer.Tests\DDRGpScoreViewer.Tests.csproj --locked-mode
-dotnet build app\src\DDRGpScoreViewer\DDRGpScoreViewer.csproj --no-restore
-dotnet test app\tests\DDRGpScoreViewer.Tests\DDRGpScoreViewer.Tests.csproj --no-restore
+dotnet build app\src\DDRGpScoreViewer\DDRGpScoreViewer.csproj --configuration Debug --no-restore
+dotnet build app\src\DDRGpScoreViewer\DDRGpScoreViewer.csproj --configuration Release --no-restore
+dotnet test app\tests\DDRGpScoreViewer.Tests\DDRGpScoreViewer.Tests.csproj --configuration Debug --no-restore
 ```
+
+Debug buildだけが開発者向け操作のUIとcommand入口を含みます。Release buildではこれらを生成せず、通常の監視開始・停止だけを残します。
 
 詳細な実行・操作手順は[WindowsアプリREADME](app/README.md)を参照してください。
 
