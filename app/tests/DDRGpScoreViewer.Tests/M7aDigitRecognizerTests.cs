@@ -289,6 +289,7 @@ public sealed class M7aDigitRecognizerTests
             "score_digits",
             "judgment_counts",
             "combo_ex_score",
+            "chart_level",
         })
         {
             var labels = Directory.EnumerateFiles(

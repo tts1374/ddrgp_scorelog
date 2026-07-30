@@ -201,10 +201,10 @@ public sealed class M7aDigitRecognizer
         double minimumMargin = DigitMinMargin,
         bool formalVisualAcceptance = false)
     {
-        // All callers use the original M7a ROI, template, segmentation, and
-        // threshold defaults. The optional policy changes only the confidence
-        // projection for a formal image-evidence consumer; it does not change
-        // candidate labels or the recognition gate.
+        // The eight RESULT numeric fields keep their original M7a ROI,
+        // template, segmentation, threshold, and recognition gate. This
+        // overload also supports the separate chart-context image evidence
+        // templates used for level recognition.
         ArgumentNullException.ThrowIfNull(image);
         var root = templateRoot.Value;
         var templates = root.Path is null

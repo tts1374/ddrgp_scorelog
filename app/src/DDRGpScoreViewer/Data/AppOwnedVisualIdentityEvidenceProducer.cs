@@ -45,11 +45,11 @@ internal sealed class AppOwnedVisualIdentityEvidenceProducer
     private static readonly IReadOnlyDictionary<string, double> DifficultyHues =
         new Dictionary<string, double>(StringComparer.Ordinal)
         {
-            ["BEGINNER"] = 180.0,
-            ["BASIC"] = 30.0,
-            ["DIFFICULT"] = 330.0,
-            ["EXPERT"] = 90.0,
-            ["CHALLENGE"] = 270.0,
+            ["BEGINNER"] = 190.0,
+            ["BASIC"] = 35.0,
+            ["DIFFICULT"] = 350.0,
+            ["EXPERT"] = 112.0,
+            ["CHALLENGE"] = 290.0,
         };
 
     private readonly object cacheGate = new();
@@ -392,10 +392,10 @@ internal sealed class AppOwnedVisualIdentityEvidenceProducer
             bitmap,
             fieldName: "level",
             roiDefinition: LevelRoi,
-            segmentationRoiName: "score_digits",
-            templateGroup: "score_digits",
-            maximumDistance: 0.34,
-            minimumMargin: 0.05,
+            segmentationRoiName: "chart_level",
+            templateGroup: "chart_level",
+            maximumDistance: 0.28,
+            minimumMargin: 0.02,
             formalVisualAcceptance: true);
         if (level.Status != "recognized" ||
             !int.TryParse(
