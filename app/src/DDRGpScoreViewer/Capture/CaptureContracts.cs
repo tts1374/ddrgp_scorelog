@@ -76,7 +76,9 @@ public sealed record LiveResultObservation(
     bool IsResultScreen,
     string Score,
     string TitleSignature,
-    string Reason);
+    string Reason,
+    IReadOnlyDictionary<string, Runtime.M7aDigitRecognitionResult>? DigitRecognitions = null,
+    string DigitRecognitionStatus = "not_evaluated");
 
 public interface IGraphicsCaptureAdapter
 {

@@ -2,35 +2,48 @@ using System.IO;
 using System.Security.Cryptography;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using DDRGpScoreViewer.Runtime;
 
 namespace DDRGpScoreViewer.Capture;
 
 /// <summary>
-/// App-owned RESULT gate. Numeric result recognition remains a later runtime concern;
-/// this boundary never derives formal score values from a candidate frame.
+/// App-owned RESULT gate and M7a candidate digit recognizer. It never derives
+/// formal score values from candidate frame pixels.
 /// </summary>
 public sealed class AppOwnedLiveResultAnalyzer : ILiveResultAnalyzer
 {
     private const string KnownResultSignature = "known-result";
+    private readonly M7aDigitRecognizer digitRecognizer;
+
+    public AppOwnedLiveResultAnalyzer()
+        : this(new M7aDigitRecognizer())
+    {
+    }
+
+    internal AppOwnedLiveResultAnalyzer(M7aDigitRecognizer digitRecognizer)
+    {
+        this.digitRecognizer = digitRecognizer;
+    }
 
     public Task<LiveResultObservation> AnalyzeAsync(
         CapturedFrame frame,
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        return Task.FromResult(Analyze(frame));
+        return Task.FromResult(AnalyzeFrame(frame, forceKnownResult: false));
     }
 
-    internal static LiveResultObservation CreateKnownResultObservation(CapturedFrame _)
+    internal Task<LiveResultObservation> AnalyzeKnownResultAsync(
+        CapturedFrame frame,
+        CancellationToken cancellationToken = default)
     {
-        return new LiveResultObservation(
-            true,
-            string.Empty,
-            KnownResultSignature,
-            "preconfirmed_result_candidate_score_recognition_pending");
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.FromResult(AnalyzeFrame(frame, forceKnownResult: true));
     }
 
-    internal static LiveResultObservation Analyze(CapturedFrame frame)
+    private LiveResultObservation AnalyzeFrame(
+        CapturedFrame frame,
+        bool forceKnownResult)
     {
         if (!IsPng(frame.PngBytes))
         {
@@ -50,28 +63,45 @@ public sealed class AppOwnedLiveResultAnalyzer : ILiveResultAnalyzer
                 BitmapCacheOption.OnLoad);
             var bitmap = decoder.Frames[0];
             var pixels = PixelBuffer.From(bitmap);
-            var header = pixels.Measure(480, 0, 320, 58);
-            var detail = pixels.Measure(662, 330, 462, 288);
-            var headerScore = HeaderScore(header);
-            var detailScore = DetailScore(detail);
-            if (headerScore < 0.72 || detailScore < 0.74)
+            if (!forceKnownResult)
             {
-                return new LiveResultObservation(
-                    false,
-                    string.Empty,
-                    string.Empty,
-                    "results_header_not_detected");
+                var header = pixels.Measure(480, 0, 320, 58);
+                var detail = pixels.Measure(662, 330, 462, 288);
+                var headerScore = HeaderScore(header);
+                var detailScore = DetailScore(detail);
+                if (headerScore < 0.72 || detailScore < 0.74)
+                {
+                    return new LiveResultObservation(
+                        false,
+                        string.Empty,
+                        string.Empty,
+                        "results_header_not_detected");
+                }
             }
 
+            var digitResults = digitRecognizer.Recognize(bitmap);
+            var scoreResult = digitResults["score"];
+            var score = scoreResult.HasCandidateDigits
+                ? scoreResult.RecognizedDigits
+                : string.Empty;
+            var status = M7aDigitRecognizer.AggregateStatus(digitResults);
+            var reason = scoreResult.HasCandidateDigits
+                ? $"result_digits_{scoreResult.Status}"
+                : $"result_digit_{scoreResult.Status}:{scoreResult.FailureReason}";
             return new LiveResultObservation(
                 true,
-                string.Empty,
-                CreatePixelSignature(pixels, 488, 274, 304, 32),
-                "result_score_recognition_deferred");
+                score,
+                forceKnownResult
+                    ? KnownResultSignature
+                    : CreatePixelSignature(pixels, 488, 274, 304, 32),
+                reason,
+                digitResults,
+                status);
         }
         catch (Exception exception) when (
             exception is ArgumentException or InvalidOperationException or IOException or
-                FileFormatException or System.Runtime.InteropServices.COMException)
+                FileFormatException or NotSupportedException or
+                System.Runtime.InteropServices.COMException)
         {
             return new LiveResultObservation(
                 false,

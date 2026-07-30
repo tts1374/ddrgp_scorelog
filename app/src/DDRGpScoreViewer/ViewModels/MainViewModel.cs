@@ -171,7 +171,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public string DatabaseEnvironmentDisplay => defaultDatabasePaths.Environment switch
     {
-        ViewerDatabaseEnvironment.Development => "development（repository rootを検出）",
+        ViewerDatabaseEnvironment.Development => "development（development root）",
         ViewerDatabaseEnvironment.Production => "production（LocalAppData）",
         _ => "unknown",
     };

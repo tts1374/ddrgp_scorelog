@@ -36,7 +36,7 @@
 
 ## M10-2 local application storage boundary
 
-M10-2では、DBの責務と実行環境をpathで固定する。Debugで明示されたdevelopment root、またはDebugのcurrent directoryに`databases/`がある場合だけdevelopmentとし、Releaseは常にproduction固定pathを使う。Releaseではrepository rootやapp配置場所の親を探索せず、両環境のDB pathをfallbackしない。
+M10-2では、DBの責務と実行環境をpathで固定する。Debugで明示されたdevelopment root、またはDebugのcurrent directory／Debug出力directoryから親方向にsource checkout（`databases/`とScore Viewer project）が検出できる場合だけdevelopmentとし、Releaseは常にproduction固定pathを使う。Releaseではrepository rootやapp配置場所の親を探索せず、両環境のDB pathをfallbackしない。
 
 | 責務 | development | production | 初期化・更新責務 |
 | --- | --- | --- | --- |
@@ -199,7 +199,7 @@ data/windows_capture/capture-<UTC>-<unique>/
 制約:
 
 - output rootは `data/` の子directoryに限定する。
-- Debugの明示development root、またはReleaseの固定production data pathからcapture output rootを解決し、process cwdへ依存しない。
+- Debugの明示またはsource checkoutから検出したdevelopment root、またはReleaseの固定production data pathからcapture output rootを解決し、process cwdだけには依存しない。
 - Releaseではrepository root探索を行わず、app data pathが解決できない場合はwrite失敗として扱い、通常viewer起動やread-only閲覧を妨げない。
 - captureごとに一意な新規directoryを使い、既存ファイルや既存capture directoryを上書きしない。
 - 3ファイルは同一filesystem上のstaging directoryへ書き、directory rename後だけ完成出力として扱う。

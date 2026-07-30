@@ -11,7 +11,8 @@ public sealed class CaptureSaveWorkflowRunnerTests
     public async Task Live_candidate_uses_the_app_owned_workflow_without_a_checkout()
     {
         var frame = new CapturedFrame(
-            [137, 80, 78, 71, 13, 10, 26, 10],
+            Convert.FromBase64String(
+                "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGPgEpH7DwABpAE8k4sOtwAAAABJRU5ErkJggg=="),
             1280,
             720,
             1_000,

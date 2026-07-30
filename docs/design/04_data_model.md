@@ -11,7 +11,7 @@ M10-2のruntime実装では、次の4つのSQLite責務を混在させない。M
 | 正式個人スコアDB | `databases/score.dev.db` | `%LOCALAPPDATA%\DDRGpScoreViewer\data\score\score.db` | `plays`、source、analysisの正式保存先。既存user dataを保護 |
 | 評価用DB | `databases/evaluation.db` | 既定pathなし | M10-3評価専用。WPF runtimeから参照しない |
 
-repository rootを解決できる実行をdevelopment、解決できない実行をproductionとする。既定pathの切替で別環境のDBへfallbackせず、保存済みpathにも環境タグを付けて別環境から暗黙復元しない。
+Debugで明示またはsource checkoutを検出できる実行をdevelopment、Releaseまたはsource checkoutを検出できない実行をproductionとする。既定pathの切替で別環境のDBへfallbackせず、保存済みpathにも環境タグを付けて別環境から暗黙復元しない。
 
 ## 目的
 

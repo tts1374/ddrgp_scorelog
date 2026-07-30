@@ -31,7 +31,7 @@ dotnet test app\tests\DDRGpScoreViewer.Tests\DDRGpScoreViewer.Tests.csproj --con
 2. Windowsのpickerで取得対象のwindowを明示選択する。
 3. 完了表示に出た `data/windows_capture/capture-*/` を確認する。
 
-各capture directoryには `frame.png`、`frame_manifest.csv`、`capture_metadata.json` をまとめて出力します。capture出力はappの既定data path（Debugの明示development root、またはReleaseの`%LOCALAPPDATA%\DDRGpScoreViewer\data\`）から解決し、repository rootを探索しません。runtime data pathが必要な場合は `DDRGP_SCORE_VIEWER_RUNTIME_DATA` に明示します。manifestの必須列は既存契約と同じ `image_path,timestamp_ms` で、`screen_type=unknown`、capture source、幅、高さ、UTC取得時刻を任意列として付けます。画像pathはmanifest directory相対です。staging directoryで3ファイルを書いた後にdirectory単位で公開するため、cancel、対象終了、0x0/resize、device lost、access拒否、write失敗では空画像や部分manifestを最終出力へ残しません。既存capture directoryは上書きしません。
+各capture directoryには `frame.png`、`frame_manifest.csv`、`capture_metadata.json` をまとめて出力します。capture出力はappの既定data path（Debugの明示またはsource checkoutから検出したdevelopment root、またはReleaseの`%LOCALAPPDATA%\DDRGpScoreViewer\data\`）から解決します。Releaseではrepository rootを探索しません。runtime data pathが必要な場合は `DDRGP_SCORE_VIEWER_RUNTIME_DATA` に明示します。manifestの必須列は既存契約と同じ `image_path,timestamp_ms` で、`screen_type=unknown`、capture source、幅、高さ、UTC取得時刻を任意列として付けます。画像pathはmanifest directory相対です。staging directoryで3ファイルを書いた後にdirectory単位で公開するため、cancel、対象終了、0x0/resize、device lost、access拒否、write失敗では空画像や部分manifestを最終出力へ残しません。既存capture directoryは上書きしません。
 
 pickerとWindows Graphics Captureは明示操作時だけ起動します。取得後に分類、OCR、identity解決、workflow、正式DB保存、viewer再読込を自動実行しません。同じprocessで再度ボタンを押すと、resourceを作り直して別の1フレームを取得します。
 
@@ -73,11 +73,19 @@ python -m tools.vision_poc `
 ## 監視と正式保存workflow
 
 1. WPFまたはtask trayの `監視開始` を押す。
-2. 起動時に現在の環境（Debugで明示されたdevelopment root、またはReleaseのLocalAppData production）の固定pathを使う。DBの任意pathへの切替操作はありません。
+2. 起動時に現在の環境（Debugで明示またはsource checkoutから検出したdevelopment root、またはReleaseのLocalAppData production）の固定pathを使う。DBの任意pathへの切替操作はありません。
 3. `監視開始` が `process=ddr-konaste` かつ client `1280x720` のtop-level windowを確認する。該当1件だけなら既存の監視へ接続し、0件または複数件なら推測で選択せず、capture・解析・正式保存を開始しない。手動pickerへのfallbackはありません。
 4. 監視中にRESULT候補の解析・正式保存が進み、WPFまたはtrayの `監視停止` で現在の候補処理を完了して停止する。監視surfaceで状態、対象window名・process・client size、frame数、サンプリング数、RESULT検出数、候補・破棄・待機数、event status別の保存結果を確認する。
 
-監視では1秒ごとの候補をapp-owned runtimeで解析します。RESULTSがないframe、SCOREを認識できないframe、同じRESULT署名の結果は後続処理へ渡しません。候補のevent boundary、capture lifecycle、formal evidence、正式DB保存境界は既存契約を維持し、現在のruntimeで正式値が揃わない候補は `unresolved` のままplayを作りません。数字のscore・判定数・EX SCORE認識は#103で分離後runtimeへ追加します。candidate PNG、manifest、解析CSV/JSONはOS一時directoryまたはapp data pathだけに置き、workflow終了後に不要な一時入力を残しません。capture-onlyの連続取得は従来どおり停止後に完成manifestを解析できます。capture失敗、resize、target close、device lost、write失敗では新しい解析・正式保存を開始しません。
+監視では1秒ごとの候補をapp-owned runtimeで解析します。RESULTSがないframeと同じRESULT署名の後続frameは後続処理へ渡しません。RESULT画面を検出してもscoreまたは判定数を認識できない候補はcandidate materialとして一度だけ既存workflowへ渡し、`unresolved` または保存拒否理由を維持してplayを作りません。候補のevent boundary、capture lifecycle、formal evidence、正式DB保存境界は既存契約を維持します。candidate PNG、manifest、解析CSV/JSONはOS一時directoryまたはapp data pathだけに置き、workflow終了後に不要な一時入力を残しません。capture-onlyの連続取得は従来どおり停止後に完成manifestを解析できます。capture失敗、resize、target close、device lost、write失敗では新しい解析・正式保存を開始しません。
+
+### M7a result digit runtime
+
+RESULTの `score`、`max_combo`、`marvelous`、`perfect`、`great`、`good`、`miss`、`ex_score` は、app-ownedのbitmap-template比較だけで候補化します。`score=0` は有効な数字として扱い、scoreは1桁から7桁の可変桁です。認識状態は `recognized`、`missing_reference`、`ambiguous`、`failed_segmentation`、`not_evaluated` をcandidate materialへ記録します。
+
+通常監視では期待値を渡さないため、テンプレート照合に成功したfieldは `recognized`（`match=null`）として扱います。期待値比較を明示して期待値が空の場合だけ `not_evaluated` となり、いずれも正式値への自動昇格を意味しません。
+
+テンプレートはRelease packageの `RuntimeAssets/digit_templates/`、または `DDRGP_SCORE_VIEWER_RUNTIME_DATA` 配下の明示data pathから解決します。`score` はROI別 `score_digits`、判定数（`marvelous`、`perfect`、`great`、`good`、`miss`）は共有 `judgment_counts`、`max_combo` と `ex_score` は共有 `combo_ex_score`、`ex_score` は `max_combo` fallbackも探します。repositoryの `samples` や `tools/vision_poc` はruntime探索せず、PythonやTesseractも起動しません。`recognized_digits`、confidence、fieldごとの根拠、必須fieldの完全性は既存formal evidence検証へ渡し、認識成功だけで正式値やplayへ昇格しません。
 
 自動formal昇格はfieldごとの採用済み根拠sourceとconfidence、全必須値の完全性をpure adapterで検査します。M5 `identity_signal_*`、M7a `recognized_digits`、expected値、M8 preview payload、相対 `timestamp_ms` は候補材料のままです。現行pipelineにはrank/clear typeを含む全必須項目の採用済み根拠がまだないため、実captureで根拠が欠けるeventは `unresolved` となりplayを作りません。これはcandidateを正式値へ暗黙昇格しないための意図した停止です。Debug buildのreviewed workflow入力は開発者向け領域の `単発保存` から実行し、自動由来と混同しません。
 
@@ -99,7 +107,7 @@ python -m tools.vision_poc `
 
 ## M10-2 既定保存先と責務境界
 
-実行環境は、Debugで`DDRGP_SCORE_VIEWER_DEVELOPMENT_ROOT`を明示した場合、またはDebugのcurrent directoryに`databases/`がある場合だけdevelopmentです。Releaseは常にproduction固定pathを使用し、repository rootやapp配置場所の親を探索しません。developmentとproductionのpathを相互にfallbackしません。
+実行環境は、Debugで`DDRGP_SCORE_VIEWER_DEVELOPMENT_ROOT`を明示した場合、またはDebugのcurrent directory／Debug出力directoryから親方向にsource checkout（`databases/`とScore Viewer project）が検出できた場合だけdevelopmentです。Releaseは常にproduction固定pathを使用し、repository rootやapp配置場所の親を探索しません。developmentとproductionのpathを相互にfallbackしません。
 
 | 対象 | development | production |
 | --- | --- | --- |

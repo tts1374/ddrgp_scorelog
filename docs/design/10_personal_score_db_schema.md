@@ -16,7 +16,7 @@ M9のmanual保存入口は、既定または利用者が明示選択した正式
 
 ## M10-2 formal score DB path and protection
 
-developmentの正式個人スコアDBは `databases/score.dev.db`、productionの正式個人スコアDBは `%LOCALAPPDATA%\DDRGpScoreViewer\data\score\score.db` とする。Debugで明示されたdevelopment root、またはDebugのcurrent directoryに`databases/`がある場合だけdevelopmentとし、Releaseはproduction固定pathを使う。Releaseではrepository rootを探索せず、pathのcross-environment fallbackも行わない。
+developmentの正式個人スコアDBは `databases/score.dev.db`、productionの正式個人スコアDBは `%LOCALAPPDATA%\DDRGpScoreViewer\data\score\score.db` とする。Debugで明示されたdevelopment root、またはDebugのcurrent directory／Debug出力directoryから親方向にsource checkout（`databases/`とScore Viewer project）が検出できる場合だけdevelopmentとし、Releaseはproduction固定pathを使う。Releaseではrepository rootを探索せず、pathのcross-environment fallbackも行わない。
 
 正式DBの既存非空fileは、起動時のread-only viewer検査、M4 master DB検査、M5b jacket reference catalog検査、評価用DBの初期化・退避、アプリ更新のいずれからも変更しない。固定score pathのmissing／0 byteだけはmaster検証後にWPF側の正式schema初期化境界で初期化できる。既存formal DBのmigration、repair、backup writer、installer連携はこのIssueの対象外であり、互換DBのschema再作成やmetadata上書きは行わない。
 
