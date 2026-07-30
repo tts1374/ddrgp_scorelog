@@ -32,6 +32,9 @@ public sealed record M7aDigitRecognitionResult(
 public sealed class M7aDigitRecognizer
 {
     public const string Method = "bitmap-template-nearest";
+    private const double DigitMaxDistance = 0.28;
+    private const double DigitMinMargin = 0.02;
+    private const double MissDigitMinMargin = 0.015;
 
     public static readonly IReadOnlyList<string> Fields =
     [
@@ -264,18 +267,18 @@ public sealed class M7aDigitRecognizer
                 string.Create(
                     CultureInfo.InvariantCulture,
                     $"{best.Label}:{best.Distance:F4}:{margin:F4}"));
-            if (best.Distance > 0.28)
+            if (best.Distance > DigitMaxDistance)
             {
                 ambiguousReason = "distance_above_threshold";
             }
-            else if (margin < 0.02)
+            else if (margin < (roiName == "miss" ? MissDigitMinMargin : DigitMinMargin))
             {
                 ambiguousReason = "low_margin";
             }
         }
 
         var averageDistance = distances.Average();
-        var confidence = 1.0 - Math.Min(1.0, averageDistance / 0.28);
+        var confidence = 1.0 - Math.Min(1.0, averageDistance / DigitMaxDistance);
         var status = ambiguousReason.Length == 0 ? "recognized" : "ambiguous";
         var failureReason = ambiguousReason;
         bool? match = null;
@@ -456,6 +459,7 @@ public sealed class M7aDigitRecognizer
         {
             components = Components(mask)
                 .Where(component =>
+                    component.Top > 0 &&
                     component.Bottom - component.Top >= Math.Max(18, (int)(image.Height * 0.45)) &&
                     component.Area >= 50)
                 .OrderBy(component => component.Left)
@@ -474,6 +478,30 @@ public sealed class M7aDigitRecognizer
                         (component.Bottom - component.Top) <= 1.6))
                 .OrderBy(component => component.Left)
                 .ToList();
+            if (roiName == "miss")
+            {
+                var nestedComponents = components
+                    .Where(component => components.Any(container =>
+                        container.Area > component.Area &&
+                        container.Left <= component.Left &&
+                        container.Top <= component.Top &&
+                        container.Right >= component.Right &&
+                        container.Bottom >= component.Bottom))
+                    .ToArray();
+                foreach (var nested in nestedComponents)
+                {
+                    for (var y = nested.Top; y < nested.Bottom; y++)
+                    {
+                        for (var x = nested.Left; x < nested.Right; x++)
+                        {
+                            mask[y, x] = false;
+                        }
+                    }
+                }
+                components = components
+                    .Where(component => !nestedComponents.Contains(component))
+                    .ToList();
+            }
         }
         else
         {

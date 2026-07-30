@@ -32,6 +32,23 @@ public sealed class M7aDigitRecognizerTests
     }
 
     [Fact]
+    public void Score_ignores_a_non_digit_component_touching_the_roi_top_edge()
+    {
+        using var fixture = new TemplateFixture();
+        fixture.WriteTemplates("score_digits");
+
+        var result = new M7aDigitRecognizer(templateRoot: fixture.Root).Recognize(
+            fixture.Render(
+                new Dictionary<string, string> { ["score"] = "995880" },
+                addScoreTopNoise: true),
+            new Dictionary<string, string> { ["score"] = "995880" })["score"];
+
+        Assert.Equal("recognized", result.Status);
+        Assert.Equal("995880", result.RecognizedDigits);
+        Assert.True(result.Match);
+    }
+
+    [Fact]
     public void Uses_roi_specific_shared_and_ex_score_fallback_template_groups()
     {
         using var fixture = new TemplateFixture();
@@ -121,6 +138,20 @@ public sealed class M7aDigitRecognizerTests
     }
 
     [Fact]
+    public void Miss_equal_nearest_templates_remain_ambiguous()
+    {
+        using var fixture = new TemplateFixture();
+        fixture.WriteTemplates("miss", "0123456789", duplicateLabel: '1');
+
+        var result = new M7aDigitRecognizer(templateRoot: fixture.Root).Recognize(
+            fixture.Render(new Dictionary<string, string> { ["miss"] = "0" }))["miss"];
+
+        Assert.Equal("ambiguous", result.Status);
+        Assert.Equal("low_margin", result.FailureReason);
+        Assert.Equal("0", result.RecognizedDigits);
+    }
+
+    [Fact]
     public void Blank_roi_is_a_segmentation_failure()
     {
         using var fixture = new TemplateFixture();
@@ -131,6 +162,23 @@ public sealed class M7aDigitRecognizerTests
 
         Assert.Equal("failed_segmentation", result.Status);
         Assert.Equal("no_digit_segments", result.FailureReason);
+    }
+
+    [Fact]
+    public void Miss_ignores_a_nested_foreground_component_inside_a_digit()
+    {
+        using var fixture = new TemplateFixture();
+        fixture.WriteTemplates("miss");
+
+        var result = new M7aDigitRecognizer(templateRoot: fixture.Root).Recognize(
+            fixture.Render(
+                new Dictionary<string, string> { ["miss"] = "0" },
+                addNestedMissComponent: true),
+            new Dictionary<string, string> { ["miss"] = "0" })["miss"];
+
+        Assert.Equal("recognized", result.Status);
+        Assert.Equal("0", result.RecognizedDigits);
+        Assert.True(result.Match);
     }
 
     [Fact]
@@ -206,9 +254,6 @@ public sealed class M7aDigitRecognizerTests
         foreach (var group in new[]
         {
             "score_digits",
-            "max_combo",
-            "marvelous",
-            "perfect",
             "miss",
             "judgment_counts",
             "combo_ex_score",
@@ -224,6 +269,13 @@ public sealed class M7aDigitRecognizerTests
             Assert.Equal(
                 Enumerable.Range(0, 10).Select(value => value.ToString()).ToArray(),
                 labels);
+        }
+        foreach (var group in new[] { "max_combo", "marvelous", "perfect" })
+        {
+            var path = Path.Combine(root, group);
+            Assert.False(
+                Directory.Exists(path) &&
+                Directory.EnumerateFiles(path, "*.pbm", SearchOption.TopDirectoryOnly).Any());
         }
     }
 
@@ -358,7 +410,10 @@ public sealed class M7aDigitRecognizerTests
             }
         }
 
-        public BitmapSource Render(IReadOnlyDictionary<string, string> values)
+        public BitmapSource Render(
+            IReadOnlyDictionary<string, string> values,
+            bool addScoreTopNoise = false,
+            bool addNestedMissComponent = false)
         {
             const int width = 1280;
             const int height = 720;
@@ -399,6 +454,15 @@ public sealed class M7aDigitRecognizerTests
                 }
             }
 
+            if (addScoreTopNoise)
+            {
+                DrawGlyph(pixels, stride, 245, 277, 6, Patterns['4']);
+            }
+            if (addNestedMissComponent)
+            {
+                DrawFilledRectangle(pixels, stride, 978, 560, 2, 10);
+            }
+
             var bitmap = BitmapSource.Create(
                 width,
                 height,
@@ -436,6 +500,26 @@ public sealed class M7aDigitRecognizerTests
                             pixels[offset + 2] = 255;
                         }
                     }
+                }
+            }
+        }
+
+        private static void DrawFilledRectangle(
+            byte[] pixels,
+            int stride,
+            int left,
+            int top,
+            int width,
+            int height)
+        {
+            for (var y = top; y < top + height; y++)
+            {
+                for (var x = left; x < left + width; x++)
+                {
+                    var offset = y * stride + x * 4;
+                    pixels[offset] = 255;
+                    pixels[offset + 1] = 255;
+                    pixels[offset + 2] = 255;
                 }
             }
         }
