@@ -2,7 +2,9 @@ using System.Globalization;
 using System.IO;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using DDRGpScoreViewer.Capture;
+using DDRGpScoreViewer.Runtime;
 
 namespace DDRGpScoreViewer.Data;
 
@@ -35,7 +37,8 @@ public interface ILiveCaptureSaveWorkflowRunner
 
 /// <summary>
 /// App-owned capture/save orchestration. It keeps candidate material separate from
-/// formal save input; numeric result recognition is supplied by the later result-digit work.
+/// formal save input; M7a digit recognition remains candidate evidence until the
+/// existing formal evidence adapter accepts an explicit formal play.
 /// </summary>
 public sealed class AppOwnedCaptureSaveWorkflowRunner :
     ICaptureSaveWorkflowRunner,
@@ -92,7 +95,11 @@ public sealed class AppOwnedCaptureSaveWorkflowRunner :
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var observation = AppOwnedLiveResultAnalyzer.CreateKnownResultObservation(frame);
+            var observation = await analyzer.AnalyzeKnownResultAsync(frame, cancellationToken);
+            if (!observation.IsResultScreen)
+            {
+                return FailedResult(observation.Reason);
+            }
             var input = BuildInput(
                 frame,
                 observation,
@@ -148,16 +155,23 @@ public sealed class AppOwnedCaptureSaveWorkflowRunner :
                 row.TimestampMs,
                 row.CapturedAtUtc ?? DateTimeOffset.UtcNow,
                 row.CaptureSource ?? "manifest");
-            var observation = row.ScreenType switch
+            LiveResultObservation observation;
+            if (row.ScreenType == "result")
             {
-                "result" => AppOwnedLiveResultAnalyzer.CreateKnownResultObservation(frame),
-                "non_result" => new LiveResultObservation(
+                observation = await analyzer.AnalyzeKnownResultAsync(frame, cancellationToken);
+            }
+            else if (row.ScreenType == "non_result")
+            {
+                observation = new LiveResultObservation(
                     false,
                     string.Empty,
                     string.Empty,
-                    "manifest_non_result"),
-                _ => await analyzer.AnalyzeAsync(frame, cancellationToken),
-            };
+                    "manifest_non_result");
+            }
+            else
+            {
+                observation = await analyzer.AnalyzeAsync(frame, cancellationToken);
+            }
             if (!observation.IsResultScreen)
             {
                 activeConfirmedKey = null;
@@ -250,14 +264,55 @@ public sealed class AppOwnedCaptureSaveWorkflowRunner :
     {
         var captureHash = "sha256:" + Convert.ToHexString(SHA256.HashData(frame.PngBytes)).ToLowerInvariant();
         var idSeed = captureHash.Replace(":", "-", StringComparison.Ordinal);
-        return new AppSaveAdapterInput(
-            new Dictionary<string, string>(StringComparer.Ordinal)
+        var digitResults = observation.DigitRecognitions ??
+            new Dictionary<string, M7aDigitRecognitionResult>(StringComparer.Ordinal);
+        var candidateMaterial = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["result_screen"] = observation.IsResultScreen.ToString(CultureInfo.InvariantCulture),
+            ["score"] = observation.Score,
+            ["recognized_digits"] = observation.Score,
+            ["title_signature"] = observation.TitleSignature,
+            ["recognition_method"] = M7aDigitRecognizer.Method,
+            ["recognition_status"] = observation.DigitRecognitionStatus,
+        };
+        foreach (var result in digitResults.Values)
+        {
+            candidateMaterial[$"{result.FieldName}_recognized_digits"] = result.RecognizedDigits;
+            candidateMaterial[$"{result.FieldName}_expected_value"] = result.ExpectedValue;
+            candidateMaterial[$"{result.FieldName}_status"] = result.Status;
+            candidateMaterial[$"{result.FieldName}_failure_reason"] = result.FailureReason;
+            candidateMaterial[$"{result.FieldName}_distance"] = FormatNumber(result.Distance);
+            candidateMaterial[$"{result.FieldName}_confidence"] = FormatNumber(result.Confidence);
+            candidateMaterial[$"{result.FieldName}_segment_count"] =
+                result.SegmentCount.ToString(CultureInfo.InvariantCulture);
+            candidateMaterial[$"{result.FieldName}_template_count"] =
+                result.TemplateCount.ToString(CultureInfo.InvariantCulture);
+            candidateMaterial[$"{result.FieldName}_per_digit_distances"] = result.PerDigitDistances;
+            candidateMaterial[$"{result.FieldName}_match"] = result.Match?.ToString() ?? string.Empty;
+        }
+
+        var recognitionSummary = digitResults.ToDictionary(
+            pair => pair.Key,
+            pair => new
             {
-                ["result_screen"] = observation.IsResultScreen.ToString(CultureInfo.InvariantCulture),
-                ["score"] = observation.Score,
-                ["title_signature"] = observation.TitleSignature,
-                ["recognition_status"] = "deferred_to_result_digit_runtime",
+                pair.Value.Status,
+                pair.Value.FailureReason,
+                pair.Value.Distance,
+                pair.Value.Confidence,
+                pair.Value.SegmentCount,
+                pair.Value.TemplateCount,
             },
+            StringComparer.Ordinal);
+        var analysisSummary = JsonSerializer.Serialize(
+            new
+            {
+                runtime = "app-owned",
+                recognition_method = M7aDigitRecognizer.Method,
+                digit_recognition = recognitionSummary,
+                formal_evidence = "pending",
+            });
+        return new AppSaveAdapterInput(
+            candidateMaterial,
             $"capture-{idSeed}-{frame.TimestampMs}",
             captureHash,
             frame.CapturedAtUtc.ToString("O", CultureInfo.InvariantCulture),
@@ -269,9 +324,9 @@ public sealed class AppOwnedCaptureSaveWorkflowRunner :
             duplicate,
             duplicate ? "duplicate_window" : "time",
             "unresolved",
-            "deferred_to_result_digit_runtime",
+            observation.DigitRecognitionStatus,
             null,
-            "{\"runtime\":\"app-owned\",\"formal_evidence\":\"pending\"}",
+            analysisSummary,
             "score-viewer-runtime",
             null,
             null,
@@ -281,6 +336,9 @@ public sealed class AppOwnedCaptureSaveWorkflowRunner :
             candidateDurationMs,
             "");
     }
+
+    private static string FormatNumber(double? value) =>
+        value?.ToString("F6", CultureInfo.InvariantCulture) ?? string.Empty;
 
     private static string ResolveManifestImagePath(string manifestDirectory, string imagePath)
     {

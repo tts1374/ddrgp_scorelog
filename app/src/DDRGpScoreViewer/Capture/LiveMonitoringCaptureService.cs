@@ -320,7 +320,8 @@ public sealed class LiveMonitoringCaptureService(
         }
 
         state.IncrementResultFrameCount();
-        if (string.IsNullOrWhiteSpace(observation.Score))
+        if (string.IsNullOrWhiteSpace(observation.Score) &&
+            observation.DigitRecognitions is null)
         {
             state.ObserveInvalidResult($"RESULT画面を検出しましたがSCOREを取得できません。{observation.Reason}");
             progress.Report(state.ToProgress(state.StatusMessage));
@@ -340,7 +341,7 @@ public sealed class LiveMonitoringCaptureService(
             state.IncrementConfirmedCandidateCount();
             state.IncrementPendingCandidateCount();
             state.SetStatus(
-                $"RESULTを確定しました。SCORE={observation.Score}、解析・正式保存を開始します。");
+                $"RESULTを確定しました。SCORE={DisplayScore(observation)}、解析・正式保存を開始します。");
         }
         else
         {
@@ -351,6 +352,11 @@ public sealed class LiveMonitoringCaptureService(
         }
         progress.Report(state.ToProgress(state.StatusMessage));
     }
+
+    private static string DisplayScore(LiveResultObservation observation) =>
+        string.IsNullOrWhiteSpace(observation.Score)
+            ? "未認識"
+            : observation.Score;
 
     private static async Task ProcessCandidatesAsync(
         ChannelReader<LiveCandidate> candidateReader,
@@ -366,7 +372,7 @@ public sealed class LiveMonitoringCaptureService(
                 state.DecrementPendingCandidateCount();
                 state.SetActiveCandidate(true);
                 state.SetStatus(
-                    $"RESULT候補を解析・正式保存しています。SCORE={candidate.Observation.Score}");
+                    $"RESULT候補を解析・正式保存しています。SCORE={DisplayScore(candidate.Observation)}");
                 progress.Report(state.ToProgress(state.StatusMessage));
                 try
                 {

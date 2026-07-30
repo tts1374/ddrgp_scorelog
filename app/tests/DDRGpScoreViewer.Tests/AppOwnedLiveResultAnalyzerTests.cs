@@ -25,21 +25,22 @@ public sealed class AppOwnedLiveResultAnalyzerTests
     }
 
     [Fact]
-    public void Preconfirmed_candidate_never_derives_a_formal_score()
+    public async Task Preconfirmed_candidate_never_derives_a_formal_score()
     {
         var frame = new CapturedFrame(
-            [137, 80, 78, 71, 13, 10, 26, 10],
+            Convert.FromBase64String(
+                "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGPgEpH7DwABpAE8k4sOtwAAAABJRU5ErkJggg=="),
             1280,
             720,
             1_000,
             DateTimeOffset.UtcNow,
             "fixture");
 
-        var observation = AppOwnedLiveResultAnalyzer.CreateKnownResultObservation(frame);
+        var observation = await new AppOwnedLiveResultAnalyzer().AnalyzeKnownResultAsync(frame);
 
         Assert.True(observation.IsResultScreen);
         Assert.Empty(observation.Score);
         Assert.Equal("known-result", observation.TitleSignature);
-        Assert.Contains("pending", observation.Reason, StringComparison.Ordinal);
+        Assert.Contains("result_digit_", observation.Reason, StringComparison.Ordinal);
     }
 }

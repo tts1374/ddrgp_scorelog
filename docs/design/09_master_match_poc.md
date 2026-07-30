@@ -164,7 +164,7 @@ title line-hashでは、result `song_title` ROIのうち曲名行だけを対象
 
 `jacket_match_candidates.csv` へ追加するline-hash観測列は、`title_linehash_candidate_feature_count`、`title_linehash_diff_bit_count`、`title_linehash_dict_status`、`title_linehash_dict_top_*`、`title_linehash_dict_top_candidates`、`title_linehash_exact_status`、`title_linehash_distance_status`、`title_linehash_top_*`、`title_linehash_top_candidates`、`title_linehash_rerank_reason` を基本とする。`title_linehash_dict_status=resolved_candidate` は、line-hash辞書が曖昧候補集合内の再順位付け候補を出したというM5観測であり、`jacket_match_status` を変えたり、曲ID/譜面ID確定やDB保存可能を意味したりしない。line-hashが候補集合外にありそうな曲名形状を示しても、候補集合外から曲を拾わない。line-hash辞書で候補が出た場合は `identity_signal_status=composite_resolved_candidate` / `identity_signal_source=title_linehash_dict` として後続へ渡す。これは「jacket単体より低い信頼度」ではなく、jacket候補集合とtitle補助を合わせた曲同定候補観測であり、保存判定では引き続きM7以降の集約ルールを待つ。
 
-固定UI文字は最終的に汎用OCRより画像認識へ寄せる方針だが、スコア/判定数/EX SCORE のTesseract離脱や数字テンプレート認識は後続タスクに回す。M5の次作業では、まずtitle line-hashをjacket ambiguous候補内の補助信号として観測する。
+固定UI文字は最終的に汎用OCRより画像認識へ寄せる方針であり、スコア/判定数/EX SCOREのTesseract離脱と数字テンプレート認識はM9 app-owned runtimeの#103で実装済みです。M5の次作業では、まずtitle line-hashをjacket ambiguous候補内の補助信号として観測する。
 
 ## M7 jacket validation result title/artist feature master
 
