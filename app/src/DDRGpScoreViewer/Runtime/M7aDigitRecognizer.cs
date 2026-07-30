@@ -48,14 +48,14 @@ public sealed class M7aDigitRecognizer
     public static readonly IReadOnlyDictionary<string, (int X, int Y, int Width, int Height)> RoiDefinitions =
         new Dictionary<string, (int X, int Y, int Width, int Height)>(StringComparer.Ordinal)
         {
-            ["score_digits"] = (250, 278, 210, 48),
-            ["max_combo"] = (714, 368, 284, 32),
-            ["marvelous"] = (766, 404, 232, 28),
-            ["perfect"] = (766, 434, 232, 28),
-            ["great"] = (766, 464, 232, 28),
-            ["good"] = (766, 494, 232, 28),
-            ["miss"] = (766, 554, 232, 28),
-            ["ex_score"] = (748, 580, 250, 34),
+            ["score_digits"] = (197, 277, 269, 45),
+            ["max_combo"] = (897, 370, 91, 23),
+            ["marvelous"] = (896, 404, 92, 20),
+            ["perfect"] = (896, 433, 92, 21),
+            ["great"] = (896, 465, 92, 21),
+            ["good"] = (896, 495, 92, 21),
+            ["miss"] = (897, 555, 92, 21),
+            ["ex_score"] = (898, 584, 91, 23),
         };
 
     private static readonly IReadOnlyDictionary<string, string> FieldToRoi =
@@ -69,18 +69,6 @@ public sealed class M7aDigitRecognizer
             ["good"] = "good",
             ["miss"] = "miss",
             ["ex_score"] = "ex_score",
-        };
-
-    private static readonly IReadOnlyDictionary<string, double> FocusLeftFractions =
-        new Dictionary<string, double>(StringComparer.Ordinal)
-        {
-            ["max_combo"] = 0.65,
-            ["marvelous"] = 0.52,
-            ["perfect"] = 0.52,
-            ["great"] = 0.52,
-            ["good"] = 0.55,
-            ["miss"] = 0.55,
-            ["ex_score"] = 0.55,
         };
 
     private static readonly IReadOnlyDictionary<string, string[]> TemplateGroups =
@@ -462,15 +450,6 @@ public sealed class M7aDigitRecognizer
     private static List<bool[,]> SegmentDigitMasks(PixelImage source, string roiName)
     {
         var image = source;
-        if (FocusLeftFractions.TryGetValue(roiName, out var leftFraction))
-        {
-            image = image.Crop(
-                Math.Clamp((int)Math.Round(image.Width * leftFraction), 0, image.Width - 1),
-                0,
-                image.Width,
-                image.Height);
-        }
-
         var mask = ForegroundMask(image, roiName);
         List<Component> components;
         if (roiName == "score_digits")

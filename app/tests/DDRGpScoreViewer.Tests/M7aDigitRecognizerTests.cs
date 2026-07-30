@@ -70,6 +70,27 @@ public sealed class M7aDigitRecognizerTests
     }
 
     [Fact]
+    public void Result_digit_rois_match_numeric_display_bounds()
+    {
+        var expected = new Dictionary<string, (int X, int Y, int Width, int Height)>
+        {
+            ["score_digits"] = (197, 277, 269, 45),
+            ["max_combo"] = (897, 370, 91, 23),
+            ["marvelous"] = (896, 404, 92, 20),
+            ["perfect"] = (896, 433, 92, 21),
+            ["great"] = (896, 465, 92, 21),
+            ["good"] = (896, 495, 92, 21),
+            ["miss"] = (897, 555, 92, 21),
+            ["ex_score"] = (898, 584, 91, 23),
+        };
+
+        foreach (var pair in expected)
+        {
+            Assert.Equal(pair.Value, M7aDigitRecognizer.RoiDefinitions[pair.Key]);
+        }
+    }
+
+    [Fact]
     public void Missing_template_label_is_reported_without_candidate_digits()
     {
         using var fixture = new TemplateFixture();
@@ -153,10 +174,6 @@ public sealed class M7aDigitRecognizerTests
         using var fixture = new TemplateFixture();
         fixture.WriteTemplates(
             "score_digits",
-            "max_combo",
-            "marvelous",
-            "perfect",
-            "miss",
             "judgment_counts",
             "combo_ex_score");
         var values = new Dictionary<string, string>
@@ -352,16 +369,16 @@ public sealed class M7aDigitRecognizerTests
                 pixels[index] = 255;
             }
 
-            var rois = new Dictionary<string, (int X, int Y, int Width, int Height, double Focus)>
+            var rois = new Dictionary<string, (int X, int Y, int Width, int Height)>
             {
-                ["score"] = (250, 278, 210, 48, 0),
-                ["max_combo"] = (714, 368, 284, 32, 0.65),
-                ["marvelous"] = (766, 404, 232, 28, 0.52),
-                ["perfect"] = (766, 434, 232, 28, 0.52),
-                ["great"] = (766, 464, 232, 28, 0.52),
-                ["good"] = (766, 494, 232, 28, 0.55),
-                ["miss"] = (766, 554, 232, 28, 0.55),
-                ["ex_score"] = (748, 580, 250, 34, 0.55),
+                ["score"] = (197, 277, 269, 45),
+                ["max_combo"] = (897, 370, 91, 23),
+                ["marvelous"] = (896, 404, 92, 20),
+                ["perfect"] = (896, 433, 92, 21),
+                ["great"] = (896, 465, 92, 21),
+                ["good"] = (896, 495, 92, 21),
+                ["miss"] = (897, 555, 92, 21),
+                ["ex_score"] = (898, 584, 91, 23),
             };
 
             foreach (var pair in values)
@@ -371,7 +388,9 @@ public sealed class M7aDigitRecognizerTests
                     continue;
                 }
                 var scale = pair.Key == "score" ? 6 : 4;
-                var x = roi.X + (int)Math.Round(roi.Width * roi.Focus) + 8;
+                var renderedWidth = pair.Value.Length * 3 * scale +
+                    Math.Max(0, pair.Value.Length - 1) * 3;
+                var x = roi.X + roi.Width - renderedWidth - 4;
                 var y = roi.Y + (roi.Height - Patterns['0'].Length * scale) / 2;
                 foreach (var digit in pair.Value)
                 {
