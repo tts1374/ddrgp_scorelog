@@ -555,7 +555,10 @@ public sealed class LiveMonitoringCaptureService(
             lock (gate)
             {
                 nonResultStreak = 0;
-                var resultKey = $"{observation.Score}\u001f{observation.TitleSignature}";
+                var resultKey = AppOwnedResultEventFingerprint.TryCreate(
+                        observation,
+                        requireIdentity: false) ??
+                    $"{observation.Score}\u001f{observation.TitleSignature}";
                 if (activeResultKey == resultKey)
                 {
                     candidateScore = null;

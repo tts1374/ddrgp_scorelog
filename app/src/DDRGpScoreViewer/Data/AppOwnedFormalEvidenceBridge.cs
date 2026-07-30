@@ -1,6 +1,4 @@
 using System.Globalization;
-using System.Security.Cryptography;
-using System.Text;
 using DDRGpScoreViewer.Capture;
 
 namespace DDRGpScoreViewer.Data;
@@ -25,8 +23,6 @@ internal sealed record AppFormalEvidencePromotion(
 internal static class AppOwnedFormalEvidenceBridge
 {
     private const double MinimumConfidence = 0.98;
-    private const string KnownResultSignature = "known-result";
-
     private static readonly IReadOnlyDictionary<string, string> RequiredSources =
         new Dictionary<string, string>(StringComparer.Ordinal)
         {
@@ -187,7 +183,15 @@ internal static class AppOwnedFormalEvidenceBridge
             ["played_at"] = FormalEvidenceSourceNames.CaptureUtc,
             ["duplicate_key"] = FormalEvidenceSourceNames.CaptureEventV1,
         };
-        var eventKey = BuildEventKey(observation.TitleSignature, captureHash);
+        var eventFingerprint = AppOwnedResultEventFingerprint.TryCreate(
+            observation,
+            requireIdentity: true);
+        if (eventFingerprint is null)
+        {
+            return Unresolved(
+                "formal_evidence.event_fingerprint_missing",
+                evidence.IdentitySignalStatus);
+        }
         var formalPlay = new AppFormalPlay(
             $"play-{captureId}",
             capturedAtUtc.ToString("O", CultureInfo.InvariantCulture),
@@ -205,7 +209,7 @@ internal static class AppOwnedFormalEvidenceBridge
             evidence.Rank!,
             evidence.ClearType!,
             evidence.FlareRank,
-            $"capture-event-v1:{eventKey}");
+            $"capture-event-v1:{eventFingerprint}");
         return new AppFormalEvidencePromotion(
             "ready",
             formalPlay,
@@ -215,17 +219,6 @@ internal static class AppOwnedFormalEvidenceBridge
                 : evidence.IdentitySignalStatus,
             formalSources,
             Array.Empty<string>());
-    }
-
-    private static string BuildEventKey(string titleSignature, string captureHash)
-    {
-        var eventMaterial = string.IsNullOrWhiteSpace(titleSignature) ||
-            string.Equals(titleSignature, KnownResultSignature, StringComparison.Ordinal)
-            ? captureHash
-            : titleSignature;
-        return Convert.ToHexString(
-                SHA256.HashData(Encoding.UTF8.GetBytes(eventMaterial)))
-            .ToLowerInvariant();
     }
 
     private static void RequireText(

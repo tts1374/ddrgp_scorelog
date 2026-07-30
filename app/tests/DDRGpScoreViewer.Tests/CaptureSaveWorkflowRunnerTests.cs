@@ -47,7 +47,7 @@ public sealed class CaptureSaveWorkflowRunnerTests
             database.CatalogPath);
         var second = await runner.RunCandidateAsync(
             Frame(2_000, DateTimeOffset.Parse("2026-07-29T12:00:01+09:00")),
-            FormalObservation(987650),
+            FormalObservation(987650) with { TitleSignature = "animated-frame-2" },
             database.ScorePath,
             database.MasterPath,
             database.CatalogPath);
