@@ -121,6 +121,20 @@ public sealed class LiveMonitoringViewModelTests
             CatalogDatabasePath = catalogDatabasePath;
             return Task.FromResult(run());
         }
+
+        public Task<CaptureSaveWorkflowResult> RunCandidateAsync(
+            CapturedFrame frame,
+            LiveResultObservation observation,
+            string scoreDatabasePath,
+            string masterDatabasePath,
+            string? catalogDatabasePath,
+            CancellationToken cancellationToken = default) =>
+            RunCandidateAsync(
+                frame,
+                scoreDatabasePath,
+                masterDatabasePath,
+                catalogDatabasePath,
+                cancellationToken);
     }
 
     private sealed class UnusedContinuousCaptureService : IContinuousCaptureService

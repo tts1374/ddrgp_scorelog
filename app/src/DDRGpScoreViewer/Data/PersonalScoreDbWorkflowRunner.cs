@@ -677,7 +677,8 @@ internal sealed record AppSaveAdapterInput(
     int? FrameIndex,
     long? TimestampMs,
     long? CandidateDurationMs,
-    string LogPath);
+    string LogPath,
+    IReadOnlyList<string>? FormalEvidenceReasons = null);
 
 internal sealed record AppFormalPlay(
     string PlayId,
@@ -819,6 +820,11 @@ internal static class AppSaveInputAdapter
             return errors.Count > 0
                 ? UnresolvedReasons(errors)
                 : new AppSaveAdapterResult("excluded", [exclusion.Reason], saveInput);
+        }
+
+        if (input.FormalEvidenceReasons is { Count: > 0 })
+        {
+            return UnresolvedReasons(input.FormalEvidenceReasons);
         }
 
         if (input.FormalPlay is null)

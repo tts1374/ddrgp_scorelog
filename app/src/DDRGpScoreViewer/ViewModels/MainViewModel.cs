@@ -1290,6 +1290,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
             var result = await liveRunner.RunCandidateAsync(
                 frame,
+                observation,
                 scoreDatabasePath,
                 masterDatabasePath,
                 catalogDatabasePath,

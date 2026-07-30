@@ -38,10 +38,10 @@ from .personal_score_db_migration_status import (
 )
 from .personal_score_db_workflow import run_personal_score_db_workflow_cli
 from .result_fields import (
-    CLEAR_TYPE_FORMAL_EVIDENCE_SOURCE,
-    FLARE_RANK_FORMAL_EVIDENCE_SOURCE,
-    RANK_FORMAL_EVIDENCE_SOURCE,
+    RESULT_CLEAR_TYPE_VISUAL_EVIDENCE_SOURCE,
+    RESULT_FLARE_RANK_VISUAL_EVIDENCE_SOURCE,
     RESULT_JUDGMENT_COUNT_FIELDS,
+    RESULT_RANK_VISUAL_EVIDENCE_SOURCE,
     recognize_result_fields,
 )
 
@@ -2759,14 +2759,14 @@ def result_field_recognition_rows(
                 rank_status=recognition.rank_status,
                 rank_confidence=recognition.rank_confidence,
                 rank_source=(
-                    RANK_FORMAL_EVIDENCE_SOURCE if recognition.rank is not None else ""
+                    RESULT_RANK_VISUAL_EVIDENCE_SOURCE if recognition.rank is not None else ""
                 ),
                 rank_reason=recognition.rank_reason,
                 clear_type=recognition.clear_type or "",
                 clear_type_status=recognition.clear_type_status,
                 clear_type_confidence=recognition.clear_type_confidence,
                 clear_type_source=(
-                    CLEAR_TYPE_FORMAL_EVIDENCE_SOURCE
+                    RESULT_CLEAR_TYPE_VISUAL_EVIDENCE_SOURCE
                     if recognition.clear_type is not None
                     else ""
                 ),
@@ -2775,7 +2775,7 @@ def result_field_recognition_rows(
                 flare_rank_status=recognition.flare_rank_status,
                 flare_rank_confidence=recognition.flare_rank_confidence,
                 flare_rank_source=(
-                    FLARE_RANK_FORMAL_EVIDENCE_SOURCE
+                    RESULT_FLARE_RANK_VISUAL_EVIDENCE_SOURCE
                     if recognition.flare_rank is not None
                     else ""
                 ),
@@ -2826,9 +2826,9 @@ def summarize_result_field_recognition(
         "status_counts": status_counts,
         "flare_rank_value_counts": dict(sorted(flare_values.items())),
         "formal_evidence_sources": {
-            "rank": RANK_FORMAL_EVIDENCE_SOURCE,
-            "clear_type": CLEAR_TYPE_FORMAL_EVIDENCE_SOURCE,
-            "flare_rank": FLARE_RANK_FORMAL_EVIDENCE_SOURCE,
+            "rank": RESULT_RANK_VISUAL_EVIDENCE_SOURCE,
+            "clear_type": RESULT_CLEAR_TYPE_VISUAL_EVIDENCE_SOURCE,
+            "flare_rank": RESULT_FLARE_RANK_VISUAL_EVIDENCE_SOURCE,
         },
         "reading_notes": [
             "rank ROI is used only to classify FAILED/E versus non-FAILED.",

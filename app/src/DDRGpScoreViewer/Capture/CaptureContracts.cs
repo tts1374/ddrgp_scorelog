@@ -72,13 +72,38 @@ public sealed record CaptureSessionProgress(
     int CandidateQueueDropCount = 0,
     string StatusMessage = "");
 
+/// <summary>
+/// Explicit app-owned evidence that has already crossed the identity/result-field
+/// adoption boundary. Candidate digits and preview values are intentionally not
+/// represented here.
+/// </summary>
+public sealed record AppOwnedFormalEvidence(
+    string? MasterVersion,
+    string? SongId,
+    string? ChartId,
+    int? Score,
+    int? MaxCombo,
+    int? Marvelous,
+    int? Perfect,
+    int? Great,
+    int? Good,
+    int? Miss,
+    int? ExScore,
+    string? Rank,
+    string? ClearType,
+    string? FlareRank,
+    IReadOnlyDictionary<string, string> Sources,
+    IReadOnlyDictionary<string, double?> Confidences,
+    string IdentitySignalStatus = "resolved");
+
 public sealed record LiveResultObservation(
     bool IsResultScreen,
     string Score,
     string TitleSignature,
     string Reason,
     IReadOnlyDictionary<string, Runtime.M7aDigitRecognitionResult>? DigitRecognitions = null,
-    string DigitRecognitionStatus = "not_evaluated");
+    string DigitRecognitionStatus = "not_evaluated",
+    AppOwnedFormalEvidence? FormalEvidence = null);
 
 public interface IGraphicsCaptureAdapter
 {

@@ -53,9 +53,9 @@ RESULT_JUDGMENT_COUNT_FIELDS = (
     "miss",
 )
 
-RANK_FORMAL_EVIDENCE_SOURCE = "adopted_rank_recognizer"
-CLEAR_TYPE_FORMAL_EVIDENCE_SOURCE = "adopted_clear_type_recognizer"
-FLARE_RANK_FORMAL_EVIDENCE_SOURCE = "adopted_flare_rank_recognizer"
+RESULT_RANK_VISUAL_EVIDENCE_SOURCE = "result_rank_visual_evidence"
+RESULT_CLEAR_TYPE_VISUAL_EVIDENCE_SOURCE = "result_clear_type_visual_evidence"
+RESULT_FLARE_RANK_VISUAL_EVIDENCE_SOURCE = "result_flare_rank_visual_evidence"
 
 
 @dataclass(frozen=True)

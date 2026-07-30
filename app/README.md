@@ -79,15 +79,19 @@ python -m tools.vision_poc `
 
 監視では1秒ごとの候補をapp-owned runtimeで解析します。RESULTSがないframeと同じRESULT署名の後続frameは後続処理へ渡しません。RESULT画面を検出してもscoreまたは判定数を認識できない候補はcandidate materialとして一度だけ既存workflowへ渡し、`unresolved` または保存拒否理由を維持してplayを作りません。候補のevent boundary、capture lifecycle、formal evidence、正式DB保存境界は既存契約を維持します。candidate PNG、manifest、解析CSV/JSONはOS一時directoryまたはapp data pathだけに置き、workflow終了後に不要な一時入力を残しません。capture-onlyの連続取得は従来どおり停止後に完成manifestを解析できます。capture失敗、resize、target close、device lost、write失敗では新しい解析・正式保存を開始しません。
 
-### M7a result digit runtime
+### RESULT数値認識 runtime
 
 RESULTの `score`、`max_combo`、`marvelous`、`perfect`、`great`、`good`、`miss`、`ex_score` は、app-ownedのbitmap-template比較だけで候補化します。`score=0` は有効な数字として扱い、scoreは1桁から7桁の可変桁です。認識状態は `recognized`、`missing_reference`、`ambiguous`、`failed_segmentation`、`not_evaluated` をcandidate materialへ記録します。
 
 通常監視では期待値を渡さないため、テンプレート照合に成功したfieldは `recognized`（`match=null`）として扱います。期待値比較を明示して期待値が空の場合だけ `not_evaluated` となり、いずれも正式値への自動昇格を意味しません。
 
-テンプレートはRelease packageの `RuntimeAssets/digit_templates/`、または `DDRGP_SCORE_VIEWER_RUNTIME_DATA` 配下の明示data pathから解決します。`score` はROI別 `score_digits`、判定数（`marvelous`、`perfect`、`great`、`good`、`miss`）は共有 `judgment_counts`、`max_combo` と `ex_score` は共有 `combo_ex_score`、`ex_score` は `max_combo` fallbackも探します。repositoryの `samples` や `tools/vision_poc` はruntime探索せず、PythonやTesseractも起動しません。`recognized_digits`、confidence、fieldごとの根拠、必須fieldの完全性は既存formal evidence検証へ渡し、認識成功だけで正式値やplayへ昇格しません。
+テンプレートはRelease packageの `RuntimeAssets/digit_templates/`、または `DDRGP_SCORE_VIEWER_RUNTIME_DATA` 配下の明示data pathから解決します。`score` はROI別 `score_digits`、判定数（`marvelous`、`perfect`、`great`、`good`、`miss`）は共有 `judgment_counts`、`max_combo` と `ex_score` は共有 `combo_ex_score`、`ex_score` は `max_combo` fallbackも探します。repositoryの `samples` や `tools/vision_poc` はruntime探索せず、PythonやTesseractも起動しません。`recognized_digits`、confidence、fieldごとの根拠、必須fieldの完全性はapp-owned formal evidence bridgeへ渡し、認識成功だけで正式値やplayへ昇格しません。
 
-自動formal昇格はfieldごとの採用済み根拠sourceとconfidence、全必須値の完全性をpure adapterで検査します。M5 `identity_signal_*`、M7a `recognized_digits`、expected値、M8 preview payload、相対 `timestamp_ms` は候補材料のままです。現行pipelineにはrank/clear typeを含む全必須項目の採用済み根拠がまだないため、実captureで根拠が欠けるeventは `unresolved` となりplayを作りません。これはcandidateを正式値へ暗黙昇格しないための意図した停止です。Debug buildのreviewed workflow入力は開発者向け領域の `単発保存` から実行し、自動由来と混同しません。
+要件レベルでは、`RESULT同定根拠`、`RESULT数値認識根拠`、`RESULT状態認識根拠`、`capture event根拠`が揃ったformal evidenceだけを正式保存の入力にします。song/chart identityは`result_identity_visual_evidence`、8つの数字fieldは`result_numeric_visual_evidence`、rankは`result_rank_visual_evidence`、clear typeは`result_clear_type_visual_evidence`をsourceとし、各fieldのconfidenceが0.98以上で全必須値が揃う場合だけ既存formal workflowへ渡します。master versionは`master_metadata`、play_idとduplicate keyはconfirmed capture event、played_atはcapture UTCから構築し、liveのsource kindは`capture`です。`flare_rank=null`は許容します。M5 master match、M7a digit recognition、M7 result field recognitionはこの要件を実装へ割り当てる対応名であり、formal source名には使いません。
+
+現行の標準`AppOwnedLiveResultAnalyzer`は`RESULT数値認識根拠`のcandidate-only observationを生成するため、上流のapp-owned producerが要件レベルのformal evidenceを付与しない既定live経路は意図的に`unresolved`となります。`RESULT同定根拠`、`RESULT状態認識根拠`をcandidate値、OCR、`known-result`から補完しません。
+
+`identity_signal_*`、`recognized_digits`、expected値、M8 preview payload、相対 `timestamp_ms`、`known-result`は候補材料のままです。formal evidenceが未指定・不足、`ambiguous`、`missing_reference`、`failed_segmentation`、identity/rank/clear type欠落、confidence不足の場合は`formal_evidence.*`または`digit_recognition.*`理由の`unresolved`となり、正式DBへplayを作りません。Debug buildのreviewed workflow入力は開発者向け領域の `単発保存` から実行し、自動由来と混同しません。
 
 各confirmed eventは既存正式workflowを1回だけ呼びます。DB内duplicate、policy excluded、unresolved、invalid、artifact failure、DB拒否をstatusのまま集計し、`invalid`、artifact failure、DB拒否などが1件でもあればsessionを `workflow_failed` として非0終了します。同じsessionにtransaction済みの `saved` playがある場合はそれだけread-only再読込し、部分成功件数と失敗理由を同時に表示します。解析出力は `data/capture_save_workflow/`、画像原本は `data/windows_capture/`、正式DBは明示pathに分離します。
 

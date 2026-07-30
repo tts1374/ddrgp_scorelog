@@ -1,0 +1,282 @@
+using System.Globalization;
+using System.Security.Cryptography;
+using System.Text;
+using DDRGpScoreViewer.Capture;
+
+namespace DDRGpScoreViewer.Data;
+
+internal sealed record AppFormalEvidencePromotion(
+    string Status,
+    AppFormalPlay? FormalPlay,
+    double? AnalysisConfidence,
+    string IdentitySignalStatus,
+    IReadOnlyDictionary<string, string> Sources,
+    IReadOnlyList<string> Reasons)
+{
+    public static AppFormalEvidencePromotion Excluded { get; } = new(
+        "excluded",
+        null,
+        null,
+        "unresolved",
+        new Dictionary<string, string>(StringComparer.Ordinal),
+        Array.Empty<string>());
+}
+
+internal static class FormalEvidenceSourceNames
+{
+    // Requirement-level source IDs. OCR, raw OCR, and implementation milestone
+    // names are intentionally not valid formal source aliases.
+    public const string MasterMetadata = "master_metadata";
+    public const string ResultIdentityVisualEvidence = "result_identity_visual_evidence";
+    public const string ResultNumericVisualEvidence = "result_numeric_visual_evidence";
+    public const string ResultRankVisualEvidence = "result_rank_visual_evidence";
+    public const string ResultClearTypeVisualEvidence = "result_clear_type_visual_evidence";
+    public const string ResultFlareRankVisualEvidence = "result_flare_rank_visual_evidence";
+    public const string CaptureEventV1 = "capture_event_v1";
+    public const string CaptureUtc = "capture_utc";
+}
+
+internal static class AppOwnedFormalEvidenceBridge
+{
+    private const double MinimumConfidence = 0.98;
+    private const string KnownResultSignature = "known-result";
+
+    private static readonly IReadOnlyDictionary<string, string> RequiredSources =
+        new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["master_version"] = FormalEvidenceSourceNames.MasterMetadata,
+            ["song_id"] = FormalEvidenceSourceNames.ResultIdentityVisualEvidence,
+            ["chart_id"] = FormalEvidenceSourceNames.ResultIdentityVisualEvidence,
+            ["score"] = FormalEvidenceSourceNames.ResultNumericVisualEvidence,
+            ["max_combo"] = FormalEvidenceSourceNames.ResultNumericVisualEvidence,
+            ["marvelous"] = FormalEvidenceSourceNames.ResultNumericVisualEvidence,
+            ["perfect"] = FormalEvidenceSourceNames.ResultNumericVisualEvidence,
+            ["great"] = FormalEvidenceSourceNames.ResultNumericVisualEvidence,
+            ["good"] = FormalEvidenceSourceNames.ResultNumericVisualEvidence,
+            ["miss"] = FormalEvidenceSourceNames.ResultNumericVisualEvidence,
+            ["ex_score"] = FormalEvidenceSourceNames.ResultNumericVisualEvidence,
+            ["rank"] = FormalEvidenceSourceNames.ResultRankVisualEvidence,
+            ["clear_type"] = FormalEvidenceSourceNames.ResultClearTypeVisualEvidence,
+            ["flare_rank"] = FormalEvidenceSourceNames.ResultFlareRankVisualEvidence,
+        };
+
+    private static readonly HashSet<string> RankValues =
+        ["AAA", "AA+", "AA", "AA-", "A+", "A", "A-", "B+", "B", "B-",
+         "C+", "C", "C-", "D+", "D", "E"];
+
+    private static readonly HashSet<string> ClearValues =
+        ["FAILED", "MFC", "PFC", "GFC", "FULL COMBO", "CLEAR"];
+
+    private static readonly HashSet<string> FlareValues =
+        ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "EX"];
+
+    public static AppFormalEvidencePromotion Promote(
+        LiveResultObservation observation,
+        string captureId,
+        string captureHash,
+        DateTimeOffset capturedAtUtc)
+    {
+        if (!observation.IsResultScreen)
+        {
+            return Unresolved("formal_evidence.result_screen_required");
+        }
+
+        var evidence = observation.FormalEvidence;
+        if (evidence is null)
+        {
+            var reasons = new List<string> { "automatic_formal_evidence_missing" };
+            AddDigitStatusReason(reasons, observation.DigitRecognitionStatus);
+            return Unresolved(reasons);
+        }
+
+        var sources = evidence.Sources ??
+            new Dictionary<string, string>(StringComparer.Ordinal);
+        var confidences = evidence.Confidences ??
+            new Dictionary<string, double?>(StringComparer.Ordinal);
+        var reasonsForEvidence = new List<string>();
+        foreach (var (fieldName, requiredSource) in RequiredSources)
+        {
+            if (fieldName == "flare_rank" && evidence.FlareRank is null)
+            {
+                continue;
+            }
+
+            if (!sources.TryGetValue(fieldName, out var source) ||
+                !string.Equals(source, requiredSource, StringComparison.Ordinal))
+            {
+                reasonsForEvidence.Add(
+                    $"formal_evidence.{fieldName}_source_not_adopted");
+            }
+
+            if (!confidences.TryGetValue(fieldName, out var confidence) ||
+                confidence is null ||
+                !double.IsFinite(confidence.Value) ||
+                confidence.Value < MinimumConfidence ||
+                confidence.Value > 1.0)
+            {
+                reasonsForEvidence.Add(
+                    $"formal_evidence.{fieldName}_confidence_insufficient");
+            }
+        }
+
+        RequireText(reasonsForEvidence, "master_version", evidence.MasterVersion);
+        RequireText(reasonsForEvidence, "song_id", evidence.SongId);
+        RequireText(reasonsForEvidence, "chart_id", evidence.ChartId);
+        RequireText(reasonsForEvidence, "rank", evidence.Rank);
+        RequireText(reasonsForEvidence, "clear_type", evidence.ClearType);
+        RequireDigit(reasonsForEvidence, "score", evidence.Score);
+        RequireDigit(reasonsForEvidence, "max_combo", evidence.MaxCombo);
+        RequireDigit(reasonsForEvidence, "marvelous", evidence.Marvelous);
+        RequireDigit(reasonsForEvidence, "perfect", evidence.Perfect);
+        RequireDigit(reasonsForEvidence, "great", evidence.Great);
+        RequireDigit(reasonsForEvidence, "good", evidence.Good);
+        RequireDigit(reasonsForEvidence, "miss", evidence.Miss);
+        RequireDigit(reasonsForEvidence, "ex_score", evidence.ExScore);
+
+        if (evidence.Score is < 0 or > 1_000_000 ||
+            evidence.Score is not null && evidence.Score.Value % 10 != 0)
+        {
+            reasonsForEvidence.Add("formal_evidence.score_invalid");
+        }
+        foreach (var (fieldName, value) in new[]
+        {
+            ("max_combo", evidence.MaxCombo),
+            ("marvelous", evidence.Marvelous),
+            ("perfect", evidence.Perfect),
+            ("great", evidence.Great),
+            ("good", evidence.Good),
+            ("miss", evidence.Miss),
+            ("ex_score", evidence.ExScore),
+        })
+        {
+            if (value < 0)
+            {
+                reasonsForEvidence.Add($"formal_evidence.{fieldName}_negative");
+            }
+        }
+
+        if (evidence.Rank is not null && !RankValues.Contains(evidence.Rank))
+        {
+            reasonsForEvidence.Add("formal_evidence.rank_invalid");
+        }
+        if (evidence.ClearType is not null && !ClearValues.Contains(evidence.ClearType))
+        {
+            reasonsForEvidence.Add("formal_evidence.clear_type_invalid");
+        }
+        if (evidence.FlareRank is not null &&
+            !FlareValues.Contains(evidence.FlareRank))
+        {
+            reasonsForEvidence.Add("formal_evidence.flare_rank_invalid");
+        }
+        AddDigitStatusReason(reasonsForEvidence, observation.DigitRecognitionStatus);
+
+        if (reasonsForEvidence.Count > 0)
+        {
+            return Unresolved(reasonsForEvidence, evidence.IdentitySignalStatus);
+        }
+
+        var requiredConfidence = RequiredSources.Keys
+            .Where(fieldName => fieldName != "flare_rank" || evidence.FlareRank is not null)
+            .Select(fieldName => confidences[fieldName]!.Value)
+            .Append(1.0)
+            .Min();
+        var formalSources = new Dictionary<string, string>(sources, StringComparer.Ordinal)
+        {
+            ["play_id"] = FormalEvidenceSourceNames.CaptureEventV1,
+            ["played_at"] = FormalEvidenceSourceNames.CaptureUtc,
+            ["duplicate_key"] = FormalEvidenceSourceNames.CaptureEventV1,
+        };
+        var eventKey = BuildEventKey(observation.TitleSignature, captureHash);
+        var formalPlay = new AppFormalPlay(
+            $"play-{captureId}",
+            capturedAtUtc.ToString("O", CultureInfo.InvariantCulture),
+            evidence.MasterVersion!,
+            evidence.SongId!,
+            evidence.ChartId!,
+            evidence.Score,
+            evidence.MaxCombo,
+            evidence.Marvelous,
+            evidence.Perfect,
+            evidence.Great,
+            evidence.Good,
+            evidence.Miss,
+            evidence.ExScore,
+            evidence.Rank!,
+            evidence.ClearType!,
+            evidence.FlareRank,
+            $"capture-event-v1:{eventKey}");
+        return new AppFormalEvidencePromotion(
+            "ready",
+            formalPlay,
+            requiredConfidence,
+            string.IsNullOrWhiteSpace(evidence.IdentitySignalStatus)
+                ? "resolved"
+                : evidence.IdentitySignalStatus,
+            formalSources,
+            Array.Empty<string>());
+    }
+
+    private static string BuildEventKey(string titleSignature, string captureHash)
+    {
+        var eventMaterial = string.IsNullOrWhiteSpace(titleSignature) ||
+            string.Equals(titleSignature, KnownResultSignature, StringComparison.Ordinal)
+            ? captureHash
+            : titleSignature;
+        return Convert.ToHexString(
+                SHA256.HashData(Encoding.UTF8.GetBytes(eventMaterial)))
+            .ToLowerInvariant();
+    }
+
+    private static void RequireText(
+        List<string> reasons,
+        string fieldName,
+        string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            reasons.Add($"formal_evidence.{fieldName}_missing");
+        }
+    }
+
+    private static void RequireDigit(
+        List<string> reasons,
+        string fieldName,
+        int? value)
+    {
+        if (value is null)
+        {
+            reasons.Add($"formal_evidence.{fieldName}_missing");
+        }
+    }
+
+    private static void AddDigitStatusReason(List<string> reasons, string status)
+    {
+        if (status is "recognized")
+        {
+            return;
+        }
+        if (status is "ambiguous" or "missing_reference" or "failed_segmentation" or
+            "not_evaluated")
+        {
+            reasons.Add($"digit_recognition.{status}");
+        }
+    }
+
+    private static AppFormalEvidencePromotion Unresolved(
+        string reason,
+        string identitySignalStatus = "unresolved") =>
+        Unresolved([reason], identitySignalStatus);
+
+    private static AppFormalEvidencePromotion Unresolved(
+        IReadOnlyList<string> reasons,
+        string? identitySignalStatus = "unresolved") =>
+        new(
+            "unresolved",
+            null,
+            null,
+            string.IsNullOrWhiteSpace(identitySignalStatus)
+                ? "unresolved"
+                : identitySignalStatus,
+            new Dictionary<string, string>(StringComparer.Ordinal),
+            reasons.Distinct(StringComparer.Ordinal).ToArray());
+}
