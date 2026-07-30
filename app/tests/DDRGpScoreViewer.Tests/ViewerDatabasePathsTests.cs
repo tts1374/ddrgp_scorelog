@@ -21,6 +21,59 @@ public sealed class ViewerDatabasePathsTests
         Assert.NotEqual(paths.ScoreDatabasePath, paths.EvaluationDatabasePath);
     }
 
+#if DEBUG
+    [Fact]
+    public void Debug_defaults_detect_a_checkout_from_a_nested_debug_directory()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"ddrgp-debug-root-{Guid.NewGuid():N}");
+        var nestedOutput = Path.Combine(
+            root,
+            "app",
+            "src",
+            "DDRGpScoreViewer",
+            "bin",
+            "Debug",
+            "net10.0-windows10.0.19041.0");
+        var previousCurrentDirectory = Environment.CurrentDirectory;
+        var previousDevelopmentRoot = Environment.GetEnvironmentVariable(
+            "DDRGP_SCORE_VIEWER_DEVELOPMENT_ROOT");
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(root, "databases"));
+            Directory.CreateDirectory(nestedOutput);
+            File.WriteAllText(
+                Path.Combine(root, "app", "src", "DDRGpScoreViewer", "DDRGpScoreViewer.csproj"),
+                string.Empty);
+            Environment.SetEnvironmentVariable("DDRGP_SCORE_VIEWER_DEVELOPMENT_ROOT", null);
+            Directory.SetCurrentDirectory(nestedOutput);
+
+            var paths = ViewerDatabasePaths.ResolveDefault();
+
+            Assert.Equal(ViewerDatabaseEnvironment.Development, paths.Environment);
+            Assert.Equal(
+                Path.GetFullPath(root),
+                paths.ApplicationRootDirectory);
+            Assert.Equal(
+                Path.Combine(root, "databases", "ddrgp-master.sqlite"),
+                paths.MasterDatabasePath);
+            Assert.Equal(
+                Path.Combine(root, "databases", "jacket-catalog.sqlite"),
+                paths.JacketCatalogDatabasePath);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(
+                "DDRGP_SCORE_VIEWER_DEVELOPMENT_ROOT",
+                previousDevelopmentRoot);
+            Directory.SetCurrentDirectory(previousCurrentDirectory);
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+#endif
+
     [Fact]
     public void Production_defaults_use_local_application_data_and_have_no_evaluation_db()
     {

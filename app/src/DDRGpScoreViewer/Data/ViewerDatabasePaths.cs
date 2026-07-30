@@ -25,12 +25,10 @@ public sealed record ViewerDatabasePaths(
             return ForDevelopment(explicitDevelopmentRoot);
         }
 
-        // Debug may be launched from the checkout for developer-only operations.
-        // This is an explicit current-directory convention, not a parent search.
-        var currentDirectory = Path.GetFullPath(System.Environment.CurrentDirectory);
-        if (Directory.Exists(Path.Combine(currentDirectory, "databases")))
+        var detectedDevelopmentRoot = FindDevelopmentRoot();
+        if (detectedDevelopmentRoot is not null)
         {
-            return ForDevelopment(currentDirectory);
+            return ForDevelopment(detectedDevelopmentRoot);
         }
 #endif
 
@@ -102,4 +100,36 @@ public sealed record ViewerDatabasePaths(
         }
         return Path.GetFullPath(path);
     }
+
+#if DEBUG
+    private static string? FindDevelopmentRoot()
+    {
+        foreach (var startPath in new[]
+                 {
+                     System.Environment.CurrentDirectory,
+                     AppContext.BaseDirectory,
+                 })
+        {
+            var directory = new DirectoryInfo(Path.GetFullPath(startPath));
+            while (directory is not null)
+            {
+                var root = directory.FullName;
+                if (Directory.Exists(Path.Combine(root, "databases")) &&
+                    File.Exists(Path.Combine(
+                        root,
+                        "app",
+                        "src",
+                        "DDRGpScoreViewer",
+                        "DDRGpScoreViewer.csproj")))
+                {
+                    return root;
+                }
+
+                directory = directory.Parent;
+            }
+        }
+
+        return null;
+    }
+#endif
 }

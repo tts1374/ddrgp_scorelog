@@ -31,7 +31,7 @@ dotnet test app\tests\DDRGpScoreViewer.Tests\DDRGpScoreViewer.Tests.csproj --con
 2. Windowsのpickerで取得対象のwindowを明示選択する。
 3. 完了表示に出た `data/windows_capture/capture-*/` を確認する。
 
-各capture directoryには `frame.png`、`frame_manifest.csv`、`capture_metadata.json` をまとめて出力します。capture出力はappの既定data path（Debugの明示development root、またはReleaseの`%LOCALAPPDATA%\DDRGpScoreViewer\data\`）から解決し、repository rootを探索しません。runtime data pathが必要な場合は `DDRGP_SCORE_VIEWER_RUNTIME_DATA` に明示します。manifestの必須列は既存契約と同じ `image_path,timestamp_ms` で、`screen_type=unknown`、capture source、幅、高さ、UTC取得時刻を任意列として付けます。画像pathはmanifest directory相対です。staging directoryで3ファイルを書いた後にdirectory単位で公開するため、cancel、対象終了、0x0/resize、device lost、access拒否、write失敗では空画像や部分manifestを最終出力へ残しません。既存capture directoryは上書きしません。
+各capture directoryには `frame.png`、`frame_manifest.csv`、`capture_metadata.json` をまとめて出力します。capture出力はappの既定data path（Debugの明示またはsource checkoutから検出したdevelopment root、またはReleaseの`%LOCALAPPDATA%\DDRGpScoreViewer\data\`）から解決します。Releaseではrepository rootを探索しません。runtime data pathが必要な場合は `DDRGP_SCORE_VIEWER_RUNTIME_DATA` に明示します。manifestの必須列は既存契約と同じ `image_path,timestamp_ms` で、`screen_type=unknown`、capture source、幅、高さ、UTC取得時刻を任意列として付けます。画像pathはmanifest directory相対です。staging directoryで3ファイルを書いた後にdirectory単位で公開するため、cancel、対象終了、0x0/resize、device lost、access拒否、write失敗では空画像や部分manifestを最終出力へ残しません。既存capture directoryは上書きしません。
 
 pickerとWindows Graphics Captureは明示操作時だけ起動します。取得後に分類、OCR、identity解決、workflow、正式DB保存、viewer再読込を自動実行しません。同じprocessで再度ボタンを押すと、resourceを作り直して別の1フレームを取得します。
 
@@ -73,7 +73,7 @@ python -m tools.vision_poc `
 ## 監視と正式保存workflow
 
 1. WPFまたはtask trayの `監視開始` を押す。
-2. 起動時に現在の環境（Debugで明示されたdevelopment root、またはReleaseのLocalAppData production）の固定pathを使う。DBの任意pathへの切替操作はありません。
+2. 起動時に現在の環境（Debugで明示またはsource checkoutから検出したdevelopment root、またはReleaseのLocalAppData production）の固定pathを使う。DBの任意pathへの切替操作はありません。
 3. `監視開始` が `process=ddr-konaste` かつ client `1280x720` のtop-level windowを確認する。該当1件だけなら既存の監視へ接続し、0件または複数件なら推測で選択せず、capture・解析・正式保存を開始しない。手動pickerへのfallbackはありません。
 4. 監視中にRESULT候補の解析・正式保存が進み、WPFまたはtrayの `監視停止` で現在の候補処理を完了して停止する。監視surfaceで状態、対象window名・process・client size、frame数、サンプリング数、RESULT検出数、候補・破棄・待機数、event status別の保存結果を確認する。
 
@@ -107,7 +107,7 @@ RESULTの `score`、`max_combo`、`marvelous`、`perfect`、`great`、`good`、`
 
 ## M10-2 既定保存先と責務境界
 
-実行環境は、Debugで`DDRGP_SCORE_VIEWER_DEVELOPMENT_ROOT`を明示した場合、またはDebugのcurrent directoryに`databases/`がある場合だけdevelopmentです。Releaseは常にproduction固定pathを使用し、repository rootやapp配置場所の親を探索しません。developmentとproductionのpathを相互にfallbackしません。
+実行環境は、Debugで`DDRGP_SCORE_VIEWER_DEVELOPMENT_ROOT`を明示した場合、またはDebugのcurrent directory／Debug出力directoryから親方向にsource checkout（`databases/`とScore Viewer project）が検出できた場合だけdevelopmentです。Releaseは常にproduction固定pathを使用し、repository rootやapp配置場所の親を探索しません。developmentとproductionのpathを相互にfallbackしません。
 
 | 対象 | development | production |
 | --- | --- | --- |

@@ -47,7 +47,7 @@ master DB inspectionは起動時・保存開始時に行う。固定pathだけ�
 
 ## M10 local storage terms
 
-- `development environment`: Debugで明示されたdevelopment root、またはDebugのcurrent directoryに`databases/`がある実行環境。既定DBはそのrootの`databases/`配下に置く。Releaseではdevelopment判定を行わない。
+- `development environment`: Debugで明示されたdevelopment root、またはDebugのcurrent directory／Debug出力directoryから親方向にsource checkout（`databases/`とScore Viewer project）が検出できる実行環境。既定DBはそのrootの`databases/`配下に置く。Releaseではdevelopment判定を行わない。
 - `production environment`: Releaseの実行環境。既定DBは`%LOCALAPPDATA%\DDRGpScoreViewer\data\`配下に置き、repositoryのDBへfallbackしない。
 - `app-owned runtime`: Score Viewer app packageが実行ロジックとruntime資材を所有するM9 runtime境界。Releaseではrepository root、repository内Python module、Python executable、Tesseractを探索・起動せず、packageまたは明示data pathだけから資材を解決する。
 - `M5b jacket reference catalog`: `ddrgp-master.sqlite`とは別の`jacket-catalog.sqlite`。current jacket feature、M7 result-text feature、review historyを持つ参照catalogで、正式個人スコアDBや画像原本ではない。
