@@ -89,7 +89,7 @@ public sealed class AppOwnedLiveResultAnalyzer : ILiveResultAnalyzer
                 }
             }
 
-            var digitResults = digitRecognizer.Recognize(bitmap);
+            var digitResults = digitRecognizer.RecognizeForFormalEvidence(bitmap);
             var scoreResult = digitResults["score"];
             var score = scoreResult.HasCandidateDigits
                 ? scoreResult.RecognizedDigits

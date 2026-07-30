@@ -10,8 +10,11 @@ namespace DDRGpScoreViewer.Data;
 
 /// <summary>
 /// Connects the app-owned RESULT image evidence to the current master and
-/// jacket-reference catalog. It never reads text through OCR and only returns
-/// an identity when the visual evidence and chart context form one unique row.
+/// current-master-compatible confirmed jacket references. A reference from an
+/// older catalog master version is eligible only when its song ID, canonical
+/// title, and canonical artist exactly match the current GP master. It never
+/// reads text through OCR and only returns an identity when the visual evidence
+/// and chart context form one unique row.
 /// </summary>
 internal sealed class AppOwnedVisualIdentityEvidenceProducer
 {
@@ -237,8 +240,9 @@ internal sealed class AppOwnedVisualIdentityEvidenceProducer
                     return cachedReferences;
                 }
 
+                var currentSongs = ReadCurrentSongs(master);
                 using var catalog = OpenReadOnly(catalogDatabasePath);
-                var references = ReadReferences(catalog, masterVersion);
+                var references = ReadReferences(catalog, currentSongs);
                 cachedReferenceKey = key;
                 cachedReferences = new IdentityReferenceSet(masterVersion, references, null);
                 return cachedReferences;
@@ -256,15 +260,43 @@ internal sealed class AppOwnedVisualIdentityEvidenceProducer
         }
     }
 
-    private static IReadOnlyList<VisualReference> ReadReferences(
-        SqliteConnection connection,
-        string masterVersion)
+    private static IReadOnlyDictionary<string, CurrentMasterSong> ReadCurrentSongs(
+        SqliteConnection connection)
     {
         using var command = connection.CreateCommand();
         command.CommandText =
-            "SELECT song_id, thumbnail_rgb_json, histogram_json, dhash_bits_json " +
+            "SELECT song_id, title, artist " +
+            "FROM songs " +
+            "WHERE grand_prix_play_available = 1;";
+        using var reader = command.ExecuteReader();
+        var songs = new Dictionary<string, CurrentMasterSong>(StringComparer.Ordinal);
+        while (reader.Read())
+        {
+            if (reader.IsDBNull(0) || reader.IsDBNull(1) || reader.IsDBNull(2))
+            {
+                continue;
+            }
+
+            var songId = reader.GetString(0);
+            songs[songId] = new CurrentMasterSong(
+                reader.GetString(1),
+                reader.GetString(2));
+        }
+
+        return songs;
+    }
+
+    private static IReadOnlyList<VisualReference> ReadReferences(
+        SqliteConnection connection,
+        IReadOnlyDictionary<string, CurrentMasterSong> currentSongs)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            "SELECT master_version, song_id, canonical_title_snapshot, " +
+            "canonical_artist_snapshot, thumbnail_rgb_json, histogram_json, " +
+            "dhash_bits_json " +
             "FROM jacket_references " +
-            "WHERE master_version = $master_version " +
+            "WHERE master_version IS NOT NULL " +
             "AND song_id IS NOT NULL " +
             "AND review_status IN ('auto_confirmed', 'manual_confirmed') " +
             "AND feature_extractor_version = $extractor_version " +
@@ -272,7 +304,6 @@ internal sealed class AppOwnedVisualIdentityEvidenceProducer
             "AND thumbnail_rgb_json IS NOT NULL " +
             "AND histogram_json IS NOT NULL " +
             "AND dhash_bits_json IS NOT NULL;";
-        command.Parameters.AddWithValue("$master_version", masterVersion);
         command.Parameters.AddWithValue("$extractor_version", JacketExtractorVersion);
         command.Parameters.AddWithValue("$feature_version", JacketFeatureVersion);
         using var reader = command.ExecuteReader();
@@ -280,16 +311,31 @@ internal sealed class AppOwnedVisualIdentityEvidenceProducer
         while (reader.Read())
         {
             if (reader.IsDBNull(0) || reader.IsDBNull(1) || reader.IsDBNull(2) ||
-                reader.IsDBNull(3))
+                reader.IsDBNull(3) || reader.IsDBNull(4) || reader.IsDBNull(5) ||
+                reader.IsDBNull(6))
             {
                 continue;
             }
 
-            var thumbnail = ReadVector(reader.GetString(1), 16 * 16 * 3, 0.0, 1.0);
-            var histogram = ReadVector(reader.GetString(2), 8 * 3, 0.0, 1.0);
-            var dhash = ReadVector(reader.GetString(3), 64, 0.0, 1.0);
+            var songId = reader.GetString(1);
+            if (!currentSongs.TryGetValue(songId, out var currentSong) ||
+                !string.Equals(
+                    currentSong.Title,
+                    reader.GetString(2),
+                    StringComparison.Ordinal) ||
+                !string.Equals(
+                    currentSong.Artist,
+                    reader.GetString(3),
+                    StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            var thumbnail = ReadVector(reader.GetString(4), 16 * 16 * 3, 0.0, 1.0);
+            var histogram = ReadVector(reader.GetString(5), 8 * 3, 0.0, 1.0);
+            var dhash = ReadVector(reader.GetString(6), 64, 0.0, 1.0);
             references.Add(new VisualReference(
-                reader.GetString(0),
+                songId,
                 thumbnail,
                 histogram,
                 dhash));
@@ -640,6 +686,8 @@ internal sealed class AppOwnedVisualIdentityEvidenceProducer
         double[] Thumbnail,
         double[] Histogram,
         double[] Dhash);
+
+    private sealed record CurrentMasterSong(string Title, string Artist);
 
     private sealed record JacketFeature(
         double[] Thumbnail,

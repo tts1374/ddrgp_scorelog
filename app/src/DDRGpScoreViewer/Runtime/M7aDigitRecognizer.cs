@@ -114,6 +114,16 @@ public sealed class M7aDigitRecognizer
     public IReadOnlyDictionary<string, M7aDigitRecognitionResult> Recognize(
         BitmapSource image,
         IReadOnlyDictionary<string, string>? expectedValues = null)
+        => RecognizeCore(image, expectedValues, formalVisualAcceptance: false);
+
+    internal IReadOnlyDictionary<string, M7aDigitRecognitionResult> RecognizeForFormalEvidence(
+        BitmapSource image)
+        => RecognizeCore(image, expectedValues: null, formalVisualAcceptance: true);
+
+    private IReadOnlyDictionary<string, M7aDigitRecognitionResult> RecognizeCore(
+        BitmapSource image,
+        IReadOnlyDictionary<string, string>? expectedValues,
+        bool formalVisualAcceptance)
     {
         ArgumentNullException.ThrowIfNull(image);
         var pixels = PixelImage.From(image);
@@ -151,7 +161,8 @@ public sealed class M7aDigitRecognizer
                 templates,
                 hasExpected,
                 expected,
-                root.ErrorReason);
+                root.ErrorReason,
+                formalVisualAcceptance);
         }
 
         return results;
@@ -190,10 +201,10 @@ public sealed class M7aDigitRecognizer
         double minimumMargin = DigitMinMargin,
         bool formalVisualAcceptance = false)
     {
-        // The existing eight RESULT numeric fields always use the original
-        // M7a ROI, template, segmentation, and threshold defaults. The
-        // optional policy is only for the separate chart-context level image
-        // evidence and does not alter that path.
+        // All callers use the original M7a ROI, template, segmentation, and
+        // threshold defaults. The optional policy changes only the confidence
+        // projection for a formal image-evidence consumer; it does not change
+        // candidate labels or the recognition gate.
         ArgumentNullException.ThrowIfNull(image);
         var root = templateRoot.Value;
         var templates = root.Path is null
@@ -220,7 +231,8 @@ public sealed class M7aDigitRecognizer
         IReadOnlyList<DigitTemplate> templates,
         bool evaluateExpected,
         string expected,
-        string? templateRootError)
+        string? templateRootError,
+        bool formalVisualAcceptance)
     {
         var roi = image.CropScaled(RoiDefinitions[roiName]);
         return RecognizePixels(
@@ -233,7 +245,7 @@ public sealed class M7aDigitRecognizer
             templateRootError,
             DigitMaxDistance,
             DigitMinMargin,
-            formalVisualAcceptance: false);
+            formalVisualAcceptance);
     }
 
     private static M7aDigitRecognitionResult RecognizePixels(

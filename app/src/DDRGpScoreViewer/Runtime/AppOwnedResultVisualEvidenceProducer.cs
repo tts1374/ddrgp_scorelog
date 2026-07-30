@@ -74,13 +74,16 @@ internal sealed class AppOwnedResultVisualEvidenceProducer
             "ok",
             ResultRois["ok"],
             "miss",
-            "judgment_counts");
+            "judgment_counts",
+            formalVisualAcceptance: true);
 
         int? okValue = null;
         if (ok.Status == "recognized" &&
             int.TryParse(ok.RecognizedDigits, NumberStyles.None, CultureInfo.InvariantCulture, out var parsedOk))
         {
             okValue = parsedOk;
+            sources["ok"] = FormalEvidenceSourceNames.ResultNumericVisualEvidence;
+            confidences["ok"] = ok.Confidence;
         }
         else if (rank.Status != "failed")
         {

@@ -89,7 +89,11 @@ RESULTの `score`、`max_combo`、`marvelous`、`perfect`、`great`、`good`、`
 
 要件レベルでは、`RESULT同定根拠`、`RESULT数値認識根拠`、`RESULT状態認識根拠`、`capture event根拠`が揃ったformal evidenceだけを正式保存の入力にします。song/chart identityは、current masterとcatalogをread-onlyで参照したジャケット画像照合、play style/difficultyの色画像認識、levelの数字画像認識が一意に揃った場合だけ`result_identity_visual_evidence`として採用します。8つの数字fieldは`result_numeric_visual_evidence`、rankは`result_rank_visual_evidence`、clear typeは`result_clear_type_visual_evidence`をsourceとし、各fieldのconfidenceが0.98以上で全必須値が揃う場合だけ既存formal workflowへ渡します。clear typeの内部判定に使う`O.K.`数も画像認識根拠が必須ですが、正式DB schemaへは追加しません。master versionは`master_metadata`、play_idとduplicate keyはconfirmed capture event、played_atはcapture UTCから構築し、liveのsource kindは`capture`です。`flare_rank=null`は許容します。実装クラス名や工程コードは要件名の代わりに使わず、formal source名には使いません。
 
+jacket catalogの`master_version`が過去の値でも、song ID・canonical title・canonical artistがcurrent GP masterと完全一致するconfirmed referenceはcurrent-master-compatibleな正式参照として利用します。masterとの不一致、orphan、未確認、旧featureのreferenceは利用せず、catalog自体も書き換えません。
+
 標準`AppOwnedLiveResultAnalyzer`はRESULT画面の数値・rank・clear type・flare rankをapp-owned画像認識で採用し、live保存入口はcurrent master/catalogから同定・譜面画像認識を追加してからformal evidence bridgeへ渡します。catalogまたはmaster/chart contextが不足・不整合・ambiguousなら、数字認識成功とは別の`formal_evidence.*`理由で`unresolved`となります。`RESULT同定根拠`、`RESULT状態認識根拠`をcandidate値、OCR、`known-result`から補完しません。
+
+live保存入口は、current masterとcurrent-master-compatibleなcatalog参照から同定・譜面画像認識を追加します。
 
 `identity_signal_*`、`recognized_digits`、expected値、M8 preview payload、相対 `timestamp_ms`、`known-result`は候補材料のままです。formal evidenceが未指定・不足、`ambiguous`、`missing_reference`、`failed_segmentation`、identity/rank/clear type欠落、confidence不足の場合は`formal_evidence.*`または`digit_recognition.*`理由の`unresolved`となり、正式DBへplayを作りません。Debug buildのreviewed workflow入力は開発者向け領域の `単発保存` から実行し、自動由来と混同しません。
 

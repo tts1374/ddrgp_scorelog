@@ -11,7 +11,7 @@ namespace DDRGpScoreViewer.Tests;
 public sealed class AppOwnedVisualIdentityEvidenceProducerTests
 {
     [Fact]
-    public async Task Visual_jacket_and_chart_context_are_adopted_without_ocr()
+    public async Task Compatible_jacket_reference_and_chart_context_are_adopted_without_ocr()
     {
         using var database = new DatabaseFixture();
         database.AddJacketReference(
@@ -21,6 +21,10 @@ public sealed class AppOwnedVisualIdentityEvidenceProducerTests
                 .ToArray(),
             Enumerable.Range(0, 24).Select(index => index == 7 ? 1.0 : 0.0).ToArray(),
             new double[64]);
+        database.ExecuteCatalogSql(
+            "UPDATE jacket_references " +
+            "SET master_version = 'previous-master' " +
+            "WHERE song_id = 'song-1';");
 
         var frame = BuildFrame();
         var evidence = new AppOwnedFormalEvidence(

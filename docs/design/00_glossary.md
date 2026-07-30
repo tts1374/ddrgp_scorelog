@@ -18,6 +18,7 @@ DDR GP scorelog の設計、PoC、テストで使う主要用語を定義する�
 | 要件語彙 | 対象 | 正式根拠source | 正式根拠にしないもの |
 | --- | --- | --- | --- |
 | `RESULT同定根拠` | `song_id`、`chart_id` | `result_identity_visual_evidence`による採用済み画像照合とmaster整合 | `identity_signal_*`、OCR文字列、candidate、expected、preview |
+| `current-master-compatible jacket reference` | current GP masterの`song_id`、canonical title、canonical artistと完全一致するconfirmed jacket reference | catalogの画像featureを用いた`RESULT同定根拠` | master versionの一致だけでの採用、title/artist不一致、orphan、未確認、旧feature |
 | `RESULT数値認識根拠` | `score`、`max_combo`、判定数、`ex_score` | `result_numeric_visual_evidence`による採用済み画像認識 | `recognized_digits`だけ、raw OCR、expected、`match`、preview |
 | `RESULT状態認識根拠` | `rank`、`clear_type`、任意の`flare_rank` | `result_rank_visual_evidence`、`result_clear_type_visual_evidence`、`result_flare_rank_visual_evidence`。専用画像認識または正式な画像認識値からの規則導出を含む | rank/clear type OCR、animation表示、candidate、expected、preview |
 | `capture event根拠` | `play_id`、`played_at`、`duplicate_key` | confirmed capture eventのmetadataとcapture UTC | 相対`timestamp_ms`、score/file由来のduplicate key |
