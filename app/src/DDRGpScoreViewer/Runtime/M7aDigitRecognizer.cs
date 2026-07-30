@@ -144,8 +144,16 @@ public sealed class M7aDigitRecognizer
                 loadedByRoi[roiName] = templates;
             }
 
-            var expected = expectedValues is not null &&
-                expectedValues.TryGetValue(fieldName, out var expectedValue)
+            var hasExpected = false;
+            var expectedValue = string.Empty;
+            if (expectedValues is not null &&
+                expectedValues.TryGetValue(fieldName, out var suppliedExpected) &&
+                suppliedExpected is not null)
+            {
+                hasExpected = true;
+                expectedValue = suppliedExpected;
+            }
+            var expected = hasExpected
                 ? NormalizeDigits(expectedValue)
                 : string.Empty;
             results[fieldName] = RecognizeRoi(
@@ -153,7 +161,7 @@ public sealed class M7aDigitRecognizer
                 fieldName,
                 roiName,
                 templates,
-                true,
+                hasExpected,
                 expected,
                 root.ErrorReason);
         }

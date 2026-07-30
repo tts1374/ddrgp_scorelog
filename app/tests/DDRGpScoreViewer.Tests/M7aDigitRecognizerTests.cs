@@ -120,7 +120,7 @@ public sealed class M7aDigitRecognizerTests
 
         var result = new M7aDigitRecognizer(templateRoot: fixture.Root).Recognize(
             fixture.Render(new Dictionary<string, string> { ["score"] = "0" }),
-            new Dictionary<string, string>())["score"];
+            new Dictionary<string, string> { ["score"] = string.Empty })["score"];
 
         Assert.Equal("not_evaluated", result.Status);
         Assert.Equal("no_expected_value", result.FailureReason);
@@ -143,8 +143,43 @@ public sealed class M7aDigitRecognizerTests
             fixture.Render(new Dictionary<string, string> { ["score"] = "0" }))[
                 "score"];
 
-        Assert.Equal("not_evaluated", result.Status);
+        Assert.Equal("recognized", result.Status);
         Assert.Equal("0", result.RecognizedDigits);
+    }
+
+    [Fact]
+    public void Normal_runtime_keeps_full_recognition_as_recognized_without_expected_values()
+    {
+        using var fixture = new TemplateFixture();
+        fixture.WriteTemplates(
+            "score_digits",
+            "max_combo",
+            "marvelous",
+            "perfect",
+            "miss",
+            "judgment_counts",
+            "combo_ex_score");
+        var values = new Dictionary<string, string>
+        {
+            ["score"] = "0",
+            ["max_combo"] = "1234",
+            ["marvelous"] = "1234",
+            ["perfect"] = "1234",
+            ["great"] = "1234",
+            ["good"] = "1234",
+            ["miss"] = "1234",
+            ["ex_score"] = "1234",
+        };
+
+        var results = new M7aDigitRecognizer(templateRoot: fixture.Root).Recognize(
+            fixture.Render(values));
+
+        foreach (var field in M7aDigitRecognizer.Fields)
+        {
+            Assert.Equal("recognized", results[field].Status);
+            Assert.Null(results[field].Match);
+        }
+        Assert.Equal("recognized", M7aDigitRecognizer.AggregateStatus(results));
     }
 
     [Fact]
@@ -213,7 +248,7 @@ public sealed class M7aDigitRecognizerTests
 
         Assert.True(observation.IsResultScreen);
         Assert.Equal("0", observation.Score);
-        Assert.Equal("not_evaluated", observation.DigitRecognitionStatus);
+        Assert.Equal("recognized", observation.DigitRecognitionStatus);
         Assert.Equal("0", observation.DigitRecognitions!["score"].RecognizedDigits);
     }
 
