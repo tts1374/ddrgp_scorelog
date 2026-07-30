@@ -32,22 +32,30 @@ public sealed class CaptureSaveWorkflowRunnerTests
     }
 
     [Fact]
-    public async Task Manifest_capture_keeps_unresolved_result_events_out_of_formal_db()
+    public async Task Manifest_capture_uses_a_fixed_result_key_for_different_known_result_frames()
     {
         var root = Path.Combine(Path.GetTempPath(), $"ddrgp-capture-save-{Guid.NewGuid():N}");
         Directory.CreateDirectory(root);
         try
         {
-            File.WriteAllBytes(
-                Path.Combine(root, "frame.png"),
-                [137, 80, 78, 71, 13, 10, 26, 10]);
+            var frameBytes = new[]
+            {
+                Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGPgEpH7DwABpAE8k4sOtwAAAABJRU5ErkJggg=="),
+                Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGPQMLL5DwACsgGWiwRo7AAAAABJRU5ErkJggg=="),
+                Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNwC4j6DwADwAHw4MV2LAAAAABJRU5ErkJggg=="),
+            };
+            var framePaths = new[] { "frame-a.png", "frame-b.png", "frame-c.png" };
+            for (var index = 0; index < framePaths.Length; index++)
+            {
+                File.WriteAllBytes(Path.Combine(root, framePaths[index]), frameBytes[index]);
+            }
             var manifestPath = Path.Combine(root, "frame_manifest.csv");
             File.WriteAllText(
                 manifestPath,
                 "image_path,timestamp_ms,screen_type,capture_source,width,height,captured_at_utc\n" +
-                "frame.png,1000,result,fixture,1280,720,2026-07-29T12:00:00+09:00\n" +
-                "frame.png,2000,result,fixture,1280,720,2026-07-29T12:00:01+09:00\n" +
-                "frame.png,3000,result,fixture,1280,720,2026-07-29T12:00:02+09:00\n",
+                "frame-a.png,1000,result,fixture,1280,720,2026-07-29T12:00:00+09:00\n" +
+                "frame-b.png,2000,result,fixture,1280,720,2026-07-29T12:00:01+09:00\n" +
+                "frame-c.png,3000,result,fixture,1280,720,2026-07-29T12:00:02+09:00\n",
                 new UTF8Encoding(false));
             var runner = new AppOwnedCaptureSaveWorkflowRunner();
 

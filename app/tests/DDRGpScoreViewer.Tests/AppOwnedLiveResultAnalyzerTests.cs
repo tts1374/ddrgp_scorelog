@@ -39,6 +39,7 @@ public sealed class AppOwnedLiveResultAnalyzerTests
 
         Assert.True(observation.IsResultScreen);
         Assert.Empty(observation.Score);
+        Assert.Equal("known-result", observation.TitleSignature);
         Assert.Contains("pending", observation.Reason, StringComparison.Ordinal);
     }
 }

@@ -11,6 +11,8 @@ namespace DDRGpScoreViewer.Capture;
 /// </summary>
 public sealed class AppOwnedLiveResultAnalyzer : ILiveResultAnalyzer
 {
+    private const string KnownResultSignature = "known-result";
+
     public Task<LiveResultObservation> AnalyzeAsync(
         CapturedFrame frame,
         CancellationToken cancellationToken = default)
@@ -19,13 +21,12 @@ public sealed class AppOwnedLiveResultAnalyzer : ILiveResultAnalyzer
         return Task.FromResult(Analyze(frame));
     }
 
-    internal static LiveResultObservation CreateKnownResultObservation(CapturedFrame frame)
+    internal static LiveResultObservation CreateKnownResultObservation(CapturedFrame _)
     {
-        var signature = CreateFrameSignature(frame);
         return new LiveResultObservation(
             true,
             string.Empty,
-            signature,
+            KnownResultSignature,
             "preconfirmed_result_candidate_score_recognition_pending");
     }
 
@@ -99,25 +100,6 @@ public sealed class AppOwnedLiveResultAnalyzer : ILiveResultAnalyzer
         }
 
         return Math.Clamp((value - low) / (high - low), 0.0, 1.0);
-    }
-
-    private static string CreateFrameSignature(CapturedFrame frame)
-    {
-        try
-        {
-            using var stream = new MemoryStream(frame.PngBytes, writable: false);
-            var decoder = new PngBitmapDecoder(
-                stream,
-                BitmapCreateOptions.PreservePixelFormat,
-                BitmapCacheOption.OnLoad);
-            return Convert.ToHexString(SHA256.HashData(decoder.Frames[0].CopyPixelsToArray()));
-        }
-        catch (Exception exception) when (
-            exception is ArgumentException or InvalidOperationException or IOException or
-                FileFormatException or System.Runtime.InteropServices.COMException)
-        {
-            return Convert.ToHexString(SHA256.HashData(frame.PngBytes));
-        }
     }
 
     private static string CreatePixelSignature(
@@ -286,17 +268,5 @@ public sealed class AppOwnedLiveResultAnalyzer : ILiveResultAnalyzer
 
         private static int Scale(int value, int baseSize, int actualSize) =>
             Math.Clamp((int)Math.Round(value * (double)actualSize / baseSize), 0, actualSize - 1);
-    }
-}
-
-internal static class BitmapFrameExtensions
-{
-    public static byte[] CopyPixelsToArray(this BitmapFrame frame)
-    {
-        var converted = new FormatConvertedBitmap(frame, PixelFormats.Bgra32, null, 0);
-        var stride = converted.PixelWidth * 4;
-        var bytes = new byte[stride * converted.PixelHeight];
-        converted.CopyPixels(bytes, stride, 0);
-        return bytes;
     }
 }
