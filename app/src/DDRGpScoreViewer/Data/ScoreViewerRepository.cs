@@ -650,6 +650,9 @@ public sealed class ScoreViewerRepository
         }
     }
 
+    internal static void ValidateScoreDatabaseForWrite(SqliteConnection connection) =>
+        ValidateScoreDatabase(connection);
+
     private static ViewerDatabaseException RejectedScoreDatabase(string reason) =>
         new($"このプレーデータは開けません。{reason} ファイルは変更されていません。");
 

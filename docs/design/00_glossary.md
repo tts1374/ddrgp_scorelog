@@ -29,7 +29,7 @@ DDR GP scorelog の設計、PoC、テストで使う主要用語を定義する�
 | `M7 result field recognition` | RESULTのrank/clear_type/flare_rankを専用規則で認識し、field別formal evidenceへ接続する工程 | FAILED/E gate、score-derived rank、judgment-count clear type、independent flare badge | candidate/raw/previewのformal昇格 |
 | `M7 result-text feature` | resultのtitle/artist ROIからOCRなしの画像featureを作る補助工程 | `jacket-catalog.sqlite` の `result_text_features`、`m7_result_text_feature_master.*` 診断出力 | OCR文字列、曲ID確定、正式保存値 |
 | `M8 formal personal score DB` | version 1正式DB、duplicate、transaction、明示単発保存を扱う工程 | `ddrgp-scores.sqlite`、formal save input | 候補材料の自動昇格、M8 preview DBの受入れ |
-| `M9 application/runtime` | viewer、Windows capture、capture-save、監視UI、task trayを接続する工程 | WPF app、capture-save workflow | 新しい解析方式やDB schema |
+| `M9 application/runtime` | app package-owned runtimeでviewer、Windows capture、capture-save、監視UI、task trayを接続する工程 | WPF app、app-owned runtime、capture-save workflow | 新しい数字認識方式やDB schema |
 | `M10 initial release` | 単一ユーザー向けの配布・依存固定・backup/restoreを固める工程 | installer/配布手順、lock file、運用docs | cloud運用、複数ユーザー、enterprise機能 |
 
 ## master DB inspection status
@@ -47,8 +47,9 @@ master DB inspectionは起動時・保存開始時に行う。固定pathだけ�
 
 ## M10 local storage terms
 
-- `development environment`: 現在のdirectoryまたはapp配置場所の親からrepository rootを解決できる実行環境。既定DBはrepositoryの`databases/`配下に置く。
-- `production environment`: repository rootを解決できない実行環境。既定DBは`%LOCALAPPDATA%\DDRGpScoreViewer\data\`配下に置き、repositoryのDBへfallbackしない。
+- `development environment`: Debugで明示されたdevelopment root、またはDebugのcurrent directoryに`databases/`がある実行環境。既定DBはそのrootの`databases/`配下に置く。Releaseではdevelopment判定を行わない。
+- `production environment`: Releaseの実行環境。既定DBは`%LOCALAPPDATA%\DDRGpScoreViewer\data\`配下に置き、repositoryのDBへfallbackしない。
+- `app-owned runtime`: Score Viewer app packageが実行ロジックとruntime資材を所有するM9 runtime境界。Releaseではrepository root、repository内Python module、Python executable、Tesseractを探索・起動せず、packageまたは明示data pathだけから資材を解決する。
 - `M5b jacket reference catalog`: `ddrgp-master.sqlite`とは別の`jacket-catalog.sqlite`。current jacket feature、M7 result-text feature、review historyを持つ参照catalogで、正式個人スコアDBや画像原本ではない。
 - `evaluation DB`: M10-3が所有するdevelopment専用の評価SQLite。正式個人スコアDB、M4 master DB、M5b jacket reference catalogから分離し、WPF viewerは開かない。
 - `formal score DB protection boundary`: 起動時はmaster/catalog検証後の固定score pathに限り、missing／0 byteの新規正式schema準備だけを既存file-preparation契約へ委譲し、既存の非空正式個人スコアDBをread-only検証、上書き、migration、repairしない境界。正式writerの明示saveも同じ既存準備・transaction契約を使う。

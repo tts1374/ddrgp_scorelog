@@ -322,7 +322,7 @@ event処理は入力順の直列で、次の3段階を混同しない。
 
 continuous capture manifestの `screen_type=unknown` は正解ラベルではない。capture-save orchestrationはVision PoCが評価不一致として終了コード1を返しても生成済み解析成果を読み取る。解析例外とその他の非0終了は `analysis_failed` のままとする。
 
-capture-save由来の `capture_hash` は `capture_id` と画像bytesを入力とするcapture-event version 1 hashとする。同じmanifest/frameの再実行は同一hashとなり、byte-identicalでも別frame indexは別hashとなる。これにより、静止リザルトの連続duplicate eventをplayなしのsource capture + analysisとして記録しつつ、同一capture event再送のUNIQUE拒否は維持する。live監視のcandidateはPNGとmanifestをOS一時directoryへ置いてこのhashを計算するが、workflow完了後に一時directoryを削除する。live由来の `source_captures` は `source_path=live-memory://...` と空の `manifest_image_path` を記録し、画像の永続参照は残さない。
+capture-save由来の `capture_hash` は `capture_id` と画像bytesを入力とするcapture-event version 1 hashとする。同じmanifest/frameの再実行は同一hashとなり、byte-identicalでも別frame indexは別hashとなる。同一表示中の静止リザルトの後続サンプルは1つのeventへ集約し、non-result等でevent boundaryを抜けてから確定した別候補だけを別eventとして扱う。その別eventが正式 `duplicate_key` と衝突した場合にだけ、playなしのduplicate source capture + analysisとして記録し、同一capture event再送のUNIQUE拒否も維持する。live監視のcandidateはPNGとmanifestをOS一時directoryへ置いてこのhashを計算するが、workflow完了後に一時directoryを削除する。live由来の `source_captures` は `source_path=live-memory://...` と空の `manifest_image_path` を記録し、画像の永続参照は残さない。
 
 ## M0/M1で固定すること
 

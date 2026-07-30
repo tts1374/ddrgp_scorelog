@@ -1,3 +1,5 @@
+using System.Text;
+using DDRGpScoreViewer.Capture;
 using DDRGpScoreViewer.Data;
 using Xunit;
 
@@ -6,30 +8,100 @@ namespace DDRGpScoreViewer.Tests;
 public sealed class CaptureSaveWorkflowRunnerTests
 {
     [Fact]
-    public void ParseResult_reads_last_json_line_and_status_counts()
+    public async Task Live_candidate_uses_the_app_owned_workflow_without_a_checkout()
     {
-        const string payload = """
-            analysis output
-            {"result_schema_version":1,"status":"completed","analysis_output":"data/run","event_count":3,"status_counts":{"saved":1,"unresolved":2},"saved_play_ids":["play-1"],"reasons":[],"events":[]}
-            """;
+        var frame = new CapturedFrame(
+            [137, 80, 78, 71, 13, 10, 26, 10],
+            1280,
+            720,
+            1_000,
+            DateTimeOffset.Parse("2026-07-29T12:00:00+09:00"),
+            "fixture");
+        var runner = new AppOwnedCaptureSaveWorkflowRunner();
 
-        var result = PythonCaptureSaveWorkflowRunner.ParseResult(payload);
+        var result = await runner.RunCandidateAsync(
+            frame,
+            Path.Combine(Path.GetTempPath(), "app-owned-score.sqlite"),
+            "master.sqlite",
+            null);
 
         Assert.Equal("completed", result.Status);
-        Assert.Equal(3, result.EventCount);
-        Assert.Equal(1, result.StatusCounts["saved"]);
-        Assert.Equal(2, result.StatusCounts["unresolved"]);
-        Assert.Equal("play-1", Assert.Single(result.SavedPlayIds));
+        Assert.Equal(1, result.EventCount);
+        Assert.Equal(1, result.StatusCounts["unresolved"]);
+        Assert.Contains("formal_play_required", result.Reasons);
     }
 
     [Fact]
-    public void ParseResult_rejects_missing_or_unsupported_payload()
+    public async Task Manifest_capture_uses_a_fixed_result_key_for_different_known_result_frames()
     {
-        var missing = PythonCaptureSaveWorkflowRunner.ParseResult("no json");
-        var unsupported = PythonCaptureSaveWorkflowRunner.ParseResult(
-            "{\"result_schema_version\":2}");
+        var root = Path.Combine(Path.GetTempPath(), $"ddrgp-capture-save-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        try
+        {
+            var frameBytes = new[]
+            {
+                Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGPgEpH7DwABpAE8k4sOtwAAAABJRU5ErkJggg=="),
+                Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGPQMLL5DwACsgGWiwRo7AAAAABJRU5ErkJggg=="),
+                Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNwC4j6DwADwAHw4MV2LAAAAABJRU5ErkJggg=="),
+            };
+            var framePaths = new[] { "frame-a.png", "frame-b.png", "frame-c.png" };
+            for (var index = 0; index < framePaths.Length; index++)
+            {
+                File.WriteAllBytes(Path.Combine(root, framePaths[index]), frameBytes[index]);
+            }
+            var manifestPath = Path.Combine(root, "frame_manifest.csv");
+            File.WriteAllText(
+                manifestPath,
+                "image_path,timestamp_ms,screen_type,capture_source,width,height,captured_at_utc\n" +
+                "frame-a.png,1000,result,fixture,1280,720,2026-07-29T12:00:00+09:00\n" +
+                "frame-b.png,2000,result,fixture,1280,720,2026-07-29T12:00:01+09:00\n" +
+                "frame-c.png,3000,result,fixture,1280,720,2026-07-29T12:00:02+09:00\n",
+                new UTF8Encoding(false));
+            var runner = new AppOwnedCaptureSaveWorkflowRunner();
 
-        Assert.Equal("process_failed", missing.Status);
-        Assert.Equal("process_failed", unsupported.Status);
+            var result = await runner.RunAsync(
+                manifestPath,
+                Path.Combine(root, "score.sqlite"),
+                "master.sqlite");
+
+            Assert.Equal("completed", result.Status);
+            Assert.Equal(1, result.EventCount);
+            Assert.Equal(1, result.StatusCounts["unresolved"]);
+            Assert.False(File.Exists(Path.Combine(root, "score.sqlite")));
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task Invalid_manifest_is_reported_as_workflow_failure_without_process_fallback()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"ddrgp-capture-save-invalid-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        try
+        {
+            var path = Path.Combine(root, "frame_manifest.csv");
+            File.WriteAllText(path, "timestamp_ms\n1000\n", new UTF8Encoding(false));
+
+            var result = await new AppOwnedCaptureSaveWorkflowRunner().RunAsync(
+                path,
+                Path.Combine(root, "score.sqlite"),
+                "master.sqlite");
+
+            Assert.Equal("workflow_failed", result.Status);
+            Assert.NotEmpty(result.Reasons);
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+            {
+                Directory.Delete(root, recursive: true);
+            }
+        }
     }
 }

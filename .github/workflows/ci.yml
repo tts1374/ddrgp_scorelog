@@ -74,6 +74,10 @@ jobs:
         shell: pwsh
         run: .\app\tests\VerifyReleaseBuild.ps1
 
+      - name: Verify Release runtime package boundary
+        shell: pwsh
+        run: .\app\tests\VerifyReleaseRuntime.ps1
+
       - name: Test
         run: dotnet test app\tests\DDRGpScoreViewer.Tests\DDRGpScoreViewer.Tests.csproj --configuration Debug --no-restore
 

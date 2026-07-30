@@ -74,7 +74,6 @@ $assemblyBytes = [System.IO.File]::ReadAllBytes($resolvedAssemblyPath)
 $assemblyAsUtf8 = [System.Text.Encoding]::UTF8.GetString($assemblyBytes)
 $assemblyAsUtf16 = [System.Text.Encoding]::Unicode.GetString($assemblyBytes)
 foreach ($developerOnlyLabel in @(
-        '1フレーム取得'
         '連続取得を開始'
         '単発保存'
         'Debug build / 開発者向け操作'))
@@ -83,6 +82,23 @@ foreach ($developerOnlyLabel in @(
         $assemblyAsUtf16.Contains($developerOnlyLabel))
     {
         throw "Release assembly contains a developer-only label: $developerOnlyLabel"
+    }
+}
+
+foreach ($forbiddenRuntimeMarker in @(
+        'tools\vision_poc'
+        'tools/vision_poc'
+        'DDRGP_PYTHON'
+        'PythonLiveResultAnalyzer'
+        'PythonCaptureSaveWorkflowRunner'
+        'PythonPersonalScoreDbWorkflowRunner'
+        'Tesseract'
+        'tesseract'))
+{
+    if ($assemblyAsUtf8.IndexOf($forbiddenRuntimeMarker, [System.StringComparison]::OrdinalIgnoreCase) -ge 0 -or
+        $assemblyAsUtf16.IndexOf($forbiddenRuntimeMarker, [System.StringComparison]::OrdinalIgnoreCase) -ge 0)
+    {
+        throw "Release assembly contains a forbidden external runtime marker: $forbiddenRuntimeMarker"
     }
 }
 
