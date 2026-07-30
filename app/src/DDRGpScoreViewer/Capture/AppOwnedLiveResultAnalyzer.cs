@@ -7,13 +7,15 @@ using DDRGpScoreViewer.Runtime;
 namespace DDRGpScoreViewer.Capture;
 
 /// <summary>
-/// App-owned RESULT gate and M7a candidate digit recognizer. It never derives
-/// formal score values from candidate frame pixels.
+/// App-owned RESULT gate and result-screen visual evidence producer. Formal
+/// values are exposed only when the app-owned producer has adopted the image
+/// evidence with its source and confidence.
 /// </summary>
 public sealed class AppOwnedLiveResultAnalyzer : ILiveResultAnalyzer
 {
     private const string KnownResultSignature = "known-result";
     private readonly M7aDigitRecognizer digitRecognizer;
+    private readonly AppOwnedResultVisualEvidenceProducer resultEvidenceProducer;
 
     public AppOwnedLiveResultAnalyzer()
         : this(new M7aDigitRecognizer())
@@ -21,8 +23,16 @@ public sealed class AppOwnedLiveResultAnalyzer : ILiveResultAnalyzer
     }
 
     internal AppOwnedLiveResultAnalyzer(M7aDigitRecognizer digitRecognizer)
+        : this(digitRecognizer, new AppOwnedResultVisualEvidenceProducer(digitRecognizer))
+    {
+    }
+
+    internal AppOwnedLiveResultAnalyzer(
+        M7aDigitRecognizer digitRecognizer,
+        AppOwnedResultVisualEvidenceProducer resultEvidenceProducer)
     {
         this.digitRecognizer = digitRecognizer;
+        this.resultEvidenceProducer = resultEvidenceProducer;
     }
 
     public Task<LiveResultObservation> AnalyzeAsync(
@@ -88,6 +98,7 @@ public sealed class AppOwnedLiveResultAnalyzer : ILiveResultAnalyzer
             var reason = scoreResult.HasCandidateDigits
                 ? $"result_digits_{scoreResult.Status}"
                 : $"result_digit_{scoreResult.Status}:{scoreResult.FailureReason}";
+            var formalEvidence = resultEvidenceProducer.Produce(bitmap, digitResults);
             return new LiveResultObservation(
                 true,
                 score,
@@ -96,7 +107,8 @@ public sealed class AppOwnedLiveResultAnalyzer : ILiveResultAnalyzer
                     : CreatePixelSignature(pixels, 488, 274, 304, 32),
                 reason,
                 digitResults,
-                status);
+                status,
+                formalEvidence);
         }
         catch (Exception exception) when (
             exception is ArgumentException or InvalidOperationException or IOException or

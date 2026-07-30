@@ -22,20 +22,6 @@ internal sealed record AppFormalEvidencePromotion(
         Array.Empty<string>());
 }
 
-internal static class FormalEvidenceSourceNames
-{
-    // Requirement-level source IDs. OCR, raw OCR, and implementation milestone
-    // names are intentionally not valid formal source aliases.
-    public const string MasterMetadata = "master_metadata";
-    public const string ResultIdentityVisualEvidence = "result_identity_visual_evidence";
-    public const string ResultNumericVisualEvidence = "result_numeric_visual_evidence";
-    public const string ResultRankVisualEvidence = "result_rank_visual_evidence";
-    public const string ResultClearTypeVisualEvidence = "result_clear_type_visual_evidence";
-    public const string ResultFlareRankVisualEvidence = "result_flare_rank_visual_evidence";
-    public const string CaptureEventV1 = "capture_event_v1";
-    public const string CaptureUtc = "capture_utc";
-}
-
 internal static class AppOwnedFormalEvidenceBridge
 {
     private const double MinimumConfidence = 0.98;
@@ -55,6 +41,7 @@ internal static class AppOwnedFormalEvidenceBridge
             ["good"] = FormalEvidenceSourceNames.ResultNumericVisualEvidence,
             ["miss"] = FormalEvidenceSourceNames.ResultNumericVisualEvidence,
             ["ex_score"] = FormalEvidenceSourceNames.ResultNumericVisualEvidence,
+            ["ok"] = FormalEvidenceSourceNames.ResultNumericVisualEvidence,
             ["rank"] = FormalEvidenceSourceNames.ResultRankVisualEvidence,
             ["clear_type"] = FormalEvidenceSourceNames.ResultClearTypeVisualEvidence,
             ["flare_rank"] = FormalEvidenceSourceNames.ResultFlareRankVisualEvidence,
@@ -93,10 +80,18 @@ internal static class AppOwnedFormalEvidenceBridge
             new Dictionary<string, string>(StringComparer.Ordinal);
         var confidences = evidence.Confidences ??
             new Dictionary<string, double?>(StringComparer.Ordinal);
-        var reasonsForEvidence = new List<string>();
+        var failedResult = string.Equals(evidence.Rank, "E", StringComparison.Ordinal) &&
+            string.Equals(evidence.ClearType, "FAILED", StringComparison.Ordinal);
+        var reasonsForEvidence = new List<string>(
+            evidence.RecognitionReasons ?? Array.Empty<string>());
         foreach (var (fieldName, requiredSource) in RequiredSources)
         {
             if (fieldName == "flare_rank" && evidence.FlareRank is null)
+            {
+                continue;
+            }
+
+            if (fieldName == "ok" && failedResult && evidence.Ok is null)
             {
                 continue;
             }
@@ -132,6 +127,10 @@ internal static class AppOwnedFormalEvidenceBridge
         RequireDigit(reasonsForEvidence, "good", evidence.Good);
         RequireDigit(reasonsForEvidence, "miss", evidence.Miss);
         RequireDigit(reasonsForEvidence, "ex_score", evidence.ExScore);
+        if (!failedResult)
+        {
+            RequireDigit(reasonsForEvidence, "ok", evidence.Ok);
+        }
 
         if (evidence.Score is < 0 or > 1_000_000 ||
             evidence.Score is not null && evidence.Score.Value % 10 != 0)
@@ -176,7 +175,9 @@ internal static class AppOwnedFormalEvidenceBridge
         }
 
         var requiredConfidence = RequiredSources.Keys
-            .Where(fieldName => fieldName != "flare_rank" || evidence.FlareRank is not null)
+            .Where(fieldName =>
+                (fieldName != "flare_rank" || evidence.FlareRank is not null) &&
+                (fieldName != "ok" || !failedResult || evidence.Ok is not null))
             .Select(fieldName => confidences[fieldName]!.Value)
             .Append(1.0)
             .Min();

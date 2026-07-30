@@ -54,18 +54,25 @@ public sealed class AppOwnedCaptureSaveWorkflowRunner :
 {
     private readonly AppOwnedLiveResultAnalyzer analyzer;
     private readonly AppOwnedPersonalScoreDbWorkflowRunner workflowRunner;
+    private readonly AppOwnedVisualIdentityEvidenceProducer identityEvidenceProducer;
 
     public AppOwnedCaptureSaveWorkflowRunner()
-        : this(new AppOwnedLiveResultAnalyzer(), new AppOwnedPersonalScoreDbWorkflowRunner())
+        : this(
+            new AppOwnedLiveResultAnalyzer(),
+            new AppOwnedPersonalScoreDbWorkflowRunner(),
+            new AppOwnedVisualIdentityEvidenceProducer())
     {
     }
 
     internal AppOwnedCaptureSaveWorkflowRunner(
         AppOwnedLiveResultAnalyzer analyzer,
-        AppOwnedPersonalScoreDbWorkflowRunner workflowRunner)
+        AppOwnedPersonalScoreDbWorkflowRunner workflowRunner,
+        AppOwnedVisualIdentityEvidenceProducer? identityEvidenceProducer = null)
     {
         this.analyzer = analyzer;
         this.workflowRunner = workflowRunner;
+        this.identityEvidenceProducer = identityEvidenceProducer ??
+            new AppOwnedVisualIdentityEvidenceProducer();
     }
 
     public async Task<CaptureSaveWorkflowResult> RunAsync(
@@ -129,8 +136,6 @@ public sealed class AppOwnedCaptureSaveWorkflowRunner :
         string? catalogDatabasePath,
         CancellationToken cancellationToken = default)
     {
-        _ = masterDatabasePath;
-        _ = catalogDatabasePath;
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -138,9 +143,14 @@ public sealed class AppOwnedCaptureSaveWorkflowRunner :
             {
                 return FailedResult(observation.Reason);
             }
-            var input = BuildInput(
+            var enrichedObservation = identityEvidenceProducer.Enrich(
                 frame,
                 observation,
+                masterDatabasePath,
+                catalogDatabasePath);
+            var input = BuildInput(
+                frame,
+                enrichedObservation,
                 sourceKind: "capture",
                 sourcePath: "live-memory://app-owned-candidate",
                 imagePath: "",

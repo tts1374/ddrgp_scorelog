@@ -388,6 +388,7 @@ public sealed class CaptureSaveWorkflowRunnerTests
                     ["good"] = "result_numeric_visual_evidence",
                     ["miss"] = "result_numeric_visual_evidence",
                     ["ex_score"] = "result_numeric_visual_evidence",
+                    ["ok"] = "result_numeric_visual_evidence",
                     ["rank"] = "result_rank_visual_evidence",
                     ["clear_type"] = "result_clear_type_visual_evidence",
                 },
@@ -404,9 +405,11 @@ public sealed class CaptureSaveWorkflowRunnerTests
                     ["good"] = 0.99,
                     ["miss"] = 0.99,
                     ["ex_score"] = 0.99,
+                    ["ok"] = 0.99,
                     ["rank"] = 0.99,
                     ["clear_type"] = 0.99,
-                }));
+                },
+                Ok: 0));
 
     private static SqliteConnection OpenReadOnly(string path)
     {

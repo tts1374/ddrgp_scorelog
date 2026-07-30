@@ -94,7 +94,9 @@ public sealed record AppOwnedFormalEvidence(
     string? FlareRank,
     IReadOnlyDictionary<string, string> Sources,
     IReadOnlyDictionary<string, double?> Confidences,
-    string IdentitySignalStatus = "resolved");
+    string IdentitySignalStatus = "resolved",
+    int? Ok = null,
+    IReadOnlyList<string>? RecognitionReasons = null);
 
 public sealed record LiveResultObservation(
     bool IsResultScreen,

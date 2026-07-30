@@ -25,6 +25,14 @@ DDR GP scorelog の設計、PoC、テストで使う主要用語を定義する�
 
 `M5 master match`、`M7a digit recognition`、`M7 result field recognition`、`M9 application/runtime`は、上記要件をどの実装が担当するかを示す対応名に留める。これらの工程名、`identity_signal_*`、`recognized_digits`をformal source IDや保存条件の代わりに使わない。
 
+今後のIssue・PR・設計では、実装工程名ではなく次の要件名を優先する。
+
+| 要件名 | 意味 | 接続する正式根拠 |
+| --- | --- | --- |
+| `RESULT数値・状態の正式画像認識` | RESULT画面の数字、rank、clear type、flare rankをapp-owned画像認識で採用すること | `RESULT数値認識根拠`、`RESULT状態認識根拠` |
+| `RESULT同定・譜面の正式画像認識` | RESULT画面のジャケット、play style、difficulty、levelを画像認識し、current master/catalogと一意整合させること | `RESULT同定根拠`、`master_metadata` |
+| `正式保存根拠の保存workflow接続` | confirmed non-duplicate RESULTの全根拠を既存正式DB保存workflowへ渡すこと | `capture event根拠`を含む全source/confidence/完全性 |
+
 ## 工程コード
 
 | 呼び方 | 正式な意味 | 主な対象・成果物 | この工程だけでは確定しないもの |
