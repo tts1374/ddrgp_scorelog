@@ -34,7 +34,6 @@ public sealed class M7aDigitRecognizer
     public const string Method = "bitmap-template-nearest";
     private const double DigitMaxDistance = 0.28;
     private const double DigitMinMargin = 0.02;
-    private const double MissDigitMinMargin = 0.015;
 
     public static readonly IReadOnlyList<string> Fields =
     [
@@ -88,8 +87,6 @@ public sealed class M7aDigitRecognizer
 
     private static readonly HashSet<string> ComponentSegmentRois =
         ["max_combo", "marvelous", "perfect", "great", "good", "miss", "ex_score"];
-
-    private static readonly HashSet<string> WhiteForegroundRois = ["miss"];
 
     private static readonly HashSet<string> RejectBrightColoredBackgroundRois =
         ["marvelous", "perfect", "great", "good", "miss"];
@@ -271,7 +268,7 @@ public sealed class M7aDigitRecognizer
             {
                 ambiguousReason = "distance_above_threshold";
             }
-            else if (margin < (roiName == "miss" ? MissDigitMinMargin : DigitMinMargin))
+            else if (margin < DigitMinMargin)
             {
                 ambiguousReason = "low_margin";
             }
@@ -467,41 +464,13 @@ public sealed class M7aDigitRecognizer
         }
         else if (ComponentSegmentRois.Contains(roiName))
         {
-            var minHeightFraction = roiName == "miss" ? 0.45 : 0.35;
             components = Components(mask)
                 .Where(component =>
-                    component.Bottom - component.Top >= Math.Max(10, (int)(image.Height * minHeightFraction)) &&
+                    component.Bottom - component.Top >= Math.Max(10, (int)(image.Height * 0.35)) &&
                     component.Right - component.Left >= 2 &&
-                    component.Area >= 20 &&
-                    (roiName != "miss" ||
-                        (double)(component.Right - component.Left) /
-                        (component.Bottom - component.Top) <= 1.6))
+                    component.Area >= 20)
                 .OrderBy(component => component.Left)
                 .ToList();
-            if (roiName == "miss")
-            {
-                var nestedComponents = components
-                    .Where(component => components.Any(container =>
-                        container.Area > component.Area &&
-                        container.Left <= component.Left &&
-                        container.Top <= component.Top &&
-                        container.Right >= component.Right &&
-                        container.Bottom >= component.Bottom))
-                    .ToArray();
-                foreach (var nested in nestedComponents)
-                {
-                    for (var y = nested.Top; y < nested.Bottom; y++)
-                    {
-                        for (var x = nested.Left; x < nested.Right; x++)
-                        {
-                            mask[y, x] = false;
-                        }
-                    }
-                }
-                components = components
-                    .Where(component => !nestedComponents.Contains(component))
-                    .ToList();
-            }
         }
         else
         {
@@ -560,18 +529,6 @@ public sealed class M7aDigitRecognizer
         }
 
         var mask = new bool[image.Height, image.Width];
-        if (WhiteForegroundRois.Contains(roiName))
-        {
-            for (var y = 0; y < image.Height; y++)
-            {
-                for (var x = 0; x < image.Width; x++)
-                {
-                    mask[y, x] = luma[y, x] > 180 && spread[y, x] <= 50;
-                }
-            }
-            return mask;
-        }
-
         var dark = new bool[image.Height, image.Width];
         var bright = new bool[image.Height, image.Width];
         var borderSum = 0.0;

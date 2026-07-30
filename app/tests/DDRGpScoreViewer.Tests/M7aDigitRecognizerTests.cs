@@ -54,10 +54,6 @@ public sealed class M7aDigitRecognizerTests
         using var fixture = new TemplateFixture();
         fixture.WriteTemplates(
             "score_digits",
-            "max_combo",
-            "marvelous",
-            "perfect",
-            "miss",
             "judgment_counts",
             "combo_ex_score");
         var values = new Dictionary<string, string>
@@ -141,7 +137,7 @@ public sealed class M7aDigitRecognizerTests
     public void Miss_equal_nearest_templates_remain_ambiguous()
     {
         using var fixture = new TemplateFixture();
-        fixture.WriteTemplates("miss", "0123456789", duplicateLabel: '1');
+        fixture.WriteTemplates("judgment_counts", "0123456789", duplicateLabel: '1');
 
         var result = new M7aDigitRecognizer(templateRoot: fixture.Root).Recognize(
             fixture.Render(new Dictionary<string, string> { ["miss"] = "0" }))["miss"];
@@ -165,15 +161,13 @@ public sealed class M7aDigitRecognizerTests
     }
 
     [Fact]
-    public void Miss_ignores_a_nested_foreground_component_inside_a_digit()
+    public void Miss_uses_shared_judgment_templates_with_the_common_mask()
     {
         using var fixture = new TemplateFixture();
-        fixture.WriteTemplates("miss");
+        fixture.WriteTemplates("judgment_counts");
 
         var result = new M7aDigitRecognizer(templateRoot: fixture.Root).Recognize(
-            fixture.Render(
-                new Dictionary<string, string> { ["miss"] = "0" },
-                addNestedMissComponent: true),
+            fixture.Render(new Dictionary<string, string> { ["miss"] = "0" }),
             new Dictionary<string, string> { ["miss"] = "0" })["miss"];
 
         Assert.Equal("recognized", result.Status);
@@ -254,7 +248,6 @@ public sealed class M7aDigitRecognizerTests
         foreach (var group in new[]
         {
             "score_digits",
-            "miss",
             "judgment_counts",
             "combo_ex_score",
         })
@@ -270,7 +263,7 @@ public sealed class M7aDigitRecognizerTests
                 Enumerable.Range(0, 10).Select(value => value.ToString()).ToArray(),
                 labels);
         }
-        foreach (var group in new[] { "max_combo", "marvelous", "perfect" })
+        foreach (var group in new[] { "max_combo", "marvelous", "perfect", "miss" })
         {
             var path = Path.Combine(root, group);
             Assert.False(
@@ -285,10 +278,6 @@ public sealed class M7aDigitRecognizerTests
         using var fixture = new TemplateFixture();
         fixture.WriteTemplates(
             "score_digits",
-            "max_combo",
-            "marvelous",
-            "perfect",
-            "miss",
             "judgment_counts",
             "combo_ex_score");
         var analyzer = new AppOwnedLiveResultAnalyzer(
@@ -412,8 +401,7 @@ public sealed class M7aDigitRecognizerTests
 
         public BitmapSource Render(
             IReadOnlyDictionary<string, string> values,
-            bool addScoreTopNoise = false,
-            bool addNestedMissComponent = false)
+            bool addScoreTopNoise = false)
         {
             const int width = 1280;
             const int height = 720;
@@ -458,10 +446,6 @@ public sealed class M7aDigitRecognizerTests
             {
                 DrawGlyph(pixels, stride, 245, 277, 6, Patterns['4']);
             }
-            if (addNestedMissComponent)
-            {
-                DrawFilledRectangle(pixels, stride, 978, 560, 2, 10);
-            }
 
             var bitmap = BitmapSource.Create(
                 width,
@@ -500,26 +484,6 @@ public sealed class M7aDigitRecognizerTests
                             pixels[offset + 2] = 255;
                         }
                     }
-                }
-            }
-        }
-
-        private static void DrawFilledRectangle(
-            byte[] pixels,
-            int stride,
-            int left,
-            int top,
-            int width,
-            int height)
-        {
-            for (var y = top; y < top + height; y++)
-            {
-                for (var x = left; x < left + width; x++)
-                {
-                    var offset = y * stride + x * 4;
-                    pixels[offset] = 255;
-                    pixels[offset + 1] = 255;
-                    pixels[offset + 2] = 255;
                 }
             }
         }
