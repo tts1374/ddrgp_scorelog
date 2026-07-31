@@ -118,8 +118,8 @@ public sealed class AppOwnedVisualIdentityEvidenceProducerTests
         Fill(pixels, stride, 532, 54, 216, 216, 255, 0, 0);
         Fill(pixels, stride, 360, 56, 100, 24, 0, 128, 255);
         Fill(pixels, stride, 378, 80, 84, 24, 0, 255, 34);
-        DrawTemplate(pixels, stride, 386, 107, "chart_level", "1.pbm");
-        DrawTemplate(pixels, stride, 405, 107, "chart_level", "7.pbm");
+        DrawTemplate(pixels, stride, 394, 105, "chart_level", "1.pbm");
+        DrawTemplate(pixels, stride, 413, 105, "chart_level", "7.pbm");
         var bitmap = BitmapSource.Create(
             width,
             height,

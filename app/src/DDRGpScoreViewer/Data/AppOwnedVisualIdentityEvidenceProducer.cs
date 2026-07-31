@@ -33,7 +33,7 @@ internal sealed class AppOwnedVisualIdentityEvidenceProducer
         (378, 80, 84, 24);
 
     private static readonly (int X, int Y, int Width, int Height) LevelRoi =
-        (380, 104, 52, 38);
+        (392, 104, 38, 31);
 
     private static readonly IReadOnlyDictionary<string, double> StyleHues =
         new Dictionary<string, double>(StringComparer.Ordinal)
