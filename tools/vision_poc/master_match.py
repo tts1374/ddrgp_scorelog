@@ -34,7 +34,7 @@ DEFAULT_JACKET_AMBIGUITY_DELTA = 0.015
 DEFAULT_TITLE_AMBIGUITY_DELTA = 0.01
 DEFAULT_TITLE_LINEHASH_AMBIGUITY_DELTA = 0.01
 RESULT_TEXT_FEATURE_SCHEMA_VERSION = "m7-result-text-feature-master-v1"
-RESULT_TEXT_IMAGE_FEATURE_VERSION = "m7-result-text-image-v2"
+RESULT_TEXT_IMAGE_FEATURE_VERSION = "m7-result-text-image-v1"
 RESULT_TEXT_ROI_VERSION = "m7-result-title-artist-roi-v1"
 PUNCTUATION_TO_DROP = frozenset(
     string.punctuation + "　、。，．・･：；！？（）［］【】『』「」‘’“”"

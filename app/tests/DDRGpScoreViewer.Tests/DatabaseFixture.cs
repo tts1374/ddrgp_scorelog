@@ -251,7 +251,6 @@ internal sealed class DatabaseFixture : IDisposable
         string canonicalArtist,
         string masterVersion = "master-v1",
         IReadOnlyList<string>? linehashRows = null,
-        string featureVersion = "m7-result-text-image-v2",
         bool nestedVectors = false)
     {
         if (fieldName is not ("title" or "artist"))
@@ -260,11 +259,11 @@ internal sealed class DatabaseFixture : IDisposable
         }
 
         const string schemaVersion = "m7-result-text-feature-master-v1";
+        const string featureVersion = "m7-result-text-image-v1";
         const string roiVersion = "m7-result-title-artist-roi-v1";
         var payloadJson = ResultTextPayload(
             grayValue,
             linehashRows,
-            featureVersion,
             nestedVectors);
         var featureHash = Sha256Hex(payloadJson);
         var featureId = Sha256Hex(string.Join(
@@ -304,7 +303,6 @@ internal sealed class DatabaseFixture : IDisposable
     private static string ResultTextPayload(
         byte grayValue,
         IReadOnlyList<string>? linehashRows,
-        string featureVersion,
         bool nestedVectors)
     {
         var vector1536 = ResultTextVector(
@@ -330,8 +328,8 @@ internal sealed class DatabaseFixture : IDisposable
         }
         var linehashJson = JsonSerializer.Serialize(linehashValues);
         return "{\"dhash_hex\":\"0000000000000000\",\"edge\":" + zeroVector1536 +
-            ",\"edge_shape\":" + vector1536Shape + ",\"feature_version\":" +
-            JsonSerializer.Serialize(featureVersion) + ",\"linehash_rows\":" + linehashJson +
+            ",\"edge_shape\":" + vector1536Shape + ",\"feature_version\":\"m7-result-text-image-v1\",\"linehash_rows\":" +
+            linehashJson +
             ",\"luma\":" + vector1536 + ",\"luma_shape\":" + vector1536Shape +
             ",\"roi_version\":\"m7-result-title-artist-roi-v1\",\"suffix_edge\":" +
             zeroVector640 + ",\"suffix_edge_shape\":" + vector640Shape +

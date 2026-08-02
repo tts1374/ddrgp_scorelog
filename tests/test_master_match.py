@@ -261,7 +261,7 @@ def test_result_text_feature_record_is_deterministic_and_field_independent() -> 
     artist_record = master_match.result_text_feature_record(title_feature(180))
 
     assert title_record == repeated_record
-    assert title_record["feature_version"] == "m7-result-text-image-v2"
+    assert title_record["feature_version"] == "m7-result-text-image-v1"
     assert title_record["roi_version"] == "m7-result-title-artist-roi-v1"
     assert len(title_record["feature_hash"]) == 64
     assert title_record["feature_hash"] != artist_record["feature_hash"]

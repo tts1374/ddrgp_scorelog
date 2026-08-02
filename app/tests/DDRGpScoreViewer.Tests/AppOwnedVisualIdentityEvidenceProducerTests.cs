@@ -277,7 +277,7 @@ public sealed class AppOwnedVisualIdentityEvidenceProducerTests
     }
 
     [Fact]
-    public void Legacy_nested_result_text_feature_version_is_ignored()
+    public void Nested_result_text_feature_shape_is_ignored()
     {
         using var database = new DatabaseFixture();
         database.AddMasterSongAndChart("song-2", "TITLE TWO", "Artist Two", "chart-2");
@@ -290,7 +290,6 @@ public sealed class AppOwnedVisualIdentityEvidenceProducerTests
             255,
             "TITLE TWO",
             "Artist Two",
-            featureVersion: "m7-result-text-image-v1",
             nestedVectors: true);
 
         var enriched = new AppOwnedVisualIdentityEvidenceProducer().Enrich(

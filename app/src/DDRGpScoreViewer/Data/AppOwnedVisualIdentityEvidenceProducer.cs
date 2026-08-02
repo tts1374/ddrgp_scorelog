@@ -29,7 +29,7 @@ internal sealed class AppOwnedVisualIdentityEvidenceProducer
     private const double ResultTextAmbiguityDelta = 0.01;
     private const string ResultTextFeatureSchemaVersion =
         "m7-result-text-feature-master-v1";
-    private const string ResultTextFeatureVersion = "m7-result-text-image-v2";
+    private const string ResultTextFeatureVersion = "m7-result-text-image-v1";
     private const string ResultTextRoiVersion = "m7-result-title-artist-roi-v1";
     private const int ResultTextFeatureVectorLength = 96 * 16;
     private const int ResultTextSuffixFeatureVectorLength = 40 * 16;
