@@ -250,7 +250,9 @@ internal sealed class DatabaseFixture : IDisposable
         string canonicalTitle,
         string canonicalArtist,
         string masterVersion = "master-v1",
-        IReadOnlyList<string>? linehashRows = null)
+        IReadOnlyList<string>? linehashRows = null,
+        string featureVersion = "m7-result-text-image-v2",
+        bool nestedVectors = false)
     {
         if (fieldName is not ("title" or "artist"))
         {
@@ -258,9 +260,12 @@ internal sealed class DatabaseFixture : IDisposable
         }
 
         const string schemaVersion = "m7-result-text-feature-master-v1";
-        const string featureVersion = "m7-result-text-image-v1";
         const string roiVersion = "m7-result-title-artist-roi-v1";
-        var payloadJson = ResultTextPayload(grayValue, linehashRows);
+        var payloadJson = ResultTextPayload(
+            grayValue,
+            linehashRows,
+            featureVersion,
+            nestedVectors);
         var featureHash = Sha256Hex(payloadJson);
         var featureId = Sha256Hex(string.Join(
             "\0",
@@ -298,12 +303,24 @@ internal sealed class DatabaseFixture : IDisposable
 
     private static string ResultTextPayload(
         byte grayValue,
-        IReadOnlyList<string>? linehashRows = null)
+        IReadOnlyList<string>? linehashRows,
+        string featureVersion,
+        bool nestedVectors)
     {
-        var vector1536 = string.Join(",", Enumerable.Repeat(grayValue.ToString(), 1536));
-        var vector640 = string.Join(",", Enumerable.Repeat(grayValue.ToString(), 640));
-        var zeroVector1536 = string.Join(",", Enumerable.Repeat("0", 1536));
-        var zeroVector640 = string.Join(",", Enumerable.Repeat("0", 640));
+        var vector1536 = ResultTextVector(
+            grayValue.ToString(),
+            1536,
+            96,
+            nestedVectors);
+        var vector640 = ResultTextVector(
+            grayValue.ToString(),
+            640,
+            40,
+            nestedVectors);
+        var zeroVector1536 = ResultTextVector("0", 1536, 96, nestedVectors);
+        var zeroVector640 = ResultTextVector("0", 640, 40, nestedVectors);
+        var vector1536Shape = nestedVectors ? "[96,16]" : "[1536]";
+        var vector640Shape = nestedVectors ? "[40,16]" : "[640]";
         var linehashValues = linehashRows ??
             Enumerable.Repeat(new string('0', 76), 28).ToArray();
         if (linehashValues.Count != 28 ||
@@ -312,12 +329,29 @@ internal sealed class DatabaseFixture : IDisposable
             throw new ArgumentException("Fixture linehash rows must be 28 x 76.", nameof(linehashRows));
         }
         var linehashJson = JsonSerializer.Serialize(linehashValues);
-        return "{\"dhash_hex\":\"0000000000000000\",\"edge\":[" + zeroVector1536 +
-            "],\"edge_shape\":[1536],\"feature_version\":\"m7-result-text-image-v1\",\"linehash_rows\":" +
-            linehashJson + ",\"luma\":[" + vector1536 +
-            "],\"luma_shape\":[1536],\"roi_version\":\"m7-result-title-artist-roi-v1\",\"suffix_edge\":[" +
-            zeroVector640 + "],\"suffix_edge_shape\":[640],\"suffix_luma\":[" + vector640 +
-            "],\"suffix_luma_shape\":[640],\"vector_encoding\":\"uint8_0_255\"}";
+        return "{\"dhash_hex\":\"0000000000000000\",\"edge\":" + zeroVector1536 +
+            ",\"edge_shape\":" + vector1536Shape + ",\"feature_version\":" +
+            JsonSerializer.Serialize(featureVersion) + ",\"linehash_rows\":" + linehashJson +
+            ",\"luma\":" + vector1536 + ",\"luma_shape\":" + vector1536Shape +
+            ",\"roi_version\":\"m7-result-title-artist-roi-v1\",\"suffix_edge\":" +
+            zeroVector640 + ",\"suffix_edge_shape\":" + vector640Shape +
+            ",\"suffix_luma\":" + vector640 + ",\"suffix_luma_shape\":" +
+            vector640Shape + ",\"vector_encoding\":\"uint8_0_255\"}";
+    }
+
+    private static string ResultTextVector(
+        string value,
+        int length,
+        int rowCount,
+        bool nested)
+    {
+        if (!nested)
+        {
+            return "[" + string.Join(",", Enumerable.Repeat(value, length)) + "]";
+        }
+
+        var row = "[" + string.Join(",", Enumerable.Repeat(value, length / rowCount)) + "]";
+        return "[" + string.Join(",", Enumerable.Repeat(row, rowCount)) + "]";
     }
 
     private static string Sha256Hex(string value)

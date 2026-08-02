@@ -167,6 +167,38 @@ public sealed class AppOwnedVisualIdentityEvidenceProducerTests
     }
 
     [Fact]
+    public void Resolved_title_feature_is_not_overridden_by_linehash()
+    {
+        using var database = new DatabaseFixture();
+        database.AddMasterSongAndChart("song-2", "TITLE TWO", "Artist", "chart-2");
+        AddCompatibleJacketReference(database, "song-1", "MAX 300", "Artist");
+        AddCompatibleJacketReference(database, "song-2", "TITLE TWO", "Artist");
+        database.AddResultTextFeature(
+            "song-1",
+            "title",
+            0,
+            "MAX 300",
+            "Artist",
+            linehashRows: Enumerable.Repeat(new string('f', 76), 28).ToArray());
+        database.AddResultTextFeature(
+            "song-2",
+            "title",
+            255,
+            "TITLE TWO",
+            "Artist",
+            linehashRows: Enumerable.Repeat(new string('0', 76), 28).ToArray());
+
+        var enriched = new AppOwnedVisualIdentityEvidenceProducer().Enrich(
+            BuildFrame(titleValue: 0),
+            CreateObservation(),
+            database.MasterPath,
+            database.CatalogPath);
+
+        Assert.Equal("song-1", enriched.FormalEvidence!.SongId);
+        Assert.Equal("chart-1", enriched.FormalEvidence.ChartId);
+    }
+
+    [Fact]
     public void Ambiguous_title_and_artist_features_remain_unresolved()
     {
         using var database = new DatabaseFixture();
@@ -236,6 +268,33 @@ public sealed class AppOwnedVisualIdentityEvidenceProducerTests
 
         var enriched = new AppOwnedVisualIdentityEvidenceProducer().Enrich(
             BuildFrame(titleValue: 0),
+            CreateObservation(),
+            database.MasterPath,
+            database.CatalogPath);
+
+        Assert.Null(enriched.FormalEvidence!.SongId);
+        Assert.Null(enriched.FormalEvidence.ChartId);
+    }
+
+    [Fact]
+    public void Legacy_nested_result_text_feature_version_is_ignored()
+    {
+        using var database = new DatabaseFixture();
+        database.AddMasterSongAndChart("song-2", "TITLE TWO", "Artist Two", "chart-2");
+        AddCompatibleJacketReference(database, "song-1");
+        AddCompatibleJacketReference(database, "song-2", "TITLE TWO", "Artist Two");
+        database.AddResultTextFeature("song-1", "title", 0, "MAX 300", "Artist");
+        database.AddResultTextFeature(
+            "song-2",
+            "title",
+            255,
+            "TITLE TWO",
+            "Artist Two",
+            featureVersion: "m7-result-text-image-v1",
+            nestedVectors: true);
+
+        var enriched = new AppOwnedVisualIdentityEvidenceProducer().Enrich(
+            BuildFrame(titleValue: 255),
             CreateObservation(),
             database.MasterPath,
             database.CatalogPath);

@@ -29,7 +29,7 @@ internal sealed class AppOwnedVisualIdentityEvidenceProducer
     private const double ResultTextAmbiguityDelta = 0.01;
     private const string ResultTextFeatureSchemaVersion =
         "m7-result-text-feature-master-v1";
-    private const string ResultTextFeatureVersion = "m7-result-text-image-v1";
+    private const string ResultTextFeatureVersion = "m7-result-text-image-v2";
     private const string ResultTextRoiVersion = "m7-result-title-artist-roi-v1";
     private const int ResultTextFeatureVectorLength = 96 * 16;
     private const int ResultTextSuffixFeatureVectorLength = 40 * 16;
@@ -535,17 +535,6 @@ internal sealed class AppOwnedVisualIdentityEvidenceProducer
             return ResultTextResolution.Unavailable(fieldName);
         }
 
-        if (fieldName == "title")
-        {
-            var linehashResolution = ResolveResultTextLinehash(
-                observed,
-                fieldReferences);
-            if (linehashResolution is not null)
-            {
-                return linehashResolution;
-            }
-        }
-
         var scored = fieldReferences
             .GroupBy(reference => reference.SongId, StringComparer.Ordinal)
             .Select(group =>
@@ -577,7 +566,22 @@ internal sealed class AppOwnedVisualIdentityEvidenceProducer
         if (scored.Skip(1).Any(match =>
                 match.Distance - best.Distance <= ResultTextAmbiguityDelta))
         {
-            return ResultTextResolution.Ambiguous(fieldName, best.Distance, margin);
+            var normalResolution = ResultTextResolution.Ambiguous(
+                fieldName,
+                best.Distance,
+                margin);
+            if (fieldName == "title")
+            {
+                var linehashResolution = ResolveResultTextLinehash(
+                    observed,
+                    fieldReferences);
+                if (linehashResolution is not null)
+                {
+                    return linehashResolution;
+                }
+            }
+
+            return normalResolution;
         }
 
         return ResultTextResolution.Resolved(best.SongId, best.Distance, margin);
