@@ -25,6 +25,7 @@ internal sealed class AppOwnedVisualIdentityEvidenceProducer
     private const double JacketAmbiguityDelta = 0.015;
     private const string JacketFeatureVersion = "m5c-jacket-rgb-grid-v1";
     private const string JacketExtractorVersion = "m5-jacket-v2";
+    private const double ResultTextDistanceThreshold = 0.35;
     private const double ResultTextAmbiguityDelta = 0.01;
     private const string ResultTextFeatureSchemaVersion =
         "m7-result-text-feature-master-v1";
@@ -546,6 +547,14 @@ internal sealed class AppOwnedVisualIdentityEvidenceProducer
         var margin = scored.Length > 1
             ? scored[1].Distance - best.Distance
             : (double?)null;
+        if (best.Distance > ResultTextDistanceThreshold)
+        {
+            return ResultTextResolution.ConfidenceInsufficient(
+                fieldName,
+                best.Distance,
+                margin);
+        }
+
         if (scored.Skip(1).Any(match =>
                 match.Distance - best.Distance <= ResultTextAmbiguityDelta))
         {
@@ -995,7 +1004,10 @@ internal sealed class AppOwnedVisualIdentityEvidenceProducer
 
     private static double ResultTextConfidence(double distance, double? margin)
     {
-        var distanceStrength = Math.Clamp(1.0 - distance, 0.0, 1.0);
+        var distanceStrength = Math.Clamp(
+            (ResultTextDistanceThreshold - distance) / ResultTextDistanceThreshold,
+            0.0,
+            1.0);
         var marginStrength = margin is null
             ? 1.0
             : Math.Clamp(margin.Value / ResultTextAmbiguityDelta, 0.0, 1.0);
@@ -1487,6 +1499,16 @@ internal sealed class AppOwnedVisualIdentityEvidenceProducer
                 distance,
                 margin,
                 $"formal_evidence.identity_visual_{fieldName}_feature_ambiguous");
+
+        public static ResultTextResolution ConfidenceInsufficient(
+            string fieldName,
+            double distance,
+            double? margin) =>
+            new(
+                null,
+                distance,
+                margin,
+                $"formal_evidence.identity_visual_{fieldName}_feature_confidence_insufficient");
     }
 
     private sealed record ChartCandidate(string SongId, string ChartId);

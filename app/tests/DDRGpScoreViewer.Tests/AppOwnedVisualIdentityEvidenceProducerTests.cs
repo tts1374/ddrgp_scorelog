@@ -232,6 +232,42 @@ public sealed class AppOwnedVisualIdentityEvidenceProducerTests
     }
 
     [Fact]
+    public async Task Distant_text_feature_match_is_unresolved_and_not_saved()
+    {
+        using var database = new DatabaseFixture();
+        database.AddMasterSongAndChart("song-2", "TITLE TWO", "Artist Two", "chart-2");
+        AddCompatibleJacketReference(database, "song-1");
+        AddCompatibleJacketReference(database, "song-2", "TITLE TWO", "Artist Two");
+        database.AddResultTextFeature("song-1", "title", 0, "MAX 300", "Artist");
+        database.AddResultTextFeature("song-2", "title", 32, "TITLE TWO", "Artist Two");
+
+        var frame = BuildFrame(titleValue: 255);
+        var observation = CreateObservation();
+        var enriched = new AppOwnedVisualIdentityEvidenceProducer().Enrich(
+            frame,
+            observation,
+            database.MasterPath,
+            database.CatalogPath);
+
+        Assert.Null(enriched.FormalEvidence!.SongId);
+        Assert.Contains(
+            enriched.FormalEvidence.RecognitionReasons!,
+            reason => reason.Contains("confidence_insufficient", StringComparison.Ordinal));
+
+        var saved = await new AppOwnedCaptureSaveWorkflowRunner().RunCandidateAsync(
+            frame,
+            observation,
+            database.ScorePath,
+            database.MasterPath,
+            database.CatalogPath);
+
+        Assert.Equal("completed", saved.Status);
+        Assert.DoesNotContain("saved", saved.StatusCounts.Keys);
+        Assert.Equal(1, saved.StatusCounts["unresolved"]);
+        Assert.Empty(saved.SavedPlayIds);
+    }
+
+    [Fact]
     public void Unique_jacket_does_not_require_result_text_feature_rows()
     {
         using var database = new DatabaseFixture();
