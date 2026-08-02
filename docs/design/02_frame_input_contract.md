@@ -203,6 +203,8 @@ data/windows_capture/session-<UTC>-<unique>/
 
 連続capture UIはmanifest生成までに限定し、分類、OCR、identity、confirmed event、正式save input、workflow、DB、viewer履歴を呼び出さない。生成manifestは既存 `--sequence-mode manifest` がdirectory相対pathと任意列を保持して読み、timestamp付き入力として `confirmation_mode=time` を維持する。
 
+通常のWPF `監視開始` で自動特定した対象windowへ接続するsessionだけは、Windows 10 version 2104 / build 20348以降のruntime API availabilityを確認したうえで、Windowsの同意と対応package manifest capabilityがそろった場合にcapture borderless設定を試行する。許可されない場合は枠ありcaptureへ戻す。この設定はcapture surfaceのpixel、`width` / `height`、ROI、`timestamp_ms`、manifest列、解析入力を変更しない。Debugの `連続取得を開始` と `1フレーム取得`、およびpicker経路ではborderless同意を要求しない。package manifestの具体的な配置方式は#92の配布方式に従う。
+
 ## manifest CSV仕様
 
 最小列:

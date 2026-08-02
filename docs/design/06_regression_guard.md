@@ -466,6 +466,8 @@ M5bの変更では、少なくとも次のcurrent-only境界をfixtureで固定�
 - cancel、0frame停止、resize、target closed、device lost、write失敗ではstagingとqueued frameを破棄し、成功sessionへ丸めない。
 - resizeは自動追従せず `Resized` で停止し、再選択を求める。
 - 二重開始を拒否し、停止は冪等に扱い、event購読とWinRT/D3D resourceを一度だけ解放する。
+- 通常の `監視開始` の対象window session開始時だけ、Windows 10 version 2104 / build 20348以降のruntime API availabilityを確認してborderless accessを要求する。`Allowed` の場合だけsessionのborder requiredをfalseへ設定し、拒否、非対応、manifest capability不足、権限取得失敗、API例外、設定失敗では既定の枠ありsessionを継続する。
+- borderless accessのoptionalな失敗を `Unsupported`、`AccessDenied`、`Failed` など既存capture failure statusへ変換せず、frame queue、解析、formal evidence、workflow、正式DB保存へ伝播させない。Debugの `連続取得を開始` と `1フレーム取得` では同意要求を行わない。
 - bounded queueで中間frameをdropしても、保存frameの順序とstrictly increasing timestampを維持する。
 - `連続取得を開始` のcapture-only UIは分類、OCR、identity、confirmed event、正式save input、workflow、正式DB、viewer履歴を起動しない。
 - `連続取得・保存` だけが完成manifest後に解析を起動し、capture失敗時は解析・workflowを呼ばない。
@@ -487,6 +489,7 @@ M5bの変更では、少なくとも次のcurrent-only境界をfixtureで固定�
 - saved、duplicate、excluded、unresolved、analysis_failed、db_rejected、workflow_failedの件数を別々に投影し、saved IDだけをread-only再読込する。commit済みpartial successとfatal reasonを同時に失わない。
 - manual保存中の監視開始、監視capture-save中のmanual保存、capture-only session中のmanual保存を拒否し、二重開始、stop中再開始、反復stopでwriterやresourceを増やさない。
 - trayの開始/停止enable状態はpicker開始待ち、ViewModelの保存・capture状態を含めて更新する。capture-onlyを含むpicker中の再Startを同じTaskへ合流させ、session世代とcancel状態で停止・exit後のprogress callback、二重capture、二重workflow起動を受け付けない。通常close/最小化はwindow非表示、明示exitはpending pickerのcancel/終端とstop完了を待ってtrayをdisposeする。stop例外でもdisposeとprocess終了を決定的にし、duplicate/unresolvedだけで通知しない。
+- Windows Graphics Captureの枠なし設定はpresentation上のoptionalなsession propertyだけを対象にし、surface size、ROI、frame timestamp、RESULT検出、event boundary、confirmed event ID、RESULT fingerprint、formal evidence、正式保存statusを変更しない。アプリ独自の同意設定、OS overlay、registry、window位置変更を追加しない。
 - 起動時、保存開始時に現在の環境の固定pathにあるmaster DBのpath、read-only読込可否、schema互換性を検査し、`missing`、`read不可`、`schema incompatible` をcapture解析・正式保存の開始前に拒否する。任意pathのDB選択操作を持たず、path以外の過去session statusを保存せず、再起動でfailed/skip/rejectedをsavedへ昇格させない。
 - Windows Graphics Capture、実window、実DBを必須にせず、progress fake、workflow fake、tray fakeで通常CIを完結させる。実windowでのpicker、tray復帰、終了確認は任意の目視確認として別記録する。
 
