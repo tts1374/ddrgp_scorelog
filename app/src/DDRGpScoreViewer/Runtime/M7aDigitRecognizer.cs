@@ -545,9 +545,12 @@ public sealed class M7aDigitRecognizer
         }
         else if (ComponentSegmentRois.Contains(roiName))
         {
-            components = Components(mask)
+            var minimumComponentHeight = Math.Max(10, (int)(image.Height * 0.35));
+            components = MergeDigitFragments(
+                Components(mask),
+                minimumComponentHeight)
                 .Where(component =>
-                    component.Bottom - component.Top >= Math.Max(10, (int)(image.Height * 0.35)) &&
+                    component.Bottom - component.Top >= minimumComponentHeight &&
                     component.Right - component.Left >= 2 &&
                     component.Area >= 20)
                 .OrderBy(component => component.Left)
@@ -593,6 +596,62 @@ public sealed class M7aDigitRecognizer
             if (CountTrue(segment) > 0) segments.Add(segment);
         }
         return segments;
+    }
+
+    private static List<Component> MergeDigitFragments(
+        IReadOnlyList<Component> components,
+        int minimumComponentHeight)
+    {
+        var merged = components
+            .OrderBy(component => component.Left)
+            .ThenBy(component => component.Top)
+            .ToList();
+        var changed = true;
+        while (changed)
+        {
+            changed = false;
+            for (var firstIndex = 0; firstIndex < merged.Count; firstIndex++)
+            {
+                for (var secondIndex = firstIndex + 1; secondIndex < merged.Count; secondIndex++)
+                {
+                    var first = merged[firstIndex];
+                    var second = merged[secondIndex];
+                    if (first.Bottom - first.Top >= minimumComponentHeight ||
+                        second.Bottom - second.Top >= minimumComponentHeight)
+                    {
+                        continue;
+                    }
+
+                    var horizontalOverlap =
+                        Math.Min(first.Right, second.Right) -
+                        Math.Max(first.Left, second.Left);
+                    var verticalGap =
+                        Math.Max(first.Top, second.Top) -
+                        Math.Min(first.Bottom, second.Bottom);
+                    if (horizontalOverlap < 1 || verticalGap > 1)
+                    {
+                        continue;
+                    }
+
+                    merged[firstIndex] = new Component(
+                        Math.Min(first.Left, second.Left),
+                        Math.Min(first.Top, second.Top),
+                        Math.Max(first.Right, second.Right),
+                        Math.Max(first.Bottom, second.Bottom),
+                        first.Area + second.Area);
+                    merged.RemoveAt(secondIndex);
+                    changed = true;
+                    break;
+                }
+
+                if (changed)
+                {
+                    break;
+                }
+            }
+        }
+
+        return merged;
     }
 
     private static bool[,] ForegroundMask(PixelImage image, string roiName)

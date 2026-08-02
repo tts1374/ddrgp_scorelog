@@ -104,6 +104,26 @@ public sealed class M7aDigitRecognizerTests
     }
 
     [Fact]
+    public void Rejoins_a_fragmented_perfect_five_before_component_filtering()
+    {
+        var image = RenderFragmentedPerfectFortyFive();
+        var recognizer = new M7aDigitRecognizer();
+        var result = recognizer.Recognize(image)["perfect"];
+        var formalResults = recognizer.RecognizeForFormalEvidence(image);
+        var formalResult = formalResults["perfect"];
+        var evidence = new AppOwnedResultVisualEvidenceProducer(recognizer).Produce(
+            image,
+            formalResults);
+
+        Assert.Equal("recognized", result.Status);
+        Assert.Equal("45", result.RecognizedDigits);
+        Assert.Equal(2, result.SegmentCount);
+        Assert.Equal("recognized", formalResult.Status);
+        Assert.Equal("45", formalResult.RecognizedDigits);
+        Assert.Equal(45, evidence.Perfect);
+    }
+
+    [Fact]
     public void Missing_template_label_is_reported_without_candidate_digits()
     {
         using var fixture = new TemplateFixture();
@@ -357,6 +377,91 @@ public sealed class M7aDigitRecognizerTests
         using var stream = new MemoryStream();
         encoder.Save(stream);
         return stream.ToArray();
+    }
+
+    private static BitmapSource RenderFragmentedPerfectFortyFive()
+    {
+        const int width = 1280;
+        const int height = 720;
+        const int stride = width * 4;
+        var pixels = new byte[stride * height];
+        for (var index = 0; index < pixels.Length; index += 4)
+        {
+            pixels[index] = 255;
+            pixels[index + 1] = 255;
+            pixels[index + 2] = 255;
+            pixels[index + 3] = 255;
+        }
+
+        DrawMask(pixels, stride, 896 + 25, 433 + 2, [
+            "......##..",
+            "......##..",
+            ".....###..",
+            "....####..",
+            "...##.##..",
+            "...#..##..",
+            "..##..##..",
+            ".##...##..",
+            ".#....##..",
+            "##....##..",
+            "##########",
+            "......##..",
+            "......##..",
+            "......##..",
+        ]);
+        DrawMask(pixels, stride, 896 + 50, 433, [
+            ".#######.",
+            ".##......",
+            ".#.......",
+            "##.......",
+            "##.......",
+        ]);
+        DrawMask(pixels, stride, 896 + 52, 433 + 5, [
+            ".......##",
+            ".......##",
+            ".......##",
+            "#......##",
+            "##....##.",
+            "###..###.",
+            "..####...",
+        ]);
+
+        var bitmap = BitmapSource.Create(
+            width,
+            height,
+            96,
+            96,
+            PixelFormats.Bgra32,
+            null,
+            pixels,
+            stride);
+        bitmap.Freeze();
+        return bitmap;
+    }
+
+    private static void DrawMask(
+        byte[] pixels,
+        int stride,
+        int left,
+        int top,
+        IReadOnlyList<string> rows)
+    {
+        for (var y = 0; y < rows.Count; y++)
+        {
+            for (var x = 0; x < rows[y].Length; x++)
+            {
+                if (rows[y][x] != '#')
+                {
+                    continue;
+                }
+
+                var offset = (top + y) * stride + (left + x) * 4;
+                pixels[offset] = 0;
+                pixels[offset + 1] = 0;
+                pixels[offset + 2] = 0;
+                pixels[offset + 3] = 255;
+            }
+        }
     }
 
     private sealed class TemplateFixture : IDisposable
