@@ -572,9 +572,17 @@ internal sealed class AppOwnedVisualIdentityEvidenceProducer
                 margin);
             if (fieldName == "title")
             {
+                var normalAmbiguousSongIds = scored
+                    .Where(match =>
+                        match.Distance - best.Distance <= ResultTextAmbiguityDelta)
+                    .Select(match => match.SongId)
+                    .ToHashSet(StringComparer.Ordinal);
+                var ambiguousReferences = fieldReferences
+                    .Where(reference => normalAmbiguousSongIds.Contains(reference.SongId))
+                    .ToArray();
                 var linehashResolution = ResolveResultTextLinehash(
                     observed,
-                    fieldReferences);
+                    ambiguousReferences);
                 if (linehashResolution is not null)
                 {
                     return linehashResolution;

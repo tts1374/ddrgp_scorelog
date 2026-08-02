@@ -199,6 +199,50 @@ public sealed class AppOwnedVisualIdentityEvidenceProducerTests
     }
 
     [Fact]
+    public void Linehash_only_reorders_normally_ambiguous_candidates()
+    {
+        using var database = new DatabaseFixture();
+        database.AddMasterSongAndChart("song-2", "TITLE TWO", "Artist", "chart-2");
+        database.AddMasterSongAndChart("song-3", "TITLE THREE", "Artist", "chart-3");
+        AddCompatibleJacketReference(database, "song-1", "MAX 300", "Artist");
+        AddCompatibleJacketReference(database, "song-2", "TITLE TWO", "Artist");
+        AddCompatibleJacketReference(database, "song-3", "TITLE THREE", "Artist");
+        database.AddResultTextFeature(
+            "song-1",
+            "title",
+            0,
+            "MAX 300",
+            "Artist",
+            linehashRows: Enumerable.Repeat(new string('f', 76), 28).ToArray());
+        database.AddResultTextFeature(
+            "song-2",
+            "title",
+            1,
+            "TITLE TWO",
+            "Artist",
+            linehashRows: Enumerable.Repeat(new string('f', 76), 28).ToArray());
+        database.AddResultTextFeature(
+            "song-3",
+            "title",
+            128,
+            "TITLE THREE",
+            "Artist",
+            linehashRows: Enumerable.Repeat(new string('0', 76), 28).ToArray());
+
+        var enriched = new AppOwnedVisualIdentityEvidenceProducer().Enrich(
+            BuildFrame(titleValue: 0),
+            CreateObservation(),
+            database.MasterPath,
+            database.CatalogPath);
+
+        Assert.Null(enriched.FormalEvidence!.SongId);
+        Assert.Null(enriched.FormalEvidence.ChartId);
+        Assert.DoesNotContain(
+            enriched.FormalEvidence.RecognitionReasons!,
+            reason => reason.Contains("song-3", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void Ambiguous_title_and_artist_features_remain_unresolved()
     {
         using var database = new DatabaseFixture();
