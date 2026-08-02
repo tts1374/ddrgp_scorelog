@@ -91,6 +91,8 @@ RESULTの `score`、`max_combo`、`marvelous`、`perfect`、`great`、`good`、`
 
 jacket catalogの`master_version`が過去の値でも、song ID・canonical title・canonical artistがcurrent GP masterと完全一致するconfirmed referenceはcurrent-master-compatibleな正式参照として利用します。masterとの不一致、orphan、未確認、旧featureのreferenceは利用せず、catalog自体も書き換えません。
 
+jacket照合が一意なら、`M7 result-text feature`の`song_title`／`artist`は実行・読込しません。jacket候補がambiguousの場合だけ、current masterとchart contextから得た譜面候補集合とjacket曖昧候補song ID集合の共通部分に対して`song_title`画像featureを先に比較し、解消しなければ同じ集合で`artist`画像featureへfallbackします。title/artistともに欠落、旧version、ROI不一致、payload/hash不整合、canonical title/artist不一致、current master drift、confidence不足、複数候補のままの場合は`unresolved`とし、候補集合外の曲を検索・選択しません。比較距離は正規化距離`0.35`以下を採用条件とし、これを超える最良候補はmarginに関係なく未解決とします。feature versionは`m7-result-text-image-v1`、ROI versionは`m7-result-title-artist-roi-v1`で、いずれも既存のformal evidence source/confidence/完全性検査を通過した場合だけ正式保存workflowへ渡します。catalogのschema、migration、writer、jacket threshold、ambiguity deltaは変更しません。
+
 標準`AppOwnedLiveResultAnalyzer`はRESULT画面の数値・rank・clear type・flare rankをapp-owned画像認識で採用し、live保存入口はcurrent master/catalogから同定・譜面画像認識を追加してからformal evidence bridgeへ渡します。catalogまたはmaster/chart contextが不足・不整合・ambiguousなら、数字認識成功とは別の`formal_evidence.*`理由で`unresolved`となります。`RESULT同定根拠`、`RESULT状態認識根拠`をcandidate値、OCR、`known-result`から補完しません。
 
 live保存入口は、current masterとcurrent-master-compatibleなcatalog参照から同定・譜面画像認識を追加します。

@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using Microsoft.Data.Sqlite;
 
@@ -173,11 +175,40 @@ internal sealed class DatabaseFixture : IDisposable
         command.ExecuteNonQuery();
     }
 
+    public void AddMasterSongAndChart(
+        string songId,
+        string title,
+        string artist,
+        string chartId,
+        string playStyle = "SINGLE",
+        string difficulty = "EXPERT",
+        int level = 17)
+    {
+        using var connection = OpenWritable(MasterPath);
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            "INSERT INTO songs (song_id, title, artist, grand_prix_play_available, official_availability_match) " +
+            "VALUES ($song_id, $title, $artist, 1, 'fixture'); " +
+            "INSERT INTO charts (chart_id, song_id, play_style, difficulty, level) " +
+            "VALUES ($chart_id, $song_id, $play_style, $difficulty, $level);";
+        command.Parameters.AddWithValue("$song_id", songId);
+        command.Parameters.AddWithValue("$title", title);
+        command.Parameters.AddWithValue("$artist", artist);
+        command.Parameters.AddWithValue("$chart_id", chartId);
+        command.Parameters.AddWithValue("$play_style", playStyle);
+        command.Parameters.AddWithValue("$difficulty", difficulty);
+        command.Parameters.AddWithValue("$level", level);
+        command.ExecuteNonQuery();
+    }
+
     public void AddJacketReference(
         string songId,
         IReadOnlyList<double> thumbnail,
         IReadOnlyList<double> histogram,
-        IReadOnlyList<double> dhash)
+        IReadOnlyList<double> dhash,
+        string canonicalTitle = "MAX 300",
+        string canonicalArtist = "Artist")
     {
         using var connection = OpenWritable(CatalogPath);
         connection.Open();
@@ -193,20 +224,97 @@ internal sealed class DatabaseFixture : IDisposable
             "title_line_feature_version, title_line_hash, composite_identity_version, " +
             "composite_identity_hash, created_at, updated_at) VALUES (" +
             "$reference_id, NULL, $source_image_hash, $master_version, $song_id, " +
-            "'MAX 300', 'Artist', 'manual_confirmed', 'fixture', 'fixture', " +
+            "$canonical_title, $canonical_artist, 'manual_confirmed', 'fixture', 'fixture', " +
             "'m5-jacket-v2', 'jacket', $thumbnail, $histogram, $dhash, '0', " +
-            "'MAX 300', 'Artist', 'ok', $song_id, 1, 'action-1', 'fixture', " +
+            "$canonical_title, $canonical_artist, 'ok', $song_id, 1, 'action-1', 'fixture', " +
             "'m5c-jacket-rgb-grid-v1', 'fixture-hash', NULL, NULL, " +
-            "'m5c-jacket-title-composite-identity-v2', 'fixture-composite', " +
+            "'m5c-jacket-title-composite-identity-v2', $composite_identity_hash, " +
             "'2026-07-30T00:00:00+00:00', '2026-07-30T00:00:00+00:00');";
         command.Parameters.AddWithValue("$reference_id", $"reference-{songId}");
         command.Parameters.AddWithValue("$source_image_hash", $"hash-{songId}");
         command.Parameters.AddWithValue("$master_version", "master-v1");
         command.Parameters.AddWithValue("$song_id", songId);
+        command.Parameters.AddWithValue("$canonical_title", canonicalTitle);
+        command.Parameters.AddWithValue("$canonical_artist", canonicalArtist);
+        command.Parameters.AddWithValue("$composite_identity_hash", $"fixture-composite-{songId}");
         command.Parameters.AddWithValue("$thumbnail", JsonSerializer.Serialize(thumbnail));
         command.Parameters.AddWithValue("$histogram", JsonSerializer.Serialize(histogram));
         command.Parameters.AddWithValue("$dhash", JsonSerializer.Serialize(dhash));
         command.ExecuteNonQuery();
+    }
+
+    public void AddResultTextFeature(
+        string songId,
+        string fieldName,
+        byte grayValue,
+        string canonicalTitle,
+        string canonicalArtist,
+        string masterVersion = "master-v1")
+    {
+        if (fieldName is not ("title" or "artist"))
+        {
+            throw new ArgumentOutOfRangeException(nameof(fieldName));
+        }
+
+        const string schemaVersion = "m7-result-text-feature-master-v1";
+        const string featureVersion = "m7-result-text-image-v1";
+        const string roiVersion = "m7-result-title-artist-roi-v1";
+        var payloadJson = ResultTextPayload(grayValue);
+        var featureHash = Sha256Hex(payloadJson);
+        var featureId = Sha256Hex(string.Join(
+            "\0",
+            schemaVersion,
+            masterVersion,
+            songId,
+            fieldName,
+            featureVersion,
+            roiVersion,
+            featureHash));
+
+        using var connection = OpenWritable(CatalogPath);
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            "INSERT INTO result_text_features (" +
+            "feature_id, song_id, field_name, feature_version, roi_version, feature_hash, " +
+            "payload_json, source_label, master_version, canonical_title_snapshot, " +
+            "canonical_artist_snapshot, created_at) VALUES (" +
+            "$feature_id, $song_id, $field_name, $feature_version, $roi_version, $feature_hash, " +
+            "$payload_json, 'fixture', $master_version, $canonical_title, $canonical_artist, " +
+            "'2026-07-30T00:00:00+00:00');";
+        command.Parameters.AddWithValue("$feature_id", featureId);
+        command.Parameters.AddWithValue("$song_id", songId);
+        command.Parameters.AddWithValue("$field_name", fieldName);
+        command.Parameters.AddWithValue("$feature_version", featureVersion);
+        command.Parameters.AddWithValue("$roi_version", roiVersion);
+        command.Parameters.AddWithValue("$feature_hash", featureHash);
+        command.Parameters.AddWithValue("$payload_json", payloadJson);
+        command.Parameters.AddWithValue("$master_version", masterVersion);
+        command.Parameters.AddWithValue("$canonical_title", canonicalTitle);
+        command.Parameters.AddWithValue("$canonical_artist", canonicalArtist);
+        command.ExecuteNonQuery();
+    }
+
+    private static string ResultTextPayload(byte grayValue)
+    {
+        var vector96x16 = string.Join(",", Enumerable.Repeat(grayValue.ToString(), 96 * 16));
+        var vector40x16 = string.Join(",", Enumerable.Repeat(grayValue.ToString(), 40 * 16));
+        var zeroVector96x16 = string.Join(",", Enumerable.Repeat("0", 96 * 16));
+        var zeroVector40x16 = string.Join(",", Enumerable.Repeat("0", 40 * 16));
+        var linehashRows = string.Join(
+            ",",
+            Enumerable.Repeat("\"" + new string('0', 76) + "\"", 28));
+        return "{\"dhash_hex\":\"0000000000000000\",\"edge\":[" + zeroVector96x16 +
+            "],\"edge_shape\":[96,16],\"feature_version\":\"m7-result-text-image-v1\",\"linehash_rows\":[" +
+            linehashRows + "],\"luma\":[" + vector96x16 +
+            "],\"luma_shape\":[96,16],\"roi_version\":\"m7-result-title-artist-roi-v1\",\"suffix_edge\":[" +
+            zeroVector40x16 + "],\"suffix_edge_shape\":[40,16],\"suffix_luma\":[" + vector40x16 +
+            "],\"suffix_luma_shape\":[40,16],\"vector_encoding\":\"uint8_0_255\"}";
+    }
+
+    private static string Sha256Hex(string value)
+    {
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value))).ToLowerInvariant();
     }
 
     public void Dispose()
