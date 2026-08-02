@@ -27,57 +27,7 @@ public sealed class AppOwnedVisualIdentityEvidenceProducerTests
             "WHERE song_id = 'song-1';");
 
         var frame = BuildFrame();
-        var evidence = new AppOwnedFormalEvidence(
-            null,
-            null,
-            null,
-            987650,
-            456,
-            400,
-            40,
-            10,
-            4,
-            2,
-            1750,
-            "AAA",
-            "CLEAR",
-            null,
-            new Dictionary<string, string>(StringComparer.Ordinal)
-            {
-                ["max_combo"] = FormalEvidenceSourceNames.ResultNumericVisualEvidence,
-                ["marvelous"] = FormalEvidenceSourceNames.ResultNumericVisualEvidence,
-                ["perfect"] = FormalEvidenceSourceNames.ResultNumericVisualEvidence,
-                ["great"] = FormalEvidenceSourceNames.ResultNumericVisualEvidence,
-                ["good"] = FormalEvidenceSourceNames.ResultNumericVisualEvidence,
-                ["miss"] = FormalEvidenceSourceNames.ResultNumericVisualEvidence,
-                ["ex_score"] = FormalEvidenceSourceNames.ResultNumericVisualEvidence,
-                ["score"] = FormalEvidenceSourceNames.ResultNumericVisualEvidence,
-                ["ok"] = FormalEvidenceSourceNames.ResultNumericVisualEvidence,
-                ["rank"] = FormalEvidenceSourceNames.ResultRankVisualEvidence,
-                ["clear_type"] = FormalEvidenceSourceNames.ResultClearTypeVisualEvidence,
-            },
-            new Dictionary<string, double?>(StringComparer.Ordinal)
-            {
-                ["max_combo"] = 0.99,
-                ["marvelous"] = 0.99,
-                ["perfect"] = 0.99,
-                ["great"] = 0.99,
-                ["good"] = 0.99,
-                ["miss"] = 0.99,
-                ["ex_score"] = 0.99,
-                ["score"] = 0.99,
-                ["ok"] = 0.99,
-                ["rank"] = 0.99,
-                ["clear_type"] = 0.99,
-            },
-            Ok: 0);
-        var observation = new LiveResultObservation(
-            true,
-            "987650",
-            "event-1",
-            "formal-result",
-            DigitRecognitionStatus: "recognized",
-            FormalEvidence: evidence);
+        var observation = CreateObservation();
 
         var enriched = new AppOwnedVisualIdentityEvidenceProducer().Enrich(
             frame,
@@ -109,7 +59,337 @@ public sealed class AppOwnedVisualIdentityEvidenceProducerTests
         Assert.Single(saved.SavedPlayIds);
     }
 
-    private static CapturedFrame BuildFrame()
+    [Fact]
+    public async Task Ambiguous_jacket_is_resolved_by_title_feature_and_saved_once()
+    {
+        using var database = new DatabaseFixture();
+        database.AddMasterSongAndChart("song-2", "TITLE TWO", "Artist Two", "chart-2");
+        AddCompatibleJacketReference(database, "song-1");
+        AddCompatibleJacketReference(database, "song-2", "TITLE TWO", "Artist Two");
+        database.AddResultTextFeature("song-1", "title", 0, "MAX 300", "Artist");
+        database.AddResultTextFeature("song-2", "title", 255, "TITLE TWO", "Artist Two");
+
+        var observation = CreateObservation();
+        var frame = BuildFrame(titleValue: 0);
+        var enriched = new AppOwnedVisualIdentityEvidenceProducer().Enrich(
+            frame,
+            observation,
+            database.MasterPath,
+            database.CatalogPath);
+
+        Assert.Equal("song-1", enriched.FormalEvidence!.SongId);
+        Assert.Equal("chart-1", enriched.FormalEvidence.ChartId);
+
+        var saved = await new AppOwnedCaptureSaveWorkflowRunner().RunCandidateAsync(
+            frame,
+            observation,
+            database.ScorePath,
+            database.MasterPath,
+            database.CatalogPath);
+
+        Assert.Equal("completed", saved.Status);
+        Assert.Equal(1, saved.StatusCounts["saved"]);
+        Assert.Single(saved.SavedPlayIds);
+    }
+
+    [Fact]
+    public void Title_feature_unavailable_falls_back_to_artist_feature()
+    {
+        using var database = new DatabaseFixture();
+        database.AddMasterSongAndChart("song-2", "TITLE TWO", "Artist Two", "chart-2");
+        AddCompatibleJacketReference(database, "song-1");
+        AddCompatibleJacketReference(database, "song-2", "TITLE TWO", "Artist Two");
+        database.AddResultTextFeature("song-1", "artist", 0, "MAX 300", "Artist");
+        database.AddResultTextFeature("song-2", "artist", 255, "TITLE TWO", "Artist Two");
+
+        var enriched = new AppOwnedVisualIdentityEvidenceProducer().Enrich(
+            BuildFrame(artistValue: 0),
+            CreateObservation(),
+            database.MasterPath,
+            database.CatalogPath);
+
+        Assert.Equal("song-1", enriched.FormalEvidence!.SongId);
+        Assert.Equal("chart-1", enriched.FormalEvidence.ChartId);
+    }
+
+    [Fact]
+    public void Ambiguous_title_feature_falls_back_to_artist_feature()
+    {
+        using var database = new DatabaseFixture();
+        database.AddMasterSongAndChart("song-2", "TITLE TWO", "Artist Two", "chart-2");
+        AddCompatibleJacketReference(database, "song-1");
+        AddCompatibleJacketReference(database, "song-2", "TITLE TWO", "Artist Two");
+        database.AddResultTextFeature("song-1", "title", 0, "MAX 300", "Artist");
+        database.AddResultTextFeature("song-2", "title", 0, "TITLE TWO", "Artist Two");
+        database.AddResultTextFeature("song-1", "artist", 0, "MAX 300", "Artist");
+        database.AddResultTextFeature("song-2", "artist", 255, "TITLE TWO", "Artist Two");
+
+        var enriched = new AppOwnedVisualIdentityEvidenceProducer().Enrich(
+            BuildFrame(titleValue: 0, artistValue: 0),
+            CreateObservation(),
+            database.MasterPath,
+            database.CatalogPath);
+
+        Assert.Equal("song-1", enriched.FormalEvidence!.SongId);
+        Assert.Equal("chart-1", enriched.FormalEvidence.ChartId);
+    }
+
+    [Fact]
+    public void Ambiguous_title_and_artist_features_remain_unresolved()
+    {
+        using var database = new DatabaseFixture();
+        database.AddMasterSongAndChart("song-2", "TITLE TWO", "Artist Two", "chart-2");
+        AddCompatibleJacketReference(database, "song-1");
+        AddCompatibleJacketReference(database, "song-2", "TITLE TWO", "Artist Two");
+        database.AddResultTextFeature("song-1", "title", 0, "MAX 300", "Artist");
+        database.AddResultTextFeature("song-2", "title", 0, "TITLE TWO", "Artist Two");
+        database.AddResultTextFeature("song-1", "artist", 0, "MAX 300", "Artist");
+        database.AddResultTextFeature("song-2", "artist", 0, "TITLE TWO", "Artist Two");
+
+        var enriched = new AppOwnedVisualIdentityEvidenceProducer().Enrich(
+            BuildFrame(titleValue: 0, artistValue: 0),
+            CreateObservation(),
+            database.MasterPath,
+            database.CatalogPath);
+
+        Assert.Null(enriched.FormalEvidence!.SongId);
+        Assert.Null(enriched.FormalEvidence.ChartId);
+        Assert.Contains(
+            enriched.FormalEvidence.RecognitionReasons!,
+            reason => reason.Contains("title", StringComparison.Ordinal));
+        Assert.Contains(
+            enriched.FormalEvidence.RecognitionReasons!,
+            reason => reason.Contains("artist", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Text_feature_candidate_outside_jacket_ambiguity_is_rejected()
+    {
+        using var database = new DatabaseFixture();
+        database.AddMasterSongAndChart("song-2", "TITLE TWO", "Artist Two", "chart-2");
+        database.AddMasterSongAndChart("song-3", "TITLE THREE", "Artist Three", "chart-3");
+        AddCompatibleJacketReference(database, "song-1");
+        AddCompatibleJacketReference(database, "song-2", "TITLE TWO", "Artist Two");
+        database.AddResultTextFeature("song-3", "title", 0, "TITLE THREE", "Artist Three");
+
+        var enriched = new AppOwnedVisualIdentityEvidenceProducer().Enrich(
+            BuildFrame(titleValue: 0),
+            CreateObservation(),
+            database.MasterPath,
+            database.CatalogPath);
+
+        Assert.Null(enriched.FormalEvidence!.SongId);
+        Assert.Null(enriched.FormalEvidence.ChartId);
+        Assert.DoesNotContain(
+            enriched.FormalEvidence.RecognitionReasons!,
+            reason => reason.Contains("song-3", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Invalid_or_drifted_text_features_are_not_used()
+    {
+        using var database = new DatabaseFixture();
+        database.AddMasterSongAndChart("song-2", "TITLE TWO", "Artist Two", "chart-2");
+        AddCompatibleJacketReference(database, "song-1");
+        AddCompatibleJacketReference(database, "song-2", "TITLE TWO", "Artist Two");
+        database.AddResultTextFeature("song-1", "title", 0, "DRIFTED TITLE", "Artist");
+        database.ExecuteCatalogSql(
+            "INSERT INTO result_text_features (" +
+            "feature_id, song_id, field_name, feature_version, roi_version, feature_hash, " +
+            "payload_json, source_label, master_version, canonical_title_snapshot, " +
+            "canonical_artist_snapshot, created_at) VALUES (" +
+            "'invalid-feature', 'song-2', 'title', 'old-version', 'old-roi', 'bad-hash', " +
+            "'{}', 'fixture', 'master-v1', 'TITLE TWO', 'Artist Two', " +
+            "'2026-07-30T00:00:00+00:00');");
+
+        var enriched = new AppOwnedVisualIdentityEvidenceProducer().Enrich(
+            BuildFrame(titleValue: 0),
+            CreateObservation(),
+            database.MasterPath,
+            database.CatalogPath);
+
+        Assert.Null(enriched.FormalEvidence!.SongId);
+        Assert.Null(enriched.FormalEvidence.ChartId);
+    }
+
+    [Fact]
+    public void Missing_text_feature_for_one_ambiguous_candidate_is_rejected()
+    {
+        using var database = new DatabaseFixture();
+        database.AddMasterSongAndChart("song-2", "TITLE TWO", "Artist Two", "chart-2");
+        AddCompatibleJacketReference(database, "song-1");
+        AddCompatibleJacketReference(database, "song-2", "TITLE TWO", "Artist Two");
+        database.AddResultTextFeature("song-1", "title", 0, "MAX 300", "Artist");
+
+        var enriched = new AppOwnedVisualIdentityEvidenceProducer().Enrich(
+            BuildFrame(titleValue: 0),
+            CreateObservation(),
+            database.MasterPath,
+            database.CatalogPath);
+
+        Assert.Null(enriched.FormalEvidence!.SongId);
+        Assert.Null(enriched.FormalEvidence.ChartId);
+    }
+
+    [Fact]
+    public void Unique_jacket_does_not_require_result_text_feature_rows()
+    {
+        using var database = new DatabaseFixture();
+        database.AddJacketReference(
+            "song-1",
+            Enumerable.Repeat(0.0, 16 * 16 * 3)
+                .Select((value, index) => index % 3 == 0 ? 1.0 : value)
+                .ToArray(),
+            Enumerable.Range(0, 24).Select(index => index == 7 ? 1.0 : 0.0).ToArray(),
+            new double[64]);
+        database.ExecuteCatalogSql(
+            "INSERT INTO result_text_features (" +
+            "feature_id, song_id, field_name, feature_version, roi_version, feature_hash, " +
+            "payload_json, source_label, master_version, canonical_title_snapshot, " +
+            "canonical_artist_snapshot, created_at) VALUES (" +
+            "'invalid-feature', 'song-1', 'title', 'old-version', 'old-roi', 'bad-hash', " +
+            "'{}', 'fixture', 'master-v1', 'MAX 300', 'Artist', " +
+            "'2026-07-30T00:00:00+00:00');");
+
+        var enriched = new AppOwnedVisualIdentityEvidenceProducer().Enrich(
+            BuildFrame(),
+            CreateObservation(),
+            database.MasterPath,
+            database.CatalogPath);
+
+        Assert.Equal("song-1", enriched.FormalEvidence!.SongId);
+        Assert.Equal("chart-1", enriched.FormalEvidence.ChartId);
+    }
+
+    [Fact]
+    public async Task Resolved_text_identity_with_low_formal_confidence_is_not_saved()
+    {
+        using var database = new DatabaseFixture();
+        database.AddMasterSongAndChart("song-2", "TITLE TWO", "Artist Two", "chart-2");
+        var jacket = new double[16 * 16 * 3];
+        database.AddJacketReference("song-1", jacket, new double[24], new double[64]);
+        database.AddJacketReference("song-2", jacket, new double[24], new double[64], "TITLE TWO", "Artist Two");
+        database.AddResultTextFeature("song-1", "title", 0, "MAX 300", "Artist");
+        database.AddResultTextFeature("song-2", "title", 255, "TITLE TWO", "Artist Two");
+
+        var saved = await new AppOwnedCaptureSaveWorkflowRunner().RunCandidateAsync(
+            BuildFrame(titleValue: 0),
+            CreateObservation(confidence: 0.97),
+            database.ScorePath,
+            database.MasterPath,
+            database.CatalogPath);
+
+        Assert.Equal("completed", saved.Status);
+        Assert.DoesNotContain("saved", saved.StatusCounts.Keys);
+        Assert.Equal(1, saved.StatusCounts["unresolved"]);
+        Assert.Empty(saved.SavedPlayIds);
+    }
+
+    [Fact]
+    public void Osaka_evolved_type_titles_are_separated_by_title_feature()
+    {
+        using var database = new DatabaseFixture();
+        var songs = new[]
+        {
+            ("song-osaka-1", "OSAKA EVOLVED TYPE1", "Artist 1", "chart-osaka-1", (byte)0),
+            ("song-osaka-2", "OSAKA EVOLVED TYPE2", "Artist 2", "chart-osaka-2", (byte)128),
+            ("song-osaka-3", "OSAKA EVOLVED TYPE3", "Artist 3", "chart-osaka-3", (byte)255),
+        };
+        foreach (var song in songs)
+        {
+            database.AddMasterSongAndChart(song.Item1, song.Item2, song.Item3, song.Item4);
+            AddCompatibleJacketReference(database, song.Item1, song.Item2, song.Item3);
+            database.AddResultTextFeature(song.Item1, "title", song.Item5, song.Item2, song.Item3);
+        }
+
+        foreach (var song in songs)
+        {
+            var enriched = new AppOwnedVisualIdentityEvidenceProducer().Enrich(
+                BuildFrame(titleValue: song.Item5),
+                CreateObservation(),
+                database.MasterPath,
+                database.CatalogPath);
+
+            Assert.Equal(song.Item1, enriched.FormalEvidence!.SongId);
+            Assert.Equal(song.Item4, enriched.FormalEvidence.ChartId);
+        }
+    }
+
+    private static LiveResultObservation CreateObservation(double confidence = 0.99)
+    {
+        var evidence = new AppOwnedFormalEvidence(
+            null,
+            null,
+            null,
+            987650,
+            456,
+            400,
+            40,
+            10,
+            4,
+            2,
+            1750,
+            "AAA",
+            "CLEAR",
+            null,
+            new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["max_combo"] = FormalEvidenceSourceNames.ResultNumericVisualEvidence,
+                ["marvelous"] = FormalEvidenceSourceNames.ResultNumericVisualEvidence,
+                ["perfect"] = FormalEvidenceSourceNames.ResultNumericVisualEvidence,
+                ["great"] = FormalEvidenceSourceNames.ResultNumericVisualEvidence,
+                ["good"] = FormalEvidenceSourceNames.ResultNumericVisualEvidence,
+                ["miss"] = FormalEvidenceSourceNames.ResultNumericVisualEvidence,
+                ["ex_score"] = FormalEvidenceSourceNames.ResultNumericVisualEvidence,
+                ["score"] = FormalEvidenceSourceNames.ResultNumericVisualEvidence,
+                ["ok"] = FormalEvidenceSourceNames.ResultNumericVisualEvidence,
+                ["rank"] = FormalEvidenceSourceNames.ResultRankVisualEvidence,
+                ["clear_type"] = FormalEvidenceSourceNames.ResultClearTypeVisualEvidence,
+            },
+            new Dictionary<string, double?>(StringComparer.Ordinal)
+            {
+                ["max_combo"] = confidence,
+                ["marvelous"] = confidence,
+                ["perfect"] = confidence,
+                ["great"] = confidence,
+                ["good"] = confidence,
+                ["miss"] = confidence,
+                ["ex_score"] = confidence,
+                ["score"] = confidence,
+                ["ok"] = confidence,
+                ["rank"] = confidence,
+                ["clear_type"] = confidence,
+            },
+            Ok: 0);
+        return new LiveResultObservation(
+            true,
+            "987650",
+            "event-1",
+            "formal-result",
+            DigitRecognitionStatus: "recognized",
+            FormalEvidence: evidence);
+    }
+
+    private static void AddCompatibleJacketReference(
+        DatabaseFixture database,
+        string songId,
+        string title = "MAX 300",
+        string artist = "Artist")
+    {
+        database.AddJacketReference(
+            songId,
+            Enumerable.Repeat(0.0, 16 * 16 * 3)
+                .Select((value, index) => index % 3 == 0 ? 1.0 : value)
+                .ToArray(),
+            Enumerable.Range(0, 24)
+                .Select(index => index == 7 ? 1.0 : 0.0)
+                .ToArray(),
+            new double[64],
+            title,
+            artist);
+    }
+
+    private static CapturedFrame BuildFrame(byte titleValue = 0, byte artistValue = 0)
     {
         const int width = 1280;
         const int height = 720;
@@ -118,6 +398,8 @@ public sealed class AppOwnedVisualIdentityEvidenceProducerTests
         Fill(pixels, stride, 532, 54, 216, 216, 255, 0, 0);
         Fill(pixels, stride, 360, 56, 100, 24, 0, 128, 255);
         Fill(pixels, stride, 378, 80, 84, 24, 0, 255, 34);
+        Fill(pixels, stride, 488, 274, 304, 32, titleValue, titleValue, titleValue);
+        Fill(pixels, stride, 548, 306, 184, 26, artistValue, artistValue, artistValue);
         DrawTemplate(pixels, stride, 394, 105, "chart_level", "1.pbm");
         DrawTemplate(pixels, stride, 413, 105, "chart_level", "7.pbm");
         var bitmap = BitmapSource.Create(

@@ -323,6 +323,8 @@ app-owned runtimeのlive observationは、上記の根拠をfield別に明示し
 ここでいうcatalog参照は、master versionの文字列一致ではなく、current GP masterのsong ID・canonical title・canonical artistと完全一致するconfirmed jacket referenceを指す。catalog rowの`master_version`が過去でもこの互換性検証を通過すれば利用できるが、catalogのmaster versionをcurrent値へ書き換えたり、title/artist不一致のrowを再割当したりしない。
 標準`AppOwnedLiveResultAnalyzer`はRESULT画面の数値・状態をapp-owned画像認識で採用し、live保存入口のapp-owned画像producerがmaster/catalog由来の同定根拠を追加する。master/catalogの参照不足、譜面条件の不一致、画像照合のnot found/ambiguousは、数字認識が全field `recognized`でも`formal_evidence.*`理由の`unresolved`となる。`RESULT同定根拠`、`RESULT状態認識根拠`をcandidate値、OCR、`known-result`から補完しない。
 
+画像照合がjacket一意の場合は従来のjacket判定だけを使い、M7 result-text featureを実行しない。jacketがambiguousの場合だけ、chart候補集合とjacket曖昧候補song ID集合の共通部分に`song_title`の画像featureを比較し、解消しないときだけ同じ候補集合で`artist`を比較する。`m7-result-text-image-v1`、`m7-result-title-artist-roi-v1`、payload/hash、current masterのcanonical title/artistがすべて一致する一意候補だけをformal identityへ接続し、候補集合外のsongを追加検索・選択しない。featureが欠落、壊れている、旧version、current masterと不整合、confidence不足、または複数候補のままなら`unresolved`であり、候補値や補助featureをformal identityへ昇格しない。この補助比較は既存のjacket threshold/ambiguity delta、event boundary、confirmed event ID、RESULT fingerprint、duplicate key、formal evidence bridge、transaction、正式保存workflowを変更せず、DB insertを追加で発行しない。
+
 正式DB transaction後に `saved` と `play_id` が返ったeventだけviewerをread-only再読込する。sessionが `workflow_failed` でも、それ以前にcommit済みのsaved playは再読込し、部分成功件数とfatal status・理由を同時に表示する。他statusを成功playへ丸めない。manual reviewed JSONは従来入口を維持し、自動capture由来のadapter入力と混同しない。
 
 continuous capture manifestの `screen_type=unknown` は正解ラベルではない。capture-save orchestrationはVision PoCが評価不一致として終了コード1を返しても生成済み解析成果を読み取る。解析例外とその他の非0終了は `analysis_failed` のままとする。
