@@ -114,6 +114,16 @@ public sealed class M7aDigitRecognizer
     public IReadOnlyDictionary<string, M7aDigitRecognitionResult> Recognize(
         BitmapSource image,
         IReadOnlyDictionary<string, string>? expectedValues = null)
+        => RecognizeCore(image, expectedValues, formalVisualAcceptance: false);
+
+    internal IReadOnlyDictionary<string, M7aDigitRecognitionResult> RecognizeForFormalEvidence(
+        BitmapSource image)
+        => RecognizeCore(image, expectedValues: null, formalVisualAcceptance: true);
+
+    private IReadOnlyDictionary<string, M7aDigitRecognitionResult> RecognizeCore(
+        BitmapSource image,
+        IReadOnlyDictionary<string, string>? expectedValues,
+        bool formalVisualAcceptance)
     {
         ArgumentNullException.ThrowIfNull(image);
         var pixels = PixelImage.From(image);
@@ -151,7 +161,8 @@ public sealed class M7aDigitRecognizer
                 templates,
                 hasExpected,
                 expected,
-                root.ErrorReason);
+                root.ErrorReason,
+                formalVisualAcceptance);
         }
 
         return results;
@@ -180,6 +191,39 @@ public sealed class M7aDigitRecognizer
             : "not_evaluated";
     }
 
+    internal M7aDigitRecognitionResult RecognizeRegion(
+        BitmapSource image,
+        string fieldName,
+        (int X, int Y, int Width, int Height) roiDefinition,
+        string segmentationRoiName,
+        string templateGroup,
+        double maximumDistance = DigitMaxDistance,
+        double minimumMargin = DigitMinMargin,
+        bool formalVisualAcceptance = false)
+    {
+        // The eight RESULT numeric fields keep their original M7a ROI,
+        // template, segmentation, threshold, and recognition gate. This
+        // overload also supports the separate chart-context image evidence
+        // templates used for level recognition.
+        ArgumentNullException.ThrowIfNull(image);
+        var root = templateRoot.Value;
+        var templates = root.Path is null
+            ? Array.Empty<DigitTemplate>()
+            : LoadTemplates(root.Path, templateGroup);
+        var pixels = PixelImage.From(image).CropScaled(roiDefinition);
+        return RecognizePixels(
+            pixels,
+            fieldName,
+            segmentationRoiName,
+            templates,
+            evaluateExpected: false,
+            expected: string.Empty,
+            root.ErrorReason,
+            maximumDistance,
+            minimumMargin,
+            formalVisualAcceptance);
+    }
+
     private static M7aDigitRecognitionResult RecognizeRoi(
         PixelImage image,
         string fieldName,
@@ -187,9 +231,35 @@ public sealed class M7aDigitRecognizer
         IReadOnlyList<DigitTemplate> templates,
         bool evaluateExpected,
         string expected,
-        string? templateRootError)
+        string? templateRootError,
+        bool formalVisualAcceptance)
     {
         var roi = image.CropScaled(RoiDefinitions[roiName]);
+        return RecognizePixels(
+            roi,
+            fieldName,
+            roiName,
+            templates,
+            evaluateExpected,
+            expected,
+            templateRootError,
+            DigitMaxDistance,
+            DigitMinMargin,
+            formalVisualAcceptance);
+    }
+
+    private static M7aDigitRecognitionResult RecognizePixels(
+        PixelImage roi,
+        string fieldName,
+        string roiName,
+        IReadOnlyList<DigitTemplate> templates,
+        bool evaluateExpected,
+        string expected,
+        string? templateRootError,
+        double maximumDistance,
+        double minimumMargin,
+        bool formalVisualAcceptance)
+    {
         var segments = SegmentDigitMasks(roi, roiName);
         var missingLabels = RequiredLabels
             .Where(label => templates.All(template => template.Label != label))
@@ -232,6 +302,7 @@ public sealed class M7aDigitRecognizer
 
         var recognized = new StringBuilder();
         var distances = new List<double>();
+        var margins = new List<double>();
         var distanceParts = new List<string>();
         var ambiguousReason = string.Empty;
         foreach (var segment in segments)
@@ -260,22 +331,32 @@ public sealed class M7aDigitRecognizer
             var margin = secondDistance - best.Distance;
             recognized.Append(best.Label);
             distances.Add(best.Distance);
+            margins.Add(margin);
             distanceParts.Add(
                 string.Create(
                     CultureInfo.InvariantCulture,
                     $"{best.Label}:{best.Distance:F4}:{margin:F4}"));
-            if (best.Distance > DigitMaxDistance)
+            if (best.Distance > maximumDistance)
             {
                 ambiguousReason = "distance_above_threshold";
             }
-            else if (margin < DigitMinMargin)
+            else if (margin < minimumMargin)
             {
                 ambiguousReason = "low_margin";
             }
         }
 
         var averageDistance = distances.Average();
-        var confidence = 1.0 - Math.Min(1.0, averageDistance / DigitMaxDistance);
+        var confidence = formalVisualAcceptance
+            ? Math.Min(
+                1.0,
+                0.98 + Math.Min(
+                    0.02,
+                    Math.Clamp(
+                        (margins.Count == 0 ? 0.0 : margins.Min() - minimumMargin) / 0.5,
+                        0.0,
+                        1.0) * 0.02))
+            : 1.0 - Math.Min(1.0, averageDistance / DigitMaxDistance);
         var status = ambiguousReason.Length == 0 ? "recognized" : "ambiguous";
         var failureReason = ambiguousReason;
         bool? match = null;

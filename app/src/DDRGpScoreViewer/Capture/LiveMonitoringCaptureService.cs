@@ -438,6 +438,7 @@ public sealed class LiveMonitoringCaptureService(
         private string statusMessage = "RESULT画面を検出しています。";
         private long? lastSampleTimestampMs;
         private string? candidateScore;
+        private string? candidateEventId;
         private int candidateStreak;
         private int nonResultStreak;
         private string? activeResultKey;
@@ -523,6 +524,7 @@ public sealed class LiveMonitoringCaptureService(
             lock (gate)
             {
                 candidateScore = null;
+                candidateEventId = null;
                 candidateStreak = 0;
                 nonResultStreak++;
                 if (nonResultStreak >= 2)
@@ -544,6 +546,7 @@ public sealed class LiveMonitoringCaptureService(
             {
                 nonResultStreak = 0;
                 candidateScore = null;
+                candidateEventId = null;
                 candidateStreak = 0;
                 statusMessage = message;
             }
@@ -555,7 +558,10 @@ public sealed class LiveMonitoringCaptureService(
             lock (gate)
             {
                 nonResultStreak = 0;
-                var resultKey = $"{observation.Score}\u001f{observation.TitleSignature}";
+                var resultKey = AppOwnedResultEventFingerprint.TryCreate(
+                        observation,
+                        requireIdentity: false) ??
+                    $"{observation.Score}\u001f{observation.TitleSignature}";
                 if (activeResultKey == resultKey)
                 {
                     candidateScore = null;
@@ -573,6 +579,7 @@ public sealed class LiveMonitoringCaptureService(
                 else
                 {
                     candidateScore = observation.Score;
+                    candidateEventId = ConfirmedResultEventId.Create();
                     candidateStreak = 1;
                 }
 
@@ -584,11 +591,13 @@ public sealed class LiveMonitoringCaptureService(
                 }
 
                 activeResultKey = resultKey;
+                var confirmedEventId = candidateEventId ??= ConfirmedResultEventId.Create();
                 candidateScore = null;
+                candidateEventId = null;
                 candidateStreak = 0;
                 return new LiveCandidate(
                     LatestFrame,
-                    observation);
+                    observation with { ConfirmedEventId = confirmedEventId });
             }
         }
 

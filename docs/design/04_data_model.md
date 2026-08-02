@@ -273,7 +273,7 @@ DB rowから未生成artifactを参照させないため、入力・adapter・DB
 
 ### 正式保存入力とtransaction
 
-`tools.vision_poc.personal_score_db_save` の正式入力は、M8 preview rowではなく、上流で確定済みのsource capture、play、analysisを受け取る。M5 `identity_signal_*` やM7a `recognized_digits` を暗黙に正式値へ変換しない。
+`tools.vision_poc.personal_score_db_save` の正式入力は、M8 preview rowではなく、上流で確定済みのsource capture、play、analysisを受け取る。`RESULT同定根拠`、`RESULT数値認識根拠`、`RESULT状態認識根拠`、`capture event根拠`を明示的に採用したformal値だけを受け取り、`identity_signal_*`、`recognized_digits`、OCRを暗黙に正式値へ変換しない。
 
 保存成功時は `source_captures`、`plays`、`analysis_logs` を1 transactionで追加する。duplicate、低信頼度、error、その他skipは `play=None` とし、source captureとanalysisだけを記録する。これにより「解析したが保存しなかった」事実を、成功play rowへ混ぜずに追跡できる。ready入力の明示 `duplicate_key` が既存playと衝突した場合も同じ非保存モデルへ変換し、analysisを `skipped` / `duplicate` / `duplicate_key_already_saved` / `duplicate=true` に固定する。
 

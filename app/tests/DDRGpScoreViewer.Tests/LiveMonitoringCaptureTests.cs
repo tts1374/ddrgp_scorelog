@@ -121,6 +121,38 @@ public sealed class LiveMonitoringCaptureTests
     }
 
     [Fact]
+    public async Task Live_monitor_groups_animated_samples_with_the_same_adopted_result()
+    {
+        var observations = new Queue<LiveResultObservation>(
+        [
+            FormalResult("100", "animated-a"),
+            FormalResult("100", "animated-b"),
+            FormalResult("100", "animated-c"),
+            FormalResult("100", "animated-d"),
+        ]);
+        var source = new StubFrameSource(Frames(0, 1_000, 2_000, 3_000));
+        var processed = new List<(string Signature, string? EventId)>();
+        var service = new LiveMonitoringCaptureService(
+            new StubTargetedAdapter(source),
+            new StubResultAnalyzer(observations));
+
+        var result = await service.RunAsync(
+            123,
+            new CaptureTargetInfo("DDR GRAND PRIX", 1280, 720),
+            new CallbackProgress<CaptureSessionProgress>(_ => { }),
+            (_, observation, _) =>
+            {
+                processed.Add((observation.TitleSignature, observation.ConfirmedEventId));
+                return Task.CompletedTask;
+            });
+
+        Assert.Equal(CaptureOperationStatus.Cancelled, result.Status);
+        Assert.Single(processed);
+        Assert.Equal("animated-b", processed[0].Signature);
+        Assert.StartsWith("confirmed-event-v1:", processed[0].EventId);
+    }
+
+    [Fact]
     public async Task Live_monitor_does_not_accept_frames_after_explicit_stop()
     {
         var observations = new Queue<LiveResultObservation>(
@@ -163,6 +195,28 @@ public sealed class LiveMonitoringCaptureTests
 
     private static LiveResultObservation Result(string score, string title) =>
         new(true, score, title, "result_score_detected");
+
+    private static LiveResultObservation FormalResult(string score, string title) =>
+        Result(score, title) with
+        {
+            FormalEvidence = new AppOwnedFormalEvidence(
+                null,
+                null,
+                null,
+                int.Parse(score),
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                "AAA",
+                "CLEAR",
+                null,
+                new Dictionary<string, string>(),
+                new Dictionary<string, double?>()),
+        };
 
     private static LiveResultObservation NonResult(string reason) =>
         new(false, "", "", reason);

@@ -71,7 +71,7 @@ public sealed class CaptureSaveViewModelTests
         var workflow = new StubCaptureSaveWorkflowRunner((_, _, _) =>
             new CaptureSaveWorkflowResult(
                 "completed", 1, new Dictionary<string, int> { ["unresolved"] = 1 },
-                [], [], "data/run"));
+                [], ["formal_evidence.song_id_missing"], "data/run"));
         var viewModel = new MainViewModel(
             new ScoreViewerRepository(),
             new UnusedManualWorkflowRunner(),
@@ -84,6 +84,7 @@ public sealed class CaptureSaveViewModelTests
 
         Assert.Equal("保存できるプレーはありませんでした", viewModel.SaveStatusTitle);
         Assert.Contains("unresolved=1", viewModel.SaveStatusMessage);
+        Assert.Contains("formal_evidence.song_id_missing", viewModel.SaveStatusMessage);
         Assert.Empty(viewModel.Plays);
     }
 

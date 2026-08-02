@@ -1290,6 +1290,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
             var result = await liveRunner.RunCandidateAsync(
                 frame,
+                observation,
                 scoreDatabasePath,
                 masterDatabasePath,
                 catalogDatabasePath,
@@ -1433,7 +1434,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 ", ",
                 result.StatusCounts.OrderBy(item => item.Key)
                     .Select(item => $"{item.Key}={item.Value}"));
-        return $"event={result.EventCount}: {counts}。saved以外は成功保存として表示していません。";
+        var reasons = result.Reasons.Count == 0
+            ? string.Empty
+            : $" 理由: {string.Join(" / ", result.Reasons.Distinct(StringComparer.Ordinal))}";
+        return $"event={result.EventCount}: {counts}。saved以外は成功保存として表示していません。{reasons}";
     }
 
     public async Task StopContinuousCaptureAsync()

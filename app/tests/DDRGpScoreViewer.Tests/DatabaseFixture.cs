@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.Data.Sqlite;
 
 namespace DDRGpScoreViewer.Tests;
@@ -172,6 +173,42 @@ internal sealed class DatabaseFixture : IDisposable
         command.ExecuteNonQuery();
     }
 
+    public void AddJacketReference(
+        string songId,
+        IReadOnlyList<double> thumbnail,
+        IReadOnlyList<double> histogram,
+        IReadOnlyList<double> dhash)
+    {
+        using var connection = OpenWritable(CatalogPath);
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            "INSERT INTO jacket_references (" +
+            "reference_id, source_capture_id, source_image_hash, master_version, song_id, " +
+            "canonical_title_snapshot, canonical_artist_snapshot, review_status, " +
+            "resolution_reason, resolution_basis, feature_extractor_version, image_kind, " +
+            "thumbnail_rgb_json, histogram_json, dhash_bits_json, dhash_hex, observed_title, " +
+            "observed_artist, observation_status, expected_song_id, review_revision, " +
+            "manual_action_id, manual_note, jacket_feature_version, jacket_feature_hash, " +
+            "title_line_feature_version, title_line_hash, composite_identity_version, " +
+            "composite_identity_hash, created_at, updated_at) VALUES (" +
+            "$reference_id, NULL, $source_image_hash, $master_version, $song_id, " +
+            "'MAX 300', 'Artist', 'manual_confirmed', 'fixture', 'fixture', " +
+            "'m5-jacket-v2', 'jacket', $thumbnail, $histogram, $dhash, '0', " +
+            "'MAX 300', 'Artist', 'ok', $song_id, 1, 'action-1', 'fixture', " +
+            "'m5c-jacket-rgb-grid-v1', 'fixture-hash', NULL, NULL, " +
+            "'m5c-jacket-title-composite-identity-v2', 'fixture-composite', " +
+            "'2026-07-30T00:00:00+00:00', '2026-07-30T00:00:00+00:00');";
+        command.Parameters.AddWithValue("$reference_id", $"reference-{songId}");
+        command.Parameters.AddWithValue("$source_image_hash", $"hash-{songId}");
+        command.Parameters.AddWithValue("$master_version", "master-v1");
+        command.Parameters.AddWithValue("$song_id", songId);
+        command.Parameters.AddWithValue("$thumbnail", JsonSerializer.Serialize(thumbnail));
+        command.Parameters.AddWithValue("$histogram", JsonSerializer.Serialize(histogram));
+        command.Parameters.AddWithValue("$dhash", JsonSerializer.Serialize(dhash));
+        command.ExecuteNonQuery();
+    }
+
     public void Dispose()
     {
         try
@@ -225,7 +262,10 @@ internal sealed class DatabaseFixture : IDisposable
         using var command = connection.CreateCommand();
         command.CommandText =
             """
-            CREATE TABLE songs (song_id TEXT PRIMARY KEY, title TEXT NOT NULL);
+            CREATE TABLE songs (
+              song_id TEXT PRIMARY KEY, title TEXT NOT NULL, artist TEXT NOT NULL,
+              grand_prix_play_available INTEGER NOT NULL, official_availability_match TEXT NOT NULL
+            );
             CREATE TABLE charts (
               chart_id TEXT PRIMARY KEY, song_id TEXT NOT NULL, play_style TEXT NOT NULL,
               difficulty TEXT NOT NULL, level INTEGER NOT NULL
@@ -236,7 +276,7 @@ internal sealed class DatabaseFixture : IDisposable
               snapshot_id TEXT PRIMARY KEY, source_url TEXT NOT NULL,
               content_hash TEXT NOT NULL
             );
-            INSERT INTO songs VALUES ('song-1', 'MAX 300');
+            INSERT INTO songs VALUES ('song-1', 'MAX 300', 'Artist', 1, 'fixture');
             INSERT INTO charts VALUES ('chart-1', 'song-1', 'SINGLE', 'EXPERT', 17);
             INSERT INTO source_snapshots VALUES ('snapshot-1', 'https://example.test/source', 'hash-v1');
             """;

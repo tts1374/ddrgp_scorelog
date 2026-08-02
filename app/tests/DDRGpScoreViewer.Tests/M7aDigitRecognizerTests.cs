@@ -242,6 +242,45 @@ public sealed class M7aDigitRecognizerTests
     }
 
     [Fact]
+    public void Formal_image_evidence_uses_margin_confidence_and_connects_ok_source()
+    {
+        using var fixture = new TemplateFixture();
+        fixture.WriteTemplates(
+            "score_digits",
+            "judgment_counts",
+            "combo_ex_score");
+        var values = new Dictionary<string, string>
+        {
+            ["score"] = "0",
+            ["max_combo"] = "1234",
+            ["marvelous"] = "1234",
+            ["perfect"] = "1234",
+            ["great"] = "1234",
+            ["good"] = "1234",
+            ["miss"] = "1234",
+            ["ex_score"] = "1234",
+            ["ok"] = "21",
+        };
+        var recognizer = new M7aDigitRecognizer(templateRoot: fixture.Root);
+        var image = fixture.Render(values);
+        var digitResults = recognizer.RecognizeForFormalEvidence(image);
+        var evidence = new AppOwnedResultVisualEvidenceProducer(recognizer).Produce(
+            image,
+            digitResults);
+
+        foreach (var fieldName in M7aDigitRecognizer.Fields)
+        {
+            Assert.Equal("recognized", digitResults[fieldName].Status);
+            Assert.True(digitResults[fieldName].Confidence >= 0.98);
+        }
+        Assert.Equal(21, evidence.Ok);
+        Assert.Equal(
+            FormalEvidenceSourceNames.ResultNumericVisualEvidence,
+            evidence.Sources["ok"]);
+        Assert.True(evidence.Confidences["ok"] >= 0.98);
+    }
+
+    [Fact]
     public void Package_contains_required_runtime_template_sets()
     {
         var root = new AppRuntimeResourceResolver().ResolveDigitTemplatesDirectory();
@@ -250,6 +289,7 @@ public sealed class M7aDigitRecognizerTests
             "score_digits",
             "judgment_counts",
             "combo_ex_score",
+            "chart_level",
         })
         {
             var labels = Directory.EnumerateFiles(
@@ -422,6 +462,7 @@ public sealed class M7aDigitRecognizerTests
                 ["good"] = (896, 495, 92, 21),
                 ["miss"] = (897, 555, 92, 21),
                 ["ex_score"] = (898, 584, 91, 23),
+                ["ok"] = (896, 524, 92, 28),
             };
 
             foreach (var pair in values)

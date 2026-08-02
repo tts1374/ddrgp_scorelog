@@ -33,12 +33,20 @@ public interface ILiveCaptureSaveWorkflowRunner
         string masterDatabasePath,
         string? catalogDatabasePath,
         CancellationToken cancellationToken = default);
+
+    Task<CaptureSaveWorkflowResult> RunCandidateAsync(
+        CapturedFrame frame,
+        LiveResultObservation observation,
+        string scoreDatabasePath,
+        string masterDatabasePath,
+        string? catalogDatabasePath,
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>
 /// App-owned capture/save orchestration. It keeps candidate material separate from
-/// formal save input; M7a digit recognition remains candidate evidence until the
-/// existing formal evidence adapter accepts an explicit formal play.
+/// formal save input; only explicit field-level formal evidence on the live
+/// observation can be promoted into the existing formal save adapter.
 /// </summary>
 public sealed class AppOwnedCaptureSaveWorkflowRunner :
     ICaptureSaveWorkflowRunner,
@@ -46,18 +54,25 @@ public sealed class AppOwnedCaptureSaveWorkflowRunner :
 {
     private readonly AppOwnedLiveResultAnalyzer analyzer;
     private readonly AppOwnedPersonalScoreDbWorkflowRunner workflowRunner;
+    private readonly AppOwnedVisualIdentityEvidenceProducer identityEvidenceProducer;
 
     public AppOwnedCaptureSaveWorkflowRunner()
-        : this(new AppOwnedLiveResultAnalyzer(), new AppOwnedPersonalScoreDbWorkflowRunner())
+        : this(
+            new AppOwnedLiveResultAnalyzer(),
+            new AppOwnedPersonalScoreDbWorkflowRunner(),
+            new AppOwnedVisualIdentityEvidenceProducer())
     {
     }
 
     internal AppOwnedCaptureSaveWorkflowRunner(
         AppOwnedLiveResultAnalyzer analyzer,
-        AppOwnedPersonalScoreDbWorkflowRunner workflowRunner)
+        AppOwnedPersonalScoreDbWorkflowRunner workflowRunner,
+        AppOwnedVisualIdentityEvidenceProducer? identityEvidenceProducer = null)
     {
         this.analyzer = analyzer;
         this.workflowRunner = workflowRunner;
+        this.identityEvidenceProducer = identityEvidenceProducer ??
+            new AppOwnedVisualIdentityEvidenceProducer();
     }
 
     public async Task<CaptureSaveWorkflowResult> RunAsync(
@@ -90,19 +105,58 @@ public sealed class AppOwnedCaptureSaveWorkflowRunner :
         string? catalogDatabasePath,
         CancellationToken cancellationToken = default)
     {
-        _ = masterDatabasePath;
-        _ = catalogDatabasePath;
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
             var observation = await analyzer.AnalyzeKnownResultAsync(frame, cancellationToken);
+            return await RunCandidateAsync(
+                frame,
+                observation,
+                scoreDatabasePath,
+                masterDatabasePath,
+                catalogDatabasePath,
+                cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception) when (
+            exception is ArgumentException or IOException or InvalidDataException or FormatException)
+        {
+            return FailedResult(exception.Message);
+        }
+    }
+
+    public async Task<CaptureSaveWorkflowResult> RunCandidateAsync(
+        CapturedFrame frame,
+        LiveResultObservation observation,
+        string scoreDatabasePath,
+        string masterDatabasePath,
+        string? catalogDatabasePath,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
             if (!observation.IsResultScreen)
             {
                 return FailedResult(observation.Reason);
             }
-            var input = BuildInput(
+            observation = observation with
+            {
+                ConfirmedEventId = observation.ConfirmedEventId ??
+                    ConfirmedResultEventId.Create(),
+            };
+            var enrichedObservation = identityEvidenceProducer.Enrich(
                 frame,
                 observation,
+                masterDatabasePath,
+                catalogDatabasePath);
+            var input = BuildInput(
+                frame,
+                enrichedObservation,
+                sourceKind: "capture",
                 sourcePath: "live-memory://app-owned-candidate",
                 imagePath: "",
                 frameIndex: null,
@@ -141,6 +195,8 @@ public sealed class AppOwnedCaptureSaveWorkflowRunner :
         AppCaptureManifestRow? pending = null;
         CapturedFrame? pendingFrame = null;
         LiveResultObservation? pendingObservation = null;
+        string? pendingGroupingKey = null;
+        string? pendingConfirmedEventId = null;
         var eventCount = 0;
 
         foreach (var row in rows)
@@ -178,30 +234,41 @@ public sealed class AppOwnedCaptureSaveWorkflowRunner :
                 pending = null;
                 pendingFrame = null;
                 pendingObservation = null;
+                pendingGroupingKey = null;
+                pendingConfirmedEventId = null;
                 continue;
             }
 
-            var key = observation.TitleSignature.Length == 0
-                ? "result"
-                : observation.TitleSignature;
+            var key = AppOwnedResultEventFingerprint.TryCreate(
+                    observation,
+                    requireIdentity: false) ??
+                (observation.TitleSignature.Length == 0
+                    ? "result"
+                    : observation.TitleSignature);
             if (string.Equals(activeConfirmedKey, key, StringComparison.Ordinal))
             {
-                // A stable RESULT with the same signature is a single event. Ignore
-                // later samples until a non-RESULT frame reopens the event boundary.
+                // A stable RESULT with the same grouping key is a single event.
+                // Ignore later samples until a non-RESULT frame reopens the event
+                // boundary.
                 continue;
             }
 
             if (pending is not null &&
                 pendingObservation is not null &&
-                pendingObservation.TitleSignature == observation.TitleSignature &&
+                pendingGroupingKey == key &&
                 row.TimestampMs - pending.TimestampMs >= 1_000)
             {
                 eventCount++;
                 activeConfirmedKey = key;
                 var duration = row.TimestampMs - pending.TimestampMs;
+                var confirmedObservation = observation with
+                {
+                    ConfirmedEventId = pendingConfirmedEventId ??
+                        ConfirmedResultEventId.Create(),
+                };
                 var confirmedResult = await ProcessEventAsync(
                     pendingFrame ?? frame,
-                    observation,
+                    confirmedObservation,
                     scoreDatabasePath,
                     row,
                     manifestPath,
@@ -212,12 +279,19 @@ public sealed class AppOwnedCaptureSaveWorkflowRunner :
                 pending = null;
                 pendingFrame = null;
                 pendingObservation = null;
+                pendingGroupingKey = null;
+                pendingConfirmedEventId = null;
                 continue;
             }
 
+            if (!string.Equals(pendingGroupingKey, key, StringComparison.Ordinal))
+            {
+                pendingConfirmedEventId = ConfirmedResultEventId.Create();
+            }
             pending = row;
             pendingFrame = frame;
             pendingObservation = observation;
+            pendingGroupingKey = key;
         }
 
         return new CaptureSaveWorkflowResult(
@@ -242,11 +316,12 @@ public sealed class AppOwnedCaptureSaveWorkflowRunner :
         var input = BuildInput(
             frame,
             observation,
-            Path.GetFullPath(manifestPath),
-            row.ImagePath,
-            row.FrameIndex,
-            candidateDurationMs,
-            duplicate);
+            sourceKind: "manifest",
+            sourcePath: Path.GetFullPath(manifestPath),
+            imagePath: row.ImagePath,
+            frameIndex: row.FrameIndex,
+            candidateDurationMs: candidateDurationMs,
+            duplicate: duplicate);
         return await workflowRunner.RunAdapterInputAsync(
             input,
             scoreDatabasePath,
@@ -256,16 +331,26 @@ public sealed class AppOwnedCaptureSaveWorkflowRunner :
     private static AppSaveAdapterInput BuildInput(
         CapturedFrame frame,
         LiveResultObservation observation,
+        string sourceKind,
         string sourcePath,
         string imagePath,
         int? frameIndex,
         long? candidateDurationMs,
         bool duplicate)
     {
-        var captureHash = "sha256:" + Convert.ToHexString(SHA256.HashData(frame.PngBytes)).ToLowerInvariant();
-        var idSeed = captureHash.Replace(":", "-", StringComparison.Ordinal);
+        var rawHash = Convert.ToHexString(SHA256.HashData(frame.PngBytes)).ToLowerInvariant();
+        var idSeed = rawHash;
+        var captureId = $"capture-{idSeed}-{frame.TimestampMs}";
+        var captureHash = BuildCaptureHash(frame.PngBytes, captureId);
         var digitResults = observation.DigitRecognitions ??
             new Dictionary<string, M7aDigitRecognitionResult>(StringComparer.Ordinal);
+        var promotion = duplicate
+            ? AppFormalEvidencePromotion.Excluded
+            : AppOwnedFormalEvidenceBridge.Promote(
+                observation,
+                captureId,
+                captureHash,
+                frame.CapturedAtUtc);
         var candidateMaterial = new Dictionary<string, string>(StringComparer.Ordinal)
         {
             ["result_screen"] = observation.IsResultScreen.ToString(CultureInfo.InvariantCulture),
@@ -309,36 +394,54 @@ public sealed class AppOwnedCaptureSaveWorkflowRunner :
                 runtime = "app-owned",
                 recognition_method = M7aDigitRecognizer.Method,
                 digit_recognition = recognitionSummary,
-                formal_evidence = "pending",
+                formal_evidence = promotion.Status,
+                formal_evidence_sources = promotion.Sources,
+                formal_evidence_reasons = promotion.Reasons,
             });
         return new AppSaveAdapterInput(
             candidateMaterial,
-            $"capture-{idSeed}-{frame.TimestampMs}",
+            captureId,
             captureHash,
             frame.CapturedAtUtc.ToString("O", CultureInfo.InvariantCulture),
-            "manifest",
+            sourceKind,
             sourcePath,
             $"analysis-{idSeed}-{frame.TimestampMs}",
             duplicate ? "duplicate" : "confirmed",
             true,
             duplicate,
             duplicate ? "duplicate_window" : "time",
-            "unresolved",
+            promotion.IdentitySignalStatus,
             observation.DigitRecognitionStatus,
-            null,
+            promotion.AnalysisConfidence,
             analysisSummary,
             "score-viewer-runtime",
-            null,
+            promotion.FormalPlay,
             null,
             imagePath,
             frameIndex,
             frame.TimestampMs,
             candidateDurationMs,
-            "");
+            "",
+            promotion.Reasons.Count == 0
+                ? null
+                : promotion.Reasons
+                    .Append("formal_play_required")
+                    .Distinct(StringComparer.Ordinal)
+                    .ToArray());
     }
 
     private static string FormatNumber(double? value) =>
         value?.ToString("F6", CultureInfo.InvariantCulture) ?? string.Empty;
+
+    private static string BuildCaptureHash(byte[] pngBytes, string captureId)
+    {
+        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+        hash.AppendData(Encoding.UTF8.GetBytes("capture-event-v1\0"));
+        hash.AppendData(Encoding.UTF8.GetBytes(captureId));
+        hash.AppendData([0]);
+        hash.AppendData(pngBytes);
+        return "sha256:" + Convert.ToHexString(hash.GetHashAndReset()).ToLowerInvariant();
+    }
 
     private static string ResolveManifestImagePath(string manifestDirectory, string imagePath)
     {

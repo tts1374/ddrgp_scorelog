@@ -310,7 +310,7 @@ CLIからは `--personal-score-db-save-input <utf8-json>` と `--personal-score-
 
 `--personal-score-db-save-input-validate-output <path>` はvalidation inputとの必須ペアで、同じvalidation結果投影をレビューreceiptとして `data/` 配下の新規 `.json` へ1件だけ保存する。UTF-8 BOMなし、LF、固定key順、末尾改行とし、既存ファイルを上書きしない。output path、拡張子、必須ペア、他mode排他は入力読込と出力作成より先に検査する。invalid input schemaを含め、receiptに記録するstatusと終了コードは標準出力/標準エラーのvalidation結果と同じに保つ。receiptは正式値、候補材料、template本文、DB情報を持たず、レビュー承認、DB互換性、duplicate非衝突、並行writer安全性、実保存成功を保証しない。outputを指定しない従来validationは引き続き `data/` を含む出力を作成・変更しない。
 
-`--personal-score-db-save-input-template <path>` は、`data/` 配下の新規 `.json` へ空のschema version 1 review templateを1件だけ生成する単独modeである。既存ファイルを上書きせず、UTF-8 BOMなし、LF、固定key順、末尾改行で書く。出力はtemplate JSON以外のDB、`logs/`、画像、diagnosticを作らず、標準出力も生成path、template schema version、status、理由だけに限定する。metadata、M5/M7a、M8 preview、manifest、画像、DBは入力にせず、候補・相対時刻・duplicate keyを正式値へ転記しない。他optionとの混在、`data/` 外、`.json` 以外、既存出力は作成前に終了コード2で拒否する。
+`--personal-score-db-save-input-template <path>` は、`data/` 配下の新規 `.json` へ空のschema version 1 review templateを1件だけ生成する単独modeである。既存ファイルを上書きせず、UTF-8 BOMなし、LF、固定key順、末尾改行で書く。出力はtemplate JSON以外のDB、`logs/`、画像、diagnosticを作らず、標準出力も生成path、template schema version、status、理由だけに限定する。`RESULT同定根拠`、`RESULT数値認識根拠`、`RESULT状態認識根拠`、`capture event根拠`がまだ採用されていないmetadata、preview、manifest、画像、DBは入力にせず、候補・相対時刻・duplicate keyを正式値へ転記しない。他optionとの混在、`data/` 外、`.json` 以外、既存出力は作成前に終了コード2で拒否する。
 
 M8の保存予定レコードプレビューでは、まず in-memory SQLite fixtureで `plays` 最小スキーマとrow contractを確認する。実ファイルDBを生成する場合は必ず `data/` 配下に置き、Git管理しない。
 
@@ -321,6 +321,8 @@ M8のscore DB file output previewでは、`--m8-score-db-output data\...\ddrgp-s
 開発中に生成したDB、取得元HTML snapshot、解析ログはGit管理しない。配布用マスタDBはGitHub Releases成果物として扱う。
 
 ## M5b jacket catalog
+
+通常runtimeのread-only identity loaderは、catalog rowの`master_version`がcurrent値と異なっていても、`song_id`・canonical title・canonical artistがcurrent GP masterと完全一致するconfirmed jacket referenceをcurrent-master-compatibleとして利用する。masterとの不一致、orphan、未確認、旧extractor、不正persisted featureは除外し、catalog rowは変更しない。coverageのcurrent-only表示やcollectorのcurrent ingest契約とは別の、保存入口での互換性検証である。
 
 ローカルjacket catalogはdevelopmentでは `databases/jacket-catalog.sqlite`、productionでは `%LOCALAPPDATA%\DDRGpScoreViewer\data\master\jacket-catalog.sqlite` を既定pathとする。M4 masterはそれぞれ `databases/ddrgp-master.sqlite`、`%LOCALAPPDATA%\DDRGpScoreViewer\data\master\ddrgp-master.sqlite` で、catalogとは別fileとして扱う。初回リリース向けcurrent schemaのversionは1で、専用identity、`PRAGMA user_version=1`、metadata schema version 1、exact tables/columns/constraints/index/foreign keyをstrictに検査する。runtimeはcurrent schemaとexact一致しない旧catalog、非catalog SQLite、破損catalog、正式個人スコアDB、M8 preview DB、M4 master DBを読み取り専用検査でunsupportedとして拒否し、自動作成・修復・migrationを行わない。既存の明示migration CLIがある場合も、WPF起動・master操作・正式save・評価DB準備から暗黙起動しない。
 

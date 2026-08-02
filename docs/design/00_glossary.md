@@ -11,6 +11,29 @@ DDR GP scorelog の設計、PoC、テストで使う主要用語を定義する�
 - `candidate`、`observation`、`feature`、`expected_value`、`match`、`recognized_digits` は、明示的に採用済みの正式値と区別する。
 - status名やCSV列名は英語のまま契約語彙として扱う。似た日本語へ勝手に統合しない。
 
+## 要件レベルの正式保存根拠
+
+正式保存の要件、Issue、acceptance criteriaでは工程コードや実装クラス名を使わず、次の要件語彙を使う。source IDは根拠の役割と画像由来であることを表し、OCR、raw OCR、candidate、previewを正式根拠へ含めない。
+
+| 要件語彙 | 対象 | 正式根拠source | 正式根拠にしないもの |
+| --- | --- | --- | --- |
+| `RESULT同定根拠` | `song_id`、`chart_id` | `result_identity_visual_evidence`による採用済み画像照合とmaster整合 | `identity_signal_*`、OCR文字列、candidate、expected、preview |
+| `current-master-compatible jacket reference` | current GP masterの`song_id`、canonical title、canonical artistと完全一致するconfirmed jacket reference | catalogの画像featureを用いた`RESULT同定根拠` | master versionの一致だけでの採用、title/artist不一致、orphan、未確認、旧feature |
+| `RESULT数値認識根拠` | `score`、`max_combo`、判定数、`ex_score` | `result_numeric_visual_evidence`による採用済み画像認識 | `recognized_digits`だけ、raw OCR、expected、`match`、preview |
+| `RESULT状態認識根拠` | `rank`、`clear_type`、任意の`flare_rank` | `result_rank_visual_evidence`、`result_clear_type_visual_evidence`、`result_flare_rank_visual_evidence`。専用画像認識または正式な画像認識値からの規則導出を含む | rank/clear type OCR、animation表示、candidate、expected、preview |
+| `capture event根拠` | `play_id`、`played_at`、`duplicate_key` | confirmed capture eventのmetadataとcapture UTC | 相対`timestamp_ms`、score/file由来のduplicate key |
+| `正式保存可否` | formal playを既存workflowへ渡せるか | 上記根拠のsource、confidence、完全性、confirmed non-duplicate | 根拠不足、低confidence、ambiguous、missing、failed |
+
+`M5 master match`、`M7a digit recognition`、`M7 result field recognition`、`M9 application/runtime`は、上記要件をどの実装が担当するかを示す対応名に留める。これらの工程名、`identity_signal_*`、`recognized_digits`をformal source IDや保存条件の代わりに使わない。
+
+今後のIssue・PR・設計では、実装工程名ではなく次の要件名を優先する。
+
+| 要件名 | 意味 | 接続する正式根拠 |
+| --- | --- | --- |
+| `RESULT数値・状態の正式画像認識` | RESULT画面の数字、rank、clear type、flare rankをapp-owned画像認識で採用すること | `RESULT数値認識根拠`、`RESULT状態認識根拠` |
+| `RESULT同定・譜面の正式画像認識` | RESULT画面のジャケット、play style、difficulty、levelを画像認識し、current master/catalogと一意整合させること | `RESULT同定根拠`、`master_metadata` |
+| `正式保存根拠の保存workflow接続` | confirmed non-duplicate RESULTの全根拠を既存正式DB保存workflowへ渡すこと | `capture event根拠`を含む全source/confidence/完全性 |
+
 ## 工程コード
 
 | 呼び方 | 正式な意味 | 主な対象・成果物 | この工程だけでは確定しないもの |
@@ -20,13 +43,14 @@ DDR GP scorelog の設計、PoC、テストで使う主要用語を定義する�
 | `M2 score OCR` | 数字ROIのTesseract OCRとprofile/expected coverageを評価する工程 | `score_ocr.*`、OCR profile、`evaluated` | 正式なスコア・判定数 |
 | `M3 result field observation` | result画面の曲名・artist・譜面条件を後工程へ渡せる観測にする工程 | `song_title`、`artist`、`play_style`、`difficulty`、`level`、M3レポート | 曲名照合、曲ID・譜面ID、正式保存値 |
 | `M4 master DB` | 楽曲・譜面のcanonical情報と照合対象を生成する工程 | `songs`、`charts`、`song_aliases`、`ddrgp-master.sqlite` | 入力画像の曲同定、個人スコア保存 |
-| `M5 master match` | M3観測値をM4へ照合し、曲・譜面候補と失敗理由を観測する工程 | title match、jacket match、`identity_signal_*` | 確定ID、保存OK、本番採用済み照合 |
+| `M5 master match` | `RESULT同定根拠`へ進める前の曲・譜面候補と失敗理由を観測する実装工程 | title match、jacket match、`identity_signal_*` | 確定ID、保存OK、本番採用済み照合 |
 | `M5b jacket reference catalog` | jacket参照featureをcurrent masterと一緒に安全に保持・読む基盤 | `databases/jacket-catalog.sqlite`、coverage、runtime loader | 正式個人スコアDB、画像原本の代替 |
 | `M5c developer-only collector` | M5b catalogへ入れるjacket観測を収集・reviewする開発者専用工程 | collector、observation session、manual review、title/artist OCR評価 | 公開app、正式保存workflow、自動確定 |
 | `M6 payload/evidence boundary` | 保存候補payloadと解析根拠・sourceを分離する工程 | save payload、analysis/source、候補材料 | 候補の正式値昇格 |
 | `M7 save decision boundary` | 必須fieldの検証、保存前readiness、正式値変換の境界 | M7 readiness、save decision preview、formal evidence | previewだけでのDB保存 |
-| `M7a digit recognition` | 数字ROIをテンプレート/bitmap比較で読むM7内の非OCR工程 | `recognized_digits`、digit review、Tesseract comparison | 正式なスコア・判定数、保存OK |
-| `M7 result field recognition` | RESULTのrank/clear_type/flare_rankを専用規則で認識し、field別formal evidenceへ接続する工程 | FAILED/E gate、score-derived rank、judgment-count clear type、independent flare badge | candidate/raw/previewのformal昇格 |
+| `M7a digit recognition` | `RESULT数値認識根拠`へ進める前の数字ROIをテンプレート/bitmap比較で読むM7内の非OCR工程 | `recognized_digits`、digit review、Tesseract comparison | 正式なスコア・判定数、保存OK |
+| `M7 result field recognition` | `RESULT状態認識根拠`へ進めるrank/clear_type/flare_rankを専用規則で認識する工程 | FAILED/E gate、score-derived rank、judgment-count clear type、independent flare badge | candidate/raw/previewのformal昇格 |
+| `app-owned formal evidence bridge` | confirmed RESULT observationに明示された要件別source/confidenceを検査し、既存M8 formal save inputへ接続する境界 | `RESULT同定根拠`、`RESULT数値認識根拠`、`RESULT状態認識根拠`、`capture event根拠`、`unresolved`理由 | `identity_signal_*`、`recognized_digits`、candidate、expected、preview、known-resultの正式値昇格 |
 | `M7 result-text feature` | resultのtitle/artist ROIからOCRなしの画像featureを作る補助工程 | `jacket-catalog.sqlite` の `result_text_features`、`m7_result_text_feature_master.*` 診断出力 | OCR文字列、曲ID確定、正式保存値 |
 | `M8 formal personal score DB` | version 1正式DB、duplicate、transaction、明示単発保存を扱う工程 | `ddrgp-scores.sqlite`、formal save input | 候補材料の自動昇格、M8 preview DBの受入れ |
 | `M9 application/runtime` | app package-owned runtimeでviewer、Windows capture、capture-save、監視UI、task trayを接続する工程 | WPF app、app-owned runtime、capture-save workflow | 新しい数字認識方式やDB schema |
@@ -87,7 +111,7 @@ master DB inspectionは起動時・保存開始時に行う。固定pathだけ�
 | `M3 song/artist OCR` | resultの `song_title` / `artist` ROI | `--m3-song-artist-ocr`、OCR入口診断 | `ocr_raw`、`pre_normalized_text`、status、failure reason。曲名照合前の入口観測。 |
 | `M5 title OCR suffix` | M5でjacket候補が曖昧なときのresult title文字列 | M3 OCR結果から `TYPE1/2/3` 等を候補集合内で再順位付け | `title_ocr_rerank_status`。候補観測であり、M5 `matched`や確定IDではない。 |
 | `M5c title/artist OCR` | song-select observationのtitle/artist ROI | local Tesseract、`M5c-4` / `M5c-6` profile評価 | catalog/manual review用の候補評価。公開appや正式保存へ自動昇格しない。 |
-| `M7a digit recognition` | resultの可変桁数字ROI | template/bitmap比較。Tesseractとは別経路。 | `recognized_digits`、segment/status、expected/match。数字候補であり正式数値ではない。 |
+| `M7a digit recognition` | `RESULT数値認識根拠`へ渡す前のresult可変桁数字ROI | template/bitmap比較。Tesseractとは別経路。 | `recognized_digits`、segment/status、expected/match。数字候補であり正式数値ではない。 |
 | `M7 result-text feature` | resultのtitle/artist ROI | OCR-freeのluma/edge/dHash/line-hash等の画像feature | distance比較に再利用するpayloadとhash。文字列や正式IDではない。 |
 
 `M3 song/artist OCR` と `M5c title/artist OCR` は、同じtitle/artistという言葉を含むが入力画面が異なる。前者はresult、後者はsong-select observationである。`M7 result-text feature` は文字列を読む処理ではないため、`M7title` をOCRの別名として扱わない。
@@ -102,7 +126,7 @@ master DB inspectionは起動時・保存開始時に行う。固定pathだけ�
 - `candidate observation`: M5 `identity_signal_*`、M7a `recognized_digits`、M7 previewなど、後続レビューへ渡す材料。候補が一意でも正式値ではない。
 - `formal value`: 採用済みsource、field別根拠、必要なvalidationを満たし、M8正式save inputへ明示的に配置された値。
 - `flare_rank`: RESULT右側の独立badgeから認識する正式field。値は `I`〜`IX` / `EX` に限定し、認識不能時は `null` のまま保存を妨げない。`null` は「no-flareの証明」ではない。
-- `M7 result field recognition evidence`: rank/clear_type/flare_rankの専用recognizerが出すfield別根拠。rankはROIでFAILED/Eだけを判定し、通常rankはformal scoreから算出する。clear_typeは6判定数から算出し、rank周囲のanimation表示を根拠にしない。
+- `RESULT状態認識根拠`: rank/clear_type/flare_rankの専用画像認識または正式な画像認識値からの規則導出が出すfield別根拠。rankはROIでFAILED/Eだけを判定し、通常rankはformal scoreから算出する。clear_typeは判定数から算出し、rank周囲のanimation表示やOCRを根拠にしない。`M7 result field recognition evidence`はこの要件の実装対応名である。
 
 ## OCR結果の読み方
 
@@ -216,6 +240,12 @@ metadata または manifest 上の画面種別。
 
 metadata mode ではフレーム数ベース。timestamped、manifest、dry-run、将来キャプチャでは時間ベース。
 
+## confirmed event ID
+
+RESULT画面への遷移を1つのconfirmed eventとして扱うため、イベント境界で一度だけ発行する固有ID。同一RESULT画面の後続frame、再送、再処理では同じIDを引き継ぎ、RESULTSが消失してevent boundaryを抜けた後の別confirmed eventでは新しいIDを発行する。
+
+正式DBの`duplicate_key`はこのIDを使う。曲・譜面・スコア・判定数・rank・clear typeから作るRESULT fingerprintは、同一画面内のアニメーション差をまとめるイベントグルーピング専用であり、正式DBの`duplicate_key`には使わない。
+
 ## confirmation_mode
 
 保存確定の判定方式。
@@ -255,7 +285,7 @@ duplicate=false
 
 重複判定に使うキー。
 
-現行PoCでは、ファイル名に `scoreXXXXXX` があれば `score:<digits>`、なければ `file:<filename>`。本格実装では曲、譜面、スコア、判定数、画像ハッシュなどを使う方式へ差し替える。
+現行PoCでは、ファイル名に `scoreXXXXXX` があれば `score:<digits>`、なければ `file:<filename>`。app-ownedの正式保存ではconfirmed event IDを使い、RESULT fingerprintや正式RESULT値をduplicate keyへ昇格しない。
 
 ## transition_countup_*
 
@@ -334,6 +364,6 @@ M3、M5、M7aなどの候補材料を、M8正式保存の前に1件単位で束�
 
 ## formal save boundary
 
-M8の明示的な正式保存入口。confirmed-eventsだけを対象にし、fieldごとの採用済みsource、formal play値、正式duplicate key、必要な時刻・master情報・rank/clear typeなどをstrictに検証した `PersonalScoreDbSaveInput` だけを受け取る。M5 `identity_signal_*`、M7a `recognized_digits`、expected値、raw OCR、M8 preview rowは、そのまま正式値へ昇格しない。
+M8の明示的な正式保存入口。confirmed-eventsだけを対象にし、`RESULT同定根拠`、`RESULT数値認識根拠`、`RESULT状態認識根拠`、`capture event根拠`から構築したfieldごとの採用済みsource、formal play値、正式duplicate key、必要な時刻・master情報などをstrictに検証した `PersonalScoreDbSaveInput` だけを受け取る。`identity_signal_*`、`recognized_digits`、expected値、raw OCR、M8 preview rowは、そのまま正式値へ昇格しない。
 
 正式DB保存の詳細は `docs/design/10_personal_score_db_schema.md` と `docs/design/05_storage_io_spec.md` を正本とする。

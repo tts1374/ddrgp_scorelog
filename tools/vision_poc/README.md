@@ -2,6 +2,8 @@
 
 `samples/screenshots/organized/` のローカルスクリーンショットを使い、リザルト候補分類、ROI切り出し、スコア数字OCRの初期前処理を確認するためのPoCです。
 
+このPoCの`candidate`、`recognized_digits`、期待値、OCR、M5/M7a由来の出力は観測・評価材料です。正式保存の要件名は`RESULT同定根拠`、`RESULT数値認識根拠`、`RESULT状態認識根拠`、`capture event根拠`とし、正式sourceは採用済み画像認識とmaster/catalog整合だけに限定します。通常監視のRelease runtimeはこのPython/Tesseract経路を呼ばず、app-owned画像producerから既存formal save workflowへ接続します。
+
 ## 実行
 
 ```powershell
@@ -83,7 +85,7 @@ artifactと正式saveの接続は `tools.vision_poc.personal_score_db_workflow` 
 
 WPFのmanual入口専用の薄いprocess adapterは `python -m tools.vision_poc.personal_score_db_workflow_app --input <workflow.json> --database <formal.sqlite>` です。これは同じworkflow loader/orchestrationを呼び、workflow入力内の明示 `save_input.log_path` だけをartifact outputへ引き継ぎます。候補材料や正式値を解釈・補完せず、既存runner CLIのoption・終了コード契約も変更しません。
 
-WPF continuous capture接続は `python -m tools.vision_poc.capture_save_workflow_app --manifest <session-manifest> --master-database <master.sqlite> --database <formal.sqlite> [--m5-jacket-catalog <jacket-catalog.sqlite>]` です。capture-onlyの完成manifestに対して既存manifest modeをM5 jacket候補観測・M7a全数字ROIまで実行し、観測eventを取得順に `capture_save_workflow` へ渡します。通常のlive監視は1秒ごとの `results_header` とSCORE gateを通過した1行manifestだけを、`--output <temporary-dir> --transient-source live-memory://... --preconfirmed-candidate --m5-jacket-catalog <jacket-catalog.sqlite>` 付きで同じapplicationへ渡します。`--preconfirmed-candidate` はC#側で2サンプル確認済みの1フレームに限り、Python側の時間再確認だけを省略します。RESULT分類、catalogのread-only検証、既存の保存境界は維持します。未確定と `rejected_transition` はworkflow前でpolicy excluded、confirmed eventは既存 `personal_score_db_workflow` を1件1回だけ呼びます。自動formal昇格は採用済みfield source、confidence、完全性の全検査を要求し、candidate/raw/expected/M8 preview/相対時刻をformal値へコピーしません。現行の候補出力だけでは不足項目を `unresolved` に保ち、DBや親directoryを作りません。`invalid`、artifact failure、DB拒否などのfatal eventはsession `workflow_failed` と終了コード2へ昇格し、event詳細と同session内のsaved play IDは保持します。liveのcandidate PNG、manifest、CSV/JSONはworkflow終了後に削除し、正式DBにはhashと論理sourceだけを残します。capture-onlyの解析生成物は `data/capture_save_workflow/` に限定し、manual入口と入力由来を分けます。
+このCLIのWPF continuous capture接続は、明示的なoffline replay/integration確認用です。`python -m tools.vision_poc.capture_save_workflow_app --manifest <session-manifest> --master-database <master.sqlite> --database <formal.sqlite> [--m5-jacket-catalog <jacket-catalog.sqlite>]` でcapture-onlyの完成manifestを候補観測まで再実行します。通常のlive監視はこのCLIへ接続せず、app-owned runtime内でRESULT画像認識、master/catalog由来の同定、既存formal save workflow接続を行います。候補出力だけでは不足項目を`unresolved`に保ち、candidate/raw/expected/M8 preview/相対時刻/OCRをformal値へコピーしません。capture-only replayの解析生成物は`data/capture_save_workflow/`に限定し、manual入口と入力由来を分けます。
 
 continuous captureの `screen_type=unknown` は評価用正解ラベルではありません。Vision PoCが評価不一致を示す終了コード1を返しても、capture-saveは生成済みの `result_events.csv` を読み取って続行します。解析例外やその他の失敗は `analysis_failed` のままです。
 
@@ -91,7 +93,7 @@ capture-saveが正式入力へ渡す `capture_hash` は、安定した `capture_
 
 `write_personal_score_db_save(connection, save_input)` は、保存成功なら `source_captures`、`plays`、`analysis_logs`、duplicate/低信頼度/error/skipなら `source_captures` と `analysis_logs` を1 transactionでinsertします。playつき入力の明示 `duplicate_key` が既存正式playと衝突した場合は、2件目のplayを作らず、今回のsourceと `skipped` / `duplicate` / `duplicate_key_already_saved` / `duplicate=true` のanalysisだけを記録します。途中失敗では同じ呼び出しのrowをrollbackします。これはin-memory SQLiteを使った正式schemaの最小縦断入口であり、実ファイルの既定自動保存、既存DB migration、低信頼度ログファイル保存ではありません。
 
-M7/M8 preview材料から正式保存入力へ進めるpure adapterは `tools.vision_poc.personal_score_db_save_adapter` に分けています。`candidate_material` は由来確認用に受け取りますが、`identity_signal_*`、M7a `recognized_digits`、`played_at_ms` / `timestamp_ms` を正式ID・数字・実時刻へコピーしません。`PersonalScoreDbFormalPlayValues` にレビュー済みの時刻、master version、ID、数字、rank、clear type、正式duplicate keyがすべて明示された場合だけ `ready` と `PersonalScoreDbSaveInput` を返します。不足・不正値は理由付き `unresolved` として正式入力を返さず、duplicateまたは明示された低信頼度/error/skipは `excluded` として `play=None` の正式analysis入力を返します。このadapter自体はDBやファイルへ書き込みません。
+preview材料から正式保存入力へ進めるpure adapterは `tools.vision_poc.personal_score_db_save_adapter` に分けています。`candidate_material` は由来確認用に受け取りますが、`identity_signal_*`、`recognized_digits`、`played_at_ms` / `timestamp_ms`を正式ID・数字・実時刻へコピーしません。`PersonalScoreDbFormalPlayValues` にレビュー済みの`RESULT同定根拠`、`RESULT数値認識根拠`、`RESULT状態認識根拠`、`capture event根拠`から得た時刻、master version、ID、数字、rank、clear type、正式duplicate keyがすべて明示された場合だけ `ready` と `PersonalScoreDbSaveInput` を返します。不足・不正値は理由付き `unresolved` として正式入力を返さず、duplicateまたは明示された低信頼度/error/skipは `excluded` として `play=None` の正式analysis入力を返します。このadapter自体はDBやファイルへ書き込みません。
 
 明示ファイル保存APIは `tools.vision_poc.personal_score_db_file_save.save_personal_score_db_file(db_path, adapter_input)` です。adapterをDB準備より先に評価し、`unresolved` は理由付き `written=false` としてDBファイルや親ディレクトリを作らずに返します。`ready` / `excluded` だけが `prepare_personal_score_db_file_for_write()` と既存transaction writerへ進み、新規/0 byte/compatible正式DBへそれぞれsource/play/analysisまたはsource/analysisを記録します。戻り値はDB path、adapter status、理由、write完了有無、source capture ID、analysis ID、任意のplay IDを持ちます。DB duplicate collisionは `adapter_status=excluded`、`written=true`、`play_id=None`、理由 `duplicate_key_already_saved` として返します。M8 preview DB、unknown DB、metadata identity mismatch、manual migration候補、非SQLite、ディレクトリは従来のファイル準備境界で拒否し、自動修復しません。
 

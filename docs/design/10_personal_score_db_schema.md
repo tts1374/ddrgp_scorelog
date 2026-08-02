@@ -79,7 +79,7 @@ adapterは `candidate_material` を正式値の由来として自動採用しな
 
 ## 正式保存入力契約
 
-`PersonalScoreDbSaveInput` はM8 preview payloadを直接受け取らない。M5/M7a由来の候補材料を上流で確認し、正式値へ確定した後だけ生成する。
+`PersonalScoreDbSaveInput` はM8 preview payloadを直接受け取らない。`RESULT同定根拠`、`RESULT数値認識根拠`、`RESULT状態認識根拠`、`capture event根拠`を上流で確認し、正式値へ確定した後だけ生成する。
 
 保存成功入力では以下を必須にする。
 
@@ -162,7 +162,7 @@ M8 preview最小 `plays` は以下の用途に限定する。
 - `analysis_summary_json`
 - `log_path`
 
-`analysis_logs` は保存判定の説明と再調査の入口であり、正式保存値を二重管理する場所ではない。OCR/M5/M7a由来の材料はversion 1詳細JSONの `candidate_material` でkind、status、短いsummaryとしてだけ残し、正式play値へ投影しない。
+`analysis_logs` は保存判定の説明と再調査の入口であり、正式保存値を二重管理する場所ではない。OCR、候補同定、候補数値認識、候補状態認識由来の材料はversion 1詳細JSONの `candidate_material` でkind、status、短いsummaryとしてだけ残し、正式play値へ投影しない。
 
 `analysis_logs.log_path` は空文字、またはリポジトリroot基準の `logs/analysis_details/**/*.json` だけを参照する。version 1詳細JSONは1 analysisにつき1 objectで、schema/generator、analysis/source ID、status、event、review、investigation、任意の失敗画像参照、retentionを持つ。明示API/CLIは検査済みpayloadを同namespaceの新規pathへatomic生成できるが、DB insertやsave連鎖は行わない。正式play値、receipt key、DB diagnostic payloadを持たず、DB diagnostic JSONLも `log_path` に記録しない。
 
@@ -278,7 +278,7 @@ metadata identity は `created_by`、`schema_name`、`schema_contract_scope`、`
 
 この明示ファイル保存はM8 preview の `--m8-score-db-output` とは別物として扱う。`--personal-score-db-save-input` と `--personal-score-db-save-database` の必須ペアを指定した単発CLIだけが1回呼べる。通常PoC、timestamped/manifest runner、既定自動保存、既存DB migration、DB診断の自動ファイル出力には進まない。
 
-CLI入力はUTF-8 JSONの `input_schema_version=1` objectとする。候補材料、source/analysis値、任意の `formal_play`、任意の `exclusion` を別構造にし、全階層の必須/未知keyと型をadapter前に検査する。M5 `identity_signal_*`、M7a `recognized_digits`、`played_at_ms` / `timestamp_ms` は正式playへ暗黙コピーしない。不正入力は終了コード2、adapterの `unresolved` は終了コード1でDB準備前に止め、transaction完了した `ready` / `excluded` だけ終了コード0とする。
+CLI入力はUTF-8 JSONの `input_schema_version=1` objectとする。候補材料、source/analysis値、任意の `formal_play`、任意の `exclusion` を別構造にし、全階層の必須/未知keyと型をadapter前に検査する。`identity_signal_*`、`recognized_digits`、OCR、`played_at_ms` / `timestamp_ms` は正式playへ暗黙コピーしない。不正入力は終了コード2、adapterの `unresolved` は終了コード1でDB準備前に止め、transaction完了した `ready` / `excluded` だけ終了コード0とする。
 
 `--personal-score-db-save-input-validate` は同じJSON契約をDB保存前に検査する単独入口である。strict loaderとadapterだけを各1回実行し、`validation_result_schema_version=1`、入力path、`adapter_status`、`save_input_constructed`、理由をJSONで返す。ready/excludedは0、unresolvedは1、不正JSON/schemaまたはoption混在は2とする。DB pathを受け取らず、DB準備、duplicate preflight、insert、diagnostic/output/log生成を行わないため、readyはDB互換性、既存duplicate非衝突、並行writer安全性、実保存成功を保証しない。
 
@@ -301,7 +301,7 @@ CLI入力はUTF-8 JSONの `input_schema_version=1` objectとする。候補材�
 - 同テストは空DBだけ初期schemaを作成し、M8 preview DB、unknown DB、metadata identity mismatch、manual migration候補を自動変更しないことを固定する。
 - 同テストはファイルパス境界として、新規DBファイルと0 byte空ファイルだけ正式schemaへ初期化でき、compatible DBは変更せず、M8 preview DB、unknown DB、metadata identity mismatch、manual migration候補、非SQLiteファイル、ディレクトリを自動変更しないことを固定する。
 - 同テストは compatible、空DB、M8 preview DB、unknown DB、manual migration候補のdiagnostic dict / Markdown表示を固定し、拒否理由、必須table欠落、metadata identity、path情報、ファイル準備summaryを人間が読める形に保つ。
-- 同テストは preview列、M7a raw候補、OCR raw/normalized が正式 `plays` に混入しないことを確認する。
+- 同テストは preview列、raw候補、OCR raw/normalized が正式 `plays` に混入しないことを確認する。
 - 同テストは `source_captures` がフレーム参照列だけを持ち、`analysis_logs.log_path` や diagnostic JSONL と混同しないことを確認する。
 - `tests/test_personal_score_db_analysis_artifacts.py` はversion 1 strict contract、安全なoutput path、既存ファイル保護、決定的UTF-8/LF出力、atomic publish失敗時の清掃、CLI排他、failure image非生成を固定する。
 - `tests/test_personal_score_db_workflow.py` はready/excluded/duplicate、artifact任意/必須、共有値不一致、publish/DB失敗、同一artifact再利用とconflictを固定する。正式schemaと既存writer transactionは変更しない。
@@ -315,9 +315,9 @@ CLI入力はUTF-8 JSONの `input_schema_version=1` objectとする。候補材�
 
 ## Continuous capture application boundary
 
-`capture_save_workflow` は正式schema version 1やwriterを再実装せず、eventごとに既存 `personal_score_db_workflow` を最大1回呼ぶapplication境界である。自動formal昇格adapterが返す `PersonalScoreDbFormalPlayValues` だけを既存strict save inputへ配置し、M5/M7a/M8候補行そのものを正式DB入力にしない。
+`capture_save_workflow` は正式schema version 1やwriterを再実装せず、eventごとに既存 `personal_score_db_workflow` を最大1回呼ぶapplication境界である。自動formal昇格adapterが返す `PersonalScoreDbFormalPlayValues` だけを既存strict save inputへ配置し、候補同定・候補数値・候補状態・M8 preview行そのものを正式DB入力にしない。
 
-自動formal evidenceはfieldごとの採用済みsourceとconfidenceを持つ。全ID、全数字、timezone付きplayed_at、master version、rank、clear type、正式duplicate keyのいずれかが未解決ならformal playを返さず `unresolved` とする。candidate、raw OCR、expected値、preview payload、相対 `played_at_ms` / `timestamp_ms` は正式値のfallbackにしない。
+自動formal evidenceは`RESULT同定根拠`、`RESULT数値認識根拠`、`RESULT状態認識根拠`、`capture event根拠`ごとの採用済みsourceとconfidenceを持つ。全ID、全数字、timezone付きplayed_at、master version、rank、clear type、正式duplicate keyのいずれかが未解決ならformal playを返さず `unresolved` とする。candidate、raw OCR、expected値、preview payload、相対 `played_at_ms` / `timestamp_ms` は正式値のfallbackにしない。
 
 既存 `source_captures`、`plays`、`analysis_logs` の列、参照、transaction、duplicate collision契約は変更しない。capture-only由来は `source_kind=capture` とmanifest/frame参照を持ち、live監視由来も `source_kind=capture` のまま論理sourceと空の画像参照を使い、manual reviewed入口は `source_kind=manual` 等の既存由来を維持する。DB duplicateやplayなし除外をsavedへ丸めず、`saved` transactionの `play_id` だけviewer再読込対象にする。
 

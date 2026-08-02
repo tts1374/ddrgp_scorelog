@@ -363,9 +363,9 @@
 
 ## 正式個人スコアDB save input / transaction
 
-- 正式保存入力はM8 preview payload/rowを直接受け取らず、timezone付き時刻、master version、正式ID、rank、clear type、正式duplicate key、confidence、app versionが確定済みであることを要求する。
+- 正式保存入力はM8 preview payload/rowを直接受け取らず、`RESULT同定根拠`、`RESULT数値認識根拠`、`RESULT状態認識根拠`、`capture event根拠`から得たtimezone付き時刻、master version、正式ID、rank、clear type、正式duplicate key、confidence、app versionが確定済みであることを要求する。
 - timestampなしpreviewの `played_at_ms=0`、PoCの `score:` / `file:` duplicate key、`source_kind=unknown` を正式writerへ渡さない。
-- pure adapterは `candidate_material` の `identity_signal_*`、M7a `recognized_digits`、`played_at_ms` / `timestamp_ms` を正式play値へ暗黙昇格せず、正式値不足時に `unresolved` から保存入力を返さない。
+- pure adapterは `candidate_material` の `identity_signal_*`、`recognized_digits`、OCR、`played_at_ms` / `timestamp_ms` を正式play値へ暗黙昇格せず、正式値不足時に `unresolved` から保存入力を返さない。
 - duplicateと明示された低信頼度/error/skipはadapterで `excluded` となり、`play=None` を維持する。
 - 保存成功は `confirmed_result=true`、`duplicate=false`、`event_type=confirmed`、`analysis_status=saved`、`save_boundary_status=save_ready` に限る。
 - duplicate、低信頼度、error、その他skipは `plays` を作らず、source captureとanalysisだけを記録する。
@@ -386,7 +386,7 @@
 - validation readyをDB互換性、DB内duplicateなし、並行writer安全性、実保存成功として扱わない。
 - review templateは `input_schema_version=1` と現行loaderの全必須構造を固定順で持ち、UTF-8 BOMなし・LF・末尾改行付きで生成する。
 - review templateは `candidate_material={}`、未確定の全 `formal_play` field、`exclusion=null` を持ち、未編集状態をadapter/validationで `unresolved` に保つ。
-- template生成はmetadata、M5/M7a/M8 preview、manifest、画像、DBを読まず、候補値、相対時刻、正式ID、正式duplicate keyを生成・補完しない。
+- template生成は未採用のmetadata、preview、manifest、画像、DBを読まず、候補値、相対時刻、正式ID、正式duplicate keyを生成・補完しない。
 - template optionは `data/` 配下の新規 `.json` だけを許可し、既存ファイル、`data/` 外、他option混在を出力副作用前に拒否する。DB、`logs/`、画像、diagnostic outputを作らない。
 - 片方だけのCLI option、入力schema不正、`unresolved` はDB作成・変更前に非0終了する。`ready` / `excluded` だけが終了コード0でtransaction完了し、結果JSONの `play_id` でplay有無を区別する。
 - CLI経由でも新規/0 byte/compatible正式DBだけを許可し、preview / unknown / metadata identity mismatch / manual migration候補 / 非SQLite / ディレクトリを変更せず拒否する。
