@@ -105,7 +105,13 @@ public sealed record LiveResultObservation(
     string Reason,
     IReadOnlyDictionary<string, Runtime.M7aDigitRecognitionResult>? DigitRecognitions = null,
     string DigitRecognitionStatus = "not_evaluated",
-    AppOwnedFormalEvidence? FormalEvidence = null);
+    AppOwnedFormalEvidence? FormalEvidence = null,
+    string? ConfirmedEventId = null);
+
+internal static class ConfirmedResultEventId
+{
+    public static string Create() => $"confirmed-event-v1:{Guid.NewGuid():N}";
+}
 
 public interface IGraphicsCaptureAdapter
 {

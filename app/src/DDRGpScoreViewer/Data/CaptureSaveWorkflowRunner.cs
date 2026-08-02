@@ -143,6 +143,11 @@ public sealed class AppOwnedCaptureSaveWorkflowRunner :
             {
                 return FailedResult(observation.Reason);
             }
+            observation = observation with
+            {
+                ConfirmedEventId = observation.ConfirmedEventId ??
+                    ConfirmedResultEventId.Create(),
+            };
             var enrichedObservation = identityEvidenceProducer.Enrich(
                 frame,
                 observation,
@@ -190,6 +195,8 @@ public sealed class AppOwnedCaptureSaveWorkflowRunner :
         AppCaptureManifestRow? pending = null;
         CapturedFrame? pendingFrame = null;
         LiveResultObservation? pendingObservation = null;
+        string? pendingGroupingKey = null;
+        string? pendingConfirmedEventId = null;
         var eventCount = 0;
 
         foreach (var row in rows)
@@ -227,30 +234,41 @@ public sealed class AppOwnedCaptureSaveWorkflowRunner :
                 pending = null;
                 pendingFrame = null;
                 pendingObservation = null;
+                pendingGroupingKey = null;
+                pendingConfirmedEventId = null;
                 continue;
             }
 
-            var key = observation.TitleSignature.Length == 0
-                ? "result"
-                : observation.TitleSignature;
+            var key = AppOwnedResultEventFingerprint.TryCreate(
+                    observation,
+                    requireIdentity: false) ??
+                (observation.TitleSignature.Length == 0
+                    ? "result"
+                    : observation.TitleSignature);
             if (string.Equals(activeConfirmedKey, key, StringComparison.Ordinal))
             {
-                // A stable RESULT with the same signature is a single event. Ignore
-                // later samples until a non-RESULT frame reopens the event boundary.
+                // A stable RESULT with the same grouping key is a single event.
+                // Ignore later samples until a non-RESULT frame reopens the event
+                // boundary.
                 continue;
             }
 
             if (pending is not null &&
                 pendingObservation is not null &&
-                pendingObservation.TitleSignature == observation.TitleSignature &&
+                pendingGroupingKey == key &&
                 row.TimestampMs - pending.TimestampMs >= 1_000)
             {
                 eventCount++;
                 activeConfirmedKey = key;
                 var duration = row.TimestampMs - pending.TimestampMs;
+                var confirmedObservation = observation with
+                {
+                    ConfirmedEventId = pendingConfirmedEventId ??
+                        ConfirmedResultEventId.Create(),
+                };
                 var confirmedResult = await ProcessEventAsync(
                     pendingFrame ?? frame,
-                    observation,
+                    confirmedObservation,
                     scoreDatabasePath,
                     row,
                     manifestPath,
@@ -261,12 +279,19 @@ public sealed class AppOwnedCaptureSaveWorkflowRunner :
                 pending = null;
                 pendingFrame = null;
                 pendingObservation = null;
+                pendingGroupingKey = null;
+                pendingConfirmedEventId = null;
                 continue;
             }
 
+            if (!string.Equals(pendingGroupingKey, key, StringComparison.Ordinal))
+            {
+                pendingConfirmedEventId = ConfirmedResultEventId.Create();
+            }
             pending = row;
             pendingFrame = frame;
             pendingObservation = observation;
+            pendingGroupingKey = key;
         }
 
         return new CaptureSaveWorkflowResult(

@@ -5,9 +5,9 @@ using System.Text;
 namespace DDRGpScoreViewer.Capture;
 
 /// <summary>
-/// Builds the stable identity of one adopted RESULT event. It deliberately
-/// excludes capture time, frame time, and volatile pixels so an animated
-/// RESULT sample cannot become a new play by itself.
+/// Groups frames from the same adopted RESULT screen. It deliberately excludes
+/// capture time, frame time, and volatile pixels, and is never used as the
+/// formal database duplicate key.
 /// </summary>
 internal static class AppOwnedResultEventFingerprint
 {

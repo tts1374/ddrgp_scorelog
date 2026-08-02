@@ -240,6 +240,12 @@ metadata または manifest 上の画面種別。
 
 metadata mode ではフレーム数ベース。timestamped、manifest、dry-run、将来キャプチャでは時間ベース。
 
+## confirmed event ID
+
+RESULT画面への遷移を1つのconfirmed eventとして扱うため、イベント境界で一度だけ発行する固有ID。同一RESULT画面の後続frame、再送、再処理では同じIDを引き継ぎ、RESULTSが消失してevent boundaryを抜けた後の別confirmed eventでは新しいIDを発行する。
+
+正式DBの`duplicate_key`はこのIDを使う。曲・譜面・スコア・判定数・rank・clear typeから作るRESULT fingerprintは、同一画面内のアニメーション差をまとめるイベントグルーピング専用であり、正式DBの`duplicate_key`には使わない。
+
 ## confirmation_mode
 
 保存確定の判定方式。
@@ -279,7 +285,7 @@ duplicate=false
 
 重複判定に使うキー。
 
-現行PoCでは、ファイル名に `scoreXXXXXX` があれば `score:<digits>`、なければ `file:<filename>`。本格実装では曲、譜面、スコア、判定数、画像ハッシュなどを使う方式へ差し替える。
+現行PoCでは、ファイル名に `scoreXXXXXX` があれば `score:<digits>`、なければ `file:<filename>`。app-ownedの正式保存ではconfirmed event IDを使い、RESULT fingerprintや正式RESULT値をduplicate keyへ昇格しない。
 
 ## transition_countup_*
 

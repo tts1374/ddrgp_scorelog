@@ -39,15 +39,19 @@ public sealed class CaptureSaveWorkflowRunnerTests
     {
         using var database = new DatabaseFixture();
         var runner = new AppOwnedCaptureSaveWorkflowRunner();
+        const string confirmedEventId = "confirmed-event-v1:replayed";
         var first = await runner.RunCandidateAsync(
             Frame(1_000),
-            FormalObservation(987650),
+            FormalObservation(987650, confirmedEventId: confirmedEventId),
             database.ScorePath,
             database.MasterPath,
             database.CatalogPath);
         var second = await runner.RunCandidateAsync(
             Frame(2_000, DateTimeOffset.Parse("2026-07-29T12:00:01+09:00")),
-            FormalObservation(987650) with { TitleSignature = "animated-frame-2" },
+            FormalObservation(987650, confirmedEventId: confirmedEventId) with
+            {
+                TitleSignature = "animated-frame-2",
+            },
             database.ScorePath,
             database.MasterPath,
             database.CatalogPath);
@@ -67,6 +71,40 @@ public sealed class CaptureSaveWorkflowRunnerTests
         Assert.Equal(1L, reader.GetInt64(0));
         Assert.Equal(2L, reader.GetInt64(1));
         Assert.Equal(2L, reader.GetInt64(2));
+    }
+
+    [Fact]
+    public async Task Separate_confirmed_events_with_identical_formal_values_both_save()
+    {
+        using var database = new DatabaseFixture();
+        var runner = new AppOwnedCaptureSaveWorkflowRunner();
+        var first = await runner.RunCandidateAsync(
+            Frame(1_000),
+            FormalObservation(987650, confirmedEventId: "confirmed-event-v1:first"),
+            database.ScorePath,
+            database.MasterPath,
+            database.CatalogPath);
+        var second = await runner.RunCandidateAsync(
+            Frame(2_000, DateTimeOffset.Parse("2026-07-29T12:00:01+09:00")),
+            FormalObservation(987650, confirmedEventId: "confirmed-event-v1:second"),
+            database.ScorePath,
+            database.MasterPath,
+            database.CatalogPath);
+
+        Assert.Equal("completed", first.Status);
+        Assert.Equal("completed", second.Status);
+        Assert.Equal(1, first.StatusCounts["saved"]);
+        Assert.Equal(1, second.StatusCounts["saved"]);
+        Assert.Single(first.SavedPlayIds);
+        Assert.Single(second.SavedPlayIds);
+        using var connection = OpenReadOnly(database.ScorePath);
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            "SELECT COUNT(*), COUNT(DISTINCT duplicate_key) FROM plays;";
+        using var reader = command.ExecuteReader();
+        Assert.True(reader.Read());
+        Assert.Equal(2L, reader.GetInt64(0));
+        Assert.Equal(2L, reader.GetInt64(1));
     }
 
     [Fact]
@@ -353,7 +391,8 @@ public sealed class CaptureSaveWorkflowRunnerTests
     private static LiveResultObservation FormalObservation(
         int score,
         string rank = "AAA",
-        string digitStatus = "recognized") =>
+        string digitStatus = "recognized",
+        string? confirmedEventId = null) =>
         new(
             true,
             score.ToString(),
@@ -409,7 +448,8 @@ public sealed class CaptureSaveWorkflowRunnerTests
                     ["rank"] = 0.99,
                     ["clear_type"] = 0.99,
                 },
-                Ok: 0));
+                Ok: 0),
+            ConfirmedEventId: confirmedEventId);
 
     private static SqliteConnection OpenReadOnly(string path)
     {

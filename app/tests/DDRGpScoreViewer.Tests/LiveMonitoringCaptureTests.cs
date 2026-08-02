@@ -131,7 +131,7 @@ public sealed class LiveMonitoringCaptureTests
             FormalResult("100", "animated-d"),
         ]);
         var source = new StubFrameSource(Frames(0, 1_000, 2_000, 3_000));
-        var processed = new List<string>();
+        var processed = new List<(string Signature, string? EventId)>();
         var service = new LiveMonitoringCaptureService(
             new StubTargetedAdapter(source),
             new StubResultAnalyzer(observations));
@@ -142,12 +142,14 @@ public sealed class LiveMonitoringCaptureTests
             new CallbackProgress<CaptureSessionProgress>(_ => { }),
             (_, observation, _) =>
             {
-                processed.Add(observation.TitleSignature);
+                processed.Add((observation.TitleSignature, observation.ConfirmedEventId));
                 return Task.CompletedTask;
             });
 
         Assert.Equal(CaptureOperationStatus.Cancelled, result.Status);
-        Assert.Equal(["animated-b"], processed);
+        Assert.Single(processed);
+        Assert.Equal("animated-b", processed[0].Signature);
+        Assert.StartsWith("confirmed-event-v1:", processed[0].EventId);
     }
 
     [Fact]

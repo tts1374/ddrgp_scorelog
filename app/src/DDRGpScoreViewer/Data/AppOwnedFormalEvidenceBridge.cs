@@ -80,6 +80,10 @@ internal static class AppOwnedFormalEvidenceBridge
             string.Equals(evidence.ClearType, "FAILED", StringComparison.Ordinal);
         var reasonsForEvidence = new List<string>(
             evidence.RecognitionReasons ?? Array.Empty<string>());
+        if (string.IsNullOrWhiteSpace(observation.ConfirmedEventId))
+        {
+            reasonsForEvidence.Add("formal_evidence.confirmed_event_id_missing");
+        }
         foreach (var (fieldName, requiredSource) in RequiredSources)
         {
             if (fieldName == "flare_rank" && evidence.FlareRank is null)
@@ -183,15 +187,6 @@ internal static class AppOwnedFormalEvidenceBridge
             ["played_at"] = FormalEvidenceSourceNames.CaptureUtc,
             ["duplicate_key"] = FormalEvidenceSourceNames.CaptureEventV1,
         };
-        var eventFingerprint = AppOwnedResultEventFingerprint.TryCreate(
-            observation,
-            requireIdentity: true);
-        if (eventFingerprint is null)
-        {
-            return Unresolved(
-                "formal_evidence.event_fingerprint_missing",
-                evidence.IdentitySignalStatus);
-        }
         var formalPlay = new AppFormalPlay(
             $"play-{captureId}",
             capturedAtUtc.ToString("O", CultureInfo.InvariantCulture),
@@ -209,7 +204,7 @@ internal static class AppOwnedFormalEvidenceBridge
             evidence.Rank!,
             evidence.ClearType!,
             evidence.FlareRank,
-            $"capture-event-v1:{eventFingerprint}");
+            observation.ConfirmedEventId!);
         return new AppFormalEvidencePromotion(
             "ready",
             formalPlay,
