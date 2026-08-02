@@ -31,6 +31,14 @@ internal sealed class AppOwnedVisualIdentityEvidenceProducer
         "m7-result-text-feature-master-v1";
     private const string ResultTextFeatureVersion = "m7-result-text-image-v1";
     private const string ResultTextRoiVersion = "m7-result-title-artist-roi-v1";
+    private const int ResultTextFeatureVectorLength = 96 * 16;
+    private const int ResultTextSuffixFeatureVectorLength = 40 * 16;
+    private const int ResultTextLinehashWidth = 304;
+    private const int ResultTextLinehashHeight = 28;
+    private const int ResultTextLinehashHexLength = ResultTextLinehashWidth / 4;
+    private const int ResultTextLinehashLumaThreshold = 180;
+    private const int ResultTextLinehashChannelSpreadMax = 80;
+    private const double ResultTextLinehashVariableBitWeight = 5.0;
 
     private static readonly (int X, int Y, int Width, int Height) JacketRoi =
         (532, 54, 216, 216);
@@ -527,6 +535,17 @@ internal sealed class AppOwnedVisualIdentityEvidenceProducer
             return ResultTextResolution.Unavailable(fieldName);
         }
 
+        if (fieldName == "title")
+        {
+            var linehashResolution = ResolveResultTextLinehash(
+                observed,
+                fieldReferences);
+            if (linehashResolution is not null)
+            {
+                return linehashResolution;
+            }
+        }
+
         var scored = fieldReferences
             .GroupBy(reference => reference.SongId, StringComparer.Ordinal)
             .Select(group =>
@@ -562,6 +581,118 @@ internal sealed class AppOwnedVisualIdentityEvidenceProducer
         }
 
         return ResultTextResolution.Resolved(best.SongId, best.Distance, margin);
+    }
+
+    private static ResultTextResolution? ResolveResultTextLinehash(
+        ResultTextFeature observed,
+        IReadOnlyList<ResultTextReference> references)
+    {
+        var exactSongIds = references
+            .Where(reference => reference.Feature.LinehashRows.SequenceEqual(
+                observed.LinehashRows))
+            .Select(reference => reference.SongId)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        if (exactSongIds.Length == 1)
+        {
+            return ResultTextResolution.Resolved(exactSongIds[0], 0.0, null);
+        }
+
+        if (exactSongIds.Length > 1 || references.Count == 0)
+        {
+            return null;
+        }
+
+        var observedBits = DecodeResultTextLinehash(observed.LinehashRows);
+        var referenceBits = references
+            .Select(reference => DecodeResultTextLinehash(reference.Feature.LinehashRows))
+            .ToArray();
+        var variableBitMask = new bool[observedBits.Length];
+        for (var index = 0; index < variableBitMask.Length; index++)
+        {
+            var first = referenceBits[0][index];
+            variableBitMask[index] = referenceBits.Any(bits => bits[index] != first);
+        }
+
+        if (!variableBitMask.Any(value => value))
+        {
+            return null;
+        }
+
+        var scored = references
+            .Select((reference, index) =>
+                (
+                    Distance: ResultTextLinehashDistance(
+                        observedBits,
+                        referenceBits[index],
+                        variableBitMask),
+                    reference.SongId))
+            .GroupBy(item => item.SongId, StringComparer.Ordinal)
+            .Select(group =>
+            {
+                var best = group.Min(item => item.Distance);
+                return (Distance: best, SongId: group.Key);
+            })
+            .OrderBy(item => item.Distance)
+            .ThenBy(item => item.SongId, StringComparer.Ordinal)
+            .ToArray();
+        if (scored.Length < 2)
+        {
+            return null;
+        }
+
+        var bestMatch = scored[0];
+        var margin = scored[1].Distance - bestMatch.Distance;
+        if (bestMatch.Distance > ResultTextDistanceThreshold ||
+            margin <= ResultTextAmbiguityDelta)
+        {
+            return null;
+        }
+
+        return ResultTextResolution.Resolved(
+            bestMatch.SongId,
+            bestMatch.Distance,
+            margin);
+    }
+
+    private static bool[] DecodeResultTextLinehash(
+        IReadOnlyList<string> rows)
+    {
+        var bits = new bool[ResultTextLinehashWidth * ResultTextLinehashHeight];
+        var index = 0;
+        foreach (var row in rows)
+        {
+            foreach (var character in row)
+            {
+                var nibble = HexValue(character);
+                for (var bit = 3; bit >= 0; bit--)
+                {
+                    bits[index++] = (nibble & (1 << bit)) != 0;
+                }
+            }
+        }
+        return bits;
+    }
+
+    private static double ResultTextLinehashDistance(
+        IReadOnlyList<bool> observed,
+        IReadOnlyList<bool> reference,
+        IReadOnlyList<bool> variableBitMask)
+    {
+        var weightedMismatches = 0.0;
+        var totalWeight = 0.0;
+        for (var index = 0; index < observed.Count; index++)
+        {
+            var weight = variableBitMask[index]
+                ? ResultTextLinehashVariableBitWeight
+                : 1.0;
+            totalWeight += weight;
+            if (observed[index] != reference[index])
+            {
+                weightedMismatches += weight;
+            }
+        }
+        return totalWeight == 0.0 ? 1.0 : weightedMismatches / totalWeight;
     }
 
     private static ResultTextFeature ReadResultTextFeature(
@@ -600,18 +731,26 @@ internal sealed class AppOwnedVisualIdentityEvidenceProducer
             throw new InvalidDataException("Result text feature payload identity is invalid.");
         }
 
-        var luma = ReadResultTextVector(payload, "luma", 96 * 16, [96, 16]);
-        var edge = ReadResultTextVector(payload, "edge", 96 * 16, [96, 16]);
+        var luma = ReadResultTextVector(
+            payload,
+            "luma",
+            ResultTextFeatureVectorLength,
+            [ResultTextFeatureVectorLength]);
+        var edge = ReadResultTextVector(
+            payload,
+            "edge",
+            ResultTextFeatureVectorLength,
+            [ResultTextFeatureVectorLength]);
         var suffixLuma = ReadResultTextVector(
             payload,
             "suffix_luma",
-            40 * 16,
-            [40, 16]);
+            ResultTextSuffixFeatureVectorLength,
+            [ResultTextSuffixFeatureVectorLength]);
         var suffixEdge = ReadResultTextVector(
             payload,
             "suffix_edge",
-            40 * 16,
-            [40, 16]);
+            ResultTextSuffixFeatureVectorLength,
+            [ResultTextSuffixFeatureVectorLength]);
         var dhash = ReadHexBits(RequiredString(payload, "dhash_hex"), 64);
         if (!payload.TryGetProperty("linehash_rows", out var linehashRows) ||
             linehashRows.ValueKind != JsonValueKind.Array ||
@@ -623,13 +762,23 @@ internal sealed class AppOwnedVisualIdentityEvidenceProducer
         foreach (var row in linehashRows.EnumerateArray())
         {
             if (row.ValueKind != JsonValueKind.String ||
-                !IsHex(row.GetString() ?? string.Empty, 76))
+                !IsHex(row.GetString() ?? string.Empty, ResultTextLinehashHexLength))
             {
                 throw new InvalidDataException("Result text feature linehash row is invalid.");
             }
         }
 
-        return new ResultTextFeature(luma, edge, suffixLuma, suffixEdge, dhash);
+        var linehashValues = linehashRows
+            .EnumerateArray()
+            .Select(row => row.GetString()!)
+            .ToArray();
+        return new ResultTextFeature(
+            luma,
+            edge,
+            suffixLuma,
+            suffixEdge,
+            dhash,
+            linehashValues);
     }
 
     private static double[] ReadResultTextVector(
@@ -1112,13 +1261,88 @@ internal sealed class AppOwnedVisualIdentityEvidenceProducer
                         : 0.0;
             }
         }
+        var linehashRows = ExtractResultTextLinehashRows(image);
 
         return new ResultTextFeature(
             QuantizeResultTextVector(resizedPixels),
             QuantizeResultTextVector(FindEdges(resizedPixels, 96, 16)),
             QuantizeResultTextVector(suffixPixels),
             QuantizeResultTextVector(FindEdges(suffixPixels, 40, 16)),
-            dhash);
+            dhash,
+            linehashRows);
+    }
+
+    private static string[] ExtractResultTextLinehashRows(AppOwnedImageBuffer image)
+    {
+        var sourceHeight = Math.Min(image.Height, ResultTextLinehashHeight);
+        var red = new double[image.Width * sourceHeight];
+        var green = new double[image.Width * sourceHeight];
+        var blue = new double[image.Width * sourceHeight];
+        for (var y = 0; y < sourceHeight; y++)
+        {
+            for (var x = 0; x < image.Width; x++)
+            {
+                var pixel = image.GetPixel(x, y);
+                var index = y * image.Width + x;
+                red[index] = pixel.Red;
+                green[index] = pixel.Green;
+                blue[index] = pixel.Blue;
+            }
+        }
+
+        var resizedRed = ResizeGrayscale(
+            red,
+            image.Width,
+            sourceHeight,
+            ResultTextLinehashWidth,
+            ResultTextLinehashHeight);
+        var resizedGreen = ResizeGrayscale(
+            green,
+            image.Width,
+            sourceHeight,
+            ResultTextLinehashWidth,
+            ResultTextLinehashHeight);
+        var resizedBlue = ResizeGrayscale(
+            blue,
+            image.Width,
+            sourceHeight,
+            ResultTextLinehashWidth,
+            ResultTextLinehashHeight);
+        var rows = new string[ResultTextLinehashHeight];
+        for (var y = 0; y < ResultTextLinehashHeight; y++)
+        {
+            var builder = new StringBuilder(ResultTextLinehashHexLength);
+            for (var x = 0; x < ResultTextLinehashWidth; x += 4)
+            {
+                var nibble = 0;
+                for (var bit = 0; bit < 4; bit++)
+                {
+                    var index = y * ResultTextLinehashWidth + x + bit;
+                    var redValue = (int)Math.Clamp(
+                        Math.Round(resizedRed[index], MidpointRounding.AwayFromZero),
+                        0.0,
+                        255.0);
+                    var greenValue = (int)Math.Clamp(
+                        Math.Round(resizedGreen[index], MidpointRounding.AwayFromZero),
+                        0.0,
+                        255.0);
+                    var blueValue = (int)Math.Clamp(
+                        Math.Round(resizedBlue[index], MidpointRounding.AwayFromZero),
+                        0.0,
+                        255.0);
+                    var maximum = Math.Max(redValue, Math.Max(greenValue, blueValue));
+                    var minimum = Math.Min(redValue, Math.Min(greenValue, blueValue));
+                    var isText =
+                        (redValue + greenValue + blueValue) / 3.0 >=
+                            ResultTextLinehashLumaThreshold &&
+                        maximum - minimum <= ResultTextLinehashChannelSpreadMax;
+                    nibble = (nibble << 1) | (isText ? 1 : 0);
+                }
+                builder.Append(nibble.ToString("x", CultureInfo.InvariantCulture));
+            }
+            rows[y] = builder.ToString();
+        }
+        return rows;
     }
 
     private static double[] ToGrayscale(AppOwnedImageBuffer image)
@@ -1464,7 +1688,8 @@ internal sealed class AppOwnedVisualIdentityEvidenceProducer
         double[] Edge,
         double[] SuffixLuma,
         double[] SuffixEdge,
-        double[] Dhash);
+        double[] Dhash,
+        IReadOnlyList<string> LinehashRows);
 
     private sealed record ResultTextReference(
         string SongId,

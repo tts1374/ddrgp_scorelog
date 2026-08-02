@@ -135,6 +135,38 @@ public sealed class AppOwnedVisualIdentityEvidenceProducerTests
     }
 
     [Fact]
+    public void Ambiguous_title_feature_uses_linehash_as_title_tiebreaker()
+    {
+        using var database = new DatabaseFixture();
+        database.AddMasterSongAndChart("song-2", "TITLE TWO", "Artist", "chart-2");
+        AddCompatibleJacketReference(database, "song-1", "MAX 300", "Artist");
+        AddCompatibleJacketReference(database, "song-2", "TITLE TWO", "Artist");
+        database.AddResultTextFeature(
+            "song-1",
+            "title",
+            0,
+            "MAX 300",
+            "Artist",
+            linehashRows: Enumerable.Repeat(new string('0', 76), 28).ToArray());
+        database.AddResultTextFeature(
+            "song-2",
+            "title",
+            0,
+            "TITLE TWO",
+            "Artist",
+            linehashRows: Enumerable.Repeat(new string('f', 76), 28).ToArray());
+
+        var enriched = new AppOwnedVisualIdentityEvidenceProducer().Enrich(
+            BuildFrame(titleValue: 0),
+            CreateObservation(),
+            database.MasterPath,
+            database.CatalogPath);
+
+        Assert.Equal("song-1", enriched.FormalEvidence!.SongId);
+        Assert.Equal("chart-1", enriched.FormalEvidence.ChartId);
+    }
+
+    [Fact]
     public void Ambiguous_title_and_artist_features_remain_unresolved()
     {
         using var database = new DatabaseFixture();

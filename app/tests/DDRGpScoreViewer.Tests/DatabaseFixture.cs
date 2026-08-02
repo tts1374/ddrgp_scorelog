@@ -249,7 +249,8 @@ internal sealed class DatabaseFixture : IDisposable
         byte grayValue,
         string canonicalTitle,
         string canonicalArtist,
-        string masterVersion = "master-v1")
+        string masterVersion = "master-v1",
+        IReadOnlyList<string>? linehashRows = null)
     {
         if (fieldName is not ("title" or "artist"))
         {
@@ -259,7 +260,7 @@ internal sealed class DatabaseFixture : IDisposable
         const string schemaVersion = "m7-result-text-feature-master-v1";
         const string featureVersion = "m7-result-text-image-v1";
         const string roiVersion = "m7-result-title-artist-roi-v1";
-        var payloadJson = ResultTextPayload(grayValue);
+        var payloadJson = ResultTextPayload(grayValue, linehashRows);
         var featureHash = Sha256Hex(payloadJson);
         var featureId = Sha256Hex(string.Join(
             "\0",
@@ -295,21 +296,28 @@ internal sealed class DatabaseFixture : IDisposable
         command.ExecuteNonQuery();
     }
 
-    private static string ResultTextPayload(byte grayValue)
+    private static string ResultTextPayload(
+        byte grayValue,
+        IReadOnlyList<string>? linehashRows = null)
     {
-        var vector96x16 = string.Join(",", Enumerable.Repeat(grayValue.ToString(), 96 * 16));
-        var vector40x16 = string.Join(",", Enumerable.Repeat(grayValue.ToString(), 40 * 16));
-        var zeroVector96x16 = string.Join(",", Enumerable.Repeat("0", 96 * 16));
-        var zeroVector40x16 = string.Join(",", Enumerable.Repeat("0", 40 * 16));
-        var linehashRows = string.Join(
-            ",",
-            Enumerable.Repeat("\"" + new string('0', 76) + "\"", 28));
-        return "{\"dhash_hex\":\"0000000000000000\",\"edge\":[" + zeroVector96x16 +
-            "],\"edge_shape\":[96,16],\"feature_version\":\"m7-result-text-image-v1\",\"linehash_rows\":[" +
-            linehashRows + "],\"luma\":[" + vector96x16 +
-            "],\"luma_shape\":[96,16],\"roi_version\":\"m7-result-title-artist-roi-v1\",\"suffix_edge\":[" +
-            zeroVector40x16 + "],\"suffix_edge_shape\":[40,16],\"suffix_luma\":[" + vector40x16 +
-            "],\"suffix_luma_shape\":[40,16],\"vector_encoding\":\"uint8_0_255\"}";
+        var vector1536 = string.Join(",", Enumerable.Repeat(grayValue.ToString(), 1536));
+        var vector640 = string.Join(",", Enumerable.Repeat(grayValue.ToString(), 640));
+        var zeroVector1536 = string.Join(",", Enumerable.Repeat("0", 1536));
+        var zeroVector640 = string.Join(",", Enumerable.Repeat("0", 640));
+        var linehashValues = linehashRows ??
+            Enumerable.Repeat(new string('0', 76), 28).ToArray();
+        if (linehashValues.Count != 28 ||
+            linehashValues.Any(row => row.Length != 76))
+        {
+            throw new ArgumentException("Fixture linehash rows must be 28 x 76.", nameof(linehashRows));
+        }
+        var linehashJson = JsonSerializer.Serialize(linehashValues);
+        return "{\"dhash_hex\":\"0000000000000000\",\"edge\":[" + zeroVector1536 +
+            "],\"edge_shape\":[1536],\"feature_version\":\"m7-result-text-image-v1\",\"linehash_rows\":" +
+            linehashJson + ",\"luma\":[" + vector1536 +
+            "],\"luma_shape\":[1536],\"roi_version\":\"m7-result-title-artist-roi-v1\",\"suffix_edge\":[" +
+            zeroVector640 + "],\"suffix_edge_shape\":[640],\"suffix_luma\":[" + vector640 +
+            "],\"suffix_luma_shape\":[640],\"vector_encoding\":\"uint8_0_255\"}";
     }
 
     private static string Sha256Hex(string value)
