@@ -229,6 +229,8 @@ data/windows_capture/session-<UTC>-<unique>/
 - 既存capture/session directoryを上書きせず、画像、metadata、manifest実出力をGit管理しない。
 - session出力を分類、OCR、identity、confirmed event、正式save input、DBへ自動接続しない。
 
+通常の `監視開始` で対象window用sessionを開始する場合だけ、対応OS・runtime API・Release package manifest capability・Windowsの同意がそろえばcapture borderless設定を適用する。拒否、非対応、capability不足、権限取得失敗、API例外では枠ありsessionを継続し、capture outputのpath、manifest、timestamp、解析artifact、正式個人スコアDB、transaction、保存statusは変更しない。Debugのpicker captureはこの同意要求を行わない。`graphicsCaptureWithoutBorder` capabilityを含むpackage manifestの配置方式は#92で決定するため、このapp projectのstorage pathや配布境界へmanifestを追加しない。
+
 ## manifest
 
 manifest はフレーム列を再実行可能にするCSV。

@@ -2,10 +2,12 @@ using System.IO;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading.Channels;
+using Windows.Foundation;
 using Windows.Graphics.Capture;
 using Windows.Graphics.DirectX;
 using Windows.Graphics.DirectX.Direct3D11;
 using Windows.Graphics.Imaging;
+using Windows.Security.Authorization.AppCapabilityAccess;
 using Windows.Storage.Streams;
 using WinRT;
 
@@ -18,8 +20,12 @@ public sealed class ContinuousWindowsGraphicsCaptureAdapter :
     private const uint D3D11SdkVersion = 7;
     private const uint D3D11CreateDeviceBgraSupport = 0x20;
     private const int D3DDriverTypeHardware = 1;
+    private const int BorderlessCaptureMinimumBuild = 20348;
+    // GraphicsCaptureAccessKind.Borderless is 0 in the WinRT ABI.
+    private const int BorderlessCaptureAccessKind = 0;
     private static readonly Guid IdxgiDeviceGuid = new("54ec77fa-1377-44e6-8c32-88fd5f44c84c");
     private static readonly Guid GraphicsCaptureItemGuid = new("79C3F95B-31F7-4EC2-A464-632EF5D30760");
+    private static readonly Guid GraphicsCaptureSession3Guid = new("F2CDD966-22AE-5EA1-9596-3A289344C3BE");
 
     public bool IsSupported => GraphicsCaptureSession.IsSupported();
 
@@ -49,13 +55,15 @@ public sealed class ContinuousWindowsGraphicsCaptureAdapter :
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        var borderlessAccessGranted = await TryRequestBorderlessAccessAsync(cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
         var item = CreateItemForWindow(targetWindowHandle);
         if (item.Size.Width <= 0 || item.Size.Height <= 0)
         {
             throw new CaptureInvalidSizeException("Capture item has a zero-sized surface.");
         }
 
-        return CaptureFrameSource.Start(item, target.DisplayName);
+        return CaptureFrameSource.Start(item, target.DisplayName, borderlessAccessGranted);
     }
 
     private sealed class CaptureFrameSource : IContinuousFrameSource, IContinuousFrameSourceMetadata
@@ -106,7 +114,8 @@ public sealed class ContinuousWindowsGraphicsCaptureAdapter :
 
         public static CaptureFrameSource Start(
             GraphicsCaptureItem item,
-            string? captureSourceOverride = null)
+            string? captureSourceOverride = null,
+            bool borderlessAccessGranted = false)
         {
             IDirect3DDevice? device = null;
             Direct3D11CaptureFramePool? framePool = null;
@@ -121,6 +130,9 @@ public sealed class ContinuousWindowsGraphicsCaptureAdapter :
                     2,
                     item.Size);
                 session = framePool.CreateCaptureSession(item);
+                _ = TryApplyBorderlessCapture(
+                    borderlessAccessGranted,
+                    () => SetBorderRequired(session, required: false));
                 source = new CaptureFrameSource(
                     item,
                     device,
@@ -303,6 +315,145 @@ public sealed class ContinuousWindowsGraphicsCaptureAdapter :
         }
     }
 
+    internal static async Task<bool> TryRequestBorderlessAccessAsync(
+        CancellationToken cancellationToken = default)
+    {
+        return await TryRequestBorderlessAccessAsync(
+            cancellationToken,
+            IsBorderlessCaptureApiSupported,
+            RequestBorderlessAccessAsync);
+    }
+
+    internal static async Task<bool> TryRequestBorderlessAccessAsync(
+        CancellationToken cancellationToken,
+        Func<bool> isApiSupported,
+        Func<CancellationToken, Task<AppCapabilityAccessStatus>> requestAccess)
+    {
+        ArgumentNullException.ThrowIfNull(isApiSupported);
+        ArgumentNullException.ThrowIfNull(requestAccess);
+        try
+        {
+            if (!isApiSupported())
+            {
+                return false;
+            }
+
+            var status = await requestAccess(cancellationToken);
+            return status == AppCapabilityAccessStatus.Allowed;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static bool IsBorderlessCaptureApiSupported() =>
+        OperatingSystem.IsWindowsVersionAtLeast(10, 0, BorderlessCaptureMinimumBuild);
+
+    private static async Task<AppCapabilityAccessStatus> RequestBorderlessAccessAsync(
+        CancellationToken cancellationToken)
+    {
+        nint operation = 0;
+        object? staticsObject = null;
+        IAsyncOperation<AppCapabilityAccessStatus>? asyncOperation = null;
+        try
+        {
+            using var factory = ActivationFactory.Get(
+                "Windows.Graphics.Capture.GraphicsCaptureAccess");
+            staticsObject = Marshal.GetObjectForIUnknown(factory.ThisPtr);
+            var statics = (IGraphicsCaptureAccessStatics)staticsObject;
+            Marshal.ThrowExceptionForHR(statics.RequestAccessAsync(
+                request: BorderlessCaptureAccessKind,
+                out operation));
+            asyncOperation = MarshalInterface<IAsyncOperation<AppCapabilityAccessStatus>>.FromAbi(
+                operation);
+            return await asyncOperation.AsTask(cancellationToken);
+        }
+        finally
+        {
+            if (asyncOperation is not null)
+            {
+                try
+                {
+                    asyncOperation.Close();
+                }
+                catch
+                {
+                    // Borderless access is optional; release failures must not stop capture.
+                }
+            }
+            if (operation != 0)
+            {
+                Marshal.Release(operation);
+            }
+            if (staticsObject is not null && Marshal.IsComObject(staticsObject))
+            {
+                Marshal.FinalReleaseComObject(staticsObject);
+            }
+        }
+    }
+
+    internal static bool TryApplyBorderlessCapture(
+        bool borderlessAccessGranted,
+        Action disableBorder)
+    {
+        ArgumentNullException.ThrowIfNull(disableBorder);
+        if (!borderlessAccessGranted)
+        {
+            return false;
+        }
+
+        try
+        {
+            disableBorder();
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static void SetBorderRequired(
+        GraphicsCaptureSession session,
+        bool required)
+    {
+        nint unknown = 0;
+        nint session3Pointer = 0;
+        object? session3Object = null;
+        try
+        {
+            unknown = Marshal.GetIUnknownForObject(session);
+            Marshal.ThrowExceptionForHR(Marshal.QueryInterface(
+                unknown,
+                in GraphicsCaptureSession3Guid,
+                out session3Pointer));
+            session3Object = Marshal.GetObjectForIUnknown(session3Pointer);
+            var session3 = (IGraphicsCaptureSession3)session3Object;
+            Marshal.ThrowExceptionForHR(session3.put_IsBorderRequired(
+                required ? (byte)1 : (byte)0));
+        }
+        finally
+        {
+            if (session3Object is not null && Marshal.IsComObject(session3Object))
+            {
+                Marshal.FinalReleaseComObject(session3Object);
+            }
+            if (session3Pointer != 0)
+            {
+                Marshal.Release(session3Pointer);
+            }
+            if (unknown != 0)
+            {
+                Marshal.Release(unknown);
+            }
+        }
+    }
+
     [ComImport]
     [Guid("3628E81B-3CAC-4C60-B7F4-23CE0E0C3356")]
     [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
@@ -310,6 +461,46 @@ public sealed class ContinuousWindowsGraphicsCaptureAdapter :
     {
         [PreserveSig]
         int CreateForWindow(nint window, in Guid iid, out nint result);
+    }
+
+    // The target framework is 19041, so the post-19041 WinRT contracts are kept local.
+    [ComImport]
+    [Guid("743ED370-06EC-5040-A58A-901F0F757095")]
+    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    private interface IGraphicsCaptureAccessStatics
+    {
+        [PreserveSig]
+        int GetIids(out int count, out nint iids);
+
+        [PreserveSig]
+        int GetRuntimeClassName(out nint className);
+
+        [PreserveSig]
+        int GetTrustLevel(out int trustLevel);
+
+        [PreserveSig]
+        int RequestAccessAsync(int request, out nint operation);
+    }
+
+    [ComImport]
+    [Guid("F2CDD966-22AE-5EA1-9596-3A289344C3BE")]
+    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    private interface IGraphicsCaptureSession3
+    {
+        [PreserveSig]
+        int GetIids(out int count, out nint iids);
+
+        [PreserveSig]
+        int GetRuntimeClassName(out nint className);
+
+        [PreserveSig]
+        int GetTrustLevel(out int trustLevel);
+
+        [PreserveSig]
+        int get_IsBorderRequired(out byte value);
+
+        [PreserveSig]
+        int put_IsBorderRequired(byte value);
     }
 
     private static async Task<byte[]> EncodePngAsync(

@@ -79,6 +79,17 @@ python -m tools.vision_poc `
 
 監視では1秒ごとの候補をapp-owned runtimeで解析します。RESULTSがないframeと同じRESULT署名の後続frameは後続処理へ渡しません。RESULT画面を検出しても必須の画像認識根拠が揃わない候補はcandidate materialと失敗理由を一度だけ既存workflowへ渡し、`unresolved` または保存拒否理由を維持してplayを作りません。候補のevent boundary、capture lifecycle、formal evidence、正式DB保存境界は既存契約を維持します。candidate PNG、manifest、解析CSV/JSONはOS一時directoryまたはapp data pathだけに置き、workflow終了後に不要な一時入力を残しません。capture-onlyの連続取得は従来どおり停止後に完成manifestを解析できます。capture失敗、resize、target close、device lost、write失敗では新しい解析・正式保存を開始しません。
 
+### Windows Graphics Captureの同意と枠ありfallback
+
+通常の `監視開始` で自動特定した対象window用sessionを開始するときだけ、Windows Graphics Captureの枠なしaccessを試行します。Windows 10 version 2104 / build 20348以降で、対応Release packageのmanifestに `graphicsCaptureWithoutBorder` capabilityがあり、Windowsの同意操作で許可した場合だけ色付き枠を非表示にします。package manifestの具体的な配置方式は #92で決める配布方式に従い、このapp project単体ではpackage projectやmanifest方式を追加しません。
+
+- 初回の通常監視開始ではWindowsの同意promptが表示されることがあります。許可すると、その後の対象window用capture sessionで枠なし設定を適用します。
+- 同意を拒否した場合、非対応OS/API、manifest capability不足、権限取得失敗、Windows APIの例外が発生した場合は、枠ありのまま監視を開始・継続します。これらはcapture failure statusへ変換せず、frame取得、RESULT解析、正式保存workflowの境界も変更しません。
+- Debug buildの `連続取得を開始` と `1フレーム取得` はpickerで選ぶ開発者向けcaptureのため、borderless同意を要求しません。
+- アプリ独自の同意設定は保存しません。監視停止、対象window終了、capture failure、再度の監視開始は既存session lifecycleで処理し、枠を強制的に隠すOS overlayやwindow位置変更は行いません。
+
+枠なし動作はWindows build、API、Windowsの同意、package manifest capabilityに依存します。同じwindowまたはdisplayに対して別アプリが枠を要求している場合は、許可済みでも枠が表示されることがあります。実際の同意prompt、枠の表示状態、停止・再開始後の残留有無は、#92で確定したRelease packageを対応Windows環境へ導入して確認してください。
+
 ### RESULT数値認識 runtime
 
 RESULTの `score`、`max_combo`、`marvelous`、`perfect`、`great`、`good`、`miss`、`ex_score` は、app-ownedのbitmap-template画像認識で読み取ります。`score=0` は有効な数字として扱い、scoreは1桁から7桁の可変桁です。認識状態は `recognized`、`missing_reference`、`ambiguous`、`failed_segmentation`、`not_evaluated` をcandidate materialへ記録し、採用済みのfieldだけが明示的な`RESULT数値認識根拠`になります。
