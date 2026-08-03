@@ -96,6 +96,207 @@
         <Setter Property="SelectionUnit" Value="FullRow" />
     </Style>
 
+    <Style x:Key="BadgeTextStyle" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="11" />
+        <Setter Property="FontWeight" Value="Bold" />
+        <Setter Property="TextAlignment" Value="Center" />
+        <Setter Property="HorizontalAlignment" Value="Center" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="TextWrapping" Value="NoWrap" />
+    </Style>
+
+    <Style x:Key="RankBadgeStyle" TargetType="Border">
+        <Setter Property="Background" Value="#F1F5F9" />
+        <Setter Property="BorderBrush" Value="#94A3B8" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="5" />
+        <Setter Property="Padding" Value="6,2" />
+        <Setter Property="MinWidth" Value="42" />
+        <Setter Property="HorizontalAlignment" Value="Left" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="TextElement.Foreground" Value="#334155" />
+        <Style.Triggers>
+            <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="Upper">
+                <Setter Property="Background" Value="#FEF3C7" />
+                <Setter Property="BorderBrush" Value="#FACC15" />
+                <Setter Property="TextElement.Foreground" Value="#854D0E" />
+            </DataTrigger>
+            <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="B">
+                <Setter Property="Background" Value="#E0F2FE" />
+                <Setter Property="BorderBrush" Value="#38BDF8" />
+                <Setter Property="TextElement.Foreground" Value="#075985" />
+            </DataTrigger>
+            <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="C">
+                <Setter Property="Background" Value="#FCE7F3" />
+                <Setter Property="BorderBrush" Value="#F472B6" />
+                <Setter Property="TextElement.Foreground" Value="#9D174D" />
+            </DataTrigger>
+            <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="D">
+                <Setter Property="Background" Value="#FEE2E2" />
+                <Setter Property="BorderBrush" Value="#EF4444" />
+                <Setter Property="TextElement.Foreground" Value="#991B1B" />
+            </DataTrigger>
+            <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="E">
+                <Setter Property="Background" Value="#F1F5F9" />
+                <Setter Property="BorderBrush" Value="#94A3B8" />
+                <Setter Property="TextElement.Foreground" Value="#334155" />
+            </DataTrigger>
+        </Style.Triggers>
+    </Style>
+
+    <Style x:Key="ClearBadgeStyle" TargetType="Border">
+        <Setter Property="Background" Value="#F1F5F9" />
+        <Setter Property="BorderBrush" Value="#94A3B8" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="5" />
+        <Setter Property="Padding" Value="6,2" />
+        <Setter Property="HorizontalAlignment" Value="Left" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="TextElement.Foreground" Value="#334155" />
+        <Style.Triggers>
+            <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="Pfc">
+                <Setter Property="Background" Value="#FEF3C7" />
+                <Setter Property="BorderBrush" Value="#FACC15" />
+                <Setter Property="TextElement.Foreground" Value="#854D0E" />
+            </DataTrigger>
+            <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="Gfc">
+                <Setter Property="Background" Value="#DCFCE7" />
+                <Setter Property="BorderBrush" Value="#22C55E" />
+                <Setter Property="TextElement.Foreground" Value="#166534" />
+            </DataTrigger>
+            <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="Fc">
+                <Setter Property="Background" Value="#DBEAFE" />
+                <Setter Property="BorderBrush" Value="#2563EB" />
+                <Setter Property="TextElement.Foreground" Value="#1E3A8A" />
+            </DataTrigger>
+            <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="Clear">
+                <Setter Property="Background" Value="#E0F2FE" />
+                <Setter Property="BorderBrush" Value="#38BDF8" />
+                <Setter Property="TextElement.Foreground" Value="#075985" />
+            </DataTrigger>
+            <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="Mfc">
+                <Setter Property="Background">
+                    <Setter.Value>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                            <GradientStop Color="#FECACA" Offset="0" />
+                            <GradientStop Color="#FEF3C7" Offset="0.25" />
+                            <GradientStop Color="#DCFCE7" Offset="0.5" />
+                            <GradientStop Color="#E0F2FE" Offset="0.75" />
+                            <GradientStop Color="#F3E8FF" Offset="1" />
+                        </LinearGradientBrush>
+                    </Setter.Value>
+                </Setter>
+                <Setter Property="BorderBrush" Value="#A855F7" />
+                <Setter Property="TextElement.Foreground" Value="#0F172A" />
+            </DataTrigger>
+            <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="Failed">
+                <Setter Property="Background" Value="#FEE2E2" />
+                <Setter Property="BorderBrush" Value="#EF4444" />
+                <Setter Property="TextElement.Foreground" Value="#991B1B" />
+            </DataTrigger>
+        </Style.Triggers>
+    </Style>
+
+    <Style x:Key="FlareBadgeStyle" TargetType="Border">
+        <Setter Property="Background" Value="#F1F5F9" />
+        <Setter Property="BorderBrush" Value="#94A3B8" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="5" />
+        <Setter Property="Padding" Value="8,2" />
+        <Setter Property="MinWidth" Value="74" />
+        <Setter Property="HorizontalAlignment" Value="Left" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+        <Setter Property="TextElement.Foreground" Value="#334155" />
+        <Style.Triggers>
+            <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="I">
+                <Setter Property="Background" Value="#DBEAFE" />
+                <Setter Property="BorderBrush" Value="#2563EB" />
+                <Setter Property="TextElement.Foreground" Value="#1E3A8A" />
+            </DataTrigger>
+            <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="II">
+                <Setter Property="Background" Value="#E0F2FE" />
+                <Setter Property="BorderBrush" Value="#38BDF8" />
+                <Setter Property="TextElement.Foreground" Value="#075985" />
+            </DataTrigger>
+            <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="III">
+                <Setter Property="Background" Value="#DCFCE7" />
+                <Setter Property="BorderBrush" Value="#22C55E" />
+                <Setter Property="TextElement.Foreground" Value="#166534" />
+            </DataTrigger>
+            <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="IV">
+                <Setter Property="Background" Value="#FEF3C7" />
+                <Setter Property="BorderBrush" Value="#FACC15" />
+                <Setter Property="TextElement.Foreground" Value="#854D0E" />
+            </DataTrigger>
+            <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="V">
+                <Setter Property="Background" Value="#FEE2E2" />
+                <Setter Property="BorderBrush" Value="#EF4444" />
+                <Setter Property="TextElement.Foreground" Value="#991B1B" />
+            </DataTrigger>
+            <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="VI">
+                <Setter Property="Background" Value="#EDE9FE" />
+                <Setter Property="BorderBrush" Value="#8B5CF6" />
+                <Setter Property="TextElement.Foreground" Value="#5B21B6" />
+            </DataTrigger>
+            <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="VII">
+                <Setter Property="Background" Value="#E2E8F0" />
+                <Setter Property="BorderBrush" Value="#94A3B8" />
+                <Setter Property="TextElement.Foreground" Value="#334155" />
+            </DataTrigger>
+            <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="VIII">
+                <Setter Property="Background" Value="#F1F5F9" />
+                <Setter Property="BorderBrush" Value="#CBD5E1" />
+                <Setter Property="TextElement.Foreground" Value="#334155" />
+            </DataTrigger>
+            <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="IX">
+                <Setter Property="Background" Value="#FEF3C7" />
+                <Setter Property="BorderBrush" Value="#FBBF24" />
+                <Setter Property="TextElement.Foreground" Value="#854D0E" />
+            </DataTrigger>
+            <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="EX">
+                <Setter Property="Background">
+                    <Setter.Value>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                            <GradientStop Color="#FECACA" Offset="0" />
+                            <GradientStop Color="#FEF3C7" Offset="0.25" />
+                            <GradientStop Color="#DCFCE7" Offset="0.5" />
+                            <GradientStop Color="#E0F2FE" Offset="0.75" />
+                            <GradientStop Color="#F3E8FF" Offset="1" />
+                        </LinearGradientBrush>
+                    </Setter.Value>
+                </Setter>
+                <Setter Property="BorderBrush" Value="#A855F7" />
+                <Setter Property="TextElement.Foreground" Value="#0F172A" />
+            </DataTrigger>
+        </Style.Triggers>
+    </Style>
+
+    <Style x:Key="DetailBadgeTextStyle" TargetType="TextBlock"
+           BasedOn="{StaticResource BadgeTextStyle}">
+        <Setter Property="FontSize" Value="12" />
+    </Style>
+
+    <Style x:Key="DetailRankBadgeStyle" TargetType="Border"
+           BasedOn="{StaticResource RankBadgeStyle}">
+        <Setter Property="CornerRadius" Value="6" />
+        <Setter Property="Padding" Value="10,4" />
+        <Setter Property="MinWidth" Value="0" />
+    </Style>
+
+    <Style x:Key="DetailClearBadgeStyle" TargetType="Border"
+           BasedOn="{StaticResource ClearBadgeStyle}">
+        <Setter Property="CornerRadius" Value="6" />
+        <Setter Property="Padding" Value="10,4" />
+        <Setter Property="MinWidth" Value="0" />
+    </Style>
+
+    <Style x:Key="DetailFlareBadgeStyle" TargetType="Border"
+           BasedOn="{StaticResource FlareBadgeStyle}">
+        <Setter Property="CornerRadius" Value="6" />
+        <Setter Property="Padding" Value="10,4" />
+        <Setter Property="MinWidth" Value="0" />
+    </Style>
+
     <Style x:Key="DifficultyBadgeStyle" TargetType="Border">
         <Setter Property="Background" Value="{StaticResource SurfaceSecondaryBrush}" />
         <Setter Property="CornerRadius" Value="5" />

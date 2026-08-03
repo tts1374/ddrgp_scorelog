@@ -7,6 +7,74 @@ namespace DDRGpScoreViewer.Tests;
 
 public sealed class ScoreViewerRepositoryTests
 {
+    [Theory]
+    [InlineData("AAA", "Upper")]
+    [InlineData("B", "B")]
+    [InlineData("C", "C")]
+    [InlineData("D", "D")]
+    [InlineData("E", "E")]
+    public void PlayHistoryItem_maps_rank_to_mock_badge_group(string rank, string expectedGroup)
+    {
+        Assert.Equal(expectedGroup, PresentationItem(rank: rank).RankBadgeGroup);
+    }
+
+    [Theory]
+    [InlineData("PFC", "Pfc")]
+    [InlineData("GFC", "Gfc")]
+    [InlineData("FC", "Fc")]
+    [InlineData("FULL COMBO", "Fc")]
+    [InlineData("CLEAR", "Clear")]
+    [InlineData("MFC", "Mfc")]
+    public void PlayHistoryItem_maps_clear_to_mock_badge_group(string clearType, string expectedGroup)
+    {
+        Assert.Equal(expectedGroup, PresentationItem(clearType: clearType).ClearBadgeGroup);
+    }
+
+    [Theory]
+    [InlineData("FULL COMBO", "FC")]
+    [InlineData("FC", "FC")]
+    [InlineData("CLEAR", "CLEAR")]
+    public void PlayHistoryItem_uses_compact_clear_display(string clearType, string expectedDisplay)
+    {
+        Assert.Equal(expectedDisplay, PresentationItem(clearType: clearType).ClearDisplay);
+    }
+
+    [Theory]
+    [InlineData("I")]
+    [InlineData("II")]
+    [InlineData("III")]
+    [InlineData("IV")]
+    [InlineData("V")]
+    [InlineData("VI")]
+    [InlineData("VII")]
+    [InlineData("VIII")]
+    [InlineData("IX")]
+    [InlineData("EX")]
+    public void PlayHistoryItem_maps_every_flare_rank_to_its_badge_group(string flareRank)
+    {
+        Assert.Equal(flareRank, PresentationItem(flareRank: flareRank).FlareBadgeGroup);
+    }
+
+    [Fact]
+    public void PlayHistoryItem_uses_plain_dash_when_flare_rank_is_missing()
+    {
+        var item = PresentationItem(flareRank: null);
+
+        Assert.Equal("None", item.FlareBadgeGroup);
+        Assert.Equal("—", item.FlareRankDisplay);
+    }
+
+    [Fact]
+    public void PlayHistoryItem_exposes_judgement_breakdown_in_display_order()
+    {
+        var item = PresentationItem();
+
+        Assert.Equal(
+            ["MARVELOUS", "PERFECT", "GREAT", "GOOD", "MISS", "MAX COMBO"],
+            item.JudgementBreakdown.Select(judgement => judgement.Label));
+        Assert.Equal([400, 80, 10, 2, 1, 500], item.JudgementBreakdown.Select(judgement => judgement.Value));
+    }
+
     [Fact]
     public void Load_reads_history_detail_and_chart_bests_without_changing_databases()
     {
@@ -22,6 +90,7 @@ public sealed class ScoreViewerRepositoryTests
         Assert.Equal("MAX 300", data.Plays[0].SongTitle);
         Assert.Equal("SP", data.Plays[0].PlayStyleDisplay);
         Assert.Equal("EXPERT", data.Plays[0].Difficulty);
+        Assert.Equal("SP EXPERT", data.Plays[0].ChartDisplay);
         Assert.Equal(17, data.Plays[0].Level);
         Assert.Equal(500, data.Plays[0].MaxCombo);
         Assert.Equal(400, data.Plays[0].Marvelous);
@@ -234,4 +303,32 @@ public sealed class ScoreViewerRepositoryTests
 
     private static string Hash(string path) =>
         Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path)));
+
+    private static PlayHistoryItem PresentationItem(
+        string rank = "AAA",
+        string clearType = "CLEAR",
+        string? flareRank = "I") =>
+        new(
+            "presentation-fixture",
+            "2026-07-13T12:00:00+00:00",
+            "2026-07-13T12:00:00+00:00",
+            "song-1",
+            "chart-1",
+            "MAX 300",
+            "SINGLE",
+            "EXPERT",
+            17,
+            990_000,
+            2_400,
+            rank,
+            clearType,
+            flareRank,
+            500,
+            400,
+            80,
+            10,
+            2,
+            1,
+            "manual",
+            false);
 }

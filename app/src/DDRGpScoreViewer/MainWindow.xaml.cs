@@ -368,6 +368,7 @@ public partial class MainWindow : System.Windows.Window
     {
         ContentTabs.SelectedIndex = 0;
         PageTitle.Text = "自己ベスト";
+        PageSubtitle.Text = "保存済み全履歴から算出した譜面別ベスト";
         BestNavigation.Tag = "Selected";
         HistoryNavigation.Tag = null;
     }
@@ -375,7 +376,8 @@ public partial class MainWindow : System.Windows.Window
     private void ShowHistory_Click(object sender, RoutedEventArgs e)
     {
         ContentTabs.SelectedIndex = 1;
-        PageTitle.Text = "プレー履歴";
+        PageTitle.Text = "直近プレー履歴";
+        PageSubtitle.Text = "このアプリを起動してから記録されたプレーを表示します";
         BestNavigation.Tag = null;
         HistoryNavigation.Tag = "Selected";
     }
