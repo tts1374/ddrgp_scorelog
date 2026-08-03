@@ -214,7 +214,8 @@ public sealed class AutoWindowMonitoringTests
             fixture.ScorePath,
             null,
             fixture.DirectoryPath,
-            Path.Combine(fixture.DirectoryPath, "logs"));
+            Path.Combine(fixture.DirectoryPath, "logs"),
+            Path.Combine(fixture.DirectoryPath, "viewer-paths.json"));
 
     private sealed class StubWindowEnumerator(
         IReadOnlyList<DdrGpWindowCandidate> candidates) : IDdrGpWindowEnumerator

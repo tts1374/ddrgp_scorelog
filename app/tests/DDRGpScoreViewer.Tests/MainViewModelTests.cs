@@ -270,7 +270,8 @@ public sealed class MainViewModelTests
             fixture.ScorePath,
             Path.Combine(fixture.DirectoryPath, "evaluation.db"),
             Path.Combine(fixture.DirectoryPath, "data"),
-            Path.Combine(fixture.DirectoryPath, "logs"));
+            Path.Combine(fixture.DirectoryPath, "logs"),
+            Path.Combine(fixture.DirectoryPath, "viewer-paths.json"));
 
     private sealed class StubWorkflowRunner(
         Func<string, string, PersonalScoreDbWorkflowResult> run)

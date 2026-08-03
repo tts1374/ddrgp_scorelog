@@ -4,7 +4,7 @@ DanceDanceRevolution GRAND PRIX のゲーム画面を解析し、十分に確認
 
 ## Status
 
-M9の監視・再起動・master DB再検証と、M10-2のlocal storage境界を実装しています。実DDR GRAND PRIX windowを使う長時間soakなどの残存リスクはWindowsアプリREADMEへ記録しています。具体的な作業内容と受け入れ条件はGitHub Issuesを正本とし、このREADMEはmain branchで利用できる機能と開発入口を要約します。
+M9の監視・再起動・master DB再検証、M10のlocal storage・実機評価・VeloPack配布境界を実装しています。保証範囲と既知制限はWindowsアプリREADMEへ記録しています。具体的な作業内容と受け入れ条件はGitHub Issuesを正本とし、このREADMEはmain branchで利用できる機能と開発入口を要約します。
 
 main branchで利用できる主な機能:
 
@@ -15,11 +15,11 @@ main branchで利用できる主な機能:
 - Release buildの通常画面は、`監視開始`／`監視停止`、固定path再検証、master DB read-only再検証に限定
 - `監視開始` による `ddr-konaste` / client `1280x720` の対象window自動特定（該当1件だけ接続）、1秒ごとのRESULT/SCORE gateと候補のリアルタイム正式保存、監視のstop / exit
 - developer-onlyのjacket catalog収集・manual review支援
+- VeloPackによる未署名per-user installer、組み込みreference data setの安全な初回配置・更新、Releaseログ、手動backup / restore
 
 進行中の主な作業:
 
 - M10: 初期版リリース準備（Issue #63）
-- M10-1: Python / NuGet依存関係の固定（Issue #66）
 - M10前提のmanual reviewデータ整備（Issues #55〜#60）
 
 ## Safety Boundaries
@@ -71,6 +71,12 @@ dotnet test app\tests\DDRGpScoreViewer.Tests\DDRGpScoreViewer.Tests.csproj --con
 ```
 
 Debug buildだけが開発者向け操作のUIとcommand入口を含みます。Release buildではこれらを生成せず、通常の監視開始・停止だけを残します。
+
+VeloPack releaseは、Git管理外のcurrent master DBとjacket catalogを用意したうえで次の1コマンドから再現します。成果物は`data/releases/<version>/`へ生成されます。
+
+```powershell
+.\app\packaging\Build-Release.ps1 -Version 0.1.0
+```
 
 詳細な実行・操作手順は[WindowsアプリREADME](app/README.md)を参照してください。
 

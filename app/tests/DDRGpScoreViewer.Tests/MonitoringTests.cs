@@ -276,7 +276,7 @@ public sealed class MonitoringTests
     public void Window_close_and_minimize_hide_until_explicit_application_exit()
     {
         Assert.True(WindowLifecyclePolicy.HideOnClose(applicationExitRequested: false));
-        Assert.True(WindowLifecyclePolicy.HideOnMinimize(applicationExitRequested: false));
+        Assert.False(WindowLifecyclePolicy.HideOnMinimize(applicationExitRequested: false));
         Assert.False(WindowLifecyclePolicy.HideOnClose(applicationExitRequested: true));
         Assert.False(WindowLifecyclePolicy.HideOnMinimize(applicationExitRequested: true));
     }

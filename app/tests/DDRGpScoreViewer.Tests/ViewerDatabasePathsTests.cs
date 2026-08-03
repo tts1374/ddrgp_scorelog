@@ -89,6 +89,9 @@ public sealed class ViewerDatabasePathsTests
         Assert.Equal(
             "C:\\Users\\test\\AppData\\Local\\DDRGpScoreViewer\\data\\score\\score.db",
             paths.ScoreDatabasePath);
+        Assert.Equal(
+            "C:\\Users\\test\\AppData\\Local\\DDRGpScoreViewer\\viewer-paths.json",
+            paths.SettingsPath);
         Assert.Null(paths.EvaluationDatabasePath);
     }
 

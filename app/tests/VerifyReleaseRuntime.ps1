@@ -38,7 +38,7 @@ try
     $startInfo.WorkingDirectory = $packageRoot
     $startInfo.UseShellExecute = $false
     $startInfo.CreateNoWindow = $true
-    $startInfo.Environment['LOCALAPPDATA'] = $localApplicationData
+    $startInfo.Environment['DDRGP_SCORE_VIEWER_RELEASE_SMOKE_ROOT'] = $localApplicationData
     $process = [System.Diagnostics.Process]::new()
     $process.StartInfo = $startInfo
     if (-not $process.Start())
@@ -72,6 +72,25 @@ try
     if ($process.HasExited -and $process.ExitCode -ne 0)
     {
         throw "Release package exited during smoke test with code $($process.ExitCode)."
+    }
+
+    $productionRoot = Join-Path $localApplicationData 'DDRGpScoreViewer'
+    $requiredPaths = @((Join-Path $productionRoot 'logs\gp-score-log.log'))
+    if (Test-Path -LiteralPath (Join-Path $packageRoot 'ReferenceData') -PathType Container)
+    {
+        $requiredPaths += @(
+            (Join-Path $productionRoot 'data\master\ddrgp-master.sqlite')
+            (Join-Path $productionRoot 'data\master\jacket-catalog.sqlite')
+            (Join-Path $productionRoot 'data\master\reference-set.json')
+            (Join-Path $productionRoot 'data\score\score.db'))
+    }
+
+    foreach ($requiredPath in $requiredPaths)
+    {
+        if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf))
+        {
+            throw "Release package did not prepare required production data: $requiredPath"
+        }
     }
 
     Write-Output "Release runtime smoke passed outside the repository: $packageRoot"

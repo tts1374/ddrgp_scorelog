@@ -28,6 +28,11 @@ public partial class MainWindow : System.Windows.Window
     private bool applicationExitRequested;
 
     public MainWindow()
+        : this(ViewerDatabasePaths.ResolveDefault())
+    {
+    }
+
+    internal MainWindow(ViewerDatabasePaths databasePaths)
     {
         InitializeComponent();
         viewModel = new MainViewModel(
@@ -42,7 +47,8 @@ public partial class MainWindow : System.Windows.Window
                 new ContinuousWindowsGraphicsCaptureAdapter(),
                 new ApplicationCaptureSessionOutputWriter()),
             captureSaveWorkflowRunner: new AppOwnedCaptureSaveWorkflowRunner(),
-            pathStore: new LocalViewerPathStore(),
+            pathStore: new LocalViewerPathStore(databasePaths.SettingsPath),
+            defaultDatabasePaths: databasePaths,
             liveMonitoringService: new LiveMonitoringCaptureService(
                 new ContinuousWindowsGraphicsCaptureAdapter(),
                 new AppOwnedLiveResultAnalyzer()));
@@ -271,11 +277,6 @@ public partial class MainWindow : System.Windows.Window
     protected override void OnStateChanged(EventArgs e)
     {
         base.OnStateChanged(e);
-        if (WindowState == WindowState.Minimized &&
-            WindowLifecyclePolicy.HideOnMinimize(applicationExitRequested))
-        {
-            Hide();
-        }
     }
 
 #if DEBUG
