@@ -41,7 +41,7 @@ M10-2では、DBの責務と実行環境をpathで固定する。Debugで明示�
 | 責務 | development | production | 初期化・更新責務 |
 | --- | --- | --- | --- |
 | M4 master DB | `databases/ddrgp-master.sqlite` | `%LOCALAPPDATA%\DDRGpScoreViewer\data\master\ddrgp-master.sqlite` | M4とは別のreference data set assetとしてread-only検証・セット更新 |
-| M5b jacket reference catalog | `databases/jacket-catalog.sqlite` | `%LOCALAPPDATA%\DDRGpScoreViewer\data\master\jacket-catalog.sqlite` | M4とは別fileのstrict schema。M4と同じreference data setとしてread-only検証・セット更新 |
+| M5b jacket reference catalog | `databases/jacket-catalog-release.sqlite` | `%LOCALAPPDATA%\DDRGpScoreViewer\data\master\jacket-catalog.sqlite` | M4とは別fileのstrict schema。developmentではbinding済みruntime catalog、productionではreference data setとしてread-only検証・セット更新 |
 | 正式個人スコアDB | `databases/score.dev.db` | `%LOCALAPPDATA%\DDRGpScoreViewer\data\score\score.db` | 固定pathのmissing／0 byteだけWPF側の正式schema初期化境界で初期化。既存formal DBは明示save以外で変更しない |
 | 評価用DB | `databases/evaluation.db` | 既定pathなし | M10-3評価器だけが明示的に初期化・再実行 |
 
@@ -328,7 +328,7 @@ M8のscore DB file output previewでは、`--m8-score-db-output data\...\ddrgp-s
 
 通常runtimeのread-only identity loaderは、catalog rowの`master_version`がcurrent値と異なっていても、`song_id`・canonical title・canonical artistがcurrent GP masterと完全一致するconfirmed jacket referenceをcurrent-master-compatibleとして利用する。masterとの不一致、orphan、未確認、旧extractor、不正persisted featureは除外し、catalog rowは変更しない。coverageのcurrent-only表示やcollectorのcurrent ingest契約とは別の、保存入口での互換性検証である。
 
-ローカルjacket catalogはdevelopmentでは `databases/jacket-catalog.sqlite`、productionでは `%LOCALAPPDATA%\DDRGpScoreViewer\data\master\jacket-catalog.sqlite` を既定pathとする。M4 masterはそれぞれ `databases/ddrgp-master.sqlite`、`%LOCALAPPDATA%\DDRGpScoreViewer\data\master\ddrgp-master.sqlite` で、catalogとは別fileとして扱う。初回リリース向けcurrent schemaのversionは1で、専用identity、`PRAGMA user_version=1`、metadata schema version 1、exact tables/columns/constraints/index/foreign keyをstrictに検査する。runtimeはcurrent schemaとexact一致しない旧catalog、非catalog SQLite、破損catalog、正式個人スコアDB、M8 preview DB、M4 master DBを読み取り専用検査でunsupportedとして拒否し、自動作成・修復・migrationを行わない。既存の明示migration CLIがある場合も、WPF起動・master操作・正式save・評価DB準備から暗黙起動しない。
+ローカルjacket catalogはdevelopmentでは `databases/jacket-catalog-release.sqlite`、productionでは `%LOCALAPPDATA%\DDRGpScoreViewer\data\master\jacket-catalog.sqlite` をruntimeの既定pathとする。collectorが更新する未binding source `databases/jacket-catalog.sqlite`は、明示`bind-master`の入力としてだけ扱う。M4 masterはそれぞれ `databases/ddrgp-master.sqlite`、`%LOCALAPPDATA%\DDRGpScoreViewer\data\master\ddrgp-master.sqlite` で、catalogとは別fileとして扱う。初回リリース向けcurrent schemaのversionは1で、専用identity、`PRAGMA user_version=1`、metadata schema version 1、exact tables/columns/constraints/index/foreign keyをstrictに検査する。runtimeはcurrent schemaとexact一致しない旧catalog、非catalog SQLite、破損catalog、正式個人スコアDB、M8 preview DB、M4 master DBを読み取り専用検査でunsupportedとして拒否し、自動作成・修復・migrationを行わない。既存の明示migration CLIがある場合も、WPF起動・master操作・正式save・評価DB準備から暗黙起動しない。
 
 current referenceはmanual review revision/historyと、`jacket_feature_version/hash`、`title_line_feature_version/hash`、`composite_identity_version/hash`を全nullまたは全非nullの1組として保持する。これに加えてM7 result-text featureのtitle/artist payloadを`result_text_features`へ、field、current master version、canonical title/artist snapshot、source label、payload hashと共に保存する。通常observation ingestは完全な非null組を必須とし、既知version、lower SHA-256、UTF-8 NUL区切りcanonical hashを検査する。`(composite_identity_version, composite_identity_hash)`はcatalog全体で一意とし、read-only identity集合には`unresolved`、review待ち、確定、再割当、`reopen`、`rejected`をすべて含める。
 

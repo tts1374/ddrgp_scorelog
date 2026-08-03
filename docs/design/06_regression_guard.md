@@ -529,7 +529,7 @@ dry-run sequence scenario 入口を変更した場合も、生成manifestを man
 
 ## M10-2 local storage and two-master guard
 
-- developmentの4 pathは `databases/ddrgp-master.sqlite`、`databases/jacket-catalog.sqlite`、`databases/score.dev.db`、`databases/evaluation.db` とし、productionの3 pathは `%LOCALAPPDATA%\DDRGpScoreViewer\data\master\ddrgp-master.sqlite`、同じ`master`配下の`jacket-catalog.sqlite`、`data\score\score.db`とする。developmentとproductionのpathを暗黙に混ぜない。
+- developmentの4 pathは `databases/ddrgp-master.sqlite`、binding済みruntime catalog `databases/jacket-catalog-release.sqlite`、`databases/score.dev.db`、`databases/evaluation.db` とし、productionの3 pathは `%LOCALAPPDATA%\DDRGpScoreViewer\data\master\ddrgp-master.sqlite`、同じ`master`配下の`jacket-catalog.sqlite`、`data\score\score.db`とする。collector source `databases/jacket-catalog.sqlite`をdevelopment runtimeへ暗黙fallbackせず、developmentとproductionのpathも暗黙に混ぜない。
 - M4 master DBとM5b jacket reference catalogについて、normal / missing / read不可 / schema incompatibleを個別に検査し、検査前後でfile hashが変わらないことを確認する。
 - 2つのmaster DBのどちらかが不正なとき、manual save runnerとcapture-save runnerの呼出回数が0で、UIに対象DBの理由と「解析・正式保存を開始しない」旨が表示されることを確認する。capture後の再検証でも同じ境界を確認する。
 - 正常な正式個人スコアDBを再起動相当のread-only reloadで開いた前後にhash、play件数、pathが変わらず、master/catalog inspectionや評価用DB準備でscore DBが初期化・上書きされないことを確認する。

@@ -8,13 +8,16 @@ namespace DDRGpScoreViewer.Tests;
 public sealed class ViewerDatabasePathsTests
 {
     [Fact]
-    public void Development_defaults_keep_the_two_master_files_and_evaluation_db_separate()
+    public void Development_defaults_use_a_bound_runtime_catalog_separate_from_the_collector_source()
     {
         var paths = ViewerDatabasePaths.ForDevelopment("C:\\checkout");
 
         Assert.Equal(ViewerDatabaseEnvironment.Development, paths.Environment);
         Assert.Equal("C:\\checkout\\databases\\ddrgp-master.sqlite", paths.MasterDatabasePath);
-        Assert.Equal("C:\\checkout\\databases\\jacket-catalog.sqlite", paths.JacketCatalogDatabasePath);
+        Assert.Equal("C:\\checkout\\databases\\jacket-catalog-release.sqlite", paths.JacketCatalogDatabasePath);
+        Assert.NotEqual(
+            "C:\\checkout\\databases\\jacket-catalog.sqlite",
+            paths.JacketCatalogDatabasePath);
         Assert.Equal("C:\\checkout\\databases\\score.dev.db", paths.ScoreDatabasePath);
         Assert.Equal("C:\\checkout\\databases\\evaluation.db", paths.EvaluationDatabasePath);
         Assert.NotEqual(paths.MasterDatabasePath, paths.JacketCatalogDatabasePath);
@@ -57,7 +60,7 @@ public sealed class ViewerDatabasePathsTests
                 Path.Combine(root, "databases", "ddrgp-master.sqlite"),
                 paths.MasterDatabasePath);
             Assert.Equal(
-                Path.Combine(root, "databases", "jacket-catalog.sqlite"),
+                Path.Combine(root, "databases", "jacket-catalog-release.sqlite"),
                 paths.JacketCatalogDatabasePath);
         }
         finally

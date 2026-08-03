@@ -454,7 +454,7 @@ public sealed class ScoreViewerRepository
             {
                 return JacketCatalogInspection.Missing(
                     string.Empty,
-                    "jacket参照catalogが既定pathにありません。jacket-catalog.sqliteを既定pathへ配置してください。");
+                    "jacket参照catalogが既定pathにありません。現在の環境に対応するjacket参照catalogを既定pathへ配置してください。");
             }
 
             fullPath = Path.GetFullPath(path);
@@ -481,7 +481,7 @@ public sealed class ScoreViewerRepository
         {
             return JacketCatalogInspection.Missing(
                 fullPath,
-                "jacket参照catalogが見つかりません。保存を開始せず、jacket-catalog.sqliteを既定pathへ配置してください。");
+                "jacket参照catalogが見つかりません。保存を開始せず、現在の環境に対応するjacket参照catalogを既定pathへ配置してください。");
         }
 
         SqliteConnection connection;
@@ -492,7 +492,7 @@ public sealed class ScoreViewerRepository
                 return new JacketCatalogInspection(
                     fullPath,
                     MasterDatabaseStatus.Unreadable,
-                    "jacket参照catalogをSQLiteとして読み込めません。対応するjacket-catalog.sqliteを既定pathへ配置してください。",
+                    "jacket参照catalogをSQLiteとして読み込めません。現在の環境に対応するjacket参照catalogを既定pathへ配置してください。",
                     null);
             }
             connection = OpenReadOnly(fullPath);
@@ -518,7 +518,7 @@ public sealed class ScoreViewerRepository
             return new JacketCatalogInspection(
                 fullPath,
                 MasterDatabaseStatus.Unreadable,
-                $"jacket参照catalogをSQLiteとして読み込めません。対応するjacket-catalog.sqliteと既定pathを確認してください。{exception.Message}",
+                $"jacket参照catalogをSQLiteとして読み込めません。現在の環境に対応するjacket参照catalogと既定pathを確認してください。{exception.Message}",
                 null);
         }
         catch (ArgumentException exception)
@@ -555,7 +555,7 @@ public sealed class ScoreViewerRepository
                 return new JacketCatalogInspection(
                     fullPath,
                     MasterDatabaseStatus.Incompatible,
-                    $"jacket参照catalogのschemaを読み込めません。対応するjacket-catalog.sqliteを既定pathへ配置してください。{exception.Message}",
+                    $"jacket参照catalogのschemaを読み込めません。現在の環境に対応するjacket参照catalogを既定pathへ配置してください。{exception.Message}",
                     null);
             }
         }

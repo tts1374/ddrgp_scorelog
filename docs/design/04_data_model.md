@@ -7,7 +7,7 @@ M10-2のruntime実装では、次の4つのSQLite責務を混在させない。M
 | 責務 | development既定path | production既定path | runtimeの扱い |
 | --- | --- | --- | --- |
 | M4 master DB | `databases/ddrgp-master.sqlite` | `%LOCALAPPDATA%\DDRGpScoreViewer\data\master\ddrgp-master.sqlite` | 曲・譜面canonical参照。read-only inspectionのみ |
-| M5b jacket reference catalog | `databases/jacket-catalog.sqlite` | `%LOCALAPPDATA%\DDRGpScoreViewer\data\master\jacket-catalog.sqlite` | jacket feature・result-text feature・review参照。M4とは別にread-only inspection |
+| M5b jacket reference catalog | `databases/jacket-catalog-release.sqlite` | `%LOCALAPPDATA%\DDRGpScoreViewer\data\master\jacket-catalog.sqlite` | binding済みruntime catalogをjacket feature・result-text feature・review参照に使う。M4とは別にread-only inspection |
 | 正式個人スコアDB | `databases/score.dev.db` | `%LOCALAPPDATA%\DDRGpScoreViewer\data\score\score.db` | `plays`、source、analysisの正式保存先。既存user dataを保護 |
 | 評価用DB | `databases/evaluation.db` | 既定pathなし | M10-3評価専用。WPF runtimeから参照しない |
 

@@ -72,10 +72,13 @@ dotnet test app\tests\DDRGpScoreViewer.Tests\DDRGpScoreViewer.Tests.csproj --con
 
 Debug buildだけが開発者向け操作のUIとcommand入口を含みます。Release buildではこれらを生成せず、通常の監視開始・停止だけを残します。
 
-VeloPack releaseは、Git管理外のcurrent master DBとjacket catalogを用意したうえで次の1コマンドから再現します。成果物は`data/releases/<version>/`へ生成されます。
+Debugアプリのdevelopment固定catalogは、current masterへbinding済みの`databases/jacket-catalog-release.sqlite`です。collectorが使う未binding source `databases/jacket-catalog.sqlite`しかない場合は、[PoC README](tools/vision_poc/README.md)の`bind-master`を明示実行してから起動します。
+
+VeloPack releaseは、Git管理外のcurrent master DBとbinding済みruntime catalogを用意したうえで次の1コマンドから再現します。成果物は`data/releases/<version>/`へ生成されます。
 
 ```powershell
-.\app\packaging\Build-Release.ps1 -Version 0.1.0
+.\app\packaging\Build-Release.ps1 -Version 0.1.0 `
+  -CatalogDatabase databases\jacket-catalog-release.sqlite
 ```
 
 詳細な実行・操作手順は[WindowsアプリREADME](app/README.md)を参照してください。

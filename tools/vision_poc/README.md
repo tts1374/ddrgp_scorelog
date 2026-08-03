@@ -651,7 +651,7 @@ python -m tools.vision_poc.jacket_reference_catalog migrate-v1 `
 
 移行では`catalog_metadata`、`jacket_references`、`reference_candidates`、`reference_review_history`を引き継ぎ、`result_text_features`は新形式の空テーブルとして作成します。sourceは変更せず、outputのcurrent schema検証が完了した後にだけ利用先を切り替えます。現行schemaとexact一致しないDBは通常runtimeでは副作用なしでunsupportedとして拒否し、既存local DB、artifact、checkpoint、source/crop画像の削除・上書き・in-place修復は行いません。
 
-初期版Release前に作成済みで`catalog_metadata.master_version`を持たないcurrent catalogは、sourceを変更せず新規outputへcopyしてcurrent masterへ明示bindingします。出力後にsourceとoutputを取り違えないようpathを確認し、Release入力だけを切り替えます。
+初期版Release前に作成済みで`catalog_metadata.master_version`を持たないcurrent catalogは、sourceを変更せず新規outputへcopyしてcurrent masterへ明示bindingします。出力後にsourceとoutputを取り違えないようpathを確認し、Debug WPFのdevelopment runtimeとRelease packageにはbinding済みoutputだけを渡します。
 
 ```powershell
 python -m tools.vision_poc.jacket_reference_catalog bind-master `

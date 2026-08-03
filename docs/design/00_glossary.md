@@ -44,7 +44,7 @@ DDR GP scorelog の設計、PoC、テストで使う主要用語を定義する�
 | `M3 result field observation` | result画面の曲名・artist・譜面条件を後工程へ渡せる観測にする工程 | `song_title`、`artist`、`play_style`、`difficulty`、`level`、M3レポート | 曲名照合、曲ID・譜面ID、正式保存値 |
 | `M4 master DB` | 楽曲・譜面のcanonical情報と照合対象を生成する工程 | `songs`、`charts`、`song_aliases`、`ddrgp-master.sqlite` | 入力画像の曲同定、個人スコア保存 |
 | `M5 master match` | `RESULT同定根拠`へ進める前の曲・譜面候補と失敗理由を観測する実装工程 | title match、jacket match、`identity_signal_*` | 確定ID、保存OK、本番採用済み照合 |
-| `M5b jacket reference catalog` | jacket参照featureをcurrent masterと一緒に安全に保持・読む基盤 | `databases/jacket-catalog.sqlite`、coverage、runtime loader | 正式個人スコアDB、画像原本の代替 |
+| `M5b jacket reference catalog` | jacket参照featureをcurrent masterと一緒に安全に保持・読む基盤 | collector source `databases/jacket-catalog.sqlite`、binding済みruntime catalog、coverage、runtime loader | 正式個人スコアDB、画像原本の代替 |
 | `M5c developer-only collector` | M5b catalogへ入れるjacket観測を収集・reviewする開発者専用工程 | collector、observation session、manual review、title/artist OCR評価 | 公開app、正式保存workflow、自動確定 |
 | `M6 payload/evidence boundary` | 保存候補payloadと解析根拠・sourceを分離する工程 | save payload、analysis/source、候補材料 | 候補の正式値昇格 |
 | `M7 save decision boundary` | 必須fieldの検証、保存前readiness、正式値変換の境界 | M7 readiness、save decision preview、formal evidence | previewだけでのDB保存 |
@@ -96,7 +96,7 @@ master DB inspectionは起動時・保存開始時に行う。固定pathだけ�
 | `M5jacket` / `M5 jacket` | `M5 jacket match` | result `jacket` ROIとsong-select由来のjacket referenceを、chart候補集合内で比較するPoC。`M5b` catalogや`M5c` collectorとは別。 |
 | `M5title` / `M5 title` | `M5 title match`、または `title OCR suffix` / `title line-hash` / `title image feature` | どの補助信号かを必ず明記する。M5 title matchはM3のresult `song_title`をM4へ照合する入口で、各補助信号は候補集合外から曲を拾わない。 |
 | `M7title` / `M7 title` / `M7 jacket validation result title/artist feature master` | `M7 result-text feature` または `M7 result title/artist image feature` | result `song_title` / `artist` ROIから作るOCR-free画像feature。M3 result OCR、M5 title補助、M5c song-select OCR、M5b catalogのtitle hashとは別。照合用payloadはM5b catalogへ保存する。 |
-| `jacket catalog` | `M5b jacket reference catalog` | `databases/jacket-catalog.sqlite` のcurrent reference、`result_text_features`、review状態。`data/`の診断出力や正式個人スコアDBではない。 |
+| `jacket catalog` | `M5b jacket reference catalog` | collector sourceまたはbinding済みruntime catalogのcurrent reference、`result_text_features`、review状態。`data/`の診断出力や正式個人スコアDBではない。 |
 | `title line hash` | `M5b/M5c catalog: title_line_hash` または `M7 result feature: title_linehash_rows` | 前者はsong-select `INFORMATION`欄のcatalog identity、後者はresult title feature payloadの行別値。同じ名前のfeatureとして流用しない。 |
 
 `--m5-jacket-match` は現在の互換CLI入口であり、実行時にM5 jacket matchの出力とM7 result-text featureの診断出力を同時に生成する場合がある。`--m7-result-text-feature-catalog` を明示した場合だけ、acceptedなtitle/artist payloadをM5b catalogへ冪等保存する。CLI option名だけを見て、M7 result-text featureをM5 jacket featureや正式保存値と読み替えない。

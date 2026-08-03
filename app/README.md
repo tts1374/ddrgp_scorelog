@@ -133,11 +133,11 @@ windowの×ボタンはwindowをtrayへ格納し、最小化ボタンは通常�
 | 対象 | development | production |
 | --- | --- | --- |
 | M4 master DB | `databases/ddrgp-master.sqlite` | `%LOCALAPPDATA%\DDRGpScoreViewer\data\master\ddrgp-master.sqlite` |
-| M5b jacket reference catalog | `databases/jacket-catalog.sqlite` | `%LOCALAPPDATA%\DDRGpScoreViewer\data\master\jacket-catalog.sqlite` |
+| M5b jacket reference catalog | `databases/jacket-catalog-release.sqlite` | `%LOCALAPPDATA%\DDRGpScoreViewer\data\master\jacket-catalog.sqlite` |
 | 正式個人スコアDB | `databases/score.dev.db` | `%LOCALAPPDATA%\DDRGpScoreViewer\data\score\score.db` |
 | 評価用DB | `databases/evaluation.db`（M10-3専用） | 既定pathなし |
 
-M4 master DBとM5b jacket reference catalogは、同じdirectoryに置かれていても別ファイル・別責務です。Release packageは両DBを1つのreference data setとして同梱し、production起動時はGitHub Releasesの同じreference data setも確認します。正式個人スコアDBはアプリ更新、reference DB操作、評価用DB初期化で上書き・初期化しません。固定score pathがmissingまたは0 byteの場合だけ、master 2種類の検証後に既存の正式DB準備境界を使って空の正式schemaを作成します。既存非空DBは現行schemaならそのまま利用し、明示converterがある旧schemaだけ事前backup後にtransaction migrationします。対応より新しいschemaとconverterのないschemaは変更せず拒否します。
+M4 master DBとM5b jacket reference catalogは、同じdirectoryに置かれていても別ファイル・別責務です。developmentではcollectorが更新する未binding source `databases/jacket-catalog.sqlite`をそのままruntimeへ渡さず、`bind-master`で生成した`databases/jacket-catalog-release.sqlite`をWPFの固定runtime pathとして読みます。Release packageは両DBを1つのreference data setとして同梱し、production起動時はGitHub Releasesの同じreference data setも確認します。正式個人スコアDBはアプリ更新、reference DB操作、評価用DB初期化で上書き・初期化しません。固定score pathがmissingまたは0 byteの場合だけ、master 2種類の検証後に既存の正式DB準備境界を使って空の正式schemaを作成します。既存非空DBは現行schemaならそのまま利用し、明示converterがある旧schemaだけ事前backup後にtransaction migrationします。対応より新しいschemaとconverterのないschemaは変更せず拒否します。
 
 初回起動では親directory（`databases/`、またはproductionの`data/master/`・`data/score/`）と`data/`・`logs/`を作成し、master 2種類がcompatibleなら固定score pathのmissing／0 byteだけを初期化します。既存の非空score DBはread-only検証だけを行い、unknown、preview、identity mismatch、manual migration候補、非SQLite、directoryは変更せず拒否します。captureはdevelopmentでは`data/windows_capture/`、productionでは`%LOCALAPPDATA%\DDRGpScoreViewer\data\windows_capture/`へ出し、解析artifactは`data/capture_save_workflow/`、失敗画像と診断ログは`logs/`配下へ分離します。これらは再生成・退避可能なlocal dataで、Git管理しません。
 
@@ -208,7 +208,7 @@ dotnet run --project app\src\DDRGpScoreViewer\DDRGpScoreViewer.csproj --configur
 
 VeloPack 1.2.0をrepository-local .NET toolとして固定しています。packageはunsignedのWindows x64 self-contained buildで、`packId=com.tts1374.ddrgp_scorelog`、表示名`GP Score Log`、Start Menu shortcutのみを持つper-user installerです。管理者権限、Desktop shortcut、code signing、強制更新、複数channel、background service、telemetryは使用しません。通常のinstaller完了時はアプリが起動します。
 
-1. `databases/ddrgp-master.sqlite`と`databases/jacket-catalog.sqlite`を同じcurrent master versionに揃え、catalogの`catalog_metadata.master_version`とmaster DBの実metadataが一致することをread-only検証する。初期版Release前の未binding catalogは、developer向けPoC READMEの`bind-master`でsourceを変更せず`databases/jacket-catalog-release.sqlite`へ変換し、package commandへ`-CatalogDatabase databases\jacket-catalog-release.sqlite`を渡す。
+1. `databases/ddrgp-master.sqlite`と、`bind-master`で作成した`databases/jacket-catalog-release.sqlite`を同じcurrent master versionに揃え、catalogの`catalog_metadata.master_version`とmaster DBの実metadataが一致することをread-only検証する。collector source `databases/jacket-catalog.sqlite`を使う場合は、developer向けPoC READMEの`bind-master`でsourceを変更せずruntime/release用catalogへ変換し、package commandへ`-CatalogDatabase databases\jacket-catalog-release.sqlite`を渡す。
 2. repository rootで次を実行する。
 
    ```powershell

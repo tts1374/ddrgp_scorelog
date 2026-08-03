@@ -15,6 +15,11 @@ public sealed record ViewerDatabasePaths(
     string LogsDirectory,
     string SettingsPath)
 {
+    // The collector source may be an unbound pre-release catalog. The WPF
+    // runtime must use the explicitly bound copy instead of accepting it as a fallback.
+    private const string DevelopmentRuntimeJacketCatalogFileName =
+        "jacket-catalog-release.sqlite";
+
     public static ViewerDatabasePaths ResolveDefault()
     {
 #if DEBUG
@@ -51,7 +56,7 @@ public sealed record ViewerDatabasePaths(
             ViewerDatabaseEnvironment.Development,
             root,
             Path.Combine(databaseDirectory, "ddrgp-master.sqlite"),
-            Path.Combine(databaseDirectory, "jacket-catalog.sqlite"),
+            Path.Combine(databaseDirectory, DevelopmentRuntimeJacketCatalogFileName),
             Path.Combine(databaseDirectory, "score.dev.db"),
             Path.Combine(databaseDirectory, "evaluation.db"),
             dataDirectory,
