@@ -86,6 +86,28 @@ public sealed class ReleaseOperationsTests
     }
 
     [Fact]
+    public void Reference_data_set_rejects_catalog_bound_to_another_master_version()
+    {
+        using var fixture = new DatabaseFixture();
+        using (var connection = OpenWritable(fixture.CatalogPath))
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText =
+                "UPDATE catalog_metadata SET value = 'older-master' WHERE key = 'master_version';";
+            command.ExecuteNonQuery();
+        }
+        var paths = ViewerDatabasePaths.ForProduction(
+            Path.Combine(fixture.DirectoryPath, "local-app-data"));
+        var package = CreatePackage(fixture, "1.0.0");
+
+        var result = new ReferenceDataSetManager().InstallPackageDataSet(package, paths);
+
+        Assert.Equal(ReferenceDataSetUpdateStatus.Failed, result.Status);
+        Assert.False(File.Exists(paths.MasterDatabasePath));
+        Assert.False(File.Exists(paths.JacketCatalogDatabasePath));
+    }
+
+    [Fact]
     public void Explicit_score_migration_keeps_one_backup_and_reopens_current_schema()
     {
         using var fixture = new DatabaseFixture();

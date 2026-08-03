@@ -11,7 +11,10 @@ param(
     [string]$CatalogDatabase = (Join-Path $PSScriptRoot '..\..\databases\jacket-catalog.sqlite'),
 
     [Parameter()]
-    [string]$OutputDirectory = (Join-Path $PSScriptRoot "..\..\data\releases\$Version")
+    [string]$OutputDirectory = (Join-Path $PSScriptRoot "..\..\data\releases\$Version"),
+
+    [Parameter()]
+    [switch]$ValidateInputsOnly
 )
 
 $ErrorActionPreference = 'Stop'
@@ -35,6 +38,26 @@ if (-not (Test-Path -LiteralPath $catalogPath -PathType Leaf))
 if (-not $outputPath.StartsWith($releaseRoot + [System.IO.Path]::DirectorySeparatorChar, [System.StringComparison]::OrdinalIgnoreCase))
 {
     throw "OutputDirectory must remain under $releaseRoot"
+}
+
+$pairJson = uv run --directory $repositoryRoot python -m tools.vision_poc.jacket_reference_catalog release-pair `
+    --master-db $masterPath `
+    --catalog $catalogPath
+if ($LASTEXITCODE -ne 0)
+{
+    throw 'Release reference DB pair validation failed.'
+}
+$pair = $pairJson | ConvertFrom-Json
+if ([string]::IsNullOrWhiteSpace([string]$pair.master_version) -or
+    [string]::IsNullOrWhiteSpace([string]$pair.catalog_master_version) -or
+    $pair.master_version -ne $pair.catalog_master_version)
+{
+    throw 'Release reference DB metadata versions do not match.'
+}
+if ($ValidateInputsOnly)
+{
+    Write-Output "Release reference DB pair validation passed: master_version=$($pair.master_version)"
+    return
 }
 
 if (Test-Path -LiteralPath $buildRoot)
@@ -69,23 +92,14 @@ dotnet publish `
     -p:DebugSymbols=false
 if ($LASTEXITCODE -ne 0) { throw 'Release publish failed.' }
 
-$summaryPath = Join-Path $buildRoot 'master-summary.json'
-uv run python (Join-Path $repositoryRoot 'master\inspect.py') $masterPath --summary $summaryPath | Out-Null
-if ($LASTEXITCODE -ne 0) { throw 'Master database inspection failed.' }
-$masterSummary = Get-Content -Raw -Encoding UTF8 $summaryPath | ConvertFrom-Json
-if ([string]::IsNullOrWhiteSpace([string]$masterSummary.master_version))
-{
-    throw 'Master database has no master_version.'
-}
-
 Copy-Item -LiteralPath $masterPath -Destination (Join-Path $referenceDirectory 'ddrgp-master.sqlite')
 Copy-Item -LiteralPath $catalogPath -Destination (Join-Path $referenceDirectory 'jacket-catalog.sqlite')
 $manifest = [ordered]@{
     content_version = $Version
     master_schema_version = 1
     catalog_schema_version = 1
-    master_content_version = [string]$masterSummary.master_version
-    catalog_master_content_version = [string]$masterSummary.master_version
+    master_content_version = [string]$pair.master_version
+    catalog_master_content_version = [string]$pair.catalog_master_version
     master_sha256 = (Get-FileHash -LiteralPath $masterPath -Algorithm SHA256).Hash.ToLowerInvariant()
     catalog_sha256 = (Get-FileHash -LiteralPath $catalogPath -Algorithm SHA256).Hash.ToLowerInvariant()
 }

@@ -636,7 +636,8 @@ python -m tools.vision_poc --m7a-digit-recognition --no-ocr --output data\vision
 
 ```powershell
 python -m tools.vision_poc.jacket_reference_catalog create `
-  --catalog databases\jacket-catalog.sqlite
+  --catalog databases\jacket-catalog.sqlite `
+  --master-db databases\ddrgp-master.sqlite
 ```
 
 runtimeとcollectorは旧catalogの自動migration、read-only fallback、legacy ingestを行いません。初回リリース前に旧v1 catalogを現行v1 catalogへ移す場合だけ、次の明示CLIを使えます。sourceはread-onlyで開き、outputは未作成pathに新規作成するため、in-place上書きは行いません。
@@ -644,10 +645,20 @@ runtimeとcollectorは旧catalogの自動migration、read-only fallback、legacy
 ```powershell
 python -m tools.vision_poc.jacket_reference_catalog migrate-v1 `
   --source-catalog databases\jacket-catalog.sqlite `
-  --output-catalog databases\jacket-catalog-migrated-v1.sqlite
+  --output-catalog databases\jacket-catalog-migrated-v1.sqlite `
+  --master-db databases\ddrgp-master.sqlite
 ```
 
 移行では`catalog_metadata`、`jacket_references`、`reference_candidates`、`reference_review_history`を引き継ぎ、`result_text_features`は新形式の空テーブルとして作成します。sourceは変更せず、outputのcurrent schema検証が完了した後にだけ利用先を切り替えます。現行schemaとexact一致しないDBは通常runtimeでは副作用なしでunsupportedとして拒否し、既存local DB、artifact、checkpoint、source/crop画像の削除・上書き・in-place修復は行いません。
+
+初期版Release前に作成済みで`catalog_metadata.master_version`を持たないcurrent catalogは、sourceを変更せず新規outputへcopyしてcurrent masterへ明示bindingします。出力後にsourceとoutputを取り違えないようpathを確認し、Release入力だけを切り替えます。
+
+```powershell
+python -m tools.vision_poc.jacket_reference_catalog bind-master `
+  --source-catalog databases\jacket-catalog.sqlite `
+  --output-catalog databases\jacket-catalog-release.sqlite `
+  --master-db databases\ddrgp-master.sqlite
+```
 
 collector observationはcurrent `ingest`だけを使い、非空observation ID、artifact image hash、current master version/source hash、catalog identity/schema/created-at、current feature extractor、jacket/title-line/composite identity一式を検査します。新規rowは空title/artist、`unresolved`、revision 0、history/candidateなしです。同じobservation ID・同じpayloadは冪等で、異payloadは拒否します。異なるobservation IDでも同じcomposite identityなら、`unresolved`、review待ち、確定、再割当、`reopen`、`rejected`の全状態で既存reference receiptへtransaction内で収束します。
 

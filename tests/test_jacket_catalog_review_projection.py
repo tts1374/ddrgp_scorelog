@@ -77,7 +77,7 @@ def setup_projection(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[P
     master_db = tmp_path / "master.sqlite"
     write_master(master_db)
     catalog_db = tmp_path / "databases/catalog.sqlite"
-    catalog.create_catalog(catalog_db)
+    catalog.create_catalog(catalog_db, master_db)
     image = tmp_path / "data/jacket.png"
     Image.new("RGB", (64, 64), (20, 30, 40)).save(image)
     result = catalog.ingest_observation(

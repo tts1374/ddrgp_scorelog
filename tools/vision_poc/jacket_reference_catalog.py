@@ -839,7 +839,9 @@ def _catalog_schema_version(connection: sqlite3.Connection) -> int:
         raise ValueError("unsupported jacket reference catalog schema version") from exc
 
 
-def _validate_catalog(connection: sqlite3.Connection) -> int:
+def _validate_catalog(
+    connection: sqlite3.Connection, *, allow_unbound_master: bool = False
+) -> int:
     version = _catalog_schema_version(connection)
     if version != CATALOG_SCHEMA_VERSION:
         raise ValueError("unsupported jacket reference catalog schema version")
@@ -854,10 +856,22 @@ def _validate_catalog(connection: sqlite3.Connection) -> int:
         if _table_columns(connection, table) != expected_columns:
             raise ValueError(f"jacket reference catalog {table} columns mismatch")
     metadata = dict(connection.execute("SELECT key, value FROM catalog_metadata"))
-    if set(metadata) != {"catalog_identity", "schema_version", "created_at"}:
+    expected_metadata = {
+        "catalog_identity",
+        "schema_version",
+        "created_at",
+        "master_version",
+    }
+    if allow_unbound_master:
+        valid_metadata_keys = (expected_metadata, expected_metadata - {"master_version"})
+    else:
+        valid_metadata_keys = (expected_metadata,)
+    if set(metadata) not in valid_metadata_keys:
         raise ValueError("jacket reference catalog metadata keys mismatch")
     if metadata.get("catalog_identity") != CATALOG_IDENTITY:
         raise ValueError("not a jacket reference catalog: identity mismatch")
+    if "master_version" in metadata and not metadata["master_version"].strip():
+        raise ValueError("jacket reference catalog master version is empty")
     if connection.execute("PRAGMA user_version").fetchone()[0] != version:
         raise ValueError("jacket reference catalog user_version mismatch")
     reference_unique = _unique_index_columns(connection, "jacket_references")
@@ -947,10 +961,11 @@ def _validate_legacy_catalog(connection: sqlite3.Connection) -> int:
     return version
 
 
-def create_catalog(path: Path) -> None:
+def create_catalog(path: Path, master_db: Path) -> None:
     ensure_catalog_path(path, argument_name="--catalog")
     if path.exists():
         raise ValueError(f"catalog already exists: {path}")
+    master = load_master_identity(master_db)
     path.parent.mkdir(parents=True, exist_ok=True)
     try:
         with closing(sqlite3.connect(path)) as connection, connection:
@@ -962,6 +977,7 @@ def create_catalog(path: Path) -> None:
                     ("catalog_identity", CATALOG_IDENTITY),
                     ("schema_version", str(CATALOG_SCHEMA_VERSION)),
                     ("created_at", now),
+                    ("master_version", master.version),
                 ),
             )
     except Exception:
@@ -985,7 +1001,9 @@ def catalog_schema_version(path: Path) -> int:
         raise ValueError(f"invalid jacket reference catalog: {path}") from exc
 
 
-def migrate_catalog_v1(source_path: Path, output_path: Path) -> dict[str, Any]:
+def migrate_catalog_v1(
+    source_path: Path, output_path: Path, master_db: Path
+) -> dict[str, Any]:
     """Copy the legacy v1 catalog into the current v1 schema without changing source."""
     ensure_catalog_path(source_path, argument_name="--source-catalog")
     ensure_catalog_path(output_path, argument_name="--output-catalog")
@@ -1019,7 +1037,8 @@ def migrate_catalog_v1(source_path: Path, output_path: Path) -> dict[str, Any]:
             }
             source_counts = {table: len(rows) for table, rows in source_rows.items()}
 
-        create_catalog(output_path)
+        master = load_master_identity(master_db)
+        create_catalog(output_path, master_db)
         output_created = True
         with closing(sqlite3.connect(output_path)) as output_connection:
             output_connection.execute("PRAGMA foreign_keys = ON")
@@ -1028,7 +1047,8 @@ def migrate_catalog_v1(source_path: Path, output_path: Path) -> dict[str, Any]:
                 output_connection.execute("DELETE FROM catalog_metadata")
                 output_connection.executemany(
                     "INSERT INTO catalog_metadata (key, value) VALUES (?, ?)",
-                    [tuple(row) for row in source_metadata],
+                    [tuple(row) for row in source_metadata if row[0] != "master_version"]
+                    + [("master_version", master.version)],
                 )
                 for table in table_order[1:]:
                     columns = [
@@ -1057,7 +1077,10 @@ def migrate_catalog_v1(source_path: Path, output_path: Path) -> dict[str, Any]:
                     "SELECT COUNT(*) FROM result_text_features"
                 ).fetchone()[0]
             )
-        if output_counts != source_counts:
+        if output_counts["catalog_metadata"] != source_counts["catalog_metadata"] + 1 or any(
+            output_counts[table] != source_counts[table]
+            for table in table_order[1:]
+        ):
             raise ValueError("catalog migration row counts do not match")
         if result_text_feature_count != 0:
             raise ValueError("catalog migration unexpectedly copied result text features")
@@ -1073,6 +1096,72 @@ def migrate_catalog_v1(source_path: Path, output_path: Path) -> dict[str, Any]:
         "output_schema_version": CATALOG_SCHEMA_VERSION,
         "preserved_row_counts": source_counts,
         "result_text_feature_count": 0,
+    }
+
+
+def bind_catalog_to_master(
+    source_path: Path, output_path: Path, master_db: Path
+) -> dict[str, str | int]:
+    """Copy one pre-release catalog and bind the copy to a validated master version."""
+    ensure_catalog_path(source_path, argument_name="--source-catalog")
+    ensure_catalog_path(output_path, argument_name="--output-catalog")
+    if source_path.resolve() == output_path.resolve():
+        raise ValueError("source and output catalog paths must differ")
+    if output_path.exists():
+        raise ValueError(f"output catalog already exists: {output_path}")
+    master = load_master_identity(master_db)
+    output_created = False
+    try:
+        with closing(_connect_read_only(source_path)) as source_connection:
+            _validate_catalog(source_connection, allow_unbound_master=True)
+            with closing(sqlite3.connect(output_path)) as output_connection:
+                output_created = True
+                source_connection.backup(output_connection)
+                output_connection.execute(
+                    "INSERT INTO catalog_metadata (key, value) VALUES "
+                    "('master_version', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                    (master.version,),
+                )
+                _validate_catalog(output_connection)
+                output_connection.commit()
+        validate_release_reference_pair(output_path, master_db)
+        load_m5_feature_entries(output_path, master_db)
+        load_m7_result_text_feature_entries(
+            output_path, master_db, field_name="title"
+        )
+        load_m7_result_text_feature_entries(
+            output_path, master_db, field_name="artist"
+        )
+    except Exception:
+        if output_created:
+            output_path.unlink(missing_ok=True)
+        raise
+    return {
+        "source_catalog": str(source_path.resolve()),
+        "output_catalog": str(output_path.resolve()),
+        "catalog_schema_version": CATALOG_SCHEMA_VERSION,
+        "master_version": master.version,
+    }
+
+
+def validate_release_reference_pair(
+    catalog_path: Path, master_db: Path
+) -> dict[str, str | int]:
+    """Validate the release master/catalog pair from both databases' metadata."""
+    master = load_master_identity(master_db)
+    with closing(_connect_read_only(catalog_path)) as connection:
+        schema_version = _validate_catalog(connection)
+        metadata = dict(connection.execute("SELECT key, value FROM catalog_metadata"))
+    catalog_master_version = metadata["master_version"]
+    if catalog_master_version != master.version:
+        raise ValueError(
+            "jacket reference catalog master version does not match the master DB"
+        )
+    return {
+        "catalog_identity": CATALOG_IDENTITY,
+        "catalog_schema_version": schema_version,
+        "catalog_master_version": catalog_master_version,
+        "master_version": master.version,
     }
 
 
@@ -2831,12 +2920,27 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
     create = subparsers.add_parser("create", help="Create a new current jacket catalog.")
     create.add_argument("--catalog", type=Path, required=True)
+    create.add_argument("--master-db", type=Path, required=True)
     migrate = subparsers.add_parser(
         "migrate-v1",
         help="Copy a legacy v1 catalog into the current v1 schema without changing the source.",
     )
     migrate.add_argument("--source-catalog", type=Path, required=True)
     migrate.add_argument("--output-catalog", type=Path, required=True)
+    migrate.add_argument("--master-db", type=Path, required=True)
+    bind_master = subparsers.add_parser(
+        "bind-master",
+        help="Copy a pre-release catalog and bind it to one validated master DB.",
+    )
+    bind_master.add_argument("--source-catalog", type=Path, required=True)
+    bind_master.add_argument("--output-catalog", type=Path, required=True)
+    bind_master.add_argument("--master-db", type=Path, required=True)
+    release_pair = subparsers.add_parser(
+        "release-pair",
+        help="Read-only validate catalog/master metadata for release packaging.",
+    )
+    release_pair.add_argument("--catalog", type=Path, required=True)
+    release_pair.add_argument("--master-db", type=Path, required=True)
     coverage = subparsers.add_parser("coverage", help="Generate read-only master coverage.")
     coverage.add_argument("--catalog", type=Path, required=True)
     coverage.add_argument("--master-db", type=Path, required=True)
@@ -2936,13 +3040,15 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     if args.command == "create":
-        create_catalog(args.catalog)
+        create_catalog(args.catalog, args.master_db)
+        master = load_master_identity(args.master_db)
         print(
             json.dumps(
                 {
                     "status": "created",
                     "catalog": str(args.catalog.resolve()),
                     "schema_version": CATALOG_SCHEMA_VERSION,
+                    "master_version": master.version,
                 },
                 ensure_ascii=False,
                 separators=(",", ":"),
@@ -2950,7 +3056,19 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 0
     if args.command == "migrate-v1":
-        result = migrate_catalog_v1(args.source_catalog, args.output_catalog)
+        result = migrate_catalog_v1(
+            args.source_catalog, args.output_catalog, args.master_db
+        )
+        print(json.dumps(result, ensure_ascii=False, separators=(",", ":")))
+        return 0
+    if args.command == "bind-master":
+        result = bind_catalog_to_master(
+            args.source_catalog, args.output_catalog, args.master_db
+        )
+        print(json.dumps(result, ensure_ascii=False, separators=(",", ":")))
+        return 0
+    if args.command == "release-pair":
+        result = validate_release_reference_pair(args.catalog, args.master_db)
         print(json.dumps(result, ensure_ascii=False, separators=(",", ":")))
         return 0
     if args.command == "review":

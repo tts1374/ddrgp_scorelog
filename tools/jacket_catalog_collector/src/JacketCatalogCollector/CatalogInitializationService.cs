@@ -11,10 +11,12 @@ public sealed class CatalogInitializationService(
     IProcessRunner processRunner,
     string repositoryRoot,
     string catalogPath,
+    string masterPath,
     string pythonExecutable = "python") : ICatalogInitializationService
 {
     private readonly string root = Path.GetFullPath(repositoryRoot);
     private readonly string target = Path.GetFullPath(catalogPath);
+    private readonly string master = Path.GetFullPath(masterPath);
 
     public async Task EnsureCreatedAsync(CancellationToken cancellationToken)
     {
@@ -34,7 +36,7 @@ public sealed class CatalogInitializationService(
                     pythonExecutable,
                     [
                         "-X", "utf8", "-m", "tools.vision_poc.jacket_reference_catalog",
-                        "create", "--catalog", target,
+                        "create", "--master-db", master, "--catalog", target,
                     ],
                     root),
                 cancellationToken);

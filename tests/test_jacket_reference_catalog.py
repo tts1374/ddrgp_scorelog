@@ -82,7 +82,7 @@ def setup_paths(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, 
     master_db = tmp_path / "master.sqlite"
     write_master(master_db)
     catalog_path = tmp_path / "databases/catalog.sqlite"
-    catalog.create_catalog(catalog_path)
+    catalog.create_catalog(catalog_path, master_db)
     image_path = tmp_path / "data/jacket.png"
     Image.new("RGB", (64, 64), (10, 20, 30)).save(image_path)
     return master_db, catalog_path, image_path
@@ -323,7 +323,10 @@ def test_migrate_legacy_v1_catalog_preserves_references_and_history(
                 row[1]
                 for row in legacy.execute(f"PRAGMA table_info({table})")
             ]
-            rows = source.execute(f"SELECT * FROM {table}").fetchall()
+            rows = source.execute(
+                f"SELECT * FROM {table}"
+                + (" WHERE key != 'master_version'" if table == "catalog_metadata" else "")
+            ).fetchall()
             placeholders = ", ".join("?" for _ in columns)
             column_sql = ", ".join(columns)
             legacy.executemany(
@@ -332,7 +335,7 @@ def test_migrate_legacy_v1_catalog_preserves_references_and_history(
             )
     migrated_path = tmp_path / "databases/migrated-v1.sqlite"
 
-    result = catalog.migrate_catalog_v1(legacy_path, migrated_path)
+    result = catalog.migrate_catalog_v1(legacy_path, migrated_path, master_db)
 
     assert catalog_path.read_bytes() == source_bytes
     assert result["source_schema_version"] == 1
@@ -350,6 +353,36 @@ def test_migrate_legacy_v1_catalog_preserves_references_and_history(
         ).fetchone()[0] == created_at(catalog_path)
 
 
+def test_release_pair_uses_catalog_metadata_and_bind_copies_unbound_catalog(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    master_db, catalog_path, _image_path = setup_paths(tmp_path, monkeypatch)
+    valid = catalog.validate_release_reference_pair(catalog_path, master_db)
+    assert valid["catalog_master_version"] == "master-v1"
+
+    with sqlite3.connect(catalog_path) as connection, connection:
+        connection.execute(
+            "UPDATE catalog_metadata SET value = 'older-master' "
+            "WHERE key = 'master_version'"
+        )
+    with pytest.raises(ValueError, match="does not match"):
+        catalog.validate_release_reference_pair(catalog_path, master_db)
+
+    unbound_path = tmp_path / "databases/unbound.sqlite"
+    with sqlite3.connect(catalog_path) as source, sqlite3.connect(unbound_path) as output:
+        source.backup(output)
+        output.execute("DELETE FROM catalog_metadata WHERE key = 'master_version'")
+    bound_path = tmp_path / "databases/bound.sqlite"
+    result = catalog.bind_catalog_to_master(unbound_path, bound_path, master_db)
+
+    assert result["master_version"] == "master-v1"
+    assert catalog.validate_release_reference_pair(bound_path, master_db) == valid
+    with sqlite3.connect(unbound_path) as connection:
+        assert connection.execute(
+            "SELECT COUNT(*) FROM catalog_metadata WHERE key = 'master_version'"
+        ).fetchone()[0] == 0
+
+
 def test_catalog_path_uses_fixed_databases_directory_and_keeps_data_artifact_guard(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -358,10 +391,12 @@ def test_catalog_path_uses_fixed_databases_directory_and_keeps_data_artifact_gua
     data = tmp_path / "data"
     databases.mkdir()
     data.mkdir()
+    master_db = tmp_path / "master.sqlite"
+    write_master(master_db)
 
     catalog_path = databases / "jacket-catalog.sqlite"
     catalog.ensure_catalog_path(catalog_path, argument_name="--catalog")
-    catalog.create_catalog(catalog_path)
+    catalog.create_catalog(catalog_path, master_db)
 
     with pytest.raises(ValueError, match="under databases"):
         catalog.ensure_catalog_path(data / "catalog.sqlite", argument_name="--catalog")
@@ -374,11 +409,13 @@ def test_catalog_create_removes_partial_database_on_failure(
 ) -> None:
     monkeypatch.chdir(tmp_path)
     (tmp_path / "databases").mkdir()
+    master_db = tmp_path / "master.sqlite"
+    write_master(master_db)
     catalog_path = tmp_path / "databases/catalog.sqlite"
     monkeypatch.setattr(catalog, "CATALOG_SCHEMA_SQL", "CREATE TABLE partial (value TEXT);")
 
     with pytest.raises(sqlite3.OperationalError):
-        catalog.create_catalog(catalog_path)
+        catalog.create_catalog(catalog_path, master_db)
 
     assert not catalog_path.exists()
 
@@ -1170,11 +1207,13 @@ def test_current_receipt_coverage_and_cli_contract(
     assert {
         "create",
         "migrate-v1",
+        "bind-master",
+        "release-pair",
         "coverage",
-            "review",
-            "review-batch",
-            "delete-reference",
-            "ingest",
+        "review",
+        "review-batch",
+        "delete-reference",
+        "ingest",
         "validate-session",
         "validate-receipt",
         "identity-set",

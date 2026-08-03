@@ -208,7 +208,7 @@ dotnet run --project app\src\DDRGpScoreViewer\DDRGpScoreViewer.csproj --configur
 
 VeloPack 1.2.0をrepository-local .NET toolとして固定しています。packageはunsignedのWindows x64 self-contained buildで、`packId=com.tts1374.ddrgp_scorelog`、表示名`GP Score Log`、Start Menu shortcutのみを持つper-user installerです。管理者権限、Desktop shortcut、code signing、アプリ内自動更新は使用しません。通常のinstaller完了時はアプリが起動します。
 
-1. `databases/ddrgp-master.sqlite`と`databases/jacket-catalog.sqlite`を同じcurrent master versionに揃え、両方の既存inspectionを成功させる。
+1. `databases/ddrgp-master.sqlite`と`databases/jacket-catalog.sqlite`を同じcurrent master versionに揃え、catalogの`catalog_metadata.master_version`とmaster DBの実metadataが一致することをread-only検証する。初期版Release前の未binding catalogは、developer向けPoC READMEの`bind-master`でsourceを変更せず`databases/jacket-catalog-release.sqlite`へ変換し、package commandへ`-CatalogDatabase databases\jacket-catalog-release.sqlite`を渡す。
 2. repository rootで次を実行する。
 
    ```powershell
@@ -218,7 +218,7 @@ VeloPack 1.2.0をrepository-local .NET toolとして固定しています。pack
 3. `data/releases/0.1.0/`の`com.tts1374.ddrgp_scorelog-win-Setup.exe`、full package、`RELEASES`、`assets.win.json`、`releases.win.json`を確認する。`data/release-build/0.1.0/publish/ReferenceData/`には2つのDBと`reference-set.json`が別fileのまま入る。
 4. tagとGitHub Releaseを同じversion（例: `v0.1.0`）で作り、少なくともSetup、full package、`RELEASES`、2つのrelease JSONを添付する。署名していないこととこのREADMEの既知制限をRelease notesへ記載する。
 
-package生成はlocked NuGet restore、Release self-contained publish、master DB inspection、VeloPack packagingを順に実行します。入力DBと成果物はGit管理しません。versionだけを変えて同じrepository revisionと同じ2 DBから再実行できます。VeloPackの取得、更新適用、network source設定は#116/#117の範囲なので実装していません。
+package生成はmaster/catalog実metadataの一致検証、locked NuGet restore、Release self-contained publish、VeloPack packagingを順に実行します。入力DBと成果物はGit管理しません。versionだけを変えて同じrepository revisionと同じ2 DBから再実行できます。VeloPackの取得、更新適用、network source設定は#116/#117の範囲なので実装していません。
 
 ## 初回導入と通常操作
 

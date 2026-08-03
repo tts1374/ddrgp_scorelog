@@ -165,6 +165,14 @@ public sealed class ReferenceDataSetManager
         {
             throw new InvalidOperationException("manifestとmaster DBのcontent versionが一致しません。");
         }
+        if (!string.Equals(
+                catalog.MasterContentVersion,
+                manifest.CatalogMasterContentVersion,
+                StringComparison.Ordinal) ||
+            !string.Equals(catalog.MasterContentVersion, master.Version, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException("jacket参照catalog metadataとmaster DBのcontent versionが一致しません。");
+        }
         return manifest;
     }
 
