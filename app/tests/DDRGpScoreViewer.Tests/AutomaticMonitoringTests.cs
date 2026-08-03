@@ -117,6 +117,69 @@ public sealed class AutomaticMonitoringTests
     }
 
     [Fact]
+    public async Task Fast_window_restart_during_automatic_stop_recovers_without_an_extra_gap()
+    {
+        using var fixture = new DatabaseFixture();
+        var enumerator = new MutableWindowEnumerator(Candidate(101));
+        var capture = new BlockingTargetedCaptureService
+        {
+            DelayStop = true,
+        };
+        var viewModel = CreateViewModel(fixture, enumerator, capture);
+
+        try
+        {
+            viewModel.StartAutomaticMonitoring(123);
+            await WaitForTargetedRunAsync(viewModel, capture, expectedCount: 1);
+            await WaitForStateAsync(viewModel, MonitoringState.Monitoring);
+
+            enumerator.SetCandidates([]);
+            await capture.StopStartedSignal.Task.WaitAsync(TimeSpan.FromSeconds(3));
+
+            // The replacement window appears while the previous session is still stopping.
+            enumerator.SetCandidates([Candidate(202)]);
+            capture.ReleaseStop();
+
+            await WaitForTargetedRunAsync(viewModel, capture, expectedCount: 2);
+            await WaitForStateAsync(viewModel, MonitoringState.Monitoring);
+            Assert.Equal(2, capture.TargetedRunCount);
+        }
+        finally
+        {
+            capture.ReleaseStop();
+            capture.DelayStop = false;
+            if (viewModel.IsContinuousCapturing || viewModel.CanStopMonitoring)
+            {
+                await viewModel.StopContinuousCaptureAsync(manualStop: false);
+            }
+            viewModel.RequestApplicationExit();
+            await viewModel.WaitForOperationsAsync();
+        }
+    }
+
+    [Fact]
+    public async Task Additional_matching_window_does_not_stop_active_monitoring_when_active_handle_remains()
+    {
+        using var fixture = new DatabaseFixture();
+        var activeCandidate = Candidate(101);
+        var enumerator = new MutableWindowEnumerator(activeCandidate);
+        var capture = new BlockingTargetedCaptureService();
+        var viewModel = CreateViewModel(fixture, enumerator, capture);
+
+        viewModel.StartAutomaticMonitoring(123);
+        await WaitForTargetedRunAsync(viewModel, capture, expectedCount: 1);
+        await WaitForStateAsync(viewModel, MonitoringState.Monitoring);
+
+        enumerator.SetCandidates([activeCandidate, Candidate(202)]);
+        await Task.Delay(80);
+
+        Assert.Equal(0, capture.StopCount);
+        Assert.Equal(MonitoringState.Monitoring, viewModel.CurrentMonitoringState);
+
+        await StopAutomaticMonitoringAsync(viewModel, capture);
+    }
+
+    [Fact]
     public async Task Database_failure_blocks_automatic_start()
     {
         using var fixture = new DatabaseFixture();
@@ -363,6 +426,11 @@ public sealed class AutomaticMonitoringTests
         public List<TaskCompletionSource> StopSignals { get; } = [];
         public int TargetedRunCount { get; private set; }
         public int StopCount { get; private set; }
+        public bool DelayStop { get; set; }
+        public TaskCompletionSource StopStartedSignal { get; } = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        private TaskCompletionSource StopReleaseSignal { get; } = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
         public bool IsRunning => completion is { Task.IsCompleted: false };
 
         public Task<CaptureSessionOperationResult> RunAsync(
@@ -403,16 +471,22 @@ public sealed class AutomaticMonitoringTests
             return completion.Task;
         }
 
-        public Task StopAsync()
+        public async Task StopAsync()
         {
             StopCount++;
             if (StopSignals.Count > 0)
             {
                 StopSignals[^1].TrySetResult();
             }
+            if (DelayStop)
+            {
+                StopStartedSignal.TrySetResult();
+                await StopReleaseSignal.Task;
+            }
             completion?.TrySetResult(Result(CaptureOperationStatus.Cancelled));
-            return Task.CompletedTask;
         }
+
+        public void ReleaseStop() => StopReleaseSignal.TrySetResult();
 
         private static CaptureSessionOperationResult Result(CaptureOperationStatus status) =>
             new(status, $"fixture {status}");

@@ -86,6 +86,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private bool automaticMonitoringBlocked;
     private string automaticMonitoringBlockReason = "—";
     private bool automaticMonitoringRequiresWindowGap;
+    private bool automaticMonitoringWindowLossStopInProgress;
     private bool automaticMonitoringWaitingForUpdate;
     private bool referenceDataUpdateInProgress;
     private readonly IApplicationUpdateService? applicationUpdateService;
@@ -877,7 +878,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
                     {
                         consecutiveMisses = 0;
                     }
-                    else if (candidates.Count == 1 && candidates[0].Handle == activeTargetHandle)
+                    else if (candidates.Any(candidate => candidate.Handle == activeTargetHandle))
                     {
                         consecutiveMisses = 0;
                     }
@@ -888,6 +889,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
                             !IsStoppingCapture)
                         {
                             consecutiveMisses = 0;
+                            automaticMonitoringWindowLossStopInProgress = true;
                             try
                             {
                                 await StopContinuousCaptureAsync(manualStop: false);
@@ -895,7 +897,6 @@ public sealed class MainViewModel : INotifyPropertyChanged
                                     !automaticMonitoringManuallyStopped &&
                                     !automaticMonitoringBlocked)
                                 {
-                                    automaticMonitoringRequiresWindowGap = true;
                                     SetAutomaticWaiting(
                                         "対象windowが消失したため安全に停止しました。再出現を待っています。");
                                 }
@@ -1060,11 +1061,15 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 else if (CurrentMonitoringState is MonitoringState.TargetClosed or
                          MonitoringState.Resized or MonitoringState.Stopped)
                 {
-                    automaticMonitoringRequiresWindowGap = true;
-                    SetAutomaticWaiting(
-                        "監視sessionが終了しました。対象windowの消失と再出現を確認してから復帰します。");
+                    if (!automaticMonitoringWindowLossStopInProgress)
+                    {
+                        automaticMonitoringRequiresWindowGap = true;
+                        SetAutomaticWaiting(
+                            "監視sessionが終了しました。対象windowの消失と再出現を確認してから復帰します。");
+                    }
                 }
             }
+            automaticMonitoringWindowLossStopInProgress = false;
         }
     }
 
