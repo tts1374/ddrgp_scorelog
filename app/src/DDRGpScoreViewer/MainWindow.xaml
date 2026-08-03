@@ -62,10 +62,36 @@
                         </StackPanel>
                         <TextBlock Text="DDR GP ウィンドウ待機中" Foreground="#94A3B8"
                                    FontSize="11" Margin="0,6,0,0" />
-                        <Button Content="監視を開始する" Style="{StaticResource PrimaryButtonStyle}"
+                        <Button Content="監視を開始する"
                                 IsEnabled="{Binding CanStartMonitoring}"
                                 Click="StartContinuousCaptureAndSave_Click"
-                                Margin="0,12,0,0" />
+                                Margin="0,12,0,0">
+                            <Button.Style>
+                                <Style BasedOn="{StaticResource PrimaryButtonStyle}" TargetType="Button">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding CanStopMonitoring}" Value="True">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Button.Style>
+                        </Button>
+                        <Button Content="監視を停止する"
+                                IsEnabled="{Binding CanStopMonitoring}"
+                                Click="StopContinuousCapture_Click"
+                                Margin="0,12,0,0">
+                            <Button.Style>
+                                <Style BasedOn="{StaticResource PrimaryButtonStyle}" TargetType="Button">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding CanStopMonitoring}" Value="True">
+                                            <Setter Property="Visibility" Value="Visible" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Button.Style>
+                        </Button>
                     </StackPanel>
                 </Border>
                 <StackPanel>
