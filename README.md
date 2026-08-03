@@ -4,7 +4,7 @@ DanceDanceRevolution GRAND PRIX のゲーム画面を解析し、十分に確認
 
 ## Status
 
-M9の監視・再起動・master DB再検証、M10のlocal storage・実機評価・VeloPack配布、reference DBのRelease取得境界を実装しています。保証範囲と既知制限はWindowsアプリREADMEへ記録しています。具体的な作業内容と受け入れ条件はGitHub Issuesを正本とし、このREADMEはmain branchで利用できる機能と開発入口を要約します。
+M9の監視・再起動・master DB再検証、M10のlocal storage・実機評価・VeloPack配布、reference DBのRelease取得境界、アプリ本体のユーザー操作更新を実装しています。保証範囲と既知制限はWindowsアプリREADMEへ記録しています。具体的な作業内容と受け入れ条件はGitHub Issuesを正本とし、このREADMEはmain branchで利用できる機能と開発入口を要約します。
 
 main branchで利用できる主な機能:
 
@@ -15,7 +15,7 @@ main branchで利用できる主な機能:
 - Release buildの通常画面は、`監視開始`／`監視停止`、固定path再検証、master DB read-only再検証に限定
 - `監視開始` による `ddr-konaste` / client `1280x720` の対象window自動特定（該当1件だけ接続）、1秒ごとのRESULT/SCORE gateと候補のリアルタイム正式保存、監視のstop / exit
 - developer-onlyのjacket catalog収集・manual review支援
-- VeloPackによる未署名per-user installer、reference data setの同梱・GitHub Releases取得・安全なセット更新、Releaseログ、手動backup / restore
+- VeloPackによる未署名per-user installer、GitHub Releasesからのユーザー操作アプリ更新、reference data setの同梱・安全なセット更新、Releaseログ、手動backup / restore
 
 進行中の主な作業:
 
