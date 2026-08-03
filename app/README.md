@@ -1,6 +1,6 @@
 # GP Score Log WPF app
 
-正式個人スコアDB version 1を開き、保存済みプレー履歴、プレー詳細、譜面別自己ベストを確認するWPFアプリです。通常画面は`監視開始`／`監視停止`による自動監視を提供し、Debug buildだけが開発者向け領域から1フレーム取得、連続取得、単発保存を提供します。`監視開始` を明示した場合だけ、`process=ddr-konaste` かつ client `1280x720` のtop-level windowを自動特定し、該当1件だけへ接続します。監視中は1秒ごとに `results_header` を確認し、RESULT画面の候補が2回連続して安定した場合だけ既存のevent boundaryと正式保存workflowへ渡します。該当windowが0件または複数件なら推測で選択せず、capture・解析・正式保存を開始しません。監視中の候補画像はsession原本として保管せず、一時workflow入力の処理後に破棄します。監視状態と最新結果はWPFとtask trayから確認できます。productionのインストール済みpackageでは、main window表示後にGitHub Releasesのアプリ更新を非同期確認し、ユーザーの明示操作でdownload・完全終了・再起動を行います。正式個人スコアDB、M4 master DB、M5b jacket reference catalogは環境ごとの固定pathで扱い、次回起動時に3つとも検証して再利用します。DBの任意path選択、汎用window探索、自動再接続、自動再開、起動時の自動監視、手動pickerへのfallback、DB repairは提供しません。score DB migrationは対応する明示的converterがあるschema変更時だけ行い、事前backupと失敗時rollbackを必須とします。
+正式個人スコアDB version 1を開き、保存済みプレー履歴、プレー詳細、譜面別自己ベストを確認するWPFアプリです。通常画面は`監視開始`／`監視停止`による監視を提供し、既定では起動後にDDR GRAND PRIX windowを1秒ごとに探索して、2回連続で検出した対象へ自動接続します。Debug buildだけが開発者向け領域から1フレーム取得、連続取得、単発保存を提供します。手動の`監視開始`でも、`process=ddr-konaste` かつ client `1280x720` のtop-level windowを自動特定し、該当1件だけへ接続します。監視中は1秒ごとに `results_header` を確認し、RESULT画面の候補が2回連続して安定した場合だけ既存のevent boundaryと正式保存workflowへ渡します。該当windowが0件または複数件なら推測で選択せず、capture・解析・正式保存を開始しません。監視中の候補画像はsession原本として保管せず、一時workflow入力の処理後に破棄します。監視状態と最新結果はWPFとtask trayから確認できます。productionのインストール済みpackageでは、main window表示後にGitHub Releasesのアプリ更新を非同期確認し、ユーザーの明示操作でdownload・完全終了・再起動を行います。正式個人スコアDB、M4 master DB、M5b jacket reference catalogは環境ごとの固定pathで扱い、次回起動時に3つとも検証して再利用します。DBの任意path選択、汎用window探索、手動pickerへのfallback、DB repairは提供しません。手動停止後は同一app session中に自動再開せず、DB・runtime・更新・終了処理の異常時も自動開始しません。score DB migrationは対応する明示的converterがあるschema変更時だけ行い、事前backupと失敗時rollbackを必須とします。
 
 ## 必要環境
 
@@ -72,9 +72,9 @@ python -m tools.vision_poc `
 
 ## 監視と正式保存workflow
 
-1. WPFまたはtask trayの `監視開始` を押す。
+1. アプリ起動後は既定で自動監視が始まり、1秒ごとに対象windowを探索する。手動で開始する場合はWPFまたはtask trayの `監視開始` を押す。
 2. 起動時に現在の環境（Debugで明示またはsource checkoutから検出したdevelopment root、またはReleaseのLocalAppData production）の固定pathを使う。DBの任意pathへの切替操作はありません。
-3. `監視開始` が `process=ddr-konaste` かつ client `1280x720` のtop-level windowを確認する。該当1件だけなら既存の監視へ接続し、0件または複数件なら推測で選択せず、capture・解析・正式保存を開始しない。手動pickerへのfallbackはありません。
+3. `process=ddr-konaste` かつ client `1280x720` のtop-level windowを2回連続で確認した場合だけ既存の監視へ接続する。0件または複数件なら推測で選択せず、capture・解析・正式保存を開始しない。手動pickerへのfallbackはありません。
 4. 監視中にRESULT候補の解析・正式保存が進み、WPFまたはtrayの `監視停止` で現在の候補処理を完了して停止する。監視surfaceで状態、対象window名・process・client size、frame数、サンプリング数、RESULT検出数、候補・破棄・待機数、event status別の保存結果を確認する。
 
 監視では1秒ごとの候補をapp-owned runtimeで解析します。RESULTSがないframeと同じRESULT署名の後続frameは後続処理へ渡しません。RESULT画面を検出しても必須の画像認識根拠が揃わない候補はcandidate materialと失敗理由を一度だけ既存workflowへ渡し、`unresolved` または保存拒否理由を維持してplayを作りません。候補のevent boundary、capture lifecycle、formal evidence、正式DB保存境界は既存契約を維持します。candidate PNG、manifest、解析CSV/JSONはOS一時directoryまたはapp data pathだけに置き、workflow終了後に不要な一時入力を残しません。capture-onlyの連続取得は従来どおり停止後に完成manifestを解析できます。capture失敗、resize、target close、device lost、write失敗では新しい解析・正式保存を開始しません。
@@ -114,16 +114,16 @@ live保存入口は、current masterとcurrent-master-compatibleなcatalog参照
 
 `IsSaving` はDebug buildの単発保存と監視capture-save全体の共通排他です。DB path変更操作はなく、監視中は単発保存を開始しません。capture開始からworkflow完了まで状態を保持し、同じ正式DBへの並行writerとsave statusの競合を防ぎます。Debug buildのcapture-only入口も監視開始と同じoperation gateへ入り、開始要求を二重実行しません。session世代が古いprogress callback、停止後のcallback、終了後の新しい解析・保存は受け付けません。
 
-監視状態は `idle`、`selecting_target`、`monitoring`、`stopping`、`stopped`、`target_closed`、`resized`、`device_lost`、`capture_failed`、`workflow_failed` を区別します。検出したwindowのtitle、process、client sizeは監視surfaceへ表示し、auto-detectionの判定はprocess名とclient sizeだけで行います。最新結果は `saved`、`duplicate`、`excluded`、`unresolved`、`analysis_failed`、`db_rejected`、`workflow_failed` を別々に数え、transaction済みのsaved playだけread-only再読込します。
+監視状態は `idle`、`starting`、`waiting_for_game`、`selecting_target`、`monitoring`、`stopping`、`stopped`、`manually_stopped`、`blocked`、`shutting_down`、`target_closed`、`resized`、`device_lost`、`capture_failed`、`workflow_failed` を区別します。検出したwindowのtitle、process、client sizeは監視surfaceへ表示し、auto-detectionの判定はprocess名とclient sizeだけで行います。対象windowは2回連続検出で開始し、2回連続消失で安全停止します。単発の探索失敗では待機を続けます。手動停止後は`manually_stopped`、DBまたはruntime異常時は`blocked`、終了処理中は`shutting_down`としてtrayと画面へ反映します。最新結果は `saved`、`duplicate`、`excluded`、`unresolved`、`analysis_failed`、`db_rejected`、`workflow_failed` を別々に数え、transaction済みのsaved playだけread-only再読込します。
 
-windowの×ボタンはwindowをtrayへ格納し、最小化ボタンは通常どおりtaskbarへ最小化します。trayのダブルクリックまたは`GP Score Logを開く`でメイン画面を表示・前面化できます。tray menuは`GP Score Logを開く`、`監視開始`、`監視停止`、`終了`を提供し、監視状態に応じて開始・停止を有効化します。`終了`だけが新規処理受付を止め、pending pickerをcancelし、進行中処理の完了または安全な中断、監視worker/runtime停止、DB connection解放、一時data削除、tray解除の順でprocessを終了します。Windows終了・ログオフ時も可能な範囲で同じ終了処理を開始し、未完了結果を正式保存へ昇格しません。二重起動時は新しいprocessを終了し、既存windowを表示・前面化します。通知はsavedがある完了と、監視停止が必要な重大失敗だけです。
+windowの×ボタンはwindowをtrayへ格納し、最小化ボタンは通常どおりtaskbarへ最小化します。trayのダブルクリックまたは`GP Score Logを開く`でメイン画面を表示・前面化できます。tray menuは`GP Score Logを開く`、`監視開始`、`監視停止`、`終了`を提供し、監視状態に応じて開始・停止を有効化します。メインwindowをtrayへ格納しても自動監視workerは継続し、検出・消失に応じて同じtray状態を更新します。`終了`だけが新規処理受付を止め、pending pickerをcancelし、進行中処理の完了または安全な中断、監視polling・worker/runtime停止、DB connection解放、一時data削除、tray解除の順でprocessを終了します。Windows終了・ログオフ時も可能な範囲で同じ終了処理を開始し、未完了結果を正式保存へ昇格しません。二重起動時は新しいprocessを終了し、既存windowを表示・前面化します。通知はsavedがある完了と、監視停止が必要な重大失敗だけです。
 
 ## 再起動・path再検証・失敗からの復帰
 
 - 正式個人スコアDB、M4 master DB、M5b jacket reference catalogの固定pathとdev/prod環境タグだけを `%LOCALAPPDATA%\DDRGpScoreViewer\viewer-paths.json` に保存します。この設定はGit管理外で、候補値、解析結果、保存statusは持ちません。旧形式、任意path、別環境のpathは暗黙復元せず、現在の既定pathだけを使用します。
 - 起動時、解析・正式保存開始直前に、M4 master DBとM5b jacket reference catalogを別々のread-only connectionで検査します。M4は必須table、metadata、曲・譜面件数、source snapshotのURL/hash整合を確認し、M5bはtable identity、column、metadata identity、schema version、unique index、foreign keyを確認します。両方とも `missing`、`read不可`、`schema incompatible`、`compatible` を区別します。
 - どちらか一方がmissing / read不可 / incompatibleなら、理由を表示して対象windowの解析と正式保存workflowを開始しません。capture後にも同じ2ファイルを再検証します。networkからの最新版確認やhashの継続監視は行いません。
-- `target_closed`、`resized`、`device_lost`、`capture_failed`、`workflow_failed` は監視状態として残ります。停止完了後に必要なmaster DBを現在の環境の固定pathへ用意し、`監視開始` を明示的に再実行してください。再実行時も対象windowを1件だけ自動特定し、window終了、resize、capture失敗で古いsessionを再利用しません。Debug buildの `連続取得を開始` はcapture-onlyの開発者向け入口として手動pickerで対象windowを選び直します。
+- `target_closed`、`resized`、`device_lost`、`capture_failed`、`workflow_failed` は監視状態として残ります。window終了やresizeではsessionを安全に終了し、対象windowが一度消失してから再出現した場合だけ自動復帰します。DBまたはruntime異常は`blocked`として自動開始を抑止し、必要なmaster DBを現在の環境の固定pathへ用意してから再起動してください。手動停止後は同一app session中に自動復帰せず、明示的な`監視開始`だけを受け付けます。再実行時も対象windowを1件だけ自動特定し、古いsessionを再利用しません。Debug buildの `連続取得を開始` はcapture-onlyの開発者向け入口として手動pickerで対象windowを選び直します。
 - saved、duplicate、excluded、unresolved、解析失敗、DB拒否、workflow失敗はprocess内の表示と既存workflowのartifact/logで追跡します。再起動時に保存されるのはtransaction完了した正式playだけで、過去のskip・拒否・失敗statusをsavedへ昇格するcheckpointはありません。
 
 ## M10-2 既定保存先と責務境界
@@ -241,10 +241,10 @@ download後は既存の明示終了経路でpending picker、監視、capture wo
 1. 起動中の旧版があればtrayの`終了`で明示終了する。
 2. Setupを実行する。未署名のためWindows SmartScreen等の警告が出る場合は、配布元とhashを確認した本人だけが続行する。
 3. install後に自動起動した`GP Score Log`で、M4 master DB、M5b jacket reference catalog、score DBの表示を確認する。初回起動は組み込みreference data setをproduction固定pathへ配置し、master/catalog検証後にmissingまたは0 byteのscore DBだけを正式schemaへ初期化する。
-4. DDR GRAND PRIXを`1280x720` client sizeで起動し、`監視開始`を押す。対象が一意に見つからない場合は表示理由を直してから再度`監視開始`を押す。
-5. 一時停止は`監視停止`、再開は停止完了後の`監視開始`を使う。×ボタンはtray格納、最小化はtaskbar最小化、完全終了はtrayの`終了`を使う。
+4. DDR GRAND PRIXを`1280x720` client sizeで起動する。既定の自動監視が2回連続で対象を検出すると開始し、対象が一意に見つからない場合は待機する。手動で開始する場合は`監視開始`を押す。
+5. 一時停止は`監視停止`、手動停止後の同一app session内の再開は`監視開始`を明示する。window終了後の自動復帰は、windowが一度消失してから再出現した場合だけ行う。×ボタンはtray格納、最小化はtaskbar最小化、完全終了はtrayの`終了`を使う。
 
-起動時の自動監視開始・自動復帰はありません。production起動時はmain windowを表示してからreference DBとアプリ本体のlatest Release確認を開始し、通信できない場合も既存reference DBと現在のアプリversionで通常利用を続けます。監視は毎回明示的に開始します。
+起動時の自動監視は既定で有効です。production起動時はmain windowを表示してからreference DBとアプリ本体のlatest Release確認を開始し、更新・reference DB処理中は自動開始を抑止します。通信できない場合も既存reference DBと現在のアプリversionで通常利用を続けます。
 
 ## Reference data setの配置・更新・復旧
 
@@ -275,7 +275,7 @@ backup先に新しいdirectoryを作り、2 fileをコピーします。コピ�
 
 ## トラブルシューティング
 
-- `DDR GRAND PRIX windowを自動検出できません`: `ddr-konaste`が1 processだけでclient `1280x720`か確認し、対象を開いたまま`監視開始`を再実行する。起動時自動監視は行わない。
+- `DDR GRAND PRIX windowを自動検出できません`: `ddr-konaste`が1 processだけでclient `1280x720`か確認する。自動監視は一時的な探索失敗や0件を待機として再探索し、条件に一致するwindowが2回連続で見つかると開始する。手動停止後は同一app session中に自動再開しないため、必要なら`監視開始`を明示する。
 - `reference DBを更新できませんでした`: GitHub到達、Releaseの3 asset、空き容量を確認する。現行reference DBは保持され、score DBとsettingsは変更されないため、オフラインのまま通常利用できる。正しい新versionを再公開した後にアプリを再起動する。
 - `アプリ更新を確認できませんでした` / `アプリ更新のdownloadに失敗しました`: GitHub到達、stable Releaseの`releases.win.json`とfull package、空き容量を確認する。現在のアプリversion、score DB、settings、reference DB、ログは保持されるため、そのまま通常利用するか、Release修正後に`更新を確認`を再実行する。unsigned packageのためSmartScreen等の警告は解消しない。
 - master DB missing / incompatible: installerを同じversionで再実行しても同一versionは上書きしない。ログのreference data set結果を確認し、正しい新versionのinstallerを再配布する。score DBは変更されない。
@@ -288,7 +288,7 @@ backup先に新しいdirectoryを作り、2 fileをコピーします。コピ�
 
 実機評価はWindowsの`ddr-konaste`、client `1280x720`、SINGLE 28曲・29譜面の94 RESULTです。`saved=94`、他status=0、自動保存成功率100%で、全件を画面と正式DBで目視照合し、誤保存0件でした。target close、resize、tray exit、再起動・固定path再利用を確認し、二重保存はありませんでした。
 
-保証範囲はこのWindows環境と`1280x720`条件に限定します。対象外解像度、全GPU、意図的なdevice lost、0点RESULTは実機保証外です。未署名installerはSmartScreen警告があり、code signing、telemetry、cloud backup、強制更新、複数channel、監視自動開始・自動復帰はありません。アプリ本体はstable Releaseのfull packageをユーザー操作で更新し、reference DBはlatest Releaseの3 assetを起動後に確認しますが、任意version選択と署名検証は行いません。
+保証範囲はこのWindows環境と`1280x720`条件に限定します。対象外解像度、全GPU、意図的なdevice lost、0点RESULTは実機保証外です。未署名installerはSmartScreen警告があり、code signing、telemetry、cloud backup、強制更新、複数channelはありません。自動監視は既定で有効ですが、手動停止後の同一app session内再開、DB・runtime異常時の開始、更新・終了処理中の開始は保証しません。アプリ本体はstable Releaseのfull packageをユーザー操作で更新し、reference DBはlatest Releaseの3 assetを起動後に確認しますが、任意version選択と署名検証は行いません。
 
 次のいずれかがあるreleaseは完成扱いにしません: 誤保存が1件以上、固定条件の自動保存成功率が95%未満、既定CI失敗、VeloPack package/clean環境相当smoke失敗、reference DBのセット検証・rollback失敗、既存score DBの上書きまたはrestore不能、Release buildへの開発者向け操作混入。device lostと対象外環境は既知制限として扱い、保証範囲を暗黙に拡張しません。
 

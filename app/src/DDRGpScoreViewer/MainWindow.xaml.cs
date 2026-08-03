@@ -142,6 +142,16 @@ public partial class MainWindow : System.Windows.Window
     internal Task CheckForApplicationUpdateAsync(CancellationToken cancellationToken) =>
         viewModel.CheckForApplicationUpdateAsync(cancellationToken);
 
+    internal void StartAutomaticMonitoring()
+    {
+        if (applicationExitRequested)
+        {
+            return;
+        }
+
+        viewModel.StartAutomaticMonitoring(new WindowInteropHelper(this).EnsureHandle());
+    }
+
     private async void CheckForApplicationUpdate_Click(object sender, RoutedEventArgs e) =>
         await viewModel.CheckForApplicationUpdateAsync(applicationExitCancellation.Token);
 

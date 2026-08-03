@@ -183,7 +183,7 @@ public sealed class AutoWindowMonitoringTests
 
         Assert.Equal(1, capture.StopCount);
         Assert.Equal(0, workflow.CallCount);
-        Assert.Equal(MonitoringState.Stopped, viewModel.CurrentMonitoringState);
+        Assert.Equal(MonitoringState.ManuallyStopped, viewModel.CurrentMonitoringState);
     }
 
     private static DdrGpWindowCandidate Candidate(nint handle, string title) =>

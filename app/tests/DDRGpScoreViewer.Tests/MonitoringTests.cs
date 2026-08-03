@@ -198,7 +198,7 @@ public sealed class MonitoringTests
 
         Assert.Equal(1, capture.StopCount);
         Assert.Equal(1, workflow.CallCount);
-        Assert.Equal(MonitoringState.Stopped, viewModel.CurrentMonitoringState);
+        Assert.Equal(MonitoringState.ManuallyStopped, viewModel.CurrentMonitoringState);
         Assert.False(viewModel.IsSaving);
     }
 
@@ -228,7 +228,7 @@ public sealed class MonitoringTests
 
         Assert.Equal(1, workflow.CallCount);
         Assert.False(workflow.CancellationToken.IsCancellationRequested);
-        Assert.Equal(MonitoringState.Stopped, viewModel.CurrentMonitoringState);
+        Assert.Equal(MonitoringState.ManuallyStopped, viewModel.CurrentMonitoringState);
         Assert.Equal(0, viewModel.MonitoringResults.Saved);
     }
 
@@ -259,10 +259,15 @@ public sealed class MonitoringTests
 
     [Theory]
     [InlineData(MonitoringState.Idle, true, false)]
+    [InlineData(MonitoringState.Starting, false, true)]
+    [InlineData(MonitoringState.WaitingForGame, true, false)]
     [InlineData(MonitoringState.SelectingTarget, false, true)]
     [InlineData(MonitoringState.Monitoring, false, true)]
     [InlineData(MonitoringState.Stopping, false, false)]
     [InlineData(MonitoringState.Stopped, true, false)]
+    [InlineData(MonitoringState.ManuallyStopped, true, false)]
+    [InlineData(MonitoringState.Blocked, true, false)]
+    [InlineData(MonitoringState.ShuttingDown, false, false)]
     [InlineData(MonitoringState.TargetClosed, true, false)]
     public void Tray_menu_state_follows_monitoring_state(
         MonitoringState state,
@@ -457,7 +462,7 @@ public sealed class MonitoringTests
 
         Assert.Equal(2, capture.StopCount);
         Assert.False(viewModel.IsContinuousCapturing);
-        Assert.Equal(MonitoringState.Stopped, viewModel.CurrentMonitoringState);
+        Assert.Equal(MonitoringState.ManuallyStopped, viewModel.CurrentMonitoringState);
     }
 
     [Fact]

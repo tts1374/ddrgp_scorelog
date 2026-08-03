@@ -22,6 +22,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private readonly ViewerDatabasePaths defaultDatabasePaths;
     private readonly IScoreDatabaseInitializer scoreDatabaseInitializer;
     private readonly IDdrGpWindowEnumerator ddrGpWindowEnumerator;
+    private readonly AutomaticMonitoringOptions automaticMonitoringOptions;
     private readonly SynchronizationContext? uiSynchronizationContext;
     private PlayHistoryItem? selectedPlay;
     private string statusTitle = "既定のDBを確認しています";
@@ -74,8 +75,20 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private long monitoringSessionSequence;
     private long activeMonitoringSession;
     private CancellationTokenSource? monitoringCancellation;
+    private CancellationTokenSource? monitoringStartCancellation;
+    private TaskCompletionSource? monitoringStartFinished;
+    private nint? activeMonitoringTargetHandle;
     private ILiveMonitoringCaptureService? activeLiveMonitoringService;
     private int monitoringOperationReserved;
+    private CancellationTokenSource? automaticMonitoringCancellation;
+    private Task? automaticMonitoringTask;
+    private bool automaticMonitoringManuallyStopped;
+    private bool automaticMonitoringBlocked;
+    private string automaticMonitoringBlockReason = "—";
+    private bool automaticMonitoringRequiresWindowGap;
+    private bool automaticMonitoringWindowLossStopInProgress;
+    private bool automaticMonitoringWaitingForUpdate;
+    private bool referenceDataUpdateInProgress;
     private readonly IApplicationUpdateService? applicationUpdateService;
     private string applicationUpdateStatusTitle = "アプリ更新";
     private string applicationUpdateStatusMessage = "起動後にGitHub Releasesを確認します。";
@@ -97,7 +110,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         IScoreDatabaseInitializer? scoreDatabaseInitializer = null,
         IDdrGpWindowEnumerator? ddrGpWindowEnumerator = null,
         ILiveMonitoringCaptureService? liveMonitoringService = null,
-        IApplicationUpdateService? applicationUpdateService = null)
+        IApplicationUpdateService? applicationUpdateService = null,
+        AutomaticMonitoringOptions? automaticMonitoringOptions = null)
     {
         this.repository = repository;
         this.workflowRunner = workflowRunner;
@@ -109,6 +123,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         this.defaultDatabasePaths = defaultDatabasePaths ?? ViewerDatabasePaths.ResolveDefault();
         this.scoreDatabaseInitializer = scoreDatabaseInitializer ?? new PersonalScoreDbInitializer();
         this.ddrGpWindowEnumerator = ddrGpWindowEnumerator ?? new DdrGpWindowEnumerator();
+        this.automaticMonitoringOptions = automaticMonitoringOptions ?? new AutomaticMonitoringOptions();
+        this.automaticMonitoringOptions.Validate();
         this.applicationUpdateService = applicationUpdateService;
         uiSynchronizationContext = SynchronizationContext.Current;
         scoreDatabasePath = this.defaultDatabasePaths.ScoreDatabasePath;
@@ -352,6 +368,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public bool IsApplicationUpdateBusy =>
         Volatile.Read(ref applicationUpdateOperationReserved) != 0;
 
+    public bool IsUpdateProcessing =>
+        IsApplicationUpdateBusy || referenceDataUpdateInProgress;
+
     public bool CanCheckForApplicationUpdate =>
         applicationUpdateService is not null &&
         !IsApplicationUpdateBusy &&
@@ -382,10 +401,15 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public string MonitoringStateDisplay => CurrentMonitoringState switch
     {
         MonitoringState.Idle => "待機中",
+        MonitoringState.Starting => "監視開始中",
+        MonitoringState.WaitingForGame => "ゲーム待機中",
         MonitoringState.SelectingTarget => "対象windowを選択中",
         MonitoringState.Monitoring => "監視中",
         MonitoringState.Stopping => "停止処理中",
         MonitoringState.Stopped => "停止済み",
+        MonitoringState.ManuallyStopped => "手動停止済み",
+        MonitoringState.Blocked => "監視開始不可",
+        MonitoringState.ShuttingDown => "終了処理中",
         MonitoringState.TargetClosed => "対象window終了",
         MonitoringState.Resized => "対象windowのサイズ変更",
         MonitoringState.DeviceLost => "GPU device lost",
@@ -414,8 +438,13 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public string MonitoringTargetStatus => CurrentMonitoringState switch
     {
+        MonitoringState.Starting => "検出済み・開始中",
+        MonitoringState.WaitingForGame => "待機中",
         MonitoringState.SelectingTarget => "選択待ち",
         MonitoringState.Monitoring or MonitoringState.Stopping => "選択済み",
+        MonitoringState.ManuallyStopped => "手動停止",
+        MonitoringState.Blocked => "開始不可",
+        MonitoringState.ShuttingDown => "終了処理中",
         MonitoringState.TargetClosed => "閉鎖",
         MonitoringState.Resized => "resize検出",
         MonitoringState.DeviceLost => "device lost",
@@ -504,11 +533,13 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public bool CanStartMonitoring =>
         TrayMenuState.FromMonitoringState(CurrentMonitoringState).CanStart &&
         !IsSaving && !IsCapturing && !IsContinuousCapturing &&
-        !isMonitoringStartPending && !applicationExitRequested;
+        !isMonitoringStartPending && !IsMonitoringStartInProgress &&
+        !IsUpdateProcessing && !applicationExitRequested;
 
     public bool CanRunDeveloperOperations =>
         !applicationExitRequested &&
         !isMonitoringStartPending &&
+        !IsMonitoringStartInProgress &&
         Volatile.Read(ref monitoringOperationReserved) == 0 &&
         !IsSaving &&
         !IsCapturing &&
@@ -519,11 +550,17 @@ public sealed class MainViewModel : INotifyPropertyChanged
             MonitoringState.Stopping);
 
     public bool CanStopMonitoring =>
-        IsContinuousCapturing &&
+        (IsContinuousCapturing || IsMonitoringStartInProgress) &&
+        !applicationExitRequested &&
         (TrayMenuState.FromMonitoringState(CurrentMonitoringState).CanStop ||
             IsStoppingCapture || CurrentMonitoringState == MonitoringState.CaptureFailed);
 
     public bool IsApplicationExitRequested => applicationExitRequested;
+
+    public bool IsAutomaticMonitoringEnabled => automaticMonitoringOptions.Enabled;
+
+    private bool IsMonitoringStartInProgress =>
+        monitoringStartFinished is not null;
 
     public void RequestApplicationExit()
     {
@@ -537,7 +574,11 @@ public sealed class MainViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(CanRunDeveloperOperations));
         OnPropertyChanged(nameof(CanCheckForApplicationUpdate));
         OnPropertyChanged(nameof(CanDownloadAndApplyApplicationUpdate));
+        OnPropertyChanged(nameof(IsUpdateProcessing));
+        SetMonitoringState(MonitoringState.ShuttingDown, "終了処理中です。新しい監視を開始しません。");
         monitoringCancellation?.Cancel();
+        monitoringStartCancellation?.Cancel();
+        automaticMonitoringCancellation?.Cancel();
     }
 
     public async Task CheckForApplicationUpdateAsync(
@@ -653,12 +694,19 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 singleCaptureFinished?.Task,
                 manualSaveFinished?.Task,
                 continuousCaptureFinished?.Task,
+                automaticMonitoringTask,
+                monitoringStartFinished?.Task,
             }.OfType<Task>(),
         ];
 #else
         Task[] operations =
         [
-            .. new[] { continuousCaptureFinished?.Task }.OfType<Task>(),
+            .. new[]
+            {
+                continuousCaptureFinished?.Task,
+                automaticMonitoringTask,
+                monitoringStartFinished?.Task,
+            }.OfType<Task>(),
         ];
 #endif
         await Task.WhenAll(operations);
@@ -670,8 +718,419 @@ public sealed class MainViewModel : INotifyPropertyChanged
         {
             isMonitoringStartPending = value;
             OnPropertyChanged(nameof(CanStartMonitoring));
+            OnPropertyChanged(nameof(CanStopMonitoring));
             OnPropertyChanged(nameof(CanRunDeveloperOperations));
         }
+    }
+
+    internal void SetReferenceDataUpdateInProgress(bool value)
+    {
+        if (referenceDataUpdateInProgress == value)
+        {
+            return;
+        }
+
+        referenceDataUpdateInProgress = value;
+        OnPropertyChanged(nameof(IsUpdateProcessing));
+        OnPropertyChanged(nameof(CanStartMonitoring));
+    }
+
+    internal void StartAutomaticMonitoring(nint ownerWindowHandle)
+    {
+        if (!automaticMonitoringOptions.Enabled ||
+            applicationExitRequested ||
+            automaticMonitoringTask is not null)
+        {
+            return;
+        }
+
+        automaticMonitoringCancellation = new CancellationTokenSource();
+        automaticMonitoringTask = RunAutomaticMonitoringAsync(
+            ownerWindowHandle,
+            automaticMonitoringCancellation.Token);
+    }
+
+    private async Task RunAutomaticMonitoringAsync(
+        nint ownerWindowHandle,
+        CancellationToken cancellationToken)
+    {
+        var consecutiveDetections = 0;
+        var consecutiveMisses = 0;
+        try
+        {
+            while (!cancellationToken.IsCancellationRequested && !applicationExitRequested)
+            {
+                if (IsUpdateProcessing)
+                {
+                    consecutiveDetections = 0;
+                    consecutiveMisses = 0;
+                    automaticMonitoringWaitingForUpdate = true;
+                    if (!IsContinuousCapturing && !IsMonitoringStartInProgress)
+                    {
+                        SetAutomaticBlocked(
+                            "更新処理中のため、自動監視を開始せず完了を待っています。",
+                            temporary: true);
+                    }
+                    await DelayAutomaticMonitoringAsync(cancellationToken);
+                    continue;
+                }
+
+                if (automaticMonitoringWaitingForUpdate)
+                {
+                    automaticMonitoringWaitingForUpdate = false;
+                    if (automaticMonitoringBlocked)
+                    {
+                        SetAutomaticBlocked(automaticMonitoringBlockReason);
+                    }
+                    else if (!automaticMonitoringManuallyStopped &&
+                             !IsContinuousCapturing &&
+                             !IsMonitoringStartInProgress)
+                    {
+                        SetAutomaticWaiting(
+                            "更新処理が完了しました。DDR GRAND PRIX windowを待っています。");
+                    }
+                }
+
+                if (automaticMonitoringManuallyStopped)
+                {
+                    consecutiveDetections = 0;
+                    consecutiveMisses = 0;
+                    if (!IsContinuousCapturing && !IsMonitoringStartInProgress)
+                    {
+                        SetMonitoringState(
+                            MonitoringState.ManuallyStopped,
+                            "手動停止済みです。このアプリセッション中は自動再開しません。明示的に監視開始できます。");
+                    }
+                    await DelayAutomaticMonitoringAsync(cancellationToken);
+                    continue;
+                }
+
+                if (automaticMonitoringBlocked)
+                {
+                    consecutiveDetections = 0;
+                    consecutiveMisses = 0;
+                    if (!IsContinuousCapturing && !IsMonitoringStartInProgress)
+                    {
+                        SetAutomaticBlocked(automaticMonitoringBlockReason);
+                    }
+                    await DelayAutomaticMonitoringAsync(cancellationToken);
+                    continue;
+                }
+
+                if (!IsContinuousCapturing && IsMonitoringStartInProgress)
+                {
+                    consecutiveDetections = 0;
+                    consecutiveMisses = 0;
+                    await DelayAutomaticMonitoringAsync(cancellationToken);
+                    continue;
+                }
+
+                IReadOnlyList<DdrGpWindowCandidate> windows;
+                string? detectionFailureReason = null;
+                try
+                {
+                    windows = await ddrGpWindowEnumerator.EnumerateAsync(cancellationToken);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    break;
+                }
+                catch (Exception exception)
+                {
+                    windows = [];
+                    detectionFailureReason =
+                        $"DDR GRAND PRIX windowの探索に一時的に失敗しました。次回の探索で再確認します。{exception.Message}";
+                }
+
+                if (detectionFailureReason is not null)
+                {
+                    consecutiveDetections = 0;
+                    if (IsContinuousCapturing)
+                    {
+                        consecutiveMisses++;
+                    }
+                    else
+                    {
+                        consecutiveMisses = 0;
+                    }
+
+                    if (!IsContinuousCapturing)
+                    {
+                        SetAutomaticWaiting(detectionFailureReason);
+                    }
+                    await DelayAutomaticMonitoringAsync(cancellationToken);
+                    if (consecutiveMisses < automaticMonitoringOptions.RequiredConsecutiveMisses ||
+                        !IsContinuousCapturing ||
+                        IsStoppingCapture)
+                    {
+                        continue;
+                    }
+                }
+
+                var candidates = windows
+                    .Where(DdrGpWindowEnumerator.IsDdrGpTarget)
+                    .ToList();
+                if (IsContinuousCapturing)
+                {
+                    consecutiveDetections = 0;
+                    if (automaticMonitoringManuallyStopped ||
+                        activeMonitoringTargetHandle is not { } activeTargetHandle)
+                    {
+                        consecutiveMisses = 0;
+                    }
+                    else if (candidates.Any(candidate => candidate.Handle == activeTargetHandle))
+                    {
+                        consecutiveMisses = 0;
+                    }
+                    else
+                    {
+                        consecutiveMisses++;
+                        if (consecutiveMisses >= automaticMonitoringOptions.RequiredConsecutiveMisses &&
+                            !IsStoppingCapture)
+                        {
+                            consecutiveMisses = 0;
+                            automaticMonitoringWindowLossStopInProgress = true;
+                            try
+                            {
+                                await StopContinuousCaptureAsync(manualStop: false);
+                                if (!applicationExitRequested &&
+                                    !automaticMonitoringManuallyStopped &&
+                                    !automaticMonitoringBlocked)
+                                {
+                                    SetAutomaticWaiting(
+                                        "対象windowが消失したため安全に停止しました。再出現を待っています。");
+                                }
+                            }
+                            catch (Exception exception)
+                            {
+                                SetAutomaticBlocked(
+                                    $"対象window消失後の自動停止に失敗したため、自動監視を停止しました。{exception.Message}");
+                            }
+                        }
+                    }
+
+                    await DelayAutomaticMonitoringAsync(cancellationToken);
+                    continue;
+                }
+
+                if (IsSaving || IsCapturing || IsStoppingCapture)
+                {
+                    consecutiveDetections = 0;
+                    consecutiveMisses = 0;
+                    await DelayAutomaticMonitoringAsync(cancellationToken);
+                    continue;
+                }
+
+                if (!AreAutomaticMonitoringDatabasesReady(out var databaseReason))
+                {
+                    SetAutomaticBlocked(databaseReason);
+                    await DelayAutomaticMonitoringAsync(cancellationToken);
+                    continue;
+                }
+
+                if (automaticMonitoringRequiresWindowGap)
+                {
+                    consecutiveDetections = 0;
+                    if (candidates.Count == 0)
+                    {
+                        automaticMonitoringRequiresWindowGap = false;
+                        SetAutomaticWaiting(
+                            "対象windowの消失を確認しました。再出現を待っています。");
+                    }
+                    else
+                    {
+                        SetAutomaticWaiting(
+                            "対象windowの再出現を待っています。現在のwindowを推測して再接続しません。");
+                    }
+                    await DelayAutomaticMonitoringAsync(cancellationToken);
+                    continue;
+                }
+
+                if (candidates.Count == 1)
+                {
+                    consecutiveDetections++;
+                    consecutiveMisses = 0;
+                    if (consecutiveDetections >=
+                        automaticMonitoringOptions.RequiredConsecutiveDetections)
+                    {
+                        consecutiveDetections = 0;
+                        BeginAutomaticMonitoringStart(
+                            ownerWindowHandle,
+                            candidates[0],
+                            cancellationToken);
+                    }
+                }
+                else
+                {
+                    consecutiveDetections = 0;
+                    consecutiveMisses = 0;
+                    SetAutomaticWaiting(
+                        candidates.Count == 0
+                            ? "DDR GRAND PRIX windowを待っています。"
+                            : $"条件に一致するDDR GRAND PRIX windowが{candidates.Count}件あるため、推測で選択せず待機しています。");
+                }
+
+                await DelayAutomaticMonitoringAsync(cancellationToken);
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception)
+        {
+            SetAutomaticBlocked(
+                $"自動監視workerで予期しない失敗が発生したため、自動開始を停止しました。{exception.Message}");
+        }
+        finally
+        {
+            var cancellation = automaticMonitoringCancellation;
+            automaticMonitoringCancellation = null;
+            cancellation?.Dispose();
+        }
+    }
+
+    private void BeginAutomaticMonitoringStart(
+        nint ownerWindowHandle,
+        DdrGpWindowCandidate detectedTarget,
+        CancellationToken automaticMonitoringCancellationToken)
+    {
+        if (applicationExitRequested ||
+            IsUpdateProcessing ||
+            automaticMonitoringManuallyStopped ||
+            automaticMonitoringBlocked ||
+            IsSaving || IsCapturing || IsContinuousCapturing || IsStoppingCapture ||
+            IsMonitoringStartInProgress)
+        {
+            return;
+        }
+
+        SetMonitoringState(
+            MonitoringState.Starting,
+            "安定して検出したDDR GRAND PRIX windowへ監視を接続しています。");
+        HasCaptureStatus = true;
+        CaptureStatusTitle = "自動監視を開始しています";
+        CaptureStatusMessage =
+            $"{detectedTarget.DisplayName}を{automaticMonitoringOptions.RequiredConsecutiveDetections}回連続で確認しました。";
+        _ = RunAutomaticMonitoringStartAsync(
+            ownerWindowHandle,
+            detectedTarget,
+            automaticMonitoringCancellationToken);
+    }
+
+    private async Task RunAutomaticMonitoringStartAsync(
+        nint ownerWindowHandle,
+        DdrGpWindowCandidate detectedTarget,
+        CancellationToken automaticMonitoringCancellationToken)
+    {
+        try
+        {
+            await StartContinuousCaptureAndSaveCoreAsync(
+                ownerWindowHandle,
+                defaultDatabasePaths.ScoreDatabasePath,
+                defaultDatabasePaths.MasterDatabasePath,
+                defaultDatabasePaths.JacketCatalogDatabasePath,
+                automaticMonitoringCancellationToken,
+                automaticWindowDetection: true,
+                automaticStart: true,
+                detectedTarget: detectedTarget);
+        }
+        catch (Exception exception)
+        {
+            if (!applicationExitRequested)
+            {
+                SetAutomaticBlocked(
+                    $"自動監視の開始に失敗したため、自動再試行を停止しました。{exception.Message}");
+            }
+        }
+        finally
+        {
+            if (!applicationExitRequested)
+            {
+                if (automaticMonitoringManuallyStopped)
+                {
+                    SetMonitoringState(
+                        MonitoringState.ManuallyStopped,
+                        "手動停止済みです。このアプリセッション中は自動再開しません。明示的に監視開始できます。");
+                }
+                else if (CurrentMonitoringState is MonitoringState.CaptureFailed or
+                         MonitoringState.DeviceLost or MonitoringState.WorkflowFailed or
+                         MonitoringState.Blocked)
+                {
+                    SetAutomaticBlocked(MonitoringReason);
+                }
+                else if (CurrentMonitoringState is MonitoringState.TargetClosed or
+                         MonitoringState.Resized or MonitoringState.Stopped)
+                {
+                    if (!automaticMonitoringWindowLossStopInProgress)
+                    {
+                        automaticMonitoringRequiresWindowGap = true;
+                        SetAutomaticWaiting(
+                            "監視sessionが終了しました。対象windowの消失と再出現を確認してから復帰します。");
+                    }
+                }
+            }
+            automaticMonitoringWindowLossStopInProgress = false;
+        }
+    }
+
+    private async Task DelayAutomaticMonitoringAsync(CancellationToken cancellationToken) =>
+        await Task.Delay(automaticMonitoringOptions.PollInterval, cancellationToken);
+
+    private bool AreAutomaticMonitoringDatabasesReady(out string reason)
+    {
+        var masterInspection = repository.InspectMasterDatabase(
+            defaultDatabasePaths.MasterDatabasePath);
+        var catalogInspection = repository.InspectJacketCatalogDatabase(
+            defaultDatabasePaths.JacketCatalogDatabasePath);
+        ApplyMasterDatabaseInspection(masterInspection);
+        ApplyJacketCatalogInspection(catalogInspection);
+        if (masterInspection.IsCompatible && catalogInspection.IsCompatible)
+        {
+            reason = string.Empty;
+            return true;
+        }
+
+        reason = BuildMasterDatabaseBlockMessage(
+            masterInspection,
+            catalogInspection,
+            "自動監視を開始しません。DBを修復または再配置してからアプリを再起動してください。");
+        return false;
+    }
+
+    private void SetAutomaticWaiting(string reason)
+    {
+        if (applicationExitRequested ||
+            automaticMonitoringManuallyStopped ||
+            automaticMonitoringBlocked ||
+            IsUpdateProcessing ||
+            IsContinuousCapturing ||
+            IsMonitoringStartInProgress)
+        {
+            return;
+        }
+
+        HasCaptureStatus = true;
+        CaptureStatusTitle = "自動監視は待機中です";
+        CaptureStatusMessage = reason;
+        SetMonitoringState(MonitoringState.WaitingForGame, reason);
+    }
+
+    private void SetAutomaticBlocked(string reason, bool temporary = false)
+    {
+        if (applicationExitRequested || IsContinuousCapturing)
+        {
+            return;
+        }
+
+        if (!temporary)
+        {
+            automaticMonitoringBlocked = true;
+            automaticMonitoringBlockReason = string.IsNullOrWhiteSpace(reason) ? "—" : reason;
+        }
+        HasCaptureStatus = true;
+        CaptureStatusTitle = "自動監視を開始できません";
+        CaptureStatusMessage = reason;
+        SetMonitoringState(MonitoringState.Blocked, reason);
     }
 
     private bool TryReserveDeveloperOperation()
@@ -695,8 +1154,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
 
         OnPropertyChanged(nameof(IsApplicationUpdateBusy));
+        OnPropertyChanged(nameof(IsUpdateProcessing));
         OnPropertyChanged(nameof(CanCheckForApplicationUpdate));
         OnPropertyChanged(nameof(CanDownloadAndApplyApplicationUpdate));
+        OnPropertyChanged(nameof(CanStartMonitoring));
         return true;
     }
 
@@ -704,8 +1165,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
     {
         Interlocked.Exchange(ref applicationUpdateOperationReserved, 0);
         OnPropertyChanged(nameof(IsApplicationUpdateBusy));
+        OnPropertyChanged(nameof(IsUpdateProcessing));
         OnPropertyChanged(nameof(CanCheckForApplicationUpdate));
         OnPropertyChanged(nameof(CanDownloadAndApplyApplicationUpdate));
+        OnPropertyChanged(nameof(CanStartMonitoring));
     }
 
     private void ApplyApplicationUpdateResult(ApplicationUpdateResult result)
@@ -991,7 +1454,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 null,
                 null,
                 cancellationToken,
-                automaticWindowDetection: false);
+                automaticWindowDetection: false,
+                automaticStart: false,
+                suppliedDetectedTarget: null);
         }
         finally
         {
@@ -1037,17 +1502,41 @@ public sealed class MainViewModel : INotifyPropertyChanged
         string masterDatabasePath,
         string? catalogDatabasePath,
         CancellationToken cancellationToken,
-        bool automaticWindowDetection)
+        bool automaticWindowDetection,
+        bool automaticStart = false,
+        DdrGpWindowCandidate? detectedTarget = null)
     {
-        if (applicationExitRequested || IsSaving || cancellationToken.IsCancellationRequested)
+        if (applicationExitRequested || IsSaving || IsUpdateProcessing ||
+            cancellationToken.IsCancellationRequested)
         {
             return;
         }
         if (!TryReserveMonitoringOperation())
         {
+            if (automaticStart)
+            {
+                SetAutomaticWaiting(
+                    "別のcaptureまたは保存処理が実行中のため、自動監視を開始せず待機しています。");
+            }
             return;
         }
+        if (!automaticStart)
+        {
+            automaticMonitoringBlocked = false;
+            automaticMonitoringBlockReason = "—";
+            automaticMonitoringRequiresWindowGap = false;
+        }
         IsSaving = true;
+        OnPropertyChanged(nameof(CanStartMonitoring));
+
+        using var startCancellation = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken);
+        var startFinished = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        monitoringStartCancellation = startCancellation;
+        monitoringStartFinished = startFinished;
+        OnPropertyChanged(nameof(CanStartMonitoring));
+        OnPropertyChanged(nameof(CanStopMonitoring));
         try
         {
             await StartContinuousCaptureCoreAsync(
@@ -1055,11 +1544,24 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 scoreDatabasePath,
                 masterDatabasePath,
                 catalogDatabasePath,
-                cancellationToken,
-                automaticWindowDetection);
+                startCancellation.Token,
+                automaticWindowDetection,
+                automaticStart,
+                detectedTarget);
         }
         finally
         {
+            if (ReferenceEquals(monitoringStartCancellation, startCancellation))
+            {
+                monitoringStartCancellation = null;
+            }
+            if (ReferenceEquals(monitoringStartFinished, startFinished))
+            {
+                monitoringStartFinished = null;
+            }
+            startFinished.TrySetResult();
+            OnPropertyChanged(nameof(CanStartMonitoring));
+            OnPropertyChanged(nameof(CanStopMonitoring));
             IsSaving = false;
             ReleaseOperationReservation();
         }
@@ -1071,10 +1573,22 @@ public sealed class MainViewModel : INotifyPropertyChanged
         string? masterDatabasePath,
         string? catalogDatabasePath,
         CancellationToken cancellationToken,
-        bool automaticWindowDetection)
+        bool automaticWindowDetection,
+        bool automaticStart,
+        DdrGpWindowCandidate? suppliedDetectedTarget)
     {
         if (applicationExitRequested || cancellationToken.IsCancellationRequested)
         {
+            return;
+        }
+        if (IsUpdateProcessing)
+        {
+            if (automaticStart)
+            {
+                SetAutomaticBlocked(
+                    "更新処理中のため、自動監視を開始しません。更新完了後に対象windowを再検出します。",
+                    temporary: true);
+            }
             return;
         }
         if (IsSaving && scoreDatabasePath is null)
@@ -1089,6 +1603,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
             HasCaptureStatus = true;
             CaptureStatusTitle = "連続キャプチャを停止しています";
             CaptureStatusMessage = "停止完了後にもう一度開始してください。";
+            if (automaticStart)
+            {
+                SetAutomaticWaiting(CaptureStatusMessage);
+            }
             return;
         }
         if (IsContinuousCapturing)
@@ -1110,13 +1628,17 @@ public sealed class MainViewModel : INotifyPropertyChanged
             HasCaptureStatus = true;
             CaptureStatusTitle = "連続キャプチャを利用できません";
             CaptureStatusMessage = "continuous capture serviceが構成されていません。";
+            if (automaticStart)
+            {
+                SetAutomaticBlocked(CaptureStatusMessage);
+            }
             return;
         }
 
         ITargetedMonitoringContinuousCaptureService? targetedMonitoringService = null;
         var liveTargetedMonitoringService = liveMonitoringService;
         var useLiveMonitoring = automaticWindowDetection && liveTargetedMonitoringService is not null;
-        DdrGpWindowCandidate? detectedTarget = null;
+        DdrGpWindowCandidate? detectedTarget = suppliedDetectedTarget;
         if (automaticWindowDetection)
         {
             targetedMonitoringService = continuousCaptureService as
@@ -1133,57 +1655,79 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
             ResetMonitoringSession();
             SetMonitoringState(
-                MonitoringState.SelectingTarget,
-                "DDR GRAND PRIX windowを自動検出しています。");
+                automaticStart
+                    ? MonitoringState.Starting
+                    : MonitoringState.SelectingTarget,
+                automaticStart
+                    ? "安定して検出したDDR GRAND PRIX windowへ監視を接続しています。"
+                    : "DDR GRAND PRIX windowを自動検出しています。");
             HasCaptureStatus = true;
-            CaptureStatusTitle = "DDR GRAND PRIX windowを自動検出しています";
-            CaptureStatusMessage =
-                "process=ddr-konaste、client=1280 x 720のtop-level windowを確認しています。";
+            CaptureStatusTitle = automaticStart
+                ? "検出した対象windowへ接続しています"
+                : "DDR GRAND PRIX windowを自動検出しています";
+            CaptureStatusMessage = automaticStart
+                ? "検出したwindowを監視へ接続します。"
+                : "process=ddr-konaste、client=1280 x 720のtop-level windowを確認しています。";
 
-            IReadOnlyList<DdrGpWindowCandidate> windows;
-            try
+            if (detectedTarget is null)
             {
-                windows = await ddrGpWindowEnumerator.EnumerateAsync(cancellationToken);
-            }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-            {
-                return;
-            }
-            catch (Exception exception)
-            {
-                var reason = $"DDR GRAND PRIX windowを確認できませんでした。{exception.Message}";
-                HasCaptureStatus = true;
-                CaptureStatusTitle = "監視を開始できません";
-                CaptureStatusMessage = reason;
-                SetMonitoringState(MonitoringState.CaptureFailed, reason);
-                return;
+                IReadOnlyList<DdrGpWindowCandidate> windows;
+                try
+                {
+                    windows = await ddrGpWindowEnumerator.EnumerateAsync(cancellationToken);
+                }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    return;
+                }
+                catch (Exception exception)
+                {
+                    var reason = $"DDR GRAND PRIX windowを確認できませんでした。{exception.Message}";
+                    HasCaptureStatus = true;
+                    CaptureStatusTitle = "監視を開始できません";
+                    CaptureStatusMessage = reason;
+                    SetMonitoringState(
+                        automaticStart ? MonitoringState.Blocked : MonitoringState.CaptureFailed,
+                        reason);
+                    if (automaticStart)
+                    {
+                        automaticMonitoringBlocked = true;
+                        automaticMonitoringBlockReason = reason;
+                    }
+                    return;
+                }
+
+                var candidates = windows
+                    .Where(DdrGpWindowEnumerator.IsDdrGpTarget)
+                    .ToList();
+                if (candidates.Count == 0)
+                {
+                    var reason =
+                        "DDR GRAND PRIXの対象windowが見つかりません。ゲームの起動、process=ddr-konaste、client=1280 x 720、アクセス権を確認してから再度実行してください。";
+                    HasCaptureStatus = true;
+                    CaptureStatusTitle = "監視を開始できません";
+                    CaptureStatusMessage = reason;
+                    SetMonitoringState(
+                        automaticStart ? MonitoringState.WaitingForGame : MonitoringState.Stopped,
+                        reason);
+                    return;
+                }
+                if (candidates.Count > 1)
+                {
+                    var reason =
+                        $"条件に一致するDDR GRAND PRIX windowが{candidates.Count}件あるため、推測で選択せず監視を開始しません。不要なwindowを閉じてから再度実行してください。";
+                    HasCaptureStatus = true;
+                    CaptureStatusTitle = "監視を開始できません";
+                    CaptureStatusMessage = reason;
+                    SetMonitoringState(
+                        automaticStart ? MonitoringState.WaitingForGame : MonitoringState.Stopped,
+                        reason);
+                    return;
+                }
+
+                detectedTarget = candidates[0];
             }
 
-            var candidates = windows
-                .Where(DdrGpWindowEnumerator.IsDdrGpTarget)
-                .ToList();
-            if (candidates.Count == 0)
-            {
-                var reason =
-                    "DDR GRAND PRIXの対象windowが見つかりません。ゲームの起動、process=ddr-konaste、client=1280 x 720、アクセス権を確認してから再度実行してください。";
-                HasCaptureStatus = true;
-                CaptureStatusTitle = "監視を開始できません";
-                CaptureStatusMessage = reason;
-                SetMonitoringState(MonitoringState.Stopped, reason);
-                return;
-            }
-            if (candidates.Count > 1)
-            {
-                var reason =
-                    $"条件に一致するDDR GRAND PRIX windowが{candidates.Count}件あるため、推測で選択せず監視を開始しません。不要なwindowを閉じてから再度実行してください。";
-                HasCaptureStatus = true;
-                CaptureStatusTitle = "監視を開始できません";
-                CaptureStatusMessage = reason;
-                SetMonitoringState(MonitoringState.Stopped, reason);
-                return;
-            }
-
-            detectedTarget = candidates[0];
             MonitoringTarget = detectedTarget.DisplayName;
             MonitoringTargetSize =
                 $"{detectedTarget.ClientWidth} x {detectedTarget.ClientHeight}";
@@ -1201,6 +1745,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
             ResetMonitoringSession();
             SetMonitoringState(MonitoringState.SelectingTarget, "対象windowの選択を待っています。");
         }
+        else if (automaticStart)
+        {
+            SetMonitoringState(
+                MonitoringState.Starting,
+                "検出したDDR GRAND PRIX windowへ監視を接続しています。");
+        }
         IsContinuousCapturing = true;
         continuousCaptureFinished = new TaskCompletionSource(
             TaskCreationOptions.RunContinuationsAsynchronously);
@@ -1208,6 +1758,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         Volatile.Write(ref activeMonitoringSession, sessionId);
         var sessionCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         monitoringCancellation = sessionCancellation;
+        activeMonitoringTargetHandle = detectedTarget?.Handle;
         activeLiveMonitoringService = useLiveMonitoring
             ? liveTargetedMonitoringService
             : null;
@@ -1336,6 +1887,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             {
                 activeLiveMonitoringService = null;
             }
+            activeMonitoringTargetHandle = null;
             sessionCancellation.Dispose();
             continuousCaptureFinished?.TrySetResult();
             continuousCaptureFinished = null;
@@ -1696,11 +2248,43 @@ public sealed class MainViewModel : INotifyPropertyChanged
         return $"event={result.EventCount}: {counts}。saved以外は成功保存として表示していません。{reasons}";
     }
 
-    public async Task StopContinuousCaptureAsync()
+    public async Task StopContinuousCaptureAsync(bool manualStop = true)
     {
+        if (manualStop && !applicationExitRequested)
+        {
+            automaticMonitoringManuallyStopped = true;
+        }
+
         var liveStopService = activeLiveMonitoringService;
-        if (!IsContinuousCapturing ||
-            (liveStopService is null && continuousCaptureService is null))
+        var startFinished = monitoringStartFinished;
+        if (!IsContinuousCapturing && !IsMonitoringStartInProgress)
+        {
+            if (manualStop && !applicationExitRequested)
+            {
+                SetMonitoringState(
+                    MonitoringState.ManuallyStopped,
+                    "手動停止済みです。このアプリセッション中は自動再開しません。明示的に監視開始できます。");
+            }
+            return;
+        }
+
+        if (!IsContinuousCapturing)
+        {
+            monitoringStartCancellation?.Cancel();
+            if (startFinished is not null)
+            {
+                await startFinished.Task;
+            }
+            if (manualStop && !applicationExitRequested)
+            {
+                SetMonitoringState(
+                    MonitoringState.ManuallyStopped,
+                    "手動停止済みです。このアプリセッション中は自動再開しません。明示的に監視開始できます。");
+            }
+            return;
+        }
+
+        if (liveStopService is null && continuousCaptureService is null)
         {
             return;
         }
@@ -1739,6 +2323,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
         if (captureFinished is not null)
         {
             await captureFinished.Task;
+        }
+        if (manualStop && !applicationExitRequested)
+        {
+            SetMonitoringState(
+                MonitoringState.ManuallyStopped,
+                "手動停止済みです。このアプリセッション中は自動再開しません。明示的に監視開始できます。");
         }
     }
 
@@ -2240,14 +2830,16 @@ public sealed class MainViewModel : INotifyPropertyChanged
         Volatile.Read(ref activeMonitoringSession) == sessionId &&
         IsContinuousCapturing &&
         !applicationExitRequested &&
-        CurrentMonitoringState is MonitoringState.SelectingTarget or MonitoringState.Monitoring;
+        CurrentMonitoringState is MonitoringState.Starting or
+            MonitoringState.SelectingTarget or MonitoringState.Monitoring;
 
     private bool CanRunMonitoringWork(long sessionId, CancellationToken cancellationToken) =>
         Volatile.Read(ref activeMonitoringSession) == sessionId &&
         IsContinuousCapturing &&
         !applicationExitRequested &&
         !cancellationToken.IsCancellationRequested &&
-        CurrentMonitoringState is MonitoringState.SelectingTarget or MonitoringState.Monitoring or MonitoringState.Stopping;
+        CurrentMonitoringState is MonitoringState.Starting or MonitoringState.SelectingTarget or
+            MonitoringState.Monitoring or MonitoringState.Stopping;
 
     private void RecordWorkflowResult(CaptureSaveWorkflowResult result, bool workflowFailed)
     {
