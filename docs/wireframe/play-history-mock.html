@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DDR GP Score Log - プレー履歴 UI Mockup (v4)</title>
+  <style>
+    :root {
+      --bg-app: #F8FAFC;
+      --sidebar-bg: #152238;
+      --sidebar-active: #2563EB;
+      --sidebar-text: #94A3B8;
+      --sidebar-text-active: #FFFFFF;
+      --card-bg: #FFFFFF;
+      --border-color: #E2E8F0;
+      --text-main: #0F172A;
+      --text-muted: #64748B;
+      --primary: #2563EB;
+      --primary-hover: #1D4ED8;
+
+      /* DDR WORLD / 公式準拠カラー */
+      --diff-bgn: #00A3E0;
+      --diff-bas: #EAB308;
+      --diff-dif: #ED1C24;
+      --diff-exp: #10B981;
+      --diff-cha: #92278F;
+
+      /* DDR WORLD / リザルト画面のランクカラー */
+      --rank-upper: #FACC15; /* AAA〜A-: 黄 */
+      --rank-b: #38BDF8;     /* B+〜B-: 水色 */
+      --rank-c: #F472B6;     /* C+〜C-: 桃色 */
+      --rank-d: #EF4444;     /* D+〜D: 赤 */
+      --rank-e: #E2E8F0;     /* E: 白〜灰 */
+      --rank-upper-text: #854D0E;
+      --rank-b-text: #075985;
+      --rank-c-text: #9D174D;
+      --rank-d-text: #991B1B;
+      --rank-e-text: #334155;
+
+      /* DDR WORLD / クリアランプカラー */
+      --clear-pfc: #FACC15;  /* PFC: 黄 */
+      --clear-gfc: #22C55E;  /* GFC: 緑 */
+      --clear-fc: #2563EB;   /* FC: 青 */
+      --clear-cle: #38BDF8;  /* CLEAR: 水色 */
+      --clear-pfc-text: #854D0E;
+      --clear-gfc-text: #166534;
+      --clear-fc-text: #1E3A8A;
+      --clear-cle-text: #075985;
+
+      /* DDR WORLD / FLAREアイコンカラー */
+      --flare-ix: #FBBF24;   /* IX: 金 */
+      --flare-viii: #CBD5E1; /* VIII: 白銀 */
+      --flare-vii: #94A3B8;  /* VII: 灰色 */
+      --flare-vi: #8B5CF6;   /* VI: 紫 */
+      --flare-v: #EF4444;    /* V: 赤 */
+      --flare-iv: #FACC15;   /* IV: 黄 */
+      --flare-iii: #22C55E;  /* III: 緑 */
+      --flare-ii: #38BDF8;   /* II: 水色 */
+      --flare-i: #2563EB;    /* I: 青 */
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+    body { background: #CBD5E1; color: var(--text-main); display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; font-size: 14px; }
+
+    /* アプリウィンドウ */
+    .app-window { width: 1280px; height: 740px; background: var(--bg-app); border: 1px solid #CBD5E1; border-radius: 12px; box-shadow: 0 20px 40px rgba(0,0,0,0.15); display: flex; overflow: hidden; }
+
+    /* サイドバー */
+    .sidebar { width: 230px; background: var(--sidebar-bg); display: flex; flex-direction: column; justify-content: space-between; padding: 20px 0; flex-shrink: 0; }
+    .brand { padding: 0 20px 20px 20px; border-bottom: 1px solid #263A56; }
+    .brand h1 { color: #FFF; font-size: 20px; font-weight: 800; letter-spacing: -0.5px; }
+    .brand p { color: var(--sidebar-text); font-size: 11px; margin-top: 2px; }
+
+    .nav-list { list-style: none; padding: 16px 12px; display: flex; flex-direction: column; gap: 4px; }
+    .nav-item a { display: flex; align-items: center; gap: 10px; padding: 10px 14px; color: var(--sidebar-text); text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 13px; transition: all 0.15s; }
+    .nav-item a:hover { color: #FFF; background: rgba(255,255,255,0.05); }
+    .nav-item.active a { background: var(--sidebar-active); color: var(--sidebar-text-active); }
+    .nav-divider { height: 1px; background: #263A56; margin: 8px 12px; }
+
+    /* サイドバー下部: 全体に影響する監視操作 & ステータス */
+    .sidebar-control-box { margin: 0 12px; padding: 14px; background: #1E293B; border-radius: 10px; border: 1px solid #334155; display: flex; flex-direction: column; gap: 12px; }
+    .status-badge { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 700; color: #38BDF8; }
+    .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #38BDF8; box-shadow: 0 0 8px #38BDF8; }
+    .status-sub { color: #94A3B8; font-size: 11px; }
+
+    .btn-monitor { width: 100%; padding: 10px; border-radius: 6px; font-weight: 800; font-size: 13px; cursor: pointer; border: none; text-align: center; transition: background 0.15s; }
+    .btn-start { background: var(--primary); color: #FFF; }
+    .btn-start:hover { background: var(--primary-hover); }
+
+    /* メインコンテンツエリア */
+    .main-content { flex: 1; display: flex; flex-direction: column; padding: 24px 28px; overflow-y: auto; gap: 20px; }
+
+    /* ヘッダー */
+    .header-bar { display: flex; justify-content: space-between; align-items: flex-end; }
+    .page-title h2 { font-size: 24px; font-weight: 800; color: var(--text-main); }
+    .page-title p { font-size: 13px; color: var(--text-muted); margin-top: 2px; }
+
+    /* テーブル & 詳細の2段レイアウト */
+    .content-grid { display: flex; flex-direction: column; gap: 20px; flex: 1; min-height: 0; }
+
+    /* 起動後のプレー履歴テーブル */
+    .table-panel { background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 10px; flex: 1; overflow-y: auto; display: flex; flex-direction: column; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    thead { position: sticky; top: 0; background: #F1F5F9; z-index: 10; }
+    th { padding: 12px 16px; text-align: left; font-size: 12px; font-weight: 700; color: var(--text-muted); border-bottom: 1px solid var(--border-color); }
+    td { padding: 12px 16px; border-bottom: 1px solid var(--border-color); color: var(--text-main); }
+    tbody tr { cursor: pointer; transition: background 0.1s; }
+    tbody tr:hover { background: #F8FAFC; }
+    tbody tr.selected { background: #EFF6FF; }
+    tbody tr.selected td { font-weight: 600; }
+
+    /* 難易度バッジ (DDR WORLD準拠カラー) */
+    .badge-diff { display: inline-block; padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: 800; color: #FFF; text-align: center; min-width: 108px; }
+    .diff-bgn { background: var(--diff-bgn); }
+    .diff-bas { background: var(--diff-bas); color: #000; }
+    .diff-dif { background: var(--diff-dif); }
+    .diff-exp { background: var(--diff-exp); }
+    .diff-cha { background: var(--diff-cha); }
+
+    /* ランク・クリア・フレアバッジ */
+    .badge-rank {
+      display: inline-block;
+      min-width: 42px;
+      padding: 2px 6px;
+      border: 1px solid transparent;
+      border-radius: 5px;
+      font-weight: 900;
+      line-height: 1.2;
+      text-align: center;
+    }
+    .rank-aaa, .rank-aa, .rank-a {
+      color: var(--rank-upper-text);
+      background: #FEF3C7;
+      border-color: var(--rank-upper);
+    }
+    .rank-b {
+      color: var(--rank-b-text);
+      background: #E0F2FE;
+      border-color: var(--rank-b);
+    }
+    .rank-c {
+      color: var(--rank-c-text);
+      background: #FCE7F3;
+      border-color: var(--rank-c);
+    }
+    .rank-d {
+      color: var(--rank-d-text);
+      background: #FEE2E2;
+      border-color: var(--rank-d);
+    }
+    .rank-e {
+      color: var(--rank-e-text);
+      background: #F1F5F9;
+      border-color: #94A3B8;
+    }
+
+    .clear-pfc, .clear-gfc, .clear-fc, .clear-cle, .clear-mfc {
+      display: inline-block;
+      padding: 2px 6px;
+      border: 1px solid transparent;
+      border-radius: 5px;
+      line-height: 1.2;
+    }
+    .clear-pfc {
+      color: var(--clear-pfc-text);
+      background: #FEF3C7;
+      border-color: var(--clear-pfc);
+      font-weight: 800;
+    }
+    .clear-gfc {
+      color: var(--clear-gfc-text);
+      background: #DCFCE7;
+      border-color: var(--clear-gfc);
+      font-weight: 800;
+    }
+    .clear-fc {
+      color: var(--clear-fc-text);
+      background: #DBEAFE;
+      border-color: var(--clear-fc);
+      font-weight: 800;
+    }
+    .clear-cle {
+      color: var(--clear-cle-text);
+      background: #E0F2FE;
+      border-color: var(--clear-cle);
+      font-weight: 800;
+    }
+    .clear-mfc {
+      color: #0F172A;
+      background: linear-gradient(90deg, #FECACA, #FEF3C7, #DCFCE7, #E0F2FE, #F3E8FF);
+      border-color: #A855F7;
+      font-weight: 900;
+    }
+
+    .badge-flare {
+      display: inline-flex;
+      min-width: 74px;
+      align-items: center;
+      justify-content: center;
+      padding: 2px 8px;
+      border: 1px solid transparent;
+      border-radius: 5px;
+      font-size: 11px;
+      font-weight: 800;
+      line-height: 1.2;
+    }
+    .flare-ex {
+      background: linear-gradient(90deg, #FECACA, #FEF3C7, #DCFCE7, #E0F2FE, #F3E8FF);
+      border-color: #A855F7;
+      color: #0F172A;
+    }
+    .flare-ix { background: #FEF3C7; border-color: var(--flare-ix); color: #854D0E; }
+    .flare-viii { background: #F1F5F9; border-color: var(--flare-viii); color: #334155; }
+    .flare-vii { background: #E2E8F0; border-color: var(--flare-vii); color: #334155; }
+    .flare-vi { background: #EDE9FE; border-color: var(--flare-vi); color: #5B21B6; }
+    .flare-v { background: #FEE2E2; border-color: var(--flare-v); color: #991B1B; }
+    .flare-iv { background: #FEF3C7; border-color: var(--flare-iv); color: #854D0E; }
+    .flare-iii { background: #DCFCE7; border-color: var(--flare-iii); color: #166534; }
+    .flare-ii { background: #E0F2FE; border-color: var(--flare-ii); color: #075985; }
+    .flare-i { background: #DBEAFE; border-color: var(--flare-i); color: #1E3A8A; }
+
+    .flare-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 2px; }
+    .flare-legend-label { color: var(--text-muted); font-size: 11px; font-weight: 800; margin-right: 2px; }
+    .flare-legend .badge-flare { min-width: 28px; padding: 2px 6px; }
+
+    /* プレー詳細パネル (下部) */
+    .detail-panel { background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 10px; padding: 20px 24px; display: grid; grid-template-columns: 2.2fr 1.4fr 1.2fr; gap: 24px; }
+
+    .detail-main { display: flex; flex-direction: column; gap: 6px; }
+    .detail-title { font-size: 20px; font-weight: 800; color: var(--text-main); }
+    .detail-meta { display: flex; gap: 10px; align-items: center; font-size: 13px; color: var(--text-muted); }
+    .detail-score-box { display: flex; align-items: baseline; gap: 16px; margin-top: 4px; }
+    .score-val { font-size: 34px; font-weight: 900; color: var(--text-main); font-family: 'Courier New', monospace; letter-spacing: -1px; }
+    .ex-score-val { font-size: 13px; font-weight: 700; color: var(--text-muted); }
+
+    .detail-badges { display: flex; gap: 8px; margin-top: 4px; align-items: center; }
+    .detail-tag { padding: 4px 10px; background: #F1F5F9; border: 1px solid transparent; border-radius: 6px; font-size: 12px; font-weight: 800; }
+    .detail-tag.rank-aa {
+      color: var(--rank-upper-text);
+      background: #FEF3C7;
+      border-color: var(--rank-upper);
+    }
+    .detail-tag.clear-fc {
+      color: var(--clear-fc-text);
+      background: #DBEAFE;
+      border-color: var(--clear-fc);
+    }
+
+    /* 判定ブレイクダウン */
+    .judgement-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 16px; background: #F8FAFC; padding: 14px 16px; border-radius: 8px; border: 1px solid var(--border-color); align-content: center; }
+    .j-row { display: flex; justify-content: space-between; font-size: 12px; }
+    .j-label { font-weight: 700; color: var(--text-muted); }
+    .j-val { font-weight: 800; font-family: monospace; }
+    .j-marv { color: #D97706; }
+    .j-perf { color: #EAB308; }
+    .j-great { color: #10B981; }
+    .judgement-grid { min-height: 128px; }
+
+    /* ベスト更新 & 付加情報 */
+    .detail-info { display: flex; flex-direction: column; justify-content: space-between; font-size: 12px; color: var(--text-muted); }
+    .diff-up { color: #059669; font-weight: 800; font-size: 12px; background: #ECFDF5; border: 1px solid #A7F3D0; padding: 5px 10px; border-radius: 6px; display: inline-block; margin-bottom: 6px; }
+    .info-footer { border-top: 1px solid var(--border-color); padding-top: 6px; line-height: 1.4; }
+  </style>
+</head>
+<body>
+
+<div class="app-window">
+  <!-- 左サイドバー -->
+  <aside class="sidebar">
+    <div>
+      <div class="brand">
+        <h1>GP Score Log</h1>
+        <p>DDR GRAND PRIX Score Tracker</p>
+      </div>
+      <ul class="nav-list">
+        <li class="nav-item"><a href="#">ホーム</a></li>
+        <li class="nav-item"><a href="#">自己ベスト</a></li>
+        <li class="nav-item"><a href="#">楽曲・譜面</a></li>
+        <li class="nav-item active"><a href="#">直近プレー履歴</a></li>
+        <div class="nav-divider"></div>
+        <li class="nav-item"><a href="#">要確認</a></li>
+        <li class="nav-item"><a href="#">設定</a></li>
+        <li class="nav-item"><a href="#">データ管理</a></li>
+      </ul>
+    </div>
+
+    <!-- サイドバー下部: 全体に影響する監視操作 & ステータス -->
+    <div class="sidebar-control-box">
+      <div class="status-badge">
+        <span class="status-dot"></span>
+        自動記録：待機中
+      </div>
+      <div class="status-sub">DDR GP ウィンドウ待機中</div>
+      <button class="btn-monitor btn-start">監視を開始する</button>
+    </div>
+  </aside>
+
+  <!-- メインコンテンツ -->
+  <main class="main-content">
+    <!-- ヘッダーバー (シンプル化) -->
+    <header class="header-bar">
+      <div class="page-title">
+        <h2>直近プレー履歴</h2>
+        <p>このアプリを起動してから記録されたプレーを表示します</p>
+      </div>
+    </header>
+
+    <!-- メインコンテンツグリッド -->
+    <div class="content-grid">
+      <!-- 起動後のプレー履歴テーブル -->
+      <div class="table-panel">
+        <table>
+          <thead>
+            <tr>
+              <th style="width: 120px;">日時</th>
+              <th>曲名</th>
+              <th style="width: 150px;">譜面</th>
+              <th style="width: 55px;">Lv.</th>
+              <th style="width: 110px;">SCORE</th>
+              <th style="width: 65px;">ランク</th>
+              <th style="width: 110px;">CLEAR</th>
+              <th style="width: 85px;">FLARE</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="selected">
+              <td>08/02 22:50</td>
+              <td>London EVOLVED ver.B</td>
+              <td><span class="badge-diff diff-dif">SP DIFFICULT</span></td>
+              <td>Lv.11</td>
+              <td>972,840</td>
+              <td><span class="badge-rank rank-aa">AA+</span></td>
+              <td><span class="clear-fc">FULL COMBO</span></td>
+              <td><span class="badge-flare flare-ix">FLARE IX</span></td>
+            </tr>
+            <tr>
+              <td>08/02 22:42</td>
+              <td>London EVOLVED ver.A</td>
+              <td><span class="badge-diff diff-exp">SP EXPERT</span></td>
+              <td>Lv.14</td>
+              <td>945,120</td>
+                            <td><span class="badge-rank rank-aa">AA</span></td>
+              <td><span class="clear-cle">CLEAR</span></td>
+              <td><span class="badge-flare flare-vi">FLARE VI</span></td>
+            </tr>
+            <tr>
+              <td>08/02 22:31</td>
+              <td>POSSESSION</td>
+              <td><span class="badge-diff diff-cha">SP CHALLENGE</span></td>
+              <td>Lv.17</td>
+              <td>991,400</td>
+                            <td><span class="badge-rank rank-aaa">AAA</span></td>
+              <td><span class="clear-pfc">PFC</span></td>
+              <td><span class="badge-flare flare-ex">FLARE EX</span></td>
+            </tr>
+            <tr>
+              <td>08/02 22:18</td>
+              <td>MAX 300</td>
+              <td><span class="badge-diff diff-exp">SP EXPERT</span></td>
+              <td>Lv.15</td>
+              <td>982,100</td>
+                            <td><span class="badge-rank rank-aaa">AAA</span></td>
+              <td><span class="clear-fc">FULL COMBO</span></td>
+              <td><span class="badge-flare flare-viii">FLARE VIII</span></td>
+            </tr>
+            <tr>
+              <td>08/02 22:05</td>
+              <td>PARANOiA MAX~DIRTY MIX~</td>
+              <td><span class="badge-diff diff-bas">SP BASIC</span></td>
+              <td>Lv.8</td>
+              <td>998,500</td>
+                            <td><span class="badge-rank rank-aaa">AAA</span></td>
+              <td><span class="clear-gfc">GFC</span></td>
+              <td><span class="badge-flare flare-iii">FLARE III</span></td>
+            </tr>
+            <tr>
+              <td>08/02 21:55</td>
+              <td>TRIP MACHINE</td>
+              <td><span class="badge-diff diff-bgn">SP BEGINNER</span></td>
+              <td>Lv.3</td>
+              <td>1,000,000</td>
+              <td><span class="badge-rank rank-aaa">AAA</span></td>
+              <td><span class="clear-mfc">MFC</span></td>
+              <td><span>—</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- 選択されたプレーの詳細パネル -->
+      <div class="detail-panel">
+        <!-- スコア・曲情報 -->
+        <div class="detail-main">
+          <div class="detail-title">London EVOLVED ver.B</div>
+          <div class="detail-meta">
+            <span class="badge-diff diff-dif">DIFFICULT</span>
+            <span>SP / Lv.11</span>
+          </div>
+          <div class="detail-score-box">
+            <span class="score-val">972,840</span>
+            <span class="ex-score-val">EX SCORE: 1,016</span>
+          </div>
+          <div class="detail-badges">
+            <span class="detail-tag rank-aa">RANK AA+</span>
+            <span class="detail-tag clear-fc">FULL COMBO</span>
+            <span class="badge-flare flare-ix">FLARE IX</span>
+          </div>
+          <div class="flare-legend" aria-label="FLAREランクの色見本">
+            <span class="flare-legend-label">FLARE</span>
+            <span class="badge-flare flare-i">I</span>
+            <span class="badge-flare flare-ii">II</span>
+            <span class="badge-flare flare-iii">III</span>
+            <span class="badge-flare flare-iv">IV</span>
+            <span class="badge-flare flare-v">V</span>
+            <span class="badge-flare flare-vi">VI</span>
+            <span class="badge-flare flare-vii">VII</span>
+            <span class="badge-flare flare-viii">VIII</span>
+            <span class="badge-flare flare-ix">IX</span>
+            <span class="badge-flare flare-ex">EX</span>
+          </div>
+        </div>
+
+        <!-- 判定ブレイクダウン -->
+        <div class="judgement-grid">
+          <div class="j-row"><span class="j-label j-marv">MARVELOUS</span><span class="j-val">265</span></div>
+          <div class="j-row"><span class="j-label j-perf">PERFECT</span><span class="j-val">88</span></div>
+          <div class="j-row"><span class="j-label j-great">GREAT</span><span class="j-val">21</span></div>
+          <div class="j-row"><span class="j-label">GOOD</span><span class="j-val">2</span></div>
+          <div class="j-row"><span class="j-label">MISS</span><span class="j-val">0</span></div>
+          <div class="j-row"><span class="j-label">MAX COMBO</span><span class="j-val">376</span></div>
+        </div>
+
+        <!-- 差分 & メタデータ -->
+        <div class="detail-info">
+          <div>
+            <div class="diff-up">↑ 自己ベスト更新 +12,340</div>
+            <div style="font-size: 11px;">前回の記録: 960,500 (2026/07/20)</div>
+          </div>
+          <div class="info-footer">
+            <div>プレー日時: 2026/08/02 22:50:07</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+</body>
+</html>
