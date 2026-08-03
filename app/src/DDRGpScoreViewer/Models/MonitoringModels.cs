@@ -3,15 +3,50 @@ namespace DDRGpScoreViewer.Models;
 public enum MonitoringState
 {
     Idle,
+    Starting,
+    WaitingForGame,
     SelectingTarget,
     Monitoring,
     Stopping,
     Stopped,
+    ManuallyStopped,
+    Blocked,
+    ShuttingDown,
     TargetClosed,
     Resized,
     DeviceLost,
     CaptureFailed,
     WorkflowFailed,
+}
+
+public sealed record AutomaticMonitoringOptions
+{
+    public bool Enabled { get; init; } = true;
+    public TimeSpan PollInterval { get; init; } = TimeSpan.FromSeconds(1);
+    public int RequiredConsecutiveDetections { get; init; } = 2;
+    public int RequiredConsecutiveMisses { get; init; } = 2;
+
+    public void Validate()
+    {
+        if (PollInterval <= TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(PollInterval),
+                "Automatic monitoring polling must be greater than zero.");
+        }
+        if (RequiredConsecutiveDetections < 1)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(RequiredConsecutiveDetections),
+                "Automatic monitoring detection debounce must be at least one.");
+        }
+        if (RequiredConsecutiveMisses < 1)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(RequiredConsecutiveMisses),
+                "Automatic monitoring disappearance debounce must be at least one.");
+        }
+    }
 }
 
 public sealed record MonitoringResultSummary(
@@ -53,8 +88,9 @@ public sealed record TrayMenuState(bool CanStart, bool CanStop)
 {
     public static TrayMenuState FromMonitoringState(MonitoringState state) => state switch
     {
-        MonitoringState.SelectingTarget or MonitoringState.Monitoring => new(false, true),
-        MonitoringState.Stopping => new(false, false),
+        MonitoringState.Starting or MonitoringState.SelectingTarget or
+            MonitoringState.Monitoring => new(false, true),
+        MonitoringState.Stopping or MonitoringState.ShuttingDown => new(false, false),
         _ => new(true, false),
     };
 }

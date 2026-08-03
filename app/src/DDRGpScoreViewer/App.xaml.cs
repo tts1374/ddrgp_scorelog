@@ -124,12 +124,14 @@ public partial class App : System.Windows.Application
         mainWindow.Show();
         if (referenceDataSetManager is not null)
         {
+            mainWindow.ViewModel.SetReferenceDataUpdateInProgress(true);
             StartReferenceDataSetUpdate(
                 referenceDataSetManager,
                 paths,
                 mainWindow.ApplicationExitToken);
         }
         _ = mainWindow.CheckForApplicationUpdateAsync(mainWindow.ApplicationExitToken);
+        mainWindow.StartAutomaticMonitoring();
         singleInstance.Listen(() => Dispatcher.BeginInvoke(ShowMainWindow));
     }
 
@@ -154,6 +156,7 @@ public partial class App : System.Windows.Application
             mainWindow.ViewModel.ApplyReferenceDataSetUpdateResult(result);
             if ((result.Status is ReferenceDataSetUpdateStatus.Installed or ReferenceDataSetUpdateStatus.Updated) &&
                 mainWindow.ViewModel.CurrentMonitoringState is not (
+                    MonitoringState.Starting or
                     MonitoringState.SelectingTarget or
                     MonitoringState.Monitoring or
                     MonitoringState.Stopping))
@@ -168,6 +171,10 @@ public partial class App : System.Windows.Application
         catch (Exception exception)
         {
             releaseLog?.Error("reference_data_set_network_failed", exception);
+        }
+        finally
+        {
+            mainWindow?.ViewModel.SetReferenceDataUpdateInProgress(false);
         }
     }
 

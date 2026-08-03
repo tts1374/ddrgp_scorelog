@@ -416,11 +416,11 @@ WPFの起動時、単発保存・連続取得の保存開始時は、現在の�
 
 ## WPF monitoringとtask tray lifecycle
 
-監視開始はWPFまたはtask trayの明示操作からだけ行い、正式DBと2種類のmaster DBは現在の環境の固定pathから取得し、対象windowだけをユーザーが選ぶ。window title、幅、高さは選択済み対象の表示にだけ使い、自動探索や自動再接続のkeyにしない。監視surfaceはcapture progressのframe数、開始UTC、最新frame UTCと、capture-save結果の `saved`、`duplicate`、`excluded`、`unresolved`、`analysis_failed`、`db_rejected`、`workflow_failed` を投影する。これは結果を再開する新しい永続化形式ではなく、終了後に破棄可能なprocess内状態である。
+監視は起動後に既定で自動探索を開始し、1秒間隔で`process=ddr-konaste`かつclient `1280x720`のtop-level windowを確認する。対象を2回連続で検出したときだけWPFまたはtask trayの明示開始と同じ監視workerへ接続し、0件・複数件・単発の探索失敗では開始せず待機する。正式DBと2種類のmaster DBは現在の環境の固定pathから取得し、対象windowを推測で選択しない。window消失は2回連続で確認して安全停止し、対象windowが一度消失してから再出現したときだけ自動復帰する。手動停止は同一app session中の自動再開を抑止する。window title、幅、高さは検出・選択済み対象の表示に使い、任意window選択や自動focusは行わない。監視surfaceはcapture progressのframe数、開始UTC、最新frame UTCと、capture-save結果の `saved`、`duplicate`、`excluded`、`unresolved`、`analysis_failed`、`db_rejected`、`workflow_failed` を投影する。これは結果を再開する新しい永続化形式ではなく、終了後に破棄可能なprocess内状態である。
 
 通常のmain window closeと最小化はwindowを非表示にし、capture sessionとworkflowのownerをApp/ViewModelに残す。task trayは開始、停止、window表示、明示終了を提供する。WPFとtrayの開始要求は1つのoperation gateで直列化し、capture-onlyを含むpicker中の再Startを同じTaskへ合流させる。各capture sessionに世代を付け、停止・対象window終了・capture失敗・workflow失敗・終了後の古いprogress callbackは状態を再開・上書きしない。明示終了はpending pickerをcancel状態にしてその終端と停止の冪等操作、in-flight capture/workflow完了を待ってから、NotifyIcon、context menu、window、processをこの順で終了する。stop自体が例外になった場合も理由を通知してtrayをdisposeし、process終了でOS resourceを残さない。stop、target closed、resize、device lost、capture/write失敗で既存capture resourceを一度だけ解放し、tray resourceはアプリ終了時に一度だけdisposeする。アプリ本体の更新適用時もこの完全終了経路を使い、tray格納やwindow hideだけでVeloPack updaterへ制御を返さない。
 
-通知はtransaction済みsavedが1件以上ある完了と、target closed、resize、device lost、capture失敗、workflow失敗だけに限定する。duplicate、excluded、unresolved、analysis failureの反復を個別通知せず、WPF/trayから最新状態を確認可能にする。monitoring state、tray menu enable状態、close-to-tray、明示exitのstop待機はWindows Graphics Captureなしのfixtureで固定する。
+通知はtransaction済みsavedが1件以上ある完了と、target closed、resize、device lost、capture失敗、workflow失敗だけに限定する。duplicate、excluded、unresolved、analysis failure、待機、手動停止、開始不能の反復を個別通知せず、WPF/trayから最新状態を確認可能にする。monitoring stateは`starting`、`waiting_for_game`、`monitoring`、`manually_stopped`、`blocked`、`shutting_down`を含み、DB検証失敗、runtime起動失敗、更新処理中、終了処理中は自動開始しない。monitoring state、tray menu enable状態、close-to-tray、明示exitのstop待機はWindows Graphics Captureなしのfixtureで固定する。
 
 ## Analysis artifactと正式saveの接続契約
 

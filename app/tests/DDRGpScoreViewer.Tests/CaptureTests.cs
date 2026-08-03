@@ -439,7 +439,7 @@ public sealed class CaptureTests
 
         Assert.False(viewModel.IsContinuousCapturing);
         Assert.False(viewModel.IsStoppingCapture);
-        Assert.Equal(MonitoringState.Stopped, viewModel.CurrentMonitoringState);
+        Assert.Equal(MonitoringState.ManuallyStopped, viewModel.CurrentMonitoringState);
     }
 
     private static CapturedFrame Frame(string source, long timestampMs = 12345) =>

@@ -536,3 +536,12 @@ dry-run sequence scenario 入口を変更した場合も、生成manifestを man
 - default directory preparationは親directoryを作成し、master/catalogのread-only検証に成功したときだけ固定score pathのmissing／0 byteを正式schemaへ初期化することを確認する。master、catalog、evaluationのSQLite fileは起動時に作成せず、既存の非空score DBは変更しない。
 - 保存済み設定に任意pathや別環境のpathが含まれていても復元せず、現在の環境のscore/master/catalog固定pathだけをloadやsave preflightで参照することを確認する。path保存にはdevelopment / productionの環境タグを含める。
 - M10-3評価用DBはdevelopment専用path、WPF非参照、明示initializer、先行backup、integrity check、別outputへの再実行という手順をdocsで固定する。評価用DBの初期化・退避をformal score DB writerへ接続しない。
+
+## Windows automatic monitoring guard
+
+- 起動前から対象windowが存在する場合と、起動後に対象windowが出現する場合に、`Starting`を経て2回連続検出後だけ既存の監視workerを1回開始する。
+- 1回の探索失敗、0件、複数件では開始・停止を反復せず`WaitingForGame`へ戻り、対象window消失は2回連続確認後だけ安全停止する。
+- 監視停止後に対象windowが消失して再出現した場合だけ自動復帰し、同じwindowが残ったままの再接続や旧sessionの再利用を行わない。
+- 明示的な`StopContinuousCaptureAsync`後は`ManuallyStopped`を保持し、同一app session中の自動開始を行わない。明示的な開始操作だけが再開を許可する。
+- master DB、jacket参照catalog、capture runtime、更新処理、終了処理のいずれかが開始境界を満たさない場合、capture・解析・正式保存runnerの呼出回数を0にし、`Blocked`または`ShuttingDown`をtrayとWPFへ投影する。
+- tray格納中もautomatic monitoring workerを継続し、trayの開始・停止可否とWPFのstateが一致する。終了時はpolling、start task、capture worker、runtimeの完了を待ち、workerが残らない。

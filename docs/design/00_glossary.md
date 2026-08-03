@@ -367,3 +367,18 @@ M3、M5、M7aなどの候補材料を、M8正式保存の前に1件単位で束�
 M8の明示的な正式保存入口。confirmed-eventsだけを対象にし、`RESULT同定根拠`、`RESULT数値認識根拠`、`RESULT状態認識根拠`、`capture event根拠`から構築したfieldごとの採用済みsource、formal play値、正式duplicate key、必要な時刻・master情報などをstrictに検証した `PersonalScoreDbSaveInput` だけを受け取る。`identity_signal_*`、`recognized_digits`、expected値、raw OCR、M8 preview rowは、そのまま正式値へ昇格しない。
 
 正式DB保存の詳細は `docs/design/10_personal_score_db_schema.md` と `docs/design/05_storage_io_spec.md` を正本とする。
+
+## Windows app automatic monitoring
+
+Windows appの監視状態は、次の`MonitoringState`を正式名称として使う。`WaitingForGame`は対象windowの探索待ち、`ManuallyStopped`は同一app session中の自動再開抑止、`Blocked`はDBまたはruntime異常による自動開始抑止を表す。
+
+| code | 正式な状態 | 意味 |
+| --- | --- | --- |
+| `Starting` | 監視開始中 | debounce済みの対象windowへ監視workerを接続中 |
+| `WaitingForGame` | ゲーム待機中 | 対象windowの検出または消失後の再出現を待機中 |
+| `Monitoring` | 監視中 | 対象windowを監視workerが処理中 |
+| `ManuallyStopped` | 手動停止済み | 明示停止を受け、同一app session中の自動再開を抑止中 |
+| `Blocked` | 監視開始不可 | DB検証またはruntime起動の失敗により自動開始を抑止中 |
+| `ShuttingDown` | 終了処理中 | app終了要求後、新しい監視を受け付けずworkerを停止中 |
+
+automatic monitoringの既定値は、1秒間隔、対象windowの2回連続検出、対象windowの2回連続消失である。単発の探索失敗は待機として扱い、DB異常、runtime異常、更新処理中、終了処理中とは区別する。
