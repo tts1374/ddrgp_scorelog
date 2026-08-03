@@ -40,12 +40,14 @@ M10-2では、DBの責務と実行環境をpathで固定する。Debugで明示�
 
 | 責務 | development | production | 初期化・更新責務 |
 | --- | --- | --- | --- |
-| M4 master DB | `databases/ddrgp-master.sqlite` | `%LOCALAPPDATA%\DDRGpScoreViewer\data\master\ddrgp-master.sqlite` | 既存のread-only inspectionだけ。取得、同梱、自動更新、最新版照合は対象外 |
-| M5b jacket reference catalog | `databases/jacket-catalog.sqlite` | `%LOCALAPPDATA%\DDRGpScoreViewer\data\master\jacket-catalog.sqlite` | M4とは別のstrict schemaとしてread-only inspection。collector/updateは対象外 |
+| M4 master DB | `databases/ddrgp-master.sqlite` | `%LOCALAPPDATA%\DDRGpScoreViewer\data\master\ddrgp-master.sqlite` | M4とは別のreference data set assetとしてread-only検証・セット更新 |
+| M5b jacket reference catalog | `databases/jacket-catalog.sqlite` | `%LOCALAPPDATA%\DDRGpScoreViewer\data\master\jacket-catalog.sqlite` | M4とは別fileのstrict schema。M4と同じreference data setとしてread-only検証・セット更新 |
 | 正式個人スコアDB | `databases/score.dev.db` | `%LOCALAPPDATA%\DDRGpScoreViewer\data\score\score.db` | 固定pathのmissing／0 byteだけWPF側の正式schema初期化境界で初期化。既存formal DBは明示save以外で変更しない |
 | 評価用DB | `databases/evaluation.db` | 既定pathなし | M10-3評価器だけが明示的に初期化・再実行 |
 
 起動時はDB親directory、`data/`、`logs/`を作成し、M4 master DBとM5b jacket reference catalogのread-only検証に成功した場合だけ、現在の環境の固定score pathがmissingまたは0 byteのときWPF側の `PersonalScoreDbInitializer` が既存の正式schema、metadata、migration契約に従って初期schemaを作成する。既存の非空score DBはこの処理で開かず、後段のread-only検証へ進める。app-owned runtimeの明示saveも同じfile-preparation、adapter、transaction writer境界を使う。Release packageはrepository root、repository内module、外部Python executable、Tesseractをruntime依存にせず、認識資材はapp packageの`RuntimeAssets/`または`DDRGP_SCORE_VIEWER_RUNTIME_DATA`で明示したdata pathから解決する。`data/windows_capture/`、`data/capture_save_workflow/`、`logs/analysis_details/`、`logs/analysis_failures/`は再生成・退避可能なlocal outputであり、formal `plays`の代替ではない。
+
+production起動時はlatest GitHub Releaseのreference data setを確認する。Release APIから同じReleaseにある`reference-set.json`、`ddrgp-master.sqlite`、`jacket-catalog.sqlite`のasset URLを解決し、manifestを先に取得する。manifestの`content_version`が現行と同じ場合はDB assetを取得せずno-opとし、古い場合はdowngradeを拒否する。新しい場合だけ3 assetを`data/`配下の一時directoryへ保存する。通信失敗、asset欠落、download中断、空き容量不足は現行reference data setを変更せず、score DBとsettingsにも触れない。
 
 ### 二つのmaster DBのread-only inspection
 
@@ -487,8 +489,18 @@ pure contractのstatus/終了コードは、`current` / `dry_run_ready` / `ready
 
 status/dry-run専用CLIは従来どおりDB path、target version、明示backup pathの必須組だけを受け、Release appの固定path起動migrationとは別入口を維持する。
 
-## M10-4 release package and retention boundary
+## M10-4 / #117 reference data set package and update boundary
 
-VeloPack packageはapp binary/runtimeと`ReferenceData/`を所有し、永続dataはinstall root外の`%LOCALAPPDATA%/DDRGpScoreViewer/`に置く。`ReferenceData/`のM4 master DB、M5b jacket reference catalog、set manifestは一時directoryでread-only/schema/content compatibilityを検査し、新versionだけを現行＋直前1世代でセット切替する。同一versionはno-op、古いversionは拒否し、片方欠落、不整合、切替後再open失敗では直前セットへ戻す。network取得は行わない。
+VeloPack packageはapp binary/runtimeと`ReferenceData/`を所有し、永続dataはinstall root外の`%LOCALAPPDATA%/DDRGpScoreViewer/`に置く。GitHub Releaseにも、同じReleaseの次の3 assetを同じ名前で公開する。
 
-Release logは`logs/gp-score-log.log`を5MB×3 fileで保持する。正式score DBとsettingsは無期限、reference setは現行＋直前1世代、migration backupは最新1件、cache/tempは処理完了時または次回起動時までとする。uninstallはinstall rootだけを削除し、この永続dataを削除しない。
+| asset | 契約 |
+|---|---|
+| `reference-set.json` | `content_version`、`master_schema_version`、`catalog_schema_version`、`master_content_version`、`catalog_master_content_version`、`master_sha256`、`catalog_sha256` |
+| `ddrgp-master.sqlite` | M4 master DB |
+| `jacket-catalog.sqlite` | M5b jacket reference catalog |
+
+manifestの`content_version`はreference data set更新の比較に使う3要素数値versionで、master/catalogのmetadataにあるcontent versionとは別に保持する。`master_schema_version`と`catalog_schema_version`は現在1だけを受理し、manifest内のmaster/catalog対応version、master DB実metadata、catalog DB実metadataの3者が一致することをread-only openで検査する。SHA-256はdownload後の各asset bytesと比較する。
+
+検証済み候補は`data/`配下の一時directoryへ作成する。現行`data/master/`を`data/.reference-previous/`へdirectory単位でrenameし、候補directoryを`data/master/`へrenameする。master/catalogを個別に切り替えないため、新旧fileの混在を作らない。切替後の両DBread-only再openまたは切替中のI/O失敗では`data/.reference-previous/`を`data/master/`へ戻し、候補を削除する。同一versionはno-op、古いversionは拒否し、片方欠落、不整合、checksum不一致、通信失敗、download中断、空き容量不足では現行セットを維持する。
+
+保持上限は`data/master/`の現行と`data/.reference-previous/`の直前1世代だけとし、正常確認後に旧世代を削除する。download stagingは処理完了後に削除する。Release logは`logs/gp-score-log.log`を5MB×3 fileで保持する。正式score DBとsettingsは無期限、migration backupは最新1件、cache/tempは処理完了時または次回起動時までとする。uninstallはinstall rootだけを削除し、この永続dataを削除しない。

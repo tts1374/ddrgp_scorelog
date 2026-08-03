@@ -645,6 +645,22 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
     }
 
+    public void ApplyReferenceDataSetUpdateResult(ReferenceDataSetUpdateResult result)
+    {
+        HasSaveStatus = true;
+        SaveStatusTitle = result.Status switch
+        {
+            ReferenceDataSetUpdateStatus.Installed => "reference DBを初回配置しました",
+            ReferenceDataSetUpdateStatus.Updated => "reference DBを更新しました",
+            ReferenceDataSetUpdateStatus.Unchanged => "reference DBの更新を確認しました",
+            ReferenceDataSetUpdateStatus.DowngradeRejected => "reference DB更新を拒否しました",
+            ReferenceDataSetUpdateStatus.Failed => "reference DBを更新できませんでした",
+            _ => "reference DBの状態を確認しました",
+        };
+        SaveStatusMessage =
+            $"{result.Message} 正式個人スコアDBとsettingsは変更していません。";
+    }
+
     public Task StartConfiguredContinuousCaptureAndSaveAsync(
         nint ownerWindowHandle,
         CancellationToken cancellationToken = default) =>

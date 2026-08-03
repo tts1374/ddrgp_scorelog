@@ -137,7 +137,7 @@ windowの×ボタンはwindowをtrayへ格納し、最小化ボタンは通常�
 | 正式個人スコアDB | `databases/score.dev.db` | `%LOCALAPPDATA%\DDRGpScoreViewer\data\score\score.db` |
 | 評価用DB | `databases/evaluation.db`（M10-3専用） | 既定pathなし |
 
-M4 master DBとM5b jacket reference catalogは、同じdirectoryに置かれていても別ファイル・別責務です。Release packageは両DBを1つのreference data setとして同梱しますが、network取得や最新版照合は行いません。正式個人スコアDBはアプリ更新、reference DB操作、評価用DB初期化で上書き・初期化しません。固定score pathがmissingまたは0 byteの場合だけ、master 2種類の検証後に既存の正式DB準備境界を使って空の正式schemaを作成します。既存非空DBは現行schemaならそのまま利用し、明示converterがある旧schemaだけ事前backup後にtransaction migrationします。対応より新しいschemaとconverterのないschemaは変更せず拒否します。
+M4 master DBとM5b jacket reference catalogは、同じdirectoryに置かれていても別ファイル・別責務です。Release packageは両DBを1つのreference data setとして同梱し、production起動時はGitHub Releasesの同じreference data setも確認します。正式個人スコアDBはアプリ更新、reference DB操作、評価用DB初期化で上書き・初期化しません。固定score pathがmissingまたは0 byteの場合だけ、master 2種類の検証後に既存の正式DB準備境界を使って空の正式schemaを作成します。既存非空DBは現行schemaならそのまま利用し、明示converterがある旧schemaだけ事前backup後にtransaction migrationします。対応より新しいschemaとconverterのないschemaは変更せず拒否します。
 
 初回起動では親directory（`databases/`、またはproductionの`data/master/`・`data/score/`）と`data/`・`logs/`を作成し、master 2種類がcompatibleなら固定score pathのmissing／0 byteだけを初期化します。既存の非空score DBはread-only検証だけを行い、unknown、preview、identity mismatch、manual migration候補、非SQLite、directoryは変更せず拒否します。captureはdevelopmentでは`data/windows_capture/`、productionでは`%LOCALAPPDATA%\DDRGpScoreViewer\data\windows_capture/`へ出し、解析artifactは`data/capture_save_workflow/`、失敗画像と診断ログは`logs/`配下へ分離します。これらは再生成・退避可能なlocal dataで、Git管理しません。
 
@@ -218,7 +218,17 @@ VeloPack 1.2.0をrepository-local .NET toolとして固定しています。pack
 3. `data/releases/0.1.0/`の`com.tts1374.ddrgp_scorelog-win-Setup.exe`、full package、`RELEASES`、`assets.win.json`、`releases.win.json`を確認する。`data/release-build/0.1.0/publish/ReferenceData/`には2つのDBと`reference-set.json`が別fileのまま入る。
 4. tagとGitHub Releaseを同じversion（例: `v0.1.0`）で作り、少なくともSetup、full package、`RELEASES`、2つのrelease JSONを添付する。署名していないこととこのREADMEの既知制限をRelease notesへ記載する。
 
-package生成はmaster/catalog実metadataの一致検証、locked NuGet restore、Release self-contained publish、VeloPack packagingを順に実行します。入力DBと成果物はGit管理しません。versionだけを変えて同じrepository revisionと同じ2 DBから再実行できます。VeloPackの取得、更新適用、network source設定は#116/#117の範囲なので実装していません。
+5. 同じGitHub Releaseへ、`data/release-build/0.1.0/publish/ReferenceData/`から次の3 assetを名前を変えずに添付する。
+
+   | asset | 内容 |
+   | --- | --- |
+   | `reference-set.json` | `content_version`、master/catalog schema version、master content version対応、SHA-256 |
+   | `ddrgp-master.sqlite` | M4 master DB |
+   | `jacket-catalog.sqlite` | M5b jacket reference catalog |
+
+   アプリは `https://api.github.com/repos/tts1374/ddrgp_scorelog/releases/latest` でlatest Releaseのasset URLを解決し、同じReleaseからmanifestを先に取得します。manifestが現行と同じversionならDB assetを取得せずno-opとし、新しいversionだけを3 asset一組で取得します。任意version選択、複数channel、署名検証は提供しません。
+
+package生成はmaster/catalog実metadataの一致検証、locked NuGet restore、Release self-contained publish、VeloPack packagingを順に実行します。入力DBと成果物はGit管理しません。versionだけを変えて同じrepository revisionと同じ2 DBから再実行できます。アプリ本体の更新適用は#116の範囲であり、本Issueではreference DBだけを扱います。
 
 ## 初回導入と通常操作
 
@@ -228,11 +238,11 @@ package生成はmaster/catalog実metadataの一致検証、locked NuGet restore�
 4. DDR GRAND PRIXを`1280x720` client sizeで起動し、`監視開始`を押す。対象が一意に見つからない場合は表示理由を直してから再度`監視開始`を押す。
 5. 一時停止は`監視停止`、再開は停止完了後の`監視開始`を使う。×ボタンはtray格納、最小化はtaskbar最小化、完全終了はtrayの`終了`を使う。
 
-起動時の自動監視開始、自動復帰、reference DBのnetwork取得、アプリ内自動更新はありません。監視は毎回明示的に開始します。
+起動時の自動監視開始・自動復帰、アプリ本体の自動更新はありません。production起動時だけreference DBのlatest Release確認・取得を行い、通信できない場合も既存reference DBで通常利用を続けます。監視は毎回明示的に開始します。
 
 ## Reference data setの配置・更新・復旧
 
-production固定pathは`%LOCALAPPDATA%\DDRGpScoreViewer\data\master\`です。組み込み候補は一時directoryへコピーし、2 DBをread-only openしてschema version、master content version、catalog内referenceのmaster version整合を検査します。初回は検証済みの2 DBとmanifestをセットで配置します。更新時は`content_version`が現在より新しい場合だけ、現行セットを`.previous/`へ退避して3 fileを切り替え、切替後に再openします。同一versionはno-op、古いversionは拒否、片方欠落・不整合・切替失敗・再検証失敗は直前セットへ戻します。保持するのは現行と直前1世代だけです。
+production固定pathは`%LOCALAPPDATA%\DDRGpScoreViewer\data\master\`です。起動時はlatest GitHub Releaseのmanifestを先に取得し、asset名 `reference-set.json`、`ddrgp-master.sqlite`、`jacket-catalog.sqlite` の3つが同じReleaseに存在することを確認します。候補は`data`配下の一時directoryへ保存し、2 DBをread-only openしてschema version、content version、catalog内referenceのmaster version整合、manifest checksumを検査します。初回は検証済みの2 DBとmanifestをセットで配置します。更新時は`content_version`が現在より新しい場合だけ、現行の`master` directory全体を`data\.reference-previous\`へrenameしてから候補directoryを`master`へrenameし、切替後に再openします。master/catalogの片方だけをrenameしないため、更新途中に新旧fileを混在させません。切替後の再検証失敗は直前directoryへ戻し、同一versionはno-op、古いversionは拒否、asset欠落・不整合・通信失敗・download中断・空き容量不足は現行セットを変更しません。保持するのは現行と直前1世代だけで、download stagingは処理後に削除します。
 
 アプリ更新やreference data set更新は`data\score\score.db`と`viewer-paths.json`を変更しません。VeloPackのinstall directoryは`%LOCALAPPDATA%\com.tts1374.ddrgp_scorelog`、永続dataは別の`%LOCALAPPDATA%\DDRGpScoreViewer`なので、uninstallしてもscore DB、settings、ログ、配置済みreference DBは残ります。不要になった場合だけ、backup確認後に利用者が永続data directoryを手動削除します。
 
@@ -243,10 +253,10 @@ production固定pathは`%LOCALAPPDATA%\DDRGpScoreViewer\data\master\`です。�
 | data | 保持 |
 | --- | --- |
 | `data\score\score.db`、`viewer-paths.json` | 無期限。利用者がbackup確認後に削除するまで保持 |
-| reference data set | 現行＋直前1世代 |
+| `data\master\` と `data\.reference-previous\` | reference data setの現行＋直前1世代 |
 | score migration backup | `data\score\migration-backup\score.db.bak`の最新1件 |
 | Release log | 5MB × 3 file |
-| `data\cache\`、`data\temp\` | 処理完了時または次回起動時に削除 |
+| `data\cache\`、`data\temp\`、reference download staging | 処理完了時または次回起動時に削除 |
 
 ## 正式個人スコアDBとsettingsのbackup / restore
 
@@ -260,6 +270,7 @@ backup先に新しいdirectoryを作り、2 fileをコピーします。コピ�
 ## トラブルシューティング
 
 - `DDR GRAND PRIX windowを自動検出できません`: `ddr-konaste`が1 processだけでclient `1280x720`か確認し、対象を開いたまま`監視開始`を再実行する。起動時自動監視は行わない。
+- `reference DBを更新できませんでした`: GitHub到達、Releaseの3 asset、空き容量を確認する。現行reference DBは保持され、score DBとsettingsは変更されないため、オフラインのまま通常利用できる。正しい新versionを再公開した後にアプリを再起動する。
 - master DB missing / incompatible: installerを同じversionで再実行しても同一versionは上書きしない。ログのreference data set結果を確認し、正しい新versionのinstallerを再配布する。score DBは変更されない。
 - jacket catalog異常: master DBと別fileとして拒否される。片方だけ手動交換せず、正しいセットのinstallerを使用する。
 - capture failure、resize、target close、device lost: 状態を確認し、windowを`1280x720`へ戻すか再起動してから、停止完了後に`監視開始`を明示する。未完了結果は保存されない。
@@ -270,7 +281,7 @@ backup先に新しいdirectoryを作り、2 fileをコピーします。コピ�
 
 実機評価はWindowsの`ddr-konaste`、client `1280x720`、SINGLE 28曲・29譜面の94 RESULTです。`saved=94`、他status=0、自動保存成功率100%で、全件を画面と正式DBで目視照合し、誤保存0件でした。target close、resize、tray exit、再起動・固定path再利用を確認し、二重保存はありませんでした。
 
-保証範囲はこのWindows環境と`1280x720`条件に限定します。対象外解像度、全GPU、意図的なdevice lost、0点RESULTは実機保証外です。未署名installerはSmartScreen警告があり、code signing、telemetry、cloud backup、network reference DB取得、自動更新、監視自動開始・自動復帰はありません。
+保証範囲はこのWindows環境と`1280x720`条件に限定します。対象外解像度、全GPU、意図的なdevice lost、0点RESULTは実機保証外です。未署名installerはSmartScreen警告があり、code signing、telemetry、cloud backup、アプリ本体の自動更新、監視自動開始・自動復帰はありません。reference DBはlatest Releaseの3 assetを起動時に確認しますが、任意version選択、複数channel、署名検証は行いません。
 
 次のいずれかがあるreleaseは完成扱いにしません: 誤保存が1件以上、固定条件の自動保存成功率が95%未満、既定CI失敗、VeloPack package/clean環境相当smoke失敗、reference DBのセット検証・rollback失敗、既存score DBの上書きまたはrestore不能、Release buildへの開発者向け操作混入。device lostと対象外環境は既知制限として扱い、保証範囲を暗黙に拡張しません。
 
