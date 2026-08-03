@@ -44,6 +44,7 @@ public partial class App : System.Windows.Application
         }
 
         var paths = ViewerDatabasePaths.ResolveDefault();
+        ReferenceDataSetUpdateResult? referenceDataSetResult = null;
         try
         {
             paths.EnsureDefaultDirectories();
@@ -55,11 +56,14 @@ public partial class App : System.Windows.Application
 
             if (paths.Environment == ViewerDatabaseEnvironment.Production)
             {
+                var referenceDataSetManager = new ReferenceDataSetManager();
                 var packageReferenceDirectory = Path.Combine(AppContext.BaseDirectory, "ReferenceData");
-                var referenceResult = new ReferenceDataSetManager().InstallPackageDataSet(
+                var packageResult = referenceDataSetManager.InstallPackageDataSet(
                     packageReferenceDirectory,
                     paths);
-                releaseLog.Information("reference_data_set", $"status={referenceResult.Status}; {referenceResult.Message}");
+                releaseLog.Information("reference_data_set_package", $"status={packageResult.Status}; {packageResult.Message}");
+                referenceDataSetResult = await referenceDataSetManager.UpdateFromGitHubReleaseAsync(paths);
+                releaseLog.Information("reference_data_set_network", $"status={referenceDataSetResult.Status}; {referenceDataSetResult.Message}");
             }
 
             var migrationResult = new ScoreDatabaseMigrationService().MigrateIfSupported(paths.ScoreDatabasePath);
@@ -99,6 +103,10 @@ public partial class App : System.Windows.Application
         };
         mainWindow.ViewModel.PropertyChanged += viewModelPropertyChanged;
         await mainWindow.RestoreSavedPathsAsync();
+        if (referenceDataSetResult is not null)
+        {
+            mainWindow.ViewModel.ApplyReferenceDataSetUpdateResult(referenceDataSetResult);
+        }
         releaseLog?.Information(
             "database_validation",
             $"master={mainWindow.ViewModel.MasterDatabaseStatus}; catalog={mainWindow.ViewModel.CatalogDatabaseStatus}; score_status={mainWindow.ViewModel.StatusTitle}");
