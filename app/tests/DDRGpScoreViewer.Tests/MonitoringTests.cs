@@ -317,6 +317,64 @@ public sealed class MonitoringTests
     }
 
     [Fact]
+    public async Task Application_update_preparation_waits_for_stop_before_final_exit()
+    {
+        var tray = new FakeTrayIcon();
+        var stopCompletion = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var stopCount = 0;
+        var beginExitCount = 0;
+        var shutdownCount = 0;
+        using var lifecycle = new ApplicationLifecycleCoordinator(
+            tray,
+            () => Task.CompletedTask,
+            async () =>
+            {
+                stopCount++;
+                await stopCompletion.Task;
+            },
+            () => { },
+            () => shutdownCount++,
+            () => beginExitCount++);
+
+        var preparation = lifecycle.PrepareForApplicationUpdateAsync();
+
+        Assert.False(preparation.IsCompleted);
+        Assert.Equal(1, beginExitCount);
+        Assert.Equal(1, stopCount);
+        Assert.Equal(0, shutdownCount);
+        Assert.Equal(0, tray.DisposeCount);
+
+        stopCompletion.SetResult();
+        await preparation;
+        await lifecycle.ExitAsync();
+
+        Assert.Equal(1, beginExitCount);
+        Assert.Equal(1, stopCount);
+        Assert.Equal(1, shutdownCount);
+        Assert.Equal(1, tray.DisposeCount);
+    }
+
+    [Fact]
+    public async Task Application_update_preparation_failure_completes_full_exit()
+    {
+        var tray = new FakeTrayIcon();
+        var shutdownCount = 0;
+        using var lifecycle = new ApplicationLifecycleCoordinator(
+            tray,
+            () => Task.CompletedTask,
+            () => throw new InvalidOperationException("prepare stop failed"),
+            () => { },
+            () => shutdownCount++);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => lifecycle.PrepareForApplicationUpdateAsync());
+
+        Assert.Equal(1, tray.DisposeCount);
+        Assert.Equal(1, shutdownCount);
+    }
+
+    [Fact]
     public async Task Operation_gate_deduplicates_start_and_exposes_cancellation_to_picker_flow()
     {
         using var gate = new AsyncOperationGate();

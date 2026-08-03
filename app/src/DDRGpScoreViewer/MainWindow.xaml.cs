@@ -9,6 +9,7 @@ using DDRGpScoreViewer.Capture;
 using DDRGpScoreViewer.Data;
 using DDRGpScoreViewer.Models;
 using DDRGpScoreViewer.Tray;
+using DDRGpScoreViewer.Updates;
 using DDRGpScoreViewer.ViewModels;
 using Microsoft.Win32;
 using WpfButton = System.Windows.Controls.Button;
@@ -26,6 +27,9 @@ public partial class MainWindow : System.Windows.Window
     private readonly AsyncOperationGate monitoringStartGate = new();
     private readonly CancellationTokenSource applicationExitCancellation = new();
     private bool applicationExitRequested;
+    private Func<Task>? applicationUpdatePrepareExitHandler;
+    private Func<Task>? applicationUpdateExitHandler;
+    private Action? applicationUpdateForceExitHandler;
 
     public MainWindow()
         : this(ViewerDatabasePaths.ResolveDefault())
@@ -51,7 +55,10 @@ public partial class MainWindow : System.Windows.Window
             defaultDatabasePaths: databasePaths,
             liveMonitoringService: new LiveMonitoringCaptureService(
                 new ContinuousWindowsGraphicsCaptureAdapter(),
-                new AppOwnedLiveResultAnalyzer()));
+                new AppOwnedLiveResultAnalyzer()),
+            applicationUpdateService: databasePaths.Environment == ViewerDatabaseEnvironment.Production
+                ? new ApplicationUpdateService()
+                : null);
         DataContext = viewModel;
 #if DEBUG
         AddDeveloperActions();
@@ -119,6 +126,40 @@ public partial class MainWindow : System.Windows.Window
     internal MainViewModel ViewModel => viewModel;
 
     internal Task RestoreSavedPathsAsync() => viewModel.RestoreSavedPathsAsync();
+
+    internal CancellationToken ApplicationExitToken => applicationExitCancellation.Token;
+
+    internal void SetApplicationUpdateExitHandlers(
+        Func<Task> prepareExitHandler,
+        Func<Task> exitHandler,
+        Action forceExitHandler)
+    {
+        applicationUpdatePrepareExitHandler = prepareExitHandler;
+        applicationUpdateExitHandler = exitHandler;
+        applicationUpdateForceExitHandler = forceExitHandler;
+    }
+
+    internal Task CheckForApplicationUpdateAsync(CancellationToken cancellationToken) =>
+        viewModel.CheckForApplicationUpdateAsync(cancellationToken);
+
+    private async void CheckForApplicationUpdate_Click(object sender, RoutedEventArgs e) =>
+        await viewModel.CheckForApplicationUpdateAsync(applicationExitCancellation.Token);
+
+    private async void DownloadAndApplyApplicationUpdate_Click(object sender, RoutedEventArgs e)
+    {
+        if (applicationUpdatePrepareExitHandler is null ||
+            applicationUpdateExitHandler is null ||
+            applicationUpdateForceExitHandler is null)
+        {
+            return;
+        }
+
+        await viewModel.DownloadAndApplyApplicationUpdateAsync(
+            applicationUpdatePrepareExitHandler,
+            applicationUpdateExitHandler,
+            applicationUpdateForceExitHandler,
+            applicationExitCancellation.Token);
+    }
 
 #if DEBUG
     private async void StartContinuousCapture_Click(object sender, RoutedEventArgs e)

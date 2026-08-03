@@ -45,6 +45,7 @@ public partial class App : System.Windows.Application
 
         var paths = ViewerDatabasePaths.ResolveDefault();
         ReferenceDataSetUpdateResult? referenceDataSetResult = null;
+        ReferenceDataSetManager? referenceDataSetManager = null;
         try
         {
             paths.EnsureDefaultDirectories();
@@ -56,14 +57,13 @@ public partial class App : System.Windows.Application
 
             if (paths.Environment == ViewerDatabaseEnvironment.Production)
             {
-                var referenceDataSetManager = new ReferenceDataSetManager();
+                referenceDataSetManager = new ReferenceDataSetManager();
                 var packageReferenceDirectory = Path.Combine(AppContext.BaseDirectory, "ReferenceData");
                 var packageResult = referenceDataSetManager.InstallPackageDataSet(
                     packageReferenceDirectory,
                     paths);
                 releaseLog.Information("reference_data_set_package", $"status={packageResult.Status}; {packageResult.Message}");
-                referenceDataSetResult = await referenceDataSetManager.UpdateFromGitHubReleaseAsync(paths);
-                releaseLog.Information("reference_data_set_network", $"status={referenceDataSetResult.Status}; {referenceDataSetResult.Message}");
+                referenceDataSetResult = packageResult;
             }
 
             var migrationResult = new ScoreDatabaseMigrationService().MigrateIfSupported(paths.ScoreDatabasePath);
@@ -83,6 +83,10 @@ public partial class App : System.Windows.Application
             ShowMainWindow,
             ShutdownApplication,
             () => mainWindow.RequestApplicationExit());
+        mainWindow.SetApplicationUpdateExitHandlers(
+            lifecycle.PrepareForApplicationUpdateAsync,
+            lifecycle.ExitAsync,
+            ShutdownApplication);
         viewModelPropertyChanged = (_, args) =>
         {
             if (args.PropertyName is nameof(MainViewModel.CurrentMonitoringState) or
@@ -100,6 +104,12 @@ public partial class App : System.Windows.Application
             {
                 releaseLog?.Information("save_result", mainWindow.ViewModel.MonitoringResultsDisplay);
             }
+            else if (args.PropertyName == nameof(MainViewModel.ApplicationUpdateStatusMessage))
+            {
+                releaseLog?.Information(
+                    "application_update",
+                    $"title={mainWindow.ViewModel.ApplicationUpdateStatusTitle}; version={mainWindow.ViewModel.ApplicationUpdateVersion}; message={mainWindow.ViewModel.ApplicationUpdateStatusMessage}");
+            }
         };
         mainWindow.ViewModel.PropertyChanged += viewModelPropertyChanged;
         await mainWindow.RestoreSavedPathsAsync();
@@ -112,7 +122,53 @@ public partial class App : System.Windows.Application
             $"master={mainWindow.ViewModel.MasterDatabaseStatus}; catalog={mainWindow.ViewModel.CatalogDatabaseStatus}; score_status={mainWindow.ViewModel.StatusTitle}");
         UpdateTrayState();
         mainWindow.Show();
+        if (referenceDataSetManager is not null)
+        {
+            StartReferenceDataSetUpdate(
+                referenceDataSetManager,
+                paths,
+                mainWindow.ApplicationExitToken);
+        }
+        _ = mainWindow.CheckForApplicationUpdateAsync(mainWindow.ApplicationExitToken);
         singleInstance.Listen(() => Dispatcher.BeginInvoke(ShowMainWindow));
+    }
+
+    private async void StartReferenceDataSetUpdate(
+        ReferenceDataSetManager referenceDataSetManager,
+        ViewerDatabasePaths paths,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await referenceDataSetManager.UpdateFromGitHubReleaseAsync(
+                paths,
+                cancellationToken);
+            releaseLog?.Information(
+                "reference_data_set_network",
+                $"status={result.Status}; {result.Message}");
+            if (mainWindow is null || mainWindow.ViewModel.IsApplicationExitRequested)
+            {
+                return;
+            }
+
+            mainWindow.ViewModel.ApplyReferenceDataSetUpdateResult(result);
+            if ((result.Status is ReferenceDataSetUpdateStatus.Installed or ReferenceDataSetUpdateStatus.Updated) &&
+                mainWindow.ViewModel.CurrentMonitoringState is not (
+                    MonitoringState.SelectingTarget or
+                    MonitoringState.Monitoring or
+                    MonitoringState.Stopping))
+            {
+                await mainWindow.RestoreSavedPathsAsync();
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            releaseLog?.Information("reference_data_set_network", "status=cancelled; application exit requested");
+        }
+        catch (Exception exception)
+        {
+            releaseLog?.Error("reference_data_set_network_failed", exception);
+        }
     }
 
     private async Task StartMonitoringAsync()

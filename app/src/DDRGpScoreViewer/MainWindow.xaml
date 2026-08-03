@@ -58,6 +58,16 @@
                             Style="{StaticResource PrimaryButtonStyle}"
                             IsEnabled="{Binding CanStopMonitoring}"
                             Click="StopContinuousCapture_Click" />
+                    <Button Content="更新を確認" Margin="0,0,8,0"
+                            Style="{StaticResource PrimaryButtonStyle}"
+                            Visibility="{Binding ApplicationUpdateStatusVisibility}"
+                            IsEnabled="{Binding CanCheckForApplicationUpdate}"
+                            Click="CheckForApplicationUpdate_Click" />
+                    <Button Content="更新して再起動" Margin="0,0,8,0"
+                            Style="{StaticResource PrimaryButtonStyle}"
+                            Visibility="{Binding ApplicationUpdateStatusVisibility}"
+                            IsEnabled="{Binding CanDownloadAndApplyApplicationUpdate}"
+                            Click="DownloadAndApplyApplicationUpdate_Click" />
                 </StackPanel>
                 <StackPanel>
                     <TextBlock x:Name="PageTitle" Text="自己ベスト" FontSize="24" FontWeight="SemiBold" />
@@ -93,6 +103,26 @@
             </DockPanel>
 
             <StackPanel Grid.Row="2">
+                <Border Visibility="{Binding ApplicationUpdateStatusVisibility}"
+                        Background="#FFF7ED" BorderBrush="#FDBA74" BorderThickness="1"
+                        CornerRadius="6" Padding="12" Margin="0,0,0,8">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="2*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel>
+                            <TextBlock Text="{Binding ApplicationUpdateStatusTitle}" FontWeight="SemiBold" />
+                            <TextBlock Text="{Binding ApplicationUpdateStatusMessage}" Margin="0,4,0,0"
+                                       Foreground="{StaticResource TextSecondaryBrush}" TextWrapping="Wrap" />
+                            <ProgressBar Minimum="0" Maximum="100" Height="5" Margin="0,8,0,0"
+                                         Value="{Binding ApplicationUpdateProgress, Mode=OneWay}" />
+                        </StackPanel>
+                        <TextBlock Grid.Column="1" Text="{Binding ApplicationUpdateVersion}"
+                                   Margin="16,0,0,0" VerticalAlignment="Top"
+                                   Foreground="{StaticResource TextSecondaryBrush}" />
+                    </Grid>
+                </Border>
                 <Border Background="#F8FAFC" BorderBrush="#CBD5E1" BorderThickness="1"
                         CornerRadius="6" Padding="12" Margin="0,0,0,8">
                     <Grid>

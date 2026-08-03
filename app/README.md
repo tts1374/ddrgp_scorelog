@@ -1,6 +1,6 @@
 # GP Score Log WPF app
 
-正式個人スコアDB version 1を開き、保存済みプレー履歴、プレー詳細、譜面別自己ベストを確認するWPFアプリです。通常画面は`監視開始`／`監視停止`による自動監視を提供し、Debug buildだけが開発者向け領域から1フレーム取得、連続取得、単発保存を提供します。`監視開始` を明示した場合だけ、`process=ddr-konaste` かつ client `1280x720` のtop-level windowを自動特定し、該当1件だけへ接続します。監視中は1秒ごとに `results_header` を確認し、RESULT画面の候補が2回連続して安定した場合だけ既存のevent boundaryと正式保存workflowへ渡します。該当windowが0件または複数件なら推測で選択せず、capture・解析・正式保存を開始しません。監視中の候補画像はsession原本として保管せず、一時workflow入力の処理後に破棄します。監視状態と最新結果はWPFとtask trayから確認できます。正式個人スコアDB、M4 master DB、M5b jacket reference catalogは環境ごとの固定pathで扱い、次回起動時に3つとも検証して再利用します。DBの任意path選択、汎用window探索、自動再接続、自動再開、起動時の自動監視、手動pickerへのfallback、DB repairは提供しません。score DB migrationは対応する明示的converterがあるschema変更時だけ行い、事前backupと失敗時rollbackを必須とします。
+正式個人スコアDB version 1を開き、保存済みプレー履歴、プレー詳細、譜面別自己ベストを確認するWPFアプリです。通常画面は`監視開始`／`監視停止`による自動監視を提供し、Debug buildだけが開発者向け領域から1フレーム取得、連続取得、単発保存を提供します。`監視開始` を明示した場合だけ、`process=ddr-konaste` かつ client `1280x720` のtop-level windowを自動特定し、該当1件だけへ接続します。監視中は1秒ごとに `results_header` を確認し、RESULT画面の候補が2回連続して安定した場合だけ既存のevent boundaryと正式保存workflowへ渡します。該当windowが0件または複数件なら推測で選択せず、capture・解析・正式保存を開始しません。監視中の候補画像はsession原本として保管せず、一時workflow入力の処理後に破棄します。監視状態と最新結果はWPFとtask trayから確認できます。productionのインストール済みpackageでは、main window表示後にGitHub Releasesのアプリ更新を非同期確認し、ユーザーの明示操作でdownload・完全終了・再起動を行います。正式個人スコアDB、M4 master DB、M5b jacket reference catalogは環境ごとの固定pathで扱い、次回起動時に3つとも検証して再利用します。DBの任意path選択、汎用window探索、自動再接続、自動再開、起動時の自動監視、手動pickerへのfallback、DB repairは提供しません。score DB migrationは対応する明示的converterがあるschema変更時だけ行い、事前backupと失敗時rollbackを必須とします。
 
 ## 必要環境
 
@@ -206,7 +206,7 @@ dotnet run --project app\src\DDRGpScoreViewer\DDRGpScoreViewer.csproj --configur
 
 ## Release packageの生成と公開
 
-VeloPack 1.2.0をrepository-local .NET toolとして固定しています。packageはunsignedのWindows x64 self-contained buildで、`packId=com.tts1374.ddrgp_scorelog`、表示名`GP Score Log`、Start Menu shortcutのみを持つper-user installerです。管理者権限、Desktop shortcut、code signing、アプリ内自動更新は使用しません。通常のinstaller完了時はアプリが起動します。
+VeloPack 1.2.0をrepository-local .NET toolとして固定しています。packageはunsignedのWindows x64 self-contained buildで、`packId=com.tts1374.ddrgp_scorelog`、表示名`GP Score Log`、Start Menu shortcutのみを持つper-user installerです。管理者権限、Desktop shortcut、code signing、強制更新、複数channel、background service、telemetryは使用しません。通常のinstaller完了時はアプリが起動します。
 
 1. `databases/ddrgp-master.sqlite`と`databases/jacket-catalog.sqlite`を同じcurrent master versionに揃え、catalogの`catalog_metadata.master_version`とmaster DBの実metadataが一致することをread-only検証する。初期版Release前の未binding catalogは、developer向けPoC READMEの`bind-master`でsourceを変更せず`databases/jacket-catalog-release.sqlite`へ変換し、package commandへ`-CatalogDatabase databases\jacket-catalog-release.sqlite`を渡す。
 2. repository rootで次を実行する。
@@ -226,9 +226,15 @@ VeloPack 1.2.0をrepository-local .NET toolとして固定しています。pack
    | `ddrgp-master.sqlite` | M4 master DB |
    | `jacket-catalog.sqlite` | M5b jacket reference catalog |
 
-   アプリは `https://api.github.com/repos/tts1374/ddrgp_scorelog/releases/latest` でlatest Releaseのasset URLを解決し、同じReleaseからmanifestを先に取得します。manifestが現行と同じversionならDB assetを取得せずno-opとし、新しいversionだけを3 asset一組で取得します。任意version選択、複数channel、署名検証は提供しません。
+   アプリはreference data setについては従来どおり `https://api.github.com/repos/tts1374/ddrgp_scorelog/releases/latest` を使い、アプリ本体についてはVeloPack `GithubSource`で同じrepositoryのstable Releaseを確認します。reference data setの取得・検証・切替は#117の責務であり、アプリ本体更新へ統合しません。アプリ本体のVeloPack feedは既定のWindows channelの`releases.win.json`とfull packageを使い、任意version選択、複数channel、署名検証は提供しません。
 
-package生成はmaster/catalog実metadataの一致検証、locked NuGet restore、Release self-contained publish、VeloPack packagingを順に実行します。入力DBと成果物はGit管理しません。versionだけを変えて同じrepository revisionと同じ2 DBから再実行できます。アプリ本体の更新適用は#116の範囲であり、本Issueではreference DBだけを扱います。
+package生成はmaster/catalog実metadataの一致検証、locked NuGet restore、Release self-contained publish、VeloPack packagingを順に実行します。入力DBと成果物はGit管理しません。versionだけを変えて同じrepository revisionと同じ2 DBから再実行できます。
+
+## アプリ本体の更新
+
+productionのインストール済みVeloPack packageでは、main windowを表示して通常利用を開始した後にstable GitHub Releaseをバックグラウンドで確認します。更新確認は30秒、package downloadは30分の全体上限とdownload requestごとの5分上限を持ち、アプリ終了要求時はCancellationTokenで中断できます。確認失敗、GitHub到達不能、download中断、対応しない起動方法では現在のversionをそのまま使えます。更新確認は`更新を確認`、更新がある場合のdownloadと適用は`更新して再起動`を明示的に押して行います。
+
+download後は既存の明示終了経路でpending picker、監視、capture worker、解析・保存workflow、runtime、open handleを先に停止・完了させてからVeloPackの`WaitExitThenApplyUpdates`を使います。updater起動後の終了処理が失敗しても最終終了要求を行い、通常利用へ戻らない経路を維持します。準備段階の失敗ではupdaterを起動しません。VeloPackの起動時自動適用は無効にしているため、ユーザーが適用を選ぶまで次回起動へ強制連鎖しません。アプリ更新のpackageはapp binary/runtimeだけを置き換え、`%LOCALAPPDATA%\DDRGpScoreViewer`配下のscore DB、settings、reference DB、ログは更新対象にしません。
 
 ## 初回導入と通常操作
 
@@ -238,7 +244,7 @@ package生成はmaster/catalog実metadataの一致検証、locked NuGet restore�
 4. DDR GRAND PRIXを`1280x720` client sizeで起動し、`監視開始`を押す。対象が一意に見つからない場合は表示理由を直してから再度`監視開始`を押す。
 5. 一時停止は`監視停止`、再開は停止完了後の`監視開始`を使う。×ボタンはtray格納、最小化はtaskbar最小化、完全終了はtrayの`終了`を使う。
 
-起動時の自動監視開始・自動復帰、アプリ本体の自動更新はありません。production起動時だけreference DBのlatest Release確認・取得を行い、通信できない場合も既存reference DBで通常利用を続けます。監視は毎回明示的に開始します。
+起動時の自動監視開始・自動復帰はありません。production起動時はmain windowを表示してからreference DBとアプリ本体のlatest Release確認を開始し、通信できない場合も既存reference DBと現在のアプリversionで通常利用を続けます。監視は毎回明示的に開始します。
 
 ## Reference data setの配置・更新・復旧
 
@@ -271,6 +277,7 @@ backup先に新しいdirectoryを作り、2 fileをコピーします。コピ�
 
 - `DDR GRAND PRIX windowを自動検出できません`: `ddr-konaste`が1 processだけでclient `1280x720`か確認し、対象を開いたまま`監視開始`を再実行する。起動時自動監視は行わない。
 - `reference DBを更新できませんでした`: GitHub到達、Releaseの3 asset、空き容量を確認する。現行reference DBは保持され、score DBとsettingsは変更されないため、オフラインのまま通常利用できる。正しい新versionを再公開した後にアプリを再起動する。
+- `アプリ更新を確認できませんでした` / `アプリ更新のdownloadに失敗しました`: GitHub到達、stable Releaseの`releases.win.json`とfull package、空き容量を確認する。現在のアプリversion、score DB、settings、reference DB、ログは保持されるため、そのまま通常利用するか、Release修正後に`更新を確認`を再実行する。unsigned packageのためSmartScreen等の警告は解消しない。
 - master DB missing / incompatible: installerを同じversionで再実行しても同一versionは上書きしない。ログのreference data set結果を確認し、正しい新versionのinstallerを再配布する。score DBは変更されない。
 - jacket catalog異常: master DBと別fileとして拒否される。片方だけ手動交換せず、正しいセットのinstallerを使用する。
 - capture failure、resize、target close、device lost: 状態を確認し、windowを`1280x720`へ戻すか再起動してから、停止完了後に`監視開始`を明示する。未完了結果は保存されない。
@@ -281,7 +288,7 @@ backup先に新しいdirectoryを作り、2 fileをコピーします。コピ�
 
 実機評価はWindowsの`ddr-konaste`、client `1280x720`、SINGLE 28曲・29譜面の94 RESULTです。`saved=94`、他status=0、自動保存成功率100%で、全件を画面と正式DBで目視照合し、誤保存0件でした。target close、resize、tray exit、再起動・固定path再利用を確認し、二重保存はありませんでした。
 
-保証範囲はこのWindows環境と`1280x720`条件に限定します。対象外解像度、全GPU、意図的なdevice lost、0点RESULTは実機保証外です。未署名installerはSmartScreen警告があり、code signing、telemetry、cloud backup、アプリ本体の自動更新、監視自動開始・自動復帰はありません。reference DBはlatest Releaseの3 assetを起動時に確認しますが、任意version選択、複数channel、署名検証は行いません。
+保証範囲はこのWindows環境と`1280x720`条件に限定します。対象外解像度、全GPU、意図的なdevice lost、0点RESULTは実機保証外です。未署名installerはSmartScreen警告があり、code signing、telemetry、cloud backup、強制更新、複数channel、監視自動開始・自動復帰はありません。アプリ本体はstable Releaseのfull packageをユーザー操作で更新し、reference DBはlatest Releaseの3 assetを起動後に確認しますが、任意version選択と署名検証は行いません。
 
 次のいずれかがあるreleaseは完成扱いにしません: 誤保存が1件以上、固定条件の自動保存成功率が95%未満、既定CI失敗、VeloPack package/clean環境相当smoke失敗、reference DBのセット検証・rollback失敗、既存score DBの上書きまたはrestore不能、Release buildへの開発者向け操作混入。device lostと対象外環境は既知制限として扱い、保証範囲を暗黙に拡張しません。
 

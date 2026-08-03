@@ -418,7 +418,7 @@ WPFの起動時、単発保存・連続取得の保存開始時は、現在の�
 
 監視開始はWPFまたはtask trayの明示操作からだけ行い、正式DBと2種類のmaster DBは現在の環境の固定pathから取得し、対象windowだけをユーザーが選ぶ。window title、幅、高さは選択済み対象の表示にだけ使い、自動探索や自動再接続のkeyにしない。監視surfaceはcapture progressのframe数、開始UTC、最新frame UTCと、capture-save結果の `saved`、`duplicate`、`excluded`、`unresolved`、`analysis_failed`、`db_rejected`、`workflow_failed` を投影する。これは結果を再開する新しい永続化形式ではなく、終了後に破棄可能なprocess内状態である。
 
-通常のmain window closeと最小化はwindowを非表示にし、capture sessionとworkflowのownerをApp/ViewModelに残す。task trayは開始、停止、window表示、明示終了を提供する。WPFとtrayの開始要求は1つのoperation gateで直列化し、capture-onlyを含むpicker中の再Startを同じTaskへ合流させる。各capture sessionに世代を付け、停止・対象window終了・capture失敗・workflow失敗・終了後の古いprogress callbackは状態を再開・上書きしない。明示終了はpending pickerをcancel状態にしてその終端と停止の冪等操作、in-flight capture/workflow完了を待ってから、NotifyIcon、context menu、window、processをこの順で終了する。stop自体が例外になった場合も理由を通知してtrayをdisposeし、process終了でOS resourceを残さない。stop、target closed、resize、device lost、capture/write失敗で既存capture resourceを一度だけ解放し、tray resourceはアプリ終了時に一度だけdisposeする。
+通常のmain window closeと最小化はwindowを非表示にし、capture sessionとworkflowのownerをApp/ViewModelに残す。task trayは開始、停止、window表示、明示終了を提供する。WPFとtrayの開始要求は1つのoperation gateで直列化し、capture-onlyを含むpicker中の再Startを同じTaskへ合流させる。各capture sessionに世代を付け、停止・対象window終了・capture失敗・workflow失敗・終了後の古いprogress callbackは状態を再開・上書きしない。明示終了はpending pickerをcancel状態にしてその終端と停止の冪等操作、in-flight capture/workflow完了を待ってから、NotifyIcon、context menu、window、processをこの順で終了する。stop自体が例外になった場合も理由を通知してtrayをdisposeし、process終了でOS resourceを残さない。stop、target closed、resize、device lost、capture/write失敗で既存capture resourceを一度だけ解放し、tray resourceはアプリ終了時に一度だけdisposeする。アプリ本体の更新適用時もこの完全終了経路を使い、tray格納やwindow hideだけでVeloPack updaterへ制御を返さない。
 
 通知はtransaction済みsavedが1件以上ある完了と、target closed、resize、device lost、capture失敗、workflow失敗だけに限定する。duplicate、excluded、unresolved、analysis failureの反復を個別通知せず、WPF/trayから最新状態を確認可能にする。monitoring state、tray menu enable状態、close-to-tray、明示exitのstop待機はWindows Graphics Captureなしのfixtureで固定する。
 
@@ -488,6 +488,16 @@ Release appの実行順序は `inspect source read-only` → backup copy → tra
 pure contractのstatus/終了コードは、`current` / `dry_run_ready` / `ready` / `completed` が0、`confirmation_required` が1、入力・互換性・path・partial state拒否が2、backup I/Oまたはmigration実行失敗が3である。`manual_recovery_required` はsourceが変更済みまたは変更有無を確定できない状態として扱い、検証済みbackupを使う人手復旧を促す。再実行時、既にtargetなら `current`、同じbackup pathが存在すればconflict、partial stateならmanual recovery拒否とし、暗黙の再開・repair・backup再利用をしない。
 
 status/dry-run専用CLIは従来どおりDB path、target version、明示backup pathの必須組だけを受け、Release appの固定path起動migrationとは別入口を維持する。
+
+## #116 application package update boundary
+
+アプリ本体の更新はVeloPack 1.2.0の`GithubSource`と`UpdateManager`だけを使い、`https://github.com/tts1374/ddrgp_scorelog` のstable GitHub Releaseを既定のWindows channelで確認する。アプリ側でchannel、Release API、package展開、rollback、background serviceを独自実装しない。release feedはVeloPackが解決する`releases.win.json`とfull `.nupkg`を基本とし、reference data setの`reference-set.json`、master DB、catalog DBはこの更新対象に含めない。
+
+main windowを表示した後に`CheckForUpdatesAsync`を非同期実行し、確認失敗や通信停止でmain window表示を遅延させない。更新確認には30秒の有限timeoutを設け、package downloadは30分の全体上限とVeloPack downloaderの1要求5分上限を使い、downloadにはVeloPackへCancellationTokenも渡す。進捗中のfull packageを確認timeoutで打ち切らない。利用可能な更新はユーザーが明示的にdownload・適用する。起動時のVeloPack自動適用は無効にし、ユーザーの操作なしに更新を強制しない。
+
+適用は既存の明示終了経路の準備段階でpending picker、continuous capture、解析・保存workflow、monitoring worker、Windows Graphics Capture runtime、DB/fileのopen handleを停止・完了させてから、download済みのfull/delta updateをVeloPackへ渡す`WaitExitThenApplyUpdates`を起動する。updater起動後はNotifyIconとcontext menuをdisposeしてprocessを終了し、終了callbackが失敗しても最終終了要求を行って通常利用へ戻らない。準備段階で失敗した場合はupdaterを起動せず、現行app binaryを保持する。適用失敗、確認失敗、offline、未インストール起動では現行app binaryを保持し、再試行前に独自rollbackや自動repairを行わない。
+
+VeloPackのinstall rootと永続data rootを分離するため、`%LOCALAPPDATA%/DDRGpScoreViewer/`配下の正式score DB、settings、reference DB、Release logはapp package updateの書換対象外とする。更新確認、download、適用準備の状態はprocess内UIとRelease logへ投影するだけで、新しい更新checkpointや更新用DBを永続化しない。
 
 ## M10-4 / #117 reference data set package and update boundary
 

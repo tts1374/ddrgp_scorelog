@@ -6,6 +6,7 @@ using System.Text.Json;
 using DDRGpScoreViewer.Capture;
 using DDRGpScoreViewer.Data;
 using DDRGpScoreViewer.Models;
+using DDRGpScoreViewer.Updates;
 
 namespace DDRGpScoreViewer.ViewModels;
 
@@ -75,6 +76,15 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private CancellationTokenSource? monitoringCancellation;
     private ILiveMonitoringCaptureService? activeLiveMonitoringService;
     private int monitoringOperationReserved;
+    private readonly IApplicationUpdateService? applicationUpdateService;
+    private string applicationUpdateStatusTitle = "アプリ更新";
+    private string applicationUpdateStatusMessage = "起動後にGitHub Releasesを確認します。";
+    private string applicationUpdateVersion = "";
+    private int applicationUpdateProgress;
+    private bool hasApplicationUpdateStatus;
+    private bool applicationUpdateAvailable;
+    private bool applicationUpdateDownloaded;
+    private int applicationUpdateOperationReserved;
 
     public MainViewModel(
         ScoreViewerRepository repository,
@@ -86,7 +96,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         ViewerDatabasePaths? defaultDatabasePaths = null,
         IScoreDatabaseInitializer? scoreDatabaseInitializer = null,
         IDdrGpWindowEnumerator? ddrGpWindowEnumerator = null,
-        ILiveMonitoringCaptureService? liveMonitoringService = null)
+        ILiveMonitoringCaptureService? liveMonitoringService = null,
+        IApplicationUpdateService? applicationUpdateService = null)
     {
         this.repository = repository;
         this.workflowRunner = workflowRunner;
@@ -98,6 +109,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         this.defaultDatabasePaths = defaultDatabasePaths ?? ViewerDatabasePaths.ResolveDefault();
         this.scoreDatabaseInitializer = scoreDatabaseInitializer ?? new PersonalScoreDbInitializer();
         this.ddrGpWindowEnumerator = ddrGpWindowEnumerator ?? new DdrGpWindowEnumerator();
+        this.applicationUpdateService = applicationUpdateService;
         uiSynchronizationContext = SynchronizationContext.Current;
         scoreDatabasePath = this.defaultDatabasePaths.ScoreDatabasePath;
         masterDatabasePath = this.defaultDatabasePaths.MasterDatabasePath;
@@ -302,6 +314,55 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public System.Windows.Visibility CaptureStatusVisibility =>
         HasCaptureStatus ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
 
+    public string ApplicationUpdateStatusTitle
+    {
+        get => applicationUpdateStatusTitle;
+        private set => SetProperty(ref applicationUpdateStatusTitle, value);
+    }
+
+    public string ApplicationUpdateStatusMessage
+    {
+        get => applicationUpdateStatusMessage;
+        private set => SetProperty(ref applicationUpdateStatusMessage, value);
+    }
+
+    public string ApplicationUpdateVersion
+    {
+        get => applicationUpdateVersion;
+        private set => SetProperty(ref applicationUpdateVersion, value);
+    }
+
+    public int ApplicationUpdateProgress
+    {
+        get => applicationUpdateProgress;
+        private set => SetProperty(ref applicationUpdateProgress, value);
+    }
+
+    public bool HasApplicationUpdateStatus
+    {
+        get => hasApplicationUpdateStatus;
+        private set => SetProperty(ref hasApplicationUpdateStatus, value);
+    }
+
+    public System.Windows.Visibility ApplicationUpdateStatusVisibility =>
+        applicationUpdateService is null
+            ? System.Windows.Visibility.Collapsed
+            : System.Windows.Visibility.Visible;
+
+    public bool IsApplicationUpdateBusy =>
+        Volatile.Read(ref applicationUpdateOperationReserved) != 0;
+
+    public bool CanCheckForApplicationUpdate =>
+        applicationUpdateService is not null &&
+        !IsApplicationUpdateBusy &&
+        !applicationExitRequested;
+
+    public bool CanDownloadAndApplyApplicationUpdate =>
+        applicationUpdateService is not null &&
+        (applicationUpdateAvailable || applicationUpdateDownloaded) &&
+        !IsApplicationUpdateBusy &&
+        !applicationExitRequested;
+
     public MonitoringState CurrentMonitoringState
     {
         get => monitoringState;
@@ -474,7 +535,112 @@ public sealed class MainViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(IsApplicationExitRequested));
         OnPropertyChanged(nameof(CanStartMonitoring));
         OnPropertyChanged(nameof(CanRunDeveloperOperations));
+        OnPropertyChanged(nameof(CanCheckForApplicationUpdate));
+        OnPropertyChanged(nameof(CanDownloadAndApplyApplicationUpdate));
         monitoringCancellation?.Cancel();
+    }
+
+    public async Task CheckForApplicationUpdateAsync(
+        CancellationToken cancellationToken = default)
+    {
+        if (!TryReserveApplicationUpdateOperation())
+        {
+            return;
+        }
+
+        try
+        {
+            SetApplicationUpdateStatus(
+                "アプリ更新を確認しています",
+                "GitHub Releasesへ接続しています。通信に失敗しても現在のversionで通常利用を続けられます。",
+                progress: 0);
+            var result = await applicationUpdateService!.CheckForUpdatesAsync(cancellationToken);
+            ApplyApplicationUpdateResult(result);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            if (!applicationExitRequested)
+            {
+                SetApplicationUpdateStatus(
+                    "アプリ更新の確認をcancelしました",
+                    "現在のversionで通常利用を続けられます。",
+                    progress: 0);
+            }
+        }
+        catch (Exception exception)
+        {
+            ApplyApplicationUpdateResult(
+                new ApplicationUpdateResult(
+                    ApplicationUpdateStatus.Failed,
+                    $"アプリ更新の確認に失敗しました。現在のversionで通常利用を続けられます。 {exception.Message}"));
+        }
+        finally
+        {
+            ReleaseApplicationUpdateOperation();
+        }
+    }
+
+    public async Task DownloadAndApplyApplicationUpdateAsync(
+        Func<Task> prepareExit,
+        Func<Task> completeExit,
+        Action forceExit,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(prepareExit);
+        ArgumentNullException.ThrowIfNull(completeExit);
+        ArgumentNullException.ThrowIfNull(forceExit);
+        if (!TryReserveApplicationUpdateOperation())
+        {
+            return;
+        }
+
+        try
+        {
+            SetApplicationUpdateStatus(
+                "アプリ更新をdownloadしています",
+                "完了するまで現在のversionを使い続けます。",
+                progress: 0);
+            var downloaded = await applicationUpdateService!.DownloadAsync(
+                progress => SetApplicationUpdateProgress(progress),
+                cancellationToken);
+            ApplyApplicationUpdateResult(downloaded);
+            if (downloaded.Status != ApplicationUpdateStatus.Downloaded)
+            {
+                return;
+            }
+
+            SetApplicationUpdateStatus(
+                "アプリ更新を適用しています",
+                "監視、進行中の保存、capture runtimeを完全に終了してから再起動します。",
+                progress: 100);
+            var applied = await applicationUpdateService.ApplyAndRestartAsync(
+                prepareExit,
+                completeExit,
+                forceExit,
+                cancellationToken);
+            ApplyApplicationUpdateResult(applied);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            if (!applicationExitRequested)
+            {
+                SetApplicationUpdateStatus(
+                    "アプリ更新をcancelしました",
+                    "現在のversionで通常利用を続けられます。",
+                    progress: 0);
+            }
+        }
+        catch (Exception exception)
+        {
+            ApplyApplicationUpdateResult(
+                new ApplicationUpdateResult(
+                    ApplicationUpdateStatus.Failed,
+                    $"アプリ更新の適用に失敗しました。現在のversionで通常利用を続けられます。 {exception.Message}"));
+        }
+        finally
+        {
+            ReleaseApplicationUpdateOperation();
+        }
     }
 
     public async Task WaitForOperationsAsync()
@@ -518,6 +684,80 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
         OnPropertyChanged(nameof(CanRunDeveloperOperations));
         return true;
+    }
+
+    private bool TryReserveApplicationUpdateOperation()
+    {
+        if (!CanCheckForApplicationUpdate ||
+            Interlocked.CompareExchange(ref applicationUpdateOperationReserved, 1, 0) != 0)
+        {
+            return false;
+        }
+
+        OnPropertyChanged(nameof(IsApplicationUpdateBusy));
+        OnPropertyChanged(nameof(CanCheckForApplicationUpdate));
+        OnPropertyChanged(nameof(CanDownloadAndApplyApplicationUpdate));
+        return true;
+    }
+
+    private void ReleaseApplicationUpdateOperation()
+    {
+        Interlocked.Exchange(ref applicationUpdateOperationReserved, 0);
+        OnPropertyChanged(nameof(IsApplicationUpdateBusy));
+        OnPropertyChanged(nameof(CanCheckForApplicationUpdate));
+        OnPropertyChanged(nameof(CanDownloadAndApplyApplicationUpdate));
+    }
+
+    private void ApplyApplicationUpdateResult(ApplicationUpdateResult result)
+    {
+        applicationUpdateAvailable = result.Status is
+            ApplicationUpdateStatus.Available or
+            ApplicationUpdateStatus.Downloaded or
+            ApplicationUpdateStatus.ReadyToRestart;
+        applicationUpdateDownloaded = result.Status is
+            ApplicationUpdateStatus.Downloaded or
+            ApplicationUpdateStatus.ReadyToRestart;
+        ApplicationUpdateVersion = result.Version ?? "";
+        SetApplicationUpdateStatus(
+            result.Status switch
+            {
+                ApplicationUpdateStatus.Unsupported => "アプリ更新は利用できません",
+                ApplicationUpdateStatus.NoUpdate => "アプリ更新はありません",
+                ApplicationUpdateStatus.Available => "アプリ更新があります",
+                ApplicationUpdateStatus.Downloaded => "アプリ更新を準備しました",
+                ApplicationUpdateStatus.ReadyToRestart => "アプリ更新を適用しました",
+                _ => "アプリ更新に失敗しました",
+            },
+            result.Message,
+            result.Status is ApplicationUpdateStatus.Available or ApplicationUpdateStatus.Downloaded
+                ? applicationUpdateProgress
+                : result.Status == ApplicationUpdateStatus.ReadyToRestart ? 100 : 0);
+        OnPropertyChanged(nameof(CanDownloadAndApplyApplicationUpdate));
+    }
+
+    private void SetApplicationUpdateStatus(
+        string title,
+        string message,
+        int progress)
+    {
+        ApplicationUpdateStatusTitle = title;
+        ApplicationUpdateStatusMessage = message;
+        ApplicationUpdateProgress = Math.Clamp(progress, 0, 100);
+        HasApplicationUpdateStatus = true;
+    }
+
+    private void SetApplicationUpdateProgress(int progress)
+    {
+        if (uiSynchronizationContext is null ||
+            ReferenceEquals(SynchronizationContext.Current, uiSynchronizationContext))
+        {
+            ApplicationUpdateProgress = Math.Clamp(progress, 0, 100);
+            return;
+        }
+
+        uiSynchronizationContext.Post(
+            _ => ApplicationUpdateProgress = Math.Clamp(progress, 0, 100),
+            null);
     }
 
     private bool TryReserveMonitoringOperation()
