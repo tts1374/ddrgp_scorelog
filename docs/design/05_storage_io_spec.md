@@ -493,9 +493,9 @@ status/dry-run専用CLIは従来どおりDB path、target version、明示backup
 
 アプリ本体の更新はVeloPack 1.2.0の`GithubSource`と`UpdateManager`だけを使い、`https://github.com/tts1374/ddrgp_scorelog` のstable GitHub Releaseを既定のWindows channelで確認する。アプリ側でchannel、Release API、package展開、rollback、background serviceを独自実装しない。release feedはVeloPackが解決する`releases.win.json`とfull `.nupkg`を基本とし、reference data setの`reference-set.json`、master DB、catalog DBはこの更新対象に含めない。
 
-main windowを表示した後に`CheckForUpdatesAsync`を非同期実行し、確認失敗や通信停止でmain window表示を遅延させない。確認と`DownloadUpdatesAsync`には30秒の有限timeoutを設け、downloadにはVeloPackへCancellationTokenを渡す。利用可能な更新はユーザーが明示的にdownload・適用する。起動時のVeloPack自動適用は無効にし、ユーザーの操作なしに更新を強制しない。
+main windowを表示した後に`CheckForUpdatesAsync`を非同期実行し、確認失敗や通信停止でmain window表示を遅延させない。更新確認には30秒の有限timeoutを設け、package downloadは30分の全体上限とVeloPack downloaderの1要求5分上限を使い、downloadにはVeloPackへCancellationTokenも渡す。進捗中のfull packageを確認timeoutで打ち切らない。利用可能な更新はユーザーが明示的にdownload・適用する。起動時のVeloPack自動適用は無効にし、ユーザーの操作なしに更新を強制しない。
 
-適用はdownload済みのfull/delta updateをVeloPackへ渡す`WaitExitThenApplyUpdates`から始め、updater待機中に既存の明示終了経路を完了させる。pending picker、continuous capture、解析・保存workflow、monitoring worker、Windows Graphics Capture runtime、DB/file/trayのopen handleを閉じ、NotifyIconとcontext menuをdisposeしてからprocessを終了する。適用失敗、確認失敗、offline、未インストール起動では現行app binaryを保持し、再試行前に独自rollbackや自動repairを行わない。
+適用は既存の明示終了経路の準備段階でpending picker、continuous capture、解析・保存workflow、monitoring worker、Windows Graphics Capture runtime、DB/fileのopen handleを停止・完了させてから、download済みのfull/delta updateをVeloPackへ渡す`WaitExitThenApplyUpdates`を起動する。updater起動後はNotifyIconとcontext menuをdisposeしてprocessを終了し、終了callbackが失敗しても最終終了要求を行って通常利用へ戻らない。準備段階で失敗した場合はupdaterを起動せず、現行app binaryを保持する。適用失敗、確認失敗、offline、未インストール起動では現行app binaryを保持し、再試行前に独自rollbackや自動repairを行わない。
 
 VeloPackのinstall rootと永続data rootを分離するため、`%LOCALAPPDATA%/DDRGpScoreViewer/`配下の正式score DB、settings、reference DB、Release logはapp package updateの書換対象外とする。更新確認、download、適用準備の状態はprocess内UIとRelease logへ投影するだけで、新しい更新checkpointや更新用DBを永続化しない。
 

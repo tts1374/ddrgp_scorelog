@@ -581,10 +581,14 @@ public sealed class MainViewModel : INotifyPropertyChanged
     }
 
     public async Task DownloadAndApplyApplicationUpdateAsync(
+        Func<Task> prepareExit,
         Func<Task> completeExit,
+        Action forceExit,
         CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(prepareExit);
         ArgumentNullException.ThrowIfNull(completeExit);
+        ArgumentNullException.ThrowIfNull(forceExit);
         if (!TryReserveApplicationUpdateOperation())
         {
             return;
@@ -610,7 +614,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 "監視、進行中の保存、capture runtimeを完全に終了してから再起動します。",
                 progress: 100);
             var applied = await applicationUpdateService.ApplyAndRestartAsync(
+                prepareExit,
                 completeExit,
+                forceExit,
                 cancellationToken);
             ApplyApplicationUpdateResult(applied);
         }

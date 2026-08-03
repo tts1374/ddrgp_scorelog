@@ -30,17 +30,22 @@ public interface IApplicationUpdateService
         CancellationToken cancellationToken = default);
 
     Task<ApplicationUpdateResult> ApplyAndRestartAsync(
+        Func<Task> prepareExit,
         Func<Task> completeExit,
+        Action forceExit,
         CancellationToken cancellationToken = default);
 }
 
 public sealed class ApplicationUpdateService : IApplicationUpdateService
 {
     public const string GitHubRepositoryUrl = "https://github.com/tts1374/ddrgp_scorelog";
-    public static readonly TimeSpan OperationTimeout = TimeSpan.FromSeconds(30);
+    public static readonly TimeSpan CheckOperationTimeout = TimeSpan.FromSeconds(30);
+    public static readonly TimeSpan DownloadOperationTimeout = TimeSpan.FromMinutes(30);
+    private static readonly TimeSpan DownloadRequestTimeout = TimeSpan.FromMinutes(5);
 
     private readonly UpdateManager updateManager;
-    private readonly TimeSpan operationTimeout;
+    private readonly TimeSpan checkOperationTimeout;
+    private readonly TimeSpan downloadOperationTimeout;
     private readonly Action<VelopackAsset>? applyAndRestartOverride;
     private UpdateInfo? pendingUpdate;
 
@@ -51,11 +56,13 @@ public sealed class ApplicationUpdateService : IApplicationUpdateService
 
     internal ApplicationUpdateService(
         UpdateManager updateManager,
-        TimeSpan? operationTimeout = null,
+        TimeSpan? checkOperationTimeout = null,
+        TimeSpan? downloadOperationTimeout = null,
         Action<VelopackAsset>? applyAndRestartOverride = null)
     {
         this.updateManager = updateManager;
-        this.operationTimeout = operationTimeout ?? OperationTimeout;
+        this.checkOperationTimeout = checkOperationTimeout ?? CheckOperationTimeout;
+        this.downloadOperationTimeout = downloadOperationTimeout ?? DownloadOperationTimeout;
         this.applyAndRestartOverride = applyAndRestartOverride;
     }
 
@@ -75,6 +82,7 @@ public sealed class ApplicationUpdateService : IApplicationUpdateService
         {
             pendingUpdate = await WaitWithTimeoutAsync(
                 updateManager.CheckForUpdatesAsync(),
+                checkOperationTimeout,
                 cancellationToken);
             if (pendingUpdate is null)
             {
@@ -117,6 +125,7 @@ public sealed class ApplicationUpdateService : IApplicationUpdateService
             var update = pendingUpdate;
             await WaitWithTimeoutAsync(
                 updateManager.DownloadUpdatesAsync(update, progress ?? (_ => { }), cancellationToken),
+                downloadOperationTimeout,
                 cancellationToken);
             return new(
                 ApplicationUpdateStatus.Downloaded,
@@ -131,10 +140,14 @@ public sealed class ApplicationUpdateService : IApplicationUpdateService
     }
 
     public async Task<ApplicationUpdateResult> ApplyAndRestartAsync(
+        Func<Task> prepareExit,
         Func<Task> completeExit,
+        Action forceExit,
         CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(prepareExit);
         ArgumentNullException.ThrowIfNull(completeExit);
+        ArgumentNullException.ThrowIfNull(forceExit);
         if (!IsSupported)
         {
             return new(
@@ -154,9 +167,11 @@ public sealed class ApplicationUpdateService : IApplicationUpdateService
                 "アプリ更新の適用をcancelしました。現在のversionは変更していません。");
         }
 
+        var updaterStarted = false;
         try
         {
             var update = pendingUpdate;
+            await prepareExit();
             if (applyAndRestartOverride is not null)
             {
                 applyAndRestartOverride(update.TargetFullRelease);
@@ -170,7 +185,9 @@ public sealed class ApplicationUpdateService : IApplicationUpdateService
                     restartArgs: null);
             }
 
+            updaterStarted = true;
             await completeExit();
+            pendingUpdate = null;
             return new(
                 ApplicationUpdateStatus.ReadyToRestart,
                 $"アプリ更新 {GetVersion(update)} の適用を開始しました。終了処理後に再起動します。",
@@ -178,20 +195,49 @@ public sealed class ApplicationUpdateService : IApplicationUpdateService
         }
         catch (Exception exception)
         {
+            var update = pendingUpdate;
+            pendingUpdate = null;
+            if (updaterStarted && update is not null)
+            {
+                TryForceExit(forceExit);
+                return new(
+                    ApplicationUpdateStatus.ReadyToRestart,
+                    $"アプリ更新 {GetVersion(update)} の適用を開始しました。終了処理を完了してアプリを終了します。",
+                    GetVersion(update));
+            }
+
             return FailedResult("アプリ更新の適用に失敗しました。現在のversionで通常利用を続けられます。", exception);
         }
     }
 
-    private async Task<T> WaitWithTimeoutAsync<T>(Task<T> operation, CancellationToken cancellationToken) =>
-        await operation.WaitAsync(operationTimeout, cancellationToken);
+    private async Task<T> WaitWithTimeoutAsync<T>(
+        Task<T> operation,
+        TimeSpan timeout,
+        CancellationToken cancellationToken) =>
+        await operation.WaitAsync(timeout, cancellationToken);
 
-    private async Task WaitWithTimeoutAsync(Task operation, CancellationToken cancellationToken) =>
-        await operation.WaitAsync(operationTimeout, cancellationToken);
+    private async Task WaitWithTimeoutAsync(
+        Task operation,
+        TimeSpan timeout,
+        CancellationToken cancellationToken) =>
+        await operation.WaitAsync(timeout, cancellationToken);
 
     private static string GetVersion(UpdateInfo update) => update.TargetFullRelease.Version.ToString();
 
     private static ApplicationUpdateResult FailedResult(string prefix, Exception exception) =>
         new(ApplicationUpdateStatus.Failed, $"{prefix} {exception.Message}");
+
+    private static void TryForceExit(Action forceExit)
+    {
+        try
+        {
+            forceExit();
+        }
+        catch
+        {
+            // The updater is already waiting for this process. Do not return to normal update use.
+        }
+    }
 
     private static UpdateManager CreateUpdateManager()
     {
@@ -199,7 +245,7 @@ public sealed class ApplicationUpdateService : IApplicationUpdateService
             GitHubRepositoryUrl,
             accessToken: null,
             prerelease: false,
-            downloader: new BoundedFileDownloader(OperationTimeout));
+            downloader: new BoundedFileDownloader(DownloadRequestTimeout));
         return new UpdateManager(source, options: null, locator: null);
     }
 

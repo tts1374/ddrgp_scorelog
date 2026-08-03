@@ -232,9 +232,9 @@ package生成はmaster/catalog実metadataの一致検証、locked NuGet restore�
 
 ## アプリ本体の更新
 
-productionのインストール済みVeloPack packageでは、main windowを表示して通常利用を開始した後にstable GitHub Releaseをバックグラウンドで確認します。確認失敗、GitHub到達不能、download中断、対応しない起動方法では現在のversionをそのまま使えます。更新確認は`更新を確認`、更新がある場合のdownloadと適用は`更新して再起動`を明示的に押して行います。
+productionのインストール済みVeloPack packageでは、main windowを表示して通常利用を開始した後にstable GitHub Releaseをバックグラウンドで確認します。更新確認は30秒、package downloadは30分の全体上限とdownload requestごとの5分上限を持ち、アプリ終了要求時はCancellationTokenで中断できます。確認失敗、GitHub到達不能、download中断、対応しない起動方法では現在のversionをそのまま使えます。更新確認は`更新を確認`、更新がある場合のdownloadと適用は`更新して再起動`を明示的に押して行います。
 
-download後の適用にはVeloPackの`WaitExitThenApplyUpdates`を使い、updaterを待機させてから、tray格納ではなくpending picker、監視、capture worker、解析・保存workflow、runtime、open handleを閉じる既存の明示終了経路を通ります。VeloPackの起動時自動適用は無効にしているため、ユーザーが適用を選ぶまで次回起動へ強制連鎖しません。アプリ更新のpackageはapp binary/runtimeだけを置き換え、`%LOCALAPPDATA%\DDRGpScoreViewer`配下のscore DB、settings、reference DB、ログは更新対象にしません。
+download後は既存の明示終了経路でpending picker、監視、capture worker、解析・保存workflow、runtime、open handleを先に停止・完了させてからVeloPackの`WaitExitThenApplyUpdates`を使います。updater起動後の終了処理が失敗しても最終終了要求を行い、通常利用へ戻らない経路を維持します。準備段階の失敗ではupdaterを起動しません。VeloPackの起動時自動適用は無効にしているため、ユーザーが適用を選ぶまで次回起動へ強制連鎖しません。アプリ更新のpackageはapp binary/runtimeだけを置き換え、`%LOCALAPPDATA%\DDRGpScoreViewer`配下のscore DB、settings、reference DB、ログは更新対象にしません。
 
 ## 初回導入と通常操作
 

@@ -27,7 +27,9 @@ public partial class MainWindow : System.Windows.Window
     private readonly AsyncOperationGate monitoringStartGate = new();
     private readonly CancellationTokenSource applicationExitCancellation = new();
     private bool applicationExitRequested;
+    private Func<Task>? applicationUpdatePrepareExitHandler;
     private Func<Task>? applicationUpdateExitHandler;
+    private Action? applicationUpdateForceExitHandler;
 
     public MainWindow()
         : this(ViewerDatabasePaths.ResolveDefault())
@@ -127,8 +129,15 @@ public partial class MainWindow : System.Windows.Window
 
     internal CancellationToken ApplicationExitToken => applicationExitCancellation.Token;
 
-    internal void SetApplicationUpdateExitHandler(Func<Task> exitHandler) =>
+    internal void SetApplicationUpdateExitHandlers(
+        Func<Task> prepareExitHandler,
+        Func<Task> exitHandler,
+        Action forceExitHandler)
+    {
+        applicationUpdatePrepareExitHandler = prepareExitHandler;
         applicationUpdateExitHandler = exitHandler;
+        applicationUpdateForceExitHandler = forceExitHandler;
+    }
 
     internal Task CheckForApplicationUpdateAsync(CancellationToken cancellationToken) =>
         viewModel.CheckForApplicationUpdateAsync(cancellationToken);
@@ -138,13 +147,17 @@ public partial class MainWindow : System.Windows.Window
 
     private async void DownloadAndApplyApplicationUpdate_Click(object sender, RoutedEventArgs e)
     {
-        if (applicationUpdateExitHandler is null)
+        if (applicationUpdatePrepareExitHandler is null ||
+            applicationUpdateExitHandler is null ||
+            applicationUpdateForceExitHandler is null)
         {
             return;
         }
 
         await viewModel.DownloadAndApplyApplicationUpdateAsync(
+            applicationUpdatePrepareExitHandler,
             applicationUpdateExitHandler,
+            applicationUpdateForceExitHandler,
             applicationExitCancellation.Token);
     }
 

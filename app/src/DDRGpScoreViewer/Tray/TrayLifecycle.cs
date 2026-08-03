@@ -100,6 +100,7 @@ public sealed class ApplicationLifecycleCoordinator : IDisposable
     private readonly Action beginExit;
     private readonly object exitLock = new();
     private Task? exitTask;
+    private Task? exitPreparationTask;
     private MonitoringState? lastNotifiedState;
     private bool exitRequested;
     private int disposed;
@@ -163,6 +164,23 @@ public sealed class ApplicationLifecycleCoordinator : IDisposable
         }
     }
 
+    public Task PrepareForApplicationUpdateAsync()
+    {
+        lock (exitLock)
+        {
+            if (exitTask is not null)
+            {
+                return exitTask;
+            }
+            if (exitPreparationTask is not null)
+            {
+                return exitPreparationTask;
+            }
+            exitRequested = true;
+            return exitPreparationTask = PrepareExitCoreAsync();
+        }
+    }
+
     public void UpdateMonitoringState(
         MonitoringState state,
         string stateDisplay,
@@ -211,12 +229,39 @@ public sealed class ApplicationLifecycleCoordinator : IDisposable
         trayIcon.Dispose();
     }
 
-    private async Task ExitCoreAsync()
+    private async Task PrepareExitCoreAsync()
     {
         try
         {
             beginExit();
             await stopMonitoring();
+        }
+        catch
+        {
+            // A failed preflight must not leave the app running with its exit gate set.
+            await ExitCoreAsync(preparationAlreadyRunning: true);
+            throw;
+        }
+    }
+
+    private async Task ExitCoreAsync(bool preparationAlreadyRunning = false)
+    {
+        try
+        {
+            if (preparationAlreadyRunning)
+            {
+                beginExit();
+                await stopMonitoring();
+            }
+            else if (exitPreparationTask is not null)
+            {
+                await exitPreparationTask;
+            }
+            else
+            {
+                beginExit();
+                await stopMonitoring();
+            }
         }
         catch (Exception exception)
         {

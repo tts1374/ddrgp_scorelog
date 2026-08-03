@@ -15,7 +15,10 @@ public sealed class ApplicationUpdateTests
     public async Task VeloPack_release_check_and_download_keep_the_target_version()
     {
         var manager = new FakeUpdateManager(CreateUpdateInfo(1, 2, 0));
-        var service = new ApplicationUpdateService(manager, TimeSpan.FromSeconds(1));
+        var service = new ApplicationUpdateService(
+            manager,
+            checkOperationTimeout: TimeSpan.FromSeconds(1),
+            downloadOperationTimeout: TimeSpan.FromSeconds(1));
 
         var available = await service.CheckForUpdatesAsync();
         var downloaded = await service.DownloadAsync();
@@ -35,7 +38,10 @@ public sealed class ApplicationUpdateTests
         {
             DownloadOperation = (_, _, _) => Task.Delay(Timeout.InfiniteTimeSpan),
         };
-        var service = new ApplicationUpdateService(manager, TimeSpan.FromMilliseconds(50));
+        var service = new ApplicationUpdateService(
+            manager,
+            checkOperationTimeout: TimeSpan.FromSeconds(1),
+            downloadOperationTimeout: TimeSpan.FromMilliseconds(50));
         await service.CheckForUpdatesAsync();
 
         var stopwatch = Stopwatch.StartNew();
@@ -48,25 +54,58 @@ public sealed class ApplicationUpdateTests
     }
 
     [Fact]
+    public async Task Download_longer_than_check_timeout_succeeds_when_progress_continues()
+    {
+        var manager = new FakeUpdateManager(CreateUpdateInfo(1, 2, 0))
+        {
+            DownloadOperation = async (_, progress, cancellationToken) =>
+            {
+                progress?.Invoke(10);
+                await Task.Delay(TimeSpan.FromSeconds(31), cancellationToken);
+                progress?.Invoke(100);
+            },
+        };
+        var service = new ApplicationUpdateService(
+            manager,
+            checkOperationTimeout: TimeSpan.FromSeconds(1),
+            downloadOperationTimeout: TimeSpan.FromSeconds(35));
+        var progressValues = new List<int>();
+        await service.CheckForUpdatesAsync();
+
+        var downloaded = await service.DownloadAsync(progressValues.Add);
+
+        Assert.Equal(ApplicationUpdateStatus.Downloaded, downloaded.Status);
+        Assert.Equal([10, 100], progressValues);
+    }
+
+    [Fact]
     public async Task Apply_starts_waiting_updater_before_complete_application_exit()
     {
         var manager = new FakeUpdateManager(CreateUpdateInfo(1, 2, 0));
         var order = new List<string>();
         var service = new ApplicationUpdateService(
             manager,
-            TimeSpan.FromSeconds(1),
+            checkOperationTimeout: TimeSpan.FromSeconds(1),
+            downloadOperationTimeout: TimeSpan.FromSeconds(1),
             _ => order.Add("velopack-wait"));
         await service.CheckForUpdatesAsync();
         await service.DownloadAsync();
 
-        var result = await service.ApplyAndRestartAsync(() =>
-        {
-            order.Add("complete-exit");
-            return Task.CompletedTask;
-        });
+        var result = await service.ApplyAndRestartAsync(
+            () =>
+            {
+                order.Add("prepare-exit");
+                return Task.CompletedTask;
+            },
+            () =>
+            {
+                order.Add("complete-exit");
+                return Task.CompletedTask;
+            },
+            () => order.Add("force-exit"));
 
         Assert.Equal(ApplicationUpdateStatus.ReadyToRestart, result.Status);
-        Assert.Equal(["velopack-wait", "complete-exit"], order);
+        Assert.Equal(["prepare-exit", "velopack-wait", "complete-exit"], order);
     }
 
     [Fact]
@@ -75,21 +114,73 @@ public sealed class ApplicationUpdateTests
         var manager = new FakeUpdateManager(CreateUpdateInfo(1, 2, 0));
         var service = new ApplicationUpdateService(
             manager,
-            TimeSpan.FromSeconds(1),
+            checkOperationTimeout: TimeSpan.FromSeconds(1),
+            downloadOperationTimeout: TimeSpan.FromSeconds(1),
             _ => throw new InvalidOperationException("invalid package"));
         await service.CheckForUpdatesAsync();
         await service.DownloadAsync();
         var completeExitCount = 0;
 
-        var result = await service.ApplyAndRestartAsync(() =>
-        {
-            completeExitCount++;
-            return Task.CompletedTask;
-        });
+        var result = await service.ApplyAndRestartAsync(
+            () => Task.CompletedTask,
+            () =>
+            {
+                completeExitCount++;
+                return Task.CompletedTask;
+            },
+            () => throw new InvalidOperationException("force exit must not run"));
 
         Assert.Equal(ApplicationUpdateStatus.Failed, result.Status);
         Assert.Equal(0, completeExitCount);
         Assert.Contains("通常利用を続けられます", result.Message);
+    }
+
+    [Fact]
+    public async Task Complete_exit_failure_forces_final_exit_and_clears_pending_update()
+    {
+        var manager = new FakeUpdateManager(CreateUpdateInfo(1, 2, 0));
+        var service = new ApplicationUpdateService(
+            manager,
+            checkOperationTimeout: TimeSpan.FromSeconds(1),
+            downloadOperationTimeout: TimeSpan.FromSeconds(1),
+            _ => { });
+        await service.CheckForUpdatesAsync();
+        await service.DownloadAsync();
+        var forceExitCount = 0;
+
+        var result = await service.ApplyAndRestartAsync(
+            () => Task.CompletedTask,
+            () => Task.FromException(new InvalidOperationException("exit failed")),
+            () => forceExitCount++);
+        var retry = await service.DownloadAsync();
+
+        Assert.Equal(ApplicationUpdateStatus.ReadyToRestart, result.Status);
+        Assert.Equal(1, forceExitCount);
+        Assert.Equal(ApplicationUpdateStatus.Failed, retry.Status);
+    }
+
+    [Fact]
+    public async Task Preparation_failure_does_not_start_updater_or_leave_download_ready()
+    {
+        var manager = new FakeUpdateManager(CreateUpdateInfo(1, 2, 0));
+        var applyStarted = false;
+        var service = new ApplicationUpdateService(
+            manager,
+            checkOperationTimeout: TimeSpan.FromSeconds(1),
+            downloadOperationTimeout: TimeSpan.FromSeconds(1),
+            _ => applyStarted = true);
+        await service.CheckForUpdatesAsync();
+        await service.DownloadAsync();
+
+        var result = await service.ApplyAndRestartAsync(
+            () => Task.FromException(new InvalidOperationException("prepare failed")),
+            () => throw new InvalidOperationException("complete exit must not run"),
+            () => throw new InvalidOperationException("force exit must not run"));
+        var retry = await service.DownloadAsync();
+
+        Assert.Equal(ApplicationUpdateStatus.Failed, result.Status);
+        Assert.False(applyStarted);
+        Assert.Equal(ApplicationUpdateStatus.Failed, retry.Status);
     }
 
     [Fact]
@@ -129,11 +220,13 @@ public sealed class ApplicationUpdateTests
 
         await viewModel.CheckForApplicationUpdateAsync();
         await viewModel.DownloadAndApplyApplicationUpdateAsync(
+            () => Task.CompletedTask,
             () =>
             {
                 completeExitCount++;
                 return Task.CompletedTask;
-            });
+            },
+            () => { });
 
         Assert.Equal(1, completeExitCount);
         Assert.Equal("1.2.0", viewModel.ApplicationUpdateVersion);
@@ -218,14 +311,19 @@ public sealed class ApplicationUpdateTests
         }
 
         public Task<ApplicationUpdateResult> ApplyAndRestartAsync(
+            Func<Task> prepareExit,
             Func<Task> completeExit,
+            Action forceExit,
             CancellationToken cancellationToken = default)
         {
-            return CompleteAsync(completeExit);
+            return CompleteAsync(prepareExit, completeExit);
         }
 
-        private async Task<ApplicationUpdateResult> CompleteAsync(Func<Task> completeExit)
+        private async Task<ApplicationUpdateResult> CompleteAsync(
+            Func<Task> prepareExit,
+            Func<Task> completeExit)
         {
+            await prepareExit();
             await completeExit();
             return ApplyResult;
         }

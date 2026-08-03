@@ -83,7 +83,10 @@ public partial class App : System.Windows.Application
             ShowMainWindow,
             ShutdownApplication,
             () => mainWindow.RequestApplicationExit());
-        mainWindow.SetApplicationUpdateExitHandler(() => lifecycle.ExitAsync());
+        mainWindow.SetApplicationUpdateExitHandlers(
+            lifecycle.PrepareForApplicationUpdateAsync,
+            lifecycle.ExitAsync,
+            ShutdownApplication);
         viewModelPropertyChanged = (_, args) =>
         {
             if (args.PropertyName is nameof(MainViewModel.CurrentMonitoringState) or
