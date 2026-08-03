@@ -367,6 +367,30 @@ public sealed class ReleaseOperationsTests
     }
 
     [Fact]
+    public async Task GitHub_release_body_stall_times_out_and_keeps_current_set()
+    {
+        using var fixture = new DatabaseFixture();
+        var paths = ViewerDatabasePaths.ForProduction(
+            Path.Combine(fixture.DirectoryPath, "local-app-data"));
+        var current = CreatePackage(fixture, "1.0.0");
+        var candidate = CreatePackage(fixture, "1.1.0");
+        Assert.Equal(
+            ReferenceDataSetUpdateStatus.Installed,
+            new ReferenceDataSetManager().InstallPackageDataSet(current, paths).Status);
+        var referenceBefore = SHA256.HashData(File.ReadAllBytes(paths.MasterDatabasePath));
+
+        var stalled = CreateReleaseClient(candidate, stalledAsset: "ddrgp-master.sqlite");
+        var result = await new ReferenceDataSetManager(
+                httpClient: stalled.Client,
+                referenceUpdateTimeout: TimeSpan.FromMilliseconds(100))
+            .UpdateFromGitHubReleaseAsync(paths);
+
+        Assert.Equal(ReferenceDataSetUpdateStatus.Failed, result.Status);
+        Assert.Equal(referenceBefore, SHA256.HashData(File.ReadAllBytes(paths.MasterDatabasePath)));
+        Assert.Equal("1.0.0", ReadInstalledManifest(paths).ContentVersion);
+    }
+
+    [Fact]
     public void Explicit_score_migration_keeps_one_backup_and_reopens_current_schema()
     {
         using var fixture = new DatabaseFixture();
@@ -503,14 +527,16 @@ public sealed class ReleaseOperationsTests
         string? omittedAsset = null,
         string? corruptedAsset = null,
         string? interruptedAsset = null,
-        byte[]? manifestBytes = null)
+        byte[]? manifestBytes = null,
+        string? stalledAsset = null)
     {
         var handler = new ReleaseHttpMessageHandler(
             packageDirectory,
             omittedAsset,
             corruptedAsset,
             interruptedAsset,
-            manifestBytes);
+            manifestBytes,
+            stalledAsset);
         return (new HttpClient(handler), handler);
     }
 
@@ -588,19 +614,22 @@ public sealed class ReleaseOperationsTests
         private readonly string? corruptedAsset;
         private readonly string? interruptedAsset;
         private readonly byte[]? manifestBytes;
+        private readonly string? stalledAsset;
 
         public ReleaseHttpMessageHandler(
             string packageDirectory,
             string? omittedAsset,
             string? corruptedAsset,
             string? interruptedAsset,
-            byte[]? manifestBytes)
+            byte[]? manifestBytes,
+            string? stalledAsset)
         {
             this.packageDirectory = packageDirectory;
             this.omittedAsset = omittedAsset;
             this.corruptedAsset = corruptedAsset;
             this.interruptedAsset = interruptedAsset;
             this.manifestBytes = manifestBytes;
+            this.stalledAsset = stalledAsset;
         }
 
         public int ApiRequestCount { get; private set; }
@@ -640,6 +669,13 @@ public sealed class ReleaseOperationsTests
 
             var assetName = Path.GetFileName(requestUri.AbsolutePath);
             AssetRequestCount++;
+            if (string.Equals(assetName, stalledAsset, StringComparison.Ordinal))
+            {
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StreamContent(new BlockingReadStream()),
+                });
+            }
             if (string.Equals(assetName, interruptedAsset, StringComparison.Ordinal))
             {
                 return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
@@ -716,6 +752,50 @@ public sealed class ReleaseOperationsTests
             Memory<byte> buffer,
             CancellationToken cancellationToken = default) =>
             ValueTask.FromException<int>(new IOException("fixture download interruption"));
+
+        public override long Seek(long offset, SeekOrigin origin) =>
+            throw new NotSupportedException();
+
+        public override void SetLength(long value) => throw new NotSupportedException();
+
+        public override void Write(byte[] buffer, int offset, int count) =>
+            throw new NotSupportedException();
+    }
+
+    private sealed class BlockingReadStream : Stream
+    {
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => 0;
+        public override long Position
+        {
+            get => 0;
+            set => throw new NotSupportedException();
+        }
+
+        public override void Flush() => throw new NotSupportedException();
+
+        public override int Read(byte[] buffer, int offset, int count) =>
+            throw new NotSupportedException();
+
+        public override int Read(Span<byte> buffer) =>
+            throw new NotSupportedException();
+
+        public override Task<int> ReadAsync(
+            byte[] buffer,
+            int offset,
+            int count,
+            CancellationToken cancellationToken) =>
+            ReadAsync(buffer.AsMemory(offset, count), cancellationToken).AsTask();
+
+        public override async ValueTask<int> ReadAsync(
+            Memory<byte> buffer,
+            CancellationToken cancellationToken = default)
+        {
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            return 0;
+        }
 
         public override long Seek(long offset, SeekOrigin origin) =>
             throw new NotSupportedException();

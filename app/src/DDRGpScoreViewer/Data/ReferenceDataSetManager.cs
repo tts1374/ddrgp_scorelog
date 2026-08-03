@@ -41,6 +41,7 @@ public sealed class ReferenceDataSetManager
     private const string CatalogFileName = "jacket-catalog.sqlite";
     private const string StagingDirectoryPrefix = ".reference-staging-";
     private const string GitHubAssetHost = "github.com";
+    private static readonly TimeSpan DefaultReferenceUpdateTimeout = TimeSpan.FromSeconds(30);
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNameCaseInsensitive = false,
@@ -49,17 +50,20 @@ public sealed class ReferenceDataSetManager
     private readonly Action<string>? switchCheckpoint;
     private readonly HttpClient httpClient;
     private readonly Func<string, long> availableFreeSpace;
+    private readonly TimeSpan referenceUpdateTimeout;
 
     public ReferenceDataSetManager(
         ScoreViewerRepository? repository = null,
         Action<string>? switchCheckpoint = null,
         HttpClient? httpClient = null,
-        Func<string, long>? availableFreeSpace = null)
+        Func<string, long>? availableFreeSpace = null,
+        TimeSpan? referenceUpdateTimeout = null)
     {
         this.repository = repository ?? new ScoreViewerRepository();
         this.switchCheckpoint = switchCheckpoint;
         this.httpClient = httpClient ?? CreateHttpClient();
         this.availableFreeSpace = availableFreeSpace ?? GetAvailableFreeSpace;
+        this.referenceUpdateTimeout = referenceUpdateTimeout ?? DefaultReferenceUpdateTimeout;
     }
 
     public ReferenceDataSetUpdateResult InstallPackageDataSet(
@@ -168,10 +172,15 @@ public sealed class ReferenceDataSetManager
         var downloadDirectory = Path.Combine(
             paths.DataDirectory,
             $".reference-download-{Guid.NewGuid():N}");
+        using var timeoutCancellation = new CancellationTokenSource(referenceUpdateTimeout);
+        using var updateCancellation = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken,
+            timeoutCancellation.Token);
+        var updateToken = updateCancellation.Token;
         try
         {
             Directory.CreateDirectory(downloadDirectory);
-            var release = await ReadLatestReleaseAsync(cancellationToken);
+            var release = await ReadLatestReleaseAsync(updateToken);
             var assets = ResolveReleaseAssets(release);
 
             var manifestPath = Path.Combine(downloadDirectory, ManifestFileName);
@@ -179,7 +188,7 @@ public sealed class ReferenceDataSetManager
                 assets.ManifestUri,
                 manifestPath,
                 "reference manifest",
-                cancellationToken);
+                updateToken);
             var manifest = ReadManifest(manifestPath);
             ValidateManifestMetadata(manifest);
 
@@ -209,12 +218,12 @@ public sealed class ReferenceDataSetManager
                 assets.MasterUri,
                 Path.Combine(downloadDirectory, MasterFileName),
                 "master DB",
-                cancellationToken);
+                updateToken);
             await DownloadAssetAsync(
                 assets.CatalogUri,
                 Path.Combine(downloadDirectory, CatalogFileName),
                 "jacket参照catalog",
-                cancellationToken);
+                updateToken);
 
             var result = InstallPackageDataSet(downloadDirectory, paths);
             return result with
