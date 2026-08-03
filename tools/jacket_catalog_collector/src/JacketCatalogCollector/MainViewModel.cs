@@ -2210,7 +2210,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         return new CatalogInitializationService(
             new ProcessRunner(),
             resolved.RepositoryRoot,
-            resolved.CatalogPath);
+            resolved.CatalogPath,
+            resolved.MasterPath);
     }
 
     private static string FormatSummary(MasterSummary summary) =>

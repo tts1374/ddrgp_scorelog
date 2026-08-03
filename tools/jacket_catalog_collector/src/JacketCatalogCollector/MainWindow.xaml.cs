@@ -66,7 +66,8 @@ public partial class MainWindow : Window
             catalogInitializationService: new CatalogInitializationService(
                 runner,
                 databasePaths.RepositoryRoot,
-                databasePaths.CatalogPath),
+                databasePaths.CatalogPath,
+                databasePaths.MasterPath),
             manualReviewDraftStore: new JsonManualReviewDraftStore(
                 Path.Combine(evidenceRoot, "manual-review-drafts.v1.json")),
             manualReviewXlsxImportService: candidateProjectionService,

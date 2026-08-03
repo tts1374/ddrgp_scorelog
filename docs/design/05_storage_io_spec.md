@@ -229,7 +229,7 @@ data/windows_capture/session-<UTC>-<unique>/
 - 既存capture/session directoryを上書きせず、画像、metadata、manifest実出力をGit管理しない。
 - session出力を分類、OCR、identity、confirmed event、正式save input、DBへ自動接続しない。
 
-通常の `監視開始` で対象window用sessionを開始する場合だけ、対応OS・runtime API・Release package manifest capability・Windowsの同意がそろえばcapture borderless設定を適用する。拒否、非対応、capability不足、権限取得失敗、API例外では枠ありsessionを継続し、capture outputのpath、manifest、timestamp、解析artifact、正式個人スコアDB、transaction、保存statusは変更しない。Debugのpicker captureはこの同意要求を行わない。`graphicsCaptureWithoutBorder` capabilityを含むpackage manifestの配置方式は#92で決定するため、このapp projectのstorage pathや配布境界へmanifestを追加しない。
+通常の `監視開始` で対象window用sessionを開始する場合だけ、対応OS・runtime API・Windowsの同意がそろえばcapture borderless設定を適用する。拒否、非対応、未署名VeloPack packageでのcapability不足、権限取得失敗、API例外では枠ありsessionを継続し、capture outputのpath、manifest、timestamp、解析artifact、正式個人スコアDB、transaction、保存statusは変更しない。Debugのpicker captureはこの同意要求を行わない。
 
 ## manifest
 
@@ -477,12 +477,18 @@ M9 WPFはapp-owned runtimeのstrict workflowを同一processで1回実行する�
 後続実装でも通常PoC、常駐監視、migration、backup、cleanup、並行writer制御、failure image生成へは接続しない。
 ## Migration backup and explicit execution boundary
 
-正式個人スコアDB migrationは通常save、analysis artifact orchestration、diagnostic、DB openから暗黙実行しない。将来の専用CLI/APIだけが、source DB、target version、新規backup path、明示確認をすべて受け取って1回実行できる。dry-runとstatusはread-onlyで、DB、backup、`data/`、`logs/`を作成・変更しない。
+PoCのmigration status / dry-run / explicit backup CLIは通常save、analysis artifact orchestration、diagnosticからmigrationを暗黙実行しない。Release appの固定production score pathだけは、起動時に現在schemaをread-only検査し、そのapp versionへ明示登録されたconverterがsource versionからcurrent versionへ直接対応する場合だけmigrationを実行できる。converterなし旧version、newer version、preview、unknown、identity/history不一致は変更せず拒否する。
 
-backup pathはsourceと別pathで、既存file・directory・symlink相当の競合がなく、許可されたローカルbackup namespace内の新規fileに限定する。exclusive createで作成し、SQLite整合copy、flush、再open、identity/version/history/整合性検査、sourceとの対応確認が完了するまでsource DBを変更しない。既存backupやsourceを上書き・削除せず、backup作成途中の失敗はsource無変更として終了する。
+Release appのmigration backupはsourceと別pathの`data/score/migration-backup/score.db.bak`へ作り、migration単位で最新1件だけを保持する。次のmigrationでは新しいpending copyの作成に成功するまで前回backupを維持し、migration成功後に最新backupへ置換する。source変更前のcopyに失敗した場合はsource無変更で終了する。
 
-実行順序は `inspect source read-only` → identity/history/path preflight → backup exclusive create/flush/verify → `BEGIN IMMEDIATE` → schema steps → migration履歴 → metadata version → `PRAGMA user_version` → transaction内検証 → commit → read-only再検査とする。backup検証前のsource writeは禁止する。commit前のtransaction失敗はrollbackする。commit失敗またはcommit後検証失敗はsource状態を推測せず `manual_recovery_required` とし、検証済みbackupを上書きせず保持する。
+Release appの実行順序は `inspect source read-only` → backup copy → transaction開始 → converter schema steps → migration履歴・metadata・`PRAGMA user_version` → commit → current schemaで再open → 基本read/write transactionのrollback確認とする。commit前失敗はtransaction rollbackし、commitまたは再検証失敗はpending backupからsourceを復元する。復元にも失敗した場合だけmanual restoreを要求し、解析・正式保存を開始しない。
 
 pure contractのstatus/終了コードは、`current` / `dry_run_ready` / `ready` / `completed` が0、`confirmation_required` が1、入力・互換性・path・partial state拒否が2、backup I/Oまたはmigration実行失敗が3である。`manual_recovery_required` はsourceが変更済みまたは変更有無を確定できない状態として扱い、検証済みbackupを使う人手復旧を促す。再実行時、既にtargetなら `current`、同じbackup pathが存在すればconflict、partial stateならmanual recovery拒否とし、暗黙の再開・repair・backup再利用をしない。
 
-status/dry-run専用CLIはDB path、target version、明示backup pathの必須組だけを受ける。SQLiteはURI `mode=ro` で開き、backup pathは存在・source同一性・親directoryだけを観測する。JSON/Markdownは同じprojectionを使い、終了コードはpure contractの値を返す。DB、backup、`data/`、`logs/`を作成・変更せず、save/orchestration/diagnosticや通常PoCと混在させない。
+status/dry-run専用CLIは従来どおりDB path、target version、明示backup pathの必須組だけを受け、Release appの固定path起動migrationとは別入口を維持する。
+
+## M10-4 release package and retention boundary
+
+VeloPack packageはapp binary/runtimeと`ReferenceData/`を所有し、永続dataはinstall root外の`%LOCALAPPDATA%/DDRGpScoreViewer/`に置く。`ReferenceData/`のM4 master DB、M5b jacket reference catalog、set manifestは一時directoryでread-only/schema/content compatibilityを検査し、新versionだけを現行＋直前1世代でセット切替する。同一versionはno-op、古いversionは拒否し、片方欠落、不整合、切替後再open失敗では直前セットへ戻す。network取得は行わない。
+
+Release logは`logs/gp-score-log.log`を5MB×3 fileで保持する。正式score DBとsettingsは無期限、reference setは現行＋直前1世代、migration backupは最新1件、cache/tempは処理完了時または次回起動時までとする。uninstallはinstall rootだけを削除し、この永続dataを削除しない。

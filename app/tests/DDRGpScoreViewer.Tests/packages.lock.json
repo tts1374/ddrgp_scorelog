@@ -82,6 +82,11 @@
           "SQLitePCLRaw.core": "2.1.11"
         }
       },
+      "Velopack": {
+        "type": "Transitive",
+        "resolved": "1.2.0",
+        "contentHash": "Rz67gJL619fSBS6omaSINUxyDuwhIxkm5mmubf7uLd5Qgi6LLKaKCha+QFP6n+Bw/UjA0vutnH4JQfYzn6ANtw=="
+      },
       "xunit.abstractions": {
         "type": "Transitive",
         "resolved": "2.0.3",
@@ -126,7 +131,8 @@
         "type": "Project",
         "dependencies": {
           "Microsoft.Data.Sqlite.Core": "[10.0.0, )",
-          "SQLitePCLRaw.bundle_winsqlite3": "[2.1.11, )"
+          "SQLitePCLRaw.bundle_winsqlite3": "[2.1.11, )",
+          "Velopack": "[1.2.0, )"
         }
       }
     }

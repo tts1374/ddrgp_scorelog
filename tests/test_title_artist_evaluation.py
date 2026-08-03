@@ -87,7 +87,7 @@ def fixture_paths(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path
     master = tmp_path / "data" / "master.sqlite"
     write_master(master)
     catalog_path = tmp_path / "databases" / "catalog.sqlite"
-    catalog.create_catalog(catalog_path)
+    catalog.create_catalog(catalog_path, master)
     artifact_root = tmp_path / "data" / "jacket_catalog_collector"
     return master, catalog_path, artifact_root
 

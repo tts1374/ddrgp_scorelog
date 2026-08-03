@@ -20,6 +20,12 @@
           "SQLitePCLRaw.provider.winsqlite3": "2.1.11"
         }
       },
+      "Velopack": {
+        "type": "Direct",
+        "requested": "[1.2.0, )",
+        "resolved": "1.2.0",
+        "contentHash": "Rz67gJL619fSBS6omaSINUxyDuwhIxkm5mmubf7uLd5Qgi6LLKaKCha+QFP6n+Bw/UjA0vutnH4JQfYzn6ANtw=="
+      },
       "SQLitePCLRaw.core": {
         "type": "Transitive",
         "resolved": "2.1.11",
@@ -33,6 +39,7 @@
           "SQLitePCLRaw.core": "2.1.11"
         }
       }
-    }
+    },
+    "net10.0-windows10.0.19041/win-x64": {}
   }
 }

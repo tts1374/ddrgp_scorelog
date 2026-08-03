@@ -12,7 +12,8 @@ public sealed record ViewerDatabasePaths(
     string ScoreDatabasePath,
     string? EvaluationDatabasePath,
     string DataDirectory,
-    string LogsDirectory)
+    string LogsDirectory,
+    string SettingsPath)
 {
     public static ViewerDatabasePaths ResolveDefault()
     {
@@ -32,9 +33,13 @@ public sealed record ViewerDatabasePaths(
         }
 #endif
 
+        var releaseSmokeRoot = System.Environment.GetEnvironmentVariable(
+            "DDRGP_SCORE_VIEWER_RELEASE_SMOKE_ROOT");
         return ForProduction(
-            System.Environment.GetFolderPath(
-                System.Environment.SpecialFolder.LocalApplicationData));
+            string.IsNullOrWhiteSpace(releaseSmokeRoot)
+                ? System.Environment.GetFolderPath(
+                    System.Environment.SpecialFolder.LocalApplicationData)
+                : releaseSmokeRoot);
     }
 
     public static ViewerDatabasePaths ForDevelopment(string developmentRoot)
@@ -50,7 +55,8 @@ public sealed record ViewerDatabasePaths(
             Path.Combine(databaseDirectory, "score.dev.db"),
             Path.Combine(databaseDirectory, "evaluation.db"),
             dataDirectory,
-            Path.Combine(root, "logs"));
+            Path.Combine(root, "logs"),
+            Path.Combine(dataDirectory, "settings", "viewer-paths.json"));
     }
 
     public static ViewerDatabasePaths ForProduction(string localApplicationDataRoot)
@@ -66,7 +72,8 @@ public sealed record ViewerDatabasePaths(
             Path.Combine(dataDirectory, "score", "score.db"),
             null,
             dataDirectory,
-            Path.Combine(applicationRoot, "logs"));
+            Path.Combine(applicationRoot, "logs"),
+            Path.Combine(applicationRoot, "viewer-paths.json"));
     }
 
     public void EnsureDefaultDirectories()
@@ -76,6 +83,7 @@ public sealed record ViewerDatabasePaths(
         CreateParentDirectory(MasterDatabasePath);
         CreateParentDirectory(JacketCatalogDatabasePath);
         CreateParentDirectory(ScoreDatabasePath);
+        CreateParentDirectory(SettingsPath);
         if (EvaluationDatabasePath is not null)
         {
             CreateParentDirectory(EvaluationDatabasePath);

@@ -4,7 +4,7 @@ M8 preview完了後の正式 `ddrgp-scores.sqlite` 初期スキーマ、migratio
 
 ## M9 read-only viewer boundary
 
-`app/src/DDRGpScoreViewer` は正式個人スコアDB version 1を表示するread-only consumerであり、app-owned runtimeのcapture-saveと明示formal workflowも所有する。個人DB、M4 master DB、M5b jacket reference catalogを別々のSQLite `ReadOnly` connectionで開く。起動時にmaster 2種類がcompatibleな場合だけ、固定score pathのmissing／0 byteをWPF側の `PersonalScoreDbInitializer` が既存の正式schema・metadata・migration契約に従って初期化する。production pathの起動時bootstrapはrepository root、repository内module、Python、Tesseractに依存しない。初期化後のviewerはschema変更、migration、backup、repairを暗黙に呼ばず、通常閲覧はwrite workflowを起動しない。M4 master DBとM5b jacket reference catalogは同じdirectoryにあっても別fileとして検査する。
+`app/src/DDRGpScoreViewer` は正式個人スコアDB version 1を表示するread-only consumerであり、app-owned runtimeのcapture-saveと明示formal workflowも所有する。個人DB、M4 master DB、M5b jacket reference catalogを別々のSQLite connectionで開く。起動時にmaster 2種類がcompatibleな場合だけ、固定score pathのmissing／0 byteをWPF側の `PersonalScoreDbInitializer` が既存の正式schema・metadata・migration契約に従って初期化する。production pathの起動時bootstrapはrepository root、repository内module、Python、Tesseractに依存しない。通常閲覧はwrite workflowを起動しない。schema migrationは対応する明示converterがある旧versionだけを対象とし、migration前backupを最新1件保持し、transaction適用、現行schemaでの再openと基本read/write検証を行う。失敗時はbackupへ戻し、対応より新しいschema、converterなし旧schema、unknown DB、preview DBは変更しない。M4 master DBとM5b jacket reference catalogは同じdirectoryにあっても別fileとして検査する。
 
 個人DBは `PRAGMA user_version=1`、正式 `score_db_metadata` identity、必須tableとversion 1列順、初期migration履歴を検査する。preview、unknown、identity mismatch、newer unsupported、必須table/列欠落、migration history不整合は、ファイルを変更せず表示対象から拒否する。これはoffline PoCのwriterとの正式identityを変えず、app-owned runtime側でも同じ正式identityを再確認する入口である。
 
@@ -326,13 +326,13 @@ CLI入力はUTF-8 JSONの `input_schema_version=1` objectとする。候補材�
 
 ### Version 1 migration / backup contract
 
-現行正式schemaはversion 1である。将来versionは列やproduct仕様が確定し、version 1からの明示的なsupported pathが登録されるまでmigration対象にしない。登録済みpathのtargetがその時点のcurrent schema versionと等しい場合はmigration候補にできる。pure contractは状態、順序、終了コードだけを固定し、version 2 schema、migration SQL、DB/backup writerは実装しない。
+現行正式schemaはversion 1であり、production converterは登録されていない。将来versionは列やproduct仕様が確定し、旧versionからcurrent versionへの明示converterがappへ登録されるまでmigration対象にしない。Release起動時は固定score pathだけを検査し、currentならno-op、newerまたはconverterなしなら無変更で拒否する。
 
 互換性の正本は `PRAGMA user_version`、`score_db_metadata.schema_version`、`schema_migrations` の連続した適用履歴である。identity metadataが一致することを前提に、この3者がsource versionで一致したDBだけをmigration候補にできる。preview、unknown、identity mismatch、新しい未知version、3者不一致のpartial stateは拒否する。
 
-backupはsource変更前の必須成果物であり、新規pathへのexclusive create、flush、再open、SQLite integrityと正式identity/version/historyのreadback、source snapshotとの対応確認が全て成功して初めてverifiedとなる。source DBと既存backupは上書き・削除しない。verified backupはmigration失敗時にも保持し、自動restoreは行わない。
+backupはsource変更前の必須成果物である。Release appは固定namespaceのpending backupへsourceをcopyし、migration成功時に`migration-backup/score.db.bak`へ置換して最新1件だけを保持する。migrationまたはpost-commit再検証失敗時はpending backupからsourceを自動restoreし、restore失敗時は解析・正式保存を停止してmanual restoreを要求する。
 
-transaction内のversion遷移順はschema step、`schema_migrations` insert、`score_db_metadata.schema_version` update、`PRAGMA user_version` update、target contract検証、commitである。commit前の失敗はrollbackする。commit失敗で完了可否を確定できない場合とcommit後read-only検査の失敗はpartial stateとして保存と再実行を拒否し、source変更済みまたは不確実な `manual_recovery_required` として、検証済みbackupを使う人手復旧へ送る。
+transaction内のversion遷移順はconverterのschema step、`schema_migrations` insert、`score_db_metadata.schema_version` update、`PRAGMA user_version` update、commitである。commit前の失敗はrollbackする。commit後にcurrent schemaで再openし、基本readとrollbackされるwrite transactionを確認する。失敗時はbackupへ戻し、失敗を保存成功へ丸めない。
 
 `personal_score_db_migration_status` は既存schema inspectionとpure migration contractを合成するread-only projectionである。専用CLIはDB path、target version、明示backup pathを必須とし、statusまたはdry-runをJSON/Markdownへ表示する。formal identityが一致しても `PRAGMA user_version`、metadata version、連続した `schema_migrations` 履歴が一致しなければpartial stateとして拒否する。backup path検査はsourceと別の未作成pathで親directoryが存在するかの観測だけで、backup作成やsource変更を行わない。現行version 1ではcurrent表示または拒否となり、将来current versionと登録済みtransitionが一致した場合だけ予定stepを表示できる。
 

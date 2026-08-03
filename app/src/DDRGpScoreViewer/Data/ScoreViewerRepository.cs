@@ -534,12 +534,13 @@ public sealed class ScoreViewerRepository
         {
             try
             {
-                var version = ValidateJacketCatalogDatabase(connection);
+                var (version, masterContentVersion) = ValidateJacketCatalogDatabase(connection);
                 return new JacketCatalogInspection(
                     fullPath,
                     MasterDatabaseStatus.Compatible,
-                    $"jacket参照catalogをread-onlyで検証できます（schema compatible、version: {version}）。",
-                    version.ToString());
+                    $"jacket参照catalogをread-onlyで検証できます（schema compatible、version: {version}、master: {masterContentVersion}）。",
+                    version.ToString(),
+                    masterContentVersion);
             }
             catch (ViewerDatabaseException exception)
             {
@@ -656,7 +657,8 @@ public sealed class ScoreViewerRepository
     private static ViewerDatabaseException RejectedScoreDatabase(string reason) =>
         new($"このプレーデータは開けません。{reason} ファイルは変更されていません。");
 
-    private static int ValidateJacketCatalogDatabase(SqliteConnection connection)
+    private static (int SchemaVersion, string MasterContentVersion) ValidateJacketCatalogDatabase(
+        SqliteConnection connection)
     {
         var tables = ReadUserTableNames(connection);
         if (!tables.SetEquals(JacketCatalogTables))
@@ -680,13 +682,15 @@ public sealed class ScoreViewerRepository
 
         var metadata = ReadMetadata(connection, "catalog_metadata");
         if (!metadata.Keys.ToHashSet(StringComparer.Ordinal).SetEquals(
-                ["catalog_identity", "schema_version", "created_at"]) ||
+                ["catalog_identity", "schema_version", "created_at", "master_version"]) ||
             !metadata.TryGetValue("catalog_identity", out var identity) ||
             identity != JacketCatalogIdentity ||
             !metadata.TryGetValue("schema_version", out var schemaVersion) ||
             schemaVersion != SupportedJacketCatalogSchemaVersion.ToString() ||
             !metadata.TryGetValue("created_at", out var createdAt) ||
-            string.IsNullOrWhiteSpace(createdAt))
+            string.IsNullOrWhiteSpace(createdAt) ||
+            !metadata.TryGetValue("master_version", out var masterContentVersion) ||
+            string.IsNullOrWhiteSpace(masterContentVersion))
         {
             throw RejectedJacketCatalog("metadata identityが一致しません。");
         }
@@ -721,7 +725,7 @@ public sealed class ScoreViewerRepository
             throw RejectedJacketCatalog("catalog tableのuniquenessまたはforeign keyが一致しません。");
         }
 
-        return checked((int)userVersion);
+        return (checked((int)userVersion), masterContentVersion);
     }
 
     private static ViewerDatabaseException RejectedJacketCatalog(string reason) =>

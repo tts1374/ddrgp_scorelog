@@ -210,7 +210,7 @@ C# loaderはprojection version 6とcatalog schema version 1だけを受け入れ
 
 ### M5c-2 current catalog manual review
 
-current catalog schema version 1は閉じたstatus語彙、monotonic `review_revision`、最後のmanual action ID/noteを持つ。`reference_review_history` は `manual_confirm` / `reassign` / `reject` / `reopen` ごとにbefore/after status・song・revision、opaque reason/note、UTC時刻、canonical request/receiptをappend-onlyで持つ。runtimeとcollectorは旧catalogをmigrationやread-only fallbackなしでunsupportedとして拒否する。初回リリース前に限り、明示CLIの`migrate-v1`で旧v1 catalogを未作成のcurrent v1 outputへコピーでき、sourceを変更せずreference、candidate、review historyを保持する。
+current catalog schema version 1は閉じたstatus語彙、monotonic `review_revision`、最後のmanual action ID/noteと、対応するM4 master DBの`master_version`を`catalog_metadata`に持つ。`reference_review_history` は `manual_confirm` / `reassign` / `reject` / `reopen` ごとにbefore/after status・song・revision、opaque reason/note、UTC時刻、canonical request/receiptをappend-onlyで持つ。runtimeとcollectorは旧catalogをmigrationやread-only fallbackなしでunsupportedとして拒否する。初回リリース前に限り、明示CLIの`migrate-v1`で旧v1 catalogを未作成のcurrent v1 outputへコピーでき、sourceを変更せずreference、candidate、review historyを保持する。Release packageはcatalog metadataの`master_version`をM4 master DB実metadataと比較し、不一致の組み合わせを拒否する。
 
 mutation requestはreference ID、action ID、expected revision/status/songを必須にする。同一action ID・同一payloadの再投入はcurrent masterを再検証する前に保存済みreceiptを冪等に返すため、commit後にmasterが一時利用不能、曲削除、GP対象外化しても安全なretryを妨げない。同じIDの異なるpayload、未保存actionのstale revision/state、current masterにないsong、GP対象外songはcurrent row/historyの副作用なしで拒否する。manual confirm/reassignはcurrent extractorの完全な永続特徴量も必須とし、feature抽出失敗や欠損/不正vectorを確定状態へ進めない。current row更新とhistory insertは1 transactionであり、片側成功を許さない。reject/reopen/reassignはreference、特徴量、候補、観測、historyを物理削除せず、reopenは直前songを暗黙復元しない。
 

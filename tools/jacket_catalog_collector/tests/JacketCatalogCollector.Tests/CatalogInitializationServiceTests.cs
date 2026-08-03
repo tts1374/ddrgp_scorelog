@@ -19,7 +19,8 @@ public sealed class CatalogInitializationServiceTests : IDisposable
         var service = new CatalogInitializationService(
             runner,
             paths.RepositoryRoot,
-            paths.CatalogPath);
+            paths.CatalogPath,
+            paths.MasterPath);
 
         await service.EnsureCreatedAsync(CancellationToken.None);
 
@@ -40,7 +41,8 @@ public sealed class CatalogInitializationServiceTests : IDisposable
         var service = new CatalogInitializationService(
             runner,
             paths.RepositoryRoot,
-            paths.CatalogPath);
+            paths.CatalogPath,
+            paths.MasterPath);
 
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(
             () => service.EnsureCreatedAsync(CancellationToken.None));
@@ -58,7 +60,8 @@ public sealed class CatalogInitializationServiceTests : IDisposable
         var service = new CatalogInitializationService(
             runner,
             paths.RepositoryRoot,
-            paths.CatalogPath);
+            paths.CatalogPath,
+            paths.MasterPath);
 
         await Assert.ThrowsAsync<InvalidOperationException>(
             () => service.EnsureCreatedAsync(CancellationToken.None));

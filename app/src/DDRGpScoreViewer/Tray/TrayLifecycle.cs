@@ -33,8 +33,8 @@ public sealed class WindowsTrayIconService : ITrayIconService
     {
         startItem = new Forms.ToolStripMenuItem("監視開始");
         stopItem = new Forms.ToolStripMenuItem("監視停止");
-        var showItem = new Forms.ToolStripMenuItem("メインwindowを表示");
-        var exitItem = new Forms.ToolStripMenuItem("アプリを終了");
+        var showItem = new Forms.ToolStripMenuItem("GP Score Logを開く");
+        var exitItem = new Forms.ToolStripMenuItem("終了");
         startItem.Click += (_, _) => StartRequested?.Invoke(this, EventArgs.Empty);
         stopItem.Click += (_, _) => StopRequested?.Invoke(this, EventArgs.Empty);
         showItem.Click += (_, _) => ShowRequested?.Invoke(this, EventArgs.Empty);
@@ -46,7 +46,7 @@ public sealed class WindowsTrayIconService : ITrayIconService
         notifyIcon = new Forms.NotifyIcon
         {
             Icon = Drawing.SystemIcons.Application,
-            Text = "DDR GP Score Tracker — 待機中",
+            Text = "GP Score Log — 待機中",
             ContextMenuStrip = contextMenu,
             Visible = true,
         };
@@ -63,7 +63,7 @@ public sealed class WindowsTrayIconService : ITrayIconService
     {
         startItem.Enabled = state.CanStart;
         stopItem.Enabled = state.CanStop;
-        var text = $"DDR GP Score Tracker — {statusText}";
+        var text = $"GP Score Log — {statusText}";
         notifyIcon.Text = text.Length <= 63 ? text : text[..63];
     }
 
@@ -258,5 +258,5 @@ public static class WindowLifecyclePolicy
 {
     public static bool HideOnClose(bool applicationExitRequested) => !applicationExitRequested;
 
-    public static bool HideOnMinimize(bool applicationExitRequested) => !applicationExitRequested;
+    public static bool HideOnMinimize(bool applicationExitRequested) => false;
 }

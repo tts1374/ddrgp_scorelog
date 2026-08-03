@@ -24,7 +24,8 @@ public sealed record JacketCatalogInspection(
     string Path,
     MasterDatabaseStatus Status,
     string Message,
-    string? Version)
+    string? Version,
+    string? MasterContentVersion = null)
 {
     public bool IsCompatible => Status == MasterDatabaseStatus.Compatible;
 
