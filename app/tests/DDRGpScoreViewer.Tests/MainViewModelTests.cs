@@ -8,6 +8,53 @@ namespace DDRGpScoreViewer.Tests;
 public sealed class MainViewModelTests
 {
     [Fact]
+    public void Load_projects_home_summary_recent_plays_and_best_updates()
+    {
+        using var fixture = new DatabaseFixture();
+        var now = DateTimeOffset.Now;
+        fixture.AddPlay("first", now.AddMinutes(-60).ToString("O"), 900_000, 1_000);
+        fixture.AddPlay("score-update", now.AddMinutes(-50).ToString("O"), 950_000, 1_100);
+        fixture.AddPlay("ex-update", now.AddMinutes(-40).ToString("O"), 940_000, 1_200);
+        fixture.AddPlay("lower", now.AddMinutes(-30).ToString("O"), 930_000, 1_150);
+        fixture.AddPlay("tie", now.AddMinutes(-20).ToString("O"), 950_000, 1_200);
+        fixture.AddPlay("latest", now.AddMinutes(-10).ToString("O"), 960_000, 1_250);
+        fixture.ExecuteScoreSql(
+            "UPDATE plays SET created_at = '" +
+            DateTimeOffset.UtcNow.ToString("O") +
+            "'; " +
+            "UPDATE plays SET clear_type = 'FC' WHERE play_id IN ('score-update', 'latest'); " +
+            "UPDATE plays SET clear_type = 'PFC' WHERE play_id = 'ex-update';");
+
+        var viewModel = new MainViewModel(new ScoreViewerRepository());
+        viewModel.Load(fixture.ScorePath, fixture.MasterPath, persist: false);
+
+        Assert.Equal(6, viewModel.HomeTodayPlayCount);
+        Assert.Equal(2, viewModel.HomeTodayScoreUpdateCount);
+        Assert.Equal(3, viewModel.HomeTodayExScoreUpdateCount);
+        Assert.Equal(3, viewModel.HomeTodayFullComboCount);
+        Assert.Equal("latest", viewModel.HomeLatestPlay?.Play.PlayId);
+        Assert.Equal(5, viewModel.HomeRecentPlays.Count);
+        Assert.Equal(
+            ["tie", "lower", "ex-update", "score-update", "first"],
+            viewModel.HomeRecentPlays.Select(play => play.Play.PlayId));
+        Assert.Equal(3, viewModel.HomeBestUpdates.Count);
+        Assert.Equal(
+            ["latest", "ex-update", "score-update"],
+            viewModel.HomeBestUpdates.Select(play => play.Play.PlayId));
+
+        Assert.NotNull(viewModel.HomeLatestPlay);
+        var latest = viewModel.HomeLatestPlay!;
+        Assert.Equal(950_000, latest.PreviousScore);
+        Assert.Equal(1_200, latest.PreviousExScore);
+        Assert.Equal("Up", latest.ScoreBestDeltaGroup);
+        Assert.Equal("Up", latest.ExScoreBestDeltaGroup);
+
+        var first = viewModel.HomeRecentPlays.Single(play => play.Play.PlayId == "first");
+        Assert.Equal("First", first.ScoreBestDeltaGroup);
+        Assert.Equal("初プレー", first.ScoreBestDeltaDisplay);
+    }
+
+    [Fact]
     public async Task SaveAndReloadAsync_reflects_only_committed_saved_play()
     {
         using var fixture = new DatabaseFixture();

@@ -1,0 +1,144 @@
+using System.Globalization;
+
+namespace DDRGpScoreViewer.Models;
+
+/// <summary>
+/// Home-only projection of a saved play with the previous best values needed by
+/// the summary, recent-play rows, and best-update rows.
+/// </summary>
+public sealed class HomePlayItem
+{
+    public HomePlayItem(
+        PlayHistoryItem play,
+        int? previousScore,
+        int? previousExScore)
+    {
+        Play = play;
+        PreviousScore = previousScore;
+        PreviousExScore = previousExScore;
+    }
+
+    public PlayHistoryItem Play { get; }
+
+    public int? PreviousScore { get; }
+
+    public int? PreviousExScore { get; }
+
+    public string SongTitle => Play.SongTitle;
+
+    public string PlayStyleDisplay => Play.PlayStyleDisplay;
+
+    public string Difficulty => Play.Difficulty;
+
+    public string ChartDisplay => Play.ChartDisplay;
+
+    public string LevelDisplay => Play.LevelDisplay;
+
+    public string ScoreDisplay => Play.ScoreDisplay;
+
+    public string ExScoreDisplay => Play.ExScoreDisplay;
+
+    public string Rank => Play.Rank;
+
+    public string RankBadgeGroup => Play.RankBadgeGroup;
+
+    public string ClearDisplay => Play.ClearDisplay;
+
+    public string ClearBadgeGroup => Play.ClearBadgeGroup;
+
+    public string FlareBadgeGroup => Play.FlareBadgeGroup;
+
+    public string FlareRankDisplay => Play.FlareRankDisplay;
+
+    public string LatestPlayedAtDisplay => Play.PlayedAtDisplay;
+
+    public string HomePlayedAtDisplay => HomeTimestampFormatter.Format(Play.PlayedAt);
+
+    public string PreviousScoreDisplay => PreviousScore is int score
+        ? $"前回 {score:N0}"
+        : "前回 —";
+
+    public string PreviousExScoreDisplay => PreviousExScore is int exScore
+        ? $"EX {exScore:N0}"
+        : "EX —";
+
+    public bool IsScoreBestUpdate =>
+        PreviousScore is int previous && Play.Score > previous;
+
+    public bool IsExScoreBestUpdate =>
+        PreviousExScore is int previous && Play.ExScore > previous;
+
+    public string ScoreBestDeltaDisplay =>
+        FormatDelta(Play.Score, PreviousScore);
+
+    public string ExScoreBestDeltaDisplay =>
+        FormatDelta(Play.ExScore, PreviousExScore);
+
+    public string ScoreUpdateAmountDisplay => IsScoreBestUpdate
+        ? FormatPositiveDelta(Play.Score - PreviousScore!.Value)
+        : "—";
+
+    public string ExScoreUpdateAmountDisplay => IsExScoreBestUpdate
+        ? FormatPositiveDelta(Play.ExScore - PreviousExScore!.Value)
+        : "—";
+
+    public string ScoreBestDeltaGroup =>
+        GetDeltaGroup(Play.Score, PreviousScore);
+
+    public string ExScoreBestDeltaGroup =>
+        GetDeltaGroup(Play.ExScore, PreviousExScore);
+
+    private static string FormatDelta(int current, int? previous)
+    {
+        if (previous is null)
+        {
+            return "初プレー";
+        }
+
+        var delta = current - previous.Value;
+        return delta switch
+        {
+            > 0 => FormatPositiveDelta(delta),
+            < 0 => $"↓ {delta:N0}",
+            _ => "＝ ±0",
+        };
+    }
+
+    private static string FormatPositiveDelta(int delta) => $"↑ +{delta:N0}";
+
+    private static string GetDeltaGroup(int current, int? previous)
+    {
+        if (previous is null)
+        {
+            return "First";
+        }
+
+        return current.CompareTo(previous.Value) switch
+        {
+            > 0 => "Up",
+            < 0 => "Down",
+            _ => "Tie",
+        };
+    }
+}
+
+internal static class HomeTimestampFormatter
+{
+    public static string Format(string value)
+    {
+        if (!DateTimeOffset.TryParse(
+                value,
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.AllowWhiteSpaces | DateTimeStyles.AssumeUniversal,
+                out var timestamp))
+        {
+            return value;
+        }
+
+        var localTimestamp = timestamp.ToLocalTime();
+        var format = localTimestamp.Year == DateTimeOffset.Now.Year
+            ? "MM/dd HH:mm"
+            : "yyyy/MM/dd HH:mm";
+        return localTimestamp.ToString(format, CultureInfo.CurrentCulture);
+    }
+}

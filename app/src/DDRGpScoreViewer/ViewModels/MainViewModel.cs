@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Globalization;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
@@ -25,6 +26,13 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private readonly AutomaticMonitoringOptions automaticMonitoringOptions;
     private readonly SynchronizationContext? uiSynchronizationContext;
     private PlayHistoryItem? selectedPlay;
+    private HomePlayItem? homeLatestPlay;
+    private int homeTodayPlayCount;
+    private int homeTodayScoreUpdateCount;
+    private int homeTodayExScoreUpdateCount;
+    private int homeTodayFullComboCount;
+    private string homeTodayDateDisplay =
+        DateTimeOffset.Now.ToString("yyyy/MM/dd", CultureInfo.CurrentCulture);
     private string statusTitle = "既定のDBを確認しています";
     private string statusMessage =
         "現在の環境に対応する既定pathのDBを検証して、履歴と自己ベストを表示します。";
@@ -136,12 +144,58 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public ObservableCollection<PlayHistoryItem> Plays { get; } = [];
     public ObservableCollection<ChartBestItem> ChartBests { get; } = [];
+    public ObservableCollection<HomePlayItem> HomeRecentPlays { get; } = [];
+    public ObservableCollection<HomePlayItem> HomeBestUpdates { get; } = [];
 
     public PlayHistoryItem? SelectedPlay
     {
         get => selectedPlay;
         set => SetProperty(ref selectedPlay, value);
     }
+
+    public HomePlayItem? HomeLatestPlay
+    {
+        get => homeLatestPlay;
+        private set => SetProperty(ref homeLatestPlay, value);
+    }
+
+    public int HomeTodayPlayCount
+    {
+        get => homeTodayPlayCount;
+        private set => SetProperty(ref homeTodayPlayCount, value);
+    }
+
+    public int HomeTodayScoreUpdateCount
+    {
+        get => homeTodayScoreUpdateCount;
+        private set => SetProperty(ref homeTodayScoreUpdateCount, value);
+    }
+
+    public int HomeTodayExScoreUpdateCount
+    {
+        get => homeTodayExScoreUpdateCount;
+        private set => SetProperty(ref homeTodayExScoreUpdateCount, value);
+    }
+
+    public int HomeTodayFullComboCount
+    {
+        get => homeTodayFullComboCount;
+        private set => SetProperty(ref homeTodayFullComboCount, value);
+    }
+
+    public string HomeTodayDateDisplay
+    {
+        get => homeTodayDateDisplay;
+        private set => SetProperty(ref homeTodayDateDisplay, value);
+    }
+
+    public bool HasHomeBestUpdates => HomeBestUpdates.Count > 0;
+
+    public string HomeBestUpdateSummaryDisplay => HomeBestUpdates.Count switch
+    {
+        0 => "自己ベスト更新はまだありません",
+        var count => $"直近の自己ベスト更新を{count}件表示",
+    };
 
     public string StatusTitle
     {
@@ -2552,6 +2606,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     {
         Replace(Plays, data.Plays);
         Replace(ChartBests, data.ChartBests);
+        ApplyHomeData(data.Plays);
         MasterVersion = data.MasterVersion;
         ScoreDatabasePath = data.ScoreDatabasePath;
         MasterDatabasePath = data.MasterDatabasePath;
@@ -2582,10 +2637,105 @@ public sealed class MainViewModel : INotifyPropertyChanged
     {
         Plays.Clear();
         ChartBests.Clear();
+        ClearHomeData();
         SelectedPlay = null;
         MasterVersion = "—";
         HasData = false;
     }
+
+    private void ApplyHomeData(IReadOnlyList<PlayHistoryItem> plays)
+    {
+        var projectedPlays = BuildHomePlayItems(plays);
+        HomeLatestPlay = projectedPlays.FirstOrDefault();
+        Replace(HomeRecentPlays, projectedPlays.Skip(1).Take(5));
+        Replace(
+            HomeBestUpdates,
+            projectedPlays
+                .Where(play => play.IsScoreBestUpdate || play.IsExScoreBestUpdate)
+                .Take(5));
+
+        var today = DateTimeOffset.Now.Date;
+        var todayPlays = projectedPlays
+            .Where(play => IsLocalDate(play.Play.SavedAt, today))
+            .ToArray();
+        HomeTodayDateDisplay = today.ToString("yyyy/MM/dd", CultureInfo.CurrentCulture);
+        HomeTodayPlayCount = todayPlays.Length;
+        HomeTodayScoreUpdateCount = todayPlays.Count(play => play.IsScoreBestUpdate);
+        HomeTodayExScoreUpdateCount = todayPlays.Count(play => play.IsExScoreBestUpdate);
+        HomeTodayFullComboCount = todayPlays.Count(IsFullCombo);
+        OnPropertyChanged(nameof(HasHomeBestUpdates));
+        OnPropertyChanged(nameof(HomeBestUpdateSummaryDisplay));
+    }
+
+    private void ClearHomeData()
+    {
+        HomeLatestPlay = null;
+        HomeRecentPlays.Clear();
+        HomeBestUpdates.Clear();
+        HomeTodayDateDisplay = DateTimeOffset.Now.ToString(
+            "yyyy/MM/dd",
+            CultureInfo.CurrentCulture);
+        HomeTodayPlayCount = 0;
+        HomeTodayScoreUpdateCount = 0;
+        HomeTodayExScoreUpdateCount = 0;
+        HomeTodayFullComboCount = 0;
+        OnPropertyChanged(nameof(HasHomeBestUpdates));
+        OnPropertyChanged(nameof(HomeBestUpdateSummaryDisplay));
+    }
+
+    private static IReadOnlyList<HomePlayItem> BuildHomePlayItems(
+        IReadOnlyList<PlayHistoryItem> plays)
+    {
+        var bestByChart = new Dictionary<(string SongId, string ChartId), (int Score, int ExScore)>();
+        var projectedByPlayId = new Dictionary<string, HomePlayItem>(StringComparer.Ordinal);
+        var chronologicalPlays = plays
+            .Select((play, index) => new { play, index })
+            .OrderBy(item => ParseTimestamp(item.play.PlayedAt))
+            .ThenByDescending(item => item.index)
+            .ToArray();
+
+        foreach (var entry in chronologicalPlays)
+        {
+            var key = (entry.play.SongId, entry.play.ChartId);
+            var previous = bestByChart.TryGetValue(key, out var best)
+                ? best
+                : ((int Score, int ExScore)?)null;
+            var projected = new HomePlayItem(
+                entry.play,
+                previous?.Score,
+                previous?.ExScore);
+            projectedByPlayId[entry.play.PlayId] = projected;
+
+            bestByChart[key] = (
+                previous is null ? entry.play.Score : Math.Max(previous.Value.Score, entry.play.Score),
+                previous is null
+                    ? entry.play.ExScore
+                    : Math.Max(previous.Value.ExScore, entry.play.ExScore));
+        }
+
+        return plays
+            .Where(play => projectedByPlayId.ContainsKey(play.PlayId))
+            .Select(play => projectedByPlayId[play.PlayId])
+            .ToArray();
+    }
+
+    private static DateTimeOffset ParseTimestamp(string value) =>
+        DateTimeOffset.TryParse(
+            value,
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.AllowWhiteSpaces | DateTimeStyles.AssumeUniversal,
+            out var timestamp)
+            ? timestamp
+            : DateTimeOffset.MinValue;
+
+    private static bool IsLocalDate(string value, DateTime date)
+    {
+        var timestamp = ParseTimestamp(value);
+        return timestamp != DateTimeOffset.MinValue && timestamp.ToLocalTime().Date == date;
+    }
+
+    private static bool IsFullCombo(HomePlayItem play) => play.ClearDisplay is
+        "PFC" or "GFC" or "FC" or "MFC";
 
     private static string BuildMasterDatabaseBlockMessage(
         MasterDatabaseInspection masterInspection,

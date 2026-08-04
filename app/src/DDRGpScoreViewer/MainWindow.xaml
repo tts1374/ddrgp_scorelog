@@ -3,13 +3,14 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:controls="clr-namespace:DDRGpScoreViewer.Controls"
         Title="GP Score Log" Width="1280" Height="760"
-        MinWidth="960" MinHeight="640" WindowStartupLocation="CenterScreen">
+        MinWidth="960" MinHeight="640" WindowStartupLocation="CenterScreen"
+        SizeChanged="MainWindow_SizeChanged">
     <Window.Resources>
         <DataTemplate x:Key="FlareBadgeOrPlaceholderTemplate">
             <Grid>
                 <Border x:Name="FlareBadge" Style="{StaticResource FlareBadgeStyle}"
-                        Tag="{Binding FlareBadgeGroup}">
-                    <TextBlock Text="{Binding FlareRankDisplay}"
+                        Tag="{Binding FlareBadgeGroup, Mode=OneWay}">
+                    <TextBlock Text="{Binding FlareRankDisplay, Mode=OneWay}"
                                Style="{StaticResource BadgeTextStyle}" />
                 </Border>
                 <TextBlock x:Name="FlarePlaceholder" Text="—" Visibility="Collapsed"
@@ -23,6 +24,78 @@
                 </DataTrigger>
             </DataTemplate.Triggers>
         </DataTemplate>
+
+        <Style x:Key="HomeSectionLinkStyle" TargetType="Button">
+            <Setter Property="Foreground" Value="{StaticResource AccentPrimaryBrush}" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <ContentPresenter />
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Foreground" Value="{StaticResource AccentHoverBrush}" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="HomeSummaryCardStyle" TargetType="Border"
+               BasedOn="{StaticResource CardStyle}">
+            <Setter Property="Padding" Value="14,14" />
+            <Setter Property="MinHeight" Value="100" />
+        </Style>
+
+        <Style x:Key="HomeDeltaChipStyle" TargetType="Border">
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Padding" Value="9,5" />
+            <Setter Property="HorizontalAlignment" Value="Left" />
+            <Setter Property="Background" Value="#F1F5F9" />
+            <Setter Property="BorderBrush" Value="{StaticResource BorderDefaultBrush}" />
+            <Setter Property="TextElement.Foreground" Value="{StaticResource TextSecondaryBrush}" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="Up">
+                    <Setter Property="Background" Value="{StaticResource AccentSubtleBrush}" />
+                    <Setter Property="BorderBrush" Value="{StaticResource AccentPrimaryBrush}" />
+                    <Setter Property="TextElement.Foreground" Value="{StaticResource AccentPrimaryBrush}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="Down">
+                    <Setter Property="Background" Value="#FEF2F2" />
+                    <Setter Property="BorderBrush" Value="#FECACA" />
+                    <Setter Property="TextElement.Foreground" Value="{StaticResource DangerBrush}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="First">
+                    <Setter Property="Background" Value="#DBEAFE" />
+                    <Setter Property="BorderBrush" Value="#93C5FD" />
+                    <Setter Property="TextElement.Foreground" Value="#1D4ED8" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="HomeDeltaTextStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="Up">
+                    <Setter Property="Foreground" Value="{StaticResource AccentPrimaryBrush}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="Down">
+                    <Setter Property="Foreground" Value="{StaticResource DangerBrush}" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="First">
+                    <Setter Property="Foreground" Value="#1D4ED8" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
     </Window.Resources>
     <Grid MinWidth="0" MinHeight="0">
         <Grid.ColumnDefinitions>
@@ -86,9 +159,9 @@
                                        FontSize="11" Margin="0,4,0,0" />
                         </StackPanel>
                     </Border>
-                    <Button x:Name="HomeNavigation" Content="ホーム"
-                            Style="{StaticResource SidebarButtonStyle}" IsEnabled="False" />
-                    <Button x:Name="BestNavigation" Content="自己ベスト" Tag="Selected"
+                    <Button x:Name="HomeNavigation" Content="ホーム" Tag="Selected"
+                            Style="{StaticResource SidebarButtonStyle}" Click="ShowHome_Click" />
+                    <Button x:Name="BestNavigation" Content="自己ベスト"
                             Style="{StaticResource SidebarButtonStyle}" Click="ShowBest_Click" />
                     <Button x:Name="HistoryNavigation" Content="直近プレー履歴"
                             Style="{StaticResource SidebarButtonStyle}" Click="ShowHistory_Click" />
@@ -110,9 +183,9 @@
             <!-- Debug build actions remain available to the existing debug workflow, but are not part of the user-facing mock layout. -->
             <DockPanel x:Name="ActionBar" Visibility="Collapsed" />
             <StackPanel Grid.Row="0">
-                <TextBlock x:Name="PageTitle" Text="自己ベスト" FontSize="24" FontWeight="SemiBold" />
+                <TextBlock x:Name="PageTitle" Text="ホーム" FontSize="24" FontWeight="SemiBold" />
                 <TextBlock x:Name="PageSubtitle"
-                           Text="保存済み全履歴から算出した譜面別ベスト"
+                           Text="今日のプレー状況と最近の記録を確認できます"
                            Foreground="{StaticResource TextSecondaryBrush}"
                            FontSize="12" Margin="0,4,0,0" />
             </StackPanel>
@@ -125,6 +198,363 @@
                 <TabControl.Resources>
                     <Style TargetType="TabItem"><Setter Property="Visibility" Value="Collapsed" /></Style>
                 </TabControl.Resources>
+                <TabItem>
+                    <ScrollViewer x:Name="HomeScrollViewer"
+                                  HorizontalScrollBarVisibility="Disabled"
+                                  VerticalScrollBarVisibility="Auto"
+                                  Padding="0,0,8,0">
+                        <StackPanel MinWidth="0">
+                            <StackPanel Margin="0,0,0,16">
+                                <TextBlock Text="今日のプレー状況" FontSize="15" FontWeight="SemiBold" />
+                                <TextBlock Foreground="{StaticResource TextSecondaryBrush}"
+                                           FontSize="11" Margin="0,3,0,8">
+                                    <Run Text="{Binding HomeTodayDateDisplay, Mode=OneWay}" />
+                                    <Run Text=" の保存済みプレーデータ" />
+                                </TextBlock>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <Border Grid.Column="0" Style="{StaticResource HomeSummaryCardStyle}"
+                                            BorderBrush="{StaticResource AccentPrimaryBrush}"
+                                            BorderThickness="4,1,1,1" Margin="0,0,12,0">
+                                        <StackPanel>
+                                            <TextBlock Text="プレー数" Foreground="{StaticResource TextSecondaryBrush}"
+                                                       FontSize="11" FontWeight="SemiBold" />
+                                            <TextBlock Text="{Binding HomeTodayPlayCount, Mode=OneWay, StringFormat={}{0:N0}}"
+                                                       FontSize="26" FontWeight="Bold" FontFamily="Consolas"
+                                                       Margin="0,5,0,0" />
+                                            <TextBlock Text="今日保存されたプレー" Foreground="{StaticResource TextSecondaryBrush}"
+                                                       FontSize="10" Margin="0,5,0,0" />
+                                        </StackPanel>
+                                    </Border>
+                                    <Border Grid.Column="1" Style="{StaticResource HomeSummaryCardStyle}"
+                                            BorderBrush="#10B981" BorderThickness="4,1,1,1" Margin="0,0,12,0">
+                                        <StackPanel>
+                                            <TextBlock Text="自己ベスト更新" Foreground="{StaticResource TextSecondaryBrush}"
+                                                       FontSize="11" FontWeight="SemiBold" />
+                                            <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
+                                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding HomeTodayScoreUpdateCount, Mode=OneWay, StringFormat={}{0:N0}}"
+                                                               FontSize="24" FontWeight="Bold" FontFamily="Consolas" />
+                                                    <TextBlock Text="通常" Foreground="{StaticResource TextSecondaryBrush}"
+                                                               FontSize="10" FontWeight="SemiBold" Margin="5,0,0,0" />
+                                                </StackPanel>
+                                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center"
+                                                            Margin="18,0,0,0">
+                                                    <TextBlock Text="{Binding HomeTodayExScoreUpdateCount, Mode=OneWay, StringFormat={}{0:N0}}"
+                                                               FontSize="24" FontWeight="Bold" FontFamily="Consolas" />
+                                                    <TextBlock Text="EX" Foreground="{StaticResource TextSecondaryBrush}"
+                                                               FontSize="10" FontWeight="SemiBold" Margin="5,0,0,0" />
+                                                </StackPanel>
+                                            </StackPanel>
+                                            <TextBlock Text="今日の更新プレー" Foreground="{StaticResource TextSecondaryBrush}"
+                                                       FontSize="10" Margin="0,5,0,0" />
+                                        </StackPanel>
+                                    </Border>
+                                    <Border Grid.Column="2" Style="{StaticResource HomeSummaryCardStyle}"
+                                            BorderBrush="#FACC15" BorderThickness="4,1,1,1">
+                                        <StackPanel>
+                                            <TextBlock Text="フルコンボ数" Foreground="{StaticResource TextSecondaryBrush}"
+                                                       FontSize="11" FontWeight="SemiBold" />
+                                            <TextBlock Text="{Binding HomeTodayFullComboCount, Mode=OneWay, StringFormat={}{0:N0}}"
+                                                       FontSize="26" FontWeight="Bold" FontFamily="Consolas"
+                                                       Margin="0,5,0,0" />
+                                            <TextBlock Text="FC以上の記録" Foreground="{StaticResource TextSecondaryBrush}"
+                                                       FontSize="10" Margin="0,5,0,0" />
+                                        </StackPanel>
+                                    </Border>
+                                </Grid>
+                            </StackPanel>
+
+                            <Border Style="{StaticResource CardStyle}" Padding="0" Margin="0,0,0,16">
+                                <StackPanel>
+                                    <Grid Margin="16,12,16,12">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel>
+                                            <TextBlock Text="プレー履歴" FontSize="15" FontWeight="SemiBold" />
+                                            <TextBlock Text="最新のプレーと直近5件"
+                                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                                       FontSize="11" Margin="0,2,0,0" />
+                                        </StackPanel>
+                                        <Button Grid.Column="1" Content="履歴を見る"
+                                                Style="{StaticResource HomeSectionLinkStyle}"
+                                                Click="ShowHistory_Click" />
+                                    </Grid>
+
+                                    <Border x:Name="HomeLatestPlayCard" Background="{StaticResource SurfaceSecondaryBrush}"
+                                            BorderBrush="{StaticResource BorderDefaultBrush}" BorderThickness="0,1,0,1"
+                                            Padding="16" DataContext="{Binding HomeLatestPlay, Mode=OneWay}">
+                                        <StackPanel MinWidth="0">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <Border Background="{StaticResource AccentSubtleBrush}"
+                                                        BorderBrush="#93C5FD" BorderThickness="1"
+                                                        CornerRadius="6" Padding="9,4"
+                                                        HorizontalAlignment="Left">
+                                                    <TextBlock Text="最新" Foreground="#1D4ED8"
+                                                               FontSize="11" FontWeight="Bold" />
+                                                </Border>
+                                                <TextBlock Grid.Column="1" Text="{Binding LatestPlayedAtDisplay, Mode=OneWay}"
+                                                           Foreground="{StaticResource TextSecondaryBrush}"
+                                                           FontSize="11" HorizontalAlignment="Right" />
+                                            </Grid>
+                                            <TextBlock Text="{Binding SongTitle, Mode=OneWay}" FontSize="19" FontWeight="Bold"
+                                                       TextWrapping="Wrap" TextTrimming="None" Margin="0,12,0,0" />
+                                            <Grid x:Name="LatestFeaturedBody" Margin="0,12,0,0" MinWidth="0">
+                                                <Grid.RowDefinitions>
+                                                    <RowDefinition Height="Auto" />
+                                                    <RowDefinition Height="Auto" />
+                                                </Grid.RowDefinitions>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="1.55*" MinWidth="0" />
+                                                    <ColumnDefinition Width="1*" MinWidth="250" />
+                                                </Grid.ColumnDefinitions>
+                                                <StackPanel x:Name="LatestMain" Grid.Row="0" Grid.Column="0"
+                                                            MinWidth="0" Margin="0,0,24,0">
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <Border Style="{StaticResource DifficultyBadgeStyle}">
+                                                            <TextBlock Text="{Binding Difficulty, Mode=OneWay}"
+                                                                       Style="{StaticResource DifficultyBadgeTextStyle}" />
+                                                        </Border>
+                                                        <TextBlock Text="{Binding PlayStyleDisplay, Mode=OneWay}" FontWeight="SemiBold"
+                                                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                                                   Margin="8,0,0,0" VerticalAlignment="Center" />
+                                                        <TextBlock Text=" / " Foreground="{StaticResource TextSecondaryBrush}"
+                                                                   VerticalAlignment="Center" />
+                                                        <TextBlock Text="{Binding LevelDisplay, Mode=OneWay}" FontWeight="SemiBold"
+                                                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                                                   VerticalAlignment="Center" />
+                                                    </StackPanel>
+                                                    <StackPanel Orientation="Horizontal" Margin="0,10,0,0"
+                                                                VerticalAlignment="Center">
+                                                        <TextBlock Text="{Binding ScoreDisplay, Mode=OneWay}" FontSize="30" FontWeight="Bold"
+                                                                   FontFamily="Consolas" />
+                                                        <TextBlock Foreground="{StaticResource TextSecondaryBrush}"
+                                                                   FontSize="12" FontWeight="SemiBold" Margin="14,0,0,0">
+                                                            <Run Text="EX SCORE " />
+                                                            <Run Text="{Binding ExScoreDisplay, Mode=OneWay}" />
+                                                        </TextBlock>
+                                                    </StackPanel>
+                                                    <WrapPanel Margin="0,10,0,0" ItemHeight="27">
+                                                        <Border Style="{StaticResource RankBadgeStyle}"
+                                                                Tag="{Binding RankBadgeGroup, Mode=OneWay}" Margin="0,0,6,4">
+                                                            <TextBlock Style="{StaticResource BadgeTextStyle}">
+                                                                <Run Text="RANK " /><Run Text="{Binding Rank, Mode=OneWay}" />
+                                                            </TextBlock>
+                                                        </Border>
+                                                        <Border Style="{StaticResource ClearBadgeStyle}"
+                                                                Tag="{Binding ClearBadgeGroup, Mode=OneWay}" Margin="0,0,6,4">
+                                                            <TextBlock Text="{Binding ClearDisplay, Mode=OneWay}"
+                                                                       Style="{StaticResource BadgeTextStyle}" />
+                                                        </Border>
+                                                        <ContentControl Content="{Binding}"
+                                                                        ContentTemplate="{StaticResource FlareBadgeOrPlaceholderTemplate}"
+                                                                        Margin="0,0,6,4"
+                                                                        HorizontalContentAlignment="Left"
+                                                                        VerticalContentAlignment="Center" />
+                                                        <StackPanel Orientation="Horizontal" Margin="3,0,0,4"
+                                                                    VerticalAlignment="Center">
+                                                            <TextBlock Text="{Binding PreviousScoreDisplay, Mode=OneWay}"
+                                                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                                                       FontSize="10" />
+                                                            <TextBlock Text="{Binding PreviousExScoreDisplay, Mode=OneWay}"
+                                                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                                                       FontSize="10" Margin="9,0,0,0" />
+                                                        </StackPanel>
+                                                    </WrapPanel>
+                                                </StackPanel>
+                                                <Border x:Name="LatestInfoBorder" Grid.Row="0" Grid.Column="1"
+                                                        BorderBrush="{StaticResource BorderDefaultBrush}" BorderThickness="1,0,0,0"
+                                                        Padding="18,0,0,0" MinWidth="0">
+                                                    <StackPanel>
+                                                        <StackPanel Margin="0,0,0,10">
+                                                            <TextBlock Text="通常スコア自己ベスト差"
+                                                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                                                       FontSize="11" FontWeight="SemiBold" />
+                                                            <Border Style="{StaticResource HomeDeltaChipStyle}"
+                                                                    Tag="{Binding ScoreBestDeltaGroup, Mode=OneWay}" Margin="0,3,0,0">
+                                                                <TextBlock Text="{Binding ScoreBestDeltaDisplay, Mode=OneWay}"
+                                                                           Style="{StaticResource HomeDeltaTextStyle}"
+                                                                           Tag="{Binding ScoreBestDeltaGroup, Mode=OneWay}" />
+                                                            </Border>
+                                                        </StackPanel>
+                                                        <StackPanel>
+                                                            <TextBlock Text="EXスコア自己ベスト差"
+                                                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                                                       FontSize="11" FontWeight="SemiBold" />
+                                                            <Border Style="{StaticResource HomeDeltaChipStyle}"
+                                                                    Tag="{Binding ExScoreBestDeltaGroup, Mode=OneWay}" Margin="0,3,0,0">
+                                                                <TextBlock Text="{Binding ExScoreBestDeltaDisplay, Mode=OneWay}"
+                                                                           Style="{StaticResource HomeDeltaTextStyle}"
+                                                                           Tag="{Binding ExScoreBestDeltaGroup, Mode=OneWay}" />
+                                                            </Border>
+                                                        </StackPanel>
+                                                    </StackPanel>
+                                                </Border>
+                                            </Grid>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <ItemsControl ItemsSource="{Binding HomeRecentPlays}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border BorderBrush="{StaticResource BorderDefaultBrush}" BorderThickness="0,0,0,1"
+                                                        Padding="12,12" MinWidth="0">
+                                                    <Grid MinWidth="0">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="92" />
+                                                            <ColumnDefinition Width="*" MinWidth="0" />
+                                                            <ColumnDefinition Width="Auto" />
+                                                        </Grid.ColumnDefinitions>
+                                                         <TextBlock Text="{Binding HomePlayedAtDisplay, Mode=OneWay}"
+                                                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                                                   FontSize="11" VerticalAlignment="Top" />
+                                                        <StackPanel Grid.Column="1" MinWidth="0">
+                                                            <TextBlock Text="{Binding SongTitle, Mode=OneWay}" FontWeight="SemiBold"
+                                                                       TextTrimming="CharacterEllipsis" />
+                                                            <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                                                                <Border Style="{StaticResource DifficultyBadgeStyle}">
+                                                                    <TextBlock Text="{Binding ChartDisplay, Mode=OneWay}"
+                                                                               Style="{StaticResource DifficultyBadgeTextStyle}" />
+                                                                </Border>
+                                                                <TextBlock Text="{Binding LevelDisplay, Mode=OneWay}"
+                                                                           Foreground="{StaticResource TextSecondaryBrush}"
+                                                                           FontSize="11" Margin="10,0,0,0"
+                                                                           VerticalAlignment="Center" />
+                                                            </StackPanel>
+                                                            <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                                                                <TextBlock Text="{Binding ScoreDisplay, Mode=OneWay}" FontFamily="Consolas"
+                                                                           FontSize="12" FontWeight="Bold" />
+                                                                <TextBlock Foreground="{StaticResource TextSecondaryBrush}"
+                                                                           FontSize="11" Margin="10,0,0,0">
+                                                                    <Run Text="EX " /><Run Text="{Binding ExScoreDisplay, Mode=OneWay}" />
+                                                                </TextBlock>
+                                                            </StackPanel>
+                                                        </StackPanel>
+                                                        <StackPanel Grid.Column="2" HorizontalAlignment="Right"
+                                                                    VerticalAlignment="Center" Margin="12,0,0,0">
+                                                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                                                <Border Style="{StaticResource RankBadgeStyle}"
+                                                                        Tag="{Binding RankBadgeGroup, Mode=OneWay}" Margin="0,0,5,0">
+                                                                    <TextBlock Text="{Binding Rank, Mode=OneWay}"
+                                                                               Style="{StaticResource BadgeTextStyle}" />
+                                                                </Border>
+                                                                <Border Style="{StaticResource ClearBadgeStyle}"
+                                                                        Tag="{Binding ClearBadgeGroup, Mode=OneWay}" Margin="0,0,5,0">
+                                                                    <TextBlock Text="{Binding ClearDisplay, Mode=OneWay}"
+                                                                               Style="{StaticResource BadgeTextStyle}" />
+                                                                </Border>
+                                                                <ContentControl Content="{Binding}"
+                                                                                ContentTemplate="{StaticResource FlareBadgeOrPlaceholderTemplate}"
+                                                                                HorizontalContentAlignment="Left"
+                                                                                VerticalContentAlignment="Center" />
+                                                            </StackPanel>
+                                                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"
+                                                                        Margin="0,5,0,0">
+                                                                <TextBlock Tag="{Binding ScoreBestDeltaGroup, Mode=OneWay}"
+                                                                           Style="{StaticResource HomeDeltaTextStyle}">
+                                                                    <Run Text="SCORE " /><Run Text="{Binding ScoreBestDeltaDisplay, Mode=OneWay}" />
+                                                                </TextBlock>
+                                                                <TextBlock Tag="{Binding ExScoreBestDeltaGroup, Mode=OneWay}"
+                                                                           Style="{StaticResource HomeDeltaTextStyle}" Margin="9,0,0,0">
+                                                                    <Run Text="EX " /><Run Text="{Binding ExScoreBestDeltaDisplay, Mode=OneWay}" />
+                                                                </TextBlock>
+                                                            </StackPanel>
+                                                        </StackPanel>
+                                                    </Grid>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+                            </Border>
+
+                            <Border Style="{StaticResource CardStyle}" Padding="0">
+                                <StackPanel>
+                                    <Grid Margin="16,12,16,12">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel>
+                                            <TextBlock Text="最近の自己ベスト更新" FontSize="15" FontWeight="SemiBold" />
+                                            <TextBlock Text="{Binding HomeBestUpdateSummaryDisplay, Mode=OneWay}"
+                                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                                       FontSize="11" Margin="0,2,0,0" />
+                                        </StackPanel>
+                                        <Button Grid.Column="1" Content="自己ベストを見る"
+                                                Style="{StaticResource HomeSectionLinkStyle}"
+                                                Click="ShowBest_Click" />
+                                    </Grid>
+                                    <ItemsControl ItemsSource="{Binding HomeBestUpdates}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border BorderBrush="{StaticResource BorderDefaultBrush}" BorderThickness="0,1,0,0"
+                                                        Padding="12,12" MinWidth="0">
+                                                    <Grid MinWidth="0">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="112" />
+                                                            <ColumnDefinition Width="*" MinWidth="0" />
+                                                            <ColumnDefinition Width="230" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBlock Text="{Binding HomePlayedAtDisplay, Mode=OneWay}"
+                                                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                                                   FontSize="11" VerticalAlignment="Top" />
+                                                        <StackPanel Grid.Column="1" MinWidth="0">
+                                                            <TextBlock Text="{Binding SongTitle, Mode=OneWay}" FontWeight="SemiBold"
+                                                                       TextTrimming="CharacterEllipsis" />
+                                                            <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                                                                <Border Style="{StaticResource DifficultyBadgeStyle}">
+                                                                    <TextBlock Text="{Binding ChartDisplay, Mode=OneWay}"
+                                                                               Style="{StaticResource DifficultyBadgeTextStyle}" />
+                                                                </Border>
+                                                                <TextBlock Text="{Binding LevelDisplay, Mode=OneWay}"
+                                                                           Foreground="{StaticResource TextSecondaryBrush}"
+                                                                           FontSize="11" Margin="10,0,0,0"
+                                                                           VerticalAlignment="Center" />
+                                                            </StackPanel>
+                                                        </StackPanel>
+                                                        <Grid Grid.Column="2" Margin="16,0,0,0">
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="*" />
+                                                                <ColumnDefinition Width="*" />
+                                                            </Grid.ColumnDefinitions>
+                                                            <StackPanel>
+                                                                <TextBlock Text="通常SCORE" Foreground="{StaticResource TextSecondaryBrush}"
+                                                                           FontSize="10" FontWeight="SemiBold" />
+                                                                <TextBlock Text="{Binding ScoreUpdateAmountDisplay, Mode=OneWay}"
+                                                                           Foreground="{StaticResource AccentPrimaryBrush}"
+                                                                           FontSize="12" FontWeight="Bold" FontFamily="Consolas"
+                                                                           Margin="0,3,0,0" />
+                                                            </StackPanel>
+                                                            <StackPanel Grid.Column="1">
+                                                                <TextBlock Text="EX SCORE" Foreground="{StaticResource TextSecondaryBrush}"
+                                                                           FontSize="10" FontWeight="SemiBold" />
+                                                                <TextBlock Text="{Binding ExScoreUpdateAmountDisplay, Mode=OneWay}"
+                                                                           Foreground="{StaticResource AccentPrimaryBrush}"
+                                                                           FontSize="12" FontWeight="Bold" FontFamily="Consolas"
+                                                                           Margin="0,3,0,0" />
+                                                            </StackPanel>
+                                                        </Grid>
+                                                    </Grid>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </ScrollViewer>
+                </TabItem>
                 <TabItem>
                     <Border Style="{StaticResource CardStyle}" Padding="0">
                         <Grid>
