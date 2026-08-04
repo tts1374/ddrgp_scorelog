@@ -23,6 +23,7 @@ namespace DDRGpScoreViewer;
 
 public partial class MainWindow : System.Windows.Window
 {
+    private const double HomeSingleColumnThreshold = 1100;
     private readonly MainViewModel viewModel;
     private readonly AsyncOperationGate monitoringStartGate = new();
     private readonly CancellationTokenSource applicationExitCancellation = new();
@@ -60,6 +61,7 @@ public partial class MainWindow : System.Windows.Window
                 ? new ApplicationUpdateService()
                 : null);
         DataContext = viewModel;
+        ApplyHomeResponsiveLayout(Width);
 #if DEBUG
         AddDeveloperActions();
 #endif
@@ -364,20 +366,63 @@ public partial class MainWindow : System.Windows.Window
     }
 #endif
 
-    private void ShowBest_Click(object sender, RoutedEventArgs e)
+    private void MainWindow_SizeChanged(object sender, SizeChangedEventArgs e) =>
+        ApplyHomeResponsiveLayout(e.NewSize.Width);
+
+    private void ApplyHomeResponsiveLayout(double windowWidth)
+    {
+        if (LatestFeaturedBody is null || LatestInfoBorder is null || LatestMain is null)
+        {
+            return;
+        }
+
+        var singleColumn = windowWidth <= HomeSingleColumnThreshold;
+        LatestFeaturedBody.ColumnDefinitions[1].Width = singleColumn
+            ? new GridLength(0)
+            : new GridLength(1, GridUnitType.Star);
+        LatestFeaturedBody.ColumnDefinitions[1].MinWidth = singleColumn ? 0 : 250;
+        Grid.SetColumn(LatestInfoBorder, singleColumn ? 0 : 1);
+        Grid.SetRow(LatestInfoBorder, singleColumn ? 1 : 0);
+        LatestMain.Margin = singleColumn
+            ? new Thickness(0)
+            : new Thickness(0, 0, 24, 0);
+        LatestInfoBorder.Margin = singleColumn
+            ? new Thickness(0, 12, 0, 0)
+            : new Thickness(0);
+        LatestInfoBorder.Padding = singleColumn
+            ? new Thickness(0, 12, 0, 0)
+            : new Thickness(18, 0, 0, 0);
+        LatestInfoBorder.BorderThickness = singleColumn
+            ? new Thickness(0, 1, 0, 0)
+            : new Thickness(1, 0, 0, 0);
+    }
+
+    private void ShowHome_Click(object sender, RoutedEventArgs e)
     {
         ContentTabs.SelectedIndex = 0;
+        PageTitle.Text = "ホーム";
+        PageSubtitle.Text = "今日のプレー状況と最近の記録を確認できます";
+        HomeNavigation.Tag = "Selected";
+        BestNavigation.Tag = null;
+        HistoryNavigation.Tag = null;
+    }
+
+    private void ShowBest_Click(object sender, RoutedEventArgs e)
+    {
+        ContentTabs.SelectedIndex = 1;
         PageTitle.Text = "自己ベスト";
         PageSubtitle.Text = "保存済み全履歴から算出した譜面別ベスト";
+        HomeNavigation.Tag = null;
         BestNavigation.Tag = "Selected";
         HistoryNavigation.Tag = null;
     }
 
     private void ShowHistory_Click(object sender, RoutedEventArgs e)
     {
-        ContentTabs.SelectedIndex = 1;
+        ContentTabs.SelectedIndex = 2;
         PageTitle.Text = "直近プレー履歴";
         PageSubtitle.Text = "このアプリを起動してから記録されたプレーを表示します";
+        HomeNavigation.Tag = null;
         BestNavigation.Tag = null;
         HistoryNavigation.Tag = "Selected";
     }
