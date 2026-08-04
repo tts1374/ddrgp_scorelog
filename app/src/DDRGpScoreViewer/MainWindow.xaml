@@ -23,29 +23,11 @@
                 </DataTrigger>
             </DataTemplate.Triggers>
         </DataTemplate>
-        <DataTemplate x:Key="DetailFlareBadgeOrPlaceholderTemplate">
-            <Grid>
-                <Border x:Name="FlareBadge" Style="{StaticResource DetailFlareBadgeStyle}"
-                        Tag="{Binding FlareBadgeGroup}">
-                    <TextBlock Text="{Binding FlareRankDisplay}"
-                               Style="{StaticResource DetailBadgeTextStyle}" />
-                </Border>
-                <TextBlock x:Name="FlarePlaceholder" Text="—" Visibility="Collapsed"
-                           Foreground="{StaticResource TextSecondaryBrush}"
-                           FontSize="12" VerticalAlignment="Center" />
-            </Grid>
-            <DataTemplate.Triggers>
-                <DataTrigger Binding="{Binding FlareBadgeGroup}" Value="None">
-                    <Setter TargetName="FlareBadge" Property="Visibility" Value="Collapsed" />
-                    <Setter TargetName="FlarePlaceholder" Property="Visibility" Value="Visible" />
-                </DataTrigger>
-            </DataTemplate.Triggers>
-        </DataTemplate>
     </Window.Resources>
-    <Grid>
+    <Grid MinWidth="0" MinHeight="0">
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="230" />
-            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="*" MinWidth="0" />
         </Grid.ColumnDefinitions>
 
         <Border Grid.Column="0" Background="{StaticResource BackgroundSidebarBrush}">
@@ -95,16 +77,19 @@
                     </StackPanel>
                 </Border>
                 <StackPanel>
-                    <StackPanel Margin="20,20,20,18">
-                        <TextBlock Text="GP Score Log" Foreground="White"
-                                   FontSize="20" FontWeight="Bold" />
-                        <TextBlock Text="DDR GRAND PRIX Score Tracker" Foreground="#94A3B8"
-                                   FontSize="11" Margin="0,4,0,0" />
-                    </StackPanel>
-                    <Button Content="ホーム" Style="{StaticResource SidebarButtonStyle}" IsEnabled="False" />
+                    <Border BorderBrush="#263A56" BorderThickness="0,0,0,1"
+                            Padding="20,20,20,20">
+                        <StackPanel>
+                            <TextBlock Text="GP Score Log" Foreground="White"
+                                       FontSize="20" FontWeight="Bold" />
+                            <TextBlock Text="DDR GRAND PRIX Score Tracker" Foreground="#94A3B8"
+                                       FontSize="11" Margin="0,4,0,0" />
+                        </StackPanel>
+                    </Border>
+                    <Button x:Name="HomeNavigation" Content="ホーム"
+                            Style="{StaticResource SidebarButtonStyle}" IsEnabled="False" />
                     <Button x:Name="BestNavigation" Content="自己ベスト" Tag="Selected"
                             Style="{StaticResource SidebarButtonStyle}" Click="ShowBest_Click" />
-                    <Button Content="楽曲・譜面" Style="{StaticResource SidebarButtonStyle}" IsEnabled="False" />
                     <Button x:Name="HistoryNavigation" Content="直近プレー履歴"
                             Style="{StaticResource SidebarButtonStyle}" Click="ShowHistory_Click" />
                     <Separator Margin="16,10" Background="#50627B" />
@@ -115,7 +100,7 @@
             </DockPanel>
         </Border>
 
-        <Grid Grid.Column="1" Margin="28,24">
+        <Grid Grid.Column="1" Margin="28,24" MinWidth="0" MinHeight="0">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
                 <RowDefinition Height="20" />
@@ -266,19 +251,19 @@
                                         </TextBlock>
                                     </StackPanel>
                                     <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
-                                        <Border Style="{StaticResource DetailRankBadgeStyle}" Tag="{Binding RankBadgeGroup}"
+                                        <Border Style="{StaticResource RankBadgeStyle}" Tag="{Binding RankBadgeGroup}"
                                                 Margin="0,0,6,0">
-                                            <TextBlock Style="{StaticResource DetailBadgeTextStyle}">
+                                            <TextBlock Style="{StaticResource BadgeTextStyle}">
                                                 <Run Text="RANK " /><Run Text="{Binding Rank}" />
                                             </TextBlock>
                                         </Border>
-                                        <Border Style="{StaticResource DetailClearBadgeStyle}" Tag="{Binding ClearBadgeGroup}"
+                                        <Border Style="{StaticResource ClearBadgeStyle}" Tag="{Binding ClearBadgeGroup}"
                                                 Margin="0,0,6,0">
                                             <TextBlock Text="{Binding ClearDisplay}"
-                                                       Style="{StaticResource DetailBadgeTextStyle}" />
+                                                       Style="{StaticResource BadgeTextStyle}" />
                                         </Border>
                                         <ContentControl Content="{Binding}"
-                                                        ContentTemplate="{StaticResource DetailFlareBadgeOrPlaceholderTemplate}"
+                                                        ContentTemplate="{StaticResource FlareBadgeOrPlaceholderTemplate}"
                                                         HorizontalContentAlignment="Left"
                                                         VerticalContentAlignment="Center" />
                                     </StackPanel>
