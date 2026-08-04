@@ -37,18 +37,19 @@
     </Style>
 
     <Style x:Key="SidebarButtonStyle" TargetType="Button">
-        <Setter Property="Foreground" Value="White" />
+        <Setter Property="Foreground" Value="#94A3B8" />
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="BorderThickness" Value="0" />
         <Setter Property="HorizontalContentAlignment" Value="Left" />
-        <Setter Property="Padding" Value="16,11" />
+        <Setter Property="Padding" Value="14,10" />
         <Setter Property="Margin" Value="8,2" />
         <Setter Property="Cursor" Value="Hand" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
                     <Border x:Name="SidebarBorder" Background="{TemplateBinding Background}"
-                            CornerRadius="6" Padding="{TemplateBinding Padding}">
+                            CornerRadius="8" Padding="{TemplateBinding Padding}"
+                            TextElement.Foreground="{TemplateBinding Foreground}">
                         <ContentPresenter />
                     </Border>
                     <ControlTemplate.Triggers>
@@ -57,6 +58,7 @@
                         </Trigger>
                         <Trigger Property="Tag" Value="Selected">
                             <Setter TargetName="SidebarBorder" Property="Background" Value="{StaticResource AccentPrimaryBrush}" />
+                            <Setter Property="Foreground" Value="White" />
                             <Setter Property="FontWeight" Value="SemiBold" />
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
@@ -78,6 +80,8 @@
 
     <Style x:Key="ViewerDataGridStyle" TargetType="DataGrid">
         <Setter Property="AutoGenerateColumns" Value="False" />
+        <Setter Property="MinWidth" Value="0" />
+        <Setter Property="MinHeight" Value="0" />
         <Setter Property="CanUserAddRows" Value="False" />
         <Setter Property="CanUserDeleteRows" Value="False" />
         <Setter Property="CanUserResizeRows" Value="False" />
@@ -94,6 +98,8 @@
         <Setter Property="RowBackground" Value="{StaticResource SurfacePrimaryBrush}" />
         <Setter Property="AlternatingRowBackground" Value="{StaticResource SurfaceSecondaryBrush}" />
         <Setter Property="SelectionUnit" Value="FullRow" />
+        <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Auto" />
+        <Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Auto" />
     </Style>
 
     <Style x:Key="BadgeTextStyle" TargetType="TextBlock">
@@ -105,16 +111,23 @@
         <Setter Property="TextWrapping" Value="NoWrap" />
     </Style>
 
-    <Style x:Key="RankBadgeStyle" TargetType="Border">
-        <Setter Property="Background" Value="#F1F5F9" />
-        <Setter Property="BorderBrush" Value="#94A3B8" />
+    <!-- Rank, CLEAR, and FLARE share one visual box. Only the state colors and
+         the content-dependent minimum width vary between badge types. -->
+    <Style x:Key="ResultBadgeStyle" TargetType="Border">
         <Setter Property="BorderThickness" Value="1" />
-        <Setter Property="CornerRadius" Value="5" />
-        <Setter Property="Padding" Value="6,2" />
-        <Setter Property="MinWidth" Value="42" />
+        <Setter Property="CornerRadius" Value="6" />
+        <Setter Property="Padding" Value="9,4" />
+        <Setter Property="MinHeight" Value="27" />
         <Setter Property="HorizontalAlignment" Value="Left" />
         <Setter Property="VerticalAlignment" Value="Center" />
         <Setter Property="TextElement.Foreground" Value="#334155" />
+    </Style>
+
+    <Style x:Key="RankBadgeStyle" TargetType="Border"
+           BasedOn="{StaticResource ResultBadgeStyle}">
+        <Setter Property="Background" Value="#F1F5F9" />
+        <Setter Property="BorderBrush" Value="#94A3B8" />
+        <Setter Property="MinWidth" Value="42" />
         <Style.Triggers>
             <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="Upper">
                 <Setter Property="Background" Value="#FEF3C7" />
@@ -144,15 +157,10 @@
         </Style.Triggers>
     </Style>
 
-    <Style x:Key="ClearBadgeStyle" TargetType="Border">
+    <Style x:Key="ClearBadgeStyle" TargetType="Border"
+           BasedOn="{StaticResource ResultBadgeStyle}">
         <Setter Property="Background" Value="#F1F5F9" />
         <Setter Property="BorderBrush" Value="#94A3B8" />
-        <Setter Property="BorderThickness" Value="1" />
-        <Setter Property="CornerRadius" Value="5" />
-        <Setter Property="Padding" Value="6,2" />
-        <Setter Property="HorizontalAlignment" Value="Left" />
-        <Setter Property="VerticalAlignment" Value="Center" />
-        <Setter Property="TextElement.Foreground" Value="#334155" />
         <Style.Triggers>
             <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="Pfc">
                 <Setter Property="Background" Value="#FEF3C7" />
@@ -197,16 +205,11 @@
         </Style.Triggers>
     </Style>
 
-    <Style x:Key="FlareBadgeStyle" TargetType="Border">
+    <Style x:Key="FlareBadgeStyle" TargetType="Border"
+           BasedOn="{StaticResource ResultBadgeStyle}">
         <Setter Property="Background" Value="#F1F5F9" />
         <Setter Property="BorderBrush" Value="#94A3B8" />
-        <Setter Property="BorderThickness" Value="1" />
-        <Setter Property="CornerRadius" Value="5" />
-        <Setter Property="Padding" Value="8,2" />
         <Setter Property="MinWidth" Value="74" />
-        <Setter Property="HorizontalAlignment" Value="Left" />
-        <Setter Property="VerticalAlignment" Value="Center" />
-        <Setter Property="TextElement.Foreground" Value="#334155" />
         <Style.Triggers>
             <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="I">
                 <Setter Property="Background" Value="#DBEAFE" />
@@ -269,32 +272,6 @@
                 <Setter Property="TextElement.Foreground" Value="#0F172A" />
             </DataTrigger>
         </Style.Triggers>
-    </Style>
-
-    <Style x:Key="DetailBadgeTextStyle" TargetType="TextBlock"
-           BasedOn="{StaticResource BadgeTextStyle}">
-        <Setter Property="FontSize" Value="12" />
-    </Style>
-
-    <Style x:Key="DetailRankBadgeStyle" TargetType="Border"
-           BasedOn="{StaticResource RankBadgeStyle}">
-        <Setter Property="CornerRadius" Value="6" />
-        <Setter Property="Padding" Value="10,4" />
-        <Setter Property="MinWidth" Value="0" />
-    </Style>
-
-    <Style x:Key="DetailClearBadgeStyle" TargetType="Border"
-           BasedOn="{StaticResource ClearBadgeStyle}">
-        <Setter Property="CornerRadius" Value="6" />
-        <Setter Property="Padding" Value="10,4" />
-        <Setter Property="MinWidth" Value="0" />
-    </Style>
-
-    <Style x:Key="DetailFlareBadgeStyle" TargetType="Border"
-           BasedOn="{StaticResource FlareBadgeStyle}">
-        <Setter Property="CornerRadius" Value="6" />
-        <Setter Property="Padding" Value="10,4" />
-        <Setter Property="MinWidth" Value="0" />
     </Style>
 
     <Style x:Key="DifficultyBadgeStyle" TargetType="Border">
