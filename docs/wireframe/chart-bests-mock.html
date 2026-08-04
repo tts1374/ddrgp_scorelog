@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DDR GP Score Log - 自己ベスト一覧 UI Mockup (v7)</title>
+  <style>
+    :root {
+      --bg-app: #F8FAFC;
+      --sidebar-bg: #152238;
+      --sidebar-active: #2563EB;
+      --sidebar-text: #94A3B8;
+      --sidebar-text-active: #FFFFFF;
+      --card-bg: #FFFFFF;
+      --border-color: #E2E8F0;
+      --text-main: #0F172A;
+      --text-muted: #64748B;
+      --primary: #2563EB;
+      --primary-hover: #1D4ED8;
+
+      /* DDR WORLD / 公式準拠カラー */
+      --diff-bgn: #00A3E0;
+      --diff-bas: #EAB308;
+      --diff-dif: #ED1C24;
+      --diff-exp: #10B981;
+      --diff-cha: #92278F;
+
+      /* DDR WORLD / リザルト画面のランクカラー */
+      --rank-upper: #FACC15; /* AAA〜A-: 黄 */
+      --rank-b: #38BDF8;     /* B+〜B-: 水色 */
+      --rank-c: #F472B6;     /* C+〜C-: 桃色 */
+      --rank-d: #EF4444;     /* D+〜D: 赤 */
+      --rank-e: #E2E8F0;     /* E: 白〜灰 */
+      --rank-upper-text: #854D0E;
+      --rank-b-text: #075985;
+      --rank-c-text: #9D174D;
+      --rank-d-text: #991B1B;
+      --rank-e-text: #334155;
+
+      /* DDR WORLD / クリアランプカラー */
+      --clear-pfc: #FACC15;  /* PFC: 黄 */
+      --clear-gfc: #22C55E;  /* GFC: 緑 */
+      --clear-fc: #2563EB;   /* FC: 青 */
+      --clear-cle: #38BDF8;  /* CLEAR: 水色 */
+      --clear-pfc-text: #854D0E;
+      --clear-gfc-text: #166534;
+      --clear-fc-text: #1E3A8A;
+      --clear-cle-text: #075985;
+
+      /* DDR WORLD / FLAREアイコンカラー */
+      --flare-ix: #FBBF24;   /* IX: 金 */
+      --flare-viii: #CBD5E1; /* VIII: 白銀 */
+      --flare-vii: #94A3B8;  /* VII: 灰色 */
+      --flare-vi: #8B5CF6;   /* VI: 紫 */
+      --flare-v: #EF4444;    /* V: 赤 */
+      --flare-iv: #FACC15;   /* IV: 黄 */
+      --flare-iii: #22C55E;  /* III: 緑 */
+      --flare-ii: #38BDF8;   /* II: 水色 */
+      --flare-i: #2563EB;    /* I: 青 */
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+    body { background: #CBD5E1; color: var(--text-main); display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; font-size: 14px; }
+
+    /* アプリウィンドウ */
+    .app-window { width: min(1280px, calc(100vw - 40px)); height: min(740px, calc(100vh - 40px)); min-height: 0; background: var(--bg-app); border: 1px solid #CBD5E1; border-radius: 12px; box-shadow: 0 20px 40px rgba(0,0,0,0.15); display: flex; overflow: hidden; }
+
+    /* サイドバー */
+    .sidebar { width: 230px; background: var(--sidebar-bg); display: flex; flex-direction: column; justify-content: space-between; padding: 20px 0; flex-shrink: 0; }
+    .brand { padding: 0 20px 20px 20px; border-bottom: 1px solid #263A56; }
+    .brand h1 { color: #FFF; font-size: 20px; font-weight: 800; letter-spacing: -0.5px; }
+    .brand p { color: var(--sidebar-text); font-size: 11px; margin-top: 2px; }
+
+    .nav-list { list-style: none; padding: 16px 12px; display: flex; flex-direction: column; gap: 4px; }
+    .nav-item a { display: flex; align-items: center; gap: 10px; padding: 10px 14px; color: var(--sidebar-text); text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 13px; transition: all 0.15s; }
+    .nav-item a:hover { color: #FFF; background: rgba(255,255,255,0.05); }
+    .nav-item.active a { background: var(--sidebar-active); color: var(--sidebar-text-active); }
+    .nav-divider { height: 1px; background: #263A56; margin: 8px 12px; }
+
+    /* サイドバー下部: 監視操作 & ステータス */
+    .sidebar-control-box { margin: 0 12px; padding: 14px; background: #1E293B; border-radius: 10px; border: 1px solid #334155; display: flex; flex-direction: column; gap: 12px; }
+    .status-badge { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 700; color: #38BDF8; }
+    .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #38BDF8; box-shadow: 0 0 8px #38BDF8; }
+    .status-sub { color: #94A3B8; font-size: 11px; }
+
+    .btn-monitor { width: 100%; padding: 10px; border-radius: 6px; font-weight: 800; font-size: 13px; cursor: pointer; border: none; text-align: center; transition: background 0.15s; }
+    .btn-start { background: var(--primary); color: #FFF; }
+    .btn-start:hover { background: var(--primary-hover); }
+
+    /* メインコンテンツエリア */
+    .main-content { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; padding: 24px 28px; overflow-y: auto; gap: 20px; }
+
+    /* ヘッダー */
+    .header-bar { display: flex; justify-content: space-between; align-items: flex-end; }
+    .page-title h2 { font-size: 24px; font-weight: 800; color: var(--text-main); }
+    .page-title p { font-size: 13px; color: var(--text-muted); margin-top: 2px; }
+
+    /* フィルター・切り替えバー */
+    .filter-card { background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 10px; padding: 10px 16px; display: flex; flex-direction: column; gap: 10px; align-items: stretch; }
+    .filter-main-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 16px; }
+    .style-segmented { display: flex; background: #F1F5F9; border-radius: 8px; padding: 3px; gap: 2px; }
+    .style-btn { padding: 6px 16px; border: none; background: transparent; font-weight: 700; font-size: 13px; color: var(--text-muted); border-radius: 6px; cursor: pointer; transition: all 0.15s; }
+    .style-btn.active { background: #FFF; color: var(--primary); box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+
+    .filter-group-wrapper { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px 16px; align-items: center; flex: 1; }
+    .filter-group { display: flex; align-items: center; gap: 8px; }
+    .filter-label { font-size: 12px; font-weight: 700; color: var(--text-muted); }
+    .filter-select, .filter-input { min-width: 86px; padding: 6px 10px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 13px; outline: none; background: #FFF; }
+    .filter-input { width: 220px; }
+    .filter-level-select { min-width: 100px; }
+
+    .advanced-filter { border-top: 1px solid var(--border-color); padding-top: 8px; }
+    .advanced-filter summary { display: flex; align-items: center; gap: 8px; list-style: none; cursor: pointer; color: var(--primary); font-size: 12px; font-weight: 800; }
+    .advanced-filter summary::-webkit-details-marker { display: none; }
+    .advanced-filter summary::before { content: "＋"; width: 16px; color: var(--primary); font-size: 14px; line-height: 1; }
+    .advanced-filter[open] summary::before { content: "−"; }
+    .advanced-filter-state { color: var(--text-muted); font-size: 11px; font-weight: 700; }
+    .advanced-filter-body { display: flex; flex-wrap: wrap; gap: 10px 18px; margin-top: 10px; padding-top: 10px; border-top: 1px solid #F1F5F9; }
+
+    .result-summary { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; color: var(--text-muted); font-size: 12px; }
+    .result-summary strong { color: var(--text-main); font-weight: 800; }
+    .result-summary-note { font-size: 11px; }
+
+    /* 自己ベスト一覧 */
+    .content-grid { display: flex; flex-direction: column; gap: 20px; flex: 1; min-height: 0; }
+
+    /* 自己ベストテーブル */
+    .table-panel { background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 10px; flex: 1; overflow-y: auto; display: flex; flex-direction: column; }
+    .table-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; margin-top: auto; padding: 10px 16px; border-top: 1px solid var(--border-color); background: #F8FAFC; color: var(--text-muted); font-size: 11px; }
+    .table-footer strong { color: var(--text-main); font-weight: 800; }
+    .load-more-hint { color: var(--primary); font-weight: 800; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    thead { position: sticky; top: 0; background: #F1F5F9; z-index: 10; }
+    th { padding: 12px 16px; text-align: left; font-size: 12px; font-weight: 700; color: var(--text-muted); border-bottom: 1px solid var(--border-color); }
+    td { padding: 12px 16px; border-bottom: 1px solid var(--border-color); color: var(--text-main); }
+    tbody tr { cursor: pointer; transition: background 0.1s; }
+    tbody tr:hover { background: #F8FAFC; }
+    tbody tr.selected { background: #EFF6FF; }
+    tbody tr.selected td { font-weight: 600; }
+
+    .chart-cell { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; }
+    .chart-level { color: var(--text-muted); font-size: 12px; font-weight: 700; }
+    .score-cell { display: flex; flex-direction: column; gap: 2px; white-space: nowrap; }
+    .score-main { font-family: 'Courier New', monospace; font-weight: 800; }
+    .score-sub { color: var(--text-muted); font-size: 11px; font-weight: 700; }
+    .table-panel .badge-flare { min-width: 56px; padding: 2px 6px; }
+
+    /* 難易度バッジ (DDR WORLD準拠カラー) */
+    .badge-diff { display: inline-block; padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: 800; color: #FFF; text-align: center; min-width: 108px; }
+    .diff-bgn { background: var(--diff-bgn); }
+    .diff-bas { background: var(--diff-bas); color: #000; }
+    .diff-dif { background: var(--diff-dif); }
+    .diff-exp { background: var(--diff-exp); }
+    .diff-cha { background: var(--diff-cha); }
+
+    /* ランク・クリア・フレアバッジ */
+    .badge-rank {
+      display: inline-block;
+      min-width: 42px;
+      padding: 2px 6px;
+      border: 1px solid transparent;
+      border-radius: 5px;
+      font-weight: 900;
+      line-height: 1.2;
+      text-align: center;
+    }
+    .rank-aaa, .rank-aa, .rank-a {
+      color: var(--rank-upper-text);
+      background: #FEF3C7;
+      border-color: var(--rank-upper);
+    }
+    .rank-b {
+      color: var(--rank-b-text);
+      background: #E0F2FE;
+      border-color: var(--rank-b);
+    }
+    .rank-c {
+      color: var(--rank-c-text);
+      background: #FCE7F3;
+      border-color: var(--rank-c);
+    }
+    .rank-d {
+      color: var(--rank-d-text);
+      background: #FEE2E2;
+      border-color: var(--rank-d);
+    }
+    .rank-e {
+      color: var(--rank-e-text);
+      background: #F1F5F9;
+      border-color: #94A3B8;
+    }
+
+    .clear-pfc, .clear-gfc, .clear-fc, .clear-cle, .clear-mfc {
+      display: inline-block;
+      padding: 2px 6px;
+      border: 1px solid transparent;
+      border-radius: 5px;
+      line-height: 1.2;
+    }
+    .clear-pfc {
+      color: var(--clear-pfc-text);
+      background: #FEF3C7;
+      border-color: var(--clear-pfc);
+      font-weight: 800;
+    }
+    .clear-gfc {
+      color: var(--clear-gfc-text);
+      background: #DCFCE7;
+      border-color: var(--clear-gfc);
+      font-weight: 800;
+    }
+    .clear-fc {
+      color: var(--clear-fc-text);
+      background: #DBEAFE;
+      border-color: var(--clear-fc);
+      font-weight: 800;
+    }
+    .clear-cle {
+      color: var(--clear-cle-text);
+      background: #E0F2FE;
+      border-color: var(--clear-cle);
+      font-weight: 800;
+    }
+    .clear-mfc {
+      color: #0F172A;
+      background: linear-gradient(90deg, #FECACA, #FEF3C7, #DCFCE7, #E0F2FE, #F3E8FF);
+      border-color: #A855F7;
+      font-weight: 900;
+    }
+
+    .badge-flare {
+      display: inline-flex;
+      min-width: 74px;
+      align-items: center;
+      justify-content: center;
+      padding: 2px 8px;
+      border: 1px solid transparent;
+      border-radius: 5px;
+      font-size: 11px;
+      font-weight: 800;
+      line-height: 1.2;
+    }
+    .flare-ex {
+      background: linear-gradient(90deg, #FECACA, #FEF3C7, #DCFCE7, #E0F2FE, #F3E8FF);
+      border-color: #A855F7;
+      color: #0F172A;
+    }
+    .flare-ix { background: #FEF3C7; border-color: var(--flare-ix); color: #854D0E; }
+    .flare-viii { background: #F1F5F9; border-color: var(--flare-viii); color: #334155; }
+    .flare-vii { background: #E2E8F0; border-color: var(--flare-vii); color: #334155; }
+    .flare-vi { background: #EDE9FE; border-color: var(--flare-vi); color: #5B21B6; }
+    .flare-v { background: #FEE2E2; border-color: var(--flare-v); color: #991B1B; }
+    .flare-iv { background: #FEF3C7; border-color: var(--flare-iv); color: #854D0E; }
+    .flare-iii { background: #DCFCE7; border-color: var(--flare-iii); color: #166534; }
+    .flare-ii { background: #E0F2FE; border-color: var(--flare-ii); color: #075985; }
+    .flare-i { background: #DBEAFE; border-color: var(--flare-i); color: #1E3A8A; }
+
+    @media (max-width: 1100px) {
+      body { padding: 0; align-items: stretch; }
+      .app-window { width: 100%; height: 100vh; border-radius: 0; }
+      .sidebar { width: 190px; }
+      .main-content { padding: 20px; gap: 16px; }
+      .filter-main-row { align-items: flex-start; flex-direction: column; }
+      .style-segmented { align-self: flex-start; }
+      .filter-group-wrapper { justify-content: flex-start; }
+      .filter-input { max-width: 100%; }
+    }
+
+    @media (max-width: 760px) {
+      .sidebar { width: 170px; }
+      .main-content { padding: 16px; }
+      .filter-group-wrapper,
+      .advanced-filter-body { flex-direction: column; align-items: flex-start; }
+    }
+
+  </style>
+</head>
+<body>
+
+<div class="app-window">
+  <!-- 左サイドバー -->
+  <aside class="sidebar">
+    <div>
+      <div class="brand">
+        <h1>GP Score Log</h1>
+        <p>DDR GRAND PRIX Score Tracker</p>
+      </div>
+      <ul class="nav-list">
+        <li class="nav-item"><a href="#">ホーム</a></li>
+        <li class="nav-item active"><a href="#">自己ベスト</a></li>
+        <li class="nav-item"><a href="#">直近プレー履歴</a></li>
+        <div class="nav-divider"></div>
+        <li class="nav-item"><a href="#">要確認</a></li>
+        <li class="nav-item"><a href="#">設定</a></li>
+        <li class="nav-item"><a href="#">データ管理</a></li>
+      </ul>
+    </div>
+
+    <!-- サイドバー下部: 監視操作 & ステータス -->
+    <div class="sidebar-control-box">
+      <div class="status-badge">
+        <span class="status-dot"></span>
+        自動記録：待機中
+      </div>
+      <div class="status-sub">DDR GP ウィンドウ待機中</div>
+      <button class="btn-monitor btn-start">監視を開始する</button>
+    </div>
+  </aside>
+
+  <!-- メインコンテンツ -->
+  <main class="main-content">
+    <!-- ヘッダーバー -->
+    <header class="header-bar">
+      <div class="page-title">
+        <h2>自己ベスト</h2>
+        <p>保存済み全履歴から算出した譜面別のベスト記録</p>
+      </div>
+    </header>
+
+    <!-- フィルター・切り替えバー -->
+    <div class="filter-card">
+      <div class="filter-main-row">
+        <!-- プレイスタイル切り替え (SINGLE / DOUBLE) -->
+        <div class="style-segmented">
+          <button class="style-btn active">SINGLE (SP)</button>
+          <button class="style-btn">DOUBLE (DP)</button>
+        </div>
+
+        <div class="filter-group-wrapper">
+          <div class="filter-group">
+            <span class="filter-label">難易度</span>
+            <select class="filter-select">
+              <option selected>ALL</option>
+              <option>BEGINNER</option>
+              <option>BASIC</option>
+              <option>DIFFICULT</option>
+              <option>EXPERT</option>
+              <option>CHALLENGE</option>
+            </select>
+          </div>
+          <div class="filter-group">
+            <span class="filter-label">レベル</span>
+            <select class="filter-select filter-level-select">
+              <option selected>ALL</option>
+              <option>Lv.1</option>
+              <option>Lv.2</option>
+              <option>Lv.3</option>
+              <option>Lv.4</option>
+              <option>Lv.5</option>
+              <option>Lv.6</option>
+              <option>Lv.7</option>
+              <option>Lv.8</option>
+              <option>Lv.9</option>
+              <option>Lv.10</option>
+              <option>Lv.11</option>
+              <option>Lv.12</option>
+              <option>Lv.13</option>
+              <option>Lv.14</option>
+              <option>Lv.15</option>
+              <option>Lv.16</option>
+              <option>Lv.17</option>
+              <option>Lv.18</option>
+              <option>Lv.19</option>
+            </select>
+          </div>
+          <div class="filter-group">
+            <span class="filter-label">曲名検索</span>
+            <input type="text" class="filter-input" placeholder="曲名で絞り込み...">
+          </div>
+        </div>
+      </div>
+
+      <details class="advanced-filter" open>
+        <summary>
+          <span>詳細フィルター</span>
+          <span class="advanced-filter-state">適用中: なし</span>
+        </summary>
+        <div class="advanced-filter-body">
+          <div class="filter-group">
+            <span class="filter-label">バージョン</span>
+            <select class="filter-select">
+              <option selected>ALL</option>
+              <option>DDR Grand Prix</option>
+              <option>DDR WORLD</option>
+              <option>DDR A3</option>
+              <option>DDR A20 PLUS</option>
+              <option>DDR A20</option>
+              <option>DDR A</option>
+              <option>DDR (2014)</option>
+            </select>
+          </div>
+          <div class="filter-group">
+            <span class="filter-label">プレー状況</span>
+            <select class="filter-select">
+              <option selected>すべて</option>
+              <option>プレー済み</option>
+              <option>未プレー</option>
+            </select>
+          </div>
+          <div class="filter-group">
+            <span class="filter-label">ランク</span>
+            <select class="filter-select">
+              <option selected>すべて</option>
+              <option>AAA以上</option>
+              <option>AA</option>
+              <option>A以下</option>
+            </select>
+          </div>
+          <div class="filter-group">
+            <span class="filter-label">CLEAR状態</span>
+            <select class="filter-select">
+              <option selected>すべて</option>
+              <option>PFC</option>
+              <option>GFC</option>
+              <option>FC</option>
+              <option>CLEAR</option>
+              <option>未CLEAR</option>
+            </select>
+          </div>
+        </div>
+      </details>
+    </div>
+
+    <div class="result-summary" aria-live="polite">
+      <span><strong>対象譜面</strong>　表示 1〜50 / 全1,284譜面</span>
+      <span class="result-summary-note">絞り込み・ソート変更時は先頭から再表示</span>
+    </div>
+
+    <!-- メインコンテンツグリッド -->
+    <div class="content-grid">
+      <!-- 自己ベストテーブル (960px幅を考慮した8列構成) -->
+      <div class="table-panel">
+        <table>
+          <thead>
+            <tr>
+              <th>曲名</th>
+              <th style="width: 120px;">譜面</th>
+              <th style="width: 105px;">SCORE / EX</th>
+              <th style="width: 55px;">ランク</th>
+              <th style="width: 65px;">CLEAR</th>
+              <th style="width: 65px;">FLARE</th>
+              <th style="width: 80px;">プレー回数</th>
+              <th style="width: 95px;">最終プレー</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="selected">
+              <td>POSSESSION</td>
+              <td><div class="chart-cell"><span class="badge-diff diff-cha">CHALLENGE</span><span class="chart-level">Lv.17</span></div></td>
+              <td><div class="score-cell"><span class="score-main">991,400</span><span class="score-sub">EX 1,420</span></div></td>
+              <td><span class="badge-rank rank-aaa">AAA</span></td>
+              <td><span class="clear-pfc">PFC</span></td>
+              <td><span class="badge-flare flare-ex">EX</span></td>
+              <td>14 回</td>
+              <td>08/02 22:31</td>
+            </tr>
+            <tr>
+              <td>MAX 300</td>
+              <td><div class="chart-cell"><span class="badge-diff diff-exp">EXPERT</span><span class="chart-level">Lv.15</span></div></td>
+              <td><div class="score-cell"><span class="score-main">982,100</span><span class="score-sub">EX 1,210</span></div></td>
+              <td><span class="badge-rank rank-aaa">AAA</span></td>
+              <td><span class="clear-fc">FC</span></td>
+              <td><span class="badge-flare flare-viii">VIII</span></td>
+              <td>8 回</td>
+              <td>08/02 22:18</td>
+            </tr>
+            <tr>
+              <td>London EVOLVED ver.B</td>
+              <td><div class="chart-cell"><span class="badge-diff diff-dif">DIFFICULT</span><span class="chart-level">Lv.11</span></div></td>
+              <td><div class="score-cell"><span class="score-main">972,840</span><span class="score-sub">EX 1,016</span></div></td>
+              <td><span class="badge-rank rank-aa">AA+</span></td>
+              <td><span class="clear-fc">FC</span></td>
+              <td><span class="badge-flare flare-ix">IX</span></td>
+              <td>5 回</td>
+              <td>08/02 22:50</td>
+            </tr>
+            <tr>
+              <td>London EVOLVED ver.A</td>
+              <td><div class="chart-cell"><span class="badge-diff diff-exp">EXPERT</span><span class="chart-level">Lv.14</span></div></td>
+              <td><div class="score-cell"><span class="score-main">945,120</span><span class="score-sub">EX 1,120</span></div></td>
+              <td><span class="badge-rank rank-aa">AA</span></td>
+              <td><span class="clear-cle">CLEAR</span></td>
+              <td><span class="badge-flare flare-vi">VI</span></td>
+              <td>3 回</td>
+              <td>08/02 22:42</td>
+            </tr>
+            <tr>
+              <td>PARANOiA MAX~DIRTY MIX~</td>
+              <td><div class="chart-cell"><span class="badge-diff diff-bas">BASIC</span><span class="chart-level">Lv.8</span></div></td>
+              <td><div class="score-cell"><span class="score-main">998,500</span><span class="score-sub">EX 890</span></div></td>
+              <td><span class="badge-rank rank-aaa">AAA</span></td>
+              <td><span class="clear-pfc">PFC</span></td>
+              <td><span class="badge-flare flare-iii">III</span></td>
+              <td>2 回</td>
+              <td>08/02 22:05</td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="table-footer">
+          <span><strong>1〜50譜面</strong>を表示中</span>
+          <span class="load-more-hint">下端までスクロールすると次の50譜面を読み込み</span>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+</body>
+</html>
