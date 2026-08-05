@@ -5,6 +5,7 @@ using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Threading;
 using DDRGpScoreViewer.Capture;
 using DDRGpScoreViewer.Data;
 using DDRGpScoreViewer.Models;
@@ -62,6 +63,8 @@ public partial class MainWindow : System.Windows.Window
                 : null);
         DataContext = viewModel;
         ApplyHomeResponsiveLayout(Width);
+        ApplyBestResponsiveLayout(Width);
+        viewModel.ChartBestListReset += ViewModel_ChartBestListReset;
 #if DEBUG
         AddDeveloperActions();
 #endif
@@ -366,8 +369,40 @@ public partial class MainWindow : System.Windows.Window
     }
 #endif
 
-    private void MainWindow_SizeChanged(object sender, SizeChangedEventArgs e) =>
+    private void MainWindow_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
         ApplyHomeResponsiveLayout(e.NewSize.Width);
+        ApplyBestResponsiveLayout(e.NewSize.Width);
+    }
+
+    private void ApplyBestResponsiveLayout(double windowWidth)
+    {
+        if (BestChartGrid is null || NavigationColumn is null || MainContentGrid is null)
+        {
+            return;
+        }
+
+        var compact = windowWidth <= 1100;
+        NavigationColumn.Width = new GridLength(windowWidth <= 760 ? 170 : compact ? 190 : 230);
+        MainContentGrid.Margin = compact
+            ? new Thickness(20)
+            : new Thickness(28, 24, 28, 24);
+        BestChartGrid.Tag = compact ? "Compact" : "Wide";
+
+        if (BestChartGrid.Columns.Count != 8)
+        {
+            return;
+        }
+
+        var weights = compact
+            ? new[] { 2.1, 1.05, 1.3, 0.65, 0.85, 0.85, 0.95, 1.15 }
+            : new[] { 2.4, 1.35, 1.55, 0.8, 1.0, 1.0, 1.05, 1.3 };
+        for (var index = 0; index < weights.Length; index++)
+        {
+            BestChartGrid.Columns[index].Width =
+                new DataGridLength(weights[index], DataGridLengthUnitType.Star);
+        }
+    }
 
     private void ApplyHomeResponsiveLayout(double windowWidth)
     {
@@ -412,9 +447,65 @@ public partial class MainWindow : System.Windows.Window
         ContentTabs.SelectedIndex = 1;
         PageTitle.Text = "自己ベスト";
         PageSubtitle.Text = "保存済み全履歴から算出した譜面別ベスト";
+        UpdateBestPlayStyleButtons();
         HomeNavigation.Tag = null;
         BestNavigation.Tag = "Selected";
         HistoryNavigation.Tag = null;
+    }
+
+    private void BestPlayStyle_Click(object sender, RoutedEventArgs e)
+    {
+        viewModel.BestPlayStyleFilter = ReferenceEquals(sender, BestDoubleButton)
+            ? "DOUBLE"
+            : "SINGLE";
+        UpdateBestPlayStyleButtons();
+    }
+
+    private void ResetBestFilters_Click(object sender, RoutedEventArgs e)
+    {
+        viewModel.ResetBestFilters();
+        UpdateBestPlayStyleButtons();
+    }
+
+    private void BestChartGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (BestChartGrid.SelectedItem is ChartBestItem chartBest)
+        {
+            viewModel.SelectChartBest(chartBest);
+        }
+    }
+
+    private void BestChartGrid_ScrollChanged(object sender, ScrollChangedEventArgs e)
+    {
+        if (e.ExtentHeight <= 0 || e.ViewportHeight <= 0)
+        {
+            return;
+        }
+
+        if (e.VerticalOffset + e.ViewportHeight >= e.ExtentHeight - 1)
+        {
+            viewModel.LoadMoreChartBests();
+        }
+    }
+
+    private void UpdateBestPlayStyleButtons()
+    {
+        var singleSelected = viewModel.BestPlayStyleFilter == "SINGLE";
+        BestSingleButton.Tag = singleSelected ? "Selected" : null;
+        BestDoubleButton.Tag = singleSelected ? null : "Selected";
+    }
+
+    private void ViewModel_ChartBestListReset(object? sender, EventArgs e)
+    {
+        Dispatcher.BeginInvoke(
+            DispatcherPriority.Background,
+            new Action(() =>
+            {
+                if (BestChartGrid.Items.Count > 0)
+                {
+                    BestChartGrid.ScrollIntoView(BestChartGrid.Items[0]);
+                }
+            }));
     }
 
     private void ShowHistory_Click(object sender, RoutedEventArgs e)

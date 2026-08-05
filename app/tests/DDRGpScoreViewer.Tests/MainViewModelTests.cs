@@ -291,6 +291,103 @@ public sealed class MainViewModelTests
         Assert.Contains("初期化、解析、正式保存を開始しません", viewModel.SaveStatusMessage, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void Best_list_filters_and_adds_fifty_rows_at_a_time()
+    {
+        using var fixture = new DatabaseFixture();
+        fixture.AddMasterSongAndChart(
+            "song-unplayed",
+            "UNPLAYED SONG",
+            "Artist",
+            "chart-unplayed",
+            difficulty: "BEGINNER",
+            level: 3,
+            version: "DDR WORLD");
+        fixture.AddPlay("base-play", "2026-08-01T12:00:00+00:00", 900_000, 1_000);
+
+        for (var index = 2; index <= 61; index++)
+        {
+            var songId = $"song-{index}";
+            var chartId = $"chart-{index}";
+            fixture.AddMasterSongAndChart(
+                songId,
+                $"SONG {index:00}",
+                "Artist",
+                chartId,
+                playStyle: "SINGLE",
+                difficulty: index % 3 == 0 ? "EXPERT" : "BASIC",
+                level: index % 19 + 1,
+                version: index % 2 == 0 ? "DDR WORLD" : "DDR A3");
+            fixture.AddPlay(
+                $"play-{index}",
+                DateTimeOffset.UtcNow.AddMinutes(-index).ToString("O"),
+                800_000 + index * 1_000,
+                1_000 + index,
+                songId,
+                chartId);
+        }
+
+        fixture.ExecuteScoreSql(
+            "UPDATE plays SET rank = 'AA+', clear_type = 'FC', flare_rank = 'EX' " +
+            "WHERE play_id = 'play-2'; " +
+            "UPDATE plays SET rank = 'A', clear_type = 'PFC' " +
+            "WHERE play_id = 'play-3';");
+
+        var viewModel = new MainViewModel(new ScoreViewerRepository());
+        viewModel.Load(fixture.ScorePath, fixture.MasterPath, persist: false);
+
+        Assert.Equal(50, viewModel.ChartBests.Count);
+        Assert.Equal(62, viewModel.ChartBestTotalCount);
+        Assert.Equal(50, viewModel.ChartBestDisplayedCount);
+        Assert.True(viewModel.CanLoadMoreChartBests);
+
+        viewModel.LoadMoreChartBests();
+        Assert.Equal(62, viewModel.ChartBests.Count);
+        Assert.False(viewModel.CanLoadMoreChartBests);
+
+        viewModel.BestPlayStatusFilter = "未プレー";
+        Assert.Single(viewModel.ChartBests);
+        Assert.Equal("UNPLAYED SONG", viewModel.ChartBests[0].SongTitle);
+        Assert.Equal("表示 1〜1 / 全1譜面", viewModel.ChartBestRangeDisplay);
+
+        viewModel.BestPlayStatusFilter = "すべて";
+        viewModel.BestVersionFilter = "DDR WORLD";
+        Assert.All(viewModel.ChartBests, item => Assert.Equal("DDR WORLD", item.Version));
+
+        viewModel.BestVersionFilter = "すべて";
+        viewModel.BestSongQuery = "SONG 21";
+        Assert.Single(viewModel.ChartBests);
+        Assert.Equal("SONG 21", viewModel.ChartBests[0].SongTitle);
+
+        viewModel.BestSongQuery = "";
+        viewModel.BestLevelFilter = "Lv.17";
+        Assert.All(viewModel.ChartBests, item => Assert.Equal("Lv.17", item.LevelDisplay));
+
+        viewModel.ResetBestFilters();
+        viewModel.BestDifficultyFilter = "EXPERT";
+        Assert.All(viewModel.ChartBests, item => Assert.Equal("EXPERT", item.Difficulty));
+
+        viewModel.ResetBestFilters();
+        viewModel.BestRankFilter = "AA";
+        Assert.All(
+            viewModel.ChartBests,
+            item => Assert.True(item.Rank is "AA+" or "AA" or "AA-"));
+
+        viewModel.ResetBestFilters();
+        viewModel.BestClearFilter = "FC";
+        Assert.All(viewModel.ChartBests, item => Assert.Equal("FC", item.ClearDisplay));
+
+        viewModel.ResetBestFilters();
+        viewModel.BestSortFilter = "曲名（昇順）";
+        Assert.Equal("MAX 300", viewModel.ChartBests[0].SongTitle);
+        Assert.Equal("SONG 02", viewModel.ChartBests[1].SongTitle);
+
+        viewModel.ResetBestFilters();
+        Assert.Equal("SINGLE", viewModel.BestPlayStyleFilter);
+        Assert.Equal(50, viewModel.ChartBests.Count);
+        Assert.Equal("スコア（高い順）", viewModel.BestSortFilter);
+    }
+
     private static PersonalScoreDbWorkflowResult Result(
         string status,
         string? playId = null,

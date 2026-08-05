@@ -13,6 +13,15 @@ namespace DDRGpScoreViewer.ViewModels;
 
 public sealed class MainViewModel : INotifyPropertyChanged
 {
+    private const int ChartBestPageSize = 50;
+    private const string AllBestFilterValue = "すべて";
+    private const string BestSortScoreDescending = "スコア（高い順）";
+    private const string BestSortScoreAscending = "スコア（低い順）";
+    private const string BestSortTitleAscending = "曲名（昇順）";
+    private const string BestSortLevelAscending = "レベル（昇順）";
+    private const string BestSortLastPlayedDescending = "最終プレー（新しい順）";
+    private const string BestSortPlayCountDescending = "プレー回数（多い順）";
+
     private readonly ScoreViewerRepository repository;
     private readonly IPersonalScoreDbWorkflowRunner? workflowRunner;
     private readonly ISingleFrameCaptureService? captureService;
@@ -26,7 +35,22 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private readonly AutomaticMonitoringOptions automaticMonitoringOptions;
     private readonly SynchronizationContext? uiSynchronizationContext;
     private PlayHistoryItem? selectedPlay;
+    private ChartBestItem? selectedChartBest;
     private HomePlayItem? homeLatestPlay;
+    private IReadOnlyList<ChartBestItem> allChartBests = [];
+    private IReadOnlyList<string> bestVersionOptions = [AllBestFilterValue];
+    private string bestPlayStyleFilter = "SINGLE";
+    private string bestDifficultyFilter = AllBestFilterValue;
+    private string bestLevelFilter = AllBestFilterValue;
+    private string bestSongQuery = "";
+    private string bestVersionFilter = AllBestFilterValue;
+    private string bestPlayStatusFilter = AllBestFilterValue;
+    private string bestRankFilter = AllBestFilterValue;
+    private string bestClearFilter = AllBestFilterValue;
+    private string bestSortFilter = BestSortScoreDescending;
+    private int chartBestDisplayedCount;
+    private int chartBestTotalCount;
+    private bool suppressBestFilterRefresh;
     private int homeTodayPlayCount;
     private int homeTodayScoreUpdateCount;
     private int homeTodayExScoreUpdateCount;
@@ -141,17 +165,207 @@ public sealed class MainViewModel : INotifyPropertyChanged
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
+    public event Action<ChartBestItem>? ChartBestSelectionRequested;
+    public event EventHandler? ChartBestListReset;
 
     public ObservableCollection<PlayHistoryItem> Plays { get; } = [];
     public ObservableCollection<ChartBestItem> ChartBests { get; } = [];
     public ObservableCollection<HomePlayItem> HomeRecentPlays { get; } = [];
     public ObservableCollection<HomePlayItem> HomeBestUpdates { get; } = [];
+    public ObservableCollection<string> BestActiveFilterChips { get; } = [];
+
+    public IReadOnlyList<string> BestDifficultyOptions { get; } =
+    [
+        AllBestFilterValue,
+        "BEGINNER",
+        "BASIC",
+        "DIFFICULT",
+        "EXPERT",
+        "CHALLENGE",
+    ];
+
+    public IReadOnlyList<string> BestLevelOptions { get; } =
+        [AllBestFilterValue, .. Enumerable.Range(1, 19).Select(level => $"Lv.{level}")];
+
+    public IReadOnlyList<string> BestPlayStatusOptions { get; } =
+        [AllBestFilterValue, "プレー済み", "未プレー"];
+
+    public IReadOnlyList<string> BestRankOptions { get; } =
+        [AllBestFilterValue, "AAA以上", "AA", "A以下"];
+
+    public IReadOnlyList<string> BestClearOptions { get; } =
+        [AllBestFilterValue, "PFC", "GFC", "FC", "CLEAR", "未CLEAR"];
+
+    public IReadOnlyList<string> BestSortOptions { get; } =
+    [
+        BestSortScoreDescending,
+        BestSortScoreAscending,
+        BestSortTitleAscending,
+        BestSortLevelAscending,
+        BestSortLastPlayedDescending,
+        BestSortPlayCountDescending,
+    ];
+
+    public IReadOnlyList<string> BestVersionOptions
+    {
+        get => bestVersionOptions;
+        private set => SetProperty(ref bestVersionOptions, value);
+    }
 
     public PlayHistoryItem? SelectedPlay
     {
         get => selectedPlay;
         set => SetProperty(ref selectedPlay, value);
     }
+
+    public ChartBestItem? SelectedChartBest
+    {
+        get => selectedChartBest;
+        private set => SetProperty(ref selectedChartBest, value);
+    }
+
+    public string BestPlayStyleFilter
+    {
+        get => bestPlayStyleFilter;
+        set
+        {
+            if (!SetProperty(ref bestPlayStyleFilter, value))
+            {
+                return;
+            }
+            OnBestFilterChanged();
+        }
+    }
+
+    public string BestDifficultyFilter
+    {
+        get => bestDifficultyFilter;
+        set
+        {
+            if (!SetProperty(ref bestDifficultyFilter, value))
+            {
+                return;
+            }
+            OnBestFilterChanged();
+        }
+    }
+
+    public string BestLevelFilter
+    {
+        get => bestLevelFilter;
+        set
+        {
+            if (!SetProperty(ref bestLevelFilter, value))
+            {
+                return;
+            }
+            OnBestFilterChanged();
+        }
+    }
+
+    public string BestSongQuery
+    {
+        get => bestSongQuery;
+        set
+        {
+            if (!SetProperty(ref bestSongQuery, value ?? ""))
+            {
+                return;
+            }
+            OnBestFilterChanged();
+        }
+    }
+
+    public string BestVersionFilter
+    {
+        get => bestVersionFilter;
+        set
+        {
+            if (!SetProperty(ref bestVersionFilter, value))
+            {
+                return;
+            }
+            OnBestFilterChanged();
+        }
+    }
+
+    public string BestPlayStatusFilter
+    {
+        get => bestPlayStatusFilter;
+        set
+        {
+            if (!SetProperty(ref bestPlayStatusFilter, value))
+            {
+                return;
+            }
+            OnBestFilterChanged();
+        }
+    }
+
+    public string BestRankFilter
+    {
+        get => bestRankFilter;
+        set
+        {
+            if (!SetProperty(ref bestRankFilter, value))
+            {
+                return;
+            }
+            OnBestFilterChanged();
+        }
+    }
+
+    public string BestClearFilter
+    {
+        get => bestClearFilter;
+        set
+        {
+            if (!SetProperty(ref bestClearFilter, value))
+            {
+                return;
+            }
+            OnBestFilterChanged();
+        }
+    }
+
+    public string BestSortFilter
+    {
+        get => bestSortFilter;
+        set
+        {
+            if (!SetProperty(ref bestSortFilter, value))
+            {
+                return;
+            }
+            OnBestFilterChanged();
+        }
+    }
+
+    public int ChartBestDisplayedCount
+    {
+        get => chartBestDisplayedCount;
+        private set => SetProperty(ref chartBestDisplayedCount, value);
+    }
+
+    public int ChartBestTotalCount
+    {
+        get => chartBestTotalCount;
+        private set => SetProperty(ref chartBestTotalCount, value);
+    }
+
+    public bool CanLoadMoreChartBests => ChartBestDisplayedCount < ChartBestTotalCount;
+
+    public string ChartBestRangeDisplay => ChartBestTotalCount == 0
+        ? "表示 0譜面 / 全0譜面"
+        : $"表示 1〜{ChartBestDisplayedCount:N0} / 全{ChartBestTotalCount:N0}譜面";
+
+    public string ChartBestLoadMoreHintDisplay => CanLoadMoreChartBests
+        ? "下端までスクロールすると次の50譜面を表示"
+        : $"全{ChartBestTotalCount:N0}譜面を表示中";
+
+    public string BestActiveFilterSummary => BestActiveFilterChips.Count == 0
+        ? "適用中: なし"
+        : $"適用中: {string.Join(" / ", BestActiveFilterChips)}";
 
     public HomePlayItem? HomeLatestPlay
     {
@@ -2605,7 +2819,11 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private void ApplyData(ViewerData data)
     {
         Replace(Plays, data.Plays);
-        Replace(ChartBests, data.ChartBests);
+        allChartBests = data.Plays.Count == 0
+            ? []
+            : MergeChartBests(data.ChartBests, data.ChartCatalog);
+        UpdateBestVersionOptions();
+        RefreshChartBests(resetDisplayedCount: true);
         ApplyHomeData(data.Plays);
         MasterVersion = data.MasterVersion;
         ScoreDatabasePath = data.ScoreDatabasePath;
@@ -2636,11 +2854,240 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private void ClearLoadedData()
     {
         Plays.Clear();
-        ChartBests.Clear();
+        allChartBests = [];
+        UpdateBestVersionOptions();
+        RefreshChartBests(resetDisplayedCount: true);
         ClearHomeData();
         SelectedPlay = null;
         MasterVersion = "—";
         HasData = false;
+    }
+
+    public void LoadMoreChartBests()
+    {
+        if (!CanLoadMoreChartBests)
+        {
+            return;
+        }
+
+        ChartBestDisplayedCount = Math.Min(
+            ChartBestDisplayedCount + ChartBestPageSize,
+            ChartBestTotalCount);
+        Replace(ChartBests, FilterChartBests().Take(ChartBestDisplayedCount));
+        NotifyChartBestListState();
+    }
+
+    public void SelectChartBest(ChartBestItem? chartBest)
+    {
+        if (chartBest is null)
+        {
+            return;
+        }
+
+        SelectedChartBest = chartBest;
+        ChartBestSelectionRequested?.Invoke(chartBest);
+    }
+
+    public void ResetBestFilters()
+    {
+        suppressBestFilterRefresh = true;
+        try
+        {
+            BestPlayStyleFilter = "SINGLE";
+            BestDifficultyFilter = AllBestFilterValue;
+            BestLevelFilter = AllBestFilterValue;
+            BestSongQuery = "";
+            BestVersionFilter = AllBestFilterValue;
+            BestPlayStatusFilter = AllBestFilterValue;
+            BestRankFilter = AllBestFilterValue;
+            BestClearFilter = AllBestFilterValue;
+            BestSortFilter = BestSortScoreDescending;
+        }
+        finally
+        {
+            suppressBestFilterRefresh = false;
+        }
+
+        RefreshChartBests(resetDisplayedCount: true);
+    }
+
+    private void OnBestFilterChanged()
+    {
+        if (!suppressBestFilterRefresh)
+        {
+            RefreshChartBests(resetDisplayedCount: true);
+        }
+    }
+
+    private void RefreshChartBests(bool resetDisplayedCount)
+    {
+        var filtered = FilterChartBests().ToArray();
+        ChartBestTotalCount = filtered.Length;
+        if (resetDisplayedCount)
+        {
+            ChartBestDisplayedCount = Math.Min(ChartBestPageSize, filtered.Length);
+            SelectedChartBest = null;
+        }
+        else
+        {
+            ChartBestDisplayedCount = Math.Min(ChartBestDisplayedCount, filtered.Length);
+        }
+
+        Replace(ChartBests, filtered.Take(ChartBestDisplayedCount));
+        UpdateBestActiveFilterChips();
+        NotifyChartBestListState();
+        if (resetDisplayedCount)
+        {
+            ChartBestListReset?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    private void NotifyChartBestListState()
+    {
+        OnPropertyChanged(nameof(CanLoadMoreChartBests));
+        OnPropertyChanged(nameof(ChartBestRangeDisplay));
+        OnPropertyChanged(nameof(ChartBestLoadMoreHintDisplay));
+    }
+
+    private void UpdateBestVersionOptions()
+    {
+        var options = allChartBests
+            .Select(item => item.Version)
+            .Where(version => !string.IsNullOrWhiteSpace(version))
+            .Distinct(StringComparer.CurrentCultureIgnoreCase)
+            .OrderBy(version => version, StringComparer.CurrentCultureIgnoreCase)
+            .ToList();
+        options.Insert(0, AllBestFilterValue);
+        BestVersionOptions = options;
+        if (!options.Contains(bestVersionFilter, StringComparer.CurrentCultureIgnoreCase))
+        {
+            bestVersionFilter = AllBestFilterValue;
+            OnPropertyChanged(nameof(BestVersionFilter));
+        }
+    }
+
+    private IEnumerable<ChartBestItem> FilterChartBests()
+    {
+        var songQuery = BestSongQuery.Trim();
+        var filtered = allChartBests.Where(item =>
+            item.PlayStyle == BestPlayStyleFilter &&
+            (BestDifficultyFilter == AllBestFilterValue ||
+             item.Difficulty == BestDifficultyFilter) &&
+            (BestLevelFilter == AllBestFilterValue ||
+             item.LevelDisplay == BestLevelFilter) &&
+            (songQuery.Length == 0 ||
+             item.SongTitle.Contains(songQuery, StringComparison.CurrentCultureIgnoreCase)) &&
+            (BestVersionFilter == AllBestFilterValue ||
+             string.Equals(item.Version, BestVersionFilter, StringComparison.CurrentCultureIgnoreCase)) &&
+            MatchesPlayStatus(item, BestPlayStatusFilter) &&
+            MatchesRank(item, BestRankFilter) &&
+            MatchesClear(item, BestClearFilter));
+
+        return BestSortFilter switch
+        {
+            BestSortScoreAscending => filtered
+                .OrderBy(item => item.BestScore)
+                .ThenBy(item => item.SongTitle, StringComparer.CurrentCultureIgnoreCase)
+                .ThenBy(item => item.ChartId, StringComparer.Ordinal),
+            BestSortTitleAscending => filtered
+                .OrderBy(item => item.SongTitle, StringComparer.CurrentCultureIgnoreCase)
+                .ThenBy(item => item.Level ?? int.MaxValue)
+                .ThenBy(item => item.ChartId, StringComparer.Ordinal),
+            BestSortLevelAscending => filtered
+                .OrderBy(item => item.Level ?? int.MaxValue)
+                .ThenBy(item => item.SongTitle, StringComparer.CurrentCultureIgnoreCase)
+                .ThenBy(item => item.ChartId, StringComparer.Ordinal),
+            BestSortLastPlayedDescending => filtered
+                .OrderByDescending(item => ParseTimestamp(item.LastPlayedAt))
+                .ThenBy(item => item.SongTitle, StringComparer.CurrentCultureIgnoreCase)
+                .ThenBy(item => item.ChartId, StringComparer.Ordinal),
+            BestSortPlayCountDescending => filtered
+                .OrderByDescending(item => item.PlayCount)
+                .ThenBy(item => item.SongTitle, StringComparer.CurrentCultureIgnoreCase)
+                .ThenBy(item => item.ChartId, StringComparer.Ordinal),
+            _ => filtered
+                .OrderByDescending(item => item.BestScore)
+                .ThenBy(item => item.SongTitle, StringComparer.CurrentCultureIgnoreCase)
+                .ThenBy(item => item.ChartId, StringComparer.Ordinal),
+        };
+    }
+
+    private static bool MatchesPlayStatus(ChartBestItem item, string filter) => filter switch
+    {
+        "プレー済み" => item.IsPlayed,
+        "未プレー" => !item.IsPlayed,
+        _ => true,
+    };
+
+    private static bool MatchesRank(ChartBestItem item, string filter) => filter switch
+    {
+        "AAA以上" => item.Rank == "AAA",
+        "AA" => item.Rank is "AA+" or "AA" or "AA-",
+        "A以下" => item.Rank is "A+" or "A" or "A-" or
+            "B+" or "B" or "B-" or "C+" or "C" or "C-" or "D+" or "D" or "E",
+        _ => true,
+    };
+
+    private static bool MatchesClear(ChartBestItem item, string filter) => filter switch
+    {
+        "PFC" => item.ClearDisplay == "PFC",
+        "GFC" => item.ClearDisplay == "GFC",
+        "FC" => item.ClearDisplay == "FC",
+        "CLEAR" => item.ClearDisplay == "CLEAR",
+        "未CLEAR" => item.ClearDisplay is "—" or "FAILED",
+        _ => true,
+    };
+
+    private void UpdateBestActiveFilterChips()
+    {
+        var chips = new List<string>();
+        if (BestDifficultyFilter != AllBestFilterValue)
+        {
+            chips.Add($"難易度: {BestDifficultyFilter}");
+        }
+        if (BestLevelFilter != AllBestFilterValue)
+        {
+            chips.Add($"レベル: {BestLevelFilter}");
+        }
+        if (!string.IsNullOrWhiteSpace(BestSongQuery))
+        {
+            chips.Add($"曲名: {BestSongQuery.Trim()}");
+        }
+        if (BestVersionFilter != AllBestFilterValue)
+        {
+            chips.Add($"バージョン: {BestVersionFilter}");
+        }
+        if (BestPlayStatusFilter != AllBestFilterValue)
+        {
+            chips.Add($"プレー状況: {BestPlayStatusFilter}");
+        }
+        if (BestRankFilter != AllBestFilterValue)
+        {
+            chips.Add($"ランク: {BestRankFilter}");
+        }
+        if (BestClearFilter != AllBestFilterValue)
+        {
+            chips.Add($"CLEAR: {BestClearFilter}");
+        }
+
+        Replace(BestActiveFilterChips, chips);
+        OnPropertyChanged(nameof(BestActiveFilterSummary));
+    }
+
+    private static IReadOnlyList<ChartBestItem> MergeChartBests(
+        IReadOnlyList<ChartBestItem> playedChartBests,
+        IReadOnlyList<ChartBestItem> chartCatalog)
+    {
+        var merged = new Dictionary<(string SongId, string ChartId), ChartBestItem>();
+        foreach (var item in chartCatalog)
+        {
+            merged[(item.SongId, item.ChartId)] = item;
+        }
+        foreach (var item in playedChartBests)
+        {
+            merged[(item.SongId, item.ChartId)] = item;
+        }
+        return merged.Values.ToArray();
     }
 
     private void ApplyHomeData(IReadOnlyList<PlayHistoryItem> plays)
