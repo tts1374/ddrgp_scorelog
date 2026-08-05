@@ -354,6 +354,44 @@
       text-decoration: underline;
     }
 
+    /* 自動保存通知の表示例。専用画面は持たず、非ブロッキングで表示する */
+    .notification-banner {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 11px 14px;
+      border: 1px solid #F59E0B;
+      border-left-width: 4px;
+      border-radius: 8px;
+      background: #FFFBEB;
+    }
+
+    .notification-icon {
+      display: inline-flex;
+      width: 22px;
+      height: 22px;
+      flex-shrink: 0;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+      color: #92400E;
+      background: #FDE68A;
+      font-size: 13px;
+      font-weight: 900;
+    }
+
+    .notification-title {
+      color: #92400E;
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    .notification-detail {
+      margin-top: 3px;
+      color: #A16207;
+      font-size: 11px;
+    }
+
     /* プレー履歴: 最新のプレーを先頭だけ詳しく表示 */
     .play-history-list {
       display: flex;
@@ -952,7 +990,6 @@
         <li class="nav-item"><a href="#">自己ベスト</a></li>
         <li class="nav-item"><a href="#">直近プレー履歴</a></li>
         <div class="nav-divider"></div>
-        <li class="nav-item"><a href="#">要確認</a></li>
         <li class="nav-item"><a href="#">設定</a></li>
         <li class="nav-item"><a href="#">データ管理</a></li>
       </ul>
@@ -977,6 +1014,14 @@
         <p>今日のプレー状況と最近の記録を確認できます</p>
       </div>
     </header>
+
+    <section class="notification-banner" aria-label="自動保存通知の表示例" aria-live="polite">
+      <span class="notification-icon" aria-hidden="true">!</span>
+      <div>
+        <div class="notification-title">自動保存できないプレーが発生しました</div>
+        <p class="notification-detail">正式DBには保存されていません。08/03 22:50 / 曲名未確定</p>
+      </div>
+    </section>
 
     <!-- 今日のプレー状況 -->
     <section aria-labelledby="today-summary-title">

@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DDR GP Score Log - データ管理 UI Mockup (draft)</title>
+  <link rel="stylesheet" href="screen-mock-shared.css">
+</head>
+<body>
+  <div class="app-window">
+    <aside class="sidebar">
+      <div>
+        <div class="brand">
+          <h1>GP Score Log</h1>
+          <p>DDR GRAND PRIX Score Tracker</p>
+        </div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="home-mock.html">ホーム</a></li>
+          <li class="nav-item"><a href="chart-bests-mock.html">自己ベスト</a></li>
+          <li class="nav-item"><a href="play-history-mock.html">直近プレー履歴</a></li>
+          <li class="nav-divider"></li>
+          <li class="nav-item"><a href="settings-mock.html">設定</a></li>
+          <li class="nav-item active"><a href="data-management-mock.html" aria-current="page">データ管理</a></li>
+        </ul>
+      </div>
+
+      <div class="sidebar-control-box">
+        <div class="status-badge"><span class="status-dot"></span>自動記録：待機中</div>
+        <div class="status-sub">DDR GPウィンドウ待機中</div>
+        <button class="btn-monitor" type="button">監視を開始する</button>
+      </div>
+    </aside>
+
+    <main class="main-content">
+      <header class="header-bar">
+        <div class="page-title">
+          <h2>データ管理</h2>
+          <p>保存済みプレーと同梱データの状態を確認できます</p>
+        </div>
+      </header>
+
+      <section class="summary-grid" aria-label="データサマリー">
+        <article class="summary-card">
+          <span class="summary-label">保存済みプレー</span>
+          <strong class="summary-value">1,284</strong>
+          <span class="summary-note">個人スコアデータ</span>
+        </article>
+        <article class="summary-card success">
+          <span class="summary-label">自己ベスト譜面</span>
+          <strong class="summary-value">862</strong>
+          <span class="summary-note">SINGLE / DOUBLE合計</span>
+        </article>
+        <article class="summary-card success">
+          <span class="summary-label">データ状態</span>
+          <strong class="summary-value">正常</strong>
+          <span class="summary-note">最後の確認 08/03</span>
+        </article>
+      </section>
+
+      <section class="data-layout" aria-label="データ管理メニュー">
+        <div class="panel">
+          <div class="panel-header">
+            <div>
+              <h3>保存データ</h3>
+              <p>現在の保存状態とデータ件数</p>
+            </div>
+            <span class="status-pill status-done">正常</span>
+          </div>
+          <div class="data-list">
+            <div class="data-row">
+              <div><div class="data-label">最後の保存</div><div class="data-value">2026/08/03 22:50</div></div>
+              <span class="muted">自動記録</span>
+            </div>
+            <div class="data-row">
+              <div><div class="data-label">データ状態</div><div class="data-value">問題は検出されていません</div></div>
+              <span class="status-pill status-done">正常</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header">
+            <div>
+              <h3>データ操作</h3>
+              <p>個人スコアデータの退避・復元</p>
+            </div>
+          </div>
+          <div class="panel-body">
+            <div class="data-action-grid">
+              <button class="btn-primary" type="button">バックアップを作成</button>
+              <button class="btn-secondary" type="button">バックアップから復元</button>
+            </div>
+            <p class="panel-note" style="margin-top: 12px;">復元時は現在の保存データを置き換えるため、確認画面を表示します。</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+          <div class="panel-header">
+            <div>
+              <h3>楽曲・譜面データ</h3>
+              <p>アプリに同梱された楽曲・譜面情報</p>
+            </div>
+          <span class="status-pill status-done">利用可能</span>
+        </div>
+        <div class="data-list">
+          <div class="data-row">
+            <div><div class="data-label">データバージョン</div><div class="data-value">DDR WORLD / 2026-08-03</div></div>
+            <span class="muted">アプリに同梱</span>
+          </div>
+          <div class="data-row">
+            <div><div class="data-label">収録譜面数</div><div class="data-value">1,284譜面</div></div>
+            <span class="muted">アプリ更新時に反映</span>
+          </div>
+        </div>
+      </section>
+
+      <div class="callout">楽曲・譜面データはアプリに同梱され、ユーザーが個別に置き換えることはできません。</div>
+    </main>
+  </div>
+</body>
+</html>

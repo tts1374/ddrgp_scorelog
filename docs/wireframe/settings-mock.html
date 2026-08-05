@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DDR GP Score Log - 設定 UI Mockup (draft)</title>
+  <link rel="stylesheet" href="screen-mock-shared.css">
+</head>
+<body>
+  <div class="app-window">
+    <aside class="sidebar">
+      <div>
+        <div class="brand">
+          <h1>GP Score Log</h1>
+          <p>DDR GRAND PRIX Score Tracker</p>
+        </div>
+        <ul class="nav-list">
+          <li class="nav-item"><a href="home-mock.html">ホーム</a></li>
+          <li class="nav-item"><a href="chart-bests-mock.html">自己ベスト</a></li>
+          <li class="nav-item"><a href="play-history-mock.html">直近プレー履歴</a></li>
+          <li class="nav-divider"></li>
+          <li class="nav-item active"><a href="settings-mock.html" aria-current="page">設定</a></li>
+          <li class="nav-item"><a href="data-management-mock.html">データ管理</a></li>
+        </ul>
+      </div>
+
+      <div class="sidebar-control-box">
+        <div class="status-badge"><span class="status-dot"></span>自動記録：待機中</div>
+        <div class="status-sub">DDR GPウィンドウ待機中</div>
+        <button class="btn-monitor" type="button">監視を開始する</button>
+      </div>
+    </aside>
+
+    <main class="main-content">
+      <header class="header-bar">
+        <div class="page-title">
+          <h2>設定</h2>
+          <p>自動記録と表示に関する設定を変更できます</p>
+        </div>
+        <div class="header-action">
+          <button class="btn-secondary" type="button">初期値に戻す</button>
+        </div>
+      </header>
+
+      <section class="setting-stack" aria-label="設定項目">
+        <div class="panel">
+          <div class="panel-header">
+            <div>
+              <h3>自動記録</h3>
+              <p>プレー結果の検出と保存に関する設定</p>
+            </div>
+          </div>
+          <div class="setting-row">
+            <div>
+              <div class="setting-label">アプリ起動時に監視を開始</div>
+              <div class="setting-description">起動後すぐにプレー画面の監視を開始します</div>
+            </div>
+            <div class="setting-control"><input class="toggle-input" type="checkbox" checked aria-label="アプリ起動時に監視を開始"></div>
+          </div>
+          <div class="setting-row">
+            <div>
+              <div class="setting-label">保存できない結果を通知</div>
+              <div class="setting-description">自動保存できなかったプレーをWPF・タスクトレイで通知します</div>
+            </div>
+            <div class="setting-control"><input class="toggle-input" type="checkbox" checked aria-label="保存できない結果を通知"></div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header">
+            <div>
+              <h3>表示</h3>
+              <p>画面を開いたときの初期表示</p>
+            </div>
+          </div>
+          <div class="setting-row">
+            <div>
+              <div class="setting-label">既定のプレイスタイル</div>
+              <div class="setting-description">自己ベスト一覧などで最初に表示するスタイル</div>
+            </div>
+            <div class="setting-control">
+              <div class="segmented" role="group" aria-label="既定のプレイスタイル">
+                <button class="active" type="button">SINGLE</button>
+                <button type="button">DOUBLE</button>
+              </div>
+            </div>
+          </div>
+          <div class="setting-row">
+            <div>
+              <div class="setting-label">起動時に表示する画面</div>
+              <div class="setting-description">アプリ起動後に最初に開く画面</div>
+            </div>
+            <div class="setting-control">
+              <select aria-label="起動時に表示する画面">
+                <option selected>ホーム</option>
+                <option>自己ベスト</option>
+                <option>直近プレー履歴</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div class="save-bar">
+        <span class="muted">変更内容は保存時に反映されます</span>
+        <button class="btn-primary" type="button">変更を保存</button>
+      </div>
+    </main>
+  </div>
+</body>
+</html>
