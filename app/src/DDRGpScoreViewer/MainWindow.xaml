@@ -716,7 +716,7 @@
                                       ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                                       Style="{StaticResource ViewerDataGridStyle}">
                                 <DataGrid.Columns>
-                                    <DataGridTextColumn Header="曲名" Binding="{Binding SongTitle}"
+                                    <DataGridTextColumn Header="曲名" Binding="{Binding SongTitle, Mode=OneWay}"
                                                         Width="2.3*" />
                                     <DataGridTemplateColumn Header="譜面" Width="1.3*">
                                         <DataGridTemplateColumn.CellTemplate>
@@ -724,14 +724,14 @@
                                                 <StackPanel>
                                                     <Border Style="{StaticResource DifficultyBadgeStyle}">
                                                         <Grid>
-                                                            <TextBlock x:Name="FullDifficulty" Text="{Binding DifficultyDisplay}"
+                                                            <TextBlock x:Name="FullDifficulty" Text="{Binding DifficultyDisplay, Mode=OneWay}"
                                                                        Style="{StaticResource DifficultyBadgeTextStyle}" />
-                                                            <TextBlock x:Name="CompactDifficulty" Text="{Binding DifficultyShortDisplay}"
+                                                            <TextBlock x:Name="CompactDifficulty" Text="{Binding DifficultyShortDisplay, Mode=OneWay}"
                                                                        Style="{StaticResource DifficultyBadgeTextStyle}"
                                                                        Visibility="Collapsed" />
                                                         </Grid>
                                                     </Border>
-                                                    <TextBlock Text="{Binding LevelDisplay}" Foreground="{StaticResource TextSecondaryBrush}"
+                                                    <TextBlock Text="{Binding LevelDisplay, Mode=OneWay}" Foreground="{StaticResource TextSecondaryBrush}"
                                                                FontSize="11" FontWeight="SemiBold" Margin="2,2,0,0" />
                                                 </StackPanel>
                                                 <DataTemplate.Triggers>
@@ -748,11 +748,11 @@
                                         <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
                                                 <StackPanel>
-                                                    <TextBlock Text="{Binding BestScoreDisplay}" FontFamily="Consolas"
+                                                    <TextBlock Text="{Binding BestScoreDisplay, Mode=OneWay}" FontFamily="Consolas"
                                                                FontWeight="Bold" />
                                                     <TextBlock FontSize="11" FontWeight="SemiBold"
                                                                Foreground="{StaticResource TextSecondaryBrush}">
-                                                        <Run Text="EX " /><Run Text="{Binding BestExScoreDisplay}" />
+                                                        <Run Text="EX " /><Run Text="{Binding BestExScoreDisplay, Mode=OneWay}" />
                                                     </TextBlock>
                                                 </StackPanel>
                                             </DataTemplate>
@@ -761,8 +761,8 @@
                                     <DataGridTemplateColumn Header="RANK" Width="0.8*">
                                         <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
-                                                <Border Style="{StaticResource RankBadgeStyle}" Tag="{Binding RankBadgeGroup}">
-                                                    <TextBlock Text="{Binding RankDisplay}" Style="{StaticResource BadgeTextStyle}" />
+                                                <Border Style="{StaticResource RankBadgeStyle}" Tag="{Binding RankBadgeGroup, Mode=OneWay}">
+                                                    <TextBlock Text="{Binding RankDisplay, Mode=OneWay}" Style="{StaticResource BadgeTextStyle}" />
                                                 </Border>
                                             </DataTemplate>
                                         </DataGridTemplateColumn.CellTemplate>
@@ -770,8 +770,8 @@
                                     <DataGridTemplateColumn Header="CLEAR" Width="0.95*">
                                         <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
-                                                <Border Style="{StaticResource ClearBadgeStyle}" Tag="{Binding ClearBadgeGroup}">
-                                                    <TextBlock Text="{Binding ClearDisplay}" Style="{StaticResource BadgeTextStyle}" />
+                                                <Border Style="{StaticResource ClearBadgeStyle}" Tag="{Binding ClearBadgeGroup, Mode=OneWay}">
+                                                    <TextBlock Text="{Binding ClearDisplay, Mode=OneWay}" Style="{StaticResource BadgeTextStyle}" />
                                                 </Border>
                                             </DataTemplate>
                                         </DataGridTemplateColumn.CellTemplate>
@@ -786,9 +786,9 @@
                                             </DataTemplate>
                                         </DataGridTemplateColumn.CellTemplate>
                                     </DataGridTemplateColumn>
-                                    <DataGridTextColumn Header="プレー回数" Binding="{Binding PlayCountDisplay}"
+                                    <DataGridTextColumn Header="プレー回数" Binding="{Binding PlayCountDisplay, Mode=OneWay}"
                                                         Width="1.05*" />
-                                    <DataGridTextColumn Header="最終プレー" Binding="{Binding LastPlayedAtDisplay}"
+                                    <DataGridTextColumn Header="最終プレー" Binding="{Binding LastPlayedAtDisplay, Mode=OneWay}"
                                                         Width="1.25*" />
                                 </DataGrid.Columns>
                             </DataGrid>
