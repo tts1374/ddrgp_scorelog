@@ -573,14 +573,14 @@ public sealed class MainViewModelTests
         using var fixture = new DatabaseFixture();
         var sourceVersions = new[]
         {
-            "2023/08/XX",
-            "DDR WORLD",
-            "DDR A3",
-            "DDR A20 PLUS",
-            "DDR A20",
-            "DDR A",
-            "DDR (2014)",
-            "DDR (2013)",
+            "2023/04/03配信",
+            "DanceDanceRevolution WORLD",
+            "DanceDanceRevolution A3",
+            "DanceDanceRevolution A20 PL US",
+            "DanceDanceRevolution A20",
+            "DanceDanceRevolution A",
+            "DanceDanceRevolution (2014)",
+            "DanceDanceRevolution (2013)",
             "DDR X3 VS 2ndMIX",
             "DDR X2",
             "DDR X",
@@ -589,11 +589,11 @@ public sealed class MainViewModelTests
             "DDR EXTREME",
             "DDRMAX2",
             "DDRMAX",
-            "5thMIX",
-            "4thMIX",
-            "3rdMIX",
-            "2ndMIX",
-            "1st",
+            "DDR 5thMIX",
+            "DDR 4thMIX",
+            "DDR 3rdMIX",
+            "DDR 2ndMIX",
+            "DDR 1st",
         };
         for (var index = 0; index < sourceVersions.Length; index++)
         {

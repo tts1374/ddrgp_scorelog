@@ -3283,6 +3283,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     private static string GetBestVersionLabel(string version)
     {
+        const string DanceDanceRevolutionPrefix = "DanceDanceRevolution ";
         var value = string.Join(
             " ",
             version.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries));
@@ -3291,15 +3292,30 @@ public sealed class MainViewModel : INotifyPropertyChanged
             return BestVersionOrder[0];
         }
 
-        var withoutDdrPrefix = value.StartsWith("DDR ", StringComparison.OrdinalIgnoreCase)
-            ? value[4..]
-            : value;
+        var aliases = new List<string> { value };
+        if (value.StartsWith("DDR ", StringComparison.OrdinalIgnoreCase))
+        {
+            aliases.Add(value[4..]);
+        }
+        if (value.StartsWith(DanceDanceRevolutionPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            aliases.Add(value[DanceDanceRevolutionPrefix.Length..]);
+        }
+        if (aliases.Contains("A20 PL US", StringComparer.OrdinalIgnoreCase))
+        {
+            aliases.Add("A20 PLUS");
+        }
+
         foreach (var label in BestVersionOrder)
         {
-            if (string.Equals(value, label, StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(withoutDdrPrefix, label, StringComparison.OrdinalIgnoreCase) ||
-                (label.StartsWith("DDR ", StringComparison.OrdinalIgnoreCase) &&
-                 string.Equals(value, label[4..], StringComparison.OrdinalIgnoreCase)))
+            var labelAliases = new[]
+            {
+                label,
+                label.StartsWith("DDR ", StringComparison.OrdinalIgnoreCase)
+                    ? label[4..]
+                    : label,
+            };
+            if (aliases.Any(alias => labelAliases.Contains(alias, StringComparer.OrdinalIgnoreCase)))
             {
                 return label;
             }
