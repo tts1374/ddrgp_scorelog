@@ -116,19 +116,83 @@ public sealed record ChartBestItem(
     int BestExScore,
     string LastPlayedAt,
     int PlayCount,
-    bool MasterReferenceMissing)
+    bool MasterReferenceMissing,
+    string Version = "",
+    string Rank = "",
+    string ClearType = "",
+    string? FlareRank = null)
 {
+    public bool IsPlayed => PlayCount > 0;
     public string PlayStyleDisplay => PlayStyle switch
     {
         "SINGLE" => "SP",
         "DOUBLE" => "DP",
         _ => "—",
     };
+    public string DifficultyDisplay => string.IsNullOrWhiteSpace(Difficulty)
+        ? "—"
+        : Difficulty;
+    public string DifficultyShortDisplay => Difficulty switch
+    {
+        "BEGINNER" => "BGN",
+        "BASIC" => "BAS",
+        "DIFFICULT" => "DIF",
+        "EXPERT" => "EXP",
+        "CHALLENGE" => "CHA",
+        _ => DifficultyDisplay,
+    };
     public string LevelDisplay => Level is null ? "—" : $"Lv.{Level}";
-    public string BestScoreDisplay => BestScore.ToString("N0");
-    public string BestExScoreDisplay => BestExScore.ToString("N0");
+    public string BestScoreDisplay => IsPlayed ? BestScore.ToString("N0") : "—";
+    public string BestExScoreDisplay => IsPlayed ? BestExScore.ToString("N0") : "—";
+    public string RankDisplay => string.IsNullOrWhiteSpace(Rank) ? "—" : Rank;
+    public string ClearDisplay => ClearType switch
+    {
+        "FC" or "FULL COMBO" => "FC",
+        "" => "—",
+        _ => ClearType,
+    };
+    public string FlareRankDisplay => string.IsNullOrWhiteSpace(FlareRank)
+        ? "—"
+        : FlareRank;
+    public string VersionDisplay => string.IsNullOrWhiteSpace(Version) ? "—" : Version;
+    public string PlayCountDisplay => $"{PlayCount:N0} 回";
+    public string RankBadgeGroup => Rank switch
+    {
+        "AAA" or "AA+" or "AA" or "AA-" or "A+" or "A" or "A-" => "Upper",
+        "B+" or "B" or "B-" => "B",
+        "C+" or "C" or "C-" => "C",
+        "D+" or "D" => "D",
+        "E" => "E",
+        _ => "Neutral",
+    };
+    public string ClearBadgeGroup => ClearType switch
+    {
+        "PFC" => "Pfc",
+        "GFC" => "Gfc",
+        "FC" or "FULL COMBO" => "Fc",
+        "CLEAR" => "Clear",
+        "MFC" => "Mfc",
+        "FAILED" => "Failed",
+        _ => "Neutral",
+    };
+    public string FlareBadgeGroup => FlareRank switch
+    {
+        "I" => "I",
+        "II" => "II",
+        "III" => "III",
+        "IV" => "IV",
+        "V" => "V",
+        "VI" => "VI",
+        "VII" => "VII",
+        "VIII" => "VIII",
+        "IX" => "IX",
+        "EX" => "EX",
+        _ => "None",
+    };
     public string LastPlayedAtDisplay =>
-        ViewerTimestampFormatter.Format(LastPlayedAt, "yyyy/MM/dd HH:mm");
+        string.IsNullOrWhiteSpace(LastPlayedAt)
+            ? "—"
+            : ViewerTimestampFormatter.FormatBestTimestamp(LastPlayedAt);
 }
 
 internal static class ViewerTimestampFormatter
@@ -141,6 +205,24 @@ internal static class ViewerTimestampFormatter
             out var timestamp)
             ? timestamp.ToLocalTime().ToString(format, CultureInfo.CurrentCulture)
             : value;
+
+    public static string FormatBestTimestamp(string value)
+    {
+        if (!DateTimeOffset.TryParse(
+                value,
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.AllowWhiteSpaces | DateTimeStyles.AssumeUniversal,
+                out var timestamp))
+        {
+            return value;
+        }
+
+        var localTimestamp = timestamp.ToLocalTime();
+        var format = localTimestamp.Year == DateTimeOffset.Now.Year
+            ? "MM/dd HH:mm"
+            : "yyyy/MM/dd HH:mm";
+        return localTimestamp.ToString(format, CultureInfo.CurrentCulture);
+    }
 }
 
 public sealed record ViewerData(
@@ -149,4 +231,8 @@ public sealed record ViewerData(
     string ScoreDatabasePath,
     string MasterDatabasePath,
     string MasterVersion,
-    string CatalogDatabasePath = "");
+    string CatalogDatabasePath = "",
+    IReadOnlyList<ChartBestItem>? ChartCatalogSource = null)
+{
+    public IReadOnlyList<ChartBestItem> ChartCatalog { get; } = ChartCatalogSource ?? [];
+}

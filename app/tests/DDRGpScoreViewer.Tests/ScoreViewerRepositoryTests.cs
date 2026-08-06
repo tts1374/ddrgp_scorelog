@@ -108,6 +108,47 @@ public sealed class ScoreViewerRepositoryTests
     }
 
     [Fact]
+    public void Load_projects_chart_version_and_best_result_badges_for_the_list()
+    {
+        using var fixture = new DatabaseFixture();
+        fixture.AddMasterSongAndChart(
+            "song-2",
+            "SECOND SONG",
+            "Artist",
+            "chart-2",
+            version: "DDR WORLD");
+        fixture.AddPlay(
+            "chart-2-older",
+            "2026-07-12T10:00:00+00:00",
+            900_000,
+            1_900,
+            songId: "song-2",
+            chartId: "chart-2");
+        fixture.AddPlay(
+            "chart-2-best",
+            "2026-07-12T11:00:00+00:00",
+            950_000,
+            2_100,
+            songId: "song-2",
+            chartId: "chart-2");
+        fixture.ExecuteScoreSql(
+            "UPDATE plays SET rank = 'AA+', clear_type = 'FULL COMBO', flare_rank = 'IX' " +
+            "WHERE play_id = 'chart-2-best';");
+
+        var data = new ScoreViewerRepository().Load(fixture.ScorePath, fixture.MasterPath);
+        var best = Assert.Single(data.ChartBests, item => item.ChartId == "chart-2");
+
+        Assert.Equal("DDR WORLD", best.Version);
+        Assert.Equal("AA+", best.RankDisplay);
+        Assert.Equal("FC", best.ClearDisplay);
+        Assert.Equal("Upper", best.RankBadgeGroup);
+        Assert.Equal("Fc", best.ClearBadgeGroup);
+        Assert.Equal("IX", best.FlareRankDisplay);
+        Assert.Equal("IX", best.FlareBadgeGroup);
+        Assert.Contains(data.ChartCatalog, item => item.ChartId == "chart-1" && !item.IsPlayed);
+    }
+
+    [Fact]
     public void Load_treats_offsetless_schema_timestamp_as_utc_for_display()
     {
         using var fixture = new DatabaseFixture();

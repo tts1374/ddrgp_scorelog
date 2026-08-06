@@ -73,6 +73,8 @@ public sealed class LiveMonitoringCaptureTests
     [Fact]
     public async Task Live_monitor_keeps_only_one_pending_candidate_while_processing()
     {
+        var firstCandidateStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
         var observations = new Queue<LiveResultObservation>(
         [
             Result("100", "song-a"),
@@ -83,20 +85,29 @@ public sealed class LiveMonitoringCaptureTests
             Result("300", "song-c"),
         ]);
         var source = new StubFrameSource(Frames(0, 1_000, 2_000, 3_000, 4_000, 5_000));
-        var firstCandidateStarted = new TaskCompletionSource(
-            TaskCreationOptions.RunContinuationsAsynchronously);
         var releaseFirstCandidate = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var candidateQueueDropObserved = new TaskCompletionSource(
             TaskCreationOptions.RunContinuationsAsynchronously);
         var processed = new List<string>();
         var progress = new List<CaptureSessionProgress>();
         var service = new LiveMonitoringCaptureService(
             new StubTargetedAdapter(source),
-            new StubResultAnalyzer(observations));
+            new StubResultAnalyzer(
+                observations,
+                waitBeforeThirdObservation: firstCandidateStarted.Task));
 
         var run = service.RunAsync(
             123,
             new CaptureTargetInfo("DDR GRAND PRIX", 1280, 720),
-            new CallbackProgress<CaptureSessionProgress>(progress.Add),
+            new CallbackProgress<CaptureSessionProgress>(item =>
+            {
+                progress.Add(item);
+                if (item.CandidateQueueDropCount >= 1)
+                {
+                    candidateQueueDropObserved.TrySetResult();
+                }
+            }),
             async (_, observation, _) =>
             {
                 processed.Add(observation.Score);
@@ -108,6 +119,7 @@ public sealed class LiveMonitoringCaptureTests
             });
 
         await firstCandidateStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await candidateQueueDropObserved.Task.WaitAsync(TimeSpan.FromSeconds(2));
         releaseFirstCandidate.TrySetResult();
         var result = await run;
 
@@ -226,13 +238,24 @@ public sealed class LiveMonitoringCaptureTests
         public void Report(T value) => callback(value);
     }
 
-    private sealed class StubResultAnalyzer(Queue<LiveResultObservation> observations)
+    private sealed class StubResultAnalyzer(
+        Queue<LiveResultObservation> observations,
+        Task? waitBeforeThirdObservation = null)
         : ILiveResultAnalyzer
     {
-        public Task<LiveResultObservation> AnalyzeAsync(
+        private int observationCount;
+
+        public async Task<LiveResultObservation> AnalyzeAsync(
             CapturedFrame frame,
-            CancellationToken cancellationToken = default) =>
-            Task.FromResult(observations.Dequeue());
+            CancellationToken cancellationToken = default)
+        {
+            if (Interlocked.Increment(ref observationCount) == 3 &&
+                waitBeforeThirdObservation is not null)
+            {
+                await waitBeforeThirdObservation.WaitAsync(cancellationToken);
+            }
+            return observations.Dequeue();
+        }
     }
 
     private sealed class StubTargetedAdapter(StubFrameSource source)

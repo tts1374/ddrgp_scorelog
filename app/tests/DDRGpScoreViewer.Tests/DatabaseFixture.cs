@@ -182,19 +182,23 @@ internal sealed class DatabaseFixture : IDisposable
         string chartId,
         string playStyle = "SINGLE",
         string difficulty = "EXPERT",
-        int level = 17)
+        int level = 17,
+        string version = "DDR GRAND PRIX")
     {
         using var connection = OpenWritable(MasterPath);
         connection.Open();
         using var command = connection.CreateCommand();
         command.CommandText =
-            "INSERT INTO songs (song_id, title, artist, grand_prix_play_available, official_availability_match) " +
-            "VALUES ($song_id, $title, $artist, 1, 'fixture'); " +
+            "INSERT INTO songs (song_id, title, artist, version, grand_prix_play_available, official_availability_match) " +
+            "VALUES ($song_id, $title, $artist, $version, 1, 'fixture'); " +
             "INSERT INTO charts (chart_id, song_id, play_style, difficulty, level) " +
-            "VALUES ($chart_id, $song_id, $play_style, $difficulty, $level);";
+            "VALUES ($chart_id, $song_id, $play_style, $difficulty, $level); " +
+            "UPDATE master_metadata SET value = (SELECT COUNT(*) FROM songs) WHERE key = 'song_count'; " +
+            "UPDATE master_metadata SET value = (SELECT COUNT(*) FROM charts) WHERE key = 'chart_count';";
         command.Parameters.AddWithValue("$song_id", songId);
         command.Parameters.AddWithValue("$title", title);
         command.Parameters.AddWithValue("$artist", artist);
+        command.Parameters.AddWithValue("$version", version);
         command.Parameters.AddWithValue("$chart_id", chartId);
         command.Parameters.AddWithValue("$play_style", playStyle);
         command.Parameters.AddWithValue("$difficulty", difficulty);
@@ -412,7 +416,8 @@ internal sealed class DatabaseFixture : IDisposable
             """
             CREATE TABLE songs (
               song_id TEXT PRIMARY KEY, title TEXT NOT NULL, artist TEXT NOT NULL,
-              grand_prix_play_available INTEGER NOT NULL, official_availability_match TEXT NOT NULL
+              version TEXT NOT NULL, grand_prix_play_available INTEGER NOT NULL,
+              official_availability_match TEXT NOT NULL
             );
             CREATE TABLE charts (
               chart_id TEXT PRIMARY KEY, song_id TEXT NOT NULL, play_style TEXT NOT NULL,
@@ -424,7 +429,7 @@ internal sealed class DatabaseFixture : IDisposable
               snapshot_id TEXT PRIMARY KEY, source_url TEXT NOT NULL,
               content_hash TEXT NOT NULL
             );
-            INSERT INTO songs VALUES ('song-1', 'MAX 300', 'Artist', 1, 'fixture');
+            INSERT INTO songs VALUES ('song-1', 'MAX 300', 'Artist', 'DDR GRAND PRIX', 1, 'fixture');
             INSERT INTO charts VALUES ('chart-1', 'song-1', 'SINGLE', 'EXPERT', 17);
             INSERT INTO source_snapshots VALUES ('snapshot-1', 'https://example.test/source', 'hash-v1');
             """;

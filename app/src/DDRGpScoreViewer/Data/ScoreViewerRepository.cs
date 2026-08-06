@@ -298,14 +298,16 @@ public sealed class ScoreViewerRepository
             }
 
             var plays = ReadPlays(scoreConnection, masterCharts);
-            var chartBests = ReadChartBests(scoreConnection, masterCharts);
+            var chartBests = ReadChartBests(scoreConnection, masterCharts, plays);
+            var chartCatalog = ReadChartCatalog(masterCharts);
             return new ViewerData(
                 plays,
                 chartBests,
                 Path.GetFullPath(scoreDatabasePath),
                 Path.GetFullPath(masterDatabasePath),
                 masterVersion,
-                catalogDatabasePath is null ? "" : Path.GetFullPath(catalogDatabasePath));
+                catalogDatabasePath is null ? "" : Path.GetFullPath(catalogDatabasePath),
+                chartCatalog);
         }
         catch (ViewerDatabaseException)
         {
@@ -834,7 +836,8 @@ public sealed class ScoreViewerRepository
         using var command = connection.CreateCommand();
         command.CommandText =
             """
-            SELECT c.chart_id, c.song_id, s.title, c.play_style, c.difficulty, c.level
+            SELECT c.chart_id, c.song_id, s.title, s.version,
+                   c.play_style, c.difficulty, c.level
             FROM charts c
             JOIN songs s ON s.song_id = c.song_id;
             """;
@@ -843,11 +846,13 @@ public sealed class ScoreViewerRepository
         while (reader.Read())
         {
             result[reader.GetString(0)] = new MasterChart(
+                reader.GetString(0),
                 reader.GetString(1),
                 reader.GetString(2),
                 reader.GetString(3),
                 reader.GetString(4),
-                reader.GetInt32(5));
+                reader.GetString(5),
+                reader.GetInt32(6));
         }
         return result;
     }
@@ -890,8 +895,18 @@ public sealed class ScoreViewerRepository
 
     private static IReadOnlyList<ChartBestItem> ReadChartBests(
         SqliteConnection connection,
-        IReadOnlyDictionary<string, MasterChart> masterCharts)
+        IReadOnlyDictionary<string, MasterChart> masterCharts,
+        IReadOnlyList<PlayHistoryItem> plays)
     {
+        var bestPlayByChart = plays
+            .GroupBy(play => (play.SongId, play.ChartId))
+            .ToDictionary(
+                group => group.Key,
+                group => group
+                    .OrderByDescending(play => play.Score)
+                    .ThenByDescending(play => play.ExScore)
+                    .First());
+
         using var command = connection.CreateCommand();
         command.CommandText =
             """
@@ -917,6 +932,7 @@ public sealed class ScoreViewerRepository
             var songId = reader.GetString(0);
             var chartId = reader.GetString(1);
             var found = masterCharts.TryGetValue(chartId, out var chart) && chart.SongId == songId;
+            bestPlayByChart.TryGetValue((songId, chartId), out var bestPlay);
             result.Add(new ChartBestItem(
                 songId, chartId,
                 found ? chart!.Title : $"参照情報なし（{songId}）",
@@ -924,10 +940,32 @@ public sealed class ScoreViewerRepository
                 found ? chart!.Difficulty : "参照情報なし",
                 found ? chart!.Level : null,
                 reader.GetInt32(2), reader.GetInt32(3), reader.GetString(4), reader.GetInt32(5),
-                !found));
+                !found,
+                found ? chart!.Version : "",
+                bestPlay?.Rank ?? "",
+                bestPlay?.ClearType ?? "",
+                bestPlay?.FlareRank));
         }
         return result;
     }
+
+    private static IReadOnlyList<ChartBestItem> ReadChartCatalog(
+        IReadOnlyDictionary<string, MasterChart> masterCharts) =>
+        masterCharts.Values
+            .Select(chart => new ChartBestItem(
+                chart.SongId,
+                chart.ChartId,
+                chart.Title,
+                chart.PlayStyle,
+                chart.Difficulty,
+                chart.Level,
+                0,
+                0,
+                "",
+                0,
+                false,
+                chart.Version))
+            .ToArray();
 
     private static HashSet<string> ReadTableNames(SqliteConnection connection)
     {
@@ -1050,8 +1088,10 @@ public sealed class ScoreViewerRepository
     }
 
     private sealed record MasterChart(
+        string ChartId,
         string SongId,
         string Title,
+        string Version,
         string PlayStyle,
         string Difficulty,
         int Level);
