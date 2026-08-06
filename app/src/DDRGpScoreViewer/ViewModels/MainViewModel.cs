@@ -21,6 +21,32 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private const string BestSortLevelAscending = "レベル（昇順）";
     private const string BestSortLastPlayedDescending = "最終プレー（新しい順）";
     private const string BestSortPlayCountDescending = "プレー回数（多い順）";
+    private const string ChartDetailAllPlaysMode = "全プレー";
+    private const string ChartDetailBestProgressionMode = "自己ベスト推移";
+    private static readonly string[] BestVersionOrder =
+    [
+        "DDR GRAND PRIX",
+        "DDR WORLD",
+        "DDR A3",
+        "DDR A20 PLUS",
+        "DDR A20",
+        "DDR A",
+        "DDR (2014)",
+        "DDR (2013)",
+        "X3 VS 2ndMIX",
+        "X2",
+        "X",
+        "SuperNOVA 2",
+        "SuperNOVA",
+        "EXTREME",
+        "DDRMAX2",
+        "DDRMAX",
+        "5thMIX",
+        "4thMIX",
+        "3rdMIX",
+        "2ndMIX",
+        "1st",
+    ];
 
     private readonly ScoreViewerRepository repository;
     private readonly IPersonalScoreDbWorkflowRunner? workflowRunner;
@@ -37,6 +63,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private PlayHistoryItem? selectedPlay;
     private ChartBestItem? selectedChartBest;
     private HomePlayItem? homeLatestPlay;
+    private HomePlayItem? chartDetailLatestPlay;
+    private HomePlayItem? chartDetailScoreBestPlay;
+    private HomePlayItem? chartDetailExScoreBestPlay;
+    private IReadOnlyList<HomePlayItem> chartDetailAllPlayPoints = [];
+    private IReadOnlyList<HomePlayItem> chartDetailBestPlayPoints = [];
+    private string chartDetailGraphMode = ChartDetailAllPlaysMode;
     private IReadOnlyList<ChartBestItem> allChartBests = [];
     private IReadOnlyList<string> bestVersionOptions = [AllBestFilterValue];
     private string bestPlayStyleFilter = "SINGLE";
@@ -167,12 +199,14 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged;
     public event Action<ChartBestItem>? ChartBestSelectionRequested;
     public event EventHandler? ChartBestListReset;
+    public event EventHandler? ChartDetailUpdated;
 
     public ObservableCollection<PlayHistoryItem> Plays { get; } = [];
     public ObservableCollection<ChartBestItem> ChartBests { get; } = [];
     public ObservableCollection<HomePlayItem> HomeRecentPlays { get; } = [];
     public ObservableCollection<HomePlayItem> HomeBestUpdates { get; } = [];
     public ObservableCollection<string> BestActiveFilterChips { get; } = [];
+    public ObservableCollection<HomePlayItem> ChartDetailHistory { get; } = [];
 
     public IReadOnlyList<string> BestDifficultyOptions { get; } =
     [
@@ -221,8 +255,119 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public ChartBestItem? SelectedChartBest
     {
         get => selectedChartBest;
-        private set => SetProperty(ref selectedChartBest, value);
+        private set
+        {
+            if (!SetProperty(ref selectedChartBest, value))
+            {
+                return;
+            }
+            RefreshChartDetail();
+        }
     }
+
+    public string ChartDetailGraphMode
+    {
+        get => chartDetailGraphMode;
+        private set => SetProperty(ref chartDetailGraphMode, value);
+    }
+
+    public IReadOnlyList<HomePlayItem> ChartDetailGraphPlays =>
+        ChartDetailGraphMode == ChartDetailBestProgressionMode
+            ? chartDetailBestPlayPoints
+            : chartDetailAllPlayPoints;
+
+    public IReadOnlyList<HomePlayItem> ChartDetailAllPlayPoints => chartDetailAllPlayPoints;
+
+    public IReadOnlyList<HomePlayItem> ChartDetailBestPlayPoints => chartDetailBestPlayPoints;
+
+    public HomePlayItem? ChartDetailLatestPlay => chartDetailLatestPlay;
+
+    public string ChartDetailSongTitle => selectedChartBest?.SongTitle ?? "—";
+
+    public string ChartDetailPlayStyleDisplay => selectedChartBest?.PlayStyleDisplay ?? "—";
+
+    public string ChartDetailDifficultyDisplay => selectedChartBest?.DifficultyDisplay ?? "—";
+
+    public string ChartDetailLevelDisplay => selectedChartBest?.LevelDisplay ?? "—";
+
+    public string ChartDetailBestScoreDisplay => selectedChartBest?.BestScoreDisplay ?? "—";
+
+    public string ChartDetailBestExScoreDisplay => selectedChartBest?.BestExScoreDisplay ?? "—";
+
+    public string ChartDetailRankDisplay => selectedChartBest is { IsPlayed: true }
+        ? selectedChartBest.RankDisplay
+        : "—";
+
+    public System.Windows.Visibility ChartDetailRankBadgeVisibility =>
+        selectedChartBest is { IsPlayed: true, HasRank: true }
+            ? System.Windows.Visibility.Visible
+            : System.Windows.Visibility.Collapsed;
+
+    public System.Windows.Visibility ChartDetailRankPlaceholderVisibility =>
+        selectedChartBest is { IsPlayed: true, HasRank: true }
+            ? System.Windows.Visibility.Collapsed
+            : System.Windows.Visibility.Visible;
+
+    public string ChartDetailClearDisplay => selectedChartBest is { IsPlayed: true }
+        ? selectedChartBest.ClearDisplay
+        : "—";
+
+    public System.Windows.Visibility ChartDetailClearBadgeVisibility =>
+        selectedChartBest is { IsPlayed: true, HasClear: true }
+            ? System.Windows.Visibility.Visible
+            : System.Windows.Visibility.Collapsed;
+
+    public System.Windows.Visibility ChartDetailClearPlaceholderVisibility =>
+        selectedChartBest is { IsPlayed: true, HasClear: true }
+            ? System.Windows.Visibility.Collapsed
+            : System.Windows.Visibility.Visible;
+
+    public string ChartDetailFlareRankDisplay => selectedChartBest is { IsPlayed: true }
+        ? selectedChartBest.FlareRankDisplay
+        : "—";
+
+    public System.Windows.Visibility ChartDetailFlareBadgeVisibility =>
+        selectedChartBest is { IsPlayed: true, FlareBadgeGroup: not "None" }
+            ? System.Windows.Visibility.Visible
+            : System.Windows.Visibility.Collapsed;
+
+    public System.Windows.Visibility ChartDetailFlarePlaceholderVisibility =>
+        selectedChartBest is { IsPlayed: true, FlareBadgeGroup: not "None" }
+            ? System.Windows.Visibility.Collapsed
+            : System.Windows.Visibility.Visible;
+
+    public string ChartDetailRankBadgeGroup => selectedChartBest is { IsPlayed: true }
+        ? selectedChartBest.RankBadgeGroup
+        : "Neutral";
+
+    public string ChartDetailClearBadgeGroup => selectedChartBest is { IsPlayed: true }
+        ? selectedChartBest.ClearBadgeGroup
+        : "Neutral";
+
+    public string ChartDetailFlareBadgeGroup => selectedChartBest is { IsPlayed: true }
+        ? selectedChartBest.FlareBadgeGroup
+        : "None";
+
+    public string ChartDetailScoreBestAtDisplay => chartDetailScoreBestPlay?.Play.PlayedAtDisplay ?? "—";
+
+    public string ChartDetailExScoreBestAtDisplay => chartDetailExScoreBestPlay?.Play.PlayedAtDisplay ?? "—";
+
+    public string ChartDetailPlayCountDisplay => $"{ChartDetailHistory.Count:N0}回";
+
+    public string ChartDetailHistoryCountDisplay => $"{ChartDetailHistory.Count:N0}件";
+
+    public string ChartDetailFullComboCountDisplay =>
+        $"{ChartDetailHistory.Count(IsFullCombo):N0}回";
+
+    public System.Windows.Visibility ChartDetailPlayVisibility =>
+        ChartDetailHistory.Count == 0
+            ? System.Windows.Visibility.Collapsed
+            : System.Windows.Visibility.Visible;
+
+    public System.Windows.Visibility ChartDetailEmptyVisibility =>
+        ChartDetailHistory.Count == 0
+            ? System.Windows.Visibility.Visible
+            : System.Windows.Visibility.Collapsed;
 
     public string BestPlayStyleFilter
     {
@@ -2819,10 +2964,19 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     private void ApplyData(ViewerData data)
     {
+        (string SongId, string ChartId)? selectedChartKey = selectedChartBest is null
+            ? null
+            : (selectedChartBest.SongId, selectedChartBest.ChartId);
+        int? preservedDisplayedCount = allChartBests.Count > 0
+            ? ChartBestDisplayedCount
+            : null;
         Replace(Plays, data.Plays);
         allChartBests = MergeChartBests(data.ChartBests, data.ChartCatalog);
         UpdateBestVersionOptions();
-        RefreshChartBests(resetDisplayedCount: true);
+        RefreshChartBests(
+            resetDisplayedCount: true,
+            selectedChartKey: selectedChartKey,
+            preservedDisplayedCount: preservedDisplayedCount);
         ApplyHomeData(data.Plays);
         MasterVersion = data.MasterVersion;
         ScoreDatabasePath = data.ScoreDatabasePath;
@@ -2887,6 +3041,22 @@ public sealed class MainViewModel : INotifyPropertyChanged
         ChartBestSelectionRequested?.Invoke(chartBest);
     }
 
+    public void SetChartDetailGraphMode(string mode)
+    {
+        if (mode is not (ChartDetailAllPlaysMode or ChartDetailBestProgressionMode))
+        {
+            return;
+        }
+
+        if (!SetProperty(ref chartDetailGraphMode, mode, nameof(ChartDetailGraphMode)))
+        {
+            return;
+        }
+
+        OnPropertyChanged(nameof(ChartDetailGraphPlays));
+        ChartDetailUpdated?.Invoke(this, EventArgs.Empty);
+    }
+
     public void ResetBestFilters()
     {
         suppressBestFilterRefresh = true;
@@ -2918,14 +3088,31 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
     }
 
-    private void RefreshChartBests(bool resetDisplayedCount)
+    private void RefreshChartBests(
+        bool resetDisplayedCount,
+        (string SongId, string ChartId)? selectedChartKey = null,
+        int? preservedDisplayedCount = null)
     {
         var filtered = FilterChartBests().ToArray();
         ChartBestTotalCount = filtered.Length;
         if (resetDisplayedCount)
         {
-            ChartBestDisplayedCount = Math.Min(ChartBestPageSize, filtered.Length);
-            SelectedChartBest = null;
+            ChartBestDisplayedCount = Math.Min(
+                preservedDisplayedCount ?? ChartBestPageSize,
+                filtered.Length);
+            var restoredSelection = selectedChartKey is { } key
+                ? allChartBests.FirstOrDefault(item =>
+                    item.SongId == key.SongId && item.ChartId == key.ChartId)
+                : null;
+            var selectionWasUnchanged =
+                EqualityComparer<ChartBestItem?>.Default.Equals(
+                    selectedChartBest,
+                    restoredSelection);
+            SelectedChartBest = restoredSelection;
+            if (selectionWasUnchanged && restoredSelection is not null)
+            {
+                RefreshChartDetail();
+            }
         }
         else
         {
@@ -2938,6 +3125,83 @@ public sealed class MainViewModel : INotifyPropertyChanged
         if (resetDisplayedCount)
         {
             ChartBestListReset?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    private void RefreshChartDetail()
+    {
+        var selected = selectedChartBest;
+        var chartPlays = selected is null
+            ? Array.Empty<PlayHistoryItem>()
+            : Plays
+                .Where(play => play.SongId == selected.SongId && play.ChartId == selected.ChartId)
+                .ToArray();
+        var projected = BuildHomePlayItems(chartPlays);
+
+        Replace(ChartDetailHistory, projected);
+        chartDetailLatestPlay = ChartDetailHistory.FirstOrDefault();
+        chartDetailScoreBestPlay = projected
+            .OrderByDescending(play => play.Play.Score)
+            .ThenByDescending(play => play.Play.ExScore)
+            .ThenByDescending(play => ParseTimestamp(play.Play.PlayedAt))
+            .ThenByDescending(play => play.Play.PlayId, StringComparer.Ordinal)
+            .FirstOrDefault();
+        chartDetailExScoreBestPlay = projected
+            .OrderByDescending(play => play.Play.ExScore)
+            .ThenByDescending(play => play.Play.Score)
+            .ThenByDescending(play => ParseTimestamp(play.Play.PlayedAt))
+            .ThenByDescending(play => play.Play.PlayId, StringComparer.Ordinal)
+            .FirstOrDefault();
+        chartDetailAllPlayPoints = projected
+            .OrderBy(play => ParseTimestamp(play.Play.PlayedAt))
+            .ThenBy(play => play.Play.PlayId, StringComparer.Ordinal)
+            .ToArray();
+        chartDetailBestPlayPoints = chartDetailAllPlayPoints
+            .Where(play => play.PreviousScore is null || play.IsScoreBestUpdate)
+            .ToArray();
+        ChartDetailGraphMode = ChartDetailAllPlaysMode;
+
+        NotifyChartDetailProperties();
+        ChartDetailUpdated?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void NotifyChartDetailProperties()
+    {
+        foreach (var propertyName in new[]
+                 {
+                     nameof(ChartDetailGraphMode),
+                     nameof(ChartDetailGraphPlays),
+                     nameof(ChartDetailAllPlayPoints),
+                     nameof(ChartDetailBestPlayPoints),
+                     nameof(ChartDetailLatestPlay),
+                     nameof(ChartDetailSongTitle),
+                     nameof(ChartDetailPlayStyleDisplay),
+                     nameof(ChartDetailDifficultyDisplay),
+                     nameof(ChartDetailLevelDisplay),
+                     nameof(ChartDetailBestScoreDisplay),
+                     nameof(ChartDetailBestExScoreDisplay),
+                      nameof(ChartDetailRankDisplay),
+                      nameof(ChartDetailRankBadgeVisibility),
+                      nameof(ChartDetailRankPlaceholderVisibility),
+                      nameof(ChartDetailClearDisplay),
+                      nameof(ChartDetailClearBadgeVisibility),
+                      nameof(ChartDetailClearPlaceholderVisibility),
+                      nameof(ChartDetailFlareRankDisplay),
+                      nameof(ChartDetailFlareBadgeVisibility),
+                      nameof(ChartDetailFlarePlaceholderVisibility),
+                     nameof(ChartDetailRankBadgeGroup),
+                     nameof(ChartDetailClearBadgeGroup),
+                     nameof(ChartDetailFlareBadgeGroup),
+                     nameof(ChartDetailScoreBestAtDisplay),
+                     nameof(ChartDetailExScoreBestAtDisplay),
+                     nameof(ChartDetailPlayCountDisplay),
+                     nameof(ChartDetailHistoryCountDisplay),
+                     nameof(ChartDetailFullComboCountDisplay),
+                     nameof(ChartDetailPlayVisibility),
+                     nameof(ChartDetailEmptyVisibility),
+                 })
+        {
+            OnPropertyChanged(propertyName);
         }
     }
 
@@ -2954,8 +3218,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
             .Where(item => item.PlayStyle == BestPlayStyleFilter)
             .Select(item => item.Version)
             .Where(version => !string.IsNullOrWhiteSpace(version))
+            .Select(GetBestVersionLabel)
             .Distinct(StringComparer.CurrentCultureIgnoreCase)
-            .OrderBy(version => version, StringComparer.CurrentCultureIgnoreCase)
+            .OrderBy(GetBestVersionOrder)
+            .ThenBy(version => version, StringComparer.CurrentCultureIgnoreCase)
             .ToList();
         options.Insert(0, AllBestFilterValue);
         BestVersionOptions = options;
@@ -2978,7 +3244,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
             (songQuery.Length == 0 ||
              item.SongTitle.Contains(songQuery, StringComparison.CurrentCultureIgnoreCase)) &&
             (BestVersionFilter == AllBestFilterValue ||
-             string.Equals(item.Version, BestVersionFilter, StringComparison.CurrentCultureIgnoreCase)) &&
+             string.Equals(
+                 GetBestVersionLabel(item.Version),
+                 BestVersionFilter,
+                 StringComparison.CurrentCultureIgnoreCase)) &&
             MatchesPlayStatus(item, BestPlayStatusFilter) &&
             MatchesRank(item, BestRankFilter) &&
             MatchesClear(item, BestClearFilter));
@@ -3037,6 +3306,62 @@ public sealed class MainViewModel : INotifyPropertyChanged
         "未CLEAR" => item.ClearDisplay is "—" or "FAILED",
         _ => true,
     };
+
+    private static string GetBestVersionLabel(string version)
+    {
+        const string DanceDanceRevolutionPrefix = "DanceDanceRevolution ";
+        var value = string.Join(
+            " ",
+            version.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries));
+        if (IsGrandPrixRelease(value))
+        {
+            return BestVersionOrder[0];
+        }
+
+        var aliases = new List<string> { value };
+        if (value.StartsWith("DDR ", StringComparison.OrdinalIgnoreCase))
+        {
+            aliases.Add(value[4..]);
+        }
+        if (value.StartsWith(DanceDanceRevolutionPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            aliases.Add(value[DanceDanceRevolutionPrefix.Length..]);
+        }
+        if (aliases.Contains("A20 PL US", StringComparer.OrdinalIgnoreCase))
+        {
+            aliases.Add("A20 PLUS");
+        }
+
+        foreach (var label in BestVersionOrder)
+        {
+            var labelAliases = new[]
+            {
+                label,
+                label.StartsWith("DDR ", StringComparison.OrdinalIgnoreCase)
+                    ? label[4..]
+                    : label,
+            };
+            if (aliases.Any(alias => labelAliases.Contains(alias, StringComparer.OrdinalIgnoreCase)))
+            {
+                return label;
+            }
+        }
+
+        return value;
+    }
+
+    private static bool IsGrandPrixRelease(string value) =>
+        value.Contains("GRAND PRIX", StringComparison.OrdinalIgnoreCase) ||
+        (value.Length >= 4 && value.StartsWith("2023", StringComparison.Ordinal) &&
+         (value.Length == 4 || value[4] is '/' or '-' or '.'));
+
+    private static int GetBestVersionOrder(string version)
+    {
+        var index = Array.FindIndex(
+            BestVersionOrder,
+            label => string.Equals(label, version, StringComparison.OrdinalIgnoreCase));
+        return index < 0 ? BestVersionOrder.Length : index;
+    }
 
     private void UpdateBestActiveFilterChips()
     {

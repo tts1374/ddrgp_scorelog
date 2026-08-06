@@ -40,9 +40,15 @@ public sealed class HomePlayItem
 
     public string Rank => Play.Rank;
 
+    public string RankDisplay => Play.RankDisplay;
+
+    public bool HasRank => Play.HasRank;
+
     public string RankBadgeGroup => Play.RankBadgeGroup;
 
     public string ClearDisplay => Play.ClearDisplay;
+
+    public bool HasClear => Play.HasClear;
 
     public string ClearBadgeGroup => Play.ClearBadgeGroup;
 
