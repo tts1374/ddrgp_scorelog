@@ -233,6 +233,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             {
                 return;
             }
+            UpdateBestVersionOptions();
             OnBestFilterChanged();
         }
     }
@@ -2819,9 +2820,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private void ApplyData(ViewerData data)
     {
         Replace(Plays, data.Plays);
-        allChartBests = data.Plays.Count == 0
-            ? []
-            : MergeChartBests(data.ChartBests, data.ChartCatalog);
+        allChartBests = MergeChartBests(data.ChartBests, data.ChartCatalog);
         UpdateBestVersionOptions();
         RefreshChartBests(resetDisplayedCount: true);
         ApplyHomeData(data.Plays);
@@ -2952,6 +2951,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private void UpdateBestVersionOptions()
     {
         var options = allChartBests
+            .Where(item => item.PlayStyle == BestPlayStyleFilter)
             .Select(item => item.Version)
             .Where(version => !string.IsNullOrWhiteSpace(version))
             .Distinct(StringComparer.CurrentCultureIgnoreCase)

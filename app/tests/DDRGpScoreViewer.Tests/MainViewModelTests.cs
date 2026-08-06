@@ -55,6 +55,27 @@ public sealed class MainViewModelTests
     }
 
     [Fact]
+    public void Load_projects_unplayed_master_charts_when_score_db_has_no_plays()
+    {
+        using var fixture = new DatabaseFixture();
+        fixture.AddMasterSongAndChart(
+            "song-unplayed",
+            "UNPLAYED SONG",
+            "Artist",
+            "chart-unplayed",
+            version: "DDR WORLD");
+
+        var viewModel = new MainViewModel(new ScoreViewerRepository());
+        viewModel.Load(fixture.ScorePath, fixture.MasterPath, persist: false);
+
+        Assert.Empty(viewModel.Plays);
+        Assert.Equal(2, viewModel.ChartBestTotalCount);
+        Assert.All(viewModel.ChartBests, item => Assert.False(item.IsPlayed));
+        Assert.Contains(viewModel.ChartBests, item => item.ChartId == "chart-1");
+        Assert.Contains(viewModel.ChartBests, item => item.ChartId == "chart-unplayed");
+    }
+
+    [Fact]
     public async Task SaveAndReloadAsync_reflects_only_committed_saved_play()
     {
         using var fixture = new DatabaseFixture();
@@ -257,7 +278,9 @@ public sealed class MainViewModelTests
         Assert.Equal(1, initializer.CallCount);
         Assert.True(File.Exists(paths.ScoreDatabasePath));
         Assert.Empty(viewModel.Plays);
-        Assert.Empty(viewModel.ChartBests);
+        Assert.Contains(
+            viewModel.ChartBests,
+            item => item.ChartId == "chart-1" && !item.IsPlayed);
         Assert.False(viewModel.HasData);
         Assert.Equal("まだプレーデータがありません", viewModel.StatusTitle);
         Assert.Equal(MasterDatabaseStatus.Compatible, viewModel.MasterDatabaseStatus);
@@ -386,6 +409,41 @@ public sealed class MainViewModelTests
         Assert.Equal("SINGLE", viewModel.BestPlayStyleFilter);
         Assert.Equal(50, viewModel.ChartBests.Count);
         Assert.Equal("スコア（高い順）", viewModel.BestSortFilter);
+    }
+
+    [Fact]
+    public void Best_version_options_follow_selected_play_style_and_reset_invalid_selection()
+    {
+        using var fixture = new DatabaseFixture();
+        fixture.AddMasterSongAndChart(
+            "song-double",
+            "DOUBLE SONG",
+            "Artist",
+            "chart-double",
+            playStyle: "DOUBLE",
+            version: "DDR A20");
+        fixture.AddPlay(
+            "double-play",
+            "2026-08-01T12:00:00+00:00",
+            900_000,
+            1_000,
+            songId: "song-double",
+            chartId: "chart-double");
+
+        var viewModel = new MainViewModel(new ScoreViewerRepository());
+        viewModel.Load(fixture.ScorePath, fixture.MasterPath, persist: false);
+
+        Assert.DoesNotContain("DDR A20", viewModel.BestVersionOptions);
+
+        viewModel.BestVersionFilter = "DDR GRAND PRIX";
+        viewModel.BestPlayStyleFilter = "DOUBLE";
+        Assert.Contains("DDR A20", viewModel.BestVersionOptions);
+        Assert.Equal("すべて", viewModel.BestVersionFilter);
+
+        viewModel.BestVersionFilter = "DDR A20";
+        viewModel.BestPlayStyleFilter = "SINGLE";
+        Assert.DoesNotContain("DDR A20", viewModel.BestVersionOptions);
+        Assert.Equal("すべて", viewModel.BestVersionFilter);
     }
 
     private static PersonalScoreDbWorkflowResult Result(
