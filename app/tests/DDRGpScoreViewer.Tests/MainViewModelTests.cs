@@ -216,6 +216,34 @@ public sealed class MainViewModelTests
         Assert.True(viewModel.HasData);
     }
 
+    [Fact]
+    public async Task SaveAndReloadAsync_preserves_selected_chart_detail_and_refreshes_it()
+    {
+        using var fixture = new DatabaseFixture();
+        fixture.AddPlay("before-save", "2026-07-13T10:00:00+00:00", 900_000, 1_000);
+        var runner = new StubWorkflowRunner((_, databasePath) =>
+        {
+            Assert.Equal(fixture.ScorePath, databasePath);
+            fixture.AddPlay("after-save", "2026-07-13T12:00:00+00:00", 950_000, 1_200);
+            return Result("saved", playId: "after-save", written: true);
+        });
+        var viewModel = new MainViewModel(new ScoreViewerRepository(), runner);
+        viewModel.Load(fixture.ScorePath, fixture.MasterPath, persist: false);
+        viewModel.SelectChartBest(Assert.Single(viewModel.ChartBests));
+
+        Assert.Equal("before-save", viewModel.ChartDetailLatestPlay?.Play.PlayId);
+
+        await viewModel.SaveAndReloadAsync("workflow.json", fixture.ScorePath, fixture.MasterPath);
+
+        Assert.Equal("chart-1", viewModel.SelectedChartBest?.ChartId);
+        Assert.Equal("after-save", viewModel.ChartDetailLatestPlay?.Play.PlayId);
+        Assert.Equal("950,000", viewModel.ChartDetailBestScoreDisplay);
+        Assert.Equal("2回", viewModel.ChartDetailPlayCountDisplay);
+        Assert.Contains(
+            viewModel.ChartDetailHistory,
+            play => play.Play.PlayId == "after-save");
+    }
+
     [Theory]
     [InlineData("excluded", "保存対象外です")]
     [InlineData("duplicate", "重複するプレーです")]

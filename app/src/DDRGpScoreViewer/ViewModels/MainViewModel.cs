@@ -2964,10 +2964,15 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     private void ApplyData(ViewerData data)
     {
+        (string SongId, string ChartId)? selectedChartKey = selectedChartBest is null
+            ? null
+            : (selectedChartBest.SongId, selectedChartBest.ChartId);
         Replace(Plays, data.Plays);
         allChartBests = MergeChartBests(data.ChartBests, data.ChartCatalog);
         UpdateBestVersionOptions();
-        RefreshChartBests(resetDisplayedCount: true);
+        RefreshChartBests(
+            resetDisplayedCount: true,
+            selectedChartKey: selectedChartKey);
         ApplyHomeData(data.Plays);
         MasterVersion = data.MasterVersion;
         ScoreDatabasePath = data.ScoreDatabasePath;
@@ -3079,14 +3084,28 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
     }
 
-    private void RefreshChartBests(bool resetDisplayedCount)
+    private void RefreshChartBests(
+        bool resetDisplayedCount,
+        (string SongId, string ChartId)? selectedChartKey = null)
     {
         var filtered = FilterChartBests().ToArray();
         ChartBestTotalCount = filtered.Length;
         if (resetDisplayedCount)
         {
             ChartBestDisplayedCount = Math.Min(ChartBestPageSize, filtered.Length);
-            SelectedChartBest = null;
+            var restoredSelection = selectedChartKey is { } key
+                ? allChartBests.FirstOrDefault(item =>
+                    item.SongId == key.SongId && item.ChartId == key.ChartId)
+                : null;
+            var selectionWasUnchanged =
+                EqualityComparer<ChartBestItem?>.Default.Equals(
+                    selectedChartBest,
+                    restoredSelection);
+            SelectedChartBest = restoredSelection;
+            if (selectionWasUnchanged && restoredSelection is not null)
+            {
+                RefreshChartDetail();
+            }
         }
         else
         {
