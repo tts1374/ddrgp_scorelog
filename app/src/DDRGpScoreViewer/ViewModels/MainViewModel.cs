@@ -2967,12 +2967,16 @@ public sealed class MainViewModel : INotifyPropertyChanged
         (string SongId, string ChartId)? selectedChartKey = selectedChartBest is null
             ? null
             : (selectedChartBest.SongId, selectedChartBest.ChartId);
+        int? preservedDisplayedCount = allChartBests.Count > 0
+            ? ChartBestDisplayedCount
+            : null;
         Replace(Plays, data.Plays);
         allChartBests = MergeChartBests(data.ChartBests, data.ChartCatalog);
         UpdateBestVersionOptions();
         RefreshChartBests(
             resetDisplayedCount: true,
-            selectedChartKey: selectedChartKey);
+            selectedChartKey: selectedChartKey,
+            preservedDisplayedCount: preservedDisplayedCount);
         ApplyHomeData(data.Plays);
         MasterVersion = data.MasterVersion;
         ScoreDatabasePath = data.ScoreDatabasePath;
@@ -3086,13 +3090,16 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     private void RefreshChartBests(
         bool resetDisplayedCount,
-        (string SongId, string ChartId)? selectedChartKey = null)
+        (string SongId, string ChartId)? selectedChartKey = null,
+        int? preservedDisplayedCount = null)
     {
         var filtered = FilterChartBests().ToArray();
         ChartBestTotalCount = filtered.Length;
         if (resetDisplayedCount)
         {
-            ChartBestDisplayedCount = Math.Min(ChartBestPageSize, filtered.Length);
+            ChartBestDisplayedCount = Math.Min(
+                preservedDisplayedCount ?? ChartBestPageSize,
+                filtered.Length);
             var restoredSelection = selectedChartKey is { } key
                 ? allChartBests.FirstOrDefault(item =>
                     item.SongId == key.SongId && item.ChartId == key.ChartId)

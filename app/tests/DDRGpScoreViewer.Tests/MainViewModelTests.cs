@@ -220,6 +220,14 @@ public sealed class MainViewModelTests
     public async Task SaveAndReloadAsync_preserves_selected_chart_detail_and_refreshes_it()
     {
         using var fixture = new DatabaseFixture();
+        for (var index = 2; index <= 61; index++)
+        {
+            fixture.AddMasterSongAndChart(
+                $"song-{index}",
+                $"SONG {index:00}",
+                "Artist",
+                $"chart-{index}");
+        }
         fixture.AddPlay("before-save", "2026-07-13T10:00:00+00:00", 900_000, 1_000);
         var runner = new StubWorkflowRunner((_, databasePath) =>
         {
@@ -229,13 +237,19 @@ public sealed class MainViewModelTests
         });
         var viewModel = new MainViewModel(new ScoreViewerRepository(), runner);
         viewModel.Load(fixture.ScorePath, fixture.MasterPath, persist: false);
-        viewModel.SelectChartBest(Assert.Single(viewModel.ChartBests));
+        viewModel.LoadMoreChartBests();
+        viewModel.SelectChartBest(
+            viewModel.ChartBests.Single(item => item.ChartId == "chart-1"));
+        var displayedCount = viewModel.ChartBestDisplayedCount;
 
         Assert.Equal("before-save", viewModel.ChartDetailLatestPlay?.Play.PlayId);
+        Assert.Equal(61, displayedCount);
 
         await viewModel.SaveAndReloadAsync("workflow.json", fixture.ScorePath, fixture.MasterPath);
 
         Assert.Equal("chart-1", viewModel.SelectedChartBest?.ChartId);
+        Assert.Equal(displayedCount, viewModel.ChartBestDisplayedCount);
+        Assert.Equal(displayedCount, viewModel.ChartBests.Count);
         Assert.Equal("after-save", viewModel.ChartDetailLatestPlay?.Play.PlayId);
         Assert.Equal("950,000", viewModel.ChartDetailBestScoreDisplay);
         Assert.Equal("2回", viewModel.ChartDetailPlayCountDisplay);
