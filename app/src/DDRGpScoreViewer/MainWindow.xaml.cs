@@ -5,6 +5,7 @@ using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Shapes;
 using System.Windows.Threading;
 using DDRGpScoreViewer.Capture;
 using DDRGpScoreViewer.Data;
@@ -14,10 +15,13 @@ using DDRGpScoreViewer.Updates;
 using DDRGpScoreViewer.ViewModels;
 using Microsoft.Win32;
 using WpfButton = System.Windows.Controls.Button;
+using WpfBrush = System.Windows.Media.Brush;
+using WpfBrushes = System.Windows.Media.Brushes;
 using WpfColor = System.Windows.Media.Color;
 using WpfBinding = System.Windows.Data.Binding;
 using WpfFileDialog = Microsoft.Win32.FileDialog;
 using WpfOrientation = System.Windows.Controls.Orientation;
+using WpfPoint = System.Windows.Point;
 using OpenFileDialog = Microsoft.Win32.OpenFileDialog;
 
 namespace DDRGpScoreViewer;
@@ -29,6 +33,8 @@ public partial class MainWindow : System.Windows.Window
     private readonly AsyncOperationGate monitoringStartGate = new();
     private readonly CancellationTokenSource applicationExitCancellation = new();
     private bool applicationExitRequested;
+    private bool restoringBestChartListState;
+    private double bestChartScrollOffset;
     private Func<Task>? applicationUpdatePrepareExitHandler;
     private Func<Task>? applicationUpdateExitHandler;
     private Action? applicationUpdateForceExitHandler;
@@ -65,6 +71,8 @@ public partial class MainWindow : System.Windows.Window
         ApplyHomeResponsiveLayout(Width);
         ApplyBestResponsiveLayout(Width);
         viewModel.ChartBestListReset += ViewModel_ChartBestListReset;
+        viewModel.ChartBestSelectionRequested += ViewModel_ChartBestSelectionRequested;
+        viewModel.ChartDetailUpdated += ViewModel_ChartDetailUpdated;
 #if DEBUG
         AddDeveloperActions();
 #endif
@@ -373,6 +381,7 @@ public partial class MainWindow : System.Windows.Window
     {
         ApplyHomeResponsiveLayout(e.NewSize.Width);
         ApplyBestResponsiveLayout(e.NewSize.Width);
+        RenderChartDetailGraph();
     }
 
     private void ApplyBestResponsiveLayout(double windowWidth)
@@ -448,6 +457,7 @@ public partial class MainWindow : System.Windows.Window
         PageTitle.Text = "自己ベスト";
         PageSubtitle.Text = "保存済み全履歴から算出した譜面別ベスト";
         UpdateBestPlayStyleButtons();
+        RestoreBestChartListState();
         HomeNavigation.Tag = null;
         BestNavigation.Tag = "Selected";
         HistoryNavigation.Tag = null;
@@ -469,7 +479,7 @@ public partial class MainWindow : System.Windows.Window
 
     private void BestChartGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (BestChartGrid.SelectedItem is ChartBestItem chartBest)
+        if (!restoringBestChartListState && BestChartGrid.SelectedItem is ChartBestItem chartBest)
         {
             viewModel.SelectChartBest(chartBest);
         }
@@ -482,10 +492,92 @@ public partial class MainWindow : System.Windows.Window
             return;
         }
 
+        bestChartScrollOffset = e.VerticalOffset;
+
         if (e.VerticalOffset + e.ViewportHeight >= e.ExtentHeight - 1)
         {
             viewModel.LoadMoreChartBests();
         }
+    }
+
+    private void ViewModel_ChartBestSelectionRequested(ChartBestItem chartBest)
+    {
+        bestChartScrollOffset = FindVisualChild<ScrollViewer>(BestChartGrid)?.VerticalOffset
+            ?? bestChartScrollOffset;
+        ShowChartDetail();
+    }
+
+    private void ViewModel_ChartDetailUpdated(object? sender, EventArgs e)
+    {
+        UpdateChartDetailGraphModeButtons();
+        if (ContentTabs.SelectedIndex == 2)
+        {
+            Dispatcher.BeginInvoke(
+                DispatcherPriority.Background,
+                new Action(RenderChartDetailGraph));
+        }
+    }
+
+    private void ShowChartDetail()
+    {
+        ContentTabs.SelectedIndex = 2;
+        PageTitle.Text = "楽曲・譜面詳細";
+        PageSubtitle.Text = "自己ベストから選択した1譜面の記録とプレー推移を確認できます";
+        HomeNavigation.Tag = null;
+        BestNavigation.Tag = "Selected";
+        HistoryNavigation.Tag = null;
+        UpdateChartDetailGraphModeButtons();
+        Dispatcher.BeginInvoke(
+            DispatcherPriority.Background,
+            new Action(RenderChartDetailGraph));
+    }
+
+    private void ChartDetailGraphMode_Click(object sender, RoutedEventArgs e)
+    {
+        viewModel.SetChartDetailGraphMode(
+            ReferenceEquals(sender, ChartDetailBestProgressionButton)
+                ? "自己ベスト推移"
+                : "全プレー");
+        UpdateChartDetailGraphModeButtons();
+        RenderChartDetailGraph();
+    }
+
+    private void ChartDetailGraphCanvas_SizeChanged(object sender, SizeChangedEventArgs e) =>
+        RenderChartDetailGraph();
+
+    private void UpdateChartDetailGraphModeButtons()
+    {
+        if (ChartDetailAllPlaysButton is null || ChartDetailBestProgressionButton is null)
+        {
+            return;
+        }
+
+        var allPlaysSelected = viewModel.ChartDetailGraphMode == "全プレー";
+        ChartDetailAllPlaysButton.Tag = allPlaysSelected ? "Selected" : null;
+        ChartDetailBestProgressionButton.Tag = allPlaysSelected ? null : "Selected";
+    }
+
+    private void RestoreBestChartListState()
+    {
+        Dispatcher.BeginInvoke(
+            DispatcherPriority.Background,
+            new Action(() =>
+            {
+                var scrollViewer = FindVisualChild<ScrollViewer>(BestChartGrid);
+                scrollViewer?.ScrollToVerticalOffset(bestChartScrollOffset);
+                restoringBestChartListState = true;
+                try
+                {
+                    if (viewModel.SelectedChartBest is not null)
+                    {
+                        BestChartGrid.SelectedItem = viewModel.SelectedChartBest;
+                    }
+                }
+                finally
+                {
+                    restoringBestChartListState = false;
+                }
+            }));
     }
 
     private void UpdateBestPlayStyleButtons()
@@ -497,6 +589,7 @@ public partial class MainWindow : System.Windows.Window
 
     private void ViewModel_ChartBestListReset(object? sender, EventArgs e)
     {
+        bestChartScrollOffset = 0;
         Dispatcher.BeginInvoke(
             DispatcherPriority.Background,
             new Action(() =>
@@ -510,12 +603,155 @@ public partial class MainWindow : System.Windows.Window
 
     private void ShowHistory_Click(object sender, RoutedEventArgs e)
     {
-        ContentTabs.SelectedIndex = 2;
+        ContentTabs.SelectedIndex = 3;
         PageTitle.Text = "直近プレー履歴";
         PageSubtitle.Text = "このアプリを起動してから記録されたプレーを表示します";
         HomeNavigation.Tag = null;
         BestNavigation.Tag = null;
         HistoryNavigation.Tag = "Selected";
+    }
+
+    private void RenderChartDetailGraph()
+    {
+        if (ChartDetailGraphCanvas is null)
+        {
+            return;
+        }
+
+        ChartDetailGraphCanvas.Children.Clear();
+        var points = viewModel.ChartDetailGraphPlays;
+        var width = ChartDetailGraphCanvas.ActualWidth;
+        var height = ChartDetailGraphCanvas.ActualHeight;
+        if (points.Count == 0 || width <= 1 || height <= 1)
+        {
+            return;
+        }
+
+        const double left = 54;
+        const double right = 12;
+        const double top = 14;
+        const double bottom = 28;
+        var plotWidth = Math.Max(1, width - left - right);
+        var plotHeight = Math.Max(1, height - top - bottom);
+        var minimumScore = points.Min(point => point.Play.Score);
+        var maximumScore = points.Max(point => point.Play.Score);
+        var padding = Math.Max(1_000, (maximumScore - minimumScore) * 0.1);
+        var lowerScore = Math.Max(0, minimumScore - padding);
+        var upperScore = Math.Min(1_000_000, maximumScore + padding);
+        if (upperScore <= lowerScore)
+        {
+            upperScore = lowerScore + 1_000;
+        }
+
+        for (var index = 0; index <= 4; index++)
+        {
+            var fraction = index / 4d;
+            var y = top + plotHeight * fraction;
+            ChartDetailGraphCanvas.Children.Add(new Line
+            {
+                X1 = left,
+                X2 = left + plotWidth,
+                Y1 = y,
+                Y2 = y,
+                Stroke = (WpfBrush)FindResource("BorderDefaultBrush"),
+                StrokeThickness = 1,
+            });
+            var score = upperScore - (upperScore - lowerScore) * fraction;
+            var label = new TextBlock
+            {
+                Text = $"{score / 1_000:N0}k",
+                Foreground = (WpfBrush)FindResource("TextSecondaryBrush"),
+                FontSize = 10,
+            };
+            ChartDetailGraphCanvas.Children.Add(label);
+            Canvas.SetLeft(label, 5);
+            Canvas.SetTop(label, Math.Max(0, y - 8));
+        }
+
+        var renderedPoints = points
+            .Select((point, index) =>
+            {
+                var x = points.Count == 1
+                    ? left + plotWidth / 2
+                    : left + plotWidth * index / (points.Count - 1d);
+                var normalized = (point.Play.Score - lowerScore) / (upperScore - lowerScore);
+                var y = top + plotHeight * (1 - normalized);
+                return (point, location: new WpfPoint(x, y));
+            })
+            .ToArray();
+        var line = new Polyline
+        {
+            Points = new PointCollection(renderedPoints.Select(item => item.location)),
+            Stroke = viewModel.ChartDetailGraphMode == "自己ベスト推移"
+                ? new SolidColorBrush(WpfColor.FromRgb(5, 150, 105))
+                : (WpfBrush)FindResource("AccentPrimaryBrush"),
+            StrokeThickness = 2.5,
+            StrokeLineJoin = PenLineJoin.Round,
+        };
+        ChartDetailGraphCanvas.Children.Add(line);
+
+        var bestBrush = new SolidColorBrush(WpfColor.FromRgb(5, 150, 105));
+        foreach (var item in renderedPoints)
+        {
+            var isBestPoint = item.point.PreviousScore is null || item.point.IsScoreBestUpdate;
+            var marker = new Ellipse
+            {
+                Width = isBestPoint ? 9 : 7,
+                Height = isBestPoint ? 9 : 7,
+                Fill = viewModel.ChartDetailGraphMode == "自己ベスト推移" || isBestPoint
+                    ? bestBrush
+                    : (WpfBrush)FindResource("AccentPrimaryBrush"),
+                Stroke = WpfBrushes.White,
+                StrokeThickness = 1.5,
+                ToolTip = $"{item.point.Play.PlayedAtDisplay} / {item.point.Play.ScoreDisplay}",
+            };
+            ChartDetailGraphCanvas.Children.Add(marker);
+            Canvas.SetLeft(marker, item.location.X - marker.Width / 2);
+            Canvas.SetTop(marker, item.location.Y - marker.Height / 2);
+        }
+
+        var firstDate = new TextBlock
+        {
+            Text = points[0].HomePlayedAtDisplay,
+            Foreground = (WpfBrush)FindResource("TextSecondaryBrush"),
+            FontSize = 10,
+        };
+        ChartDetailGraphCanvas.Children.Add(firstDate);
+        Canvas.SetLeft(firstDate, left);
+        Canvas.SetTop(firstDate, height - bottom + 6);
+        if (points.Count > 1)
+        {
+            var latestDate = new TextBlock
+            {
+                Text = points[^1].HomePlayedAtDisplay,
+                Foreground = (WpfBrush)FindResource("TextSecondaryBrush"),
+                FontSize = 10,
+            };
+            ChartDetailGraphCanvas.Children.Add(latestDate);
+            Canvas.SetRight(latestDate, right);
+            Canvas.SetTop(latestDate, height - bottom + 6);
+        }
+    }
+
+    private static T? FindVisualChild<T>(DependencyObject parent)
+        where T : DependencyObject
+    {
+        for (var index = 0; index < VisualTreeHelper.GetChildrenCount(parent); index++)
+        {
+            var child = VisualTreeHelper.GetChild(parent, index);
+            if (child is T match)
+            {
+                return match;
+            }
+
+            var descendant = FindVisualChild<T>(child);
+            if (descendant is not null)
+            {
+                return descendant;
+            }
+        }
+
+        return null;
     }
 
 #if DEBUG

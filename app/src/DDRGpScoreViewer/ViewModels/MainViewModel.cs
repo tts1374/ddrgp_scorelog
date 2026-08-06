@@ -21,6 +21,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private const string BestSortLevelAscending = "レベル（昇順）";
     private const string BestSortLastPlayedDescending = "最終プレー（新しい順）";
     private const string BestSortPlayCountDescending = "プレー回数（多い順）";
+    private const string ChartDetailAllPlaysMode = "全プレー";
+    private const string ChartDetailBestProgressionMode = "自己ベスト推移";
 
     private readonly ScoreViewerRepository repository;
     private readonly IPersonalScoreDbWorkflowRunner? workflowRunner;
@@ -37,6 +39,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private PlayHistoryItem? selectedPlay;
     private ChartBestItem? selectedChartBest;
     private HomePlayItem? homeLatestPlay;
+    private HomePlayItem? chartDetailLatestPlay;
+    private HomePlayItem? chartDetailScoreBestPlay;
+    private HomePlayItem? chartDetailExScoreBestPlay;
+    private IReadOnlyList<HomePlayItem> chartDetailAllPlayPoints = [];
+    private IReadOnlyList<HomePlayItem> chartDetailBestPlayPoints = [];
+    private string chartDetailGraphMode = ChartDetailAllPlaysMode;
     private IReadOnlyList<ChartBestItem> allChartBests = [];
     private IReadOnlyList<string> bestVersionOptions = [AllBestFilterValue];
     private string bestPlayStyleFilter = "SINGLE";
@@ -167,12 +175,14 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged;
     public event Action<ChartBestItem>? ChartBestSelectionRequested;
     public event EventHandler? ChartBestListReset;
+    public event EventHandler? ChartDetailUpdated;
 
     public ObservableCollection<PlayHistoryItem> Plays { get; } = [];
     public ObservableCollection<ChartBestItem> ChartBests { get; } = [];
     public ObservableCollection<HomePlayItem> HomeRecentPlays { get; } = [];
     public ObservableCollection<HomePlayItem> HomeBestUpdates { get; } = [];
     public ObservableCollection<string> BestActiveFilterChips { get; } = [];
+    public ObservableCollection<HomePlayItem> ChartDetailHistory { get; } = [];
 
     public IReadOnlyList<string> BestDifficultyOptions { get; } =
     [
@@ -221,8 +231,89 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public ChartBestItem? SelectedChartBest
     {
         get => selectedChartBest;
-        private set => SetProperty(ref selectedChartBest, value);
+        private set
+        {
+            if (!SetProperty(ref selectedChartBest, value))
+            {
+                return;
+            }
+            RefreshChartDetail();
+        }
     }
+
+    public string ChartDetailGraphMode
+    {
+        get => chartDetailGraphMode;
+        private set => SetProperty(ref chartDetailGraphMode, value);
+    }
+
+    public IReadOnlyList<HomePlayItem> ChartDetailGraphPlays =>
+        ChartDetailGraphMode == ChartDetailBestProgressionMode
+            ? chartDetailBestPlayPoints
+            : chartDetailAllPlayPoints;
+
+    public IReadOnlyList<HomePlayItem> ChartDetailAllPlayPoints => chartDetailAllPlayPoints;
+
+    public IReadOnlyList<HomePlayItem> ChartDetailBestPlayPoints => chartDetailBestPlayPoints;
+
+    public HomePlayItem? ChartDetailLatestPlay => chartDetailLatestPlay;
+
+    public string ChartDetailSongTitle => selectedChartBest?.SongTitle ?? "—";
+
+    public string ChartDetailPlayStyleDisplay => selectedChartBest?.PlayStyleDisplay ?? "—";
+
+    public string ChartDetailDifficultyDisplay => selectedChartBest?.DifficultyDisplay ?? "—";
+
+    public string ChartDetailLevelDisplay => selectedChartBest?.LevelDisplay ?? "—";
+
+    public string ChartDetailBestScoreDisplay => selectedChartBest?.BestScoreDisplay ?? "—";
+
+    public string ChartDetailBestExScoreDisplay => selectedChartBest?.BestExScoreDisplay ?? "—";
+
+    public string ChartDetailRankDisplay => selectedChartBest is { IsPlayed: true }
+        ? selectedChartBest.RankDisplay
+        : "—";
+
+    public string ChartDetailClearDisplay => selectedChartBest is { IsPlayed: true }
+        ? selectedChartBest.ClearDisplay
+        : "—";
+
+    public string ChartDetailFlareRankDisplay => selectedChartBest is { IsPlayed: true }
+        ? selectedChartBest.FlareRankDisplay
+        : "—";
+
+    public string ChartDetailRankBadgeGroup => selectedChartBest is { IsPlayed: true }
+        ? selectedChartBest.RankBadgeGroup
+        : "Neutral";
+
+    public string ChartDetailClearBadgeGroup => selectedChartBest is { IsPlayed: true }
+        ? selectedChartBest.ClearBadgeGroup
+        : "Neutral";
+
+    public string ChartDetailFlareBadgeGroup => selectedChartBest is { IsPlayed: true }
+        ? selectedChartBest.FlareBadgeGroup
+        : "None";
+
+    public string ChartDetailScoreBestAtDisplay => chartDetailScoreBestPlay?.Play.PlayedAtDisplay ?? "—";
+
+    public string ChartDetailExScoreBestAtDisplay => chartDetailExScoreBestPlay?.Play.PlayedAtDisplay ?? "—";
+
+    public string ChartDetailPlayCountDisplay => $"{ChartDetailHistory.Count:N0}回";
+
+    public string ChartDetailHistoryCountDisplay => $"{ChartDetailHistory.Count:N0}件";
+
+    public string ChartDetailFullComboCountDisplay =>
+        $"{ChartDetailHistory.Count(IsFullCombo):N0}回";
+
+    public System.Windows.Visibility ChartDetailPlayVisibility =>
+        ChartDetailHistory.Count == 0
+            ? System.Windows.Visibility.Collapsed
+            : System.Windows.Visibility.Visible;
+
+    public System.Windows.Visibility ChartDetailEmptyVisibility =>
+        ChartDetailHistory.Count == 0
+            ? System.Windows.Visibility.Visible
+            : System.Windows.Visibility.Collapsed;
 
     public string BestPlayStyleFilter
     {
@@ -2887,6 +2978,22 @@ public sealed class MainViewModel : INotifyPropertyChanged
         ChartBestSelectionRequested?.Invoke(chartBest);
     }
 
+    public void SetChartDetailGraphMode(string mode)
+    {
+        if (mode is not (ChartDetailAllPlaysMode or ChartDetailBestProgressionMode))
+        {
+            return;
+        }
+
+        if (!SetProperty(ref chartDetailGraphMode, mode, nameof(ChartDetailGraphMode)))
+        {
+            return;
+        }
+
+        OnPropertyChanged(nameof(ChartDetailGraphPlays));
+        ChartDetailUpdated?.Invoke(this, EventArgs.Empty);
+    }
+
     public void ResetBestFilters()
     {
         suppressBestFilterRefresh = true;
@@ -2938,6 +3045,77 @@ public sealed class MainViewModel : INotifyPropertyChanged
         if (resetDisplayedCount)
         {
             ChartBestListReset?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    private void RefreshChartDetail()
+    {
+        var selected = selectedChartBest;
+        var chartPlays = selected is null
+            ? Array.Empty<PlayHistoryItem>()
+            : Plays
+                .Where(play => play.SongId == selected.SongId && play.ChartId == selected.ChartId)
+                .ToArray();
+        var projected = BuildHomePlayItems(chartPlays);
+
+        Replace(ChartDetailHistory, projected);
+        chartDetailLatestPlay = ChartDetailHistory.FirstOrDefault();
+        chartDetailScoreBestPlay = projected
+            .OrderByDescending(play => play.Play.Score)
+            .ThenByDescending(play => play.Play.ExScore)
+            .ThenByDescending(play => ParseTimestamp(play.Play.PlayedAt))
+            .ThenByDescending(play => play.Play.PlayId, StringComparer.Ordinal)
+            .FirstOrDefault();
+        chartDetailExScoreBestPlay = projected
+            .OrderByDescending(play => play.Play.ExScore)
+            .ThenByDescending(play => play.Play.Score)
+            .ThenByDescending(play => ParseTimestamp(play.Play.PlayedAt))
+            .ThenByDescending(play => play.Play.PlayId, StringComparer.Ordinal)
+            .FirstOrDefault();
+        chartDetailAllPlayPoints = projected
+            .OrderBy(play => ParseTimestamp(play.Play.PlayedAt))
+            .ThenBy(play => play.Play.PlayId, StringComparer.Ordinal)
+            .ToArray();
+        chartDetailBestPlayPoints = chartDetailAllPlayPoints
+            .Where(play => play.PreviousScore is null || play.IsScoreBestUpdate)
+            .ToArray();
+        ChartDetailGraphMode = ChartDetailAllPlaysMode;
+
+        NotifyChartDetailProperties();
+        ChartDetailUpdated?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void NotifyChartDetailProperties()
+    {
+        foreach (var propertyName in new[]
+                 {
+                     nameof(ChartDetailGraphMode),
+                     nameof(ChartDetailGraphPlays),
+                     nameof(ChartDetailAllPlayPoints),
+                     nameof(ChartDetailBestPlayPoints),
+                     nameof(ChartDetailLatestPlay),
+                     nameof(ChartDetailSongTitle),
+                     nameof(ChartDetailPlayStyleDisplay),
+                     nameof(ChartDetailDifficultyDisplay),
+                     nameof(ChartDetailLevelDisplay),
+                     nameof(ChartDetailBestScoreDisplay),
+                     nameof(ChartDetailBestExScoreDisplay),
+                     nameof(ChartDetailRankDisplay),
+                     nameof(ChartDetailClearDisplay),
+                     nameof(ChartDetailFlareRankDisplay),
+                     nameof(ChartDetailRankBadgeGroup),
+                     nameof(ChartDetailClearBadgeGroup),
+                     nameof(ChartDetailFlareBadgeGroup),
+                     nameof(ChartDetailScoreBestAtDisplay),
+                     nameof(ChartDetailExScoreBestAtDisplay),
+                     nameof(ChartDetailPlayCountDisplay),
+                     nameof(ChartDetailHistoryCountDisplay),
+                     nameof(ChartDetailFullComboCountDisplay),
+                     nameof(ChartDetailPlayVisibility),
+                     nameof(ChartDetailEmptyVisibility),
+                 })
+        {
+            OnPropertyChanged(propertyName);
         }
     }
 

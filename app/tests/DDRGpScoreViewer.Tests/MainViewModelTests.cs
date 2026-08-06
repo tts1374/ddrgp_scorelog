@@ -76,6 +76,122 @@ public sealed class MainViewModelTests
     }
 
     [Fact]
+    public void Chart_detail_uses_only_the_selected_chart_and_supports_unplayed_charts()
+    {
+        using var fixture = new DatabaseFixture();
+        fixture.AddMasterSongAndChart(
+            "song-unplayed",
+            "UNPLAYED SONG",
+            "Artist",
+            "chart-unplayed",
+            difficulty: "BEGINNER",
+            level: 3,
+            version: "DDR WORLD");
+        fixture.AddPlay("first", "2026-07-10T10:00:00+00:00", 900_000, 1_000);
+        fixture.AddPlay("score-best", "2026-07-11T10:00:00+00:00", 950_000, 1_100);
+        fixture.AddPlay("ex-best", "2026-07-12T10:00:00+00:00", 940_000, 1_300);
+        fixture.ExecuteScoreSql(
+            "UPDATE plays SET rank = 'AA+', clear_type = 'FC', flare_rank = 'IX' " +
+            "WHERE play_id = 'score-best'; " +
+            "UPDATE plays SET rank = 'B', clear_type = 'PFC', flare_rank = 'VI' " +
+            "WHERE play_id = 'ex-best';");
+
+        var viewModel = new MainViewModel(new ScoreViewerRepository());
+        viewModel.Load(fixture.ScorePath, fixture.MasterPath, persist: false);
+
+        var requested = new List<string>();
+        viewModel.ChartBestSelectionRequested += chart => requested.Add(chart.ChartId);
+        viewModel.SelectChartBest(viewModel.ChartBests.Single(item => item.ChartId == "chart-1"));
+
+        Assert.Equal(["chart-1"], requested);
+        Assert.Equal("MAX 300", viewModel.ChartDetailSongTitle);
+        Assert.Equal("950,000", viewModel.ChartDetailBestScoreDisplay);
+        Assert.Equal("1,300", viewModel.ChartDetailBestExScoreDisplay);
+        Assert.Equal("AA+", viewModel.ChartDetailRankDisplay);
+        Assert.Equal("FC", viewModel.ChartDetailClearDisplay);
+        Assert.Equal("IX", viewModel.ChartDetailFlareRankDisplay);
+        Assert.Equal("3回", viewModel.ChartDetailPlayCountDisplay);
+        Assert.Equal("2回", viewModel.ChartDetailFullComboCountDisplay);
+        Assert.Equal(
+            ["ex-best", "score-best", "first"],
+            viewModel.ChartDetailHistory.Select(play => play.Play.PlayId));
+        Assert.Equal(
+            ["first", "score-best", "ex-best"],
+            viewModel.ChartDetailAllPlayPoints.Select(play => play.Play.PlayId));
+        Assert.Equal(
+            ["first", "score-best"],
+            viewModel.ChartDetailBestPlayPoints.Select(play => play.Play.PlayId));
+        Assert.Equal("↓ -10,000", viewModel.ChartDetailLatestPlay?.ScoreBestDeltaDisplay);
+        Assert.Equal("↑ +200", viewModel.ChartDetailLatestPlay?.ExScoreBestDeltaDisplay);
+        Assert.Contains("2026/07/11", viewModel.ChartDetailScoreBestAtDisplay);
+        Assert.Contains("2026/07/12", viewModel.ChartDetailExScoreBestAtDisplay);
+
+        viewModel.SetChartDetailGraphMode("自己ベスト推移");
+        Assert.Equal("自己ベスト推移", viewModel.ChartDetailGraphMode);
+        Assert.Equal(
+            ["first", "score-best"],
+            viewModel.ChartDetailGraphPlays.Select(play => play.Play.PlayId));
+
+        viewModel.SelectChartBest(viewModel.ChartBests.Single(item => item.ChartId == "chart-unplayed"));
+
+        Assert.Equal("UNPLAYED SONG", viewModel.ChartDetailSongTitle);
+        Assert.Equal("—", viewModel.ChartDetailBestScoreDisplay);
+        Assert.Equal("—", viewModel.ChartDetailBestExScoreDisplay);
+        Assert.Equal("—", viewModel.ChartDetailRankDisplay);
+        Assert.Equal("—", viewModel.ChartDetailClearDisplay);
+        Assert.Equal("—", viewModel.ChartDetailFlareRankDisplay);
+        Assert.Empty(viewModel.ChartDetailHistory);
+        Assert.Empty(viewModel.ChartDetailGraphPlays);
+        Assert.Equal("0回", viewModel.ChartDetailPlayCountDisplay);
+        Assert.Equal(
+            System.Windows.Visibility.Visible,
+            viewModel.ChartDetailEmptyVisibility);
+    }
+
+    [Fact]
+    public void Selecting_chart_detail_does_not_reset_the_best_list_state()
+    {
+        using var fixture = new DatabaseFixture();
+        for (var index = 2; index <= 61; index++)
+        {
+            var songId = $"song-{index}";
+            var chartId = $"chart-{index}";
+            fixture.AddMasterSongAndChart(
+                songId,
+                $"SONG {index:00}",
+                "Artist",
+                chartId,
+                difficulty: "EXPERT",
+                level: 17,
+                version: "DDR WORLD");
+            fixture.AddPlay(
+                $"play-{index}",
+                DateTimeOffset.UtcNow.AddMinutes(-index).ToString("O"),
+                800_000 + index * 1_000,
+                1_000 + index,
+                songId,
+                chartId);
+        }
+
+        var viewModel = new MainViewModel(new ScoreViewerRepository());
+        viewModel.Load(fixture.ScorePath, fixture.MasterPath, persist: false);
+        viewModel.LoadMoreChartBests();
+        viewModel.BestDifficultyFilter = "EXPERT";
+        viewModel.BestSortFilter = "曲名（昇順）";
+        viewModel.LoadMoreChartBests();
+
+        var displayedCount = viewModel.ChartBestDisplayedCount;
+        var selected = viewModel.ChartBests[10];
+        viewModel.SelectChartBest(selected);
+
+        Assert.Equal("EXPERT", viewModel.BestDifficultyFilter);
+        Assert.Equal("曲名（昇順）", viewModel.BestSortFilter);
+        Assert.Equal(displayedCount, viewModel.ChartBestDisplayedCount);
+        Assert.Equal(displayedCount, viewModel.ChartBests.Count);
+        Assert.Equal(selected.ChartId, viewModel.SelectedChartBest?.ChartId);
+    }
+
+    [Fact]
     public async Task SaveAndReloadAsync_reflects_only_committed_saved_play()
     {
         using var fixture = new DatabaseFixture();

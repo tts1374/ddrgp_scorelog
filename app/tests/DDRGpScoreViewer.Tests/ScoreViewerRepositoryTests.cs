@@ -81,6 +81,9 @@ public sealed class ScoreViewerRepositoryTests
         using var fixture = new DatabaseFixture();
         fixture.AddPlay("older", "2026-07-12T10:00:00+00:00", 990_000, 2_400);
         fixture.AddPlay("newer", "2026-07-12T11:00:00+00:00", 980_000, 2_500, flareRank: "EX");
+        fixture.ExecuteScoreSql(
+            "UPDATE plays SET rank = 'AA+', clear_type = 'FC' WHERE play_id = 'older'; " +
+            "UPDATE plays SET rank = 'B', clear_type = 'CLEAR' WHERE play_id = 'newer';");
         var scoreHashBefore = Hash(fixture.ScorePath);
         var masterHashBefore = Hash(fixture.MasterPath);
 
@@ -103,6 +106,9 @@ public sealed class ScoreViewerRepositoryTests
         Assert.Equal(2_500, best.BestExScore);
         Assert.Equal(2, best.PlayCount);
         Assert.Equal("2026-07-12T11:00:00+00:00", best.LastPlayedAt);
+        Assert.Equal("AA+", best.Rank);
+        Assert.Equal("FC", best.ClearType);
+        Assert.Null(best.FlareRank);
         Assert.Equal(scoreHashBefore, Hash(fixture.ScorePath));
         Assert.Equal(masterHashBefore, Hash(fixture.MasterPath));
     }

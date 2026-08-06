@@ -795,6 +795,347 @@
                         </Border>
                     </Grid>
                 </TabItem>
+                <TabItem x:Name="ChartDetailTab">
+                    <ScrollViewer x:Name="ChartDetailScrollViewer"
+                                  HorizontalScrollBarVisibility="Disabled"
+                                  VerticalScrollBarVisibility="Auto"
+                                  Padding="0,0,8,16">
+                        <StackPanel MinWidth="0">
+                            <Grid Margin="0,0,0,12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel>
+                                    <TextBlock Text="自己ベスト / 楽曲・譜面詳細"
+                                               Foreground="{StaticResource TextSecondaryBrush}"
+                                               FontSize="11" FontWeight="SemiBold" />
+                                    <TextBlock Text="自己ベストから選択した1譜面の記録とプレー推移を確認できます"
+                                               Foreground="{StaticResource TextSecondaryBrush}"
+                                               FontSize="12" Margin="0,4,0,0"
+                                               TextWrapping="Wrap" />
+                                </StackPanel>
+                                <Button Grid.Column="1" Content="← 自己ベストに戻る"
+                                        Style="{StaticResource HomeSectionLinkStyle}"
+                                        Click="ShowBest_Click" Margin="12,0,0,0" />
+                            </Grid>
+
+                            <Border Style="{StaticResource CardStyle}" Padding="18" Margin="0,0,0,16">
+                                <StackPanel>
+                                    <TextBlock Text="{Binding ChartDetailSongTitle}"
+                                               FontSize="22" FontWeight="Bold"
+                                               TextWrapping="Wrap" />
+                                    <WrapPanel Margin="0,7,0,0">
+                                        <Border Style="{StaticResource DifficultyBadgeStyle}"
+                                                DataContext="{Binding SelectedChartBest}"
+                                                Margin="0,0,8,0">
+                                            <TextBlock Text="{Binding DifficultyDisplay}"
+                                                       Style="{StaticResource DifficultyBadgeTextStyle}" />
+                                        </Border>
+                                        <TextBlock Text="{Binding ChartDetailPlayStyleDisplay}"
+                                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                                   FontWeight="SemiBold" VerticalAlignment="Center" />
+                                        <TextBlock Text=" / " Foreground="{StaticResource TextSecondaryBrush}"
+                                                   VerticalAlignment="Center" />
+                                        <TextBlock Text="{Binding ChartDetailLevelDisplay}"
+                                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                                   FontWeight="SemiBold" VerticalAlignment="Center" />
+                                    </WrapPanel>
+
+                                    <Grid Margin="0,18,0,0">
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
+                                        <TextBlock Text="通常スコアBEST"
+                                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                                   FontSize="11" FontWeight="SemiBold" />
+                                        <TextBlock Grid.Row="1" Text="{Binding ChartDetailBestScoreDisplay}"
+                                                   FontFamily="Consolas" FontSize="32" FontWeight="Bold"
+                                                   Margin="0,3,0,0" />
+                                        <WrapPanel Grid.Row="2" Margin="0,6,0,0">
+                                            <TextBlock Text="EX SCORE "
+                                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                                       FontWeight="SemiBold" />
+                                            <TextBlock Text="{Binding ChartDetailBestExScoreDisplay}"
+                                                       FontFamily="Consolas" FontWeight="Bold" />
+                                        </WrapPanel>
+                                    </Grid>
+
+                                    <WrapPanel Margin="0,10,0,0">
+                                        <Border Style="{StaticResource RankBadgeStyle}"
+                                                Tag="{Binding ChartDetailRankBadgeGroup}"
+                                                Margin="0,0,8,6">
+                                            <TextBlock Style="{StaticResource BadgeTextStyle}">
+                                                <Run Text="RANK " /><Run Text="{Binding ChartDetailRankDisplay}" />
+                                            </TextBlock>
+                                        </Border>
+                                        <Border Style="{StaticResource ClearBadgeStyle}"
+                                                Tag="{Binding ChartDetailClearBadgeGroup}"
+                                                Margin="0,0,8,6">
+                                            <TextBlock Text="{Binding ChartDetailClearDisplay}"
+                                                       Style="{StaticResource BadgeTextStyle}" />
+                                        </Border>
+                                        <Border Style="{StaticResource FlareBadgeStyle}"
+                                                Tag="{Binding ChartDetailFlareBadgeGroup}"
+                                                Margin="0,0,8,6">
+                                            <TextBlock Style="{StaticResource BadgeTextStyle}">
+                                                <Run Text="FLARE " /><Run Text="{Binding ChartDetailFlareRankDisplay}" />
+                                            </TextBlock>
+                                        </Border>
+                                    </WrapPanel>
+
+                                    <UniformGrid Columns="2" Margin="0,10,0,0">
+                                        <Border Background="{StaticResource SurfaceSecondaryBrush}"
+                                                BorderBrush="{StaticResource BorderDefaultBrush}"
+                                                BorderThickness="1" CornerRadius="8"
+                                                Padding="11,9" Margin="0,0,6,6">
+                                            <StackPanel>
+                                                <TextBlock Text="プレー回数" Foreground="{StaticResource TextSecondaryBrush}"
+                                                           FontSize="11" FontWeight="SemiBold" />
+                                                <TextBlock Text="{Binding ChartDetailPlayCountDisplay}"
+                                                           FontWeight="Bold" Margin="0,3,0,0" />
+                                            </StackPanel>
+                                        </Border>
+                                        <Border Grid.Column="1" Background="{StaticResource SurfaceSecondaryBrush}"
+                                                BorderBrush="{StaticResource BorderDefaultBrush}"
+                                                BorderThickness="1" CornerRadius="8"
+                                                Padding="11,9" Margin="6,0,0,6">
+                                            <StackPanel>
+                                                <TextBlock Text="フルコンボ回数" Foreground="{StaticResource TextSecondaryBrush}"
+                                                           FontSize="11" FontWeight="SemiBold" />
+                                                <TextBlock Text="{Binding ChartDetailFullComboCountDisplay}"
+                                                           FontWeight="Bold" Margin="0,3,0,0" />
+                                            </StackPanel>
+                                        </Border>
+                                        <Border Background="{StaticResource SurfaceSecondaryBrush}"
+                                                BorderBrush="{StaticResource BorderDefaultBrush}"
+                                                BorderThickness="1" CornerRadius="8"
+                                                Padding="11,9" Margin="0,6,6,0">
+                                            <StackPanel>
+                                                <TextBlock Text="通常スコアBEST更新" Foreground="{StaticResource TextSecondaryBrush}"
+                                                           FontSize="11" FontWeight="SemiBold" />
+                                                <TextBlock Text="{Binding ChartDetailScoreBestAtDisplay}"
+                                                           FontSize="12" FontWeight="Bold" Margin="0,3,0,0"
+                                                           TextWrapping="Wrap" />
+                                            </StackPanel>
+                                        </Border>
+                                        <Border Grid.Column="1" Background="{StaticResource SurfaceSecondaryBrush}"
+                                                BorderBrush="{StaticResource BorderDefaultBrush}"
+                                                BorderThickness="1" CornerRadius="8"
+                                                Padding="11,9" Margin="6,6,0,0">
+                                            <StackPanel>
+                                                <TextBlock Text="EXスコアBEST更新" Foreground="{StaticResource TextSecondaryBrush}"
+                                                           FontSize="11" FontWeight="SemiBold" />
+                                                <TextBlock Text="{Binding ChartDetailExScoreBestAtDisplay}"
+                                                           FontSize="12" FontWeight="Bold" Margin="0,3,0,0"
+                                                           TextWrapping="Wrap" />
+                                            </StackPanel>
+                                        </Border>
+                                    </UniformGrid>
+                                    <TextBlock Text="通常スコアとEXスコアの自己ベストは、それぞれの更新日時を基準に表示しています。"
+                                               Foreground="{StaticResource TextSecondaryBrush}"
+                                               FontSize="10" TextWrapping="Wrap" Margin="0,6,0,0" />
+                                </StackPanel>
+                            </Border>
+
+                            <Border Style="{StaticResource CardStyle}" Padding="0" Margin="0,0,0,16">
+                                <StackPanel>
+                                    <StackPanel Margin="18,15,18,0">
+                                        <TextBlock Text="スコア推移" FontSize="16" FontWeight="Bold" />
+                                        <TextBlock Text="プレーごとの通常スコアと自己ベスト更新点"
+                                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                                   FontSize="11" Margin="0,3,0,0" />
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" Background="#F1F5F9"
+                                                HorizontalAlignment="Left" Margin="18,12,18,8">
+                                        <Button x:Name="ChartDetailAllPlaysButton" Content="全プレー"
+                                                Tag="Selected" Style="{StaticResource BestStyleButtonStyle}"
+                                                Click="ChartDetailGraphMode_Click" />
+                                        <Button x:Name="ChartDetailBestProgressionButton" Content="自己ベスト推移"
+                                                Tag="" Style="{StaticResource BestStyleButtonStyle}"
+                                                Click="ChartDetailGraphMode_Click" />
+                                    </StackPanel>
+                                    <WrapPanel Margin="18,0,18,4">
+                                        <TextBlock Text="● 通常スコア" Foreground="{StaticResource AccentPrimaryBrush}"
+                                                   FontSize="11" FontWeight="SemiBold" Margin="0,0,14,0" />
+                                        <TextBlock Text="● 自己ベスト更新" Foreground="#059669"
+                                                   FontSize="11" FontWeight="SemiBold" />
+                                    </WrapPanel>
+                                    <Grid Margin="18,0,18,16">
+                                        <Canvas x:Name="ChartDetailGraphCanvas" Height="230"
+                                                Background="#F8FAFC"
+                                                SizeChanged="ChartDetailGraphCanvas_SizeChanged" />
+                                        <TextBlock Text="未プレーのため、保存済みプレーはありません。"
+                                                   Visibility="{Binding ChartDetailEmptyVisibility}"
+                                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                                   HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                   TextWrapping="Wrap" />
+                                    </Grid>
+
+                                    <Border Background="{StaticResource SurfaceSecondaryBrush}"
+                                            BorderBrush="{StaticResource BorderDefaultBrush}"
+                                            BorderThickness="1" CornerRadius="8" Padding="14"
+                                            Margin="18,0,18,18"
+                                            Visibility="{Binding ChartDetailPlayVisibility}">
+                                        <StackPanel>
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="最新プレー" FontWeight="Bold" />
+                                                <TextBlock Grid.Column="1"
+                                                           Text="{Binding ChartDetailLatestPlay.Play.PlayedAtDisplay}"
+                                                           Foreground="{StaticResource TextSecondaryBrush}"
+                                                           FontSize="11" TextWrapping="Wrap" TextAlignment="Right" />
+                                            </Grid>
+                                            <TextBlock Text="{Binding ChartDetailLatestPlay.ScoreDisplay}"
+                                                       FontFamily="Consolas" FontSize="26" FontWeight="Bold"
+                                                       Margin="0,12,0,0" />
+                                            <WrapPanel Margin="0,4,0,0">
+                                                <TextBlock Text="EX SCORE " Foreground="{StaticResource TextSecondaryBrush}"
+                                                           FontSize="11" FontWeight="SemiBold" />
+                                                <TextBlock Text="{Binding ChartDetailLatestPlay.ExScoreDisplay}"
+                                                           FontFamily="Consolas" FontWeight="Bold" />
+                                            </WrapPanel>
+                                            <WrapPanel Margin="0,10,0,0">
+                                                <Border Style="{StaticResource RankBadgeStyle}"
+                                                        Tag="{Binding ChartDetailLatestPlay.RankBadgeGroup}"
+                                                        Margin="0,0,6,5">
+                                                    <TextBlock Text="{Binding ChartDetailLatestPlay.Rank}"
+                                                               Style="{StaticResource BadgeTextStyle}" />
+                                                </Border>
+                                                <Border Style="{StaticResource ClearBadgeStyle}"
+                                                        Tag="{Binding ChartDetailLatestPlay.ClearBadgeGroup}"
+                                                        Margin="0,0,6,5">
+                                                    <TextBlock Text="{Binding ChartDetailLatestPlay.ClearDisplay}"
+                                                               Style="{StaticResource BadgeTextStyle}" />
+                                                </Border>
+                                                <ContentControl Content="{Binding ChartDetailLatestPlay}"
+                                                                ContentTemplate="{StaticResource FlareBadgeOrPlaceholderTemplate}"
+                                                                Margin="0,0,0,5" />
+                                            </WrapPanel>
+                                            <Border BorderBrush="{StaticResource BorderDefaultBrush}"
+                                                    BorderThickness="0,1,0,0" Padding="0,10,0,0"
+                                                    Margin="0,8,0,0">
+                                                <WrapPanel>
+                                                    <TextBlock Text="通常スコア差 " Foreground="{StaticResource TextSecondaryBrush}"
+                                                               FontSize="11" FontWeight="SemiBold" />
+                                                    <TextBlock Text="{Binding ChartDetailLatestPlay.ScoreBestDeltaDisplay}"
+                                                               Style="{StaticResource HomeDeltaTextStyle}"
+                                                               Tag="{Binding ChartDetailLatestPlay.ScoreBestDeltaGroup}"
+                                                               Margin="0,0,14,0" />
+                                                    <TextBlock Text="EXスコア差 " Foreground="{StaticResource TextSecondaryBrush}"
+                                                               FontSize="11" FontWeight="SemiBold" />
+                                                    <TextBlock Text="{Binding ChartDetailLatestPlay.ExScoreBestDeltaDisplay}"
+                                                               Style="{StaticResource HomeDeltaTextStyle}"
+                                                               Tag="{Binding ChartDetailLatestPlay.ExScoreBestDeltaGroup}" />
+                                                </WrapPanel>
+                                            </Border>
+                                        </StackPanel>
+                                    </Border>
+                                </StackPanel>
+                            </Border>
+
+                            <Border Style="{StaticResource CardStyle}" Padding="0">
+                                <StackPanel>
+                                    <StackPanel Margin="18,15,18,12">
+                                        <TextBlock Text="プレー履歴" FontSize="16" FontWeight="Bold" />
+                                        <TextBlock Foreground="{StaticResource TextSecondaryBrush}"
+                                                   FontSize="11" Margin="0,3,0,0">
+                                            <Run Text="この譜面の保存済みプレー " />
+                                            <Run Text="{Binding ChartDetailHistoryCountDisplay}" />
+                                        </TextBlock>
+                                    </StackPanel>
+                                    <TextBlock Text="未プレーのため、記録・推移・履歴はありません。"
+                                               Visibility="{Binding ChartDetailEmptyVisibility}"
+                                               Foreground="{StaticResource TextSecondaryBrush}"
+                                               Margin="18,0,18,18" TextWrapping="Wrap" />
+                                    <ItemsControl ItemsSource="{Binding ChartDetailHistory}"
+                                                  Visibility="{Binding ChartDetailPlayVisibility}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border BorderBrush="{StaticResource BorderDefaultBrush}"
+                                                        BorderThickness="0,1,0,0" Padding="12,10"
+                                                        Margin="0">
+                                                    <Grid>
+                                                        <Grid.RowDefinitions>
+                                                            <RowDefinition Height="Auto" />
+                                                            <RowDefinition Height="Auto" />
+                                                        </Grid.RowDefinitions>
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="1.5*" />
+                                                            <ColumnDefinition Width="1*" />
+                                                            <ColumnDefinition Width="1*" />
+                                                            <ColumnDefinition Width="1.2*" />
+                                                        </Grid.ColumnDefinitions>
+                                                        <StackPanel>
+                                                            <TextBlock Text="日時" Foreground="{StaticResource TextSecondaryBrush}"
+                                                                       FontSize="10" FontWeight="SemiBold" />
+                                                            <TextBlock Text="{Binding Play.PlayedAtDisplay}"
+                                                                       FontSize="11" TextWrapping="Wrap" Margin="0,3,4,0" />
+                                                        </StackPanel>
+                                                        <StackPanel Grid.Column="1">
+                                                            <TextBlock Text="SCORE" Foreground="{StaticResource TextSecondaryBrush}"
+                                                                       FontSize="10" FontWeight="SemiBold" />
+                                                            <TextBlock Text="{Binding ScoreDisplay}" FontFamily="Consolas"
+                                                                       FontWeight="Bold" Margin="0,3,4,0" />
+                                                        </StackPanel>
+                                                        <StackPanel Grid.Column="2">
+                                                            <TextBlock Text="EX SCORE" Foreground="{StaticResource TextSecondaryBrush}"
+                                                                       FontSize="10" FontWeight="SemiBold" />
+                                                            <TextBlock Text="{Binding ExScoreDisplay}" FontFamily="Consolas"
+                                                                       FontWeight="Bold" Margin="0,3,4,0" />
+                                                        </StackPanel>
+                                                        <StackPanel Grid.Column="3">
+                                                            <TextBlock Text="自己ベスト差" Foreground="{StaticResource TextSecondaryBrush}"
+                                                                       FontSize="10" FontWeight="SemiBold" />
+                                                            <TextBlock Text="{Binding ScoreBestDeltaDisplay}" FontSize="11"
+                                                                       FontWeight="Bold" Margin="0,3,0,0" />
+                                                        </StackPanel>
+                                                        <WrapPanel Grid.Row="1" Grid.ColumnSpan="4" Margin="0,8,0,0">
+                                                            <Border Style="{StaticResource RankBadgeStyle}"
+                                                                    Tag="{Binding RankBadgeGroup}" Margin="0,0,6,4">
+                                                                <TextBlock Text="{Binding Rank}"
+                                                                           Style="{StaticResource BadgeTextStyle}" />
+                                                            </Border>
+                                                            <Border Style="{StaticResource ClearBadgeStyle}"
+                                                                    Tag="{Binding ClearBadgeGroup}" Margin="0,0,6,4">
+                                                                <TextBlock Text="{Binding ClearDisplay}"
+                                                                           Style="{StaticResource BadgeTextStyle}" />
+                                                            </Border>
+                                                            <ContentControl Content="{Binding}"
+                                                                            ContentTemplate="{StaticResource FlareBadgeOrPlaceholderTemplate}"
+                                                                            Margin="0,0,12,4" />
+                                                            <StackPanel Orientation="Horizontal" Margin="0,0,12,4">
+                                                                <TextBlock Text="SCORE " Foreground="{StaticResource TextSecondaryBrush}"
+                                                                           FontSize="10" FontWeight="SemiBold" />
+                                                                <TextBlock Text="{Binding ScoreBestDeltaDisplay}" FontSize="10"
+                                                                           FontWeight="Bold"
+                                                                           Style="{StaticResource HomeDeltaTextStyle}"
+                                                                           Tag="{Binding ScoreBestDeltaGroup}" />
+                                                            </StackPanel>
+                                                            <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                                                <TextBlock Text="EX " Foreground="{StaticResource TextSecondaryBrush}"
+                                                                           FontSize="10" FontWeight="SemiBold" />
+                                                                <TextBlock Text="{Binding ExScoreBestDeltaDisplay}" FontSize="10"
+                                                                           FontWeight="Bold"
+                                                                           Style="{StaticResource HomeDeltaTextStyle}"
+                                                                           Tag="{Binding ExScoreBestDeltaGroup}" />
+                                                            </StackPanel>
+                                                        </WrapPanel>
+                                                    </Grid>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </ScrollViewer>
+                </TabItem>
                 <TabItem>
                     <Grid>
                         <Grid.RowDefinitions>
