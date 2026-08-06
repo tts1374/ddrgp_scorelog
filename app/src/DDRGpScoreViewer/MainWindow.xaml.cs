@@ -485,6 +485,25 @@ public partial class MainWindow : System.Windows.Window
         }
     }
 
+    private void BestChartGrid_PreviewMouseLeftButtonDown(
+        object sender,
+        System.Windows.Input.MouseButtonEventArgs e)
+    {
+        DependencyObject? current = e.OriginalSource as DependencyObject;
+        while (current is not null && current is not DataGridRow)
+        {
+            current = VisualTreeHelper.GetParent(current);
+        }
+
+        if (current is DataGridRow row &&
+            row.Item is ChartBestItem chartBest &&
+            ReferenceEquals(BestChartGrid.SelectedItem, chartBest))
+        {
+            viewModel.SelectChartBest(chartBest);
+            e.Handled = true;
+        }
+    }
+
     private void BestChartGrid_ScrollChanged(object sender, ScrollChangedEventArgs e)
     {
         if (e.ExtentHeight <= 0 || e.ViewportHeight <= 0)

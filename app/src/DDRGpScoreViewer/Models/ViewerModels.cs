@@ -41,8 +41,12 @@ public sealed record PlayHistoryItem(
     public string ClearDisplay => ClearType switch
     {
         "FC" or "FULL COMBO" => "FC",
+        _ when string.IsNullOrWhiteSpace(ClearType) => "—",
         _ => ClearType,
     };
+    public string RankDisplay => string.IsNullOrWhiteSpace(Rank) ? "—" : Rank;
+    public bool HasRank => !string.IsNullOrWhiteSpace(Rank);
+    public bool HasClear => !string.IsNullOrWhiteSpace(ClearType);
     public string RankBadgeGroup => Rank switch
     {
         "AAA" or "AA+" or "AA" or "AA-" or "A+" or "A" or "A-" => "Upper",
@@ -145,12 +149,14 @@ public sealed record ChartBestItem(
     public string BestScoreDisplay => IsPlayed ? BestScore.ToString("N0") : "—";
     public string BestExScoreDisplay => IsPlayed ? BestExScore.ToString("N0") : "—";
     public string RankDisplay => string.IsNullOrWhiteSpace(Rank) ? "—" : Rank;
+    public bool HasRank => !string.IsNullOrWhiteSpace(Rank);
     public string ClearDisplay => ClearType switch
     {
         "FC" or "FULL COMBO" => "FC",
-        "" => "—",
+        _ when string.IsNullOrWhiteSpace(ClearType) => "—",
         _ => ClearType,
     };
+    public bool HasClear => !string.IsNullOrWhiteSpace(ClearType);
     public string FlareRankDisplay => string.IsNullOrWhiteSpace(FlareRank)
         ? "—"
         : FlareRank;

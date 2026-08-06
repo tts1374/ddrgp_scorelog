@@ -23,6 +23,30 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private const string BestSortPlayCountDescending = "プレー回数（多い順）";
     private const string ChartDetailAllPlaysMode = "全プレー";
     private const string ChartDetailBestProgressionMode = "自己ベスト推移";
+    private static readonly string[] BestVersionOrder =
+    [
+        "DDR GRAND PRIX",
+        "DDR WORLD",
+        "DDR A3",
+        "DDR A20 PLUS",
+        "DDR A20",
+        "DDR A",
+        "DDR (2014)",
+        "DDR (2013)",
+        "X3 VS 2ndMIX",
+        "X2",
+        "X",
+        "SuperNOVA 2",
+        "SuperNOVA",
+        "EXTREME",
+        "DDRMAX2",
+        "DDRMAX",
+        "5thMIX",
+        "4thMIX",
+        "3rdMIX",
+        "2ndMIX",
+        "1st",
+    ];
 
     private readonly ScoreViewerRepository repository;
     private readonly IPersonalScoreDbWorkflowRunner? workflowRunner;
@@ -274,13 +298,43 @@ public sealed class MainViewModel : INotifyPropertyChanged
         ? selectedChartBest.RankDisplay
         : "—";
 
+    public System.Windows.Visibility ChartDetailRankBadgeVisibility =>
+        selectedChartBest is { IsPlayed: true, HasRank: true }
+            ? System.Windows.Visibility.Visible
+            : System.Windows.Visibility.Collapsed;
+
+    public System.Windows.Visibility ChartDetailRankPlaceholderVisibility =>
+        selectedChartBest is { IsPlayed: true, HasRank: true }
+            ? System.Windows.Visibility.Collapsed
+            : System.Windows.Visibility.Visible;
+
     public string ChartDetailClearDisplay => selectedChartBest is { IsPlayed: true }
         ? selectedChartBest.ClearDisplay
         : "—";
 
+    public System.Windows.Visibility ChartDetailClearBadgeVisibility =>
+        selectedChartBest is { IsPlayed: true, HasClear: true }
+            ? System.Windows.Visibility.Visible
+            : System.Windows.Visibility.Collapsed;
+
+    public System.Windows.Visibility ChartDetailClearPlaceholderVisibility =>
+        selectedChartBest is { IsPlayed: true, HasClear: true }
+            ? System.Windows.Visibility.Collapsed
+            : System.Windows.Visibility.Visible;
+
     public string ChartDetailFlareRankDisplay => selectedChartBest is { IsPlayed: true }
         ? selectedChartBest.FlareRankDisplay
         : "—";
+
+    public System.Windows.Visibility ChartDetailFlareBadgeVisibility =>
+        selectedChartBest is { IsPlayed: true, FlareBadgeGroup: not "None" }
+            ? System.Windows.Visibility.Visible
+            : System.Windows.Visibility.Collapsed;
+
+    public System.Windows.Visibility ChartDetailFlarePlaceholderVisibility =>
+        selectedChartBest is { IsPlayed: true, FlareBadgeGroup: not "None" }
+            ? System.Windows.Visibility.Collapsed
+            : System.Windows.Visibility.Visible;
 
     public string ChartDetailRankBadgeGroup => selectedChartBest is { IsPlayed: true }
         ? selectedChartBest.RankBadgeGroup
@@ -3100,9 +3154,15 @@ public sealed class MainViewModel : INotifyPropertyChanged
                      nameof(ChartDetailLevelDisplay),
                      nameof(ChartDetailBestScoreDisplay),
                      nameof(ChartDetailBestExScoreDisplay),
-                     nameof(ChartDetailRankDisplay),
-                     nameof(ChartDetailClearDisplay),
-                     nameof(ChartDetailFlareRankDisplay),
+                      nameof(ChartDetailRankDisplay),
+                      nameof(ChartDetailRankBadgeVisibility),
+                      nameof(ChartDetailRankPlaceholderVisibility),
+                      nameof(ChartDetailClearDisplay),
+                      nameof(ChartDetailClearBadgeVisibility),
+                      nameof(ChartDetailClearPlaceholderVisibility),
+                      nameof(ChartDetailFlareRankDisplay),
+                      nameof(ChartDetailFlareBadgeVisibility),
+                      nameof(ChartDetailFlarePlaceholderVisibility),
                      nameof(ChartDetailRankBadgeGroup),
                      nameof(ChartDetailClearBadgeGroup),
                      nameof(ChartDetailFlareBadgeGroup),
@@ -3132,8 +3192,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
             .Where(item => item.PlayStyle == BestPlayStyleFilter)
             .Select(item => item.Version)
             .Where(version => !string.IsNullOrWhiteSpace(version))
+            .Select(GetBestVersionLabel)
             .Distinct(StringComparer.CurrentCultureIgnoreCase)
-            .OrderBy(version => version, StringComparer.CurrentCultureIgnoreCase)
+            .OrderBy(GetBestVersionOrder)
+            .ThenBy(version => version, StringComparer.CurrentCultureIgnoreCase)
             .ToList();
         options.Insert(0, AllBestFilterValue);
         BestVersionOptions = options;
@@ -3156,7 +3218,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
             (songQuery.Length == 0 ||
              item.SongTitle.Contains(songQuery, StringComparison.CurrentCultureIgnoreCase)) &&
             (BestVersionFilter == AllBestFilterValue ||
-             string.Equals(item.Version, BestVersionFilter, StringComparison.CurrentCultureIgnoreCase)) &&
+             string.Equals(
+                 GetBestVersionLabel(item.Version),
+                 BestVersionFilter,
+                 StringComparison.CurrentCultureIgnoreCase)) &&
             MatchesPlayStatus(item, BestPlayStatusFilter) &&
             MatchesRank(item, BestRankFilter) &&
             MatchesClear(item, BestClearFilter));
@@ -3215,6 +3280,46 @@ public sealed class MainViewModel : INotifyPropertyChanged
         "未CLEAR" => item.ClearDisplay is "—" or "FAILED",
         _ => true,
     };
+
+    private static string GetBestVersionLabel(string version)
+    {
+        var value = string.Join(
+            " ",
+            version.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries));
+        if (IsGrandPrixRelease(value))
+        {
+            return BestVersionOrder[0];
+        }
+
+        var withoutDdrPrefix = value.StartsWith("DDR ", StringComparison.OrdinalIgnoreCase)
+            ? value[4..]
+            : value;
+        foreach (var label in BestVersionOrder)
+        {
+            if (string.Equals(value, label, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(withoutDdrPrefix, label, StringComparison.OrdinalIgnoreCase) ||
+                (label.StartsWith("DDR ", StringComparison.OrdinalIgnoreCase) &&
+                 string.Equals(value, label[4..], StringComparison.OrdinalIgnoreCase)))
+            {
+                return label;
+            }
+        }
+
+        return value;
+    }
+
+    private static bool IsGrandPrixRelease(string value) =>
+        value.Contains("GRAND PRIX", StringComparison.OrdinalIgnoreCase) ||
+        (value.Length >= 4 && value.StartsWith("2023", StringComparison.Ordinal) &&
+         (value.Length == 4 || value[4] is '/' or '-' or '.'));
+
+    private static int GetBestVersionOrder(string version)
+    {
+        var index = Array.FindIndex(
+            BestVersionOrder,
+            label => string.Equals(label, version, StringComparison.OrdinalIgnoreCase));
+        return index < 0 ? BestVersionOrder.Length : index;
+    }
 
     private void UpdateBestActiveFilterChips()
     {

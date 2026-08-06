@@ -339,6 +339,8 @@ SINGLE選択時にDP行を表示してはならない。DOUBLE選択時にSP行�
 詳細フィルターに格納する条件：
 
 - バージョン
+  - 2023年配信表記はDDR GRAND PRIXとして扱う
+  - DDR GRAND PRIX、DDR WORLD、DDR A3、DDR A20 PLUS、DDR A20、DDR A、DDR (2014)、DDR (2013)、X3 VS 2ndMIX、X2、X、SuperNOVA 2、SuperNOVA、EXTREME、DDRMAX2、DDRMAX、5thMIX、4thMIX、3rdMIX、2ndMIX、1stの順で表示する
 - プレー状況
   - すべて
   - プレー済み

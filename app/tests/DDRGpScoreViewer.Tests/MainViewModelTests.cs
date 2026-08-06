@@ -101,9 +101,11 @@ public sealed class MainViewModelTests
 
         var requested = new List<string>();
         viewModel.ChartBestSelectionRequested += chart => requested.Add(chart.ChartId);
-        viewModel.SelectChartBest(viewModel.ChartBests.Single(item => item.ChartId == "chart-1"));
+        var playedChart = viewModel.ChartBests.Single(item => item.ChartId == "chart-1");
+        viewModel.SelectChartBest(playedChart);
+        viewModel.SelectChartBest(playedChart);
 
-        Assert.Equal(["chart-1"], requested);
+        Assert.Equal(["chart-1", "chart-1"], requested);
         Assert.Equal("MAX 300", viewModel.ChartDetailSongTitle);
         Assert.Equal("950,000", viewModel.ChartDetailBestScoreDisplay);
         Assert.Equal("1,300", viewModel.ChartDetailBestExScoreDisplay);
@@ -146,6 +148,9 @@ public sealed class MainViewModelTests
         Assert.Equal(
             System.Windows.Visibility.Visible,
             viewModel.ChartDetailEmptyVisibility);
+        Assert.Equal(System.Windows.Visibility.Collapsed, viewModel.ChartDetailRankBadgeVisibility);
+        Assert.Equal(System.Windows.Visibility.Collapsed, viewModel.ChartDetailClearBadgeVisibility);
+        Assert.Equal(System.Windows.Visibility.Collapsed, viewModel.ChartDetailFlareBadgeVisibility);
     }
 
     [Fact]
@@ -560,6 +565,60 @@ public sealed class MainViewModelTests
         viewModel.BestPlayStyleFilter = "SINGLE";
         Assert.DoesNotContain("DDR A20", viewModel.BestVersionOptions);
         Assert.Equal("すべて", viewModel.BestVersionFilter);
+    }
+
+    [Fact]
+    public void Best_version_options_use_release_labels_and_the_requested_order()
+    {
+        using var fixture = new DatabaseFixture();
+        var sourceVersions = new[]
+        {
+            "2023/08/XX",
+            "DDR WORLD",
+            "DDR A3",
+            "DDR A20 PLUS",
+            "DDR A20",
+            "DDR A",
+            "DDR (2014)",
+            "DDR (2013)",
+            "DDR X3 VS 2ndMIX",
+            "DDR X2",
+            "DDR X",
+            "DDR SuperNOVA 2",
+            "DDR SuperNOVA",
+            "DDR EXTREME",
+            "DDRMAX2",
+            "DDRMAX",
+            "5thMIX",
+            "4thMIX",
+            "3rdMIX",
+            "2ndMIX",
+            "1st",
+        };
+        for (var index = 0; index < sourceVersions.Length; index++)
+        {
+            fixture.AddMasterSongAndChart(
+                $"song-version-{index}",
+                $"VERSION SONG {index:00}",
+                "Artist",
+                $"chart-version-{index}",
+                version: sourceVersions[index]);
+        }
+
+        var viewModel = new MainViewModel(new ScoreViewerRepository());
+        viewModel.Load(fixture.ScorePath, fixture.MasterPath, persist: false);
+
+        Assert.Equal(
+            [
+                "DDR GRAND PRIX", "DDR WORLD", "DDR A3", "DDR A20 PLUS", "DDR A20", "DDR A",
+                "DDR (2014)", "DDR (2013)", "X3 VS 2ndMIX", "X2", "X", "SuperNOVA 2",
+                "SuperNOVA", "EXTREME", "DDRMAX2", "DDRMAX", "5thMIX", "4thMIX", "3rdMIX",
+                "2ndMIX", "1st",
+            ],
+            viewModel.BestVersionOptions.Skip(1));
+
+        viewModel.BestVersionFilter = "DDR GRAND PRIX";
+        Assert.Contains(viewModel.ChartBests, item => item.SongTitle == "VERSION SONG 00");
     }
 
     private static PersonalScoreDbWorkflowResult Result(
