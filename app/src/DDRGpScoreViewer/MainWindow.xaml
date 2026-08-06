@@ -822,22 +822,22 @@
 
                             <Border Style="{StaticResource CardStyle}" Padding="18" Margin="0,0,0,16">
                                 <StackPanel>
-                                    <TextBlock Text="{Binding ChartDetailSongTitle}"
+                                    <TextBlock Text="{Binding ChartDetailSongTitle, Mode=OneWay}"
                                                FontSize="22" FontWeight="Bold"
                                                TextWrapping="Wrap" />
                                     <WrapPanel Margin="0,7,0,0">
                                         <Border Style="{StaticResource DifficultyBadgeStyle}"
-                                                DataContext="{Binding SelectedChartBest}"
+                                                DataContext="{Binding SelectedChartBest, Mode=OneWay}"
                                                 Margin="0,0,8,0">
-                                            <TextBlock Text="{Binding DifficultyDisplay}"
+                                            <TextBlock Text="{Binding DifficultyDisplay, Mode=OneWay}"
                                                        Style="{StaticResource DifficultyBadgeTextStyle}" />
                                         </Border>
-                                        <TextBlock Text="{Binding ChartDetailPlayStyleDisplay}"
+                                        <TextBlock Text="{Binding ChartDetailPlayStyleDisplay, Mode=OneWay}"
                                                    Foreground="{StaticResource TextSecondaryBrush}"
                                                    FontWeight="SemiBold" VerticalAlignment="Center" />
                                         <TextBlock Text=" / " Foreground="{StaticResource TextSecondaryBrush}"
                                                    VerticalAlignment="Center" />
-                                        <TextBlock Text="{Binding ChartDetailLevelDisplay}"
+                                        <TextBlock Text="{Binding ChartDetailLevelDisplay, Mode=OneWay}"
                                                    Foreground="{StaticResource TextSecondaryBrush}"
                                                    FontWeight="SemiBold" VerticalAlignment="Center" />
                                     </WrapPanel>
@@ -851,37 +851,37 @@
                                         <TextBlock Text="通常スコアBEST"
                                                    Foreground="{StaticResource TextSecondaryBrush}"
                                                    FontSize="11" FontWeight="SemiBold" />
-                                        <TextBlock Grid.Row="1" Text="{Binding ChartDetailBestScoreDisplay}"
+                                        <TextBlock Grid.Row="1" Text="{Binding ChartDetailBestScoreDisplay, Mode=OneWay}"
                                                    FontFamily="Consolas" FontSize="32" FontWeight="Bold"
                                                    Margin="0,3,0,0" />
                                         <WrapPanel Grid.Row="2" Margin="0,6,0,0">
                                             <TextBlock Text="EX SCORE "
                                                        Foreground="{StaticResource TextSecondaryBrush}"
                                                        FontWeight="SemiBold" />
-                                            <TextBlock Text="{Binding ChartDetailBestExScoreDisplay}"
+                                            <TextBlock Text="{Binding ChartDetailBestExScoreDisplay, Mode=OneWay}"
                                                        FontFamily="Consolas" FontWeight="Bold" />
                                         </WrapPanel>
                                     </Grid>
 
                                     <WrapPanel Margin="0,10,0,0">
                                         <Border Style="{StaticResource RankBadgeStyle}"
-                                                Tag="{Binding ChartDetailRankBadgeGroup}"
+                                                Tag="{Binding ChartDetailRankBadgeGroup, Mode=OneWay}"
                                                 Margin="0,0,8,6">
                                             <TextBlock Style="{StaticResource BadgeTextStyle}">
-                                                <Run Text="RANK " /><Run Text="{Binding ChartDetailRankDisplay}" />
+                                                <Run Text="RANK " /><Run Text="{Binding ChartDetailRankDisplay, Mode=OneWay}" />
                                             </TextBlock>
                                         </Border>
                                         <Border Style="{StaticResource ClearBadgeStyle}"
-                                                Tag="{Binding ChartDetailClearBadgeGroup}"
+                                                Tag="{Binding ChartDetailClearBadgeGroup, Mode=OneWay}"
                                                 Margin="0,0,8,6">
-                                            <TextBlock Text="{Binding ChartDetailClearDisplay}"
+                                            <TextBlock Text="{Binding ChartDetailClearDisplay, Mode=OneWay}"
                                                        Style="{StaticResource BadgeTextStyle}" />
                                         </Border>
                                         <Border Style="{StaticResource FlareBadgeStyle}"
-                                                Tag="{Binding ChartDetailFlareBadgeGroup}"
+                                                Tag="{Binding ChartDetailFlareBadgeGroup, Mode=OneWay}"
                                                 Margin="0,0,8,6">
                                             <TextBlock Style="{StaticResource BadgeTextStyle}">
-                                                <Run Text="FLARE " /><Run Text="{Binding ChartDetailFlareRankDisplay}" />
+                                                <Run Text="FLARE " /><Run Text="{Binding ChartDetailFlareRankDisplay, Mode=OneWay}" />
                                             </TextBlock>
                                         </Border>
                                     </WrapPanel>
@@ -894,7 +894,7 @@
                                             <StackPanel>
                                                 <TextBlock Text="プレー回数" Foreground="{StaticResource TextSecondaryBrush}"
                                                            FontSize="11" FontWeight="SemiBold" />
-                                                <TextBlock Text="{Binding ChartDetailPlayCountDisplay}"
+                                                <TextBlock Text="{Binding ChartDetailPlayCountDisplay, Mode=OneWay}"
                                                            FontWeight="Bold" Margin="0,3,0,0" />
                                             </StackPanel>
                                         </Border>
@@ -905,7 +905,7 @@
                                             <StackPanel>
                                                 <TextBlock Text="フルコンボ回数" Foreground="{StaticResource TextSecondaryBrush}"
                                                            FontSize="11" FontWeight="SemiBold" />
-                                                <TextBlock Text="{Binding ChartDetailFullComboCountDisplay}"
+                                                <TextBlock Text="{Binding ChartDetailFullComboCountDisplay, Mode=OneWay}"
                                                            FontWeight="Bold" Margin="0,3,0,0" />
                                             </StackPanel>
                                         </Border>
@@ -916,7 +916,7 @@
                                             <StackPanel>
                                                 <TextBlock Text="通常スコアBEST更新" Foreground="{StaticResource TextSecondaryBrush}"
                                                            FontSize="11" FontWeight="SemiBold" />
-                                                <TextBlock Text="{Binding ChartDetailScoreBestAtDisplay}"
+                                                <TextBlock Text="{Binding ChartDetailScoreBestAtDisplay, Mode=OneWay}"
                                                            FontSize="12" FontWeight="Bold" Margin="0,3,0,0"
                                                            TextWrapping="Wrap" />
                                             </StackPanel>
@@ -928,7 +928,7 @@
                                             <StackPanel>
                                                 <TextBlock Text="EXスコアBEST更新" Foreground="{StaticResource TextSecondaryBrush}"
                                                            FontSize="11" FontWeight="SemiBold" />
-                                                <TextBlock Text="{Binding ChartDetailExScoreBestAtDisplay}"
+                                                <TextBlock Text="{Binding ChartDetailExScoreBestAtDisplay, Mode=OneWay}"
                                                            FontSize="12" FontWeight="Bold" Margin="0,3,0,0"
                                                            TextWrapping="Wrap" />
                                             </StackPanel>
@@ -987,33 +987,33 @@
                                                 </Grid.ColumnDefinitions>
                                                 <TextBlock Text="最新プレー" FontWeight="Bold" />
                                                 <TextBlock Grid.Column="1"
-                                                           Text="{Binding ChartDetailLatestPlay.Play.PlayedAtDisplay}"
+                                                           Text="{Binding ChartDetailLatestPlay.Play.PlayedAtDisplay, Mode=OneWay}"
                                                            Foreground="{StaticResource TextSecondaryBrush}"
                                                            FontSize="11" TextWrapping="Wrap" TextAlignment="Right" />
                                             </Grid>
-                                            <TextBlock Text="{Binding ChartDetailLatestPlay.ScoreDisplay}"
+                                            <TextBlock Text="{Binding ChartDetailLatestPlay.ScoreDisplay, Mode=OneWay}"
                                                        FontFamily="Consolas" FontSize="26" FontWeight="Bold"
                                                        Margin="0,12,0,0" />
                                             <WrapPanel Margin="0,4,0,0">
                                                 <TextBlock Text="EX SCORE " Foreground="{StaticResource TextSecondaryBrush}"
                                                            FontSize="11" FontWeight="SemiBold" />
-                                                <TextBlock Text="{Binding ChartDetailLatestPlay.ExScoreDisplay}"
+                                                <TextBlock Text="{Binding ChartDetailLatestPlay.ExScoreDisplay, Mode=OneWay}"
                                                            FontFamily="Consolas" FontWeight="Bold" />
                                             </WrapPanel>
                                             <WrapPanel Margin="0,10,0,0">
                                                 <Border Style="{StaticResource RankBadgeStyle}"
-                                                        Tag="{Binding ChartDetailLatestPlay.RankBadgeGroup}"
+                                                        Tag="{Binding ChartDetailLatestPlay.RankBadgeGroup, Mode=OneWay}"
                                                         Margin="0,0,6,5">
-                                                    <TextBlock Text="{Binding ChartDetailLatestPlay.Rank}"
+                                                    <TextBlock Text="{Binding ChartDetailLatestPlay.Rank, Mode=OneWay}"
                                                                Style="{StaticResource BadgeTextStyle}" />
                                                 </Border>
                                                 <Border Style="{StaticResource ClearBadgeStyle}"
-                                                        Tag="{Binding ChartDetailLatestPlay.ClearBadgeGroup}"
+                                                        Tag="{Binding ChartDetailLatestPlay.ClearBadgeGroup, Mode=OneWay}"
                                                         Margin="0,0,6,5">
-                                                    <TextBlock Text="{Binding ChartDetailLatestPlay.ClearDisplay}"
+                                                    <TextBlock Text="{Binding ChartDetailLatestPlay.ClearDisplay, Mode=OneWay}"
                                                                Style="{StaticResource BadgeTextStyle}" />
                                                 </Border>
-                                                <ContentControl Content="{Binding ChartDetailLatestPlay}"
+                                                <ContentControl Content="{Binding ChartDetailLatestPlay, Mode=OneWay}"
                                                                 ContentTemplate="{StaticResource FlareBadgeOrPlaceholderTemplate}"
                                                                 Margin="0,0,0,5" />
                                             </WrapPanel>
@@ -1023,15 +1023,15 @@
                                                 <WrapPanel>
                                                     <TextBlock Text="通常スコア差 " Foreground="{StaticResource TextSecondaryBrush}"
                                                                FontSize="11" FontWeight="SemiBold" />
-                                                    <TextBlock Text="{Binding ChartDetailLatestPlay.ScoreBestDeltaDisplay}"
+                                                    <TextBlock Text="{Binding ChartDetailLatestPlay.ScoreBestDeltaDisplay, Mode=OneWay}"
                                                                Style="{StaticResource HomeDeltaTextStyle}"
-                                                               Tag="{Binding ChartDetailLatestPlay.ScoreBestDeltaGroup}"
+                                                               Tag="{Binding ChartDetailLatestPlay.ScoreBestDeltaGroup, Mode=OneWay}"
                                                                Margin="0,0,14,0" />
                                                     <TextBlock Text="EXスコア差 " Foreground="{StaticResource TextSecondaryBrush}"
                                                                FontSize="11" FontWeight="SemiBold" />
-                                                    <TextBlock Text="{Binding ChartDetailLatestPlay.ExScoreBestDeltaDisplay}"
+                                                    <TextBlock Text="{Binding ChartDetailLatestPlay.ExScoreBestDeltaDisplay, Mode=OneWay}"
                                                                Style="{StaticResource HomeDeltaTextStyle}"
-                                                               Tag="{Binding ChartDetailLatestPlay.ExScoreBestDeltaGroup}" />
+                                                               Tag="{Binding ChartDetailLatestPlay.ExScoreBestDeltaGroup, Mode=OneWay}" />
                                                 </WrapPanel>
                                             </Border>
                                         </StackPanel>
@@ -1046,15 +1046,15 @@
                                         <TextBlock Foreground="{StaticResource TextSecondaryBrush}"
                                                    FontSize="11" Margin="0,3,0,0">
                                             <Run Text="この譜面の保存済みプレー " />
-                                            <Run Text="{Binding ChartDetailHistoryCountDisplay}" />
+                                            <Run Text="{Binding ChartDetailHistoryCountDisplay, Mode=OneWay}" />
                                         </TextBlock>
                                     </StackPanel>
                                     <TextBlock Text="未プレーのため、記録・推移・履歴はありません。"
                                                Visibility="{Binding ChartDetailEmptyVisibility}"
                                                Foreground="{StaticResource TextSecondaryBrush}"
                                                Margin="18,0,18,18" TextWrapping="Wrap" />
-                                    <ItemsControl ItemsSource="{Binding ChartDetailHistory}"
-                                                  Visibility="{Binding ChartDetailPlayVisibility}">
+                                    <ItemsControl ItemsSource="{Binding ChartDetailHistory, Mode=OneWay}"
+                                                  Visibility="{Binding ChartDetailPlayVisibility, Mode=OneWay}">
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate>
                                                 <Border BorderBrush="{StaticResource BorderDefaultBrush}"
@@ -1074,36 +1074,36 @@
                                                         <StackPanel>
                                                             <TextBlock Text="日時" Foreground="{StaticResource TextSecondaryBrush}"
                                                                        FontSize="10" FontWeight="SemiBold" />
-                                                            <TextBlock Text="{Binding Play.PlayedAtDisplay}"
+                                                            <TextBlock Text="{Binding Play.PlayedAtDisplay, Mode=OneWay}"
                                                                        FontSize="11" TextWrapping="Wrap" Margin="0,3,4,0" />
                                                         </StackPanel>
                                                         <StackPanel Grid.Column="1">
                                                             <TextBlock Text="SCORE" Foreground="{StaticResource TextSecondaryBrush}"
                                                                        FontSize="10" FontWeight="SemiBold" />
-                                                            <TextBlock Text="{Binding ScoreDisplay}" FontFamily="Consolas"
+                                                            <TextBlock Text="{Binding ScoreDisplay, Mode=OneWay}" FontFamily="Consolas"
                                                                        FontWeight="Bold" Margin="0,3,4,0" />
                                                         </StackPanel>
                                                         <StackPanel Grid.Column="2">
                                                             <TextBlock Text="EX SCORE" Foreground="{StaticResource TextSecondaryBrush}"
                                                                        FontSize="10" FontWeight="SemiBold" />
-                                                            <TextBlock Text="{Binding ExScoreDisplay}" FontFamily="Consolas"
+                                                            <TextBlock Text="{Binding ExScoreDisplay, Mode=OneWay}" FontFamily="Consolas"
                                                                        FontWeight="Bold" Margin="0,3,4,0" />
                                                         </StackPanel>
                                                         <StackPanel Grid.Column="3">
                                                             <TextBlock Text="自己ベスト差" Foreground="{StaticResource TextSecondaryBrush}"
                                                                        FontSize="10" FontWeight="SemiBold" />
-                                                            <TextBlock Text="{Binding ScoreBestDeltaDisplay}" FontSize="11"
+                                                            <TextBlock Text="{Binding ScoreBestDeltaDisplay, Mode=OneWay}" FontSize="11"
                                                                        FontWeight="Bold" Margin="0,3,0,0" />
                                                         </StackPanel>
                                                         <WrapPanel Grid.Row="1" Grid.ColumnSpan="4" Margin="0,8,0,0">
                                                             <Border Style="{StaticResource RankBadgeStyle}"
-                                                                    Tag="{Binding RankBadgeGroup}" Margin="0,0,6,4">
-                                                                <TextBlock Text="{Binding Rank}"
+                                                                    Tag="{Binding RankBadgeGroup, Mode=OneWay}" Margin="0,0,6,4">
+                                                                <TextBlock Text="{Binding Rank, Mode=OneWay}"
                                                                            Style="{StaticResource BadgeTextStyle}" />
                                                             </Border>
                                                             <Border Style="{StaticResource ClearBadgeStyle}"
-                                                                    Tag="{Binding ClearBadgeGroup}" Margin="0,0,6,4">
-                                                                <TextBlock Text="{Binding ClearDisplay}"
+                                                                    Tag="{Binding ClearBadgeGroup, Mode=OneWay}" Margin="0,0,6,4">
+                                                                <TextBlock Text="{Binding ClearDisplay, Mode=OneWay}"
                                                                            Style="{StaticResource BadgeTextStyle}" />
                                                             </Border>
                                                             <ContentControl Content="{Binding}"
@@ -1112,18 +1112,18 @@
                                                             <StackPanel Orientation="Horizontal" Margin="0,0,12,4">
                                                                 <TextBlock Text="SCORE " Foreground="{StaticResource TextSecondaryBrush}"
                                                                            FontSize="10" FontWeight="SemiBold" />
-                                                                <TextBlock Text="{Binding ScoreBestDeltaDisplay}" FontSize="10"
+                                                                <TextBlock Text="{Binding ScoreBestDeltaDisplay, Mode=OneWay}" FontSize="10"
                                                                            FontWeight="Bold"
                                                                            Style="{StaticResource HomeDeltaTextStyle}"
-                                                                           Tag="{Binding ScoreBestDeltaGroup}" />
+                                                                           Tag="{Binding ScoreBestDeltaGroup, Mode=OneWay}" />
                                                             </StackPanel>
                                                             <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
                                                                 <TextBlock Text="EX " Foreground="{StaticResource TextSecondaryBrush}"
                                                                            FontSize="10" FontWeight="SemiBold" />
-                                                                <TextBlock Text="{Binding ExScoreBestDeltaDisplay}" FontSize="10"
+                                                                <TextBlock Text="{Binding ExScoreBestDeltaDisplay, Mode=OneWay}" FontSize="10"
                                                                            FontWeight="Bold"
                                                                            Style="{StaticResource HomeDeltaTextStyle}"
-                                                                           Tag="{Binding ExScoreBestDeltaGroup}" />
+                                                                           Tag="{Binding ExScoreBestDeltaGroup, Mode=OneWay}" />
                                                             </StackPanel>
                                                         </WrapPanel>
                                                     </Grid>
