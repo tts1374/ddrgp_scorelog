@@ -537,6 +537,14 @@ dry-run sequence scenario 入口を変更した場合も、生成manifestを man
 - 保存済み設定に任意pathや別環境のpathが含まれていても復元せず、現在の環境のscore/master/catalog固定pathだけをloadやsave preflightで参照することを確認する。path保存にはdevelopment / productionの環境タグを含める。
 - M10-3評価用DBはdevelopment専用path、WPF非参照、明示initializer、先行backup、integrity check、別outputへの再実行という手順をdocsで固定する。評価用DBの初期化・退避をformal score DB writerへ接続しない。
 
+## Personal score data backup / restore guard
+
+- データ管理画面は共通sidebarから開け、960x640の最小windowで保存済みプレー件数、自己ベスト譜面数、最後の保存、個人スコアデータの状態、同梱masterの利用可否・version・収録譜面数を表示する。利用者向け画面に任意path、DB repair、source capture、解析ログ、診断ログ、開発者向けcatalog操作を表示しない。
+- backup作成は現行正式score DBをread-onlyで検証し、`plays`の履歴表示・自己ベスト算出に必要な値だけをJSONへ出力する。settings、viewer path、master/catalog、jacket reference、source capture、analysis log、diagnostic logをbackup本文へ入れない。UTF-8 BOMなし、LF、末尾改行、一時ファイルからのatomic publishを確認する。
+- valid backupのrestoreは、形式・version・必須値・ID重複・score制約の検証が完了するまでscore DBを開いて変更しない。invalid / unsupported backupは現在のscore DB hash、play件数、best、historyを変えない。
+- restoreの確認ダイアログをキャンセルした場合はrestore APIを呼ばず、現在の個人データを変更しない。確認後のvalid restoreだけ、既存schemaを検証したtransactionで履歴を置換し、旧playへの参照を切り離したanalysis logとsource captureは保持したままinsert件数を確認してcommitする。transaction失敗はrollbackし、commit後はread-only再読込でplays、self best、historyがbackupと一致することを確認する。
+- restoreはsettings、master/catalog、jacket reference、source/analysis/diagnostic artifact、Debug capture/manual-review入口を作成・更新せず、既存のformal save、monitoring、initialization、migrationの境界を変更しない。ReleaseのUI・command入口にDebug専用操作を追加しない。
+
 ## Windows automatic monitoring guard
 
 - 起動時監視設定がON（初期値）の場合だけ自動workerを作成し、OFFの場合は対象windowを探索せず、WPF/trayの明示開始経路は維持する。設定の欠落・読込失敗はONへ戻る。
