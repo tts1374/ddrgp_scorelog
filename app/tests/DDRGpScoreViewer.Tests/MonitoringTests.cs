@@ -610,6 +610,34 @@ public sealed class MonitoringTests
         Assert.Equal(TrayNotificationKind.Error, tray.Notifications[1].Kind);
     }
 
+    [Fact]
+    public void Tray_unresolved_capture_notification_is_deduplicated_by_event()
+    {
+        var tray = new FakeTrayIcon();
+        using var lifecycle = new ApplicationLifecycleCoordinator(
+            tray,
+            () => Task.CompletedTask,
+            () => Task.CompletedTask,
+            () => { },
+            () => { });
+        var notification = new UnresolvedCaptureNotification(
+            "confirmed-event-v1:unresolved",
+            "正式DBには保存されていません。理由: digit_recognition.ambiguous");
+
+        lifecycle.NotifyUnresolvedCapture(notification);
+        lifecycle.NotifyUnresolvedCapture(notification);
+        lifecycle.NotifyUnresolvedCapture(notification with
+        {
+            EventId = "confirmed-event-v1:next",
+        });
+
+        Assert.Equal(2, tray.Notifications.Count);
+        Assert.All(
+            tray.Notifications,
+            item => Assert.Equal(TrayNotificationKind.Information, item.Kind));
+        Assert.Contains("正式DBには保存されていません", tray.Notifications[0].Message);
+    }
+
     private sealed class MonitoringCaptureService(CaptureOperationStatus status)
         : IMonitoringContinuousCaptureService
     {

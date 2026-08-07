@@ -89,6 +89,72 @@ public sealed class CaptureSaveViewModelTests
     }
 
     [Fact]
+    public async Task Unresolved_capture_event_notifies_once_and_next_saved_event_continues()
+    {
+        using var fixture = new DatabaseFixture();
+        const string unresolvedEventId = "confirmed-event-v1:unresolved";
+        var remainingResults = new Queue<CaptureSaveWorkflowResult>(
+        [
+            new CaptureSaveWorkflowResult(
+                "completed",
+                1,
+                new Dictionary<string, int> { ["unresolved"] = 1 },
+                [],
+                ["digit_recognition.ambiguous"],
+                null,
+                [new CaptureSaveEventResult(
+                    unresolvedEventId,
+                    "unresolved",
+                    ["digit_recognition.ambiguous"])]),
+            new CaptureSaveWorkflowResult(
+                "completed",
+                1,
+                new Dictionary<string, int> { ["saved"] = 1 },
+                ["next-play"],
+                [],
+                null,
+                [new CaptureSaveEventResult(
+                    "confirmed-event-v1:saved",
+                    "saved",
+                    [])]),
+        ]);
+        var workflow = new StubCaptureSaveWorkflowRunner((_, _, _) =>
+        {
+            var result = remainingResults.Dequeue();
+            if (result.SavedPlayIds.Count > 0)
+            {
+                fixture.AddPlay("next-play", "2026-07-14T12:00:00+00:00", 999_500, 2_700);
+            }
+            return result;
+        });
+        var viewModel = new MainViewModel(
+            new ScoreViewerRepository(),
+            new UnusedManualWorkflowRunner(),
+            continuousCaptureService: new StubContinuousCaptureService(
+                CaptureOperationStatus.Saved),
+            captureSaveWorkflowRunner: workflow);
+        var notifications = new List<UnresolvedCaptureNotification>();
+        viewModel.UnresolvedCaptureNotificationRequested += notifications.Add;
+
+        await viewModel.StartContinuousCaptureAndSaveAsync(
+            123, fixture.ScorePath, fixture.MasterPath);
+
+        Assert.True(viewModel.HasUnresolvedNotification);
+        Assert.Contains("正式DBには保存されていません", viewModel.UnresolvedNotificationMessage);
+        Assert.Contains(unresolvedEventId, viewModel.UnresolvedNotificationMessage);
+        Assert.Single(notifications);
+        Assert.Equal(["digit_recognition.ambiguous"], notifications[0].Reasons);
+        Assert.Empty(viewModel.Plays);
+
+        await viewModel.StartContinuousCaptureAndSaveAsync(
+            123, fixture.ScorePath, fixture.MasterPath);
+
+        Assert.Equal(1, viewModel.MonitoringResults.Saved);
+        Assert.Equal("next-play", Assert.Single(viewModel.Plays).PlayId);
+        Assert.Single(notifications);
+    }
+
+    [Fact]
     public async Task Capture_failure_does_not_run_analysis_or_save_workflow()
     {
         using var fixture = new DatabaseFixture();

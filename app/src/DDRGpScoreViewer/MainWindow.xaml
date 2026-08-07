@@ -219,7 +219,6 @@
                     <Button x:Name="HistoryNavigation" Content="直近プレー履歴"
                             Style="{StaticResource SidebarButtonStyle}" Click="ShowHistory_Click" />
                     <Separator Margin="16,10" Background="#50627B" />
-                    <Button Content="要確認" Style="{StaticResource SidebarButtonStyle}" IsEnabled="False" />
                     <Button Content="設定" Style="{StaticResource SidebarButtonStyle}" IsEnabled="False" />
                     <Button Content="データ管理" Style="{StaticResource SidebarButtonStyle}" IsEnabled="False" />
                 </StackPanel>
@@ -229,7 +228,7 @@
         <Grid x:Name="MainContentGrid" Grid.Column="1" Margin="28,24" MinWidth="0" MinHeight="0">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
-                <RowDefinition Height="20" />
+                <RowDefinition Height="Auto" MinHeight="20" />
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
 
@@ -242,6 +241,27 @@
                            Foreground="{StaticResource TextSecondaryBrush}"
                            FontSize="12" Margin="0,4,0,0" />
             </StackPanel>
+
+            <Border Grid.Row="1"
+                    Margin="0,16,0,12"
+                    Padding="12,10"
+                    Background="#FFF7ED"
+                    BorderBrush="#FDBA74"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Visibility="{Binding UnresolvedNotificationVisibility}">
+                <StackPanel>
+                    <TextBlock Text="{Binding UnresolvedNotificationTitle}"
+                               Foreground="#9A3412"
+                               FontWeight="SemiBold"
+                               FontSize="13" />
+                    <TextBlock Text="{Binding UnresolvedNotificationMessage}"
+                               Foreground="#7C2D12"
+                               FontSize="12"
+                               TextWrapping="Wrap"
+                               Margin="0,4,0,0" />
+                </StackPanel>
+            </Border>
 
             <controls:StatePanel Grid.Row="2" Visibility="{Binding StatusVisibility}"
                                  Title="{Binding StatusTitle}" Message="{Binding StatusMessage}" />

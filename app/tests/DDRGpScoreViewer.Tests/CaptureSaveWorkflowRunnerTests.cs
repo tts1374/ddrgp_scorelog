@@ -147,6 +147,10 @@ public sealed class CaptureSaveWorkflowRunnerTests
             Assert.Equal("completed", result.Status);
             Assert.Contains("automatic_formal_evidence_missing", result.Reasons);
             Assert.Contains("formal_play_required", result.Reasons);
+            var eventResult = Assert.Single(result.EventResults!);
+            Assert.Equal("unresolved", eventResult.Status);
+            Assert.StartsWith("confirmed-event-v1:", eventResult.EventId);
+            Assert.Contains("formal_play_required", eventResult.Reasons);
             Assert.False(File.Exists(Path.Combine(root, "score.sqlite")));
         }
         finally
@@ -338,6 +342,7 @@ public sealed class CaptureSaveWorkflowRunnerTests
             Assert.Equal("completed", result.Status);
             Assert.Equal(1, result.EventCount);
             Assert.Equal(1, result.StatusCounts["unresolved"]);
+            Assert.Single(result.EventResults!);
             Assert.False(File.Exists(Path.Combine(root, "score.sqlite")));
         }
         finally
