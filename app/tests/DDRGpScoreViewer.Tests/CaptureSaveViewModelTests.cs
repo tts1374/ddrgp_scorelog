@@ -143,6 +143,7 @@ public sealed class CaptureSaveViewModelTests
         Assert.Contains("正式DBには保存されていません", viewModel.UnresolvedNotificationMessage);
         Assert.Contains(unresolvedEventId, viewModel.UnresolvedNotificationMessage);
         Assert.Single(notifications);
+        Assert.Equal(["digit_recognition.ambiguous"], notifications[0].Reasons);
         Assert.Empty(viewModel.Plays);
 
         await viewModel.StartContinuousCaptureAndSaveAsync(

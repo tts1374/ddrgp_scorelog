@@ -2726,7 +2726,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             UnresolvedNotificationMessage = message;
             HasUnresolvedNotification = true;
             UnresolvedCaptureNotificationRequested?.Invoke(
-                new UnresolvedCaptureNotification(eventId, message));
+                new UnresolvedCaptureNotification(eventId, message, eventResult.Reasons));
         }
     }
 

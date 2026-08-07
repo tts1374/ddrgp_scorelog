@@ -89,7 +89,15 @@ public partial class App : System.Windows.Application
             lifecycle.ExitAsync,
             ShutdownApplication);
         unresolvedCaptureNotificationRequested = notification =>
+        {
+            var reasons = notification.Reasons is { Count: > 0 }
+                ? string.Join(" / ", notification.Reasons.Distinct(StringComparer.Ordinal))
+                : "unspecified";
+            releaseLog?.Information(
+                "capture_save_unresolved",
+                $"event_id={notification.EventId}; reasons={reasons}");
             lifecycle.NotifyUnresolvedCapture(notification);
+        };
         mainWindow.ViewModel.UnresolvedCaptureNotificationRequested +=
             unresolvedCaptureNotificationRequested;
         viewModelPropertyChanged = (_, args) =>

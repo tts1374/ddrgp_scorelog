@@ -228,7 +228,7 @@
         <Grid x:Name="MainContentGrid" Grid.Column="1" Margin="28,24" MinWidth="0" MinHeight="0">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto" />
-                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" MinHeight="20" />
                 <RowDefinition Height="*" />
             </Grid.RowDefinitions>
 
