@@ -46,9 +46,13 @@ try
         throw 'Release package process could not be started.'
     }
 
-    if (-not $process.WaitForInputIdle(10000))
+    if (-not $process.WaitForInputIdle(30000))
     {
-        throw 'Release package did not reach the WPF input-idle boundary.'
+        if ($process.HasExited)
+        {
+            throw "Release package exited before reaching the WPF input-idle boundary with code $($process.ExitCode)."
+        }
+        throw 'Release package did not reach the WPF input-idle boundary within 30 seconds.'
     }
 
     $deadline = [DateTime]::UtcNow.AddSeconds(5)
