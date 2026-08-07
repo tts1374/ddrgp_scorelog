@@ -257,17 +257,47 @@ public sealed class AutomaticMonitoringTests
         Assert.Equal(0, capture.TargetedRunCount);
     }
 
+    [Fact]
+    public async Task Startup_monitoring_setting_off_does_not_start_the_worker()
+    {
+        using var fixture = new DatabaseFixture();
+        var enumerator = new MutableWindowEnumerator(Candidate(101));
+        var capture = new BlockingTargetedCaptureService();
+        var viewModel = CreateViewModel(
+            fixture,
+            enumerator,
+            capture,
+            userSettingsStore: new MemoryUserSettingsStore(new UserSettings(
+                StartMonitoringOnLaunch: false,
+                NotifyUnresolvedResults: true,
+                DefaultPlayStyle: UserSettings.SinglePlayStyle,
+                StartupPage: UserSettings.HomeStartupPage)));
+
+        viewModel.RestoreUserSettings();
+        viewModel.StartAutomaticMonitoring(123);
+        await Task.Delay(80);
+
+        Assert.False(viewModel.IsAutomaticMonitoringEnabled);
+        Assert.True(viewModel.CanStartMonitoring);
+        Assert.Equal(0, capture.TargetedRunCount);
+
+        viewModel.RequestApplicationExit();
+        await viewModel.WaitForOperationsAsync();
+    }
+
     private static MainViewModel CreateViewModel(
         DatabaseFixture fixture,
         IDdrGpWindowEnumerator enumerator,
         BlockingTargetedCaptureService capture,
-        ViewerDatabasePaths? paths = null) =>
+        ViewerDatabasePaths? paths = null,
+        IUserSettingsStore? userSettingsStore = null) =>
         new(
             new ScoreViewerRepository(),
             new UnusedManualWorkflowRunner(),
             continuousCaptureService: capture,
             defaultDatabasePaths: paths ?? ConfiguredPaths(fixture),
             ddrGpWindowEnumerator: enumerator,
+            userSettingsStore: userSettingsStore,
             automaticMonitoringOptions: new AutomaticMonitoringOptions
             {
                 PollInterval = TimeSpan.FromMilliseconds(5),

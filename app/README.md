@@ -1,6 +1,6 @@
 # GP Score Log WPF app
 
-正式個人スコアDB version 1を開き、保存済みプレー履歴、プレー詳細、譜面別自己ベストを確認するWPFアプリです。通常画面は`監視開始`／`監視停止`による監視を提供し、既定では起動後にDDR GRAND PRIX windowを1秒ごとに探索して、2回連続で検出した対象へ自動接続します。Debug buildだけが開発者向け領域から1フレーム取得、連続取得、単発保存を提供します。手動の`監視開始`でも、`process=ddr-konaste` かつ client `1280x720` のtop-level windowを自動特定し、該当1件だけへ接続します。監視中は1秒ごとに `results_header` を確認し、RESULT画面の候補が2回連続して安定した場合だけ既存のevent boundaryと正式保存workflowへ渡します。該当windowが0件または複数件なら推測で選択せず、capture・解析・正式保存を開始しません。監視中の候補画像はsession原本として保管せず、一時workflow入力の処理後に破棄します。監視状態と最新結果はWPFとtask trayから確認できます。productionのインストール済みpackageでは、main window表示後にGitHub Releasesのアプリ更新を非同期確認し、ユーザーの明示操作でdownload・完全終了・再起動を行います。正式個人スコアDB、M4 master DB、M5b jacket reference catalogは環境ごとの固定pathで扱い、次回起動時に3つとも検証して再利用します。DBの任意path選択、汎用window探索、手動pickerへのfallback、DB repairは提供しません。手動停止後は同一app session中に自動再開せず、DB・runtime・更新・終了処理の異常時も自動開始しません。score DB migrationは対応する明示的converterがあるschema変更時だけ行い、事前backupと失敗時rollbackを必須とします。
+正式個人スコアDB version 1を開き、保存済みプレー履歴、プレー詳細、譜面別自己ベストを確認するWPFアプリです。通常画面は`監視開始`／`監視停止`による監視を提供し、設定がON（初期値）なら起動後にDDR GRAND PRIX windowを1秒ごとに探索して、2回連続で検出した対象へ自動接続します。Debug buildだけが開発者向け領域から1フレーム取得、連続取得、単発保存を提供します。手動の`監視開始`でも、`process=ddr-konaste` かつ client `1280x720` のtop-level windowを自動特定し、該当1件だけへ接続します。監視中は1秒ごとに `results_header` を確認し、RESULT画面の候補が2回連続して安定した場合だけ既存のevent boundaryと正式保存workflowへ渡します。該当windowが0件または複数件なら推測で選択せず、capture・解析・正式保存を開始しません。監視中の候補画像はsession原本として保管せず、一時workflow入力の処理後に破棄します。監視状態と最新結果はWPFとtask trayから確認できます。productionのインストール済みpackageでは、main window表示後にGitHub Releasesのアプリ更新を非同期確認し、ユーザーの明示操作でdownload・完全終了・再起動を行います。正式個人スコアDB、M4 master DB、M5b jacket reference catalogは環境ごとの固定pathで扱い、次回起動時に3つとも検証して再利用します。DBの任意path選択、汎用window探索、手動pickerへのfallback、DB repairは提供しません。手動停止後は同一app session中に自動再開せず、DB・runtime・更新・終了処理の異常時も自動開始しません。score DB migrationは対応する明示的converterがあるschema変更時だけ行い、事前backupと失敗時rollbackを必須とします。
 
 ## 必要環境
 
@@ -72,7 +72,7 @@ python -m tools.vision_poc `
 
 ## 監視と正式保存workflow
 
-1. アプリ起動後は既定で自動監視が始まり、1秒ごとに対象windowを探索する。手動で開始する場合はWPFまたはtask trayの `監視開始` を押す。
+1. 「アプリ起動時に監視を開始」がON（初期値）の場合だけ、起動後に自動監視が始まり、1秒ごとに対象windowを探索する。OFFでもWPFまたはtask trayの `監視開始` は利用できる。
 2. 起動時に現在の環境（Debugで明示またはsource checkoutから検出したdevelopment root、またはReleaseのLocalAppData production）の固定pathを使う。DBの任意pathへの切替操作はありません。
 3. `process=ddr-konaste` かつ client `1280x720` のtop-level windowを2回連続で確認した場合だけ既存の監視へ接続する。0件または複数件なら推測で選択せず、capture・解析・正式保存を開始しない。手動pickerへのfallbackはありません。
 4. 監視中にRESULT候補の解析・正式保存が進み、WPFまたはtrayの `監視停止` で現在の候補処理を完了して停止する。監視surfaceで状態、対象window名・process・client size、frame数、サンプリング数、RESULT検出数、候補・破棄・待機数、event status別の保存結果を確認する。
@@ -120,7 +120,7 @@ windowの×ボタンはwindowをtrayへ格納し、最小化ボタンは通常�
 
 ## 再起動・path再検証・失敗からの復帰
 
-- 正式個人スコアDB、M4 master DB、M5b jacket reference catalogの固定pathとdev/prod環境タグだけを `%LOCALAPPDATA%\DDRGpScoreViewer\viewer-paths.json` に保存します。この設定はGit管理外で、候補値、解析結果、保存statusは持ちません。旧形式、任意path、別環境のpathは暗黙復元せず、現在の既定pathだけを使用します。
+- 正式個人スコアDB、M4 master DB、M5b jacket reference catalogの固定pathとdev/prod環境タグだけを `%LOCALAPPDATA%\DDRGpScoreViewer\viewer-paths.json` に保存します。起動時監視、保存できない結果の通知、既定プレイスタイル、起動時画面は同じdirectoryの`user-settings.json`へ別に保存します。いずれもGit管理外で、候補値、解析結果、保存statusは持ちません。旧形式、任意path、別環境のpathは暗黙復元せず、現在の既定pathだけを使用します。
 - 起動時、解析・正式保存開始直前に、M4 master DBとM5b jacket reference catalogを別々のread-only connectionで検査します。M4は必須table、metadata、曲・譜面件数、source snapshotのURL/hash整合を確認し、M5bはtable identity、column、metadata identity、schema version、unique index、foreign keyを確認します。両方とも `missing`、`read不可`、`schema incompatible`、`compatible` を区別します。
 - どちらか一方がmissing / read不可 / incompatibleなら、理由を表示して対象windowの解析と正式保存workflowを開始しません。capture後にも同じ2ファイルを再検証します。networkからの最新版確認やhashの継続監視は行いません。
 - `target_closed`、`resized`、`device_lost`、`capture_failed`、`workflow_failed` は監視状態として残ります。window終了やresizeではsessionを安全に終了し、対象windowが一度消失してから再出現した場合だけ自動復帰します。DBまたはruntime異常は`blocked`として自動開始を抑止し、必要なmaster DBを現在の環境の固定pathへ用意してから再起動してください。手動停止後は同一app session中に自動復帰せず、明示的な`監視開始`だけを受け付けます。再実行時も対象windowを1件だけ自動特定し、古いsessionを再利用しません。Debug buildの `連続取得を開始` はcapture-onlyの開発者向け入口として手動pickerで対象windowを選び直します。
@@ -241,16 +241,16 @@ download後は既存の明示終了経路でpending picker、監視、capture wo
 1. 起動中の旧版があればtrayの`終了`で明示終了する。
 2. Setupを実行する。未署名のためWindows SmartScreen等の警告が出る場合は、配布元とhashを確認した本人だけが続行する。
 3. install後に自動起動した`GP Score Log`で、M4 master DB、M5b jacket reference catalog、score DBの表示を確認する。初回起動は組み込みreference data setをproduction固定pathへ配置し、master/catalog検証後にmissingまたは0 byteのscore DBだけを正式schemaへ初期化する。
-4. DDR GRAND PRIXを`1280x720` client sizeで起動する。既定の自動監視が2回連続で対象を検出すると開始し、対象が一意に見つからない場合は待機する。手動で開始する場合は`監視開始`を押す。
+4. DDR GRAND PRIXを`1280x720` client sizeで起動する。「アプリ起動時に監視を開始」がONなら自動監視が2回連続で対象を検出すると開始し、対象が一意に見つからない場合は待機する。手動で開始する場合は`監視開始`を押す。
 5. 一時停止は`監視停止`、手動停止後の同一app session内の再開は`監視開始`を明示する。window終了後の自動復帰は、windowが一度消失してから再出現した場合だけ行う。×ボタンはtray格納、最小化はtaskbar最小化、完全終了はtrayの`終了`を使う。
 
-起動時の自動監視は既定で有効です。production起動時はmain windowを表示してからreference DBとアプリ本体のlatest Release確認を開始し、更新・reference DB処理中は自動開始を抑止します。通信できない場合も既存reference DBと現在のアプリversionで通常利用を続けます。
+起動時の自動監視は設定で切り替えられ、初期値は有効です。production起動時はmain windowを表示してからreference DBとアプリ本体のlatest Release確認を開始し、更新・reference DB処理中は設定がONでも自動開始を抑止します。通信できない場合も既存reference DBと現在のアプリversionで通常利用を続けます。
 
 ## Reference data setの配置・更新・復旧
 
 production固定pathは`%LOCALAPPDATA%\DDRGpScoreViewer\data\master\`です。起動時はlatest GitHub Releaseのmanifestを先に取得し、asset名 `reference-set.json`、`ddrgp-master.sqlite`、`jacket-catalog.sqlite` の3つが同じReleaseに存在することを確認します。候補は`data`配下の一時directoryへ保存し、2 DBをread-only openしてschema version、content version、catalog内referenceのmaster version整合、manifest checksumを検査します。初回は検証済みの2 DBとmanifestをセットで配置します。更新時は`content_version`が現在より新しい場合だけ、現行の`master` directory全体を`data\.reference-previous\`へrenameしてから候補directoryを`master`へrenameし、切替後に再openします。master/catalogの片方だけをrenameしないため、更新途中に新旧fileを混在させません。切替後の再検証失敗は直前directoryへ戻し、同一versionはno-op、古いversionは拒否、asset欠落・不整合・通信失敗・download中断・空き容量不足は現行セットを変更しません。保持するのは現行と直前1世代だけで、download stagingは処理後に削除します。
 
-アプリ更新やreference data set更新は`data\score\score.db`と`viewer-paths.json`を変更しません。VeloPackのinstall directoryは`%LOCALAPPDATA%\com.tts1374.ddrgp_scorelog`、永続dataは別の`%LOCALAPPDATA%\DDRGpScoreViewer`なので、uninstallしてもscore DB、settings、ログ、配置済みreference DBは残ります。不要になった場合だけ、backup確認後に利用者が永続data directoryを手動削除します。
+アプリ更新やreference data set更新は`data\score\score.db`、`viewer-paths.json`、`user-settings.json`を変更しません。VeloPackのinstall directoryは`%LOCALAPPDATA%\com.tts1374.ddrgp_scorelog`、永続dataは別の`%LOCALAPPDATA%\DDRGpScoreViewer`なので、uninstallしてもscore DB、settings、ログ、配置済みreference DBは残ります。不要になった場合だけ、backup確認後に利用者が永続data directoryを手動削除します。
 
 ## Releaseログとdata保持
 
@@ -258,7 +258,7 @@ production固定pathは`%LOCALAPPDATA%\DDRGpScoreViewer\data\master\`です。�
 
 | data | 保持 |
 | --- | --- |
-| `data\score\score.db`、`viewer-paths.json` | 無期限。利用者がbackup確認後に削除するまで保持 |
+| `data\score\score.db`、`viewer-paths.json`、`user-settings.json` | 無期限。利用者がbackup確認後に削除するまで保持 |
 | `data\master\` と `data\.reference-previous\` | reference data setの現行＋直前1世代 |
 | score migration backup | `data\score\migration-backup\score.db.bak`の最新1件 |
 | Release log | 5MB × 3 file |
@@ -266,12 +266,13 @@ production固定pathは`%LOCALAPPDATA%\DDRGpScoreViewer\data\master\`です。�
 
 ## 正式個人スコアDBとsettingsのbackup / restore
 
-backupとrestoreは必ずtrayの`終了`後に行います。通常backup対象は次の2 fileです。reference DBは再配布できるため対象外です。
+backupとrestoreは必ずtrayの`終了`後に行います。通常backup対象は次の3 fileです。reference DBは再配布できるため対象外です。
 
 - `%LOCALAPPDATA%\DDRGpScoreViewer\data\score\score.db`
 - `%LOCALAPPDATA%\DDRGpScoreViewer\viewer-paths.json`（存在する場合）
+- `%LOCALAPPDATA%\DDRGpScoreViewer\user-settings.json`（存在する場合）
 
-backup先に新しいdirectoryを作り、2 fileをコピーします。コピー後は元とbackupのfile sizeを確認します。restore時はアプリを終了し、現在の`score.db`と`viewer-paths.json`を削除せず、それぞれ`score.before-restore.db`、`viewer-paths.before-restore.json`など未使用名へ移動してからbackupを元の固定pathへコピーします。起動後にDB検証、履歴件数、最新playを確認し、問題があれば再度終了して復元前fileを戻します。SQLiteの`score.db-wal`や`score.db-shm`が残っている場合はアプリが完全終了していないため、copy/restoreを開始しません。
+backup先に新しいdirectoryを作り、3 fileをコピーします。コピー後は元とbackupのfile sizeを確認します。restore時はアプリを終了し、現在の`score.db`、`viewer-paths.json`、`user-settings.json`を削除せず、それぞれ`score.before-restore.db`、`viewer-paths.before-restore.json`、`user-settings.before-restore.json`など未使用名へ移動してからbackupを元の固定pathへコピーします。起動後にDB検証、履歴件数、最新play、設定値を確認し、問題があれば再度終了して復元前fileを戻します。SQLiteの`score.db-wal`や`score.db-shm`が残っている場合はアプリが完全終了していないため、copy/restoreを開始しません。
 
 ## トラブルシューティング
 
@@ -288,7 +289,7 @@ backup先に新しいdirectoryを作り、2 fileをコピーします。コピ�
 
 実機評価はWindowsの`ddr-konaste`、client `1280x720`、SINGLE 28曲・29譜面の94 RESULTです。`saved=94`、他status=0、自動保存成功率100%で、全件を画面と正式DBで目視照合し、誤保存0件でした。target close、resize、tray exit、再起動・固定path再利用を確認し、二重保存はありませんでした。
 
-保証範囲はこのWindows環境と`1280x720`条件に限定します。対象外解像度、全GPU、意図的なdevice lost、0点RESULTは実機保証外です。未署名installerはSmartScreen警告があり、code signing、telemetry、cloud backup、強制更新、複数channelはありません。自動監視は既定で有効ですが、手動停止後の同一app session内再開、DB・runtime異常時の開始、更新・終了処理中の開始は保証しません。アプリ本体はstable Releaseのfull packageをユーザー操作で更新し、reference DBはlatest Releaseの3 assetを起動後に確認しますが、任意version選択と署名検証は行いません。
+保証範囲はこのWindows環境と`1280x720`条件に限定します。対象外解像度、全GPU、意図的なdevice lost、0点RESULTは実機保証外です。未署名installerはSmartScreen警告があり、code signing、telemetry、cloud backup、強制更新、複数channelはありません。自動監視は設定で切り替えられ、初期値は有効ですが、手動停止後の同一app session内再開、DB・runtime異常時の開始、更新・終了処理中の開始は保証しません。アプリ本体はstable Releaseのfull packageをユーザー操作で更新し、reference DBはlatest Releaseの3 assetを起動後に確認しますが、任意version選択と署名検証は行いません。
 
 次のいずれかがあるreleaseは完成扱いにしません: 誤保存が1件以上、固定条件の自動保存成功率が95%未満、既定CI失敗、VeloPack package/clean環境相当smoke失敗、reference DBのセット検証・rollback失敗、既存score DBの上書きまたはrestore不能、Release buildへの開発者向け操作混入。device lostと対象外環境は既知制限として扱い、保証範囲を暗黙に拡張しません。
 
@@ -298,4 +299,4 @@ backup先に新しいdirectoryを作り、2 fileをコピーします。コピ�
 - `Resources/Components.xaml`: button、sidebar、card、table、badgeの共通style
 - `Controls/StatePanel.xaml`: 空状態・エラー状態の共通component
 
-今回の画面範囲は共通sidebar、自己ベスト、プレー履歴、プレー詳細、Debug buildの開発者向け単発操作、監視surface（自動保存できない結果の通知を含む）、master DB検証表示、明示した監視session後のevent単位保存workflow、task tray lifecycleです。Release buildの通常画面には開発者向け領域を含めず、`監視開始`と`監視停止`を残します。ホーム、検索・絞り込み、グラフ、専用確認画面、設定画面、自動再接続は対象外です。
+今回の画面範囲は共通sidebar、自己ベスト、プレー履歴、プレー詳細、設定、Debug buildの開発者向け単発操作、監視surface（自動保存できない結果の通知を含む）、master DB検証表示、明示した監視session後のevent単位保存workflow、task tray lifecycleです。Release buildの通常画面には開発者向け領域を含めず、`監視開始`と`監視停止`を残します。ホーム、検索・絞り込み、グラフ、専用確認画面、自動再接続は対象外です。

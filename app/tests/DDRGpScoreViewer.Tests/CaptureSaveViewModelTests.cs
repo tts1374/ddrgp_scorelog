@@ -155,6 +155,51 @@ public sealed class CaptureSaveViewModelTests
     }
 
     [Fact]
+    public async Task Notification_setting_only_suppresses_local_display_and_keeps_diagnostic_boundary()
+    {
+        using var fixture = new DatabaseFixture();
+        const string unresolvedEventId = "confirmed-event-v1:notification-off";
+        var workflow = new StubCaptureSaveWorkflowRunner((_, _, _) =>
+            new CaptureSaveWorkflowResult(
+                "completed",
+                1,
+                new Dictionary<string, int> { ["unresolved"] = 1 },
+                [],
+                ["digit_recognition.ambiguous"],
+                null,
+                [new CaptureSaveEventResult(
+                    unresolvedEventId,
+                    "unresolved",
+                    ["digit_recognition.ambiguous"])]));
+        var viewModel = new MainViewModel(
+            new ScoreViewerRepository(),
+            new UnusedManualWorkflowRunner(),
+            continuousCaptureService: new StubContinuousCaptureService(
+                CaptureOperationStatus.Saved),
+            captureSaveWorkflowRunner: workflow,
+            userSettingsStore: new MemoryUserSettingsStore(new UserSettings(
+                StartMonitoringOnLaunch: true,
+                NotifyUnresolvedResults: false,
+                DefaultPlayStyle: UserSettings.SinglePlayStyle,
+                StartupPage: UserSettings.HomeStartupPage)));
+        viewModel.RestoreUserSettings();
+        var notifications = new List<UnresolvedCaptureNotification>();
+        var diagnostics = new List<UnresolvedCaptureNotification>();
+        viewModel.UnresolvedCaptureNotificationRequested += notifications.Add;
+        viewModel.UnresolvedCaptureDiagnosticRecorded += diagnostics.Add;
+
+        await viewModel.StartContinuousCaptureAndSaveAsync(
+            123, fixture.ScorePath, fixture.MasterPath);
+
+        Assert.False(viewModel.HasUnresolvedNotification);
+        Assert.Empty(notifications);
+        Assert.Single(diagnostics);
+        Assert.Equal(unresolvedEventId, diagnostics[0].EventId);
+        Assert.Equal(1, viewModel.MonitoringResults.Unresolved);
+        Assert.Empty(viewModel.Plays);
+    }
+
+    [Fact]
     public async Task Capture_failure_does_not_run_analysis_or_save_workflow()
     {
         using var fixture = new DatabaseFixture();

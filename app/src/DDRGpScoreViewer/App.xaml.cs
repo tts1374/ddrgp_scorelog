@@ -18,6 +18,7 @@ public partial class App : System.Windows.Application
     private ReleaseLog? releaseLog;
     private PropertyChangedEventHandler? viewModelPropertyChanged;
     private Action<UnresolvedCaptureNotification>? unresolvedCaptureNotificationRequested;
+    private Action<UnresolvedCaptureNotification>? unresolvedCaptureDiagnosticRecorded;
 
     public App()
     {
@@ -88,7 +89,7 @@ public partial class App : System.Windows.Application
             lifecycle.PrepareForApplicationUpdateAsync,
             lifecycle.ExitAsync,
             ShutdownApplication);
-        unresolvedCaptureNotificationRequested = notification =>
+        unresolvedCaptureDiagnosticRecorded = notification =>
         {
             var reasons = notification.Reasons is { Count: > 0 }
                 ? string.Join(" / ", notification.Reasons.Distinct(StringComparer.Ordinal))
@@ -96,8 +97,13 @@ public partial class App : System.Windows.Application
             releaseLog?.Information(
                 "capture_save_unresolved",
                 $"event_id={notification.EventId}; reasons={reasons}");
+        };
+        unresolvedCaptureNotificationRequested = notification =>
+        {
             lifecycle.NotifyUnresolvedCapture(notification);
         };
+        mainWindow.ViewModel.UnresolvedCaptureDiagnosticRecorded +=
+            unresolvedCaptureDiagnosticRecorded;
         mainWindow.ViewModel.UnresolvedCaptureNotificationRequested +=
             unresolvedCaptureNotificationRequested;
         viewModelPropertyChanged = (_, args) =>
@@ -126,6 +132,7 @@ public partial class App : System.Windows.Application
         };
         mainWindow.ViewModel.PropertyChanged += viewModelPropertyChanged;
         await mainWindow.RestoreSavedPathsAsync();
+        mainWindow.ApplyConfiguredStartupPage();
         if (referenceDataSetResult is not null)
         {
             mainWindow.ViewModel.ApplyReferenceDataSetUpdateResult(referenceDataSetResult);
@@ -253,6 +260,12 @@ public partial class App : System.Windows.Application
             mainWindow.ViewModel.UnresolvedCaptureNotificationRequested -=
                 unresolvedCaptureNotificationRequested;
             unresolvedCaptureNotificationRequested = null;
+        }
+        if (mainWindow is not null && unresolvedCaptureDiagnosticRecorded is not null)
+        {
+            mainWindow.ViewModel.UnresolvedCaptureDiagnosticRecorded -=
+                unresolvedCaptureDiagnosticRecorded;
+            unresolvedCaptureDiagnosticRecorded = null;
         }
         lifecycle?.Dispose();
         singleInstance?.Dispose();
