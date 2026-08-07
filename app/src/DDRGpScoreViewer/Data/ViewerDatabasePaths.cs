@@ -15,6 +15,12 @@ public sealed record ViewerDatabasePaths(
     string LogsDirectory,
     string SettingsPath)
 {
+    public string UserSettingsPath => Path.Combine(
+        Path.GetDirectoryName(SettingsPath)
+            ?? throw new InvalidOperationException(
+                $"User settings parent directory could not be determined: {SettingsPath}"),
+        "user-settings.json");
+
     // The collector source may be an unbound pre-release catalog. The WPF
     // runtime must use the explicitly bound copy instead of accepting it as a fallback.
     private const string DevelopmentRuntimeJacketCatalogFileName =

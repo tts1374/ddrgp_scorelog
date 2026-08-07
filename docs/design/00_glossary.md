@@ -77,6 +77,7 @@ master DB inspectionは起動時・保存開始時に行う。固定pathだけ�
 - `M5b jacket reference catalog`: `ddrgp-master.sqlite`とは別の`jacket-catalog.sqlite`。current jacket feature、M7 result-text feature、review historyを持つ参照catalogで、正式個人スコアDBや画像原本ではない。
 - `evaluation DB`: M10-3が所有するdevelopment専用の評価SQLite。正式個人スコアDB、M4 master DB、M5b jacket reference catalogから分離し、WPF viewerは開かない。
 - `formal score DB protection boundary`: 起動時はmaster/catalog検証後の固定score pathに限り、missing／0 byteの新規正式schema準備だけを既存file-preparation契約へ委譲し、既存の非空正式個人スコアDBをread-only検証、上書き、migration、repairしない境界。正式writerの明示saveも同じ既存準備・transaction契約を使う。
+- `user settings`: WPF appの起動時監視、保存できない結果のローカル通知、既定プレイスタイル、起動時画面を保持する正式DB外のローカル設定。`user-settings.json`へ保存し、欠落・読込不能時は4項目すべてを初期値へ戻す。正式個人スコアDB、`plays`、保存境界は変更しない。
 
 `M5c` の下位phaseは次の意味で読む。
 

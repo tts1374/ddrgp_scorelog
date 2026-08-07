@@ -149,6 +149,24 @@
                 </Trigger>
             </Style.Triggers>
         </Style>
+
+        <Style x:Key="SettingsSinglePlayStyleButtonStyle" TargetType="Button"
+               BasedOn="{StaticResource BestStyleButtonStyle}">
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding DefaultPlayStyle}" Value="SINGLE">
+                    <Setter Property="Tag" Value="Selected" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="SettingsDoublePlayStyleButtonStyle" TargetType="Button"
+               BasedOn="{StaticResource BestStyleButtonStyle}">
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding DefaultPlayStyle}" Value="DOUBLE">
+                    <Setter Property="Tag" Value="Selected" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
     </Window.Resources>
     <Grid MinWidth="0" MinHeight="0">
         <Grid.ColumnDefinitions>
@@ -219,7 +237,8 @@
                     <Button x:Name="HistoryNavigation" Content="直近プレー履歴"
                             Style="{StaticResource SidebarButtonStyle}" Click="ShowHistory_Click" />
                     <Separator Margin="16,10" Background="#50627B" />
-                    <Button Content="設定" Style="{StaticResource SidebarButtonStyle}" IsEnabled="False" />
+                    <Button x:Name="SettingsNavigation" Content="設定"
+                            Style="{StaticResource SidebarButtonStyle}" Click="ShowSettings_Click" />
                     <Button Content="データ管理" Style="{StaticResource SidebarButtonStyle}" IsEnabled="False" />
                 </StackPanel>
             </DockPanel>
@@ -1395,6 +1414,88 @@
                             </Grid>
                         </Border>
                     </Grid>
+                </TabItem>
+                <TabItem>
+                    <ScrollViewer HorizontalScrollBarVisibility="Disabled"
+                                  VerticalScrollBarVisibility="Auto"
+                                  Padding="0,0,8,0">
+                        <StackPanel MinWidth="0">
+                            <Grid Margin="0,0,0,12">
+                                <TextBlock Text="設定項目" FontSize="15" FontWeight="SemiBold" />
+                                <Button Content="初期値に戻す"
+                                        HorizontalAlignment="Right"
+                                        Style="{StaticResource PrimaryButtonStyle}"
+                                        Click="ResetSettings_Click" />
+                            </Grid>
+
+                            <Border Style="{StaticResource CardStyle}" Padding="16" Margin="0,0,0,12">
+                                <StackPanel>
+                                    <TextBlock Text="自動記録" FontSize="14" FontWeight="SemiBold" />
+                                    <TextBlock Text="起動時の監視と保存できない結果の通知を設定します"
+                                               Foreground="{StaticResource TextSecondaryBrush}"
+                                               FontSize="11" Margin="0,3,0,12" />
+                                    <CheckBox Content="アプリ起動時に監視を開始"
+                                              IsChecked="{Binding StartMonitoringOnLaunch, Mode=TwoWay}"
+                                              FontSize="13" Margin="0,0,0,12" />
+                                    <CheckBox Content="保存できない結果を通知"
+                                              IsChecked="{Binding NotifyUnresolvedResults, Mode=TwoWay}"
+                                              FontSize="13" />
+                                </StackPanel>
+                            </Border>
+
+                            <Border Style="{StaticResource CardStyle}" Padding="16" Margin="0,0,0,12">
+                                <StackPanel>
+                                    <TextBlock Text="表示" FontSize="14" FontWeight="SemiBold" />
+                                    <TextBlock Text="自己ベストの初期表示と起動時の画面を設定します"
+                                               Foreground="{StaticResource TextSecondaryBrush}"
+                                               FontSize="11" Margin="0,3,0,12" />
+                                    <Grid Margin="0,0,0,10">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="220" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="既定のプレイスタイル"
+                                                   VerticalAlignment="Center" FontSize="12" />
+                                        <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                            <Button x:Name="SettingsSinglePlayStyleButton" Content="SINGLE"
+                                                    Style="{StaticResource SettingsSinglePlayStyleButtonStyle}"
+                                                    Click="SettingsSinglePlayStyle_Click" />
+                                            <Button x:Name="SettingsDoublePlayStyleButton" Content="DOUBLE"
+                                                    Style="{StaticResource SettingsDoublePlayStyleButtonStyle}"
+                                                    Click="SettingsDoublePlayStyle_Click" Margin="8,0,0,0" />
+                                        </StackPanel>
+                                    </Grid>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="220" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="起動時に表示する画面"
+                                                   VerticalAlignment="Center" FontSize="12" />
+                                        <ComboBox Grid.Column="1" Width="180" HorizontalAlignment="Left"
+                                                  ItemsSource="{Binding StartupPageOptions}"
+                                                  SelectedItem="{Binding StartupPage, Mode=TwoWay}" />
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
+
+                            <Border Style="{StaticResource CardStyle}" Padding="14,10">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="{Binding SettingsStatusMessage}"
+                                               VerticalAlignment="Center"
+                                               Foreground="{StaticResource TextSecondaryBrush}"
+                                               FontSize="11" TextWrapping="Wrap" Margin="0,0,16,0" />
+                                    <Button Grid.Column="1" Content="変更を保存"
+                                            Style="{StaticResource PrimaryButtonStyle}"
+                                            Click="SaveSettings_Click" />
+                                </Grid>
+                            </Border>
+                        </StackPanel>
+                    </ScrollViewer>
                 </TabItem>
             </TabControl>
         </Grid>

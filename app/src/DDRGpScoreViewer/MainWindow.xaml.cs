@@ -140,6 +140,22 @@ public partial class MainWindow : System.Windows.Window
 
     internal Task RestoreSavedPathsAsync() => viewModel.RestoreSavedPathsAsync();
 
+    internal void ApplyConfiguredStartupPage()
+    {
+        switch (viewModel.AppliedStartupPage)
+        {
+            case UserSettings.BestStartupPage:
+                ShowBestPage();
+                break;
+            case UserSettings.HistoryStartupPage:
+                ShowHistoryPage();
+                break;
+            default:
+                ShowHomePage();
+                break;
+        }
+    }
+
     internal CancellationToken ApplicationExitToken => applicationExitCancellation.Token;
 
     internal void SetApplicationUpdateExitHandlers(
@@ -441,18 +457,25 @@ public partial class MainWindow : System.Windows.Window
             : new Thickness(1, 0, 0, 0);
     }
 
-    private void ShowHome_Click(object sender, RoutedEventArgs e)
+    private void ShowHome_Click(object sender, RoutedEventArgs e) => ShowHomePage();
+
+    private void ShowHomePage()
     {
+        viewModel.SetSettingsPage(false);
         ContentTabs.SelectedIndex = 0;
         PageTitle.Text = "ホーム";
         PageSubtitle.Text = "今日のプレー状況と最近の記録を確認できます";
         HomeNavigation.Tag = "Selected";
         BestNavigation.Tag = null;
         HistoryNavigation.Tag = null;
+        SettingsNavigation.Tag = null;
     }
 
-    private void ShowBest_Click(object sender, RoutedEventArgs e)
+    private void ShowBest_Click(object sender, RoutedEventArgs e) => ShowBestPage();
+
+    private void ShowBestPage()
     {
+        viewModel.SetSettingsPage(false);
         ContentTabs.SelectedIndex = 1;
         PageTitle.Text = "自己ベスト";
         PageSubtitle.Text = "保存済み全履歴から算出した譜面別ベスト";
@@ -461,7 +484,34 @@ public partial class MainWindow : System.Windows.Window
         HomeNavigation.Tag = null;
         BestNavigation.Tag = "Selected";
         HistoryNavigation.Tag = null;
+        SettingsNavigation.Tag = null;
     }
+
+    private void ShowSettings_Click(object sender, RoutedEventArgs e) => ShowSettingsPage();
+
+    private void ShowSettingsPage()
+    {
+        viewModel.SetSettingsPage(true);
+        ContentTabs.SelectedIndex = 4;
+        PageTitle.Text = "設定";
+        PageSubtitle.Text = "自動記録と表示に関する設定を変更できます";
+        HomeNavigation.Tag = null;
+        BestNavigation.Tag = null;
+        HistoryNavigation.Tag = null;
+        SettingsNavigation.Tag = "Selected";
+    }
+
+    private void SaveSettings_Click(object sender, RoutedEventArgs e) =>
+        viewModel.SaveUserSettings();
+
+    private void ResetSettings_Click(object sender, RoutedEventArgs e) =>
+        viewModel.ResetUserSettings();
+
+    private void SettingsSinglePlayStyle_Click(object sender, RoutedEventArgs e) =>
+        viewModel.DefaultPlayStyle = UserSettings.SinglePlayStyle;
+
+    private void SettingsDoublePlayStyle_Click(object sender, RoutedEventArgs e) =>
+        viewModel.DefaultPlayStyle = UserSettings.DoublePlayStyle;
 
     private void BestPlayStyle_Click(object sender, RoutedEventArgs e)
     {
@@ -539,12 +589,14 @@ public partial class MainWindow : System.Windows.Window
 
     private void ShowChartDetail()
     {
+        viewModel.SetSettingsPage(false);
         ContentTabs.SelectedIndex = 2;
         PageTitle.Text = "楽曲・譜面詳細";
         PageSubtitle.Text = "自己ベストから選択した1譜面の記録とプレー推移を確認できます";
         HomeNavigation.Tag = null;
         BestNavigation.Tag = "Selected";
         HistoryNavigation.Tag = null;
+        SettingsNavigation.Tag = null;
         UpdateChartDetailGraphModeButtons();
         Dispatcher.BeginInvoke(
             DispatcherPriority.Background,
@@ -620,14 +672,18 @@ public partial class MainWindow : System.Windows.Window
             }));
     }
 
-    private void ShowHistory_Click(object sender, RoutedEventArgs e)
+    private void ShowHistory_Click(object sender, RoutedEventArgs e) => ShowHistoryPage();
+
+    private void ShowHistoryPage()
     {
+        viewModel.SetSettingsPage(false);
         ContentTabs.SelectedIndex = 3;
         PageTitle.Text = "直近プレー履歴";
         PageSubtitle.Text = "このアプリを起動してから記録されたプレーを表示します";
         HomeNavigation.Tag = null;
         BestNavigation.Tag = null;
         HistoryNavigation.Tag = "Selected";
+        SettingsNavigation.Tag = null;
     }
 
     private void RenderChartDetailGraph()

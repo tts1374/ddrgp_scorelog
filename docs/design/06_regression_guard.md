@@ -488,7 +488,7 @@ M5bの変更では、少なくとも次のcurrent-only境界をfixtureで固定�
 - capture progressは選択済みwindowの表示名・surface size、write済みframe数、開始時刻、最新event時刻だけをUIへ渡し、自動window探索や正式値生成へ使わない。
 - saved、duplicate、excluded、unresolved、analysis_failed、db_rejected、workflow_failedの件数を別々に投影し、saved IDだけをread-only再読込する。commit済みpartial successとfatal reasonを同時に失わない。
 - manual保存中の監視開始、監視capture-save中のmanual保存、capture-only session中のmanual保存を拒否し、二重開始、stop中再開始、反復stopでwriterやresourceを増やさない。
-- trayの開始/停止enable状態はpicker開始待ち、ViewModelの保存・capture状態を含めて更新する。capture-onlyを含むpicker中の再Startを同じTaskへ合流させ、session世代とcancel状態で停止・exit後のprogress callback、二重capture、二重workflow起動を受け付けない。通常close/最小化はwindow非表示、明示exitはpending pickerのcancel/終端とstop完了を待ってtrayをdisposeする。stop例外でもdisposeとprocess終了を決定的にし、capture event単位のunresolved／ambiguous通知は同じevent IDを重複通知せず、通知後もmonitoringを継続する。通知はformal DBの`plays`保存、candidate rescue、専用確認画面・navを開始しない。
+- trayの開始/停止enable状態はpicker開始待ち、ViewModelの保存・capture状態を含めて更新する。capture-onlyを含むpicker中の再Startを同じTaskへ合流させ、session世代とcancel状態で停止・exit後のprogress callback、二重capture、二重workflow起動を受け付けない。通常close/最小化はwindow非表示、明示exitはpending pickerのcancel/終端とstop完了を待ってtrayをdisposeする。stop例外でもdisposeとprocess終了を決定的にし、capture event単位のunresolved／ambiguous通知は同じevent IDを重複通知せず、通知後もmonitoringを継続する。通知設定OFFではWPF/tray表示だけを抑止し、診断記録と保存境界を変更しない。通知はformal DBの`plays`保存、candidate rescue、専用確認画面・navを開始しない。
 - Windows Graphics Captureの枠なし設定はpresentation上のoptionalなsession propertyだけを対象にし、surface size、ROI、frame timestamp、RESULT検出、event boundary、confirmed event ID、RESULT fingerprint、formal evidence、正式保存statusを変更しない。アプリ独自の同意設定、OS overlay、registry、window位置変更を追加しない。
 - 起動時、保存開始時に現在の環境の固定pathにあるmaster DBのpath、read-only読込可否、schema互換性を検査し、`missing`、`read不可`、`schema incompatible` をcapture解析・正式保存の開始前に拒否する。任意pathのDB選択操作を持たず、path以外の過去session statusを保存せず、再起動でfailed/skip/rejectedをsavedへ昇格させない。
 - Windows Graphics Capture、実window、実DBを必須にせず、progress fake、workflow fake、tray fakeで通常CIを完結させる。実windowでのpicker、tray復帰、終了確認は任意の目視確認として別記録する。
@@ -539,6 +539,7 @@ dry-run sequence scenario 入口を変更した場合も、生成manifestを man
 
 ## Windows automatic monitoring guard
 
+- 起動時監視設定がON（初期値）の場合だけ自動workerを作成し、OFFの場合は対象windowを探索せず、WPF/trayの明示開始経路は維持する。設定の欠落・読込失敗はONへ戻る。
 - 起動前から対象windowが存在する場合と、起動後に対象windowが出現する場合に、`Starting`を経て2回連続検出後だけ既存の監視workerを1回開始する。
 - 1回の探索失敗、0件、複数件では開始・停止を反復せず`WaitingForGame`へ戻り、対象window消失は2回連続確認後だけ安全停止する。
 - 監視停止後に対象windowが消失して再出現した場合だけ自動復帰し、同じwindowが残ったままの再接続や旧sessionの再利用を行わない。

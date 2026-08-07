@@ -55,6 +55,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private readonly ILiveMonitoringCaptureService? liveMonitoringService;
     private readonly ICaptureSaveWorkflowRunner? captureSaveWorkflowRunner;
     private readonly IViewerPathStore? pathStore;
+    private readonly IUserSettingsStore userSettingsStore;
     private readonly ViewerDatabasePaths defaultDatabasePaths;
     private readonly IScoreDatabaseInitializer scoreDatabaseInitializer;
     private readonly IDdrGpWindowEnumerator ddrGpWindowEnumerator;
@@ -158,6 +159,16 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private bool automaticMonitoringWindowLossStopInProgress;
     private bool automaticMonitoringWaitingForUpdate;
     private bool referenceDataUpdateInProgress;
+    private bool isSettingsPage;
+    private bool startMonitoringOnLaunch = UserSettings.Defaults.StartMonitoringOnLaunch;
+    private bool notifyUnresolvedResults = UserSettings.Defaults.NotifyUnresolvedResults;
+    private string defaultPlayStyle = UserSettings.Defaults.DefaultPlayStyle;
+    private string startupPage = UserSettings.Defaults.StartupPage;
+    private bool appliedStartMonitoringOnLaunch = UserSettings.Defaults.StartMonitoringOnLaunch;
+    private bool appliedNotifyUnresolvedResults = UserSettings.Defaults.NotifyUnresolvedResults;
+    private string appliedDefaultPlayStyle = UserSettings.Defaults.DefaultPlayStyle;
+    private string appliedStartupPage = UserSettings.Defaults.StartupPage;
+    private string settingsStatusMessage = "変更内容は保存時に反映されます";
     private readonly IApplicationUpdateService? applicationUpdateService;
     private string applicationUpdateStatusTitle = "アプリ更新";
     private string applicationUpdateStatusMessage = "起動後にGitHub Releasesを確認します。";
@@ -180,7 +191,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         IDdrGpWindowEnumerator? ddrGpWindowEnumerator = null,
         ILiveMonitoringCaptureService? liveMonitoringService = null,
         IApplicationUpdateService? applicationUpdateService = null,
-        AutomaticMonitoringOptions? automaticMonitoringOptions = null)
+        AutomaticMonitoringOptions? automaticMonitoringOptions = null,
+        IUserSettingsStore? userSettingsStore = null)
     {
         this.repository = repository;
         this.workflowRunner = workflowRunner;
@@ -190,6 +202,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         this.captureSaveWorkflowRunner = captureSaveWorkflowRunner;
         this.pathStore = pathStore;
         this.defaultDatabasePaths = defaultDatabasePaths ?? ViewerDatabasePaths.ResolveDefault();
+        this.userSettingsStore = userSettingsStore ??
+            new LocalUserSettingsStore(this.defaultDatabasePaths.UserSettingsPath);
         this.scoreDatabaseInitializer = scoreDatabaseInitializer ?? new PersonalScoreDbInitializer();
         this.ddrGpWindowEnumerator = ddrGpWindowEnumerator ?? new DdrGpWindowEnumerator();
         this.automaticMonitoringOptions = automaticMonitoringOptions ?? new AutomaticMonitoringOptions();
@@ -206,6 +220,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public event EventHandler? ChartBestListReset;
     public event EventHandler? ChartDetailUpdated;
     public event Action<UnresolvedCaptureNotification>? UnresolvedCaptureNotificationRequested;
+    public event Action<UnresolvedCaptureNotification>? UnresolvedCaptureDiagnosticRecorded;
 
     public ObservableCollection<PlayHistoryItem> Plays { get; } = [];
     public ObservableCollection<ChartBestItem> ChartBests { get; } = [];
@@ -245,6 +260,69 @@ public sealed class MainViewModel : INotifyPropertyChanged
         BestSortLastPlayedDescending,
         BestSortPlayCountDescending,
     ];
+
+    public IReadOnlyList<string> StartupPageOptions { get; } =
+        [UserSettings.HomeStartupPage, UserSettings.BestStartupPage, UserSettings.HistoryStartupPage];
+
+    public bool StartMonitoringOnLaunch
+    {
+        get => startMonitoringOnLaunch;
+        set
+        {
+            if (SetProperty(ref startMonitoringOnLaunch, value))
+            {
+                SettingsStatusMessage = "変更内容は保存時に反映されます";
+            }
+        }
+    }
+
+    public bool NotifyUnresolvedResults
+    {
+        get => notifyUnresolvedResults;
+        set
+        {
+            if (SetProperty(ref notifyUnresolvedResults, value))
+            {
+                SettingsStatusMessage = "変更内容は保存時に反映されます";
+            }
+        }
+    }
+
+    public string DefaultPlayStyle
+    {
+        get => defaultPlayStyle;
+        set
+        {
+            if (UserSettings.IsValidPlayStyle(value))
+            {
+                if (SetProperty(ref defaultPlayStyle, value))
+                {
+                    SettingsStatusMessage = "変更内容は保存時に反映されます";
+                }
+            }
+        }
+    }
+
+    public string StartupPage
+    {
+        get => startupPage;
+        set
+        {
+            if (UserSettings.IsValidStartupPage(value))
+            {
+                if (SetProperty(ref startupPage, value))
+                {
+                    SettingsStatusMessage = "変更内容は保存時に反映されます";
+                }
+            }
+        }
+    }
+
+    public string SettingsStatusMessage
+    {
+        get => settingsStatusMessage;
+        private set => SetProperty(ref settingsStatusMessage, value);
+    }
 
     public IReadOnlyList<string> BestVersionOptions
     {
@@ -588,10 +666,16 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
     }
 
+    public bool IsSettingsPage => isSettingsPage;
+
     public System.Windows.Visibility StatusVisibility =>
-        HasData ? System.Windows.Visibility.Collapsed : System.Windows.Visibility.Visible;
+        HasData || IsSettingsPage
+            ? System.Windows.Visibility.Collapsed
+            : System.Windows.Visibility.Visible;
     public System.Windows.Visibility DataVisibility =>
-        HasData ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
+        HasData || IsSettingsPage
+            ? System.Windows.Visibility.Visible
+            : System.Windows.Visibility.Collapsed;
 
     public string MasterVersion
     {
@@ -1006,7 +1090,100 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public bool IsApplicationExitRequested => applicationExitRequested;
 
-    public bool IsAutomaticMonitoringEnabled => automaticMonitoringOptions.Enabled;
+    public bool IsAutomaticMonitoringEnabled =>
+        automaticMonitoringOptions.Enabled && appliedStartMonitoringOnLaunch;
+
+    internal string AppliedStartupPage => appliedStartupPage;
+
+    internal void SetSettingsPage(bool value)
+    {
+        if (isSettingsPage == value)
+        {
+            return;
+        }
+
+        isSettingsPage = value;
+        OnPropertyChanged(nameof(IsSettingsPage));
+        OnPropertyChanged(nameof(StatusVisibility));
+        OnPropertyChanged(nameof(DataVisibility));
+    }
+
+    internal void RestoreUserSettings()
+    {
+        try
+        {
+            ApplyUserSettings(userSettingsStore.Load());
+            SettingsStatusMessage = "変更内容は保存時に反映されます";
+        }
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException or JsonException or
+            ArgumentException or InvalidOperationException)
+        {
+            ApplyUserSettings(null);
+            SettingsStatusMessage =
+                $"保存済み設定を読み込めなかったため、初期値を使用しています。{exception.Message}";
+        }
+    }
+
+    internal bool SaveUserSettings()
+    {
+        var settings = new UserSettings(
+            StartMonitoringOnLaunch,
+            NotifyUnresolvedResults,
+            DefaultPlayStyle,
+            StartupPage);
+        if (!settings.IsValid)
+        {
+            SettingsStatusMessage = "設定値を確認してから保存してください。";
+            return false;
+        }
+
+        try
+        {
+            userSettingsStore.Save(settings);
+            ApplyUserSettings(settings);
+            SettingsStatusMessage = "設定を保存しました。";
+            return true;
+        }
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException or
+            ArgumentException or InvalidOperationException)
+        {
+            SettingsStatusMessage = $"設定を保存できませんでした。{exception.Message}";
+            return false;
+        }
+    }
+
+    internal void ResetUserSettings()
+    {
+        StartMonitoringOnLaunch = UserSettings.Defaults.StartMonitoringOnLaunch;
+        NotifyUnresolvedResults = UserSettings.Defaults.NotifyUnresolvedResults;
+        DefaultPlayStyle = UserSettings.Defaults.DefaultPlayStyle;
+        StartupPage = UserSettings.Defaults.StartupPage;
+        SettingsStatusMessage = "初期値に戻しました。保存すると反映されます。";
+    }
+
+    private void ApplyUserSettings(UserSettings? settings)
+    {
+        var effective = settings?.IsValid == true ? settings : UserSettings.Defaults;
+        appliedStartMonitoringOnLaunch = effective.StartMonitoringOnLaunch;
+        appliedNotifyUnresolvedResults = effective.NotifyUnresolvedResults;
+        appliedDefaultPlayStyle = effective.DefaultPlayStyle;
+        appliedStartupPage = effective.StartupPage;
+        StartMonitoringOnLaunch = effective.StartMonitoringOnLaunch;
+        NotifyUnresolvedResults = effective.NotifyUnresolvedResults;
+        DefaultPlayStyle = effective.DefaultPlayStyle;
+        StartupPage = effective.StartupPage;
+        BestPlayStyleFilter = appliedDefaultPlayStyle;
+        OnPropertyChanged(nameof(IsAutomaticMonitoringEnabled));
+
+        if (!appliedNotifyUnresolvedResults)
+        {
+            HasUnresolvedNotification = false;
+            UnresolvedNotificationTitle = "";
+            UnresolvedNotificationMessage = "";
+        }
+    }
 
     private bool IsMonitoringStartInProgress =>
         monitoringStartFinished is not null;
@@ -1186,7 +1363,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     internal void StartAutomaticMonitoring(nint ownerWindowHandle)
     {
-        if (!automaticMonitoringOptions.Enabled ||
+        if (!IsAutomaticMonitoringEnabled ||
             applicationExitRequested ||
             automaticMonitoringTask is not null)
         {
@@ -1707,6 +1884,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 $"保存先のdirectoryを作成できません。表示された既定pathを確認してください。{exception.Message}";
             return;
         }
+
+        RestoreUserSettings();
 
         ViewerPathSelection? selection = null;
         if (pathStore is not null)
@@ -2722,11 +2901,20 @@ public sealed class MainViewModel : INotifyPropertyChanged
                     eventResult.Reasons.Distinct(StringComparer.Ordinal));
             var message =
                 $"正式DBには保存されていません。理由: {reasons} 診断参照: {eventId}";
+            var notification = new UnresolvedCaptureNotification(
+                eventId,
+                message,
+                eventResult.Reasons);
+            UnresolvedCaptureDiagnosticRecorded?.Invoke(notification);
+            if (!appliedNotifyUnresolvedResults)
+            {
+                continue;
+            }
+
             UnresolvedNotificationTitle = "自動保存できないプレーが発生しました";
             UnresolvedNotificationMessage = message;
             HasUnresolvedNotification = true;
-            UnresolvedCaptureNotificationRequested?.Invoke(
-                new UnresolvedCaptureNotification(eventId, message, eventResult.Reasons));
+            UnresolvedCaptureNotificationRequested?.Invoke(notification);
         }
     }
 
