@@ -3,6 +3,7 @@ using System.Text.Json;
 using DDRGpScoreViewer.Data;
 using DDRGpScoreViewer.Models;
 using DDRGpScoreViewer.ViewModels;
+using Microsoft.Data.Sqlite;
 using Xunit;
 
 namespace DDRGpScoreViewer.Tests;
@@ -94,6 +95,45 @@ public sealed class PersonalScoreDataBackupTests
         Assert.Equal(1, chartBest.PlayCount);
         Assert.Equal("2026-08-01T10:00:00+00:00", play.PlayedAt);
         Assert.Equal(expectedSavedAt, play.SavedAt);
+    }
+
+    [Fact]
+    public void Restoring_the_same_backup_twice_uses_new_source_capture_keys()
+    {
+        using var fixture = new DatabaseFixture();
+        fixture.AddPlay(
+            "restore-source",
+            "2026-08-01T10:00:00+00:00",
+            900_000,
+            1_000);
+        var backupPath = Path.Combine(fixture.DirectoryPath, "personal-score-backup.json");
+        var service = new PersonalScoreDataBackupService();
+        Assert.True(service.CreateBackup(fixture.ScorePath, backupPath).Succeeded);
+
+        var firstRestore = service.RestoreBackup(fixture.ScorePath, backupPath);
+        var secondRestore = service.RestoreBackup(fixture.ScorePath, backupPath);
+
+        Assert.True(firstRestore.Succeeded, firstRestore.Message);
+        Assert.True(secondRestore.Succeeded, secondRestore.Message);
+        using var connection = OpenReadOnly(fixture.ScorePath);
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            "SELECT capture_id, capture_hash FROM source_captures " +
+            "WHERE source_path = 'personal-score-backup' ORDER BY rowid;";
+        var captures = new List<(string Id, string Hash)>();
+        using (var reader = command.ExecuteReader())
+        {
+            while (reader.Read())
+            {
+                captures.Add((reader.GetString(0), reader.GetString(1)));
+            }
+        }
+
+        Assert.Equal(2, captures.Count);
+        Assert.Equal(2, captures.Select(capture => capture.Id).Distinct().Count());
+        Assert.Equal(2, captures.Select(capture => capture.Hash).Distinct().Count());
+        Assert.Equal(3L, CountRows(connection, "source_captures"));
+        Assert.Equal(1L, CountRows(connection, "plays"));
     }
 
     [Fact]
@@ -211,5 +251,24 @@ public sealed class PersonalScoreDataBackupTests
         Assert.Equal("restore-source", play.PlayId);
         Assert.Equal(900_000, viewModel.ChartBests.Single().BestScore);
         Assert.Equal("個人スコアデータを復元しました。保存済みプレー: 1件。", viewModel.DataManagementStatusMessage);
+    }
+
+    private static SqliteConnection OpenReadOnly(string path)
+    {
+        var connection = new SqliteConnection(new SqliteConnectionStringBuilder
+        {
+            DataSource = path,
+            Mode = SqliteOpenMode.ReadOnly,
+            Pooling = false,
+        }.ToString());
+        connection.Open();
+        return connection;
+    }
+
+    private static long CountRows(SqliteConnection connection, string tableName)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText = $"SELECT COUNT(*) FROM {tableName};";
+        return (long)command.ExecuteScalar()!;
     }
 }

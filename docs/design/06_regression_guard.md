@@ -543,6 +543,7 @@ dry-run sequence scenario 入口を変更した場合も、生成manifestを man
 - backup作成は現行正式score DBをread-onlyで検証し、`plays`の履歴表示・自己ベスト算出に必要な値だけをJSONへ出力する。settings、viewer path、master/catalog、jacket reference、source capture、analysis log、diagnostic logをbackup本文へ入れない。UTF-8 BOMなし、LF、末尾改行、一時ファイルからのatomic publishを確認する。
 - valid backupのrestoreは、形式・version・必須値・ID重複・score制約の検証が完了するまでscore DBを開いて変更しない。invalid / unsupported backupは現在のscore DB hash、play件数、best、historyを変えない。
 - restoreの確認ダイアログをキャンセルした場合はrestore APIを呼ばず、現在の個人データを変更しない。確認後のvalid restoreだけ、既存schemaを検証したtransactionで履歴を置換し、旧playへの参照を切り離したanalysis logとsource captureは保持したままinsert件数を確認してcommitする。transaction失敗はrollbackし、commit後はread-only再読込でplays、self best、historyがbackupと一致することを確認する。
+- 同じbackupを複数回restoreしても、各restoreで新しい一意なsource capture ID/hashを使い、既存`source_captures`を保持したまま成功する。
 - restoreはsettings、master/catalog、jacket reference、source/analysis/diagnostic artifact、Debug capture/manual-review入口を作成・更新せず、既存のformal save、monitoring、initialization、migrationの境界を変更しない。ReleaseのUI・command入口にDebug専用操作を追加しない。
 
 ## Windows automatic monitoring guard

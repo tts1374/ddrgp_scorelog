@@ -92,6 +92,7 @@ public sealed class PersonalScoreDataBackupService : IPersonalScoreDataBackupSer
         {
             var paths = ValidatePaths(scoreDatabasePath, backupPath, requireBackupFile: true);
             var document = ReadAndValidateBackup(paths.BackupPath);
+            var restoreSessionId = Guid.NewGuid().ToString("N");
 
             using var connection = Open(paths.ScoreDatabasePath, SqliteOpenMode.ReadWrite);
             EnableForeignKeys(connection);
@@ -103,7 +104,7 @@ public sealed class PersonalScoreDataBackupService : IPersonalScoreDataBackupSer
                 "DELETE FROM plays;");
             foreach (var play in document.Plays)
             {
-                InsertRestoredPlay(connection, transaction, play);
+                InsertRestoredPlay(connection, transaction, play, restoreSessionId);
             }
 
             var restoredCount = ReadPlayCount(connection, transaction);
@@ -290,10 +291,12 @@ public sealed class PersonalScoreDataBackupService : IPersonalScoreDataBackupSer
     private static void InsertRestoredPlay(
         SqliteConnection connection,
         SqliteTransaction transaction,
-        PersonalScoreBackupPlay play)
+        PersonalScoreBackupPlay play,
+        string restoreSessionId)
     {
-        var sourceCaptureId = "backup-restore-" + Hash(play.PlayId);
-        var captureHash = "backup-restore-hash-" + Hash(play.PlayId + "\0" + play.DuplicateKey);
+        var sourceCaptureId = $"backup-restore-{restoreSessionId}-{Hash(play.PlayId)}";
+        var captureHash = "backup-restore-hash-" +
+            Hash(restoreSessionId + "\0" + play.PlayId + "\0" + play.DuplicateKey);
         Execute(
             transaction,
             """
