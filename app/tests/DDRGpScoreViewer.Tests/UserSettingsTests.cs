@@ -95,6 +95,34 @@ public sealed class UserSettingsTests
     }
 
     [Fact]
+    public void Editing_any_saved_setting_marks_the_draft_as_unsaved()
+    {
+        var store = new MemoryUserSettingsStore(UserSettings.Defaults);
+        var viewModel = new MainViewModel(
+            new ScoreViewerRepository(),
+            userSettingsStore: store);
+        viewModel.RestoreUserSettings();
+
+        Assert.True(viewModel.SaveUserSettings());
+        Assert.Equal("設定を保存しました。", viewModel.SettingsStatusMessage);
+
+        viewModel.StartMonitoringOnLaunch = false;
+        Assert.Equal("変更内容は保存時に反映されます", viewModel.SettingsStatusMessage);
+        Assert.True(viewModel.SaveUserSettings());
+
+        viewModel.NotifyUnresolvedResults = false;
+        Assert.Equal("変更内容は保存時に反映されます", viewModel.SettingsStatusMessage);
+        Assert.True(viewModel.SaveUserSettings());
+
+        viewModel.DefaultPlayStyle = UserSettings.DoublePlayStyle;
+        Assert.Equal("変更内容は保存時に反映されます", viewModel.SettingsStatusMessage);
+        Assert.True(viewModel.SaveUserSettings());
+
+        viewModel.StartupPage = UserSettings.HistoryStartupPage;
+        Assert.Equal("変更内容は保存時に反映されます", viewModel.SettingsStatusMessage);
+    }
+
+    [Fact]
     public void Reset_returns_draft_values_to_defaults_without_saving_them()
     {
         var saved = new UserSettings(

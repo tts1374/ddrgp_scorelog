@@ -267,13 +267,25 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public bool StartMonitoringOnLaunch
     {
         get => startMonitoringOnLaunch;
-        set => SetProperty(ref startMonitoringOnLaunch, value);
+        set
+        {
+            if (SetProperty(ref startMonitoringOnLaunch, value))
+            {
+                SettingsStatusMessage = "変更内容は保存時に反映されます";
+            }
+        }
     }
 
     public bool NotifyUnresolvedResults
     {
         get => notifyUnresolvedResults;
-        set => SetProperty(ref notifyUnresolvedResults, value);
+        set
+        {
+            if (SetProperty(ref notifyUnresolvedResults, value))
+            {
+                SettingsStatusMessage = "変更内容は保存時に反映されます";
+            }
+        }
     }
 
     public string DefaultPlayStyle
@@ -283,7 +295,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
         {
             if (UserSettings.IsValidPlayStyle(value))
             {
-                SetProperty(ref defaultPlayStyle, value);
+                if (SetProperty(ref defaultPlayStyle, value))
+                {
+                    SettingsStatusMessage = "変更内容は保存時に反映されます";
+                }
             }
         }
     }
@@ -295,7 +310,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
         {
             if (UserSettings.IsValidStartupPage(value))
             {
-                SetProperty(ref startupPage, value);
+                if (SetProperty(ref startupPage, value))
+                {
+                    SettingsStatusMessage = "変更内容は保存時に反映されます";
+                }
             }
         }
     }
