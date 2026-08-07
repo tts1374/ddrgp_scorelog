@@ -84,6 +84,8 @@ public sealed record MonitoringResultSummary(
         counts.TryGetValue(key, out var value) ? value : 0;
 }
 
+public sealed record UnresolvedCaptureNotification(string EventId, string Message);
+
 public sealed record TrayMenuState(bool CanStart, bool CanStop)
 {
     public static TrayMenuState FromMonitoringState(MonitoringState state) => state switch

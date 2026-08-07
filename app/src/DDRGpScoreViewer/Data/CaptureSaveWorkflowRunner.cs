@@ -8,13 +8,19 @@ using DDRGpScoreViewer.Runtime;
 
 namespace DDRGpScoreViewer.Data;
 
+public sealed record CaptureSaveEventResult(
+    string EventId,
+    string Status,
+    IReadOnlyList<string> Reasons);
+
 public sealed record CaptureSaveWorkflowResult(
     string Status,
     int EventCount,
     IReadOnlyDictionary<string, int> StatusCounts,
     IReadOnlyList<string> SavedPlayIds,
     IReadOnlyList<string> Reasons,
-    string? AnalysisOutput);
+    string? AnalysisOutput,
+    IReadOnlyList<CaptureSaveEventResult>? EventResults = null);
 
 public interface ICaptureSaveWorkflowRunner
 {
@@ -166,7 +172,10 @@ public sealed class AppOwnedCaptureSaveWorkflowRunner :
                 input,
                 scoreDatabasePath,
                 cancellationToken);
-            return ToCaptureResult(result, eventCount: 1);
+            return ToCaptureResult(
+                result,
+                eventCount: 1,
+                eventId: enrichedObservation.ConfirmedEventId ?? ConfirmedResultEventId.Create());
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -190,6 +199,7 @@ public sealed class AppOwnedCaptureSaveWorkflowRunner :
         var statusCounts = new Dictionary<string, int>(StringComparer.Ordinal);
         var savedPlayIds = new List<string>();
         var reasons = new List<string>();
+        var eventResults = new List<CaptureSaveEventResult>();
         string? activeConfirmedKey = null;
         var workflowFailed = false;
         AppCaptureManifestRow? pending = null;
@@ -261,10 +271,10 @@ public sealed class AppOwnedCaptureSaveWorkflowRunner :
                 eventCount++;
                 activeConfirmedKey = key;
                 var duration = row.TimestampMs - pending.TimestampMs;
+                var confirmedEventId = pendingConfirmedEventId ?? ConfirmedResultEventId.Create();
                 var confirmedObservation = observation with
                 {
-                    ConfirmedEventId = pendingConfirmedEventId ??
-                        ConfirmedResultEventId.Create(),
+                    ConfirmedEventId = confirmedEventId,
                 };
                 var confirmedResult = await ProcessEventAsync(
                     pendingFrame ?? frame,
@@ -276,6 +286,7 @@ public sealed class AppOwnedCaptureSaveWorkflowRunner :
                     duplicate: false,
                     cancellationToken);
                 workflowFailed |= MergeResult(confirmedResult, statusCounts, savedPlayIds, reasons);
+                eventResults.Add(ToCaptureEventResult(confirmedEventId, confirmedResult));
                 pending = null;
                 pendingFrame = null;
                 pendingObservation = null;
@@ -300,7 +311,8 @@ public sealed class AppOwnedCaptureSaveWorkflowRunner :
             statusCounts,
             savedPlayIds,
             reasons.Distinct(StringComparer.Ordinal).ToArray(),
-            null);
+            null,
+            eventResults);
     }
 
     private async Task<PersonalScoreDbWorkflowResult> ProcessEventAsync(
@@ -463,14 +475,7 @@ public sealed class AppOwnedCaptureSaveWorkflowRunner :
         List<string> savedPlayIds,
         List<string> reasons)
     {
-        var status = result.WorkflowStatus switch
-        {
-            "saved" => "saved",
-            "duplicate" => "duplicate",
-            "excluded" => "excluded",
-            "unresolved" => "unresolved",
-            _ => "analysis_failed",
-        };
+        var status = CaptureStatus(result.WorkflowStatus);
         statusCounts[status] = statusCounts.GetValueOrDefault(status) + 1;
         if (result.PlayId is not null && result.WorkflowStatus == "saved")
         {
@@ -485,16 +490,10 @@ public sealed class AppOwnedCaptureSaveWorkflowRunner :
 
     private static CaptureSaveWorkflowResult ToCaptureResult(
         PersonalScoreDbWorkflowResult result,
-        int eventCount)
+        int eventCount,
+        string eventId)
     {
-        var status = result.WorkflowStatus switch
-        {
-            "saved" => "saved",
-            "duplicate" => "duplicate",
-            "excluded" => "excluded",
-            "unresolved" => "unresolved",
-            _ => "analysis_failed",
-        };
+        var status = CaptureStatus(result.WorkflowStatus);
         return new CaptureSaveWorkflowResult(
             result.WorkflowStatus is "saved" or "duplicate" or "excluded" or "unresolved"
                 ? "completed"
@@ -503,8 +502,23 @@ public sealed class AppOwnedCaptureSaveWorkflowRunner :
             new Dictionary<string, int> { [status] = 1 },
             result.PlayId is null ? [] : [result.PlayId],
             result.Reasons,
-            null);
+            null,
+            [ToCaptureEventResult(eventId, result)]);
     }
+
+    private static CaptureSaveEventResult ToCaptureEventResult(
+        string eventId,
+        PersonalScoreDbWorkflowResult result) =>
+        new(eventId, CaptureStatus(result.WorkflowStatus), result.Reasons);
+
+    private static string CaptureStatus(string workflowStatus) => workflowStatus switch
+    {
+        "saved" => "saved",
+        "duplicate" => "duplicate",
+        "excluded" => "excluded",
+        "unresolved" => "unresolved",
+        _ => "analysis_failed",
+    };
 
     private static CaptureSaveWorkflowResult FailedResult(string reason) =>
         new("workflow_failed", 0, new Dictionary<string, int>(), [], [reason], null);

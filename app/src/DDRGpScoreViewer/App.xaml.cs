@@ -17,6 +17,7 @@ public partial class App : System.Windows.Application
     private SingleInstanceCoordinator? singleInstance;
     private ReleaseLog? releaseLog;
     private PropertyChangedEventHandler? viewModelPropertyChanged;
+    private Action<UnresolvedCaptureNotification>? unresolvedCaptureNotificationRequested;
 
     public App()
     {
@@ -87,6 +88,10 @@ public partial class App : System.Windows.Application
             lifecycle.PrepareForApplicationUpdateAsync,
             lifecycle.ExitAsync,
             ShutdownApplication);
+        unresolvedCaptureNotificationRequested = notification =>
+            lifecycle.NotifyUnresolvedCapture(notification);
+        mainWindow.ViewModel.UnresolvedCaptureNotificationRequested +=
+            unresolvedCaptureNotificationRequested;
         viewModelPropertyChanged = (_, args) =>
         {
             if (args.PropertyName is nameof(MainViewModel.CurrentMonitoringState) or
@@ -234,6 +239,12 @@ public partial class App : System.Windows.Application
         {
             mainWindow.ViewModel.PropertyChanged -= viewModelPropertyChanged;
             viewModelPropertyChanged = null;
+        }
+        if (mainWindow is not null && unresolvedCaptureNotificationRequested is not null)
+        {
+            mainWindow.ViewModel.UnresolvedCaptureNotificationRequested -=
+                unresolvedCaptureNotificationRequested;
+            unresolvedCaptureNotificationRequested = null;
         }
         lifecycle?.Dispose();
         singleInstance?.Dispose();

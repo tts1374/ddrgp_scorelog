@@ -116,7 +116,7 @@ live保存入口は、current masterとcurrent-master-compatibleなcatalog参照
 
 監視状態は `idle`、`starting`、`waiting_for_game`、`selecting_target`、`monitoring`、`stopping`、`stopped`、`manually_stopped`、`blocked`、`shutting_down`、`target_closed`、`resized`、`device_lost`、`capture_failed`、`workflow_failed` を区別します。検出したwindowのtitle、process、client sizeは監視surfaceへ表示し、auto-detectionの判定はprocess名とclient sizeだけで行います。対象windowは2回連続検出で開始し、2回連続消失で安全停止します。単発の探索失敗では待機を続けます。手動停止後は`manually_stopped`、DBまたはruntime異常時は`blocked`、終了処理中は`shutting_down`としてtrayと画面へ反映します。最新結果は `saved`、`duplicate`、`excluded`、`unresolved`、`analysis_failed`、`db_rejected`、`workflow_failed` を別々に数え、transaction済みのsaved playだけread-only再読込します。
 
-windowの×ボタンはwindowをtrayへ格納し、最小化ボタンは通常どおりtaskbarへ最小化します。trayのダブルクリックまたは`GP Score Logを開く`でメイン画面を表示・前面化できます。tray menuは`GP Score Logを開く`、`監視開始`、`監視停止`、`終了`を提供し、監視状態に応じて開始・停止を有効化します。メインwindowをtrayへ格納しても自動監視workerは継続し、検出・消失に応じて同じtray状態を更新します。`終了`だけが新規処理受付を止め、pending pickerをcancelし、進行中処理の完了または安全な中断、監視polling・worker/runtime停止、DB connection解放、一時data削除、tray解除の順でprocessを終了します。Windows終了・ログオフ時も可能な範囲で同じ終了処理を開始し、未完了結果を正式保存へ昇格しません。二重起動時は新しいprocessを終了し、既存windowを表示・前面化します。通知はsavedがある完了と、監視停止が必要な重大失敗だけです。
+windowの×ボタンはwindowをtrayへ格納し、最小化ボタンは通常どおりtaskbarへ最小化します。trayのダブルクリックまたは`GP Score Logを開く`でメイン画面を表示・前面化できます。tray menuは`GP Score Logを開く`、`監視開始`、`監視停止`、`終了`を提供し、監視状態に応じて開始・停止を有効化します。メインwindowをtrayへ格納しても自動監視workerは継続し、検出・消失に応じて同じtray状態を更新します。`終了`だけが新規処理受付を止め、pending pickerをcancelし、進行中処理の完了または安全な中断、監視polling・worker/runtime停止、DB connection解放、一時data削除、tray解除の順でprocessを終了します。Windows終了・ログオフ時も可能な範囲で同じ終了処理を開始し、未完了結果を正式保存へ昇格しません。二重起動時は新しいprocessを終了し、既存windowを表示・前面化します。通知はsavedがある完了、監視停止が必要な重大失敗、capture event単位の自動保存不能結果を対象とし、WPF/trayへ非ブロッキング表示します。同じcapture eventの反復frameは重複通知しません。
 
 ## 再起動・path再検証・失敗からの復帰
 
@@ -298,4 +298,4 @@ backup先に新しいdirectoryを作り、2 fileをコピーします。コピ�
 - `Resources/Components.xaml`: button、sidebar、card、table、badgeの共通style
 - `Controls/StatePanel.xaml`: 空状態・エラー状態の共通component
 
-今回の画面範囲は共通sidebar、自己ベスト、プレー履歴、プレー詳細、Debug buildの開発者向け単発操作、監視surface、master DB検証表示、明示した監視session後のevent単位保存workflow、task tray lifecycleです。Release buildの通常画面には開発者向け領域を含めず、`監視開始`と`監視停止`を残します。ホーム、検索・絞り込み、グラフ、要確認、設定画面、自動再接続は対象外です。
+今回の画面範囲は共通sidebar、自己ベスト、プレー履歴、プレー詳細、Debug buildの開発者向け単発操作、監視surface（自動保存できない結果の通知を含む）、master DB検証表示、明示した監視session後のevent単位保存workflow、task tray lifecycleです。Release buildの通常画面には開発者向け領域を含めず、`監視開始`と`監視停止`を残します。ホーム、検索・絞り込み、グラフ、専用確認画面、設定画面、自動再接続は対象外です。

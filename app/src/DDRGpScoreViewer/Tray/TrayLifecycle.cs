@@ -99,6 +99,8 @@ public sealed class ApplicationLifecycleCoordinator : IDisposable
     private readonly Action shutdown;
     private readonly Action beginExit;
     private readonly object exitLock = new();
+    private readonly HashSet<string> notifiedUnresolvedCaptureEvents =
+        new(StringComparer.Ordinal);
     private Task? exitTask;
     private Task? exitPreparationTask;
     private MonitoringState? lastNotifiedState;
@@ -214,6 +216,31 @@ public sealed class ApplicationLifecycleCoordinator : IDisposable
                 reason,
                 TrayNotificationKind.Error);
         }
+    }
+
+    public void NotifyUnresolvedCapture(UnresolvedCaptureNotification notification)
+    {
+        if (Volatile.Read(ref disposed) != 0)
+        {
+            return;
+        }
+
+        var eventKey = string.IsNullOrWhiteSpace(notification.EventId)
+            ? notification.Message
+            : notification.EventId;
+        lock (exitLock)
+        {
+            if (exitRequested || Volatile.Read(ref disposed) != 0 ||
+                !notifiedUnresolvedCaptureEvents.Add(eventKey))
+            {
+                return;
+            }
+        }
+
+        trayIcon.ShowNotification(
+            "自動保存できないプレーが発生しました",
+            notification.Message,
+            TrayNotificationKind.Information);
     }
 
     public void Dispose()

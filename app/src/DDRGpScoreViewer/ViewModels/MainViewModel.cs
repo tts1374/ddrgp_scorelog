@@ -101,6 +101,11 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private string captureStatusTitle = "";
     private string captureStatusMessage = "";
     private bool hasCaptureStatus;
+    private readonly HashSet<string> unresolvedCaptureNotificationEventIds =
+        new(StringComparer.Ordinal);
+    private string unresolvedNotificationTitle = "";
+    private string unresolvedNotificationMessage = "";
+    private bool hasUnresolvedNotification;
     private bool isCapturing;
     private bool isContinuousCapturing;
     private bool isStoppingCapture;
@@ -200,6 +205,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public event Action<ChartBestItem>? ChartBestSelectionRequested;
     public event EventHandler? ChartBestListReset;
     public event EventHandler? ChartDetailUpdated;
+    public event Action<UnresolvedCaptureNotification>? UnresolvedCaptureNotificationRequested;
 
     public ObservableCollection<PlayHistoryItem> Plays { get; } = [];
     public ObservableCollection<ChartBestItem> ChartBests { get; } = [];
@@ -683,6 +689,35 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public System.Windows.Visibility SaveStatusVisibility =>
         HasSaveStatus ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
+
+    public string UnresolvedNotificationTitle
+    {
+        get => unresolvedNotificationTitle;
+        private set => SetProperty(ref unresolvedNotificationTitle, value);
+    }
+
+    public string UnresolvedNotificationMessage
+    {
+        get => unresolvedNotificationMessage;
+        private set => SetProperty(ref unresolvedNotificationMessage, value);
+    }
+
+    public bool HasUnresolvedNotification
+    {
+        get => hasUnresolvedNotification;
+        private set
+        {
+            if (SetProperty(ref hasUnresolvedNotification, value))
+            {
+                OnPropertyChanged(nameof(UnresolvedNotificationVisibility));
+            }
+        }
+    }
+
+    public System.Windows.Visibility UnresolvedNotificationVisibility =>
+        HasUnresolvedNotification
+            ? System.Windows.Visibility.Visible
+            : System.Windows.Visibility.Collapsed;
 
     public string CaptureStatusTitle
     {
@@ -2584,6 +2619,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     private void RecordLiveWorkflowResult(CaptureSaveWorkflowResult result)
     {
+        PublishUnresolvedCaptureNotifications(result);
         var counts = new Dictionary<string, int>(result.StatusCounts);
         if (result.Status == "analysis_failed" && !counts.ContainsKey("analysis_failed"))
         {
@@ -2660,6 +2696,54 @@ public sealed class MainViewModel : INotifyPropertyChanged
             ? string.Empty
             : $" 理由: {string.Join(" / ", result.Reasons.Distinct(StringComparer.Ordinal))}";
         return $"event={result.EventCount}: {counts}。saved以外は成功保存として表示していません。{reasons}";
+    }
+
+    private void PublishUnresolvedCaptureNotifications(CaptureSaveWorkflowResult result)
+    {
+        var eventResults = result.EventResults is { Count: > 0 }
+            ? result.EventResults
+                .Where(item => item.Status is "unresolved" or "ambiguous")
+                .ToArray()
+            : BuildFallbackUnresolvedEventResults(result);
+        foreach (var eventResult in eventResults)
+        {
+            var eventId = string.IsNullOrWhiteSpace(eventResult.EventId)
+                ? $"capture-unresolved:{result.EventCount}:{eventResult.Status}"
+                : eventResult.EventId;
+            if (!unresolvedCaptureNotificationEventIds.Add(eventId))
+            {
+                continue;
+            }
+
+            var reasons = eventResult.Reasons.Count == 0
+                ? "診断理由は監視結果を確認してください。"
+                : string.Join(
+                    " / ",
+                    eventResult.Reasons.Distinct(StringComparer.Ordinal));
+            var message =
+                $"正式DBには保存されていません。理由: {reasons} 診断参照: {eventId}";
+            UnresolvedNotificationTitle = "自動保存できないプレーが発生しました";
+            UnresolvedNotificationMessage = message;
+            HasUnresolvedNotification = true;
+            UnresolvedCaptureNotificationRequested?.Invoke(
+                new UnresolvedCaptureNotification(eventId, message));
+        }
+    }
+
+    private static IReadOnlyList<CaptureSaveEventResult> BuildFallbackUnresolvedEventResults(
+        CaptureSaveWorkflowResult result)
+    {
+        if (!result.StatusCounts.TryGetValue("unresolved", out var count) || count <= 0)
+        {
+            return [];
+        }
+
+        return Enumerable.Range(0, count)
+            .Select(index => new CaptureSaveEventResult(
+                $"capture-unresolved:{result.EventCount}:{index}",
+                "unresolved",
+                result.Reasons))
+            .ToArray();
     }
 
     public async Task StopContinuousCaptureAsync(bool manualStop = true)
@@ -3765,6 +3849,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     private void RecordWorkflowResult(CaptureSaveWorkflowResult result, bool workflowFailed)
     {
+        PublishUnresolvedCaptureNotifications(result);
         var counts = new Dictionary<string, int>(result.StatusCounts);
         if (result.Status == "analysis_failed" && !counts.ContainsKey("analysis_failed"))
         {
@@ -3804,6 +3889,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
         monitoringStartedAtUtc = null;
         monitoringLatestEventAtUtc = null;
         MonitoringResults = MonitoringResultSummary.Empty;
+        unresolvedCaptureNotificationEventIds.Clear();
+        HasUnresolvedNotification = false;
+        UnresolvedNotificationTitle = "";
+        UnresolvedNotificationMessage = "";
         OnPropertyChanged(nameof(MonitoringResultsDisplay));
         OnPropertyChanged(nameof(MonitoringStartedAtDisplay));
         OnPropertyChanged(nameof(MonitoringLatestEventAtDisplay));
