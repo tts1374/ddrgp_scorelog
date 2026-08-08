@@ -78,8 +78,11 @@ jobs:
         shell: pwsh
         run: .\app\tests\VerifyReleaseRuntime.ps1
 
-      - name: Test
+      - name: Test Debug
         run: dotnet test app\tests\DDRGpScoreViewer.Tests\DDRGpScoreViewer.Tests.csproj --configuration Debug --no-restore
+
+      - name: Test Release
+        run: dotnet test app\tests\DDRGpScoreViewer.Tests\DDRGpScoreViewer.Tests.csproj --configuration Release --no-restore
 
       - name: Verify app formatting
         run: dotnet format app\src\DDRGpScoreViewer\DDRGpScoreViewer.csproj --verify-no-changes --no-restore

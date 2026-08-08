@@ -21,7 +21,10 @@ Debug buildでは、通常の監視操作と区別した開発者向け領域に
 dotnet build app\src\DDRGpScoreViewer\DDRGpScoreViewer.csproj --configuration Debug --no-restore
 dotnet build app\src\DDRGpScoreViewer\DDRGpScoreViewer.csproj --configuration Release --no-restore
 dotnet test app\tests\DDRGpScoreViewer.Tests\DDRGpScoreViewer.Tests.csproj --configuration Debug --no-restore
+dotnet test app\tests\DDRGpScoreViewer.Tests\DDRGpScoreViewer.Tests.csproj --configuration Release --no-restore
 ```
+
+Debug専用のcapture・手動保存APIに依存するテストはDebug configurationだけでコンパイル・実行し、Release configurationではRelease appに存在する通常機能と境界のテストを実行します。
 
 ## Debug buildの開発者向け操作
 
