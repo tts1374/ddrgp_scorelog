@@ -129,7 +129,7 @@ M7aの `--m7a-digit-recognition` も同じ confirmed-events 境界だけを対�
 
 正式個人スコアDBの明示ファイル保存は `save_personal_score_db_file(db_path, adapter_input)` に分離する。`adapt_personal_score_db_save_input()` をファイル準備より先に実行し、`unresolved` は理由を返してDBを作成・変更しない。`ready` はsource/play/analysis、duplicateや明示された低信頼度/error/skipの `excluded` はsource/analysisだけを既存writerの1 transactionで記録する。この入口はレビュー済み正式値を別入力として要求し、上記M8 preview rowや `--m8-score-db-output` のDBを正式DBへ昇格しない。
 
-M9 manual WPF入口はversion 1 workflow入力と保存先DBをユーザーが明示選択し、`personal_score_db_workflow_app` process adapterから同じstrict loader / adapter / orchestration / file saveを1回だけ呼ぶ。C#側は候補材料や正式値を解釈しない。transaction完了した `workflow_status=saved` かつ非null `play_id` だけをread-only viewerで再読込し、`excluded` / `duplicate` / `unresolved` / `invalid` / DB拒否 / artifact失敗を成功playへ写像しない。
+M9 manual WPF入口はversion 1 workflow入力と保存先DBをユーザーが明示選択し、app-owned runtimeのstrict loader / adapter / orchestration / file saveを同一processで1回だけ呼ぶ。候補材料を正式値へ補完せず、transaction完了した `workflow_status=saved` かつ非null `play_id` だけをread-only viewerで再読込する。`excluded` / `duplicate` / `unresolved` / `invalid` / DB拒否 / artifact失敗を成功playへ写像せず、Release runtimeはrepository root、Python executable、Tesseractへ依存しない。
 
 `ready` の明示 `formal_play.duplicate_key` が既存の正式 `plays` と衝突した場合は、保存直前preflightで2件目のplayを作らず、今回入力のsource captureとanalysisだけを同じtransactionで記録する。analysisは `analysis_status=skipped`、`save_boundary_status=duplicate`、`skip_reason=duplicate_key_already_saved`、`duplicate=true` に固定し、Python API/CLI結果は `adapter_status=excluded`、`written=true`、`play_id=null` とする。`capture_id` / `analysis_id` の同一再送は冪等成功へ変換せず、UNIQUE拒否時に今回rowをrollbackする。preflightは単一プロセスPoCの境界であり、並行writer間のraceは既存UNIQUE制約を最終防壁として残す。
 
