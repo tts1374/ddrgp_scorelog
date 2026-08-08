@@ -462,6 +462,7 @@ public partial class MainWindow : System.Windows.Window
     private void ShowHomePage()
     {
         viewModel.SetSettingsPage(false);
+        viewModel.SetDataManagementPage(false);
         ContentTabs.SelectedIndex = 0;
         PageTitle.Text = "ホーム";
         PageSubtitle.Text = "今日のプレー状況と最近の記録を確認できます";
@@ -469,6 +470,7 @@ public partial class MainWindow : System.Windows.Window
         BestNavigation.Tag = null;
         HistoryNavigation.Tag = null;
         SettingsNavigation.Tag = null;
+        DataManagementNavigation.Tag = null;
     }
 
     private void ShowBest_Click(object sender, RoutedEventArgs e) => ShowBestPage();
@@ -476,6 +478,7 @@ public partial class MainWindow : System.Windows.Window
     private void ShowBestPage()
     {
         viewModel.SetSettingsPage(false);
+        viewModel.SetDataManagementPage(false);
         ContentTabs.SelectedIndex = 1;
         PageTitle.Text = "自己ベスト";
         PageSubtitle.Text = "保存済み全履歴から算出した譜面別ベスト";
@@ -485,12 +488,14 @@ public partial class MainWindow : System.Windows.Window
         BestNavigation.Tag = "Selected";
         HistoryNavigation.Tag = null;
         SettingsNavigation.Tag = null;
+        DataManagementNavigation.Tag = null;
     }
 
     private void ShowSettings_Click(object sender, RoutedEventArgs e) => ShowSettingsPage();
 
     private void ShowSettingsPage()
     {
+        viewModel.SetDataManagementPage(false);
         viewModel.SetSettingsPage(true);
         ContentTabs.SelectedIndex = 4;
         PageTitle.Text = "設定";
@@ -499,6 +504,24 @@ public partial class MainWindow : System.Windows.Window
         BestNavigation.Tag = null;
         HistoryNavigation.Tag = null;
         SettingsNavigation.Tag = "Selected";
+        DataManagementNavigation.Tag = null;
+    }
+
+    private void ShowDataManagement_Click(object sender, RoutedEventArgs e) =>
+        ShowDataManagementPage();
+
+    private void ShowDataManagementPage()
+    {
+        viewModel.SetSettingsPage(false);
+        viewModel.SetDataManagementPage(true);
+        ContentTabs.SelectedIndex = 5;
+        PageTitle.Text = "データ管理";
+        PageSubtitle.Text = "保存済みプレーと同梱データの状態を確認できます";
+        HomeNavigation.Tag = null;
+        BestNavigation.Tag = null;
+        HistoryNavigation.Tag = null;
+        SettingsNavigation.Tag = null;
+        DataManagementNavigation.Tag = "Selected";
     }
 
     private void SaveSettings_Click(object sender, RoutedEventArgs e) =>
@@ -506,6 +529,72 @@ public partial class MainWindow : System.Windows.Window
 
     private void ResetSettings_Click(object sender, RoutedEventArgs e) =>
         viewModel.ResetUserSettings();
+
+    private void CreatePersonalScoreBackup_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new Microsoft.Win32.SaveFileDialog
+        {
+            AddExtension = true,
+            DefaultExt = ".json",
+            FileName = $"personal-score-backup-{DateTime.Now:yyyyMMdd-HHmmss}.json",
+            Filter = "個人スコアバックアップ (*.json)|*.json",
+            OverwritePrompt = true,
+            Title = "個人スコアデータのバックアップ先を選択",
+        };
+        if (dialog.ShowDialog(this) != true)
+        {
+            return;
+        }
+
+        var result = viewModel.CreatePersonalScoreBackup(dialog.FileName);
+        if (!result.Succeeded)
+        {
+            System.Windows.MessageBox.Show(
+                this,
+                result.Message,
+                "バックアップを作成できませんでした",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+        }
+    }
+
+    private void RestorePersonalScoreBackup_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new OpenFileDialog
+        {
+            CheckFileExists = true,
+            Filter = "個人スコアバックアップ (*.json)|*.json",
+            Multiselect = false,
+            Title = "復元する個人スコアバックアップを選択",
+        };
+        if (dialog.ShowDialog(this) != true)
+        {
+            return;
+        }
+
+        var confirmation = System.Windows.MessageBox.Show(
+            this,
+            "現在の個人スコアデータを、選択したバックアップで置き換えます。\nこの操作は取り消せません。続行しますか？",
+            "個人スコアデータの復元確認",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning,
+            MessageBoxResult.No);
+        if (confirmation != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        var result = viewModel.RestorePersonalScoreBackup(dialog.FileName);
+        if (!result.Succeeded)
+        {
+            System.Windows.MessageBox.Show(
+                this,
+                result.Message,
+                "バックアップを復元できませんでした",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+        }
+    }
 
     private void SettingsSinglePlayStyle_Click(object sender, RoutedEventArgs e) =>
         viewModel.DefaultPlayStyle = UserSettings.SinglePlayStyle;
@@ -677,6 +766,7 @@ public partial class MainWindow : System.Windows.Window
     private void ShowHistoryPage()
     {
         viewModel.SetSettingsPage(false);
+        viewModel.SetDataManagementPage(false);
         ContentTabs.SelectedIndex = 3;
         PageTitle.Text = "直近プレー履歴";
         PageSubtitle.Text = "このアプリを起動してから記録されたプレーを表示します";
@@ -684,6 +774,7 @@ public partial class MainWindow : System.Windows.Window
         BestNavigation.Tag = null;
         HistoryNavigation.Tag = "Selected";
         SettingsNavigation.Tag = null;
+        DataManagementNavigation.Tag = null;
     }
 
     private void RenderChartDetailGraph()

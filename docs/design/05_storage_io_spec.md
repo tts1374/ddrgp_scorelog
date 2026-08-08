@@ -42,12 +42,20 @@ M10-2では、DBの責務と実行環境をpathで固定する。Debugで明示�
 | --- | --- | --- | --- |
 | M4 master DB | `databases/ddrgp-master.sqlite` | `%LOCALAPPDATA%\DDRGpScoreViewer\data\master\ddrgp-master.sqlite` | M4とは別のreference data set assetとしてread-only検証・セット更新 |
 | M5b jacket reference catalog | `databases/jacket-catalog-release.sqlite` | `%LOCALAPPDATA%\DDRGpScoreViewer\data\master\jacket-catalog.sqlite` | M4とは別fileのstrict schema。developmentではbinding済みruntime catalog、productionではreference data setとしてread-only検証・セット更新 |
-| 正式個人スコアDB | `databases/score.dev.db` | `%LOCALAPPDATA%\DDRGpScoreViewer\data\score\score.db` | 固定pathのmissing／0 byteだけWPF側の正式schema初期化境界で初期化。既存formal DBは明示save以外で変更しない |
+| 正式個人スコアDB | `databases/score.dev.db` | `%LOCALAPPDATA%\DDRGpScoreViewer\data\score\score.db` | 固定pathのmissing／0 byteだけWPF側の正式schema初期化境界で初期化。既存formal DBは明示saveまたは確認済み個人スコアデータ復元以外で変更しない |
 | 評価用DB | `databases/evaluation.db` | 既定pathなし | M10-3評価器だけが明示的に初期化・再実行 |
 
 起動時はDB親directory、`data/`、`logs/`を作成し、M4 master DBとM5b jacket reference catalogのread-only検証に成功した場合だけ、現在の環境の固定score pathがmissingまたは0 byteのときWPF側の `PersonalScoreDbInitializer` が既存の正式schema、metadata、migration契約に従って初期schemaを作成する。既存の非空score DBはこの処理で開かず、後段のread-only検証へ進める。app-owned runtimeの明示saveも同じfile-preparation、adapter、transaction writer境界を使う。Release packageはrepository root、repository内module、外部Python executable、Tesseractをruntime依存にせず、認識資材はapp packageの`RuntimeAssets/`または`DDRGP_SCORE_VIEWER_RUNTIME_DATA`で明示したdata pathから解決する。`data/windows_capture/`、`data/capture_save_workflow/`、`logs/analysis_details/`、`logs/analysis_failures/`は再生成・退避可能なlocal outputであり、formal `plays`の代替ではない。
 
 production起動時はlatest GitHub Releaseのreference data setを確認する。Release APIから同じReleaseにある`reference-set.json`、`ddrgp-master.sqlite`、`jacket-catalog.sqlite`のasset URLを解決し、manifestを先に取得する。manifestの`content_version`が現行と同じ場合はDB assetを取得せずno-opとし、古い場合はdowngradeを拒否する。新しい場合だけ3 assetを`data/`配下の一時directoryへ保存する。通信失敗、asset欠落、download中断、空き容量不足は現行reference data setを変更せず、score DBとsettingsにも触れない。
+
+### 個人スコアデータのバックアップ・復元
+
+データ管理画面の個人スコアデータバックアップは、固定score pathの現行正式schemaをread-onlyで検証した後、`plays`の履歴表示・自己ベスト算出に必要な値だけをUTF-8 BOMなし、LF、末尾改行のJSONへ出力する。形式は`ddrgp.personal-score-data`、`formatVersion=1`とし、バックアップのJSONには`plays`の個人プレー値、保存日時、正式ID、重複判定に必要な値だけを置く。settings、master/catalog、jacket参照、source capture、解析ログ、診断ログは対象外であり、migration用SQLite backupとは別のファイル形式・保持契約である。
+
+復元は選択ファイルをDBへ接続する前に形式、version、必須値、重複ID、正式schemaの制約に照らして検証する。未対応・破損・不正値はscore DBを変更せず拒否する。確認後の有効復元だけ、固定score pathの正式schemaを検証したSQLite transaction内で既存`plays`を置き換える。置換前の`analysis_logs`は旧playへの参照だけを切り離し、未解決を含むログと既存`source_captures`は保持する。バックアップに含めなかった取得元・解析情報は復元せず、既存schemaの外部キーを満たすための最小内部参照だけを復元したプレーごとにアプリが再構成する。insert件数をtransaction内で確認してからcommitし、失敗時はrollbackする。完了後は既存read-only repositoryで再読込し、履歴・自己ベストへ反映する。設定、master/catalog、既存のformal save workflow、Debug/Release境界は変更しない。
+
+バックアップ作成・復元はデータ管理画面からのみ明示実行し、任意DB pathの読み込み、DB path変更、CSV/export、外部入力、repair、migration、自動実行を追加しない。保存・監視・更新・終了処理中は操作を開始しない。作成先は既存のユーザー選択directoryに限り、途中ファイルを残さず公開する。
 
 ### 二つのmaster DBのread-only inspection
 
@@ -476,7 +484,7 @@ M9 WPFはapp-owned runtimeのstrict workflowを同一processで1回実行する�
 - loader、adapter、artifact writer、file saveの呼出回数を固定し、現行CLIのstatusと終了コードを変えない。
 - 正式値、candidate material、analysis detail、receipt、DB diagnostic、failure image、source captureの責務分離をfixtureで検証する。
 
-後続実装でも通常PoC、常駐監視、migration、backup、cleanup、並行writer制御、failure image生成へは接続しない。
+このfixture列は通常PoC、常駐監視、migration、個人スコアデータのバックアップ・復元、cleanup、並行writer制御、failure image生成へ暗黙接続しない。各操作はそれぞれの明示契約と既存の保存境界を使う。
 ## Migration backup and explicit execution boundary
 
 PoCのmigration status / dry-run / explicit backup CLIは通常save、analysis artifact orchestration、diagnosticからmigrationを暗黙実行しない。Release appの固定production score pathだけは、起動時に現在schemaをread-only検査し、そのapp versionへ明示登録されたconverterがsource versionからcurrent versionへ直接対応する場合だけmigrationを実行できる。converterなし旧version、newer version、preview、unknown、identity/history不一致は変更せず拒否する。

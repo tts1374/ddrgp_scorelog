@@ -61,6 +61,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private readonly IDdrGpWindowEnumerator ddrGpWindowEnumerator;
     private readonly AutomaticMonitoringOptions automaticMonitoringOptions;
     private readonly SynchronizationContext? uiSynchronizationContext;
+    private readonly IPersonalScoreDataBackupService personalScoreDataBackupService;
     private PlayHistoryItem? selectedPlay;
     private ChartBestItem? selectedChartBest;
     private HomePlayItem? homeLatestPlay;
@@ -95,6 +96,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
         "現在の環境に対応する既定pathのDBを検証して、履歴と自己ベストを表示します。";
     private bool hasData;
     private string masterVersion = "—";
+    private int bundledChartCount;
+    private string personalScoreDataStatus = "未確認";
+    private string dataManagementStatusMessage =
+        "バックアップと復元は個人スコアデータだけを対象にします。";
     private string saveStatusTitle = "";
     private string saveStatusMessage = "";
     private bool hasSaveStatus;
@@ -160,6 +165,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private bool automaticMonitoringWaitingForUpdate;
     private bool referenceDataUpdateInProgress;
     private bool isSettingsPage;
+    private bool isDataManagementPage;
+    private int personalDataOperationReserved;
     private bool startMonitoringOnLaunch = UserSettings.Defaults.StartMonitoringOnLaunch;
     private bool notifyUnresolvedResults = UserSettings.Defaults.NotifyUnresolvedResults;
     private string defaultPlayStyle = UserSettings.Defaults.DefaultPlayStyle;
@@ -192,7 +199,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         ILiveMonitoringCaptureService? liveMonitoringService = null,
         IApplicationUpdateService? applicationUpdateService = null,
         AutomaticMonitoringOptions? automaticMonitoringOptions = null,
-        IUserSettingsStore? userSettingsStore = null)
+        IUserSettingsStore? userSettingsStore = null,
+        IPersonalScoreDataBackupService? personalScoreDataBackupService = null)
     {
         this.repository = repository;
         this.workflowRunner = workflowRunner;
@@ -209,6 +217,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         this.automaticMonitoringOptions = automaticMonitoringOptions ?? new AutomaticMonitoringOptions();
         this.automaticMonitoringOptions.Validate();
         this.applicationUpdateService = applicationUpdateService;
+        this.personalScoreDataBackupService = personalScoreDataBackupService ??
+            new PersonalScoreDataBackupService();
         uiSynchronizationContext = SynchronizationContext.Current;
         scoreDatabasePath = this.defaultDatabasePaths.ScoreDatabasePath;
         masterDatabasePath = this.defaultDatabasePaths.MasterDatabasePath;
@@ -667,15 +677,47 @@ public sealed class MainViewModel : INotifyPropertyChanged
     }
 
     public bool IsSettingsPage => isSettingsPage;
+    public bool IsDataManagementPage => isDataManagementPage;
 
     public System.Windows.Visibility StatusVisibility =>
-        HasData || IsSettingsPage
+        HasData || IsSettingsPage || IsDataManagementPage
             ? System.Windows.Visibility.Collapsed
             : System.Windows.Visibility.Visible;
     public System.Windows.Visibility DataVisibility =>
-        HasData || IsSettingsPage
+        HasData || IsSettingsPage || IsDataManagementPage
             ? System.Windows.Visibility.Visible
             : System.Windows.Visibility.Collapsed;
+
+    public string DataManagementPlayCountDisplay => $"{Plays.Count:N0}件";
+
+    public string DataManagementBestChartCountDisplay =>
+        $"{allChartBests.Count(item => item.IsPlayed):N0}譜面";
+
+    public string DataManagementLastSavedDisplay => Plays.Count == 0
+        ? "—"
+        : ViewerTimestampFormatter.Format(
+            Plays.Max(play => play.SavedAt) ?? "—",
+            "yyyy/MM/dd HH:mm:ss");
+
+    public string PersonalScoreDataStatusDisplay => personalScoreDataStatus;
+
+    public string DataManagementStatusMessage
+    {
+        get => dataManagementStatusMessage;
+        private set => SetProperty(ref dataManagementStatusMessage, value);
+    }
+
+    public string BundledDataStatusDisplay => masterDatabaseInspection.IsCompatible
+        ? "利用可能"
+        : "確認できません";
+
+    public string BundledDataVersionDisplay => masterDatabaseInspection.IsCompatible
+        ? MasterVersion
+        : "—";
+
+    public string BundledChartCountDisplay => masterDatabaseInspection.IsCompatible
+        ? $"{bundledChartCount:N0}譜面"
+        : "—";
 
     public string MasterVersion
     {
@@ -767,6 +809,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             {
                 OnPropertyChanged(nameof(CanStartMonitoring));
                 OnPropertyChanged(nameof(CanRunDeveloperOperations));
+                OnPropertyChanged(nameof(CanManagePersonalData));
             }
         }
     }
@@ -836,6 +879,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             {
                 OnPropertyChanged(nameof(CanStartMonitoring));
                 OnPropertyChanged(nameof(CanRunDeveloperOperations));
+                OnPropertyChanged(nameof(CanManagePersonalData));
             }
         }
     }
@@ -850,6 +894,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 OnPropertyChanged(nameof(CanStartMonitoring));
                 OnPropertyChanged(nameof(CanStopMonitoring));
                 OnPropertyChanged(nameof(CanRunDeveloperOperations));
+                OnPropertyChanged(nameof(CanManagePersonalData));
             }
         }
     }
@@ -857,7 +902,13 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public bool IsStoppingCapture
     {
         get => isStoppingCapture;
-        private set => SetProperty(ref isStoppingCapture, value);
+        private set
+        {
+            if (SetProperty(ref isStoppingCapture, value))
+            {
+                OnPropertyChanged(nameof(CanManagePersonalData));
+            }
+        }
     }
 
     public System.Windows.Visibility CaptureStatusVisibility =>
@@ -904,6 +955,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public bool IsUpdateProcessing =>
         IsApplicationUpdateBusy || referenceDataUpdateInProgress;
 
+    public bool IsPersonalDataOperationBusy =>
+        Volatile.Read(ref personalDataOperationReserved) != 0;
+
     public bool CanCheckForApplicationUpdate =>
         applicationUpdateService is not null &&
         !IsApplicationUpdateBusy &&
@@ -927,6 +981,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 OnPropertyChanged(nameof(CanStartMonitoring));
                 OnPropertyChanged(nameof(CanStopMonitoring));
                 OnPropertyChanged(nameof(CanRunDeveloperOperations));
+                OnPropertyChanged(nameof(CanManagePersonalData));
             }
         }
     }
@@ -1082,6 +1137,22 @@ public sealed class MainViewModel : INotifyPropertyChanged
             MonitoringState.Monitoring or
             MonitoringState.Stopping);
 
+    public bool CanManagePersonalData =>
+        !applicationExitRequested &&
+        !IsPersonalDataOperationBusy &&
+        Volatile.Read(ref monitoringOperationReserved) == 0 &&
+        !isMonitoringStartPending &&
+        !IsMonitoringStartInProgress &&
+        !IsSaving &&
+        !IsCapturing &&
+        !IsContinuousCapturing &&
+        !IsStoppingCapture &&
+        !IsUpdateProcessing &&
+        CurrentMonitoringState is not (
+            MonitoringState.SelectingTarget or
+            MonitoringState.Monitoring or
+            MonitoringState.Stopping);
+
     public bool CanStopMonitoring =>
         (IsContinuousCapturing || IsMonitoringStartInProgress) &&
         !applicationExitRequested &&
@@ -1106,6 +1177,78 @@ public sealed class MainViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(IsSettingsPage));
         OnPropertyChanged(nameof(StatusVisibility));
         OnPropertyChanged(nameof(DataVisibility));
+    }
+
+    internal void SetDataManagementPage(bool value)
+    {
+        if (isDataManagementPage == value)
+        {
+            return;
+        }
+
+        isDataManagementPage = value;
+        OnPropertyChanged(nameof(IsDataManagementPage));
+        OnPropertyChanged(nameof(StatusVisibility));
+        OnPropertyChanged(nameof(DataVisibility));
+    }
+
+    public PersonalScoreDataBackupResult CreatePersonalScoreBackup(string backupPath)
+    {
+        if (!TryReservePersonalDataOperation())
+        {
+            return new(
+                false,
+                "現在別の処理を実行しているため、バックアップを開始できません。",
+                0);
+        }
+
+        try
+        {
+            var result = personalScoreDataBackupService.CreateBackup(
+                defaultDatabasePaths.ScoreDatabasePath,
+                backupPath);
+            DataManagementStatusMessage = result.Message;
+            return result;
+        }
+        finally
+        {
+            ReleasePersonalDataOperation();
+        }
+    }
+
+    public PersonalScoreDataBackupResult RestorePersonalScoreBackup(string backupPath)
+    {
+        if (!TryReservePersonalDataOperation())
+        {
+            return new(
+                false,
+                "現在別の処理を実行しているため、復元を開始できません。",
+                0);
+        }
+
+        try
+        {
+            var result = personalScoreDataBackupService.RestoreBackup(
+                defaultDatabasePaths.ScoreDatabasePath,
+                backupPath);
+            if (!result.Succeeded)
+            {
+                DataManagementStatusMessage = result.Message;
+                return result;
+            }
+
+            Load(
+                defaultDatabasePaths.ScoreDatabasePath,
+                defaultDatabasePaths.MasterDatabasePath,
+                defaultDatabasePaths.JacketCatalogDatabasePath,
+                persist: false);
+            DataManagementStatusMessage = result.Message;
+            return result;
+        }
+        finally
+        {
+            ReleasePersonalDataOperation();
+        }
     }
 
     internal void RestoreUserSettings()
@@ -1201,6 +1344,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(CanCheckForApplicationUpdate));
         OnPropertyChanged(nameof(CanDownloadAndApplyApplicationUpdate));
         OnPropertyChanged(nameof(IsUpdateProcessing));
+        OnPropertyChanged(nameof(CanManagePersonalData));
         SetMonitoringState(MonitoringState.ShuttingDown, "終了処理中です。新しい監視を開始しません。");
         monitoringCancellation?.Cancel();
         monitoringStartCancellation?.Cancel();
@@ -1346,6 +1490,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             OnPropertyChanged(nameof(CanStartMonitoring));
             OnPropertyChanged(nameof(CanStopMonitoring));
             OnPropertyChanged(nameof(CanRunDeveloperOperations));
+            OnPropertyChanged(nameof(CanManagePersonalData));
         }
     }
 
@@ -1359,6 +1504,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         referenceDataUpdateInProgress = value;
         OnPropertyChanged(nameof(IsUpdateProcessing));
         OnPropertyChanged(nameof(CanStartMonitoring));
+        OnPropertyChanged(nameof(CanManagePersonalData));
     }
 
     internal void StartAutomaticMonitoring(nint ownerWindowHandle)
@@ -1768,6 +1914,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
 
         OnPropertyChanged(nameof(CanRunDeveloperOperations));
+        OnPropertyChanged(nameof(CanManagePersonalData));
         return true;
     }
 
@@ -1784,6 +1931,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(CanCheckForApplicationUpdate));
         OnPropertyChanged(nameof(CanDownloadAndApplyApplicationUpdate));
         OnPropertyChanged(nameof(CanStartMonitoring));
+        OnPropertyChanged(nameof(CanManagePersonalData));
         return true;
     }
 
@@ -1795,6 +1943,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(CanCheckForApplicationUpdate));
         OnPropertyChanged(nameof(CanDownloadAndApplyApplicationUpdate));
         OnPropertyChanged(nameof(CanStartMonitoring));
+        OnPropertyChanged(nameof(CanManagePersonalData));
     }
 
     private void ApplyApplicationUpdateResult(ApplicationUpdateResult result)
@@ -1864,6 +2013,27 @@ public sealed class MainViewModel : INotifyPropertyChanged
     {
         Interlocked.Exchange(ref monitoringOperationReserved, 0);
         OnPropertyChanged(nameof(CanRunDeveloperOperations));
+        OnPropertyChanged(nameof(CanManagePersonalData));
+    }
+
+    private bool TryReservePersonalDataOperation()
+    {
+        if (!CanManagePersonalData ||
+            Interlocked.CompareExchange(ref personalDataOperationReserved, 1, 0) != 0)
+        {
+            return false;
+        }
+
+        OnPropertyChanged(nameof(IsPersonalDataOperationBusy));
+        OnPropertyChanged(nameof(CanManagePersonalData));
+        return true;
+    }
+
+    private void ReleasePersonalDataOperation()
+    {
+        Interlocked.Exchange(ref personalDataOperationReserved, 0);
+        OnPropertyChanged(nameof(IsPersonalDataOperationBusy));
+        OnPropertyChanged(nameof(CanManagePersonalData));
     }
 
     public void RestoreSavedPaths() =>
@@ -3250,6 +3420,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
             selectedChartKey: selectedChartKey,
             preservedDisplayedCount: preservedDisplayedCount);
         ApplyHomeData(data.Plays);
+        bundledChartCount = data.ChartCatalog.Count;
+        personalScoreDataStatus = "正常";
         MasterVersion = data.MasterVersion;
         ScoreDatabasePath = data.ScoreDatabasePath;
         MasterDatabasePath = data.MasterDatabasePath;
@@ -3274,6 +3446,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
         SelectedPlay = Plays.FirstOrDefault();
         HasData = Plays.Count > 0;
+        NotifyDataManagementState();
     }
 
     private void ClearLoadedData()
@@ -3285,7 +3458,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
         ClearHomeData();
         SelectedPlay = null;
         MasterVersion = "—";
+        bundledChartCount = 0;
+        personalScoreDataStatus = "確認できません";
         HasData = false;
+        NotifyDataManagementState();
     }
 
     public void LoadMoreChartBests()
@@ -3834,6 +4010,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(MasterDatabaseStatus));
         OnPropertyChanged(nameof(MasterDatabaseStatusDisplay));
         OnPropertyChanged(nameof(MasterDatabaseReason));
+        OnPropertyChanged(nameof(BundledDataStatusDisplay));
+        OnPropertyChanged(nameof(BundledDataVersionDisplay));
+        OnPropertyChanged(nameof(BundledChartCountDisplay));
     }
 
     private void ApplyJacketCatalogInspection(JacketCatalogInspection inspection)
@@ -3843,6 +4022,17 @@ public sealed class MainViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(CatalogDatabaseStatus));
         OnPropertyChanged(nameof(CatalogDatabaseStatusDisplay));
         OnPropertyChanged(nameof(CatalogDatabaseReason));
+    }
+
+    private void NotifyDataManagementState()
+    {
+        OnPropertyChanged(nameof(DataManagementPlayCountDisplay));
+        OnPropertyChanged(nameof(DataManagementBestChartCountDisplay));
+        OnPropertyChanged(nameof(DataManagementLastSavedDisplay));
+        OnPropertyChanged(nameof(PersonalScoreDataStatusDisplay));
+        OnPropertyChanged(nameof(BundledDataStatusDisplay));
+        OnPropertyChanged(nameof(BundledDataVersionDisplay));
+        OnPropertyChanged(nameof(BundledChartCountDisplay));
     }
 
     private void PersistPathsIfConfigured(
