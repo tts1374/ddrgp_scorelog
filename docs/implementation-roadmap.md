@@ -20,13 +20,18 @@ candidate、OCR raw、expected値、preview材料を正式値へ暗黙昇格さ�
 
 ## Current Phase
 
-M9の監視運用境界を実装・自動回帰確認まで完了し、M10で本人が継続利用できる初期版として固定する段階です。実DDR GRAND PRIX windowを使う長時間soakなどの未実施項目は、M10の運用確認へ引き継ぎます。
+M9は完了済みです。M10-1〜M10-4相当の初期版リリース基盤とPhase 1の主要ユーザー機能もmainへ実装済みです。Phase 1は「機能実装完了、release quality closeout中」と整理します。Issue #139のRelease test boundaryはPR #140でmainへ反映済みですが、公開完了の判断に関わるrelease qualityの確認対象として記録します。developer-onlyのcollector / manual reviewは公開アプリのcompletion gateに含めません。
 
 - M9-5: Issue #61 / PR #27で監視UIとtask trayを受け入れ可能な状態へ収束済み
 - M9-6: Issue #62でstart / stop / exit、再起動、window再選択、master DB再検証の実装と自動回帰確認を完了
-- M10: Issue #63で配布・導入・backup・運用手順を初期版として固める
-- M10-1: Issue #66でPython / NuGet依存関係を固定し、再現可能なbuildへ移行済み
-- M10前提: Issues #55〜#60でmanual review機能と実データ整備を完了する
+- M10-1: Issue #66 / PR #93でPython / NuGet依存関係を固定し、再現可能なbuildへ移行済み
+- M10-2: Issue #90 / PR #96でlocal storageと評価環境を固定済み
+- M10-3: Issue #91で実機検証セットと評価結果を固定済み
+- M10-4: Issue #92 / PR #119で配布・導入・通常運用手順を初期版として確定済み
+- M10追加基盤: reference data set更新（#117 / PR #120）、アプリ内更新（#116 / PR #121）、監視の自動開始・復帰（#118 / PR #122）を実装済み
+- Phase 1画面・保存境界: ホーム、自己ベスト、楽曲・譜面詳細、プレー履歴、設定、データ管理、`ambiguous` / `unresolved`のローカル通知、個人スコアデータのbackup / restoreを実装済み
+- Release quality: Issue #139 / PR #140のDebug / Release test boundaryをmainへ反映済み
+- developer-only境界: jacket catalog collector / manual reviewはデータ整備・開発支援領域として、Phase 1公開アプリとは分離して扱う
 
 ## Milestone Status
 
@@ -38,12 +43,12 @@ M9の監視運用境界を実装・自動回帰確認まで完了し、M10で本
 | M3 | 完了 | 曲・譜面候補照合に必要な参照・template・診断 |
 | M4 | 完了 | 楽曲・譜面マスタDBと照合境界 |
 | M5 | core完了 | jacket候補観測、catalog、identity、候補評価・登録pipeline |
-| M5c | 進行中 | developer-only manual review UI、ODS export/import、一括反映、実データ整備（#55〜#60） |
+| M5c | developer-only（Phase 1 gate外） | jacket catalog collector、manual review、データ整備・開発支援 |
 | M6 | 完了 | 保存直前payloadと解析根拠の分離 |
 | M7 | 完了 | 必須数字fieldの抽出・検証と正式値への変換境界 |
 | M8 | 完了 | 正式個人スコアDB version 1、duplicate、transaction、単発保存 |
-| M9 | 完了（実window soakは未実施） | WPF viewer、Windows capture、capture-save、監視UI、task tray、再起動・master DB再検証の自動回帰 |
-| M10 | 未完了 | 初期版リリース、再現可能なbuild、導入・backup・復旧手順 |
+| M9 | 完了 | WPF viewer、Windows capture、capture-save、監視UI、task tray、再起動・master DB再検証の自動回帰 |
+| M10 | 実装済み（release quality closeout中） | 初期版installer/package、再現可能なbuild、local storage、実機評価、導入・backup / restore・復旧手順、reference data更新、アプリ内更新 |
 
 完了済みmilestoneの詳細な実装判断と検証結果は、関連するmerged PR、`docs/design/`、ADR、各component READMEを参照します。
 
@@ -60,15 +65,15 @@ M9では新しい解析方式やDB schemaを増やさず、既存のcapture-save
 - 明示終了時に新しい処理を開始せず、進行中resourceを既存契約の範囲で停止・解放する
 - master DBのpath、read-only読込可否、schema互換性を起動・明示再読込・保存開始時に再検証し、異常時に解析・正式保存を開始しない
 - app再起動、window再選択、master DB再検証から復帰でき、過去の失敗・skip・拒否statusをsavedへ昇格させない
-- 自動回帰と短時間Windows smokeでresource使用量が明らかに増え続けないことを確認する。実windowを使う数時間soakはM10運用確認へ残す
+- 自動回帰と短時間Windows smokeでresource使用量が明らかに増え続けないことを確認する。実windowを使う長時間soakは既知の運用確認項目として別管理する
 
 M9では自動window探索、汎用scheduler、永続queue、複数process協調、厳密なSLA、長期間の耐久試験を要求しません。
 
 ## M10 Initial Release
 
-M10では、単一ユーザーがローカルPCで継続利用できる初期版として、導入とデータ保全の境界を固定します。
+M10では、単一ユーザーがローカルPCで継続利用できる初期版として、導入とデータ保全の境界を固定しました。以下はmainで実装済みの範囲です。
 
-必須項目:
+実装済み範囲:
 
 - installerまたは採用した配布方法で、本人が再現可能に導入できる
 - 正式DB、必要な設定、master DBの保存場所を説明できる
@@ -79,11 +84,16 @@ M10では、単一ユーザーがローカルPCで継続利用できる初期版
 - CIとローカルbuildがlock fileを暗黙更新せず、固定状態から再現できる
 - Release対象とdeveloper-only tool / local dataを分離する
 - 既知の制限、未実施の実機確認、復旧手順をREADMEまたはrelease docsへ記載する
+- VeloPack installer/packageを生成し、GitHub Releasesからreference data setを安全に取得・更新する
+- production packageからアプリ本体の更新をユーザー操作で実行できる
+- DDR GRAND PRIX windowの検出時に監視を自動開始し、window消失後に再出現した場合だけ監視へ復帰する
+- `ambiguous` / `unresolved`を正式DBへ保存せず、ローカル通知として確認できる
+- Phase 1のホーム、自己ベスト、楽曲・譜面詳細、プレー履歴、設定、データ管理と個人スコアデータのbackup / restoreを提供する
 
-初期版では次を要求しません。
+初期版のNon-scope:
 
 - 商用コード署名
-- auto update
+- 強制更新、任意version選択、複数channel、署名検証
 - cloud backup / 同期
 - telemetry、remote monitoring、中央管理
 - 無停止migration、自動rollback、災害復旧framework
@@ -91,7 +101,7 @@ M10では、単一ユーザーがローカルPCで継続利用できる初期版
 
 ## Dependency Management
 
-Issue #66対応後は、manifestとlock fileをcommitし、CIと通常開発でlock固定のinstall / restoreを検証します。
+Issue #66 / PR #93でmanifestとlock fileをcommitし、CIと通常開発でlock固定のinstall / restoreを検証しています。
 
 - Python: `uv.lock`をcommitし、通常開発とCIで`uv sync --frozen`を使用する
 - NuGet: appとtest projectの`packages.lock.json`をcommitし、locked restoreを使用する

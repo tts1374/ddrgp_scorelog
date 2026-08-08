@@ -4,7 +4,9 @@ DanceDanceRevolution GRAND PRIX のゲーム画面を解析し、十分に確認
 
 ## Status
 
-M9の監視・再起動・master DB再検証、M10のlocal storage・実機評価・VeloPack配布、reference DBのRelease取得境界、アプリ本体のユーザー操作更新を実装しています。保証範囲と既知制限はWindowsアプリREADMEへ記録しています。具体的な作業内容と受け入れ条件はGitHub Issuesを正本とし、このREADMEはmain branchで利用できる機能と開発入口を要約します。
+M9は完了済みです。M10-1〜M10-4相当の初期版リリース基盤もmainへ実装済みで、依存固定、local storage、実機評価、VeloPack installer/package、reference data setのRelease取得・安全更新、アプリ内更新、通常監視の自動開始・復帰を含みます。具体的な作業内容と受け入れ条件はGitHub Issuesを正本とし、このREADMEはmain branchで利用できる機能と開発入口を要約します。
+
+Phase 1の主要ユーザー画面は、ホーム、自己ベスト、楽曲・譜面詳細、プレー履歴、設定、データ管理です。`ambiguous` / `unresolved`は正式個人スコアDBへ保存せず、ローカル通知と結果statusで扱います。データ管理画面から個人スコアデータのbackup / restoreを明示操作できます。Phase 1は「機能実装完了、release quality closeout中」と整理し、Issue #139のRelease test boundaryはPR #140でmainへ反映済みです。
 
 main branchで利用できる主な機能:
 
@@ -12,15 +14,17 @@ main branchで利用できる主な機能:
 - リザルト候補分類、confirmed event生成、数字ROI OCR、曲・譜面候補照合
 - Debug buildの開発者向け領域からの1フレーム取得、連続取得、正式個人スコアDB version 1への単発保存
 - 正式DBとマスタDBをread-onlyで開くWPFスコアビューア
-- Release buildの通常画面は、`監視開始`／`監視停止`、固定path再検証、master DB read-only再検証に限定
+- Release buildはdeveloper-only領域を含まず、Phase 1の通常画面と`監視開始`／`監視停止`、固定path再検証、master DB read-only再検証を提供
 - `監視開始` による `ddr-konaste` / client `1280x720` の対象window自動特定（該当1件だけ接続）、1秒ごとのRESULT/SCORE gateと候補のリアルタイム正式保存、監視のstop / exit
-- developer-onlyのjacket catalog収集・manual review支援
-- VeloPackによる未署名per-user installer、GitHub Releasesからのユーザー操作アプリ更新、reference data setの同梱・安全なセット更新、Releaseログ、手動backup / restore
+- Phase 1の主要画面（ホーム、自己ベスト、楽曲・譜面詳細、プレー履歴、設定、データ管理）
+- `ambiguous` / `unresolved`のローカル通知、個人スコアデータの手動backup / restore
+- developer-onlyのjacket catalog collector / manual review支援（公開アプリのPhase 1 completion gate外）
+- VeloPackによる未署名per-user installer、GitHub Releasesからのユーザー操作アプリ更新、reference data setの同梱・安全なセット更新、Releaseログ
 
-進行中の主な作業:
+現在の境界:
 
-- M10: 初期版リリース準備（Issue #63）
-- M10前提のmanual reviewデータ整備（Issues #55〜#60）
+- 公開アプリ: M10-1〜M10-4相当の初期版基盤とPhase 1主要機能を実装済み。公開完了の判断はrelease quality closeoutとして扱う。
+- developer-only領域: jacket catalog collector / manual reviewはデータ整備・開発支援であり、公開アプリのPhase 1 completion gateとは分離する。
 
 ## Safety Boundaries
 
@@ -68,9 +72,10 @@ dotnet restore app\tests\DDRGpScoreViewer.Tests\DDRGpScoreViewer.Tests.csproj --
 dotnet build app\src\DDRGpScoreViewer\DDRGpScoreViewer.csproj --configuration Debug --no-restore
 dotnet build app\src\DDRGpScoreViewer\DDRGpScoreViewer.csproj --configuration Release --no-restore
 dotnet test app\tests\DDRGpScoreViewer.Tests\DDRGpScoreViewer.Tests.csproj --configuration Debug --no-restore
+dotnet test app\tests\DDRGpScoreViewer.Tests\DDRGpScoreViewer.Tests.csproj --configuration Release --no-restore
 ```
 
-Debug buildだけが開発者向け操作のUIとcommand入口を含みます。Release buildではこれらを生成せず、通常の監視開始・停止だけを残します。
+Debug buildだけが開発者向け操作のUIとcommand入口を含みます。Release buildではこれらを生成せず、Phase 1の通常画面と監視開始・停止を残します。
 
 Debugアプリのdevelopment固定catalogは、current masterへbinding済みの`databases/jacket-catalog-release.sqlite`です。collectorが使う未binding source `databases/jacket-catalog.sqlite`しかない場合は、[PoC README](tools/vision_poc/README.md)の`bind-master`を明示実行してから起動します。
 
