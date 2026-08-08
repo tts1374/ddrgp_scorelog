@@ -1,0 +1,4 @@
+interface:
+  display_name: "DDRGP Issue実装・検証"
+  short_description: "確定済みGitHub Issueを実装しテストまで完了"
+  default_prompt: "Use $ddrgp-implement-github-issue to implement the specified GitHub Issue and complete its required validation."
