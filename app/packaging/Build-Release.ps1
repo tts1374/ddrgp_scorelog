@@ -8,7 +8,7 @@ param(
     [string]$MasterDatabase = (Join-Path $PSScriptRoot '..\..\databases\ddrgp-master.sqlite'),
 
     [Parameter()]
-    [string]$CatalogDatabase = (Join-Path $PSScriptRoot '..\..\databases\jacket-catalog.sqlite'),
+    [string]$CatalogDatabase = (Join-Path $PSScriptRoot '..\..\databases\jacket-catalog-release.sqlite'),
 
     [Parameter()]
     [string]$OutputDirectory = (Join-Path $PSScriptRoot "..\..\data\releases\$Version"),

@@ -1615,7 +1615,7 @@
                                                        FontSize="13" Margin="0,3,0,0" />
                                         </StackPanel>
                                     </Grid>
-                                    <TextBlock Text="楽曲・譜面データはアプリに同梱され、アプリ更新時に反映されます。"
+                                    <TextBlock Text="初回はアプリ同梱データを使用し、起動時に新しい楽曲・譜面データを確認します。"
                                                Foreground="{StaticResource TextSecondaryBrush}"
                                                FontSize="11" TextWrapping="Wrap" Margin="0,14,0,0" />
                                 </StackPanel>

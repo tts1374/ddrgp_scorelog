@@ -215,7 +215,8 @@ VeloPack 1.2.0をrepository-local .NET toolとして固定しています。pack
 2. repository rootで次を実行する。
 
    ```powershell
-   .\app\packaging\Build-Release.ps1 -Version 0.1.0
+   .\app\packaging\Build-Release.ps1 -Version 0.1.0 `
+     -CatalogDatabase databases\jacket-catalog-release.sqlite
    ```
 
 3. `data/releases/0.1.0/`の`com.tts1374.ddrgp_scorelog-win-Setup.exe`、full package、`RELEASES`、`assets.win.json`、`releases.win.json`を確認する。`data/release-build/0.1.0/publish/ReferenceData/`には2つのDBと`reference-set.json`が別fileのまま入る。
@@ -301,4 +302,4 @@ production固定pathは`%LOCALAPPDATA%\DDRGpScoreViewer\data\master\`です。�
 - `Resources/Components.xaml`: button、sidebar、card、table、badgeの共通style
 - `Controls/StatePanel.xaml`: 空状態・エラー状態の共通component
 
-今回の画面範囲は共通sidebar、自己ベスト、プレー履歴、プレー詳細、設定、データ管理、個人スコアデータのバックアップ・復元、同梱楽曲・譜面データのread-only状態表示、Debug buildの開発者向け単発操作、監視surface（自動保存できない結果の通知を含む）、master DB検証表示、明示した監視session後のevent単位保存workflow、task tray lifecycleです。Release buildの通常画面には開発者向け領域を含めず、個人スコアデータ操作と`監視開始`・`監視停止`だけを残します。ホーム、検索・絞り込み、グラフ、専用確認画面、自動再接続は対象外です。
+今回の画面範囲は共通sidebar、ホーム、自己ベスト、検索・絞り込み、プレー履歴、プレー詳細とグラフ、設定、データ管理、個人スコアデータのバックアップ・復元、楽曲・譜面データのread-only状態表示、Debug buildの開発者向け単発操作、監視surface（自動保存できない結果の通知と自動再接続を含む）、master DB検証表示、event単位保存workflow、task tray lifecycleです。Release buildの通常画面には開発者向け領域を含めず、個人スコアデータ操作と`監視開始`・`監視停止`だけを残します。保存できない結果の専用確認画面は設けず、通知とlogで理由を確認します。

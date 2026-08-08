@@ -516,7 +516,7 @@ public partial class MainWindow : System.Windows.Window
         viewModel.SetDataManagementPage(true);
         ContentTabs.SelectedIndex = 5;
         PageTitle.Text = "データ管理";
-        PageSubtitle.Text = "保存済みプレーと同梱データの状態を確認できます";
+        PageSubtitle.Text = "保存済みプレーと楽曲・譜面データの状態を確認できます";
         HomeNavigation.Tag = null;
         BestNavigation.Tag = null;
         HistoryNavigation.Tag = null;
@@ -769,7 +769,7 @@ public partial class MainWindow : System.Windows.Window
         viewModel.SetDataManagementPage(false);
         ContentTabs.SelectedIndex = 3;
         PageTitle.Text = "直近プレー履歴";
-        PageSubtitle.Text = "このアプリを起動してから記録されたプレーを表示します";
+        PageSubtitle.Text = "保存済みのプレーを新しい順に表示します";
         HomeNavigation.Tag = null;
         BestNavigation.Tag = null;
         HistoryNavigation.Tag = "Selected";
