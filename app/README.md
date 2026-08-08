@@ -137,7 +137,7 @@ windowの×ボタンはwindowをtrayへ格納し、最小化ボタンは通常�
 | 正式個人スコアDB | `databases/score.dev.db` | `%LOCALAPPDATA%\DDRGpScoreViewer\data\score\score.db` |
 | 評価用DB | `databases/evaluation.db`（M10-3専用） | 既定pathなし |
 
-M4 master DBとM5b jacket reference catalogは、同じdirectoryに置かれていても別ファイル・別責務です。developmentではcollectorが更新する未binding source `databases/jacket-catalog.sqlite`をそのままruntimeへ渡さず、`bind-master`で生成した`databases/jacket-catalog-release.sqlite`をWPFの固定runtime pathとして読みます。Release packageは両DBを1つのreference data setとして同梱し、production起動時はGitHub Releasesの同じreference data setも確認します。正式個人スコアDBはアプリ更新、reference DB操作、評価用DB初期化で上書き・初期化しません。固定score pathがmissingまたは0 byteの場合だけ、master 2種類の検証後に既存の正式DB準備境界を使って空の正式schemaを作成します。既存非空DBは現行schemaならそのまま利用し、明示converterがある旧schemaだけ事前backup後にtransaction migrationします。対応より新しいschemaとconverterのないschemaは変更せず拒否します。
+M4 master DBとM5b jacket reference catalogは、同じdirectoryに置かれていても別ファイル・別責務です。developmentではcollectorが更新する未binding source `databases/jacket-catalog.sqlite`をそのままruntimeへ渡さず、`bind-master`で生成した`databases/jacket-catalog-release.sqlite`をWPFの固定runtime pathとして読みます。Release packageは両DBを1つのreference data setとして同梱し、production起動時はGitHub Releasesの同じreference data setも確認します。正式個人スコアDBはアプリ更新、reference DB操作、評価用DB初期化では上書き・初期化しません。固定score pathがmissingまたは0 byteの場合だけ、master 2種類の検証後に既存の正式DB準備境界を使って空の正式schemaを作成します。既存非空DBは現行schemaならそのまま利用し、明示converterがある旧schemaだけ事前backup後にtransaction migrationします。対応より新しいschemaとconverterのないschemaは変更せず拒否します。データ管理画面から確認して実行する個人スコアデータの復元だけは、後述の個人プレー履歴置換契約に従う明示操作です。
 
 初回起動では親directory（`databases/`、またはproductionの`data/master/`・`data/score/`）と`data/`・`logs/`を作成し、master 2種類がcompatibleなら固定score pathのmissing／0 byteだけを初期化します。既存の非空score DBはread-only検証だけを行い、unknown、preview、identity mismatch、manual migration候補、非SQLite、directoryは変更せず拒否します。captureはdevelopmentでは`data/windows_capture/`、productionでは`%LOCALAPPDATA%\DDRGpScoreViewer\data\windows_capture/`へ出し、解析artifactは`data/capture_save_workflow/`、失敗画像と診断ログは`logs/`配下へ分離します。これらは再生成・退避可能なlocal dataで、Git管理しません。
 
@@ -167,7 +167,7 @@ dotnet run --project app\src\DDRGpScoreViewer\DDRGpScoreViewer.csproj --configur
 
 1. アプリを起動する。現在の環境に対応する固定pathが自動的に設定される。
 2. 画面に表示されたscore DB、M4 master DB、M5b jacket reference catalogのpathと検証結果を確認する。
-3. `自己ベスト` または `プレー履歴` を開く。
+3. `自己ベスト`、`プレー履歴`、または `データ管理` を開く。
 4. プレー履歴の行を選び、判定数、MAX COMBO、EX SCORE、保存日時、データ取得元を確認する。
 
 個人DBとマスタDBは別々のSQLite connectionで開きます。起動時の固定score pathに対するmissing／0 byteの初期化だけはWPF側の正式schema初期化境界へ委譲します。通常閲覧はread-onlyで、正式保存は既存transaction writerだけを使います。schema migrationは明示converterが登録された旧versionだけを事前backup付きで処理し、repairは実行しません。connection poolingも使いません。
@@ -259,20 +259,19 @@ production固定pathは`%LOCALAPPDATA%\DDRGpScoreViewer\data\master\`です。�
 | data | 保持 |
 | --- | --- |
 | `data\score\score.db`、`viewer-paths.json`、`user-settings.json` | 無期限。利用者がbackup確認後に削除するまで保持 |
+| 利用者が作成した個人スコアバックアップJSON | 選択した保存先で利用者が管理。アプリは自動削除・自動アップロードしない |
 | `data\master\` と `data\.reference-previous\` | reference data setの現行＋直前1世代 |
 | score migration backup | `data\score\migration-backup\score.db.bak`の最新1件 |
 | Release log | 5MB × 3 file |
 | `data\cache\`、`data\temp\`、reference download staging | 処理完了時または次回起動時に削除 |
 
-## 正式個人スコアDBとsettingsのbackup / restore
+## 個人スコアデータのバックアップ / 復元
 
-backupとrestoreは必ずtrayの`終了`後に行います。通常backup対象は次の3 fileです。reference DBは再配布できるため対象外です。
+データ管理画面の `バックアップを作成` は、現在の正式個人スコアDBをread-onlyで検証し、保存済みプレー履歴だけをUTF-8（BOMなし）JSONへ書き出します。バックアップファイルの保存先はユーザーが選択します。設定、保存済みpath、楽曲・譜面マスタ、jacket参照、source capture、解析ログ、診断ログは含めません。migration用のSQLite file backupとは別の形式・用途です。
 
-- `%LOCALAPPDATA%\DDRGpScoreViewer\data\score\score.db`
-- `%LOCALAPPDATA%\DDRGpScoreViewer\viewer-paths.json`（存在する場合）
-- `%LOCALAPPDATA%\DDRGpScoreViewer\user-settings.json`（存在する場合）
+`バックアップから復元` はJSON全体を先に検証し、形式が未対応または壊れている場合は正式DBを変更せずにエラーを表示します。対応形式の復元でも、確認ダイアログでユーザーが続行した場合だけ現在のプレー履歴を置き換えます。置換前の未解決を含む解析ログと取得元は保持し、旧プレーへの参照だけを切り離します。置換は既存の正式schemaを検証したSQLite transaction内で行い、失敗時はcommitせず、完了後に既存のread-only viewerで履歴・自己ベストを再読込します。設定、同梱楽曲・譜面データ、jacket参照は変更しません。復元後の取得元・解析ログはバックアップから復元せず、履歴表示に必要な最小の内部参照だけをアプリが再構成します。
 
-backup先に新しいdirectoryを作り、3 fileをコピーします。コピー後は元とbackupのfile sizeを確認します。restore時はアプリを終了し、現在の`score.db`、`viewer-paths.json`、`user-settings.json`を削除せず、それぞれ`score.before-restore.db`、`viewer-paths.before-restore.json`、`user-settings.before-restore.json`など未使用名へ移動してからbackupを元の固定pathへコピーします。起動後にDB検証、履歴件数、最新play、設定値を確認し、問題があれば再度終了して復元前fileを戻します。SQLiteの`score.db-wal`や`score.db-shm`が残っている場合はアプリが完全終了していないため、copy/restoreを開始しません。
+キャンセル、未対応ファイル、壊れたファイル、実行中の保存・監視・更新・終了処理中は復元を開始しません。通常起動時のDB初期化、Debug/Releaseの開発者向け操作、既存の正式保存workflowはこの操作で変更しません。
 
 ## トラブルシューティング
 
@@ -299,4 +298,4 @@ backup先に新しいdirectoryを作り、3 fileをコピーします。コピ�
 - `Resources/Components.xaml`: button、sidebar、card、table、badgeの共通style
 - `Controls/StatePanel.xaml`: 空状態・エラー状態の共通component
 
-今回の画面範囲は共通sidebar、自己ベスト、プレー履歴、プレー詳細、設定、Debug buildの開発者向け単発操作、監視surface（自動保存できない結果の通知を含む）、master DB検証表示、明示した監視session後のevent単位保存workflow、task tray lifecycleです。Release buildの通常画面には開発者向け領域を含めず、`監視開始`と`監視停止`を残します。ホーム、検索・絞り込み、グラフ、専用確認画面、自動再接続は対象外です。
+今回の画面範囲は共通sidebar、自己ベスト、プレー履歴、プレー詳細、設定、データ管理、個人スコアデータのバックアップ・復元、同梱楽曲・譜面データのread-only状態表示、Debug buildの開発者向け単発操作、監視surface（自動保存できない結果の通知を含む）、master DB検証表示、明示した監視session後のevent単位保存workflow、task tray lifecycleです。Release buildの通常画面には開発者向け領域を含めず、個人スコアデータ操作と`監視開始`・`監視停止`だけを残します。ホーム、検索・絞り込み、グラフ、専用確認画面、自動再接続は対象外です。

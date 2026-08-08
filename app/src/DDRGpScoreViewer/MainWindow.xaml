@@ -239,7 +239,8 @@
                     <Separator Margin="16,10" Background="#50627B" />
                     <Button x:Name="SettingsNavigation" Content="設定"
                             Style="{StaticResource SidebarButtonStyle}" Click="ShowSettings_Click" />
-                    <Button Content="データ管理" Style="{StaticResource SidebarButtonStyle}" IsEnabled="False" />
+                    <Button x:Name="DataManagementNavigation" Content="データ管理"
+                            Style="{StaticResource SidebarButtonStyle}" Click="ShowDataManagement_Click" />
                 </StackPanel>
             </DockPanel>
         </Border>
@@ -1493,6 +1494,137 @@
                                             Style="{StaticResource PrimaryButtonStyle}"
                                             Click="SaveSettings_Click" />
                                 </Grid>
+                            </Border>
+                        </StackPanel>
+                    </ScrollViewer>
+                </TabItem>
+                <TabItem>
+                    <ScrollViewer HorizontalScrollBarVisibility="Disabled"
+                                  VerticalScrollBarVisibility="Auto"
+                                  Padding="0,0,8,0">
+                        <StackPanel MinWidth="0">
+                            <Grid Margin="0,0,0,12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <Border Grid.Column="0" Style="{StaticResource HomeSummaryCardStyle}"
+                                        Margin="0,0,8,0">
+                                    <StackPanel>
+                                        <TextBlock Text="保存済みプレー"
+                                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                                   FontSize="11" />
+                                        <TextBlock Text="{Binding DataManagementPlayCountDisplay}"
+                                                   FontSize="20" FontWeight="Bold" Margin="0,5,0,0" />
+                                        <TextBlock Text="個人スコアデータ"
+                                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                                   FontSize="10" Margin="0,2,0,0" />
+                                    </StackPanel>
+                                </Border>
+                                <Border Grid.Column="1" Style="{StaticResource HomeSummaryCardStyle}"
+                                        Margin="4,0,4,0">
+                                    <StackPanel>
+                                        <TextBlock Text="自己ベスト譜面"
+                                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                                   FontSize="11" />
+                                        <TextBlock Text="{Binding DataManagementBestChartCountDisplay}"
+                                                   FontSize="20" FontWeight="Bold" Margin="0,5,0,0" />
+                                        <TextBlock Text="SINGLE / DOUBLE"
+                                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                                   FontSize="10" Margin="0,2,0,0" />
+                                    </StackPanel>
+                                </Border>
+                                <Border Grid.Column="2" Style="{StaticResource HomeSummaryCardStyle}"
+                                        Margin="8,0,0,0">
+                                    <StackPanel>
+                                        <TextBlock Text="データ状態"
+                                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                                   FontSize="11" />
+                                        <TextBlock Text="{Binding PersonalScoreDataStatusDisplay}"
+                                                   FontSize="20" FontWeight="Bold" Margin="0,5,0,0" />
+                                        <TextBlock Text="{Binding DataManagementLastSavedDisplay}"
+                                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                                   FontSize="10" Margin="0,2,0,0" />
+                                    </StackPanel>
+                                </Border>
+                            </Grid>
+
+                            <Border Style="{StaticResource CardStyle}" Padding="16" Margin="0,0,0,12">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Margin="0,0,16,0">
+                                        <TextBlock Text="保存データ" FontSize="14" FontWeight="SemiBold" />
+                                        <TextBlock Text="最後の保存" Foreground="{StaticResource TextSecondaryBrush}"
+                                                   FontSize="11" Margin="0,10,0,2" />
+                                        <TextBlock Text="{Binding DataManagementLastSavedDisplay}"
+                                                   FontSize="13" />
+                                        <TextBlock Text="データ状態" Foreground="{StaticResource TextSecondaryBrush}"
+                                                   FontSize="11" Margin="0,8,0,2" />
+                                        <TextBlock Text="{Binding PersonalScoreDataStatusDisplay}"
+                                                   FontSize="13" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                        <TextBlock Text="個人スコアデータの退避・復元"
+                                                   FontSize="13" FontWeight="SemiBold"
+                                                   TextWrapping="Wrap" Margin="0,0,0,10" />
+                                        <Button Content="バックアップを作成"
+                                                Style="{StaticResource PrimaryButtonStyle}"
+                                                IsEnabled="{Binding CanManagePersonalData}"
+                                                Click="CreatePersonalScoreBackup_Click" />
+                                        <Button Content="バックアップから復元"
+                                                Style="{StaticResource PrimaryButtonStyle}"
+                                                IsEnabled="{Binding CanManagePersonalData}"
+                                                Click="RestorePersonalScoreBackup_Click"
+                                                Margin="0,8,0,0" />
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+
+                            <Border Style="{StaticResource CardStyle}" Padding="16" Margin="0,0,0,12">
+                                <StackPanel>
+                                    <TextBlock Text="楽曲・譜面データ" FontSize="14" FontWeight="SemiBold" />
+                                    <TextBlock Text="アプリに同梱された楽曲・譜面情報"
+                                               Foreground="{StaticResource TextSecondaryBrush}"
+                                               FontSize="11" Margin="0,3,0,12" />
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0">
+                                            <TextBlock Text="状態" Foreground="{StaticResource TextSecondaryBrush}"
+                                                       FontSize="11" />
+                                            <TextBlock Text="{Binding BundledDataStatusDisplay}"
+                                                       FontSize="13" Margin="0,3,0,0" />
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="1">
+                                            <TextBlock Text="データバージョン" Foreground="{StaticResource TextSecondaryBrush}"
+                                                       FontSize="11" />
+                                            <TextBlock Text="{Binding BundledDataVersionDisplay}"
+                                                       FontSize="13" Margin="0,3,0,0" />
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="2">
+                                            <TextBlock Text="収録譜面数" Foreground="{StaticResource TextSecondaryBrush}"
+                                                       FontSize="11" />
+                                            <TextBlock Text="{Binding BundledChartCountDisplay}"
+                                                       FontSize="13" Margin="0,3,0,0" />
+                                        </StackPanel>
+                                    </Grid>
+                                    <TextBlock Text="楽曲・譜面データはアプリに同梱され、アプリ更新時に反映されます。"
+                                               Foreground="{StaticResource TextSecondaryBrush}"
+                                               FontSize="11" TextWrapping="Wrap" Margin="0,14,0,0" />
+                                </StackPanel>
+                            </Border>
+
+                            <Border Background="#EFF6FF" BorderBrush="#BFDBFE" BorderThickness="1"
+                                    CornerRadius="8" Padding="14,10" Margin="0,0,0,12">
+                                <TextBlock Text="{Binding DataManagementStatusMessage}"
+                                           Foreground="#1E40AF" FontSize="11" TextWrapping="Wrap" />
                             </Border>
                         </StackPanel>
                     </ScrollViewer>
