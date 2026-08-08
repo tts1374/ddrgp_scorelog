@@ -196,6 +196,7 @@ public sealed class MainViewModelTests
         Assert.Equal(selected.ChartId, viewModel.SelectedChartBest?.ChartId);
     }
 
+#if DEBUG
     [Fact]
     public async Task SaveAndReloadAsync_reflects_only_committed_saved_play()
     {
@@ -316,6 +317,7 @@ public sealed class MainViewModelTests
         Assert.Equal(MasterDatabaseStatus.Missing, viewModel.CatalogDatabaseStatus);
         Assert.Contains("解析・正式保存を開始しません", viewModel.SaveStatusMessage, StringComparison.Ordinal);
     }
+#endif
 
     [Fact]
     public void RestoreSavedPaths_ignores_arbitrary_saved_paths_even_in_the_same_environment()

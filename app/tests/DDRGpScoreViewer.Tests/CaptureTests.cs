@@ -169,6 +169,7 @@ public sealed class CaptureTests
         Assert.Null(result.Output);
     }
 
+#if DEBUG
     [Fact]
     public async Task View_model_can_capture_again_after_each_explicit_operation()
     {
@@ -186,6 +187,7 @@ public sealed class CaptureTests
         Assert.True(viewModel.HasCaptureStatus);
         Assert.Equal("1フレームを保存しました", viewModel.CaptureStatusTitle);
     }
+#endif
 
     [Fact]
     public async Task Session_writer_publishes_ordered_manifest_only_after_completion()
@@ -390,6 +392,7 @@ public sealed class CaptureTests
         Assert.False(service.IsRunning);
     }
 
+#if DEBUG
     [Fact]
     public async Task View_model_rejects_double_start_and_waits_for_stop_completion()
     {
@@ -441,6 +444,7 @@ public sealed class CaptureTests
         Assert.False(viewModel.IsStoppingCapture);
         Assert.Equal(MonitoringState.ManuallyStopped, viewModel.CurrentMonitoringState);
     }
+#endif
 
     private static CapturedFrame Frame(string source, long timestampMs = 12345) =>
         new(

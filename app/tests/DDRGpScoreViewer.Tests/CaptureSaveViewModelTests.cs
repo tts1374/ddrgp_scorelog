@@ -267,6 +267,7 @@ public sealed class CaptureSaveViewModelTests
         Assert.Contains("解析・正式保存を開始しません", viewModel.SaveStatusMessage, StringComparison.Ordinal);
     }
 
+#if DEBUG
     [Fact]
     public async Task Capture_save_does_not_start_while_manual_save_is_running()
     {
@@ -322,6 +323,7 @@ public sealed class CaptureSaveViewModelTests
         await captureSave;
         Assert.False(viewModel.IsSaving);
     }
+#endif
 
     [Fact]
     public async Task Workflow_failure_is_surfaced_instead_of_no_saveable_plays()

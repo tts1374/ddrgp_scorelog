@@ -135,6 +135,7 @@ public sealed class MonitoringTests
         Assert.Contains("vision process failed", viewModel.MonitoringReason);
     }
 
+#if DEBUG
     [Fact]
     public async Task Monitoring_can_be_explicitly_restarted_after_target_closed()
     {
@@ -173,6 +174,7 @@ public sealed class MonitoringTests
         Assert.Equal(MonitoringState.Stopped, viewModel.CurrentMonitoringState);
         Assert.Equal(frameCountAfterStop, viewModel.MonitoringFrameCount);
     }
+#endif
 
     [Fact]
     public async Task Stop_after_capture_finalizes_saved_manifest_and_runs_save_workflow_once()
@@ -437,6 +439,7 @@ public sealed class MonitoringTests
         Assert.Contains("stop failed", notification.Message);
     }
 
+#if DEBUG
     [Fact]
     public async Task Stop_failure_returns_to_retryable_capture_state()
     {
@@ -464,6 +467,7 @@ public sealed class MonitoringTests
         Assert.False(viewModel.IsContinuousCapturing);
         Assert.Equal(MonitoringState.ManuallyStopped, viewModel.CurrentMonitoringState);
     }
+#endif
 
     [Fact]
     public async Task Tray_exit_blocks_new_start_before_stop_completes()
@@ -498,6 +502,7 @@ public sealed class MonitoringTests
         Assert.Equal(1, shutdownCount);
     }
 
+#if DEBUG
     [Fact]
     public async Task View_model_rejects_new_capture_after_exit_is_requested()
     {
@@ -540,6 +545,7 @@ public sealed class MonitoringTests
 
         Assert.False(viewModel.IsSaving);
     }
+#endif
 
     [Fact]
     public async Task Tray_commands_forward_start_stop_and_show()

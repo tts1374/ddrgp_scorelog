@@ -6,6 +6,7 @@ using Xunit;
 
 namespace DDRGpScoreViewer.Tests;
 
+#if DEBUG
 public sealed class DeveloperOperationsTests
 {
     [Fact]
@@ -152,3 +153,4 @@ public sealed class DeveloperOperationsTests
                 "stopped"));
     }
 }
+#endif
