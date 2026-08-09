@@ -286,6 +286,205 @@ def test_m7_result_text_features_round_trip_in_current_catalog(
         ).fetchone()[0] == 2
 
 
+def test_bind_master_preserves_historical_jacket_and_result_text_features(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    master_db, catalog_path, image_path = setup_paths(tmp_path, monkeypatch)
+    ingested = ingest(
+        catalog_path,
+        master_db,
+        image_path,
+        observation_id="historical-feature-observation",
+        seed="historical-feature",
+    )
+    catalog.apply_review_mutation(
+        catalog_path,
+        master_db,
+        catalog.ReviewMutationRequest(
+            action_id="historical-feature-confirm",
+            reference_id=ingested.reference_id,
+            action="manual_confirm",
+            expected_revision=0,
+            expected_status="unresolved",
+            expected_song_id=None,
+            song_id="song-1",
+            reason="historical feature fixture",
+            note="preserve old master",
+        ),
+    )
+    title = master_match.extract_title_image_feature(Image.new("RGB", (160, 40), (220,) * 3))
+    artist = master_match.extract_artist_image_feature(Image.new("RGB", (160, 40), (80,) * 3))
+    catalog.store_m7_result_text_feature_rows(
+        catalog_path,
+        master_db,
+        [
+            {
+                "organized_file": "organized/result/historical-feature.png",
+                "song_id": "song-1",
+                "title": "Alpha",
+                "artist": "Artist A",
+                "feature_status": "accepted",
+                "title_feature": master_match.result_text_feature_record(title),
+                "artist_feature": master_match.result_text_feature_record(artist),
+            }
+        ],
+    )
+
+    unbound_path = tmp_path / "databases/unbound-historical.sqlite"
+    with sqlite3.connect(catalog_path) as source, sqlite3.connect(unbound_path) as output:
+        source.backup(output)
+        output.execute("DELETE FROM catalog_metadata WHERE key = 'master_version'")
+        output.execute(
+            "UPDATE jacket_references SET master_version = 'older-master'"
+        )
+        output.row_factory = sqlite3.Row
+        for row in output.execute(
+            "SELECT feature_id, song_id, field_name, feature_version, roi_version, "
+            "feature_hash FROM result_text_features"
+        ).fetchall():
+            output.execute(
+                "UPDATE result_text_features SET feature_id = ?, master_version = ? "
+                "WHERE feature_id = ?",
+                (
+                    catalog._result_text_feature_id(
+                        master_version="older-master",
+                        song_id=str(row["song_id"]),
+                        field_name=str(row["field_name"]),
+                        feature_version=str(row["feature_version"]),
+                        roi_version=str(row["roi_version"]),
+                        feature_hash=str(row["feature_hash"]),
+                    ),
+                    "older-master",
+                    str(row["feature_id"]),
+                ),
+            )
+        output.commit()
+
+    bound_path = tmp_path / "databases/bound-historical.sqlite"
+    result = catalog.bind_catalog_to_master(unbound_path, bound_path, master_db)
+
+    assert result["preserved_result_text_feature_count"] == 2
+    with sqlite3.connect(bound_path) as connection:
+        assert connection.execute(
+            "SELECT COUNT(*) FROM jacket_references"
+        ).fetchone()[0] == 1
+        assert connection.execute(
+            "SELECT COUNT(*) FROM result_text_features"
+        ).fetchone()[0] == 2
+        assert connection.execute(
+            "SELECT COUNT(*) FROM result_text_features WHERE master_version = 'older-master'"
+        ).fetchone()[0] == 2
+    assert len(catalog.load_m5_feature_entries(bound_path, master_db)) == 1
+    assert len(
+        catalog.load_m7_result_text_feature_entries(
+            bound_path,
+            master_db,
+            field_name="title",
+        )
+    ) == 1
+    assert len(
+        catalog.load_m7_result_text_feature_entries(
+            bound_path,
+            master_db,
+            field_name="artist",
+        )
+    ) == 1
+
+
+def test_historical_features_with_canonical_drift_are_not_reused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    master_db, catalog_path, image_path = setup_paths(tmp_path, monkeypatch)
+    ingested = ingest(
+        catalog_path,
+        master_db,
+        image_path,
+        observation_id="stale-feature-observation",
+        seed="stale-feature",
+    )
+    catalog.apply_review_mutation(
+        catalog_path,
+        master_db,
+        catalog.ReviewMutationRequest(
+            action_id="stale-feature-confirm",
+            reference_id=ingested.reference_id,
+            action="manual_confirm",
+            expected_revision=0,
+            expected_status="unresolved",
+            expected_song_id=None,
+            song_id="song-1",
+            reason="stale feature fixture",
+            note="exclude drifted identity",
+        ),
+    )
+    title = master_match.extract_title_image_feature(Image.new("RGB", (160, 40), (220,) * 3))
+    artist = master_match.extract_artist_image_feature(Image.new("RGB", (160, 40), (80,) * 3))
+    catalog.store_m7_result_text_feature_rows(
+        catalog_path,
+        master_db,
+        [
+            {
+                "organized_file": "organized/result/stale-feature.png",
+                "song_id": "song-1",
+                "title": "Alpha",
+                "artist": "Artist A",
+                "feature_status": "accepted",
+                "title_feature": master_match.result_text_feature_record(title),
+                "artist_feature": master_match.result_text_feature_record(artist),
+            }
+        ],
+    )
+    unbound_path = tmp_path / "databases/unbound-stale.sqlite"
+    with sqlite3.connect(catalog_path) as source, sqlite3.connect(unbound_path) as output:
+        source.backup(output)
+        output.execute("DELETE FROM catalog_metadata WHERE key = 'master_version'")
+        output.execute(
+            "UPDATE jacket_references SET master_version = 'older-master', "
+            "canonical_title_snapshot = 'Stale title', "
+            "canonical_artist_snapshot = 'Stale artist'"
+        )
+        output.execute(
+            "UPDATE result_text_features SET master_version = 'older-master', "
+            "canonical_title_snapshot = 'Stale title', "
+            "canonical_artist_snapshot = 'Stale artist'"
+        )
+        output.row_factory = sqlite3.Row
+        for row in output.execute(
+            "SELECT feature_id, song_id, field_name, feature_version, roi_version, "
+            "feature_hash FROM result_text_features"
+        ).fetchall():
+            output.execute(
+                "UPDATE result_text_features SET feature_id = ? WHERE feature_id = ?",
+                (
+                    catalog._result_text_feature_id(
+                        master_version="older-master",
+                        song_id=str(row["song_id"]),
+                        field_name=str(row["field_name"]),
+                        feature_version=str(row["feature_version"]),
+                        roi_version=str(row["roi_version"]),
+                        feature_hash=str(row["feature_hash"]),
+                    ),
+                    str(row["feature_id"]),
+                ),
+            )
+        output.commit()
+
+    bound_path = tmp_path / "databases/bound-stale.sqlite"
+    catalog.bind_catalog_to_master(unbound_path, bound_path, master_db)
+
+    assert catalog.load_m5_feature_entries(bound_path, master_db) == []
+    assert catalog.load_m7_result_text_feature_entries(
+        bound_path,
+        master_db,
+        field_name="title",
+    ) == []
+    assert catalog.load_m7_result_text_feature_entries(
+        bound_path,
+        master_db,
+        field_name="artist",
+    ) == []
+
+
 def test_migrate_legacy_v1_catalog_preserves_references_and_history(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

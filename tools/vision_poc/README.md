@@ -539,7 +539,7 @@ X-Special付き譜面のように、通常版と同一ジャケットを共有�
 
 固定UI文字は将来的に汎用OCRより画像認識へ寄せます。ただし、スコア、判定数、EX SCORE のTesseract離脱や数字テンプレート認識は後続タスクに回し、次のM5作業ではtitle line-hashを優先します。
 
-M7 jacket validationでは、`--m5-jacket-match` 実行時に result `song_title` / `artist` ROIのOCR-free画像特徴量を作ります。`m7_result_text_feature_master.json/csv/summary.json` は確認用の診断出力で、`--m7-result-text-feature-catalog databases\jacket-catalog.sqlite` を明示した場合だけ acceptedなtitle/artist payloadをM5b catalogの `result_text_features` tableへ冪等保存します。titleとartistは別featureとして、version、ROI version、payload hash、距離比較に再利用できるpayloadを保持します。resultのexpected title/artistは参照ラベルであり、候補集合外からの曲選択や正式DB保存には使いません。
+M7 jacket validationでは、`--m5-jacket-match` 実行時に result `song_title` / `artist` ROIのOCR-free画像特徴量を作ります。`m7_result_text_feature_master.json/csv/summary.json` は確認用の診断出力で、`--m7-result-text-feature-catalog databases\jacket-catalog.sqlite` を明示した場合だけ acceptedなtitle/artist payloadをM5b catalogの `result_text_features` tableへ冪等保存します。titleとartistは別featureとして、収集時master version、version、ROI version、payload hash、距離比較に再利用できるpayloadを保持します。master更新後もcanonical title/artistがcurrent masterと一致する旧master rowは削除せず、M7の照合へ再利用します。resultのexpected title/artistは参照ラベルであり、候補集合外からの曲選択や正式DB保存には使いません。
 
 このresult feature payloadの`title_linehash_rows`はresult title ROIから作る画像特徴量の一部であり、jacket catalogの`title_line_hash`とは別物です。catalog側の`title_line_hash`はsong selectの`INFORMATION`欄を二値化したSHA-256 identityで、result title/artist featureへ流用しません。照合に必要なresult title/artist payloadはM5b catalogへ含め、JSON/CSV/summaryだけを`data/`配下の診断出力として扱います。正式個人スコアDBへは混在させません。
 
@@ -649,9 +649,9 @@ python -m tools.vision_poc.jacket_reference_catalog migrate-v1 `
   --master-db databases\ddrgp-master.sqlite
 ```
 
-移行では`catalog_metadata`、`jacket_references`、`reference_candidates`、`reference_review_history`を引き継ぎ、`result_text_features`は新形式の空テーブルとして作成します。sourceは変更せず、outputのcurrent schema検証が完了した後にだけ利用先を切り替えます。現行schemaとexact一致しないDBは通常runtimeでは副作用なしでunsupportedとして拒否し、既存local DB、artifact、checkpoint、source/crop画像の削除・上書き・in-place修復は行いません。
+移行では`catalog_metadata`、`jacket_references`、`reference_candidates`、`reference_review_history`を引き継ぎ、旧v1 schema自体に存在しない`result_text_features`は新形式の空テーブルとして作成します。sourceは変更せず、outputのcurrent schema検証が完了した後にだけ利用先を切り替えます。旧v1 schemaにないfeatureを捏造・再生成することはありません。現行schemaとexact一致しないDBは通常runtimeでは副作用なしでunsupportedとして拒否し、既存local DB、artifact、checkpoint、source/crop画像の削除・上書き・in-place修復は行いません。
 
-初期版Release前に作成済みで`catalog_metadata.master_version`を持たないcurrent catalogは、sourceを変更せず新規outputへcopyしてcurrent masterへ明示bindingします。出力後にsourceとoutputを取り違えないようpathを確認し、Debug WPFのdevelopment runtimeとRelease packageにはbinding済みoutputだけを渡します。
+初期版Release前に作成済みで`catalog_metadata.master_version`を持たないcurrent catalogは、sourceを変更せず新規outputへcopyしてcurrent masterへ明示bindingします。bindingはcatalog全tableをcopyし、旧masterのjacket referenceと`result_text_features`を削除・上書きしません。runtimeは元の`master_version`を履歴として保持したまま、current GP masterのsong ID・canonical title・canonical artistが一致するhistorical master-compatible featureをread-onlyで再利用します。出力後にsourceとoutputを取り違えないようpathを確認し、Debug WPFのdevelopment runtimeとRelease packageにはbinding済みoutputだけを渡します。
 
 公式masterのartistが空欄へ確定した後も、確定済みjacket referenceに古い非空artist snapshotが残っている場合は、binding前に次のdeveloper-only CLIでsource catalogを再同期します。対象はcurrent feature、`auto_confirmed` / `manual_confirmed`、GP対象、title完全一致、master artist空欄、catalog artist非空のreferenceだけです。reference ID、song ID、画像feature、review status、revision/historyは変更せず、再実行はno-opになります。
 
@@ -749,6 +749,27 @@ XLSXの再構築やjacket top3 routeの暗黙起動は行いません。dry-run/
 運用順は`tools/ddrworld_snapshot_evaluation/README.md`を参照してください。
 
 catalog、artifact、checkpoint、source/crop画像、特徴量、review結果、coverageはローカル非共有物であり、Git、CI artifact、Release、通常logへ含めません。生画像やcropの自動削除は行いません。artifact manifest/checkpointのv1/v2 contractとresume/retry状態機械は、このcatalog schema再採番では変更していません。
+
+### near-jacket inventory export
+
+新曲をM4 masterへ追加し、GRIDのjacket referenceをcatalogへ登録した後は、次の1コマンドで近似ジャケットの棚卸しを更新できます。入力のmaster/catalogはread-onlyで開き、catalog、正式個人スコアDB、画像原本は変更しません。既定出力は `data/near-jacket-inventory/near-jacket-inventory.xlsx` です。
+
+```powershell
+python -X utf8 -m tools.vision_poc.near_jacket_inventory
+```
+
+距離しきい値や出力先を変更する場合は、次のoptionを追加します。`--json-output` は自動処理や差分確認用の任意出力です。
+
+```powershell
+python -X utf8 -m tools.vision_poc.near_jacket_inventory `
+  --catalog databases\jacket-catalog-release.sqlite `
+  --master databases\ddrgp-master.sqlite `
+  --threshold 0.12 `
+  --output data\near-jacket-inventory\near-jacket-inventory.xlsx `
+  --json-output data\near-jacket-inventory\near-jacket-inventory.json
+```
+
+出力XLSXは `概要`、`近似ペア`、`対象曲` の3 sheetです。`近似ペア` はconfirmed `auto_confirmed` / `manual_confirmed` GRID referenceを曲ごとに最小距離で比較し、`play_style` / `difficulty` / `level` の共通譜面がある組だけを距離順に出します。`対象曲` の `title/artist特徴量` が `missing` の曲は、RESULT画像を収集してM7 result-text featureを追加する候補です。候補一覧は曲同定や正式保存へ自動昇格しません。
 
 current song select ROIは1280x720基準で、jacketが`m5c-song-select-jacket-roi-v2` / `(809, 27, 149, 149)`、title/artistが`m5c-song-select-title-artist-roi-v2` / title `(306, 58, 470, 34)` / artist `(309, 97, 467, 23)`です。current jacket feature extractorは`m5-jacket-v2`で、旧ROI由来のv1 manifest/referenceをcurrent matchingへ混在させません。通常runtimeのmigration・repair・source image/artifact削除は行いません。catalogのschema移行は前述の明示的な`migrate-v1`だけを使い、登録referenceの削除は明示操作としてcatalog row・候補・review historyだけを削除します。
 

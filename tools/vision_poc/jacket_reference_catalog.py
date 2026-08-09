@@ -1111,9 +1111,15 @@ def bind_catalog_to_master(
         raise ValueError(f"output catalog already exists: {output_path}")
     master = load_master_identity(master_db)
     output_created = False
+    preserved_result_text_feature_count = 0
     try:
         with closing(_connect_read_only(source_path)) as source_connection:
             _validate_catalog(source_connection, allow_unbound_master=True)
+            preserved_result_text_feature_count = int(
+                source_connection.execute(
+                    "SELECT COUNT(*) FROM result_text_features"
+                ).fetchone()[0]
+            )
             with closing(sqlite3.connect(output_path)) as output_connection:
                 output_created = True
                 source_connection.backup(output_connection)
@@ -1123,6 +1129,13 @@ def bind_catalog_to_master(
                     (master.version,),
                 )
                 _validate_catalog(output_connection)
+                copied_result_text_feature_count = int(
+                    output_connection.execute(
+                        "SELECT COUNT(*) FROM result_text_features"
+                    ).fetchone()[0]
+                )
+                if copied_result_text_feature_count != preserved_result_text_feature_count:
+                    raise ValueError("catalog bind dropped result text features")
                 output_connection.commit()
         validate_release_reference_pair(output_path, master_db)
         load_m5_feature_entries(output_path, master_db)
@@ -1141,6 +1154,7 @@ def bind_catalog_to_master(
         "output_catalog": str(output_path.resolve()),
         "catalog_schema_version": CATALOG_SCHEMA_VERSION,
         "master_version": master.version,
+        "preserved_result_text_feature_count": preserved_result_text_feature_count,
     }
 
 
@@ -2540,6 +2554,33 @@ def _reference_state(
     return review_status, str(row["resolution_reason"])
 
 
+def _is_current_master_compatible_reference(
+    row: sqlite3.Row,
+    master: MasterIdentity,
+) -> bool:
+    """Return whether a persisted confirmed jacket feature is reusable.
+
+    ``master_version`` records the identity used when a reference was
+    collected; it is historical provenance, not a deletion marker.  A later
+    master can therefore reuse an older reference when the song still exists
+    as a GP song and its canonical title/artist are unchanged.  The runtime
+    loader deliberately does not rewrite the catalog row.
+    """
+    review_status = str(row["review_status"])
+    if review_status not in {"auto_confirmed", "manual_confirmed"}:
+        return False
+    if str(row["feature_extractor_version"]) != FEATURE_EXTRACTOR_VERSION:
+        return False
+    song_id = str(row["song_id"] or "")
+    song = next((candidate for candidate in master.songs if candidate.song_id == song_id), None)
+    if song is None or not song.grand_prix_play_available:
+        return False
+    return (song.title, song.artist) == (
+        str(row["canonical_title_snapshot"]),
+        str(row["canonical_artist_snapshot"]),
+    )
+
+
 def load_m5_feature_entries(
     catalog_path: Path,
     master_db: Path,
@@ -2560,14 +2601,13 @@ def load_m5_feature_entries(
             """,
             (FEATURE_EXTRACTOR_VERSION,),
         ):
-            state, _ = _reference_state(row, master)
-            if state not in {"auto_confirmed", "manual_confirmed"}:
+            if not _is_current_master_compatible_reference(row, master):
                 continue
             song = songs_by_id[str(row["song_id"])]
             try:
                 feature = _decode_persisted_feature(row)
             except ValueError:
-                if state == "manual_confirmed":
+                if str(row["review_status"]) == "manual_confirmed":
                     continue
                 raise
             entries.append(
@@ -2713,7 +2753,15 @@ def load_m7_result_text_feature_entries(
     *,
     field_name: str,
 ) -> list[master_match.TitleFeatureMasterEntry]:
-    """Load current-master M7 result title or artist features from the M5b catalog."""
+    """Load current-master-compatible M7 result title or artist features.
+
+    Result-text rows retain the master version that produced them.  Older
+    rows remain reusable when their song ID and canonical title/artist still
+    match the current master; only rows with identity drift are excluded (or
+    current-version corruption is rejected).  This keeps a master refresh
+    from silently making previously collected title/artist evidence
+    unavailable.
+    """
     if field_name not in {"title", "artist"}:
         raise ValueError("result text feature field_name must be title or artist")
     validate_catalog(catalog_path)
@@ -2727,19 +2775,22 @@ def load_m7_result_text_feature_entries(
             """
             SELECT feature_id, song_id, feature_version, roi_version, feature_hash,
                    payload_json, source_label, canonical_title_snapshot,
-                   canonical_artist_snapshot
+                   canonical_artist_snapshot, master_version
             FROM result_text_features
-            WHERE field_name = ? AND master_version = ?
-            ORDER BY song_id, source_label, feature_hash
+            WHERE field_name = ?
+            ORDER BY song_id, master_version, source_label, feature_hash
             """,
-            (field_name, master.version),
+            (field_name,),
         ).fetchall()
     for row in rows:
         song_id = str(row["song_id"])
         song = songs_by_id.get(song_id)
         canonical_title = str(row["canonical_title_snapshot"])
         canonical_artist = str(row["canonical_artist_snapshot"])
+        row_master_version = str(row["master_version"])
         if song is None or (song.title, song.artist) != (canonical_title, canonical_artist):
+            if row_master_version != master.version:
+                continue
             raise ValueError("result text feature canonical snapshot drift detected")
         try:
             payload = json.loads(str(row["payload_json"]))
@@ -2752,7 +2803,7 @@ def load_m7_result_text_feature_entries(
             "payload": payload,
         }
         feature_id = _result_text_feature_id(
-            master_version=master.version,
+            master_version=row_master_version,
             song_id=song_id,
             field_name=field_name,
             feature_version=str(row["feature_version"]),

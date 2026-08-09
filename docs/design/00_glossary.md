@@ -47,6 +47,7 @@ DDR GP scorelog の設計、PoC、テストで使う主要用語を定義する�
 | `M5 master match` | `RESULT同定根拠`へ進める前の曲・譜面候補と失敗理由を観測する実装工程 | title match、jacket match、`identity_signal_*` | 確定ID、保存OK、本番採用済み照合 |
 | `M5b jacket reference catalog` | jacket参照featureをcurrent masterと一緒に安全に保持・読む基盤 | collector source `databases/jacket-catalog.sqlite`、binding済みruntime catalog、coverage、runtime loader | 正式個人スコアDB、画像原本の代替 |
 | `M5c developer-only collector` | M5b catalogへ入れるjacket観測を収集・reviewする開発者専用工程 | collector、observation session、manual review、title/artist OCR評価 | 公開app、正式保存workflow、自動確定 |
+| `near-jacket inventory export` | confirmed GRID jacket referenceを距離と共通譜面条件で比較し、RESULT収集が必要な近似候補を棚卸しするdeveloper-only出力 | `near-jacket-inventory.xlsx` の概要・近似ペア・対象曲 | 曲IDの正式確定、正式個人スコア保存、候補の自動昇格 |
 | `M6 payload/evidence boundary` | 保存候補payloadと解析根拠・sourceを分離する工程 | save payload、analysis/source、候補材料 | 候補の正式値昇格 |
 | `M7 save decision boundary` | 必須fieldの検証、保存前readiness、正式値変換の境界 | M7 readiness、save decision preview、formal evidence | previewだけでのDB保存 |
 | `M7a digit recognition` | `RESULT数値認識根拠`へ進める前の数字ROIをテンプレート/bitmap比較で読むM7内の非OCR工程 | `recognized_digits`、digit review、Tesseract comparison | 正式なスコア・判定数、保存OK |
@@ -126,6 +127,7 @@ master DB inspectionは起動時・保存開始時に行う。固定pathだけ�
 - `feature hash`: feature payloadの同一性を示すhash。近似距離を計算するにはpayloadも必要で、hashだけで「似ている」とは判定しない。
 - `feature master`: featureと参照ラベルをCSV/JSONへ並べた診断出力。M5の一時出力とM7 result-text featureのJSON/CSVは診断用で、照合再利用用のM7 payloadはM5b catalogへ保存する。
 - `reference catalog`: current master、feature、review状態、historyをstrictに管理する永続的なローカルSQLite。現行ではM5b jacket reference catalogを指す。
+- `historical master-compatible feature`: 旧masterで収集したjacketまたはM7 result-text featureのうち、`song_id`とcurrent GP masterのcanonical title/artistが一致し、read-only照合へ再利用できるcatalog row。元の`master_version`は履歴として保持し、current値へ書き換えない。
 - `candidate observation`: M5 `identity_signal_*`、M7a `recognized_digits`、M7 previewなど、後続レビューへ渡す材料。候補が一意でも正式値ではない。
 - `formal value`: 採用済みsource、field別根拠、必要なvalidationを満たし、M8正式save inputへ明示的に配置された値。
 - `flare_rank`: RESULT右側の独立badgeから認識する正式field。値は `I`〜`IX` / `EX` に限定し、認識不能時は `null` のまま保存を妨げない。`null` は「no-flareの証明」ではない。
