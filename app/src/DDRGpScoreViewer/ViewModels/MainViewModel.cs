@@ -4,6 +4,7 @@ using System.Globalization;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
+using DDRGpScoreViewer;
 using DDRGpScoreViewer.Capture;
 using DDRGpScoreViewer.Data;
 using DDRGpScoreViewer.Models;
@@ -14,15 +15,20 @@ namespace DDRGpScoreViewer.ViewModels;
 public sealed class MainViewModel : INotifyPropertyChanged
 {
     private const int ChartBestPageSize = 50;
-    private const string AllBestFilterValue = "すべて";
-    private const string BestSortScoreDescending = "スコア（高い順）";
-    private const string BestSortScoreAscending = "スコア（低い順）";
-    private const string BestSortTitleAscending = "曲名（昇順）";
-    private const string BestSortLevelAscending = "レベル（昇順）";
-    private const string BestSortLastPlayedDescending = "最終プレー（新しい順）";
-    private const string BestSortPlayCountDescending = "プレー回数（多い順）";
-    private const string ChartDetailAllPlaysMode = "全プレー";
-    private const string ChartDetailBestProgressionMode = "自己ベスト推移";
+    public const string AllBestFilterValue = "all";
+    public const string BestSortScoreDescending = "score_desc";
+    public const string BestSortScoreAscending = "score_asc";
+    public const string BestSortTitleAscending = "title_asc";
+    public const string BestSortLevelAscending = "level_asc";
+    public const string BestSortLastPlayedDescending = "last_played_desc";
+    public const string BestSortPlayCountDescending = "play_count_desc";
+    public const string ChartDetailAllPlaysMode = "all_plays";
+    public const string ChartDetailBestProgressionMode = "best_progression";
+    private const string PlayedFilterValue = "played";
+    private const string UnplayedFilterValue = "unplayed";
+    private const string AaaOrHigherFilterValue = "aaa_or_higher";
+    private const string AOrLowerFilterValue = "a_or_lower";
+    private const string NotClearFilterValue = "not_clear";
     private static readonly string[] BestVersionOrder =
     [
         "DDR GRAND PRIX",
@@ -72,7 +78,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private IReadOnlyList<HomePlayItem> chartDetailBestPlayPoints = [];
     private string chartDetailGraphMode = ChartDetailAllPlaysMode;
     private IReadOnlyList<ChartBestItem> allChartBests = [];
-    private IReadOnlyList<string> bestVersionOptions = [AllBestFilterValue];
+    private IReadOnlyList<LocalizedOption> bestVersionOptions =
+        [Localization.Option(AllBestFilterValue, "すべて")];
     private string bestPlayStyleFilter = "SINGLE";
     private string bestDifficultyFilter = AllBestFilterValue;
     private string bestLevelFilter = AllBestFilterValue;
@@ -91,15 +98,15 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private int homeTodayFullComboCount;
     private string homeTodayDateDisplay =
         DateTimeOffset.Now.ToString("yyyy/MM/dd", CultureInfo.CurrentCulture);
-    private string statusTitle = "既定のDBを確認しています";
-    private string statusMessage =
-        "現在の環境に対応する既定pathのDBを検証して、履歴と自己ベストを表示します。";
+    private string statusTitle = Localization.Get("既定のDBを確認しています");
+    private string statusMessage = Localization.Get(
+        "現在の環境に対応する既定pathのDBを検証して、履歴と自己ベストを表示します。");
     private bool hasData;
     private string masterVersion = "—";
     private int bundledChartCount;
     private string personalScoreDataStatus = "未確認";
-    private string dataManagementStatusMessage =
-        "バックアップと復元は個人スコアデータだけを対象にします。";
+    private string dataManagementStatusMessage = Localization.Get(
+        "バックアップと復元は個人スコアデータだけを対象にします。");
     private string saveStatusTitle = "";
     private string saveStatusMessage = "";
     private bool hasSaveStatus;
@@ -175,10 +182,13 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private bool appliedNotifyUnresolvedResults = UserSettings.Defaults.NotifyUnresolvedResults;
     private string appliedDefaultPlayStyle = UserSettings.Defaults.DefaultPlayStyle;
     private string appliedStartupPage = UserSettings.Defaults.StartupPage;
-    private string settingsStatusMessage = "変更内容は保存時に反映されます";
+    private string language = UserSettings.Defaults.Language;
+    private string appliedLanguage = UserSettings.Defaults.Language;
+    private string settingsStatusMessage = "";
     private readonly IApplicationUpdateService? applicationUpdateService;
-    private string applicationUpdateStatusTitle = "アプリ更新";
-    private string applicationUpdateStatusMessage = "起動後にGitHub Releasesを確認します。";
+    private string applicationUpdateStatusTitle = Localization.Get("アプリ更新");
+    private string applicationUpdateStatusMessage = Localization.Get(
+        "起動後にGitHub Releasesを確認します。");
     private string applicationUpdateVersion = "";
     private int applicationUpdateProgress;
     private bool hasApplicationUpdateStatus;
@@ -239,40 +249,179 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public ObservableCollection<string> BestActiveFilterChips { get; } = [];
     public ObservableCollection<HomePlayItem> ChartDetailHistory { get; } = [];
 
-    public IReadOnlyList<string> BestDifficultyOptions { get; } =
+    public IReadOnlyList<LocalizedOption> BestDifficultyOptions { get; } =
     [
-        AllBestFilterValue,
-        "BEGINNER",
-        "BASIC",
-        "DIFFICULT",
-        "EXPERT",
-        "CHALLENGE",
+        Localization.Option(AllBestFilterValue, "すべて"),
+        Localization.Option("BEGINNER", "BEGINNER"),
+        Localization.Option("BASIC", "BASIC"),
+        Localization.Option("DIFFICULT", "DIFFICULT"),
+        Localization.Option("EXPERT", "EXPERT"),
+        Localization.Option("CHALLENGE", "CHALLENGE"),
     ];
 
-    public IReadOnlyList<string> BestLevelOptions { get; } =
-        [AllBestFilterValue, .. Enumerable.Range(1, 19).Select(level => $"Lv.{level}")];
+    public IReadOnlyList<LocalizedOption> BestLevelOptions { get; } =
+        [
+            Localization.Option(AllBestFilterValue, "すべて"),
+            .. Enumerable.Range(1, 19).Select(level =>
+                new LocalizedOption($"level_{level}", $"Lv.{level}")),
+        ];
 
-    public IReadOnlyList<string> BestPlayStatusOptions { get; } =
-        [AllBestFilterValue, "プレー済み", "未プレー"];
+    public IReadOnlyList<LocalizedOption> BestPlayStatusOptions { get; } =
+        [
+            Localization.Option(AllBestFilterValue, "すべて"),
+            Localization.Option(PlayedFilterValue, "プレー済み"),
+            Localization.Option(UnplayedFilterValue, "未プレー"),
+        ];
 
-    public IReadOnlyList<string> BestRankOptions { get; } =
-        [AllBestFilterValue, "AAA以上", "AA", "A以下"];
+    public IReadOnlyList<LocalizedOption> BestRankOptions { get; } =
+        [
+            Localization.Option(AllBestFilterValue, "すべて"),
+            Localization.Option(AaaOrHigherFilterValue, "AAA以上"),
+            Localization.Option("AA", "AA"),
+            Localization.Option(AOrLowerFilterValue, "A以下"),
+        ];
 
-    public IReadOnlyList<string> BestClearOptions { get; } =
-        [AllBestFilterValue, "PFC", "GFC", "FC", "CLEAR", "未CLEAR"];
+    public IReadOnlyList<LocalizedOption> BestClearOptions { get; } =
+        [
+            Localization.Option(AllBestFilterValue, "すべて"),
+            Localization.Option("PFC", "PFC"),
+            Localization.Option("GFC", "GFC"),
+            Localization.Option("FC", "FC"),
+            Localization.Option("CLEAR", "CLEAR"),
+            Localization.Option(NotClearFilterValue, "未CLEAR"),
+        ];
 
-    public IReadOnlyList<string> BestSortOptions { get; } =
+    public IReadOnlyList<LocalizedOption> BestSortOptions { get; } =
     [
-        BestSortScoreDescending,
-        BestSortScoreAscending,
-        BestSortTitleAscending,
-        BestSortLevelAscending,
-        BestSortLastPlayedDescending,
-        BestSortPlayCountDescending,
+        Localization.Option(BestSortScoreDescending, "スコア（高い順）"),
+        Localization.Option(BestSortScoreAscending, "スコア（低い順）"),
+        Localization.Option(BestSortTitleAscending, "曲名（昇順）"),
+        Localization.Option(BestSortLevelAscending, "レベル（昇順）"),
+        Localization.Option(BestSortLastPlayedDescending, "最終プレー（新しい順）"),
+        Localization.Option(BestSortPlayCountDescending, "プレー回数（多い順）"),
     ];
 
-    public IReadOnlyList<string> StartupPageOptions { get; } =
-        [UserSettings.HomeStartupPage, UserSettings.BestStartupPage, UserSettings.HistoryStartupPage];
+    public IReadOnlyList<LocalizedOption> StartupPageOptions { get; } =
+        [
+            Localization.Option(UserSettings.HomeStartupPage, "ホーム"),
+            Localization.Option(UserSettings.BestStartupPage, "自己ベスト"),
+            Localization.Option(UserSettings.HistoryStartupPage, "直近プレー履歴"),
+        ];
+
+    public IReadOnlyList<LocalizedOption> LanguageOptions { get; } =
+        [
+            Localization.Option(UserSettings.JapaneseLanguage, "日本語"),
+            Localization.Option(UserSettings.EnglishLanguage, "英語"),
+            Localization.Option(UserSettings.KoreanLanguage, "韓国語"),
+        ];
+
+    public LocalizedOption? SelectedBestDifficultyOption
+    {
+        get => FindOption(BestDifficultyOptions, BestDifficultyFilter);
+        set
+        {
+            if (value is not null)
+            {
+                BestDifficultyFilter = value.Code;
+            }
+        }
+    }
+
+    public LocalizedOption? SelectedBestLevelOption
+    {
+        get => FindOption(BestLevelOptions, BestLevelFilter);
+        set
+        {
+            if (value is not null)
+            {
+                BestLevelFilter = value.Code;
+            }
+        }
+    }
+
+    public LocalizedOption? SelectedBestVersionOption
+    {
+        get => FindOption(BestVersionOptions, BestVersionFilter);
+        set
+        {
+            if (value is not null)
+            {
+                BestVersionFilter = value.Code;
+            }
+        }
+    }
+
+    public LocalizedOption? SelectedBestPlayStatusOption
+    {
+        get => FindOption(BestPlayStatusOptions, BestPlayStatusFilter);
+        set
+        {
+            if (value is not null)
+            {
+                BestPlayStatusFilter = value.Code;
+            }
+        }
+    }
+
+    public LocalizedOption? SelectedBestRankOption
+    {
+        get => FindOption(BestRankOptions, BestRankFilter);
+        set
+        {
+            if (value is not null)
+            {
+                BestRankFilter = value.Code;
+            }
+        }
+    }
+
+    public LocalizedOption? SelectedBestClearOption
+    {
+        get => FindOption(BestClearOptions, BestClearFilter);
+        set
+        {
+            if (value is not null)
+            {
+                BestClearFilter = value.Code;
+            }
+        }
+    }
+
+    public LocalizedOption? SelectedBestSortOption
+    {
+        get => FindOption(BestSortOptions, BestSortFilter);
+        set
+        {
+            if (value is not null)
+            {
+                BestSortFilter = value.Code;
+            }
+        }
+    }
+
+    public LocalizedOption? SelectedStartupPageOption
+    {
+        get => FindOption(StartupPageOptions, StartupPage);
+        set
+        {
+            if (value is not null)
+            {
+                StartupPage = value.Code;
+            }
+        }
+    }
+
+    public LocalizedOption? SelectedLanguageOption
+    {
+        get => FindOption(LanguageOptions, Language);
+        set
+        {
+            if (value is not null)
+            {
+                Language = value.Code;
+            }
+        }
+    }
 
     public bool StartMonitoringOnLaunch
     {
@@ -281,7 +430,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         {
             if (SetProperty(ref startMonitoringOnLaunch, value))
             {
-                SettingsStatusMessage = "変更内容は保存時に反映されます";
+                SettingsStatusMessage = Localization.Get("変更内容は保存時に反映されます");
             }
         }
     }
@@ -293,7 +442,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         {
             if (SetProperty(ref notifyUnresolvedResults, value))
             {
-                SettingsStatusMessage = "変更内容は保存時に反映されます";
+                SettingsStatusMessage = Localization.Get("変更内容は保存時に反映されます");
             }
         }
     }
@@ -307,7 +456,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             {
                 if (SetProperty(ref defaultPlayStyle, value))
                 {
-                    SettingsStatusMessage = "変更内容は保存時に反映されます";
+                    SettingsStatusMessage = Localization.Get("変更内容は保存時に反映されます");
                 }
             }
         }
@@ -318,12 +467,28 @@ public sealed class MainViewModel : INotifyPropertyChanged
         get => startupPage;
         set
         {
-            if (UserSettings.IsValidStartupPage(value))
+            var normalized = UserSettings.NormalizeStartupPage(value);
+            if (normalized is not null)
             {
-                if (SetProperty(ref startupPage, value))
+                if (SetProperty(ref startupPage, normalized))
                 {
-                    SettingsStatusMessage = "変更内容は保存時に反映されます";
+                    OnPropertyChanged(nameof(SelectedStartupPageOption));
+                    SettingsStatusMessage = Localization.Get("変更内容は保存時に反映されます");
                 }
+            }
+        }
+    }
+
+    public string Language
+    {
+        get => language;
+        set
+        {
+            var normalized = UserSettings.NormalizeLanguage(value);
+            if (SetProperty(ref language, normalized))
+            {
+                OnPropertyChanged(nameof(SelectedLanguageOption));
+                SettingsStatusMessage = Localization.Get("変更内容は保存時に反映されます");
             }
         }
     }
@@ -334,10 +499,16 @@ public sealed class MainViewModel : INotifyPropertyChanged
         private set => SetProperty(ref settingsStatusMessage, value);
     }
 
-    public IReadOnlyList<string> BestVersionOptions
+    public IReadOnlyList<LocalizedOption> BestVersionOptions
     {
         get => bestVersionOptions;
-        private set => SetProperty(ref bestVersionOptions, value);
+        private set
+        {
+            if (SetProperty(ref bestVersionOptions, value))
+            {
+                OnPropertyChanged(nameof(SelectedBestVersionOption));
+            }
+        }
     }
 
     public PlayHistoryItem? SelectedPlay
@@ -446,12 +617,14 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public string ChartDetailExScoreBestAtDisplay => chartDetailExScoreBestPlay?.Play.PlayedAtDisplay ?? "—";
 
-    public string ChartDetailPlayCountDisplay => $"{ChartDetailHistory.Count:N0}回";
+    public string ChartDetailPlayCountDisplay =>
+        Localization.Format("{0}回", ChartDetailHistory.Count);
 
-    public string ChartDetailHistoryCountDisplay => $"{ChartDetailHistory.Count:N0}件";
+    public string ChartDetailHistoryCountDisplay =>
+        Localization.Format("{0}件", ChartDetailHistory.Count);
 
     public string ChartDetailFullComboCountDisplay =>
-        $"{ChartDetailHistory.Count(IsFullCombo):N0}回";
+        Localization.Format("{0}回", ChartDetailHistory.Count(IsFullCombo));
 
     public System.Windows.Visibility ChartDetailPlayVisibility =>
         ChartDetailHistory.Count == 0
@@ -482,10 +655,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
         get => bestDifficultyFilter;
         set
         {
-            if (!SetProperty(ref bestDifficultyFilter, value))
+            var normalized = NormalizeAllFilterValue(value);
+            if (!SetProperty(ref bestDifficultyFilter, normalized))
             {
                 return;
             }
+            OnPropertyChanged(nameof(SelectedBestDifficultyOption));
             OnBestFilterChanged();
         }
     }
@@ -495,10 +670,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
         get => bestLevelFilter;
         set
         {
-            if (!SetProperty(ref bestLevelFilter, value))
+            var normalized = NormalizeLevelFilter(value);
+            if (!SetProperty(ref bestLevelFilter, normalized))
             {
                 return;
             }
+            OnPropertyChanged(nameof(SelectedBestLevelOption));
             OnBestFilterChanged();
         }
     }
@@ -521,10 +698,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
         get => bestVersionFilter;
         set
         {
-            if (!SetProperty(ref bestVersionFilter, value))
+            var normalized = NormalizeAllFilterValue(value);
+            if (!SetProperty(ref bestVersionFilter, normalized))
             {
                 return;
             }
+            OnPropertyChanged(nameof(SelectedBestVersionOption));
             OnBestFilterChanged();
         }
     }
@@ -534,10 +713,18 @@ public sealed class MainViewModel : INotifyPropertyChanged
         get => bestPlayStatusFilter;
         set
         {
-            if (!SetProperty(ref bestPlayStatusFilter, value))
+            var normalized = value switch
+            {
+                "すべて" => AllBestFilterValue,
+                "プレー済み" => PlayedFilterValue,
+                "未プレー" => UnplayedFilterValue,
+                _ => value,
+            };
+            if (!SetProperty(ref bestPlayStatusFilter, normalized))
             {
                 return;
             }
+            OnPropertyChanged(nameof(SelectedBestPlayStatusOption));
             OnBestFilterChanged();
         }
     }
@@ -547,10 +734,18 @@ public sealed class MainViewModel : INotifyPropertyChanged
         get => bestRankFilter;
         set
         {
-            if (!SetProperty(ref bestRankFilter, value))
+            var normalized = value switch
+            {
+                "すべて" => AllBestFilterValue,
+                "AAA以上" => AaaOrHigherFilterValue,
+                "A以下" => AOrLowerFilterValue,
+                _ => value,
+            };
+            if (!SetProperty(ref bestRankFilter, normalized))
             {
                 return;
             }
+            OnPropertyChanged(nameof(SelectedBestRankOption));
             OnBestFilterChanged();
         }
     }
@@ -560,10 +755,17 @@ public sealed class MainViewModel : INotifyPropertyChanged
         get => bestClearFilter;
         set
         {
-            if (!SetProperty(ref bestClearFilter, value))
+            var normalized = value switch
+            {
+                "すべて" => AllBestFilterValue,
+                "未CLEAR" => NotClearFilterValue,
+                _ => value,
+            };
+            if (!SetProperty(ref bestClearFilter, normalized))
             {
                 return;
             }
+            OnPropertyChanged(nameof(SelectedBestClearOption));
             OnBestFilterChanged();
         }
     }
@@ -573,10 +775,21 @@ public sealed class MainViewModel : INotifyPropertyChanged
         get => bestSortFilter;
         set
         {
-            if (!SetProperty(ref bestSortFilter, value))
+            var normalized = value switch
+            {
+                "スコア（高い順）" => BestSortScoreDescending,
+                "スコア（低い順）" => BestSortScoreAscending,
+                "曲名（昇順）" => BestSortTitleAscending,
+                "レベル（昇順）" => BestSortLevelAscending,
+                "最終プレー（新しい順）" => BestSortLastPlayedDescending,
+                "プレー回数（多い順）" => BestSortPlayCountDescending,
+                _ => value,
+            };
+            if (!SetProperty(ref bestSortFilter, normalized))
             {
                 return;
             }
+            OnPropertyChanged(nameof(SelectedBestSortOption));
             OnBestFilterChanged();
         }
     }
@@ -596,16 +809,21 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public bool CanLoadMoreChartBests => ChartBestDisplayedCount < ChartBestTotalCount;
 
     public string ChartBestRangeDisplay => ChartBestTotalCount == 0
-        ? "表示 0譜面 / 全0譜面"
-        : $"表示 1〜{ChartBestDisplayedCount:N0} / 全{ChartBestTotalCount:N0}譜面";
+        ? Localization.Format("表示 {0}譜面 / 全{1}譜面", 0, 0)
+        : Localization.Format(
+            "表示 1〜{0} / 全{1}譜面",
+            ChartBestDisplayedCount,
+            ChartBestTotalCount);
 
     public string ChartBestLoadMoreHintDisplay => CanLoadMoreChartBests
-        ? "下端までスクロールすると次の50譜面を表示"
-        : $"全{ChartBestTotalCount:N0}譜面を表示中";
+        ? Localization.Get("下端までスクロールすると次の50譜面を表示")
+        : Localization.Format("全{0}譜面を表示中", ChartBestTotalCount);
 
     public string BestActiveFilterSummary => BestActiveFilterChips.Count == 0
-        ? "適用中: なし"
-        : $"適用中: {string.Join(" / ", BestActiveFilterChips)}";
+        ? Localization.Get("適用中: なし")
+        : Localization.Format(
+            "適用中: {0}",
+            string.Join(" / ", BestActiveFilterChips));
 
     public HomePlayItem? HomeLatestPlay
     {
@@ -647,20 +865,20 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public string HomeBestUpdateSummaryDisplay => HomeBestUpdates.Count switch
     {
-        0 => "自己ベスト更新はまだありません",
-        var count => $"直近の自己ベスト更新を{count}件表示",
+        0 => Localization.Get("自己ベスト更新はまだありません"),
+        var count => Localization.Format("直近の自己ベスト更新を{0}件表示", count),
     };
 
     public string StatusTitle
     {
         get => statusTitle;
-        private set => SetProperty(ref statusTitle, value);
+        private set => SetProperty(ref statusTitle, Localization.Get(value));
     }
 
     public string StatusMessage
     {
         get => statusMessage;
-        private set => SetProperty(ref statusMessage, value);
+        private set => SetProperty(ref statusMessage, Localization.Get(value));
     }
 
     public bool HasData
@@ -688,10 +906,11 @@ public sealed class MainViewModel : INotifyPropertyChanged
             ? System.Windows.Visibility.Visible
             : System.Windows.Visibility.Collapsed;
 
-    public string DataManagementPlayCountDisplay => $"{Plays.Count:N0}件";
+    public string DataManagementPlayCountDisplay =>
+        Localization.Format("{0}件", Plays.Count);
 
     public string DataManagementBestChartCountDisplay =>
-        $"{allChartBests.Count(item => item.IsPlayed):N0}譜面";
+        Localization.Format("{0}譜面", allChartBests.Count(item => item.IsPlayed));
 
     public string DataManagementLastSavedDisplay => Plays.Count == 0
         ? "—"
@@ -699,24 +918,24 @@ public sealed class MainViewModel : INotifyPropertyChanged
             Plays.Max(play => play.SavedAt) ?? "—",
             "yyyy/MM/dd HH:mm:ss");
 
-    public string PersonalScoreDataStatusDisplay => personalScoreDataStatus;
+    public string PersonalScoreDataStatusDisplay => Localization.Get(personalScoreDataStatus);
 
     public string DataManagementStatusMessage
     {
         get => dataManagementStatusMessage;
-        private set => SetProperty(ref dataManagementStatusMessage, value);
+        private set => SetProperty(ref dataManagementStatusMessage, Localization.Get(value));
     }
 
     public string BundledDataStatusDisplay => masterDatabaseInspection.IsCompatible
-        ? "利用可能"
-        : "確認できません";
+        ? Localization.Get("利用可能")
+        : Localization.Get("確認できません");
 
     public string BundledDataVersionDisplay => masterDatabaseInspection.IsCompatible
         ? MasterVersion
         : "—";
 
     public string BundledChartCountDisplay => masterDatabaseInspection.IsCompatible
-        ? $"{bundledChartCount:N0}譜面"
+        ? Localization.Format("{0}譜面", bundledChartCount)
         : "—";
 
     public string MasterVersion
@@ -745,20 +964,20 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public string DatabaseEnvironmentDisplay => defaultDatabasePaths.Environment switch
     {
-        ViewerDatabaseEnvironment.Development => "development（development root）",
-        ViewerDatabaseEnvironment.Production => "production（LocalAppData）",
-        _ => "unknown",
+        ViewerDatabaseEnvironment.Development => Localization.Get("development（development root）"),
+        ViewerDatabaseEnvironment.Production => Localization.Get("production（LocalAppData）"),
+        _ => Localization.Get("unknown"),
     };
 
     public MasterDatabaseStatus MasterDatabaseStatus => masterDatabaseInspection.Status;
 
     public string MasterDatabaseStatusDisplay => MasterDatabaseStatus switch
     {
-        MasterDatabaseStatus.Missing => "missing（既定pathを確認）",
-        MasterDatabaseStatus.Unreadable => "read不可（既定pathを確認）",
-        MasterDatabaseStatus.Incompatible => "schema incompatible（既定pathを確認）",
-        MasterDatabaseStatus.Compatible => "compatible",
-        _ => MasterDatabaseStatus.ToString(),
+        MasterDatabaseStatus.Missing => Localization.Get("missing（既定pathを確認）"),
+        MasterDatabaseStatus.Unreadable => Localization.Get("read不可（既定pathを確認）"),
+        MasterDatabaseStatus.Incompatible => Localization.Get("schema incompatible（既定pathを確認）"),
+        MasterDatabaseStatus.Compatible => Localization.Get("compatible"),
+        _ => Localization.Get(MasterDatabaseStatus.ToString()),
     };
 
     public string MasterDatabaseReason => masterDatabaseInspection.Message;
@@ -767,11 +986,11 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public string CatalogDatabaseStatusDisplay => CatalogDatabaseStatus switch
     {
-        MasterDatabaseStatus.Missing => "missing（既定pathを確認）",
-        MasterDatabaseStatus.Unreadable => "read不可（既定pathを確認）",
-        MasterDatabaseStatus.Incompatible => "schema incompatible（既定pathを確認）",
-        MasterDatabaseStatus.Compatible => "compatible",
-        _ => CatalogDatabaseStatus.ToString(),
+        MasterDatabaseStatus.Missing => Localization.Get("missing（既定pathを確認）"),
+        MasterDatabaseStatus.Unreadable => Localization.Get("read不可（既定pathを確認）"),
+        MasterDatabaseStatus.Incompatible => Localization.Get("schema incompatible（既定pathを確認）"),
+        MasterDatabaseStatus.Compatible => Localization.Get("compatible"),
+        _ => Localization.Get(CatalogDatabaseStatus.ToString()),
     };
 
     public string CatalogDatabaseReason => jacketCatalogInspection.Message;
@@ -779,13 +998,13 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public string SaveStatusTitle
     {
         get => saveStatusTitle;
-        private set => SetProperty(ref saveStatusTitle, value);
+        private set => SetProperty(ref saveStatusTitle, Localization.Get(value));
     }
 
     public string SaveStatusMessage
     {
         get => saveStatusMessage;
-        private set => SetProperty(ref saveStatusMessage, value);
+        private set => SetProperty(ref saveStatusMessage, Localization.Get(value));
     }
 
     public bool HasSaveStatus
@@ -820,13 +1039,13 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public string UnresolvedNotificationTitle
     {
         get => unresolvedNotificationTitle;
-        private set => SetProperty(ref unresolvedNotificationTitle, value);
+        private set => SetProperty(ref unresolvedNotificationTitle, Localization.Get(value));
     }
 
     public string UnresolvedNotificationMessage
     {
         get => unresolvedNotificationMessage;
-        private set => SetProperty(ref unresolvedNotificationMessage, value);
+        private set => SetProperty(ref unresolvedNotificationMessage, Localization.Get(value));
     }
 
     public bool HasUnresolvedNotification
@@ -849,13 +1068,13 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public string CaptureStatusTitle
     {
         get => captureStatusTitle;
-        private set => SetProperty(ref captureStatusTitle, value);
+        private set => SetProperty(ref captureStatusTitle, Localization.Get(value));
     }
 
     public string CaptureStatusMessage
     {
         get => captureStatusMessage;
-        private set => SetProperty(ref captureStatusMessage, value);
+        private set => SetProperty(ref captureStatusMessage, Localization.Get(value));
     }
 
     public bool HasCaptureStatus
@@ -917,13 +1136,13 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public string ApplicationUpdateStatusTitle
     {
         get => applicationUpdateStatusTitle;
-        private set => SetProperty(ref applicationUpdateStatusTitle, value);
+        private set => SetProperty(ref applicationUpdateStatusTitle, Localization.Get(value));
     }
 
     public string ApplicationUpdateStatusMessage
     {
         get => applicationUpdateStatusMessage;
-        private set => SetProperty(ref applicationUpdateStatusMessage, value);
+        private set => SetProperty(ref applicationUpdateStatusMessage, Localization.Get(value));
     }
 
     public string ApplicationUpdateVersion
@@ -988,21 +1207,21 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public string MonitoringStateDisplay => CurrentMonitoringState switch
     {
-        MonitoringState.Idle => "待機中",
-        MonitoringState.Starting => "監視開始中",
-        MonitoringState.WaitingForGame => "ゲーム待機中",
-        MonitoringState.SelectingTarget => "対象windowを選択中",
-        MonitoringState.Monitoring => "監視中",
-        MonitoringState.Stopping => "停止処理中",
-        MonitoringState.Stopped => "停止済み",
-        MonitoringState.ManuallyStopped => "手動停止済み",
-        MonitoringState.Blocked => "監視開始不可",
-        MonitoringState.ShuttingDown => "終了処理中",
-        MonitoringState.TargetClosed => "対象window終了",
-        MonitoringState.Resized => "対象windowのサイズ変更",
-        MonitoringState.DeviceLost => "GPU device lost",
-        MonitoringState.CaptureFailed => "capture失敗",
-        MonitoringState.WorkflowFailed => "workflow失敗",
+        MonitoringState.Idle => Localization.Get("待機中"),
+        MonitoringState.Starting => Localization.Get("監視開始中"),
+        MonitoringState.WaitingForGame => Localization.Get("ゲーム待機中"),
+        MonitoringState.SelectingTarget => Localization.Get("対象windowを選択中"),
+        MonitoringState.Monitoring => Localization.Get("監視中"),
+        MonitoringState.Stopping => Localization.Get("停止処理中"),
+        MonitoringState.Stopped => Localization.Get("停止済み"),
+        MonitoringState.ManuallyStopped => Localization.Get("手動停止済み"),
+        MonitoringState.Blocked => Localization.Get("監視開始不可"),
+        MonitoringState.ShuttingDown => Localization.Get("終了処理中"),
+        MonitoringState.TargetClosed => Localization.Get("対象window終了"),
+        MonitoringState.Resized => Localization.Get("対象windowのサイズ変更"),
+        MonitoringState.DeviceLost => Localization.Get("GPU device lost"),
+        MonitoringState.CaptureFailed => Localization.Get("capture失敗"),
+        MonitoringState.WorkflowFailed => Localization.Get("workflow失敗"),
         _ => CurrentMonitoringState.ToString(),
     };
 
@@ -1026,18 +1245,18 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public string MonitoringTargetStatus => CurrentMonitoringState switch
     {
-        MonitoringState.Starting => "検出済み・開始中",
-        MonitoringState.WaitingForGame => "待機中",
-        MonitoringState.SelectingTarget => "選択待ち",
-        MonitoringState.Monitoring or MonitoringState.Stopping => "選択済み",
-        MonitoringState.ManuallyStopped => "手動停止",
-        MonitoringState.Blocked => "開始不可",
-        MonitoringState.ShuttingDown => "終了処理中",
-        MonitoringState.TargetClosed => "閉鎖",
-        MonitoringState.Resized => "resize検出",
-        MonitoringState.DeviceLost => "device lost",
-        _ when MonitoringTarget != "未選択" => "停止済み",
-        _ => "未選択",
+        MonitoringState.Starting => Localization.Get("検出済み・開始中"),
+        MonitoringState.WaitingForGame => Localization.Get("待機中"),
+        MonitoringState.SelectingTarget => Localization.Get("選択待ち"),
+        MonitoringState.Monitoring or MonitoringState.Stopping => Localization.Get("選択済み"),
+        MonitoringState.ManuallyStopped => Localization.Get("手動停止"),
+        MonitoringState.Blocked => Localization.Get("開始不可"),
+        MonitoringState.ShuttingDown => Localization.Get("終了処理中"),
+        MonitoringState.TargetClosed => Localization.Get("閉鎖"),
+        MonitoringState.Resized => Localization.Get("resize検出"),
+        MonitoringState.DeviceLost => Localization.Get("device lost"),
+        _ when MonitoringTarget != "未選択" => Localization.Get("停止済み"),
+        _ => Localization.Get("未選択"),
     };
 
     public int MonitoringFrameCount
@@ -1088,7 +1307,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public string MonitoringReason
     {
         get => monitoringReason;
-        private set => SetProperty(ref monitoringReason, value);
+        private set => SetProperty(ref monitoringReason, Localization.Get(value));
     }
 
     public MonitoringResultSummary MonitoringResults
@@ -1256,15 +1475,16 @@ public sealed class MainViewModel : INotifyPropertyChanged
         try
         {
             ApplyUserSettings(userSettingsStore.Load());
-            SettingsStatusMessage = "変更内容は保存時に反映されます";
+            SettingsStatusMessage = Localization.Get("変更内容は保存時に反映されます");
         }
         catch (Exception exception) when (
             exception is IOException or UnauthorizedAccessException or JsonException or
             ArgumentException or InvalidOperationException)
         {
             ApplyUserSettings(null);
-            SettingsStatusMessage =
-                $"保存済み設定を読み込めなかったため、初期値を使用しています。{exception.Message}";
+            SettingsStatusMessage = Localization.Format(
+                "保存済み設定を読み込めなかったため、初期値を使用しています。{0}",
+                exception.Message);
         }
     }
 
@@ -1274,10 +1494,11 @@ public sealed class MainViewModel : INotifyPropertyChanged
             StartMonitoringOnLaunch,
             NotifyUnresolvedResults,
             DefaultPlayStyle,
-            StartupPage);
+            StartupPage,
+            Language);
         if (!settings.IsValid)
         {
-            SettingsStatusMessage = "設定値を確認してから保存してください。";
+            SettingsStatusMessage = Localization.Get("設定値を確認してから保存してください。");
             return false;
         }
 
@@ -1285,16 +1506,33 @@ public sealed class MainViewModel : INotifyPropertyChanged
         {
             userSettingsStore.Save(settings);
             ApplyUserSettings(settings);
-            SettingsStatusMessage = "設定を保存しました。";
+            SettingsStatusMessage = string.Equals(
+                appliedLanguage,
+                Localization.CurrentLanguage,
+                StringComparison.Ordinal)
+                ? Localization.Get("設定を保存しました。")
+                : Localization.Get("設定を保存しました。言語変更を反映するためアプリを自動的に再起動します。");
             return true;
         }
         catch (Exception exception) when (
             exception is IOException or UnauthorizedAccessException or
             ArgumentException or InvalidOperationException)
         {
-            SettingsStatusMessage = $"設定を保存できませんでした。{exception.Message}";
+            SettingsStatusMessage = Localization.Format(
+                "設定を保存できませんでした。{0}",
+                exception.Message);
             return false;
         }
+    }
+
+    internal void SetLanguageChangeRestartFailureStatus(string? detail = null)
+    {
+        var reason = string.IsNullOrWhiteSpace(detail)
+            ? Localization.Get("アプリを手動で再起動してください。")
+            : detail;
+        SettingsStatusMessage = Localization.Format(
+            "設定を保存しましたが、自動再起動に失敗しました。{0}",
+            reason);
     }
 
     internal void ResetUserSettings()
@@ -1303,7 +1541,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         NotifyUnresolvedResults = UserSettings.Defaults.NotifyUnresolvedResults;
         DefaultPlayStyle = UserSettings.Defaults.DefaultPlayStyle;
         StartupPage = UserSettings.Defaults.StartupPage;
-        SettingsStatusMessage = "初期値に戻しました。保存すると反映されます。";
+        Language = UserSettings.Defaults.Language;
+        SettingsStatusMessage = Localization.Get("初期値に戻しました。保存すると反映されます。");
     }
 
     private void ApplyUserSettings(UserSettings? settings)
@@ -1313,10 +1552,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
         appliedNotifyUnresolvedResults = effective.NotifyUnresolvedResults;
         appliedDefaultPlayStyle = effective.DefaultPlayStyle;
         appliedStartupPage = effective.StartupPage;
+        appliedLanguage = effective.Language;
         StartMonitoringOnLaunch = effective.StartMonitoringOnLaunch;
         NotifyUnresolvedResults = effective.NotifyUnresolvedResults;
         DefaultPlayStyle = effective.DefaultPlayStyle;
         StartupPage = effective.StartupPage;
+        Language = effective.Language;
         BestPlayStyleFilter = appliedDefaultPlayStyle;
         OnPropertyChanged(nameof(IsAutomaticMonitoringEnabled));
 
@@ -2771,7 +3012,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
             if (result.Status == "workflow_failed")
             {
                 SaveStatusTitle = result.SavedPlayIds.Count > 0
-                    ? $"{result.SavedPlayIds.Count}件を保存し、一部の保存処理に失敗しました"
+                    ? Localization.Format(
+                        "{0}件を保存し、一部の保存処理に失敗しました",
+                        result.SavedPlayIds.Count)
                     : "保存workflowに失敗しました";
                 var reasons = result.Reasons.Count == 0
                     ? "失敗理由を取得できませんでした。"
@@ -2782,7 +3025,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
             else
             {
                 SaveStatusTitle = result.SavedPlayIds.Count > 0
-                    ? $"{result.SavedPlayIds.Count}件のプレーを保存しました"
+                    ? Localization.Format(
+                        "{0}件のプレーを保存しました",
+                        result.SavedPlayIds.Count)
                     : "保存できるプレーはありませんでした";
                 SaveStatusMessage = CaptureSaveStatusMessage(result);
                 RecordWorkflowResult(result, workflowFailed: false);
@@ -3002,7 +3247,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
             string.IsNullOrWhiteSpace(reason) ? "—" : reason);
         OnPropertyChanged(nameof(MonitoringResultsDisplay));
         SaveStatusTitle = result.SavedPlayIds.Count > 0
-            ? $"{result.SavedPlayIds.Count}件のプレーを保存しました"
+            ? Localization.Format(
+                "{0}件のプレーを保存しました",
+                result.SavedPlayIds.Count)
             : result.Status == "workflow_failed"
                 ? "保存workflowに失敗しました"
                 : result.Status == "completed"
@@ -3491,12 +3738,18 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public void SetChartDetailGraphMode(string mode)
     {
-        if (mode is not (ChartDetailAllPlaysMode or ChartDetailBestProgressionMode))
+        var normalized = mode switch
+        {
+            "全プレー" => ChartDetailAllPlaysMode,
+            "自己ベスト推移" => ChartDetailBestProgressionMode,
+            _ => mode,
+        };
+        if (normalized is not (ChartDetailAllPlaysMode or ChartDetailBestProgressionMode))
         {
             return;
         }
 
-        if (!SetProperty(ref chartDetailGraphMode, mode, nameof(ChartDetailGraphMode)))
+        if (!SetProperty(ref chartDetailGraphMode, normalized, nameof(ChartDetailGraphMode)))
         {
             return;
         }
@@ -3662,7 +3915,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     private void UpdateBestVersionOptions()
     {
-        var options = allChartBests
+        var versions = allChartBests
             .Where(item => item.PlayStyle == BestPlayStyleFilter)
             .Select(item => item.Version)
             .Where(version => !string.IsNullOrWhiteSpace(version))
@@ -3671,12 +3924,19 @@ public sealed class MainViewModel : INotifyPropertyChanged
             .OrderBy(GetBestVersionOrder)
             .ThenBy(version => version, StringComparer.CurrentCultureIgnoreCase)
             .ToList();
-        options.Insert(0, AllBestFilterValue);
+        var options = versions
+            .Select(version => new LocalizedOption(version, version))
+            .ToList();
+        options.Insert(0, Localization.Option(AllBestFilterValue, "すべて"));
         BestVersionOptions = options;
-        if (!options.Contains(bestVersionFilter, StringComparer.CurrentCultureIgnoreCase))
+        if (!options.Any(option => string.Equals(
+                option.Code,
+                bestVersionFilter,
+                StringComparison.CurrentCultureIgnoreCase)))
         {
             bestVersionFilter = AllBestFilterValue;
             OnPropertyChanged(nameof(BestVersionFilter));
+            OnPropertyChanged(nameof(SelectedBestVersionOption));
         }
     }
 
@@ -3687,8 +3947,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             item.PlayStyle == BestPlayStyleFilter &&
             (BestDifficultyFilter == AllBestFilterValue ||
              item.Difficulty == BestDifficultyFilter) &&
-            (BestLevelFilter == AllBestFilterValue ||
-             item.LevelDisplay == BestLevelFilter) &&
+            MatchesLevel(item, BestLevelFilter) &&
             (songQuery.Length == 0 ||
              item.SongTitle.Contains(songQuery, StringComparison.CurrentCultureIgnoreCase)) &&
             (BestVersionFilter == AllBestFilterValue ||
@@ -3731,16 +3990,32 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     private static bool MatchesPlayStatus(ChartBestItem item, string filter) => filter switch
     {
-        "プレー済み" => item.IsPlayed,
-        "未プレー" => !item.IsPlayed,
+        PlayedFilterValue => item.IsPlayed,
+        UnplayedFilterValue => !item.IsPlayed,
         _ => true,
     };
 
+    private static bool MatchesLevel(ChartBestItem item, string filter)
+    {
+        if (filter == AllBestFilterValue)
+        {
+            return true;
+        }
+
+        return filter.StartsWith("level_", StringComparison.Ordinal) &&
+            int.TryParse(
+                filter[6..],
+                NumberStyles.Integer,
+                CultureInfo.InvariantCulture,
+                out var level) &&
+            item.Level == level;
+    }
+
     private static bool MatchesRank(ChartBestItem item, string filter) => filter switch
     {
-        "AAA以上" => item.Rank == "AAA",
+        AaaOrHigherFilterValue => item.Rank == "AAA",
         "AA" => item.Rank is "AA+" or "AA" or "AA-",
-        "A以下" => item.Rank is "A+" or "A" or "A-" or
+        AOrLowerFilterValue => item.Rank is "A+" or "A" or "A-" or
             "B+" or "B" or "B-" or "C+" or "C" or "C-" or "D+" or "D" or "E",
         _ => true,
     };
@@ -3751,9 +4026,28 @@ public sealed class MainViewModel : INotifyPropertyChanged
         "GFC" => item.ClearDisplay == "GFC",
         "FC" => item.ClearDisplay == "FC",
         "CLEAR" => item.ClearDisplay == "CLEAR",
-        "未CLEAR" => item.ClearDisplay is "—" or "FAILED",
+        NotClearFilterValue => item.ClearDisplay is "—" or "FAILED",
         _ => true,
     };
+
+    private static string NormalizeAllFilterValue(string? value) =>
+        value is "すべて" or null or "" ? AllBestFilterValue : value;
+
+    private static string NormalizeLevelFilter(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value) || value == "すべて")
+        {
+            return AllBestFilterValue;
+        }
+
+        if (value.StartsWith("Lv.", StringComparison.OrdinalIgnoreCase) &&
+            int.TryParse(value[3..], NumberStyles.Integer, CultureInfo.InvariantCulture, out var level))
+        {
+            return $"level_{level}";
+        }
+
+        return value;
+    }
 
     private static string GetBestVersionLabel(string version)
     {
@@ -3816,31 +4110,50 @@ public sealed class MainViewModel : INotifyPropertyChanged
         var chips = new List<string>();
         if (BestDifficultyFilter != AllBestFilterValue)
         {
-            chips.Add($"難易度: {BestDifficultyFilter}");
+            chips.Add(Localization.Format("難易度: {0}", BestDifficultyFilter));
         }
         if (BestLevelFilter != AllBestFilterValue)
         {
-            chips.Add($"レベル: {BestLevelFilter}");
+            chips.Add(Localization.Format(
+                "レベル: {0}",
+                BestLevelFilter.StartsWith("level_", StringComparison.Ordinal)
+                    ? $"Lv.{BestLevelFilter[6..]}"
+                    : BestLevelFilter));
         }
         if (!string.IsNullOrWhiteSpace(BestSongQuery))
         {
-            chips.Add($"曲名: {BestSongQuery.Trim()}");
+            chips.Add(Localization.Format("曲名: {0}", BestSongQuery.Trim()));
         }
         if (BestVersionFilter != AllBestFilterValue)
         {
-            chips.Add($"バージョン: {BestVersionFilter}");
+            chips.Add(Localization.Format("バージョン: {0}", BestVersionFilter));
         }
         if (BestPlayStatusFilter != AllBestFilterValue)
         {
-            chips.Add($"プレー状況: {BestPlayStatusFilter}");
+            chips.Add(Localization.Format(
+                "プレー状況: {0}",
+                BestPlayStatusFilter == PlayedFilterValue
+                    ? Localization.Get("プレー済み")
+                    : Localization.Get("未プレー")));
         }
         if (BestRankFilter != AllBestFilterValue)
         {
-            chips.Add($"ランク: {BestRankFilter}");
+            chips.Add(Localization.Format(
+                "ランク: {0}",
+                BestRankFilter switch
+                {
+                    AaaOrHigherFilterValue => Localization.Get("AAA以上"),
+                    AOrLowerFilterValue => Localization.Get("A以下"),
+                    _ => BestRankFilter,
+                }));
         }
         if (BestClearFilter != AllBestFilterValue)
         {
-            chips.Add($"CLEAR: {BestClearFilter}");
+            chips.Add(Localization.Format(
+                "CLEAR: {0}",
+                BestClearFilter == NotClearFilterValue
+                    ? Localization.Get("未CLEAR")
+                    : BestClearFilter));
         }
 
         Replace(BestActiveFilterChips, chips);
@@ -4284,6 +4597,14 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     private static string FormatMonitoringTime(DateTimeOffset? value) =>
         value is null ? "—" : value.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss");
+
+    private static LocalizedOption? FindOption(
+        IReadOnlyList<LocalizedOption> options,
+        string code) =>
+        options.FirstOrDefault(option => string.Equals(
+            option.Code,
+            code,
+            StringComparison.Ordinal));
 
     private sealed class CallbackProgress<T>(
         Action<T> callback,

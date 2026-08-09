@@ -1,4 +1,5 @@
 using DDRGpScoreViewer.Models;
+using DDRGpScoreViewer;
 using Drawing = System.Drawing;
 using Forms = System.Windows.Forms;
 
@@ -31,10 +32,10 @@ public sealed class WindowsTrayIconService : ITrayIconService
 
     public WindowsTrayIconService()
     {
-        startItem = new Forms.ToolStripMenuItem("監視開始");
-        stopItem = new Forms.ToolStripMenuItem("監視停止");
-        var showItem = new Forms.ToolStripMenuItem("GP Score Logを開く");
-        var exitItem = new Forms.ToolStripMenuItem("終了");
+        startItem = new Forms.ToolStripMenuItem(Localization.Get("監視開始"));
+        stopItem = new Forms.ToolStripMenuItem(Localization.Get("監視停止"));
+        var showItem = new Forms.ToolStripMenuItem(Localization.Get("GP Score Logを開く"));
+        var exitItem = new Forms.ToolStripMenuItem(Localization.Get("終了"));
         startItem.Click += (_, _) => StartRequested?.Invoke(this, EventArgs.Empty);
         stopItem.Click += (_, _) => StopRequested?.Invoke(this, EventArgs.Empty);
         showItem.Click += (_, _) => ShowRequested?.Invoke(this, EventArgs.Empty);
@@ -46,12 +47,14 @@ public sealed class WindowsTrayIconService : ITrayIconService
         notifyIcon = new Forms.NotifyIcon
         {
             Icon = Drawing.SystemIcons.Application,
-            Text = "GP Score Log — 待機中",
+            Text = Localization.Get("GP Score Log — 待機中"),
             ContextMenuStrip = contextMenu,
             Visible = true,
         };
         notifyIcon.DoubleClick += (_, _) => ShowRequested?.Invoke(this, EventArgs.Empty);
-        UpdateMenu(TrayMenuState.FromMonitoringState(MonitoringState.Idle), "待機中");
+        UpdateMenu(
+            TrayMenuState.FromMonitoringState(MonitoringState.Idle),
+            Localization.Get("待機中"));
     }
 
     public event EventHandler? StartRequested;
@@ -63,7 +66,7 @@ public sealed class WindowsTrayIconService : ITrayIconService
     {
         startItem.Enabled = state.CanStart;
         stopItem.Enabled = state.CanStop;
-        var text = $"GP Score Log — {statusText}";
+        var text = $"GP Score Log — {Localization.Get(statusText)}";
         notifyIcon.Text = text.Length <= 63 ? text : text[..63];
     }
 
@@ -203,8 +206,8 @@ public sealed class ApplicationLifecycleCoordinator : IDisposable
         if (state == MonitoringState.Stopped && results.Saved > 0)
         {
             trayIcon.ShowNotification(
-                "保存が完了しました",
-                $"{results.Saved}件のプレーを正式DBへ保存しました。",
+                Localization.Get("保存が完了しました"),
+                Localization.Format("{0}件のプレーを正式DBへ保存しました。", results.Saved),
                 TrayNotificationKind.Information);
         }
         else if (state is MonitoringState.TargetClosed or MonitoringState.Resized or
@@ -212,8 +215,8 @@ public sealed class ApplicationLifecycleCoordinator : IDisposable
                  MonitoringState.WorkflowFailed)
         {
             trayIcon.ShowNotification(
-                "監視を停止しました",
-                reason,
+                Localization.Get("監視を停止しました"),
+                Localization.Get(reason),
                 TrayNotificationKind.Error);
         }
     }
@@ -238,8 +241,8 @@ public sealed class ApplicationLifecycleCoordinator : IDisposable
         }
 
         trayIcon.ShowNotification(
-            "自動保存できないプレーが発生しました",
-            notification.Message,
+            Localization.Get("自動保存できないプレーが発生しました"),
+            Localization.Get(notification.Message),
             TrayNotificationKind.Information);
     }
 
@@ -293,8 +296,10 @@ public sealed class ApplicationLifecycleCoordinator : IDisposable
         catch (Exception exception)
         {
             trayIcon.ShowNotification(
-                "監視停止に失敗しました",
-                $"resource解放を完了できませんでした。processを終了します。{exception.Message}",
+                Localization.Get("監視停止に失敗しました"),
+                Localization.Format(
+                    "resource解放を完了できませんでした。processを終了します。{0}",
+                    exception.Message),
                 TrayNotificationKind.Error);
         }
         finally
@@ -321,7 +326,10 @@ public sealed class ApplicationLifecycleCoordinator : IDisposable
         }
         catch (Exception exception)
         {
-            trayIcon.ShowNotification(failureTitle, exception.Message, TrayNotificationKind.Error);
+            trayIcon.ShowNotification(
+                Localization.Get(failureTitle),
+                Localization.Get(exception.Message),
+                TrayNotificationKind.Error);
         }
     }
 }

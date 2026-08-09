@@ -129,6 +129,12 @@ windowの×ボタンはwindowをtrayへ格納し、最小化ボタンは通常�
 - `target_closed`、`resized`、`device_lost`、`capture_failed`、`workflow_failed` は監視状態として残ります。window終了やresizeではsessionを安全に終了し、対象windowが一度消失してから再出現した場合だけ自動復帰します。DBまたはruntime異常は`blocked`として自動開始を抑止し、必要なmaster DBを現在の環境の固定pathへ用意してから再起動してください。手動停止後は同一app session中に自動復帰せず、明示的な`監視開始`だけを受け付けます。再実行時も対象windowを1件だけ自動特定し、古いsessionを再利用しません。Debug buildの `連続取得を開始` はcapture-onlyの開発者向け入口として手動pickerで対象windowを選び直します。
 - saved、duplicate、excluded、unresolved、解析失敗、DB拒否、workflow失敗はprocess内の表示と既存workflowのartifact/logで追跡します。再起動時に保存されるのはtransaction完了した正式playだけで、過去のskip・拒否・失敗statusをsavedへ昇格するcheckpointはありません。
 
+### 表示言語
+
+設定画面の「言語」では、日本語（`ja`）、英語（`en`）、韓国語（`ko`）を選択できます。変更は「変更を保存」を押した後、アプリを再起動すると反映されます。`user-settings.json` の既存設定に言語項目がない場合は日本語、対応外の保存値は英語として扱います。
+
+新しい環境ではOSの表示言語が日本語（`ja*`）なら日本語、韓国語（`ko*`）なら韓国語、それ以外は英語を初期値にします。翻訳が用意されていない表示文は日本語を基底言語として表示します。起動時画面の保存値は `home` / `best` / `history` を使用し、旧形式の「ホーム」／「自己ベスト」／「直近プレー履歴」も読み込めます。
+
 ## M10-2 既定保存先と責務境界
 
 実行環境は、Debugで`DDRGP_SCORE_VIEWER_DEVELOPMENT_ROOT`を明示した場合、またはDebugのcurrent directory／Debug出力directoryから親方向にsource checkout（`databases/`とScore Viewer project）が検出できた場合だけdevelopmentです。Releaseは常にproduction固定pathを使用し、repository rootやapp配置場所の親を探索しません。developmentとproductionのpathを相互にfallbackしません。

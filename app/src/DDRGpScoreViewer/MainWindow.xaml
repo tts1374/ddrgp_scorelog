@@ -675,7 +675,8 @@
                                                    FontSize="11" FontWeight="SemiBold"
                                                    VerticalAlignment="Center" Margin="0,0,6,0" />
                                         <ComboBox ItemsSource="{Binding BestDifficultyOptions}"
-                                                  SelectedItem="{Binding BestDifficultyFilter, UpdateSourceTrigger=PropertyChanged}"
+                                                  DisplayMemberPath="Display"
+                                                  SelectedItem="{Binding SelectedBestDifficultyOption, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                                   MinWidth="110" MinHeight="30" Padding="8,3"
                                                   Background="White" BorderBrush="{StaticResource BorderStrongBrush}" />
                                     </StackPanel>
@@ -685,7 +686,8 @@
                                                    FontSize="11" FontWeight="SemiBold"
                                                    VerticalAlignment="Center" Margin="0,0,6,0" />
                                         <ComboBox ItemsSource="{Binding BestLevelOptions}"
-                                                  SelectedItem="{Binding BestLevelFilter, UpdateSourceTrigger=PropertyChanged}"
+                                                  DisplayMemberPath="Display"
+                                                  SelectedItem="{Binding SelectedBestLevelOption, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                                   MinWidth="86" MinHeight="30" Padding="8,3"
                                                   Background="White" BorderBrush="{StaticResource BorderStrongBrush}" />
                                     </StackPanel>
@@ -705,7 +707,8 @@
                                                    FontSize="11" FontWeight="SemiBold"
                                                    VerticalAlignment="Center" Margin="0,0,6,0" />
                                         <ComboBox ItemsSource="{Binding BestSortOptions}"
-                                                  SelectedItem="{Binding BestSortFilter, UpdateSourceTrigger=PropertyChanged}"
+                                                  DisplayMemberPath="Display"
+                                                  SelectedItem="{Binding SelectedBestSortOption, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                                   MinWidth="150" MinHeight="30" Padding="8,3"
                                                   Background="White" BorderBrush="{StaticResource BorderStrongBrush}" />
                                     </StackPanel>
@@ -730,7 +733,8 @@
                                                            FontSize="11" FontWeight="SemiBold"
                                                            VerticalAlignment="Center" Margin="0,0,6,0" />
                                                 <ComboBox ItemsSource="{Binding BestVersionOptions}"
-                                                          SelectedItem="{Binding BestVersionFilter, UpdateSourceTrigger=PropertyChanged}"
+                                                          DisplayMemberPath="Display"
+                                                          SelectedItem="{Binding SelectedBestVersionOption, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                                           MinWidth="150" MinHeight="30" Padding="8,3"
                                                           Background="White" BorderBrush="{StaticResource BorderStrongBrush}" />
                                             </StackPanel>
@@ -740,7 +744,8 @@
                                                            FontSize="11" FontWeight="SemiBold"
                                                            VerticalAlignment="Center" Margin="0,0,6,0" />
                                                 <ComboBox ItemsSource="{Binding BestPlayStatusOptions}"
-                                                          SelectedItem="{Binding BestPlayStatusFilter, UpdateSourceTrigger=PropertyChanged}"
+                                                          DisplayMemberPath="Display"
+                                                          SelectedItem="{Binding SelectedBestPlayStatusOption, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                                           MinWidth="110" MinHeight="30" Padding="8,3"
                                                           Background="White" BorderBrush="{StaticResource BorderStrongBrush}" />
                                             </StackPanel>
@@ -750,7 +755,8 @@
                                                            FontSize="11" FontWeight="SemiBold"
                                                            VerticalAlignment="Center" Margin="0,0,6,0" />
                                                 <ComboBox ItemsSource="{Binding BestRankOptions}"
-                                                          SelectedItem="{Binding BestRankFilter, UpdateSourceTrigger=PropertyChanged}"
+                                                          DisplayMemberPath="Display"
+                                                          SelectedItem="{Binding SelectedBestRankOption, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                                           MinWidth="100" MinHeight="30" Padding="8,3"
                                                           Background="White" BorderBrush="{StaticResource BorderStrongBrush}" />
                                             </StackPanel>
@@ -760,7 +766,8 @@
                                                            FontSize="11" FontWeight="SemiBold"
                                                            VerticalAlignment="Center" Margin="0,0,6,0" />
                                                 <ComboBox ItemsSource="{Binding BestClearOptions}"
-                                                          SelectedItem="{Binding BestClearFilter, UpdateSourceTrigger=PropertyChanged}"
+                                                          DisplayMemberPath="Display"
+                                                          SelectedItem="{Binding SelectedBestClearOption, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                                           MinWidth="100" MinHeight="30" Padding="8,3"
                                                           Background="White" BorderBrush="{StaticResource BorderStrongBrush}" />
                                             </StackPanel>
@@ -1475,8 +1482,24 @@
                                                    VerticalAlignment="Center" FontSize="12" />
                                         <ComboBox Grid.Column="1" Width="180" HorizontalAlignment="Left"
                                                   ItemsSource="{Binding StartupPageOptions}"
-                                                  SelectedItem="{Binding StartupPage, Mode=TwoWay}" />
+                                                  DisplayMemberPath="Display"
+                                                  SelectedItem="{Binding SelectedStartupPageOption, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                     </Grid>
+                                    <Grid Margin="0,10,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="220" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="言語" VerticalAlignment="Center" FontSize="12" />
+                                        <ComboBox Grid.Column="1" Width="180" HorizontalAlignment="Left"
+                                                  ItemsSource="{Binding LanguageOptions}"
+                                                  DisplayMemberPath="Display"
+                                                  SelectedItem="{Binding SelectedLanguageOption, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                    </Grid>
+                                    <TextBlock Text="言語の変更を保存するとアプリが自動的に再起動します"
+                                               Foreground="{StaticResource TextSecondaryBrush}"
+                                               FontSize="11" Margin="220,8,0,0"
+                                               TextWrapping="Wrap" />
                                 </StackPanel>
                             </Border>
 

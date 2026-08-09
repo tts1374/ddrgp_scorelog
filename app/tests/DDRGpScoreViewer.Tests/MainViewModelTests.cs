@@ -129,7 +129,7 @@ public sealed class MainViewModelTests
         Assert.Contains("2026/07/12", viewModel.ChartDetailExScoreBestAtDisplay);
 
         viewModel.SetChartDetailGraphMode("自己ベスト推移");
-        Assert.Equal("自己ベスト推移", viewModel.ChartDetailGraphMode);
+        Assert.Equal(MainViewModel.ChartDetailBestProgressionMode, viewModel.ChartDetailGraphMode);
         Assert.Equal(
             ["first", "score-best"],
             viewModel.ChartDetailGraphPlays.Select(play => play.Play.PlayId));
@@ -190,7 +190,7 @@ public sealed class MainViewModelTests
         viewModel.SelectChartBest(selected);
 
         Assert.Equal("EXPERT", viewModel.BestDifficultyFilter);
-        Assert.Equal("曲名（昇順）", viewModel.BestSortFilter);
+        Assert.Equal(MainViewModel.BestSortTitleAscending, viewModel.BestSortFilter);
         Assert.Equal(displayedCount, viewModel.ChartBestDisplayedCount);
         Assert.Equal(displayedCount, viewModel.ChartBests.Count);
         Assert.Equal(selected.ChartId, viewModel.SelectedChartBest?.ChartId);
@@ -573,7 +573,45 @@ public sealed class MainViewModelTests
         viewModel.ResetBestFilters();
         Assert.Equal("SINGLE", viewModel.BestPlayStyleFilter);
         Assert.Equal(50, viewModel.ChartBests.Count);
-        Assert.Equal("スコア（高い順）", viewModel.BestSortFilter);
+        Assert.Equal(MainViewModel.BestSortScoreDescending, viewModel.BestSortFilter);
+    }
+
+    [Fact]
+    public void Dropdown_selection_items_update_codes_and_follow_external_changes()
+    {
+        var viewModel = new MainViewModel(new ScoreViewerRepository());
+
+        viewModel.SelectedBestDifficultyOption = viewModel.BestDifficultyOptions
+            .Single(option => option.Code == "EXPERT");
+        viewModel.SelectedBestLevelOption = viewModel.BestLevelOptions
+            .Single(option => option.Code == "level_17");
+        viewModel.SelectedBestSortOption = viewModel.BestSortOptions
+            .Single(option => option.Code == MainViewModel.BestSortTitleAscending);
+        viewModel.SelectedBestPlayStatusOption = viewModel.BestPlayStatusOptions
+            .Single(option => option.Code == "played");
+        viewModel.SelectedBestRankOption = viewModel.BestRankOptions
+            .Single(option => option.Code == "aaa_or_higher");
+        viewModel.SelectedBestClearOption = viewModel.BestClearOptions
+            .Single(option => option.Code == "not_clear");
+        viewModel.SelectedStartupPageOption = viewModel.StartupPageOptions
+            .Single(option => option.Code == UserSettings.HistoryStartupPage);
+        viewModel.SelectedLanguageOption = viewModel.LanguageOptions
+            .Single(option => option.Code == UserSettings.KoreanLanguage);
+
+        Assert.Equal("EXPERT", viewModel.BestDifficultyFilter);
+        Assert.Equal("level_17", viewModel.BestLevelFilter);
+        Assert.Equal(MainViewModel.BestSortTitleAscending, viewModel.BestSortFilter);
+        Assert.Equal("played", viewModel.BestPlayStatusFilter);
+        Assert.Equal("aaa_or_higher", viewModel.BestRankFilter);
+        Assert.Equal("not_clear", viewModel.BestClearFilter);
+        Assert.Equal(UserSettings.HistoryStartupPage, viewModel.StartupPage);
+        Assert.Equal(UserSettings.KoreanLanguage, viewModel.Language);
+
+        viewModel.StartupPage = UserSettings.BestStartupPage;
+        viewModel.Language = UserSettings.EnglishLanguage;
+
+        Assert.Equal(UserSettings.BestStartupPage, viewModel.SelectedStartupPageOption?.Code);
+        Assert.Equal(UserSettings.EnglishLanguage, viewModel.SelectedLanguageOption?.Code);
     }
 
     [Fact]
@@ -598,17 +636,23 @@ public sealed class MainViewModelTests
         var viewModel = new MainViewModel(new ScoreViewerRepository());
         viewModel.Load(fixture.ScorePath, fixture.MasterPath, persist: false);
 
-        Assert.DoesNotContain("DDR A20", viewModel.BestVersionOptions);
+        Assert.DoesNotContain(
+            "DDR A20",
+            viewModel.BestVersionOptions.Select(option => option.Code));
 
         viewModel.BestVersionFilter = "DDR GRAND PRIX";
         viewModel.BestPlayStyleFilter = "DOUBLE";
-        Assert.Contains("DDR A20", viewModel.BestVersionOptions);
-        Assert.Equal("すべて", viewModel.BestVersionFilter);
+        Assert.Contains(
+            "DDR A20",
+            viewModel.BestVersionOptions.Select(option => option.Code));
+        Assert.Equal(MainViewModel.AllBestFilterValue, viewModel.BestVersionFilter);
 
         viewModel.BestVersionFilter = "DDR A20";
         viewModel.BestPlayStyleFilter = "SINGLE";
-        Assert.DoesNotContain("DDR A20", viewModel.BestVersionOptions);
-        Assert.Equal("すべて", viewModel.BestVersionFilter);
+        Assert.DoesNotContain(
+            "DDR A20",
+            viewModel.BestVersionOptions.Select(option => option.Code));
+        Assert.Equal(MainViewModel.AllBestFilterValue, viewModel.BestVersionFilter);
     }
 
     [Fact]
@@ -659,7 +703,7 @@ public sealed class MainViewModelTests
                 "SuperNOVA", "EXTREME", "DDRMAX2", "DDRMAX", "5thMIX", "4thMIX", "3rdMIX",
                 "2ndMIX", "1st",
             ],
-            viewModel.BestVersionOptions.Skip(1));
+            viewModel.BestVersionOptions.Skip(1).Select(option => option.Code));
 
         viewModel.BestVersionFilter = "DDR GRAND PRIX";
         Assert.Contains(viewModel.ChartBests, item => item.SongTitle == "VERSION SONG 00");

@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using DDRGpScoreViewer;
 using Microsoft.Data.Sqlite;
 
 namespace DDRGpScoreViewer.Data;
@@ -72,14 +73,18 @@ public sealed class PersonalScoreDataBackupService : IPersonalScoreDataBackupSer
 
             return new(
                 true,
-                $"個人スコアデータのバックアップを作成しました。保存済みプレー: {plays.Count:N0}件。",
+                Localization.Format(
+                    "個人スコアデータのバックアップを作成しました。保存済みプレー: {0:N0}件。",
+                    plays.Count),
                 plays.Count);
         }
         catch (Exception exception) when (IsExpectedFailure(exception))
         {
             return new(
                 false,
-                $"バックアップを作成できませんでした。現在のデータは変更していません。{ToUserMessage(exception)}",
+                Localization.Format(
+                    "バックアップを作成できませんでした。現在のデータは変更していません。{0}",
+                    ToUserMessage(exception)),
                 0);
         }
     }
@@ -116,14 +121,18 @@ public sealed class PersonalScoreDataBackupService : IPersonalScoreDataBackupSer
             transaction.Commit();
             return new(
                 true,
-                $"個人スコアデータを復元しました。保存済みプレー: {restoredCount:N0}件。",
+                Localization.Format(
+                    "個人スコアデータを復元しました。保存済みプレー: {0:N0}件。",
+                    restoredCount),
                 restoredCount);
         }
         catch (Exception exception) when (IsExpectedFailure(exception))
         {
             return new(
                 false,
-                $"バックアップを復元できませんでした。現在のデータは変更していません。{ToUserMessage(exception)}",
+                Localization.Format(
+                    "バックアップを復元できませんでした。現在のデータは変更していません。{0}",
+                    ToUserMessage(exception)),
                 0);
         }
     }
@@ -388,13 +397,13 @@ public sealed class PersonalScoreDataBackupService : IPersonalScoreDataBackupSer
     private static string ToUserMessage(Exception exception) => exception switch
     {
         JsonException or InvalidDataException =>
-            "対応していない形式または壊れたバックアップです。",
+            Localization.Get("対応していない形式または壊れたバックアップです。"),
         ViewerDatabaseException =>
-            "保存済みデータの形式を確認できませんでした。",
+            Localization.Get("保存済みデータの形式を確認できませんでした。"),
         SqliteException =>
-            "保存済みデータを確認できませんでした。",
+            Localization.Get("保存済みデータを確認できませんでした。"),
         UnauthorizedAccessException =>
-            "ファイルのアクセス権を確認してください。",
+            Localization.Get("ファイルのアクセス権を確認してください。"),
         _ => exception.Message,
     };
 

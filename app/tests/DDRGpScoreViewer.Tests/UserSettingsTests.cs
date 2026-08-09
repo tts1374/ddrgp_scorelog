@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using DDRGpScoreViewer;
 using DDRGpScoreViewer.Data;
 using DDRGpScoreViewer.Models;
 using DDRGpScoreViewer.ViewModels;
@@ -21,7 +22,8 @@ public sealed class UserSettingsTests
                 StartMonitoringOnLaunch: false,
                 NotifyUnresolvedResults: false,
                 DefaultPlayStyle: UserSettings.DoublePlayStyle,
-                StartupPage: UserSettings.HistoryStartupPage);
+                StartupPage: UserSettings.HistoryStartupPage,
+                Language: UserSettings.KoreanLanguage);
             var store = new LocalUserSettingsStore(path);
 
             store.Save(expected);
@@ -39,6 +41,100 @@ public sealed class UserSettingsTests
                 Directory.Delete(directory, recursive: true);
             }
         }
+    }
+
+    [Theory]
+    [InlineData(UserSettings.JapaneseLanguage)]
+    [InlineData(UserSettings.EnglishLanguage)]
+    [InlineData(UserSettings.KoreanLanguage)]
+    public void New_environment_language_follows_the_operating_system_locale(
+        string language)
+    {
+        var locale = language switch
+        {
+            UserSettings.JapaneseLanguage => "ja-JP",
+            UserSettings.KoreanLanguage => "ko-KR",
+            _ => "en-US",
+        };
+
+        Assert.Equal(language, UserSettings.ForNewEnvironment(locale).Language);
+    }
+
+    [Fact]
+    public void Missing_language_and_legacy_startup_page_are_read_as_japanese_and_codes()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), $"ddrgp-user-settings-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        var path = Path.Combine(directory, "user-settings.json");
+        try
+        {
+            File.WriteAllText(
+                path,
+                "{\n" +
+                "  \"StartMonitoringOnLaunch\": true,\n" +
+                "  \"NotifyUnresolvedResults\": true,\n" +
+                "  \"DefaultPlayStyle\": \"SINGLE\",\n" +
+                "  \"StartupPage\": \"自己ベスト\"\n" +
+                "}\n",
+                new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+
+            var loaded = new LocalUserSettingsStore(path).Load();
+
+            Assert.NotNull(loaded);
+            Assert.Equal(UserSettings.JapaneseLanguage, loaded.Language);
+            Assert.Equal(UserSettings.BestStartupPage, loaded.StartupPage);
+        }
+        finally
+        {
+            if (Directory.Exists(directory))
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void Unsupported_saved_language_falls_back_to_english()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), $"ddrgp-user-settings-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        var path = Path.Combine(directory, "user-settings.json");
+        try
+        {
+            File.WriteAllText(
+                path,
+                "{\n" +
+                "  \"StartMonitoringOnLaunch\": true,\n" +
+                "  \"NotifyUnresolvedResults\": true,\n" +
+                "  \"DefaultPlayStyle\": \"SINGLE\",\n" +
+                "  \"StartupPage\": \"home\",\n" +
+                "  \"Language\": \"fr\"\n" +
+                "}\n",
+                new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+
+            var loaded = new LocalUserSettingsStore(path).Load();
+
+            Assert.NotNull(loaded);
+            Assert.Equal(UserSettings.EnglishLanguage, loaded.Language);
+        }
+        finally
+        {
+            if (Directory.Exists(directory))
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void Localization_translates_supported_languages_and_falls_back_to_the_base_text()
+    {
+        Assert.Equal("ホーム", Localization.GetForLanguage("ホーム", UserSettings.JapaneseLanguage));
+        Assert.Equal("Home", Localization.GetForLanguage("ホーム", UserSettings.EnglishLanguage));
+        Assert.Equal("홈", Localization.GetForLanguage("ホーム", UserSettings.KoreanLanguage));
+        Assert.Equal(
+            "未登録の表示文言",
+            Localization.GetForLanguage("未登録の表示文言", UserSettings.EnglishLanguage));
     }
 
     [Fact]
@@ -77,6 +173,7 @@ public sealed class UserSettingsTests
         viewModel.NotifyUnresolvedResults = false;
         viewModel.DefaultPlayStyle = UserSettings.DoublePlayStyle;
         viewModel.StartupPage = UserSettings.BestStartupPage;
+        viewModel.Language = UserSettings.EnglishLanguage;
 
         Assert.True(viewModel.SaveUserSettings());
         Assert.Equal(scoreHashBefore, SHA256.HashData(File.ReadAllBytes(fixture.ScorePath)));
@@ -91,6 +188,7 @@ public sealed class UserSettingsTests
         Assert.False(restartedViewModel.NotifyUnresolvedResults);
         Assert.Equal(UserSettings.DoublePlayStyle, restartedViewModel.DefaultPlayStyle);
         Assert.Equal(UserSettings.BestStartupPage, restartedViewModel.StartupPage);
+        Assert.Equal(UserSettings.EnglishLanguage, restartedViewModel.Language);
         Assert.False(restartedViewModel.IsAutomaticMonitoringEnabled);
     }
 

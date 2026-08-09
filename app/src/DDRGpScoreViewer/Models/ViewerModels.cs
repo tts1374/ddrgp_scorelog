@@ -1,4 +1,5 @@
 using System.Globalization;
+using DDRGpScoreViewer;
 
 namespace DDRGpScoreViewer.Models;
 
@@ -92,15 +93,15 @@ public sealed record PlayHistoryItem(
         new("MAX COMBO", MaxCombo),
     ];
     public string MasterReferenceStatus => MasterReferenceMissing
-        ? $"参照情報なし（song_id: {SongId} / chart_id: {ChartId}）"
-        : "参照済み";
+        ? Localization.Format("参照情報なし（song_id: {0} / chart_id: {1}）", SongId, ChartId)
+        : Localization.Get("参照済み");
     public string SourceKindDisplay => SourceKind switch
     {
-        "manifest" => "読み込みデータ",
-        "timestamped" => "時刻付き入力",
-        "capture" => "自動記録",
-        "manual" => "手動入力",
-        _ => "取得元不明",
+        "manifest" => Localization.Get("読み込みデータ"),
+        "timestamped" => Localization.Get("時刻付き入力"),
+        "capture" => Localization.Get("自動記録"),
+        "manual" => Localization.Get("手動入力"),
+        _ => Localization.Get("取得元不明"),
     };
 
     private static string FormatTimestamp(string value) =>
@@ -161,7 +162,7 @@ public sealed record ChartBestItem(
         ? "—"
         : FlareRank;
     public string VersionDisplay => string.IsNullOrWhiteSpace(Version) ? "—" : Version;
-    public string PlayCountDisplay => $"{PlayCount:N0} 回";
+    public string PlayCountDisplay => Localization.Format("{0} 回", PlayCount);
     public string RankBadgeGroup => Rank switch
     {
         "AAA" or "AA+" or "AA" or "AA-" or "A+" or "A" or "A-" => "Upper",
