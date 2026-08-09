@@ -116,6 +116,10 @@ internal sealed class AppOwnedVisualIdentityEvidenceProducer
             var bitmap = DecodeFrame(frame.PngBytes);
             var image = AppOwnedImageBuffer.From(bitmap);
             var context = RecognizeChartContext(bitmap, image);
+            observation = observation with
+            {
+                LevelRecognition = context.LevelRecognition,
+            };
             if (context.FailureReason is not null)
             {
                 return WithReason(observation, context.FailureReason);
@@ -1027,13 +1031,15 @@ internal sealed class AppOwnedVisualIdentityEvidenceProducer
                 out var parsedLevel))
         {
             return ChartContextResult.Failed(
-                $"formal_evidence.level_visual_{level.Status}");
+                $"formal_evidence.level_visual_{level.Status}",
+                level);
         }
 
         if (level.Confidence is null || level.Confidence < 0.98)
         {
             return ChartContextResult.Failed(
-                "formal_evidence.level_visual_confidence_insufficient");
+                "formal_evidence.level_visual_confidence_insufficient",
+                level);
         }
 
         return new ChartContextResult(
@@ -1046,7 +1052,8 @@ internal sealed class AppOwnedVisualIdentityEvidenceProducer
                 difficulty.Confidence ?? 0.0,
                 level.Confidence.Value,
             }.Min(),
-            null);
+            null,
+            level);
     }
 
     private static HueRecognition RecognizeHue(
@@ -1755,10 +1762,13 @@ internal sealed class AppOwnedVisualIdentityEvidenceProducer
         string? Difficulty,
         int? Level,
         double? Confidence,
-        string? FailureReason)
+        string? FailureReason,
+        M7aDigitRecognitionResult? LevelRecognition)
     {
-        public static ChartContextResult Failed(string reason) =>
-            new(null, null, null, null, reason);
+        public static ChartContextResult Failed(
+            string reason,
+            M7aDigitRecognitionResult? levelRecognition = null) =>
+            new(null, null, null, null, reason, levelRecognition);
     }
 
     private sealed record HueRecognition(string? Value, double? Confidence)

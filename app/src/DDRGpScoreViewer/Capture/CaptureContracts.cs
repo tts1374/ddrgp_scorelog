@@ -106,7 +106,8 @@ public sealed record LiveResultObservation(
     IReadOnlyDictionary<string, Runtime.M7aDigitRecognitionResult>? DigitRecognitions = null,
     string DigitRecognitionStatus = "not_evaluated",
     AppOwnedFormalEvidence? FormalEvidence = null,
-    string? ConfirmedEventId = null);
+    string? ConfirmedEventId = null,
+    Runtime.M7aDigitRecognitionResult? LevelRecognition = null);
 
 internal static class ConfirmedResultEventId
 {

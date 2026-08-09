@@ -43,6 +43,12 @@ public sealed class AppOwnedVisualIdentityEvidenceProducerTests
             FormalEvidenceSourceNames.ResultIdentityVisualEvidence,
             enriched.FormalEvidence.Sources["song_id"]);
         Assert.True(enriched.FormalEvidence.Confidences["chart_id"] >= 0.98);
+        Assert.NotNull(enriched.LevelRecognition);
+        Assert.Equal("recognized", enriched.LevelRecognition!.Status);
+        Assert.Equal("17", enriched.LevelRecognition.RecognizedDigits);
+        Assert.Equal("17", enriched.LevelRecognition.BestCandidate);
+        Assert.Equal(0.28, enriched.LevelRecognition.DistanceThreshold);
+        Assert.Equal(0.02, enriched.LevelRecognition.CandidateMarginThreshold);
         Assert.DoesNotContain(
             enriched.FormalEvidence.RecognitionReasons ?? Array.Empty<string>(),
             reason => reason.Contains("ocr", StringComparison.OrdinalIgnoreCase));
@@ -57,6 +63,87 @@ public sealed class AppOwnedVisualIdentityEvidenceProducerTests
         Assert.Equal("completed", saved.Status);
         Assert.Equal(1, saved.StatusCounts["saved"]);
         Assert.Single(saved.SavedPlayIds);
+        Assert.Equal("17", Assert.Single(saved.EventResults!).LevelRecognition!.RecognizedDigits);
+    }
+
+    [Fact]
+    public async Task Ambiguous_level_keeps_diagnostics_and_stays_out_of_formal_db()
+    {
+        using var database = new DatabaseFixture();
+        AddCompatibleJacketReference(database, "song-1");
+        var templateRoot = Path.Combine(
+            Path.GetTempPath(),
+            $"ddrgp-level-ambiguous-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(Path.Combine(templateRoot, "chart_level"));
+        try
+        {
+            var packagedRoot = new AppRuntimeResourceResolver()
+                .ResolveDigitTemplatesDirectory();
+            foreach (var label in Enumerable.Range(0, 10).Select(value => value.ToString()))
+            {
+                File.Copy(
+                    Path.Combine(packagedRoot, "chart_level", $"{label}.pbm"),
+                    Path.Combine(templateRoot, "chart_level", $"{label}.pbm"));
+            }
+            File.Copy(
+                Path.Combine(templateRoot, "chart_level", "0.pbm"),
+                Path.Combine(templateRoot, "chart_level", "1.pbm"),
+                overwrite: true);
+
+            var producer = new AppOwnedVisualIdentityEvidenceProducer(
+                new M7aDigitRecognizer(templateRoot: templateRoot));
+            var enriched = producer.Enrich(
+                BuildFrame(),
+                CreateObservation(),
+                database.MasterPath,
+                database.CatalogPath);
+
+            Assert.NotNull(enriched.LevelRecognition);
+            Assert.Equal("ambiguous", enriched.LevelRecognition!.Status);
+            Assert.True(
+                enriched.LevelRecognition.FailureReason is
+                    "low_margin" or "distance_above_threshold");
+            Assert.True(
+                enriched.LevelRecognition.CandidateMargin <=
+                enriched.LevelRecognition.CandidateMarginThreshold);
+            Assert.Equal(
+                enriched.LevelRecognition.RecognizedDigits,
+                enriched.LevelRecognition.BestCandidate);
+            Assert.NotEmpty(enriched.LevelRecognition.NextBestCandidate);
+            Assert.Contains(
+                "formal_evidence.level_visual_ambiguous",
+                enriched.FormalEvidence!.RecognitionReasons!);
+
+            var result = await new AppOwnedCaptureSaveWorkflowRunner()
+                .RunPreparedCandidateAsync(
+                    frame: BuildFrame(),
+                    observation: enriched,
+                    scoreDatabasePath: database.ScorePath);
+
+            Assert.Equal("completed", result.Status);
+            Assert.Equal(1, result.StatusCounts["unresolved"]);
+            using var connection = new Microsoft.Data.Sqlite.SqliteConnection(
+                new Microsoft.Data.Sqlite.SqliteConnectionStringBuilder
+                {
+                    DataSource = database.ScorePath,
+                    Mode = Microsoft.Data.Sqlite.SqliteOpenMode.ReadOnly,
+                    Pooling = false,
+                }.ToString());
+            connection.Open();
+            using var command = connection.CreateCommand();
+            command.CommandText = "SELECT COUNT(*) FROM plays;";
+            Assert.Equal(0L, command.ExecuteScalar());
+            Assert.Equal(
+                "ambiguous",
+                Assert.Single(result.EventResults!).LevelRecognition!.Status);
+        }
+        finally
+        {
+            if (Directory.Exists(templateRoot))
+            {
+                Directory.Delete(templateRoot, recursive: true);
+            }
+        }
     }
 
     [Fact]

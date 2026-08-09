@@ -18,7 +18,12 @@ public sealed record M7aDigitRecognitionResult(
     double? Confidence,
     int SegmentCount,
     int TemplateCount,
-    string PerDigitDistances)
+    string PerDigitDistances,
+    string BestCandidate = "",
+    string NextBestCandidate = "",
+    double? CandidateMargin = null,
+    double DistanceThreshold = 0.0,
+    double CandidateMarginThreshold = 0.0)
 {
     public bool HasCandidateDigits =>
         RecognizedDigits.Length > 0 &&
@@ -280,7 +285,9 @@ public sealed class M7aDigitRecognizer
                 null,
                 segments.Count,
                 templates.Count,
-                "");
+                "",
+                maximumDistance,
+                minimumMargin);
         }
 
         if (segments.Count == 0)
@@ -297,10 +304,13 @@ public sealed class M7aDigitRecognizer
                 null,
                 0,
                 templates.Count,
-                "");
+                "",
+                maximumDistance,
+                minimumMargin);
         }
 
         var recognized = new StringBuilder();
+        var nextCandidates = new StringBuilder();
         var distances = new List<double>();
         var margins = new List<double>();
         var distanceParts = new List<string>();
@@ -323,13 +333,19 @@ public sealed class M7aDigitRecognizer
                     null,
                     segments.Count,
                     templates.Count,
-                    "");
+                    "",
+                    maximumDistance,
+                    minimumMargin);
             }
 
             var best = ranked[0];
-            var secondDistance = ranked.Count > 1 ? ranked[1].Distance : 1.0;
+            var second = ranked.Count > 1
+                ? ranked[1]
+                : (Label: string.Empty, Distance: 1.0);
+            var secondDistance = second.Distance;
             var margin = secondDistance - best.Distance;
             recognized.Append(best.Label);
+            nextCandidates.Append(second.Label);
             distances.Add(best.Distance);
             margins.Add(margin);
             distanceParts.Add(
@@ -389,7 +405,12 @@ public sealed class M7aDigitRecognizer
             confidence,
             segments.Count,
             templates.Count,
-            string.Join(";", distanceParts));
+            string.Join(";", distanceParts),
+            maximumDistance,
+            minimumMargin,
+            recognized.ToString(),
+            nextCandidates.ToString(),
+            margins.Min());
     }
 
     private TemplateRootResolution ResolveTemplateRoot()
@@ -917,7 +938,12 @@ public sealed class M7aDigitRecognizer
         double? confidence,
         int segmentCount,
         int templateCount,
-        string perDigitDistances) => new(
+        string perDigitDistances,
+        double distanceThreshold,
+        double candidateMarginThreshold,
+        string? bestCandidate = null,
+        string? nextBestCandidate = null,
+        double? candidateMargin = null) => new(
             fieldName,
             roiName,
             recognizedDigits,
@@ -929,7 +955,12 @@ public sealed class M7aDigitRecognizer
             confidence,
             segmentCount,
             templateCount,
-            perDigitDistances);
+            perDigitDistances,
+            bestCandidate ?? recognizedDigits,
+            nextBestCandidate ?? string.Empty,
+            candidateMargin,
+            distanceThreshold,
+            candidateMarginThreshold);
 
     private sealed record DigitTemplate(string Label, string Path, float[] Vector);
 

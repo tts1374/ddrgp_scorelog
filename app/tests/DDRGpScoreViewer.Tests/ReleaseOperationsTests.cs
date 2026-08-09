@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 using DDRGpScoreViewer.Data;
 using DDRGpScoreViewer.Diagnostics;
+using DDRGpScoreViewer.Runtime;
 using DDRGpScoreViewer.Tray;
 using Microsoft.Data.Sqlite;
 using Xunit;
@@ -458,6 +459,106 @@ public sealed class ReleaseOperationsTests
             }
         }
     }
+
+    [Fact]
+    public void Release_log_records_normal_and_ambiguous_level_candidates_as_json()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), $"release-level-log-{Guid.NewGuid():N}");
+        try
+        {
+            using var log = new ReleaseLog(directory);
+            log.LevelRecognition(new CaptureSaveEventResult(
+                "confirmed-event-v1:normal",
+                "saved",
+                [],
+                LevelResult("recognized", null)));
+            log.LevelRecognition(new CaptureSaveEventResult(
+                "confirmed-event-v1:ambiguous",
+                "unresolved",
+                ["formal_evidence.level_visual_ambiguous"],
+                LevelResult("ambiguous", "low_margin")));
+
+            var lines = File.ReadAllLines(Path.Combine(directory, "gp-score-log.log"));
+            Assert.Equal(2, lines.Length);
+            Assert.All(lines, line => Assert.Equal("level_recognition", line.Split('\t')[2]));
+
+            using var normal = JsonDocument.Parse(lines[0].Split('\t', 4)[3]);
+            Assert.Equal(
+                "confirmed-event-v1:normal",
+                normal.RootElement.GetProperty("event_id").GetString());
+            Assert.Equal("saved", normal.RootElement.GetProperty("save_status").GetString());
+            Assert.Equal(
+                "recognized",
+                normal.RootElement.GetProperty("level").GetProperty("status").GetString());
+            Assert.Equal(
+                "17",
+                normal.RootElement.GetProperty("level").GetProperty("best_candidate").GetString());
+            Assert.Equal(
+                0.28,
+                normal.RootElement.GetProperty("level").GetProperty("distance_threshold").GetDouble());
+
+            using var ambiguous = JsonDocument.Parse(lines[1].Split('\t', 4)[3]);
+            Assert.Equal(
+                "confirmed-event-v1:ambiguous",
+                ambiguous.RootElement.GetProperty("event_id").GetString());
+            Assert.Equal("unresolved", ambiguous.RootElement.GetProperty("save_status").GetString());
+            Assert.Equal(
+                "low_margin",
+                ambiguous.RootElement.GetProperty("level").GetProperty("reason").GetString());
+            Assert.Equal(
+                "18",
+                ambiguous.RootElement.GetProperty("level").GetProperty("next_best_candidate").GetString());
+            Assert.Equal(
+                "formal_evidence.level_visual_ambiguous",
+                ambiguous.RootElement.GetProperty("event_reasons")[0].GetString());
+        }
+        finally
+        {
+            if (Directory.Exists(directory))
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void Release_log_write_failure_does_not_throw()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), $"release-log-failure-{Guid.NewGuid():N}");
+        using var log = new ReleaseLog(directory);
+        Directory.Delete(directory, recursive: true);
+
+        var exception = Record.Exception(() => log.LevelRecognition(
+            new CaptureSaveEventResult(
+                "confirmed-event-v1:unlogged",
+                "unresolved",
+                ["formal_evidence.level_visual_ambiguous"],
+                LevelResult("ambiguous", "distance_above_threshold"))));
+
+        Assert.Null(exception);
+    }
+
+    private static M7aDigitRecognitionResult LevelResult(
+        string status,
+        string? failureReason) =>
+        new(
+            "level",
+            "chart_level",
+            "17",
+            string.Empty,
+            null,
+            status,
+            failureReason ?? string.Empty,
+            0.1,
+            0.99,
+            2,
+            10,
+            "1:0.1000:0.1000;7:0.1000:0.1000",
+            "17",
+            "18",
+            0.1,
+            0.28,
+            0.02);
 
     [Fact]
     public async Task Second_instance_signals_primary_instance()

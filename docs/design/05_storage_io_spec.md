@@ -272,6 +272,8 @@ logs/
 %LOCALAPPDATA%/ddrgp_scorelog/logs/
 ```
 
+app runtimeのRelease logは`%LOCALAPPDATA%/DDRGpScoreViewer/logs/gp-score-log.log`へ出力し、`level_recognition`イベントにLevel画像認識のevent ID、status、認識桁、候補、距離、margin、適用閾値、理由を構造化JSONで記録する。診断値は正式個人スコアDBへ保存せず、ログにも画像を保存しない。
+
 本番失敗画像候補:
 
 ```text

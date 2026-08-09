@@ -19,6 +19,7 @@ public partial class App : System.Windows.Application
     private PropertyChangedEventHandler? viewModelPropertyChanged;
     private Action<UnresolvedCaptureNotification>? unresolvedCaptureNotificationRequested;
     private Action<UnresolvedCaptureNotification>? unresolvedCaptureDiagnosticRecorded;
+    private Action<CaptureSaveEventResult>? captureSaveDiagnosticRecorded;
 
     public App()
     {
@@ -102,12 +103,18 @@ public partial class App : System.Windows.Application
                 "capture_save_unresolved",
                 $"event_id={notification.EventId}; reasons={reasons}");
         };
+        captureSaveDiagnosticRecorded = eventResult =>
+        {
+            releaseLog?.LevelRecognition(eventResult);
+        };
         unresolvedCaptureNotificationRequested = notification =>
         {
             lifecycle.NotifyUnresolvedCapture(notification);
         };
         mainWindow.ViewModel.UnresolvedCaptureDiagnosticRecorded +=
             unresolvedCaptureDiagnosticRecorded;
+        mainWindow.ViewModel.CaptureSaveDiagnosticRecorded +=
+            captureSaveDiagnosticRecorded;
         mainWindow.ViewModel.UnresolvedCaptureNotificationRequested +=
             unresolvedCaptureNotificationRequested;
         viewModelPropertyChanged = (_, args) =>
@@ -290,6 +297,12 @@ public partial class App : System.Windows.Application
             mainWindow.ViewModel.UnresolvedCaptureDiagnosticRecorded -=
                 unresolvedCaptureDiagnosticRecorded;
             unresolvedCaptureDiagnosticRecorded = null;
+        }
+        if (mainWindow is not null && captureSaveDiagnosticRecorded is not null)
+        {
+            mainWindow.ViewModel.CaptureSaveDiagnosticRecorded -=
+                captureSaveDiagnosticRecorded;
+            captureSaveDiagnosticRecorded = null;
         }
         lifecycle?.Dispose();
         singleInstance?.Dispose();
