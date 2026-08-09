@@ -11,6 +11,19 @@ from test_jacket_reference_catalog import write_master
 from tools.vision_poc import jacket_reference_catalog as catalog
 
 
+def test_release_package_defaults_to_bound_runtime_catalog() -> None:
+    script = (
+        Path(__file__).resolve().parents[1]
+        / "app"
+        / "packaging"
+        / "Build-Release.ps1"
+    )
+
+    assert "..\\..\\databases\\jacket-catalog-release.sqlite" in script.read_text(
+        encoding="utf-8"
+    )
+
+
 def test_release_package_input_validation_rejects_catalog_for_another_master(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

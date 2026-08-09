@@ -1,6 +1,6 @@
 # M8 正式個人スコアDBスキーマ設計
 
-M8 preview完了後の正式 `ddrgp-scores.sqlite` 初期スキーマ、migration境界、正式保存入力、transaction write境界、明示単発保存、analysis詳細JSONのpure contractを固定する。実ファイルへの既定自動保存、duplicate key生成、analysis artifact自動生成はまだ実装しない。M10-2では、この正式DBの既定pathと、M4 master DB・M5b jacket reference catalog・評価用DBからの保護境界を固定する。
+M8 preview完了後の正式 `ddrgp-scores.sqlite` 初期スキーマ、migration境界、正式保存入力、transaction write境界、明示単発保存、analysis詳細JSONのpure contractを固定する。M8で固定したschemaと保存境界を使い、現在のapp-owned runtimeは実ファイルへの自動保存、duplicate key生成、analysis artifact生成を同一processで実行する。M10-2では、この正式DBの既定pathと、M4 master DB・M5b jacket reference catalog・評価用DBからの保護境界を固定する。
 
 ## M9 read-only viewer boundary
 
