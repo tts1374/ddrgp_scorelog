@@ -94,6 +94,115 @@ public sealed class LiveMonitoringViewModelTests
         Assert.Single(viewModel.Plays, play => play.PlayId == "retried-live-play");
     }
 
+    [Fact]
+    public async Task Consecutive_saved_plays_refresh_home_latest_recent_and_history()
+    {
+        using var fixture = new DatabaseFixture();
+        var target = new DdrGpWindowCandidate(
+            101,
+            42,
+            "ddr-konaste",
+            "DDR GRAND PRIX",
+            1280,
+            720);
+        var live = new StubLiveMonitoringService(candidateCount: 2);
+        var savedPlayIds = new Queue<string>(["first-live-play", "second-live-play"]);
+        var workflow = new StubLiveWorkflowRunner(() =>
+        {
+            var playId = savedPlayIds.Dequeue();
+            var isFirst = playId == "first-live-play";
+            fixture.AddPlay(
+                playId,
+                isFirst ? "2026-08-09T10:00:00+00:00" : "2026-08-09T10:10:00+00:00",
+                isFirst ? 900_000 : 950_000,
+                isFirst ? 2_000 : 2_100);
+            return new CaptureSaveWorkflowResult(
+                "completed",
+                1,
+                new Dictionary<string, int> { ["saved"] = 1 },
+                [playId],
+                [],
+                null);
+        });
+        var viewModel = new MainViewModel(
+            new ScoreViewerRepository(),
+            new UnusedManualWorkflowRunner(),
+            continuousCaptureService: new UnusedContinuousCaptureService(),
+            captureSaveWorkflowRunner: workflow,
+            defaultDatabasePaths: ConfiguredPaths(fixture),
+            ddrGpWindowEnumerator: new StubWindowEnumerator([target]),
+            liveMonitoringService: live);
+
+        await viewModel.StartConfiguredContinuousCaptureAndSaveAsync(123);
+
+        Assert.Equal("second-live-play", viewModel.HomeLatestPlay?.Play.PlayId);
+        Assert.Equal(
+            ["first-live-play"],
+            viewModel.HomeRecentPlays.Select(play => play.Play.PlayId));
+        Assert.Equal(
+            ["second-live-play", "first-live-play"],
+            viewModel.Plays.Select(play => play.PlayId));
+        Assert.Equal(viewModel.Plays[0].PlayId, viewModel.HomeLatestPlay?.Play.PlayId);
+        Assert.DoesNotContain(
+            viewModel.HomeRecentPlays,
+            play => play.Play.PlayId == viewModel.HomeLatestPlay?.Play.PlayId);
+    }
+
+    [Theory]
+    [InlineData("duplicate")]
+    [InlineData("unresolved")]
+    public async Task Non_saved_second_candidate_keeps_first_saved_play_as_home_latest(
+        string secondStatus)
+    {
+        using var fixture = new DatabaseFixture();
+        var target = new DdrGpWindowCandidate(
+            101,
+            42,
+            "ddr-konaste",
+            "DDR GRAND PRIX",
+            1280,
+            720);
+        var live = new StubLiveMonitoringService(candidateCount: 2);
+        var callCount = 0;
+        var workflow = new StubLiveWorkflowRunner(() =>
+        {
+            callCount++;
+            if (callCount == 1)
+            {
+                fixture.AddPlay("first-live-play", "2026-08-09T10:00:00+00:00", 900_000, 2_000);
+                return new CaptureSaveWorkflowResult(
+                    "completed",
+                    1,
+                    new Dictionary<string, int> { ["saved"] = 1 },
+                    ["first-live-play"],
+                    [],
+                    null);
+            }
+
+            return new CaptureSaveWorkflowResult(
+                "completed",
+                1,
+                new Dictionary<string, int> { [secondStatus] = 1 },
+                [],
+                [secondStatus],
+                null);
+        });
+        var viewModel = new MainViewModel(
+            new ScoreViewerRepository(),
+            new UnusedManualWorkflowRunner(),
+            continuousCaptureService: new UnusedContinuousCaptureService(),
+            captureSaveWorkflowRunner: workflow,
+            defaultDatabasePaths: ConfiguredPaths(fixture),
+            ddrGpWindowEnumerator: new StubWindowEnumerator([target]),
+            liveMonitoringService: live);
+
+        await viewModel.StartConfiguredContinuousCaptureAndSaveAsync(123);
+
+        Assert.Equal("first-live-play", viewModel.HomeLatestPlay?.Play.PlayId);
+        Assert.Empty(viewModel.HomeRecentPlays);
+        Assert.Equal("first-live-play", Assert.Single(viewModel.Plays).PlayId);
+    }
+
     private static ViewerDatabasePaths ConfiguredPaths(DatabaseFixture fixture) =>
         new(
             ViewerDatabaseEnvironment.Development,
