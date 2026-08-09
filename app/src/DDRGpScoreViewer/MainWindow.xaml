@@ -676,7 +676,7 @@
                                                    VerticalAlignment="Center" Margin="0,0,6,0" />
                                         <ComboBox ItemsSource="{Binding BestDifficultyOptions}"
                                                   DisplayMemberPath="Display" SelectedValuePath="Code"
-                                                  SelectedValue="{Binding BestDifficultyFilter, UpdateSourceTrigger=PropertyChanged}"
+                                                  SelectedValue="{Binding BestDifficultyFilter, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                                   MinWidth="110" MinHeight="30" Padding="8,3"
                                                   Background="White" BorderBrush="{StaticResource BorderStrongBrush}" />
                                     </StackPanel>
@@ -687,7 +687,7 @@
                                                    VerticalAlignment="Center" Margin="0,0,6,0" />
                                         <ComboBox ItemsSource="{Binding BestLevelOptions}"
                                                   DisplayMemberPath="Display" SelectedValuePath="Code"
-                                                  SelectedValue="{Binding BestLevelFilter, UpdateSourceTrigger=PropertyChanged}"
+                                                  SelectedValue="{Binding BestLevelFilter, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                                   MinWidth="86" MinHeight="30" Padding="8,3"
                                                   Background="White" BorderBrush="{StaticResource BorderStrongBrush}" />
                                     </StackPanel>
@@ -708,7 +708,7 @@
                                                    VerticalAlignment="Center" Margin="0,0,6,0" />
                                         <ComboBox ItemsSource="{Binding BestSortOptions}"
                                                   DisplayMemberPath="Display" SelectedValuePath="Code"
-                                                  SelectedValue="{Binding BestSortFilter, UpdateSourceTrigger=PropertyChanged}"
+                                                  SelectedValue="{Binding BestSortFilter, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                                   MinWidth="150" MinHeight="30" Padding="8,3"
                                                   Background="White" BorderBrush="{StaticResource BorderStrongBrush}" />
                                     </StackPanel>
@@ -734,7 +734,7 @@
                                                            VerticalAlignment="Center" Margin="0,0,6,0" />
                                                 <ComboBox ItemsSource="{Binding BestVersionOptions}"
                                                           DisplayMemberPath="Display" SelectedValuePath="Code"
-                                                          SelectedValue="{Binding BestVersionFilter, UpdateSourceTrigger=PropertyChanged}"
+                                                          SelectedValue="{Binding BestVersionFilter, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                                           MinWidth="150" MinHeight="30" Padding="8,3"
                                                           Background="White" BorderBrush="{StaticResource BorderStrongBrush}" />
                                             </StackPanel>
@@ -745,7 +745,7 @@
                                                            VerticalAlignment="Center" Margin="0,0,6,0" />
                                                 <ComboBox ItemsSource="{Binding BestPlayStatusOptions}"
                                                           DisplayMemberPath="Display" SelectedValuePath="Code"
-                                                          SelectedValue="{Binding BestPlayStatusFilter, UpdateSourceTrigger=PropertyChanged}"
+                                                          SelectedValue="{Binding BestPlayStatusFilter, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                                           MinWidth="110" MinHeight="30" Padding="8,3"
                                                           Background="White" BorderBrush="{StaticResource BorderStrongBrush}" />
                                             </StackPanel>
@@ -756,7 +756,7 @@
                                                            VerticalAlignment="Center" Margin="0,0,6,0" />
                                                 <ComboBox ItemsSource="{Binding BestRankOptions}"
                                                           DisplayMemberPath="Display" SelectedValuePath="Code"
-                                                          SelectedValue="{Binding BestRankFilter, UpdateSourceTrigger=PropertyChanged}"
+                                                          SelectedValue="{Binding BestRankFilter, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                                           MinWidth="100" MinHeight="30" Padding="8,3"
                                                           Background="White" BorderBrush="{StaticResource BorderStrongBrush}" />
                                             </StackPanel>
@@ -767,7 +767,7 @@
                                                            VerticalAlignment="Center" Margin="0,0,6,0" />
                                                 <ComboBox ItemsSource="{Binding BestClearOptions}"
                                                           DisplayMemberPath="Display" SelectedValuePath="Code"
-                                                          SelectedValue="{Binding BestClearFilter, UpdateSourceTrigger=PropertyChanged}"
+                                                          SelectedValue="{Binding BestClearFilter, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                                           MinWidth="100" MinHeight="30" Padding="8,3"
                                                           Background="White" BorderBrush="{StaticResource BorderStrongBrush}" />
                                             </StackPanel>
