@@ -148,7 +148,7 @@ public static class Localization
 
     private static void LocalizeNode(DependencyObject node)
     {
-        if (node is TextBlock textBlock)
+        if (node is TextBlock textBlock && !IsInsideComboBox(textBlock))
         {
             if (textBlock.ReadLocalValue(TextBlock.TextProperty) is string text)
             {
@@ -182,6 +182,22 @@ public static class Localization
         {
             element.ToolTip = Get(toolTip);
         }
+    }
+
+    private static bool IsInsideComboBox(DependencyObject node)
+    {
+        for (var current = node; current is not null;)
+        {
+            current = current is Visual or System.Windows.Media.Media3D.Visual3D
+                ? VisualTreeHelper.GetParent(current)
+                : LogicalTreeHelper.GetParent(current);
+            if (current is System.Windows.Controls.ComboBox)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static ResourceDictionary? GetFallbackDictionary(string language)
