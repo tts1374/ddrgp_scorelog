@@ -1144,6 +1144,85 @@ def bind_catalog_to_master(
     }
 
 
+def sync_empty_master_artist_snapshots(
+    catalog_path: Path, master_db: Path
+) -> dict[str, Any]:
+    """Synchronize confirmed current-feature references to an empty master artist."""
+    ensure_catalog_path(catalog_path, argument_name="--catalog")
+    master = load_master_identity(master_db)
+    songs_by_id = {song.song_id: song for song in master.songs}
+    updated_reference_ids: list[str] = []
+    updated_song_ids: list[str] = []
+    updated_titles: list[str] = []
+
+    with closing(_connect_read_write(catalog_path)) as connection:
+        connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA foreign_keys = ON")
+        connection.execute("BEGIN IMMEDIATE")
+        try:
+            _validate_catalog(connection, allow_unbound_master=True)
+            rows = list(
+                connection.execute(
+                    """
+                    SELECT reference_id, song_id, canonical_title_snapshot,
+                           canonical_artist_snapshot
+                    FROM jacket_references
+                    WHERE song_id IS NOT NULL
+                      AND review_status IN ('auto_confirmed', 'manual_confirmed')
+                      AND feature_extractor_version = ?
+                      AND jacket_feature_version = ?
+                      AND title_line_feature_version = ?
+                      AND composite_identity_version = ?
+                    ORDER BY reference_id
+                    """,
+                    (
+                        FEATURE_EXTRACTOR_VERSION,
+                        JACKET_FRAME_FEATURE_VERSION,
+                        TITLE_LINE_FEATURE_VERSION,
+                        COMPOSITE_IDENTITY_VERSION,
+                    ),
+                )
+            )
+            timestamp = utc_now()
+            for row in rows:
+                song_id = str(row["song_id"])
+                song = songs_by_id.get(song_id)
+                if (
+                    song is None
+                    or not song.grand_prix_play_available
+                    or song.artist != ""
+                    or str(row["canonical_title_snapshot"]) != song.title
+                    or str(row["canonical_artist_snapshot"]) == ""
+                ):
+                    continue
+                connection.execute(
+                    """
+                    UPDATE jacket_references
+                    SET master_version = ?, canonical_artist_snapshot = '', updated_at = ?
+                    WHERE reference_id = ?
+                    """,
+                    (master.version, timestamp, row["reference_id"]),
+                )
+                updated_reference_ids.append(str(row["reference_id"]))
+                updated_song_ids.append(song_id)
+                updated_titles.append(song.title)
+            _validate_catalog(connection, allow_unbound_master=True)
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+
+    return {
+        "status": "synchronized" if updated_reference_ids else "no_change",
+        "catalog": str(catalog_path.resolve()),
+        "master_version": master.version,
+        "updated_reference_count": len(updated_reference_ids),
+        "updated_reference_ids": updated_reference_ids,
+        "updated_song_ids": updated_song_ids,
+        "updated_titles": updated_titles,
+    }
+
+
 def validate_release_reference_pair(
     catalog_path: Path, master_db: Path
 ) -> dict[str, str | int]:
@@ -2935,6 +3014,12 @@ def build_parser() -> argparse.ArgumentParser:
     bind_master.add_argument("--source-catalog", type=Path, required=True)
     bind_master.add_argument("--output-catalog", type=Path, required=True)
     bind_master.add_argument("--master-db", type=Path, required=True)
+    sync_empty_artists = subparsers.add_parser(
+        "sync-empty-master-artists",
+        help="Synchronize confirmed reference snapshots when the master artist is empty.",
+    )
+    sync_empty_artists.add_argument("--catalog", type=Path, required=True)
+    sync_empty_artists.add_argument("--master-db", type=Path, required=True)
     release_pair = subparsers.add_parser(
         "release-pair",
         help="Read-only validate catalog/master metadata for release packaging.",
@@ -3065,6 +3150,10 @@ def main(argv: list[str] | None = None) -> int:
         result = bind_catalog_to_master(
             args.source_catalog, args.output_catalog, args.master_db
         )
+        print(json.dumps(result, ensure_ascii=False, separators=(",", ":")))
+        return 0
+    if args.command == "sync-empty-master-artists":
+        result = sync_empty_master_artist_snapshots(args.catalog, args.master_db)
         print(json.dumps(result, ensure_ascii=False, separators=(",", ":")))
         return 0
     if args.command == "release-pair":

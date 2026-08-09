@@ -653,6 +653,14 @@ python -m tools.vision_poc.jacket_reference_catalog migrate-v1 `
 
 初期版Release前に作成済みで`catalog_metadata.master_version`を持たないcurrent catalogは、sourceを変更せず新規outputへcopyしてcurrent masterへ明示bindingします。出力後にsourceとoutputを取り違えないようpathを確認し、Debug WPFのdevelopment runtimeとRelease packageにはbinding済みoutputだけを渡します。
 
+公式masterのartistが空欄へ確定した後も、確定済みjacket referenceに古い非空artist snapshotが残っている場合は、binding前に次のdeveloper-only CLIでsource catalogを再同期します。対象はcurrent feature、`auto_confirmed` / `manual_confirmed`、GP対象、title完全一致、master artist空欄、catalog artist非空のreferenceだけです。reference ID、song ID、画像feature、review status、revision/historyは変更せず、再実行はno-opになります。
+
+```powershell
+python -m tools.vision_poc.jacket_reference_catalog sync-empty-master-artists `
+  --catalog databases\jacket-catalog.sqlite `
+  --master-db databases\ddrgp-master.sqlite
+```
+
 ```powershell
 python -m tools.vision_poc.jacket_reference_catalog bind-master `
   --source-catalog databases\jacket-catalog.sqlite `

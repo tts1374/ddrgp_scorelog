@@ -14,8 +14,11 @@ from tools.vision_poc import jacket_reference_catalog as catalog
 from tools.vision_poc import master_match
 
 
-def write_master(path: Path) -> None:
-    songs = [("song-1", "Alpha", "Artist A"), ("song-2", "Beta", "Artist B")]
+def write_master(
+    path: Path, songs: list[tuple[str, str, str]] | None = None
+) -> None:
+    if songs is None:
+        songs = [("song-1", "Alpha", "Artist A"), ("song-2", "Beta", "Artist B")]
     with closing(sqlite3.connect(path)) as connection, connection:
         master_builder.create_schema(connection)
         connection.executemany(
@@ -381,6 +384,173 @@ def test_release_pair_uses_catalog_metadata_and_bind_copies_unbound_catalog(
         assert connection.execute(
             "SELECT COUNT(*) FROM catalog_metadata WHERE key = 'master_version'"
         ).fetchone()[0] == 0
+
+
+ISSUE_152_EMPTY_ARTIST_TITLES = (
+    "BRIGHT STREAM",
+    "HOT LIMIT",
+    "Lemon",
+    "POP STAR",
+    "Trickster",
+    "only my railgun",
+    "おどるポンポコリン",
+    "さくらんぼ",
+    "オリオンをなぞる",
+    "コネクト",
+    "ジョジョ～その血の運命～",
+    "ドライフラワー",
+    "マジLOVE1000％",
+    "ミックスナッツ",
+    "ルカルカ★ナイトフィーバー",
+    "一途",
+    "勿忘",
+    "夏祭り",
+    "夜に駆ける",
+    "廻廻奇譚",
+    "怪物",
+    "恋愛レボリューション21",
+    "愛のために。",
+    "秒針を噛む",
+    "紅蓮華",
+)
+
+
+def test_sync_empty_master_artists_repairs_exact_issue_152_set_idempotently(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "data").mkdir()
+    (tmp_path / "databases").mkdir()
+    target_songs = [
+        (f"issue-152-{index:02d}", title, "")
+        for index, title in enumerate(ISSUE_152_EMPTY_ARTIST_TITLES, start=1)
+    ]
+    control_song = ("control-song", "Control", "Control Artist")
+    master_db = tmp_path / "master.sqlite"
+    write_master(master_db, [*target_songs, control_song])
+    catalog_path = tmp_path / "databases/catalog.sqlite"
+    catalog.create_catalog(catalog_path, master_db)
+    image_path = tmp_path / "data/jacket.png"
+    Image.new("RGB", (64, 64), (10, 20, 30)).save(image_path)
+
+    references: list[tuple[str, str, str]] = []
+    for index, (song_id, title, _artist) in enumerate(
+        [*target_songs, control_song], start=1
+    ):
+        result = ingest(
+            catalog_path,
+            master_db,
+            image_path,
+            observation_id=f"sync-empty-artist-{index:02d}",
+            seed=f"sync-empty-artist-{index:02d}",
+        )
+        references.append((result.reference_id, song_id, title))
+    requests = [
+        catalog.ReviewMutationRequest(
+            action_id=f"confirm-{index:02d}",
+            reference_id=reference_id,
+            action="manual_confirm",
+            expected_revision=0,
+            expected_status="unresolved",
+            expected_song_id=None,
+            song_id=song_id,
+            reason="fixture",
+            note=f"preserved-note-{index:02d}",
+            expected_note="",
+            action_at="2026-07-20T00:00:00+00:00",
+        )
+        for index, (reference_id, song_id, _title) in enumerate(references, start=1)
+    ]
+    receipt = catalog.apply_review_mutation_batch(catalog_path, master_db, requests)
+    assert receipt.applied_count == 26
+
+    target_reference_ids = [reference_id for reference_id, _song_id, _title in references[:-1]]
+    control_reference_id = references[-1][0]
+    with sqlite3.connect(catalog_path) as connection, connection:
+        placeholders = ", ".join("?" for _ in target_reference_ids)
+        connection.execute(
+            f"""
+            UPDATE jacket_references
+            SET master_version = 'older-master',
+                canonical_artist_snapshot = 'stale artist'
+            WHERE reference_id IN ({placeholders})
+            """,
+            target_reference_ids,
+        )
+        connection.execute(
+            "DELETE FROM catalog_metadata WHERE key = 'master_version'"
+        )
+        connection.row_factory = sqlite3.Row
+        before_rows = {
+            str(row["reference_id"]): dict(row)
+            for row in connection.execute("SELECT * FROM jacket_references")
+        }
+        before_history = [
+            tuple(row)
+            for row in connection.execute(
+                "SELECT * FROM reference_review_history ORDER BY history_id"
+            )
+        ]
+
+    result = catalog.sync_empty_master_artist_snapshots(catalog_path, master_db)
+
+    assert result["status"] == "synchronized"
+    assert result["updated_reference_count"] == 25
+    assert set(result["updated_reference_ids"]) == set(target_reference_ids)
+    assert set(result["updated_titles"]) == set(ISSUE_152_EMPTY_ARTIST_TITLES)
+    with sqlite3.connect(catalog_path) as connection:
+        connection.row_factory = sqlite3.Row
+        after_rows = {
+            str(row["reference_id"]): dict(row)
+            for row in connection.execute("SELECT * FROM jacket_references")
+        }
+        after_history = [
+            tuple(row)
+            for row in connection.execute(
+                "SELECT * FROM reference_review_history ORDER BY history_id"
+            )
+        ]
+    mutable_columns = {"master_version", "canonical_artist_snapshot", "updated_at"}
+    for reference_id in target_reference_ids:
+        assert after_rows[reference_id]["master_version"] == "master-v1"
+        assert after_rows[reference_id]["canonical_artist_snapshot"] == ""
+        assert {
+            key: value
+            for key, value in after_rows[reference_id].items()
+            if key not in mutable_columns
+        } == {
+            key: value
+            for key, value in before_rows[reference_id].items()
+            if key not in mutable_columns
+        }
+    assert after_rows[control_reference_id] == before_rows[control_reference_id]
+    assert after_history == before_history
+    second_result = catalog.sync_empty_master_artist_snapshots(catalog_path, master_db)
+    assert second_result["status"] == "no_change"
+    assert second_result["updated_reference_count"] == 0
+    with sqlite3.connect(catalog_path) as connection:
+        connection.row_factory = sqlite3.Row
+        rerun_rows = {
+            str(row["reference_id"]): dict(row)
+            for row in connection.execute("SELECT * FROM jacket_references")
+        }
+        rerun_history = [
+            tuple(row)
+            for row in connection.execute(
+                "SELECT * FROM reference_review_history ORDER BY history_id"
+            )
+        ]
+    assert rerun_rows == after_rows
+    assert rerun_history == after_history
+
+    release_path = tmp_path / "databases/release.sqlite"
+    catalog.bind_catalog_to_master(catalog_path, release_path, master_db)
+    catalog.validate_release_reference_pair(release_path, master_db)
+    target_song_ids = {song_id for song_id, _title, _artist in target_songs}
+    assert target_song_ids <= {
+        entry.song_id
+        for entry in catalog.load_m5_feature_entries(release_path, master_db)
+    }
 
 
 def test_catalog_path_uses_fixed_databases_directory_and_keeps_data_artifact_guard(
@@ -1208,6 +1378,7 @@ def test_current_receipt_coverage_and_cli_contract(
         "create",
         "migrate-v1",
         "bind-master",
+        "sync-empty-master-artists",
         "release-pair",
         "coverage",
         "review",
