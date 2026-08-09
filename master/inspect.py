@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sqlite3
 from contextlib import closing
@@ -13,6 +14,9 @@ REQUIRED_METADATA_KEYS = {
     "generated_at",
     "generator_version",
     "source_hash",
+    "confirmed_challenge_chart_count",
+    "confirmed_challenge_supplement_hash",
+    "confirmed_challenge_supplement_json",
     "song_count",
     "chart_count",
 }
@@ -34,6 +38,17 @@ def inspect_master_database(db_path: Path) -> dict[str, Any]:
             ORDER BY snapshot_id
             """
         ).fetchall()
+        chart_rows_by_id = {
+            row[0]: row
+            for row in connection.execute(
+                """
+                SELECT c.chart_id, c.song_id, s.title, c.play_style,
+                       c.difficulty, c.level, c.notes
+                FROM charts c
+                JOIN songs s ON s.song_id = c.song_id
+                """
+            )
+        }
 
     snapshot_count = len(snapshot_rows)
     missing_metadata_keys = sorted(REQUIRED_METADATA_KEYS - metadata.keys())
@@ -56,6 +71,54 @@ def inspect_master_database(db_path: Path) -> dict[str, Any]:
         raise ValueError("master_metadata song_count does not match songs table")
     if metadata.get("chart_count") != str(chart_count):
         raise ValueError("master_metadata chart_count does not match charts table")
+    supplement_json = metadata["confirmed_challenge_supplement_json"]
+    supplement_hash = hashlib.sha256(supplement_json.encode("utf-8")).hexdigest()
+    if metadata["confirmed_challenge_supplement_hash"] != supplement_hash:
+        raise ValueError("confirmed CHALLENGE supplement hash does not match manifest")
+    try:
+        supplement_rows = json.loads(supplement_json)
+    except json.JSONDecodeError as exc:
+        raise ValueError("confirmed CHALLENGE supplement manifest is invalid JSON") from exc
+    if not isinstance(supplement_rows, list):
+        raise ValueError("confirmed CHALLENGE supplement manifest must be a list")
+    if metadata["confirmed_challenge_chart_count"] != str(len(supplement_rows)):
+        raise ValueError("confirmed CHALLENGE supplement count does not match manifest")
+    required_supplement_keys = {
+        "chart_id",
+        "song_id",
+        "title",
+        "play_style",
+        "level",
+        "source_url",
+        "acquired_on",
+    }
+    seen_supplement_chart_ids: set[str] = set()
+    for row in supplement_rows:
+        if not isinstance(row, dict) or set(row) != required_supplement_keys:
+            raise ValueError("confirmed CHALLENGE supplement row has invalid keys")
+        chart_id = row["chart_id"]
+        if not isinstance(chart_id, str) or chart_id in seen_supplement_chart_ids:
+            raise ValueError("confirmed CHALLENGE supplement chart ID is invalid")
+        seen_supplement_chart_ids.add(chart_id)
+        database_row = chart_rows_by_id.get(chart_id)
+        expected_note = (
+            "confirmed CHALLENGE supplement; "
+            f"source_url={row['source_url']}; acquired_on={row['acquired_on']}"
+        )
+        if database_row is None or database_row[1:6] != (
+            row["song_id"],
+            row["title"],
+            row["play_style"],
+            "CHALLENGE",
+            row["level"],
+        ):
+            raise ValueError(
+                "confirmed CHALLENGE supplement manifest does not match charts table"
+            )
+        if not database_row[6].endswith(expected_note):
+            raise ValueError(
+                "confirmed CHALLENGE supplement chart note does not match provenance"
+            )
     if snapshot_count not in {1, 2, 3}:
         raise ValueError("generated database must contain one to three source snapshots")
 
@@ -132,6 +195,8 @@ def inspect_master_database(db_path: Path) -> dict[str, Any]:
         "new_song_snapshot_source_hash": new_song_snapshot_source_hash,
         "new_song_source_url": new_song_source_url,
         "new_song_snapshot_parser_version": new_song_snapshot_parser_version,
+        "confirmed_challenge_chart_count": len(supplement_rows),
+        "confirmed_challenge_supplement_hash": supplement_hash,
         "free_play_available_song_count": metadata.get("free_play_available_song_count"),
         "grand_prix_play_available_song_count": metadata.get(
             "grand_prix_play_available_song_count"

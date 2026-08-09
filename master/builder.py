@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import json
 import re
 import sqlite3
 import unicodedata
@@ -22,7 +23,7 @@ NEW_SONGS_SOURCE_URL = (
     "DanceDanceRevolution+GRAND+PRIX/%E6%96%B0%E6%9B%B2%E3%83%AA%E3%82%B9%E3%83%88"
 )
 OFFICIAL_MUSIC_LIST_URL = "https://p.eagate.573.jp/game/eacddr/konaddr/info/mlist.html"
-PARSER_VERSION = "m5-official-canonical-new-song-v1"
+PARSER_VERSION = "m5-official-canonical-confirmed-challenge-v1"
 DIFFICULTIES_BY_STYLE = {
     "SINGLE": ("BEGINNER", "BASIC", "DIFFICULT", "EXPERT", "CHALLENGE"),
     "DOUBLE": ("BASIC", "DIFFICULT", "EXPERT", "CHALLENGE"),
@@ -88,6 +89,26 @@ class OfficialSongAvailability:
 
 
 @dataclass(frozen=True)
+class ConfirmedChallengeSource:
+    title: str
+    single_level: int
+    double_level: int
+    source_url: str
+    acquired_on: str
+
+
+@dataclass(frozen=True)
+class AppliedChallengeSupplement:
+    chart_id: str
+    song_id: str
+    title: str
+    play_style: str
+    level: int
+    source_url: str
+    acquired_on: str
+
+
+@dataclass(frozen=True)
 class MasterBuild:
     songs: tuple[MasterSong, ...]
     charts: tuple[MasterChart, ...]
@@ -95,6 +116,128 @@ class MasterBuild:
     song_aliases: tuple[MasterSongAlias, ...] = ()
     official_snapshot: SourceSnapshot | None = None
     new_song_snapshot: SourceSnapshot | None = None
+    confirmed_challenge_supplements: tuple[AppliedChallengeSupplement, ...] = ()
+
+
+DDRWORLD_CHALLENGE_SOURCE_URL = (
+    "https://p.eagate.573.jp/game/ddr/ddrworld/music/index.html"
+    "?filter=7&filtertype=0&playmode=2"
+)
+BEMANIWIKI_PACK_SOURCE_URL = (
+    "https://bemaniwiki.com/?"
+    "DanceDanceRevolution+GRAND+PRIX/%E6%A5%BD%E6%9B%B2%E3%83%91%E3%83%83%E3%82%AF"
+)
+
+
+def _confirmed_challenge_source(
+    title: str,
+    single_level: int,
+    double_level: int,
+    *,
+    source_url: str = DDRWORLD_CHALLENGE_SOURCE_URL,
+    acquired_on: str = "2026-07-25",
+) -> ConfirmedChallengeSource:
+    return ConfirmedChallengeSource(
+        title=title,
+        single_level=single_level,
+        double_level=double_level,
+        source_url=source_url,
+        acquired_on=acquired_on,
+    )
+
+
+CONFIRMED_CHALLENGE_SOURCES = (
+    _confirmed_challenge_source("Ace out", 14, 14),
+    _confirmed_challenge_source("ALPACORE", 17, 17),
+    _confirmed_challenge_source("BITTER CHOCOLATE STRIKER", 18, 18),
+    _confirmed_challenge_source("Come Back To Me", 16, 16),
+    _confirmed_challenge_source("CyberConnect", 17, 17),
+    _confirmed_challenge_source("DIGITALIZER", 18, 18),
+    _confirmed_challenge_source("Din Don Dan (にじさんじダンス部 ver.)", 16, 16),
+    _confirmed_challenge_source("Draw the Savage", 15, 14),
+    _confirmed_challenge_source("Give Me", 16, 16),
+    _confirmed_challenge_source("Glitch Angel", 18, 18),
+    _confirmed_challenge_source("Going Hypersonic", 17, 17),
+    _confirmed_challenge_source("Golden Arrow", 17, 17),
+    _confirmed_challenge_source("Good Looking", 17, 18),
+    _confirmed_challenge_source("Lightspeed", 18, 18),
+    _confirmed_challenge_source("MUTEKI BUFFALO", 17, 17),
+    _confirmed_challenge_source("New Era", 18, 18),
+    _confirmed_challenge_source("Rampage Hero", 17, 17),
+    _confirmed_challenge_source("Run The Show", 16, 16),
+    _confirmed_challenge_source("Starlight in the Snow", 16, 16),
+    _confirmed_challenge_source("Step This Way", 17, 17),
+    _confirmed_challenge_source("Take A Step Forward", 15, 15),
+    _confirmed_challenge_source("The World Ends Now", 18, 18),
+    _confirmed_challenge_source("Yuni's Nocturnal Days", 18, 18),
+    _confirmed_challenge_source(
+        "打打打打打打打打打打 (にじさんじダンス部 ver.)", 16, 16
+    ),
+    _confirmed_challenge_source("灼熱Beach Side Bunny", 18, 18),
+    _confirmed_challenge_source(
+        "7 Colors",
+        16,
+        16,
+        source_url=BEMANIWIKI_PACK_SOURCE_URL,
+        acquired_on="2026-08-09",
+    ),
+    _confirmed_challenge_source(
+        "Harmonia",
+        16,
+        16,
+        source_url=BEMANIWIKI_PACK_SOURCE_URL,
+        acquired_on="2026-08-09",
+    ),
+    _confirmed_challenge_source(
+        "In The Breeze",
+        14,
+        14,
+        source_url=BEMANIWIKI_PACK_SOURCE_URL,
+        acquired_on="2026-08-09",
+    ),
+    _confirmed_challenge_source(
+        "Superior MAXXX",
+        19,
+        19,
+        source_url=BEMANIWIKI_PACK_SOURCE_URL,
+        acquired_on="2026-08-09",
+    ),
+    _confirmed_challenge_source(
+        "Touch My Body",
+        14,
+        14,
+        source_url=BEMANIWIKI_PACK_SOURCE_URL,
+        acquired_on="2026-08-09",
+    ),
+    _confirmed_challenge_source(
+        "True Blue",
+        17,
+        17,
+        source_url=BEMANIWIKI_PACK_SOURCE_URL,
+        acquired_on="2026-08-09",
+    ),
+    _confirmed_challenge_source(
+        "クリムゾンゲイト",
+        16,
+        16,
+        source_url=BEMANIWIKI_PACK_SOURCE_URL,
+        acquired_on="2026-08-09",
+    ),
+    _confirmed_challenge_source(
+        "パ→ピ→プ→Yeah!",
+        15,
+        16,
+        source_url=BEMANIWIKI_PACK_SOURCE_URL,
+        acquired_on="2026-08-09",
+    ),
+    _confirmed_challenge_source(
+        "和風インザ洋風",
+        17,
+        17,
+        source_url=BEMANIWIKI_PACK_SOURCE_URL,
+        acquired_on="2026-08-09",
+    ),
+)
 
 
 def normalize_text(value: str) -> str:
@@ -174,6 +317,42 @@ def normalize_availability_alias_key(value: str) -> str:
 def stable_id(prefix: str, *parts: str) -> str:
     digest = hashlib.sha1("\0".join(parts).encode("utf-8")).hexdigest()[:16]
     return f"{prefix}_{digest}"
+
+
+def confirmed_challenge_supplements_json(
+    supplements: tuple[AppliedChallengeSupplement, ...],
+) -> str:
+    return json.dumps(
+        [
+            {
+                "chart_id": supplement.chart_id,
+                "song_id": supplement.song_id,
+                "title": supplement.title,
+                "play_style": supplement.play_style,
+                "level": supplement.level,
+                "source_url": supplement.source_url,
+                "acquired_on": supplement.acquired_on,
+            }
+            for supplement in supplements
+        ],
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+
+def confirmed_challenge_supplements_hash(
+    supplements: tuple[AppliedChallengeSupplement, ...],
+) -> str:
+    manifest = confirmed_challenge_supplements_json(supplements)
+    return hashlib.sha256(manifest.encode("utf-8")).hexdigest()
+
+
+def confirmed_challenge_note(source_url: str, acquired_on: str) -> str:
+    return (
+        "confirmed CHALLENGE supplement; "
+        f"source_url={source_url}; acquired_on={acquired_on}"
+    )
 
 
 def parse_level(raw_level: str) -> int | None:
@@ -646,6 +825,73 @@ def apply_official_availability(
     return tuple(updated_songs), tuple(aliases)
 
 
+def apply_confirmed_challenge_supplements(
+    songs: tuple[MasterSong, ...],
+    charts: tuple[MasterChart, ...],
+) -> tuple[tuple[MasterChart, ...], tuple[AppliedChallengeSupplement, ...]]:
+    songs_by_title: dict[str, list[MasterSong]] = defaultdict(list)
+    for song in songs:
+        songs_by_title[song.title].append(song)
+
+    charts_by_id = {chart.chart_id: chart for chart in charts}
+    applied: list[AppliedChallengeSupplement] = []
+    for source in CONFIRMED_CHALLENGE_SOURCES:
+        matching_songs = songs_by_title.get(source.title, [])
+        if not matching_songs:
+            continue
+        if len(matching_songs) != 1:
+            raise ValueError(
+                "confirmed CHALLENGE supplement title is not unique: "
+                f"{source.title}"
+            )
+        song = matching_songs[0]
+        for play_style, level in (
+            ("SINGLE", source.single_level),
+            ("DOUBLE", source.double_level),
+        ):
+            chart_id = stable_id("chart", song.song_id, play_style, "CHALLENGE")
+            existing = charts_by_id.get(chart_id)
+            if existing is not None:
+                if existing.level != level:
+                    raise ValueError(
+                        "confirmed CHALLENGE supplement conflicts with source chart: "
+                        f"{source.title} {play_style} expected {level}, "
+                        f"found {existing.level}"
+                    )
+                continue
+            provenance_note = confirmed_challenge_note(
+                source.source_url,
+                source.acquired_on,
+            )
+            notes = "; ".join(
+                value for value in (song.availability, provenance_note) if value
+            )
+            charts_by_id[chart_id] = MasterChart(
+                chart_id=chart_id,
+                song_id=song.song_id,
+                play_style=play_style,
+                difficulty="CHALLENGE",
+                level=level,
+                raw_level=str(level),
+                shock_arrow=False,
+                is_removed=("削" in song.availability or "×" in song.availability),
+                is_limited=bool(song.availability),
+                notes=notes,
+            )
+            applied.append(
+                AppliedChallengeSupplement(
+                    chart_id=chart_id,
+                    song_id=song.song_id,
+                    title=song.title,
+                    play_style=play_style,
+                    level=level,
+                    source_url=source.source_url,
+                    acquired_on=source.acquired_on,
+                )
+            )
+    return tuple(charts_by_id.values()), tuple(applied)
+
+
 def parse_master_html(
     html: str,
     *,
@@ -705,13 +951,18 @@ def parse_master_html(
             official_entries,
         )
         songs = add_official_only_songs(songs, official_entries)
+    charts, confirmed_challenge_supplements = apply_confirmed_challenge_supplements(
+        songs,
+        tuple(charts_by_id.values()),
+    )
     return MasterBuild(
         songs=songs,
-        charts=tuple(charts_by_id.values()),
+        charts=charts,
         snapshot=snapshot,
         song_aliases=song_aliases,
         official_snapshot=official_snapshot,
         new_song_snapshot=new_song_snapshot,
+        confirmed_challenge_supplements=confirmed_challenge_supplements,
     )
 
 
@@ -798,8 +1049,14 @@ def write_master_database(
     generator_version: str = PARSER_VERSION,
 ) -> None:
     generated_at = generated_at or datetime.now(UTC).isoformat(timespec="seconds")
+    supplement_json = confirmed_challenge_supplements_json(
+        build.confirmed_challenge_supplements
+    )
+    supplement_hash = confirmed_challenge_supplements_hash(
+        build.confirmed_challenge_supplements
+    )
     if master_version is None:
-        version_material = "\0".join(
+        version_parts = [
             f"{source_kind}\0{snapshot.content_hash}"
             for source_kind, snapshot in (
                 ("primary", build.snapshot),
@@ -807,7 +1064,9 @@ def write_master_database(
                 ("official", build.official_snapshot),
             )
             if snapshot is not None
-        )
+        ]
+        version_parts.append(f"confirmed-challenge\0{supplement_hash}")
+        version_material = "\0".join(version_parts)
         master_version = hashlib.sha256(version_material.encode("ascii")).hexdigest()[:12]
     output_path.parent.mkdir(parents=True, exist_ok=True)
     if output_path.exists():
@@ -894,6 +1153,11 @@ def write_master_database(
             "generated_at": generated_at,
             "generator_version": generator_version,
             "source_hash": build.snapshot.content_hash,
+            "confirmed_challenge_chart_count": str(
+                len(build.confirmed_challenge_supplements)
+            ),
+            "confirmed_challenge_supplement_hash": supplement_hash,
+            "confirmed_challenge_supplement_json": supplement_json,
             "song_count": str(len(build.songs)),
             "chart_count": str(len(build.charts)),
             "song_alias_count": str(len(build.song_aliases)),
@@ -984,6 +1248,12 @@ def summarize_build(build: MasterBuild) -> dict[str, object]:
         ),
         "new_song_source_hash": (
             None if build.new_song_snapshot is None else build.new_song_snapshot.content_hash
+        ),
+        "confirmed_challenge_chart_count": len(
+            build.confirmed_challenge_supplements
+        ),
+        "confirmed_challenge_supplement_hash": confirmed_challenge_supplements_hash(
+            build.confirmed_challenge_supplements
         ),
         "free_play_available_songs": sum(
             1 for song in build.songs if song.free_play_available

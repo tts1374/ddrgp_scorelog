@@ -24,6 +24,12 @@ https://p.eagate.573.jp/game/eacddr/konaddr/info/mlist.html
 
 公式のアーティスト欄が空の場合は空のまま保存します。Wiki側のアーティストや版権元名へのフォールバックは行いません。全曲リストと新曲リストの譜面行は同じ曲へ統合し、既存のWiki由来 `song_id` を可能な限り維持します。
 
+### 確認済みCHALLENGE欠落の局所補正
+
+通常の譜面表にCHALLENGEがない一方でプレー可能と確認済みの34曲について、SP/DP計68譜面だけを生成時に局所補正します。レベルと確認元は、2026-07-25取得のDDR WORLD楽曲一覧snapshotで確認した25曲50譜面と、2026-08-09取得のBEMANIWiki楽曲パック一覧で確認した9曲18譜面です。
+
+補正は同じ `song_id + play_style + CHALLENGE` の譜面がない場合だけ追加します。既存譜面のレベルは上書きせず、確認値と異なる既存譜面がある場合は生成を失敗させます。追加chartの `notes` には確認元URLと取得日を保持し、`master_metadata` の `confirmed_challenge_supplement_json` でchart ID、song ID、曲名、SP/DP、レベル、確認元URL、取得日を譜面単位で追跡します。manifest件数とhashは `confirmed_challenge_chart_count` / `confirmed_challenge_supplement_hash` に記録し、`master.inspect` で実chart、notes、manifest、hashの整合を検査します。
+
 対象ページには、`分類 / 曲名 / アーティスト / 出典 / BPM / MV/St / SINGLE / DOUBLE` の2段ヘッダを持つ楽曲リスト表が複数あります。パーサはこの表だけを対象にし、セル結合されたバージョン見出しと譜面レベル列を展開します。
 
 譜面レベルは raw 表記を `raw_level` に保持しつつ、整数 `level` は最初に現れる数字列から取得します。これにより `10(旧9)`、`10;`、`[SA] 12` のような注記付き表記で数字を連結しません。`[SA]` などショックアローを示す表記は `shock_arrow` に反映します。
@@ -76,7 +82,7 @@ python -X utf8 -m master.inspect data\master\ddrgp-master.sqlite --summary data\
 
 workflowでは、ネットワークに依存しないfixtureテストを通した後、Wikiと公式の実HTMLから `data/master/ddrgp-master.sqlite` を生成し、`python -X utf8 -m master.inspect` で `master_metadata` とテーブル件数の整合、source snapshot件数とhashを検査します。生成DBと `master-summary.json` は `ddrgp-master-<run_number>` artifact としてアップロードし、リポジトリにはコミットしません。
 
-`master.inspect` は、必須metadataキー、`songs` / `charts` の実件数、`source_snapshots` がWikiのみなら1件、公式込みなら2件、新曲リスト込みなら最大3件であること、各source hashとsource URLがmetadataとsnapshotで一致することを検査します。`master-summary.json` にはテーブル件数、snapshot件数、各source hash、snapshot側のsource URL、parser version、公式プレー可否の突合件数を出力し、artifact単体でも生成元を確認できるようにします。
+`master.inspect` は、必須metadataキー、`songs` / `charts` の実件数、確認済みCHALLENGE補正manifestとchartの対応、`source_snapshots` がWikiのみなら1件、公式込みなら2件、新曲リスト込みなら最大3件であること、各source hashとsource URLがmetadataとsnapshotで一致することを検査します。`master-summary.json` にはテーブル件数、補正chart件数とhash、snapshot件数、各source hash、snapshot側のsource URL、parser version、公式プレー可否の突合件数を出力し、artifact単体でも生成元を確認できるようにします。
 
 Releases配布はまだ未実装です。まずはartifactで生成結果と取得元構造変化の検出を確認し、安定後にReleases配布を別フェーズで追加します。
 
@@ -85,10 +91,10 @@ Releases配布はまだ未実装です。まずはartifactで生成結果と取�
 - `songs`: 楽曲単位。曲名、アーティスト、分類バージョン、出典、BPM、MV/St、分類記号、公式フリープレー可否、公式グランプリプレー可否を保持する。
 - `charts`: 譜面単位。`song_id`、`play_style`、`difficulty`、`level`、元レベル表記、限定/削除候補フラグを保持する。
 - `song_aliases`: 公式表記へ寄せた際のWiki由来表記差を保持する。
-- `master_metadata`: `master_version`、Wiki全曲リスト／新曲リスト／公式リストのsource URL・hash、`generated_at`、`generator_version`、件数を保持する。
+- `master_metadata`: `master_version`、Wiki全曲リスト／新曲リスト／公式リストのsource URL・hash、確認済みCHALLENGE補正manifest・hash・件数、`generated_at`、`generator_version`、件数を保持する。
 - `source_snapshots`: 取得元URL、取得時刻、HTML hash、parser version、HTML本文を保持する。
 
-自動生成時の `master_version` は、存在する入力snapshotのhashを `primary` → `new-song` → `official` の固定順序と種別ラベルで計算する。CLIで `--master-version` を指定した場合は、その明示値を使用する。
+自動生成時の `master_version` は、存在する入力snapshotのhashを `primary` → `new-song` → `official` の固定順序と種別ラベルで並べ、確認済みCHALLENGE補正manifestのhashを続けて計算する。CLIで `--master-version` を指定した場合は、その明示値を使用する。
 
 ## Current Boundaries
 
