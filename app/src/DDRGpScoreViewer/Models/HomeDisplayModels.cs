@@ -1,4 +1,5 @@
 using System.Globalization;
+using DDRGpScoreViewer;
 
 namespace DDRGpScoreViewer.Models;
 
@@ -61,8 +62,8 @@ public sealed class HomePlayItem
     public string HomePlayedAtDisplay => HomeTimestampFormatter.Format(Play.PlayedAt);
 
     public string PreviousScoreDisplay => PreviousScore is int score
-        ? $"前回 {score:N0}"
-        : "前回 —";
+        ? Localization.Format("前回 {0:N0}", score)
+        : Localization.Get("前回 —");
 
     public string PreviousExScoreDisplay => PreviousExScore is int exScore
         ? $"EX {exScore:N0}"
@@ -98,19 +99,20 @@ public sealed class HomePlayItem
     {
         if (previous is null)
         {
-            return "初プレー";
+            return Localization.Get("初プレー");
         }
 
         var delta = current - previous.Value;
         return delta switch
         {
             > 0 => FormatPositiveDelta(delta),
-            < 0 => $"↓ {delta:N0}",
-            _ => "＝ ±0",
+            < 0 => Localization.Format("↓ {0:N0}", delta),
+            _ => Localization.Get("＝ ±0"),
         };
     }
 
-    private static string FormatPositiveDelta(int delta) => $"↑ +{delta:N0}";
+    private static string FormatPositiveDelta(int delta) =>
+        Localization.Format("↑ +{0:N0}", delta);
 
     private static string GetDeltaGroup(int current, int? previous)
     {

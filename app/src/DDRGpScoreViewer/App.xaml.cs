@@ -51,6 +51,8 @@ public partial class App : System.Windows.Application
         try
         {
             paths.EnsureDefaultDirectories();
+            var startupSettings = new LocalUserSettingsStore(paths.UserSettingsPath).Load();
+            Localization.Configure(startupSettings?.Language ?? UserSettings.Defaults.Language);
             releaseLog = new ReleaseLog(paths.LogsDirectory);
             releaseLog.Information(
                 "application_start",

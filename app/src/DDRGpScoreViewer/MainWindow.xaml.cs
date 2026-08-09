@@ -76,6 +76,7 @@ public partial class MainWindow : System.Windows.Window
 #if DEBUG
         AddDeveloperActions();
 #endif
+        Localization.ApplyToWindow(this);
     }
 
 #if DEBUG
@@ -83,19 +84,19 @@ public partial class MainWindow : System.Windows.Window
     {
         var buttons = new StackPanel { Orientation = WpfOrientation.Horizontal };
         buttons.Children.Add(CreateDeveloperActionButton(
-            "1フレーム取得",
+            Localization.Get("1フレーム取得"),
             CaptureOneFrame_Click));
         buttons.Children.Add(CreateDeveloperActionButton(
-            "連続取得を開始",
+            Localization.Get("連続取得を開始"),
             StartContinuousCapture_Click));
         buttons.Children.Add(CreateDeveloperActionButton(
-            "単発保存",
+            Localization.Get("単発保存"),
             SaveOnePlay_Click));
 
         var content = new StackPanel();
         content.Children.Add(new TextBlock
         {
-            Text = "Debug build / 開発者向け操作",
+            Text = Localization.Get("Debug build / 開発者向け操作"),
             FontWeight = FontWeights.SemiBold,
             Margin = new Thickness(0, 0, 0, 3),
         });
@@ -379,8 +380,8 @@ public partial class MainWindow : System.Windows.Window
         }
         var workflowDialog = new OpenFileDialog
         {
-            Title = "正式保存workflow入力JSONを選択",
-            Filter = "JSON file (*.json)|*.json|All files (*.*)|*.*",
+            Title = Localization.Get("正式保存workflow入力JSONを選択"),
+            Filter = Localization.Get("JSON file (*.json)|*.json|All files (*.*)|*.*"),
             CheckFileExists = true,
         };
         if (ShowFileDialog(workflowDialog, applicationExitCancellation.Token) != true)
@@ -464,8 +465,9 @@ public partial class MainWindow : System.Windows.Window
         viewModel.SetSettingsPage(false);
         viewModel.SetDataManagementPage(false);
         ContentTabs.SelectedIndex = 0;
-        PageTitle.Text = "ホーム";
-        PageSubtitle.Text = "今日のプレー状況と最近の記録を確認できます";
+        PageTitle.Text = Localization.Get("ホーム");
+        PageSubtitle.Text = Localization.Get("今日のプレー状況と最近の記録を確認できます");
+        Localization.ApplyToWindow(this);
         HomeNavigation.Tag = "Selected";
         BestNavigation.Tag = null;
         HistoryNavigation.Tag = null;
@@ -480,8 +482,9 @@ public partial class MainWindow : System.Windows.Window
         viewModel.SetSettingsPage(false);
         viewModel.SetDataManagementPage(false);
         ContentTabs.SelectedIndex = 1;
-        PageTitle.Text = "自己ベスト";
-        PageSubtitle.Text = "保存済み全履歴から算出した譜面別ベスト";
+        PageTitle.Text = Localization.Get("自己ベスト");
+        PageSubtitle.Text = Localization.Get("保存済み全履歴から算出した譜面別ベスト");
+        Localization.ApplyToWindow(this);
         UpdateBestPlayStyleButtons();
         RestoreBestChartListState();
         HomeNavigation.Tag = null;
@@ -498,8 +501,9 @@ public partial class MainWindow : System.Windows.Window
         viewModel.SetDataManagementPage(false);
         viewModel.SetSettingsPage(true);
         ContentTabs.SelectedIndex = 4;
-        PageTitle.Text = "設定";
-        PageSubtitle.Text = "自動記録と表示に関する設定を変更できます";
+        PageTitle.Text = Localization.Get("設定");
+        PageSubtitle.Text = Localization.Get("自動記録と表示に関する設定を変更できます");
+        Localization.ApplyToWindow(this);
         HomeNavigation.Tag = null;
         BestNavigation.Tag = null;
         HistoryNavigation.Tag = null;
@@ -515,8 +519,9 @@ public partial class MainWindow : System.Windows.Window
         viewModel.SetSettingsPage(false);
         viewModel.SetDataManagementPage(true);
         ContentTabs.SelectedIndex = 5;
-        PageTitle.Text = "データ管理";
-        PageSubtitle.Text = "保存済みプレーと楽曲・譜面データの状態を確認できます";
+        PageTitle.Text = Localization.Get("データ管理");
+        PageSubtitle.Text = Localization.Get("保存済みプレーと楽曲・譜面データの状態を確認できます");
+        Localization.ApplyToWindow(this);
         HomeNavigation.Tag = null;
         BestNavigation.Tag = null;
         HistoryNavigation.Tag = null;
@@ -537,9 +542,9 @@ public partial class MainWindow : System.Windows.Window
             AddExtension = true,
             DefaultExt = ".json",
             FileName = $"personal-score-backup-{DateTime.Now:yyyyMMdd-HHmmss}.json",
-            Filter = "個人スコアバックアップ (*.json)|*.json",
+            Filter = Localization.Get("個人スコアバックアップ (*.json)|*.json"),
             OverwritePrompt = true,
-            Title = "個人スコアデータのバックアップ先を選択",
+            Title = Localization.Get("個人スコアデータのバックアップ先を選択"),
         };
         if (dialog.ShowDialog(this) != true)
         {
@@ -552,7 +557,7 @@ public partial class MainWindow : System.Windows.Window
             System.Windows.MessageBox.Show(
                 this,
                 result.Message,
-                "バックアップを作成できませんでした",
+                Localization.Get("バックアップを作成できませんでした"),
                 MessageBoxButton.OK,
                 MessageBoxImage.Error);
         }
@@ -563,9 +568,9 @@ public partial class MainWindow : System.Windows.Window
         var dialog = new OpenFileDialog
         {
             CheckFileExists = true,
-            Filter = "個人スコアバックアップ (*.json)|*.json",
+            Filter = Localization.Get("個人スコアバックアップ (*.json)|*.json"),
             Multiselect = false,
-            Title = "復元する個人スコアバックアップを選択",
+            Title = Localization.Get("復元する個人スコアバックアップを選択"),
         };
         if (dialog.ShowDialog(this) != true)
         {
@@ -574,8 +579,10 @@ public partial class MainWindow : System.Windows.Window
 
         var confirmation = System.Windows.MessageBox.Show(
             this,
-            "現在の個人スコアデータを、選択したバックアップで置き換えます。\nこの操作は取り消せません。続行しますか？",
-            "個人スコアデータの復元確認",
+            Localization.Get("現在の個人スコアデータを、選択したバックアップで置き換えます。") +
+                Environment.NewLine +
+                Localization.Get("この操作は取り消せません。続行しますか？"),
+            Localization.Get("個人スコアデータの復元確認"),
             MessageBoxButton.YesNo,
             MessageBoxImage.Warning,
             MessageBoxResult.No);
@@ -590,7 +597,7 @@ public partial class MainWindow : System.Windows.Window
             System.Windows.MessageBox.Show(
                 this,
                 result.Message,
-                "バックアップを復元できませんでした",
+                Localization.Get("バックアップを復元できませんでした"),
                 MessageBoxButton.OK,
                 MessageBoxImage.Error);
         }
@@ -680,8 +687,9 @@ public partial class MainWindow : System.Windows.Window
     {
         viewModel.SetSettingsPage(false);
         ContentTabs.SelectedIndex = 2;
-        PageTitle.Text = "楽曲・譜面詳細";
-        PageSubtitle.Text = "自己ベストから選択した1譜面の記録とプレー推移を確認できます";
+        PageTitle.Text = Localization.Get("楽曲・譜面詳細");
+        PageSubtitle.Text = Localization.Get("自己ベストから選択した1譜面の記録とプレー推移を確認できます");
+        Localization.ApplyToWindow(this);
         HomeNavigation.Tag = null;
         BestNavigation.Tag = "Selected";
         HistoryNavigation.Tag = null;
@@ -696,8 +704,8 @@ public partial class MainWindow : System.Windows.Window
     {
         viewModel.SetChartDetailGraphMode(
             ReferenceEquals(sender, ChartDetailBestProgressionButton)
-                ? "自己ベスト推移"
-                : "全プレー");
+                ? MainViewModel.ChartDetailBestProgressionMode
+                : MainViewModel.ChartDetailAllPlaysMode);
         UpdateChartDetailGraphModeButtons();
         RenderChartDetailGraph();
     }
@@ -712,7 +720,7 @@ public partial class MainWindow : System.Windows.Window
             return;
         }
 
-        var allPlaysSelected = viewModel.ChartDetailGraphMode == "全プレー";
+        var allPlaysSelected = viewModel.ChartDetailGraphMode == MainViewModel.ChartDetailAllPlaysMode;
         ChartDetailAllPlaysButton.Tag = allPlaysSelected ? "Selected" : null;
         ChartDetailBestProgressionButton.Tag = allPlaysSelected ? null : "Selected";
     }
@@ -768,8 +776,9 @@ public partial class MainWindow : System.Windows.Window
         viewModel.SetSettingsPage(false);
         viewModel.SetDataManagementPage(false);
         ContentTabs.SelectedIndex = 3;
-        PageTitle.Text = "直近プレー履歴";
-        PageSubtitle.Text = "保存済みのプレーを新しい順に表示します";
+        PageTitle.Text = Localization.Get("直近プレー履歴");
+        PageSubtitle.Text = Localization.Get("保存済みのプレーを新しい順に表示します");
+        Localization.ApplyToWindow(this);
         HomeNavigation.Tag = null;
         BestNavigation.Tag = null;
         HistoryNavigation.Tag = "Selected";
@@ -848,7 +857,7 @@ public partial class MainWindow : System.Windows.Window
         var line = new Polyline
         {
             Points = new PointCollection(renderedPoints.Select(item => item.location)),
-            Stroke = viewModel.ChartDetailGraphMode == "自己ベスト推移"
+            Stroke = viewModel.ChartDetailGraphMode == MainViewModel.ChartDetailBestProgressionMode
                 ? new SolidColorBrush(WpfColor.FromRgb(5, 150, 105))
                 : (WpfBrush)FindResource("AccentPrimaryBrush"),
             StrokeThickness = 2.5,
@@ -864,7 +873,7 @@ public partial class MainWindow : System.Windows.Window
             {
                 Width = isBestPoint ? 9 : 7,
                 Height = isBestPoint ? 9 : 7,
-                Fill = viewModel.ChartDetailGraphMode == "自己ベスト推移" || isBestPoint
+                Fill = viewModel.ChartDetailGraphMode == MainViewModel.ChartDetailBestProgressionMode || isBestPoint
                     ? bestBrush
                     : (WpfBrush)FindResource("AccentPrimaryBrush"),
                 Stroke = WpfBrushes.White,

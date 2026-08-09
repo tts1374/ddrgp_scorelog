@@ -1,4 +1,5 @@
 using System.IO;
+using System.Globalization;
 using System.Text;
 using System.Text.Json;
 
@@ -8,28 +9,68 @@ public sealed record UserSettings(
     bool StartMonitoringOnLaunch,
     bool NotifyUnresolvedResults,
     string DefaultPlayStyle,
-    string StartupPage)
+    string StartupPage,
+    string Language = "ja")
 {
+    public const string JapaneseLanguage = "ja";
+    public const string EnglishLanguage = "en";
+    public const string KoreanLanguage = "ko";
     public const string SinglePlayStyle = "SINGLE";
     public const string DoublePlayStyle = "DOUBLE";
-    public const string HomeStartupPage = "ホーム";
-    public const string BestStartupPage = "自己ベスト";
-    public const string HistoryStartupPage = "直近プレー履歴";
+    public const string HomeStartupPage = "home";
+    public const string BestStartupPage = "best";
+    public const string HistoryStartupPage = "history";
 
     public static UserSettings Defaults { get; } = new(
         StartMonitoringOnLaunch: true,
         NotifyUnresolvedResults: true,
         DefaultPlayStyle: SinglePlayStyle,
-        StartupPage: HomeStartupPage);
+        StartupPage: HomeStartupPage,
+        Language: JapaneseLanguage);
+
+    public static UserSettings ForNewEnvironment(string? osLocale = null) =>
+        Defaults with { Language = ResolveInitialLanguage(osLocale) };
 
     public bool IsValid =>
-        IsValidPlayStyle(DefaultPlayStyle) && IsValidStartupPage(StartupPage);
+        IsValidPlayStyle(DefaultPlayStyle) &&
+        IsValidStartupPage(StartupPage) &&
+        IsValidLanguage(Language);
 
     public static bool IsValidPlayStyle(string? value) =>
         value is SinglePlayStyle or DoublePlayStyle;
 
     public static bool IsValidStartupPage(string? value) =>
         value is HomeStartupPage or BestStartupPage or HistoryStartupPage;
+
+    public static bool IsValidLanguage(string? value) =>
+        value is JapaneseLanguage or EnglishLanguage or KoreanLanguage;
+
+    public static string NormalizeLanguage(string? value) =>
+        value?.Trim().ToLowerInvariant() switch
+        {
+            JapaneseLanguage => JapaneseLanguage,
+            EnglishLanguage => EnglishLanguage,
+            KoreanLanguage => KoreanLanguage,
+            _ => string.IsNullOrWhiteSpace(value)
+                ? JapaneseLanguage
+                : EnglishLanguage,
+        };
+
+    public static string ResolveInitialLanguage(string? osLocale) =>
+        osLocale?.StartsWith("ja", StringComparison.OrdinalIgnoreCase) == true
+            ? JapaneseLanguage
+            : osLocale?.StartsWith("ko", StringComparison.OrdinalIgnoreCase) == true
+                ? KoreanLanguage
+                : EnglishLanguage;
+
+    public static string? NormalizeStartupPage(string? value) =>
+        value?.Trim() switch
+        {
+            HomeStartupPage or "ホーム" => HomeStartupPage,
+            BestStartupPage or "自己ベスト" => BestStartupPage,
+            HistoryStartupPage or "直近プレー履歴" => HistoryStartupPage,
+            _ => null,
+        };
 }
 
 public interface IUserSettingsStore
@@ -67,7 +108,7 @@ public sealed class LocalUserSettingsStore : IUserSettingsStore
     {
         if (!File.Exists(filePath))
         {
-            return null;
+            return UserSettings.ForNewEnvironment(CultureInfo.CurrentUICulture.Name);
         }
 
         try
@@ -82,11 +123,18 @@ public sealed class LocalUserSettingsStore : IUserSettingsStore
                 return null;
             }
 
+            var startupPage = UserSettings.NormalizeStartupPage(stored.StartupPage);
+            if (startupPage is null)
+            {
+                return null;
+            }
+
             var settings = new UserSettings(
                 startMonitoringOnLaunch,
                 notifyUnresolvedResults,
                 stored.DefaultPlayStyle,
-                stored.StartupPage);
+                startupPage,
+                UserSettings.NormalizeLanguage(stored.Language));
             return settings.IsValid ? settings : null;
         }
         catch (Exception exception) when (
@@ -116,7 +164,8 @@ public sealed class LocalUserSettingsStore : IUserSettingsStore
                 settings.StartMonitoringOnLaunch,
                 settings.NotifyUnresolvedResults,
                 settings.DefaultPlayStyle,
-                settings.StartupPage),
+                settings.StartupPage,
+                settings.Language),
             JsonOptions) + "\n";
         File.WriteAllText(filePath, json, Utf8NoBom);
     }
@@ -125,5 +174,6 @@ public sealed class LocalUserSettingsStore : IUserSettingsStore
         bool? StartMonitoringOnLaunch,
         bool? NotifyUnresolvedResults,
         string? DefaultPlayStyle,
-        string? StartupPage);
+        string? StartupPage,
+        string? Language);
 }
