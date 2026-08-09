@@ -61,14 +61,14 @@ public sealed class ApplicationUpdateTests
             DownloadOperation = async (_, progress, cancellationToken) =>
             {
                 progress?.Invoke(10);
-                await Task.Delay(TimeSpan.FromSeconds(31), cancellationToken);
+                await Task.Delay(TimeSpan.FromMilliseconds(200), cancellationToken);
                 progress?.Invoke(100);
             },
         };
         var service = new ApplicationUpdateService(
             manager,
-            checkOperationTimeout: TimeSpan.FromSeconds(1),
-            downloadOperationTimeout: TimeSpan.FromSeconds(35));
+            checkOperationTimeout: TimeSpan.FromMilliseconds(50),
+            downloadOperationTimeout: TimeSpan.FromSeconds(2));
         var progressValues = new List<int>();
         await service.CheckForUpdatesAsync();
 

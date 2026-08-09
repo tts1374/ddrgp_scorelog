@@ -51,6 +51,8 @@ jobs:
     name: Windows app
     runs-on: windows-latest
     timeout-minutes: 20
+    env:
+      NUGET_PACKAGES: ${{ github.workspace }}\.nuget\packages
 
     steps:
       - name: Checkout
@@ -60,12 +62,19 @@ jobs:
         uses: actions/setup-dotnet@v6
         with:
           dotnet-version: "10.0.x"
+          cache: true
+          cache-dependency-path: |
+            app/src/DDRGpScoreViewer/packages.lock.json
+            app/tests/DDRGpScoreViewer.Tests/packages.lock.json
+
+      - name: Verify app formatting
+        run: dotnet format whitespace app --folder --verify-no-changes
 
       - name: Restore
         run: dotnet restore app\tests\DDRGpScoreViewer.Tests\DDRGpScoreViewer.Tests.csproj --locked-mode
 
-      - name: Build Debug app
-        run: dotnet build app\src\DDRGpScoreViewer\DDRGpScoreViewer.csproj --no-restore
+      - name: Test Debug
+        run: dotnet test app\tests\DDRGpScoreViewer.Tests\DDRGpScoreViewer.Tests.csproj --configuration Debug --no-restore
 
       - name: Build Release app
         run: dotnet build app\src\DDRGpScoreViewer\DDRGpScoreViewer.csproj --configuration Release --no-restore
@@ -77,18 +86,6 @@ jobs:
       - name: Verify Release runtime package boundary
         shell: pwsh
         run: .\app\tests\VerifyReleaseRuntime.ps1
-
-      - name: Test Debug
-        run: dotnet test app\tests\DDRGpScoreViewer.Tests\DDRGpScoreViewer.Tests.csproj --configuration Debug --no-restore
-
-      - name: Test Release
-        run: dotnet test app\tests\DDRGpScoreViewer.Tests\DDRGpScoreViewer.Tests.csproj --configuration Release --no-restore
-
-      - name: Verify app formatting
-        run: dotnet format app\src\DDRGpScoreViewer\DDRGpScoreViewer.csproj --verify-no-changes --no-restore
-
-      - name: Verify test formatting
-        run: dotnet format app\tests\DDRGpScoreViewer.Tests\DDRGpScoreViewer.Tests.csproj --verify-no-changes --no-restore
 
   repository-hygiene:
     name: Repository hygiene
