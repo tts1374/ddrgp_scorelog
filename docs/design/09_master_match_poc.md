@@ -170,7 +170,7 @@ title line-hashでは、result `song_title` ROIのうち曲名行だけを対象
 
 M7 jacket validationでは、過去resultを含む`result_candidate=true`フレームの`song_title` / `artist` ROIから、OCRを使わず画像特徴量を抽出する。titleとartistは別々のfeatureとして扱い、同一jacket・同一title・artist違いの候補を後続で比較できる材料を残す。照合に再利用するaccepted featureはM5b `databases/jacket-catalog.sqlite` の `result_text_features` tableへ保存し、JSON/CSV/summaryは確認用の診断出力とする。artistは単独で候補集合を作る主キーにはせず、jacket候補内でtitleの後に使う。
 
-保存するfeature payloadの識別は`m7-result-text-feature-master-v1`で、catalogの各rowはsource label、current master versionで解決した`song_id` / canonical title / canonical artist snapshot、title/artistのfield、feature version、ROI version、payload hash、距離比較に再利用できる画像feature payloadを保持する。feature hashだけでは近似比較できないため、hashとpayloadを分けて保存する。source labelとcanonical song IDは照合用参照metadataであり、OCR文字列やM7正式保存値へ暗黙昇格させない。
+保存するfeature payloadの識別は`m7-result-text-feature-master-v1`で、catalogの各rowはsource label、収集時master versionで解決した`song_id` / canonical title / canonical artist snapshot、title/artistのfield、feature version、ROI version、payload hash、距離比較に再利用できる画像feature payloadを保持する。feature hashだけでは近似比較できないため、hashとpayloadを分けて保存する。master更新後もsong ID・canonical title・canonical artistがcurrent masterと一致するrowはhistorical master-compatible featureとしてread-only照合へ再利用し、元のmaster versionは書き換えない。source labelとcanonical song IDは照合用参照metadataであり、OCR文字列やM7正式保存値へ暗黙昇格させない。
 
 なお、collector catalogの`title_line_hash`はsong selectの`INFORMATION`欄のtitle lineを白画素二値化してSHA-256化した複合identity用の値であり、result titleの画像featureとは異なる。result feature payloadの`title_linehash_rows`はcatalogの`title_line_hash`へ流用せず、M5b catalogの`result_text_features.payload_json`内へ独立して保持する。
 

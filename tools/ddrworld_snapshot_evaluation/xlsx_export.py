@@ -114,8 +114,11 @@ def _cell(value: Any, *, reference: str, style: int = 0) -> str:
     )
 
 
-def _sheet_columns(headers: list[str]) -> str:
-    widths = [28.0, 66.0, 66.0, 16.0, 20.0, 32.0]
+def _sheet_columns(headers: list[str], widths: list[float] | None = None) -> str:
+    if widths is None:
+        widths = [28.0, 66.0, 66.0, 16.0, 20.0, 32.0]
+    elif len(widths) != len(headers) or any(width <= 0 for width in widths):
+        raise ValueError("XLSX column widths must match headers and be positive")
     columns = []
     for index in range(len(headers)):
         width = widths[index] if index < len(widths) else 20.0
@@ -131,6 +134,7 @@ def _sheet_xml(
     rows: list[list[Any]],
     *,
     drawing_relationship: bool,
+    column_widths: list[float] | None = None,
 ) -> tuple[bytes, list[tuple[EmbeddedImage, int, int]]]:
     all_rows = [headers, *rows]
     image_anchors: list[tuple[EmbeddedImage, int, int]] = []
@@ -188,7 +192,7 @@ def _sheet_xml(
  <dimension ref="{dimension}"/>
  <sheetViews><sheetView workbookViewId="0"/></sheetViews>
  <sheetFormatPr defaultRowHeight="15"/>
- {_sheet_columns(headers)}
+ {_sheet_columns(headers, column_widths)}
  <sheetData>{"".join(rendered_rows)}</sheetData>
  {data_validation}
  <pageMargins left="0.7" right="0.7" top="0.75" bottom="0.75" header="0.3" footer="0.3"/>
@@ -403,11 +407,13 @@ def _app_properties_xml(sheet_names: list[str]) -> bytes:
 def write_xlsx(
     path: Path,
     sheets: list[tuple[str, list[str], list[list[Any]]]],
+    *,
+    column_widths_by_sheet: dict[str, list[float]] | None = None,
 ) -> None:
     """Write a deterministic XLSX workbook, replacing an existing file atomically."""
     path = path.resolve()
     if path.suffix.lower() != ".xlsx":
-        raise ValueError("manual review export must use the .xlsx extension")
+        raise ValueError("XLSX output must use the .xlsx extension")
     path.parent.mkdir(parents=True, exist_ok=True)
     images = _embedded_images(sheets)
     entries: dict[str, bytes] = {}
@@ -419,6 +425,11 @@ def write_xlsx(
             headers,
             rows,
             drawing_relationship=bool(anchors),
+            column_widths=(
+                None
+                if column_widths_by_sheet is None
+                else column_widths_by_sheet.get(_name)
+            ),
         )
         entries[f"xl/worksheets/sheet{index}.xml"] = worksheet
         if anchors:
