@@ -1511,7 +1511,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 Localization.CurrentLanguage,
                 StringComparison.Ordinal)
                 ? Localization.Get("設定を保存しました。")
-                : Localization.Get("設定を保存しました。言語変更はアプリ再起動後に反映されます。");
+                : Localization.Get("設定を保存しました。言語変更を反映するためアプリを自動的に再起動します。");
             return true;
         }
         catch (Exception exception) when (
@@ -1523,6 +1523,16 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 exception.Message);
             return false;
         }
+    }
+
+    internal void SetLanguageChangeRestartFailureStatus(string? detail = null)
+    {
+        var reason = string.IsNullOrWhiteSpace(detail)
+            ? Localization.Get("アプリを手動で再起動してください。")
+            : detail;
+        SettingsStatusMessage = Localization.Format(
+            "設定を保存しましたが、自動再起動に失敗しました。{0}",
+            reason);
     }
 
     internal void ResetUserSettings()

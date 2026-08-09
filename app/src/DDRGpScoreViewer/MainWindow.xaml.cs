@@ -38,6 +38,8 @@ public partial class MainWindow : System.Windows.Window
     private Func<Task>? applicationUpdatePrepareExitHandler;
     private Func<Task>? applicationUpdateExitHandler;
     private Action? applicationUpdateForceExitHandler;
+    private Func<Task<bool>>? languageChangeRestartHandler;
+    private bool languageChangeRestartRequested;
 
     public MainWindow()
         : this(ViewerDatabasePaths.ResolveDefault())
@@ -168,6 +170,9 @@ public partial class MainWindow : System.Windows.Window
         applicationUpdateExitHandler = exitHandler;
         applicationUpdateForceExitHandler = forceExitHandler;
     }
+
+    internal void SetLanguageChangeRestartHandler(Func<Task<bool>> restartHandler) =>
+        languageChangeRestartHandler = restartHandler;
 
     internal Task CheckForApplicationUpdateAsync(CancellationToken cancellationToken) =>
         viewModel.CheckForApplicationUpdateAsync(cancellationToken);
@@ -529,8 +534,39 @@ public partial class MainWindow : System.Windows.Window
         DataManagementNavigation.Tag = "Selected";
     }
 
-    private void SaveSettings_Click(object sender, RoutedEventArgs e) =>
-        viewModel.SaveUserSettings();
+    private async void SaveSettings_Click(object sender, RoutedEventArgs e)
+    {
+        if (languageChangeRestartRequested)
+        {
+            return;
+        }
+
+        var languageChanged = !string.Equals(
+            viewModel.Language,
+            Localization.CurrentLanguage,
+            StringComparison.Ordinal);
+        if (!viewModel.SaveUserSettings() ||
+            !languageChanged ||
+            languageChangeRestartHandler is null)
+        {
+            return;
+        }
+
+        languageChangeRestartRequested = true;
+        try
+        {
+            if (!await languageChangeRestartHandler())
+            {
+                languageChangeRestartRequested = false;
+                viewModel.SetLanguageChangeRestartFailureStatus();
+            }
+        }
+        catch (Exception exception)
+        {
+            languageChangeRestartRequested = false;
+            viewModel.SetLanguageChangeRestartFailureStatus(exception.Message);
+        }
+    }
 
     private void ResetSettings_Click(object sender, RoutedEventArgs e) =>
         viewModel.ResetUserSettings();

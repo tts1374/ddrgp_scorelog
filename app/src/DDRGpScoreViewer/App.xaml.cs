@@ -38,6 +38,7 @@ public partial class App : System.Windows.Application
     protected override async void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        await ApplicationRestartCoordinator.WaitForPreviousProcessAsync(e.Args);
         singleInstance = SingleInstanceCoordinator.Acquire();
         if (!singleInstance.IsPrimary)
         {
@@ -87,6 +88,7 @@ public partial class App : System.Windows.Application
             ShowMainWindow,
             ShutdownApplication,
             () => mainWindow.RequestApplicationExit());
+        mainWindow.SetLanguageChangeRestartHandler(RestartAfterLanguageChangeAsync);
         mainWindow.SetApplicationUpdateExitHandlers(
             lifecycle.PrepareForApplicationUpdateAsync,
             lifecycle.ExitAsync,
@@ -240,6 +242,26 @@ public partial class App : System.Windows.Application
         releaseLog?.Information("application_exit", "監視と進行中処理を停止し、明示終了します。");
         mainWindow?.PrepareForApplicationExit();
         Shutdown();
+    }
+
+    private async Task<bool> RestartAfterLanguageChangeAsync()
+    {
+        if (lifecycle is null)
+        {
+            return false;
+        }
+
+        try
+        {
+            ApplicationRestartCoordinator.StartAfterCurrentProcessExit(Environment.ProcessId);
+            await lifecycle.ExitAsync();
+            return true;
+        }
+        catch (Exception exception)
+        {
+            releaseLog?.Error("language_change_restart_failed", exception);
+            return false;
+        }
     }
 
     protected override void OnSessionEnding(SessionEndingCancelEventArgs e)

@@ -83,7 +83,7 @@
     <sys:String x:Key="既定のプレイスタイル">Default play style</sys:String>
     <sys:String x:Key="起動時に表示する画面">Page shown at launch</sys:String>
     <sys:String x:Key="言語">Language</sys:String>
-    <sys:String x:Key="言語の変更はアプリ再起動後に反映されます">Language changes take effect after restarting the app</sys:String>
+    <sys:String x:Key="言語の変更を保存するとアプリが自動的に再起動します">Saving a language change automatically restarts the app</sys:String>
     <sys:String x:Key="変更を保存">Save changes</sys:String>
     <sys:String x:Key="保存済みプレー">Saved plays</sys:String>
     <sys:String x:Key="個人スコアデータ">Personal score data</sys:String>
@@ -171,7 +171,9 @@
     <sys:String x:Key="↑ +{0:N0}">↑ +{0:N0}</sys:String>
     <sys:String x:Key="変更内容は保存時に反映されます">Changes take effect when saved</sys:String>
     <sys:String x:Key="設定を保存しました。">Settings saved.</sys:String>
-    <sys:String x:Key="設定を保存しました。言語変更はアプリ再起動後に反映されます。">Settings saved. Language changes take effect after restarting the app.</sys:String>
+    <sys:String x:Key="設定を保存しました。言語変更を反映するためアプリを自動的に再起動します。">Settings saved. The app will restart automatically to apply the language change.</sys:String>
+    <sys:String x:Key="設定を保存しましたが、自動再起動に失敗しました。{0}">Settings saved, but automatic restart failed. {0}</sys:String>
+    <sys:String x:Key="アプリを手動で再起動してください。">Please restart the app manually.</sys:String>
     <sys:String x:Key="設定値を確認してから保存してください。">Review the settings before saving.</sys:String>
     <sys:String x:Key="設定を保存できませんでした。{0}">Could not save settings. {0}</sys:String>
     <sys:String x:Key="初期値に戻しました。保存すると反映されます。">Defaults restored. Save to apply them.</sys:String>

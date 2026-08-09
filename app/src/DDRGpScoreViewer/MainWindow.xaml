@@ -1496,7 +1496,7 @@
                                                   DisplayMemberPath="Display"
                                                   SelectedItem="{Binding SelectedLanguageOption, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
                                     </Grid>
-                                    <TextBlock Text="言語の変更はアプリ再起動後に反映されます"
+                                    <TextBlock Text="言語の変更を保存するとアプリが自動的に再起動します"
                                                Foreground="{StaticResource TextSecondaryBrush}"
                                                FontSize="11" Margin="220,8,0,0"
                                                TextWrapping="Wrap" />

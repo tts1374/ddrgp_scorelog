@@ -173,6 +173,7 @@ public sealed class UserSettingsTests
         viewModel.NotifyUnresolvedResults = false;
         viewModel.DefaultPlayStyle = UserSettings.DoublePlayStyle;
         viewModel.StartupPage = UserSettings.BestStartupPage;
+        viewModel.Language = UserSettings.EnglishLanguage;
 
         Assert.True(viewModel.SaveUserSettings());
         Assert.Equal(scoreHashBefore, SHA256.HashData(File.ReadAllBytes(fixture.ScorePath)));
@@ -187,6 +188,7 @@ public sealed class UserSettingsTests
         Assert.False(restartedViewModel.NotifyUnresolvedResults);
         Assert.Equal(UserSettings.DoublePlayStyle, restartedViewModel.DefaultPlayStyle);
         Assert.Equal(UserSettings.BestStartupPage, restartedViewModel.StartupPage);
+        Assert.Equal(UserSettings.EnglishLanguage, restartedViewModel.Language);
         Assert.False(restartedViewModel.IsAutomaticMonitoringEnabled);
     }
 

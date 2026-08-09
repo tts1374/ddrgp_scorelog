@@ -86,7 +86,7 @@
     <sys:String x:Key="既定のプレイスタイル">既定のプレイスタイル</sys:String>
     <sys:String x:Key="起動時に表示する画面">起動時に表示する画面</sys:String>
     <sys:String x:Key="言語">言語</sys:String>
-    <sys:String x:Key="言語の変更はアプリ再起動後に反映されます">言語の変更はアプリ再起動後に反映されます</sys:String>
+    <sys:String x:Key="言語の変更を保存するとアプリが自動的に再起動します">言語の変更を保存するとアプリが自動的に再起動します</sys:String>
     <sys:String x:Key="変更を保存">変更を保存</sys:String>
     <sys:String x:Key="保存済みプレー">保存済みプレー</sys:String>
     <sys:String x:Key="個人スコアデータ">個人スコアデータ</sys:String>
@@ -183,7 +183,9 @@
 
     <sys:String x:Key="変更内容は保存時に反映されます">変更内容は保存時に反映されます</sys:String>
     <sys:String x:Key="設定を保存しました。">設定を保存しました。</sys:String>
-    <sys:String x:Key="設定を保存しました。言語変更はアプリ再起動後に反映されます。">設定を保存しました。言語変更はアプリ再起動後に反映されます。</sys:String>
+    <sys:String x:Key="設定を保存しました。言語変更を反映するためアプリを自動的に再起動します。">設定を保存しました。言語変更を反映するためアプリを自動的に再起動します。</sys:String>
+    <sys:String x:Key="設定を保存しましたが、自動再起動に失敗しました。{0}">設定を保存しましたが、自動再起動に失敗しました。{0}</sys:String>
+    <sys:String x:Key="アプリを手動で再起動してください。">アプリを手動で再起動してください。</sys:String>
     <sys:String x:Key="設定値を確認してから保存してください。">設定値を確認してから保存してください。</sys:String>
     <sys:String x:Key="設定を保存できませんでした。{0}">設定を保存できませんでした。{0}</sys:String>
     <sys:String x:Key="初期値に戻しました。保存すると反映されます。">初期値に戻しました。保存すると反映されます。</sys:String>
