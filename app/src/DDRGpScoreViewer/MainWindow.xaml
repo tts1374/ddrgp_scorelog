@@ -382,7 +382,10 @@
 
                                     <Border x:Name="HomeLatestPlayCard" Background="{StaticResource SurfaceSecondaryBrush}"
                                             BorderBrush="{StaticResource BorderDefaultBrush}" BorderThickness="0,1,0,1"
-                                            Padding="16" DataContext="{Binding HomeLatestPlay, Mode=OneWay}">
+                                            Padding="16"
+                                            DataContext="{Binding DataContext.HomeLatestPlay,
+                                                RelativeSource={RelativeSource AncestorType={x:Type Window}},
+                                                Mode=OneWay}">
                                         <StackPanel MinWidth="0">
                                             <Grid>
                                                 <Grid.ColumnDefinitions>
