@@ -12,6 +12,7 @@ public sealed class LiveMonitoringCaptureService(
     private const int DxgiDeviceRemovedHResult = unchecked((int)0x887A0005);
     private const int DxgiDeviceHungHResult = unchecked((int)0x887A0006);
     private const int DxgiDeviceResetHResult = unchecked((int)0x887A0007);
+    private const int MaximumIdentityAttempts = 8;
     private readonly object stateLock = new();
     private IContinuousFrameSource? activeSource;
     private CancellationTokenSource? startupCancellation;
@@ -33,7 +34,8 @@ public sealed class LiveMonitoringCaptureService(
         nint targetWindowHandle,
         CaptureTargetInfo target,
         IProgress<CaptureSessionProgress> progress,
-        Func<CapturedFrame, LiveResultObservation, CancellationToken, Task> processCandidate,
+        Func<CapturedFrame, LiveResultObservation, LiveCandidateProcessingContext,
+            CancellationToken, Task<LiveCandidateProcessingResult>> processCandidate,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(progress);
@@ -314,7 +316,11 @@ public sealed class LiveMonitoringCaptureService(
     {
         if (!observation.IsResultScreen)
         {
-            state.ObserveNonResultScreen();
+            var finalCandidate = state.ObserveNonResultScreen();
+            if (finalCandidate is not null)
+            {
+                WriteCandidate(finalCandidate, candidateWriter, state);
+            }
             progress.Report(state.ToProgress(state.StatusMessage));
             return;
         }
@@ -336,21 +342,32 @@ public sealed class LiveMonitoringCaptureService(
             return;
         }
 
+        WriteCandidate(candidate, candidateWriter, state);
+        progress.Report(state.ToProgress(state.StatusMessage));
+    }
+
+    private static void WriteCandidate(
+        LiveCandidate candidate,
+        ChannelWriter<LiveCandidate> candidateWriter,
+        LiveRunState state)
+    {
         if (candidateWriter.TryWrite(candidate))
         {
             state.IncrementConfirmedCandidateCount();
             state.IncrementPendingCandidateCount();
             state.SetStatus(
-                $"RESULTを確定しました。SCORE={DisplayScore(observation)}、解析・正式保存を開始します。");
+                candidate.FinalizeUnresolved
+                    ? "RESULT同定根拠が未解決のままRESULTSが消失したため、保存せず未解決として記録します。"
+                    : $"RESULTを確定しました。SCORE={DisplayScore(candidate.Observation)}、RESULT同定根拠を確認します。");
         }
         else
         {
+            state.FailCandidate(candidate);
             state.IncrementDiscardedFrameCount();
             state.IncrementCandidateQueueDropCount();
             state.SetStatus(
                 "RESULT候補の解析中です。待機枠が埋まっているため、この候補は破棄しました。");
         }
-        progress.Report(state.ToProgress(state.StatusMessage));
     }
 
     private static string DisplayScore(LiveResultObservation observation) =>
@@ -360,39 +377,52 @@ public sealed class LiveMonitoringCaptureService(
 
     private static async Task ProcessCandidatesAsync(
         ChannelReader<LiveCandidate> candidateReader,
-        Func<CapturedFrame, LiveResultObservation, CancellationToken, Task> processCandidate,
+        Func<CapturedFrame, LiveResultObservation, LiveCandidateProcessingContext,
+            CancellationToken, Task<LiveCandidateProcessingResult>> processCandidate,
         LiveRunState state,
         IProgress<CaptureSessionProgress> progress,
         CancellationToken cancellationToken)
     {
         try
         {
-            await foreach (var candidate in candidateReader.ReadAllAsync(cancellationToken))
+            await foreach (var queuedCandidate in candidateReader.ReadAllAsync(cancellationToken))
             {
                 state.DecrementPendingCandidateCount();
-                state.SetActiveCandidate(true);
-                state.SetStatus(
-                    $"RESULT候補を解析・正式保存しています。SCORE={DisplayScore(candidate.Observation)}");
-                progress.Report(state.ToProgress(state.StatusMessage));
-                try
+                LiveCandidate? candidate = queuedCandidate;
+                while (candidate is not null)
                 {
-                    await processCandidate(
-                        candidate.Frame,
-                        candidate.Observation,
-                        cancellationToken);
-                }
-                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-                {
-                    return;
-                }
-                catch (Exception exception)
-                {
-                    state.SetStatus($"RESULT候補の処理に失敗しました。{exception.Message}");
-                }
-                finally
-                {
-                    state.SetActiveCandidate(false);
+                    state.SetActiveCandidate(true);
+                    state.SetStatus(candidate.FinalizeUnresolved
+                        ? "未解決のRESULT候補を保存せず記録しています。"
+                        : $"RESULT同定根拠を確認しています。SCORE={DisplayScore(candidate.Observation)}");
                     progress.Report(state.ToProgress(state.StatusMessage));
+                    try
+                    {
+                        var result = await processCandidate(
+                            candidate.Frame,
+                            candidate.Observation,
+                            new LiveCandidateProcessingContext(candidate.FinalizeUnresolved),
+                            cancellationToken);
+                        candidate = state.CompleteCandidate(candidate, result);
+                    }
+                    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                    {
+                        return;
+                    }
+                    catch (Exception exception)
+                    {
+                        if (candidate is not null)
+                        {
+                            state.FailCandidate(candidate);
+                        }
+                        state.SetStatus($"RESULT候補の処理に失敗しました。{exception.Message}");
+                        candidate = null;
+                    }
+                    finally
+                    {
+                        state.SetActiveCandidate(false);
+                        progress.Report(state.ToProgress(state.StatusMessage));
+                    }
                 }
             }
         }
@@ -429,7 +459,10 @@ public sealed class LiveMonitoringCaptureService(
 
     private sealed record LiveCandidate(
         CapturedFrame Frame,
-        LiveResultObservation Observation);
+        LiveResultObservation Observation,
+        string ResultKey,
+        int Attempt,
+        bool FinalizeUnresolved = false);
 
     private sealed class LiveRunState(CaptureTargetInfo target, DateTimeOffset startedAtUtc)
     {
@@ -442,6 +475,13 @@ public sealed class LiveMonitoringCaptureService(
         private int candidateStreak;
         private int nonResultStreak;
         private string? activeResultKey;
+        private string? inFlightResultKey;
+        private string? pendingRetryResultKey;
+        private string? pendingRetryEventId;
+        private CapturedFrame? pendingRetryFrame;
+        private LiveResultObservation? pendingRetryObservation;
+        private int pendingRetryAttempt;
+        private bool resultMissing;
         private int frameCount;
         private int sampledFrameCount;
         private int resultFrameCount;
@@ -519,7 +559,7 @@ public sealed class LiveMonitoringCaptureService(
             }
         }
 
-        public void ObserveNonResultScreen()
+        public LiveCandidate? ObserveNonResultScreen()
         {
             lock (gate)
             {
@@ -530,7 +570,12 @@ public sealed class LiveMonitoringCaptureService(
                 if (nonResultStreak >= 2)
                 {
                     activeResultKey = null;
+                    resultMissing = true;
                     statusMessage = "RESULTSが2回連続で消失したため、次のRESULTを新規候補として待機しています。";
+                    if (inFlightResultKey is null && pendingRetryResultKey is not null)
+                    {
+                        return CreateFinalUnresolvedCandidate();
+                    }
                 }
                 else
                 {
@@ -538,6 +583,7 @@ public sealed class LiveMonitoringCaptureService(
                 }
             }
             Interlocked.Increment(ref discardedFrameCount);
+            return null;
         }
 
         public void ObserveInvalidResult(string message)
@@ -545,6 +591,7 @@ public sealed class LiveMonitoringCaptureService(
             lock (gate)
             {
                 nonResultStreak = 0;
+                resultMissing = false;
                 candidateScore = null;
                 candidateEventId = null;
                 candidateStreak = 0;
@@ -558,6 +605,7 @@ public sealed class LiveMonitoringCaptureService(
             lock (gate)
             {
                 nonResultStreak = 0;
+                resultMissing = false;
                 var resultKey = AppOwnedResultEventFingerprint.TryCreate(
                         observation,
                         requireIdentity: false) ??
@@ -570,6 +618,31 @@ public sealed class LiveMonitoringCaptureService(
                         $"同じRESULTを検出したためduplicate候補として破棄しました。SCORE={observation.Score}";
                     Interlocked.Increment(ref discardedFrameCount);
                     return null;
+                }
+                if (inFlightResultKey == resultKey)
+                {
+                    pendingRetryFrame = LatestFrame;
+                    pendingRetryObservation = observation;
+                    statusMessage =
+                        $"同じRESULTのRESULT同定根拠を確認中です。SCORE={observation.Score}";
+                    Interlocked.Increment(ref discardedFrameCount);
+                    return null;
+                }
+                if (pendingRetryResultKey == resultKey)
+                {
+                    var eventId = pendingRetryEventId ??= ConfirmedResultEventId.Create();
+                    var attempt = pendingRetryAttempt + 1;
+                    pendingRetryAttempt = attempt;
+                    pendingRetryFrame = LatestFrame;
+                    pendingRetryObservation = observation with { ConfirmedEventId = eventId };
+                    inFlightResultKey = resultKey;
+                    pendingRetryResultKey = null;
+                    return new LiveCandidate(
+                        LatestFrame,
+                        pendingRetryObservation,
+                        resultKey,
+                        attempt,
+                        FinalizeUnresolved: attempt >= MaximumIdentityAttempts);
                 }
 
                 if (candidateScore == observation.Score)
@@ -590,15 +663,93 @@ public sealed class LiveMonitoringCaptureService(
                     return null;
                 }
 
-                activeResultKey = resultKey;
                 var confirmedEventId = candidateEventId ??= ConfirmedResultEventId.Create();
                 candidateScore = null;
                 candidateEventId = null;
                 candidateStreak = 0;
+                inFlightResultKey = resultKey;
+                pendingRetryFrame = LatestFrame;
+                pendingRetryObservation = observation with { ConfirmedEventId = confirmedEventId };
+                pendingRetryAttempt = 1;
                 return new LiveCandidate(
                     LatestFrame,
-                    observation with { ConfirmedEventId = confirmedEventId });
+                    pendingRetryObservation,
+                    resultKey,
+                    Attempt: 1);
             }
+        }
+
+        public LiveCandidate? CompleteCandidate(
+            LiveCandidate candidate,
+            LiveCandidateProcessingResult result)
+        {
+            lock (gate)
+            {
+                inFlightResultKey = null;
+                if (result.Disposition == LiveCandidateProcessingDisposition.RetryIdentity &&
+                    !candidate.FinalizeUnresolved)
+                {
+                    pendingRetryResultKey = candidate.ResultKey;
+                    pendingRetryEventId = candidate.Observation.ConfirmedEventId;
+                    pendingRetryFrame ??= candidate.Frame;
+                    pendingRetryObservation ??= candidate.Observation;
+                    pendingRetryAttempt = candidate.Attempt;
+                    statusMessage =
+                        $"RESULT同定根拠が未解決です。同じcapture eventで後続frameを再評価します。SCORE={candidate.Observation.Score}";
+                    return resultMissing ? CreateFinalUnresolvedCandidate() : null;
+                }
+
+                if (!candidate.FinalizeUnresolved && !resultMissing)
+                {
+                    activeResultKey = candidate.ResultKey;
+                }
+                ClearPendingRetry();
+                return null;
+            }
+        }
+
+        public void FailCandidate(LiveCandidate candidate)
+        {
+            lock (gate)
+            {
+                if (inFlightResultKey == candidate.ResultKey)
+                {
+                    inFlightResultKey = null;
+                }
+                ClearPendingRetry();
+            }
+        }
+
+        private LiveCandidate CreateFinalUnresolvedCandidate()
+        {
+            var resultKey = pendingRetryResultKey!;
+            var eventId = pendingRetryEventId ?? ConfirmedResultEventId.Create();
+            var observation =
+                (pendingRetryObservation ?? throw new InvalidOperationException(
+                    "Pending retry observation is missing.")) with
+                {
+                    ConfirmedEventId = eventId,
+                };
+            var frame = pendingRetryFrame ?? throw new InvalidOperationException(
+                "Pending retry frame is missing.");
+            var attempt = pendingRetryAttempt + 1;
+            inFlightResultKey = resultKey;
+            pendingRetryResultKey = null;
+            return new LiveCandidate(
+                frame,
+                observation,
+                resultKey,
+                attempt,
+                FinalizeUnresolved: true);
+        }
+
+        private void ClearPendingRetry()
+        {
+            pendingRetryResultKey = null;
+            pendingRetryEventId = null;
+            pendingRetryFrame = null;
+            pendingRetryObservation = null;
+            pendingRetryAttempt = 0;
         }
 
         // The candidate frame is assigned immediately before ObserveResult is called.

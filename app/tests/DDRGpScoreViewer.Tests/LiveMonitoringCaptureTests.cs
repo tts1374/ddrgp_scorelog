@@ -53,10 +53,10 @@ public sealed class LiveMonitoringCaptureTests
             123,
             new CaptureTargetInfo("DDR GRAND PRIX", 1280, 720),
             new CallbackProgress<CaptureSessionProgress>(progress.Add),
-            (_, observation, _) =>
+            (_, observation, _, _) =>
             {
                 processed.Add(observation.Score);
-                return Task.CompletedTask;
+                return Task.FromResult(LiveCandidateProcessingResult.Completed);
             });
 
         Assert.Equal(CaptureOperationStatus.Cancelled, result.Status);
@@ -108,7 +108,7 @@ public sealed class LiveMonitoringCaptureTests
                     candidateQueueDropObserved.TrySetResult();
                 }
             }),
-            async (_, observation, _) =>
+            async (_, observation, _, _) =>
             {
                 processed.Add(observation.Score);
                 if (processed.Count == 1)
@@ -116,6 +116,7 @@ public sealed class LiveMonitoringCaptureTests
                     firstCandidateStarted.TrySetResult();
                     await releaseFirstCandidate.Task;
                 }
+                return LiveCandidateProcessingResult.Completed;
             });
 
         await firstCandidateStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
@@ -152,16 +153,129 @@ public sealed class LiveMonitoringCaptureTests
             123,
             new CaptureTargetInfo("DDR GRAND PRIX", 1280, 720),
             new CallbackProgress<CaptureSessionProgress>(_ => { }),
-            (_, observation, _) =>
+            (_, observation, _, _) =>
             {
                 processed.Add((observation.TitleSignature, observation.ConfirmedEventId));
-                return Task.CompletedTask;
+                return Task.FromResult(LiveCandidateProcessingResult.Completed);
             });
 
         Assert.Equal(CaptureOperationStatus.Cancelled, result.Status);
         Assert.Single(processed);
         Assert.Equal("animated-b", processed[0].Signature);
         Assert.StartsWith("confirmed-event-v1:", processed[0].EventId);
+    }
+
+    [Fact]
+    public async Task Live_monitor_retries_ambiguous_identity_with_the_same_event_id_then_completes_once()
+    {
+        var observations = new Queue<LiveResultObservation>(
+        [
+            FormalResult("100", "ambiguous-a"),
+            FormalResult("100", "ambiguous-b"),
+            FormalResult("100", "resolved"),
+            FormalResult("100", "resolved-after-save"),
+        ]);
+        var source = new StubFrameSource(Frames(0, 1_000, 2_000, 3_000), frameDelayMs: 5);
+        var attempts = new List<(string? EventId, bool Finalize)>();
+        var completedWorkflowCount = 0;
+        var service = new LiveMonitoringCaptureService(
+            new StubTargetedAdapter(source),
+            new StubResultAnalyzer(observations));
+
+        var result = await service.RunAsync(
+            123,
+            new CaptureTargetInfo("DDR GRAND PRIX", 1280, 720),
+            new CallbackProgress<CaptureSessionProgress>(_ => { }),
+            (_, observation, context, _) =>
+            {
+                attempts.Add((observation.ConfirmedEventId, context.FinalizeUnresolved));
+                if (attempts.Count == 1)
+                {
+                    return Task.FromResult(LiveCandidateProcessingResult.RetryIdentity);
+                }
+                completedWorkflowCount++;
+                return Task.FromResult(LiveCandidateProcessingResult.Completed);
+            });
+
+        Assert.Equal(CaptureOperationStatus.Cancelled, result.Status);
+        Assert.Equal(2, attempts.Count);
+        Assert.False(attempts[0].Finalize);
+        Assert.False(attempts[1].Finalize);
+        Assert.Equal(attempts[0].EventId, attempts[1].EventId);
+        Assert.Equal(1, completedWorkflowCount);
+    }
+
+    [Fact]
+    public async Task Live_monitor_finalizes_unresolved_once_when_result_disappears()
+    {
+        var observations = new Queue<LiveResultObservation>(
+        [
+            FormalResult("100", "ambiguous-a"),
+            FormalResult("100", "ambiguous-b"),
+            NonResult("grid"),
+            NonResult("music-select"),
+        ]);
+        var source = new StubFrameSource(
+            Frames(0, 1_000, 2_000, 3_000),
+            frameDelayMs: 5);
+        var attempts = new List<(string? EventId, bool Finalize)>();
+        var unresolvedWorkflowCount = 0;
+        var service = new LiveMonitoringCaptureService(
+            new StubTargetedAdapter(source),
+            new StubResultAnalyzer(observations));
+
+        var result = await service.RunAsync(
+            123,
+            new CaptureTargetInfo("DDR GRAND PRIX", 1280, 720),
+            new CallbackProgress<CaptureSessionProgress>(_ => { }),
+            (_, observation, context, _) =>
+            {
+                attempts.Add((observation.ConfirmedEventId, context.FinalizeUnresolved));
+                if (!context.FinalizeUnresolved)
+                {
+                    return Task.FromResult(LiveCandidateProcessingResult.RetryIdentity);
+                }
+                unresolvedWorkflowCount++;
+                return Task.FromResult(LiveCandidateProcessingResult.Completed);
+            });
+
+        Assert.Equal(CaptureOperationStatus.Cancelled, result.Status);
+        Assert.Equal(2, attempts.Count);
+        Assert.True(attempts[1].Finalize);
+        Assert.Equal(attempts[0].EventId, attempts[1].EventId);
+        Assert.Equal(1, unresolvedWorkflowCount);
+    }
+
+    [Fact]
+    public async Task Live_monitor_bounds_identity_retry_and_finalizes_the_eighth_attempt()
+    {
+        var observations = new Queue<LiveResultObservation>(
+            Enumerable.Range(0, 9).Select(index => FormalResult("100", $"ambiguous-{index}")));
+        var source = new StubFrameSource(
+            Frames(0, 1_000, 2_000, 3_000, 4_000, 5_000, 6_000, 7_000, 8_000),
+            frameDelayMs: 5);
+        var attempts = new List<(string? EventId, bool Finalize)>();
+        var service = new LiveMonitoringCaptureService(
+            new StubTargetedAdapter(source),
+            new StubResultAnalyzer(observations));
+
+        var result = await service.RunAsync(
+            123,
+            new CaptureTargetInfo("DDR GRAND PRIX", 1280, 720),
+            new CallbackProgress<CaptureSessionProgress>(_ => { }),
+            (_, observation, context, _) =>
+            {
+                attempts.Add((observation.ConfirmedEventId, context.FinalizeUnresolved));
+                return Task.FromResult(context.FinalizeUnresolved
+                    ? LiveCandidateProcessingResult.Completed
+                    : LiveCandidateProcessingResult.RetryIdentity);
+            });
+
+        Assert.Equal(CaptureOperationStatus.Cancelled, result.Status);
+        Assert.Equal(8, attempts.Count);
+        Assert.False(attempts[6].Finalize);
+        Assert.True(attempts[7].Finalize);
+        Assert.Single(attempts.Select(item => item.EventId).Distinct());
     }
 
     [Fact]
@@ -186,14 +300,67 @@ public sealed class LiveMonitoringCaptureTests
             123,
             new CaptureTargetInfo("DDR GRAND PRIX", 1280, 720),
             new CallbackProgress<CaptureSessionProgress>(_ => { }),
-            async (_, observation, _) =>
+            async (_, observation, _, _) =>
             {
                 processed.Add(observation.Score);
                 await service.StopAsync();
+                return LiveCandidateProcessingResult.Completed;
             });
 
         Assert.Equal(CaptureOperationStatus.Cancelled, result.Status);
         Assert.Equal(["100"], processed);
+    }
+
+    [Theory]
+    [InlineData("stop", CaptureOperationStatus.Cancelled)]
+    [InlineData("cancel", CaptureOperationStatus.Cancelled)]
+    [InlineData("window_closed", CaptureOperationStatus.TargetClosed)]
+    public async Task Live_monitor_discards_pending_identity_retry_at_session_boundary(
+        string boundary,
+        CaptureOperationStatus expectedStatus)
+    {
+        var candidateStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var observations = new Queue<LiveResultObservation>(
+        [
+            FormalResult("100", "ambiguous-a"),
+            FormalResult("100", "ambiguous-b"),
+            NonResult("after-boundary"),
+        ]);
+        var source = new StubFrameSource(
+            Frames(0, 1_000, 2_000),
+            endReason: boundary == "window_closed"
+                ? CaptureSessionEndReason.TargetClosed
+                : CaptureSessionEndReason.Stopped);
+        using var cancellation = new CancellationTokenSource();
+        var calls = 0;
+        var service = new LiveMonitoringCaptureService(
+            new StubTargetedAdapter(source),
+            new StubResultAnalyzer(observations, candidateStarted.Task));
+
+        var result = await service.RunAsync(
+            123,
+            new CaptureTargetInfo("DDR GRAND PRIX", 1280, 720),
+            new CallbackProgress<CaptureSessionProgress>(_ => { }),
+            async (_, _, context, _) =>
+            {
+                calls++;
+                Assert.False(context.FinalizeUnresolved);
+                candidateStarted.TrySetResult();
+                if (boundary == "stop")
+                {
+                    await service.StopAsync();
+                }
+                else if (boundary == "cancel")
+                {
+                    await cancellation.CancelAsync();
+                }
+                return LiveCandidateProcessingResult.RetryIdentity;
+            },
+            cancellation.Token);
+
+        Assert.Equal(expectedStatus, result.Status);
+        Assert.Equal(1, calls);
     }
 
     private static IReadOnlyList<CapturedFrame> Frames(params long[] timestamps) =>
@@ -282,11 +449,14 @@ public sealed class LiveMonitoringCaptureTests
         private readonly TaskCompletionSource<CaptureSessionEndReason> completion = new(
             TaskCreationOptions.RunContinuationsAsynchronously);
 
-        public StubFrameSource(IReadOnlyList<CapturedFrame> frames, int frameDelayMs = 0)
+        public StubFrameSource(
+            IReadOnlyList<CapturedFrame> frames,
+            int frameDelayMs = 0,
+            CaptureSessionEndReason endReason = CaptureSessionEndReason.Stopped)
         {
             this.frames = frames;
             this.frameDelayMs = frameDelayMs;
-            completion.TrySetResult(CaptureSessionEndReason.Stopped);
+            completion.TrySetResult(endReason);
         }
 
         public Task<CaptureSessionEndReason> Completion => completion.Task;

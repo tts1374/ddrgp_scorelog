@@ -51,6 +51,49 @@ public sealed class LiveMonitoringViewModelTests
         Assert.Contains("saved=1", viewModel.SaveStatusMessage, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task Transient_identity_retry_prepares_twice_but_runs_save_workflow_once()
+    {
+        using var fixture = new DatabaseFixture();
+        var target = new DdrGpWindowCandidate(
+            101,
+            42,
+            "ddr-konaste",
+            "DDR GRAND PRIX",
+            1280,
+            720);
+        var live = new StubLiveMonitoringService(candidateCount: 2);
+        var retryIdentity = new Queue<bool>([true, false]);
+        var workflow = new StubLiveWorkflowRunner(
+            () =>
+            {
+                fixture.AddPlay("retried-live-play", "2026-08-09T12:00:00+00:00", 999_000, 2_500);
+                return new CaptureSaveWorkflowResult(
+                    "completed",
+                    1,
+                    new Dictionary<string, int> { ["saved"] = 1 },
+                    ["retried-live-play"],
+                    [],
+                    null);
+            },
+            retryIdentity);
+        var viewModel = new MainViewModel(
+            new ScoreViewerRepository(),
+            new UnusedManualWorkflowRunner(),
+            continuousCaptureService: new UnusedContinuousCaptureService(),
+            captureSaveWorkflowRunner: workflow,
+            defaultDatabasePaths: ConfiguredPaths(fixture),
+            ddrGpWindowEnumerator: new StubWindowEnumerator([target]),
+            liveMonitoringService: live);
+
+        await viewModel.StartConfiguredContinuousCaptureAndSaveAsync(123);
+
+        Assert.Equal(2, workflow.PreparationCount);
+        Assert.Equal(1, workflow.CallCount);
+        Assert.Equal(1, viewModel.MonitoringResults.Saved);
+        Assert.Single(viewModel.Plays, play => play.PlayId == "retried-live-play");
+    }
+
     private static ViewerDatabasePaths ConfiguredPaths(DatabaseFixture fixture) =>
         new(
             ViewerDatabaseEnvironment.Development,
@@ -71,7 +114,8 @@ public sealed class LiveMonitoringViewModelTests
             Task.FromResult(candidates);
     }
 
-    private sealed class StubLiveMonitoringService : ILiveMonitoringCaptureService
+    private sealed class StubLiveMonitoringService(int candidateCount = 1)
+        : ILiveMonitoringCaptureService
     {
         public bool IsRunning => false;
         public int RunCount { get; private set; }
@@ -80,16 +124,27 @@ public sealed class LiveMonitoringViewModelTests
             nint targetWindowHandle,
             CaptureTargetInfo target,
             IProgress<CaptureSessionProgress> progress,
-            Func<CapturedFrame, LiveResultObservation, CancellationToken, Task> processCandidate,
+            Func<CapturedFrame, LiveResultObservation, LiveCandidateProcessingContext,
+                CancellationToken, Task<LiveCandidateProcessingResult>> processCandidate,
             CancellationToken cancellationToken = default)
         {
             RunCount++;
             var now = DateTimeOffset.UtcNow;
             progress.Report(new CaptureSessionProgress(target, 2, now, now, 2, 2, 1, 0, 0, 0, "RESULTを確定しました。"));
-            await processCandidate(
-                new CapturedFrame([1, 2, 3], 1280, 720, 1_000, now, target.DisplayName),
-                new LiveResultObservation(true, "999000", "song-a", "result_score_detected"),
-                cancellationToken);
+            const string eventId = "confirmed-event-v1:live-view-model-fixture";
+            for (var index = 0; index < candidateCount; index++)
+            {
+                await processCandidate(
+                    new CapturedFrame([1, 2, 3], 1280, 720, 1_000 + index, now, target.DisplayName),
+                    new LiveResultObservation(
+                        true,
+                        "999000",
+                        $"song-a-{index}",
+                        "result_score_detected",
+                        ConfirmedEventId: eventId),
+                    new LiveCandidateProcessingContext(false),
+                    cancellationToken);
+            }
             return new CaptureSessionOperationResult(
                 CaptureOperationStatus.Cancelled,
                 "live fixture stopped");
@@ -98,11 +153,27 @@ public sealed class LiveMonitoringViewModelTests
         public Task StopAsync() => Task.CompletedTask;
     }
 
-    private sealed class StubLiveWorkflowRunner(Func<CaptureSaveWorkflowResult> run)
+    private sealed class StubLiveWorkflowRunner(
+        Func<CaptureSaveWorkflowResult> run,
+        Queue<bool>? retryIdentity = null)
         : ICaptureSaveWorkflowRunner, ILiveCaptureSaveWorkflowRunner
     {
         public int CallCount { get; private set; }
+        public int PreparationCount { get; private set; }
         public string? CatalogDatabasePath { get; private set; }
+
+        public LiveCaptureCandidatePreparation PrepareCandidate(
+            CapturedFrame frame,
+            LiveResultObservation observation,
+            string masterDatabasePath,
+            string? catalogDatabasePath)
+        {
+            PreparationCount++;
+            CatalogDatabasePath = catalogDatabasePath;
+            return new(
+                observation,
+                RetryIdentity: retryIdentity is { Count: > 0 } && retryIdentity.Dequeue());
+        }
 
         public Task<CaptureSaveWorkflowResult> RunAsync(
             string manifestPath,
@@ -136,6 +207,16 @@ public sealed class LiveMonitoringViewModelTests
                 masterDatabasePath,
                 catalogDatabasePath,
                 cancellationToken);
+
+        public Task<CaptureSaveWorkflowResult> RunPreparedCandidateAsync(
+            CapturedFrame frame,
+            LiveResultObservation observation,
+            string scoreDatabasePath,
+            CancellationToken cancellationToken = default)
+        {
+            CallCount++;
+            return Task.FromResult(run());
+        }
     }
 
     private sealed class UnusedContinuousCaptureService : IContinuousCaptureService

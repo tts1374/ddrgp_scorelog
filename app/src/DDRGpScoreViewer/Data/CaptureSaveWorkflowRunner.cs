@@ -22,6 +22,10 @@ public sealed record CaptureSaveWorkflowResult(
     string? AnalysisOutput,
     IReadOnlyList<CaptureSaveEventResult>? EventResults = null);
 
+public sealed record LiveCaptureCandidatePreparation(
+    LiveResultObservation Observation,
+    bool RetryIdentity);
+
 public interface ICaptureSaveWorkflowRunner
 {
     Task<CaptureSaveWorkflowResult> RunAsync(
@@ -33,6 +37,12 @@ public interface ICaptureSaveWorkflowRunner
 
 public interface ILiveCaptureSaveWorkflowRunner
 {
+    LiveCaptureCandidatePreparation PrepareCandidate(
+        CapturedFrame frame,
+        LiveResultObservation observation,
+        string masterDatabasePath,
+        string? catalogDatabasePath);
+
     Task<CaptureSaveWorkflowResult> RunCandidateAsync(
         CapturedFrame frame,
         string scoreDatabasePath,
@@ -46,6 +56,12 @@ public interface ILiveCaptureSaveWorkflowRunner
         string scoreDatabasePath,
         string masterDatabasePath,
         string? catalogDatabasePath,
+        CancellationToken cancellationToken = default);
+
+    Task<CaptureSaveWorkflowResult> RunPreparedCandidateAsync(
+        CapturedFrame frame,
+        LiveResultObservation observation,
+        string scoreDatabasePath,
         CancellationToken cancellationToken = default);
 }
 
@@ -154,14 +170,62 @@ public sealed class AppOwnedCaptureSaveWorkflowRunner :
                 ConfirmedEventId = observation.ConfirmedEventId ??
                     ConfirmedResultEventId.Create(),
             };
-            var enrichedObservation = identityEvidenceProducer.Enrich(
+            var preparation = PrepareCandidate(
                 frame,
                 observation,
                 masterDatabasePath,
                 catalogDatabasePath);
+            return await RunPreparedCandidateAsync(
+                frame,
+                preparation.Observation,
+                scoreDatabasePath,
+                cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception) when (
+            exception is ArgumentException or IOException or InvalidDataException or FormatException)
+        {
+            return FailedResult(exception.Message);
+        }
+    }
+
+    public LiveCaptureCandidatePreparation PrepareCandidate(
+        CapturedFrame frame,
+        LiveResultObservation observation,
+        string masterDatabasePath,
+        string? catalogDatabasePath)
+    {
+        observation = observation with
+        {
+            ConfirmedEventId = observation.ConfirmedEventId ?? ConfirmedResultEventId.Create(),
+        };
+        var enrichedObservation = identityEvidenceProducer.Enrich(
+            frame,
+            observation,
+            masterDatabasePath,
+            catalogDatabasePath);
+        var evidence = enrichedObservation.FormalEvidence;
+        return new LiveCaptureCandidatePreparation(
+            enrichedObservation,
+            RetryIdentity: evidence is not null &&
+                !AppOwnedVisualIdentityEvidenceProducer.HasAdoptedIdentity(evidence));
+    }
+
+    public async Task<CaptureSaveWorkflowResult> RunPreparedCandidateAsync(
+        CapturedFrame frame,
+        LiveResultObservation observation,
+        string scoreDatabasePath,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
             var input = BuildInput(
                 frame,
-                enrichedObservation,
+                observation,
                 sourceKind: "capture",
                 sourcePath: "live-memory://app-owned-candidate",
                 imagePath: "",
@@ -175,7 +239,7 @@ public sealed class AppOwnedCaptureSaveWorkflowRunner :
             return ToCaptureResult(
                 result,
                 eventCount: 1,
-                eventId: enrichedObservation.ConfirmedEventId ?? ConfirmedResultEventId.Create());
+                eventId: observation.ConfirmedEventId ?? ConfirmedResultEventId.Create());
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {

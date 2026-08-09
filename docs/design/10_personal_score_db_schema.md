@@ -319,6 +319,8 @@ CLI入力はUTF-8 JSONの `input_schema_version=1` objectとする。候補材�
 
 自動formal evidenceは`RESULT同定根拠`、`RESULT数値認識根拠`、`RESULT状態認識根拠`、`capture event根拠`ごとの採用済みsourceとconfidenceを持つ。全ID、全数字、timezone付きplayed_at、master version、rank、clear type、正式duplicate keyのいずれかが未解決ならformal playを返さず `unresolved` とする。candidate、raw OCR、expected値、preview payload、相対 `played_at_ms` / `timestamp_ms` は正式値のfallbackにしない。
 
+live監視では、SCOREが2回一致してconfirmedになった候補の`RESULT同定根拠`が未解決なら、正式保存workflowへ渡さず、同じcapture event IDのまま1秒cadenceの後続frameで`RESULT同定・譜面の正式画像認識`を再評価する。一意根拠が成立した候補だけを既存workflowへ最大1回渡し、保存後の同一RESULTはduplicate候補として破棄する。再評価は初回を含む8回を上限とし、RESULTSが2回連続で消失した時点または8回目でも未解決なら、最後の候補を同じevent IDでworkflowへ1回渡して`unresolved`通知・診断へ収束させ、`plays`を作成しない。監視停止、window消失、capture cancellationではpending retryを破棄し、新しいworkflowを開始しない。retry中もcandidate ID、candidate画像feature、未採用の画像照合値を正式保存値へ昇格しない。
+
 既存 `source_captures`、`plays`、`analysis_logs` の列、参照、transaction、duplicate collision契約は変更しない。capture-only由来は `source_kind=capture` とmanifest/frame参照を持ち、live監視由来も `source_kind=capture` のまま論理sourceと空の画像参照を使い、manual reviewed入口は `source_kind=manual` 等の既存由来を維持する。DB duplicateやplayなし除外をsavedへ丸めず、`saved` transactionの `play_id` だけviewer再読込対象にする。
 
 - `tests/test_capture_save_workflow.py` はconfirmed/non-duplicate境界、採用済み根拠の完全昇格、candidate/raw/expected/preview非昇格、低confidence/不足値、直列workflow呼出し、DB duplicate、status保持を固定する。
