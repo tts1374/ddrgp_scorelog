@@ -250,19 +250,33 @@ public sealed class LiveMonitoringCaptureTests
     public async Task Live_monitor_bounds_identity_retry_and_finalizes_the_eighth_attempt()
     {
         var observations = new Queue<LiveResultObservation>(
-            Enumerable.Range(0, 9).Select(index => FormalResult("100", $"ambiguous-{index}")));
+            Enumerable.Range(0, 13).Select(index => FormalResult("100", $"ambiguous-{index}")));
         var source = new StubFrameSource(
-            Frames(0, 1_000, 2_000, 3_000, 4_000, 5_000, 6_000, 7_000, 8_000),
+            Frames(
+                0,
+                1_000,
+                2_000,
+                3_000,
+                4_000,
+                5_000,
+                6_000,
+                7_000,
+                8_000,
+                9_000,
+                10_000,
+                11_000,
+                12_000),
             frameDelayMs: 5);
         var attempts = new List<(string? EventId, bool Finalize)>();
         var service = new LiveMonitoringCaptureService(
             new StubTargetedAdapter(source),
             new StubResultAnalyzer(observations));
+        var progress = new List<CaptureSessionProgress>();
 
         var result = await service.RunAsync(
             123,
             new CaptureTargetInfo("DDR GRAND PRIX", 1280, 720),
-            new CallbackProgress<CaptureSessionProgress>(_ => { }),
+            new CallbackProgress<CaptureSessionProgress>(progress.Add),
             (_, observation, context, _) =>
             {
                 attempts.Add((observation.ConfirmedEventId, context.FinalizeUnresolved));
@@ -276,6 +290,7 @@ public sealed class LiveMonitoringCaptureTests
         Assert.False(attempts[6].Finalize);
         Assert.True(attempts[7].Finalize);
         Assert.Single(attempts.Select(item => item.EventId).Distinct());
+        Assert.True(progress[^1].DiscardedFrameCount >= 4);
     }
 
     [Fact]

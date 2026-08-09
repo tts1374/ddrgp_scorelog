@@ -699,7 +699,7 @@ public sealed class LiveMonitoringCaptureService(
                     return resultMissing ? CreateFinalUnresolvedCandidate() : null;
                 }
 
-                if (!candidate.FinalizeUnresolved && !resultMissing)
+                if (!resultMissing)
                 {
                     activeResultKey = candidate.ResultKey;
                 }
