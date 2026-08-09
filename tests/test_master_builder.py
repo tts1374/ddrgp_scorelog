@@ -7,6 +7,43 @@ from pathlib import Path
 from master import builder
 from master import inspect as master_inspect
 
+EXPECTED_CONFIRMED_CHALLENGE_LEVELS = {
+    "7 Colors": (16, 16),
+    "Ace out": (14, 14),
+    "ALPACORE": (17, 17),
+    "BITTER CHOCOLATE STRIKER": (18, 18),
+    "Come Back To Me": (16, 16),
+    "CyberConnect": (17, 17),
+    "DIGITALIZER": (18, 18),
+    "Din Don Dan (にじさんじダンス部 ver.)": (16, 16),
+    "Draw the Savage": (15, 14),
+    "Give Me": (16, 16),
+    "Glitch Angel": (18, 18),
+    "Going Hypersonic": (17, 17),
+    "Golden Arrow": (17, 17),
+    "Good Looking": (17, 18),
+    "Harmonia": (16, 16),
+    "In The Breeze": (14, 14),
+    "Lightspeed": (18, 18),
+    "MUTEKI BUFFALO": (17, 17),
+    "New Era": (18, 18),
+    "Rampage Hero": (17, 17),
+    "Run The Show": (16, 16),
+    "Starlight in the Snow": (16, 16),
+    "Step This Way": (17, 17),
+    "Superior MAXXX": (19, 19),
+    "Take A Step Forward": (15, 15),
+    "The World Ends Now": (18, 18),
+    "Touch My Body": (14, 14),
+    "True Blue": (17, 17),
+    "Yuni's Nocturnal Days": (18, 18),
+    "クリムゾンゲイト": (16, 16),
+    "パ→ピ→プ→Yeah!": (15, 16),
+    "和風インザ洋風": (17, 17),
+    "打打打打打打打打打打 (にじさんじダンス部 ver.)": (16, 16),
+    "灼熱Beach Side Bunny": (18, 18),
+}
+
 FIXTURE_HTML = """
 <!doctype html>
 <html>
@@ -289,6 +326,68 @@ OFFICIAL_GP_ONLY_FIXTURE_HTML = """
 """
 
 
+def confirmed_challenge_fixture_build() -> builder.MasterBuild:
+    songs = tuple(
+        builder.MasterSong(
+            song_id=builder.stable_id("song", title, f"Artist for {title}"),
+            title=title,
+            artist=f"Artist for {title}",
+            version="fixture",
+            source_version="fixture",
+            bpm="100",
+            category="fixture",
+            movie_stage="",
+            availability="GP pack",
+            notes="",
+            grand_prix_play_available=True,
+        )
+        for title in EXPECTED_CONFIRMED_CHALLENGE_LEVELS
+    )
+    control_song = builder.MasterSong(
+        song_id=builder.stable_id("song", "CONTROL SONG", "Control Artist"),
+        title="CONTROL SONG",
+        artist="Control Artist",
+        version="fixture",
+        source_version="fixture",
+        bpm="120",
+        category="fixture",
+        movie_stage="",
+        availability="",
+        notes="",
+    )
+    control_chart = builder.MasterChart(
+        chart_id=builder.stable_id(
+            "chart", control_song.song_id, "SINGLE", "CHALLENGE"
+        ),
+        song_id=control_song.song_id,
+        play_style="SINGLE",
+        difficulty="CHALLENGE",
+        level=12,
+        raw_level="12",
+        shock_arrow=False,
+        is_removed=False,
+        is_limited=False,
+        notes="control",
+    )
+    all_songs = songs + (control_song,)
+    charts, supplements = builder.apply_confirmed_challenge_supplements(
+        all_songs,
+        (control_chart,),
+    )
+    return builder.MasterBuild(
+        songs=all_songs,
+        charts=charts,
+        snapshot=builder.SourceSnapshot(
+            source_url="https://example.test/source",
+            fetched_at="2026-08-09T00:00:00+00:00",
+            content_hash="a" * 64,
+            parser_version=builder.PARSER_VERSION,
+            html_content="fixture",
+        ),
+        confirmed_challenge_supplements=supplements,
+    )
+
+
 def test_parse_level_uses_first_numeric_token_without_joining_notes() -> None:
     assert builder.parse_level("10(旧9)") == 10
     assert builder.parse_level("[SA] 12") == 12
@@ -441,10 +540,24 @@ def test_parse_master_html_keeps_all_official_gp_rows_and_normalizes_ellipsis(
     assert all(song.official_availability_match == "official_only" for song in official_only)
     assert all(song.grand_prix_play_available for song in official_only)
     assert next(song for song in official_only if song.title == "創聖のアクエリオン").artist == ""
+    official_only_by_title = {song.title: song for song in official_only}
     assert all(
-        chart.song_id not in {song.song_id for song in official_only}
+        chart.song_id != official_only_by_title["創聖のアクエリオン"].song_id
         for chart in build.charts
     )
+    for title in (
+        "Din Don Dan (にじさんじダンス部 ver.)",
+        "打打打打打打打打打打 (にじさんじダンス部 ver.)",
+    ):
+        charts = [
+            chart
+            for chart in build.charts
+            if chart.song_id == official_only_by_title[title].song_id
+        ]
+        assert {(chart.play_style, chart.difficulty, chart.level) for chart in charts} == {
+            ("SINGLE", "CHALLENGE", 16),
+            ("DOUBLE", "CHALLENGE", 16),
+        }
 
     output_path = tmp_path / "ddrgp-master.sqlite"
     builder.write_master_database(output_path, build, master_version="fixture-v1")
@@ -469,6 +582,145 @@ def test_parse_master_html_merges_new_song_levels_and_records_snapshot() -> None
     assert {chart.level for chart in charts} == {5, 9, 13}
     assert build.new_song_snapshot is not None
     assert build.new_song_snapshot.source_url == "https://example.test/new-songs"
+
+
+def test_confirmed_challenge_supplement_generates_expected_68_charts(
+    tmp_path: Path,
+) -> None:
+    build = confirmed_challenge_fixture_build()
+    output_path = tmp_path / "ddrgp-master.sqlite"
+
+    assert len(build.confirmed_challenge_supplements) == 68
+    assert len({row.chart_id for row in build.confirmed_challenge_supplements}) == 68
+    builder.write_master_database(output_path, build)
+
+    with sqlite3.connect(output_path) as connection:
+        rows = connection.execute(
+            """
+            SELECT s.title, c.play_style, c.level, c.chart_id, c.song_id, c.notes
+            FROM charts c
+            JOIN songs s ON s.song_id = c.song_id
+            WHERE c.notes LIKE '%confirmed CHALLENGE supplement;%'
+            ORDER BY s.title, c.play_style
+            """
+        ).fetchall()
+        metadata = dict(connection.execute("SELECT key, value FROM master_metadata"))
+        control_rows = connection.execute(
+            """
+            SELECT c.play_style, c.difficulty, c.level, c.raw_level, c.notes
+            FROM charts c
+            JOIN songs s ON s.song_id = c.song_id
+            WHERE s.title = 'CONTROL SONG'
+            """
+        ).fetchall()
+
+    actual_levels: dict[str, dict[str, int]] = {}
+    for title, play_style, level, chart_id, song_id, notes in rows:
+        actual_levels.setdefault(title, {})[play_style] = level
+        assert chart_id == builder.stable_id(
+            "chart", song_id, play_style, "CHALLENGE"
+        )
+        assert "source_url=" in notes
+        assert "acquired_on=" in notes
+    assert actual_levels == {
+        title: {"SINGLE": levels[0], "DOUBLE": levels[1]}
+        for title, levels in EXPECTED_CONFIRMED_CHALLENGE_LEVELS.items()
+    }
+    assert control_rows == [("SINGLE", "CHALLENGE", 12, "12", "control")]
+
+    manifest = json.loads(metadata["confirmed_challenge_supplement_json"])
+    assert metadata["confirmed_challenge_chart_count"] == "68"
+    assert len(manifest) == 68
+    assert sum(row["acquired_on"] == "2026-07-25" for row in manifest) == 50
+    assert sum(row["acquired_on"] == "2026-08-09" for row in manifest) == 18
+    assert metadata["confirmed_challenge_supplement_hash"] == (
+        builder.confirmed_challenge_supplements_hash(
+            build.confirmed_challenge_supplements
+        )
+    )
+
+    summary = master_inspect.inspect_master_database(output_path)
+    assert summary["confirmed_challenge_chart_count"] == 68
+    assert summary["confirmed_challenge_supplement_hash"] == metadata[
+        "confirmed_challenge_supplement_hash"
+    ]
+
+
+def test_confirmed_challenge_supplement_resolves_representative_song_chart_ids() -> None:
+    build = confirmed_challenge_fixture_build()
+    charts_by_song_and_style = {
+        (supplement.title, supplement.play_style): supplement
+        for supplement in build.confirmed_challenge_supplements
+    }
+
+    for title, expected_level in (("Ace out", 14), ("和風インザ洋風", 17)):
+        song = next(song for song in build.songs if song.title == title)
+        resolved = [
+            charts_by_song_and_style[(title, play_style)]
+            for play_style in ("SINGLE", "DOUBLE")
+        ]
+        assert {chart.level for chart in resolved} == {expected_level}
+        assert all(chart.song_id == song.song_id for chart in resolved)
+        assert all(
+            chart.chart_id
+            == builder.stable_id(
+                "chart", song.song_id, chart.play_style, "CHALLENGE"
+            )
+            for chart in resolved
+        )
+
+    wiki_titles = {
+        "7 Colors",
+        "Harmonia",
+        "In The Breeze",
+        "Superior MAXXX",
+        "Touch My Body",
+        "True Blue",
+        "クリムゾンゲイト",
+        "パ→ピ→プ→Yeah!",
+        "和風インザ洋風",
+    }
+    wiki_rows = [
+        row
+        for row in build.confirmed_challenge_supplements
+        if row.title in wiki_titles
+    ]
+    assert len(wiki_rows) == 18
+    assert all(row.source_url == builder.BEMANIWIKI_PACK_SOURCE_URL for row in wiki_rows)
+
+
+def test_confirmed_challenge_supplement_rejects_level_conflict() -> None:
+    song = builder.MasterSong(
+        song_id=builder.stable_id("song", "Ace out", "Artist"),
+        title="Ace out",
+        artist="Artist",
+        version="fixture",
+        source_version="fixture",
+        bpm="100",
+        category="fixture",
+        movie_stage="",
+        availability="",
+        notes="",
+    )
+    conflicting_chart = builder.MasterChart(
+        chart_id=builder.stable_id("chart", song.song_id, "SINGLE", "CHALLENGE"),
+        song_id=song.song_id,
+        play_style="SINGLE",
+        difficulty="CHALLENGE",
+        level=15,
+        raw_level="15",
+        shock_arrow=False,
+        is_removed=False,
+        is_limited=False,
+        notes="",
+    )
+
+    try:
+        builder.apply_confirmed_challenge_supplements((song,), (conflicting_chart,))
+    except ValueError as exc:
+        assert "conflicts with source chart" in str(exc)
+    else:
+        raise AssertionError("conflicting confirmed CHALLENGE level should be rejected")
 
 
 def test_write_master_database_creates_expected_schema_and_metadata(tmp_path: Path) -> None:

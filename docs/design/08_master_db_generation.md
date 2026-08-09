@@ -52,6 +52,8 @@ https://p.eagate.573.jp/game/eacddr/konaddr/info/mlist.html
 
 公式リストとWiki譜面マスタの突合は、まず曲名+artistの正規化一致で行い、artistが空または表記差がある場合は曲名が公式リスト内で一意な場合だけ曲名一致で補完する。省略記号などの表記差も正規化して照合する。`Ё` / `Ë` のような装飾記号差や一部のキリル/ラテン混在差はalias正規化でも照合し、`alias_title_artist` / `alias_unique_title` として区別する。公式に突合できた曲は `songs.title` / `songs.artist` を公式表記へ寄せ、Wiki由来表記差は `song_aliases` に `wiki_source` として保存する。Wiki側にないGP対象曲は `official_only` として残す。突合結果は `official_availability_match` に残す。公式リストにない曲や曖昧な曲は `grand_prix_play_available=false` のままにし、M5の通常候補から除外する。
 
+通常の譜面表にCHALLENGEがない一方でプレー可能と確認済みの34曲は、2026-07-25取得のDDR WORLD楽曲一覧snapshotで確認した25曲50譜面と、2026-08-09取得のBEMANIWiki楽曲パック一覧で確認した9曲18譜面の固定一覧から、SP/DP計68譜面だけを局所補正する。同じ `song_id + play_style + CHALLENGE` がない場合だけ追加し、既存譜面は上書きしない。既存レベルが確認値と異なる場合は生成を失敗させる。追加chartの `notes` と `master_metadata` の補正manifestに、確認元URLと取得日を譜面単位で保持する。
+
 ## 出力
 
 ローカル生成先の既定:
@@ -110,6 +112,8 @@ Releases配布は、artifactで生成結果と取得元構造変化検出を確�
 - `is_limited`: `分類` 列が空でないか。
 - `notes`: 初期実装では `分類` 列の内容。
 
+確認済みCHALLENGE補正で追加したchartは、`notes` に元の `分類` 列があれば保持したうえで、確認元URLと取得日を追記する。
+
 同じ曲名・同じアーティストは同じ `song_id` として扱う。同一 `chart_id` の譜面行が複数回出て、保持値が食い違う場合は、HTML構造または入力解釈の変化として生成を失敗させる。
 
 ### `master_metadata`
@@ -121,6 +125,9 @@ Releases配布は、artifactで生成結果と取得元構造変化検出を確�
 - `source_hash`
 - `official_source_url`
 - `official_source_hash`
+- `confirmed_challenge_chart_count`
+- `confirmed_challenge_supplement_hash`
+- `confirmed_challenge_supplement_json`: 補正したchart ID、song ID、曲名、SP/DP、レベル、確認元URL、取得日の正規化JSON。
 - `song_count`
 - `chart_count`
 - `free_play_available_song_count`
@@ -144,6 +151,7 @@ Releases配布は、artifactで生成結果と取得元構造変化検出を確�
 - 楽曲リストの2段ヘッダを持つ表が見つからない。
 - `songs` または `charts` が0件になる。
 - 同一 `chart_id` の譜面行が食い違う。
+- 確認済みCHALLENGE補正の既存レベルが確認値と食い違う。
 - SQLite制約に反するレベルや譜面種別が出る。
 - CI生成後の `master_metadata` 件数と実テーブル件数が一致しない。
 - CI生成後の `source_snapshots` がWikiのみなら1件、公式プレー可否込みなら2件、新曲リスト込みなら最大3件ではない。
@@ -152,6 +160,7 @@ Releases配布は、artifactで生成結果と取得元構造変化検出を確�
 - CI生成後の `master_metadata.official_source_hash` と公式 `source_snapshots.content_hash` が一致しない。
 - CI生成後の `master_metadata.official_source_url` と公式 `source_snapshots.source_url` が一致しない。
 - CI生成後の `master_metadata` に必須キーがない、または必須値が空。
+- CI生成後の確認済みCHALLENGE補正manifestの件数、hash、chart値、notesの確認元・取得日が一致しない。
 
 fixtureテストでは、セル結合、注記付きレベル、脚注リンク除去、曲名本文のアスタリスク保持、削除/限定/パック記号、SP/DP片方のみ、CHALLENGEなし、同名曲・同アーティスト、複数バージョン表を扱う。実HTMLの件数確認はネットワークに依存するため、通常テストには含めない。
 
