@@ -315,6 +315,114 @@ public sealed class MainViewModel : INotifyPropertyChanged
             Localization.Option(UserSettings.KoreanLanguage, "韓国語"),
         ];
 
+    public LocalizedOption? SelectedBestDifficultyOption
+    {
+        get => FindOption(BestDifficultyOptions, BestDifficultyFilter);
+        set
+        {
+            if (value is not null)
+            {
+                BestDifficultyFilter = value.Code;
+            }
+        }
+    }
+
+    public LocalizedOption? SelectedBestLevelOption
+    {
+        get => FindOption(BestLevelOptions, BestLevelFilter);
+        set
+        {
+            if (value is not null)
+            {
+                BestLevelFilter = value.Code;
+            }
+        }
+    }
+
+    public LocalizedOption? SelectedBestVersionOption
+    {
+        get => FindOption(BestVersionOptions, BestVersionFilter);
+        set
+        {
+            if (value is not null)
+            {
+                BestVersionFilter = value.Code;
+            }
+        }
+    }
+
+    public LocalizedOption? SelectedBestPlayStatusOption
+    {
+        get => FindOption(BestPlayStatusOptions, BestPlayStatusFilter);
+        set
+        {
+            if (value is not null)
+            {
+                BestPlayStatusFilter = value.Code;
+            }
+        }
+    }
+
+    public LocalizedOption? SelectedBestRankOption
+    {
+        get => FindOption(BestRankOptions, BestRankFilter);
+        set
+        {
+            if (value is not null)
+            {
+                BestRankFilter = value.Code;
+            }
+        }
+    }
+
+    public LocalizedOption? SelectedBestClearOption
+    {
+        get => FindOption(BestClearOptions, BestClearFilter);
+        set
+        {
+            if (value is not null)
+            {
+                BestClearFilter = value.Code;
+            }
+        }
+    }
+
+    public LocalizedOption? SelectedBestSortOption
+    {
+        get => FindOption(BestSortOptions, BestSortFilter);
+        set
+        {
+            if (value is not null)
+            {
+                BestSortFilter = value.Code;
+            }
+        }
+    }
+
+    public LocalizedOption? SelectedStartupPageOption
+    {
+        get => FindOption(StartupPageOptions, StartupPage);
+        set
+        {
+            if (value is not null)
+            {
+                StartupPage = value.Code;
+            }
+        }
+    }
+
+    public LocalizedOption? SelectedLanguageOption
+    {
+        get => FindOption(LanguageOptions, Language);
+        set
+        {
+            if (value is not null)
+            {
+                Language = value.Code;
+            }
+        }
+    }
+
     public bool StartMonitoringOnLaunch
     {
         get => startMonitoringOnLaunch;
@@ -364,6 +472,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             {
                 if (SetProperty(ref startupPage, normalized))
                 {
+                    OnPropertyChanged(nameof(SelectedStartupPageOption));
                     SettingsStatusMessage = Localization.Get("変更内容は保存時に反映されます");
                 }
             }
@@ -378,6 +487,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             var normalized = UserSettings.NormalizeLanguage(value);
             if (SetProperty(ref language, normalized))
             {
+                OnPropertyChanged(nameof(SelectedLanguageOption));
                 SettingsStatusMessage = Localization.Get("変更内容は保存時に反映されます");
             }
         }
@@ -392,7 +502,13 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public IReadOnlyList<LocalizedOption> BestVersionOptions
     {
         get => bestVersionOptions;
-        private set => SetProperty(ref bestVersionOptions, value);
+        private set
+        {
+            if (SetProperty(ref bestVersionOptions, value))
+            {
+                OnPropertyChanged(nameof(SelectedBestVersionOption));
+            }
+        }
     }
 
     public PlayHistoryItem? SelectedPlay
@@ -544,6 +660,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             {
                 return;
             }
+            OnPropertyChanged(nameof(SelectedBestDifficultyOption));
             OnBestFilterChanged();
         }
     }
@@ -558,6 +675,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             {
                 return;
             }
+            OnPropertyChanged(nameof(SelectedBestLevelOption));
             OnBestFilterChanged();
         }
     }
@@ -585,6 +703,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             {
                 return;
             }
+            OnPropertyChanged(nameof(SelectedBestVersionOption));
             OnBestFilterChanged();
         }
     }
@@ -605,6 +724,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             {
                 return;
             }
+            OnPropertyChanged(nameof(SelectedBestPlayStatusOption));
             OnBestFilterChanged();
         }
     }
@@ -625,6 +745,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             {
                 return;
             }
+            OnPropertyChanged(nameof(SelectedBestRankOption));
             OnBestFilterChanged();
         }
     }
@@ -644,6 +765,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             {
                 return;
             }
+            OnPropertyChanged(nameof(SelectedBestClearOption));
             OnBestFilterChanged();
         }
     }
@@ -667,6 +789,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             {
                 return;
             }
+            OnPropertyChanged(nameof(SelectedBestSortOption));
             OnBestFilterChanged();
         }
     }
@@ -3803,6 +3926,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         {
             bestVersionFilter = AllBestFilterValue;
             OnPropertyChanged(nameof(BestVersionFilter));
+            OnPropertyChanged(nameof(SelectedBestVersionOption));
         }
     }
 
@@ -4463,6 +4587,14 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     private static string FormatMonitoringTime(DateTimeOffset? value) =>
         value is null ? "—" : value.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss");
+
+    private static LocalizedOption? FindOption(
+        IReadOnlyList<LocalizedOption> options,
+        string code) =>
+        options.FirstOrDefault(option => string.Equals(
+            option.Code,
+            code,
+            StringComparison.Ordinal));
 
     private sealed class CallbackProgress<T>(
         Action<T> callback,

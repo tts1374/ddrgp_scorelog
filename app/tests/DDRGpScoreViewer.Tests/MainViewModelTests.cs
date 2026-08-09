@@ -577,6 +577,44 @@ public sealed class MainViewModelTests
     }
 
     [Fact]
+    public void Dropdown_selection_items_update_codes_and_follow_external_changes()
+    {
+        var viewModel = new MainViewModel(new ScoreViewerRepository());
+
+        viewModel.SelectedBestDifficultyOption = viewModel.BestDifficultyOptions
+            .Single(option => option.Code == "EXPERT");
+        viewModel.SelectedBestLevelOption = viewModel.BestLevelOptions
+            .Single(option => option.Code == "level_17");
+        viewModel.SelectedBestSortOption = viewModel.BestSortOptions
+            .Single(option => option.Code == MainViewModel.BestSortTitleAscending);
+        viewModel.SelectedBestPlayStatusOption = viewModel.BestPlayStatusOptions
+            .Single(option => option.Code == "played");
+        viewModel.SelectedBestRankOption = viewModel.BestRankOptions
+            .Single(option => option.Code == "aaa_or_higher");
+        viewModel.SelectedBestClearOption = viewModel.BestClearOptions
+            .Single(option => option.Code == "not_clear");
+        viewModel.SelectedStartupPageOption = viewModel.StartupPageOptions
+            .Single(option => option.Code == UserSettings.HistoryStartupPage);
+        viewModel.SelectedLanguageOption = viewModel.LanguageOptions
+            .Single(option => option.Code == UserSettings.KoreanLanguage);
+
+        Assert.Equal("EXPERT", viewModel.BestDifficultyFilter);
+        Assert.Equal("level_17", viewModel.BestLevelFilter);
+        Assert.Equal(MainViewModel.BestSortTitleAscending, viewModel.BestSortFilter);
+        Assert.Equal("played", viewModel.BestPlayStatusFilter);
+        Assert.Equal("aaa_or_higher", viewModel.BestRankFilter);
+        Assert.Equal("not_clear", viewModel.BestClearFilter);
+        Assert.Equal(UserSettings.HistoryStartupPage, viewModel.StartupPage);
+        Assert.Equal(UserSettings.KoreanLanguage, viewModel.Language);
+
+        viewModel.StartupPage = UserSettings.BestStartupPage;
+        viewModel.Language = UserSettings.EnglishLanguage;
+
+        Assert.Equal(UserSettings.BestStartupPage, viewModel.SelectedStartupPageOption?.Code);
+        Assert.Equal(UserSettings.EnglishLanguage, viewModel.SelectedLanguageOption?.Code);
+    }
+
+    [Fact]
     public void Best_version_options_follow_selected_play_style_and_reset_invalid_selection()
     {
         using var fixture = new DatabaseFixture();
