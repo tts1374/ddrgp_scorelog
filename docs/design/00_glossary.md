@@ -33,6 +33,7 @@ DDR GP scorelog の設計、PoC、テストで使う主要用語を定義する�
 | `RESULT数値・状態の正式画像認識` | RESULT画面の数字、rank、clear type、flare rankをapp-owned画像認識で採用すること | `RESULT数値認識根拠`、`RESULT状態認識根拠` |
 | `RESULT同定・譜面の正式画像認識` | RESULT画面のジャケット、play style、difficulty、levelを画像認識し、current master/catalogと一意整合させること | `RESULT同定根拠`、`master_metadata` |
 | `正式保存根拠の保存workflow接続` | confirmed non-duplicate RESULTの全根拠を既存正式DB保存workflowへ渡すこと | `capture event根拠`を含む全source/confidence/完全性 |
+| `live RESULT identity retry` | live監視でconfirmedになったRESULTの`RESULT同定根拠`だけが一時的に未解決の間、同じcapture event IDを維持して後続frameを再評価すること | `RetryIdentity`は正式保存workflowへ未接続であることを示し、RESULT消失または8回目の試行で未解決として収束する |
 
 ## 工程コード
 

@@ -2823,13 +2823,14 @@ public sealed class MainViewModel : INotifyPropertyChanged
                     detectedTarget!.Handle,
                     detectedTarget.TargetInfo,
                     progress,
-                    (frame, observation, token) => ProcessLiveCandidateAsync(
+                    (frame, observation, context, token) => ProcessLiveCandidateAsync(
                         sessionId,
                         scoreDatabasePath!,
                         masterDatabasePath!,
                         catalogDatabasePath,
                         frame,
                         observation,
+                        context,
                         token),
                     sessionCancellation.Token)
                 : automaticWindowDetection
@@ -3057,13 +3058,14 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
     }
 
-    private Task ProcessLiveCandidateAsync(
+    private Task<LiveCandidateProcessingResult> ProcessLiveCandidateAsync(
         long sessionId,
         string scoreDatabasePath,
         string masterDatabasePath,
         string? catalogDatabasePath,
         CapturedFrame frame,
         LiveResultObservation observation,
+        LiveCandidateProcessingContext context,
         CancellationToken cancellationToken)
     {
         if (uiSynchronizationContext is null ||
@@ -3076,25 +3078,27 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 catalogDatabasePath,
                 frame,
                 observation,
+                context,
                 cancellationToken);
         }
 
-        var completion = new TaskCompletionSource(
+        var completion = new TaskCompletionSource<LiveCandidateProcessingResult>(
             TaskCreationOptions.RunContinuationsAsynchronously);
         uiSynchronizationContext.Post(
             async _ =>
             {
                 try
                 {
-                    await ProcessLiveCandidateCoreAsync(
+                    var result = await ProcessLiveCandidateCoreAsync(
                         sessionId,
                         scoreDatabasePath,
                         masterDatabasePath,
                         catalogDatabasePath,
                         frame,
                         observation,
+                        context,
                         cancellationToken);
-                    completion.TrySetResult();
+                    completion.TrySetResult(result);
                 }
                 catch (Exception exception)
                 {
@@ -3105,18 +3109,19 @@ public sealed class MainViewModel : INotifyPropertyChanged
         return completion.Task;
     }
 
-    private async Task ProcessLiveCandidateCoreAsync(
+    private async Task<LiveCandidateProcessingResult> ProcessLiveCandidateCoreAsync(
         long sessionId,
         string scoreDatabasePath,
         string masterDatabasePath,
         string? catalogDatabasePath,
         CapturedFrame frame,
         LiveResultObservation observation,
+        LiveCandidateProcessingContext context,
         CancellationToken cancellationToken)
     {
         if (!CanRunMonitoringWork(sessionId, cancellationToken))
         {
-            return;
+            return LiveCandidateProcessingResult.Completed;
         }
 
         HasSaveStatus = true;
@@ -3128,7 +3133,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             if (!ValidateMasterDatabasesForSave(masterDatabasePath, catalogDatabasePath) ||
                 !CanRunMonitoringWork(sessionId, cancellationToken))
             {
-                return;
+                return LiveCandidateProcessingResult.Completed;
             }
             if (captureSaveWorkflowRunner is not ILiveCaptureSaveWorkflowRunner liveRunner)
             {
@@ -3136,19 +3141,30 @@ public sealed class MainViewModel : INotifyPropertyChanged
                     sessionId,
                     cancellationToken,
                     "live candidate workflow runnerが構成されていません。");
-                return;
+                return LiveCandidateProcessingResult.Completed;
             }
 
-            var result = await liveRunner.RunCandidateAsync(
+            var preparation = liveRunner.PrepareCandidate(
                 frame,
                 observation,
-                scoreDatabasePath,
                 masterDatabasePath,
-                catalogDatabasePath,
+                catalogDatabasePath);
+            if (preparation.RetryIdentity && !context.FinalizeUnresolved)
+            {
+                SaveStatusTitle = "RESULT同定根拠を再評価します";
+                SaveStatusMessage =
+                    $"SCORE={observation.Score}の同じcapture eventを後続frameで再評価します。";
+                return LiveCandidateProcessingResult.RetryIdentity;
+            }
+
+            var result = await liveRunner.RunPreparedCandidateAsync(
+                frame,
+                preparation.Observation,
+                scoreDatabasePath,
                 cancellationToken);
             if (!CanRunMonitoringWork(sessionId, cancellationToken))
             {
-                return;
+                return LiveCandidateProcessingResult.Completed;
             }
             if (result.SavedPlayIds.Count > 0 &&
                 !ReloadSavedPlayData(
@@ -3161,23 +3177,27 @@ public sealed class MainViewModel : INotifyPropertyChanged
                     sessionId,
                     cancellationToken,
                     "transaction後のread-only再読込で保存済みplayを確認できませんでした。");
-                return;
+                return LiveCandidateProcessingResult.Completed;
             }
 
             RecordLiveWorkflowResult(result);
+            return LiveCandidateProcessingResult.Completed;
         }
         catch (OperationCanceledException) when (
             cancellationToken.IsCancellationRequested || applicationExitRequested)
         {
             // Stop and abnormal capture boundaries do not start a new candidate save.
+            return LiveCandidateProcessingResult.Completed;
         }
         catch (ViewerDatabaseException exception)
         {
             RecordLiveWorkflowFailure(sessionId, cancellationToken, exception.UserMessage);
+            return LiveCandidateProcessingResult.Completed;
         }
         catch (Exception exception)
         {
             RecordLiveWorkflowFailure(sessionId, cancellationToken, exception.Message);
+            return LiveCandidateProcessingResult.Completed;
         }
     }
 

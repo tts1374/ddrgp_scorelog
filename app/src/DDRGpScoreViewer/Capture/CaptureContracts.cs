@@ -212,6 +212,24 @@ public interface ILiveResultAnalyzer
         CancellationToken cancellationToken = default);
 }
 
+public enum LiveCandidateProcessingDisposition
+{
+    Completed,
+    RetryIdentity,
+}
+
+public sealed record LiveCandidateProcessingContext(bool FinalizeUnresolved);
+
+public sealed record LiveCandidateProcessingResult(
+    LiveCandidateProcessingDisposition Disposition)
+{
+    public static LiveCandidateProcessingResult Completed { get; } =
+        new(LiveCandidateProcessingDisposition.Completed);
+
+    public static LiveCandidateProcessingResult RetryIdentity { get; } =
+        new(LiveCandidateProcessingDisposition.RetryIdentity);
+}
+
 public interface ILiveMonitoringCaptureService
 {
     bool IsRunning { get; }
@@ -220,7 +238,8 @@ public interface ILiveMonitoringCaptureService
         nint targetWindowHandle,
         CaptureTargetInfo target,
         IProgress<CaptureSessionProgress> progress,
-        Func<CapturedFrame, LiveResultObservation, CancellationToken, Task> processCandidate,
+        Func<CapturedFrame, LiveResultObservation, LiveCandidateProcessingContext,
+            CancellationToken, Task<LiveCandidateProcessingResult>> processCandidate,
         CancellationToken cancellationToken = default);
 
     Task StopAsync();

@@ -1101,7 +1101,7 @@ internal sealed class AppOwnedVisualIdentityEvidenceProducer
         return decoder.Frames[0];
     }
 
-    private static bool HasAdoptedIdentity(AppOwnedFormalEvidence evidence) =>
+    internal static bool HasAdoptedIdentity(AppOwnedFormalEvidence evidence) =>
         !string.IsNullOrWhiteSpace(evidence.MasterVersion) &&
         !string.IsNullOrWhiteSpace(evidence.SongId) &&
         !string.IsNullOrWhiteSpace(evidence.ChartId) &&
