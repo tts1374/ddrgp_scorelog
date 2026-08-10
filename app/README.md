@@ -264,7 +264,7 @@ production固定pathは`%LOCALAPPDATA%\DDRGpScoreViewer\data\master\`です。�
 
 ## Releaseログとdata保持
 
-`%LOCALAPPDATA%\DDRGpScoreViewer\logs\gp-score-log.log`へ、起動・終了、app version、DB検証、reference data set処理、監視状態、保存集計、重大例外を記録します。5MB到達時にrotationし、現行を含め最大3 fileです。Release版は失敗画像、詳細解析中間情報、runtime stdout/stderrを既定保存しません。Debug buildだけが既存の詳細artifactを生成できます。
+`%LOCALAPPDATA%\DDRGpScoreViewer\logs\gp-score-log.log`へ、起動・終了、app version、DB検証、reference data set処理、監視状態、保存集計、重大例外を記録します。Level画像認識は`level_recognition`の構造化JSONイベントとして、event ID、status、認識桁、候補、距離、margin、適用閾値、理由を記録します。ログには画像や正式個人スコアDBの診断値を保存しません。5MB到達時にrotationし、現行を含め最大3 fileです。Release版は失敗画像、詳細解析中間情報、runtime stdout/stderrを既定保存しません。Debug buildだけが既存の詳細artifactを生成できます。
 
 | data | 保持 |
 | --- | --- |

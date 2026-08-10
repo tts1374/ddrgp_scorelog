@@ -25,6 +25,11 @@ public sealed class M7aDigitRecognizerTests
 
         Assert.Equal("recognized", zero.Status);
         Assert.Equal("0", zero.RecognizedDigits);
+        Assert.Equal("0", zero.BestCandidate);
+        Assert.NotEmpty(zero.NextBestCandidate);
+        Assert.NotNull(zero.CandidateMargin);
+        Assert.Equal(0.28, zero.DistanceThreshold);
+        Assert.Equal(0.02, zero.CandidateMarginThreshold);
         Assert.True(zero.Match);
         Assert.True(zero.HasCandidateDigits);
         Assert.Equal("recognized", variable.Status);
@@ -151,6 +156,33 @@ public sealed class M7aDigitRecognizerTests
         Assert.Equal("ambiguous", result.Status);
         Assert.Equal("low_margin", result.FailureReason);
         Assert.Equal("0", result.RecognizedDigits);
+        Assert.Equal("0", result.BestCandidate);
+        Assert.Equal("1", result.NextBestCandidate);
+        Assert.Equal(0.0, result.CandidateMargin);
+        Assert.Equal(0.28, result.DistanceThreshold);
+        Assert.Equal(0.02, result.CandidateMarginThreshold);
+    }
+
+    [Fact]
+    public void Distance_above_threshold_is_ambiguous_with_candidate_metrics()
+    {
+        using var fixture = new TemplateFixture();
+        fixture.WriteTemplates("score_digits");
+
+        var result = new M7aDigitRecognizer(templateRoot: fixture.Root).RecognizeRegion(
+            fixture.RenderScorePattern(["100", "010", "001", "010", "100"]),
+            fieldName: "level",
+            roiDefinition: M7aDigitRecognizer.RoiDefinitions["score_digits"],
+            segmentationRoiName: "score_digits",
+            templateGroup: "score_digits");
+
+        Assert.Equal("ambiguous", result.Status);
+        Assert.Equal("distance_above_threshold", result.FailureReason);
+        Assert.Equal(result.RecognizedDigits, result.BestCandidate);
+        Assert.NotEmpty(result.NextBestCandidate);
+        Assert.True(result.Distance > result.DistanceThreshold);
+        Assert.Equal(0.28, result.DistanceThreshold);
+        Assert.Equal(0.02, result.CandidateMarginThreshold);
     }
 
     [Fact]
@@ -546,7 +578,8 @@ public sealed class M7aDigitRecognizerTests
 
         public BitmapSource Render(
             IReadOnlyDictionary<string, string> values,
-            bool addScoreTopNoise = false)
+            bool addScoreTopNoise = false,
+            IReadOnlyList<string>? scorePattern = null)
         {
             const int width = 1280;
             const int height = 720;
@@ -577,14 +610,23 @@ public sealed class M7aDigitRecognizerTests
                     continue;
                 }
                 var scale = pair.Key == "score" ? 6 : 4;
-                var renderedWidth = pair.Value.Length * 3 * scale +
+                var glyphWidth = scorePattern is not null && pair.Key == "score"
+                    ? scorePattern[0].Length
+                    : 3;
+                var renderedWidth = pair.Value.Length * glyphWidth * scale +
                     Math.Max(0, pair.Value.Length - 1) * 3;
                 var x = roi.X + roi.Width - renderedWidth - 4;
-                var y = roi.Y + (roi.Height - Patterns['0'].Length * scale) / 2;
+                var glyphHeight = scorePattern is not null && pair.Key == "score"
+                    ? scorePattern.Count
+                    : Patterns['0'].Length;
+                var y = roi.Y + (roi.Height - glyphHeight * scale) / 2;
                 foreach (var digit in pair.Value)
                 {
-                    DrawGlyph(pixels, stride, x, y, scale, Patterns[digit]);
-                    x += 3 * scale + 3;
+                    var pattern = scorePattern is not null && pair.Key == "score"
+                        ? scorePattern
+                        : Patterns[digit];
+                    DrawGlyph(pixels, stride, x, y, scale, pattern);
+                    x += glyphWidth * scale + 3;
                 }
             }
 
@@ -605,6 +647,11 @@ public sealed class M7aDigitRecognizerTests
             bitmap.Freeze();
             return bitmap;
         }
+
+        public BitmapSource RenderScorePattern(IReadOnlyList<string> pattern) =>
+            Render(
+                new Dictionary<string, string> { ["score"] = "0" },
+                scorePattern: pattern);
 
         private static void DrawGlyph(
             byte[] pixels,

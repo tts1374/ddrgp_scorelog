@@ -1,5 +1,6 @@
 using System.IO;
 using System.Text;
+using System.Text.Json;
 using DDRGpScoreViewer.Data;
 
 namespace DDRGpScoreViewer.Diagnostics;
@@ -32,6 +33,38 @@ public sealed class ReleaseLog : IDisposable
     public void Error(string eventName, Exception exception) =>
         Write("ERROR", eventName, $"{exception.GetType().Name}: {exception.Message}\n{exception.StackTrace}");
 
+    public void LevelRecognition(CaptureSaveEventResult eventResult)
+    {
+        var level = eventResult.LevelRecognition;
+        if (level is null)
+        {
+            return;
+        }
+
+        var message = JsonSerializer.Serialize(new
+        {
+            event_id = eventResult.EventId,
+            save_status = eventResult.Status,
+            event_reasons = eventResult.Reasons,
+            level = new
+            {
+                field = level.FieldName,
+                roi = level.RoiName,
+                status = level.Status,
+                recognized_digits = level.RecognizedDigits,
+                best_candidate = level.BestCandidate,
+                best_candidate_distance = level.Distance,
+                next_best_candidate = level.NextBestCandidate,
+                candidate_margin = level.CandidateMargin,
+                distance_threshold = level.DistanceThreshold,
+                candidate_margin_threshold = level.CandidateMarginThreshold,
+                reason = level.FailureReason,
+                per_digit_distances = level.PerDigitDistances,
+            },
+        });
+        Information("level_recognition", message);
+    }
+
 #if DEBUG
     public void Debug(string eventName, string message) => Write("DEBUG", eventName, message);
 #endif
@@ -52,9 +85,20 @@ public sealed class ReleaseLog : IDisposable
             {
                 return;
             }
-            RotateIfNeeded();
-            var line = $"{DateTimeOffset.UtcNow:O}\t{level}\t{eventName}\t{message.Replace("\r", string.Empty).Replace("\n", " | ")}\n";
-            File.AppendAllText(logPath, line, Utf8NoBom);
+            try
+            {
+                RotateIfNeeded();
+                var line = $"{DateTimeOffset.UtcNow:O}\t{level}\t{eventName}\t{message.Replace("\r", string.Empty).Replace("\n", " | ")}\n";
+                File.AppendAllText(logPath, line, Utf8NoBom);
+            }
+            catch (IOException)
+            {
+                // Diagnostic output must not affect the formal save boundary.
+            }
+            catch (UnauthorizedAccessException)
+            {
+                // Diagnostic output must not affect the formal save boundary.
+            }
         }
     }
 

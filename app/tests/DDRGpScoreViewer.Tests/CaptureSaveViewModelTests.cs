@@ -1,6 +1,7 @@
 using DDRGpScoreViewer.Capture;
 using DDRGpScoreViewer.Data;
 using DDRGpScoreViewer.Models;
+using DDRGpScoreViewer.Runtime;
 using DDRGpScoreViewer.ViewModels;
 using Xunit;
 
@@ -105,7 +106,8 @@ public sealed class CaptureSaveViewModelTests
                 [new CaptureSaveEventResult(
                     unresolvedEventId,
                     "unresolved",
-                    ["digit_recognition.ambiguous"])]),
+                    ["digit_recognition.ambiguous"],
+                    LevelRecognition("ambiguous", "low_margin"))]),
             new CaptureSaveWorkflowResult(
                 "completed",
                 1,
@@ -116,7 +118,8 @@ public sealed class CaptureSaveViewModelTests
                 [new CaptureSaveEventResult(
                     "confirmed-event-v1:saved",
                     "saved",
-                    [])]),
+                    [],
+                    LevelRecognition("recognized", null))]),
         ]);
         var workflow = new StubCaptureSaveWorkflowRunner((_, _, _) =>
         {
@@ -135,6 +138,8 @@ public sealed class CaptureSaveViewModelTests
             captureSaveWorkflowRunner: workflow);
         var notifications = new List<UnresolvedCaptureNotification>();
         viewModel.UnresolvedCaptureNotificationRequested += notifications.Add;
+        var levelDiagnostics = new List<CaptureSaveEventResult>();
+        viewModel.CaptureSaveDiagnosticRecorded += levelDiagnostics.Add;
 
         await viewModel.StartContinuousCaptureAndSaveAsync(
             123, fixture.ScorePath, fixture.MasterPath);
@@ -144,6 +149,9 @@ public sealed class CaptureSaveViewModelTests
         Assert.Contains(unresolvedEventId, viewModel.UnresolvedNotificationMessage);
         Assert.Single(notifications);
         Assert.Equal(["digit_recognition.ambiguous"], notifications[0].Reasons);
+        Assert.Single(levelDiagnostics);
+        Assert.Equal(unresolvedEventId, levelDiagnostics[0].EventId);
+        Assert.Equal("low_margin", levelDiagnostics[0].LevelRecognition!.FailureReason);
         Assert.Empty(viewModel.Plays);
 
         await viewModel.StartContinuousCaptureAndSaveAsync(
@@ -152,6 +160,9 @@ public sealed class CaptureSaveViewModelTests
         Assert.Equal(1, viewModel.MonitoringResults.Saved);
         Assert.Equal("next-play", Assert.Single(viewModel.Plays).PlayId);
         Assert.Single(notifications);
+        Assert.Equal(2, levelDiagnostics.Count);
+        Assert.Equal("saved", levelDiagnostics[1].Status);
+        Assert.Equal("17", levelDiagnostics[1].LevelRecognition!.BestCandidate);
     }
 
     [Fact]
@@ -378,6 +389,28 @@ public sealed class CaptureSaveViewModelTests
         Assert.Equal("partial-play", Assert.Single(viewModel.Plays).PlayId);
         Assert.Contains("db_rejected=1", viewModel.SaveStatusMessage);
     }
+
+    private static M7aDigitRecognitionResult LevelRecognition(
+        string status,
+        string? failureReason) =>
+        new(
+            "level",
+            "chart_level",
+            "17",
+            string.Empty,
+            null,
+            status,
+            failureReason ?? string.Empty,
+            0.1,
+            0.99,
+            2,
+            10,
+            "1:0.1000:0.1000;7:0.1000:0.1000",
+            "17",
+            "18",
+            0.1,
+            0.28,
+            0.02);
 
     private static CaptureSaveWorkflowResult Result(string status, string playId) =>
         new(

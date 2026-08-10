@@ -11,7 +11,8 @@ namespace DDRGpScoreViewer.Data;
 public sealed record CaptureSaveEventResult(
     string EventId,
     string Status,
-    IReadOnlyList<string> Reasons);
+    IReadOnlyList<string> Reasons,
+    M7aDigitRecognitionResult? LevelRecognition = null);
 
 public sealed record CaptureSaveWorkflowResult(
     string Status,
@@ -239,7 +240,8 @@ public sealed class AppOwnedCaptureSaveWorkflowRunner :
             return ToCaptureResult(
                 result,
                 eventCount: 1,
-                eventId: observation.ConfirmedEventId ?? ConfirmedResultEventId.Create());
+                eventId: observation.ConfirmedEventId ?? ConfirmedResultEventId.Create(),
+                levelRecognition: observation.LevelRecognition);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -350,7 +352,10 @@ public sealed class AppOwnedCaptureSaveWorkflowRunner :
                     duplicate: false,
                     cancellationToken);
                 workflowFailed |= MergeResult(confirmedResult, statusCounts, savedPlayIds, reasons);
-                eventResults.Add(ToCaptureEventResult(confirmedEventId, confirmedResult));
+                eventResults.Add(ToCaptureEventResult(
+                    confirmedEventId,
+                    confirmedResult,
+                    confirmedObservation.LevelRecognition));
                 pending = null;
                 pendingFrame = null;
                 pendingObservation = null;
@@ -555,7 +560,8 @@ public sealed class AppOwnedCaptureSaveWorkflowRunner :
     private static CaptureSaveWorkflowResult ToCaptureResult(
         PersonalScoreDbWorkflowResult result,
         int eventCount,
-        string eventId)
+        string eventId,
+        M7aDigitRecognitionResult? levelRecognition)
     {
         var status = CaptureStatus(result.WorkflowStatus);
         return new CaptureSaveWorkflowResult(
@@ -567,13 +573,14 @@ public sealed class AppOwnedCaptureSaveWorkflowRunner :
             result.PlayId is null ? [] : [result.PlayId],
             result.Reasons,
             null,
-            [ToCaptureEventResult(eventId, result)]);
+            [ToCaptureEventResult(eventId, result, levelRecognition)]);
     }
 
     private static CaptureSaveEventResult ToCaptureEventResult(
         string eventId,
-        PersonalScoreDbWorkflowResult result) =>
-        new(eventId, CaptureStatus(result.WorkflowStatus), result.Reasons);
+        PersonalScoreDbWorkflowResult result,
+        M7aDigitRecognitionResult? levelRecognition) =>
+        new(eventId, CaptureStatus(result.WorkflowStatus), result.Reasons, levelRecognition);
 
     private static string CaptureStatus(string workflowStatus) => workflowStatus switch
     {

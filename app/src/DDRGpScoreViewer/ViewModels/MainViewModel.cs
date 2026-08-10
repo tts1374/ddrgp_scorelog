@@ -241,6 +241,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public event EventHandler? ChartDetailUpdated;
     public event Action<UnresolvedCaptureNotification>? UnresolvedCaptureNotificationRequested;
     public event Action<UnresolvedCaptureNotification>? UnresolvedCaptureDiagnosticRecorded;
+    public event Action<CaptureSaveEventResult>? CaptureSaveDiagnosticRecorded;
 
     public ObservableCollection<PlayHistoryItem> Plays { get; } = [];
     public ObservableCollection<ChartBestItem> ChartBests { get; } = [];
@@ -3233,6 +3234,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     private void RecordLiveWorkflowResult(CaptureSaveWorkflowResult result)
     {
+        PublishLevelRecognitionDiagnostics(result);
         PublishUnresolvedCaptureNotifications(result);
         var counts = new Dictionary<string, int>(result.StatusCounts);
         if (result.Status == "analysis_failed" && !counts.ContainsKey("analysis_failed"))
@@ -3352,6 +3354,22 @@ public sealed class MainViewModel : INotifyPropertyChanged
             UnresolvedNotificationMessage = message;
             HasUnresolvedNotification = true;
             UnresolvedCaptureNotificationRequested?.Invoke(notification);
+        }
+    }
+
+    private void PublishLevelRecognitionDiagnostics(CaptureSaveWorkflowResult result)
+    {
+        if (result.EventResults is not { Count: > 0 })
+        {
+            return;
+        }
+
+        foreach (var eventResult in result.EventResults)
+        {
+            if (eventResult.LevelRecognition is not null)
+            {
+                CaptureSaveDiagnosticRecorded?.Invoke(eventResult);
+            }
         }
     }
 
@@ -4560,6 +4578,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     private void RecordWorkflowResult(CaptureSaveWorkflowResult result, bool workflowFailed)
     {
+        PublishLevelRecognitionDiagnostics(result);
         PublishUnresolvedCaptureNotifications(result);
         var counts = new Dictionary<string, int>(result.StatusCounts);
         if (result.Status == "analysis_failed" && !counts.ContainsKey("analysis_failed"))
