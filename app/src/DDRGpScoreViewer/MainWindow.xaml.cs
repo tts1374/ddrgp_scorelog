@@ -174,8 +174,21 @@ public partial class MainWindow : System.Windows.Window
     internal void SetLanguageChangeRestartHandler(Func<Task<bool>> restartHandler) =>
         languageChangeRestartHandler = restartHandler;
 
-    internal Task CheckForApplicationUpdateAsync(CancellationToken cancellationToken) =>
-        viewModel.CheckForApplicationUpdateAsync(cancellationToken);
+    internal Task CheckForApplicationUpdateAsync(CancellationToken cancellationToken)
+    {
+        if (applicationUpdatePrepareExitHandler is null ||
+            applicationUpdateExitHandler is null ||
+            applicationUpdateForceExitHandler is null)
+        {
+            return viewModel.CheckForApplicationUpdateAsync(cancellationToken);
+        }
+
+        return viewModel.CheckAndApplyApplicationUpdateAsync(
+            applicationUpdatePrepareExitHandler,
+            applicationUpdateExitHandler,
+            applicationUpdateForceExitHandler,
+            cancellationToken);
+    }
 
     internal void StartAutomaticMonitoring()
     {

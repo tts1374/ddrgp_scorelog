@@ -19,7 +19,7 @@ main branchで利用できる主な機能:
 - Phase 1の主要画面（ホーム、自己ベスト、楽曲・譜面詳細、プレー履歴、設定、データ管理）
 - `ambiguous` / `unresolved`のローカル通知、個人スコアデータの手動backup / restore
 - developer-onlyのjacket catalog collector / manual review支援（公開アプリのPhase 1 completion gate外）
-- VeloPackによる未署名per-user installer、GitHub Releasesからのユーザー操作アプリ更新、reference data setの同梱・安全なセット更新、Releaseログ
+- VeloPackによる未署名per-user installer、GitHub Releasesからの起動時自動アプリ更新、reference data setの同梱・安全なセット更新、Releaseログ
 
 現在の境界:
 

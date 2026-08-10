@@ -233,6 +233,40 @@ public sealed class ApplicationUpdateTests
         Assert.Contains("ready", viewModel.ApplicationUpdateStatusMessage);
     }
 
+    [Fact]
+    public async Task Check_and_apply_automatically_updates_when_release_is_available()
+    {
+        var service = new FakeApplicationUpdateService
+        {
+            CheckResult = new(ApplicationUpdateStatus.Available, "available", "1.2.0"),
+            DownloadResult = new(ApplicationUpdateStatus.Downloaded, "downloaded", "1.2.0"),
+            ApplyResult = new(ApplicationUpdateStatus.ReadyToRestart, "ready", "1.2.0"),
+        };
+        var viewModel = new MainViewModel(
+            new ScoreViewerRepository(),
+            applicationUpdateService: service);
+        var prepareExitCount = 0;
+        var completeExitCount = 0;
+
+        await viewModel.CheckAndApplyApplicationUpdateAsync(
+            () =>
+            {
+                prepareExitCount++;
+                return Task.CompletedTask;
+            },
+            () =>
+            {
+                completeExitCount++;
+                return Task.CompletedTask;
+            },
+            () => { });
+
+        Assert.Equal(["check", "download", "apply"], service.Calls);
+        Assert.Equal(1, prepareExitCount);
+        Assert.Equal(1, completeExitCount);
+        Assert.Equal("1.2.0", viewModel.ApplicationUpdateVersion);
+    }
+
     private static UpdateInfo CreateUpdateInfo(int major, int minor, int patch)
     {
         var asset = new VelopackAsset
@@ -293,11 +327,13 @@ public sealed class ApplicationUpdateTests
         public ApplicationUpdateResult ApplyResult { get; init; } =
             new(ApplicationUpdateStatus.ReadyToRestart, "ready");
         public ApplicationUpdateStatus? LastRequestedStatus { get; private set; }
+        public List<string> Calls { get; } = [];
         public bool IsSupported => true;
 
         public Task<ApplicationUpdateResult> CheckForUpdatesAsync(
             CancellationToken cancellationToken = default)
         {
+            Calls.Add("check");
             LastRequestedStatus = CheckResult.Status;
             return Task.FromResult(CheckResult);
         }
@@ -306,6 +342,7 @@ public sealed class ApplicationUpdateTests
             Action<int>? progress = null,
             CancellationToken cancellationToken = default)
         {
+            Calls.Add("download");
             progress?.Invoke(100);
             return Task.FromResult(DownloadResult);
         }
@@ -316,6 +353,7 @@ public sealed class ApplicationUpdateTests
             Action forceExit,
             CancellationToken cancellationToken = default)
         {
+            Calls.Add("apply");
             return CompleteAsync(prepareExit, completeExit);
         }
 

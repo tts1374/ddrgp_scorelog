@@ -156,7 +156,7 @@ public partial class App : System.Windows.Application
         if (referenceDataSetManager is not null)
         {
             mainWindow.ViewModel.SetReferenceDataUpdateInProgress(true);
-            StartReferenceDataSetUpdate(
+            await StartReferenceDataSetUpdate(
                 referenceDataSetManager,
                 paths,
                 mainWindow.ApplicationExitToken);
@@ -166,7 +166,7 @@ public partial class App : System.Windows.Application
         singleInstance.Listen(() => Dispatcher.BeginInvoke(ShowMainWindow));
     }
 
-    private async void StartReferenceDataSetUpdate(
+    private async Task StartReferenceDataSetUpdate(
         ReferenceDataSetManager referenceDataSetManager,
         ViewerDatabasePaths paths,
         CancellationToken cancellationToken)

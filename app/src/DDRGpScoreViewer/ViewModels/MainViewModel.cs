@@ -1593,12 +1593,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
         automaticMonitoringCancellation?.Cancel();
     }
 
-    public async Task CheckForApplicationUpdateAsync(
+    public async Task<ApplicationUpdateResult?> CheckForApplicationUpdateAsync(
         CancellationToken cancellationToken = default)
     {
         if (!TryReserveApplicationUpdateOperation())
         {
-            return;
+            return null;
         }
 
         try
@@ -1609,6 +1609,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 progress: 0);
             var result = await applicationUpdateService!.CheckForUpdatesAsync(cancellationToken);
             ApplyApplicationUpdateResult(result);
+            return result;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -1619,18 +1620,45 @@ public sealed class MainViewModel : INotifyPropertyChanged
                     "現在のversionで通常利用を続けられます。",
                     progress: 0);
             }
+            return null;
         }
         catch (Exception exception)
         {
-            ApplyApplicationUpdateResult(
-                new ApplicationUpdateResult(
-                    ApplicationUpdateStatus.Failed,
-                    $"アプリ更新の確認に失敗しました。現在のversionで通常利用を続けられます。 {exception.Message}"));
+            var result = new ApplicationUpdateResult(
+                ApplicationUpdateStatus.Failed,
+                $"アプリ更新の確認に失敗しました。現在のversionで通常利用を続けられます。 {exception.Message}");
+            ApplyApplicationUpdateResult(result);
+            return result;
         }
         finally
         {
             ReleaseApplicationUpdateOperation();
         }
+    }
+
+    public async Task CheckAndApplyApplicationUpdateAsync(
+        Func<Task> prepareExit,
+        Func<Task> completeExit,
+        Action forceExit,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(prepareExit);
+        ArgumentNullException.ThrowIfNull(completeExit);
+        ArgumentNullException.ThrowIfNull(forceExit);
+
+        var result = await CheckForApplicationUpdateAsync(cancellationToken);
+        if (result?.Status != ApplicationUpdateStatus.Available ||
+            applicationExitRequested ||
+            cancellationToken.IsCancellationRequested)
+        {
+            return;
+        }
+
+        await DownloadAndApplyApplicationUpdateAsync(
+            prepareExit,
+            completeExit,
+            forceExit,
+            cancellationToken);
     }
 
     public async Task DownloadAndApplyApplicationUpdateAsync(

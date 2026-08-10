@@ -85,7 +85,7 @@ M10では、単一ユーザーがローカルPCで継続利用できる初期版
 - Release対象とdeveloper-only tool / local dataを分離する
 - 既知の制限、未実施の実機確認、復旧手順をREADMEまたはrelease docsへ記載する
 - VeloPack installer/packageを生成し、GitHub Releasesからreference data setを安全に取得・更新する
-- production packageからアプリ本体の更新をユーザー操作で実行できる
+- production packageから起動時にstable版アプリ本体の更新を自動download・適用できる
 - DDR GRAND PRIX windowの検出時に監視を自動開始し、window消失後に再出現した場合だけ監視へ復帰する
 - `ambiguous` / `unresolved`を正式DBへ保存せず、ローカル通知として確認できる
 - Phase 1のホーム、自己ベスト、楽曲・譜面詳細、プレー履歴、設定、データ管理と個人スコアデータのbackup / restoreを提供する
@@ -93,7 +93,7 @@ M10では、単一ユーザーがローカルPCで継続利用できる初期版
 初期版のNon-scope:
 
 - 商用コード署名
-- 強制更新、任意version選択、複数channel、署名検証
+- 任意version選択、複数channel、署名検証
 - cloud backup / 同期
 - telemetry、remote monitoring、中央管理
 - 無停止migration、自動rollback、災害復旧framework
