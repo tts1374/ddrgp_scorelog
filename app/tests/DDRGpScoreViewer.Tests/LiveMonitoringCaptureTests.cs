@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using System.Threading.Channels;
 using DDRGpScoreViewer.Capture;
 using Xunit;
 
@@ -26,45 +27,95 @@ public sealed class LiveMonitoringCaptureTests
             Result("100", ""),
             Result("100", ""),
         ]);
-        var source = new StubFrameSource(
-            Frames(
-                0,
-                1_000,
-                2_000,
-                3_000,
-                4_000,
-                5_000,
-                6_000,
-                7_000,
-                8_000,
-                9_000,
-                10_000,
-                11_000,
-                12_000,
-                13_000),
-            frameDelayMs: 5);
+        var source = new ControlledFrameSource();
         var progress = new List<CaptureSessionProgress>();
+        var progressLock = new object();
         var processed = new List<string>();
+        var processedTitles = new List<string>();
+        var candidateCompletions = Channel.CreateUnbounded<string>();
+        var processingStatusReports = 0;
         var service = new LiveMonitoringCaptureService(
             new StubTargetedAdapter(source),
             new StubResultAnalyzer(observations));
 
-        var result = await service.RunAsync(
+        var run = service.RunAsync(
             123,
             new CaptureTargetInfo("DDR GRAND PRIX", 1280, 720),
-            new CallbackProgress<CaptureSessionProgress>(progress.Add),
+            new CallbackProgress<CaptureSessionProgress>(item =>
+            {
+                lock (progressLock)
+                {
+                    progress.Add(item);
+                }
+                if (item.StatusMessage.StartsWith(
+                        "RESULT同定根拠を確認しています。",
+                        StringComparison.Ordinal) &&
+                    Interlocked.Increment(ref processingStatusReports) % 2 == 0)
+                {
+                    candidateCompletions.Writer.TryWrite(processedTitles[^1]);
+                }
+            }),
             (_, observation, _, _) =>
             {
                 processed.Add(observation.Score);
+                processedTitles.Add(observation.TitleSignature);
                 return Task.FromResult(LiveCandidateProcessingResult.Completed);
             });
 
+        var frames = Frames(
+            0,
+            1_000,
+            2_000,
+            3_000,
+            4_000,
+            5_000,
+            6_000,
+            7_000,
+            8_000,
+            9_000,
+            10_000,
+            11_000,
+            12_000,
+            13_000);
+        foreach (var frame in frames.Take(4))
+        {
+            source.Add(frame);
+        }
+        Assert.Equal("song-a", await candidateCompletions.Reader.ReadAsync());
+
+        foreach (var frame in frames.Skip(4).Take(3))
+        {
+            source.Add(frame);
+        }
+        Assert.Equal("song-b", await candidateCompletions.Reader.ReadAsync());
+
+        foreach (var frame in frames.Skip(7).Take(3))
+        {
+            source.Add(frame);
+        }
+        Assert.Equal(string.Empty, await candidateCompletions.Reader.ReadAsync());
+
+        foreach (var frame in frames.Skip(10))
+        {
+            source.Add(frame);
+        }
+        Assert.Equal(string.Empty, await candidateCompletions.Reader.ReadAsync());
+        source.Complete();
+
+        var result = await run;
         Assert.Equal(CaptureOperationStatus.Cancelled, result.Status);
         Assert.Equal(["100", "100", "100", "100"], processed);
-        Assert.Equal(14, progress[^1].SampledFrameCount);
-        Assert.Equal(10, progress[^1].ResultFrameCount);
-        Assert.Equal(4, progress[^1].ConfirmedCandidateCount);
-        Assert.True(progress[^1].DiscardedFrameCount >= 6);
+        Assert.Equal(["song-a", "song-b", string.Empty, string.Empty], processedTitles);
+        CaptureSessionProgress finalProgress;
+        lock (progressLock)
+        {
+            finalProgress = progress[^1];
+        }
+        Assert.Equal(14, finalProgress.SampledFrameCount);
+        Assert.Equal(10, finalProgress.ResultFrameCount);
+        Assert.Equal(4, finalProgress.ConfirmedCandidateCount);
+        Assert.Equal(0, finalProgress.CandidateQueueDropCount);
+        Assert.True(finalProgress.DiscardedFrameCount >= 6);
         Assert.Contains(
             progress,
             item => item.StatusMessage.Contains("次のRESULT", StringComparison.Ordinal));
@@ -440,7 +491,47 @@ public sealed class LiveMonitoringCaptureTests
         }
     }
 
-    private sealed class StubTargetedAdapter(StubFrameSource source)
+    private sealed class ControlledFrameSource : IContinuousFrameSource, IContinuousFrameSourceMetadata
+    {
+        private readonly Channel<CapturedFrame> frameChannel =
+            Channel.CreateUnbounded<CapturedFrame>();
+        private readonly TaskCompletionSource<CaptureSessionEndReason> completion = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public Task<CaptureSessionEndReason> Completion => completion.Task;
+        public CaptureTargetInfo Target => new("fixture target", 1280, 720);
+
+        public void Add(CapturedFrame frame) => frameChannel.Writer.TryWrite(frame);
+
+        public void Complete(CaptureSessionEndReason endReason = CaptureSessionEndReason.Stopped)
+        {
+            frameChannel.Writer.TryComplete();
+            completion.TrySetResult(endReason);
+        }
+
+        public async IAsyncEnumerable<CapturedFrame> ReadFramesAsync(
+            [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            await foreach (var frame in frameChannel.Reader.ReadAllAsync(cancellationToken))
+            {
+                yield return frame;
+            }
+        }
+
+        public Task StopAsync()
+        {
+            Complete();
+            return Task.CompletedTask;
+        }
+
+        public ValueTask DisposeAsync()
+        {
+            Complete();
+            return ValueTask.CompletedTask;
+        }
+    }
+
+    private sealed class StubTargetedAdapter(IContinuousFrameSource source)
         : IContinuousGraphicsCaptureAdapter, ITargetedContinuousGraphicsCaptureAdapter
     {
         public bool IsSupported => true;
