@@ -36,6 +36,13 @@
         </Setter>
     </Style>
 
+    <Style x:Key="{ComponentResourceKey ResourceId=DataGridSelectAllButtonStyle, TypeInTargetAssembly={x:Type DataGrid}}"
+           TargetType="Button">
+        <Setter Property="Opacity" Value="0" />
+        <Setter Property="IsHitTestVisible" Value="False" />
+        <Setter Property="Focusable" Value="False" />
+    </Style>
+
     <Style x:Key="SidebarButtonStyle" TargetType="Button">
         <Setter Property="Foreground" Value="#94A3B8" />
         <Setter Property="Background" Value="Transparent" />

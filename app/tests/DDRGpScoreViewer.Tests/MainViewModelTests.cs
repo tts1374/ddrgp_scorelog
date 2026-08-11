@@ -1,3 +1,4 @@
+using System.Collections.Specialized;
 using DDRGpScoreViewer.Data;
 using DDRGpScoreViewer.Models;
 using DDRGpScoreViewer.ViewModels;
@@ -620,6 +621,34 @@ public sealed class MainViewModelTests
         Assert.Equal(totalCount, viewModel.ChartBests.Count);
         Assert.Equal(totalCount, viewModel.ChartBestDisplayedCount);
         Assert.False(viewModel.CanLoadMoreChartBests);
+    }
+
+    [Fact]
+    public void Best_list_paging_appends_rows_without_resetting_existing_rows()
+    {
+        using var fixture = new DatabaseFixture();
+        for (var index = 2; index <= 101; index++)
+        {
+            fixture.AddMasterSongAndChart(
+                $"song-{index}",
+                $"SONG {index:00}",
+                "Artist",
+                $"chart-{index}");
+        }
+
+        var viewModel = new MainViewModel(new ScoreViewerRepository());
+        viewModel.Load(fixture.ScorePath, fixture.MasterPath, persist: false);
+        var firstChart = viewModel.ChartBests[0];
+        var changes = new List<NotifyCollectionChangedEventArgs>();
+        viewModel.ChartBests.CollectionChanged += (_, args) => changes.Add(args);
+
+        viewModel.LoadMoreChartBests();
+
+        Assert.DoesNotContain(changes, args => args.Action == NotifyCollectionChangedAction.Reset);
+        Assert.All(changes, args => Assert.Equal(NotifyCollectionChangedAction.Add, args.Action));
+        Assert.Equal(50, changes.Sum(args => args.NewItems?.Count ?? 0));
+        Assert.Same(firstChart, viewModel.ChartBests[0]);
+        Assert.Equal(100, viewModel.ChartBests.Count);
     }
 
     [Fact]

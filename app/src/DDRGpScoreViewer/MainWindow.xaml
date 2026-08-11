@@ -825,6 +825,7 @@
                                       PreviewMouseLeftButtonDown="BestChartGrid_PreviewMouseLeftButtonDown"
                                       ScrollViewer.ScrollChanged="BestChartGrid_ScrollChanged"
                                       RowHeight="52" ColumnHeaderHeight="36"
+                                      HeadersVisibility="Column"
                                       ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                                       Style="{StaticResource ViewerDataGridStyle}">
                                 <DataGrid.Columns>

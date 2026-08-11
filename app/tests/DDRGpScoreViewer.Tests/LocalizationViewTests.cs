@@ -167,6 +167,18 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
                     databaseFixture.CatalogPath,
                     persist: false);
                 window.Show();
+                var emptyButtonWasVisible = false;
+                window.BestChartGrid.LayoutUpdated += (_, _) =>
+                {
+                    if (FindVisualChildren<Button>(window.BestChartGrid)
+                        .Any(button =>
+                            button.Content is null &&
+                            button.Visibility == Visibility.Visible &&
+                            button.Opacity > 0))
+                    {
+                        emptyButtonWasVisible = true;
+                    }
+                };
                 window.BestNavigation.RaiseEvent(
                     new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
                 window.UpdateLayout();
@@ -188,6 +200,7 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
 
                 Assert.Equal(101, window.ViewModel.ChartBests.Count);
                 Assert.Equal(secondBottomOffset, scrollViewer.VerticalOffset, precision: 3);
+                Assert.False(emptyButtonWasVisible);
             }
             finally
             {

@@ -3829,10 +3829,17 @@ public sealed class MainViewModel : INotifyPropertyChanged
             return;
         }
 
+        var previousDisplayedCount = ChartBestDisplayedCount;
         ChartBestDisplayedCount = Math.Min(
-            ChartBestDisplayedCount + ChartBestPageSize,
+            previousDisplayedCount + ChartBestPageSize,
             ChartBestTotalCount);
-        Replace(ChartBests, FilterChartBests().Take(ChartBestDisplayedCount));
+        var filtered = FilterChartBests().ToArray();
+        foreach (var chartBest in filtered
+            .Skip(previousDisplayedCount)
+            .Take(ChartBestDisplayedCount - previousDisplayedCount))
+        {
+            ChartBests.Add(chartBest);
+        }
         NotifyChartBestListState();
     }
 
