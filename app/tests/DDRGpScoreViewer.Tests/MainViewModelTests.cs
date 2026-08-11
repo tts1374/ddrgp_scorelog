@@ -537,8 +537,10 @@ public sealed class MainViewModelTests
         Assert.Single(viewModel.ChartBests);
         Assert.Equal("UNPLAYED SONG", viewModel.ChartBests[0].SongTitle);
         Assert.Equal("表示 1〜1 / 全1譜面", viewModel.ChartBestRangeDisplay);
+        Assert.Equal(1, viewModel.ChartBestDisplayedCount);
 
         viewModel.BestPlayStatusFilter = "すべて";
+        Assert.Equal(50, viewModel.ChartBestDisplayedCount);
         viewModel.BestVersionFilter = "DDR WORLD";
         Assert.All(viewModel.ChartBests, item => Assert.Equal("DDR WORLD", item.Version));
 
@@ -569,11 +571,69 @@ public sealed class MainViewModelTests
         viewModel.BestSortFilter = "曲名（昇順）";
         Assert.Equal("MAX 300", viewModel.ChartBests[0].SongTitle);
         Assert.Equal("SONG 02", viewModel.ChartBests[1].SongTitle);
+        Assert.Equal(50, viewModel.ChartBestDisplayedCount);
 
         viewModel.ResetBestFilters();
         Assert.Equal("SINGLE", viewModel.BestPlayStyleFilter);
         Assert.Equal(50, viewModel.ChartBests.Count);
         Assert.Equal(MainViewModel.BestSortScoreDescending, viewModel.BestSortFilter);
+    }
+
+    [Theory]
+    [InlineData(49, 49, 49)]
+    [InlineData(50, 50, 50)]
+    [InlineData(51, 50, 51)]
+    [InlineData(100, 50, 100)]
+    [InlineData(101, 50, 100)]
+    public void Best_list_paging_respects_count_boundaries(
+        int totalCount,
+        int expectedInitialCount,
+        int expectedAfterFirstRequest)
+    {
+        using var fixture = new DatabaseFixture();
+        for (var index = 2; index <= totalCount; index++)
+        {
+            fixture.AddMasterSongAndChart(
+                $"song-{index}",
+                $"SONG {index:00}",
+                "Artist",
+                $"chart-{index}");
+        }
+
+        var viewModel = new MainViewModel(new ScoreViewerRepository());
+        viewModel.Load(fixture.ScorePath, fixture.MasterPath, persist: false);
+
+        Assert.Equal(expectedInitialCount, viewModel.ChartBests.Count);
+        Assert.Equal(expectedInitialCount, viewModel.ChartBestDisplayedCount);
+        Assert.Equal(totalCount > expectedInitialCount, viewModel.CanLoadMoreChartBests);
+
+        viewModel.LoadMoreChartBests();
+
+        Assert.Equal(expectedAfterFirstRequest, viewModel.ChartBests.Count);
+        Assert.Equal(expectedAfterFirstRequest, viewModel.ChartBestDisplayedCount);
+        Assert.Equal(
+            expectedAfterFirstRequest < totalCount,
+            viewModel.CanLoadMoreChartBests);
+
+        viewModel.LoadMoreChartBests();
+
+        Assert.Equal(totalCount, viewModel.ChartBests.Count);
+        Assert.Equal(totalCount, viewModel.ChartBestDisplayedCount);
+        Assert.False(viewModel.CanLoadMoreChartBests);
+    }
+
+    [Fact]
+    public void Best_chart_page_request_gate_ignores_reentrant_scroll_events_until_completion()
+    {
+        var gate = new BestChartPageRequestGate();
+
+        Assert.True(gate.TryBegin());
+        Assert.False(gate.TryBegin());
+        Assert.False(gate.TryBegin());
+
+        gate.Complete();
+
+        Assert.True(gate.TryBegin());
     }
 
     [Fact]

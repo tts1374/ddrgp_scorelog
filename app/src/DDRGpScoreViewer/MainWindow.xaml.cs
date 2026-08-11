@@ -31,6 +31,7 @@ public partial class MainWindow : System.Windows.Window
     private const double HomeSingleColumnThreshold = 1100;
     private readonly MainViewModel viewModel;
     private readonly AsyncOperationGate monitoringStartGate = new();
+    private readonly BestChartPageRequestGate bestChartPageRequestGate = new();
     private readonly CancellationTokenSource applicationExitCancellation = new();
     private bool applicationExitRequested;
     private bool restoringBestChartListState;
@@ -708,9 +709,23 @@ public partial class MainWindow : System.Windows.Window
 
         bestChartScrollOffset = e.VerticalOffset;
 
-        if (e.VerticalOffset + e.ViewportHeight >= e.ExtentHeight - 1)
+        if (e.VerticalOffset + e.ViewportHeight < e.ExtentHeight - 1 ||
+            !viewModel.CanLoadMoreChartBests ||
+            !bestChartPageRequestGate.TryBegin())
+        {
+            return;
+        }
+
+        try
         {
             viewModel.LoadMoreChartBests();
+        }
+        finally
+        {
+            // Adding rows causes follow-up ScrollChanged events before the UI settles.
+            Dispatcher.BeginInvoke(
+                DispatcherPriority.ContextIdle,
+                new Action(bestChartPageRequestGate.Complete));
         }
     }
 
@@ -1001,6 +1016,24 @@ public partial class MainWindow : System.Windows.Window
             : result;
     }
 #endif
+}
+
+internal sealed class BestChartPageRequestGate
+{
+    private bool requestPending;
+
+    public bool TryBegin()
+    {
+        if (requestPending)
+        {
+            return false;
+        }
+
+        requestPending = true;
+        return true;
+    }
+
+    public void Complete() => requestPending = false;
 }
 
 #if DEBUG
