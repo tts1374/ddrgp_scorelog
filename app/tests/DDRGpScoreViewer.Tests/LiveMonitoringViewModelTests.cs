@@ -9,6 +9,98 @@ namespace DDRGpScoreViewer.Tests;
 public sealed class LiveMonitoringViewModelTests
 {
     [Fact]
+    public async Task New_unresolved_notification_restarts_the_auto_clear_deadline()
+    {
+        using var fixture = new DatabaseFixture();
+        var target = new DdrGpWindowCandidate(
+            101,
+            42,
+            "ddr-konaste",
+            "DDR GRAND PRIX",
+            1280,
+            720);
+        var results = new Queue<CaptureSaveWorkflowResult>(
+        [
+            UnresolvedResult(
+                "confirmed-event-v1:first",
+                "first_reason"),
+            UnresolvedResult(
+                "confirmed-event-v1:latest",
+                "latest_reason"),
+        ]);
+        var live = new StubLiveMonitoringService(
+            candidateCount: 2,
+            delayBeforeNextCandidate: TimeSpan.FromMilliseconds(2_200));
+        var workflow = new StubLiveWorkflowRunner(() => results.Dequeue());
+        var viewModel = new MainViewModel(
+            new ScoreViewerRepository(),
+            new UnusedManualWorkflowRunner(),
+            continuousCaptureService: new UnusedContinuousCaptureService(),
+            captureSaveWorkflowRunner: workflow,
+            defaultDatabasePaths: ConfiguredPaths(fixture),
+            ddrGpWindowEnumerator: new StubWindowEnumerator([target]),
+            liveMonitoringService: live);
+
+        await viewModel.StartConfiguredContinuousCaptureAndSaveAsync(123);
+
+        Assert.True(viewModel.HasUnresolvedNotification);
+        Assert.Contains("confirmed-event-v1:latest", viewModel.UnresolvedNotificationMessage);
+        Assert.Contains("latest_reason", viewModel.UnresolvedNotificationMessage);
+        Assert.Equal(2, viewModel.MonitoringResults.Unresolved);
+        Assert.Empty(viewModel.Plays);
+
+        await Task.Delay(TimeSpan.FromMilliseconds(1_500));
+        Assert.True(viewModel.HasUnresolvedNotification);
+        Assert.Contains("confirmed-event-v1:latest", viewModel.UnresolvedNotificationMessage);
+
+        await Task.Delay(TimeSpan.FromSeconds(2));
+
+        Assert.False(viewModel.HasUnresolvedNotification);
+        Assert.Equal("", viewModel.UnresolvedNotificationTitle);
+        Assert.Equal("", viewModel.UnresolvedNotificationMessage);
+        Assert.Equal(2, viewModel.MonitoringResults.Unresolved);
+        Assert.Empty(viewModel.Plays);
+    }
+
+    [Fact]
+    public async Task Repeated_unresolved_capture_event_keeps_one_wpf_notification()
+    {
+        using var fixture = new DatabaseFixture();
+        var target = new DdrGpWindowCandidate(
+            101,
+            42,
+            "ddr-konaste",
+            "DDR GRAND PRIX",
+            1280,
+            720);
+        var live = new StubLiveMonitoringService(candidateCount: 2);
+        var workflow = new StubLiveWorkflowRunner(
+            () => UnresolvedResult(
+                "confirmed-event-v1:repeated",
+                "digit_recognition.ambiguous"));
+        var viewModel = new MainViewModel(
+            new ScoreViewerRepository(),
+            new UnusedManualWorkflowRunner(),
+            continuousCaptureService: new UnusedContinuousCaptureService(),
+            captureSaveWorkflowRunner: workflow,
+            defaultDatabasePaths: ConfiguredPaths(fixture),
+            ddrGpWindowEnumerator: new StubWindowEnumerator([target]),
+            liveMonitoringService: live);
+        var notifications = new List<UnresolvedCaptureNotification>();
+        var diagnostics = new List<UnresolvedCaptureNotification>();
+        viewModel.UnresolvedCaptureNotificationRequested += notifications.Add;
+        viewModel.UnresolvedCaptureDiagnosticRecorded += diagnostics.Add;
+
+        await viewModel.StartConfiguredContinuousCaptureAndSaveAsync(123);
+
+        Assert.Equal(2, viewModel.MonitoringResults.Unresolved);
+        Assert.Single(notifications);
+        Assert.Single(diagnostics);
+        Assert.True(viewModel.HasUnresolvedNotification);
+        Assert.Empty(viewModel.Plays);
+    }
+
+    [Fact]
     public async Task Configured_monitoring_processes_live_candidate_before_stop()
     {
         using var fixture = new DatabaseFixture();
@@ -203,6 +295,18 @@ public sealed class LiveMonitoringViewModelTests
         Assert.Equal("first-live-play", Assert.Single(viewModel.Plays).PlayId);
     }
 
+    private static CaptureSaveWorkflowResult UnresolvedResult(
+        string eventId,
+        string reason) =>
+        new(
+            "completed",
+            1,
+            new Dictionary<string, int> { ["unresolved"] = 1 },
+            [],
+            [reason],
+            null,
+            [new CaptureSaveEventResult(eventId, "unresolved", [reason])]);
+
     private static ViewerDatabasePaths ConfiguredPaths(DatabaseFixture fixture) =>
         new(
             ViewerDatabaseEnvironment.Development,
@@ -223,7 +327,9 @@ public sealed class LiveMonitoringViewModelTests
             Task.FromResult(candidates);
     }
 
-    private sealed class StubLiveMonitoringService(int candidateCount = 1)
+    private sealed class StubLiveMonitoringService(
+        int candidateCount = 1,
+        TimeSpan? delayBeforeNextCandidate = null)
         : ILiveMonitoringCaptureService
     {
         public bool IsRunning => false;
@@ -243,6 +349,10 @@ public sealed class LiveMonitoringViewModelTests
             const string eventId = "confirmed-event-v1:live-view-model-fixture";
             for (var index = 0; index < candidateCount; index++)
             {
+                if (index > 0 && delayBeforeNextCandidate is { } delay)
+                {
+                    await Task.Delay(delay, cancellationToken);
+                }
                 await processCandidate(
                     new CapturedFrame([1, 2, 3], 1280, 720, 1_000 + index, now, target.DisplayName),
                     new LiveResultObservation(

@@ -166,6 +166,51 @@ public sealed class CaptureSaveViewModelTests
     }
 
     [Fact]
+    public async Task Unresolved_notification_auto_clears_after_three_seconds()
+    {
+        using var fixture = new DatabaseFixture();
+        const string unresolvedEventId = "confirmed-event-v1:auto-clear";
+        var workflow = new StubCaptureSaveWorkflowRunner((_, _, _) =>
+            new CaptureSaveWorkflowResult(
+                "completed",
+                1,
+                new Dictionary<string, int> { ["unresolved"] = 1 },
+                [],
+                ["digit_recognition.ambiguous"],
+                null,
+                [new CaptureSaveEventResult(
+                    unresolvedEventId,
+                    "unresolved",
+                    ["digit_recognition.ambiguous"])]));
+        var viewModel = new MainViewModel(
+            new ScoreViewerRepository(),
+            new UnusedManualWorkflowRunner(),
+            continuousCaptureService: new StubContinuousCaptureService(
+                CaptureOperationStatus.Saved),
+            captureSaveWorkflowRunner: workflow);
+
+        await viewModel.StartContinuousCaptureAndSaveAsync(
+            123,
+            fixture.ScorePath,
+            fixture.MasterPath);
+
+        Assert.True(viewModel.HasUnresolvedNotification);
+        Assert.Equal(1, viewModel.MonitoringResults.Unresolved);
+        Assert.Empty(viewModel.Plays);
+
+        await Task.Delay(TimeSpan.FromSeconds(2));
+        Assert.True(viewModel.HasUnresolvedNotification);
+
+        await Task.Delay(TimeSpan.FromSeconds(2));
+
+        Assert.False(viewModel.HasUnresolvedNotification);
+        Assert.Equal("", viewModel.UnresolvedNotificationTitle);
+        Assert.Equal("", viewModel.UnresolvedNotificationMessage);
+        Assert.Equal(1, viewModel.MonitoringResults.Unresolved);
+        Assert.Empty(viewModel.Plays);
+    }
+
+    [Fact]
     public async Task Notification_setting_only_suppresses_local_display_and_keeps_diagnostic_boundary()
     {
         using var fixture = new DatabaseFixture();
