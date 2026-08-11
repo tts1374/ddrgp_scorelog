@@ -48,6 +48,56 @@ if (-not (Test-Path -LiteralPath $resolvedSetup -PathType Leaf))
     throw "Setup was not found: $resolvedSetup"
 }
 
+$productionEvidence = [System.Collections.Generic.List[string]]::new()
+$localApplicationData = [Environment]::GetFolderPath(
+    [Environment+SpecialFolder]::LocalApplicationData)
+$productionInstallRoot = Join-Path `
+    $localApplicationData `
+    'com.tts1374.ddrgp_scorelog'
+if (Test-Path -LiteralPath $productionInstallRoot)
+{
+    $productionEvidence.Add("install root: $productionInstallRoot")
+}
+$productionStartMenu = [Environment]::GetFolderPath(
+    [Environment+SpecialFolder]::StartMenu)
+$productionShortcut = Get-ChildItem `
+    -LiteralPath $productionStartMenu `
+    -Recurse `
+    -Filter 'GP Score Log.lnk' `
+    -ErrorAction SilentlyContinue |
+    Select-Object -First 1
+if ($null -ne $productionShortcut)
+{
+    $productionEvidence.Add("Start Menu shortcut: $($productionShortcut.FullName)")
+}
+$uninstallRoot = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall'
+if (Test-Path -LiteralPath $uninstallRoot)
+{
+    $productionRegistration = Get-ChildItem -LiteralPath $uninstallRoot |
+        Where-Object {
+            $properties = Get-ItemProperty -LiteralPath $_.PSPath
+            $_.PSChildName -eq 'com.tts1374.ddrgp_scorelog' -or
+                $properties.DisplayName -eq 'GP Score Log' -or
+                $properties.InstallLocation -like `
+                    '*\com.tts1374.ddrgp_scorelog*'
+        } |
+        Select-Object -First 1
+    if ($null -ne $productionRegistration)
+    {
+        $productionEvidence.Add(
+            "uninstall registration: $($productionRegistration.PSChildName)")
+    }
+}
+if ($productionEvidence.Count -gt 0)
+{
+    throw @"
+Refusing VeloPack installer smoke because a production GP Score Log installation was detected.
+The installer uses the same per-user package identity, shortcut, and uninstall registration even
+when --installto points at a temporary directory. Run this smoke only in a clean disposable
+Windows environment. Detected: $($productionEvidence -join '; ')
+"@
+}
+
 $testRoot = Join-Path ([System.IO.Path]::GetTempPath()) `
     "ddrgp-velopack-install-$([guid]::NewGuid().ToString('N'))"
 $installRoot = Join-Path $testRoot 'install'

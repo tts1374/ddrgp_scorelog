@@ -65,6 +65,7 @@ stageは次の順で遷移する。
 - code signing、複数channel、任意version選択、自動rollback、schema migrationを追加しない。
 - secret、token、local pathをRelease notesや公開assetへ含めない。
 - 同一versionのtagまたはReleaseが存在する場合は内容を比較する。一致すれば冪等に完了報告し、不一致なら変更せず停止する。
+- VeloPack installer smokeは同じ`packId`の本番install root、Start Menu shortcut、uninstall登録を上書き・削除し得る。`--installto`で一時pathを指定しても分離されたと判断しない。いずれかが存在するPCでは実行せず、cleanな使い捨てWindows環境を要求する。
 
 `BUILD_CANDIDATE`と`PUBLISH`では、build前に`data/release-build/<version>/`と`data/releases/<version>/`の存在を確認する。`Build-Release.ps1`はこの2つを再作成するため、既存出力があれば明示許可なしに実行しない。
 
@@ -76,10 +77,11 @@ stageは次の順で遷移する。
 2. 対象commitのGitHub Actions必須jobを確認する。未実行、失敗、対象SHA不一致を成功扱いにしない。
 3. required master DBとbinding済みruntime catalogの存在、Git管理外であること、対応versionを確認する。DB内容を変更しない。
 4. GitHubの最新stable Releaseとtag targetを確認し、tag targetから対象commitまでの差分とSection 2のversion自動決定条件を評価する。
-5. `app/README.md`の現在のrelease停止条件のうち、build前に検証可能な項目をhard gateとして列挙し、各項目を`ready`、`not_ready`、`unverified`へ分類する。
-6. package、installer、公開asset、Release notes、公開後確認はdownstream stageの検証項目として分け、未生成であることだけを`unverified` hard gateまたは失敗にしない。
-7. build前条件がすべて満たされれば`READY_TO_BUILD`、失敗があれば`NOT_READY_TO_BUILD`、実行中CIなど結果待ちなら`NEEDS_VERIFICATION`、versionまたは契約判断が必要なら`NEEDS_DECISION`を返す。latest tagから差分がなければ`NO_RELEASE_NEEDED`を返す。
-8. `READY_TO_BUILD`かつ自動遷移が許可される依頼では、versionを固定して`BUILD_CANDIDATE`へ進む。
+5. installer smokeを実行するWindows環境に、同じ`packId`の本番install root、Start Menu shortcut、uninstall登録がないことを確認する。存在する場合は`NEEDS_VERIFICATION`として、cleanな使い捨てWindows環境へ移すまでbuildへ自動遷移しない。
+6. `app/README.md`の現在のrelease停止条件のうち、build前に検証可能な項目をhard gateとして列挙し、各項目を`ready`、`not_ready`、`unverified`へ分類する。
+7. package、installer、公開asset、Release notes、公開後確認はdownstream stageの検証項目として分け、未生成であることだけを`unverified` hard gateまたは失敗にしない。
+8. build前条件がすべて満たされれば`READY_TO_BUILD`、失敗があれば`NOT_READY_TO_BUILD`、実行中CIやinstaller smoke環境未確保など結果待ちなら`NEEDS_VERIFICATION`、versionまたは契約判断が必要なら`NEEDS_DECISION`を返す。latest tagから差分がなければ`NO_RELEASE_NEEDED`を返す。
+9. `READY_TO_BUILD`かつ自動遷移が許可される依頼では、versionを固定して`BUILD_CANDIDATE`へ進む。
 
 local test未実施をGitHub Actions成功で代替した、またはその逆であると暗黙判断しない。実施済み事実と未実施を分ける。
 
@@ -94,7 +96,7 @@ local test未実施をGitHub Actions成功で代替した、またはその逆�
 5. master DBとcatalogをread-onlyで検査するため、まず`Build-Release.ps1 -Version X.Y.Z -ValidateInputsOnly`を実行する。必要なら正本READMEに従って明示pathを渡す。
 6. 既存version出力がないことを再確認し、`Build-Release.ps1 -Version X.Y.Z`を実行する。
 7. build script内のRelease build検証とruntime smokeが成功したことを確認する。
-8. 生成されたSetupを指定して`VerifyVeloPackInstall.ps1 -SetupPath <Setup.exe>`を実行する。
+8. 同じ`packId`の本番install root、Start Menu shortcut、uninstall登録がないcleanな使い捨てWindows環境だけで、生成されたSetupを指定して`VerifyVeloPackInstall.ps1 -SetupPath <Setup.exe>`を実行する。検出された本番環境を削除・退避してsmokeを続行しない。
 9. `app/README.md`が要求するVeloPack assetとreference data setの3 assetがすべて存在することを確認する。
 10. 公開予定assetごとにfile名、byte数、SHA-256を記録する。
 11. `git status --short`とdiffを確認し、tracked差分やlocal data混入がないことを確認する。
@@ -123,7 +125,7 @@ GitHub connectorまたは`gh`を使用する前に、対象repositoryと認証�
 2. public downloadしたassetのfile名、byte数、SHA-256をlocal記録と照合する。
 3. GitHub latest Release APIでreference data setの3 assetが同じReleaseから解決されることを確認する。
 4. VeloPack feedに`releases.win.json`とfull packageが存在することを確認する。
-5. `PUBLISH`では、実施可能ならdownload済みSetupへ`VerifyVeloPackInstall.ps1`を実行する。`POST_RELEASE_VERIFY`では明示依頼がある場合だけ実行する。未実施なら理由と残るリスクを明示する。
+5. `PUBLISH`では、cleanな使い捨てWindows環境が確保済みの場合だけdownload済みSetupへ`VerifyVeloPackInstall.ps1`を実行する。本番install root、Start Menu shortcut、uninstall登録があるPCでは実行しない。`POST_RELEASE_VERIFY`では明示依頼があり、かつclean環境の場合だけ実行する。未実施なら理由と残るリスクを明示する。
 6. 初回Releaseでは既存versionからのupdate確認を要求しない。後続Releaseで旧version環境がある場合だけ、ユーザー操作のupdate確認結果を記録する。
 
 公開後の不一致を見つけても、既存Releaseを削除・上書きしない。影響、利用者データの安全性、推奨する修正版versionまたは公開停止判断を報告し、明示指示を待つ。
