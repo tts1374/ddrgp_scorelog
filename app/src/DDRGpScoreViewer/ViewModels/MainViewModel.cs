@@ -29,6 +29,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private const string AaaOrHigherFilterValue = "aaa_or_higher";
     private const string AOrLowerFilterValue = "a_or_lower";
     private const string NotClearFilterValue = "not_clear";
+    private static readonly TimeSpan UnresolvedNotificationDisplayDuration =
+        TimeSpan.FromSeconds(3);
     private static readonly string[] BestVersionOrder =
     [
         "DDR GRAND PRIX",
@@ -119,6 +121,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private string unresolvedNotificationTitle = "";
     private string unresolvedNotificationMessage = "";
     private bool hasUnresolvedNotification;
+    private long unresolvedNotificationGeneration;
     private bool isCapturing;
     private bool isContinuousCapturing;
     private bool isStoppingCapture;
@@ -1564,9 +1567,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
         if (!appliedNotifyUnresolvedResults)
         {
-            HasUnresolvedNotification = false;
-            UnresolvedNotificationTitle = "";
-            UnresolvedNotificationMessage = "";
+            ClearUnresolvedNotificationDisplay();
         }
     }
 
@@ -3381,8 +3382,52 @@ public sealed class MainViewModel : INotifyPropertyChanged
             UnresolvedNotificationTitle = "自動保存できないプレーが発生しました";
             UnresolvedNotificationMessage = message;
             HasUnresolvedNotification = true;
+            ScheduleUnresolvedNotificationAutoClear();
             UnresolvedCaptureNotificationRequested?.Invoke(notification);
         }
+    }
+
+    private void ScheduleUnresolvedNotificationAutoClear()
+    {
+        var generation = Interlocked.Increment(ref unresolvedNotificationGeneration);
+        _ = ClearUnresolvedNotificationAfterDelayAsync(generation);
+    }
+
+    private async Task ClearUnresolvedNotificationAfterDelayAsync(long generation)
+    {
+        await Task.Delay(UnresolvedNotificationDisplayDuration).ConfigureAwait(false);
+
+        void ClearIfCurrent()
+        {
+            if (Interlocked.CompareExchange(
+                    ref unresolvedNotificationGeneration,
+                    generation + 1,
+                    generation) != generation)
+            {
+                return;
+            }
+
+            HasUnresolvedNotification = false;
+            UnresolvedNotificationTitle = "";
+            UnresolvedNotificationMessage = "";
+        }
+
+        if (uiSynchronizationContext is null ||
+            ReferenceEquals(SynchronizationContext.Current, uiSynchronizationContext))
+        {
+            ClearIfCurrent();
+            return;
+        }
+
+        uiSynchronizationContext.Post(_ => ClearIfCurrent(), null);
+    }
+
+    private void ClearUnresolvedNotificationDisplay()
+    {
+        Interlocked.Increment(ref unresolvedNotificationGeneration);
+        HasUnresolvedNotification = false;
+        UnresolvedNotificationTitle = "";
+        UnresolvedNotificationMessage = "";
     }
 
     private void PublishLevelRecognitionDiagnostics(CaptureSaveWorkflowResult result)
@@ -4648,9 +4693,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         monitoringLatestEventAtUtc = null;
         MonitoringResults = MonitoringResultSummary.Empty;
         unresolvedCaptureNotificationEventIds.Clear();
-        HasUnresolvedNotification = false;
-        UnresolvedNotificationTitle = "";
-        UnresolvedNotificationMessage = "";
+        ClearUnresolvedNotificationDisplay();
         OnPropertyChanged(nameof(MonitoringResultsDisplay));
         OnPropertyChanged(nameof(MonitoringStartedAtDisplay));
         OnPropertyChanged(nameof(MonitoringLatestEventAtDisplay));
