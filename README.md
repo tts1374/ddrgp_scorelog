@@ -1,59 +1,68 @@
 # GP Score Log
 
-GP Score Logは、DanceDanceRevolution GRAND PRIXのゲーム画面を監視し、十分な認識根拠がそろったスコアだけをローカルの個人スコアDBへ保存・閲覧するWindowsアプリです。保存できない結果は正式DBへ書き込まず、理由を通知します。
+GP Score Logは、DanceDanceRevolution GRAND PRIXのリザルト画面を読み取り、プレー結果をパソコンに自動で記録するWindows用アプリです。
 
-## 対応環境と対応範囲
+記録したスコアは、自己ベストやプレー履歴としてあとから確認できます。読み取りに失敗した結果は記録せず、画面にお知らせします。
+
+## 対応している環境
 
 - Windows 11
-- Release packageに必要なruntime資材を同梱します。利用者が.NET SDKやPythonを別途用意する必要はありません。
-- 対応プレー: DDR GRAND PRIXのグランプリプレー。SINGLE (SP) と DOUBLE (DP) の譜面を扱います。
-- 「アーケードプレミアムプレー」および「アーケードノーマルプレー」は、認識・自動保存の対応対象外です。
+- DDR GRAND PRIXのグランプリプレー
+- SINGLE（SP）とDOUBLE（DP）
+- ゲーム画面の大きさ: 1280×720
 
-## 最新版を入手
+「アーケードプレミアムプレー」および「アーケードノーマルプレー」は、認識・自動保存の対応対象外です。
 
-[GitHub Releasesの最新版](https://github.com/tts1374/ddrgp_scorelog/releases/latest)からWindows用Setupを入手してください。未署名packageのため、Windows SmartScreenなどの警告が表示されることがあります。Releaseページとhashを確認できる場合に限り、配布元を確認したうえで続行してください。
+アプリの利用に必要なものは配布版に含まれています。追加の開発用ソフトを入れる必要はありません。
 
-## Quick start
+## ダウンロード
 
-1. [最新版のRelease](https://github.com/tts1374/ddrgp_scorelog/releases/latest)からSetupをダウンロードしてインストールします。
-2. `GP Score Log`を起動し、画面に表示される楽曲・譜面データ、jacket reference、個人スコアDBの状態を確認します。
-3. DDR GRAND PRIXをclient size `1280x720`で起動します。
-4. 「アプリ起動時に監視を開始」がON（初期値）なら、対象windowが見つかるまで待ちます。手動で始める場合は`監視開始`を押します。
-5. RESULTをプレーすると、保存できる結果だけが自動保存されます。終了するときは`監視停止`を押してから、task trayの`終了`を選びます。
+[最新版のダウンロードページ](https://github.com/tts1374/ddrgp_scorelog/releases/latest)を開き、Windows用のセットアップファイルをダウンロードしてください。
 
-ゲームwindowがまだ起動していない場合は待機が続きます。対象windowの検出、認識、保存に失敗した結果は正式DBへ保存されません。
+現在のセットアップファイルには発行元のデジタル署名がないため、Windowsから警告が表示されることがあります。ダウンロード元がこのプロジェクトのページであることを確認したうえで、インストールしてください。
 
-## 主な機能
+## はじめて使うとき
 
-- DDR GRAND PRIXのRESULTを自動監視し、SINGLE / DOUBLE、難易度、スコア、判定数、MAX COMBO、EX SCORE、rank、CLEAR、FLAREを認識できた結果だけ保存
-- ホームで今日のプレー状況、最新プレー、自己ベスト更新を確認
-- 自己ベストでSINGLE / DOUBLE、難易度、レベル、曲名などから絞り込み
-- 楽曲・譜面詳細で自己ベスト、スコア推移、保存済みプレーを確認
-- プレー履歴で保存済みプレーを検索し、行ごとの詳細を確認
-- 設定で起動時監視、保存できない結果の通知、既定のプレイスタイル、起動時画面、表示言語を変更
-- データ管理で個人スコアデータをbackup / restoreし、同梱された楽曲・譜面データの状態を確認
-- GitHub Releasesからアプリ本体とreference data setを安全に更新
+1. ダウンロードしたセットアップファイルを開き、インストールします。
+2. `GP Score Log`を起動します。
+3. DDR GRAND PRIXを起動し、ゲーム画面を1280×720にします。
+4. アプリがゲーム画面を見つけるまで待ちます。自動で始まらない場合は、`監視開始`を押します。
+5. プレー後にリザルト画面が表示されると、読み取れた結果が自動で記録されます。
 
-## 保存の安全境界
+詳しい手順は[利用ガイド](docs/user-guide.md)をご覧ください。
 
-画面がRESULTらしく見えるだけでは保存しません。認識根拠、現在のmaster/reference dataとの整合、capture eventの重複確認がそろった結果だけを正式個人スコアDBへ保存します。低確信度、不完全な結果、重複、DB検査失敗、解析失敗は保存せず、すでに保存済みのプレーを変更しません。
+## できること
 
-保存できない結果が発生した場合は、WPF画面またはtask trayへ「自動保存できないプレーが発生しました。正式DBには保存されていません。」という通知を表示します。通知は次のcapture event処理を妨げず、同じeventを繰り返し通知しません。
+- リザルト画面からスコア、判定数、MAX COMBO、EX SCORE、ランク、クリア状況などを読み取って記録
+- 今日のプレー数や最近のプレーをホーム画面で確認
+- 曲名、難易度、レベルなどから自己ベストを検索
+- 選んだ譜面の自己ベストやスコアの変化を確認
+- 保存済みのプレーを履歴から検索
+- 個人スコアのバックアップ作成と復元
+- アプリ本体と楽曲・譜面データの自動更新
+- 日本語、英語、韓国語の表示切り替え
 
-## 利用者向け文書
+## 読み取れなかった結果について
 
-- [利用ガイド](docs/user-guide.md): インストール、通常操作、設定、backup / restore、更新、終了、トラブルシューティング、既知制限の正本
-- [利用ガイドのトラブルシューティング](docs/user-guide.md#トラブルシューティング)
-- [最新版のGitHub Release](https://github.com/tts1374/ddrgp_scorelog/releases/latest)
+誤ったスコアを残さないため、曲名やスコアなどの必要な情報を十分に読み取れた結果だけを記録します。同じプレーがすでに記録されている場合も、重ねて記録しません。
+
+記録できなかった場合は、「自動保存できないプレーが発生しました。正式DBには保存されていません。」とお知らせします。この「正式DB」は、個人スコアの保存先を指します。それまでに記録したプレーが消えたり、書き換わったりすることはありません。
+
+## 困ったとき・詳しい使い方
+
+- [利用ガイド](docs/user-guide.md)
+- [トラブルシューティング](docs/user-guide.md#トラブルシューティング)
+- [既知の制限](docs/user-guide.md#既知の制限)
+- [最新版のダウンロードページ](https://github.com/tts1374/ddrgp_scorelog/releases/latest)
 
 ## 開発者向け文書
 
 - [要求定義](docs/requirements.md)
-- [実装ロードマップ](docs/implementation-roadmap.md): milestoneの目的と現在地
-- [Windowsアプリの技術README](app/README.md): build、Debug操作、runtime、保存境界、package生成、validation
-- [設計資料](docs/design/): 入力、event、保存、DB、I/O、回帰ガード
-- [マスタDB生成](master/README.md)
-- [画像解析PoC](tools/vision_poc/README.md)
-- [jacket catalog collector](tools/jacket_catalog_collector/README.md)
+- [実装ロードマップ](docs/implementation-roadmap.md)
+- [Windowsアプリの技術README](app/README.md)
+- [設計資料](docs/design/)
+- [楽曲・譜面データの生成](master/README.md)
+- [画像解析ツール](tools/vision_poc/README.md)
+- [ジャケット画像データの整備ツール](tools/jacket_catalog_collector/README.md)
 
-アプリ挙動、配布物、保存形式は変更せず、通常利用の詳しい手順だけを利用ガイドへ集約しています。開発用コマンド、package生成、repository内部構成は開発者向け文書を参照してください。
+アプリの内部構造、開発用コマンド、配布版の作成方法は、開発者向け文書にまとめています。
