@@ -4,6 +4,7 @@ using System.Resources;
 using System.Windows;
 using System.Windows.Baml2006;
 using System.Windows.Controls;
+using System.Windows.Data;
 using System.Windows.Documents;
 using System.Windows.Media;
 using DDRGpScoreViewer.Data;
@@ -148,7 +149,9 @@ public static class Localization
 
     private static void LocalizeNode(DependencyObject node)
     {
-        if (node is TextBlock textBlock && !IsInsideComboBox(textBlock))
+        if (node is TextBlock textBlock &&
+            !IsInsideComboBox(textBlock) &&
+            !BindingOperations.IsDataBound(textBlock, TextBlock.TextProperty))
         {
             if (textBlock.ReadLocalValue(TextBlock.TextProperty) is string text)
             {
@@ -157,7 +160,8 @@ public static class Localization
 
             foreach (var run in textBlock.Inlines.OfType<Run>().ToArray())
             {
-                if (run.ReadLocalValue(Run.TextProperty) is string runText)
+                if (!BindingOperations.IsDataBound(run, Run.TextProperty) &&
+                    run.ReadLocalValue(Run.TextProperty) is string runText)
                 {
                     run.Text = Get(runText);
                 }
@@ -165,12 +169,16 @@ public static class Localization
         }
 
         if (node is ContentControl contentControl &&
+            !BindingOperations.IsDataBound(contentControl, ContentControl.ContentProperty) &&
             contentControl.ReadLocalValue(ContentControl.ContentProperty) is string content)
         {
             contentControl.Content = Get(content);
         }
 
         if (node is HeaderedContentControl headeredContentControl &&
+            !BindingOperations.IsDataBound(
+                headeredContentControl,
+                HeaderedContentControl.HeaderProperty) &&
             headeredContentControl.ReadLocalValue(
                 HeaderedContentControl.HeaderProperty) is string header)
         {
@@ -178,6 +186,7 @@ public static class Localization
         }
 
         if (node is FrameworkElement element &&
+            !BindingOperations.IsDataBound(element, FrameworkElement.ToolTipProperty) &&
             element.ReadLocalValue(FrameworkElement.ToolTipProperty) is string toolTip)
         {
             element.ToolTip = Get(toolTip);
