@@ -1,4 +1,4 @@
 interface:
   display_name: "DDRGP Release Publishing"
-  short_description: "Audit, build, publish, and verify DDRGP releases"
-  default_prompt: "Use $ddrgp-publish-release to audit or publish a specified DDRGP scorelog release safely."
+  short_description: "Audit, version, build, publish, and verify releases"
+  default_prompt: "Use $ddrgp-publish-release to audit DDRGP scorelog readiness, select the next safe patch version, and prepare or publish the release."
