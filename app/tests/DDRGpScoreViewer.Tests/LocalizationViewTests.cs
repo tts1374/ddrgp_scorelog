@@ -3,8 +3,10 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Media;
+using System.Windows.Threading;
 using DDRGpScoreViewer;
 using DDRGpScoreViewer.Data;
+using DDRGpScoreViewer.Models;
 using Xunit;
 
 namespace DDRGpScoreViewer.Tests;
@@ -114,6 +116,97 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
                 window?.Close();
             }
         });
+    }
+
+    [Fact]
+    public void Loading_the_next_best_page_keeps_the_previous_scroll_offset()
+    {
+        using var databaseFixture = new DatabaseFixture();
+        for (var index = 2; index <= 101; index++)
+        {
+            databaseFixture.AddMasterSongAndChart(
+                $"song-{index}",
+                $"SONG {index:00}",
+                "Artist",
+                $"chart-{index}");
+        }
+
+        applicationFixture.Run(() =>
+        {
+            MainWindow? window = null;
+            try
+            {
+                foreach (var resourceName in new[] { "Theme.xaml", "Components.xaml", "Strings.xaml" })
+                {
+                    Application.Current.Resources.MergedDictionaries.Add(
+                        new ResourceDictionary
+                        {
+                            Source = new Uri(
+                                $"/DDRGpScoreViewer;component/Resources/{resourceName}",
+                                UriKind.Relative),
+                        });
+                }
+                window = new MainWindow(
+                    new ViewerDatabasePaths(
+                        ViewerDatabaseEnvironment.Development,
+                        databaseFixture.DirectoryPath,
+                        databaseFixture.MasterPath,
+                        databaseFixture.CatalogPath,
+                        databaseFixture.ScorePath,
+                        Path.Combine(databaseFixture.DirectoryPath, "evaluation.db"),
+                        Path.Combine(databaseFixture.DirectoryPath, "data"),
+                        Path.Combine(databaseFixture.DirectoryPath, "logs"),
+                        Path.Combine(databaseFixture.DirectoryPath, "viewer-paths.json")))
+                {
+                    Width = 960,
+                    Height = 640,
+                };
+                window.ViewModel.Load(
+                    databaseFixture.ScorePath,
+                    databaseFixture.MasterPath,
+                    databaseFixture.CatalogPath,
+                    persist: false);
+                window.Show();
+                window.BestNavigation.RaiseEvent(
+                    new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+                window.UpdateLayout();
+                DrainDispatcher(window.Dispatcher);
+
+                var scrollViewer = FindVisualChildren<ScrollViewer>(window.BestChartGrid).Single();
+                var firstBottomOffset = scrollViewer.ScrollableHeight;
+                scrollViewer.ScrollToVerticalOffset(firstBottomOffset);
+                DrainDispatcher(window.Dispatcher);
+                DrainDispatcher(window.Dispatcher);
+
+                Assert.Equal(100, window.ViewModel.ChartBests.Count);
+                Assert.Equal(firstBottomOffset, scrollViewer.VerticalOffset, precision: 3);
+
+                var secondBottomOffset = scrollViewer.ScrollableHeight;
+                scrollViewer.ScrollToVerticalOffset(secondBottomOffset);
+                DrainDispatcher(window.Dispatcher);
+                DrainDispatcher(window.Dispatcher);
+
+                Assert.Equal(101, window.ViewModel.ChartBests.Count);
+                Assert.Equal(secondBottomOffset, scrollViewer.VerticalOffset, precision: 3);
+            }
+            finally
+            {
+                if (window is not null)
+                {
+                    window.PrepareForApplicationExit();
+                    window.Close();
+                }
+            }
+        });
+    }
+
+    private static void DrainDispatcher(Dispatcher dispatcher)
+    {
+        var frame = new DispatcherFrame();
+        dispatcher.BeginInvoke(
+            DispatcherPriority.ApplicationIdle,
+            new Action(() => frame.Continue = false));
+        Dispatcher.PushFrame(frame);
     }
 
     private static IEnumerable<T> FindVisualChildren<T>(DependencyObject root)

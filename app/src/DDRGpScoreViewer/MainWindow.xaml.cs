@@ -707,7 +707,8 @@ public partial class MainWindow : System.Windows.Window
             return;
         }
 
-        bestChartScrollOffset = e.VerticalOffset;
+        var scrollOffsetBeforeLoad = e.VerticalOffset;
+        bestChartScrollOffset = scrollOffsetBeforeLoad;
 
         if (e.VerticalOffset + e.ViewportHeight < e.ExtentHeight - 1 ||
             !viewModel.CanLoadMoreChartBests ||
@@ -724,8 +725,15 @@ public partial class MainWindow : System.Windows.Window
         {
             // Adding rows causes follow-up ScrollChanged events before the UI settles.
             Dispatcher.BeginInvoke(
-                DispatcherPriority.ContextIdle,
-                new Action(bestChartPageRequestGate.Complete));
+                DispatcherPriority.ApplicationIdle,
+                new Action(() =>
+                {
+                    BestChartGrid.UpdateLayout();
+                    FindVisualChild<ScrollViewer>(BestChartGrid)?.ScrollToVerticalOffset(
+                        scrollOffsetBeforeLoad);
+                    bestChartScrollOffset = scrollOffsetBeforeLoad;
+                    bestChartPageRequestGate.Complete();
+                }));
         }
     }
 
