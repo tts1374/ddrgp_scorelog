@@ -9,19 +9,17 @@ using Xunit;
 
 namespace DDRGpScoreViewer.Tests;
 
-public sealed class LocalizationViewTests
+public sealed class LocalizationViewTests(LocalizationApplicationFixture applicationFixture)
+    : IClassFixture<LocalizationApplicationFixture>
 {
     [Fact]
     public void Applying_localization_keeps_recycled_data_grid_row_display_bound()
     {
-        Exception? failure = null;
-        var thread = new Thread(() =>
+        applicationFixture.Run(() =>
         {
-            Application? application = null;
             Window? window = null;
             try
             {
-                application = new Application();
                 var items = Enumerable.Range(0, 20)
                     .Select(index => new GridItem($"song-{index:D2}"))
                     .ToArray();
@@ -69,37 +67,21 @@ public sealed class LocalizationViewTests
                 Assert.Same(items[^1], recycledRow.DataContext);
                 Assert.Equal(items[^1].Display, recycledDisplay.Text);
             }
-            catch (Exception exception)
-            {
-                failure = exception;
-            }
             finally
             {
                 window?.Close();
-                application?.Shutdown();
             }
         });
-        thread.SetApartmentState(ApartmentState.STA);
-        thread.Start();
-        thread.Join();
-
-        if (failure is not null)
-        {
-            throw new AggregateException(failure);
-        }
     }
 
     [Fact]
     public void Applying_localization_keeps_combo_box_selection_display_bound()
     {
-        Exception? failure = null;
-        var thread = new Thread(() =>
+        applicationFixture.Run(() =>
         {
-            Application? application = null;
             Window? window = null;
             try
             {
-                application = new Application();
                 window = new Window
                 {
                     Width = 240,
@@ -127,24 +109,11 @@ public sealed class LocalizationViewTests
                     .Single(textBlock => !string.IsNullOrWhiteSpace(textBlock.Text));
                 Assert.Equal("自己ベスト", display.Text);
             }
-            catch (Exception exception)
-            {
-                failure = exception;
-            }
             finally
             {
                 window?.Close();
-                application?.Shutdown();
             }
         });
-        thread.SetApartmentState(ApartmentState.STA);
-        thread.Start();
-        thread.Join();
-
-        if (failure is not null)
-        {
-            throw new AggregateException(failure);
-        }
     }
 
     private static IEnumerable<T> FindVisualChildren<T>(DependencyObject root)
@@ -166,4 +135,56 @@ public sealed class LocalizationViewTests
     }
 
     private sealed record GridItem(string Display);
+}
+
+public sealed class LocalizationApplicationFixture : IDisposable
+{
+    private readonly Application application;
+    private readonly Thread applicationThread;
+
+    public LocalizationApplicationFixture()
+    {
+        using var ready = new ManualResetEventSlim();
+        Application? createdApplication = null;
+        Exception? startupFailure = null;
+        applicationThread = new Thread(() =>
+        {
+            try
+            {
+                createdApplication = new Application
+                {
+                    ShutdownMode = ShutdownMode.OnExplicitShutdown,
+                };
+                ready.Set();
+                createdApplication.Run();
+            }
+            catch (Exception exception)
+            {
+                startupFailure = exception;
+                ready.Set();
+            }
+        })
+        {
+            IsBackground = true,
+        };
+        applicationThread.SetApartmentState(ApartmentState.STA);
+        applicationThread.Start();
+        ready.Wait();
+
+        if (startupFailure is not null)
+        {
+            throw new AggregateException(startupFailure);
+        }
+
+        application = createdApplication
+            ?? throw new InvalidOperationException("WPF Application was not created.");
+    }
+
+    public void Run(Action action) => application.Dispatcher.Invoke(action);
+
+    public void Dispose()
+    {
+        application.Dispatcher.BeginInvoke(() => application.Shutdown());
+        applicationThread.Join();
+    }
 }
