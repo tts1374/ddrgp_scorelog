@@ -1,120 +1,68 @@
-# ddrgp_scorelog
+# GP Score Log
 
-DanceDanceRevolution GRAND PRIX のゲーム画面を解析し、十分に確認できたスコアだけをローカルDBへ保存・閲覧するWindows向け個人ツールです。
+GP Score Logは、DanceDanceRevolution GRAND PRIXのリザルト画面を読み取り、プレー結果をパソコンに自動で記録するWindows用アプリです。
 
-## Status
+記録したスコアは、自己ベストやプレー履歴としてあとから確認できます。読み取りに失敗した結果は記録せず、画面にお知らせします。
 
-M9は完了済みです。M10-1〜M10-4相当の初期版リリース基盤もmainへ実装済みで、依存固定、local storage、実機評価、VeloPack installer/package、reference data setのRelease取得・安全更新、アプリ内更新、通常監視の自動開始・復帰を含みます。具体的な作業内容と受け入れ条件はGitHub Issuesを正本とし、このREADMEはmain branchで利用できる機能と開発入口を要約します。
+## 対応している環境
 
-Phase 1の主要ユーザー画面は、ホーム、自己ベスト、楽曲・譜面詳細、プレー履歴、設定、データ管理です。`ambiguous` / `unresolved`は正式個人スコアDBへ保存せず、ローカル通知と結果statusで扱います。データ管理画面から個人スコアデータのbackup / restoreを明示操作できます。Phase 1は「機能実装完了、release quality closeout中」と整理し、Issue #139のRelease test boundaryはPR #140でmainへ反映済みです。
+- Windows 11
+- DDR GRAND PRIXのグランプリプレー
+- SINGLE（SP）とDOUBLE（DP）
+- ゲーム画面の大きさ: 1280×720
 
-main branchで利用できる主な機能:
+「アーケードプレミアムプレー」および「アーケードノーマルプレー」は、認識・自動保存の対応対象外です。
 
-- BEMANIWiki由来の楽曲・譜面マスタDB生成
-- リザルト候補分類、confirmed event生成、数字ROI OCR、曲・譜面候補照合
-- Debug buildの開発者向け領域からの1フレーム取得、連続取得、正式個人スコアDB version 1への単発保存
-- 正式DBとマスタDBをread-onlyで開くWPFスコアビューア
-- Release buildはdeveloper-only領域を含まず、Phase 1の通常画面と`監視開始`／`監視停止`、固定path再検証、master DB read-only再検証を提供
-- `監視開始` による `ddr-konaste` / client `1280x720` の対象window自動特定（該当1件だけ接続）、1秒ごとのRESULT/SCORE gateと候補のリアルタイム正式保存、監視のstop / exit
-- Phase 1の主要画面（ホーム、自己ベスト、楽曲・譜面詳細、プレー履歴、設定、データ管理）
-- `ambiguous` / `unresolved`のローカル通知、個人スコアデータの手動backup / restore
-- developer-onlyのjacket catalog collector / manual review支援（公開アプリのPhase 1 completion gate外）
-- VeloPackによる未署名per-user installer、GitHub Releasesからの起動時自動アプリ更新、reference data setの同梱・安全なセット更新、Releaseログ
+アプリの利用に必要なものは配布版に含まれています。追加の開発用ソフトを入れる必要はありません。
 
-現在の境界:
+## ダウンロード
 
-- 公開アプリ: M10-1〜M10-4相当の初期版基盤とPhase 1主要機能を実装済み。公開完了の判断はrelease quality closeoutとして扱う。
-- developer-only領域: jacket catalog collector / manual reviewはデータ整備・開発支援であり、公開アプリのPhase 1 completion gateとは分離する。
+[最新版のダウンロードページ](https://github.com/tts1374/ddrgp_scorelog/releases/latest)を開き、Windows用のセットアップファイルをダウンロードしてください。
 
-## Safety Boundaries
+現在のセットアップファイルには発行元のデジタル署名がないため、Windowsから警告が表示されることがあります。ダウンロード元がこのプロジェクトのページであることを確認したうえで、インストールしてください。
 
-- `confirmed_result=true`かつ`duplicate=false`だけを通常の保存候補とする。
-- candidate、OCR raw、期待値、preview材料を正式値へ暗黙昇格させない。
-- 不完全な解析結果、DB不整合、subprocess失敗を保存成功へ丸めない。
-- マスタDB、正式個人スコアDB、解析出力、画像原本を分離する。
-- ローカルDB、スクリーンショット、実入力、解析ログ、生成物をGit管理しない。
+## はじめて使うとき
 
-## Repository Layout
+1. ダウンロードしたセットアップファイルを開き、インストールします。
+2. `GP Score Log`を起動します。
+3. DDR GRAND PRIXを起動し、ゲーム画面を1280×720にします。
+4. アプリがゲーム画面を見つけるまで待ちます。自動で始まらない場合は、`監視開始`を押します。
+5. プレー後にリザルト画面が表示されると、読み取れた結果が自動で記録されます。
 
-```text
-.
-├─ app/                         # Windows WPFアプリ
-├─ docs/                        # 要求・ロードマップ・設計・ADR
-├─ master/                      # 楽曲・譜面マスタDB生成
-├─ samples/                     # スクリーンショット収集ルールとmetadata例
-├─ tests/                       # Python側の回帰テスト
-├─ tools/vision_poc/            # 画面分類、OCR、保存workflow
-├─ tools/jacket_catalog_collector/ # developer-only収集・review UI
-└─ pyproject.toml               # Python依存と開発ツール定義
-```
+詳しい手順は[利用ガイド](docs/user-guide.md)をご覧ください。
 
-## Development
+## できること
 
-### Python
+- リザルト画面からスコア、判定数、MAX COMBO、EX SCORE、ランク、クリア状況などを読み取って記録
+- 今日のプレー数や最近のプレーをホーム画面で確認
+- 曲名、難易度、レベルなどから自己ベストを検索
+- 選んだ譜面の自己ベストやスコアの変化を確認
+- 保存済みのプレーを履歴から検索
+- 個人スコアのバックアップ作成と復元
+- アプリ本体と楽曲・譜面データの自動更新
+- 日本語、英語、韓国語の表示切り替え
 
-Python 3.13とuvを使用します。`uv.lock`を正本にして、固定済みの依存から環境を構築します。
-Pythonの検証はCIと同じUTF-8明示実行だけを採用し、Windowsのlocale依存実行は検証結果に使いません。
+## 読み取れなかった結果について
 
-```powershell
-$env:PYTHONUTF8 = "1"
-uv sync --frozen --extra dev --extra vision
-uv run ruff check tools\vision_poc pyproject.toml tests
-uv run python -m compileall master tools\vision_poc
-uv run pytest tests
-```
+誤ったスコアを残さないため、曲名やスコアなどの必要な情報を十分に読み取れた結果だけを記録します。同じプレーがすでに記録されている場合も、重ねて記録しません。
 
-### Windows app
+記録できなかった場合は、「自動保存できないプレーが発生しました。正式DBには保存されていません。」とお知らせします。この「正式DB」は、個人スコアの保存先を指します。それまでに記録したプレーが消えたり、書き換わったりすることはありません。
 
-.NET 10 SDKとWindows 11を使用します。
+## 困ったとき・詳しい使い方
 
-```powershell
-dotnet restore app\tests\DDRGpScoreViewer.Tests\DDRGpScoreViewer.Tests.csproj --locked-mode
-dotnet build app\src\DDRGpScoreViewer\DDRGpScoreViewer.csproj --configuration Debug --no-restore
-dotnet build app\src\DDRGpScoreViewer\DDRGpScoreViewer.csproj --configuration Release --no-restore
-dotnet test app\tests\DDRGpScoreViewer.Tests\DDRGpScoreViewer.Tests.csproj --configuration Debug --no-restore
-dotnet test app\tests\DDRGpScoreViewer.Tests\DDRGpScoreViewer.Tests.csproj --configuration Release --no-restore
-```
+- [利用ガイド](docs/user-guide.md)
+- [トラブルシューティング](docs/user-guide.md#トラブルシューティング)
+- [既知の制限](docs/user-guide.md#既知の制限)
+- [最新版のダウンロードページ](https://github.com/tts1374/ddrgp_scorelog/releases/latest)
 
-Debug buildだけが開発者向け操作のUIとcommand入口を含みます。Release buildではこれらを生成せず、Phase 1の通常画面と監視開始・停止を残します。
-
-Debugアプリのdevelopment固定catalogは、current masterへbinding済みの`databases/jacket-catalog-release.sqlite`です。collectorが使う未binding source `databases/jacket-catalog.sqlite`しかない場合は、[PoC README](tools/vision_poc/README.md)の`bind-master`を明示実行してから起動します。
-
-VeloPack releaseは、Git管理外のcurrent master DBとbinding済みruntime catalogを用意したうえで次の1コマンドから再現します。成果物は`data/releases/<version>/`へ生成されます。
-
-```powershell
-.\app\packaging\Build-Release.ps1 -Version 0.1.0 `
-  -CatalogDatabase databases\jacket-catalog-release.sqlite
-```
-
-詳細な実行・操作手順は[WindowsアプリREADME](app/README.md)を参照してください。
-
-### Dependency updates
-
-依存を意図的に更新するときだけmanifestとlock fileを同じ変更へ含めます。Pythonは`pyproject.toml`を変更して`uv lock`を実行し、NuGetは対象`.csproj`の`PackageReference`を変更して、locked modeを一時的に無効にしたrestoreで`packages.lock.json`を更新します。更新後は次のlocked検証を実行します。
-
-```powershell
-uv lock
-uv sync --frozen --extra dev --extra vision
-dotnet restore app\tests\DDRGpScoreViewer.Tests\DDRGpScoreViewer.Tests.csproj -p:RestoreLockedMode=false
-dotnet restore app\tests\DDRGpScoreViewer.Tests\DDRGpScoreViewer.Tests.csproj --locked-mode
-```
-
-特定Python packageだけを更新する場合は`uv lock --upgrade-package PACKAGE_NAME`を使います。Dependabotの更新PRは自動mergeせず、lock差分とCI結果を確認します。
-
-## Documents
+## 開発者向け文書
 
 - [要求定義](docs/requirements.md)
 - [実装ロードマップ](docs/implementation-roadmap.md)
+- [Windowsアプリの技術README](app/README.md)
 - [設計資料](docs/design/)
-- [画面解析PoCツール](tools/vision_poc/README.md)
-- [マスタDB生成](master/README.md)
-- [Windowsアプリ](app/README.md)
-- [jacket catalog collector](tools/jacket_catalog_collector/README.md)
+- [楽曲・譜面データの生成](master/README.md)
+- [画像解析ツール](tools/vision_poc/README.md)
+- [ジャケット画像データの整備ツール](tools/jacket_catalog_collector/README.md)
 
-## Development Workflow
-
-- GitHub Issueを作業契約とする。
-- 原則として1 Issueを1 PRで実装する。
-- `AGENTS.md`と対象directoryのnested `AGENTS.md`を適用する。
-- PRはGitHub Actionsの対象job成功後にmergeする。
-- 実装中に見つけた別課題は現在のPRへ混入させず、別Issue候補として記録する。
+アプリの内部構造、開発用コマンド、配布版の作成方法は、開発者向け文書にまとめています。

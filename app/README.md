@@ -13,6 +13,8 @@
 
 ローカルDBはGit管理しません。developmentでは`databases/`、productionでは`%LOCALAPPDATA%\DDRGpScoreViewer\data\`配下のIssue固定pathへ配置してください。DBのファイル選択はアプリから行いません。
 
+通常のインストール、初回起動、監視、画面操作、設定、backup / restore、更新、終了、トラブルシューティングは[`docs/user-guide.md`](../docs/user-guide.md)を正本とします。このREADMEは、利用ガイドから参照される開発者向けbuild、runtime、保存境界、package、validationの技術契約を保持します。
+
 ## Build configuration
 
 Debug buildでは、通常の監視操作と区別した開発者向け領域に、`1フレーム取得`、`連続取得を開始`、`単発保存`を表示します。Release buildではこの領域、button、menu、command入口を生成せず、`監視開始`と`監視停止`だけを通常画面とtask trayへ残します。
@@ -172,12 +174,9 @@ dotnet test app\tests\DDRGpScoreViewer.Tests\DDRGpScoreViewer.Tests.csproj --con
 dotnet run --project app\src\DDRGpScoreViewer\DDRGpScoreViewer.csproj --configuration Debug --no-build
 ```
 
-## 利用手順
+## 通常利用の正本
 
-1. アプリを起動する。現在の環境に対応する固定pathが自動的に設定される。
-2. 画面に表示されたscore DB、M4 master DB、M5b jacket reference catalogのpathと検証結果を確認する。
-3. `自己ベスト`、`プレー履歴`、または `データ管理` を開く。
-4. プレー履歴の行を選び、判定数、MAX COMBO、EX SCORE、保存日時、データ取得元を確認する。
+利用者向けの導入、初回起動、監視開始・停止、画面の基本操作、設定、backup / restore、更新、終了、トラブルシューティングは[`docs/user-guide.md`](../docs/user-guide.md)にまとめています。通常利用手順をこのREADMEへ重複して記載せず、ここでは開発者が確認する技術契約を続けます。
 
 個人DBとマスタDBは別々のSQLite connectionで開きます。起動時の固定score pathに対するmissing／0 byteの初期化だけはWPF側の正式schema初期化境界へ委譲します。通常閲覧はread-onlyで、正式保存は既存transaction writerだけを使います。schema migrationは明示converterが登録された旧versionだけを事前backup付きで処理し、repairは実行しません。connection poolingも使いません。
 
@@ -246,15 +245,9 @@ productionのインストール済みVeloPack packageでは、main windowを表�
 
 download後は既存の明示終了経路でpending picker、監視、capture worker、解析・保存workflow、runtime、open handleを先に停止・完了させてからVeloPackの`WaitExitThenApplyUpdates`を使います。updater起動後の終了処理が失敗しても最終終了要求を行い、通常利用へ戻らない経路を維持します。準備段階の失敗ではupdaterを起動せず、現行app binaryを保持します。アプリ更新のpackageはapp binary/runtimeだけを置き換え、`%LOCALAPPDATA%\DDRGpScoreViewer`配下のscore DB、settings、reference DB、ログは更新対象にしません。
 
-## 初回導入と通常操作
+## Production起動の技術契約
 
-1. 起動中の旧版があればtrayの`終了`で明示終了する。
-2. Setupを実行する。未署名のためWindows SmartScreen等の警告が出る場合は、配布元とhashを確認した本人だけが続行する。
-3. install後に自動起動した`GP Score Log`で、M4 master DB、M5b jacket reference catalog、score DBの表示を確認する。初回起動は組み込みreference data setをproduction固定pathへ配置し、master/catalog検証後にmissingまたは0 byteのscore DBだけを正式schemaへ初期化する。
-4. DDR GRAND PRIXを`1280x720` client sizeで起動する。「アプリ起動時に監視を開始」がONなら自動監視が2回連続で対象を検出すると開始し、対象が一意に見つからない場合は待機する。手動で開始する場合は`監視開始`を押す。
-5. 一時停止は`監視停止`、手動停止後の同一app session内の再開は`監視開始`を明示する。window終了後の自動復帰は、windowが一度消失してから再出現した場合だけ行う。×ボタンはtray格納、最小化はtaskbar最小化、完全終了はtrayの`終了`を使う。
-
-起動時の自動監視は設定で切り替えられ、初期値は有効です。production起動時はmain windowを表示してからreference DBを更新し、その完了後にアプリ本体のlatest Release確認と自動適用を開始します。更新・reference DB処理中は設定がONでも自動開始を抑止します。通信できない場合も既存reference DBと現在のアプリversionで通常利用を続けます。
+利用者が追う手順は[`docs/user-guide.md`](../docs/user-guide.md)を参照してください。production起動時はmain windowを表示してからreference DBを更新し、その完了後にアプリ本体のlatest Release確認と自動適用を開始します。更新・reference DB処理中は設定がONでも自動開始を抑止します。通信できない場合も既存reference DBと現在のアプリversionで通常利用を続けます。
 
 ## Reference data setの配置・更新・復旧
 
@@ -277,22 +270,13 @@ production固定pathは`%LOCALAPPDATA%\DDRGpScoreViewer\data\master\`です。�
 
 ## 個人スコアデータのバックアップ / 復元
 
-データ管理画面の `バックアップを作成` は、現在の正式個人スコアDBをread-onlyで検証し、保存済みプレー履歴だけをUTF-8（BOMなし）JSONへ書き出します。バックアップファイルの保存先はユーザーが選択します。設定、保存済みpath、楽曲・譜面マスタ、jacket参照、source capture、解析ログ、診断ログは含めません。migration用のSQLite file backupとは別の形式・用途です。
+通常操作は[`docs/user-guide.md`](../docs/user-guide.md)を参照してください。技術契約として、バックアップは正式個人スコアDBをread-onlyで検証し、保存済みプレー履歴だけをUTF-8（BOMなし）JSONへ書き出します。設定、保存済みpath、楽曲・譜面マスタ、jacket参照、source capture、解析ログ、診断ログは含めず、migration用のSQLite file backupとは別形式です。
 
-`バックアップから復元` はJSON全体を先に検証し、形式が未対応または壊れている場合は正式DBを変更せずにエラーを表示します。対応形式の復元でも、確認ダイアログでユーザーが続行した場合だけ現在のプレー履歴を置き換えます。置換前の未解決を含む解析ログと取得元は保持し、旧プレーへの参照だけを切り離します。置換は既存の正式schemaを検証したSQLite transaction内で行い、失敗時はcommitせず、完了後に既存のread-only viewerで履歴・自己ベストを再読込します。設定、同梱楽曲・譜面データ、jacket参照は変更しません。復元後の取得元・解析ログはバックアップから復元せず、履歴表示に必要な最小の内部参照だけをアプリが再構成します。
-
-キャンセル、未対応ファイル、壊れたファイル、実行中の保存・監視・更新・終了処理中は復元を開始しません。通常起動時のDB初期化、Debug/Releaseの開発者向け操作、既存の正式保存workflowはこの操作で変更しません。
+復元はJSON全体を先に検証し、形式が未対応または壊れている場合は正式DBを変更しません。対応形式でも確認ダイアログで続行した場合だけ現在のプレー履歴を置き換えます。置換前の未解決を含む解析ログと取得元は保持し、置換は既存の正式schemaを検証したSQLite transaction内で行います。失敗時はcommitせず、完了後にread-only viewerで履歴・自己ベストを再読込します。設定、同梱楽曲・譜面データ、jacket参照は変更しません。キャンセル、未対応ファイル、壊れたファイル、実行中の保存・監視・更新・終了処理中は復元を開始しません。
 
 ## トラブルシューティング
 
-- `DDR GRAND PRIX windowを自動検出できません`: `ddr-konaste`が1 processだけでclient `1280x720`か確認する。自動監視は一時的な探索失敗や0件を待機として再探索し、条件に一致するwindowが2回連続で見つかると開始する。手動停止後は同一app session中に自動再開しないため、必要なら`監視開始`を明示する。
-- `reference DBを更新できませんでした`: GitHub到達、Releaseの3 asset、空き容量を確認する。現行reference DBは保持され、score DBとsettingsは変更されないため、オフラインのまま通常利用できる。正しい新versionを再公開した後にアプリを再起動する。
-- `アプリ更新を確認できませんでした` / `アプリ更新のdownloadに失敗しました`: GitHub到達、stable Releaseの`releases.win.json`とfull package、空き容量を確認する。現在のアプリversion、score DB、settings、reference DB、ログは保持されるため、そのまま通常利用し、Release修正後にアプリを再起動して自動再試行する。unsigned packageのためSmartScreen等の警告は解消しない。
-- master DB missing / incompatible: installerを同じversionで再実行しても同一versionは上書きしない。ログのreference data set結果を確認し、正しい新versionのinstallerを再配布する。score DBは変更されない。
-- jacket catalog異常: master DBと別fileとして拒否される。片方だけ手動交換せず、正しいセットのinstallerを使用する。
-- capture failure、resize、target close、device lost: 状態を確認し、windowを`1280x720`へ戻すか再起動してから、停止完了後に`監視開始`を明示する。未完了結果は保存されない。
-- workflow failure / 保存不能: 表示された「データが変更されたか」を確認する。保存済み件数があれば履歴を確認し、失敗分だけ次のRESULTで再試行する。詳細pathと例外はReleaseログを確認する。
-- score DB拒否: 新しいschema、unknown、preview、identity mismatch、converterなし旧schemaは変更しない。アプリを終了してbackupを取り、対応版または明示converterのあるversionを使う。手動repairはしない。
+利用者向けの代表的な復旧手順は[`docs/user-guide.md#トラブルシューティング`](../docs/user-guide.md#トラブルシューティング)を参照してください。runtime、DB検査、reference data set、アプリ更新の技術契約は、このREADMEの各該当節と設計資料で確認できます。
 
 ## M10-3保証範囲・既知制限・release停止条件
 
