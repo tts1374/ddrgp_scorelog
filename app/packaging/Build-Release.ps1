@@ -26,6 +26,10 @@ $releaseRoot = [System.IO.Path]::GetFullPath((Join-Path $repositoryRoot 'data\re
 $buildRoot = Join-Path $repositoryRoot "data\release-build\$Version"
 $publishDirectory = Join-Path $buildRoot 'publish'
 $referenceDirectory = Join-Path $publishDirectory 'ReferenceData'
+$packId = 'com.tts1374.ddrgp_scorelog'
+$packTitle = 'GP Score Log'
+$packAuthors = '2ten.'
+$iconPath = Join-Path $repositoryRoot 'app\src\DDRGpScoreViewer\Assets\GPScoreLog.ico'
 
 if (-not (Test-Path -LiteralPath $masterPath -PathType Leaf))
 {
@@ -34,6 +38,10 @@ if (-not (Test-Path -LiteralPath $masterPath -PathType Leaf))
 if (-not (Test-Path -LiteralPath $catalogPath -PathType Leaf))
 {
     throw "Jacket catalog database was not found: $catalogPath"
+}
+if (-not (Test-Path -LiteralPath $iconPath -PathType Leaf))
+{
+    throw "Application icon was not found: $iconPath"
 }
 if (-not $outputPath.StartsWith($releaseRoot + [System.IO.Path]::DirectorySeparatorChar, [System.StringComparison]::OrdinalIgnoreCase))
 {
@@ -116,14 +124,20 @@ $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
     -PublishDirectory $publishDirectory
 
 dotnet vpk pack `
-    --packId com.tts1374.ddrgp_scorelog `
+    --packId $packId `
     --packVersion $Version `
     --packDir $publishDirectory `
     --mainExe DDRGpScoreViewer.exe `
-    --packTitle 'GP Score Log' `
+    --packTitle $packTitle `
+    --packAuthors $packAuthors `
+    --icon $iconPath `
     --shortcuts StartMenuRoot `
     --runtime win-x64 `
     --outputDir $outputPath
 if ($LASTEXITCODE -ne 0) { throw 'VeloPack package creation failed.' }
+
+& (Join-Path $repositoryRoot 'app\tests\VerifyReleasePackage.ps1') `
+    -PackageDirectory $outputPath `
+    -Version $Version
 
 Write-Output "VeloPack release created: $outputPath"

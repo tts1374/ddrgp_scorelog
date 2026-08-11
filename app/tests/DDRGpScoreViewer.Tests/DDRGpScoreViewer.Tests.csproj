@@ -20,5 +20,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\DDRGpScoreViewer\DDRGpScoreViewer.csproj" />
+    <None Include="..\..\src\DDRGpScoreViewer\Assets\GPScoreLog.ico"
+          Link="Assets\GPScoreLog.ico"
+          CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

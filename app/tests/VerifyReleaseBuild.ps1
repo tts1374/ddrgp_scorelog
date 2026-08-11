@@ -13,6 +13,29 @@ if (-not (Test-Path -LiteralPath $resolvedAssemblyPath -PathType Leaf))
 }
 
 $assembly = [System.Reflection.Assembly]::LoadFrom($resolvedAssemblyPath)
+$companyAttribute = $assembly.GetCustomAttributes([System.Reflection.AssemblyCompanyAttribute], $false) |
+    Select-Object -First 1
+$productAttribute = $assembly.GetCustomAttributes([System.Reflection.AssemblyProductAttribute], $false) |
+    Select-Object -First 1
+if ($null -eq $companyAttribute -or $companyAttribute.Company -ne '2ten.')
+{
+    throw "Release assembly company metadata must be 2ten., found: $($companyAttribute.Company)"
+}
+if ($null -eq $productAttribute -or $productAttribute.Product -ne 'GP Score Log')
+{
+    throw "Release assembly product metadata must be GP Score Log, found: $($productAttribute.Product)"
+}
+$executablePath = Join-Path (Split-Path -Parent $resolvedAssemblyPath) 'DDRGpScoreViewer.exe'
+if (-not (Test-Path -LiteralPath $executablePath -PathType Leaf))
+{
+    throw "Release executable was not found: $executablePath"
+}
+$executableVersionInfo = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($executablePath)
+if ($executableVersionInfo.CompanyName -ne '2ten.' -or
+    $executableVersionInfo.ProductName -ne 'GP Score Log')
+{
+    throw "Release executable metadata mismatch: company=$($executableVersionInfo.CompanyName); product=$($executableVersionInfo.ProductName)"
+}
 $publicMethodFlags = [System.Reflection.BindingFlags]::Public -bor
     [System.Reflection.BindingFlags]::Instance -bor
     [System.Reflection.BindingFlags]::Static

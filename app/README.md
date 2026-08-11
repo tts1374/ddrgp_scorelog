@@ -214,7 +214,7 @@ dotnet run --project app\src\DDRGpScoreViewer\DDRGpScoreViewer.csproj --configur
 
 ## Release packageの生成と公開
 
-VeloPack 1.2.0をrepository-local .NET toolとして固定しています。packageはunsignedのWindows x64 self-contained buildで、`packId=com.tts1374.ddrgp_scorelog`、表示名`GP Score Log`、Start Menu shortcutのみを持つper-user installerです。管理者権限、Desktop shortcut、code signing、任意version選択、複数channel、background service、telemetryは使用しません。通常のinstaller完了時はアプリが起動します。
+VeloPack 1.2.0をrepository-local .NET toolとして固定しています。packageはunsignedのWindows x64 self-contained buildで、`packId=com.tts1374.ddrgp_scorelog`、表示名`GP Score Log`、作者／会社`2ten.`、Start Menu shortcutのみを持つper-user installerです。添付原稿を元にした`Assets\GPScoreLog.ico`を実行ファイル、WPF window、task tray、Start Menu shortcutへ共通使用します。管理者権限、Desktop shortcut、code signing、任意version選択、複数channel、background service、telemetryは使用しません。通常のinstaller完了時はアプリが起動します。
 
 1. `databases/ddrgp-master.sqlite`と、`bind-master`で作成した`databases/jacket-catalog-release.sqlite`を同じcurrent master versionに揃え、catalogの`catalog_metadata.master_version`とmaster DBの実metadataが一致することをread-only検証する。collector source `databases/jacket-catalog.sqlite`を使う場合は、developer向けPoC READMEの`bind-master`でsourceを変更せずruntime/release用catalogへ変換し、package commandへ`-CatalogDatabase databases\jacket-catalog-release.sqlite`を渡す。
 2. repository rootで次を実行する。

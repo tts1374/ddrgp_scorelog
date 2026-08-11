@@ -12,6 +12,12 @@
     <RestoreLockedMode>true</RestoreLockedMode>
     <RootNamespace>DDRGpScoreViewer</RootNamespace>
     <StartupObject>DDRGpScoreViewer.Program</StartupObject>
+    <ApplicationIcon>Assets\GPScoreLog.ico</ApplicationIcon>
+    <Company>2ten.</Company>
+    <Authors>2ten.</Authors>
+    <Product>GP Score Log</Product>
+    <Title>GP Score Log</Title>
+    <AssemblyTitle>GP Score Log</AssemblyTitle>
   </PropertyGroup>
 
   <ItemGroup>
@@ -21,6 +27,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Resource Include="Assets\GPScoreLog.ico" />
     <Content Include="RuntimeAssets\**\*"
              CopyToOutputDirectory="PreserveNewest"
              CopyToPublishDirectory="PreserveNewest" />
