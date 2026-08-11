@@ -28,6 +28,7 @@ public sealed class WindowsTrayIconService : ITrayIconService
     private readonly Forms.ContextMenuStrip contextMenu;
     private readonly Forms.ToolStripMenuItem startItem;
     private readonly Forms.ToolStripMenuItem stopItem;
+    private readonly Drawing.Icon applicationIcon;
     private int disposed;
 
     public WindowsTrayIconService()
@@ -44,9 +45,10 @@ public sealed class WindowsTrayIconService : ITrayIconService
         contextMenu = new Forms.ContextMenuStrip();
         contextMenu.Items.AddRange(
             [startItem, stopItem, new Forms.ToolStripSeparator(), showItem, exitItem]);
+        applicationIcon = LoadApplicationIcon();
         notifyIcon = new Forms.NotifyIcon
         {
-            Icon = Drawing.SystemIcons.Application,
+            Icon = applicationIcon,
             Text = Localization.Get("GP Score Log — 待機中"),
             ContextMenuStrip = contextMenu,
             Visible = true,
@@ -61,6 +63,30 @@ public sealed class WindowsTrayIconService : ITrayIconService
     public event EventHandler? StopRequested;
     public event EventHandler? ShowRequested;
     public event EventHandler? ExitRequested;
+
+    private static Drawing.Icon LoadApplicationIcon()
+    {
+        var resource = System.Windows.Application.GetResourceStream(
+            new Uri("pack://application:,,,/Assets/GPScoreLog.ico", UriKind.Absolute));
+        if (resource is not null)
+        {
+            using var resourceStream = resource.Stream;
+            using var resourceIcon = new Drawing.Icon(resourceStream);
+            return (Drawing.Icon)resourceIcon.Clone();
+        }
+
+        var executablePath = Environment.ProcessPath;
+        if (!string.IsNullOrWhiteSpace(executablePath))
+        {
+            var icon = Drawing.Icon.ExtractAssociatedIcon(executablePath);
+            if (icon is not null)
+            {
+                return icon;
+            }
+        }
+
+        throw new InvalidOperationException("GP Score Log application icon resource is unavailable.");
+    }
 
     public void UpdateMenu(TrayMenuState state, string statusText)
     {
@@ -89,6 +115,7 @@ public sealed class WindowsTrayIconService : ITrayIconService
         }
         notifyIcon.Visible = false;
         notifyIcon.Dispose();
+        applicationIcon.Dispose();
         contextMenu.Dispose();
     }
 }
