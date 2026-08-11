@@ -14,12 +14,13 @@ public sealed record ScoreDatabaseMigrationResult(bool Succeeded, bool Migrated,
 
 public sealed class ScoreDatabaseMigrationService
 {
-    private const int SupportedVersion = 1;
+    private const int SupportedVersion = 2;
     private readonly IReadOnlyDictionary<int, IScoreDatabaseMigration> migrations;
 
     public ScoreDatabaseMigrationService(IEnumerable<IScoreDatabaseMigration>? migrations = null)
     {
-        this.migrations = (migrations ?? []).ToDictionary(item => item.FromVersion);
+        this.migrations = (migrations ?? [new ScoreDatabaseV1ToV2Migration()])
+            .ToDictionary(item => item.FromVersion);
     }
 
     public ScoreDatabaseMigrationResult MigrateIfSupported(string scoreDatabasePath)

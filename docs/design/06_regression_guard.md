@@ -358,6 +358,7 @@
 - Releaseの単発保存・通常監視はapp-owned runtimeを同一processで実行し、Python executable、Tesseract、repository root探索を行わない。必要なruntime資材が欠けた場合は明示エラーとし、read-only viewer起動や通常閲覧へimplicit fallbackしない。
 - UIは `saved` / `written=true` / 非null `play_id` だけread-only再読込し、再読込履歴に同じIDがあることを確認する。excluded、duplicate、unresolved、invalid、DB拒否、artifact partial successではplay反映を行わない。
 - viewer単独のDB選択、履歴、詳細、自己ベスト操作はwrite processを起動せず、個人DBとmaster DBのhashを変えない。
+- viewerの初期取得境界は、最近履歴50件、譜面詳細履歴10件、選択譜面グラフの最新100件で固定する。最近履歴は下端到達ごとに50件、譜面詳細履歴は `続きを見る` ごとに10件だけ追加し、詳細画面に内側の縦scrollを作らない。件数、bests、ホーム集計、自己ベスト差分は全履歴queryの結果と一致させる。
 - candidate material、正式play値、analysis detail本文を相互投影せず、receipt、DB diagnostic、failure image、source captureの責務を混ぜない。
 - validationだけではDB、`data/`、`logs/`、画像を作成・変更しない。
 
@@ -478,7 +479,7 @@ M5bの変更では、少なくとも次のcurrent-only境界をfixtureで固定�
 - DB duplicate、excluded、unresolved、invalid、artifact partial failure、DB拒否をsavedへ丸めず、transaction済みplayだけread-only再読込する。
 - byte-identicalな連続frameでもcapture-event scoped hashはframeごとに一意とし、duplicate eventをplayなしのsource capture + analysisとして記録する。同一manifest/frameの再送拒否は維持する。
 - fatal event statusはsession `workflow_failed` とCLI非0終了へ伝播し、同sessionのcommit済みplayと失敗理由を両方表示する。
-- capture接続は正式DB schema version 1、writer transaction、duplicate、manual workflow入口を変更しない。
+- capture接続は正式DB schema version 2、writer transaction、duplicate、manual workflow入口を変更しない。
 - `.NET build/test` とcapture列を読む対象Python testを実行する。画像分類・ROI・OCR・confirmed-events生成を変更しない場合、Vision PoC本体の再実行は不要とする。
 - capture save接続を変更した場合は、保存候補境界、formal昇格negative、workflow status写像、DB duplicate、viewer再読込のPython/.NET testと、利用可能な実capture manifestのdry-runを実行する。
 

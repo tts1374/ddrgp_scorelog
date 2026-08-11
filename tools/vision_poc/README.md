@@ -944,10 +944,10 @@ DB保存はまだ実装しません。`confirmed-events` OCR対象選定が、�
 - `confirmation_mode_counts`: `frames` / `time` ごとのイベント行数
 ## Formal DB migration contract (design only)
 
-`personal_score_db_migration_contract.py` は正式個人スコアDBの将来migrationについて、DB状態、明示確認、backup path preflight、実行順序、失敗復旧、status/終了コードを副作用なしで固定します。現在はversion 1だけが実schemaで、version 2 schemaやmigration SQL、backup/DB writer、CLI接続はありません。通常PoC、正式save、analysis artifact orchestration、diagnosticからmigrationやbackupを暗黙実行しません。
+`personal_score_db_migration_contract.py` は正式個人スコアDBのmigrationについて、DB状態、明示確認、backup path preflight、実行順序、失敗復旧、status/終了コードを副作用なしで固定します。現行の正式schemaはversion 2で、version 1から2へのtransitionをpure contractとして検査します。実DB migrationはapp-owned C# converterが担当し、Python contract自体はDB、backup、通常PoC、正式save、analysis artifact orchestration、diagnosticを変更しません。
 
 fixture matrixは `tests/fixtures/personal_score_db_migration/plan-matrix-v1.json` です。dry-runはpreflight結果だけを返してDB/backup/`data`/`logs`を変更せず、明示実行候補でもbackup検証がsource transactionより先です。preview/unknown/identity mismatch/newer unsupported/partial state、unsafe path、既存backup conflictは拒否します。
-pure contractのready判定は登録済みのversion transition (`1 -> 2`) に限定し、target versionの任意指定をmigration許可へ昇格させません。version 2のschema writerは次フェーズ以降です。
+pure contractのready判定は登録済みのversion transition (`1 -> 2`) に限定し、target versionの任意指定をmigration許可へ昇格させません。formal schema writerとapp-owned migrationのDB境界は既存の保存workflowから独立しています。
 
 ## RESULT field recognition (Issue #100)
 

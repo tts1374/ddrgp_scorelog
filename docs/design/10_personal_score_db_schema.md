@@ -4,15 +4,15 @@ M8 preview完了後の正式 `ddrgp-scores.sqlite` 初期スキーマ、migratio
 
 ## M9 read-only viewer boundary
 
-`app/src/DDRGpScoreViewer` は正式個人スコアDB version 1を表示するread-only consumerであり、app-owned runtimeのcapture-saveと明示formal workflowも所有する。個人DB、M4 master DB、M5b jacket reference catalogを別々のSQLite connectionで開く。起動時にmaster 2種類がcompatibleな場合だけ、固定score pathのmissing／0 byteをWPF側の `PersonalScoreDbInitializer` が既存の正式schema・metadata・migration契約に従って初期化する。production pathの起動時bootstrapはrepository root、repository内module、Python、Tesseractに依存しない。通常閲覧はwrite workflowを起動しない。schema migrationは対応する明示converterがある旧versionだけを対象とし、migration前backupを最新1件保持し、transaction適用、現行schemaでの再openと基本read/write検証を行う。失敗時はbackupへ戻し、対応より新しいschema、converterなし旧schema、unknown DB、preview DBは変更しない。M4 master DBとM5b jacket reference catalogは同じdirectoryにあっても別fileとして検査する。
+`app/src/DDRGpScoreViewer` は正式個人スコアDB version 2を表示するread-only consumerであり、app-owned runtimeのcapture-saveと明示formal workflowも所有する。個人DB、M4 master DB、M5b jacket reference catalogを別々のSQLite connectionで開く。起動時にmaster 2種類がcompatibleな場合だけ、固定score pathのmissing／0 byteをWPF側の `PersonalScoreDbInitializer` が既存の正式schema・metadata・migration契約に従って初期化する。production pathの起動時bootstrapはrepository root、repository内module、Python、Tesseractに依存しない。通常閲覧はwrite workflowを起動しない。schema migrationは対応する明示converterがある旧versionだけを対象とし、migration前backupを最新1件保持し、transaction適用、現行schemaでの再openと基本read/write検証を行う。失敗時はbackupへ戻し、対応より新しいschema、converterなし旧schema、unknown DB、preview DBは変更しない。M4 master DBとM5b jacket reference catalogは同じdirectoryにあっても別fileとして検査する。
 
-個人DBは `PRAGMA user_version=1`、正式 `score_db_metadata` identity、必須tableとversion 1列順、初期migration履歴を検査する。preview、unknown、identity mismatch、newer unsupported、必須table/列欠落、migration history不整合は、ファイルを変更せず表示対象から拒否する。これはoffline PoCのwriterとの正式identityを変えず、app-owned runtime側でも同じ正式identityを再確認する入口である。
+個人DBは `PRAGMA user_version=2`、正式 `score_db_metadata` identity、必須tableとversion 2列順、初期migration履歴、日時順query用indexを検査する。preview、unknown、identity mismatch、newer unsupported、必須table/列欠落、index欠落、migration history不整合は、ファイルを変更せず表示対象から拒否する。これはoffline PoCのwriterとの正式identityを変えず、app-owned runtime側でも同じ正式identityを再確認する入口である。
 
 履歴は `plays` を1プレー1rowのまま、`played_at` のtimezone offsetを考慮した時系列順で読む。譜面別の最終プレー日時も文字列最大値ではなく同じ時系列順で選ぶ。timezone付き時刻は端末のローカル時刻へ変換し、SQLite `CURRENT_TIMESTAMP` 由来のoffsetなし `created_at` はUTCとして解釈してから表示する。`source_captures` は取得元表示にだけ参照し、`analysis_logs` の候補材料や詳細JSONを正式play値へ投影しない。譜面別自己ベストは保存済み全履歴への `GROUP BY song_id, chart_id` と `MAX(score)` / `MAX(ex_score)` で算出し、自己ベスト専用row、table、viewをDBへ追加しない。
 
-曲・譜面表示はマスタDBの `charts` / `songs` を `chart_id` と `song_id` の両方が一致する場合だけ採用する。参照欠落またはID不一致の履歴も失わず、正式play rowのIDと参照欠落状態を表示する。正式v1 `plays` にない値は推測・補完せず、画面仕様が求める `O.K.` は `—` と表示する。
+曲・譜面表示はマスタDBの `charts` / `songs` を `chart_id` と `song_id` の両方が一致する場合だけ採用する。参照欠落またはID不一致の履歴も失わず、正式play rowのIDと参照欠落状態を表示する。正式v2 `plays` にない値は推測・補完せず、画面仕様が求める `O.K.` は `—` と表示する。
 
-M9のmanual保存入口は、既定または利用者が明示選択した正式v1 DB、M4 master DB、M5b jacket reference catalogを使ってapp-owned formal workflowを1回実行する。これはDB schemaや保存境界を変更するものではない。workflowが `saved` / `written=true` / 非null `play_id` を返した後だけ別のread-only connectionで再読込し、そのIDが履歴に存在することを確認する。`excluded` / `duplicate` のnull play、unresolved/invalid/DB拒否、`artifact_created_db_failed` をplayとして表示しない。
+M9のmanual保存入口は、既定または利用者が明示選択した正式v2 DB、M4 master DB、M5b jacket reference catalogを使ってapp-owned formal workflowを1回実行する。これはDB schemaや保存境界を変更するものではない。workflowが `saved` / `written=true` / 非null `play_id` を返した後だけ別のread-only connectionで再読込し、そのIDが履歴に存在することを確認する。`excluded` / `duplicate` のnull play、unresolved/invalid/DB拒否、`artifact_created_db_failed` をplayとして表示しない。
 
 ## M10-2 formal score DB path and protection
 
@@ -33,7 +33,7 @@ formal DB、M4 master DB、M5b jacket reference catalogのいずれかが不正�
 
 正式スキーマ候補のコード側契約は `tools/vision_poc/personal_score_db_schema.py` に置く。
 
-- `PERSONAL_SCORE_DB_SCHEMA_VERSION = 1`
+- `PERSONAL_SCORE_DB_SCHEMA_VERSION = 2`
 - `score_db_metadata`
 - `schema_migrations`
 - `source_captures`
@@ -47,6 +47,8 @@ formal DB、M4 master DB、M5b jacket reference catalogのいずれかが不正�
 - `personal_score_db_schema_inspection_diagnostic()`
 - `format_personal_score_db_schema_diagnostic_markdown()`
 - `personal_score_db_file_preparation_diagnostic()`
+- `PERSONAL_SCORE_DB_MIGRATION_HISTORY = 001_initial_personal_score_db_schema, 002_play_order_indexes`
+- `idx_plays_played_at_order`、`idx_plays_song_chart_order`
 
 正式保存入力とconnection単位のtransaction writerは `tools/vision_poc/personal_score_db_save.py` に置く。
 
@@ -189,7 +191,7 @@ M8 preview最小 `plays` は以下の用途に限定する。
 
 ## Metadata と Migration
 
-初回リリースまでは正式個人スコアDBをversion 1に固定する。リリース前の機能追加や回帰修正は、既存version 1 schemaと保存契約の範囲で行い、version 2 schema、supported transition、migration SQL、schema writerへ進めない。version変更の必要性は初回リリース後に、実運用で確認された要件を根拠として別途判断する。
+現行の正式個人スコアDBはversion 2である。version 2では既存の保存列と責務境界を変えず、全体の日時順履歴と譜面別日時順履歴にtimezone-awareなeffective indexを追加する。version 1からversion 2への移行だけを、アプリ起動時の明示converterとして登録する。
 
 正式DB判定は以下の全てを見る。
 
@@ -198,10 +200,12 @@ M8 preview最小 `plays` は以下の用途に限定する。
 - `score_db_metadata.schema_contract_scope=production_personal_score_db`
 - `score_db_metadata.production_schema_status=production_schema`
 - 必須tableの存在
-- 必須tableの正式version 1 `CREATE TABLE` 定義
+- 必須tableの正式version 2 `CREATE TABLE` 定義
+- `idx_plays_played_at_order`: `julianday(played_at) DESC, played_at DESC, play_id DESC`
+- `idx_plays_song_chart_order`: `song_id, chart_id, julianday(played_at) DESC, played_at DESC, play_id DESC`
 - `schema_migrations` の適用履歴
 
-`PRAGMA user_version=1` だけでは正式DB扱いしない。M8 preview DBも `user_version=1` を使うため、`preview_metadata` があるDB、`score_db_metadata` がないDB、`production_schema_status=not_production_schema` のDBは正式DBとして拒否する。
+`PRAGMA user_version=2` だけでは正式DB扱いしない。M8 preview DBは `user_version=1` を使うため、`preview_metadata` があるDB、`score_db_metadata` がないDB、`production_schema_status=not_production_schema` のDBは正式DBとして拒否する。
 
 初期migrationは `001_initial_personal_score_db_schema` とし、以後の変更は次の原則に従う。
 
@@ -244,7 +248,7 @@ CLI表示入口は `python -m tools.vision_poc --personal-score-db-diagnostic <p
 - `m8_preview_database_not_supported`: `preview_metadata` を持つM8 preview DB。正式DBとしては拒否する。
 - `unknown_database_not_supported`: tableはあるが `score_db_metadata` がなく、正式DBともpreview DBとも識別できない。
 - `missing_table:<table>`: 正式DB必須tableが欠落している。
-- `table_schema_mismatch:<table>`: 必須table名は存在するが、列、制約、参照を含む正式version 1の `CREATE TABLE` 定義と一致しない。
+- `table_schema_mismatch:<table>`: 必須table名は存在するが、列、制約、参照を含む正式version 2の `CREATE TABLE` 定義と一致しない。
 - `score_db_metadata_missing`: `score_db_metadata` がない。
 - `score_db_metadata.<key>_missing`: 必須metadata keyがない。
 - `score_db_metadata.<key>_mismatch`: 必須metadata valueが期待値と違う。
@@ -257,7 +261,7 @@ CLI表示入口は `python -m tools.vision_poc --personal-score-db-diagnostic <p
 - `reject_m8_preview_database`: M8 preview DB。正式DBへ自動昇格しない。
 - `reject_unknown_database`: metadata欠損DB、metadata identity mismatch、未知schema。正式DBとして開かない。
 
-metadata identity は `created_by`、`schema_name`、`schema_contract_scope`、`production_schema_status` を見る。これらが一致しないDBは、`user_version=1` や似たtable名があっても正式DBとして扱わない。`schema_version` だけの不一致は、正式metadata identityが揃っている場合に限り `manual_migration_required` の候補として読む。
+metadata identity は `created_by`、`schema_name`、`schema_contract_scope`、`production_schema_status` を見る。これらが一致しないDBは、`user_version=2` や似たtable名があっても正式DBとして扱わない。`schema_version` だけの不一致は、正式metadata identityが揃っている場合に限り `manual_migration_required` の候補として読む。
 
 ## 初期化とオープン前段
 
@@ -296,6 +300,7 @@ CLI入力はUTF-8 JSONの `input_schema_version=1` objectとする。候補材�
 ## 回帰ガード
 
 - `tests/test_personal_score_db_schema.py` は正式schema contractを作成し、必須tableとmetadataを確認する。
+- 正式schema v2の作成・検査では、`002_play_order_indexes` と全体／譜面別の日時順index定義を確認する。
 - 同テストは M8 preview DB を正式個人スコアDBとして拒否する。
 - 同テストは空DB、未知DB、metadata identity mismatch、必須table欠落、`user_version` mismatch の検査結果と `migration_plan_status` を固定する。
 - 同テストは空DBだけ初期schemaを作成し、M8 preview DB、unknown DB、metadata identity mismatch、manual migration候補を自動変更しないことを固定する。
@@ -312,10 +317,11 @@ CLI入力はUTF-8 JSONの `input_schema_version=1` objectとする。候補材�
 - `tests/test_personal_score_db_save_adapter.py` は候補ID/数字/相対時刻を正式値へ昇格しないこと、正式値不足を `unresolved` に保つこと、duplicate/低信頼度をplayなしの `excluded` にすることを固定する。
 - `tests/test_personal_score_db_cli_save.py` は保存前validationのready/excluded/unresolved/invalid、option排他、従来modeのDB/`data`/`logs`非生成、receiptの新規 `data/*.json` 限定と固定encoding/key順、正式値非再掲を固定する。
 - `tests/test_personal_score_db_file_save.py` は新規/0 byte/compatible正式DBへのready保存、excludedのplayなし保存、DB duplicate collisionの `excluded/written/play_id` 結果、unresolvedの無変更拒否、preview/unknown/identity mismatch/manual migration/non-SQLite/directory拒否、writer失敗時rollbackを固定する。
+- `.NET` の repository / migration / view model test は 50件の最近履歴、10件の譜面詳細履歴、グラフ直近100件、全履歴集計、query plan、v1→v2 migration 後の行・bests・source capture・analysis log・backup維持を固定する。
 
 ## Continuous capture application boundary
 
-`capture_save_workflow` は正式schema version 1やwriterを再実装せず、eventごとに既存 `personal_score_db_workflow` を最大1回呼ぶapplication境界である。自動formal昇格adapterが返す `PersonalScoreDbFormalPlayValues` だけを既存strict save inputへ配置し、候補同定・候補数値・候補状態・M8 preview行そのものを正式DB入力にしない。
+`capture_save_workflow` は正式schema version 2やwriterを再実装せず、eventごとに既存 `personal_score_db_workflow` を最大1回呼ぶapplication境界である。自動formal昇格adapterが返す `PersonalScoreDbFormalPlayValues` だけを既存strict save inputへ配置し、候補同定・候補数値・候補状態・M8 preview行そのものを正式DB入力にしない。
 
 自動formal evidenceは`RESULT同定根拠`、`RESULT数値認識根拠`、`RESULT状態認識根拠`、`capture event根拠`ごとの採用済みsourceとconfidenceを持つ。全ID、全数字、timezone付きplayed_at、master version、rank、clear type、正式duplicate keyのいずれかが未解決ならformal playを返さず `unresolved` とする。candidate、raw OCR、expected値、preview payload、相対 `played_at_ms` / `timestamp_ms` は正式値のfallbackにしない。
 
@@ -326,9 +332,9 @@ live監視では、SCOREが2回一致してconfirmedになった候補の`RESULT
 - `tests/test_capture_save_workflow.py` はconfirmed/non-duplicate境界、採用済み根拠の完全昇格、candidate/raw/expected/preview非昇格、低confidence/不足値、直列workflow呼出し、DB duplicate、status保持を固定する。
 - `.NET` のcapture save runner/view model testはprocess result mapping、capture失敗時の非起動、saved playだけのread-only再読込を固定する。
 
-### Version 1 migration / backup contract
+### Version 2 migration / backup contract
 
-現行正式schemaはversion 1であり、production converterは登録されていない。将来versionは列やproduct仕様が確定し、旧versionからcurrent versionへの明示converterがappへ登録されるまでmigration対象にしない。Release起動時は固定score pathだけを検査し、currentならno-op、newerまたはconverterなしなら無変更で拒否する。
+現行正式schemaはversion 2であり、`ScoreDatabaseV1ToV2Migration` が唯一のproduction converterとしてversion 1からversion 2へ、日時順query用の2 indexを追加する。既存の `plays`、`source_captures`、`analysis_logs`、bests、history、backup内容は変更しない。Release起動時は固定score pathだけを検査し、currentならno-op、newerまたはconverterなしなら無変更で拒否する。
 
 互換性の正本は `PRAGMA user_version`、`score_db_metadata.schema_version`、`schema_migrations` の連続した適用履歴である。identity metadataが一致することを前提に、この3者がsource versionで一致したDBだけをmigration候補にできる。preview、unknown、identity mismatch、新しい未知version、3者不一致のpartial stateは拒否する。
 
@@ -336,7 +342,7 @@ backupはsource変更前の必須成果物である。Release appは固定namesp
 
 transaction内のversion遷移順はconverterのschema step、`schema_migrations` insert、`score_db_metadata.schema_version` update、`PRAGMA user_version` update、commitである。commit前の失敗はrollbackする。commit後にcurrent schemaで再openし、基本readとrollbackされるwrite transactionを確認する。失敗時はbackupへ戻し、失敗を保存成功へ丸めない。
 
-`personal_score_db_migration_status` は既存schema inspectionとpure migration contractを合成するread-only projectionである。専用CLIはDB path、target version、明示backup pathを必須とし、statusまたはdry-runをJSON/Markdownへ表示する。formal identityが一致しても `PRAGMA user_version`、metadata version、連続した `schema_migrations` 履歴が一致しなければpartial stateとして拒否する。backup path検査はsourceと別の未作成pathで親directoryが存在するかの観測だけで、backup作成やsource変更を行わない。現行version 1ではcurrent表示または拒否となり、将来current versionと登録済みtransitionが一致した場合だけ予定stepを表示できる。
+`personal_score_db_migration_status` は既存schema inspectionとpure migration contractを合成するread-only projectionである。専用CLIはDB path、target version、明示backup pathを必須とし、statusまたはdry-runをJSON/Markdownへ表示する。formal identityが一致しても `PRAGMA user_version`、metadata version、連続した `schema_migrations` 履歴が一致しなければpartial stateとして拒否する。backup path検査はsourceと別の未作成pathで親directoryが存在するかの観測だけで、backup作成やsource変更を行わない。現行version 2ではcurrent表示または拒否となり、登録済みのversion 1→2 transitionだけをmigration候補として表示できる。
 
 `create_verified_personal_score_db_backup(source_path, backup_path)` はmigration statusとは分離した、検証済みbackupを1件作る専用境界である。sourceをread-onlyで開き、現行正式schemaのcompatibilityを満たす場合だけ同じ接続のSQLite snapshotをbackup APIでコピーする。backup pathはsourceと異なり、親directoryが存在する新規pathへOSのexclusive createで確保する。コピー後に接続を閉じてファイルをflushし、read-onlyで再openしてSQLite integrity、formal identity、`PRAGMA user_version`、metadata、migration history、必須tableのrow countと全row内容hashがsource snapshotと一致することを検査する。全検査後だけverified結果を返し、copy、flush、readback、contract照合の失敗時は今回作った不完全backupだけを除去する。既存backupは上書きも削除もせず、source DBを変更しない。
 

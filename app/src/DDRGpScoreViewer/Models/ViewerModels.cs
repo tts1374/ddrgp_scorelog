@@ -239,7 +239,30 @@ public sealed record ViewerData(
     string MasterDatabasePath,
     string MasterVersion,
     string CatalogDatabasePath = "",
-    IReadOnlyList<ChartBestItem>? ChartCatalogSource = null)
+    IReadOnlyList<ChartBestItem>? ChartCatalogSource = null,
+    HomeDisplayData? Home = null,
+    int TotalPlayCount = -1,
+    string LastSavedAt = "")
 {
     public IReadOnlyList<ChartBestItem> ChartCatalog { get; } = ChartCatalogSource ?? [];
 }
+
+public sealed record HomeDisplayData(
+    HomePlayItem? LatestPlay,
+    IReadOnlyList<HomePlayItem> RecentPlays,
+    IReadOnlyList<HomePlayItem> BestUpdates,
+    int TodayPlayCount,
+    int TodayScoreUpdateCount,
+    int TodayExScoreUpdateCount,
+    int TodayFullComboCount,
+    int TotalPlayCount,
+    string LastSavedAt);
+
+public sealed record ChartDetailData(
+    IReadOnlyList<HomePlayItem> History,
+    int TotalPlayCount,
+    int FullComboCount,
+    HomePlayItem? ScoreBestPlay,
+    HomePlayItem? ExScoreBestPlay,
+    IReadOnlyList<HomePlayItem> AllPlayPoints,
+    IReadOnlyList<HomePlayItem> BestPlayPoints);

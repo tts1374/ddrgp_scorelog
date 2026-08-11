@@ -220,7 +220,7 @@ M4初期実装では、source snapshot は生成DB内に保存する。DB自体�
 - `app_version`
 - `created_at`
 
-M9の最小WPF viewerはこの全履歴をread-onlyで参照する。履歴rowを変更せず、譜面別自己ベストは `song_id` / `chart_id` ごとの `MAX(score)` と `MAX(ex_score)` をqueryで算出する。自己ベスト専用rowやtableは作らない。マスタDBに対応するIDがない場合もplayを除外せず、IDと参照欠落状態を表示する。
+M9の最小WPF viewerはこの全履歴をread-onlyで参照する。起動時の最近プレー一覧は先頭50件だけを取得し、下端到達ごとに次の50件を追加する。譜面詳細の履歴一覧は先頭10件から始め、`続きを見る` の明示操作ごとに10件を追加し、残りがなくなるまで読み込める。グラフは選択譜面の最新100件だけを保持して表示するが、譜面別自己ベスト、プレー回数、フルコンボ回数、自己ベスト差分、ホーム集計、データ管理の件数は全履歴をqueryで算出する。履歴rowを変更せず、譜面別自己ベストは `song_id` / `chart_id` ごとの `MAX(score)` と `MAX(ex_score)` をqueryで算出する。自己ベスト専用rowやtableは作らない。マスタDBに対応するIDがない場合もplayを除外せず、IDと参照欠落状態を表示する。
 
 M9 manual保存は新しいDB modelを追加しない。既存workflow結果の `workflow_status`、`written`、`play_id` をUI状態へ投影し、`saved` / `written=true` / 非null `play_id` の組だけを正式playとして再表示する。`excluded` と `duplicate` のsource/analysis row、artifact partial success、unresolved/invalid/DB拒否はplay履歴へ投影しない。
 
@@ -386,7 +386,7 @@ PoCでは簡易 `duplicate_key` を使うが、本番では以下を組み合わ
 - duplicate key の本格方式
 ## Migration version state contract
 
-Migration contract version 1は `tools.vision_poc.personal_score_db_migration_contract` を正本とし、実DB writerを持たないpure contractである。DB状態は `compatible_current`、`older_supported`、`newer_unsupported`、`unknown`、`preview`、`identity_mismatch`、`partial_migration` を区別する。将来versionへの対応pathが登録された正式DBだけを `older_supported` とし、登録済みtargetがその時点のcurrent schema versionと等しい場合はmigration候補として扱う。現行version 1から任意の未知versionへ進めてよいとは解釈しない。
+Migration contract version 1は `tools.vision_poc.personal_score_db_migration_contract` を正本とし、実DB writerを持たないpure contractである。DB状態は `compatible_current`、`older_supported`、`newer_unsupported`、`unknown`、`preview`、`identity_mismatch`、`partial_migration` を区別する。version 1→2のplay-order index transitionだけを登録済みpathとして扱い、現行version 2から任意の未知versionへ進めてよいとは解釈しない。
 
 `PRAGMA user_version`、`score_db_metadata.schema_version`、`schema_migrations` の最新履歴は同じversionを示す必要がある。いずれかだけが先行した状態は `partial_migration` として保存・migrationを拒否し、人手でbackupと状態を確認する。preview、unknown、identity mismatchはversion番号が一致しても正式DBへ昇格しない。
 

@@ -155,6 +155,65 @@ public sealed class MainViewModelTests
     }
 
     [Fact]
+    public void Load_and_explicit_page_requests_keep_recent_history_and_detail_history_incremental()
+    {
+        using var fixture = new DatabaseFixture();
+        var start = DateTimeOffset.Parse("2026-01-01T00:00:00+00:00");
+        for (var index = 0; index < 101; index++)
+        {
+            fixture.AddPlay(
+                $"play-{index:000}",
+                start.AddMinutes(index).ToString("O"),
+                800_000 + index * 10,
+                1_000 + index);
+        }
+        fixture.ExecuteScoreSql("UPDATE plays SET clear_type = 'FC';");
+
+        var viewModel = new MainViewModel(new ScoreViewerRepository());
+        viewModel.Load(fixture.ScorePath, fixture.MasterPath, persist: false);
+
+        Assert.Equal(50, viewModel.Plays.Count);
+        Assert.Equal(101, viewModel.RecentPlayTotalCount);
+        Assert.True(viewModel.CanLoadMorePlays);
+        Assert.Equal("play-100", viewModel.Plays[0].PlayId);
+        Assert.Equal("play-100", viewModel.HomeLatestPlay?.Play.PlayId);
+        Assert.Equal(101, Assert.Single(viewModel.ChartBests).PlayCount);
+        Assert.Equal(801_000, Assert.Single(viewModel.ChartBests).BestScore);
+        Assert.Equal("101件", viewModel.DataManagementPlayCountDisplay);
+
+        viewModel.LoadMorePlays();
+        Assert.Equal(100, viewModel.Plays.Count);
+        Assert.True(viewModel.CanLoadMorePlays);
+        viewModel.LoadMorePlays();
+        Assert.Equal(101, viewModel.Plays.Count);
+        Assert.False(viewModel.CanLoadMorePlays);
+        viewModel.LoadMorePlays();
+        Assert.Equal(101, viewModel.Plays.Count);
+
+        viewModel.SelectChartBest(Assert.Single(viewModel.ChartBests));
+        Assert.Equal(10, viewModel.ChartDetailHistory.Count);
+        Assert.Equal(101, viewModel.ChartDetailTotalCount);
+        Assert.Equal("101回", viewModel.ChartDetailPlayCountDisplay);
+        Assert.Equal("101回", viewModel.ChartDetailFullComboCountDisplay);
+        Assert.Equal(100, viewModel.ChartDetailAllPlayPoints.Count);
+
+        viewModel.LoadMoreChartDetailHistory();
+        Assert.Equal(20, viewModel.ChartDetailHistory.Count);
+        for (var request = 0;
+             request < 20 && viewModel.CanLoadMoreChartDetailHistory;
+             request++)
+        {
+            viewModel.LoadMoreChartDetailHistory();
+        }
+
+        Assert.Equal(101, viewModel.ChartDetailHistory.Count);
+        Assert.False(viewModel.CanLoadMoreChartDetailHistory);
+        Assert.Equal(
+            System.Windows.Visibility.Collapsed,
+            viewModel.ChartDetailLoadMoreVisibility);
+    }
+
+    [Fact]
     public void Selecting_chart_detail_does_not_reset_the_best_list_state()
     {
         using var fixture = new DatabaseFixture();

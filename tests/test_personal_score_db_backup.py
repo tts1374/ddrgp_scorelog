@@ -28,9 +28,9 @@ def test_verified_backup_matches_formal_source_snapshot(tmp_path: Path) -> None:
 
     result = backup.create_verified_personal_score_db_backup(source, target)
 
-    assert result.schema_version == 1
+    assert result.schema_version == schema.PERSONAL_SCORE_DB_SCHEMA_VERSION
     assert result.metadata == schema.PERSONAL_SCORE_DB_METADATA
-    assert result.migration_history == (("001_initial_personal_score_db_schema", 1),)
+    assert result.migration_history == schema.PERSONAL_SCORE_DB_MIGRATION_HISTORY
     assert target.exists()
     assert _digest(source) == before
     with sqlite3.connect(target) as connection:
@@ -65,12 +65,13 @@ def test_rejected_source_does_not_create_backup(tmp_path: Path, kind: str) -> No
                     "UPDATE score_db_metadata SET value='other' WHERE key='schema_name'"
                 )
             elif kind == "partial":
-                connection.execute("PRAGMA user_version = 2")
+                connection.execute("PRAGMA user_version = 1")
             elif kind == "history":
                 connection.execute("DELETE FROM schema_migrations")
             elif kind == "migration-id":
                 connection.execute(
-                    "UPDATE schema_migrations SET migration_id = '001_tampered'"
+                    "UPDATE schema_migrations SET migration_id = '001_tampered' "
+                    "WHERE migration_id = '001_initial_personal_score_db_schema'"
                 )
             elif kind == "plays-schema":
                 connection.execute("DROP TABLE plays")

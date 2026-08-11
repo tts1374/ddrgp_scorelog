@@ -1081,7 +1081,7 @@
                                 <StackPanel>
                                     <StackPanel Margin="18,15,18,0">
                                         <TextBlock Text="スコア推移" FontSize="16" FontWeight="Bold" />
-                                        <TextBlock Text="プレーごとの通常スコアと自己ベスト更新点"
+                                        <TextBlock Text="プレーごとの通常スコアと自己ベスト更新点（グラフは直近100プレー）"
                                                    Foreground="{StaticResource TextSecondaryBrush}"
                                                    FontSize="11" Margin="0,3,0,0" />
                                     </StackPanel>
@@ -1112,6 +1112,11 @@
                                                         SizeChanged="ChartDetailGraphCanvas_SizeChanged" />
                                                 <TextBlock Text="未プレーのため、保存済みプレーはありません。"
                                                            Visibility="{Binding ChartDetailEmptyVisibility}"
+                                                           Foreground="{StaticResource TextSecondaryBrush}"
+                                                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                           TextWrapping="Wrap" />
+                                                <TextBlock Text="{Binding ChartDetailBestProgressionEmptyMessage, Mode=OneWay}"
+                                                           Visibility="{Binding ChartDetailBestProgressionEmptyVisibility, Mode=OneWay}"
                                                            Foreground="{StaticResource TextSecondaryBrush}"
                                                            HorizontalAlignment="Center" VerticalAlignment="Center"
                                                            TextWrapping="Wrap" />
@@ -1278,6 +1283,19 @@
                                             </DataGridTemplateColumn>
                                         </DataGrid.Columns>
                                     </DataGrid>
+                                    <StackPanel Orientation="Horizontal"
+                                                Margin="18,10,18,18"
+                                                Visibility="{Binding ChartDetailPlayVisibility, Mode=OneWay}">
+                                        <Button Content="続きを見る"
+                                                Style="{StaticResource HomeSectionLinkStyle}"
+                                                Visibility="{Binding ChartDetailLoadMoreVisibility, Mode=OneWay}"
+                                                Click="ChartDetailLoadMore_Click" />
+                                        <TextBlock Text="{Binding ChartDetailHistoryLoadMoreHintDisplay, Mode=OneWay}"
+                                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                                   FontSize="11"
+                                                   VerticalAlignment="Center"
+                                                   Margin="12,0,0,0" />
+                                    </StackPanel>
                                 </StackPanel>
                             </Border>
                         </StackPanel>
@@ -1287,11 +1305,13 @@
                     <Grid>
                         <Grid.RowDefinitions>
                             <RowDefinition Height="*" MinHeight="260" />
-                            <RowDefinition Height="18" />
+                            <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" MinHeight="210" />
                         </Grid.RowDefinitions>
                         <Border Grid.Row="0" Style="{StaticResource CardStyle}" Padding="0">
-                            <DataGrid ItemsSource="{Binding Plays}" SelectedItem="{Binding SelectedPlay}"
+                            <DataGrid x:Name="RecentPlayGrid"
+                                      ItemsSource="{Binding Plays}" SelectedItem="{Binding SelectedPlay}"
+                                      ScrollViewer.ScrollChanged="RecentPlayGrid_ScrollChanged"
                                       Style="{StaticResource ViewerDataGridStyle}">
                                 <DataGrid.Columns>
                                     <DataGridTextColumn Header="日時" Binding="{Binding PlayedAtDisplay, Mode=OneWay}" Width="120" />
@@ -1341,6 +1361,12 @@
                                 </DataGrid.Columns>
                             </DataGrid>
                         </Border>
+
+                        <TextBlock Grid.Row="1"
+                                   Text="{Binding RecentPlayLoadMoreHintDisplay, Mode=OneWay}"
+                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                   FontSize="11"
+                                   Margin="4,6,4,6" />
 
                         <Border Grid.Row="2" Style="{StaticResource CardStyle}" DataContext="{Binding SelectedPlay}"
                                 Padding="20,18">

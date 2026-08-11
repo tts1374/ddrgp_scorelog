@@ -37,7 +37,7 @@ def test_status_cli_reports_current_database_without_side_effects(
             "--personal-score-db-migration-status",
             str(db_path),
             "--personal-score-db-migration-target-version",
-            "1",
+            "2",
             "--personal-score-db-migration-backup",
             str(backup_path),
             "--personal-score-db-migration-format",
@@ -49,7 +49,7 @@ def test_status_cli_reports_current_database_without_side_effects(
     assert exit_code == 0
     assert result["status"] == "current"
     assert result["reason"] == "already_at_target_version"
-    assert result["source_version"] == result["target_version"] == 1
+    assert result["source_version"] == result["target_version"] == 2
     assert result["backup_path_inspection"] == {
         "is_safe": True,
         "is_new": True,
@@ -93,22 +93,22 @@ def test_projection_fixes_rejected_database_states(
                     "UPDATE score_db_metadata SET value = 'other' WHERE key = 'schema_name'"
                 )
             elif kind == "partial":
-                connection.execute("PRAGMA user_version = 2")
+                connection.execute("PRAGMA user_version = 1")
             else:
-                connection.execute("PRAGMA user_version = 2")
+                connection.execute("PRAGMA user_version = 3")
                 connection.execute(
-                    "UPDATE score_db_metadata SET value = '2' WHERE key = 'schema_version'"
+                    "UPDATE score_db_metadata SET value = '3' WHERE key = 'schema_version'"
                 )
                 connection.execute(
                     "INSERT INTO schema_migrations "
                     "(migration_id, schema_version, app_version, notes) "
-                    "VALUES ('002_fixture', 2, 'test', 'test')"
+                    "VALUES ('003_fixture', 3, 'test', 'test')"
                 )
             connection.commit()
 
     result = project_personal_score_db_migration_status(
         db_path,
-        target_version=1,
+        target_version=2,
         backup_path=tmp_path / "backup.sqlite",
         dry_run=False,
     )
@@ -124,11 +124,12 @@ def test_future_supported_dry_run_displays_steps_from_same_contract(
 ) -> None:
     db_path = tmp_path / "scores.sqlite"
     _create_formal_db(db_path)
-    monkeypatch.setattr(contract, "CURRENT_SCHEMA_VERSION", 2)
+    monkeypatch.setattr(contract, "CURRENT_SCHEMA_VERSION", 3)
+    monkeypatch.setattr(contract, "SUPPORTED_MIGRATION_TRANSITIONS", ((2, 3),))
 
     result = project_personal_score_db_migration_status(
         db_path,
-        target_version=2,
+        target_version=3,
         backup_path=tmp_path / "backup.sqlite",
         dry_run=True,
     )

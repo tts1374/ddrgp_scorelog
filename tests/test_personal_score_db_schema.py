@@ -30,7 +30,10 @@ def test_personal_score_db_schema_creates_formal_tables_and_metadata() -> None:
     with sqlite3.connect(":memory:") as connection:
         score_schema.create_personal_score_db_schema(connection)
 
-        assert int(connection.execute("PRAGMA user_version").fetchone()[0]) == 1
+        assert (
+            int(connection.execute("PRAGMA user_version").fetchone()[0])
+            == score_schema.PERSONAL_SCORE_DB_SCHEMA_VERSION
+        )
         assert table_names(connection) >= set(score_schema.PERSONAL_SCORE_DB_REQUIRED_TABLES)
         assert score_schema.read_score_db_metadata(connection) == (
             score_schema.PERSONAL_SCORE_DB_METADATA
@@ -61,6 +64,11 @@ def test_personal_score_db_schema_creates_formal_tables_and_metadata() -> None:
         assert inspection.compatibility_errors == ()
         assert inspection.migration_plan_status == "compatible"
         assert inspection.migration_plan_reason == "schema_compatible"
+        assert all(
+            score_schema.sqlite_index_sql(connection, index_name)
+            == " ".join(index_sql.lower().split())
+            for index_name, index_sql in score_schema.PERSONAL_SCORE_DB_INDEXES.items()
+        )
         assert score_schema.assert_personal_score_db_compatible(connection) == inspection
 
 
