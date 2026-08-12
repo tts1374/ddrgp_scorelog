@@ -32,6 +32,7 @@ public partial class MainWindow : System.Windows.Window
     private readonly MainViewModel viewModel;
     private readonly AsyncOperationGate monitoringStartGate = new();
     private readonly BestChartPageRequestGate bestChartPageRequestGate = new();
+    private readonly BestChartPageRequestGate recentPlayPageRequestGate = new();
     private readonly CancellationTokenSource applicationExitCancellation = new();
     private bool applicationExitRequested;
     private bool restoringBestChartListState;
@@ -737,6 +738,29 @@ public partial class MainWindow : System.Windows.Window
         }
     }
 
+    private void RecentPlayGrid_ScrollChanged(object sender, ScrollChangedEventArgs e)
+    {
+        if (e.ExtentHeight <= 0 || e.ViewportHeight <= 0 ||
+            e.VerticalOffset + e.ViewportHeight < e.ExtentHeight - 1 ||
+            !viewModel.CanLoadMorePlays ||
+            !recentPlayPageRequestGate.TryBegin())
+        {
+            return;
+        }
+
+        try
+        {
+            viewModel.LoadMorePlays();
+        }
+        finally
+        {
+            // Adding rows causes follow-up ScrollChanged events before the UI settles.
+            Dispatcher.BeginInvoke(
+                DispatcherPriority.ApplicationIdle,
+                new Action(() => recentPlayPageRequestGate.Complete()));
+        }
+    }
+
     private void ViewModel_ChartBestSelectionRequested(ChartBestItem chartBest)
     {
         bestChartScrollOffset = FindVisualChild<ScrollViewer>(BestChartGrid)?.VerticalOffset
@@ -781,6 +805,9 @@ public partial class MainWindow : System.Windows.Window
         UpdateChartDetailGraphModeButtons();
         RenderChartDetailGraph();
     }
+
+    private void ChartDetailLoadMore_Click(object sender, RoutedEventArgs e) =>
+        viewModel.LoadMoreChartDetailHistory();
 
     private void ChartDetailGraphCanvas_SizeChanged(object sender, SizeChangedEventArgs e) =>
         RenderChartDetailGraph();

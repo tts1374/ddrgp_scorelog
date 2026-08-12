@@ -6,14 +6,17 @@ namespace DDRGpScoreViewer.Data;
 
 public sealed class ScoreViewerRepository
 {
-    private const int SupportedScoreSchemaVersion = 1;
+    internal const int SupportedScoreSchemaVersion = 2;
+    public const int RecentPlayPageSize = 50;
+    public const int ChartDetailHistoryPageSize = 10;
+    public const int ChartDetailGraphPageSize = 100;
 
     private static readonly IReadOnlyDictionary<string, string> ScoreMetadata =
         new Dictionary<string, string>(StringComparer.Ordinal)
         {
             ["created_by"] = "tools.vision_poc.personal_score_db_schema",
             ["schema_name"] = "personal_score_db",
-            ["schema_version"] = "1",
+            ["schema_version"] = "2",
             ["schema_version_source"] = "PRAGMA user_version and score_db_metadata",
             ["schema_contract_scope"] = "production_personal_score_db",
             ["production_schema_status"] = "production_schema",
@@ -41,6 +44,29 @@ public sealed class ScoreViewerRepository
                  "identity_signal_status", "digit_review_status", "analysis_confidence",
                  "analysis_summary_json", "log_path", "app_version", "created_at"],
         };
+
+    private static readonly IReadOnlyDictionary<string, string> ScoreIndexSql =
+        new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["idx_plays_played_at_order"] =
+                "CREATE INDEX idx_plays_played_at_order ON plays(" +
+                "julianday(played_at) DESC, played_at DESC, play_id DESC)",
+            ["idx_plays_song_chart_order"] =
+                "CREATE INDEX idx_plays_song_chart_order ON plays(" +
+                "song_id, chart_id, julianday(played_at) DESC, played_at DESC, play_id DESC)",
+        };
+
+    private static readonly IReadOnlyDictionary<string, string> ScoreMetadataV1 =
+        new Dictionary<string, string>(ScoreMetadata, StringComparer.Ordinal)
+        {
+            ["schema_version"] = "1",
+        };
+
+    private static readonly (string MigrationId, int SchemaVersion)[] ScoreMigrationHistory =
+    [
+        ("001_initial_personal_score_db_schema", 1),
+        ("002_play_order_indexes", 2),
+    ];
 
     private static readonly IReadOnlyDictionary<string, string> ScoreTableSql =
         new Dictionary<string, string>(StringComparer.Ordinal)
@@ -172,13 +198,18 @@ public sealed class ScoreViewerRepository
             ;
             CREATE INDEX IF NOT EXISTS idx_plays_played_at ON plays(played_at);
             CREATE INDEX IF NOT EXISTS idx_plays_song_chart ON plays(song_id, chart_id);
+            CREATE INDEX IF NOT EXISTS idx_plays_played_at_order
+              ON plays(julianday(played_at) DESC, played_at DESC, play_id DESC);
+            CREATE INDEX IF NOT EXISTS idx_plays_song_chart_order
+              ON plays(song_id, chart_id,
+                       julianday(played_at) DESC, played_at DESC, play_id DESC);
             CREATE INDEX IF NOT EXISTS idx_plays_capture_hash ON plays(capture_hash);
             CREATE INDEX IF NOT EXISTS idx_analysis_logs_play_id ON analysis_logs(play_id);
             CREATE INDEX IF NOT EXISTS idx_analysis_logs_source_capture_id
               ON analysis_logs(source_capture_id);
             CREATE INDEX IF NOT EXISTS idx_source_captures_capture_hash
               ON source_captures(capture_hash);
-            PRAGMA user_version = 1;
+            PRAGMA user_version = 2;
             """;
         command.ExecuteNonQuery();
 
@@ -199,12 +230,27 @@ public sealed class ScoreViewerRepository
             )
             VALUES ($migration_id, $schema_version, $app_version, $notes);
             """;
-        command.Parameters.AddWithValue("$migration_id", "001_initial_personal_score_db_schema");
-        command.Parameters.AddWithValue("$schema_version", 1);
+        command.Parameters.AddWithValue("$migration_id", ScoreMigrationHistory[0].MigrationId);
+        command.Parameters.AddWithValue("$schema_version", ScoreMigrationHistory[0].SchemaVersion);
         command.Parameters.AddWithValue("$app_version", "schema-contract");
         command.Parameters.AddWithValue(
             "$notes",
             "Initial formal personal score DB schema contract.");
+        command.ExecuteNonQuery();
+        command.Parameters.Clear();
+        command.CommandText =
+            """
+            INSERT INTO schema_migrations (
+              migration_id, schema_version, app_version, notes
+            )
+            VALUES ($migration_id, $schema_version, $app_version, $notes);
+            """;
+        command.Parameters.AddWithValue("$migration_id", ScoreMigrationHistory[1].MigrationId);
+        command.Parameters.AddWithValue("$schema_version", ScoreMigrationHistory[1].SchemaVersion);
+        command.Parameters.AddWithValue("$app_version", "schema-contract");
+        command.Parameters.AddWithValue(
+            "$notes",
+            "Added timezone-aware chronological play ordering indexes.");
         command.ExecuteNonQuery();
         transaction.Commit();
     }
@@ -271,6 +317,94 @@ public sealed class ScoreViewerRepository
         return LoadCore(scoreDatabasePath, masterDatabasePath, catalogDatabasePath);
     }
 
+    public IReadOnlyList<PlayHistoryItem> LoadRecentPlays(
+        string scoreDatabasePath,
+        string masterDatabasePath,
+        int offset,
+        int limit)
+    {
+        if (offset < 0 || limit <= 0)
+        {
+            throw new ArgumentOutOfRangeException();
+        }
+
+        ValidateInputPath(scoreDatabasePath, "プレーデータ");
+        ValidateInputPath(masterDatabasePath, "楽曲データ");
+        try
+        {
+            using var scoreConnection = OpenReadOnly(scoreDatabasePath);
+            ValidateScoreDatabase(scoreConnection);
+            using var masterConnection = OpenReadOnly(masterDatabasePath);
+            _ = ValidateMasterDatabase(masterConnection);
+            var masterCharts = ReadMasterCharts(masterConnection);
+            return ReadPlays(scoreConnection, masterCharts, offset, limit);
+        }
+        catch (ViewerDatabaseException)
+        {
+            throw;
+        }
+        catch (SqliteException exception)
+        {
+            throw new ViewerDatabaseException(
+                "データを読み込めませんでした。ファイルを確認して、もう一度お試しください。",
+                exception);
+        }
+        catch (IOException exception)
+        {
+            throw new ViewerDatabaseException(
+                "データを読み込めませんでした。ファイルを確認して、もう一度お試しください。",
+                exception);
+        }
+    }
+
+    public ChartDetailData LoadChartDetail(
+        string scoreDatabasePath,
+        string masterDatabasePath,
+        string songId,
+        string chartId,
+        int historyOffset,
+        int historyLimit)
+    {
+        if (historyOffset < 0 || historyLimit <= 0)
+        {
+            throw new ArgumentOutOfRangeException();
+        }
+
+        ValidateInputPath(scoreDatabasePath, "プレーデータ");
+        ValidateInputPath(masterDatabasePath, "楽曲データ");
+        try
+        {
+            using var scoreConnection = OpenReadOnly(scoreDatabasePath);
+            ValidateScoreDatabase(scoreConnection);
+            using var masterConnection = OpenReadOnly(masterDatabasePath);
+            _ = ValidateMasterDatabase(masterConnection);
+            var masterCharts = ReadMasterCharts(masterConnection);
+            return ReadChartDetail(
+                scoreConnection,
+                masterCharts,
+                songId,
+                chartId,
+                historyOffset,
+                historyLimit);
+        }
+        catch (ViewerDatabaseException)
+        {
+            throw;
+        }
+        catch (SqliteException exception)
+        {
+            throw new ViewerDatabaseException(
+                "データを読み込めませんでした。ファイルを確認して、もう一度お試しください。",
+                exception);
+        }
+        catch (IOException exception)
+        {
+            throw new ViewerDatabaseException(
+                "データを読み込めませんでした。ファイルを確認して、もう一度お試しください。",
+                exception);
+        }
+    }
+
     private ViewerData LoadCore(
         string scoreDatabasePath,
         string masterDatabasePath,
@@ -297,8 +431,9 @@ public sealed class ScoreViewerRepository
                 ValidateJacketCatalogDatabase(catalogConnection);
             }
 
-            var plays = ReadPlays(scoreConnection, masterCharts);
-            var chartBests = ReadChartBests(scoreConnection, masterCharts, plays);
+            var plays = ReadPlays(scoreConnection, masterCharts, 0, RecentPlayPageSize);
+            var chartBests = ReadChartBests(scoreConnection, masterCharts);
+            var home = ReadHomeData(scoreConnection, masterCharts);
             var chartCatalog = ReadChartCatalog(masterCharts);
             return new ViewerData(
                 plays,
@@ -307,7 +442,10 @@ public sealed class ScoreViewerRepository
                 Path.GetFullPath(masterDatabasePath),
                 masterVersion,
                 catalogDatabasePath is null ? "" : Path.GetFullPath(catalogDatabasePath),
-                chartCatalog);
+                chartCatalog,
+                home,
+                home.TotalPlayCount,
+                home.LastSavedAt);
         }
         catch (ViewerDatabaseException)
         {
@@ -596,7 +734,15 @@ public sealed class ScoreViewerRepository
         }
     }
 
-    private static void ValidateScoreDatabase(SqliteConnection connection)
+    private static void ValidateScoreDatabase(SqliteConnection connection) =>
+        ValidateScoreDatabase(connection, SupportedScoreSchemaVersion);
+
+    internal static void ValidateScoreDatabaseForMigration(
+        SqliteConnection connection,
+        int expectedVersion) =>
+        ValidateScoreDatabase(connection, expectedVersion);
+
+    private static void ValidateScoreDatabase(SqliteConnection connection, int expectedVersion)
     {
         var tables = ReadTableNames(connection);
         if (tables.Contains("preview_metadata"))
@@ -605,14 +751,12 @@ public sealed class ScoreViewerRepository
         }
 
         var userVersion = ExecuteInt64(connection, "PRAGMA user_version;");
-        if (userVersion > SupportedScoreSchemaVersion)
+        if (userVersion != expectedVersion)
         {
-            throw RejectedScoreDatabase("このアプリより新しい形式のプレーデータです。");
-        }
-
-        if (userVersion != SupportedScoreSchemaVersion)
-        {
-            throw RejectedScoreDatabase("対応していないバージョンのプレーデータです。");
+            throw RejectedScoreDatabase(
+                userVersion > SupportedScoreSchemaVersion
+                    ? "このアプリより新しい形式のプレーデータです。"
+                    : "対応していないバージョンのプレーデータです。");
         }
 
         foreach (var (table, expectedColumns) in ScoreTableColumns)
@@ -625,29 +769,40 @@ public sealed class ScoreViewerRepository
             }
         }
 
+        var expectedMetadata = expectedVersion == 1 ? ScoreMetadataV1 : ScoreMetadata;
+        if (expectedVersion != 1 && expectedVersion != SupportedScoreSchemaVersion)
+        {
+            throw RejectedScoreDatabase("対応していないバージョンのプレーデータです。");
+        }
+
         var metadata = ReadMetadata(connection, "score_db_metadata");
-        if (ScoreMetadata.Any(pair =>
+        if (expectedMetadata.Any(pair =>
                 !metadata.TryGetValue(pair.Key, out var actual) || actual != pair.Value))
         {
             throw RejectedScoreDatabase("プレーデータの識別情報が一致しません。");
+        }
+
+        if (expectedVersion >= 2 && ScoreIndexSql.Any(pair =>
+                NormalizeSql(ReadIndexSql(connection, pair.Key)) != NormalizeSql(pair.Value)))
+        {
+            throw RejectedScoreDatabase("日時順query用のindexが完全ではありません。");
         }
 
         using var migrationCommand = connection.CreateCommand();
         migrationCommand.CommandText =
             "SELECT migration_id, schema_version FROM schema_migrations ORDER BY schema_version;";
         using var migrations = migrationCommand.ExecuteReader();
-        var hasInitialMigration = false;
-        var latestVersion = 0L;
+        var migrationRows = new List<(string MigrationId, long SchemaVersion)>();
         while (migrations.Read())
         {
-            var migrationId = migrations.GetString(0);
-            var version = migrations.GetInt64(1);
-            hasInitialMigration |=
-                migrationId == "001_initial_personal_score_db_schema" && version == 1;
-            latestVersion = Math.Max(latestVersion, version);
+            migrationRows.Add((migrations.GetString(0), migrations.GetInt64(1)));
         }
 
-        if (!hasInitialMigration || latestVersion != userVersion)
+        var expectedMigrations = ScoreMigrationHistory
+            .Where(item => item.SchemaVersion <= expectedVersion)
+            .Select(item => (item.MigrationId, (long)item.SchemaVersion))
+            .ToArray();
+        if (!migrationRows.SequenceEqual(expectedMigrations))
         {
             throw RejectedScoreDatabase("プレーデータの更新履歴が完全ではありません。");
         }
@@ -859,7 +1014,9 @@ public sealed class ScoreViewerRepository
 
     private static IReadOnlyList<PlayHistoryItem> ReadPlays(
         SqliteConnection connection,
-        IReadOnlyDictionary<string, MasterChart> masterCharts)
+        IReadOnlyDictionary<string, MasterChart> masterCharts,
+        int offset,
+        int limit)
     {
         using var command = connection.CreateCommand();
         command.CommandText =
@@ -870,43 +1027,24 @@ public sealed class ScoreViewerRepository
                    COALESCE(sc.source_kind, 'unknown')
             FROM plays p
             LEFT JOIN source_captures sc ON sc.capture_id = p.source_capture_id
-            ORDER BY julianday(p.played_at) DESC, p.played_at DESC, p.play_id DESC;
+            ORDER BY julianday(p.played_at) DESC, p.played_at DESC, p.play_id DESC
+            LIMIT $limit OFFSET $offset;
             """;
+        command.Parameters.AddWithValue("$limit", limit);
+        command.Parameters.AddWithValue("$offset", offset);
         using var reader = command.ExecuteReader();
         var result = new List<PlayHistoryItem>();
         while (reader.Read())
         {
-            var songId = reader.GetString(3);
-            var chartId = reader.GetString(4);
-            var found = masterCharts.TryGetValue(chartId, out var chart) && chart.SongId == songId;
-            result.Add(new PlayHistoryItem(
-                reader.GetString(0), reader.GetString(1), reader.GetString(2), songId, chartId,
-                found ? chart!.Title : $"参照情報なし（{songId}）",
-                found ? chart!.PlayStyle : "",
-                found ? chart!.Difficulty : "参照情報なし",
-                found ? chart!.Level : null,
-                reader.GetInt32(5), reader.GetInt32(6), reader.GetString(7), reader.GetString(8),
-                reader.IsDBNull(9) ? null : reader.GetString(9), reader.GetInt32(10),
-                reader.GetInt32(11), reader.GetInt32(12), reader.GetInt32(13), reader.GetInt32(14),
-                reader.GetInt32(15), reader.GetString(16), !found));
+            result.Add(ReadPlayHistoryItem(reader, masterCharts));
         }
         return result;
     }
 
     private static IReadOnlyList<ChartBestItem> ReadChartBests(
         SqliteConnection connection,
-        IReadOnlyDictionary<string, MasterChart> masterCharts,
-        IReadOnlyList<PlayHistoryItem> plays)
+        IReadOnlyDictionary<string, MasterChart> masterCharts)
     {
-        var bestPlayByChart = plays
-            .GroupBy(play => (play.SongId, play.ChartId))
-            .ToDictionary(
-                group => group.Key,
-                group => group
-                    .OrderByDescending(play => play.Score)
-                    .ThenByDescending(play => play.ExScore)
-                    .First());
-
         using var command = connection.CreateCommand();
         command.CommandText =
             """
@@ -920,7 +1058,34 @@ public sealed class ScoreViewerRepository
                               recent.play_id DESC
                      LIMIT 1
                    ),
-                   COUNT(*)
+                   COUNT(*),
+                   (
+                     SELECT best.rank
+                     FROM plays best
+                     WHERE best.song_id = p.song_id AND best.chart_id = p.chart_id
+                     ORDER BY best.score DESC, best.ex_score DESC,
+                              julianday(best.played_at) DESC,
+                              best.played_at DESC, best.play_id DESC
+                     LIMIT 1
+                   ),
+                   (
+                     SELECT best.clear_type
+                     FROM plays best
+                     WHERE best.song_id = p.song_id AND best.chart_id = p.chart_id
+                     ORDER BY best.score DESC, best.ex_score DESC,
+                              julianday(best.played_at) DESC,
+                              best.played_at DESC, best.play_id DESC
+                     LIMIT 1
+                   ),
+                   (
+                     SELECT best.flare_rank
+                     FROM plays best
+                     WHERE best.song_id = p.song_id AND best.chart_id = p.chart_id
+                     ORDER BY best.score DESC, best.ex_score DESC,
+                              julianday(best.played_at) DESC,
+                              best.played_at DESC, best.play_id DESC
+                     LIMIT 1
+                   )
             FROM plays p
             GROUP BY p.song_id, p.chart_id
             ORDER BY MAX(p.score) DESC, p.song_id, p.chart_id;
@@ -932,7 +1097,6 @@ public sealed class ScoreViewerRepository
             var songId = reader.GetString(0);
             var chartId = reader.GetString(1);
             var found = masterCharts.TryGetValue(chartId, out var chart) && chart.SongId == songId;
-            bestPlayByChart.TryGetValue((songId, chartId), out var bestPlay);
             result.Add(new ChartBestItem(
                 songId, chartId,
                 found ? chart!.Title : $"参照情報なし（{songId}）",
@@ -942,12 +1106,421 @@ public sealed class ScoreViewerRepository
                 reader.GetInt32(2), reader.GetInt32(3), reader.GetString(4), reader.GetInt32(5),
                 !found,
                 found ? chart!.Version : "",
-                bestPlay?.Rank ?? "",
-                bestPlay?.ClearType ?? "",
-                bestPlay?.FlareRank));
+                reader.GetString(6),
+                reader.GetString(7),
+                reader.IsDBNull(8) ? null : reader.GetString(8)));
         }
         return result;
     }
+
+    private static HomeDisplayData ReadHomeData(
+        SqliteConnection connection,
+        IReadOnlyDictionary<string, MasterChart> masterCharts)
+    {
+        var latest = ReadHomeProjectionRows(connection, masterCharts, onlyBestUpdates: false, 6);
+        var bestUpdates = ReadHomeProjectionRows(connection, masterCharts, onlyBestUpdates: true, 5);
+        var todayCounts = ReadHomeTodayCounts(connection);
+        return new HomeDisplayData(
+            latest.FirstOrDefault(),
+            latest.Skip(1).Take(5).ToArray(),
+            bestUpdates,
+            todayCounts.TodayPlayCount,
+            todayCounts.TodayScoreUpdateCount,
+            todayCounts.TodayExScoreUpdateCount,
+            todayCounts.TodayFullComboCount,
+            ReadPlayCount(connection),
+            ReadLastSavedAt(connection));
+    }
+
+    private static IReadOnlyList<HomePlayItem> ReadHomeProjectionRows(
+        SqliteConnection connection,
+        IReadOnlyDictionary<string, MasterChart> masterCharts,
+        bool onlyBestUpdates,
+        int limit)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            WITH projected AS (
+              SELECT p.play_id, p.played_at, p.created_at, p.song_id, p.chart_id,
+                     p.score, p.ex_score, p.rank, p.clear_type, p.flare_rank, p.max_combo,
+                     p.marvelous, p.perfect, p.great, p.good, p.miss,
+                     COALESCE(sc.source_kind, 'unknown') AS source_kind,
+                     (
+                       SELECT MAX(prior.score)
+                       FROM plays prior
+                       WHERE prior.song_id = p.song_id AND prior.chart_id = p.chart_id
+                         AND (
+                           julianday(prior.played_at) < julianday(p.played_at)
+                           OR (
+                             julianday(prior.played_at) = julianday(p.played_at)
+                             AND prior.played_at < p.played_at
+                           )
+                           OR (
+                             julianday(prior.played_at) = julianday(p.played_at)
+                             AND prior.played_at = p.played_at
+                             AND prior.play_id < p.play_id
+                           )
+                         )
+                     ) AS previous_score,
+                     (
+                       SELECT MAX(prior.ex_score)
+                       FROM plays prior
+                       WHERE prior.song_id = p.song_id AND prior.chart_id = p.chart_id
+                         AND (
+                           julianday(prior.played_at) < julianday(p.played_at)
+                           OR (
+                             julianday(prior.played_at) = julianday(p.played_at)
+                             AND prior.played_at < p.played_at
+                           )
+                           OR (
+                             julianday(prior.played_at) = julianday(p.played_at)
+                             AND prior.played_at = p.played_at
+                             AND prior.play_id < p.play_id
+                           )
+                         )
+                     ) AS previous_ex_score
+              FROM plays p
+              LEFT JOIN source_captures sc ON sc.capture_id = p.source_capture_id
+            )
+            SELECT play_id, played_at, created_at, song_id, chart_id,
+                   score, ex_score, rank, clear_type, flare_rank, max_combo,
+                   marvelous, perfect, great, good, miss, source_kind,
+                   previous_score, previous_ex_score
+            FROM projected
+            WHERE $only_best_updates = 0
+               OR (previous_score IS NOT NULL AND score > previous_score)
+               OR (previous_ex_score IS NOT NULL AND ex_score > previous_ex_score)
+            ORDER BY julianday(played_at) DESC, played_at DESC, play_id DESC
+            LIMIT $limit;
+            """;
+        command.Parameters.AddWithValue("$only_best_updates", onlyBestUpdates ? 1 : 0);
+        command.Parameters.AddWithValue("$limit", limit);
+        using var reader = command.ExecuteReader();
+        var result = new List<HomePlayItem>();
+        while (reader.Read())
+        {
+            result.Add(ReadHomePlayItem(reader, masterCharts));
+        }
+        return result;
+    }
+
+    private static ChartDetailData ReadChartDetail(
+        SqliteConnection connection,
+        IReadOnlyDictionary<string, MasterChart> masterCharts,
+        string songId,
+        string chartId,
+        int historyOffset,
+        int historyLimit)
+    {
+        var history = ReadChartProgressRows(
+            connection,
+            masterCharts,
+            songId,
+            chartId,
+            historyOffset,
+            historyLimit);
+        var graph = ReadChartProgressRows(
+                connection,
+                masterCharts,
+                songId,
+                chartId,
+                0,
+                ChartDetailGraphPageSize)
+            .Reverse()
+            .ToArray();
+        var bestPlay = ReadChartBestPlay(
+            connection,
+            masterCharts,
+            songId,
+            chartId,
+            orderByExScore: false);
+        var exScoreBestPlay = ReadChartBestPlay(
+            connection,
+            masterCharts,
+            songId,
+            chartId,
+            orderByExScore: true);
+        var bestPoints = graph
+            .Where(play => play.PreviousScore is null || play.IsScoreBestUpdate)
+            .ToArray();
+
+        return new ChartDetailData(
+            history,
+            ReadChartPlayCount(connection, songId, chartId),
+            ReadChartFullComboCount(connection, songId, chartId),
+            bestPlay,
+            exScoreBestPlay,
+            graph,
+            bestPoints);
+    }
+
+    private static IReadOnlyList<HomePlayItem> ReadChartProgressRows(
+        SqliteConnection connection,
+        IReadOnlyDictionary<string, MasterChart> masterCharts,
+        string songId,
+        string chartId,
+        int offset,
+        int limit)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT p.play_id, p.played_at, p.created_at, p.song_id, p.chart_id,
+                   p.score, p.ex_score, p.rank, p.clear_type, p.flare_rank, p.max_combo,
+                   p.marvelous, p.perfect, p.great, p.good, p.miss,
+                   COALESCE(sc.source_kind, 'unknown') AS source_kind,
+                   (
+                     SELECT MAX(prior.score)
+                     FROM plays prior
+                     WHERE prior.song_id = p.song_id AND prior.chart_id = p.chart_id
+                       AND (
+                         julianday(prior.played_at) < julianday(p.played_at)
+                         OR (
+                           julianday(prior.played_at) = julianday(p.played_at)
+                           AND prior.played_at < p.played_at
+                         )
+                         OR (
+                           julianday(prior.played_at) = julianday(p.played_at)
+                           AND prior.played_at = p.played_at
+                           AND prior.play_id < p.play_id
+                         )
+                       )
+                   ) AS previous_score,
+                   (
+                     SELECT MAX(prior.ex_score)
+                     FROM plays prior
+                     WHERE prior.song_id = p.song_id AND prior.chart_id = p.chart_id
+                       AND (
+                         julianday(prior.played_at) < julianday(p.played_at)
+                         OR (
+                           julianday(prior.played_at) = julianday(p.played_at)
+                           AND prior.played_at < p.played_at
+                         )
+                         OR (
+                           julianday(prior.played_at) = julianday(p.played_at)
+                           AND prior.played_at = p.played_at
+                           AND prior.play_id < p.play_id
+                         )
+                       )
+                   ) AS previous_ex_score
+            FROM plays p
+            LEFT JOIN source_captures sc ON sc.capture_id = p.source_capture_id
+            WHERE p.song_id = $song_id AND p.chart_id = $chart_id
+            ORDER BY julianday(p.played_at) DESC, p.played_at DESC, p.play_id DESC
+            LIMIT $limit OFFSET $offset;
+            """;
+        command.Parameters.AddWithValue("$song_id", songId);
+        command.Parameters.AddWithValue("$chart_id", chartId);
+        command.Parameters.AddWithValue("$limit", limit);
+        command.Parameters.AddWithValue("$offset", offset);
+        using var reader = command.ExecuteReader();
+        var result = new List<HomePlayItem>();
+        while (reader.Read())
+        {
+            result.Add(ReadHomePlayItem(reader, masterCharts));
+        }
+        return result;
+    }
+
+    private static HomePlayItem? ReadChartBestPlay(
+        SqliteConnection connection,
+        IReadOnlyDictionary<string, MasterChart> masterCharts,
+        string songId,
+        string chartId,
+        bool orderByExScore)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            $"""
+            SELECT p.play_id, p.played_at, p.created_at, p.song_id, p.chart_id,
+                   p.score, p.ex_score, p.rank, p.clear_type, p.flare_rank, p.max_combo,
+                   p.marvelous, p.perfect, p.great, p.good, p.miss,
+                   COALESCE(sc.source_kind, 'unknown') AS source_kind,
+                   (
+                     SELECT MAX(prior.score)
+                     FROM plays prior
+                     WHERE prior.song_id = p.song_id AND prior.chart_id = p.chart_id
+                       AND (
+                         julianday(prior.played_at) < julianday(p.played_at)
+                         OR (julianday(prior.played_at) = julianday(p.played_at)
+                             AND prior.played_at < p.played_at)
+                         OR (julianday(prior.played_at) = julianday(p.played_at)
+                             AND prior.played_at = p.played_at
+                             AND prior.play_id < p.play_id)
+                       )
+                   ) AS previous_score,
+                   (
+                     SELECT MAX(prior.ex_score)
+                     FROM plays prior
+                     WHERE prior.song_id = p.song_id AND prior.chart_id = p.chart_id
+                       AND (
+                         julianday(prior.played_at) < julianday(p.played_at)
+                         OR (julianday(prior.played_at) = julianday(p.played_at)
+                             AND prior.played_at < p.played_at)
+                         OR (julianday(prior.played_at) = julianday(p.played_at)
+                             AND prior.played_at = p.played_at
+                             AND prior.play_id < p.play_id)
+                       )
+                   ) AS previous_ex_score
+            FROM plays p
+            LEFT JOIN source_captures sc ON sc.capture_id = p.source_capture_id
+            WHERE p.song_id = $song_id AND p.chart_id = $chart_id
+            ORDER BY {(orderByExScore ? "p.ex_score DESC, p.score DESC" : "p.score DESC, p.ex_score DESC")},
+                     julianday(p.played_at) DESC, p.played_at DESC, p.play_id DESC
+            LIMIT 1;
+            """;
+        command.Parameters.AddWithValue("$song_id", songId);
+        command.Parameters.AddWithValue("$chart_id", chartId);
+        using var reader = command.ExecuteReader();
+        return reader.Read() ? ReadHomePlayItem(reader, masterCharts) : null;
+    }
+
+    private static (int TodayPlayCount, int TodayScoreUpdateCount, int TodayExScoreUpdateCount,
+        int TodayFullComboCount) ReadHomeTodayCounts(SqliteConnection connection)
+    {
+        var now = DateTimeOffset.Now;
+        var start = new DateTimeOffset(now.Date, now.Offset).ToUniversalTime();
+        var end = start.AddDays(1);
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            WITH projected AS (
+              SELECT p.created_at, p.score, p.ex_score, p.clear_type,
+                     (
+                       SELECT MAX(prior.score)
+                       FROM plays prior
+                       WHERE prior.song_id = p.song_id AND prior.chart_id = p.chart_id
+                         AND (
+                           julianday(prior.played_at) < julianday(p.played_at)
+                           OR (julianday(prior.played_at) = julianday(p.played_at)
+                               AND prior.played_at < p.played_at)
+                           OR (julianday(prior.played_at) = julianday(p.played_at)
+                               AND prior.played_at = p.played_at
+                               AND prior.play_id < p.play_id)
+                         )
+                     ) AS previous_score,
+                     (
+                       SELECT MAX(prior.ex_score)
+                       FROM plays prior
+                       WHERE prior.song_id = p.song_id AND prior.chart_id = p.chart_id
+                         AND (
+                           julianday(prior.played_at) < julianday(p.played_at)
+                           OR (julianday(prior.played_at) = julianday(p.played_at)
+                               AND prior.played_at < p.played_at)
+                           OR (julianday(prior.played_at) = julianday(p.played_at)
+                               AND prior.played_at = p.played_at
+                               AND prior.play_id < p.play_id)
+                         )
+                     ) AS previous_ex_score
+              FROM plays p
+            )
+            SELECT COUNT(*),
+                   COALESCE(SUM(
+                     CASE WHEN previous_score IS NOT NULL AND score > previous_score
+                          THEN 1 ELSE 0 END), 0),
+                   COALESCE(SUM(
+                     CASE WHEN previous_ex_score IS NOT NULL AND ex_score > previous_ex_score
+                          THEN 1 ELSE 0 END), 0),
+                   COALESCE(SUM(
+                     CASE WHEN clear_type IN ('PFC', 'GFC', 'FC', 'FULL COMBO', 'MFC')
+                          THEN 1 ELSE 0 END), 0)
+            FROM projected
+            WHERE julianday(created_at) >= julianday($start)
+              AND julianday(created_at) < julianday($end);
+            """;
+        command.Parameters.AddWithValue("$start", start.ToString("O"));
+        command.Parameters.AddWithValue("$end", end.ToString("O"));
+        using var reader = command.ExecuteReader();
+        if (!reader.Read())
+        {
+            return (0, 0, 0, 0);
+        }
+
+        return (
+            reader.GetInt32(0),
+            reader.GetInt32(1),
+            reader.GetInt32(2),
+            reader.GetInt32(3));
+    }
+
+    private static int ReadPlayCount(SqliteConnection connection)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT COUNT(*) FROM plays;";
+        return Convert.ToInt32(command.ExecuteScalar());
+    }
+
+    private static string ReadLastSavedAt(SqliteConnection connection)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT MAX(created_at) FROM plays;";
+        return Convert.ToString(command.ExecuteScalar()) ?? "";
+    }
+
+    private static int ReadChartPlayCount(
+        SqliteConnection connection,
+        string songId,
+        string chartId)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            "SELECT COUNT(*) FROM plays WHERE song_id = $song_id AND chart_id = $chart_id;";
+        command.Parameters.AddWithValue("$song_id", songId);
+        command.Parameters.AddWithValue("$chart_id", chartId);
+        return Convert.ToInt32(command.ExecuteScalar());
+    }
+
+    private static int ReadChartFullComboCount(
+        SqliteConnection connection,
+        string songId,
+        string chartId)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT COUNT(*)
+            FROM plays
+            WHERE song_id = $song_id AND chart_id = $chart_id
+              AND clear_type IN ('PFC', 'GFC', 'FC', 'FULL COMBO', 'MFC');
+            """;
+        command.Parameters.AddWithValue("$song_id", songId);
+        command.Parameters.AddWithValue("$chart_id", chartId);
+        return Convert.ToInt32(command.ExecuteScalar());
+    }
+
+    private static PlayHistoryItem ReadPlayHistoryItem(
+        SqliteDataReader reader,
+        IReadOnlyDictionary<string, MasterChart> masterCharts)
+    {
+        var songId = reader.GetString(3);
+        var chartId = reader.GetString(4);
+        var found = masterCharts.TryGetValue(chartId, out var chart) && chart.SongId == songId;
+        return new PlayHistoryItem(
+            reader.GetString(0), reader.GetString(1), reader.GetString(2), songId, chartId,
+            found ? chart!.Title : $"参照情報なし（{songId}）",
+            found ? chart!.PlayStyle : "",
+            found ? chart!.Difficulty : "参照情報なし",
+            found ? chart!.Level : null,
+            reader.GetInt32(5), reader.GetInt32(6), reader.GetString(7), reader.GetString(8),
+            reader.IsDBNull(9) ? null : reader.GetString(9), reader.GetInt32(10),
+            reader.GetInt32(11), reader.GetInt32(12), reader.GetInt32(13), reader.GetInt32(14),
+            reader.GetInt32(15), reader.GetString(16), !found);
+    }
+
+    private static HomePlayItem ReadHomePlayItem(
+        SqliteDataReader reader,
+        IReadOnlyDictionary<string, MasterChart> masterCharts)
+    {
+        var play = ReadPlayHistoryItem(reader, masterCharts);
+        return new HomePlayItem(
+            play,
+            ReadNullableInt32(reader, 17),
+            ReadNullableInt32(reader, 18));
+    }
+
+    private static int? ReadNullableInt32(SqliteDataReader reader, int ordinal) =>
+        reader.IsDBNull(ordinal) ? null : reader.GetInt32(ordinal);
 
     private static IReadOnlyList<ChartBestItem> ReadChartCatalog(
         IReadOnlyDictionary<string, MasterChart> masterCharts) =>
@@ -1056,6 +1629,15 @@ public sealed class ScoreViewerRepository
         command.CommandText =
             "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = $table;";
         command.Parameters.AddWithValue("$table", table);
+        return Convert.ToString(command.ExecuteScalar()) ?? string.Empty;
+    }
+
+    private static string ReadIndexSql(SqliteConnection connection, string index)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            "SELECT sql FROM sqlite_master WHERE type = 'index' AND name = $index;";
+        command.Parameters.AddWithValue("$index", index);
         return Convert.ToString(command.ExecuteScalar()) ?? string.Empty;
     }
 

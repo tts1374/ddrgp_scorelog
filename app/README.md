@@ -1,17 +1,19 @@
 # GP Score Log WPF app
 
-正式個人スコアDB version 1を開き、保存済みプレー履歴、プレー詳細、譜面別自己ベストを確認するWPFアプリです。通常画面は`監視開始`／`監視停止`による監視を提供し、設定がON（初期値）なら起動後にDDR GRAND PRIX windowを1秒ごとに探索して、2回連続で検出した対象へ自動接続します。Debug buildだけが開発者向け領域から1フレーム取得、連続取得、単発保存を提供します。手動の`監視開始`でも、`process=ddr-konaste` かつ client `1280x720` のtop-level windowを自動特定し、該当1件だけへ接続します。監視中は1秒ごとに `results_header` を確認し、RESULT画面の候補が2回連続して安定した場合だけ既存のevent boundaryと正式保存workflowへ渡します。該当windowが0件または複数件なら推測で選択せず、capture・解析・正式保存を開始しません。監視中の候補画像はsession原本として保管せず、一時workflow入力の処理後に破棄します。監視状態と最新結果はWPFとtask trayから確認できます。productionのインストール済みpackageでは、main window表示後にGitHub Releasesのアプリ更新を非同期確認し、更新があれば自動でdownload・完全終了・再起動を行います。確認、download、適用に失敗した場合やofflineの場合は、現在のversionで通常利用を続けます。正式個人スコアDB、M4 master DB、M5b jacket reference catalogは環境ごとの固定pathで扱い、次回起動時に3つとも検証して再利用します。DBの任意path選択、汎用window探索、手動pickerへのfallback、DB repairは提供しません。手動停止後は同一app session中に自動再開せず、DB・runtime・更新・終了処理の異常時も自動開始しません。score DB migrationは対応する明示的converterがあるschema変更時だけ行い、事前backupと失敗時rollbackを必須とします。
+正式個人スコアDB version 2を開き、保存済みプレー履歴、プレー詳細、譜面別自己ベストを確認するWPFアプリです。通常画面は`監視開始`／`監視停止`による監視を提供し、設定がON（初期値）なら起動後にDDR GRAND PRIX windowを1秒ごとに探索して、2回連続で検出した対象へ自動接続します。Debug buildだけが開発者向け領域から1フレーム取得、連続取得、単発保存を提供します。手動の`監視開始`でも、`process=ddr-konaste` かつ client `1280x720` のtop-level windowを自動特定し、該当1件だけへ接続します。監視中は1秒ごとに `results_header` を確認し、RESULT画面の候補が2回連続して安定した場合だけ既存のevent boundaryと正式保存workflowへ渡します。該当windowが0件または複数件なら推測で選択せず、capture・解析・正式保存を開始しません。監視中の候補画像はsession原本として保管せず、一時workflow入力の処理後に破棄します。監視状態と最新結果はWPFとtask trayから確認できます。productionのインストール済みpackageでは、main window表示後にGitHub Releasesのアプリ更新を非同期確認し、更新があれば自動でdownload・完全終了・再起動を行います。確認、download、適用に失敗した場合やofflineの場合は、現在のversionで通常利用を続けます。正式個人スコアDB、M4 master DB、M5b jacket reference catalogは環境ごとの固定pathで扱い、次回起動時に3つとも検証して再利用します。DBの任意path選択、汎用window探索、手動pickerへのfallback、DB repairは提供しません。手動停止後は同一app session中に自動再開せず、DB・runtime・更新・終了処理の異常時も自動開始しません。score DB migrationは対応する明示的converterがあるschema変更時だけ行い、事前backupと失敗時rollbackを必須とします。
 
 ## 必要環境
 
 - Windows 11
 - .NET 10 SDK
 - Release packageに含まれるapp-owned runtime資材（`RuntimeAssets/`）
-- 正式個人スコアDB version 1（例: `ddrgp-scores.sqlite`）
+- 正式個人スコアDB version 2（例: `ddrgp-scores.sqlite`）
 - 別のmaster DB生成workflowで作られたM4 master DB
 - current schema version 1のM5b jacket reference catalog（`jacket-catalog.sqlite`）
 
 ローカルDBはGit管理しません。developmentでは`databases/`、productionでは`%LOCALAPPDATA%\DDRGpScoreViewer\data\`配下のIssue固定pathへ配置してください。DBのファイル選択はアプリから行いません。
+
+viewerの初期取得は、最近プレー履歴50件、譜面詳細履歴10件、選択譜面グラフの最新100件に限定します。最近履歴は下端到達ごとに50件、譜面詳細履歴は `続きを見る` ごとに10件追加し、件数・bests・ホーム集計・自己ベスト差分は正式DBの全履歴queryで算出します。譜面詳細の履歴一覧は外側の画面scrollだけを使います。
 
 通常のインストール、初回起動、監視、画面操作、設定、backup / restore、更新、終了、トラブルシューティングは[`docs/user-guide.md`](../docs/user-guide.md)を正本とします。このREADMEは、利用ガイドから参照される開発者向けbuild、runtime、保存境界、package、validationの技術契約を保持します。
 

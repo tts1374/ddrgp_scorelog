@@ -54,7 +54,7 @@ DDR GP scorelog の設計、PoC、テストで使う主要用語を定義する�
 | `M7 result field recognition` | `RESULT状態認識根拠`へ進めるrank/clear_type/flare_rankを専用規則で認識する工程 | FAILED/E gate、score-derived rank、judgment-count clear type、independent flare badge | candidate/raw/previewのformal昇格 |
 | `app-owned formal evidence bridge` | confirmed RESULT observationに明示された要件別source/confidenceを検査し、既存M8 formal save inputへ接続する境界 | `RESULT同定根拠`、`RESULT数値認識根拠`、`RESULT状態認識根拠`、`capture event根拠`、`unresolved`理由 | `identity_signal_*`、`recognized_digits`、candidate、expected、preview、known-resultの正式値昇格 |
 | `M7 result-text feature` | resultのtitle/artist ROIからOCRなしの画像featureを作る補助工程 | `jacket-catalog.sqlite` の `result_text_features`、`m7_result_text_feature_master.*` 診断出力 | OCR文字列、曲ID確定、正式保存値 |
-| `M8 formal personal score DB` | version 1正式DB、duplicate、transaction、明示単発保存を扱う工程 | `ddrgp-scores.sqlite`、formal save input | 候補材料の自動昇格、M8 preview DBの受入れ |
+| `M8 formal personal score DB` | version 2正式DB、duplicate、transaction、明示単発保存を扱う工程 | `ddrgp-scores.sqlite`、formal save input | 候補材料の自動昇格、M8 preview DBの受入れ |
 | `M9 application/runtime` | app package-owned runtimeでviewer、Windows capture、capture-save、監視UI、task trayを接続する工程 | WPF app、app-owned runtime、capture-save workflow | 新しい数字認識方式やDB schema |
 | `M10 initial release` | 単一ユーザー向けの配布・依存固定・backup/restoreを固める工程 | installer/配布手順、lock file、運用docs | cloud運用、複数ユーザー、enterprise機能 |
 

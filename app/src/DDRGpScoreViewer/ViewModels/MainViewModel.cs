@@ -15,6 +15,8 @@ namespace DDRGpScoreViewer.ViewModels;
 public sealed class MainViewModel : INotifyPropertyChanged
 {
     private const int ChartBestPageSize = 50;
+    private const int RecentPlayPageSize = ScoreViewerRepository.RecentPlayPageSize;
+    private const int ChartDetailHistoryPageSize = ScoreViewerRepository.ChartDetailHistoryPageSize;
     public const string AllBestFilterValue = "all";
     public const string BestSortScoreDescending = "score_desc";
     public const string BestSortScoreAscending = "score_asc";
@@ -78,6 +80,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private HomePlayItem? chartDetailExScoreBestPlay;
     private IReadOnlyList<HomePlayItem> chartDetailAllPlayPoints = [];
     private IReadOnlyList<HomePlayItem> chartDetailBestPlayPoints = [];
+    private int chartDetailTotalCount;
+    private int chartDetailFullComboCount;
     private string chartDetailGraphMode = ChartDetailAllPlaysMode;
     private IReadOnlyList<ChartBestItem> allChartBests = [];
     private IReadOnlyList<LocalizedOption> bestVersionOptions =
@@ -93,6 +97,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private string bestSortFilter = BestSortScoreDescending;
     private int chartBestDisplayedCount;
     private int chartBestTotalCount;
+    private int totalPlayCount;
+    private string lastSavedAt = "";
     private bool suppressBestFilterRefresh;
     private int homeTodayPlayCount;
     private int homeTodayScoreUpdateCount;
@@ -551,6 +557,22 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public HomePlayItem? ChartDetailLatestPlay => chartDetailLatestPlay;
 
+    public int ChartDetailDisplayedCount => ChartDetailHistory.Count;
+
+    public int ChartDetailTotalCount => chartDetailTotalCount;
+
+    public bool CanLoadMoreChartDetailHistory =>
+        ChartDetailDisplayedCount < ChartDetailTotalCount;
+
+    public System.Windows.Visibility ChartDetailLoadMoreVisibility =>
+        CanLoadMoreChartDetailHistory
+            ? System.Windows.Visibility.Visible
+            : System.Windows.Visibility.Collapsed;
+
+    public string ChartDetailHistoryLoadMoreHintDisplay => CanLoadMoreChartDetailHistory
+        ? Localization.Get("続きを見ると次の10プレーを表示")
+        : Localization.Format("全{0}プレーを表示中", ChartDetailTotalCount);
+
     public string ChartDetailSongTitle => selectedChartBest?.SongTitle ?? "—";
 
     public string ChartDetailPlayStyleDisplay => selectedChartBest?.PlayStyleDisplay ?? "—";
@@ -622,23 +644,33 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public string ChartDetailExScoreBestAtDisplay => chartDetailExScoreBestPlay?.Play.PlayedAtDisplay ?? "—";
 
     public string ChartDetailPlayCountDisplay =>
-        Localization.Format("{0}回", ChartDetailHistory.Count);
+        Localization.Format("{0}回", ChartDetailTotalCount);
 
     public string ChartDetailHistoryCountDisplay =>
-        Localization.Format("{0}件", ChartDetailHistory.Count);
+        Localization.Format("{0}件", ChartDetailTotalCount);
 
     public string ChartDetailFullComboCountDisplay =>
-        Localization.Format("{0}回", ChartDetailHistory.Count(IsFullCombo));
+        Localization.Format("{0}回", chartDetailFullComboCount);
 
     public System.Windows.Visibility ChartDetailPlayVisibility =>
-        ChartDetailHistory.Count == 0
+        ChartDetailTotalCount == 0
             ? System.Windows.Visibility.Collapsed
             : System.Windows.Visibility.Visible;
 
     public System.Windows.Visibility ChartDetailEmptyVisibility =>
-        ChartDetailHistory.Count == 0
+        ChartDetailTotalCount == 0
             ? System.Windows.Visibility.Visible
             : System.Windows.Visibility.Collapsed;
+
+    public System.Windows.Visibility ChartDetailBestProgressionEmptyVisibility =>
+        ChartDetailTotalCount > 0 &&
+        ChartDetailGraphMode == ChartDetailBestProgressionMode &&
+        chartDetailBestPlayPoints.Count == 0
+            ? System.Windows.Visibility.Visible
+            : System.Windows.Visibility.Collapsed;
+
+    public string ChartDetailBestProgressionEmptyMessage =>
+        Localization.Get("直近100プレー内に自己ベスト更新はありません。");
 
     public string BestPlayStyleFilter
     {
@@ -823,6 +855,20 @@ public sealed class MainViewModel : INotifyPropertyChanged
         ? Localization.Get("下端までスクロールすると次の50譜面を表示")
         : Localization.Format("全{0}譜面を表示中", ChartBestTotalCount);
 
+    public bool CanLoadMorePlays => Plays.Count < totalPlayCount;
+
+    public int RecentPlayDisplayedCount => Plays.Count;
+
+    public int RecentPlayTotalCount => totalPlayCount;
+
+    public string RecentPlayRangeDisplay => totalPlayCount == 0
+        ? Localization.Format("表示 {0}件 / 全{1}件", 0, 0)
+        : Localization.Format("表示 1〜{0}件 / 全{1}件", Plays.Count, totalPlayCount);
+
+    public string RecentPlayLoadMoreHintDisplay => CanLoadMorePlays
+        ? Localization.Get("下端までスクロールすると次の50プレーを表示")
+        : Localization.Format("全{0}プレーを表示中", totalPlayCount);
+
     public string BestActiveFilterSummary => BestActiveFilterChips.Count == 0
         ? Localization.Get("適用中: なし")
         : Localization.Format(
@@ -911,15 +957,15 @@ public sealed class MainViewModel : INotifyPropertyChanged
             : System.Windows.Visibility.Collapsed;
 
     public string DataManagementPlayCountDisplay =>
-        Localization.Format("{0}件", Plays.Count);
+        Localization.Format("{0}件", totalPlayCount);
 
     public string DataManagementBestChartCountDisplay =>
         Localization.Format("{0}譜面", allChartBests.Count(item => item.IsPlayed));
 
-    public string DataManagementLastSavedDisplay => Plays.Count == 0
+    public string DataManagementLastSavedDisplay => totalPlayCount == 0
         ? "—"
         : ViewerTimestampFormatter.Format(
-            Plays.Max(play => play.SavedAt) ?? "—",
+            lastSavedAt,
             "yyyy/MM/dd HH:mm:ss");
 
     public string PersonalScoreDataStatusDisplay => Localization.Get(personalScoreDataStatus);
@@ -3603,7 +3649,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
                     data.CatalogDatabasePath,
                     persist);
             }
-            if (Plays.Count == 0)
+            if (totalPlayCount == 0)
             {
                 HasData = false;
                 StatusTitle = "まだプレーデータがありません";
@@ -3725,7 +3771,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
                         persist: true);
                 }
                 SaveStatusTitle = "プレーを保存しました";
-                SaveStatusMessage = "正式v1 DBをread-onlyで再読込し、履歴と自己ベストへ反映しました。";
+                SaveStatusMessage = "正式v2 DBをread-onlyで再読込し、履歴と自己ベストへ反映しました。";
                 return;
             }
             (SaveStatusTitle, SaveStatusMessage) = Present(result);
@@ -3770,23 +3816,29 @@ public sealed class MainViewModel : INotifyPropertyChanged
         int? preservedDisplayedCount = allChartBests.Count > 0
             ? ChartBestDisplayedCount
             : null;
-        Replace(Plays, data.Plays);
-        allChartBests = MergeChartBests(data.ChartBests, data.ChartCatalog);
-        UpdateBestVersionOptions();
-        RefreshChartBests(
-            resetDisplayedCount: true,
-            selectedChartKey: selectedChartKey,
-            preservedDisplayedCount: preservedDisplayedCount);
-        ApplyHomeData(data.Plays);
-        bundledChartCount = data.ChartCatalog.Count;
-        personalScoreDataStatus = "正常";
-        MasterVersion = data.MasterVersion;
         ScoreDatabasePath = data.ScoreDatabasePath;
         MasterDatabasePath = data.MasterDatabasePath;
         if (!string.IsNullOrWhiteSpace(data.CatalogDatabasePath))
         {
             CatalogDatabasePath = data.CatalogDatabasePath;
         }
+        Replace(Plays, data.Plays);
+        totalPlayCount = data.TotalPlayCount >= 0
+            ? data.TotalPlayCount
+            : data.Plays.Count;
+        lastSavedAt = string.IsNullOrWhiteSpace(data.LastSavedAt)
+            ? data.Plays.Select(play => play.SavedAt).FirstOrDefault() ?? ""
+            : data.LastSavedAt;
+        allChartBests = MergeChartBests(data.ChartBests, data.ChartCatalog);
+        UpdateBestVersionOptions();
+        RefreshChartBests(
+            resetDisplayedCount: true,
+            selectedChartKey: selectedChartKey,
+            preservedDisplayedCount: preservedDisplayedCount);
+        ApplyHomeData(data.Home, data.Plays);
+        bundledChartCount = data.ChartCatalog.Count;
+        personalScoreDataStatus = "正常";
+        MasterVersion = data.MasterVersion;
         ApplyMasterDatabaseInspection(
             new MasterDatabaseInspection(
                 data.MasterDatabasePath,
@@ -3803,22 +3855,27 @@ public sealed class MainViewModel : INotifyPropertyChanged
                     "1"));
         }
         SelectedPlay = Plays.FirstOrDefault();
-        HasData = Plays.Count > 0;
+        HasData = totalPlayCount > 0;
+        NotifyRecentPlayListState();
         NotifyDataManagementState();
     }
 
     private void ClearLoadedData()
     {
         Plays.Clear();
+        totalPlayCount = 0;
+        lastSavedAt = "";
         allChartBests = [];
         UpdateBestVersionOptions();
         RefreshChartBests(resetDisplayedCount: true);
         ClearHomeData();
+        ClearChartDetailData();
         SelectedPlay = null;
         MasterVersion = "—";
         bundledChartCount = 0;
         personalScoreDataStatus = "確認できません";
         HasData = false;
+        NotifyRecentPlayListState();
         NotifyDataManagementState();
     }
 
@@ -3841,6 +3898,49 @@ public sealed class MainViewModel : INotifyPropertyChanged
             ChartBests.Add(chartBest);
         }
         NotifyChartBestListState();
+    }
+
+    public void LoadMorePlays()
+    {
+        if (!CanLoadMorePlays)
+        {
+            return;
+        }
+
+        var nextPage = repository.LoadRecentPlays(
+            ScoreDatabasePath,
+            MasterDatabasePath,
+            Plays.Count,
+            RecentPlayPageSize);
+        foreach (var play in nextPage)
+        {
+            Plays.Add(play);
+        }
+        NotifyRecentPlayListState();
+        NotifyDataManagementState();
+    }
+
+    public void LoadMoreChartDetailHistory()
+    {
+        if (selectedChartBest is null || !CanLoadMoreChartDetailHistory)
+        {
+            return;
+        }
+
+        var detail = repository.LoadChartDetail(
+            ScoreDatabasePath,
+            MasterDatabasePath,
+            selectedChartBest.SongId,
+            selectedChartBest.ChartId,
+            ChartDetailHistory.Count,
+            ChartDetailHistoryPageSize);
+        foreach (var play in detail.History)
+        {
+            ChartDetailHistory.Add(play);
+        }
+        chartDetailTotalCount = detail.TotalPlayCount;
+        chartDetailFullComboCount = detail.FullComboCount;
+        NotifyChartDetailProperties();
     }
 
     public void SelectChartBest(ChartBestItem? chartBest)
@@ -3873,6 +3973,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
 
         OnPropertyChanged(nameof(ChartDetailGraphPlays));
+        OnPropertyChanged(nameof(ChartDetailBestProgressionEmptyVisibility));
         ChartDetailUpdated?.Invoke(this, EventArgs.Empty);
     }
 
@@ -3950,36 +4051,49 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private void RefreshChartDetail()
     {
         var selected = selectedChartBest;
-        var chartPlays = selected is null
-            ? Array.Empty<PlayHistoryItem>()
-            : Plays
-                .Where(play => play.SongId == selected.SongId && play.ChartId == selected.ChartId)
-                .ToArray();
-        var projected = BuildHomePlayItems(chartPlays);
+        if (selected is null)
+        {
+            ClearChartDetailData();
+            return;
+        }
 
-        Replace(ChartDetailHistory, projected);
+        var detail = repository.LoadChartDetail(
+            ScoreDatabasePath,
+            MasterDatabasePath,
+            selected.SongId,
+            selected.ChartId,
+            0,
+            ChartDetailHistoryPageSize);
+        ApplyChartDetailData(detail);
+    }
+
+    private void ApplyChartDetailData(ChartDetailData detail)
+    {
+        Replace(ChartDetailHistory, detail.History);
+        chartDetailTotalCount = detail.TotalPlayCount;
+        chartDetailFullComboCount = detail.FullComboCount;
         chartDetailLatestPlay = ChartDetailHistory.FirstOrDefault();
-        chartDetailScoreBestPlay = projected
-            .OrderByDescending(play => play.Play.Score)
-            .ThenByDescending(play => play.Play.ExScore)
-            .ThenByDescending(play => ParseTimestamp(play.Play.PlayedAt))
-            .ThenByDescending(play => play.Play.PlayId, StringComparer.Ordinal)
-            .FirstOrDefault();
-        chartDetailExScoreBestPlay = projected
-            .OrderByDescending(play => play.Play.ExScore)
-            .ThenByDescending(play => play.Play.Score)
-            .ThenByDescending(play => ParseTimestamp(play.Play.PlayedAt))
-            .ThenByDescending(play => play.Play.PlayId, StringComparer.Ordinal)
-            .FirstOrDefault();
-        chartDetailAllPlayPoints = projected
-            .OrderBy(play => ParseTimestamp(play.Play.PlayedAt))
-            .ThenBy(play => play.Play.PlayId, StringComparer.Ordinal)
-            .ToArray();
-        chartDetailBestPlayPoints = chartDetailAllPlayPoints
-            .Where(play => play.PreviousScore is null || play.IsScoreBestUpdate)
-            .ToArray();
+        chartDetailScoreBestPlay = detail.ScoreBestPlay;
+        chartDetailExScoreBestPlay = detail.ExScoreBestPlay;
+        chartDetailAllPlayPoints = detail.AllPlayPoints;
+        chartDetailBestPlayPoints = detail.BestPlayPoints;
         ChartDetailGraphMode = ChartDetailAllPlaysMode;
 
+        NotifyChartDetailProperties();
+        ChartDetailUpdated?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void ClearChartDetailData()
+    {
+        ChartDetailHistory.Clear();
+        chartDetailTotalCount = 0;
+        chartDetailFullComboCount = 0;
+        chartDetailLatestPlay = null;
+        chartDetailScoreBestPlay = null;
+        chartDetailExScoreBestPlay = null;
+        chartDetailAllPlayPoints = [];
+        chartDetailBestPlayPoints = [];
+        chartDetailGraphMode = ChartDetailAllPlaysMode;
         NotifyChartDetailProperties();
         ChartDetailUpdated?.Invoke(this, EventArgs.Empty);
     }
@@ -4013,11 +4127,18 @@ public sealed class MainViewModel : INotifyPropertyChanged
                      nameof(ChartDetailFlareBadgeGroup),
                      nameof(ChartDetailScoreBestAtDisplay),
                      nameof(ChartDetailExScoreBestAtDisplay),
+                     nameof(ChartDetailDisplayedCount),
+                     nameof(ChartDetailTotalCount),
+                     nameof(CanLoadMoreChartDetailHistory),
+                     nameof(ChartDetailLoadMoreVisibility),
+                     nameof(ChartDetailHistoryLoadMoreHintDisplay),
                      nameof(ChartDetailPlayCountDisplay),
                      nameof(ChartDetailHistoryCountDisplay),
                      nameof(ChartDetailFullComboCountDisplay),
                      nameof(ChartDetailPlayVisibility),
                      nameof(ChartDetailEmptyVisibility),
+                     nameof(ChartDetailBestProgressionEmptyVisibility),
+                     nameof(ChartDetailBestProgressionEmptyMessage),
                  })
         {
             OnPropertyChanged(propertyName);
@@ -4029,6 +4150,15 @@ public sealed class MainViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(CanLoadMoreChartBests));
         OnPropertyChanged(nameof(ChartBestRangeDisplay));
         OnPropertyChanged(nameof(ChartBestLoadMoreHintDisplay));
+    }
+
+    private void NotifyRecentPlayListState()
+    {
+        OnPropertyChanged(nameof(RecentPlayDisplayedCount));
+        OnPropertyChanged(nameof(RecentPlayTotalCount));
+        OnPropertyChanged(nameof(CanLoadMorePlays));
+        OnPropertyChanged(nameof(RecentPlayRangeDisplay));
+        OnPropertyChanged(nameof(RecentPlayLoadMoreHintDisplay));
     }
 
     private void UpdateBestVersionOptions()
@@ -4292,6 +4422,32 @@ public sealed class MainViewModel : INotifyPropertyChanged
             merged[(item.SongId, item.ChartId)] = item;
         }
         return merged.Values.ToArray();
+    }
+
+    private void ApplyHomeData(
+        HomeDisplayData? homeData,
+        IReadOnlyList<PlayHistoryItem> fallbackPlays)
+    {
+        if (homeData is null)
+        {
+            ApplyHomeData(fallbackPlays);
+            return;
+        }
+
+        HomeLatestPlay = homeData.LatestPlay;
+        Replace(HomeRecentPlays, homeData.RecentPlays);
+        Replace(HomeBestUpdates, homeData.BestUpdates);
+        HomeTodayDateDisplay = DateTimeOffset.Now.ToString(
+            "yyyy/MM/dd",
+            CultureInfo.CurrentCulture);
+        HomeTodayPlayCount = homeData.TodayPlayCount;
+        HomeTodayScoreUpdateCount = homeData.TodayScoreUpdateCount;
+        HomeTodayExScoreUpdateCount = homeData.TodayExScoreUpdateCount;
+        HomeTodayFullComboCount = homeData.TodayFullComboCount;
+        totalPlayCount = homeData.TotalPlayCount;
+        lastSavedAt = homeData.LastSavedAt;
+        OnPropertyChanged(nameof(HasHomeBestUpdates));
+        OnPropertyChanged(nameof(HomeBestUpdateSummaryDisplay));
     }
 
     private void ApplyHomeData(IReadOnlyList<PlayHistoryItem> plays)

@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using DDRGpScoreViewer.Data;
 using DDRGpScoreViewer.Models;
+using Microsoft.Data.Sqlite;
 using Xunit;
 
 namespace DDRGpScoreViewer.Tests;
@@ -232,9 +233,141 @@ public sealed class ScoreViewerRepositoryTests
     }
 
     [Theory]
+    [InlineData(0)]
+    [InlineData(49)]
+    [InlineData(50)]
+    [InlineData(51)]
+    [InlineData(100)]
+    [InlineData(101)]
+    public void Load_reads_only_the_first_recent_play_page(int count)
+    {
+        using var fixture = new DatabaseFixture();
+        AddChronologicalPlays(fixture, count);
+
+        var data = new ScoreViewerRepository().Load(fixture.ScorePath, fixture.MasterPath);
+
+        Assert.Equal(Math.Min(count, ScoreViewerRepository.RecentPlayPageSize), data.Plays.Count);
+        Assert.Equal(count, data.TotalPlayCount);
+        Assert.Equal(
+            count == 0 ? null : $"play-{count - 1:000}",
+            data.Home?.LatestPlay?.Play.PlayId);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(9)]
+    [InlineData(10)]
+    [InlineData(11)]
+    [InlineData(20)]
+    [InlineData(21)]
+    public void LoadChartDetail_reads_history_pages_and_full_chart_aggregates(int count)
+    {
+        using var fixture = new DatabaseFixture();
+        AddChronologicalPlays(fixture, count);
+        var repository = new ScoreViewerRepository();
+
+        var firstPage = repository.LoadChartDetail(
+            fixture.ScorePath,
+            fixture.MasterPath,
+            "song-1",
+            "chart-1",
+            0,
+            ScoreViewerRepository.ChartDetailHistoryPageSize);
+        var secondPage = repository.LoadChartDetail(
+            fixture.ScorePath,
+            fixture.MasterPath,
+            "song-1",
+            "chart-1",
+            ScoreViewerRepository.ChartDetailHistoryPageSize,
+            ScoreViewerRepository.ChartDetailHistoryPageSize);
+
+        Assert.Equal(Math.Min(count, 10), firstPage.History.Count);
+        Assert.Equal(Math.Max(0, Math.Min(count - 10, 10)), secondPage.History.Count);
+        Assert.Equal(count, firstPage.TotalPlayCount);
+        Assert.Equal(count, firstPage.AllPlayPoints.Count);
+        Assert.Equal(count, secondPage.TotalPlayCount);
+    }
+
+    [Theory]
+    [InlineData(99)]
+    [InlineData(100)]
+    [InlineData(101)]
+    public void LoadChartDetail_limits_graph_points_to_the_newest_100_plays(int count)
+    {
+        using var fixture = new DatabaseFixture();
+        AddChronologicalPlays(fixture, count);
+
+        var detail = new ScoreViewerRepository().LoadChartDetail(
+            fixture.ScorePath,
+            fixture.MasterPath,
+            "song-1",
+            "chart-1",
+            0,
+            ScoreViewerRepository.ChartDetailHistoryPageSize);
+
+        Assert.Equal(Math.Min(count, ScoreViewerRepository.ChartDetailGraphPageSize), detail.AllPlayPoints.Count);
+        Assert.Equal(count, detail.TotalPlayCount);
+        Assert.Equal(Math.Min(count, ScoreViewerRepository.ChartDetailGraphPageSize), detail.BestPlayPoints.Count);
+    }
+
+    [Fact]
+    public void LoadChartDetail_uses_all_history_for_self_best_delta_when_old_best_is_outside_graph()
+    {
+        using var fixture = new DatabaseFixture();
+        fixture.AddPlay("old-best", "2026-01-01T00:00:00+00:00", 900_000, 1_000);
+        for (var index = 1; index <= 100; index++)
+        {
+            fixture.AddPlay(
+                $"play-{index:000}",
+                DateTimeOffset.Parse("2026-01-01T00:00:00+00:00").AddMinutes(index).ToString("O"),
+                index == 100 ? 950_000 : 800_000,
+                index == 100 ? 1_500 : 900);
+        }
+
+        var detail = new ScoreViewerRepository().LoadChartDetail(
+            fixture.ScorePath,
+            fixture.MasterPath,
+            "song-1",
+            "chart-1",
+            0,
+            ScoreViewerRepository.ChartDetailHistoryPageSize);
+        var latest = Assert.Single(detail.AllPlayPoints, play => play.Play.PlayId == "play-100");
+
+        Assert.DoesNotContain(detail.AllPlayPoints, play => play.Play.PlayId == "old-best");
+        Assert.Equal(900_000, latest.PreviousScore);
+        Assert.True(latest.IsScoreBestUpdate);
+        Assert.Equal("↑ +50,000", latest.ScoreBestDeltaDisplay);
+        Assert.Contains(detail.BestPlayPoints, play => play.Play.PlayId == "play-100");
+    }
+
+    [Fact]
+    public void Chronological_play_queries_use_the_effective_order_indexes_without_temp_sort()
+    {
+        using var fixture = new DatabaseFixture();
+        var overallPlan = ExplainQueryPlan(
+            fixture.ScorePath,
+            "SELECT p.play_id FROM plays p " +
+            "LEFT JOIN source_captures sc ON sc.capture_id = p.source_capture_id " +
+            "ORDER BY julianday(p.played_at) DESC, p.played_at DESC, p.play_id DESC " +
+            "LIMIT 50 OFFSET 50;");
+        var chartPlan = ExplainQueryPlan(
+            fixture.ScorePath,
+            "SELECT p.play_id FROM plays p " +
+            "LEFT JOIN source_captures sc ON sc.capture_id = p.source_capture_id " +
+            "WHERE p.song_id = 'song-1' AND p.chart_id = 'chart-1' " +
+            "ORDER BY julianday(p.played_at) DESC, p.played_at DESC, p.play_id DESC " +
+            "LIMIT 10 OFFSET 10;");
+
+        Assert.Contains("idx_plays_played_at_order", overallPlan, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("idx_plays_song_chart_order", chartPlan, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("TEMP B-TREE", overallPlan, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("TEMP B-TREE", chartPlan, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Theory]
     [InlineData("CREATE TABLE preview_metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);")]
     [InlineData("UPDATE score_db_metadata SET value = 'other' WHERE key = 'schema_name';")]
-    [InlineData("PRAGMA user_version = 2;")]
+    [InlineData("PRAGMA user_version = 3;")]
     [InlineData("DELETE FROM schema_migrations;")]
     [InlineData("PRAGMA writable_schema = ON; " +
                 "UPDATE sqlite_schema SET sql = REPLACE(sql, " +
@@ -378,4 +511,37 @@ public sealed class ScoreViewerRepositoryTests
             1,
             "manual",
             false);
+
+    private static void AddChronologicalPlays(DatabaseFixture fixture, int count)
+    {
+        var start = DateTimeOffset.Parse("2026-01-01T00:00:00+00:00");
+        for (var index = 0; index < count; index++)
+        {
+            fixture.AddPlay(
+                $"play-{index:000}",
+                start.AddMinutes(index).ToString("O"),
+                800_000 + index * 10,
+                1_000 + index);
+        }
+    }
+
+    private static string ExplainQueryPlan(string path, string sql)
+    {
+        using var connection = new SqliteConnection(new SqliteConnectionStringBuilder
+        {
+            DataSource = path,
+            Mode = SqliteOpenMode.ReadOnly,
+            Pooling = false,
+        }.ToString());
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "EXPLAIN QUERY PLAN " + sql;
+        using var reader = command.ExecuteReader();
+        var details = new List<string>();
+        while (reader.Read())
+        {
+            details.Add(reader.GetString(3));
+        }
+        return string.Join("\n", details);
+    }
 }

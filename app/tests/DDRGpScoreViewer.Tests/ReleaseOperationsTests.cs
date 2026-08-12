@@ -395,9 +395,9 @@ public sealed class ReleaseOperationsTests
     public void Explicit_score_migration_keeps_one_backup_and_reopens_current_schema()
     {
         using var fixture = new DatabaseFixture();
-        MakeVersionZero(fixture.ScorePath);
+        MakeVersionOne(fixture.ScorePath);
         var before = SHA256.HashData(File.ReadAllBytes(fixture.ScorePath));
-        var service = new ScoreDatabaseMigrationService([new VersionZeroToOneMigration()]);
+        var service = new ScoreDatabaseMigrationService();
 
         var result = service.MigrateIfSupported(fixture.ScorePath);
 
@@ -410,10 +410,45 @@ public sealed class ReleaseOperationsTests
     }
 
     [Fact]
+    public void Score_v1_to_v2_migration_preserves_rows_bests_and_backup_snapshot()
+    {
+        using var fixture = new DatabaseFixture();
+        fixture.AddPlay("older", "2026-07-13T10:00:00+00:00", 900_000, 1_000);
+        fixture.AddPlay("newer", "2026-07-13T11:00:00+00:00", 950_000, 1_200);
+        fixture.ExecuteScoreSql(
+            "INSERT INTO analysis_logs (" +
+            "analysis_id, play_id, source_capture_id, analysis_status, " +
+            "save_boundary_status, event_type, confirmed_result, duplicate, " +
+            "confirmation_mode, app_version) VALUES (" +
+            "'analysis-1', 'newer', 'capture-newer', 'saved', 'saved', " +
+            "'fixture', 1, 0, 'fixture', 'test');");
+        var before = new ScoreViewerRepository().Load(fixture.ScorePath, fixture.MasterPath);
+        var beforeSourceCaptureCount = CountRows(fixture.ScorePath, "source_captures");
+        var beforeAnalysisLogCount = CountRows(fixture.ScorePath, "analysis_logs");
+        MakeVersionOne(fixture.ScorePath);
+
+        var migration = new ScoreDatabaseMigrationService().MigrateIfSupported(fixture.ScorePath);
+
+        Assert.True(migration.Succeeded, migration.Message);
+        Assert.True(migration.Migrated);
+        var after = new ScoreViewerRepository().Load(fixture.ScorePath, fixture.MasterPath);
+        Assert.Equal(before.Plays, after.Plays);
+        Assert.Equal(before.ChartBests, after.ChartBests);
+        Assert.Equal(beforeSourceCaptureCount, CountRows(fixture.ScorePath, "source_captures"));
+        Assert.Equal(beforeAnalysisLogCount, CountRows(fixture.ScorePath, "analysis_logs"));
+
+        var backupPath = Path.Combine(fixture.DirectoryPath, "migration-backup", "score.db.bak");
+        Assert.True(File.Exists(backupPath));
+        Assert.Equal(1, ReadUserVersion(backupPath));
+        Assert.Equal(beforeSourceCaptureCount, CountRows(backupPath, "source_captures"));
+        Assert.Equal(beforeAnalysisLogCount, CountRows(backupPath, "analysis_logs"));
+    }
+
+    [Fact]
     public void Failed_score_migration_restores_original_database()
     {
         using var fixture = new DatabaseFixture();
-        MakeVersionZero(fixture.ScorePath);
+        MakeVersionOne(fixture.ScorePath);
         var before = SHA256.HashData(File.ReadAllBytes(fixture.ScorePath));
         var service = new ScoreDatabaseMigrationService([new ThrowingMigration()]);
 
@@ -428,7 +463,7 @@ public sealed class ReleaseOperationsTests
     public void Newer_score_schema_is_rejected_without_changes()
     {
         using var fixture = new DatabaseFixture();
-        SetUserVersion(fixture.ScorePath, 2);
+        SetUserVersion(fixture.ScorePath, 3);
         var before = SHA256.HashData(File.ReadAllBytes(fixture.ScorePath));
 
         var result = new ScoreDatabaseMigrationService().MigrateIfSupported(fixture.ScorePath);
@@ -641,16 +676,18 @@ public sealed class ReleaseOperationsTests
         return (new HttpClient(handler), handler);
     }
 
-    private static void MakeVersionZero(string path)
+    private static void MakeVersionOne(string path)
     {
         using var connection = OpenWritable(path);
         using var transaction = connection.BeginTransaction();
         using var command = connection.CreateCommand();
         command.Transaction = transaction;
         command.CommandText =
-            "PRAGMA user_version = 0; " +
-            "UPDATE score_db_metadata SET value = '0' WHERE key = 'schema_version'; " +
-            "DELETE FROM schema_migrations;";
+            "DROP INDEX idx_plays_played_at_order; " +
+            "DROP INDEX idx_plays_song_chart_order; " +
+            "PRAGMA user_version = 1; " +
+            "UPDATE score_db_metadata SET value = '1' WHERE key = 'schema_version'; " +
+            "DELETE FROM schema_migrations WHERE migration_id = '002_play_order_indexes';";
         command.ExecuteNonQuery();
         transaction.Commit();
     }
@@ -661,6 +698,22 @@ public sealed class ReleaseOperationsTests
         using var command = connection.CreateCommand();
         command.CommandText = $"PRAGMA user_version = {version};";
         command.ExecuteNonQuery();
+    }
+
+    private static int CountRows(string path, string table)
+    {
+        using var connection = OpenWritable(path);
+        using var command = connection.CreateCommand();
+        command.CommandText = $"SELECT COUNT(*) FROM {table};";
+        return Convert.ToInt32(command.ExecuteScalar());
+    }
+
+    private static int ReadUserVersion(string path)
+    {
+        using var connection = OpenWritable(path);
+        using var command = connection.CreateCommand();
+        command.CommandText = "PRAGMA user_version;";
+        return Convert.ToInt32(command.ExecuteScalar());
     }
 
     private static SqliteConnection OpenWritable(string path)
@@ -675,34 +728,16 @@ public sealed class ReleaseOperationsTests
         return connection;
     }
 
-    private sealed class VersionZeroToOneMigration : IScoreDatabaseMigration
-    {
-        public int FromVersion => 0;
-        public int ToVersion => 1;
-
-        public void Apply(SqliteConnection connection, SqliteTransaction transaction)
-        {
-            using var command = connection.CreateCommand();
-            command.Transaction = transaction;
-            command.CommandText =
-                "PRAGMA user_version = 1; " +
-                "UPDATE score_db_metadata SET value = '1' WHERE key = 'schema_version'; " +
-                "INSERT INTO schema_migrations (migration_id, schema_version, app_version, notes) " +
-                "VALUES ('001_initial_personal_score_db_schema', 1, 'migration-test', 'explicit fixture converter');";
-            command.ExecuteNonQuery();
-        }
-    }
-
     private sealed class ThrowingMigration : IScoreDatabaseMigration
     {
-        public int FromVersion => 0;
-        public int ToVersion => 1;
+        public int FromVersion => 1;
+        public int ToVersion => 2;
 
         public void Apply(SqliteConnection connection, SqliteTransaction transaction)
         {
             using var command = connection.CreateCommand();
             command.Transaction = transaction;
-            command.CommandText = "PRAGMA user_version = 1;";
+            command.CommandText = "PRAGMA user_version = 2;";
             command.ExecuteNonQuery();
             throw new InvalidOperationException("fixture migration failure");
         }

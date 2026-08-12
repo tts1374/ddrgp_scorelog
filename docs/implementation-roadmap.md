@@ -46,7 +46,7 @@ M9は完了済みです。M10-1〜M10-4相当の初期版リリース基盤とPh
 | M5c | developer-only（Phase 1 gate外） | jacket catalog collector、manual review、データ整備・開発支援 |
 | M6 | 完了 | 保存直前payloadと解析根拠の分離 |
 | M7 | 完了 | 必須数字fieldの抽出・検証と正式値への変換境界 |
-| M8 | 完了 | 正式個人スコアDB version 1、duplicate、transaction、単発保存 |
+| M8 | 完了 | 正式個人スコアDB version 2、duplicate、transaction、単発保存、v1→v2 index migration |
 | M9 | 完了 | WPF viewer、Windows capture、capture-save、監視UI、task tray、再起動・master DB再検証の自動回帰 |
 | M10 | 実装済み（release quality closeout中） | 初期版installer/package、再現可能なbuild、local storage、実機評価、導入・backup / restore・復旧手順、reference data更新、アプリ内更新 |
 

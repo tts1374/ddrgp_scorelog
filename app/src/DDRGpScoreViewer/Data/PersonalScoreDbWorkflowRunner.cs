@@ -28,7 +28,7 @@ public interface IPersonalScoreDbWorkflowRunner
 }
 
 /// <summary>
-/// Runs the formal v1 workflow inside the application process.
+/// Runs the formal personal-score workflow inside the application process.
 /// Candidate material is parsed but is never promoted to formal play values.
 /// </summary>
 public sealed class AppOwnedPersonalScoreDbWorkflowRunner : IPersonalScoreDbWorkflowRunner

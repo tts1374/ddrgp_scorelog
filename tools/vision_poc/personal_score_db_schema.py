@@ -7,7 +7,7 @@ from functools import cache
 from pathlib import Path
 
 PERSONAL_SCORE_DB_SCHEMA_NAME = "personal_score_db"
-PERSONAL_SCORE_DB_SCHEMA_VERSION = 1
+PERSONAL_SCORE_DB_SCHEMA_VERSION = 2
 PERSONAL_SCORE_DB_CREATED_BY = "tools.vision_poc.personal_score_db_schema"
 PERSONAL_SCORE_DB_CONTRACT_SCOPE = "production_personal_score_db"
 PERSONAL_SCORE_DB_PRODUCTION_STATUS = "production_schema"
@@ -37,6 +37,7 @@ PERSONAL_SCORE_DB_IDENTITY_METADATA_KEYS = (
 )
 PERSONAL_SCORE_DB_MIGRATION_HISTORY = (
     ("001_initial_personal_score_db_schema", 1),
+    ("002_play_order_indexes", 2),
 )
 
 PERSONAL_SCORE_DB_METADATA = {
@@ -106,6 +107,17 @@ PERSONAL_SCORE_DB_ANALYSIS_LOG_COLUMNS = (
     "app_version",
     "created_at",
 )
+
+PERSONAL_SCORE_DB_INDEXES = {
+    "idx_plays_played_at_order": (
+        "CREATE INDEX idx_plays_played_at_order ON plays("
+        "julianday(played_at) DESC, played_at DESC, play_id DESC)"
+    ),
+    "idx_plays_song_chart_order": (
+        "CREATE INDEX idx_plays_song_chart_order ON plays("
+        "song_id, chart_id, julianday(played_at) DESC, played_at DESC, play_id DESC)"
+    ),
+}
 
 PERSONAL_SCORE_DB_SCHEMA_SQL = """
 PRAGMA foreign_keys = ON;
@@ -197,6 +209,11 @@ CREATE TABLE IF NOT EXISTS analysis_logs (
 
 CREATE INDEX IF NOT EXISTS idx_plays_played_at ON plays(played_at);
 CREATE INDEX IF NOT EXISTS idx_plays_song_chart ON plays(song_id, chart_id);
+CREATE INDEX IF NOT EXISTS idx_plays_played_at_order
+  ON plays(julianday(played_at) DESC, played_at DESC, play_id DESC);
+CREATE INDEX IF NOT EXISTS idx_plays_song_chart_order
+  ON plays(song_id, chart_id,
+           julianday(played_at) DESC, played_at DESC, play_id DESC);
 CREATE INDEX IF NOT EXISTS idx_plays_capture_hash ON plays(capture_hash);
 CREATE INDEX IF NOT EXISTS idx_analysis_logs_play_id ON analysis_logs(play_id);
 CREATE INDEX IF NOT EXISTS idx_analysis_logs_source_capture_id
@@ -424,20 +441,27 @@ def create_personal_score_db_schema(connection: sqlite3.Connection) -> None:
         """,
         sorted(PERSONAL_SCORE_DB_METADATA.items()),
     )
-    connection.execute(
-        """
-        INSERT OR REPLACE INTO schema_migrations (
-          migration_id, schema_version, app_version, notes
+    for index, (migration_id, schema_version) in enumerate(
+        PERSONAL_SCORE_DB_MIGRATION_HISTORY
+    ):
+        connection.execute(
+            """
+            INSERT OR REPLACE INTO schema_migrations (
+              migration_id, schema_version, app_version, notes
+            )
+            VALUES (?, ?, ?, ?)
+            """,
+            (
+                migration_id,
+                schema_version,
+                "schema-contract",
+                (
+                    "Initial formal personal score DB schema contract."
+                    if index == 0
+                    else "Added timezone-aware chronological play ordering indexes."
+                ),
+            ),
         )
-        VALUES (?, ?, ?, ?)
-        """,
-        (
-            PERSONAL_SCORE_DB_MIGRATION_HISTORY[0][0],
-            PERSONAL_SCORE_DB_MIGRATION_HISTORY[0][1],
-            "schema-contract",
-            "Initial formal personal score DB schema contract.",
-        ),
-    )
     connection.commit()
 
 
@@ -453,6 +477,18 @@ def sqlite_table_names(connection: sqlite3.Connection) -> tuple[str, ...]:
             """
         )
     )
+
+
+def sqlite_index_sql(connection: sqlite3.Connection, index_name: str) -> str:
+    row = connection.execute(
+        """
+        SELECT sql
+        FROM sqlite_master
+        WHERE type = 'index' AND name = ?
+        """,
+        (index_name,),
+    ).fetchone()
+    return "" if row is None or row[0] is None else _normalized_table_sql(str(row[0]))
 
 
 def sqlite_table_exists(connection: sqlite3.Connection, table_name: str) -> bool:
@@ -558,6 +594,10 @@ def personal_score_db_compatibility_errors(
             errors.append(f"missing_table:{table_name}")
         elif _table_sql(connection, table_name) != _formal_table_sql()[table_name]:
             errors.append(f"table_schema_mismatch:{table_name}")
+
+    for index_name, expected_sql in PERSONAL_SCORE_DB_INDEXES.items():
+        if sqlite_index_sql(connection, index_name) != _normalized_table_sql(expected_sql):
+            errors.append(f"index_schema_mismatch:{index_name}")
 
     if not metadata:
         errors.append("score_db_metadata_missing")
