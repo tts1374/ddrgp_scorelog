@@ -434,11 +434,12 @@
                                                                 VerticalAlignment="Center">
                                                         <TextBlock Text="{Binding ScoreDisplay, Mode=OneWay}" FontSize="30" FontWeight="Bold"
                                                                    FontFamily="Consolas" />
-                                                        <TextBlock Foreground="{StaticResource TextSecondaryBrush}"
-                                                                   FontSize="12" FontWeight="SemiBold" Margin="14,0,0,0">
-                                                            <Run Text="EX SCORE " />
-                                                            <Run Text="{Binding ExScoreDisplay, Mode=OneWay}" />
-                                                        </TextBlock>
+                                                        <TextBlock Text="EX SCORE "
+                                                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                                                   FontSize="12" FontWeight="SemiBold" Margin="14,0,0,0" />
+                                                        <TextBlock Text="{Binding ExScoreDisplay, Mode=OneWay}"
+                                                                   Foreground="{StaticResource TextSecondaryBrush}"
+                                                                   FontSize="12" FontWeight="SemiBold" />
                                                     </StackPanel>
                                                     <WrapPanel Margin="0,10,0,0" ItemHeight="27">
                                                         <ContentControl Content="{Binding}"
@@ -529,10 +530,12 @@
                                                             <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
                                                                 <TextBlock Text="{Binding ScoreDisplay, Mode=OneWay}" FontFamily="Consolas"
                                                                            FontSize="12" FontWeight="Bold" />
-                                                                <TextBlock Foreground="{StaticResource TextSecondaryBrush}"
-                                                                           FontSize="11" Margin="10,0,0,0">
-                                                                    <Run Text="EX " /><Run Text="{Binding ExScoreDisplay, Mode=OneWay}" />
-                                                                </TextBlock>
+                                                                <TextBlock Text="EX "
+                                                                           Foreground="{StaticResource TextSecondaryBrush}"
+                                                                           FontSize="11" Margin="10,0,0,0" />
+                                                                <TextBlock Text="{Binding ExScoreDisplay, Mode=OneWay}"
+                                                                           Foreground="{StaticResource TextSecondaryBrush}"
+                                                                           FontSize="11" />
                                                             </StackPanel>
                                                         </StackPanel>
                                                         <StackPanel Grid.Column="2" HorizontalAlignment="Right"
@@ -1328,6 +1331,7 @@
                                     </DataGridTemplateColumn>
                                     <DataGridTextColumn Header="Lv." Binding="{Binding LevelDisplay, Mode=OneWay}" Width="55" />
                                     <DataGridTextColumn Header="SCORE" Binding="{Binding ScoreDisplay, Mode=OneWay}" Width="110" />
+                                    <DataGridTextColumn Header="EX SCORE" Binding="{Binding ExScoreDisplay, Mode=OneWay}" Width="92" />
                                     <DataGridTemplateColumn Header="ランク" Width="65">
                                         <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
