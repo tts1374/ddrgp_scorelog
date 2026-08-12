@@ -38,6 +38,7 @@ public sealed class MainViewModelTests
         Assert.Equal(
             ["tie", "lower", "ex-update", "score-update", "first"],
             viewModel.HomeRecentPlays.Select(play => play.Play.PlayId));
+        Assert.Equal("1,250", viewModel.Plays[0].ExScoreDisplay);
         Assert.Equal(3, viewModel.HomeBestUpdates.Count);
         Assert.Equal(
             ["latest", "ex-update", "score-update"],
@@ -47,10 +48,12 @@ public sealed class MainViewModelTests
         var latest = viewModel.HomeLatestPlay!;
         Assert.Equal(950_000, latest.PreviousScore);
         Assert.Equal(1_200, latest.PreviousExScore);
+        Assert.Equal("1,250", latest.ExScoreDisplay);
         Assert.Equal("Up", latest.ScoreBestDeltaGroup);
         Assert.Equal("Up", latest.ExScoreBestDeltaGroup);
 
         var first = viewModel.HomeRecentPlays.Single(play => play.Play.PlayId == "first");
+        Assert.Equal("1,000", first.ExScoreDisplay);
         Assert.Equal("First", first.ScoreBestDeltaGroup);
         Assert.Equal("初プレー", first.ScoreBestDeltaDisplay);
     }
