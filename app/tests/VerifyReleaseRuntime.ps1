@@ -89,12 +89,27 @@ try
             (Join-Path $productionRoot 'data\score\score.db'))
     }
 
-    foreach ($requiredPath in $requiredPaths)
+    $requiredPathsDeadline = [DateTime]::UtcNow.AddSeconds(30)
+    $missingRequiredPaths = @(
+        $requiredPaths |
+            Where-Object { -not (Test-Path -LiteralPath $_ -PathType Leaf) })
+    while ($missingRequiredPaths.Count -gt 0 -and
+        -not $process.HasExited -and
+        [DateTime]::UtcNow -lt $requiredPathsDeadline)
     {
-        if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf))
-        {
-            throw "Release package did not prepare required production data: $requiredPath"
-        }
+        Start-Sleep -Milliseconds 200
+        $missingRequiredPaths = @(
+            $requiredPaths |
+                Where-Object { -not (Test-Path -LiteralPath $_ -PathType Leaf) })
+    }
+
+    if ($process.HasExited -and $process.ExitCode -ne 0)
+    {
+        throw "Release package exited before preparing production data with code $($process.ExitCode)."
+    }
+    foreach ($requiredPath in $missingRequiredPaths)
+    {
+        throw "Release package did not prepare required production data within 30 seconds: $requiredPath"
     }
 
     Write-Output "Release runtime smoke passed outside the repository: $packageRoot"
