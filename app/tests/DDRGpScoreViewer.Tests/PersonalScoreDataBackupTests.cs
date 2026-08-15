@@ -106,8 +106,11 @@ public sealed class PersonalScoreDataBackupTests
         Assert.Equal(28.6, play.Calories);
     }
 
-    [Fact]
-    public void Legacy_v1_backup_restores_new_metrics_as_missing()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Legacy_v1_backup_restores_new_metrics_as_missing(
+        bool includeUnsupportedMetrics)
     {
         using var fixture = new DatabaseFixture();
         fixture.AddPlay(
@@ -122,9 +125,12 @@ public sealed class PersonalScoreDataBackupTests
         Assert.True(service.CreateBackup(fixture.ScorePath, backupPath).Succeeded);
         var root = JsonNode.Parse(File.ReadAllText(backupPath))!.AsObject();
         root["formatVersion"] = 1;
-        var legacyPlay = root["plays"]!.AsArray()[0]!.AsObject();
-        legacyPlay.Remove("ok");
-        legacyPlay.Remove("calories");
+        if (!includeUnsupportedMetrics)
+        {
+            var legacyPlay = root["plays"]!.AsArray()[0]!.AsObject();
+            legacyPlay.Remove("ok");
+            legacyPlay.Remove("calories");
+        }
         File.WriteAllText(
             backupPath,
             root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }) + "\n",

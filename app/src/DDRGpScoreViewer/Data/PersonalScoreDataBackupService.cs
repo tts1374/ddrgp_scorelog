@@ -229,6 +229,15 @@ public sealed class PersonalScoreDataBackupService : IPersonalScoreDataBackupSer
         {
             throw new InvalidDataException("対応していないバックアップ形式です。");
         }
+        if (document.FormatVersion == 1)
+        {
+            document = document with
+            {
+                Plays = document.Plays
+                    .Select(play => play with { Ok = null, Calories = null })
+                    .ToArray(),
+            };
+        }
         if (!DateTimeOffset.TryParse(
                 document.CreatedAt,
                 null,
