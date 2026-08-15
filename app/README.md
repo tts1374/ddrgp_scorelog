@@ -1,13 +1,13 @@
 # GP Score Log WPF app
 
-正式個人スコアDB version 2を開き、保存済みプレー履歴、プレー詳細、譜面別自己ベストを確認するWPFアプリです。通常画面は`監視開始`／`監視停止`による監視を提供し、設定がON（初期値）なら起動後にDDR GRAND PRIX windowを1秒ごとに探索して、2回連続で検出した対象へ自動接続します。Debug buildだけが開発者向け領域から1フレーム取得、連続取得、単発保存を提供します。手動の`監視開始`でも、`process=ddr-konaste` かつ client `1280x720` のtop-level windowを自動特定し、該当1件だけへ接続します。監視中は1秒ごとに `results_header` を確認し、RESULT画面の候補が2回連続して安定した場合だけ既存のevent boundaryと正式保存workflowへ渡します。該当windowが0件または複数件なら推測で選択せず、capture・解析・正式保存を開始しません。監視中の候補画像はsession原本として保管せず、一時workflow入力の処理後に破棄します。監視状態と最新結果はWPFとtask trayから確認できます。productionのインストール済みpackageでは、main window表示後にGitHub Releasesのアプリ更新を非同期確認し、更新があれば自動でdownload・完全終了・再起動を行います。確認、download、適用に失敗した場合やofflineの場合は、現在のversionで通常利用を続けます。正式個人スコアDB、M4 master DB、M5b jacket reference catalogは環境ごとの固定pathで扱い、次回起動時に3つとも検証して再利用します。DBの任意path選択、汎用window探索、手動pickerへのfallback、DB repairは提供しません。手動停止後は同一app session中に自動再開せず、DB・runtime・更新・終了処理の異常時も自動開始しません。score DB migrationは対応する明示的converterがあるschema変更時だけ行い、事前backupと失敗時rollbackを必須とします。
+正式個人スコアDB version 3を開き、保存済みプレー履歴、プレー詳細、譜面別自己ベストを確認するWPFアプリです。通常画面は`監視開始`／`監視停止`による監視を提供し、設定がON（初期値）なら起動後にDDR GRAND PRIX windowを1秒ごとに探索して、2回連続で検出した対象へ自動接続します。Debug buildだけが開発者向け領域から1フレーム取得、連続取得、単発保存を提供します。手動の`監視開始`でも、`process=ddr-konaste` かつ client `1280x720` のtop-level windowを自動特定し、該当1件だけへ接続します。監視中は1秒ごとに `results_header` を確認し、RESULT画面の候補が2回連続して安定した場合だけ既存のevent boundaryと正式保存workflowへ渡します。該当windowが0件または複数件なら推測で選択せず、capture・解析・正式保存を開始しません。監視中の候補画像はsession原本として保管せず、一時workflow入力の処理後に破棄します。監視状態と最新結果はWPFとtask trayから確認できます。productionのインストール済みpackageでは、main window表示後にGitHub Releasesのアプリ更新を非同期確認し、更新があれば自動でdownload・完全終了・再起動を行います。確認、download、適用に失敗した場合やofflineの場合は、現在のversionで通常利用を続けます。正式個人スコアDB、M4 master DB、M5b jacket reference catalogは環境ごとの固定pathで扱い、次回起動時に3つとも検証して再利用します。DBの任意path選択、汎用window探索、手動pickerへのfallback、DB repairは提供しません。手動停止後は同一app session中に自動再開せず、DB・runtime・更新・終了処理の異常時も自動開始しません。score DB migrationは対応する明示的converterがあるschema変更時だけ行い、事前backupと失敗時rollbackを必須とします。
 
 ## 必要環境
 
 - Windows 11
 - .NET 10 SDK
 - Release packageに含まれるapp-owned runtime資材（`RuntimeAssets/`）
-- 正式個人スコアDB version 2（例: `ddrgp-scores.sqlite`）
+- 正式個人スコアDB version 3（例: `ddrgp-scores.sqlite`）
 - 別のmaster DB生成workflowで作られたM4 master DB
 - current schema version 1のM5b jacket reference catalog（`jacket-catalog.sqlite`）
 
@@ -105,7 +105,7 @@ RESULTの `score`、`max_combo`、`marvelous`、`perfect`、`great`、`good`、`
 
 テンプレートはRelease packageの `RuntimeAssets/digit_templates/`、または `DDRGP_SCORE_VIEWER_RUNTIME_DATA` 配下の明示data pathから解決します。`score` はROI別 `score_digits`、判定数（`marvelous`、`perfect`、`great`、`good`、`miss`）は共有 `judgment_counts`、`max_combo` と `ex_score` は共有 `combo_ex_score`、`ex_score` は `max_combo` fallbackも探します。repositoryの `samples` や `tools/vision_poc` はruntime探索せず、PythonやTesseractも起動しません。`recognized_digits`、confidence、fieldごとの根拠、必須fieldの完全性はapp-owned formal evidence bridgeへ渡し、明示的な採用境界を通らない候補値は正式値やplayへ昇格しません。
 
-要件レベルでは、`RESULT同定根拠`、`RESULT数値認識根拠`、`RESULT状態認識根拠`、`capture event根拠`が揃ったformal evidenceだけを正式保存の入力にします。song/chart identityは、current masterとcatalogをread-onlyで参照したジャケット画像照合、play style/difficultyの色画像認識、levelの数字画像認識が一意に揃った場合だけ`result_identity_visual_evidence`として採用します。8つの数字fieldは`result_numeric_visual_evidence`、rankは`result_rank_visual_evidence`、clear typeは`result_clear_type_visual_evidence`をsourceとし、各fieldのconfidenceが0.98以上で全必須値が揃う場合だけ既存formal workflowへ渡します。clear typeの内部判定に使う`O.K.`数も画像認識根拠が必須ですが、正式DB schemaへは追加しません。master versionは`master_metadata`、play_idとduplicate keyはconfirmed event ID、played_atはcapture UTCから構築し、同一RESULT画面の後続frame・再送・再処理では同じIDを再利用し、別confirmed eventではformal値が一致しても新しいIDを使います。RESULT fingerprintは画面内イベントグルーピング専用です。liveのsource kindは`capture`です。`flare_rank=null`は許容します。実装クラス名や工程コードは要件名の代わりに使わず、formal source名には使いません。
+要件レベルでは、`RESULT同定根拠`、`RESULT数値認識根拠`、`RESULT状態認識根拠`、`capture event根拠`が揃ったformal evidenceだけを正式保存の入力にします。song/chart identityは、current masterとcatalogをread-onlyで参照したジャケット画像照合、play style/difficultyの色画像認識、levelの数字画像認識が一意に揃った場合だけ`result_identity_visual_evidence`として採用します。8つの数字fieldは`result_numeric_visual_evidence`、rankは`result_rank_visual_evidence`、clear typeは`result_clear_type_visual_evidence`をsourceとし、各fieldのconfidenceが0.98以上で全必須値が揃う場合だけ既存formal workflowへ渡します。clear typeの内部判定に使う`O.K.`数は従来どおり画像認識根拠を必須とし、認識済み値をnullableな`ok`へ保存します。消費カロリーは同じapp-owned bitmap-template runtimeで小数点を含めて認識できた場合だけnullableな`calories`へ保存し、未取得・低信頼度・認識失敗は他の正式保存条件を満たすplayを止めません。どちらもrepository内素材、Python、Tesseractへ依存せず、未取得値を0、candidate、expected、preview、raw OCRで補完しません。master versionは`master_metadata`、play_idとduplicate keyはconfirmed event ID、played_atはcapture UTCから構築し、同一RESULT画面の後続frame・再送・再処理では同じIDを再利用し、別confirmed eventではformal値が一致しても新しいIDを使います。RESULT fingerprintは画面内イベントグルーピング専用です。liveのsource kindは`capture`です。`flare_rank=null`は許容します。実装クラス名や工程コードは要件名の代わりに使わず、formal source名には使いません。
 
 jacket catalogの`master_version`が過去の値でも、song ID・canonical title・canonical artistがcurrent GP masterと完全一致するconfirmed referenceはcurrent-master-compatibleな正式参照として利用します。masterとの不一致、orphan、未確認、旧featureのreferenceは利用せず、catalog自体も書き換えません。
 
@@ -199,7 +199,7 @@ dotnet run --project app\src\DDRGpScoreViewer\DDRGpScoreViewer.csproj --configur
 - 曲名、SP/DP、難易度、レベルは `chart_id` と `song_id` が一致するマスタ行から表示する。
 - マスタ参照が欠ける行は捨てず、`song_id` / `chart_id` と `参照情報なし` を表示する。
 - 譜面別自己ベストは `plays` 全履歴を `song_id` / `chart_id` ごとに集計し、通常スコアとEX SCOREをそれぞれ `MAX` で算出する。
-- v1に列がない `O.K.` は値を補完せず `—` と表示する。
+- `ok` / `calories` が`NULL`の履歴は値を補完せず `—` と表示する。v2からmigrationした過去playも同じ欠損表示とする。
 - 空履歴では、次の行動を示す空状態を表示する。
 
 ## DB検査と拒否
@@ -272,7 +272,7 @@ production固定pathは`%LOCALAPPDATA%\DDRGpScoreViewer\data\master\`です。�
 
 ## 個人スコアデータのバックアップ / 復元
 
-通常操作は[`docs/user-guide.md`](../docs/user-guide.md)を参照してください。技術契約として、バックアップは正式個人スコアDBをread-onlyで検証し、保存済みプレー履歴だけをUTF-8（BOMなし）JSONへ書き出します。設定、保存済みpath、楽曲・譜面マスタ、jacket参照、source capture、解析ログ、診断ログは含めず、migration用のSQLite file backupとは別形式です。
+通常操作は[`docs/user-guide.md`](../docs/user-guide.md)を参照してください。技術契約として、バックアップは正式個人スコアDBをread-onlyで検証し、保存済みプレー履歴だけをUTF-8（BOMなし）JSONへ書き出します。現行formatはnullableな`ok` / `calories`を欠損可能な値として往復し、旧formatの復元では両値を未取得の`NULL`として扱います。設定、保存済みpath、楽曲・譜面マスタ、jacket参照、source capture、解析ログ、診断ログは含めず、migration用のSQLite file backupとは別形式です。
 
 復元はJSON全体を先に検証し、形式が未対応または壊れている場合は正式DBを変更しません。対応形式でも確認ダイアログで続行した場合だけ現在のプレー履歴を置き換えます。置換前の未解決を含む解析ログと取得元は保持し、置換は既存の正式schemaを検証したSQLite transaction内で行います。失敗時はcommitせず、完了後にread-only viewerで履歴・自己ベストを再読込します。設定、同梱楽曲・譜面データ、jacket参照は変更しません。キャンセル、未対応ファイル、壊れたファイル、実行中の保存・監視・更新・終了処理中は復元を開始しません。
 

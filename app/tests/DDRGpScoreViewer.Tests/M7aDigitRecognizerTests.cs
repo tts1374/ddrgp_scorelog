@@ -312,6 +312,7 @@ public sealed class M7aDigitRecognizerTests
             ["miss"] = "1234",
             ["ex_score"] = "1234",
             ["ok"] = "21",
+            ["calories"] = "28.6",
         };
         var recognizer = new M7aDigitRecognizer(templateRoot: fixture.Root);
         var image = fixture.Render(values);
@@ -330,6 +331,87 @@ public sealed class M7aDigitRecognizerTests
             FormalEvidenceSourceNames.ResultNumericVisualEvidence,
             evidence.Sources["ok"]);
         Assert.True(evidence.Confidences["ok"] >= 0.98);
+        Assert.Equal(28.6, evidence.Calories);
+        Assert.Equal(
+            FormalEvidenceSourceNames.ResultNumericVisualEvidence,
+            evidence.Sources["calories"]);
+    }
+
+    [Fact]
+    public void Missing_or_unrecognized_calories_stays_null_without_a_formal_failure_reason()
+    {
+        using var fixture = new TemplateFixture();
+        fixture.WriteTemplates("score_digits", "judgment_counts", "combo_ex_score");
+        var image = fixture.Render(new Dictionary<string, string>
+        {
+            ["score"] = "987650",
+            ["max_combo"] = "1234",
+            ["marvelous"] = "1234",
+            ["perfect"] = "1234",
+            ["great"] = "1234",
+            ["good"] = "1234",
+            ["miss"] = "1234",
+            ["ex_score"] = "1234",
+            ["ok"] = "21",
+        });
+        var recognizer = new M7aDigitRecognizer(templateRoot: fixture.Root);
+
+        var evidence = new AppOwnedResultVisualEvidenceProducer(recognizer).Produce(
+            image,
+            recognizer.RecognizeForFormalEvidence(image));
+
+        Assert.Null(evidence.Calories);
+        Assert.DoesNotContain(evidence.RecognitionReasons!, reason =>
+            reason.Contains("calories", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData("0.9", 0.9)]
+    [InlineData("5.9", 5.9)]
+    [InlineData("0.0", 0.0)]
+    [InlineData("123.4", 123.4)]
+    public void Variable_integer_width_calories_including_zero_are_recognized(
+        string renderedCalories,
+        double expectedCalories)
+    {
+        using var fixture = new TemplateFixture();
+        fixture.WriteTemplates("score_digits", "judgment_counts", "combo_ex_score");
+        var image = fixture.Render(new Dictionary<string, string>
+        {
+            ["calories"] = renderedCalories,
+        });
+        var recognizer = new M7aDigitRecognizer(templateRoot: fixture.Root);
+
+        var evidence = new AppOwnedResultVisualEvidenceProducer(recognizer).Produce(
+            image,
+            recognizer.RecognizeForFormalEvidence(image));
+
+        Assert.Equal(expectedCalories, evidence.Calories);
+    }
+
+    [Fact]
+    public void Touching_two_digit_calories_use_the_fixed_position_fallback()
+    {
+        using var fixture = new TemplateFixture();
+        fixture.WriteTemplates("score_digits", "judgment_counts", "combo_ex_score");
+        var image = fixture.Render(
+            new Dictionary<string, string> { ["calories"] = "63.6" },
+            connectCalorieIntegerDigits: true);
+        var recognizer = new M7aDigitRecognizer(templateRoot: fixture.Root);
+        var wholeRegion = recognizer.RecognizeRegion(
+            image,
+            "calories",
+            (405, 380, 63, 32),
+            "miss",
+            "combo_ex_score",
+            formalVisualAcceptance: true);
+
+        var evidence = new AppOwnedResultVisualEvidenceProducer(recognizer).Produce(
+            image,
+            recognizer.RecognizeForFormalEvidence(image));
+
+        Assert.NotEqual("recognized", wholeRegion.Status);
+        Assert.Equal(63.6, evidence.Calories);
     }
 
     [Fact]
@@ -363,6 +445,10 @@ public sealed class M7aDigitRecognizerTests
                 Directory.EnumerateFiles(path, "*.pbm", SearchOption.TopDirectoryOnly).Any());
         }
     }
+
+
+
+
 
     [Fact]
     public async Task Analyzer_passes_zero_candidate_without_formal_promotion()
@@ -579,7 +665,8 @@ public sealed class M7aDigitRecognizerTests
         public BitmapSource Render(
             IReadOnlyDictionary<string, string> values,
             bool addScoreTopNoise = false,
-            IReadOnlyList<string>? scorePattern = null)
+            IReadOnlyList<string>? scorePattern = null,
+            bool connectCalorieIntegerDigits = false)
         {
             const int width = 1280;
             const int height = 720;
@@ -601,6 +688,7 @@ public sealed class M7aDigitRecognizerTests
                 ["miss"] = (897, 555, 92, 21),
                 ["ex_score"] = (898, 584, 91, 23),
                 ["ok"] = (896, 524, 92, 28),
+                ["calories"] = (405, 380, 63, 32),
             };
 
             foreach (var pair in values)
@@ -609,11 +697,44 @@ public sealed class M7aDigitRecognizerTests
                 {
                     continue;
                 }
+                if (pair.Key == "calories")
+                {
+                    var positions = pair.Value.Length switch
+                    {
+                        3 => new[] { 414, 430, 440 },
+                        4 => new[] { 414, 427, 443, 453 },
+                        5 => new[] { 414, 427, 440, 456, 466 },
+                        _ => throw new ArgumentOutOfRangeException(
+                            nameof(values),
+                            pair.Value,
+                            "Unsupported calorie test format."),
+                    };
+                    for (var index = 0; index < pair.Value.Length; index++)
+                    {
+                        var character = pair.Value[index];
+                        if (character == '.')
+                        {
+                            DrawDot(pixels, stride, positions[index], 400);
+                        }
+                        else
+                        {
+                            DrawGlyph(
+                                pixels,
+                                stride,
+                                positions[index],
+                                386,
+                                4,
+                                Patterns[character]);
+                        }
+                    }
+                    continue;
+                }
                 var scale = pair.Key == "score" ? 6 : 4;
                 var glyphWidth = scorePattern is not null && pair.Key == "score"
                     ? scorePattern[0].Length
                     : 3;
-                var renderedWidth = pair.Value.Length * glyphWidth * scale +
+                var renderedWidth = pair.Value.Sum(character =>
+                        character == '.' ? 4 : glyphWidth * scale) +
                     Math.Max(0, pair.Value.Length - 1) * 3;
                 var x = roi.X + roi.Width - renderedWidth - 4;
                 var glyphHeight = scorePattern is not null && pair.Key == "score"
@@ -622,11 +743,25 @@ public sealed class M7aDigitRecognizerTests
                 var y = roi.Y + (roi.Height - glyphHeight * scale) / 2;
                 foreach (var digit in pair.Value)
                 {
+                    if (digit == '.')
+                    {
+                        DrawDot(pixels, stride, x, y + glyphHeight * scale - 4);
+                        x += 7;
+                        continue;
+                    }
                     var pattern = scorePattern is not null && pair.Key == "score"
                         ? scorePattern
                         : Patterns[digit];
                     DrawGlyph(pixels, stride, x, y, scale, pattern);
                     x += glyphWidth * scale + 3;
+                }
+            }
+
+            if (connectCalorieIntegerDigits)
+            {
+                foreach (var top in new[] { 386, 394, 402 })
+                {
+                    DrawDot(pixels, stride, 426, top);
                 }
             }
 
@@ -646,6 +781,20 @@ public sealed class M7aDigitRecognizerTests
                 stride);
             bitmap.Freeze();
             return bitmap;
+        }
+
+        private static void DrawDot(byte[] pixels, int stride, int left, int top)
+        {
+            for (var y = 0; y < 4; y++)
+            {
+                for (var x = 0; x < 4; x++)
+                {
+                    var offset = (top + y) * stride + (left + x) * 4;
+                    pixels[offset] = 255;
+                    pixels[offset + 1] = 255;
+                    pixels[offset + 2] = 255;
+                }
+            }
         }
 
         public BitmapSource RenderScorePattern(IReadOnlyList<string> pattern) =>

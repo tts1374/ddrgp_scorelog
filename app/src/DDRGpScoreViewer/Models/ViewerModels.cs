@@ -24,6 +24,8 @@ public sealed record PlayHistoryItem(
     int Great,
     int Good,
     int Miss,
+    int? Ok,
+    double? Calories,
     string SourceKind,
     bool MasterReferenceMissing)
 {

@@ -67,6 +67,22 @@ def test_adapter_returns_ready_from_explicit_formal_values_only() -> None:
     assert result.save_input.play.played_at == "2026-07-11T12:34:56+09:00"
 
 
+def test_adapter_keeps_optional_metrics_null_and_never_promotes_candidates() -> None:
+    request = adapter_input()
+    request = replace(
+        request,
+        candidate_material={**request.candidate_material, "ok": "99", "calories": "28.6"},
+    )
+
+    result = adapter.adapt_personal_score_db_save_input(request)
+
+    assert result.status == "ready"
+    assert result.save_input is not None
+    assert result.save_input.play is not None
+    assert result.save_input.play.ok is None
+    assert result.save_input.play.calories is None
+
+
 def test_adapter_does_not_promote_preview_ids_digits_or_relative_time() -> None:
     request = adapter_input()
     assert request.formal_play is not None

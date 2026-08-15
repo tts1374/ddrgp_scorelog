@@ -96,6 +96,7 @@ public sealed record AppOwnedFormalEvidence(
     IReadOnlyDictionary<string, double?> Confidences,
     string IdentitySignalStatus = "resolved",
     int? Ok = null,
+    double? Calories = null,
     IReadOnlyList<string>? RecognitionReasons = null);
 
 public sealed record LiveResultObservation(

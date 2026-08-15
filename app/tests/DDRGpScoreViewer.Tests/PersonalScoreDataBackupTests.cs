@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using DDRGpScoreViewer.Data;
 using DDRGpScoreViewer.Models;
 using DDRGpScoreViewer.ViewModels;
@@ -18,7 +19,9 @@ public sealed class PersonalScoreDataBackupTests
             "saved-play",
             "2026-08-01T10:00:00+00:00",
             950_000,
-            1_100);
+            1_100,
+            ok: 21,
+            calories: 28.6);
         fixture.ExecuteScoreSql(
             """
             INSERT INTO analysis_logs (
@@ -38,11 +41,13 @@ public sealed class PersonalScoreDataBackupTests
         using var document = JsonDocument.Parse(File.ReadAllText(backupPath));
         var root = document.RootElement;
         Assert.Equal("ddrgp.personal-score-data", root.GetProperty("format").GetString());
-        Assert.Equal(1, root.GetProperty("formatVersion").GetInt32());
+        Assert.Equal(2, root.GetProperty("formatVersion").GetInt32());
         var play = Assert.Single(root.GetProperty("plays").EnumerateArray());
         Assert.Equal("saved-play", play.GetProperty("playId").GetString());
         Assert.Equal(950_000, play.GetProperty("score").GetInt32());
         Assert.Equal(1_100, play.GetProperty("exScore").GetInt32());
+        Assert.Equal(21, play.GetProperty("ok").GetInt32());
+        Assert.Equal(28.6, play.GetProperty("calories").GetDouble());
 
         var backupText = File.ReadAllText(backupPath);
         Assert.DoesNotContain("source_captures", backupText, StringComparison.Ordinal);
@@ -64,7 +69,9 @@ public sealed class PersonalScoreDataBackupTests
             "first-play",
             "2026-08-01T10:00:00+00:00",
             900_000,
-            1_000);
+            1_000,
+            ok: 21,
+            calories: 28.6);
         var backupPath = Path.Combine(fixture.DirectoryPath, "personal-score-backup.json");
         var service = new PersonalScoreDataBackupService();
         Assert.True(service.CreateBackup(fixture.ScorePath, backupPath).Succeeded);
@@ -95,6 +102,49 @@ public sealed class PersonalScoreDataBackupTests
         Assert.Equal(1, chartBest.PlayCount);
         Assert.Equal("2026-08-01T10:00:00+00:00", play.PlayedAt);
         Assert.Equal(expectedSavedAt, play.SavedAt);
+        Assert.Equal(21, play.Ok);
+        Assert.Equal(28.6, play.Calories);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Legacy_v1_backup_restores_new_metrics_as_missing(
+        bool includeUnsupportedMetrics)
+    {
+        using var fixture = new DatabaseFixture();
+        fixture.AddPlay(
+            "legacy-source",
+            "2026-08-01T10:00:00+00:00",
+            900_000,
+            1_000,
+            ok: 21,
+            calories: 28.6);
+        var backupPath = Path.Combine(fixture.DirectoryPath, "legacy-personal-score-backup.json");
+        var service = new PersonalScoreDataBackupService();
+        Assert.True(service.CreateBackup(fixture.ScorePath, backupPath).Succeeded);
+        var root = JsonNode.Parse(File.ReadAllText(backupPath))!.AsObject();
+        root["formatVersion"] = 1;
+        if (!includeUnsupportedMetrics)
+        {
+            var legacyPlay = root["plays"]!.AsArray()[0]!.AsObject();
+            legacyPlay.Remove("ok");
+            legacyPlay.Remove("calories");
+        }
+        File.WriteAllText(
+            backupPath,
+            root.ToJsonString(new JsonSerializerOptions { WriteIndented = true }) + "\n",
+            new System.Text.UTF8Encoding(false));
+
+        var result = service.RestoreBackup(fixture.ScorePath, backupPath);
+        var play = Assert.Single(new ScoreViewerRepository().Load(
+            fixture.ScorePath,
+            fixture.MasterPath,
+            fixture.CatalogPath).Plays);
+
+        Assert.True(result.Succeeded, result.Message);
+        Assert.Null(play.Ok);
+        Assert.Null(play.Calories);
     }
 
     [Fact]

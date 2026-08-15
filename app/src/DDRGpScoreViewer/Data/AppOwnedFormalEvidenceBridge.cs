@@ -162,6 +162,10 @@ internal static class AppOwnedFormalEvidenceBridge
         {
             reasonsForEvidence.Add("formal_evidence.clear_type_invalid");
         }
+        if (evidence.Ok < 0)
+        {
+            reasonsForEvidence.Add("formal_evidence.ok_negative");
+        }
         if (evidence.FlareRank is not null &&
             !FlareValues.Contains(evidence.FlareRank))
         {
@@ -174,11 +178,14 @@ internal static class AppOwnedFormalEvidenceBridge
             return Unresolved(reasonsForEvidence, evidence.IdentitySignalStatus);
         }
 
+        var adoptedCalories = AdoptOptionalCalories(evidence, sources, confidences);
+
         var requiredConfidence = RequiredSources.Keys
             .Where(fieldName =>
                 (fieldName != "flare_rank" || evidence.FlareRank is not null) &&
                 (fieldName != "ok" || !failedResult || evidence.Ok is not null))
             .Select(fieldName => confidences[fieldName]!.Value)
+            .Append(adoptedCalories is null ? 1.0 : confidences["calories"]!.Value)
             .Append(1.0)
             .Min();
         var formalSources = new Dictionary<string, string>(sources, StringComparer.Ordinal)
@@ -187,6 +194,10 @@ internal static class AppOwnedFormalEvidenceBridge
             ["played_at"] = FormalEvidenceSourceNames.CaptureUtc,
             ["duplicate_key"] = FormalEvidenceSourceNames.CaptureEventV1,
         };
+        if (adoptedCalories is null)
+        {
+            formalSources.Remove("calories");
+        }
         var formalPlay = new AppFormalPlay(
             $"play-{captureId}",
             capturedAtUtc.ToString("O", CultureInfo.InvariantCulture),
@@ -204,6 +215,8 @@ internal static class AppOwnedFormalEvidenceBridge
             evidence.Rank!,
             evidence.ClearType!,
             evidence.FlareRank,
+            evidence.Ok,
+            adoptedCalories,
             observation.ConfirmedEventId!);
         return new AppFormalEvidencePromotion(
             "ready",
@@ -214,6 +227,31 @@ internal static class AppOwnedFormalEvidenceBridge
                 : evidence.IdentitySignalStatus,
             formalSources,
             Array.Empty<string>());
+    }
+
+    private static double? AdoptOptionalCalories(
+        AppOwnedFormalEvidence evidence,
+        IReadOnlyDictionary<string, string> sources,
+        IReadOnlyDictionary<string, double?> confidences)
+    {
+        if (evidence.Calories is null ||
+            !double.IsFinite(evidence.Calories.Value) ||
+            evidence.Calories.Value < 0.0 ||
+            !sources.TryGetValue("calories", out var source) ||
+            !string.Equals(
+                source,
+                FormalEvidenceSourceNames.ResultNumericVisualEvidence,
+                StringComparison.Ordinal) ||
+            !confidences.TryGetValue("calories", out var confidence) ||
+            confidence is null ||
+            !double.IsFinite(confidence.Value) ||
+            confidence.Value < MinimumConfidence ||
+            confidence.Value > 1.0)
+        {
+            return null;
+        }
+
+        return evidence.Calories;
     }
 
     private static void RequireText(

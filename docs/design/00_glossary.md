@@ -54,7 +54,7 @@ DDR GP scorelog の設計、PoC、テストで使う主要用語を定義する�
 | `M7 result field recognition` | `RESULT状態認識根拠`へ進めるrank/clear_type/flare_rankを専用規則で認識する工程 | FAILED/E gate、score-derived rank、judgment-count clear type、independent flare badge | candidate/raw/previewのformal昇格 |
 | `app-owned formal evidence bridge` | confirmed RESULT observationに明示された要件別source/confidenceを検査し、既存M8 formal save inputへ接続する境界 | `RESULT同定根拠`、`RESULT数値認識根拠`、`RESULT状態認識根拠`、`capture event根拠`、`unresolved`理由 | `identity_signal_*`、`recognized_digits`、candidate、expected、preview、known-resultの正式値昇格 |
 | `M7 result-text feature` | resultのtitle/artist ROIからOCRなしの画像featureを作る補助工程 | `jacket-catalog.sqlite` の `result_text_features`、`m7_result_text_feature_master.*` 診断出力 | OCR文字列、曲ID確定、正式保存値 |
-| `M8 formal personal score DB` | version 2正式DB、duplicate、transaction、明示単発保存を扱う工程 | `ddrgp-scores.sqlite`、formal save input | 候補材料の自動昇格、M8 preview DBの受入れ |
+| `M8 formal personal score DB` | version 3正式DB、duplicate、transaction、明示単発保存を扱う工程 | `ddrgp-scores.sqlite`、formal save input | 候補材料の自動昇格、M8 preview DBの受入れ |
 | `M9 application/runtime` | app package-owned runtimeでviewer、Windows capture、capture-save、監視UI、task trayを接続する工程 | WPF app、app-owned runtime、capture-save workflow | 新しい数字認識方式やDB schema |
 | `M10 initial release` | 単一ユーザー向けの配布・依存固定・backup/restoreを固める工程 | installer/配布手順、lock file、運用docs | cloud運用、複数ユーザー、enterprise機能 |
 
@@ -81,7 +81,7 @@ master DB inspectionは起動時・保存開始時に行う。固定pathだけ�
 - `formal score DB protection boundary`: 起動時はmaster/catalog検証後の固定score pathに限り、missing／0 byteの新規正式schema準備だけを既存file-preparation契約へ委譲し、通常の起動・閲覧・更新・評価処理では既存の非空正式個人スコアDBをread-only検証、上書き、migration、repairしない境界。正式writerの明示saveと確認済み個人スコアデータ復元だけが、既存の準備・transaction契約を使う明示的な変更操作である。
 - `user settings`: WPF appの起動時監視、保存できない結果のローカル通知、既定プレイスタイル、起動時画面、自己ベストの探索モード・レベル・バージョン・目標を保持する正式DB外のローカル設定。`user-settings.json`へ保存し、欠落・読込不能時は全項目を初期値へ戻す。正式個人スコアDB、`plays`、保存境界は変更しない。
 - `personal best goal browse mode`: 自己ベスト画面の第4探索軸「目標から」。内部コードは`goal`、目標値はAAA／AA+／AA、選択中のSP／DPに含まれる記録あり・目標未達成譜面だけを目標まで近い順に表示する。
-- `personal score data backup`: データ管理画面から明示的に作成・復元する、正式`plays`の履歴表示と自己ベスト算出に必要な個人プレー履歴だけのJSON。設定、master/catalog、jacket参照、source capture、解析ログ、診断ログを含まず、migration用のSQLite backupとは別契約とする。
+- `personal score data backup`: データ管理画面から明示的に作成・復元する、正式`plays`の履歴表示と自己ベスト算出に必要な個人プレー履歴だけのJSON。現行formatはnullableな`ok` / `calories`を往復し、旧formatでは両値を未取得として復元する。設定、master/catalog、jacket参照、source capture、解析ログ、診断ログを含まず、migration用のSQLite backupとは別契約とする。
 
 `M5c` の下位phaseは次の意味で読む。
 
@@ -132,6 +132,8 @@ master DB inspectionは起動時・保存開始時に行う。固定pathだけ�
 - `candidate observation`: M5 `identity_signal_*`、M7a `recognized_digits`、M7 previewなど、後続レビューへ渡す材料。候補が一意でも正式値ではない。
 - `formal value`: 採用済みsource、field別根拠、必要なvalidationを満たし、M8正式save inputへ明示的に配置された値。
 - `flare_rank`: RESULT右側の独立badgeから認識する正式field。値は `I`〜`IX` / `EX` に限定し、認識不能時は `null` のまま保存を妨げない。`null` は「no-flareの証明」ではない。
+- `ok`: 既存のapp-owned O.K.画像認識から得る非負整数。clear type導出で必要な認識契約は維持し、正式`plays`では認識済み値だけをnullable保存する。`null`を理由にclear type等の必須保存条件を緩和せず、candidate、expected、preview、raw OCR、0で補完しない。
+- `calories`: RESULTの消費カロリー表示をapp-owned画像認識で得た非負の小数値。正式`plays`では認識済み値だけをnullable保存し、未取得・低信頼度・認識失敗は他の正式保存条件を満たすplayを止めない。candidate、expected、preview、raw OCR、0で補完しない。
 - `RESULT状態認識根拠`: rank/clear_type/flare_rankの専用画像認識または正式な画像認識値からの規則導出が出すfield別根拠。rankはROIでFAILED/Eだけを判定し、通常rankはformal scoreから算出する。clear_typeは判定数から算出し、rank周囲のanimation表示やOCRを根拠にしない。`M7 result field recognition evidence`はこの要件の実装対応名である。
 
 ## OCR結果の読み方

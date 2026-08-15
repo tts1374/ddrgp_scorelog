@@ -41,7 +41,6 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private readonly IScoreDatabaseInitializer scoreDatabaseInitializer;
     private readonly IDdrGpWindowEnumerator ddrGpWindowEnumerator;
     private readonly AutomaticMonitoringOptions automaticMonitoringOptions;
-    private readonly TimeSpan unresolvedNotificationDisplayDuration;
     private readonly SynchronizationContext? uiSynchronizationContext;
     private readonly IPersonalScoreDataBackupService personalScoreDataBackupService;
     private PlayHistoryItem? selectedPlay;
@@ -197,8 +196,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         IApplicationUpdateService? applicationUpdateService = null,
         AutomaticMonitoringOptions? automaticMonitoringOptions = null,
         IUserSettingsStore? userSettingsStore = null,
-        IPersonalScoreDataBackupService? personalScoreDataBackupService = null,
-        TimeSpan? unresolvedNotificationDisplayDuration = null)
+        IPersonalScoreDataBackupService? personalScoreDataBackupService = null)
     {
         this.repository = repository;
         this.workflowRunner = workflowRunner;
@@ -214,12 +212,6 @@ public sealed class MainViewModel : INotifyPropertyChanged
         this.ddrGpWindowEnumerator = ddrGpWindowEnumerator ?? new DdrGpWindowEnumerator();
         this.automaticMonitoringOptions = automaticMonitoringOptions ?? new AutomaticMonitoringOptions();
         this.automaticMonitoringOptions.Validate();
-        this.unresolvedNotificationDisplayDuration =
-            unresolvedNotificationDisplayDuration ?? DefaultUnresolvedNotificationDisplayDuration;
-        if (this.unresolvedNotificationDisplayDuration <= TimeSpan.Zero)
-        {
-            throw new ArgumentOutOfRangeException(nameof(unresolvedNotificationDisplayDuration));
-        }
         this.applicationUpdateService = applicationUpdateService;
         this.personalScoreDataBackupService = personalScoreDataBackupService ??
             new PersonalScoreDataBackupService();
@@ -228,6 +220,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
         masterDatabasePath = this.defaultDatabasePaths.MasterDatabasePath;
         catalogDatabasePath = this.defaultDatabasePaths.JacketCatalogDatabasePath;
     }
+
+    internal Func<TimeSpan, Func<Task>, Task> UnresolvedNotificationScheduler { get; set; } =
+        ScheduleUnresolvedNotificationAsync;
 
     public event PropertyChangedEventHandler? PropertyChanged;
     public event Action<ChartBestItem>? ChartBestSelectionRequested;
@@ -3387,13 +3382,21 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private void ScheduleUnresolvedNotificationAutoClear()
     {
         var generation = Interlocked.Increment(ref unresolvedNotificationGeneration);
-        _ = ClearUnresolvedNotificationAfterDelayAsync(generation);
+        _ = UnresolvedNotificationScheduler(
+            DefaultUnresolvedNotificationDisplayDuration,
+            () => ClearUnresolvedNotificationIfCurrentAsync(generation));
     }
 
-    private async Task ClearUnresolvedNotificationAfterDelayAsync(long generation)
+    private static async Task ScheduleUnresolvedNotificationAsync(
+        TimeSpan delay,
+        Func<Task> clearNotification)
     {
-        await Task.Delay(unresolvedNotificationDisplayDuration).ConfigureAwait(false);
+        await Task.Delay(delay).ConfigureAwait(false);
+        await clearNotification().ConfigureAwait(false);
+    }
 
+    private Task ClearUnresolvedNotificationIfCurrentAsync(long generation)
+    {
         void ClearIfCurrent()
         {
             if (Interlocked.CompareExchange(
@@ -3413,10 +3416,26 @@ public sealed class MainViewModel : INotifyPropertyChanged
             ReferenceEquals(SynchronizationContext.Current, uiSynchronizationContext))
         {
             ClearIfCurrent();
-            return;
+            return Task.CompletedTask;
         }
 
-        uiSynchronizationContext.Post(_ => ClearIfCurrent(), null);
+        var completion = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        uiSynchronizationContext.Post(
+            _ =>
+            {
+                try
+                {
+                    ClearIfCurrent();
+                    completion.TrySetResult();
+                }
+                catch (Exception exception)
+                {
+                    completion.TrySetException(exception);
+                }
+            },
+            null);
+        return completion.Task;
     }
 
     private void ClearUnresolvedNotificationDisplay()

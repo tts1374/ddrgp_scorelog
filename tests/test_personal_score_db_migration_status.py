@@ -20,6 +20,33 @@ def _create_formal_db(path: Path) -> None:
         schema.create_personal_score_db_schema(connection)
 
 
+def _mark_formal_db_as_version_2(path: Path) -> None:
+    with sqlite3.connect(path) as connection:
+        connection.execute("ALTER TABLE plays DROP COLUMN calories")
+        connection.execute("ALTER TABLE plays DROP COLUMN ok")
+        connection.execute("PRAGMA user_version = 2")
+        connection.execute(
+            "UPDATE score_db_metadata SET value = '2' WHERE key = 'schema_version'"
+        )
+        connection.execute(
+            "DELETE FROM schema_migrations WHERE schema_version = 3"
+        )
+        connection.commit()
+
+
+def _mark_formal_db_as_version_1(path: Path) -> None:
+    _mark_formal_db_as_version_2(path)
+    with sqlite3.connect(path) as connection:
+        connection.execute("DROP INDEX idx_plays_played_at_order")
+        connection.execute("DROP INDEX idx_plays_song_chart_order")
+        connection.execute("PRAGMA user_version = 1")
+        connection.execute(
+            "UPDATE score_db_metadata SET value = '1' WHERE key = 'schema_version'"
+        )
+        connection.execute("DELETE FROM schema_migrations WHERE schema_version = 2")
+        connection.commit()
+
+
 def _digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
@@ -37,7 +64,7 @@ def test_status_cli_reports_current_database_without_side_effects(
             "--personal-score-db-migration-status",
             str(db_path),
             "--personal-score-db-migration-target-version",
-            "2",
+            "3",
             "--personal-score-db-migration-backup",
             str(backup_path),
             "--personal-score-db-migration-format",
@@ -49,7 +76,7 @@ def test_status_cli_reports_current_database_without_side_effects(
     assert exit_code == 0
     assert result["status"] == "current"
     assert result["reason"] == "already_at_target_version"
-    assert result["source_version"] == result["target_version"] == 2
+    assert result["source_version"] == result["target_version"] == 3
     assert result["backup_path_inspection"] == {
         "is_safe": True,
         "is_new": True,
@@ -95,20 +122,20 @@ def test_projection_fixes_rejected_database_states(
             elif kind == "partial":
                 connection.execute("PRAGMA user_version = 1")
             else:
-                connection.execute("PRAGMA user_version = 3")
+                connection.execute("PRAGMA user_version = 4")
                 connection.execute(
-                    "UPDATE score_db_metadata SET value = '3' WHERE key = 'schema_version'"
+                    "UPDATE score_db_metadata SET value = '4' WHERE key = 'schema_version'"
                 )
                 connection.execute(
                     "INSERT INTO schema_migrations "
                     "(migration_id, schema_version, app_version, notes) "
-                    "VALUES ('003_fixture', 3, 'test', 'test')"
+                    "VALUES ('004_fixture', 4, 'test', 'test')"
                 )
             connection.commit()
 
     result = project_personal_score_db_migration_status(
         db_path,
-        target_version=2,
+        target_version=3,
         backup_path=tmp_path / "backup.sqlite",
         dry_run=False,
     )
@@ -119,13 +146,12 @@ def test_projection_fixes_rejected_database_states(
     assert result["exit_code"] == 2
 
 
-def test_future_supported_dry_run_displays_steps_from_same_contract(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+def test_supported_v2_to_v3_dry_run_displays_steps_from_same_contract(
+    tmp_path: Path
 ) -> None:
     db_path = tmp_path / "scores.sqlite"
     _create_formal_db(db_path)
-    monkeypatch.setattr(contract, "CURRENT_SCHEMA_VERSION", 3)
-    monkeypatch.setattr(contract, "SUPPORTED_MIGRATION_TRANSITIONS", ((2, 3),))
+    _mark_formal_db_as_version_2(db_path)
 
     result = project_personal_score_db_migration_status(
         db_path,
@@ -135,6 +161,29 @@ def test_future_supported_dry_run_displays_steps_from_same_contract(
     )
 
     assert result["database_state"] == "older_supported"
+    assert result["status"] == "dry_run_ready"
+    assert result["planned_steps"] == list(contract.MIGRATION_EXECUTION_STEPS)
+    assert result["may_create_backup"] is False
+    assert result["may_modify_source"] is False
+
+
+def test_supported_v1_to_v3_dry_run_uses_registered_transition_chain(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "scores.sqlite"
+    _create_formal_db(db_path)
+    _mark_formal_db_as_version_1(db_path)
+
+    result = project_personal_score_db_migration_status(
+        db_path,
+        target_version=3,
+        backup_path=tmp_path / "backup.sqlite",
+        dry_run=True,
+    )
+
+    assert result["database_state"] == "older_supported"
+    assert result["source_version"] == 1
+    assert result["target_version"] == 3
     assert result["status"] == "dry_run_ready"
     assert result["planned_steps"] == list(contract.MIGRATION_EXECUTION_STEPS)
     assert result["may_create_backup"] is False

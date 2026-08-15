@@ -35,6 +35,69 @@ public sealed class CaptureSaveWorkflowRunnerTests
     }
 
     [Fact]
+    public async Task Adopted_optional_metrics_roundtrip_and_low_confidence_calories_stays_null()
+    {
+        using var database = new DatabaseFixture();
+        var runner = new AppOwnedCaptureSaveWorkflowRunner();
+        var adoptedObservation = FormalObservation(
+            987650,
+            confirmedEventId: "confirmed-event-v1:metrics");
+        var adoptedEvidence = adoptedObservation.FormalEvidence! with
+        {
+            Calories = 28.6,
+            Sources = WithSource(
+                adoptedObservation.FormalEvidence!.Sources,
+                "calories",
+                FormalEvidenceSourceNames.ResultNumericVisualEvidence),
+            Confidences = WithConfidence(
+                adoptedObservation.FormalEvidence!.Confidences,
+                "calories",
+                0.99),
+        };
+        var lowConfidenceObservation = FormalObservation(
+            987650,
+            confirmedEventId: "confirmed-event-v1:calories-low-confidence");
+        var lowConfidenceEvidence = lowConfidenceObservation.FormalEvidence! with
+        {
+            Calories = 99.9,
+            Sources = WithSource(
+                lowConfidenceObservation.FormalEvidence!.Sources,
+                "calories",
+                FormalEvidenceSourceNames.ResultNumericVisualEvidence),
+            Confidences = WithConfidence(
+                lowConfidenceObservation.FormalEvidence!.Confidences,
+                "calories",
+                0.97),
+        };
+
+        var adopted = await runner.RunCandidateAsync(
+            Frame(1_000),
+            adoptedObservation with { FormalEvidence = adoptedEvidence },
+            database.ScorePath,
+            database.MasterPath,
+            database.CatalogPath);
+        var missing = await runner.RunCandidateAsync(
+            Frame(2_000, DateTimeOffset.Parse("2026-07-29T12:00:01+09:00")),
+            lowConfidenceObservation with { FormalEvidence = lowConfidenceEvidence },
+            database.ScorePath,
+            database.MasterPath,
+            database.CatalogPath);
+
+        Assert.Equal(1, adopted.StatusCounts["saved"]);
+        Assert.Equal(1, missing.StatusCounts["saved"]);
+        using var connection = OpenReadOnly(database.ScorePath);
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT ok, calories FROM plays ORDER BY played_at;";
+        using var reader = command.ExecuteReader();
+        Assert.True(reader.Read());
+        Assert.Equal(0, reader.GetInt32(0));
+        Assert.Equal(28.6, reader.GetDouble(1));
+        Assert.True(reader.Read());
+        Assert.Equal(0, reader.GetInt32(0));
+        Assert.True(reader.IsDBNull(1));
+    }
+
+    [Fact]
     public async Task Reprocessing_the_same_result_event_is_a_duplicate_without_a_second_play()
     {
         using var database = new DatabaseFixture();

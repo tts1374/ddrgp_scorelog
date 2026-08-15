@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import sqlite3
 from dataclasses import dataclass, replace
 from datetime import datetime
@@ -63,6 +64,8 @@ class PersonalScoreDbPlayInput:
     analysis_confidence: float
     app_version: str
     flare_rank: str | None = None
+    ok: int | None = None
+    calories: float | None = None
 
 
 @dataclass(frozen=True)
@@ -300,6 +303,12 @@ def _validate_play(errors: list[str], play: PersonalScoreDbPlayInput) -> None:
     if play.flare_rank is not None:
         if not isinstance(play.flare_rank, str) or play.flare_rank not in RESULT_FLARE_RANK_VALUES:
             errors.append("play.flare_rank_invalid")
+    if play.ok is not None and play.ok < 0:
+        errors.append("play.ok_negative")
+    if play.calories is not None and (
+        not math.isfinite(play.calories) or play.calories < 0.0
+    ):
+        errors.append("play.calories_invalid")
     if play.duplicate_key.startswith(("score:", "file:")):
         errors.append("play.duplicate_key_uses_preview_format")
     if not 0 <= play.score <= 1_000_000:
@@ -382,10 +391,10 @@ def _insert_play(
         INSERT INTO plays (
           play_id, played_at, master_version, song_id, chart_id, score,
           max_combo, marvelous, perfect, great, good, miss, ex_score, rank,
-          clear_type, flare_rank, capture_hash, source_capture_id, duplicate_key,
+          clear_type, flare_rank, ok, calories, capture_hash, source_capture_id, duplicate_key,
           analysis_confidence, app_version
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             play.play_id,
@@ -404,6 +413,8 @@ def _insert_play(
             play.rank,
             play.clear_type,
             play.flare_rank,
+            play.ok,
+            play.calories,
             play.capture_hash,
             play.source_capture_id,
             play.duplicate_key,

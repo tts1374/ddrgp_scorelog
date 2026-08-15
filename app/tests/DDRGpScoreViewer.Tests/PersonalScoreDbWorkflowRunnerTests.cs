@@ -38,6 +38,29 @@ public sealed class PersonalScoreDbWorkflowRunnerTests
     }
 
     [Fact]
+    public async Task Optional_result_metrics_round_trip_and_missing_values_do_not_block_save()
+    {
+        using var fixture = new DatabaseFixture();
+        var input = SaveInput();
+        var formal = Assert.IsType<Dictionary<string, object?>>(input["formal_play"]);
+        formal["ok"] = 21;
+        formal["calories"] = 28.6;
+        var inputPath = WriteWorkflowInput(fixture.DirectoryPath, input);
+        var runner = new AppOwnedPersonalScoreDbWorkflowRunner(
+            () => ViewerDatabasePaths.ForDevelopment(fixture.DirectoryPath));
+
+        var result = await runner.RunAsync(inputPath, fixture.ScorePath);
+        var play = Assert.Single(new ScoreViewerRepository().Load(
+            fixture.ScorePath,
+            fixture.MasterPath,
+            fixture.CatalogPath).Plays, item => item.PlayId == "play-app-owned");
+
+        Assert.Equal("saved", result.WorkflowStatus);
+        Assert.Equal(21, play.Ok);
+        Assert.Equal(28.6, play.Calories);
+    }
+
+    [Fact]
     public async Task Valid_analysis_detail_is_published_and_reused_by_the_app_owned_workflow()
     {
         using var fixture = new DatabaseFixture();
@@ -219,6 +242,8 @@ public sealed class PersonalScoreDbWorkflowRunnerTests
                 ["rank"] = "AAA",
                 ["clear_type"] = "CLEAR",
                 ["flare_rank"] = null,
+                ["ok"] = null,
+                ["calories"] = null,
                 ["duplicate_key"] = "play:v1:app-owned",
             },
             ["exclusion"] = null,

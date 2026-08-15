@@ -479,7 +479,8 @@ M5bの変更では、少なくとも次のcurrent-only境界をfixtureで固定�
 - DB duplicate、excluded、unresolved、invalid、artifact partial failure、DB拒否をsavedへ丸めず、transaction済みplayだけread-only再読込する。
 - byte-identicalな連続frameでもcapture-event scoped hashはframeごとに一意とし、duplicate eventをplayなしのsource capture + analysisとして記録する。同一manifest/frameの再送拒否は維持する。
 - fatal event statusはsession `workflow_failed` とCLI非0終了へ伝播し、同sessionのcommit済みplayと失敗理由を両方表示する。
-- capture接続は正式DB schema version 2、writer transaction、duplicate、manual workflow入口を変更しない。
+- capture接続は正式DB schema version 3、writer transaction、duplicate、manual workflow入口を維持する。既存O.K.認識のCLEAR判定契約を緩和せず、採用済みO.K.と消費カロリーだけをnullable保存し、任意値の未取得・低信頼度・認識失敗で他の保存条件を満たすplayを止めない。
+- O.K.／消費カロリーの欠損を0、candidate、expected、preview、raw OCRから昇格せず、v2→v3 migrationでも過去playをbackfillしない。新旧backup formatのrestore、4種類の欠損組合せ、migration前backupと失敗時restoreを回帰確認する。
 - `.NET build/test` とcapture列を読む対象Python testを実行する。画像分類・ROI・OCR・confirmed-events生成を変更しない場合、Vision PoC本体の再実行は不要とする。
 - capture save接続を変更した場合は、保存候補境界、formal昇格negative、workflow status写像、DB duplicate、viewer再読込のPython/.NET testと、利用可能な実capture manifestのdry-runを実行する。
 
@@ -522,7 +523,7 @@ dry-run sequence scenario 入口を変更した場合も、生成manifestを man
 - ROI座標定義の大変更
 ## Personal score DB migration contract guard
 
-`tests/test_personal_score_db_migration_contract.py` と `tests/fixtures/personal_score_db_migration/plan-matrix-v1.json` は、current / older supported / newer unsupported / unknown / preview / identity mismatch / partial state、登録済みtransition以外のtarget拒否、backup path安全性と既存file conflict、dry-run無変更と予定step投影、明示確認、終了コードを固定する。全execution stepの失敗について、backup検証前はsource無変更、commit前のtransaction失敗はrollback、commit以後はmanual recoveryとなることも固定する。
+`tests/test_personal_score_db_migration_contract.py` と `tests/fixtures/personal_score_db_migration/plan-matrix-v2.json` は、current / older supported / newer unsupported / unknown / preview / identity mismatch / partial state、登録済みtransition以外のtarget拒否、backup path安全性と既存file conflict、dry-run無変更と予定step投影、明示確認、終了コードを固定する。全execution stepの失敗について、backup検証前はsource無変更、commit前のtransaction失敗はrollback、commit以後はmanual recoveryとなることも固定する。
 
 このcontractテストは実DB backupやmigrationを生成しない。既存save/orchestration/diagnostic CLIの回帰は従来テストで維持し、migration contractをそれらへ接続しないことを前提とする。
 

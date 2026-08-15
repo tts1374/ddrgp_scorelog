@@ -190,13 +190,16 @@ public sealed class CaptureSaveViewModelTests
                     unresolvedEventId,
                     "unresolved",
                     ["digit_recognition.ambiguous"])]));
+        var scheduler = new ControlledNotificationScheduler();
         var viewModel = new MainViewModel(
             new ScoreViewerRepository(),
             new UnusedManualWorkflowRunner(),
             continuousCaptureService: new StubContinuousCaptureService(
                 CaptureOperationStatus.Saved),
-            captureSaveWorkflowRunner: workflow,
-            unresolvedNotificationDisplayDuration: TimeSpan.FromMilliseconds(500));
+            captureSaveWorkflowRunner: workflow)
+        {
+            UnresolvedNotificationScheduler = scheduler.ScheduleAsync,
+        };
 
         await viewModel.StartContinuousCaptureAndSaveAsync(
             123,
@@ -206,11 +209,10 @@ public sealed class CaptureSaveViewModelTests
         Assert.True(viewModel.HasUnresolvedNotification);
         Assert.Equal(1, viewModel.MonitoringResults.Unresolved);
         Assert.Empty(viewModel.Plays);
+        var scheduled = Assert.Single(scheduler.Scheduled);
+        Assert.Equal(TimeSpan.FromSeconds(3), scheduled.Delay);
 
-        await Task.Delay(TimeSpan.FromMilliseconds(100));
-        Assert.True(viewModel.HasUnresolvedNotification);
-
-        await Task.Delay(TimeSpan.FromMilliseconds(500));
+        await scheduled.ExpireAsync();
 
         Assert.False(viewModel.HasUnresolvedNotification);
         Assert.Equal("", viewModel.UnresolvedNotificationTitle);
