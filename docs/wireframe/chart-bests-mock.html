@@ -105,8 +105,6 @@
     .browse-tabs { display: flex; flex-wrap: wrap; gap: 6px; }
     .browse-tab { min-width: 128px; padding: 8px 16px; border: 1px solid var(--border-color); border-radius: 6px; background: #FFF; color: var(--text-main); font-size: 13px; font-weight: 700; cursor: pointer; }
     .browse-tab.active { background: var(--primary); border-color: var(--primary); color: #FFF; }
-    .phase-label { margin-left: 5px; padding: 2px 5px; border-radius: 999px; background: #EDE9FE; color: #6D28D9; font-size: 9px; font-weight: 900; vertical-align: 1px; }
-    .browse-tab.active .phase-label { background: rgba(255,255,255,0.2); color: #FFF; }
     .selection-summary { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; padding-top: 10px; border-top: 1px solid var(--border-color); }
     .selection-summary[hidden] { display: none; }
     .selection-label { color: var(--text-muted); font-size: 11px; font-weight: 700; }
@@ -354,7 +352,7 @@
             <button class="browse-tab active" type="button" role="tab" aria-selected="true" data-mode="level">レベルから</button>
             <button class="browse-tab" type="button" role="tab" aria-selected="false" data-mode="version">バージョンから</button>
             <button class="browse-tab" type="button" role="tab" aria-selected="false" data-mode="title">曲名から</button>
-            <button class="browse-tab" type="button" role="tab" aria-selected="false" data-mode="goal">目標から<span class="phase-label">後続</span></button>
+            <button class="browse-tab" type="button" role="tab" aria-selected="false" data-mode="goal">目標から</button>
           </div>
         </div>
       </div>
