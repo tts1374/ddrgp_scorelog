@@ -267,13 +267,29 @@ public sealed class UserSettingsTests
     }
 
     [Fact]
+    public void Browse_state_save_failure_is_reported_without_blocking_selection()
+    {
+        var viewModel = new MainViewModel(
+            new ScoreViewerRepository(),
+            userSettingsStore: new ThrowingUserSettingsStore());
+
+        viewModel.BestBrowseMode = UserSettings.VersionBrowseMode;
+
+        Assert.Equal(UserSettings.VersionBrowseMode, viewModel.BestBrowseMode);
+        Assert.Contains("settings write failed", viewModel.SettingsStatusMessage);
+    }
+
+    [Fact]
     public void Reset_returns_draft_values_to_defaults_without_saving_them()
     {
         var saved = new UserSettings(
             StartMonitoringOnLaunch: false,
             NotifyUnresolvedResults: false,
             DefaultPlayStyle: UserSettings.DoublePlayStyle,
-            StartupPage: UserSettings.HistoryStartupPage);
+            StartupPage: UserSettings.HistoryStartupPage,
+            BestBrowseMode: UserSettings.VersionBrowseMode,
+            BestLevel: "level_17",
+            BestVersion: "DDR WORLD");
         var store = new MemoryUserSettingsStore(saved);
         var viewModel = new MainViewModel(
             new ScoreViewerRepository(),
@@ -282,19 +298,32 @@ public sealed class UserSettingsTests
 
         viewModel.ResetUserSettings();
 
-        AssertDefaults(viewModel);
+        AssertVisibleDefaults(viewModel);
+        Assert.Equal(saved.BestBrowseMode, viewModel.BestBrowseMode);
+        Assert.Equal(saved.BestLevel, viewModel.BestLevelFilter);
+        Assert.Equal(saved.BestVersion, viewModel.BestVersionFilter);
         Assert.Equal(saved, store.StoredSettings);
+
+        Assert.True(viewModel.SaveUserSettings());
+        Assert.Equal(saved.BestBrowseMode, store.StoredSettings?.BestBrowseMode);
+        Assert.Equal(saved.BestLevel, store.StoredSettings?.BestLevel);
+        Assert.Equal(saved.BestVersion, store.StoredSettings?.BestVersion);
     }
 
     private static void AssertDefaults(MainViewModel viewModel)
+    {
+        AssertVisibleDefaults(viewModel);
+        Assert.Equal(UserSettings.LevelBrowseMode, viewModel.BestBrowseMode);
+        Assert.Equal(UserSettings.DefaultBestLevel, viewModel.BestLevelFilter);
+        Assert.Equal(UserSettings.DefaultBestVersion, viewModel.BestVersionFilter);
+    }
+
+    private static void AssertVisibleDefaults(MainViewModel viewModel)
     {
         Assert.True(viewModel.StartMonitoringOnLaunch);
         Assert.True(viewModel.NotifyUnresolvedResults);
         Assert.Equal(UserSettings.SinglePlayStyle, viewModel.DefaultPlayStyle);
         Assert.Equal(UserSettings.HomeStartupPage, viewModel.StartupPage);
-        Assert.Equal(UserSettings.LevelBrowseMode, viewModel.BestBrowseMode);
-        Assert.Equal(UserSettings.DefaultBestLevel, viewModel.BestLevelFilter);
-        Assert.Equal(UserSettings.DefaultBestVersion, viewModel.BestVersionFilter);
     }
 
     private static ViewerDatabasePaths ConfiguredPaths(DatabaseFixture fixture) =>

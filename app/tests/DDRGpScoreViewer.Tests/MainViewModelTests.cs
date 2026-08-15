@@ -82,6 +82,9 @@ public sealed class MainViewModelTests
         Assert.All(viewModel.ChartBests, item => Assert.False(item.IsPlayed));
         Assert.Contains(viewModel.ChartBests, item => item.ChartId == "chart-1");
         Assert.Contains(viewModel.ChartBests, item => item.ChartId == "chart-unplayed");
+        Assert.True(viewModel.HasData);
+        Assert.Equal(System.Windows.Visibility.Visible, viewModel.DataVisibility);
+        Assert.Equal(System.Windows.Visibility.Collapsed, viewModel.StatusVisibility);
     }
 
     [Fact]
@@ -527,7 +530,8 @@ public sealed class MainViewModelTests
         Assert.Contains(
             viewModel.ChartBests,
             item => item.ChartId == "chart-1" && !item.IsPlayed);
-        Assert.False(viewModel.HasData);
+        Assert.True(viewModel.HasData);
+        Assert.Equal(System.Windows.Visibility.Visible, viewModel.DataVisibility);
         Assert.Equal("まだプレーデータがありません", viewModel.StatusTitle);
         Assert.Equal(MasterDatabaseStatus.Compatible, viewModel.MasterDatabaseStatus);
         Assert.Equal(MasterDatabaseStatus.Compatible, viewModel.CatalogDatabaseStatus);

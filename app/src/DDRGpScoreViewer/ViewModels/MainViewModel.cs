@@ -1468,17 +1468,6 @@ public sealed class MainViewModel : INotifyPropertyChanged
         DefaultPlayStyle = UserSettings.Defaults.DefaultPlayStyle;
         StartupPage = UserSettings.Defaults.StartupPage;
         Language = UserSettings.Defaults.Language;
-        suppressBestBrowseStatePersistence = true;
-        try
-        {
-            BestBrowseMode = UserSettings.Defaults.BestBrowseMode;
-            BestLevelFilter = UserSettings.Defaults.BestLevel;
-            BestVersionFilter = UserSettings.Defaults.BestVersion;
-        }
-        finally
-        {
-            suppressBestBrowseStatePersistence = false;
-        }
         SettingsStatusMessage = Localization.Get("初期値に戻しました。保存すると反映されます。");
     }
 
@@ -3549,13 +3538,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
             }
             if (totalPlayCount == 0)
             {
-                HasData = false;
                 StatusTitle = "まだプレーデータがありません";
                 StatusMessage =
                     "DDR GRAND PRIXをプレーするか、データを読み込むとここに表示されます。";
-                return;
             }
-            HasData = true;
         }
         catch (ViewerDatabaseException exception)
         {
@@ -3753,7 +3739,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
                     "1"));
         }
         SelectedPlay = Plays.FirstOrDefault();
-        HasData = totalPlayCount > 0;
+        HasData = totalPlayCount > 0 || data.ChartCatalog.Count > 0;
         NotifyRecentPlayListState();
         NotifyDataManagementState();
     }
@@ -4239,7 +4225,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
             exception is IOException or UnauthorizedAccessException or
             ArgumentException or InvalidOperationException)
         {
-            // Browsing remains usable when the local settings file cannot be updated.
+            SettingsStatusMessage = Localization.Format(
+                "設定を保存できませんでした。{0}",
+                exception.Message);
         }
     }
 
