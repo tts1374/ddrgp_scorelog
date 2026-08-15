@@ -119,6 +119,104 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
     }
 
     [Fact]
+    public void Best_screen_switches_between_three_exclusive_modes_and_closes_choice_grid()
+    {
+        using var databaseFixture = new DatabaseFixture();
+        applicationFixture.Run(() =>
+        {
+            MainWindow? window = null;
+            try
+            {
+                foreach (var resourceName in new[] { "Theme.xaml", "Components.xaml", "Strings.xaml" })
+                {
+                    Application.Current.Resources.MergedDictionaries.Add(
+                        new ResourceDictionary
+                        {
+                            Source = new Uri(
+                                $"/DDRGpScoreViewer;component/Resources/{resourceName}",
+                                UriKind.Relative),
+                        });
+                }
+
+                window = new MainWindow(
+                    new ViewerDatabasePaths(
+                        ViewerDatabaseEnvironment.Development,
+                        databaseFixture.DirectoryPath,
+                        databaseFixture.MasterPath,
+                        databaseFixture.CatalogPath,
+                        databaseFixture.ScorePath,
+                        Path.Combine(databaseFixture.DirectoryPath, "evaluation.db"),
+                        Path.Combine(databaseFixture.DirectoryPath, "data"),
+                        Path.Combine(databaseFixture.DirectoryPath, "logs"),
+                        Path.Combine(databaseFixture.DirectoryPath, "viewer-settings.json")))
+                {
+                    Width = 960,
+                    Height = 640,
+                };
+
+                Assert.Equal(UserSettings.LevelBrowseMode, window.ViewModel.BestBrowseMode);
+                Assert.Equal(UserSettings.DefaultBestLevel, window.ViewModel.BestLevelFilter);
+                Assert.Equal(UserSettings.DefaultBestVersion, window.ViewModel.BestVersionFilter);
+
+                window.ViewModel.BestLevelFilter = "level_17";
+                window.ViewModel.Load(
+                    databaseFixture.ScorePath,
+                    databaseFixture.MasterPath,
+                    databaseFixture.CatalogPath,
+                    persist: false);
+                window.Show();
+                window.BestNavigation.RaiseEvent(
+                    new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+                window.UpdateLayout();
+                DrainDispatcher(window.Dispatcher);
+
+                Assert.Equal(UserSettings.LevelBrowseMode, window.ViewModel.BestBrowseMode);
+                Assert.Equal(Visibility.Collapsed, window.BestAxisPanel.Visibility);
+                Assert.Equal("レベルを変更", window.BestAxisChangeButton.Content);
+                Assert.Equal(1, Grid.GetColumn(window.BestAxisChangeButton));
+                Assert.Equal(new Thickness(0, 1, 0, 0), window.BestSelectionSummaryPanel.BorderThickness);
+                Assert.Equal(2, Grid.GetRow(window.BestResultSummary));
+                Assert.Equal(Visibility.Visible, window.BestProgressCard.Visibility);
+
+                window.BestAxisChangeButton.RaiseEvent(
+                    new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+                window.UpdateLayout();
+                Assert.Equal(Visibility.Visible, window.BestAxisPanel.Visibility);
+
+                window.BestLevelOptionsGrid.SelectedValue = "level_18";
+                DrainDispatcher(window.Dispatcher);
+                Assert.Equal("level_18", window.ViewModel.BestLevelFilter);
+                Assert.Equal(Visibility.Collapsed, window.BestAxisPanel.Visibility);
+
+                window.BestVersionModeButton.RaiseEvent(
+                    new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+                window.UpdateLayout();
+                Assert.Equal(UserSettings.VersionBrowseMode, window.ViewModel.BestBrowseMode);
+                Assert.Equal("バージョンを変更", window.BestAxisChangeButton.Content);
+                Assert.Equal(Visibility.Visible, window.BestVersionOptionsPanel.Visibility);
+                Assert.Equal(Visibility.Visible, window.BestProgressCard.Visibility);
+
+                window.BestTitleModeButton.RaiseEvent(
+                    new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+                window.UpdateLayout();
+                Assert.Equal(UserSettings.TitleBrowseMode, window.ViewModel.BestBrowseMode);
+                Assert.Equal(Visibility.Visible, window.BestTitleSearchPanel.Visibility);
+                Assert.Equal(Visibility.Visible, window.BestAxisPanel.Visibility);
+                Assert.Equal(36, window.BestTitleSearchTextBox.MinHeight);
+                Assert.Equal(Visibility.Collapsed, window.BestProgressCard.Visibility);
+            }
+            finally
+            {
+                if (window is not null)
+                {
+                    window.PrepareForApplicationExit();
+                    window.Close();
+                }
+            }
+        });
+    }
+
+    [Fact]
     public void Loading_the_next_best_page_keeps_the_previous_scroll_offset()
     {
         using var databaseFixture = new DatabaseFixture();
@@ -161,6 +259,7 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
                     Width = 960,
                     Height = 640,
                 };
+                window.ViewModel.BestBrowseMode = UserSettings.TitleBrowseMode;
                 window.ViewModel.Load(
                     databaseFixture.ScorePath,
                     databaseFixture.MasterPath,

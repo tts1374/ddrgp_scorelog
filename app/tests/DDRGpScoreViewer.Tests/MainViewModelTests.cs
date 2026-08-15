@@ -26,7 +26,9 @@ public sealed class MainViewModelTests
             "UPDATE plays SET clear_type = 'FC' WHERE play_id IN ('score-update', 'latest'); " +
             "UPDATE plays SET clear_type = 'PFC' WHERE play_id = 'ex-update';");
 
-        var viewModel = new MainViewModel(new ScoreViewerRepository());
+        var viewModel = new MainViewModel(
+            new ScoreViewerRepository(),
+            userSettingsStore: new MemoryUserSettingsStore(null));
         viewModel.Load(fixture.ScorePath, fixture.MasterPath, persist: false);
 
         Assert.Equal(6, viewModel.HomeTodayPlayCount);
@@ -69,14 +71,20 @@ public sealed class MainViewModelTests
             "chart-unplayed",
             version: "DDR WORLD");
 
-        var viewModel = new MainViewModel(new ScoreViewerRepository());
+        var viewModel = new MainViewModel(
+            new ScoreViewerRepository(),
+            userSettingsStore: new MemoryUserSettingsStore(null));
         viewModel.Load(fixture.ScorePath, fixture.MasterPath, persist: false);
+        viewModel.BestBrowseMode = UserSettings.TitleBrowseMode;
 
         Assert.Empty(viewModel.Plays);
         Assert.Equal(2, viewModel.ChartBestTotalCount);
         Assert.All(viewModel.ChartBests, item => Assert.False(item.IsPlayed));
         Assert.Contains(viewModel.ChartBests, item => item.ChartId == "chart-1");
         Assert.Contains(viewModel.ChartBests, item => item.ChartId == "chart-unplayed");
+        Assert.True(viewModel.HasData);
+        Assert.Equal(System.Windows.Visibility.Visible, viewModel.DataVisibility);
+        Assert.Equal(System.Windows.Visibility.Collapsed, viewModel.StatusVisibility);
     }
 
     [Fact]
@@ -100,8 +108,11 @@ public sealed class MainViewModelTests
             "UPDATE plays SET rank = 'B', clear_type = 'PFC', flare_rank = 'VI' " +
             "WHERE play_id = 'ex-best';");
 
-        var viewModel = new MainViewModel(new ScoreViewerRepository());
+        var viewModel = new MainViewModel(
+            new ScoreViewerRepository(),
+            userSettingsStore: new MemoryUserSettingsStore(null));
         viewModel.Load(fixture.ScorePath, fixture.MasterPath, persist: false);
+        viewModel.BestBrowseMode = UserSettings.TitleBrowseMode;
 
         var requested = new List<string>();
         viewModel.ChartBestSelectionRequested += chart => requested.Add(chart.ChartId);
@@ -172,8 +183,11 @@ public sealed class MainViewModelTests
         }
         fixture.ExecuteScoreSql("UPDATE plays SET clear_type = 'FC';");
 
-        var viewModel = new MainViewModel(new ScoreViewerRepository());
+        var viewModel = new MainViewModel(
+            new ScoreViewerRepository(),
+            userSettingsStore: new MemoryUserSettingsStore(null));
         viewModel.Load(fixture.ScorePath, fixture.MasterPath, persist: false);
+        viewModel.BestBrowseMode = UserSettings.TitleBrowseMode;
 
         Assert.Equal(50, viewModel.Plays.Count);
         Assert.Equal(101, viewModel.RecentPlayTotalCount);
@@ -241,10 +255,13 @@ public sealed class MainViewModelTests
                 chartId);
         }
 
-        var viewModel = new MainViewModel(new ScoreViewerRepository());
+        var viewModel = new MainViewModel(
+            new ScoreViewerRepository(),
+            userSettingsStore: new MemoryUserSettingsStore(null));
         viewModel.Load(fixture.ScorePath, fixture.MasterPath, persist: false);
         viewModel.LoadMoreChartBests();
-        viewModel.BestDifficultyFilter = "EXPERT";
+        viewModel.BestBrowseMode = UserSettings.LevelBrowseMode;
+        viewModel.BestLevelFilter = "level_17";
         viewModel.BestSortFilter = "曲名（昇順）";
         viewModel.LoadMoreChartBests();
 
@@ -252,7 +269,8 @@ public sealed class MainViewModelTests
         var selected = viewModel.ChartBests[10];
         viewModel.SelectChartBest(selected);
 
-        Assert.Equal("EXPERT", viewModel.BestDifficultyFilter);
+        Assert.Equal(UserSettings.LevelBrowseMode, viewModel.BestBrowseMode);
+        Assert.Equal("level_17", viewModel.BestLevelFilter);
         Assert.Equal(MainViewModel.BestSortTitleAscending, viewModel.BestSortFilter);
         Assert.Equal(displayedCount, viewModel.ChartBestDisplayedCount);
         Assert.Equal(displayedCount, viewModel.ChartBests.Count);
@@ -271,6 +289,7 @@ public sealed class MainViewModelTests
             return Result("saved", playId: "saved-by-workflow", written: true);
         });
         var viewModel = new MainViewModel(new ScoreViewerRepository(), runner);
+        viewModel.BestBrowseMode = UserSettings.TitleBrowseMode;
 
         await viewModel.SaveAndReloadAsync("workflow.json", fixture.ScorePath, fixture.MasterPath);
 
@@ -301,6 +320,7 @@ public sealed class MainViewModelTests
         });
         var viewModel = new MainViewModel(new ScoreViewerRepository(), runner);
         viewModel.Load(fixture.ScorePath, fixture.MasterPath, persist: false);
+        viewModel.BestBrowseMode = UserSettings.TitleBrowseMode;
         viewModel.LoadMoreChartBests();
         viewModel.SelectChartBest(
             viewModel.ChartBests.Single(item => item.ChartId == "chart-1"));
@@ -501,6 +521,7 @@ public sealed class MainViewModelTests
             defaultDatabasePaths: paths,
             scoreDatabaseInitializer: initializer);
 
+        viewModel.BestBrowseMode = UserSettings.TitleBrowseMode;
         viewModel.RestoreSavedPaths();
 
         Assert.Equal(1, initializer.CallCount);
@@ -509,7 +530,8 @@ public sealed class MainViewModelTests
         Assert.Contains(
             viewModel.ChartBests,
             item => item.ChartId == "chart-1" && !item.IsPlayed);
-        Assert.False(viewModel.HasData);
+        Assert.True(viewModel.HasData);
+        Assert.Equal(System.Windows.Visibility.Visible, viewModel.DataVisibility);
         Assert.Equal("まだプレーデータがありません", viewModel.StatusTitle);
         Assert.Equal(MasterDatabaseStatus.Compatible, viewModel.MasterDatabaseStatus);
         Assert.Equal(MasterDatabaseStatus.Compatible, viewModel.CatalogDatabaseStatus);
@@ -543,7 +565,7 @@ public sealed class MainViewModelTests
     }
 
     [Fact]
-    public void Best_list_filters_and_adds_fifty_rows_at_a_time()
+    public void Best_list_uses_exclusive_modes_and_adds_fifty_rows_at_a_time()
     {
         using var fixture = new DatabaseFixture();
         fixture.AddMasterSongAndChart(
@@ -578,15 +600,12 @@ public sealed class MainViewModelTests
                 chartId);
         }
 
-        fixture.ExecuteScoreSql(
-            "UPDATE plays SET rank = 'AA+', clear_type = 'FC', flare_rank = 'EX' " +
-            "WHERE play_id = 'play-2'; " +
-            "UPDATE plays SET rank = 'A', clear_type = 'PFC' " +
-            "WHERE play_id = 'play-3';");
-
-        var viewModel = new MainViewModel(new ScoreViewerRepository());
+        var viewModel = new MainViewModel(
+            new ScoreViewerRepository(),
+            userSettingsStore: new MemoryUserSettingsStore(null));
         viewModel.Load(fixture.ScorePath, fixture.MasterPath, persist: false);
 
+        viewModel.BestBrowseMode = UserSettings.TitleBrowseMode;
         Assert.Equal(50, viewModel.ChartBests.Count);
         Assert.Equal(62, viewModel.ChartBestTotalCount);
         Assert.Equal(50, viewModel.ChartBestDisplayedCount);
@@ -596,50 +615,115 @@ public sealed class MainViewModelTests
         Assert.Equal(62, viewModel.ChartBests.Count);
         Assert.False(viewModel.CanLoadMoreChartBests);
 
-        viewModel.BestPlayStatusFilter = "未プレー";
+        viewModel.BestSongQuery = "UNPLAYED";
         Assert.Single(viewModel.ChartBests);
         Assert.Equal("UNPLAYED SONG", viewModel.ChartBests[0].SongTitle);
-        Assert.Equal("表示 1〜1 / 全1譜面", viewModel.ChartBestRangeDisplay);
+        Assert.Equal("1譜面", viewModel.ChartBestRangeDisplay);
         Assert.Equal(1, viewModel.ChartBestDisplayedCount);
 
-        viewModel.BestPlayStatusFilter = "すべて";
-        Assert.Equal(50, viewModel.ChartBestDisplayedCount);
+        viewModel.BestSongQuery = "";
+        viewModel.BestBrowseMode = UserSettings.VersionBrowseMode;
         viewModel.BestVersionFilter = "DDR WORLD";
         Assert.All(viewModel.ChartBests, item => Assert.Equal("DDR WORLD", item.Version));
+        Assert.Contains(viewModel.ChartBests, item => item.SongTitle == "UNPLAYED SONG");
 
-        viewModel.BestVersionFilter = "すべて";
-        viewModel.BestSongQuery = "SONG 21";
-        Assert.Single(viewModel.ChartBests);
-        Assert.Equal("SONG 21", viewModel.ChartBests[0].SongTitle);
-
-        viewModel.BestSongQuery = "";
+        viewModel.BestBrowseMode = UserSettings.LevelBrowseMode;
         viewModel.BestLevelFilter = "Lv.17";
         Assert.All(viewModel.ChartBests, item => Assert.Equal("Lv.17", item.LevelDisplay));
 
-        viewModel.ResetBestFilters();
-        viewModel.BestDifficultyFilter = "EXPERT";
-        Assert.All(viewModel.ChartBests, item => Assert.Equal("EXPERT", item.Difficulty));
-
-        viewModel.ResetBestFilters();
-        viewModel.BestRankFilter = "AA";
-        Assert.All(
-            viewModel.ChartBests,
-            item => Assert.True(item.Rank is "AA+" or "AA" or "AA-"));
-
-        viewModel.ResetBestFilters();
-        viewModel.BestClearFilter = "FC";
-        Assert.All(viewModel.ChartBests, item => Assert.Equal("FC", item.ClearDisplay));
-
-        viewModel.ResetBestFilters();
+        viewModel.BestBrowseMode = UserSettings.TitleBrowseMode;
+        viewModel.BestSongQuery = "";
         viewModel.BestSortFilter = "曲名（昇順）";
         Assert.Equal("MAX 300", viewModel.ChartBests[0].SongTitle);
         Assert.Equal("SONG 02", viewModel.ChartBests[1].SongTitle);
         Assert.Equal(50, viewModel.ChartBestDisplayedCount);
 
-        viewModel.ResetBestFilters();
-        Assert.Equal("SINGLE", viewModel.BestPlayStyleFilter);
+        Assert.Equal(UserSettings.SinglePlayStyle, viewModel.BestPlayStyleFilter);
         Assert.Equal(50, viewModel.ChartBests.Count);
-        Assert.Equal(MainViewModel.BestSortScoreDescending, viewModel.BestSortFilter);
+    }
+
+    [Fact]
+    public void Best_progress_counts_use_cumulative_chart_level_states()
+    {
+        using var fixture = new DatabaseFixture();
+        fixture.AddMasterSongAndChart(
+            "song-world-a",
+            "WORLD A",
+            "Artist",
+            "chart-world-a",
+            level: 17,
+            version: "DDR WORLD");
+        fixture.AddMasterSongAndChart(
+            "song-world-b",
+            "WORLD B",
+            "Artist",
+            "chart-world-b",
+            level: 17,
+            version: "DDR WORLD");
+        fixture.AddMasterSongAndChart(
+            "song-world-missing",
+            "WORLD MISSING",
+            "Artist",
+            "chart-world-missing",
+            level: 17,
+            version: "DDR WORLD");
+        fixture.AddPlay(
+            "play-base",
+            "2026-08-01T11:00:00+00:00",
+            910_000,
+            1_050);
+        fixture.AddPlay(
+            "play-world-a",
+            "2026-08-01T12:00:00+00:00",
+            900_000,
+            1_000,
+            "song-world-a",
+            "chart-world-a");
+        fixture.AddPlay(
+            "play-world-b-high",
+            "2026-08-01T12:01:00+00:00",
+            950_000,
+            1_100,
+            "song-world-b",
+            "chart-world-b");
+        fixture.AddPlay(
+            "play-world-b-aaa",
+            "2026-08-01T12:02:00+00:00",
+            900_000,
+            1_000,
+            "song-world-b",
+            "chart-world-b");
+        fixture.ExecuteScoreSql(
+            "UPDATE plays SET rank = 'AA+', clear_type = 'FC' " +
+            "WHERE play_id = 'play-world-a'; " +
+            "UPDATE plays SET rank = 'A', clear_type = 'CLEAR' " +
+            "WHERE play_id = 'play-world-b-high'; " +
+            "UPDATE plays SET rank = 'AAA', clear_type = 'PFC' " +
+            "WHERE play_id = 'play-world-b-aaa';");
+
+        var viewModel = new MainViewModel(
+            new ScoreViewerRepository(),
+            userSettingsStore: new MemoryUserSettingsStore(null));
+        viewModel.Load(fixture.ScorePath, fixture.MasterPath, persist: false);
+        viewModel.BestBrowseMode = UserSettings.LevelBrowseMode;
+        viewModel.BestLevelFilter = "level_17";
+
+        Assert.Equal(4, viewModel.BestProgressTargetCount);
+        Assert.Equal(3, viewModel.BestProgressRecordedCount);
+        Assert.Equal(1, viewModel.BestProgressUnrecordedCount);
+        Assert.Equal(3, viewModel.BestProgressClearCount);
+        Assert.Equal(2, viewModel.BestProgressFullComboCount);
+        Assert.Equal(2, viewModel.BestProgressAaaCount);
+
+        viewModel.BestBrowseMode = UserSettings.VersionBrowseMode;
+        viewModel.BestVersionFilter = "DDR WORLD";
+
+        Assert.Equal(3, viewModel.BestProgressTargetCount);
+        Assert.Equal(2, viewModel.BestProgressRecordedCount);
+        Assert.Equal(1, viewModel.BestProgressUnrecordedCount);
+        Assert.Equal(2, viewModel.BestProgressClearCount);
+        Assert.Equal(2, viewModel.BestProgressFullComboCount);
+        Assert.Equal(1, viewModel.BestProgressAaaCount);
     }
 
     [Theory]
@@ -663,7 +747,10 @@ public sealed class MainViewModelTests
                 $"chart-{index}");
         }
 
-        var viewModel = new MainViewModel(new ScoreViewerRepository());
+        var viewModel = new MainViewModel(
+            new ScoreViewerRepository(),
+            userSettingsStore: new MemoryUserSettingsStore(null));
+        viewModel.BestBrowseMode = UserSettings.TitleBrowseMode;
         viewModel.Load(fixture.ScorePath, fixture.MasterPath, persist: false);
 
         Assert.Equal(expectedInitialCount, viewModel.ChartBests.Count);
@@ -698,7 +785,10 @@ public sealed class MainViewModelTests
                 $"chart-{index}");
         }
 
-        var viewModel = new MainViewModel(new ScoreViewerRepository());
+        var viewModel = new MainViewModel(
+            new ScoreViewerRepository(),
+            userSettingsStore: new MemoryUserSettingsStore(null));
+        viewModel.BestBrowseMode = UserSettings.TitleBrowseMode;
         viewModel.Load(fixture.ScorePath, fixture.MasterPath, persist: false);
         var firstChart = viewModel.ChartBests[0];
         var changes = new List<NotifyCollectionChangedEventArgs>();
@@ -728,33 +818,28 @@ public sealed class MainViewModelTests
     }
 
     [Fact]
-    public void Dropdown_selection_items_update_codes_and_follow_external_changes()
+    public void Exploration_selection_items_update_codes_and_follow_external_changes()
     {
-        var viewModel = new MainViewModel(new ScoreViewerRepository());
+        var viewModel = new MainViewModel(
+            new ScoreViewerRepository(),
+            userSettingsStore: new MemoryUserSettingsStore(null));
 
-        viewModel.SelectedBestDifficultyOption = viewModel.BestDifficultyOptions
-            .Single(option => option.Code == "EXPERT");
+        viewModel.BestBrowseMode = UserSettings.VersionBrowseMode;
         viewModel.SelectedBestLevelOption = viewModel.BestLevelOptions
             .Single(option => option.Code == "level_17");
+        viewModel.SelectedBestVersionOption = viewModel.BestVersionOptions
+            .Single(option => option.Code == "DDR WORLD");
         viewModel.SelectedBestSortOption = viewModel.BestSortOptions
             .Single(option => option.Code == MainViewModel.BestSortTitleAscending);
-        viewModel.SelectedBestPlayStatusOption = viewModel.BestPlayStatusOptions
-            .Single(option => option.Code == "played");
-        viewModel.SelectedBestRankOption = viewModel.BestRankOptions
-            .Single(option => option.Code == "aaa_or_higher");
-        viewModel.SelectedBestClearOption = viewModel.BestClearOptions
-            .Single(option => option.Code == "not_clear");
         viewModel.SelectedStartupPageOption = viewModel.StartupPageOptions
             .Single(option => option.Code == UserSettings.HistoryStartupPage);
         viewModel.SelectedLanguageOption = viewModel.LanguageOptions
             .Single(option => option.Code == UserSettings.KoreanLanguage);
 
-        Assert.Equal("EXPERT", viewModel.BestDifficultyFilter);
+        Assert.Equal(UserSettings.VersionBrowseMode, viewModel.BestBrowseMode);
         Assert.Equal("level_17", viewModel.BestLevelFilter);
+        Assert.Equal("DDR WORLD", viewModel.BestVersionFilter);
         Assert.Equal(MainViewModel.BestSortTitleAscending, viewModel.BestSortFilter);
-        Assert.Equal("played", viewModel.BestPlayStatusFilter);
-        Assert.Equal("aaa_or_higher", viewModel.BestRankFilter);
-        Assert.Equal("not_clear", viewModel.BestClearFilter);
         Assert.Equal(UserSettings.HistoryStartupPage, viewModel.StartupPage);
         Assert.Equal(UserSettings.KoreanLanguage, viewModel.Language);
 
@@ -766,7 +851,7 @@ public sealed class MainViewModelTests
     }
 
     [Fact]
-    public void Best_version_options_follow_selected_play_style_and_reset_invalid_selection()
+    public void Best_version_options_are_fixed_and_follow_the_official_order()
     {
         using var fixture = new DatabaseFixture();
         fixture.AddMasterSongAndChart(
@@ -784,26 +869,29 @@ public sealed class MainViewModelTests
             songId: "song-double",
             chartId: "chart-double");
 
-        var viewModel = new MainViewModel(new ScoreViewerRepository());
+        var viewModel = new MainViewModel(
+            new ScoreViewerRepository(),
+            userSettingsStore: new MemoryUserSettingsStore(null));
         viewModel.Load(fixture.ScorePath, fixture.MasterPath, persist: false);
 
-        Assert.DoesNotContain(
+        Assert.Contains(
             "DDR A20",
             viewModel.BestVersionOptions.Select(option => option.Code));
+        Assert.DoesNotContain("all", viewModel.BestVersionOptions.Select(option => option.Code));
 
-        viewModel.BestVersionFilter = "DDR GRAND PRIX";
+        viewModel.BestBrowseMode = UserSettings.VersionBrowseMode;
         viewModel.BestPlayStyleFilter = "DOUBLE";
         Assert.Contains(
             "DDR A20",
             viewModel.BestVersionOptions.Select(option => option.Code));
-        Assert.Equal(MainViewModel.AllBestFilterValue, viewModel.BestVersionFilter);
+        Assert.Equal(UserSettings.DefaultBestVersion, viewModel.BestVersionFilter);
 
         viewModel.BestVersionFilter = "DDR A20";
         viewModel.BestPlayStyleFilter = "SINGLE";
-        Assert.DoesNotContain(
+        Assert.Contains(
             "DDR A20",
             viewModel.BestVersionOptions.Select(option => option.Code));
-        Assert.Equal(MainViewModel.AllBestFilterValue, viewModel.BestVersionFilter);
+        Assert.Equal("DDR A20", viewModel.BestVersionFilter);
     }
 
     [Fact]
@@ -844,7 +932,9 @@ public sealed class MainViewModelTests
                 version: sourceVersions[index]);
         }
 
-        var viewModel = new MainViewModel(new ScoreViewerRepository());
+        var viewModel = new MainViewModel(
+            new ScoreViewerRepository(),
+            userSettingsStore: new MemoryUserSettingsStore(null));
         viewModel.Load(fixture.ScorePath, fixture.MasterPath, persist: false);
 
         Assert.Equal(
@@ -854,8 +944,9 @@ public sealed class MainViewModelTests
                 "SuperNOVA", "EXTREME", "DDRMAX2", "DDRMAX", "5thMIX", "4thMIX", "3rdMIX",
                 "2ndMIX", "1st",
             ],
-            viewModel.BestVersionOptions.Skip(1).Select(option => option.Code));
+            viewModel.BestVersionOptions.Select(option => option.Code));
 
+        viewModel.BestBrowseMode = UserSettings.VersionBrowseMode;
         viewModel.BestVersionFilter = "DDR GRAND PRIX";
         Assert.Contains(viewModel.ChartBests, item => item.SongTitle == "VERSION SONG 00");
     }
