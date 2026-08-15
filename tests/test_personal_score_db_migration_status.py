@@ -34,6 +34,19 @@ def _mark_formal_db_as_version_2(path: Path) -> None:
         connection.commit()
 
 
+def _mark_formal_db_as_version_1(path: Path) -> None:
+    _mark_formal_db_as_version_2(path)
+    with sqlite3.connect(path) as connection:
+        connection.execute("DROP INDEX idx_plays_played_at_order")
+        connection.execute("DROP INDEX idx_plays_song_chart_order")
+        connection.execute("PRAGMA user_version = 1")
+        connection.execute(
+            "UPDATE score_db_metadata SET value = '1' WHERE key = 'schema_version'"
+        )
+        connection.execute("DELETE FROM schema_migrations WHERE schema_version = 2")
+        connection.commit()
+
+
 def _digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
@@ -148,6 +161,29 @@ def test_supported_v2_to_v3_dry_run_displays_steps_from_same_contract(
     )
 
     assert result["database_state"] == "older_supported"
+    assert result["status"] == "dry_run_ready"
+    assert result["planned_steps"] == list(contract.MIGRATION_EXECUTION_STEPS)
+    assert result["may_create_backup"] is False
+    assert result["may_modify_source"] is False
+
+
+def test_supported_v1_to_v3_dry_run_uses_registered_transition_chain(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "scores.sqlite"
+    _create_formal_db(db_path)
+    _mark_formal_db_as_version_1(db_path)
+
+    result = project_personal_score_db_migration_status(
+        db_path,
+        target_version=3,
+        backup_path=tmp_path / "backup.sqlite",
+        dry_run=True,
+    )
+
+    assert result["database_state"] == "older_supported"
+    assert result["source_version"] == 1
+    assert result["target_version"] == 3
     assert result["status"] == "dry_run_ready"
     assert result["planned_steps"] == list(contract.MIGRATION_EXECUTION_STEPS)
     assert result["may_create_backup"] is False

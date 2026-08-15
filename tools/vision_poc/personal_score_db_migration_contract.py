@@ -98,8 +98,8 @@ def plan_personal_score_db_migration(request: MigrationRequest) -> MigrationPlan
         return _plan("rejected", "source_version_missing", 2)
     if request.source_version >= request.target_version:
         return _plan("rejected", "source_version_must_be_older", 2)
-    if (request.source_version, request.target_version) not in (
-        SUPPORTED_MIGRATION_TRANSITIONS
+    if not _has_complete_migration_path(
+        request.source_version, request.target_version
     ):
         return _plan("rejected", "unsupported_migration_transition", 2)
     if not request.backup_path_is_safe:
@@ -122,6 +122,25 @@ def plan_personal_score_db_migration(request: MigrationRequest) -> MigrationPlan
         may_create_backup=True,
         steps=MIGRATION_EXECUTION_STEPS,
     )
+
+
+def _has_complete_migration_path(source_version: int, target_version: int) -> bool:
+    version = source_version
+    visited: set[int] = set()
+    while version < target_version and version not in visited:
+        visited.add(version)
+        next_versions = tuple(
+            to_version
+            for from_version, to_version in SUPPORTED_MIGRATION_TRANSITIONS
+            if from_version == version
+        )
+        if len(next_versions) != 1:
+            return False
+        next_version = next_versions[0]
+        if next_version <= version or next_version > target_version:
+            return False
+        version = next_version
+    return version == target_version
 
 
 def migration_failure_result(failed_step: str) -> MigrationPlan:

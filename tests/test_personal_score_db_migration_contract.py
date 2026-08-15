@@ -125,10 +125,32 @@ def test_current_version_transition_checks_confirmation_and_backup(
     assert plan.reason == expected_reason
 
 
-def test_unregistered_transition_is_rejected_when_target_is_current(
+def test_registered_transition_chain_reaches_current_schema(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(contract, "CURRENT_SCHEMA_VERSION", 3)
+
+    plan = contract.plan_personal_score_db_migration(
+        contract.MigrationRequest(
+            database_state="older_supported",
+            source_version=1,
+            target_version=3,
+            dry_run=True,
+            explicit_confirmation=False,
+            backup_path_is_safe=True,
+            backup_path_is_new=True,
+        )
+    )
+
+    assert plan.status == "dry_run_ready"
+    assert plan.reason == "preflight_passed_without_side_effects"
+
+
+def test_missing_intermediate_transition_is_rejected(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(contract, "CURRENT_SCHEMA_VERSION", 3)
+    monkeypatch.setattr(contract, "SUPPORTED_MIGRATION_TRANSITIONS", ((1, 2),))
 
     plan = contract.plan_personal_score_db_migration(
         contract.MigrationRequest(
