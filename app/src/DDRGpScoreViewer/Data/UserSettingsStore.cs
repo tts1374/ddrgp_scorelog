@@ -13,7 +13,8 @@ public sealed record UserSettings(
     string Language = "ja",
     string BestBrowseMode = "level",
     string BestLevel = "level_1",
-    string BestVersion = "DDR GRAND PRIX")
+    string BestVersion = "DDR GRAND PRIX",
+    string BestGoal = "AAA")
 {
     public const string JapaneseLanguage = "ja";
     public const string EnglishLanguage = "en";
@@ -26,9 +27,11 @@ public sealed record UserSettings(
     public const string LevelBrowseMode = "level";
     public const string VersionBrowseMode = "version";
     public const string TitleBrowseMode = "title";
+    public const string GoalBrowseMode = "goal";
     public const string DefaultBestBrowseMode = LevelBrowseMode;
     public const string DefaultBestLevel = "level_1";
     public const string DefaultBestVersion = "DDR GRAND PRIX";
+    public const string DefaultBestGoal = "AAA";
 
     public static IReadOnlyList<string> SupportedBestVersions { get; } =
     [
@@ -55,6 +58,13 @@ public sealed record UserSettings(
         "1st",
     ];
 
+    public static IReadOnlyList<string> SupportedBestGoals { get; } =
+    [
+        "AAA",
+        "AA+",
+        "AA",
+    ];
+
     public static UserSettings Defaults { get; } = new(
         StartMonitoringOnLaunch: true,
         NotifyUnresolvedResults: true,
@@ -63,7 +73,8 @@ public sealed record UserSettings(
         Language: JapaneseLanguage,
         BestBrowseMode: DefaultBestBrowseMode,
         BestLevel: DefaultBestLevel,
-        BestVersion: DefaultBestVersion);
+        BestVersion: DefaultBestVersion,
+        BestGoal: DefaultBestGoal);
 
     public static UserSettings ForNewEnvironment(string? osLocale = null) =>
         Defaults with { Language = ResolveInitialLanguage(osLocale) };
@@ -74,7 +85,8 @@ public sealed record UserSettings(
         IsValidLanguage(Language) &&
         IsValidBestBrowseMode(BestBrowseMode) &&
         IsValidBestLevel(BestLevel) &&
-        IsValidBestVersion(BestVersion);
+        IsValidBestVersion(BestVersion) &&
+        IsValidBestGoal(BestGoal);
 
     public static bool IsValidPlayStyle(string? value) =>
         value is SinglePlayStyle or DoublePlayStyle;
@@ -86,7 +98,7 @@ public sealed record UserSettings(
         value is JapaneseLanguage or EnglishLanguage or KoreanLanguage;
 
     public static bool IsValidBestBrowseMode(string? value) =>
-        value is LevelBrowseMode or VersionBrowseMode or TitleBrowseMode;
+        value is LevelBrowseMode or VersionBrowseMode or TitleBrowseMode or GoalBrowseMode;
 
     public static bool IsValidBestLevel(string? value)
     {
@@ -100,12 +112,16 @@ public sealed record UserSettings(
     public static bool IsValidBestVersion(string? value) =>
         value is not null && SupportedBestVersions.Contains(value, StringComparer.OrdinalIgnoreCase);
 
+    public static bool IsValidBestGoal(string? value) =>
+        value is not null && SupportedBestGoals.Contains(value, StringComparer.OrdinalIgnoreCase);
+
     public static string NormalizeBestBrowseMode(string? value) =>
         value?.Trim().ToLowerInvariant() switch
         {
             LevelBrowseMode => LevelBrowseMode,
             VersionBrowseMode => VersionBrowseMode,
             TitleBrowseMode => TitleBrowseMode,
+            GoalBrowseMode => GoalBrowseMode,
             _ => DefaultBestBrowseMode,
         };
 
@@ -130,6 +146,11 @@ public sealed record UserSettings(
         SupportedBestVersions.FirstOrDefault(version =>
             string.Equals(version, value?.Trim(), StringComparison.OrdinalIgnoreCase)) ??
         DefaultBestVersion;
+
+    public static string NormalizeBestGoal(string? value) =>
+        SupportedBestGoals.FirstOrDefault(goal =>
+            string.Equals(goal, value?.Trim(), StringComparison.OrdinalIgnoreCase)) ??
+        DefaultBestGoal;
 
     public static string NormalizeLanguage(string? value) =>
         value?.Trim().ToLowerInvariant() switch
@@ -221,9 +242,10 @@ public sealed class LocalUserSettingsStore : IUserSettingsStore
                 stored.DefaultPlayStyle,
                 startupPage,
                 UserSettings.NormalizeLanguage(stored.Language),
-                stored.BestBrowseMode ?? UserSettings.DefaultBestBrowseMode,
-                stored.BestLevel ?? UserSettings.DefaultBestLevel,
-                stored.BestVersion ?? UserSettings.DefaultBestVersion);
+                UserSettings.NormalizeBestBrowseMode(stored.BestBrowseMode),
+                UserSettings.NormalizeBestLevel(stored.BestLevel),
+                UserSettings.NormalizeBestVersion(stored.BestVersion),
+                UserSettings.NormalizeBestGoal(stored.BestGoal));
             return settings.IsValid ? settings : null;
         }
         catch (Exception exception) when (
@@ -257,7 +279,8 @@ public sealed class LocalUserSettingsStore : IUserSettingsStore
                 settings.Language,
                 settings.BestBrowseMode,
                 settings.BestLevel,
-                settings.BestVersion),
+                settings.BestVersion,
+                settings.BestGoal),
             JsonOptions) + "\n";
         File.WriteAllText(filePath, json, Utf8NoBom);
     }
@@ -270,5 +293,6 @@ public sealed class LocalUserSettingsStore : IUserSettingsStore
         string? Language,
         string? BestBrowseMode,
         string? BestLevel,
-        string? BestVersion);
+        string? BestVersion,
+        string? BestGoal);
 }

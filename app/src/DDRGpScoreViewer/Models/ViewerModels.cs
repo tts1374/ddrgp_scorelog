@@ -127,7 +127,8 @@ public sealed record ChartBestItem(
     string ClearType = "",
     string? FlareRank = null,
     string HighestRank = "",
-    string HighestClearType = "")
+    string HighestClearType = "",
+    int? GoalRemainingScore = null)
 {
     public bool IsPlayed => PlayCount > 0;
     public string PlayStyleDisplay => PlayStyle switch
@@ -151,6 +152,9 @@ public sealed record ChartBestItem(
     public string LevelDisplay => Level is null ? "—" : $"Lv.{Level}";
     public string BestScoreDisplay => IsPlayed ? BestScore.ToString("N0") : "—";
     public string BestExScoreDisplay => IsPlayed ? BestExScore.ToString("N0") : "—";
+    public string GoalRemainingScoreDisplay => GoalRemainingScore is int remaining
+        ? Localization.Format("あと {0:N0}点", remaining)
+        : "—";
     public string RankDisplay => string.IsNullOrWhiteSpace(Rank) ? "—" : Rank;
     public bool HasRank => !string.IsNullOrWhiteSpace(Rank);
     public string ClearDisplay => ClearType switch

@@ -26,7 +26,8 @@ public sealed class UserSettingsTests
                 Language: UserSettings.KoreanLanguage,
                 BestBrowseMode: UserSettings.VersionBrowseMode,
                 BestLevel: "level_17",
-                BestVersion: "DDR WORLD");
+                BestVersion: "DDR WORLD",
+                BestGoal: "AA+");
             var store = new LocalUserSettingsStore(path);
 
             store.Save(expected);
@@ -144,9 +145,10 @@ public sealed class UserSettingsTests
                 "  \"NotifyUnresolvedResults\": true,\n" +
                 "  \"DefaultPlayStyle\": \"SINGLE\",\n" +
                 "  \"StartupPage\": \"home\",\n" +
-                "  \"BestBrowseMode\": \"goal\",\n" +
+                "  \"BestBrowseMode\": \"unsupported\",\n" +
                 "  \"BestLevel\": \"level_20\",\n" +
-                "  \"BestVersion\": \"unsupported\"\n" +
+                "  \"BestVersion\": \"unsupported\",\n" +
+                "  \"BestGoal\": \"invalid\"\n" +
                 "}\n",
                 new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
 
@@ -156,6 +158,47 @@ public sealed class UserSettingsTests
             viewModel.RestoreUserSettings();
 
             AssertDefaults(viewModel);
+        }
+        finally
+        {
+            if (Directory.Exists(directory))
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void Invalid_saved_goal_falls_back_to_AAA_without_resetting_other_browse_state()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), $"ddrgp-user-settings-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        var path = Path.Combine(directory, "user-settings.json");
+        try
+        {
+            File.WriteAllText(
+                path,
+                "{\n" +
+                "  \"StartMonitoringOnLaunch\": true,\n" +
+                "  \"NotifyUnresolvedResults\": true,\n" +
+                "  \"DefaultPlayStyle\": \"SINGLE\",\n" +
+                "  \"StartupPage\": \"home\",\n" +
+                "  \"BestBrowseMode\": \"goal\",\n" +
+                "  \"BestLevel\": \"level_17\",\n" +
+                "  \"BestVersion\": \"DDR WORLD\",\n" +
+                "  \"BestGoal\": \"invalid\"\n" +
+                "}\n",
+                new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+
+            var viewModel = new MainViewModel(
+                new ScoreViewerRepository(),
+                userSettingsStore: new LocalUserSettingsStore(path));
+            viewModel.RestoreUserSettings();
+
+            Assert.Equal(UserSettings.GoalBrowseMode, viewModel.BestBrowseMode);
+            Assert.Equal(UserSettings.DefaultBestGoal, viewModel.BestGoalFilter);
+            Assert.Equal("level_17", viewModel.BestLevelFilter);
+            Assert.Equal("DDR WORLD", viewModel.BestVersionFilter);
         }
         finally
         {
@@ -227,6 +270,7 @@ public sealed class UserSettingsTests
         viewModel.BestBrowseMode = UserSettings.VersionBrowseMode;
         viewModel.BestLevelFilter = "level_17";
         viewModel.BestVersionFilter = "DDR WORLD";
+        viewModel.BestGoalFilter = "AA+";
 
         Assert.True(viewModel.SaveUserSettings());
         Assert.Equal(scoreHashBefore, SHA256.HashData(File.ReadAllBytes(fixture.ScorePath)));
@@ -245,6 +289,7 @@ public sealed class UserSettingsTests
         Assert.Equal(UserSettings.VersionBrowseMode, restartedViewModel.BestBrowseMode);
         Assert.Equal("level_17", restartedViewModel.BestLevelFilter);
         Assert.Equal("DDR WORLD", restartedViewModel.BestVersionFilter);
+        Assert.Equal("AA+", restartedViewModel.BestGoalFilter);
         Assert.False(restartedViewModel.IsAutomaticMonitoringEnabled);
     }
 
@@ -312,12 +357,14 @@ public sealed class UserSettingsTests
         Assert.Equal(saved.BestBrowseMode, viewModel.BestBrowseMode);
         Assert.Equal(saved.BestLevel, viewModel.BestLevelFilter);
         Assert.Equal(saved.BestVersion, viewModel.BestVersionFilter);
+        Assert.Equal(saved.BestGoal, viewModel.BestGoalFilter);
         Assert.Equal(saved, store.StoredSettings);
 
         Assert.True(viewModel.SaveUserSettings());
         Assert.Equal(saved.BestBrowseMode, store.StoredSettings?.BestBrowseMode);
         Assert.Equal(saved.BestLevel, store.StoredSettings?.BestLevel);
         Assert.Equal(saved.BestVersion, store.StoredSettings?.BestVersion);
+        Assert.Equal(saved.BestGoal, store.StoredSettings?.BestGoal);
     }
 
     private static void AssertDefaults(MainViewModel viewModel)
@@ -326,6 +373,7 @@ public sealed class UserSettingsTests
         Assert.Equal(UserSettings.LevelBrowseMode, viewModel.BestBrowseMode);
         Assert.Equal(UserSettings.DefaultBestLevel, viewModel.BestLevelFilter);
         Assert.Equal(UserSettings.DefaultBestVersion, viewModel.BestVersionFilter);
+        Assert.Equal(UserSettings.DefaultBestGoal, viewModel.BestGoalFilter);
     }
 
     private static void AssertVisibleDefaults(MainViewModel viewModel)

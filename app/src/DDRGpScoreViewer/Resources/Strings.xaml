@@ -16,10 +16,15 @@
     <sys:String x:Key="レベルから">レベルから</sys:String>
     <sys:String x:Key="バージョンから">バージョンから</sys:String>
     <sys:String x:Key="曲名から">曲名から</sys:String>
+    <sys:String x:Key="目標から">目標から</sys:String>
     <sys:String x:Key="曲を探す">曲を探す</sys:String>
     <sys:String x:Key="選択中">選択中</sys:String>
     <sys:String x:Key="曲名を入力">曲名を入力</sys:String>
+    <sys:String x:Key="目標ランクを選択">目標ランクを選択</sys:String>
+    <sys:String x:Key="達成済み・記録なしを除き、目標まで近い順に表示">達成済み・記録なしを除き、目標まで近い順に表示</sys:String>
     <sys:String x:Key="{}{0}・{1}の記録状況">{0}・{1}の記録状況</sys:String>
+    <sys:String x:Key="{}{0}を目指す">{0}を目指す</sys:String>
+    <sys:String x:Key="あと {0:N0}点">あと {0:N0}点</sys:String>
     <sys:String x:Key="該当する譜面はありません">該当する譜面はありません</sys:String>
     <sys:String x:Key="自動記録と表示に関する設定を変更できます">自動記録と表示に関する設定を変更できます</sys:String>
     <sys:String x:Key="保存済みプレーと楽曲・譜面データの状態を確認できます">保存済みプレーと楽曲・譜面データの状態を確認できます</sys:String>
@@ -43,6 +48,7 @@
     <sys:String x:Key="最近の自己ベスト更新">最近の自己ベスト更新</sys:String>
     <sys:String x:Key="自己ベストを見る">自己ベストを見る</sys:String>
     <sys:String x:Key="通常SCORE">通常SCORE</sys:String>
+    <sys:String x:Key="目標まで">目標まで</sys:String>
     <sys:String x:Key="難易度">難易度</sys:String>
     <sys:String x:Key="レベル">レベル</sys:String>
     <sys:String x:Key="曲名検索">曲名検索</sys:String>
@@ -57,6 +63,7 @@
     <sys:String x:Key="変更">変更</sys:String>
     <sys:String x:Key="レベルを変更">レベルを変更</sys:String>
     <sys:String x:Key="バージョンを変更">バージョンを変更</sys:String>
+    <sys:String x:Key="目標を変更">目標を変更</sys:String>
     <sys:String x:Key="対象譜面">対象譜面</sys:String>
     <sys:String x:Key="記録あり">記録あり</sys:String>
     <sys:String x:Key="記録なし">記録なし</sys:String>

@@ -15,11 +15,16 @@
     <sys:String x:Key="レベルから">By level</sys:String>
     <sys:String x:Key="バージョンから">By version</sys:String>
     <sys:String x:Key="曲名から">By song title</sys:String>
+    <sys:String x:Key="目標から">By goal</sys:String>
     <sys:String x:Key="曲を探す">Find songs</sys:String>
     <sys:String x:Key="選択中">Selected</sys:String>
     <sys:String x:Key="曲名を入力">Enter a song title</sys:String>
+    <sys:String x:Key="目標ランクを選択">Select a target rank</sys:String>
+    <sys:String x:Key="達成済み・記録なしを除き、目標まで近い順に表示">Recorded charts below the target, nearest first</sys:String>
     <sys:String x:Key="曲名検索では記録状況を集計しません">Record status is not aggregated for song-title searches.</sys:String>
     <sys:String x:Key="{}{0}・{1}の記録状況">{0} · {1} record status</sys:String>
+    <sys:String x:Key="{}{0}を目指す">Target: {0}</sys:String>
+    <sys:String x:Key="あと {0:N0}点">{0:N0} points to go</sys:String>
     <sys:String x:Key="該当する譜面はありません">No matching charts</sys:String>
     <sys:String x:Key="自動記録と表示に関する設定を変更できます">Change automatic recording and display settings</sys:String>
     <sys:String x:Key="保存済みプレーと楽曲・譜面データの状態を確認できます">Review saved plays and song/chart data status</sys:String>
@@ -43,6 +48,7 @@
     <sys:String x:Key="最近の自己ベスト更新">Recent personal best updates</sys:String>
     <sys:String x:Key="自己ベストを見る">View personal bests</sys:String>
     <sys:String x:Key="通常SCORE">Normal SCORE</sys:String>
+    <sys:String x:Key="目標まで">To target</sys:String>
     <sys:String x:Key="難易度">Difficulty</sys:String>
     <sys:String x:Key="レベル">Level</sys:String>
     <sys:String x:Key="曲名検索">Song search</sys:String>
@@ -57,6 +63,7 @@
     <sys:String x:Key="変更">Change</sys:String>
     <sys:String x:Key="レベルを変更">Change level</sys:String>
     <sys:String x:Key="バージョンを変更">Change version</sys:String>
+    <sys:String x:Key="目標を変更">Change target</sys:String>
     <sys:String x:Key="対象譜面">Target charts</sys:String>
     <sys:String x:Key="記録あり">Recorded</sys:String>
     <sys:String x:Key="記録なし">No record</sys:String>

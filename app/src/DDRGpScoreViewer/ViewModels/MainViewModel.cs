@@ -8,6 +8,7 @@ using DDRGpScoreViewer;
 using DDRGpScoreViewer.Capture;
 using DDRGpScoreViewer.Data;
 using DDRGpScoreViewer.Models;
+using DDRGpScoreViewer.Runtime;
 using DDRGpScoreViewer.Updates;
 
 namespace DDRGpScoreViewer.ViewModels;
@@ -64,6 +65,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private string bestLevelFilter = UserSettings.DefaultBestLevel;
     private string bestSongQuery = "";
     private string bestVersionFilter = UserSettings.DefaultBestVersion;
+    private string bestGoalFilter = UserSettings.DefaultBestGoal;
     private string bestSortFilter = BestSortScoreDescending;
     private int chartBestDisplayedCount;
     private int chartBestTotalCount;
@@ -257,6 +259,13 @@ public sealed class MainViewModel : INotifyPropertyChanged
         Localization.Option(BestSortPlayCountDescending, "プレー回数（多い順）"),
     ];
 
+    public IReadOnlyList<LocalizedOption> BestGoalOptions { get; } =
+    [
+        Localization.Option("AAA", "AAA"),
+        Localization.Option("AA+", "AA+"),
+        Localization.Option("AA", "AA"),
+    ];
+
     public IReadOnlyList<LocalizedOption> StartupPageOptions { get; } =
         [
             Localization.Option(UserSettings.HomeStartupPage, "ホーム"),
@@ -303,6 +312,18 @@ public sealed class MainViewModel : INotifyPropertyChanged
             if (value is not null)
             {
                 BestSortFilter = value.Code;
+            }
+        }
+    }
+
+    public LocalizedOption? SelectedBestGoalOption
+    {
+        get => FindOption(BestGoalOptions, BestGoalFilter);
+        set
+        {
+            if (value is not null)
+            {
+                BestGoalFilter = value.Code;
             }
         }
     }
@@ -598,6 +619,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             OnPropertyChanged(nameof(BestBrowseModeDisplay));
             OnPropertyChanged(nameof(BestSelectionDisplay));
             OnPropertyChanged(nameof(BestProgressVisibility));
+            OnPropertyChanged(nameof(BestSortVisibility));
             OnPropertyChanged(nameof(BestProgressTitle));
             OnBestFilterChanged();
             PersistBestBrowseState();
@@ -653,10 +675,29 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
     }
 
+    public string BestGoalFilter
+    {
+        get => bestGoalFilter;
+        set
+        {
+            var normalized = UserSettings.NormalizeBestGoal(value);
+            if (!SetProperty(ref bestGoalFilter, normalized))
+            {
+                return;
+            }
+            OnPropertyChanged(nameof(SelectedBestGoalOption));
+            OnPropertyChanged(nameof(BestSelectionDisplay));
+            OnPropertyChanged(nameof(BestProgressTitle));
+            OnBestFilterChanged();
+            PersistBestBrowseState();
+        }
+    }
+
     public string BestBrowseModeDisplay => BestBrowseMode switch
     {
         UserSettings.VersionBrowseMode => Localization.Get("バージョンから"),
         UserSettings.TitleBrowseMode => Localization.Get("曲名から"),
+        UserSettings.GoalBrowseMode => Localization.Get("目標から"),
         _ => Localization.Get("レベルから"),
     };
 
@@ -666,15 +707,28 @@ public sealed class MainViewModel : INotifyPropertyChanged
         UserSettings.TitleBrowseMode => string.IsNullOrWhiteSpace(BestSongQuery)
             ? Localization.Get("曲名を入力")
             : BestSongQuery.Trim(),
+        UserSettings.GoalBrowseMode => Localization.Format("{0}を目指す", BestGoalFilter),
         _ => BestLevelFilter.StartsWith("level_", StringComparison.Ordinal)
             ? $"Lv.{BestLevelFilter[6..]}"
             : BestLevelFilter,
     };
 
     public System.Windows.Visibility BestProgressVisibility =>
-        BestBrowseMode == UserSettings.TitleBrowseMode
+        BestBrowseMode is UserSettings.TitleBrowseMode or UserSettings.GoalBrowseMode
             ? System.Windows.Visibility.Collapsed
             : System.Windows.Visibility.Visible;
+
+    public System.Windows.Visibility BestSortVisibility =>
+        BestBrowseMode == UserSettings.GoalBrowseMode
+            ? System.Windows.Visibility.Collapsed
+            : System.Windows.Visibility.Visible;
+
+    public System.Windows.Visibility BestEmptyStateVisibility =>
+        BestBrowseMode == UserSettings.GoalBrowseMode && ChartBestTotalCount == 0
+            ? System.Windows.Visibility.Visible
+            : System.Windows.Visibility.Collapsed;
+
+    public string BestEmptyStateMessage => Localization.Get("該当する譜面はありません");
 
     public string BestProgressTitle =>
         Localization.Format(
@@ -728,7 +782,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public bool CanLoadMoreChartBests => ChartBestDisplayedCount < ChartBestTotalCount;
 
     public string ChartBestRangeDisplay => ChartBestTotalCount == 0
-        ? BestBrowseMode == UserSettings.TitleBrowseMode
+        ? BestBrowseMode is UserSettings.TitleBrowseMode or UserSettings.GoalBrowseMode
             ? Localization.Get("該当する譜面はありません")
             : Localization.Format("表示 {0}譜面 / 全{1}譜面", 0, 0)
         : BestBrowseMode == UserSettings.TitleBrowseMode
@@ -1429,7 +1483,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
             Language,
             BestBrowseMode,
             BestLevelFilter,
-            BestVersionFilter);
+            BestVersionFilter,
+            BestGoalFilter);
         if (!settings.IsValid)
         {
             SettingsStatusMessage = Localization.Get("設定値を確認してから保存してください。");
@@ -1498,6 +1553,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             BestBrowseMode = effective.BestBrowseMode;
             BestLevelFilter = effective.BestLevel;
             BestVersionFilter = effective.BestVersion;
+            BestGoalFilter = effective.BestGoal;
         }
         finally
         {
@@ -3887,7 +3943,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 preservedDisplayedCount ?? ChartBestPageSize,
                 filtered.Length);
             var restoredSelection = selectedChartKey is { } key
-                ? allChartBests.FirstOrDefault(item =>
+                ? filtered.FirstOrDefault(item =>
                     item.SongId == key.SongId && item.ChartId == key.ChartId)
                 : null;
             var selectionWasUnchanged =
@@ -4019,6 +4075,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(BestSelectionDisplay));
         OnPropertyChanged(nameof(BestProgressTitle));
         OnPropertyChanged(nameof(BestProgressVisibility));
+        OnPropertyChanged(nameof(BestSortVisibility));
+        OnPropertyChanged(nameof(BestEmptyStateVisibility));
     }
 
     private void NotifyRecentPlayListState()
@@ -4047,10 +4105,26 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     private IEnumerable<ChartBestItem> FilterChartBests()
     {
+        var filtered = allChartBests.Where(item => item.PlayStyle == BestPlayStyleFilter);
+        if (BestBrowseMode == UserSettings.GoalBrowseMode)
+        {
+            var targetScore = AppOwnedResultVisualEvidenceProducer.RankBoundaryScore(BestGoalFilter)
+                ?? AppOwnedResultVisualEvidenceProducer.RankBoundaryScore(UserSettings.DefaultBestGoal)
+                ?? 990_000;
+            return filtered
+                .Where(item => item.IsPlayed && item.BestScore < targetScore)
+                .Select(item => item with
+                {
+                    GoalRemainingScore = targetScore - item.BestScore,
+                })
+                .OrderBy(item => item.GoalRemainingScore)
+                .ThenBy(item => item.SongTitle, StringComparer.CurrentCultureIgnoreCase)
+                .ThenBy(item => item.ChartId, StringComparer.Ordinal);
+        }
+
         var songQuery = BestSongQuery.Trim();
-        var filtered = allChartBests.Where(item =>
-            item.PlayStyle == BestPlayStyleFilter &&
-            (BestBrowseMode switch
+        filtered = filtered.Where(item =>
+            BestBrowseMode switch
             {
                 UserSettings.VersionBrowseMode => string.Equals(
                     GetBestVersionLabel(item.Version),
@@ -4059,7 +4133,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 UserSettings.TitleBrowseMode => songQuery.Length == 0 ||
                     item.SongTitle.Contains(songQuery, StringComparison.CurrentCultureIgnoreCase),
                 _ => item.Level == ParseBestLevel(BestLevelFilter),
-            }));
+            });
 
         return BestSortFilter switch
         {
@@ -4098,7 +4172,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     private IEnumerable<ChartBestItem> BestProgressTargets()
     {
-        if (BestBrowseMode == UserSettings.TitleBrowseMode)
+        if (BestBrowseMode is UserSettings.TitleBrowseMode or UserSettings.GoalBrowseMode)
         {
             return [];
         }
@@ -4219,7 +4293,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
             appliedLanguage,
             BestBrowseMode,
             BestLevelFilter,
-            BestVersionFilter);
+            BestVersionFilter,
+            BestGoalFilter);
         if (!settings.IsValid)
         {
             return;

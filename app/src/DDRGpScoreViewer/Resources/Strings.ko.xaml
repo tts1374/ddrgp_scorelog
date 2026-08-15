@@ -15,11 +15,16 @@
     <sys:String x:Key="レベルから">레벨별</sys:String>
     <sys:String x:Key="バージョンから">버전별</sys:String>
     <sys:String x:Key="曲名から">곡명별</sys:String>
+    <sys:String x:Key="目標から">목표별</sys:String>
     <sys:String x:Key="曲を探す">곡 찾기</sys:String>
     <sys:String x:Key="選択中">선택 중</sys:String>
     <sys:String x:Key="曲名を入力">곡명을 입력하세요</sys:String>
+    <sys:String x:Key="目標ランクを選択">목표 랭크 선택</sys:String>
+    <sys:String x:Key="達成済み・記録なしを除き、目標まで近い順に表示">목표 미달성·기록 있음 채보를 가까운 순서로 표시</sys:String>
     <sys:String x:Key="曲名検索では記録状況を集計しません">곡명 검색에서는 기록 현황을 집계하지 않습니다.</sys:String>
     <sys:String x:Key="{}{0}・{1}の記録状況">{0} · {1} 기록 현황</sys:String>
+    <sys:String x:Key="{}{0}を目指す">목표: {0}</sys:String>
+    <sys:String x:Key="あと {0:N0}点">목표까지 {0:N0}점</sys:String>
     <sys:String x:Key="該当する譜面はありません">일치하는 채보가 없습니다</sys:String>
     <sys:String x:Key="自動記録と表示に関する設定を変更できます">자동 기록 및 표시 설정을 변경합니다</sys:String>
     <sys:String x:Key="保存済みプレーと楽曲・譜面データの状態を確認できます">저장된 플레이와 곡/채보 데이터 상태를 확인합니다</sys:String>
@@ -43,6 +48,7 @@
     <sys:String x:Key="最近の自己ベスト更新">최근 개인 최고 기록 갱신</sys:String>
     <sys:String x:Key="自己ベストを見る">개인 최고 기록 보기</sys:String>
     <sys:String x:Key="通常SCORE">일반 SCORE</sys:String>
+    <sys:String x:Key="目標まで">목표까지</sys:String>
     <sys:String x:Key="難易度">난이도</sys:String>
     <sys:String x:Key="レベル">레벨</sys:String>
     <sys:String x:Key="曲名検索">곡명 검색</sys:String>
@@ -57,6 +63,7 @@
     <sys:String x:Key="変更">변경</sys:String>
     <sys:String x:Key="レベルを変更">레벨 변경</sys:String>
     <sys:String x:Key="バージョンを変更">버전 변경</sys:String>
+    <sys:String x:Key="目標を変更">목표 변경</sys:String>
     <sys:String x:Key="対象譜面">대상 채보</sys:String>
     <sys:String x:Key="記録あり">기록 있음</sys:String>
     <sys:String x:Key="記録なし">기록 없음</sys:String>
