@@ -10,6 +10,14 @@ namespace DDRGpScoreViewer.Tests;
 public sealed class CaptureSaveViewModelTests
 {
     [Fact]
+    public void Unresolved_notification_default_display_duration_is_three_seconds()
+    {
+        Assert.Equal(
+            TimeSpan.FromSeconds(3),
+            MainViewModel.DefaultUnresolvedNotificationDisplayDuration);
+    }
+
+    [Fact]
     public async Task Saved_capture_runs_workflow_once_and_reloads_only_saved_play()
     {
         using var fixture = new DatabaseFixture();
@@ -166,7 +174,7 @@ public sealed class CaptureSaveViewModelTests
     }
 
     [Fact]
-    public async Task Unresolved_notification_auto_clears_after_three_seconds()
+    public async Task Unresolved_notification_auto_clears_after_display_duration()
     {
         using var fixture = new DatabaseFixture();
         const string unresolvedEventId = "confirmed-event-v1:auto-clear";
@@ -187,7 +195,8 @@ public sealed class CaptureSaveViewModelTests
             new UnusedManualWorkflowRunner(),
             continuousCaptureService: new StubContinuousCaptureService(
                 CaptureOperationStatus.Saved),
-            captureSaveWorkflowRunner: workflow);
+            captureSaveWorkflowRunner: workflow,
+            unresolvedNotificationDisplayDuration: TimeSpan.FromMilliseconds(500));
 
         await viewModel.StartContinuousCaptureAndSaveAsync(
             123,
@@ -198,10 +207,10 @@ public sealed class CaptureSaveViewModelTests
         Assert.Equal(1, viewModel.MonitoringResults.Unresolved);
         Assert.Empty(viewModel.Plays);
 
-        await Task.Delay(TimeSpan.FromSeconds(2));
+        await Task.Delay(TimeSpan.FromMilliseconds(100));
         Assert.True(viewModel.HasUnresolvedNotification);
 
-        await Task.Delay(TimeSpan.FromSeconds(2));
+        await Task.Delay(TimeSpan.FromMilliseconds(500));
 
         Assert.False(viewModel.HasUnresolvedNotification);
         Assert.Equal("", viewModel.UnresolvedNotificationTitle);

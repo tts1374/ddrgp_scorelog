@@ -25,7 +25,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public const string BestSortPlayCountDescending = "play_count_desc";
     public const string ChartDetailAllPlaysMode = "all_plays";
     public const string ChartDetailBestProgressionMode = "best_progression";
-    private static readonly TimeSpan UnresolvedNotificationDisplayDuration =
+    internal static readonly TimeSpan DefaultUnresolvedNotificationDisplayDuration =
         TimeSpan.FromSeconds(3);
 
     private readonly ScoreViewerRepository repository;
@@ -40,6 +40,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private readonly IScoreDatabaseInitializer scoreDatabaseInitializer;
     private readonly IDdrGpWindowEnumerator ddrGpWindowEnumerator;
     private readonly AutomaticMonitoringOptions automaticMonitoringOptions;
+    private readonly TimeSpan unresolvedNotificationDisplayDuration;
     private readonly SynchronizationContext? uiSynchronizationContext;
     private readonly IPersonalScoreDataBackupService personalScoreDataBackupService;
     private PlayHistoryItem? selectedPlay;
@@ -194,7 +195,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         IApplicationUpdateService? applicationUpdateService = null,
         AutomaticMonitoringOptions? automaticMonitoringOptions = null,
         IUserSettingsStore? userSettingsStore = null,
-        IPersonalScoreDataBackupService? personalScoreDataBackupService = null)
+        IPersonalScoreDataBackupService? personalScoreDataBackupService = null,
+        TimeSpan? unresolvedNotificationDisplayDuration = null)
     {
         this.repository = repository;
         this.workflowRunner = workflowRunner;
@@ -210,6 +212,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
         this.ddrGpWindowEnumerator = ddrGpWindowEnumerator ?? new DdrGpWindowEnumerator();
         this.automaticMonitoringOptions = automaticMonitoringOptions ?? new AutomaticMonitoringOptions();
         this.automaticMonitoringOptions.Validate();
+        this.unresolvedNotificationDisplayDuration =
+            unresolvedNotificationDisplayDuration ?? DefaultUnresolvedNotificationDisplayDuration;
+        if (this.unresolvedNotificationDisplayDuration <= TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(unresolvedNotificationDisplayDuration));
+        }
         this.applicationUpdateService = applicationUpdateService;
         this.personalScoreDataBackupService = personalScoreDataBackupService ??
             new PersonalScoreDataBackupService();
@@ -3328,7 +3336,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     private async Task ClearUnresolvedNotificationAfterDelayAsync(long generation)
     {
-        await Task.Delay(UnresolvedNotificationDisplayDuration).ConfigureAwait(false);
+        await Task.Delay(unresolvedNotificationDisplayDuration).ConfigureAwait(false);
 
         void ClearIfCurrent()
         {
