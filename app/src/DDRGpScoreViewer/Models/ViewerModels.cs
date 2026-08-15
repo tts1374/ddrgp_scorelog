@@ -125,7 +125,9 @@ public sealed record ChartBestItem(
     string Version = "",
     string Rank = "",
     string ClearType = "",
-    string? FlareRank = null)
+    string? FlareRank = null,
+    string HighestRank = "",
+    string HighestClearType = "")
 {
     public bool IsPlayed => PlayCount > 0;
     public string PlayStyleDisplay => PlayStyle switch

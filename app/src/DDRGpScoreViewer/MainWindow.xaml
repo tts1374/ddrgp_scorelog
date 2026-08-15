@@ -150,6 +150,183 @@
             </Style.Triggers>
         </Style>
 
+        <Style x:Key="BestSegmentButtonStyle" TargetType="Button">
+            <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="16,6" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="SegmentButtonBorder"
+                                Background="{TemplateBinding Background}"
+                                CornerRadius="6"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="Tag" Value="Selected">
+                                <Setter TargetName="SegmentButtonBorder" Property="Background" Value="White" />
+                                <Setter Property="Foreground" Value="{StaticResource AccentPrimaryBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="SegmentButtonBorder" Property="Background" Value="#E2E8F0" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="BestBrowseTabButtonStyle" TargetType="Button">
+            <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+            <Setter Property="Background" Value="White" />
+            <Setter Property="BorderBrush" Value="{StaticResource BorderDefaultBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="16,8" />
+            <Setter Property="MinWidth" Value="128" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Margin" Value="0,0,6,0" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="BrowseTabBorder"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="6"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="Tag" Value="Selected">
+                                <Setter TargetName="BrowseTabBorder" Property="Background"
+                                        Value="{StaticResource AccentPrimaryBrush}" />
+                                <Setter TargetName="BrowseTabBorder" Property="BorderBrush"
+                                        Value="{StaticResource AccentPrimaryBrush}" />
+                                <Setter Property="Foreground" Value="White" />
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="BrowseTabBorder" Property="BorderBrush"
+                                        Value="{StaticResource AccentPrimaryBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="BestAxisChangeButtonStyle" TargetType="Button">
+            <Setter Property="Foreground" Value="{StaticResource AccentPrimaryBrush}" />
+            <Setter Property="Background" Value="White" />
+            <Setter Property="BorderBrush" Value="{StaticResource AccentPrimaryBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="10,6" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="AxisChangeBorder"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="6"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="AxisChangeBorder" Property="Background"
+                                        Value="{StaticResource AccentSubtleBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="BestTitleSearchTextBoxStyle" TargetType="TextBox">
+            <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+            <Setter Property="Background" Value="White" />
+            <Setter Property="BorderBrush" Value="{StaticResource BorderDefaultBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="12,8" />
+            <Setter Property="MinHeight" Value="36" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TextBox">
+                        <Border x:Name="TitleSearchBorder"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="6"
+                                Padding="{TemplateBinding Padding}">
+                            <ScrollViewer x:Name="PART_ContentHost" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="TitleSearchBorder" Property="BorderBrush"
+                                        Value="{StaticResource AccentPrimaryBrush}" />
+                                <Setter TargetName="TitleSearchBorder" Property="BorderThickness" Value="2" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="BestAxisOptionStyle" TargetType="ListBoxItem">
+            <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+            <Setter Property="Background" Value="White" />
+            <Setter Property="BorderBrush" Value="{StaticResource BorderDefaultBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="8,6" />
+            <Setter Property="MinHeight" Value="36" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Margin" Value="0,0,6,6" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ListBoxItem">
+                        <Border x:Name="AxisOptionBorder"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="5"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                              VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter Property="Background" Value="{StaticResource AccentSubtleBrush}" />
+                                <Setter Property="BorderBrush" Value="{StaticResource AccentPrimaryBrush}" />
+                                <Setter Property="Foreground" Value="{StaticResource AccentPrimaryBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="AxisOptionBorder" Property="BorderBrush"
+                                        Value="{StaticResource AccentPrimaryBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <Style x:Key="SettingsSinglePlayStyleButtonStyle" TargetType="Button"
                BasedOn="{StaticResource BestStyleButtonStyle}">
             <Style.Triggers>
@@ -665,161 +842,236 @@
                         <Border Grid.Row="0" Style="{StaticResource CardStyle}" Padding="12">
                             <StackPanel>
                                 <WrapPanel>
-                                    <StackPanel Orientation="Horizontal" Background="#F1F5F9"
-                                                Margin="0,0,12,8">
-                                        <Button x:Name="BestSingleButton" Content="SINGLE (SP)"
-                                                Tag="Selected" Style="{StaticResource BestStyleButtonStyle}"
-                                                Click="BestPlayStyle_Click" />
-                                        <Button x:Name="BestDoubleButton" Content="DOUBLE (DP)"
-                                                Tag="" Style="{StaticResource BestStyleButtonStyle}"
-                                                Click="BestPlayStyle_Click" />
-                                    </StackPanel>
-
-                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center"
-                                                Margin="0,0,16,8">
-                                        <TextBlock Text="難易度" Foreground="{StaticResource TextSecondaryBrush}"
-                                                   FontSize="11" FontWeight="SemiBold"
-                                                   VerticalAlignment="Center" Margin="0,0,6,0" />
-                                        <ComboBox ItemsSource="{Binding BestDifficultyOptions}"
-                                                  DisplayMemberPath="Display"
-                                                  SelectedItem="{Binding SelectedBestDifficultyOption, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                                  MinWidth="110" MinHeight="30" Padding="8,3"
-                                                  Background="White" BorderBrush="{StaticResource BorderStrongBrush}" />
-                                    </StackPanel>
-                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center"
-                                                Margin="0,0,16,8">
-                                        <TextBlock Text="レベル" Foreground="{StaticResource TextSecondaryBrush}"
-                                                   FontSize="11" FontWeight="SemiBold"
-                                                   VerticalAlignment="Center" Margin="0,0,6,0" />
-                                        <ComboBox ItemsSource="{Binding BestLevelOptions}"
-                                                  DisplayMemberPath="Display"
-                                                  SelectedItem="{Binding SelectedBestLevelOption, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                                  MinWidth="86" MinHeight="30" Padding="8,3"
-                                                  Background="White" BorderBrush="{StaticResource BorderStrongBrush}" />
-                                    </StackPanel>
-                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center"
-                                                Margin="0,0,16,8">
-                                        <TextBlock Text="曲名検索" Foreground="{StaticResource TextSecondaryBrush}"
-                                                   FontSize="11" FontWeight="SemiBold"
-                                                   VerticalAlignment="Center" Margin="0,0,6,0" />
-                                        <TextBox Text="{Binding BestSongQuery, UpdateSourceTrigger=PropertyChanged}"
-                                                 Width="190" MinHeight="30" Padding="8,4"
-                                                 Background="White" BorderBrush="{StaticResource BorderStrongBrush}"
-                                                 ToolTip="曲名で絞り込み" />
-                                    </StackPanel>
-                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center"
-                                                Margin="0,0,0,8">
-                                        <TextBlock Text="並び順" Foreground="{StaticResource TextSecondaryBrush}"
-                                                   FontSize="11" FontWeight="SemiBold"
-                                                   VerticalAlignment="Center" Margin="0,0,6,0" />
-                                        <ComboBox ItemsSource="{Binding BestSortOptions}"
-                                                  DisplayMemberPath="Display"
-                                                  SelectedItem="{Binding SelectedBestSortOption, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                                  MinWidth="150" MinHeight="30" Padding="8,3"
-                                                  Background="White" BorderBrush="{StaticResource BorderStrongBrush}" />
+                                    <Border Background="#F1F5F9" CornerRadius="8" Padding="3"
+                                            Margin="0,0,20,8">
+                                        <StackPanel Orientation="Horizontal">
+                                            <Button x:Name="BestSingleButton" Content="SINGLE (SP)"
+                                                    Tag="Selected" Style="{StaticResource BestSegmentButtonStyle}"
+                                                    Click="BestPlayStyle_Click" />
+                                            <Button x:Name="BestDoubleButton" Content="DOUBLE (DP)"
+                                                    Tag="" Style="{StaticResource BestSegmentButtonStyle}"
+                                                    Click="BestPlayStyle_Click" />
+                                        </StackPanel>
+                                    </Border>
+                                    <StackPanel Margin="0,0,12,8">
+                                        <TextBlock Text="曲を探す" FontSize="13" FontWeight="Bold"
+                                                   Foreground="{StaticResource TextPrimaryBrush}" />
+                                        <WrapPanel Margin="0,4,0,0">
+                                            <Button x:Name="BestLevelModeButton" Content="レベルから"
+                                                    Tag="Selected" Style="{StaticResource BestBrowseTabButtonStyle}"
+                                                    Click="BestBrowseMode_Click" />
+                                            <Button x:Name="BestVersionModeButton" Content="バージョンから"
+                                                    Tag="" Style="{StaticResource BestBrowseTabButtonStyle}"
+                                                    Click="BestBrowseMode_Click" />
+                                            <Button x:Name="BestTitleModeButton" Content="曲名から"
+                                                    Tag="" Style="{StaticResource BestBrowseTabButtonStyle}"
+                                                    Click="BestBrowseMode_Click" />
+                                        </WrapPanel>
                                     </StackPanel>
                                 </WrapPanel>
 
-                                <Expander IsExpanded="True" Margin="0,2,0,0">
-                                    <Expander.Header>
-                                        <StackPanel Orientation="Horizontal">
-                                            <TextBlock Text="詳細フィルター" Foreground="{StaticResource AccentPrimaryBrush}"
-                                                       FontWeight="SemiBold" />
-                                            <TextBlock Text="  " />
-                                            <TextBlock Text="{Binding BestActiveFilterSummary}"
+                                <Border x:Name="BestSelectionSummaryPanel"
+                                        BorderBrush="{StaticResource BorderDefaultBrush}"
+                                        BorderThickness="0,1,0,0"
+                                        Padding="0,10,0,0"
+                                        Margin="0,0,0,2">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                            <TextBlock Text="選択中"
                                                        Foreground="{StaticResource TextSecondaryBrush}"
-                                                       FontSize="11" />
+                                                       FontSize="11" FontWeight="SemiBold" />
+                                            <TextBlock Text="  " />
+                                            <TextBlock Text="{Binding BestSelectionDisplay}"
+                                                       Foreground="{StaticResource TextPrimaryBrush}"
+                                                       FontWeight="Bold" />
                                         </StackPanel>
-                                    </Expander.Header>
-                                    <StackPanel Margin="0,8,0,0">
-                                        <WrapPanel>
-                                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center"
-                                                        Margin="0,0,16,8">
-                                                <TextBlock Text="バージョン" Foreground="{StaticResource TextSecondaryBrush}"
-                                                           FontSize="11" FontWeight="SemiBold"
-                                                           VerticalAlignment="Center" Margin="0,0,6,0" />
-                                                <ComboBox ItemsSource="{Binding BestVersionOptions}"
-                                                          DisplayMemberPath="Display"
-                                                          SelectedItem="{Binding SelectedBestVersionOption, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                                          MinWidth="150" MinHeight="30" Padding="8,3"
-                                                          Background="White" BorderBrush="{StaticResource BorderStrongBrush}" />
-                                            </StackPanel>
-                                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center"
-                                                        Margin="0,0,16,8">
-                                                <TextBlock Text="プレー状況" Foreground="{StaticResource TextSecondaryBrush}"
-                                                           FontSize="11" FontWeight="SemiBold"
-                                                           VerticalAlignment="Center" Margin="0,0,6,0" />
-                                                <ComboBox ItemsSource="{Binding BestPlayStatusOptions}"
-                                                          DisplayMemberPath="Display"
-                                                          SelectedItem="{Binding SelectedBestPlayStatusOption, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                                          MinWidth="110" MinHeight="30" Padding="8,3"
-                                                          Background="White" BorderBrush="{StaticResource BorderStrongBrush}" />
-                                            </StackPanel>
-                                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center"
-                                                        Margin="0,0,16,8">
-                                                <TextBlock Text="ランク" Foreground="{StaticResource TextSecondaryBrush}"
-                                                           FontSize="11" FontWeight="SemiBold"
-                                                           VerticalAlignment="Center" Margin="0,0,6,0" />
-                                                <ComboBox ItemsSource="{Binding BestRankOptions}"
-                                                          DisplayMemberPath="Display"
-                                                          SelectedItem="{Binding SelectedBestRankOption, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                                          MinWidth="100" MinHeight="30" Padding="8,3"
-                                                          Background="White" BorderBrush="{StaticResource BorderStrongBrush}" />
-                                            </StackPanel>
-                                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center"
-                                                        Margin="0,0,16,8">
-                                                <TextBlock Text="CLEAR状態" Foreground="{StaticResource TextSecondaryBrush}"
-                                                           FontSize="11" FontWeight="SemiBold"
-                                                           VerticalAlignment="Center" Margin="0,0,6,0" />
-                                                <ComboBox ItemsSource="{Binding BestClearOptions}"
-                                                          DisplayMemberPath="Display"
-                                                          SelectedItem="{Binding SelectedBestClearOption, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                                          MinWidth="100" MinHeight="30" Padding="8,3"
-                                                          Background="White" BorderBrush="{StaticResource BorderStrongBrush}" />
-                                            </StackPanel>
-                                        </WrapPanel>
-                                        <ItemsControl ItemsSource="{Binding BestActiveFilterChips}"
-                                                      Margin="0,0,0,8">
-                                            <ItemsControl.ItemsPanel>
-                                                <ItemsPanelTemplate>
-                                                    <WrapPanel />
-                                                </ItemsPanelTemplate>
-                                            </ItemsControl.ItemsPanel>
-                                            <ItemsControl.ItemTemplate>
-                                                <DataTemplate>
-                                                    <Border Background="{StaticResource AccentSubtleBrush}"
-                                                            BorderBrush="{StaticResource AccentPrimaryBrush}"
-                                                            BorderThickness="1" CornerRadius="10"
-                                                            Padding="8,3" Margin="0,0,6,4">
-                                                        <TextBlock Text="{Binding}" FontSize="11"
-                                                                   Foreground="{StaticResource AccentPrimaryBrush}" />
-                                                    </Border>
-                                                </DataTemplate>
-                                            </ItemsControl.ItemTemplate>
-                                        </ItemsControl>
-                                        <Button Content="フィルター・ソートを解除"
-                                                HorizontalAlignment="Left"
-                                                Style="{StaticResource HomeSectionLinkStyle}"
-                                                Click="ResetBestFilters_Click" />
+                                        <Button x:Name="BestAxisChangeButton" Grid.Column="1"
+                                                Content="レベルを変更"
+                                                Style="{StaticResource BestAxisChangeButtonStyle}"
+                                                HorizontalAlignment="Right"
+                                                Click="BestAxisChange_Click" />
+                                    </Grid>
+                                </Border>
+
+                                <Border x:Name="BestAxisPanel"
+                                        BorderBrush="{StaticResource BorderDefaultBrush}"
+                                        BorderThickness="0,1,0,0"
+                                        Padding="0,12,0,0"
+                                        Margin="0,10,0,0"
+                                        Visibility="Collapsed">
+                                    <StackPanel>
+                                        <StackPanel x:Name="BestTitleSearchPanel" Visibility="Collapsed">
+                                            <Grid Margin="0,0,0,10">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="曲名を入力" FontSize="13" FontWeight="Bold" />
+                                                <TextBlock Grid.Column="1"
+                                                           Text="曲名検索では記録状況を集計しません"
+                                                           Foreground="{StaticResource TextSecondaryBrush}"
+                                                           FontSize="11" VerticalAlignment="Center" />
+                                            </Grid>
+                                            <TextBlock Text="曲名の一部"
+                                                       Foreground="{StaticResource TextSecondaryBrush}"
+                                                       FontSize="11" FontWeight="SemiBold"
+                                                       Margin="0,0,0,4" />
+                                            <TextBox x:Name="BestTitleSearchTextBox"
+                                                     Text="{Binding BestSongQuery, UpdateSourceTrigger=PropertyChanged}"
+                                                     Style="{StaticResource BestTitleSearchTextBoxStyle}"
+                                                     HorizontalAlignment="Stretch"
+                                                     ToolTip="曲名の一部で検索" />
+                                        </StackPanel>
+                                        <StackPanel x:Name="BestLevelOptionsPanel">
+                                            <Grid Margin="0,0,0,10">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="レベルを選択" FontSize="13" FontWeight="Bold" />
+                                                <TextBlock Grid.Column="1" Text="レベル別に記録状況を確認"
+                                                           Foreground="{StaticResource TextSecondaryBrush}"
+                                                           FontSize="11" VerticalAlignment="Center" />
+                                            </Grid>
+                                            <ListBox x:Name="BestLevelOptionsGrid"
+                                                     ItemsSource="{Binding BestLevelOptions}"
+                                                     SelectedValuePath="Code"
+                                                     SelectedValue="{Binding BestLevelFilter, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                     SelectionChanged="BestLevelOptionsGrid_SelectionChanged"
+                                                     ItemContainerStyle="{StaticResource BestAxisOptionStyle}"
+                                                     BorderThickness="0"
+                                                     Background="Transparent"
+                                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                                     ScrollViewer.VerticalScrollBarVisibility="Disabled">
+                                                <ListBox.ItemsPanel>
+                                                    <ItemsPanelTemplate>
+                                                        <WrapPanel />
+                                                    </ItemsPanelTemplate>
+                                                </ListBox.ItemsPanel>
+                                                <ListBox.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <TextBlock Text="{Binding Display}" />
+                                                    </DataTemplate>
+                                                </ListBox.ItemTemplate>
+                                            </ListBox>
+                                        </StackPanel>
+                                        <StackPanel x:Name="BestVersionOptionsPanel" Visibility="Collapsed"
+                                                    Margin="0,2,0,0">
+                                            <Grid Margin="0,0,0,10">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="バージョンを選択" FontSize="13" FontWeight="Bold" />
+                                                <TextBlock Grid.Column="1" Text="バージョン別に記録状況を確認"
+                                                           Foreground="{StaticResource TextSecondaryBrush}"
+                                                           FontSize="11" VerticalAlignment="Center" />
+                                            </Grid>
+                                            <ListBox x:Name="BestVersionOptionsGrid"
+                                                     ItemsSource="{Binding BestVersionOptions}"
+                                                     SelectedValuePath="Code"
+                                                     SelectedValue="{Binding BestVersionFilter, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                     SelectionChanged="BestVersionOptionsGrid_SelectionChanged"
+                                                     ItemContainerStyle="{StaticResource BestAxisOptionStyle}"
+                                                     BorderThickness="0"
+                                                     Background="Transparent"
+                                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                                     ScrollViewer.VerticalScrollBarVisibility="Disabled">
+                                                <ListBox.ItemsPanel>
+                                                    <ItemsPanelTemplate>
+                                                        <WrapPanel />
+                                                    </ItemsPanelTemplate>
+                                                </ListBox.ItemsPanel>
+                                                <ListBox.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <TextBlock Text="{Binding Display}" />
+                                                    </DataTemplate>
+                                                </ListBox.ItemTemplate>
+                                            </ListBox>
+                                        </StackPanel>
                                     </StackPanel>
-                                </Expander>
+                                </Border>
                             </StackPanel>
                         </Border>
 
-                        <Grid Grid.Row="1" Margin="0,12,0,8">
+                        <Border x:Name="BestProgressCard" Grid.Row="1" Style="{StaticResource CardStyle}" Padding="10,8"
+                                Margin="0,12,0,8"
+                                Visibility="{Binding BestProgressVisibility, Mode=OneWay}">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="185" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="{Binding BestProgressTitle, Mode=OneWay}"
+                                           FontSize="13" FontWeight="Bold"
+                                           VerticalAlignment="Center"
+                                           TextWrapping="Wrap" />
+                                <UniformGrid Grid.Column="1" Columns="6">
+                                    <StackPanel Margin="8,0,0,0">
+                                        <TextBlock Text="対象譜面" Foreground="{StaticResource TextSecondaryBrush}"
+                                                   FontSize="11" />
+                                        <TextBlock Text="{Binding BestProgressTargetCount, Mode=OneWay}"
+                                                   FontSize="15" FontWeight="Bold" FontFamily="Consolas" />
+                                    </StackPanel>
+                                    <StackPanel Margin="8,0,0,0">
+                                        <TextBlock Text="記録あり" Foreground="{StaticResource TextSecondaryBrush}"
+                                                   FontSize="11" />
+                                        <TextBlock Text="{Binding BestProgressRecordedCount, Mode=OneWay}"
+                                                   FontSize="15" FontWeight="Bold" FontFamily="Consolas" />
+                                    </StackPanel>
+                                    <StackPanel Margin="8,0,0,0">
+                                        <TextBlock Text="記録なし" Foreground="{StaticResource TextSecondaryBrush}"
+                                                   FontSize="11" />
+                                        <TextBlock Text="{Binding BestProgressUnrecordedCount, Mode=OneWay}"
+                                                   FontSize="15" FontWeight="Bold" FontFamily="Consolas" />
+                                    </StackPanel>
+                                    <StackPanel Margin="8,0,0,0">
+                                        <TextBlock Text="CLEAR以上" Foreground="{StaticResource TextSecondaryBrush}"
+                                                   FontSize="11" />
+                                        <TextBlock Text="{Binding BestProgressClearCount, Mode=OneWay}"
+                                                   FontSize="15" FontWeight="Bold" FontFamily="Consolas" />
+                                    </StackPanel>
+                                    <StackPanel Margin="8,0,0,0">
+                                        <TextBlock Text="FC以上" Foreground="{StaticResource TextSecondaryBrush}"
+                                                   FontSize="11" />
+                                        <TextBlock Text="{Binding BestProgressFullComboCount, Mode=OneWay}"
+                                                   FontSize="15" FontWeight="Bold" FontFamily="Consolas" />
+                                    </StackPanel>
+                                    <StackPanel Margin="8,0,0,0">
+                                        <TextBlock Text="AAA以上" Foreground="{StaticResource TextSecondaryBrush}"
+                                                   FontSize="11" />
+                                        <TextBlock Text="{Binding BestProgressAaaCount, Mode=OneWay}"
+                                                   FontSize="15" FontWeight="Bold" FontFamily="Consolas" />
+                                    </StackPanel>
+                                </UniformGrid>
+                            </Grid>
+                        </Border>
+
+                        <Grid x:Name="BestResultSummary" Grid.Row="2" Margin="0,0,0,8">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
                             <TextBlock Text="{Binding ChartBestRangeDisplay}" FontWeight="SemiBold"
-                                       Foreground="{StaticResource TextPrimaryBrush}" />
-                            <TextBlock Grid.Column="1" Text="{Binding ChartBestLoadMoreHintDisplay}"
-                                       Foreground="{StaticResource AccentPrimaryBrush}" FontSize="11"
-                                       TextWrapping="Wrap" TextAlignment="Right" />
+                                       Foreground="{StaticResource TextPrimaryBrush}"
+                                       VerticalAlignment="Bottom" />
+                            <StackPanel x:Name="BestResultActions" Grid.Column="1" Orientation="Horizontal"
+                                        VerticalAlignment="Center">
+                                <TextBlock Text="並び順" Foreground="{StaticResource TextSecondaryBrush}"
+                                           FontSize="11" FontWeight="SemiBold"
+                                           VerticalAlignment="Center" Margin="0,0,6,0" />
+                                <ComboBox x:Name="BestSortComboBox"
+                                          ItemsSource="{Binding BestSortOptions}"
+                                          DisplayMemberPath="Display"
+                                          SelectedItem="{Binding SelectedBestSortOption, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                          MinWidth="160" MinHeight="30" Padding="8,3"
+                                          Background="White" BorderBrush="{StaticResource BorderStrongBrush}" />
+                            </StackPanel>
                         </Grid>
-
-                        <ItemsControl Grid.Row="2" ItemsSource="{Binding BestActiveFilterChips}"
-                                      Visibility="Collapsed" />
 
                         <Border Grid.Row="3" Style="{StaticResource CardStyle}" Padding="0">
                             <DataGrid x:Name="BestChartGrid" ItemsSource="{Binding ChartBests}"

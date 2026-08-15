@@ -17,7 +17,6 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private const int ChartBestPageSize = 50;
     private const int RecentPlayPageSize = ScoreViewerRepository.RecentPlayPageSize;
     private const int ChartDetailHistoryPageSize = ScoreViewerRepository.ChartDetailHistoryPageSize;
-    public const string AllBestFilterValue = "all";
     public const string BestSortScoreDescending = "score_desc";
     public const string BestSortScoreAscending = "score_asc";
     public const string BestSortTitleAscending = "title_asc";
@@ -26,37 +25,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public const string BestSortPlayCountDescending = "play_count_desc";
     public const string ChartDetailAllPlaysMode = "all_plays";
     public const string ChartDetailBestProgressionMode = "best_progression";
-    private const string PlayedFilterValue = "played";
-    private const string UnplayedFilterValue = "unplayed";
-    private const string AaaOrHigherFilterValue = "aaa_or_higher";
-    private const string AOrLowerFilterValue = "a_or_lower";
-    private const string NotClearFilterValue = "not_clear";
     private static readonly TimeSpan UnresolvedNotificationDisplayDuration =
         TimeSpan.FromSeconds(3);
-    private static readonly string[] BestVersionOrder =
-    [
-        "DDR GRAND PRIX",
-        "DDR WORLD",
-        "DDR A3",
-        "DDR A20 PLUS",
-        "DDR A20",
-        "DDR A",
-        "DDR (2014)",
-        "DDR (2013)",
-        "X3 VS 2ndMIX",
-        "X2",
-        "X",
-        "SuperNOVA 2",
-        "SuperNOVA",
-        "EXTREME",
-        "DDRMAX2",
-        "DDRMAX",
-        "5thMIX",
-        "4thMIX",
-        "3rdMIX",
-        "2ndMIX",
-        "1st",
-    ];
 
     private readonly ScoreViewerRepository repository;
     private readonly IPersonalScoreDbWorkflowRunner? workflowRunner;
@@ -85,21 +55,26 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private string chartDetailGraphMode = ChartDetailAllPlaysMode;
     private IReadOnlyList<ChartBestItem> allChartBests = [];
     private IReadOnlyList<LocalizedOption> bestVersionOptions =
-        [Localization.Option(AllBestFilterValue, "すべて")];
-    private string bestPlayStyleFilter = "SINGLE";
-    private string bestDifficultyFilter = AllBestFilterValue;
-    private string bestLevelFilter = AllBestFilterValue;
+        UserSettings.SupportedBestVersions
+            .Select(version => new LocalizedOption(version, version))
+            .ToArray();
+    private string bestBrowseMode = UserSettings.DefaultBestBrowseMode;
+    private string bestPlayStyleFilter = UserSettings.SinglePlayStyle;
+    private string bestLevelFilter = UserSettings.DefaultBestLevel;
     private string bestSongQuery = "";
-    private string bestVersionFilter = AllBestFilterValue;
-    private string bestPlayStatusFilter = AllBestFilterValue;
-    private string bestRankFilter = AllBestFilterValue;
-    private string bestClearFilter = AllBestFilterValue;
+    private string bestVersionFilter = UserSettings.DefaultBestVersion;
     private string bestSortFilter = BestSortScoreDescending;
     private int chartBestDisplayedCount;
     private int chartBestTotalCount;
+    private int bestProgressTargetCount;
+    private int bestProgressRecordedCount;
+    private int bestProgressUnrecordedCount;
+    private int bestProgressClearCount;
+    private int bestProgressFullComboCount;
+    private int bestProgressAaaCount;
     private int totalPlayCount;
     private string lastSavedAt = "";
-    private bool suppressBestFilterRefresh;
+    private bool suppressBestBrowseStatePersistence;
     private int homeTodayPlayCount;
     private int homeTodayScoreUpdateCount;
     private int homeTodayExScoreUpdateCount;
@@ -256,49 +231,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public ObservableCollection<ChartBestItem> ChartBests { get; } = [];
     public ObservableCollection<HomePlayItem> HomeRecentPlays { get; } = [];
     public ObservableCollection<HomePlayItem> HomeBestUpdates { get; } = [];
-    public ObservableCollection<string> BestActiveFilterChips { get; } = [];
     public ObservableCollection<HomePlayItem> ChartDetailHistory { get; } = [];
-
-    public IReadOnlyList<LocalizedOption> BestDifficultyOptions { get; } =
-    [
-        Localization.Option(AllBestFilterValue, "すべて"),
-        Localization.Option("BEGINNER", "BEGINNER"),
-        Localization.Option("BASIC", "BASIC"),
-        Localization.Option("DIFFICULT", "DIFFICULT"),
-        Localization.Option("EXPERT", "EXPERT"),
-        Localization.Option("CHALLENGE", "CHALLENGE"),
-    ];
 
     public IReadOnlyList<LocalizedOption> BestLevelOptions { get; } =
         [
-            Localization.Option(AllBestFilterValue, "すべて"),
             .. Enumerable.Range(1, 19).Select(level =>
                 new LocalizedOption($"level_{level}", $"Lv.{level}")),
-        ];
-
-    public IReadOnlyList<LocalizedOption> BestPlayStatusOptions { get; } =
-        [
-            Localization.Option(AllBestFilterValue, "すべて"),
-            Localization.Option(PlayedFilterValue, "プレー済み"),
-            Localization.Option(UnplayedFilterValue, "未プレー"),
-        ];
-
-    public IReadOnlyList<LocalizedOption> BestRankOptions { get; } =
-        [
-            Localization.Option(AllBestFilterValue, "すべて"),
-            Localization.Option(AaaOrHigherFilterValue, "AAA以上"),
-            Localization.Option("AA", "AA"),
-            Localization.Option(AOrLowerFilterValue, "A以下"),
-        ];
-
-    public IReadOnlyList<LocalizedOption> BestClearOptions { get; } =
-        [
-            Localization.Option(AllBestFilterValue, "すべて"),
-            Localization.Option("PFC", "PFC"),
-            Localization.Option("GFC", "GFC"),
-            Localization.Option("FC", "FC"),
-            Localization.Option("CLEAR", "CLEAR"),
-            Localization.Option(NotClearFilterValue, "未CLEAR"),
         ];
 
     public IReadOnlyList<LocalizedOption> BestSortOptions { get; } =
@@ -325,18 +263,6 @@ public sealed class MainViewModel : INotifyPropertyChanged
             Localization.Option(UserSettings.KoreanLanguage, "韓国語"),
         ];
 
-    public LocalizedOption? SelectedBestDifficultyOption
-    {
-        get => FindOption(BestDifficultyOptions, BestDifficultyFilter);
-        set
-        {
-            if (value is not null)
-            {
-                BestDifficultyFilter = value.Code;
-            }
-        }
-    }
-
     public LocalizedOption? SelectedBestLevelOption
     {
         get => FindOption(BestLevelOptions, BestLevelFilter);
@@ -357,42 +283,6 @@ public sealed class MainViewModel : INotifyPropertyChanged
             if (value is not null)
             {
                 BestVersionFilter = value.Code;
-            }
-        }
-    }
-
-    public LocalizedOption? SelectedBestPlayStatusOption
-    {
-        get => FindOption(BestPlayStatusOptions, BestPlayStatusFilter);
-        set
-        {
-            if (value is not null)
-            {
-                BestPlayStatusFilter = value.Code;
-            }
-        }
-    }
-
-    public LocalizedOption? SelectedBestRankOption
-    {
-        get => FindOption(BestRankOptions, BestRankFilter);
-        set
-        {
-            if (value is not null)
-            {
-                BestRankFilter = value.Code;
-            }
-        }
-    }
-
-    public LocalizedOption? SelectedBestClearOption
-    {
-        get => FindOption(BestClearOptions, BestClearFilter);
-        set
-        {
-            if (value is not null)
-            {
-                BestClearFilter = value.Code;
             }
         }
     }
@@ -682,22 +572,27 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 return;
             }
             UpdateBestVersionOptions();
+            OnPropertyChanged(nameof(BestProgressTitle));
             OnBestFilterChanged();
         }
     }
 
-    public string BestDifficultyFilter
+    public string BestBrowseMode
     {
-        get => bestDifficultyFilter;
+        get => bestBrowseMode;
         set
         {
-            var normalized = NormalizeAllFilterValue(value);
-            if (!SetProperty(ref bestDifficultyFilter, normalized))
+            var normalized = UserSettings.NormalizeBestBrowseMode(value);
+            if (!SetProperty(ref bestBrowseMode, normalized))
             {
                 return;
             }
-            OnPropertyChanged(nameof(SelectedBestDifficultyOption));
+            OnPropertyChanged(nameof(BestBrowseModeDisplay));
+            OnPropertyChanged(nameof(BestSelectionDisplay));
+            OnPropertyChanged(nameof(BestProgressVisibility));
+            OnPropertyChanged(nameof(BestProgressTitle));
             OnBestFilterChanged();
+            PersistBestBrowseState();
         }
     }
 
@@ -706,13 +601,15 @@ public sealed class MainViewModel : INotifyPropertyChanged
         get => bestLevelFilter;
         set
         {
-            var normalized = NormalizeLevelFilter(value);
+            var normalized = UserSettings.NormalizeBestLevel(value);
             if (!SetProperty(ref bestLevelFilter, normalized))
             {
                 return;
             }
             OnPropertyChanged(nameof(SelectedBestLevelOption));
+            OnPropertyChanged(nameof(BestSelectionDisplay));
             OnBestFilterChanged();
+            PersistBestBrowseState();
         }
     }
 
@@ -725,6 +622,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
             {
                 return;
             }
+            OnPropertyChanged(nameof(BestSelectionDisplay));
+            OnPropertyChanged(nameof(BestProgressTitle));
             OnBestFilterChanged();
         }
     }
@@ -734,77 +633,53 @@ public sealed class MainViewModel : INotifyPropertyChanged
         get => bestVersionFilter;
         set
         {
-            var normalized = NormalizeAllFilterValue(value);
+            var normalized = UserSettings.NormalizeBestVersion(value);
             if (!SetProperty(ref bestVersionFilter, normalized))
             {
                 return;
             }
             OnPropertyChanged(nameof(SelectedBestVersionOption));
+            OnPropertyChanged(nameof(BestSelectionDisplay));
             OnBestFilterChanged();
+            PersistBestBrowseState();
         }
     }
 
-    public string BestPlayStatusFilter
+    public string BestBrowseModeDisplay => BestBrowseMode switch
     {
-        get => bestPlayStatusFilter;
-        set
-        {
-            var normalized = value switch
-            {
-                "すべて" => AllBestFilterValue,
-                "プレー済み" => PlayedFilterValue,
-                "未プレー" => UnplayedFilterValue,
-                _ => value,
-            };
-            if (!SetProperty(ref bestPlayStatusFilter, normalized))
-            {
-                return;
-            }
-            OnPropertyChanged(nameof(SelectedBestPlayStatusOption));
-            OnBestFilterChanged();
-        }
-    }
+        UserSettings.VersionBrowseMode => Localization.Get("バージョンから"),
+        UserSettings.TitleBrowseMode => Localization.Get("曲名から"),
+        _ => Localization.Get("レベルから"),
+    };
 
-    public string BestRankFilter
+    public string BestSelectionDisplay => BestBrowseMode switch
     {
-        get => bestRankFilter;
-        set
-        {
-            var normalized = value switch
-            {
-                "すべて" => AllBestFilterValue,
-                "AAA以上" => AaaOrHigherFilterValue,
-                "A以下" => AOrLowerFilterValue,
-                _ => value,
-            };
-            if (!SetProperty(ref bestRankFilter, normalized))
-            {
-                return;
-            }
-            OnPropertyChanged(nameof(SelectedBestRankOption));
-            OnBestFilterChanged();
-        }
-    }
+        UserSettings.VersionBrowseMode => BestVersionFilter,
+        UserSettings.TitleBrowseMode => string.IsNullOrWhiteSpace(BestSongQuery)
+            ? Localization.Get("曲名を入力")
+            : BestSongQuery.Trim(),
+        _ => BestLevelFilter.StartsWith("level_", StringComparison.Ordinal)
+            ? $"Lv.{BestLevelFilter[6..]}"
+            : BestLevelFilter,
+    };
 
-    public string BestClearFilter
-    {
-        get => bestClearFilter;
-        set
-        {
-            var normalized = value switch
-            {
-                "すべて" => AllBestFilterValue,
-                "未CLEAR" => NotClearFilterValue,
-                _ => value,
-            };
-            if (!SetProperty(ref bestClearFilter, normalized))
-            {
-                return;
-            }
-            OnPropertyChanged(nameof(SelectedBestClearOption));
-            OnBestFilterChanged();
-        }
-    }
+    public System.Windows.Visibility BestProgressVisibility =>
+        BestBrowseMode == UserSettings.TitleBrowseMode
+            ? System.Windows.Visibility.Collapsed
+            : System.Windows.Visibility.Visible;
+
+    public string BestProgressTitle =>
+        Localization.Format(
+            "{0}・{1}の記録状況",
+            BestSelectionDisplay,
+            BestPlayStyleFilter == UserSettings.DoublePlayStyle ? "DP" : "SP");
+
+    public int BestProgressTargetCount => bestProgressTargetCount;
+    public int BestProgressRecordedCount => bestProgressRecordedCount;
+    public int BestProgressUnrecordedCount => bestProgressUnrecordedCount;
+    public int BestProgressClearCount => bestProgressClearCount;
+    public int BestProgressFullComboCount => bestProgressFullComboCount;
+    public int BestProgressAaaCount => bestProgressAaaCount;
 
     public string BestSortFilter
     {
@@ -845,7 +720,11 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public bool CanLoadMoreChartBests => ChartBestDisplayedCount < ChartBestTotalCount;
 
     public string ChartBestRangeDisplay => ChartBestTotalCount == 0
-        ? Localization.Format("表示 {0}譜面 / 全{1}譜面", 0, 0)
+        ? BestBrowseMode == UserSettings.TitleBrowseMode
+            ? Localization.Get("該当する譜面はありません")
+            : Localization.Format("表示 {0}譜面 / 全{1}譜面", 0, 0)
+        : BestBrowseMode == UserSettings.TitleBrowseMode
+            ? Localization.Format("{0}譜面", ChartBestTotalCount)
         : Localization.Format(
             "表示 1〜{0} / 全{1}譜面",
             ChartBestDisplayedCount,
@@ -868,12 +747,6 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public string RecentPlayLoadMoreHintDisplay => CanLoadMorePlays
         ? Localization.Get("下端までスクロールすると次の50プレーを表示")
         : Localization.Format("全{0}プレーを表示中", totalPlayCount);
-
-    public string BestActiveFilterSummary => BestActiveFilterChips.Count == 0
-        ? Localization.Get("適用中: なし")
-        : Localization.Format(
-            "適用中: {0}",
-            string.Join(" / ", BestActiveFilterChips));
 
     public HomePlayItem? HomeLatestPlay
     {
@@ -1545,7 +1418,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
             NotifyUnresolvedResults,
             DefaultPlayStyle,
             StartupPage,
-            Language);
+            Language,
+            BestBrowseMode,
+            BestLevelFilter,
+            BestVersionFilter);
         if (!settings.IsValid)
         {
             SettingsStatusMessage = Localization.Get("設定値を確認してから保存してください。");
@@ -1592,6 +1468,17 @@ public sealed class MainViewModel : INotifyPropertyChanged
         DefaultPlayStyle = UserSettings.Defaults.DefaultPlayStyle;
         StartupPage = UserSettings.Defaults.StartupPage;
         Language = UserSettings.Defaults.Language;
+        suppressBestBrowseStatePersistence = true;
+        try
+        {
+            BestBrowseMode = UserSettings.Defaults.BestBrowseMode;
+            BestLevelFilter = UserSettings.Defaults.BestLevel;
+            BestVersionFilter = UserSettings.Defaults.BestVersion;
+        }
+        finally
+        {
+            suppressBestBrowseStatePersistence = false;
+        }
         SettingsStatusMessage = Localization.Get("初期値に戻しました。保存すると反映されます。");
     }
 
@@ -1608,6 +1495,17 @@ public sealed class MainViewModel : INotifyPropertyChanged
         DefaultPlayStyle = effective.DefaultPlayStyle;
         StartupPage = effective.StartupPage;
         Language = effective.Language;
+        suppressBestBrowseStatePersistence = true;
+        try
+        {
+            BestBrowseMode = effective.BestBrowseMode;
+            BestLevelFilter = effective.BestLevel;
+            BestVersionFilter = effective.BestVersion;
+        }
+        finally
+        {
+            suppressBestBrowseStatePersistence = false;
+        }
         BestPlayStyleFilter = appliedDefaultPlayStyle;
         OnPropertyChanged(nameof(IsAutomaticMonitoringEnabled));
 
@@ -3977,35 +3875,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
         ChartDetailUpdated?.Invoke(this, EventArgs.Empty);
     }
 
-    public void ResetBestFilters()
-    {
-        suppressBestFilterRefresh = true;
-        try
-        {
-            BestPlayStyleFilter = "SINGLE";
-            BestDifficultyFilter = AllBestFilterValue;
-            BestLevelFilter = AllBestFilterValue;
-            BestSongQuery = "";
-            BestVersionFilter = AllBestFilterValue;
-            BestPlayStatusFilter = AllBestFilterValue;
-            BestRankFilter = AllBestFilterValue;
-            BestClearFilter = AllBestFilterValue;
-            BestSortFilter = BestSortScoreDescending;
-        }
-        finally
-        {
-            suppressBestFilterRefresh = false;
-        }
-
-        RefreshChartBests(resetDisplayedCount: true);
-    }
-
     private void OnBestFilterChanged()
     {
-        if (!suppressBestFilterRefresh)
-        {
-            RefreshChartBests(resetDisplayedCount: true);
-        }
+        RefreshChartBests(resetDisplayedCount: true);
     }
 
     private void RefreshChartBests(
@@ -4040,7 +3912,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
 
         Replace(ChartBests, filtered.Take(ChartBestDisplayedCount));
-        UpdateBestActiveFilterChips();
+        UpdateBestProgressSummary();
         NotifyChartBestListState();
         if (resetDisplayedCount)
         {
@@ -4150,6 +4022,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(CanLoadMoreChartBests));
         OnPropertyChanged(nameof(ChartBestRangeDisplay));
         OnPropertyChanged(nameof(ChartBestLoadMoreHintDisplay));
+        OnPropertyChanged(nameof(BestSelectionDisplay));
+        OnPropertyChanged(nameof(BestProgressTitle));
+        OnPropertyChanged(nameof(BestProgressVisibility));
     }
 
     private void NotifyRecentPlayListState()
@@ -4163,28 +4038,16 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     private void UpdateBestVersionOptions()
     {
-        var versions = allChartBests
-            .Where(item => item.PlayStyle == BestPlayStyleFilter)
-            .Select(item => item.Version)
-            .Where(version => !string.IsNullOrWhiteSpace(version))
-            .Select(GetBestVersionLabel)
-            .Distinct(StringComparer.CurrentCultureIgnoreCase)
-            .OrderBy(GetBestVersionOrder)
-            .ThenBy(version => version, StringComparer.CurrentCultureIgnoreCase)
-            .ToList();
-        var options = versions
-            .Select(version => new LocalizedOption(version, version))
-            .ToList();
-        options.Insert(0, Localization.Option(AllBestFilterValue, "すべて"));
-        BestVersionOptions = options;
-        if (!options.Any(option => string.Equals(
-                option.Code,
-                bestVersionFilter,
-                StringComparison.CurrentCultureIgnoreCase)))
+        BestVersionOptions = UserSettings.SupportedBestVersions
+            .Select(version => Localization.Option(version, version))
+            .ToArray();
+        var normalized = UserSettings.NormalizeBestVersion(bestVersionFilter);
+        if (!string.Equals(bestVersionFilter, normalized, StringComparison.Ordinal))
         {
-            bestVersionFilter = AllBestFilterValue;
+            bestVersionFilter = normalized;
             OnPropertyChanged(nameof(BestVersionFilter));
             OnPropertyChanged(nameof(SelectedBestVersionOption));
+            OnPropertyChanged(nameof(BestSelectionDisplay));
         }
     }
 
@@ -4193,19 +4056,16 @@ public sealed class MainViewModel : INotifyPropertyChanged
         var songQuery = BestSongQuery.Trim();
         var filtered = allChartBests.Where(item =>
             item.PlayStyle == BestPlayStyleFilter &&
-            (BestDifficultyFilter == AllBestFilterValue ||
-             item.Difficulty == BestDifficultyFilter) &&
-            MatchesLevel(item, BestLevelFilter) &&
-            (songQuery.Length == 0 ||
-             item.SongTitle.Contains(songQuery, StringComparison.CurrentCultureIgnoreCase)) &&
-            (BestVersionFilter == AllBestFilterValue ||
-             string.Equals(
-                 GetBestVersionLabel(item.Version),
-                 BestVersionFilter,
-                 StringComparison.CurrentCultureIgnoreCase)) &&
-            MatchesPlayStatus(item, BestPlayStatusFilter) &&
-            MatchesRank(item, BestRankFilter) &&
-            MatchesClear(item, BestClearFilter));
+            (BestBrowseMode switch
+            {
+                UserSettings.VersionBrowseMode => string.Equals(
+                    GetBestVersionLabel(item.Version),
+                    BestVersionFilter,
+                    StringComparison.OrdinalIgnoreCase),
+                UserSettings.TitleBrowseMode => songQuery.Length == 0 ||
+                    item.SongTitle.Contains(songQuery, StringComparison.CurrentCultureIgnoreCase),
+                _ => item.Level == ParseBestLevel(BestLevelFilter),
+            }));
 
         return BestSortFilter switch
         {
@@ -4236,66 +4096,71 @@ public sealed class MainViewModel : INotifyPropertyChanged
         };
     }
 
-    private static bool MatchesPlayStatus(ChartBestItem item, string filter) => filter switch
-    {
-        PlayedFilterValue => item.IsPlayed,
-        UnplayedFilterValue => !item.IsPlayed,
-        _ => true,
-    };
+    private static int ParseBestLevel(string value) =>
+        value.StartsWith("level_", StringComparison.Ordinal) &&
+        int.TryParse(value[6..], NumberStyles.Integer, CultureInfo.InvariantCulture, out var level)
+            ? level
+            : 1;
 
-    private static bool MatchesLevel(ChartBestItem item, string filter)
+    private IEnumerable<ChartBestItem> BestProgressTargets()
     {
-        if (filter == AllBestFilterValue)
+        if (BestBrowseMode == UserSettings.TitleBrowseMode)
         {
-            return true;
+            return [];
         }
 
-        return filter.StartsWith("level_", StringComparison.Ordinal) &&
-            int.TryParse(
-                filter[6..],
-                NumberStyles.Integer,
-                CultureInfo.InvariantCulture,
-                out var level) &&
-            item.Level == level;
+        return allChartBests.Where(item =>
+            item.PlayStyle == BestPlayStyleFilter &&
+            (BestBrowseMode == UserSettings.VersionBrowseMode
+                ? string.Equals(
+                    GetBestVersionLabel(item.Version),
+                    BestVersionFilter,
+                    StringComparison.OrdinalIgnoreCase)
+                : item.Level == ParseBestLevel(BestLevelFilter)));
     }
 
-    private static bool MatchesRank(ChartBestItem item, string filter) => filter switch
+    private void UpdateBestProgressSummary()
     {
-        AaaOrHigherFilterValue => item.Rank == "AAA",
-        "AA" => item.Rank is "AA+" or "AA" or "AA-",
-        AOrLowerFilterValue => item.Rank is "A+" or "A" or "A-" or
-            "B+" or "B" or "B-" or "C+" or "C" or "C-" or "D+" or "D" or "E",
-        _ => true,
-    };
+        var targets = BestProgressTargets().ToArray();
+        bestProgressTargetCount = targets.Length;
+        bestProgressRecordedCount = targets.Count(item => item.IsPlayed);
+        bestProgressUnrecordedCount = bestProgressTargetCount - bestProgressRecordedCount;
+        bestProgressClearCount = targets.Count(item =>
+            GetClearProgressRank(item) >= 2);
+        bestProgressFullComboCount = targets.Count(item =>
+            GetClearProgressRank(item) >= 3);
+        bestProgressAaaCount = targets.Count(item =>
+            string.Equals(GetHighestRank(item), "AAA", StringComparison.OrdinalIgnoreCase));
 
-    private static bool MatchesClear(ChartBestItem item, string filter) => filter switch
-    {
-        "PFC" => item.ClearDisplay == "PFC",
-        "GFC" => item.ClearDisplay == "GFC",
-        "FC" => item.ClearDisplay == "FC",
-        "CLEAR" => item.ClearDisplay == "CLEAR",
-        NotClearFilterValue => item.ClearDisplay is "—" or "FAILED",
-        _ => true,
-    };
-
-    private static string NormalizeAllFilterValue(string? value) =>
-        value is "すべて" or null or "" ? AllBestFilterValue : value;
-
-    private static string NormalizeLevelFilter(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value) || value == "すべて")
+        foreach (var propertyName in new[]
+                 {
+                     nameof(BestProgressTargetCount),
+                     nameof(BestProgressRecordedCount),
+                     nameof(BestProgressUnrecordedCount),
+                     nameof(BestProgressClearCount),
+                     nameof(BestProgressFullComboCount),
+                     nameof(BestProgressAaaCount),
+                 })
         {
-            return AllBestFilterValue;
+            OnPropertyChanged(propertyName);
         }
-
-        if (value.StartsWith("Lv.", StringComparison.OrdinalIgnoreCase) &&
-            int.TryParse(value[3..], NumberStyles.Integer, CultureInfo.InvariantCulture, out var level))
-        {
-            return $"level_{level}";
-        }
-
-        return value;
     }
+
+    private static int GetClearProgressRank(ChartBestItem item) =>
+        (string.IsNullOrWhiteSpace(item.HighestClearType)
+            ? item.ClearType
+            : item.HighestClearType) switch
+        {
+            "MFC" => 6,
+            "PFC" => 5,
+            "GFC" => 4,
+            "FC" or "FULL COMBO" => 3,
+            "CLEAR" => 2,
+            _ => 0,
+        };
+
+    private static string GetHighestRank(ChartBestItem item) =>
+        string.IsNullOrWhiteSpace(item.HighestRank) ? item.Rank : item.HighestRank;
 
     private static string GetBestVersionLabel(string version)
     {
@@ -4305,7 +4170,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             version.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries));
         if (IsGrandPrixRelease(value))
         {
-            return BestVersionOrder[0];
+            return UserSettings.DefaultBestVersion;
         }
 
         var aliases = new List<string> { value };
@@ -4322,7 +4187,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             aliases.Add("A20 PLUS");
         }
 
-        foreach (var label in BestVersionOrder)
+        foreach (var label in UserSettings.SupportedBestVersions)
         {
             var labelAliases = new[]
             {
@@ -4345,67 +4210,37 @@ public sealed class MainViewModel : INotifyPropertyChanged
         (value.Length >= 4 && value.StartsWith("2023", StringComparison.Ordinal) &&
          (value.Length == 4 || value[4] is '/' or '-' or '.'));
 
-    private static int GetBestVersionOrder(string version)
+    private void PersistBestBrowseState()
     {
-        var index = Array.FindIndex(
-            BestVersionOrder,
-            label => string.Equals(label, version, StringComparison.OrdinalIgnoreCase));
-        return index < 0 ? BestVersionOrder.Length : index;
-    }
-
-    private void UpdateBestActiveFilterChips()
-    {
-        var chips = new List<string>();
-        if (BestDifficultyFilter != AllBestFilterValue)
+        if (suppressBestBrowseStatePersistence)
         {
-            chips.Add(Localization.Format("難易度: {0}", BestDifficultyFilter));
-        }
-        if (BestLevelFilter != AllBestFilterValue)
-        {
-            chips.Add(Localization.Format(
-                "レベル: {0}",
-                BestLevelFilter.StartsWith("level_", StringComparison.Ordinal)
-                    ? $"Lv.{BestLevelFilter[6..]}"
-                    : BestLevelFilter));
-        }
-        if (!string.IsNullOrWhiteSpace(BestSongQuery))
-        {
-            chips.Add(Localization.Format("曲名: {0}", BestSongQuery.Trim()));
-        }
-        if (BestVersionFilter != AllBestFilterValue)
-        {
-            chips.Add(Localization.Format("バージョン: {0}", BestVersionFilter));
-        }
-        if (BestPlayStatusFilter != AllBestFilterValue)
-        {
-            chips.Add(Localization.Format(
-                "プレー状況: {0}",
-                BestPlayStatusFilter == PlayedFilterValue
-                    ? Localization.Get("プレー済み")
-                    : Localization.Get("未プレー")));
-        }
-        if (BestRankFilter != AllBestFilterValue)
-        {
-            chips.Add(Localization.Format(
-                "ランク: {0}",
-                BestRankFilter switch
-                {
-                    AaaOrHigherFilterValue => Localization.Get("AAA以上"),
-                    AOrLowerFilterValue => Localization.Get("A以下"),
-                    _ => BestRankFilter,
-                }));
-        }
-        if (BestClearFilter != AllBestFilterValue)
-        {
-            chips.Add(Localization.Format(
-                "CLEAR: {0}",
-                BestClearFilter == NotClearFilterValue
-                    ? Localization.Get("未CLEAR")
-                    : BestClearFilter));
+            return;
         }
 
-        Replace(BestActiveFilterChips, chips);
-        OnPropertyChanged(nameof(BestActiveFilterSummary));
+        var settings = new UserSettings(
+            appliedStartMonitoringOnLaunch,
+            appliedNotifyUnresolvedResults,
+            appliedDefaultPlayStyle,
+            appliedStartupPage,
+            appliedLanguage,
+            BestBrowseMode,
+            BestLevelFilter,
+            BestVersionFilter);
+        if (!settings.IsValid)
+        {
+            return;
+        }
+
+        try
+        {
+            userSettingsStore.Save(settings);
+        }
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException or
+            ArgumentException or InvalidOperationException)
+        {
+            // Browsing remains usable when the local settings file cannot be updated.
+        }
     }
 
     private static IReadOnlyList<ChartBestItem> MergeChartBests(

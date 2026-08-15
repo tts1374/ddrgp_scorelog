@@ -242,6 +242,7 @@ public sealed class PersonalScoreDataBackupTests
         var viewModel = new MainViewModel(
             new ScoreViewerRepository(),
             defaultDatabasePaths: paths);
+        viewModel.BestBrowseMode = UserSettings.TitleBrowseMode;
         viewModel.Load(fixture.ScorePath, fixture.MasterPath, fixture.CatalogPath, persist: false);
 
         var result = viewModel.RestorePersonalScoreBackup(backupPath);

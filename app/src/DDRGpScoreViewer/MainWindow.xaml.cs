@@ -37,6 +37,7 @@ public partial class MainWindow : System.Windows.Window
     private bool applicationExitRequested;
     private bool restoringBestChartListState;
     private double bestChartScrollOffset;
+    private bool bestAxisPanelOpen;
     private Func<Task>? applicationUpdatePrepareExitHandler;
     private Func<Task>? applicationUpdateExitHandler;
     private Action? applicationUpdateForceExitHandler;
@@ -506,6 +507,8 @@ public partial class MainWindow : System.Windows.Window
         PageSubtitle.Text = Localization.Get("保存済み全履歴から算出した譜面別ベスト");
         Localization.ApplyToWindow(this);
         UpdateBestPlayStyleButtons();
+        UpdateBestBrowseModeButtons();
+        UpdateBestBrowseModeUi();
         RestoreBestChartListState();
         HomeNavigation.Tag = null;
         BestNavigation.Tag = "Selected";
@@ -666,12 +669,102 @@ public partial class MainWindow : System.Windows.Window
             ? "DOUBLE"
             : "SINGLE";
         UpdateBestPlayStyleButtons();
+        UpdateBestBrowseModeUi();
     }
 
-    private void ResetBestFilters_Click(object sender, RoutedEventArgs e)
+    private void BestBrowseMode_Click(object sender, RoutedEventArgs e)
     {
-        viewModel.ResetBestFilters();
-        UpdateBestPlayStyleButtons();
+        viewModel.BestBrowseMode = ReferenceEquals(sender, BestVersionModeButton)
+            ? UserSettings.VersionBrowseMode
+            : ReferenceEquals(sender, BestTitleModeButton)
+                ? UserSettings.TitleBrowseMode
+                : UserSettings.LevelBrowseMode;
+        bestAxisPanelOpen = false;
+        UpdateBestBrowseModeButtons();
+        UpdateBestBrowseModeUi();
+    }
+
+    private void BestAxisChange_Click(object sender, RoutedEventArgs e)
+    {
+        if (viewModel.BestBrowseMode == UserSettings.TitleBrowseMode)
+        {
+            return;
+        }
+
+        bestAxisPanelOpen = !bestAxisPanelOpen;
+        UpdateBestBrowseModeUi();
+    }
+
+    private void BestLevelOptionsGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (e.AddedItems.Count == 0 || restoringBestChartListState)
+        {
+            return;
+        }
+
+        bestAxisPanelOpen = false;
+        UpdateBestBrowseModeUi();
+    }
+
+    private void BestVersionOptionsGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (e.AddedItems.Count == 0 || restoringBestChartListState)
+        {
+            return;
+        }
+
+        bestAxisPanelOpen = false;
+        UpdateBestBrowseModeUi();
+    }
+
+    private void UpdateBestBrowseModeButtons()
+    {
+        if (BestLevelModeButton is null || BestVersionModeButton is null ||
+            BestTitleModeButton is null)
+        {
+            return;
+        }
+
+        BestLevelModeButton.Tag = viewModel.BestBrowseMode == UserSettings.LevelBrowseMode
+            ? "Selected"
+            : null;
+        BestVersionModeButton.Tag = viewModel.BestBrowseMode == UserSettings.VersionBrowseMode
+            ? "Selected"
+            : null;
+        BestTitleModeButton.Tag = viewModel.BestBrowseMode == UserSettings.TitleBrowseMode
+            ? "Selected"
+            : null;
+    }
+
+    private void UpdateBestBrowseModeUi()
+    {
+        if (BestSelectionSummaryPanel is null || BestTitleSearchPanel is null ||
+            BestAxisPanel is null || BestLevelOptionsPanel is null ||
+            BestVersionOptionsPanel is null || BestAxisChangeButton is null)
+        {
+            return;
+        }
+
+        var titleMode = viewModel.BestBrowseMode == UserSettings.TitleBrowseMode;
+        var versionMode = viewModel.BestBrowseMode == UserSettings.VersionBrowseMode;
+        BestSelectionSummaryPanel.Visibility = titleMode
+            ? Visibility.Collapsed
+            : Visibility.Visible;
+        BestTitleSearchPanel.Visibility = titleMode
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        BestAxisPanel.Visibility = titleMode || bestAxisPanelOpen
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        BestLevelOptionsPanel.Visibility = titleMode || versionMode
+            ? Visibility.Collapsed
+            : Visibility.Visible;
+        BestVersionOptionsPanel.Visibility = versionMode
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        BestAxisChangeButton.Content = viewModel.BestBrowseMode == UserSettings.VersionBrowseMode
+            ? Localization.Get("バージョンを変更")
+            : Localization.Get("レベルを変更");
     }
 
     private void BestChartGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)

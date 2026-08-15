@@ -1085,6 +1085,46 @@ public sealed class ScoreViewerRepository
                               julianday(best.played_at) DESC,
                               best.played_at DESC, best.play_id DESC
                      LIMIT 1
+                   ),
+                   (
+                     SELECT achievement.rank
+                     FROM plays achievement
+                     WHERE achievement.song_id = p.song_id AND achievement.chart_id = p.chart_id
+                     ORDER BY CASE achievement.rank
+                                WHEN 'AAA' THEN 100
+                                WHEN 'AA+' THEN 90
+                                WHEN 'AA' THEN 80
+                                WHEN 'AA-' THEN 70
+                                WHEN 'A+' THEN 60
+                                WHEN 'A' THEN 50
+                                WHEN 'A-' THEN 40
+                                WHEN 'B+' THEN 30
+                                WHEN 'B' THEN 20
+                                WHEN 'B-' THEN 10
+                                ELSE 0
+                              END DESC,
+                              achievement.score DESC, achievement.ex_score DESC,
+                              julianday(achievement.played_at) DESC,
+                              achievement.played_at DESC, achievement.play_id DESC
+                     LIMIT 1
+                   ),
+                   (
+                     SELECT achievement.clear_type
+                     FROM plays achievement
+                     WHERE achievement.song_id = p.song_id AND achievement.chart_id = p.chart_id
+                     ORDER BY CASE achievement.clear_type
+                                WHEN 'MFC' THEN 6
+                                WHEN 'PFC' THEN 5
+                                WHEN 'GFC' THEN 4
+                                WHEN 'FC' THEN 3
+                                WHEN 'FULL COMBO' THEN 3
+                                WHEN 'CLEAR' THEN 2
+                                ELSE 0
+                              END DESC,
+                              achievement.score DESC, achievement.ex_score DESC,
+                              julianday(achievement.played_at) DESC,
+                              achievement.played_at DESC, achievement.play_id DESC
+                     LIMIT 1
                    )
             FROM plays p
             GROUP BY p.song_id, p.chart_id
@@ -1108,7 +1148,9 @@ public sealed class ScoreViewerRepository
                 found ? chart!.Version : "",
                 reader.GetString(6),
                 reader.GetString(7),
-                reader.IsDBNull(8) ? null : reader.GetString(8)));
+                reader.IsDBNull(8) ? null : reader.GetString(8),
+                reader.IsDBNull(9) ? "" : reader.GetString(9),
+                reader.IsDBNull(10) ? "" : reader.GetString(10)));
         }
         return result;
     }

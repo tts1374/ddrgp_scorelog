@@ -10,7 +10,10 @@ public sealed record UserSettings(
     bool NotifyUnresolvedResults,
     string DefaultPlayStyle,
     string StartupPage,
-    string Language = "ja")
+    string Language = "ja",
+    string BestBrowseMode = "level",
+    string BestLevel = "level_1",
+    string BestVersion = "DDR GRAND PRIX")
 {
     public const string JapaneseLanguage = "ja";
     public const string EnglishLanguage = "en";
@@ -20,13 +23,47 @@ public sealed record UserSettings(
     public const string HomeStartupPage = "home";
     public const string BestStartupPage = "best";
     public const string HistoryStartupPage = "history";
+    public const string LevelBrowseMode = "level";
+    public const string VersionBrowseMode = "version";
+    public const string TitleBrowseMode = "title";
+    public const string DefaultBestBrowseMode = LevelBrowseMode;
+    public const string DefaultBestLevel = "level_1";
+    public const string DefaultBestVersion = "DDR GRAND PRIX";
+
+    public static IReadOnlyList<string> SupportedBestVersions { get; } =
+    [
+        "DDR GRAND PRIX",
+        "DDR WORLD",
+        "DDR A3",
+        "DDR A20 PLUS",
+        "DDR A20",
+        "DDR A",
+        "DDR (2014)",
+        "DDR (2013)",
+        "X3 VS 2ndMIX",
+        "X2",
+        "X",
+        "SuperNOVA 2",
+        "SuperNOVA",
+        "EXTREME",
+        "DDRMAX2",
+        "DDRMAX",
+        "5thMIX",
+        "4thMIX",
+        "3rdMIX",
+        "2ndMIX",
+        "1st",
+    ];
 
     public static UserSettings Defaults { get; } = new(
         StartMonitoringOnLaunch: true,
         NotifyUnresolvedResults: true,
         DefaultPlayStyle: SinglePlayStyle,
         StartupPage: HomeStartupPage,
-        Language: JapaneseLanguage);
+        Language: JapaneseLanguage,
+        BestBrowseMode: DefaultBestBrowseMode,
+        BestLevel: DefaultBestLevel,
+        BestVersion: DefaultBestVersion);
 
     public static UserSettings ForNewEnvironment(string? osLocale = null) =>
         Defaults with { Language = ResolveInitialLanguage(osLocale) };
@@ -34,7 +71,10 @@ public sealed record UserSettings(
     public bool IsValid =>
         IsValidPlayStyle(DefaultPlayStyle) &&
         IsValidStartupPage(StartupPage) &&
-        IsValidLanguage(Language);
+        IsValidLanguage(Language) &&
+        IsValidBestBrowseMode(BestBrowseMode) &&
+        IsValidBestLevel(BestLevel) &&
+        IsValidBestVersion(BestVersion);
 
     public static bool IsValidPlayStyle(string? value) =>
         value is SinglePlayStyle or DoublePlayStyle;
@@ -44,6 +84,52 @@ public sealed record UserSettings(
 
     public static bool IsValidLanguage(string? value) =>
         value is JapaneseLanguage or EnglishLanguage or KoreanLanguage;
+
+    public static bool IsValidBestBrowseMode(string? value) =>
+        value is LevelBrowseMode or VersionBrowseMode or TitleBrowseMode;
+
+    public static bool IsValidBestLevel(string? value)
+    {
+        return value is not null &&
+            value.StartsWith("level_", StringComparison.Ordinal) &&
+            int.TryParse(value[6..], NumberStyles.Integer, CultureInfo.InvariantCulture, out var level) &&
+            level is >= 1 and <= 19 &&
+            string.Equals(value, $"level_{level}", StringComparison.Ordinal);
+    }
+
+    public static bool IsValidBestVersion(string? value) =>
+        value is not null && SupportedBestVersions.Contains(value, StringComparer.OrdinalIgnoreCase);
+
+    public static string NormalizeBestBrowseMode(string? value) =>
+        value?.Trim().ToLowerInvariant() switch
+        {
+            LevelBrowseMode => LevelBrowseMode,
+            VersionBrowseMode => VersionBrowseMode,
+            TitleBrowseMode => TitleBrowseMode,
+            _ => DefaultBestBrowseMode,
+        };
+
+    public static string NormalizeBestLevel(string? value)
+    {
+        if (value?.StartsWith("Lv.", StringComparison.OrdinalIgnoreCase) == true &&
+            int.TryParse(value[3..], NumberStyles.Integer, CultureInfo.InvariantCulture, out var level))
+        {
+            return level is >= 1 and <= 19 ? $"level_{level}" : DefaultBestLevel;
+        }
+
+        if (value?.StartsWith("level_", StringComparison.OrdinalIgnoreCase) == true &&
+            int.TryParse(value[6..], NumberStyles.Integer, CultureInfo.InvariantCulture, out level))
+        {
+            return level is >= 1 and <= 19 ? $"level_{level}" : DefaultBestLevel;
+        }
+
+        return IsValidBestLevel(value) ? value! : DefaultBestLevel;
+    }
+
+    public static string NormalizeBestVersion(string? value) =>
+        SupportedBestVersions.FirstOrDefault(version =>
+            string.Equals(version, value?.Trim(), StringComparison.OrdinalIgnoreCase)) ??
+        DefaultBestVersion;
 
     public static string NormalizeLanguage(string? value) =>
         value?.Trim().ToLowerInvariant() switch
@@ -134,7 +220,10 @@ public sealed class LocalUserSettingsStore : IUserSettingsStore
                 notifyUnresolvedResults,
                 stored.DefaultPlayStyle,
                 startupPage,
-                UserSettings.NormalizeLanguage(stored.Language));
+                UserSettings.NormalizeLanguage(stored.Language),
+                stored.BestBrowseMode ?? UserSettings.DefaultBestBrowseMode,
+                stored.BestLevel ?? UserSettings.DefaultBestLevel,
+                stored.BestVersion ?? UserSettings.DefaultBestVersion);
             return settings.IsValid ? settings : null;
         }
         catch (Exception exception) when (
@@ -165,7 +254,10 @@ public sealed class LocalUserSettingsStore : IUserSettingsStore
                 settings.NotifyUnresolvedResults,
                 settings.DefaultPlayStyle,
                 settings.StartupPage,
-                settings.Language),
+                settings.Language,
+                settings.BestBrowseMode,
+                settings.BestLevel,
+                settings.BestVersion),
             JsonOptions) + "\n";
         File.WriteAllText(filePath, json, Utf8NoBom);
     }
@@ -175,5 +267,8 @@ public sealed class LocalUserSettingsStore : IUserSettingsStore
         bool? NotifyUnresolvedResults,
         string? DefaultPlayStyle,
         string? StartupPage,
-        string? Language);
+        string? Language,
+        string? BestBrowseMode,
+        string? BestLevel,
+        string? BestVersion);
 }

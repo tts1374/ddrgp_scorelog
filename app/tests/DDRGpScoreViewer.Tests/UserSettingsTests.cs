@@ -23,7 +23,10 @@ public sealed class UserSettingsTests
                 NotifyUnresolvedResults: false,
                 DefaultPlayStyle: UserSettings.DoublePlayStyle,
                 StartupPage: UserSettings.HistoryStartupPage,
-                Language: UserSettings.KoreanLanguage);
+                Language: UserSettings.KoreanLanguage,
+                BestBrowseMode: UserSettings.VersionBrowseMode,
+                BestLevel: "level_17",
+                BestVersion: "DDR WORLD");
             var store = new LocalUserSettingsStore(path);
 
             store.Save(expected);
@@ -127,6 +130,43 @@ public sealed class UserSettingsTests
     }
 
     [Fact]
+    public void Invalid_saved_best_browse_values_fall_back_to_all_defaults()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), $"ddrgp-user-settings-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        var path = Path.Combine(directory, "user-settings.json");
+        try
+        {
+            File.WriteAllText(
+                path,
+                "{\n" +
+                "  \"StartMonitoringOnLaunch\": true,\n" +
+                "  \"NotifyUnresolvedResults\": true,\n" +
+                "  \"DefaultPlayStyle\": \"SINGLE\",\n" +
+                "  \"StartupPage\": \"home\",\n" +
+                "  \"BestBrowseMode\": \"goal\",\n" +
+                "  \"BestLevel\": \"level_20\",\n" +
+                "  \"BestVersion\": \"unsupported\"\n" +
+                "}\n",
+                new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+
+            var viewModel = new MainViewModel(
+                new ScoreViewerRepository(),
+                userSettingsStore: new LocalUserSettingsStore(path));
+            viewModel.RestoreUserSettings();
+
+            AssertDefaults(viewModel);
+        }
+        finally
+        {
+            if (Directory.Exists(directory))
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
     public void Localization_translates_supported_languages_and_falls_back_to_the_base_text()
     {
         Assert.Equal("ホーム", Localization.GetForLanguage("ホーム", UserSettings.JapaneseLanguage));
@@ -174,6 +214,9 @@ public sealed class UserSettingsTests
         viewModel.DefaultPlayStyle = UserSettings.DoublePlayStyle;
         viewModel.StartupPage = UserSettings.BestStartupPage;
         viewModel.Language = UserSettings.EnglishLanguage;
+        viewModel.BestBrowseMode = UserSettings.VersionBrowseMode;
+        viewModel.BestLevelFilter = "level_17";
+        viewModel.BestVersionFilter = "DDR WORLD";
 
         Assert.True(viewModel.SaveUserSettings());
         Assert.Equal(scoreHashBefore, SHA256.HashData(File.ReadAllBytes(fixture.ScorePath)));
@@ -189,6 +232,9 @@ public sealed class UserSettingsTests
         Assert.Equal(UserSettings.DoublePlayStyle, restartedViewModel.DefaultPlayStyle);
         Assert.Equal(UserSettings.BestStartupPage, restartedViewModel.StartupPage);
         Assert.Equal(UserSettings.EnglishLanguage, restartedViewModel.Language);
+        Assert.Equal(UserSettings.VersionBrowseMode, restartedViewModel.BestBrowseMode);
+        Assert.Equal("level_17", restartedViewModel.BestLevelFilter);
+        Assert.Equal("DDR WORLD", restartedViewModel.BestVersionFilter);
         Assert.False(restartedViewModel.IsAutomaticMonitoringEnabled);
     }
 
@@ -246,6 +292,9 @@ public sealed class UserSettingsTests
         Assert.True(viewModel.NotifyUnresolvedResults);
         Assert.Equal(UserSettings.SinglePlayStyle, viewModel.DefaultPlayStyle);
         Assert.Equal(UserSettings.HomeStartupPage, viewModel.StartupPage);
+        Assert.Equal(UserSettings.LevelBrowseMode, viewModel.BestBrowseMode);
+        Assert.Equal(UserSettings.DefaultBestLevel, viewModel.BestLevelFilter);
+        Assert.Equal(UserSettings.DefaultBestVersion, viewModel.BestVersionFilter);
     }
 
     private static ViewerDatabasePaths ConfiguredPaths(DatabaseFixture fixture) =>
