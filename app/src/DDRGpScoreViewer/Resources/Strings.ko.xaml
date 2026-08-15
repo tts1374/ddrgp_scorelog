@@ -18,6 +18,7 @@
     <sys:String x:Key="曲を探す">곡 찾기</sys:String>
     <sys:String x:Key="選択中">선택 중</sys:String>
     <sys:String x:Key="曲名を入力">곡명을 입력하세요</sys:String>
+    <sys:String x:Key="曲名検索では記録状況を集計しません">곡명 검색에서는 기록 현황을 집계하지 않습니다.</sys:String>
     <sys:String x:Key="{}{0}・{1}の記録状況">{0} · {1} 기록 현황</sys:String>
     <sys:String x:Key="該当する譜面はありません">일치하는 채보가 없습니다</sys:String>
     <sys:String x:Key="自動記録と表示に関する設定を変更できます">자동 기록 및 표시 설정을 변경합니다</sys:String>

@@ -173,6 +173,16 @@ public sealed class UserSettingsTests
         Assert.Equal("Home", Localization.GetForLanguage("ホーム", UserSettings.EnglishLanguage));
         Assert.Equal("홈", Localization.GetForLanguage("ホーム", UserSettings.KoreanLanguage));
         Assert.Equal(
+            "Record status is not aggregated for song-title searches.",
+            Localization.GetForLanguage(
+                "曲名検索では記録状況を集計しません",
+                UserSettings.EnglishLanguage));
+        Assert.Equal(
+            "곡명 검색에서는 기록 현황을 집계하지 않습니다.",
+            Localization.GetForLanguage(
+                "曲名検索では記録状況を集計しません",
+                UserSettings.KoreanLanguage));
+        Assert.Equal(
             "未登録の表示文言",
             Localization.GetForLanguage("未登録の表示文言", UserSettings.EnglishLanguage));
     }
