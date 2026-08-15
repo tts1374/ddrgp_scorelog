@@ -114,6 +114,29 @@ def test_personal_score_db_save_input_accepts_resolved_formal_values() -> None:
     score_save.validate_personal_score_db_save_input(save_input)
 
 
+@pytest.mark.parametrize(
+    ("ok", "calories"),
+    [(21, 28.6), (21, None), (None, 28.6), (None, None)],
+)
+def test_optional_result_metrics_round_trip_without_becoming_save_requirements(
+    ok: int | None, calories: float | None
+) -> None:
+    save_input = saved_input(f"optional-{ok}-{calories}")
+    assert save_input.play is not None
+    save_input = replace(
+        save_input,
+        play=replace(save_input.play, ok=ok, calories=calories),
+    )
+    with sqlite3.connect(":memory:") as connection:
+        result = score_save.write_personal_score_db_save(connection, save_input)
+        row = connection.execute(
+            "SELECT ok, calories FROM plays WHERE play_id = ?",
+            (result.play_id,),
+        ).fetchone()
+
+    assert row == (ok, calories)
+
+
 def test_personal_score_db_save_input_rejects_unresolved_formal_fields() -> None:
     save_input = saved_input()
     assert save_input.play is not None

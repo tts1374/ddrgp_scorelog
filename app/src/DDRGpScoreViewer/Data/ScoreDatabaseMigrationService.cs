@@ -14,12 +14,13 @@ public sealed record ScoreDatabaseMigrationResult(bool Succeeded, bool Migrated,
 
 public sealed class ScoreDatabaseMigrationService
 {
-    private const int SupportedVersion = 2;
+    private const int SupportedVersion = 3;
     private readonly IReadOnlyDictionary<int, IScoreDatabaseMigration> migrations;
 
     public ScoreDatabaseMigrationService(IEnumerable<IScoreDatabaseMigration>? migrations = null)
     {
-        this.migrations = (migrations ?? [new ScoreDatabaseV1ToV2Migration()])
+        this.migrations = (migrations ??
+                [new ScoreDatabaseV1ToV2Migration(), new ScoreDatabaseV2ToV3Migration()])
             .ToDictionary(item => item.FromVersion);
     }
 
@@ -35,8 +36,13 @@ public sealed class ScoreDatabaseMigrationService
         {
             using var inspection = Open(scoreDatabasePath, SqliteOpenMode.ReadOnly);
             version = checked((int)ExecuteVersion(inspection));
+            if (version <= SupportedVersion)
+            {
+                ScoreViewerRepository.ValidateScoreDatabaseForMigration(inspection, version);
+            }
         }
-        catch (Exception exception) when (exception is IOException or SqliteException or OverflowException)
+        catch (Exception exception) when (
+            exception is IOException or SqliteException or OverflowException or ViewerDatabaseException)
         {
             return new(false, false, $"score DBを安全に検査できないため変更していません。{exception.Message}");
         }
@@ -49,23 +55,40 @@ public sealed class ScoreDatabaseMigrationService
         {
             return new(false, false, "このアプリより新しいscore DB schemaのため変更せず拒否しました。");
         }
-        if (!migrations.TryGetValue(version, out var migration) || migration.ToVersion != SupportedVersion)
+        if (!HasCompleteMigrationPath(version))
         {
             return new(false, false, "対応する明示的converterがないscore DB schemaのため変更せず拒否しました。");
         }
 
         var backupDirectory = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(scoreDatabasePath))!, "migration-backup");
         var backupPath = Path.Combine(backupDirectory, "score.db.bak");
-        Directory.CreateDirectory(backupDirectory);
         var pendingBackup = backupPath + ".pending";
-        File.Copy(scoreDatabasePath, pendingBackup, overwrite: true);
+        try
+        {
+            Directory.CreateDirectory(backupDirectory);
+            File.Copy(scoreDatabasePath, pendingBackup, overwrite: true);
+            using var backupVerification = Open(pendingBackup, SqliteOpenMode.ReadOnly);
+            ScoreViewerRepository.ValidateScoreDatabaseForMigration(backupVerification, version);
+        }
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException or SqliteException or ViewerDatabaseException)
+        {
+            TryDeletePendingBackup(pendingBackup);
+            return new(false, false, $"migration前backupを安全に検証できないためscore DBを変更していません。{exception.Message}");
+        }
 
         try
         {
             using (var connection = Open(scoreDatabasePath, SqliteOpenMode.ReadWrite))
             using (var transaction = connection.BeginTransaction())
             {
-                migration.Apply(connection, transaction);
+                var migrationVersion = version;
+                while (migrationVersion < SupportedVersion)
+                {
+                    var migration = migrations[migrationVersion];
+                    migration.Apply(connection, transaction);
+                    migrationVersion = migration.ToVersion;
+                }
                 transaction.Commit();
             }
             using (var verification = Open(scoreDatabasePath, SqliteOpenMode.ReadWrite))
@@ -81,12 +104,60 @@ public sealed class ScoreDatabaseMigrationService
             File.Move(pendingBackup, backupPath, overwrite: true);
             return new(true, true, $"score DBをschema version {SupportedVersion}へ移行し、最新backupを1件保持しました。");
         }
-        catch (Exception exception) when (exception is IOException or SqliteException or ViewerDatabaseException or InvalidOperationException)
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException or SqliteException or ViewerDatabaseException or InvalidOperationException)
         {
-            File.Copy(pendingBackup, scoreDatabasePath, overwrite: true);
-            File.Delete(pendingBackup);
+            if (File.Exists(pendingBackup))
+            {
+                try
+                {
+                    File.Copy(pendingBackup, scoreDatabasePath, overwrite: true);
+                    File.Delete(pendingBackup);
+                }
+                catch (Exception restoreException) when (
+                    restoreException is IOException or UnauthorizedAccessException)
+                {
+                    return new(
+                        false,
+                        false,
+                        $"score DB migrationと自動restoreに失敗しました。pending backupを保持しています。migration: {exception.Message} restore: {restoreException.Message}");
+                }
+            }
             return new(false, false, $"score DB migrationに失敗したため直前の内容へ戻しました。{exception.Message}");
         }
+    }
+
+    private static void TryDeletePendingBackup(string pendingBackup)
+    {
+        try
+        {
+            if (File.Exists(pendingBackup))
+            {
+                File.Delete(pendingBackup);
+            }
+        }
+        catch (IOException)
+        {
+        }
+        catch (UnauthorizedAccessException)
+        {
+        }
+    }
+
+    private bool HasCompleteMigrationPath(int sourceVersion)
+    {
+        var version = sourceVersion;
+        var visited = new HashSet<int>();
+        while (version < SupportedVersion && visited.Add(version))
+        {
+            if (!migrations.TryGetValue(version, out var migration) ||
+                migration.ToVersion <= version || migration.ToVersion > SupportedVersion)
+            {
+                return false;
+            }
+            version = migration.ToVersion;
+        }
+        return version == SupportedVersion;
     }
 
     private static SqliteConnection Open(string path, SqliteOpenMode mode)

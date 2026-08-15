@@ -49,7 +49,7 @@ M4以降のマスタDB、M7以降の保存判定、M8以降のDB保存では、�
 `08_master_db_generation.md` は「M4のHTML解析、SQLiteスキーマ、生成DBの扱い」をまとめる。
 `09_master_match_poc.md` は「M5の最小正規化、譜面条件絞り込み、match_statusの読み方」をまとめる。
 `10_personal_score_db_schema.md` は「M8正式個人スコアDBの現行スキーマ、preview DB拒否、migration境界」をまとめる。
-M9の最小WPF viewerが正式v2 DBをread-onlyで開く境界と自己ベスト集計も `10_personal_score_db_schema.md` を正本とする。
+M9のWPF viewerが正式v3 DBをread-onlyで開く境界と自己ベスト集計も `10_personal_score_db_schema.md` を正本とする。
 
 ## 更新ルール
 

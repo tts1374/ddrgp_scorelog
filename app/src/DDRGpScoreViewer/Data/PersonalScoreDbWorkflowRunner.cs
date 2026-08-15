@@ -323,7 +323,7 @@ public sealed class AppOwnedPersonalScoreDbWorkflowRunner : IPersonalScoreDbWork
         {
             "score", "max_combo", "marvelous", "perfect", "great", "good", "miss", "ex_score",
         };
-        RequireKeys(value, requiredText.Concat(requiredIntegers), ["flare_rank"]);
+        RequireKeys(value, requiredText.Concat(requiredIntegers), ["flare_rank", "ok", "calories"]);
         return new AppFormalPlay(
             RequiredString(value, "play_id"),
             RequiredString(value, "played_at"),
@@ -341,6 +341,8 @@ public sealed class AppOwnedPersonalScoreDbWorkflowRunner : IPersonalScoreDbWork
             RequiredString(value, "rank"),
             RequiredString(value, "clear_type"),
             OptionalString(value, "flare_rank"),
+            OptionalInt(value, "ok"),
+            OptionalNumber(value, "calories"),
             RequiredString(value, "duplicate_key"));
     }
 
@@ -697,6 +699,8 @@ internal sealed record AppFormalPlay(
     string Rank,
     string ClearType,
     string? FlareRank,
+    int? Ok,
+    double? Calories,
     string DuplicateKey);
 
 internal sealed record AppSaveExclusion(string Kind, string Reason);
@@ -737,6 +741,8 @@ internal sealed record AppFormalPlayInput(
     string Rank,
     string ClearType,
     string? FlareRank,
+    int? Ok,
+    double? Calories,
     string CaptureHash,
     string SourceCaptureId,
     string DuplicateKey,
@@ -856,6 +862,8 @@ internal static class AppSaveInputAdapter
             formal.Rank,
             formal.ClearType,
             formal.FlareRank,
+            formal.Ok,
+            formal.Calories,
             input.CaptureHash,
             input.CaptureId,
             formal.DuplicateKey,
@@ -1038,6 +1046,12 @@ internal static class AppFormalValidation
         if (!RankValues.Contains(play.Rank, StringComparer.Ordinal)) errors.Add("play.rank_invalid");
         if (!ClearValues.Contains(play.ClearType, StringComparer.Ordinal)) errors.Add("play.clear_type_invalid");
         if (play.FlareRank is not null && !FlareValues.Contains(play.FlareRank, StringComparer.Ordinal)) errors.Add("play.flare_rank_invalid");
+        if (play.Ok < 0) errors.Add("play.ok_negative");
+        if (play.Calories is not null &&
+            (!double.IsFinite(play.Calories.Value) || play.Calories.Value < 0.0))
+        {
+            errors.Add("play.calories_invalid");
+        }
         if (play.DuplicateKey.StartsWith("score:", StringComparison.Ordinal) || play.DuplicateKey.StartsWith("file:", StringComparison.Ordinal)) errors.Add("play.duplicate_key_uses_preview_format");
         if (play.Score is < 0 or > 1_000_000) errors.Add("play.score_out_of_range");
         else if (play.Score % 10 != 0) errors.Add("play.score_not_multiple_of_10");
@@ -1183,11 +1197,11 @@ internal static class AppFormalScoreDbWriter
                 INSERT INTO plays (
                   play_id, played_at, master_version, song_id, chart_id, score,
                   max_combo, marvelous, perfect, great, good, miss, ex_score, rank,
-                  clear_type, flare_rank, capture_hash, source_capture_id, duplicate_key,
+                  clear_type, flare_rank, ok, calories, capture_hash, source_capture_id, duplicate_key,
                   analysis_confidence, app_version
                 ) VALUES ($play_id, $played_at, $master_version, $song_id, $chart_id, $score,
                           $max_combo, $marvelous, $perfect, $great, $good, $miss, $ex_score, $rank,
-                          $clear_type, $flare_rank, $capture_hash, $source_capture_id, $duplicate_key,
+                          $clear_type, $flare_rank, $ok, $calories, $capture_hash, $source_capture_id, $duplicate_key,
                           $analysis_confidence, $app_version);
                 """,
                 ("$play_id", play.PlayId), ("$played_at", play.PlayedAt),
@@ -1196,7 +1210,8 @@ internal static class AppFormalScoreDbWriter
                 ("$marvelous", play.Marvelous), ("$perfect", play.Perfect), ("$great", play.Great),
                 ("$good", play.Good), ("$miss", play.Miss), ("$ex_score", play.ExScore),
                 ("$rank", play.Rank), ("$clear_type", play.ClearType),
-                ("$flare_rank", play.FlareRank), ("$capture_hash", play.CaptureHash),
+                ("$flare_rank", play.FlareRank), ("$ok", play.Ok), ("$calories", play.Calories),
+                ("$capture_hash", play.CaptureHash),
                 ("$source_capture_id", play.SourceCaptureId), ("$duplicate_key", play.DuplicateKey),
                 ("$analysis_confidence", play.AnalysisConfidence), ("$app_version", play.AppVersion));
         }

@@ -66,6 +66,8 @@ _FORMAL_PLAY_TEXT_KEYS = (
     "duplicate_key",
 )
 _FORMAL_PLAY_OPTIONAL_TEXT_KEYS = ("flare_rank",)
+_FORMAL_PLAY_OPTIONAL_INTEGER_KEYS = ("ok",)
+_FORMAL_PLAY_OPTIONAL_NUMBER_KEYS = ("calories",)
 _FORMAL_PLAY_INTEGER_KEYS = (
     "score",
     "max_combo",
@@ -77,7 +79,12 @@ _FORMAL_PLAY_INTEGER_KEYS = (
     "ex_score",
 )
 _FORMAL_PLAY_KEYS = frozenset(
-    _FORMAL_PLAY_TEXT_KEYS + _FORMAL_PLAY_INTEGER_KEYS + _FORMAL_PLAY_OPTIONAL_TEXT_KEYS
+    _FORMAL_PLAY_TEXT_KEYS
+    + _FORMAL_PLAY_INTEGER_KEYS
+    + _FORMAL_PLAY_OPTIONAL_TEXT_KEYS
+)
+_FORMAL_PLAY_OPTIONAL_KEYS = frozenset(
+    _FORMAL_PLAY_OPTIONAL_INTEGER_KEYS + _FORMAL_PLAY_OPTIONAL_NUMBER_KEYS
 )
 _EXCLUSION_KEYS = frozenset({"kind", "reason"})
 
@@ -119,6 +126,8 @@ def personal_score_db_save_input_template() -> dict[str, object]:
             "rank": "",
             "clear_type": "",
             "flare_rank": None,
+            "ok": None,
+            "calories": None,
             "duplicate_key": "",
         },
         "exclusion": None,
@@ -478,7 +487,7 @@ def _load_formal_play(value: object) -> PersonalScoreDbFormalPlayValues | None:
     _validate_keys(
         formal,
         required=_FORMAL_PLAY_KEYS,
-        optional=frozenset(),
+        optional=_FORMAL_PLAY_OPTIONAL_KEYS,
         field_name="input.formal_play",
     )
     values: dict[str, object] = {
@@ -497,8 +506,20 @@ def _load_formal_play(value: object) -> PersonalScoreDbFormalPlayValues | None:
     )
     values.update(
         {
-            key: _optional_int(formal[key], f"input.formal_play.{key}")
+            key: _optional_int(formal.get(key), f"input.formal_play.{key}")
             for key in _FORMAL_PLAY_INTEGER_KEYS
+        }
+    )
+    values.update(
+        {
+            key: _optional_int(formal.get(key), f"input.formal_play.{key}")
+            for key in _FORMAL_PLAY_OPTIONAL_INTEGER_KEYS
+        }
+    )
+    values.update(
+        {
+            key: _optional_number(formal.get(key), f"input.formal_play.{key}")
+            for key in _FORMAL_PLAY_OPTIONAL_NUMBER_KEYS
         }
     )
     return PersonalScoreDbFormalPlayValues(**values)

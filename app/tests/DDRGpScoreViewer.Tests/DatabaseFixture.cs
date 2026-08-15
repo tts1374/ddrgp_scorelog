@@ -38,7 +38,9 @@ internal sealed class DatabaseFixture : IDisposable
         int exScore,
         string songId = "song-1",
         string chartId = "chart-1",
-        string? flareRank = null)
+        string? flareRank = null,
+        int? ok = null,
+        double? calories = null)
     {
         using var connection = OpenFixtureWritable(ScorePath);
         using var command = connection.CreateCommand();
@@ -50,10 +52,10 @@ internal sealed class DatabaseFixture : IDisposable
             INSERT INTO plays (
               play_id, played_at, master_version, song_id, chart_id, score, max_combo,
               marvelous, perfect, great, good, miss, ex_score, rank, clear_type,
-              flare_rank, capture_hash, source_capture_id, duplicate_key, analysis_confidence, app_version
+              flare_rank, ok, calories, capture_hash, source_capture_id, duplicate_key, analysis_confidence, app_version
             ) VALUES (
               $play_id, $played_at, 'master-v1', $song_id, $chart_id, $score, 500,
-              400, 80, 10, 2, 1, $ex_score, 'AAA', 'CLEAR', $flare_rank,
+              400, 80, 10, 2, 1, $ex_score, 'AAA', 'CLEAR', $flare_rank, $ok, $calories,
               $capture_hash, $capture_id, $duplicate_key, 0.99, 'test'
             );
             """;
@@ -66,6 +68,8 @@ internal sealed class DatabaseFixture : IDisposable
         command.Parameters.AddWithValue("$score", score);
         command.Parameters.AddWithValue("$ex_score", exScore);
         command.Parameters.AddWithValue("$flare_rank", (object?)flareRank ?? DBNull.Value);
+        command.Parameters.AddWithValue("$ok", (object?)ok ?? DBNull.Value);
+        command.Parameters.AddWithValue("$calories", (object?)calories ?? DBNull.Value);
         command.Parameters.AddWithValue("$duplicate_key", $"duplicate-{playId}");
         command.ExecuteNonQuery();
     }

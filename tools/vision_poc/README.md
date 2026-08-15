@@ -177,7 +177,7 @@ python -m tools.vision_poc `
   --personal-score-db-save-database path\to\ddrgp-scores.sqlite
 ```
 
-両optionは必須ペアで、片方だけならDB作成前に拒否します。入力はUTF-8 JSONの `input_schema_version: 1` objectです。top-levelでは `candidate_material`、source capture値、analysis値を持ち、`formal_play` はobjectまたはnull、`exclusion` は `{ "kind", "reason" }` またはnullとして分離します。`formal_play` objectは `play_id`、`played_at`、`master_version`、`song_id`、`chart_id`、8個の数字、`rank`、`clear_type`、`duplicate_key` をすべて明示します。全階層で必須key、未知key、object/null、string/bool/integer/numberを厳密に検査し、boolをintegerとして受け入れません。契約fixtureは `tests/fixtures/personal_score_db_cli/ready-v1.json` です。
+両optionは必須ペアで、片方だけならDB作成前に拒否します。入力はUTF-8 JSONの `input_schema_version: 1` objectです。top-levelでは `candidate_material`、source capture値、analysis値を持ち、`formal_play` はobjectまたはnull、`exclusion` は `{ "kind", "reason" }` またはnullとして分離します。`formal_play` objectは `play_id`、`played_at`、`master_version`、`song_id`、`chart_id`、8個の数字、`rank`、`clear_type`、`duplicate_key` をすべて明示し、後方互換の任意keyとしてnullableな`ok` / `calories`を受け付けます。全階層で必須key、未知key、object/null、string/bool/integer/numberを厳密に検査し、boolをintegerとして受け入れません。契約fixtureは `tests/fixtures/personal_score_db_cli/ready-v1.json` です。
 
 loaderは `candidate_material.identity_signal_*` / `recognized_digits` / `played_at_ms` やtop-level `timestamp_ms` を `formal_play` へコピーしません。入力schema不正はadapterやDB準備前に終了コード2、adapterの `unresolved` はDB作成・変更前に結果JSONを出して終了コード1、`ready` / `excluded` のtransaction完了は終了コード0です。結果JSONは `result_schema_version`、`db_path`、`adapter_status`、`written`、`play_id`、`source_capture_id`、`analysis_id`、`reasons` を持ちます。既存DBとのduplicate collisionも終了コード0で、`adapter_status=excluded`、`written=true`、`play_id=null`、`reasons=[duplicate_key_already_saved]` を返します。collision入力には新しい一意な `capture_id` / `analysis_id` が必要で、完全同一ID再送の冪等化は行いません。並行writer制御は現フェーズ外で、race時は既存UNIQUE制約により今回transactionをrollbackします。DB拒否時も自動repair/migration、diagnostic output、低信頼度ログファイルを生成しません。入力JSONやDBの既定pathはありません。
 
@@ -944,13 +944,13 @@ DB保存はまだ実装しません。`confirmed-events` OCR対象選定が、�
 - `confirmation_mode_counts`: `frames` / `time` ごとのイベント行数
 ## Formal DB migration contract (design only)
 
-`personal_score_db_migration_contract.py` は正式個人スコアDBのmigrationについて、DB状態、明示確認、backup path preflight、実行順序、失敗復旧、status/終了コードを副作用なしで固定します。現行の正式schemaはversion 2で、version 1から2へのtransitionをpure contractとして検査します。実DB migrationはapp-owned C# converterが担当し、Python contract自体はDB、backup、通常PoC、正式save、analysis artifact orchestration、diagnosticを変更しません。
+`personal_score_db_migration_contract.py` は正式個人スコアDBのmigrationについて、DB状態、明示確認、backup path preflight、実行順序、失敗復旧、status/終了コードを副作用なしで固定します。現行の正式schemaはversion 3で、version 1→2と2→3の登録済みtransitionをpure contractとして検査します。実DB migrationはapp-owned C# converterが担当し、Python contract自体はDB、backup、通常PoC、正式save、analysis artifact orchestration、diagnosticを変更しません。
 
-fixture matrixは `tests/fixtures/personal_score_db_migration/plan-matrix-v1.json` です。dry-runはpreflight結果だけを返してDB/backup/`data`/`logs`を変更せず、明示実行候補でもbackup検証がsource transactionより先です。preview/unknown/identity mismatch/newer unsupported/partial state、unsafe path、既存backup conflictは拒否します。
-pure contractのready判定は登録済みのversion transition (`1 -> 2`) に限定し、target versionの任意指定をmigration許可へ昇格させません。formal schema writerとapp-owned migrationのDB境界は既存の保存workflowから独立しています。
+現行fixture matrixは `tests/fixtures/personal_score_db_migration/plan-matrix-v2.json` です。dry-runはpreflight結果だけを返してDB/backup/`data`/`logs`を変更せず、明示実行候補でもbackup検証がsource transactionより先です。preview/unknown/identity mismatch/newer unsupported/partial state、unsafe path、既存backup conflictは拒否します。
+pure contractのready判定は登録済みのversion transition (`1 -> 2`、`2 -> 3`) に限定し、target versionの任意指定をmigration許可へ昇格させません。formal schema writerとapp-owned migrationのDB境界は既存の保存workflowから独立しています。
 
 ## RESULT field recognition (Issue #100)
 
 `--m7a-digit-recognition --m7a-digit-rois all` は、同じ confirmed non-duplicate eventについて `result_field_recognition.csv` と `result_field_recognition_summary.json` も生成します。rank ROIはFAILEDを示すE判定専用で、通常rankはformal scoreの閾値表から算出します。clear_typeはMARVELOUS、PERFECT、GREAT、GOOD、O.K.、Missの6判定数から算出し、rank周囲のanimation表示は使いません。flare_rankはrankから独立したbadge ROIで認識できた場合だけ `I`〜`IX` / `EX` を採用し、認識不能時は `null` のまま保存を継続します。
 
-この出力はfield別formal evidenceの材料であり、expected値、candidate、raw OCR、M8 previewを正式値へ昇格させません。正式save inputは `flare_rank` keyを必須（値は文字列または `null`）として読み、version 1の正式schemaで `plays.flare_rank` へnullable保存します。サンプル画像、capture、metadata、CSV/JSON診断出力はGit管理せず、`samples/`、`data/`、`logs/` の既存境界を維持します。
+この出力はfield別formal evidenceの材料であり、expected値、candidate、raw OCR、M8 previewを正式値へ昇格させません。正式save inputは `flare_rank` keyを必須（値は文字列または `null`）として読み、後方互換の任意keyである`ok` / `calories`は明示値または`null`だけを受け付けます。version 3の正式schemaでは3項目をnullable保存し、任意key欠落や`null`をcandidate、expected、preview、raw OCR、0で補完しません。サンプル画像、capture、metadata、CSV/JSON診断出力はGit管理せず、`samples/`、`data/`、`logs/` の既存境界を維持します。

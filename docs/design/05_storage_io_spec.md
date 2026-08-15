@@ -51,7 +51,7 @@ production起動時はlatest GitHub Releaseのreference data setを確認する�
 
 ### 個人スコアデータのバックアップ・復元
 
-データ管理画面の個人スコアデータバックアップは、固定score pathの現行正式schemaをread-onlyで検証した後、`plays`の履歴表示・自己ベスト算出に必要な値だけをUTF-8 BOMなし、LF、末尾改行のJSONへ出力する。形式は`ddrgp.personal-score-data`、`formatVersion=1`とし、バックアップのJSONには`plays`の個人プレー値、保存日時、正式ID、重複判定に必要な値だけを置く。settings、master/catalog、jacket参照、source capture、解析ログ、診断ログは対象外であり、migration用SQLite backupとは別のファイル形式・保持契約である。
+データ管理画面の個人スコアデータバックアップは、固定score pathの現行正式schemaをread-onlyで検証した後、`plays`の履歴表示・自己ベスト算出に必要な値だけをUTF-8 BOMなし、LF、末尾改行のJSONへ出力する。形式は`ddrgp.personal-score-data`、現行`formatVersion=2`とし、バックアップのJSONには`plays`の個人プレー値、保存日時、正式ID、重複判定に必要な値、nullableな`ok` / `calories`だけを置く。旧`formatVersion=1`も復元入力として受け付け、両値は未取得の`NULL`として復元する。settings、master/catalog、jacket参照、source capture、解析ログ、診断ログは対象外であり、migration用SQLite backupとは別のファイル形式・保持契約である。
 
 復元は選択ファイルをDBへ接続する前に形式、version、必須値、重複ID、正式schemaの制約に照らして検証する。未対応・破損・不正値はscore DBを変更せず拒否する。確認後の有効復元だけ、固定score pathの正式schemaを検証したSQLite transaction内で既存`plays`を置き換える。置換前の`analysis_logs`は旧playへの参照だけを切り離し、未解決を含むログと既存`source_captures`は保持する。バックアップに含めなかった取得元・解析情報は復元せず、既存schemaの外部キーを満たすための最小内部参照だけを復元したプレーごとにアプリが再構成する。insert件数をtransaction内で確認してからcommitし、失敗時はrollbackする。完了後は既存read-only repositoryで再読込し、履歴・自己ベストへ反映する。設定、master/catalog、既存のformal save workflow、Debug/Release境界は変更しない。
 
@@ -304,7 +304,7 @@ ddrgp-scores.sqlite
 
 正式個人スコアDBのfile preparationは、app-owned runtimeとoffline PoCが同じ正式schema契約を使う。新規DBファイルと0 byte空ファイルだけ正式初期schemaを作成でき、既存の正式DBは変更せずに互換確認だけ行う。M8 preview DB、unknown DB、metadata identity mismatch、manual migration候補、SQLiteとして読めないファイル、ディレクトリは正式DBとして開かず、自動変更しない。WPFの起動時bootstrapは `PersonalScoreDbInitializer` が正式schema・metadata・拒否契約をアプリ側で使い、offline PoCのCLIやmoduleを呼び出さない。どちらの入口もplayのinsertや既定の監視保存を暗黙には開始しない。
 
-正式DBの現行versionは2で、version 1から2への明示migrationは既存の `plays`、`source_captures`、`analysis_logs` と保存境界を変えずに、全体query用・譜面query用の日時順indexだけを追加する。viewerは起動時に最近プレーを50件、譜面詳細履歴を10件、選択譜面のグラフを最新100件だけ取得する。追加取得は最近プレーが下端到達ごとに50件、譜面詳細が `続きを見る` ごとに10件で、件数・bests・ホーム集計・自己ベスト差分は全履歴queryの結果を使う。詳細画面の履歴DataGridは独立した縦スクロールを持たず、画面外側のscrollだけを使う。
+正式DBの現行versionは3である。version 1→2の明示migrationは日時順indexを追加し、version 2→3のproduction migrationは`plays`へnullableな`ok` / `calories`だけを追加する。過去playは両値を`NULL`のまま保持し、推測backfillしない。いずれもmigration前backup、transaction内のschema・履歴・metadata・`PRAGMA user_version`更新、現行schemaでの再検証、失敗時restoreを行い、既存の`plays`、`source_captures`、`analysis_logs`、index、duplicate契約を保持する。preview、unknown、identity mismatch、newer unsupported、partial migration stateは自動昇格・修復しない。viewerは起動時に最近プレーを50件、譜面詳細履歴を10件、選択譜面のグラフを最新100件だけ取得する。追加取得は最近プレーが下端到達ごとに50件、譜面詳細が `続きを見る` ごとに10件で、件数・bests・ホーム集計・自己ベスト差分は全履歴queryの結果を使う。詳細画面の履歴DataGridは独立した縦スクロールを持たず、画面外側のscrollだけを使う。
 
 CLI診断は `python -m tools.vision_poc --personal-score-db-diagnostic <path>` で標準出力へ出す。既定のinspect modeは読み取り専用で、`--personal-score-db-diagnostic-mode prepare-write` は新規DBファイルまたは0 byte空ファイルだけ正式初期schemaを作成する。出力はMarkdown既定で、`--personal-score-db-diagnostic-format json` も選べる。`--personal-score-db-diagnostic-output <path>` を指定した場合は、標準出力と同じ診断テキストをファイルへ保存する。出力先は `data/` 配下に限定し、Markdown format は `.md` / `.markdown`、JSON format は `.json` の拡張子だけを許可する。この出力は診断の保存だけであり、playの本番insert、既定の監視保存、既存DB migration、低信頼度ログ本番保存には進まない。
 
@@ -491,7 +491,7 @@ M9 WPFはapp-owned runtimeのstrict workflowを同一processで1回実行する�
 このfixture列は通常PoC、常駐監視、migration、個人スコアデータのバックアップ・復元、cleanup、並行writer制御、failure image生成へ暗黙接続しない。各操作はそれぞれの明示契約と既存の保存境界を使う。
 ## Migration backup and explicit execution boundary
 
-PoCのmigration status / dry-run / explicit backup CLIは通常save、analysis artifact orchestration、diagnosticからmigrationを暗黙実行しない。Release appの固定production score pathだけは、起動時に現在schemaをread-only検査し、そのapp versionへ明示登録されたconverterがsource versionからcurrent versionへ直接対応する場合だけmigrationを実行できる。converterなし旧version、newer version、preview、unknown、identity/history不一致は変更せず拒否する。
+PoCのmigration status / dry-run / explicit backup CLIは通常save、analysis artifact orchestration、diagnosticからmigrationを暗黙実行しない。Release appの固定production score pathだけは、起動時に現在schemaをread-only検査し、source versionからcurrent versionまでの連続したconverter pathがすべて明示登録されている場合だけmigrationを実行できる。converterなし旧version、newer version、preview、unknown、identity/history不一致は変更せず拒否する。
 
 Release appのmigration backupはsourceと別pathの`data/score/migration-backup/score.db.bak`へ作り、migration単位で最新1件だけを保持する。次のmigrationでは新しいpending copyの作成に成功するまで前回backupを維持し、migration成功後に最新backupへ置換する。source変更前のcopyに失敗した場合はsource無変更で終了する。
 

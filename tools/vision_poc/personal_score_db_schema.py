@@ -7,7 +7,7 @@ from functools import cache
 from pathlib import Path
 
 PERSONAL_SCORE_DB_SCHEMA_NAME = "personal_score_db"
-PERSONAL_SCORE_DB_SCHEMA_VERSION = 2
+PERSONAL_SCORE_DB_SCHEMA_VERSION = 3
 PERSONAL_SCORE_DB_CREATED_BY = "tools.vision_poc.personal_score_db_schema"
 PERSONAL_SCORE_DB_CONTRACT_SCOPE = "production_personal_score_db"
 PERSONAL_SCORE_DB_PRODUCTION_STATUS = "production_schema"
@@ -38,6 +38,7 @@ PERSONAL_SCORE_DB_IDENTITY_METADATA_KEYS = (
 PERSONAL_SCORE_DB_MIGRATION_HISTORY = (
     ("001_initial_personal_score_db_schema", 1),
     ("002_play_order_indexes", 2),
+    ("003_optional_result_metrics", 3),
 )
 
 PERSONAL_SCORE_DB_METADATA = {
@@ -73,6 +74,8 @@ PERSONAL_SCORE_DB_PLAYS_COLUMNS = (
     "analysis_confidence",
     "app_version",
     "created_at",
+    "ok",
+    "calories",
 )
 
 PERSONAL_SCORE_DB_SOURCE_CAPTURE_COLUMNS = (
@@ -177,7 +180,9 @@ CREATE TABLE IF NOT EXISTS plays (
     analysis_confidence >= 0.0 AND analysis_confidence <= 1.0
   ),
   app_version TEXT NOT NULL,
-  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  ok INTEGER CHECK (ok IS NULL OR ok >= 0),
+  calories REAL CHECK (calories IS NULL OR calories >= 0.0)
 );
 
 CREATE TABLE IF NOT EXISTS analysis_logs (
@@ -459,6 +464,8 @@ def create_personal_score_db_schema(connection: sqlite3.Connection) -> None:
                     "Initial formal personal score DB schema contract."
                     if index == 0
                     else "Added timezone-aware chronological play ordering indexes."
+                    if index == 1
+                    else "Added nullable O.K. and calories play values."
                 ),
             ),
         )

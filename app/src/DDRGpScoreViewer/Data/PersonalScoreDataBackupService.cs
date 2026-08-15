@@ -23,9 +23,9 @@ public sealed record PersonalScoreDataBackupResult(
 public sealed class PersonalScoreDataBackupService : IPersonalScoreDataBackupService
 {
     private const string BackupFormat = "ddrgp.personal-score-data";
-    private const int BackupFormatVersion = 1;
+    private const int BackupFormatVersion = 2;
     private const string RestoredSourcePath = "personal-score-backup";
-    private const string RestoredAppVersion = "personal-score-backup-v1";
+    private const string RestoredAppVersion = "personal-score-backup-v2";
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -183,7 +183,7 @@ public sealed class PersonalScoreDataBackupService : IPersonalScoreDataBackupSer
             """
             SELECT play_id, played_at, created_at, master_version, song_id, chart_id,
                    score, max_combo, marvelous, perfect, great, good, miss, ex_score,
-                   rank, clear_type, flare_rank, duplicate_key
+                   rank, clear_type, flare_rank, duplicate_key, ok, calories
             FROM plays
             ORDER BY play_id;
             """;
@@ -209,7 +209,9 @@ public sealed class PersonalScoreDataBackupService : IPersonalScoreDataBackupSer
                 reader.GetString(14),
                 reader.GetString(15),
                 reader.IsDBNull(16) ? null : reader.GetString(16),
-                reader.GetString(17)));
+                reader.GetString(17),
+                reader.IsDBNull(18) ? null : reader.GetInt32(18),
+                reader.IsDBNull(19) ? null : reader.GetDouble(19)));
         }
 
         return plays;
@@ -222,7 +224,7 @@ public sealed class PersonalScoreDataBackupService : IPersonalScoreDataBackupSer
             JsonOptions)
             ?? throw new InvalidDataException("バックアップの内容が空です。");
         if (!string.Equals(document.Format, BackupFormat, StringComparison.Ordinal) ||
-            document.FormatVersion != BackupFormatVersion ||
+            document.FormatVersion is not (1 or BackupFormatVersion) ||
             document.Plays is null)
         {
             throw new InvalidDataException("対応していないバックアップ形式です。");
@@ -280,6 +282,15 @@ public sealed class PersonalScoreDataBackupService : IPersonalScoreDataBackupSer
         {
             throw new InvalidDataException("バックアップのフレアランクを確認できません。");
         }
+        if (play.Ok < 0)
+        {
+            throw new InvalidDataException("バックアップのO.K.数を確認できません。");
+        }
+        if (play.Calories is not null &&
+            (!double.IsFinite(play.Calories.Value) || play.Calories.Value < 0.0))
+        {
+            throw new InvalidDataException("バックアップの消費カロリーを確認できません。");
+        }
     }
 
     private static void RequireText(
@@ -315,12 +326,12 @@ public sealed class PersonalScoreDataBackupService : IPersonalScoreDataBackupSer
             INSERT INTO plays (
               play_id, played_at, master_version, song_id, chart_id, score, max_combo,
               marvelous, perfect, great, good, miss, ex_score, rank, clear_type,
-              flare_rank, capture_hash, source_capture_id, duplicate_key,
+              flare_rank, ok, calories, capture_hash, source_capture_id, duplicate_key,
               analysis_confidence, app_version, created_at
             ) VALUES (
               $play_id, $played_at, $master_version, $song_id, $chart_id, $score, $max_combo,
               $marvelous, $perfect, $great, $good, $miss, $ex_score, $rank, $clear_type,
-              $flare_rank, $capture_hash, $capture_id, $duplicate_key,
+              $flare_rank, $ok, $calories, $capture_hash, $capture_id, $duplicate_key,
               1.0, $app_version, $created_at
             );
             """,
@@ -344,6 +355,8 @@ public sealed class PersonalScoreDataBackupService : IPersonalScoreDataBackupSer
             ("$rank", play.Rank),
             ("$clear_type", play.ClearType),
             ("$flare_rank", (object?)play.FlareRank ?? DBNull.Value),
+            ("$ok", (object?)play.Ok ?? DBNull.Value),
+            ("$calories", (object?)play.Calories ?? DBNull.Value),
             ("$duplicate_key", play.DuplicateKey),
             ("$app_version", RestoredAppVersion),
             ("$created_at", play.SavedAt));
@@ -464,5 +477,7 @@ public sealed class PersonalScoreDataBackupService : IPersonalScoreDataBackupSer
         [property: JsonPropertyName("rank")] string Rank,
         [property: JsonPropertyName("clearType")] string ClearType,
         [property: JsonPropertyName("flareRank")] string? FlareRank,
-        [property: JsonPropertyName("duplicateKey")] string DuplicateKey);
+        [property: JsonPropertyName("duplicateKey")] string DuplicateKey,
+        [property: JsonPropertyName("ok")] int? Ok = null,
+        [property: JsonPropertyName("calories")] double? Calories = null);
 }

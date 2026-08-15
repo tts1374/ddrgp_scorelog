@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-MIGRATION_CONTRACT_VERSION = 1
-CURRENT_SCHEMA_VERSION = 2
+MIGRATION_CONTRACT_VERSION = 2
+CURRENT_SCHEMA_VERSION = 3
 # A transition is actionable only after its schema steps are explicitly registered.
 # Version 1 -> 2 is the explicit play-order index migration implemented by the app.
-SUPPORTED_MIGRATION_TRANSITIONS = ((1, 2),)
+SUPPORTED_MIGRATION_TRANSITIONS = ((1, 2), (2, 3))
 
 DATABASE_STATES = (
     "compatible_current",

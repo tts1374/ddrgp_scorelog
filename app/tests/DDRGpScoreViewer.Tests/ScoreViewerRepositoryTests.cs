@@ -367,7 +367,7 @@ public sealed class ScoreViewerRepositoryTests
     [Theory]
     [InlineData("CREATE TABLE preview_metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);")]
     [InlineData("UPDATE score_db_metadata SET value = 'other' WHERE key = 'schema_name';")]
-    [InlineData("PRAGMA user_version = 3;")]
+    [InlineData("PRAGMA user_version = 4;")]
     [InlineData("DELETE FROM schema_migrations;")]
     [InlineData("PRAGMA writable_schema = ON; " +
                 "UPDATE sqlite_schema SET sql = REPLACE(sql, " +
@@ -509,6 +509,8 @@ public sealed class ScoreViewerRepositoryTests
             10,
             2,
             1,
+            null,
+            null,
             "manual",
             false);
 

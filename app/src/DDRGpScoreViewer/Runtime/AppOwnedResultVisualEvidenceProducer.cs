@@ -12,6 +12,12 @@ internal sealed class AppOwnedResultVisualEvidenceProducer
             ["rank"] = (170, 122, 160, 126),
             ["flare_rank"] = (385, 135, 120, 130),
             ["ok"] = (896, 524, 92, 28),
+            ["calories_three_digit_integer"] = (405, 380, 76, 32),
+            ["calories"] = (405, 380, 63, 32),
+            ["calories_single_integer"] = (405, 380, 48, 32),
+            ["calories_tens"] = (410, 380, 17, 32),
+            ["calories_ones"] = (427, 380, 12, 32),
+            ["calories_tenths"] = (450, 380, 17, 32),
         };
 
     private static readonly (string Value, double ReferenceValue, double ReferenceHue)[] FlareProfiles =
@@ -76,6 +82,7 @@ internal sealed class AppOwnedResultVisualEvidenceProducer
             "miss",
             "judgment_counts",
             formalVisualAcceptance: true);
+        var calories = RecognizeCalories(image, imageBuffer);
 
         int? okValue = null;
         if (ok.Status == "recognized" &&
@@ -88,6 +95,12 @@ internal sealed class AppOwnedResultVisualEvidenceProducer
         else if (rank.Status != "failed")
         {
             reasons.Add($"digit_recognition.ok_{ok.Status}");
+        }
+
+        if (calories.Value is not null)
+        {
+            sources["calories"] = FormalEvidenceSourceNames.ResultNumericVisualEvidence;
+            confidences["calories"] = calories.Confidence;
         }
 
         string? formalRank = null;
@@ -172,7 +185,176 @@ internal sealed class AppOwnedResultVisualEvidenceProducer
             Confidences: confidences,
             IdentitySignalStatus: "unresolved",
             Ok: okValue,
+            Calories: calories.Value,
             RecognitionReasons: reasons);
+    }
+
+    private CalorieVisualResult RecognizeCalories(
+        BitmapSource image,
+        AppOwnedImageBuffer imageBuffer)
+    {
+        var threeDigitInteger = RecognizeCaloriesRegion(
+            image,
+            imageBuffer,
+            "calories_three_digit_integer",
+            expectedDigitCount: 4);
+        if (threeDigitInteger.Value is not null)
+        {
+            return threeDigitInteger;
+        }
+
+        var twoDigitInteger = RecognizeCaloriesRegion(
+            image,
+            imageBuffer,
+            "calories",
+            expectedDigitCount: 3);
+        if (twoDigitInteger.Value is not null)
+        {
+            return twoDigitInteger;
+        }
+
+        var separatedTwoDigitInteger = RecognizeSeparatedTwoDigitCalories(
+            image,
+            imageBuffer);
+        if (separatedTwoDigitInteger.Value is not null)
+        {
+            return separatedTwoDigitInteger;
+        }
+
+        return RecognizeCaloriesRegion(
+            image,
+            imageBuffer,
+            "calories_single_integer",
+            expectedDigitCount: 2);
+    }
+
+    private CalorieVisualResult RecognizeSeparatedTwoDigitCalories(
+        BitmapSource image,
+        AppOwnedImageBuffer imageBuffer)
+    {
+        if (!HasDecimalPoint(
+                imageBuffer.CropScaled(ResultRois["calories"]),
+                expectedCenterX: 38))
+        {
+            return new CalorieVisualResult(null, null);
+        }
+
+        var parts = new[] { "calories_tens", "calories_ones", "calories_tenths" }
+            .Select(roiName => digitRecognizer.RecognizeRegion(
+                image,
+                roiName,
+                ResultRois[roiName],
+                "miss",
+                "combo_ex_score",
+                formalVisualAcceptance: true))
+            .ToArray();
+        if (parts.Any(part =>
+                part.Status != "recognized" ||
+                part.Confidence is null ||
+                part.RecognizedDigits.Length != 1))
+        {
+            return new CalorieVisualResult(null, null);
+        }
+
+        var recognizedDigits = string.Concat(parts.Select(part => part.RecognizedDigits));
+        if (!int.TryParse(
+                recognizedDigits,
+                NumberStyles.None,
+                CultureInfo.InvariantCulture,
+                out var tenths))
+        {
+            return new CalorieVisualResult(null, null);
+        }
+
+        return new CalorieVisualResult(
+            tenths / 10.0,
+            parts.Min(part => part.Confidence!.Value));
+    }
+
+    private CalorieVisualResult RecognizeCaloriesRegion(
+        BitmapSource image,
+        AppOwnedImageBuffer imageBuffer,
+        string roiName,
+        int expectedDigitCount)
+    {
+        var digits = digitRecognizer.RecognizeRegion(
+            image,
+            "calories",
+            ResultRois[roiName],
+            "miss",
+            "combo_ex_score",
+            formalVisualAcceptance: true);
+        if (digits.Status != "recognized" ||
+            digits.Confidence is null ||
+            digits.RecognizedDigits.Length != expectedDigitCount ||
+            !int.TryParse(
+                digits.RecognizedDigits,
+                NumberStyles.None,
+                CultureInfo.InvariantCulture,
+                out var tenths) ||
+            !HasDecimalPoint(imageBuffer.CropScaled(ResultRois[roiName])))
+        {
+            return new CalorieVisualResult(null, null);
+        }
+
+        return new CalorieVisualResult(tenths / 10.0, digits.Confidence);
+    }
+
+    private static bool HasDecimalPoint(
+        AppOwnedImageBuffer image,
+        int? expectedCenterX = null)
+    {
+        var foreground = new bool[image.Height, image.Width];
+        for (var y = 0; y < image.Height; y++)
+        {
+            for (var x = 0; x < image.Width; x++)
+            {
+                var pixel = image.GetPixel(x, y);
+                var maximum = Math.Max(pixel.Red, Math.Max(pixel.Green, pixel.Blue));
+                var minimum = Math.Min(pixel.Red, Math.Min(pixel.Green, pixel.Blue));
+                foreground[y, x] = minimum >= 180 && maximum - minimum <= 45;
+            }
+        }
+
+        var seen = new bool[image.Height, image.Width];
+        for (var startY = image.Height / 2; startY < image.Height; startY++)
+        {
+            for (var startX = 0; startX < image.Width; startX++)
+            {
+                if (!foreground[startY, startX] || seen[startY, startX]) continue;
+                var queue = new Queue<(int Y, int X)>();
+                var points = new List<(int Y, int X)>();
+                queue.Enqueue((startY, startX));
+                seen[startY, startX] = true;
+                while (queue.Count > 0)
+                {
+                    var (y, x) = queue.Dequeue();
+                    points.Add((y, x));
+                    foreach (var (dy, dx) in new[] { (-1, 0), (1, 0), (0, -1), (0, 1) })
+                    {
+                        var nextY = y + dy;
+                        var nextX = x + dx;
+                        if (nextY < 0 || nextY >= image.Height ||
+                            nextX < 0 || nextX >= image.Width ||
+                            seen[nextY, nextX] || !foreground[nextY, nextX]) continue;
+                        seen[nextY, nextX] = true;
+                        queue.Enqueue((nextY, nextX));
+                    }
+                }
+
+                var width = points.Max(point => point.X) - points.Min(point => point.X) + 1;
+                var height = points.Max(point => point.Y) - points.Min(point => point.Y) + 1;
+                var bottom = points.Max(point => point.Y);
+                var centerX = (points.Min(point => point.X) + points.Max(point => point.X)) / 2;
+                if (points.Count is >= 4 and <= 48 && width <= 8 && height <= 8 &&
+                    bottom >= image.Height * 2 / 3 &&
+                    (expectedCenterX is null || Math.Abs(centerX - expectedCenterX.Value) <= 2))
+                {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     internal static string? RankFromScore(int? score)
@@ -608,4 +790,6 @@ internal sealed class AppOwnedResultVisualEvidenceProducer
     private sealed record RankVisualResult(string Status, bool? IsFailed, double? Confidence, string Reason);
 
     private sealed record FlareVisualResult(string Status, string? Value, double? Confidence, string Reason);
+
+    private sealed record CalorieVisualResult(double? Value, double? Confidence);
 }

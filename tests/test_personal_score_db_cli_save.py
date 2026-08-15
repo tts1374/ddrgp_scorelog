@@ -213,8 +213,10 @@ def test_template_cli_creates_loader_compatible_unresolved_review_input(
         "ex_score",
         "rank",
         "clear_type",
-        "flare_rank",
-        "duplicate_key",
+            "flare_rank",
+            "ok",
+            "calories",
+            "duplicate_key",
     ]
     assert template["candidate_material"] == {}
     assert template["exclusion"] is None

@@ -395,7 +395,7 @@ public sealed class ReleaseOperationsTests
     public void Explicit_score_migration_keeps_one_backup_and_reopens_current_schema()
     {
         using var fixture = new DatabaseFixture();
-        MakeVersionOne(fixture.ScorePath);
+        MakeVersionTwo(fixture.ScorePath);
         var before = SHA256.HashData(File.ReadAllBytes(fixture.ScorePath));
         var service = new ScoreDatabaseMigrationService();
 
@@ -410,7 +410,7 @@ public sealed class ReleaseOperationsTests
     }
 
     [Fact]
-    public void Score_v1_to_v2_migration_preserves_rows_bests_and_backup_snapshot()
+    public void Score_v2_to_v3_migration_preserves_rows_bests_and_backup_snapshot()
     {
         using var fixture = new DatabaseFixture();
         fixture.AddPlay("older", "2026-07-13T10:00:00+00:00", 900_000, 1_000);
@@ -425,7 +425,7 @@ public sealed class ReleaseOperationsTests
         var before = new ScoreViewerRepository().Load(fixture.ScorePath, fixture.MasterPath);
         var beforeSourceCaptureCount = CountRows(fixture.ScorePath, "source_captures");
         var beforeAnalysisLogCount = CountRows(fixture.ScorePath, "analysis_logs");
-        MakeVersionOne(fixture.ScorePath);
+        MakeVersionTwo(fixture.ScorePath);
 
         var migration = new ScoreDatabaseMigrationService().MigrateIfSupported(fixture.ScorePath);
 
@@ -439,7 +439,7 @@ public sealed class ReleaseOperationsTests
 
         var backupPath = Path.Combine(fixture.DirectoryPath, "migration-backup", "score.db.bak");
         Assert.True(File.Exists(backupPath));
-        Assert.Equal(1, ReadUserVersion(backupPath));
+        Assert.Equal(2, ReadUserVersion(backupPath));
         Assert.Equal(beforeSourceCaptureCount, CountRows(backupPath, "source_captures"));
         Assert.Equal(beforeAnalysisLogCount, CountRows(backupPath, "analysis_logs"));
     }
@@ -448,7 +448,7 @@ public sealed class ReleaseOperationsTests
     public void Failed_score_migration_restores_original_database()
     {
         using var fixture = new DatabaseFixture();
-        MakeVersionOne(fixture.ScorePath);
+        MakeVersionTwo(fixture.ScorePath);
         var before = SHA256.HashData(File.ReadAllBytes(fixture.ScorePath));
         var service = new ScoreDatabaseMigrationService([new ThrowingMigration()]);
 
@@ -460,10 +460,26 @@ public sealed class ReleaseOperationsTests
     }
 
     [Fact]
+    public void Post_migration_schema_revalidation_failure_restores_original_database()
+    {
+        using var fixture = new DatabaseFixture();
+        MakeVersionTwo(fixture.ScorePath);
+        var before = SHA256.HashData(File.ReadAllBytes(fixture.ScorePath));
+        var service = new ScoreDatabaseMigrationService([new IncompleteMigration()]);
+
+        var result = service.MigrateIfSupported(fixture.ScorePath);
+
+        Assert.False(result.Succeeded);
+        Assert.False(result.Migrated);
+        Assert.Equal(before, SHA256.HashData(File.ReadAllBytes(fixture.ScorePath)));
+        Assert.Equal(2, ReadUserVersion(fixture.ScorePath));
+    }
+
+    [Fact]
     public void Newer_score_schema_is_rejected_without_changes()
     {
         using var fixture = new DatabaseFixture();
-        SetUserVersion(fixture.ScorePath, 3);
+        SetUserVersion(fixture.ScorePath, 4);
         var before = SHA256.HashData(File.ReadAllBytes(fixture.ScorePath));
 
         var result = new ScoreDatabaseMigrationService().MigrateIfSupported(fixture.ScorePath);
@@ -676,18 +692,18 @@ public sealed class ReleaseOperationsTests
         return (new HttpClient(handler), handler);
     }
 
-    private static void MakeVersionOne(string path)
+    private static void MakeVersionTwo(string path)
     {
         using var connection = OpenWritable(path);
         using var transaction = connection.BeginTransaction();
         using var command = connection.CreateCommand();
         command.Transaction = transaction;
         command.CommandText =
-            "DROP INDEX idx_plays_played_at_order; " +
-            "DROP INDEX idx_plays_song_chart_order; " +
-            "PRAGMA user_version = 1; " +
-            "UPDATE score_db_metadata SET value = '1' WHERE key = 'schema_version'; " +
-            "DELETE FROM schema_migrations WHERE migration_id = '002_play_order_indexes';";
+            "ALTER TABLE plays DROP COLUMN calories; " +
+            "ALTER TABLE plays DROP COLUMN ok; " +
+            "PRAGMA user_version = 2; " +
+            "UPDATE score_db_metadata SET value = '2' WHERE key = 'schema_version'; " +
+            "DELETE FROM schema_migrations WHERE migration_id = '003_optional_result_metrics';";
         command.ExecuteNonQuery();
         transaction.Commit();
     }
@@ -730,16 +746,35 @@ public sealed class ReleaseOperationsTests
 
     private sealed class ThrowingMigration : IScoreDatabaseMigration
     {
-        public int FromVersion => 1;
-        public int ToVersion => 2;
+        public int FromVersion => 2;
+        public int ToVersion => 3;
 
         public void Apply(SqliteConnection connection, SqliteTransaction transaction)
         {
             using var command = connection.CreateCommand();
             command.Transaction = transaction;
-            command.CommandText = "PRAGMA user_version = 2;";
+            command.CommandText = "PRAGMA user_version = 3;";
             command.ExecuteNonQuery();
             throw new InvalidOperationException("fixture migration failure");
+        }
+    }
+
+    private sealed class IncompleteMigration : IScoreDatabaseMigration
+    {
+        public int FromVersion => 2;
+        public int ToVersion => 3;
+
+        public void Apply(SqliteConnection connection, SqliteTransaction transaction)
+        {
+            using var command = connection.CreateCommand();
+            command.Transaction = transaction;
+            command.CommandText =
+                "ALTER TABLE plays ADD COLUMN ok INTEGER NULL CHECK (ok IS NULL OR ok >= 0); " +
+                "INSERT INTO schema_migrations (migration_id, schema_version, description) " +
+                "VALUES ('003_optional_result_metrics', 3, 'incomplete fixture'); " +
+                "UPDATE score_db_metadata SET value = '3' WHERE key = 'schema_version'; " +
+                "PRAGMA user_version = 3;";
+            command.ExecuteNonQuery();
         }
     }
 

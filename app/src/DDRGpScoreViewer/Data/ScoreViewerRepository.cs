@@ -6,7 +6,7 @@ namespace DDRGpScoreViewer.Data;
 
 public sealed class ScoreViewerRepository
 {
-    internal const int SupportedScoreSchemaVersion = 2;
+    internal const int SupportedScoreSchemaVersion = 3;
     public const int RecentPlayPageSize = 50;
     public const int ChartDetailHistoryPageSize = 10;
     public const int ChartDetailGraphPageSize = 100;
@@ -16,7 +16,7 @@ public sealed class ScoreViewerRepository
         {
             ["created_by"] = "tools.vision_poc.personal_score_db_schema",
             ["schema_name"] = "personal_score_db",
-            ["schema_version"] = "2",
+            ["schema_version"] = "3",
             ["schema_version_source"] = "PRAGMA user_version and score_db_metadata",
             ["schema_contract_scope"] = "production_personal_score_db",
             ["production_schema_status"] = "production_schema",
@@ -36,7 +36,7 @@ public sealed class ScoreViewerRepository
                 ["play_id", "played_at", "master_version", "song_id", "chart_id", "score",
                  "max_combo", "marvelous", "perfect", "great", "good", "miss", "ex_score",
                  "rank", "clear_type", "flare_rank", "capture_hash", "source_capture_id", "duplicate_key",
-                 "analysis_confidence", "app_version", "created_at"],
+                 "analysis_confidence", "app_version", "created_at", "ok", "calories"],
             ["analysis_logs"] =
                 ["analysis_id", "play_id", "source_capture_id", "analysis_status",
                  "save_boundary_status", "skip_reason", "event_type", "confirmed_result",
@@ -44,6 +44,12 @@ public sealed class ScoreViewerRepository
                  "identity_signal_status", "digit_review_status", "analysis_confidence",
                  "analysis_summary_json", "log_path", "app_version", "created_at"],
         };
+
+    private static readonly string[] LegacyScorePlayColumns =
+        ["play_id", "played_at", "master_version", "song_id", "chart_id", "score",
+         "max_combo", "marvelous", "perfect", "great", "good", "miss", "ex_score",
+         "rank", "clear_type", "flare_rank", "capture_hash", "source_capture_id", "duplicate_key",
+         "analysis_confidence", "app_version", "created_at"];
 
     private static readonly IReadOnlyDictionary<string, string> ScoreIndexSql =
         new Dictionary<string, string>(StringComparer.Ordinal)
@@ -62,10 +68,17 @@ public sealed class ScoreViewerRepository
             ["schema_version"] = "1",
         };
 
+    private static readonly IReadOnlyDictionary<string, string> ScoreMetadataV2 =
+        new Dictionary<string, string>(ScoreMetadata, StringComparer.Ordinal)
+        {
+            ["schema_version"] = "2",
+        };
+
     private static readonly (string MigrationId, int SchemaVersion)[] ScoreMigrationHistory =
     [
         ("001_initial_personal_score_db_schema", 1),
         ("002_play_order_indexes", 2),
+        ("003_optional_result_metrics", 3),
     ];
 
     private static readonly IReadOnlyDictionary<string, string> ScoreTableSql =
@@ -134,7 +147,9 @@ public sealed class ScoreViewerRepository
                     analysis_confidence >= 0.0 AND analysis_confidence <= 1.0
                   ),
                   app_version TEXT NOT NULL,
-                  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                  ok INTEGER CHECK (ok IS NULL OR ok >= 0),
+                  calories REAL CHECK (calories IS NULL OR calories >= 0.0)
                 )
                 """,
             ["analysis_logs"] =
@@ -167,6 +182,41 @@ public sealed class ScoreViewerRepository
                 )
                 """,
         };
+
+    private static readonly string LegacyScorePlaysSql =
+        """
+        CREATE TABLE plays (
+          play_id TEXT PRIMARY KEY,
+          played_at TEXT NOT NULL,
+          master_version TEXT NOT NULL,
+          song_id TEXT NOT NULL,
+          chart_id TEXT NOT NULL,
+          score INTEGER NOT NULL CHECK (score BETWEEN 0 AND 1000000 AND score % 10 = 0),
+          max_combo INTEGER NOT NULL CHECK (max_combo >= 0),
+          marvelous INTEGER NOT NULL CHECK (marvelous >= 0),
+          perfect INTEGER NOT NULL CHECK (perfect >= 0),
+          great INTEGER NOT NULL CHECK (great >= 0),
+          good INTEGER NOT NULL CHECK (good >= 0),
+          miss INTEGER NOT NULL CHECK (miss >= 0),
+          ex_score INTEGER NOT NULL CHECK (ex_score >= 0),
+          rank TEXT NOT NULL,
+          clear_type TEXT NOT NULL,
+          flare_rank TEXT CHECK (
+            flare_rank IS NULL OR flare_rank IN (
+              'I', 'II', 'III', 'IV', 'V', 'VI',
+              'VII', 'VIII', 'IX', 'EX'
+            )
+          ),
+          capture_hash TEXT NOT NULL REFERENCES source_captures(capture_hash),
+          source_capture_id TEXT NOT NULL REFERENCES source_captures(capture_id),
+          duplicate_key TEXT NOT NULL UNIQUE,
+          analysis_confidence REAL NOT NULL CHECK (
+            analysis_confidence >= 0.0 AND analysis_confidence <= 1.0
+          ),
+          app_version TEXT NOT NULL,
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+        """;
 
     internal static void InitializeEmptyScoreDatabase(string path)
     {
@@ -209,7 +259,7 @@ public sealed class ScoreViewerRepository
               ON analysis_logs(source_capture_id);
             CREATE INDEX IF NOT EXISTS idx_source_captures_capture_hash
               ON source_captures(capture_hash);
-            PRAGMA user_version = 2;
+            PRAGMA user_version = 3;
             """;
         command.ExecuteNonQuery();
 
@@ -251,6 +301,21 @@ public sealed class ScoreViewerRepository
         command.Parameters.AddWithValue(
             "$notes",
             "Added timezone-aware chronological play ordering indexes.");
+        command.ExecuteNonQuery();
+        command.Parameters.Clear();
+        command.CommandText =
+            """
+            INSERT INTO schema_migrations (
+              migration_id, schema_version, app_version, notes
+            )
+            VALUES ($migration_id, $schema_version, $app_version, $notes);
+            """;
+        command.Parameters.AddWithValue("$migration_id", ScoreMigrationHistory[2].MigrationId);
+        command.Parameters.AddWithValue("$schema_version", ScoreMigrationHistory[2].SchemaVersion);
+        command.Parameters.AddWithValue("$app_version", "schema-contract");
+        command.Parameters.AddWithValue(
+            "$notes",
+            "Added nullable O.K. and calories play values.");
         command.ExecuteNonQuery();
         transaction.Commit();
     }
@@ -759,18 +824,29 @@ public sealed class ScoreViewerRepository
                     : "対応していないバージョンのプレーデータです。");
         }
 
-        foreach (var (table, expectedColumns) in ScoreTableColumns)
+        foreach (var (table, currentColumns) in ScoreTableColumns)
         {
+            var expectedColumns = expectedVersion < 3 && table == "plays"
+                ? LegacyScorePlayColumns
+                : currentColumns;
+            var expectedSql = expectedVersion < 3 && table == "plays"
+                ? LegacyScorePlaysSql
+                : ScoreTableSql[table];
             if (!tables.Contains(table) ||
                 !ReadColumns(connection, table).SequenceEqual(expectedColumns) ||
-                NormalizeSql(ReadTableSql(connection, table)) != NormalizeSql(ScoreTableSql[table]))
+                NormalizeSql(ReadTableSql(connection, table)) != NormalizeSql(expectedSql))
             {
                 throw RejectedScoreDatabase("プレーデータの構造が完全ではありません。");
             }
         }
 
-        var expectedMetadata = expectedVersion == 1 ? ScoreMetadataV1 : ScoreMetadata;
-        if (expectedVersion != 1 && expectedVersion != SupportedScoreSchemaVersion)
+        var expectedMetadata = expectedVersion switch
+        {
+            1 => ScoreMetadataV1,
+            2 => ScoreMetadataV2,
+            _ => ScoreMetadata,
+        };
+        if (expectedVersion < 1 || expectedVersion > SupportedScoreSchemaVersion)
         {
             throw RejectedScoreDatabase("対応していないバージョンのプレーデータです。");
         }
@@ -1023,7 +1099,7 @@ public sealed class ScoreViewerRepository
             """
             SELECT p.play_id, p.played_at, p.created_at, p.song_id, p.chart_id,
                    p.score, p.ex_score, p.rank, p.clear_type, p.flare_rank, p.max_combo,
-                   p.marvelous, p.perfect, p.great, p.good, p.miss,
+                   p.marvelous, p.perfect, p.great, p.good, p.miss, p.ok, p.calories,
                    COALESCE(sc.source_kind, 'unknown')
             FROM plays p
             LEFT JOIN source_captures sc ON sc.capture_id = p.source_capture_id
@@ -1186,7 +1262,7 @@ public sealed class ScoreViewerRepository
             WITH projected AS (
               SELECT p.play_id, p.played_at, p.created_at, p.song_id, p.chart_id,
                      p.score, p.ex_score, p.rank, p.clear_type, p.flare_rank, p.max_combo,
-                     p.marvelous, p.perfect, p.great, p.good, p.miss,
+                     p.marvelous, p.perfect, p.great, p.good, p.miss, p.ok, p.calories,
                      COALESCE(sc.source_kind, 'unknown') AS source_kind,
                      (
                        SELECT MAX(prior.score)
@@ -1227,7 +1303,7 @@ public sealed class ScoreViewerRepository
             )
             SELECT play_id, played_at, created_at, song_id, chart_id,
                    score, ex_score, rank, clear_type, flare_rank, max_combo,
-                   marvelous, perfect, great, good, miss, source_kind,
+                   marvelous, perfect, great, good, miss, ok, calories, source_kind,
                    previous_score, previous_ex_score
             FROM projected
             WHERE $only_best_updates = 0
@@ -1310,7 +1386,7 @@ public sealed class ScoreViewerRepository
             """
             SELECT p.play_id, p.played_at, p.created_at, p.song_id, p.chart_id,
                    p.score, p.ex_score, p.rank, p.clear_type, p.flare_rank, p.max_combo,
-                   p.marvelous, p.perfect, p.great, p.good, p.miss,
+                   p.marvelous, p.perfect, p.great, p.good, p.miss, p.ok, p.calories,
                    COALESCE(sc.source_kind, 'unknown') AS source_kind,
                    (
                      SELECT MAX(prior.score)
@@ -1377,7 +1453,7 @@ public sealed class ScoreViewerRepository
             $"""
             SELECT p.play_id, p.played_at, p.created_at, p.song_id, p.chart_id,
                    p.score, p.ex_score, p.rank, p.clear_type, p.flare_rank, p.max_combo,
-                   p.marvelous, p.perfect, p.great, p.good, p.miss,
+                   p.marvelous, p.perfect, p.great, p.good, p.miss, p.ok, p.calories,
                    COALESCE(sc.source_kind, 'unknown') AS source_kind,
                    (
                      SELECT MAX(prior.score)
@@ -1547,7 +1623,8 @@ public sealed class ScoreViewerRepository
             reader.GetInt32(5), reader.GetInt32(6), reader.GetString(7), reader.GetString(8),
             reader.IsDBNull(9) ? null : reader.GetString(9), reader.GetInt32(10),
             reader.GetInt32(11), reader.GetInt32(12), reader.GetInt32(13), reader.GetInt32(14),
-            reader.GetInt32(15), reader.GetString(16), !found);
+            reader.GetInt32(15), ReadNullableInt32(reader, 16),
+            reader.IsDBNull(17) ? null : reader.GetDouble(17), reader.GetString(18), !found);
     }
 
     private static HomePlayItem ReadHomePlayItem(
@@ -1557,8 +1634,8 @@ public sealed class ScoreViewerRepository
         var play = ReadPlayHistoryItem(reader, masterCharts);
         return new HomePlayItem(
             play,
-            ReadNullableInt32(reader, 17),
-            ReadNullableInt32(reader, 18));
+            ReadNullableInt32(reader, 19),
+            ReadNullableInt32(reader, 20));
     }
 
     private static int? ReadNullableInt32(SqliteDataReader reader, int ordinal) =>

@@ -11,7 +11,7 @@ FIXTURE_PATH = (
     Path(__file__).parent
     / "fixtures"
     / "personal_score_db_migration"
-    / "plan-matrix-v1.json"
+    / "plan-matrix-v2.json"
 )
 
 
