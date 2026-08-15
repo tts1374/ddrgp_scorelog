@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>DDR GP Score Log - 自己ベスト一覧 UI Mockup (v7)</title>
+  <title>DDR GP Score Log - 自己ベスト一覧 UI Mockup (v10)</title>
   <style>
     :root {
       --bg-app: #F8FAFC;
@@ -95,31 +95,51 @@
     .page-title h2 { font-size: 24px; font-weight: 800; color: var(--text-main); }
     .page-title p { font-size: 13px; color: var(--text-muted); margin-top: 2px; }
 
-    /* フィルター・切り替えバー */
-    .filter-card { background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 10px; padding: 10px 16px; display: flex; flex-direction: column; gap: 10px; align-items: stretch; }
-    .filter-main-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 16px; }
+    /* 探索軸・プレイスタイル切り替え */
+    .filter-card { background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 10px; padding: 12px 16px; display: flex; flex-direction: column; gap: 10px; }
+    .filter-main-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 20px; }
     .style-segmented { display: flex; background: #F1F5F9; border-radius: 8px; padding: 3px; gap: 2px; }
     .style-btn { padding: 6px 16px; border: none; background: transparent; font-weight: 700; font-size: 13px; color: var(--text-muted); border-radius: 6px; cursor: pointer; transition: all 0.15s; }
     .style-btn.active { background: #FFF; color: var(--primary); box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .browse-heading { font-size: 13px; font-weight: 800; color: var(--text-main); }
+    .browse-tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+    .browse-tab { min-width: 128px; padding: 8px 16px; border: 1px solid var(--border-color); border-radius: 6px; background: #FFF; color: var(--text-main); font-size: 13px; font-weight: 700; cursor: pointer; }
+    .browse-tab.active { background: var(--primary); border-color: var(--primary); color: #FFF; }
+    .phase-label { margin-left: 5px; padding: 2px 5px; border-radius: 999px; background: #EDE9FE; color: #6D28D9; font-size: 9px; font-weight: 900; vertical-align: 1px; }
+    .browse-tab.active .phase-label { background: rgba(255,255,255,0.2); color: #FFF; }
+    .selection-summary { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; padding-top: 10px; border-top: 1px solid var(--border-color); }
+    .selection-summary[hidden] { display: none; }
+    .selection-label { color: var(--text-muted); font-size: 11px; font-weight: 700; }
+    .selection-value { margin-left: 8px; color: var(--text-main); font-size: 14px; font-weight: 800; }
+    .change-axis-button { padding: 6px 10px; border: 1px solid var(--primary); border-radius: 6px; background: #FFF; color: var(--primary); font-size: 12px; font-weight: 800; cursor: pointer; }
+    .axis-panel { padding-top: 12px; border-top: 1px solid var(--border-color); }
+    .axis-panel[hidden] { display: none; }
+    .axis-panel-header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 12px; margin-bottom: 10px; }
+    .axis-panel-title { font-size: 13px; font-weight: 800; }
+    .axis-panel-note { color: var(--text-muted); font-size: 11px; }
+    .axis-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(64px, 1fr)); gap: 6px; }
+    .axis-grid.version-grid { grid-template-columns: repeat(auto-fit, minmax(132px, 1fr)); }
+    .axis-option { min-height: 36px; padding: 6px 8px; border: 1px solid var(--border-color); border-radius: 5px; background: #FFF; color: var(--text-main); font-size: 12px; font-weight: 700; cursor: pointer; }
+    .axis-option.active { background: #DBEAFE; border-color: var(--primary); color: #1E40AF; }
+    .title-search { width: 100%; padding: 9px 12px; border: 1px solid var(--border-color); border-radius: 6px; background: #FFF; color: var(--text-main); font-size: 13px; outline: none; }
+    .title-search:focus { border-color: var(--primary); box-shadow: 0 0 0 2px #DBEAFE; }
 
-    .filter-group-wrapper { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px 16px; align-items: center; flex: 1; }
-    .filter-group { display: flex; align-items: center; gap: 8px; }
-    .filter-label { font-size: 12px; font-weight: 700; color: var(--text-muted); }
-    .filter-select, .filter-input { min-width: 86px; padding: 6px 10px; border: 1px solid var(--border-color); border-radius: 6px; font-size: 13px; outline: none; background: #FFF; }
-    .filter-input { width: 220px; }
-    .filter-level-select { min-width: 100px; }
-
-    .advanced-filter { border-top: 1px solid var(--border-color); padding-top: 8px; }
-    .advanced-filter summary { display: flex; align-items: center; gap: 8px; list-style: none; cursor: pointer; color: var(--primary); font-size: 12px; font-weight: 800; }
-    .advanced-filter summary::-webkit-details-marker { display: none; }
-    .advanced-filter summary::before { content: "＋"; width: 16px; color: var(--primary); font-size: 14px; line-height: 1; }
-    .advanced-filter[open] summary::before { content: "−"; }
-    .advanced-filter-state { color: var(--text-muted); font-size: 11px; font-weight: 700; }
-    .advanced-filter-body { display: flex; flex-wrap: wrap; gap: 10px 18px; margin-top: 10px; padding-top: 10px; border-top: 1px solid #F1F5F9; }
+    /* 選択したレベルまたはバージョン単位の記録状況 */
+    .progress-card { background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 10px; padding: 10px 16px; display: flex; align-items: center; gap: 18px; }
+    .progress-card[hidden] { display: none; }
+    .progress-header { min-width: 235px; }
+    .progress-title { font-size: 14px; font-weight: 800; }
+    .progress-metrics { display: grid; grid-template-columns: repeat(6, minmax(68px, 1fr)); flex: 1; }
+    .progress-metric { padding: 3px 10px; border-left: 1px solid var(--border-color); }
+    .progress-label { color: var(--text-muted); font-size: 11px; }
+    .progress-value { margin-top: 2px; font-size: 14px; font-weight: 800; font-variant-numeric: tabular-nums; }
 
     .result-summary { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; color: var(--text-muted); font-size: 12px; }
     .result-summary strong { color: var(--text-main); font-weight: 800; }
-    .result-summary-note { font-size: 11px; }
+    .result-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+    .result-actions[hidden] { display: none; }
+    .sort-label { font-size: 11px; font-weight: 700; }
+    .sort-select { min-width: 160px; padding: 6px 10px; border: 1px solid var(--border-color); border-radius: 6px; background: #FFF; color: var(--text-main); font-size: 12px; }
 
     /* 自己ベスト一覧 */
     .content-grid { display: flex; flex-direction: column; gap: 20px; flex: 1; min-height: 0; }
@@ -142,6 +162,7 @@
     .chart-level { color: var(--text-muted); font-size: 12px; font-weight: 700; }
     .score-cell { display: flex; flex-direction: column; gap: 2px; white-space: nowrap; }
     .score-main { font-family: 'Courier New', monospace; font-weight: 800; }
+    .goal-distance { color: #1D4ED8; font-family: 'Courier New', monospace; font-size: 13px; font-weight: 900; white-space: nowrap; }
     .score-sub { color: var(--text-muted); font-size: 11px; font-weight: 700; }
     .table-panel .badge-flare { min-width: 56px; padding: 2px 6px; }
 
@@ -262,15 +283,18 @@
       .main-content { padding: 20px; gap: 16px; }
       .filter-main-row { align-items: flex-start; flex-direction: column; }
       .style-segmented { align-self: flex-start; }
-      .filter-group-wrapper { justify-content: flex-start; }
-      .filter-input { max-width: 100%; }
+      .browse-tabs { width: 100%; }
+      .browse-tab { flex: 1 1 128px; }
+      .progress-card { align-items: stretch; flex-direction: column; gap: 8px; }
+      .progress-header { min-width: 0; }
+      .progress-metrics { grid-template-columns: repeat(3, 1fr); }
+      .progress-metric:nth-child(4) { border-left: none; }
     }
 
     @media (max-width: 760px) {
       .sidebar { width: 170px; }
       .main-content { padding: 16px; }
-      .filter-group-wrapper,
-      .advanced-filter-body { flex-direction: column; align-items: flex-start; }
+      .progress-metrics { grid-template-columns: repeat(2, 1fr); }
     }
 
   </style>
@@ -312,128 +336,144 @@
     <header class="header-bar">
       <div class="page-title">
         <h2>自己ベスト</h2>
-        <p>保存済み全履歴から算出した譜面別のベスト記録</p>
+        <p>レベル・バージョン・曲名・目標から譜面別のベスト記録を探します</p>
       </div>
     </header>
 
-    <!-- フィルター・切り替えバー -->
+    <!-- 探索軸・プレイスタイル切り替え -->
     <div class="filter-card">
       <div class="filter-main-row">
-        <!-- プレイスタイル切り替え (SINGLE / DOUBLE) -->
         <div class="style-segmented">
-          <button class="style-btn active">SINGLE (SP)</button>
-          <button class="style-btn">DOUBLE (DP)</button>
+          <button class="style-btn active" type="button" data-style="SP">SINGLE (SP)</button>
+          <button class="style-btn" type="button" data-style="DP">DOUBLE (DP)</button>
         </div>
 
-        <div class="filter-group-wrapper">
-          <div class="filter-group">
-            <span class="filter-label">難易度</span>
-            <select class="filter-select">
-              <option selected>ALL</option>
-              <option>BEGINNER</option>
-              <option>BASIC</option>
-              <option>DIFFICULT</option>
-              <option>EXPERT</option>
-              <option>CHALLENGE</option>
-            </select>
-          </div>
-          <div class="filter-group">
-            <span class="filter-label">レベル</span>
-            <select class="filter-select filter-level-select">
-              <option selected>ALL</option>
-              <option>Lv.1</option>
-              <option>Lv.2</option>
-              <option>Lv.3</option>
-              <option>Lv.4</option>
-              <option>Lv.5</option>
-              <option>Lv.6</option>
-              <option>Lv.7</option>
-              <option>Lv.8</option>
-              <option>Lv.9</option>
-              <option>Lv.10</option>
-              <option>Lv.11</option>
-              <option>Lv.12</option>
-              <option>Lv.13</option>
-              <option>Lv.14</option>
-              <option>Lv.15</option>
-              <option>Lv.16</option>
-              <option>Lv.17</option>
-              <option>Lv.18</option>
-              <option>Lv.19</option>
-            </select>
-          </div>
-          <div class="filter-group">
-            <span class="filter-label">曲名検索</span>
-            <input type="text" class="filter-input" placeholder="曲名で絞り込み...">
-          </div>
-          <div class="filter-group">
-            <span class="filter-label">並び順</span>
-            <select class="filter-select">
-              <option selected>スコア（高い順）</option>
-              <option>スコア（低い順）</option>
-              <option>曲名（昇順）</option>
-              <option>レベル（昇順）</option>
-              <option>最終プレー（新しい順）</option>
-              <option>プレー回数（多い順）</option>
-            </select>
+        <div>
+          <div class="browse-heading">曲を探す</div>
+          <div class="browse-tabs" role="tablist" aria-label="探索方法">
+            <button class="browse-tab active" type="button" role="tab" aria-selected="true" data-mode="level">レベルから</button>
+            <button class="browse-tab" type="button" role="tab" aria-selected="false" data-mode="version">バージョンから</button>
+            <button class="browse-tab" type="button" role="tab" aria-selected="false" data-mode="title">曲名から</button>
+            <button class="browse-tab" type="button" role="tab" aria-selected="false" data-mode="goal">目標から<span class="phase-label">後続</span></button>
           </div>
         </div>
       </div>
 
-      <details class="advanced-filter" open>
-        <summary>
-          <span>詳細フィルター</span>
-          <span class="advanced-filter-state">適用中: なし</span>
-        </summary>
-        <div class="advanced-filter-body">
-          <div class="filter-group">
-            <span class="filter-label">バージョン</span>
-            <select class="filter-select">
-              <option selected>ALL</option>
-              <option>DDR Grand Prix</option>
-              <option>DDR WORLD</option>
-              <option>DDR A3</option>
-              <option>DDR A20 PLUS</option>
-              <option>DDR A20</option>
-              <option>DDR A</option>
-              <option>DDR (2014)</option>
-            </select>
-          </div>
-          <div class="filter-group">
-            <span class="filter-label">プレー状況</span>
-            <select class="filter-select">
-              <option selected>すべて</option>
-              <option>プレー済み</option>
-              <option>未プレー</option>
-            </select>
-          </div>
-          <div class="filter-group">
-            <span class="filter-label">ランク</span>
-            <select class="filter-select">
-              <option selected>すべて</option>
-              <option>AAA以上</option>
-              <option>AA</option>
-              <option>A以下</option>
-            </select>
-          </div>
-          <div class="filter-group">
-            <span class="filter-label">CLEAR状態</span>
-            <select class="filter-select">
-              <option selected>すべて</option>
-              <option>PFC</option>
-              <option>GFC</option>
-              <option>FC</option>
-              <option>CLEAR</option>
-              <option>未CLEAR</option>
-            </select>
-          </div>
+      <div class="selection-summary" id="selection-summary">
+        <div>
+          <span class="selection-label">選択中</span>
+          <span class="selection-value" id="selection-value">Lv.1</span>
         </div>
-      </details>
+        <button class="change-axis-button" id="change-axis-button" type="button" aria-expanded="false">レベルを変更</button>
+      </div>
+
+      <section class="axis-panel" data-axis-panel="level" aria-label="レベル選択" hidden>
+        <div class="axis-panel-header">
+          <div class="axis-panel-title">レベルを選択</div>
+          <div class="axis-panel-note">レベル別に記録状況を確認</div>
+        </div>
+        <div class="axis-grid">
+          <button class="axis-option active" type="button" data-level="1">Lv.1</button>
+          <button class="axis-option" type="button" data-level="2">Lv.2</button>
+          <button class="axis-option" type="button" data-level="3">Lv.3</button>
+          <button class="axis-option" type="button" data-level="4">Lv.4</button>
+          <button class="axis-option" type="button" data-level="5">Lv.5</button>
+          <button class="axis-option" type="button" data-level="6">Lv.6</button>
+          <button class="axis-option" type="button" data-level="7">Lv.7</button>
+          <button class="axis-option" type="button" data-level="8">Lv.8</button>
+          <button class="axis-option" type="button" data-level="9">Lv.9</button>
+          <button class="axis-option" type="button" data-level="10">Lv.10</button>
+          <button class="axis-option" type="button" data-level="11">Lv.11</button>
+          <button class="axis-option" type="button" data-level="12">Lv.12</button>
+          <button class="axis-option" type="button" data-level="13">Lv.13</button>
+          <button class="axis-option" type="button" data-level="14">Lv.14</button>
+          <button class="axis-option" type="button" data-level="15">Lv.15</button>
+          <button class="axis-option" type="button" data-level="16">Lv.16</button>
+          <button class="axis-option" type="button" data-level="17">Lv.17</button>
+          <button class="axis-option" type="button" data-level="18">Lv.18</button>
+          <button class="axis-option" type="button" data-level="19">Lv.19</button>
+        </div>
+      </section>
+
+      <section class="axis-panel" data-axis-panel="version" aria-label="バージョン選択" hidden>
+        <div class="axis-panel-header">
+          <div class="axis-panel-title">バージョンを選択</div>
+          <div class="axis-panel-note">バージョン別に記録状況を確認</div>
+        </div>
+        <div class="axis-grid version-grid">
+          <button class="axis-option active" type="button" data-version="DDR GRAND PRIX">DDR GRAND PRIX</button>
+          <button class="axis-option" type="button" data-version="DDR WORLD">DDR WORLD</button>
+          <button class="axis-option" type="button" data-version="DDR A3">DDR A3</button>
+          <button class="axis-option" type="button" data-version="DDR A20 PLUS">DDR A20 PLUS</button>
+          <button class="axis-option" type="button" data-version="DDR A20">DDR A20</button>
+          <button class="axis-option" type="button" data-version="DDR A">DDR A</button>
+          <button class="axis-option" type="button" data-version="DDR (2014)">DDR (2014)</button>
+          <button class="axis-option" type="button" data-version="DDR (2013)">DDR (2013)</button>
+          <button class="axis-option" type="button" data-version="X3 VS 2ndMIX">X3 VS 2ndMIX</button>
+          <button class="axis-option" type="button" data-version="X2">X2</button>
+          <button class="axis-option" type="button" data-version="X">X</button>
+          <button class="axis-option" type="button" data-version="SuperNOVA 2">SuperNOVA 2</button>
+          <button class="axis-option" type="button" data-version="SuperNOVA">SuperNOVA</button>
+          <button class="axis-option" type="button" data-version="EXTREME">EXTREME</button>
+          <button class="axis-option" type="button" data-version="DDRMAX2">DDRMAX2</button>
+          <button class="axis-option" type="button" data-version="DDRMAX">DDRMAX</button>
+          <button class="axis-option" type="button" data-version="5thMIX">5thMIX</button>
+          <button class="axis-option" type="button" data-version="4thMIX">4thMIX</button>
+          <button class="axis-option" type="button" data-version="3rdMIX">3rdMIX</button>
+          <button class="axis-option" type="button" data-version="2ndMIX">2ndMIX</button>
+          <button class="axis-option" type="button" data-version="1st">1st</button>
+        </div>
+      </section>
+
+      <section class="axis-panel" data-axis-panel="title" aria-label="曲名検索" hidden>
+        <div class="axis-panel-header">
+          <div class="axis-panel-title">曲名を入力</div>
+          <div class="axis-panel-note">曲名検索では記録状況を集計しません</div>
+        </div>
+        <label for="title-search" class="axis-panel-note">曲名の一部</label>
+        <input id="title-search" class="title-search" type="search" placeholder="例: MAX">
+      </section>
+
+      <section class="axis-panel" data-axis-panel="goal" aria-label="目標ランク選択" hidden>
+        <div class="axis-panel-header">
+          <div class="axis-panel-title">目標ランクを選択</div>
+          <div class="axis-panel-note">達成済み・記録なしを除き、目標まで近い順に表示</div>
+        </div>
+        <div class="axis-grid">
+          <button class="axis-option active" type="button" data-goal="AAA">AAA</button>
+          <button class="axis-option" type="button" data-goal="AA+">AA+</button>
+          <button class="axis-option" type="button" data-goal="AA">AA</button>
+        </div>
+      </section>
     </div>
 
+    <section class="progress-card" id="progress-card" aria-live="polite">
+      <div class="progress-header">
+        <div class="progress-title" id="progress-title">Lv.1・SPの記録状況</div>
+      </div>
+      <div class="progress-metrics">
+        <div class="progress-metric"><div class="progress-label">対象譜面</div><div class="progress-value" data-metric="total">84</div></div>
+        <div class="progress-metric"><div class="progress-label">記録あり</div><div class="progress-value" data-metric="recorded">67</div></div>
+        <div class="progress-metric"><div class="progress-label">記録なし</div><div class="progress-value" data-metric="missing">17</div></div>
+        <div class="progress-metric"><div class="progress-label">CLEAR以上</div><div class="progress-value" data-metric="clear">61</div></div>
+        <div class="progress-metric"><div class="progress-label">FC以上</div><div class="progress-value" data-metric="fc">18</div></div>
+        <div class="progress-metric"><div class="progress-label">AAA以上</div><div class="progress-value" data-metric="aaa">7</div></div>
+      </div>
+    </section>
+
     <div class="result-summary" aria-live="polite">
-      <span><strong>対象譜面</strong>　表示 1〜50 / 全1,284譜面</span>
-      <span class="result-summary-note">絞り込み・ソート変更時は先頭から再表示</span>
+      <span><strong id="result-count">表示 1〜50 / 全84譜面</strong>　<span id="result-context">Lv.1</span></span>
+      <div class="result-actions" id="result-actions">
+        <label class="sort-label" for="best-sort">並び順</label>
+        <select id="best-sort" class="sort-select">
+          <option selected>スコア（高い順）</option>
+          <option>スコア（低い順）</option>
+          <option>曲名（昇順）</option>
+          <option>レベル（昇順）</option>
+          <option>最終プレー（新しい順）</option>
+          <option>プレー回数（多い順）</option>
+        </select>
+      </div>
     </div>
 
     <!-- メインコンテンツグリッド -->
@@ -446,6 +486,7 @@
               <th>曲名</th>
               <th style="width: 120px;">譜面</th>
               <th style="width: 105px;">SCORE / EX</th>
+              <th style="width: 105px;" data-goal-column hidden>目標まで</th>
               <th style="width: 55px;">ランク</th>
               <th style="width: 65px;">CLEAR</th>
               <th style="width: 65px;">FLARE</th>
@@ -454,50 +495,55 @@
             </tr>
           </thead>
           <tbody>
-            <tr class="selected">
+            <tr class="selected" data-song-title="POSSESSION" data-score="991400">
               <td>POSSESSION</td>
-              <td><div class="chart-cell"><span class="badge-diff diff-cha">CHALLENGE</span><span class="chart-level">Lv.17</span></div></td>
+              <td><div class="chart-cell"><span class="badge-diff diff-cha">CHALLENGE</span><span class="chart-level">Lv.15</span></div></td>
               <td><div class="score-cell"><span class="score-main">991,400</span><span class="score-sub">EX 1,420</span></div></td>
+              <td data-goal-column hidden><span class="goal-distance"></span></td>
               <td><span class="badge-rank rank-aaa">AAA</span></td>
               <td><span class="clear-pfc">PFC</span></td>
               <td><span class="badge-flare flare-ex">EX</span></td>
               <td>14 回</td>
               <td>08/02 22:31</td>
             </tr>
-            <tr>
+            <tr data-song-title="MAX 300" data-score="982100">
               <td>MAX 300</td>
               <td><div class="chart-cell"><span class="badge-diff diff-exp">EXPERT</span><span class="chart-level">Lv.15</span></div></td>
               <td><div class="score-cell"><span class="score-main">982,100</span><span class="score-sub">EX 1,210</span></div></td>
+              <td data-goal-column hidden><span class="goal-distance"></span></td>
               <td><span class="badge-rank rank-aaa">AAA</span></td>
               <td><span class="clear-fc">FC</span></td>
               <td><span class="badge-flare flare-viii">VIII</span></td>
               <td>8 回</td>
               <td>08/02 22:18</td>
             </tr>
-            <tr>
+            <tr data-song-title="London EVOLVED ver.B" data-score="972840">
               <td>London EVOLVED ver.B</td>
-              <td><div class="chart-cell"><span class="badge-diff diff-dif">DIFFICULT</span><span class="chart-level">Lv.11</span></div></td>
+              <td><div class="chart-cell"><span class="badge-diff diff-dif">DIFFICULT</span><span class="chart-level">Lv.15</span></div></td>
               <td><div class="score-cell"><span class="score-main">972,840</span><span class="score-sub">EX 1,016</span></div></td>
+              <td data-goal-column hidden><span class="goal-distance"></span></td>
               <td><span class="badge-rank rank-aa">AA+</span></td>
               <td><span class="clear-fc">FC</span></td>
               <td><span class="badge-flare flare-ix">IX</span></td>
               <td>5 回</td>
               <td>08/02 22:50</td>
             </tr>
-            <tr>
+            <tr data-song-title="London EVOLVED ver.A" data-score="895120">
               <td>London EVOLVED ver.A</td>
-              <td><div class="chart-cell"><span class="badge-diff diff-exp">EXPERT</span><span class="chart-level">Lv.14</span></div></td>
-              <td><div class="score-cell"><span class="score-main">945,120</span><span class="score-sub">EX 1,120</span></div></td>
-              <td><span class="badge-rank rank-aa">AA</span></td>
+              <td><div class="chart-cell"><span class="badge-diff diff-exp">EXPERT</span><span class="chart-level">Lv.15</span></div></td>
+              <td><div class="score-cell"><span class="score-main">895,120</span><span class="score-sub">EX 1,120</span></div></td>
+              <td data-goal-column hidden><span class="goal-distance"></span></td>
+              <td><span class="badge-rank rank-a">A+</span></td>
               <td><span class="clear-cle">CLEAR</span></td>
               <td><span class="badge-flare flare-vi">VI</span></td>
               <td>3 回</td>
               <td>08/02 22:42</td>
             </tr>
-            <tr>
+            <tr data-song-title="PARANOiA MAX~DIRTY MIX~" data-score="998500">
               <td>PARANOiA MAX~DIRTY MIX~</td>
-              <td><div class="chart-cell"><span class="badge-diff diff-bas">BASIC</span><span class="chart-level">Lv.8</span></div></td>
+              <td><div class="chart-cell"><span class="badge-diff diff-bas">BASIC</span><span class="chart-level">Lv.15</span></div></td>
               <td><div class="score-cell"><span class="score-main">998,500</span><span class="score-sub">EX 890</span></div></td>
+              <td data-goal-column hidden><span class="goal-distance"></span></td>
               <td><span class="badge-rank rank-aaa">AAA</span></td>
               <td><span class="clear-pfc">PFC</span></td>
               <td><span class="badge-flare flare-iii">III</span></td>
@@ -507,13 +553,233 @@
           </tbody>
         </table>
         <div class="table-footer">
-          <span><strong>1〜50譜面</strong>を表示中</span>
+          <span><strong id="footer-range">1〜50譜面</strong>を表示中</span>
           <span class="load-more-hint">下端までスクロールすると次の50譜面を読み込み</span>
         </div>
       </div>
     </div>
   </main>
 </div>
+
+<script>
+  (() => {
+    const modeButtons = [...document.querySelectorAll('[data-mode]')];
+    const axisPanels = [...document.querySelectorAll('[data-axis-panel]')];
+    const styleButtons = [...document.querySelectorAll('[data-style]')];
+    const levelButtons = [...document.querySelectorAll('[data-level]')];
+    const versionButtons = [...document.querySelectorAll('[data-version]')];
+    const goalButtons = [...document.querySelectorAll('[data-goal]')];
+    const goalColumns = [...document.querySelectorAll('[data-goal-column]')];
+    const progressCard = document.getElementById('progress-card');
+    const progressTitle = document.getElementById('progress-title');
+    const resultCount = document.getElementById('result-count');
+    const resultContext = document.getElementById('result-context');
+    const footerRange = document.getElementById('footer-range');
+    const titleSearch = document.getElementById('title-search');
+    const selectionSummary = document.getElementById('selection-summary');
+    const selectionValue = document.getElementById('selection-value');
+    const changeAxisButton = document.getElementById('change-axis-button');
+    const resultActions = document.getElementById('result-actions');
+    const tableRows = [...document.querySelectorAll('tbody tr')];
+    const storageKey = 'ddrgp-chart-bests-mock-v10';
+    const goalScores = { AAA: 990000, 'AA+': 950000, AA: 900000 };
+    let activeMode = 'level';
+    let activeStyle = 'SP';
+    let activeLevel = '1';
+    let activeVersion = 'DDR GRAND PRIX';
+    let activeGoal = 'AAA';
+    let axisExpanded = false;
+
+    try {
+      const savedState = JSON.parse(localStorage.getItem(storageKey));
+      const availableVersions = versionButtons.map(button => button.dataset.version);
+      if (['level', 'version', 'title', 'goal'].includes(savedState?.mode)) activeMode = savedState.mode;
+      if (['SP', 'DP'].includes(savedState?.style)) activeStyle = savedState.style;
+      if (/^(?:[1-9]|1[0-9])$/.test(savedState?.level)) activeLevel = savedState.level;
+      if (availableVersions.includes(savedState?.version)) activeVersion = savedState.version;
+      if (Object.hasOwn(goalScores, savedState?.goal)) activeGoal = savedState.goal;
+    } catch {
+      // localStorageを利用できない場合も、既定値でモックを表示する。
+    }
+
+    const saveState = () => {
+      try {
+        localStorage.setItem(storageKey, JSON.stringify({
+          mode: activeMode,
+          style: activeStyle,
+          level: activeLevel,
+          version: activeVersion,
+          goal: activeGoal
+        }));
+      } catch {
+        // 状態保存に失敗してもモックの操作は継続する。
+      }
+    };
+
+    const seedFor = value => [...value].reduce((sum, character) => sum + character.charCodeAt(0), 0);
+
+    const updateMetrics = label => {
+      const seed = seedFor(`${label}-${activeStyle}`);
+      const total = 62 + (seed % 47);
+      const recorded = Math.max(1, total - (8 + seed % 20));
+      const values = {
+        total,
+        recorded,
+        missing: total - recorded,
+        clear: Math.max(0, recorded - (4 + seed % 7)),
+        fc: Math.floor(recorded * 0.28),
+        aaa: Math.floor(recorded * 0.11)
+      };
+
+      Object.entries(values).forEach(([name, value]) => {
+        document.querySelector(`[data-metric="${name}"]`).textContent = value;
+      });
+      resultCount.textContent = `表示 1〜${Math.min(50, total)} / 全${total}譜面`;
+      footerRange.textContent = `1〜${Math.min(50, total)}譜面`;
+    };
+
+    const syncControls = () => {
+      modeButtons.forEach(button => {
+        const selected = button.dataset.mode === activeMode;
+        button.classList.toggle('active', selected);
+        button.setAttribute('aria-selected', String(selected));
+      });
+      styleButtons.forEach(button => button.classList.toggle('active', button.dataset.style === activeStyle));
+      levelButtons.forEach(button => button.classList.toggle('active', button.dataset.level === activeLevel));
+      versionButtons.forEach(button => button.classList.toggle('active', button.dataset.version === activeVersion));
+      goalButtons.forEach(button => button.classList.toggle('active', button.dataset.goal === activeGoal));
+
+      const isTitleMode = activeMode === 'title';
+      const isGoalMode = activeMode === 'goal';
+      selectionSummary.hidden = isTitleMode;
+      axisPanels.forEach(panel => {
+        if (panel.dataset.axisPanel === 'title') {
+          panel.hidden = !isTitleMode;
+          return;
+        }
+        panel.hidden = isTitleMode || panel.dataset.axisPanel !== activeMode || !axisExpanded;
+      });
+
+      if (!isTitleMode) {
+        const isLevelMode = activeMode === 'level';
+        selectionValue.textContent = isLevelMode ? `Lv.${activeLevel}` : isGoalMode ? `${activeGoal}を目指す` : activeVersion;
+        changeAxisButton.textContent = isLevelMode ? 'レベルを変更' : isGoalMode ? '目標を変更' : 'バージョンを変更';
+        changeAxisButton.setAttribute('aria-expanded', String(axisExpanded));
+      }
+
+      resultActions.hidden = isGoalMode;
+    };
+
+    const refresh = () => {
+      syncControls();
+      goalColumns.forEach(column => { column.hidden = activeMode !== 'goal'; });
+      if (activeMode === 'title') {
+        const query = titleSearch.value.trim().toLocaleLowerCase();
+        let matches = 0;
+        progressCard.hidden = true;
+        tableRows.forEach(row => {
+          const matched = !query || row.dataset.songTitle.toLocaleLowerCase().includes(query);
+          row.hidden = !matched;
+          if (matched) matches += 1;
+        });
+        resultCount.textContent = query ? `${matches}譜面` : '曲名を入力';
+        resultContext.textContent = query ? `「${titleSearch.value.trim()}」の検索結果` : '検索条件なし';
+        footerRange.textContent = query ? `${matches}譜面` : '0譜面';
+        return;
+      }
+
+      if (activeMode === 'goal') {
+        const targetScore = goalScores[activeGoal];
+        let matches = 0;
+        progressCard.hidden = true;
+        tableRows.forEach(row => {
+          const score = Number(row.dataset.score);
+          const remaining = targetScore - score;
+          const matched = Number.isFinite(score) && remaining > 0;
+          row.hidden = !matched;
+          row.classList.remove('selected');
+          row.querySelector('.goal-distance').textContent = matched ? `あと ${remaining.toLocaleString('ja-JP')}点` : '';
+          if (matched) matches += 1;
+        });
+        const firstVisibleRow = tableRows.find(row => !row.hidden);
+        firstVisibleRow?.classList.add('selected');
+        resultCount.textContent = `${matches}譜面`;
+        resultContext.textContent = `${activeGoal}まで近い順（達成済み・記録なしを除く）`;
+        footerRange.textContent = `${matches}譜面`;
+        return;
+      }
+
+      tableRows.forEach((row, index) => {
+        row.hidden = false;
+        row.classList.toggle('selected', index === 0);
+      });
+      progressCard.hidden = false;
+      const label = activeMode === 'level' ? `Lv.${activeLevel}` : activeVersion;
+      progressTitle.textContent = `${label}・${activeStyle}の記録状況`;
+      resultContext.textContent = label;
+      updateMetrics(label);
+
+      if (activeMode === 'level') {
+        document.querySelectorAll('.chart-level').forEach(element => {
+          element.textContent = `Lv.${activeLevel}`;
+        });
+      }
+    };
+
+    modeButtons.forEach(button => {
+      button.addEventListener('click', () => {
+        activeMode = button.dataset.mode;
+        axisExpanded = false;
+        saveState();
+        refresh();
+        if (activeMode === 'title') titleSearch.focus();
+      });
+    });
+
+    styleButtons.forEach(button => {
+      button.addEventListener('click', () => {
+        activeStyle = button.dataset.style;
+        saveState();
+        refresh();
+      });
+    });
+
+    levelButtons.forEach(button => {
+      button.addEventListener('click', () => {
+        activeLevel = button.dataset.level;
+        axisExpanded = false;
+        saveState();
+        refresh();
+      });
+    });
+
+    versionButtons.forEach(button => {
+      button.addEventListener('click', () => {
+        activeVersion = button.dataset.version;
+        axisExpanded = false;
+        saveState();
+        refresh();
+      });
+    });
+
+    goalButtons.forEach(button => {
+      button.addEventListener('click', () => {
+        activeGoal = button.dataset.goal;
+        axisExpanded = false;
+        saveState();
+        refresh();
+      });
+    });
+
+    changeAxisButton.addEventListener('click', () => {
+      axisExpanded = !axisExpanded;
+      refresh();
+    });
+
+    titleSearch.addEventListener('input', refresh);
+    refresh();
+  })();
+</script>
 
 </body>
 </html>

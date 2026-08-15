@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>DDR GP Score Log - ホーム UI Mockup (v7)</title>
+  <title>DDR GP Score Log - ホーム UI Mockup (v8)</title>
   <style>
     :root {
       --bg-app: #F8FAFC;
@@ -241,6 +241,43 @@
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 12px;
+    }
+
+    .summary-heading {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      padding: 0 0 8px;
+    }
+
+    .summary-heading h3 {
+      font-size: 15px;
+      font-weight: 800;
+    }
+
+    .summary-heading p {
+      color: var(--text-muted);
+      font-size: 11px;
+      margin-top: 2px;
+    }
+
+    .btn-copy-summary {
+      flex-shrink: 0;
+      padding: 7px 12px;
+      border: 1px solid #93C5FD;
+      border-radius: 7px;
+      color: #1D4ED8;
+      background: #EFF6FF;
+      font-size: 11px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+
+    .btn-copy-summary:hover {
+      color: #FFF;
+      background: var(--primary);
+      border-color: var(--primary);
     }
 
     .summary-card {
@@ -943,6 +980,10 @@
         grid-template-columns: 1fr;
       }
 
+      .summary-heading {
+        align-items: flex-start;
+      }
+
       .delta-list {
         grid-template-columns: 1fr;
       }
@@ -1025,30 +1066,28 @@
 
     <!-- 今日のプレー状況 -->
     <section aria-labelledby="today-summary-title">
-      <div class="section-heading" style="padding: 0 0 8px; border-bottom: none;">
+      <div class="summary-heading">
         <div>
           <h3 id="today-summary-title">今日のプレー状況</h3>
-          <p>2026/08/03 の保存済みプレーデータ</p>
+          <p>2026/08/15 のプレー記録（07:00切り替え）</p>
         </div>
+        <button class="btn-copy-summary" id="copy-summary" type="button">振り返りをコピー</button>
       </div>
       <div class="summary-grid">
         <article class="summary-card">
           <div class="summary-label">プレー数</div>
           <div class="summary-value">12</div>
-          <div class="summary-note">今日保存されたプレー</div>
+          <div class="summary-note">同じ曲の再プレーも1回として集計</div>
         </article>
         <article class="summary-card">
-          <div class="summary-label">自己ベスト更新</div>
-          <div class="summary-dual-values">
-            <div class="summary-dual-value"><strong>3</strong><span>通常</span></div>
-            <div class="summary-dual-value"><strong>2</strong><span>EX</span></div>
-          </div>
-          <div class="summary-note">今日の更新プレー</div>
+          <div class="summary-label">総ノーツ数</div>
+          <div class="summary-value">7,428</div>
+          <div class="summary-note">各判定数の合計</div>
         </article>
         <article class="summary-card">
-          <div class="summary-label">フルコンボ数</div>
-          <div class="summary-value">1</div>
-          <div class="summary-note">FC以上の記録</div>
+          <div class="summary-label">消費カロリー</div>
+          <div class="summary-value">286.4 <span style="font-size: 13px; letter-spacing: 0;">kcal</span></div>
+          <div class="summary-note">プレーごとの消費カロリー合計</div>
         </article>
       </div>
     </section>
@@ -1067,7 +1106,7 @@
         <article class="featured-play" aria-label="最新のプレー">
           <div class="featured-play-head">
             <span class="latest-label">最新</span>
-            <span class="latest-time">2026/08/03 22:50:07</span>
+            <span class="latest-time">2026/08/15 22:50:07</span>
           </div>
           <div class="latest-title">London EVOLVED ver.B</div>
           <div class="featured-body">
@@ -1110,7 +1149,7 @@
 
         <!-- 2件目以降は簡易表示 -->
         <article class="play-row compact">
-          <div class="play-row-time">08/03 22:42</div>
+          <div class="play-row-time">08/15 22:42</div>
           <div class="play-row-main">
             <div class="play-row-title">London EVOLVED ver.A</div>
             <div class="play-row-meta"><span class="badge-diff diff-exp">SP EXPERT</span><span>Lv.14</span></div>
@@ -1126,7 +1165,7 @@
           </div>
         </article>
         <article class="play-row compact">
-          <div class="play-row-time">08/03 22:31</div>
+          <div class="play-row-time">08/15 22:31</div>
           <div class="play-row-main">
             <div class="play-row-title">POSSESSION</div>
             <div class="play-row-meta"><span class="badge-diff diff-cha">SP CHALLENGE</span><span>Lv.17</span></div>
@@ -1142,7 +1181,7 @@
           </div>
         </article>
         <article class="play-row compact">
-          <div class="play-row-time">08/03 22:18</div>
+          <div class="play-row-time">08/15 22:18</div>
           <div class="play-row-main">
             <div class="play-row-title">MAX 300</div>
             <div class="play-row-meta"><span class="badge-diff diff-exp">SP EXPERT</span><span>Lv.15</span></div>
@@ -1158,7 +1197,7 @@
           </div>
         </article>
         <article class="play-row compact">
-          <div class="play-row-time">08/03 22:05</div>
+          <div class="play-row-time">08/15 22:05</div>
           <div class="play-row-main">
             <div class="play-row-title">PARANOiA MAX~DIRTY MIX~</div>
             <div class="play-row-meta"><span class="badge-diff diff-bas">SP BASIC</span><span>Lv.8</span></div>
@@ -1174,7 +1213,7 @@
           </div>
         </article>
         <article class="play-row compact">
-          <div class="play-row-time">08/03 21:55</div>
+          <div class="play-row-time">08/15 21:55</div>
           <div class="play-row-main">
             <div class="play-row-title">TRIP MACHINE</div>
             <div class="play-row-meta"><span class="badge-diff diff-bgn">SP BEGINNER</span><span>Lv.3</span></div>
@@ -1203,7 +1242,7 @@
       </div>
       <div class="list-rows">
         <article class="update-row">
-          <div class="update-row-time">08/03 22:50</div>
+          <div class="update-row-time">08/15 22:50</div>
           <div class="update-row-main">
             <div class="update-row-title">London EVOLVED ver.B</div>
             <div class="update-row-meta"><span class="badge-diff diff-dif">SP DIFFICULT</span><span>Lv.11</span></div>
@@ -1214,7 +1253,7 @@
           </div>
         </article>
         <article class="update-row">
-          <div class="update-row-time">08/03 22:42</div>
+          <div class="update-row-time">08/15 22:42</div>
           <div class="update-row-main">
             <div class="update-row-title">London EVOLVED ver.A</div>
             <div class="update-row-meta"><span class="badge-diff diff-exp">SP EXPERT</span><span>Lv.14</span></div>
@@ -1225,7 +1264,7 @@
           </div>
         </article>
         <article class="update-row">
-          <div class="update-row-time">08/03 22:31</div>
+          <div class="update-row-time">08/15 22:31</div>
           <div class="update-row-main">
             <div class="update-row-title">POSSESSION</div>
             <div class="update-row-meta"><span class="badge-diff diff-cha">SP CHALLENGE</span><span>Lv.17</span></div>
@@ -1236,7 +1275,7 @@
           </div>
         </article>
         <article class="update-row">
-          <div class="update-row-time">08/03 22:18</div>
+          <div class="update-row-time">08/15 22:18</div>
           <div class="update-row-main">
             <div class="update-row-title">MAX 300</div>
             <div class="update-row-meta"><span class="badge-diff diff-exp">SP EXPERT</span><span>Lv.15</span></div>
@@ -1250,6 +1289,30 @@
     </section>
   </main>
 </div>
+
+<script>
+  (() => {
+    const copyButton = document.getElementById('copy-summary');
+    const recapText = `8月15日のDDR GRAND PRIX
+
+プレー数：12
+総ノーツ数：7,428
+消費カロリー：286.4 kcal`;
+
+    copyButton.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(recapText);
+      } catch {
+        // ローカル表示でClipboard APIを利用できない場合も操作結果を確認できるようにする。
+      }
+
+      copyButton.textContent = 'コピーしました';
+      window.setTimeout(() => {
+        copyButton.textContent = '振り返りをコピー';
+      }, 1600);
+    });
+  })();
+</script>
 
 </body>
 </html>
