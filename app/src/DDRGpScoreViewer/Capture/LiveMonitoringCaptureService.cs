@@ -375,7 +375,7 @@ public sealed class LiveMonitoringCaptureService(
             ? "未認識"
             : observation.Score;
 
-    private static async Task ProcessCandidatesAsync(
+    private async Task ProcessCandidatesAsync(
         ChannelReader<LiveCandidate> candidateReader,
         Func<CapturedFrame, LiveResultObservation, LiveCandidateProcessingContext,
             CancellationToken, Task<LiveCandidateProcessingResult>> processCandidate,
@@ -391,6 +391,14 @@ public sealed class LiveMonitoringCaptureService(
                 LiveCandidate? candidate = queuedCandidate;
                 while (candidate is not null)
                 {
+                    if (Volatile.Read(ref stopRequested) != 0)
+                    {
+                        state.FailCandidate(candidate);
+                        state.IncrementDiscardedFrameCount();
+                        state.SetStatus("明示停止後の未処理RESULT候補を破棄しました。");
+                        progress.Report(state.ToProgress(state.StatusMessage));
+                        return;
+                    }
                     state.SetActiveCandidate(true);
                     state.SetStatus(candidate.FinalizeUnresolved
                         ? "未解決のRESULT候補を保存せず記録しています。"

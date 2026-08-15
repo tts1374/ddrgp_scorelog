@@ -28,10 +28,9 @@ public sealed class LiveMonitoringViewModelTests
                 "confirmed-event-v1:latest",
                 "latest_reason"),
         ]);
-        var live = new StubLiveMonitoringService(
-            candidateCount: 2,
-            delayBeforeNextCandidate: TimeSpan.FromMilliseconds(300));
+        var live = new StubLiveMonitoringService(candidateCount: 2);
         var workflow = new StubLiveWorkflowRunner(() => results.Dequeue());
+        var scheduler = new ControlledNotificationScheduler();
         var viewModel = new MainViewModel(
             new ScoreViewerRepository(),
             new UnusedManualWorkflowRunner(),
@@ -39,8 +38,10 @@ public sealed class LiveMonitoringViewModelTests
             captureSaveWorkflowRunner: workflow,
             defaultDatabasePaths: ConfiguredPaths(fixture),
             ddrGpWindowEnumerator: new StubWindowEnumerator([target]),
-            liveMonitoringService: live,
-            unresolvedNotificationDisplayDuration: TimeSpan.FromMilliseconds(800));
+            liveMonitoringService: live)
+        {
+            UnresolvedNotificationScheduler = scheduler.ScheduleAsync,
+        };
 
         await viewModel.StartConfiguredContinuousCaptureAndSaveAsync(123);
 
@@ -49,12 +50,16 @@ public sealed class LiveMonitoringViewModelTests
         Assert.Contains("latest_reason", viewModel.UnresolvedNotificationMessage);
         Assert.Equal(2, viewModel.MonitoringResults.Unresolved);
         Assert.Empty(viewModel.Plays);
+        Assert.Equal(2, scheduler.Scheduled.Count);
+        Assert.All(
+            scheduler.Scheduled,
+            scheduled => Assert.Equal(TimeSpan.FromSeconds(3), scheduled.Delay));
 
-        await Task.Delay(TimeSpan.FromMilliseconds(600));
+        await scheduler.Scheduled[0].ExpireAsync();
         Assert.True(viewModel.HasUnresolvedNotification);
         Assert.Contains("confirmed-event-v1:latest", viewModel.UnresolvedNotificationMessage);
 
-        await Task.Delay(TimeSpan.FromMilliseconds(300));
+        await scheduler.Scheduled[1].ExpireAsync();
 
         Assert.False(viewModel.HasUnresolvedNotification);
         Assert.Equal("", viewModel.UnresolvedNotificationTitle);
