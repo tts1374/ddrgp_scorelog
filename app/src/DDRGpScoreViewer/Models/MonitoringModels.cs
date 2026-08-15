@@ -166,14 +166,14 @@ public sealed class AsyncOperationGate : IDisposable
         CancellationTokenSource operationCancellation,
         TaskCompletionSource completion)
     {
+        Exception? failure = null;
         try
         {
             await operation(operationCancellation.Token);
-            completion.TrySetResult();
         }
         catch (Exception exception)
         {
-            completion.TrySetException(exception);
+            failure = exception;
         }
         finally
         {
@@ -186,6 +186,15 @@ public sealed class AsyncOperationGate : IDisposable
                 }
             }
             operationCancellation.Dispose();
+        }
+
+        if (failure is null)
+        {
+            completion.TrySetResult();
+        }
+        else
+        {
+            completion.TrySetException(failure);
         }
     }
 }

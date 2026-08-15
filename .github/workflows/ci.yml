@@ -74,7 +74,21 @@ jobs:
         run: dotnet restore app\tests\DDRGpScoreViewer.Tests\DDRGpScoreViewer.Tests.csproj --locked-mode
 
       - name: Test Debug
-        run: dotnet test app\tests\DDRGpScoreViewer.Tests\DDRGpScoreViewer.Tests.csproj --configuration Debug --no-restore
+        run: >
+          dotnet test app\tests\DDRGpScoreViewer.Tests\DDRGpScoreViewer.Tests.csproj
+          --configuration Debug
+          --no-restore
+          --logger "trx;LogFileName=windows-app.trx"
+          --results-directory logs\test-results
+
+      - name: Upload Windows test timings
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-app-test-results
+          path: logs/test-results/windows-app.trx
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Build Release app
         run: dotnet build app\src\DDRGpScoreViewer\DDRGpScoreViewer.csproj --configuration Release --no-restore

@@ -8,6 +8,10 @@ namespace DDRGpScoreViewer.Tests;
 
 internal sealed class DatabaseFixture : IDisposable
 {
+    private static readonly Lazy<DatabaseTemplate> Template = new(
+        CreateDatabaseTemplate,
+        LazyThreadSafetyMode.ExecutionAndPublication);
+
     public DatabaseFixture()
     {
         SQLitePCL.Batteries_V2.Init();
@@ -16,9 +20,10 @@ internal sealed class DatabaseFixture : IDisposable
         ScorePath = Path.Combine(DirectoryPath, "scores.sqlite");
         MasterPath = Path.Combine(DirectoryPath, "master.sqlite");
         CatalogPath = Path.Combine(DirectoryPath, "jacket-catalog.sqlite");
-        CreateScoreDatabase();
-        CreateMasterDatabase();
-        CreateJacketCatalogDatabase();
+        var template = Template.Value;
+        File.WriteAllBytes(ScorePath, template.ScoreDatabase);
+        File.WriteAllBytes(MasterPath, template.MasterDatabase);
+        File.WriteAllBytes(CatalogPath, template.CatalogDatabase);
     }
 
     public string DirectoryPath { get; }
@@ -35,8 +40,7 @@ internal sealed class DatabaseFixture : IDisposable
         string chartId = "chart-1",
         string? flareRank = null)
     {
-        using var connection = OpenWritable(ScorePath);
-        connection.Open();
+        using var connection = OpenFixtureWritable(ScorePath);
         using var command = connection.CreateCommand();
         command.CommandText =
             """
@@ -68,8 +72,7 @@ internal sealed class DatabaseFixture : IDisposable
 
     public void ExecuteScoreSql(string sql)
     {
-        using var connection = OpenWritable(ScorePath);
-        connection.Open();
+        using var connection = OpenFixtureWritable(ScorePath);
         using var command = connection.CreateCommand();
         command.CommandText = sql;
         command.ExecuteNonQuery();
@@ -77,8 +80,7 @@ internal sealed class DatabaseFixture : IDisposable
 
     public void ExecuteMasterSql(string sql)
     {
-        using var connection = OpenWritable(MasterPath);
-        connection.Open();
+        using var connection = OpenFixtureWritable(MasterPath);
         using var command = connection.CreateCommand();
         command.CommandText = sql;
         command.ExecuteNonQuery();
@@ -86,8 +88,7 @@ internal sealed class DatabaseFixture : IDisposable
 
     public void ExecuteCatalogSql(string sql)
     {
-        using var connection = OpenWritable(CatalogPath);
-        connection.Open();
+        using var connection = OpenFixtureWritable(CatalogPath);
         using var command = connection.CreateCommand();
         command.CommandText = sql;
         command.ExecuteNonQuery();
@@ -103,8 +104,7 @@ internal sealed class DatabaseFixture : IDisposable
         int level = 17,
         string version = "DDR GRAND PRIX")
     {
-        using var connection = OpenWritable(MasterPath);
-        connection.Open();
+        using var connection = OpenFixtureWritable(MasterPath);
         using var command = connection.CreateCommand();
         command.CommandText =
             "INSERT INTO songs (song_id, title, artist, version, grand_prix_play_available, official_availability_match) " +
@@ -132,8 +132,7 @@ internal sealed class DatabaseFixture : IDisposable
         string canonicalTitle = "MAX 300",
         string canonicalArtist = "Artist")
     {
-        using var connection = OpenWritable(CatalogPath);
-        connection.Open();
+        using var connection = OpenFixtureWritable(CatalogPath);
         using var command = connection.CreateCommand();
         command.CommandText =
             "INSERT INTO jacket_references (" +
@@ -198,8 +197,7 @@ internal sealed class DatabaseFixture : IDisposable
             roiVersion,
             featureHash));
 
-        using var connection = OpenWritable(CatalogPath);
-        connection.Open();
+        using var connection = OpenFixtureWritable(CatalogPath);
         using var command = connection.CreateCommand();
         command.CommandText =
             "INSERT INTO result_text_features (" +
@@ -291,10 +289,37 @@ internal sealed class DatabaseFixture : IDisposable
         }
     }
 
-    private void CreateScoreDatabase()
+    private static DatabaseTemplate CreateDatabaseTemplate()
+    {
+        SQLitePCL.Batteries_V2.Init();
+        var directory = Path.Combine(
+            Path.GetTempPath(),
+            $"ddrgp-viewer-test-template-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        var scorePath = Path.Combine(directory, "scores.sqlite");
+        var masterPath = Path.Combine(directory, "master.sqlite");
+        var catalogPath = Path.Combine(directory, "jacket-catalog.sqlite");
+
+        try
+        {
+            CreateScoreDatabase(scorePath);
+            CreateMasterDatabase(masterPath);
+            CreateJacketCatalogDatabase(catalogPath);
+            return new DatabaseTemplate(
+                File.ReadAllBytes(scorePath),
+                File.ReadAllBytes(masterPath),
+                File.ReadAllBytes(catalogPath));
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    private static void CreateScoreDatabase(string scorePath)
     {
         var result = new PersonalScoreDbInitializer()
-            .InitializeIfMissingAsync(ScorePath)
+            .InitializeIfMissingAsync(scorePath)
             .GetAwaiter()
             .GetResult();
         if (!result.Succeeded || !result.Initialized)
@@ -304,9 +329,9 @@ internal sealed class DatabaseFixture : IDisposable
         }
     }
 
-    private void CreateMasterDatabase()
+    private static void CreateMasterDatabase(string masterPath)
     {
-        using var connection = OpenWritable(MasterPath);
+        using var connection = OpenWritable(masterPath);
         connection.Open();
         using var command = connection.CreateCommand();
         command.CommandText =
@@ -351,9 +376,9 @@ internal sealed class DatabaseFixture : IDisposable
         }
     }
 
-    private void CreateJacketCatalogDatabase()
+    private static void CreateJacketCatalogDatabase(string catalogPath)
     {
-        using var connection = OpenWritable(CatalogPath);
+        using var connection = OpenWritable(catalogPath);
         connection.Open();
         using var command = connection.CreateCommand();
         command.CommandText =
@@ -430,4 +455,29 @@ internal sealed class DatabaseFixture : IDisposable
             Mode = SqliteOpenMode.ReadWriteCreate,
             Pooling = false,
         }.ToString());
+
+    private static SqliteConnection OpenFixtureWritable(string path)
+    {
+        var connection = OpenWritable(path);
+        try
+        {
+            connection.Open();
+            using var command = connection.CreateCommand();
+            command.CommandText = "PRAGMA journal_mode = MEMORY;";
+            command.ExecuteScalar();
+            command.CommandText = "PRAGMA synchronous = OFF;";
+            command.ExecuteNonQuery();
+            return connection;
+        }
+        catch
+        {
+            connection.Dispose();
+            throw;
+        }
+    }
+
+    private sealed record DatabaseTemplate(
+        byte[] ScoreDatabase,
+        byte[] MasterDatabase,
+        byte[] CatalogDatabase);
 }

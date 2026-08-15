@@ -30,7 +30,7 @@ public sealed class LiveMonitoringViewModelTests
         ]);
         var live = new StubLiveMonitoringService(
             candidateCount: 2,
-            delayBeforeNextCandidate: TimeSpan.FromMilliseconds(2_200));
+            delayBeforeNextCandidate: TimeSpan.FromMilliseconds(300));
         var workflow = new StubLiveWorkflowRunner(() => results.Dequeue());
         var viewModel = new MainViewModel(
             new ScoreViewerRepository(),
@@ -39,7 +39,8 @@ public sealed class LiveMonitoringViewModelTests
             captureSaveWorkflowRunner: workflow,
             defaultDatabasePaths: ConfiguredPaths(fixture),
             ddrGpWindowEnumerator: new StubWindowEnumerator([target]),
-            liveMonitoringService: live);
+            liveMonitoringService: live,
+            unresolvedNotificationDisplayDuration: TimeSpan.FromMilliseconds(800));
 
         await viewModel.StartConfiguredContinuousCaptureAndSaveAsync(123);
 
@@ -49,11 +50,11 @@ public sealed class LiveMonitoringViewModelTests
         Assert.Equal(2, viewModel.MonitoringResults.Unresolved);
         Assert.Empty(viewModel.Plays);
 
-        await Task.Delay(TimeSpan.FromMilliseconds(1_500));
+        await Task.Delay(TimeSpan.FromMilliseconds(600));
         Assert.True(viewModel.HasUnresolvedNotification);
         Assert.Contains("confirmed-event-v1:latest", viewModel.UnresolvedNotificationMessage);
 
-        await Task.Delay(TimeSpan.FromSeconds(2));
+        await Task.Delay(TimeSpan.FromMilliseconds(300));
 
         Assert.False(viewModel.HasUnresolvedNotification);
         Assert.Equal("", viewModel.UnresolvedNotificationTitle);
