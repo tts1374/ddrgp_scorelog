@@ -866,6 +866,9 @@
                                             <Button x:Name="BestTitleModeButton" Content="曲名から"
                                                     Tag="" Style="{StaticResource BestBrowseTabButtonStyle}"
                                                     Click="BestBrowseMode_Click" />
+                                            <Button x:Name="BestGoalModeButton" Content="目標から"
+                                                    Tag="" Style="{StaticResource BestBrowseTabButtonStyle}"
+                                                    Click="BestBrowseMode_Click" />
                                         </WrapPanel>
                                     </StackPanel>
                                 </WrapPanel>
@@ -884,10 +887,10 @@
                                             <TextBlock Text="選択中"
                                                        Foreground="{StaticResource TextSecondaryBrush}"
                                                        FontSize="11" FontWeight="SemiBold" />
-                                            <TextBlock Text="  " />
                                             <TextBlock Text="{Binding BestSelectionDisplay}"
                                                        Foreground="{StaticResource TextPrimaryBrush}"
-                                                       FontWeight="Bold" />
+                                                       FontWeight="Bold"
+                                                       Margin="8,0,0,0" />
                                         </StackPanel>
                                         <Button x:Name="BestAxisChangeButton" Grid.Column="1"
                                                 Content="レベルを変更"
@@ -925,6 +928,40 @@
                                                      Style="{StaticResource BestTitleSearchTextBoxStyle}"
                                                      HorizontalAlignment="Stretch"
                                                      ToolTip="曲名の一部で検索" />
+                                        </StackPanel>
+                                        <StackPanel x:Name="BestGoalOptionsPanel" Visibility="Collapsed">
+                                            <Grid Margin="0,0,0,10">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="目標ランクを選択" FontSize="13" FontWeight="Bold" />
+                                                <TextBlock Grid.Column="1"
+                                                           Text="達成済み・記録なしを除き、目標まで近い順に表示"
+                                                           Foreground="{StaticResource TextSecondaryBrush}"
+                                                           FontSize="11" VerticalAlignment="Center" />
+                                            </Grid>
+                                            <ListBox x:Name="BestGoalOptionsGrid"
+                                                     ItemsSource="{Binding BestGoalOptions}"
+                                                     SelectedValuePath="Code"
+                                                     SelectedValue="{Binding BestGoalFilter, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                     SelectionChanged="BestGoalOptionsGrid_SelectionChanged"
+                                                     ItemContainerStyle="{StaticResource BestAxisOptionStyle}"
+                                                     BorderThickness="0"
+                                                     Background="Transparent"
+                                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                                     ScrollViewer.VerticalScrollBarVisibility="Disabled">
+                                                <ListBox.ItemsPanel>
+                                                    <ItemsPanelTemplate>
+                                                        <WrapPanel />
+                                                    </ItemsPanelTemplate>
+                                                </ListBox.ItemsPanel>
+                                                <ListBox.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <TextBlock Text="{Binding Display}" />
+                                                    </DataTemplate>
+                                                </ListBox.ItemTemplate>
+                                            </ListBox>
                                         </StackPanel>
                                         <StackPanel x:Name="BestLevelOptionsPanel">
                                             <Grid Margin="0,0,0,10">
@@ -1060,7 +1097,8 @@
                                        Foreground="{StaticResource TextPrimaryBrush}"
                                        VerticalAlignment="Bottom" />
                             <StackPanel x:Name="BestResultActions" Grid.Column="1" Orientation="Horizontal"
-                                        VerticalAlignment="Center">
+                                        VerticalAlignment="Center"
+                                        Visibility="{Binding BestSortVisibility, Mode=OneWay}">
                                 <TextBlock Text="並び順" Foreground="{StaticResource TextSecondaryBrush}"
                                            FontSize="11" FontWeight="SemiBold"
                                            VerticalAlignment="Center" Margin="0,0,6,0" />
@@ -1073,17 +1111,18 @@
                             </StackPanel>
                         </Grid>
 
-                        <Border Grid.Row="3" Style="{StaticResource CardStyle}" Padding="0">
-                            <DataGrid x:Name="BestChartGrid" ItemsSource="{Binding ChartBests}"
-                                      SelectedItem="{Binding SelectedChartBest, Mode=OneWay}"
-                                      SelectionChanged="BestChartGrid_SelectionChanged"
-                                      PreviewMouseLeftButtonDown="BestChartGrid_PreviewMouseLeftButtonDown"
-                                      ScrollViewer.ScrollChanged="BestChartGrid_ScrollChanged"
-                                      RowHeight="52" ColumnHeaderHeight="36"
-                                      HeadersVisibility="Column"
-                                      ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                                      Style="{StaticResource ViewerDataGridStyle}">
-                                <DataGrid.Columns>
+                        <Grid Grid.Row="3">
+                            <Border Style="{StaticResource CardStyle}" Padding="0">
+                                <DataGrid x:Name="BestChartGrid" ItemsSource="{Binding ChartBests}"
+                                          SelectedItem="{Binding SelectedChartBest, Mode=OneWay}"
+                                          SelectionChanged="BestChartGrid_SelectionChanged"
+                                          PreviewMouseLeftButtonDown="BestChartGrid_PreviewMouseLeftButtonDown"
+                                          ScrollViewer.ScrollChanged="BestChartGrid_ScrollChanged"
+                                          RowHeight="52" ColumnHeaderHeight="36"
+                                          HeadersVisibility="Column"
+                                          ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                          Style="{StaticResource ViewerDataGridStyle}">
+                                    <DataGrid.Columns>
                                     <DataGridTextColumn Header="曲名" Binding="{Binding SongTitle, Mode=OneWay}"
                                                         Width="2.3*" />
                                     <DataGridTemplateColumn Header="譜面" Width="1.3*">
@@ -1126,6 +1165,8 @@
                                             </DataTemplate>
                                         </DataGridTemplateColumn.CellTemplate>
                                     </DataGridTemplateColumn>
+                                    <DataGridTextColumn Header="目標まで" Binding="{Binding GoalRemainingScoreDisplay, Mode=OneWay}"
+                                                        Width="1.2*" Visibility="Collapsed" />
                                     <DataGridTemplateColumn Header="RANK" Width="0.8*">
                                         <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
@@ -1160,9 +1201,18 @@
                                                         Width="1.05*" />
                                     <DataGridTextColumn Header="最終プレー" Binding="{Binding LastPlayedAtDisplay, Mode=OneWay}"
                                                         Width="1.25*" />
-                                </DataGrid.Columns>
-                            </DataGrid>
-                        </Border>
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                            </Border>
+                            <Border x:Name="BestEmptyStatePanel" Style="{StaticResource CardStyle}" Padding="24"
+                                    Visibility="{Binding BestEmptyStateVisibility, Mode=OneWay}">
+                                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding BestEmptyStateMessage, Mode=OneWay}"
+                                               FontSize="15" FontWeight="SemiBold"
+                                               HorizontalAlignment="Center" />
+                                </StackPanel>
+                            </Border>
+                        </Grid>
                     </Grid>
                 </TabItem>
                 <TabItem x:Name="ChartDetailTab">

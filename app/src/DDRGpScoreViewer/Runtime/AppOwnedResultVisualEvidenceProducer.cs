@@ -184,9 +184,9 @@ internal sealed class AppOwnedResultVisualEvidenceProducer
 
         return score.Value switch
         {
-            >= 990_000 => "AAA",
-            >= 950_000 => "AA+",
-            >= 900_000 => "AA",
+            >= AaaRankBoundaryScore => "AAA",
+            >= AaPlusRankBoundaryScore => "AA+",
+            >= AaRankBoundaryScore => "AA",
             >= 890_000 => "AA-",
             >= 850_000 => "A+",
             >= 800_000 => "A",
@@ -201,6 +201,19 @@ internal sealed class AppOwnedResultVisualEvidenceProducer
             _ => "D",
         };
     }
+
+    internal static int? RankBoundaryScore(string? rank) =>
+        rank?.Trim().ToUpperInvariant() switch
+        {
+            "AAA" => AaaRankBoundaryScore,
+            "AA+" => AaPlusRankBoundaryScore,
+            "AA" => AaRankBoundaryScore,
+            _ => null,
+        };
+
+    private const int AaaRankBoundaryScore = 990_000;
+    private const int AaPlusRankBoundaryScore = 950_000;
+    private const int AaRankBoundaryScore = 900_000;
 
     internal static string? ClearTypeFromCounts(
         IReadOnlyDictionary<string, int?> values,

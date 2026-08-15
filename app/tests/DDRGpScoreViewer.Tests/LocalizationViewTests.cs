@@ -119,7 +119,7 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
     }
 
     [Fact]
-    public void Best_screen_switches_between_three_exclusive_modes_and_closes_choice_grid()
+    public void Best_screen_switches_between_four_exclusive_modes_and_closes_choice_grid()
     {
         using var databaseFixture = new DatabaseFixture();
         applicationFixture.Run(() =>
@@ -195,6 +195,33 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
                 Assert.Equal("バージョンを変更", window.BestAxisChangeButton.Content);
                 Assert.Equal(Visibility.Visible, window.BestVersionOptionsPanel.Visibility);
                 Assert.Equal(Visibility.Visible, window.BestProgressCard.Visibility);
+
+                window.BestGoalModeButton.RaiseEvent(
+                    new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+                window.UpdateLayout();
+                Assert.Equal(UserSettings.GoalBrowseMode, window.ViewModel.BestBrowseMode);
+                Assert.Equal("AAA", window.ViewModel.BestGoalFilter);
+                var selectionValue = Assert.Single(
+                    FindVisualChildren<TextBlock>(window.BestSelectionSummaryPanel),
+                    textBlock => textBlock.Text == "AAAを目指す");
+                Assert.Equal(8, selectionValue.Margin.Left);
+                Assert.Equal("目標を変更", window.BestAxisChangeButton.Content);
+                Assert.Equal(Visibility.Collapsed, window.BestProgressCard.Visibility);
+                Assert.Equal(Visibility.Collapsed, window.BestResultActions.Visibility);
+                Assert.Equal(Visibility.Collapsed, window.BestAxisPanel.Visibility);
+                Assert.Equal(Visibility.Visible, window.BestGoalOptionsPanel.Visibility);
+                Assert.Equal(Visibility.Visible, window.BestChartGrid.Columns[3].Visibility);
+                Assert.Equal(Visibility.Visible, window.BestEmptyStatePanel.Visibility);
+
+                window.BestAxisChangeButton.RaiseEvent(
+                    new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+                window.UpdateLayout();
+                Assert.Equal(Visibility.Visible, window.BestAxisPanel.Visibility);
+                Assert.Equal(Visibility.Visible, window.BestGoalOptionsPanel.Visibility);
+                window.BestGoalOptionsGrid.SelectedValue = "AA+";
+                DrainDispatcher(window.Dispatcher);
+                Assert.Equal("AA+", window.ViewModel.BestGoalFilter);
+                Assert.Equal(Visibility.Collapsed, window.BestAxisPanel.Visibility);
 
                 window.BestTitleModeButton.RaiseEvent(
                     new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));

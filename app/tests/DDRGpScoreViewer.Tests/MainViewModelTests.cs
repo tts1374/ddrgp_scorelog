@@ -727,6 +727,189 @@ public sealed class MainViewModelTests
     }
 
     [Theory]
+    [InlineData("AAA", 989_990, 10)]
+    [InlineData("AAA", 990_000, 0)]
+    [InlineData("AAA", 1_000_000, 0)]
+    [InlineData("AA+", 949_990, 10)]
+    [InlineData("AA+", 950_000, 0)]
+    [InlineData("AA+", 990_000, 0)]
+    [InlineData("AA", 899_990, 10)]
+    [InlineData("AA", 900_000, 0)]
+    [InlineData("AA", 950_000, 0)]
+    public void Goal_mode_uses_rank_boundary_scores_for_remaining_points(
+        string goal,
+        int score,
+        int expectedRemaining)
+    {
+        using var fixture = new DatabaseFixture();
+        fixture.AddPlay(
+            "goal-play",
+            "2026-08-01T12:00:00+00:00",
+            score,
+            1_000);
+
+        var viewModel = new MainViewModel(
+            new ScoreViewerRepository(),
+            userSettingsStore: new MemoryUserSettingsStore(null));
+        viewModel.Load(fixture.ScorePath, fixture.MasterPath, persist: false);
+        viewModel.BestBrowseMode = UserSettings.GoalBrowseMode;
+        viewModel.BestGoalFilter = goal;
+
+        if (expectedRemaining == 0)
+        {
+            Assert.Empty(viewModel.ChartBests);
+            Assert.Equal(0, viewModel.ChartBestTotalCount);
+            return;
+        }
+
+        var chart = Assert.Single(viewModel.ChartBests);
+        Assert.Equal("chart-1", chart.ChartId);
+        Assert.Equal(expectedRemaining, chart.GoalRemainingScore);
+        Assert.Equal($"あと {expectedRemaining:N0}点", chart.GoalRemainingScoreDisplay);
+    }
+
+    [Fact]
+    public void Goal_mode_filters_recorded_unmet_charts_by_play_style_and_distance()
+    {
+        using var fixture = new DatabaseFixture();
+        fixture.AddMasterSongAndChart(
+            "song-near",
+            "NEAR SONG",
+            "Artist",
+            "chart-near",
+            level: 5,
+            version: "DDR WORLD");
+        fixture.AddMasterSongAndChart(
+            "song-far",
+            "FAR SONG",
+            "Artist",
+            "chart-far",
+            level: 18,
+            version: "DDR A3");
+        fixture.AddMasterSongAndChart(
+            "song-achieved",
+            "ACHIEVED SONG",
+            "Artist",
+            "chart-achieved",
+            level: 10,
+            version: "DDR WORLD");
+        fixture.AddMasterSongAndChart(
+            "song-no-record",
+            "NO RECORD SONG",
+            "Artist",
+            "chart-no-record",
+            level: 12,
+            version: "DDR WORLD");
+        fixture.AddMasterSongAndChart(
+            "song-double",
+            "DOUBLE SONG",
+            "Artist",
+            "chart-double",
+            playStyle: UserSettings.DoublePlayStyle,
+            level: 12,
+            version: "DDR WORLD");
+        fixture.AddPlay("play-near", "2026-08-01T12:00:00+00:00", 989_000, 1_000, "song-near", "chart-near");
+        fixture.AddPlay("play-far", "2026-08-01T12:01:00+00:00", 980_000, 1_000, "song-far", "chart-far");
+        fixture.AddPlay("play-achieved", "2026-08-01T12:02:00+00:00", 990_000, 1_000, "song-achieved", "chart-achieved");
+        fixture.AddPlay("play-double", "2026-08-01T12:03:00+00:00", 989_500, 1_000, "song-double", "chart-double");
+
+        var viewModel = new MainViewModel(
+            new ScoreViewerRepository(),
+            userSettingsStore: new MemoryUserSettingsStore(null));
+        viewModel.Load(fixture.ScorePath, fixture.MasterPath, persist: false);
+        viewModel.BestBrowseMode = UserSettings.GoalBrowseMode;
+        viewModel.BestGoalFilter = "AAA";
+        viewModel.BestSortFilter = MainViewModel.BestSortTitleAscending;
+
+        Assert.Equal("AAAを目指す", viewModel.BestSelectionDisplay);
+        Assert.Equal(["chart-near", "chart-far"], viewModel.ChartBests.Select(item => item.ChartId));
+        Assert.Equal([1_000, 10_000], viewModel.ChartBests.Select(item => item.GoalRemainingScore));
+        Assert.DoesNotContain(viewModel.ChartBests, item => item.ChartId is "chart-achieved" or "chart-no-record");
+        Assert.Equal(System.Windows.Visibility.Collapsed, viewModel.BestProgressVisibility);
+        Assert.Equal(System.Windows.Visibility.Collapsed, viewModel.BestSortVisibility);
+        Assert.Equal(0, viewModel.BestProgressTargetCount);
+
+        viewModel.BestPlayStyleFilter = UserSettings.DoublePlayStyle;
+
+        var doubleChart = Assert.Single(viewModel.ChartBests);
+        Assert.Equal("chart-double", doubleChart.ChartId);
+        Assert.Equal(500, doubleChart.GoalRemainingScore);
+    }
+
+    [Fact]
+    public void Goal_mode_paginates_fifty_rows_and_loads_the_remaining_rows()
+    {
+        using var fixture = new DatabaseFixture();
+        for (var index = 1; index <= 52; index++)
+        {
+            var songId = $"goal-song-{index:00}";
+            var chartId = $"goal-chart-{index:00}";
+            fixture.AddMasterSongAndChart(songId, $"GOAL SONG {index:00}", "Artist", chartId);
+            fixture.AddPlay(
+                $"goal-play-{index:00}",
+                DateTimeOffset.UtcNow.AddMinutes(-index).ToString("O"),
+                989_000,
+                1_000,
+                songId,
+                chartId);
+        }
+
+        var viewModel = new MainViewModel(
+            new ScoreViewerRepository(),
+            userSettingsStore: new MemoryUserSettingsStore(null));
+        viewModel.Load(fixture.ScorePath, fixture.MasterPath, persist: false);
+        viewModel.BestBrowseMode = UserSettings.GoalBrowseMode;
+
+        Assert.Equal(52, viewModel.ChartBestTotalCount);
+        Assert.Equal(50, viewModel.ChartBests.Count);
+        Assert.True(viewModel.CanLoadMoreChartBests);
+
+        viewModel.LoadMoreChartBests();
+
+        Assert.Equal(52, viewModel.ChartBests.Count);
+        Assert.False(viewModel.CanLoadMoreChartBests);
+        Assert.All(viewModel.ChartBests, item => Assert.Equal(1_000, item.GoalRemainingScore));
+
+        var selected = viewModel.ChartBests[10];
+        viewModel.SelectChartBest(selected);
+
+        Assert.Equal(52, viewModel.ChartBestDisplayedCount);
+        Assert.Equal(52, viewModel.ChartBests.Count);
+        Assert.Equal(selected.ChartId, viewModel.SelectedChartBest?.ChartId);
+    }
+
+    [Fact]
+    public void Goal_mode_selection_opens_the_same_chart_detail_as_other_best_modes()
+    {
+        using var fixture = new DatabaseFixture();
+        fixture.AddMasterSongAndChart(
+            "song-goal-detail",
+            "GOAL DETAIL SONG",
+            "Artist",
+            "chart-goal-detail");
+        fixture.AddPlay(
+            "goal-detail-play",
+            "2026-08-01T12:00:00+00:00",
+            989_000,
+            1_000,
+            "song-goal-detail",
+            "chart-goal-detail");
+
+        var viewModel = new MainViewModel(
+            new ScoreViewerRepository(),
+            userSettingsStore: new MemoryUserSettingsStore(null));
+        viewModel.Load(fixture.ScorePath, fixture.MasterPath, persist: false);
+        viewModel.BestBrowseMode = UserSettings.GoalBrowseMode;
+
+        var chart = viewModel.ChartBests.Single(item => item.ChartId == "chart-goal-detail");
+        viewModel.SelectChartBest(chart);
+
+        Assert.Equal("chart-goal-detail", viewModel.SelectedChartBest?.ChartId);
+        Assert.Equal("GOAL DETAIL SONG", viewModel.ChartDetailSongTitle);
+        Assert.Equal("989,000", viewModel.ChartDetailBestScoreDisplay);
+    }
+
+    [Theory]
     [InlineData(49, 49, 49)]
     [InlineData(50, 50, 50)]
     [InlineData(51, 50, 51)]

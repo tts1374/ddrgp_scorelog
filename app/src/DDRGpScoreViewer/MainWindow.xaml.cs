@@ -436,14 +436,14 @@ public partial class MainWindow : System.Windows.Window
             : new Thickness(28, 24, 28, 24);
         BestChartGrid.Tag = compact ? "Compact" : "Wide";
 
-        if (BestChartGrid.Columns.Count != 8)
+        if (BestChartGrid.Columns.Count != 9)
         {
             return;
         }
 
         var weights = compact
-            ? new[] { 2.1, 1.05, 1.3, 0.65, 0.85, 0.85, 0.95, 1.15 }
-            : new[] { 2.4, 1.35, 1.55, 0.8, 1.0, 1.0, 1.05, 1.3 };
+            ? new[] { 2.1, 1.05, 1.3, 1.1, 0.65, 0.85, 0.85, 0.95, 1.15 }
+            : new[] { 2.4, 1.35, 1.55, 1.2, 0.8, 1.0, 1.0, 1.05, 1.3 };
         for (var index = 0; index < weights.Length; index++)
         {
             BestChartGrid.Columns[index].Width =
@@ -678,7 +678,9 @@ public partial class MainWindow : System.Windows.Window
             ? UserSettings.VersionBrowseMode
             : ReferenceEquals(sender, BestTitleModeButton)
                 ? UserSettings.TitleBrowseMode
-                : UserSettings.LevelBrowseMode;
+                : ReferenceEquals(sender, BestGoalModeButton)
+                    ? UserSettings.GoalBrowseMode
+                    : UserSettings.LevelBrowseMode;
         bestAxisPanelOpen = false;
         UpdateBestBrowseModeButtons();
         UpdateBestBrowseModeUi();
@@ -717,10 +719,21 @@ public partial class MainWindow : System.Windows.Window
         UpdateBestBrowseModeUi();
     }
 
+    private void BestGoalOptionsGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (e.AddedItems.Count == 0 || restoringBestChartListState)
+        {
+            return;
+        }
+
+        bestAxisPanelOpen = false;
+        UpdateBestBrowseModeUi();
+    }
+
     private void UpdateBestBrowseModeButtons()
     {
         if (BestLevelModeButton is null || BestVersionModeButton is null ||
-            BestTitleModeButton is null)
+            BestTitleModeButton is null || BestGoalModeButton is null)
         {
             return;
         }
@@ -734,19 +747,24 @@ public partial class MainWindow : System.Windows.Window
         BestTitleModeButton.Tag = viewModel.BestBrowseMode == UserSettings.TitleBrowseMode
             ? "Selected"
             : null;
+        BestGoalModeButton.Tag = viewModel.BestBrowseMode == UserSettings.GoalBrowseMode
+            ? "Selected"
+            : null;
     }
 
     private void UpdateBestBrowseModeUi()
     {
         if (BestSelectionSummaryPanel is null || BestTitleSearchPanel is null ||
             BestAxisPanel is null || BestLevelOptionsPanel is null ||
-            BestVersionOptionsPanel is null || BestAxisChangeButton is null)
+            BestVersionOptionsPanel is null || BestGoalOptionsPanel is null ||
+            BestAxisChangeButton is null)
         {
             return;
         }
 
         var titleMode = viewModel.BestBrowseMode == UserSettings.TitleBrowseMode;
         var versionMode = viewModel.BestBrowseMode == UserSettings.VersionBrowseMode;
+        var goalMode = viewModel.BestBrowseMode == UserSettings.GoalBrowseMode;
         BestSelectionSummaryPanel.Visibility = titleMode
             ? Visibility.Collapsed
             : Visibility.Visible;
@@ -756,15 +774,26 @@ public partial class MainWindow : System.Windows.Window
         BestAxisPanel.Visibility = titleMode || bestAxisPanelOpen
             ? Visibility.Visible
             : Visibility.Collapsed;
-        BestLevelOptionsPanel.Visibility = titleMode || versionMode
+        BestLevelOptionsPanel.Visibility = titleMode || versionMode || goalMode
             ? Visibility.Collapsed
             : Visibility.Visible;
         BestVersionOptionsPanel.Visibility = versionMode
             ? Visibility.Visible
             : Visibility.Collapsed;
-        BestAxisChangeButton.Content = viewModel.BestBrowseMode == UserSettings.VersionBrowseMode
-            ? Localization.Get("バージョンを変更")
-            : Localization.Get("レベルを変更");
+        BestGoalOptionsPanel.Visibility = goalMode
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+        BestAxisChangeButton.Content = goalMode
+            ? Localization.Get("目標を変更")
+            : versionMode
+                ? Localization.Get("バージョンを変更")
+                : Localization.Get("レベルを変更");
+        if (BestChartGrid is not null && BestChartGrid.Columns.Count > 3)
+        {
+            BestChartGrid.Columns[3].Visibility = goalMode
+                ? Visibility.Visible
+                : Visibility.Collapsed;
+        }
     }
 
     private void BestChartGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
