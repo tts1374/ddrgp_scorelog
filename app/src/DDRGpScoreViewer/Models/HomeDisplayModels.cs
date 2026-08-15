@@ -3,6 +3,70 @@ using DDRGpScoreViewer;
 
 namespace DDRGpScoreViewer.Models;
 
+public sealed record HomeSummaryData(
+    DateTime DisplayDate,
+    int PlayCount,
+    long? TotalNotes,
+    double? Calories)
+{
+    public string DateDisplay => DisplayDate.ToString(
+        "yyyy/MM/dd",
+        CultureInfo.CurrentCulture);
+
+    public string PlayCountDisplay => PlayCount.ToString(
+        "N0",
+        CultureInfo.CurrentCulture);
+
+    public string TotalNotesDisplay => TotalNotes is long totalNotes
+        ? totalNotes.ToString("N0", CultureInfo.CurrentCulture)
+        : "—";
+
+    public string CaloriesDisplay => Calories is double calories && double.IsFinite(calories)
+        ? $"{calories.ToString("0.0", CultureInfo.CurrentCulture)} kcal"
+        : "—";
+
+    public string CopyText =>
+        $"{DisplayDate.ToString("M月d日", CultureInfo.CurrentCulture)}のDDR GRAND PRIX\n\n" +
+        $"プレー数：{PlayCountDisplay}\n" +
+        $"総ノーツ数：{TotalNotesDisplay}\n" +
+        $"消費カロリー：{CaloriesDisplay}";
+
+    public static HomeSummaryData Empty(DateTimeOffset now) =>
+        new(HomeDisplayPeriod.From(now).DisplayDate, 0, null, null);
+}
+
+internal readonly record struct HomeDisplayPeriod(
+    DateTime DisplayDate,
+    DateTimeOffset Start,
+    DateTimeOffset End)
+{
+    private static readonly TimeSpan Boundary = TimeSpan.FromHours(7);
+
+    public static HomeDisplayPeriod From(DateTimeOffset now)
+    {
+        var displayDate = now.TimeOfDay < Boundary
+            ? now.Date.AddDays(-1)
+            : now.Date;
+        displayDate = DateTime.SpecifyKind(displayDate, DateTimeKind.Unspecified);
+        var start = new DateTimeOffset(displayDate, now.Offset).AddHours(7);
+        return new HomeDisplayPeriod(displayDate, start, start.AddDays(1));
+    }
+
+    public bool Contains(string value)
+    {
+        if (!DateTimeOffset.TryParse(
+                value,
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.AllowWhiteSpaces | DateTimeStyles.AssumeUniversal,
+                out var timestamp))
+        {
+            return false;
+        }
+
+        return timestamp >= Start && timestamp < End;
+    }
+}
+
 /// <summary>
 /// Home-only projection of a saved play with the previous best values needed by
 /// the summary, recent-play rows, and best-update rows.

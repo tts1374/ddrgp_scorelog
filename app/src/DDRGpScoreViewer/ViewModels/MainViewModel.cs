@@ -77,12 +77,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private int totalPlayCount;
     private string lastSavedAt = "";
     private bool suppressBestBrowseStatePersistence;
-    private int homeTodayPlayCount;
-    private int homeTodayScoreUpdateCount;
-    private int homeTodayExScoreUpdateCount;
-    private int homeTodayFullComboCount;
-    private string homeTodayDateDisplay =
-        DateTimeOffset.Now.ToString("yyyy/MM/dd", CultureInfo.CurrentCulture);
+    private HomeSummaryData homeTodaySummary = HomeSummaryData.Empty(DateTimeOffset.Now);
     private string statusTitle = Localization.Get("既定のDBを確認しています");
     private string statusMessage = Localization.Get(
         "現在の環境に対応する既定pathのDBを検証して、履歴と自己ベストを表示します。");
@@ -811,35 +806,17 @@ public sealed class MainViewModel : INotifyPropertyChanged
         private set => SetProperty(ref homeLatestPlay, value);
     }
 
-    public int HomeTodayPlayCount
-    {
-        get => homeTodayPlayCount;
-        private set => SetProperty(ref homeTodayPlayCount, value);
-    }
+    public HomeSummaryData HomeTodaySummary => homeTodaySummary;
 
-    public int HomeTodayScoreUpdateCount
-    {
-        get => homeTodayScoreUpdateCount;
-        private set => SetProperty(ref homeTodayScoreUpdateCount, value);
-    }
+    public int HomeTodayPlayCount => homeTodaySummary.PlayCount;
 
-    public int HomeTodayExScoreUpdateCount
-    {
-        get => homeTodayExScoreUpdateCount;
-        private set => SetProperty(ref homeTodayExScoreUpdateCount, value);
-    }
+    public string HomeTodayTotalNotesDisplay => homeTodaySummary.TotalNotesDisplay;
 
-    public int HomeTodayFullComboCount
-    {
-        get => homeTodayFullComboCount;
-        private set => SetProperty(ref homeTodayFullComboCount, value);
-    }
+    public string HomeTodayCaloriesDisplay => homeTodaySummary.CaloriesDisplay;
 
-    public string HomeTodayDateDisplay
-    {
-        get => homeTodayDateDisplay;
-        private set => SetProperty(ref homeTodayDateDisplay, value);
-    }
+    public string HomeTodaySummaryCopyText => homeTodaySummary.CopyText;
+
+    public string HomeTodayDateDisplay => homeTodaySummary.DateDisplay;
 
     public bool HasHomeBestUpdates => HomeBestUpdates.Count > 0;
 
@@ -3579,6 +3556,35 @@ public sealed class MainViewModel : INotifyPropertyChanged
         LoadCore(scoreDatabasePath, masterDatabasePath, catalogDatabasePath, persist);
     }
 
+    internal void RefreshHome(DateTimeOffset now, bool forceRefresh = false)
+    {
+        var period = HomeDisplayPeriod.From(now);
+        if (!forceRefresh && homeTodaySummary.DisplayDate == period.DisplayDate)
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(ScoreDatabasePath) ||
+            string.IsNullOrWhiteSpace(MasterDatabasePath) ||
+            ScoreDatabasePath == "—" ||
+            MasterDatabasePath == "—")
+        {
+            return;
+        }
+
+        try
+        {
+            var homeData = repository.LoadHome(ScoreDatabasePath, MasterDatabasePath, now);
+            ApplyHomeData(homeData, Plays);
+            NotifyRecentPlayListState();
+            NotifyDataManagementState();
+        }
+        catch (ViewerDatabaseException)
+        {
+            // Keep the last good snapshot; the next timer tick retries the read.
+        }
+    }
+
     private void LoadCore(
         string scoreDatabasePath,
         string masterDatabasePath,
@@ -4362,13 +4368,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         HomeLatestPlay = homeData.LatestPlay;
         Replace(HomeRecentPlays, homeData.RecentPlays);
         Replace(HomeBestUpdates, homeData.BestUpdates);
-        HomeTodayDateDisplay = DateTimeOffset.Now.ToString(
-            "yyyy/MM/dd",
-            CultureInfo.CurrentCulture);
-        HomeTodayPlayCount = homeData.TodayPlayCount;
-        HomeTodayScoreUpdateCount = homeData.TodayScoreUpdateCount;
-        HomeTodayExScoreUpdateCount = homeData.TodayExScoreUpdateCount;
-        HomeTodayFullComboCount = homeData.TodayFullComboCount;
+        SetHomeSummary(homeData.TodaySummary);
         totalPlayCount = homeData.TotalPlayCount;
         lastSavedAt = homeData.LastSavedAt;
         OnPropertyChanged(nameof(HasHomeBestUpdates));
@@ -4386,15 +4386,29 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 .Where(play => play.IsScoreBestUpdate || play.IsExScoreBestUpdate)
                 .Take(5));
 
-        var today = DateTimeOffset.Now.Date;
+        var period = HomeDisplayPeriod.From(DateTimeOffset.Now);
         var todayPlays = projectedPlays
-            .Where(play => IsLocalDate(play.Play.SavedAt, today))
+            .Where(play => period.Contains(play.Play.PlayedAt))
             .ToArray();
-        HomeTodayDateDisplay = today.ToString("yyyy/MM/dd", CultureInfo.CurrentCulture);
-        HomeTodayPlayCount = todayPlays.Length;
-        HomeTodayScoreUpdateCount = todayPlays.Count(play => play.IsScoreBestUpdate);
-        HomeTodayExScoreUpdateCount = todayPlays.Count(play => play.IsExScoreBestUpdate);
-        HomeTodayFullComboCount = todayPlays.Count(IsFullCombo);
+        long? totalNotes = todayPlays.Length == 0
+            ? null
+            : todayPlays.Sum(play =>
+                (long)play.Play.Marvelous +
+                play.Play.Perfect +
+                play.Play.Great +
+                play.Play.Good +
+                play.Play.Miss +
+                (play.Play.Ok ?? 0));
+        var calorieValues = todayPlays
+            .Select(play => play.Play.Calories)
+            .Where(calories => calories is double value && double.IsFinite(value))
+            .Select(calories => calories!.Value)
+            .ToArray();
+        SetHomeSummary(new HomeSummaryData(
+            period.DisplayDate,
+            todayPlays.Length,
+            totalNotes,
+            calorieValues.Length == 0 ? null : calorieValues.Sum()));
         OnPropertyChanged(nameof(HasHomeBestUpdates));
         OnPropertyChanged(nameof(HomeBestUpdateSummaryDisplay));
     }
@@ -4404,15 +4418,25 @@ public sealed class MainViewModel : INotifyPropertyChanged
         HomeLatestPlay = null;
         HomeRecentPlays.Clear();
         HomeBestUpdates.Clear();
-        HomeTodayDateDisplay = DateTimeOffset.Now.ToString(
-            "yyyy/MM/dd",
-            CultureInfo.CurrentCulture);
-        HomeTodayPlayCount = 0;
-        HomeTodayScoreUpdateCount = 0;
-        HomeTodayExScoreUpdateCount = 0;
-        HomeTodayFullComboCount = 0;
+        SetHomeSummary(HomeSummaryData.Empty(DateTimeOffset.Now));
         OnPropertyChanged(nameof(HasHomeBestUpdates));
         OnPropertyChanged(nameof(HomeBestUpdateSummaryDisplay));
+    }
+
+    private void SetHomeSummary(HomeSummaryData value)
+    {
+        if (EqualityComparer<HomeSummaryData>.Default.Equals(homeTodaySummary, value))
+        {
+            return;
+        }
+
+        homeTodaySummary = value;
+        OnPropertyChanged(nameof(HomeTodaySummary));
+        OnPropertyChanged(nameof(HomeTodayPlayCount));
+        OnPropertyChanged(nameof(HomeTodayTotalNotesDisplay));
+        OnPropertyChanged(nameof(HomeTodayCaloriesDisplay));
+        OnPropertyChanged(nameof(HomeTodaySummaryCopyText));
+        OnPropertyChanged(nameof(HomeTodayDateDisplay));
     }
 
     private static IReadOnlyList<HomePlayItem> BuildHomePlayItems(
@@ -4459,15 +4483,6 @@ public sealed class MainViewModel : INotifyPropertyChanged
             out var timestamp)
             ? timestamp
             : DateTimeOffset.MinValue;
-
-    private static bool IsLocalDate(string value, DateTime date)
-    {
-        var timestamp = ParseTimestamp(value);
-        return timestamp != DateTimeOffset.MinValue && timestamp.ToLocalTime().Date == date;
-    }
-
-    private static bool IsFullCombo(HomePlayItem play) => play.ClearDisplay is
-        "PFC" or "GFC" or "FC" or "MFC";
 
     private static string BuildMasterDatabaseBlockMessage(
         MasterDatabaseInspection masterInspection,

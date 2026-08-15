@@ -382,6 +382,40 @@ public sealed class ScoreViewerRepository
         return LoadCore(scoreDatabasePath, masterDatabasePath, catalogDatabasePath);
     }
 
+    internal HomeDisplayData LoadHome(
+        string scoreDatabasePath,
+        string masterDatabasePath,
+        DateTimeOffset now)
+    {
+        ValidateInputPath(scoreDatabasePath, "プレーデータ");
+        ValidateInputPath(masterDatabasePath, "楽曲データ");
+        try
+        {
+            using var scoreConnection = OpenReadOnly(scoreDatabasePath);
+            ValidateScoreDatabase(scoreConnection);
+            using var masterConnection = OpenReadOnly(masterDatabasePath);
+            _ = ValidateMasterDatabase(masterConnection);
+            var masterCharts = ReadMasterCharts(masterConnection);
+            return ReadHomeData(scoreConnection, masterCharts, now);
+        }
+        catch (ViewerDatabaseException)
+        {
+            throw;
+        }
+        catch (SqliteException exception)
+        {
+            throw new ViewerDatabaseException(
+                "データを読み込めませんでした。ファイルを確認して、もう一度お試しください。",
+                exception);
+        }
+        catch (IOException exception)
+        {
+            throw new ViewerDatabaseException(
+                "データを読み込めませんでした。ファイルを確認して、もう一度お試しください。",
+                exception);
+        }
+    }
+
     public IReadOnlyList<PlayHistoryItem> LoadRecentPlays(
         string scoreDatabasePath,
         string masterDatabasePath,
@@ -498,7 +532,7 @@ public sealed class ScoreViewerRepository
 
             var plays = ReadPlays(scoreConnection, masterCharts, 0, RecentPlayPageSize);
             var chartBests = ReadChartBests(scoreConnection, masterCharts);
-            var home = ReadHomeData(scoreConnection, masterCharts);
+            var home = ReadHomeData(scoreConnection, masterCharts, DateTimeOffset.Now);
             var chartCatalog = ReadChartCatalog(masterCharts);
             return new ViewerData(
                 plays,
@@ -1233,19 +1267,17 @@ public sealed class ScoreViewerRepository
 
     private static HomeDisplayData ReadHomeData(
         SqliteConnection connection,
-        IReadOnlyDictionary<string, MasterChart> masterCharts)
+        IReadOnlyDictionary<string, MasterChart> masterCharts,
+        DateTimeOffset now)
     {
         var latest = ReadHomeProjectionRows(connection, masterCharts, onlyBestUpdates: false, 6);
         var bestUpdates = ReadHomeProjectionRows(connection, masterCharts, onlyBestUpdates: true, 5);
-        var todayCounts = ReadHomeTodayCounts(connection);
+        var todaySummary = ReadHomeTodaySummary(connection, now);
         return new HomeDisplayData(
             latest.FirstOrDefault(),
             latest.Skip(1).Take(5).ToArray(),
             bestUpdates,
-            todayCounts.TodayPlayCount,
-            todayCounts.TodayScoreUpdateCount,
-            todayCounts.TodayExScoreUpdateCount,
-            todayCounts.TodayFullComboCount,
+            todaySummary,
             ReadPlayCount(connection),
             ReadLastSavedAt(connection));
     }
@@ -1494,72 +1526,34 @@ public sealed class ScoreViewerRepository
         return reader.Read() ? ReadHomePlayItem(reader, masterCharts) : null;
     }
 
-    private static (int TodayPlayCount, int TodayScoreUpdateCount, int TodayExScoreUpdateCount,
-        int TodayFullComboCount) ReadHomeTodayCounts(SqliteConnection connection)
+    private static HomeSummaryData ReadHomeTodaySummary(
+        SqliteConnection connection,
+        DateTimeOffset now)
     {
-        var now = DateTimeOffset.Now;
-        var start = new DateTimeOffset(now.Date, now.Offset).ToUniversalTime();
-        var end = start.AddDays(1);
+        var period = HomeDisplayPeriod.From(now);
         using var command = connection.CreateCommand();
         command.CommandText =
             """
-            WITH projected AS (
-              SELECT p.created_at, p.score, p.ex_score, p.clear_type,
-                     (
-                       SELECT MAX(prior.score)
-                       FROM plays prior
-                       WHERE prior.song_id = p.song_id AND prior.chart_id = p.chart_id
-                         AND (
-                           julianday(prior.played_at) < julianday(p.played_at)
-                           OR (julianday(prior.played_at) = julianday(p.played_at)
-                               AND prior.played_at < p.played_at)
-                           OR (julianday(prior.played_at) = julianday(p.played_at)
-                               AND prior.played_at = p.played_at
-                               AND prior.play_id < p.play_id)
-                         )
-                     ) AS previous_score,
-                     (
-                       SELECT MAX(prior.ex_score)
-                       FROM plays prior
-                       WHERE prior.song_id = p.song_id AND prior.chart_id = p.chart_id
-                         AND (
-                           julianday(prior.played_at) < julianday(p.played_at)
-                           OR (julianday(prior.played_at) = julianday(p.played_at)
-                               AND prior.played_at < p.played_at)
-                           OR (julianday(prior.played_at) = julianday(p.played_at)
-                               AND prior.played_at = p.played_at
-                               AND prior.play_id < p.play_id)
-                         )
-                     ) AS previous_ex_score
-              FROM plays p
-            )
             SELECT COUNT(*),
-                   COALESCE(SUM(
-                     CASE WHEN previous_score IS NOT NULL AND score > previous_score
-                          THEN 1 ELSE 0 END), 0),
-                   COALESCE(SUM(
-                     CASE WHEN previous_ex_score IS NOT NULL AND ex_score > previous_ex_score
-                          THEN 1 ELSE 0 END), 0),
-                   COALESCE(SUM(
-                     CASE WHEN clear_type IN ('PFC', 'GFC', 'FC', 'FULL COMBO', 'MFC')
-                          THEN 1 ELSE 0 END), 0)
-            FROM projected
-            WHERE julianday(created_at) >= julianday($start)
-              AND julianday(created_at) < julianday($end);
+                   SUM(marvelous + perfect + great + good + miss + COALESCE(ok, 0)),
+                   SUM(calories)
+            FROM plays
+            WHERE julianday(played_at) >= julianday($start)
+              AND julianday(played_at) < julianday($end);
             """;
-        command.Parameters.AddWithValue("$start", start.ToString("O"));
-        command.Parameters.AddWithValue("$end", end.ToString("O"));
+        command.Parameters.AddWithValue("$start", period.Start.ToString("O"));
+        command.Parameters.AddWithValue("$end", period.End.ToString("O"));
         using var reader = command.ExecuteReader();
         if (!reader.Read())
         {
-            return (0, 0, 0, 0);
+            return new HomeSummaryData(period.DisplayDate, 0, null, null);
         }
 
-        return (
+        return new HomeSummaryData(
+            period.DisplayDate,
             reader.GetInt32(0),
-            reader.GetInt32(1),
-            reader.GetInt32(2),
-            reader.GetInt32(3));
+            reader.IsDBNull(1) ? null : reader.GetInt64(1),
+            reader.IsDBNull(2) ? null : reader.GetDouble(2));
     }
 
     private static int ReadPlayCount(SqliteConnection connection)
@@ -1764,7 +1758,8 @@ public sealed class ScoreViewerRepository
         string.Join(' ', sql.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries))
             .ToLowerInvariant()
             .Replace("( ", "(", StringComparison.Ordinal)
-            .Replace(" )", ")", StringComparison.Ordinal);
+            .Replace(" )", ")", StringComparison.Ordinal)
+            .Replace(" ,", ",", StringComparison.Ordinal);
 
     private static Dictionary<string, string> ReadMetadata(
         SqliteConnection connection,
