@@ -1,5 +1,6 @@
 using System.Globalization;
 using DDRGpScoreViewer;
+using DDRGpScoreViewer.Data;
 
 namespace DDRGpScoreViewer.Models;
 
@@ -25,11 +26,41 @@ public sealed record HomeSummaryData(
         ? $"{calories.ToString("0.0", CultureInfo.CurrentCulture)} kcal"
         : "—";
 
-    public string CopyText =>
-        $"{DisplayDate.ToString("M月d日", CultureInfo.CurrentCulture)}のDDR GRAND PRIX\n\n" +
-        $"プレー数：{PlayCountDisplay}\n" +
-        $"総ノーツ数：{TotalNotesDisplay}\n" +
-        $"消費カロリー：{CaloriesDisplay}";
+    public string CopyText => GetCopyText(Localization.CurrentLanguage);
+
+    internal string GetCopyText(string language)
+    {
+        var normalizedLanguage = UserSettings.NormalizeLanguage(language);
+        var dateDisplay = normalizedLanguage switch
+        {
+            UserSettings.EnglishLanguage => DisplayDate.ToString(
+                "MMM d",
+                CultureInfo.GetCultureInfo("en-US")),
+            UserSettings.KoreanLanguage => DisplayDate.ToString(
+                "M월 d일",
+                CultureInfo.GetCultureInfo("ko-KR")),
+            _ => DisplayDate.ToString("M月d日", CultureInfo.GetCultureInfo("ja-JP")),
+        };
+
+        var title = string.Format(
+            CultureInfo.CurrentCulture,
+            Localization.GetForLanguage("{0}のDDR GRAND PRIX", normalizedLanguage),
+            dateDisplay);
+        var playCount = string.Format(
+            CultureInfo.CurrentCulture,
+            Localization.GetForLanguage("プレー数：{0}", normalizedLanguage),
+            PlayCountDisplay);
+        var totalNotes = string.Format(
+            CultureInfo.CurrentCulture,
+            Localization.GetForLanguage("総ノーツ数：{0}", normalizedLanguage),
+            TotalNotesDisplay);
+        var calories = string.Format(
+            CultureInfo.CurrentCulture,
+            Localization.GetForLanguage("消費カロリー：{0}", normalizedLanguage),
+            CaloriesDisplay);
+
+        return $"{title}\n\n{playCount}\n{totalNotes}\n{calories}";
+    }
 
     public static HomeSummaryData Empty(DateTimeOffset now) =>
         new(HomeDisplayPeriod.From(now).DisplayDate, 0, null, null);

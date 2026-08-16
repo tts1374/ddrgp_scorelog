@@ -518,9 +518,10 @@
                                         <TextBlock Text="今日のプレー状況" FontSize="15" FontWeight="SemiBold" />
                                         <TextBlock Foreground="{StaticResource TextSecondaryBrush}"
                                                    FontSize="11" Margin="0,3,0,0"
-                                                   TextWrapping="Wrap">
+                                            TextWrapping="Wrap">
                                             <Run Text="{Binding HomeTodayDateDisplay, Mode=OneWay}" />
-                                            <Run Text=" のプレー記録（07:00切り替え）" />
+                                            <Run Text=" " />
+                                            <Run Text="プレー記録（07:00切り替え）" />
                                         </TextBlock>
                                     </StackPanel>
                                     <Button x:Name="HomeSummaryCopyButton"
