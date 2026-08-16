@@ -73,14 +73,32 @@ internal readonly record struct HomeDisplayPeriod(
 {
     private static readonly TimeSpan Boundary = TimeSpan.FromHours(7);
 
-    public static HomeDisplayPeriod From(DateTimeOffset now)
+    public static HomeDisplayPeriod From(DateTimeOffset now) =>
+        From(now, TimeZoneInfo.Local);
+
+    internal static HomeDisplayPeriod From(
+        DateTimeOffset now,
+        TimeZoneInfo timeZone)
     {
-        var displayDate = now.TimeOfDay < Boundary
-            ? now.Date.AddDays(-1)
-            : now.Date;
+        var localNow = TimeZoneInfo.ConvertTime(now, timeZone);
+        var displayDate = localNow.TimeOfDay < Boundary
+            ? localNow.Date.AddDays(-1)
+            : localNow.Date;
         displayDate = DateTime.SpecifyKind(displayDate, DateTimeKind.Unspecified);
-        var start = new DateTimeOffset(displayDate, now.Offset).AddHours(7);
-        return new HomeDisplayPeriod(displayDate, start, start.AddDays(1));
+        var start = ResolveBoundary(displayDate, timeZone);
+        var end = ResolveBoundary(displayDate.AddDays(1), timeZone);
+        return new HomeDisplayPeriod(displayDate, start, end);
+    }
+
+    private static DateTimeOffset ResolveBoundary(
+        DateTime displayDate,
+        TimeZoneInfo timeZone)
+    {
+        var localBoundary = DateTime.SpecifyKind(
+            displayDate.Add(Boundary),
+            DateTimeKind.Unspecified);
+        var offset = timeZone.GetUtcOffset(localBoundary);
+        return new DateTimeOffset(localBoundary, offset);
     }
 
     public bool Contains(string value)

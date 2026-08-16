@@ -157,6 +157,32 @@ public sealed class ScoreViewerRepositoryTests
     }
 
     [Fact]
+    public void HomeDisplayPeriod_resolves_each_0700_boundary_with_the_local_timezone_offset()
+    {
+        var easternTime = TimeZoneInfo.FindSystemTimeZoneById("Eastern Standard Time");
+
+        var beforeSpringForward = HomeDisplayPeriod.From(
+            new DateTimeOffset(2026, 3, 8, 6, 59, 59, TimeSpan.FromHours(-4)),
+            easternTime);
+        Assert.Equal(
+            new DateTimeOffset(2026, 3, 7, 7, 0, 0, TimeSpan.FromHours(-5)),
+            beforeSpringForward.Start);
+        Assert.Equal(
+            new DateTimeOffset(2026, 3, 8, 7, 0, 0, TimeSpan.FromHours(-4)),
+            beforeSpringForward.End);
+
+        var beforeFallBack = HomeDisplayPeriod.From(
+            new DateTimeOffset(2026, 11, 1, 6, 59, 59, TimeSpan.FromHours(-5)),
+            easternTime);
+        Assert.Equal(
+            new DateTimeOffset(2026, 10, 31, 7, 0, 0, TimeSpan.FromHours(-4)),
+            beforeFallBack.Start);
+        Assert.Equal(
+            new DateTimeOffset(2026, 11, 1, 7, 0, 0, TimeSpan.FromHours(-5)),
+            beforeFallBack.End);
+    }
+
+    [Fact]
     public void LoadHome_uses_dashes_for_all_missing_values_and_no_plays()
     {
         using var missingValuesFixture = new DatabaseFixture();
