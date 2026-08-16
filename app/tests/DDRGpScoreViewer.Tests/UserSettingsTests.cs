@@ -230,6 +230,26 @@ public sealed class UserSettingsTests
             Localization.GetForLanguage("未登録の表示文言", UserSettings.EnglishLanguage));
     }
 
+    [Theory]
+    [InlineData("プレー記録（07:00切り替え）", "play records (07:00 boundary)", "플레이 기록 (07:00 전환)")]
+    [InlineData("保存済みプレーの件数", "Saved play count", "저장된 플레이 수")]
+    [InlineData("総ノーツ数", "Total notes", "총 노트 수")]
+    [InlineData("各判定数の合計", "Sum of all judgment counts", "각 판정 수 합계")]
+    [InlineData("消費カロリー", "Calories burned", "소비 칼로리")]
+    [InlineData("プレーごとの消費カロリー合計", "Total calories burned across plays", "플레이별 소비 칼로리 합계")]
+    [InlineData("振り返りをコピー", "Copy recap", "요약 복사")]
+    [InlineData("コピーしました", "Copied", "복사했습니다")]
+    [InlineData("コピーできませんでした", "Could not copy", "복사하지 못했습니다")]
+    public void Home_recap_strings_are_translated_for_supported_languages(
+        string japaneseText,
+        string englishText,
+        string koreanText)
+    {
+        Assert.Equal(japaneseText, Localization.GetForLanguage(japaneseText, UserSettings.JapaneseLanguage));
+        Assert.Equal(englishText, Localization.GetForLanguage(japaneseText, UserSettings.EnglishLanguage));
+        Assert.Equal(koreanText, Localization.GetForLanguage(japaneseText, UserSettings.KoreanLanguage));
+    }
+
     [Fact]
     public void Missing_or_unreadable_settings_fall_back_to_all_defaults()
     {

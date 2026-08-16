@@ -12,7 +12,7 @@ public sealed class MainViewModelTests
     public void Load_projects_home_summary_recent_plays_and_best_updates()
     {
         using var fixture = new DatabaseFixture();
-        var now = DateTimeOffset.Now;
+        var now = HomeDisplayPeriod.From(DateTimeOffset.Now).Start.AddHours(5);
         fixture.AddPlay("first", now.AddMinutes(-60).ToString("O"), 900_000, 1_000);
         fixture.AddPlay("score-update", now.AddMinutes(-50).ToString("O"), 950_000, 1_100);
         fixture.AddPlay("ex-update", now.AddMinutes(-40).ToString("O"), 940_000, 1_200);
@@ -32,9 +32,11 @@ public sealed class MainViewModelTests
         viewModel.Load(fixture.ScorePath, fixture.MasterPath, persist: false);
 
         Assert.Equal(6, viewModel.HomeTodayPlayCount);
-        Assert.Equal(2, viewModel.HomeTodayScoreUpdateCount);
-        Assert.Equal(3, viewModel.HomeTodayExScoreUpdateCount);
-        Assert.Equal(3, viewModel.HomeTodayFullComboCount);
+        Assert.Equal("2,958", viewModel.HomeTodayTotalNotesDisplay);
+        Assert.Equal("—", viewModel.HomeTodayCaloriesDisplay);
+        Assert.Contains("プレー数：6", viewModel.HomeTodaySummaryCopyText);
+        Assert.Contains("総ノーツ数：2,958", viewModel.HomeTodaySummaryCopyText);
+        Assert.Contains("消費カロリー：—", viewModel.HomeTodaySummaryCopyText);
         Assert.Equal("latest", viewModel.HomeLatestPlay?.Play.PlayId);
         Assert.Equal(5, viewModel.HomeRecentPlays.Count);
         Assert.Equal(
@@ -78,6 +80,12 @@ public sealed class MainViewModelTests
         viewModel.BestBrowseMode = UserSettings.TitleBrowseMode;
 
         Assert.Empty(viewModel.Plays);
+        Assert.Equal(0, viewModel.HomeTodayPlayCount);
+        Assert.Equal("—", viewModel.HomeTodayTotalNotesDisplay);
+        Assert.Equal("—", viewModel.HomeTodayCaloriesDisplay);
+        Assert.Contains("プレー数：0", viewModel.HomeTodaySummaryCopyText);
+        Assert.Contains("総ノーツ数：—", viewModel.HomeTodaySummaryCopyText);
+        Assert.Contains("消費カロリー：—", viewModel.HomeTodaySummaryCopyText);
         Assert.Equal(2, viewModel.ChartBestTotalCount);
         Assert.All(viewModel.ChartBests, item => Assert.False(item.IsPlayed));
         Assert.Contains(viewModel.ChartBests, item => item.ChartId == "chart-1");
@@ -85,6 +93,54 @@ public sealed class MainViewModelTests
         Assert.True(viewModel.HasData);
         Assert.Equal(System.Windows.Visibility.Visible, viewModel.DataVisibility);
         Assert.Equal(System.Windows.Visibility.Collapsed, viewModel.StatusVisibility);
+    }
+
+    [Fact]
+    public void RefreshHome_reloads_saved_plays_when_the_0700_period_changes()
+    {
+        using var fixture = new DatabaseFixture();
+        fixture.AddPlay(
+            "current-period",
+            LocalTime(2026, 8, 14, 7).ToString("O"),
+            900_000,
+            1_000,
+            ok: 4,
+            calories: 10.5);
+        fixture.AddPlay(
+            "next-period",
+            LocalTime(2026, 8, 15, 7).ToString("O"),
+            910_000,
+            1_100,
+            ok: 6,
+            calories: 20.25);
+
+        var viewModel = new MainViewModel(
+            new ScoreViewerRepository(),
+            userSettingsStore: new MemoryUserSettingsStore(null));
+        viewModel.Load(fixture.ScorePath, fixture.MasterPath, persist: false);
+
+        viewModel.RefreshHome(
+            LocalTime(2026, 8, 15, 6, 59, 59),
+            forceRefresh: true);
+        Assert.Equal("2026/08/14", viewModel.HomeTodayDateDisplay);
+        Assert.Equal(1, viewModel.HomeTodayPlayCount);
+        Assert.Equal("497", viewModel.HomeTodayTotalNotesDisplay);
+        Assert.Equal("10.5 kcal", viewModel.HomeTodayCaloriesDisplay);
+
+        viewModel.RefreshHome(LocalTime(2026, 8, 15, 7));
+        Assert.Equal("2026/08/15", viewModel.HomeTodayDateDisplay);
+        Assert.Equal(1, viewModel.HomeTodayPlayCount);
+        Assert.Equal("499", viewModel.HomeTodayTotalNotesDisplay);
+        Assert.Equal("20.3 kcal", viewModel.HomeTodayCaloriesDisplay);
+
+        var reloadedViewModel = new MainViewModel(
+            new ScoreViewerRepository(),
+            userSettingsStore: new MemoryUserSettingsStore(null));
+        reloadedViewModel.Load(fixture.ScorePath, fixture.MasterPath, persist: false);
+        reloadedViewModel.RefreshHome(
+            LocalTime(2026, 8, 15, 7),
+            forceRefresh: true);
+        Assert.Equal(viewModel.HomeTodaySummary, reloadedViewModel.HomeTodaySummary);
     }
 
     [Fact]
@@ -1132,6 +1188,25 @@ public sealed class MainViewModelTests
         viewModel.BestBrowseMode = UserSettings.VersionBrowseMode;
         viewModel.BestVersionFilter = "DDR GRAND PRIX";
         Assert.Contains(viewModel.ChartBests, item => item.SongTitle == "VERSION SONG 00");
+    }
+
+    private static DateTimeOffset LocalTime(
+        int year,
+        int month,
+        int day,
+        int hour,
+        int minute = 0,
+        int second = 0)
+    {
+        var local = new DateTime(
+            year,
+            month,
+            day,
+            hour,
+            minute,
+            second,
+            DateTimeKind.Unspecified);
+        return new DateTimeOffset(local, TimeZoneInfo.Local.GetUtcOffset(local));
     }
 
     private static PersonalScoreDbWorkflowResult Result(

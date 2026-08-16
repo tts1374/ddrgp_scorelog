@@ -259,10 +259,7 @@ public sealed record HomeDisplayData(
     HomePlayItem? LatestPlay,
     IReadOnlyList<HomePlayItem> RecentPlays,
     IReadOnlyList<HomePlayItem> BestUpdates,
-    int TodayPlayCount,
-    int TodayScoreUpdateCount,
-    int TodayExScoreUpdateCount,
-    int TodayFullComboCount,
+    HomeSummaryData TodaySummary,
     int TotalPlayCount,
     string LastSavedAt);
 

@@ -4,7 +4,8 @@
         xmlns:controls="clr-namespace:DDRGpScoreViewer.Controls"
         Title="GP Score Log" Icon="Assets/GPScoreLog.ico" Width="1280" Height="760"
         MinWidth="960" MinHeight="640" WindowStartupLocation="CenterScreen"
-        SizeChanged="MainWindow_SizeChanged">
+        SizeChanged="MainWindow_SizeChanged"
+        Loaded="MainWindow_Loaded">
     <Window.Resources>
         <DataTemplate x:Key="FlareBadgeOrPlaceholderTemplate">
             <Grid>
@@ -83,6 +84,39 @@
                     <Setter Property="Foreground" Value="{StaticResource AccentHoverBrush}" />
                 </Trigger>
             </Style.Triggers>
+        </Style>
+
+        <Style x:Key="HomeSummaryCopyButtonStyle" TargetType="Button">
+            <Setter Property="Foreground" Value="{StaticResource AccentPrimaryBrush}" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="{StaticResource AccentPrimaryBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="10,6" />
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="CopyButtonBorder"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="5"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                              VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="CopyButtonBorder"
+                                        Property="Background"
+                                        Value="{StaticResource AccentSubtleBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
 
         <Style x:Key="HomeSummaryCardStyle" TargetType="Border"
@@ -475,12 +509,28 @@
                                   Padding="0,0,8,0">
                         <StackPanel MinWidth="0">
                             <StackPanel Margin="0,0,0,16">
-                                <TextBlock Text="今日のプレー状況" FontSize="15" FontWeight="SemiBold" />
-                                <TextBlock Foreground="{StaticResource TextSecondaryBrush}"
-                                           FontSize="11" Margin="0,3,0,8">
-                                    <Run Text="{Binding HomeTodayDateDisplay, Mode=OneWay}" />
-                                    <Run Text=" の保存済みプレーデータ" />
-                                </TextBlock>
+                                <Grid Margin="0,0,0,8">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel>
+                                        <TextBlock Text="今日のプレー状況" FontSize="15" FontWeight="SemiBold" />
+                                        <TextBlock Foreground="{StaticResource TextSecondaryBrush}"
+                                                   FontSize="11" Margin="0,3,0,0"
+                                            TextWrapping="Wrap">
+                                            <Run Text="{Binding HomeTodayDateDisplay, Mode=OneWay}" />
+                                            <Run Text=" " />
+                                            <Run Text="プレー記録（07:00切り替え）" />
+                                        </TextBlock>
+                                    </StackPanel>
+                                    <Button x:Name="HomeSummaryCopyButton"
+                                            Grid.Column="1"
+                                            Content="振り返りをコピー"
+                                            Style="{StaticResource HomeSummaryCopyButtonStyle}"
+                                            Margin="12,0,0,0"
+                                            Click="CopyHomeSummary_Click" />
+                                </Grid>
                                 <Grid>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*" />
@@ -496,44 +546,35 @@
                                             <TextBlock Text="{Binding HomeTodayPlayCount, Mode=OneWay, StringFormat={}{0:N0}}"
                                                        FontSize="26" FontWeight="Bold" FontFamily="Consolas"
                                                        Margin="0,5,0,0" />
-                                            <TextBlock Text="今日保存されたプレー" Foreground="{StaticResource TextSecondaryBrush}"
-                                                       FontSize="10" Margin="0,5,0,0" />
+                                            <TextBlock Text="保存済みプレーの件数" Foreground="{StaticResource TextSecondaryBrush}"
+                                                       FontSize="10" Margin="0,5,0,0"
+                                                       TextWrapping="Wrap" />
                                         </StackPanel>
                                     </Border>
                                     <Border Grid.Column="1" Style="{StaticResource HomeSummaryCardStyle}"
                                             BorderBrush="#10B981" BorderThickness="4,1,1,1" Margin="0,0,12,0">
                                         <StackPanel>
-                                            <TextBlock Text="自己ベスト更新" Foreground="{StaticResource TextSecondaryBrush}"
+                                            <TextBlock Text="総ノーツ数" Foreground="{StaticResource TextSecondaryBrush}"
                                                        FontSize="11" FontWeight="SemiBold" />
-                                            <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
-                                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                                    <TextBlock Text="{Binding HomeTodayScoreUpdateCount, Mode=OneWay, StringFormat={}{0:N0}}"
-                                                               FontSize="24" FontWeight="Bold" FontFamily="Consolas" />
-                                                    <TextBlock Text="通常" Foreground="{StaticResource TextSecondaryBrush}"
-                                                               FontSize="10" FontWeight="SemiBold" Margin="5,0,0,0" />
-                                                </StackPanel>
-                                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center"
-                                                            Margin="18,0,0,0">
-                                                    <TextBlock Text="{Binding HomeTodayExScoreUpdateCount, Mode=OneWay, StringFormat={}{0:N0}}"
-                                                               FontSize="24" FontWeight="Bold" FontFamily="Consolas" />
-                                                    <TextBlock Text="EX" Foreground="{StaticResource TextSecondaryBrush}"
-                                                               FontSize="10" FontWeight="SemiBold" Margin="5,0,0,0" />
-                                                </StackPanel>
-                                            </StackPanel>
-                                            <TextBlock Text="今日の更新プレー" Foreground="{StaticResource TextSecondaryBrush}"
-                                                       FontSize="10" Margin="0,5,0,0" />
+                                            <TextBlock Text="{Binding HomeTodayTotalNotesDisplay, Mode=OneWay}"
+                                                       FontSize="26" FontWeight="Bold" FontFamily="Consolas"
+                                                       Margin="0,5,0,0" />
+                                            <TextBlock Text="各判定数の合計" Foreground="{StaticResource TextSecondaryBrush}"
+                                                       FontSize="10" Margin="0,5,0,0"
+                                                       TextWrapping="Wrap" />
                                         </StackPanel>
                                     </Border>
                                     <Border Grid.Column="2" Style="{StaticResource HomeSummaryCardStyle}"
                                             BorderBrush="#FACC15" BorderThickness="4,1,1,1">
                                         <StackPanel>
-                                            <TextBlock Text="フルコンボ数" Foreground="{StaticResource TextSecondaryBrush}"
+                                            <TextBlock Text="消費カロリー" Foreground="{StaticResource TextSecondaryBrush}"
                                                        FontSize="11" FontWeight="SemiBold" />
-                                            <TextBlock Text="{Binding HomeTodayFullComboCount, Mode=OneWay, StringFormat={}{0:N0}}"
+                                            <TextBlock Text="{Binding HomeTodayCaloriesDisplay, Mode=OneWay}"
                                                        FontSize="26" FontWeight="Bold" FontFamily="Consolas"
                                                        Margin="0,5,0,0" />
-                                            <TextBlock Text="FC以上の記録" Foreground="{StaticResource TextSecondaryBrush}"
-                                                       FontSize="10" Margin="0,5,0,0" />
+                                            <TextBlock Text="プレーごとの消費カロリー合計" Foreground="{StaticResource TextSecondaryBrush}"
+                                                       FontSize="10" Margin="0,5,0,0"
+                                                       TextWrapping="Wrap" />
                                         </StackPanel>
                                     </Border>
                                 </Grid>

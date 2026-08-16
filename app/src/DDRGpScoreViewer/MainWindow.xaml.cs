@@ -34,6 +34,11 @@ public partial class MainWindow : System.Windows.Window
     private readonly BestChartPageRequestGate bestChartPageRequestGate = new();
     private readonly BestChartPageRequestGate recentPlayPageRequestGate = new();
     private readonly CancellationTokenSource applicationExitCancellation = new();
+    private readonly DispatcherTimer homePeriodRefreshTimer = new()
+    {
+        Interval = TimeSpan.FromSeconds(15),
+    };
+    private DispatcherTimer? homeSummaryCopyFeedbackTimer;
     private bool applicationExitRequested;
     private bool restoringBestChartListState;
     private double bestChartScrollOffset;
@@ -52,6 +57,7 @@ public partial class MainWindow : System.Windows.Window
     internal MainWindow(ViewerDatabasePaths databasePaths)
     {
         InitializeComponent();
+        homePeriodRefreshTimer.Tick += HomePeriodRefreshTimer_Tick;
         viewModel = new MainViewModel(
             new ScoreViewerRepository(),
             workflowRunner: new AppOwnedPersonalScoreDbWorkflowRunner(),
@@ -353,6 +359,8 @@ public partial class MainWindow : System.Windows.Window
             return;
         }
         applicationExitRequested = true;
+        homePeriodRefreshTimer.Stop();
+        homeSummaryCopyFeedbackTimer?.Stop();
         viewModel.RequestApplicationExit();
         monitoringStartGate.Cancel();
         applicationExitCancellation.Cancel();
@@ -363,6 +371,69 @@ public partial class MainWindow : System.Windows.Window
         RequestApplicationExit();
         monitoringStartGate.Dispose();
         applicationExitCancellation.Dispose();
+    }
+
+    private void MainWindow_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (!applicationExitRequested)
+        {
+            homePeriodRefreshTimer.Start();
+        }
+    }
+
+    private void HomePeriodRefreshTimer_Tick(object? sender, EventArgs e)
+    {
+        if (!applicationExitRequested)
+        {
+            viewModel.RefreshHome(DateTimeOffset.Now);
+        }
+    }
+
+    private void CopyHomeSummary_Click(object sender, RoutedEventArgs e)
+    {
+        if (applicationExitRequested)
+        {
+            return;
+        }
+
+        try
+        {
+            System.Windows.Clipboard.SetText(viewModel.HomeTodaySummaryCopyText);
+            ShowHomeSummaryCopyFeedback("コピーしました");
+        }
+        catch (Exception exception) when (
+            exception is ExternalException or InvalidOperationException)
+        {
+            ShowHomeSummaryCopyFeedback("コピーできませんでした");
+        }
+    }
+
+    private void ShowHomeSummaryCopyFeedback(string message)
+    {
+        HomeSummaryCopyButton.Content = Localization.Get(message);
+        homeSummaryCopyFeedbackTimer ??= new DispatcherTimer
+        {
+            Interval = TimeSpan.FromSeconds(1.6),
+        };
+        homeSummaryCopyFeedbackTimer.Stop();
+        homeSummaryCopyFeedbackTimer.Tick -= HomeSummaryCopyFeedbackTimer_Tick;
+        homeSummaryCopyFeedbackTimer.Tick += HomeSummaryCopyFeedbackTimer_Tick;
+        homeSummaryCopyFeedbackTimer.Start();
+    }
+
+    private void HomeSummaryCopyFeedbackTimer_Tick(object? sender, EventArgs e)
+    {
+        if (homeSummaryCopyFeedbackTimer is null)
+        {
+            return;
+        }
+
+        homeSummaryCopyFeedbackTimer.Stop();
+        homeSummaryCopyFeedbackTimer.Tick -= HomeSummaryCopyFeedbackTimer_Tick;
+        if (!applicationExitRequested)
+        {
+            HomeSummaryCopyButton.Content = Localization.Get("振り返りをコピー");
+        }
     }
 
     protected override void OnClosing(CancelEventArgs e)

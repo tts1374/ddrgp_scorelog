@@ -200,6 +200,7 @@ dotnet run --project app\src\DDRGpScoreViewer\DDRGpScoreViewer.csproj --configur
 - マスタ参照が欠ける行は捨てず、`song_id` / `chart_id` と `参照情報なし` を表示する。
 - 譜面別自己ベストは `plays` 全履歴を `song_id` / `chart_id` ごとに集計し、通常スコアとEX SCOREをそれぞれ `MAX` で算出する。
 - `ok` / `calories` が`NULL`の履歴は値を補完せず `—` と表示する。v2からmigrationした過去playも同じ欠損表示とする。
+- ホームの振り返りは端末ローカル時刻の07:00境界で、全履歴の`plays.played_at`を集計する。同じ曲・譜面の再プレーも保存済みplayごとに数え、`ok` / `calories`は取得済みの値だけを合計し、対象値がない場合は`—`とする。
 - 空履歴では、次の行動を示す空状態を表示する。
 
 ## DB検査と拒否

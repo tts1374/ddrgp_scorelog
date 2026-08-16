@@ -77,6 +77,144 @@ public sealed class ScoreViewerRepositoryTests
     }
 
     [Fact]
+    public void LoadHome_uses_played_at_0700_period_counts_replays_and_sums_optional_values()
+    {
+        using var fixture = new DatabaseFixture();
+        fixture.AddPlay(
+            "before-boundary",
+            LocalTime(2026, 8, 14, 6, 59, 59).ToString("O"),
+            900_000,
+            1_000,
+            ok: 9,
+            calories: 99.0);
+        fixture.AddPlay(
+            "first",
+            LocalTime(2026, 8, 14, 7).ToString("O"),
+            910_000,
+            1_100,
+            ok: 3,
+            calories: 12.3);
+        fixture.AddPlay(
+            "repeat",
+            LocalTime(2026, 8, 15, 6, 59).ToString("O"),
+            920_000,
+            1_200);
+        fixture.AddPlay(
+            "next-period",
+            LocalTime(2026, 8, 15, 7).ToString("O"),
+            930_000,
+            1_300,
+            ok: 5,
+            calories: 3.4);
+
+        var repository = new ScoreViewerRepository();
+        var scoreHashBefore = Hash(fixture.ScorePath);
+        var masterHashBefore = Hash(fixture.MasterPath);
+        var beforeBoundary = repository.LoadHome(
+            fixture.ScorePath,
+            fixture.MasterPath,
+            LocalTime(2026, 8, 14, 6, 59, 59));
+        Assert.Equal("2026/08/13", beforeBoundary.TodaySummary.DateDisplay);
+        Assert.Equal(1, beforeBoundary.TodaySummary.PlayCount);
+        Assert.Equal(502L, beforeBoundary.TodaySummary.TotalNotes);
+        Assert.Equal(99.0, beforeBoundary.TodaySummary.Calories!.Value, 3);
+
+        var currentPeriod = repository.LoadHome(
+            fixture.ScorePath,
+            fixture.MasterPath,
+            LocalTime(2026, 8, 15, 6, 59, 59));
+        Assert.Equal("2026/08/14", currentPeriod.TodaySummary.DateDisplay);
+        Assert.Equal(2, currentPeriod.TodaySummary.PlayCount);
+        Assert.Equal(989L, currentPeriod.TodaySummary.TotalNotes);
+        Assert.Equal(12.3, currentPeriod.TodaySummary.Calories!.Value, 3);
+        Assert.Equal(
+            "8月14日のDDR GRAND PRIX\n\nプレー数：2\n総ノーツ数：989\n消費カロリー：12.3 kcal",
+            currentPeriod.TodaySummary.GetCopyText(UserSettings.JapaneseLanguage));
+        Assert.Equal(
+            "DDR GRAND PRIX on Aug 14\n\nPlays: 2\nTotal notes: 989\nCalories burned: 12.3 kcal",
+            currentPeriod.TodaySummary.GetCopyText(UserSettings.EnglishLanguage));
+        Assert.Equal(
+            "8월 14일 DDR GRAND PRIX\n\n플레이 수: 2\n총 노트 수: 989\n소비 칼로리: 12.3 kcal",
+            currentPeriod.TodaySummary.GetCopyText(UserSettings.KoreanLanguage));
+
+        var reloaded = new ScoreViewerRepository().LoadHome(
+            fixture.ScorePath,
+            fixture.MasterPath,
+            LocalTime(2026, 8, 15, 6, 59, 59));
+        Assert.Equal(currentPeriod.TodaySummary, reloaded.TodaySummary);
+
+        var nextPeriod = repository.LoadHome(
+            fixture.ScorePath,
+            fixture.MasterPath,
+            LocalTime(2026, 8, 15, 7));
+        Assert.Equal("2026/08/15", nextPeriod.TodaySummary.DateDisplay);
+        Assert.Equal(1, nextPeriod.TodaySummary.PlayCount);
+        Assert.Equal(498L, nextPeriod.TodaySummary.TotalNotes);
+        Assert.Equal(3.4, nextPeriod.TodaySummary.Calories!.Value, 3);
+        Assert.Equal(scoreHashBefore, Hash(fixture.ScorePath));
+        Assert.Equal(masterHashBefore, Hash(fixture.MasterPath));
+    }
+
+    [Fact]
+    public void HomeDisplayPeriod_resolves_each_0700_boundary_with_the_local_timezone_offset()
+    {
+        var easternTime = TimeZoneInfo.FindSystemTimeZoneById("Eastern Standard Time");
+
+        var beforeSpringForward = HomeDisplayPeriod.From(
+            new DateTimeOffset(2026, 3, 8, 6, 59, 59, TimeSpan.FromHours(-4)),
+            easternTime);
+        Assert.Equal(
+            new DateTimeOffset(2026, 3, 7, 7, 0, 0, TimeSpan.FromHours(-5)),
+            beforeSpringForward.Start);
+        Assert.Equal(
+            new DateTimeOffset(2026, 3, 8, 7, 0, 0, TimeSpan.FromHours(-4)),
+            beforeSpringForward.End);
+
+        var beforeFallBack = HomeDisplayPeriod.From(
+            new DateTimeOffset(2026, 11, 1, 6, 59, 59, TimeSpan.FromHours(-5)),
+            easternTime);
+        Assert.Equal(
+            new DateTimeOffset(2026, 10, 31, 7, 0, 0, TimeSpan.FromHours(-4)),
+            beforeFallBack.Start);
+        Assert.Equal(
+            new DateTimeOffset(2026, 11, 1, 7, 0, 0, TimeSpan.FromHours(-5)),
+            beforeFallBack.End);
+    }
+
+    [Fact]
+    public void LoadHome_uses_dashes_for_all_missing_values_and_no_plays()
+    {
+        using var missingValuesFixture = new DatabaseFixture();
+        missingValuesFixture.AddPlay(
+            "missing-calories",
+            LocalTime(2026, 8, 14, 10).ToString("O"),
+            900_000,
+            1_000);
+        var repository = new ScoreViewerRepository();
+        var missingValues = repository.LoadHome(
+            missingValuesFixture.ScorePath,
+            missingValuesFixture.MasterPath,
+            LocalTime(2026, 8, 14, 12));
+        Assert.Equal(1, missingValues.TodaySummary.PlayCount);
+        Assert.Equal(493L, missingValues.TodaySummary.TotalNotes);
+        Assert.Equal("—", missingValues.TodaySummary.CaloriesDisplay);
+        Assert.Contains(
+            "消費カロリー：—",
+            missingValues.TodaySummary.GetCopyText(UserSettings.JapaneseLanguage));
+
+        using var emptyFixture = new DatabaseFixture();
+        var noPlays = repository.LoadHome(
+            emptyFixture.ScorePath,
+            emptyFixture.MasterPath,
+            LocalTime(2026, 8, 14, 12));
+        Assert.Equal(0, noPlays.TodaySummary.PlayCount);
+        Assert.Null(noPlays.TodaySummary.TotalNotes);
+        Assert.Null(noPlays.TodaySummary.Calories);
+        Assert.Equal("—", noPlays.TodaySummary.TotalNotesDisplay);
+        Assert.Equal("—", noPlays.TodaySummary.CaloriesDisplay);
+    }
+
+    [Fact]
     public void Load_reads_history_detail_and_chart_bests_without_changing_databases()
     {
         using var fixture = new DatabaseFixture();
@@ -387,6 +525,22 @@ public sealed class ScoreViewerRepositoryTests
     }
 
     [Fact]
+    public void Load_accepts_sqlite_alter_table_spacing_in_play_schema()
+    {
+        using var fixture = new DatabaseFixture();
+        fixture.ExecuteScoreSql(
+            "PRAGMA writable_schema = ON; " +
+            "UPDATE sqlite_schema " +
+            "SET sql = REPLACE(sql, 'CURRENT_TIMESTAMP,', 'CURRENT_TIMESTAMP ,') " +
+            "WHERE type = 'table' AND name = 'plays'; " +
+            "PRAGMA writable_schema = OFF; PRAGMA schema_version = 2;");
+
+        var data = new ScoreViewerRepository().Load(fixture.ScorePath, fixture.MasterPath);
+
+        Assert.Empty(data.Plays);
+    }
+
+    [Fact]
     public void Load_reports_read_failure_for_non_sqlite_file()
     {
         using var fixture = new DatabaseFixture();
@@ -479,6 +633,25 @@ public sealed class ScoreViewerRepositoryTests
         _ = new ScoreViewerRepository().InspectJacketCatalogDatabase(fixture.CatalogPath);
 
         Assert.Equal(hashBefore, Hash(fixture.CatalogPath));
+    }
+
+    private static DateTimeOffset LocalTime(
+        int year,
+        int month,
+        int day,
+        int hour,
+        int minute = 0,
+        int second = 0)
+    {
+        var local = new DateTime(
+            year,
+            month,
+            day,
+            hour,
+            minute,
+            second,
+            DateTimeKind.Unspecified);
+        return new DateTimeOffset(local, TimeZoneInfo.Local.GetUtcOffset(local));
     }
 
     private static string Hash(string path) =>
