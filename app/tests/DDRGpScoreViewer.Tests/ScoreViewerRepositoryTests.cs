@@ -82,26 +82,26 @@ public sealed class ScoreViewerRepositoryTests
         using var fixture = new DatabaseFixture();
         fixture.AddPlay(
             "before-boundary",
-            "2026-08-14T06:59:59+09:00",
+            LocalTime(2026, 8, 14, 6, 59, 59).ToString("O"),
             900_000,
             1_000,
             ok: 9,
             calories: 99.0);
         fixture.AddPlay(
             "first",
-            "2026-08-14T07:00:00+09:00",
+            LocalTime(2026, 8, 14, 7).ToString("O"),
             910_000,
             1_100,
             ok: 3,
             calories: 12.3);
         fixture.AddPlay(
             "repeat",
-            "2026-08-15T06:59:00+09:00",
+            LocalTime(2026, 8, 15, 6, 59).ToString("O"),
             920_000,
             1_200);
         fixture.AddPlay(
             "next-period",
-            "2026-08-15T07:00:00+09:00",
+            LocalTime(2026, 8, 15, 7).ToString("O"),
             930_000,
             1_300,
             ok: 5,
@@ -110,11 +110,10 @@ public sealed class ScoreViewerRepositoryTests
         var repository = new ScoreViewerRepository();
         var scoreHashBefore = Hash(fixture.ScorePath);
         var masterHashBefore = Hash(fixture.MasterPath);
-        var jst = TimeSpan.FromHours(9);
         var beforeBoundary = repository.LoadHome(
             fixture.ScorePath,
             fixture.MasterPath,
-            new DateTimeOffset(2026, 8, 14, 6, 59, 59, jst));
+            LocalTime(2026, 8, 14, 6, 59, 59));
         Assert.Equal("2026/08/13", beforeBoundary.TodaySummary.DateDisplay);
         Assert.Equal(1, beforeBoundary.TodaySummary.PlayCount);
         Assert.Equal(502L, beforeBoundary.TodaySummary.TotalNotes);
@@ -123,7 +122,7 @@ public sealed class ScoreViewerRepositoryTests
         var currentPeriod = repository.LoadHome(
             fixture.ScorePath,
             fixture.MasterPath,
-            new DateTimeOffset(2026, 8, 15, 6, 59, 59, jst));
+            LocalTime(2026, 8, 15, 6, 59, 59));
         Assert.Equal("2026/08/14", currentPeriod.TodaySummary.DateDisplay);
         Assert.Equal(2, currentPeriod.TodaySummary.PlayCount);
         Assert.Equal(989L, currentPeriod.TodaySummary.TotalNotes);
@@ -141,13 +140,13 @@ public sealed class ScoreViewerRepositoryTests
         var reloaded = new ScoreViewerRepository().LoadHome(
             fixture.ScorePath,
             fixture.MasterPath,
-            new DateTimeOffset(2026, 8, 15, 6, 59, 59, jst));
+            LocalTime(2026, 8, 15, 6, 59, 59));
         Assert.Equal(currentPeriod.TodaySummary, reloaded.TodaySummary);
 
         var nextPeriod = repository.LoadHome(
             fixture.ScorePath,
             fixture.MasterPath,
-            new DateTimeOffset(2026, 8, 15, 7, 0, 0, jst));
+            LocalTime(2026, 8, 15, 7));
         Assert.Equal("2026/08/15", nextPeriod.TodaySummary.DateDisplay);
         Assert.Equal(1, nextPeriod.TodaySummary.PlayCount);
         Assert.Equal(498L, nextPeriod.TodaySummary.TotalNotes);
@@ -188,14 +187,14 @@ public sealed class ScoreViewerRepositoryTests
         using var missingValuesFixture = new DatabaseFixture();
         missingValuesFixture.AddPlay(
             "missing-calories",
-            "2026-08-14T10:00:00+09:00",
+            LocalTime(2026, 8, 14, 10).ToString("O"),
             900_000,
             1_000);
         var repository = new ScoreViewerRepository();
         var missingValues = repository.LoadHome(
             missingValuesFixture.ScorePath,
             missingValuesFixture.MasterPath,
-            new DateTimeOffset(2026, 8, 14, 12, 0, 0, TimeSpan.FromHours(9)));
+            LocalTime(2026, 8, 14, 12));
         Assert.Equal(1, missingValues.TodaySummary.PlayCount);
         Assert.Equal(493L, missingValues.TodaySummary.TotalNotes);
         Assert.Equal("—", missingValues.TodaySummary.CaloriesDisplay);
@@ -207,7 +206,7 @@ public sealed class ScoreViewerRepositoryTests
         var noPlays = repository.LoadHome(
             emptyFixture.ScorePath,
             emptyFixture.MasterPath,
-            new DateTimeOffset(2026, 8, 14, 12, 0, 0, TimeSpan.FromHours(9)));
+            LocalTime(2026, 8, 14, 12));
         Assert.Equal(0, noPlays.TodaySummary.PlayCount);
         Assert.Null(noPlays.TodaySummary.TotalNotes);
         Assert.Null(noPlays.TodaySummary.Calories);
@@ -634,6 +633,25 @@ public sealed class ScoreViewerRepositoryTests
         _ = new ScoreViewerRepository().InspectJacketCatalogDatabase(fixture.CatalogPath);
 
         Assert.Equal(hashBefore, Hash(fixture.CatalogPath));
+    }
+
+    private static DateTimeOffset LocalTime(
+        int year,
+        int month,
+        int day,
+        int hour,
+        int minute = 0,
+        int second = 0)
+    {
+        var local = new DateTime(
+            year,
+            month,
+            day,
+            hour,
+            minute,
+            second,
+            DateTimeKind.Unspecified);
+        return new DateTimeOffset(local, TimeZoneInfo.Local.GetUtcOffset(local));
     }
 
     private static string Hash(string path) =>
