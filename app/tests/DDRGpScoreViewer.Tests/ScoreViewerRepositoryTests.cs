@@ -128,13 +128,13 @@ public sealed class ScoreViewerRepositoryTests
         Assert.Equal(989L, currentPeriod.TodaySummary.TotalNotes);
         Assert.Equal(12.3, currentPeriod.TodaySummary.Calories!.Value, 3);
         Assert.Equal(
-            "8月14日のDDR GRAND PRIX\n\nプレー数：2\n総ノーツ数：989\n消費カロリー：12.3 kcal",
+            "8月14日のDDR GRAND PRIX\n\nプレー数：2\n総ノーツ数：989\n消費カロリー：12.3 kcal\n#GP_ScoreLog",
             currentPeriod.TodaySummary.GetCopyText(UserSettings.JapaneseLanguage));
         Assert.Equal(
-            "DDR GRAND PRIX on Aug 14\n\nPlays: 2\nTotal notes: 989\nCalories burned: 12.3 kcal",
+            "DDR GRAND PRIX on Aug 14\n\nPlays: 2\nTotal notes: 989\nCalories burned: 12.3 kcal\n#GP_ScoreLog",
             currentPeriod.TodaySummary.GetCopyText(UserSettings.EnglishLanguage));
         Assert.Equal(
-            "8월 14일 DDR GRAND PRIX\n\n플레이 수: 2\n총 노트 수: 989\n소비 칼로리: 12.3 kcal",
+            "8월 14일 DDR GRAND PRIX\n\n플레이 수: 2\n총 노트 수: 989\n소비 칼로리: 12.3 kcal\n#GP_ScoreLog",
             currentPeriod.TodaySummary.GetCopyText(UserSettings.KoreanLanguage));
 
         var reloaded = new ScoreViewerRepository().LoadHome(

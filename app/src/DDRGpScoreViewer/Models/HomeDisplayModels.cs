@@ -59,7 +59,7 @@ public sealed record HomeSummaryData(
             Localization.GetForLanguage("消費カロリー：{0}", normalizedLanguage),
             CaloriesDisplay);
 
-        return $"{title}\n\n{playCount}\n{totalNotes}\n{calories}";
+        return $"{title}\n\n{playCount}\n{totalNotes}\n{calories}\n#GP_ScoreLog";
     }
 
     public static HomeSummaryData Empty(DateTimeOffset now) =>
