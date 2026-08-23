@@ -1,6 +1,8 @@
 # ストレージI/O仕様
 
-ローカル素材、PoC出力、manifest、ログ、DB、将来の本番保存物の置き場とGit管理方針を定義する。AGENTS.md のプロジェクトルールを設計資料として補強する。
+ローカル素材、developer評価出力、manifest、ログ、DB、Windowsアプリの永続データの置き場とGit管理方針を定義する。AGENTS.md のプロジェクトルールを設計資料として補強する。
+
+DB責務と正式個人スコアDB保護のdecisionは[ADR 0003](../adr/0003-database-responsibility-and-protection.md)、application packageとreference data setの更新分離は[ADR 0004](../adr/0004-separate-application-and-reference-data-updates.md)に記録する。path、schema、asset、retention、I/O順序の詳細はこの文書を正本とする。
 
 ## 基本方針
 
@@ -20,7 +22,7 @@
 - サンプル用の空READMEや例示CSV
 - 設計資料
 - CI設定
-- 将来のアプリコード
+- Windowsアプリコード
 
 ## Git管理しないもの
 
@@ -126,7 +128,7 @@ samples/metadata.example.csv
 
 Git管理してよい。
 
-## PoC出力
+## developer評価出力
 
 ### metadata mode
 
@@ -400,13 +402,11 @@ catalog schema、manual historyを変更せず、unsafe stop、通常のcatalog 
 - PoC出力の削除は目的を明確にして行う。
 - Git管理外ファイルはコミット対象にしない。
 
-## 今後決めること
+## 自動cleanupとrotationの境界
 
-- 失敗画像の保存期間と掃除方法
-- ログローテーション
-- 評価用DBのschemaとinitializer（M10-3）
-- 手動backupの保持期間
-- manifest dry-run 出力を本番でも残す期間
+analysis detailとfailure imageには後述のretention classを記録する。現行アプリは期限切れartifactのcleanup、scheduler、起動時cleanupを実行しない。runtime logにも自動rotation契約を置かない。これらを導入するときは、正式個人スコアDBとユーザーが作成したbackupを対象外にしたうえで、削除対象と実行契機を別途固定する。
+
+ユーザーがデータ管理画面から作成したJSON backupの保持はユーザー管理とする。schema migration用SQLite backupは後述のlatest-1契約に従う。評価用DBの初期化・退避・再実行とcapture manifestの保存先は、この文書の現行契約を使う。
 
 ## Analysis artifact path contract
 
@@ -478,7 +478,7 @@ orchestration入口がartifact output pathと `analysis_logs.log_path` の一致
 
 M9 WPFはapp-owned runtimeのstrict workflowを同一processで1回実行する。このUI adapterはユーザーが選択したworkflow入力と固定DB pathだけを受け、candidate materialをformal値へ補完しない。`saved` かつtransaction完了済みplayだけ同じread-only repositoryで再openし、通常の閲覧操作はwrite workflowを起動しない。offline PoCのCLI/module、repository root、Python executable、Tesseractはこのruntimeから呼び出さない。
 
-### 後続実装のfixture行列とacceptance criteria
+### orchestration回帰行列
 
 - readyのartifactなし/あり、低信頼度とerrorのartifact必須、その他skipの任意、DB duplicate collisionの各分岐を固定する。
 - unsafe path、入力不正、共有ID/status不一致、`log_path` 不一致をfile/DB副作用前に拒否する。
@@ -501,7 +501,7 @@ pure contractのstatus/終了コードは、`current` / `dry_run_ready` / `ready
 
 status/dry-run専用CLIは従来どおりDB path、target version、明示backup pathの必須組だけを受け、Release appの固定path起動migrationとは別入口を維持する。
 
-## #116 application package update boundary
+## application package update boundary
 
 アプリ本体の更新はVeloPack 1.2.0の`GithubSource`と`UpdateManager`だけを使い、`https://github.com/tts1374/ddrgp_scorelog` のstable GitHub Releaseを既定のWindows channelで確認する。アプリ側でchannel、Release API、package展開、rollback、background serviceを独自実装しない。release feedはVeloPackが解決する`releases.win.json`とfull `.nupkg`を基本とし、reference data setの`reference-set.json`、master DB、catalog DBはこの更新対象に含めない。
 
@@ -511,7 +511,7 @@ main windowを表示した後に`CheckForUpdatesAsync`を非同期実行し、�
 
 VeloPackのinstall rootと永続data rootを分離するため、`%LOCALAPPDATA%/DDRGpScoreViewer/`配下の正式score DB、settings、reference DB、Release logはapp package updateの書換対象外とする。更新確認、download、適用準備の状態はprocess内UIとRelease logへ投影するだけで、新しい更新checkpointや更新用DBを永続化しない。
 
-## M10-4 / #117 reference data set package and update boundary
+## reference data set package and update boundary
 
 VeloPack packageはapp binary/runtimeと`ReferenceData/`を所有し、永続dataはinstall root外の`%LOCALAPPDATA%/DDRGpScoreViewer/`に置く。GitHub Releaseにも、同じReleaseの次の3 assetを同じ名前で公開する。
 

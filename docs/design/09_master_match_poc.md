@@ -1,6 +1,12 @@
-# M5 マスタ照合PoC設計
+# M5 master match・参照catalog契約
 
-M5では、M3保存候補レポートの観測値をM4マスタDBへ照合し、曲・譜面候補の絞り込み結果を観察する。ここでの結果はDB保存可否の最終判断ではなく、M7以降の保存判定へ渡すための曲同定候補観測と失敗理由である。
+M5 master matchのdeveloper評価、M5b jacket reference catalogのruntime参照、M5c developer-only collectorの責務を定義する。M5の結果は、M7 result-text feature以降の保存判定へ渡す曲同定候補観測と失敗理由であり、単独では正式DBの保存可否を決めない。
+
+| 責務 | 現行の位置づけ |
+|---|---|
+| M5 master match | M3観測値とM4 master DB、画像特徴量から曲・譜面候補を評価するdeveloper経路 |
+| M5b jacket reference catalog | app-owned runtimeがread-onlyで参照するjacket・result-text feature catalog |
+| M5c developer-only collector | catalogを収集・review・更新するRelease非同梱tool |
 
 ## 入力
 
@@ -50,9 +56,9 @@ M3の `ready` はM5へ渡せる観測値という意味に留める。曲ID、�
 
 各行には、OCR入力文字列、正規化文字列、chart-field条件、候補曲数、候補譜面数、最上位候補、score、上位候補一覧、`match_status`、`failure_reason` を出す。上位候補一覧は失敗代表の観察用であり、保存可能判定ではない。生成物は `data/` 配下に置き、Git管理しない。
 
-## 次の主信号候補: song_select grid ジャケット特徴量
+## M5 jacket match候補観測
 
-曲名OCRは、artist混入、記号崩れ、日本語タイトルの崩れ、空OCRが残るため、曲ID確定の主信号としては弱い。次のM5 PoCでは、`play_style` / `difficulty` / `level` で譜面候補を絞ったうえで、ジャケットROI特徴量を曲候補確定の主信号候補として扱う。
+`play_style` / `difficulty` / `level` で譜面候補を絞ったうえで、ジャケットROI特徴量を曲候補観測の主信号として扱う。titleとartistの補助信号は、jacket候補集合の再順位付けに限定する。
 
 初回は全曲ジャケット画像取得ではなく、ローカル `song_select` の grid 画面から得られる右上の大きい選択中ジャケットプレビューを使い、`song_id` に紐づくローカル特徴量マスタを育てる。grid内の小ジャケットセル検出は初回スコープ外にし、右上プレビューROIだけを対象にする。detail画面は必須入力にせず、後続で必要になった場合の追加対象にする。
 
@@ -142,31 +148,9 @@ result側のジャケットROIとタイトル画像ROIの特徴量は、metadata
 
 M7保存判定前レビューへ渡すM5側材料としては、`identity_signal_status=jacket_resolved_candidate` / `composite_resolved_candidate` だけをレビュー可能な候補観測として扱う。これはM7で曲ID/譜面IDが確定したという意味ではなく、M3材料とM7a数字材料に加えて保存前レビューで参照できる候補観測がある、という状態に留める。未解決の `unresolved_*` は M7 readiness 側で `blocked_identity_signal` として読む。
 
-2026-07-05のローカル追加素材反映後は、`song_select` grid右上プレビュー由来の特徴量マスタが59件になり、confirmed-events 60件に対するジャケット照合は `matched=57`、`ambiguous=3`、`not_found=0`、`missing_feature=0` になった。ここでの `matched` は引き続きPoC上の一意候補であり、保存可能ではない。
+採用に至るまでのlocal素材件数、曖昧候補、title画像・OCR suffix・line-hashの比較経緯は、[`09_master_match_evaluation_history.md`](09_master_match_evaluation_history.md)に保存する。現行matcherは、jacket候補集合内だけでtitleを先に評価し、必要な場合だけartistを適用する。候補集合外から曲を追加せず、各補助信号の結果は`identity_signal_*`として保持する。
 
-残る `ambiguous` は、現ローカル素材では `osaka EVOLVED -毎度、おおきに！- (TYPE1/2/3)` の同一ジャケット3件である。これはEVOLVED系だけの特例ではなく、同一・類似ジャケットでタイトル側に分岐情報が出る曲群の代表ケースとして扱う。`result_098_sp_basic_lv07_if_score972200.png` はファイル名とmetadataが `If` になっていたが、実画面表示は `桜 / Reven-G / SINGLE BASIC Lv7` だったためローカルmetadataを修正済み。その後、`桜` のsong_select grid/result素材を追加して近距離曖昧は解消した。osaka 3件は画像特徴量だけで無理に一意化せず、title画像特徴量またはtitle OCRで `TYPE1` / `TYPE2` / `TYPE3` を候補集合内だけ再順位付けする対象にする。
-
-title / artist の画像特徴量を追加する場合も、候補集合外から曲を拾うためには使わない。基本順序は `play_style / difficulty / level` で候補集合を作り、ジャケット特徴量で狭め、残った曖昧候補だけを title 画像特徴量や title OCR で再順位付けする。artistは主キーではなく、矛盾チェックや弱い補助信号に留める。
-
-将来、GRAND PRIXでプレー可能な範囲に同一・類似ジャケット分岐が増えた場合も同じ読み方にする。例えばX-Special付き譜面が通常版と同一ジャケットを共有する可能性はあるが、現時点ではGRAND PRIXプレー対象として扱わないため、M5の実装対象には含めない。
-
-初期の title 画像特徴量PoCでは、result `song_title` ROIを横長の濃淡サムネイル、エッジサムネイル、右側サフィックス寄りの濃淡/エッジサムネイル、dHashに変換する。参照はローカルmetadataの期待曲名を M4 `songs.title` へ一意解決できた result 素材から作る。比較時は同じ `organized_file` の参照を除外し、jacketで `ambiguous` になったsong_id集合内だけを対象にする。結果は `title_rerank_status`、title最上位候補、title距離、title参照元、title上位候補一覧として `jacket_match_candidates.csv` に出す。
-
-`title_rerank_status=resolved_candidate` は、title画像特徴量が曖昧候補集合内の再順位付け候補を出したというPoC観測であり、`jacket_match_status` を `matched` に変えたり、曲ID/譜面ID確定やDB保存可能を意味したりしない。`missing_feature` はtitle参照不足、`ambiguous_candidate` はtitle画像でも近傍候補が残る状態として読む。
-
-title OCR suffix補助は、`--m3-song-artist-ocr` で得た result `song_title` OCR文字列から `TYPE1` / `TYPE2` / `TYPE3` だけを抽出し、jacketで `ambiguous` になったsong_id集合内だけを再順位付けする。suffixが候補集合外の曲に対応しそうな場合でも、候補集合外から曲を拾わず `no_candidate_suffix_match` として観測する。`title_ocr_rerank_status=resolved_candidate` はsuffixが曖昧候補内の1曲に対応したというPoC観測であり、`jacket_match_status` を変えたり、曲ID/譜面ID確定やDB保存可能を意味したりしない。`missing_ocr` はOCR未実行またはOCR入口失敗、`no_suffix` はOCR文字列からTYPE suffixを取れない状態、`ambiguous_candidate` はsuffixでも候補が複数残る状態として読む。
-
-2026-07-05のローカル確認では、osaka 3件の title OCR suffix 補助はすべて `no_suffix` だった。OCR文字列には `TYPE)`、`TYPED`、`TYPES` のようなsuffix末尾崩れが出ており、現行のM3 title OCR入口だけでは `TYPE1` / `TYPE2` / `TYPE3` を安定取得できない。これはOCR方式刷新の採用判断ではなく、次に song_select grid/detail 側のタイトル表示ROI参照やsuffix専用の小さな前処理を検討するための観測として扱う。
-
-次のtitle補助は、result `song_title` ROIのline-hash方式に寄せる。これはinf-notebook系の固定UI文字認識を参考に、OCR文字列ではなく、固定ROIから抽出した文字画素のbit列を比較するPoCである。参照元はresult素材だけに限定し、song_select側のタイトル表示ROIは使わない。ローカルmetadataの期待曲名を M4 `songs.title` へ一意解決できた result素材から参照featureを作り、同じ `organized_file` の参照は比較から除外する。
-
-title line-hashでは、result `song_title` ROIのうち曲名行だけを対象にし、白文字色域を固定しきい値で二値化して、行ごとのbit列を4bit単位でhex化する。inf-notebook 風に、参照素材から作った行hexキー辞書を主観測にする。距離比較型は互換の参考列として残し、候補参照同士で差が出るbitを重く見たHamming距離で順位付けする。
-
-`jacket_match_candidates.csv` へ追加するline-hash観測列は、`title_linehash_candidate_feature_count`、`title_linehash_diff_bit_count`、`title_linehash_dict_status`、`title_linehash_dict_top_*`、`title_linehash_dict_top_candidates`、`title_linehash_exact_status`、`title_linehash_distance_status`、`title_linehash_top_*`、`title_linehash_top_candidates`、`title_linehash_rerank_reason` を基本とする。`title_linehash_dict_status=resolved_candidate` は、line-hash辞書が曖昧候補集合内の再順位付け候補を出したというM5観測であり、`jacket_match_status` を変えたり、曲ID/譜面ID確定やDB保存可能を意味したりしない。line-hashが候補集合外にありそうな曲名形状を示しても、候補集合外から曲を拾わない。line-hash辞書で候補が出た場合は `identity_signal_status=composite_resolved_candidate` / `identity_signal_source=title_linehash_dict` として後続へ渡す。これは「jacket単体より低い信頼度」ではなく、jacket候補集合とtitle補助を合わせた曲同定候補観測であり、保存判定では引き続きM7以降の集約ルールを待つ。
-
-固定UI文字は最終的に汎用OCRより画像認識へ寄せる方針であり、スコア/判定数/EX SCOREのTesseract離脱と数字テンプレート認識はM9 app-owned runtimeの#103で実装済みです。M5の次作業では、まずtitle line-hashをjacket ambiguous候補内の補助信号として観測する。
-
-## M7 jacket validation result title/artist feature master
+## M7 result-text feature master
 
 M7 jacket validationでは、過去resultを含む`result_candidate=true`フレームの`song_title` / `artist` ROIから、OCRを使わず画像特徴量を抽出する。titleとartistは別々のfeatureとして扱い、同一jacket・同一title・artist違いの候補を後続で比較できる材料を残す。照合に再利用するaccepted featureはM5b `databases/jacket-catalog.sqlite` の `result_text_features` tableへ保存し、JSON/CSV/summaryは確認用の診断出力とする。artistは単独で候補集合を作る主キーにはせず、jacket候補内でtitleの後に使う。
 
@@ -174,9 +158,9 @@ M7 jacket validationでは、過去resultを含む`result_candidate=true`フレ�
 
 なお、collector catalogの`title_line_hash`はsong selectの`INFORMATION`欄のtitle lineを白画素二値化してSHA-256化した複合identity用の値であり、result titleの画像featureとは異なる。result feature payloadの`title_linehash_rows`はcatalogの`title_line_hash`へ流用せず、M5b catalogの`result_text_features.payload_json`内へ独立して保持する。
 
-全曲ジャケット画像取得、配布可否、画像キャッシュ方針は別フェーズとして残す。ジャケット特徴量やtitle補助を入れる場合も、初回は保存成功判定ではなく、M7以降の保存判定へ渡す曲同定候補観測として始める。
+result-text featureとjacket特徴量は、M7以降の保存判定へ渡す曲同定候補観測として扱う。配布するreference data setのassetと永続catalogは、`05_storage_io_spec.md`の更新境界に従う。
 
-## M5b ローカルjacket参照カタログ
+## M5b jacket reference catalog
 
 M5bでは、一時的な `jacket_feature_master.csv` とは別に、repository root直下の `databases/jacket-catalog.sqlite` へローカル参照カタログversion 1を生成する。M4 master DBのcollector正本は `databases/ddrgp-master.sqlite` とする。catalogは `catalog_identity=ddrgp-local-jacket-reference-catalog`、schema version、専用table/columnをstrictに検査し、M4 master DB、M8 preview DB、正式個人スコアDB、unknown SQLiteを相互受入れしない。
 
@@ -188,7 +172,7 @@ M5bでは、一時的な `jacket_feature_master.csv` とは別に、repository r
 
 `--m5-jacket-catalog` を `--m5-jacket-match` と併用すると、current masterで有効かつ現行 `feature_extractor_version` と一致する `auto_confirmed` referenceだけを永続特徴量から復元し、既存 `match_jacket_save_candidate_rows` へ渡す。旧extractorのreferenceはcatalogへ共存できても現行matcherの距離計算へ混入させない。参照元画像を削除した後も既存の距離計算と候補境界を再実行できるが、catalog statusやM5 matchは正式曲ID・正式play・保存可否への昇格ではない。
 
-## M5c 開発者専用jacket catalog collector
+## M5c developer-only collector
 
 M5bはcatalog、coverage、runtime loaderの安全な基盤を固定したが、約1200曲の実用収集で画像保存とobservation CSVのtitle/artist記入を手作業にしないため、M5cで公開appと独立したdeveloper-only collectorを追加する。collectorは `tools/` 配下に置き、通常のviewer/monitoring build、installer、Releaseへ含めない。M4 master builder、M5b catalog API、coverageを再利用し、独自のmaster scraper、正式保存workflow、個人スコアDB writerを持たない。
 

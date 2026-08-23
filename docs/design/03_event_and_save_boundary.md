@@ -1,5 +1,7 @@
 # イベントと保存境界
 
+app-owned recognition、formal evidence、confirmed capture event IDによる正式保存decisionは[ADR 0002](../adr/0002-app-owned-formal-save-boundary.md)に記録する。field別source、status、threshold、workflowの詳細はこの文書を正本とする。
+
 分類結果を時系列イベントとして解釈し、DB保存へ進めてよい行と保存してはいけない行を分ける設計です。現時点ではPython PoCの `result_events.csv` と `confirmed-events` OCR対象選定が正本です。
 
 ## 目的

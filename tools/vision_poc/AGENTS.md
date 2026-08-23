@@ -12,7 +12,7 @@
 
 ## Classification And ROI
 
-- 初期PoCは `docs/vision-poc-prep.md` に従う。
+- local screenshot素材の準備と基本評価は `docs/vision-poc-prep.md`、commandと出力の読み方はこのdirectoryの`README.md`に従う。
 - ROIは1280x720基準で定義し、実画像サイズへ線形scaleする。ROI座標定義の大変更は独立phaseとする。
 - OCR本番精度より先にROI切り出し、候補分類、log、評価集計を安定させ、主要ROIを `data/vision_poc/rois/` で目視できる状態に保つ。
 - `result_shape_candidate` はリザルトらしい形状検出、`result_candidate` は保存処理や数字OCRへ進める単発候補であり、保存確定そのものではない。

@@ -1,5 +1,7 @@
 # スクリーンショット収集マトリクス
 
+> Status: 履歴資料。初期の画像解析PoCで使ったlocal sample収集条件を保存する。現在のdeveloper評価準備は[`vision-poc-prep.md`](vision-poc-prep.md)、capture入力契約は[`design/02_frame_input_contract.md`](design/02_frame_input_contract.md)を正本とする。
+
 画面解析PoCでは、リザルト画面だけでなく、保存対象外の画面をネガティブサンプルとして収集する。
 
 ## 撮影条件

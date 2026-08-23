@@ -4,6 +4,8 @@ M5c のローカル jacket catalog 運用と、DDR WORLD公式ジャケットsna
 
 ## 実行
 
+Explorerから起動する場合は[`launch-jacket_catalog.bat`](launch-jacket_catalog.bat)をダブルクリックします。launcherはrepository rootとproject pathを自身の配置場所から解決し、管理者権限を要求してcollectorを起動します。
+
 リポジトリrootで実行します。
 
 DDR GRAND PRIXが管理者権限で起動している環境では、windowのprocess start identityを検査できるよう、collectorも管理者として起動したPowerShellから実行してください。権限が不足するwindowは候補へ部分追加せず、0件として扱います。
