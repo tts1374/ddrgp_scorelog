@@ -250,6 +250,23 @@ public sealed class UserSettingsTests
         Assert.Equal(koreanText, Localization.GetForLanguage(japaneseText, UserSettings.KoreanLanguage));
     }
 
+    [Theory]
+    [InlineData("待機中", "Waiting", "대기 중")]
+    [InlineData("監視中", "Monitoring", "모니터링 중")]
+    [InlineData("手動停止済み", "Stopped manually", "수동 중지됨")]
+    [InlineData("監視開始不可", "Monitoring unavailable", "모니터링 시작 불가")]
+    [InlineData("capture失敗", "Capture failed", "캡처 실패")]
+    [InlineData("workflow失敗", "Workflow failed", "workflow 실패")]
+    public void Monitoring_state_labels_are_translated_for_supported_languages(
+        string japaneseText,
+        string englishText,
+        string koreanText)
+    {
+        Assert.Equal(japaneseText, Localization.GetForLanguage(japaneseText, UserSettings.JapaneseLanguage));
+        Assert.Equal(englishText, Localization.GetForLanguage(japaneseText, UserSettings.EnglishLanguage));
+        Assert.Equal(koreanText, Localization.GetForLanguage(japaneseText, UserSettings.KoreanLanguage));
+    }
+
     [Fact]
     public void Missing_or_unreadable_settings_fall_back_to_all_defaults()
     {
