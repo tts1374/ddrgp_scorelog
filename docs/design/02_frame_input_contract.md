@@ -1,10 +1,10 @@
 # FrameInput契約
 
-画像解析PoCで分類、イベント確定、OCRへ渡す1フレーム分の入力契約を定義する。実キャプチャAPI導入時は、入力元だけを差し替え、この契約以降の分類、確定、OCR対象選定を維持する。
+developer評価で分類、event確定、画像認識へ渡す1フレーム分の入力契約を定義する。Windowsアプリのapp-owned captureも、画像と単調時刻を同じ意味で扱い、この契約以降の分類、確定、認識対象選定と整合させる。
 
 ## 目的
 
-- metadata、timestamped、manifest、dry-run capture、将来の実キャプチャAPIを同じ境界で扱う。
+- metadata、timestamped、manifest、dry-run capture、WPF captureを同じ入力境界で扱う。
 - `timestamp_ms` の単調増加を保証し、time-based confirmation を壊さない。
 - manifest expected columns を保持し、OCR評価カバレッジを壊さない。
 - dry-run 出力を manifest mode で再実行できるようにする。
@@ -181,7 +181,7 @@ Windows Graphics Capture adapterはpicker、D3D11 device、free-threaded frame p
 
 writerは `data/` 直下のstaging directoryへ画像、manifest、metadataを書き、3ファイル完成後に一意な最終directoryへrenameする。既存出力は上書きせず、失敗時はstagingを削除する。captureだけでmanifest reader、分類、OCR、confirmed event、正式save input、DB、viewer履歴を呼び出さない。
 
-2026-07-13の実測では、DDR GRAND PRIX windowのWPF captureは画像領域とmanifestの `width,height` がともに1280x720で一致し、window枠、影、余白は画像に含まれなかった。Windows Graphics Captureが返すsurface pixelを入力境界とするため、OSのDPI scaleはROI座標へ再適用しない。この実測入力は既存1280x720 ROI基準へcropなしで渡せた。将来、surface内に枠や余白を含む入力が見つかった場合は、capture原本を書き換えず、manifest補助列でcontent boundsを明示してからROI入力前処理を追加する。
+2026-07-13の実測では、DDR GRAND PRIX windowのWPF captureは画像領域とmanifestの `width,height` がともに1280x720で一致し、window枠、影、余白は画像に含まれなかった。Windows Graphics Captureが返すsurface pixelを入力境界とするため、OSのDPI scaleはROI座標へ再適用しない。この実測入力は既存1280x720 ROI基準へcropなしで渡せた。surface内に枠や余白を含む入力へ対応するときは、capture原本を書き換えず、manifest補助列でcontent boundsを明示してからROI入力前処理を追加する。
 
 1行manifestは単独で `--sequence-mode manifest` へ渡せる。複数captureをconfirmed-events評価へ使う場合は、各1行を時刻順にまとめたローカル評価manifestを `data/` 配下へ作り、`screen_type`、expected columns、`song_select_view` などの評価補助列を追加する。補助列は `FrameInput.row` に保持され、画像pathは評価manifest directoryまたは明示 `--frame-root` から解決する。期待値がない場合はPoCが出す `ocr_expected_template.csv` と `m3_metadata_expected_template.csv` を埋め、`evaluated` になるまで採用判断へ使わない。
 
@@ -230,12 +230,12 @@ image_path,timestamp_ms,screen_type,expected_score,max_combo,miss,ex_score
 frames/result_a.png,0,result,935730,111,1,552
 ```
 
-## 将来の実キャプチャAPIが満たすこと
+## capture provider共通契約
 
 - 1フレームごとに画像参照または保存済み画像パスを渡す。
 - 各フレームへ単調増加する `timestamp_ms` を付ける。
 - 入力順は時系列順にする。
-- dry-run manifest互換出力をしばらく維持する。
+- 保存出力はmanifest modeで再実行できる互換形式にする。
 - `FrameInput.row` 相当の任意列を保持できる余地を残す。
 
 ## 守るべき互換性

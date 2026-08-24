@@ -1,5 +1,7 @@
 # M0 入力境界チェックリスト
 
+> Status: 完了済みの検収記録。現在の入力契約は[`../design/02_frame_input_contract.md`](../design/02_frame_input_contract.md)、回帰条件は[`../design/06_regression_guard.md`](../design/06_regression_guard.md)を正本とする。
+
 M0「画像解析PoCの入力境界を固める」を完了扱いにするためのチェックリストです。
 
 ## 入力モード

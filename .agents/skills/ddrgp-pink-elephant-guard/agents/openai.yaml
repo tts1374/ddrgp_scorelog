@@ -1,0 +1,6 @@
+interface:
+  display_name: "DDRGP ピンクの象ガード"
+  short_description: "旧案を再登場させず現在の契約から自然に書き直す"
+  default_prompt: "$ddrgp-pink-elephant-guard を使い、却下済みの話題を完成物へ戻さず、現在の契約だけから書き直してください。"
+policy:
+  allow_implicit_invocation: true

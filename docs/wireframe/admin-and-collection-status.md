@@ -1,8 +1,8 @@
 # 管理・設定 / 収集状況 改善ワイヤーフレーム
 
-Issue #75で実装した通常画面の補助仕様として、管理・設定画面と収集状況画面の表示契約を保存する。
+> Status: 履歴資料。Issue #75でcollector UIを整理した際の判断と受入条件を保存する。現在の操作と表示契約は[`../../tools/jacket_catalog_collector/README.md`](../../tools/jacket_catalog_collector/README.md)、視覚仕様は[`jacket-catalog-collector-mock.html`](jacket-catalog-collector-mock.html)、実際の挙動はcollector実装とtestを正本とする。
 
-通常画面の配置・見た目・ボタン文言は [`jacket-catalog-collector-mock.html`](./jacket-catalog-collector-mock.html) を正とし、データ定義・状態・異常系・非表示要件はIssue #75を正とする。レビュー画面の固有UIは#56以降の契約を維持する。
+Issue #75で管理・設定画面と収集状況画面を設計した時点の判断、状態定義、完了条件を記録する。
 
 ## 目的
 

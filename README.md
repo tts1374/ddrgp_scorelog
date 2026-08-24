@@ -57,6 +57,7 @@ GP Score Logは、DanceDanceRevolution GRAND PRIXのリザルト画面を読み�
 
 ## 開発者向け文書
 
+- [プロジェクト文書案内](docs/README.md)
 - [要求定義](docs/requirements.md)
 - [実装ロードマップ](docs/implementation-roadmap.md)
 - [Windowsアプリの技術README](app/README.md)

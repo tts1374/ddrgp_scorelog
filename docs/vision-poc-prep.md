@@ -1,152 +1,95 @@
-# 画面解析PoC準備メモ
+# 画像解析PoCのローカル評価準備
 
-このメモは `samples/screenshots/organized/` のスクリーンショットセットを前提に、リザルト検出、読み取りROI候補、カウントアップ中と確定リザルトの判別条件を整理する。
+この文書は、`tools/vision_poc`をlocal screenshot素材で再現・評価するための準備をまとめる。command、option、生成物の詳細は[`../tools/vision_poc/README.md`](../tools/vision_poc/README.md)を正本とする。
 
-## 前提
+通常のRelease runtimeはWindowsアプリ内のapp-owned画像認識を使い、Python、Tesseract、repository内のlocal screenshotやtemplateを探索しない。Vision PoCは、分類、ROI、候補観測、confirmed-events境界を検証するdeveloper向け経路である。
 
-- 現在のサンプルは 1280x720 PNG。
-- 初期PoCは 1280x720 を基準座標とし、実画面サイズへ線形スケールする。
-- リザルト系サンプルは `organized/result/`、リザルト遷移・カウントアップ中は `organized/transition/` に分類済み。
-- スコアはリザルト画面表示後にカウントアップするため、リザルト形状の検出と保存可否判定は分離する。
+## 正本
 
-## サンプル分類
+| 内容 | 正本 |
+|---|---|
+| 用語と工程名 | [`design/00_glossary.md`](design/00_glossary.md) |
+| pipeline全体 | [`design/01_pipeline_fsm.md`](design/01_pipeline_fsm.md) |
+| `FrameInput`とmanifest | [`design/02_frame_input_contract.md`](design/02_frame_input_contract.md) |
+| event確定と保存境界 | [`design/03_event_and_save_boundary.md`](design/03_event_and_save_boundary.md) |
+| 出力場所 | [`design/05_storage_io_spec.md`](design/05_storage_io_spec.md) |
+| 回帰条件 | [`design/06_regression_guard.md`](design/06_regression_guard.md) |
+| commandと出力の読み方 | [`../tools/vision_poc/README.md`](../tools/vision_poc/README.md) |
 
-| 種別 | 件数 | 用途 |
-|---|---:|---|
-| menu_setup | 7 | 起動、待機、プレースタイル選択、オプション画面の除外 |
-| song_select | 11 | 選曲中の除外 |
-| gameplay | 12 | プレイ中のスコア・コンボ表示との誤検出防止 |
-| transition | 7 | CLEARED/FAILED、リザルト直前、カウントアップ中の除外 |
-| result | 16 | 確定リザルトの正例 |
+## local素材
 
-## リザルト検出
+次の素材はlocal専用で、Git管理しない。
 
-単発フレームでは、以下の複数条件をスコア化して `result_candidate` とする。
+- `samples/screenshots/organized/`配下のPNG
+- `samples/screenshots/metadata.csv`
+- chart-field、digit、jacketなどのlocal template
+- 実capture画像とmanifest
 
-| 条件 | ROI目安 | 判定方法 | 備考 |
-|---|---|---|---|
-| 上部RESULTSヘッダー | x=480,y=0,w=320,h=58 | テンプレート照合または緑/白文字のOCR | `RESULTS n STAGE` が最も強い正例シグナル |
-| 詳細リザルト枠 | x=662,y=330,w=462,h=288 | シアン外枠、黒ヘッダー、明るい表領域の色/エッジ検出 | カウントアップ中にも出るため保存判定には使わない |
-| 詳細リザルト見出し | x=662,y=330,w=194,h=36 | OCRで `詳細リザルト`、または青いタブ色 | 日本語OCRが不安定なら色と位置で代替 |
-| スコアラベルと大数字 | x=170,y=250,w=280,h=82 | 白い大数字、`score` ラベル周辺の形状 | プレー中コンボとの区別にヘッダー条件を併用 |
-| スキップ案内 | x=468,y=654,w=346,h=50 | 黒い横長ボタンと白枠 | リザルト確定前にも表示されるため補助条件 |
+基本評価は1280x720のDDR GRAND PRIX画面を使う。ROIは`tools/vision_poc/runner.py`の`ROI_DEFINITIONS`と関連testを実装上の正本とし、入力画像サイズに合わせて既存規則でscaleする。
 
-PoCの初期判定は、以下を満たしたらリザルト候補とする。
+### screenshot分類
 
-1. RESULTSヘッダーが検出できる。
-2. 詳細リザルト枠が検出できる。
-3. スコアROIまたはランクROIのどちらかにリザルト特有の大きな白/黄文字がある。
+`metadata.csv`の`screen_type`は、分類評価の期待値として次を使う。
 
-## ROI候補
+| `screen_type` | 期待する扱い |
+|---|---|
+| `result` | `result_candidate=true`の正例 |
+| `transition` | RESULT遷移やcountupを含む非保存例 |
+| `song_select` | 選曲画面の非保存例 |
+| `gameplay` | play中画面の非保存例 |
+| `menu_setup` | menu、待機、設定画面の非保存例 |
 
-座標は 1280x720 基準の `x,y,w,h`。
+`transition_countup_*`はRESULT形状を持っていても、`event_type=rejected_transition`、`confirmed_result=false`として評価する。
 
-| 項目 | ROI | 読み取り方式 | 備考 |
-|---|---|---|---|
-| RESULTSヘッダー | 480,0,320,58 | テンプレート/OCR | 画面検出用 |
-| プレースタイル | 360,56,100,24 | テンプレート/OCR | `SINGLE` / `DOUBLE` |
-| 難易度 | 378,80,84,24 | テンプレート/OCR | 色・単語テンプレート併用候補 |
-| レベル | 380,104,52,38 | 数字OCR | 1から19想定 |
-| ランク | 170,122,160,126 | テンプレート照合 | A/AA/AAA/Eなど。黄色大文字または灰色E |
-| スコア | 250,278,210,48 | 数字OCR | カンマ除去、0から1000000 |
-| 曲ジャケット | 532,54,216,216 | 保存/補助照合 | 曲名照合の補助に使える可能性あり |
-| 曲名 | 488,274,304,52 | OCR | 黒い曲名帯。長い曲名は縮小表示 |
-| アーティスト | 548,306,184,26 | OCR | 必須ではなく照合補助 |
-| カロリー枠 | 164,330,460,288 | 除外/補助 | 保存項目の初期必須にはしない |
-| 今回消費カロリー | 188,386,230,28 | OCR | 数字/小数。優先度低 |
-| 詳細リザルト枠全体 | 662,330,462,288 | 検出/切り出し | 判定数OCRの親ROI |
-| MAX COMBO | 714,368,284,32 | 数字OCR | 左ラベルを除き右側数字中心 |
-| MARVELOUS | 766,404,232,28 | 数字OCR | 判定数 |
-| PERFECT | 766,434,232,28 | 数字OCR | 判定数 |
-| GREAT | 766,464,232,28 | 数字OCR | 判定数 |
-| GOOD | 766,494,232,28 | 数字OCR | 判定数 |
-| OK | 766,524,232,28 | 数字OCR | 判定数 |
-| MISS | 766,554,232,28 | 数字OCR | 判定数 |
-| FAST | 1018,472,96,44 | 数字OCR | 任意項目 |
-| SLOW | 1018,532,96,44 | 数字OCR | 任意項目 |
-| EX SCORE | 748,580,250,34 | 数字OCR | 任意項目 |
+### metadata
 
-数字OCRの初期前処理は以下。
+`metadata.csv`には、少なくとも画像を特定する列と`screen_type`を用意する。OCR、M3 result field observation、M7a digit recognitionを評価する場合は、対象fieldのexpected列をlocal素材の画面表示と照合して追加する。
 
-- ROIを2から3倍に拡大する。
-- グレースケール化後、白文字を拾うため高輝度しきい値を使う。
-- `0123456789,` の文字制限をかける。
-- 読み取り後にカンマ、空白、記号を除去する。
-- 判定数は行ごとのラベル位置を固定し、右側の数字だけを読む。
+expected値は評価用であり、formal play値や正式保存根拠へ転記しない。local素材のreview結果を共有する必要がある場合は、画像や`metadata.csv`本体ではなく、必要な判断だけをGit管理可能なreview記録へ残す。
 
-## カウントアップ中と確定リザルトの判別
+## 評価の実行
 
-単発画像だけで確定判定しない。`result_candidate` を検出したら、短時間バッファで状態を追跡する。
+repository rootで次を実行する。
 
-### 状態
+```powershell
+python -X utf8 -m tools.vision_poc
+```
 
-| 状態 | 意味 | 遷移 |
-|---|---|---|
-| `non_result` | リザルト候補ではない | リザルト候補検出で `result_candidate` |
-| `result_candidate` | リザルト形状は出たが保存不可 | 数字が変化中なら維持、安定したら `final_result` |
-| `final_result` | 確定リザルトとして解析・保存可能 | 画面退出または別リザルト検出で解除 |
+既定のmetadata modeは`data/vision_poc/`へ出力する。timestamped、manifest、dry-run、各評価optionのcommandと出力先は`tools/vision_poc/README.md`に従う。
 
-### 確定条件
+local素材がない環境では、素材依存の評価だけを未実施として扱う。代替画像の生成やGit追加は行わない。
 
-初期PoCでは、以下をすべて満たした場合のみ `final_result` とする。
+## 結果の確認
 
-1. `result_candidate` が連続して 1.5 秒以上続く。
-2. スコアROIのOCR結果が 3 フレーム以上連続で同一。
-3. 判定数ROI、少なくとも MAX COMBO/MARVELOUS/PERFECT/GREAT/GOOD/MISS が 3 フレーム以上連続で同一。
-4. 詳細リザルト枠全体の差分が小さい。目安は平均絶対差 2.0 以下、またはpHash距離が閾値以下。
-5. スコアが 0 から 1000000 の範囲にあり、極端なOCR崩れがない。
+最低限、次を確認する。
 
-スコアが小さいFAILEDリザルトもあるため、スコア下限だけでカウントアップ中を除外しない。
+- `summary.json`: result/non-result分類数と全体summary
+- `misclassifications.md`: 誤分類代表
+- `result_events.csv`: `confirmed_result`、`event_type`、`duplicate`、`confirmation_mode`
+- `result_events_summary.json`: confirmed、duplicate、rejected transitionの集計
+- `rois/`: 現在のROI切り出し
 
-### カウントアップ中として保存しない条件
+対象工程を実行した場合だけ、対応するOCR、M3、M5、M7、M8のreportを追加確認する。候補status、`recognized_digits`、expected一致、preview statusは評価材料であり、正式DB保存成功として読まない。
 
-以下のいずれかに該当したら `result_candidate` のまま保持し、DB保存しない。
+## event境界
 
-- スコアOCRが直近フレームから変化している。
-- 判定数またはEX SCOREが直近フレームから変化している。
-- スコアROIの表示桁が不自然に少ないが、次フレームで増加傾向にある。
-- リザルト検出から 1.5 秒未満。
-- OCR結果の整合性チェックに失敗する。
+- `result_shape_candidate`: RESULTらしい形状の検出。保存候補とは限らない。
+- `result_candidate`: 単発frameの保存候補。保存確定ではない。
+- `confirmed_result`: 継続条件を満たした保存直前event。duplicateになり得る。
+- confirmed-events対象: `confirmed_result=true`かつ`duplicate=false`。
 
-## 整合性チェック
+timestamped、manifest、dry-runでは`confirmation_mode=time`と単調増加する`timestamp_ms`を維持する。metadata modeのframe-based confirmationと混同しない。
 
-保存前に以下を確認する。
+Vision PoCの`score:` / `file:`形式の`duplicate_key`はlocal評価専用である。WindowsアプリのRESULT groupingや正式DBのduplicate keyとは別の境界として扱う。
 
-- スコアは整数、0から1000000。
-- 判定数はすべて非負整数。
-- `MAX COMBO` は0より大きい。ただしFAILED低スコアでも保存対象にする。
-- `MARVELOUS + PERFECT + GREAT + GOOD + MISS` が0より大きい。
-- FAST/SLOW/OK/EX SCOREは任意項目として扱い、失敗しても必須保存は止めない。
-- 曲名、スタイル、難易度、レベルがマスタDBと一意に照合できない場合はDB保存しない。
+## 変更時の確認
 
-## 重複保存防止
+分類、ROI、event確定、OCR・数字認識、出力契約を変更した場合は、変更責務に対応するtestと`tools/vision_poc/AGENTS.md`のValidationを実行する。
 
-確定後も同じリザルトは数秒表示されるため、保存キーを作る。
+確認結果では次を分けて報告する。
 
-- 曲IDまたは曲名OCR正規化値
-- スタイル
-- 難易度
-- レベル
-- スコア
-- 判定数一式
-- キャプチャ画像のpHash
-- 検出時刻
-
-同一キー、または短時間内に同一スコア・同一判定数・近似pHashの結果は保存済みとしてスキップする。
-
-## PoC実装順
-
-1. `organized/` 配下のメタデータを読み、正例/負例のテストセットを作る。
-2. 1280x720基準の固定ROI切り出しを実装する。
-3. RESULTSヘッダー + 詳細リザルト枠で `result_candidate` を分類する。
-4. スコアと判定数ROIの数字OCRを試す。
-5. 連続フレームの代わりに、重複サンプルとカウントアップサンプルを使って安定判定ロジックをユニットテスト化する。
-6. 実キャプチャ接続後に、時間バッファによる `final_result` 判定へ置き換える。
-
-## 実キャプチャAPI前の dry-run
-
-実キャプチャAPIへ進む直前の確認として、既存画像ディレクトリを capture provider の代替入力にする dry-run を使う。これは本番キャプチャ、実デバイス依存コード、常駐監視ループ、非同期処理、DB保存、OCR方式刷新ではない。
-
-dry-run provider はファイル名昇順にフレームを返し、各フレームへ単調増加する `timestamp_ms` を付けるだけにする。保存先は `data/` 配下に限定し、出力は `frames/` と manifest互換CSVにする。生成manifestは `--sequence-mode manifest` で読み直し、`confirmation_mode=time`、`confirmed_result=true` かつ `duplicate=false` の保存境界、`transition_countup_*` の `rejected_transition` 扱いが維持されることを確認する。
-
-実キャプチャAPI導入時は provider の入力元だけを差し替え、manifest互換 dry-run 出力はしばらく維持する。これにより、キャプチャ入力の不具合と分類/OCR/イベント確定の不具合を同じCSV契約で切り分けられる。
+- 実行したlocal素材とmode
+- result、non-result、rejected transition、duplicateの集計
+- expected coverageと認識status
+- 実行できなかった素材依存検証
+- `data/`、`logs/`、local素材がGit差分へ入っていないこと

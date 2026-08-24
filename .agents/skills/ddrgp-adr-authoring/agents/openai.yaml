@@ -1,0 +1,4 @@
+interface:
+  display_name: "DDRGP ADR作成・更新"
+  short_description: "重要な設計判断をADRとして作成・更新・後継化する"
+  default_prompt: "Use $ddrgp-adr-authoring to record the finalized DDRGP architecture decision as an ADR."

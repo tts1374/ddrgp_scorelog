@@ -1,5 +1,7 @@
 # M3 Chart Field Review Notes
 
+> Status: 履歴資料。Git管理しないlocal素材に対して実施したM3 chart-fieldの期待値review結果を保存する。現在のfield名と工程は[`00_glossary.md`](00_glossary.md)、保存境界は[`03_event_and_save_boundary.md`](03_event_and_save_boundary.md)を正本とする。
+
 M3 chart-field PoC の期待値レビュー結果を、ローカル `metadata.csv` をGit管理せずに共有するためのメモです。ここに書く内容は、`samples/screenshots/metadata.csv` の実体更新ではなく、次にローカル期待値を直すときの判断材料です。
 
 ## 2026-07-04 difficulty review

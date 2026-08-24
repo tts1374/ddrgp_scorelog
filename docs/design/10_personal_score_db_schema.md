@@ -29,11 +29,12 @@ formal DB、M4 master DB、M5b jacket reference catalogのいずれかが不正�
 - `PRAGMA user_version` だけで正式DB判定をせず、metadata table と必須tableを合わせて互換チェックする。
 - M8 preview DB、未知スキーマ、既存の壊れたDBを正式DBとして開かない。
 
-## 実装済みの小さな契約
+## 現行schemaと実装入口
 
-正式スキーマ候補のコード側契約は `tools/vision_poc/personal_score_db_schema.py` に置く。
+正式schemaのコード側契約は `tools/vision_poc/personal_score_db_schema.py` に置く。
 
-- `PERSONAL_SCORE_DB_SCHEMA_VERSION = 2`
+- `PERSONAL_SCORE_DB_SCHEMA_VERSION = 3`
+- migration history: `001_initial_personal_score_db_schema`、`002_play_order_indexes`、`003_optional_result_metrics`
 - `score_db_metadata`
 - `schema_migrations`
 - `source_captures`
@@ -47,7 +48,7 @@ formal DB、M4 master DB、M5b jacket reference catalogのいずれかが不正�
 - `personal_score_db_schema_inspection_diagnostic()`
 - `format_personal_score_db_schema_diagnostic_markdown()`
 - `personal_score_db_file_preparation_diagnostic()`
-- `PERSONAL_SCORE_DB_MIGRATION_HISTORY = 001_initial_personal_score_db_schema, 002_play_order_indexes`
+- `PERSONAL_SCORE_DB_MIGRATION_HISTORY = 001_initial_personal_score_db_schema, 002_play_order_indexes, 003_optional_result_metrics`
 - `idx_plays_played_at_order`、`idx_plays_song_chart_order`
 
 正式保存入力とconnection単位のtransaction writerは `tools/vision_poc/personal_score_db_save.py` に置く。
@@ -294,17 +295,18 @@ CLI入力はUTF-8 JSONの `input_schema_version=1` objectとする。候補材�
 
 `--personal-score-db-save-input-template <data/...json>` は、この同じ外部入力schemaを人がレビューするための空templateを新規作成する単独入口である。`candidate_material={}`、全fieldを明示した空文字/nullの `formal_play`、`exclusion=null` を固定し、現行strict loaderで読み戻せる一方、未編集状態はadapterで `unresolved` にする。候補値や正式値を自動生成せず、template生成からvalidation、DB検査、duplicate preflight、insertへ自動連鎖しない。
 
-## 未決事項
+## 値の由来と責任境界
 
-- `play_id` と `duplicate_key` の本格生成方式。
-- OCR raw、normalized、M5候補観測、M7a候補値の詳細ログ粒度。
-- analysis artifactとsaveは明示orchestration入口で接続済み。現行CLIは独立のまま維持し、入口がpath/ID/status一致、artifact先行publish、DB失敗時のartifact保持と同一payload再利用を担当する。
-- マスタDBの互換方針が固まった後の `master_version` と `song_id` / `chart_id` の扱い。
+- `play_id`、`played_at`、formal duplicate keyは、app-owned workflowがconfirmed capture eventのIDとUTC時刻から1回だけ構成する。同一eventの再送は同じIDを使い、別eventは新しいIDを使う。
+- result fingerprintはevent groupingの補助であり、formal duplicate keyには使わない。
+- `song_id` / `chart_id`は、current masterとM5b jacket reference catalogの互換性を確認したformal evidenceから構成する。catalog互換性はsong ID、canonical title、canonical artistで判断し、保存時のmaster version文字列だけで値を昇格させない。
+- OCR raw、normalized値、M5候補観測、M7a digit recognition候補はanalysis detailへ保持できるが、formal `plays`の値にはしない。
+- analysis artifactとsaveは明示orchestration入口がpath、ID、statusの一致を確認し、artifact publish後に同一payloadでtransactionを実行する。DB失敗時も公開済みartifactを診断材料として保持する。
 
 ## 回帰ガード
 
 - `tests/test_personal_score_db_schema.py` は正式schema contractを作成し、必須tableとmetadataを確認する。
-- 正式schema v2の作成・検査では、`002_play_order_indexes` と全体／譜面別の日時順index定義を確認する。
+- 正式schema v3の作成・検査では、`002_play_order_indexes`、`003_optional_result_metrics`、全体／譜面別の日時順index定義を確認する。
 - 同テストは M8 preview DB を正式個人スコアDBとして拒否する。
 - 同テストは空DB、未知DB、metadata identity mismatch、必須table欠落、`user_version` mismatch の検査結果と `migration_plan_status` を固定する。
 - 同テストは空DBだけ初期schemaを作成し、M8 preview DB、unknown DB、metadata identity mismatch、manual migration候補を自動変更しないことを固定する。

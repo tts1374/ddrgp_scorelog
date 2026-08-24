@@ -25,8 +25,11 @@ description: DDRGP scorelogの確定済みGitHub Issueを実装契約として�
 3. 現在branch、HEAD、worktree状態、既存未コミット変更を確認する。
 4. IssueのScope、Non-scope、Acceptance criteria、Required testsを短く内部整理する。
 5. コードと既存testを調べ、最小の変更責務と影響範囲を特定する。
+6. 既存ADRと`docs/adr/README.md`を確認し、ADR影響を`NO_ADR`、`CREATE`、`SUPERSEDE`のいずれかに分類する。
 
 親Issueは背景、依存関係、全体のNon-scope確認にだけ使う。子Issueが明示していない親Issueの項目を実装へ追加しない。
+
+ADRは、複数componentまたは複数PRへ影響し、後から変更しにくい公開契約、永続化・データ保護・runtime・配布境界を固定する場合だけ対象にする。Issue固有の局所実装、UI詳細、threshold、test条件はADR化しない。
 
 ## 2. Contract Gate
 
@@ -58,6 +61,8 @@ description: DDRGP scorelogの確定済みGitHub Issueを実装契約として�
 
 作業中に契約判断が必要になった場合は、推測で進めずContract Gateへ戻る。
 
+ADR影響が`CREATE`または`SUPERSEDE`の場合は`ddrgp-adr-authoring`を使う。Issueと関連docsがdecisionを確定しており、ADRがそのdecisionの記録に留まる場合は同じ変更で同期する。ADR作成に追加のarchitecture判断やIssue外の責務が必要な場合は実装へ混入させず、Contract Gateへ戻すか別Issue候補として報告する。Accepted ADRの本文を現在仕様へ追従させるために書き換えない。
+
 ## 4. Validate
 
 次の順で検証する。
@@ -67,6 +72,7 @@ description: DDRGP scorelogの確定済みGitHub Issueを実装契約として�
 3. 変更した共通helper、schema、transaction、公開契約の影響範囲test。
 4. repository既定のlint、型・構文検査、`git diff --check`。
 5. `git status --short`とdiffを確認し、生成物、秘密情報、無関係な変更、encoding driftがないことを確認する。
+6. ADR影響がある場合は、ADR番号・Status・index・関連design docsのlink、現在実装との整合、Supersedeの双方向参照を確認する。
 
 repository既定CIは暗黙の検証対象とする。ローカルで再現できないCIや手動確認は、未実施理由と残るリスクを報告する。既存failureは今回差分との関係を確認し、無関係なら修正へ混ぜない。
 
@@ -79,6 +85,7 @@ repository既定CIは暗黙の検証対象とする。ローカルで再現で�
 - Acceptance criterionが未実装または検証不能である。
 - Required testが失敗している。
 - Issue外の仕様追加がないと成立しない。
+- Issue scope内で必要と判定したADRの作成・Supersede・index同期が完了していない。
 - 既存変更と今回差分を安全に分離できない。
 - 生成物やローカル入力がGit差分へ混入している。
 
@@ -91,6 +98,7 @@ repository既定CIは暗黙の検証対象とする。ローカルで再現で�
 - 実行した検証と結果。
 - 未実施の検証と理由。
 - Issue仕様との差異。なければ`なし`。
+- ADR判断と、作成・SupersedeしたADR。不要なら`NO_ADR`。
 - 別Issue候補。なければ`なし`。
 - commit、push、PR作成を行っていない場合は、その状態。
 

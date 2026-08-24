@@ -1,6 +1,6 @@
 # データモデル設計
 
-最終系で扱うデータの概念モデルです。現時点ではDB実装前の設計メモであり、SQLiteスキーマを固定するものではありません。マスタDBと個人スコアDBは分離し、PoC出力やローカル素材はGit管理しません。
+現在の実装が扱うデータ領域と責務を示す概念モデルです。正確なSQLite table、column、index、metadata、migrationは、M4 master DBでは`08_master_db_generation.md`、正式個人スコアDBでは`10_personal_score_db_schema.md`を正本とします。マスタDBと個人スコアDBは分離し、PoC出力やローカル素材はGit管理しません。
 
 M10-2のruntime実装では、次の4つのSQLite責務を混在させない。M4 master DBとM5b jacket reference catalogは、同一master directoryに置く場合でも別file・別schema・別read-only検査で扱う。
 
@@ -24,11 +24,7 @@ Debugで明示またはsource checkoutを検出できる実行をdevelopment、R
 
 ### マスタDB
 
-ファイル名候補:
-
-```text
-ddrgp-master.sqlite
-```
+developmentとproductionの既定pathは冒頭の責務表を正本とする。
 
 役割:
 
@@ -46,11 +42,7 @@ ddrgp-master.sqlite
 
 ### 個人スコアDB
 
-ファイル名候補:
-
-```text
-ddrgp-scores.sqlite
-```
+developmentとproductionの既定pathは冒頭の責務表を正本とする。
 
 役割:
 
@@ -367,25 +359,18 @@ M8のscore DB file output previewでは、`--m8-score-db-output` を明示した
 
 ## 重複保存防止
 
-PoCでは簡易 `duplicate_key` を使うが、本番では以下を組み合わせる。
+Windowsアプリは、同じRESULT画面のframe groupingと正式DBのduplicate判定を分離する。
 
-- 曲ID
-- 譜面ID
-- スコア
-- 判定数
-- キャプチャ画像ハッシュ
-- 短時間内の同一結果
+- RESULT fingerprintは同じ画面の後続frameを1つのconfirmed eventへまとめるために使い、正式DBの`duplicate_key`には使わない。
+- `play_id`と正式`duplicate_key`はconfirmed capture event IDから構築し、同じeventの再送・再処理で同じIDを維持する。
+- 正式DB保存直前に`plays.duplicate_key`を照合し、衝突時は新しいplayを作らない。
+- duplicate collisionではsource captureと`skipped` / `duplicate`のanalysisだけを同じtransactionで記録する。
 
-同一リザルトと判定した場合は追加保存しない。
+Vision PoCの`score:` / `file:`形式はlocal評価専用であり、正式writerは受け入れない。詳細は`03_event_and_save_boundary.md`と`10_personal_score_db_schema.md`を正本とする。
 
-## 未決事項
+## 残る設計境界
 
-- M4以降のスキーマ互換方針とマイグレーション方式
-- 評価用DBのschema、initializer、再実行CLI（M10-3）
-- 本番解析ログをDB内にどこまで持つか、DB診断JSONLとは別のJSONファイル参照にするか
-- 失敗画像の保存期間
-- 画像ハッシュ方式
-- duplicate key の本格方式
+analysis detailと失敗画像にはretention metadataを付けるが、期限切れfileを削除するcleanup、scheduler、起動時掃除は現在の保存workflowに含めない。file配置とretention classは`05_storage_io_spec.md`を正本とする。
 ## Migration version state contract
 
 Migration contract version 2は `tools.vision_poc.personal_score_db_migration_contract` を正本とし、実DB writerを持たないpure contractである。DB状態は `compatible_current`、`older_supported`、`newer_unsupported`、`unknown`、`preview`、`identity_mismatch`、`partial_migration` を区別する。version 1→2のplay-order index transitionとversion 2→3のnullableな`ok` / `calories`追加だけを登録済みpathとして扱い、現行version 3から任意の未知versionへ進めてよいとは解釈しない。
