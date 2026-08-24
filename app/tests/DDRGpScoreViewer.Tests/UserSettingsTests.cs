@@ -267,6 +267,62 @@ public sealed class UserSettingsTests
         Assert.Equal(koreanText, Localization.GetForLanguage(japaneseText, UserSettings.KoreanLanguage));
     }
 
+    [Theory]
+    [InlineData(
+        "DDR GRAND PRIX windowを待っています。",
+        "Waiting for the DDR GRAND PRIX window.",
+        "DDR GRAND PRIX window를 기다리는 중입니다.")]
+    [InlineData(
+        "更新処理が完了しました。DDR GRAND PRIX windowを待っています。",
+        "The update finished. Waiting for the DDR GRAND PRIX window.",
+        "업데이트가 완료되었습니다. DDR GRAND PRIX window를 기다리는 중입니다.")]
+    [InlineData(
+        "安定して検出したDDR GRAND PRIX windowへ監視を接続しています。",
+        "Connecting monitoring to the stably detected DDR GRAND PRIX window.",
+        "안정적으로 감지된 DDR GRAND PRIX window에 모니터링을 연결하는 중입니다.")]
+    [InlineData(
+        "検出したDDR GRAND PRIX windowへ監視を接続しています。",
+        "Connecting monitoring to the detected DDR GRAND PRIX window.",
+        "감지된 DDR GRAND PRIX window에 모니터링을 연결하는 중입니다.")]
+    [InlineData("frameを取得しています。", "Capturing frames.", "프레임을 캡처하는 중입니다.")]
+    [InlineData(
+        "対象windowの選択を待っています。",
+        "Waiting for target window selection.",
+        "대상 window 선택을 기다리는 중입니다.")]
+    [InlineData(
+        "停止とresource解放を待っています。",
+        "Waiting for monitoring to stop and resources to be released.",
+        "모니터링 중지와 리소스 해제를 기다리는 중입니다.")]
+    [InlineData(
+        "手動停止済みです。このアプリセッション中は自動再開しません。明示的に監視開始できます。",
+        "Stopped manually. Monitoring will not restart automatically during this app session. Start monitoring explicitly when ready.",
+        "수동으로 중지되었습니다. 이 앱 세션에서는 자동으로 다시 시작하지 않습니다. 준비되면 모니터링을 직접 시작하세요.")]
+    [InlineData(
+        "終了処理中です。新しい監視を開始しません。",
+        "Shutting down. New monitoring sessions will not start.",
+        "종료 처리 중입니다. 새 모니터링을 시작하지 않습니다.")]
+    [InlineData(
+        "対象windowが消失したため安全に停止しました。再出現を待っています。",
+        "Stopped safely because the target window disappeared. Waiting for it to reappear.",
+        "대상 window가 사라져 안전하게 중지했습니다. 다시 나타나기를 기다리는 중입니다.")]
+    [InlineData(
+        "対象windowの消失を確認しました。再出現を待っています。",
+        "The target window disappeared. Waiting for it to reappear.",
+        "대상 window가 사라진 것을 확인했습니다. 다시 나타나기를 기다리는 중입니다.")]
+    [InlineData(
+        "対象windowの再出現を待っています。現在のwindowを推測して再接続しません。",
+        "Waiting for the target window to reappear. The current window will not be guessed or reconnected.",
+        "대상 window가 다시 나타나기를 기다리는 중입니다. 현재 window를 추측해 다시 연결하지 않습니다.")]
+    public void Monitoring_reason_strings_are_translated_for_supported_languages(
+        string japaneseText,
+        string englishText,
+        string koreanText)
+    {
+        Assert.Equal(japaneseText, Localization.GetForLanguage(japaneseText, UserSettings.JapaneseLanguage));
+        Assert.Equal(englishText, Localization.GetForLanguage(japaneseText, UserSettings.EnglishLanguage));
+        Assert.Equal(koreanText, Localization.GetForLanguage(japaneseText, UserSettings.KoreanLanguage));
+    }
+
     [Fact]
     public void Missing_or_unreadable_settings_fall_back_to_all_defaults()
     {
