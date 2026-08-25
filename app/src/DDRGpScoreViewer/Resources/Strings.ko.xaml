@@ -166,6 +166,7 @@
     <sys:String x:Key="閉鎖">닫힘</sys:String>
     <sys:String x:Key="resize検出">크기 변경 감지</sys:String>
     <sys:String x:Key="未選択">선택되지 않음</sys:String>
+    <sys:String x:Key="監視を再開">모니터링 재개</sys:String>
     <sys:String x:Key="DDR GRAND PRIX windowを待っています。">DDR GRAND PRIX window를 기다리는 중입니다.</sys:String>
     <sys:String x:Key="更新処理が完了しました。DDR GRAND PRIX windowを待っています。">업데이트가 완료되었습니다. DDR GRAND PRIX window를 기다리는 중입니다.</sys:String>
     <sys:String x:Key="安定して検出したDDR GRAND PRIX windowへ監視を接続しています。">안정적으로 감지된 DDR GRAND PRIX window에 모니터링을 연결하는 중입니다.</sys:String>

@@ -162,7 +162,8 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
                 Assert.Equal("待機中", window.MonitoringStateText.Text);
                 Assert.Equal("—", window.MonitoringReasonText.Text);
                 Assert.Equal(TextWrapping.Wrap, window.MonitoringReasonText.TextWrapping);
-                Assert.Equal(Visibility.Visible, window.StartMonitoringButton.Visibility);
+                Assert.Equal(Visibility.Collapsed, window.StartMonitoringButton.Visibility);
+                Assert.Equal("監視を開始する", window.StartMonitoringButton.Content);
                 Assert.True(window.StartMonitoringButton.IsEnabled);
                 Assert.Equal(Visibility.Collapsed, window.StopMonitoringButton.Visibility);
                 Assert.False(window.StopMonitoringButton.IsEnabled);
@@ -173,12 +174,22 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
                     Color.FromRgb(56, 189, 248),
                     Assert.IsType<SolidColorBrush>(window.MonitoringStateText.Foreground).Color);
 
+                window.ViewModel.StopContinuousCaptureAsync().GetAwaiter().GetResult();
+                DrainDispatcher(window.Dispatcher);
+
+                Assert.Equal("手動停止済み", window.MonitoringStateText.Text);
+                Assert.Equal(Visibility.Visible, window.StartMonitoringButton.Visibility);
+                Assert.Equal("監視を再開", window.StartMonitoringButton.Content);
+                Assert.True(window.StartMonitoringButton.IsEnabled);
+                Assert.Equal(Visibility.Collapsed, window.StopMonitoringButton.Visibility);
+                Assert.False(window.StopMonitoringButton.IsEnabled);
+
                 window.ViewModel.RequestApplicationExit();
                 DrainDispatcher(window.Dispatcher);
 
                 Assert.Equal("終了処理中", window.MonitoringStateText.Text);
                 Assert.Contains("終了処理中", window.MonitoringReasonText.Text, StringComparison.Ordinal);
-                Assert.Equal(Visibility.Visible, window.StartMonitoringButton.Visibility);
+                Assert.Equal(Visibility.Collapsed, window.StartMonitoringButton.Visibility);
                 Assert.False(window.StartMonitoringButton.IsEnabled);
                 Assert.Equal(Visibility.Collapsed, window.StopMonitoringButton.Visibility);
                 Assert.False(window.StopMonitoringButton.IsEnabled);

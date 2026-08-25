@@ -463,21 +463,13 @@
                                    Text="{Binding MonitoringReason, Mode=OneWay}"
                                    Foreground="#94A3B8" TextWrapping="Wrap"
                                    FontSize="11" Margin="0,6,0,0" />
-                        <Button x:Name="StartMonitoringButton" Content="監視を開始する"
+                        <Button x:Name="StartMonitoringButton"
+                                Content="{Binding MonitoringStartActionDisplay, Mode=OneWay}"
+                                Visibility="{Binding MonitoringStartActionVisibility, Mode=OneWay}"
                                 IsEnabled="{Binding CanStartMonitoring}"
                                 Click="StartContinuousCaptureAndSave_Click"
-                                Margin="0,12,0,0">
-                            <Button.Style>
-                                <Style BasedOn="{StaticResource PrimaryButtonStyle}" TargetType="Button">
-                                    <Setter Property="Visibility" Value="Visible" />
-                                    <Style.Triggers>
-                                        <DataTrigger Binding="{Binding CanStopMonitoring}" Value="True">
-                                            <Setter Property="Visibility" Value="Collapsed" />
-                                        </DataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </Button.Style>
-                        </Button>
+                                Style="{StaticResource PrimaryButtonStyle}"
+                                Margin="0,12,0,0" />
                         <Button x:Name="StopMonitoringButton" Content="監視を停止する"
                                 IsEnabled="{Binding CanStopMonitoring}"
                                 Click="StopContinuousCapture_Click"

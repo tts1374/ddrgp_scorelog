@@ -166,6 +166,7 @@
     <sys:String x:Key="閉鎖">Closed</sys:String>
     <sys:String x:Key="resize検出">Resize detected</sys:String>
     <sys:String x:Key="未選択">Not selected</sys:String>
+    <sys:String x:Key="監視を再開">Resume monitoring</sys:String>
     <sys:String x:Key="DDR GRAND PRIX windowを待っています。">Waiting for the DDR GRAND PRIX window.</sys:String>
     <sys:String x:Key="更新処理が完了しました。DDR GRAND PRIX windowを待っています。">The update finished. Waiting for the DDR GRAND PRIX window.</sys:String>
     <sys:String x:Key="安定して検出したDDR GRAND PRIX windowへ監視を接続しています。">Connecting monitoring to the stably detected DDR GRAND PRIX window.</sys:String>

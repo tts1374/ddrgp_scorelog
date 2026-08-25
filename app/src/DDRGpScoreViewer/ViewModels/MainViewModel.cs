@@ -1154,6 +1154,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
             {
                 OnPropertyChanged(nameof(MonitoringStateDisplay));
                 OnPropertyChanged(nameof(MonitoringTargetStatus));
+                OnPropertyChanged(nameof(MonitoringStartActionVisibility));
+                OnPropertyChanged(nameof(MonitoringStartActionDisplay));
                 OnPropertyChanged(nameof(CanStartMonitoring));
                 OnPropertyChanged(nameof(CanStopMonitoring));
                 OnPropertyChanged(nameof(CanRunDeveloperOperations));
@@ -1339,6 +1341,22 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public bool IsAutomaticMonitoringEnabled =>
         automaticMonitoringOptions.Enabled && appliedStartMonitoringOnLaunch;
+
+    public System.Windows.Visibility MonitoringStartActionVisibility =>
+        CurrentMonitoringState switch
+        {
+            MonitoringState.Idle or MonitoringState.Stopped =>
+                IsAutomaticMonitoringEnabled
+                    ? System.Windows.Visibility.Collapsed
+                    : System.Windows.Visibility.Visible,
+            MonitoringState.ManuallyStopped => System.Windows.Visibility.Visible,
+            _ => System.Windows.Visibility.Collapsed,
+        };
+
+    public string MonitoringStartActionDisplay =>
+        CurrentMonitoringState == MonitoringState.ManuallyStopped
+            ? Localization.Get("監視を再開")
+            : Localization.Get("監視を開始する");
 
     internal string AppliedStartupPage => appliedStartupPage;
 
@@ -1533,6 +1551,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
         BestPlayStyleFilter = appliedDefaultPlayStyle;
         OnPropertyChanged(nameof(IsAutomaticMonitoringEnabled));
+        OnPropertyChanged(nameof(MonitoringStartActionVisibility));
 
         if (!appliedNotifyUnresolvedResults)
         {

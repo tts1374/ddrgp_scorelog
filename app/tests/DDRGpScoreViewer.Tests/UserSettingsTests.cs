@@ -268,6 +268,19 @@ public sealed class UserSettingsTests
     }
 
     [Theory]
+    [InlineData("監視を開始する", "Start monitoring", "모니터링 시작")]
+    [InlineData("監視を再開", "Resume monitoring", "모니터링 재개")]
+    public void Monitoring_action_labels_are_translated_for_supported_languages(
+        string japaneseText,
+        string englishText,
+        string koreanText)
+    {
+        Assert.Equal(japaneseText, Localization.GetForLanguage(japaneseText, UserSettings.JapaneseLanguage));
+        Assert.Equal(englishText, Localization.GetForLanguage(japaneseText, UserSettings.EnglishLanguage));
+        Assert.Equal(koreanText, Localization.GetForLanguage(japaneseText, UserSettings.KoreanLanguage));
+    }
+
+    [Theory]
     [InlineData(
         "DDR GRAND PRIX windowを待っています。",
         "Waiting for the DDR GRAND PRIX window.",
