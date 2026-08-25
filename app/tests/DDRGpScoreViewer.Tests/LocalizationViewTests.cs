@@ -157,6 +157,18 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
                     Content = "Primary",
                     Style = (Style)resourceWindow.FindResource("PrimaryButtonStyle"),
                 };
+                var selectedSegment = new Button
+                {
+                    Content = "SP",
+                    Tag = "Selected",
+                    Style = (Style)resourceWindow.FindResource("BestSegmentButtonStyle"),
+                };
+                var disabledLink = new Button
+                {
+                    Content = "Disabled link",
+                    IsEnabled = false,
+                    Style = (Style)resourceWindow.FindResource("HomeSectionLinkStyle"),
+                };
                 var titleSearch = new TextBox
                 {
                     Text = "Search",
@@ -178,6 +190,8 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
                         Children =
                         {
                             primaryButton,
+                            selectedSegment,
+                            disabledLink,
                             titleSearch,
                             options,
                         },
@@ -213,6 +227,14 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
                 Assert.Same(focusVisualStyle, primaryButton.FocusVisualStyle);
                 Assert.Same(focusVisualStyle, titleSearch.FocusVisualStyle);
 
+                var selectedSegmentBorder = Assert.IsType<Border>(
+                    selectedSegment.Template.FindName("SegmentButtonBorder", selectedSegment));
+                Assert.Equal(new Thickness(2), selectedSegmentBorder.BorderThickness);
+                Assert.Equal(
+                    ((SolidColorBrush)resourceWindow.FindResource("AccentPrimaryBrush")).Color,
+                    Assert.IsType<SolidColorBrush>(selectedSegmentBorder.BorderBrush).Color);
+                Assert.Equal(0.6, disabledLink.Opacity, precision: 3);
+
                 var listItem = Assert.IsType<ListBoxItem>(
                     options.ItemContainerGenerator.ContainerFromIndex(0));
                 Assert.Same(focusVisualStyle, listItem.FocusVisualStyle);
@@ -247,6 +269,14 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
                 Assert.Equal(
                     ((SolidColorBrush)resourceWindow.FindResource("TextMutedBrush")).Color,
                     ((SolidColorBrush)primaryButton.Foreground).Color);
+
+                Assert.True(titleSearch.Focus());
+                host.UpdateLayout();
+                selectedSegmentBorder = Assert.IsType<Border>(
+                    selectedSegment.Template.FindName("SegmentButtonBorder", selectedSegment));
+                Assert.Equal(
+                    ((SolidColorBrush)resourceWindow.FindResource("AccentPrimaryBrush")).Color,
+                    Assert.IsType<SolidColorBrush>(selectedSegmentBorder.BorderBrush).Color);
             }
             finally
             {

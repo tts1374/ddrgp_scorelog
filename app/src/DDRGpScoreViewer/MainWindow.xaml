@@ -99,6 +99,7 @@
                 <Trigger Property="IsEnabled" Value="False">
                     <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}" />
                     <Setter Property="Cursor" Value="Arrow" />
+                    <Setter Property="Opacity" Value="0.6" />
                 </Trigger>
             </Style.Triggers>
         </Style>
@@ -232,7 +233,8 @@
         <Style x:Key="BestSegmentButtonStyle" TargetType="Button">
             <Setter Property="Foreground" Value="{StaticResource TextSecondaryBrush}" />
             <Setter Property="Background" Value="Transparent" />
-            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="2" />
             <Setter Property="Padding" Value="16,6" />
             <Setter Property="FontSize" Value="13" />
             <Setter Property="FontWeight" Value="Bold" />
@@ -243,6 +245,8 @@
                     <ControlTemplate TargetType="Button">
                         <Border x:Name="SegmentButtonBorder"
                                 Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
                                 CornerRadius="6"
                                 Padding="{TemplateBinding Padding}">
                             <ContentPresenter HorizontalAlignment="Center"
@@ -266,6 +270,7 @@
                             </MultiTrigger>
                             <Trigger Property="Tag" Value="Selected">
                                 <Setter TargetName="SegmentButtonBorder" Property="Background" Value="White" />
+                                <Setter TargetName="SegmentButtonBorder" Property="BorderBrush" Value="{StaticResource AccentPrimaryBrush}" />
                                 <Setter Property="Foreground" Value="{StaticResource AccentPrimaryBrush}" />
                             </Trigger>
                             <MultiTrigger>
