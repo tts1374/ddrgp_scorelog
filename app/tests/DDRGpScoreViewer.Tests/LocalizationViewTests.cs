@@ -119,6 +119,99 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
     }
 
     [Fact]
+    public void Monitoring_status_card_tracks_state_reason_and_available_actions()
+    {
+        using var databaseFixture = new DatabaseFixture();
+        applicationFixture.Run(() =>
+        {
+            MainWindow? window = null;
+            try
+            {
+                Localization.Configure(UserSettings.JapaneseLanguage);
+                foreach (var resourceName in new[] { "Theme.xaml", "Components.xaml", "Strings.xaml" })
+                {
+                    Application.Current.Resources.MergedDictionaries.Add(
+                        new ResourceDictionary
+                        {
+                            Source = new Uri(
+                                $"/DDRGpScoreViewer;component/Resources/{resourceName}",
+                                UriKind.Relative),
+                        });
+                }
+
+                window = new MainWindow(
+                    new ViewerDatabasePaths(
+                        ViewerDatabaseEnvironment.Development,
+                        databaseFixture.DirectoryPath,
+                        databaseFixture.MasterPath,
+                        databaseFixture.CatalogPath,
+                        databaseFixture.ScorePath,
+                        Path.Combine(databaseFixture.DirectoryPath, "evaluation.db"),
+                        Path.Combine(databaseFixture.DirectoryPath, "data"),
+                        Path.Combine(databaseFixture.DirectoryPath, "logs"),
+                        Path.Combine(databaseFixture.DirectoryPath, "viewer-settings.json")))
+                {
+                    Width = 960,
+                    Height = 640,
+                };
+                window.Show();
+                window.UpdateLayout();
+
+                Assert.Equal(960, window.MinWidth);
+                Assert.Equal(640, window.MinHeight);
+                Assert.Equal("待機中", window.MonitoringStateText.Text);
+                Assert.Equal("—", window.MonitoringReasonText.Text);
+                Assert.Equal(TextWrapping.Wrap, window.MonitoringReasonText.TextWrapping);
+                Assert.Equal(Visibility.Collapsed, window.StartMonitoringButton.Visibility);
+                Assert.Equal("監視を開始する", window.StartMonitoringButton.Content);
+                Assert.True(window.StartMonitoringButton.IsEnabled);
+                Assert.Equal(Visibility.Collapsed, window.StopMonitoringButton.Visibility);
+                Assert.False(window.StopMonitoringButton.IsEnabled);
+                Assert.Equal(
+                    Color.FromRgb(56, 189, 248),
+                    Assert.IsType<SolidColorBrush>(window.MonitoringStateIndicator.Fill).Color);
+                Assert.Equal(
+                    Color.FromRgb(56, 189, 248),
+                    Assert.IsType<SolidColorBrush>(window.MonitoringStateText.Foreground).Color);
+
+                window.ViewModel.StopContinuousCaptureAsync().GetAwaiter().GetResult();
+                DrainDispatcher(window.Dispatcher);
+
+                Assert.Equal("手動停止済み", window.MonitoringStateText.Text);
+                Assert.Equal(Visibility.Visible, window.StartMonitoringButton.Visibility);
+                Assert.Equal("監視を再開", window.StartMonitoringButton.Content);
+                Assert.True(window.StartMonitoringButton.IsEnabled);
+                Assert.Equal(Visibility.Collapsed, window.StopMonitoringButton.Visibility);
+                Assert.False(window.StopMonitoringButton.IsEnabled);
+
+                window.ViewModel.RequestApplicationExit();
+                DrainDispatcher(window.Dispatcher);
+
+                Assert.Equal("終了処理中", window.MonitoringStateText.Text);
+                Assert.Contains("終了処理中", window.MonitoringReasonText.Text, StringComparison.Ordinal);
+                Assert.Equal(Visibility.Collapsed, window.StartMonitoringButton.Visibility);
+                Assert.False(window.StartMonitoringButton.IsEnabled);
+                Assert.Equal(Visibility.Collapsed, window.StopMonitoringButton.Visibility);
+                Assert.False(window.StopMonitoringButton.IsEnabled);
+                Assert.Equal(
+                    Color.FromRgb(100, 116, 139),
+                    Assert.IsType<SolidColorBrush>(window.MonitoringStateIndicator.Fill).Color);
+                Assert.Equal(
+                    Color.FromRgb(100, 116, 139),
+                    Assert.IsType<SolidColorBrush>(window.MonitoringStateText.Foreground).Color);
+            }
+            finally
+            {
+                if (window is not null)
+                {
+                    window.PrepareForApplicationExit();
+                    window.Close();
+                }
+            }
+        });
+    }
+
+    [Fact]
     public void Best_screen_switches_between_four_exclusive_modes_and_closes_choice_grid()
     {
         using var databaseFixture = new DatabaseFixture();

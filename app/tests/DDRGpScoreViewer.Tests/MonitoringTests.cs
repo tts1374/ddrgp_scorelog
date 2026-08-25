@@ -108,6 +108,9 @@ public sealed class MonitoringTests
         Assert.Equal(1, viewModel.MonitoringResults.DbRejected);
         Assert.Equal(1, viewModel.MonitoringResults.WorkflowFailed);
         Assert.Contains("db_rejected", viewModel.MonitoringReason);
+        Assert.Equal(
+            System.Windows.Visibility.Collapsed,
+            viewModel.MonitoringStartActionVisibility);
     }
 
     [Fact]
@@ -133,6 +136,9 @@ public sealed class MonitoringTests
         Assert.Equal(1, viewModel.MonitoringResults.AnalysisFailed);
         Assert.Equal(1, viewModel.MonitoringResults.WorkflowFailed);
         Assert.Contains("vision process failed", viewModel.MonitoringReason);
+        Assert.Equal(
+            System.Windows.Visibility.Collapsed,
+            viewModel.MonitoringStartActionVisibility);
     }
 
 #if DEBUG
@@ -458,6 +464,9 @@ public sealed class MonitoringTests
         Assert.True(viewModel.IsContinuousCapturing);
         Assert.False(viewModel.IsStoppingCapture);
         Assert.Equal(MonitoringState.CaptureFailed, viewModel.CurrentMonitoringState);
+        Assert.Equal(
+            System.Windows.Visibility.Collapsed,
+            viewModel.MonitoringStartActionVisibility);
         Assert.True(viewModel.CanStopMonitoring);
 
         await viewModel.StopContinuousCaptureAsync();

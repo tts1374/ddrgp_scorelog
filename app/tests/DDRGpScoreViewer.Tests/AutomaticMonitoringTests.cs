@@ -22,6 +22,12 @@ public sealed class AutomaticMonitoringTests
 
         Assert.Equal(1, capture.TargetedRunCount);
         Assert.Equal(MonitoringState.Monitoring, viewModel.CurrentMonitoringState);
+        Assert.Equal("監視中", viewModel.MonitoringStateDisplay);
+        Assert.False(viewModel.CanStartMonitoring);
+        Assert.True(viewModel.CanStopMonitoring);
+        Assert.Equal(
+            System.Windows.Visibility.Collapsed,
+            viewModel.MonitoringStartActionVisibility);
         Assert.Contains("DDR GRAND PRIX", viewModel.MonitoringTarget, StringComparison.Ordinal);
 
         await StopAutomaticMonitoringAsync(viewModel, capture);
@@ -63,6 +69,12 @@ public sealed class AutomaticMonitoringTests
 
         Assert.Equal(0, capture.TargetedRunCount);
         Assert.Equal(MonitoringState.WaitingForGame, viewModel.CurrentMonitoringState);
+        Assert.Equal("ゲーム待機中", viewModel.MonitoringStateDisplay);
+        Assert.True(viewModel.CanStartMonitoring);
+        Assert.False(viewModel.CanStopMonitoring);
+        Assert.Equal(
+            System.Windows.Visibility.Collapsed,
+            viewModel.MonitoringStartActionVisibility);
 
         viewModel.RequestApplicationExit();
         await viewModel.WaitForOperationsAsync();
@@ -84,6 +96,13 @@ public sealed class AutomaticMonitoringTests
 
         Assert.Equal(1, capture.StopCount);
         Assert.Equal(MonitoringState.ManuallyStopped, viewModel.CurrentMonitoringState);
+        Assert.Equal("手動停止済み", viewModel.MonitoringStateDisplay);
+        Assert.True(viewModel.CanStartMonitoring);
+        Assert.False(viewModel.CanStopMonitoring);
+        Assert.Equal(
+            System.Windows.Visibility.Visible,
+            viewModel.MonitoringStartActionVisibility);
+        Assert.Equal("監視を再開", viewModel.MonitoringStartActionDisplay);
         await Task.Delay(80);
         Assert.Equal(1, capture.TargetedRunCount);
 
@@ -194,6 +213,12 @@ public sealed class AutomaticMonitoringTests
 
         Assert.Equal(0, capture.TargetedRunCount);
         Assert.Contains("自動監視を開始しません", viewModel.MonitoringReason, StringComparison.Ordinal);
+        Assert.Equal("監視開始不可", viewModel.MonitoringStateDisplay);
+        Assert.True(viewModel.CanStartMonitoring);
+        Assert.False(viewModel.CanStopMonitoring);
+        Assert.Equal(
+            System.Windows.Visibility.Collapsed,
+            viewModel.MonitoringStartActionVisibility);
 
         viewModel.RequestApplicationExit();
         await viewModel.WaitForOperationsAsync();
@@ -279,6 +304,10 @@ public sealed class AutomaticMonitoringTests
 
         Assert.False(viewModel.IsAutomaticMonitoringEnabled);
         Assert.True(viewModel.CanStartMonitoring);
+        Assert.Equal(
+            System.Windows.Visibility.Visible,
+            viewModel.MonitoringStartActionVisibility);
+        Assert.Equal("監視を開始する", viewModel.MonitoringStartActionDisplay);
         Assert.Equal(0, capture.TargetedRunCount);
 
         viewModel.RequestApplicationExit();
