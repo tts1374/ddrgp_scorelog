@@ -11,6 +11,7 @@
     <Color x:Key="TextMutedColor">#8B96A8</Color>
     <Color x:Key="AccentPrimaryColor">#1769E8</Color>
     <Color x:Key="AccentHoverColor">#0F5ACB</Color>
+    <Color x:Key="AccentPressedColor">#0A4CAB</Color>
     <Color x:Key="AccentSubtleColor">#EAF2FF</Color>
     <Color x:Key="DangerColor">#D6384B</Color>
     <Color x:Key="FocusRingColor">#5A9CFF</Color>
@@ -26,6 +27,7 @@
     <SolidColorBrush x:Key="TextMutedBrush" Color="{StaticResource TextMutedColor}" />
     <SolidColorBrush x:Key="AccentPrimaryBrush" Color="{StaticResource AccentPrimaryColor}" />
     <SolidColorBrush x:Key="AccentHoverBrush" Color="{StaticResource AccentHoverColor}" />
+    <SolidColorBrush x:Key="AccentPressedBrush" Color="{StaticResource AccentPressedColor}" />
     <SolidColorBrush x:Key="AccentSubtleBrush" Color="{StaticResource AccentSubtleColor}" />
     <SolidColorBrush x:Key="DangerBrush" Color="{StaticResource DangerColor}" />
     <SolidColorBrush x:Key="FocusRingBrush" Color="{StaticResource FocusRingColor}" />
