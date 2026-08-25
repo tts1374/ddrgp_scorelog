@@ -73,6 +73,7 @@
             <Setter Property="FontSize" Value="12" />
             <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{StaticResource ControlFocusVisualStyle}" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
@@ -81,8 +82,23 @@
                 </Setter.Value>
             </Setter>
             <Style.Triggers>
-                <Trigger Property="IsMouseOver" Value="True">
+                <MultiTrigger>
+                    <MultiTrigger.Conditions>
+                        <Condition Property="IsEnabled" Value="True" />
+                        <Condition Property="IsMouseOver" Value="True" />
+                    </MultiTrigger.Conditions>
                     <Setter Property="Foreground" Value="{StaticResource AccentHoverBrush}" />
+                </MultiTrigger>
+                <MultiTrigger>
+                    <MultiTrigger.Conditions>
+                        <Condition Property="IsEnabled" Value="True" />
+                        <Condition Property="IsPressed" Value="True" />
+                    </MultiTrigger.Conditions>
+                    <Setter Property="Foreground" Value="{StaticResource AccentPressedBrush}" />
+                </MultiTrigger>
+                <Trigger Property="IsEnabled" Value="False">
+                    <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}" />
+                    <Setter Property="Cursor" Value="Arrow" />
                 </Trigger>
             </Style.Triggers>
         </Style>
@@ -96,6 +112,7 @@
             <Setter Property="FontSize" Value="11" />
             <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{StaticResource ControlFocusVisualStyle}" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
@@ -109,10 +126,37 @@
                                               VerticalAlignment="Center" />
                         </Border>
                         <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
+                            <MultiTrigger>
+                                <MultiTrigger.Conditions>
+                                    <Condition Property="IsEnabled" Value="True" />
+                                    <Condition Property="IsMouseOver" Value="True" />
+                                </MultiTrigger.Conditions>
                                 <Setter TargetName="CopyButtonBorder"
                                         Property="Background"
                                         Value="{StaticResource AccentSubtleBrush}" />
+                            </MultiTrigger>
+                            <MultiTrigger>
+                                <MultiTrigger.Conditions>
+                                    <Condition Property="IsEnabled" Value="True" />
+                                    <Condition Property="IsPressed" Value="True" />
+                                </MultiTrigger.Conditions>
+                                <Setter TargetName="CopyButtonBorder"
+                                        Property="Background"
+                                        Value="{StaticResource AccentPressedBrush}" />
+                                <Setter TargetName="CopyButtonBorder"
+                                        Property="BorderBrush"
+                                        Value="{StaticResource AccentPressedBrush}" />
+                                <Setter Property="Foreground" Value="White" />
+                            </MultiTrigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="CopyButtonBorder"
+                                        Property="Background"
+                                        Value="{StaticResource SurfaceSecondaryBrush}" />
+                                <Setter TargetName="CopyButtonBorder"
+                                        Property="BorderBrush"
+                                        Value="{StaticResource BorderDefaultBrush}" />
+                                <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}" />
+                                <Setter Property="Cursor" Value="Arrow" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -193,6 +237,7 @@
             <Setter Property="FontSize" Value="13" />
             <Setter Property="FontWeight" Value="Bold" />
             <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{StaticResource ControlFocusVisualStyle}" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
@@ -204,12 +249,48 @@
                                               VerticalAlignment="Center" />
                         </Border>
                         <ControlTemplate.Triggers>
+                            <MultiTrigger>
+                                <MultiTrigger.Conditions>
+                                    <Condition Property="IsEnabled" Value="True" />
+                                    <Condition Property="IsMouseOver" Value="True" />
+                                </MultiTrigger.Conditions>
+                                <Setter TargetName="SegmentButtonBorder" Property="Background" Value="{StaticResource SurfaceSecondaryBrush}" />
+                            </MultiTrigger>
+                            <MultiTrigger>
+                                <MultiTrigger.Conditions>
+                                    <Condition Property="IsEnabled" Value="True" />
+                                    <Condition Property="IsPressed" Value="True" />
+                                </MultiTrigger.Conditions>
+                                <Setter TargetName="SegmentButtonBorder" Property="Background" Value="{StaticResource AccentPressedBrush}" />
+                                <Setter Property="Foreground" Value="White" />
+                            </MultiTrigger>
                             <Trigger Property="Tag" Value="Selected">
                                 <Setter TargetName="SegmentButtonBorder" Property="Background" Value="White" />
                                 <Setter Property="Foreground" Value="{StaticResource AccentPrimaryBrush}" />
                             </Trigger>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="SegmentButtonBorder" Property="Background" Value="#E2E8F0" />
+                            <MultiTrigger>
+                                <MultiTrigger.Conditions>
+                                    <Condition Property="Tag" Value="Selected" />
+                                    <Condition Property="IsEnabled" Value="True" />
+                                    <Condition Property="IsMouseOver" Value="True" />
+                                </MultiTrigger.Conditions>
+                                <Setter TargetName="SegmentButtonBorder" Property="Background" Value="{StaticResource AccentSubtleBrush}" />
+                                <Setter Property="Foreground" Value="{StaticResource AccentPrimaryBrush}" />
+                            </MultiTrigger>
+                            <MultiTrigger>
+                                <MultiTrigger.Conditions>
+                                    <Condition Property="Tag" Value="Selected" />
+                                    <Condition Property="IsEnabled" Value="True" />
+                                    <Condition Property="IsPressed" Value="True" />
+                                </MultiTrigger.Conditions>
+                                <Setter TargetName="SegmentButtonBorder" Property="Background" Value="{StaticResource AccentPressedBrush}" />
+                                <Setter Property="Foreground" Value="White" />
+                            </MultiTrigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="SegmentButtonBorder" Property="Background" Value="{StaticResource SurfaceSecondaryBrush}" />
+                                <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}" />
+                                <Setter Property="Opacity" Value="0.6" />
+                                <Setter Property="Cursor" Value="Arrow" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -228,6 +309,7 @@
             <Setter Property="FontWeight" Value="Bold" />
             <Setter Property="Margin" Value="0,0,6,0" />
             <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{StaticResource ControlFocusVisualStyle}" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
@@ -248,9 +330,57 @@
                                         Value="{StaticResource AccentPrimaryBrush}" />
                                 <Setter Property="Foreground" Value="White" />
                             </Trigger>
-                            <Trigger Property="IsMouseOver" Value="True">
+                            <MultiTrigger>
+                                <MultiTrigger.Conditions>
+                                    <Condition Property="IsEnabled" Value="True" />
+                                    <Condition Property="IsMouseOver" Value="True" />
+                                </MultiTrigger.Conditions>
                                 <Setter TargetName="BrowseTabBorder" Property="BorderBrush"
                                         Value="{StaticResource AccentPrimaryBrush}" />
+                            </MultiTrigger>
+                            <MultiTrigger>
+                                <MultiTrigger.Conditions>
+                                    <Condition Property="IsEnabled" Value="True" />
+                                    <Condition Property="IsPressed" Value="True" />
+                                </MultiTrigger.Conditions>
+                                <Setter TargetName="BrowseTabBorder" Property="Background"
+                                        Value="{StaticResource AccentPressedBrush}" />
+                                <Setter TargetName="BrowseTabBorder" Property="BorderBrush"
+                                        Value="{StaticResource AccentPressedBrush}" />
+                                <Setter Property="Foreground" Value="White" />
+                            </MultiTrigger>
+                            <MultiTrigger>
+                                <MultiTrigger.Conditions>
+                                    <Condition Property="Tag" Value="Selected" />
+                                    <Condition Property="IsEnabled" Value="True" />
+                                    <Condition Property="IsMouseOver" Value="True" />
+                                </MultiTrigger.Conditions>
+                                <Setter TargetName="BrowseTabBorder" Property="Background"
+                                        Value="{StaticResource AccentPrimaryBrush}" />
+                                <Setter TargetName="BrowseTabBorder" Property="BorderBrush"
+                                        Value="{StaticResource AccentPrimaryBrush}" />
+                                <Setter Property="Foreground" Value="White" />
+                            </MultiTrigger>
+                            <MultiTrigger>
+                                <MultiTrigger.Conditions>
+                                    <Condition Property="Tag" Value="Selected" />
+                                    <Condition Property="IsEnabled" Value="True" />
+                                    <Condition Property="IsPressed" Value="True" />
+                                </MultiTrigger.Conditions>
+                                <Setter TargetName="BrowseTabBorder" Property="Background"
+                                        Value="{StaticResource AccentPressedBrush}" />
+                                <Setter TargetName="BrowseTabBorder" Property="BorderBrush"
+                                        Value="{StaticResource AccentPressedBrush}" />
+                                <Setter Property="Foreground" Value="White" />
+                            </MultiTrigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="BrowseTabBorder" Property="Background"
+                                        Value="{StaticResource SurfaceSecondaryBrush}" />
+                                <Setter TargetName="BrowseTabBorder" Property="BorderBrush"
+                                        Value="{StaticResource BorderDefaultBrush}" />
+                                <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}" />
+                                <Setter Property="Cursor" Value="Arrow" />
+                                <Setter Property="Opacity" Value="0.6" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -267,6 +397,7 @@
             <Setter Property="FontSize" Value="12" />
             <Setter Property="FontWeight" Value="Bold" />
             <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{StaticResource ControlFocusVisualStyle}" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
@@ -280,9 +411,33 @@
                                               VerticalAlignment="Center" />
                         </Border>
                         <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
+                            <MultiTrigger>
+                                <MultiTrigger.Conditions>
+                                    <Condition Property="IsEnabled" Value="True" />
+                                    <Condition Property="IsMouseOver" Value="True" />
+                                </MultiTrigger.Conditions>
                                 <Setter TargetName="AxisChangeBorder" Property="Background"
                                         Value="{StaticResource AccentSubtleBrush}" />
+                            </MultiTrigger>
+                            <MultiTrigger>
+                                <MultiTrigger.Conditions>
+                                    <Condition Property="IsEnabled" Value="True" />
+                                    <Condition Property="IsPressed" Value="True" />
+                                </MultiTrigger.Conditions>
+                                <Setter TargetName="AxisChangeBorder" Property="Background"
+                                        Value="{StaticResource AccentPressedBrush}" />
+                                <Setter TargetName="AxisChangeBorder" Property="BorderBrush"
+                                        Value="{StaticResource AccentPressedBrush}" />
+                                <Setter Property="Foreground" Value="White" />
+                            </MultiTrigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="AxisChangeBorder" Property="Background"
+                                        Value="{StaticResource SurfaceSecondaryBrush}" />
+                                <Setter TargetName="AxisChangeBorder" Property="BorderBrush"
+                                        Value="{StaticResource BorderDefaultBrush}" />
+                                <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}" />
+                                <Setter Property="Cursor" Value="Arrow" />
+                                <Setter Property="Opacity" Value="0.6" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -300,6 +455,7 @@
             <Setter Property="FontSize" Value="13" />
             <Setter Property="HorizontalContentAlignment" Value="Left" />
             <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="FocusVisualStyle" Value="{StaticResource ControlFocusVisualStyle}" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="TextBox">
@@ -312,10 +468,25 @@
                             <ScrollViewer x:Name="PART_ContentHost" />
                         </Border>
                         <ControlTemplate.Triggers>
+                            <MultiTrigger>
+                                <MultiTrigger.Conditions>
+                                    <Condition Property="IsEnabled" Value="True" />
+                                    <Condition Property="IsMouseOver" Value="True" />
+                                </MultiTrigger.Conditions>
+                                <Setter TargetName="TitleSearchBorder" Property="BorderBrush"
+                                        Value="{StaticResource BorderStrongBrush}" />
+                            </MultiTrigger>
                             <Trigger Property="IsKeyboardFocused" Value="True">
                                 <Setter TargetName="TitleSearchBorder" Property="BorderBrush"
-                                        Value="{StaticResource AccentPrimaryBrush}" />
-                                <Setter TargetName="TitleSearchBorder" Property="BorderThickness" Value="2" />
+                                        Value="{StaticResource FocusRingBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="TitleSearchBorder" Property="Background"
+                                        Value="{StaticResource SurfaceSecondaryBrush}" />
+                                <Setter TargetName="TitleSearchBorder" Property="BorderBrush"
+                                        Value="{StaticResource BorderDefaultBrush}" />
+                                <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}" />
+                                <Setter Property="Cursor" Value="Arrow" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -334,6 +505,7 @@
             <Setter Property="FontWeight" Value="Bold" />
             <Setter Property="Margin" Value="0,0,6,6" />
             <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="FocusVisualStyle" Value="{StaticResource ControlFocusVisualStyle}" />
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="ListBoxItem">
@@ -352,9 +524,22 @@
                                 <Setter Property="BorderBrush" Value="{StaticResource AccentPrimaryBrush}" />
                                 <Setter Property="Foreground" Value="{StaticResource AccentPrimaryBrush}" />
                             </Trigger>
-                            <Trigger Property="IsMouseOver" Value="True">
+                            <MultiTrigger>
+                                <MultiTrigger.Conditions>
+                                    <Condition Property="IsEnabled" Value="True" />
+                                    <Condition Property="IsMouseOver" Value="True" />
+                                </MultiTrigger.Conditions>
                                 <Setter TargetName="AxisOptionBorder" Property="BorderBrush"
                                         Value="{StaticResource AccentPrimaryBrush}" />
+                            </MultiTrigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="AxisOptionBorder" Property="Background"
+                                        Value="{StaticResource SurfaceSecondaryBrush}" />
+                                <Setter TargetName="AxisOptionBorder" Property="BorderBrush"
+                                        Value="{StaticResource BorderDefaultBrush}" />
+                                <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}" />
+                                <Setter Property="Opacity" Value="0.6" />
+                                <Setter Property="Cursor" Value="Arrow" />
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -467,11 +652,13 @@
                                 Content="{Binding MonitoringStartActionDisplay, Mode=OneWay}"
                                 Visibility="{Binding MonitoringStartActionVisibility, Mode=OneWay}"
                                 IsEnabled="{Binding CanStartMonitoring}"
+                                TabIndex="90"
                                 Click="StartContinuousCaptureAndSave_Click"
                                 Style="{StaticResource PrimaryButtonStyle}"
                                 Margin="0,12,0,0" />
                         <Button x:Name="StopMonitoringButton" Content="監視を停止する"
                                 IsEnabled="{Binding CanStopMonitoring}"
+                                TabIndex="91"
                                 Click="StopContinuousCapture_Click"
                                 Margin="0,12,0,0">
                             <Button.Style>
@@ -497,16 +684,16 @@
                                        FontSize="11" Margin="0,4,0,0" />
                         </StackPanel>
                     </Border>
-                    <Button x:Name="HomeNavigation" Content="ホーム" Tag="Selected"
+                    <Button x:Name="HomeNavigation" Content="ホーム" Tag="Selected" TabIndex="0"
                             Style="{StaticResource SidebarButtonStyle}" Click="ShowHome_Click" />
-                    <Button x:Name="BestNavigation" Content="自己ベスト"
+                    <Button x:Name="BestNavigation" Content="自己ベスト" TabIndex="1"
                             Style="{StaticResource SidebarButtonStyle}" Click="ShowBest_Click" />
-                    <Button x:Name="HistoryNavigation" Content="直近プレー履歴"
+                    <Button x:Name="HistoryNavigation" Content="直近プレー履歴" TabIndex="2"
                             Style="{StaticResource SidebarButtonStyle}" Click="ShowHistory_Click" />
                     <Separator Margin="16,10" Background="#50627B" />
-                    <Button x:Name="SettingsNavigation" Content="設定"
+                    <Button x:Name="SettingsNavigation" Content="設定" TabIndex="3"
                             Style="{StaticResource SidebarButtonStyle}" Click="ShowSettings_Click" />
-                    <Button x:Name="DataManagementNavigation" Content="データ管理"
+                    <Button x:Name="DataManagementNavigation" Content="データ管理" TabIndex="4"
                             Style="{StaticResource SidebarButtonStyle}" Click="ShowDataManagement_Click" />
                 </StackPanel>
             </DockPanel>
@@ -583,6 +770,7 @@
                                     <Button x:Name="HomeSummaryCopyButton"
                                             Grid.Column="1"
                                             Content="振り返りをコピー"
+                                            TabIndex="100"
                                             Style="{StaticResource HomeSummaryCopyButtonStyle}"
                                             Margin="12,0,0,0"
                                             Click="CopyHomeSummary_Click" />
@@ -649,7 +837,7 @@
                                                        Foreground="{StaticResource TextSecondaryBrush}"
                                                        FontSize="11" Margin="0,2,0,0" />
                                         </StackPanel>
-                                        <Button Grid.Column="1" Content="履歴を見る"
+                                        <Button Grid.Column="1" Content="履歴を見る" TabIndex="101"
                                                 Style="{StaticResource HomeSectionLinkStyle}"
                                                 Click="ShowHistory_Click" />
                                     </Grid>
@@ -863,7 +1051,7 @@
                                                        Foreground="{StaticResource TextSecondaryBrush}"
                                                        FontSize="11" Margin="0,2,0,0" />
                                         </StackPanel>
-                                        <Button Grid.Column="1" Content="自己ベストを見る"
+                                        <Button Grid.Column="1" Content="自己ベストを見る" TabIndex="102"
                                                 Style="{StaticResource HomeSectionLinkStyle}"
                                                 Click="ShowBest_Click" />
                                     </Grid>
@@ -944,9 +1132,11 @@
                                         <StackPanel Orientation="Horizontal">
                                             <Button x:Name="BestSingleButton" Content="SINGLE (SP)"
                                                     Tag="Selected" Style="{StaticResource BestSegmentButtonStyle}"
+                                                    TabIndex="100"
                                                     Click="BestPlayStyle_Click" />
                                             <Button x:Name="BestDoubleButton" Content="DOUBLE (DP)"
                                                     Tag="" Style="{StaticResource BestSegmentButtonStyle}"
+                                                    TabIndex="101"
                                                     Click="BestPlayStyle_Click" />
                                         </StackPanel>
                                     </Border>
@@ -956,15 +1146,19 @@
                                         <WrapPanel Margin="0,4,0,0">
                                             <Button x:Name="BestLevelModeButton" Content="レベルから"
                                                     Tag="Selected" Style="{StaticResource BestBrowseTabButtonStyle}"
+                                                    TabIndex="102"
                                                     Click="BestBrowseMode_Click" />
                                             <Button x:Name="BestVersionModeButton" Content="バージョンから"
                                                     Tag="" Style="{StaticResource BestBrowseTabButtonStyle}"
+                                                    TabIndex="103"
                                                     Click="BestBrowseMode_Click" />
                                             <Button x:Name="BestTitleModeButton" Content="曲名から"
                                                     Tag="" Style="{StaticResource BestBrowseTabButtonStyle}"
+                                                    TabIndex="104"
                                                     Click="BestBrowseMode_Click" />
                                             <Button x:Name="BestGoalModeButton" Content="目標から"
                                                     Tag="" Style="{StaticResource BestBrowseTabButtonStyle}"
+                                                    TabIndex="105"
                                                     Click="BestBrowseMode_Click" />
                                         </WrapPanel>
                                     </StackPanel>
@@ -992,6 +1186,7 @@
                                         <Button x:Name="BestAxisChangeButton" Grid.Column="1"
                                                 Content="レベルを変更"
                                                 Style="{StaticResource BestAxisChangeButtonStyle}"
+                                                TabIndex="106"
                                                 HorizontalAlignment="Right"
                                                 Click="BestAxisChange_Click" />
                                     </Grid>
@@ -1023,6 +1218,7 @@
                                             <TextBox x:Name="BestTitleSearchTextBox"
                                                      Text="{Binding BestSongQuery, UpdateSourceTrigger=PropertyChanged}"
                                                      Style="{StaticResource BestTitleSearchTextBoxStyle}"
+                                                     TabIndex="107"
                                                      HorizontalAlignment="Stretch"
                                                      ToolTip="曲名の一部で検索" />
                                         </StackPanel>
@@ -1040,6 +1236,7 @@
                                             </Grid>
                                             <ListBox x:Name="BestGoalOptionsGrid"
                                                      ItemsSource="{Binding BestGoalOptions}"
+                                                     TabIndex="107"
                                                      SelectedValuePath="Code"
                                                      SelectedValue="{Binding BestGoalFilter, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                                      SelectionChanged="BestGoalOptionsGrid_SelectionChanged"
@@ -1073,6 +1270,7 @@
                                             </Grid>
                                             <ListBox x:Name="BestLevelOptionsGrid"
                                                      ItemsSource="{Binding BestLevelOptions}"
+                                                     TabIndex="107"
                                                      SelectedValuePath="Code"
                                                      SelectedValue="{Binding BestLevelFilter, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                                      SelectionChanged="BestLevelOptionsGrid_SelectionChanged"
@@ -1107,6 +1305,7 @@
                                             </Grid>
                                             <ListBox x:Name="BestVersionOptionsGrid"
                                                      ItemsSource="{Binding BestVersionOptions}"
+                                                     TabIndex="107"
                                                      SelectedValuePath="Code"
                                                      SelectedValue="{Binding BestVersionFilter, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                                      SelectionChanged="BestVersionOptionsGrid_SelectionChanged"
@@ -1199,7 +1398,7 @@
                                 <TextBlock Text="並び順" Foreground="{StaticResource TextSecondaryBrush}"
                                            FontSize="11" FontWeight="SemiBold"
                                            VerticalAlignment="Center" Margin="0,0,6,0" />
-                                <ComboBox x:Name="BestSortComboBox"
+                                <ComboBox x:Name="BestSortComboBox" TabIndex="108"
                                           ItemsSource="{Binding BestSortOptions}"
                                           DisplayMemberPath="Display"
                                           SelectedItem="{Binding SelectedBestSortOption, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
@@ -1210,7 +1409,7 @@
 
                         <Grid Grid.Row="3">
                             <Border Style="{StaticResource CardStyle}" Padding="0">
-                                <DataGrid x:Name="BestChartGrid" ItemsSource="{Binding ChartBests}"
+                                <DataGrid x:Name="BestChartGrid" TabIndex="109" ItemsSource="{Binding ChartBests}"
                                           SelectedItem="{Binding SelectedChartBest, Mode=OneWay}"
                                           SelectionChanged="BestChartGrid_SelectionChanged"
                                           PreviewMouseLeftButtonDown="BestChartGrid_PreviewMouseLeftButtonDown"
@@ -1332,7 +1531,7 @@
                                                FontSize="12" Margin="0,4,0,0"
                                                TextWrapping="Wrap" />
                                 </StackPanel>
-                                <Button Grid.Column="1" Content="← 自己ベストに戻る"
+                                <Button Grid.Column="1" Content="← 自己ベストに戻る" TabIndex="100"
                                         Style="{StaticResource HomeSectionLinkStyle}"
                                         Click="ShowBest_Click" Margin="12,0,0,0" />
                             </Grid>
@@ -1495,10 +1694,10 @@
                                         <StackPanel Grid.Column="0" MinWidth="0" Margin="0,0,18,0">
                                             <StackPanel Orientation="Horizontal" Background="#F1F5F9"
                                                         HorizontalAlignment="Left" Margin="0,0,0,8">
-                                                <Button x:Name="ChartDetailAllPlaysButton" Content="全プレー"
+                                                <Button x:Name="ChartDetailAllPlaysButton" Content="全プレー" TabIndex="101"
                                                         Tag="Selected" Style="{StaticResource BestStyleButtonStyle}"
                                                         Click="ChartDetailGraphMode_Click" />
-                                                <Button x:Name="ChartDetailBestProgressionButton" Content="自己ベスト推移"
+                                                <Button x:Name="ChartDetailBestProgressionButton" Content="自己ベスト推移" TabIndex="102"
                                                         Tag="" Style="{StaticResource BestStyleButtonStyle}"
                                                         Click="ChartDetailGraphMode_Click" />
                                             </StackPanel>
@@ -1617,7 +1816,7 @@
                                                Visibility="{Binding ChartDetailEmptyVisibility}"
                                                Foreground="{StaticResource TextSecondaryBrush}"
                                                Margin="18,0,18,18" TextWrapping="Wrap" />
-                                    <DataGrid ItemsSource="{Binding ChartDetailHistory, Mode=OneWay}"
+                                    <DataGrid TabIndex="103" ItemsSource="{Binding ChartDetailHistory, Mode=OneWay}"
                                               Visibility="{Binding ChartDetailPlayVisibility, Mode=OneWay}"
                                               RowHeight="44" ColumnHeaderHeight="34"
                                               ScrollViewer.HorizontalScrollBarVisibility="Disabled"
@@ -1688,7 +1887,7 @@
                                     <StackPanel Orientation="Horizontal"
                                                 Margin="18,10,18,18"
                                                 Visibility="{Binding ChartDetailPlayVisibility, Mode=OneWay}">
-                                        <Button Content="続きを見る"
+                                        <Button Content="続きを見る" TabIndex="104"
                                                 Style="{StaticResource HomeSectionLinkStyle}"
                                                 Visibility="{Binding ChartDetailLoadMoreVisibility, Mode=OneWay}"
                                                 Click="ChartDetailLoadMore_Click" />
@@ -1711,7 +1910,7 @@
                             <RowDefinition Height="Auto" MinHeight="210" />
                         </Grid.RowDefinitions>
                         <Border Grid.Row="0" Style="{StaticResource CardStyle}" Padding="0">
-                            <DataGrid x:Name="RecentPlayGrid"
+                            <DataGrid x:Name="RecentPlayGrid" TabIndex="100"
                                       ItemsSource="{Binding Plays}" SelectedItem="{Binding SelectedPlay}"
                                       ScrollViewer.ScrollChanged="RecentPlayGrid_ScrollChanged"
                                       Style="{StaticResource ViewerDataGridStyle}">
@@ -1863,7 +2062,7 @@
                         <StackPanel MinWidth="0">
                             <Grid Margin="0,0,0,12">
                                 <TextBlock Text="設定項目" FontSize="15" FontWeight="SemiBold" />
-                                <Button Content="初期値に戻す"
+                                <Button Content="初期値に戻す" TabIndex="100"
                                         HorizontalAlignment="Right"
                                         Style="{StaticResource PrimaryButtonStyle}"
                                         Click="ResetSettings_Click" />
@@ -1875,10 +2074,10 @@
                                     <TextBlock Text="起動時の監視と保存できない結果の通知を設定します"
                                                Foreground="{StaticResource TextSecondaryBrush}"
                                                FontSize="11" Margin="0,3,0,12" />
-                                    <CheckBox Content="アプリ起動時に監視を開始"
+                                    <CheckBox Content="アプリ起動時に監視を開始" TabIndex="101"
                                               IsChecked="{Binding StartMonitoringOnLaunch, Mode=TwoWay}"
                                               FontSize="13" Margin="0,0,0,12" />
-                                    <CheckBox Content="保存できない結果を通知"
+                                    <CheckBox Content="保存できない結果を通知" TabIndex="102"
                                               IsChecked="{Binding NotifyUnresolvedResults, Mode=TwoWay}"
                                               FontSize="13" />
                                 </StackPanel>
@@ -1898,10 +2097,10 @@
                                         <TextBlock Text="既定のプレイスタイル"
                                                    VerticalAlignment="Center" FontSize="12" />
                                         <StackPanel Grid.Column="1" Orientation="Horizontal">
-                                            <Button x:Name="SettingsSinglePlayStyleButton" Content="SINGLE"
+                                            <Button x:Name="SettingsSinglePlayStyleButton" Content="SINGLE" TabIndex="103"
                                                     Style="{StaticResource SettingsSinglePlayStyleButtonStyle}"
                                                     Click="SettingsSinglePlayStyle_Click" />
-                                            <Button x:Name="SettingsDoublePlayStyleButton" Content="DOUBLE"
+                                            <Button x:Name="SettingsDoublePlayStyleButton" Content="DOUBLE" TabIndex="104"
                                                     Style="{StaticResource SettingsDoublePlayStyleButtonStyle}"
                                                     Click="SettingsDoublePlayStyle_Click" Margin="8,0,0,0" />
                                         </StackPanel>
@@ -1913,7 +2112,7 @@
                                         </Grid.ColumnDefinitions>
                                         <TextBlock Text="起動時に表示する画面"
                                                    VerticalAlignment="Center" FontSize="12" />
-                                        <ComboBox Grid.Column="1" Width="180" HorizontalAlignment="Left"
+                                        <ComboBox Grid.Column="1" Width="180" TabIndex="105" HorizontalAlignment="Left"
                                                   ItemsSource="{Binding StartupPageOptions}"
                                                   DisplayMemberPath="Display"
                                                   SelectedItem="{Binding SelectedStartupPageOption, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
@@ -1924,7 +2123,7 @@
                                             <ColumnDefinition Width="*" />
                                         </Grid.ColumnDefinitions>
                                         <TextBlock Text="言語" VerticalAlignment="Center" FontSize="12" />
-                                        <ComboBox Grid.Column="1" Width="180" HorizontalAlignment="Left"
+                                        <ComboBox Grid.Column="1" Width="180" TabIndex="106" HorizontalAlignment="Left"
                                                   ItemsSource="{Binding LanguageOptions}"
                                                   DisplayMemberPath="Display"
                                                   SelectedItem="{Binding SelectedLanguageOption, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
@@ -1946,7 +2145,7 @@
                                                VerticalAlignment="Center"
                                                Foreground="{StaticResource TextSecondaryBrush}"
                                                FontSize="11" TextWrapping="Wrap" Margin="0,0,16,0" />
-                                    <Button Grid.Column="1" Content="変更を保存"
+                                    <Button Grid.Column="1" Content="変更を保存" TabIndex="107"
                                             Style="{StaticResource PrimaryButtonStyle}"
                                             Click="SaveSettings_Click" />
                                 </Grid>
@@ -2027,11 +2226,11 @@
                                         <TextBlock Text="個人スコアデータの退避・復元"
                                                    FontSize="13" FontWeight="SemiBold"
                                                    TextWrapping="Wrap" Margin="0,0,0,10" />
-                                        <Button Content="バックアップを作成"
+                                        <Button Content="バックアップを作成" TabIndex="100"
                                                 Style="{StaticResource PrimaryButtonStyle}"
                                                 IsEnabled="{Binding CanManagePersonalData}"
                                                 Click="CreatePersonalScoreBackup_Click" />
-                                        <Button Content="バックアップから復元"
+                                        <Button Content="バックアップから復元" TabIndex="101"
                                                 Style="{StaticResource PrimaryButtonStyle}"
                                                 IsEnabled="{Binding CanManagePersonalData}"
                                                 Click="RestorePersonalScoreBackup_Click"

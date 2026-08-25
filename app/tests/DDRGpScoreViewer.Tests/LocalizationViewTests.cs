@@ -119,6 +119,145 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
     }
 
     [Fact]
+    public void Common_control_styles_keep_keyboard_focus_visible_without_resizing()
+    {
+        using var databaseFixture = new DatabaseFixture();
+        applicationFixture.Run(() =>
+        {
+            MainWindow? resourceWindow = null;
+            Window? host = null;
+            try
+            {
+                Localization.Configure(UserSettings.JapaneseLanguage);
+                foreach (var resourceName in new[] { "Theme.xaml", "Components.xaml", "Strings.xaml" })
+                {
+                    Application.Current.Resources.MergedDictionaries.Add(
+                        new ResourceDictionary
+                        {
+                            Source = new Uri(
+                                $"/DDRGpScoreViewer;component/Resources/{resourceName}",
+                                UriKind.Relative),
+                        });
+                }
+
+                resourceWindow = new MainWindow(
+                    new ViewerDatabasePaths(
+                        ViewerDatabaseEnvironment.Development,
+                        databaseFixture.DirectoryPath,
+                        databaseFixture.MasterPath,
+                        databaseFixture.CatalogPath,
+                        databaseFixture.ScorePath,
+                        Path.Combine(databaseFixture.DirectoryPath, "evaluation.db"),
+                        Path.Combine(databaseFixture.DirectoryPath, "data"),
+                        Path.Combine(databaseFixture.DirectoryPath, "logs"),
+                        Path.Combine(databaseFixture.DirectoryPath, "viewer-settings.json")));
+
+                var primaryButton = new Button
+                {
+                    Content = "Primary",
+                    Style = (Style)resourceWindow.FindResource("PrimaryButtonStyle"),
+                };
+                var titleSearch = new TextBox
+                {
+                    Text = "Search",
+                    Style = (Style)resourceWindow.FindResource("BestTitleSearchTextBoxStyle"),
+                };
+                var options = new ListBox
+                {
+                    Height = 48,
+                    ItemContainerStyle = (Style)resourceWindow.FindResource("BestAxisOptionStyle"),
+                    ItemsSource = new[] { "Option" },
+                    SelectedIndex = 0,
+                };
+                host = new Window
+                {
+                    Width = 480,
+                    Height = 220,
+                    Content = new StackPanel
+                    {
+                        Children =
+                        {
+                            primaryButton,
+                            titleSearch,
+                            options,
+                        },
+                    },
+                };
+                host.Show();
+                host.Activate();
+                host.UpdateLayout();
+
+                var focusVisualStyle = Application.Current.FindResource("ControlFocusVisualStyle");
+                foreach (var styleKey in new[]
+                         {
+                             "PrimaryButtonStyle",
+                             "SidebarButtonStyle",
+                             "HomeSectionLinkStyle",
+                             "HomeSummaryCopyButtonStyle",
+                             "BestStyleButtonStyle",
+                             "BestSegmentButtonStyle",
+                             "BestBrowseTabButtonStyle",
+                             "BestAxisChangeButtonStyle",
+                             "BestTitleSearchTextBoxStyle",
+                             "BestAxisOptionStyle",
+                             "SettingsSinglePlayStyleButtonStyle",
+                             "SettingsDoublePlayStyleButtonStyle",
+                         })
+                {
+                    var style = Assert.IsType<Style>(resourceWindow.FindResource(styleKey));
+                    Assert.Same(
+                        focusVisualStyle,
+                        FindStyleSetterValue(style, Control.FocusVisualStyleProperty));
+                }
+
+                Assert.Same(focusVisualStyle, primaryButton.FocusVisualStyle);
+                Assert.Same(focusVisualStyle, titleSearch.FocusVisualStyle);
+
+                var listItem = Assert.IsType<ListBoxItem>(
+                    options.ItemContainerGenerator.ContainerFromIndex(0));
+                Assert.Same(focusVisualStyle, listItem.FocusVisualStyle);
+                Assert.True(listItem.IsSelected);
+
+                var primaryWidth = primaryButton.ActualWidth;
+                var primaryHeight = primaryButton.ActualHeight;
+                Assert.True(primaryButton.Focus());
+                host.UpdateLayout();
+                Assert.Equal(primaryWidth, primaryButton.ActualWidth, precision: 3);
+                Assert.Equal(primaryHeight, primaryButton.ActualHeight, precision: 3);
+
+                var searchWidth = titleSearch.ActualWidth;
+                var searchHeight = titleSearch.ActualHeight;
+                Assert.True(titleSearch.Focus());
+                host.UpdateLayout();
+                Assert.Equal(searchWidth, titleSearch.ActualWidth, precision: 3);
+                Assert.Equal(searchHeight, titleSearch.ActualHeight, precision: 3);
+
+                Assert.True(listItem.Focus());
+                host.UpdateLayout();
+                Assert.True(listItem.IsSelected);
+
+                primaryButton.IsEnabled = false;
+                host.UpdateLayout();
+                var primaryBorder = Assert.IsType<Border>(
+                    primaryButton.Template.FindName("ButtonBorder", primaryButton));
+                var disabledBackground = Assert.IsType<SolidColorBrush>(
+                    resourceWindow.FindResource("SurfaceSecondaryBrush"));
+                var renderedBackground = Assert.IsType<SolidColorBrush>(primaryBorder.Background);
+                Assert.Equal(disabledBackground.Color, renderedBackground.Color);
+                Assert.Equal(
+                    ((SolidColorBrush)resourceWindow.FindResource("TextMutedBrush")).Color,
+                    ((SolidColorBrush)primaryButton.Foreground).Color);
+            }
+            finally
+            {
+                host?.Close();
+                resourceWindow?.PrepareForApplicationExit();
+                resourceWindow?.Close();
+            }
+        });
+    }
+
+    [Fact]
     public void Monitoring_status_card_tracks_state_reason_and_available_actions()
     {
         using var databaseFixture = new DatabaseFixture();
@@ -457,6 +596,22 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
                 yield return descendant;
             }
         }
+    }
+
+    private static object? FindStyleSetterValue(Style style, DependencyProperty property)
+    {
+        for (var current = style; current is not null; current = current.BasedOn)
+        {
+            foreach (var setter in current.Setters.OfType<Setter>())
+            {
+                if (setter.Property == property)
+                {
+                    return setter.Value;
+                }
+            }
+        }
+
+        return null;
     }
 
     private sealed record GridItem(string Display);
