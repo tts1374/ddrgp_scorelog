@@ -16,8 +16,6 @@ using DDRGpScoreViewer.ViewModels;
 using Microsoft.Win32;
 using WpfButton = System.Windows.Controls.Button;
 using WpfBrush = System.Windows.Media.Brush;
-using WpfBrushes = System.Windows.Media.Brushes;
-using WpfColor = System.Windows.Media.Color;
 using WpfBinding = System.Windows.Data.Binding;
 using WpfFileDialog = Microsoft.Win32.FileDialog;
 using WpfOrientation = System.Windows.Controls.Orientation;
@@ -57,6 +55,7 @@ public partial class MainWindow : System.Windows.Window
     internal MainWindow(ViewerDatabasePaths databasePaths)
     {
         InitializeComponent();
+        ThemeManager.ThemeChanged += ThemeManager_ThemeChanged;
         homePeriodRefreshTimer.Tick += HomePeriodRefreshTimer_Tick;
         viewModel = new MainViewModel(
             new ScoreViewerRepository(),
@@ -115,8 +114,8 @@ public partial class MainWindow : System.Windows.Window
 
         var panel = new Border
         {
-            Background = new SolidColorBrush(WpfColor.FromRgb(239, 246, 255)),
-            BorderBrush = new SolidColorBrush(WpfColor.FromRgb(147, 197, 253)),
+            Background = (WpfBrush)FindResource("DeveloperPanelBackgroundBrush"),
+            BorderBrush = (WpfBrush)FindResource("DeveloperPanelBorderBrush"),
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(6),
             Padding = new Thickness(8, 4, 8, 4),
@@ -150,7 +149,11 @@ public partial class MainWindow : System.Windows.Window
 
     internal MainViewModel ViewModel => viewModel;
 
-    internal Task RestoreSavedPathsAsync() => viewModel.RestoreSavedPathsAsync();
+    internal async Task RestoreSavedPathsAsync()
+    {
+        await viewModel.RestoreSavedPathsAsync();
+        ThemeManager.Apply(viewModel.AppliedTheme);
+    }
 
     internal void ApplyConfiguredStartupPage()
     {
@@ -447,6 +450,12 @@ public partial class MainWindow : System.Windows.Window
         base.OnClosing(e);
     }
 
+    protected override void OnClosed(EventArgs e)
+    {
+        ThemeManager.ThemeChanged -= ThemeManager_ThemeChanged;
+        base.OnClosed(e);
+    }
+
     protected override void OnStateChanged(EventArgs e)
     {
         base.OnStateChanged(e);
@@ -634,8 +643,13 @@ public partial class MainWindow : System.Windows.Window
             viewModel.Language,
             Localization.CurrentLanguage,
             StringComparison.Ordinal);
-        if (!viewModel.SaveUserSettings() ||
-            !languageChanged ||
+        if (!viewModel.SaveUserSettings())
+        {
+            return;
+        }
+
+        ThemeManager.Apply(viewModel.Theme);
+        if (!languageChanged ||
             languageChangeRestartHandler is null)
         {
             return;
@@ -972,6 +986,22 @@ public partial class MainWindow : System.Windows.Window
         }
     }
 
+    private void ThemeManager_ThemeChanged(object? sender, EventArgs e)
+    {
+        if (Dispatcher.HasShutdownStarted || Dispatcher.HasShutdownFinished)
+        {
+            return;
+        }
+
+        Dispatcher.BeginInvoke(
+            DispatcherPriority.DataBind,
+            new Action(() =>
+            {
+                UpdateChartDetailGraphModeButtons();
+                RenderChartDetailGraph();
+            }));
+    }
+
     private void ShowChartDetail()
     {
         viewModel.SetSettingsPage(false);
@@ -1150,14 +1180,14 @@ public partial class MainWindow : System.Windows.Window
         {
             Points = new PointCollection(renderedPoints.Select(item => item.location)),
             Stroke = viewModel.ChartDetailGraphMode == MainViewModel.ChartDetailBestProgressionMode
-                ? new SolidColorBrush(WpfColor.FromRgb(5, 150, 105))
+                ? (WpfBrush)FindResource("GraphBestBrush")
                 : (WpfBrush)FindResource("AccentPrimaryBrush"),
             StrokeThickness = 2.5,
             StrokeLineJoin = PenLineJoin.Round,
         };
         ChartDetailGraphCanvas.Children.Add(line);
 
-        var bestBrush = new SolidColorBrush(WpfColor.FromRgb(5, 150, 105));
+        var bestBrush = (WpfBrush)FindResource("GraphBestBrush");
         foreach (var item in renderedPoints)
         {
             var isBestPoint = item.point.PreviousScore is null || item.point.IsScoreBestUpdate;
@@ -1168,7 +1198,7 @@ public partial class MainWindow : System.Windows.Window
                 Fill = viewModel.ChartDetailGraphMode == MainViewModel.ChartDetailBestProgressionMode || isBestPoint
                     ? bestBrush
                     : (WpfBrush)FindResource("AccentPrimaryBrush"),
-                Stroke = WpfBrushes.White,
+                Stroke = (WpfBrush)FindResource("GraphMarkerOutlineBrush"),
                 StrokeThickness = 1.5,
                 ToolTip = $"{item.point.Play.PlayedAtDisplay} / {item.point.Play.ScoreDisplay}",
             };

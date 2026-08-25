@@ -12,6 +12,7 @@
 | [`0002`](0002-app-owned-formal-save-boundary.md) | Accepted | app-owned recognitionとformal evidenceによる正式保存境界 | pipeline、event・保存境界、正式個人スコアDB |
 | [`0003`](0003-database-responsibility-and-protection.md) | Accepted | DB責務の分離と正式個人スコアDBの保護 | data model、storage、正式個人スコアDB |
 | [`0004`](0004-separate-application-and-reference-data-updates.md) | Accepted | application packageとreference data setの更新分離 | storage、app package・更新 |
+| [`0005`](0005-application-owned-user-theme-and-runtime-tokens.md) | Accepted | app-owned user theme設定とXAML・コード描画のsemantic token境界 | user settings、UI resources、runtime theme適用 |
 
 ## Status
 

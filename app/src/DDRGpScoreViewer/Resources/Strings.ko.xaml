@@ -125,6 +125,11 @@
     <sys:String x:Key="自己ベストの初期表示と起動時の画面を設定します">개인 최고 기록의 초기 필터와 시작 화면을 설정합니다</sys:String>
     <sys:String x:Key="既定のプレイスタイル">기본 플레이 스타일</sys:String>
     <sys:String x:Key="起動時に表示する画面">시작 시 표시할 화면</sys:String>
+    <sys:String x:Key="テーマ">테마</sys:String>
+    <sys:String x:Key="システム">시스템</sys:String>
+    <sys:String x:Key="ライト">라이트</sys:String>
+    <sys:String x:Key="ダーク">다크</sys:String>
+    <sys:String x:Key="システムを選ぶとWindowsのアプリモードに合わせて配色を切り替えます">시스템을 선택하면 Windows 앱 모드에 맞춰 색상이 전환됩니다.</sys:String>
     <sys:String x:Key="言語">언어</sys:String>
     <sys:String x:Key="言語の変更を保存するとアプリが自動的に再起動します">언어 변경을 저장하면 앱이 자동으로 다시 시작됩니다</sys:String>
     <sys:String x:Key="変更を保存">변경 사항 저장</sys:String>

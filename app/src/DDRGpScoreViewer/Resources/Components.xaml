@@ -3,8 +3,8 @@
     <Style TargetType="Window">
         <Setter Property="FontFamily" Value="Segoe UI Variable, Segoe UI, Yu Gothic UI" />
         <Setter Property="FontSize" Value="14" />
-        <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
-        <Setter Property="Background" Value="{StaticResource BackgroundPrimaryBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+        <Setter Property="Background" Value="{DynamicResource BackgroundPrimaryBrush}" />
     </Style>
 
     <!-- The focus ring is an adorner so it never changes a control's measured size. -->
@@ -12,7 +12,7 @@
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate>
-                    <Border BorderBrush="{StaticResource FocusRingBrush}"
+                    <Border BorderBrush="{DynamicResource FocusRingBrush}"
                             BorderThickness="2"
                             CornerRadius="6"
                             SnapsToDevicePixels="True">
@@ -24,9 +24,9 @@
     </Style>
 
     <Style x:Key="PrimaryButtonStyle" TargetType="Button">
-        <Setter Property="Foreground" Value="White" />
-        <Setter Property="Background" Value="{StaticResource AccentPrimaryBrush}" />
-        <Setter Property="BorderBrush" Value="{StaticResource AccentPrimaryBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource OnAccentBrush}" />
+        <Setter Property="Background" Value="{DynamicResource AccentPrimaryBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource AccentPrimaryBrush}" />
         <Setter Property="Padding" Value="16,9" />
         <Setter Property="FontWeight" Value="SemiBold" />
         <Setter Property="Cursor" Value="Hand" />
@@ -45,14 +45,14 @@
                                 <Condition Property="IsEnabled" Value="True" />
                                 <Condition Property="IsMouseOver" Value="True" />
                             </MultiTrigger.Conditions>
-                            <Setter TargetName="ButtonBorder" Property="Background" Value="{StaticResource AccentHoverBrush}" />
+                            <Setter TargetName="ButtonBorder" Property="Background" Value="{DynamicResource AccentHoverBrush}" />
                         </MultiTrigger>
                         <MultiTrigger>
                             <MultiTrigger.Conditions>
                                 <Condition Property="IsEnabled" Value="True" />
                                 <Condition Property="IsPressed" Value="True" />
                             </MultiTrigger.Conditions>
-                            <Setter TargetName="ButtonBorder" Property="Background" Value="{StaticResource AccentPressedBrush}" />
+                            <Setter TargetName="ButtonBorder" Property="Background" Value="{DynamicResource AccentPressedBrush}" />
                         </MultiTrigger>
                         <MultiTrigger>
                             <MultiTrigger.Conditions>
@@ -60,9 +60,9 @@
                                 <Condition Property="IsEnabled" Value="True" />
                                 <Condition Property="IsMouseOver" Value="True" />
                             </MultiTrigger.Conditions>
-                            <Setter TargetName="ButtonBorder" Property="Background" Value="{StaticResource AccentSubtleBrush}" />
-                            <Setter TargetName="ButtonBorder" Property="BorderBrush" Value="{StaticResource AccentPrimaryBrush}" />
-                            <Setter Property="Foreground" Value="{StaticResource AccentPrimaryBrush}" />
+                            <Setter TargetName="ButtonBorder" Property="Background" Value="{DynamicResource AccentSubtleBrush}" />
+                            <Setter TargetName="ButtonBorder" Property="BorderBrush" Value="{DynamicResource AccentPrimaryBrush}" />
+                            <Setter Property="Foreground" Value="{DynamicResource AccentPrimaryBrush}" />
                         </MultiTrigger>
                         <MultiTrigger>
                             <MultiTrigger.Conditions>
@@ -70,17 +70,17 @@
                                 <Condition Property="IsEnabled" Value="True" />
                                 <Condition Property="IsPressed" Value="True" />
                             </MultiTrigger.Conditions>
-                            <Setter TargetName="ButtonBorder" Property="Background" Value="{StaticResource AccentPressedBrush}" />
-                            <Setter TargetName="ButtonBorder" Property="BorderBrush" Value="{StaticResource AccentPressedBrush}" />
-                            <Setter Property="Foreground" Value="White" />
+                            <Setter TargetName="ButtonBorder" Property="Background" Value="{DynamicResource AccentPressedBrush}" />
+                            <Setter TargetName="ButtonBorder" Property="BorderBrush" Value="{DynamicResource AccentPressedBrush}" />
+                            <Setter Property="Foreground" Value="{DynamicResource OnAccentBrush}" />
                         </MultiTrigger>
                         <Trigger Property="IsKeyboardFocused" Value="True">
-                            <Setter TargetName="ButtonBorder" Property="BorderBrush" Value="{StaticResource FocusRingBrush}" />
+                            <Setter TargetName="ButtonBorder" Property="BorderBrush" Value="{DynamicResource FocusRingBrush}" />
                         </Trigger>
                         <Trigger Property="IsEnabled" Value="False">
-                            <Setter TargetName="ButtonBorder" Property="Background" Value="{StaticResource SurfaceSecondaryBrush}" />
-                            <Setter TargetName="ButtonBorder" Property="BorderBrush" Value="{StaticResource BorderDefaultBrush}" />
-                            <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}" />
+                            <Setter TargetName="ButtonBorder" Property="Background" Value="{DynamicResource SurfaceSecondaryBrush}" />
+                            <Setter TargetName="ButtonBorder" Property="BorderBrush" Value="{DynamicResource BorderDefaultBrush}" />
+                            <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
                             <Setter Property="Cursor" Value="Arrow" />
                         </Trigger>
                     </ControlTemplate.Triggers>
@@ -97,7 +97,7 @@
     </Style>
 
     <Style x:Key="SidebarButtonStyle" TargetType="Button">
-        <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
         <Setter Property="Background" Value="Transparent" />
         <Setter Property="BorderThickness" Value="0" />
         <Setter Property="HorizontalContentAlignment" Value="Left" />
@@ -119,18 +119,18 @@
                                 <Condition Property="IsEnabled" Value="True" />
                                 <Condition Property="IsMouseOver" Value="True" />
                             </MultiTrigger.Conditions>
-                            <Setter TargetName="SidebarBorder" Property="Background" Value="#29405F" />
+                            <Setter TargetName="SidebarBorder" Property="Background" Value="{DynamicResource SidebarHoverBrush}" />
                         </MultiTrigger>
                         <MultiTrigger>
                             <MultiTrigger.Conditions>
                                 <Condition Property="IsEnabled" Value="True" />
                                 <Condition Property="IsPressed" Value="True" />
                             </MultiTrigger.Conditions>
-                            <Setter TargetName="SidebarBorder" Property="Background" Value="{StaticResource AccentPressedBrush}" />
+                            <Setter TargetName="SidebarBorder" Property="Background" Value="{DynamicResource AccentPressedBrush}" />
                         </MultiTrigger>
                         <Trigger Property="Tag" Value="Selected">
-                            <Setter TargetName="SidebarBorder" Property="Background" Value="{StaticResource AccentPrimaryBrush}" />
-                            <Setter Property="Foreground" Value="White" />
+                            <Setter TargetName="SidebarBorder" Property="Background" Value="{DynamicResource AccentPrimaryBrush}" />
+                            <Setter Property="Foreground" Value="{DynamicResource OnSidebarBrush}" />
                             <Setter Property="FontWeight" Value="SemiBold" />
                         </Trigger>
                         <MultiTrigger>
@@ -139,12 +139,12 @@
                                 <Condition Property="IsEnabled" Value="True" />
                                 <Condition Property="IsPressed" Value="True" />
                             </MultiTrigger.Conditions>
-                            <Setter TargetName="SidebarBorder" Property="Background" Value="{StaticResource AccentPressedBrush}" />
-                            <Setter Property="Foreground" Value="White" />
+                            <Setter TargetName="SidebarBorder" Property="Background" Value="{DynamicResource AccentPressedBrush}" />
+                            <Setter Property="Foreground" Value="{DynamicResource OnSidebarBrush}" />
                         </MultiTrigger>
                         <Trigger Property="IsEnabled" Value="False">
                             <Setter TargetName="SidebarBorder" Property="Background" Value="Transparent" />
-                            <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}" />
+                            <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
                             <Setter Property="Opacity" Value="0.45" />
                             <Setter Property="Cursor" Value="Arrow" />
                         </Trigger>
@@ -155,8 +155,8 @@
     </Style>
 
     <Style x:Key="CardStyle" TargetType="Border">
-        <Setter Property="Background" Value="{StaticResource SurfacePrimaryBrush}" />
-        <Setter Property="BorderBrush" Value="{StaticResource BorderDefaultBrush}" />
+        <Setter Property="Background" Value="{DynamicResource SurfacePrimaryBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource BorderDefaultBrush}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="CornerRadius" Value="10" />
         <Setter Property="Padding" Value="16" />
@@ -172,15 +172,15 @@
         <Setter Property="IsReadOnly" Value="True" />
         <Setter Property="SelectionMode" Value="Single" />
         <Setter Property="GridLinesVisibility" Value="Horizontal" />
-        <Setter Property="HorizontalGridLinesBrush" Value="{StaticResource BorderDefaultBrush}" />
-        <Setter Property="BorderBrush" Value="{StaticResource BorderDefaultBrush}" />
+        <Setter Property="HorizontalGridLinesBrush" Value="{DynamicResource BorderDefaultBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource BorderDefaultBrush}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="HeadersVisibility" Value="Column" />
         <Setter Property="RowHeight" Value="42" />
         <Setter Property="ColumnHeaderHeight" Value="36" />
-        <Setter Property="Background" Value="{StaticResource SurfacePrimaryBrush}" />
-        <Setter Property="RowBackground" Value="{StaticResource SurfacePrimaryBrush}" />
-        <Setter Property="AlternatingRowBackground" Value="{StaticResource SurfaceSecondaryBrush}" />
+        <Setter Property="Background" Value="{DynamicResource SurfacePrimaryBrush}" />
+        <Setter Property="RowBackground" Value="{DynamicResource SurfacePrimaryBrush}" />
+        <Setter Property="AlternatingRowBackground" Value="{DynamicResource SurfaceSecondaryBrush}" />
         <Setter Property="SelectionUnit" Value="FullRow" />
         <Setter Property="ScrollViewer.HorizontalScrollBarVisibility" Value="Auto" />
         <Setter Property="ScrollViewer.VerticalScrollBarVisibility" Value="Auto" />
@@ -204,198 +204,198 @@
         <Setter Property="MinHeight" Value="27" />
         <Setter Property="HorizontalAlignment" Value="Left" />
         <Setter Property="VerticalAlignment" Value="Center" />
-        <Setter Property="TextElement.Foreground" Value="#334155" />
+        <Setter Property="TextElement.Foreground" Value="{DynamicResource BadgeNeutralTextBrush}" />
     </Style>
 
     <Style x:Key="RankBadgeStyle" TargetType="Border"
            BasedOn="{StaticResource ResultBadgeStyle}">
-        <Setter Property="Background" Value="#F1F5F9" />
-        <Setter Property="BorderBrush" Value="#94A3B8" />
+        <Setter Property="Background" Value="{DynamicResource BadgeNeutralBackgroundBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource BadgeNeutralBorderBrush}" />
         <Setter Property="MinWidth" Value="42" />
         <Style.Triggers>
             <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="Upper">
-                <Setter Property="Background" Value="#FEF3C7" />
-                <Setter Property="BorderBrush" Value="#FACC15" />
-                <Setter Property="TextElement.Foreground" Value="#854D0E" />
+                <Setter Property="Background" Value="{DynamicResource BadgeWarningBackgroundBrush}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource BadgeWarningBorderBrush}" />
+                <Setter Property="TextElement.Foreground" Value="{DynamicResource BadgeWarningTextBrush}" />
             </DataTrigger>
             <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="B">
-                <Setter Property="Background" Value="#E0F2FE" />
-                <Setter Property="BorderBrush" Value="#38BDF8" />
-                <Setter Property="TextElement.Foreground" Value="#075985" />
+                <Setter Property="Background" Value="{DynamicResource BadgeCyanBackgroundBrush}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource BadgeCyanBorderBrush}" />
+                <Setter Property="TextElement.Foreground" Value="{DynamicResource BadgeCyanTextBrush}" />
             </DataTrigger>
             <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="C">
-                <Setter Property="Background" Value="#FCE7F3" />
-                <Setter Property="BorderBrush" Value="#F472B6" />
-                <Setter Property="TextElement.Foreground" Value="#9D174D" />
+                <Setter Property="Background" Value="{DynamicResource BadgePinkBackgroundBrush}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource BadgePinkBorderBrush}" />
+                <Setter Property="TextElement.Foreground" Value="{DynamicResource BadgePinkTextBrush}" />
             </DataTrigger>
             <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="D">
-                <Setter Property="Background" Value="#FEE2E2" />
-                <Setter Property="BorderBrush" Value="#EF4444" />
-                <Setter Property="TextElement.Foreground" Value="#991B1B" />
+                <Setter Property="Background" Value="{DynamicResource BadgeDangerBackgroundBrush}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource BadgeDangerBorderBrush}" />
+                <Setter Property="TextElement.Foreground" Value="{DynamicResource BadgeDangerTextBrush}" />
             </DataTrigger>
             <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="E">
-                <Setter Property="Background" Value="#F1F5F9" />
-                <Setter Property="BorderBrush" Value="#94A3B8" />
-                <Setter Property="TextElement.Foreground" Value="#334155" />
+                <Setter Property="Background" Value="{DynamicResource BadgeNeutralBackgroundBrush}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource BadgeNeutralBorderBrush}" />
+                <Setter Property="TextElement.Foreground" Value="{DynamicResource BadgeNeutralTextBrush}" />
             </DataTrigger>
         </Style.Triggers>
     </Style>
 
     <Style x:Key="ClearBadgeStyle" TargetType="Border"
            BasedOn="{StaticResource ResultBadgeStyle}">
-        <Setter Property="Background" Value="#F1F5F9" />
-        <Setter Property="BorderBrush" Value="#94A3B8" />
+        <Setter Property="Background" Value="{DynamicResource BadgeNeutralBackgroundBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource BadgeNeutralBorderBrush}" />
         <Style.Triggers>
             <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="Pfc">
-                <Setter Property="Background" Value="#FEF3C7" />
-                <Setter Property="BorderBrush" Value="#FACC15" />
-                <Setter Property="TextElement.Foreground" Value="#854D0E" />
+                <Setter Property="Background" Value="{DynamicResource BadgeWarningBackgroundBrush}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource BadgeWarningBorderBrush}" />
+                <Setter Property="TextElement.Foreground" Value="{DynamicResource BadgeWarningTextBrush}" />
             </DataTrigger>
             <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="Gfc">
-                <Setter Property="Background" Value="#DCFCE7" />
-                <Setter Property="BorderBrush" Value="#22C55E" />
-                <Setter Property="TextElement.Foreground" Value="#166534" />
+                <Setter Property="Background" Value="{DynamicResource BadgeSuccessBackgroundBrush}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource BadgeSuccessBorderBrush}" />
+                <Setter Property="TextElement.Foreground" Value="{DynamicResource BadgeSuccessTextBrush}" />
             </DataTrigger>
             <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="Fc">
-                <Setter Property="Background" Value="#DBEAFE" />
-                <Setter Property="BorderBrush" Value="#2563EB" />
-                <Setter Property="TextElement.Foreground" Value="#1E3A8A" />
+                <Setter Property="Background" Value="{DynamicResource BadgeInfoBackgroundBrush}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource BadgeInfoBorderBrush}" />
+                <Setter Property="TextElement.Foreground" Value="{DynamicResource BadgeInfoTextBrush}" />
             </DataTrigger>
             <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="Clear">
-                <Setter Property="Background" Value="#E0F2FE" />
-                <Setter Property="BorderBrush" Value="#38BDF8" />
-                <Setter Property="TextElement.Foreground" Value="#075985" />
+                <Setter Property="Background" Value="{DynamicResource BadgeCyanBackgroundBrush}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource BadgeCyanBorderBrush}" />
+                <Setter Property="TextElement.Foreground" Value="{DynamicResource BadgeCyanTextBrush}" />
             </DataTrigger>
             <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="Mfc">
                 <Setter Property="Background">
                     <Setter.Value>
                         <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
-                            <GradientStop Color="#FECACA" Offset="0" />
-                            <GradientStop Color="#FEF3C7" Offset="0.25" />
-                            <GradientStop Color="#DCFCE7" Offset="0.5" />
-                            <GradientStop Color="#E0F2FE" Offset="0.75" />
-                            <GradientStop Color="#F3E8FF" Offset="1" />
+                            <GradientStop Color="{DynamicResource MfcGradientDangerColor}" Offset="0" />
+                            <GradientStop Color="{DynamicResource MfcGradientWarningColor}" Offset="0.25" />
+                            <GradientStop Color="{DynamicResource MfcGradientSuccessColor}" Offset="0.5" />
+                            <GradientStop Color="{DynamicResource MfcGradientCyanColor}" Offset="0.75" />
+                            <GradientStop Color="{DynamicResource MfcGradientPurpleColor}" Offset="1" />
                         </LinearGradientBrush>
                     </Setter.Value>
                 </Setter>
-                <Setter Property="BorderBrush" Value="#A855F7" />
-                <Setter Property="TextElement.Foreground" Value="#0F172A" />
+                <Setter Property="BorderBrush" Value="{DynamicResource BadgeMfcBorderBrush}" />
+                <Setter Property="TextElement.Foreground" Value="{DynamicResource BadgeMfcTextBrush}" />
             </DataTrigger>
             <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="Failed">
-                <Setter Property="Background" Value="#FEE2E2" />
-                <Setter Property="BorderBrush" Value="#EF4444" />
-                <Setter Property="TextElement.Foreground" Value="#991B1B" />
+                <Setter Property="Background" Value="{DynamicResource BadgeDangerBackgroundBrush}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource BadgeDangerBorderBrush}" />
+                <Setter Property="TextElement.Foreground" Value="{DynamicResource BadgeDangerTextBrush}" />
             </DataTrigger>
         </Style.Triggers>
     </Style>
 
     <Style x:Key="FlareBadgeStyle" TargetType="Border"
            BasedOn="{StaticResource ResultBadgeStyle}">
-        <Setter Property="Background" Value="#F1F5F9" />
-        <Setter Property="BorderBrush" Value="#94A3B8" />
+        <Setter Property="Background" Value="{DynamicResource BadgeNeutralBackgroundBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource BadgeNeutralBorderBrush}" />
         <Setter Property="MinWidth" Value="74" />
         <Style.Triggers>
             <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="I">
-                <Setter Property="Background" Value="#DBEAFE" />
-                <Setter Property="BorderBrush" Value="#2563EB" />
-                <Setter Property="TextElement.Foreground" Value="#1E3A8A" />
+                <Setter Property="Background" Value="{DynamicResource BadgeInfoBackgroundBrush}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource BadgeInfoBorderBrush}" />
+                <Setter Property="TextElement.Foreground" Value="{DynamicResource BadgeInfoTextBrush}" />
             </DataTrigger>
             <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="II">
-                <Setter Property="Background" Value="#E0F2FE" />
-                <Setter Property="BorderBrush" Value="#38BDF8" />
-                <Setter Property="TextElement.Foreground" Value="#075985" />
+                <Setter Property="Background" Value="{DynamicResource BadgeCyanBackgroundBrush}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource BadgeCyanBorderBrush}" />
+                <Setter Property="TextElement.Foreground" Value="{DynamicResource BadgeCyanTextBrush}" />
             </DataTrigger>
             <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="III">
-                <Setter Property="Background" Value="#DCFCE7" />
-                <Setter Property="BorderBrush" Value="#22C55E" />
-                <Setter Property="TextElement.Foreground" Value="#166534" />
+                <Setter Property="Background" Value="{DynamicResource BadgeSuccessBackgroundBrush}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource BadgeSuccessBorderBrush}" />
+                <Setter Property="TextElement.Foreground" Value="{DynamicResource BadgeSuccessTextBrush}" />
             </DataTrigger>
             <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="IV">
-                <Setter Property="Background" Value="#FEF3C7" />
-                <Setter Property="BorderBrush" Value="#FACC15" />
-                <Setter Property="TextElement.Foreground" Value="#854D0E" />
+                <Setter Property="Background" Value="{DynamicResource BadgeWarningBackgroundBrush}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource BadgeWarningBorderBrush}" />
+                <Setter Property="TextElement.Foreground" Value="{DynamicResource BadgeWarningTextBrush}" />
             </DataTrigger>
             <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="V">
-                <Setter Property="Background" Value="#FEE2E2" />
-                <Setter Property="BorderBrush" Value="#EF4444" />
-                <Setter Property="TextElement.Foreground" Value="#991B1B" />
+                <Setter Property="Background" Value="{DynamicResource BadgeDangerBackgroundBrush}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource BadgeDangerBorderBrush}" />
+                <Setter Property="TextElement.Foreground" Value="{DynamicResource BadgeDangerTextBrush}" />
             </DataTrigger>
             <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="VI">
-                <Setter Property="Background" Value="#EDE9FE" />
-                <Setter Property="BorderBrush" Value="#8B5CF6" />
-                <Setter Property="TextElement.Foreground" Value="#5B21B6" />
+                <Setter Property="Background" Value="{DynamicResource BadgePurpleBackgroundBrush}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource BadgePurpleBorderBrush}" />
+                <Setter Property="TextElement.Foreground" Value="{DynamicResource BadgePurpleTextBrush}" />
             </DataTrigger>
             <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="VII">
-                <Setter Property="Background" Value="#E2E8F0" />
-                <Setter Property="BorderBrush" Value="#94A3B8" />
-                <Setter Property="TextElement.Foreground" Value="#334155" />
+                <Setter Property="Background" Value="{DynamicResource BadgeSlateBackgroundBrush}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource BadgeSlateBorderBrush}" />
+                <Setter Property="TextElement.Foreground" Value="{DynamicResource BadgeSlateTextBrush}" />
             </DataTrigger>
             <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="VIII">
-                <Setter Property="Background" Value="#F1F5F9" />
-                <Setter Property="BorderBrush" Value="#CBD5E1" />
-                <Setter Property="TextElement.Foreground" Value="#334155" />
+                <Setter Property="Background" Value="{DynamicResource BadgeNeutralBackgroundBrush}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource BadgeSlateBorderBrush}" />
+                <Setter Property="TextElement.Foreground" Value="{DynamicResource BadgeNeutralTextBrush}" />
             </DataTrigger>
             <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="IX">
-                <Setter Property="Background" Value="#FEF3C7" />
-                <Setter Property="BorderBrush" Value="#FBBF24" />
-                <Setter Property="TextElement.Foreground" Value="#854D0E" />
+                <Setter Property="Background" Value="{DynamicResource BadgeWarningBackgroundBrush}" />
+                <Setter Property="BorderBrush" Value="{DynamicResource BadgeWarningStrongBorderBrush}" />
+                <Setter Property="TextElement.Foreground" Value="{DynamicResource BadgeWarningTextBrush}" />
             </DataTrigger>
             <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="EX">
                 <Setter Property="Background">
                     <Setter.Value>
                         <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
-                            <GradientStop Color="#FECACA" Offset="0" />
-                            <GradientStop Color="#FEF3C7" Offset="0.25" />
-                            <GradientStop Color="#DCFCE7" Offset="0.5" />
-                            <GradientStop Color="#E0F2FE" Offset="0.75" />
-                            <GradientStop Color="#F3E8FF" Offset="1" />
+                            <GradientStop Color="{DynamicResource MfcGradientDangerColor}" Offset="0" />
+                            <GradientStop Color="{DynamicResource MfcGradientWarningColor}" Offset="0.25" />
+                            <GradientStop Color="{DynamicResource MfcGradientSuccessColor}" Offset="0.5" />
+                            <GradientStop Color="{DynamicResource MfcGradientCyanColor}" Offset="0.75" />
+                            <GradientStop Color="{DynamicResource MfcGradientPurpleColor}" Offset="1" />
                         </LinearGradientBrush>
                     </Setter.Value>
                 </Setter>
-                <Setter Property="BorderBrush" Value="#A855F7" />
-                <Setter Property="TextElement.Foreground" Value="#0F172A" />
+                <Setter Property="BorderBrush" Value="{DynamicResource BadgeMfcBorderBrush}" />
+                <Setter Property="TextElement.Foreground" Value="{DynamicResource BadgeMfcTextBrush}" />
             </DataTrigger>
         </Style.Triggers>
     </Style>
 
     <Style x:Key="DifficultyBadgeStyle" TargetType="Border">
-        <Setter Property="Background" Value="{StaticResource SurfaceSecondaryBrush}" />
+        <Setter Property="Background" Value="{DynamicResource SurfaceSecondaryBrush}" />
         <Setter Property="CornerRadius" Value="5" />
         <Setter Property="Padding" Value="7,3" />
         <Setter Property="HorizontalAlignment" Value="Left" />
         <Setter Property="VerticalAlignment" Value="Center" />
         <Style.Triggers>
             <DataTrigger Binding="{Binding Difficulty}" Value="BEGINNER">
-                <Setter Property="Background" Value="{StaticResource BeginnerBrush}" />
+                <Setter Property="Background" Value="{DynamicResource BeginnerBrush}" />
             </DataTrigger>
             <DataTrigger Binding="{Binding Difficulty}" Value="BASIC">
-                <Setter Property="Background" Value="{StaticResource BasicBrush}" />
+                <Setter Property="Background" Value="{DynamicResource BasicBrush}" />
             </DataTrigger>
             <DataTrigger Binding="{Binding Difficulty}" Value="DIFFICULT">
-                <Setter Property="Background" Value="{StaticResource DifficultBrush}" />
+                <Setter Property="Background" Value="{DynamicResource DifficultBrush}" />
             </DataTrigger>
             <DataTrigger Binding="{Binding Difficulty}" Value="EXPERT">
-                <Setter Property="Background" Value="{StaticResource ExpertBrush}" />
+                <Setter Property="Background" Value="{DynamicResource ExpertBrush}" />
             </DataTrigger>
             <DataTrigger Binding="{Binding Difficulty}" Value="CHALLENGE">
-                <Setter Property="Background" Value="{StaticResource ChallengeBrush}" />
+                <Setter Property="Background" Value="{DynamicResource ChallengeBrush}" />
             </DataTrigger>
         </Style.Triggers>
     </Style>
 
     <Style x:Key="DifficultyBadgeTextStyle" TargetType="TextBlock">
-        <Setter Property="Foreground" Value="{StaticResource TextPrimaryBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
         <Setter Property="FontSize" Value="11" />
         <Setter Property="FontWeight" Value="SemiBold" />
         <Style.Triggers>
             <DataTrigger Binding="{Binding Difficulty}" Value="DIFFICULT">
-                <Setter Property="Foreground" Value="White" />
+                <Setter Property="Foreground" Value="{DynamicResource OnAccentBrush}" />
             </DataTrigger>
             <DataTrigger Binding="{Binding Difficulty}" Value="EXPERT">
-                <Setter Property="Foreground" Value="White" />
+                <Setter Property="Foreground" Value="{DynamicResource OnAccentBrush}" />
             </DataTrigger>
             <DataTrigger Binding="{Binding Difficulty}" Value="CHALLENGE">
-                <Setter Property="Foreground" Value="White" />
+                <Setter Property="Foreground" Value="{DynamicResource OnAccentBrush}" />
             </DataTrigger>
         </Style.Triggers>
     </Style>

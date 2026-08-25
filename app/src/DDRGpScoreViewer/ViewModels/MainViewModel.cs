@@ -165,6 +165,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private string appliedStartupPage = UserSettings.Defaults.StartupPage;
     private string language = UserSettings.Defaults.Language;
     private string appliedLanguage = UserSettings.Defaults.Language;
+    private string theme = UserSettings.Defaults.Theme;
+    private string appliedTheme = UserSettings.Defaults.Theme;
     private string settingsStatusMessage = "";
     private readonly IApplicationUpdateService? applicationUpdateService;
     private string applicationUpdateStatusTitle = Localization.Get("アプリ更新");
@@ -270,6 +272,13 @@ public sealed class MainViewModel : INotifyPropertyChanged
             Localization.Option(UserSettings.KoreanLanguage, "韓国語"),
         ];
 
+    public IReadOnlyList<LocalizedOption> ThemeOptions { get; } =
+        [
+            Localization.Option(UserSettings.SystemTheme, "システム"),
+            Localization.Option(UserSettings.LightTheme, "ライト"),
+            Localization.Option(UserSettings.DarkTheme, "ダーク"),
+        ];
+
     public LocalizedOption? SelectedBestLevelOption
     {
         get => FindOption(BestLevelOptions, BestLevelFilter);
@@ -342,6 +351,18 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
     }
 
+    public LocalizedOption? SelectedThemeOption
+    {
+        get => FindOption(ThemeOptions, Theme);
+        set
+        {
+            if (value is not null)
+            {
+                Theme = value.Code;
+            }
+        }
+    }
+
     public bool StartMonitoringOnLaunch
     {
         get => startMonitoringOnLaunch;
@@ -407,6 +428,20 @@ public sealed class MainViewModel : INotifyPropertyChanged
             if (SetProperty(ref language, normalized))
             {
                 OnPropertyChanged(nameof(SelectedLanguageOption));
+                SettingsStatusMessage = Localization.Get("変更内容は保存時に反映されます");
+            }
+        }
+    }
+
+    public string Theme
+    {
+        get => theme;
+        set
+        {
+            var normalized = UserSettings.NormalizeTheme(value);
+            if (SetProperty(ref theme, normalized))
+            {
+                OnPropertyChanged(nameof(SelectedThemeOption));
                 SettingsStatusMessage = Localization.Get("変更内容は保存時に反映されます");
             }
         }
@@ -1360,6 +1395,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     internal string AppliedStartupPage => appliedStartupPage;
 
+    internal string AppliedTheme => appliedTheme;
+
     internal void SetSettingsPage(bool value)
     {
         if (isSettingsPage == value)
@@ -1474,7 +1511,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
             BestBrowseMode,
             BestLevelFilter,
             BestVersionFilter,
-            BestGoalFilter);
+            BestGoalFilter,
+            Theme);
         if (!settings.IsValid)
         {
             SettingsStatusMessage = Localization.Get("設定値を確認してから保存してください。");
@@ -1521,6 +1559,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         DefaultPlayStyle = UserSettings.Defaults.DefaultPlayStyle;
         StartupPage = UserSettings.Defaults.StartupPage;
         Language = UserSettings.Defaults.Language;
+        Theme = UserSettings.Defaults.Theme;
         SettingsStatusMessage = Localization.Get("初期値に戻しました。保存すると反映されます。");
     }
 
@@ -1532,11 +1571,13 @@ public sealed class MainViewModel : INotifyPropertyChanged
         appliedDefaultPlayStyle = effective.DefaultPlayStyle;
         appliedStartupPage = effective.StartupPage;
         appliedLanguage = effective.Language;
+        appliedTheme = effective.Theme;
         StartMonitoringOnLaunch = effective.StartMonitoringOnLaunch;
         NotifyUnresolvedResults = effective.NotifyUnresolvedResults;
         DefaultPlayStyle = effective.DefaultPlayStyle;
         StartupPage = effective.StartupPage;
         Language = effective.Language;
+        Theme = effective.Theme;
         suppressBestBrowseStatePersistence = true;
         try
         {
@@ -4338,7 +4379,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
             BestBrowseMode,
             BestLevelFilter,
             BestVersionFilter,
-            BestGoalFilter);
+            BestGoalFilter,
+            appliedTheme);
         if (!settings.IsValid)
         {
             return;

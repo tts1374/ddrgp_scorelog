@@ -125,6 +125,11 @@
     <sys:String x:Key="自己ベストの初期表示と起動時の画面を設定します">Configure the personal-best filter and launch page</sys:String>
     <sys:String x:Key="既定のプレイスタイル">Default play style</sys:String>
     <sys:String x:Key="起動時に表示する画面">Page shown at launch</sys:String>
+    <sys:String x:Key="テーマ">Theme</sys:String>
+    <sys:String x:Key="システム">System</sys:String>
+    <sys:String x:Key="ライト">Light</sys:String>
+    <sys:String x:Key="ダーク">Dark</sys:String>
+    <sys:String x:Key="システムを選ぶとWindowsのアプリモードに合わせて配色を切り替えます">Choose System to follow the Windows app mode.</sys:String>
     <sys:String x:Key="言語">Language</sys:String>
     <sys:String x:Key="言語の変更を保存するとアプリが自動的に再起動します">Saving a language change automatically restarts the app</sys:String>
     <sys:String x:Key="変更を保存">Save changes</sys:String>
