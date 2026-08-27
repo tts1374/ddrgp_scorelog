@@ -90,7 +90,7 @@ def build_review_projection(
 ) -> dict[str, Any]:
     initial_catalog_fingerprint = _database_fingerprint(catalog_path)
     initial_master_fingerprint = _database_fingerprint(master_db)
-    catalog.validate_catalog(catalog_path)
+    catalog.validate_catalog(catalog_path, allow_unbound_master=True)
     master = catalog.load_master_identity(master_db)
     coverage_rows, coverage_summary = catalog.build_coverage(catalog_path, master_db)
     master_metadata = _read_master_metadata(master_db)
@@ -104,7 +104,7 @@ def build_review_projection(
 
     with closing(catalog._connect_read_only(catalog_path)) as connection:
         connection.row_factory = sqlite3.Row
-        catalog._validate_catalog(connection)
+        catalog._validate_catalog(connection, allow_unbound_master=True)
         catalog_metadata = dict(connection.execute("SELECT key, value FROM catalog_metadata"))
         candidates_by_reference: dict[str, list[dict[str, Any]]] = {}
         for candidate_row in connection.execute(
