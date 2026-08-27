@@ -304,7 +304,7 @@ def _session_rows(
     placeholders = ",".join("?" for _ in observation_ids)
     with closing(catalog._connect_read_only(catalog_path)) as connection:
         connection.row_factory = sqlite3.Row
-        catalog._validate_catalog(connection)
+        catalog._validate_catalog(connection, allow_unbound_master=True)
         rows = list(
             connection.execute(
                 f"SELECT * FROM jacket_references WHERE source_capture_id IN ({placeholders})",
@@ -355,7 +355,7 @@ def apply_collection_auto_confirmation(
     placeholders = ",".join("?" for _ in observation_ids)
     with closing(catalog._connect_read_only(catalog_path)) as connection:
         connection.row_factory = sqlite3.Row
-        catalog._validate_catalog(connection)
+        catalog._validate_catalog(connection, allow_unbound_master=True)
         rows_by_observation = {
             str(row["source_capture_id"]): row
             for row in connection.execute(
@@ -436,7 +436,12 @@ def apply_collection_auto_confirmation(
                 )
             )
 
-    receipt = catalog.apply_auto_confirmation_batch(catalog_path, master_db, requests)
+    receipt = catalog.apply_auto_confirmation_batch(
+        catalog_path,
+        master_db,
+        requests,
+        allow_unbound_master=True,
+    )
     auto_confirmed_count, remaining_count = _session_rows(catalog_path, observation_ids)
     return CollectionAutoConfirmationResult(
         session_id=session_id,
