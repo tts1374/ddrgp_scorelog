@@ -177,6 +177,27 @@ def test_confirmed_reference_stays_collected_after_master_update(
     assert result["review_references"][0]["current_status"] == "manual_confirmed"
 
 
+def test_projection_accepts_unbound_collector_source_catalog_without_writing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    master_db, catalog_db, reference_id = setup_projection(tmp_path, monkeypatch)
+    with sqlite3.connect(catalog_db) as connection:
+        connection.execute(
+            "DELETE FROM catalog_metadata WHERE key = 'master_version'"
+        )
+    master_before = master_db.read_bytes()
+    catalog_before = catalog_db.read_bytes()
+
+    with pytest.raises(ValueError, match="metadata keys mismatch"):
+        catalog.validate_catalog(catalog_db)
+    result = projection.build_review_projection(catalog_db, master_db)
+
+    assert result["catalog"]["schema_version"] == 1
+    assert result["review_references"][0]["reference_id"] == reference_id
+    assert master_db.read_bytes() == master_before
+    assert catalog_db.read_bytes() == catalog_before
+
+
 def test_projection_rejects_unsupported_catalog_without_writing(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

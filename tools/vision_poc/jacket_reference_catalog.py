@@ -985,18 +985,21 @@ def create_catalog(path: Path, master_db: Path) -> None:
         raise
 
 
-def validate_catalog(path: Path) -> None:
+def validate_catalog(path: Path, *, allow_unbound_master: bool = False) -> None:
     try:
         with closing(_connect_read_only(path)) as connection:
-            _validate_catalog(connection)
+            _validate_catalog(connection, allow_unbound_master=allow_unbound_master)
     except sqlite3.DatabaseError as exc:
         raise ValueError(f"invalid jacket reference catalog: {path}") from exc
 
 
-def catalog_schema_version(path: Path) -> int:
+def catalog_schema_version(path: Path, *, allow_unbound_master: bool = False) -> int:
     try:
         with closing(_connect_read_only(path)) as connection:
-            return _validate_catalog(connection)
+            return _validate_catalog(
+                connection,
+                allow_unbound_master=allow_unbound_master,
+            )
     except sqlite3.DatabaseError as exc:
         raise ValueError(f"invalid jacket reference catalog: {path}") from exc
 
@@ -2828,7 +2831,7 @@ def load_m7_result_text_feature_entries(
 def build_coverage(
     catalog_path: Path, master_db: Path
 ) -> tuple[list[dict[str, str]], dict[str, Any]]:
-    schema_version = catalog_schema_version(catalog_path)
+    schema_version = catalog_schema_version(catalog_path, allow_unbound_master=True)
     master = load_master_identity(master_db)
     gp_songs = [song for song in master.songs if song.grand_prix_play_available]
     gp_song_ids = {song.song_id for song in gp_songs}
