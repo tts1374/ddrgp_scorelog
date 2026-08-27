@@ -14,7 +14,8 @@ public sealed record UserSettings(
     string BestBrowseMode = "level",
     string BestLevel = "level_1",
     string BestVersion = "DDR GRAND PRIX",
-    string BestGoal = "AAA")
+    string BestGoal = "AAA",
+    string Theme = "system")
 {
     public const string JapaneseLanguage = "ja";
     public const string EnglishLanguage = "en";
@@ -24,6 +25,10 @@ public sealed record UserSettings(
     public const string HomeStartupPage = "home";
     public const string BestStartupPage = "best";
     public const string HistoryStartupPage = "history";
+    public const string SystemTheme = "system";
+    public const string LightTheme = "light";
+    public const string DarkTheme = "dark";
+    public const string DefaultTheme = SystemTheme;
     public const string LevelBrowseMode = "level";
     public const string VersionBrowseMode = "version";
     public const string TitleBrowseMode = "title";
@@ -74,7 +79,8 @@ public sealed record UserSettings(
         BestBrowseMode: DefaultBestBrowseMode,
         BestLevel: DefaultBestLevel,
         BestVersion: DefaultBestVersion,
-        BestGoal: DefaultBestGoal);
+        BestGoal: DefaultBestGoal,
+        Theme: DefaultTheme);
 
     public static UserSettings ForNewEnvironment(string? osLocale = null) =>
         Defaults with { Language = ResolveInitialLanguage(osLocale) };
@@ -86,7 +92,8 @@ public sealed record UserSettings(
         IsValidBestBrowseMode(BestBrowseMode) &&
         IsValidBestLevel(BestLevel) &&
         IsValidBestVersion(BestVersion) &&
-        IsValidBestGoal(BestGoal);
+        IsValidBestGoal(BestGoal) &&
+        IsValidTheme(Theme);
 
     public static bool IsValidPlayStyle(string? value) =>
         value is SinglePlayStyle or DoublePlayStyle;
@@ -114,6 +121,9 @@ public sealed record UserSettings(
 
     public static bool IsValidBestGoal(string? value) =>
         value is not null && SupportedBestGoals.Contains(value, StringComparer.OrdinalIgnoreCase);
+
+    public static bool IsValidTheme(string? value) =>
+        value is SystemTheme or LightTheme or DarkTheme;
 
     public static string NormalizeBestBrowseMode(string? value) =>
         value?.Trim().ToLowerInvariant() switch
@@ -161,6 +171,15 @@ public sealed record UserSettings(
             _ => string.IsNullOrWhiteSpace(value)
                 ? JapaneseLanguage
                 : EnglishLanguage,
+        };
+
+    public static string NormalizeTheme(string? value) =>
+        value?.Trim().ToLowerInvariant() switch
+        {
+            SystemTheme => SystemTheme,
+            LightTheme => LightTheme,
+            DarkTheme => DarkTheme,
+            _ => DefaultTheme,
         };
 
     public static string ResolveInitialLanguage(string? osLocale) =>
@@ -245,7 +264,8 @@ public sealed class LocalUserSettingsStore : IUserSettingsStore
                 UserSettings.NormalizeBestBrowseMode(stored.BestBrowseMode),
                 UserSettings.NormalizeBestLevel(stored.BestLevel),
                 UserSettings.NormalizeBestVersion(stored.BestVersion),
-                UserSettings.NormalizeBestGoal(stored.BestGoal));
+                UserSettings.NormalizeBestGoal(stored.BestGoal),
+                UserSettings.NormalizeTheme(stored.Theme));
             return settings.IsValid ? settings : null;
         }
         catch (Exception exception) when (
@@ -280,7 +300,8 @@ public sealed class LocalUserSettingsStore : IUserSettingsStore
                 settings.BestBrowseMode,
                 settings.BestLevel,
                 settings.BestVersion,
-                settings.BestGoal),
+                settings.BestGoal,
+                settings.Theme),
             JsonOptions) + "\n";
         File.WriteAllText(filePath, json, Utf8NoBom);
     }
@@ -294,5 +315,6 @@ public sealed class LocalUserSettingsStore : IUserSettingsStore
         string? BestBrowseMode,
         string? BestLevel,
         string? BestVersion,
-        string? BestGoal);
+        string? BestGoal,
+        string? Theme);
 }

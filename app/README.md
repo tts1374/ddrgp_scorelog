@@ -127,7 +127,7 @@ windowの×ボタンはwindowをtrayへ格納し、最小化ボタンは通常�
 
 ## 再起動・path再検証・失敗からの復帰
 
-- 正式個人スコアDB、M4 master DB、M5b jacket reference catalogの固定pathとdev/prod環境タグだけを `%LOCALAPPDATA%\DDRGpScoreViewer\viewer-paths.json` に保存します。起動時監視、保存できない結果の通知、既定プレイスタイル、起動時画面は同じdirectoryの`user-settings.json`へ別に保存します。いずれもGit管理外で、候補値、解析結果、保存statusは持ちません。旧形式、任意path、別環境のpathは暗黙復元せず、現在の既定pathだけを使用します。
+- 正式個人スコアDB、M4 master DB、M5b jacket reference catalogの固定pathとdev/prod環境タグだけを `%LOCALAPPDATA%\DDRGpScoreViewer\viewer-paths.json` に保存します。起動時監視、保存できない結果の通知、既定プレイスタイル、起動時画面、テーマは同じdirectoryの`user-settings.json`へ別に保存します。テーマは`system` / `light` / `dark`の言語非依存値で、欠落・未知値は`system`へ正規化します。いずれもGit管理外で、候補値、解析結果、保存statusは持ちません。旧形式、任意path、別環境のpathは暗黙復元せず、現在の既定pathだけを使用します。
 - 起動時、解析・正式保存開始直前に、M4 master DBとM5b jacket reference catalogを別々のread-only connectionで検査します。M4は必須table、metadata、曲・譜面件数、source snapshotのURL/hash整合を確認し、M5bはtable identity、column、metadata identity、schema version、unique index、foreign keyを確認します。両方とも `missing`、`read不可`、`schema incompatible`、`compatible` を区別します。
 - どちらか一方がmissing / read不可 / incompatibleなら、理由を表示して対象windowの解析と正式保存workflowを開始しません。capture後にも同じ2ファイルを再検証します。networkからの最新版確認やhashの継続監視は行いません。
 - `target_closed`、`resized`、`device_lost`、`capture_failed`、`workflow_failed` は監視状態として残ります。window終了やresizeではsessionを安全に終了し、対象windowが一度消失してから再出現した場合だけ自動復帰します。DBまたはruntime異常は`blocked`として自動開始を抑止し、必要なmaster DBを現在の環境の固定pathへ用意してから再起動してください。手動停止後は同一app session中に自動復帰せず、明示的な`監視開始`だけを受け付けます。再実行時も対象windowを1件だけ自動特定し、古いsessionを再利用しません。Debug buildの `連続取得を開始` はcapture-onlyの開発者向け入口として手動pickerで対象windowを選び直します。
@@ -135,7 +135,7 @@ windowの×ボタンはwindowをtrayへ格納し、最小化ボタンは通常�
 
 ### 表示言語
 
-設定画面の「言語」では、日本語（`ja`）、英語（`en`）、韓国語（`ko`）を選択できます。変更は「変更を保存」を押した後、アプリを再起動すると反映されます。`user-settings.json` の既存設定に言語項目がない場合は日本語、対応外の保存値は英語として扱います。
+設定画面の「テーマ」では、システム（`system`）、ライト（`light`）、ダーク（`dark`）を選択できます。保存成功時に再起動なしで反映し、システムはWindowsの既定アプリモード変更に追従します。取得できない場合はライトとして扱い、明示したライト／ダークは追従しません。表示ラベルは日本語・英語・韓国語へ翻訳します。「言語」では日本語（`ja`）、英語（`en`）、韓国語（`ko`）を選択できます。変更は「変更を保存」を押した後、アプリを再起動すると反映されます。`user-settings.json` の既存設定に言語項目がない場合は日本語、対応外の保存値は英語として扱います。
 
 新しい環境ではOSの表示言語が日本語（`ja*`）なら日本語、韓国語（`ko*`）なら韓国語、それ以外は英語を初期値にします。翻訳が用意されていない表示文は日本語を基底言語として表示します。起動時画面の保存値は `home` / `best` / `history` を使用し、旧形式の「ホーム」／「自己ベスト」／「直近プレー履歴」も読み込めます。
 
@@ -291,8 +291,10 @@ production固定pathは`%LOCALAPPDATA%\DDRGpScoreViewer\data\master\`です。�
 
 ## UI resources
 
-- `Resources/Theme.xaml`: light themeの色トークンと難易度色
+- `Resources/Theme.xaml` / `Resources/DarkTheme.xaml`: light/dark themeのsemantic tokenと難易度色
 - `Resources/Components.xaml`: button、sidebar、card、table、badgeの共通style
 - `Controls/StatePanel.xaml`: 空状態・エラー状態の共通component
+
+テーマの永続化と、WPF resource dictionary・コード描画を含む適用境界は[`ADR 0005`](../docs/adr/0005-application-owned-user-theme-and-runtime-tokens.md)で定めます。
 
 今回の画面範囲は共通sidebar、ホーム、自己ベスト、検索・絞り込み、プレー履歴、プレー詳細とグラフ、設定、データ管理、個人スコアデータのバックアップ・復元、楽曲・譜面データのread-only状態表示、Debug buildの開発者向け単発操作、監視surface（自動保存できない結果の通知と自動再接続を含む）、master DB検証表示、event単位保存workflow、task tray lifecycleです。Release buildの通常画面には開発者向け領域を含めず、個人スコアデータ操作と`監視開始`・`監視停止`だけを残します。保存できない結果の専用確認画面は設けず、通知とlogで理由を確認します。

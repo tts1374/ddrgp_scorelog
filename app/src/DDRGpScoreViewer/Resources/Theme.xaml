@@ -32,6 +32,83 @@
     <SolidColorBrush x:Key="DangerBrush" Color="{StaticResource DangerColor}" />
     <SolidColorBrush x:Key="FocusRingBrush" Color="{StaticResource FocusRingColor}" />
 
+    <SolidColorBrush x:Key="OnAccentBrush" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="OnSidebarBrush" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="SidebarHoverBrush" Color="#29405F" />
+    <SolidColorBrush x:Key="SidebarBorderBrush" Color="#263A56" />
+    <SolidColorBrush x:Key="SidebarSeparatorBrush" Color="#50627B" />
+    <SolidColorBrush x:Key="StatusCardBackgroundBrush" Color="#1E293B" />
+    <SolidColorBrush x:Key="StatusCardBorderBrush" Color="#334155" />
+    <SolidColorBrush x:Key="StatusCardSecondaryTextBrush" Color="#94A3B8" />
+
+    <SolidColorBrush x:Key="MonitoringInfoBrush" Color="#38BDF8" />
+    <SolidColorBrush x:Key="MonitoringWarningBrush" Color="#F59E0B" />
+    <SolidColorBrush x:Key="MonitoringSuccessBrush" Color="#22C55E" />
+    <SolidColorBrush x:Key="MonitoringNeutralBrush" Color="#94A3B8" />
+    <SolidColorBrush x:Key="MonitoringErrorBrush" Color="#EF4444" />
+    <SolidColorBrush x:Key="MonitoringShuttingDownBrush" Color="#64748B" />
+
+    <SolidColorBrush x:Key="NotificationWarningBackgroundBrush" Color="#FFF7ED" />
+    <SolidColorBrush x:Key="NotificationWarningBorderBrush" Color="#FDBA74" />
+    <SolidColorBrush x:Key="NotificationWarningTitleBrush" Color="#9A3412" />
+    <SolidColorBrush x:Key="NotificationWarningTextBrush" Color="#7C2D12" />
+    <SolidColorBrush x:Key="InfoBackgroundBrush" Color="#EFF6FF" />
+    <SolidColorBrush x:Key="InfoBorderBrush" Color="#BFDBFE" />
+    <SolidColorBrush x:Key="InfoTextBrush" Color="#1E40AF" />
+    <SolidColorBrush x:Key="SuccessBrush" Color="#059669" />
+    <SolidColorBrush x:Key="WarningBrush" Color="#FACC15" />
+    <SolidColorBrush x:Key="HomeNotesBorderBrush" Color="#10B981" />
+    <SolidColorBrush x:Key="DeltaDangerBackgroundBrush" Color="#FEF2F2" />
+    <SolidColorBrush x:Key="DeltaDangerBorderBrush" Color="#FECACA" />
+    <SolidColorBrush x:Key="DeltaFirstBackgroundBrush" Color="#DBEAFE" />
+    <SolidColorBrush x:Key="DeltaFirstBorderBrush" Color="#93C5FD" />
+    <SolidColorBrush x:Key="DeltaFirstTextBrush" Color="#1D4ED8" />
+    <SolidColorBrush x:Key="GraphBestBrush" Color="#059669" />
+    <SolidColorBrush x:Key="GraphBackgroundBrush" Color="#F8FAFC" />
+    <SolidColorBrush x:Key="GraphMarkerOutlineBrush" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="SegmentBackgroundBrush" Color="#F1F5F9" />
+    <SolidColorBrush x:Key="LatestBadgeBackgroundBrush" Color="#EAF2FF" />
+    <SolidColorBrush x:Key="LatestBadgeBorderBrush" Color="#93C5FD" />
+    <SolidColorBrush x:Key="LatestBadgeTextBrush" Color="#1D4ED8" />
+    <SolidColorBrush x:Key="DeveloperPanelBackgroundBrush" Color="#EFF6FF" />
+    <SolidColorBrush x:Key="DeveloperPanelBorderBrush" Color="#93C5FD" />
+
+    <SolidColorBrush x:Key="BadgeNeutralBackgroundBrush" Color="#F1F5F9" />
+    <SolidColorBrush x:Key="BadgeNeutralBorderBrush" Color="#94A3B8" />
+    <SolidColorBrush x:Key="BadgeNeutralTextBrush" Color="#334155" />
+    <SolidColorBrush x:Key="BadgeWarningBackgroundBrush" Color="#FEF3C7" />
+    <SolidColorBrush x:Key="BadgeWarningBorderBrush" Color="#FACC15" />
+    <SolidColorBrush x:Key="BadgeWarningStrongBorderBrush" Color="#FBBF24" />
+    <SolidColorBrush x:Key="BadgeWarningTextBrush" Color="#854D0E" />
+    <SolidColorBrush x:Key="BadgeCyanBackgroundBrush" Color="#E0F2FE" />
+    <SolidColorBrush x:Key="BadgeCyanBorderBrush" Color="#38BDF8" />
+    <SolidColorBrush x:Key="BadgeCyanTextBrush" Color="#075985" />
+    <SolidColorBrush x:Key="BadgePinkBackgroundBrush" Color="#FCE7F3" />
+    <SolidColorBrush x:Key="BadgePinkBorderBrush" Color="#F472B6" />
+    <SolidColorBrush x:Key="BadgePinkTextBrush" Color="#9D174D" />
+    <SolidColorBrush x:Key="BadgeDangerBackgroundBrush" Color="#FEE2E2" />
+    <SolidColorBrush x:Key="BadgeDangerBorderBrush" Color="#EF4444" />
+    <SolidColorBrush x:Key="BadgeDangerTextBrush" Color="#991B1B" />
+    <SolidColorBrush x:Key="BadgeSuccessBackgroundBrush" Color="#DCFCE7" />
+    <SolidColorBrush x:Key="BadgeSuccessBorderBrush" Color="#22C55E" />
+    <SolidColorBrush x:Key="BadgeSuccessTextBrush" Color="#166534" />
+    <SolidColorBrush x:Key="BadgeInfoBackgroundBrush" Color="#DBEAFE" />
+    <SolidColorBrush x:Key="BadgeInfoBorderBrush" Color="#2563EB" />
+    <SolidColorBrush x:Key="BadgeInfoTextBrush" Color="#1E3A8A" />
+    <SolidColorBrush x:Key="BadgePurpleBackgroundBrush" Color="#EDE9FE" />
+    <SolidColorBrush x:Key="BadgePurpleBorderBrush" Color="#8B5CF6" />
+    <SolidColorBrush x:Key="BadgePurpleTextBrush" Color="#5B21B6" />
+    <SolidColorBrush x:Key="BadgeSlateBackgroundBrush" Color="#E2E8F0" />
+    <SolidColorBrush x:Key="BadgeSlateBorderBrush" Color="#CBD5E1" />
+    <SolidColorBrush x:Key="BadgeSlateTextBrush" Color="#334155" />
+    <SolidColorBrush x:Key="BadgeMfcBorderBrush" Color="#A855F7" />
+    <SolidColorBrush x:Key="BadgeMfcTextBrush" Color="#0F172A" />
+    <Color x:Key="MfcGradientDangerColor">#FECACA</Color>
+    <Color x:Key="MfcGradientWarningColor">#FEF3C7</Color>
+    <Color x:Key="MfcGradientSuccessColor">#DCFCE7</Color>
+    <Color x:Key="MfcGradientCyanColor">#E0F2FE</Color>
+    <Color x:Key="MfcGradientPurpleColor">#F3E8FF</Color>
+
     <SolidColorBrush x:Key="BeginnerBrush" Color="#5FB8E8" />
     <SolidColorBrush x:Key="BasicBrush" Color="#F3A621" />
     <SolidColorBrush x:Key="DifficultBrush" Color="#E64949" />

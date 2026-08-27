@@ -550,7 +550,7 @@ dry-run sequence scenario 入口を変更した場合も、生成manifestを man
 
 ## Windows automatic monitoring guard
 
-- 起動時監視設定がON（初期値）の場合だけ自動workerを作成し、OFFの場合は対象windowを探索せず、WPF/trayの明示開始経路は維持する。設定の欠落・読込失敗はONへ戻る。
+- 起動時監視設定がON（初期値）の場合だけ自動workerを作成し、OFFの場合は対象windowを探索せず、WPF/trayの明示開始経路は維持する。設定の欠落・読込失敗はONへ戻る。テーマ設定の欠落・未知値は`system`へ正規化し、起動時のメイン画面表示前に適用する。
 - 起動前から対象windowが存在する場合と、起動後に対象windowが出現する場合に、`Starting`を経て2回連続検出後だけ既存の監視workerを1回開始する。
 - 1回の探索失敗、0件、複数件では開始・停止を反復せず`WaitingForGame`へ戻り、対象window消失は2回連続確認後だけ安全停止する。
 - 監視停止後に対象windowが消失して再出現した場合だけ自動復帰し、同じwindowが残ったままの再接続や旧sessionの再利用を行わない。

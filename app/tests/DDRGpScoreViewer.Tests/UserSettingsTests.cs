@@ -27,7 +27,8 @@ public sealed class UserSettingsTests
                 BestBrowseMode: UserSettings.VersionBrowseMode,
                 BestLevel: "level_17",
                 BestVersion: "DDR WORLD",
-                BestGoal: "AA+");
+                BestGoal: "AA+",
+                Theme: UserSettings.DarkTheme);
             var store = new LocalUserSettingsStore(path);
 
             store.Save(expected);
@@ -64,6 +65,21 @@ public sealed class UserSettingsTests
         Assert.Equal(language, UserSettings.ForNewEnvironment(locale).Language);
     }
 
+    [Theory]
+    [InlineData("テーマ", "Theme", "테마")]
+    [InlineData("システム", "System", "시스템")]
+    [InlineData("ライト", "Light", "라이트")]
+    [InlineData("ダーク", "Dark", "다크")]
+    public void Theme_settings_labels_are_translated_for_supported_languages(
+        string japaneseText,
+        string englishText,
+        string koreanText)
+    {
+        Assert.Equal(japaneseText, Localization.GetForLanguage(japaneseText, UserSettings.JapaneseLanguage));
+        Assert.Equal(englishText, Localization.GetForLanguage(japaneseText, UserSettings.EnglishLanguage));
+        Assert.Equal(koreanText, Localization.GetForLanguage(japaneseText, UserSettings.KoreanLanguage));
+    }
+
     [Fact]
     public void Missing_language_and_legacy_startup_page_are_read_as_japanese_and_codes()
     {
@@ -87,6 +103,7 @@ public sealed class UserSettingsTests
             Assert.NotNull(loaded);
             Assert.Equal(UserSettings.JapaneseLanguage, loaded.Language);
             Assert.Equal(UserSettings.BestStartupPage, loaded.StartupPage);
+            Assert.Equal(UserSettings.DefaultTheme, loaded.Theme);
         }
         finally
         {
@@ -120,6 +137,46 @@ public sealed class UserSettingsTests
 
             Assert.NotNull(loaded);
             Assert.Equal(UserSettings.EnglishLanguage, loaded.Language);
+        }
+        finally
+        {
+            if (Directory.Exists(directory))
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void Unsupported_saved_theme_normalizes_to_system_without_resetting_other_values()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), $"ddrgp-user-settings-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        var path = Path.Combine(directory, "user-settings.json");
+        try
+        {
+            File.WriteAllText(
+                path,
+                "{\n" +
+                "  \"StartMonitoringOnLaunch\": false,\n" +
+                "  \"NotifyUnresolvedResults\": true,\n" +
+                "  \"DefaultPlayStyle\": \"DOUBLE\",\n" +
+                "  \"StartupPage\": \"history\",\n" +
+                "  \"BestBrowseMode\": \"version\",\n" +
+                "  \"BestVersion\": \"DDR WORLD\",\n" +
+                "  \"Theme\": \"purple\"\n" +
+                "}\n",
+                new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+
+            var loaded = new LocalUserSettingsStore(path).Load();
+
+            Assert.NotNull(loaded);
+            Assert.False(loaded.StartMonitoringOnLaunch);
+            Assert.Equal(UserSettings.DoublePlayStyle, loaded.DefaultPlayStyle);
+            Assert.Equal(UserSettings.HistoryStartupPage, loaded.StartupPage);
+            Assert.Equal(UserSettings.VersionBrowseMode, loaded.BestBrowseMode);
+            Assert.Equal("DDR WORLD", loaded.BestVersion);
+            Assert.Equal(UserSettings.DefaultTheme, loaded.Theme);
         }
         finally
         {
@@ -373,12 +430,14 @@ public sealed class UserSettingsTests
         viewModel.DefaultPlayStyle = UserSettings.DoublePlayStyle;
         viewModel.StartupPage = UserSettings.BestStartupPage;
         viewModel.Language = UserSettings.EnglishLanguage;
+        viewModel.Theme = UserSettings.DarkTheme;
         viewModel.BestBrowseMode = UserSettings.VersionBrowseMode;
         viewModel.BestLevelFilter = "level_17";
         viewModel.BestVersionFilter = "DDR WORLD";
         viewModel.BestGoalFilter = "AA+";
 
         Assert.True(viewModel.SaveUserSettings());
+        Assert.Equal(UserSettings.DarkTheme, viewModel.AppliedTheme);
         Assert.Equal(scoreHashBefore, SHA256.HashData(File.ReadAllBytes(fixture.ScorePath)));
 
         var restartedViewModel = new MainViewModel(
@@ -392,6 +451,7 @@ public sealed class UserSettingsTests
         Assert.Equal(UserSettings.DoublePlayStyle, restartedViewModel.DefaultPlayStyle);
         Assert.Equal(UserSettings.BestStartupPage, restartedViewModel.StartupPage);
         Assert.Equal(UserSettings.EnglishLanguage, restartedViewModel.Language);
+        Assert.Equal(UserSettings.DarkTheme, restartedViewModel.Theme);
         Assert.Equal(UserSettings.VersionBrowseMode, restartedViewModel.BestBrowseMode);
         Assert.Equal("level_17", restartedViewModel.BestLevelFilter);
         Assert.Equal("DDR WORLD", restartedViewModel.BestVersionFilter);
@@ -425,6 +485,9 @@ public sealed class UserSettingsTests
 
         viewModel.StartupPage = UserSettings.HistoryStartupPage;
         Assert.Equal("変更内容は保存時に反映されます", viewModel.SettingsStatusMessage);
+
+        viewModel.Theme = UserSettings.LightTheme;
+        Assert.Equal("変更内容は保存時に反映されます", viewModel.SettingsStatusMessage);
     }
 
     [Fact]
@@ -438,6 +501,20 @@ public sealed class UserSettingsTests
 
         Assert.Equal(UserSettings.VersionBrowseMode, viewModel.BestBrowseMode);
         Assert.Contains("settings write failed", viewModel.SettingsStatusMessage);
+    }
+
+    [Fact]
+    public void Theme_save_failure_keeps_the_previously_applied_theme()
+    {
+        var viewModel = new MainViewModel(
+            new ScoreViewerRepository(),
+            userSettingsStore: new ThrowingUserSettingsStore());
+        viewModel.RestoreUserSettings();
+        viewModel.Theme = UserSettings.DarkTheme;
+
+        Assert.Equal(UserSettings.DefaultTheme, viewModel.AppliedTheme);
+        Assert.False(viewModel.SaveUserSettings());
+        Assert.Equal(UserSettings.DefaultTheme, viewModel.AppliedTheme);
     }
 
     [Fact]
@@ -488,6 +565,7 @@ public sealed class UserSettingsTests
         Assert.True(viewModel.NotifyUnresolvedResults);
         Assert.Equal(UserSettings.SinglePlayStyle, viewModel.DefaultPlayStyle);
         Assert.Equal(UserSettings.HomeStartupPage, viewModel.StartupPage);
+        Assert.Equal(UserSettings.DefaultTheme, viewModel.Theme);
     }
 
     private static ViewerDatabasePaths ConfiguredPaths(DatabaseFixture fixture) =>

@@ -55,6 +55,7 @@ public partial class App : System.Windows.Application
             paths.EnsureDefaultDirectories();
             var startupSettings = new LocalUserSettingsStore(paths.UserSettingsPath).Load();
             Localization.Configure(startupSettings?.Language ?? UserSettings.Defaults.Language);
+            ThemeManager.Apply(startupSettings?.Theme ?? UserSettings.DefaultTheme);
             releaseLog = new ReleaseLog(paths.LogsDirectory);
             releaseLog.Information(
                 "application_start",
@@ -307,6 +308,7 @@ public partial class App : System.Windows.Application
         lifecycle?.Dispose();
         singleInstance?.Dispose();
         releaseLog?.Dispose();
+        ThemeManager.Stop();
         base.OnExit(e);
     }
 }

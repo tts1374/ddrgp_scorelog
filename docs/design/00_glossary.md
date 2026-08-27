@@ -79,7 +79,7 @@ master DB inspectionは起動時・保存開始時に行う。固定pathだけ�
 - `M5b jacket reference catalog`: `ddrgp-master.sqlite`とは別の`jacket-catalog.sqlite`。current jacket feature、M7 result-text feature、review historyを持つ参照catalogで、正式個人スコアDBや画像原本ではない。
 - `evaluation DB`: M10-3が所有するdevelopment専用の評価SQLite。正式個人スコアDB、M4 master DB、M5b jacket reference catalogから分離し、WPF viewerは開かない。
 - `formal score DB protection boundary`: 起動時はmaster/catalog検証後の固定score pathに限り、missing／0 byteの新規正式schema準備だけを既存file-preparation契約へ委譲し、通常の起動・閲覧・更新・評価処理では既存の非空正式個人スコアDBをread-only検証、上書き、migration、repairしない境界。正式writerの明示saveと確認済み個人スコアデータ復元だけが、既存の準備・transaction契約を使う明示的な変更操作である。
-- `user settings`: WPF appの起動時監視、保存できない結果のローカル通知、既定プレイスタイル、起動時画面、自己ベストの探索モード・レベル・バージョン・目標を保持する正式DB外のローカル設定。`user-settings.json`へ保存し、欠落・読込不能時は全項目を初期値へ戻す。正式個人スコアDB、`plays`、保存境界は変更しない。
+- `user settings`: WPF appの起動時監視、保存できない結果のローカル通知、既定プレイスタイル、起動時画面、テーマ、自己ベストの探索モード・レベル・バージョン・目標を保持する正式DB外のローカル設定。`user-settings.json`へ保存し、テーマ項目がない旧設定は`system`、未知のテーマ値も他の有効な項目を保ったまま`system`へ正規化する。読込不能時は全項目を初期値へ戻す。正式個人スコアDB、`plays`、保存境界は変更しない。
 - `personal best goal browse mode`: 自己ベスト画面の第4探索軸「目標から」。内部コードは`goal`、目標値はAAA／AA+／AA、選択中のSP／DPに含まれる記録あり・目標未達成譜面だけを目標まで近い順に表示する。
 - `personal score data backup`: データ管理画面から明示的に作成・復元する、正式`plays`の履歴表示と自己ベスト算出に必要な個人プレー履歴だけのJSON。現行formatはnullableな`ok` / `calories`を往復し、旧formatでは両値を未取得として復元する。設定、master/catalog、jacket参照、source capture、解析ログ、診断ログを含まず、migration用のSQLite backupとは別契約とする。
 

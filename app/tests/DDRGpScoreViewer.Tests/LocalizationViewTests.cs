@@ -5,6 +5,7 @@ using System.Windows.Data;
 using System.Windows.Media;
 using System.Windows.Threading;
 using DDRGpScoreViewer;
+using DDRGpScoreViewer.Controls;
 using DDRGpScoreViewer.Data;
 using DDRGpScoreViewer.Models;
 using Xunit;
@@ -642,6 +643,156 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
         }
 
         return null;
+    }
+
+    [Fact]
+    public void Dark_theme_resource_dictionary_keeps_the_primary_window_loadable()
+    {
+        using var databaseFixture = new DatabaseFixture();
+        applicationFixture.Run(() =>
+        {
+            var light = new ResourceDictionary
+            {
+                Source = new Uri(
+                    "/DDRGpScoreViewer;component/Resources/Theme.xaml",
+                    UriKind.Relative),
+            };
+            var dark = new ResourceDictionary
+            {
+                Source = new Uri(
+                    "/DDRGpScoreViewer;component/Resources/DarkTheme.xaml",
+                    UriKind.Relative),
+            };
+            foreach (var key in new[]
+                     {
+                         "BackgroundPrimaryBrush",
+                         "SurfacePrimaryBrush",
+                         "TextPrimaryBrush",
+                         "BadgeInfoBackgroundBrush",
+                         "GraphBestBrush",
+                         "FocusRingBrush",
+                     })
+            {
+                Assert.Contains(key, light.Keys.Cast<object>().Select(value => value.ToString()));
+                Assert.Contains(key, dark.Keys.Cast<object>().Select(value => value.ToString()));
+            }
+
+            var lightBackground = Assert.IsType<SolidColorBrush>(light["BackgroundPrimaryBrush"]);
+            var darkBackground = Assert.IsType<SolidColorBrush>(dark["BackgroundPrimaryBrush"]);
+            Assert.NotEqual(lightBackground.Color, darkBackground.Color);
+            Application.Current.Resources.MergedDictionaries.Add(light);
+            Application.Current.Resources.MergedDictionaries.Add(
+                new ResourceDictionary
+                {
+                    Source = new Uri(
+                        "/DDRGpScoreViewer;component/Resources/Components.xaml",
+                        UriKind.Relative),
+                });
+            Application.Current.Resources.MergedDictionaries.Add(
+                new ResourceDictionary
+                {
+                    Source = new Uri(
+                        "/DDRGpScoreViewer;component/Resources/Strings.xaml",
+                        UriKind.Relative),
+                });
+            ThemeManager.Apply(UserSettings.DarkTheme);
+            Assert.Equal(
+                darkBackground.Color,
+                ((SolidColorBrush)Application.Current.FindResource("BackgroundPrimaryBrush")).Color);
+
+            MainWindow? window = null;
+            try
+            {
+                window = new MainWindow(
+                    new ViewerDatabasePaths(
+                        ViewerDatabaseEnvironment.Development,
+                        databaseFixture.DirectoryPath,
+                        databaseFixture.MasterPath,
+                        databaseFixture.CatalogPath,
+                        databaseFixture.ScorePath,
+                        Path.Combine(databaseFixture.DirectoryPath, "evaluation.db"),
+                        Path.Combine(databaseFixture.DirectoryPath, "data"),
+                        Path.Combine(databaseFixture.DirectoryPath, "logs"),
+                        Path.Combine(databaseFixture.DirectoryPath, "viewer-settings.json")));
+                window.Show();
+                window.UpdateLayout();
+                Assert.NotNull(window.Content);
+            }
+            finally
+            {
+                window?.PrepareForApplicationExit();
+                window?.Close();
+            }
+
+            ThemeManager.Apply(UserSettings.LightTheme);
+        });
+    }
+
+    [Fact]
+    public void State_panel_text_colors_follow_runtime_theme_changes()
+    {
+        applicationFixture.Run(() =>
+        {
+            var light = new ResourceDictionary
+            {
+                Source = new Uri(
+                    "/DDRGpScoreViewer;component/Resources/Theme.xaml",
+                    UriKind.Relative),
+            };
+            Application.Current.Resources.MergedDictionaries.Add(light);
+            Application.Current.Resources.MergedDictionaries.Add(
+                new ResourceDictionary
+                {
+                    Source = new Uri(
+                        "/DDRGpScoreViewer;component/Resources/Components.xaml",
+                        UriKind.Relative),
+                });
+
+            ThemeManager.Apply(UserSettings.LightTheme);
+            var lightPrimary = Assert.IsType<SolidColorBrush>(
+                Application.Current.FindResource("TextPrimaryBrush"));
+            var lightSecondary = Assert.IsType<SolidColorBrush>(
+                Application.Current.FindResource("TextSecondaryBrush"));
+            var panel = new StatePanel
+            {
+                Title = "Title",
+                Message = "Message",
+            };
+            Window? window = null;
+            try
+            {
+                window = new Window
+                {
+                    Content = panel,
+                    Height = 160,
+                    Width = 320,
+                };
+                window.Show();
+                window.UpdateLayout();
+
+                var textBlocks = FindVisualChildren<TextBlock>(panel).ToArray();
+                Assert.Equal(2, textBlocks.Length);
+                Assert.Equal(lightPrimary.Color, Assert.IsType<SolidColorBrush>(textBlocks[0].Foreground).Color);
+                Assert.Equal(lightSecondary.Color, Assert.IsType<SolidColorBrush>(textBlocks[1].Foreground).Color);
+
+                ThemeManager.Apply(UserSettings.DarkTheme);
+                window.UpdateLayout();
+
+                var darkPrimary = Assert.IsType<SolidColorBrush>(
+                    Application.Current.FindResource("TextPrimaryBrush"));
+                var darkSecondary = Assert.IsType<SolidColorBrush>(
+                    Application.Current.FindResource("TextSecondaryBrush"));
+                Assert.NotEqual(lightPrimary.Color, darkPrimary.Color);
+                Assert.NotEqual(lightSecondary.Color, darkSecondary.Color);
+                Assert.Equal(darkPrimary.Color, Assert.IsType<SolidColorBrush>(textBlocks[0].Foreground).Color);
+                Assert.Equal(darkSecondary.Color, Assert.IsType<SolidColorBrush>(textBlocks[1].Foreground).Color);
+            }
+            finally
+            {
+                window?.Close();
+                ThemeManager.Apply(UserSettings.LightTheme);
+            }
+        });
     }
 
     private sealed record GridItem(string Display);
