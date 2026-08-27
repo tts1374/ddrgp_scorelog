@@ -35,6 +35,53 @@ appは実行ファイルの配置場所からrepository rootを解決し、proce
 
 detectorの内部状態は通常画面へ表示しません。同じ画像が連続する間も未保存のstable候補は保存可能なまま維持し、保存後は次の曲へ移動する案内を表示します。自動保存は起動時・fresh session・resumeのたびにOFFへ戻り、端末設定へ保存しません。session再開とcatalog retryは開発者向けの内部経路として保持しますが、通常画面には表示しません。管理・設定の通常更新ボタンは `曲情報を更新` と `公式ジャケット情報を更新` です。
 
+## 新曲追加の標準運用
+
+新曲をdevelopment runtimeで利用可能にするときは、次の順序でmaster、M5b jacket reference catalog、Debug実機確認を揃えます。
+
+1. `管理・設定` の `公式ジャケット情報を更新` を実行し、完成済みsnapshotの更新日時、取得曲数、保存画像数を確認する。
+2. `曲情報を更新` を実行し、更新後masterで対象曲のcanonical title / artistと、取得できた譜面のplay style / difficulty / levelを確認する。既存song / chart IDが維持され、取得できない譜面を補完していないことも確認する。
+3. DDR GRAND PRIXの曲選択画面で対象曲を順に表示し、`ジャケット収集` から各jacketを保存する。収集終了後、未確定行は `未レビュー` で対象曲を明示選択して一括反映する。
+4. `収集状況` で対象曲が `収集済み` になり、current extractorの `auto_confirmed` または `manual_confirmed` referenceを持つことを確認する。
+5. 現行runtime catalogにだけ残っているM7 result-text featureをcollector sourceへ取り込む。この操作はfeatureだけを履歴値のまま冪等追加し、reference、review履歴、catalog metadataは変更しない。
+
+```powershell
+python -X utf8 -m tools.vision_poc.jacket_reference_catalog import-result-text-features `
+  --source-catalog databases\jacket-catalog-release.sqlite `
+  --target-catalog databases\jacket-catalog.sqlite
+```
+
+6. collector source `databases/jacket-catalog.sqlite`を変更せず、未作成の候補pathへcurrent master binding済みcatalogを生成する。
+
+```powershell
+python -X utf8 -m tools.vision_poc.jacket_reference_catalog bind-master `
+  --source-catalog databases\jacket-catalog.sqlite `
+  --output-catalog databases\jacket-catalog-release.next.sqlite `
+  --master-db databases\ddrgp-master.sqlite
+```
+
+7. 候補catalogとcurrent masterのschema、identity、master version整合をread-onlyで検証する。
+
+```powershell
+python -X utf8 -m tools.vision_poc.jacket_reference_catalog release-pair `
+  --catalog databases\jacket-catalog-release.next.sqlite `
+  --master-db databases\ddrgp-master.sqlite
+```
+
+8. 候補catalogで近似ジャケット棚卸しを生成する。対象曲が近似ペアへ入った場合だけ、共通譜面候補と既存M5 jacket matchのambiguity条件を確認し、不足しているM7 result-text featureの収集要否を判断する。近似ペアへ入らない曲へtitle / artist featureを一律追加しない。
+
+```powershell
+python -X utf8 -m tools.vision_poc.near_jacket_inventory `
+  --catalog databases\jacket-catalog-release.next.sqlite `
+  --master databases\ddrgp-master.sqlite `
+  --output data\near-jacket-inventory\near-jacket-inventory.xlsx
+```
+
+9. Debug版Score Viewerを終了し、現行`databases/jacket-catalog-release.sqlite`を退避してから、検証済み候補を同pathへ切り替える。collector source、正式個人スコアDB、収集artifactは変更しない。
+10. Debug版を起動し、対象曲ごとの代表RESULTでsong / chartが正しく解決されることを確認する。特定不可または別曲への解決があれば診断理由を確認し、reference data setを公開する前に解消する。
+
+候補pathは毎回未作成の名前を使用します。`import-result-text-features`はbinding済みruntime catalogからcollector sourceへM7 result-text featureだけを取り込み、sourceの`master_version`設定有無は変更しません。runtime catalog全体をsourceへcopyせず、以後の候補はsourceから`bind-master`で一方向に生成します。`bind-master`は既存runtime catalogをin-place更新せず、候補生成と`release-pair`成功後にだけ利用先を切り替えます。Releaseへ進む場合は、さらに[`app/README.md`](../../app/README.md)のreference data set packagingと公開前検証に従います。
+
 ## Issue #75 の通常画面表示契約
 
 通常画面の見た目・配置・見出し・ボタン文言は [`jacket-catalog-collector-mock.html`](../../docs/wireframe/jacket-catalog-collector-mock.html) を正とします。レビュー画面の固有UIは #56 以降の契約を維持します。
@@ -83,7 +130,7 @@ repository rootはアプリ配置場所の親directoryを`.git`まで探索し�
 jacket画像を照合先に使います。snapshotがない場合はauto-confirmを完了扱いにせず、理由を表示して
 手動レビュー経路へ残します。
 
-起動時はmasterをstrict read-onlyで検証します。masterがない場合は曲情報なしで起動を継続し、masterが非互換・破損・読取不可の場合は理由を表示してcatalog作成と収集を開始しません。有効なmasterがありcatalogがない場合だけcurrent schemaの空catalogを作成します。既存catalogは必ずread-only検証し、非互換・破損・読取不可でも空DBへ置換しません。
+起動時はmasterをstrict read-onlyで検証します。masterがない場合は曲情報なしで起動を継続し、masterが非互換・破損・読取不可の場合は理由を表示してcatalog作成と収集を開始しません。有効なmasterがありcatalogがない場合だけcurrent schemaの空catalogを作成します。既存catalogは必ずread-only検証し、非互換・破損・読取不可でも空DBへ置換しません。developer-onlyの収集用catalogは`master_version`未設定を許容し、projection、coverage、observationの保存前検査・ingest・receipt検証、auto-confirm、manual reviewで同じsource catalogを継続利用します。schema、catalog identity、created-at、contentは引き続きstrictに検査し、runtime feature loaderとrelease pairはmasterへbind済みのcatalogだけを受け付けます。
 
 旧`database-paths.v1.json`、`data/`配下の既存DB、任意pathのDBは参照・コピー・移動・自動migrationしません。旧設定ファイル自体も自動削除しません。master更新のbuild、inspect、atomic publish成功後は、固定master/catalogからprojectionを再読込します。
 

@@ -239,12 +239,100 @@ def test_current_create_has_exact_composite_schema(
     }
 
 
+def test_unbound_collector_catalog_supports_observation_lifecycle(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    master_db, catalog_path, image_path = setup_paths(tmp_path, monkeypatch)
+    catalog_created_at = created_at(catalog_path)
+    with sqlite3.connect(catalog_path) as connection, connection:
+        connection.execute(
+            "DELETE FROM catalog_metadata WHERE key = 'master_version'"
+        )
+
+    with pytest.raises(ValueError, match="metadata keys mismatch"):
+        catalog.validate_catalog(catalog_path)
+
+    session = catalog.validate_observation_session(
+        catalog_path,
+        master_db,
+        expected_catalog_identity=catalog.CATALOG_IDENTITY,
+        expected_catalog_schema_version=1,
+        expected_catalog_created_at=catalog_created_at,
+        expected_master_version="master-v1",
+        expected_master_source_hash="fixture-source-hash",
+        expected_feature_extractor_version=catalog.FEATURE_EXTRACTOR_VERSION,
+    )
+    identity_set = catalog.load_observation_composite_identity_set(
+        catalog_path,
+        expected_catalog_identity=catalog.CATALOG_IDENTITY,
+        expected_catalog_schema_version=1,
+        expected_catalog_created_at=catalog_created_at,
+    )
+    result = ingest(
+        catalog_path,
+        master_db,
+        image_path,
+        observation_id="unbound-observation",
+        seed="unbound",
+    )
+    identity_values = identity("unbound")
+    receipt = catalog.validate_observation_receipt(
+        catalog_path,
+        observation_id="unbound-observation",
+        catalog_status="ingested",
+        catalog_reference_id=result.reference_id,
+        jacket_crop_hash=hashlib.sha256(image_path.read_bytes()).hexdigest(),
+        expected_feature_extractor_version=catalog.FEATURE_EXTRACTOR_VERSION,
+        expected_catalog_schema_version=1,
+        expected_catalog_created_at=catalog_created_at,
+        composite_identity_version=catalog.COMPOSITE_IDENTITY_VERSION,
+        composite_identity_hash_value=identity_values[
+            "expected_composite_identity_hash"
+        ],
+    )
+    review = catalog.apply_review_mutation_batch(
+        catalog_path,
+        master_db,
+        [
+            catalog.ReviewMutationRequest(
+                action_id="confirm-unbound-observation",
+                reference_id=result.reference_id,
+                action="manual_confirm",
+                expected_revision=0,
+                expected_status="unresolved",
+                expected_song_id=None,
+                song_id="song-1",
+                reason="unbound collector review",
+                note="",
+            )
+        ],
+        allow_unbound_master=True,
+    )
+
+    assert session["catalog_schema_version"] == 1
+    assert identity_set["identities"] == []
+    assert receipt["catalog_schema_version"] == 1
+    assert (review.applied_count, review.no_op_count) == (1, 0)
+    with sqlite3.connect(catalog_path) as connection:
+        assert connection.execute(
+            "SELECT COUNT(*) FROM catalog_metadata WHERE key = 'master_version'"
+        ).fetchone()[0] == 0
+        assert connection.execute(
+            "SELECT review_status FROM jacket_references WHERE reference_id = ?",
+            (result.reference_id,),
+        ).fetchone()[0] == "manual_confirmed"
+
+
 def test_m7_result_text_features_round_trip_in_current_catalog(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     master_db, catalog_path, _image = setup_paths(tmp_path, monkeypatch)
-    title = master_match.extract_title_image_feature(Image.new("RGB", (160, 40), (220,) * 3))
-    artist = master_match.extract_artist_image_feature(Image.new("RGB", (160, 40), (80,) * 3))
+    title = master_match.extract_title_image_feature(
+        Image.new("RGB", (160, 40), (220,) * 3)
+    )
+    artist = master_match.extract_artist_image_feature(
+        Image.new("RGB", (160, 40), (80,) * 3)
+    )
     rows = [
         {
             "organized_file": "organized/result/result_fixture.png",
@@ -284,6 +372,99 @@ def test_m7_result_text_features_round_trip_in_current_catalog(
         assert connection.execute(
             "SELECT COUNT(*) FROM result_text_features"
         ).fetchone()[0] == 2
+
+
+def test_import_result_text_features_preserves_release_rows_in_unbound_source(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    master_db, release_path, _image = setup_paths(tmp_path, monkeypatch)
+    title = master_match.extract_title_image_feature(Image.new("RGB", (160, 40), (220,) * 3))
+    artist = master_match.extract_artist_image_feature(Image.new("RGB", (160, 40), (80,) * 3))
+    catalog.store_m7_result_text_feature_rows(
+        release_path,
+        master_db,
+        [
+            {
+                "organized_file": "organized/result/import-source.png",
+                "song_id": "song-1",
+                "title": "Alpha",
+                "artist": "Artist A",
+                "feature_status": "accepted",
+                "title_feature": master_match.result_text_feature_record(title),
+                "artist_feature": master_match.result_text_feature_record(artist),
+            }
+        ],
+    )
+    source_path = tmp_path / "databases/collector-source.sqlite"
+    catalog.create_catalog(source_path, master_db)
+    with sqlite3.connect(source_path) as connection:
+        connection.execute("DELETE FROM catalog_metadata WHERE key = 'master_version'")
+        connection.commit()
+
+    first = catalog.import_result_text_features(release_path, source_path)
+    second = catalog.import_result_text_features(release_path, source_path)
+
+    assert first == {
+        "source_catalog": str(release_path.resolve()),
+        "target_catalog": str(source_path.resolve()),
+        "source_feature_count": 2,
+        "target_feature_count_before": 0,
+        "inserted_feature_count": 2,
+        "existing_feature_count": 0,
+        "target_feature_count_after": 2,
+    }
+    assert second["inserted_feature_count"] == 0
+    assert second["existing_feature_count"] == 2
+    with sqlite3.connect(release_path) as release, sqlite3.connect(source_path) as source:
+        release_rows = release.execute(
+            "SELECT * FROM result_text_features ORDER BY feature_id"
+        ).fetchall()
+        source_rows = source.execute(
+            "SELECT * FROM result_text_features ORDER BY feature_id"
+        ).fetchall()
+        assert source_rows == release_rows
+        assert source.execute(
+            "SELECT COUNT(*) FROM catalog_metadata WHERE key = 'master_version'"
+        ).fetchone()[0] == 0
+
+
+def test_import_result_text_features_accepts_bound_target(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    master_db, release_path, _image = setup_paths(tmp_path, monkeypatch)
+    title = master_match.extract_title_image_feature(
+        Image.new("RGB", (160, 40), (220,) * 3)
+    )
+    artist = master_match.extract_artist_image_feature(
+        Image.new("RGB", (160, 40), (80,) * 3)
+    )
+    catalog.store_m7_result_text_feature_rows(
+        release_path,
+        master_db,
+        [
+            {
+                "organized_file": "organized/result/bound-target.png",
+                "song_id": "song-1",
+                "title": "Alpha",
+                "artist": "Artist A",
+                "feature_status": "accepted",
+                "title_feature": master_match.result_text_feature_record(title),
+                "artist_feature": master_match.result_text_feature_record(artist),
+            }
+        ],
+    )
+    target_path = tmp_path / "databases/bound-target.sqlite"
+    catalog.create_catalog(target_path, master_db)
+
+    result = catalog.import_result_text_features(release_path, target_path)
+
+    assert result["source_feature_count"] == 2
+    assert result["inserted_feature_count"] == 2
+    assert result["target_feature_count_after"] == 2
+    with sqlite3.connect(target_path) as connection:
+        assert connection.execute(
+            "SELECT value FROM catalog_metadata WHERE key = 'master_version'"
+        ).fetchone()[0] == "master-v1"
 
 
 def test_bind_master_preserves_historical_jacket_and_result_text_features(
@@ -1577,6 +1758,7 @@ def test_current_receipt_coverage_and_cli_contract(
         "create",
         "migrate-v1",
         "bind-master",
+        "import-result-text-features",
         "sync-empty-master-artists",
         "release-pair",
         "coverage",

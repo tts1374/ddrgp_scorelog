@@ -197,6 +197,20 @@ RESULT_TEXT_FEATURES_SCHEMA_SQL = """CREATE TABLE result_text_features (
 CREATE INDEX idx_result_text_features_song_field
 ON result_text_features(song_id, field_name, master_version);
 """
+RESULT_TEXT_FEATURE_COLUMNS = (
+    "feature_id",
+    "song_id",
+    "field_name",
+    "feature_version",
+    "roi_version",
+    "feature_hash",
+    "payload_json",
+    "source_label",
+    "master_version",
+    "canonical_title_snapshot",
+    "canonical_artist_snapshot",
+    "created_at",
+)
 CATALOG_SCHEMA_SQL = f"""
 PRAGMA user_version = {CATALOG_SCHEMA_VERSION};
 CREATE TABLE catalog_metadata (
@@ -1161,6 +1175,86 @@ def bind_catalog_to_master(
     }
 
 
+def import_result_text_features(
+    source_path: Path, target_path: Path
+) -> dict[str, str | int]:
+    """Import historical M7 result-text features into a collector source catalog."""
+    ensure_catalog_path(source_path, argument_name="--source-catalog")
+    ensure_catalog_path(target_path, argument_name="--target-catalog")
+    if source_path.resolve() == target_path.resolve():
+        raise ValueError("source and target catalog paths must differ")
+
+    select_columns = ", ".join(RESULT_TEXT_FEATURE_COLUMNS)
+    with closing(_connect_read_only(source_path)) as source_connection:
+        _validate_catalog(source_connection)
+        source_rows = source_connection.execute(
+            f"SELECT {select_columns} FROM result_text_features ORDER BY feature_id"
+        ).fetchall()
+
+    with closing(_connect_read_write(target_path)) as target_connection:
+        target_connection.row_factory = sqlite3.Row
+        target_connection.execute("BEGIN IMMEDIATE")
+        try:
+            _validate_catalog(target_connection, allow_unbound_master=True)
+            before_count = int(
+                target_connection.execute(
+                    "SELECT COUNT(*) FROM result_text_features"
+                ).fetchone()[0]
+            )
+            inserted_count = 0
+            existing_count = 0
+            placeholders = ", ".join("?" for _ in RESULT_TEXT_FEATURE_COLUMNS)
+            for source_row in source_rows:
+                values = tuple(source_row)
+                existing = target_connection.execute(
+                    "SELECT roi_version, payload_json, canonical_title_snapshot, "
+                    "canonical_artist_snapshot FROM result_text_features "
+                    "WHERE feature_id = ? OR "
+                    "(song_id = ? AND field_name = ? AND feature_version = ? "
+                    "AND feature_hash = ?)",
+                    (
+                        values[0],
+                        values[1],
+                        values[2],
+                        values[3],
+                        values[5],
+                    ),
+                ).fetchone()
+                if existing is not None:
+                    if tuple(existing) != (values[4], values[6], values[9], values[10]):
+                        raise ValueError(
+                            "result text feature import found conflicting existing feature"
+                        )
+                    existing_count += 1
+                    continue
+                target_connection.execute(
+                    f"INSERT INTO result_text_features ({select_columns}) "
+                    f"VALUES ({placeholders})",
+                    values,
+                )
+                inserted_count += 1
+            _validate_catalog(target_connection, allow_unbound_master=True)
+            after_count = int(
+                target_connection.execute(
+                    "SELECT COUNT(*) FROM result_text_features"
+                ).fetchone()[0]
+            )
+            target_connection.commit()
+        except Exception:
+            target_connection.rollback()
+            raise
+
+    return {
+        "source_catalog": str(source_path.resolve()),
+        "target_catalog": str(target_path.resolve()),
+        "source_feature_count": len(source_rows),
+        "target_feature_count_before": before_count,
+        "inserted_feature_count": inserted_count,
+        "existing_feature_count": existing_count,
+        "target_feature_count_after": after_count,
+    }
+
+
 def sync_empty_master_artist_snapshots(
     catalog_path: Path, master_db: Path
 ) -> dict[str, Any]:
@@ -1288,7 +1382,10 @@ def load_observation_composite_identity_set(
     """Load the current catalog identity set under the observation session identity."""
     try:
         with closing(_connect_read_only(catalog_path)) as connection:
-            schema_version = _validate_catalog(connection)
+            schema_version = _validate_catalog(
+                connection,
+                allow_unbound_master=True,
+            )
             metadata = dict(connection.execute("SELECT key, value FROM catalog_metadata"))
             if expected_catalog_identity != CATALOG_IDENTITY:
                 raise ValueError("catalog identity drift detected for identity set")
@@ -1565,9 +1662,13 @@ def apply_review_mutation(
     master_db: Path,
     request: ReviewMutationRequest,
     *,
+    allow_unbound_master: bool = False,
     fail_after_current_update: bool = False,
 ) -> ReviewMutationReceipt:
-    if catalog_schema_version(catalog_path) != CATALOG_SCHEMA_VERSION:
+    if catalog_schema_version(
+        catalog_path,
+        allow_unbound_master=allow_unbound_master,
+    ) != CATALOG_SCHEMA_VERSION:
         raise ValueError("manual review requires the current catalog schema")
     payload = _mutation_payload(request)
 
@@ -1589,7 +1690,10 @@ def apply_review_mutation(
         connection.execute("PRAGMA foreign_keys = ON")
         connection.execute("BEGIN IMMEDIATE")
         try:
-            _validate_catalog(connection)
+            _validate_catalog(
+                connection,
+                allow_unbound_master=allow_unbound_master,
+            )
             receipt = _existing_review_receipt(
                 connection, action_id=request.action_id, payload=payload
             )
@@ -1616,10 +1720,14 @@ def apply_review_mutation_batch(
     master_db: Path,
     requests: list[ReviewMutationRequest],
     *,
+    allow_unbound_master: bool = False,
     fail_after_updates: int | None = None,
 ) -> ReviewMutationBatchReceipt:
     """Apply reviewed manual changes in one catalog transaction."""
-    if catalog_schema_version(catalog_path) != CATALOG_SCHEMA_VERSION:
+    if catalog_schema_version(
+        catalog_path,
+        allow_unbound_master=allow_unbound_master,
+    ) != CATALOG_SCHEMA_VERSION:
         raise ValueError("manual review requires the current catalog schema")
     if not requests:
         return ReviewMutationBatchReceipt(0, 0, 0, ())
@@ -1649,7 +1757,10 @@ def apply_review_mutation_batch(
         connection.execute("PRAGMA foreign_keys = ON")
         connection.execute("BEGIN IMMEDIATE")
         try:
-            _validate_catalog(connection)
+            _validate_catalog(
+                connection,
+                allow_unbound_master=allow_unbound_master,
+            )
             for request, selected_song, timestamp in zip(
                 requests, selected_songs, timestamps, strict=True
             ):
@@ -1700,6 +1811,7 @@ def apply_auto_confirmation_batch(
     master_db: Path,
     requests: list[AutoConfirmationRequest],
     *,
+    allow_unbound_master: bool = False,
     transaction_guard: Callable[[sqlite3.Connection], None] | None = None,
     before_commit: Callable[[], None] | None = None,
     fail_after_updates: int | None = None,
@@ -1742,7 +1854,10 @@ def apply_auto_confirmation_batch(
             raise ValueError("auto confirmation applied_at must include a UTC offset")
     if fail_after_updates is not None and fail_after_updates < 1:
         raise ValueError("fail_after_updates must be positive")
-    if catalog_schema_version(catalog_path) != CATALOG_SCHEMA_VERSION:
+    if catalog_schema_version(
+        catalog_path,
+        allow_unbound_master=allow_unbound_master,
+    ) != CATALOG_SCHEMA_VERSION:
         raise ValueError("auto confirmation requires the current catalog schema")
     master = load_master_identity(master_db)
     songs_by_id = {song.song_id: song for song in master.songs}
@@ -1760,7 +1875,10 @@ def apply_auto_confirmation_batch(
         connection.execute("PRAGMA foreign_keys = ON")
         connection.execute("BEGIN IMMEDIATE")
         try:
-            _validate_catalog(connection)
+            _validate_catalog(
+                connection,
+                allow_unbound_master=allow_unbound_master,
+            )
             if transaction_guard is not None:
                 transaction_guard(connection)
             for request in sorted(requests, key=lambda item: item.observation_id):
@@ -2189,7 +2307,10 @@ def ingest_observation(
         expected_feature_extractor_version != FEATURE_EXTRACTOR_VERSION
     ):
         raise ValueError("feature extractor version drift detected during observation ingest")
-    schema_version = catalog_schema_version(catalog_path)
+    schema_version = catalog_schema_version(
+        catalog_path,
+        allow_unbound_master=True,
+    )
     if schema_version != CATALOG_SCHEMA_VERSION:
         raise ValueError("observation ingest requires the current catalog schema")
     if expected_catalog_schema_version is not None and (
@@ -2250,7 +2371,10 @@ def ingest_observation(
         connection.execute("BEGIN IMMEDIATE")
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA foreign_keys = ON")
-        write_schema_version = _validate_catalog(connection)
+        write_schema_version = _validate_catalog(
+            connection,
+            allow_unbound_master=True,
+        )
         if write_schema_version != schema_version:
             raise ValueError("catalog schema drift detected during observation ingest")
         write_metadata = dict(connection.execute("SELECT key, value FROM catalog_metadata"))
@@ -2432,7 +2556,10 @@ def validate_observation_session(
     expected_feature_extractor_version: str,
 ) -> dict[str, str | int]:
     with closing(_connect_read_only(catalog_path)) as connection:
-        schema_version = _validate_catalog(connection)
+        schema_version = _validate_catalog(
+            connection,
+            allow_unbound_master=True,
+        )
         catalog_created_at = str(
             connection.execute(
                 "SELECT value FROM catalog_metadata WHERE key = 'created_at'"
@@ -2476,7 +2603,10 @@ def validate_observation_receipt(
 ) -> dict[str, str | int]:
     with closing(_connect_read_only(catalog_path)) as connection:
         connection.row_factory = sqlite3.Row
-        schema_version = _validate_catalog(connection)
+        schema_version = _validate_catalog(
+            connection,
+            allow_unbound_master=True,
+        )
         created_at = str(
             connection.execute(
                 "SELECT value FROM catalog_metadata WHERE key = 'created_at'"
@@ -3068,6 +3198,12 @@ def build_parser() -> argparse.ArgumentParser:
     bind_master.add_argument("--source-catalog", type=Path, required=True)
     bind_master.add_argument("--output-catalog", type=Path, required=True)
     bind_master.add_argument("--master-db", type=Path, required=True)
+    import_features = subparsers.add_parser(
+        "import-result-text-features",
+        help="Import M7 result-text features into a collector source catalog.",
+    )
+    import_features.add_argument("--source-catalog", type=Path, required=True)
+    import_features.add_argument("--target-catalog", type=Path, required=True)
     sync_empty_artists = subparsers.add_parser(
         "sync-empty-master-artists",
         help="Synchronize confirmed reference snapshots when the master artist is empty.",
@@ -3206,6 +3342,10 @@ def main(argv: list[str] | None = None) -> int:
         )
         print(json.dumps(result, ensure_ascii=False, separators=(",", ":")))
         return 0
+    if args.command == "import-result-text-features":
+        result = import_result_text_features(args.source_catalog, args.target_catalog)
+        print(json.dumps(result, ensure_ascii=False, separators=(",", ":")))
+        return 0
     if args.command == "sync-empty-master-artists":
         result = sync_empty_master_artist_snapshots(args.catalog, args.master_db)
         print(json.dumps(result, ensure_ascii=False, separators=(",", ":")))
@@ -3230,6 +3370,7 @@ def main(argv: list[str] | None = None) -> int:
                 reason=args.reason,
                 note=args.note,
             ),
+            allow_unbound_master=True,
         )
         print(json.dumps(receipt.__dict__, ensure_ascii=False, separators=(",", ":")))
         return 0
@@ -3292,7 +3433,12 @@ def main(argv: list[str] | None = None) -> int:
                     expected_note=value["expected_note"],
                 )
             )
-        receipt = apply_review_mutation_batch(args.catalog, args.master_db, requests)
+        receipt = apply_review_mutation_batch(
+            args.catalog,
+            args.master_db,
+            requests,
+            allow_unbound_master=True,
+        )
         print(
             json.dumps(
                 {

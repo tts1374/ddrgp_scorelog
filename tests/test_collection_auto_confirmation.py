@@ -284,6 +284,41 @@ def test_collection_end_auto_confirms_all_safe_rows_and_reports_zero_remaining(
         ).fetchone()[0] == 0
 
 
+def test_collection_end_auto_confirms_unbound_collector_catalog(
+    tmp_path: Path, monkeypatch
+) -> None:
+    master_path, catalog_path, artifact_root, _manifests, snapshot_path = (
+        _setup_collection(tmp_path, monkeypatch)
+    )
+    with sqlite3.connect(catalog_path) as connection, connection:
+        connection.execute(
+            "DELETE FROM catalog_metadata WHERE key = 'master_version'"
+        )
+
+    with pytest.raises(ValueError, match="metadata keys mismatch"):
+        auto_confirmation.catalog.validate_catalog(catalog_path)
+
+    result = auto_confirmation.apply_collection_auto_confirmation(
+        catalog_path,
+        master_path,
+        artifact_root,
+        "session-1",
+        snapshot_path=snapshot_path,
+        extractor=alpha_extractor,
+        applied_at="2026-07-23T00:00:00+00:00",
+    )
+
+    assert (result.applied_count, result.auto_confirmed_count, result.remaining_count) == (
+        1,
+        1,
+        0,
+    )
+    with sqlite3.connect(catalog_path) as connection:
+        assert connection.execute(
+            "SELECT COUNT(*) FROM catalog_metadata WHERE key = 'master_version'"
+        ).fetchone()[0] == 0
+
+
 def test_collection_end_leaves_non_auto_rows_for_manual_review(
     tmp_path: Path, monkeypatch
 ) -> None:
