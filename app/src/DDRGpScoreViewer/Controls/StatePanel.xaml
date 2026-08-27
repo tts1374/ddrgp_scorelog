@@ -5,10 +5,10 @@
         <StackPanel HorizontalAlignment="Center" MaxWidth="560">
             <TextBlock Text="{Binding Title, RelativeSource={RelativeSource AncestorType=UserControl}}"
                        FontSize="18" FontWeight="SemiBold" TextAlignment="Center"
-                       Foreground="{StaticResource TextPrimaryBrush}" />
+                       Foreground="{DynamicResource TextPrimaryBrush}" />
             <TextBlock Text="{Binding Message, RelativeSource={RelativeSource AncestorType=UserControl}}"
                        Margin="0,8,0,0" TextWrapping="Wrap" TextAlignment="Center"
-                       Foreground="{StaticResource TextSecondaryBrush}" />
+                       Foreground="{DynamicResource TextSecondaryBrush}" />
         </StackPanel>
     </Border>
 </UserControl>

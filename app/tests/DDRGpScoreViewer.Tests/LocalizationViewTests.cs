@@ -5,6 +5,7 @@ using System.Windows.Data;
 using System.Windows.Media;
 using System.Windows.Threading;
 using DDRGpScoreViewer;
+using DDRGpScoreViewer.Controls;
 using DDRGpScoreViewer.Data;
 using DDRGpScoreViewer.Models;
 using Xunit;
@@ -724,6 +725,73 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
             }
 
             ThemeManager.Apply(UserSettings.LightTheme);
+        });
+    }
+
+    [Fact]
+    public void State_panel_text_colors_follow_runtime_theme_changes()
+    {
+        applicationFixture.Run(() =>
+        {
+            var light = new ResourceDictionary
+            {
+                Source = new Uri(
+                    "/DDRGpScoreViewer;component/Resources/Theme.xaml",
+                    UriKind.Relative),
+            };
+            Application.Current.Resources.MergedDictionaries.Add(light);
+            Application.Current.Resources.MergedDictionaries.Add(
+                new ResourceDictionary
+                {
+                    Source = new Uri(
+                        "/DDRGpScoreViewer;component/Resources/Components.xaml",
+                        UriKind.Relative),
+                });
+
+            ThemeManager.Apply(UserSettings.LightTheme);
+            var lightPrimary = Assert.IsType<SolidColorBrush>(
+                Application.Current.FindResource("TextPrimaryBrush"));
+            var lightSecondary = Assert.IsType<SolidColorBrush>(
+                Application.Current.FindResource("TextSecondaryBrush"));
+            var panel = new StatePanel
+            {
+                Title = "Title",
+                Message = "Message",
+            };
+            Window? window = null;
+            try
+            {
+                window = new Window
+                {
+                    Content = panel,
+                    Height = 160,
+                    Width = 320,
+                };
+                window.Show();
+                window.UpdateLayout();
+
+                var textBlocks = FindVisualChildren<TextBlock>(panel).ToArray();
+                Assert.Equal(2, textBlocks.Length);
+                Assert.Equal(lightPrimary.Color, Assert.IsType<SolidColorBrush>(textBlocks[0].Foreground).Color);
+                Assert.Equal(lightSecondary.Color, Assert.IsType<SolidColorBrush>(textBlocks[1].Foreground).Color);
+
+                ThemeManager.Apply(UserSettings.DarkTheme);
+                window.UpdateLayout();
+
+                var darkPrimary = Assert.IsType<SolidColorBrush>(
+                    Application.Current.FindResource("TextPrimaryBrush"));
+                var darkSecondary = Assert.IsType<SolidColorBrush>(
+                    Application.Current.FindResource("TextSecondaryBrush"));
+                Assert.NotEqual(lightPrimary.Color, darkPrimary.Color);
+                Assert.NotEqual(lightSecondary.Color, darkSecondary.Color);
+                Assert.Equal(darkPrimary.Color, Assert.IsType<SolidColorBrush>(textBlocks[0].Foreground).Color);
+                Assert.Equal(darkSecondary.Color, Assert.IsType<SolidColorBrush>(textBlocks[1].Foreground).Color);
+            }
+            finally
+            {
+                window?.Close();
+                ThemeManager.Apply(UserSettings.LightTheme);
+            }
         });
     }
 
