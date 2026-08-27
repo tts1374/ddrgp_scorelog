@@ -1178,7 +1178,7 @@ def bind_catalog_to_master(
 def import_result_text_features(
     source_path: Path, target_path: Path
 ) -> dict[str, str | int]:
-    """Import historical M7 result-text features into an unbound collector catalog."""
+    """Import historical M7 result-text features into a collector source catalog."""
     ensure_catalog_path(source_path, argument_name="--source-catalog")
     ensure_catalog_path(target_path, argument_name="--target-catalog")
     if source_path.resolve() == target_path.resolve():
@@ -1196,13 +1196,6 @@ def import_result_text_features(
         target_connection.execute("BEGIN IMMEDIATE")
         try:
             _validate_catalog(target_connection, allow_unbound_master=True)
-            target_metadata = dict(
-                target_connection.execute("SELECT key, value FROM catalog_metadata")
-            )
-            if "master_version" in target_metadata:
-                raise ValueError(
-                    "result text feature import requires an unbound target catalog"
-                )
             before_count = int(
                 target_connection.execute(
                     "SELECT COUNT(*) FROM result_text_features"
@@ -3207,7 +3200,7 @@ def build_parser() -> argparse.ArgumentParser:
     bind_master.add_argument("--master-db", type=Path, required=True)
     import_features = subparsers.add_parser(
         "import-result-text-features",
-        help="Import M7 result-text features into an unbound collector catalog.",
+        help="Import M7 result-text features into a collector source catalog.",
     )
     import_features.add_argument("--source-catalog", type=Path, required=True)
     import_features.add_argument("--target-catalog", type=Path, required=True)

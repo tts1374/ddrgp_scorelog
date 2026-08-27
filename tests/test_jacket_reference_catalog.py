@@ -428,15 +428,43 @@ def test_import_result_text_features_preserves_release_rows_in_unbound_source(
         ).fetchone()[0] == 0
 
 
-def test_import_result_text_features_rejects_bound_target(
+def test_import_result_text_features_accepts_bound_target(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     master_db, release_path, _image = setup_paths(tmp_path, monkeypatch)
+    title = master_match.extract_title_image_feature(
+        Image.new("RGB", (160, 40), (220,) * 3)
+    )
+    artist = master_match.extract_artist_image_feature(
+        Image.new("RGB", (160, 40), (80,) * 3)
+    )
+    catalog.store_m7_result_text_feature_rows(
+        release_path,
+        master_db,
+        [
+            {
+                "organized_file": "organized/result/bound-target.png",
+                "song_id": "song-1",
+                "title": "Alpha",
+                "artist": "Artist A",
+                "feature_status": "accepted",
+                "title_feature": master_match.result_text_feature_record(title),
+                "artist_feature": master_match.result_text_feature_record(artist),
+            }
+        ],
+    )
     target_path = tmp_path / "databases/bound-target.sqlite"
     catalog.create_catalog(target_path, master_db)
 
-    with pytest.raises(ValueError, match="requires an unbound target catalog"):
-        catalog.import_result_text_features(release_path, target_path)
+    result = catalog.import_result_text_features(release_path, target_path)
+
+    assert result["source_feature_count"] == 2
+    assert result["inserted_feature_count"] == 2
+    assert result["target_feature_count_after"] == 2
+    with sqlite3.connect(target_path) as connection:
+        assert connection.execute(
+            "SELECT value FROM catalog_metadata WHERE key = 'master_version'"
+        ).fetchone()[0] == "master-v1"
 
 
 def test_bind_master_preserves_historical_jacket_and_result_text_features(
