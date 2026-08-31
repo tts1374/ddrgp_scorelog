@@ -1813,6 +1813,8 @@ def test_current_receipt_coverage_and_cli_contract(
         "create",
         "migrate-v1",
         "bind-master",
+        "bind-release-catalog",
+        "validate-bind-inputs",
         "import-result-text-features",
         "sync-empty-master-artists",
         "release-pair",

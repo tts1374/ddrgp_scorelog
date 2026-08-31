@@ -8,7 +8,8 @@ param(
     [string]$MasterDatabase = (Join-Path $PSScriptRoot '..\..\databases\ddrgp-master.sqlite'),
 
     [Parameter()]
-    [string]$CatalogDatabase = (Join-Path $PSScriptRoot '..\..\databases\jacket-catalog-release.sqlite'),
+    [Alias('CatalogDatabase')]
+    [string]$CatalogSourceDatabase = (Join-Path $PSScriptRoot '..\..\databases\jacket-catalog.sqlite'),
 
     [Parameter()]
     [string]$OutputDirectory = (Join-Path $PSScriptRoot "..\..\data\releases\$Version"),
@@ -20,12 +21,13 @@ param(
 $ErrorActionPreference = 'Stop'
 $repositoryRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..'))
 $masterPath = [System.IO.Path]::GetFullPath($MasterDatabase)
-$catalogPath = [System.IO.Path]::GetFullPath($CatalogDatabase)
+$catalogSourcePath = [System.IO.Path]::GetFullPath($CatalogSourceDatabase)
 $outputPath = [System.IO.Path]::GetFullPath($OutputDirectory)
 $releaseRoot = [System.IO.Path]::GetFullPath((Join-Path $repositoryRoot 'data\releases'))
 $buildRoot = Join-Path $repositoryRoot "data\release-build\$Version"
 $publishDirectory = Join-Path $buildRoot 'publish'
 $referenceDirectory = Join-Path $publishDirectory 'ReferenceData'
+$boundCatalogPath = Join-Path $referenceDirectory 'jacket-catalog.sqlite'
 $packId = 'com.tts1374.ddrgp_scorelog'
 $packTitle = 'GP Score Log'
 $packAuthors = '2ten.'
@@ -35,9 +37,9 @@ if (-not (Test-Path -LiteralPath $masterPath -PathType Leaf))
 {
     throw "Master database was not found: $masterPath"
 }
-if (-not (Test-Path -LiteralPath $catalogPath -PathType Leaf))
+if (-not (Test-Path -LiteralPath $catalogSourcePath -PathType Leaf))
 {
-    throw "Jacket catalog database was not found: $catalogPath"
+    throw "Jacket catalog source database was not found: $catalogSourcePath"
 }
 if (-not (Test-Path -LiteralPath $iconPath -PathType Leaf))
 {
@@ -48,23 +50,21 @@ if (-not $outputPath.StartsWith($releaseRoot + [System.IO.Path]::DirectorySepara
     throw "OutputDirectory must remain under $releaseRoot"
 }
 
-$pairJson = uv run --directory $repositoryRoot python -m tools.vision_poc.jacket_reference_catalog release-pair `
+$preflightJson = uv run --directory $repositoryRoot python -m tools.vision_poc.jacket_reference_catalog validate-bind-inputs `
     --master-db $masterPath `
-    --catalog $catalogPath
+    --source-catalog $catalogSourcePath
 if ($LASTEXITCODE -ne 0)
 {
-    throw 'Release reference DB pair validation failed.'
+    throw 'Release reference DB bind input validation failed.'
 }
-$pair = $pairJson | ConvertFrom-Json
-if ([string]::IsNullOrWhiteSpace([string]$pair.master_version) -or
-    [string]::IsNullOrWhiteSpace([string]$pair.catalog_master_version) -or
-    $pair.master_version -ne $pair.catalog_master_version)
+$preflight = $preflightJson | ConvertFrom-Json
+if ([string]::IsNullOrWhiteSpace([string]$preflight.target_master_version))
 {
-    throw 'Release reference DB metadata versions do not match.'
+    throw 'Release reference DB bind input validation returned an empty master version.'
 }
 if ($ValidateInputsOnly)
 {
-    Write-Output "Release reference DB pair validation passed: master_version=$($pair.master_version)"
+    Write-Output "Release reference DB bind inputs validated: master_version=$($preflight.target_master_version)"
     return
 }
 
@@ -101,7 +101,31 @@ dotnet publish `
 if ($LASTEXITCODE -ne 0) { throw 'Release publish failed.' }
 
 Copy-Item -LiteralPath $masterPath -Destination (Join-Path $referenceDirectory 'ddrgp-master.sqlite')
-Copy-Item -LiteralPath $catalogPath -Destination (Join-Path $referenceDirectory 'jacket-catalog.sqlite')
+$bindJson = uv run --directory $repositoryRoot python -m tools.vision_poc.jacket_reference_catalog bind-release-catalog `
+    --source-catalog $catalogSourcePath `
+    --output-catalog $boundCatalogPath `
+    --master-db $masterPath
+if ($LASTEXITCODE -ne 0)
+{
+    throw 'Release reference catalog binding failed.'
+}
+$bind = $bindJson | ConvertFrom-Json
+$pairJson = uv run --directory $repositoryRoot python -m tools.vision_poc.jacket_reference_catalog release-pair `
+    --master-db $masterPath `
+    --catalog $boundCatalogPath
+if ($LASTEXITCODE -ne 0)
+{
+    throw 'Generated Release reference DB pair validation failed.'
+}
+$pair = $pairJson | ConvertFrom-Json
+if ([string]::IsNullOrWhiteSpace([string]$bind.master_version) -or
+    [string]::IsNullOrWhiteSpace([string]$pair.master_version) -or
+    [string]::IsNullOrWhiteSpace([string]$pair.catalog_master_version) -or
+    $bind.master_version -ne $pair.master_version -or
+    $pair.master_version -ne $pair.catalog_master_version)
+{
+    throw 'Generated Release reference DB metadata versions do not match.'
+}
 $manifest = [ordered]@{
     content_version = $Version
     master_schema_version = 1
@@ -109,7 +133,7 @@ $manifest = [ordered]@{
     master_content_version = [string]$pair.master_version
     catalog_master_content_version = [string]$pair.catalog_master_version
     master_sha256 = (Get-FileHash -LiteralPath $masterPath -Algorithm SHA256).Hash.ToLowerInvariant()
-    catalog_sha256 = (Get-FileHash -LiteralPath $catalogPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    catalog_sha256 = (Get-FileHash -LiteralPath $boundCatalogPath -Algorithm SHA256).Hash.ToLowerInvariant()
 }
 $manifestJson = ($manifest | ConvertTo-Json) + "`n"
 $utf8NoBom = [System.Text.UTF8Encoding]::new($false)

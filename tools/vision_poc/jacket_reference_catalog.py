@@ -435,6 +435,25 @@ def ensure_catalog_path(path: Path, *, argument_name: str) -> None:
         raise ValueError(f"{argument_name} must be a SQLite file under databases/: {path}")
 
 
+def ensure_release_catalog_output_path(path: Path, *, argument_name: str) -> None:
+    root = _resolved(Path.cwd() / "data" / "release-build")
+    candidate = _resolved(path)
+    try:
+        relative = candidate.relative_to(root)
+    except ValueError as exc:
+        raise ValueError(
+            f"{argument_name} must be under data/release-build/: {path}"
+        ) from exc
+    if len(relative.parts) != 4 or relative.parts[1:] != (
+        "publish",
+        "ReferenceData",
+        "jacket-catalog.sqlite",
+    ):
+        raise ValueError(
+            f"{argument_name} must be a versioned Release reference catalog: {path}"
+        )
+
+
 def ensure_data_file_path(path: Path, *, argument_name: str) -> None:
     root = _resolved(Path.cwd() / "data")
     candidate = _resolved(path)
@@ -1117,11 +1136,21 @@ def migrate_catalog_v1(
 
 
 def bind_catalog_to_master(
-    source_path: Path, output_path: Path, master_db: Path
+    source_path: Path,
+    output_path: Path,
+    master_db: Path,
+    *,
+    release_output: bool = False,
 ) -> dict[str, str | int]:
     """Copy one pre-release catalog and bind the copy to a validated master version."""
-    ensure_catalog_path(source_path, argument_name="--source-catalog")
-    ensure_catalog_path(output_path, argument_name="--output-catalog")
+    if release_output:
+        ensure_release_catalog_output_path(
+            output_path,
+            argument_name="--output-catalog",
+        )
+    else:
+        ensure_catalog_path(source_path, argument_name="--source-catalog")
+        ensure_catalog_path(output_path, argument_name="--output-catalog")
     if source_path.resolve() == output_path.resolve():
         raise ValueError("source and output catalog paths must differ")
     if output_path.exists():
@@ -1172,6 +1201,27 @@ def bind_catalog_to_master(
         "catalog_schema_version": CATALOG_SCHEMA_VERSION,
         "master_version": master.version,
         "preserved_result_text_feature_count": preserved_result_text_feature_count,
+    }
+
+
+def validate_catalog_bind_inputs(
+    source_path: Path, master_db: Path
+) -> dict[str, str | int]:
+    """Read-only validate inputs that will produce one bound runtime catalog."""
+    master = load_master_identity(master_db)
+    with closing(_connect_read_only(source_path)) as source_connection:
+        schema_version = _validate_catalog(
+            source_connection,
+            allow_unbound_master=True,
+        )
+        metadata = dict(
+            source_connection.execute("SELECT key, value FROM catalog_metadata")
+        )
+    return {
+        "source_catalog": str(source_path.resolve()),
+        "catalog_schema_version": schema_version,
+        "source_master_version": metadata.get("master_version", ""),
+        "target_master_version": master.version,
     }
 
 
@@ -3209,6 +3259,19 @@ def build_parser() -> argparse.ArgumentParser:
     bind_master.add_argument("--source-catalog", type=Path, required=True)
     bind_master.add_argument("--output-catalog", type=Path, required=True)
     bind_master.add_argument("--master-db", type=Path, required=True)
+    bind_release_catalog = subparsers.add_parser(
+        "bind-release-catalog",
+        help="Bind a catalog into one versioned Release build directory.",
+    )
+    bind_release_catalog.add_argument("--source-catalog", type=Path, required=True)
+    bind_release_catalog.add_argument("--output-catalog", type=Path, required=True)
+    bind_release_catalog.add_argument("--master-db", type=Path, required=True)
+    validate_bind_inputs = subparsers.add_parser(
+        "validate-bind-inputs",
+        help="Read-only validate a catalog source and target master before binding.",
+    )
+    validate_bind_inputs.add_argument("--source-catalog", type=Path, required=True)
+    validate_bind_inputs.add_argument("--master-db", type=Path, required=True)
     import_features = subparsers.add_parser(
         "import-result-text-features",
         help="Import M7 result-text features into a collector source catalog.",
@@ -3351,6 +3414,19 @@ def main(argv: list[str] | None = None) -> int:
         result = bind_catalog_to_master(
             args.source_catalog, args.output_catalog, args.master_db
         )
+        print(json.dumps(result, ensure_ascii=False, separators=(",", ":")))
+        return 0
+    if args.command == "bind-release-catalog":
+        result = bind_catalog_to_master(
+            args.source_catalog,
+            args.output_catalog,
+            args.master_db,
+            release_output=True,
+        )
+        print(json.dumps(result, ensure_ascii=False, separators=(",", ":")))
+        return 0
+    if args.command == "validate-bind-inputs":
+        result = validate_catalog_bind_inputs(args.source_catalog, args.master_db)
         print(json.dumps(result, ensure_ascii=False, separators=(",", ":")))
         return 0
     if args.command == "import-result-text-features":

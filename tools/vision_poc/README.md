@@ -668,6 +668,8 @@ python -m tools.vision_poc.jacket_reference_catalog bind-master `
   --master-db databases\ddrgp-master.sqlite
 ```
 
+Release package生成では`Build-Release.ps1`が同じbindingをRelease専用入口から実行し、出力を`data/release-build/<version>/publish/ReferenceData/jacket-catalog.sqlite`へ限定します。`-ValidateInputsOnly`はcollector sourceとmasterをread-only検証するだけで、source、既存runtime catalog、release出力を変更しません。
+
 collector observationはcurrent `ingest`だけを使い、非空observation ID、artifact image hash、current master version/source hash、catalog identity/schema/created-at、current feature extractor、jacket/title-line/composite identity一式を検査します。新規rowは空title/artist、`unresolved`、revision 0、history/candidateなしです。同じobservation ID・同じpayloadは冪等で、異payloadは拒否します。異なるobservation IDでも同じcomposite identityなら、`unresolved`、review待ち、確定、再割当、`reopen`、`rejected`の全状態で既存reference receiptへtransaction内で収束します。
 
 ```powershell

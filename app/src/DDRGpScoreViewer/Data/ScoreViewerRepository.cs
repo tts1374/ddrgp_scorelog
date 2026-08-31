@@ -1036,7 +1036,7 @@ public sealed class ScoreViewerRepository
             snapshotMap[snapshots.GetString(0)] = snapshots.GetString(1);
         }
 
-        if (snapshotCount is < 1 or > 3 || snapshotMap.Count != snapshotCount ||
+        if (snapshotCount is < 1 or > 4 || snapshotMap.Count != snapshotCount ||
             !snapshotMap.TryGetValue(metadata["source_url"], out var sourceHash) ||
             sourceHash != metadata["source_hash"])
         {
@@ -1056,6 +1056,12 @@ public sealed class ScoreViewerRepository
             "new_song_source_url",
             "new_song_source_hash",
             "新曲source");
+        ValidateOptionalSourceMetadata(
+            metadata,
+            snapshotMap,
+            "ddrworld_source_url",
+            "ddrworld_source_hash",
+            "DDR WORLD source");
 
         var expectedSnapshotCount =
             1 +
@@ -1064,7 +1070,10 @@ public sealed class ScoreViewerRepository
                 !string.IsNullOrWhiteSpace(officialUrl)) +
             Convert.ToInt32(
                 metadata.TryGetValue("new_song_source_url", out var newSongUrl) &&
-                !string.IsNullOrWhiteSpace(newSongUrl));
+                !string.IsNullOrWhiteSpace(newSongUrl)) +
+            Convert.ToInt32(
+                metadata.TryGetValue("ddrworld_source_url", out var ddrWorldUrl) &&
+                !string.IsNullOrWhiteSpace(ddrWorldUrl));
         if (snapshotCount != expectedSnapshotCount)
         {
             throw new ViewerDatabaseException(

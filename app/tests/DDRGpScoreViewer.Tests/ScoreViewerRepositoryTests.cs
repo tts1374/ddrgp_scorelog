@@ -576,6 +576,33 @@ public sealed class ScoreViewerRepositoryTests
     }
 
     [Fact]
+    public void InspectMasterDatabase_accepts_four_source_master()
+    {
+        using var fixture = new DatabaseFixture();
+        AddOptionalMasterSources(fixture);
+
+        var inspection = new ScoreViewerRepository().InspectMasterDatabase(fixture.MasterPath);
+
+        Assert.Equal(MasterDatabaseStatus.Compatible, inspection.Status);
+        Assert.Equal("master-v1", inspection.Version);
+    }
+
+    [Fact]
+    public void InspectMasterDatabase_rejects_ddrworld_source_hash_mismatch()
+    {
+        using var fixture = new DatabaseFixture();
+        AddOptionalMasterSources(fixture);
+        fixture.ExecuteMasterSql(
+            "UPDATE source_snapshots SET content_hash = 'mismatch' " +
+            "WHERE source_url = 'https://example.test/ddrworld';");
+
+        var inspection = new ScoreViewerRepository().InspectMasterDatabase(fixture.MasterPath);
+
+        Assert.Equal(MasterDatabaseStatus.Incompatible, inspection.Status);
+        Assert.Contains("DDR WORLD source", inspection.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void InspectMasterDatabase_does_not_modify_the_selected_file()
     {
         using var fixture = new DatabaseFixture();
@@ -656,6 +683,22 @@ public sealed class ScoreViewerRepositoryTests
 
     private static string Hash(string path) =>
         Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path)));
+
+    private static void AddOptionalMasterSources(DatabaseFixture fixture)
+    {
+        fixture.ExecuteMasterSql(
+            """
+            INSERT INTO master_metadata VALUES ('official_source_url', 'https://example.test/official');
+            INSERT INTO master_metadata VALUES ('official_source_hash', 'official-hash');
+            INSERT INTO master_metadata VALUES ('new_song_source_url', 'https://example.test/new-songs');
+            INSERT INTO master_metadata VALUES ('new_song_source_hash', 'new-song-hash');
+            INSERT INTO master_metadata VALUES ('ddrworld_source_url', 'https://example.test/ddrworld');
+            INSERT INTO master_metadata VALUES ('ddrworld_source_hash', 'ddrworld-hash');
+            INSERT INTO source_snapshots VALUES ('snapshot-official', 'https://example.test/official', 'official-hash');
+            INSERT INTO source_snapshots VALUES ('snapshot-new-songs', 'https://example.test/new-songs', 'new-song-hash');
+            INSERT INTO source_snapshots VALUES ('snapshot-ddrworld', 'https://example.test/ddrworld', 'ddrworld-hash');
+            """);
+    }
 
     private static PlayHistoryItem PresentationItem(
         string rank = "AAA",

@@ -150,7 +150,7 @@ windowの×ボタンはwindowをtrayへ格納し、最小化ボタンは通常�
 | 正式個人スコアDB | `databases/score.dev.db` | `%LOCALAPPDATA%\DDRGpScoreViewer\data\score\score.db` |
 | 評価用DB | `databases/evaluation.db`（M10-3専用） | 既定pathなし |
 
-M4 master DBとM5b jacket reference catalogは、同じdirectoryに置かれていても別ファイル・別責務です。developmentではcollectorが更新する未binding source `databases/jacket-catalog.sqlite`をそのままruntimeへ渡さず、`bind-master`で生成した`databases/jacket-catalog-release.sqlite`をWPFの固定runtime pathとして読みます。Release packageは両DBを1つのreference data setとして同梱し、production起動時はGitHub Releasesの同じreference data setも確認します。正式個人スコアDBはアプリ更新、reference DB操作、評価用DB初期化では上書き・初期化しません。固定score pathがmissingまたは0 byteの場合だけ、master 2種類の検証後に既存の正式DB準備境界を使って空の正式schemaを作成します。既存非空DBは現行schemaならそのまま利用し、明示converterがある旧schemaだけ事前backup後にtransaction migrationします。対応より新しいschemaとconverterのないschemaは変更せず拒否します。データ管理画面から確認して実行する個人スコアデータの復元だけは、後述の個人プレー履歴置換契約に従う明示操作です。
+M4 master DBとM5b jacket reference catalogは、同じdirectoryに置かれていても別ファイル・別責務です。developmentではcollectorが更新する未binding source `databases/jacket-catalog.sqlite`をそのままruntimeへ渡さず、`bind-master`で生成した`databases/jacket-catalog-release.sqlite`をWPFの固定runtime pathとして読みます。Release buildはcollector sourceからbuild領域へcurrent master binding済みcatalogを新規生成し、masterと1つのreference data setとして同梱します。production起動時はGitHub Releasesの同じreference data setも確認します。正式個人スコアDBはアプリ更新、reference DB操作、評価用DB初期化では上書き・初期化しません。固定score pathがmissingまたは0 byteの場合だけ、master 2種類の検証後に既存の正式DB準備境界を使って空の正式schemaを作成します。既存非空DBは現行schemaならそのまま利用し、明示converterがある旧schemaだけ事前backup後にtransaction migrationします。対応より新しいschemaとconverterのないschemaは変更せず拒否します。データ管理画面から確認して実行する個人スコアデータの復元だけは、後述の個人プレー履歴置換契約に従う明示操作です。
 
 初回起動では親directory（`databases/`、またはproductionの`data/master/`・`data/score/`）と`data/`・`logs/`を作成し、master 2種類がcompatibleなら固定score pathのmissing／0 byteだけを初期化します。既存の非空score DBはread-only検証だけを行い、unknown、preview、identity mismatch、manual migration候補、非SQLite、directoryは変更せず拒否します。captureはdevelopmentでは`data/windows_capture/`、productionでは`%LOCALAPPDATA%\DDRGpScoreViewer\data\windows_capture/`へ出し、解析artifactは`data/capture_save_workflow/`、失敗画像と診断ログは`logs/`配下へ分離します。これらは再生成・退避可能なlocal dataで、Git管理しません。
 
@@ -219,12 +219,12 @@ dotnet run --project app\src\DDRGpScoreViewer\DDRGpScoreViewer.csproj --configur
 
 VeloPack 1.2.0をrepository-local .NET toolとして固定しています。packageはunsignedのWindows x64 self-contained buildで、`packId=com.tts1374.ddrgp_scorelog`、表示名`GP Score Log`、作者／会社`2ten.`、Start Menu shortcutのみを持つper-user installerです。添付原稿を元にした`Assets\GPScoreLog.ico`を実行ファイル、WPF window、task tray、Start Menu shortcutへ共通使用します。管理者権限、Desktop shortcut、code signing、任意version選択、複数channel、background service、telemetryは使用しません。通常のinstaller完了時はアプリが起動します。
 
-1. `databases/ddrgp-master.sqlite`と、`bind-master`で作成した`databases/jacket-catalog-release.sqlite`を同じcurrent master versionに揃え、catalogの`catalog_metadata.master_version`とmaster DBの実metadataが一致することをread-only検証する。collector source `databases/jacket-catalog.sqlite`を使う場合は、developer向けPoC READMEの`bind-master`でsourceを変更せずruntime/release用catalogへ変換し、package commandへ`-CatalogDatabase databases\jacket-catalog-release.sqlite`を渡す。
+1. `databases/ddrgp-master.sqlite`と未bindingを許容するcollector source `databases/jacket-catalog.sqlite`を用意する。`-ValidateInputsOnly`は両入力をread-only検証し、既存DBやrelease出力を変更しない。本buildはcollector sourceを変更せず、`data/release-build/<version>/publish/ReferenceData/jacket-catalog.sqlite`へcurrent master binding済みcatalogを新規生成してから、master versionとschemaを再検証する。
 2. repository rootで次を実行する。
 
    ```powershell
    .\app\packaging\Build-Release.ps1 -Version 0.1.0 `
-     -CatalogDatabase databases\jacket-catalog-release.sqlite
+     -CatalogSourceDatabase databases\jacket-catalog.sqlite
    ```
 
 3. `data/releases/0.1.0/`の`com.tts1374.ddrgp_scorelog-win-Setup.exe`、full package、`RELEASES`、`assets.win.json`、`releases.win.json`を確認する。`data/release-build/0.1.0/publish/ReferenceData/`には2つのDBと`reference-set.json`が別fileのまま入る。
@@ -240,7 +240,7 @@ VeloPack 1.2.0をrepository-local .NET toolとして固定しています。pack
 
    アプリはreference data setについては従来どおり `https://api.github.com/repos/tts1374/ddrgp_scorelog/releases/latest` を使い、アプリ本体についてはVeloPack `GithubSource`で同じrepositoryのstable Releaseを確認します。reference data setの取得・検証・切替は#117の責務であり、アプリ本体更新へ統合しません。アプリ本体のVeloPack feedは既定のWindows channelの`releases.win.json`とfull packageを使い、任意version選択、複数channel、署名検証は提供しません。
 
-package生成はmaster/catalog実metadataの一致検証、locked NuGet restore、Release self-contained publish、VeloPack packagingを順に実行します。入力DBと成果物はGit管理しません。versionだけを変えて同じrepository revisionと同じ2 DBから再実行できます。
+package生成はmasterとcollector sourceのread-only入力検査、build領域へのcatalog binding、生成したmaster/catalog実metadataの一致検証、locked NuGet restore、Release self-contained publish、VeloPack packagingを順に実行します。入力DBと成果物はGit管理しません。versionだけを変えて同じrepository revisionと同じ2 DBから再実行できます。旧`-CatalogDatabase`は`-CatalogSourceDatabase`の互換aliasですが、指定したcatalogはbinding元としてread-onlyで扱われます。
 
 ## アプリ本体の更新
 

@@ -80,7 +80,7 @@ python -X utf8 -m tools.vision_poc.near_jacket_inventory `
 9. Debug版Score Viewerを終了し、現行`databases/jacket-catalog-release.sqlite`を退避してから、検証済み候補を同pathへ切り替える。collector source、正式個人スコアDB、収集artifactは変更しない。
 10. Debug版を起動し、対象曲ごとの代表RESULTでsong / chartが正しく解決されることを確認する。特定不可または別曲への解決があれば診断理由を確認し、reference data setを公開する前に解消する。
 
-候補pathは毎回未作成の名前を使用します。`import-result-text-features`はbinding済みruntime catalogからcollector sourceへM7 result-text featureだけを取り込み、sourceの`master_version`設定有無は変更しません。runtime catalog全体をsourceへcopyせず、以後の候補はsourceから`bind-master`で一方向に生成します。`bind-master`は既存runtime catalogをin-place更新せず、候補生成と`release-pair`成功後にだけ利用先を切り替えます。Releaseへ進む場合は、さらに[`app/README.md`](../../app/README.md)のreference data set packagingと公開前検証に従います。
+候補pathは毎回未作成の名前を使用します。`import-result-text-features`はbinding済みruntime catalogからcollector sourceへM7 result-text featureだけを取り込み、sourceの`master_version`設定有無は変更しません。runtime catalog全体をsourceへcopyせず、以後の候補はsourceから`bind-master`で一方向に生成します。`bind-master`は既存runtime catalogをin-place更新せず、候補生成と`release-pair`成功後にだけ利用先を切り替えます。Release buildは[`app/README.md`](../../app/README.md)の手順に従い、同じcollector sourceからbuild領域へcurrent master binding済みcatalogを自動生成してreference data setへ格納します。
 
 ## Issue #75 の通常画面表示契約
 
