@@ -78,6 +78,61 @@ def write_master(
         )
 
 
+def add_ddrworld_source_metadata(path: Path, *, content_hash: str = "ddrworld-hash") -> None:
+    sources = (
+        ("official", "https://example.test/official", "official-hash"),
+        ("new_song", "https://example.test/new-songs", "new-song-hash"),
+        ("ddrworld", "https://example.test/ddrworld", content_hash),
+    )
+    with closing(sqlite3.connect(path)) as connection, connection:
+        for source_name, source_url, source_hash in sources:
+            connection.executemany(
+                "INSERT INTO master_metadata VALUES (?, ?)",
+                (
+                    (f"{source_name}_source_url", source_url),
+                    (f"{source_name}_source_hash", source_hash),
+                ),
+            )
+            connection.execute(
+                "INSERT INTO source_snapshots VALUES (?, ?, ?, ?, ?, ?)",
+                (
+                    f"snapshot-{source_name}",
+                    source_url,
+                    "2026-08-31T00:00:00+00:00",
+                    source_hash,
+                    "fixture-v2",
+                    "<html></html>",
+                ),
+            )
+
+
+def test_load_master_identity_accepts_four_source_snapshots(tmp_path: Path) -> None:
+    master_db = tmp_path / "master.sqlite"
+    write_master(master_db)
+    add_ddrworld_source_metadata(master_db)
+
+    master = catalog.load_master_identity(master_db)
+
+    assert master.version == "master-v1"
+    assert len(master.songs) == 2
+
+
+def test_load_master_identity_rejects_ddrworld_source_hash_mismatch(
+    tmp_path: Path,
+) -> None:
+    master_db = tmp_path / "master.sqlite"
+    write_master(master_db)
+    add_ddrworld_source_metadata(master_db, content_hash="metadata-hash")
+    with closing(sqlite3.connect(master_db)) as connection, connection:
+        connection.execute(
+            "UPDATE source_snapshots SET content_hash = 'snapshot-hash' "
+            "WHERE source_url = 'https://example.test/ddrworld'"
+        )
+
+    with pytest.raises(ValueError, match="DDR WORLD source metadata mismatch"):
+        catalog.load_master_identity(master_db)
+
+
 def setup_paths(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path, Path]:
     monkeypatch.chdir(tmp_path)
     (tmp_path / "data").mkdir()

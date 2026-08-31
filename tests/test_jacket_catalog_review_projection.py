@@ -9,7 +9,12 @@ from pathlib import Path
 
 import pytest
 from PIL import Image, ImageDraw
-from test_jacket_reference_catalog import created_at, identity, write_master
+from test_jacket_reference_catalog import (
+    add_ddrworld_source_metadata,
+    created_at,
+    identity,
+    write_master,
+)
 
 from tools.ddrworld_snapshot_evaluation.evaluator import rows_as_dicts
 from tools.ddrworld_snapshot_evaluation.xlsx_export import EmbeddedImage, write_xlsx
@@ -136,6 +141,21 @@ def test_current_projection_exposes_manual_review_without_legacy_capabilities(
     assert reviewed["processed_at"] == reviewed["history"][0]["action_at"]
     assert reviewed["revision"] == 1
     assert reviewed["history"][0]["action"] == "manual_confirm"
+    assert master_db.read_bytes() == master_before
+    assert catalog_db.read_bytes() == catalog_before
+
+
+def test_projection_accepts_four_source_master(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    master_db, catalog_db, _reference_id = setup_projection(tmp_path, monkeypatch)
+    add_ddrworld_source_metadata(master_db)
+    master_before = master_db.read_bytes()
+    catalog_before = catalog_db.read_bytes()
+
+    result = projection.build_review_projection(catalog_db, master_db)
+
+    assert result["master"]["master_version"] == "master-v1"
     assert master_db.read_bytes() == master_before
     assert catalog_db.read_bytes() == catalog_before
 

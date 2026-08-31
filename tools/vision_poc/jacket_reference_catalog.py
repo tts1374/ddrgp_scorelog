@@ -1975,8 +1975,8 @@ def _validate_master_content(connection: sqlite3.Connection) -> dict[str, str]:
     if metadata["song_count"] != str(song_count) or metadata["chart_count"] != str(chart_count):
         raise ValueError("M4 master metadata count mismatch")
     snapshots = list(connection.execute("SELECT source_url, content_hash FROM source_snapshots"))
-    if len(snapshots) not in {1, 2, 3}:
-        raise ValueError("M4 master database must contain one to three source snapshots")
+    if len(snapshots) not in {1, 2, 3, 4}:
+        raise ValueError("M4 master database must contain one to four source snapshots")
     snapshots_by_url = {str(row[0]): str(row[1]) for row in snapshots}
     if snapshots_by_url.get(metadata["source_url"]) != metadata["source_hash"]:
         raise ValueError("M4 master source metadata mismatch")
@@ -1992,7 +1992,18 @@ def _validate_master_content(connection: sqlite3.Connection) -> dict[str, str]:
         raise ValueError("M4 master new-song source metadata must be a complete pair")
     if new_song_url and snapshots_by_url.get(new_song_url) != new_song_hash:
         raise ValueError("M4 master new-song source metadata mismatch")
-    expected_snapshot_count = 1 + int(bool(official_url)) + int(bool(new_song_url))
+    ddrworld_url = metadata.get("ddrworld_source_url", "")
+    ddrworld_hash = metadata.get("ddrworld_source_hash", "")
+    if bool(ddrworld_url) != bool(ddrworld_hash):
+        raise ValueError("M4 master DDR WORLD source metadata must be a complete pair")
+    if ddrworld_url and snapshots_by_url.get(ddrworld_url) != ddrworld_hash:
+        raise ValueError("M4 master DDR WORLD source metadata mismatch")
+    expected_snapshot_count = (
+        1
+        + int(bool(official_url))
+        + int(bool(new_song_url))
+        + int(bool(ddrworld_url))
+    )
     if len(snapshots) != expected_snapshot_count:
         raise ValueError("M4 master source snapshot count does not match source metadata")
     return metadata
