@@ -441,8 +441,14 @@ def _parse_ddrworld_chart(
         )
     if normalized_level == "-":
         return None
-    level = parse_level(normalized_level)
-    if level is None or not 1 <= level <= 19:
+    strict_level = re.fullmatch(r"\d{1,2}", normalized_level)
+    if strict_level is None:
+        raise ValueError(
+            f"DDR WORLD page {page_offset} row {row_position} has an invalid "
+            f"{style_label} {difficulty} level: {normalized_level}"
+        )
+    level = int(strict_level.group())
+    if not 1 <= level <= 19:
         raise ValueError(
             f"DDR WORLD page {page_offset} row {row_position} has an invalid "
             f"{style_label} {difficulty} level: {normalized_level}"

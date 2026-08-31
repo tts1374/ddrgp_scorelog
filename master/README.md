@@ -30,7 +30,7 @@ https://p.eagate.573.jp/game/ddr/ddrworld/music/index.html?filter=7&filtertype=0
 
 DDR WORLD公式楽曲一覧は、#193で固定された単一並列なし・自動retryなし・空ページ終端のsnapshot契約で全ページを取得します。`--ddrworld-input` を指定すると、その契約で完了したsnapshot directoryを入力できます。既定の直接生成では同じページ取得をメモリ上で行い、取得HTMLやsnapshotをリポジトリへ保存しません。
 
-M4のDDR WORLD parserは、snapshot pageの現行`table.table-ui`とlegacy`table#data_tbl`の両方を受理します。legacy形式は`td.difficult`のSP/DP 9セル、現行形式はSP/DPのdifficulty containerを必須とし、両形式とも各セルの空値・非整数・欠落・重複を譜面なしとして黙って通さず、生成を失敗させます。譜面なしは公式表記の`-`だけを許可します。
+M4のDDR WORLD parserは、snapshot pageの現行`table.table-ui`とlegacy`table#data_tbl`の両方を受理します。legacy形式は`td.difficult`のSP/DP 9セル、現行形式はSP/DPのdifficulty containerを必須とし、両形式とも各セルの空値・非整数・欠落・重複を譜面なしとして黙って通さず、生成を失敗させます。有効な公式levelは1〜19の1〜2桁の数字だけで、譜面なしは公式表記の`-`だけを許可します。
 
 公式のアーティスト欄が空の場合は空のまま保存します。Wiki側のアーティストや版権元名へのフォールバックは行いません。全曲リストと新曲リストの譜面行は同じ曲へ統合し、既存のWiki由来 `song_id` を可能な限り維持します。
 

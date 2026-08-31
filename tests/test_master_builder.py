@@ -532,6 +532,18 @@ def test_parse_ddrworld_music_page_accepts_legacy_table_with_chart_levels() -> N
         ),
         (
             DDRWORLD_REGRESSION_HTML.replace(
+                '<div class="level">2</div>', '<div class="level">10.5</div>', 1
+            ),
+            "invalid SP BEGINNER level",
+        ),
+        (
+            DDRWORLD_REGRESSION_HTML.replace(
+                '<div class="level">2</div>', '<div class="level">Lv. 12</div>', 1
+            ),
+            "invalid SP BEGINNER level",
+        ),
+        (
+            DDRWORLD_REGRESSION_HTML.replace(
                 '<div class="level">5</div>', '<div class="level"></div>', 1
             ),
             "empty SP BASIC level",

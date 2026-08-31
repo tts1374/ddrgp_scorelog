@@ -55,7 +55,7 @@ https://p.eagate.573.jp/game/ddr/ddrworld/music/index.html?filter=7&filtertype=0
 
 この固定queryの公式楽曲一覧を、#193で定めた単一並列なし・自動retryなし・空ページ終端・最大100ページのsnapshot契約で全ページ取得する。各ページのSP/DP、難易度、レベルを `song + play_style + difficulty` 単位で読む。完了済みsnapshot directoryはCLIの `--ddrworld-input` で再利用でき、既定の直接生成は同じページ取得をメモリ上で行う。
 
-M4のsnapshot parserは、collectorが受理する現行`table.table-ui`とlegacy`table#data_tbl`の両形式を譜面情報付きで受理する。現行形式ではSP/DPの各difficulty containerと期待セル、legacy形式ではSP/DP合計9個の`td.difficult`セルとdifficulty classを必須とする。空値・非整数・欠落・重複・譜面0件は構造変化として失敗させ、公式の`-`だけを譜面なしとして扱う。
+M4のsnapshot parserは、collectorが受理する現行`table.table-ui`とlegacy`table#data_tbl`の両形式を譜面情報付きで受理する。現行形式ではSP/DPの各difficulty containerと期待セル、legacy形式ではSP/DP合計9個の`td.difficult`セルとdifficulty classを必須とする。空値・非整数・欠落・重複・譜面0件は構造変化として失敗させ、公式のlevelは1〜19の1〜2桁の数字だけ、公式の`-`だけを譜面なしとして扱う。
 
 公式収録曲一覧の `タイトル` / `アーティスト` は曲情報の正本として `songs.title` / `songs.artist` に保存する。公式アーティストが空の場合も空を保持し、Wiki側の版権元名へフォールバックしない。全曲リストと新曲リストは曲名・アーティストの正規化一致で統合し、新曲リストだけに存在する曲も `songs` / `charts` へ追加する。新曲リストのHTMLは `source_snapshots` と `new_song_source_url` / `new_song_source_hash` で追跡する。
 
