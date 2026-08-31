@@ -28,7 +28,7 @@ DEFAULT_SNAPSHOT_ROOT = Path("data/ddrworld_music_snapshot")
 DEFAULT_FILTER = 7
 DEFAULT_FILTER_TYPE = 0
 DEFAULT_PLAY_MODE = 2
-DEFAULT_PAGE_COUNT = 26
+MAX_PAGE_COUNT = 100
 DEFAULT_DELAY_SECONDS = 2.0
 DEFAULT_CONNECT_TIMEOUT_SECONDS = 10.0
 DEFAULT_READ_TIMEOUT_SECONDS = 30.0
@@ -49,7 +49,7 @@ class SnapshotCancelled(SnapshotError):
 class SnapshotProgress:
     phase: str
     completed: int
-    total: int
+    total: int | None
 
 
 def find_repository_root(start_directory: Path | None = None) -> Path:
@@ -75,7 +75,6 @@ def resolve_repository_path(path: Path, repository_root: Path | None = None) -> 
 class SnapshotConfig:
     snapshot_id: str
     output_root: Path = DEFAULT_SNAPSHOT_ROOT
-    page_count: int = DEFAULT_PAGE_COUNT
     delay_seconds: float = DEFAULT_DELAY_SECONDS
     connect_timeout_seconds: float = DEFAULT_CONNECT_TIMEOUT_SECONDS
     read_timeout_seconds: float = DEFAULT_READ_TIMEOUT_SECONDS
@@ -101,8 +100,6 @@ class SnapshotConfig:
             raise SnapshotError(
                 "source query is fixed to filter=7, filtertype=0, and playmode=2"
             )
-        if not 1 <= self.page_count <= DEFAULT_PAGE_COUNT:
-            raise SnapshotError(f"page count must be between 1 and {DEFAULT_PAGE_COUNT}")
         if not all(
             math.isfinite(value)
             for value in (
@@ -230,17 +227,35 @@ def _parse_page(
     allow_empty: bool,
 ) -> list[SongEntry]:
     soup = BeautifulSoup(html, "html.parser")
-    rows = soup.select("#data_tbl tr.data")
+    table = soup.find("table", id="data_tbl")
+    table_variant = "legacy"
+    if table is None:
+        table = soup.find("table", class_="table-ui")
+        table_variant = "current"
+    if table is None:
+        raise SnapshotError(f"page {page_offset} is missing the official music table")
+
+    rows = table.select("tr.data")
     if not rows:
+        unexpected_rows = table.select("tr:not(.data):not(.column)")
+        if unexpected_rows:
+            raise SnapshotError(
+                f"page {page_offset} contains unexpected rows in the official music table"
+            )
         if allow_empty:
             return []
         raise SnapshotError(f"page {page_offset} contains no music rows")
 
     songs: list[SongEntry] = []
     for position, row in enumerate(rows):
-        title_cell = row.select_one("td.music_tit")
-        artist_cell = row.select_one("td.artist_nam")
-        jacket = row.select_one("td.jk img[src]")
+        if table_variant == "legacy":
+            title_cell = row.select_one("td.music_tit")
+            artist_cell = row.select_one("td.artist_nam")
+            jacket = row.select_one("td.jk img[src]")
+        else:
+            title_cell = row.select_one(".music-title")
+            artist_cell = row.select_one(".artist")
+            jacket = row.select_one("td.chart img.left-image.large[src]")
         title = title_cell.get_text(" ", strip=True) if title_cell else ""
         artist = artist_cell.get_text(" ", strip=True) if artist_cell else ""
         jacket_src = jacket.get("src", "").strip() if jacket else ""
@@ -358,40 +373,73 @@ class SnapshotCollector:
         image_records: list[dict[str, Any]] = []
         songs: list[SongEntry] = []
         failures: list[dict[str, Any]] = []
+        terminal_page: dict[str, Any] | None = None
         request_count = 0
 
         try:
-            self._emit_progress(progress, "pages", 0, self.config.page_count)
-            for offset in range(self.config.page_count):
+            self._emit_progress(progress, "pages", 0, None)
+            for offset in range(MAX_PAGE_COUNT):
                 self._check_cancelled()
                 url = build_page_url(self.config, offset)
                 result = self.fetcher.get(url, accept="text/html,application/xhtml+xml")
                 request_count += 1
                 self._check_cancelled()
                 record = self._page_record(result, offset)
-                page_records.append(record)
                 if record["error"] is not None:
+                    page_records.append(record)
                     failures.append(
                         {"resource": "page", "offset": offset, "error": record["error"]}
                     )
-                else:
-                    assert result.content is not None
-                    atomic_write_bytes(
-                        incomplete_dir / f"pages/page-{offset:02d}.html", result.content
-                    )
-                    try:
-                        songs.extend(parse_page(result.content, page_offset=offset, page_url=url))
-                    except SnapshotError as exc:
-                        failures.append(
-                            {"resource": "page", "offset": offset, "error": str(exc)}
-                        )
-                self._emit_progress(progress, "pages", offset + 1, self.config.page_count)
+                    break
 
-            if self.config.fixed_output and not failures:
-                pagination_failure = self._check_fixed_page_boundary(self.config.page_count)
-                request_count += 1
-                if pagination_failure is not None:
-                    failures.append(pagination_failure)
+                assert result.content is not None
+                try:
+                    page_songs = _parse_page(
+                        result.content,
+                        page_offset=offset,
+                        page_url=url,
+                        allow_empty=True,
+                    )
+                except SnapshotError as exc:
+                    page_records.append({**record, "local_path": None})
+                    failures.append(
+                        {"resource": "page", "offset": offset, "error": str(exc)}
+                    )
+                    break
+
+                if not page_songs:
+                    terminal_page = self._terminal_page_record(record)
+                    if not songs:
+                        failures.append(
+                            {
+                                "resource": "pagination",
+                                "offset": offset,
+                                "error": (
+                                    "first music page is empty; a populated page is "
+                                    "required before the terminal page"
+                                ),
+                            }
+                        )
+                    self._emit_progress(progress, "pages", len(page_records), len(page_records))
+                    break
+
+                atomic_write_bytes(
+                    incomplete_dir / f"pages/page-{offset:02d}.html", result.content
+                )
+                page_records.append(record)
+                songs.extend(page_songs)
+                self._emit_progress(progress, "pages", len(page_records), None)
+            else:
+                failures.append(
+                    {
+                        "resource": "pagination",
+                        "offset": MAX_PAGE_COUNT,
+                        "error": (
+                            f"maximum page limit ({MAX_PAGE_COUNT}) reached without "
+                            "a normal empty page"
+                        ),
+                    }
+                )
 
             jacket_urls = (
                 []
@@ -434,6 +482,7 @@ class SnapshotCollector:
                 page_records=page_records,
                 image_records=image_records,
                 failures=failures,
+                terminal_page=terminal_page,
             )
             summary = self._summary(
                 status=status,
@@ -444,6 +493,7 @@ class SnapshotCollector:
                 duplicate_hashes=duplicate_hashes,
                 snapshot_id=self.config.snapshot_id,
                 failures=failures,
+                terminal_page=terminal_page,
             )
             atomic_write_json(incomplete_dir / "manifest.json", manifest)
             atomic_write_json(incomplete_dir / "summary.json", summary)
@@ -472,6 +522,7 @@ class SnapshotCollector:
                 image_records=image_records,
                 songs=songs,
                 request_count=request_count,
+                terminal_page=terminal_page,
             )
             raise
 
@@ -540,44 +591,6 @@ class SnapshotCollector:
     def _paths_overlap(first: Path, second: Path) -> bool:
         return first == second or first in second.parents or second in first.parents
 
-    def _check_fixed_page_boundary(self, offset: int) -> dict[str, Any] | None:
-        """Fail closed when the fixed page limit no longer covers the catalog."""
-        self._check_cancelled()
-        url = build_page_url(self.config, offset)
-        result = self.fetcher.get(url, accept="text/html,application/xhtml+xml")
-        self._check_cancelled()
-        record = self._page_record(result, offset)
-        if record["error"] is not None:
-            return {
-                "resource": "pagination",
-                "offset": offset,
-                "error": f"fixed page boundary could not be validated: {record['error']}",
-            }
-        assert result.content is not None
-        try:
-            extra_songs = _parse_page(
-                result.content,
-                page_offset=offset,
-                page_url=url,
-                allow_empty=True,
-            )
-        except SnapshotError as exc:
-            return {
-                "resource": "pagination",
-                "offset": offset,
-                "error": f"fixed page boundary could not be parsed: {exc}",
-            }
-        if extra_songs:
-            return {
-                "resource": "pagination",
-                "offset": offset,
-                "error": (
-                    "fixed page limit is too small; an additional page contains "
-                    "music rows"
-                ),
-            }
-        return None
-
     def _check_cancelled(self) -> None:
         if self.cancel_check():
             raise SnapshotCancelled("snapshot collection cancelled")
@@ -590,7 +603,7 @@ class SnapshotCollector:
         progress: Callable[[SnapshotProgress], None] | None,
         phase: str,
         completed: int,
-        total: int,
+        total: int | None,
     ) -> None:
         if progress is not None:
             progress(SnapshotProgress(phase, completed, total))
@@ -631,6 +644,7 @@ class SnapshotCollector:
         page_records: list[dict[str, Any]],
         image_records: list[dict[str, Any]],
         failures: list[dict[str, Any]],
+        terminal_page: dict[str, Any] | None,
     ) -> dict[str, Any]:
         return {
             "schema_version": "ddrworld-music-snapshot-manifest-v1",
@@ -643,7 +657,7 @@ class SnapshotCollector:
                 "filter": self.config.filter_value,
                 "filter_type": self.config.filter_type,
                 "play_mode": self.config.play_mode,
-                "offsets": list(range(self.config.page_count)),
+                "offsets": [record["offset"] for record in page_records],
             },
             "request_policy": {
                 "concurrency": 1,
@@ -656,6 +670,17 @@ class SnapshotCollector:
             "started_at": started_at,
             "completed_at": completed_at,
             "pages": page_records,
+            "pagination": {
+                "strategy": "empty_page",
+                "max_page_count": MAX_PAGE_COUNT,
+                "terminal_offset": (
+                    terminal_page["offset"] if terminal_page is not None else None
+                ),
+                "terminal_validation": (
+                    terminal_page["validation"] if terminal_page is not None else None
+                ),
+                "terminal_page": terminal_page,
+            },
             "images": image_records,
             "failures": failures,
         }
@@ -671,6 +696,7 @@ class SnapshotCollector:
         duplicate_hashes: list[dict[str, Any]],
         snapshot_id: str,
         failures: list[dict[str, Any]],
+        terminal_page: dict[str, Any] | None,
     ) -> dict[str, Any]:
         stored_paths = {
             record["local_path"]
@@ -683,6 +709,9 @@ class SnapshotCollector:
             "snapshot_id": snapshot_id,
             "request_count": request_count,
             "page_request_count": len(page_records),
+            "terminal_offset": (
+                terminal_page["offset"] if terminal_page is not None else None
+            ),
             "image_request_count": len(image_records),
             "song_count": len(songs),
             "unique_jacket_url_count": len(image_records),
@@ -701,6 +730,7 @@ class SnapshotCollector:
         image_records: list[dict[str, Any]],
         songs: list[SongEntry],
         request_count: int,
+        terminal_page: dict[str, Any] | None,
     ) -> None:
         if not incomplete_dir.is_dir():
             return
@@ -717,6 +747,7 @@ class SnapshotCollector:
                     page_records=page_records,
                     image_records=image_records,
                     failures=[{"resource": "collection", "error": "cancelled"}],
+                    terminal_page=terminal_page,
                 ),
             )
             duplicate_hashes = self._duplicate_hashes(image_records)
@@ -732,6 +763,7 @@ class SnapshotCollector:
                         duplicate_hashes=duplicate_hashes,
                         snapshot_id=self.config.snapshot_id,
                         failures=[{"resource": "collection", "error": "cancelled"}],
+                        terminal_page=terminal_page,
                     ),
                     "failure_count": 1,
                 },
@@ -819,6 +851,32 @@ class SnapshotCollector:
         }:
             raise SnapshotError("snapshot stored image count does not match jacket files")
 
+        pagination = manifest.get("pagination")
+        if pagination is not None:
+            if not isinstance(pagination, dict):
+                raise SnapshotError("snapshot pagination metadata is invalid")
+            if pagination.get("strategy") != "empty_page":
+                raise SnapshotError("snapshot pagination strategy is invalid")
+            if pagination.get("max_page_count") != MAX_PAGE_COUNT:
+                raise SnapshotError("snapshot pagination safety limit is invalid")
+            terminal_offset = pagination.get("terminal_offset")
+            if (
+                not isinstance(terminal_offset, int)
+                or terminal_offset <= 0
+                or terminal_offset != len(page_files)
+            ):
+                raise SnapshotError("snapshot terminal offset does not match page count")
+            if pagination.get("terminal_validation") != "normal_empty_page":
+                raise SnapshotError("snapshot terminal page validation is invalid")
+            terminal_page = pagination.get("terminal_page")
+            if (
+                not isinstance(terminal_page, dict)
+                or terminal_page.get("offset") != terminal_offset
+                or terminal_page.get("local_path") is not None
+                or terminal_page.get("validation") != "normal_empty_page"
+            ):
+                raise SnapshotError("snapshot terminal page metadata is invalid")
+
     @staticmethod
     def _page_record(result: FetchResult, offset: int) -> dict[str, Any]:
         content_type = media_type(result.content_type)
@@ -837,6 +895,14 @@ class SnapshotCollector:
             "sha256": hashlib.sha256(result.content).hexdigest() if result.content else None,
             "local_path": f"pages/page-{offset:02d}.html" if error is None else None,
             "error": error,
+        }
+
+    @staticmethod
+    def _terminal_page_record(record: dict[str, Any]) -> dict[str, Any]:
+        return {
+            **record,
+            "local_path": None,
+            "validation": "normal_empty_page",
         }
 
     @staticmethod
@@ -877,5 +943,5 @@ class SnapshotCollector:
 
 
 def iter_request_plan(config: SnapshotConfig, estimated_songs: int) -> Iterator[tuple[str, int]]:
-    yield "page", config.page_count
+    yield "page (maximum; includes terminal check)", MAX_PAGE_COUNT
     yield "jacket (maximum; one per estimated song)", estimated_songs

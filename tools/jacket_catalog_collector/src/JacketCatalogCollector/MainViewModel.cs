@@ -262,17 +262,31 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public string OfficialSnapshotProgressTitleDisplay => "公式ジャケット情報を取得中";
     public string OfficialSnapshotProgressPercentDisplay =>
         $"{OfficialSnapshotProgressPercent:0}%";
+    public bool OfficialSnapshotProgressIsIndeterminate =>
+        officialSnapshotProgress?.Phase == "pages"
+        && officialSnapshotProgress.Total is null;
     public double OfficialSnapshotProgressPercent
     {
         get
         {
-            if (officialSnapshotProgress is null || officialSnapshotProgress.Total <= 0)
+            if (officialSnapshotProgress is null)
             {
-                return officialSnapshotProgress?.Phase == "jackets" ? 12 : 0;
+                return 0;
             }
-            return officialSnapshotProgress.Phase == "pages"
-                ? officialSnapshotProgress.Completed * 12d / officialSnapshotProgress.Total
-                : 12d + officialSnapshotProgress.Completed * 88d / officialSnapshotProgress.Total;
+            if (officialSnapshotProgress.Phase == "pages")
+            {
+                if (officialSnapshotProgress.Total is not > 0)
+                {
+                    return 0;
+                }
+                return officialSnapshotProgress.Completed * 12d / officialSnapshotProgress.Total.Value;
+            }
+            if (officialSnapshotProgress.Total is not > 0)
+            {
+                return 12;
+            }
+            return 12d + officialSnapshotProgress.Completed * 88d
+                / officialSnapshotProgress.Total.Value;
         }
     }
     public string OfficialSnapshotProgressDetailDisplay
@@ -284,10 +298,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 return "公式ジャケット情報を取得中…";
             }
             return officialSnapshotProgress.Phase == "pages"
-                ? $"曲一覧を取得中… {officialSnapshotProgress.Completed:N0} / "
-                    + $"{officialSnapshotProgress.Total:N0}ページ"
+                ? officialSnapshotProgress.Total is null
+                    ? $"曲一覧を取得中… {officialSnapshotProgress.Completed:N0}ページ（総ページ数を確認中）"
+                    : $"曲一覧を取得中… {officialSnapshotProgress.Completed:N0} / "
+                        + $"{officialSnapshotProgress.Total.Value:N0}ページ"
                 : $"ジャケットを取得中… {officialSnapshotProgress.Completed:N0} / "
-                    + $"{officialSnapshotProgress.Total:N0}曲";
+                    + $"{officialSnapshotProgress.Total.GetValueOrDefault():N0}曲";
         }
     }
     public bool IsOfficialSnapshotUpdating =>
@@ -1593,6 +1609,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 officialSnapshotProgress = value;
                 OnPropertyChanged(nameof(OfficialSnapshotProgressPercent));
                 OnPropertyChanged(nameof(OfficialSnapshotProgressPercentDisplay));
+                OnPropertyChanged(nameof(OfficialSnapshotProgressIsIndeterminate));
                 OnPropertyChanged(nameof(OfficialSnapshotProgressDetailDisplay));
             });
             var result = await officialJacketSnapshotService.UpdateAsync(
@@ -2161,6 +2178,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(OfficialSnapshotUserStatusDisplay));
         OnPropertyChanged(nameof(OfficialSnapshotProgressPercent));
         OnPropertyChanged(nameof(OfficialSnapshotProgressPercentDisplay));
+        OnPropertyChanged(nameof(OfficialSnapshotProgressIsIndeterminate));
         OnPropertyChanged(nameof(OfficialSnapshotProgressDetailDisplay));
         OnPropertyChanged(nameof(OfficialSnapshotLastResultDisplay));
         NotifyOperationDisplayProperties();

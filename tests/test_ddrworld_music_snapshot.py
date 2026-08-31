@@ -9,6 +9,7 @@ import pytest
 import tools.ddrworld_music_snapshot.collector as collector_module
 from tools.ddrworld_music_snapshot.cli import build_parser, config_from_args, main
 from tools.ddrworld_music_snapshot.collector import (
+    MAX_PAGE_COUNT,
     FetchResult,
     SnapshotCancelled,
     SnapshotCollector,
@@ -33,6 +34,18 @@ PAGE = """<!doctype html><html><body><table id="data_tbl">
 </tr>
 </table></body></html>""".encode()
 EMPTY_PAGE = b"<!doctype html><html><body><table id=\"data_tbl\"></table></body></html>"
+CURRENT_PAGE = (
+    b'<!doctype html><html><body><table class="table-ui">'
+    b'<tr class="data"><td class="chart">'
+    b'<img class="left-image large" src="/game/ddr/ddrworld/images/'
+    b'binary_jk.html?img=current&amp;kind=1">'
+    b'<div><div class="music-title">Current Song</div>'
+    b'<div class="artist">Current Artist</div></div>'
+    b'</td></tr></table></body></html>'
+)
+CURRENT_EMPTY_PAGE = (
+    b"<!doctype html><html><body><table class=\"table-ui\"></table></body></html>"
+)
 
 
 class FakeFetcher:
@@ -82,6 +95,26 @@ def test_parse_page_extracts_official_fields_and_absolute_jacket_urls() -> None:
     assert songs[1].page_position == 1
 
 
+def test_parse_page_extracts_current_official_layout_and_accepts_current_empty_page() -> None:
+    page_url = build_page_url(SnapshotConfig(snapshot_id="current"), 0)
+
+    songs = parse_page(CURRENT_PAGE, page_offset=0, page_url=page_url)
+
+    assert [(song.title, song.artist) for song in songs] == [
+        ("Current Song", "Current Artist")
+    ]
+    assert songs[0].jacket_source_url == (
+        "https://p.eagate.573.jp/game/ddr/ddrworld/images/"
+        "binary_jk.html?img=current&kind=1"
+    )
+    assert collector_module._parse_page(
+        CURRENT_EMPTY_PAGE,
+        page_offset=27,
+        page_url=page_url,
+        allow_empty=True,
+    ) == []
+
+
 @pytest.mark.parametrize(
     "row",
     [
@@ -111,6 +144,89 @@ def test_parse_page_rejects_off_origin_jacket_url() -> None:
         )
 
 
+@pytest.mark.parametrize(
+    ("html", "message"),
+    [
+        (b"<!doctype html><html><body>not a music page</body></html>", "missing"),
+        (
+            b'<table id="data_tbl"><tr class="changed"><td>unexpected</td></tr></table>',
+            "unexpected rows",
+        ),
+    ],
+)
+def test_parse_page_rejects_unknown_empty_page_structure(
+    html: bytes,
+    message: str,
+) -> None:
+    with pytest.raises(SnapshotError, match=message):
+        collector_module._parse_page(
+            html,
+            page_offset=4,
+            page_url="https://p.eagate.573.jp/game/ddr/ddrworld/music/index.html",
+            allow_empty=True,
+        )
+
+
+@pytest.mark.parametrize(
+    "bad_page",
+    [
+        response(b"service unavailable", "text/plain", error="HTTP 503"),
+        response(EMPTY_PAGE, "text/plain"),
+        response(b"<!doctype html><html><body>not a music page</body></html>", "text/html"),
+        response(
+            b'<table id="data_tbl"><tr class="data">'
+            b'<td class="music_tit">Title</td></tr></table>',
+            "text/html",
+        ),
+    ],
+)
+def test_page_failure_is_not_treated_as_terminal(
+    tmp_path: Path,
+    bad_page: FetchResult,
+) -> None:
+    fetcher = FakeFetcher([response(PAGE, "text/html"), bad_page])
+
+    with pytest.raises(SnapshotError, match="snapshot is incomplete"):
+        SnapshotCollector(
+            SnapshotConfig(snapshot_id="bad-page", output_root=tmp_path),
+            fetcher=fetcher,
+            now=lambda: NOW,
+        ).collect()
+
+    assert len(fetcher.urls) == 2
+    manifest = json.loads(
+        (tmp_path / "bad-page.incomplete/manifest.json").read_text(encoding="utf-8")
+    )
+    assert manifest["failures"][0]["resource"] == "page"
+    assert manifest["pagination"]["terminal_offset"] is None
+
+
+def test_page_safety_limit_fails_without_fetching_beyond_limit(tmp_path: Path) -> None:
+    fetcher = FakeFetcher(
+        [response(PAGE, "text/html") for _ in range(MAX_PAGE_COUNT)]
+    )
+
+    with pytest.raises(SnapshotError, match="snapshot is incomplete"):
+        SnapshotCollector(
+            SnapshotConfig(snapshot_id="page-limit", output_root=tmp_path),
+            fetcher=fetcher,
+            now=lambda: NOW,
+        ).collect()
+
+    assert len(fetcher.urls) == MAX_PAGE_COUNT
+    manifest = json.loads(
+        (tmp_path / "page-limit.incomplete/manifest.json").read_text(encoding="utf-8")
+    )
+    summary = json.loads(
+        (tmp_path / "page-limit.incomplete/summary.json").read_text(encoding="utf-8")
+    )
+    assert manifest["failures"][-1]["resource"] == "pagination"
+    assert manifest["failures"][-1]["offset"] == MAX_PAGE_COUNT
+    assert manifest["pagination"]["terminal_offset"] is None
+    assert summary["page_request_count"] == MAX_PAGE_COUNT
+    assert summary["terminal_offset"] is None
+
+
 def test_detect_image_type_uses_signature() -> None:
     assert detect_image_type(PNG) == ("png", "image/png")
     assert detect_image_type(b"not-an-image") is None
@@ -120,11 +236,12 @@ def test_collect_publishes_complete_snapshot_atomically(tmp_path: Path) -> None:
     fetcher = FakeFetcher(
         [
             response(PAGE, "text/html; charset=UTF-8"),
+            response(EMPTY_PAGE, "text/html"),
             response(PNG, "image/png"),
             response(PNG, "image/png"),
         ]
     )
-    config = SnapshotConfig(snapshot_id="snapshot-1", output_root=tmp_path, page_count=1)
+    config = SnapshotConfig(snapshot_id="snapshot-1", output_root=tmp_path)
 
     output = SnapshotCollector(config, fetcher=fetcher, now=lambda: NOW).collect()
 
@@ -145,8 +262,9 @@ def test_collect_publishes_complete_snapshot_atomically(tmp_path: Path) -> None:
         "schema_version": "ddrworld-music-snapshot-summary-v1",
         "status": "complete",
         "snapshot_id": "snapshot-1",
-        "request_count": 3,
+        "request_count": 4,
         "page_request_count": 1,
+        "terminal_offset": 1,
         "image_request_count": 2,
         "song_count": 2,
         "unique_jacket_url_count": 2,
@@ -156,7 +274,7 @@ def test_collect_publishes_complete_snapshot_atomically(tmp_path: Path) -> None:
         "duplicate_image_hashes": [
             {
                 "sha256": songs[0]["jacket_sha256"],
-                "source_urls": [fetcher.urls[1], fetcher.urls[2]],
+                "source_urls": [fetcher.urls[2], fetcher.urls[3]],
             }
         ],
     }
@@ -166,11 +284,12 @@ def test_collect_retains_failed_run_only_as_incomplete(tmp_path: Path) -> None:
     fetcher = FakeFetcher(
         [
             response(PAGE, "text/html"),
+            response(EMPTY_PAGE, "text/html"),
             response(b"service unavailable", "text/plain", error="HTTP 503"),
             response(PNG, "image/png"),
         ]
     )
-    config = SnapshotConfig(snapshot_id="failed", output_root=tmp_path, page_count=1)
+    config = SnapshotConfig(snapshot_id="failed", output_root=tmp_path)
 
     with pytest.raises(SnapshotError, match="snapshot is incomplete"):
         SnapshotCollector(config, fetcher=fetcher, now=lambda: NOW).collect()
@@ -215,7 +334,6 @@ def test_fixed_output_reports_phases_and_publishes_required_root_files(tmp_path:
             incomplete_root=Path("data/ddrworld_music_snapshot.incomplete"),
             fixed_output=True,
             repository_root=tmp_path,
-            page_count=1,
         ),
         fetcher=fetcher,
         now=lambda: NOW,
@@ -230,14 +348,17 @@ def test_fixed_output_reports_phases_and_publishes_required_root_files(tmp_path:
         "jackets",
         "summary.json",
     ])
-    assert progress[:2] == [
-        SnapshotProgress("pages", 0, 1),
+    assert progress[:3] == [
+        SnapshotProgress("pages", 0, None),
+        SnapshotProgress("pages", 1, None),
         SnapshotProgress("pages", 1, 1),
     ]
-    assert progress[2] == SnapshotProgress("jackets", 0, 2)
+    assert progress[3] == SnapshotProgress("jackets", 0, 2)
     assert progress[-1] == SnapshotProgress("jackets", 2, 2)
     summary = json.loads((output / "summary.json").read_text(encoding="utf-8"))
     assert summary["snapshot_id"] == "internal-run-id"
+    assert summary["page_request_count"] == 1
+    assert summary["terminal_offset"] == 1
     assert summary["stored_jacket_count"] == 1
 
 
@@ -251,7 +372,6 @@ def test_fixed_output_keeps_previous_snapshot_on_failure_and_discards_stale_inco
         output_root=fixed_root,
         incomplete_root=incomplete_root,
         fixed_output=True,
-        page_count=1,
     )
     SnapshotCollector(
         success_config,
@@ -276,7 +396,6 @@ def test_fixed_output_keeps_previous_snapshot_on_failure_and_discards_stale_inco
                 output_root=fixed_root,
                 incomplete_root=incomplete_root,
                 fixed_output=True,
-                page_count=1,
             ),
             fetcher=FakeFetcher(
                 [
@@ -308,7 +427,6 @@ def test_fixed_output_cancellation_keeps_previous_snapshot_and_stops_before_next
             output_root=fixed_root,
             incomplete_root=incomplete_root,
             fixed_output=True,
-            page_count=1,
         ),
         fetcher=FakeFetcher(
             [
@@ -330,7 +448,6 @@ def test_fixed_output_cancellation_keeps_previous_snapshot_and_stops_before_next
                 output_root=fixed_root,
                 incomplete_root=incomplete_root,
                 fixed_output=True,
-                page_count=1,
             ),
             fetcher=fetcher,
             now=lambda: NOW,
@@ -369,7 +486,6 @@ def test_fixed_output_rejects_overlapping_paths_before_cleanup(
                 incomplete_root=incomplete_relative_path,
                 fixed_output=True,
                 repository_root=tmp_path,
-                page_count=1,
             ),
             fetcher=fetcher,
         ).collect()
@@ -387,7 +503,6 @@ def test_fixed_output_accepts_legacy_record_count_for_shared_hash_path(tmp_path:
             output_root=fixed_root,
             incomplete_root=incomplete_root,
             fixed_output=True,
-            page_count=1,
         ),
         fetcher=FakeFetcher(
             [
@@ -407,7 +522,7 @@ def test_fixed_output_accepts_legacy_record_count_for_shared_hash_path(tmp_path:
     assert SnapshotCollector._is_complete_snapshot(fixed_root)
 
 
-def test_fixed_output_rejects_an_additional_page_and_preserves_previous_snapshot(
+def test_fixed_output_collects_an_additional_page_without_constant_change(
     tmp_path: Path,
 ) -> None:
     fixed_root = tmp_path / "data" / "ddrworld_music_snapshot"
@@ -417,12 +532,12 @@ def test_fixed_output_rejects_an_additional_page_and_preserves_previous_snapshot
         output_root=fixed_root,
         incomplete_root=incomplete_root,
         fixed_output=True,
-        page_count=1,
     )
     SnapshotCollector(
         config,
         fetcher=FakeFetcher(
             [
+                response(PAGE, "text/html"),
                 response(PAGE, "text/html"),
                 response(EMPTY_PAGE, "text/html"),
                 response(PNG, "image/png"),
@@ -431,26 +546,15 @@ def test_fixed_output_rejects_an_additional_page_and_preserves_previous_snapshot
         ),
         now=lambda: NOW,
     ).collect()
-    previous_summary = (fixed_root / "summary.json").read_bytes()
-
-    with pytest.raises(SnapshotError, match="snapshot is incomplete"):
-        SnapshotCollector(
-            SnapshotConfig(
-                snapshot_id="expanded",
-                output_root=fixed_root,
-                incomplete_root=incomplete_root,
-                fixed_output=True,
-                page_count=1,
-            ),
-            fetcher=FakeFetcher([response(PAGE, "text/html"), response(PAGE, "text/html")]),
-            now=lambda: NOW,
-        ).collect()
-
-    assert (fixed_root / "summary.json").read_bytes() == previous_summary
-    failures = json.loads(
-        (incomplete_root / "manifest.json").read_text(encoding="utf-8")
-    )["failures"]
-    assert failures[0]["resource"] == "pagination"
+    summary = json.loads((fixed_root / "summary.json").read_text(encoding="utf-8"))
+    manifest = json.loads((fixed_root / "manifest.json").read_text(encoding="utf-8"))
+    assert summary["page_request_count"] == 2
+    assert summary["song_count"] == 4
+    assert summary["terminal_offset"] == 2
+    assert manifest["source"]["offsets"] == [0, 1]
+    assert manifest["pagination"]["terminal_offset"] == 2
+    assert manifest["pagination"]["terminal_validation"] == "normal_empty_page"
+    assert not (fixed_root / "pages/page-02.html").exists()
 
 
 def test_fixed_output_rejects_shorter_catalog_and_keeps_incomplete_diagnostic(
@@ -465,7 +569,6 @@ def test_fixed_output_rejects_shorter_catalog_and_keeps_incomplete_diagnostic(
                 output_root=fixed_root,
                 incomplete_root=incomplete_root,
                 fixed_output=True,
-                page_count=1,
             ),
             fetcher=FakeFetcher([response(EMPTY_PAGE, "text/html")]),
             now=lambda: NOW,
@@ -474,10 +577,15 @@ def test_fixed_output_rejects_shorter_catalog_and_keeps_incomplete_diagnostic(
     failures = json.loads(
         (incomplete_root / "manifest.json").read_text(encoding="utf-8")
     )["failures"]
-    assert failures[0]["resource"] == "page"
+    assert failures[0]["resource"] == "pagination"
+    assert json.loads(
+        (incomplete_root / "manifest.json").read_text(encoding="utf-8")
+    )["pagination"]["terminal_offset"] == 0
 
 
-def test_fixed_output_rejects_pagination_probe_failure(tmp_path: Path) -> None:
+def test_fixed_output_rejects_page_failure_without_treating_it_as_terminal(
+    tmp_path: Path,
+) -> None:
     fixed_root = tmp_path / "data" / "ddrworld_music_snapshot"
     incomplete_root = tmp_path / "data" / "ddrworld_music_snapshot.incomplete"
 
@@ -488,7 +596,6 @@ def test_fixed_output_rejects_pagination_probe_failure(tmp_path: Path) -> None:
                 output_root=fixed_root,
                 incomplete_root=incomplete_root,
                 fixed_output=True,
-                page_count=1,
             ),
             fetcher=FakeFetcher(
                 [
@@ -502,7 +609,10 @@ def test_fixed_output_rejects_pagination_probe_failure(tmp_path: Path) -> None:
     failures = json.loads(
         (incomplete_root / "manifest.json").read_text(encoding="utf-8")
     )["failures"]
-    assert failures[0]["resource"] == "pagination"
+    assert failures[0]["resource"] == "page"
+    assert json.loads(
+        (incomplete_root / "manifest.json").read_text(encoding="utf-8")
+    )["pagination"]["terminal_offset"] is None
 
 
 def test_fixed_publish_success_survives_backup_cleanup_failure(
@@ -540,12 +650,17 @@ def test_fixed_publish_success_survives_backup_cleanup_failure(
 
 def test_image_content_type_must_match_signature(tmp_path: Path) -> None:
     fetcher = FakeFetcher(
-        [response(PAGE, "text/html"), response(PNG, "image/jpeg"), response(PNG, "image/png")]
+        [
+            response(PAGE, "text/html"),
+            response(EMPTY_PAGE, "text/html"),
+            response(PNG, "image/jpeg"),
+            response(PNG, "image/png"),
+        ]
     )
 
     with pytest.raises(SnapshotError, match="snapshot is incomplete"):
         SnapshotCollector(
-            SnapshotConfig(snapshot_id="mismatch", output_root=tmp_path, page_count=1),
+            SnapshotConfig(snapshot_id="mismatch", output_root=tmp_path),
             fetcher=fetcher,
             now=lambda: NOW,
         ).collect()
@@ -575,19 +690,19 @@ def test_fixed_fetch_does_not_require_a_user_snapshot_id() -> None:
 
 def test_plan_is_network_free_and_reports_upper_bound(capsys: pytest.CaptureFixture[str]) -> None:
     exit_code = main(
-        ["plan", "--page-count", "26", "--estimated-songs", "1300", "--delay-seconds", "2"]
+        ["plan", "--estimated-songs", "1300", "--delay-seconds", "2"]
     )
 
     assert exit_code == 0
     output = capsys.readouterr().out
-    assert "maximum requests: 1326" in output
-    assert "minimum inter-request wait: 2650.0 seconds" in output
+    assert "maximum requests: 1400" in output
+    assert "minimum inter-request wait: 2798.0 seconds" in output
+    assert "page safety limit: 100 requests" in output
     assert "existing outputs: never overwritten" in output
 
 
-def test_page_count_cannot_exceed_known_catalog_extent() -> None:
-    with pytest.raises(SnapshotError, match="between 1 and 26"):
-        SnapshotConfig(snapshot_id="too-many", page_count=27).validate()
+def test_page_collection_uses_the_fixed_safety_limit() -> None:
+    assert MAX_PAGE_COUNT == 100
 
 
 @pytest.mark.parametrize(

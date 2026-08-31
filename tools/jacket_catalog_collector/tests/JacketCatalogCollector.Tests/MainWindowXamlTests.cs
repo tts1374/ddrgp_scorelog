@@ -175,7 +175,7 @@ public sealed class MainWindowXamlTests
         var document = LoadMainWindow();
         var values = document
             .Descendants()
-            .Where(element => element.Name.LocalName is "TextBlock" or "Button")
+            .Where(element => element.Name.LocalName is "TextBlock" or "Button" or "ProgressBar")
             .SelectMany(element => element.Attributes().Select(attribute => attribute.Value))
             .ToList();
 
@@ -189,6 +189,8 @@ public sealed class MainWindowXamlTests
             "OfficialSnapshotPathDisplay", StringComparison.Ordinal));
         Assert.Contains(values, value => value.Contains(
             "OfficialSnapshotProgressDetailDisplay", StringComparison.Ordinal));
+        Assert.Contains(values, value => value.Contains(
+            "OfficialSnapshotProgressIsIndeterminate", StringComparison.Ordinal));
         Assert.Contains(values, value => value.Contains(
             "CanCancelOfficialSnapshot", StringComparison.Ordinal));
         Assert.DoesNotContain(values, value => value.Contains(

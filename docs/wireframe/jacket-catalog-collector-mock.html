@@ -112,10 +112,10 @@
 
   officialButton.addEventListener('click',()=>{
     current=0; progressBox.classList.add('active'); officialButton.disabled=true; masterButton.disabled=true; cancelButton.disabled=false;
-    progressFill.style.width='0%'; progressPercent.textContent='0%'; progressDetail.textContent='曲一覧を取得中… 0 / 26ページ';
-    let page=0;
+    progressFill.style.width='0%'; progressPercent.textContent='0%'; progressDetail.textContent='曲一覧を取得中… 0ページ（総ページ数を確認中）';
+    let page=0; const simulatedMusicPages=27;
     timer=setInterval(()=>{
-      if(page<26){page++; const pct=Math.round((page/26)*12); progressFill.style.width=pct+'%'; progressPercent.textContent=pct+'%'; progressDetail.textContent=`曲一覧を取得中… ${page} / 26ページ`; return;}
+      if(page<simulatedMusicPages){page++; const terminal=page===simulatedMusicPages; const pct=terminal?12:Math.min(11,Math.round((page/simulatedMusicPages)*12)); progressFill.style.width=pct+'%'; progressPercent.textContent=pct+'%'; progressDetail.textContent=terminal?`曲一覧を取得中… ${page} / ${page}ページ`:`曲一覧を取得中… ${page}ページ（総ページ数を確認中）`; return;}
       current=Math.min(total,current+37); const pct=12+Math.round((current/total)*88); progressFill.style.width=pct+'%'; progressPercent.textContent=pct+'%'; progressDetail.textContent=`ジャケットを取得中… ${current.toLocaleString()} / ${total.toLocaleString()}曲`;
       if(current>=total){clearInterval(timer); officialButton.disabled=false; masterButton.disabled=false; cancelButton.disabled=true; progressDetail.textContent=`取得・検証完了… ${total.toLocaleString()} / ${total.toLocaleString()}曲`; lastResult.innerHTML='<h4>最後の処理結果</h4><p style="color:#065f46">公式ジャケット情報を更新しました。</p><div>1,287曲 / 1,241画像</div><div class="note">固定配置先: data/ddrworld_music_snapshot</div>'; setTimeout(()=>{progressBox.classList.remove('active')},900);}
     },140);

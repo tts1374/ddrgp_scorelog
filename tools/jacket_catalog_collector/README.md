@@ -31,7 +31,7 @@ appは実行ファイルの配置場所からrepository rootを解決し、proce
 
 収集終了時の内部処理順は `保留確定 → matching評価 → auto-confirm一括transaction → projection再読込` です。画面には保存済み件数、新規登録件数、登録済み件数、反映失敗件数、保留件数を短く表示し、auto-confirmやcheckpointの内部件数は表示しません。完成済みDDR WORLD snapshotの`songs.jsonl`と32x32公式jacket画像をcurrent masterへ対応付けて公式feature masterを作り、収集したjacket特徴量へ既存のdistance threshold / ambiguity gateを適用します。他songと競合しないjacket top-1だけを`jacket_gate`として自動確定します。jacketで一意に決まらない行は、従来どおりprojectionの`exact_unique` / `alias_unique`だけを`ocr_title_artist_pair`として自動確定します。曖昧、候補なし、低confidence、評価失敗・評価不能、GP対象外などはjacket単独では自動確定せず、再読込後も未レビュー一覧に残ります。既存のauto/manual/rejected、revision、manual history、artifact、checkpointは上書きしません。同じ終了処理を再実行しても、同一根拠はno-opとして重複作成されません。
 
-6. `管理・設定` には公式ジャケット情報の更新日時、取得曲数、保存画像数、固定配置先を表示する。`公式ジャケット情報を更新` はネットワーク取得を開始する明示操作で、曲一覧取得後に取得済み曲数を表示し、続けてジャケット取得の進捗を表示する。キャンセルはrequest境界で停止し、既存の固定snapshot、master DB、catalog、reviewを変更しない。成功時だけ固定rootへ一式を公開し、master/catalog/reviewの自動確定やcatalog更新は行わない。
+6. `管理・設定` には公式ジャケット情報の更新日時、取得曲数、保存画像数、固定配置先を表示する。`公式ジャケット情報を更新` はネットワーク取得を開始する明示操作で、曲一覧をoffset 0から順次取得する。総ページ数が未確定の間は取得済みページ数だけを表示し、正常な空pageを確認した後に楽曲ページ数を確定して、続けてジャケット取得の進捗を表示する。キャンセルはrequest境界で停止し、既存の固定snapshot、master DB、catalog、reviewを変更しない。成功時だけ固定rootへ一式を公開し、master/catalog/reviewの自動確定やcatalog更新は行わない。
 
 detectorの内部状態は通常画面へ表示しません。同じ画像が連続する間も未保存のstable候補は保存可能なまま維持し、保存後は次の曲へ移動する案内を表示します。自動保存は起動時・fresh session・resumeのたびにOFFへ戻り、端末設定へ保存しません。session再開とcatalog retryは開発者向けの内部経路として保持しますが、通常画面には表示しません。管理・設定の通常更新ボタンは `曲情報を更新` と `公式ジャケット情報を更新` です。
 
@@ -88,7 +88,7 @@ python -X utf8 -m tools.vision_poc.near_jacket_inventory `
 
 - ヘッダーは `曲情報: <更新日時> 更新` と `ジャケット情報: v<version>` を表示する。更新日時はmaster metadataの`generated_at`であり、DBファイルのmtimeではない。
 - ヘッダーには `公式ジャケット: <更新日>` を追加し、管理・設定には公式snapshotの更新日時、取得曲数、保存画像数、固定配置先を表示する。未作成時は未作成として表示し、snapshot ID、source URL、hash、内部診断は通常画面へ出さない。
-- 管理・設定の `公式ジャケット情報を更新` は明示的なネットワーク操作で、`曲情報を更新` と同じ更新領域に配置する。取得中は曲一覧のページ進捗、HTML解析後にジャケットの `取得済み曲数 / 総曲数` を表示し、キャンセルボタンを提供する。
+- 管理・設定の `公式ジャケット情報を更新` は明示的なネットワーク操作で、`曲情報を更新` と同じ更新領域に配置する。取得中は曲一覧のページ進捗を表示し、総ページ数が未確定の間は推測値を表示しない。正常な空pageを確認してから、HTML解析後にジャケットの `取得済み曲数 / 総曲数` を表示し、キャンセルボタンを提供する。
 - 収集状況は `収集済み`、`レビュー待ち`、`未収集`、`曲未特定`、`曲情報外`を日本語で表示し、状態だけをfilterできる。曲を選ぶと登録済みreferenceの画像、状態、登録経路、登録日時を確認できる。理由の内部値、hash、identity、revisionは通常画面へ出さない。
 - 一覧は `状態 / 曲名 / アーティスト / 登録ジャケット数 / 理由 / song ID` とし、`reference_count`を登録ジャケット数として表示する。
 - 状態・理由に未定義値があれば処理を止めず `不明: <内部値>` と表示する。詳細な診断はlocal logで確認する。
@@ -112,7 +112,7 @@ repository rootはアプリ配置場所の親directoryを`.git`まで探索し�
 <repository-root>/databases/jacket-catalog.sqlite
 ```
 
-公式ジャケットsnapshotの固定rootは次の構成です。取得中は隣の`.incomplete` rootを使い、検証成功時だけ固定rootを一式で置き換えます。起動時の既存snapshot読込はread-onlyです。
+公式ジャケットsnapshotの固定rootは次の構成です。取得中は隣の`.incomplete` rootを使い、検証成功時だけ固定rootを一式で置き換えます。起動時の既存snapshot読込はread-onlyです。pageはoffset 0から連番で取得し、楽曲行を含むpageだけを保存します。正常な公式構造を持つ0件pageを終端確認とし、終端pageはsnapshotのpage数・曲数・保存HTMLへ含めません。安全上限は100 page requestで、HTTP、content type、構造検証、楽曲行解析の失敗や上限超過では既存snapshotを維持します。
 
 ```text
 <repository-root>/data/ddrworld_music_snapshot/

@@ -8,7 +8,7 @@ namespace JacketCatalogCollector;
 public sealed record OfficialJacketSnapshotProgress(
     string Phase,
     int Completed,
-    int Total);
+    int? Total);
 
 public sealed record OfficialJacketSnapshotMetadata(
     string SnapshotId,
@@ -403,15 +403,35 @@ public sealed class PythonOfficialJacketSnapshotService(
         {
             using var document = JsonDocument.Parse(line);
             var root = document.RootElement;
-            if (!root.TryGetProperty("event", out var eventName)
+            if (root.ValueKind != JsonValueKind.Object
+                || !root.TryGetProperty("event", out var eventName)
+                || eventName.ValueKind != JsonValueKind.String
                 || eventName.GetString() != "progress")
             {
                 return;
             }
-            var phase = root.GetProperty("phase").GetString();
-            var completed = root.GetProperty("completed").GetInt32();
-            var total = root.GetProperty("total").GetInt32();
-            if (phase is not ("pages" or "jackets") || completed < 0 || total < 0)
+            if (!root.TryGetProperty("phase", out var phaseValue)
+                || phaseValue.ValueKind != JsonValueKind.String
+                || !root.TryGetProperty("completed", out var completedValue)
+                || completedValue.ValueKind != JsonValueKind.Number
+                || !completedValue.TryGetInt32(out var completed)
+                || !root.TryGetProperty("total", out var totalValue))
+            {
+                throw new InvalidDataException("progress event is invalid.");
+            }
+            var phase = phaseValue.GetString();
+            int? total = totalValue.ValueKind switch
+            {
+                JsonValueKind.Null => null,
+                JsonValueKind.Number when totalValue.TryGetInt32(out var parsedTotal)
+                    => parsedTotal,
+                _ => throw new InvalidDataException("progress event is invalid."),
+            };
+            if (phase is not ("pages" or "jackets")
+                || completed < 0
+                || (total.HasValue && total.Value < 0)
+                || (total.HasValue && completed > total.Value)
+                || (phase == "jackets" && !total.HasValue))
             {
                 throw new InvalidDataException("progress event is invalid.");
             }

@@ -68,7 +68,8 @@ public sealed class OfficialJacketSnapshotServiceTests : IDisposable
         var snapshotRoot = Path.Combine(root, "data", "ddrworld_music_snapshot");
         WriteCompleteSnapshot(snapshotRoot, "official-v2", 2, 1);
         var runner = new StreamingRunner(
-            "{\"event\":\"progress\",\"phase\":\"pages\",\"completed\":0,\"total\":26}",
+            "{\"event\":\"progress\",\"phase\":\"pages\",\"completed\":0,\"total\":null}",
+            "{\"event\":\"progress\",\"phase\":\"pages\",\"completed\":27,\"total\":27}",
             "{\"event\":\"progress\",\"phase\":\"jackets\",\"completed\":463,\"total\":1287}");
         var service = new PythonOfficialJacketSnapshotService(
             runner,
@@ -82,7 +83,8 @@ public sealed class OfficialJacketSnapshotServiceTests : IDisposable
         Assert.Equal("official-v2", result.Metadata.SnapshotId);
         Assert.Equal(
             [
-                new OfficialJacketSnapshotProgress("pages", 0, 26),
+                new OfficialJacketSnapshotProgress("pages", 0, null),
+                new OfficialJacketSnapshotProgress("pages", 27, 27),
                 new OfficialJacketSnapshotProgress("jackets", 463, 1287),
             ],
             progress);

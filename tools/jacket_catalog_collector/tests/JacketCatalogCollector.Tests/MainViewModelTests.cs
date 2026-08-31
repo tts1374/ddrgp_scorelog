@@ -120,7 +120,8 @@ public sealed class MainViewModelTests
         Assert.Equal(2, projectionService.Loads.Count);
         Assert.Equal(
             [
-                new OfficialJacketSnapshotProgress("pages", 1, 2),
+                new OfficialJacketSnapshotProgress("pages", 0, null),
+                new OfficialJacketSnapshotProgress("pages", 27, 27),
                 new OfficialJacketSnapshotProgress("jackets", 1241, 1287),
             ],
             official.Progresses);
@@ -1401,10 +1402,13 @@ public sealed class MainViewModelTests
                 return Task.FromException<OfficialJacketSnapshotUpdateResult>(updateException);
             }
 
-            var pageProgress = new OfficialJacketSnapshotProgress("pages", 1, 2);
+            var unknownPageProgress = new OfficialJacketSnapshotProgress("pages", 0, null);
+            var pageProgress = new OfficialJacketSnapshotProgress("pages", 27, 27);
             var jacketProgress = new OfficialJacketSnapshotProgress("jackets", 1241, 1287);
+            Progresses.Add(unknownPageProgress);
             Progresses.Add(pageProgress);
             Progresses.Add(jacketProgress);
+            progress?.Report(unknownPageProgress);
             progress?.Report(pageProgress);
             progress?.Report(jacketProgress);
             return Task.FromResult(new OfficialJacketSnapshotUpdateResult(

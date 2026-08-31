@@ -8,7 +8,7 @@ from pathlib import Path
 
 from .collector import (
     DEFAULT_DELAY_SECONDS,
-    DEFAULT_PAGE_COUNT,
+    MAX_PAGE_COUNT,
     SnapshotCancelled,
     SnapshotCollector,
     SnapshotConfig,
@@ -24,7 +24,6 @@ def build_parser() -> argparse.ArgumentParser:
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
     plan = subparsers.add_parser("plan", help="Print a network-free request and wait estimate.")
-    plan.add_argument("--page-count", type=int, default=DEFAULT_PAGE_COUNT)
     plan.add_argument("--estimated-songs", type=int, default=1300)
     plan.add_argument("--delay-seconds", type=float, default=DEFAULT_DELAY_SECONDS)
     plan.add_argument("--snapshot-id", default="YYYYMMDDTHHMMSSZ")
@@ -49,7 +48,6 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Emit newline-delimited JSON progress events on stdout.",
     )
-    fetch.add_argument("--page-count", type=int, default=DEFAULT_PAGE_COUNT)
     fetch.add_argument("--delay-seconds", type=float, default=DEFAULT_DELAY_SECONDS)
     fetch.add_argument("--connect-timeout-seconds", type=float, default=10.0)
     fetch.add_argument("--read-timeout-seconds", type=float, default=30.0)
@@ -65,7 +63,6 @@ def config_from_args(args: argparse.Namespace) -> SnapshotConfig:
     return SnapshotConfig(
         snapshot_id=snapshot_id or "plan",
         output_root=args.output_root,
-        page_count=args.page_count,
         delay_seconds=args.delay_seconds,
         connect_timeout_seconds=getattr(args, "connect_timeout_seconds", 10.0),
         read_timeout_seconds=getattr(args, "read_timeout_seconds", 30.0),
@@ -91,6 +88,7 @@ def main(argv: list[str] | None = None) -> int:
             for label, count in request_plan:
                 print(f"{label} requests: {count}")
             print(f"maximum requests: {total_requests}")
+            print(f"page safety limit: {MAX_PAGE_COUNT} requests")
             print(f"minimum inter-request wait: {minimum_wait_seconds:.1f} seconds")
             print("concurrency: 1; automatic retries: 0; existing outputs: never overwritten")
             return 0
