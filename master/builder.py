@@ -32,7 +32,7 @@ DDRWORLD_MUSIC_SOURCE_URL = (
 DDRWORLD_SOURCE_ORIGIN = "https://p.eagate.573.jp"
 DDRWORLD_SOURCE_PATH = "/game/ddr/ddrworld/music/index.html"
 DDRWORLD_MAX_PAGE_COUNT = 100
-PARSER_VERSION = "m4-ddrworld-chart-priority-v1"
+PARSER_VERSION = "m4-ddrworld-chart-priority-v2"
 DDRWORLD_MERGE_REPORT_SCHEMA = "ddrworld-chart-merge-report-v1"
 DDRWORLD_MERGE_STATUSES = (
     "official_override",
@@ -424,6 +424,38 @@ def has_shock_arrow(raw_level: str) -> bool:
     return any(token in raw_level for token in ("→", "SA", "Shock", "ショック"))
 
 
+def _parse_ddrworld_chart(
+    raw_level: str,
+    *,
+    page_offset: int,
+    row_position: int,
+    play_style: str,
+    difficulty: str,
+) -> DdrWorldChart | None:
+    normalized_level = normalize_text(raw_level)
+    style_label = {"SINGLE": "SP", "DOUBLE": "DP"}[play_style]
+    if not normalized_level:
+        raise ValueError(
+            f"DDR WORLD page {page_offset} row {row_position} has an empty "
+            f"{style_label} {difficulty} level"
+        )
+    if normalized_level == "-":
+        return None
+    level = parse_level(normalized_level)
+    if level is None or not 1 <= level <= 19:
+        raise ValueError(
+            f"DDR WORLD page {page_offset} row {row_position} has an invalid "
+            f"{style_label} {difficulty} level: {normalized_level}"
+        )
+    return DdrWorldChart(
+        play_style=play_style,
+        difficulty=difficulty,
+        level=level,
+        raw_level=normalized_level,
+        shock_arrow=has_shock_arrow(normalized_level),
+    )
+
+
 def parse_soup(html: str | bytes) -> BeautifulSoup:
     try:
         return BeautifulSoup(html, "lxml")
@@ -438,11 +470,28 @@ def parse_ddrworld_music_page(
     page_url: str = DDRWORLD_MUSIC_SOURCE_URL,
     allow_empty: bool = False,
 ) -> tuple[DdrWorldSong, ...]:
-    """Parse one current DDR WORLD music page, including SP/DP chart levels."""
+    """Parse one DDR WORLD music page, including SP/DP chart levels."""
     soup = parse_soup(html)
-    table = soup.find("table", class_="table-ui")
-    if table is None:
-        raise ValueError(f"DDR WORLD page {page_offset} is missing the official music table")
+    current_tables = soup.find_all("table", class_="table-ui")
+    legacy_tables = soup.find_all("table", id="data_tbl")
+    candidate_tables: list[Any] = []
+    for candidate in (*current_tables, *legacy_tables):
+        if not any(candidate is table for table in candidate_tables):
+            candidate_tables.append(candidate)
+    if len(candidate_tables) != 1:
+        if not candidate_tables:
+            raise ValueError(
+                f"DDR WORLD page {page_offset} is missing the official music table"
+            )
+        raise ValueError(
+            f"DDR WORLD page {page_offset} contains multiple official music tables"
+        )
+    table = candidate_tables[0]
+    table_variant = (
+        "current"
+        if any(table is candidate for candidate in current_tables)
+        else "legacy"
+    )
 
     rows = table.select("tr.data")
     if not rows:
@@ -457,8 +506,8 @@ def parse_ddrworld_music_page(
 
     songs: list[DdrWorldSong] = []
     for position, row in enumerate(rows):
-        title_cell = row.select_one(".music-title")
-        artist_cell = row.select_one(".artist")
+        title_cell = row.select_one(".music-title, .music_tit")
+        artist_cell = row.select_one(".artist, .artist_nam")
         title = normalize_text(title_cell.get_text(" ", strip=True)) if title_cell else ""
         artist = normalize_text(artist_cell.get_text(" ", strip=True)) if artist_cell else ""
         missing = [
@@ -473,59 +522,136 @@ def parse_ddrworld_music_page(
 
         charts: list[DdrWorldChart] = []
         seen_chart_keys: set[tuple[str, str]] = set()
-        containers = row.select(".diff-style-container")
-        if not containers:
-            raise ValueError(
-                f"DDR WORLD page {page_offset} row {position} is missing chart containers"
-            )
-        for container in containers:
-            label = container.select_one(".label")
-            style_label = normalize_text(label.get_text(" ", strip=True)) if label else ""
-            play_style = {"SP": "SINGLE", "DP": "DOUBLE"}.get(style_label)
-            if play_style is None:
+        expected_play_styles = set(DIFFICULTIES_BY_STYLE)
+        expected_chart_count = sum(
+            len(difficulties) for difficulties in DIFFICULTIES_BY_STYLE.values()
+        )
+
+        if table_variant == "legacy":
+            legacy_cells = row.select("td.difficult")
+            if len(legacy_cells) != expected_chart_count:
                 raise ValueError(
-                    f"DDR WORLD page {page_offset} row {position} has an invalid play style"
+                    f"DDR WORLD page {page_offset} row {position} has an invalid "
+                    f"legacy difficulty cell count: expected {expected_chart_count}, "
+                    f"found {len(legacy_cells)}"
                 )
-            for difficulty in DIFFICULTIES_BY_STYLE[play_style]:
-                diff_nodes = container.select(f".diff.{difficulty}")
-                if len(diff_nodes) > 1:
-                    raise ValueError(
-                        f"DDR WORLD page {page_offset} row {position} repeats "
-                        f"{style_label} {difficulty}"
-                    )
-                if not diff_nodes:
-                    continue
-                level_node = diff_nodes[0].select_one(".level")
-                if level_node is None:
-                    raise ValueError(
-                        f"DDR WORLD page {page_offset} row {position} is missing "
-                        f"{style_label} {difficulty} level"
-                    )
-                raw_level = normalize_text(level_node.get_text(" ", strip=True))
-                level = parse_level(raw_level)
-                if level is None:
-                    continue
-                if not 1 <= level <= 19:
-                    raise ValueError(
-                        f"DDR WORLD page {page_offset} row {position} has an invalid "
-                        f"{style_label} {difficulty} level: {raw_level}"
-                    )
-                chart_key = (play_style, difficulty)
-                if chart_key in seen_chart_keys:
-                    raise ValueError(
-                        f"DDR WORLD page {page_offset} row {position} repeats "
-                        f"{style_label} {difficulty}"
-                    )
-                seen_chart_keys.add(chart_key)
-                charts.append(
-                    DdrWorldChart(
+            legacy_codes = {
+                "BEGINNER": "be",
+                "BASIC": "ba",
+                "DIFFICULT": "di",
+                "EXPERT": "ex",
+                "CHALLENGE": "ch",
+            }
+            cell_index = 0
+            for play_style, difficulties in DIFFICULTIES_BY_STYLE.items():
+                for difficulty in difficulties:
+                    cell = legacy_cells[cell_index]
+                    cell_index += 1
+                    expected_code = legacy_codes[difficulty]
+                    cell_codes = {
+                        code
+                        for code in legacy_codes.values()
+                        if code in set(cell.get("class", ()))
+                    }
+                    if cell_codes != {expected_code}:
+                        style_label = {"SINGLE": "SP", "DOUBLE": "DP"}[play_style]
+                        raise ValueError(
+                            f"DDR WORLD page {page_offset} row {position} has an invalid "
+                            f"legacy {style_label} {difficulty} cell"
+                        )
+                    chart = _parse_ddrworld_chart(
+                        cell.get_text(" ", strip=True),
+                        page_offset=page_offset,
+                        row_position=position,
                         play_style=play_style,
                         difficulty=difficulty,
-                        level=level,
-                        raw_level=raw_level,
-                        shock_arrow=has_shock_arrow(raw_level),
                     )
+                    if chart is None:
+                        continue
+                    chart_key = (chart.play_style, chart.difficulty)
+                    if chart_key in seen_chart_keys:
+                        raise ValueError(
+                            f"DDR WORLD page {page_offset} row {position} repeats "
+                            f"{style_label} {difficulty}"
+                        )
+                    seen_chart_keys.add(chart_key)
+                    charts.append(chart)
+            seen_play_styles = expected_play_styles
+        else:
+            containers = row.select(".diff-style-container")
+            if len(containers) != len(expected_play_styles):
+                raise ValueError(
+                    f"DDR WORLD page {page_offset} row {position} has an invalid chart "
+                    f"container count: expected {len(expected_play_styles)}, "
+                    f"found {len(containers)}"
                 )
+            seen_play_styles = set()
+            for container in containers:
+                label = container.select_one(".label")
+                style_label = normalize_text(label.get_text(" ", strip=True)) if label else ""
+                play_style = {"SP": "SINGLE", "DP": "DOUBLE"}.get(style_label)
+                if play_style is None:
+                    raise ValueError(
+                        f"DDR WORLD page {page_offset} row {position} has an invalid play style"
+                    )
+                if play_style in seen_play_styles:
+                    raise ValueError(
+                        f"DDR WORLD page {page_offset} row {position} repeats {style_label}"
+                    )
+                seen_play_styles.add(play_style)
+                expected_difficulties = DIFFICULTIES_BY_STYLE[play_style]
+                for diff_node in container.select(".diff"):
+                    matched_difficulties = [
+                        difficulty
+                        for difficulty in expected_difficulties
+                        if difficulty in set(diff_node.get("class", ()))
+                    ]
+                    if len(matched_difficulties) != 1:
+                        raise ValueError(
+                            f"DDR WORLD page {page_offset} row {position} has an invalid "
+                            f"{style_label} difficulty cell"
+                        )
+                for difficulty in expected_difficulties:
+                    diff_nodes = container.select(f".diff.{difficulty}")
+                    if len(diff_nodes) != 1:
+                        raise ValueError(
+                            f"DDR WORLD page {page_offset} row {position} must contain "
+                            f"exactly one {style_label} {difficulty} cell"
+                        )
+                    level_node = diff_nodes[0].select_one(".level")
+                    if level_node is None:
+                        raise ValueError(
+                            f"DDR WORLD page {page_offset} row {position} is missing "
+                            f"{style_label} {difficulty} level"
+                        )
+                    chart = _parse_ddrworld_chart(
+                        level_node.get_text(" ", strip=True),
+                        page_offset=page_offset,
+                        row_position=position,
+                        play_style=play_style,
+                        difficulty=difficulty,
+                    )
+                    if chart is None:
+                        continue
+                    chart_key = (chart.play_style, chart.difficulty)
+                    if chart_key in seen_chart_keys:
+                        raise ValueError(
+                            f"DDR WORLD page {page_offset} row {position} repeats "
+                            f"{style_label} {difficulty}"
+                        )
+                    seen_chart_keys.add(chart_key)
+                    charts.append(chart)
+        if seen_play_styles != expected_play_styles:
+            missing_styles = sorted(expected_play_styles - seen_play_styles)
+            raise ValueError(
+                f"DDR WORLD page {page_offset} row {position} is missing play styles: "
+                f"{', '.join(missing_styles)}"
+            )
+        if not charts or len(charts) > expected_chart_count:
+            raise ValueError(
+                f"DDR WORLD page {page_offset} row {position} has an implausible "
+                f"chart count: {len(charts)}"
+            )
         songs.append(
             DdrWorldSong(
                 source_page=page_offset,

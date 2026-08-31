@@ -7,6 +7,8 @@ from dataclasses import replace
 from html import escape
 from pathlib import Path
 
+import pytest
+
 from master import builder
 from master import inspect as master_inspect
 
@@ -354,6 +356,38 @@ def _ddrworld_row(
     )
 
 
+def _ddrworld_legacy_row(
+    title: str,
+    artist: str,
+    single: tuple[int | None, ...],
+    double: tuple[int | None, ...],
+) -> str:
+    difficulty_codes = {
+        "BEGINNER": "be",
+        "BASIC": "ba",
+        "DIFFICULT": "di",
+        "EXPERT": "ex",
+        "CHALLENGE": "ch",
+    }
+
+    def difficulty_cells(play_style: str, levels: tuple[int | None, ...]) -> str:
+        return "".join(
+            f'<td class="difficult {difficulty_codes[difficulty]}">'
+            f'{"-" if level is None else level}</td>'
+            for difficulty, level in zip(
+                builder.DIFFICULTIES_BY_STYLE[play_style], levels, strict=True
+            )
+        )
+
+    return (
+        '<tr class="data"><td class="jk"><img src="/jacket.png"></td>'
+        f'<td class="music_tit">{escape(title)}</td>'
+        f'<td class="artist_nam">{escape(artist)}</td>'
+        f'{difficulty_cells("SINGLE", single)}{difficulty_cells("DOUBLE", double)}'
+        "</tr>"
+    )
+
+
 DDRWORLD_REGRESSION_HTML = (
     '<!doctype html><html><body><table class="table-ui"><tbody>'
     + _ddrworld_row(
@@ -375,6 +409,34 @@ DDRWORLD_REGRESSION_HTML = (
         (6, 11, 14, 16),
     )
     + _ddrworld_row("WORLD ONLY", "World Artist", (1, 3, 5, 7, None), (3, 5, 7, None))
+    + "</tbody></table></body></html>"
+)
+DDRWORLD_LEGACY_REGRESSION_HTML = (
+    '<!doctype html><html><body><table id="data_tbl"><tbody>'
+    + _ddrworld_legacy_row(
+        "Sucka Luva",
+        "Harmony Machine",
+        (2, 5, 8, 11, None),
+        (5, 9, 11, None),
+    )
+    + _ddrworld_legacy_row(
+        "Din Don Dan (にじさんじダンス部 ver.)",
+        "レイン・パターソン & 山神カルタ & 東堂コハク",
+        (1, 3, 9, 12, 16),
+        (3, 9, 12, 16),
+    )
+    + _ddrworld_legacy_row(
+        "打打打打打打打打打打 (にじさんじダンス部 ver.)",
+        "長尾景 & 倉持めると & セラフ・ダズルガーデン",
+        (2, 5, 10, 14, 16),
+        (6, 11, 14, 16),
+    )
+    + _ddrworld_legacy_row(
+        "WORLD ONLY",
+        "World Artist",
+        (1, 3, 5, 7, None),
+        (3, 5, 7, None),
+    )
     + "</tbody></table></body></html>"
 )
 
@@ -441,6 +503,46 @@ def test_parse_ddrworld_music_page_extracts_sp_and_dp_levels() -> None:
     }
     assert source.chart_count == sum(len(song.charts) for song in source.songs)
     assert len(source.snapshot.content_hash) == 64
+
+
+def test_parse_ddrworld_music_page_accepts_legacy_table_with_chart_levels() -> None:
+    source = builder.ddrworld_source_from_html(DDRWORLD_LEGACY_REGRESSION_HTML)
+
+    sucka = next(song for song in source.songs if song.title == "Sucka Luva")
+    assert len(sucka.charts) == 7
+    assert source.chart_count == sum(len(song.charts) for song in source.songs)
+
+
+@pytest.mark.parametrize(
+    ("broken_html", "message"),
+    [
+        (
+            DDRWORLD_REGRESSION_HTML.replace(
+                '<div class="diff EXPERT"><span>Lv. </span><div class="level">11</div></div>',
+                "",
+                1,
+            ),
+            "exactly one SP EXPERT cell",
+        ),
+        (
+            DDRWORLD_REGRESSION_HTML.replace(
+                '<div class="level">2</div>', '<div class="level">?</div>', 1
+            ),
+            "invalid SP BEGINNER level",
+        ),
+        (
+            DDRWORLD_REGRESSION_HTML.replace(
+                '<div class="level">5</div>', '<div class="level"></div>', 1
+            ),
+            "empty SP BASIC level",
+        ),
+    ],
+)
+def test_parse_ddrworld_music_page_fails_closed_on_broken_chart_structure(
+    broken_html: str, message: str
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        builder.ddrworld_source_from_html(broken_html)
 
 
 def test_ddrworld_priority_adds_gp_charts_without_promoting_world_only_song(
@@ -530,17 +632,27 @@ def test_ddrworld_priority_adds_gp_charts_without_promoting_world_only_song(
     assert summary["referential_integrity_error_count"] == 0
 
 
-def test_ddrworld_snapshot_loader_validates_collector_contract(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    ("page_html", "snapshot_id"),
+    [
+        (DDRWORLD_REGRESSION_HTML, "fixture-snapshot-current"),
+        (DDRWORLD_LEGACY_REGRESSION_HTML, "fixture-snapshot-legacy"),
+    ],
+    ids=["current", "legacy"],
+)
+def test_ddrworld_snapshot_loader_validates_collector_contract(
+    tmp_path: Path, page_html: str, snapshot_id: str
+) -> None:
     page_url = (
         "https://p.eagate.573.jp/game/ddr/ddrworld/music/index.html?"
         "offset=0&filter=7&filtertype=0&playmode=2"
     )
     page_path = tmp_path / "pages" / "page-00.html"
     page_path.parent.mkdir()
-    page_path.write_bytes(DDRWORLD_REGRESSION_HTML.encode("utf-8"))
+    page_path.write_bytes(page_html.encode("utf-8"))
     page_hash = hashlib.sha256(page_path.read_bytes()).hexdigest()
     page_songs = builder.parse_ddrworld_music_page(
-        DDRWORLD_REGRESSION_HTML,
+        page_html,
         page_offset=0,
         page_url=page_url,
     )
@@ -565,7 +677,7 @@ def test_ddrworld_snapshot_loader_validates_collector_contract(tmp_path: Path) -
     manifest = {
         "schema_version": "ddrworld-music-snapshot-manifest-v1",
         "status": "complete",
-        "snapshot_id": "fixture-snapshot",
+        "snapshot_id": snapshot_id,
         "collector_version": "ddrworld-music-snapshot-v1",
         "source": {
             "origin": builder.DDRWORLD_SOURCE_ORIGIN,
@@ -603,7 +715,7 @@ def test_ddrworld_snapshot_loader_validates_collector_contract(tmp_path: Path) -
     summary = {
         "schema_version": "ddrworld-music-snapshot-summary-v1",
         "status": "complete",
-        "snapshot_id": "fixture-snapshot",
+        "snapshot_id": snapshot_id,
         "request_count": 2,
         "page_request_count": 1,
         "terminal_offset": 1,
@@ -627,7 +739,7 @@ def test_ddrworld_snapshot_loader_validates_collector_contract(tmp_path: Path) -
     )
 
     loaded = builder.load_ddrworld_snapshot(tmp_path)
-    assert loaded.snapshot_id == "fixture-snapshot"
+    assert loaded.snapshot_id == snapshot_id
     assert loaded.page_count == 1
     assert loaded.chart_count == sum(len(song.charts) for song in loaded.songs)
     assert loaded.snapshot.source_url == builder.DDRWORLD_MUSIC_SOURCE_URL
