@@ -1,8 +1,13 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import sqlite3
+from dataclasses import replace
+from html import escape
 from pathlib import Path
+
+import pytest
 
 from master import builder
 from master import inspect as master_inspect
@@ -324,6 +329,710 @@ OFFICIAL_GP_ONLY_FIXTURE_HTML = """
 </body>
 </html>
 """
+
+
+def _ddrworld_row(
+    title: str,
+    artist: str,
+    single: tuple[int | None, ...],
+    double: tuple[int | None, ...],
+) -> str:
+    def style_row(label: str, levels: tuple[int | None, ...]) -> str:
+        style = {"SP": "SINGLE", "DP": "DOUBLE"}[label]
+        values = "".join(
+            f'<div class="diff {difficulty}"><span>Lv. </span><div class="level">'
+            f'{"-" if level is None else level}</div></div>'
+            for difficulty, level in zip(
+                builder.DIFFICULTIES_BY_STYLE[style], levels, strict=True
+            )
+        )
+        return f'<div class="diff-style-container"><div class="label">{label}</div>{values}</div>'
+
+    return (
+        '<tr class="data"><td class="chart"><div class="music-container">'
+        f'<div class="music-title">{escape(title)}</div><div class="artist">{escape(artist)}</div>'
+        f'{style_row("SP", single)}{style_row("DP", double)}'
+        "</div></td></tr>"
+    )
+
+
+def _ddrworld_legacy_row(
+    title: str,
+    artist: str,
+    single: tuple[int | None, ...],
+    double: tuple[int | None, ...],
+) -> str:
+    difficulty_codes = {
+        "BEGINNER": "be",
+        "BASIC": "ba",
+        "DIFFICULT": "di",
+        "EXPERT": "ex",
+        "CHALLENGE": "ch",
+    }
+
+    def difficulty_cells(play_style: str, levels: tuple[int | None, ...]) -> str:
+        return "".join(
+            f'<td class="difficult {difficulty_codes[difficulty]}">'
+            f'{"-" if level is None else level}</td>'
+            for difficulty, level in zip(
+                builder.DIFFICULTIES_BY_STYLE[play_style], levels, strict=True
+            )
+        )
+
+    return (
+        '<tr class="data"><td class="jk"><img src="/jacket.png"></td>'
+        f'<td class="music_tit">{escape(title)}</td>'
+        f'<td class="artist_nam">{escape(artist)}</td>'
+        f'{difficulty_cells("SINGLE", single)}{difficulty_cells("DOUBLE", double)}'
+        "</tr>"
+    )
+
+
+DDRWORLD_REGRESSION_HTML = (
+    '<!doctype html><html><body><table class="table-ui"><tbody>'
+    + _ddrworld_row(
+        "Sucka Luva",
+        "Harmony Machine",
+        (2, 5, 8, 11, None),
+        (5, 9, 11, None),
+    )
+    + _ddrworld_row(
+        "Din Don Dan (にじさんじダンス部 ver.)",
+        "レイン・パターソン & 山神カルタ & 東堂コハク",
+        (1, 3, 9, 12, 16),
+        (3, 9, 12, 16),
+    )
+    + _ddrworld_row(
+        "打打打打打打打打打打 (にじさんじダンス部 ver.)",
+        "長尾景 & 倉持めると & セラフ・ダズルガーデン",
+        (2, 5, 10, 14, 16),
+        (6, 11, 14, 16),
+    )
+    + _ddrworld_row("WORLD ONLY", "World Artist", (1, 3, 5, 7, None), (3, 5, 7, None))
+    + "</tbody></table></body></html>"
+)
+DDRWORLD_LEGACY_REGRESSION_HTML = (
+    '<!doctype html><html><body><table id="data_tbl"><tbody>'
+    + _ddrworld_legacy_row(
+        "Sucka Luva",
+        "Harmony Machine",
+        (2, 5, 8, 11, None),
+        (5, 9, 11, None),
+    )
+    + _ddrworld_legacy_row(
+        "Din Don Dan (にじさんじダンス部 ver.)",
+        "レイン・パターソン & 山神カルタ & 東堂コハク",
+        (1, 3, 9, 12, 16),
+        (3, 9, 12, 16),
+    )
+    + _ddrworld_legacy_row(
+        "打打打打打打打打打打 (にじさんじダンス部 ver.)",
+        "長尾景 & 倉持めると & セラフ・ダズルガーデン",
+        (2, 5, 10, 14, 16),
+        (6, 11, 14, 16),
+    )
+    + _ddrworld_legacy_row(
+        "WORLD ONLY",
+        "World Artist",
+        (1, 3, 5, 7, None),
+        (3, 5, 7, None),
+    )
+    + "</tbody></table></body></html>"
+)
+
+REGRESSION_WIKI_HTML = FIXTURE_HTML.replace(
+    '<tr><td colspan="15">DanceDanceRevolution WORLD</td></tr>',
+    """
+  <tr><td colspan="15">DanceDanceRevolution WORLD</td></tr>
+  <tr>
+    <td>GP</td><td>7 Colors</td><td>kors k feat.吉河順央</td><td>DDR GP</td><td>150</td><td>-</td>
+    <td>2</td><td>5</td><td>11</td><td>14</td><td>16</td>
+    <td>5</td><td>11</td><td>14</td><td>16</td>
+  </tr>
+  <tr>
+    <td>GP</td><td>Sucka Luva</td><td>Harmony Machine</td><td>DDR GP</td><td>128</td><td>-</td>
+    <td>1</td><td>4</td><td>7</td><td>11</td><td>-</td>
+    <td>5</td><td>8</td><td>11</td><td>-</td>
+  </tr>
+""",
+)
+
+OFFICIAL_REGRESSION_HTML = """
+<!doctype html>
+<html>
+<body>
+<table class="m_list">
+  <tr><th>タイトル</th><th>アーティスト</th><th>フリープレー</th><th>グランプリプレー</th></tr>
+  <tr><td>7 Colors</td><td>kors k feat.吉河順央</td><td></td><td>〇</td></tr>
+  <tr><td>Sucka Luva</td><td>Harmony Machine</td><td>〇</td><td>〇</td></tr>
+  <tr>
+    <td>Din Don Dan (にじさんじダンス部 ver.)</td>
+    <td>レイン・パターソン &amp; 山神カルタ &amp; 東堂コハク</td>
+    <td></td><td>〇</td>
+  </tr>
+  <tr>
+    <td>打打打打打打打打打打 (にじさんじダンス部 ver.)</td>
+    <td>長尾景 &amp; 倉持めると &amp; セラフ・ダズルガーデン</td>
+    <td></td><td>〇</td>
+  </tr>
+</table>
+</body>
+</html>
+"""
+
+
+def test_parse_ddrworld_music_page_extracts_sp_and_dp_levels() -> None:
+    source = builder.ddrworld_source_from_html(
+        DDRWORLD_REGRESSION_HTML,
+        source_url=builder.DDRWORLD_MUSIC_SOURCE_URL,
+        fetched_at="2026-08-31T00:00:00+00:00",
+    )
+
+    sucka = next(song for song in source.songs if song.title == "Sucka Luva")
+    assert {
+        (chart.play_style, chart.difficulty, chart.level)
+        for chart in sucka.charts
+    } == {
+        ("SINGLE", "BEGINNER", 2),
+        ("SINGLE", "BASIC", 5),
+        ("SINGLE", "DIFFICULT", 8),
+        ("SINGLE", "EXPERT", 11),
+        ("DOUBLE", "BASIC", 5),
+        ("DOUBLE", "DIFFICULT", 9),
+        ("DOUBLE", "EXPERT", 11),
+    }
+    assert source.chart_count == sum(len(song.charts) for song in source.songs)
+    assert len(source.snapshot.content_hash) == 64
+
+
+def test_parse_ddrworld_music_page_accepts_legacy_table_with_chart_levels() -> None:
+    source = builder.ddrworld_source_from_html(DDRWORLD_LEGACY_REGRESSION_HTML)
+
+    sucka = next(song for song in source.songs if song.title == "Sucka Luva")
+    assert len(sucka.charts) == 7
+    assert source.chart_count == sum(len(song.charts) for song in source.songs)
+
+
+@pytest.mark.parametrize(
+    ("broken_html", "message"),
+    [
+        (
+            DDRWORLD_REGRESSION_HTML.replace(
+                '<div class="diff EXPERT"><span>Lv. </span><div class="level">11</div></div>',
+                "",
+                1,
+            ),
+            "exactly one SP EXPERT cell",
+        ),
+        (
+            DDRWORLD_REGRESSION_HTML.replace(
+                '<div class="level">2</div>', '<div class="level">?</div>', 1
+            ),
+            "invalid SP BEGINNER level",
+        ),
+        (
+            DDRWORLD_REGRESSION_HTML.replace(
+                '<div class="level">2</div>', '<div class="level">10.5</div>', 1
+            ),
+            "invalid SP BEGINNER level",
+        ),
+        (
+            DDRWORLD_REGRESSION_HTML.replace(
+                '<div class="level">2</div>', '<div class="level">Lv. 12</div>', 1
+            ),
+            "invalid SP BEGINNER level",
+        ),
+        (
+            DDRWORLD_REGRESSION_HTML.replace(
+                '<div class="level">5</div>', '<div class="level"></div>', 1
+            ),
+            "empty SP BASIC level",
+        ),
+    ],
+)
+def test_parse_ddrworld_music_page_fails_closed_on_broken_chart_structure(
+    broken_html: str, message: str
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        builder.ddrworld_source_from_html(broken_html)
+
+
+def test_ddrworld_priority_adds_gp_charts_without_promoting_world_only_song(
+    tmp_path: Path,
+) -> None:
+    build = builder.parse_master_html(
+        REGRESSION_WIKI_HTML,
+        source_url="https://example.test/wiki",
+        official_html=OFFICIAL_REGRESSION_HTML,
+        official_source_url="https://example.test/official",
+        ddrworld_html=DDRWORLD_REGRESSION_HTML,
+        ddrworld_source_url=builder.DDRWORLD_MUSIC_SOURCE_URL,
+        fetched_at="2026-08-31T00:00:00+00:00",
+    )
+
+    def chart_levels(title: str) -> set[tuple[str, str, int]]:
+        song = next(song for song in build.songs if song.title == title)
+        return {
+            (chart.play_style, chart.difficulty, chart.level)
+            for chart in build.charts
+            if chart.song_id == song.song_id
+        }
+
+    assert chart_levels("Sucka Luva") == {
+        ("SINGLE", "BEGINNER", 2),
+        ("SINGLE", "BASIC", 5),
+        ("SINGLE", "DIFFICULT", 8),
+        ("SINGLE", "EXPERT", 11),
+        ("DOUBLE", "BASIC", 5),
+        ("DOUBLE", "DIFFICULT", 9),
+        ("DOUBLE", "EXPERT", 11),
+    }
+    for title in (
+        "Din Don Dan (にじさんじダンス部 ver.)",
+        "打打打打打打打打打打 (にじさんじダンス部 ver.)",
+    ):
+        levels = chart_levels(title)
+        assert len(levels) == 9
+        assert sum(difficulty == "CHALLENGE" for _, difficulty, _ in levels) == 2
+        assert all(level == 16 for _, difficulty, level in levels if difficulty == "CHALLENGE")
+        assert all(
+            "DDR WORLD official chart;" in chart.notes
+            for chart in build.charts
+            if chart.song_id == next(song for song in build.songs if song.title == title).song_id
+        )
+
+    seven_colors = next(song for song in build.songs if song.title == "7 Colors")
+    seven_colors_challenge = next(
+        chart
+        for chart in build.charts
+        if chart.song_id == seven_colors.song_id
+        and chart.play_style == "SINGLE"
+        and chart.difficulty == "CHALLENGE"
+    )
+    assert seven_colors_challenge.level == 16
+    assert "DDR WORLD official chart;" not in seven_colors_challenge.notes
+    assert not any(song.title == "WORLD ONLY" for song in build.songs)
+
+    counts = build.ddrworld_merge_report["counts"]
+    assert counts["official_only"] == 14
+    assert counts["official_override"] == 11
+    assert counts["wiki_only"] == 9
+    assert counts["supplement_only"] == 0
+    assert counts["world_only_outside_gp"] == 7
+    assert counts["unmatchable_gp_candidate"] == 0
+    assert counts["ambiguous_gp_candidate"] == 0
+    assert sum(counts[status] for status in builder.DDRWORLD_MERGE_STATUSES) == len(
+        build.ddrworld_merge_report["rows"]
+    )
+    charts_by_id = {chart.chart_id: chart for chart in build.charts}
+    assert all(
+        charts_by_id[row["chart_id"]].level == row["official_level"]
+        for row in build.ddrworld_merge_report["rows"]
+        if row["status"] in {"official_only", "official_override"}
+    )
+    assert counts["level_changed"] == 4
+    assert counts["level_unchanged"] == 7
+
+    output_path = tmp_path / "ddrgp-master.sqlite"
+    builder.write_master_database(output_path, build, master_version="fixture-world-v1")
+    summary = master_inspect.inspect_master_database(output_path)
+    assert summary["snapshot_count"] == 3
+    assert summary["ddrworld_source_hash"] == build.ddrworld_snapshot.snapshot.content_hash
+    assert summary["ddrworld_merge_counts"] == counts
+    assert summary["chart_id_duplicate_count"] == 0
+    assert summary["chart_identity_duplicate_count"] == 0
+    assert summary["referential_integrity_error_count"] == 0
+
+
+@pytest.mark.parametrize(
+    ("page_html", "snapshot_id"),
+    [
+        (DDRWORLD_REGRESSION_HTML, "fixture-snapshot-current"),
+        (DDRWORLD_LEGACY_REGRESSION_HTML, "fixture-snapshot-legacy"),
+    ],
+    ids=["current", "legacy"],
+)
+def test_ddrworld_snapshot_loader_validates_collector_contract(
+    tmp_path: Path, page_html: str, snapshot_id: str
+) -> None:
+    page_url = (
+        "https://p.eagate.573.jp/game/ddr/ddrworld/music/index.html?"
+        "offset=0&filter=7&filtertype=0&playmode=2"
+    )
+    page_path = tmp_path / "pages" / "page-00.html"
+    page_path.parent.mkdir()
+    page_path.write_bytes(page_html.encode("utf-8"))
+    page_hash = hashlib.sha256(page_path.read_bytes()).hexdigest()
+    page_songs = builder.parse_ddrworld_music_page(
+        page_html,
+        page_offset=0,
+        page_url=page_url,
+    )
+    songs_path = tmp_path / "songs.jsonl"
+    songs_path.write_text(
+        "".join(
+            json.dumps(
+                {
+                    "source_page": song.source_page,
+                    "page_position": song.page_position,
+                    "title": song.title,
+                    "artist": song.artist,
+                },
+                ensure_ascii=False,
+            )
+            + "\n"
+            for song in page_songs
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+    manifest = {
+        "schema_version": "ddrworld-music-snapshot-manifest-v1",
+        "status": "complete",
+        "snapshot_id": snapshot_id,
+        "collector_version": "ddrworld-music-snapshot-v1",
+        "source": {
+            "origin": builder.DDRWORLD_SOURCE_ORIGIN,
+            "path": builder.DDRWORLD_SOURCE_PATH,
+            "filter": 7,
+            "filter_type": 0,
+            "play_mode": 2,
+            "offsets": [0],
+        },
+        "started_at": "2026-08-31T00:00:00Z",
+        "completed_at": "2026-08-31T00:00:02Z",
+        "pages": [
+            {
+                "offset": 0,
+                "source_url": page_url,
+                "fetched_at": "2026-08-31T00:00:01Z",
+                "status_code": 200,
+                "content_type": "text/html",
+                "byte_size": page_path.stat().st_size,
+                "sha256": page_hash,
+                "local_path": "pages/page-00.html",
+                "error": None,
+            }
+        ],
+        "pagination": {
+            "strategy": "empty_page",
+            "max_page_count": 100,
+            "terminal_offset": 1,
+            "terminal_validation": "normal_empty_page",
+            "terminal_page": {"offset": 1, "validation": "normal_empty_page"},
+        },
+        "images": [],
+        "failures": [],
+    }
+    summary = {
+        "schema_version": "ddrworld-music-snapshot-summary-v1",
+        "status": "complete",
+        "snapshot_id": snapshot_id,
+        "request_count": 2,
+        "page_request_count": 1,
+        "terminal_offset": 1,
+        "image_request_count": 0,
+        "song_count": len(page_songs),
+        "unique_jacket_url_count": 0,
+        "stored_jacket_count": 0,
+        "failure_count": 0,
+        "duplicate_image_hash_count": 0,
+        "duplicate_image_hashes": [],
+    }
+    (tmp_path / "manifest.json").write_text(
+        json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    (tmp_path / "summary.json").write_text(
+        json.dumps(summary, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    loaded = builder.load_ddrworld_snapshot(tmp_path)
+    assert loaded.snapshot_id == snapshot_id
+    assert loaded.page_count == 1
+    assert loaded.chart_count == sum(len(song.charts) for song in loaded.songs)
+    assert loaded.snapshot.source_url == builder.DDRWORLD_MUSIC_SOURCE_URL
+
+
+def test_ddrworld_ambiguous_song_is_reported_without_chart_merge() -> None:
+    songs = tuple(
+        builder.MasterSong(
+            song_id=builder.stable_id("song", "DUPLICATE TITLE", artist),
+            title="DUPLICATE TITLE",
+            artist=artist,
+            version="fixture",
+            source_version="fixture",
+            bpm="100",
+            category="fixture",
+            movie_stage="",
+            availability="",
+            notes="",
+            grand_prix_play_available=True,
+        )
+        for artist in ("Artist A", "Artist B")
+    )
+    world_html = (
+        '<table class="table-ui"><tbody>'
+        + _ddrworld_row(
+            "DUPLICATE TITLE",
+            "Other Artist",
+            (1, None, None, None, None),
+            (1, None, None, None),
+        )
+        + "</tbody></table>"
+    )
+    source = builder.ddrworld_source_from_html(world_html)
+
+    charts, report = builder.merge_ddrworld_chart_data(songs, (), source)
+
+    assert charts == ()
+    assert report["counts"]["ambiguous_gp_candidate"] == 2
+    assert report["counts"]["ambiguous_gp_candidate_song_count"] == 1
+    assert {row["reason"] for row in report["rows"]} == {"ambiguous_title"}
+
+
+def test_ddrworld_non_gp_chart_is_excluded_without_level_override() -> None:
+    song = builder.MasterSong(
+        song_id=builder.stable_id("song", "NON GP", "Artist"),
+        title="NON GP",
+        artist="Artist",
+        version="fixture",
+        source_version="fixture",
+        bpm="100",
+        category="fixture",
+        movie_stage="",
+        availability="",
+        notes="",
+        grand_prix_play_available=False,
+    )
+    chart = builder.MasterChart(
+        chart_id=builder.stable_id("chart", song.song_id, "SINGLE", "BEGINNER"),
+        song_id=song.song_id,
+        play_style="SINGLE",
+        difficulty="BEGINNER",
+        level=5,
+        raw_level="5",
+        shock_arrow=False,
+        is_removed=False,
+        is_limited=False,
+        notes="wiki baseline",
+    )
+    source = builder.ddrworld_source_from_html(
+        '<table class="table-ui"><tbody>'
+        + _ddrworld_row(
+            "NON GP",
+            "Artist",
+            (6, None, None, None, None),
+            (None, None, None, None),
+        )
+        + "</tbody></table>"
+    )
+
+    charts, report = builder.merge_ddrworld_chart_data((song,), (chart,), source)
+
+    assert charts == (chart,)
+    assert report["counts"]["excluded_non_gp"] == 1
+    row = report["rows"][0]
+    assert row["status"] == "excluded_non_gp"
+    assert row["baseline_level"] == 5
+    assert row["official_level"] == 6
+
+
+def test_ddrworld_confirmed_challenge_without_official_chart_is_supplement_only() -> None:
+    song = builder.MasterSong(
+        song_id=builder.stable_id("song", "SUPPLEMENT SONG", "Artist"),
+        title="SUPPLEMENT SONG",
+        artist="Artist",
+        version="fixture",
+        source_version="fixture",
+        bpm="100",
+        category="fixture",
+        movie_stage="",
+        availability="",
+        notes="",
+        grand_prix_play_available=True,
+    )
+    challenge = builder.MasterChart(
+        chart_id=builder.stable_id("chart", song.song_id, "SINGLE", "CHALLENGE"),
+        song_id=song.song_id,
+        play_style="SINGLE",
+        difficulty="CHALLENGE",
+        level=16,
+        raw_level="16",
+        shock_arrow=False,
+        is_removed=False,
+        is_limited=False,
+        notes=f"{builder.CONFIRMED_CHALLENGE_NOTE_MARKER} fixture",
+    )
+    source = builder.ddrworld_source_from_html(
+        '<table class="table-ui"><tbody>'
+        + _ddrworld_row(
+            "SUPPLEMENT SONG",
+            "Artist",
+            (2, None, None, None, None),
+            (None, None, None, None),
+        )
+        + "</tbody></table>"
+    )
+
+    charts, report = builder.merge_ddrworld_chart_data(
+        (song,),
+        (challenge,),
+        source,
+    )
+
+    assert len(charts) == 2
+    assert report["counts"]["official_only"] == 1
+    assert report["counts"]["supplement_only"] == 1
+    supplement = next(
+        row for row in report["rows"] if row["status"] == "supplement_only"
+    )
+    assert supplement["chart_id"] == challenge.chart_id
+    assert supplement["baseline_level"] == 16
+
+
+def test_ddrworld_gp_candidate_without_master_match_is_blocking() -> None:
+    source = builder.ddrworld_source_from_html(
+        '<table class="table-ui"><tbody>'
+        + _ddrworld_row(
+            "GP CANDIDATE",
+            "Official Artist",
+            (3, None, None, None, None),
+            (4, None, None, None),
+        )
+        + "</tbody></table>"
+    )
+    availability = (
+        builder.OfficialSongAvailability(
+            title="GP CANDIDATE",
+            artist="Official Artist",
+            free_play_available=False,
+            grand_prix_play_available=True,
+        ),
+    )
+
+    charts, report = builder.merge_ddrworld_chart_data(
+        (),
+        (),
+        source,
+        official_availability_entries=availability,
+    )
+
+    assert charts == ()
+    assert report["counts"]["unmatchable_gp_candidate"] == 2
+    assert report["counts"]["unmatchable_gp_candidate_song_count"] == 1
+    assert {row["reason"] for row in report["rows"]} == {
+        "gp_candidate_not_found_in_master"
+    }
+
+
+def test_inspect_rejects_blocking_ddrworld_gp_candidate(tmp_path: Path) -> None:
+    base = builder.parse_master_html(
+        FIXTURE_HTML,
+        source_url="https://example.test/wiki",
+        fetched_at="2026-08-31T00:00:00+00:00",
+    )
+    source = builder.ddrworld_source_from_html(
+        '<table class="table-ui"><tbody>'
+        + _ddrworld_row(
+            "GP CANDIDATE",
+            "Official Artist",
+            (3, None, None, None, None),
+            (None, None, None, None),
+        )
+        + "</tbody></table>",
+        fetched_at="2026-08-31T00:00:01+00:00",
+    )
+    charts, report = builder.merge_ddrworld_chart_data(
+        base.songs,
+        base.charts,
+        source,
+        official_availability_entries=(
+            builder.OfficialSongAvailability(
+                title="GP CANDIDATE",
+                artist="Official Artist",
+                free_play_available=False,
+                grand_prix_play_available=True,
+            ),
+        ),
+    )
+    build = replace(
+        base,
+        charts=charts,
+        ddrworld_snapshot=source,
+        ddrworld_merge_report=report,
+    )
+    output_path = tmp_path / "blocking.sqlite"
+    builder.write_master_database(output_path, build, master_version="blocking-v1")
+
+    try:
+        master_inspect.inspect_master_database(output_path)
+    except ValueError as exc:
+        assert "blocking GP candidates" in str(exc)
+        assert "unmatchable_gp_candidate=1" in str(exc)
+    else:
+        raise AssertionError("blocking DDR WORLD GP candidate should fail inspection")
+
+
+def test_inspect_rejects_ambiguous_ddrworld_gp_candidate(tmp_path: Path) -> None:
+    base = builder.parse_master_html(
+        FIXTURE_HTML,
+        source_url="https://example.test/wiki",
+        fetched_at="2026-08-31T00:00:00+00:00",
+    )
+    duplicate_songs = tuple(
+        builder.MasterSong(
+            song_id=builder.stable_id("song", "AMBIGUOUS GP", artist),
+            title="AMBIGUOUS GP",
+            artist=artist,
+            version="fixture",
+            source_version="fixture",
+            bpm="100",
+            category="fixture",
+            movie_stage="",
+            availability="",
+            notes="",
+            grand_prix_play_available=True,
+        )
+        for artist in ("Artist A", "Artist B")
+    )
+    songs = base.songs + duplicate_songs
+    source = builder.ddrworld_source_from_html(
+        '<table class="table-ui"><tbody>'
+        + _ddrworld_row(
+            "AMBIGUOUS GP",
+            "Other Artist",
+            (3, None, None, None, None),
+            (None, None, None, None),
+        )
+        + "</tbody></table>",
+        fetched_at="2026-08-31T00:00:01+00:00",
+    )
+    charts, report = builder.merge_ddrworld_chart_data(
+        songs,
+        base.charts,
+        source,
+    )
+    build = replace(
+        base,
+        songs=songs,
+        charts=charts,
+        ddrworld_snapshot=source,
+        ddrworld_merge_report=report,
+    )
+    output_path = tmp_path / "ambiguous.sqlite"
+    builder.write_master_database(output_path, build, master_version="ambiguous-v1")
+
+    try:
+        master_inspect.inspect_master_database(output_path)
+    except ValueError as exc:
+        assert "blocking GP candidates" in str(exc)
+        assert "ambiguous_gp_candidate=1" in str(exc)
+    else:
+        raise AssertionError("ambiguous DDR WORLD GP candidate should fail inspection")
 
 
 def confirmed_challenge_fixture_build() -> builder.MasterBuild:

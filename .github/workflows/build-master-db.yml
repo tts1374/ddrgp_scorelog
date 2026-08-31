@@ -38,6 +38,7 @@ jobs:
         run: >
           uv run python -m master.inspect data/master/ddrgp-master.sqlite
           --summary data/master/master-summary.json
+          --merge-report data/master/ddrworld-merge-report.json
 
       - name: Upload master database artifact
         uses: actions/upload-artifact@v7
@@ -46,5 +47,6 @@ jobs:
           path: |
             data/master/ddrgp-master.sqlite
             data/master/master-summary.json
+            data/master/ddrworld-merge-report.json
           if-no-files-found: error
           retention-days: 30

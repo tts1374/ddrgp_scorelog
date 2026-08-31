@@ -43,7 +43,7 @@ DDR GP scorelog の設計、PoC、テストで使う主要用語を定義する�
 | `M1 event boundary` | result形状・継続・重複・遷移を分ける工程 | `result_candidate`、`confirmed_result`、`duplicate`、`rejected_transition` | 曲・譜面ID、数値、正式play |
 | `M2 score OCR` | 数字ROIのTesseract OCRとprofile/expected coverageを評価する工程 | `score_ocr.*`、OCR profile、`evaluated` | 正式なスコア・判定数 |
 | `M3 result field observation` | result画面の曲名・artist・譜面条件を後工程へ渡せる観測にする工程 | `song_title`、`artist`、`play_style`、`difficulty`、`level`、M3レポート | 曲名照合、曲ID・譜面ID、正式保存値 |
-| `M4 master DB` | 楽曲・譜面のcanonical情報と照合対象を生成する工程 | `songs`、`charts`、`song_aliases`、`ddrgp-master.sqlite` | 入力画像の曲同定、個人スコア保存 |
+| `M4 master DB` | 楽曲・譜面のcanonical情報を生成し、DDR WORLD公式譜面をGP対象曲へ優先統合する工程 | `songs`、`charts`、`song_aliases`、`ddrgp-master.sqlite`、譜面統合report | 入力画像の曲同定、個人スコア保存 |
 | `M5 master match` | `RESULT同定根拠`へ進める前の曲・譜面候補と失敗理由を観測する実装工程 | title match、jacket match、`identity_signal_*` | 確定ID、保存OK、本番採用済み照合 |
 | `M5b jacket reference catalog` | jacket参照featureをcurrent masterと一緒に安全に保持・読む基盤 | collector source `databases/jacket-catalog.sqlite`、binding済みruntime catalog、coverage、runtime loader | 正式個人スコアDB、画像原本の代替 |
 | `M5c developer-only collector` | M5b catalogへ入れるjacket観測を収集・reviewする開発者専用工程 | collector、observation session、manual review、title/artist OCR評価 | 公開app、正式保存workflow、自動確定 |
@@ -57,6 +57,23 @@ DDR GP scorelog の設計、PoC、テストで使う主要用語を定義する�
 | `M8 formal personal score DB` | version 3正式DB、duplicate、transaction、明示単発保存を扱う工程 | `ddrgp-scores.sqlite`、formal save input | 候補材料の自動昇格、M8 preview DBの受入れ |
 | `M9 application/runtime` | app package-owned runtimeでviewer、Windows capture、capture-save、監視UI、task trayを接続する工程 | WPF app、app-owned runtime、capture-save workflow | 新しい数字認識方式やDB schema |
 | `M10 initial release` | 単一ユーザー向けの配布・依存固定・backup/restoreを固める工程 | installer/配布手順、lock file、運用docs | cloud運用、複数ユーザー、enterprise機能 |
+
+## M4 DDR WORLD譜面統合report status
+
+M4 master DBのDDR WORLD譜面統合reportでは、各行を次のいずれか1つへ分類する。
+
+| status | 正式な意味 |
+| --- | --- |
+| `official_override` | GP対象曲の同一譜面がDDR WORLD公式情報とbaselineの両方に存在し、公式値を採用した。 |
+| `official_only` | GP対象曲についてDDR WORLD公式情報にのみ存在する譜面をmasterへ追加した。 |
+| `wiki_only` | GP対象曲についてBEMANIWikiには存在するがDDR WORLD公式情報に存在しない譜面を、GP専用譜面として維持した。 |
+| `supplement_only` | 確認済みCHALLENGE補正にのみ存在し、DDR WORLD公式情報に存在しない譜面を維持した。 |
+| `excluded_non_gp` | DDR WORLDの曲へ一意に対応する既知の曲が、既存のプレー可否判定でDDR GRAND PRIX対象外と確認できたため統合しなかった。 |
+| `world_only_outside_gp` | DDR WORLDに存在するが、既存のDDR GRAND PRIXプレー可否判定元とBEMANIWikiのどちらからもGP対象と確認できないため統合しなかった。 |
+| `unmatchable_gp_candidate` | GP対象候補と確認できるが、DDR WORLD公式情報とmasterの対応候補が0件で一意対応を確定できない。M4生成のStop条件。 |
+| `ambiguous_gp_candidate` | GP対象候補と確認できるが、DDR WORLD公式情報とmasterの対応候補が複数件あり一意対応を確定できない。M4生成のStop条件。 |
+
+`level_changed`と`level_unchanged`は`official_override`の内訳を表す集計値であり、statusではない。`unmatchable_gp_candidate`と`ambiguous_gp_candidate`はともに0件を必須とし、1件以上なら`master.inspect`を失敗させる。
 
 ## master DB inspection status
 
