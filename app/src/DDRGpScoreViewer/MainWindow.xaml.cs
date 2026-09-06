@@ -504,17 +504,21 @@ public partial class MainWindow : System.Windows.Window
 
     private void ApplyBestResponsiveLayout(double windowWidth)
     {
-        if (BestChartGrid is null || NavigationColumn is null || MainContentGrid is null)
+        if (BestChartGrid is null || MainContentGrid is null)
         {
             return;
         }
 
         var compact = windowWidth <= 1100;
-        NavigationColumn.Width = new GridLength(windowWidth <= 760 ? 170 : compact ? 190 : 230);
         MainContentGrid.Margin = compact
             ? new Thickness(20)
-            : new Thickness(28, 24, 28, 24);
+            : new Thickness(32, 22, 32, 22);
         BestChartGrid.Tag = compact ? "Compact" : "Wide";
+        if (RecentPlayGrid is not null && RecentPlayGrid.Columns.Count == 8)
+        {
+            RecentPlayGrid.Columns[1].MinWidth = 190;
+            RecentPlayGrid.Columns[2].Width = new DataGridLength(compact ? 140 : 170);
+        }
 
         if (BestChartGrid.Columns.Count != 9)
         {
@@ -533,30 +537,27 @@ public partial class MainWindow : System.Windows.Window
 
     private void ApplyHomeResponsiveLayout(double windowWidth)
     {
-        if (LatestFeaturedBody is null || LatestInfoBorder is null || LatestMain is null)
+        if (LatestFeaturedBody is null || LatestInfoBorder is null || LatestScorePanel is null ||
+            HomeListsGrid is null)
         {
             return;
         }
 
-        var singleColumn = windowWidth <= HomeSingleColumnThreshold;
-        LatestFeaturedBody.ColumnDefinitions[1].Width = singleColumn
-            ? new GridLength(0)
-            : new GridLength(1, GridUnitType.Star);
-        LatestFeaturedBody.ColumnDefinitions[1].MinWidth = singleColumn ? 0 : 250;
-        Grid.SetColumn(LatestInfoBorder, singleColumn ? 0 : 1);
-        Grid.SetRow(LatestInfoBorder, singleColumn ? 1 : 0);
-        LatestMain.Margin = singleColumn
-            ? new Thickness(0)
-            : new Thickness(0, 0, 24, 0);
-        LatestInfoBorder.Margin = singleColumn
-            ? new Thickness(0, 12, 0, 0)
-            : new Thickness(0);
-        LatestInfoBorder.Padding = singleColumn
-            ? new Thickness(0, 12, 0, 0)
-            : new Thickness(18, 0, 0, 0);
-        LatestInfoBorder.BorderThickness = singleColumn
-            ? new Thickness(0, 1, 0, 0)
-            : new Thickness(1, 0, 0, 0);
+        var compact = windowWidth <= HomeSingleColumnThreshold;
+        LatestDeltaGrid.Columns = compact ? 2 : 1;
+        LatestFeaturedBody.ColumnDefinitions[2].Width = compact ? new GridLength(0) : new GridLength(1, GridUnitType.Star);
+        Grid.SetColumn(LatestInfoBorder, compact ? 0 : 2);
+        Grid.SetRow(LatestInfoBorder, compact ? 1 : 0);
+        Grid.SetColumnSpan(LatestInfoBorder, compact ? 2 : 1);
+        LatestInfoBorder.Margin = compact ? new Thickness(0, 16, 0, 0) : new Thickness(0);
+        LatestInfoBorder.Padding = compact ? new Thickness(0, 12, 0, 0) : new Thickness(24, 0, 0, 0);
+        LatestInfoBorder.BorderThickness = compact ? new Thickness(0, 1, 0, 0) : new Thickness(1, 0, 0, 0);
+
+        HomeListsGrid.ColumnDefinitions[1].Width = compact ? new GridLength(0) : new GridLength(1, GridUnitType.Star);
+        Grid.SetColumn(HomeUpdatesPanel, compact ? 0 : 1);
+        Grid.SetRow(HomeUpdatesPanel, compact ? 1 : 0);
+        HomeHistoryPanel.Margin = compact ? new Thickness(0) : new Thickness(0, 0, 24, 0);
+        HomeUpdatesPanel.Margin = compact ? new Thickness(0, 24, 0, 0) : new Thickness(24, 0, 0, 0);
     }
 
     private void ShowHome_Click(object sender, RoutedEventArgs e) => ShowHomePage();
@@ -566,6 +567,7 @@ public partial class MainWindow : System.Windows.Window
         viewModel.SetSettingsPage(false);
         viewModel.SetDataManagementPage(false);
         ContentTabs.SelectedIndex = 0;
+        BindingOperations.ClearBinding(PageTitle, TextBlock.TextProperty);
         PageTitle.Text = Localization.Get("ホーム");
         PageSubtitle.Text = Localization.Get("今日のプレー状況と最近の記録を確認できます");
         Localization.ApplyToWindow(this);
@@ -583,6 +585,7 @@ public partial class MainWindow : System.Windows.Window
         viewModel.SetSettingsPage(false);
         viewModel.SetDataManagementPage(false);
         ContentTabs.SelectedIndex = 1;
+        BindingOperations.ClearBinding(PageTitle, TextBlock.TextProperty);
         PageTitle.Text = Localization.Get("自己ベスト");
         PageSubtitle.Text = Localization.Get("保存済み全履歴から算出した譜面別ベスト");
         Localization.ApplyToWindow(this);
@@ -604,6 +607,7 @@ public partial class MainWindow : System.Windows.Window
         viewModel.SetDataManagementPage(false);
         viewModel.SetSettingsPage(true);
         ContentTabs.SelectedIndex = 4;
+        BindingOperations.ClearBinding(PageTitle, TextBlock.TextProperty);
         PageTitle.Text = Localization.Get("設定");
         PageSubtitle.Text = Localization.Get("自動記録と表示に関する設定を変更できます");
         Localization.ApplyToWindow(this);
@@ -622,6 +626,7 @@ public partial class MainWindow : System.Windows.Window
         viewModel.SetSettingsPage(false);
         viewModel.SetDataManagementPage(true);
         ContentTabs.SelectedIndex = 5;
+        BindingOperations.ClearBinding(PageTitle, TextBlock.TextProperty);
         PageTitle.Text = Localization.Get("データ管理");
         PageSubtitle.Text = Localization.Get("保存済みプレーと楽曲・譜面データの状態を確認できます");
         Localization.ApplyToWindow(this);
@@ -1006,7 +1011,10 @@ public partial class MainWindow : System.Windows.Window
     {
         viewModel.SetSettingsPage(false);
         ContentTabs.SelectedIndex = 2;
-        PageTitle.Text = Localization.Get("楽曲・譜面詳細");
+        PageTitle.SetBinding(TextBlock.TextProperty, new WpfBinding(nameof(MainViewModel.ChartDetailSongTitle))
+        {
+            Mode = BindingMode.OneWay,
+        });
         PageSubtitle.Text = Localization.Get("自己ベストから選択した1譜面の記録とプレー推移を確認できます");
         Localization.ApplyToWindow(this);
         HomeNavigation.Tag = null;
@@ -1098,6 +1106,7 @@ public partial class MainWindow : System.Windows.Window
         viewModel.SetSettingsPage(false);
         viewModel.SetDataManagementPage(false);
         ContentTabs.SelectedIndex = 3;
+        BindingOperations.ClearBinding(PageTitle, TextBlock.TextProperty);
         PageTitle.Text = Localization.Get("直近プレー履歴");
         PageSubtitle.Text = Localization.Get("保存済みのプレーを新しい順に表示します");
         Localization.ApplyToWindow(this);
@@ -1158,7 +1167,7 @@ public partial class MainWindow : System.Windows.Window
             {
                 Text = $"{score / 1_000:N0}k",
                 Foreground = (WpfBrush)FindResource("TextSecondaryBrush"),
-                FontSize = 10,
+                FontSize = 12,
             };
             ChartDetailGraphCanvas.Children.Add(label);
             Canvas.SetLeft(label, 5);
@@ -1211,7 +1220,7 @@ public partial class MainWindow : System.Windows.Window
         {
             Text = points[0].HomePlayedAtDisplay,
             Foreground = (WpfBrush)FindResource("TextSecondaryBrush"),
-            FontSize = 10,
+            FontSize = 12,
         };
         ChartDetailGraphCanvas.Children.Add(firstDate);
         Canvas.SetLeft(firstDate, left);
@@ -1222,7 +1231,7 @@ public partial class MainWindow : System.Windows.Window
             {
                 Text = points[^1].HomePlayedAtDisplay,
                 Foreground = (WpfBrush)FindResource("TextSecondaryBrush"),
-                FontSize = 10,
+                FontSize = 12,
             };
             ChartDetailGraphCanvas.Children.Add(latestDate);
             Canvas.SetRight(latestDate, right);

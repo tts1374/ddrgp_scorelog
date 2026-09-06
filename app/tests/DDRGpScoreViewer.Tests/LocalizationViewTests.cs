@@ -12,6 +12,10 @@ using Xunit;
 
 namespace DDRGpScoreViewer.Tests;
 
+[CollectionDefinition("Localized WPF views", DisableParallelization = true)]
+public sealed class LocalizationViewCollection;
+
+[Collection("Localized WPF views")]
 public sealed class LocalizationViewTests(LocalizationApplicationFixture applicationFixture)
     : IClassFixture<LocalizationApplicationFixture>
 {
@@ -437,7 +441,6 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
                 Assert.Equal(Visibility.Collapsed, window.BestAxisPanel.Visibility);
                 Assert.Equal("レベルを変更", window.BestAxisChangeButton.Content);
                 Assert.Equal(1, Grid.GetColumn(window.BestAxisChangeButton));
-                Assert.Equal(new Thickness(0, 1, 0, 0), window.BestSelectionSummaryPanel.BorderThickness);
                 Assert.Equal(2, Grid.GetRow(window.BestResultSummary));
                 Assert.Equal(Visibility.Visible, window.BestProgressCard.Visibility);
 
@@ -791,6 +794,88 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
             {
                 window?.Close();
                 ThemeManager.Apply(UserSettings.LightTheme);
+            }
+        });
+    }
+
+    [Theory]
+    [InlineData(UserSettings.JapaneseLanguage, UserSettings.LightTheme)]
+    [InlineData(UserSettings.EnglishLanguage, UserSettings.DarkTheme)]
+    [InlineData(UserSettings.KoreanLanguage, UserSettings.LightTheme)]
+    public void Scorebook_navigation_and_result_text_remain_usable_at_minimum_size(string language, string theme)
+    {
+        using var databaseFixture = new DatabaseFixture();
+        databaseFixture.AddPlay("scorebook-play", "2026-08-24T20:29:00+09:00", 930430, 1514);
+        applicationFixture.Run(() =>
+        {
+            MainWindow? window = null;
+            try
+            {
+                foreach (var resourceName in new[] { "Theme.xaml", "Components.xaml", "Strings.xaml" })
+                {
+                    Application.Current.Resources.MergedDictionaries.Add(new ResourceDictionary
+                    {
+                        Source = new Uri($"/DDRGpScoreViewer;component/Resources/{resourceName}", UriKind.Relative),
+                    });
+                }
+
+                Localization.Configure(language);
+                ThemeManager.Apply(theme);
+                window = new MainWindow(new ViewerDatabasePaths(
+                    ViewerDatabaseEnvironment.Development, databaseFixture.DirectoryPath,
+                    databaseFixture.MasterPath, databaseFixture.CatalogPath, databaseFixture.ScorePath,
+                    Path.Combine(databaseFixture.DirectoryPath, "evaluation.db"),
+                    Path.Combine(databaseFixture.DirectoryPath, "data"),
+                    Path.Combine(databaseFixture.DirectoryPath, "logs"),
+                    Path.Combine(databaseFixture.DirectoryPath, "viewer-settings.json")))
+                {
+                    Width = 960,
+                    Height = 640,
+                };
+                window.ViewModel.Load(databaseFixture.ScorePath, databaseFixture.MasterPath, databaseFixture.CatalogPath, persist: false);
+                window.ViewModel.BestLevelFilter = "level_17";
+                window.Show();
+                DrainDispatcher(window.Dispatcher);
+
+                var navigation = new[] { window.HomeNavigation, window.BestNavigation, window.HistoryNavigation, window.SettingsNavigation, window.DataManagementNavigation };
+                var previousRight = 0.0;
+                foreach (var button in navigation)
+                {
+                    var position = button.TranslatePoint(new Point(0, 0), window);
+                    Assert.True(position.X >= previousRight, "Top navigation must not overlap.");
+                    Assert.True(position.X + button.ActualWidth <= window.ActualWidth, "Top navigation must fit the smallest window.");
+                    previousRight = position.X + button.ActualWidth;
+                    button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                    DrainDispatcher(window.Dispatcher);
+                    Assert.Equal("Selected", button.Tag);
+                    Assert.Single(navigation, candidate => Equals(candidate.Tag, "Selected"));
+                }
+
+                window.BestNavigation.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                window.ViewModel.SelectChartBest(window.ViewModel.ChartBests.First());
+                DrainDispatcher(window.Dispatcher);
+                Assert.Equal(window.ViewModel.ChartDetailSongTitle, window.PageTitle.Text);
+                Assert.True(BindingOperations.IsDataBound(window.PageTitle, TextBlock.TextProperty));
+                window.HomeNavigation.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                DrainDispatcher(window.Dispatcher);
+                Assert.Equal(Localization.Get("ホーム"), window.PageTitle.Text);
+                Assert.False(BindingOperations.IsDataBound(window.PageTitle, TextBlock.TextProperty));
+
+                var title = Assert.Single(FindVisualChildren<TextBlock>(window.HomeLatestPlayCard),
+                    text => text.Text == window.ViewModel.HomeLatestPlay!.SongTitle);
+                Assert.Equal(
+                    Assert.IsType<SolidColorBrush>(window.FindResource("TextPrimaryBrush")).Color,
+                    Assert.IsType<SolidColorBrush>(title.Foreground).Color);
+                window.HistoryNavigation.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                DrainDispatcher(window.Dispatcher);
+                Assert.All(window.ViewModel.Plays, play => Assert.False(string.IsNullOrWhiteSpace(play.CompactPlayedAtDisplay)));
+            }
+            finally
+            {
+                window?.PrepareForApplicationExit();
+                window?.Close();
+                ThemeManager.Apply(UserSettings.LightTheme);
+                Localization.Configure(UserSettings.JapaneseLanguage);
             }
         });
     }

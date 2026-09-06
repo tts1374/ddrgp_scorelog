@@ -368,4 +368,6 @@
     <sys:String x:Key="保存済みデータを確認できませんでした。">保存済みデータを確認できませんでした。</sys:String>
     <sys:String x:Key="ファイルのアクセス権を確認してください。">ファイルのアクセス権を確認してください。</sys:String>
     <sys:String x:Key="resource解放を完了できませんでした。processを終了します。{0}">resource解放を完了できませんでした。processを終了します。{0}</sys:String>
+    <sys:String x:Key="最後に記録したプレー">最後に記録したプレー</sys:String>
+    <sys:String x:Key="まだプレーの記録がありません。ゲームのリザルト画面から自動で記録します。">まだプレーの記録がありません。ゲームのリザルト画面から自動で記録します。</sys:String>
 </ResourceDictionary>

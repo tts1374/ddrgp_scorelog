@@ -363,4 +363,6 @@
     <sys:String x:Key="workflow失敗">Workflow failed</sys:String>
     <sys:String x:Key="device lost">Device lost</sys:String>
     <sys:String x:Key="全">All</sys:String>
+    <sys:String x:Key="最後に記録したプレー">Last recorded play</sys:String>
+    <sys:String x:Key="まだプレーの記録がありません。ゲームのリザルト画面から自動で記録します。">No plays recorded yet. Results are recorded automatically from the game result screen.</sys:String>
 </ResourceDictionary>

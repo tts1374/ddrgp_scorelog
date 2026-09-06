@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <title>GP Score Log</title>
+  <rect x="8" y="8" width="240" height="240" rx="52" fill="#38644B" />
+  <path d="M82 48H182Q196 48 196 62V66H84Q72 66 72 77Q72 88 84 88H184Q198 88 198 102V188Q198 208 178 208H82Q58 208 58 184V74Q58 48 82 48Z" fill="#FAF9F6" />
+  <rect x="72" y="104" width="16" height="86" rx="8" fill="#38644B" />
+  <path d="M138 112Q142 108 146 112L174 140Q180 146 172 146H154V180Q154 186 148 186H136Q130 186 130 180V146H112Q104 146 110 140Z" fill="#38644B" />
+</svg>

@@ -30,6 +30,7 @@ public sealed record PlayHistoryItem(
     bool MasterReferenceMissing)
 {
     public string PlayedAtDisplay => FormatTimestamp(PlayedAt);
+    public string CompactPlayedAtDisplay => HomeTimestampFormatter.Format(PlayedAt);
     public string SavedAtDisplay => FormatTimestamp(SavedAt);
     public string PlayStyleDisplay => PlayStyle switch
     {
