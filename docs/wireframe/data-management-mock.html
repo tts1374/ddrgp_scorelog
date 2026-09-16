@@ -5,6 +5,169 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>DDR GP Score Log - データ管理 UI Mockup (draft)</title>
   <link rel="stylesheet" href="screen-mock-shared.css">
+  <style>
+    .wireframe-note {
+      padding: 10px 12px;
+      border: 1px dashed #94A3B8;
+      border-radius: 8px;
+      color: #475569;
+      background: #F8FAFC;
+      font-size: 11px;
+      line-height: 1.6;
+    }
+    .state-switcher {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 10px;
+    }
+    .state-switcher button {
+      min-height: 30px;
+      padding: 6px 10px;
+      border: 1px solid var(--mock-border);
+      border-radius: 6px;
+      color: var(--mock-muted);
+      background: #FFF;
+      font-size: 11px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+    .state-switcher button.active {
+      border-color: var(--mock-primary);
+      color: var(--mock-primary);
+      background: var(--mock-soft-blue);
+    }
+    .import-panel {
+      border-color: #BFDBFE;
+    }
+    .import-dropzone {
+      display: flex;
+      min-height: 150px;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 22px;
+      border: 2px dashed #93C5FD;
+      border-radius: 9px;
+      text-align: center;
+      background: #F8FBFF;
+    }
+    .import-dropzone.disabled {
+      border-color: #CBD5E1;
+      color: #94A3B8;
+      background: #F8FAFC;
+    }
+    .import-drop-title {
+      color: var(--mock-main);
+      font-size: 14px;
+      font-weight: 800;
+    }
+    .import-dropzone.disabled .import-drop-title {
+      color: #64748B;
+    }
+    .import-drop-meta {
+      color: var(--mock-muted);
+      font-size: 11px;
+      line-height: 1.6;
+    }
+    .import-controls {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      margin-top: 4px;
+    }
+    .btn-danger {
+      min-height: 34px;
+      padding: 8px 12px;
+      border: 1px solid #FCA5A5;
+      border-radius: 6px;
+      color: #991B1B;
+      background: #FFF;
+      font-size: 12px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+    .progress-track {
+      width: min(560px, 100%);
+      height: 8px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: #E2E8F0;
+    }
+    .progress-value {
+      width: 30%;
+      height: 100%;
+      background: var(--mock-primary);
+    }
+    .result-summary-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+    .result-summary-item {
+      padding: 10px 12px;
+      border: 1px solid var(--mock-border);
+      border-radius: 7px;
+      background: #F8FAFC;
+    }
+    .result-summary-item span {
+      display: block;
+      color: var(--mock-muted);
+      font-size: 10px;
+      font-weight: 700;
+    }
+    .result-summary-item strong {
+      display: block;
+      margin-top: 3px;
+      font-family: "Courier New", monospace;
+      font-size: 18px;
+    }
+    .import-result-list {
+      display: grid;
+      gap: 8px;
+    }
+    .import-result-row {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 10px 12px;
+      border: 1px solid var(--mock-border);
+      border-radius: 7px;
+      background: #FFF;
+    }
+    .import-result-file {
+      font-size: 12px;
+      font-weight: 800;
+    }
+    .import-result-reason {
+      margin-top: 3px;
+      color: var(--mock-muted);
+      font-size: 11px;
+    }
+    .status-error {
+      border-color: #FCA5A5;
+      color: #991B1B;
+      background: #FEE2E2;
+    }
+    .status-warning {
+      border-color: #F59E0B;
+      color: #92400E;
+      background: #FEF3C7;
+    }
+    .state-panel[hidden] {
+      display: none;
+    }
+    @media (max-width: 920px) {
+      .result-summary-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+  </style>
 </head>
 <body>
   <div class="app-window">
@@ -38,6 +201,16 @@
           <p>保存済みプレーと同梱データの状態を確認できます</p>
         </div>
       </header>
+
+      <div class="wireframe-note">
+        Issue #197 の visual reference。挙動仕様はIssue本文を正本とし、WPF実装では既存Resource / Styleを優先する。HTMLの色・余白・寸法をpixel-perfectな仕様とはしない。
+        <div class="state-switcher" aria-label="スクリーンショットインポート状態切替">
+          <button type="button" class="active" data-state="idle">Idle</button>
+          <button type="button" data-state="importing">Importing</button>
+          <button type="button" data-state="completed">Completed</button>
+          <button type="button" data-state="cancelled">Cancelled</button>
+        </div>
+      </div>
 
       <section class="summary-grid" aria-label="データサマリー">
         <article class="summary-card">
@@ -95,12 +268,91 @@
         </div>
       </section>
 
-      <section class="panel">
-          <div class="panel-header">
-            <div>
-              <h3>楽曲・譜面データ</h3>
-              <p>アプリに同梱された楽曲・譜面情報</p>
+      <section class="panel import-panel" aria-label="スクリーンショットからインポート">
+        <div class="panel-header">
+          <div>
+            <h3>スクリーンショットからインポート</h3>
+            <p>DDR GRAND PRIXのRESULT画面を正式個人スコアDBへ取り込みます</p>
+          </div>
+          <span class="status-pill status-done state-panel" data-panel="idle">受付可能</span>
+          <span class="status-pill status-pending state-panel" data-panel="importing" hidden>処理中</span>
+          <span class="status-pill status-done state-panel" data-panel="completed" hidden>完了</span>
+          <span class="status-pill status-hold state-panel" data-panel="cancelled" hidden>キャンセル</span>
+        </div>
+
+        <div class="panel-body state-panel" data-panel="idle">
+          <div class="import-dropzone">
+            <div class="import-drop-title">PNGファイルをここにドラッグ＆ドロップ</div>
+            <div class="import-drop-meta">複数ファイルをまとめて取り込めます<br>対応形式: PNG / 1280×720 / DDR GRAND PRIXゲーム画面全体のRESULT</div>
+            <div class="import-controls">
+              <button class="btn-primary" type="button">ファイルを選択</button>
             </div>
+          </div>
+          <p class="panel-note" style="margin-top: 10px;">JPEG / WebP等、1280×720以外、RESULT画面でない画像は取り込みません。認識結果の手動補正・強制保存は行いません。</p>
+        </div>
+
+        <div class="panel-body state-panel" data-panel="importing" hidden>
+          <div class="import-dropzone disabled">
+            <div class="import-drop-title">10件中 3件を処理しています</div>
+            <div class="import-drop-meta">現在のファイル: 2026-09-16_223501.png<br>処理中は追加のファイル投入を受け付けません</div>
+            <div class="progress-track" aria-label="インポート進捗"><div class="progress-value"></div></div>
+            <div class="import-controls">
+              <button class="btn-danger" type="button">キャンセル</button>
+            </div>
+          </div>
+          <p class="panel-note" style="margin-top: 10px;">通常の自動記録は継続します。正式DBへのwriteだけを共通gateで直列化します。</p>
+        </div>
+
+        <div class="panel-body state-panel" data-panel="completed" hidden>
+          <div class="result-summary-grid" aria-label="インポート結果">
+            <div class="result-summary-item"><span>保存</span><strong>6</strong></div>
+            <div class="result-summary-item"><span>重複</span><strong>2</strong></div>
+            <div class="result-summary-item"><span>認識失敗</span><strong>1</strong></div>
+            <div class="result-summary-item"><span>入力エラー</span><strong>1</strong></div>
+          </div>
+          <div class="import-result-list">
+            <div class="import-result-row">
+              <div>
+                <div class="import-result-file">result_008.png</div>
+                <div class="import-result-reason">曲・譜面を特定できませんでした</div>
+              </div>
+              <span class="status-pill status-warning">認識失敗</span>
+            </div>
+            <div class="import-result-row">
+              <div>
+                <div class="import-result-file">desktop_capture.png</div>
+                <div class="import-result-reason">DDR GRAND PRIXのRESULT画面を確認できませんでした</div>
+              </div>
+              <span class="status-pill status-error">入力エラー</span>
+            </div>
+          </div>
+          <div class="action-row">
+            <button class="btn-primary" type="button">ファイルを選択</button>
+            <span class="muted">10件を処理しました。保存済みデータは最新状態へ更新されています。</span>
+          </div>
+        </div>
+
+        <div class="panel-body state-panel" data-panel="cancelled" hidden>
+          <div class="result-summary-grid" aria-label="キャンセル時のインポート結果">
+            <div class="result-summary-item"><span>処理済み</span><strong>4</strong></div>
+            <div class="result-summary-item"><span>保存</span><strong>3</strong></div>
+            <div class="result-summary-item"><span>重複</span><strong>1</strong></div>
+            <div class="result-summary-item"><span>未処理</span><strong>6</strong></div>
+          </div>
+          <div class="callout">インポートをキャンセルしました。処理完了済みの結果は維持され、未処理の6件には着手していません。</div>
+          <div class="action-row">
+            <button class="btn-primary" type="button">ファイルを選択</button>
+            <span class="muted">必要なファイルだけ再度選択して取り込めます。</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <h3>楽曲・譜面データ</h3>
+            <p>アプリに同梱された楽曲・譜面情報</p>
+          </div>
           <span class="status-pill status-done">利用可能</span>
         </div>
         <div class="data-list">
@@ -118,5 +370,23 @@
       <div class="callout">楽曲・譜面データはアプリに同梱され、ユーザーが個別に置き換えることはできません。</div>
     </main>
   </div>
+
+  <script>
+    const buttons = [...document.querySelectorAll('[data-state]')];
+    const panels = [...document.querySelectorAll('[data-panel]')];
+
+    function selectState(state) {
+      buttons.forEach(button => {
+        button.classList.toggle('active', button.dataset.state === state);
+      });
+      panels.forEach(panel => {
+        panel.hidden = panel.dataset.panel !== state;
+      });
+    }
+
+    buttons.forEach(button => {
+      button.addEventListener('click', () => selectState(button.dataset.state));
+    });
+  </script>
 </body>
 </html>
