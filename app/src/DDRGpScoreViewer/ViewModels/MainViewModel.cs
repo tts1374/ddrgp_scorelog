@@ -3944,7 +3944,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
             selectedChartKey: selectedChartKey,
             preservedDisplayedCount: preservedDisplayedCount);
         ApplyHomeData(data.Home, data.Plays);
-        ApplyFlareSkillData(data.FlareSkill);
+        if (IsFlareSkillPage)
+        {
+            RefreshFlareSkill();
+        }
         bundledChartCount = data.ChartCatalog.Count;
         personalScoreDataStatus = "正常";
         MasterVersion = data.MasterVersion;

@@ -98,9 +98,38 @@ public sealed class FlareSkillCalculatorTests
                 Chart("valid", version: "DanceDanceRevolution (2013)"),
             ]);
 
-        Assert.Equal(5, result.Single.AbnormalExclusionCount);
+        Assert.Equal(4, result.Single.AbnormalExclusionCount);
+        Assert.Equal(0, result.Double.AbnormalExclusionCount);
+        Assert.Equal(1, result.Single.UnknownStyleAbnormalExclusionCount);
+        Assert.Equal(1, result.Double.UnknownStyleAbnormalExclusionCount);
+        Assert.Equal(5, result.Single.TotalAbnormalExclusionCount);
+        Assert.Equal(1, result.Double.TotalAbnormalExclusionCount);
         Assert.Equal(673, result.Single.Total);
         Assert.Single(result.Single.White.TopCharts);
+    }
+
+    [Fact]
+    public void Abnormal_exclusions_are_separated_by_play_style()
+    {
+        var result = FlareSkillCalculator.Calculate(
+            [
+                Play("single-invalid", "single-invalid", "I"),
+                Play("double-invalid-1", "double-invalid-1", "I"),
+                Play("double-invalid-2", "double-invalid-2", "I"),
+                Play("missing", "missing", "I"),
+            ],
+            [
+                Chart("single-invalid", level: 20),
+                Chart("double-invalid-1", playStyle: "DOUBLE", level: 20),
+                Chart("double-invalid-2", playStyle: "DOUBLE", difficulty: "UNKNOWN"),
+            ]);
+
+        Assert.Equal(1, result.Single.AbnormalExclusionCount);
+        Assert.Equal(2, result.Double.AbnormalExclusionCount);
+        Assert.Equal(1, result.Single.UnknownStyleAbnormalExclusionCount);
+        Assert.Equal(1, result.Double.UnknownStyleAbnormalExclusionCount);
+        Assert.Equal("算出対象外: 2件（style不明: 1件）", result.Single.AbnormalExclusionDisplay);
+        Assert.Equal("算出対象外: 3件（style不明: 1件）", result.Double.AbnormalExclusionDisplay);
     }
 
     [Fact]
@@ -235,6 +264,10 @@ public sealed class FlareSkillCalculatorTests
             userSettingsStore: new MemoryUserSettingsStore(null));
 
         viewModel.Load(fixture.ScorePath, fixture.MasterPath, persist: false);
+        Assert.False(viewModel.IsFlareSkillAvailable);
+
+        viewModel.SetFlareSkillPage(true);
+        viewModel.RefreshFlareSkill();
         Assert.True(viewModel.IsFlareSkillAvailable);
         Assert.Equal("673", viewModel.FlareTotalDisplay);
 

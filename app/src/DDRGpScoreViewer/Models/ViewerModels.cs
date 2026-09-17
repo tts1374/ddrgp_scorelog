@@ -251,11 +251,9 @@ public sealed record ViewerData(
     IReadOnlyList<ChartBestItem>? ChartCatalogSource = null,
     HomeDisplayData? Home = null,
     int TotalPlayCount = -1,
-    string LastSavedAt = "",
-    FlareSkillData? FlareSkillSource = null)
+    string LastSavedAt = "")
 {
     public IReadOnlyList<ChartBestItem> ChartCatalog { get; } = ChartCatalogSource ?? [];
-    public FlareSkillData FlareSkill { get; } = FlareSkillSource ?? FlareSkillData.Empty;
 }
 
 public sealed record HomeDisplayData(

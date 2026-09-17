@@ -127,11 +127,18 @@ public sealed record FlareSkillStyleResult(
     FlareSkillCategoryResult Gold,
     int Total,
     FlareSkillRankResult Rank,
-    int AbnormalExclusionCount)
+    int AbnormalExclusionCount,
+    int UnknownStyleAbnormalExclusionCount)
 {
     public string TotalDisplay => Total.ToString("N0", CultureInfo.CurrentCulture);
-    public string AbnormalExclusionDisplay =>
-        Localization.Format("算出対象外: {0:N0}件", AbnormalExclusionCount);
+    public int TotalAbnormalExclusionCount =>
+        AbnormalExclusionCount + UnknownStyleAbnormalExclusionCount;
+    public string AbnormalExclusionDisplay => UnknownStyleAbnormalExclusionCount == 0
+        ? Localization.Format("算出対象外: {0:N0}件", AbnormalExclusionCount)
+        : Localization.Format(
+            "算出対象外: {0:N0}件（style不明: {1:N0}件）",
+            TotalAbnormalExclusionCount,
+            UnknownStyleAbnormalExclusionCount);
     public string PointsToNextDisplay => Rank.PointsToNextDisplay(Total);
 }
 
@@ -250,7 +257,25 @@ public static class FlareSkillCalculator
     {
         var chartMap = charts.ToDictionary(chart => chart.ChartId, StringComparer.Ordinal);
         var valid = new List<(FlareSkillChartResult Chart, string PlayStyle, string Category)>();
-        var abnormalExclusionCount = 0;
+        var singleAbnormalExclusionCount = 0;
+        var doubleAbnormalExclusionCount = 0;
+        var unknownStyleAbnormalExclusionCount = 0;
+
+        void CountAbnormal(string? playStyle)
+        {
+            if (playStyle == "SINGLE")
+            {
+                singleAbnormalExclusionCount++;
+            }
+            else if (playStyle == "DOUBLE")
+            {
+                doubleAbnormalExclusionCount++;
+            }
+            else
+            {
+                unknownStyleAbnormalExclusionCount++;
+            }
+        }
 
         foreach (var play in plays)
         {
@@ -259,20 +284,25 @@ public static class FlareSkillCalculator
                 continue;
             }
 
-            if (!chartMap.TryGetValue(play.ChartId, out var chart) ||
-                chart.SongId != play.SongId ||
+            if (!chartMap.TryGetValue(play.ChartId, out var chart))
+            {
+                CountAbnormal(playStyle: null);
+                continue;
+            }
+
+            if (chart.SongId != play.SongId ||
                 chart.IsRemoved ||
                 chart.Level is < 1 or > 19 ||
                 chart.PlayStyle is not ("SINGLE" or "DOUBLE") ||
                 !DifficultyOrder.ContainsKey(chart.Difficulty))
             {
-                abnormalExclusionCount++;
+                CountAbnormal(chart.PlayStyle);
                 continue;
             }
             if (!FlareRankIndexes.TryGetValue(play.FlareRank, out var rankIndex) ||
                 !VersionCategories.TryGetValue(chart.Version, out var category))
             {
-                abnormalExclusionCount++;
+                CountAbnormal(chart.PlayStyle);
                 continue;
             }
 
@@ -291,14 +321,23 @@ public static class FlareSkillCalculator
         }
 
         return new FlareSkillData(
-            BuildStyle("SINGLE", valid, abnormalExclusionCount),
-            BuildStyle("DOUBLE", valid, abnormalExclusionCount));
+            BuildStyle(
+                "SINGLE",
+                valid,
+                singleAbnormalExclusionCount,
+                unknownStyleAbnormalExclusionCount),
+            BuildStyle(
+                "DOUBLE",
+                valid,
+                doubleAbnormalExclusionCount,
+                unknownStyleAbnormalExclusionCount));
     }
 
     private static FlareSkillStyleResult BuildStyle(
         string playStyle,
         IReadOnlyList<(FlareSkillChartResult Chart, string PlayStyle, string Category)> candidates,
-        int abnormalExclusionCount)
+        int abnormalExclusionCount,
+        int unknownStyleAbnormalExclusionCount)
     {
         var chartBests = candidates
             .Where(candidate => candidate.PlayStyle == playStyle)
@@ -322,7 +361,8 @@ public static class FlareSkillCalculator
             gold,
             total,
             GetRank(total),
-            abnormalExclusionCount);
+            abnormalExclusionCount,
+            unknownStyleAbnormalExclusionCount);
     }
 
     private static FlareSkillCategoryResult BuildCategory(

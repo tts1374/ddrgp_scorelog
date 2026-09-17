@@ -370,11 +370,15 @@
     <sys:String x:Key="フレアスキルを算出できません">Flare Skill cannot be calculated</sys:String>
     <sys:String x:Key="次点 31位">Runner-up #31</sys:String>
     <sys:String x:Key="次のランク段階">Next rank stage</sys:String>
+    <sys:String x:Key="3カテゴリのTARGET合計">TARGET total across 3 categories</sys:String>
+    <sys:String x:Key="次のランク段階まで">To the next rank stage</sys:String>
+    <sys:String x:Key="現在のランク段階内での進捗">Progress within the current rank stage</sys:String>
     <sys:String x:Key="保存済みのFLARE I〜EXだけから算出しています。ゲーム内の公式値と異なる場合があります。">Calculated only from saved FLARE I–EX results. It may differ from the official in-game value.</sys:String>
     <sys:String x:Key="最高ランク">Highest rank</sys:String>
     <sys:String x:Key="到達済み">Reached</sys:String>
     <sys:String x:Key="あと {0:N0}">{0:N0} to go</sys:String>
     <sys:String x:Key="算出対象外: {0:N0}件">Excluded as invalid: {0:N0}</sys:String>
+    <sys:String x:Key="算出対象外: {0:N0}件（style不明: {1:N0}件）">Excluded as invalid: {0:N0} (unknown play style: {1:N0})</sys:String>
     <sys:String x:Key="プレーデータと楽曲データを読み込むと算出できます。">Load play and song data to calculate Flare Skill.</sys:String>
     <sys:String x:Key="プレーデータまたは楽曲データを読み込めないため、算出できません。">Flare Skill cannot be calculated because play or song data could not be loaded.</sys:String>
     <sys:String x:Key="フレアスキルを算出できませんでした。プレーデータと楽曲データを確認してください。">Flare Skill could not be calculated. Check the play and song data.</sys:String>

@@ -567,7 +567,6 @@ public sealed class ScoreViewerRepository
             var chartBests = ReadChartBests(scoreConnection, masterCharts);
             var home = ReadHomeData(scoreConnection, masterCharts, DateTimeOffset.Now);
             var chartCatalog = ReadChartCatalog(masterCharts);
-            var flareSkill = ReadFlareSkill(scoreConnection, masterCharts);
             return new ViewerData(
                 plays,
                 chartBests,
@@ -578,8 +577,7 @@ public sealed class ScoreViewerRepository
                 chartCatalog,
                 home,
                 home.TotalPlayCount,
-                home.LastSavedAt,
-                flareSkill);
+                home.LastSavedAt);
         }
         catch (ViewerDatabaseException)
         {

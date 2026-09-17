@@ -1002,6 +1002,70 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
         });
     }
 
+    [Theory]
+    [InlineData(
+        UserSettings.EnglishLanguage,
+        "TARGET total across 3 categories",
+        "To the next rank stage",
+        "Progress within the current rank stage")]
+    [InlineData(
+        UserSettings.KoreanLanguage,
+        "3개 카테고리 TARGET 합계",
+        "다음 랭크 단계까지",
+        "현재 랭크 단계 내 진행도")]
+    public void Flare_skill_static_labels_are_localized(
+        string language,
+        string categoryTotal,
+        string nextRank,
+        string progress)
+    {
+        using var databaseFixture = new DatabaseFixture();
+        applicationFixture.Run(() =>
+        {
+            MainWindow? window = null;
+            try
+            {
+                foreach (var resourceName in new[] { "Theme.xaml", "Components.xaml", "Strings.xaml" })
+                {
+                    Application.Current.Resources.MergedDictionaries.Add(new ResourceDictionary
+                    {
+                        Source = new Uri($"/DDRGpScoreViewer;component/Resources/{resourceName}", UriKind.Relative),
+                    });
+                }
+
+                Localization.Configure(language);
+                window = new MainWindow(new ViewerDatabasePaths(
+                    ViewerDatabaseEnvironment.Development, databaseFixture.DirectoryPath,
+                    databaseFixture.MasterPath, databaseFixture.CatalogPath, databaseFixture.ScorePath,
+                    Path.Combine(databaseFixture.DirectoryPath, "evaluation.db"),
+                    Path.Combine(databaseFixture.DirectoryPath, "data"),
+                    Path.Combine(databaseFixture.DirectoryPath, "logs"),
+                    Path.Combine(databaseFixture.DirectoryPath, "viewer-settings.json")));
+                window.ViewModel.Load(
+                    databaseFixture.ScorePath,
+                    databaseFixture.MasterPath,
+                    databaseFixture.CatalogPath,
+                    persist: false);
+                window.Show();
+                window.FlareSkillNavigation.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                DrainDispatcher(window.Dispatcher);
+
+                var displayedTexts = FindVisualChildren<TextBlock>(window)
+                    .Select(text => text.Text)
+                    .ToArray();
+                Assert.Contains(categoryTotal, displayedTexts);
+                Assert.Contains(nextRank, displayedTexts);
+                Assert.Contains(progress, displayedTexts);
+            }
+            finally
+            {
+                window?.PrepareForApplicationExit();
+                window?.Close();
+                Localization.Configure(UserSettings.JapaneseLanguage);
+            }
+        });
+    }
+
     private sealed record GridItem(string Display);
 }
 
