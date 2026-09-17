@@ -564,6 +564,7 @@ public partial class MainWindow : System.Windows.Window
 
     private void ShowHomePage()
     {
+        viewModel.SetFlareSkillPage(false);
         viewModel.SetSettingsPage(false);
         viewModel.SetDataManagementPage(false);
         ContentTabs.SelectedIndex = 0;
@@ -574,6 +575,7 @@ public partial class MainWindow : System.Windows.Window
         HomeNavigation.Tag = "Selected";
         BestNavigation.Tag = null;
         HistoryNavigation.Tag = null;
+        FlareSkillNavigation.Tag = null;
         SettingsNavigation.Tag = null;
         DataManagementNavigation.Tag = null;
     }
@@ -582,6 +584,7 @@ public partial class MainWindow : System.Windows.Window
 
     private void ShowBestPage()
     {
+        viewModel.SetFlareSkillPage(false);
         viewModel.SetSettingsPage(false);
         viewModel.SetDataManagementPage(false);
         ContentTabs.SelectedIndex = 1;
@@ -596,6 +599,7 @@ public partial class MainWindow : System.Windows.Window
         HomeNavigation.Tag = null;
         BestNavigation.Tag = "Selected";
         HistoryNavigation.Tag = null;
+        FlareSkillNavigation.Tag = null;
         SettingsNavigation.Tag = null;
         DataManagementNavigation.Tag = null;
     }
@@ -604,9 +608,10 @@ public partial class MainWindow : System.Windows.Window
 
     private void ShowSettingsPage()
     {
+        viewModel.SetFlareSkillPage(false);
         viewModel.SetDataManagementPage(false);
         viewModel.SetSettingsPage(true);
-        ContentTabs.SelectedIndex = 4;
+        ContentTabs.SelectedIndex = 5;
         BindingOperations.ClearBinding(PageTitle, TextBlock.TextProperty);
         PageTitle.Text = Localization.Get("設定");
         PageSubtitle.Text = Localization.Get("自動記録と表示に関する設定を変更できます");
@@ -614,6 +619,7 @@ public partial class MainWindow : System.Windows.Window
         HomeNavigation.Tag = null;
         BestNavigation.Tag = null;
         HistoryNavigation.Tag = null;
+        FlareSkillNavigation.Tag = null;
         SettingsNavigation.Tag = "Selected";
         DataManagementNavigation.Tag = null;
     }
@@ -623,9 +629,10 @@ public partial class MainWindow : System.Windows.Window
 
     private void ShowDataManagementPage()
     {
+        viewModel.SetFlareSkillPage(false);
         viewModel.SetSettingsPage(false);
         viewModel.SetDataManagementPage(true);
-        ContentTabs.SelectedIndex = 5;
+        ContentTabs.SelectedIndex = 6;
         BindingOperations.ClearBinding(PageTitle, TextBlock.TextProperty);
         PageTitle.Text = Localization.Get("データ管理");
         PageSubtitle.Text = Localization.Get("保存済みプレーと楽曲・譜面データの状態を確認できます");
@@ -633,6 +640,7 @@ public partial class MainWindow : System.Windows.Window
         HomeNavigation.Tag = null;
         BestNavigation.Tag = null;
         HistoryNavigation.Tag = null;
+        FlareSkillNavigation.Tag = null;
         SettingsNavigation.Tag = null;
         DataManagementNavigation.Tag = "Selected";
     }
@@ -1009,6 +1017,7 @@ public partial class MainWindow : System.Windows.Window
 
     private void ShowChartDetail()
     {
+        viewModel.SetFlareSkillPage(false);
         viewModel.SetSettingsPage(false);
         ContentTabs.SelectedIndex = 2;
         PageTitle.SetBinding(TextBlock.TextProperty, new WpfBinding(nameof(MainViewModel.ChartDetailSongTitle))
@@ -1020,7 +1029,9 @@ public partial class MainWindow : System.Windows.Window
         HomeNavigation.Tag = null;
         BestNavigation.Tag = "Selected";
         HistoryNavigation.Tag = null;
+        FlareSkillNavigation.Tag = null;
         SettingsNavigation.Tag = null;
+        DataManagementNavigation.Tag = null;
         UpdateChartDetailGraphModeButtons();
         Dispatcher.BeginInvoke(
             DispatcherPriority.Background,
@@ -1103,6 +1114,7 @@ public partial class MainWindow : System.Windows.Window
 
     private void ShowHistoryPage()
     {
+        viewModel.SetFlareSkillPage(false);
         viewModel.SetSettingsPage(false);
         viewModel.SetDataManagementPage(false);
         ContentTabs.SelectedIndex = 3;
@@ -1113,8 +1125,45 @@ public partial class MainWindow : System.Windows.Window
         HomeNavigation.Tag = null;
         BestNavigation.Tag = null;
         HistoryNavigation.Tag = "Selected";
+        FlareSkillNavigation.Tag = null;
         SettingsNavigation.Tag = null;
         DataManagementNavigation.Tag = null;
+    }
+
+    private void ShowFlareSkill_Click(object sender, RoutedEventArgs e) => ShowFlareSkillPage();
+
+    private void ShowFlareSkillPage()
+    {
+        viewModel.SetSettingsPage(false);
+        viewModel.SetDataManagementPage(false);
+        viewModel.SetFlareSkillPage(true);
+        viewModel.RefreshFlareSkill();
+        ContentTabs.SelectedIndex = 4;
+        BindingOperations.ClearBinding(PageTitle, TextBlock.TextProperty);
+        PageTitle.Text = Localization.Get("フレアスキル");
+        PageSubtitle.Text = Localization.Get("保存済みFLARE実績から現在のフレアスキルを確認できます");
+        Localization.ApplyToWindow(this);
+        UpdateFlarePlayStyleButtons();
+        HomeNavigation.Tag = null;
+        BestNavigation.Tag = null;
+        HistoryNavigation.Tag = null;
+        FlareSkillNavigation.Tag = "Selected";
+        SettingsNavigation.Tag = null;
+        DataManagementNavigation.Tag = null;
+    }
+
+    private void FlarePlayStyle_Click(object sender, RoutedEventArgs e)
+    {
+        viewModel.SetFlareSkillPlayStyle(
+            ReferenceEquals(sender, FlareDoubleButton) ? "DOUBLE" : "SINGLE");
+        UpdateFlarePlayStyleButtons();
+    }
+
+    private void UpdateFlarePlayStyleButtons()
+    {
+        var singleSelected = viewModel.FlareSkillPlayStyle == "SINGLE";
+        FlareSingleButton.Tag = singleSelected ? "Selected" : null;
+        FlareDoubleButton.Tag = singleSelected ? null : "Selected";
     }
 
     private void RenderChartDetailGraph()

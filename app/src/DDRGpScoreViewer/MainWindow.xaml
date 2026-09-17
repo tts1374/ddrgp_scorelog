@@ -634,6 +634,221 @@
                 </DataTrigger>
             </Style.Triggers>
         </Style>
+        <Style x:Key="FlareSkillDifficultyBadgeStyle" TargetType="Border">
+            <Setter Property="MinWidth" Value="31" />
+            <Setter Property="Height" Value="17" />
+            <Setter Property="Padding" Value="5,0" />
+            <Setter Property="CornerRadius" Value="3" />
+            <Setter Property="Background" Value="{DynamicResource SurfaceSecondaryBrush}" />
+            <Setter Property="HorizontalAlignment" Value="Left" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding Difficulty}" Value="BEGINNER"><Setter Property="Background" Value="{DynamicResource BeginnerBrush}" /></DataTrigger>
+                <DataTrigger Binding="{Binding Difficulty}" Value="BASIC"><Setter Property="Background" Value="{DynamicResource BasicBrush}" /></DataTrigger>
+                <DataTrigger Binding="{Binding Difficulty}" Value="DIFFICULT"><Setter Property="Background" Value="{DynamicResource DifficultBrush}" /></DataTrigger>
+                <DataTrigger Binding="{Binding Difficulty}" Value="EXPERT"><Setter Property="Background" Value="{DynamicResource ExpertBrush}" /></DataTrigger>
+                <DataTrigger Binding="{Binding Difficulty}" Value="CHALLENGE"><Setter Property="Background" Value="{DynamicResource ChallengeBrush}" /></DataTrigger>
+            </Style.Triggers>
+        </Style>
+        <Style x:Key="FlareSkillDifficultyTextStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="FontSize" Value="9" />
+            <Setter Property="FontWeight" Value="ExtraBold" />
+            <Setter Property="HorizontalAlignment" Value="Center" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding Difficulty}" Value="BEGINNER"><Setter Property="Foreground" Value="#0B2330" /></DataTrigger>
+                <DataTrigger Binding="{Binding Difficulty}" Value="BASIC"><Setter Property="Foreground" Value="#2B1A00" /></DataTrigger>
+            </Style.Triggers>
+        </Style>
+        <Style x:Key="FlareSkillResultBadgeStyle" TargetType="Border"
+               BasedOn="{StaticResource FlareBadgeStyle}">
+            <Setter Property="MinWidth" Value="48" />
+            <Setter Property="MinHeight" Value="19" />
+            <Setter Property="Padding" Value="6,2" />
+            <Setter Property="CornerRadius" Value="4" />
+            <Setter Property="HorizontalAlignment" Value="Right" />
+        </Style>
+        <Style x:Key="FlareRankTextStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource FlareRankNoneBrush}" />
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding FlareRankMainDisplay}" Value="MERCURY"><Setter Property="Foreground" Value="{DynamicResource FlareRankMercuryBrush}" /></DataTrigger>
+                <DataTrigger Binding="{Binding FlareRankMainDisplay}" Value="VENUS"><Setter Property="Foreground" Value="{DynamicResource FlareRankVenusBrush}" /></DataTrigger>
+                <DataTrigger Binding="{Binding FlareRankMainDisplay}" Value="EARTH"><Setter Property="Foreground" Value="{DynamicResource FlareRankEarthBrush}" /></DataTrigger>
+                <DataTrigger Binding="{Binding FlareRankMainDisplay}" Value="MARS"><Setter Property="Foreground" Value="{DynamicResource FlareRankMarsBrush}" /></DataTrigger>
+                <DataTrigger Binding="{Binding FlareRankMainDisplay}" Value="JUPITER"><Setter Property="Foreground" Value="{DynamicResource FlareRankJupiterBrush}" /></DataTrigger>
+                <DataTrigger Binding="{Binding FlareRankMainDisplay}" Value="SATURN"><Setter Property="Foreground" Value="{DynamicResource FlareRankSaturnBrush}" /></DataTrigger>
+                <DataTrigger Binding="{Binding FlareRankMainDisplay}" Value="URANUS"><Setter Property="Foreground" Value="{DynamicResource FlareRankUranusBrush}" /></DataTrigger>
+                <DataTrigger Binding="{Binding FlareRankMainDisplay}" Value="NEPTUNE"><Setter Property="Foreground" Value="{DynamicResource FlareRankNeptuneBrush}" /></DataTrigger>
+                <DataTrigger Binding="{Binding FlareRankMainDisplay}" Value="SUN"><Setter Property="Foreground" Value="{DynamicResource FlareRankSunBrush}" /></DataTrigger>
+                <DataTrigger Binding="{Binding FlareRankMainDisplay}" Value="WORLD"><Setter Property="Foreground" Value="{DynamicResource FlareRankWorldBrush}" /></DataTrigger>
+            </Style.Triggers>
+        </Style>
+        <Style x:Key="FlareRankProgressStyle" TargetType="ProgressBar">
+            <Setter Property="Height" Value="7" />
+            <Setter Property="Background" Value="{DynamicResource SurfaceSecondaryBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource AccentPrimaryBrush}" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ProgressBar">
+                        <Border Background="{TemplateBinding Background}" CornerRadius="4" ClipToBounds="True">
+                            <Grid x:Name="PART_Track">
+                                <Border x:Name="PART_Indicator" HorizontalAlignment="Left"
+                                        Background="{TemplateBinding Foreground}" CornerRadius="4" />
+                            </Grid>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <DataTemplate x:Key="FlareSkillCategoryTemplate">
+            <Border Margin="6,0" Padding="0" Background="{DynamicResource SurfacePrimaryBrush}"
+                    BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="1">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <Border MinHeight="73" Padding="14,12" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,0,0,1">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <Border Width="5" Height="36" Margin="0,0,9,0">
+                                    <Border.Style>
+                                        <Style TargetType="Border">
+                                            <Setter Property="Background" Value="{DynamicResource FlareClassicCategoryBrush}" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Name}" Value="WHITE">
+                                                    <Setter Property="Background" Value="{DynamicResource FlareWhiteCategoryBrush}" />
+                                                    <Setter Property="BorderBrush" Value="{DynamicResource BorderStrongBrush}" />
+                                                    <Setter Property="BorderThickness" Value="1" />
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding Name}" Value="GOLD"><Setter Property="Background" Value="{DynamicResource FlareGoldCategoryBrush}" /></DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
+                                </Border>
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding Name}" FontSize="16" FontWeight="Bold" />
+                                    <TextBlock Text="{Binding VersionRange}" FontSize="10"
+                                               Foreground="{DynamicResource TextMutedBrush}" Margin="0,2,0,0" />
+                                </StackPanel>
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" HorizontalAlignment="Right">
+                                <TextBlock Text="{Binding TotalDisplay}" FontSize="21" FontWeight="Bold"
+                                           TextAlignment="Right" Typography.NumeralAlignment="Tabular" />
+                                <TextBlock Text="{Binding CountDisplay}" FontSize="11" TextAlignment="Right"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                        <ItemsControl ItemsSource="{Binding TopCharts}" AlternationCount="5">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Border MinHeight="61" Padding="8,8,10,8" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,0,0,1">
+                                        <Border.Style>
+                                            <Style TargetType="Border">
+                                                <Setter Property="BorderBrush" Value="{DynamicResource BorderDefaultBrush}" />
+                                                <Style.Triggers>
+                                                    <Trigger Property="ItemsControl.AlternationIndex" Value="4"><Setter Property="BorderBrush" Value="{DynamicResource BorderStrongBrush}" /></Trigger>
+                                                    <Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="{DynamicResource AccentSubtleBrush}" /></Trigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Border.Style>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="24" />
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="{Binding PositionDisplay}" FontSize="11" TextAlignment="Center"
+                                                       Foreground="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" />
+                                            <StackPanel Grid.Column="1" Margin="8,0" VerticalAlignment="Center">
+                                                <TextBlock Text="{Binding SongTitle}" FontSize="12" FontWeight="SemiBold"
+                                                           TextTrimming="CharacterEllipsis" ToolTip="{Binding SongTitle}" />
+                                                <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                                                    <Border Style="{StaticResource FlareSkillDifficultyBadgeStyle}">
+                                                        <TextBlock Text="{Binding DifficultyShortDisplay}" Style="{StaticResource FlareSkillDifficultyTextStyle}" />
+                                                    </Border>
+                                                    <TextBlock Text="{Binding LevelDisplay}" FontSize="10" FontWeight="SemiBold" Margin="6,0,0,0"
+                                                               VerticalAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                </StackPanel>
+                                            </StackPanel>
+                                            <StackPanel Grid.Column="2" MinWidth="53" HorizontalAlignment="Right" VerticalAlignment="Center">
+                                                <Border Style="{StaticResource FlareSkillResultBadgeStyle}" Tag="{Binding FlareBadgeGroup}">
+                                                    <TextBlock Text="{Binding FlareRankDisplay}" FontSize="9" FontWeight="ExtraBold" />
+                                                </Border>
+                                                <TextBlock Text="{Binding FlareSkillDisplay}" FontSize="15" FontWeight="Bold" Margin="0,3,0,0"
+                                                           HorizontalAlignment="Right" Typography.NumeralAlignment="Tabular" />
+                                            </StackPanel>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                    <TextBlock Grid.Row="1" Text="対象実績なし" HorizontalAlignment="Center" VerticalAlignment="Center"
+                               Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Visibility" Value="Collapsed" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding TopCharts.Count}" Value="0">
+                                        <Setter Property="Visibility" Value="Visible" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                    <Border Grid.Row="2" MinHeight="54" Padding="10,7" Background="{DynamicResource SurfaceSecondaryBrush}"
+                            BorderBrush="{DynamicResource BorderStrongBrush}" BorderThickness="0,1,0,0">
+                        <Border.Style>
+                            <Style TargetType="Border">
+                                <Setter Property="Visibility" Value="Visible" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding HasRunnerUp}" Value="False">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
+                        <Grid DataContext="{Binding RunnerUp}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <Border Padding="6,3" Background="{DynamicResource SurfacePrimaryBrush}" BorderBrush="{DynamicResource BorderStrongBrush}"
+                                    BorderThickness="1" CornerRadius="4" VerticalAlignment="Center">
+                                <TextBlock Text="次点 31位" FontSize="9" FontWeight="Bold" Foreground="{DynamicResource TextSecondaryBrush}" />
+                            </Border>
+                            <StackPanel Grid.Column="1" Margin="8,0" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding SongTitle}" FontSize="11" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                <StackPanel Orientation="Horizontal" Margin="0,3,0,0">
+                                    <Border Style="{StaticResource FlareSkillDifficultyBadgeStyle}">
+                                        <TextBlock Text="{Binding DifficultyShortDisplay}" Style="{StaticResource FlareSkillDifficultyTextStyle}" />
+                                    </Border>
+                                    <TextBlock Text="{Binding LevelDisplay}" FontSize="10" FontWeight="SemiBold" Margin="6,0,0,0"
+                                               VerticalAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                </StackPanel>
+                            </StackPanel>
+                            <StackPanel Grid.Column="2" MinWidth="53" HorizontalAlignment="Right" VerticalAlignment="Center">
+                                <Border Style="{StaticResource FlareSkillResultBadgeStyle}" Tag="{Binding FlareBadgeGroup}">
+                                    <TextBlock Text="{Binding FlareRankDisplay}" FontSize="9" FontWeight="ExtraBold" />
+                                </Border>
+                                <TextBlock Text="{Binding FlareSkillDisplay}" FontSize="14" FontWeight="Bold" Margin="0,3,0,0"
+                                           HorizontalAlignment="Right" Typography.NumeralAlignment="Tabular" />
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+                </Grid>
+            </Border>
+        </DataTemplate>
     </Window.Resources>
     <Grid MinWidth="0" MinHeight="0" Background="{DynamicResource BackgroundPrimaryBrush}">
         <Grid.RowDefinitions>
@@ -645,14 +860,15 @@
             <Grid>
                 <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                 <TextBlock Text="GP Score Log" FontSize="24" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,24,0" />
-                <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Center">
-<Button x:Name="HomeNavigation" Content="ホーム" TabIndex="0" Tag="Selected" Style="{StaticResource SidebarButtonStyle}" Click="ShowHome_Click" />
-<Button x:Name="BestNavigation" Content="自己ベスト" TabIndex="1" Style="{StaticResource SidebarButtonStyle}" Click="ShowBest_Click" />
-<Button x:Name="HistoryNavigation" Content="直近プレー履歴" TabIndex="2" Style="{StaticResource SidebarButtonStyle}" Click="ShowHistory_Click" />
+                <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Left">
+<Button x:Name="HomeNavigation" Content="ホーム" TabIndex="0" Tag="Selected" Padding="9,18" Style="{StaticResource SidebarButtonStyle}" Click="ShowHome_Click" />
+<Button x:Name="BestNavigation" Content="自己ベスト" TabIndex="1" Padding="9,18" Style="{StaticResource SidebarButtonStyle}" Click="ShowBest_Click" />
+<Button x:Name="HistoryNavigation" Content="直近プレー履歴" TabIndex="2" Padding="9,18" Style="{StaticResource SidebarButtonStyle}" Click="ShowHistory_Click" />
+<Button x:Name="FlareSkillNavigation" Content="フレアスキル" TabIndex="3" Padding="9,18" Style="{StaticResource SidebarButtonStyle}" Click="ShowFlareSkill_Click" />
                 </StackPanel>
                 <StackPanel Grid.Column="2" Orientation="Horizontal">
-<Button x:Name="SettingsNavigation" Content="設定" TabIndex="3" Style="{StaticResource SidebarButtonStyle}" Click="ShowSettings_Click" />
-<Button x:Name="DataManagementNavigation" Content="データ管理" TabIndex="4" Style="{StaticResource SidebarButtonStyle}" Click="ShowDataManagement_Click" />
+<Button x:Name="SettingsNavigation" Content="設定" TabIndex="4" Padding="9,18" Style="{StaticResource SidebarButtonStyle}" Click="ShowSettings_Click" />
+<Button x:Name="DataManagementNavigation" Content="データ管理" TabIndex="5" Padding="9,18" Style="{StaticResource SidebarButtonStyle}" Click="ShowDataManagement_Click" />
                 </StackPanel>
             </Grid>
         </Border>
@@ -724,6 +940,25 @@
                         </Style>
                     </Button.Style>
                 </Button>
+                <Border DockPanel.Dock="Right" Margin="16,0,0,0" Padding="3"
+                        Background="{DynamicResource SegmentBackgroundBrush}" CornerRadius="7" VerticalAlignment="Center">
+                    <Border.Style>
+                        <Style TargetType="Border">
+                            <Setter Property="Visibility" Value="Collapsed" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding ElementName=ContentTabs, Path=SelectedIndex}" Value="4">
+                                    <Setter Property="Visibility" Value="Visible" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
+                    <StackPanel Orientation="Horizontal">
+                        <Button x:Name="FlareSingleButton" Content="SINGLE" MinWidth="92" TabIndex="100" Tag="Selected"
+                                Style="{StaticResource BestSegmentButtonStyle}" Click="FlarePlayStyle_Click" />
+                        <Button x:Name="FlareDoubleButton" Content="DOUBLE" MinWidth="92" TabIndex="101"
+                                Style="{StaticResource BestSegmentButtonStyle}" Click="FlarePlayStyle_Click" />
+                    </StackPanel>
+                </Border>
                 <StackPanel>
                 <TextBlock x:Name="PageTitle" Text="ホーム" FontSize="30" FontWeight="SemiBold"
                            TextTrimming="CharacterEllipsis" ToolTip="{Binding ElementName=PageSubtitle, Path=Text}" />
@@ -1789,6 +2024,111 @@
                                 </StackPanel>
                             </Grid>
                         </Border></ScrollViewer>
+                    </Grid>
+                </TabItem>
+                <TabItem x:Name="FlareSkillTab">
+                    <Grid>
+                        <controls:StatePanel Visibility="{Binding FlareSkillUnavailableVisibility}"
+                                             Title="フレアスキルを算出できません"
+                                             Message="{Binding FlareSkillUnavailableMessage}" />
+                        <Grid Visibility="{Binding FlareSkillContentVisibility}">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" MinHeight="180" />
+                            </Grid.RowDefinitions>
+
+                            <Border BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,1"
+                                    Background="{DynamicResource SurfacePrimaryBrush}" MinHeight="126" Margin="0,0,0,10">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="1.15*" MinWidth="260" />
+                                        <ColumnDefinition Width="0.9*" MinWidth="220" />
+                                        <ColumnDefinition Width="1.25*" MinWidth="290" />
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel VerticalAlignment="Center" Margin="22,16">
+                                        <TextBlock Text="TOTAL FLARE SKILL RANK" FontSize="11" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                                        <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
+                                            <TextBlock Text="{Binding FlareRankMainDisplay}" FontSize="46" FontWeight="ExtraBold"
+                                                       Style="{StaticResource FlareRankTextStyle}" />
+                                            <TextBlock Text="{Binding FlareRankSubDisplay}" FontSize="26" FontWeight="ExtraBold"
+                                                       Style="{StaticResource FlareRankTextStyle}" VerticalAlignment="Top" Margin="7,4,0,0" />
+                                        </StackPanel>
+                                        <TextBlock Text="{Binding FlareRankJapaneseDisplay}" FontSize="12" Margin="0,4,0,0"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding FlareRankJapaneseDisplay}" Value="">
+                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                    </StackPanel>
+                                    <Border Grid.Column="1" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="1,0,0,0">
+                                        <StackPanel VerticalAlignment="Center" Margin="22,16">
+                                        <TextBlock Text="TOTAL FLARE SKILL" FontSize="11" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                                        <TextBlock Text="{Binding FlareTotalDisplay}" FontSize="35" FontWeight="SemiBold" Margin="0,3,0,0"
+                                                   Typography.NumeralAlignment="Tabular" />
+                                        <TextBlock Text="3カテゴリのTARGET合計" FontSize="11" Margin="0,2,0,0"
+                                                   Foreground="{DynamicResource TextMutedBrush}" />
+                                        </StackPanel>
+                                    </Border>
+                                    <Border Grid.Column="2" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="1,0,0,0">
+                                        <StackPanel VerticalAlignment="Center" Margin="22,16">
+                                        <TextBlock Text="次のランク段階まで" FontSize="11" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                                        <Grid Margin="0,5,0,0">
+                                            <TextBlock Text="{Binding FlarePointsToNextDisplay}" FontSize="25" FontWeight="SemiBold"
+                                                       Foreground="{DynamicResource AccentPrimaryBrush}" />
+                                            <TextBlock Text="{Binding FlareNextRankThresholdDisplay}" FontSize="12" HorizontalAlignment="Right"
+                                                       VerticalAlignment="Bottom" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                        </Grid>
+                                        <ProgressBar Value="{Binding FlareRankProgress, Mode=OneWay}" Maximum="100" Margin="0,11,0,0"
+                                                     Style="{StaticResource FlareRankProgressStyle}" />
+                                        <TextBlock Text="現在のランク段階内での進捗" FontSize="11" Margin="0,3,0,0"
+                                                   Foreground="{DynamicResource TextMutedBrush}" />
+                                        </StackPanel>
+                                    </Border>
+                                </Grid>
+                            </Border>
+
+                            <Grid Grid.Row="1" Margin="0,0,0,10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <Border MinHeight="38" Padding="12,9" Background="{DynamicResource InfoBackgroundBrush}"
+                                        BorderBrush="{DynamicResource InfoBorderBrush}" BorderThickness="1" CornerRadius="7">
+                                    <TextBlock x:Name="FlareSkillDisclaimer" Text="保存済みのFLARE I〜EXだけから算出しています。ゲーム内の公式値と異なる場合があります。"
+                                               Foreground="{DynamicResource InfoTextBrush}" FontSize="12" TextWrapping="Wrap" />
+                                </Border>
+                                <Border Grid.Column="1" MinWidth="276" MinHeight="38" Padding="12,9" Margin="10,0,0,0"
+                                        Background="{DynamicResource NotificationWarningBackgroundBrush}"
+                                        BorderBrush="{DynamicResource NotificationWarningBorderBrush}" BorderThickness="1" CornerRadius="7">
+                                    <TextBlock Text="{Binding FlareAbnormalExclusionDisplay}"
+                                               Foreground="{DynamicResource NotificationWarningTextBrush}" FontSize="12" FontWeight="SemiBold" />
+                                </Border>
+                            </Grid>
+
+                            <Grid Grid.Row="2" Margin="-6,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="*" />
+                                </Grid.ColumnDefinitions>
+                                <ContentControl x:Name="FlareClassicColumn" Grid.Column="0" Content="{Binding FlareClassic}"
+                                                ContentTemplate="{StaticResource FlareSkillCategoryTemplate}" />
+                                <ContentControl x:Name="FlareWhiteColumn" Grid.Column="1" Content="{Binding FlareWhite}"
+                                                ContentTemplate="{StaticResource FlareSkillCategoryTemplate}" />
+                                <ContentControl x:Name="FlareGoldColumn" Grid.Column="2" Content="{Binding FlareGold}"
+                                                ContentTemplate="{StaticResource FlareSkillCategoryTemplate}" />
+                            </Grid>
+                        </Grid>
                     </Grid>
                 </TabItem>
                 <TabItem>

@@ -78,6 +78,11 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private string lastSavedAt = "";
     private bool suppressBestBrowseStatePersistence;
     private HomeSummaryData homeTodaySummary = HomeSummaryData.Empty(DateTimeOffset.Now);
+    private FlareSkillData flareSkillData = FlareSkillData.Empty;
+    private string flareSkillPlayStyle = "SINGLE";
+    private bool isFlareSkillAvailable;
+    private string flareSkillUnavailableMessage = Localization.Get(
+        "プレーデータと楽曲データを読み込むと算出できます。");
     private string statusTitle = Localization.Get("既定のDBを確認しています");
     private string statusMessage = Localization.Get(
         "現在の環境に対応する既定pathのDBを検証して、履歴と自己ベストを表示します。");
@@ -154,6 +159,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private bool referenceDataUpdateInProgress;
     private bool isSettingsPage;
     private bool isDataManagementPage;
+    private bool isFlareSkillPage;
     private int personalDataOperationReserved;
     private bool startMonitoringOnLaunch = UserSettings.Defaults.StartMonitoringOnLaunch;
     private bool notifyUnresolvedResults = UserSettings.Defaults.NotifyUnresolvedResults;
@@ -853,6 +859,31 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public string HomeTodayDateDisplay => homeTodaySummary.DateDisplay;
 
+    public string FlareSkillPlayStyle => flareSkillPlayStyle;
+    public FlareSkillStyleResult SelectedFlareSkill => flareSkillPlayStyle == "DOUBLE"
+        ? flareSkillData.Double
+        : flareSkillData.Single;
+    public FlareSkillCategoryResult FlareClassic => SelectedFlareSkill.Classic;
+    public FlareSkillCategoryResult FlareWhite => SelectedFlareSkill.White;
+    public FlareSkillCategoryResult FlareGold => SelectedFlareSkill.Gold;
+    public string FlareTotalDisplay => SelectedFlareSkill.TotalDisplay;
+    public string FlareRankMainDisplay => SelectedFlareSkill.Rank.MainRank;
+    public string FlareRankSubDisplay => SelectedFlareSkill.Rank.SubRank;
+    public string FlareRankJapaneseDisplay => SelectedFlareSkill.Rank.JapaneseDisplay;
+    public string FlareNextRankDisplay => SelectedFlareSkill.Rank.NextRankDisplay;
+    public string FlareNextRankThresholdDisplay => SelectedFlareSkill.Rank.NextRankThresholdDisplay;
+    public string FlarePointsToNextDisplay => SelectedFlareSkill.PointsToNextDisplay;
+    public double FlareRankProgress => SelectedFlareSkill.Rank.Progress(SelectedFlareSkill.Total);
+    public string FlareAbnormalExclusionDisplay => SelectedFlareSkill.AbnormalExclusionDisplay;
+    public bool IsFlareSkillAvailable => isFlareSkillAvailable;
+    public string FlareSkillUnavailableMessage => flareSkillUnavailableMessage;
+    public System.Windows.Visibility FlareSkillContentVisibility => IsFlareSkillAvailable
+        ? System.Windows.Visibility.Visible
+        : System.Windows.Visibility.Collapsed;
+    public System.Windows.Visibility FlareSkillUnavailableVisibility => IsFlareSkillAvailable
+        ? System.Windows.Visibility.Collapsed
+        : System.Windows.Visibility.Visible;
+
     public bool HasHomeBestUpdates => HomeBestUpdates.Count > 0;
 
     public string HomeBestUpdateSummaryDisplay => HomeBestUpdates.Count switch
@@ -888,13 +919,14 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public bool IsSettingsPage => isSettingsPage;
     public bool IsDataManagementPage => isDataManagementPage;
+    public bool IsFlareSkillPage => isFlareSkillPage;
 
     public System.Windows.Visibility StatusVisibility =>
-        HasData || IsSettingsPage || IsDataManagementPage
+        HasData || IsSettingsPage || IsDataManagementPage || IsFlareSkillPage
             ? System.Windows.Visibility.Collapsed
             : System.Windows.Visibility.Visible;
     public System.Windows.Visibility DataVisibility =>
-        HasData || IsSettingsPage || IsDataManagementPage
+        HasData || IsSettingsPage || IsDataManagementPage || IsFlareSkillPage
             ? System.Windows.Visibility.Visible
             : System.Windows.Visibility.Collapsed;
 
@@ -1419,6 +1451,19 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
         isDataManagementPage = value;
         OnPropertyChanged(nameof(IsDataManagementPage));
+        OnPropertyChanged(nameof(StatusVisibility));
+        OnPropertyChanged(nameof(DataVisibility));
+    }
+
+    internal void SetFlareSkillPage(bool value)
+    {
+        if (isFlareSkillPage == value)
+        {
+            return;
+        }
+
+        isFlareSkillPage = value;
+        OnPropertyChanged(nameof(IsFlareSkillPage));
         OnPropertyChanged(nameof(StatusVisibility));
         OnPropertyChanged(nameof(DataVisibility));
     }
@@ -3645,6 +3690,36 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
     }
 
+    public void SetFlareSkillPlayStyle(string playStyle)
+    {
+        var normalized = playStyle == "DOUBLE" ? "DOUBLE" : "SINGLE";
+        if (!SetProperty(ref flareSkillPlayStyle, normalized, nameof(FlareSkillPlayStyle)))
+        {
+            return;
+        }
+        NotifyFlareSkillState();
+    }
+
+    public void RefreshFlareSkill()
+    {
+        if (string.IsNullOrWhiteSpace(ScoreDatabasePath) ||
+            string.IsNullOrWhiteSpace(MasterDatabasePath) ||
+            ScoreDatabasePath == "—" || MasterDatabasePath == "—")
+        {
+            SetFlareSkillUnavailable("プレーデータと楽曲データを読み込むと算出できます。");
+            return;
+        }
+
+        try
+        {
+            ApplyFlareSkillData(repository.LoadFlareSkill(ScoreDatabasePath, MasterDatabasePath));
+        }
+        catch (ViewerDatabaseException exception)
+        {
+            SetFlareSkillUnavailable(exception.UserMessage);
+        }
+    }
+
     private void LoadCore(
         string scoreDatabasePath,
         string masterDatabasePath,
@@ -3869,6 +3944,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
             selectedChartKey: selectedChartKey,
             preservedDisplayedCount: preservedDisplayedCount);
         ApplyHomeData(data.Home, data.Plays);
+        if (IsFlareSkillPage)
+        {
+            RefreshFlareSkill();
+        }
         bundledChartCount = data.ChartCatalog.Count;
         personalScoreDataStatus = "正常";
         MasterVersion = data.MasterVersion;
@@ -3902,6 +3981,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         UpdateBestVersionOptions();
         RefreshChartBests(resetDisplayedCount: true);
         ClearHomeData();
+        flareSkillData = FlareSkillData.Empty;
+        SetFlareSkillUnavailable("プレーデータまたは楽曲データを読み込めないため、算出できません。");
         ClearChartDetailData();
         SelectedPlay = null;
         MasterVersion = "—";
@@ -3910,6 +3991,42 @@ public sealed class MainViewModel : INotifyPropertyChanged
         HasData = false;
         NotifyRecentPlayListState();
         NotifyDataManagementState();
+    }
+
+    private void ApplyFlareSkillData(FlareSkillData data)
+    {
+        flareSkillData = data;
+        isFlareSkillAvailable = true;
+        flareSkillUnavailableMessage = "";
+        NotifyFlareSkillState();
+    }
+
+    private void SetFlareSkillUnavailable(string message)
+    {
+        isFlareSkillAvailable = false;
+        flareSkillUnavailableMessage = Localization.Get(message);
+        NotifyFlareSkillState();
+    }
+
+    private void NotifyFlareSkillState()
+    {
+        OnPropertyChanged(nameof(SelectedFlareSkill));
+        OnPropertyChanged(nameof(FlareClassic));
+        OnPropertyChanged(nameof(FlareWhite));
+        OnPropertyChanged(nameof(FlareGold));
+        OnPropertyChanged(nameof(FlareTotalDisplay));
+        OnPropertyChanged(nameof(FlareRankMainDisplay));
+        OnPropertyChanged(nameof(FlareRankSubDisplay));
+        OnPropertyChanged(nameof(FlareRankJapaneseDisplay));
+        OnPropertyChanged(nameof(FlareNextRankDisplay));
+        OnPropertyChanged(nameof(FlareNextRankThresholdDisplay));
+        OnPropertyChanged(nameof(FlarePointsToNextDisplay));
+        OnPropertyChanged(nameof(FlareRankProgress));
+        OnPropertyChanged(nameof(FlareAbnormalExclusionDisplay));
+        OnPropertyChanged(nameof(IsFlareSkillAvailable));
+        OnPropertyChanged(nameof(FlareSkillUnavailableMessage));
+        OnPropertyChanged(nameof(FlareSkillContentVisibility));
+        OnPropertyChanged(nameof(FlareSkillUnavailableVisibility));
     }
 
     public void LoadMoreChartBests()

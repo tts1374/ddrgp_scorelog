@@ -17,6 +17,8 @@ viewerの初期取得は、最近プレー履歴50件、譜面詳細履歴10件�
 
 通常のインストール、初回起動、監視、画面操作、設定、backup / restore、更新、終了、トラブルシューティングは[`docs/user-guide.md`](../docs/user-guide.md)を正本とします。このREADMEは、利用ガイドから参照される開発者向けbuild、runtime、保存境界、package、validationの技術契約を保持します。
 
+フレアスキル画面は、正式個人スコアDBの保存済み`FLARE I〜EX`とcurrent M4 masterをread-onlyで再読込し、SINGLE / DOUBLE別、CLASSIC / WHITE / GOLD別のTop30、31位の次点、TOTAL、ランクを都度導出します。`flare_rank=NULL`と`FAILED`は対象外とし、master参照不能・ID不整合・removed・不正levelは0へ丸めず異常除外件数へ分離します。完成値表とランク閾値はruntime定数であり、外部サイトへアクセスしません。集計用DB objectと永続cacheは持ちません。
+
 ## Build configuration
 
 Debug buildでは、通常の監視操作と区別した開発者向け領域に、`1フレーム取得`、`連続取得を開始`、`単発保存`を表示します。Release buildではこの領域、button、menu、command入口を生成せず、`監視開始`と`監視停止`だけを通常画面とtask trayへ残します。
