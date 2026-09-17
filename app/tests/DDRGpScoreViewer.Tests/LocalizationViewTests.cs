@@ -1056,6 +1056,8 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
                 Assert.Contains(categoryTotal, displayedTexts);
                 Assert.Contains(nextRank, displayedTexts);
                 Assert.Contains(progress, displayedTexts);
+                Assert.Equal(string.Empty, window.ViewModel.FlareRankJapaneseDisplay);
+                Assert.DoesNotContain("なし", displayedTexts);
             }
             finally
             {

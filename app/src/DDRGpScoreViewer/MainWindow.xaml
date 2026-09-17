@@ -2056,7 +2056,17 @@
                                                        Style="{StaticResource FlareRankTextStyle}" VerticalAlignment="Top" Margin="7,4,0,0" />
                                         </StackPanel>
                                         <TextBlock Text="{Binding FlareRankJapaneseDisplay}" FontSize="12" Margin="0,4,0,0"
-                                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                   Foreground="{DynamicResource TextSecondaryBrush}">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding FlareRankJapaneseDisplay}" Value="">
+                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
                                     </StackPanel>
                                     <Border Grid.Column="1" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="1,0,0,0">
                                         <StackPanel VerticalAlignment="Center" Margin="22,16">

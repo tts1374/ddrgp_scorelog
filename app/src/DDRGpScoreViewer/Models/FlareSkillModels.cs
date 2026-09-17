@@ -1,4 +1,5 @@
 using System.Globalization;
+using DDRGpScoreViewer.Data;
 
 namespace DDRGpScoreViewer.Models;
 
@@ -78,21 +79,24 @@ public sealed record FlareSkillRankResult(
             ? NextMainRank ?? "—"
             : $"{NextMainRank} {NextSubRank}";
 
-    public string JapaneseDisplay => MainRank switch
-    {
-        "NONE" => "なし",
-        "MERCURY" => "水星",
-        "VENUS" => "金星",
-        "EARTH" => "地球",
-        "MARS" => "火星",
-        "JUPITER" => "木星",
-        "SATURN" => "土星",
-        "URANUS" => "天王星",
-        "NEPTUNE" => "海王星",
-        "SUN" => "太陽",
-        "WORLD" => "世界",
-        _ => MainRank,
-    };
+    public string JapaneseDisplay =>
+        Localization.CurrentLanguage == UserSettings.JapaneseLanguage
+            ? MainRank switch
+            {
+                "NONE" => "なし",
+                "MERCURY" => "水星",
+                "VENUS" => "金星",
+                "EARTH" => "地球",
+                "MARS" => "火星",
+                "JUPITER" => "木星",
+                "SATURN" => "土星",
+                "URANUS" => "天王星",
+                "NEPTUNE" => "海王星",
+                "SUN" => "太陽",
+                "WORLD" => "世界",
+                _ => MainRank,
+            }
+            : string.Empty;
 
     public string NextRankThresholdDisplay => NextThreshold is null
         ? Localization.Get("最高ランク")
