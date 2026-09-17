@@ -365,4 +365,18 @@
     <sys:String x:Key="次の50譜面を表示">다음 50개 채보 표시</sys:String>
     <sys:String x:Key="最後に記録したプレー">마지막으로 기록한 플레이</sys:String>
     <sys:String x:Key="まだプレーの記録がありません。ゲームのリザルト画面から自動で記録します。">아직 플레이 기록이 없습니다. 게임 결과 화면에서 자동으로 기록합니다.</sys:String>
+    <sys:String x:Key="フレアスキル">플레어 스킬</sys:String>
+    <sys:String x:Key="保存済みFLARE実績から現在のフレアスキルを確認できます">저장된 FLARE 기록으로 현재 플레어 스킬을 확인합니다</sys:String>
+    <sys:String x:Key="フレアスキルを算出できません">플레어 스킬을 계산할 수 없습니다</sys:String>
+    <sys:String x:Key="次点 31位">차점 31위</sys:String>
+    <sys:String x:Key="次のランク段階">다음 랭크 단계</sys:String>
+    <sys:String x:Key="保存済みのFLARE I〜EXだけから算出しています。ゲーム内の公式値と異なる場合があります。">저장된 FLARE I~EX 기록만으로 계산합니다. 게임 내 공식 값과 다를 수 있습니다.</sys:String>
+    <sys:String x:Key="最高ランク">최고 랭크</sys:String>
+    <sys:String x:Key="到達済み">달성 완료</sys:String>
+    <sys:String x:Key="あと {0:N0}">앞으로 {0:N0}</sys:String>
+    <sys:String x:Key="算出対象外: {0:N0}件">계산 제외: {0:N0}건</sys:String>
+    <sys:String x:Key="プレーデータと楽曲データを読み込むと算出できます。">플레이 데이터와 곡 데이터를 불러오면 계산할 수 있습니다.</sys:String>
+    <sys:String x:Key="プレーデータまたは楽曲データを読み込めないため、算出できません。">플레이 데이터 또는 곡 데이터를 불러오지 못해 계산할 수 없습니다.</sys:String>
+    <sys:String x:Key="フレアスキルを算出できませんでした。プレーデータと楽曲データを確認してください。">플레어 스킬을 계산하지 못했습니다. 플레이 데이터와 곡 데이터를 확인하세요.</sys:String>
+    <sys:String x:Key="対象実績なし">대상 기록 없음</sys:String>
 </ResourceDictionary>

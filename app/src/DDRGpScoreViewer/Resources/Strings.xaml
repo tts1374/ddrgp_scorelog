@@ -370,4 +370,18 @@
     <sys:String x:Key="resource解放を完了できませんでした。processを終了します。{0}">resource解放を完了できませんでした。processを終了します。{0}</sys:String>
     <sys:String x:Key="最後に記録したプレー">最後に記録したプレー</sys:String>
     <sys:String x:Key="まだプレーの記録がありません。ゲームのリザルト画面から自動で記録します。">まだプレーの記録がありません。ゲームのリザルト画面から自動で記録します。</sys:String>
+    <sys:String x:Key="フレアスキル">フレアスキル</sys:String>
+    <sys:String x:Key="保存済みFLARE実績から現在のフレアスキルを確認できます">保存済みFLARE実績から現在のフレアスキルを確認できます</sys:String>
+    <sys:String x:Key="フレアスキルを算出できません">フレアスキルを算出できません</sys:String>
+    <sys:String x:Key="次点 31位">次点 31位</sys:String>
+    <sys:String x:Key="次のランク段階">次のランク段階</sys:String>
+    <sys:String x:Key="保存済みのFLARE I〜EXだけから算出しています。ゲーム内の公式値と異なる場合があります。">保存済みのFLARE I〜EXだけから算出しています。ゲーム内の公式値と異なる場合があります。</sys:String>
+    <sys:String x:Key="最高ランク">最高ランク</sys:String>
+    <sys:String x:Key="到達済み">到達済み</sys:String>
+    <sys:String x:Key="あと {0:N0}">あと {0:N0}</sys:String>
+    <sys:String x:Key="算出対象外: {0:N0}件">算出対象外: {0:N0}件</sys:String>
+    <sys:String x:Key="プレーデータと楽曲データを読み込むと算出できます。">プレーデータと楽曲データを読み込むと算出できます。</sys:String>
+    <sys:String x:Key="プレーデータまたは楽曲データを読み込めないため、算出できません。">プレーデータまたは楽曲データを読み込めないため、算出できません。</sys:String>
+    <sys:String x:Key="フレアスキルを算出できませんでした。プレーデータと楽曲データを確認してください。">フレアスキルを算出できませんでした。プレーデータと楽曲データを確認してください。</sys:String>
+    <sys:String x:Key="対象実績なし">対象実績なし</sys:String>
 </ResourceDictionary>

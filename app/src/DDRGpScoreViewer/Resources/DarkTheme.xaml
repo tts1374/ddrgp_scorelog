@@ -31,6 +31,20 @@
     <SolidColorBrush x:Key="AccentSubtleBrush" Color="{StaticResource AccentSubtleColor}" />
     <SolidColorBrush x:Key="DangerBrush" Color="{StaticResource DangerColor}" />
     <SolidColorBrush x:Key="FocusRingBrush" Color="{StaticResource FocusRingColor}" />
+    <LinearGradientBrush x:Key="FlareRankNoneBrush" StartPoint="0,0" EndPoint="0,1"><GradientStop Color="#DEDEDE" Offset="0" /><GradientStop Color="#7A7A7B" Offset="0.5" /><GradientStop Color="#393B3B" Offset="1" /></LinearGradientBrush>
+    <LinearGradientBrush x:Key="FlareRankMercuryBrush" StartPoint="0,0" EndPoint="0,1"><GradientStop Color="#60CCF4" Offset="0" /><GradientStop Color="#009EDC" Offset="0.5" /><GradientStop Color="#0079BB" Offset="1" /></LinearGradientBrush>
+    <LinearGradientBrush x:Key="FlareRankVenusBrush" StartPoint="0,0" EndPoint="0,1"><GradientStop Color="#FFCD01" Offset="0" /><GradientStop Color="#FFB500" Offset="0.5" /><GradientStop Color="#E36613" Offset="1" /></LinearGradientBrush>
+    <LinearGradientBrush x:Key="FlareRankEarthBrush" StartPoint="0,0" EndPoint="0,1"><GradientStop Color="#00D296" Offset="0" /><GradientStop Color="#00C386" Offset="0.5" /><GradientStop Color="#006D74" Offset="1" /></LinearGradientBrush>
+    <LinearGradientBrush x:Key="FlareRankMarsBrush" StartPoint="0,0" EndPoint="0,1"><GradientStop Color="#FF8C9D" Offset="0" /><GradientStop Color="#FF3800" Offset="0.5" /><GradientStop Color="#A01500" Offset="1" /></LinearGradientBrush>
+    <LinearGradientBrush x:Key="FlareRankJupiterBrush" StartPoint="0,0" EndPoint="0,1"><GradientStop Color="#FFD2B8" Offset="0" /><GradientStop Color="#D7B58D" Offset="0.5" /><GradientStop Color="#AB540B" Offset="1" /></LinearGradientBrush>
+    <LinearGradientBrush x:Key="FlareRankSaturnBrush" StartPoint="0,0" EndPoint="0,1"><GradientStop Color="#FFA8DD" Offset="0" /><GradientStop Color="#C2457F" Offset="0.5" /><GradientStop Color="#562060" Offset="1" /></LinearGradientBrush>
+    <LinearGradientBrush x:Key="FlareRankUranusBrush" StartPoint="0,0" EndPoint="0,1"><GradientStop Color="#CEFFF9" Offset="0" /><GradientStop Color="#6ADCD5" Offset="0.5" /><GradientStop Color="#41CDAE" Offset="1" /></LinearGradientBrush>
+    <LinearGradientBrush x:Key="FlareRankNeptuneBrush" StartPoint="0,0" EndPoint="0,1"><GradientStop Color="#AFBDE0" Offset="0" /><GradientStop Color="#23379A" Offset="0.5" /><GradientStop Color="#35356C" Offset="1" /></LinearGradientBrush>
+    <LinearGradientBrush x:Key="FlareRankSunBrush" StartPoint="0,0" EndPoint="0,1"><GradientStop Color="#FFB200" Offset="0" /><GradientStop Color="#FF7300" Offset="0.5" /><GradientStop Color="#FF1F00" Offset="1" /></LinearGradientBrush>
+    <LinearGradientBrush x:Key="FlareRankWorldBrush" StartPoint="0,0" EndPoint="0,1"><GradientStop Color="#B782FF" Offset="0" /><GradientStop Color="#FB6587" Offset="0.33" /><GradientStop Color="#FFF11E" Offset="0.66" /><GradientStop Color="#96FF8F" Offset="1" /></LinearGradientBrush>
+    <SolidColorBrush x:Key="FlareClassicCategoryBrush" Color="#475569" />
+    <SolidColorBrush x:Key="FlareWhiteCategoryBrush" Color="#F8FAFC" />
+    <SolidColorBrush x:Key="FlareGoldCategoryBrush" Color="#B1842F" />
 
     <SolidColorBrush x:Key="OnAccentBrush" Color="#FFFFFF" />
     <SolidColorBrush x:Key="PrimaryButtonTextBrush" Color="#19261D" />

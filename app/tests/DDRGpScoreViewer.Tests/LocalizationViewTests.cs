@@ -837,12 +837,14 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
                 window.Show();
                 DrainDispatcher(window.Dispatcher);
 
-                var navigation = new[] { window.HomeNavigation, window.BestNavigation, window.HistoryNavigation, window.SettingsNavigation, window.DataManagementNavigation };
+                var navigation = new[] { window.HomeNavigation, window.BestNavigation, window.HistoryNavigation, window.FlareSkillNavigation, window.SettingsNavigation, window.DataManagementNavigation };
                 var previousRight = 0.0;
                 foreach (var button in navigation)
                 {
                     var position = button.TranslatePoint(new Point(0, 0), window);
-                    Assert.True(position.X >= previousRight, "Top navigation must not overlap.");
+                    Assert.True(
+                        position.X + 0.5 >= previousRight,
+                        $"Top navigation must not overlap: {button.Name} starts at {position.X} before {previousRight}.");
                     Assert.True(position.X + button.ActualWidth <= window.ActualWidth, "Top navigation must fit the smallest window.");
                     previousRight = position.X + button.ActualWidth;
                     button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
@@ -876,6 +878,126 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
                 window?.Close();
                 ThemeManager.Apply(UserSettings.LightTheme);
                 Localization.Configure(UserSettings.JapaneseLanguage);
+            }
+        });
+    }
+
+    [Fact]
+    public void Flare_skill_page_exposes_available_style_zero_and_unavailable_states()
+    {
+        using var databaseFixture = new DatabaseFixture();
+        databaseFixture.AddMasterSongAndChart(
+            "flare-song", "FLARE SONG", "Artist", "flare-chart",
+            version: "DanceDanceRevolution WORLD");
+        databaseFixture.AddPlay(
+            "flare-play", "2026-09-17T20:29:00+09:00", 930_000, 1_514,
+            "flare-song", "flare-chart", "EX");
+        applicationFixture.Run(() =>
+        {
+            MainWindow? window = null;
+            try
+            {
+                foreach (var resourceName in new[] { "Theme.xaml", "Components.xaml", "Strings.xaml" })
+                {
+                    Application.Current.Resources.MergedDictionaries.Add(new ResourceDictionary
+                    {
+                        Source = new Uri($"/DDRGpScoreViewer;component/Resources/{resourceName}", UriKind.Relative),
+                    });
+                }
+
+                Localization.Configure(UserSettings.JapaneseLanguage);
+                window = new MainWindow(new ViewerDatabasePaths(
+                    ViewerDatabaseEnvironment.Development, databaseFixture.DirectoryPath,
+                    databaseFixture.MasterPath, databaseFixture.CatalogPath, databaseFixture.ScorePath,
+                    Path.Combine(databaseFixture.DirectoryPath, "evaluation.db"),
+                    Path.Combine(databaseFixture.DirectoryPath, "data"),
+                    Path.Combine(databaseFixture.DirectoryPath, "logs"),
+                    Path.Combine(databaseFixture.DirectoryPath, "viewer-settings.json")));
+                window.ViewModel.Load(databaseFixture.ScorePath, databaseFixture.MasterPath, databaseFixture.CatalogPath, persist: false);
+                window.Show();
+                window.FlareSkillNavigation.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                DrainDispatcher(window.Dispatcher);
+
+                Assert.Equal(4, window.ContentTabs.SelectedIndex);
+                Assert.Equal("Selected", window.FlareSkillNavigation.Tag);
+                Assert.True(window.ViewModel.IsFlareSkillAvailable);
+                Assert.Equal("1,016", window.ViewModel.FlareTotalDisplay);
+                Assert.Equal(Visibility.Visible, window.ViewModel.FlareSkillContentVisibility);
+                Assert.Equal("なし", window.ViewModel.FlareRankJapaneseDisplay);
+                Assert.Equal("NONE +++ / 1,500", window.ViewModel.FlareNextRankThresholdDisplay);
+                Assert.Equal(3.2d, window.ViewModel.FlareRankProgress, precision: 5);
+                Assert.IsType<FlareSkillCategoryResult>(window.FlareClassicColumn.Content);
+                Assert.IsType<FlareSkillCategoryResult>(window.FlareWhiteColumn.Content);
+                Assert.IsType<FlareSkillCategoryResult>(window.FlareGoldColumn.Content);
+                Assert.Contains(
+                    "公式値と異なる場合があります",
+                    window.FlareSkillDisclaimer.Text,
+                    StringComparison.Ordinal);
+
+                var titleTop = window.PageTitle.TranslatePoint(new Point(0, 0), window).Y;
+                var selectorTop = window.FlareSingleButton.TranslatePoint(new Point(0, 0), window).Y;
+                Assert.True(selectorTop < titleTop + window.PageTitle.ActualHeight);
+                Assert.True(selectorTop + window.FlareSingleButton.ActualHeight > titleTop);
+
+                var categoryColors = new[] { "#475569", "#F8FAFC", "#B1842F" };
+                var categoryColumns = new[] { window.FlareClassicColumn, window.FlareWhiteColumn, window.FlareGoldColumn };
+                for (var index = 0; index < categoryColumns.Length; index++)
+                {
+                    var swatch = Assert.Single(
+                        FindVisualChildren<Border>(categoryColumns[index]),
+                        border => border.Width == 5d && border.Height == 36d);
+                    Assert.Equal((Color)ColorConverter.ConvertFromString(categoryColors[index]),
+                        Assert.IsType<SolidColorBrush>(swatch.Background).Color);
+                }
+
+                var difficultyText = Assert.Single(
+                    FindVisualChildren<TextBlock>(window.FlareGoldColumn),
+                    text => text.Text == "EXP");
+                var difficultyBadge = Assert.IsType<Border>(VisualTreeHelper.GetParent(difficultyText));
+                Assert.Equal((Color)ColorConverter.ConvertFromString("#27A85A"),
+                    Assert.IsType<SolidColorBrush>(difficultyBadge.Background).Color);
+                var flareText = Assert.Single(
+                    FindVisualChildren<TextBlock>(window.FlareGoldColumn),
+                    text => text.Text == "FLARE EX");
+                var flareBadge = Assert.IsType<Border>(VisualTreeHelper.GetParent(flareText));
+                var flareBrush = Assert.IsType<LinearGradientBrush>(flareBadge.Background);
+                var canonicalFlareBadge = new Border
+                {
+                    Style = Assert.IsType<Style>(Application.Current.FindResource("FlareBadgeStyle")),
+                    Tag = "EX",
+                };
+                var canonicalFlareBrush = Assert.IsType<LinearGradientBrush>(canonicalFlareBadge.Background);
+                Assert.Equal(
+                    canonicalFlareBrush.GradientStops.Select(stop => stop.Color).ToArray(),
+                    flareBrush.GradientStops.Select(stop => stop.Color).ToArray());
+
+                var jupiterBrush = Assert.IsType<LinearGradientBrush>(
+                    Application.Current.FindResource("FlareRankJupiterBrush"));
+                Assert.Equal(
+                    new[] { "#FFFFD2B8", "#FFD7B58D", "#FFAB540B" },
+                    jupiterBrush.GradientStops.Select(stop => stop.Color.ToString()).ToArray());
+
+                window.FlareDoubleButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                DrainDispatcher(window.Dispatcher);
+                Assert.Equal("DOUBLE", window.ViewModel.FlareSkillPlayStyle);
+                Assert.Equal("0", window.ViewModel.FlareTotalDisplay);
+                Assert.Equal("NONE", window.ViewModel.FlareRankMainDisplay);
+                Assert.Equal("0 / 30 TARGET", window.ViewModel.FlareGold.CountDisplay);
+                Assert.Empty(window.ViewModel.FlareGold.TopCharts);
+                Assert.Null(window.ViewModel.FlareGold.RunnerUp);
+
+                window.ViewModel.Load(
+                    Path.Combine(databaseFixture.DirectoryPath, "missing.sqlite"),
+                    databaseFixture.MasterPath,
+                    persist: false);
+                Assert.Equal(Visibility.Visible, window.ViewModel.DataVisibility);
+                Assert.Equal(Visibility.Visible, window.ViewModel.FlareSkillUnavailableVisibility);
+                Assert.Equal(Visibility.Collapsed, window.ViewModel.FlareSkillContentVisibility);
+            }
+            finally
+            {
+                window?.PrepareForApplicationExit();
+                window?.Close();
             }
         });
     }

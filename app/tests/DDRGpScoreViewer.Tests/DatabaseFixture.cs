@@ -113,8 +113,8 @@ internal sealed class DatabaseFixture : IDisposable
         command.CommandText =
             "INSERT INTO songs (song_id, title, artist, version, grand_prix_play_available, official_availability_match) " +
             "VALUES ($song_id, $title, $artist, $version, 1, 'fixture'); " +
-            "INSERT INTO charts (chart_id, song_id, play_style, difficulty, level) " +
-            "VALUES ($chart_id, $song_id, $play_style, $difficulty, $level); " +
+            "INSERT INTO charts (chart_id, song_id, play_style, difficulty, level, is_removed) " +
+            "VALUES ($chart_id, $song_id, $play_style, $difficulty, $level, 0); " +
             "UPDATE master_metadata SET value = (SELECT COUNT(*) FROM songs) WHERE key = 'song_count'; " +
             "UPDATE master_metadata SET value = (SELECT COUNT(*) FROM charts) WHERE key = 'chart_count';";
         command.Parameters.AddWithValue("$song_id", songId);
@@ -347,7 +347,8 @@ internal sealed class DatabaseFixture : IDisposable
             );
             CREATE TABLE charts (
               chart_id TEXT PRIMARY KEY, song_id TEXT NOT NULL, play_style TEXT NOT NULL,
-              difficulty TEXT NOT NULL, level INTEGER NOT NULL
+              difficulty TEXT NOT NULL, level INTEGER NOT NULL,
+              is_removed INTEGER NOT NULL DEFAULT 0
             );
             CREATE TABLE song_aliases (alias_id TEXT PRIMARY KEY);
             CREATE TABLE master_metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -356,7 +357,7 @@ internal sealed class DatabaseFixture : IDisposable
               content_hash TEXT NOT NULL
             );
             INSERT INTO songs VALUES ('song-1', 'MAX 300', 'Artist', 'DDR GRAND PRIX', 1, 'fixture');
-            INSERT INTO charts VALUES ('chart-1', 'song-1', 'SINGLE', 'EXPERT', 17);
+            INSERT INTO charts VALUES ('chart-1', 'song-1', 'SINGLE', 'EXPERT', 17, 0);
             INSERT INTO source_snapshots VALUES ('snapshot-1', 'https://example.test/source', 'hash-v1');
             """;
         command.ExecuteNonQuery();

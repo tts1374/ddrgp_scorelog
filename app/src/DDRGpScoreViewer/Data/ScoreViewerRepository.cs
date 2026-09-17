@@ -382,6 +382,39 @@ public sealed class ScoreViewerRepository
         return LoadCore(scoreDatabasePath, masterDatabasePath, catalogDatabasePath);
     }
 
+    public FlareSkillData LoadFlareSkill(
+        string scoreDatabasePath,
+        string masterDatabasePath)
+    {
+        ValidateInputPath(scoreDatabasePath, "プレーデータ");
+        ValidateInputPath(masterDatabasePath, "楽曲データ");
+        try
+        {
+            using var scoreConnection = OpenReadOnly(scoreDatabasePath);
+            ValidateScoreDatabase(scoreConnection);
+            using var masterConnection = OpenReadOnly(masterDatabasePath);
+            _ = ValidateMasterDatabase(masterConnection);
+            var masterCharts = ReadMasterCharts(masterConnection);
+            return ReadFlareSkill(scoreConnection, masterCharts);
+        }
+        catch (ViewerDatabaseException)
+        {
+            throw;
+        }
+        catch (SqliteException exception)
+        {
+            throw new ViewerDatabaseException(
+                "フレアスキルを算出できませんでした。プレーデータと楽曲データを確認してください。",
+                exception);
+        }
+        catch (IOException exception)
+        {
+            throw new ViewerDatabaseException(
+                "フレアスキルを算出できませんでした。プレーデータと楽曲データを確認してください。",
+                exception);
+        }
+    }
+
     internal HomeDisplayData LoadHome(
         string scoreDatabasePath,
         string masterDatabasePath,
@@ -534,6 +567,7 @@ public sealed class ScoreViewerRepository
             var chartBests = ReadChartBests(scoreConnection, masterCharts);
             var home = ReadHomeData(scoreConnection, masterCharts, DateTimeOffset.Now);
             var chartCatalog = ReadChartCatalog(masterCharts);
+            var flareSkill = ReadFlareSkill(scoreConnection, masterCharts);
             return new ViewerData(
                 plays,
                 chartBests,
@@ -544,7 +578,8 @@ public sealed class ScoreViewerRepository
                 chartCatalog,
                 home,
                 home.TotalPlayCount,
-                home.LastSavedAt);
+                home.LastSavedAt,
+                flareSkill);
         }
         catch (ViewerDatabaseException)
         {
@@ -1111,7 +1146,7 @@ public sealed class ScoreViewerRepository
         command.CommandText =
             """
             SELECT c.chart_id, c.song_id, s.title, s.version,
-                   c.play_style, c.difficulty, c.level
+                   c.play_style, c.difficulty, c.level, c.is_removed
             FROM charts c
             JOIN songs s ON s.song_id = c.song_id;
             """;
@@ -1126,9 +1161,45 @@ public sealed class ScoreViewerRepository
                 reader.GetString(3),
                 reader.GetString(4),
                 reader.GetString(5),
-                reader.GetInt32(6));
+                reader.GetInt32(6),
+                reader.GetInt64(7) != 0);
         }
         return result;
+    }
+
+    private static FlareSkillData ReadFlareSkill(
+        SqliteConnection connection,
+        IReadOnlyDictionary<string, MasterChart> masterCharts)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText =
+            """
+            SELECT play_id, played_at, song_id, chart_id, clear_type, flare_rank
+            FROM plays;
+            """;
+        using var reader = command.ExecuteReader();
+        var plays = new List<FlareSkillPlayInput>();
+        while (reader.Read())
+        {
+            plays.Add(new FlareSkillPlayInput(
+                reader.GetString(0),
+                reader.GetString(1),
+                reader.GetString(2),
+                reader.GetString(3),
+                reader.GetString(4),
+                reader.IsDBNull(5) ? null : reader.GetString(5)));
+        }
+
+        var charts = masterCharts.Values.Select(chart => new FlareSkillChartInput(
+            chart.ChartId,
+            chart.SongId,
+            chart.Title,
+            chart.Version,
+            chart.PlayStyle,
+            chart.Difficulty,
+            chart.Level,
+            chart.IsRemoved));
+        return FlareSkillCalculator.Calculate(plays, charts);
     }
 
     private static IReadOnlyList<PlayHistoryItem> ReadPlays(
@@ -1799,5 +1870,6 @@ public sealed class ScoreViewerRepository
         string Version,
         string PlayStyle,
         string Difficulty,
-        int Level);
+        int Level,
+        bool IsRemoved);
 }
