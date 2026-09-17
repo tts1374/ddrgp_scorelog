@@ -1,0 +1,1212 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GP Score Log - フレアスキル Wireframe</title>
+  <style>
+    :root {
+      --background: #faf9f6;
+      --surface: #faf9f6;
+      --surface-subtle: #f0efe9;
+      --border: #dcddd5;
+      --border-strong: #b5b9ae;
+      --text: #252722;
+      --text-secondary: #666c61;
+      --text-muted: #787f72;
+      --accent: #38644b;
+      --accent-hover: #2d533e;
+      --accent-subtle: #e8eee5;
+      --warning-bg: #fff7ed;
+      --warning-border: #fdba74;
+      --warning-text: #9a3412;
+      --info-bg: #eff6ff;
+      --info-border: #bfdbfe;
+      --info-text: #1e40af;
+      --classic: #475569;
+      --white: #f8fafc;
+      --gold: #b1842f;
+      --rank-sun-yellow: #ffb200;
+      --rank-sun-orange: #ff7300;
+      --rank-sun-red: #ff1f00;
+      --diff-bgn: #5fb8e8;
+      --diff-bas: #f3a621;
+      --diff-dif: #e64949;
+      --diff-exp: #27a85a;
+      --diff-cha: #8c55c9;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      min-width: 960px;
+      min-height: 100%;
+      color: var(--text);
+      background: #d8dad4;
+      font-family: "Segoe UI Variable", "Segoe UI", "Yu Gothic UI", sans-serif;
+      font-size: 14px;
+    }
+
+    button {
+      font: inherit;
+    }
+
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+      min-height: 100vh;
+      padding: 12px;
+    }
+
+    .app-window {
+      display: grid;
+      grid-template-rows: auto auto minmax(0, 1fr);
+      flex: 0 0 auto;
+      width: min(1280px, calc(100vw - 24px));
+      height: min(876px, calc(100vh - 24px));
+      min-height: 720px;
+      overflow: hidden;
+      border: 1px solid var(--border-strong);
+      border-radius: 8px;
+      background: var(--background);
+      box-shadow: 0 16px 36px rgba(37, 39, 34, 0.14);
+    }
+
+    .topbar {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      align-items: stretch;
+      min-height: 58px;
+      padding: 0 28px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      padding-right: 18px;
+      font-size: 22px;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      white-space: nowrap;
+    }
+
+    .nav-group {
+      display: flex;
+      justify-content: center;
+      min-width: 0;
+    }
+
+    .nav-group.utility {
+      justify-content: flex-end;
+    }
+
+    .nav-item {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 0;
+      padding: 0 14px;
+      border: 0;
+      border-bottom: 2px solid transparent;
+      color: var(--text-secondary);
+      background: transparent;
+      font-size: 13px;
+      cursor: default;
+      white-space: nowrap;
+    }
+
+    .nav-item:hover {
+      background: var(--surface-subtle);
+    }
+
+    .nav-item.selected {
+      border-bottom-color: var(--accent);
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    .monitor-bar {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      align-items: center;
+      min-height: 42px;
+      padding: 7px 32px;
+      border-bottom: 1px solid var(--border);
+      font-size: 12px;
+    }
+
+    .monitor-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: #297fa1;
+      font-weight: 600;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #38bdf8;
+    }
+
+    .monitor-reason {
+      min-width: 0;
+      margin: 0 16px;
+      overflow: hidden;
+      color: var(--text-secondary);
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .content {
+      display: grid;
+      grid-template-rows: auto auto auto minmax(0, 1fr);
+      gap: 12px;
+      min-width: 0;
+      min-height: 0;
+      padding: 18px 32px 24px;
+    }
+
+    .page-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+    }
+
+    .page-title h1 {
+      margin: 0;
+      font-size: 30px;
+      font-weight: 600;
+      letter-spacing: -0.03em;
+    }
+
+    .page-title p {
+      margin: 3px 0 0;
+      color: var(--text-secondary);
+      font-size: 12px;
+    }
+
+    .segmented {
+      display: flex;
+      gap: 3px;
+      padding: 3px;
+      border-radius: 7px;
+      background: var(--surface-subtle);
+    }
+
+    .segmented button {
+      min-width: 92px;
+      padding: 7px 16px;
+      border: 2px solid transparent;
+      border-radius: 6px;
+      color: var(--text-secondary);
+      background: transparent;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .segmented button:hover {
+      color: var(--accent-hover);
+    }
+
+    .segmented button.active {
+      border-color: var(--accent);
+      color: var(--accent);
+      background: var(--surface);
+    }
+
+    .rank-panel {
+      display: grid;
+      grid-template-columns: minmax(260px, 1.15fr) minmax(220px, 0.9fr) minmax(290px, 1.25fr);
+      align-items: stretch;
+      min-height: 126px;
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+    }
+
+    .rank-block {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      min-width: 0;
+      padding: 16px 22px;
+    }
+
+    .rank-block + .rank-block {
+      border-left: 1px solid var(--border);
+    }
+
+    .eyebrow {
+      color: var(--text-secondary);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+    }
+
+    .rank-name {
+      display: flex;
+      align-items: flex-start;
+      gap: 7px;
+      margin-top: 5px;
+      font-size: 46px;
+      font-weight: 800;
+      letter-spacing: -0.05em;
+      line-height: 1;
+    }
+
+    #rank-main,
+    .rank-plus {
+      color: var(--rank-sun-orange);
+      background: linear-gradient(
+        180deg,
+        var(--rank-sun-yellow) 0%,
+        var(--rank-sun-orange) 48%,
+        var(--rank-sun-red) 100%
+      );
+      background-clip: text;
+      filter: drop-shadow(0 1px 0 rgba(121, 43, 7, 0.18));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .rank-plus {
+      margin-top: 4px;
+      font-size: 26px;
+      font-weight: 800;
+      letter-spacing: -0.09em;
+    }
+
+    .rank-ja {
+      margin-top: 4px;
+      color: var(--text-secondary);
+      font-size: 12px;
+    }
+
+    .metric-label {
+      color: var(--text-secondary);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+    }
+
+    .metric-value {
+      margin-top: 3px;
+      color: var(--text);
+      font-family: "Segoe UI Variable", "Segoe UI", sans-serif;
+      font-size: 35px;
+      font-variant-numeric: tabular-nums;
+      font-weight: 650;
+      letter-spacing: -0.03em;
+    }
+
+    .metric-note {
+      margin-top: 2px;
+      color: var(--text-muted);
+      font-size: 11px;
+    }
+
+    .next-line {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 16px;
+      margin-top: 5px;
+    }
+
+    .next-value {
+      color: var(--accent);
+      font-size: 25px;
+      font-variant-numeric: tabular-nums;
+      font-weight: 650;
+    }
+
+    .next-rank {
+      color: var(--text-secondary);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+
+    .progress-track {
+      height: 7px;
+      margin-top: 11px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: var(--surface-subtle);
+    }
+
+    .progress-bar {
+      width: 56%;
+      height: 100%;
+      border-radius: inherit;
+      background: var(--accent);
+      transition: width 160ms ease;
+    }
+
+    .notice-stack {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 10px;
+    }
+
+    .notice,
+    .exclusion {
+      display: flex;
+      align-items: center;
+      min-height: 38px;
+      padding: 9px 12px;
+      border: 1px solid;
+      border-radius: 6px;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .notice {
+      border-color: var(--info-border);
+      color: var(--info-text);
+      background: var(--info-bg);
+    }
+
+    details.exclusion {
+      position: relative;
+      display: block;
+      min-width: 276px;
+      border-color: var(--warning-border);
+      color: var(--warning-text);
+      background: var(--warning-bg);
+    }
+
+    details.exclusion summary {
+      cursor: pointer;
+      font-weight: 600;
+      list-style-position: inside;
+      white-space: nowrap;
+    }
+
+    .exclusion-detail {
+      margin: 7px 0 0 18px;
+      color: #7c2d12;
+      font-size: 11px;
+    }
+
+    .category-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      min-width: 0;
+      min-height: 0;
+    }
+
+    .category {
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr) auto;
+      min-width: 0;
+      min-height: 0;
+      overflow: hidden;
+      border: 1px solid var(--border);
+      background: var(--surface);
+    }
+
+    .category-header {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 12px;
+      align-items: center;
+      min-height: 73px;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .category-heading {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      min-width: 0;
+    }
+
+    .category-swatch {
+      width: 5px;
+      height: 36px;
+      flex: 0 0 auto;
+      background: var(--classic);
+    }
+
+    .category[data-category="white"] .category-swatch {
+      border: 1px solid var(--border-strong);
+      background: var(--white);
+    }
+
+    .category[data-category="gold"] .category-swatch {
+      background: var(--gold);
+    }
+
+    .category-name {
+      overflow: hidden;
+      font-size: 16px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .category-range {
+      margin-top: 2px;
+      overflow: hidden;
+      color: var(--text-muted);
+      font-size: 10px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .category-metrics {
+      text-align: right;
+      white-space: nowrap;
+    }
+
+    .category-total {
+      font-size: 21px;
+      font-variant-numeric: tabular-nums;
+      font-weight: 650;
+    }
+
+    .category-count {
+      margin-top: 2px;
+      color: var(--text-secondary);
+      font-size: 11px;
+    }
+
+    .list-scroll {
+      min-height: 0;
+      overflow-y: scroll;
+      scrollbar-color: var(--border-strong) var(--surface-subtle);
+      scrollbar-width: thin;
+    }
+
+    .chart-row {
+      display: grid;
+      grid-template-columns: 24px minmax(0, 1fr) auto;
+      gap: 8px;
+      align-items: center;
+      min-height: 61px;
+      padding: 8px 10px 8px 8px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .chart-row:nth-child(5n) {
+      border-bottom-color: var(--border-strong);
+    }
+
+    .chart-row:hover {
+      background: var(--accent-subtle);
+    }
+
+    .position {
+      color: var(--text-muted);
+      font-size: 11px;
+      font-variant-numeric: tabular-nums;
+      text-align: center;
+    }
+
+    .chart-info {
+      min-width: 0;
+    }
+
+    .song-title {
+      overflow: hidden;
+      font-size: 12px;
+      font-weight: 600;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .chart-meta {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-width: 0;
+      margin-top: 4px;
+      color: var(--text-secondary);
+      font-size: 10px;
+    }
+
+    .difficulty {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 31px;
+      height: 17px;
+      padding: 0 5px;
+      border-radius: 3px;
+      color: #fff;
+      font-size: 9px;
+      font-weight: 800;
+    }
+
+    .difficulty.basic { color: #2b1a00; background: var(--diff-bas); }
+    .difficulty.difficult { background: var(--diff-dif); }
+    .difficulty.expert { background: var(--diff-exp); }
+    .difficulty.challenge { background: var(--diff-cha); }
+    .difficulty.beginner { color: #0b2330; background: var(--diff-bgn); }
+
+    .level {
+      font-variant-numeric: tabular-nums;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    .chart-result {
+      min-width: 53px;
+      text-align: right;
+    }
+
+    .flare-rank {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 48px;
+      min-height: 19px;
+      padding: 2px 6px;
+      border: 1px solid #b48af5;
+      border-radius: 4px;
+      color: #5b21b6;
+      background: #ede9fe;
+      font-size: 9px;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+
+    .flare-rank.ex {
+      border-color: #d6a420;
+      color: #754f00;
+      background: #fef3c7;
+    }
+
+    .skill-value {
+      margin-top: 3px;
+      font-size: 15px;
+      font-variant-numeric: tabular-nums;
+      font-weight: 700;
+    }
+
+    .runner-up {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      gap: 8px;
+      align-items: center;
+      min-height: 54px;
+      padding: 7px 10px;
+      border-top: 1px solid var(--border-strong);
+      background: var(--surface-subtle);
+    }
+
+    .runner-label {
+      padding: 3px 6px;
+      border: 1px solid var(--border-strong);
+      border-radius: 4px;
+      color: var(--text-secondary);
+      background: var(--surface);
+      font-size: 9px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .runner-up .skill-value {
+      font-size: 14px;
+    }
+
+    .rank-palette-board {
+      width: min(1280px, calc(100vw - 24px));
+      padding: 22px 32px 26px;
+      border: 1px solid var(--border-strong);
+      border-radius: 8px;
+      background: var(--background);
+      box-shadow: 0 12px 28px rgba(37, 39, 34, 0.1);
+    }
+
+    .palette-board-header {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 20px;
+      margin-bottom: 16px;
+    }
+
+    .palette-board-header h2 {
+      margin: 0;
+      font-size: 21px;
+      font-weight: 650;
+      letter-spacing: -0.02em;
+    }
+
+    .palette-board-header p {
+      margin: 4px 0 0;
+      color: var(--text-secondary);
+      font-size: 12px;
+    }
+
+    .palette-board-note {
+      flex: 0 0 auto;
+      font-size: 11px !important;
+      text-align: right;
+    }
+
+    .rank-palette-grid {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .rank-sample {
+      --sample-light: #dedede;
+      --sample-mid: #7a7a7b;
+      --sample-deep: #393b3b;
+      --sample-gradient: linear-gradient(
+        180deg,
+        var(--sample-light) 0%,
+        var(--sample-mid) 50%,
+        var(--sample-deep) 100%
+      );
+      position: relative;
+      min-width: 0;
+      overflow: hidden;
+      padding: 13px 13px 12px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+    }
+
+    .rank-sample::before {
+      position: absolute;
+      top: 0;
+      right: 0;
+      left: 0;
+      height: 4px;
+      background: linear-gradient(90deg, var(--sample-deep), var(--sample-mid), var(--sample-light));
+      content: "";
+    }
+
+    .rank-sample[data-rank="mercury"] { --sample-light: #60ccf4; --sample-mid: #009edc; --sample-deep: #0079bb; }
+    .rank-sample[data-rank="venus"] { --sample-light: #ffcd01; --sample-mid: #ffb500; --sample-deep: #e36613; }
+    .rank-sample[data-rank="earth"] { --sample-light: #00d296; --sample-mid: #00c386; --sample-deep: #006d74; }
+    .rank-sample[data-rank="mars"] { --sample-light: #ff8c9d; --sample-mid: #ff3800; --sample-deep: #a01500; }
+    .rank-sample[data-rank="jupiter"] { --sample-light: #ffd2b8; --sample-mid: #d7b58d; --sample-deep: #ab540b; }
+    .rank-sample[data-rank="saturn"] { --sample-light: #ffa8dd; --sample-mid: #c2457f; --sample-deep: #562060; }
+    .rank-sample[data-rank="uranus"] { --sample-light: #cefff9; --sample-mid: #6adcd5; --sample-deep: #41cdae; }
+    .rank-sample[data-rank="neptune"] { --sample-light: #afbde0; --sample-mid: #23379a; --sample-deep: #35356c; }
+    .rank-sample[data-rank="sun"] { --sample-light: #ffb200; --sample-mid: #ff7300; --sample-deep: #ff1f00; }
+    .rank-sample[data-rank="world"] {
+      --sample-light: #96ff8f;
+      --sample-mid: #fff11e;
+      --sample-deep: #b782ff;
+      --sample-gradient: linear-gradient(
+        90deg,
+        #b782ff 0%,
+        #fb6587 23%,
+        #ffa165 43%,
+        #fff11e 63%,
+        #96ff8f 82%,
+        #60ccf4 100%
+      );
+    }
+
+    .rank-sample-name {
+      display: inline-flex;
+      align-items: flex-start;
+      gap: 5px;
+      max-width: 100%;
+      margin-top: 5px;
+      color: var(--sample-mid);
+      background: var(--sample-gradient);
+      background-clip: text;
+      filter: drop-shadow(0 1px 0 rgba(37, 39, 34, 0.16));
+      font-size: 23px;
+      font-weight: 800;
+      letter-spacing: -0.045em;
+      line-height: 1;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .rank-sample-plus {
+      margin-top: 2px;
+      font-size: 13px;
+      letter-spacing: -0.08em;
+    }
+
+    .rank-sample-ja {
+      margin-top: 5px;
+      color: var(--text-secondary);
+      font-size: 10px;
+    }
+
+    .rank-color-values {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+      margin-top: 10px;
+    }
+
+    .rank-color-value {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      color: var(--text-muted);
+      font-family: "Segoe UI", sans-serif;
+      font-size: 9px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .rank-color-dot {
+      width: 9px;
+      height: 9px;
+      flex: 0 0 auto;
+      border: 1px solid rgba(37, 39, 34, 0.2);
+      border-radius: 50%;
+      background: var(--token-color);
+    }
+
+    @media (max-width: 1100px) {
+      .topbar {
+        padding: 0 18px;
+      }
+
+      .nav-item {
+        padding: 0 9px;
+        font-size: 12px;
+      }
+
+      .content {
+        padding-right: 20px;
+        padding-left: 20px;
+      }
+
+      .rank-palette-board {
+        padding-right: 20px;
+        padding-left: 20px;
+      }
+
+      .rank-palette-grid {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+      }
+
+      .rank-panel {
+        grid-template-columns: 1fr 0.85fr 1.1fr;
+      }
+
+      .rank-block {
+        padding-right: 15px;
+        padding-left: 15px;
+      }
+
+      .category-grid {
+        gap: 8px;
+      }
+
+      .chart-row {
+        grid-template-columns: 20px minmax(0, 1fr) auto;
+        gap: 6px;
+        padding-right: 7px;
+        padding-left: 6px;
+      }
+    }
+
+    @media (max-width: 980px) {
+      .rank-palette-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      * {
+        scroll-behavior: auto !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app-window">
+    <header class="topbar" aria-label="アプリケーションナビゲーション">
+      <div class="brand">GP Score Log</div>
+      <nav class="nav-group" aria-label="主要ナビゲーション">
+        <button class="nav-item" type="button">ホーム</button>
+        <button class="nav-item" type="button">自己ベスト</button>
+        <button class="nav-item" type="button">直近プレー履歴</button>
+        <button class="nav-item selected" type="button" aria-current="page">フレアスキル</button>
+      </nav>
+      <nav class="nav-group utility" aria-label="補助ナビゲーション">
+        <button class="nav-item" type="button">設定</button>
+        <button class="nav-item" type="button">データ管理</button>
+      </nav>
+    </header>
+
+    <div class="monitor-bar">
+      <div class="monitor-status"><span class="status-dot" aria-hidden="true"></span>自動記録：待機中</div>
+      <div class="monitor-reason">DDR GRAND PRIX の起動を待っています</div>
+    </div>
+
+    <main class="content">
+      <div class="page-header">
+        <div class="page-title">
+          <h1>フレアスキル</h1>
+          <p>実装前のレイアウト検証用wireframeです。最終的なWPFデザインを厳密に規定するものではありません。</p>
+        </div>
+        <div class="segmented" role="group" aria-label="プレイスタイル">
+          <button type="button" class="active" data-style="single" aria-pressed="true">SINGLE</button>
+          <button type="button" data-style="double" aria-pressed="false">DOUBLE</button>
+        </div>
+      </div>
+
+      <section class="rank-panel" aria-labelledby="rank-panel-label">
+        <div class="rank-block">
+          <div class="eyebrow" id="rank-panel-label">TOTAL FLARE SKILL RANK</div>
+          <div class="rank-name"><span id="rank-main">SUN</span><span class="rank-plus" id="rank-sub">++</span></div>
+          <div class="rank-ja" id="rank-japanese">太陽</div>
+        </div>
+        <div class="rank-block">
+          <div class="metric-label">TOTAL FLARE SKILL</div>
+          <div class="metric-value" id="total-skill">84,183</div>
+          <div class="metric-note">3カテゴリのTARGET合計</div>
+        </div>
+        <div class="rank-block">
+          <div class="metric-label">次のランク段階まで</div>
+          <div class="next-line">
+            <span class="next-value" id="next-needed">あと 2,067</span>
+            <span class="next-rank" id="next-rank">SUN +++ / 86,250</span>
+          </div>
+          <div class="progress-track" aria-hidden="true"><div class="progress-bar" id="rank-progress"></div></div>
+          <div class="metric-note">現在のランク段階内での進捗</div>
+        </div>
+      </section>
+
+      <div class="notice-stack">
+        <div class="notice">保存済みのFLARE I〜EXクリア実績のみから算出しています。DDR WORLD公式のフレアスキル値と異なる場合があります。</div>
+        <details class="exclusion">
+          <summary id="exclusion-summary">異常除外 2件（参照不能など）</summary>
+          <ul class="exclusion-detail" id="exclusion-detail">
+            <li>現行の楽曲・譜面データを参照できない: 1件</li>
+            <li>song / chart ID不整合: 1件</li>
+          </ul>
+        </details>
+      </div>
+
+      <section class="category-grid" aria-label="カテゴリ別フレアスキル">
+        <article class="category" data-category="classic">
+          <header class="category-header">
+            <div class="category-heading">
+              <span class="category-swatch" aria-hidden="true"></span>
+              <div>
+                <div class="category-name">CLASSIC</div>
+                <div class="category-range">1st〜X3 VS 2ndMIX</div>
+              </div>
+            </div>
+            <div class="category-metrics">
+              <div class="category-total" data-total="classic">27,916</div>
+              <div class="category-count"><span data-count="classic">30</span> / 30 TARGET</div>
+            </div>
+          </header>
+          <div class="list-scroll" data-list="classic" tabindex="0" aria-label="CLASSIC Top 30"></div>
+          <div class="runner-up" data-runner="classic"></div>
+        </article>
+
+        <article class="category" data-category="white">
+          <header class="category-header">
+            <div class="category-heading">
+              <span class="category-swatch" aria-hidden="true"></span>
+              <div>
+                <div class="category-name">WHITE</div>
+                <div class="category-range">2013〜A</div>
+              </div>
+            </div>
+            <div class="category-metrics">
+              <div class="category-total" data-total="white">27,884</div>
+              <div class="category-count"><span data-count="white">30</span> / 30 TARGET</div>
+            </div>
+          </header>
+          <div class="list-scroll" data-list="white" tabindex="0" aria-label="WHITE Top 30"></div>
+          <div class="runner-up" data-runner="white"></div>
+        </article>
+
+        <article class="category" data-category="gold">
+          <header class="category-header">
+            <div class="category-heading">
+              <span class="category-swatch" aria-hidden="true"></span>
+              <div>
+                <div class="category-name">GOLD</div>
+                <div class="category-range">A20〜WORLD</div>
+              </div>
+            </div>
+            <div class="category-metrics">
+              <div class="category-total" data-total="gold">28,383</div>
+              <div class="category-count"><span data-count="gold">30</span> / 30 TARGET</div>
+            </div>
+          </header>
+          <div class="list-scroll" data-list="gold" tabindex="0" aria-label="GOLD Top 30"></div>
+          <div class="runner-up" data-runner="gold"></div>
+        </article>
+      </section>
+    </main>
+  </div>
+
+  <section class="rank-palette-board" aria-labelledby="rank-palette-title">
+    <header class="palette-board-header">
+      <div>
+        <h2 id="rank-palette-title">TOTAL FLARE SKILL RANK 色サンプル</h2>
+        <p>公式ランクアイコンの主要色を、DDRGpScoreViewer向けの文字表現へ置き換えた比較用パレットです。</p>
+      </div>
+      <p class="palette-board-note">wireframe検討用・アプリ画面外</p>
+    </header>
+
+    <div class="rank-palette-grid">
+      <article class="rank-sample" data-rank="none">
+        <div class="rank-sample-name">NONE <span class="rank-sample-plus">++</span></div>
+        <div class="rank-sample-ja">なし</div>
+        <div class="rank-color-values">
+          <span class="rank-color-value"><span class="rank-color-dot" style="--token-color:#dedede"></span>#DEDEDE</span>
+          <span class="rank-color-value"><span class="rank-color-dot" style="--token-color:#7a7a7b"></span>#7A7A7B</span>
+          <span class="rank-color-value"><span class="rank-color-dot" style="--token-color:#393b3b"></span>#393B3B</span>
+        </div>
+      </article>
+
+      <article class="rank-sample" data-rank="mercury">
+        <div class="rank-sample-name">MERCURY <span class="rank-sample-plus">++</span></div>
+        <div class="rank-sample-ja">水星</div>
+        <div class="rank-color-values">
+          <span class="rank-color-value"><span class="rank-color-dot" style="--token-color:#60ccf4"></span>#60CCF4</span>
+          <span class="rank-color-value"><span class="rank-color-dot" style="--token-color:#009edc"></span>#009EDC</span>
+          <span class="rank-color-value"><span class="rank-color-dot" style="--token-color:#0079bb"></span>#0079BB</span>
+        </div>
+      </article>
+
+      <article class="rank-sample" data-rank="venus">
+        <div class="rank-sample-name">VENUS <span class="rank-sample-plus">++</span></div>
+        <div class="rank-sample-ja">金星</div>
+        <div class="rank-color-values">
+          <span class="rank-color-value"><span class="rank-color-dot" style="--token-color:#ffcd01"></span>#FFCD01</span>
+          <span class="rank-color-value"><span class="rank-color-dot" style="--token-color:#ffb500"></span>#FFB500</span>
+          <span class="rank-color-value"><span class="rank-color-dot" style="--token-color:#e36613"></span>#E36613</span>
+        </div>
+      </article>
+
+      <article class="rank-sample" data-rank="earth">
+        <div class="rank-sample-name">EARTH <span class="rank-sample-plus">++</span></div>
+        <div class="rank-sample-ja">地球</div>
+        <div class="rank-color-values">
+          <span class="rank-color-value"><span class="rank-color-dot" style="--token-color:#00d296"></span>#00D296</span>
+          <span class="rank-color-value"><span class="rank-color-dot" style="--token-color:#00c386"></span>#00C386</span>
+          <span class="rank-color-value"><span class="rank-color-dot" style="--token-color:#006d74"></span>#006D74</span>
+        </div>
+      </article>
+
+      <article class="rank-sample" data-rank="mars">
+        <div class="rank-sample-name">MARS <span class="rank-sample-plus">++</span></div>
+        <div class="rank-sample-ja">火星</div>
+        <div class="rank-color-values">
+          <span class="rank-color-value"><span class="rank-color-dot" style="--token-color:#ff8c9d"></span>#FF8C9D</span>
+          <span class="rank-color-value"><span class="rank-color-dot" style="--token-color:#ff3800"></span>#FF3800</span>
+          <span class="rank-color-value"><span class="rank-color-dot" style="--token-color:#a01500"></span>#A01500</span>
+        </div>
+      </article>
+
+      <article class="rank-sample" data-rank="jupiter">
+        <div class="rank-sample-name">JUPITER <span class="rank-sample-plus">++</span></div>
+        <div class="rank-sample-ja">木星</div>
+        <div class="rank-color-values">
+          <span class="rank-color-value"><span class="rank-color-dot" style="--token-color:#ffd2b8"></span>#FFD2B8</span>
+          <span class="rank-color-value"><span class="rank-color-dot" style="--token-color:#d7b58d"></span>#D7B58D</span>
+          <span class="rank-color-value"><span class="rank-color-dot" style="--token-color:#ab540b"></span>#AB540B</span>
+        </div>
+      </article>
+
+      <article class="rank-sample" data-rank="saturn">
+        <div class="rank-sample-name">SATURN <span class="rank-sample-plus">++</span></div>
+        <div class="rank-sample-ja">土星</div>
+        <div class="rank-color-values">
+          <span class="rank-color-value"><span class="rank-color-dot" style="--token-color:#ffa8dd"></span>#FFA8DD</span>
+          <span class="rank-color-value"><span class="rank-color-dot" style="--token-color:#c2457f"></span>#C2457F</span>
+          <span class="rank-color-value"><span class="rank-color-dot" style="--token-color:#562060"></span>#562060</span>
+        </div>
+      </article>
+
+      <article class="rank-sample" data-rank="uranus">
+        <div class="rank-sample-name">URANUS <span class="rank-sample-plus">++</span></div>
+        <div class="rank-sample-ja">天王星</div>
+        <div class="rank-color-values">
+          <span class="rank-color-value"><span class="rank-color-dot" style="--token-color:#cefff9"></span>#CEFFF9</span>
+          <span class="rank-color-value"><span class="rank-color-dot" style="--token-color:#6adcd5"></span>#6ADCD5</span>
+          <span class="rank-color-value"><span class="rank-color-dot" style="--token-color:#41cdae"></span>#41CDAE</span>
+        </div>
+      </article>
+
+      <article class="rank-sample" data-rank="neptune">
+        <div class="rank-sample-name">NEPTUNE <span class="rank-sample-plus">++</span></div>
+        <div class="rank-sample-ja">海王星</div>
+        <div class="rank-color-values">
+          <span class="rank-color-value"><span class="rank-color-dot" style="--token-color:#afbde0"></span>#AFBDE0</span>
+          <span class="rank-color-value"><span class="rank-color-dot" style="--token-color:#23379a"></span>#23379A</span>
+          <span class="rank-color-value"><span class="rank-color-dot" style="--token-color:#35356c"></span>#35356C</span>
+        </div>
+      </article>
+
+      <article class="rank-sample" data-rank="sun">
+        <div class="rank-sample-name">SUN <span class="rank-sample-plus">++</span></div>
+        <div class="rank-sample-ja">太陽</div>
+        <div class="rank-color-values">
+          <span class="rank-color-value"><span class="rank-color-dot" style="--token-color:#ffb200"></span>#FFB200</span>
+          <span class="rank-color-value"><span class="rank-color-dot" style="--token-color:#ff7300"></span>#FF7300</span>
+          <span class="rank-color-value"><span class="rank-color-dot" style="--token-color:#ff1f00"></span>#FF1F00</span>
+        </div>
+      </article>
+
+      <article class="rank-sample" data-rank="world">
+        <div class="rank-sample-name">WORLD</div>
+        <div class="rank-sample-ja">世界</div>
+        <div class="rank-color-values">
+          <span class="rank-color-value"><span class="rank-color-dot" style="--token-color:#b782ff"></span>#B782FF</span>
+          <span class="rank-color-value"><span class="rank-color-dot" style="--token-color:#fb6587"></span>#FB6587</span>
+          <span class="rank-color-value"><span class="rank-color-dot" style="--token-color:#fff11e"></span>#FFF11E</span>
+          <span class="rank-color-value"><span class="rank-color-dot" style="--token-color:#96ff8f"></span>#96FF8F</span>
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <script>
+    (() => {
+      const categoryTitles = {
+        classic: [
+          "POSSESSION", "Pluto Relinquish", "MAX 300", "PARANOiA survivor MAX", "TRIP MACHINE EVOLUTION",
+          "London EVOLVED ver.A", "SABER WING", "Valkyrie dimension", "New Decade", "Tohoku EVOLVED"
+        ],
+        white: [
+          "ENDYMION", "Over The “Period”", "EGOISM 440", "ACE FOR ACES", "MAX 360",
+          "Elemental Creation", "Come to Life", "Prey", "Vanquish The Ghost", "Chronos (walk with you remix)"
+        ],
+        gold: [
+          "Dancer in the flare", "VOLAQUAS", "SURVIVAL AT THE END OF THE UNIVERSE", "MEGALOVANIA", "鳳",
+          "Step This Way", "HyperNOAH", "Gravity Collapse", "Ødyssey", "The Ashes of Boreas"
+        ]
+      };
+
+      const styles = {
+        single: {
+          rank: "SUN", sub: "++", japanese: "太陽", total: 84183,
+          nextNeeded: 2067, nextRank: "SUN +++", nextThreshold: 86250, progress: 45,
+          totals: { classic: 27916, white: 27884, gold: 28383 },
+          exclusions: ["現行の楽曲・譜面データを参照できない: 1件", "song / chart ID不整合: 1件"],
+        },
+        double: {
+          rank: "SUN", sub: "", japanese: "太陽", total: 75624,
+          nextNeeded: 3126, nextRank: "SUN +", nextThreshold: 78750, progress: 17,
+          totals: { classic: 24614, white: 25264, gold: 25746 },
+          exclusions: ["現行の楽曲・譜面データを参照できない: 1件"],
+        }
+      };
+
+      const difficultyCycle = [
+        { short: "CHA", full: "CHALLENGE", className: "challenge" },
+        { short: "EXP", full: "EXPERT", className: "expert" },
+        { short: "EXP", full: "EXPERT", className: "expert" },
+        { short: "DIF", full: "DIFFICULT", className: "difficult" }
+      ];
+
+      const formatter = new Intl.NumberFormat("ja-JP");
+      const buttons = [...document.querySelectorAll("[data-style]")];
+
+      const buildSkillValues = total => {
+        const base = Math.floor(total / 30);
+        const remainder = total - base * 30;
+        return Array.from({ length: 30 }, (_, index) => {
+          const descendingOffset = (29 - index * 2) * 2;
+          return base + descendingOffset + (index < remainder ? 1 : 0);
+        });
+      };
+
+      const rowData = (category, index, skillValues) => {
+        const sourceTitles = categoryTitles[category];
+        const title = sourceTitles[index % sourceTitles.length];
+        const chartVariant = Math.floor(index / sourceTitles.length);
+        const difficulty = difficultyCycle[(index + chartVariant) % difficultyCycle.length];
+        const levelOffset = category === "classic" ? 0 : category === "white" ? 1 : 2;
+        const level = Math.max(11, 18 - Math.floor(index / 6) - levelOffset + (index % 2));
+        const flare = index < 7 ? "EX" : index < 18 ? "IX" : index < 25 ? "VIII" : "VII";
+
+        return {
+          title: chartVariant === 0 ? title : `${title} (${difficulty.short})`,
+          difficulty,
+          level,
+          skill: skillValues[index],
+          flare
+        };
+      };
+
+      const chartRow = (item, index) => `
+        <div class="chart-row">
+          <div class="position">${index + 1}</div>
+          <div class="chart-info">
+            <div class="song-title" title="${item.title}">${item.title}</div>
+            <div class="chart-meta">
+              <span class="difficulty ${item.difficulty.className}" title="${item.difficulty.full}">${item.difficulty.short}</span>
+              <span class="level">Lv.${item.level}</span>
+            </div>
+          </div>
+          <div class="chart-result">
+            <div class="flare-rank ${item.flare === "EX" ? "ex" : ""}">FLARE ${item.flare}</div>
+            <div class="skill-value">${formatter.format(item.skill)}</div>
+          </div>
+        </div>`;
+
+      const runnerUp = item => `
+        <span class="runner-label">次点 31位</span>
+        <div class="chart-info">
+          <div class="song-title" title="${item.title}">${item.title}</div>
+          <div class="chart-meta"><span class="difficulty ${item.difficulty.className}">${item.difficulty.short}</span><span class="level">Lv.${item.level}</span></div>
+        </div>
+        <div class="chart-result"><div class="flare-rank ${item.flare === "EX" ? "ex" : ""}">FLARE ${item.flare}</div><div class="skill-value">${formatter.format(item.skill)}</div></div>`;
+
+      const render = style => {
+        const data = styles[style];
+        document.getElementById("rank-main").textContent = data.rank;
+        document.getElementById("rank-sub").textContent = data.sub;
+        document.getElementById("rank-japanese").textContent = data.japanese;
+        document.getElementById("total-skill").textContent = formatter.format(data.total);
+        document.getElementById("next-needed").textContent = `あと ${formatter.format(data.nextNeeded)}`;
+        document.getElementById("next-rank").textContent = `${data.nextRank} / ${formatter.format(data.nextThreshold)}`;
+        document.getElementById("rank-progress").style.width = `${data.progress}%`;
+
+        document.getElementById("exclusion-summary").textContent = `異常除外 ${data.exclusions.length}件（参照不能など）`;
+        document.getElementById("exclusion-detail").innerHTML = data.exclusions.map(item => `<li>${item}</li>`).join("");
+
+        Object.entries(data.totals).forEach(([category, total]) => {
+          document.querySelector(`[data-total="${category}"]`).textContent = formatter.format(total);
+          document.querySelector(`[data-count="${category}"]`).textContent = "30";
+          const skillValues = buildSkillValues(total);
+          const rows = Array.from({ length: 30 }, (_, index) => rowData(category, index, skillValues));
+          rows.push({ ...rowData(category, 30, [...skillValues, skillValues[29] - 4]), skill: skillValues[29] - 4 });
+          document.querySelector(`[data-list="${category}"]`).innerHTML = rows.slice(0, 30).map(chartRow).join("");
+          document.querySelector(`[data-runner="${category}"]`).innerHTML = runnerUp(rows[30]);
+        });
+
+        buttons.forEach(button => {
+          const selected = button.dataset.style === style;
+          button.classList.toggle("active", selected);
+          button.setAttribute("aria-pressed", String(selected));
+        });
+      };
+
+      buttons.forEach(button => button.addEventListener("click", () => render(button.dataset.style)));
+      render("single");
+    })();
+  </script>
+</body>
+</html>
