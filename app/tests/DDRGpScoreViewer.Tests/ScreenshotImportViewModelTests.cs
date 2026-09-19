@@ -161,17 +161,19 @@ public sealed class ScreenshotImportViewModelTests
             using var fixture = new DatabaseFixture();
             var service = new FakeScreenshotImportService((path, _) =>
             {
-                File.Delete(fixture.ScorePath);
+                File.WriteAllBytes(
+                    fixture.ScorePath,
+                    "not a sqlite database"u8.ToArray());
                 return Task.FromResult(Result(path, ScreenshotImportItemStatus.Saved));
             });
             var viewModel = CreateViewModel(fixture, service);
 
             Assert.True(await viewModel.ImportScreenshotsAsync(["one.png"]));
 
-            Assert.StartsWith(
-                "The view could not be refreshed after import. Saved data was not changed.",
-                viewModel.DataManagementStatusMessage,
-                StringComparison.Ordinal);
+            Assert.Equal(
+                "The view could not be refreshed after import. Saved data was not changed. " +
+                "The data could not be loaded. Check the files and try again.",
+                viewModel.DataManagementStatusMessage);
         }
         finally
         {

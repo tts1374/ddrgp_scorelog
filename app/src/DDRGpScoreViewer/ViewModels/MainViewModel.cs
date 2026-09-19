@@ -1627,7 +1627,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 {
                     reloadFailure = Localization.Format(
                         "インポート後の表示更新に失敗しました。保存済みデータは変更されていません。{0}",
-                        exception.UserMessage);
+                        Localization.Get(exception.UserMessage));
                 }
             }
 

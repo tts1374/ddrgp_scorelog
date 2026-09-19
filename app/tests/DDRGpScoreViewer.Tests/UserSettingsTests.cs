@@ -329,6 +329,10 @@ public sealed class UserSettingsTests
     [InlineData("完了", "Completed", "완료")]
     [InlineData("キャンセル済み", "Cancelled", "취소됨")]
     [InlineData(
+        "データを読み込めませんでした。ファイルを確認して、もう一度お試しください。",
+        "The data could not be loaded. Check the files and try again.",
+        "데이터를 불러오지 못했습니다. 파일을 확인한 후 다시 시도하세요.")]
+    [InlineData(
         "インポート後の表示更新に失敗しました。保存済みデータは変更されていません。{0}",
         "The view could not be refreshed after import. Saved data was not changed. {0}",
         "가져오기 후 화면을 새로 고치지 못했습니다. 저장된 데이터는 변경되지 않았습니다. {0}")]
