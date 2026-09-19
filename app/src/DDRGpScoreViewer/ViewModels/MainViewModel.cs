@@ -237,6 +237,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
     internal Func<TimeSpan, Func<Task>, Task> UnresolvedNotificationScheduler { get; set; } =
         ScheduleUnresolvedNotificationAsync;
 
+    internal AppProcessScoreWriteGate ScreenshotImportDbGate { get; set; } =
+        AppProcessScoreWriteGate.Shared;
+
     public event PropertyChangedEventHandler? PropertyChanged;
     public event Action<ChartBestItem>? ChartBestSelectionRequested;
     public event EventHandler? ChartBestListReset;
@@ -1567,11 +1570,13 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 NotifyScreenshotImportState();
                 try
                 {
-                    var result = await screenshotImportService.ProcessAsync(
-                        path,
-                        ScoreDatabasePath,
-                        MasterDatabasePath,
-                        CatalogDatabasePath,
+                    var result = await Task.Run(
+                        () => screenshotImportService.ProcessAsync(
+                            path,
+                            ScoreDatabasePath,
+                            MasterDatabasePath,
+                            CatalogDatabasePath,
+                            importCancellation.Token),
                         importCancellation.Token);
                     ScreenshotImportResults.Add(result);
                     screenshotImportCompletedCount++;
@@ -1601,10 +1606,13 @@ public sealed class MainViewModel : INotifyPropertyChanged
             {
                 try
                 {
-                    ApplyData(repository.Load(
-                        ScoreDatabasePath,
-                        MasterDatabasePath,
-                        CatalogDatabasePath));
+                    var data = await ScreenshotImportDbGate.RunAsync(
+                        () => repository.Load(
+                            ScoreDatabasePath,
+                            MasterDatabasePath,
+                            CatalogDatabasePath),
+                        CancellationToken.None);
+                    ApplyData(data);
                 }
                 catch (ViewerDatabaseException exception)
                 {

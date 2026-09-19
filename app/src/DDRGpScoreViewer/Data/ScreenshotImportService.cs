@@ -156,7 +156,7 @@ public sealed class AppOwnedScreenshotImportService : IScreenshotImportService
                 duplicate: false,
                 captureId: $"screenshot-import-capture-{attemptId}",
                 analysisId: $"screenshot-import-analysis-{attemptId}",
-                confirmationMode: "manual");
+                confirmationMode: "time");
             var result = await save(input, scoreDatabasePath, cancellationToken);
             return FromWorkflow(fullPath, result);
         }

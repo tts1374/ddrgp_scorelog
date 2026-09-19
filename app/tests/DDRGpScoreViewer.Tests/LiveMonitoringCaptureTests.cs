@@ -300,6 +300,10 @@ public sealed class LiveMonitoringCaptureTests
     [Fact]
     public async Task Live_monitor_bounds_identity_retry_and_finalizes_the_eighth_attempt()
     {
+        var retryReady = Enumerable.Range(0, 7)
+            .Select(_ => new TaskCompletionSource(
+                TaskCreationOptions.RunContinuationsAsynchronously))
+            .ToArray();
         var observations = new Queue<LiveResultObservation>(
             Enumerable.Range(0, 13).Select(index => FormalResult("100", $"ambiguous-{index}")));
         var source = new StubFrameSource(
@@ -317,17 +321,30 @@ public sealed class LiveMonitoringCaptureTests
                 10_000,
                 11_000,
                 12_000),
-            frameDelayMs: 5);
+            beforeFrame: (index, token) => index is >= 2 and <= 8
+                ? retryReady[index - 2].Task.WaitAsync(token)
+                : Task.CompletedTask);
         var attempts = new List<(string? EventId, bool Finalize)>();
         var service = new LiveMonitoringCaptureService(
             new StubTargetedAdapter(source),
             new StubResultAnalyzer(observations));
         var progress = new List<CaptureSessionProgress>();
+        var retryIndex = 0;
 
         var result = await service.RunAsync(
             123,
             new CaptureTargetInfo("DDR GRAND PRIX", 1280, 720),
-            new CallbackProgress<CaptureSessionProgress>(progress.Add),
+            new CallbackProgress<CaptureSessionProgress>(value =>
+            {
+                progress.Add(value);
+                if (value.StatusMessage.Contains(
+                        "後続frameを再評価",
+                        StringComparison.Ordinal) &&
+                    retryIndex < retryReady.Length)
+                {
+                    retryReady[retryIndex++].TrySetResult();
+                }
+            }),
             (_, observation, context, _) =>
             {
                 attempts.Add((observation.ConfirmedEventId, context.FinalizeUnresolved));
@@ -552,16 +569,19 @@ public sealed class LiveMonitoringCaptureTests
     {
         private readonly IReadOnlyList<CapturedFrame> frames;
         private readonly int frameDelayMs;
+        private readonly Func<int, CancellationToken, Task>? beforeFrame;
         private readonly TaskCompletionSource<CaptureSessionEndReason> completion = new(
             TaskCreationOptions.RunContinuationsAsynchronously);
 
         public StubFrameSource(
             IReadOnlyList<CapturedFrame> frames,
             int frameDelayMs = 0,
-            CaptureSessionEndReason endReason = CaptureSessionEndReason.Stopped)
+            CaptureSessionEndReason endReason = CaptureSessionEndReason.Stopped,
+            Func<int, CancellationToken, Task>? beforeFrame = null)
         {
             this.frames = frames;
             this.frameDelayMs = frameDelayMs;
+            this.beforeFrame = beforeFrame;
             completion.TrySetResult(endReason);
         }
 
@@ -571,9 +591,13 @@ public sealed class LiveMonitoringCaptureTests
         public async IAsyncEnumerable<CapturedFrame> ReadFramesAsync(
             [EnumeratorCancellation] CancellationToken cancellationToken = default)
         {
-            foreach (var frame in frames)
+            for (var index = 0; index < frames.Count; index++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
+                if (beforeFrame is not null)
+                {
+                    await beforeFrame(index, cancellationToken);
+                }
                 if (frameDelayMs > 0)
                 {
                     await Task.Delay(frameDelayMs, cancellationToken);
@@ -582,7 +606,7 @@ public sealed class LiveMonitoringCaptureTests
                 {
                     await Task.Yield();
                 }
-                yield return frame;
+                yield return frames[index];
             }
         }
 

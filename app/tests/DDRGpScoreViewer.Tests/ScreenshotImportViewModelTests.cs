@@ -162,6 +162,83 @@ public sealed class ScreenshotImportViewModelTests
         await monitoringTask;
     }
 
+    [Fact]
+    public async Task Batch_reload_waits_for_in_flight_live_write_on_the_shared_gate()
+    {
+        using var fixture = new DatabaseFixture();
+        var gate = new AppProcessScoreWriteGate();
+        var liveWriteStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseLiveWrite = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        Task<int>? liveWrite = null;
+        var import = new FakeScreenshotImportService(async (path, token) =>
+        {
+            await gate.RunAsync(
+                () =>
+                {
+                    fixture.AddPlay("imported", "2026-09-16T12:00:00+00:00", 900_000, 1_000);
+                    return 0;
+                },
+                token);
+            liveWrite = Task.Run(() => gate.RunAsync(
+                () =>
+                {
+                    liveWriteStarted.TrySetResult();
+                    releaseLiveWrite.Task.GetAwaiter().GetResult();
+                    fixture.AddPlay(
+                        "live-concurrent",
+                        "2026-09-16T12:00:01+00:00",
+                        910_000,
+                        1_010);
+                    return 0;
+                },
+                CancellationToken.None));
+            await liveWriteStarted.Task;
+            return Result(path, ScreenshotImportItemStatus.Saved);
+        });
+        var viewModel = CreateViewModel(fixture, import);
+        viewModel.ScreenshotImportDbGate = gate;
+
+        var batch = viewModel.ImportScreenshotsAsync(["one.png"]);
+        await liveWriteStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.False(batch.IsCompleted);
+        releaseLiveWrite.TrySetResult();
+        await batch.WaitAsync(TimeSpan.FromSeconds(5));
+        await liveWrite!.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Contains(viewModel.Plays, play => play.PlayId == "imported");
+        Assert.Contains(viewModel.Plays, play => play.PlayId == "live-concurrent");
+    }
+
+    [Fact]
+    public async Task Image_pipeline_runs_without_the_calling_synchronization_context()
+    {
+        using var fixture = new DatabaseFixture();
+        SynchronizationContext? observedContext = null;
+        var import = new FakeScreenshotImportService((path, _) =>
+        {
+            observedContext = SynchronizationContext.Current;
+            return Task.FromResult(Result(path, ScreenshotImportItemStatus.RecognitionFailed));
+        });
+        var viewModel = CreateViewModel(fixture, import);
+        var originalContext = SynchronizationContext.Current;
+        var callingContext = new SynchronizationContext();
+        Task<bool> batch;
+        try
+        {
+            SynchronizationContext.SetSynchronizationContext(callingContext);
+            batch = viewModel.ImportScreenshotsAsync(["one.png"]);
+        }
+        finally
+        {
+            SynchronizationContext.SetSynchronizationContext(originalContext);
+        }
+
+        Assert.True(await batch.WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.Null(observedContext);
+    }
+
     private static MainViewModel CreateViewModel(
         DatabaseFixture fixture,
         IScreenshotImportService service)

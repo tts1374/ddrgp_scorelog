@@ -45,7 +45,7 @@ public sealed class ScreenshotImportServiceTests
         Assert.Equal("manual", savedInput!.SourceKind);
         Assert.Equal(Path.GetFullPath(path), savedInput.SourcePath);
         Assert.Equal("", savedInput.ManifestImagePath);
-        Assert.Equal("manual", savedInput.ConfirmationMode);
+        Assert.Equal("time", savedInput.ConfirmationMode);
         Assert.Equal(modifiedAt, DateTimeOffset.Parse(savedInput.CapturedAt));
         Assert.Equal(modifiedAt, DateTimeOffset.Parse(savedInput.FormalPlay!.PlayedAt));
         var expectedHash = Convert.ToHexString(SHA256.HashData(await File.ReadAllBytesAsync(path)))
