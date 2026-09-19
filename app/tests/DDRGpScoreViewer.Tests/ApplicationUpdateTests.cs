@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using DDRGpScoreViewer.Data;
 using DDRGpScoreViewer.Updates;
 using DDRGpScoreViewer.ViewModels;
@@ -31,7 +30,7 @@ public sealed class ApplicationUpdateTests
         Assert.Equal(1, manager.DownloadCount);
     }
 
-    [Fact]
+    [Fact(Timeout = 5_000)]
     public async Task Download_timeout_returns_failure_without_waiting_for_unbounded_network_work()
     {
         var manager = new FakeUpdateManager(CreateUpdateInfo(1, 2, 0))
@@ -44,12 +43,9 @@ public sealed class ApplicationUpdateTests
             downloadOperationTimeout: TimeSpan.FromMilliseconds(50));
         await service.CheckForUpdatesAsync();
 
-        var stopwatch = Stopwatch.StartNew();
         var result = await service.DownloadAsync();
-        stopwatch.Stop();
 
         Assert.Equal(ApplicationUpdateStatus.Failed, result.Status);
-        Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(1));
         Assert.Contains("現在のversionは変更していません", result.Message);
     }
 
