@@ -982,7 +982,14 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public bool CanCancelScreenshotImport => IsScreenshotImporting;
 
-    public string ScreenshotImportStateDisplay => CurrentScreenshotImportState.ToString();
+    public string ScreenshotImportStateDisplay => CurrentScreenshotImportState switch
+    {
+        ScreenshotImportState.Idle => Localization.Get("待機中"),
+        ScreenshotImportState.Importing => Localization.Get("インポート中"),
+        ScreenshotImportState.Completed => Localization.Get("完了"),
+        ScreenshotImportState.Cancelled => Localization.Get("キャンセル済み"),
+        _ => Localization.Get("待機中"),
+    };
 
     public int ScreenshotImportCompletedCount => screenshotImportCompletedCount;
 
@@ -991,7 +998,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public string ScreenshotImportProgressDisplay =>
         Localization.Format(
             "{0} / {1}件を処理中",
-            ScreenshotImportCompletedCount,
+            IsScreenshotImporting && ScreenshotImportTotalCount > 0
+                ? Math.Min(ScreenshotImportCompletedCount + 1, ScreenshotImportTotalCount)
+                : ScreenshotImportCompletedCount,
             ScreenshotImportTotalCount);
 
     public string ScreenshotImportCurrentFileDisplay =>
@@ -1616,8 +1625,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 }
                 catch (ViewerDatabaseException exception)
                 {
-                    reloadFailure =
-                        $"インポート後の表示更新に失敗しました。保存済みデータは変更されていません。{exception.UserMessage}";
+                    reloadFailure = Localization.Format(
+                        "インポート後の表示更新に失敗しました。保存済みデータは変更されていません。{0}",
+                        exception.UserMessage);
                 }
             }
 

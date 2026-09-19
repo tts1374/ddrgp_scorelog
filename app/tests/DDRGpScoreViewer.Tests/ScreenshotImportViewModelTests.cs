@@ -6,6 +6,7 @@ using Xunit;
 
 namespace DDRGpScoreViewer.Tests;
 
+[Collection("Localized WPF views")]
 public sealed class ScreenshotImportViewModelTests
 {
     [Fact]
@@ -41,6 +42,7 @@ public sealed class ScreenshotImportViewModelTests
 
         Assert.True(started);
         Assert.Equal(ScreenshotImportState.Completed, viewModel.CurrentScreenshotImportState);
+        Assert.Equal(Localization.Get("完了"), viewModel.ScreenshotImportStateDisplay);
         Assert.Equal(5, viewModel.ScreenshotImportCompletedCount);
         Assert.Equal(5, viewModel.ScreenshotImportTotalCount);
         Assert.Equal(1, service.MaxConcurrency);
@@ -65,6 +67,7 @@ public sealed class ScreenshotImportViewModelTests
 
         var restarted = CreateViewModel(fixture, service);
         Assert.Equal(ScreenshotImportState.Idle, restarted.CurrentScreenshotImportState);
+        Assert.Equal(Localization.Get("待機中"), restarted.ScreenshotImportStateDisplay);
         Assert.Empty(restarted.ScreenshotImportResults);
     }
 
@@ -86,6 +89,7 @@ public sealed class ScreenshotImportViewModelTests
         await firstEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
         Assert.True(viewModel.IsScreenshotImporting);
+        Assert.Equal(Localization.Get("インポート中"), viewModel.ScreenshotImportStateDisplay);
         Assert.False(viewModel.CanStartScreenshotImport);
         Assert.True(viewModel.CanStartMonitoring);
         Assert.False(await viewModel.ImportScreenshotsAsync(["queued.png"]));
@@ -94,8 +98,85 @@ public sealed class ScreenshotImportViewModelTests
         await batch;
 
         Assert.Equal(ScreenshotImportState.Cancelled, viewModel.CurrentScreenshotImportState);
+        Assert.Equal(Localization.Get("キャンセル済み"), viewModel.ScreenshotImportStateDisplay);
         Assert.Single(viewModel.ScreenshotImportResults);
         Assert.Equal(1, service.CallCount);
+    }
+
+    [Fact]
+    public async Task Progress_display_reports_the_current_item_while_count_tracks_completed_items()
+    {
+        using var fixture = new DatabaseFixture();
+        var firstEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseFirst = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var secondEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseSecond = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var call = 0;
+        var service = new FakeScreenshotImportService(async (path, _) =>
+        {
+            call++;
+            if (call == 1)
+            {
+                firstEntered.TrySetResult();
+                await releaseFirst.Task;
+            }
+            else
+            {
+                secondEntered.TrySetResult();
+                await releaseSecond.Task;
+            }
+
+            return Result(path, ScreenshotImportItemStatus.RecognitionFailed);
+        });
+        var viewModel = CreateViewModel(fixture, service);
+
+        var batch = viewModel.ImportScreenshotsAsync(["one.png", "two.png"]);
+        await firstEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal(0, viewModel.ScreenshotImportCompletedCount);
+        Assert.Equal(
+            Localization.Format("{0} / {1}件を処理中", 1, 2),
+            viewModel.ScreenshotImportProgressDisplay);
+
+        releaseFirst.TrySetResult();
+        await secondEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal(1, viewModel.ScreenshotImportCompletedCount);
+        Assert.Equal(
+            Localization.Format("{0} / {1}件を処理中", 2, 2),
+            viewModel.ScreenshotImportProgressDisplay);
+
+        releaseSecond.TrySetResult();
+        await batch.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(2, viewModel.ScreenshotImportCompletedCount);
+    }
+
+    [Fact]
+    public async Task Reload_failure_uses_the_localized_message_format()
+    {
+        var originalLanguage = Localization.CurrentLanguage;
+        try
+        {
+            Localization.Configure(UserSettings.EnglishLanguage);
+            using var fixture = new DatabaseFixture();
+            var service = new FakeScreenshotImportService((path, _) =>
+            {
+                File.Delete(fixture.ScorePath);
+                return Task.FromResult(Result(path, ScreenshotImportItemStatus.Saved));
+            });
+            var viewModel = CreateViewModel(fixture, service);
+
+            Assert.True(await viewModel.ImportScreenshotsAsync(["one.png"]));
+
+            Assert.StartsWith(
+                "The view could not be refreshed after import. Saved data was not changed.",
+                viewModel.DataManagementStatusMessage,
+                StringComparison.Ordinal);
+        }
+        finally
+        {
+            Localization.Configure(originalLanguage);
+        }
     }
 
     [Fact]

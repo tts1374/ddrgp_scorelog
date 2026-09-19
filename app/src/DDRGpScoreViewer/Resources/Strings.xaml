@@ -398,6 +398,9 @@
     <sys:String x:Key="重複">重複</sys:String>
     <sys:String x:Key="認識失敗">認識失敗</sys:String>
     <sys:String x:Key="入力エラー">入力エラー</sys:String>
+    <sys:String x:Key="インポート中">インポート中</sys:String>
+    <sys:String x:Key="完了">完了</sys:String>
+    <sys:String x:Key="キャンセル済み">キャンセル済み</sys:String>
     <sys:String x:Key="{}{0} / {1}件を処理中">{0} / {1}件を処理中</sys:String>
     <sys:String x:Key="保存 {0}件 / 重複 {1}件 / 認識失敗 {2}件 / 入力エラー {3}件">保存 {0}件 / 重複 {1}件 / 認識失敗 {2}件 / 入力エラー {3}件</sys:String>
     <sys:String x:Key="PNGをドロップするか、ファイルを選択してください。">PNGをドロップするか、ファイルを選択してください。</sys:String>
@@ -414,4 +417,5 @@
     <sys:String x:Key="この画像の処理を完了できませんでした。">この画像の処理を完了できませんでした。</sys:String>
     <sys:String x:Key="スクリーンショットのインポートをキャンセルしました。完了済みの結果は保持されています。">スクリーンショットのインポートをキャンセルしました。完了済みの結果は保持されています。</sys:String>
     <sys:String x:Key="スクリーンショットのインポートが完了しました。">スクリーンショットのインポートが完了しました。</sys:String>
+    <sys:String x:Key="{}インポート後の表示更新に失敗しました。保存済みデータは変更されていません。{0}">インポート後の表示更新に失敗しました。保存済みデータは変更されていません。{0}</sys:String>
 </ResourceDictionary>

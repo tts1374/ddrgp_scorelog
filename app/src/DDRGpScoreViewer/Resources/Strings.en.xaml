@@ -393,6 +393,9 @@
     <sys:String x:Key="重複">Duplicate</sys:String>
     <sys:String x:Key="認識失敗">Recognition failed</sys:String>
     <sys:String x:Key="入力エラー">Input error</sys:String>
+    <sys:String x:Key="インポート中">Importing</sys:String>
+    <sys:String x:Key="完了">Completed</sys:String>
+    <sys:String x:Key="キャンセル済み">Cancelled</sys:String>
     <sys:String x:Key="{}{0} / {1}件を処理中">Processing {0} / {1}</sys:String>
     <sys:String x:Key="保存 {0}件 / 重複 {1}件 / 認識失敗 {2}件 / 入力エラー {3}件">Saved {0} / Duplicate {1} / Recognition failed {2} / Input error {3}</sys:String>
     <sys:String x:Key="PNGをドロップするか、ファイルを選択してください。">Drop PNG files or choose files.</sys:String>
@@ -409,4 +412,5 @@
     <sys:String x:Key="この画像の処理を完了できませんでした。">This image could not be processed.</sys:String>
     <sys:String x:Key="スクリーンショットのインポートをキャンセルしました。完了済みの結果は保持されています。">Screenshot import was cancelled. Completed results were kept.</sys:String>
     <sys:String x:Key="スクリーンショットのインポートが完了しました。">Screenshot import completed.</sys:String>
+    <sys:String x:Key="{}インポート後の表示更新に失敗しました。保存済みデータは変更されていません。{0}">The view could not be refreshed after import. Saved data was not changed. {0}</sys:String>
 </ResourceDictionary>

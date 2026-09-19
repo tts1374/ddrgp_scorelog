@@ -325,6 +325,24 @@ public sealed class UserSettingsTests
     }
 
     [Theory]
+    [InlineData("インポート中", "Importing", "가져오는 중")]
+    [InlineData("完了", "Completed", "완료")]
+    [InlineData("キャンセル済み", "Cancelled", "취소됨")]
+    [InlineData(
+        "インポート後の表示更新に失敗しました。保存済みデータは変更されていません。{0}",
+        "The view could not be refreshed after import. Saved data was not changed. {0}",
+        "가져오기 후 화면을 새로 고치지 못했습니다. 저장된 데이터는 변경되지 않았습니다. {0}")]
+    public void Screenshot_import_status_strings_are_translated_for_supported_languages(
+        string japaneseText,
+        string englishText,
+        string koreanText)
+    {
+        Assert.Equal(japaneseText, Localization.GetForLanguage(japaneseText, UserSettings.JapaneseLanguage));
+        Assert.Equal(englishText, Localization.GetForLanguage(japaneseText, UserSettings.EnglishLanguage));
+        Assert.Equal(koreanText, Localization.GetForLanguage(japaneseText, UserSettings.KoreanLanguage));
+    }
+
+    [Theory]
     [InlineData("監視を開始する", "Start monitoring", "모니터링 시작")]
     [InlineData("監視を再開", "Resume monitoring", "모니터링 재개")]
     public void Monitoring_action_labels_are_translated_for_supported_languages(
