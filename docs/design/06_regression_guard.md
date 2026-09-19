@@ -495,6 +495,18 @@ M5bの変更では、少なくとも次のcurrent-only境界をfixtureで固定�
 - 起動時、保存開始時に現在の環境の固定pathにあるmaster DBのpath、read-only読込可否、schema互換性を検査し、`missing`、`read不可`、`schema incompatible` をcapture解析・正式保存の開始前に拒否する。任意pathのDB選択操作を持たず、path以外の過去session statusを保存せず、再起動でfailed/skip/rejectedをsavedへ昇格させない。
 - Windows Graphics Capture、実window、実DBを必須にせず、progress fake、workflow fake、tray fakeで通常CIを完結させる。実windowでのpicker、tray復帰、終了確認は任意の目視確認として別記録する。
 
+## WPF screenshot import guard
+
+- データ管理画面のpickerとdrag & dropは複数fileを同じ順序で受け、処理中は追加batchを受け付けない。`Idle`、`Importing`、`Completed`、`Cancelled`、進捗、現在file、`保存`、`重複`、`認識失敗`、`入力エラー`を投影する。
+- `.png`、decode可能なPNG、1280x720を解析前に検査し、不正入力ではRESULT analyzerとDB writerを呼ばない。
+- valid PNGも通常のRESULT screen detectionから開始し、known RESULT bypass、formal evidence緩和、手動補正、強制保存を追加しない。
+- 1画像を1独立処理・1 transactionとし、mixed batchの途中失敗後も次画像を処理する。元画像をcopyせず、絶対pathと最終更新UTCをsource metadataへ使う。
+- PNG bytes SHA-256由来keyは同一bytesで決定的、異bytesで別key、live/manifest sourceとはnamespaceを分ける。未解決試行はDB未書込のため同じPNGを再試行でき、保存済み同一bytesだけduplicateとして新しいsource/analysisを記録する。
+- live monitoringとimportの解析を並行可能にし、正式DB writeだけをapp process共通gateで1 transactionずつ直列化する。batch全体のgate保持、global monitoring停止、perceptual duplicateを行わない。
+- cancelとapplication exitは次画像を開始せず、開始済みwriter transactionを中断しない。exit waitはimport task完了を含み、commitまたはrollback前にprocessを終了しない。
+- 保存が1件以上あるbatchだけ終了時にviewerを1回再読込し、同じbatch中にcommit済みのlive playも現在DBから反映する。保存0件では再読込しない。
+- import状態と完了resultは同じViewModelのpage移動で保持し、新しいprocessでは`Idle`から開始する。
+
 ## 代表検証コマンド
 
 ```powershell

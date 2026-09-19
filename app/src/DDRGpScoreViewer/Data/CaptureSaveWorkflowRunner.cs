@@ -409,7 +409,7 @@ public sealed class AppOwnedCaptureSaveWorkflowRunner :
             cancellationToken);
     }
 
-    private static AppSaveAdapterInput BuildInput(
+    internal static AppSaveAdapterInput BuildInput(
         CapturedFrame frame,
         LiveResultObservation observation,
         string sourceKind,
@@ -417,11 +417,14 @@ public sealed class AppOwnedCaptureSaveWorkflowRunner :
         string imagePath,
         int? frameIndex,
         long? candidateDurationMs,
-        bool duplicate)
+        bool duplicate,
+        string? captureId = null,
+        string? analysisId = null,
+        string? confirmationMode = null)
     {
         var rawHash = Convert.ToHexString(SHA256.HashData(frame.PngBytes)).ToLowerInvariant();
         var idSeed = rawHash;
-        var captureId = $"capture-{idSeed}-{frame.TimestampMs}";
+        captureId ??= $"capture-{idSeed}-{frame.TimestampMs}";
         var captureHash = BuildCaptureHash(frame.PngBytes, captureId);
         var digitResults = observation.DigitRecognitions ??
             new Dictionary<string, M7aDigitRecognitionResult>(StringComparer.Ordinal);
@@ -486,11 +489,11 @@ public sealed class AppOwnedCaptureSaveWorkflowRunner :
             frame.CapturedAtUtc.ToString("O", CultureInfo.InvariantCulture),
             sourceKind,
             sourcePath,
-            $"analysis-{idSeed}-{frame.TimestampMs}",
+            analysisId ?? $"analysis-{idSeed}-{frame.TimestampMs}",
             duplicate ? "duplicate" : "confirmed",
             true,
             duplicate,
-            duplicate ? "duplicate_window" : "time",
+            confirmationMode ?? (duplicate ? "duplicate_window" : "time"),
             promotion.IdentitySignalStatus,
             observation.DigitRecognitionStatus,
             promotion.AnalysisConfidence,

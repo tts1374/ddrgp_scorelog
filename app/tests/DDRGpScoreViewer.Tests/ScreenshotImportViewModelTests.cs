@@ -1,0 +1,426 @@
+using DDRGpScoreViewer.Capture;
+using DDRGpScoreViewer.Data;
+using DDRGpScoreViewer.Models;
+using DDRGpScoreViewer.ViewModels;
+using Xunit;
+
+namespace DDRGpScoreViewer.Tests;
+
+[Collection("Localized WPF views")]
+public sealed class ScreenshotImportViewModelTests
+{
+    [Fact]
+    public async Task Mixed_batch_is_sequential_keeps_results_and_reloads_once_at_batch_end()
+    {
+        using var fixture = new DatabaseFixture();
+        var call = 0;
+        var service = new FakeScreenshotImportService(async (path, _) =>
+        {
+            await Task.Yield();
+            call++;
+            if (call == 1)
+            {
+                fixture.AddPlay("imported", "2026-09-16T12:00:00+00:00", 900_000, 1_000);
+                // This represents a live-monitoring commit that lands while the batch runs.
+                fixture.AddPlay("live-concurrent", "2026-09-16T12:00:01+00:00", 910_000, 1_010);
+                return Result(path, ScreenshotImportItemStatus.Saved);
+            }
+            return call switch
+            {
+                2 => Result(path, ScreenshotImportItemStatus.Duplicate),
+                3 => Result(path, ScreenshotImportItemStatus.RecognitionFailed),
+                4 => throw new InvalidOperationException("fixture write failure"),
+                _ => Result(path, ScreenshotImportItemStatus.InputError),
+            };
+        });
+        var viewModel = CreateViewModel(fixture, service);
+        var reloadCount = 0;
+        viewModel.ChartBestListReset += (_, _) => reloadCount++;
+
+        var started = await viewModel.ImportScreenshotsAsync(
+            ["one.png", "two.png", "three.png", "four.png", "five.png"]);
+
+        Assert.True(started);
+        Assert.Equal(ScreenshotImportState.Completed, viewModel.CurrentScreenshotImportState);
+        Assert.Equal(Localization.Get("完了"), viewModel.ScreenshotImportStateDisplay);
+        Assert.Equal(5, viewModel.ScreenshotImportCompletedCount);
+        Assert.Equal(5, viewModel.ScreenshotImportTotalCount);
+        Assert.Equal(1, service.MaxConcurrency);
+        Assert.Equal(1, reloadCount);
+        Assert.Equal(
+            [
+                ScreenshotImportItemStatus.Saved,
+                ScreenshotImportItemStatus.Duplicate,
+                ScreenshotImportItemStatus.RecognitionFailed,
+                ScreenshotImportItemStatus.InputError,
+                ScreenshotImportItemStatus.InputError,
+            ],
+            viewModel.ScreenshotImportResults.Select(result => result.Status));
+        Assert.Contains(viewModel.Plays, play => play.PlayId == "imported");
+        Assert.Contains(viewModel.Plays, play => play.PlayId == "live-concurrent");
+        Assert.Contains("保存 1件", viewModel.ScreenshotImportSummaryDisplay);
+
+        viewModel.SetDataManagementPage(false);
+        viewModel.SetDataManagementPage(true);
+        Assert.Equal(ScreenshotImportState.Completed, viewModel.CurrentScreenshotImportState);
+        Assert.Equal(5, viewModel.ScreenshotImportResults.Count);
+
+        var restarted = CreateViewModel(fixture, service);
+        Assert.Equal(ScreenshotImportState.Idle, restarted.CurrentScreenshotImportState);
+        Assert.Equal(Localization.Get("待機中"), restarted.ScreenshotImportStateDisplay);
+        Assert.Empty(restarted.ScreenshotImportResults);
+    }
+
+    [Fact]
+    public async Task Cancel_stops_new_images_disables_queuing_and_preserves_completed_results()
+    {
+        using var fixture = new DatabaseFixture();
+        var firstEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseFirst = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var service = new FakeScreenshotImportService(async (path, _) =>
+        {
+            firstEntered.TrySetResult();
+            await releaseFirst.Task;
+            return Result(path, ScreenshotImportItemStatus.Saved);
+        });
+        var viewModel = CreateViewModel(fixture, service);
+
+        var batch = viewModel.ImportScreenshotsAsync(["one.png", "two.png"]);
+        await firstEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.True(viewModel.IsScreenshotImporting);
+        Assert.Equal(Localization.Get("インポート中"), viewModel.ScreenshotImportStateDisplay);
+        Assert.False(viewModel.CanStartScreenshotImport);
+        Assert.True(viewModel.CanStartMonitoring);
+        Assert.False(await viewModel.ImportScreenshotsAsync(["queued.png"]));
+        viewModel.CancelScreenshotImport();
+        releaseFirst.TrySetResult();
+        await batch;
+
+        Assert.Equal(ScreenshotImportState.Cancelled, viewModel.CurrentScreenshotImportState);
+        Assert.Equal(Localization.Get("キャンセル済み"), viewModel.ScreenshotImportStateDisplay);
+        Assert.Single(viewModel.ScreenshotImportResults);
+        Assert.Equal(1, service.CallCount);
+    }
+
+    [Fact]
+    public async Task Progress_display_reports_the_current_item_while_count_tracks_completed_items()
+    {
+        using var fixture = new DatabaseFixture();
+        var firstEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseFirst = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var secondEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseSecond = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var call = 0;
+        var service = new FakeScreenshotImportService(async (path, _) =>
+        {
+            call++;
+            if (call == 1)
+            {
+                firstEntered.TrySetResult();
+                await releaseFirst.Task;
+            }
+            else
+            {
+                secondEntered.TrySetResult();
+                await releaseSecond.Task;
+            }
+
+            return Result(path, ScreenshotImportItemStatus.RecognitionFailed);
+        });
+        var viewModel = CreateViewModel(fixture, service);
+
+        var batch = viewModel.ImportScreenshotsAsync(["one.png", "two.png"]);
+        await firstEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal(0, viewModel.ScreenshotImportCompletedCount);
+        Assert.Equal(
+            Localization.Format("{0} / {1}件を処理中", 1, 2),
+            viewModel.ScreenshotImportProgressDisplay);
+
+        releaseFirst.TrySetResult();
+        await secondEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal(1, viewModel.ScreenshotImportCompletedCount);
+        Assert.Equal(
+            Localization.Format("{0} / {1}件を処理中", 2, 2),
+            viewModel.ScreenshotImportProgressDisplay);
+
+        releaseSecond.TrySetResult();
+        await batch.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(2, viewModel.ScreenshotImportCompletedCount);
+    }
+
+    [Fact]
+    public async Task Reload_failure_uses_the_localized_message_format()
+    {
+        var originalLanguage = Localization.CurrentLanguage;
+        try
+        {
+            Localization.Configure(UserSettings.EnglishLanguage);
+            using var fixture = new DatabaseFixture();
+            var service = new FakeScreenshotImportService((path, _) =>
+            {
+                File.WriteAllBytes(
+                    fixture.ScorePath,
+                    "not a sqlite database"u8.ToArray());
+                return Task.FromResult(Result(path, ScreenshotImportItemStatus.Saved));
+            });
+            var viewModel = CreateViewModel(fixture, service);
+
+            Assert.True(await viewModel.ImportScreenshotsAsync(["one.png"]));
+
+            Assert.Equal(
+                "The view could not be refreshed after import. Saved data was not changed. " +
+                "The data could not be loaded. Check the files and try again.",
+                viewModel.DataManagementStatusMessage);
+        }
+        finally
+        {
+            Localization.Configure(originalLanguage);
+        }
+    }
+
+    [Fact]
+    public async Task Application_exit_cancels_batch_and_waits_for_in_flight_item_to_finish()
+    {
+        using var fixture = new DatabaseFixture();
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var service = new FakeScreenshotImportService(async (path, _) =>
+        {
+            entered.TrySetResult();
+            await release.Task;
+            return Result(path, ScreenshotImportItemStatus.Duplicate);
+        });
+        var viewModel = CreateViewModel(fixture, service);
+        var batch = viewModel.ImportScreenshotsAsync(["one.png", "two.png"]);
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        viewModel.RequestApplicationExit();
+        var wait = viewModel.WaitForOperationsAsync();
+
+        Assert.False(wait.IsCompleted);
+        release.TrySetResult();
+        await wait.WaitAsync(TimeSpan.FromSeconds(5));
+        await batch;
+        Assert.Equal(ScreenshotImportState.Cancelled, viewModel.CurrentScreenshotImportState);
+        Assert.Single(viewModel.ScreenshotImportResults);
+        Assert.Equal(1, service.CallCount);
+    }
+
+    [Fact]
+    public async Task Import_remains_available_while_monitoring_is_active()
+    {
+        using var fixture = new DatabaseFixture();
+        var monitoring = new BlockingMonitoringService();
+        var import = new FakeScreenshotImportService((path, _) =>
+            Task.FromResult(Result(path, ScreenshotImportItemStatus.RecognitionFailed)));
+        var viewModel = new MainViewModel(
+            new ScoreViewerRepository(),
+            continuousCaptureService: monitoring,
+            userSettingsStore: new MemoryUserSettingsStore(null),
+            screenshotImportService: import);
+        viewModel.Load(
+            fixture.ScorePath,
+            fixture.MasterPath,
+            fixture.CatalogPath,
+            persist: false);
+        var reloadCount = 0;
+        viewModel.ChartBestListReset += (_, _) => reloadCount++;
+        var monitoringTask = viewModel.StartContinuousCaptureAndSaveAsync(
+            123,
+            fixture.ScorePath,
+            fixture.MasterPath,
+            fixture.CatalogPath);
+        await monitoring.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.Equal(MonitoringState.Monitoring, viewModel.CurrentMonitoringState);
+        Assert.True(viewModel.CanStartScreenshotImport);
+        Assert.True(await viewModel.ImportScreenshotsAsync(["during-monitoring.png"]));
+        Assert.Equal(ScreenshotImportState.Completed, viewModel.CurrentScreenshotImportState);
+        Assert.Equal(0, reloadCount);
+
+        await viewModel.StopContinuousCaptureAsync();
+        await monitoringTask;
+    }
+
+    [Fact]
+    public async Task Batch_reload_waits_for_in_flight_live_write_on_the_shared_gate()
+    {
+        using var fixture = new DatabaseFixture();
+        var gate = new AppProcessScoreWriteGate();
+        var liveWriteStarted = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseLiveWrite = new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        Task<int>? liveWrite = null;
+        var import = new FakeScreenshotImportService(async (path, token) =>
+        {
+            await gate.RunAsync(
+                () =>
+                {
+                    fixture.AddPlay("imported", "2026-09-16T12:00:00+00:00", 900_000, 1_000);
+                    return 0;
+                },
+                token);
+            liveWrite = Task.Run(() => gate.RunAsync(
+                () =>
+                {
+                    liveWriteStarted.TrySetResult();
+                    releaseLiveWrite.Task.GetAwaiter().GetResult();
+                    fixture.AddPlay(
+                        "live-concurrent",
+                        "2026-09-16T12:00:01+00:00",
+                        910_000,
+                        1_010);
+                    return 0;
+                },
+                CancellationToken.None));
+            await liveWriteStarted.Task;
+            return Result(path, ScreenshotImportItemStatus.Saved);
+        });
+        var viewModel = CreateViewModel(fixture, import);
+        viewModel.ScreenshotImportDbGate = gate;
+
+        var batch = viewModel.ImportScreenshotsAsync(["one.png"]);
+        await liveWriteStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        Assert.False(batch.IsCompleted);
+        releaseLiveWrite.TrySetResult();
+        await batch.WaitAsync(TimeSpan.FromSeconds(5));
+        await liveWrite!.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Contains(viewModel.Plays, play => play.PlayId == "imported");
+        Assert.Contains(viewModel.Plays, play => play.PlayId == "live-concurrent");
+    }
+
+    [Fact]
+    public async Task Image_pipeline_runs_without_the_calling_synchronization_context()
+    {
+        using var fixture = new DatabaseFixture();
+        SynchronizationContext? observedContext = null;
+        var import = new FakeScreenshotImportService((path, _) =>
+        {
+            observedContext = SynchronizationContext.Current;
+            return Task.FromResult(Result(path, ScreenshotImportItemStatus.RecognitionFailed));
+        });
+        var viewModel = CreateViewModel(fixture, import);
+        var originalContext = SynchronizationContext.Current;
+        var callingContext = new SynchronizationContext();
+        Task<bool> batch;
+        try
+        {
+            SynchronizationContext.SetSynchronizationContext(callingContext);
+            batch = viewModel.ImportScreenshotsAsync(["one.png"]);
+        }
+        finally
+        {
+            SynchronizationContext.SetSynchronizationContext(originalContext);
+        }
+
+        Assert.True(await batch.WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.Null(observedContext);
+    }
+
+    private static MainViewModel CreateViewModel(
+        DatabaseFixture fixture,
+        IScreenshotImportService service)
+    {
+        var viewModel = new MainViewModel(
+            new ScoreViewerRepository(),
+            userSettingsStore: new MemoryUserSettingsStore(null),
+            screenshotImportService: service);
+        viewModel.Load(
+            fixture.ScorePath,
+            fixture.MasterPath,
+            fixture.CatalogPath,
+            persist: false);
+        return viewModel;
+    }
+
+    private static ScreenshotImportItemResult Result(
+        string path,
+        ScreenshotImportItemStatus status) =>
+        new(path, status, status.ToString(), []);
+
+    private sealed class FakeScreenshotImportService(
+        Func<string, CancellationToken, Task<ScreenshotImportItemResult>> process)
+        : IScreenshotImportService
+    {
+        private int active;
+
+        public int CallCount { get; private set; }
+        public int MaxConcurrency { get; private set; }
+
+        public async Task<ScreenshotImportItemResult> ProcessAsync(
+            string imagePath,
+            string scoreDatabasePath,
+            string masterDatabasePath,
+            string catalogDatabasePath,
+            CancellationToken cancellationToken = default)
+        {
+            _ = scoreDatabasePath;
+            _ = masterDatabasePath;
+            _ = catalogDatabasePath;
+            CallCount++;
+            var current = Interlocked.Increment(ref active);
+            MaxConcurrency = Math.Max(MaxConcurrency, current);
+            try
+            {
+                return await process(imagePath, cancellationToken);
+            }
+            finally
+            {
+                Interlocked.Decrement(ref active);
+            }
+        }
+    }
+
+    private sealed class BlockingMonitoringService : IMonitoringContinuousCaptureService
+    {
+        private readonly TaskCompletionSource<CaptureSessionOperationResult> completion = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public TaskCompletionSource Started { get; } = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public bool IsRunning { get; private set; }
+
+        public Task<CaptureSessionOperationResult> RunAsync(
+            nint ownerWindowHandle,
+            CancellationToken cancellationToken = default) =>
+            RunAsync(ownerWindowHandle, new Progress<CaptureSessionProgress>(), cancellationToken);
+
+        public async Task<CaptureSessionOperationResult> RunAsync(
+            nint ownerWindowHandle,
+            IProgress<CaptureSessionProgress> progress,
+            CancellationToken cancellationToken = default)
+        {
+            _ = ownerWindowHandle;
+            IsRunning = true;
+            var now = DateTimeOffset.UtcNow;
+            progress.Report(new CaptureSessionProgress(
+                new CaptureTargetInfo("DDR GRAND PRIX", 1280, 720),
+                1,
+                now,
+                now));
+            Started.TrySetResult();
+            try
+            {
+                return await completion.Task.WaitAsync(cancellationToken);
+            }
+            finally
+            {
+                IsRunning = false;
+            }
+        }
+
+        public Task StopAsync()
+        {
+            completion.TrySetResult(new CaptureSessionOperationResult(
+                CaptureOperationStatus.Cancelled,
+                "fixture stopped"));
+            return Task.CompletedTask;
+        }
+    }
+}

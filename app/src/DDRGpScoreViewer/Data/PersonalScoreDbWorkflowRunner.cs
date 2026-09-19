@@ -34,16 +34,19 @@ public interface IPersonalScoreDbWorkflowRunner
 public sealed class AppOwnedPersonalScoreDbWorkflowRunner : IPersonalScoreDbWorkflowRunner
 {
     private readonly Func<ViewerDatabasePaths> pathsResolver;
+    private readonly AppProcessScoreWriteGate writeGate;
 
     public AppOwnedPersonalScoreDbWorkflowRunner()
-        : this(ViewerDatabasePaths.ResolveDefault)
+        : this(ViewerDatabasePaths.ResolveDefault, AppProcessScoreWriteGate.Shared)
     {
     }
 
     internal AppOwnedPersonalScoreDbWorkflowRunner(
-        Func<ViewerDatabasePaths> pathsResolver)
+        Func<ViewerDatabasePaths> pathsResolver,
+        AppProcessScoreWriteGate? writeGate = null)
     {
         this.pathsResolver = pathsResolver;
+        this.writeGate = writeGate ?? AppProcessScoreWriteGate.Shared;
     }
 
     public async Task<PersonalScoreDbWorkflowResult> RunAsync(
@@ -55,7 +58,7 @@ public sealed class AppOwnedPersonalScoreDbWorkflowRunner : IPersonalScoreDbWork
         {
             cancellationToken.ThrowIfCancellationRequested();
             var workflow = await LoadWorkflowAsync(workflowInputPath, cancellationToken);
-            return RunWorkflow(workflow, scoreDatabasePath, cancellationToken);
+            return await RunWorkflowAsync(workflow, scoreDatabasePath, cancellationToken);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -73,30 +76,29 @@ public sealed class AppOwnedPersonalScoreDbWorkflowRunner : IPersonalScoreDbWork
         }
     }
 
-    internal Task<PersonalScoreDbWorkflowResult> RunAdapterInputAsync(
+    internal async Task<PersonalScoreDbWorkflowResult> RunAdapterInputAsync(
         AppSaveAdapterInput input,
         string scoreDatabasePath,
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        return Task.FromResult(RunAdapterInput(input, scoreDatabasePath, null, cancellationToken));
+        return await RunAdapterInputAsync(input, scoreDatabasePath, null, cancellationToken);
     }
 
-    private PersonalScoreDbWorkflowResult RunWorkflow(
+    private Task<PersonalScoreDbWorkflowResult> RunWorkflowAsync(
         AppWorkflowInput workflow,
         string scoreDatabasePath,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        var result = RunAdapterInput(
+        return RunAdapterInputAsync(
             workflow.SaveInput,
             scoreDatabasePath,
             workflow.AnalysisDetail,
             cancellationToken);
-        return result;
     }
 
-    private PersonalScoreDbWorkflowResult RunAdapterInput(
+    private async Task<PersonalScoreDbWorkflowResult> RunAdapterInputAsync(
         AppSaveAdapterInput input,
         string scoreDatabasePath,
         JsonElement? analysisDetail,
@@ -176,7 +178,9 @@ public sealed class AppOwnedPersonalScoreDbWorkflowRunner : IPersonalScoreDbWork
         cancellationToken.ThrowIfCancellationRequested();
         try
         {
-            var written = AppFormalScoreDbWriter.Write(fullDatabasePath, saveInput);
+            var written = await writeGate.RunAsync(
+                () => AppFormalScoreDbWriter.Write(fullDatabasePath, saveInput),
+                cancellationToken);
             var workflowStatus = written.Duplicate
                 ? "duplicate"
                 : written.PlayId is not null
@@ -654,6 +658,29 @@ public sealed class AppOwnedPersonalScoreDbWorkflowRunner : IPersonalScoreDbWork
     private sealed record AppWorkflowInput(
         JsonElement? AnalysisDetail,
         AppSaveAdapterInput SaveInput);
+}
+
+internal sealed class AppProcessScoreWriteGate
+{
+    private readonly SemaphoreSlim semaphore = new(1, 1);
+
+    public static AppProcessScoreWriteGate Shared { get; } = new();
+
+    public async Task<T> RunAsync<T>(Func<T> write, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(write);
+        await semaphore.WaitAsync(cancellationToken);
+        try
+        {
+            // Once the synchronous DB writer has started, do not observe cancellation.
+            // Its transaction owns completion or rollback as one atomic unit.
+            return write();
+        }
+        finally
+        {
+            semaphore.Release();
+        }
+    }
 }
 
 internal sealed record AppSaveAdapterInput(

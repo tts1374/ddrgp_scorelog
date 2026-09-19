@@ -43,6 +43,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private readonly AutomaticMonitoringOptions automaticMonitoringOptions;
     private readonly SynchronizationContext? uiSynchronizationContext;
     private readonly IPersonalScoreDataBackupService personalScoreDataBackupService;
+    private readonly IScreenshotImportService screenshotImportService;
     private PlayHistoryItem? selectedPlay;
     private ChartBestItem? selectedChartBest;
     private HomePlayItem? homeLatestPlay;
@@ -184,6 +185,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private bool applicationUpdateAvailable;
     private bool applicationUpdateDownloaded;
     private int applicationUpdateOperationReserved;
+    private ScreenshotImportState screenshotImportState = ScreenshotImportState.Idle;
+    private int screenshotImportCompletedCount;
+    private int screenshotImportTotalCount;
+    private string screenshotImportCurrentFileName = "";
+    private CancellationTokenSource? screenshotImportCancellation;
+    private TaskCompletionSource? screenshotImportFinished;
 
     public MainViewModel(
         ScoreViewerRepository repository,
@@ -199,7 +206,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         IApplicationUpdateService? applicationUpdateService = null,
         AutomaticMonitoringOptions? automaticMonitoringOptions = null,
         IUserSettingsStore? userSettingsStore = null,
-        IPersonalScoreDataBackupService? personalScoreDataBackupService = null)
+        IPersonalScoreDataBackupService? personalScoreDataBackupService = null,
+        IScreenshotImportService? screenshotImportService = null)
     {
         this.repository = repository;
         this.workflowRunner = workflowRunner;
@@ -218,6 +226,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         this.applicationUpdateService = applicationUpdateService;
         this.personalScoreDataBackupService = personalScoreDataBackupService ??
             new PersonalScoreDataBackupService();
+        this.screenshotImportService = screenshotImportService ??
+            new AppOwnedScreenshotImportService();
         uiSynchronizationContext = SynchronizationContext.Current;
         scoreDatabasePath = this.defaultDatabasePaths.ScoreDatabasePath;
         masterDatabasePath = this.defaultDatabasePaths.MasterDatabasePath;
@@ -226,6 +236,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     internal Func<TimeSpan, Func<Task>, Task> UnresolvedNotificationScheduler { get; set; } =
         ScheduleUnresolvedNotificationAsync;
+
+    internal AppProcessScoreWriteGate ScreenshotImportDbGate { get; set; } =
+        AppProcessScoreWriteGate.Shared;
 
     public event PropertyChangedEventHandler? PropertyChanged;
     public event Action<ChartBestItem>? ChartBestSelectionRequested;
@@ -240,6 +253,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public ObservableCollection<HomePlayItem> HomeRecentPlays { get; } = [];
     public ObservableCollection<HomePlayItem> HomeBestUpdates { get; } = [];
     public ObservableCollection<HomePlayItem> ChartDetailHistory { get; } = [];
+    public ObservableCollection<ScreenshotImportItemResult> ScreenshotImportResults { get; } = [];
 
     public IReadOnlyList<LocalizedOption> BestLevelOptions { get; } =
         [
@@ -950,6 +964,67 @@ public sealed class MainViewModel : INotifyPropertyChanged
         private set => SetProperty(ref dataManagementStatusMessage, Localization.Get(value));
     }
 
+    public ScreenshotImportState CurrentScreenshotImportState => screenshotImportState;
+
+    public bool IsScreenshotImporting =>
+        CurrentScreenshotImportState == ScreenshotImportState.Importing;
+
+    public bool CanStartScreenshotImport =>
+        !applicationExitRequested &&
+        !IsScreenshotImporting &&
+        !IsPersonalDataOperationBusy &&
+        !IsUpdateProcessing &&
+        masterDatabaseInspection.IsCompatible &&
+        jacketCatalogInspection.IsCompatible &&
+        ScoreDatabasePath != "—" &&
+        MasterDatabasePath != "—" &&
+        CatalogDatabasePath != "—";
+
+    public bool CanCancelScreenshotImport => IsScreenshotImporting;
+
+    public string ScreenshotImportStateDisplay => CurrentScreenshotImportState switch
+    {
+        ScreenshotImportState.Idle => Localization.Get("待機中"),
+        ScreenshotImportState.Importing => Localization.Get("インポート中"),
+        ScreenshotImportState.Completed => Localization.Get("完了"),
+        ScreenshotImportState.Cancelled => Localization.Get("キャンセル済み"),
+        _ => Localization.Get("待機中"),
+    };
+
+    public int ScreenshotImportCompletedCount => screenshotImportCompletedCount;
+
+    public int ScreenshotImportTotalCount => screenshotImportTotalCount;
+
+    public string ScreenshotImportProgressDisplay =>
+        Localization.Format(
+            "{0} / {1}件を処理中",
+            IsScreenshotImporting && ScreenshotImportTotalCount > 0
+                ? Math.Min(ScreenshotImportCompletedCount + 1, ScreenshotImportTotalCount)
+                : ScreenshotImportCompletedCount,
+            ScreenshotImportTotalCount);
+
+    public string ScreenshotImportCurrentFileDisplay =>
+        string.IsNullOrWhiteSpace(screenshotImportCurrentFileName)
+            ? Localization.Get("PNGをドロップするか、ファイルを選択してください。")
+            : screenshotImportCurrentFileName;
+
+    public string ScreenshotImportSummaryDisplay => Localization.Format(
+        "保存 {0}件 / 重複 {1}件 / 認識失敗 {2}件 / 入力エラー {3}件",
+        ScreenshotImportResults.Count(result => result.Status == ScreenshotImportItemStatus.Saved),
+        ScreenshotImportResults.Count(result => result.Status == ScreenshotImportItemStatus.Duplicate),
+        ScreenshotImportResults.Count(result => result.Status == ScreenshotImportItemStatus.RecognitionFailed),
+        ScreenshotImportResults.Count(result => result.Status == ScreenshotImportItemStatus.InputError));
+
+    public System.Windows.Visibility ScreenshotImportProgressVisibility =>
+        IsScreenshotImporting
+            ? System.Windows.Visibility.Visible
+            : System.Windows.Visibility.Collapsed;
+
+    public System.Windows.Visibility ScreenshotImportResultsVisibility =>
+        ScreenshotImportResults.Count > 0
+            ? System.Windows.Visibility.Visible
+            : System.Windows.Visibility.Collapsed;
+
     public string BundledDataStatusDisplay => masterDatabaseInspection.IsCompatible
         ? Localization.Get("利用可能")
         : Localization.Get("確認できません");
@@ -1385,6 +1460,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public bool CanManagePersonalData =>
         !applicationExitRequested &&
         !IsPersonalDataOperationBusy &&
+        !IsScreenshotImporting &&
         Volatile.Read(ref monitoringOperationReserved) == 0 &&
         !isMonitoringStartPending &&
         !IsMonitoringStartInProgress &&
@@ -1467,6 +1543,118 @@ public sealed class MainViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(StatusVisibility));
         OnPropertyChanged(nameof(DataVisibility));
     }
+
+    public async Task<bool> ImportScreenshotsAsync(
+        IEnumerable<string> imagePaths,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(imagePaths);
+        var paths = imagePaths.Where(path => !string.IsNullOrWhiteSpace(path)).ToArray();
+        if (paths.Length == 0 || !CanStartScreenshotImport)
+        {
+            return false;
+        }
+
+        ScreenshotImportResults.Clear();
+        screenshotImportCompletedCount = 0;
+        screenshotImportTotalCount = paths.Length;
+        screenshotImportCurrentFileName = "";
+        var finished = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        screenshotImportFinished = finished;
+        using var importCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        screenshotImportCancellation = importCancellation;
+        SetScreenshotImportState(ScreenshotImportState.Importing);
+        var cancelled = false;
+        try
+        {
+            foreach (var path in paths)
+            {
+                if (importCancellation.IsCancellationRequested)
+                {
+                    cancelled = true;
+                    break;
+                }
+
+                screenshotImportCurrentFileName = Path.GetFileName(path);
+                NotifyScreenshotImportState();
+                try
+                {
+                    var result = await Task.Run(
+                        () => screenshotImportService.ProcessAsync(
+                            path,
+                            ScoreDatabasePath,
+                            MasterDatabasePath,
+                            CatalogDatabasePath,
+                            importCancellation.Token),
+                        importCancellation.Token);
+                    ScreenshotImportResults.Add(result);
+                    screenshotImportCompletedCount++;
+                    NotifyScreenshotImportState();
+                }
+                catch (OperationCanceledException) when (importCancellation.IsCancellationRequested)
+                {
+                    cancelled = true;
+                    break;
+                }
+                catch (Exception exception)
+                {
+                    ScreenshotImportResults.Add(new ScreenshotImportItemResult(
+                        path,
+                        ScreenshotImportItemStatus.InputError,
+                        Localization.Get("この画像の処理を完了できませんでした。"),
+                        [exception.Message]));
+                    screenshotImportCompletedCount++;
+                    NotifyScreenshotImportState();
+                }
+            }
+
+            cancelled |= importCancellation.IsCancellationRequested;
+            string? reloadFailure = null;
+            if (ScreenshotImportResults.Any(
+                result => result.Status == ScreenshotImportItemStatus.Saved))
+            {
+                try
+                {
+                    var data = await ScreenshotImportDbGate.RunAsync(
+                        () => repository.Load(
+                            ScoreDatabasePath,
+                            MasterDatabasePath,
+                            CatalogDatabasePath),
+                        CancellationToken.None);
+                    ApplyData(data);
+                }
+                catch (ViewerDatabaseException exception)
+                {
+                    reloadFailure = Localization.Format(
+                        "インポート後の表示更新に失敗しました。保存済みデータは変更されていません。{0}",
+                        Localization.Get(exception.UserMessage));
+                }
+            }
+
+            SetScreenshotImportState(
+                cancelled ? ScreenshotImportState.Cancelled : ScreenshotImportState.Completed);
+            DataManagementStatusMessage = reloadFailure ?? (cancelled
+                ? "スクリーンショットのインポートをキャンセルしました。完了済みの結果は保持されています。"
+                : "スクリーンショットのインポートが完了しました。");
+            return true;
+        }
+        finally
+        {
+            screenshotImportCurrentFileName = "";
+            finished.TrySetResult();
+            if (ReferenceEquals(screenshotImportCancellation, importCancellation))
+            {
+                screenshotImportCancellation = null;
+            }
+            if (ReferenceEquals(screenshotImportFinished, finished))
+            {
+                screenshotImportFinished = null;
+            }
+            NotifyScreenshotImportState();
+        }
+    }
+
+    public void CancelScreenshotImport() => screenshotImportCancellation?.Cancel();
 
     public PersonalScoreDataBackupResult CreatePersonalScoreBackup(string backupPath)
     {
@@ -1662,7 +1850,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(CanDownloadAndApplyApplicationUpdate));
         OnPropertyChanged(nameof(IsUpdateProcessing));
         OnPropertyChanged(nameof(CanManagePersonalData));
+        OnPropertyChanged(nameof(CanStartScreenshotImport));
         SetMonitoringState(MonitoringState.ShuttingDown, "終了処理中です。新しい監視を開始しません。");
+        screenshotImportCancellation?.Cancel();
         monitoringCancellation?.Cancel();
         monitoringStartCancellation?.Cancel();
         automaticMonitoringCancellation?.Cancel();
@@ -1809,6 +1999,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 singleCaptureFinished?.Task,
                 manualSaveFinished?.Task,
                 continuousCaptureFinished?.Task,
+                screenshotImportFinished?.Task,
                 automaticMonitoringTask,
                 monitoringStartFinished?.Task,
             }.OfType<Task>(),
@@ -1819,6 +2010,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             .. new[]
             {
                 continuousCaptureFinished?.Task,
+                screenshotImportFinished?.Task,
                 automaticMonitoringTask,
                 monitoringStartFinished?.Task,
             }.OfType<Task>(),
@@ -1850,6 +2042,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(IsUpdateProcessing));
         OnPropertyChanged(nameof(CanStartMonitoring));
         OnPropertyChanged(nameof(CanManagePersonalData));
+        OnPropertyChanged(nameof(CanStartScreenshotImport));
     }
 
     internal void StartAutomaticMonitoring(nint ownerWindowHandle)
@@ -2277,6 +2470,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(CanDownloadAndApplyApplicationUpdate));
         OnPropertyChanged(nameof(CanStartMonitoring));
         OnPropertyChanged(nameof(CanManagePersonalData));
+        OnPropertyChanged(nameof(CanStartScreenshotImport));
         return true;
     }
 
@@ -2289,6 +2483,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(CanDownloadAndApplyApplicationUpdate));
         OnPropertyChanged(nameof(CanStartMonitoring));
         OnPropertyChanged(nameof(CanManagePersonalData));
+        OnPropertyChanged(nameof(CanStartScreenshotImport));
     }
 
     private void ApplyApplicationUpdateResult(ApplicationUpdateResult result)
@@ -2371,6 +2566,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
         OnPropertyChanged(nameof(IsPersonalDataOperationBusy));
         OnPropertyChanged(nameof(CanManagePersonalData));
+        OnPropertyChanged(nameof(CanStartScreenshotImport));
         return true;
     }
 
@@ -2379,6 +2575,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         Interlocked.Exchange(ref personalDataOperationReserved, 0);
         OnPropertyChanged(nameof(IsPersonalDataOperationBusy));
         OnPropertyChanged(nameof(CanManagePersonalData));
+        OnPropertyChanged(nameof(CanStartScreenshotImport));
     }
 
     public void RestoreSavedPaths() =>
@@ -4718,6 +4915,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(BundledDataStatusDisplay));
         OnPropertyChanged(nameof(BundledDataVersionDisplay));
         OnPropertyChanged(nameof(BundledChartCountDisplay));
+        OnPropertyChanged(nameof(CanStartScreenshotImport));
     }
 
     private void ApplyJacketCatalogInspection(JacketCatalogInspection inspection)
@@ -4727,6 +4925,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(CatalogDatabaseStatus));
         OnPropertyChanged(nameof(CatalogDatabaseStatusDisplay));
         OnPropertyChanged(nameof(CatalogDatabaseReason));
+        OnPropertyChanged(nameof(CanStartScreenshotImport));
     }
 
     private void NotifyDataManagementState()
@@ -4738,6 +4937,30 @@ public sealed class MainViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(BundledDataStatusDisplay));
         OnPropertyChanged(nameof(BundledDataVersionDisplay));
         OnPropertyChanged(nameof(BundledChartCountDisplay));
+        OnPropertyChanged(nameof(CanStartScreenshotImport));
+    }
+
+    private void SetScreenshotImportState(ScreenshotImportState state)
+    {
+        screenshotImportState = state;
+        NotifyScreenshotImportState();
+    }
+
+    private void NotifyScreenshotImportState()
+    {
+        OnPropertyChanged(nameof(CurrentScreenshotImportState));
+        OnPropertyChanged(nameof(IsScreenshotImporting));
+        OnPropertyChanged(nameof(CanStartScreenshotImport));
+        OnPropertyChanged(nameof(CanCancelScreenshotImport));
+        OnPropertyChanged(nameof(CanManagePersonalData));
+        OnPropertyChanged(nameof(ScreenshotImportStateDisplay));
+        OnPropertyChanged(nameof(ScreenshotImportCompletedCount));
+        OnPropertyChanged(nameof(ScreenshotImportTotalCount));
+        OnPropertyChanged(nameof(ScreenshotImportProgressDisplay));
+        OnPropertyChanged(nameof(ScreenshotImportCurrentFileDisplay));
+        OnPropertyChanged(nameof(ScreenshotImportSummaryDisplay));
+        OnPropertyChanged(nameof(ScreenshotImportProgressVisibility));
+        OnPropertyChanged(nameof(ScreenshotImportResultsVisibility));
     }
 
     private void PersistPathsIfConfigured(
