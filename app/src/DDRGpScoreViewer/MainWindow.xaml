@@ -2330,6 +2330,100 @@
 
                             <Border Style="{StaticResource CardStyle}" Padding="16" Margin="0,0,0,12">
                                 <StackPanel>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel>
+                                            <TextBlock Text="スクリーンショットからインポート"
+                                                       FontSize="14" FontWeight="SemiBold" />
+                                            <TextBlock Text="DDR GRAND PRIXのRESULT画面（1280×720 PNG）を正式な保存処理で読み込みます。"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                                       FontSize="12" TextWrapping="Wrap" Margin="0,3,0,0" />
+                                        </StackPanel>
+                                        <Border Grid.Column="1" Background="{DynamicResource InfoBackgroundBrush}"
+                                                BorderBrush="{DynamicResource InfoBorderBrush}" BorderThickness="1"
+                                                CornerRadius="12" Padding="10,4" VerticalAlignment="Top">
+                                            <TextBlock Text="{Binding ScreenshotImportStateDisplay}"
+                                                       Foreground="{DynamicResource InfoTextBrush}"
+                                                       FontSize="11" FontWeight="SemiBold" />
+                                        </Border>
+                                    </Grid>
+                                    <Border Margin="0,14,0,0" Padding="20" CornerRadius="8"
+                                            BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="1"
+                                            Background="{DynamicResource SurfaceSecondaryBrush}"
+                                            AllowDrop="True" PreviewDragOver="ScreenshotImport_DragOver"
+                                            Drop="ScreenshotImport_Drop">
+                                        <StackPanel HorizontalAlignment="Center">
+                                            <TextBlock Text="PNGファイルをここにドラッグ＆ドロップ"
+                                                       FontSize="13" FontWeight="SemiBold" />
+                                            <TextBlock Text="複数ファイルを選択できます"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                                       FontSize="12" HorizontalAlignment="Center" Margin="0,4,0,10" />
+                                            <Button Content="ファイルを選択" TabIndex="102"
+                                                    Style="{StaticResource PrimaryButtonStyle}"
+                                                    IsEnabled="{Binding CanStartScreenshotImport}"
+                                                    Click="SelectScreenshots_Click" />
+                                        </StackPanel>
+                                    </Border>
+                                    <Grid Margin="0,14,0,0"
+                                          Visibility="{Binding ScreenshotImportProgressVisibility}">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Margin="0,0,16,0">
+                                            <TextBlock Text="{Binding ScreenshotImportProgressDisplay}"
+                                                       FontSize="12" FontWeight="SemiBold" />
+                                            <ProgressBar Minimum="0"
+                                                         Maximum="{Binding ScreenshotImportTotalCount, Mode=OneWay}"
+                                                         Value="{Binding ScreenshotImportCompletedCount, Mode=OneWay}"
+                                                         Height="6" Margin="0,7,0,0" />
+                                            <TextBlock Text="{Binding ScreenshotImportCurrentFileDisplay}"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                                       FontSize="12" TextTrimming="CharacterEllipsis" Margin="0,6,0,0" />
+                                        </StackPanel>
+                                        <Button Grid.Column="1" Content="キャンセル" TabIndex="103"
+                                                Style="{StaticResource SecondaryButtonStyle}"
+                                                IsEnabled="{Binding CanCancelScreenshotImport}"
+                                                Click="CancelScreenshotImport_Click"
+                                                VerticalAlignment="Center" />
+                                    </Grid>
+                                    <StackPanel Margin="0,14,0,0"
+                                                Visibility="{Binding ScreenshotImportResultsVisibility}">
+                                        <TextBlock Text="{Binding ScreenshotImportSummaryDisplay}"
+                                                   FontSize="12" FontWeight="SemiBold" Margin="0,0,0,8" />
+                                        <ItemsControl ItemsSource="{Binding ScreenshotImportResults}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Border BorderBrush="{DynamicResource BorderDefaultBrush}"
+                                                            BorderThickness="0,1,0,0" Padding="0,8">
+                                                        <Grid>
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="90" />
+                                                                <ColumnDefinition Width="180" />
+                                                                <ColumnDefinition Width="*" />
+                                                            </Grid.ColumnDefinitions>
+                                                            <TextBlock Text="{Binding StatusDisplay}"
+                                                                       FontSize="12" FontWeight="SemiBold" />
+                                                            <TextBlock Grid.Column="1" Text="{Binding FileName}"
+                                                                       FontSize="12" TextTrimming="CharacterEllipsis"
+                                                                       Margin="8,0" />
+                                                            <TextBlock Grid.Column="2" Text="{Binding Message}"
+                                                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                                                       FontSize="12" TextWrapping="Wrap" />
+                                                        </Grid>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+
+                            <Border Style="{StaticResource CardStyle}" Padding="16" Margin="0,0,0,12">
+                                <StackPanel>
                                     <TextBlock Text="楽曲・譜面データ" FontSize="14" FontWeight="SemiBold" />
                                     <TextBlock Text="アプリに同梱された楽曲・譜面情報"
                                                Foreground="{DynamicResource TextSecondaryBrush}"

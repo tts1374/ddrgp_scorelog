@@ -478,6 +478,8 @@ orchestration入口がartifact output pathと `analysis_logs.log_path` の一致
 
 M9 WPFはapp-owned runtimeのstrict workflowを同一processで1回実行する。このUI adapterはユーザーが選択したworkflow入力と固定DB pathだけを受け、candidate materialをformal値へ補完しない。`saved` かつtransaction完了済みplayだけ同じread-only repositoryで再openし、通常の閲覧操作はwrite workflowを起動しない。offline PoCのCLI/module、repository root、Python executable、Tesseractはこのruntimeから呼び出さない。
 
+データ管理画面のscreenshot importは元PNGをread-only入力として扱い、app dataへ画像copy、crop、manifest、sidecarを生成しない。正式DBの`source_captures.source_kind`は`manual`、`source_path`は元PNGの絶対path、`captured_at`とplayの`played_at`は元ファイル最終更新UTCとする。1試行ごとに一意なsource capture / analysis IDを使い、PNG bytesのSHA-256由来`screenshot-import-v1:<sha256>`だけをimport内duplicate keyとする。各画像の`source_captures`、任意の`plays`、`analysis_logs`は既存writerの1 transactionに留める。
+
 ### orchestration回帰行列
 
 - readyのartifactなし/あり、低信頼度とerrorのartifact必須、その他skipの任意、DB duplicate collisionの各分岐を固定する。

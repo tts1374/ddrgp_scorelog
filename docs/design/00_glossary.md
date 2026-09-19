@@ -56,6 +56,7 @@ DDR GP scorelog の設計、PoC、テストで使う主要用語を定義する�
 | `M7 result-text feature` | resultのtitle/artist ROIからOCRなしの画像featureを作る補助工程 | `jacket-catalog.sqlite` の `result_text_features`、`m7_result_text_feature_master.*` 診断出力 | OCR文字列、曲ID確定、正式保存値 |
 | `M8 formal personal score DB` | version 3正式DB、duplicate、transaction、明示単発保存を扱う工程 | `ddrgp-scores.sqlite`、formal save input | 候補材料の自動昇格、M8 preview DBの受入れ |
 | `M9 application/runtime` | app package-owned runtimeでviewer、Windows capture、capture-save、監視UI、task trayを接続する工程 | WPF app、app-owned runtime、capture-save workflow | 新しい数字認識方式やDB schema |
+| `screenshot import` | 利用者が選んだ1280x720 PNGを通常のRESULT検出から既存formal save pipelineへ1枚ずつ接続するM9入口 | 元PNG path・最終更新UTC、PNG SHA-256由来duplicate key、`source_kind=manual` | known RESULT扱い、画像のapp data copy、手動補正 |
 | `M10 initial release` | 単一ユーザー向けの配布・依存固定・backup/restoreを固める工程 | installer/配布手順、lock file、運用docs | cloud運用、複数ユーザー、enterprise機能 |
 
 ## M4 DDR WORLD譜面統合report status

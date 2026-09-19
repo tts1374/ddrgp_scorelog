@@ -687,6 +687,46 @@ public partial class MainWindow : System.Windows.Window
     private void ResetSettings_Click(object sender, RoutedEventArgs e) =>
         viewModel.ResetUserSettings();
 
+    private async void SelectScreenshots_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new OpenFileDialog
+        {
+            CheckFileExists = true,
+            Filter = Localization.Get("PNG画像 (*.png)|*.png"),
+            Multiselect = true,
+            Title = Localization.Get("インポートするスクリーンショットを選択"),
+        };
+        if (dialog.ShowDialog(this) == true)
+        {
+            await viewModel.ImportScreenshotsAsync(dialog.FileNames);
+        }
+    }
+
+    private void ScreenshotImport_DragOver(object sender, System.Windows.DragEventArgs e)
+    {
+        e.Effects = viewModel.CanStartScreenshotImport &&
+            e.Data.GetDataPresent(System.Windows.DataFormats.FileDrop)
+                ? System.Windows.DragDropEffects.Copy
+                : System.Windows.DragDropEffects.None;
+        e.Handled = true;
+    }
+
+    private async void ScreenshotImport_Drop(object sender, System.Windows.DragEventArgs e)
+    {
+        e.Handled = true;
+        if (!viewModel.CanStartScreenshotImport ||
+            !e.Data.GetDataPresent(System.Windows.DataFormats.FileDrop) ||
+            e.Data.GetData(System.Windows.DataFormats.FileDrop) is not string[] paths)
+        {
+            return;
+        }
+
+        await viewModel.ImportScreenshotsAsync(paths);
+    }
+
+    private void CancelScreenshotImport_Click(object sender, RoutedEventArgs e) =>
+        viewModel.CancelScreenshotImport();
+
     private void CreatePersonalScoreBackup_Click(object sender, RoutedEventArgs e)
     {
         var dialog = new Microsoft.Win32.SaveFileDialog
