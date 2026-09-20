@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>DDR GP Score Log - データ管理 UI Mockup (draft)</title>
-  <link rel="stylesheet" href="screen-mock-shared.css">
+  <link rel="stylesheet" href="screen-mock-shared.css?v=20260920a">
   <style>
     .wireframe-note {
       padding: 10px 12px;
@@ -181,6 +181,7 @@
           <li class="nav-item"><a href="home-mock.html">ホーム</a></li>
           <li class="nav-item"><a href="chart-bests-mock.html">自己ベスト</a></li>
           <li class="nav-item"><a href="play-history-mock.html">直近プレー履歴</a></li>
+          <li class="nav-item"><a href="flare-skill.html">フレアスキル</a></li>
           <li class="nav-divider"></li>
           <li class="nav-item"><a href="settings-mock.html">設定</a></li>
           <li class="nav-item active"><a href="data-management-mock.html" aria-current="page">データ管理</a></li>
@@ -272,7 +273,7 @@
         <div class="panel-header">
           <div>
             <h3>スクリーンショットからインポート</h3>
-            <p>DDR GRAND PRIXのRESULT画面を正式個人スコアDBへ取り込みます</p>
+            <p>DDR GRAND PRIXのRESULT画面（1280×720 PNG）を正式な保存処理で読み込みます</p>
           </div>
           <span class="status-pill status-done state-panel" data-panel="idle">受付可能</span>
           <span class="status-pill status-pending state-panel" data-panel="importing" hidden>処理中</span>
@@ -283,7 +284,7 @@
         <div class="panel-body state-panel" data-panel="idle">
           <div class="import-dropzone">
             <div class="import-drop-title">PNGファイルをここにドラッグ＆ドロップ</div>
-            <div class="import-drop-meta">複数ファイルをまとめて取り込めます<br>対応形式: PNG / 1280×720 / DDR GRAND PRIXゲーム画面全体のRESULT</div>
+            <div class="import-drop-meta">複数ファイルを選択できます<br>対応形式: PNG / 1280×720 / DDR GRAND PRIXゲーム画面全体のRESULT</div>
             <div class="import-controls">
               <button class="btn-primary" type="button">ファイルを選択</button>
             </div>
@@ -300,7 +301,7 @@
               <button class="btn-danger" type="button">キャンセル</button>
             </div>
           </div>
-          <p class="panel-note" style="margin-top: 10px;">通常の自動記録は継続します。正式DBへのwriteだけを共通gateで直列化します。</p>
+          <p class="panel-note" style="margin-top: 10px;">処理中も通常の自動記録は継続します。</p>
         </div>
 
         <div class="panel-body state-panel" data-panel="completed" hidden>

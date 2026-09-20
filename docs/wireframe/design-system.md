@@ -62,9 +62,9 @@
 
 ### 2.5 仕様上の状態を重複表示しない
 
-同じ状態情報を、ヘッダーとサイドバーの両方に重複表示しない。
+同じ状態情報を、監視状態バーと画面本文の両方に重複表示しない。
 
-自動記録状態は、サイドバー下部にのみ表示する。
+自動記録状態は、上部ナビゲーション直下の監視状態バーにのみ表示する。
 
 ### 2.6 データ整合性を視覚表現より優先する
 
@@ -95,26 +95,21 @@ XAMLの共通styleとコードで描画するグラフ・状態表示は、ラ�
 推奨値：
 
 ```text
-BackgroundPrimary      #F7F9FC
-BackgroundSecondary    #FFFFFF
-BackgroundSidebar      #152238
-SurfacePrimary         #FFFFFF
-SurfaceSecondary       #F3F6FA
-SurfaceElevated        #FFFFFF
-BorderDefault          #DDE4EE
-BorderStrong           #C4CEDB
-TextPrimary            #152033
-TextSecondary          #657289
-TextMuted              #8B96A8
-AccentPrimary          #1769E8
-AccentHover            #0F5ACB
-AccentPressed          #0A4CAB
-AccentSubtle           #EAF2FF
-Success                #148F48
-Warning                #C87900
+BackgroundPrimary      #FAF9F6
+BackgroundSidebar      #FAF9F6
+SurfacePrimary         #FAF9F6
+SurfaceSecondary       #F0EFE9
+BorderDefault          #DCDDD5
+BorderStrong           #B5B9AE
+TextPrimary            #252722
+TextSecondary          #666C61
+TextMuted              #787F72
+AccentPrimary          #38644B
+AccentHover            #2D533E
+AccentPressed          #224330
+AccentSubtle           #E8EEE5
 Danger                 #D6384B
-Info                    #1769E8
-FocusRing               #5A9CFF
+FocusRing              #739D7D
 ```
 
 ### 3.3 ダークテーマトークン
@@ -122,26 +117,21 @@ FocusRing               #5A9CFF
 推奨値：
 
 ```text
-BackgroundPrimary      #0D1420
-BackgroundSecondary    #121B2A
-BackgroundSidebar      #0A111C
-SurfacePrimary         #172234
-SurfaceSecondary       #1E2A3D
-SurfaceElevated        #223046
-BorderDefault          #2D3B50
-BorderStrong           #42536B
-TextPrimary            #F3F6FA
-TextSecondary          #B5C0CF
-TextMuted              #8491A4
-AccentPrimary          #5A9CFF
-AccentHover            #78AEFF
-AccentPressed          #3D83E8
-AccentSubtle           #172D4D
-Success                #55C77A
-Warning                #F0B34A
-Danger                 #F06A79
-Info                    #69A6FF
-FocusRing               #8DB8FF
+BackgroundPrimary      #191D19
+BackgroundSidebar      #191D19
+SurfacePrimary         #191D19
+SurfaceSecondary       #252B25
+BorderDefault          #3C443B
+BorderStrong           #66725F
+TextPrimary            #F2F1E9
+TextSecondary          #BBC3B4
+TextMuted              #9AA591
+AccentPrimary          #92BD9D
+AccentHover            #ABD0B4
+AccentPressed          #749E80
+AccentSubtle           #2D4032
+Danger                 #F87171
+FocusRing              #B4D3BB
 ```
 
 ### 3.4 コントラスト
@@ -217,7 +207,8 @@ Windows標準環境での可読性を優先する。
 
 | 用途 | サイズ | ウェイト |
 |---|---:|---:|
-| 画面タイトル | 24px | 600 |
+| アプリ名 | 24px | 600 |
+| 画面タイトル | 30px | 600 |
 | セクションタイトル | 18px | 600 |
 | カードタイトル | 14px | 600 |
 | 通常スコア | 28〜36px | 700 |
@@ -250,31 +241,31 @@ Windows標準環境での可読性を優先する。
 
 推奨余白：
 
-- 画面外周：24px
+- ナビゲーション左右：32px
+- メイン領域：左右32px、上下22px
 - セクション間：24px
 - カード間：16px
 - カード内余白：16px
 - ラベルと値：4〜8px
 
-### 6.2 サイドバー
+### 6.2 上部ナビゲーション
 
-- 幅：160〜200px
-- 背景：BackgroundSidebar
-- 選択中項目はAccentPrimary背景と白文字
-- 上部にアプリ名と主要ナビゲーション
-- 下部に設定、データ管理、自動記録状態
-- 自動記録状態をヘッダーへ重複表示しない
+- 高さ：58px
+- 背景：BackgroundPrimary
+- 左からアプリ名、主要ナビゲーションを配置し、設定とデータ管理は右端へ配置する
+- 選択中項目はAccentPrimaryの文字色と下線で示す
+- 直下に高さ42pxを目安とした監視状態バーを配置する
+- 自動記録状態は監視状態バーにのみ表示し、画面本文へ重複表示しない
 
-### 6.3 ヘッダー
+### 6.3 ページヘッダー
 
-ヘッダーには以下を配置できる。
+各画面のページヘッダーには以下を配置できる。
 
 - 画面タイトル
 - 通知
-- テーマ切り替え
-- その他メニュー
+- 画面固有の切り替えや補助操作
 
-自動記録状態は配置しない。
+アプリ共通のナビゲーションと自動記録状態は配置しない。
 
 ### 6.4 メイン領域
 
@@ -305,9 +296,8 @@ Windows標準環境での可読性を優先する。
 
 仕様：
 
-- 角丸：8〜12px
-- 枠線：1px
-- 影は控えめ
+- 基本カードは上辺の1px境界線とし、角丸と影を付けない
+- 集計や通知など独立性が必要なカードだけ、用途に応じて全周の1px枠線を使用する
 - カード内に過度な装飾を置かない
 - ジャケット画像用の空き領域を作らない
 
@@ -564,4 +554,4 @@ EX SCORE
 7. プレイスタイル、難易度、レベルを別属性として扱う
 8. SINGLE / DOUBLE と異なるプレイスタイルのデータを混在させない
 9. 更新状態の色と符号を全画面で統一する
-10. 自動記録状態を複数箇所へ重複表示しない
+10. 自動記録状態を監視状態バーと画面本文へ重複表示しない

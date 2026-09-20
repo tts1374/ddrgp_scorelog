@@ -1,6 +1,6 @@
 # docs棚卸し
 
-確認日: 2026-08-23
+確認日: 2026-09-20
 
 この文書は、`docs/`配下の資料について、現行の役割、陳腐化リスク、次の扱いを整理した監査記録である。製品仕様や設計契約の正本ではない。整備を完了した資料は分類と対応状況を更新する。
 
@@ -49,6 +49,8 @@
 |---|---|---|
 | `docs/task-prompts/m0_dry_run_sequence_scenario.md` | 削除 | 完了済みM0の固定branch付きtask prompt。現行契約はFrameInput・回帰資料に反映済み |
 | `docs/wireframe/chart-detail-mock.html` | 現行維持 | Issue #127で実装された楽曲・譜面詳細画面の視覚参考。`screen-spec.md`から導線を追加 |
+| `docs/wireframe/web-best-sync-mock.html` | 削除 | 設定画面と二重管理になっていたため、Web Best同期の全状態を`settings-mock.html`へ統合 |
+| `docs/wireframe/screenshot-import.html` | 削除 | data管理画面と二重管理になっていたため、スクリーンショットインポートの全状態を`data-management-mock.html`へ統合 |
 | `docs/wireframe/wireframe1.png` | 削除 | 現行画面構成と異なる初期総合案で参照なし。画面正本と個別mockで代替可能 |
 | `docs/wireframe/wireframe2.png` | 削除 | 現行画面構成と異なる初期総合案で参照なし。画面正本と個別mockで代替可能 |
 | `docs/wireframes/manual-review-55-56.svg` | 削除 | 完了Issue向けの初期visualで参照なし。現行collector README、mock、実装が責務を保持 |
@@ -109,21 +111,22 @@
 | `docs/wireframe/chart-bests-mock.html` | 現行 | 自己ベスト画面の視覚参考。screen specと関連mockから参照される |
 | `docs/wireframe/chart-detail-mock.html` | 現行 | 楽曲・譜面詳細画面の視覚参考。screen specから参照する |
 | `docs/wireframe/play-history-mock.html` | 現行 | play履歴画面の視覚参考。関連mockから参照される |
-| `docs/wireframe/settings-mock.html` | 現行 | 設定画面の視覚参考 |
-| `docs/wireframe/data-management-mock.html` | 現行 | data管理画面の視覚参考 |
+| `docs/wireframe/flare-skill.html` | 現行 | フレアスキル画面の視覚参考 |
+| `docs/wireframe/settings-mock.html` | 現行 | Web Best同期を含む設定画面の唯一の視覚参考 |
+| `docs/wireframe/data-management-mock.html` | 現行 | スクリーンショットインポートを含むdata管理画面の唯一の視覚参考 |
 | `docs/wireframe/jacket-catalog-collector-mock.html` | 現行 | developer collector UIの正本としてtool READMEから参照される |
 | `docs/wireframe/admin-and-collection-status.md` | 履歴 | Issue #75のcollector UI判断と完了条件。現行正本への導線を明示済み |
-| `docs/wireframe/screen-mock-shared.css` | 現行 | 複数mockの共有style |
+| `docs/wireframe/screen-mock-shared.css` | 現行 | 現行アプリの上部navigation、監視状態、配色を複数mockで共有するstyle |
 
 ## 集計
 
 | 分類 | 件数 |
 |---|---:|
-| 現行 | 27 |
+| 現行 | 28 |
 | 要更新 | 0 |
 | 履歴 | 9 |
 | 整理候補 | 0 |
-| 合計 | 36 |
+| 合計 | 37 |
 
 ## 次回棚卸しの契機
 

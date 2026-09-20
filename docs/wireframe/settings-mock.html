@@ -4,7 +4,385 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>DDR GP Score Log - 設定 UI Mockup (draft)</title>
-  <link rel="stylesheet" href="screen-mock-shared.css">
+  <link rel="stylesheet" href="screen-mock-shared.css?v=20260920a">
+  <style>
+    .app-window {
+      position: relative;
+    }
+
+    .settings-header-actions {
+      display: flex;
+      align-items: flex-end;
+      gap: 10px;
+    }
+
+    .wireframe-control {
+      display: grid;
+      gap: 4px;
+      padding: 8px 10px;
+      border: 1px dashed #94A3B8;
+      border-radius: 8px;
+      background: #F8FAFC;
+    }
+
+    .wireframe-control label {
+      color: var(--mock-muted);
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.03em;
+    }
+
+    .wireframe-control select {
+      min-width: 230px;
+      min-height: 32px;
+      padding: 6px 9px;
+      border: 1px solid var(--mock-border);
+      border-radius: 6px;
+      color: var(--mock-main);
+      background: #FFF;
+      font-size: 12px;
+    }
+
+    .header-action {
+      display: flex;
+      align-items: flex-end;
+      gap: 10px;
+    }
+
+    .panel-header-control {
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .switch-value {
+      min-width: 24px;
+      color: var(--mock-muted);
+      font-size: 12px;
+      font-weight: 800;
+      text-align: right;
+    }
+
+    .switch {
+      position: relative;
+      width: 42px;
+      height: 23px;
+      flex-shrink: 0;
+    }
+
+    .switch input {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      opacity: 0;
+    }
+
+    .switch-track {
+      position: absolute;
+      inset: 0;
+      border: 1px solid #94A3B8;
+      border-radius: 999px;
+      background: #E2E8F0;
+      transition: background 120ms ease, border-color 120ms ease;
+    }
+
+    .switch-track::after {
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 17px;
+      height: 17px;
+      border-radius: 50%;
+      background: #FFF;
+      box-shadow: 0 1px 3px rgba(15, 23, 42, 0.3);
+      content: "";
+      transition: transform 120ms ease;
+    }
+
+    .switch input:checked + .switch-track {
+      border-color: var(--mock-primary);
+      background: var(--mock-primary);
+    }
+
+    .switch input:checked + .switch-track::after {
+      transform: translateX(19px);
+    }
+
+    .setting-row.compact {
+      min-height: 54px;
+    }
+
+    .setting-value {
+      color: var(--mock-main);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .sync-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 800;
+    }
+
+    .sync-status::before {
+      width: 8px;
+      height: 8px;
+      flex-shrink: 0;
+      border-radius: 50%;
+      background: #94A3B8;
+      content: "";
+    }
+
+    .sync-status.success::before { background: #10B981; }
+    .sync-status.pending::before { background: #F59E0B; }
+    .sync-status.running::before {
+      background: var(--mock-primary);
+      box-shadow: 0 0 0 3px #DBEAFE;
+    }
+    .sync-status.info::before { background: #38BDF8; }
+    .sync-status.error::before { background: #EF4444; }
+
+    .sync-message {
+      max-width: 560px;
+      color: var(--mock-muted);
+      font-size: 12px;
+      line-height: 1.55;
+      text-align: right;
+    }
+
+    .sync-actions {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+
+    .action-hint {
+      color: var(--mock-muted);
+      font-size: 11px;
+    }
+
+    .sync-notice,
+    .scope-note,
+    .dialog-note {
+      padding: 11px 13px;
+      border: 1px solid;
+      border-radius: 8px;
+      font-size: 12px;
+      line-height: 1.6;
+    }
+
+    .sync-notice {
+      display: none;
+      margin: 0 16px 14px;
+    }
+
+    .sync-notice.visible { display: block; }
+    .sync-notice.info,
+    .scope-note {
+      border-color: #BFDBFE;
+      color: #1E40AF;
+      background: #EFF6FF;
+    }
+    .sync-notice.neutral {
+      border-color: #CBD5E1;
+      color: #475569;
+      background: #F8FAFC;
+    }
+    .sync-notice.error {
+      border-color: #FCA5A5;
+      color: #991B1B;
+      background: #FEF2F2;
+    }
+    .sync-notice.success {
+      border-color: #86EFAC;
+      color: #166534;
+      background: #F0FDF4;
+    }
+
+    .sync-details {
+      display: none;
+      margin: 0 16px 14px;
+      border-top: 1px solid var(--mock-border);
+    }
+
+    .sync-details.visible { display: block; }
+
+    .sync-details summary {
+      padding: 10px 0 6px;
+      color: var(--mock-primary);
+      font-size: 12px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+
+    .sync-details-body {
+      padding-bottom: 4px;
+      color: var(--mock-muted);
+      font-size: 12px;
+      line-height: 1.65;
+    }
+
+    code {
+      padding: 1px 4px;
+      border-radius: 3px;
+      color: var(--mock-main);
+      background: #E2E8F0;
+      font-family: Consolas, "Courier New", monospace;
+    }
+
+    .scope-note {
+      margin: 0 16px 16px;
+    }
+
+    .scope-note strong {
+      display: block;
+      margin-bottom: 3px;
+      font-weight: 800;
+    }
+
+    .btn-danger {
+      min-height: 34px;
+      padding: 8px 12px;
+      border: 1px solid #EF4444;
+      border-radius: 6px;
+      color: #B91C1C;
+      background: #FFF;
+      font-size: 12px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+
+    .btn-danger:hover:not(:disabled) { background: #FEF2F2; }
+
+    button:disabled {
+      border-color: #CBD5E1;
+      color: #94A3B8;
+      background: #F1F5F9;
+      cursor: default;
+      opacity: 0.72;
+    }
+
+    .display-help {
+      max-width: 420px;
+      color: var(--mock-muted);
+      font-size: 11px;
+      line-height: 1.5;
+      text-align: right;
+    }
+
+    .save-bar {
+      border: 1px solid var(--mock-border);
+      border-radius: 10px;
+    }
+
+    .save-status {
+      margin-right: auto;
+    }
+
+    .dialog-backdrop {
+      position: absolute;
+      inset: 0;
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      background: rgba(15, 23, 42, 0.58);
+    }
+
+    .dialog-backdrop[hidden] { display: none; }
+
+    .dialog {
+      width: min(520px, 100%);
+      overflow: hidden;
+      border: 1px solid #CBD5E1;
+      border-radius: 10px;
+      background: #FFF;
+      box-shadow: 0 24px 64px rgba(15, 23, 42, 0.32);
+    }
+
+    .dialog-header {
+      padding: 18px 20px 8px;
+    }
+
+    .dialog-header h2 {
+      font-size: 18px;
+      font-weight: 800;
+    }
+
+    .dialog-body {
+      padding: 0 20px 18px;
+      color: var(--mock-muted);
+      font-size: 13px;
+      line-height: 1.7;
+    }
+
+    .dialog-note {
+      margin-top: 12px;
+      border-color: #FCA5A5;
+      color: #991B1B;
+      background: #FEF2F2;
+    }
+
+    .dialog-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      padding: 12px 20px;
+      border-top: 1px solid var(--mock-border);
+      background: #F8FAFC;
+    }
+
+    @media (max-width: 900px) {
+      .header-bar {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .settings-header-actions {
+        width: 100%;
+        align-items: flex-end;
+      }
+
+      .wireframe-control {
+        flex: 1;
+      }
+
+      .wireframe-control select {
+        width: 100%;
+        min-width: 0;
+      }
+
+      .sync-message,
+      .display-help {
+        max-width: none;
+        text-align: left;
+      }
+
+      .sync-actions {
+        justify-content: flex-start;
+      }
+    }
+
+    @media (max-width: 760px) {
+      .settings-header-actions {
+        align-items: stretch;
+        flex-direction: column;
+      }
+
+      .header-action {
+        width: 100%;
+      }
+
+      .header-action .btn-secondary {
+        width: 100%;
+      }
+    }
+  </style>
 </head>
 <body>
   <div class="app-window">
@@ -18,6 +396,7 @@
           <li class="nav-item"><a href="home-mock.html">ホーム</a></li>
           <li class="nav-item"><a href="chart-bests-mock.html">自己ベスト</a></li>
           <li class="nav-item"><a href="play-history-mock.html">直近プレー履歴</a></li>
+          <li class="nav-item"><a href="flare-skill.html">フレアスキル</a></li>
           <li class="nav-divider"></li>
           <li class="nav-item active"><a href="settings-mock.html" aria-current="page">設定</a></li>
           <li class="nav-item"><a href="data-management-mock.html">データ管理</a></li>
@@ -35,10 +414,27 @@
       <header class="header-bar">
         <div class="page-title">
           <h2>設定</h2>
-          <p>自動記録と表示に関する設定を変更できます</p>
+          <p>自動記録、Web Best同期、表示に関する設定を変更できます</p>
         </div>
-        <div class="header-action">
-          <button class="btn-secondary" type="button">初期値に戻す</button>
+        <div class="settings-header-actions">
+          <div class="wireframe-control">
+            <label for="stateSelect">WIREFRAME表示状態（レビュー用）</label>
+            <select id="stateSelect" aria-label="Web Best同期状態切替">
+              <option value="off">Sync OFF</option>
+              <option value="synced" selected>Sync ON / 同期済み</option>
+              <option value="pending">同期待ち</option>
+              <option value="syncing">通常差分同期中</option>
+              <option value="snapshot">初回全件同期 / 再整合中</option>
+              <option value="network-error">retry可能なネットワークエラー</option>
+              <option value="auth-invalid">AUTH_INVALID</option>
+              <option value="unknown-chart">UNKNOWN_CHART</option>
+              <option value="delete-confirm">公開Best削除確認</option>
+              <option value="delete-success">公開Best削除成功後</option>
+            </select>
+          </div>
+          <div class="header-action">
+            <button class="btn-secondary" id="resetSettingsButton" type="button">初期値に戻す</button>
+          </div>
         </div>
       </header>
 
@@ -47,22 +443,89 @@
           <div class="panel-header">
             <div>
               <h3>自動記録</h3>
-              <p>プレー結果の検出と保存に関する設定</p>
+              <p>起動時の監視と保存できない結果の通知を設定します</p>
             </div>
           </div>
           <div class="setting-row">
             <div>
               <div class="setting-label">アプリ起動時に監視を開始</div>
-              <div class="setting-description">起動後すぐにプレー画面の監視を開始します</div>
+              <div class="setting-description">起動後にゲーム画面の監視を自動で開始します</div>
             </div>
-            <div class="setting-control"><input class="toggle-input" type="checkbox" checked aria-label="アプリ起動時に監視を開始"></div>
+            <div class="setting-control"><input class="toggle-input" id="startMonitoringInput" type="checkbox" checked aria-label="アプリ起動時に監視を開始"></div>
           </div>
           <div class="setting-row">
             <div>
               <div class="setting-label">保存できない結果を通知</div>
-              <div class="setting-description">自動保存できなかったプレーをWPF・タスクトレイで通知します</div>
+              <div class="setting-description">記録できなかったプレーがあるときにお知らせします</div>
             </div>
-            <div class="setting-control"><input class="toggle-input" type="checkbox" checked aria-label="保存できない結果を通知"></div>
+            <div class="setting-control"><input class="toggle-input" id="notifyUnresolvedInput" type="checkbox" checked aria-label="保存できない結果を通知"></div>
+          </div>
+        </div>
+
+        <div class="panel" aria-labelledby="webSyncHeading">
+          <div class="panel-header">
+            <div>
+              <h3 id="webSyncHeading">Web Best同期</h3>
+              <p>自動記録で保存した自己ベストをWebへ公開します</p>
+            </div>
+            <div class="panel-header-control">
+              <span class="switch-value" id="toggleStateText">ON</span>
+              <label class="switch">
+                <input id="syncToggle" type="checkbox" checked aria-label="Web Best同期">
+                <span class="switch-track" aria-hidden="true"></span>
+              </label>
+            </div>
+          </div>
+
+          <div class="setting-row compact">
+            <div class="setting-label">現在の同期状態</div>
+            <div class="setting-value"><span class="sync-status success" id="syncStatus">同期済み</span></div>
+          </div>
+          <div class="setting-row compact">
+            <div class="setting-label">最終同期</div>
+            <div class="setting-value" id="lastSyncedAt">2026/09/20 10:32</div>
+          </div>
+          <div class="setting-row compact">
+            <div class="setting-label">状態</div>
+            <p class="sync-message" id="statusMessage">Web Bestは最新です。</p>
+          </div>
+          <div class="setting-row compact">
+            <div class="setting-label">今すぐ同期</div>
+            <div class="sync-actions">
+              <button class="btn-primary" id="syncNowButton" type="button">今すぐ同期</button>
+              <button class="btn-secondary" id="identityButton" type="button" hidden>認証情報を確認</button>
+              <span class="action-hint" id="actionHint">変更がある譜面だけを同期します</span>
+            </div>
+          </div>
+
+          <div class="sync-notice" id="syncNotice" role="status"></div>
+
+          <details class="sync-details" id="syncDetails">
+            <summary>詳細情報</summary>
+            <div class="sync-details-body" id="syncDetailsBody"></div>
+          </details>
+
+          <aside class="scope-note" aria-label="Web Bestの対象範囲">
+            <strong>Web Bestに含まれるプレー</strong>
+            自動記録で保存したプレーだけをWeb Bestとして公開します。スクリーンショットから追加したプレーやバックアップから復元したプレーは、ローカルの自己ベストには反映されますが、Web Bestには含まれません。
+          </aside>
+        </div>
+
+        <div class="panel" aria-labelledby="deleteHeading">
+          <div class="panel-header">
+            <div>
+              <h3 id="deleteHeading">公開Bestの削除</h3>
+              <p>Web上に公開している自己ベストだけを削除します</p>
+            </div>
+          </div>
+          <div class="setting-row">
+            <div>
+              <div class="setting-label">公開中のWeb Best</div>
+              <div class="setting-description">Player情報、公開URL、認証情報、ローカルの保存データは残ります。更新を止めるだけなら、Web Best同期をOFFにしてください。</div>
+            </div>
+            <div class="setting-control">
+              <button class="btn-danger" id="deleteButton" type="button">公開Bestを削除</button>
+            </div>
           </div>
         </div>
 
@@ -70,28 +533,28 @@
           <div class="panel-header">
             <div>
               <h3>表示</h3>
-              <p>画面を開いたときの初期表示</p>
+              <p>自己ベストの初期表示と起動時の画面を設定します</p>
             </div>
           </div>
           <div class="setting-row">
             <div>
               <div class="setting-label">既定のプレイスタイル</div>
-              <div class="setting-description">自己ベスト一覧などで最初に表示するスタイル</div>
+              <div class="setting-description">自己ベスト画面で最初に表示するプレイスタイルです</div>
             </div>
             <div class="setting-control">
-              <div class="segmented" role="group" aria-label="既定のプレイスタイル">
-                <button class="active" type="button">SINGLE</button>
-                <button type="button">DOUBLE</button>
+              <div class="segmented" id="playStyleControl" role="group" aria-label="既定のプレイスタイル">
+                <button class="active" type="button" data-value="single" aria-pressed="true">SINGLE</button>
+                <button type="button" data-value="double" aria-pressed="false">DOUBLE</button>
               </div>
             </div>
           </div>
           <div class="setting-row">
             <div>
-              <div class="setting-label">起動時に表示する画面</div>
-              <div class="setting-description">アプリ起動後に最初に開く画面</div>
+              <label class="setting-label" for="startupPageSelect">起動時に表示する画面</label>
+              <div class="setting-description">アプリ起動後に最初に開く画面です</div>
             </div>
             <div class="setting-control">
-              <select aria-label="起動時に表示する画面">
+              <select id="startupPageSelect" aria-label="起動時に表示する画面">
                 <option selected>ホーム</option>
                 <option>自己ベスト</option>
                 <option>直近プレー履歴</option>
@@ -100,14 +563,29 @@
           </div>
           <div class="setting-row">
             <div>
-              <div class="setting-label">テーマ</div>
-              <div class="setting-description">システム、ライト、ダークから選択。システムはWindowsのアプリモードに追従</div>
+              <label class="setting-label" for="themeSelect">テーマ</label>
+              <div class="setting-description">画面の配色を選択します</div>
             </div>
             <div class="setting-control">
-              <select aria-label="テーマ">
+              <p class="display-help">システムを選ぶとWindowsのアプリモードに合わせて配色を切り替えます</p>
+              <select id="themeSelect" aria-label="テーマ">
                 <option selected>システム</option>
                 <option>ライト</option>
                 <option>ダーク</option>
+              </select>
+            </div>
+          </div>
+          <div class="setting-row">
+            <div>
+              <label class="setting-label" for="languageSelect">言語</label>
+              <div class="setting-description">表示に使用する言語を選択します</div>
+            </div>
+            <div class="setting-control">
+              <p class="display-help">言語の変更を保存するとアプリが自動的に再起動します</p>
+              <select id="languageSelect" aria-label="言語">
+                <option selected>日本語</option>
+                <option>English</option>
+                <option>한국어</option>
               </select>
             </div>
           </div>
@@ -115,10 +593,281 @@
       </section>
 
       <div class="save-bar">
-        <span class="muted">変更内容は保存時に反映されます</span>
-        <button class="btn-primary" type="button">変更を保存</button>
+        <span class="muted save-status" id="saveStatus">変更内容は保存時に反映されます</span>
+        <button class="btn-primary" id="saveSettingsButton" type="button">変更を保存</button>
       </div>
     </main>
+
+    <div class="dialog-backdrop" id="deleteDialog" hidden>
+      <section class="dialog" role="dialog" aria-modal="true" aria-labelledby="deleteDialogTitle">
+        <div class="dialog-header">
+          <h2 id="deleteDialogTitle">公開Bestを削除しますか？</h2>
+        </div>
+        <div class="dialog-body">
+          Web上に公開している自己ベスト862譜面を削除します。Player情報、公開URL、認証情報、ローカルの保存データは残ります。削除後、Web Best同期はOFFになります。
+          <div class="dialog-note">再公開するときはWeb Best同期をONにすると、現在の対象となる自己ベストを全件同期します。</div>
+        </div>
+        <div class="dialog-actions">
+          <button class="btn-secondary" id="cancelDeleteButton" type="button">キャンセル</button>
+          <button class="btn-danger" id="confirmDeleteButton" type="button">公開Bestを削除</button>
+        </div>
+      </section>
+    </div>
   </div>
+
+  <script>
+    const stateSelect = document.querySelector('#stateSelect');
+    const syncToggle = document.querySelector('#syncToggle');
+    const toggleStateText = document.querySelector('#toggleStateText');
+    const syncStatus = document.querySelector('#syncStatus');
+    const lastSyncedAt = document.querySelector('#lastSyncedAt');
+    const statusMessage = document.querySelector('#statusMessage');
+    const syncNotice = document.querySelector('#syncNotice');
+    const syncDetails = document.querySelector('#syncDetails');
+    const syncDetailsBody = document.querySelector('#syncDetailsBody');
+    const syncNowButton = document.querySelector('#syncNowButton');
+    const identityButton = document.querySelector('#identityButton');
+    const actionHint = document.querySelector('#actionHint');
+    const deleteButton = document.querySelector('#deleteButton');
+    const deleteDialog = document.querySelector('#deleteDialog');
+    const cancelDeleteButton = document.querySelector('#cancelDeleteButton');
+    const confirmDeleteButton = document.querySelector('#confirmDeleteButton');
+    const saveStatus = document.querySelector('#saveStatus');
+    const saveSettingsButton = document.querySelector('#saveSettingsButton');
+    const resetSettingsButton = document.querySelector('#resetSettingsButton');
+    const startMonitoringInput = document.querySelector('#startMonitoringInput');
+    const notifyUnresolvedInput = document.querySelector('#notifyUnresolvedInput');
+    const playStyleButtons = [...document.querySelectorAll('#playStyleControl button')];
+    const startupPageSelect = document.querySelector('#startupPageSelect');
+    const themeSelect = document.querySelector('#themeSelect');
+    const languageSelect = document.querySelector('#languageSelect');
+
+    const states = {
+      off: {
+        enabled: false,
+        status: '停止中',
+        tone: '',
+        lastSync: '2026/09/20 10:32',
+        message: 'Webへの更新を停止しています。ローカルへの保存は通常どおり続きます。',
+        notice: 'OFFにしても現在公開中のWeb Bestは残ります。再びONにすると、現在の対象データを全件同期して整合を合わせます。',
+        noticeTone: 'neutral',
+        syncDisabled: true,
+        actionHint: 'ONにすると自己ベストを全件同期します'
+      },
+      synced: {
+        enabled: true,
+        status: '同期済み',
+        tone: 'success',
+        lastSync: '2026/09/20 10:32',
+        message: 'Web Bestは最新です。',
+        syncDisabled: false,
+        actionHint: '変更がある譜面だけを同期します'
+      },
+      pending: {
+        enabled: true,
+        status: '同期待ち',
+        tone: 'pending',
+        lastSync: '2026/09/20 10:32',
+        message: '自動記録で更新された3譜面が同期を待っています。',
+        syncDisabled: false,
+        actionHint: '通常は自動で同期されます'
+      },
+      syncing: {
+        enabled: true,
+        status: '変更分を同期中',
+        tone: 'running',
+        lastSync: '2026/09/20 10:32',
+        message: '更新された3譜面をWebへ同期しています。',
+        notice: '同期中もローカルへの保存は続きます。',
+        noticeTone: 'info',
+        syncDisabled: true,
+        actionHint: '完了までお待ちください'
+      },
+      snapshot: {
+        enabled: true,
+        status: '自己ベストを同期中',
+        tone: 'running',
+        lastSync: '2026/09/20 10:32',
+        message: 'Webへ公開する現在の自己ベストを全件同期しています（642 / 862譜面）。',
+        notice: '初回公開または再整合を行っています。完了するまで現在公開中のWeb Bestを維持します。',
+        noticeTone: 'info',
+        details: '初回公開、同期をOFFからONへ戻したとき、または再整合が必要なときに行います。すべての同期に成功した時点で新しい内容へ切り替えます。',
+        syncDisabled: true,
+        actionHint: '全件同期の完了までお待ちください'
+      },
+      'network-error': {
+        enabled: true,
+        status: '同期できませんでした',
+        tone: 'error',
+        lastSync: '2026/09/20 10:32',
+        message: 'Webに接続できませんでした。ローカルの保存データには影響ありません。',
+        notice: '自動で再試行します。',
+        noticeTone: 'error',
+        details: 'エラー: <code>NETWORK_ERROR</code><br>同期できなかった変更は保持されています。',
+        syncDisabled: false,
+        actionHint: '今すぐ再試行できます'
+      },
+      'auth-invalid': {
+        enabled: true,
+        status: '認証情報の確認が必要です',
+        tone: 'error',
+        lastSync: '2026/09/20 10:32',
+        message: 'Web同期に使う認証情報を確認してください。',
+        notice: '確認が完了するまでWeb同期を停止しています。',
+        noticeTone: 'error',
+        details: 'エラー: <code>AUTH_INVALID</code><br>通常の接続エラーとは異なります。新しいPlayerは自動で作成されません。',
+        syncDisabled: true,
+        identityAction: true,
+        actionHint: '既存Playerの認証情報を確認します'
+      },
+      'unknown-chart': {
+        enabled: true,
+        status: '一部の譜面をあとで同期します',
+        tone: 'info',
+        lastSync: '2026/09/20 10:32',
+        message: '新しい譜面など、一部のデータはWeb側の準備ができ次第、自動で同期されます。',
+        details: '未同期: 1譜面<br><code>UNKNOWN_CHART</code>',
+        syncDisabled: false,
+        actionHint: '同期できるデータは最新です'
+      },
+      'delete-success': {
+        enabled: false,
+        status: '公開Bestなし',
+        tone: '',
+        lastSync: '—',
+        message: 'Web上の公開Bestはありません。Player情報、公開URL、認証情報、ローカルの保存データは残っています。',
+        notice: '公開Bestを削除しました。Web Best同期はOFFです。',
+        noticeTone: 'success',
+        details: '削除日時: 2026/09/20 11:08<br>再公開するときはWeb Best同期をONにしてください。',
+        syncDisabled: true,
+        deleteDisabled: true,
+        actionHint: 'ONにすると自己ベストを全件同期します'
+      }
+    };
+
+    let currentState = 'synced';
+    let stateBeforeDialog = 'synced';
+    let persistedSyncEnabled = true;
+
+    function renderState(stateName, options = {}) {
+      const showDeleteDialog = stateName === 'delete-confirm';
+      const baseStateName = showDeleteDialog ? stateBeforeDialog : stateName;
+      const state = states[baseStateName] || states.synced;
+
+      if (!showDeleteDialog) {
+        currentState = baseStateName;
+        persistedSyncEnabled = state.enabled;
+      }
+
+      stateSelect.value = stateName;
+      syncToggle.checked = state.enabled;
+      toggleStateText.textContent = state.enabled ? 'ON' : 'OFF';
+      syncStatus.textContent = state.status;
+      syncStatus.className = `sync-status ${state.tone}`.trim();
+      lastSyncedAt.textContent = state.lastSync;
+      statusMessage.textContent = state.message;
+      syncNowButton.disabled = state.syncDisabled;
+      identityButton.hidden = !state.identityAction;
+      deleteButton.disabled = Boolean(state.deleteDisabled);
+      actionHint.textContent = state.actionHint;
+
+      syncNotice.className = `sync-notice ${state.noticeTone || ''}`.trim();
+      syncNotice.textContent = state.notice || '';
+      syncNotice.classList.toggle('visible', Boolean(state.notice));
+
+      syncDetails.classList.toggle('visible', Boolean(state.details));
+      syncDetails.open = false;
+      syncDetailsBody.innerHTML = state.details || '';
+
+      deleteDialog.hidden = !showDeleteDialog;
+      if (showDeleteDialog && options.focus !== false) {
+        cancelDeleteButton.focus();
+      }
+    }
+
+    function selectPlayStyle(value) {
+      playStyleButtons.forEach(button => {
+        const selected = button.dataset.value === value;
+        button.classList.toggle('active', selected);
+        button.setAttribute('aria-pressed', String(selected));
+      });
+    }
+
+    stateSelect.addEventListener('change', () => {
+      if (stateSelect.value === 'delete-confirm') {
+        stateBeforeDialog = currentState === 'delete-success' ? 'synced' : currentState;
+      }
+      renderState(stateSelect.value);
+    });
+
+    syncToggle.addEventListener('change', () => {
+      toggleStateText.textContent = syncToggle.checked ? 'ON' : 'OFF';
+      saveStatus.textContent = '変更内容は保存時に反映されます';
+    });
+
+    playStyleButtons.forEach(button => {
+      button.addEventListener('click', () => {
+        selectPlayStyle(button.dataset.value);
+        saveStatus.textContent = '変更内容は保存時に反映されます';
+      });
+    });
+
+    [startMonitoringInput, notifyUnresolvedInput, startupPageSelect, themeSelect, languageSelect]
+      .forEach(control => control.addEventListener('change', () => {
+        saveStatus.textContent = '変更内容は保存時に反映されます';
+      }));
+
+    resetSettingsButton.addEventListener('click', () => {
+      startMonitoringInput.checked = true;
+      notifyUnresolvedInput.checked = true;
+      selectPlayStyle('single');
+      startupPageSelect.selectedIndex = 0;
+      themeSelect.selectedIndex = 0;
+      languageSelect.selectedIndex = 0;
+      saveStatus.textContent = '既存の6項目を初期値へ戻しました。保存すると反映されます。Web Best同期は変更していません。';
+    });
+
+    saveSettingsButton.addEventListener('click', () => {
+      const nextSyncEnabled = syncToggle.checked;
+      if (!nextSyncEnabled) {
+        renderState('off');
+      } else if (!persistedSyncEnabled) {
+        renderState('snapshot');
+      } else {
+        renderState(currentState);
+      }
+      saveStatus.textContent = '設定を保存しました。';
+    });
+
+    syncNowButton.addEventListener('click', () => renderState('syncing'));
+
+    identityButton.addEventListener('click', () => {
+      syncDetails.open = true;
+      syncDetails.classList.add('visible');
+      syncDetailsBody.innerHTML = '既存Playerの認証情報を確認する画面へ移動する導線です。<br><code>AUTH_INVALID</code>';
+    });
+
+    deleteButton.addEventListener('click', () => {
+      stateBeforeDialog = currentState;
+      renderState('delete-confirm');
+    });
+
+    cancelDeleteButton.addEventListener('click', () => renderState(stateBeforeDialog));
+    confirmDeleteButton.addEventListener('click', () => renderState('delete-success'));
+
+    deleteDialog.addEventListener('click', event => {
+      if (event.target === deleteDialog) {
+        renderState(stateBeforeDialog);
+      }
+    });
+
+    document.addEventListener('keydown', event => {
+      if (event.key === 'Escape' && !deleteDialog.hidden) {
+        renderState(stateBeforeDialog);
+      }
+    });
+
+    renderState('synced', { focus: false });
+  </script>
 </body>
 </html>

@@ -119,7 +119,8 @@
       color: var(--text-secondary);
       background: transparent;
       font-size: 13px;
-      cursor: default;
+      cursor: pointer;
+      text-decoration: none;
       white-space: nowrap;
     }
 
@@ -839,14 +840,14 @@
     <header class="topbar" aria-label="アプリケーションナビゲーション">
       <div class="brand">GP Score Log</div>
       <nav class="nav-group" aria-label="主要ナビゲーション">
-        <button class="nav-item" type="button">ホーム</button>
-        <button class="nav-item" type="button">自己ベスト</button>
-        <button class="nav-item" type="button">直近プレー履歴</button>
-        <button class="nav-item selected" type="button" aria-current="page">フレアスキル</button>
+        <a class="nav-item" href="home-mock.html">ホーム</a>
+        <a class="nav-item" href="chart-bests-mock.html">自己ベスト</a>
+        <a class="nav-item" href="play-history-mock.html">直近プレー履歴</a>
+        <a class="nav-item selected" href="flare-skill.html" aria-current="page">フレアスキル</a>
       </nav>
       <nav class="nav-group utility" aria-label="補助ナビゲーション">
-        <button class="nav-item" type="button">設定</button>
-        <button class="nav-item" type="button">データ管理</button>
+        <a class="nav-item" href="settings-mock.html">設定</a>
+        <a class="nav-item" href="data-management-mock.html">データ管理</a>
       </nav>
     </header>
 
