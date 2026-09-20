@@ -18,6 +18,7 @@ GP Score Logは、DDR GRAND PRIXのリザルト画面をWindowsアプリが読�
 | 画像解析PoCの実行と出力 | [`../tools/vision_poc/README.md`](../tools/vision_poc/README.md) |
 | M5c developer-only collector | [`../tools/jacket_catalog_collector/README.md`](../tools/jacket_catalog_collector/README.md) |
 | master DB生成 | [`../master/README.md`](../master/README.md) |
+| Web Player identity API | [`../web/identity-api/README.md`](../web/identity-api/README.md) |
 
 利用者向けの説明では、内部のmilestoneコードや画像解析用語を前提にしない。開発資料で工程名、field名、status名を使う場合は[`design/00_glossary.md`](design/00_glossary.md)を正本とする。
 
@@ -41,6 +42,7 @@ M4 master DB、M5b jacket reference catalog、正式個人スコアDB、評価�
 - 回帰条件: [`design/06_regression_guard.md`](design/06_regression_guard.md)
 - M4 master DB生成: [`design/08_master_db_generation.md`](design/08_master_db_generation.md)
 - M5 master matchとcatalog: [`design/09_master_match_poc.md`](design/09_master_match_poc.md)
+- Web Player identityとApp Credential: [`design/11_web_player_identity.md`](design/11_web_player_identity.md)
 
 ### 履歴と検証記録
 

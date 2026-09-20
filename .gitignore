@@ -18,6 +18,15 @@ obj/
 *.suo
 *.rsuser
 
+# Node / Cloudflare Workers
+/web/identity-api/node_modules/
+/web/identity-api/.wrangler/
+/web/identity-api/.wrangler-dry-run/
+/web/identity-api/.dev.vars
+/web/identity-api/.dev.vars.*
+/web/identity-api/.env
+/web/identity-api/.env.*
+
 # Local app data
 /databases/
 /data/

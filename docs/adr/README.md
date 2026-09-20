@@ -13,6 +13,7 @@
 | [`0003`](0003-database-responsibility-and-protection.md) | Accepted | DB責務の分離と正式個人スコアDBの保護 | data model、storage、正式個人スコアDB |
 | [`0004`](0004-separate-application-and-reference-data-updates.md) | Accepted | application packageとreference data setの更新分離 | storage、app package・更新 |
 | [`0005`](0005-application-owned-user-theme-and-runtime-tokens.md) | Accepted | app-owned user theme設定とXAML・コード描画のsemantic token境界 | user settings、UI resources、runtime theme適用 |
+| [`0006`](0006-stable-web-player-identity-and-app-credential-boundary.md) | Accepted | 不変Web Player identityと追加可能な認証手段、App Credential保護境界 | Web identity API、D1、Windows secure storage |
 
 ## Status
 

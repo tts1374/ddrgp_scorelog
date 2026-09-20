@@ -32,6 +32,12 @@ dotnet test app\tests\DDRGpScoreViewer.Tests\DDRGpScoreViewer.Tests.csproj --con
 
 Debug専用のcapture・手動保存APIに依存するテストはDebug configurationだけでコンパイル・実行し、Release configurationではRelease appに存在する通常機能と境界のテストを実行します。
 
+## Web Player identity internal service
+
+Phase 3AのPlayer registration / identityは通常画面へまだ露出せず、`WebPlayerIdentityService`とtestから利用できる内部serviceとして実装しています。非秘密の`public_player_id`とregistration request IDは既存設定pathと同じdirectoryの`web-player-identity.json`、App CredentialはDPAPI CurrentUserで保護した`web-player-credential.bin`へ分離して保存します。raw Credentialを`user-settings.json`、正式個人スコアDB、Release logへ保存しません。
+
+認証済みoperationは401/403だけを`AUTH_INVALID`として記録し、Network Error、timeout、5xxではCredentialと`public_player_id`を維持します。認証失敗から自動registrationは行わず、Player削除のserver成功後だけlocal identityを削除します。詳細契約とCloudflare APIの実行方法は[`docs/design/11_web_player_identity.md`](../docs/design/11_web_player_identity.md)と[`web/identity-api/README.md`](../web/identity-api/README.md)を参照してください。
+
 ## Debug buildの開発者向け操作
 
 ### 1フレーム取得
