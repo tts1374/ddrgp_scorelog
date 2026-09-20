@@ -35,6 +35,24 @@ public sealed class WebPlayerIdentityTests
     }
 
     [Fact]
+    public void Pending_registration_request_survives_restart_without_plaintext_secret()
+    {
+        using var directory = new TemporaryDirectory();
+        var metadataPath = Path.Combine(directory.Path, "web-player-identity.json");
+        var credentialPath = Path.Combine(directory.Path, "web-player-credential.bin");
+        const string requestId = "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB";
+        var store = new FileWebPlayerIdentityStore(metadataPath, credentialPath);
+
+        store.SavePendingRegistration(requestId);
+
+        Assert.DoesNotContain(requestId, File.ReadAllText(metadataPath));
+        Assert.False(File.Exists(credentialPath));
+        var restarted = new FileWebPlayerIdentityStore(metadataPath, credentialPath).Load();
+        Assert.Equal(PlayerIdentityState.Unregistered, restarted.State);
+        Assert.Equal(requestId, restarted.PendingRegistrationRequestId);
+    }
+
+    [Fact]
     public async Task Registration_retry_reuses_the_persisted_request_id()
     {
         var requestIds = new List<string>();
@@ -92,19 +110,33 @@ public sealed class WebPlayerIdentityTests
         var store = MemoryWebPlayerIdentityStore.Registered();
         var handler = new DelegatingHandlerStub((request, _, _) =>
         {
-            Assert.Equal(HttpMethod.Get, request.Method);
-            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.Unauthorized));
+            if (request.Method == HttpMethod.Get)
+            {
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.Unauthorized));
+            }
+            Assert.Equal(HttpMethod.Post, request.Method);
+            return Task.FromResult(JsonResponse(HttpStatusCode.Created, RegistrationJson()));
         });
         var service = CreateService(handler, store);
 
         var result = await service.GetCurrentPlayerAsync();
-        var registration = await service.RegisterAsync("Replacement");
+        var blockedRegistration = await service.RegisterAsync("Replacement");
 
         Assert.Equal(PlayerIdentityRequestStatus.AuthenticationInvalid, result.Status);
         Assert.Equal(PlayerIdentityState.AuthInvalid, result.Identity.State);
         Assert.Equal(Credential, store.Load().AppCredential);
-        Assert.Equal(PlayerIdentityRequestStatus.InvalidState, registration.Status);
+        Assert.Equal(PlayerIdentityRequestStatus.InvalidState, blockedRegistration.Status);
         Assert.Equal(1, handler.Attempts);
+
+        var forgotten = service.ForgetInvalidIdentity();
+        var explicitRegistration = await service.RegisterAsync("Replacement");
+
+        Assert.Equal(PlayerIdentityRequestStatus.Succeeded, forgotten.Status);
+        Assert.Equal(PlayerIdentityState.Unregistered, forgotten.Identity.State);
+        Assert.Null(forgotten.Identity.AppCredential);
+        Assert.Equal(PlayerIdentityRequestStatus.Succeeded, explicitRegistration.Status);
+        Assert.Equal(PlayerIdentityState.Registered, explicitRegistration.Identity.State);
+        Assert.Equal(2, handler.Attempts);
     }
 
     [Fact]
@@ -174,6 +206,31 @@ public sealed class WebPlayerIdentityTests
         Assert.Equal(PlayerIdentityState.Unregistered, successStore.Load().State);
         Assert.Null(successStore.Load().AppCredential);
         Assert.Null(successStore.Load().PublicPlayerId);
+    }
+
+    [Fact]
+    public void Clear_recovers_as_unregistered_if_credential_deletion_is_interrupted()
+    {
+        using var directory = new TemporaryDirectory();
+        var metadataPath = Path.Combine(directory.Path, "web-player-identity.json");
+        var credentialPath = Path.Combine(directory.Path, "web-player-credential.bin");
+        var store = new FileWebPlayerIdentityStore(metadataPath, credentialPath);
+        store.SaveRegistered(PublicPlayerId, Credential);
+
+        using (File.Open(credentialPath, FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            var exception = Record.Exception(store.Clear);
+
+            Assert.True(exception is IOException or UnauthorizedAccessException);
+            Assert.False(File.Exists(metadataPath));
+            Assert.True(File.Exists(credentialPath));
+            var recovered = new FileWebPlayerIdentityStore(metadataPath, credentialPath).Load();
+            Assert.Equal(PlayerIdentityState.Unregistered, recovered.State);
+            Assert.Null(recovered.PublicPlayerId);
+            Assert.Null(recovered.AppCredential);
+        }
+
+        store.Clear();
     }
 
     private static WebPlayerIdentityService CreateService(

@@ -45,6 +45,35 @@ internal sealed class WebPlayerIdentityService
 
     public WebPlayerIdentitySnapshot LoadIdentity() => identityStore.Load();
 
+    public PlayerIdentityOperationResult ForgetInvalidIdentity()
+    {
+        WebPlayerIdentitySnapshot identity;
+        try
+        {
+            identity = identityStore.Load();
+        }
+        catch (Exception exception) when (IsLocalStorageException(exception))
+        {
+            return StorageFailure();
+        }
+        if (identity.State != PlayerIdentityState.AuthInvalid)
+        {
+            return new(PlayerIdentityRequestStatus.InvalidState, identity);
+        }
+
+        try
+        {
+            identityStore.Clear();
+            return new(
+                PlayerIdentityRequestStatus.Succeeded,
+                identityStore.Load());
+        }
+        catch (Exception exception) when (IsLocalStorageException(exception))
+        {
+            return StorageFailure();
+        }
+    }
+
     public async Task<PlayerIdentityOperationResult> RegisterAsync(
         string displayName,
         CancellationToken cancellationToken = default)

@@ -36,7 +36,7 @@ D1にはCredential secretを保存せず、別のCloudflare secretで計算し�
 
 ## Registration idempotency
 
-Windows appは初回送信前に256 bit乱数のregistration request IDを非秘密metadataへ保存し、`Idempotency-Key`として送信する。Workerはその値自体をD1へ保存せず、`REGISTRATION_SECRET`によるdigestをprimary keyとして保存する。
+Windows appは初回送信前に256 bit乱数のregistration request IDを生成し、DPAPI CurrentUserで保護してからmetadataへ保存し、`Idempotency-Key`として送信する。request ID単体で同じApp Credentialを再取得できるためsecretとして扱う。Workerはその値自体をD1へ保存せず、`REGISTRATION_SECRET`によるdigestをprimary keyとして保存する。
 
 初回登録はPlayer、Credential、registration requestをD1 batch transactionで作成する。同じrequest IDの再送では保存済みPlayerとCredential IDを取得し、決定的に同じCredential secretを再構成して同じ応答を返す。並行requestのunique競合はbatch全体をrollbackし、既存registrationを再読込する。clientがresponseを受信できなかった場合も新しいPlayerを追加しない。
 
@@ -55,7 +55,7 @@ Windows appは初回送信前に256 bit乱数のregistration request IDを非秘
 
 ## Windows secure storageとidentity state
 
-非秘密metadataは既存設定pathと同じdirectoryの`web-player-identity.json`へ保存する。Credentialは`web-player-credential.bin`へDPAPI CurrentUserで保護して保存する。DPAPIの追加entropyはアプリ固有の固定値で、復号できるのは同じWindowsユーザーcontextである。metadata JSON、正式個人スコアDB、Release logにはraw Credentialを保存しない。
+非秘密の`public_player_id`とidentity stateは既存設定pathと同じdirectoryの`web-player-identity.json`へ保存する。未完了registration request IDは同じJSON内のDPAPI CurrentUser保護blob、Credentialは`web-player-credential.bin`へDPAPI CurrentUser保護blobとして保存する。用途ごとに異なる追加entropyを使い、復号できるのは同じWindowsユーザーcontextである。metadata JSON、正式個人スコアDB、Release logにはraw secretを保存しない。
 
 | state | local条件 | request失敗時の遷移 |
 | --- | --- | --- |
@@ -64,6 +64,8 @@ Windows appは初回送信前に256 bit乱数のregistration request IDを非秘
 | `AUTH_INVALID` | local Credentialはあるがserverに拒否された | Network Error / 5xxでは維持し、自動registrationしない |
 
 認証済みoperationのNetwork Error、timeout、5xxは`NetworkError`または`ServerError`として返し、Credential、`public_player_id`、stateを変更しない。Player削除の2xx成功時だけlocal metadataとCredential fileを削除して`UNREGISTERED`へ戻す。認証失敗を受けたserviceはregistration APIを自動で呼ばない。
+
+`AUTH_INVALID`から新しいPlayerを登録する場合は、ユーザーの明示操作に対応する`ForgetInvalidIdentity`だけがlocal identityを破棄して`UNREGISTERED`へ戻す。`RegisterAsync`は`AUTH_INVALID`を直接受け付けない。local identity削除はmetadataを先に削除し、その後Credential fileを削除する。Credential file削除が中断しても、次回読込では残存blobをidentityとして扱わず`UNREGISTERED`へ回復する。
 
 ## 通常機能からの分離
 

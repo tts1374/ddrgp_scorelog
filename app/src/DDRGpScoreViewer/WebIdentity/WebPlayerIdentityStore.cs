@@ -19,27 +19,35 @@ internal interface IWebPlayerIdentityStore
     void Clear();
 }
 
-internal interface IUserCredentialProtector
+internal enum UserSecretPurpose
 {
-    byte[] Protect(string credential);
-
-    string Unprotect(byte[] protectedCredential);
+    AppCredential,
+    RegistrationRequestId,
 }
 
-internal sealed class DpapiCurrentUserCredentialProtector : IUserCredentialProtector
+internal interface IUserSecretProtector
 {
-    private static readonly byte[] OptionalEntropy =
-        Encoding.UTF8.GetBytes("DDRGpScoreViewer.WebPlayer.AppCredential.v1");
+    byte[] Protect(string secret, UserSecretPurpose purpose);
 
-    public byte[] Protect(string credential)
+    string Unprotect(byte[] protectedSecret, UserSecretPurpose purpose);
+}
+
+internal sealed class DpapiCurrentUserSecretProtector : IUserSecretProtector
+{
+    private static readonly byte[] AppCredentialEntropy =
+        Encoding.UTF8.GetBytes("DDRGpScoreViewer.WebPlayer.AppCredential.v1");
+    private static readonly byte[] RegistrationRequestEntropy =
+        Encoding.UTF8.GetBytes("DDRGpScoreViewer.WebPlayer.RegistrationRequestId.v1");
+
+    public byte[] Protect(string secret, UserSecretPurpose purpose)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(credential);
-        var plaintext = Encoding.UTF8.GetBytes(credential);
+        ArgumentException.ThrowIfNullOrWhiteSpace(secret);
+        var plaintext = Encoding.UTF8.GetBytes(secret);
         try
         {
             return ProtectedData.Protect(
                 plaintext,
-                OptionalEntropy,
+                EntropyFor(purpose),
                 DataProtectionScope.CurrentUser);
         }
         finally
@@ -48,12 +56,12 @@ internal sealed class DpapiCurrentUserCredentialProtector : IUserCredentialProte
         }
     }
 
-    public string Unprotect(byte[] protectedCredential)
+    public string Unprotect(byte[] protectedSecret, UserSecretPurpose purpose)
     {
-        ArgumentNullException.ThrowIfNull(protectedCredential);
+        ArgumentNullException.ThrowIfNull(protectedSecret);
         var plaintext = ProtectedData.Unprotect(
-            protectedCredential,
-            OptionalEntropy,
+            protectedSecret,
+            EntropyFor(purpose),
             DataProtectionScope.CurrentUser);
         try
         {
@@ -64,6 +72,13 @@ internal sealed class DpapiCurrentUserCredentialProtector : IUserCredentialProte
             CryptographicOperations.ZeroMemory(plaintext);
         }
     }
+
+    private static byte[] EntropyFor(UserSecretPurpose purpose) => purpose switch
+    {
+        UserSecretPurpose.AppCredential => AppCredentialEntropy,
+        UserSecretPurpose.RegistrationRequestId => RegistrationRequestEntropy,
+        _ => throw new ArgumentOutOfRangeException(nameof(purpose)),
+    };
 }
 
 internal sealed class FileWebPlayerIdentityStore : IWebPlayerIdentityStore
@@ -75,25 +90,36 @@ internal sealed class FileWebPlayerIdentityStore : IWebPlayerIdentityStore
     };
     private readonly string metadataPath;
     private readonly string credentialPath;
-    private readonly IUserCredentialProtector protector;
+    private readonly IUserSecretProtector protector;
 
     public FileWebPlayerIdentityStore(
         string metadataPath,
         string credentialPath,
-        IUserCredentialProtector? protector = null)
+        IUserSecretProtector? protector = null)
     {
         this.metadataPath = Path.GetFullPath(metadataPath);
         this.credentialPath = Path.GetFullPath(credentialPath);
-        this.protector = protector ?? new DpapiCurrentUserCredentialProtector();
+        this.protector = protector ?? new DpapiCurrentUserSecretProtector();
     }
 
     public WebPlayerIdentitySnapshot Load()
     {
         var metadata = ReadMetadata();
+        var pendingRegistrationRequestId = UnprotectPendingRegistrationRequest(metadata);
         string? credential = null;
-        if (File.Exists(credentialPath))
+        if (metadata.PublicPlayerId is not null && File.Exists(credentialPath))
         {
-            credential = protector.Unprotect(File.ReadAllBytes(credentialPath));
+            var protectedCredential = File.ReadAllBytes(credentialPath);
+            try
+            {
+                credential = protector.Unprotect(
+                    protectedCredential,
+                    UserSecretPurpose.AppCredential);
+            }
+            finally
+            {
+                CryptographicOperations.ZeroMemory(protectedCredential);
+            }
         }
 
         if (metadata.PublicPlayerId is not null && credential is not null)
@@ -104,7 +130,7 @@ internal sealed class FileWebPlayerIdentityStore : IWebPlayerIdentityStore
                     : PlayerIdentityState.Registered,
                 metadata.PublicPlayerId,
                 credential,
-                metadata.PendingRegistrationRequestId);
+                pendingRegistrationRequestId);
         }
 
         if (metadata.PublicPlayerId is not null)
@@ -120,29 +146,49 @@ internal sealed class FileWebPlayerIdentityStore : IWebPlayerIdentityStore
             PlayerIdentityState.Unregistered,
             null,
             null,
-            metadata.PendingRegistrationRequestId);
+            pendingRegistrationRequestId);
     }
 
     public void SavePendingRegistration(string registrationRequestId)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(registrationRequestId);
         var current = ReadMetadata();
-        WriteMetadata(current with
+        var protectedRequestId = protector.Protect(
+            registrationRequestId,
+            UserSecretPurpose.RegistrationRequestId);
+        try
         {
-            PendingRegistrationRequestId = registrationRequestId,
-        });
+            WriteMetadata(current with
+            {
+                ProtectedPendingRegistrationRequest = Convert.ToBase64String(
+                    protectedRequestId),
+            });
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(protectedRequestId);
+        }
     }
 
     public void SaveRegistered(string publicPlayerId, string appCredential)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(publicPlayerId);
         ArgumentException.ThrowIfNullOrWhiteSpace(appCredential);
-        var protectedCredential = protector.Protect(appCredential);
-        WriteBytesAtomically(credentialPath, protectedCredential);
-        WriteMetadata(new StoredWebPlayerIdentity(
-            PublicPlayerId: publicPlayerId,
-            PendingRegistrationRequestId: null,
-            AuthenticationInvalid: false));
+        var protectedCredential = protector.Protect(
+            appCredential,
+            UserSecretPurpose.AppCredential);
+        try
+        {
+            WriteBytesAtomically(credentialPath, protectedCredential);
+            WriteMetadata(new StoredWebPlayerIdentity(
+                PublicPlayerId: publicPlayerId,
+                ProtectedPendingRegistrationRequest: null,
+                AuthenticationInvalid: false));
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(protectedCredential);
+        }
     }
 
     public void SetAuthenticationInvalid(bool invalid)
@@ -158,13 +204,13 @@ internal sealed class FileWebPlayerIdentityStore : IWebPlayerIdentityStore
 
     public void Clear()
     {
-        if (File.Exists(credentialPath))
-        {
-            File.Delete(credentialPath);
-        }
         if (File.Exists(metadataPath))
         {
             File.Delete(metadataPath);
+        }
+        if (File.Exists(credentialPath))
+        {
+            File.Delete(credentialPath);
         }
     }
 
@@ -184,6 +230,38 @@ internal sealed class FileWebPlayerIdentityStore : IWebPlayerIdentityStore
                 "Web Player identity metadata has an invalid authentication state.");
         }
         return stored;
+    }
+
+    private string? UnprotectPendingRegistrationRequest(StoredWebPlayerIdentity metadata)
+    {
+        if (metadata.ProtectedPendingRegistrationRequest is null)
+        {
+            return null;
+        }
+
+        byte[] protectedRequestId;
+        try
+        {
+            protectedRequestId = Convert.FromBase64String(
+                metadata.ProtectedPendingRegistrationRequest);
+        }
+        catch (FormatException exception)
+        {
+            throw new InvalidDataException(
+                "The protected registration request ID is not valid base64.",
+                exception);
+        }
+
+        try
+        {
+            return protector.Unprotect(
+                protectedRequestId,
+                UserSecretPurpose.RegistrationRequestId);
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(protectedRequestId);
+        }
     }
 
     private void WriteMetadata(StoredWebPlayerIdentity metadata)
@@ -217,8 +295,8 @@ internal sealed class FileWebPlayerIdentityStore : IWebPlayerIdentityStore
 
     private sealed record StoredWebPlayerIdentity(
         [property: JsonPropertyName("public_player_id")] string? PublicPlayerId,
-        [property: JsonPropertyName("pending_registration_request_id")]
-        string? PendingRegistrationRequestId,
+        [property: JsonPropertyName("protected_pending_registration_request")]
+        string? ProtectedPendingRegistrationRequest,
         [property: JsonPropertyName("authentication_invalid")]
         bool AuthenticationInvalid);
 }

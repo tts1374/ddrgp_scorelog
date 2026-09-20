@@ -64,7 +64,7 @@ DDR GP scorelog の設計、PoC、テストで使う主要用語を定義する�
 - `player_id`: Web server内部でPlayerを参照する不変ID。client payloadや公開URLへ使用しない。
 - `public_player_id`: 公開URLと公開Player identityに使用する不変のランダムID。display name変更や将来Account追加で変更しない。
 - `App Credential`: DDRGP Score Logが既存Playerを管理できることを証明するopaque Credential。検索用Credential IDとsecretから成り、serverはsecretのdigestだけを保存する。
-- `registration request ID`: Player登録のresponse lossやretryで重複Playerを作らないためclientが保持する非秘密request ID。Player identityや端末identityとして使用しない。
+- `registration request ID`: Player登録のresponse lossやretryで重複Playerを作らないためclientが生成するsecret。未完了registration中だけDPAPI CurrentUserで保護して保持し、Player identityや端末identityとして使用しない。
 - `UNREGISTERED`: localに利用可能なWeb Player identityがない状態。未完了registration request IDだけが残る場合を含む。
 - `REGISTERED`: localに`public_player_id`とDPAPI CurrentUserで保護したApp Credentialがある状態。
 - `AUTH_INVALID`: local App Credentialは存在するがserverに認証を拒否された状態。Network Error、timeout、5xxをこの状態へ変換せず、新しいPlayerを自動作成しない。

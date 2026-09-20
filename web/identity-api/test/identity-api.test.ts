@@ -11,9 +11,10 @@ interface RegistrationResponse {
 }
 
 const baseUrl = "https://identity.example.test";
+const defaultRegistrationRequestId = "registration-request-0000000000000001";
 
 async function register(
-  idempotencyKey = "registration-request-0000000000000001",
+  idempotencyKey = defaultRegistrationRequestId,
   displayName = "Player",
 ): Promise<{ response: Response; body: RegistrationResponse }> {
   const response = await exports.default.fetch(`${baseUrl}/api/v1/players/register`, {
@@ -52,8 +53,13 @@ describe("Player identity API", () => {
     const credentialCount = await env.DB.prepare(
       "SELECT COUNT(*) AS count FROM player_credentials",
     ).first<{ count: number }>();
+    const registrationRequest = await env.DB.prepare(
+      "SELECT request_digest FROM player_registration_requests",
+    ).first<{ request_digest: string }>();
     expect(playerCount?.count).toBe(1);
     expect(credentialCount?.count).toBe(1);
+    expect(registrationRequest?.request_digest).toMatch(/^[0-9a-f]{64}$/u);
+    expect(registrationRequest?.request_digest).not.toContain(defaultRegistrationRequestId);
   });
 
   it("serializes concurrent registration retries without orphan Players", async () => {
