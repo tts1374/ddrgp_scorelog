@@ -119,6 +119,13 @@ public sealed class WebPlayerIdentityTests
         });
         var service = CreateService(handler, store);
 
+        var prematureForget = service.ForgetInvalidIdentity();
+
+        Assert.Equal(PlayerIdentityRequestStatus.InvalidState, prematureForget.Status);
+        Assert.Equal(PlayerIdentityState.Registered, prematureForget.Identity.State);
+        Assert.Equal(Credential, prematureForget.Identity.AppCredential);
+        Assert.Equal(0, handler.Attempts);
+
         var result = await service.GetCurrentPlayerAsync();
         var blockedRegistration = await service.RegisterAsync("Replacement");
 
