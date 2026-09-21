@@ -1,0 +1,26 @@
+{
+  "name": "@ddrgp-scorelog/identity-api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "npm run typecheck && npm test",
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev",
+    "migrate:local": "wrangler d1 migrations apply DB --local",
+    "migrate:remote": "wrangler d1 migrations apply DB --remote",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "hono": "4.13.8"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-plugin": "1.1.13",
+    "@cloudflare/workers-types": "5.20260920.1",
+    "@types/node": "26.6.2",
+    "typescript": "6.0.3",
+    "vitest": "4.1.11",
+    "wrangler": "4.135.0"
+  }
+}

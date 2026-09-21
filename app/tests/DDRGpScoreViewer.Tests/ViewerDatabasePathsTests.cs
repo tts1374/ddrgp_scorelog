@@ -98,6 +98,12 @@ public sealed class ViewerDatabasePathsTests
         Assert.Equal(
             "C:\\Users\\test\\AppData\\Local\\DDRGpScoreViewer\\user-settings.json",
             paths.UserSettingsPath);
+        Assert.Equal(
+            "C:\\Users\\test\\AppData\\Local\\DDRGpScoreViewer\\web-player-identity.json",
+            paths.WebPlayerIdentityPath);
+        Assert.Equal(
+            "C:\\Users\\test\\AppData\\Local\\DDRGpScoreViewer\\web-player-credential.bin",
+            paths.WebPlayerCredentialPath);
         Assert.Null(paths.EvaluationDatabasePath);
     }
 

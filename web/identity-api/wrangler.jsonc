@@ -1,0 +1,14 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "ddrgp-scorelog-identity-api",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-20",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "ddrgp-scorelog-web-db",
+      "database_id": "9e7b336e-5880-4a47-a45d-375d2b5ab750",
+      "migrations_dir": "migrations"
+    }
+  ]
+}

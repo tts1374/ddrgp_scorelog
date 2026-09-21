@@ -23,6 +23,7 @@
 | M4 master DB | [`08_master_db_generation.md`](08_master_db_generation.md) | 生成元、schema、配布境界 |
 | M5 master match、M5b catalog、M5c collector | [`09_master_match_poc.md`](09_master_match_poc.md) | 候補観測、runtime参照、developer-only整備 |
 | M8 formal personal score DB | [`10_personal_score_db_schema.md`](10_personal_score_db_schema.md) | 現行schema、transaction、migration、viewer境界 |
+| Web Player identity / App Credential | [`11_web_player_identity.md`](11_web_player_identity.md) | Cloudflare D1、identity API、Windows secure storage、認証状態 |
 
 SQLiteの正確なtable、column、index、metadata、migrationは、M4 master DBでは`08_master_db_generation.md`、正式個人スコアDBでは`10_personal_score_db_schema.md`を優先する。`04_data_model.md`は概念上の責務を説明する。
 
@@ -46,4 +47,5 @@ architecture decisionの一覧は[`../adr/README.md`](../adr/README.md)、完了
 - DB責務、保存先、transaction、migrationを変えた場合は`04_data_model.md`、`05_storage_io_spec.md`、`10_personal_score_db_schema.md`を確認する。
 - M4 master DB生成を変えた場合は`08_master_db_generation.md`を更新する。
 - M5 master matchのstatus、M5b catalog、M5c developer-only collectorを変えた場合は`09_master_match_poc.md`と該当component READMEを確認する。
+- Web Player identity、App Credential、identity API、認証状態を変えた場合は`11_web_player_identity.md`と[`ADR 0006`](../adr/0006-stable-web-player-identity-and-app-credential-boundary.md)を確認する。
 - 公開挙動や利用者の操作が変わらない内部実装だけの変更では、説明を増やすためだけにdocsを更新しない。
