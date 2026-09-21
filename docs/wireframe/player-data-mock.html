@@ -1,0 +1,1803 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GP Score Log - Player Data UI Mockup</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="screen-mock-shared.css?v=20260920a">
+  <style>
+    :root {
+      --page-max: 1180px;
+      --surface-muted: #F0EFE9;
+      --accent-subtle: #E8EEE5;
+      --focus-ring: #739D7D;
+      --diff-bgn: #5FB8E8;
+      --diff-bas: #F3A621;
+      --diff-dif: #E64949;
+      --diff-exp: #27A85A;
+      --diff-cha: #8C55C9;
+      --rank-sun-yellow: #FFB200;
+      --rank-sun-orange: #FF7300;
+      --rank-sun-red: #FF1F00;
+      --flare-classic: #475569;
+      --flare-white: #B5B9AE;
+      --flare-gold: #B1842F;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      min-width: 0;
+      background: var(--mock-bg);
+    }
+
+    body {
+      min-width: 0;
+      min-height: 100vh;
+      padding: 0;
+      display: block;
+      background: var(--mock-bg);
+      color: var(--mock-main);
+      font-size: 14px;
+    }
+
+    button,
+    input,
+    select {
+      font: inherit;
+    }
+
+    button,
+    select {
+      cursor: pointer;
+    }
+
+    button:focus-visible,
+    input:focus-visible,
+    select:focus-visible {
+      outline: 3px solid color-mix(in srgb, var(--focus-ring) 60%, transparent);
+      outline-offset: 2px;
+    }
+
+    [hidden] {
+      display: none !important;
+    }
+
+    .heading-with-info,
+    .inline-with-info {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .info-tip {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 20px;
+      height: 20px;
+      flex: 0 0 20px;
+      padding: 0;
+      border: 1px solid var(--mock-primary);
+      border-radius: 50%;
+      color: var(--mock-primary);
+      background: var(--accent-subtle);
+      font-family: Georgia, serif;
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1;
+    }
+
+    .info-tip:hover,
+    .info-tip:focus-visible {
+      color: #FFF;
+      background: var(--mock-primary);
+    }
+
+    .info-tip::after {
+      position: absolute;
+      z-index: 30;
+      top: calc(100% + 8px);
+      left: 0;
+      width: min(300px, 75vw);
+      padding: 10px 12px;
+      border: 1px solid var(--mock-border-strong);
+      border-radius: 5px;
+      color: var(--mock-main);
+      background: #FFF;
+      box-shadow: 0 8px 20px rgba(37, 39, 34, 0.12);
+      content: attr(data-tip);
+      font-family: "Segoe UI Variable", "Segoe UI", "Yu Gothic UI", sans-serif;
+      font-size: 12px;
+      font-weight: 400;
+      line-height: 1.6;
+      text-align: left;
+      visibility: hidden;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.12s ease;
+    }
+
+    .info-tip:hover::after,
+    .info-tip:focus-visible::after,
+    .info-tip:focus::after {
+      visibility: visible;
+      opacity: 1;
+    }
+
+    .site-header {
+      border-bottom: 1px solid var(--mock-border);
+      background: var(--mock-bg);
+    }
+
+    .site-header-inner {
+      width: min(var(--page-max), calc(100% - 48px));
+      min-height: 58px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+    }
+
+    .site-brand {
+      color: var(--mock-main);
+      font-size: 22px;
+      font-weight: 650;
+      letter-spacing: -0.45px;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+
+    .site-context {
+      color: var(--mock-muted);
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .demo-bar {
+      border-bottom: 1px solid var(--mock-border);
+      background: var(--surface-muted);
+    }
+
+    .demo-bar-inner {
+      width: min(var(--page-max), calc(100% - 48px));
+      min-height: 42px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    .demo-label {
+      color: var(--mock-muted);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+    }
+
+    .demo-controls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .demo-controls label {
+      color: var(--mock-muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .demo-controls select,
+    .control-select,
+    .search-input {
+      min-height: 34px;
+      padding: 6px 34px 6px 10px;
+      border: 1px solid var(--mock-border-strong);
+      border-radius: 5px;
+      color: var(--mock-main);
+      background: #FFF;
+      font-size: 13px;
+    }
+
+    .page-shell {
+      width: min(var(--page-max), calc(100% - 48px));
+      margin: 0 auto;
+      padding: 30px 0 56px;
+    }
+
+    .player-header {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 24px;
+    }
+
+    .player-title h1 {
+      font-size: clamp(28px, 4vw, 42px);
+      font-weight: 650;
+      line-height: 1.1;
+      letter-spacing: -0.04em;
+    }
+
+    .player-title p {
+      margin-top: 8px;
+      color: var(--mock-muted);
+      font-size: 13px;
+    }
+
+    .style-switch {
+      display: inline-flex;
+      flex-shrink: 0;
+      gap: 2px;
+      padding: 3px;
+      border-radius: 7px;
+      background: var(--surface-muted);
+    }
+
+    .style-switch button {
+      min-width: 104px;
+      min-height: 36px;
+      padding: 7px 14px;
+      border: 0;
+      border-radius: 5px;
+      color: var(--mock-muted);
+      background: transparent;
+      font-size: 12px;
+      font-weight: 750;
+    }
+
+    .style-switch button.active {
+      color: var(--mock-primary);
+      background: #FFF;
+      box-shadow: 0 1px 3px rgba(37, 39, 34, 0.12);
+    }
+
+    .primary-tabs {
+      display: flex;
+      gap: 28px;
+      margin-top: 30px;
+      border-bottom: 1px solid var(--mock-border);
+    }
+
+    .primary-tab {
+      min-height: 48px;
+      padding: 0 2px;
+      border: 0;
+      border-bottom: 3px solid transparent;
+      color: var(--mock-muted);
+      background: transparent;
+      font-size: 14px;
+      font-weight: 650;
+    }
+
+    .primary-tab.active {
+      border-bottom-color: var(--mock-primary);
+      color: var(--mock-primary);
+    }
+
+    .view-panel {
+      padding-top: 28px;
+    }
+
+    .section-heading {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 14px;
+    }
+
+    .section-heading h2 {
+      font-size: 19px;
+      font-weight: 650;
+      letter-spacing: -0.02em;
+    }
+
+    .flare-summary {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(240px, 1fr));
+      min-height: 126px;
+      border-top: 1px solid var(--mock-border);
+      border-bottom: 1px solid var(--mock-border);
+      background: var(--mock-card);
+    }
+
+    .flare-summary-block {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      min-width: 0;
+      padding: 16px 22px;
+    }
+
+    .flare-summary-block + .flare-summary-block {
+      border-left: 1px solid var(--mock-border);
+    }
+
+    .flare-summary-label,
+    .flare-category-label,
+    .overview-best-label {
+      color: var(--mock-muted);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+    }
+
+    .flare-rank-name {
+      display: flex;
+      align-items: flex-start;
+      gap: 7px;
+      margin-top: 5px;
+      font-size: 46px;
+      font-weight: 800;
+      letter-spacing: -0.05em;
+      line-height: 1;
+    }
+
+    .flare-rank-main,
+    .flare-rank-sub {
+      color: var(--rank-sun-orange);
+      background: linear-gradient(180deg, var(--rank-sun-yellow) 0%, var(--rank-sun-orange) 48%, var(--rank-sun-red) 100%);
+      background-clip: text;
+      filter: drop-shadow(0 1px 0 rgba(121, 43, 7, 0.18));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .flare-rank-sub {
+      margin-top: 4px;
+      font-size: 26px;
+      letter-spacing: -0.09em;
+    }
+
+    .flare-rank-ja {
+      margin-top: 4px;
+      color: var(--mock-muted);
+      font-size: 12px;
+    }
+
+    .flare-total-value {
+      display: block;
+      margin-top: 3px;
+      font-family: "Segoe UI Variable", "Segoe UI", sans-serif;
+      font-size: 35px;
+      font-weight: 650;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: -0.03em;
+    }
+
+    .flare-metric-note {
+      margin-top: 2px;
+      color: var(--mock-muted);
+      font-size: 11px;
+    }
+
+    .flare-category-summary {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      align-items: stretch;
+      border-bottom: 1px solid var(--mock-border);
+    }
+
+    .flare-category-stat {
+      min-width: 0;
+      padding: 22px 18px;
+      border-left: 1px solid var(--mock-border);
+    }
+
+    .flare-category-value {
+      display: block;
+      margin-top: 8px;
+      font-family: "Courier New", monospace;
+      font-size: 22px;
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .overview-best-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 14px 0 0;
+    }
+
+    .overview-best-count {
+      display: inline-flex;
+      align-items: baseline;
+      gap: 9px;
+    }
+
+    .overview-best-value {
+      font-family: "Courier New", monospace;
+      font-size: 20px;
+      font-weight: 800;
+    }
+
+    .text-button {
+      min-height: 34px;
+      padding: 7px 11px;
+      border: 1px solid var(--mock-border-strong);
+      border-radius: 4px;
+      color: var(--mock-primary);
+      background: transparent;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .overview-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 24px;
+      margin-top: 30px;
+    }
+
+    .plain-panel {
+      min-width: 0;
+      border-top: 1px solid var(--mock-border);
+    }
+
+    .plain-panel-header {
+      padding: 15px 0 12px;
+    }
+
+    .plain-panel-header h3 {
+      font-size: 15px;
+      font-weight: 650;
+    }
+
+    .level-overview {
+      display: grid;
+      gap: 11px;
+    }
+
+    .level-overview-row {
+      display: grid;
+      grid-template-columns: 52px minmax(0, 1fr) 100px;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .level-label {
+      font-weight: 750;
+    }
+
+    .progress-track {
+      height: 8px;
+      overflow: hidden;
+      border-radius: 99px;
+      background: var(--surface-muted);
+    }
+
+    .progress-fill {
+      height: 100%;
+      border-radius: inherit;
+      background: var(--mock-primary);
+    }
+
+    .level-count {
+      color: var(--mock-muted);
+      font-size: 12px;
+      text-align: right;
+      white-space: nowrap;
+    }
+
+    .browse-card {
+      border: 1px solid var(--mock-border);
+      background: var(--mock-card);
+    }
+
+    .browse-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--mock-border);
+    }
+
+    .browse-top h2 {
+      font-size: 14px;
+      font-weight: 650;
+    }
+
+    .browse-tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+    }
+
+    .browse-tab {
+      min-height: 34px;
+      padding: 7px 12px;
+      border: 1px solid transparent;
+      border-radius: 4px;
+      color: var(--mock-muted);
+      background: transparent;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .browse-tab.active {
+      border-color: var(--mock-primary);
+      color: #FFF;
+      background: var(--mock-primary);
+    }
+
+    .browse-controls {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: flex-end;
+      gap: 12px 18px;
+      padding: 14px 16px;
+    }
+
+    .control-field {
+      display: grid;
+      gap: 5px;
+    }
+
+    .control-field label,
+    .control-label {
+      color: var(--mock-muted);
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .control-select {
+      min-width: 190px;
+    }
+
+    .search-input {
+      width: min(340px, 70vw);
+      padding-right: 10px;
+    }
+
+    .progress-summary {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      margin-top: 20px;
+      border-top: 1px solid var(--mock-border);
+      border-bottom: 1px solid var(--mock-border);
+    }
+
+    .progress-summary-item {
+      min-width: 0;
+      padding: 13px 12px;
+    }
+
+    .progress-summary-item + .progress-summary-item {
+      border-left: 1px solid var(--mock-border);
+    }
+
+    .progress-summary-label {
+      color: var(--mock-muted);
+      font-size: 11px;
+    }
+
+    .progress-summary-value {
+      display: block;
+      margin-top: 4px;
+      font-family: "Courier New", monospace;
+      font-size: 17px;
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .results-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin-top: 20px;
+      margin-bottom: 10px;
+    }
+
+    .result-count {
+      color: var(--mock-muted);
+      font-size: 12px;
+    }
+
+    .result-count strong {
+      color: var(--mock-main);
+    }
+
+    .sort-control {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .sort-control label {
+      color: var(--mock-muted);
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .sort-control select {
+      min-width: 170px;
+    }
+
+    .best-table-wrap {
+      overflow: hidden;
+      border-top: 1px solid var(--mock-border);
+      border-bottom: 1px solid var(--mock-border);
+    }
+
+    .best-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+
+    .best-table thead {
+      background: var(--surface-muted);
+    }
+
+    .best-table th,
+    .best-table td {
+      padding: 12px 10px;
+      border-bottom: 1px solid var(--mock-border);
+      vertical-align: middle;
+    }
+
+    .best-table th {
+      color: var(--mock-muted);
+      font-size: 11px;
+      font-weight: 750;
+      text-align: left;
+      white-space: nowrap;
+    }
+
+    .best-table tbody tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .best-table tbody tr:hover {
+      background: color-mix(in srgb, var(--surface-muted) 55%, transparent);
+    }
+
+    .music-cell {
+      min-width: 190px;
+    }
+
+    .music-title {
+      display: block;
+      font-size: 13px;
+      font-weight: 750;
+    }
+
+    .music-stack {
+      display: grid;
+      justify-items: start;
+      gap: 3px;
+      min-width: 0;
+    }
+
+    .music-artist {
+      display: block;
+      margin-top: 3px;
+      color: var(--mock-muted);
+      font-size: 11px;
+    }
+
+    .chart-stack,
+    .score-stack {
+      display: grid;
+      justify-items: start;
+      gap: 4px;
+    }
+
+    .difficulty-badge,
+    .result-badge,
+    .availability-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 22px;
+      padding: 3px 7px;
+      border: 1px solid transparent;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 800;
+      line-height: 1;
+      white-space: nowrap;
+    }
+
+    .diff-bgn { color: #0B2330; background: var(--diff-bgn); }
+    .diff-bas { color: #2B1A00; background: var(--diff-bas); }
+    .diff-dif { color: #FFF; background: var(--diff-dif); }
+    .diff-exp { color: #FFF; background: var(--diff-exp); }
+    .diff-cha { color: #FFF; background: var(--diff-cha); }
+
+    .chart-meta {
+      color: var(--mock-muted);
+      font-size: 11px;
+      font-weight: 650;
+    }
+
+    .availability-badge {
+      border-color: var(--mock-border-strong);
+      color: var(--mock-muted);
+      background: var(--surface-muted);
+    }
+
+    .score-number,
+    .ex-number {
+      font-family: "Courier New", monospace;
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+
+    .score-number {
+      font-size: 14px;
+    }
+
+    .ex-number {
+      color: var(--mock-muted);
+    }
+
+    .no-best {
+      color: var(--mock-muted);
+      font-weight: 650;
+      white-space: nowrap;
+    }
+
+    .rank-badge {
+      border-color: #E0B842;
+      color: #6F4F00;
+      background: #FEF3C7;
+    }
+
+    .clear-badge {
+      border-color: #7AA792;
+      color: #234D36;
+      background: #E8EEE5;
+    }
+
+    .flare-badge {
+      border-color: #A78BBA;
+      color: #4D2D62;
+      background: #F3E8FF;
+    }
+
+    .flare-badge-ex {
+      border-color: #D6A420;
+      color: #754F00;
+      background: #FEF3C7;
+    }
+
+    .failed-badge {
+      border-color: #D8A0A7;
+      color: #842A36;
+      background: #FEE2E2;
+    }
+
+    .flare-page-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 18px;
+    }
+
+    .flare-page-header h2 {
+      font-size: 19px;
+      font-weight: 650;
+    }
+
+    .flare-category-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 16px;
+      margin-top: 18px;
+    }
+
+    .flare-category-panel {
+      min-width: 0;
+      border-top: 4px solid var(--mock-border-strong);
+      background: var(--mock-card);
+    }
+
+    .flare-category-panel[data-flare-category="classic"] { border-top-color: var(--flare-classic); }
+    .flare-category-panel[data-flare-category="white"] { border-top-color: var(--flare-white); }
+    .flare-category-panel[data-flare-category="gold"] { border-top-color: var(--flare-gold); }
+
+    .flare-category-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 12px 10px;
+      border-bottom: 1px solid var(--mock-border);
+    }
+
+    .flare-category-title {
+      font-size: 14px;
+      font-weight: 800;
+      letter-spacing: 0.03em;
+    }
+
+    .flare-category-range,
+    .flare-category-count {
+      display: block;
+      margin-top: 3px;
+      color: var(--mock-muted);
+      font-size: 10px;
+      font-weight: 650;
+    }
+
+    .flare-category-score {
+      font-family: "Courier New", monospace;
+      font-size: 16px;
+      font-weight: 800;
+      text-align: right;
+    }
+
+    .flare-target-list {
+      display: grid;
+    }
+
+    .flare-target-row {
+      display: grid;
+      grid-template-columns: 24px minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 8px;
+      min-height: 54px;
+      padding: 8px 10px;
+      border-bottom: 1px solid var(--mock-border);
+    }
+
+    .flare-target-rank {
+      color: var(--mock-muted);
+      font-family: "Courier New", monospace;
+      font-size: 11px;
+      font-weight: 700;
+      text-align: right;
+    }
+
+    .flare-target-song {
+      min-width: 0;
+    }
+
+    .flare-target-title {
+      display: block;
+      overflow: hidden;
+      font-size: 11px;
+      font-weight: 750;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .flare-target-meta {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      margin-top: 4px;
+    }
+
+    .flare-target-result {
+      display: grid;
+      justify-items: end;
+      gap: 3px;
+    }
+
+    .flare-target-skill {
+      font-family: "Courier New", monospace;
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .flare-category-footer {
+      padding: 10px;
+      color: var(--mock-muted);
+      font-size: 11px;
+      text-align: center;
+    }
+
+    .state-screen {
+      min-height: 420px;
+      display: grid;
+      place-items: center;
+      padding: 48px 20px;
+      text-align: center;
+    }
+
+    .state-content {
+      max-width: 520px;
+    }
+
+    .state-code {
+      color: var(--mock-primary);
+      font-family: "Courier New", monospace;
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    .state-content h1,
+    .state-content h2 {
+      margin-top: 10px;
+      font-size: 26px;
+      font-weight: 650;
+      letter-spacing: -0.02em;
+    }
+
+    .state-content p {
+      margin-top: 10px;
+      color: var(--mock-muted);
+      font-size: 13px;
+      line-height: 1.7;
+    }
+
+    .skeleton-stack {
+      width: min(760px, 100%);
+      display: grid;
+      gap: 16px;
+    }
+
+    .skeleton-line,
+    .skeleton-block {
+      overflow: hidden;
+      position: relative;
+      background: var(--surface-muted);
+    }
+
+    .skeleton-line::after,
+    .skeleton-block::after {
+      position: absolute;
+      inset: 0;
+      content: "";
+      transform: translateX(-100%);
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.62), transparent);
+      animation: shimmer 1.5s infinite;
+    }
+
+    .skeleton-line { width: 46%; height: 18px; }
+    .skeleton-line.short { width: 27%; height: 12px; }
+    .skeleton-block { height: 88px; }
+
+    @keyframes shimmer {
+      to { transform: translateX(100%); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .skeleton-line::after,
+      .skeleton-block::after {
+        animation: none;
+      }
+    }
+
+    @media (max-width: 900px) {
+      .overview-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .flare-summary {
+        grid-template-columns: 1fr;
+      }
+
+      .flare-summary-block + .flare-summary-block {
+        border-top: 1px solid var(--mock-border);
+        border-left: 0;
+      }
+
+      .flare-category-stat:first-child {
+        border-left: 0;
+      }
+
+    }
+
+    @media (max-width: 680px) {
+      .site-header-inner,
+      .demo-bar-inner,
+      .page-shell {
+        width: min(100% - 32px, var(--page-max));
+      }
+
+      .site-header-inner {
+        min-height: 54px;
+      }
+
+      .site-context,
+      .demo-label {
+        display: none;
+      }
+
+      .demo-bar-inner {
+        min-height: 52px;
+      }
+
+      .demo-controls {
+        width: 100%;
+        justify-content: space-between;
+      }
+
+      .demo-controls select {
+        flex: 1;
+        max-width: 210px;
+      }
+
+      .page-shell {
+        padding-top: 22px;
+      }
+
+      .info-tip::after {
+        position: fixed;
+        inset: auto 16px 16px;
+        width: auto;
+        transform: none;
+      }
+
+      .player-header {
+        align-items: stretch;
+        flex-direction: column;
+        gap: 18px;
+      }
+
+      .style-switch {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+      }
+
+      .style-switch button {
+        min-width: 0;
+      }
+
+      .primary-tabs {
+        gap: 0;
+        margin-top: 22px;
+      }
+
+      .primary-tab {
+        flex: 1;
+        padding: 0 6px;
+        font-size: 13px;
+      }
+
+      .view-panel {
+        padding-top: 22px;
+      }
+
+      .flare-total-value {
+        font-size: 34px;
+      }
+
+      .overview-grid {
+        margin-top: 24px;
+      }
+
+      .level-overview-row {
+        grid-template-columns: 48px minmax(0, 1fr) 82px;
+        gap: 8px;
+      }
+
+      .browse-top {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .browse-tabs {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        width: 100%;
+      }
+
+      .browse-tab {
+        width: 100%;
+      }
+
+      .browse-controls,
+      .control-field,
+      .control-select,
+      .search-input {
+        width: 100%;
+      }
+
+      .flare-category-summary {
+        grid-template-columns: 1fr 1fr 1fr;
+      }
+
+      .flare-category-stat {
+        padding: 16px 10px;
+      }
+
+      .flare-category-value {
+        font-size: 17px;
+      }
+
+      .overview-best-row,
+      .flare-page-header {
+        align-items: stretch;
+        flex-direction: column;
+      }
+
+      .flare-category-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .results-bar {
+        align-items: stretch;
+        flex-direction: column;
+      }
+
+      .sort-control {
+        justify-content: space-between;
+      }
+
+      .sort-control select {
+        flex: 1;
+        min-width: 0;
+      }
+
+      .best-table-wrap {
+        overflow: visible;
+        border-bottom: 0;
+      }
+
+      .best-table,
+      .best-table tbody,
+      .best-table tr,
+      .best-table td {
+        display: block;
+        width: 100%;
+      }
+
+      .best-table thead {
+        display: none;
+      }
+
+      .best-table tbody {
+        display: grid;
+        gap: 14px;
+      }
+
+      .best-table tbody tr {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        border-bottom: 1px solid var(--mock-border);
+      }
+
+      .best-table td {
+        display: grid;
+        grid-template-columns: 76px minmax(0, 1fr);
+        align-items: center;
+        gap: 10px;
+        min-width: 0;
+        padding: 8px 10px;
+        border-bottom: 0;
+      }
+
+      .best-table td::before {
+        content: attr(data-label);
+        color: var(--mock-muted);
+        font-size: 10px;
+        font-weight: 750;
+      }
+
+      .best-table td.music-cell,
+      .best-table td.chart-cell,
+      .best-table td.score-cell,
+      .best-table td.ex-cell {
+        grid-column: 1 / -1;
+      }
+
+      .best-table td.music-cell {
+        padding-top: 13px;
+      }
+
+      .music-cell {
+        min-width: 0;
+      }
+
+      .chart-stack,
+      .score-stack {
+        justify-items: start;
+      }
+
+    }
+
+    @media (max-width: 390px) {
+      .site-header-inner,
+      .demo-bar-inner,
+      .page-shell {
+        width: min(100% - 24px, var(--page-max));
+      }
+
+      .site-brand {
+        font-size: 19px;
+      }
+
+      .flare-category-summary {
+        grid-template-columns: 1fr;
+      }
+
+      .flare-category-stat {
+        border-top: 1px solid var(--mock-border);
+        border-left: 0;
+      }
+
+      .best-table tbody tr {
+        grid-template-columns: 1fr;
+      }
+
+      .best-table td {
+        grid-column: 1;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header class="site-header">
+    <div class="site-header-inner">
+      <a class="site-brand" href="#">GP Score Log</a>
+      <span class="site-context">公開 Player Data</span>
+    </div>
+  </header>
+
+  <div class="demo-bar" aria-label="ワイヤーフレーム表示状態">
+    <div class="demo-bar-inner">
+      <span class="demo-label">WIREFRAME DEMO · /player/pub_7K2M9Q</span>
+      <div class="demo-controls">
+        <label for="demo-state">表示状態</label>
+        <select id="demo-state">
+          <option value="normal">通常</option>
+          <option value="loading">Loading</option>
+          <option value="empty">公開Best 0件</option>
+          <option value="not-found">404 / Not found</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <main class="page-shell">
+    <section id="loading-state" class="state-screen" aria-live="polite" hidden>
+      <div class="skeleton-stack" aria-label="Player Dataを読み込んでいます">
+        <div class="skeleton-line"></div>
+        <div class="skeleton-line short"></div>
+        <div class="skeleton-block"></div>
+        <div class="skeleton-block"></div>
+        <div class="skeleton-block"></div>
+      </div>
+    </section>
+
+    <section id="not-found-state" class="state-screen" hidden>
+      <div class="state-content">
+        <div class="state-code">404</div>
+        <h1>Playerが見つかりません</h1>
+        <p>URLが正しいか確認してください。Playerが削除されている場合、この公開ページは表示できません。</p>
+      </div>
+    </section>
+
+    <div id="player-page">
+      <header class="player-header">
+        <div class="player-title">
+          <h1>2TEN</h1>
+          <p>公開データ更新：2026/09/20 16:30</p>
+        </div>
+        <div class="style-switch" role="group" aria-label="プレイスタイル">
+          <button class="active" type="button" data-style="SP" aria-pressed="true">SINGLE</button>
+          <button type="button" data-style="DP" aria-pressed="false">DOUBLE</button>
+        </div>
+      </header>
+
+      <nav class="primary-tabs" role="tablist" aria-label="Player Data">
+        <button class="primary-tab active" type="button" role="tab" aria-selected="true" data-view="overview">Overview</button>
+        <button class="primary-tab" type="button" role="tab" aria-selected="false" data-view="best">Best</button>
+        <button class="primary-tab" type="button" role="tab" aria-selected="false" data-view="flare">Flare Skill</button>
+      </nav>
+
+      <section id="empty-state" class="state-screen" hidden>
+        <div class="state-content">
+          <h2>公開Bestはまだありません</h2>
+          <p>このPlayerの公開Bestが同期されると、Player Dataに表示されます。</p>
+        </div>
+      </section>
+
+      <section class="view-panel" data-view-panel="overview">
+        <div class="section-heading">
+          <div class="heading-with-info">
+            <h2 id="overview-heading">SINGLE Flare Skill</h2>
+            <button class="info-tip" type="button" data-tip="公開BestのFLARE実績から算出します。ローカルアプリや公式の値とは異なる場合があります。" aria-label="公開フレアスキルについて">i</button>
+            <button class="text-button" type="button" data-open-flare>対象楽曲を見る</button>
+          </div>
+        </div>
+
+        <div class="flare-summary">
+          <div class="flare-summary-block">
+            <span class="flare-summary-label">TOTAL FLARE SKILL RANK</span>
+            <strong class="flare-rank-name"><span class="flare-rank-main" data-flare-rank-main>SUN</span><span class="flare-rank-sub" data-flare-rank-sub>++</span></strong>
+            <span class="flare-rank-ja" data-flare-rank-ja>太陽</span>
+          </div>
+          <div class="flare-summary-block">
+            <span class="flare-summary-label">TOTAL FLARE SKILL</span>
+            <strong class="flare-total-value" data-flare-total>84,183</strong>
+            <span class="flare-metric-note">3カテゴリのTARGET合計</span>
+          </div>
+        </div>
+
+        <div class="flare-category-summary">
+          <div class="flare-category-stat">
+            <span class="flare-category-label">CLASSIC</span>
+            <strong class="flare-category-value" data-overview-category="classic">27,916</strong>
+          </div>
+          <div class="flare-category-stat">
+            <span class="flare-category-label">WHITE</span>
+            <strong class="flare-category-value" data-overview-category="white">27,884</strong>
+          </div>
+          <div class="flare-category-stat">
+            <span class="flare-category-label">GOLD</span>
+            <strong class="flare-category-value" data-overview-category="gold">28,383</strong>
+          </div>
+        </div>
+
+        <div class="overview-best-row">
+          <div class="overview-best-count">
+            <span class="overview-best-label">公開Best譜面数</span>
+            <strong class="overview-best-value" data-kpi="bests">286</strong>
+          </div>
+          <button class="text-button" type="button" data-open-best>公開Bestを見る</button>
+        </div>
+
+        <div class="overview-grid">
+          <section class="plain-panel">
+            <div class="plain-panel-header">
+              <div class="heading-with-info">
+                <h3>Level別の公開Best</h3>
+                <button class="info-tip" type="button" data-tip="数値は公開Bestあり / 現行譜面です。収録終了譜面は母数に含みません。" aria-label="Level別集計について">i</button>
+              </div>
+            </div>
+            <div class="level-overview" id="overview-levels"></div>
+          </section>
+        </div>
+      </section>
+
+      <section class="view-panel" data-view-panel="best" hidden>
+        <div class="browse-card">
+          <div class="browse-top">
+            <h2>公開Bestを探す</h2>
+            <div class="browse-tabs" role="tablist" aria-label="探索方法">
+              <button class="browse-tab active" type="button" role="tab" aria-selected="true" data-mode="level">レベルから</button>
+              <button class="browse-tab" type="button" role="tab" aria-selected="false" data-mode="version">バージョンから</button>
+              <button class="browse-tab" type="button" role="tab" aria-selected="false" data-mode="title">曲名から</button>
+            </div>
+          </div>
+
+          <div class="browse-controls">
+            <div class="control-field" data-mode-control="level">
+              <label for="level-select">レベル</label>
+              <select id="level-select" class="control-select">
+                <option value="15">Lv.15</option>
+                <option value="16">Lv.16</option>
+                <option value="17" selected>Lv.17</option>
+                <option value="18">Lv.18</option>
+              </select>
+            </div>
+
+            <div class="control-field" data-mode-control="version" hidden>
+              <label for="version-select">バージョン</label>
+              <select id="version-select" class="control-select">
+                <option>DDR GRAND PRIX</option>
+                <option>DDR WORLD</option>
+                <option>DDR A3</option>
+                <option>EXTREME</option>
+              </select>
+            </div>
+
+            <div class="control-field" data-mode-control="title" hidden>
+              <label for="title-search">曲名</label>
+              <input id="title-search" class="search-input" type="search" placeholder="例：MAX">
+            </div>
+
+          </div>
+        </div>
+
+        <div class="progress-summary" id="best-progress">
+          <div class="progress-summary-item"><span class="progress-summary-label">対象譜面（現行）</span><strong class="progress-summary-value" data-progress="total">42</strong></div>
+          <div class="progress-summary-item"><span class="progress-summary-label">公開Bestあり</span><strong class="progress-summary-value" data-progress="recorded">31</strong></div>
+          <div class="progress-summary-item"><span class="progress-summary-label">公開Bestなし</span><strong class="progress-summary-value" data-progress="missing">11</strong></div>
+        </div>
+
+        <div class="results-bar">
+          <div class="inline-with-info">
+            <p class="result-count"><strong id="result-count">5譜面</strong> <span id="result-context">・Lv.17</span></p>
+            <button class="info-tip" type="button" data-tip="RANKはBest SCOREから算出します。「公開Bestなし」は未プレーを意味しません。収録終了譜面は一覧に残ります。" aria-label="Best一覧について">i</button>
+          </div>
+          <div class="sort-control">
+            <label for="sort-select">並び順</label>
+            <select id="sort-select" class="control-select">
+              <option value="score-desc">SCORE 高い順</option>
+              <option value="score-asc">SCORE 低い順</option>
+              <option value="ex-desc">EX SCORE 高い順</option>
+              <option value="title-asc">曲名 昇順</option>
+              <option value="level-asc">レベル 昇順</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="best-table-wrap">
+          <table class="best-table">
+            <thead>
+              <tr>
+                <th>Music</th>
+                <th>Chart</th>
+                <th>SCORE</th>
+                <th>EX SCORE</th>
+                <th>RANK</th>
+                <th>CLEAR</th>
+                <th>FLARE</th>
+              </tr>
+            </thead>
+            <tbody id="best-table-body"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="view-panel" data-view-panel="flare" hidden>
+        <div class="flare-page-header">
+          <div class="heading-with-info">
+            <h2 id="flare-heading">SINGLE Flare Skill対象楽曲</h2>
+            <button class="info-tip" type="button" data-tip="公開Bestから算出した各カテゴリのTARGETです。" aria-label="フレアスキル対象楽曲について">i</button>
+          </div>
+        </div>
+
+        <div class="flare-summary">
+          <div class="flare-summary-block">
+            <span class="flare-summary-label">TOTAL FLARE SKILL RANK</span>
+            <strong class="flare-rank-name"><span class="flare-rank-main" data-flare-rank-main>SUN</span><span class="flare-rank-sub" data-flare-rank-sub>++</span></strong>
+            <span class="flare-rank-ja" data-flare-rank-ja>太陽</span>
+          </div>
+          <div class="flare-summary-block">
+            <span class="flare-summary-label">TOTAL FLARE SKILL</span>
+            <strong class="flare-total-value" data-flare-total>84,183</strong>
+            <span class="flare-metric-note">3カテゴリのTARGET合計</span>
+          </div>
+        </div>
+
+        <div class="flare-category-grid">
+          <article class="flare-category-panel" data-flare-category="classic">
+            <header class="flare-category-header">
+              <div><h3 class="flare-category-title">CLASSIC</h3><span class="flare-category-range">1st〜X3 VS 2ndMIX</span></div>
+              <div><div class="flare-category-score" data-flare-category-total="classic">27,916</div><span class="flare-category-count">30 / 30 TARGET</span></div>
+            </header>
+            <div class="flare-target-list" data-flare-list="classic"></div>
+            <div class="flare-category-footer">Top 10 / 30譜面</div>
+          </article>
+
+          <article class="flare-category-panel" data-flare-category="white">
+            <header class="flare-category-header">
+              <div><h3 class="flare-category-title">WHITE</h3><span class="flare-category-range">2013〜A</span></div>
+              <div><div class="flare-category-score" data-flare-category-total="white">27,884</div><span class="flare-category-count">30 / 30 TARGET</span></div>
+            </header>
+            <div class="flare-target-list" data-flare-list="white"></div>
+            <div class="flare-category-footer">Top 10 / 30譜面</div>
+          </article>
+
+          <article class="flare-category-panel" data-flare-category="gold">
+            <header class="flare-category-header">
+              <div><h3 class="flare-category-title">GOLD</h3><span class="flare-category-range">A20〜WORLD</span></div>
+              <div><div class="flare-category-score" data-flare-category-total="gold">28,383</div><span class="flare-category-count">30 / 30 TARGET</span></div>
+            </header>
+            <div class="flare-target-list" data-flare-list="gold"></div>
+            <div class="flare-category-footer">Top 10 / 30譜面</div>
+          </article>
+        </div>
+      </section>
+
+    </div>
+  </main>
+
+  <script>
+    (() => {
+      const rankForScore = score => {
+        if (score == null) return null;
+        if (score >= 990000) return 'AAA';
+        if (score >= 950000) return 'AA+';
+        if (score >= 900000) return 'AA';
+        if (score >= 890000) return 'AA-';
+        if (score >= 850000) return 'A+';
+        if (score >= 800000) return 'A';
+        return 'B+';
+      };
+
+      const data = [
+        { style: 'SP', title: 'MAX 360', artist: 'BEMANI Sound Team “[x]”', difficulty: 'CHALLENGE', level: 18, version: 'DDR A3', score: 973420, ex: 1814, clear: 'CLEAR', flare: 'VI' },
+        { style: 'SP', title: 'ENDYMION', artist: 'fallen shepherd ft. RabbiTon Strings', difficulty: 'EXPERT', level: 17, version: 'DDR A', score: 987650, ex: 1592, clear: 'FC', flare: 'IX' },
+        { style: 'SP', title: 'POSSESSION', artist: 'TAG underground', difficulty: 'CHALLENGE', level: 17, version: 'X2', score: 991400, ex: 1420, clear: 'PFC', flare: 'EX' },
+        { style: 'SP', title: 'TRIP MACHINE EVOLUTION', artist: 'DE-JAVU', difficulty: 'EXPERT', level: 16, version: 'DDR (2013)', score: 946880, ex: 1281, clear: 'GFC', flare: 'VIII' },
+        { style: 'SP', title: 'MAX 300', artist: 'Ω', difficulty: 'EXPERT', level: 15, version: 'DDRMAX', score: 982100, ex: 1210, clear: 'FC', flare: 'VIII' },
+        { style: 'SP', title: 'Butterfly', artist: 'SMILE.dk', difficulty: 'CHALLENGE', level: 17, version: '1st', score: 964230, ex: 987, clear: 'FC', flare: 'VII', removed: true },
+        { style: 'SP', title: 'VOLAQUAS', artist: 'BEMANI Sound Team “DJ TOTTO VS 兎々”', difficulty: 'EXPERT', level: 17, version: 'DDR GRAND PRIX', score: null, ex: null, clear: null, flare: null },
+        { style: 'SP', title: '鳳', artist: 'かめりあ', difficulty: 'EXPERT', level: 17, version: 'DDR WORLD', score: 932840, ex: 1320, clear: 'CLEAR', flare: null },
+        { style: 'DP', title: 'MAX 360', artist: 'BEMANI Sound Team “[x]”', difficulty: 'EXPERT', level: 18, version: 'DDR A3', score: 946240, ex: 1738, clear: 'CLEAR', flare: 'V' },
+        { style: 'DP', title: 'ENDYMION', artist: 'fallen shepherd ft. RabbiTon Strings', difficulty: 'EXPERT', level: 18, version: 'DDR A', score: 958700, ex: 1644, clear: 'CLEAR', flare: 'VI' },
+        { style: 'DP', title: 'POSSESSION', artist: 'TAG underground', difficulty: 'CHALLENGE', level: 18, version: 'X2', score: 976120, ex: 1510, clear: 'FC', flare: 'VIII' },
+        { style: 'DP', title: 'MAX 300', artist: 'Ω', difficulty: 'EXPERT', level: 15, version: 'DDRMAX', score: 990240, ex: 1250, clear: 'PFC', flare: 'IX' },
+        { style: 'DP', title: 'Butterfly', artist: 'SMILE.dk', difficulty: 'CHALLENGE', level: 16, version: '1st', score: 951200, ex: 934, clear: 'GFC', flare: 'VI', removed: true },
+        { style: 'DP', title: 'VOLAQUAS', artist: 'BEMANI Sound Team “DJ TOTTO VS 兎々”', difficulty: 'EXPERT', level: 17, version: 'DDR GRAND PRIX', score: null, ex: null, clear: null, flare: null },
+        { style: 'DP', title: '鳳', artist: 'かめりあ', difficulty: 'EXPERT', level: 17, version: 'DDR WORLD', score: 918600, ex: 1268, clear: 'FAILED', flare: null }
+      ];
+
+      const summaries = {
+        SP: {
+          kpis: { bests: 286 },
+          levels: [
+            ['Lv.13', 44, 48], ['Lv.14', 51, 58], ['Lv.15', 62, 76], ['Lv.16', 48, 71], ['Lv.17', 31, 42], ['Lv.18', 9, 24]
+          ]
+        },
+        DP: {
+          kpis: { bests: 214 },
+          levels: [
+            ['Lv.13', 31, 46], ['Lv.14', 38, 54], ['Lv.15', 45, 69], ['Lv.16', 36, 62], ['Lv.17', 22, 39], ['Lv.18', 7, 23]
+          ]
+        }
+      };
+
+      const progressSeeds = {
+        SP: {
+          level: { total: 42, recorded: 31, missing: 11 },
+          version: { total: 54, recorded: 38, missing: 16 }
+        },
+        DP: {
+          level: { total: 39, recorded: 22, missing: 17 },
+          version: { total: 51, recorded: 27, missing: 24 }
+        }
+      };
+
+      const flareProfiles = {
+        SP: {
+          rankMain: 'SUN', rankSub: '++', rankJapanese: '太陽', total: 84183,
+          categories: {
+            classic: { total: 27916, titles: ['POSSESSION', 'Pluto Relinquish', 'MAX 300', 'PARANOiA survivor MAX', 'TRIP MACHINE EVOLUTION', 'London EVOLVED ver.A', 'SABER WING', 'Valkyrie dimension', 'New Decade', 'Tohoku EVOLVED'] },
+            white: { total: 27884, titles: ['ENDYMION', 'Over The “Period”', 'EGOISM 440', 'ACE FOR ACES', 'MAX 360', 'Elemental Creation', 'Come to Life', 'Prey', 'Vanquish The Ghost', 'Chronos (walk with you remix)'] },
+            gold: { total: 28383, titles: ['Dancer in the flare', 'VOLAQUAS', 'SURVIVAL AT THE END OF THE UNIVERSE', 'MEGALOVANIA', '鳳', 'Step This Way', 'HyperNOAH', 'Gravity Collapse', 'Ødyssey', 'The Ashes of Boreas'] }
+          }
+        },
+        DP: {
+          rankMain: 'SUN', rankSub: '', rankJapanese: '太陽', total: 75624,
+          categories: {
+            classic: { total: 24614, titles: ['POSSESSION', 'Pluto Relinquish', 'MAX 300', 'PARANOiA survivor MAX', 'TRIP MACHINE EVOLUTION', 'London EVOLVED ver.A', 'SABER WING', 'Valkyrie dimension', 'New Decade', 'Tohoku EVOLVED'] },
+            white: { total: 25264, titles: ['ENDYMION', 'Over The “Period”', 'EGOISM 440', 'ACE FOR ACES', 'MAX 360', 'Elemental Creation', 'Come to Life', 'Prey', 'Vanquish The Ghost', 'Chronos (walk with you remix)'] },
+            gold: { total: 25746, titles: ['Dancer in the flare', 'VOLAQUAS', 'SURVIVAL AT THE END OF THE UNIVERSE', 'MEGALOVANIA', '鳳', 'Step This Way', 'HyperNOAH', 'Gravity Collapse', 'Ødyssey', 'The Ashes of Boreas'] }
+          }
+        }
+      };
+
+      const state = {
+        style: 'SP',
+        view: 'overview',
+        mode: 'level',
+        demo: 'normal'
+      };
+
+      const escapeHtml = value => String(value)
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#039;');
+
+      const difficultyClass = difficulty => ({
+        BEGINNER: 'diff-bgn', BASIC: 'diff-bas', DIFFICULT: 'diff-dif', EXPERT: 'diff-exp', CHALLENGE: 'diff-cha'
+      })[difficulty] || 'diff-exp';
+
+      const renderLevels = () => {
+        document.getElementById('overview-levels').innerHTML = summaries[state.style].levels.map(([label, value, total]) => `
+          <div class="level-overview-row">
+            <span class="level-label">${label}</span>
+            <div class="progress-track" aria-label="${label} ${value} / ${total}"><div class="progress-fill" style="width:${Math.round(value / total * 100)}%"></div></div>
+            <span class="level-count">${value} / ${total}</span>
+          </div>
+        `).join('');
+      };
+
+      const renderFlareSkill = () => {
+        const profile = flareProfiles[state.style];
+        const updateText = (selector, value) => document.querySelectorAll(selector).forEach(element => {
+          element.textContent = value;
+        });
+        updateText('[data-flare-rank-main]', profile.rankMain);
+        updateText('[data-flare-rank-sub]', profile.rankSub);
+        updateText('[data-flare-rank-ja]', profile.rankJapanese);
+        updateText('[data-flare-total]', profile.total.toLocaleString('ja-JP'));
+
+        Object.entries(profile.categories).forEach(([category, categoryData], categoryIndex) => {
+          document.querySelector(`[data-overview-category="${category}"]`).textContent = categoryData.total.toLocaleString('ja-JP');
+          document.querySelector(`[data-flare-category-total="${category}"]`).textContent = categoryData.total.toLocaleString('ja-JP');
+          const average = Math.floor(categoryData.total / 30);
+          document.querySelector(`[data-flare-list="${category}"]`).innerHTML = categoryData.titles.map((title, index) => {
+            const difficulty = ['CHALLENGE', 'EXPERT', 'EXPERT', 'DIFFICULT'][(index + categoryIndex) % 4];
+            const level = Math.max(11, 18 - Math.floor(index / 2) - categoryIndex);
+            const flare = index < 3 ? 'EX' : index < 7 ? 'IX' : 'VIII';
+            const skill = average + 48 - index * 7 + (state.style === 'SP' ? 12 : 0);
+            return `
+              <div class="flare-target-row">
+                <span class="flare-target-rank">${index + 1}</span>
+                <div class="flare-target-song">
+                  <span class="flare-target-title" title="${escapeHtml(title)}">${escapeHtml(title)}</span>
+                  <div class="flare-target-meta"><span class="difficulty-badge ${difficultyClass(difficulty)}">${difficulty}</span><span class="chart-meta">Lv.${level}</span></div>
+                </div>
+                <div class="flare-target-result"><span class="result-badge flare-badge ${flare === 'EX' ? 'flare-badge-ex' : ''}">${flare}</span><strong class="flare-target-skill">${skill.toLocaleString('ja-JP')}</strong></div>
+              </div>
+            `;
+          }).join('');
+        });
+      };
+
+      const filteredRows = () => {
+        let rows = data.filter(row => row.style === state.style);
+        if (state.mode === 'level') {
+          const level = Number(document.getElementById('level-select').value);
+          rows = rows.filter(row => row.level === level);
+        }
+        if (state.mode === 'version') {
+          const version = document.getElementById('version-select').value;
+          rows = rows.filter(row => row.version === version);
+        }
+        if (state.mode === 'title') {
+          const query = document.getElementById('title-search').value.trim().toLocaleLowerCase('ja');
+          rows = query ? rows.filter(row => row.title.toLocaleLowerCase('ja').includes(query)) : rows;
+        }
+        const sort = document.getElementById('sort-select').value;
+        const fallback = value => value == null ? -1 : value;
+        rows.sort((a, b) => {
+          if (sort === 'score-asc') return fallback(a.score) - fallback(b.score);
+          if (sort === 'ex-desc') return fallback(b.ex) - fallback(a.ex);
+          if (sort === 'title-asc') return a.title.localeCompare(b.title, 'ja');
+          if (sort === 'level-asc') return a.level - b.level || a.title.localeCompare(b.title, 'ja');
+          return fallback(b.score) - fallback(a.score);
+        });
+        return rows;
+      };
+
+      const badge = (value, className) => value == null
+        ? '<span class="no-best">—</span>'
+        : `<span class="result-badge ${className}">${escapeHtml(value)}</span>`;
+
+      const renderBest = () => {
+        const rows = filteredRows();
+        const body = document.getElementById('best-table-body');
+
+        body.innerHTML = rows.length ? rows.map(row => {
+          const hasBest = row.score != null;
+          const score = hasBest ? row.score.toLocaleString('ja-JP') : '<span class="no-best">公開Bestなし</span>';
+          const ex = row.ex != null ? row.ex.toLocaleString('ja-JP') : '<span class="no-best">—</span>';
+          return `
+            <tr>
+              <td class="music-cell" data-label="Music"><div class="music-stack"><span class="music-title">${escapeHtml(row.title)}</span><span class="music-artist">${escapeHtml(row.artist)}</span></div></td>
+              <td class="chart-cell" data-label="Chart"><div class="chart-stack"><span class="difficulty-badge ${difficultyClass(row.difficulty)}">${escapeHtml(row.difficulty)}</span><span class="chart-meta">Lv.${row.level}</span>${row.removed ? '<span class="availability-badge">収録終了</span>' : ''}</div></td>
+              <td class="score-cell" data-label="SCORE"><div class="score-stack"><span class="score-number">${score}</span></div></td>
+              <td class="ex-cell" data-label="EX SCORE"><span class="ex-number">${ex}</span></td>
+              <td data-label="RANK">${badge(rankForScore(row.score), 'rank-badge')}</td>
+              <td data-label="CLEAR">${badge(row.clear, row.clear === 'FAILED' ? 'failed-badge' : 'clear-badge')}</td>
+              <td data-label="FLARE">${badge(row.flare, `flare-badge ${row.flare === 'EX' ? 'flare-badge-ex' : ''}`)}</td>
+            </tr>
+          `;
+        }).join('') : `
+          <tr><td colspan="7" style="padding:36px 16px;text-align:center;color:var(--mock-muted);">条件に一致する譜面はありません</td></tr>
+        `;
+
+        document.getElementById('result-count').textContent = `${rows.length}譜面`;
+        let context = '';
+        if (state.mode === 'level') context = `・Lv.${document.getElementById('level-select').value}`;
+        if (state.mode === 'version') context = `・${document.getElementById('version-select').value}`;
+        if (state.mode === 'title') context = document.getElementById('title-search').value ? `・「${document.getElementById('title-search').value}」` : '・曲名検索';
+        document.getElementById('result-context').textContent = context;
+
+        document.getElementById('best-progress').hidden = state.mode === 'title';
+
+        if (state.mode === 'level' || state.mode === 'version') {
+          const values = progressSeeds[state.style][state.mode];
+          Object.entries(values).forEach(([key, value]) => {
+            document.querySelector(`[data-progress="${key}"]`).textContent = value;
+          });
+        }
+      };
+
+      const syncPage = () => {
+        document.querySelectorAll('[data-style]').forEach(button => {
+          const active = button.dataset.style === state.style;
+          button.classList.toggle('active', active);
+          button.setAttribute('aria-pressed', String(active));
+        });
+        document.querySelectorAll('[data-view]').forEach(button => {
+          const active = button.dataset.view === state.view;
+          button.classList.toggle('active', active);
+          button.setAttribute('aria-selected', String(active));
+        });
+        document.querySelectorAll('[data-view-panel]').forEach(panel => {
+          panel.hidden = panel.dataset.viewPanel !== state.view;
+        });
+        document.querySelectorAll('[data-mode]').forEach(button => {
+          const active = button.dataset.mode === state.mode;
+          button.classList.toggle('active', active);
+          button.setAttribute('aria-selected', String(active));
+        });
+        document.querySelectorAll('[data-mode-control]').forEach(control => {
+          control.hidden = control.dataset.modeControl !== state.mode;
+        });
+
+        document.getElementById('overview-heading').textContent = `${state.style === 'SP' ? 'SINGLE' : 'DOUBLE'} Flare Skill`;
+        document.getElementById('flare-heading').textContent = `${state.style === 'SP' ? 'SINGLE' : 'DOUBLE'} Flare Skill対象楽曲`;
+        Object.entries(summaries[state.style].kpis).forEach(([key, value]) => {
+          document.querySelector(`[data-kpi="${key}"]`).textContent = value.toLocaleString('ja-JP');
+        });
+        renderLevels();
+        renderBest();
+        renderFlareSkill();
+      };
+
+      const syncDemoState = () => {
+        const loading = state.demo === 'loading';
+        const notFound = state.demo === 'not-found';
+        const empty = state.demo === 'empty';
+        document.getElementById('loading-state').hidden = !loading;
+        document.getElementById('not-found-state').hidden = !notFound;
+        document.getElementById('player-page').hidden = loading || notFound;
+        document.getElementById('empty-state').hidden = !empty;
+        document.querySelectorAll('[data-view-panel]').forEach(panel => {
+          panel.hidden = empty || panel.dataset.viewPanel !== state.view;
+        });
+      };
+
+      document.querySelectorAll('[data-style]').forEach(button => {
+        button.addEventListener('click', () => {
+          state.style = button.dataset.style;
+          syncPage();
+          syncDemoState();
+        });
+      });
+
+      document.querySelectorAll('[data-view]').forEach(button => {
+        button.addEventListener('click', () => {
+          state.view = button.dataset.view;
+          syncPage();
+          syncDemoState();
+        });
+      });
+
+      document.querySelectorAll('[data-mode]').forEach(button => {
+        button.addEventListener('click', () => {
+          state.mode = button.dataset.mode;
+          syncPage();
+          if (state.mode === 'title') document.getElementById('title-search').focus();
+        });
+      });
+
+      document.querySelectorAll('[data-open-flare]').forEach(button => {
+        button.addEventListener('click', () => {
+          state.view = 'flare';
+          syncPage();
+          syncDemoState();
+        });
+      });
+
+      document.querySelectorAll('[data-open-best]').forEach(button => {
+        button.addEventListener('click', () => {
+          state.view = 'best';
+          syncPage();
+          syncDemoState();
+        });
+      });
+
+      ['level-select', 'version-select', 'sort-select'].forEach(id => {
+        document.getElementById(id).addEventListener('change', syncPage);
+      });
+      document.getElementById('title-search').addEventListener('input', syncPage);
+      document.getElementById('demo-state').addEventListener('change', event => {
+        state.demo = event.target.value;
+        syncDemoState();
+      });
+
+      syncPage();
+      syncDemoState();
+    })();
+  </script>
+</body>
+</html>
