@@ -69,4 +69,4 @@ Windows appは初回送信前に256 bit乱数のregistration request IDを生成
 
 ## 通常機能との接続境界
 
-Web Best同期は同じ`WebPlayerIdentityService`境界を明示的に注入して利用し、独自CredentialやPlayer IDを追加しない。同期ONの明示操作で`UNREGISTERED`の場合だけ既存registrationを開始する。`AUTH_INVALID`や同期失敗からregistrationを自動実行しない。既存の監視、画像認識、正式保存、履歴、Personal ProgressはWeb identityの成否に依存しない。
+Web Best同期は同じ`WebPlayerIdentityService`境界を明示的に注入して利用し、独自CredentialやPlayer IDを追加しない。設定保存で同期ONを確定した時点に`UNREGISTERED`の場合だけ、設定画面の公開プレイヤー名で既存registrationを開始する。登録済みPlayerの公開プレイヤー名は同じ設定保存操作から`PATCH /api/v1/me`で更新する。`AUTH_INVALID`や同期失敗からregistrationを自動実行しない。既存の監視、画像認識、正式保存、履歴、Personal ProgressはWeb identityの成否に依存しない。

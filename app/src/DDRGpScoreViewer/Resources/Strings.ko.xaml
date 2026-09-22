@@ -456,4 +456,17 @@
     <sys:String x:Key="{}{0} / 未同期: {1:N0}譜面">{0} / 미동기화: 채보 {1:N0}개</sys:String>
     <sys:String x:Key="公開Bestなし">공개 Best 없음</sys:String>
     <sys:String x:Key="Web上の公開Bestはありません。Player情報、公開URL、認証情報、ローカルの保存データは残っています。">웹에 공개된 Best가 없습니다. Player 정보, 공개 URL, 인증 정보 및 로컬 저장 데이터는 유지됩니다.</sys:String>
+    <sys:String x:Key="公開プレイヤー名">공개 플레이어 이름</sys:String>
+    <sys:String x:Key="WebのPlayer Dataに表示されます">웹 Player Data에 표시됩니다</sys:String>
+    <sys:String x:Key="認証情報を再設定">인증 정보 재설정</sys:String>
+    <sys:String x:Key="認証情報を再設定しますか？">인증 정보를 재설정하시겠습니까?</sys:String>
+    <sys:String x:Key="現在の認証情報をこのPCから削除します。以前のPlayerと公開URLを復旧できなくなる可能性があります。ローカルの保存データは残ります。続行後、Web Best同期をONにして設定を保存すると新しいPlayerを登録します。">현재 인증 정보를 이 PC에서 삭제합니다. 이전 Player와 공개 URL을 복구하지 못할 수 있습니다. 로컬 저장 데이터는 유지됩니다. 계속한 후 Web Best 동기화를 켜고 설정을 저장하면 새 Player를 등록합니다.</sys:String>
+    <sys:String x:Key="公開プレイヤー名は1文字以上64文字以下で入力してください。">공개 플레이어 이름은 1자 이상 64자 이하로 입력하세요.</sys:String>
+    <sys:String x:Key="Web Player情報を読み込めませんでした。ローカルの保存データは変更されていません。">Web Player 정보를 불러오지 못했습니다. 로컬 저장 데이터는 변경되지 않았습니다.</sys:String>
+    <sys:String x:Key="Web Player情報を更新できませんでした。通信状態を確認して再度お試しください。">Web Player 정보를 업데이트하지 못했습니다. 연결 상태를 확인한 후 다시 시도하세요.</sys:String>
+    <sys:String x:Key="認証情報を保存できませんでした。ローカルの保存データは変更されていません。">인증 정보를 저장하지 못했습니다. 로컬 저장 데이터는 변경되지 않았습니다.</sys:String>
+    <sys:String x:Key="公開プレイヤー名を更新できませんでした。入力内容を確認してください。">공개 플레이어 이름을 업데이트하지 못했습니다. 입력 내용을 확인하세요.</sys:String>
+    <sys:String x:Key="Web同期に使う認証情報を確認してください。新しいPlayerは自動作成されません。">웹 동기화에 사용하는 인증 정보를 확인하세요. 새 Player는 자동으로 생성되지 않습니다.</sys:String>
+    <sys:String x:Key="認証情報を削除できませんでした。ローカルの保存データは変更されていません。">인증 정보를 삭제하지 못했습니다. 로컬 저장 데이터는 변경되지 않았습니다.</sys:String>
+    <sys:String x:Key="認証情報を削除しました。公開プレイヤー名を確認し、Web Best同期をONにして設定を保存してください。">인증 정보를 삭제했습니다. 공개 플레이어 이름을 확인하고 Web Best 동기화를 켠 후 설정을 저장하세요.</sys:String>
 </ResourceDictionary>

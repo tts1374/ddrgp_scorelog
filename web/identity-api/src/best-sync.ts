@@ -539,10 +539,17 @@ export function registerBestSyncRoutes(app: Hono<BestSyncEnvironment>): void {
     const statements: D1PreparedStatement[] = [
       c.env.DB.prepare(
         `INSERT INTO best_sync_commit_guards (snapshot_id, player_id, guard)
-         VALUES (?1, ?2, CASE
-           WHEN (SELECT best_sync_revision FROM players WHERE id = ?2) = ?3 THEN 1
-           ELSE 0 END)`,
-      ).bind(snapshotId, player.id, snapshot.base_sync_revision),
+          VALUES (?1, ?2, CASE
+            WHEN (SELECT best_sync_revision FROM players WHERE id = ?2) = ?3
+             AND EXISTS (
+               SELECT 1 FROM best_sync_snapshots
+               WHERE snapshot_id = ?1
+                 AND player_id = ?2
+                 AND status = 'PENDING'
+                 AND expires_at > ?4
+             ) THEN 1
+            ELSE 0 END)`,
+      ).bind(snapshotId, player.id, snapshot.base_sync_revision, now),
     ];
     if (changed) {
       statements.push(

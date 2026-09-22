@@ -59,8 +59,11 @@ CIはmaster生成・inspection後に`master.d1_export`で`songs`、`charts`、`m
 - 初回ON、OFFからON、bulk restore、repairは現在のcapture由来集合をfull snapshotで再整合する。
 - network error、timeout、429、5xxは5秒、15秒、30秒、1分、5分を基準に±20% jitterで最大5回自動retryする。
 - 401/403は`AUTH_INVALID`へ接続し、自動retryと自動Player再登録を行わない。
+- 設定画面の同期ON/OFFと公開プレイヤー名は設定保存時に確定する。未登録時は公開プレイヤー名をregistrationへ渡し、登録済みでは`PATCH /api/v1/me`で名前だけを更新する。
+- `AUTH_INVALID`からの再登録は、確認付き操作で無効なlocal identityを破棄し、改めて同期ONを保存した場合だけ行う。
 - deltaの`UNKNOWN_CHART`は該当譜面をdeferredに保ち、他itemを同期する。ユーザー操作を要求せず、対象がそれだけなら「今すぐ同期」を無効にする。
 - 公開Best削除成功後は同期をOFFにし、同じPlayerへ再度ONにしたときfull snapshotで再公開する。
+- Windowsアプリはproduction Worker originを既定接続先とし、`DDRGP_WEB_API_ORIGIN`はHTTPSのdevelopment / staging overrideとして扱う。
 
 ## D1 Free枠の確認
 

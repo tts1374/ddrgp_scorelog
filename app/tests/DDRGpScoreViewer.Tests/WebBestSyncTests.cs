@@ -1,4 +1,6 @@
 using System.Net;
+using System.Text;
+using System.Text.Json;
 using DDRGpScoreViewer.Data;
 using DDRGpScoreViewer.Models;
 using DDRGpScoreViewer.ViewModels;
@@ -11,6 +13,20 @@ namespace DDRGpScoreViewer.Tests;
 [Collection("Localized WPF views")]
 public sealed class WebBestSyncTests
 {
+    [Fact]
+    public void ProductionApiOriginIsTheDefaultAndHttpsOverrideIsSupported()
+    {
+        Assert.Equal(
+            MainWindow.ProductionWebApiOrigin,
+            MainWindow.ResolveWebApiOrigin(null).AbsoluteUri);
+        Assert.Equal(
+            MainWindow.ProductionWebApiOrigin,
+            MainWindow.ResolveWebApiOrigin("http://insecure.example.test").AbsoluteUri);
+        Assert.Equal(
+            "https://staging.example.test/",
+            MainWindow.ResolveWebApiOrigin("https://staging.example.test").AbsoluteUri);
+    }
+
     [Fact]
     public void ProjectionPrecedenceCoversEveryClearAndFlareValue()
     {
@@ -213,6 +229,156 @@ public sealed class WebBestSyncTests
         Assert.False(coordinator.State.Enabled);
         Assert.Equal(WebBestSyncStatus.PublicBestsDeleted, coordinator.State.Status);
         Assert.Empty(coordinator.State.Entries);
+    }
+
+    [Fact]
+    public async Task SettingsToggleDoesNotPublishUntilSettingsAreApplied()
+    {
+        using var fixture = new DatabaseFixture();
+        var stateStore = new SqliteWebBestSyncStateStore(
+            Path.Combine(fixture.DirectoryPath, "settings-sync.sqlite"));
+        var api = new FakeWebBestSyncApiClient();
+        var identityStore = new MemoryWebPlayerIdentityStore();
+        identityStore.SaveRegistered("public-player", "credential-secret");
+        using var identityHttpClient = new HttpClient(new DelegateHttpMessageHandler(
+            _ => Task.FromResult(JsonResponse("Player"))))
+        {
+            BaseAddress = new Uri("https://best.example.test/"),
+        };
+        var viewModel = new MainViewModel(new ScoreViewerRepository());
+        viewModel.ConfigureWebBestSync(
+            new WebBestSyncCoordinator(
+                stateStore,
+                new WebBestProjectionRepository(),
+                api,
+                fixture.ScorePath,
+                fixture.MasterPath,
+                delay: (_, _) => Task.CompletedTask),
+            new WebPlayerIdentityService(identityHttpClient, identityStore));
+
+        viewModel.WebBestSyncEnabled = true;
+
+        Assert.False(stateStore.Load().Enabled);
+        Assert.Equal(0, api.BeginSnapshotCalls);
+
+        await viewModel.ApplyWebSettingsAsync();
+
+        Assert.True(stateStore.Load().Enabled);
+        Assert.Equal(1, api.BeginSnapshotCalls);
+    }
+
+    [Fact]
+    public async Task SettingsUsePublicPlayerNameForRegistrationAndMetadataUpdate()
+    {
+        using var fixture = new DatabaseFixture();
+        string? registrationBody = null;
+        var registrationStore = new MemoryWebPlayerIdentityStore();
+        using var registrationHttpClient = new HttpClient(new DelegateHttpMessageHandler(
+            async request =>
+            {
+                Assert.Equal(HttpMethod.Post, request.Method);
+                registrationBody = await request.Content!.ReadAsStringAsync();
+                return JsonResponse("2ten", includeCredential: true);
+            }))
+        {
+            BaseAddress = new Uri("https://best.example.test/"),
+        };
+        var registrationApi = new FakeWebBestSyncApiClient();
+        var registrationViewModel = new MainViewModel(new ScoreViewerRepository());
+        registrationViewModel.ConfigureWebBestSync(
+            new WebBestSyncCoordinator(
+                new SqliteWebBestSyncStateStore(
+                    Path.Combine(fixture.DirectoryPath, "registration-sync.sqlite")),
+                new WebBestProjectionRepository(),
+                registrationApi,
+                fixture.ScorePath,
+                fixture.MasterPath,
+                delay: (_, _) => Task.CompletedTask),
+            new WebPlayerIdentityService(registrationHttpClient, registrationStore));
+        registrationViewModel.WebPlayerDisplayName = "2ten";
+        registrationViewModel.WebBestSyncEnabled = true;
+
+        await registrationViewModel.ApplyWebSettingsAsync();
+
+        Assert.Contains("\"display_name\":\"2ten\"", registrationBody, StringComparison.Ordinal);
+        Assert.Equal(PlayerIdentityState.Registered, registrationStore.Load().State);
+        Assert.Equal(1, registrationApi.BeginSnapshotCalls);
+
+        string? updateBody = null;
+        var updateStore = new MemoryWebPlayerIdentityStore();
+        updateStore.SaveRegistered("public-player", "credential-secret");
+        using var updateHttpClient = new HttpClient(new DelegateHttpMessageHandler(
+            async request =>
+            {
+                if (request.Method == HttpMethod.Get)
+                {
+                    return JsonResponse("Existing player");
+                }
+                Assert.Equal(HttpMethod.Patch, request.Method);
+                updateBody = await request.Content!.ReadAsStringAsync();
+                return JsonResponse("Updated player");
+            }))
+        {
+            BaseAddress = new Uri("https://best.example.test/"),
+        };
+        var updateApi = new FakeWebBestSyncApiClient();
+        var updateViewModel = new MainViewModel(new ScoreViewerRepository());
+        updateViewModel.ConfigureWebBestSync(
+            new WebBestSyncCoordinator(
+                new SqliteWebBestSyncStateStore(
+                    Path.Combine(fixture.DirectoryPath, "update-sync.sqlite")),
+                new WebBestProjectionRepository(),
+                updateApi,
+                fixture.ScorePath,
+                fixture.MasterPath),
+            new WebPlayerIdentityService(updateHttpClient, updateStore));
+        await updateViewModel.RefreshWebPlayerProfileAsync();
+        Assert.Equal("Existing player", updateViewModel.WebPlayerDisplayName);
+        updateViewModel.WebPlayerDisplayName = "Updated player";
+
+        await updateViewModel.ApplyWebSettingsAsync();
+
+        Assert.Contains(
+            "\"display_name\":\"Updated player\"",
+            updateBody,
+            StringComparison.Ordinal);
+        Assert.Equal(0, updateApi.BeginSnapshotCalls);
+        Assert.Equal("Updated player", updateViewModel.WebPlayerDisplayName);
+    }
+
+    [Fact]
+    public async Task InvalidIdentityRecoveryRequiresExplicitForgetAndTurnsSyncOff()
+    {
+        using var fixture = new DatabaseFixture();
+        var stateStore = new SqliteWebBestSyncStateStore(
+            Path.Combine(fixture.DirectoryPath, "invalid-identity-sync.sqlite"));
+        stateStore.SetEnabled(true);
+        var identityStore = new MemoryWebPlayerIdentityStore();
+        identityStore.SaveRegistered("public-player", "credential-secret");
+        identityStore.SetAuthenticationInvalid(true);
+        using var identityHttpClient = new HttpClient(new DelegateHttpMessageHandler(
+            _ => throw new InvalidOperationException("Recovery must not call the API.")))
+        {
+            BaseAddress = new Uri("https://best.example.test/"),
+        };
+        var api = new FakeWebBestSyncApiClient();
+        var viewModel = new MainViewModel(new ScoreViewerRepository());
+        viewModel.ConfigureWebBestSync(
+            new WebBestSyncCoordinator(
+                stateStore,
+                new WebBestProjectionRepository(),
+                api,
+                fixture.ScorePath,
+                fixture.MasterPath),
+            new WebPlayerIdentityService(identityHttpClient, identityStore));
+
+        await viewModel.ForgetInvalidWebIdentityAsync();
+
+        Assert.Equal(PlayerIdentityState.Unregistered, identityStore.Load().State);
+        Assert.False(stateStore.Load().Enabled);
+        Assert.False(viewModel.WebBestSyncEnabled);
+        Assert.Equal("Player", viewModel.WebPlayerDisplayName);
+        Assert.Equal(0, api.BeginSnapshotCalls);
     }
 
     [Fact]
@@ -613,6 +779,28 @@ public sealed class WebBestSyncTests
         protected override Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request,
             CancellationToken cancellationToken) => handler(request);
+    }
+
+    private static HttpResponseMessage JsonResponse(
+        string displayName,
+        bool includeCredential = false)
+    {
+        var response = new Dictionary<string, object>
+        {
+            ["public_player_id"] = "public-player",
+            ["display_name"] = displayName,
+            ["created_at"] = "2026-09-20T00:00:00Z",
+            ["updated_at"] = "2026-09-20T00:00:00Z",
+        };
+        if (includeCredential)
+        {
+            response["credential"] = "credential-secret";
+        }
+        var payload = JsonSerializer.Serialize(response);
+        return new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(payload, Encoding.UTF8, "application/json"),
+        };
     }
 
     private sealed class MemoryWebPlayerIdentityStore : IWebPlayerIdentityStore

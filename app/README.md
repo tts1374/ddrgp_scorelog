@@ -40,11 +40,11 @@ Player registration / identityは`WebPlayerIdentityService`を通じてWeb Best�
 
 ## Web Best同期
 
-設定画面の`Web Best同期`を明示的にONにすると、`source_captures.source_kind = 'capture'`の正式保存playだけから現在の譜面別Bestを再計算し、Webへ一方向同期します。初回ON、OFFからの再開、backup restore後はfull snapshot、通常のcapture保存後はProjection hashが変わった譜面だけを最大50件のbatchで同期します。OFF中もローカル保存、Player identity、Credential、公開済みBestを維持します。
+設定画面で公開プレイヤー名と`Web Best同期`を編集し、設定を保存すると変更を反映します。未登録で同期をONにした場合は入力した公開プレイヤー名でPlayerを登録し、登録済みの場合は`PATCH /api/v1/me`で表示名だけを更新します。`source_captures.source_kind = 'capture'`の正式保存playだけから現在の譜面別Bestを再計算し、Webへ一方向同期します。初回ON、OFFからの再開、backup restore後はfull snapshot、通常のcapture保存後はProjection hashが変わった譜面だけを最大50件のbatchで同期します。OFF中もローカル保存、Player identity、Credential、公開済みBestを維持します。
 
-同期状態は正式個人スコアDBとは別の`data/web-sync/web-best-sync.sqlite`へ保存します。正式個人スコアDBはread-onlyでProjectionを計算し、同期状態やWeb errorを書き込みません。`AUTH_INVALID`では新しいPlayerを自動作成せず、`UNKNOWN_CHART`は対象譜面だけを保留します。`公開Bestを削除`はWeb上のBestだけを消して同期をOFFにし、Player情報、公開URL、Credential、ローカルscoreを残します。
+同期状態は正式個人スコアDBとは別の`data/web-sync/web-best-sync.sqlite`へ保存します。正式個人スコアDBはread-onlyでProjectionを計算し、同期状態やWeb errorを書き込みません。`AUTH_INVALID`では新しいPlayerを自動作成しません。確認付きの`認証情報を再設定`で無効なlocal identityを破棄したあと、同期をONにして設定を保存した場合だけ新しいPlayerを登録します。`UNKNOWN_CHART`は対象譜面だけを保留します。`公開Bestを削除`はWeb上のBestだけを消して同期をOFFにし、Player情報、公開URL、Credential、ローカルscoreを残します。
 
-API接続先はHTTPSの`DDRGP_WEB_API_ORIGIN`環境変数で構成します。未構成時はWeb Best操作を無効にし、既存のローカル機能へ影響しません。詳細契約は[`docs/design/12_web_best_sync.md`](../docs/design/12_web_best_sync.md)を参照してください。
+通常配布では`https://ddrgp-scorelog-identity-api.tts1374.workers.dev/`をAPI接続先として使用します。HTTPSの`DDRGP_WEB_API_ORIGIN`環境変数はdevelopment / staging接続先のoverrideに使用できます。詳細契約は[`docs/design/12_web_best_sync.md`](../docs/design/12_web_best_sync.md)を参照してください。
 
 ## Debug buildの開発者向け操作
 

@@ -2174,12 +2174,28 @@
                                         </StackPanel>
                                         <CheckBox x:Name="WebBestSyncToggle" Grid.Column="1"
                                                   Content="ON" TabIndex="103"
-                                                  IsChecked="{Binding WebBestSyncEnabled, Mode=OneWay}"
+                                                  IsChecked="{Binding WebBestSyncEnabled, Mode=TwoWay}"
                                                   IsEnabled="{Binding IsWebBestSyncAvailable}"
-                                                  Click="WebBestSyncToggle_Click"
                                                   VerticalAlignment="Center" />
                                     </Grid>
                                     <Separator Margin="0,12" />
+                                    <Grid Margin="0,0,0,10">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="220" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel>
+                                            <TextBlock Text="公開プレイヤー名" FontSize="12" />
+                                            <TextBlock Text="WebのPlayer Dataに表示されます"
+                                                       Foreground="{DynamicResource TextMutedBrush}"
+                                                       FontSize="11" Margin="0,2,0,0" />
+                                        </StackPanel>
+                                        <TextBox x:Name="WebPlayerDisplayNameTextBox" Grid.Column="1"
+                                                 Text="{Binding WebPlayerDisplayName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                 MaxLength="64" MinWidth="220" Padding="8,5"
+                                                 IsEnabled="{Binding IsWebBestSyncAvailable}"
+                                                 VerticalAlignment="Center" />
+                                    </Grid>
                                     <Grid>
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="220" />
@@ -2211,7 +2227,7 @@
                                                 Style="{StaticResource PrimaryButtonStyle}"
                                                 IsEnabled="{Binding CanSyncWebBestsNow}"
                                                 Click="SyncWebBestsNow_Click" />
-                                        <Button Content="認証情報を確認" TabIndex="105" Margin="8,0,0,0"
+                                        <Button Content="認証情報を再設定" TabIndex="105" Margin="8,0,0,0"
                                                 Style="{StaticResource SecondaryButtonStyle}"
                                                 Visibility="{Binding WebBestAuthActionVisibility}"
                                                 Click="CheckWebBestIdentity_Click" />

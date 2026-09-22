@@ -30,6 +30,8 @@ namespace DDRGpScoreViewer;
 public partial class MainWindow : System.Windows.Window
 {
     private const double HomeSingleColumnThreshold = 1100;
+    internal const string ProductionWebApiOrigin =
+        "https://ddrgp-scorelog-identity-api.tts1374.workers.dev/";
     private readonly MainViewModel viewModel;
     private readonly AsyncOperationGate monitoringStartGate = new();
     private readonly BestChartPageRequestGate bestChartPageRequestGate = new();
@@ -49,7 +51,7 @@ public partial class MainWindow : System.Windows.Window
     private Action? applicationUpdateForceExitHandler;
     private Func<Task<bool>>? languageChangeRestartHandler;
     private bool languageChangeRestartRequested;
-    private readonly HttpClient? webApiHttpClient;
+    private readonly HttpClient webApiHttpClient;
 
     public MainWindow()
         : this(ViewerDatabasePaths.ResolveDefault())
@@ -61,30 +63,25 @@ public partial class MainWindow : System.Windows.Window
         InitializeComponent();
         ThemeManager.ThemeChanged += ThemeManager_ThemeChanged;
         homePeriodRefreshTimer.Tick += HomePeriodRefreshTimer_Tick;
-        WebBestSyncCoordinator? webBestSyncCoordinator = null;
-        WebPlayerIdentityService? webPlayerIdentityService = null;
-        var webApiOrigin = Environment.GetEnvironmentVariable("DDRGP_WEB_API_ORIGIN");
-        if (Uri.TryCreate(webApiOrigin, UriKind.Absolute, out var webApiUri) &&
-            string.Equals(webApiUri.Scheme, Uri.UriSchemeHttps, StringComparison.Ordinal))
+        var webApiUri = ResolveWebApiOrigin(
+            Environment.GetEnvironmentVariable("DDRGP_WEB_API_ORIGIN"));
+        webApiHttpClient = new HttpClient
         {
-            webApiHttpClient = new HttpClient
-            {
-                BaseAddress = webApiUri,
-                Timeout = TimeSpan.FromSeconds(30),
-            };
-            var identityStore = new FileWebPlayerIdentityStore(
-                databasePaths.WebPlayerIdentityPath,
-                databasePaths.WebPlayerCredentialPath);
-            webPlayerIdentityService = new WebPlayerIdentityService(
-                webApiHttpClient,
-                identityStore);
-            webBestSyncCoordinator = new WebBestSyncCoordinator(
-                new SqliteWebBestSyncStateStore(databasePaths.WebBestSyncStatePath),
-                new WebBestProjectionRepository(),
-                new WebBestSyncApiClient(webApiHttpClient, identityStore),
-                databasePaths.ScoreDatabasePath,
-                databasePaths.MasterDatabasePath);
-        }
+            BaseAddress = webApiUri,
+            Timeout = TimeSpan.FromSeconds(30),
+        };
+        var identityStore = new FileWebPlayerIdentityStore(
+            databasePaths.WebPlayerIdentityPath,
+            databasePaths.WebPlayerCredentialPath);
+        var webPlayerIdentityService = new WebPlayerIdentityService(
+            webApiHttpClient,
+            identityStore);
+        var webBestSyncCoordinator = new WebBestSyncCoordinator(
+            new SqliteWebBestSyncStateStore(databasePaths.WebBestSyncStatePath),
+            new WebBestProjectionRepository(),
+            new WebBestSyncApiClient(webApiHttpClient, identityStore),
+            databasePaths.ScoreDatabasePath,
+            databasePaths.MasterDatabasePath);
         viewModel = new MainViewModel(
             new ScoreViewerRepository(),
             workflowRunner: new AppOwnedPersonalScoreDbWorkflowRunner(),
@@ -105,12 +102,9 @@ public partial class MainWindow : System.Windows.Window
             applicationUpdateService: databasePaths.Environment == ViewerDatabaseEnvironment.Production
                 ? new ApplicationUpdateService()
                 : null);
-        if (webBestSyncCoordinator is not null && webPlayerIdentityService is not null)
-        {
-            viewModel.ConfigureWebBestSync(
-                webBestSyncCoordinator,
-                webPlayerIdentityService);
-        }
+        viewModel.ConfigureWebBestSync(
+            webBestSyncCoordinator,
+            webPlayerIdentityService);
         DataContext = viewModel;
         ApplyHomeResponsiveLayout(Width);
         ApplyBestResponsiveLayout(Width);
@@ -121,6 +115,15 @@ public partial class MainWindow : System.Windows.Window
         AddDeveloperActions();
 #endif
         Localization.ApplyToWindow(this);
+    }
+
+    internal static Uri ResolveWebApiOrigin(string? overrideOrigin)
+    {
+        var value = Uri.TryCreate(overrideOrigin, UriKind.Absolute, out var configured) &&
+            string.Equals(configured.Scheme, Uri.UriSchemeHttps, StringComparison.Ordinal)
+                ? configured
+                : new Uri(ProductionWebApiOrigin, UriKind.Absolute);
+        return new Uri(value.AbsoluteUri.TrimEnd('/') + "/", UriKind.Absolute);
     }
 
 #if DEBUG
@@ -408,7 +411,7 @@ public partial class MainWindow : System.Windows.Window
         RequestApplicationExit();
         monitoringStartGate.Dispose();
         applicationExitCancellation.Dispose();
-        webApiHttpClient?.Dispose();
+        webApiHttpClient.Dispose();
     }
 
     private void MainWindow_Loaded(object sender, RoutedEventArgs e)
@@ -639,7 +642,11 @@ public partial class MainWindow : System.Windows.Window
         DataManagementNavigation.Tag = null;
     }
 
-    private void ShowSettings_Click(object sender, RoutedEventArgs e) => ShowSettingsPage();
+    private async void ShowSettings_Click(object sender, RoutedEventArgs e)
+    {
+        ShowSettingsPage();
+        await viewModel.RefreshWebPlayerProfileAsync(applicationExitCancellation.Token);
+    }
 
     private void ShowSettingsPage()
     {
@@ -659,35 +666,24 @@ public partial class MainWindow : System.Windows.Window
         DataManagementNavigation.Tag = null;
     }
 
-    private async void WebBestSyncToggle_Click(object sender, RoutedEventArgs e)
-    {
-        var desired = WebBestSyncToggle.IsChecked == true;
-        WebBestSyncToggle.IsEnabled = false;
-        try
-        {
-            await viewModel.SetWebBestSyncEnabledAsync(
-                desired,
-                applicationExitCancellation.Token);
-        }
-        finally
-        {
-            WebBestSyncToggle.IsEnabled = viewModel.IsWebBestSyncAvailable;
-        }
-    }
-
     private async void SyncWebBestsNow_Click(object sender, RoutedEventArgs e)
     {
         await viewModel.SyncWebBestsNowAsync(applicationExitCancellation.Token);
     }
 
-    private void CheckWebBestIdentity_Click(object sender, RoutedEventArgs e)
+    private async void CheckWebBestIdentity_Click(object sender, RoutedEventArgs e)
     {
-        System.Windows.MessageBox.Show(
+        var confirmed = System.Windows.MessageBox.Show(
             Localization.Get(
-                "現在の認証情報をWeb側で確認できません。新しいPlayerは自動作成されません。認証情報を復旧できない場合も、ローカルの保存データはそのまま利用できます。"),
-            Localization.Get("認証情報の確認"),
-            MessageBoxButton.OK,
-            MessageBoxImage.Information);
+                "現在の認証情報をこのPCから削除します。以前のPlayerと公開URLを復旧できなくなる可能性があります。ローカルの保存データは残ります。続行後、Web Best同期をONにして設定を保存すると新しいPlayerを登録します。"),
+            Localization.Get("認証情報を再設定しますか？"),
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning,
+            MessageBoxResult.No);
+        if (confirmed == MessageBoxResult.Yes)
+        {
+            await viewModel.ForgetInvalidWebIdentityAsync(applicationExitCancellation.Token);
+        }
     }
 
     private async void DeletePublicBests_Click(object sender, RoutedEventArgs e)
@@ -742,6 +738,8 @@ public partial class MainWindow : System.Windows.Window
         {
             return;
         }
+
+        await viewModel.ApplyWebSettingsAsync(applicationExitCancellation.Token);
 
         ThemeManager.Apply(viewModel.Theme);
         if (!languageChanged ||

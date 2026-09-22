@@ -354,6 +354,35 @@ describe("Player Best sync API", () => {
     ).bind(aborted.snapshot_id).first<{ count: number }>())?.count).toBe(0);
   });
 
+  it("does not commit a snapshot concurrently superseded by a new begin", async () => {
+    const player = await register();
+    await delta(player.credential, [{ type: "upsert", item: projection("chart_1") }]);
+    const oldSnapshot = await beginSnapshot(player.credential, 0);
+
+    const [commit, replacement] = await Promise.all([
+      commitSnapshot(player.credential, oldSnapshot.snapshot_id),
+      beginSnapshot(player.credential, 0),
+    ]);
+    const commitBody = await commit.json() as {
+      sync_revision?: number;
+      error?: { code?: string };
+    };
+
+    if (replacement.base_sync_revision === oldSnapshot.base_sync_revision) {
+      expect(commit.status).toBe(409);
+      expect(commitBody.error?.code).toMatch(/SYNC_CONFLICT|SNAPSHOT_NOT_PENDING/u);
+      expect((await env.DB.prepare(
+        "SELECT status FROM best_sync_snapshots WHERE snapshot_id = ?1",
+      ).bind(oldSnapshot.snapshot_id).first<{ status: string }>())?.status).toBe("ABORTED");
+      expect((await env.DB.prepare(
+        "SELECT chart_id FROM player_chart_bests ORDER BY chart_id",
+      ).all()).results).toEqual([{ chart_id: "chart_1" }]);
+    } else {
+      expect(commit.status).toBe(200);
+      expect(replacement.base_sync_revision).toBe(commitBody.sync_revision);
+    }
+  });
+
   it("deletes only public Best and preserves Player identity and credential", async () => {
     const player = await register();
     await delta(player.credential, [{ type: "upsert", item: projection("chart_1") }]);

@@ -1100,8 +1100,15 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
                 DrainDispatcher(window.Dispatcher);
 
                 Assert.False(window.WebBestSyncToggle.IsChecked);
+                Assert.True(window.WebBestSyncToggle.IsEnabled);
                 Assert.Equal(Localization.Get("同期OFF"), window.WebBestSyncStatusText.Text);
                 Assert.False(window.SyncWebBestsNowButton.IsEnabled);
+                Assert.Equal("Player", window.WebPlayerDisplayNameTextBox.Text);
+                Assert.Equal(
+                    BindingMode.TwoWay,
+                    BindingOperations.GetBinding(
+                        window.WebBestSyncToggle,
+                        System.Windows.Controls.Primitives.ToggleButton.IsCheckedProperty)?.Mode);
             }
             finally
             {
