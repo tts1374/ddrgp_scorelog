@@ -1,5 +1,15 @@
 # GitHub Actions
 
+## `deploy-web.yml`
+
+公開Web applicationをmain merge後にproductionへ反映するworkflow。
+
+- `web/identity-api/**`またはworkflow自身がmainで更新された場合に実行する。
+- `CLOUDFLARE_ACCOUNT_ID`と`CLOUDFLARE_API_TOKEN`をproduction environment secretから使用する。
+- 型検査、Worker + local D1 test、React test、production buildを再実行する。
+- additive D1 migrationを先に適用し、旧Workerが動作可能な状態を維持したまま`ddrgp-scorelog` WorkerとStatic Assetsをdeployする。
+- 初回deploy前に、公開用Workerへ`CREDENTIAL_PEPPER`と`REGISTRATION_SECRET`をCloudflare secretとして登録する。
+
 ## `build-master-db.yml`
 
 M4マスタDBを生成する手動・定期実行workflow。

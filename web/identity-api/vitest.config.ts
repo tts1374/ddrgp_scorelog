@@ -19,6 +19,12 @@ export default defineConfig({
             path.join(directory, "migrations"),
           ),
         },
+        serviceBindings: {
+          ASSETS: () => new Response(
+            '<!doctype html><html><head><!--PLAYER_HEAD--></head><body><div id="root"></div><!--PLAYER_BOOTSTRAP--><script type="module" src="/src/client/main.tsx"></script></body></html>',
+            { headers: { "Content-Type": "text/html" } },
+          ),
+        },
       },
     })),
   ],

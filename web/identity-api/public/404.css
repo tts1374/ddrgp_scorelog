@@ -1,0 +1,39 @@
+:root {
+  color: #1f2933;
+  background: #f5f7fa;
+  font-family: Inter, "Noto Sans JP", system-ui, sans-serif;
+}
+
+body {
+  display: grid;
+  min-height: 100vh;
+  margin: 0;
+  place-items: center;
+}
+
+main {
+  width: min(100% - 32px, 560px);
+  padding: 40px;
+  border: 1px solid #dce2e8;
+  border-top: 4px solid #e43d30;
+  background: #fff;
+  box-sizing: border-box;
+}
+
+.error-code {
+  margin: 0 0 8px;
+  color: #e43d30;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: .12em;
+}
+
+h1 {
+  margin: 0 0 12px;
+  font-size: clamp(24px, 6vw, 36px);
+}
+
+p {
+  color: #59636e;
+  line-height: 1.8;
+}

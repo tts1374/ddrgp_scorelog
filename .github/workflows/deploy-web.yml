@@ -1,0 +1,54 @@
+name: Deploy Web application
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/deploy-web.yml"
+      - "web/identity-api/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-web-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Migrate and deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    env:
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/identity-api/package-lock.json
+
+      - name: Install locked dependencies
+        working-directory: web/identity-api
+        run: npm ci --legacy-peer-deps
+
+      - name: Verify Web application
+        working-directory: web/identity-api
+        run: npm run check
+
+      - name: Apply additive D1 migrations
+        working-directory: web/identity-api
+        run: npm run migrate:remote
+
+      - name: Deploy Worker and Static Assets
+        working-directory: web/identity-api
+        run: npm run deploy
