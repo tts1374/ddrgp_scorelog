@@ -55,7 +55,7 @@ Windows appは初回送信前に256 bit乱数のregistration request IDを生成
 
 ## Windows secure storageとidentity state
 
-非秘密の`public_player_id`とidentity stateは既存設定pathと同じdirectoryの`web-player-identity.json`へ保存する。未完了registration request IDは同じJSON内のDPAPI CurrentUser保護blob、Credentialは`web-player-credential.bin`へDPAPI CurrentUser保護blobとして保存する。用途ごとに異なる追加entropyを使い、復号できるのは同じWindowsユーザーcontextである。metadata JSON、正式個人スコアDB、Release logにはraw secretを保存しない。
+非秘密の`public_player_id`、`display_name`、identity stateは既存設定pathと同じdirectoryの`web-player-identity.json`へ保存する。未完了registration request IDは同じJSON内のDPAPI CurrentUser保護blob、Credentialは`web-player-credential.bin`へDPAPI CurrentUser保護blobとして保存する。用途ごとに異なる追加entropyを使い、復号できるのは同じWindowsユーザーcontextである。metadata JSON、正式個人スコアDB、Release logにはraw secretを保存しない。
 
 | state | local条件 | request失敗時の遷移 |
 | --- | --- | --- |

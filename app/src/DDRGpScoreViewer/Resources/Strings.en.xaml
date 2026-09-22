@@ -458,9 +458,8 @@
     <sys:String x:Key="Web上の公開Bestはありません。Player情報、公開URL、認証情報、ローカルの保存データは残っています。">There are no published Bests on the web. Player information, public URL, credentials, and local saved data remain.</sys:String>
     <sys:String x:Key="公開プレイヤー名">Public player name</sys:String>
     <sys:String x:Key="WebのPlayer Dataに表示されます">Shown on the web Player Data page</sys:String>
-    <sys:String x:Key="認証情報を再設定">Reset credentials</sys:String>
-    <sys:String x:Key="認証情報を再設定しますか？">Reset credentials?</sys:String>
-    <sys:String x:Key="現在の認証情報をこのPCから削除します。以前のPlayerと公開URLを復旧できなくなる可能性があります。ローカルの保存データは残ります。続行後、Web Best同期をONにして設定を保存すると新しいPlayerを登録します。">This removes the current credentials from this PC. You may be unable to recover the previous Player and public URL. Local saved data remains. After continuing, turn on Web Best sync and save settings to register a new Player.</sys:String>
+    <sys:String x:Key="認証情報を削除しますか？">Remove credentials?</sys:String>
+    <sys:String x:Key="Web同期に使う認証情報は現在利用できません。このPCの認証情報を削除すると、以前のPlayerと公開URLを復旧できなくなる可能性があります。ローカルの保存データは残ります。">The credentials used for web sync are currently unavailable. Removing them from this PC may prevent recovery of the previous Player and public URL. Local saved data remains.</sys:String>
     <sys:String x:Key="公開プレイヤー名は1文字以上64文字以下で入力してください。">Enter a public player name between 1 and 64 characters.</sys:String>
     <sys:String x:Key="Web Player情報を読み込めませんでした。ローカルの保存データは変更されていません。">Web Player information could not be loaded. Local saved data was not changed.</sys:String>
     <sys:String x:Key="Web Player情報を更新できませんでした。通信状態を確認して再度お試しください。">Web Player information could not be updated. Check the connection and try again.</sys:String>
@@ -468,5 +467,5 @@
     <sys:String x:Key="公開プレイヤー名を更新できませんでした。入力内容を確認してください。">The public player name could not be updated. Check the entered value.</sys:String>
     <sys:String x:Key="Web同期に使う認証情報を確認してください。新しいPlayerは自動作成されません。">Check the credentials used for web sync. A new Player will not be created automatically.</sys:String>
     <sys:String x:Key="認証情報を削除できませんでした。ローカルの保存データは変更されていません。">Credentials could not be removed. Local saved data was not changed.</sys:String>
-    <sys:String x:Key="認証情報を削除しました。公開プレイヤー名を確認し、Web Best同期をONにして設定を保存してください。">Credentials were removed. Check the public player name, turn on Web Best sync, and save settings.</sys:String>
+    <sys:String x:Key="認証情報を削除しました。Web Best同期はOFFです。ローカルの保存データはそのまま利用できます。">Credentials were removed. Web Best sync is off. Local saved data remains available.</sys:String>
 </ResourceDictionary>

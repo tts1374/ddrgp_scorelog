@@ -24,12 +24,14 @@ internal sealed class WebPlayerIdentitySnapshot
         PlayerIdentityState state,
         string? publicPlayerId,
         string? appCredential,
-        string? pendingRegistrationRequestId)
+        string? pendingRegistrationRequestId,
+        string? displayName = null)
     {
         State = state;
         PublicPlayerId = publicPlayerId;
         AppCredential = appCredential;
         PendingRegistrationRequestId = pendingRegistrationRequestId;
+        DisplayName = displayName;
     }
 
     public PlayerIdentityState State { get; }
@@ -39,6 +41,8 @@ internal sealed class WebPlayerIdentitySnapshot
     public string? AppCredential { get; }
 
     public string? PendingRegistrationRequestId { get; }
+
+    public string? DisplayName { get; }
 
     public override string ToString() =>
         $"State={State}; PublicPlayerId={PublicPlayerId ?? "none"}; CredentialPresent={AppCredential is not null}";

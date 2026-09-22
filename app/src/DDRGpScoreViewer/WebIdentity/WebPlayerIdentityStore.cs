@@ -12,7 +12,12 @@ internal interface IWebPlayerIdentityStore
 
     void SavePendingRegistration(string registrationRequestId);
 
-    void SaveRegistered(string publicPlayerId, string appCredential);
+    void SaveRegistered(
+        string publicPlayerId,
+        string appCredential,
+        string? displayName = null);
+
+    void SetDisplayName(string displayName);
 
     void SetAuthenticationInvalid(bool invalid);
 
@@ -130,7 +135,8 @@ internal sealed class FileWebPlayerIdentityStore : IWebPlayerIdentityStore
                     : PlayerIdentityState.Registered,
                 metadata.PublicPlayerId,
                 credential,
-                pendingRegistrationRequestId);
+                pendingRegistrationRequestId,
+                metadata.DisplayName);
         }
 
         if (metadata.PublicPlayerId is not null)
@@ -170,7 +176,10 @@ internal sealed class FileWebPlayerIdentityStore : IWebPlayerIdentityStore
         }
     }
 
-    public void SaveRegistered(string publicPlayerId, string appCredential)
+    public void SaveRegistered(
+        string publicPlayerId,
+        string appCredential,
+        string? displayName = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(publicPlayerId);
         ArgumentException.ThrowIfNullOrWhiteSpace(appCredential);
@@ -183,12 +192,25 @@ internal sealed class FileWebPlayerIdentityStore : IWebPlayerIdentityStore
             WriteMetadata(new StoredWebPlayerIdentity(
                 PublicPlayerId: publicPlayerId,
                 ProtectedPendingRegistrationRequest: null,
-                AuthenticationInvalid: false));
+                AuthenticationInvalid: false,
+                DisplayName: displayName));
         }
         finally
         {
             CryptographicOperations.ZeroMemory(protectedCredential);
         }
+    }
+
+    public void SetDisplayName(string displayName)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(displayName);
+        var current = ReadMetadata();
+        if (current.PublicPlayerId is null || !File.Exists(credentialPath))
+        {
+            throw new InvalidOperationException(
+                "A display name cannot be stored before registration.");
+        }
+        WriteMetadata(current with { DisplayName = displayName });
     }
 
     public void SetAuthenticationInvalid(bool invalid)
@@ -218,7 +240,7 @@ internal sealed class FileWebPlayerIdentityStore : IWebPlayerIdentityStore
     {
         if (!File.Exists(metadataPath))
         {
-            return new StoredWebPlayerIdentity(null, null, false);
+            return new StoredWebPlayerIdentity(null, null, false, null);
         }
         var stored = JsonSerializer.Deserialize<StoredWebPlayerIdentity>(
             File.ReadAllText(metadataPath, Encoding.UTF8),
@@ -298,5 +320,6 @@ internal sealed class FileWebPlayerIdentityStore : IWebPlayerIdentityStore
         [property: JsonPropertyName("protected_pending_registration_request")]
         string? ProtectedPendingRegistrationRequest,
         [property: JsonPropertyName("authentication_invalid")]
-        bool AuthenticationInvalid);
+        bool AuthenticationInvalid,
+        [property: JsonPropertyName("display_name")] string? DisplayName);
 }

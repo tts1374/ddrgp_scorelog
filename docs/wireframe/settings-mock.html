@@ -119,6 +119,17 @@
       font-weight: 700;
     }
 
+    .player-name-input {
+      width: min(300px, 100%);
+      min-height: 34px;
+      padding: 7px 9px;
+      border: 1px solid var(--mock-border);
+      border-radius: 6px;
+      color: var(--mock-main);
+      background: #FFF;
+      font: inherit;
+    }
+
     .sync-status {
       display: inline-flex;
       align-items: center;
@@ -477,6 +488,16 @@
             </div>
           </div>
 
+          <div class="setting-row">
+            <div>
+              <label class="setting-label" for="playerNameInput">公開プレイヤー名</label>
+              <div class="setting-description">WebのPlayer Dataに表示されます</div>
+            </div>
+            <div class="setting-control">
+              <input class="player-name-input" id="playerNameInput" type="text" value="Player" maxlength="64" aria-label="公開プレイヤー名">
+            </div>
+          </div>
+
           <div class="setting-row compact">
             <div class="setting-label">現在の同期状態</div>
             <div class="setting-value"><span class="sync-status success" id="syncStatus">同期済み</span></div>
@@ -613,11 +634,27 @@
         </div>
       </section>
     </div>
+
+    <div class="dialog-backdrop" id="identityDialog" hidden>
+      <section class="dialog" role="dialog" aria-modal="true" aria-labelledby="identityDialogTitle">
+        <div class="dialog-header">
+          <h2 id="identityDialogTitle">認証情報を削除しますか？</h2>
+        </div>
+        <div class="dialog-body">
+          Web同期に使う認証情報は現在利用できません。このPCの認証情報を削除すると、以前のPlayerと公開URLを復旧できなくなる可能性があります。ローカルの保存データは残ります。
+        </div>
+        <div class="dialog-actions">
+          <button class="btn-secondary" id="cancelIdentityButton" type="button">キャンセル</button>
+          <button class="btn-danger" id="confirmIdentityButton" type="button">認証情報を削除</button>
+        </div>
+      </section>
+    </div>
   </div>
 
   <script>
     const stateSelect = document.querySelector('#stateSelect');
     const syncToggle = document.querySelector('#syncToggle');
+    const playerNameInput = document.querySelector('#playerNameInput');
     const toggleStateText = document.querySelector('#toggleStateText');
     const syncStatus = document.querySelector('#syncStatus');
     const lastSyncedAt = document.querySelector('#lastSyncedAt');
@@ -632,6 +669,9 @@
     const deleteDialog = document.querySelector('#deleteDialog');
     const cancelDeleteButton = document.querySelector('#cancelDeleteButton');
     const confirmDeleteButton = document.querySelector('#confirmDeleteButton');
+    const identityDialog = document.querySelector('#identityDialog');
+    const cancelIdentityButton = document.querySelector('#cancelIdentityButton');
+    const confirmIdentityButton = document.querySelector('#confirmIdentityButton');
     const saveStatus = document.querySelector('#saveStatus');
     const saveSettingsButton = document.querySelector('#saveSettingsButton');
     const resetSettingsButton = document.querySelector('#resetSettingsButton');
@@ -805,6 +845,10 @@
       saveStatus.textContent = '変更内容は保存時に反映されます';
     });
 
+    playerNameInput.addEventListener('input', () => {
+      saveStatus.textContent = '変更内容は保存時に反映されます';
+    });
+
     playStyleButtons.forEach(button => {
       button.addEventListener('click', () => {
         selectPlayStyle(button.dataset.value);
@@ -842,9 +886,26 @@
     syncNowButton.addEventListener('click', () => renderState('syncing'));
 
     identityButton.addEventListener('click', () => {
-      syncDetails.open = true;
-      syncDetails.classList.add('visible');
-      syncDetailsBody.innerHTML = '既存Playerの認証情報を確認する画面へ移動する導線です。<br><code>AUTH_INVALID</code>';
+      identityDialog.hidden = false;
+      cancelIdentityButton.focus();
+    });
+
+    cancelIdentityButton.addEventListener('click', () => {
+      identityDialog.hidden = true;
+      identityButton.focus();
+    });
+
+    confirmIdentityButton.addEventListener('click', () => {
+      identityDialog.hidden = true;
+      renderState('off');
+      saveStatus.textContent = '認証情報を削除しました。Web Best同期はOFFです。ローカルの保存データはそのまま利用できます。';
+    });
+
+    identityDialog.addEventListener('click', event => {
+      if (event.target === identityDialog) {
+        identityDialog.hidden = true;
+        identityButton.focus();
+      }
     });
 
     deleteButton.addEventListener('click', () => {

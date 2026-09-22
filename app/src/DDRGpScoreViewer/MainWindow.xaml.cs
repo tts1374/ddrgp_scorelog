@@ -642,11 +642,7 @@ public partial class MainWindow : System.Windows.Window
         DataManagementNavigation.Tag = null;
     }
 
-    private async void ShowSettings_Click(object sender, RoutedEventArgs e)
-    {
-        ShowSettingsPage();
-        await viewModel.RefreshWebPlayerProfileAsync(applicationExitCancellation.Token);
-    }
+    private void ShowSettings_Click(object sender, RoutedEventArgs e) => ShowSettingsPage();
 
     private void ShowSettingsPage()
     {
@@ -675,8 +671,8 @@ public partial class MainWindow : System.Windows.Window
     {
         var confirmed = System.Windows.MessageBox.Show(
             Localization.Get(
-                "現在の認証情報をこのPCから削除します。以前のPlayerと公開URLを復旧できなくなる可能性があります。ローカルの保存データは残ります。続行後、Web Best同期をONにして設定を保存すると新しいPlayerを登録します。"),
-            Localization.Get("認証情報を再設定しますか？"),
+                "Web同期に使う認証情報は現在利用できません。このPCの認証情報を削除すると、以前のPlayerと公開URLを復旧できなくなる可能性があります。ローカルの保存データは残ります。"),
+            Localization.Get("認証情報を削除しますか？"),
             MessageBoxButton.YesNo,
             MessageBoxImage.Warning,
             MessageBoxResult.No);

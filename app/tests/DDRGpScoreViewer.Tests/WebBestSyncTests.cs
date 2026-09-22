@@ -305,15 +305,16 @@ public sealed class WebBestSyncTests
         Assert.Equal(1, registrationApi.BeginSnapshotCalls);
 
         string? updateBody = null;
+        var updateRequestCount = 0;
         var updateStore = new MemoryWebPlayerIdentityStore();
-        updateStore.SaveRegistered("public-player", "credential-secret");
+        updateStore.SaveRegistered(
+            "public-player",
+            "credential-secret",
+            "Existing player");
         using var updateHttpClient = new HttpClient(new DelegateHttpMessageHandler(
             async request =>
             {
-                if (request.Method == HttpMethod.Get)
-                {
-                    return JsonResponse("Existing player");
-                }
+                updateRequestCount += 1;
                 Assert.Equal(HttpMethod.Patch, request.Method);
                 updateBody = await request.Content!.ReadAsStringAsync();
                 return JsonResponse("Updated player");
@@ -332,8 +333,8 @@ public sealed class WebBestSyncTests
                 fixture.ScorePath,
                 fixture.MasterPath),
             new WebPlayerIdentityService(updateHttpClient, updateStore));
-        await updateViewModel.RefreshWebPlayerProfileAsync();
         Assert.Equal("Existing player", updateViewModel.WebPlayerDisplayName);
+        Assert.Equal(0, updateRequestCount);
         updateViewModel.WebPlayerDisplayName = "Updated player";
 
         await updateViewModel.ApplyWebSettingsAsync();
@@ -343,6 +344,7 @@ public sealed class WebBestSyncTests
             updateBody,
             StringComparison.Ordinal);
         Assert.Equal(0, updateApi.BeginSnapshotCalls);
+        Assert.Equal(1, updateRequestCount);
         Assert.Equal("Updated player", updateViewModel.WebPlayerDisplayName);
     }
 
@@ -807,6 +809,7 @@ public sealed class WebBestSyncTests
     {
         private string? publicPlayerId;
         private string? credential;
+        private string? displayName;
         private bool authenticationInvalid;
 
         public WebPlayerIdentitySnapshot Load() => new(
@@ -817,18 +820,25 @@ public sealed class WebBestSyncTests
                     : PlayerIdentityState.Registered,
             publicPlayerId,
             credential,
-            null);
+            null,
+            displayName);
 
         public void SavePendingRegistration(string registrationRequestId)
         {
         }
 
-        public void SaveRegistered(string savedPublicPlayerId, string appCredential)
+        public void SaveRegistered(
+            string savedPublicPlayerId,
+            string appCredential,
+            string? savedDisplayName = null)
         {
             publicPlayerId = savedPublicPlayerId;
             credential = appCredential;
+            displayName = savedDisplayName;
             authenticationInvalid = false;
         }
+
+        public void SetDisplayName(string savedDisplayName) => displayName = savedDisplayName;
 
         public void SetAuthenticationInvalid(bool invalid) => authenticationInvalid = invalid;
 
@@ -836,6 +846,7 @@ public sealed class WebBestSyncTests
         {
             publicPlayerId = null;
             credential = null;
+            displayName = null;
             authenticationInvalid = false;
         }
     }

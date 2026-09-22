@@ -21,7 +21,7 @@ public sealed class WebPlayerIdentityTests
         var credentialPath = Path.Combine(directory.Path, "web-player-credential.bin");
         var store = new FileWebPlayerIdentityStore(metadataPath, credentialPath);
 
-        store.SaveRegistered(PublicPlayerId, Credential);
+        store.SaveRegistered(PublicPlayerId, Credential, "Local player");
 
         Assert.DoesNotContain(Credential, File.ReadAllText(metadataPath));
         Assert.DoesNotContain(
@@ -31,6 +31,7 @@ public sealed class WebPlayerIdentityTests
         Assert.Equal(PlayerIdentityState.Registered, restarted.State);
         Assert.Equal(PublicPlayerId, restarted.PublicPlayerId);
         Assert.Equal(Credential, restarted.AppCredential);
+        Assert.Equal("Local player", restarted.DisplayName);
         Assert.DoesNotContain(Credential, restarted.ToString());
     }
 
@@ -75,6 +76,7 @@ public sealed class WebPlayerIdentityTests
         Assert.Equal(PlayerIdentityState.Unregistered, first.Identity.State);
         Assert.Equal(PlayerIdentityRequestStatus.Succeeded, retry.Status);
         Assert.Equal(PlayerIdentityState.Registered, retry.Identity.State);
+        Assert.Equal("Player", retry.Identity.DisplayName);
         Assert.Equal(2, requestIds.Count);
         Assert.Equal(requestIds[0], requestIds[1]);
     }
@@ -189,6 +191,7 @@ public sealed class WebPlayerIdentityTests
         Assert.Equal(PlayerIdentityRequestStatus.Succeeded, result.Status);
         Assert.Equal(PublicPlayerId, result.Player?.PublicPlayerId);
         Assert.Equal(PublicPlayerId, store.Load().PublicPlayerId);
+        Assert.Equal("Updated player", store.Load().DisplayName);
     }
 
     [Fact]
@@ -296,12 +299,13 @@ public sealed class WebPlayerIdentityTests
         private string? publicPlayerId;
         private string? appCredential;
         private string? pendingRegistrationRequestId;
+        private string? displayName;
         private bool authenticationInvalid;
 
         public static MemoryWebPlayerIdentityStore Registered()
         {
             var store = new MemoryWebPlayerIdentityStore();
-            store.SaveRegistered(PublicPlayerId, Credential);
+            store.SaveRegistered(PublicPlayerId, Credential, "Player");
             return store;
         }
 
@@ -316,19 +320,26 @@ public sealed class WebPlayerIdentityTests
                 state,
                 publicPlayerId,
                 appCredential,
-                pendingRegistrationRequestId);
+                pendingRegistrationRequestId,
+                displayName);
         }
 
         public void SavePendingRegistration(string registrationRequestId) =>
             pendingRegistrationRequestId = registrationRequestId;
 
-        public void SaveRegistered(string savedPublicPlayerId, string savedAppCredential)
+        public void SaveRegistered(
+            string savedPublicPlayerId,
+            string savedAppCredential,
+            string? savedDisplayName = null)
         {
             publicPlayerId = savedPublicPlayerId;
             appCredential = savedAppCredential;
+            displayName = savedDisplayName;
             pendingRegistrationRequestId = null;
             authenticationInvalid = false;
         }
+
+        public void SetDisplayName(string savedDisplayName) => displayName = savedDisplayName;
 
         public void SetAuthenticationInvalid(bool invalid) =>
             authenticationInvalid = invalid;
@@ -338,6 +349,7 @@ public sealed class WebPlayerIdentityTests
             publicPlayerId = null;
             appCredential = null;
             pendingRegistrationRequestId = null;
+            displayName = null;
             authenticationInvalid = false;
         }
     }
