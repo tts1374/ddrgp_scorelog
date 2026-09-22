@@ -3,6 +3,7 @@ using System.ComponentModel;
 using System.Globalization;
 using System.IO;
 using System.Runtime.CompilerServices;
+using System.Security.Cryptography;
 using System.Text.Json;
 using DDRGpScoreViewer;
 using DDRGpScoreViewer.Capture;
@@ -10,6 +11,8 @@ using DDRGpScoreViewer.Data;
 using DDRGpScoreViewer.Models;
 using DDRGpScoreViewer.Runtime;
 using DDRGpScoreViewer.Updates;
+using DDRGpScoreViewer.WebBestSync;
+using DDRGpScoreViewer.WebIdentity;
 
 namespace DDRGpScoreViewer.ViewModels;
 
@@ -44,6 +47,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private readonly SynchronizationContext? uiSynchronizationContext;
     private readonly IPersonalScoreDataBackupService personalScoreDataBackupService;
     private readonly IScreenshotImportService screenshotImportService;
+    private WebBestSyncCoordinator? webBestSyncCoordinator;
+    private WebPlayerIdentityService? webPlayerIdentityService;
+    private readonly CancellationTokenSource webBestSyncCancellation = new();
+    private Task? webBestSyncTask;
     private PlayHistoryItem? selectedPlay;
     private ChartBestItem? selectedChartBest;
     private HomePlayItem? homeLatestPlay;
@@ -191,6 +198,19 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private string screenshotImportCurrentFileName = "";
     private CancellationTokenSource? screenshotImportCancellation;
     private TaskCompletionSource? screenshotImportFinished;
+    private bool webBestSyncEnabled;
+    private bool webBestSyncEnabledDirty;
+    private string webPlayerDisplayName = "Player";
+    private string appliedWebPlayerDisplayName = "Player";
+    private bool webPlayerDisplayNameDirty;
+    private string webBestSyncStatusTitle = Localization.Get("同期OFF");
+    private string webBestSyncStatusMessage = Localization.Get(
+        "OFFにしても現在公開中のWeb Bestは残ります。");
+    private string webBestSyncLastSuccessDisplay = Localization.Get("未同期");
+    private string webBestSyncDetails = "";
+    private WebBestSyncStatus webBestSyncStatus = WebBestSyncStatus.Disabled;
+    private int webBestSyncPendingCount;
+    private int webBestSyncUnknownChartCount;
 
     public MainViewModel(
         ScoreViewerRepository repository,
@@ -232,6 +252,40 @@ public sealed class MainViewModel : INotifyPropertyChanged
         scoreDatabasePath = this.defaultDatabasePaths.ScoreDatabasePath;
         masterDatabasePath = this.defaultDatabasePaths.MasterDatabasePath;
         catalogDatabasePath = this.defaultDatabasePaths.JacketCatalogDatabasePath;
+    }
+
+    internal void ConfigureWebBestSync(
+        WebBestSyncCoordinator coordinator,
+        WebPlayerIdentityService identityService)
+    {
+        ArgumentNullException.ThrowIfNull(coordinator);
+        ArgumentNullException.ThrowIfNull(identityService);
+        if (webBestSyncCoordinator is not null)
+        {
+            throw new InvalidOperationException("Web Best sync is already configured.");
+        }
+        webBestSyncCoordinator = coordinator;
+        webPlayerIdentityService = identityService;
+        coordinator.StateChanged += ApplyWebBestSyncState;
+        ApplyWebBestSyncState(coordinator.State);
+        try
+        {
+            var displayName = identityService.LoadIdentity().DisplayName;
+            if (!string.IsNullOrWhiteSpace(displayName))
+            {
+                ApplyWebPlayerDisplayName(displayName);
+            }
+        }
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException or
+            InvalidDataException or CryptographicException or JsonException)
+        {
+            SettingsStatusMessage = Localization.Get(
+                "Web Player情報を読み込めませんでした。ローカルの保存データは変更されていません。");
+        }
+        OnPropertyChanged(nameof(IsWebBestSyncAvailable));
+        OnPropertyChanged(nameof(CanSyncWebBestsNow));
+        OnPropertyChanged(nameof(CanDeletePublicBests));
     }
 
     internal Func<TimeSpan, Func<Task>, Task> UnresolvedNotificationScheduler { get; set; } =
@@ -298,6 +352,105 @@ public sealed class MainViewModel : INotifyPropertyChanged
             Localization.Option(UserSettings.LightTheme, "ライト"),
             Localization.Option(UserSettings.DarkTheme, "ダーク"),
         ];
+
+    public bool IsWebBestSyncAvailable =>
+        webBestSyncCoordinator is not null && webPlayerIdentityService is not null;
+
+    public bool WebBestSyncEnabled
+    {
+        get => webBestSyncEnabled;
+        set
+        {
+            if (SetProperty(ref webBestSyncEnabled, value))
+            {
+                webBestSyncEnabledDirty =
+                    webBestSyncCoordinator?.State.Enabled != value;
+                SettingsStatusMessage = Localization.Get("変更内容は保存時に反映されます");
+                OnPropertyChanged(nameof(CanSyncWebBestsNow));
+            }
+        }
+    }
+
+    public string WebPlayerDisplayName
+    {
+        get => webPlayerDisplayName;
+        set
+        {
+            if (SetProperty(ref webPlayerDisplayName, value))
+            {
+                webPlayerDisplayNameDirty = !string.Equals(
+                    value,
+                    appliedWebPlayerDisplayName,
+                    StringComparison.Ordinal);
+                SettingsStatusMessage = Localization.Get("変更内容は保存時に反映されます");
+            }
+        }
+    }
+
+    public string WebBestSyncStatusTitle
+    {
+        get => webBestSyncStatusTitle;
+        private set => SetProperty(ref webBestSyncStatusTitle, value);
+    }
+
+    public string WebBestSyncStatusMessage
+    {
+        get => webBestSyncStatusMessage;
+        private set => SetProperty(ref webBestSyncStatusMessage, value);
+    }
+
+    public string WebBestSyncLastSuccessDisplay
+    {
+        get => webBestSyncLastSuccessDisplay;
+        private set => SetProperty(ref webBestSyncLastSuccessDisplay, value);
+    }
+
+    public string WebBestSyncDetails
+    {
+        get => webBestSyncDetails;
+        private set => SetProperty(ref webBestSyncDetails, value);
+    }
+
+    public bool CanSyncWebBestsNow =>
+        IsWebBestSyncAvailable &&
+        HasRegisteredWebIdentity &&
+        WebBestSyncEnabled &&
+        webBestSyncStatus is not (
+            WebBestSyncStatus.Syncing or
+            WebBestSyncStatus.Reconciling or
+            WebBestSyncStatus.AuthInvalid) &&
+        webBestSyncPendingCount > webBestSyncUnknownChartCount;
+
+    public bool CanDeletePublicBests =>
+        IsWebBestSyncAvailable &&
+        HasRegisteredWebIdentity &&
+        webBestSyncStatus is not (
+            WebBestSyncStatus.Syncing or
+            WebBestSyncStatus.Reconciling or
+            WebBestSyncStatus.PublicBestsDeleted);
+
+    public System.Windows.Visibility WebBestAuthActionVisibility =>
+        webBestSyncStatus == WebBestSyncStatus.AuthInvalid
+            ? System.Windows.Visibility.Visible
+            : System.Windows.Visibility.Collapsed;
+
+    private bool HasRegisteredWebIdentity
+    {
+        get
+        {
+            try
+            {
+                return webPlayerIdentityService?.LoadIdentity().State ==
+                    PlayerIdentityState.Registered;
+            }
+            catch (Exception exception) when (
+                exception is IOException or UnauthorizedAccessException or
+                InvalidDataException or CryptographicException or JsonException)
+            {
+                return false;
+            }
+        }
+    }
 
     public LocalizedOption? SelectedBestLevelOption
     {
@@ -1692,6 +1845,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
         try
         {
+            if (webBestSyncCoordinator?.State.Enabled == true)
+            {
+                webBestSyncCoordinator.RequireReconciliation();
+            }
             var result = personalScoreDataBackupService.RestoreBackup(
                 defaultDatabasePaths.ScoreDatabasePath,
                 backupPath);
@@ -1707,12 +1864,279 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 defaultDatabasePaths.JacketCatalogDatabasePath,
                 persist: false);
             DataManagementStatusMessage = result.Message;
+            QueueWebBestSync();
             return result;
         }
         finally
         {
             ReleasePersonalDataOperation();
         }
+    }
+
+    public async Task ApplyWebSettingsAsync(
+        CancellationToken cancellationToken = default)
+    {
+        if (webBestSyncCoordinator is null || webPlayerIdentityService is null)
+        {
+            WebBestSyncStatusTitle = Localization.Get("Web同期を利用できません");
+            WebBestSyncStatusMessage = Localization.Get("Web接続先が構成されていません。");
+            return;
+        }
+
+        var displayName = WebPlayerDisplayName.Trim();
+        if (displayName.Length is < 1 or > 64)
+        {
+            SettingsStatusMessage = Localization.Get(
+                "公開プレイヤー名は1文字以上64文字以下で入力してください。");
+            return;
+        }
+
+        var desiredEnabled = WebBestSyncEnabled;
+        if (!desiredEnabled && webBestSyncCoordinator.State.Enabled)
+        {
+            await webBestSyncCoordinator.SetEnabledAsync(false, cancellationToken);
+            webBestSyncEnabledDirty = false;
+            SetProperty(ref webBestSyncEnabled, false, nameof(WebBestSyncEnabled));
+        }
+
+        WebPlayerIdentitySnapshot identity;
+        try
+        {
+            identity = webPlayerIdentityService.LoadIdentity();
+        }
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException or
+            InvalidDataException or CryptographicException or JsonException)
+        {
+            SettingsStatusMessage = Localization.Get(
+                "Web Player情報を読み込めませんでした。ローカルの保存データは変更されていません。");
+            return;
+        }
+
+        if (identity.State == PlayerIdentityState.AuthInvalid)
+        {
+            ApplyWebAuthenticationInvalid();
+            return;
+        }
+
+        if (identity.State == PlayerIdentityState.Unregistered && desiredEnabled)
+        {
+            var registration = await webPlayerIdentityService.RegisterAsync(
+                displayName,
+                cancellationToken);
+            if (!ApplyPlayerIdentityResult(registration))
+            {
+                return;
+            }
+        }
+        else if (identity.State == PlayerIdentityState.Registered &&
+                 webPlayerDisplayNameDirty)
+        {
+            var update = await webPlayerIdentityService.UpdateDisplayNameAsync(
+                displayName,
+                cancellationToken);
+            if (!ApplyPlayerIdentityResult(update))
+            {
+                return;
+            }
+        }
+
+        if (desiredEnabled && !webBestSyncCoordinator.State.Enabled)
+        {
+            await webBestSyncCoordinator.SetEnabledAsync(true, cancellationToken);
+        }
+        webBestSyncEnabledDirty = webBestSyncCoordinator.State.Enabled != desiredEnabled;
+        if (!webBestSyncEnabledDirty)
+        {
+            SetProperty(
+                ref webBestSyncEnabled,
+                webBestSyncCoordinator.State.Enabled,
+                nameof(WebBestSyncEnabled));
+        }
+    }
+
+    public async Task ForgetInvalidWebIdentityAsync(
+        CancellationToken cancellationToken = default)
+    {
+        if (webBestSyncCoordinator is null || webPlayerIdentityService is null)
+        {
+            return;
+        }
+        var result = webPlayerIdentityService.ForgetInvalidIdentity();
+        if (result.Status != PlayerIdentityRequestStatus.Succeeded)
+        {
+            SettingsStatusMessage = Localization.Get(
+                "認証情報を削除できませんでした。ローカルの保存データは変更されていません。");
+            return;
+        }
+
+        await webBestSyncCoordinator.SetEnabledAsync(false, cancellationToken);
+        webBestSyncEnabledDirty = false;
+        SetProperty(ref webBestSyncEnabled, false, nameof(WebBestSyncEnabled));
+        ApplyWebPlayerDisplayName("Player");
+        SettingsStatusMessage = Localization.Get(
+            "認証情報を削除しました。Web Best同期はOFFです。ローカルの保存データはそのまま利用できます。");
+    }
+
+    public Task SyncWebBestsNowAsync(CancellationToken cancellationToken = default) =>
+        HasRegisteredWebIdentity
+            ? webBestSyncCoordinator?.SynchronizeAsync(cancellationToken) ?? Task.CompletedTask
+            : Task.CompletedTask;
+
+    public Task DeletePublicBestsAsync(CancellationToken cancellationToken = default) =>
+        HasRegisteredWebIdentity
+            ? webBestSyncCoordinator?.DeletePublicBestsAsync(cancellationToken) ?? Task.CompletedTask
+            : Task.CompletedTask;
+
+    public Task ResumeWebBestSyncAsync(CancellationToken cancellationToken = default)
+    {
+        if (webBestSyncCoordinator?.State.Enabled != true)
+        {
+            return Task.CompletedTask;
+        }
+        webBestSyncTask = SafeWebBestSyncAsync(cancellationToken);
+        return webBestSyncTask;
+    }
+
+    private void QueueWebBestSync()
+    {
+        if (webBestSyncCoordinator?.State.Enabled != true || applicationExitRequested)
+        {
+            return;
+        }
+        webBestSyncTask = SafeWebBestSyncAsync(webBestSyncCancellation.Token);
+    }
+
+    private async Task SafeWebBestSyncAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await webBestSyncCoordinator!.SynchronizeAsync(cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+    }
+
+    internal void ApplyWebBestSyncState(WebBestSyncSnapshot state)
+    {
+        if (uiSynchronizationContext is not null &&
+            !ReferenceEquals(SynchronizationContext.Current, uiSynchronizationContext))
+        {
+            uiSynchronizationContext.Post(_ => ApplyWebBestSyncState(state), null);
+            return;
+        }
+
+        if (!webBestSyncEnabledDirty || state.Status == WebBestSyncStatus.PublicBestsDeleted)
+        {
+            webBestSyncEnabledDirty = false;
+            SetProperty(ref webBestSyncEnabled, state.Enabled, nameof(WebBestSyncEnabled));
+        }
+        webBestSyncStatus = state.Status;
+        webBestSyncPendingCount = state.PendingCount;
+        webBestSyncUnknownChartCount = state.UnknownChartCount;
+        (WebBestSyncStatusTitle, WebBestSyncStatusMessage) = state.Status switch
+        {
+            WebBestSyncStatus.Disabled => (
+                Localization.Get("同期OFF"),
+                Localization.Get(
+                    "OFFにしても現在公開中のWeb Bestは残ります。再びONにすると現在の対象データを全件同期します。")),
+            WebBestSyncStatus.Idle => (
+                Localization.Get("同期済み"),
+                Localization.Get("Web Bestは最新です。")),
+            WebBestSyncStatus.Syncing => (
+                Localization.Get("変更分を同期中"),
+                Localization.Get(
+                    "更新された譜面をWebへ同期しています。ローカルへの保存は続きます。")),
+            WebBestSyncStatus.Reconciling => (
+                Localization.Get("自己ベストを同期中"),
+                Localization.Get(
+                    "Webへ公開する現在の自己ベストを全件同期しています。完了まで公開中の内容を維持します。")),
+            WebBestSyncStatus.ErrorRetryable => (
+                Localization.Get("同期できませんでした"),
+                Localization.Get(
+                    "ローカルの保存データには影響しません。通信状態を確認し、自動再試行をお待ちください。")),
+            WebBestSyncStatus.AuthInvalid => (
+                Localization.Get("認証情報の確認が必要です"),
+                Localization.Get("確認が完了するまでWeb同期を停止しています。")),
+            WebBestSyncStatus.PublicBestsDeleted => (
+                Localization.Get("公開Bestなし"),
+                Localization.Get(
+                    "Web上の公開Bestはありません。Player情報、公開URL、認証情報、ローカルの保存データは残っています。")),
+            _ when state.UnknownChartCount > 0 => (
+                Localization.Get("一部の譜面をあとで同期します"),
+                Localization.Get(
+                    "Web側の準備ができ次第、自動で同期されます。ユーザー操作は不要です。")),
+            _ => (
+                Localization.Get("同期待ち"),
+                Localization.Format(
+                    "自動記録で更新された{0:N0}譜面が同期を待っています。",
+                    state.PendingCount)),
+        };
+        WebBestSyncLastSuccessDisplay = state.Status == WebBestSyncStatus.PublicBestsDeleted
+            ? "—"
+            : state.LastSuccessfulSyncAt is null
+            ? Localization.Get("未同期")
+            : state.LastSuccessfulSyncAt.Value.ToLocalTime().ToString("yyyy/MM/dd HH:mm:ss");
+        WebBestSyncDetails = state.LastErrorCode is null
+            ? state.PendingCount > 0
+                ? Localization.Format("未同期: {0:N0}譜面", state.PendingCount)
+                : ""
+            : Localization.Format(
+                "{0} / 未同期: {1:N0}譜面",
+                state.LastErrorCode,
+                state.PendingCount);
+        OnPropertyChanged(nameof(CanSyncWebBestsNow));
+        OnPropertyChanged(nameof(CanDeletePublicBests));
+        OnPropertyChanged(nameof(WebBestAuthActionVisibility));
+    }
+
+    private bool ApplyPlayerIdentityResult(PlayerIdentityOperationResult result)
+    {
+        if (result.Status == PlayerIdentityRequestStatus.Succeeded && result.Player is not null)
+        {
+            ApplyWebPlayerDisplayName(result.Player.DisplayName);
+            return true;
+        }
+        if (result.Status == PlayerIdentityRequestStatus.AuthenticationInvalid)
+        {
+            ApplyWebAuthenticationInvalid();
+            return false;
+        }
+
+        SettingsStatusMessage = result.Status switch
+        {
+            PlayerIdentityRequestStatus.NetworkError or PlayerIdentityRequestStatus.ServerError =>
+                Localization.Get(
+                    "Web Player情報を更新できませんでした。通信状態を確認して再度お試しください。"),
+            PlayerIdentityRequestStatus.LocalStorageError =>
+                Localization.Get(
+                    "認証情報を保存できませんでした。ローカルの保存データは変更されていません。"),
+            _ => Localization.Get("公開プレイヤー名を更新できませんでした。入力内容を確認してください。"),
+        };
+        return false;
+    }
+
+    private void ApplyWebPlayerDisplayName(string displayName)
+    {
+        appliedWebPlayerDisplayName = displayName;
+        webPlayerDisplayNameDirty = false;
+        SetProperty(ref webPlayerDisplayName, displayName, nameof(WebPlayerDisplayName));
+    }
+
+    private void ApplyWebAuthenticationInvalid()
+    {
+        if (webBestSyncCoordinator is not null)
+        {
+            ApplyWebBestSyncState(
+                webBestSyncCoordinator.State with
+                {
+                    Status = WebBestSyncStatus.AuthInvalid,
+                    LastErrorCode = "AUTH_INVALID",
+                });
+        }
+        SettingsStatusMessage = Localization.Get(
+            "Web同期に使う認証情報を確認してください。新しいPlayerは自動作成されません。");
     }
 
     internal void RestoreUserSettings()
@@ -1856,6 +2280,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         monitoringCancellation?.Cancel();
         monitoringStartCancellation?.Cancel();
         automaticMonitoringCancellation?.Cancel();
+        webBestSyncCancellation.Cancel();
     }
 
     public async Task<ApplicationUpdateResult?> CheckForApplicationUpdateAsync(
@@ -2002,6 +2427,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 screenshotImportFinished?.Task,
                 automaticMonitoringTask,
                 monitoringStartFinished?.Task,
+                webBestSyncTask,
             }.OfType<Task>(),
         ];
 #else
@@ -2013,6 +2439,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 screenshotImportFinished?.Task,
                 automaticMonitoringTask,
                 monitoringStartFinished?.Task,
+                webBestSyncTask,
             }.OfType<Task>(),
         ];
 #endif
@@ -3309,6 +3736,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
                         data.CatalogDatabasePath,
                         persist: true);
                 }
+                QueueWebBestSync();
             }
 
             if (result.Status == "workflow_failed")
@@ -3479,6 +3907,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
                     cancellationToken,
                     "transaction後のread-only再読込で保存済みplayを確認できませんでした。");
                 return LiveCandidateProcessingResult.Completed;
+            }
+            if (result.SavedPlayIds.Count > 0)
+            {
+                QueueWebBestSync();
             }
 
             RecordLiveWorkflowResult(result);

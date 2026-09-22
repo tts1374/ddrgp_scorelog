@@ -16,6 +16,12 @@ from urllib.parse import urlencode
 
 from bs4 import BeautifulSoup, FeatureNotFound
 
+from .identity_registry import (
+    DEFAULT_REGISTRY_PATH,
+    SongIdentityRegistry,
+    stable_identity_id_v1,
+)
+
 SOURCE_URL = (
     "https://bemaniwiki.com/index.php?"
     "DanceDanceRevolution+GRAND+PRIX/%E5%85%A8%E6%9B%B2%E3%83%AA%E3%82%B9%E3%83%88"
@@ -367,8 +373,8 @@ def normalize_availability_alias_key(value: str) -> str:
 
 
 def stable_id(prefix: str, *parts: str) -> str:
-    digest = hashlib.sha1("\0".join(parts).encode("utf-8")).hexdigest()[:16]
-    return f"{prefix}_{digest}"
+    """Backward-compatible alias for the frozen V1 identity contract."""
+    return stable_identity_id_v1(prefix, *parts)
 
 
 def confirmed_challenge_supplements_json(
@@ -997,7 +1003,10 @@ def chart_values_from_row(row: list[str]) -> list[tuple[str, str, str]]:
     return values
 
 
-def parse_song_list_rows(rows: list[list[str]]) -> tuple[list[MasterSong], list[MasterChart]]:
+def parse_song_list_rows(
+    rows: list[list[str]],
+    identity_registry: SongIdentityRegistry | None = None,
+) -> tuple[list[MasterSong], list[MasterChart]]:
     songs: list[MasterSong] = []
     charts: list[MasterChart] = []
     current_version = ""
@@ -1019,7 +1028,11 @@ def parse_song_list_rows(rows: list[list[str]]) -> tuple[list[MasterSong], list[
         source_version = normalize_text(row[3])
         bpm = normalize_text(row[4])
         movie_stage = normalize_text(row[5])
-        song_id = stable_id("song", title, artist)
+        song_id = (
+            stable_identity_id_v1("song", title, artist)
+            if identity_registry is None
+            else identity_registry.resolve(title, artist)
+        )
         if song_id not in seen_song_ids:
             songs.append(
                 MasterSong(
@@ -1060,7 +1073,10 @@ def parse_song_list_rows(rows: list[list[str]]) -> tuple[list[MasterSong], list[
     return songs, charts
 
 
-def parse_song_list_html(html: str) -> tuple[list[MasterSong], list[MasterChart]]:
+def parse_song_list_html(
+    html: str,
+    identity_registry: SongIdentityRegistry | None = None,
+) -> tuple[list[MasterSong], list[MasterChart]]:
     """Parse every DDR GP song-list table in one Wiki page."""
     soup = parse_soup(html)
     songs: list[MasterSong] = []
@@ -1071,7 +1087,7 @@ def parse_song_list_html(html: str) -> tuple[list[MasterSong], list[MasterChart]
         if not is_song_list_table(rows):
             continue
         song_table_count += 1
-        table_songs, table_charts = parse_song_list_rows(rows)
+        table_songs, table_charts = parse_song_list_rows(rows, identity_registry)
         songs.extend(table_songs)
         charts.extend(table_charts)
 
@@ -1227,6 +1243,7 @@ def parse_official_music_list_html(html: str) -> tuple[OfficialSongAvailability,
 def add_official_only_songs(
     songs: tuple[MasterSong, ...],
     availability_entries: tuple[OfficialSongAvailability, ...],
+    identity_registry: SongIdentityRegistry | None = None,
 ) -> tuple[MasterSong, ...]:
     """Keep every official GP-available row even when Wiki has no song row."""
     existing_keys = {
@@ -1248,7 +1265,11 @@ def add_official_only_songs(
             continue
         result.append(
             MasterSong(
-                song_id=stable_id("song", entry.title, entry.artist),
+                song_id=(
+                    stable_identity_id_v1("song", entry.title, entry.artist)
+                    if identity_registry is None
+                    else identity_registry.resolve(entry.title, entry.artist)
+                ),
                 title=entry.title,
                 artist=entry.artist,
                 version="",
@@ -1945,6 +1966,7 @@ def parse_master_html(
     ddrworld_snapshot_path: Path | None = None,
     ddrworld_source_url: str = DDRWORLD_MUSIC_SOURCE_URL,
     ddrworld_fetched_at: str | None = None,
+    identity_registry: SongIdentityRegistry | None = None,
 ) -> MasterBuild:
     if sum(
         value is not None
@@ -1962,7 +1984,7 @@ def parse_master_html(
 
     songs_by_id: dict[str, MasterSong] = {}
     charts_by_id: dict[str, MasterChart] = {}
-    songs, charts = parse_song_list_html(html)
+    songs, charts = parse_song_list_html(html, identity_registry)
     for song in songs:
         songs_by_id.setdefault(song.song_id, song)
     for chart in charts:
@@ -1983,7 +2005,7 @@ def parse_master_html(
     )
     new_song_snapshot = None
     if new_song_html is not None:
-        new_songs, new_charts = parse_song_list_html(new_song_html)
+        new_songs, new_charts = parse_song_list_html(new_song_html, identity_registry)
         merge_song_list_data(songs_by_id, charts_by_id, new_songs, new_charts)
         new_song_snapshot = SourceSnapshot(
             source_url=new_song_source_url,
@@ -2009,7 +2031,11 @@ def parse_master_html(
             songs,
             official_entries,
         )
-        songs = add_official_only_songs(songs, official_entries)
+        songs = add_official_only_songs(
+            songs,
+            official_entries,
+            identity_registry,
+        )
     charts, confirmed_challenge_supplements = apply_confirmed_challenge_supplements(
         songs,
         tuple(charts_by_id.values()),
@@ -2559,6 +2585,15 @@ def build_parser() -> argparse.ArgumentParser:
             "all source snapshots and supplement metadata."
         ),
     )
+    parser.add_argument(
+        "--identity-registry",
+        type=Path,
+        default=DEFAULT_REGISTRY_PATH,
+        help=(
+            "Reviewed song identity registry. New presentations must be added "
+            "before a master can be published."
+        ),
+    )
     return parser
 
 
@@ -2596,6 +2631,7 @@ def main(argv: list[str] | None = None) -> int:
         official_html=official_html,
         official_source_url=args.official_source_url,
         ddrworld_source=ddrworld_source,
+        identity_registry=SongIdentityRegistry.load(args.identity_registry),
     )
     write_master_database(args.output, build, master_version=args.master_version)
     summary = summarize_build(build)

@@ -2161,6 +2161,100 @@
 
                             <Border Style="{StaticResource CardStyle}" Padding="16" Margin="0,0,0,12">
                                 <StackPanel>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel>
+                                            <TextBlock Text="Web Best同期" FontSize="14" FontWeight="SemiBold" />
+                                            <TextBlock Text="自動記録で保存した現在の自己ベストをWebへ公開します"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}"
+                                                       FontSize="12" Margin="0,3,0,0" />
+                                        </StackPanel>
+                                        <CheckBox x:Name="WebBestSyncToggle" Grid.Column="1"
+                                                  Content="ON" TabIndex="103"
+                                                  IsChecked="{Binding WebBestSyncEnabled, Mode=TwoWay}"
+                                                  IsEnabled="{Binding IsWebBestSyncAvailable}"
+                                                  VerticalAlignment="Center" />
+                                    </Grid>
+                                    <Separator Margin="0,12" />
+                                    <Grid Margin="0,0,0,10">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="220" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel>
+                                            <TextBlock Text="公開プレイヤー名" FontSize="12" />
+                                            <TextBlock Text="WebのPlayer Dataに表示されます"
+                                                       Foreground="{DynamicResource TextMutedBrush}"
+                                                       FontSize="11" Margin="0,2,0,0" />
+                                        </StackPanel>
+                                        <TextBox x:Name="WebPlayerDisplayNameTextBox" Grid.Column="1"
+                                                 Text="{Binding WebPlayerDisplayName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                 MaxLength="64" MinWidth="220" Padding="8,5"
+                                                 IsEnabled="{Binding IsWebBestSyncAvailable}"
+                                                 VerticalAlignment="Center" />
+                                    </Grid>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="220" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="現在の同期状態" FontSize="12" />
+                                        <TextBlock x:Name="WebBestSyncStatusText" Grid.Column="1"
+                                                   Text="{Binding WebBestSyncStatusTitle}"
+                                                   FontSize="12" FontWeight="SemiBold" />
+                                    </Grid>
+                                    <Grid Margin="0,8,0,0">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="220" />
+                                            <ColumnDefinition Width="*" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="最終同期" FontSize="12" />
+                                        <TextBlock Grid.Column="1" Text="{Binding WebBestSyncLastSuccessDisplay}"
+                                                   FontSize="12" />
+                                    </Grid>
+                                    <TextBlock Text="{Binding WebBestSyncStatusMessage}"
+                                               Foreground="{DynamicResource TextSecondaryBrush}"
+                                               FontSize="12" Margin="0,10,0,0" TextWrapping="Wrap" />
+                                    <TextBlock Text="{Binding WebBestSyncDetails}"
+                                               Foreground="{DynamicResource TextMutedBrush}"
+                                               FontSize="11" Margin="0,5,0,0" TextWrapping="Wrap" />
+                                    <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                                        <Button x:Name="SyncWebBestsNowButton"
+                                                Content="今すぐ同期" TabIndex="104"
+                                                Style="{StaticResource PrimaryButtonStyle}"
+                                                IsEnabled="{Binding CanSyncWebBestsNow}"
+                                                Click="SyncWebBestsNow_Click" />
+                                        <Button Content="認証情報を確認" TabIndex="105" Margin="8,0,0,0"
+                                                Style="{StaticResource SecondaryButtonStyle}"
+                                                Visibility="{Binding WebBestAuthActionVisibility}"
+                                                Click="CheckWebBestIdentity_Click" />
+                                    </StackPanel>
+                                    <Border Margin="0,12,0,0" Padding="12,9"
+                                            Background="{DynamicResource InfoBackgroundBrush}"
+                                            BorderBrush="{DynamicResource InfoBorderBrush}"
+                                            BorderThickness="1" CornerRadius="7">
+                                        <TextBlock Text="自動記録で保存したプレーだけをWeb Bestへ含めます。スクリーンショットから追加したプレーとバックアップから復元したプレーはローカルの自己ベストだけに反映されます。"
+                                                   Foreground="{DynamicResource InfoTextBrush}"
+                                                   FontSize="12" TextWrapping="Wrap" />
+                                    </Border>
+                                    <Separator Margin="0,14" />
+                                    <TextBlock Text="公開Bestの削除" FontSize="13" FontWeight="SemiBold" />
+                                    <TextBlock Text="Web上の自己ベストだけを削除します。Player情報、公開URL、認証情報、ローカルの保存データは残ります。"
+                                               Foreground="{DynamicResource TextSecondaryBrush}"
+                                               FontSize="12" Margin="0,4,0,10" TextWrapping="Wrap" />
+                                    <Button x:Name="DeletePublicBestsButton"
+                                            Content="公開Bestを削除" TabIndex="106"
+                                            HorizontalAlignment="Left"
+                                            IsEnabled="{Binding CanDeletePublicBests}"
+                                            Click="DeletePublicBests_Click" />
+                                </StackPanel>
+                            </Border>
+
+                            <Border Style="{StaticResource CardStyle}" Padding="16" Margin="0,0,0,12">
+                                <StackPanel>
                                     <TextBlock Text="表示" FontSize="14" FontWeight="SemiBold" />
                                     <TextBlock Text="自己ベストの初期表示と起動時の画面を設定します"
                                                Foreground="{DynamicResource TextSecondaryBrush}"

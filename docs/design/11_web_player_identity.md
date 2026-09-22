@@ -55,7 +55,7 @@ Windows appは初回送信前に256 bit乱数のregistration request IDを生成
 
 ## Windows secure storageとidentity state
 
-非秘密の`public_player_id`とidentity stateは既存設定pathと同じdirectoryの`web-player-identity.json`へ保存する。未完了registration request IDは同じJSON内のDPAPI CurrentUser保護blob、Credentialは`web-player-credential.bin`へDPAPI CurrentUser保護blobとして保存する。用途ごとに異なる追加entropyを使い、復号できるのは同じWindowsユーザーcontextである。metadata JSON、正式個人スコアDB、Release logにはraw secretを保存しない。
+非秘密の`public_player_id`、`display_name`、identity stateは既存設定pathと同じdirectoryの`web-player-identity.json`へ保存する。未完了registration request IDは同じJSON内のDPAPI CurrentUser保護blob、Credentialは`web-player-credential.bin`へDPAPI CurrentUser保護blobとして保存する。用途ごとに異なる追加entropyを使い、復号できるのは同じWindowsユーザーcontextである。metadata JSON、正式個人スコアDB、Release logにはraw secretを保存しない。
 
 | state | local条件 | request失敗時の遷移 |
 | --- | --- | --- |
@@ -67,6 +67,6 @@ Windows appは初回送信前に256 bit乱数のregistration request IDを生成
 
 `AUTH_INVALID`から新しいPlayerを登録する場合は、ユーザーの明示操作に対応する`ForgetInvalidIdentity`だけがlocal identityを破棄して`UNREGISTERED`へ戻す。`RegisterAsync`は`AUTH_INVALID`を直接受け付けない。local identity削除はmetadataを先に削除し、その後Credential fileを削除する。Credential file削除が中断しても、次回読込では残存blobをidentityとして扱わず`UNREGISTERED`へ回復する。
 
-## 通常機能からの分離
+## 通常機能との接続境界
 
-Phase 3Aでは`WebPlayerIdentityService`、secure store、testだけを提供し、通常UIや起動処理へregistration導線を接続しない。既存の監視、画像認識、正式保存、履歴、Personal ProgressはWeb identityを参照しない。後続Issue #204は同じservice境界を明示的に注入して利用し、独自CredentialやPlayer IDを追加しない。
+Web Best同期は同じ`WebPlayerIdentityService`境界を明示的に注入して利用し、独自CredentialやPlayer IDを追加しない。設定保存で同期ONを確定した時点に`UNREGISTERED`の場合だけ、設定画面の公開プレイヤー名で既存registrationを開始する。登録済みPlayerの公開プレイヤー名は同じ設定保存操作から`PATCH /api/v1/me`で更新する。`AUTH_INVALID`や同期失敗からregistrationを自動実行しない。既存の監視、画像認識、正式保存、履歴、Personal ProgressはWeb identityの成否に依存しない。

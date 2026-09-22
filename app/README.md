@@ -32,11 +32,19 @@ dotnet test app\tests\DDRGpScoreViewer.Tests\DDRGpScoreViewer.Tests.csproj --con
 
 Debug専用のcapture・手動保存APIに依存するテストはDebug configurationだけでコンパイル・実行し、Release configurationではRelease appに存在する通常機能と境界のテストを実行します。
 
-## Web Player identity internal service
+## Web Player identity service
 
-Phase 3AのPlayer registration / identityは通常画面へまだ露出せず、`WebPlayerIdentityService`とtestから利用できる内部serviceとして実装しています。非秘密の`public_player_id`は既存設定pathと同じdirectoryの`web-player-identity.json`へ保存し、registration request IDは同じJSON内で、App Credentialは`web-player-credential.bin`で、それぞれDPAPI CurrentUser保護します。raw secretを`user-settings.json`、正式個人スコアDB、Release logへ保存しません。
+Player registration / identityは`WebPlayerIdentityService`を通じてWeb Best同期から利用します。非秘密の`public_player_id`は既存設定pathと同じdirectoryの`web-player-identity.json`へ保存し、registration request IDは同じJSON内で、App Credentialは`web-player-credential.bin`で、それぞれDPAPI CurrentUser保護します。raw secretを`user-settings.json`、正式個人スコアDB、Release logへ保存しません。
 
 認証済みoperationは401/403だけを`AUTH_INVALID`として記録し、Network Error、timeout、5xxではCredentialと`public_player_id`を維持します。認証失敗から自動registrationは行わず、明示的な`ForgetInvalidIdentity`操作後だけ新規registrationを許可します。Player削除のserver成功後は、途中失敗しても`UNREGISTERED`として回復できる順序でlocal identityを削除します。詳細契約とCloudflare APIの実行方法は[`docs/design/11_web_player_identity.md`](../docs/design/11_web_player_identity.md)と[`web/identity-api/README.md`](../web/identity-api/README.md)を参照してください。
+
+## Web Best同期
+
+設定画面で公開プレイヤー名と`Web Best同期`を編集し、設定を保存すると変更を反映します。未登録で同期をONにした場合は入力した公開プレイヤー名でPlayerを登録し、登録済みの場合は`PATCH /api/v1/me`で表示名だけを更新します。`source_captures.source_kind = 'capture'`の正式保存playだけから現在の譜面別Bestを再計算し、Webへ一方向同期します。初回ON、OFFからの再開、backup restore後はfull snapshot、通常のcapture保存後はProjection hashが変わった譜面だけを最大50件のbatchで同期します。OFF中もローカル保存、Player identity、Credential、公開済みBestを維持します。
+
+同期状態は正式個人スコアDBとは別の`data/web-sync/web-best-sync.sqlite`へ保存します。公開プレイヤー名は非秘密のPlayer identity metadataとしてローカルにも保持し、同期OFF中に設定画面を開いてもWeb requestを送信しません。正式個人スコアDBはread-onlyでProjectionを計算し、同期状態やWeb errorを書き込みません。`AUTH_INVALID`では新しいPlayerを自動作成せず、`認証情報を確認`から影響を確認したうえで利用できないlocal identityを削除できます。`UNKNOWN_CHART`は対象譜面だけを保留します。`公開Bestを削除`はWeb上のBestだけを消して同期をOFFにし、Player情報、公開URL、Credential、ローカルscoreを残します。
+
+通常配布では`https://ddrgp-scorelog-identity-api.tts1374.workers.dev/`をAPI接続先として使用します。HTTPSの`DDRGP_WEB_API_ORIGIN`環境変数はdevelopment / staging接続先のoverrideに使用できます。詳細契約は[`docs/design/12_web_best_sync.md`](../docs/design/12_web_best_sync.md)を参照してください。
 
 ## Debug buildの開発者向け操作
 

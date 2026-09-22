@@ -81,7 +81,7 @@ data/master/ddrgp-master.sqlite
 
 生成DBはGit管理しない。将来の配布用DBは GitHub Releases 成果物として扱う。
 
-CI生成では `.github/workflows/build-master-db.yml` を使う。workflowは手動実行と週次定期実行を持ち、fixtureテスト、Wiki・公式収録曲一覧・DDR WORLD公式楽曲一覧の実HTMLからのSQLite生成、`python -X utf8 -m master.inspect` による必須metadataキー検査、`master_metadata` と実テーブル件数の整合検査、`source_snapshots` 件数検査、source hash / source URLの整合検査、chart ID重複・chart identity重複・外部キー違反の検査を行う。生成DB、`master-summary.json`、DDR WORLD差分reportは `ddrgp-master-<run_number>` artifactとして保存し、Git管理対象にはしない。`master-summary.json` にはテーブル件数、snapshot件数、Wiki/公式source URL、parser version、公式プレー可否の突合件数、DDR WORLD差分件数を出力する。
+CI生成では `.github/workflows/build-master-db.yml` を使う。workflowは手動実行と週次定期実行を持ち、fixture・identity registry test、Wiki・公式収録曲一覧・DDR WORLD公式楽曲一覧の実HTMLからのSQLite生成、`python -X utf8 -m master.inspect` による必須metadataキー検査、`master_metadata` と実テーブル件数の整合検査、`source_snapshots` 件数検査、source hash / source URLの整合検査、chart ID重複・chart identity重複・外部キー違反の検査を行う。生成DB、`master-summary.json`、DDR WORLD差分report、D1 shared master用の`ddrgp-web-master.sql`は `ddrgp-master-<run_number>` artifactとして保存し、Git管理対象にはしない。`master-summary.json` にはテーブル件数、snapshot件数、Wiki/公式source URL、parser version、公式プレー可否の突合件数、DDR WORLD差分件数を出力する。
 
 Releases配布は、artifactで生成結果と取得元構造変化検出を確認できる状態が安定してから追加する。
 
@@ -89,7 +89,7 @@ Releases配布は、artifactで生成結果と取得元構造変化検出を確�
 
 ### `songs`
 
-- `song_id`: HTML由来テキストから作る安定hash。
+- `song_id`: `master/song_identity_registry.json`がpresentationごとに固定した既存互換ID。未登録presentationは生成を停止する。
 - `title`
 - `artist`
 - `version`: セル結合の分類見出し。
@@ -118,7 +118,7 @@ Releases配布は、artifactで生成結果と取得元構造変化検出を確�
 
 ### `charts`
 
-- `chart_id`: `song_id + play_style + difficulty` 由来の安定hash。
+- `chart_id`: registryで固定した`song_id + play_style + difficulty`から`stable_identity_id_v1`で作る既存互換ID。
 - `song_id`
 - `play_style`: `SINGLE` または `DOUBLE`。
 - `difficulty`: `BEGINNER`、`BASIC`、`DIFFICULT`、`EXPERT`、`CHALLENGE`。
@@ -132,6 +132,8 @@ Releases配布は、artifactで生成結果と取得元構造変化検出を確�
 DDR WORLD公式で上書き・追加したchartは、`notes` に公式source URL、取得時刻、ページ位置を追記する。確認済みCHALLENGE補正で追加したchartは、`notes` に元の `分類` 列があれば保持したうえで、確認元URLと取得日を追記する。
 
 同じ曲名・同じアーティストは同じ `song_id` として扱う。同一 `chart_id` の譜面行が複数回出て、保持値が食い違う場合は、HTML構造または入力解釈の変化として生成を失敗させる。
+
+`master/song_identity_registry.json`は既存配布masterの`songs`と`song_aliases`からbootstrapしたreview済みidentity正本である。canonical表記を修正しても、登録済みpresentationが解決する既存`song_id`を維持する。新曲または新しいsource表記は自動採番せず、候補をreviewしてregistryへ追加してから生成する。registry bootstrapは既存配布masterからの初期作成・監査用で、通常build時にregistryを上書きしない。
 
 ### `master_metadata`
 

@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Net.Http;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
@@ -13,6 +14,8 @@ using DDRGpScoreViewer.Models;
 using DDRGpScoreViewer.Tray;
 using DDRGpScoreViewer.Updates;
 using DDRGpScoreViewer.ViewModels;
+using DDRGpScoreViewer.WebBestSync;
+using DDRGpScoreViewer.WebIdentity;
 using Microsoft.Win32;
 using WpfButton = System.Windows.Controls.Button;
 using WpfBrush = System.Windows.Media.Brush;
@@ -27,6 +30,8 @@ namespace DDRGpScoreViewer;
 public partial class MainWindow : System.Windows.Window
 {
     private const double HomeSingleColumnThreshold = 1100;
+    internal const string ProductionWebApiOrigin =
+        "https://ddrgp-scorelog-identity-api.tts1374.workers.dev/";
     private readonly MainViewModel viewModel;
     private readonly AsyncOperationGate monitoringStartGate = new();
     private readonly BestChartPageRequestGate bestChartPageRequestGate = new();
@@ -46,6 +51,7 @@ public partial class MainWindow : System.Windows.Window
     private Action? applicationUpdateForceExitHandler;
     private Func<Task<bool>>? languageChangeRestartHandler;
     private bool languageChangeRestartRequested;
+    private readonly HttpClient webApiHttpClient;
 
     public MainWindow()
         : this(ViewerDatabasePaths.ResolveDefault())
@@ -57,6 +63,25 @@ public partial class MainWindow : System.Windows.Window
         InitializeComponent();
         ThemeManager.ThemeChanged += ThemeManager_ThemeChanged;
         homePeriodRefreshTimer.Tick += HomePeriodRefreshTimer_Tick;
+        var webApiUri = ResolveWebApiOrigin(
+            Environment.GetEnvironmentVariable("DDRGP_WEB_API_ORIGIN"));
+        webApiHttpClient = new HttpClient
+        {
+            BaseAddress = webApiUri,
+            Timeout = TimeSpan.FromSeconds(30),
+        };
+        var identityStore = new FileWebPlayerIdentityStore(
+            databasePaths.WebPlayerIdentityPath,
+            databasePaths.WebPlayerCredentialPath);
+        var webPlayerIdentityService = new WebPlayerIdentityService(
+            webApiHttpClient,
+            identityStore);
+        var webBestSyncCoordinator = new WebBestSyncCoordinator(
+            new SqliteWebBestSyncStateStore(databasePaths.WebBestSyncStatePath),
+            new WebBestProjectionRepository(),
+            new WebBestSyncApiClient(webApiHttpClient, identityStore),
+            databasePaths.ScoreDatabasePath,
+            databasePaths.MasterDatabasePath);
         viewModel = new MainViewModel(
             new ScoreViewerRepository(),
             workflowRunner: new AppOwnedPersonalScoreDbWorkflowRunner(),
@@ -77,6 +102,9 @@ public partial class MainWindow : System.Windows.Window
             applicationUpdateService: databasePaths.Environment == ViewerDatabaseEnvironment.Production
                 ? new ApplicationUpdateService()
                 : null);
+        viewModel.ConfigureWebBestSync(
+            webBestSyncCoordinator,
+            webPlayerIdentityService);
         DataContext = viewModel;
         ApplyHomeResponsiveLayout(Width);
         ApplyBestResponsiveLayout(Width);
@@ -87,6 +115,15 @@ public partial class MainWindow : System.Windows.Window
         AddDeveloperActions();
 #endif
         Localization.ApplyToWindow(this);
+    }
+
+    internal static Uri ResolveWebApiOrigin(string? overrideOrigin)
+    {
+        var value = Uri.TryCreate(overrideOrigin, UriKind.Absolute, out var configured) &&
+            string.Equals(configured.Scheme, Uri.UriSchemeHttps, StringComparison.Ordinal)
+                ? configured
+                : new Uri(ProductionWebApiOrigin, UriKind.Absolute);
+        return new Uri(value.AbsoluteUri.TrimEnd('/') + "/", UriKind.Absolute);
     }
 
 #if DEBUG
@@ -374,6 +411,7 @@ public partial class MainWindow : System.Windows.Window
         RequestApplicationExit();
         monitoringStartGate.Dispose();
         applicationExitCancellation.Dispose();
+        webApiHttpClient.Dispose();
     }
 
     private void MainWindow_Loaded(object sender, RoutedEventArgs e)
@@ -614,7 +652,7 @@ public partial class MainWindow : System.Windows.Window
         ContentTabs.SelectedIndex = 5;
         BindingOperations.ClearBinding(PageTitle, TextBlock.TextProperty);
         PageTitle.Text = Localization.Get("設定");
-        PageSubtitle.Text = Localization.Get("自動記録と表示に関する設定を変更できます");
+        PageSubtitle.Text = Localization.Get("自動記録、Web Best同期、表示に関する設定を変更できます");
         Localization.ApplyToWindow(this);
         HomeNavigation.Tag = null;
         BestNavigation.Tag = null;
@@ -622,6 +660,42 @@ public partial class MainWindow : System.Windows.Window
         FlareSkillNavigation.Tag = null;
         SettingsNavigation.Tag = "Selected";
         DataManagementNavigation.Tag = null;
+    }
+
+    private async void SyncWebBestsNow_Click(object sender, RoutedEventArgs e)
+    {
+        await viewModel.SyncWebBestsNowAsync(applicationExitCancellation.Token);
+    }
+
+    private async void CheckWebBestIdentity_Click(object sender, RoutedEventArgs e)
+    {
+        var confirmed = System.Windows.MessageBox.Show(
+            Localization.Get(
+                "Web同期に使う認証情報は現在利用できません。このPCの認証情報を削除すると、以前のPlayerと公開URLを復旧できなくなる可能性があります。ローカルの保存データは残ります。"),
+            Localization.Get("認証情報を削除しますか？"),
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning,
+            MessageBoxResult.No);
+        if (confirmed == MessageBoxResult.Yes)
+        {
+            await viewModel.ForgetInvalidWebIdentityAsync(applicationExitCancellation.Token);
+        }
+    }
+
+    private async void DeletePublicBests_Click(object sender, RoutedEventArgs e)
+    {
+        var confirmed = System.Windows.MessageBox.Show(
+            Localization.Get(
+                "Web上に公開している自己ベストを削除します。Player情報、公開URL、認証情報、ローカルの保存データは残ります。削除後、Web Best同期はOFFになります。"),
+            Localization.Get("公開Bestを削除しますか？"),
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning,
+            MessageBoxResult.No);
+        if (confirmed != MessageBoxResult.Yes)
+        {
+            return;
+        }
+        await viewModel.DeletePublicBestsAsync(applicationExitCancellation.Token);
     }
 
     private void ShowDataManagement_Click(object sender, RoutedEventArgs e) =>
@@ -660,6 +734,8 @@ public partial class MainWindow : System.Windows.Window
         {
             return;
         }
+
+        await viewModel.ApplyWebSettingsAsync(applicationExitCancellation.Token);
 
         ThemeManager.Apply(viewModel.Theme);
         if (!languageChanged ||

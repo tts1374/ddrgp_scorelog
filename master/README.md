@@ -32,7 +32,7 @@ DDR WORLD公式楽曲一覧は、#193で固定された単一並列なし・自�
 
 M4のDDR WORLD parserは、snapshot pageの現行`table.table-ui`とlegacy`table#data_tbl`の両方を受理します。legacy形式は`td.difficult`のSP/DP 9セル、現行形式はSP/DPのdifficulty containerを必須とし、両形式とも各セルの空値・非整数・欠落・重複を譜面なしとして黙って通さず、生成を失敗させます。有効な公式levelは1〜19の1〜2桁の数字だけで、譜面なしは公式表記の`-`だけを許可します。
 
-公式のアーティスト欄が空の場合は空のまま保存します。Wiki側のアーティストや版権元名へのフォールバックは行いません。全曲リストと新曲リストの譜面行は同じ曲へ統合し、既存のWiki由来 `song_id` を可能な限り維持します。
+公式のアーティスト欄が空の場合は空のまま保存します。Wiki側のアーティストや版権元名へのフォールバックは行いません。全曲リストと新曲リストの譜面行は同じ曲へ統合し、Song Identity Registryに固定した既存`song_id`を維持します。
 
 ### 確認済みCHALLENGE欠落の局所補正
 
@@ -100,13 +100,21 @@ python -X utf8 -m master --input data\master\source.html --new-song-input data\m
 python -X utf8 -m master.inspect data\master\ddrgp-master.sqlite --summary data\master\master-summary.json --merge-report data\master\ddrworld-merge-report.json
 ```
 
+Web D1で同じsong/chart identityを参照するshared master SQLを出力:
+
+```powershell
+python -X utf8 -m master.d1_export --master-db data\master\ddrgp-master.sqlite --output data\master\ddrgp-web-master.sql
+```
+
+通常生成は`master/song_identity_registry.json`を読み、既存配布masterからfreezeしたcanonical表記とalias表記を既存`song_id`へ解決します。未登録の新曲・新表記は推測採番せず候補を表示して失敗するため、review後にregistryへ追加してください。bootstrap CLIは既存配布masterからregistryを初期作成・監査するときだけ使用します。
+
 生成DB、取得元snapshot、解析ログはGit管理しません。ローカル生成物は原則 `data/` 配下に置きます。
 
 ## GitHub Actions
 
 `.github/workflows/build-master-db.yml` で、手動実行と週次定期実行のマスタDB生成を行います。
 
-workflowでは、ネットワークに依存しないfixtureテストを通した後、Wiki、公式収録曲一覧、DDR WORLD公式楽曲一覧の実HTMLから `data/master/ddrgp-master.sqlite` を生成し、`python -X utf8 -m master.inspect` で `master_metadata` とテーブル件数の整合、source snapshot件数とhashを検査します。生成DB、`master-summary.json`、DDR WORLD譜面差分reportは `ddrgp-master-<run_number>` artifact としてアップロードし、リポジトリにはコミットしません。
+workflowでは、ネットワークに依存しないfixture・identity registry testを通した後、Wiki、公式収録曲一覧、DDR WORLD公式楽曲一覧の実HTMLから `data/master/ddrgp-master.sqlite` を生成し、`python -X utf8 -m master.inspect` で `master_metadata` とテーブル件数の整合、source snapshot件数とhashを検査します。さらに`master.d1_export`でD1 shared master用の冪等SQLを生成します。生成DB、`master-summary.json`、DDR WORLD譜面差分report、`ddrgp-web-master.sql`は `ddrgp-master-<run_number>` artifact としてアップロードし、リポジトリにはコミットしません。
 
 `master.inspect` は、必須metadataキー、`songs` / `charts` の実件数、確認済みCHALLENGE補正manifestとchartの対応、`source_snapshots` がWikiのみなら1件、公式込みなら2件、新曲リスト込みなら3件、DDR WORLD公式譜面込みなら4件であること、各source hashとsource URLがmetadataとsnapshotで一致すること、chart ID重複・曲+style+difficulty重複・外部キー違反がないこと、DDR WORLD差分reportの全行がstatus contractへ一意に分類されて件数と一致すること、最終レベルが一致すること、Stop対象statusが0件であることを検査します。`master-summary.json` にはテーブル件数、補正chart件数とhash、snapshot件数、各source hash、snapshot側のsource URL、parser version、公式プレー可否の突合件数、DDR WORLD差分件数を出力し、artifact単体でも生成元を確認できるようにします。
 
@@ -128,5 +136,5 @@ Releases配布はまだ未実装です。まずはartifactで生成結果と取�
 - GitHub Actions による手動・週次artifact生成入口は追加済みです。Releases配布は未実装です。
 - BEMANIWikiとDDR WORLD公式楽曲一覧の表構造は変わり得るため、本番取得前にfixtureと実HTMLの両方で件数・ヘッダ検出を確認します。
 - 脚注リンクは曲名本文に混ぜず、本文としてのアスタリスクは残します。
-- `song_id` と `chart_id` は現時点ではHTML由来テキストから作る安定hashです。将来、配布互換性が必要になった段階でID互換方針を別途固定します。
+- `song_id` はSong Identity Registryで既存互換IDへ固定し、`chart_id`は固定済み`song_id + play_style + difficulty`から既存`stable_identity_id_v1` contractで生成します。canonical修正ではIDを変えません。
 - 同じ曲名・同じアーティストは同じ `song_id` として扱います。同一 `chart_id` の譜面行が食い違う場合は、静かな上書きではなく生成失敗として扱います。

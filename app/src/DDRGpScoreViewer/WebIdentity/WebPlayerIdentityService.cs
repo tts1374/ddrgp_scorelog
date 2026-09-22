@@ -153,7 +153,8 @@ internal sealed class WebPlayerIdentityService
             {
                 identityStore.SaveRegistered(
                     validRegistration.PublicPlayerId,
-                    validRegistration.Credential);
+                    validRegistration.Credential,
+                    validRegistration.DisplayName);
                 var saved = identityStore.Load();
                 return new(
                     PlayerIdentityRequestStatus.Succeeded,
@@ -296,6 +297,7 @@ internal sealed class WebPlayerIdentityService
             }
             try
             {
+                identityStore.SetDisplayName(validPlayer.DisplayName);
                 identityStore.SetAuthenticationInvalid(false);
                 return new(
                     PlayerIdentityRequestStatus.Succeeded,

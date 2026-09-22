@@ -28,8 +28,8 @@ jobs:
       - name: Sync locked dependencies
         run: uv sync --frozen --extra dev
 
-      - name: Run master parser fixture tests
-        run: uv run pytest tests/test_master_builder.py
+      - name: Run master parser and identity registry tests
+        run: uv run pytest tests/test_master_builder.py tests/test_master_identity_registry.py
 
       - name: Build SQLite master database
         run: uv run python -m master --output data/master/ddrgp-master.sqlite
@@ -40,6 +40,12 @@ jobs:
           --summary data/master/master-summary.json
           --merge-report data/master/ddrworld-merge-report.json
 
+      - name: Export shared Web master for D1
+        run: >
+          uv run python -m master.d1_export
+          --master-db data/master/ddrgp-master.sqlite
+          --output data/master/ddrgp-web-master.sql
+
       - name: Upload master database artifact
         uses: actions/upload-artifact@v7
         with:
@@ -48,5 +54,6 @@ jobs:
             data/master/ddrgp-master.sqlite
             data/master/master-summary.json
             data/master/ddrworld-merge-report.json
+            data/master/ddrgp-web-master.sql
           if-no-files-found: error
           retention-days: 30
