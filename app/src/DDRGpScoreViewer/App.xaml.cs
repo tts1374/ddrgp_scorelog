@@ -154,6 +154,8 @@ public partial class App : System.Windows.Application
             $"master={mainWindow.ViewModel.MasterDatabaseStatus}; catalog={mainWindow.ViewModel.CatalogDatabaseStatus}; score_status={mainWindow.ViewModel.StatusTitle}");
         UpdateTrayState();
         mainWindow.Show();
+        _ = mainWindow.ViewModel.ResumeWebBestSyncAsync(
+            mainWindow.ApplicationExitToken);
         if (referenceDataSetManager is not null)
         {
             mainWindow.ViewModel.SetReferenceDataUpdateInProgress(true);

@@ -20,6 +20,9 @@ public sealed class ViewerDatabasePathsTests
             paths.JacketCatalogDatabasePath);
         Assert.Equal("C:\\checkout\\databases\\score.dev.db", paths.ScoreDatabasePath);
         Assert.Equal("C:\\checkout\\databases\\evaluation.db", paths.EvaluationDatabasePath);
+        Assert.Equal(
+            "C:\\checkout\\data\\web-sync\\web-best-sync.sqlite",
+            paths.WebBestSyncStatePath);
         Assert.NotEqual(paths.MasterDatabasePath, paths.JacketCatalogDatabasePath);
         Assert.NotEqual(paths.ScoreDatabasePath, paths.EvaluationDatabasePath);
     }
@@ -104,6 +107,9 @@ public sealed class ViewerDatabasePathsTests
         Assert.Equal(
             "C:\\Users\\test\\AppData\\Local\\DDRGpScoreViewer\\web-player-credential.bin",
             paths.WebPlayerCredentialPath);
+        Assert.Equal(
+            "C:\\Users\\test\\AppData\\Local\\DDRGpScoreViewer\\data\\web-sync\\web-best-sync.sqlite",
+            paths.WebBestSyncStatePath);
         Assert.Null(paths.EvaluationDatabasePath);
     }
 
@@ -118,11 +124,13 @@ public sealed class ViewerDatabasePathsTests
 
             Assert.True(Directory.Exists(Path.Combine(root, "databases")));
             Assert.True(Directory.Exists(Path.Combine(root, "data")));
+            Assert.True(Directory.Exists(Path.Combine(root, "data", "web-sync")));
             Assert.True(Directory.Exists(Path.Combine(root, "logs")));
             Assert.False(File.Exists(paths.MasterDatabasePath));
             Assert.False(File.Exists(paths.JacketCatalogDatabasePath));
             Assert.False(File.Exists(paths.ScoreDatabasePath));
             Assert.False(File.Exists(paths.EvaluationDatabasePath!));
+            Assert.False(File.Exists(paths.WebBestSyncStatePath));
         }
         finally
         {

@@ -69,6 +69,28 @@ DDR GP scorelog の設計、PoC、テストで使う主要用語を定義する�
 - `REGISTERED`: localに`public_player_id`とDPAPI CurrentUserで保護したApp Credentialがある状態。
 - `AUTH_INVALID`: local App Credentialは存在するがserverに認証を拒否された状態。Network Error、timeout、5xxをこの状態へ変換せず、新しいPlayerを自動作成しない。
 
+## Web Best同期
+
+- `PlayerChartBestProjectionV1`: capture由来playだけから譜面単位に算出する公開用の`chart_id`、score、EX SCORE、clear type、flare rankの集合。正式個人スコアDBのplayやmaster metadataそのものではない。
+- `Web Best replica`: Local正式個人スコアDBをSource of Truthとして一方向同期するD1上の公開集合。Web側でscoreを編集しない。
+- `Song Identity Registry`: 既存M4 masterのcanonical表記とsource aliasを既存`song_id`へ固定し、canonical修正や取得元表記差で永続identityが変わらないようにするreview済みregistry。
+- `stable_identity_id_v1`: UTF-8の各identity partをNULで区切り、SHA-1先頭16進16桁へ`song_`または`chart_`prefixを付ける既存master互換のID生成contract。
+- `pending upsert`: desired Projection hashがあり、synced hashと一致しないlocal同期状態。
+- `pending delete`: 過去のsynced hashがあり、現在のdesired Projectionがないlocal同期状態。
+- `UNKNOWN_CHART`: Web shared masterに`chart_id`がなく、その譜面だけをdeferredにする非fatalなitem error。ユーザー操作を要求しない。
+- `SYNC_CONFLICT`: snapshot開始後にPlayerの公開集合revisionが変わり、atomic replaceを拒否した状態。新しいsnapshotで再整合する。
+
+| Web Best sync status | 正式な意味 |
+| --- | --- |
+| `Disabled` | 同期OFF。Local保存、identity、Credential、既存公開Bestは維持し、Web requestを行わない。 |
+| `Idle` | 現在のdesired Projectionと同期済みProjectionが一致している。 |
+| `Dirty` | pending upsert/deleteまたはdeferred itemがあり、現在はrequestを実行していない。 |
+| `Syncing` | 通常差分batchを送信中。 |
+| `Reconciling` | staging snapshotで現在集合を全件再整合中。 |
+| `ErrorRetryable` | network error、timeout、429、5xxによりbackoff中またはretry後も未完了。 |
+| `AuthInvalid` | 401/403を#203の`AUTH_INVALID`へ接続し、自動retryと自動Player登録を停止した。 |
+| `PublicBestsDeleted` | 公開Best削除が成功し、同期OFFで公開集合が空になった。Player identity、Credential、Local scoreは維持する。 |
+
 ## M4 DDR WORLD譜面統合report status
 
 M4 master DBのDDR WORLD譜面統合reportでは、各行を次のいずれか1つへ分類する。

@@ -2,7 +2,7 @@
 
 現在の実装が扱うデータ領域と責務を示す概念モデルです。正確なSQLite table、column、index、metadata、migrationは、M4 master DBでは`08_master_db_generation.md`、正式個人スコアDBでは`10_personal_score_db_schema.md`を正本とします。マスタDBと個人スコアDBは分離し、PoC出力やローカル素材はGit管理しません。
 
-M10-2のruntime実装では、次の4つのSQLite責務を混在させない。M4 master DBとM5b jacket reference catalogは、同一master directoryに置く場合でも別file・別schema・別read-only検査で扱う。
+runtime実装では、次の5つのSQLite責務を混在させない。M4 master DBとM5b jacket reference catalogは、同一master directoryに置く場合でも別file・別schema・別read-only検査で扱う。
 
 | 責務 | development既定path | production既定path | runtimeの扱い |
 | --- | --- | --- | --- |
@@ -10,6 +10,7 @@ M10-2のruntime実装では、次の4つのSQLite責務を混在させない。M
 | M5b jacket reference catalog | `databases/jacket-catalog-release.sqlite` | `%LOCALAPPDATA%\DDRGpScoreViewer\data\master\jacket-catalog.sqlite` | binding済みruntime catalogをjacket feature・result-text feature・review参照に使う。M4とは別にread-only inspection |
 | 正式個人スコアDB | `databases/score.dev.db` | `%LOCALAPPDATA%\DDRGpScoreViewer\data\score\score.db` | `plays`、source、analysisの正式保存先。既存user dataを保護 |
 | 評価用DB | `databases/evaluation.db` | 既定pathなし | M10-3評価専用。WPF runtimeから参照しない |
+| Web Best同期状態DB | `data/web-sync/web-best-sync.sqlite` | `%LOCALAPPDATA%\DDRGpScoreViewer\data\web-sync\web-best-sync.sqlite` | 同期ON/OFF、Projection hash、retry・reconciliation状態。正式playを保存しない |
 
 Debugで明示またはsource checkoutを検出できる実行をdevelopment、Releaseまたはsource checkoutを検出できない実行をproductionとする。既定pathの切替で別環境のDBへfallbackせず、保存済みpathにも環境タグを付けて別環境から暗黙復元しない。
 
@@ -56,6 +57,10 @@ developmentとproductionの既定pathは冒頭の責務表を正本とする。
 - analysis result
 - source capture reference
 - app version
+
+### Web Best同期状態DB
+
+正式個人スコアDBをread-only参照して算出したcapture限定Projectionのdesired hashと、Webへ反映済みのsynced hashを保持する。pending upsert/delete、full snapshot要求、retry、deferred `UNKNOWN_CHART`をprocess再起動後に復元するためのapp-owned metadataであり、正式play、Web credential、master metadataを保持しない。個人スコアbackupの対象外で、backup restore成功後は現在の正式個人スコアDBからfull snapshotを再構築する。
 
 ### PoC出力
 

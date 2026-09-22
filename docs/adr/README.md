@@ -14,6 +14,7 @@
 | [`0004`](0004-separate-application-and-reference-data-updates.md) | Accepted | application packageとreference data setの更新分離 | storage、app package・更新 |
 | [`0005`](0005-application-owned-user-theme-and-runtime-tokens.md) | Accepted | app-owned user theme設定とXAML・コード描画のsemantic token境界 | user settings、UI resources、runtime theme適用 |
 | [`0006`](0006-stable-web-player-identity-and-app-credential-boundary.md) | Accepted | 不変Web Player identityと追加可能な認証手段、App Credential保護境界 | Web identity API、D1、Windows secure storage |
+| [`0007`](0007-local-source-of-truth-and-stable-web-best-replica.md) | Accepted | ローカル正本、一方向Web Best replica、安定master identity | Web Best同期、D1 shared master、M4 identity registry |
 
 ## Status
 

@@ -67,6 +67,6 @@ Windows appは初回送信前に256 bit乱数のregistration request IDを生成
 
 `AUTH_INVALID`から新しいPlayerを登録する場合は、ユーザーの明示操作に対応する`ForgetInvalidIdentity`だけがlocal identityを破棄して`UNREGISTERED`へ戻す。`RegisterAsync`は`AUTH_INVALID`を直接受け付けない。local identity削除はmetadataを先に削除し、その後Credential fileを削除する。Credential file削除が中断しても、次回読込では残存blobをidentityとして扱わず`UNREGISTERED`へ回復する。
 
-## 通常機能からの分離
+## 通常機能との接続境界
 
-Phase 3Aでは`WebPlayerIdentityService`、secure store、testだけを提供し、通常UIや起動処理へregistration導線を接続しない。既存の監視、画像認識、正式保存、履歴、Personal ProgressはWeb identityを参照しない。後続Issue #204は同じservice境界を明示的に注入して利用し、独自CredentialやPlayer IDを追加しない。
+Web Best同期は同じ`WebPlayerIdentityService`境界を明示的に注入して利用し、独自CredentialやPlayer IDを追加しない。同期ONの明示操作で`UNREGISTERED`の場合だけ既存registrationを開始する。`AUTH_INVALID`や同期失敗からregistrationを自動実行しない。既存の監視、画像認識、正式保存、履歴、Personal ProgressはWeb identityの成否に依存しない。

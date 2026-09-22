@@ -1068,6 +1068,49 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
         });
     }
 
+    [Fact]
+    public void Web_best_settings_start_off_and_do_not_offer_a_noop_sync()
+    {
+        using var databaseFixture = new DatabaseFixture();
+        applicationFixture.Run(() =>
+        {
+            MainWindow? window = null;
+            try
+            {
+                Localization.Configure(UserSettings.JapaneseLanguage);
+                foreach (var resourceName in new[] { "Theme.xaml", "Components.xaml", "Strings.xaml" })
+                {
+                    Application.Current.Resources.MergedDictionaries.Add(
+                        new ResourceDictionary
+                        {
+                            Source = new Uri(
+                                $"/DDRGpScoreViewer;component/Resources/{resourceName}",
+                                UriKind.Relative),
+                        });
+                }
+                window = new MainWindow(new ViewerDatabasePaths(
+                    ViewerDatabaseEnvironment.Development, databaseFixture.DirectoryPath,
+                    databaseFixture.MasterPath, databaseFixture.CatalogPath,
+                    databaseFixture.ScorePath,
+                    Path.Combine(databaseFixture.DirectoryPath, "evaluation.db"),
+                    Path.Combine(databaseFixture.DirectoryPath, "data"),
+                    Path.Combine(databaseFixture.DirectoryPath, "logs"),
+                    Path.Combine(databaseFixture.DirectoryPath, "viewer-settings.json")));
+                window.Show();
+                DrainDispatcher(window.Dispatcher);
+
+                Assert.False(window.WebBestSyncToggle.IsChecked);
+                Assert.Equal(Localization.Get("同期OFF"), window.WebBestSyncStatusText.Text);
+                Assert.False(window.SyncWebBestsNowButton.IsEnabled);
+            }
+            finally
+            {
+                window?.PrepareForApplicationExit();
+                window?.Close();
+            }
+        });
+    }
+
     private sealed record GridItem(string Display);
 }
 

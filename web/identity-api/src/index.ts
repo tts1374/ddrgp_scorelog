@@ -7,6 +7,7 @@ import {
   randomId,
   verifyCredentialSecret,
 } from "./crypto";
+import { registerBestSyncRoutes } from "./best-sync";
 
 export interface Bindings {
   DB: D1Database;
@@ -328,6 +329,8 @@ app.delete("/api/v1/me", async (c) => {
     .run();
   return c.body(null, 204);
 });
+
+registerBestSyncRoutes(app);
 
 app.notFound((c) => errorResponse(c, 404, "NOT_FOUND", "The route was not found."));
 

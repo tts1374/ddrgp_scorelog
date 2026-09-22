@@ -33,6 +33,11 @@ public sealed record ViewerDatabasePaths(
                 $"Web Player credential parent directory could not be determined: {SettingsPath}"),
         "web-player-credential.bin");
 
+    public string WebBestSyncStatePath => Path.Combine(
+        DataDirectory,
+        "web-sync",
+        "web-best-sync.sqlite");
+
     // The collector source may be an unbound pre-release catalog. The WPF
     // runtime must use the explicitly bound copy instead of accepting it as a fallback.
     private const string DevelopmentRuntimeJacketCatalogFileName =
@@ -107,6 +112,7 @@ public sealed record ViewerDatabasePaths(
         CreateParentDirectory(JacketCatalogDatabasePath);
         CreateParentDirectory(ScoreDatabasePath);
         CreateParentDirectory(SettingsPath);
+        CreateParentDirectory(WebBestSyncStatePath);
         if (EvaluationDatabasePath is not null)
         {
             CreateParentDirectory(EvaluationDatabasePath);
