@@ -44,7 +44,7 @@ Player registration / identityは`WebPlayerIdentityService`を通じてWeb Best�
 
 同期状態は正式個人スコアDBとは別の`data/web-sync/web-best-sync.sqlite`へ保存します。公開プレイヤー名は非秘密のPlayer identity metadataとしてローカルにも保持し、同期OFF中に設定画面を開いてもWeb requestを送信しません。正式個人スコアDBはread-onlyでProjectionを計算し、同期状態やWeb errorを書き込みません。`AUTH_INVALID`では新しいPlayerを自動作成せず、`認証情報を確認`から影響を確認したうえで利用できないlocal identityを削除できます。`UNKNOWN_CHART`は対象譜面だけを保留します。`公開Bestを削除`はWeb上のBestだけを消して同期をOFFにし、Player情報、公開URL、Credential、ローカルscoreを残します。
 
-通常配布では`https://ddrgp-scorelog-identity-api.tts1374.workers.dev/`をAPI接続先として使用します。HTTPSの`DDRGP_WEB_API_ORIGIN`環境変数はdevelopment / staging接続先のoverrideに使用できます。詳細契約は[`docs/design/12_web_best_sync.md`](../docs/design/12_web_best_sync.md)を参照してください。
+通常配布では`https://ddrgp-scorelog.tts1374.workers.dev/`をAPI接続先として使用し、設定画面の`公開ページを開く`も同じoriginを使用します。HTTPSの`DDRGP_WEB_API_ORIGIN`環境変数はdevelopment / staging接続先のoverrideに使用できます。詳細契約は[`docs/design/12_web_best_sync.md`](../docs/design/12_web_best_sync.md)と[`docs/design/13_web_player_data.md`](../docs/design/13_web_player_data.md)を参照してください。
 
 ## Debug buildの開発者向け操作
 

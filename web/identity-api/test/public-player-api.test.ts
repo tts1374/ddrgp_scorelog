@@ -138,6 +138,69 @@ describe("Public Player API", () => {
     expect(await invalid.json()).toMatchObject({ error: { code: "INVALID_CURSOR" } });
   });
 
+  it("pages every sort in D1 order with stable boundaries and null Best last", async () => {
+    const expected = {
+      score_desc: ["chart_d", "chart_a", "chart_c", "chart_b"],
+      score_asc: ["chart_c", "chart_a", "chart_d", "chart_b"],
+      ex_score_desc: ["chart_a", "chart_d", "chart_c", "chart_b"],
+      title_asc: ["chart_a", "chart_c", "chart_d", "chart_b"],
+      level_asc: ["chart_a", "chart_d", "chart_b", "chart_c"],
+    };
+    for (const [sort, order] of Object.entries(expected)) {
+      const seen: string[] = [];
+      let cursor: string | null = null;
+      do {
+        const suffix = cursor === null ? "" : `&cursor=${encodeURIComponent(cursor)}`;
+        const response = await get(`/api/v1/public/players/${publicPlayerId}/bests?style=SP&mode=title&sort=${sort}&limit=1${suffix}`);
+        expect(response.status).toBe(200);
+        const body = await response.json<{ items: Array<{ chart_id: string }>; next_cursor: string | null }>();
+        expect(body.items).toHaveLength(1);
+        seen.push(body.items[0]!.chart_id);
+        cursor = body.next_cursor;
+      } while (cursor !== null);
+      expect(seen).toEqual(order);
+    }
+  });
+
+  it("applies case-insensitive literal title substring search before paging", async () => {
+    await env.DB.prepare(
+      "UPDATE songs SET title = '50%_MAX' WHERE song_id = 'song_b'",
+    ).run();
+    const response = await get(`/api/v1/public/players/${publicPlayerId}/bests?style=SP&mode=title&q=${encodeURIComponent("%_max")}&limit=1`);
+    expect(response.status).toBe(200);
+    const body = await response.json<{ items: Array<{ chart_id: string }>; next_cursor: string | null }>();
+    expect(body.items.map((item) => item.chart_id)).toEqual(["chart_b"]);
+    expect(body.next_cursor).toBeNull();
+  });
+
+  it("uses chart_id to break ties across a page boundary and rejects a changed sort", async () => {
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO songs (song_id, title, artist, version) VALUES ('song_tie', 'Same title', 'Artist', 'DDR X2')"),
+      env.DB.prepare(
+        `INSERT INTO charts (chart_id, song_id, play_style, difficulty, level, is_removed) VALUES
+         ('chart_z', 'song_tie', 'SINGLE', 'EXPERT', 17, 0),
+         ('chart_y', 'song_tie', 'SINGLE', 'EXPERT', 17, 0)`,
+      ),
+      env.DB.prepare(
+        `INSERT INTO player_chart_bests
+           (player_id, chart_id, best_score, best_ex_score, best_clear_type, best_flare_rank, updated_at)
+         VALUES
+           (?1, 'chart_z', 900000, 1200, 'CLEAR', NULL, '2026-09-21T01:00:00Z'),
+           (?1, 'chart_y', 900000, 1200, 'CLEAR', NULL, '2026-09-21T01:00:00Z')`,
+      ).bind(playerId),
+    ]);
+    const base = `/api/v1/public/players/${publicPlayerId}/bests?style=SP&mode=title&q=Same&sort=score_desc&limit=1`;
+    const first = await (await get(base)).json<{ items: Array<{ chart_id: string }>; next_cursor: string }>();
+    expect(first.items.map((item) => item.chart_id)).toEqual(["chart_y"]);
+    const second = await (await get(`${base}&cursor=${encodeURIComponent(first.next_cursor)}`))
+      .json<{ items: Array<{ chart_id: string }>; next_cursor: string | null }>();
+    expect(second.items.map((item) => item.chart_id)).toEqual(["chart_z"]);
+    expect(second.next_cursor).toBeNull();
+    const changedSort = await get(`${base.replace("score_desc", "score_asc")}&cursor=${encodeURIComponent(first.next_cursor)}`);
+    expect(changedSort.status).toBe(400);
+    expect(await changedSort.json()).toMatchObject({ error: { code: "INVALID_CURSOR" } });
+  });
+
   it("calculates public Flare Skill from active Best and excludes removed charts", async () => {
     const response = await get(`/api/v1/public/players/${publicPlayerId}/flare-skill?style=SP`);
     expect(response.status).toBe(200);

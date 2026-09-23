@@ -1,7 +1,6 @@
 import {
-  useDeferredValue,
   useEffect,
-  useMemo,
+  useRef,
   useState,
 } from "react";
 import { fetchBests, fetchFlareSkill } from "./api";
@@ -238,7 +237,17 @@ export function PlayerApp({ player }: { player: PublicPlayer }) {
   const [flareResponse, setFlareResponse] = useState<PublicFlareResponse | null>(null);
   const [flareStatus, setFlareStatus] = useState<"idle" | "loading" | "error">("idle");
   const [flareRetry, setFlareRetry] = useState(0);
-  const deferredQuery = useDeferredValue(state.q);
+  const bestQueryKey = JSON.stringify([
+    state.style, state.mode, state.level, state.version, state.q, state.sort,
+  ]);
+  const bestQueryKeyRef = useRef(bestQueryKey);
+  bestQueryKeyRef.current = bestQueryKey;
+  const bestGenerationRef = useRef(0);
+  const loadMoreControllerRef = useRef<AbortController | null>(null);
+  const flareRequestKey = `${state.style}:${state.view}`;
+  const flareRequestKeyRef = useRef(flareRequestKey);
+  flareRequestKeyRef.current = flareRequestKey;
+  const flareGenerationRef = useRef(0);
 
   const setState = (patch: Partial<PageState>) => setPageState((current) => ({ ...current, ...patch }));
   useEffect(() => {
@@ -250,43 +259,73 @@ export function PlayerApp({ player }: { player: PublicPlayer }) {
     return () => window.removeEventListener("popstate", restore);
   }, [player.default_style]);
 
-  const bestRequestState = useMemo(() => ({ ...state, q: deferredQuery }), [state, deferredQuery]);
   useEffect(() => {
+    const generation = ++bestGenerationRef.current;
+    loadMoreControllerRef.current?.abort();
+    loadMoreControllerRef.current = null;
+    setLoadingMore(false);
     if (state.view !== "best") return;
     const controller = new AbortController();
     setBestStatus("loading");
     setBestResponse(null);
-    void fetchBests(player.public_player_id, bestRequestState, null, controller.signal)
-      .then((response) => { setBestResponse(response); setBestStatus("idle"); })
+    void fetchBests(player.public_player_id, state, null, controller.signal)
+      .then((response) => {
+        if (bestGenerationRef.current !== generation || bestQueryKeyRef.current !== bestQueryKey) return;
+        setBestResponse(response);
+        setBestStatus("idle");
+      })
       .catch((error: unknown) => {
-        if (!(error instanceof DOMException && error.name === "AbortError")) setBestStatus("error");
+        if (bestGenerationRef.current === generation && bestQueryKeyRef.current === bestQueryKey &&
+            !(error instanceof DOMException && error.name === "AbortError")) setBestStatus("error");
       });
-    return () => controller.abort();
-  }, [player.public_player_id, bestRequestState, bestRetry, state.view]);
+    return () => {
+      controller.abort();
+      loadMoreControllerRef.current?.abort();
+      loadMoreControllerRef.current = null;
+    };
+  }, [player.public_player_id, bestQueryKey, bestRetry, state.view]);
 
   useEffect(() => {
+    const generation = ++flareGenerationRef.current;
     if (state.view !== "flare") return;
     const controller = new AbortController();
     setFlareStatus("loading");
     setFlareResponse(null);
     void fetchFlareSkill(player.public_player_id, state.style, controller.signal)
-      .then((response) => { setFlareResponse(response); setFlareStatus("idle"); })
+      .then((response) => {
+        if (flareGenerationRef.current !== generation || flareRequestKeyRef.current !== flareRequestKey) return;
+        setFlareResponse(response);
+        setFlareStatus("idle");
+      })
       .catch((error: unknown) => {
-        if (!(error instanceof DOMException && error.name === "AbortError")) setFlareStatus("error");
+        if (flareGenerationRef.current === generation && flareRequestKeyRef.current === flareRequestKey &&
+            !(error instanceof DOMException && error.name === "AbortError")) setFlareStatus("error");
       });
     return () => controller.abort();
-  }, [player.public_player_id, state.style, state.view, flareRetry]);
+  }, [player.public_player_id, flareRequestKey, flareRetry]);
 
   const loadMore = async () => {
-    if (bestResponse?.next_cursor === null || bestResponse === null || loadingMore) return;
+    if (bestResponse?.next_cursor === null || bestResponse === null ||
+        loadMoreControllerRef.current !== null) return;
+    const cursor = bestResponse.next_cursor;
+    const generation = bestGenerationRef.current;
+    const controller = new AbortController();
+    loadMoreControllerRef.current = controller;
     setLoadingMore(true);
     try {
-      const next = await fetchBests(player.public_player_id, bestRequestState, bestResponse.next_cursor);
-      setBestResponse({ ...next, items: [...bestResponse.items, ...next.items] });
+      const next = await fetchBests(player.public_player_id, state, cursor, controller.signal);
+      if (bestGenerationRef.current !== generation || bestQueryKeyRef.current !== bestQueryKey) return;
+      setBestResponse((current) => current?.next_cursor === cursor
+        ? { ...next, items: [...current.items, ...next.items] }
+        : current);
     } catch {
-      setBestStatus("error");
+      if (!controller.signal.aborted && bestGenerationRef.current === generation &&
+          bestQueryKeyRef.current === bestQueryKey) setBestStatus("error");
     } finally {
-      setLoadingMore(false);
+      if (loadMoreControllerRef.current === controller) loadMoreControllerRef.current = null;
+      if (bestGenerationRef.current === generation && bestQueryKeyRef.current === bestQueryKey) {
+        setLoadingMore(false);
+      }
     }
   };
 

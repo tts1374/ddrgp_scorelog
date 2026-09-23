@@ -320,48 +320,8 @@ function toItem(row: BestRow): PublicChartBestItemV1 {
   };
 }
 
-function compareText(left: string, right: string): number {
-  return left < right ? -1 : left > right ? 1 : 0;
-}
-
-function compareItems(left: PublicChartBestItemV1, right: PublicChartBestItemV1, sort: BestSort): number {
-  const leftMissing = left.best === null ? 1 : 0;
-  const rightMissing = right.best === null ? 1 : 0;
-  if ((sort === "score_desc" || sort === "score_asc" || sort === "ex_score_desc") && leftMissing !== rightMissing) {
-    return leftMissing - rightMissing;
-  }
-  if (left.best !== null && right.best !== null) {
-    if (sort === "score_desc" && left.best.score !== right.best.score) return right.best.score - left.best.score;
-    if (sort === "score_asc" && left.best.score !== right.best.score) return left.best.score - right.best.score;
-    if (sort === "ex_score_desc" && left.best.ex_score !== right.best.ex_score) return right.best.ex_score - left.best.ex_score;
-  }
-  if (sort === "level_asc" && left.level !== right.level) return left.level - right.level;
-  return compareText(left.title, right.title) ||
-    difficultyOrder[left.difficulty] - difficultyOrder[right.difficulty] ||
-    compareText(left.chart_id, right.chart_id);
-}
-
 function queryScope(query: BestQuery): string {
   return JSON.stringify([query.style, query.mode, query.level, query.version, query.q]);
-}
-
-function cursorItem(payload: CursorPayload): PublicChartBestItemV1 {
-  return {
-    chart_id: payload.chart_id,
-    title: payload.title,
-    artist: "",
-    difficulty: payload.difficulty,
-    level: payload.level,
-    version: "",
-    is_removed: false,
-    best: payload.score === null ? null : {
-      score: payload.score,
-      ex_score: payload.ex_score!,
-      rank: scoreRank(payload.score),
-      clear_type: "CLEAR",
-      flare_rank: null,
-    },
-  };
 }
 
 function encodeCursor(item: PublicChartBestItemV1, query: BestQuery): string {
@@ -404,16 +364,56 @@ export function decodeCursor(value: string, query: BestQuery): CursorPayload | n
   }
 }
 
-async function loadBestRows(db: D1Database, playerId: string, query: BestQuery): Promise<BestRow[]> {
+const difficultySql = `CASE c.difficulty
+  WHEN 'BEGINNER' THEN 0 WHEN 'BASIC' THEN 1 WHEN 'DIFFICULT' THEN 2
+  WHEN 'EXPERT' THEN 3 WHEN 'CHALLENGE' THEN 4 END`;
+const titleKeys = ["s.title", difficultySql, "c.chart_id"];
+const sortKeys: Record<BestSort, string[]> = {
+  score_desc: ["b.chart_id IS NULL", "COALESCE(-b.best_score, 0)", ...titleKeys],
+  score_asc: ["b.chart_id IS NULL", "COALESCE(b.best_score, 0)", ...titleKeys],
+  ex_score_desc: ["b.chart_id IS NULL", "COALESCE(-b.best_ex_score, 0)", ...titleKeys],
+  title_asc: titleKeys,
+  level_asc: ["c.level", ...titleKeys],
+};
+
+function cursorKeys(cursor: CursorPayload): Array<string | number> {
+  const trailing = [cursor.title, difficultyOrder[cursor.difficulty], cursor.chart_id];
+  switch (cursor.sort) {
+    case "score_desc": return [cursor.score === null ? 1 : 0, -(cursor.score ?? 0), ...trailing];
+    case "score_asc": return [cursor.score === null ? 1 : 0, cursor.score ?? 0, ...trailing];
+    case "ex_score_desc": return [cursor.score === null ? 1 : 0, -(cursor.ex_score ?? 0), ...trailing];
+    case "title_asc": return trailing;
+    case "level_asc": return [cursor.level, ...trailing];
+  }
+}
+
+async function loadBestRows(
+  db: D1Database,
+  playerId: string,
+  query: BestQuery,
+  cursor: CursorPayload | null,
+): Promise<BestRow[]> {
   let filter = "";
-  const bindings: unknown[] = [playerId, toPlayStyle(query.style)];
+  const bindings: Array<string | number> = [playerId, toPlayStyle(query.style)];
   if (query.mode === "level") {
     filter = " AND c.level = ?3";
-    bindings.push(query.level);
+    bindings.push(query.level!);
   } else if (query.mode === "version") {
     filter = " AND s.version = ?3";
-    bindings.push(query.version);
+    bindings.push(query.version!);
+  } else if (query.q.length > 0) {
+    // SQLite's built-in lower() folds ASCII; Japanese title characters remain literal.
+    filter = " AND instr(lower(s.title), lower(?3)) > 0";
+    bindings.push(query.q);
   }
+  const keys = sortKeys[query.sort];
+  if (cursor !== null) {
+    const values = cursorKeys(cursor);
+    const placeholders = values.map((_, index) => `?${bindings.length + index + 1}`);
+    filter += ` AND (${keys.join(", ")}) > (${placeholders.join(", ")})`;
+    bindings.push(...values);
+  }
+  bindings.push(query.limit + 1);
   const result = await db.prepare(
     `SELECT c.chart_id, s.title, s.artist, c.difficulty, c.level, s.version, c.is_removed,
             b.best_score, b.best_ex_score, b.best_clear_type, b.best_flare_rank
@@ -422,12 +422,11 @@ async function loadBestRows(db: D1Database, playerId: string, query: BestQuery):
      LEFT JOIN player_chart_bests b
        ON b.chart_id = c.chart_id AND b.player_id = ?1
      WHERE c.play_style = ?2
-       AND (c.is_removed = 0 OR b.chart_id IS NOT NULL)${filter}`,
+       AND (c.is_removed = 0 OR b.chart_id IS NOT NULL)${filter}
+     ORDER BY ${keys.join(", ")}
+     LIMIT ?${bindings.length}`,
   ).bind(...bindings).all<BestRow>();
-  const normalizedQuery = query.q.toLocaleLowerCase("ja-JP");
-  return query.mode === "title" && normalizedQuery.length > 0
-    ? result.results.filter((row) => row.title.toLocaleLowerCase("ja-JP").includes(normalizedQuery))
-    : result.results;
+  return result.results;
 }
 
 async function loadSummary(db: D1Database, playerId: string, query: BestQuery) {
@@ -470,16 +469,11 @@ export function registerPublicPlayerRoutes(app: Hono<AppEnvironment>): void {
       return errorResponse(c, 400, "INVALID_CURSOR", "The cursor is invalid.");
     }
     const [rows, summary] = await Promise.all([
-      loadBestRows(c.env.DB, player.id, query),
+      loadBestRows(c.env.DB, player.id, query, cursor),
       loadSummary(c.env.DB, player.id, query),
     ]);
-    const ordered = rows.map(toItem).sort((left, right) => compareItems(left, right, query.sort));
-    const start = cursor === null
-      ? 0
-      : ordered.findIndex((item) => compareItems(item, cursorItem(cursor), query.sort) > 0);
-    const remaining = start < 0 ? [] : ordered.slice(start);
-    const items = remaining.slice(0, query.limit);
-    const hasMore = remaining.length > query.limit;
+    const items = rows.slice(0, query.limit).map(toItem);
+    const hasMore = rows.length > query.limit;
     return c.json({
       style: query.style,
       mode: query.mode,

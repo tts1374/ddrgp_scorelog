@@ -25,7 +25,7 @@ Public APIは認証不要だがsame-origin UI用とし、wildcard CORSを付与�
 
 RANKはD1へ保存せず、Desktopと同じscore境界からWorkerで導出する。SCORE、EX SCORE、CLEAR、FLAREは譜面ごとの独立Bestであり、1回のRESULTを表さない。
 
-sortは固定enumから比較規則へ対応付け、title、difficulty固定順、`chart_id`までをsecondary keyにする。score / EX SCORE sortでは`best: null`を常に末尾へ置く。cursorはversion、query scope、sort、最終rowの比較keyをbase64urlで表現し、frontendはopaque値として扱う。
+sortは固定enumからD1の`ORDER BY`とcursor条件へ対応付け、title、difficulty固定順、`chart_id`までをsecondary keyにする。D1は`limit + 1`件だけ返し、次ページ判定に使う。score / EX SCORE sortでは`best: null`を常に末尾へ置く。cursorはversion、query scope、sort、最終rowの比較keyをbase64urlで表現し、frontendはopaque値として扱う。Title部分一致はD1の`instr(lower(title), lower(q))`で評価し、ASCII英字は大小を区別せず、記号は文字どおり検索する。
 
 ## Flare Skill
 
@@ -51,4 +51,4 @@ desktopではBest table、680px以下では同じ行をcard状に再配置する
 
 ## Migrationとdeploy
 
-Public browse用migrationは既存tableへのindex追加だけとし、旧Workerへ先に適用できる。productionは`ddrgp-scorelog` Workerと既存D1を使用し、`PUBLIC_WEB_ORIGIN`は`https://ddrgp-scorelog.tts1374.workers.dev`とする。main更新時はCI成功後にD1 migration、Worker + Static Assets deployの順で行う。
+Public browse用migrationは既存tableへのindex追加だけとし、旧Workerへ先に適用できる。productionは`ddrgp-scorelog` Workerと既存D1を使用し、`PUBLIC_WEB_ORIGIN`とWindows appの既定API originは`https://ddrgp-scorelog.tts1374.workers.dev`に揃える。Windows appの公開ページ導線も同じoriginの`/player/{public_player_id}`を開く。main更新時はCI成功後にD1 migration、Worker + Static Assets deployの順で行う。

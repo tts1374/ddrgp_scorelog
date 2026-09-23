@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PlayerApp } from "../../src/client/App";
 import type { PublicPlayer } from "../../src/client/types";
@@ -76,6 +76,34 @@ describe("PlayerApp", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("公開データを読み込めませんでした");
   });
 
+  it("ignores an old load-more response after the browse condition changes", async () => {
+    let finishOldPage: ((response: Response) => void) | undefined;
+    const response = (title: string, nextCursor: string | null) => new Response(JSON.stringify({
+      style: "SP", mode: "title", summary: null, next_cursor: nextCursor,
+      items: [{
+        chart_id: title, title, artist: "Artist", difficulty: "EXPERT",
+        level: 17, version: "DDRMAX", is_removed: false, best: null,
+      }],
+    }), { status: 200 });
+    vi.stubGlobal("fetch", vi.fn((url: string) => {
+      if (url.includes("cursor=")) {
+        return new Promise<Response>((resolve) => { finishOldPage = resolve; });
+      }
+      return Promise.resolve(response(url.includes("mode=version") ? "New version" : "Old result",
+        url.includes("mode=version") ? null : "page-2"));
+    }));
+    window.history.replaceState(null, "", "/player/p_test?style=SP&view=best&mode=title");
+    render(<PlayerApp player={player} />);
+    expect(await screen.findByText("Old result")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "続きを見る" }));
+    await waitFor(() => expect(finishOldPage).toBeDefined());
+    fireEvent.click(screen.getByRole("tab", { name: "バージョンから" }));
+    expect(await screen.findByText("New version")).toBeInTheDocument();
+    await act(async () => { finishOldPage!(response("Old next page", null)); });
+    expect(screen.getByText("New version")).toBeInTheDocument();
+    expect(screen.queryByText("Old next page")).not.toBeInTheDocument();
+  });
+
   it("distinguishes an existing Player with zero public Best from 404", () => {
     render(<PlayerApp player={{ ...player, styles: { SP: summary(0), DP: summary(0) } }} />);
     expect(screen.getByText("公開Bestはまだありません")).toBeInTheDocument();
@@ -96,5 +124,31 @@ describe("PlayerApp", () => {
     expect(await screen.findByText("MAX 300")).toBeInTheDocument();
     expect(screen.getByText("Top 1 / 1譜面")).toBeInTheDocument();
     await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+  });
+
+  it("ignores an old Flare Skill response after switching style", async () => {
+    let finishSingle: ((response: Response) => void) | undefined;
+    const response = (style: "SP" | "DP", title: string) => new Response(JSON.stringify({
+      style, total: 977, rank: { main: "NONE", sub: "+" },
+      categories: [
+        { category: "CLASSIC", total: 0, target_count: 0, targets: [] },
+        { category: "WHITE", total: 0, target_count: 0, targets: [] },
+        { category: "GOLD", total: 977, target_count: 1, targets: [{
+          chart_id: title, title, difficulty: "EXPERT", level: 17,
+          flare_rank: "IX", flare_skill: 977,
+        }] },
+      ],
+    }), { status: 200 });
+    vi.stubGlobal("fetch", vi.fn((url: string) => url.includes("style=SP")
+      ? new Promise<Response>((resolve) => { finishSingle = resolve; })
+      : Promise.resolve(response("DP", "Current DP"))));
+    render(<PlayerApp player={player} />);
+    fireEvent.click(screen.getByRole("tab", { name: "Flare Skill" }));
+    await waitFor(() => expect(finishSingle).toBeDefined());
+    fireEvent.click(screen.getByRole("button", { name: "DOUBLE" }));
+    expect(await screen.findByText("Current DP")).toBeInTheDocument();
+    await act(async () => { finishSingle!(response("SP", "Old SP")); });
+    expect(screen.getByText("Current DP")).toBeInTheDocument();
+    expect(screen.queryByText("Old SP")).not.toBeInTheDocument();
   });
 });

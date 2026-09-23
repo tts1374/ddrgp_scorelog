@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Net.Http;
 using System.Runtime.InteropServices;
 using System.Windows;
@@ -31,7 +32,7 @@ public partial class MainWindow : System.Windows.Window
 {
     private const double HomeSingleColumnThreshold = 1100;
     internal const string ProductionWebApiOrigin =
-        "https://ddrgp-scorelog-identity-api.tts1374.workers.dev/";
+        "https://ddrgp-scorelog.tts1374.workers.dev/";
     private readonly MainViewModel viewModel;
     private readonly AsyncOperationGate monitoringStartGate = new();
     private readonly BestChartPageRequestGate bestChartPageRequestGate = new();
@@ -125,6 +126,9 @@ public partial class MainWindow : System.Windows.Window
                 : new Uri(ProductionWebApiOrigin, UriKind.Absolute);
         return new Uri(value.AbsoluteUri.TrimEnd('/') + "/", UriKind.Absolute);
     }
+
+    internal static Uri ResolvePublicPlayerPageUri(Uri origin, string publicPlayerId) =>
+        new(origin, "/player/" + Uri.EscapeDataString(publicPlayerId));
 
 #if DEBUG
     private void AddDeveloperActions()
@@ -665,6 +669,32 @@ public partial class MainWindow : System.Windows.Window
     private async void SyncWebBestsNow_Click(object sender, RoutedEventArgs e)
     {
         await viewModel.SyncWebBestsNowAsync(applicationExitCancellation.Token);
+    }
+
+    private void OpenPublicPlayerPage_Click(object sender, RoutedEventArgs e)
+    {
+        var publicPlayerId = viewModel.GetRegisteredPublicPlayerId();
+        if (publicPlayerId is null)
+        {
+            return;
+        }
+
+        var pageUri = ResolvePublicPlayerPageUri(webApiHttpClient.BaseAddress!, publicPlayerId);
+        try
+        {
+            using var process = Process.Start(new ProcessStartInfo(pageUri.AbsoluteUri)
+            {
+                UseShellExecute = true,
+            });
+        }
+        catch (Exception exception) when (exception is Win32Exception or InvalidOperationException)
+        {
+            System.Windows.MessageBox.Show(
+                Localization.Get("公開ページを開けませんでした。既定のブラウザーを確認してください。"),
+                Localization.Get("公開ページ"),
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+        }
     }
 
     private async void CheckWebBestIdentity_Click(object sender, RoutedEventArgs e)
