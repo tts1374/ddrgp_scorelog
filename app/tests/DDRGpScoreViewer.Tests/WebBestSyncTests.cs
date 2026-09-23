@@ -17,6 +17,9 @@ public sealed class WebBestSyncTests
     public void ProductionApiOriginIsTheDefaultAndHttpsOverrideIsSupported()
     {
         Assert.Equal(
+            "https://ddrgp-scorelog.tts1374.workers.dev/",
+            MainWindow.ProductionWebApiOrigin);
+        Assert.Equal(
             MainWindow.ProductionWebApiOrigin,
             MainWindow.ResolveWebApiOrigin(null).AbsoluteUri);
         Assert.Equal(
@@ -25,6 +28,14 @@ public sealed class WebBestSyncTests
         Assert.Equal(
             "https://staging.example.test/",
             MainWindow.ResolveWebApiOrigin("https://staging.example.test").AbsoluteUri);
+        Assert.Equal(
+            "https://ddrgp-scorelog.tts1374.workers.dev/player/p_example",
+            MainWindow.ResolvePublicPlayerPageUri(
+                MainWindow.ResolveWebApiOrigin(null), "p_example").AbsoluteUri);
+        Assert.Equal(
+            "https://staging.example.test/player/p_example",
+            MainWindow.ResolvePublicPlayerPageUri(
+                MainWindow.ResolveWebApiOrigin("https://staging.example.test"), "p_example").AbsoluteUri);
     }
 
     [Fact]
@@ -297,11 +308,14 @@ public sealed class WebBestSyncTests
             new WebPlayerIdentityService(registrationHttpClient, registrationStore));
         registrationViewModel.WebPlayerDisplayName = "2ten";
         registrationViewModel.WebBestSyncEnabled = true;
+        Assert.False(registrationViewModel.CanOpenPublicPlayerPage);
 
         await registrationViewModel.ApplyWebSettingsAsync();
 
         Assert.Contains("\"display_name\":\"2ten\"", registrationBody, StringComparison.Ordinal);
         Assert.Equal(PlayerIdentityState.Registered, registrationStore.Load().State);
+        Assert.True(registrationViewModel.CanOpenPublicPlayerPage);
+        Assert.Equal("public-player", registrationViewModel.GetRegisteredPublicPlayerId());
         Assert.Equal(1, registrationApi.BeginSnapshotCalls);
 
         string? updateBody = null;
@@ -334,6 +348,7 @@ public sealed class WebBestSyncTests
                 fixture.MasterPath),
             new WebPlayerIdentityService(updateHttpClient, updateStore));
         Assert.Equal("Existing player", updateViewModel.WebPlayerDisplayName);
+        Assert.True(updateViewModel.CanOpenPublicPlayerPage);
         Assert.Equal(0, updateRequestCount);
         updateViewModel.WebPlayerDisplayName = "Updated player";
 
@@ -379,6 +394,7 @@ public sealed class WebBestSyncTests
         Assert.Equal(PlayerIdentityState.Unregistered, identityStore.Load().State);
         Assert.False(stateStore.Load().Enabled);
         Assert.False(viewModel.WebBestSyncEnabled);
+        Assert.False(viewModel.CanOpenPublicPlayerPage);
         Assert.Equal("Player", viewModel.WebPlayerDisplayName);
         Assert.Equal(0, api.BeginSnapshotCalls);
     }
@@ -598,6 +614,7 @@ public sealed class WebBestSyncTests
                 fixture.ScorePath,
                 fixture.MasterPath),
             new WebPlayerIdentityService(identityHttpClient, identityStore));
+        Assert.True(viewModel.CanOpenPublicPlayerPage);
         var pending = new WebBestSyncEntry("chart_1", "desired", null, null);
         var unknown = pending with { DeferredError = "UNKNOWN_CHART" };
 
@@ -637,6 +654,7 @@ public sealed class WebBestSyncTests
         viewModel.ApplyWebBestSyncState(new WebBestSyncSnapshot(
             false, false, WebBestSyncStatus.Disabled, null, 0, null, null, []));
         Assert.False(viewModel.CanDeletePublicBests);
+        Assert.False(viewModel.CanOpenPublicPlayerPage);
     }
 
     [Fact]

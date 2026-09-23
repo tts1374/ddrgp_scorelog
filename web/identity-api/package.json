@@ -1,26 +1,44 @@
 {
-  "name": "@ddrgp-scorelog/identity-api",
+  "name": "@ddrgp-scorelog/web-app",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "check": "npm run typecheck && npm test",
-    "deploy": "wrangler deploy",
-    "dev": "wrangler dev",
+    "build": "vite build",
+    "check": "npm run typecheck && npm test && npm run build",
+    "deploy": "npm run build && wrangler deploy",
+    "dev": "vite",
     "migrate:local": "wrangler d1 migrations apply DB --local",
     "migrate:remote": "wrangler d1 migrations apply DB --remote",
-    "test": "vitest run",
+    "preview": "vite preview",
+    "test": "npm run test:worker && npm run test:frontend",
+    "test:e2e": "npm run test:e2e:prepare && npm run build && playwright test",
+    "test:e2e:prepare": "node e2e/prepare.mjs",
+    "test:frontend": "vitest run --config vitest.frontend.config.ts",
+    "test:worker": "vitest run --config vitest.config.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "hono": "4.13.8"
+    "hono": "4.13.8",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1"
   },
   "devDependencies": {
-    "@cloudflare/vitest-plugin": "1.1.13",
-    "@cloudflare/workers-types": "5.20260920.1",
+    "@cloudflare/vite-plugin": "^1.57.2",
+    "@cloudflare/vitest-plugin": "^1.2.2",
+    "@cloudflare/workers-types": "^5.20260922.1",
+    "@playwright/test": "^1.55.1",
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/jest-dom": "^6.8.0",
+    "@testing-library/react": "^16.3.0",
     "@types/node": "26.6.2",
+    "@types/react": "^19.1.16",
+    "@types/react-dom": "^19.1.9",
+    "@vitejs/plugin-react": "^5.0.4",
+    "jsdom": "^27.0.0",
     "typescript": "6.0.3",
+    "vite": "^7.3.6",
     "vitest": "4.1.11",
-    "wrangler": "4.135.0"
+    "wrangler": "^4.136.2"
   }
 }

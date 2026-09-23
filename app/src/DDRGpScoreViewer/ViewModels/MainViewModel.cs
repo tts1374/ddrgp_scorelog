@@ -286,6 +286,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(IsWebBestSyncAvailable));
         OnPropertyChanged(nameof(CanSyncWebBestsNow));
         OnPropertyChanged(nameof(CanDeletePublicBests));
+        OnPropertyChanged(nameof(CanOpenPublicPlayerPage));
     }
 
     internal Func<TimeSpan, Func<Task>, Task> UnresolvedNotificationScheduler { get; set; } =
@@ -429,28 +430,31 @@ public sealed class MainViewModel : INotifyPropertyChanged
             WebBestSyncStatus.Reconciling or
             WebBestSyncStatus.PublicBestsDeleted);
 
+    public bool CanOpenPublicPlayerPage => GetRegisteredPublicPlayerId() is not null;
+
+    internal string? GetRegisteredPublicPlayerId()
+    {
+        try
+        {
+            var identity = webPlayerIdentityService?.LoadIdentity();
+            return identity?.State == PlayerIdentityState.Registered
+                ? identity.PublicPlayerId
+                : null;
+        }
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException or
+            InvalidDataException or CryptographicException or JsonException)
+        {
+            return null;
+        }
+    }
+
     public System.Windows.Visibility WebBestAuthActionVisibility =>
         webBestSyncStatus == WebBestSyncStatus.AuthInvalid
             ? System.Windows.Visibility.Visible
             : System.Windows.Visibility.Collapsed;
 
-    private bool HasRegisteredWebIdentity
-    {
-        get
-        {
-            try
-            {
-                return webPlayerIdentityService?.LoadIdentity().State ==
-                    PlayerIdentityState.Registered;
-            }
-            catch (Exception exception) when (
-                exception is IOException or UnauthorizedAccessException or
-                InvalidDataException or CryptographicException or JsonException)
-            {
-                return false;
-            }
-        }
-    }
+    private bool HasRegisteredWebIdentity => GetRegisteredPublicPlayerId() is not null;
 
     public LocalizedOption? SelectedBestLevelOption
     {
@@ -1974,6 +1978,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         webBestSyncEnabledDirty = false;
         SetProperty(ref webBestSyncEnabled, false, nameof(WebBestSyncEnabled));
         ApplyWebPlayerDisplayName("Player");
+        OnPropertyChanged(nameof(CanOpenPublicPlayerPage));
         SettingsStatusMessage = Localization.Get(
             "認証情報を削除しました。Web Best同期はOFFです。ローカルの保存データはそのまま利用できます。");
     }
@@ -2088,6 +2093,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 state.PendingCount);
         OnPropertyChanged(nameof(CanSyncWebBestsNow));
         OnPropertyChanged(nameof(CanDeletePublicBests));
+        OnPropertyChanged(nameof(CanOpenPublicPlayerPage));
         OnPropertyChanged(nameof(WebBestAuthActionVisibility));
     }
 
@@ -2096,6 +2102,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         if (result.Status == PlayerIdentityRequestStatus.Succeeded && result.Player is not null)
         {
             ApplyWebPlayerDisplayName(result.Player.DisplayName);
+            OnPropertyChanged(nameof(CanOpenPublicPlayerPage));
             return true;
         }
         if (result.Status == PlayerIdentityRequestStatus.AuthenticationInvalid)

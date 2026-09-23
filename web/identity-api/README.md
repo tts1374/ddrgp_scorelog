@@ -1,6 +1,6 @@
-# Player identity / Best sync API
+# GP Score Log Web application
 
-Issue #203のPlayer registration / identityとIssue #204のPlayer Best同期を提供するCloudflare Workerです。公開Player DataとRankingは含みません。
+Issue #203のPlayer identity、Issue #204のPlayer Best同期、Issue #205の公開Player Dataを、同一Cloudflare Worker / D1 / originで提供します。React frontendはCloudflare Static Assetsとして同時にbuild・deployします。
 
 ## Local validation
 
@@ -10,12 +10,12 @@ npm ci
 npm run check
 ```
 
-testはCloudflare Workers runtimeとlocal D1へmigrationを適用して実行します。
+`check`は型検査、Worker + local D1 test、React test、production buildを実行します。browser smokeはChromiumを準備したうえで`npm run test:e2e`を実行します。
 
 ## Cloudflare setup
 
-1. D1 databaseを作成し、`wrangler.jsonc`の`database_id`を実際のIDへ置き換える。
-2. 互いに異なる32 byte以上の値をsecretとして登録する。
+1. `wrangler.jsonc`の既存D1 bindingと`PUBLIC_WEB_ORIGIN`をproduction環境に合わせる。初期production originは`https://ddrgp-scorelog.tts1374.workers.dev`である。
+2. 公開用Worker `ddrgp-scorelog`へ、互いに異なる32 byte以上の値をsecretとして登録する。既存Workerからraw secretは取得できないため、管理元の値を使用する。
 
    ```powershell
    npx wrangler secret put CREDENTIAL_PEPPER
@@ -51,7 +51,12 @@ testはCloudflare Workers runtimeとlocal D1へmigrationを適用して実行し
 | `POST` | `/api/v1/me/bests/snapshots/{snapshotId}/commit` | App Credential |
 | `DELETE` | `/api/v1/me/bests/snapshots/{snapshotId}` | App Credential |
 | `DELETE` | `/api/v1/me/bests` | App Credential |
+| `GET` | `/api/v1/public/players/{public_player_id}` | 不要 |
+| `GET` | `/api/v1/public/players/{public_player_id}/bests` | 不要 |
+| `GET` | `/api/v1/public/players/{public_player_id}/flare-skill` | 不要 |
 
 登録の`Idempotency-Key`はclientが生成した32〜128文字のbase64url値です。同じ値のretryは同じPlayer、`public_player_id`、App Credentialを返します。通常logへrequest headerやresponse bodyを出力しないでください。
 
 Best payloadに`player_id`とmaster metadataは含めず、認証済みcontextとD1 shared masterから解決します。deltaはitem単位partial success、snapshotは24時間TTLのstagingとrevision checkを使ったatomic replace-setです。公開Best削除はPlayer identityとCredentialを削除しません。詳細は[`docs/design/12_web_best_sync.md`](../../docs/design/12_web_best_sync.md)を参照してください。
+
+公開URLは`/player/{public_player_id}`です。Player固有metadataとOverview bootstrapをWorkerで安全に注入し、BestとFlare Skillはsame-origin Public APIから取得します。詳細は[`docs/design/13_web_player_data.md`](../../docs/design/13_web_player_data.md)を参照してください。

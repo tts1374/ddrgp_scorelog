@@ -2231,6 +2231,10 @@
                                                 Style="{StaticResource SecondaryButtonStyle}"
                                                 Visibility="{Binding WebBestAuthActionVisibility}"
                                                 Click="CheckWebBestIdentity_Click" />
+                                        <Button Content="公開ページを開く" TabIndex="105" Margin="8,0,0,0"
+                                                Style="{StaticResource SecondaryButtonStyle}"
+                                                IsEnabled="{Binding CanOpenPublicPlayerPage}"
+                                                Click="OpenPublicPlayerPage_Click" />
                                     </StackPanel>
                                     <Border Margin="0,12,0,0" Padding="12,9"
                                             Background="{DynamicResource InfoBackgroundBrush}"
