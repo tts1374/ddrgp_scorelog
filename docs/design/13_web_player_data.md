@@ -27,7 +27,7 @@ RANKはD1へ保存せず、Desktopと同じscore境界からWorkerで導出す�
 
 sortは固定enumからD1の`ORDER BY`とcursor条件へ対応付け、title、difficulty固定順、`chart_id`までをsecondary keyにする。D1は`limit + 1`件だけ返し、次ページ判定に使う。score / EX SCORE sortでは`best: null`を常に末尾へ置く。cursorはversion、query scope、sort、最終rowの比較keyをbase64urlで表現し、frontendはopaque値として扱う。
 
-Title部分一致は表示用titleではなくD1の`title_search_key`へ`instr`で適用し、D1内で絞り込んでからkeyset paginationする。master exportとqueryは同じ規則で小文字化、Unicode NFD分解、Latin文字のアクセント除去、`æ → ae`・`ø → o`変換を行い、最後にNFCへ戻す。これにより`Übertreffen`は`Ubertreffen`、`ÆTHER`は`aether`で検索できる。日本語の濁点と検索記号は保持し、表示用titleとsort順は変更しない。
+Title部分一致はcanonical titleと検索用別名を対象とする。master DBの`song_aliases`にある曲名表記と、確認済みの`master/title_search_aliases.json`を別名として使う。検索語・canonical title・別名には、同じ小文字化、Unicode NFD分解、Latin文字のアクセント除去、`æ → ae`・`ø → o`変換、NFC再合成を適用する。日本語の濁点と記号は保持する。D1では`title_search_key`または`song_title_search_aliases`に`instr`で一致するsongを絞ってからkeyset paginationし、別名が複数一致してもchartを重複させない。Desktopの「曲名から」も同じ検索語・別名集合を使い、表示用titleとsort順は変えない。
 
 ## Flare Skill
 
@@ -53,4 +53,4 @@ desktopではBest table、680px以下では同じ行をcard状に再配置する
 
 ## Migrationとdeploy
 
-Public browse用migrationは既存tableへのindexと`title_search_key`の追加で、旧Workerへ先に適用できる。既存songの検索keyはmigrationで補完し、以後のmaster exportがtitleと一緒に更新する。productionは`ddrgp-scorelog` Workerと既存D1を使用し、`PUBLIC_WEB_ORIGIN`とWindows appの既定API originは`https://ddrgp-scorelog.tts1374.workers.dev`に揃える。Windows appの公開ページ導線も同じoriginの`/player/{public_player_id}`を開く。main更新時はCI成功後にD1 migration、Worker + Static Assets deployの順で行う。
+Public browse用migrationは既存tableへのindex・`title_search_key`追加と、検索用別名table追加で、旧Workerへ先に適用できる。既存songの検索keyはmigrationで補完し、以後のmaster exportがtitleと検索用別名を更新する。productionは`ddrgp-scorelog` Workerと既存D1を使用し、`PUBLIC_WEB_ORIGIN`とWindows appの既定API originは`https://ddrgp-scorelog.tts1374.workers.dev`に揃える。Windows appの公開ページ導線も同じoriginの`/player/{public_player_id}`を開く。main更新時のdeploy workflowはCI成功後にD1 migration、Worker + Static Assets deployを行う。検索用別名データの反映には、migration後に最新のshared master SQLをD1へ再投入する。

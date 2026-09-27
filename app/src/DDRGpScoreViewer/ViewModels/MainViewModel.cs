@@ -4,6 +4,7 @@ using System.Globalization;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using DDRGpScoreViewer;
 using DDRGpScoreViewer.Capture;
@@ -63,6 +64,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private int chartDetailFullComboCount;
     private string chartDetailGraphMode = ChartDetailAllPlaysMode;
     private IReadOnlyList<ChartBestItem> allChartBests = [];
+    private IReadOnlyDictionary<string, IReadOnlyList<string>> titleSearchAliases =
+        new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
     private IReadOnlyList<LocalizedOption> bestVersionOptions =
         UserSettings.SupportedBestVersions
             .Select(version => new LocalizedOption(version, version))
@@ -4574,6 +4577,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             ? data.Plays.Select(play => play.SavedAt).FirstOrDefault() ?? ""
             : data.LastSavedAt;
         allChartBests = MergeChartBests(data.ChartBests, data.ChartCatalog);
+        titleSearchAliases = data.TitleSearchAliases;
         UpdateBestVersionOptions();
         RefreshChartBests(
             resetDisplayedCount: true,
@@ -4614,6 +4618,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         totalPlayCount = 0;
         lastSavedAt = "";
         allChartBests = [];
+        titleSearchAliases = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
         UpdateBestVersionOptions();
         RefreshChartBests(resetDisplayedCount: true);
         ClearHomeData();
@@ -4960,7 +4965,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 .ThenBy(item => item.ChartId, StringComparer.Ordinal);
         }
 
-        var songQuery = BestSongQuery.Trim();
+        var songQuery = NormalizeTitleSearch(BestSongQuery.Trim());
         filtered = filtered.Where(item =>
             BestBrowseMode switch
             {
@@ -4969,7 +4974,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
                     BestVersionFilter,
                     StringComparison.OrdinalIgnoreCase),
                 UserSettings.TitleBrowseMode => songQuery.Length == 0 ||
-                    item.SongTitle.Contains(songQuery, StringComparison.CurrentCultureIgnoreCase),
+                    MatchesTitleSearch(item, songQuery),
                 _ => item.Level == ParseBestLevel(BestLevelFilter),
             });
 
@@ -5000,6 +5005,44 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 .ThenBy(item => item.SongTitle, StringComparer.CurrentCultureIgnoreCase)
                 .ThenBy(item => item.ChartId, StringComparer.Ordinal),
         };
+    }
+
+    private bool MatchesTitleSearch(ChartBestItem item, string query)
+    {
+        if (NormalizeTitleSearch(item.SongTitle).Contains(query, StringComparison.Ordinal))
+        {
+            return true;
+        }
+        return titleSearchAliases.TryGetValue(item.SongId, out var aliases) &&
+            aliases.Any(alias => NormalizeTitleSearch(alias).Contains(query, StringComparison.Ordinal));
+    }
+
+    private static string NormalizeTitleSearch(string value)
+    {
+        var result = new StringBuilder();
+        var latinBase = false;
+        foreach (var character in value.ToLowerInvariant().Normalize(NormalizationForm.FormD))
+        {
+            var category = CharUnicodeInfo.GetUnicodeCategory(character);
+            if (category is UnicodeCategory.NonSpacingMark or
+                UnicodeCategory.SpacingCombiningMark or UnicodeCategory.EnclosingMark)
+            {
+                if (!latinBase)
+                {
+                    result.Append(character);
+                }
+                continue;
+            }
+            latinBase = character is >= 'a' and <= 'z' or
+                >= '\u00c0' and <= '\u024f' or >= '\u1e00' and <= '\u1eff';
+            result.Append(character switch
+            {
+                'æ' => "ae",
+                'ø' => "o",
+                _ => character.ToString(),
+            });
+        }
+        return result.ToString().Normalize(NormalizationForm.FormC);
     }
 
     private static int ParseBestLevel(string value) =>

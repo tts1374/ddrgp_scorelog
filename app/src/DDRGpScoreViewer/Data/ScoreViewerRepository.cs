@@ -1,6 +1,7 @@
 using DDRGpScoreViewer.Models;
 using Microsoft.Data.Sqlite;
 using System.IO;
+using System.Text.Json;
 
 namespace DDRGpScoreViewer.Data;
 
@@ -557,6 +558,7 @@ public sealed class ScoreViewerRepository
             using var masterConnection = OpenReadOnly(masterDatabasePath);
             var masterVersion = ValidateMasterDatabase(masterConnection);
             var masterCharts = ReadMasterCharts(masterConnection);
+            var titleSearchAliases = ReadTitleSearchAliases(masterConnection);
             if (catalogDatabasePath is not null)
             {
                 using var catalogConnection = OpenReadOnly(catalogDatabasePath);
@@ -570,6 +572,7 @@ public sealed class ScoreViewerRepository
             return new ViewerData(
                 plays,
                 chartBests,
+                titleSearchAliases,
                 Path.GetFullPath(scoreDatabasePath),
                 Path.GetFullPath(masterDatabasePath),
                 masterVersion,
@@ -1163,6 +1166,51 @@ public sealed class ScoreViewerRepository
                 reader.GetInt64(7) != 0);
         }
         return result;
+    }
+
+    private static IReadOnlyDictionary<string, IReadOnlyList<string>> ReadTitleSearchAliases(
+        SqliteConnection connection)
+    {
+        var aliases = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+        void Add(string songId, string title)
+        {
+            if (!string.IsNullOrWhiteSpace(title))
+            {
+                if (!aliases.TryGetValue(songId, out var values))
+                {
+                    values = new HashSet<string>(StringComparer.Ordinal);
+                    aliases[songId] = values;
+                }
+                values.Add(title);
+            }
+        }
+
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText = "SELECT song_id, alias_title FROM song_aliases;";
+            using var reader = command.ExecuteReader();
+            while (reader.Read())
+            {
+                Add(reader.GetString(0), reader.GetString(1));
+            }
+        }
+
+        using var stream = typeof(ScoreViewerRepository).Assembly.GetManifestResourceStream(
+            "DDRGpScoreViewer.title_search_aliases.json")
+            ?? throw new InvalidOperationException("Title search alias data is missing.");
+        using var document = JsonDocument.Parse(stream);
+        foreach (var song in document.RootElement.EnumerateArray())
+        {
+            var songId = song.GetProperty("song_id").GetString()!;
+            foreach (var title in song.GetProperty("aliases").EnumerateArray())
+            {
+                Add(songId, title.GetString()!);
+            }
+        }
+        return aliases.ToDictionary(
+            pair => pair.Key,
+            pair => (IReadOnlyList<string>)pair.Value.ToArray(),
+            StringComparer.Ordinal);
     }
 
     private static FlareSkillData ReadFlareSkill(

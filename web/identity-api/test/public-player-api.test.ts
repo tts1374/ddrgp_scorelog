@@ -210,6 +210,51 @@ describe("Public Player API", () => {
     expect(kana.items).toEqual([]);
   });
 
+  it("searches registered and curated title aliases before D1 pagination", async () => {
+    await env.DB.batch([
+      env.DB.prepare(
+        `INSERT INTO songs (song_id, title, artist, version, title_search_key) VALUES
+         ('song_heart', 'TRUE♥LOVE', 'Artist', 'DDR', 'true♥love'),
+         ('song_timepiece', 'Timepiece phase Ⅱ', 'Artist', 'DDR', 'timepiece phase ⅱ'),
+         ('song_arrows', '↑↑↓↓←→←→BA', 'Artist', 'DDR', '↑↑↓↓←→←→ba')`,
+      ),
+      env.DB.prepare(
+        `INSERT INTO charts (chart_id, song_id, play_style, difficulty, level, is_removed) VALUES
+         ('chart_heart_a', 'song_heart', 'SINGLE', 'BASIC', 17, 0),
+         ('chart_heart_b', 'song_heart', 'SINGLE', 'EXPERT', 17, 0),
+         ('chart_timepiece', 'song_timepiece', 'SINGLE', 'EXPERT', 17, 0),
+         ('chart_arrows', 'song_arrows', 'SINGLE', 'EXPERT', 17, 0)`,
+      ),
+      env.DB.prepare(
+        `INSERT INTO song_title_search_aliases (song_id, search_key) VALUES
+         ('song_heart', 'true love'),
+         ('song_heart', 'love'),
+         ('song_timepiece', 'timepiece phase ii')`,
+      ),
+    ]);
+
+    const first = await (await get(`/api/v1/public/players/${publicPlayerId}/bests?style=SP&mode=title&q=TRUE%20LOVE&sort=title_asc&limit=1`))
+      .json<{ items: Array<{ chart_id: string }>; next_cursor: string | null }>();
+    expect(first.items.map((item) => item.chart_id)).toEqual(["chart_heart_a"]);
+    const second = await (await get(`/api/v1/public/players/${publicPlayerId}/bests?style=SP&mode=title&q=TRUE%20LOVE&sort=title_asc&limit=1&cursor=${encodeURIComponent(first.next_cursor!)}`))
+      .json<{ items: Array<{ chart_id: string }>; next_cursor: string | null }>();
+    expect(second.items.map((item) => item.chart_id)).toEqual(["chart_heart_b"]);
+    expect(second.next_cursor).toBeNull();
+    const overlapping = await (await get(`/api/v1/public/players/${publicPlayerId}/bests?style=SP&mode=title&q=LOVE&sort=title_asc`))
+      .json<{ items: Array<{ chart_id: string }> }>();
+    expect(overlapping.items.map((item) => item.chart_id)).toEqual(["chart_heart_a", "chart_heart_b"]);
+
+    const registered = await (await get(`/api/v1/public/players/${publicPlayerId}/bests?style=SP&mode=title&q=Timepiece%20phase%20II`))
+      .json<{ items: Array<{ chart_id: string }> }>();
+    expect(registered.items.map((item) => item.chart_id)).toEqual(["chart_timepiece"]);
+    const symbol = await (await get(`/api/v1/public/players/${publicPlayerId}/bests?style=SP&mode=title&q=${encodeURIComponent("↑↑↓↓←→←→BA")}`))
+      .json<{ items: Array<{ chart_id: string }> }>();
+    expect(symbol.items.map((item) => item.chart_id)).toEqual(["chart_arrows"]);
+    const pronunciation = await (await get(`/api/v1/public/players/${publicPlayerId}/bests?style=SP&mode=title&q=${encodeURIComponent("うえうえしたした")}`))
+      .json<{ items: Array<{ chart_id: string }> }>();
+    expect(pronunciation.items).toEqual([]);
+  });
+
   it("uses chart_id to break ties across a page boundary and rejects a changed sort", async () => {
     await env.DB.batch([
       env.DB.prepare("INSERT INTO songs (song_id, title, artist, version, title_search_key) VALUES ('song_tie', 'Same title', 'Artist', 'DDR X2', 'same title')"),

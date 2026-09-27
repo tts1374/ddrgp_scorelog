@@ -112,7 +112,11 @@ def test_d1_export_is_deterministic_idempotent_and_resolves_metadata(tmp_path: P
     with sqlite3.connect(database) as connection:
         connection.executemany(
             "INSERT INTO songs (song_id, title, artist, version) VALUES (?, ?, 'Artist', 'DDR')",
-            [("song_2", "Übertreffen"), ("song_3", "ÆTHER")],
+            [
+                ("song_2", "Übertreffen"),
+                ("song_3", "ÆTHER"),
+                ("song_06d308e2e7cdf168", "TRUE♥LOVE"),
+            ],
         )
 
     first = export_shared_master_sql(database)
@@ -137,6 +141,11 @@ def test_d1_export_is_deterministic_idempotent_and_resolves_metadata(tmp_path: P
         CREATE TABLE web_master_metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
         """
     )
+    alias_migration = (
+        Path(__file__).resolve().parents[1]
+        / "web/identity-api/migrations/0005_title_search_aliases.sql"
+    )
+    target.executescript(alias_migration.read_text(encoding="utf-8"))
     target.executescript(first)
     target.executescript(first)
     assert target.execute(
@@ -152,14 +161,26 @@ def test_d1_export_is_deterministic_idempotent_and_resolves_metadata(tmp_path: P
     assert target.execute(
         "SELECT title_search_key FROM songs WHERE song_id = 'song_3'"
     ).fetchone() == ("aether",)
+    assert target.execute(
+        "SELECT song_id, search_key FROM song_title_search_aliases ORDER BY song_id"
+    ).fetchall() == [
+        ("song_06d308e2e7cdf168", "true love"),
+        ("song_1", "source"),
+    ]
     with sqlite3.connect(database) as connection:
         connection.execute(
             "UPDATE songs SET title = 'Übertreffen II' WHERE song_id = 'song_2'"
+        )
+        connection.execute(
+            "UPDATE song_aliases SET alias_title = 'Changed' WHERE song_id = 'song_1'"
         )
     target.executescript(export_shared_master_sql(database))
     assert target.execute(
         "SELECT title_search_key FROM songs WHERE song_id = 'song_2'"
     ).fetchone() == ("ubertreffen ii",)
+    assert target.execute(
+        "SELECT search_key FROM song_title_search_aliases WHERE song_id = 'song_1'"
+    ).fetchall() == [("changed",)]
 
 
 def test_title_search_normalization_and_existing_d1_backfill() -> None:
@@ -181,3 +202,16 @@ def test_title_search_normalization_and_existing_d1_backfill() -> None:
     assert target.execute(
         "SELECT title_search_key FROM songs ORDER BY song_id"
     ).fetchall() == [("ubertreffen",), ("aether",), ("ガ",)]
+
+
+def test_curated_title_search_aliases_keep_symbol_only_title_literal() -> None:
+    manifest = (
+        Path(__file__).resolve().parents[1] / "master/title_search_aliases.json"
+    )
+    entries = json.loads(manifest.read_text(encoding="utf-8"))
+    assert len(entries) == 125
+    assert sum(len(entry["aliases"]) for entry in entries) == 127
+    assert len({entry["song_id"] for entry in entries}) == len(entries)
+    assert "song_c55d8ffd1066e044" not in {
+        entry["song_id"] for entry in entries
+    }

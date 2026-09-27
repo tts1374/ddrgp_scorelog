@@ -699,6 +699,42 @@ public sealed class MainViewModelTests
     }
 
     [Fact]
+    public void Title_browse_uses_normalized_titles_and_search_aliases()
+    {
+        using var fixture = new DatabaseFixture();
+        fixture.AddMasterSongAndChart("song_06d308e2e7cdf168", "TRUE♥LOVE", "Artist", "chart-heart");
+        fixture.AddMasterSongAndChart("song-timepiece", "Timepiece phase Ⅱ", "Artist", "chart-timepiece");
+        fixture.AddMasterSongAndChart("song-uber", "Übertreffen", "Artist", "chart-uber");
+        fixture.AddMasterSongAndChart("song-aether", "ÆTHER", "Artist", "chart-aether");
+        fixture.AddMasterSongAndChart("song-kana", "ガ", "Artist", "chart-kana");
+        fixture.AddMasterSongAndChart("song-arrows", "↑↑↓↓←→←→BA", "Artist", "chart-arrows");
+        fixture.ExecuteMasterSql(
+            "INSERT INTO song_aliases (alias_id, song_id, alias_title) " +
+            "VALUES ('alias-timepiece', 'song-timepiece', 'Timepiece phase II');");
+
+        var viewModel = new MainViewModel(
+            new ScoreViewerRepository(),
+            userSettingsStore: new MemoryUserSettingsStore(null));
+        viewModel.Load(fixture.ScorePath, fixture.MasterPath, persist: false);
+        viewModel.BestBrowseMode = UserSettings.TitleBrowseMode;
+
+        viewModel.BestSongQuery = "TRUE LOVE";
+        Assert.Equal("chart-heart", Assert.Single(viewModel.ChartBests).ChartId);
+        viewModel.BestSongQuery = "Timepiece phase II";
+        Assert.Equal("chart-timepiece", Assert.Single(viewModel.ChartBests).ChartId);
+        viewModel.BestSongQuery = "Ubertreffen";
+        Assert.Equal("chart-uber", Assert.Single(viewModel.ChartBests).ChartId);
+        viewModel.BestSongQuery = "aether";
+        Assert.Equal("chart-aether", Assert.Single(viewModel.ChartBests).ChartId);
+        viewModel.BestSongQuery = "カ";
+        Assert.Empty(viewModel.ChartBests);
+        viewModel.BestSongQuery = "↑↑↓↓←→←→BA";
+        Assert.Equal("chart-arrows", Assert.Single(viewModel.ChartBests).ChartId);
+        viewModel.BestSongQuery = "うえうえしたした";
+        Assert.Empty(viewModel.ChartBests);
+    }
+
+    [Fact]
     public void Best_progress_counts_use_cumulative_chart_level_states()
     {
         using var fixture = new DatabaseFixture();

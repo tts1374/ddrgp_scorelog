@@ -244,6 +244,7 @@ internal static class ViewerTimestampFormatter
 public sealed record ViewerData(
     IReadOnlyList<PlayHistoryItem> Plays,
     IReadOnlyList<ChartBestItem> ChartBests,
+    IReadOnlyDictionary<string, IReadOnlyList<string>> TitleSearchAliases,
     string ScoreDatabasePath,
     string MasterDatabasePath,
     string MasterVersion,

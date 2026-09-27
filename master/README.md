@@ -106,6 +106,8 @@ Web D1で同じsong/chart identityを参照するshared master SQLを出力:
 python -X utf8 -m master.d1_export --master-db data\master\ddrgp-master.sqlite --output data\master\ddrgp-web-master.sql
 ```
 
+このSQLにはcanonical曲名の検索keyに加え、master DBの`song_aliases`と`master/title_search_aliases.json`の確認済み曲名別表記を含めます。D1へ適用する前に検索用別名tableのmigrationを適用してください。
+
 通常生成は`master/song_identity_registry.json`を読み、既存配布masterからfreezeしたcanonical表記とalias表記を既存`song_id`へ解決します。未登録の新曲・新表記は推測採番せず候補を表示して失敗するため、review後にregistryへ追加してください。bootstrap CLIは既存配布masterからregistryを初期作成・監査するときだけ使用します。
 
 生成DB、取得元snapshot、解析ログはGit管理しません。ローカル生成物は原則 `data/` 配下に置きます。

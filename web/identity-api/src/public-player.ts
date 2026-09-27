@@ -416,7 +416,11 @@ async function loadBestRows(
     filter = " AND s.version = ?3";
     bindings.push(query.version!);
   } else if (query.q.length > 0) {
-    filter = " AND instr(s.title_search_key, ?3) > 0";
+    filter = ` AND (instr(s.title_search_key, ?3) > 0
+      OR EXISTS (
+        SELECT 1 FROM song_title_search_aliases a
+        WHERE a.song_id = s.song_id AND instr(a.search_key, ?3) > 0
+      ))`;
     bindings.push(normalizeTitleSearch(query.q));
   }
   const keys = sortKeys[query.sort];

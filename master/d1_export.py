@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sqlite3
 import unicodedata
 from pathlib import Path
@@ -26,7 +27,7 @@ def normalize_title_search(value: str) -> str:
 def export_shared_master_sql(master_db_path: Path) -> str:
     uri = f"file:{master_db_path.resolve().as_posix()}?mode=ro"
     with sqlite3.connect(uri, uri=True) as connection:
-        required = {"songs", "charts", "master_metadata"}
+        required = {"songs", "charts", "song_aliases", "master_metadata"}
         actual = {
             row[0]
             for row in connection.execute(
@@ -43,12 +44,30 @@ def export_shared_master_sql(master_db_path: Path) -> str:
             "SELECT chart_id, song_id, play_style, difficulty, level, is_removed "
             "FROM charts ORDER BY chart_id"
         ).fetchall()
+        source_aliases = connection.execute(
+            "SELECT song_id, alias_title FROM song_aliases ORDER BY song_id, alias_title"
+        ).fetchall()
         metadata = dict(
             connection.execute("SELECT key, value FROM master_metadata")
         )
     master_version = metadata.get("master_version")
     if not isinstance(master_version, str) or not master_version:
         raise ValueError("master DB does not contain master_version metadata")
+
+    song_titles = {song_id: title for song_id, title, _, _ in songs}
+    curated = json.loads(
+        Path(__file__).with_name("title_search_aliases.json").read_text(encoding="utf-8")
+    )
+    search_aliases = {
+        (song_id, normalize_title_search(alias))
+        for song_id, alias in source_aliases + [
+            (entry["song_id"], alias)
+            for entry in curated
+            for alias in entry["aliases"]
+        ]
+        if song_id in song_titles
+        and normalize_title_search(alias) != normalize_title_search(song_titles[song_id])
+    }
 
     lines = ["PRAGMA foreign_keys = ON;", ""]
     for song_id, title, artist, version in songs:
@@ -66,6 +85,13 @@ def export_shared_master_sql(master_db_path: Path) -> str:
                 "  version = excluded.version,",
                 "  title_search_key = excluded.title_search_key;",
             ]
+        )
+    lines.append("")
+    lines.append("DELETE FROM song_title_search_aliases;")
+    for song_id, search_key in sorted(search_aliases):
+        lines.append(
+            "INSERT INTO song_title_search_aliases (song_id, search_key) "
+            f"VALUES ({sql_text(song_id)}, {sql_text(search_key)});"
         )
     lines.append("")
     for chart_id, song_id, play_style, difficulty, level, is_removed in charts:
