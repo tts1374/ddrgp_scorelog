@@ -421,6 +421,9 @@
     <sys:String x:Key="最終同期">Last sync</sys:String>
     <sys:String x:Key="今すぐ同期">Sync now</sys:String>
     <sys:String x:Key="認証情報を確認">Check credentials</sys:String>
+    <sys:String x:Key="公開ページを開く">Open public page</sys:String>
+    <sys:String x:Key="公開ページ">Public page</sys:String>
+    <sys:String x:Key="公開ページを開けませんでした。既定のブラウザーを確認してください。">Could not open the public page. Check your default browser.</sys:String>
     <sys:String x:Key="自動記録で保存したプレーだけをWeb Bestへ含めます。スクリーンショットから追加したプレーとバックアップから復元したプレーはローカルの自己ベストだけに反映されます。">Only plays saved by automatic recording are included in Web Best. Plays imported from screenshots or restored from a backup affect local personal bests only.</sys:String>
     <sys:String x:Key="公開Bestの削除">Delete published Bests</sys:String>
     <sys:String x:Key="Web上の自己ベストだけを削除します。Player情報、公開URL、認証情報、ローカルの保存データは残ります。">Delete only personal bests on the web. Player information, public URL, credentials, and local saved data remain.</sys:String>

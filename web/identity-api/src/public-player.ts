@@ -387,6 +387,20 @@ function cursorKeys(cursor: CursorPayload): Array<string | number> {
   }
 }
 
+function normalizeTitleSearch(value: string): string {
+  let result = "";
+  let latinBase = false;
+  for (const char of value.toLowerCase().normalize("NFD")) {
+    if (/\p{Mark}/u.test(char)) {
+      if (!latinBase) result += char;
+      continue;
+    }
+    latinBase = /\p{Script=Latin}/u.test(char);
+    result += char === "æ" ? "ae" : char === "ø" ? "o" : char;
+  }
+  return result.normalize("NFC");
+}
+
 async function loadBestRows(
   db: D1Database,
   playerId: string,
@@ -402,9 +416,8 @@ async function loadBestRows(
     filter = " AND s.version = ?3";
     bindings.push(query.version!);
   } else if (query.q.length > 0) {
-    // SQLite's built-in lower() folds ASCII; Japanese title characters remain literal.
-    filter = " AND instr(lower(s.title), lower(?3)) > 0";
-    bindings.push(query.q);
+    filter = " AND instr(s.title_search_key, ?3) > 0";
+    bindings.push(normalizeTitleSearch(query.q));
   }
   const keys = sortKeys[query.sort];
   if (cursor !== null) {

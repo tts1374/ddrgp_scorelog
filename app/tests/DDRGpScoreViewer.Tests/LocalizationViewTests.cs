@@ -799,10 +799,13 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
     }
 
     [Theory]
-    [InlineData(UserSettings.JapaneseLanguage, UserSettings.LightTheme)]
-    [InlineData(UserSettings.EnglishLanguage, UserSettings.DarkTheme)]
-    [InlineData(UserSettings.KoreanLanguage, UserSettings.LightTheme)]
-    public void Scorebook_navigation_and_result_text_remain_usable_at_minimum_size(string language, string theme)
+    [InlineData(UserSettings.JapaneseLanguage, UserSettings.LightTheme, "公開ページを開く")]
+    [InlineData(UserSettings.EnglishLanguage, UserSettings.DarkTheme, "Open public page")]
+    [InlineData(UserSettings.KoreanLanguage, UserSettings.LightTheme, "공개 페이지 열기")]
+    public void Scorebook_navigation_and_result_text_remain_usable_at_minimum_size(
+        string language,
+        string theme,
+        string publicPageButtonText)
     {
         using var databaseFixture = new DatabaseFixture();
         databaseFixture.AddPlay("scorebook-play", "2026-08-24T20:29:00+09:00", 930430, 1514);
@@ -851,6 +854,10 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
                     DrainDispatcher(window.Dispatcher);
                     Assert.Equal("Selected", button.Tag);
                     Assert.Single(navigation, candidate => Equals(candidate.Tag, "Selected"));
+                    if (button == window.SettingsNavigation)
+                    {
+                        Assert.Equal(publicPageButtonText, window.OpenPublicPlayerPageButton.Content);
+                    }
                 }
 
                 window.BestNavigation.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));

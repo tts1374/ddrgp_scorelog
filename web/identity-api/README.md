@@ -29,7 +29,7 @@ npm run check
    npm run deploy
    ```
 
-4. master build artifactの`ddrgp-web-master.sql`を同じD1へ適用する。migrationはtableを作成し、artifact SQLがLocal masterと同じsong/chart identityと`master_version`を冪等upsertする。
+4. master build artifactの`ddrgp-web-master.sql`を同じD1へ適用する。migrationはtableと公開検索用columnを作成し、artifact SQLがLocal masterと同じsong/chart identity、曲名の検索key、`master_version`を冪等upsertする。
 
    ```powershell
    npx wrangler d1 execute DB --remote --file ..\..\data\master\ddrgp-web-master.sql

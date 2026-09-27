@@ -10,9 +10,9 @@ INSERT INTO players
 VALUES
   ('pl_e2e', 'p_e2eeeeeeeeeeeeeeeeeeee', '2TEN', '2026-09-20T00:00:00Z', '2026-09-20T00:00:00Z', '2026-09-21T01:02:03Z');
 
-INSERT INTO songs (song_id, title, artist, version) VALUES
-  ('song_e2e_a', 'MAX 300', 'Ω', 'DDRMAX'),
-  ('song_e2e_b', 'VOLAQUAS', 'BEMANI Sound Team', 'DanceDanceRevolution WORLD');
+INSERT INTO songs (song_id, title, artist, version, title_search_key) VALUES
+  ('song_e2e_a', 'MAX 300', 'Ω', 'DDRMAX', 'max 300'),
+  ('song_e2e_b', 'VOLAQUAS', 'BEMANI Sound Team', 'DanceDanceRevolution WORLD', 'volaquas');
 
 INSERT INTO charts (chart_id, song_id, play_style, difficulty, level, is_removed) VALUES
   ('chart_e2e_a', 'song_e2e_a', 'SINGLE', 'EXPERT', 15, 0),

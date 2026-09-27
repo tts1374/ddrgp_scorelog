@@ -421,6 +421,9 @@
     <sys:String x:Key="最終同期">마지막 동기화</sys:String>
     <sys:String x:Key="今すぐ同期">지금 동기화</sys:String>
     <sys:String x:Key="認証情報を確認">인증 정보 확인</sys:String>
+    <sys:String x:Key="公開ページを開く">공개 페이지 열기</sys:String>
+    <sys:String x:Key="公開ページ">공개 페이지</sys:String>
+    <sys:String x:Key="公開ページを開けませんでした。既定のブラウザーを確認してください。">공개 페이지를 열 수 없습니다. 기본 브라우저를 확인하세요.</sys:String>
     <sys:String x:Key="自動記録で保存したプレーだけをWeb Bestへ含めます。スクリーンショットから追加したプレーとバックアップから復元したプレーはローカルの自己ベストだけに反映されます。">자동 기록으로 저장한 플레이만 Web Best에 포함됩니다. 스크린샷으로 추가하거나 백업에서 복원한 플레이는 로컬 개인 최고 기록에만 반영됩니다.</sys:String>
     <sys:String x:Key="公開Bestの削除">공개 Best 삭제</sys:String>
     <sys:String x:Key="Web上の自己ベストだけを削除します。Player情報、公開URL、認証情報、ローカルの保存データは残ります。">웹의 개인 최고 기록만 삭제합니다. Player 정보, 공개 URL, 인증 정보 및 로컬 저장 데이터는 유지됩니다.</sys:String>

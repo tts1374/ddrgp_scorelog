@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from master.d1_export import export_shared_master_sql
+from master.d1_export import export_shared_master_sql, normalize_title_search
 from master.identity_registry import (
     DEFAULT_REGISTRY_PATH,
     SongIdentityRegistry,
@@ -109,6 +109,11 @@ def test_registry_bootstrap_includes_alias_presentations(tmp_path: Path) -> None
 def test_d1_export_is_deterministic_idempotent_and_resolves_metadata(tmp_path: Path) -> None:
     database = tmp_path / "master.sqlite"
     create_master_fixture(database)
+    with sqlite3.connect(database) as connection:
+        connection.executemany(
+            "INSERT INTO songs (song_id, title, artist, version) VALUES (?, ?, 'Artist', 'DDR')",
+            [("song_2", "Übertreffen"), ("song_3", "ÆTHER")],
+        )
 
     first = export_shared_master_sql(database)
     second = export_shared_master_sql(database)
@@ -120,7 +125,8 @@ def test_d1_export_is_deterministic_idempotent_and_resolves_metadata(tmp_path: P
         PRAGMA foreign_keys = ON;
         CREATE TABLE songs (
           song_id TEXT PRIMARY KEY, title TEXT NOT NULL,
-          artist TEXT NOT NULL, version TEXT NOT NULL
+          artist TEXT NOT NULL, version TEXT NOT NULL,
+          title_search_key TEXT NOT NULL DEFAULT ''
         );
         CREATE TABLE charts (
           chart_id TEXT PRIMARY KEY, song_id TEXT NOT NULL,
@@ -140,3 +146,38 @@ def test_d1_export_is_deterministic_idempotent_and_resolves_metadata(tmp_path: P
     assert target.execute(
         "SELECT value FROM web_master_metadata WHERE key = 'master_version'"
     ).fetchone() == ("fixture-v1",)
+    assert target.execute(
+        "SELECT title_search_key FROM songs WHERE song_id = 'song_2'"
+    ).fetchone() == ("ubertreffen",)
+    assert target.execute(
+        "SELECT title_search_key FROM songs WHERE song_id = 'song_3'"
+    ).fetchone() == ("aether",)
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            "UPDATE songs SET title = 'Übertreffen II' WHERE song_id = 'song_2'"
+        )
+    target.executescript(export_shared_master_sql(database))
+    assert target.execute(
+        "SELECT title_search_key FROM songs WHERE song_id = 'song_2'"
+    ).fetchone() == ("ubertreffen ii",)
+
+
+def test_title_search_normalization_and_existing_d1_backfill() -> None:
+    assert normalize_title_search("Übertreffen") == "ubertreffen"
+    assert normalize_title_search("ÆTHER") == "aether"
+    assert normalize_title_search("ガ") == "ガ"
+
+    target = sqlite3.connect(":memory:")
+    target.execute("CREATE TABLE songs(song_id TEXT PRIMARY KEY, title TEXT NOT NULL)")
+    target.executemany(
+        "INSERT INTO songs VALUES (?, ?)",
+        [("song_1", "Übertreffen"), ("song_2", "ÆTHER"), ("song_3", "ガ")],
+    )
+    migration = (
+        Path(__file__).resolve().parents[1]
+        / "web/identity-api/migrations/0004_title_search_key.sql"
+    )
+    target.executescript(migration.read_text(encoding="utf-8"))
+    assert target.execute(
+        "SELECT title_search_key FROM songs ORDER BY song_id"
+    ).fetchall() == [("ubertreffen",), ("aether",), ("ガ",)]

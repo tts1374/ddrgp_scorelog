@@ -14,12 +14,12 @@ async function seedPublicData(): Promise<void> {
        VALUES (?1, ?2, '2TEN', '2026-09-20T00:00:00.000Z', '2026-09-20T00:00:00.000Z', '2026-09-21T01:02:03.000Z')`,
     ).bind(playerId, publicPlayerId),
     env.DB.prepare(
-      `INSERT INTO songs (song_id, title, artist, version) VALUES
-       ('song_a', 'Alpha MAX', 'Artist A', 'DanceDanceRevolution WORLD'),
-       ('song_b', 'beta song', 'Artist B', 'DanceDanceRevolution WORLD'),
-       ('song_c', 'Classic', 'Artist C', 'DDR X2'),
-       ('song_d', 'Removed only', 'Artist D', 'DanceDanceRevolution A'),
-       ('song_e', 'Removed none', 'Artist E', 'DanceDanceRevolution A')`,
+      `INSERT INTO songs (song_id, title, artist, version, title_search_key) VALUES
+       ('song_a', 'Alpha MAX', 'Artist A', 'DanceDanceRevolution WORLD', 'alpha max'),
+       ('song_b', 'beta song', 'Artist B', 'DanceDanceRevolution WORLD', 'beta song'),
+       ('song_c', 'Classic', 'Artist C', 'DDR X2', 'classic'),
+       ('song_d', 'Removed only', 'Artist D', 'DanceDanceRevolution A', 'removed only'),
+       ('song_e', 'Removed none', 'Artist E', 'DanceDanceRevolution A', 'removed none')`,
     ),
     env.DB.prepare(
       `INSERT INTO charts (chart_id, song_id, play_style, difficulty, level, is_removed) VALUES
@@ -164,7 +164,7 @@ describe("Public Player API", () => {
 
   it("applies case-insensitive literal title substring search before paging", async () => {
     await env.DB.prepare(
-      "UPDATE songs SET title = '50%_MAX' WHERE song_id = 'song_b'",
+      "UPDATE songs SET title = '50%_MAX', title_search_key = '50%_max' WHERE song_id = 'song_b'",
     ).run();
     const response = await get(`/api/v1/public/players/${publicPlayerId}/bests?style=SP&mode=title&q=${encodeURIComponent("%_max")}&limit=1`);
     expect(response.status).toBe(200);
@@ -173,9 +173,46 @@ describe("Public Player API", () => {
     expect(body.next_cursor).toBeNull();
   });
 
+  it("matches accent-folded and ligature-expanded titles across D1 pages", async () => {
+    await env.DB.batch([
+      env.DB.prepare(
+        `INSERT INTO songs (song_id, title, artist, version, title_search_key) VALUES
+         ('song_uber', 'Übertreffen', 'Artist', 'DDR', 'ubertreffen'),
+         ('song_aether', 'ÆTHER', 'Artist', 'DDR', 'aether'),
+         ('song_kana', 'ガ', 'Artist', 'DDR', 'ガ')`,
+      ),
+      env.DB.prepare(
+        `INSERT INTO charts (chart_id, song_id, play_style, difficulty, level, is_removed) VALUES
+         ('chart_uber_a', 'song_uber', 'SINGLE', 'BASIC', 17, 0),
+         ('chart_uber_b', 'song_uber', 'SINGLE', 'EXPERT', 17, 0),
+         ('chart_aether', 'song_aether', 'SINGLE', 'EXPERT', 17, 0),
+         ('chart_kana', 'song_kana', 'SINGLE', 'EXPERT', 17, 0)`,
+      ),
+    ]);
+
+    const first = await (await get(`/api/v1/public/players/${publicPlayerId}/bests?style=SP&mode=title&q=Ubertreffen&sort=title_asc&limit=1`))
+      .json<{ items: Array<{ chart_id: string }>; next_cursor: string | null }>();
+    expect(first.items.map((item) => item.chart_id)).toEqual(["chart_uber_a"]);
+    expect(first.next_cursor).not.toBeNull();
+    const second = await (await get(`/api/v1/public/players/${publicPlayerId}/bests?style=SP&mode=title&q=Ubertreffen&sort=title_asc&limit=1&cursor=${encodeURIComponent(first.next_cursor!)}`))
+      .json<{ items: Array<{ chart_id: string }>; next_cursor: string | null }>();
+    expect(second.items.map((item) => item.chart_id)).toEqual(["chart_uber_b"]);
+    expect(second.next_cursor).toBeNull();
+
+    const accented = await (await get(`/api/v1/public/players/${publicPlayerId}/bests?style=SP&mode=title&q=${encodeURIComponent("über")}`))
+      .json<{ items: Array<{ chart_id: string }> }>();
+    expect(accented.items.map((item) => item.chart_id)).toEqual(["chart_uber_a", "chart_uber_b"]);
+    const ligature = await (await get(`/api/v1/public/players/${publicPlayerId}/bests?style=SP&mode=title&q=aether`))
+      .json<{ items: Array<{ chart_id: string }> }>();
+    expect(ligature.items.map((item) => item.chart_id)).toEqual(["chart_aether"]);
+    const kana = await (await get(`/api/v1/public/players/${publicPlayerId}/bests?style=SP&mode=title&q=${encodeURIComponent("カ")}`))
+      .json<{ items: Array<{ chart_id: string }> }>();
+    expect(kana.items).toEqual([]);
+  });
+
   it("uses chart_id to break ties across a page boundary and rejects a changed sort", async () => {
     await env.DB.batch([
-      env.DB.prepare("INSERT INTO songs (song_id, title, artist, version) VALUES ('song_tie', 'Same title', 'Artist', 'DDR X2')"),
+      env.DB.prepare("INSERT INTO songs (song_id, title, artist, version, title_search_key) VALUES ('song_tie', 'Same title', 'Artist', 'DDR X2', 'same title')"),
       env.DB.prepare(
         `INSERT INTO charts (chart_id, song_id, play_style, difficulty, level, is_removed) VALUES
          ('chart_z', 'song_tie', 'SINGLE', 'EXPERT', 17, 0),

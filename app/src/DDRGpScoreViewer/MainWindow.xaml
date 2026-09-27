@@ -2231,7 +2231,7 @@
                                                 Style="{StaticResource SecondaryButtonStyle}"
                                                 Visibility="{Binding WebBestAuthActionVisibility}"
                                                 Click="CheckWebBestIdentity_Click" />
-                                        <Button Content="公開ページを開く" TabIndex="105" Margin="8,0,0,0"
+                                        <Button x:Name="OpenPublicPlayerPageButton" Content="公開ページを開く" TabIndex="105" Margin="8,0,0,0"
                                                 Style="{StaticResource SecondaryButtonStyle}"
                                                 IsEnabled="{Binding CanOpenPublicPlayerPage}"
                                                 Click="OpenPublicPlayerPage_Click" />

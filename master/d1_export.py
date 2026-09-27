@@ -2,11 +2,25 @@ from __future__ import annotations
 
 import argparse
 import sqlite3
+import unicodedata
 from pathlib import Path
 
 
 def sql_text(value: str) -> str:
     return "'" + value.replace("'", "''") + "'"
+
+
+def normalize_title_search(value: str) -> str:
+    result: list[str] = []
+    latin_base = False
+    for char in unicodedata.normalize("NFD", value.lower()):
+        if unicodedata.category(char).startswith("M"):
+            if not latin_base:
+                result.append(char)
+            continue
+        latin_base = unicodedata.name(char, "").startswith("LATIN ")
+        result.append({"æ": "ae", "ø": "o"}.get(char, char))
+    return unicodedata.normalize("NFC", "".join(result))
 
 
 def export_shared_master_sql(master_db_path: Path) -> str:
@@ -38,15 +52,19 @@ def export_shared_master_sql(master_db_path: Path) -> str:
 
     lines = ["PRAGMA foreign_keys = ON;", ""]
     for song_id, title, artist, version in songs:
-        values = ", ".join(sql_text(value) for value in (song_id, title, artist, version))
+        values = ", ".join(
+            sql_text(value)
+            for value in (song_id, title, artist, version, normalize_title_search(title))
+        )
         lines.extend(
             [
-                "INSERT INTO songs (song_id, title, artist, version)",
+                "INSERT INTO songs (song_id, title, artist, version, title_search_key)",
                 f"VALUES ({values})",
                 "ON CONFLICT(song_id) DO UPDATE SET",
                 "  title = excluded.title,",
                 "  artist = excluded.artist,",
-                "  version = excluded.version;",
+                "  version = excluded.version,",
+                "  title_search_key = excluded.title_search_key;",
             ]
         )
     lines.append("")
