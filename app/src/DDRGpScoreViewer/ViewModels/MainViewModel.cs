@@ -2031,10 +2031,15 @@ public sealed class MainViewModel : INotifyPropertyChanged
         if (uiSynchronizationContext is not null &&
             !ReferenceEquals(SynchronizationContext.Current, uiSynchronizationContext))
         {
-            uiSynchronizationContext.Post(_ => ApplyWebBestSyncState(state), null);
+            uiSynchronizationContext.Post(_ => ApplyWebBestSyncStateCore(state), null);
             return;
         }
 
+        ApplyWebBestSyncStateCore(state);
+    }
+
+    private void ApplyWebBestSyncStateCore(WebBestSyncSnapshot state)
+    {
         if (!webBestSyncEnabledDirty || state.Status == WebBestSyncStatus.PublicBestsDeleted)
         {
             webBestSyncEnabledDirty = false;

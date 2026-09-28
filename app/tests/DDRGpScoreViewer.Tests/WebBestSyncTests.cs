@@ -658,6 +658,33 @@ public sealed class WebBestSyncTests
     }
 
     [Fact]
+    public void PostedSyncStateIsAppliedWhenDispatcherUsesAnotherContextInstance()
+    {
+        Localization.Configure(UserSettings.JapaneseLanguage);
+        var originalContext = SynchronizationContext.Current;
+        var dispatcherContext = new QueuedSynchronizationContext();
+        try
+        {
+            SynchronizationContext.SetSynchronizationContext(dispatcherContext);
+            var viewModel = new MainViewModel(new ScoreViewerRepository());
+            SynchronizationContext.SetSynchronizationContext(new SynchronizationContext());
+
+            viewModel.ApplyWebBestSyncState(new WebBestSyncSnapshot(
+                true, false, WebBestSyncStatus.Idle, null, 0, null, null, []));
+            Assert.Equal(1, dispatcherContext.PendingCount);
+            Assert.Equal("同期OFF", viewModel.WebBestSyncStatusTitle);
+
+            dispatcherContext.RunNext();
+            Assert.Equal(0, dispatcherContext.PendingCount);
+            Assert.Equal("同期済み", viewModel.WebBestSyncStatusTitle);
+        }
+        finally
+        {
+            SynchronizationContext.SetSynchronizationContext(originalContext);
+        }
+    }
+
+    [Fact]
     public void BackupRestoreCanPersistReconciliationIntentBeforeReplacement()
     {
         var directory = Path.Combine(Path.GetTempPath(), $"web-sync-restore-{Guid.NewGuid():N}");
@@ -799,6 +826,22 @@ public sealed class WebBestSyncTests
         protected override Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request,
             CancellationToken cancellationToken) => handler(request);
+    }
+
+    private sealed class QueuedSynchronizationContext : SynchronizationContext
+    {
+        private readonly Queue<(SendOrPostCallback Callback, object? State)> pending = new();
+
+        public int PendingCount => pending.Count;
+
+        public override void Post(SendOrPostCallback callback, object? state) =>
+            pending.Enqueue((callback, state));
+
+        public void RunNext()
+        {
+            var (callback, state) = pending.Dequeue();
+            callback(state);
+        }
     }
 
     private static HttpResponseMessage JsonResponse(
