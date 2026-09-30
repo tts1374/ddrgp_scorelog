@@ -133,10 +133,11 @@ public partial class MainWindow : System.Windows.Window
         if (Uri.TryCreate(overrideOrigin, UriKind.Absolute, out var configured) &&
             (configured.Scheme == Uri.UriSchemeHttps ||
              development && configured.Scheme == Uri.UriSchemeHttp && configured.IsLoopback) &&
-            (!development || !string.Equals(
-                configured.Host,
-                new Uri(ProductionWebApiOrigin).Host,
-                StringComparison.OrdinalIgnoreCase)))
+            (!development ||
+             !string.Equals(configured.Host, new Uri(ProductionWebApiOrigin).Host,
+                 StringComparison.OrdinalIgnoreCase) &&
+             !string.Equals(configured.Host, "ddrgp-scorelog-identity-api.tts1374.workers.dev",
+                 StringComparison.OrdinalIgnoreCase)))
         {
             value = configured;
         }
@@ -689,7 +690,7 @@ public partial class MainWindow : System.Windows.Window
 
     private void OpenPublicPlayerPage_Click(object sender, RoutedEventArgs e)
     {
-        var publicPlayerId = viewModel.GetRegisteredPublicPlayerId();
+        var publicPlayerId = viewModel.GetPublicPlayerId();
         if (publicPlayerId is null)
         {
             return;

@@ -433,16 +433,21 @@ public sealed class MainViewModel : INotifyPropertyChanged
             WebBestSyncStatus.Reconciling or
             WebBestSyncStatus.PublicBestsDeleted);
 
-    public bool CanOpenPublicPlayerPage => GetRegisteredPublicPlayerId() is not null;
+    public bool CanOpenPublicPlayerPage => GetPublicPlayerId() is not null;
 
-    internal string? GetRegisteredPublicPlayerId()
+    internal string? GetPublicPlayerId()
+    {
+        var identity = LoadWebPlayerIdentity();
+        return identity?.State is PlayerIdentityState.Registered or PlayerIdentityState.AuthInvalid
+            ? identity.PublicPlayerId
+            : null;
+    }
+
+    private WebPlayerIdentitySnapshot? LoadWebPlayerIdentity()
     {
         try
         {
-            var identity = webPlayerIdentityService?.LoadIdentity();
-            return identity?.State == PlayerIdentityState.Registered
-                ? identity.PublicPlayerId
-                : null;
+            return webPlayerIdentityService?.LoadIdentity();
         }
         catch (Exception exception) when (
             exception is IOException or UnauthorizedAccessException or
@@ -457,7 +462,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
             ? System.Windows.Visibility.Visible
             : System.Windows.Visibility.Collapsed;
 
-    private bool HasRegisteredWebIdentity => GetRegisteredPublicPlayerId() is not null;
+    private bool HasRegisteredWebIdentity =>
+        LoadWebPlayerIdentity()?.State == PlayerIdentityState.Registered;
 
     public LocalizedOption? SelectedBestLevelOption
     {

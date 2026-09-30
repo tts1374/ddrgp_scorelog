@@ -46,7 +46,7 @@ Player registration / identityは`WebPlayerIdentityService`を通じてWeb Best�
 
 API接続先はDBと同じ実行環境から決定し、設定画面の`公開ページを開く`も同じoriginを使用します。本番の既定は`https://ddrgp-scorelog.tts1374.workers.dev/`、開発の既定は`http://127.0.0.1:5173/`です。`DDRGP_WEB_API_ORIGIN`でHTTPSの接続先を指定でき、開発環境ではloopback HTTPも指定できます。開発環境で本番originを指定した場合は開発の既定originを使用します。
 
-開発用identityとCredentialは`data/settings/web-player-identity.development.json`と`web-player-credential.development.bin`へ保存します。初回は同期OFF・未登録で開始し、設定画面で同期をONにして保存するとlocal Webへ登録・同期します。従来のidentity・Credential・同期状態fileは保持し、開発用には読み込みません。
+開発用identityとCredentialは`data/settings/web-player-identity.development.json`と`web-player-credential.development.bin`へ保存します。初回は同期OFF・未登録で開始し、設定画面で同期をONにして保存するとlocal Webへ登録・同期します。開発環境では新旧production Workerのhostへの接続先overrideを受け付けず、local Webへ戻します。従来のidentity・Credential・同期状態fileは保持し、開発用には読み込みません。
 
 ### Local WebとWindowsアプリの確認
 

@@ -55,6 +55,8 @@ desktopではBest table、680px以下では同じ行をcard状に再配置する
 
 ## Migrationとdeploy
 
-Public browse用migrationは既存tableへのindex・`title_search_key`追加と、検索用別名table追加で、旧Workerへ先に適用できる。既存songの検索keyはmigrationで補完し、以後のmaster exportがtitleと検索用別名を更新する。productionは`ddrgp-scorelog` Workerと既存D1を使用し、`PUBLIC_WEB_ORIGIN`とWindows appの既定API originは`https://ddrgp-scorelog.tts1374.workers.dev`に揃える。Windows appの公開ページ導線も同じoriginの`/player/{public_player_id}`を開く。main更新時のdeploy workflowはCI成功後にD1 migration、Worker + Static Assets deployを行う。検索用別名データの反映には、migration後に最新のshared master SQLをD1へ再投入する。
+Public browse用migrationは既存tableへのindex・`title_search_key`追加と、検索用別名table追加で、旧Workerへ先に適用できる。既存songの検索keyはmigrationで補完し、以後のmaster exportがtitleと検索用別名を更新する。productionは`ddrgp-scorelog` Workerと既存D1を使用し、`PUBLIC_WEB_ORIGIN`とWindows appの既定API originは`https://ddrgp-scorelog.tts1374.workers.dev`に揃える。Windows appの公開ページ導線も同じoriginの`/player/{public_player_id}`を開く。
+
+main更新時のdeploy workflowはWeb検証と、mainの直近の成功したmaster build artifactの取得・再検査を実行する。D1 SQLは同じcheckoutのexporterと検索用別名から再生成し、D1 migration、shared master SQL投入、Worker + Static Assets deployの順に進む。master sourceと検索用別名の変更も起動対象とし、artifact取得・検査・投入に失敗した場合はdeployを停止する。初回公開前に新Workerへ既存productionと同じsecretを設定し、旧endpointを使う配布版のサポート期間中は旧WorkerのAPIを維持する。
 
 開発環境のWindows appは`http://127.0.0.1:5173/`へ登録・同期し、公開ページ導線も同じlocal originを使用する。`npm run dev`は開発用secretを`.dev.vars`へ保持し、`.wrangler/development`配下のlocal D1へmigrationとlocal masterのexportを適用してからViteを起動する。本番D1、browser E2Eのlocal D1、Windows側の本番identity・同期状態とは保存先を分離する。

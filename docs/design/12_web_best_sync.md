@@ -65,9 +65,10 @@ CIはmaster生成・inspection後に`master.d1_export`で`songs`、`charts`、`m
 - 401/403は`AUTH_INVALID`へ接続し、自動retryと自動Player再登録を行わない。
 - 設定画面の同期ON/OFFと公開プレイヤー名は設定保存時に確定する。未登録時は公開プレイヤー名をregistrationへ渡し、登録済みでは`PATCH /api/v1/me`で名前だけを更新する。
 - `AUTH_INVALID`では`認証情報を確認`から影響を明示した確認ダイアログを表示し、利用できないlocal identityを削除した場合は同期をOFFにする。新しいPlayerの自動作成や再登録を促す表示は行わない。
+- 公開ページの閲覧導線は`REGISTERED`と`AUTH_INVALID`で読み出せる公開IDを使用する。`AUTH_INVALID`でも認証不要の公開ページを開けるが、同期・公開データ削除は許可しない。
 - deltaの`UNKNOWN_CHART`は該当譜面をdeferredに保ち、他itemを同期する。ユーザー操作を要求せず、対象がそれだけなら「今すぐ同期」を無効にする。
 - 公開Best削除成功後は同期をOFFにし、同じPlayerへ再度ONにしたときfull snapshotで再公開する。
-- WindowsアプリはDBの実行環境に合わせ、本番ではproduction Worker origin、開発では`http://127.0.0.1:5173/`を既定接続先とする。`DDRGP_WEB_API_ORIGIN`はHTTPS overrideを受け付け、開発環境だけloopback HTTPも許可する。開発環境からproduction Worker originへのoverrideは開発の既定接続先へ戻す。
+- WindowsアプリはDBの実行環境に合わせ、本番ではproduction Worker origin、開発では`http://127.0.0.1:5173/`を既定接続先とする。`DDRGP_WEB_API_ORIGIN`はHTTPS overrideを受け付け、開発環境だけloopback HTTPも許可する。開発環境から`ddrgp-scorelog.tts1374.workers.dev`と`ddrgp-scorelog-identity-api.tts1374.workers.dev`へのoverrideは、portやhostの大文字・小文字によらず開発の既定接続先へ戻す。
 
 ## D1 Free枠の確認
 

@@ -27,25 +27,30 @@ Windowsアプリをrepository rootからDebug起動し、設定画面で「公�
 ## Cloudflare setup
 
 1. `wrangler.jsonc`の既存D1 bindingと`PUBLIC_WEB_ORIGIN`をproduction環境に合わせる。初期production originは`https://ddrgp-scorelog.tts1374.workers.dev`である。
-2. 公開用Worker `ddrgp-scorelog`へ、互いに異なる32 byte以上の値をsecretとして登録する。既存Workerからraw secretは取得できないため、管理元の値を使用する。
+2. 公開用Worker `ddrgp-scorelog`へ、既存production Workerと同じ`CREDENTIAL_PEPPER`と`REGISTRATION_SECRET`を登録する。両者は互いに異なる32 byte以上の値である。既存Workerからraw secretは取得できないため、管理元の値を使用する。旧endpointを利用する配布版のサポート期間中は、旧WorkerのAPIも同じD1とsecretで維持する。
 
    ```powershell
    npx wrangler secret put CREDENTIAL_PEPPER
    npx wrangler secret put REGISTRATION_SECRET
    ```
 
-3. migrationを適用してからdeployする。
+3. mainの直近の成功した`build-master-db.yml`のartifactから`ddrgp-master.sqlite`をrepository rootの`data/master/`へ配置する。repository rootで再検査し、同じcheckoutの曲名検索用別名を含むshared master SQLを再exportする。
+
+   ```powershell
+   uv sync --frozen --extra dev
+   uv run python -X utf8 -m master.inspect data/master/ddrgp-master.sqlite --summary data/master/master-summary.json --merge-report data/master/ddrworld-merge-report.json
+   uv run python -X utf8 -m master.d1_export --master-db data/master/ddrgp-master.sqlite --output data/master/ddrgp-web-master.sql
+   ```
+
+4. このdirectoryでmigration、shared master SQL投入、Worker deployを順に実行する。migrationはtableと公開検索用columnを作成し、SQLがLocal masterと同じsong/chart identity、曲名の検索key・別名、`master_version`を反映する。各commandの成功を確認してから次へ進み、投入失敗時はdeployしない。
 
    ```powershell
    npm run migrate:remote
+   npx wrangler d1 execute DB --remote --file ..\..\data\master\ddrgp-web-master.sql
    npm run deploy
    ```
 
-4. master build artifactの`ddrgp-web-master.sql`を同じD1へ適用する。migrationはtableと公開検索用columnを作成し、artifact SQLがLocal masterと同じsong/chart identity、曲名の検索key、`master_version`を冪等upsertする。
-
-   ```powershell
-   npx wrangler d1 execute DB --remote --file ..\..\data\master\ddrgp-web-master.sql
-   ```
+main更新時の`deploy-web.yml`も検査済みartifactの取得、再検査・exportと上記の適用順を実行する。artifact取得・検査・投入に失敗した場合はdeployへ進まない。artifactが期限切れの場合はmaster buildを成功させてからdeployを再実行する。
 
 `CREDENTIAL_PEPPER`はApp Credential secretのHMAC digest、`REGISTRATION_SECRET`は登録requestのdigestとretry時に同じCredentialを再構成するために使用します。どちらもDBやWrangler設定fileへ保存しません。値を失う、または入れ替えると既存Credentialの検証や未完了registration retryができなくなるため、Cloudflare secretとして保持してください。
 

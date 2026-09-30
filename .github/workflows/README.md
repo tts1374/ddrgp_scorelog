@@ -4,12 +4,12 @@
 
 公開Web applicationをmain merge後にproductionへ反映するworkflow。
 
-- `web/identity-api/**`またはworkflow自身がmainで更新された場合に実行する。
+- `web/identity-api/**`、`master/**`、`pyproject.toml`、`uv.lock`またはworkflow自身がmainで更新された場合に実行する。
 - `CLOUDFLARE_ACCOUNT_ID`と`CLOUDFLARE_API_TOKEN`をproduction environment secretから使用する。
 - 型検査、Worker + local D1 test、React test、production buildを再実行する。
-- additive D1 migrationを先に適用し、旧Workerが動作可能な状態を維持したまま`ddrgp-scorelog` WorkerとStatic Assetsをdeployする。
-- shared master SQLのD1再投入はこのworkflowに含まれない。曲名の検索用別名を反映するときは、migration後に最新の`ddrgp-web-master.sql`をD1へ適用する。
-- 初回deploy前に、公開用Workerへ`CREDENTIAL_PEPPER`と`REGISTRATION_SECRET`をCloudflare secretとして登録する。
+- mainの直近の成功した`build-master-db.yml`から検査済みmaster DBを取得し、再検査する。D1 SQLはcheckoutしたcommitで再exportし、同じcommitの曲名検索用別名を含める。
+- additive D1 migration、shared master SQL投入、`ddrgp-scorelog` WorkerとStatic Assetsのdeployを順に実行する。artifact取得・master検査・投入の失敗時はdeployへ進まない。artifactが期限切れの場合はmaster buildを成功させてからdeployを再実行する。
+- 初回deploy前に、公開用Workerへ既存production Workerと同じ`CREDENTIAL_PEPPER`と`REGISTRATION_SECRET`をCloudflare secretとして登録する。既存配布版が参照する旧WorkerのAPIは、旧endpointを利用する配布版のサポート期間中維持する。
 
 ## `build-master-db.yml`
 

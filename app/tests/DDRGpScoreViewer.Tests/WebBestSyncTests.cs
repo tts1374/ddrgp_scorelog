@@ -49,6 +49,8 @@ public sealed class WebBestSyncTests
     [InlineData("http://remote.example.test", "http://127.0.0.1:5173/")]
     [InlineData("https://staging.example.test", "https://staging.example.test/")]
     [InlineData("https://ddrgp-scorelog.tts1374.workers.dev", "http://127.0.0.1:5173/")]
+    [InlineData("https://ddrgp-scorelog-identity-api.tts1374.workers.dev", "http://127.0.0.1:5173/")]
+    [InlineData("https://DDRGP-SCORELOG-IDENTITY-API.tts1374.workers.dev:443/", "http://127.0.0.1:5173/")]
     public void DevelopmentSyncAndPublicPageUseTheDevelopmentOrigin(
         string? overrideOrigin,
         string expectedOrigin)
@@ -369,7 +371,7 @@ public sealed class WebBestSyncTests
         Assert.Contains("\"display_name\":\"2ten\"", registrationBody, StringComparison.Ordinal);
         Assert.Equal(PlayerIdentityState.Registered, registrationStore.Load().State);
         Assert.True(registrationViewModel.CanOpenPublicPlayerPage);
-        Assert.Equal("public-player", registrationViewModel.GetRegisteredPublicPlayerId());
+        Assert.Equal("public-player", registrationViewModel.GetPublicPlayerId());
         Assert.Equal(1, registrationApi.BeginSnapshotCalls);
 
         string? updateBody = null;
@@ -704,11 +706,20 @@ public sealed class WebBestSyncTests
                 Assert.Empty(viewModel.WebBestSyncStatusMessage);
             }
         }
+        identityStore.SetAuthenticationInvalid(true);
         viewModel.ApplyWebBestSyncState(new WebBestSyncSnapshot(
             true, false, WebBestSyncStatus.AuthInvalid, null, 0, null,
             "AUTH_INVALID", [pending]));
         Assert.Equal(System.Windows.Visibility.Visible,
             viewModel.WebBestAuthActionVisibility);
+        Assert.True(viewModel.CanOpenPublicPlayerPage);
+        Assert.Equal("public-player", viewModel.GetPublicPlayerId());
+        Assert.False(viewModel.CanSyncWebBestsNow);
+        Assert.False(viewModel.CanDeletePublicBests);
+        viewModel.ApplyWebBestSyncState(new WebBestSyncSnapshot(
+            false, false, WebBestSyncStatus.Disabled, null, 0, null, null, []));
+        Assert.True(viewModel.CanOpenPublicPlayerPage);
+        Assert.False(viewModel.CanDeletePublicBests);
         identityStore.Clear();
         viewModel.ApplyWebBestSyncState(new WebBestSyncSnapshot(
             false, false, WebBestSyncStatus.Disabled, null, 0, null, null, []));
