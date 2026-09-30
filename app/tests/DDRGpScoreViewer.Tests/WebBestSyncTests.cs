@@ -21,21 +21,75 @@ public sealed class WebBestSyncTests
             MainWindow.ProductionWebApiOrigin);
         Assert.Equal(
             MainWindow.ProductionWebApiOrigin,
-            MainWindow.ResolveWebApiOrigin(null).AbsoluteUri);
+            MainWindow.ResolveWebApiOrigin(ViewerDatabaseEnvironment.Production, null).AbsoluteUri);
         Assert.Equal(
             MainWindow.ProductionWebApiOrigin,
-            MainWindow.ResolveWebApiOrigin("http://insecure.example.test").AbsoluteUri);
+            MainWindow.ResolveWebApiOrigin(
+                ViewerDatabaseEnvironment.Production, "http://insecure.example.test").AbsoluteUri);
         Assert.Equal(
             "https://staging.example.test/",
-            MainWindow.ResolveWebApiOrigin("https://staging.example.test").AbsoluteUri);
+            MainWindow.ResolveWebApiOrigin(
+                ViewerDatabaseEnvironment.Production, "https://staging.example.test").AbsoluteUri);
         Assert.Equal(
             "https://ddrgp-scorelog.tts1374.workers.dev/player/p_example",
             MainWindow.ResolvePublicPlayerPageUri(
-                MainWindow.ResolveWebApiOrigin(null), "p_example").AbsoluteUri);
+                MainWindow.ResolveWebApiOrigin(
+                    ViewerDatabaseEnvironment.Production, null), "p_example").AbsoluteUri);
         Assert.Equal(
             "https://staging.example.test/player/p_example",
             MainWindow.ResolvePublicPlayerPageUri(
-                MainWindow.ResolveWebApiOrigin("https://staging.example.test"), "p_example").AbsoluteUri);
+                MainWindow.ResolveWebApiOrigin(
+                    ViewerDatabaseEnvironment.Production, "https://staging.example.test"),
+                "p_example").AbsoluteUri);
+    }
+
+    [Theory]
+    [InlineData(null, "http://127.0.0.1:5173/")]
+    [InlineData("http://localhost:8787", "http://localhost:8787/")]
+    [InlineData("http://remote.example.test", "http://127.0.0.1:5173/")]
+    [InlineData("https://staging.example.test", "https://staging.example.test/")]
+    [InlineData("https://ddrgp-scorelog.tts1374.workers.dev", "http://127.0.0.1:5173/")]
+    public void DevelopmentSyncAndPublicPageUseTheDevelopmentOrigin(
+        string? overrideOrigin,
+        string expectedOrigin)
+    {
+        var origin = MainWindow.ResolveWebApiOrigin(
+            ViewerDatabaseEnvironment.Development, overrideOrigin);
+
+        Assert.Equal(expectedOrigin, origin.AbsoluteUri);
+        Assert.Equal(
+            expectedOrigin + "player/p_example",
+            MainWindow.ResolvePublicPlayerPageUri(origin, "p_example").AbsoluteUri);
+    }
+
+    [Theory]
+    [InlineData("http://127.0.0.1:5173/", false)]
+    [InlineData("http://remote.example.test/", true)]
+    public void IdentityAndBestClientsRejectHttpOutsideDevelopmentLoopback(
+        string origin,
+        bool allowLoopbackHttp)
+    {
+        using var httpClient = new HttpClient { BaseAddress = new Uri(origin) };
+        var store = new MemoryWebPlayerIdentityStore();
+
+        Assert.Throws<ArgumentException>(() =>
+            new WebPlayerIdentityService(httpClient, store, allowLoopbackHttp));
+        Assert.Throws<ArgumentException>(() =>
+            new WebBestSyncApiClient(httpClient, store, allowLoopbackHttp));
+    }
+
+    [Fact]
+    public void DevelopmentIdentityAndBestClientsAcceptLocalHttp()
+    {
+        using var httpClient = new HttpClient
+        {
+            BaseAddress = MainWindow.ResolveWebApiOrigin(
+                ViewerDatabaseEnvironment.Development, null),
+        };
+        var store = new MemoryWebPlayerIdentityStore();
+
+        _ = new WebPlayerIdentityService(httpClient, store, allowLoopbackHttp: true);
+        _ = new WebBestSyncApiClient(httpClient, store, allowLoopbackHttp: true);
     }
 
     [Fact]

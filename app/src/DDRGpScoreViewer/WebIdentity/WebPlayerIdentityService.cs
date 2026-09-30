@@ -7,6 +7,7 @@ using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using DDRGpScoreViewer.Data;
+using DDRGpScoreViewer.Models;
 
 namespace DDRGpScoreViewer.WebIdentity;
 
@@ -21,15 +22,18 @@ internal sealed class WebPlayerIdentityService
 
     public WebPlayerIdentityService(
         HttpClient httpClient,
-        IWebPlayerIdentityStore identityStore)
+        IWebPlayerIdentityStore identityStore,
+        bool allowLoopbackHttp = false)
     {
         this.httpClient = httpClient;
         this.identityStore = identityStore;
         if (httpClient.BaseAddress is null ||
-            !string.Equals(httpClient.BaseAddress.Scheme, Uri.UriSchemeHttps, StringComparison.Ordinal))
+            !(httpClient.BaseAddress.Scheme == Uri.UriSchemeHttps ||
+              allowLoopbackHttp && httpClient.BaseAddress.Scheme == Uri.UriSchemeHttp &&
+              httpClient.BaseAddress.IsLoopback))
         {
             throw new ArgumentException(
-                "The Player identity API base address must use HTTPS.",
+                "The Player identity API requires HTTPS, or loopback HTTP in development.",
                 nameof(httpClient));
         }
     }
@@ -41,7 +45,8 @@ internal sealed class WebPlayerIdentityService
             httpClient,
             new FileWebPlayerIdentityStore(
                 paths.WebPlayerIdentityPath,
-                paths.WebPlayerCredentialPath));
+                paths.WebPlayerCredentialPath),
+            allowLoopbackHttp: paths.Environment == ViewerDatabaseEnvironment.Development);
 
     public WebPlayerIdentitySnapshot LoadIdentity() => identityStore.Load();
 

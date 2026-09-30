@@ -33,6 +33,7 @@ public partial class MainWindow : System.Windows.Window
     private const double HomeSingleColumnThreshold = 1100;
     internal const string ProductionWebApiOrigin =
         "https://ddrgp-scorelog.tts1374.workers.dev/";
+    internal const string DevelopmentWebApiOrigin = "http://127.0.0.1:5173/";
     private readonly MainViewModel viewModel;
     private readonly AsyncOperationGate monitoringStartGate = new();
     private readonly BestChartPageRequestGate bestChartPageRequestGate = new();
@@ -65,6 +66,7 @@ public partial class MainWindow : System.Windows.Window
         ThemeManager.ThemeChanged += ThemeManager_ThemeChanged;
         homePeriodRefreshTimer.Tick += HomePeriodRefreshTimer_Tick;
         var webApiUri = ResolveWebApiOrigin(
+            databasePaths.Environment,
             Environment.GetEnvironmentVariable("DDRGP_WEB_API_ORIGIN"));
         webApiHttpClient = new HttpClient
         {
@@ -76,11 +78,15 @@ public partial class MainWindow : System.Windows.Window
             databasePaths.WebPlayerCredentialPath);
         var webPlayerIdentityService = new WebPlayerIdentityService(
             webApiHttpClient,
-            identityStore);
+            identityStore,
+            allowLoopbackHttp: databasePaths.Environment == ViewerDatabaseEnvironment.Development);
         var webBestSyncCoordinator = new WebBestSyncCoordinator(
             new SqliteWebBestSyncStateStore(databasePaths.WebBestSyncStatePath),
             new WebBestProjectionRepository(),
-            new WebBestSyncApiClient(webApiHttpClient, identityStore),
+            new WebBestSyncApiClient(
+                webApiHttpClient,
+                identityStore,
+                allowLoopbackHttp: databasePaths.Environment == ViewerDatabaseEnvironment.Development),
             databasePaths.ScoreDatabasePath,
             databasePaths.MasterDatabasePath);
         viewModel = new MainViewModel(
@@ -118,12 +124,22 @@ public partial class MainWindow : System.Windows.Window
         Localization.ApplyToWindow(this);
     }
 
-    internal static Uri ResolveWebApiOrigin(string? overrideOrigin)
+    internal static Uri ResolveWebApiOrigin(
+        ViewerDatabaseEnvironment environment,
+        string? overrideOrigin)
     {
-        var value = Uri.TryCreate(overrideOrigin, UriKind.Absolute, out var configured) &&
-            string.Equals(configured.Scheme, Uri.UriSchemeHttps, StringComparison.Ordinal)
-                ? configured
-                : new Uri(ProductionWebApiOrigin, UriKind.Absolute);
+        var development = environment == ViewerDatabaseEnvironment.Development;
+        var value = new Uri(development ? DevelopmentWebApiOrigin : ProductionWebApiOrigin);
+        if (Uri.TryCreate(overrideOrigin, UriKind.Absolute, out var configured) &&
+            (configured.Scheme == Uri.UriSchemeHttps ||
+             development && configured.Scheme == Uri.UriSchemeHttp && configured.IsLoopback) &&
+            (!development || !string.Equals(
+                configured.Host,
+                new Uri(ProductionWebApiOrigin).Host,
+                StringComparison.OrdinalIgnoreCase)))
+        {
+            value = configured;
+        }
         return new Uri(value.AbsoluteUri.TrimEnd('/') + "/", UriKind.Absolute);
     }
 

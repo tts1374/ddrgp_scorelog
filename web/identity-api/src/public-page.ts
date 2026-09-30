@@ -50,7 +50,7 @@ function securityHeaders(nonce: string): HeadersInit {
     "Content-Security-Policy": [
       "default-src 'self'",
       `script-src 'self' 'nonce-${nonce}'`,
-      "style-src 'self'",
+      `style-src 'self' 'nonce-${nonce}'`,
       "img-src 'self' data:",
       "font-src 'self'",
       "connect-src 'self'",
@@ -100,7 +100,8 @@ export function registerPublicPageRoute(app: Hono<AppEnvironment>): void {
       `<link rel="canonical" href="${escapeHtml(canonical)}">`,
     ].join("");
     const bootstrap = `<script id="player-bootstrap" type="application/json" nonce="${nonce}">${serializeBootstrap(player)}</script>`;
-    const html = shell.replace(headMarker, head).replace(bootstrapMarker, bootstrap);
+    const html = shell.replaceAll("__PLAYER_CSP_NONCE__", nonce)
+      .replace(headMarker, head).replace(bootstrapMarker, bootstrap);
     return new Response(html, { status: 200, headers: securityHeaders(nonce) });
   });
 }

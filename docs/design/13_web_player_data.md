@@ -43,7 +43,7 @@ Workerは現行・非removed chartの`best_flare_rank`、level、play style、ve
 
 bootstrap JSONは`<`、`>`、`&`、U+2028、U+2029をescapeし、requestごとのnonceを付けた`application/json` scriptへ格納する。Overviewはbootstrapだけで初期描画し、BestとFlare Skillはview選択時にPublic APIから取得する。
 
-Worker生成HTMLはstrict CSP、`nosniff`、`no-referrer`、frame拒否、Permissions Policy、`Cache-Control: no-store`を明示する。CSPはselfとrequest nonceだけを許可し、inline style、`unsafe-inline`、`unsafe-eval`、外部CDNを必要としない。
+Worker生成HTMLはstrict CSP、`nosniff`、`no-referrer`、frame拒否、Permissions Policy、`Cache-Control: no-store`を明示する。CSPはselfとrequest nonceだけを許可し、`unsafe-inline`、`unsafe-eval`、外部CDNを必要としない。Viteが挿入するscript・style用nonce placeholderをWorkerでrequest nonceへ置換し、開発時のReact起動scriptと動的styleも同じnonceで許可する。
 
 ## URL stateとresponsive表示
 
@@ -54,3 +54,5 @@ desktopではBest table、680px以下では同じ行をcard状に再配置する
 ## Migrationとdeploy
 
 Public browse用migrationは既存tableへのindex・`title_search_key`追加と、検索用別名table追加で、旧Workerへ先に適用できる。既存songの検索keyはmigrationで補完し、以後のmaster exportがtitleと検索用別名を更新する。productionは`ddrgp-scorelog` Workerと既存D1を使用し、`PUBLIC_WEB_ORIGIN`とWindows appの既定API originは`https://ddrgp-scorelog.tts1374.workers.dev`に揃える。Windows appの公開ページ導線も同じoriginの`/player/{public_player_id}`を開く。main更新時のdeploy workflowはCI成功後にD1 migration、Worker + Static Assets deployを行う。検索用別名データの反映には、migration後に最新のshared master SQLをD1へ再投入する。
+
+開発環境のWindows appは`http://127.0.0.1:5173/`へ登録・同期し、公開ページ導線も同じlocal originを使用する。`npm run dev`は開発用secretを`.dev.vars`へ保持し、`.wrangler/development`配下のlocal D1へmigrationとlocal masterのexportを適用してからViteを起動する。本番D1、browser E2Eのlocal D1、Windows側の本番identity・同期状態とは保存先を分離する。

@@ -28,6 +28,8 @@ field順を固定したcanonical JSONのSHA-256をProjection hashとする。tit
 
 `data/web-sync/web-best-sync.sqlite`は正式個人スコアDBと分離したapp-owned stateで、同期ON/OFF、full snapshot要求、status、最終成功時刻、retry情報、譜面ごとのdesired hash・synced hash・deferred errorを保持する。desiredだけがある状態はpending upsert、syncedだけがある状態はpending delete、両hashが一致する状態はsyncedを表す。
 
+開発環境では`data/web-sync/development/web-best-sync.sqlite`を使用する。従来の本番originに紐付いた状態fileは保持し、開発用へ読み込まない。開発用の初期状態は同期OFFで、local Webのidentityと組み合わせて使用する。
+
 capture由来playの正式保存成功後に対象を含む現在Projection集合を再計算し、hashが変わった譜面だけを最大50件のdelta batchへ送る。Projectionが変わらない場合はBest rowと公開更新時刻を変更しない。状態DBは正式個人スコアDBのschema、backup、formal save transactionへ含めない。
 
 ## APIとD1
@@ -63,7 +65,7 @@ CIはmaster生成・inspection後に`master.d1_export`で`songs`、`charts`、`m
 - `AUTH_INVALID`では`認証情報を確認`から影響を明示した確認ダイアログを表示し、利用できないlocal identityを削除した場合は同期をOFFにする。新しいPlayerの自動作成や再登録を促す表示は行わない。
 - deltaの`UNKNOWN_CHART`は該当譜面をdeferredに保ち、他itemを同期する。ユーザー操作を要求せず、対象がそれだけなら「今すぐ同期」を無効にする。
 - 公開Best削除成功後は同期をOFFにし、同じPlayerへ再度ONにしたときfull snapshotで再公開する。
-- Windowsアプリはproduction Worker originを既定接続先とし、`DDRGP_WEB_API_ORIGIN`はHTTPSのdevelopment / staging overrideとして扱う。
+- WindowsアプリはDBの実行環境に合わせ、本番ではproduction Worker origin、開発では`http://127.0.0.1:5173/`を既定接続先とする。`DDRGP_WEB_API_ORIGIN`はHTTPS overrideを受け付け、開発環境だけloopback HTTPも許可する。開発環境からproduction Worker originへのoverrideは開発の既定接続先へ戻す。
 
 ## D1 Free枠の確認
 

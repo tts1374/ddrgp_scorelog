@@ -42,9 +42,28 @@ Player registration / identityは`WebPlayerIdentityService`を通じてWeb Best�
 
 設定画面で公開プレイヤー名と`Web Best同期`を編集し、設定を保存すると変更を反映します。未登録で同期をONにした場合は入力した公開プレイヤー名でPlayerを登録し、登録済みの場合は`PATCH /api/v1/me`で表示名だけを更新します。`source_captures.source_kind = 'capture'`の正式保存playだけから現在の譜面別Bestを再計算し、Webへ一方向同期します。初回ON、OFFからの再開、backup restore後はfull snapshot、通常のcapture保存後はProjection hashが変わった譜面だけを最大50件のbatchで同期します。OFF中もローカル保存、Player identity、Credential、公開済みBestを維持します。
 
-同期状態は正式個人スコアDBとは別の`data/web-sync/web-best-sync.sqlite`へ保存します。公開プレイヤー名は非秘密のPlayer identity metadataとしてローカルにも保持し、同期OFF中に設定画面を開いてもWeb requestを送信しません。正式個人スコアDBはread-onlyでProjectionを計算し、同期状態やWeb errorを書き込みません。`AUTH_INVALID`では新しいPlayerを自動作成せず、`認証情報を確認`から影響を確認したうえで利用できないlocal identityを削除できます。`UNKNOWN_CHART`は対象譜面だけを保留します。`公開Bestを削除`はWeb上のBestだけを消して同期をOFFにし、Player情報、公開URL、Credential、ローカルscoreを残します。
+同期状態は正式個人スコアDBとは別に、本番では`data/web-sync/web-best-sync.sqlite`、開発では`data/web-sync/development/web-best-sync.sqlite`へ保存します。公開プレイヤー名は非秘密のPlayer identity metadataとしてローカルにも保持し、同期OFF中に設定画面を開いてもWeb requestを送信しません。正式個人スコアDBはread-onlyでProjectionを計算し、同期状態やWeb errorを書き込みません。`AUTH_INVALID`では新しいPlayerを自動作成せず、`認証情報を確認`から影響を確認したうえで利用できないlocal identityを削除できます。`UNKNOWN_CHART`は対象譜面だけを保留します。`公開Bestを削除`はWeb上のBestだけを消して同期をOFFにし、Player情報、公開URL、Credential、ローカルscoreを残します。
 
-通常配布では`https://ddrgp-scorelog.tts1374.workers.dev/`をAPI接続先として使用し、設定画面の`公開ページを開く`も同じoriginを使用します。HTTPSの`DDRGP_WEB_API_ORIGIN`環境変数はdevelopment / staging接続先のoverrideに使用できます。詳細契約は[`docs/design/12_web_best_sync.md`](../docs/design/12_web_best_sync.md)と[`docs/design/13_web_player_data.md`](../docs/design/13_web_player_data.md)を参照してください。
+API接続先はDBと同じ実行環境から決定し、設定画面の`公開ページを開く`も同じoriginを使用します。本番の既定は`https://ddrgp-scorelog.tts1374.workers.dev/`、開発の既定は`http://127.0.0.1:5173/`です。`DDRGP_WEB_API_ORIGIN`でHTTPSの接続先を指定でき、開発環境ではloopback HTTPも指定できます。開発環境で本番originを指定した場合は開発の既定originを使用します。
+
+開発用identityとCredentialは`data/settings/web-player-identity.development.json`と`web-player-credential.development.bin`へ保存します。初回は同期OFF・未登録で開始し、設定画面で同期をONにして保存するとlocal Webへ登録・同期します。従来のidentity・Credential・同期状態fileは保持し、開発用には読み込みません。
+
+### Local WebとWindowsアプリの確認
+
+repositoryの`databases/ddrgp-master.sqlite`を準備し、次を実行します。`npm run dev`はlocal用secretの準備、local D1 migration、同じmasterの投入後にWebを起動します。
+
+```powershell
+cd web\identity-api
+npm run dev
+```
+
+別のterminalでrepository rootからDebugアプリを起動し、設定画面で同期をONにして保存します。`公開ページを開く`はlocal WebのPlayerページを開きます。
+
+```powershell
+dotnet run --project app\src\DDRGpScoreViewer\DDRGpScoreViewer.csproj
+```
+
+詳細契約は[`docs/design/12_web_best_sync.md`](../docs/design/12_web_best_sync.md)と[`docs/design/13_web_player_data.md`](../docs/design/13_web_player_data.md)を参照してください。
 
 ## Debug buildの開発者向け操作
 
