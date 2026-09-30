@@ -1,0 +1,4 @@
+interface:
+  display_name: "DDRGP Issue作成・仕様固定"
+  short_description: "観測済みの課題と確定仕様を検証可能なIssue契約へ固定する"
+  default_prompt: "Use $ddrgp-issue-authoring to write an implementation-ready DDRGP Issue from the confirmed scope and requirements."

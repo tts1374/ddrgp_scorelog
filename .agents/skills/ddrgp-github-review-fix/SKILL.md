@@ -1,11 +1,11 @@
 ---
 name: ddrgp-github-review-fix
-description: DDRGP scorelogの既存GitHub PRで、repository ownerまたはwrite権限ユーザーから最新reviewの全指摘修正を明示依頼されたときに、安全なcheckout確認、Issue契約に基づく指摘分類、修正、検証、通常push、冪等な報告を行う。通常実装、一般review、権限不明・外部contributorからの依頼には使わない。
+description: DDRGPの既存PRでownerまたはwrite権限ユーザーから最新review全指摘の修正を明示依頼されたときに使う。一般reviewや通常のIssue実装は対象外。
 ---
 
 # DDRGP GitHub Review Fix
 
-このSkillは、権限確認済みの明示review-fix起動にだけ使う。ルート`AGENTS.md`のProject Rules、Task Scope、GitHub Workflowを維持する。
+このSkillは、権限確認済みの明示review-fix起動にだけ使う。ルート`AGENTS.md`の素材保護・Issue契約・検証境界を維持する。既にcontextで確認済みの同一指示は再読込しない。
 
 ## Authorization Gate
 

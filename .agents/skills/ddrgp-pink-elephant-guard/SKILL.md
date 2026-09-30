@@ -1,13 +1,13 @@
 ---
 name: ddrgp-pink-elephant-guard
-description: DDRGP scorelogのIssue、設計docs、README、PR本文、Release notes、UI文言などを修正するとき、却下済みの案や訂正前の内容を完成面へ再登場させず、現在の契約だけから自然に書き直す。変更履歴、review、障害分析、必須のNon-scope・安全表示・検証記録には使わない。
+description: DDRGPの完成文書・UI文言へ却下済み案や訂正前内容が再混入し得る修正で使う。変更履歴、review、必須のNon-scope・安全表示・検証記録は保持する。
 ---
 
 # DDRGP Pink Elephant Guard
 
 修正会話に残る旧案を完成物の主題へ戻さず、現在確定している状態だけで自立する成果物を作る。単語を伏せるのではなく、旧案中心の説明構造を捨てて現在の目的から組み直す。
 
-ルートと対象directoryの`AGENTS.md`、指定Issue、関連docsの契約を常に優先する。このSkillは事実や必須記録を隠すために使わない。
+ルートと対象directoryの`AGENTS.md`、指定Issue、関連docsの契約を適用し、現在の明示的なユーザー指示をSkill guidanceより優先する。このSkillは事実や必須記録を隠すために使わない。
 
 ## When To Apply
 
@@ -37,7 +37,7 @@ description: DDRGP scorelogのIssue、設計docs、README、PR本文、Release n
 - `REQUIRED_RECORD`: 比較、Non-scope、安全表示、差分報告など、成果物へ残す契約がある内容
 - `SURFACE`: 読者が見る見出し、本文、表、注記、ラベル、例、CTA
 
-優先順位は、必須の安全・法務表示、repository指示と成果物の記録契約、現在確定したIssue・docs・ユーザー判断、過去の会話の順とする。正本同士が矛盾する場合は、このSkillで片方を隠して解決せず、通常の契約確認へ戻る。
+現在のユーザー判断から確定契約を確認し、必須の安全表示と成果物の記録契約を保持する。過去の会話だけから旧案を復活させない。正本同士が矛盾する場合は、このSkillで片方を隠して解決せず、通常の契約確認へ戻る。
 
 ## Rewrite From A Clean Brief
 
