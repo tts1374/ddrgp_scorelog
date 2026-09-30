@@ -8,10 +8,14 @@ import {
   verifyCredentialSecret,
 } from "./crypto";
 import { registerBestSyncRoutes } from "./best-sync";
+import { registerPublicPageRoute } from "./public-page";
+import { registerPublicPlayerRoutes } from "./public-player";
 
 export interface Bindings {
   DB: D1Database;
+  ASSETS: Fetcher;
   CREDENTIAL_PEPPER: string;
+  PUBLIC_WEB_ORIGIN?: string;
   REGISTRATION_SECRET: string;
 }
 
@@ -33,11 +37,11 @@ interface CredentialPlayerRow extends PlayerRow {
   secret_digest: string;
 }
 
-interface Variables {
+export interface Variables {
   player: PlayerRow;
 }
 
-type AppEnvironment = {
+export type AppEnvironment = {
   Bindings: Bindings;
   Variables: Variables;
 };
@@ -192,10 +196,17 @@ const authenticate: MiddlewareHandler<AppEnvironment> = async (c, next) => {
 };
 
 app.use("/api/*", async (c, next) => {
-  if (new URL(c.req.url).protocol !== "https:") {
+  const requestUrl = new URL(c.req.url);
+  const localDevelopment = requestUrl.hostname === "127.0.0.1" || requestUrl.hostname === "localhost";
+  if (requestUrl.protocol !== "https:" && !localDevelopment) {
     return errorResponse(c, 400, "HTTPS_REQUIRED", "HTTPS is required.");
   }
   await next();
+});
+
+app.use("/api/v1/public/*", async (c, next) => {
+  await next();
+  c.header("Cache-Control", "no-store");
 });
 
 app.post("/api/v1/players/register", async (c) => {
@@ -331,6 +342,8 @@ app.delete("/api/v1/me", async (c) => {
 });
 
 registerBestSyncRoutes(app);
+registerPublicPlayerRoutes(app);
+registerPublicPageRoute(app);
 
 app.notFound((c) => errorResponse(c, 404, "NOT_FOUND", "The route was not found."));
 

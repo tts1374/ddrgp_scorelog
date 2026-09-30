@@ -17,14 +17,81 @@ public sealed class WebBestSyncTests
     public void ProductionApiOriginIsTheDefaultAndHttpsOverrideIsSupported()
     {
         Assert.Equal(
-            MainWindow.ProductionWebApiOrigin,
-            MainWindow.ResolveWebApiOrigin(null).AbsoluteUri);
+            "https://ddrgp-scorelog.tts1374.workers.dev/",
+            MainWindow.ProductionWebApiOrigin);
         Assert.Equal(
             MainWindow.ProductionWebApiOrigin,
-            MainWindow.ResolveWebApiOrigin("http://insecure.example.test").AbsoluteUri);
+            MainWindow.ResolveWebApiOrigin(ViewerDatabaseEnvironment.Production, null).AbsoluteUri);
+        Assert.Equal(
+            MainWindow.ProductionWebApiOrigin,
+            MainWindow.ResolveWebApiOrigin(
+                ViewerDatabaseEnvironment.Production, "http://insecure.example.test").AbsoluteUri);
         Assert.Equal(
             "https://staging.example.test/",
-            MainWindow.ResolveWebApiOrigin("https://staging.example.test").AbsoluteUri);
+            MainWindow.ResolveWebApiOrigin(
+                ViewerDatabaseEnvironment.Production, "https://staging.example.test").AbsoluteUri);
+        Assert.Equal(
+            "https://ddrgp-scorelog.tts1374.workers.dev/player/p_example",
+            MainWindow.ResolvePublicPlayerPageUri(
+                MainWindow.ResolveWebApiOrigin(
+                    ViewerDatabaseEnvironment.Production, null), "p_example").AbsoluteUri);
+        Assert.Equal(
+            "https://staging.example.test/player/p_example",
+            MainWindow.ResolvePublicPlayerPageUri(
+                MainWindow.ResolveWebApiOrigin(
+                    ViewerDatabaseEnvironment.Production, "https://staging.example.test"),
+                "p_example").AbsoluteUri);
+    }
+
+    [Theory]
+    [InlineData(null, "http://127.0.0.1:5173/")]
+    [InlineData("http://localhost:8787", "http://localhost:8787/")]
+    [InlineData("http://remote.example.test", "http://127.0.0.1:5173/")]
+    [InlineData("https://staging.example.test", "https://staging.example.test/")]
+    [InlineData("https://ddrgp-scorelog.tts1374.workers.dev", "http://127.0.0.1:5173/")]
+    [InlineData("https://ddrgp-scorelog-identity-api.tts1374.workers.dev", "http://127.0.0.1:5173/")]
+    [InlineData("https://DDRGP-SCORELOG-IDENTITY-API.tts1374.workers.dev:443/", "http://127.0.0.1:5173/")]
+    public void DevelopmentSyncAndPublicPageUseTheDevelopmentOrigin(
+        string? overrideOrigin,
+        string expectedOrigin)
+    {
+        var origin = MainWindow.ResolveWebApiOrigin(
+            ViewerDatabaseEnvironment.Development, overrideOrigin);
+
+        Assert.Equal(expectedOrigin, origin.AbsoluteUri);
+        Assert.Equal(
+            expectedOrigin + "player/p_example",
+            MainWindow.ResolvePublicPlayerPageUri(origin, "p_example").AbsoluteUri);
+    }
+
+    [Theory]
+    [InlineData("http://127.0.0.1:5173/", false)]
+    [InlineData("http://remote.example.test/", true)]
+    public void IdentityAndBestClientsRejectHttpOutsideDevelopmentLoopback(
+        string origin,
+        bool allowLoopbackHttp)
+    {
+        using var httpClient = new HttpClient { BaseAddress = new Uri(origin) };
+        var store = new MemoryWebPlayerIdentityStore();
+
+        Assert.Throws<ArgumentException>(() =>
+            new WebPlayerIdentityService(httpClient, store, allowLoopbackHttp));
+        Assert.Throws<ArgumentException>(() =>
+            new WebBestSyncApiClient(httpClient, store, allowLoopbackHttp));
+    }
+
+    [Fact]
+    public void DevelopmentIdentityAndBestClientsAcceptLocalHttp()
+    {
+        using var httpClient = new HttpClient
+        {
+            BaseAddress = MainWindow.ResolveWebApiOrigin(
+                ViewerDatabaseEnvironment.Development, null),
+        };
+        var store = new MemoryWebPlayerIdentityStore();
+
+        _ = new WebPlayerIdentityService(httpClient, store, allowLoopbackHttp: true);
+        _ = new WebBestSyncApiClient(httpClient, store, allowLoopbackHttp: true);
     }
 
     [Fact]
@@ -297,11 +364,14 @@ public sealed class WebBestSyncTests
             new WebPlayerIdentityService(registrationHttpClient, registrationStore));
         registrationViewModel.WebPlayerDisplayName = "2ten";
         registrationViewModel.WebBestSyncEnabled = true;
+        Assert.False(registrationViewModel.CanOpenPublicPlayerPage);
 
         await registrationViewModel.ApplyWebSettingsAsync();
 
         Assert.Contains("\"display_name\":\"2ten\"", registrationBody, StringComparison.Ordinal);
         Assert.Equal(PlayerIdentityState.Registered, registrationStore.Load().State);
+        Assert.True(registrationViewModel.CanOpenPublicPlayerPage);
+        Assert.Equal("public-player", registrationViewModel.GetPublicPlayerId());
         Assert.Equal(1, registrationApi.BeginSnapshotCalls);
 
         string? updateBody = null;
@@ -334,6 +404,7 @@ public sealed class WebBestSyncTests
                 fixture.MasterPath),
             new WebPlayerIdentityService(updateHttpClient, updateStore));
         Assert.Equal("Existing player", updateViewModel.WebPlayerDisplayName);
+        Assert.True(updateViewModel.CanOpenPublicPlayerPage);
         Assert.Equal(0, updateRequestCount);
         updateViewModel.WebPlayerDisplayName = "Updated player";
 
@@ -379,6 +450,7 @@ public sealed class WebBestSyncTests
         Assert.Equal(PlayerIdentityState.Unregistered, identityStore.Load().State);
         Assert.False(stateStore.Load().Enabled);
         Assert.False(viewModel.WebBestSyncEnabled);
+        Assert.False(viewModel.CanOpenPublicPlayerPage);
         Assert.Equal("Player", viewModel.WebPlayerDisplayName);
         Assert.Equal(0, api.BeginSnapshotCalls);
     }
@@ -598,6 +670,7 @@ public sealed class WebBestSyncTests
                 fixture.ScorePath,
                 fixture.MasterPath),
             new WebPlayerIdentityService(identityHttpClient, identityStore));
+        Assert.True(viewModel.CanOpenPublicPlayerPage);
         var pending = new WebBestSyncEntry("chart_1", "desired", null, null);
         var unknown = pending with { DeferredError = "UNKNOWN_CHART" };
 
@@ -611,7 +684,7 @@ public sealed class WebBestSyncTests
             (WebBestSyncStatus.ErrorRetryable, true, new[] { pending }, "同期できませんでした", true),
             (WebBestSyncStatus.AuthInvalid, true, new[] { pending }, "認証情報の確認が必要です", false),
             (WebBestSyncStatus.Dirty, true, new[] { unknown }, "一部の譜面をあとで同期します", false),
-            (WebBestSyncStatus.PublicBestsDeleted, false, Array.Empty<WebBestSyncEntry>(), "公開Bestなし", false),
+            (WebBestSyncStatus.PublicBestsDeleted, false, Array.Empty<WebBestSyncEntry>(), "公開データなし", false),
         };
 
         foreach (var (status, enabled, entries, title, canSync) in cases)
@@ -627,16 +700,58 @@ public sealed class WebBestSyncTests
                 entries));
             Assert.Equal(title, viewModel.WebBestSyncStatusTitle);
             Assert.Equal(canSync, viewModel.CanSyncWebBestsNow);
+            if (status is WebBestSyncStatus.Idle or WebBestSyncStatus.Syncing or
+                WebBestSyncStatus.Reconciling or WebBestSyncStatus.PublicBestsDeleted)
+            {
+                Assert.Empty(viewModel.WebBestSyncStatusMessage);
+            }
         }
+        identityStore.SetAuthenticationInvalid(true);
         viewModel.ApplyWebBestSyncState(new WebBestSyncSnapshot(
             true, false, WebBestSyncStatus.AuthInvalid, null, 0, null,
             "AUTH_INVALID", [pending]));
         Assert.Equal(System.Windows.Visibility.Visible,
             viewModel.WebBestAuthActionVisibility);
+        Assert.True(viewModel.CanOpenPublicPlayerPage);
+        Assert.Equal("public-player", viewModel.GetPublicPlayerId());
+        Assert.False(viewModel.CanSyncWebBestsNow);
+        Assert.False(viewModel.CanDeletePublicBests);
+        viewModel.ApplyWebBestSyncState(new WebBestSyncSnapshot(
+            false, false, WebBestSyncStatus.Disabled, null, 0, null, null, []));
+        Assert.True(viewModel.CanOpenPublicPlayerPage);
+        Assert.False(viewModel.CanDeletePublicBests);
         identityStore.Clear();
         viewModel.ApplyWebBestSyncState(new WebBestSyncSnapshot(
             false, false, WebBestSyncStatus.Disabled, null, 0, null, null, []));
         Assert.False(viewModel.CanDeletePublicBests);
+        Assert.False(viewModel.CanOpenPublicPlayerPage);
+    }
+
+    [Fact]
+    public void PostedSyncStateIsAppliedWhenDispatcherUsesAnotherContextInstance()
+    {
+        Localization.Configure(UserSettings.JapaneseLanguage);
+        var originalContext = SynchronizationContext.Current;
+        var dispatcherContext = new QueuedSynchronizationContext();
+        try
+        {
+            SynchronizationContext.SetSynchronizationContext(dispatcherContext);
+            var viewModel = new MainViewModel(new ScoreViewerRepository());
+            SynchronizationContext.SetSynchronizationContext(new SynchronizationContext());
+
+            viewModel.ApplyWebBestSyncState(new WebBestSyncSnapshot(
+                true, false, WebBestSyncStatus.Idle, null, 0, null, null, []));
+            Assert.Equal(1, dispatcherContext.PendingCount);
+            Assert.Equal("同期OFF", viewModel.WebBestSyncStatusTitle);
+
+            dispatcherContext.RunNext();
+            Assert.Equal(0, dispatcherContext.PendingCount);
+            Assert.Equal("同期済み", viewModel.WebBestSyncStatusTitle);
+        }
+        finally
+        {
+            SynchronizationContext.SetSynchronizationContext(originalContext);
+        }
     }
 
     [Fact]
@@ -781,6 +896,22 @@ public sealed class WebBestSyncTests
         protected override Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request,
             CancellationToken cancellationToken) => handler(request);
+    }
+
+    private sealed class QueuedSynchronizationContext : SynchronizationContext
+    {
+        private readonly Queue<(SendOrPostCallback Callback, object? State)> pending = new();
+
+        public int PendingCount => pending.Count;
+
+        public override void Post(SendOrPostCallback callback, object? state) =>
+            pending.Enqueue((callback, state));
+
+        public void RunNext()
+        {
+            var (callback, state) = pending.Dequeue();
+            callback(state);
+        }
     }
 
     private static HttpResponseMessage JsonResponse(

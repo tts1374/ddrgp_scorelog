@@ -1,6 +1,8 @@
 using System.Text;
 using DDRGpScoreViewer.Data;
 using DDRGpScoreViewer.Models;
+using DDRGpScoreViewer.WebBestSync;
+using DDRGpScoreViewer.WebIdentity;
 using Xunit;
 
 namespace DDRGpScoreViewer.Tests;
@@ -21,10 +23,45 @@ public sealed class ViewerDatabasePathsTests
         Assert.Equal("C:\\checkout\\databases\\score.dev.db", paths.ScoreDatabasePath);
         Assert.Equal("C:\\checkout\\databases\\evaluation.db", paths.EvaluationDatabasePath);
         Assert.Equal(
-            "C:\\checkout\\data\\web-sync\\web-best-sync.sqlite",
+            "C:\\checkout\\data\\web-sync\\development\\web-best-sync.sqlite",
             paths.WebBestSyncStatePath);
+        Assert.Equal(
+            "C:\\checkout\\data\\settings\\web-player-identity.development.json",
+            paths.WebPlayerIdentityPath);
+        Assert.Equal(
+            "C:\\checkout\\data\\settings\\web-player-credential.development.bin",
+            paths.WebPlayerCredentialPath);
         Assert.NotEqual(paths.MasterDatabasePath, paths.JacketCatalogDatabasePath);
         Assert.NotEqual(paths.ScoreDatabasePath, paths.EvaluationDatabasePath);
+    }
+
+    [Fact]
+    public void DevelopmentDoesNotReuseThePreviousProductionBoundIdentityOrSyncState()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"ddrgp-web-development-{Guid.NewGuid():N}");
+        try
+        {
+            var paths = ViewerDatabasePaths.ForDevelopment(root);
+            var settingsDirectory = Path.GetDirectoryName(paths.SettingsPath)!;
+            var previousStore = new FileWebPlayerIdentityStore(
+                Path.Combine(settingsDirectory, "web-player-identity.json"),
+                Path.Combine(settingsDirectory, "web-player-credential.bin"));
+            previousStore.SaveRegistered("production-player", "production-credential");
+            var previousSync = new SqliteWebBestSyncStateStore(
+                Path.Combine(paths.DataDirectory, "web-sync", "web-best-sync.sqlite"));
+            previousSync.SetEnabled(true);
+
+            var developmentStore = new FileWebPlayerIdentityStore(
+                paths.WebPlayerIdentityPath, paths.WebPlayerCredentialPath);
+            Assert.Equal(PlayerIdentityState.Unregistered, developmentStore.Load().State);
+            Assert.False(new SqliteWebBestSyncStateStore(paths.WebBestSyncStatePath).Load().Enabled);
+            Assert.Equal("production-player", previousStore.Load().PublicPlayerId);
+            Assert.True(previousSync.Load().Enabled);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
     }
 
 #if DEBUG

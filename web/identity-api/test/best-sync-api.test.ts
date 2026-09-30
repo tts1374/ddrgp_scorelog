@@ -32,7 +32,7 @@ function headers(credential: string): HeadersInit {
 async function seedMaster(): Promise<void> {
   await env.DB.batch([
     env.DB.prepare(
-      "INSERT INTO songs (song_id, title, artist, version) VALUES ('song_1', 'Song 1', 'Artist', 'DDR')",
+      "INSERT INTO songs (song_id, title, artist, version, title_search_key) VALUES ('song_1', 'Song 1', 'Artist', 'DDR', 'song 1')",
     ),
     env.DB.prepare(
       `INSERT INTO charts (chart_id, song_id, play_style, difficulty, level, is_removed)

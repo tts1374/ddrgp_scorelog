@@ -1,8 +1,19 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "ddrgp-scorelog-identity-api",
+  "name": "ddrgp-scorelog",
   "main": "src/index.ts",
   "compatibility_date": "2026-09-20",
+  "assets": {
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": [
+      "/api/*",
+      "/player/*"
+    ]
+  },
+  "vars": {
+    "PUBLIC_WEB_ORIGIN": "https://ddrgp-scorelog.tts1374.workers.dev"
+  },
   "d1_databases": [
     {
       "binding": "DB",

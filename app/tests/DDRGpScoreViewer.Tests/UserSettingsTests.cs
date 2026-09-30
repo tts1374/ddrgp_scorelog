@@ -288,6 +288,23 @@ public sealed class UserSettingsTests
     }
 
     [Theory]
+    [InlineData("公開ページを開く", "Open public page", "공개 페이지 열기")]
+    [InlineData("公開ページ", "Public page", "공개 페이지")]
+    [InlineData(
+        "公開ページを開けませんでした。既定のブラウザーを確認してください。",
+        "Could not open the public page. Check your default browser.",
+        "공개 페이지를 열 수 없습니다. 기본 브라우저를 확인하세요.")]
+    public void Public_player_page_strings_are_translated_for_supported_languages(
+        string japaneseText,
+        string englishText,
+        string koreanText)
+    {
+        Assert.Equal(japaneseText, Localization.GetForLanguage(japaneseText, UserSettings.JapaneseLanguage));
+        Assert.Equal(englishText, Localization.GetForLanguage(japaneseText, UserSettings.EnglishLanguage));
+        Assert.Equal(koreanText, Localization.GetForLanguage(japaneseText, UserSettings.KoreanLanguage));
+    }
+
+    [Theory]
     [InlineData("プレー記録（07:00切り替え）", "play records (07:00 boundary)", "플레이 기록 (07:00 전환)")]
     [InlineData("保存済みプレーの件数", "Saved play count", "저장된 플레이 수")]
     [InlineData("総ノーツ数", "Total notes", "총 노트 수")]

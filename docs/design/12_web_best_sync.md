@@ -28,6 +28,8 @@ field順を固定したcanonical JSONのSHA-256をProjection hashとする。tit
 
 `data/web-sync/web-best-sync.sqlite`は正式個人スコアDBと分離したapp-owned stateで、同期ON/OFF、full snapshot要求、status、最終成功時刻、retry情報、譜面ごとのdesired hash・synced hash・deferred errorを保持する。desiredだけがある状態はpending upsert、syncedだけがある状態はpending delete、両hashが一致する状態はsyncedを表す。
 
+開発環境では`data/web-sync/development/web-best-sync.sqlite`を使用する。従来の本番originに紐付いた状態fileは保持し、開発用へ読み込まない。開発用の初期状態は同期OFFで、local Webのidentityと組み合わせて使用する。
+
 capture由来playの正式保存成功後に対象を含む現在Projection集合を再計算し、hashが変わった譜面だけを最大50件のdelta batchへ送る。Projectionが変わらない場合はBest rowと公開更新時刻を変更しない。状態DBは正式個人スコアDBのschema、backup、formal save transactionへ含めない。
 
 ## APIとD1
@@ -55,15 +57,18 @@ CIはmaster生成・inspection後に`master.d1_export`で`songs`、`charts`、`m
 
 ## 同期操作と状態
 
+設定画面の利用者向け名称は「公開データの同期」「公開データを削除」とする。正常な同期状態は状態名と最終同期で示し、対処が必要な状態では理由を表示する。削除確認では同期OFFと、プレイヤー情報・公開URL・認証情報・ローカル保存データを保持することを明示する。
+
 - OFFではローカル保存を継続し、設定画面表示を含むWeb requestを停止する。Player identity、Credential、公開済みBestを維持し、公開プレイヤー名は非秘密のlocal identity metadataから表示する。
 - 初回ON、OFFからON、bulk restore、repairは現在のcapture由来集合をfull snapshotで再整合する。
 - network error、timeout、429、5xxは5秒、15秒、30秒、1分、5分を基準に±20% jitterで最大5回自動retryする。
 - 401/403は`AUTH_INVALID`へ接続し、自動retryと自動Player再登録を行わない。
 - 設定画面の同期ON/OFFと公開プレイヤー名は設定保存時に確定する。未登録時は公開プレイヤー名をregistrationへ渡し、登録済みでは`PATCH /api/v1/me`で名前だけを更新する。
 - `AUTH_INVALID`では`認証情報を確認`から影響を明示した確認ダイアログを表示し、利用できないlocal identityを削除した場合は同期をOFFにする。新しいPlayerの自動作成や再登録を促す表示は行わない。
+- 公開ページの閲覧導線は`REGISTERED`と`AUTH_INVALID`で読み出せる公開IDを使用する。`AUTH_INVALID`でも認証不要の公開ページを開けるが、同期・公開データ削除は許可しない。
 - deltaの`UNKNOWN_CHART`は該当譜面をdeferredに保ち、他itemを同期する。ユーザー操作を要求せず、対象がそれだけなら「今すぐ同期」を無効にする。
 - 公開Best削除成功後は同期をOFFにし、同じPlayerへ再度ONにしたときfull snapshotで再公開する。
-- Windowsアプリはproduction Worker originを既定接続先とし、`DDRGP_WEB_API_ORIGIN`はHTTPSのdevelopment / staging overrideとして扱う。
+- WindowsアプリはDBの実行環境に合わせ、本番ではproduction Worker origin、開発では`http://127.0.0.1:5173/`を既定接続先とする。`DDRGP_WEB_API_ORIGIN`はHTTPS overrideを受け付け、開発環境だけloopback HTTPも許可する。開発環境から`ddrgp-scorelog.tts1374.workers.dev`と`ddrgp-scorelog-identity-api.tts1374.workers.dev`へのoverrideは、portやhostの大文字・小文字によらず開発の既定接続先へ戻す。
 
 ## D1 Free枠の確認
 

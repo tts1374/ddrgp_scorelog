@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Net.Http;
 using System.Runtime.InteropServices;
 using System.Windows;
@@ -31,7 +32,8 @@ public partial class MainWindow : System.Windows.Window
 {
     private const double HomeSingleColumnThreshold = 1100;
     internal const string ProductionWebApiOrigin =
-        "https://ddrgp-scorelog-identity-api.tts1374.workers.dev/";
+        "https://ddrgp-scorelog.tts1374.workers.dev/";
+    internal const string DevelopmentWebApiOrigin = "http://127.0.0.1:5173/";
     private readonly MainViewModel viewModel;
     private readonly AsyncOperationGate monitoringStartGate = new();
     private readonly BestChartPageRequestGate bestChartPageRequestGate = new();
@@ -64,6 +66,7 @@ public partial class MainWindow : System.Windows.Window
         ThemeManager.ThemeChanged += ThemeManager_ThemeChanged;
         homePeriodRefreshTimer.Tick += HomePeriodRefreshTimer_Tick;
         var webApiUri = ResolveWebApiOrigin(
+            databasePaths.Environment,
             Environment.GetEnvironmentVariable("DDRGP_WEB_API_ORIGIN"));
         webApiHttpClient = new HttpClient
         {
@@ -75,11 +78,15 @@ public partial class MainWindow : System.Windows.Window
             databasePaths.WebPlayerCredentialPath);
         var webPlayerIdentityService = new WebPlayerIdentityService(
             webApiHttpClient,
-            identityStore);
+            identityStore,
+            allowLoopbackHttp: databasePaths.Environment == ViewerDatabaseEnvironment.Development);
         var webBestSyncCoordinator = new WebBestSyncCoordinator(
             new SqliteWebBestSyncStateStore(databasePaths.WebBestSyncStatePath),
             new WebBestProjectionRepository(),
-            new WebBestSyncApiClient(webApiHttpClient, identityStore),
+            new WebBestSyncApiClient(
+                webApiHttpClient,
+                identityStore,
+                allowLoopbackHttp: databasePaths.Environment == ViewerDatabaseEnvironment.Development),
             databasePaths.ScoreDatabasePath,
             databasePaths.MasterDatabasePath);
         viewModel = new MainViewModel(
@@ -117,14 +124,28 @@ public partial class MainWindow : System.Windows.Window
         Localization.ApplyToWindow(this);
     }
 
-    internal static Uri ResolveWebApiOrigin(string? overrideOrigin)
+    internal static Uri ResolveWebApiOrigin(
+        ViewerDatabaseEnvironment environment,
+        string? overrideOrigin)
     {
-        var value = Uri.TryCreate(overrideOrigin, UriKind.Absolute, out var configured) &&
-            string.Equals(configured.Scheme, Uri.UriSchemeHttps, StringComparison.Ordinal)
-                ? configured
-                : new Uri(ProductionWebApiOrigin, UriKind.Absolute);
+        var development = environment == ViewerDatabaseEnvironment.Development;
+        var value = new Uri(development ? DevelopmentWebApiOrigin : ProductionWebApiOrigin);
+        if (Uri.TryCreate(overrideOrigin, UriKind.Absolute, out var configured) &&
+            (configured.Scheme == Uri.UriSchemeHttps ||
+             development && configured.Scheme == Uri.UriSchemeHttp && configured.IsLoopback) &&
+            (!development ||
+             !string.Equals(configured.Host, new Uri(ProductionWebApiOrigin).Host,
+                 StringComparison.OrdinalIgnoreCase) &&
+             !string.Equals(configured.Host, "ddrgp-scorelog-identity-api.tts1374.workers.dev",
+                 StringComparison.OrdinalIgnoreCase)))
+        {
+            value = configured;
+        }
         return new Uri(value.AbsoluteUri.TrimEnd('/') + "/", UriKind.Absolute);
     }
+
+    internal static Uri ResolvePublicPlayerPageUri(Uri origin, string publicPlayerId) =>
+        new(origin, "/player/" + Uri.EscapeDataString(publicPlayerId));
 
 #if DEBUG
     private void AddDeveloperActions()
@@ -652,7 +673,7 @@ public partial class MainWindow : System.Windows.Window
         ContentTabs.SelectedIndex = 5;
         BindingOperations.ClearBinding(PageTitle, TextBlock.TextProperty);
         PageTitle.Text = Localization.Get("設定");
-        PageSubtitle.Text = Localization.Get("自動記録、Web Best同期、表示に関する設定を変更できます");
+        PageSubtitle.Text = "";
         Localization.ApplyToWindow(this);
         HomeNavigation.Tag = null;
         BestNavigation.Tag = null;
@@ -665,6 +686,32 @@ public partial class MainWindow : System.Windows.Window
     private async void SyncWebBestsNow_Click(object sender, RoutedEventArgs e)
     {
         await viewModel.SyncWebBestsNowAsync(applicationExitCancellation.Token);
+    }
+
+    private void OpenPublicPlayerPage_Click(object sender, RoutedEventArgs e)
+    {
+        var publicPlayerId = viewModel.GetPublicPlayerId();
+        if (publicPlayerId is null)
+        {
+            return;
+        }
+
+        var pageUri = ResolvePublicPlayerPageUri(webApiHttpClient.BaseAddress!, publicPlayerId);
+        try
+        {
+            using var process = Process.Start(new ProcessStartInfo(pageUri.AbsoluteUri)
+            {
+                UseShellExecute = true,
+            });
+        }
+        catch (Exception exception) when (exception is Win32Exception or InvalidOperationException)
+        {
+            System.Windows.MessageBox.Show(
+                Localization.Get("公開ページを開けませんでした。既定のブラウザーを確認してください。"),
+                Localization.Get("公開ページ"),
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+        }
     }
 
     private async void CheckWebBestIdentity_Click(object sender, RoutedEventArgs e)
@@ -686,8 +733,8 @@ public partial class MainWindow : System.Windows.Window
     {
         var confirmed = System.Windows.MessageBox.Show(
             Localization.Get(
-                "Web上に公開している自己ベストを削除します。Player情報、公開URL、認証情報、ローカルの保存データは残ります。削除後、Web Best同期はOFFになります。"),
-            Localization.Get("公開Bestを削除しますか？"),
+                "Web上の公開データを削除し、同期をOFFにします。プレイヤー情報、公開URL、認証情報、ローカルの保存データは残ります。"),
+            Localization.Get("公開データを削除しますか？"),
             MessageBoxButton.YesNo,
             MessageBoxImage.Warning,
             MessageBoxResult.No);

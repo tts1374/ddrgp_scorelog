@@ -25,18 +25,21 @@ public sealed record ViewerDatabasePaths(
         Path.GetDirectoryName(SettingsPath)
             ?? throw new InvalidOperationException(
                 $"Web Player identity parent directory could not be determined: {SettingsPath}"),
-        "web-player-identity.json");
+        Environment == ViewerDatabaseEnvironment.Development
+            ? "web-player-identity.development.json"
+            : "web-player-identity.json");
 
     public string WebPlayerCredentialPath => Path.Combine(
         Path.GetDirectoryName(SettingsPath)
             ?? throw new InvalidOperationException(
                 $"Web Player credential parent directory could not be determined: {SettingsPath}"),
-        "web-player-credential.bin");
+        Environment == ViewerDatabaseEnvironment.Development
+            ? "web-player-credential.development.bin"
+            : "web-player-credential.bin");
 
-    public string WebBestSyncStatePath => Path.Combine(
-        DataDirectory,
-        "web-sync",
-        "web-best-sync.sqlite");
+    public string WebBestSyncStatePath => Environment == ViewerDatabaseEnvironment.Development
+        ? Path.Combine(DataDirectory, "web-sync", "development", "web-best-sync.sqlite")
+        : Path.Combine(DataDirectory, "web-sync", "web-best-sync.sqlite");
 
     // The collector source may be an unbound pre-release catalog. The WPF
     // runtime must use the explicitly bound copy instead of accepting it as a fallback.

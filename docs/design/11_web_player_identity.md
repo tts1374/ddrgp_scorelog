@@ -42,7 +42,7 @@ Windows appは初回送信前に256 bit乱数のregistration request IDを生成
 
 ## API
 
-すべてHTTPSで利用する。
+本番およびremoteの接続先はHTTPSで利用する。開発環境のloopback接続だけHTTPを許可する。
 
 | Method | Route | 契約 |
 | --- | --- | --- |
@@ -56,6 +56,8 @@ Windows appは初回送信前に256 bit乱数のregistration request IDを生成
 ## Windows secure storageとidentity state
 
 非秘密の`public_player_id`、`display_name`、identity stateは既存設定pathと同じdirectoryの`web-player-identity.json`へ保存する。未完了registration request IDは同じJSON内のDPAPI CurrentUser保護blob、Credentialは`web-player-credential.bin`へDPAPI CurrentUser保護blobとして保存する。用途ごとに異なる追加entropyを使い、復号できるのは同じWindowsユーザーcontextである。metadata JSON、正式個人スコアDB、Release logにはraw secretを保存しない。
+
+開発環境では設定directory内の`web-player-identity.development.json`と`web-player-credential.development.bin`を使用し、本番接続時に作られた従来のfileとは分離する。従来fileを開発用へ移行せず保持し、local Webへの初回登録は設定保存による同期ON操作で行う。
 
 | state | local条件 | request失敗時の遷移 |
 | --- | --- | --- |

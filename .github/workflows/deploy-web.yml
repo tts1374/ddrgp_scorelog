@@ -1,0 +1,75 @@
+name: Deploy Web application
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/deploy-web.yml"
+      - "web/identity-api/**"
+      - "master/**"
+      - "pyproject.toml"
+      - "uv.lock"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-web-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Migrate and deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    env:
+      PYTHONUTF8: "1"
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/identity-api/package-lock.json
+
+      - name: Install locked dependencies
+        working-directory: web/identity-api
+        run: npm ci --legacy-peer-deps
+
+      - name: Verify Web application
+        working-directory: web/identity-api
+        run: npm run check
+
+      - name: Set up Python and uv
+        uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          python-version: "3.13"
+
+      - name: Build, inspect and export shared master
+        run: |
+          uv sync --frozen --extra dev
+          uv run pytest tests/test_master_builder.py tests/test_master_identity_registry.py
+          uv run python -m master --output data/master/ddrgp-master.sqlite
+          uv run python -m master.inspect data/master/ddrgp-master.sqlite --summary data/master/master-summary.json --merge-report data/master/ddrworld-merge-report.json
+          uv run python -m master.d1_export --master-db data/master/ddrgp-master.sqlite --output data/master/ddrgp-web-master.sql
+
+      - name: Apply additive D1 migrations
+        working-directory: web/identity-api
+        run: npm run migrate:remote
+
+      - name: Import shared master and title search aliases
+        working-directory: web/identity-api
+        run: npx wrangler d1 execute DB --remote --file ../../data/master/ddrgp-web-master.sql
+
+      - name: Deploy Worker and Static Assets
+        working-directory: web/identity-api
+        run: npm run deploy

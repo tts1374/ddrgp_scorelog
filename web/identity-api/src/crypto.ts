@@ -91,5 +91,5 @@ export async function verifyCredentialSecret(
     return false;
   }
   const key = await importHmacKey(credentialPepper, "CREDENTIAL_PEPPER");
-  return crypto.subtle.verify("HMAC", key, digest, encoder.encode(secret));
+  return crypto.subtle.verify("HMAC", key, Uint8Array.from(digest), encoder.encode(secret));
 }

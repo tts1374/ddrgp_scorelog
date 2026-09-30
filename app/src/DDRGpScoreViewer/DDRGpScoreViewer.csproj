@@ -28,6 +28,8 @@
 
   <ItemGroup>
     <Resource Include="Assets\GPScoreLog.ico" />
+    <EmbeddedResource Include="..\..\..\master\title_search_aliases.json"
+                      LogicalName="DDRGpScoreViewer.title_search_aliases.json" />
     <Content Include="RuntimeAssets\**\*"
              CopyToOutputDirectory="PreserveNewest"
              CopyToPublishDirectory="PreserveNewest" />

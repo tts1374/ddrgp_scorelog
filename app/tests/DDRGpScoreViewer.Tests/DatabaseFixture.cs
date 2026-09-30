@@ -350,7 +350,10 @@ internal sealed class DatabaseFixture : IDisposable
               difficulty TEXT NOT NULL, level INTEGER NOT NULL,
               is_removed INTEGER NOT NULL DEFAULT 0
             );
-            CREATE TABLE song_aliases (alias_id TEXT PRIMARY KEY);
+            CREATE TABLE song_aliases (
+              alias_id TEXT PRIMARY KEY, song_id TEXT NOT NULL,
+              alias_title TEXT NOT NULL
+            );
             CREATE TABLE master_metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
             CREATE TABLE source_snapshots (
               snapshot_id TEXT PRIMARY KEY, source_url TEXT NOT NULL,

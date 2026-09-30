@@ -6,7 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from master.d1_export import export_shared_master_sql
+from master.builder import parse_song_list_rows
+from master.d1_export import export_shared_master_sql, normalize_title_search
 from master.identity_registry import (
     DEFAULT_REGISTRY_PATH,
     SongIdentityRegistry,
@@ -32,7 +33,40 @@ def test_released_registry_keeps_canonical_and_source_presentations_on_one_id() 
 
     assert registry.resolve("RËVOLUTIФN", "TËЯRA") == "song_177d950f607b1894"
     assert registry.resolve("RЁVOLUTIФN", "TЁЯRA") == "song_177d950f607b1894"
-    assert len(registry.identities) == 1372
+    assert len(registry.identities) == 1381
+
+
+@pytest.mark.parametrize(
+    ("title", "artist", "song_id"),
+    [
+        ("ZENDEGI DANCE", 'ARM × BEMANI Sound Team "U1 overground"', "song_0d58f6ea61e404e4"),
+        ("Is this dance a Hakken?", "RoughSketch", "song_5c89d5d1203ed516"),
+        ("Bye or not", "PSYQUI feat. Mikanzil", "song_61fc25aa94133533"),
+        ("疾風迅雷", "KUMOKIRI", "song_70cecd853abc379a"),
+        ("EYE OF THE HEAVEN", 'BEMANI Sound Team "U1-ASAMi"', "song_8b06d0cf133616cb"),
+        ("Decryption", "Felysrator", "song_99f117ee2f346e9a"),
+        ("eyesight", "タバサリサ", "song_9d7fb72874434523"),
+        ("I'll Be With You", "ゆんゆん", "song_e74e9cf071c1206a"),
+        ("Daisycutter", "ETIA.", "song_fb97eaa232785f2b"),
+    ],
+)
+def test_reviewed_september_songs_keep_master_and_chart_identity(
+    title: str, artist: str, song_id: str
+) -> None:
+    registry = SongIdentityRegistry.load(DEFAULT_REGISTRY_PATH)
+    rows = [[], [], ["EX", title, artist, "", "180", "-"] + ["10"] * 9]
+
+    songs, charts = parse_song_list_rows(rows, registry)
+
+    assert registry.resolve(title, artist) == song_id
+    assert songs[0].song_id == song_id
+    assert len(charts) == 9
+    assert all(
+        chart.song_id == song_id
+        and chart.chart_id
+        == stable_identity_id_v1("chart", song_id, chart.play_style, chart.difficulty)
+        for chart in charts
+    )
 
 
 def test_registry_rejects_unreviewed_identity_and_duplicate_mapping(tmp_path: Path) -> None:
@@ -109,6 +143,15 @@ def test_registry_bootstrap_includes_alias_presentations(tmp_path: Path) -> None
 def test_d1_export_is_deterministic_idempotent_and_resolves_metadata(tmp_path: Path) -> None:
     database = tmp_path / "master.sqlite"
     create_master_fixture(database)
+    with sqlite3.connect(database) as connection:
+        connection.executemany(
+            "INSERT INTO songs (song_id, title, artist, version) VALUES (?, ?, 'Artist', 'DDR')",
+            [
+                ("song_2", "Übertreffen"),
+                ("song_3", "ÆTHER"),
+                ("song_06d308e2e7cdf168", "TRUE♥LOVE"),
+            ],
+        )
 
     first = export_shared_master_sql(database)
     second = export_shared_master_sql(database)
@@ -120,7 +163,8 @@ def test_d1_export_is_deterministic_idempotent_and_resolves_metadata(tmp_path: P
         PRAGMA foreign_keys = ON;
         CREATE TABLE songs (
           song_id TEXT PRIMARY KEY, title TEXT NOT NULL,
-          artist TEXT NOT NULL, version TEXT NOT NULL
+          artist TEXT NOT NULL, version TEXT NOT NULL,
+          title_search_key TEXT NOT NULL DEFAULT ''
         );
         CREATE TABLE charts (
           chart_id TEXT PRIMARY KEY, song_id TEXT NOT NULL,
@@ -131,6 +175,11 @@ def test_d1_export_is_deterministic_idempotent_and_resolves_metadata(tmp_path: P
         CREATE TABLE web_master_metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
         """
     )
+    alias_migration = (
+        Path(__file__).resolve().parents[1]
+        / "web/identity-api/migrations/0005_title_search_aliases.sql"
+    )
+    target.executescript(alias_migration.read_text(encoding="utf-8"))
     target.executescript(first)
     target.executescript(first)
     assert target.execute(
@@ -140,3 +189,63 @@ def test_d1_export_is_deterministic_idempotent_and_resolves_metadata(tmp_path: P
     assert target.execute(
         "SELECT value FROM web_master_metadata WHERE key = 'master_version'"
     ).fetchone() == ("fixture-v1",)
+    assert target.execute(
+        "SELECT title_search_key FROM songs WHERE song_id = 'song_2'"
+    ).fetchone() == ("ubertreffen",)
+    assert target.execute(
+        "SELECT title_search_key FROM songs WHERE song_id = 'song_3'"
+    ).fetchone() == ("aether",)
+    assert target.execute(
+        "SELECT song_id, search_key FROM song_title_search_aliases ORDER BY song_id"
+    ).fetchall() == [
+        ("song_06d308e2e7cdf168", "true love"),
+        ("song_1", "source"),
+    ]
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            "UPDATE songs SET title = 'Übertreffen II' WHERE song_id = 'song_2'"
+        )
+        connection.execute(
+            "UPDATE song_aliases SET alias_title = 'Changed' WHERE song_id = 'song_1'"
+        )
+    target.executescript(export_shared_master_sql(database))
+    assert target.execute(
+        "SELECT title_search_key FROM songs WHERE song_id = 'song_2'"
+    ).fetchone() == ("ubertreffen ii",)
+    assert target.execute(
+        "SELECT search_key FROM song_title_search_aliases WHERE song_id = 'song_1'"
+    ).fetchall() == [("changed",)]
+
+
+def test_title_search_normalization_and_existing_d1_backfill() -> None:
+    assert normalize_title_search("Übertreffen") == "ubertreffen"
+    assert normalize_title_search("ÆTHER") == "aether"
+    assert normalize_title_search("ガ") == "ガ"
+
+    target = sqlite3.connect(":memory:")
+    target.execute("CREATE TABLE songs(song_id TEXT PRIMARY KEY, title TEXT NOT NULL)")
+    target.executemany(
+        "INSERT INTO songs VALUES (?, ?)",
+        [("song_1", "Übertreffen"), ("song_2", "ÆTHER"), ("song_3", "ガ")],
+    )
+    migration = (
+        Path(__file__).resolve().parents[1]
+        / "web/identity-api/migrations/0004_title_search_key.sql"
+    )
+    target.executescript(migration.read_text(encoding="utf-8"))
+    assert target.execute(
+        "SELECT title_search_key FROM songs ORDER BY song_id"
+    ).fetchall() == [("ubertreffen",), ("aether",), ("ガ",)]
+
+
+def test_curated_title_search_aliases_keep_symbol_only_title_literal() -> None:
+    manifest = (
+        Path(__file__).resolve().parents[1] / "master/title_search_aliases.json"
+    )
+    entries = json.loads(manifest.read_text(encoding="utf-8"))
+    assert len(entries) == 125
+    assert sum(len(entry["aliases"]) for entry in entries) == 127
+    assert len({entry["song_id"] for entry in entries}) == len(entries)
+    assert "song_c55d8ffd1066e044" not in {
+        entry["song_id"] for entry in entries
+    }

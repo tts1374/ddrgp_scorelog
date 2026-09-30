@@ -49,17 +49,18 @@ internal sealed class WebBestSyncApiClient : IWebBestSyncApiClient
 
     public WebBestSyncApiClient(
         HttpClient httpClient,
-        IWebPlayerIdentityStore identityStore)
+        IWebPlayerIdentityStore identityStore,
+        bool allowLoopbackHttp = false)
     {
         this.httpClient = httpClient;
         this.identityStore = identityStore;
         if (httpClient.BaseAddress is null ||
-            !string.Equals(
-                httpClient.BaseAddress.Scheme,
-                Uri.UriSchemeHttps,
-                StringComparison.Ordinal))
+            !(httpClient.BaseAddress.Scheme == Uri.UriSchemeHttps ||
+              allowLoopbackHttp && httpClient.BaseAddress.Scheme == Uri.UriSchemeHttp &&
+              httpClient.BaseAddress.IsLoopback))
         {
-            throw new ArgumentException("The Web Best API base address must use HTTPS.");
+            throw new ArgumentException(
+                "The Web Best API requires HTTPS, or loopback HTTP in development.");
         }
     }
 

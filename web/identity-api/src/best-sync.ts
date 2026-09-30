@@ -12,7 +12,9 @@ export interface BestSyncPlayer {
 export type BestSyncEnvironment = {
   Bindings: {
     DB: D1Database;
+    ASSETS: Fetcher;
     CREDENTIAL_PEPPER: string;
+    PUBLIC_WEB_ORIGIN?: string;
     REGISTRATION_SECRET: string;
   };
   Variables: { player: BestSyncPlayer };

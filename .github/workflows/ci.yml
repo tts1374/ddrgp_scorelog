@@ -14,8 +14,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  identity-api:
-    name: Player identity API
+  web-application:
+    name: Web application
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -37,6 +37,14 @@ jobs:
       - name: Typecheck and test
         working-directory: web/identity-api
         run: npm run check
+
+      - name: Install Chromium
+        working-directory: web/identity-api
+        run: npx playwright install --with-deps chromium
+
+      - name: Browser smoke
+        working-directory: web/identity-api
+        run: npm run test:e2e
 
   python:
     name: Python

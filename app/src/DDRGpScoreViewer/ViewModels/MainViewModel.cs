@@ -4,6 +4,7 @@ using System.Globalization;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using DDRGpScoreViewer;
 using DDRGpScoreViewer.Capture;
@@ -63,6 +64,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private int chartDetailFullComboCount;
     private string chartDetailGraphMode = ChartDetailAllPlaysMode;
     private IReadOnlyList<ChartBestItem> allChartBests = [];
+    private IReadOnlyDictionary<string, IReadOnlyList<string>> titleSearchAliases =
+        new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
     private IReadOnlyList<LocalizedOption> bestVersionOptions =
         UserSettings.SupportedBestVersions
             .Select(version => new LocalizedOption(version, version))
@@ -205,7 +208,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private bool webPlayerDisplayNameDirty;
     private string webBestSyncStatusTitle = Localization.Get("同期OFF");
     private string webBestSyncStatusMessage = Localization.Get(
-        "OFFにしても現在公開中のWeb Bestは残ります。");
+        "同期をOFFにしても公開データは残ります。");
     private string webBestSyncLastSuccessDisplay = Localization.Get("未同期");
     private string webBestSyncDetails = "";
     private WebBestSyncStatus webBestSyncStatus = WebBestSyncStatus.Disabled;
@@ -286,6 +289,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(IsWebBestSyncAvailable));
         OnPropertyChanged(nameof(CanSyncWebBestsNow));
         OnPropertyChanged(nameof(CanDeletePublicBests));
+        OnPropertyChanged(nameof(CanOpenPublicPlayerPage));
     }
 
     internal Func<TimeSpan, Func<Task>, Task> UnresolvedNotificationScheduler { get; set; } =
@@ -429,28 +433,37 @@ public sealed class MainViewModel : INotifyPropertyChanged
             WebBestSyncStatus.Reconciling or
             WebBestSyncStatus.PublicBestsDeleted);
 
+    public bool CanOpenPublicPlayerPage => GetPublicPlayerId() is not null;
+
+    internal string? GetPublicPlayerId()
+    {
+        var identity = LoadWebPlayerIdentity();
+        return identity?.State is PlayerIdentityState.Registered or PlayerIdentityState.AuthInvalid
+            ? identity.PublicPlayerId
+            : null;
+    }
+
+    private WebPlayerIdentitySnapshot? LoadWebPlayerIdentity()
+    {
+        try
+        {
+            return webPlayerIdentityService?.LoadIdentity();
+        }
+        catch (Exception exception) when (
+            exception is IOException or UnauthorizedAccessException or
+            InvalidDataException or CryptographicException or JsonException)
+        {
+            return null;
+        }
+    }
+
     public System.Windows.Visibility WebBestAuthActionVisibility =>
         webBestSyncStatus == WebBestSyncStatus.AuthInvalid
             ? System.Windows.Visibility.Visible
             : System.Windows.Visibility.Collapsed;
 
-    private bool HasRegisteredWebIdentity
-    {
-        get
-        {
-            try
-            {
-                return webPlayerIdentityService?.LoadIdentity().State ==
-                    PlayerIdentityState.Registered;
-            }
-            catch (Exception exception) when (
-                exception is IOException or UnauthorizedAccessException or
-                InvalidDataException or CryptographicException or JsonException)
-            {
-                return false;
-            }
-        }
-    }
+    private bool HasRegisteredWebIdentity =>
+        LoadWebPlayerIdentity()?.State == PlayerIdentityState.Registered;
 
     public LocalizedOption? SelectedBestLevelOption
     {
@@ -1974,8 +1987,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
         webBestSyncEnabledDirty = false;
         SetProperty(ref webBestSyncEnabled, false, nameof(WebBestSyncEnabled));
         ApplyWebPlayerDisplayName("Player");
+        OnPropertyChanged(nameof(CanOpenPublicPlayerPage));
         SettingsStatusMessage = Localization.Get(
-            "認証情報を削除しました。Web Best同期はOFFです。ローカルの保存データはそのまま利用できます。");
+            "認証情報を削除しました。公開データの同期はOFFです。ローカルの保存データはそのまま利用できます。");
     }
 
     public Task SyncWebBestsNowAsync(CancellationToken cancellationToken = default) =>
@@ -2023,10 +2037,15 @@ public sealed class MainViewModel : INotifyPropertyChanged
         if (uiSynchronizationContext is not null &&
             !ReferenceEquals(SynchronizationContext.Current, uiSynchronizationContext))
         {
-            uiSynchronizationContext.Post(_ => ApplyWebBestSyncState(state), null);
+            uiSynchronizationContext.Post(_ => ApplyWebBestSyncStateCore(state), null);
             return;
         }
 
+        ApplyWebBestSyncStateCore(state);
+    }
+
+    private void ApplyWebBestSyncStateCore(WebBestSyncSnapshot state)
+    {
         if (!webBestSyncEnabledDirty || state.Status == WebBestSyncStatus.PublicBestsDeleted)
         {
             webBestSyncEnabledDirty = false;
@@ -2040,18 +2059,16 @@ public sealed class MainViewModel : INotifyPropertyChanged
             WebBestSyncStatus.Disabled => (
                 Localization.Get("同期OFF"),
                 Localization.Get(
-                    "OFFにしても現在公開中のWeb Bestは残ります。再びONにすると現在の対象データを全件同期します。")),
+                    "同期をOFFにしても公開データは残ります。")),
             WebBestSyncStatus.Idle => (
                 Localization.Get("同期済み"),
-                Localization.Get("Web Bestは最新です。")),
+                ""),
             WebBestSyncStatus.Syncing => (
                 Localization.Get("変更分を同期中"),
-                Localization.Get(
-                    "更新された譜面をWebへ同期しています。ローカルへの保存は続きます。")),
+                ""),
             WebBestSyncStatus.Reconciling => (
                 Localization.Get("自己ベストを同期中"),
-                Localization.Get(
-                    "Webへ公開する現在の自己ベストを全件同期しています。完了まで公開中の内容を維持します。")),
+                ""),
             WebBestSyncStatus.ErrorRetryable => (
                 Localization.Get("同期できませんでした"),
                 Localization.Get(
@@ -2060,9 +2077,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 Localization.Get("認証情報の確認が必要です"),
                 Localization.Get("確認が完了するまでWeb同期を停止しています。")),
             WebBestSyncStatus.PublicBestsDeleted => (
-                Localization.Get("公開Bestなし"),
-                Localization.Get(
-                    "Web上の公開Bestはありません。Player情報、公開URL、認証情報、ローカルの保存データは残っています。")),
+                Localization.Get("公開データなし"),
+                ""),
             _ when state.UnknownChartCount > 0 => (
                 Localization.Get("一部の譜面をあとで同期します"),
                 Localization.Get(
@@ -2088,6 +2104,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 state.PendingCount);
         OnPropertyChanged(nameof(CanSyncWebBestsNow));
         OnPropertyChanged(nameof(CanDeletePublicBests));
+        OnPropertyChanged(nameof(CanOpenPublicPlayerPage));
         OnPropertyChanged(nameof(WebBestAuthActionVisibility));
     }
 
@@ -2096,6 +2113,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         if (result.Status == PlayerIdentityRequestStatus.Succeeded && result.Player is not null)
         {
             ApplyWebPlayerDisplayName(result.Player.DisplayName);
+            OnPropertyChanged(nameof(CanOpenPublicPlayerPage));
             return true;
         }
         if (result.Status == PlayerIdentityRequestStatus.AuthenticationInvalid)
@@ -4567,6 +4585,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             ? data.Plays.Select(play => play.SavedAt).FirstOrDefault() ?? ""
             : data.LastSavedAt;
         allChartBests = MergeChartBests(data.ChartBests, data.ChartCatalog);
+        titleSearchAliases = data.TitleSearchAliases;
         UpdateBestVersionOptions();
         RefreshChartBests(
             resetDisplayedCount: true,
@@ -4607,6 +4626,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         totalPlayCount = 0;
         lastSavedAt = "";
         allChartBests = [];
+        titleSearchAliases = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
         UpdateBestVersionOptions();
         RefreshChartBests(resetDisplayedCount: true);
         ClearHomeData();
@@ -4953,7 +4973,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 .ThenBy(item => item.ChartId, StringComparer.Ordinal);
         }
 
-        var songQuery = BestSongQuery.Trim();
+        var songQuery = NormalizeTitleSearch(BestSongQuery.Trim());
         filtered = filtered.Where(item =>
             BestBrowseMode switch
             {
@@ -4962,7 +4982,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
                     BestVersionFilter,
                     StringComparison.OrdinalIgnoreCase),
                 UserSettings.TitleBrowseMode => songQuery.Length == 0 ||
-                    item.SongTitle.Contains(songQuery, StringComparison.CurrentCultureIgnoreCase),
+                    MatchesTitleSearch(item, songQuery),
                 _ => item.Level == ParseBestLevel(BestLevelFilter),
             });
 
@@ -4993,6 +5013,44 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 .ThenBy(item => item.SongTitle, StringComparer.CurrentCultureIgnoreCase)
                 .ThenBy(item => item.ChartId, StringComparer.Ordinal),
         };
+    }
+
+    private bool MatchesTitleSearch(ChartBestItem item, string query)
+    {
+        if (NormalizeTitleSearch(item.SongTitle).Contains(query, StringComparison.Ordinal))
+        {
+            return true;
+        }
+        return titleSearchAliases.TryGetValue(item.SongId, out var aliases) &&
+            aliases.Any(alias => NormalizeTitleSearch(alias).Contains(query, StringComparison.Ordinal));
+    }
+
+    private static string NormalizeTitleSearch(string value)
+    {
+        var result = new StringBuilder();
+        var latinBase = false;
+        foreach (var character in value.ToLowerInvariant().Normalize(NormalizationForm.FormD))
+        {
+            var category = CharUnicodeInfo.GetUnicodeCategory(character);
+            if (category is UnicodeCategory.NonSpacingMark or
+                UnicodeCategory.SpacingCombiningMark or UnicodeCategory.EnclosingMark)
+            {
+                if (!latinBase)
+                {
+                    result.Append(character);
+                }
+                continue;
+            }
+            latinBase = character is >= 'a' and <= 'z' or
+                >= '\u00c0' and <= '\u024f' or >= '\u1e00' and <= '\u1eff';
+            result.Append(character switch
+            {
+                'æ' => "ae",
+                'ø' => "o",
+                _ => character.ToString(),
+            });
+        }
+        return result.ToString().Normalize(NormalizationForm.FormC);
     }
 
     private static int ParseBestLevel(string value) =>
