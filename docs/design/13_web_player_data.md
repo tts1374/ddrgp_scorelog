@@ -23,6 +23,8 @@ Public APIは認証不要だがsame-origin UI用とし、wildcard CORSを付与�
 
 一覧の基本集合は、選択styleの現行chartと、収録終了後もPlayer Bestが残るchartである。現行chartはBestがなくても`best: null`として返す。収録終了かつBestなしのchartは返さない。Level / Version summaryの母数は現行chartだけを使う。
 
+公開記録がないSCORE、EX SCORE、RANK、CLEAR、FLAREは`—`で表示する。記録の欠如は未プレーを意味しない。
+
 RANKはD1へ保存せず、Desktopと同じscore境界からWorkerで導出する。SCORE、EX SCORE、CLEAR、FLAREは譜面ごとの独立Bestであり、1回のRESULTを表さない。
 
 sortは固定enumからD1の`ORDER BY`とcursor条件へ対応付け、title、difficulty固定順、`chart_id`までをsecondary keyにする。D1は`limit + 1`件だけ返し、次ページ判定に使う。score / EX SCORE sortでは`best: null`を常に末尾へ置く。cursorはversion、query scope、sort、最終rowの比較keyをbase64urlで表現し、frontendはopaque値として扱う。

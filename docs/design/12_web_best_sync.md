@@ -57,6 +57,8 @@ CIはmaster生成・inspection後に`master.d1_export`で`songs`、`charts`、`m
 
 ## 同期操作と状態
 
+設定画面の利用者向け名称は「公開データの同期」「公開データを削除」とする。正常な同期状態は状態名と最終同期で示し、対処が必要な状態では理由を表示する。削除確認では同期OFFと、プレイヤー情報・公開URL・認証情報・ローカル保存データを保持することを明示する。
+
 - OFFではローカル保存を継続し、設定画面表示を含むWeb requestを停止する。Player identity、Credential、公開済みBestを維持し、公開プレイヤー名は非秘密のlocal identity metadataから表示する。
 - 初回ON、OFFからON、bulk restore、repairは現在のcapture由来集合をfull snapshotで再整合する。
 - network error、timeout、429、5xxは5秒、15秒、30秒、1分、5分を基準に±20% jitterで最大5回自動retryする。

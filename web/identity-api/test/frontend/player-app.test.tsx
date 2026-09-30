@@ -58,7 +58,15 @@ describe("PlayerApp", () => {
     expect(screen.getByRole("searchbox", { name: "曲名" })).toHaveValue("max");
     expect(screen.getByRole("combobox", { name: "並び順" })).toHaveValue("title_asc");
     expect(await screen.findByText("MAX 300")).toBeInTheDocument();
-    expect(screen.getByText("公開Bestなし")).toBeInTheDocument();
+    const row = screen.getByText("MAX 300").closest("tr")!;
+    for (const label of ["SCORE", "EX SCORE", "RANK", "CLEAR", "FLARE"]) {
+      expect(row.querySelector(`[data-label="${label}"]`)).toHaveTextContent("—");
+    }
+    expect(row).not.toHaveTextContent("公開Bestなし");
+    expect(row).not.toHaveTextContent("未プレー");
+    expect(screen.getByRole("button", { name: "Best一覧について" })).toHaveAttribute(
+      "data-tip", expect.stringContaining("「—」は公開された記録がないことを表し、未プレーを意味しません。"),
+    );
   });
 
   it("shows loading, empty, and API error states", async () => {

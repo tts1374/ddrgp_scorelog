@@ -22,7 +22,7 @@ npm run dev
 
 開発用secretをGit対象外の`.dev.vars`へ生成し、再起動時は既存secretを再利用します。`PUBLIC_WEB_ORIGIN`はlocal用に設定します。local masterを`data/master/ddrgp-web-master.local.sql`へexportし、migrationとともに`.wrangler/development`配下のlocal D1へ適用します。Viteも同じ保存先を使用し、`http://127.0.0.1:5173`で起動します。準備だけを実行する場合は`npm run dev:prepare`を使用します。browser E2Eは`--mode e2e`で起動し、別の`.wrangler/e2e`を使用します。build済みfrontendを手動確認する`npm run preview`は開発用D1を使用します。
 
-Windowsアプリをrepository rootからDebug起動し、設定画面でWeb Best同期をONにして保存すると、開発用Playerの登録と同期が行われます。`公開ページを開く`もlocal Webを開きます。開発用のidentity・Credential・同期状態は本番用と分離しています。公開ページは登録後の`/player/{public_player_id}`で確認します。
+Windowsアプリをrepository rootからDebug起動し、設定画面で「公開データの同期」をONにして保存すると、開発用Playerの登録と同期が行われます。`公開ページを開く`もlocal Webを開きます。開発用のidentity・Credential・同期状態は本番用と分離しています。公開ページは登録後の`/player/{public_player_id}`で確認します。
 
 ## Cloudflare setup
 

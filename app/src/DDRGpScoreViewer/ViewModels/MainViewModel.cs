@@ -208,7 +208,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private bool webPlayerDisplayNameDirty;
     private string webBestSyncStatusTitle = Localization.Get("同期OFF");
     private string webBestSyncStatusMessage = Localization.Get(
-        "OFFにしても現在公開中のWeb Bestは残ります。");
+        "同期をOFFにしても公開データは残ります。");
     private string webBestSyncLastSuccessDisplay = Localization.Get("未同期");
     private string webBestSyncDetails = "";
     private WebBestSyncStatus webBestSyncStatus = WebBestSyncStatus.Disabled;
@@ -1983,7 +1983,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         ApplyWebPlayerDisplayName("Player");
         OnPropertyChanged(nameof(CanOpenPublicPlayerPage));
         SettingsStatusMessage = Localization.Get(
-            "認証情報を削除しました。Web Best同期はOFFです。ローカルの保存データはそのまま利用できます。");
+            "認証情報を削除しました。公開データの同期はOFFです。ローカルの保存データはそのまま利用できます。");
     }
 
     public Task SyncWebBestsNowAsync(CancellationToken cancellationToken = default) =>
@@ -2053,18 +2053,16 @@ public sealed class MainViewModel : INotifyPropertyChanged
             WebBestSyncStatus.Disabled => (
                 Localization.Get("同期OFF"),
                 Localization.Get(
-                    "OFFにしても現在公開中のWeb Bestは残ります。再びONにすると現在の対象データを全件同期します。")),
+                    "同期をOFFにしても公開データは残ります。")),
             WebBestSyncStatus.Idle => (
                 Localization.Get("同期済み"),
-                Localization.Get("Web Bestは最新です。")),
+                ""),
             WebBestSyncStatus.Syncing => (
                 Localization.Get("変更分を同期中"),
-                Localization.Get(
-                    "更新された譜面をWebへ同期しています。ローカルへの保存は続きます。")),
+                ""),
             WebBestSyncStatus.Reconciling => (
                 Localization.Get("自己ベストを同期中"),
-                Localization.Get(
-                    "Webへ公開する現在の自己ベストを全件同期しています。完了まで公開中の内容を維持します。")),
+                ""),
             WebBestSyncStatus.ErrorRetryable => (
                 Localization.Get("同期できませんでした"),
                 Localization.Get(
@@ -2073,9 +2071,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 Localization.Get("認証情報の確認が必要です"),
                 Localization.Get("確認が完了するまでWeb同期を停止しています。")),
             WebBestSyncStatus.PublicBestsDeleted => (
-                Localization.Get("公開Bestなし"),
-                Localization.Get(
-                    "Web上の公開Bestはありません。Player情報、公開URL、認証情報、ローカルの保存データは残っています。")),
+                Localization.Get("公開データなし"),
+                ""),
             _ when state.UnknownChartCount > 0 => (
                 Localization.Get("一部の譜面をあとで同期します"),
                 Localization.Get(

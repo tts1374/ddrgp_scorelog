@@ -672,7 +672,7 @@ public partial class MainWindow : System.Windows.Window
         ContentTabs.SelectedIndex = 5;
         BindingOperations.ClearBinding(PageTitle, TextBlock.TextProperty);
         PageTitle.Text = Localization.Get("設定");
-        PageSubtitle.Text = Localization.Get("自動記録、Web Best同期、表示に関する設定を変更できます");
+        PageSubtitle.Text = "";
         Localization.ApplyToWindow(this);
         HomeNavigation.Tag = null;
         BestNavigation.Tag = null;
@@ -732,8 +732,8 @@ public partial class MainWindow : System.Windows.Window
     {
         var confirmed = System.Windows.MessageBox.Show(
             Localization.Get(
-                "Web上に公開している自己ベストを削除します。Player情報、公開URL、認証情報、ローカルの保存データは残ります。削除後、Web Best同期はOFFになります。"),
-            Localization.Get("公開Bestを削除しますか？"),
+                "Web上の公開データを削除し、同期をOFFにします。プレイヤー情報、公開URL、認証情報、ローカルの保存データは残ります。"),
+            Localization.Get("公開データを削除しますか？"),
             MessageBoxButton.YesNo,
             MessageBoxImage.Warning,
             MessageBoxResult.No);

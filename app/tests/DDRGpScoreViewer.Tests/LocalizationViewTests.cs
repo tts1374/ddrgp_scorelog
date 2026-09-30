@@ -8,6 +8,7 @@ using DDRGpScoreViewer;
 using DDRGpScoreViewer.Controls;
 using DDRGpScoreViewer.Data;
 using DDRGpScoreViewer.Models;
+using DDRGpScoreViewer.WebBestSync;
 using Xunit;
 
 namespace DDRGpScoreViewer.Tests;
@@ -1075,8 +1076,15 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
         });
     }
 
-    [Fact]
-    public void Web_best_settings_start_off_and_do_not_offer_a_noop_sync()
+    [Theory]
+    [InlineData(UserSettings.JapaneseLanguage, UserSettings.LightTheme, "公開データの同期", "公開データを削除")]
+    [InlineData(UserSettings.EnglishLanguage, UserSettings.DarkTheme, "Published data sync", "Delete published data")]
+    [InlineData(UserSettings.KoreanLanguage, UserSettings.LightTheme, "공개 데이터 동기화", "공개 데이터 삭제")]
+    public void Public_data_settings_are_compact_localized_and_use_existing_control_styles(
+        string language,
+        string theme,
+        string heading,
+        string deleteButtonText)
     {
         using var databaseFixture = new DatabaseFixture();
         applicationFixture.Run(() =>
@@ -1084,7 +1092,6 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
             MainWindow? window = null;
             try
             {
-                Localization.Configure(UserSettings.JapaneseLanguage);
                 foreach (var resourceName in new[] { "Theme.xaml", "Components.xaml", "Strings.xaml" })
                 {
                     Application.Current.Resources.MergedDictionaries.Add(
@@ -1095,6 +1102,8 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
                                 UriKind.Relative),
                         });
                 }
+                Localization.Configure(language);
+                ThemeManager.Apply(theme);
                 window = new MainWindow(new ViewerDatabasePaths(
                     ViewerDatabaseEnvironment.Development, databaseFixture.DirectoryPath,
                     databaseFixture.MasterPath, databaseFixture.CatalogPath,
@@ -1102,8 +1111,13 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
                     Path.Combine(databaseFixture.DirectoryPath, "evaluation.db"),
                     Path.Combine(databaseFixture.DirectoryPath, "data"),
                     Path.Combine(databaseFixture.DirectoryPath, "logs"),
-                    Path.Combine(databaseFixture.DirectoryPath, "viewer-settings.json")));
+                    Path.Combine(databaseFixture.DirectoryPath, "viewer-settings.json")))
+                {
+                    Width = 960,
+                    Height = 640,
+                };
                 window.Show();
+                window.SettingsNavigation.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 DrainDispatcher(window.Dispatcher);
 
                 Assert.False(window.WebBestSyncToggle.IsChecked);
@@ -1111,16 +1125,42 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
                 Assert.Equal(Localization.Get("同期OFF"), window.WebBestSyncStatusText.Text);
                 Assert.False(window.SyncWebBestsNowButton.IsEnabled);
                 Assert.Equal("Player", window.WebPlayerDisplayNameTextBox.Text);
+                Assert.Equal(deleteButtonText, window.DeletePublicBestsButton.Content);
+                Assert.Contains(heading, FindVisualChildren<TextBlock>(window).Select(text => text.Text));
+                var settingsTexts = FindVisualChildren<TextBlock>(window).Select(text => text.Text).ToArray();
+                Assert.DoesNotContain(Localization.Get("起動時の監視と保存できない結果の通知を設定します"), settingsTexts);
+                Assert.DoesNotContain(Localization.Get("自己ベストの初期表示と起動時の画面を設定します"), settingsTexts);
+                Assert.Same(window.BestTitleSearchTextBox.Style, window.WebPlayerDisplayNameTextBox.Style);
+                Assert.Same(window.OpenPublicPlayerPageButton.Style, window.DeletePublicBestsButton.Style);
+                Assert.Equal(new Thickness(12, 8, 12, 8), window.WebPlayerDisplayNameTextBox.Padding);
+                Assert.Equal(64, window.WebPlayerDisplayNameTextBox.MaxLength);
+                Assert.Equal(string.Empty, window.PageSubtitle.Text);
+                Assert.DoesNotContain("公開Best", window.DeletePublicBestsButton.Content.ToString());
+                Assert.Equal(Visibility.Visible, window.WebBestSyncStatusMessageText.Visibility);
+                window.ViewModel.ApplyWebBestSyncState(new WebBestSyncSnapshot(
+                    true, false, WebBestSyncStatus.Idle, null, 0, null, null, []));
+                DrainDispatcher(window.Dispatcher);
+                Assert.Equal(Visibility.Collapsed, window.WebBestSyncStatusMessageText.Visibility);
+                window.ViewModel.ApplyWebBestSyncState(new WebBestSyncSnapshot(
+                    true, false, WebBestSyncStatus.ErrorRetryable, null, 0, null, "NETWORK_ERROR", []));
+                DrainDispatcher(window.Dispatcher);
+                Assert.Equal(Visibility.Visible, window.WebBestSyncStatusMessageText.Visibility);
+                Assert.False(string.IsNullOrWhiteSpace(window.WebBestSyncStatusMessageText.Text));
                 Assert.Equal(
                     BindingMode.TwoWay,
                     BindingOperations.GetBinding(
                         window.WebBestSyncToggle,
                         System.Windows.Controls.Primitives.ToggleButton.IsCheckedProperty)?.Mode);
+                Assert.Equal(
+                    BindingMode.TwoWay,
+                    BindingOperations.GetBinding(window.WebPlayerDisplayNameTextBox, TextBox.TextProperty)?.Mode);
             }
             finally
             {
                 window?.PrepareForApplicationExit();
                 window?.Close();
+                ThemeManager.Apply(UserSettings.LightTheme);
+                Localization.Configure(UserSettings.JapaneseLanguage);
             }
         });
     }

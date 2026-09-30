@@ -682,7 +682,7 @@ public sealed class WebBestSyncTests
             (WebBestSyncStatus.ErrorRetryable, true, new[] { pending }, "同期できませんでした", true),
             (WebBestSyncStatus.AuthInvalid, true, new[] { pending }, "認証情報の確認が必要です", false),
             (WebBestSyncStatus.Dirty, true, new[] { unknown }, "一部の譜面をあとで同期します", false),
-            (WebBestSyncStatus.PublicBestsDeleted, false, Array.Empty<WebBestSyncEntry>(), "公開Bestなし", false),
+            (WebBestSyncStatus.PublicBestsDeleted, false, Array.Empty<WebBestSyncEntry>(), "公開データなし", false),
         };
 
         foreach (var (status, enabled, entries, title, canSync) in cases)
@@ -698,6 +698,11 @@ public sealed class WebBestSyncTests
                 entries));
             Assert.Equal(title, viewModel.WebBestSyncStatusTitle);
             Assert.Equal(canSync, viewModel.CanSyncWebBestsNow);
+            if (status is WebBestSyncStatus.Idle or WebBestSyncStatus.Syncing or
+                WebBestSyncStatus.Reconciling or WebBestSyncStatus.PublicBestsDeleted)
+            {
+                Assert.Empty(viewModel.WebBestSyncStatusMessage);
+            }
         }
         viewModel.ApplyWebBestSyncState(new WebBestSyncSnapshot(
             true, false, WebBestSyncStatus.AuthInvalid, null, 0, null,

@@ -134,7 +134,7 @@ function BestRow({ item }: { item: PublicBestItem }) {
       {item.is_removed ? <span className="availability-badge">収録終了</span> : null}
     </div></td>
     <td className="score-cell" data-label="SCORE"><span className={item.best === null ? "no-best" : "score-number"}>
-      {item.best === null ? "公開Bestなし" : numberFormat.format(item.best.score)}
+      {item.best === null ? "—" : numberFormat.format(item.best.score)}
     </span></td>
     <td className="ex-cell" data-label="EX SCORE"><span className={item.best === null ? "no-best" : "ex-number"}>
       {item.best === null ? "—" : numberFormat.format(item.best.ex_score)}
@@ -180,7 +180,7 @@ function BestView({ state, setState, response, loading, error, retry, loadMore, 
       <div className="progress-summary-item"><span className="progress-summary-label">公開Bestなし</span><strong className="progress-summary-value">{response.summary.active_chart_count - response.summary.active_published_best_count}</strong></div>
     </div> : null}
     <div className="results-bar"><div className="inline-with-info"><p className="result-count"><strong>{response?.items.length ?? 0}譜面</strong> {context}</p>
-      <InfoTip label="Best一覧について">SCORE / EX SCORE / CLEAR / FLAREは、それぞれの最高記録です。異なるプレーの記録が表示される場合があります。「公開Bestなし」は未プレーを意味しません。</InfoTip>
+      <InfoTip label="Best一覧について">SCORE / EX SCORE / CLEAR / FLAREは、それぞれの最高記録です。異なるプレーの記録が表示される場合があります。「—」は公開された記録がないことを表し、未プレーを意味しません。</InfoTip>
     </div><label className="sort-control">並び順<select className="control-select" value={state.sort} onChange={(event) => setState({ sort: event.target.value as PageState["sort"] })}>
       <option value="score_desc">SCORE 高い順</option><option value="score_asc">SCORE 低い順</option>
       <option value="ex_score_desc">EX SCORE 高い順</option><option value="title_asc">曲名 昇順</option><option value="level_asc">レベル 昇順</option>
