@@ -1,6 +1,6 @@
 ---
 name: review-ddrgp-db-save-boundary
-description: DDRGP scorelogの保存可否、正式個人スコアDB、duplicate、diagnostic log、analysis log、source captureの責務境界をレビューする。M7/M8の保存判定、正式DB schemaや保存入力、DB診断、低信頼度ログ、source_captures、plays、analysis_logsを変更・レビューするときに使う。OCR精度調整やROI変更だけで保存境界に影響しない作業には使わない。
+description: DDRGPの保存判定・正式DB・duplicate・診断・analysis log・source captureの責務境界を変更またはレビューするときに使う。保存境界に影響しない画像認識調整は対象外。
 ---
 
 # Review DDRGP DB Save Boundary

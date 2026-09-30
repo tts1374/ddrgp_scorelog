@@ -1,6 +1,6 @@
 ---
 name: ddrgp-adr-authoring
-description: DDRGP scorelogで、確定済みの変更しにくいarchitecture decisionを既存ADR・設計正本と照合し、ADRの新規作成、Supersede、index同期、検証まで行う。複数componentまたは複数PRへ影響する公開契約、永続化・データ保護・配布境界の決定を記録するときに使う。初期議論、Issue固有の局所実装、UI詳細、threshold調整、検証結果だけの記録には使わない。
+description: DDRGPの複数component・PRへ影響する、確定済みで変更困難な公開契約・永続化・データ保護・配布の決定をADRへ記録する。局所実装や未確定の案比較は対象外。
 ---
 
 # DDRGP ADR Authoring
