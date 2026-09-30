@@ -14,7 +14,6 @@ on:
 
 permissions:
   contents: read
-  actions: read
 
 concurrency:
   group: deploy-web-production
@@ -55,20 +54,11 @@ jobs:
         with:
           python-version: "3.13"
 
-      - name: Download verified master database
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          master_run_id="$(gh run list --repo "$GITHUB_REPOSITORY" --workflow build-master-db.yml --branch main --status success --limit 1 --json databaseId --jq '.[0].databaseId')"
-          test -n "$master_run_id"
-          test "$master_run_id" != "null"
-          master_artifact_name="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$master_run_id/artifacts" --jq '.artifacts[] | select(.expired == false) | select(.name | startswith("ddrgp-master-")) | .name')"
-          test -n "$master_artifact_name"
-          gh run download "$master_run_id" --repo "$GITHUB_REPOSITORY" --name "$master_artifact_name" --dir data/master
-
-      - name: Inspect and export shared master
+      - name: Build, inspect and export shared master
         run: |
           uv sync --frozen --extra dev
+          uv run pytest tests/test_master_builder.py tests/test_master_identity_registry.py
+          uv run python -m master --output data/master/ddrgp-master.sqlite
           uv run python -m master.inspect data/master/ddrgp-master.sqlite --summary data/master/master-summary.json --merge-report data/master/ddrworld-merge-report.json
           uv run python -m master.d1_export --master-db data/master/ddrgp-master.sqlite --output data/master/ddrgp-web-master.sql
 

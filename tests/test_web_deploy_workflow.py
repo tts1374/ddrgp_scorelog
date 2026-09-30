@@ -8,10 +8,9 @@ WORKFLOW = Path(__file__).resolve().parents[1] / ".github/workflows/deploy-web.y
 def test_shared_master_import_must_succeed_before_worker_deploy() -> None:
     workflow = WORKFLOW.read_text(encoding="utf-8")
     commands = [
-        "gh run list",
-        "gh api",
-        "gh run download",
         "uv sync --frozen",
+        "uv run pytest tests/test_master_builder.py tests/test_master_identity_registry.py",
+        "uv run python -m master --output data/master/ddrgp-master.sqlite",
         "uv run python -m master.inspect data/master/ddrgp-master.sqlite",
         "uv run python -m master.d1_export",
         "npm run migrate:remote",
@@ -22,11 +21,8 @@ def test_shared_master_import_must_succeed_before_worker_deploy() -> None:
     positions = [workflow.index(command) for command in commands]
 
     assert positions == sorted(positions)
-    assert "--branch main --status success" in workflow
-    assert 'test -n "$master_run_id"' in workflow
-    assert 'test "$master_run_id" != "null"' in workflow
-    assert 'test -n "$master_artifact_name"' in workflow
-    assert '--name "$master_artifact_name" --dir data/master' in workflow
+    assert "gh run download" not in workflow
+    assert "GH_TOKEN" not in workflow
     assert "continue-on-error:" not in workflow
     assert "always()" not in workflow
 

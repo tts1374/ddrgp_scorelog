@@ -34,10 +34,12 @@ Windowsアプリをrepository rootからDebug起動し、設定画面で「公�
    npx wrangler secret put REGISTRATION_SECRET
    ```
 
-3. mainの直近の成功した`build-master-db.yml`のartifactから`ddrgp-master.sqlite`をrepository rootの`data/master/`へ配置する。repository rootで再検査し、同じcheckoutの曲名検索用別名を含むshared master SQLを再exportする。
+3. repository rootでmaster DBを生成・検査し、同じcheckoutの曲名検索用別名を含むshared master SQLをexportする。
 
    ```powershell
    uv sync --frozen --extra dev
+   uv run pytest tests/test_master_builder.py tests/test_master_identity_registry.py
+   uv run python -X utf8 -m master --output data/master/ddrgp-master.sqlite
    uv run python -X utf8 -m master.inspect data/master/ddrgp-master.sqlite --summary data/master/master-summary.json --merge-report data/master/ddrworld-merge-report.json
    uv run python -X utf8 -m master.d1_export --master-db data/master/ddrgp-master.sqlite --output data/master/ddrgp-web-master.sql
    ```
@@ -50,7 +52,7 @@ Windowsアプリをrepository rootからDebug起動し、設定画面で「公�
    npm run deploy
    ```
 
-main更新時の`deploy-web.yml`も検査済みartifactの取得、再検査・exportと上記の適用順を実行する。artifact取得・検査・投入に失敗した場合はdeployへ進まない。artifactが期限切れの場合はmaster buildを成功させてからdeployを再実行する。
+main更新時の`deploy-web.yml`も同じcommitからmasterを生成・検査・exportし、上記の適用順を実行する。master生成・検査・投入に失敗した場合はdeployへ進まない。未登録の新曲・新表記は、既存IDとの対応を確認して`master/song_identity_registry.json`へ追加してから再実行する。
 
 `CREDENTIAL_PEPPER`はApp Credential secretのHMAC digest、`REGISTRATION_SECRET`は登録requestのdigestとretry時に同じCredentialを再構成するために使用します。どちらもDBやWrangler設定fileへ保存しません。値を失う、または入れ替えると既存Credentialの検証や未完了registration retryができなくなるため、Cloudflare secretとして保持してください。
 

@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from master.builder import parse_song_list_rows
 from master.d1_export import export_shared_master_sql, normalize_title_search
 from master.identity_registry import (
     DEFAULT_REGISTRY_PATH,
@@ -32,7 +33,40 @@ def test_released_registry_keeps_canonical_and_source_presentations_on_one_id() 
 
     assert registry.resolve("RËVOLUTIФN", "TËЯRA") == "song_177d950f607b1894"
     assert registry.resolve("RЁVOLUTIФN", "TЁЯRA") == "song_177d950f607b1894"
-    assert len(registry.identities) == 1372
+    assert len(registry.identities) == 1381
+
+
+@pytest.mark.parametrize(
+    ("title", "artist", "song_id"),
+    [
+        ("ZENDEGI DANCE", 'ARM × BEMANI Sound Team "U1 overground"', "song_0d58f6ea61e404e4"),
+        ("Is this dance a Hakken?", "RoughSketch", "song_5c89d5d1203ed516"),
+        ("Bye or not", "PSYQUI feat. Mikanzil", "song_61fc25aa94133533"),
+        ("疾風迅雷", "KUMOKIRI", "song_70cecd853abc379a"),
+        ("EYE OF THE HEAVEN", 'BEMANI Sound Team "U1-ASAMi"', "song_8b06d0cf133616cb"),
+        ("Decryption", "Felysrator", "song_99f117ee2f346e9a"),
+        ("eyesight", "タバサリサ", "song_9d7fb72874434523"),
+        ("I'll Be With You", "ゆんゆん", "song_e74e9cf071c1206a"),
+        ("Daisycutter", "ETIA.", "song_fb97eaa232785f2b"),
+    ],
+)
+def test_reviewed_september_songs_keep_master_and_chart_identity(
+    title: str, artist: str, song_id: str
+) -> None:
+    registry = SongIdentityRegistry.load(DEFAULT_REGISTRY_PATH)
+    rows = [[], [], ["EX", title, artist, "", "180", "-"] + ["10"] * 9]
+
+    songs, charts = parse_song_list_rows(rows, registry)
+
+    assert registry.resolve(title, artist) == song_id
+    assert songs[0].song_id == song_id
+    assert len(charts) == 9
+    assert all(
+        chart.song_id == song_id
+        and chart.chart_id
+        == stable_identity_id_v1("chart", song_id, chart.play_style, chart.difficulty)
+        for chart in charts
+    )
 
 
 def test_registry_rejects_unreviewed_identity_and_duplicate_mapping(tmp_path: Path) -> None:
