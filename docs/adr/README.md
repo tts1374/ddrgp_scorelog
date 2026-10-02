@@ -14,7 +14,11 @@
 | [`0004`](0004-separate-application-and-reference-data-updates.md) | Accepted | application packageとreference data setの更新分離 | storage、app package・更新 |
 | [`0005`](0005-application-owned-user-theme-and-runtime-tokens.md) | Accepted | app-owned user theme設定とXAML・コード描画のsemantic token境界 | user settings、UI resources、runtime theme適用 |
 | [`0006`](0006-stable-web-player-identity-and-app-credential-boundary.md) | Accepted | 不変Web Player identityと追加可能な認証手段、App Credential保護境界 | Web identity API、D1、Windows secure storage |
-| [`0007`](0007-local-source-of-truth-and-stable-web-best-replica.md) | Accepted | ローカル正本、一方向Web Best replica、安定master identity | Web Best同期、D1 shared master、M4 identity registry |
+| [`0007`](0007-local-source-of-truth-and-stable-web-best-replica.md) | Superseded by ADR 0008 | ローカル正本、一方向Web Best replica、安定master identityの初期decision | Web Best同期、D1 shared master、M4 identity registry |
+| [`0008`](0008-google-player-recovery-and-sync-consent.md) | Superseded by ADR 0010 | Google recoveryと確認済みsnapshotによる初期引き継ぎdecision | Google identity、App Credential発行、同期再開gate |
+| [`0009`](0009-google-authenticated-web-profile-management.md) | Superseded by ADR 0011 | Google認証済みWeb管理へ公開プレーヤー名編集を集約し、公開閲覧とWindows同期を分離する後続実装契約 | Webマイプロフィール、Web session、Windows表示cache |
+| [`0010`](0010-web-historical-best-and-independent-pc-authorization.md) | Superseded by ADR 0011 | Web自己歴代Bestを追加・改善で蓄積し、明示置換とPC Credential activationを分離する後続実装契約 | Web Best merge、App-Web承認、独立PC権限移行 |
+| [`0011`](0011-web-account-registration-and-management.md) | Accepted | 未リリースの単一App入口、Google必須Web登録/管理、全Playerの歴代Best同期と独立PC権限移行 | Web登録/ログイン、マイプロフィール/削除、App Credential、Web Best |
 
 ## Status
 

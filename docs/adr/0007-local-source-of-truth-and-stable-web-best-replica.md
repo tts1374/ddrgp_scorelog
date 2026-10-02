@@ -2,7 +2,9 @@
 
 ## Status
 
-Accepted
+Superseded by ADR 0008
+
+後継: [ADR 0008](0008-google-player-recovery-and-sync-consent.md)。Google recovery時の同期再開へ本人確認の前提を追加する。下記本文は初期decisionの記録として保持する。
 
 Date: 2026-09-21
 

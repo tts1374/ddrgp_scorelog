@@ -10,7 +10,7 @@ Issue #203で実装するWeb Player identity、App Credential、Windows側identi
 - Windows appは`public_player_id`とApp Credentialを保持する。Credential secretを正式個人スコアDB、通常設定JSON、Release logへ入れない。
 - 後続のPlayer Best同期は、このserviceが返す認証済みcontextとBearer Credentialを再利用する。clientから任意の内部`player_id`を送らない。
 
-Account、Login、OAuth、Credential再発行、複数PC管理、Player Best同期は本設計の対象外である。将来Accountを追加する場合は、新しいPlayerへ置換せず既存`player_id`へ別の認証手段として紐付ける。
+Account、Login、OAuth、Credential再発行、複数PC管理、Player Best同期は本設計の対象外である。将来Accountを追加する場合は、新しいPlayerへ置換せず既存`player_id`へ別の認証手段として紐付ける。#210で確定した未実装のGoogle連携・新PC用Credential発行・同期再開条件は[`14_google_player_recovery.md`](14_google_player_recovery.md)を参照する。
 
 ## D1 schema
 
@@ -72,3 +72,5 @@ Windows appは初回送信前に256 bit乱数のregistration request IDを生成
 ## 通常機能との接続境界
 
 Web Best同期は同じ`WebPlayerIdentityService`境界を明示的に注入して利用し、独自CredentialやPlayer IDを追加しない。設定保存で同期ONを確定した時点に`UNREGISTERED`の場合だけ、設定画面の公開プレイヤー名で既存registrationを開始する。登録済みPlayerの公開プレイヤー名は同じ設定保存操作から`PATCH /api/v1/me`で更新する。`AUTH_INVALID`や同期失敗からregistrationを自動実行しない。既存の監視、画像認識、正式保存、履歴、Personal ProgressはWeb identityの成否に依存しない。
+
+上記は現在実装の登録/名前設定/削除経路である。#213の未実装契約では[14](14_google_player_recovery.md)のApp単一入口からWeb新規登録/ログインを行い、同期再開と登録を分離する。[マイプロフィール](15_web_my_profile.md)を名前編集/アカウント全削除の正本とし、Appは名前表示cache/Web導線だけ。旧匿名登録は410、全PlayerのBearer名更新/全削除は409で拒否する。後続decisionは[ADR 0011](../adr/0011-web-account-registration-and-management.md)。Player identityとApp Credential境界は維持する。
