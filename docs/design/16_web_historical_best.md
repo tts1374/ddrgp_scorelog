@@ -1,6 +1,6 @@
 # Web自己歴代Bestの蓄積と同期設計
 
-Issue [#210](https://github.com/tts1374/ddrgp_scorelog/issues/210)の追加決定を、後続[Issue #213](https://github.com/tts1374/ddrgp_scorelog/issues/213)へ固定する。未実装。architecture decisionは[ADR 0011](../adr/0011-web-account-registration-and-management.md)、認証は[14](14_google_player_recovery.md)、プロフィールは[15](15_web_my_profile.md)を正本とする。
+Issue [#210](https://github.com/tts1374/ddrgp_scorelog/issues/210)の追加決定を、後続[Issue #213](https://github.com/tts1374/ddrgp_scorelog/issues/213)へ固定する。未実装。architecture decisionは[ADR 0012](../adr/0012-purpose-bound-google-identity-confirmation.md)、認証は[14](14_google_player_recovery.md)、プロフィールは[15](15_web_my_profile.md)を正本とする。
 
 ## 責務と保証
 

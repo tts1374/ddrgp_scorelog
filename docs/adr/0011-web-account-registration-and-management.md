@@ -2,7 +2,9 @@
 
 ## Status
 
-Accepted
+Superseded by ADR 0012
+
+後継: [ADR 0012](0012-purpose-bound-google-identity-confirmation.md)。機微操作のGoogle identity再確認とサービス側の操作許可を分離する。以下のAccepted時の本文は保持する。
 
 Date: 2026-10-02
 

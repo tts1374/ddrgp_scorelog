@@ -1,6 +1,6 @@
 # Web Best同期設計
 
-Issue #204で実装済みのPlayer Best同期契約の正本です。identityは[`11_web_player_identity.md`](11_web_player_identity.md)、初期decisionは[`ADR 0007`](../adr/0007-local-source-of-truth-and-stable-web-best-replica.md)を参照します。#210の未実装の現在契約は[`14_google_player_recovery.md`](14_google_player_recovery.md)、[`16_web_historical_best.md`](16_web_historical_best.md)、[`ADR 0011`](../adr/0011-web-account-registration-and-management.md)。本書の現行snapshot実装と、後続の通常merge同期を区別します。
+Issue #204で実装済みのPlayer Best同期契約の正本です。identityは[`11_web_player_identity.md`](11_web_player_identity.md)、初期decisionは[`ADR 0007`](../adr/0007-local-source-of-truth-and-stable-web-best-replica.md)を参照します。#210の未実装の現在契約は[`14_google_player_recovery.md`](14_google_player_recovery.md)、[`16_web_historical_best.md`](16_web_historical_best.md)、[`ADR 0012`](../adr/0012-purpose-bound-google-identity-confirmation.md)。本書の現行snapshot実装と、後続の通常merge同期を区別します。
 
 ## 責務境界
 

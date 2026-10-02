@@ -18,7 +18,8 @@
 | [`0008`](0008-google-player-recovery-and-sync-consent.md) | Superseded by ADR 0010 | Google recoveryと確認済みsnapshotによる初期引き継ぎdecision | Google identity、App Credential発行、同期再開gate |
 | [`0009`](0009-google-authenticated-web-profile-management.md) | Superseded by ADR 0011 | Google認証済みWeb管理へ公開プレーヤー名編集を集約し、公開閲覧とWindows同期を分離する後続実装契約 | Webマイプロフィール、Web session、Windows表示cache |
 | [`0010`](0010-web-historical-best-and-independent-pc-authorization.md) | Superseded by ADR 0011 | Web自己歴代Bestを追加・改善で蓄積し、明示置換とPC Credential activationを分離する後続実装契約 | Web Best merge、App-Web承認、独立PC権限移行 |
-| [`0011`](0011-web-account-registration-and-management.md) | Accepted | 未リリースの単一App入口、Google必須Web登録/管理、全Playerの歴代Best同期と独立PC権限移行 | Web登録/ログイン、マイプロフィール/削除、App Credential、Web Best |
+| [`0011`](0011-web-account-registration-and-management.md) | Superseded by ADR 0012 | 未リリースの単一App入口、Google必須Web登録/管理、全Playerの歴代Best同期と独立PC権限移行 | Web登録/ログイン、マイプロフィール/削除、App Credential、Web Best |
+| [`0012`](0012-purpose-bound-google-identity-confirmation.md) | Accepted | Google identity再確認と本サービスの短期操作許可を分離し、Web登録/管理・独立PC権限移行・歴代Best境界を継承 | purpose-bound OAuth、Web操作proof、App proof、アカウント削除 |
 
 ## Status
 

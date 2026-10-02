@@ -73,4 +73,4 @@ Windows appは初回送信前に256 bit乱数のregistration request IDを生成
 
 Web Best同期は同じ`WebPlayerIdentityService`境界を明示的に注入して利用し、独自CredentialやPlayer IDを追加しない。設定保存で同期ONを確定した時点に`UNREGISTERED`の場合だけ、設定画面の公開プレイヤー名で既存registrationを開始する。登録済みPlayerの公開プレイヤー名は同じ設定保存操作から`PATCH /api/v1/me`で更新する。`AUTH_INVALID`や同期失敗からregistrationを自動実行しない。既存の監視、画像認識、正式保存、履歴、Personal ProgressはWeb identityの成否に依存しない。
 
-上記は現在実装の登録/名前設定/削除経路である。#213の未実装契約では[14](14_google_player_recovery.md)のApp単一入口からWeb新規登録/ログインを行い、同期再開と登録を分離する。[マイプロフィール](15_web_my_profile.md)を名前編集/アカウント全削除の正本とし、Appは名前表示cache/Web導線だけ。旧匿名登録は410、全PlayerのBearer名更新/全削除は409で拒否する。後続decisionは[ADR 0011](../adr/0011-web-account-registration-and-management.md)。Player identityとApp Credential境界は維持する。
+上記は現在実装の登録/名前設定/削除経路である。#213の未実装契約では[14](14_google_player_recovery.md)のApp単一入口からWeb新規登録/ログインを行い、同期再開と登録を分離する。[マイプロフィール](15_web_my_profile.md)を名前編集/アカウント全削除の正本とし、Appは名前表示cache/Web導線だけ。旧匿名登録は410、全PlayerのBearer名更新/全削除は409で拒否する。後続decisionは[ADR 0012](../adr/0012-purpose-bound-google-identity-confirmation.md)。Player identityとApp Credential境界は維持する。
