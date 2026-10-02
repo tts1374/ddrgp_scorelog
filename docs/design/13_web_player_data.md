@@ -2,6 +2,8 @@
 
 Issue #205で実装する、公開Player Dataページとread-only Public API V1の正本です。Player identityは[`11_web_player_identity.md`](11_web_player_identity.md)、公開Best集合は[`12_web_best_sync.md`](12_web_best_sync.md)を参照します。
 
+#213の未実装の[マイプロフィール](15_web_my_profile.md)はGoogleログイン必須の管理画面である。本設計の公開ページ・Public APIは認証不要のまま維持する。後続の公開集合は[Web自己歴代Best](16_web_historical_best.md)として過去PCのBestも保持し、現在PCのDBとの一致を要求しない。既存Public APIのfield・集計・閲覧契約は維持する。
+
 ## 責務境界
 
 - Cloudflare上のIdentity、Web Best同期、公開Player Dataは同一Worker、同一D1、same-originで提供する。

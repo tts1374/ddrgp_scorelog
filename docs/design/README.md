@@ -26,6 +26,9 @@
 | Web Player identity / App Credential | [`11_web_player_identity.md`](11_web_player_identity.md) | Cloudflare D1、identity API、Windows secure storage、認証状態 |
 | Web Best同期 / shared master | [`12_web_best_sync.md`](12_web_best_sync.md) | capture限定Projection、差分・snapshot同期、D1 replica、安定master identity |
 | Web Player Data / Public API | [`13_web_player_data.md`](13_web_player_data.md) | 公開page、Overview / Best / Flare Skill、HTML bootstrap、responsive表示 |
+| Google Account / Player recovery | [`14_google_player_recovery.md`](14_google_player_recovery.md) | #210の未実装契約。単一App入口、Web新規登録/ログイン、連携/解除、DPAPI保存後の独立Credential activation |
+| Webマイプロフィール | [`15_web_my_profile.md`](15_web_my_profile.md) | #213の未実装の確定契約。Google認証済みWeb管理、公開名設定/アカウント削除、Windows表示cache、Free開始 |
+| Web自己歴代Best | [`16_web_historical_best.md`](16_web_historical_best.md) | #213の未実装契約。Web/PCの差を許容する追加・改善同期、本人確認した明示置換、全Playerの旧置換API拒否 |
 
 SQLiteの正確なtable、column、index、metadata、migrationは、M4 master DBでは`08_master_db_generation.md`、正式個人スコアDBでは`10_personal_score_db_schema.md`を優先する。`04_data_model.md`は概念上の責務を説明する。
 

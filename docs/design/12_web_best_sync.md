@@ -1,6 +1,6 @@
 # Web Best同期設計
 
-Issue #204で実装するPlayer BestのLocalからWebへの同期契約の正本です。identityと認証は[`11_web_player_identity.md`](11_web_player_identity.md)、長期的な責務分離は[`ADR 0007`](../adr/0007-local-source-of-truth-and-stable-web-best-replica.md)を参照します。
+Issue #204で実装済みのPlayer Best同期契約の正本です。identityは[`11_web_player_identity.md`](11_web_player_identity.md)、初期decisionは[`ADR 0007`](../adr/0007-local-source-of-truth-and-stable-web-best-replica.md)を参照します。#210の未実装の現在契約は[`14_google_player_recovery.md`](14_google_player_recovery.md)、[`16_web_historical_best.md`](16_web_historical_best.md)、[`ADR 0012`](../adr/0012-purpose-bound-google-identity-confirmation.md)。本書の現行snapshot実装と、後続の通常merge同期を区別します。
 
 ## 責務境界
 
@@ -61,9 +61,11 @@ CIはmaster生成・inspection後に`master.d1_export`で`songs`、`charts`、`m
 
 - OFFではローカル保存を継続し、設定画面表示を含むWeb requestを停止する。Player identity、Credential、公開済みBestを維持し、公開プレイヤー名は非秘密のlocal identity metadataから表示する。
 - 初回ON、OFFからON、bulk restore、repairは現在のcapture由来集合をfull snapshotで再整合する。
+- 後続対応版では上記通常入口を[16](16_web_historical_best.md)の追加・改善merge再送へ変更する。空DB/manifest復元でも再開でき、既存Web Bestを保持する。snapshotは別の明示置換操作に使い、atomic replace-setと空snapshot有効性を維持する。全Playerで旧batch/無許可snapshotを拒否する。現在未実装。
 - network error、timeout、429、5xxは5秒、15秒、30秒、1分、5分を基準に±20% jitterで最大5回自動retryする。
 - 401/403は`AUTH_INVALID`へ接続し、自動retryと自動Player再登録を行わない。
 - 設定画面の同期ON/OFFと公開プレイヤー名は設定保存時に確定する。未登録時は公開プレイヤー名をregistrationへ渡し、登録済みでは`PATCH /api/v1/me`で名前だけを更新する。
+- 後続#213では[14](14_google_player_recovery.md)の単一App入口でWeb登録/ログインし、同期は停止/再開ボタンで即反映する。公開名編集/アカウント全削除は[Webマイプロフィール](15_web_my_profile.md)。設定保存/同期再開では名前をPATCHしない。Web名前編集でBest日時や同期ON/OFFを変更しない。
 - `AUTH_INVALID`では`認証情報を確認`から影響を明示した確認ダイアログを表示し、利用できないlocal identityを削除した場合は同期をOFFにする。新しいPlayerの自動作成や再登録を促す表示は行わない。
 - 公開ページの閲覧導線は`REGISTERED`と`AUTH_INVALID`で読み出せる公開IDを使用する。`AUTH_INVALID`でも認証不要の公開ページを開けるが、同期・公開データ削除は許可しない。
 - deltaの`UNKNOWN_CHART`は該当譜面をdeferredに保ち、他itemを同期する。ユーザー操作を要求せず、対象がそれだけなら「今すぐ同期」を無効にする。
