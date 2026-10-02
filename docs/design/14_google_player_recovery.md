@@ -85,7 +85,7 @@ Googleは15のWeb application clientを使う。Authorization Codeは固定HTTPS
 2. `connect`は登録/ログイン共通。現在の有効Bearerがあれば対象Playerを固定し、なければGoogle認証後に対象を決める。送信されたBearerが無効なら401で拒否し、Bearerなしの新規登録へfallbackしない。`unlink`は有効Bearer必須。serverはpurpose/開始Player・Credentialを固定しsecret digestを保存。retryは同じID/proof/purposeだけ。
 3. serverが返す同じoriginの`/my/app-connect?request={id}`を開く。URLにはIDだけ。ID単体で受領・承認不可、App Credential/request secretをURLへ出さない。
 4. Webは選んだ登録/ログイン意図でGoogle認証を要求し、検証済みemail、対象の公開名/URL、操作結果を表示する。アプリとWebの短い照合コードの一致を本人が確認する。コードは表示用で所有証明ではない。
-5. 承認はWeb session＋Origin＋CSRF＋当該transactionにbindingした直近10分以内のGoogle認証を要求する。既存Player連携/解除は開始Credentialの有効性を再検証。新規登録は上記atomic作成、引き継ぎは既存Playerへpending Credentialを発行する。
+5. 承認はWeb session＋Origin＋CSRF＋当該transactionにbindingした直近10分以内のGoogle認証を要求する。[15の直近認証検証](15_web_my_profile.md#直近google認証の検証)に従い、max_age=600/essential auth_time要求と署名済みauth_timeの時刻検証を必須にする。iat/callback成功を代用せず、取得/検証不可なら承認しない。既存Player連携/解除は開始Credentialの有効性を再検証。新規登録は上記atomic作成、引き継ぎは既存Playerへpending Credentialを発行する。
 6. アプリはHTTPSでproof付き結果を5秒間隔、開始から最大10分までpollする。429はRetry-Afterを尊重。Credentialをbrowser response/cookie/localStorageへ渡さない。
 7. 新CredentialをDPAPI保存・再読込検証後にactivationする。成功確認後だけ通常identityへ採用する。途中起動は結果確定まで送信しない。
 
@@ -107,7 +107,7 @@ transaction TTLは開始から10分。確定登録/link/unlink/activationとcanc
 
 同じPlayer＋同じGoogleの連携は冪等、別Google/別Playerの競合は409。並行unique競合、開始Credential失効、Player削除は部分更新なしで拒否する。
 
-マイプロフィールの「Google連携を解除」は直近Google認証＋そのPlayerの有効App proof＋最終確認を要求する。手元アプリのWeb連携から`unlink` transactionを開始する手順を案内する。Google identityとそのWeb session/未完了承認をatomic失効し、App Credential/URL/Best/Localを維持する。確認文は「Googleでのログイン・PC引き継ぎができなくなります。現在のアプリから再連携できます」。応答喪失は同transaction確定結果で確認する。
+マイプロフィールの「Google連携を解除」は15のauth_time検証による直近Google認証＋そのPlayerの有効App proof＋最終確認を要求する。手元アプリのWeb連携から`unlink` transactionを開始する手順を案内する。Google identityと当該canonical issuer/subの全Web session（別ブラウザ/別端末を含む）、そのidentity/sessionにbindingされた認証待機・未完了承認/削除確認をatomic失効する。全sessionのemailも削除し、後日同Googleが同じ/別Playerへ連携しても旧sessionへ権限を与えない。並行する旧sessionの管理更新はtransaction内の再検証で拒否する。既にactiveなApp Credential/URL/Best/Localは維持するが、失効した未完了承認からのpending Credential activationは許可しない。確認文は「Googleでのログイン・PC引き継ぎができなくなります。現在のアプリから再連携できます」。応答喪失はWeb sessionではなくApp secret proof付き同transaction確定結果で確認する。
 
 解除後のGoogle再連携は有効Appから開始し、同じPlayerを固定する。初回登録のGoogle必須と、本人操作で後日解除したPlayerの継続利用を区別する。Webログアウトは解除ではない。Googleと全App Credentialの喪失の救済は保証しない。
 
@@ -152,12 +152,12 @@ Non-scope: 本番OAuth設定/D1変更/deploy、Google loginだけの自動Player
 |---|---|
 | T1 | 新規登録はGoogle＋App proof＋明示確認。Player/identity/pending Credential作成atomic、同transaction retry同一結果。登録済みGoogleで二重作成なし、login未登録/cancel/失敗から自動作成なし |
 | T2 | 既存Credential＋Google＋確認で同じPlayerへlink、同一冪等。別Google/別Player/並行unique/失効/削除拒否。ID/URL/Best/Local維持 |
-| T3 | Web state/nonce/署名/issuer/aud/azp/expiry/browser binding/直近認証、App purpose/意図/proof/TTLを検証。IDだけの受領/承認、別ブラウザ、replay/任意redirect拒否 |
+| T3 | Web state/nonce/署名/issuer/aud/expiry/browser binding、azpはpresent時だけ一致検証（欠落を許可）、直近認証は15のmax_age/署名済みauth_timeで検証。新しいiat＋古いauth_time/欠落/型不正/未来/600秒超過では登録/link/引き継ぎ/unlinkを承認しない。App purpose/意図/proof/TTL、identity/Player bindingを検証。IDだけの受領/承認、別ブラウザ、replay/任意redirect拒否 |
 | T4 | 別local Player/旧公開ID不一致で上書きなし。AUTH_INVALIDは失効Bearerなしで同Playerへ戻れ、linkには使えない。確認付きlocal情報削除だけで旧ID制約解除、Web/Local履歴不変。有効REGISTEREDのswitchにはしない |
 | T5 | 受領/DPAPI失敗・途中終了・cancel/expiryで旧PC維持、新PC書込み不可。確定登録は保持。activation応答喪失/再起動から保存済みCredentialで結果回復。Webは承認とactivation完了を区別、statusで秘密を返さない |
 | T6 | activation/他Credential失効/staging無効化がatomic、Best不変。並行activation/旧PC in-flight write/古いretryで失効取消なし。初回同期前に旧PC停止 |
 | T7 | 空DB/manifest復元/不完全captureでも本人再開後merge可、既存Best保持。16のH1〜H6を検証 |
-| T8 | unlinkのGoogle＋有効App proof＋確認、確定結果retry、session/未完了承認失効、App/Best/Local維持、同じPlayerへの再連携/別Googleを検証 |
+| T8 | unlinkの直近auth_time＋有効App proof＋確認、App proof付き確定結果retry、同issuer/subの全session/email/認証待機・未完了承認/削除確認のatomic失効を検証。別ブラウザの旧session/並行更新/未完了activationを拒否、再連携で旧sessionを復活させず、他Google session/active App Credential/URL/Best/Localは維持。同じPlayerへの再連携/別Googleを検証 |
 | T9 | 単一App入口→Web新規登録/ログイン→完了OFF。停止/再開は即反映、OFF中今すぐ同期無効/自動通信なし。選び直しは目的/開始Appを維持、cancel/失敗は正しい入口へ戻り、終了/timeout後は本人による新transaction。自動fallbackなし |
 | T10 | 匿名登録/Bearer名前更新/Bearerアカウント削除拒否、秘密/email/subの公開/log混入なし、DPAPI/URL/認証不要閲覧/正式DB/backup維持。Web障害でも正式保存継続 |
 

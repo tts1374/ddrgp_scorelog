@@ -33,13 +33,27 @@ App未登録/同期OFF/ON、Web新規登録/ログインの入口、登録確認
 Googleの[Web Server Authorization Code](https://developers.google.com/identity/protocols/oauth2/web-server)と[OpenID Connect](https://developers.google.com/identity/openid-connect/openid-connect)でGoogle identityを検証し、Workerが本サービス専用sessionを発行する。WindowsからのWeb連携も同じWeb clientを使い、Google認証と14のアプリproofを別に検証する。client IDは環境別に固定する。
 
 - callbackは本番originの固定HTTPS route。開発用client/originは本番と分離。戻り先はserver保存purposeから`/my/profile`、14の当該App-Web確認画面、または当該アカウント削除確認画面へ限定し、任意redirectを許可しない。Google cancel/失敗も開始した操作に戻す。state不正は安全なエラー画面で拒否。
-- Workerが開始時に独立のstate/nonceを生成し、短期browser cookieとのbindingでlogin CSRFとcallback replayを拒否する。state/nonce照合、Google tokenの署名/issuer/aud/azp/exp/iat/sub検証は14の境界を共有し、認証待機は10分。Google client secretはWorker secretへ保存する。
+- Workerが開始時に独立のstate/nonceを生成し、短期browser cookieとのbindingでlogin CSRFとcallback replayを拒否する。state/nonce照合と下記のGoogle token検証は14の境界を共有し、認証待機は10分。Google client secretはWorker secretへ保存する。
 - scopeは`openid email`、offline accessなし。code、Google ID/access/refresh tokenは検証後に破棄し、D1/session/cookie/Windowsへ永続化しない。
-- JWKS署名と許可algorithm、Google issuerの許可された2表現（保存キーは`https://accounts.google.com`）、環境の単一audience、presentなazp、exp/iat、nonce、subを検証する。emailは検証済みclaimから本人表示だけに使う。
-- sessionは256 bit以上のopaque乱数。D1にはdigest、検証済みissuer/sub、本人表示用の検証済みemail、認証時刻、作成/expiryを保持する。emailは短期sessionだけ、期限/ログアウト/解除で削除しidentity判定に使わない。24時間absolute TTL、自動延長なし。Google identityから毎回既存Playerを解決する。未連携Googleにもsessionを発行してよいが、loginだけでPlayer/永続紐付け/長期Credentialは作らない。
+- JWKS署名と許可algorithm、Google issuerの許可された2表現（保存キーは`https://accounts.google.com`）、exp/iat、nonce、subを検証する。`aud`は当該環境の単一Web client IDとの一致を必須とし、別client/追加audienceを拒否する。`azp`は存在する場合だけ同じclient IDとの一致を検証し、不一致/不正な型を拒否する。`azp`の欠落だけでは拒否しない。emailは検証済みclaimから本人表示だけに使う。
+- sessionは256 bit以上のopaque乱数。D1にはdigest、検証済みissuer/sub、本人表示用の検証済みemail、検証済み`auth_time`（通常loginで未取得ならnull）、serverでの作成/expiryを保持する。`iat`/callback完了時刻/session作成時刻を`auth_time`として保存しない。emailは短期sessionだけ、期限/ログアウト/解除で削除しidentity判定に使わない。解除は下記のとおり同issuer/subの全sessionを対象とする。24時間absolute TTL、自動延長なし。Google identityから毎回既存Playerを解決する。未連携Googleにもsessionを発行してよいが、loginだけでPlayer/永続紐付け/長期Credentialは作らない。
 - 本番cookieは`__Host-`prefix、Secure、HttpOnly、SameSite=Lax、Path=/、Domainなし。local HTTP開発だけ別cookie名・別保存先を使う。本番cookieを開発へ持ち込まない。Google tokenやApp Credentialをbrowser localStorageへ保存しない。
 - profile更新とログアウトはsame-origin Origin検証とsessionにbindingしたCSRF tokenを必須とする。CORSによる外部originへの管理API開放を行わない。認証済み画面/APIはno-store、callbackのcode/state等を他assetへ渡さず、認証queryを除いて保存purposeの画面へ移動する。App transaction IDはGoogle認証queryと区別する。
 - ログアウトはWeb sessionだけ失効する。Google連携、Windows Credential、同期状態、公開Best、Local履歴は維持する。session失効はWindowsの`AUTH_INVALID`に転用しない。
+
+### 直近Google認証の検証
+
+14のApp-Web承認（登録/連携/引き継ぎ/解除）と本書のアカウント全削除で要求する「直近10分以内」は、Googleが署名したID tokenの`auth_time`を正本とする。対象purpose/transaction、browser binding、当該Google identityをserverの認証待機へ固定し、`max_age=600`と`claims={"id_token":{"auth_time":{"essential":true}}}`を指定して認証する。通常プロフィールloginの成功だけでこの承認権限を与えない。
+
+callbackでは通常のtoken検証に加え、`auth_time`が数値のUnix epoch秒であり、server現在時刻との差が`0 <= now - auth_time <= 600`秒であることを検証する。承認/解除/削除確認作成/最終削除時にも同じ時刻条件とpurpose/identity/Playerのbindingを再検証する。確認proofの10分TTLが残っていても`auth_time`から600秒を超えれば実行を拒否し、本人による再認証と未選択の確認からやり直す。`iat`が新しいこと、OAuth callback成功、`prompt=consent`/`select_account`は直近認証の代用にしない。
+
+Google公式の[optional claim要求](https://developers.google.com/identity/openid-connect/openid-connect#authenticationuriparameters)では`auth_time`のclient設定有効化も取得条件としている。[OIDC Coreのmax_age契約](https://openid.net/specs/openid-connect-core-1_0.html#AuthRequest)と併せ、後続実装では開発用clientで要求parameter・claim返却・古いSSO sessionからの再認証を実通信で確認する。providerの対応を推測で成功扱いにしない。claim欠落/型不正/未来/600秒超過、設定未対応、provider認証失敗なら当該操作を許可せず、既存データ・権限を保持して再認証できない旨を表示する。通常loginで`auth_time`未取得でもプロフィール閲覧/編集は可能。この設計PRでOAuth設定は変更しない。
+
+### 連携解除のsession境界
+
+14の`unlink`はGoogle identity、当該canonical issuer/subの**全Web session**（現在/別ブラウザ/別端末/未連携表示用を含む）、そのidentity/sessionにbindingされた認証待機・未完了承認/削除確認を一つのtransactionで削除・失効する。全sessionのemail/CSRF/直近認証情報も削除する。他Google identityのsessionは対象外。解除済み結果のApp proof付き確認は14の確定結果から行い、失効Web sessionを再使用しない。
+
+各管理APIは失効sessionを401で拒否し、更新transaction内でもsession有効性と現在のidentity→Player対応を再確認する。解除と並行する旧session requestを後からcommitさせない。同じGoogleを後で同じ/別Playerへ明示連携しても、解除前のsessionからプロフィール取得/変更/承認/削除はできず、新たなloginが必要。App Credential/公開URL/Best/Localの維持は14のまま。
 
 | Method / route | 契約 |
 |---|---|
@@ -56,7 +70,7 @@ Googleの[Web Server Authorization Code](https://developers.google.com/identity/
 
 マイプロフィールに「アカウントを削除する」を置く。対象の公開名/URLを示し「公開Best、Google連携、すべてのPCの連携権限が削除され、公開URLは利用できなくなります。PC内のスコア履歴は残ります」と説明する。直近10分以内の当該Google再認証、Origin/CSRF、未選択の確認と最終削除ボタンを要求する。Appを失った場合でも本人Googleから削除できる。Google解除とは別操作。
 
-再認証は開始時のGoogle identity/Playerと削除目的へbindingする。別Googleで認証された場合は削除を拒否し、入力済み確認を破棄する。再認証成功後に対象を再表示し、未選択確認と最終削除ボタンを改めて表示する。Google選択操作そのものを最終削除にしない。
+再認証は上記の`max_age`/`auth_time`検証を適用し、開始時のGoogle identity/Playerと削除目的へbindingする。別Googleで認証された場合は削除を拒否し、入力済み確認を破棄する。再認証成功後に対象を再表示し、未選択確認と最終削除ボタンを改めて表示する。Google選択操作そのものを最終削除にしない。
 
 - `POST /api/v1/account/deletion-confirmations`: session/再認証/Origin/CSRFで対象Playerを固定した10分TTLの確認を作る。256 bit以上の結果確認proofをSecure/HttpOnly cookieで先に保持し、serverはdigestだけ保存する。
 - `DELETE /api/v1/account`: session/再認証/Origin/CSRFと確認proofが必要。同じ確認に対する一回のtransactionでPlayer、Best、Google identity、全App Credential、staging、未完了App authorization、Web sessionを削除し完了結果を確定する。リクエストに任意Player指定を許さない。
@@ -94,12 +108,12 @@ Non-scopeは14を継承し、追加プロフィール項目、WebからのBest�
 | ID | 受け入れ条件と対応するRequired test |
 |---|---|
 | P1 | マイプロフィール/APIは未ログインで編集不可、公開page/APIはログイン不要。loginだけで未連携Playerを作成しない |
-| P2 | 検証済みGoogle identityから同じPlayerを解決。別環境/client/aud、state/nonce/browser binding不正、認証待機期限切れ/replay、任意戻り先を拒否 |
+| P2 | 検証済みGoogle identityから同じPlayerを解決。正しいaudでazp欠落は成功、同clientのazpは成功、別client/型不正azp・別環境/client/aud/追加audienceは拒否。state/nonce/browser binding不正、認証待機期限切れ/replay、任意戻り先を拒否 |
 | P3 | 自分の公開名だけ更新できる。入力境界、任意Player指定、未連携、別Google identity、HTML/JSONへの名前安全表示を検証。ID/URL/Credential/Best/公開Best日時/Local履歴を維持 |
-| P4 | opaque sessionのdigest保存・24時間期限・cookie属性・Google token非保存・環境分離・no-store、Origin/CSRF拒否。emailは本人session画面だけ、expiry/logout/unlinkで削除。未連携でもCSRF取得/ログアウト可能 |
+| P4 | opaque sessionのdigest保存・24時間期限・cookie属性・Google token非保存・環境分離・no-store、Origin/CSRF拒否。emailは本人session画面だけ、expiry/logoutで当該sessionを削除、unlinkで同issuer/subの全session/email/認証待機・未完了承認をatomic失効。他identityは維持。別ブラウザの旧sessionとunlink並行requestを拒否し、後日同Googleを別Playerへ連携しても旧sessionへ権限を与えない。未連携でもCSRF取得/ログアウト可能 |
 | P5 | Web新規登録は`Player`、既存名維持、App名前編集なし、設定保存/同期再開で名前PATCHなし。cache更新はserver→表示のみ、OFF中は自動通信なし |
 | P6 | 全PlayerのBearer名更新/アカウント削除と匿名登録を拒否、データ不変/Credential維持。古いorigin/直接APIでも迂回なし |
 | P7 | 未認証/未連携/session期限/logout/Player削除、保存応答喪失/アカウント切替で誤保存なし。login/logout/名前編集でCredential/連携/同期/Best維持。raw session/secret/tokenの保存・公開/log混入なし、emailの公開/Windows設定混入なし |
-| P8 | アカウント全削除はGoogle再認証/Origin/CSRF/本人確認後だけ。全権限/Best/session/staging削除がatomic、URL404、Local保持。cancel/認証失敗/transaction失敗は不変、応答喪失はproof付き結果確認、retryで別Player削除/自動再作成なし |
+| P8 | アカウント全削除は目的/同Google/Playerへbindingしたmax_age=600＋essential auth_time要求、署名済みauth_timeの600秒以内検証、Origin/CSRF/本人確認後だけ。新しいiatでも古いauth_time、claim欠落/型不正/未来、別identity/purpose、確認後600秒超過は拒否し状態不変。境界600秒は可、601秒は不可。全権限/Best/session/staging削除がatomic、URL404、Local保持。cancel/認証失敗/transaction失敗は不変、応答喪失はproof付き結果確認、retryで別Player削除/自動再作成なし |
 
-手動確認はテスト用Web clientと開発Worker/D1で行う。公開page未ログイン閲覧、App単一入口→Web登録/ログイン→プロフィール編集→公開page、Windows名cache更新、未登録/別Google/選び直し/cancel/session期限/logout、解除/再連携、空DB引き継ぎ後の追加・改善同期、アカウント削除cancel/完了とApp401、PC/390px表示を確認する。repository既定CI、14のT1〜T10、16のH1〜H6は後続実装。設計変更は文書整合・wireframe・差分検証のみ。
+手動確認はテスト用Web clientと開発Worker/D1で行う。公開page未ログイン閲覧、App単一入口→Web登録/ログイン→プロフィール編集→公開page、Windows名cache更新、未登録/別Google/選び直し/cancel/session期限/logout、解除/再連携、空DB引き継ぎ後の追加・改善同期、アカウント削除cancel/完了とApp401、PC/390px表示を確認する。追加でauth_time取得条件と古いGoogle SSOからの再認証、再認証不可時の削除/解除拒否、別ブラウザの解除前sessionから全管理APIが401、同Google再連携後も旧sessionが使えないことを確認する。repository既定CI、14のT1〜T10、16のH1〜H6は後続実装。設計変更は文書整合・wireframe・差分検証のみ。

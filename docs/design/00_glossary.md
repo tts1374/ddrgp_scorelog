@@ -86,6 +86,7 @@ DDR GP scorelog の設計、PoC、テストで使う主要用語を定義する�
 
 - `マイプロフィール`: Googleログイン必須のWeb管理画面`/my/profile`。公開プレーヤー名は既存`players.display_name`へ保存し、Windowsは表示cacheとWebへの導線を持つ。詳細は[15_web_my_profile.md](15_web_my_profile.md)。
 - `Web management session`: WorkerがGoogle認証後に発行する24時間期限のopaque browser session。Google tokenやWindows App Credentialとは分離し、既存Playerのプロフィール管理へ使う。
+- `auth_time`: Googleの署名済みID tokenに含まれる実際の本人認証時刻（Unix epoch秒）。App-Web承認/Google解除/Webアカウント削除の直近10分条件に使う。`max_age=600`とessential claim要求を行いserver時刻で検証、`iat`/callback完了/session作成時刻で代用しない。詳細は[15_web_my_profile.md](15_web_my_profile.md#直近google認証の検証)。
 - `PLAYER_NOT_LINKED`: Google認証済みだが当該identityに既存Playerが紐付いていない状態の409。ログインだけでPlayerを作成しない。
 - `WEB_PROFILE_REQUIRED`: App Credentialによる名前更新を拒否する409。Credential失効を意味せず、Webマイプロフィールでの編集を要求する。
 - `WEB_ACCOUNT_REQUIRED`: App Credentialによるアカウント全削除を拒否する409。Google再認証済みWeb管理での削除を要求する。
