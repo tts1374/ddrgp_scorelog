@@ -12,7 +12,7 @@ identityは[11](11_web_player_identity.md)、現行同期は[12](12_web_best_syn
 |---|---|
 | `players`と`player_credentials`、Player : Credential = 1:N | Google identityを別tableに追加。既存Playerへ同形式の新App Credentialを発行 |
 | [identity service](../../app/src/DDRGpScoreViewer/WebIdentity/WebPlayerIdentityService.cs)と[DPAPI store](../../app/src/DDRGpScoreViewer/WebIdentity/WebPlayerIdentityStore.cs) | CurrentUser保護を維持。正式DB/backupへ認証情報を含めない |
-| 未登録の同期ON→自動登録 | 未登録では単一の「アカウントを作成・引き継ぐ」だけ。Webで新規登録/ログインを選ぶ |
+| 未登録の同期ON→自動登録 | 未登録では単一の「アカウントを作成・引き継ぐ」だけ。Webの「Googleで続ける」から認証後に作成/引き継ぎを確認する |
 | [同期coordinator](../../app/src/DDRGpScoreViewer/WebBestSync/WebBestSyncCoordinator.cs)の再ON/復元→snapshot | 通常は16のmerge。snapshotは本人の別操作による明示置換 |
 | [snapshot commit](../../web/identity-api/src/best-sync.ts)のatomic replace、空集合有効 | 意味を維持し、全Playerで置換確認許可を要求 |
 | [backup restore](../../app/src/DDRGpScoreViewer/Data/PersonalScoreDataBackupService.cs)の`manifest` | Local Bestへ含むが、Web同期対象へ昇格しない |
@@ -31,19 +31,17 @@ identityは[11](11_web_player_identity.md)、現行同期は[12](12_web_best_syn
 
 ## 入口と登録判断
 
-未登録アプリには「アカウントを作成・引き継ぐ」を一つだけ表示する。押下でApp-Web transactionを開始し、標準ブラウザで`/my/app-connect`を開く。Webに「新規登録」「ログイン」を表示する。Googleアカウントと操作意図を認証後に確認し、登録/引き継ぎの最終確認を行う。
+未登録アプリには「アカウントを作成・引き継ぐ」を一つだけ表示する。押下でApp-Web transactionを開始し、標準ブラウザで`/my/app-connect`を開く。Webには「Googleで続ける」を一つ表示する。Googleアカウントと操作意図を認証後に確認し、登録/引き継ぎの最終確認を行う。
 
 | Web操作と認証結果 | 結果 |
 |---|---|
-| 新規登録＋未登録Google＋開始Playerなし | Google email、既定公開名`Player`、アプリ照合を示し「このアカウントを作成する」でPlayer・Google identity・pending App Credentialをatomic作成 |
-| 新規登録＋登録済みGoogle | 新Playerを作らず、既存の公開名/URLを示してログイン・引き継ぎへ案内。本人が改めて承認する |
-| ログイン＋登録済みGoogle | 同じPlayerの公開名/URLを確認して「このPCへ引き継ぐ」を承認 |
-| ログイン＋未登録Google | アカウントなし表示。自動登録/発行なし。「新規登録へ」で意図を選び直し、改めて登録確認する |
+| Googleで続ける＋未登録Google＋開始Playerなし | Google email、既定公開名`Player`、アプリ照合を示し「このアカウントを作成する」でPlayer・Google identity・pending App Credentialをatomic作成 |
+| Googleで続ける＋登録済みGoogle | 同じPlayerの公開名/URLを確認して「このPCへ引き継ぐ」を承認 |
 | 有効な未連携PlayerのAppから開始 | 対象を開始Playerに固定。「現在の公開ユーザーにGoogleを連携」で追加。Player/現在Credentialを維持 |
 | 有効な連携済みPlayerのAppから開始 | 同じGoogleならプロフィールへ案内。Credential更新は別の引き継ぎ確認が必要 |
 | 有効な別local Player、Playerの別Google、別Playerへ連携済みGoogle | 409競合。上書き/移動/Player mergeなし。他Playerの情報を開示しない |
 
-Webの登録/ログイン意図はserver側でtransactionとOAuth stateへbindingする。Google選び直しでは対象と確認を破棄する。Webの通常ログインだけではApp Credentialを発行しない。アプリ開始proofのないWeb画面は登録ボタンを実行できず、アプリから開始する手順を案内する。
+Webの単一入口は空bodyで開始し、`intent = null`のApp transactionと操作専用OAuth `login-connect`をbindingする。callbackでGoogle identityを検証後、未登録は`register`、登録済みは`login`へ確定し、対応する操作proofと確認画面へ進む。OAuth callbackだけではPlayerやCredentialを作成しない。明示intentを指定したrequestはその操作に固定し、不一致から他操作へ自動変更しない。Google選び直しでは対象と確認を破棄する。Webの通常ログインだけではApp Credentialを発行しない。アプリ開始proofのないWeb画面は登録ボタンを実行できず、アプリから開始する手順を案内する。
 
 読める旧公開IDがあるAUTH_INVALID/復号不能アプリは、別公開IDの作成・引き継ぎを拒否する。公開IDは誤操作防止だけに使い権限にはしない。認証失敗から新規登録へfallbackしない。既存Playerへ追加する操作は有効App Credentialで権限を再確認する。
 
@@ -53,7 +51,7 @@ AUTH_INVALID/復号不能からの本人による再ログインは、失効/読
 
 ## キャンセル・選び直し・完了確認
 
-- 認証前にアプリ接続transaction、Webの登録/ログイン意図、戻り先を固定する。Google cancel/失敗時は「ログインを中止しました/失敗しました」と、開始した操作に戻る導線を表示する。通常プロフィールloginからならプロフィール、App接続からなら当該接続画面へ戻す。
+- 認証前にアプリ接続transaction、開始Player、browser、戻り先を固定する。操作未確定の単一入口は検証済みGoogleから作成/引き継ぎを決め、最終確認前にserverへ固定する。Google cancel/失敗時は「ログインを中止しました/失敗しました」と、開始した操作に戻る導線を表示する。通常プロフィールloginからならプロフィール、App接続からなら当該接続画面へ戻す。
 - callbackのstate/browser bindingが不正なら処理を拒否し、未検証のqueryから戻り先を採用しない。安全なエラー画面からAppで再開始する手順を示す。
 - Google選び直しは確定前だけ。App transaction/proofと開始Playerを維持し、Google session/対象/操作proof/未選択確認だけを破棄してGoogle identityを再確認する。登録→login等の意図変更もserverへ再固定し、当該purpose-bound OAuthをやり直す。別transaction/別Playerへの無断遷移なし。
 - Appの取消/Google cancelでtransactionを終了した場合と10分期限切れは、本人がAppから新transactionを開始する。同じ終了transactionを再使用しない。Web承認/登録が既に確定していたら取消済みと表示せず確定結果を確認する。
@@ -64,10 +62,10 @@ AUTH_INVALID/復号不能からの本人による再ログインは、失効/読
 
 | シナリオ | 利用者操作 | identity / Credential | 公開URL / Best | Localデータ | 同期 |
 |---|---|---|---|---|---|
-| 未登録→新規作成 | 単一ボタン→Web新規登録→Google選択→作成確認→App保存/activation | 新Player＋Google、active App Credential | 新URL、初期Best空 | 維持 | activation成功後にONとなりmergeを開始。送信開始をWeb最終確認で示す |
+| 未登録→新規作成 | 単一ボタン→WebのGoogleで続ける→Google選択→作成確認→App保存/activation | 新Player＋Google、active App Credential | 新URL、初期Best空 | 維持 | activation成功後にONとなりmergeを開始。送信開始をWeb最終確認で示す |
 | 未連携既存Player→Google連携 | 設定のWeb連携→Google選択→現在Playerへ連携確認 | 同じPlayerへ追加、現在Credential維持 | 同じURL/Best | 維持 | 元のON/OFF維持 |
 | 利用開始後→後日連携 | Google解除後等に設定から同じ連携操作 | 同じPlayer/現在Credential | 維持 | 維持 | OFFでも明示認証可、自動ONなし |
-| 新PCの空DB→Googleログイン | 単一ボタン→Webログイン→既存Player確認→引き継ぎ→App保存/activation | 同じPlayerに新Credential、activationで他App Credential失効 | 同じURL/全Bestを維持 | 空のまま | activation成功後にON。空集合no-op、新capture追加可 |
+| 新PCの空DB→Googleログイン | 単一ボタン→WebのGoogleで続ける→Google選択→既存Player確認→引き継ぎ→App保存/activation | 同じPlayerに新Credential、activationで他App Credential失効 | 同じURL/全Bestを維持 | 空のまま | activation成功後にON。空集合no-op、新capture追加可 |
 | 正式backup復元後→ログイン | 復元と上記引き継ぎを別操作 | 同じPlayer、新Credential | 維持 | manifest履歴を保持 | 再開可。manifestだけなら同期対象0件no-op |
 | 不完全/十分なcapture集合 | 本人が同期再開 | 同じPlayer/active Credential | 新譜面・改善fieldだけ追加、既存Best保持 | 維持 | 完全性に依存せず可 |
 | Google認証cancel/失敗、最終承認前cancel | Web/アプリで中止、本人が再試行 | 操作前の状態を維持。未登録は未登録 | 維持 | 維持 | 自動作成/ONなし |
@@ -84,7 +82,7 @@ Googleは15のWeb application clientを使う。Authorization Codeは固定HTTPS
 1. アプリは独立128 bit以上のtransaction IDと256 bit以上の`app authorization request secret`を生成し、開始API送信前に用途別DPAPI CurrentUserで保存する。
 2. `connect`は登録/ログイン共通。現在の有効Bearerがあれば対象Playerを固定し、なければGoogle認証後に対象を決める。送信されたBearerが無効なら401で拒否し、Bearerなしの新規登録へfallbackしない。`unlink`は有効Bearer必須。serverはpurpose/開始Player・Credentialを固定しsecret digestを保存。retryは同じID/proof/purposeだけ。
 3. serverが返す同じoriginの`/my/app-connect?request={id}`を開く。URLにはIDだけ。ID単体で受領・承認不可、App Credential/request secretをURLへ出さない。
-4. Webは選んだ登録/ログイン意図でGoogle認証を要求し、検証済みemail、対象の公開名/URL、操作結果を表示する。アプリとWebの短い照合コードの一致を本人が確認する。コードは表示用で所有証明ではない。
+4. Webは単一入口からGoogle認証を要求し、登録状況から作成/引き継ぎを確定して、検証済みemail、対象の公開名/URL、操作結果を表示する。アプリとWebの短い照合コードの一致を本人が確認する。コードは表示用で所有証明ではない。
 5. 承認はWeb session＋Origin＋CSRF＋当該purpose-bound OAuthで発行した独立操作proof＋本人の最終確認を要求する。[15の操作許可](15_web_my_profile.md#google-identity再確認と操作許可)に従い、検証済みGoogle identityとApp transaction/目的/対象/browserを結び、通常sessionだけでは承認しない。操作proofの10分TTLはserver成立時刻から数え、App transactionの開始から10分TTLも維持する。既存Player連携/解除は開始Credentialの有効性を再検証。新規登録は上記atomic作成、引き継ぎは既存Playerへpending Credentialを発行し、proof消費と結果確定をatomicに行う。
 6. アプリはHTTPSでproof付き結果を5秒間隔、開始から最大10分までpollする。429はRetry-Afterを尊重。Credentialをbrowser response/cookie/localStorageへ渡さない。
 7. 新CredentialをDPAPI保存・再読込検証後にactivationする。成功確認後だけ通常identityへ採用する。途中起動は結果確定まで送信しない。
@@ -107,7 +105,7 @@ transaction TTLは開始から10分。確定登録/link/unlink/activationとcanc
 
 同じPlayer＋同じGoogleの連携は冪等、別Google/別Playerの競合は409。並行unique競合、開始Credential失効、Player削除は部分更新なしで拒否する。
 
-マイプロフィールの「Google連携を解除」は15のpurpose-bound OAuthによる同Google identity再確認/短期操作proof＋そのPlayerの有効App proof＋最終確認を要求する。手元アプリのWeb連携から`unlink` transactionを開始する手順を案内する。Google identityと当該canonical issuer/subの全Web session（別ブラウザ/別端末を含む）、そのidentity/sessionにbindingされた認証待機・操作proof・未完了承認/削除確認をatomic失効する。全sessionのemailも削除し、後日同Googleが同じ/別Playerへ連携しても旧sessionへ権限を与えない。並行する旧sessionの管理更新はtransaction内の再検証で拒否する。既にactiveなApp Credential/URL/Best/Localは維持するが、失効した未完了承認からのpending Credential activationは許可しない。確認文は「Googleでのログイン・PC引き継ぎができなくなります。現在のアプリから再連携できます」。応答喪失はWeb sessionではなくApp secret proof付き同transaction確定結果で確認する。
+AppのWeb連携から開始した「Google連携を解除」のWeb確認画面は15のpurpose-bound OAuthによる同Google identity再確認/短期操作proof＋そのPlayerの有効App proof＋最終確認を要求する。手元アプリのWeb連携から`unlink` transactionを開始する。Google identityと当該canonical issuer/subの全Web session（別ブラウザ/別端末を含む）、そのidentity/sessionにbindingされた認証待機・操作proof・未完了承認/削除確認をatomic失効する。全sessionのemailも削除し、後日同Googleが同じ/別Playerへ連携しても旧sessionへ権限を与えない。並行する旧sessionの管理更新はtransaction内の再検証で拒否する。既にactiveなApp Credential/URL/Best/Localは維持するが、失効した未完了承認からのpending Credential activationは許可しない。確認文は「Googleでのログイン・PC引き継ぎができなくなります。現在のアプリから再連携できます」。応答喪失はWeb sessionではなくApp secret proof付き同transaction確定結果で確認する。
 
 解除後のGoogle再連携は有効Appから開始し、同じPlayerを固定する。初回登録のGoogle必須と、本人操作で後日解除したPlayerの継続利用を区別する。Webログアウトは解除ではない。Googleと全App Credentialの喪失の救済は保証しない。
 

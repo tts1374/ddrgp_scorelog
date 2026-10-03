@@ -284,15 +284,20 @@ export function registerWebAccountRoutes(app: Hono<AppEnvironment>) {
     ) THEN 1 ELSE 0 END WHERE id = ?6`).bind(existing.digest, now, claims.issuer, claims.sub, browser.digest, guard));
     if (session.statement !== undefined) statements.push(session.statement);
     const target = appRequest?.start_player_id ?? linked?.id ?? row.player_id;
+    // The unified App entry resolves its action only after Google identity verification.
+    // No account or credential is created until the user approves that action.
+    const intent = appRequest !== null && appRequest.intent === null && row.purpose === "login-connect"
+      ? linked === null ? "register" : "login" : row.intent;
+    const operationPurpose = intent === "register" ? "register" : row.purpose;
     if (row.purpose !== "login") {
       statements.push(c.env.DB.prepare(`INSERT INTO web_operation_proofs
         (digest, purpose, player_id, issuer, sub, session_digest, browser_digest, app_authorization_id, confirmed_at, expires_at)
-        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)`).bind(proofDigest, row.purpose,
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)`).bind(proofDigest, operationPurpose,
           target, claims.issuer, claims.sub, session.digest, browser.digest, row.app_authorization_id, now, expiry));
     }
     if (appRequest !== null) {
       statements.push(c.env.DB.prepare(`UPDATE account_write_guards SET guard = CASE WHEN EXISTS (
-        SELECT 1 FROM app_authorizations WHERE id = ?1 AND status = 'PENDING' AND expires_at > ?2 AND intent = ?3
+        SELECT 1 FROM app_authorizations WHERE id = ?1 AND status = 'PENDING' AND expires_at > ?2 AND intent IS ?3
           AND browser_digest = ?4 AND session_digest IS ?5 AND start_player_id IS ?6 AND start_credential_id IS ?7
           AND expected_public_player_id IS ?8 AND (?7 IS NULL OR EXISTS (SELECT 1 FROM player_credentials
             WHERE id = ?7 AND player_id = ?6 AND revoked_at IS NULL AND activation_state = 'active'))
@@ -300,7 +305,7 @@ export function registerWebAccountRoutes(app: Hono<AppEnvironment>) {
         row.start_session_digest, appRequest.start_player_id, appRequest.start_credential_id,
         appRequest.expected_public_player_id, guard));
       statements.push(c.env.DB.prepare(`UPDATE app_authorizations SET session_digest = ?1, issuer = ?2, sub = ?3,
-        player_id = ?4 WHERE id = ?5`).bind(session.digest, claims.issuer, claims.sub, target, appRequest.id));
+        player_id = ?4, intent = ?5 WHERE id = ?6`).bind(session.digest, claims.issuer, claims.sub, target, intent, appRequest.id));
     }
     const deletionRaw = randomId("", 32);
     const deletionId = randomId("dc_");
@@ -320,7 +325,7 @@ export function registerWebAccountRoutes(app: Hono<AppEnvironment>) {
     statements.push(c.env.DB.prepare("UPDATE web_oauth_requests SET consumed_at = ?1 WHERE state_digest = ?2").bind(now, row.state_digest), removeGuard(c, guard));
     try { await c.env.DB.batch(statements); } catch { return c.redirect("/my/auth-error"); }
     if (session.statement !== undefined) setAccountCookie(c, "session", session.raw, 86400);
-    if (row.purpose !== "login") setAccountCookie(c, `operation-${row.purpose}`, proofRaw, 600);
+    if (row.purpose !== "login") setAccountCookie(c, `operation-${operationPurpose}`, proofRaw, 600);
     if (row.purpose === "delete") setAccountCookie(c, "deletion", deletionRaw, 600);
     return c.redirect(returnPath(row));
   });

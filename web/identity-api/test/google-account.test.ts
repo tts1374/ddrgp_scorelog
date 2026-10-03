@@ -228,6 +228,64 @@ it("T1 registers no duplicate Player and never creates from unregistered login",
   expect(await counts()).toEqual({ players: 1, identities: 1, credentials: 1 });
 });
 
+it("unified App entry resolves a new Google to registration but waits for explicit approval and activation", async () => {
+  const app = await startApp();
+  const callback = await browser.operation(google, app.id);
+  expect(callback.headers.get("Location")).toBe(`/my/app-connect?request=${app.id}`);
+  expect(await (await browser.request(`/api/v1/auth/app-authorizations/${app.id}/confirmation`)).json())
+    .toMatchObject({ status: "PENDING", intent: "register", player: null, registered_google: false });
+  expect(await counts()).toEqual({ players: 0, identities: 0, credentials: 0 });
+  expect(await env.DB.prepare("SELECT purpose, consumed_at FROM web_operation_proofs").first())
+    .toEqual({ purpose: "register", consumed_at: null });
+  expect((await browser.request(`/api/v1/auth/app-authorizations/${app.id}/approve`, { confirmed: true, app_compared: false })).status).toBe(409);
+  expect((await browser.request(`/api/v1/auth/app-authorizations/${app.id}/approve`, { confirmed: false, app_compared: true })).status).toBe(409);
+  expect(await counts()).toEqual({ players: 0, identities: 0, credentials: 0 });
+  expect((await approve(app.id)).status).toBe(200);
+  const result = await (await appRequest(app.id, app.request_secret, "result"))
+    .json<{ credential: string; public_player_id: string }>();
+  expect(await counts()).toEqual({ players: 1, identities: 1, credentials: 1 });
+  expect((await exports.default.fetch(`${origin}/api/v1/me`, { headers: { Authorization: `Bearer ${result.credential}` } })).status).toBe(401);
+  expect((await appRequest(app.id, app.request_secret, "activate", result.credential)).status).toBe(200);
+  expect((await exports.default.fetch(`${origin}/api/v1/me`, { headers: { Authorization: `Bearer ${result.credential}` } })).status).toBe(200);
+});
+
+it("unified App entry resolves a registered Google to transfer and retains the Player and Best", async () => {
+  const owner = await registered();
+  const best = await seedBest(owner.public_player_id);
+  const app = await startApp();
+  await browser.operation(google, app.id);
+  expect(await (await browser.request(`/api/v1/auth/app-authorizations/${app.id}/confirmation`)).json())
+    .toMatchObject({ intent: "login", registered_google: true, player: { public_player_id: owner.public_player_id } });
+  expect(await counts()).toEqual({ players: 1, identities: 1, credentials: 1 });
+  expect((await approve(app.id)).status).toBe(200);
+  const result = await (await appRequest(app.id, app.request_secret, "result"))
+    .json<{ credential: string; public_player_id: string }>();
+  expect(result.public_player_id).toBe(owner.public_player_id);
+  expect((await exports.default.fetch(`${origin}/api/v1/me`, { headers: { Authorization: `Bearer ${owner.credential}` } })).status).toBe(200);
+  expect((await appRequest(app.id, app.request_secret, "activate", result.credential)).status).toBe(200);
+  expect((await exports.default.fetch(`${origin}/api/v1/me`, { headers: { Authorization: `Bearer ${owner.credential}` } })).status).toBe(401);
+  expect((await env.DB.prepare("SELECT * FROM player_chart_bests").all()).results).toEqual(best);
+  expect(await counts()).toEqual({ players: 1, identities: 1, credentials: 2 });
+});
+
+it("unified App recovery with an expected public ID never creates from an unregistered Google", async () => {
+  const owner = await seedPlayer();
+  const app = await startApp(undefined, owner.public_player_id);
+  expect((await browser.operation(google, app.id)).headers.get("Location")).toContain("auth_error=player");
+  expect((await approve(app.id)).status).toBe(401);
+  expect(await counts()).toEqual({ players: 1, identities: 0, credentials: 1 });
+});
+
+it.each(["connect", "unlink"])("unified entry retains App credential binding for %s", async purpose => {
+  const owner = purpose === "unlink" ? await registered() : await seedPlayer();
+  const app = await startApp(owner.credential, owner.public_player_id, purpose);
+  await browser.operation(google, app.id);
+  expect(await (await browser.request(`/api/v1/auth/app-authorizations/${app.id}/confirmation`)).json())
+    .toMatchObject({ intent: purpose === "unlink" ? "unlink" : "link", player: { public_player_id: owner.public_player_id } });
+  expect(await (await approve(app.id)).json()).toMatchObject({ status: purpose === "unlink" ? "UNLINKED" : "LINKED" });
+  expect(await counts()).toEqual({ players: 1, identities: purpose === "unlink" ? 0 : 1, credentials: 1 });
+});
+
 it("T2 links a development Player without changing name, identity, credential or Best", async () => {
   const legacy = await seedPlayer("Existing name");
   const app = await startApp(legacy.credential, legacy.public_player_id);

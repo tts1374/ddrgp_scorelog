@@ -28,7 +28,7 @@ npm run dev
 
 開発用secretをGit対象外の`.dev.vars`へ生成し、再起動時は既存secretを再利用します。`PUBLIC_WEB_ORIGIN`はlocal用に設定します。local masterを`data/master/ddrgp-web-master.local.sql`へexportし、migrationとともに`.wrangler/development`配下のlocal D1へ適用します。Viteも同じ保存先を使用し、`http://127.0.0.1:5173`で起動します。準備だけを実行する場合は`npm run dev:prepare`を使用します。browser E2Eは`--mode e2e`で起動し、別の`.wrangler/e2e`を使用します。build済みfrontendを手動確認する`npm run preview`は開発用D1を使用します。
 
-Windowsアプリの「アカウントを作成・引き継ぐ」からWebの新規登録/ログインを選びます。Googleアカウントと手元のアプリの照合コードを確認し、明示承認後にアプリが認証情報を保存・activationします。アプリで連携が完了すると同期ONになり、このPCの自己ベストをWebに送ります。公開名は`/my/profile`で編集します。Googleメールアドレスは本人向け管理画面にだけ表示されます。
+Windowsアプリの「アカウントを作成・引き継ぐ」からWebの「Googleで続ける」を選びます。Google認証後、未登録なら作成確認、登録済みなら引き継ぎ確認へ進みます。Googleアカウントと手元のアプリの照合コードを確認し、明示承認後にアプリが認証情報を保存・activationします。アプリで連携が完了すると同期ONになり、このPCの自己ベストをWebに送ります。公開名は`/my/profile`で編集します。Googleメールアドレスは本人向け管理画面にだけ表示されます。
 
 Google実通信の手動確認には本番と分離したHTTPS開発Worker/D1、開発専用のGoogle Web client、当該HTTPS originの固定callback `/api/v1/auth/web/google/callback`、Googleテストユーザーを用意します。`GOOGLE_CLIENT_ID`、`GOOGLE_CLIENT_SECRET`、独立した32 byte以上の`APP_AUTHORIZATION_SECRET`を開発環境に設定します。本番client/secret/D1を流用しません。Desktop clientやWindows loopback callbackへ置き換えません。これらの設定とテストユーザーなしでは実OAuthを検証できません。ローカルHTTPはmock・fixtureの検証用です。自動UIテストは認証APIの応答をmockし、Google実通信を代替した成功とは扱いません。
 
@@ -120,7 +120,7 @@ main更新時の`deploy-web.yml`も同じcommitからmasterを生成・検査・
 | `GET` | `/api/v1/account/bests/deletion-confirmation` | Web session＋公開記録削除専用proof |
 | `DELETE` | `/api/v1/account/bests` | Web session＋専用proof＋Origin/CSRF＋`confirmed: true`＋`sync_stopped: true` |
 | `POST` | `/api/v1/auth/web/logout` | Web session＋Origin/CSRF |
-| `POST` | `/api/v1/auth/app-authorizations/{id}/web-start` | browser/session＋Origin/CSRF |
+| `POST` | `/api/v1/auth/app-authorizations/{id}/web-start` | browser/session＋Origin/CSRF。空body `{}` は認証後に登録状況から操作を確定。明示 `intent` はその操作に固定 |
 | `POST` | `/api/v1/auth/app-authorizations/{id}/approve` | Web session＋操作proof＋Origin/CSRF＋明示照合 |
 | `POST` | `/api/v1/account/deletion-start` | Web session＋Origin/CSRF |
 | `POST` | `/api/v1/account/deletion-confirmations` | Web session＋削除proof＋Origin/CSRF＋明示確認 |

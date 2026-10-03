@@ -23,6 +23,16 @@ function mockApi(extra: (path: string, options: RequestInit) => unknown = () => 
 }
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
 describe("Web management", () => {
+  it("an unresolved unified request shows the entry without premature consent or approval", async () => {
+    window.history.replaceState(null, "", "/my/app-connect?request=app-request");
+    const fetcher = mockApi(path => path.endsWith("/confirmation") ? { ...confirm, intent: null } : undefined);
+    render(<ManagementApp />);
+    expect(await screen.findByRole("button", { name: "Googleで続ける" })).toBeEnabled();
+    expect(screen.queryByRole("checkbox")).toBeNull();
+    expect(screen.queryByRole("button", { name: "新規登録" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "ログイン" })).toBeNull();
+    expect(fetcher.mock.calls.some(([path]) => path.endsWith("/approve"))).toBe(false);
+  });
   it("public-record deletion requires stopped-sync consent, preserves the account and recovers a lost response", async () => {
     window.history.replaceState(null, "", "/my/public-data-delete");
     let deleted = false;
@@ -140,7 +150,7 @@ describe("Web management", () => {
   it("OAuth cancellation returns App start without restoring stale consent", async () => {
     window.history.replaceState(null, "", "/my/app-connect?request=app-request&auth_error=cancelled");
     const fetcher = mockApi(); render(<ManagementApp />);
-    expect(await screen.findByRole("button", { name: "新規登録" })).toBeEnabled();
+    expect(await screen.findByRole("button", { name: "Googleで続ける" })).toBeEnabled();
     expect(screen.getByRole("alert")).toHaveTextContent("Googleログインを中止");
     expect(fetcher.mock.calls.some(([path]) => path.endsWith("/approve"))).toBe(false);
   });
