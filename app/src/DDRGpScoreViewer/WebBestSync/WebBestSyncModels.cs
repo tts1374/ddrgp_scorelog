@@ -168,3 +168,20 @@ internal sealed record WebBestSnapshotBeginResult(
 internal sealed record WebBestApiResult(
     WebBestApiStatus Status,
     string? ErrorCode = null);
+
+internal sealed record WebBestReplacementLowered(
+    [property: JsonPropertyName("chart_id")] string ChartId,
+    [property: JsonPropertyName("fields")] IReadOnlyList<string> Fields);
+
+internal sealed record WebBestReplacementReview(
+    [property: JsonPropertyName("public_count")] int PublicCount,
+    [property: JsonPropertyName("eligible_count")] int EligibleCount,
+    [property: JsonPropertyName("removed")] IReadOnlyList<string> Removed,
+    [property: JsonPropertyName("lowered")] IReadOnlyList<WebBestReplacementLowered> Lowered,
+    [property: JsonPropertyName("content_digest")] string ContentDigest,
+    [property: JsonPropertyName("base_sync_revision")] long BaseSyncRevision);
+
+internal sealed record WebBestReplacementReviewResult(
+    WebBestApiStatus Status,
+    WebBestReplacementReview? Review = null,
+    string? ErrorCode = null);

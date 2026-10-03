@@ -322,7 +322,7 @@ describe("Public Player page", () => {
     expect(html).toContain("&lt;/script&gt;&lt;script&gt;alert(&quot;x&quot;)&lt;/script&gt; - GP Score Log");
     expect(html).toContain("\\u003c/script\\u003e\\u003cscript\\u003ealert");
     expect(html).not.toContain("pl_public_fixture");
-    expect(html).toContain(`<link rel="canonical" href="https://web.example.test/player/${publicPlayerId}">`);
+    expect(html).toContain(`<link rel="canonical" href="${env.PUBLIC_WEB_ORIGIN}/player/${publicPlayerId}">`);
     expect(html).toContain('<meta name="robots" content="noindex,follow">');
   });
 

@@ -1,5 +1,7 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
+import { credentialWriteGuard, registerHistoricalBestRoutes, snapshotCanonicalSql } from "./historical-best";
+import { randomId } from "./crypto";
 
 export interface BestSyncPlayer {
   id: string;
@@ -7,6 +9,7 @@ export interface BestSyncPlayer {
   display_name: string;
   created_at: string;
   updated_at: string;
+  credential_id: string;
 }
 
 export type BestSyncEnvironment = {
@@ -20,7 +23,7 @@ export type BestSyncEnvironment = {
   Variables: { player: BestSyncPlayer };
 };
 
-interface Projection {
+export interface Projection {
   chart_id: string;
   best_score: number;
   best_ex_score: number;
@@ -36,23 +39,7 @@ interface SnapshotRow {
   committed_revision: number | null;
   status: "PENDING" | "COMMITTED" | "ABORTED" | "EXPIRED";
   expires_at: string;
-}
-
-interface ParsedOperation {
-  index: number;
-  type: "upsert" | "delete";
-  chart_id: string;
-  item?: Projection;
-}
-
-interface CurrentOperationRow {
-  operation_index: number;
-  chart_known: number;
-  current_chart_id: string | null;
-  best_score: number | null;
-  best_ex_score: number | null;
-  best_clear_type: string | null;
-  best_flare_rank: string | null;
+  credential_id: string;
 }
 
 const projectionVersion = 1;
@@ -66,7 +53,7 @@ const flareRanks = new Set(["EX", "IX", "VIII", "VII", "VI", "V", "IV", "III", "
 
 function errorResponse(
   c: Context<BestSyncEnvironment>,
-  status: 400 | 404 | 409 | 500,
+  status: 400 | 401 | 404 | 409 | 500,
   code: string,
   message: string,
 ): Response {
@@ -77,7 +64,7 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function isProjection(value: unknown): value is Projection {
+export function isProjection(value: unknown): value is Projection {
   if (!isPlainObject(value)) {
     return false;
   }
@@ -94,19 +81,10 @@ function isProjection(value: unknown): value is Projection {
     clearTypes.has(value.best_clear_type) &&
     (value.best_flare_rank === null ||
       (typeof value.best_flare_rank === "string" && flareRanks.has(value.best_flare_rank))) &&
+    !(value.best_clear_type === "FAILED" && value.best_flare_rank !== null) &&
     Object.keys(value).every((key) =>
       ["chart_id", "best_score", "best_ex_score", "best_clear_type", "best_flare_rank"].includes(key),
     )
-  );
-}
-
-function sameProjection(left: Projection, right: Projection): boolean {
-  return (
-    left.chart_id === right.chart_id &&
-    left.best_score === right.best_score &&
-    left.best_ex_score === right.best_ex_score &&
-    left.best_clear_type === right.best_clear_type &&
-    left.best_flare_rank === right.best_flare_rank
   );
 }
 
@@ -168,165 +146,20 @@ async function readSnapshot(
   db: D1Database,
   snapshotId: string,
   playerId: string,
+  credentialId: string,
 ): Promise<SnapshotRow | null> {
   return db.prepare(
     `SELECT snapshot_id, player_id, expected_item_count, base_sync_revision,
-            committed_revision, status, expires_at
+            committed_revision, status, expires_at, credential_id
      FROM best_sync_snapshots
-     WHERE snapshot_id = ?1 AND player_id = ?2`,
-  ).bind(snapshotId, playerId).first<SnapshotRow>();
+     WHERE snapshot_id = ?1 AND player_id = ?2 AND credential_id = ?3`,
+  ).bind(snapshotId, playerId, credentialId).first<SnapshotRow>();
 }
 
 export function registerBestSyncRoutes(app: Hono<BestSyncEnvironment>): void {
-  app.post("/api/v1/me/bests/batch", async (c) => {
-    const body = await readJson(c);
-    if (!isPlainObject(body) || body.projection_version !== projectionVersion ||
-        typeof body.master_version !== "string" || !Array.isArray(body.operations) ||
-        body.operations.length === 0 || body.operations.length > maximumBatchSize) {
-      return errorResponse(c, 400, "INVALID_REQUEST", "A valid projection batch is required.");
-    }
-
-    const player = c.get("player");
-    const results: Array<Record<string, unknown>> = [];
-    const parsed: ParsedOperation[] = [];
-    for (let index = 0; index < body.operations.length; index += 1) {
-      const operation = body.operations[index];
-      if (!isPlainObject(operation) || (operation.type !== "upsert" && operation.type !== "delete")) {
-        results.push({ index, status: "rejected", code: "INVALID_OPERATION" });
-        continue;
-      }
-
-      if (operation.type === "upsert") {
-        if (!isProjection(operation.item)) {
-          results.push({ index, status: "rejected", code: "INVALID_PROJECTION" });
-          continue;
-        }
-        parsed.push({
-          index,
-          type: "upsert",
-          chart_id: operation.item.chart_id,
-          item: operation.item,
-        });
-        continue;
-      }
-
-      if (typeof operation.chart_id !== "string" || operation.chart_id.length === 0 ||
-          Object.keys(operation).some((key) => !["type", "chart_id"].includes(key))) {
-        results.push({ index, status: "rejected", code: "INVALID_OPERATION" });
-        continue;
-      }
-      parsed.push({ index, type: "delete", chart_id: operation.chart_id });
-    }
-
-    const duplicateChart = parsed.find(
-      (operation, index) =>
-        parsed.findIndex((candidate) => candidate.chart_id === operation.chart_id) !== index,
-    );
-    if (duplicateChart !== undefined) {
-      return errorResponse(c, 400, "DUPLICATE_CHART", "A chart may occur only once in a batch.");
-    }
-
-    const operationJson = JSON.stringify(parsed.map((operation) => ({
-      index: operation.index,
-      type: operation.type,
-      chart_id: operation.chart_id,
-      ...(operation.item === undefined ? {} : operation.item),
-    })));
-    const currentRows = parsed.length === 0
-      ? []
-      : (await c.env.DB.prepare(
-        `WITH operations AS (
-           SELECT CAST(json_extract(value, '$.index') AS INTEGER) AS operation_index,
-                  json_extract(value, '$.chart_id') AS chart_id
-           FROM json_each(?1)
-         )
-         SELECT o.operation_index,
-                CASE WHEN c.chart_id IS NULL THEN 0 ELSE 1 END AS chart_known,
-                b.chart_id AS current_chart_id,
-                b.best_score,
-                b.best_ex_score,
-                b.best_clear_type,
-                b.best_flare_rank
-         FROM operations o
-         LEFT JOIN charts c ON c.chart_id = o.chart_id
-         LEFT JOIN player_chart_bests b
-           ON b.player_id = ?2 AND b.chart_id = o.chart_id`,
-      ).bind(operationJson, player.id).all<CurrentOperationRow>()).results;
-    const currentByIndex = new Map(currentRows.map((row) => [row.operation_index, row]));
-    const changedOperations: ParsedOperation[] = [];
-    for (const operation of parsed) {
-      const row = currentByIndex.get(operation.index);
-      if (operation.type === "upsert" && row?.chart_known !== 1) {
-        results.push({ index: operation.index, status: "rejected", code: "UNKNOWN_CHART" });
-        continue;
-      }
-      const changed = operation.type === "delete"
-        ? row?.current_chart_id !== null && row?.current_chart_id !== undefined
-        : row?.current_chart_id === null || row?.current_chart_id === undefined ||
-          !sameProjection(
-            {
-              chart_id: operation.chart_id,
-              best_score: row.best_score!,
-              best_ex_score: row.best_ex_score!,
-              best_clear_type: row.best_clear_type!,
-              best_flare_rank: row.best_flare_rank,
-            },
-            operation.item!,
-          );
-      results.push({ index: operation.index, status: "accepted", changed });
-      if (changed) {
-        changedOperations.push(operation);
-      }
-    }
-
-    if (changedOperations.length > 0) {
-      const now = new Date().toISOString();
-      const changedJson = JSON.stringify(changedOperations.map((operation) => ({
-        type: operation.type,
-        chart_id: operation.chart_id,
-        ...(operation.item === undefined ? {} : operation.item),
-      })));
-      await c.env.DB.batch([
-        c.env.DB.prepare(
-          `INSERT INTO player_chart_bests (
-             player_id, chart_id, best_score, best_ex_score,
-             best_clear_type, best_flare_rank, updated_at
-           )
-           SELECT ?1,
-                  json_extract(value, '$.chart_id'),
-                  CAST(json_extract(value, '$.best_score') AS INTEGER),
-                  CAST(json_extract(value, '$.best_ex_score') AS INTEGER),
-                  json_extract(value, '$.best_clear_type'),
-                  json_extract(value, '$.best_flare_rank'),
-                  ?3
-           FROM json_each(?2)
-           WHERE json_extract(value, '$.type') = 'upsert'
-           ON CONFLICT(player_id, chart_id) DO UPDATE SET
-             best_score = excluded.best_score,
-             best_ex_score = excluded.best_ex_score,
-             best_clear_type = excluded.best_clear_type,
-             best_flare_rank = excluded.best_flare_rank,
-             updated_at = excluded.updated_at`,
-        ).bind(player.id, changedJson, now),
-        c.env.DB.prepare(
-          `DELETE FROM player_chart_bests
-           WHERE player_id = ?1 AND chart_id IN (
-             SELECT json_extract(value, '$.chart_id')
-             FROM json_each(?2)
-             WHERE json_extract(value, '$.type') = 'delete'
-           )`,
-        ).bind(player.id, changedJson),
-        c.env.DB.prepare(
-          `UPDATE players SET best_sync_revision = best_sync_revision + 1,
-                              public_bests_updated_at = ?1
-           WHERE id = ?2`,
-        ).bind(now, player.id),
-      ]);
-    }
-
-    return c.json({ results: results.sort((left, right) =>
-      (left.index as number) - (right.index as number)) });
-  });
+  registerHistoricalBestRoutes(app);
+  app.post("/api/v1/me/bests/batch", c =>
+    errorResponse(c, 409, "HISTORICAL_BEST_REQUIRED", "Use the historical Best merge API."));
 
   app.post("/api/v1/me/bests/snapshots", async (c) => {
     const body = await readJson(c);
@@ -349,7 +182,8 @@ export function registerBestSyncRoutes(app: Hono<BestSyncEnvironment>): void {
     const revision = await c.env.DB.prepare(
       "SELECT best_sync_revision FROM players WHERE id = ?1",
     ).bind(player.id).first<{ best_sync_revision: number }>();
-    const statements: D1PreparedStatement[] = [];
+    const guardId = randomId("bg_");
+    const statements: D1PreparedStatement[] = [credentialWriteGuard(c, guardId)];
     if (existing !== null) {
       statements.push(
         c.env.DB.prepare(
@@ -366,8 +200,8 @@ export function registerBestSyncRoutes(app: Hono<BestSyncEnvironment>): void {
     statements.push(c.env.DB.prepare(
       `INSERT INTO best_sync_snapshots (
          snapshot_id, player_id, projection_version, master_version,
-         expected_item_count, base_sync_revision, status, created_at, expires_at
-       ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'PENDING', ?7, ?8)`,
+         expected_item_count, base_sync_revision, status, created_at, expires_at, credential_id
+       ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'PENDING', ?7, ?8, ?9)`,
     ).bind(
       snapshotId,
       player.id,
@@ -377,7 +211,9 @@ export function registerBestSyncRoutes(app: Hono<BestSyncEnvironment>): void {
       revision?.best_sync_revision ?? 0,
       nowText,
       new Date(now.getTime() + snapshotLifetimeMilliseconds).toISOString(),
+      player.credential_id,
     ));
+    statements.push(c.env.DB.prepare("DELETE FROM best_sync_write_guards WHERE id = ?1").bind(guardId));
     await c.env.DB.batch(statements);
     return c.json({
       snapshot_id: snapshotId,
@@ -394,7 +230,7 @@ export function registerBestSyncRoutes(app: Hono<BestSyncEnvironment>): void {
     const player = c.get("player");
     const now = new Date().toISOString();
     await cleanupSnapshotStaging(c.env.DB, player.id, now);
-    const snapshot = await readSnapshot(c.env.DB, snapshotId, player.id);
+    const snapshot = await readSnapshot(c.env.DB, snapshotId, player.id, player.credential_id);
     if (snapshot === null) {
       return errorResponse(c, 404, "SNAPSHOT_NOT_FOUND", "The snapshot was not found.");
     }
@@ -440,7 +276,12 @@ export function registerBestSyncRoutes(app: Hono<BestSyncEnvironment>): void {
     }
 
     const itemJson = JSON.stringify(body.items);
+    const guardId = randomId("bi_");
     await c.env.DB.batch([
+      credentialWriteGuard(c, guardId),
+      c.env.DB.prepare(`UPDATE best_sync_write_guards SET guard = CASE WHEN EXISTS (
+        SELECT 1 FROM best_sync_snapshots WHERE snapshot_id = ?1 AND status = 'PENDING' AND expires_at > ?2
+      ) THEN 1 ELSE 0 END WHERE id = ?3`).bind(snapshotId, now, guardId),
       c.env.DB.prepare(
         `INSERT INTO best_sync_snapshot_chunks (
            snapshot_id, chunk_id, content_digest, item_count, created_at
@@ -464,6 +305,7 @@ export function registerBestSyncRoutes(app: Hono<BestSyncEnvironment>): void {
         body.chunk_id,
         itemJson,
       ),
+      c.env.DB.prepare("DELETE FROM best_sync_write_guards WHERE id = ?1").bind(guardId),
     ]);
     return c.json({ accepted: body.items.length, retry: false });
   });
@@ -476,7 +318,7 @@ export function registerBestSyncRoutes(app: Hono<BestSyncEnvironment>): void {
     const player = c.get("player");
     const now = new Date().toISOString();
     await cleanupSnapshotStaging(c.env.DB, player.id, now);
-    const snapshot = await readSnapshot(c.env.DB, snapshotId, player.id);
+    const snapshot = await readSnapshot(c.env.DB, snapshotId, player.id, player.credential_id);
     if (snapshot === null) {
       return errorResponse(c, 404, "SNAPSHOT_NOT_FOUND", "The snapshot was not found.");
     }
@@ -515,6 +357,14 @@ export function registerBestSyncRoutes(app: Hono<BestSyncEnvironment>): void {
     if (currentRevision?.best_sync_revision !== snapshot.base_sync_revision) {
       return errorResponse(c, 409, "SYNC_CONFLICT", "The published Best set changed after snapshot begin.");
     }
+    const authorization = await c.env.DB.prepare(`SELECT 1 AS valid
+      FROM best_replacement_authorizations a WHERE a.snapshot_id = ?1 AND a.credential_id = ?2
+      AND a.base_revision = ?3 AND a.expires_at > ?4 AND a.consumed_at IS NULL
+      AND a.content_json = ${snapshotCanonicalSql}`)
+      .bind(snapshotId, player.credential_id, snapshot.base_sync_revision, now).first();
+    if (authorization === null) {
+      return errorResponse(c, 409, "REPLACEMENT_CONFIRMATION_REQUIRED", "Review and confirm this replacement.");
+    }
     const difference = await c.env.DB.prepare(
       `SELECT 1 AS changed
        FROM player_chart_bests b
@@ -538,7 +388,9 @@ export function registerBestSyncRoutes(app: Hono<BestSyncEnvironment>): void {
     const changed = difference !== null;
     const committedRevision = snapshot.base_sync_revision + (changed ? 1 : 0);
 
+    const guardId = randomId("bc_");
     const statements: D1PreparedStatement[] = [
+      credentialWriteGuard(c, guardId),
       c.env.DB.prepare(
         `INSERT INTO best_sync_commit_guards (snapshot_id, player_id, guard)
           VALUES (?1, ?2, CASE
@@ -549,9 +401,14 @@ export function registerBestSyncRoutes(app: Hono<BestSyncEnvironment>): void {
                  AND player_id = ?2
                  AND status = 'PENDING'
                  AND expires_at > ?4
+             ) AND EXISTS (
+               SELECT 1 FROM best_replacement_authorizations a
+               WHERE a.snapshot_id = ?1 AND a.credential_id = ?5 AND a.base_revision = ?3
+                 AND a.expires_at > ?4 AND a.consumed_at IS NULL
+                 AND a.content_json = ${snapshotCanonicalSql}
              ) THEN 1
             ELSE 0 END)`,
-      ).bind(snapshotId, player.id, snapshot.base_sync_revision, now),
+      ).bind(snapshotId, player.id, snapshot.base_sync_revision, now, player.credential_id),
     ];
     if (changed) {
       statements.push(
@@ -584,6 +441,7 @@ export function registerBestSyncRoutes(app: Hono<BestSyncEnvironment>): void {
       );
     }
     statements.push(
+      c.env.DB.prepare("UPDATE best_replacement_authorizations SET consumed_at = ?1 WHERE snapshot_id = ?2").bind(now, snapshotId),
       c.env.DB.prepare(
         `UPDATE best_sync_snapshots
          SET status = 'COMMITTED', committed_revision = ?1
@@ -598,10 +456,16 @@ export function registerBestSyncRoutes(app: Hono<BestSyncEnvironment>): void {
       c.env.DB.prepare(
         "DELETE FROM best_sync_commit_guards WHERE snapshot_id = ?1",
       ).bind(snapshotId),
+      c.env.DB.prepare("DELETE FROM best_sync_write_guards WHERE id = ?1").bind(guardId),
     );
     try {
       await c.env.DB.batch(statements);
     } catch {
+      const active = await c.env.DB.prepare(`SELECT 1 FROM player_credentials WHERE id = ?1 AND player_id = ?2
+        AND revoked_at IS NULL AND activation_state = 'active'`).bind(player.credential_id, player.id).first();
+      if (active === null) return errorResponse(c, 401, "UNAUTHORIZED", "The App Credential is invalid.");
+      const current = await readSnapshot(c.env.DB, snapshotId, player.id, player.credential_id);
+      if (current?.status === "COMMITTED") return c.json({ sync_revision: current.committed_revision, changed: false, retry: true });
       return errorResponse(c, 409, "SYNC_CONFLICT", "The published Best set changed after snapshot begin.");
     }
     return c.json({ sync_revision: committedRevision, changed, retry: false });
@@ -610,14 +474,16 @@ export function registerBestSyncRoutes(app: Hono<BestSyncEnvironment>): void {
   app.delete("/api/v1/me/bests/snapshots/:snapshotId", async (c) => {
     const snapshotId = c.req.param("snapshotId");
     const player = c.get("player");
-    const snapshot = await readSnapshot(c.env.DB, snapshotId, player.id);
+    const snapshot = await readSnapshot(c.env.DB, snapshotId, player.id, player.credential_id);
     if (snapshot === null) {
       return errorResponse(c, 404, "SNAPSHOT_NOT_FOUND", "The snapshot was not found.");
     }
     if (snapshot.status === "PENDING") {
+      const guardId = randomId("ba_");
       await c.env.DB.batch([
+        credentialWriteGuard(c, guardId),
         c.env.DB.prepare(
-          "UPDATE best_sync_snapshots SET status = 'ABORTED' WHERE snapshot_id = ?1",
+          "UPDATE best_sync_snapshots SET status = 'ABORTED' WHERE snapshot_id = ?1 AND status = 'PENDING'",
         ).bind(snapshotId),
         c.env.DB.prepare(
           "DELETE FROM best_sync_snapshot_items WHERE snapshot_id = ?1",
@@ -625,51 +491,13 @@ export function registerBestSyncRoutes(app: Hono<BestSyncEnvironment>): void {
         c.env.DB.prepare(
           "DELETE FROM best_sync_snapshot_chunks WHERE snapshot_id = ?1",
         ).bind(snapshotId),
+        c.env.DB.prepare("DELETE FROM best_replacement_authorizations WHERE snapshot_id = ?1 AND consumed_at IS NULL").bind(snapshotId),
+        c.env.DB.prepare("DELETE FROM best_sync_write_guards WHERE id = ?1").bind(guardId),
       ]);
     }
     return c.body(null, 204);
   });
 
-  app.delete("/api/v1/me/bests", async (c) => {
-    const player = c.get("player");
-    const count = await c.env.DB.prepare(
-      "SELECT COUNT(*) AS count FROM player_chart_bests WHERE player_id = ?1",
-    ).bind(player.id).first<{ count: number }>();
-    const now = new Date().toISOString();
-    const statements: D1PreparedStatement[] = [
-      c.env.DB.prepare(
-        `UPDATE best_sync_snapshots
-         SET status = 'ABORTED'
-         WHERE player_id = ?1 AND status = 'PENDING'`,
-      ).bind(player.id),
-      c.env.DB.prepare(
-        `DELETE FROM best_sync_snapshot_items
-         WHERE snapshot_id IN (
-           SELECT snapshot_id FROM best_sync_snapshots
-           WHERE player_id = ?1 AND status = 'ABORTED'
-         )`,
-      ).bind(player.id),
-      c.env.DB.prepare(
-        `DELETE FROM best_sync_snapshot_chunks
-         WHERE snapshot_id IN (
-           SELECT snapshot_id FROM best_sync_snapshots
-           WHERE player_id = ?1 AND status = 'ABORTED'
-         )`,
-      ).bind(player.id),
-    ];
-    if ((count?.count ?? 0) > 0) {
-      statements.push(
-        c.env.DB.prepare(
-          "DELETE FROM player_chart_bests WHERE player_id = ?1",
-        ).bind(player.id),
-        c.env.DB.prepare(
-          `UPDATE players SET best_sync_revision = best_sync_revision + 1,
-                              public_bests_updated_at = ?1
-           WHERE id = ?2`,
-        ).bind(now, player.id),
-      );
-    }
-    await c.env.DB.batch(statements);
-    return c.body(null, 204);
-  });
+  app.delete("/api/v1/me/bests", c => errorResponse(c, 409, "WEB_PUBLIC_BESTS_REQUIRED",
+    "Delete public records on your Web profile."));
 }

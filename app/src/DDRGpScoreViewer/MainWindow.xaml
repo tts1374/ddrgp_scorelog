@@ -2165,26 +2165,13 @@
                                         </Grid.ColumnDefinitions>
                                         <TextBlock Text="公開データの同期" FontSize="14" FontWeight="SemiBold"
                                                    VerticalAlignment="Center" />
-                                        <CheckBox x:Name="WebBestSyncToggle" Grid.Column="1"
-                                                  Content="ON" TabIndex="103"
-                                                  IsChecked="{Binding WebBestSyncEnabled, Mode=TwoWay}"
-                                                  IsEnabled="{Binding IsWebBestSyncAvailable}"
-                                                  VerticalAlignment="Center" />
+                                        <Button x:Name="WebBestSyncToggle" Grid.Column="1"
+                                                Content="{Binding WebSyncToggleLabel}" TabIndex="103"
+                                                Style="{StaticResource SecondaryButtonStyle}"
+                                                Visibility="{Binding WebRegisteredActionsVisibility}"
+                                                IsEnabled="{Binding CanToggleWebSync}" Click="ToggleWebSync_Click" />
                                     </Grid>
                                     <Separator Margin="0,12" />
-                                    <Grid Margin="0,0,0,10">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="220" />
-                                            <ColumnDefinition Width="*" />
-                                        </Grid.ColumnDefinitions>
-                                        <TextBlock Text="公開プレイヤー名" FontSize="12" VerticalAlignment="Center" />
-                                        <TextBox x:Name="WebPlayerDisplayNameTextBox" Grid.Column="1"
-                                                 Text="{Binding WebPlayerDisplayName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                                 Style="{StaticResource BestTitleSearchTextBoxStyle}"
-                                                 MaxLength="64" MinWidth="220"
-                                                 IsEnabled="{Binding IsWebBestSyncAvailable}"
-                                                 VerticalAlignment="Center" />
-                                    </Grid>
                                     <Grid>
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="220" />
@@ -2230,31 +2217,57 @@
                                             </Style>
                                         </TextBlock.Style>
                                     </TextBlock>
-                                    <StackPanel Orientation="Horizontal" Margin="0,12,0,0">
+                                    <Button x:Name="ConnectWebAccountButton" Content="アカウントを作成・引き継ぐ" Margin="0,12,0,0" HorizontalAlignment="Left"
+                                            Style="{StaticResource PrimaryButtonStyle}"
+                                            Visibility="{Binding WebAccountConnectVisibility}"
+                                            IsEnabled="{Binding CanBeginWebAuthorization}" Click="ConnectWebAccount_Click" />
+                                    <WrapPanel Margin="0,12,0,0" Visibility="{Binding WebRegisteredActionsVisibility}">
                                         <Button x:Name="SyncWebBestsNowButton"
                                                 Content="今すぐ同期" TabIndex="104"
                                                 Style="{StaticResource PrimaryButtonStyle}"
                                                 IsEnabled="{Binding CanSyncWebBestsNow}"
                                                 Click="SyncWebBestsNow_Click" />
-                                        <Button Content="認証情報を確認" TabIndex="105" Margin="8,0,0,0"
-                                                Style="{StaticResource SecondaryButtonStyle}"
-                                                Visibility="{Binding WebBestAuthActionVisibility}"
-                                                Click="CheckWebBestIdentity_Click" />
                                         <Button x:Name="OpenPublicPlayerPageButton" Content="公開ページを開く" TabIndex="105" Margin="8,0,0,0"
                                                 Style="{StaticResource SecondaryButtonStyle}"
                                                 IsEnabled="{Binding CanOpenPublicPlayerPage}"
                                                 Click="OpenPublicPlayerPage_Click" />
-                                    </StackPanel>
-                                    <TextBlock Text="自動記録の自己ベストを公開します。画像から追加・バックアップから復元したプレーは対象外です。"
+                                    </WrapPanel>
+                                    <Button Content="このPCの連携情報を削除" Margin="0,10,0,0" HorizontalAlignment="Left"
+                                            Style="{StaticResource SecondaryButtonStyle}"
+                                            Visibility="{Binding WebBestAuthActionVisibility}"
+                                            Click="CheckWebBestIdentity_Click" />
+                                    <WrapPanel Margin="0,10,0,0" Visibility="{Binding WebRegisteredActionsVisibility}">
+                                        <Button x:Name="OpenWebProfileButton" Content="マイプロフィールを開く"
+                                                Style="{StaticResource SecondaryButtonStyle}" Click="OpenWebProfile_Click" />
+                                    </WrapPanel>
+                                    <Expander x:Name="WebConnectionExpander" Header="Web連携" Margin="0,10,0,0"
+                                              Visibility="{Binding WebRegisteredActionsVisibility}">
+                                        <WrapPanel Margin="0,10,0,0">
+                                            <Button x:Name="GoogleConnectButton" Content="Googleを連携"
+                                                Style="{StaticResource SecondaryButtonStyle}"
+                                                Visibility="{Binding GoogleConnectVisibility}"
+                                                IsEnabled="{Binding CanBeginWebAuthorization}" Click="ConnectWebAccount_Click" />
+                                            <Button x:Name="GoogleUnlinkButton" Content="Google連携を解除"
+                                                Style="{StaticResource SecondaryButtonStyle}"
+                                                Visibility="{Binding GoogleUnlinkVisibility}"
+                                                IsEnabled="{Binding CanBeginWebAuthorization}" Click="UnlinkGoogle_Click" />
+                                            <Button x:Name="GoogleSettingsButton" Content="Google連携の設定をWebで開く"
+                                                Style="{StaticResource SecondaryButtonStyle}"
+                                                Visibility="{Binding GoogleSettingsVisibility}" Click="OpenWebProfile_Click" />
+                                        </WrapPanel>
+                                    </Expander>
+                                    <TextBlock Text="{Binding WebAuthorizationMessage}" FontSize="12" Margin="0,10,0,0"
+                                               Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" />
+                                    <WrapPanel Margin="0,8,0,0" Visibility="{Binding WebAuthorizationPendingVisibility}">
+                                        <Button Content="連携結果を確認" Style="{StaticResource SecondaryButtonStyle}"
+                                                IsEnabled="{Binding CanBeginWebAuthorization}" Click="ConfirmWebAuthorizationResult_Click" />
+                                        <Button Content="連携をキャンセル" Margin="8,0,0,0"
+                                                Style="{StaticResource SecondaryButtonStyle}" Click="CancelWebAuthorization_Click" />
+                                    </WrapPanel>
+                                    <TextBlock Text="自動記録から作る自己ベストをWebの歴代Bestへ反映します。通常の同期ではWebの記録を下げたり削除したりしません。連携を停止しても公開データは残ります。"
+                                               Visibility="{Binding WebRegisteredActionsVisibility}"
                                                Foreground="{DynamicResource TextSecondaryBrush}"
                                                FontSize="12" Margin="0,12,0,0" TextWrapping="Wrap" />
-                                    <Separator Margin="0,14" />
-                                    <Button x:Name="DeletePublicBestsButton"
-                                            Content="公開データを削除" TabIndex="106"
-                                            Style="{StaticResource SecondaryButtonStyle}"
-                                            HorizontalAlignment="Left"
-                                            IsEnabled="{Binding CanDeletePublicBests}"
-                                            Click="DeletePublicBests_Click" />
                                 </StackPanel>
                             </Border>
 

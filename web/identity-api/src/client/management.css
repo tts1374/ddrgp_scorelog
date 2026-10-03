@@ -1,0 +1,30 @@
+.management-shell { width: min(760px, calc(100% - 48px)); margin: 36px auto; padding-bottom: 40px; line-height: 1.7; }
+.management-shell h1 { margin: 0 0 12px; font-size: 27px; line-height: 1.35; }
+.management-shell h2 { margin: 0 0 18px; font-size: 18px; }
+.management-shell p { margin: 10px 0; }
+.management-card { background: white; border: 1px solid var(--border); border-radius: 10px; padding: 24px; margin: 24px 0; }
+.management-shell label { display: block; font-weight: 600; margin: 12px 0 6px; }
+.management-shell input[type=text] { display: block; width: 100%; min-width: 0; padding: 11px; border: 1px solid var(--border-strong); border-radius: 6px; background: white; color: inherit; }
+.management-shell button, .management-button { display: inline-block; padding: 10px 16px; border-radius: 6px; border: 1px solid var(--border-strong); background: white; color: inherit; font: inherit; text-decoration: none; }
+.management-shell .primary { color: white; background: var(--primary); border-color: var(--primary); }
+.management-shell .danger { color: #9c3529; border-color: #bd746a; }
+.management-shell button:disabled { opacity: .45; cursor: default; }
+.management-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 20px; }
+.management-notice { padding: 14px 18px; border-radius: 7px; background: var(--surface-muted); margin: 18px 0; }
+.management-notice.success { background: #e7f1e7; }
+.management-notice.error { background: #f9e9e5; color: #813128; }
+.management-value { overflow-wrap: anywhere; }
+.management-muted { color: var(--muted); }
+.management-line { display: flex; justify-content: space-between; gap: 18px; margin: 10px 0; }
+.management-badge { font-size: 13px; border-radius: 20px; background: var(--accent-subtle); padding: 4px 10px; white-space: nowrap; }
+.management-code { letter-spacing: .2em; font-size: 26px; font-weight: 700; text-align: center; padding: 12px; background: var(--surface-muted); border-radius: 6px; }
+.management-shell .management-check { display: flex; gap: 10px; align-items: flex-start; font-weight: 400; }
+.management-check input { margin-top: 6px; flex-shrink: 0; }
+@media(max-width:500px) {
+  .management-shell { width: calc(100% - 32px); margin-top: 24px; padding-bottom: 24px; }
+  .management-card { padding: 18px; }
+  .management-line { display: block; }
+  .management-badge { display: inline-block; margin-top: 6px; }
+  .management-actions > button, .management-actions > .management-button { width: 100%; text-align: center; }
+  .management-shell h1 { font-size: 24px; }
+}

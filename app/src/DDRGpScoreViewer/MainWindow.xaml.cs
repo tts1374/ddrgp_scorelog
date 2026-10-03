@@ -33,7 +33,7 @@ public partial class MainWindow : System.Windows.Window
     private const double HomeSingleColumnThreshold = 1100;
     internal const string ProductionWebApiOrigin =
         "https://ddrgp-scorelog.tts1374.workers.dev/";
-    internal const string DevelopmentWebApiOrigin = "http://127.0.0.1:5173/";
+    internal const string DevelopmentWebApiOrigin = "https://ddrgp-scorelog-dev.tts1374.workers.dev/";
     private readonly MainViewModel viewModel;
     private readonly AsyncOperationGate monitoringStartGate = new();
     private readonly BestChartPageRequestGate bestChartPageRequestGate = new();
@@ -79,7 +79,8 @@ public partial class MainWindow : System.Windows.Window
         var webPlayerIdentityService = new WebPlayerIdentityService(
             webApiHttpClient,
             identityStore,
-            allowLoopbackHttp: databasePaths.Environment == ViewerDatabaseEnvironment.Development);
+            allowLoopbackHttp: databasePaths.Environment == ViewerDatabaseEnvironment.Development,
+            authorizationStore: new FileAppAuthorizationStore(databasePaths.WebPlayerCredentialPath + ".authorization"));
         var webBestSyncCoordinator = new WebBestSyncCoordinator(
             new SqliteWebBestSyncStateStore(databasePaths.WebBestSyncStatePath),
             new WebBestProjectionRepository(),
@@ -688,6 +689,59 @@ public partial class MainWindow : System.Windows.Window
         await viewModel.SyncWebBestsNowAsync(applicationExitCancellation.Token);
     }
 
+    private async void ToggleWebSync_Click(object sender, RoutedEventArgs e) =>
+        await viewModel.ToggleWebBestSyncAsync(applicationExitCancellation.Token);
+
+    private async void RefreshWebPlayer_Click(object sender, RoutedEventArgs e) =>
+        await viewModel.RefreshWebPlayerAsync(applicationExitCancellation.Token);
+
+    private void OpenWebProfile_Click(object sender, RoutedEventArgs e)
+    {
+        if (viewModel.GetWebProfileUri() is { } uri)
+        {
+            OpenAccountBrowser(uri);
+        }
+    }
+
+    private async void ConnectWebAccount_Click(object sender, RoutedEventArgs e)
+    {
+        var result = await viewModel.BeginWebAuthorizationAsync(false, applicationExitCancellation.Token);
+        if (result.BrowserUri is not null)
+        {
+            OpenAccountBrowser(result.BrowserUri);
+            await viewModel.CompleteWebAuthorizationAsync(applicationExitCancellation.Token);
+        }
+    }
+
+    private async void UnlinkGoogle_Click(object sender, RoutedEventArgs e)
+    {
+        var result = await viewModel.BeginWebAuthorizationAsync(true, applicationExitCancellation.Token);
+        if (result.BrowserUri is not null)
+        {
+            OpenAccountBrowser(result.BrowserUri);
+            await viewModel.CompleteWebAuthorizationAsync(applicationExitCancellation.Token);
+        }
+    }
+
+    private async void ConfirmWebAuthorizationResult_Click(object sender, RoutedEventArgs e) =>
+        await viewModel.CompleteWebAuthorizationAsync(applicationExitCancellation.Token);
+
+    private async void CancelWebAuthorization_Click(object sender, RoutedEventArgs e) =>
+        await viewModel.CancelWebAuthorizationAsync(applicationExitCancellation.Token);
+
+    private static void OpenAccountBrowser(Uri uri)
+    {
+        try
+        {
+            using var process = Process.Start(new ProcessStartInfo(uri.AbsoluteUri) { UseShellExecute = true });
+        }
+        catch (Exception exception) when (exception is Win32Exception or InvalidOperationException)
+        {
+            System.Windows.MessageBox.Show(Localization.Get("ブラウザーを開けませんでした。既定のブラウザーを確認してください。"),
+                Localization.Get("Web連携"), MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
     private void OpenPublicPlayerPage_Click(object sender, RoutedEventArgs e)
     {
         var publicPlayerId = viewModel.GetPublicPlayerId();
@@ -716,9 +770,12 @@ public partial class MainWindow : System.Windows.Window
 
     private async void CheckWebBestIdentity_Click(object sender, RoutedEventArgs e)
     {
+        var publicPlayerId = viewModel.GetPublicPlayerId();
+        var publicUrl = publicPlayerId is null ? "" :
+            "\n" + ResolvePublicPlayerPageUri(webApiHttpClient.BaseAddress!, publicPlayerId).AbsoluteUri;
         var confirmed = System.Windows.MessageBox.Show(
             Localization.Get(
-                "Web同期に使う認証情報は現在利用できません。このPCの認証情報を削除すると、以前のPlayerと公開URLを復旧できなくなる可能性があります。ローカルの保存データは残ります。"),
+                "このPCの認証情報だけを消します。Webの公開ユーザー・公開BestとPC内のスコア履歴は削除しません。") + publicUrl,
             Localization.Get("認証情報を削除しますか？"),
             MessageBoxButton.YesNo,
             MessageBoxImage.Warning,
@@ -744,6 +801,81 @@ public partial class MainWindow : System.Windows.Window
         }
         await viewModel.DeletePublicBestsAsync(applicationExitCancellation.Token);
     }
+
+    private async void ReplaceWebBests_Click(object sender, RoutedEventArgs e)
+    {
+        var review = await viewModel.PrepareWebBestReplacementAsync(applicationExitCancellation.Token);
+        if (review is null)
+        {
+            return;
+        }
+        var confirmed = false;
+        try
+        {
+            var playerId = viewModel.GetPublicPlayerId();
+            var publicUrl = playerId is null ? "—" :
+                ResolvePublicPlayerPageUri(webApiHttpClient.BaseAddress!, playerId).AbsoluteUri;
+            var panel = new StackPanel { Margin = new Thickness(20) };
+            var details = $"{viewModel.WebPlayerDisplayName}\n{publicUrl}\n\n" +
+                Localization.Format("Web公開: {0}譜面 / このPCの対象: {1}譜面", review.PublicCount, review.EligibleCount) + "\n" +
+                Localization.Format("削除: {0}譜面 / 低下: {1}譜面", review.Removed.Count, review.Lowered.Count) + "\n\n" +
+                Localization.Get("自動記録の対象プレーだけで置き換えます。画像から追加・バックアップから復元したプレーは含みません。") + "\n" +
+                Localization.Get("このPCにない公開Bestも削除されます。") + "\n" +
+                (review.EligibleCount == 0 ? Localization.Get("対象が0件のため、WebのBestを全削除します。") + "\n" : "") +
+                Localization.Get("削除される譜面: ") + string.Join(", ", review.Removed.Take(5)) + "\n" +
+                Localization.Get("低下する項目: ") + string.Join(", ", review.Lowered.Take(5).Select(
+                    item => $"{item.ChartId}: {string.Join(", ", item.Fields.Select(ReplacementFieldLabel))}"));
+            panel.Children.Add(new TextBlock { Text = details, TextWrapping = TextWrapping.Wrap });
+            var consent = new System.Windows.Controls.CheckBox
+            {
+                Content = Localization.Get("削除・低下を確認し、このPCの対象データで置き換える"),
+                Margin = new Thickness(0, 18, 0, 12),
+                IsChecked = false,
+            };
+            panel.Children.Add(consent);
+            var buttons = new StackPanel { Orientation = WpfOrientation.Horizontal };
+            var commit = new WpfButton { Content = Localization.Get("確認した内容で置き換える"), IsEnabled = false, Padding = new Thickness(12, 6, 12, 6) };
+            var cancel = new WpfButton { Content = Localization.Get("キャンセル"), Margin = new Thickness(10, 0, 0, 0), Padding = new Thickness(12, 6, 12, 6), IsCancel = true };
+            buttons.Children.Add(commit);
+            buttons.Children.Add(cancel);
+            panel.Children.Add(buttons);
+            var dialog = new System.Windows.Window
+            {
+                Title = Localization.Get("WebのBestを置き換える"),
+                Owner = this,
+                Width = 620,
+                SizeToContent = SizeToContent.Height,
+                MaxHeight = 650,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                Content = new ScrollViewer { Content = panel, VerticalScrollBarVisibility = ScrollBarVisibility.Auto },
+                ResizeMode = ResizeMode.NoResize,
+            };
+            consent.Checked += (_, _) => commit.IsEnabled = true;
+            consent.Unchecked += (_, _) => commit.IsEnabled = false;
+            commit.Click += (_, _) => dialog.DialogResult = true;
+            if (dialog.ShowDialog() == true && consent.IsChecked == true)
+            {
+                confirmed = true;
+                await viewModel.ConfirmWebBestReplacementAsync(applicationExitCancellation.Token);
+            }
+        }
+        finally
+        {
+            if (!confirmed)
+            {
+                await viewModel.CancelWebBestReplacementAsync(CancellationToken.None);
+            }
+        }
+    }
+
+    private static string ReplacementFieldLabel(string field) => field switch
+    {
+        "best_score" => "SCORE",
+        "best_ex_score" => "EX SCORE",
+        "best_clear_type" => Localization.Get("クリア状況"),
+        "best_flare_rank" => Localization.Get("フレアランク"),
+        _ => field,
+    };
 
     private void ShowDataManagement_Click(object sender, RoutedEventArgs e) =>
         ShowDataManagementPage();
@@ -781,8 +913,6 @@ public partial class MainWindow : System.Windows.Window
         {
             return;
         }
-
-        await viewModel.ApplyWebSettingsAsync(applicationExitCancellation.Token);
 
         ThemeManager.Apply(viewModel.Theme);
         if (!languageChanged ||

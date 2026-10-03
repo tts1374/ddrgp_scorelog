@@ -35,6 +35,10 @@ internal interface IWebBestSyncApiClient
         CancellationToken cancellationToken);
 
     Task<WebBestApiResult> DeletePublicBestsAsync(CancellationToken cancellationToken);
+
+    Task<WebBestReplacementReviewResult> ReviewReplacementAsync(string snapshotId, CancellationToken cancellationToken);
+
+    Task<WebBestApiResult> AuthorizeReplacementAsync(string snapshotId, WebBestReplacementReview review, CancellationToken cancellationToken);
 }
 
 internal sealed class WebBestSyncApiClient : IWebBestSyncApiClient
@@ -69,15 +73,17 @@ internal sealed class WebBestSyncApiClient : IWebBestSyncApiClient
         IReadOnlyList<WebBestDeltaOperation> operations,
         CancellationToken cancellationToken)
     {
-        var payload = new DeltaRequest(
+        if (operations.Any(operation => operation.Type != "upsert" || operation.Projection is null))
+        {
+            return new(WebBestApiStatus.PermanentError, [], "INVALID_OPERATION");
+        }
+        var payload = new MergeRequest(
             1,
             masterVersion,
-            operations.Select(operation => operation.Type == "upsert"
-                ? new DeltaOperation("upsert", operation.Projection, null)
-                : new DeltaOperation("delete", null, operation.ChartId)).ToArray());
+            operations.Select(operation => operation.Projection!).ToArray());
         using var request = CreateRequest(
             HttpMethod.Post,
-            "api/v1/me/bests/batch",
+            "api/v1/me/bests/merge",
             JsonContent.Create(payload, options: JsonOptions));
         var response = await SendAsync(request, cancellationToken);
         if (response.Response is null)
@@ -95,7 +101,10 @@ internal sealed class WebBestSyncApiClient : IWebBestSyncApiClient
                 var body = await response.Response.Content.ReadFromJsonAsync<DeltaResponse>(
                     JsonOptions,
                     cancellationToken);
-                if (body?.Results is null || body.Results.Count != operations.Count)
+                if (body?.Results is null || body.Results.Count != operations.Count ||
+                    body.Results.Select(item => item.Index).Distinct().Count() != operations.Count ||
+                    body.Results.Any(item => item.Index < 0 || item.Index >= operations.Count ||
+                        item.Status == "accepted" && item.ReceivedHash != operations[item.Index].SentProjectionHash))
                 {
                     return new(WebBestApiStatus.PermanentError, [], "INVALID_RESPONSE");
                 }
@@ -189,6 +198,38 @@ internal sealed class WebBestSyncApiClient : IWebBestSyncApiClient
             "api/v1/me/bests",
             null,
             cancellationToken);
+
+    public async Task<WebBestReplacementReviewResult> ReviewReplacementAsync(string snapshotId, CancellationToken cancellationToken)
+    {
+        using var request = CreateRequest(HttpMethod.Post,
+            $"api/v1/me/bests/snapshots/{Uri.EscapeDataString(snapshotId)}/replacement-review", null);
+        var response = await SendAsync(request, cancellationToken);
+        if (response.Response is null) return new(response.Status, ErrorCode: response.ErrorCode);
+        using (response.Response)
+        {
+            try
+            {
+                var review = await response.Response.Content.ReadFromJsonAsync<WebBestReplacementReview>(JsonOptions, cancellationToken);
+                if (review is null || review.PublicCount < 0 || review.EligibleCount < 0 ||
+                    review.Removed is null || review.Lowered is null || review.ContentDigest is null ||
+                    review.ContentDigest.Length != 64 || review.BaseSyncRevision < 0 ||
+                    review.Lowered.Any(item => item.Fields is null))
+                    return new(WebBestApiStatus.PermanentError, ErrorCode: "INVALID_RESPONSE");
+                return new(WebBestApiStatus.Success, review);
+            }
+            catch (JsonException) { return new(WebBestApiStatus.PermanentError, ErrorCode: "INVALID_RESPONSE"); }
+        }
+    }
+
+    public Task<WebBestApiResult> AuthorizeReplacementAsync(string snapshotId, WebBestReplacementReview review, CancellationToken cancellationToken) =>
+        SendForResultAsync(HttpMethod.Post,
+            $"api/v1/me/bests/snapshots/{Uri.EscapeDataString(snapshotId)}/replacement-authorize",
+            JsonContent.Create(new
+            {
+                confirmed = true,
+                content_digest = review.ContentDigest,
+                base_sync_revision = review.BaseSyncRevision
+            }), cancellationToken);
 
     private async Task<WebBestApiResult> SendForResultAsync(
         HttpMethod method,
@@ -285,19 +326,10 @@ internal sealed class WebBestSyncApiClient : IWebBestSyncApiClient
         HttpResponseMessage? Response,
         string? ErrorCode);
 
-    private sealed record DeltaRequest(
+    private sealed record MergeRequest(
         [property: JsonPropertyName("projection_version")] int ProjectionVersion,
         [property: JsonPropertyName("master_version")] string MasterVersion,
-        [property: JsonPropertyName("operations")] IReadOnlyList<DeltaOperation> Operations);
-
-    private sealed record DeltaOperation(
-        [property: JsonPropertyName("type")] string Type,
-        [property: JsonPropertyName("item")]
-        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-        PlayerChartBestProjectionV1? Item,
-        [property: JsonPropertyName("chart_id")]
-        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-        string? ChartId);
+        [property: JsonPropertyName("items")] IReadOnlyList<PlayerChartBestProjectionV1> Items);
 
     private sealed record DeltaResponse(
         [property: JsonPropertyName("results")] IReadOnlyList<DeltaItemResponse> Results);
@@ -306,7 +338,8 @@ internal sealed class WebBestSyncApiClient : IWebBestSyncApiClient
         [property: JsonPropertyName("index")] int Index,
         [property: JsonPropertyName("status")] string Status,
         [property: JsonPropertyName("changed")] bool Changed,
-        [property: JsonPropertyName("code")] string? Code);
+        [property: JsonPropertyName("code")] string? Code,
+        [property: JsonPropertyName("received_hash")] string? ReceivedHash);
 
     private sealed record SnapshotBeginRequest(
         [property: JsonPropertyName("projection_version")] int ProjectionVersion,

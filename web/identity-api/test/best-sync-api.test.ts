@@ -1,6 +1,7 @@
 import { env, exports } from "cloudflare:workers";
 import { applyD1Migrations, reset } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
+import { seedPlayer } from "./account-fixture";
 
 interface RegistrationResponse {
   public_player_id: string;
@@ -9,17 +10,8 @@ interface RegistrationResponse {
 
 const baseUrl = "https://identity.example.test";
 
-async function register(suffix = "0001"): Promise<RegistrationResponse> {
-  const response = await exports.default.fetch(`${baseUrl}/api/v1/players/register`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Idempotency-Key": `best-sync-registration-request-${suffix.padStart(8, "0")}`,
-    },
-    body: JSON.stringify({ display_name: "Player" }),
-  });
-  expect(response.status).toBe(201);
-  return response.json<RegistrationResponse>();
+async function register(_suffix = "0001"): Promise<RegistrationResponse> {
+  return seedPlayer();
 }
 
 function headers(credential: string): HeadersInit {
@@ -57,13 +49,13 @@ async function delta(
   credential: string,
   operations: unknown[],
 ): Promise<Response> {
-  return exports.default.fetch(`${baseUrl}/api/v1/me/bests/batch`, {
+  return exports.default.fetch(`${baseUrl}/api/v1/me/bests/merge`, {
     method: "POST",
     headers: headers(credential),
     body: JSON.stringify({
       projection_version: 1,
       master_version: "fixture-v1",
-      operations,
+      items: operations.map(operation => (operation as { item?: unknown }).item),
     }),
   });
 }
@@ -101,6 +93,20 @@ async function uploadChunk(
 }
 
 async function commitSnapshot(credential: string, snapshotId: string): Promise<Response> {
+  const review = await exports.default.fetch(
+    `${baseUrl}/api/v1/me/bests/snapshots/${snapshotId}/replacement-review`,
+    { method: "POST", headers: headers(credential) },
+  );
+  if (review.ok) {
+    const data = await review.json<{ content_digest: string; base_sync_revision: number }>();
+    const authorization = await exports.default.fetch(
+      `${baseUrl}/api/v1/me/bests/snapshots/${snapshotId}/replacement-authorize`,
+      { method: "POST", headers: headers(credential), body: JSON.stringify({
+        confirmed: true, content_digest: data.content_digest, base_sync_revision: data.base_sync_revision,
+      }) },
+    );
+    expect([200, 409]).toContain(authorization.status);
+  }
   return exports.default.fetch(
     `${baseUrl}/api/v1/me/bests/snapshots/${snapshotId}/commit`,
     { method: "POST", headers: headers(credential) },
@@ -125,9 +131,9 @@ describe("Player Best sync API", () => {
     expect(first.status).toBe(200);
     expect(await first.json()).toEqual({
       results: [
-        { index: 0, status: "accepted", changed: true },
+        { index: 0, status: "accepted", changed: true, received_hash: expect.any(String) },
         { index: 1, status: "rejected", code: "UNKNOWN_CHART" },
-        { index: 2, status: "accepted", changed: true },
+        { index: 2, status: "accepted", changed: true, received_hash: expect.any(String) },
       ],
     });
     const stateAfterFirst = await env.DB.prepare(
@@ -141,9 +147,9 @@ describe("Player Best sync API", () => {
     const retry = await delta(player.credential, operations);
     expect(await retry.json()).toEqual({
       results: [
-        { index: 0, status: "accepted", changed: false },
+        { index: 0, status: "accepted", changed: false, received_hash: expect.any(String) },
         { index: 1, status: "rejected", code: "UNKNOWN_CHART" },
-        { index: 2, status: "accepted", changed: false },
+        { index: 2, status: "accepted", changed: false, received_hash: expect.any(String) },
       ],
     });
     const stateAfterRetry = await env.DB.prepare(
@@ -165,7 +171,7 @@ describe("Player Best sync API", () => {
     }]);
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({
-      results: [{ index: 0, status: "accepted", changed: true }],
+      results: [{ index: 0, status: "accepted", changed: true, received_hash: expect.any(String) }],
     });
     const owner = await env.DB.prepare(
       `SELECT p.public_player_id
@@ -383,31 +389,16 @@ describe("Player Best sync API", () => {
     }
   });
 
-  it("deletes only public Best and preserves Player identity and credential", async () => {
+  it("requires Web management for public-record deletion and preserves records", async () => {
     const player = await register();
     await delta(player.credential, [{ type: "upsert", item: projection("chart_1") }]);
-    const pending = await beginSnapshot(player.credential, 1);
-    await uploadChunk(
-      player.credential,
-      pending.snapshot_id,
-      "chunk-1",
-      [projection("chart_2")],
-    );
     const deletion = await exports.default.fetch(`${baseUrl}/api/v1/me/bests`, {
-      method: "DELETE",
-      headers: headers(player.credential),
+      method: "DELETE", headers: headers(player.credential),
     });
-    expect(deletion.status).toBe(204);
+    expect(deletion.status).toBe(409);
+    expect(await deletion.json()).toMatchObject({ error: { code: "WEB_PUBLIC_BESTS_REQUIRED" } });
     expect((await env.DB.prepare("SELECT COUNT(*) AS count FROM player_chart_bests")
-      .first<{ count: number }>())?.count).toBe(0);
-    const me = await exports.default.fetch(`${baseUrl}/api/v1/me`, {
-      headers: headers(player.credential),
-    });
-    expect(me.status).toBe(200);
-    expect(await me.json()).toMatchObject({ public_player_id: player.public_player_id });
-    const staleCommit = await commitSnapshot(player.credential, pending.snapshot_id);
-    expect(staleCommit.status).toBe(409);
-    expect(await staleCommit.json()).toMatchObject({ error: { code: "SNAPSHOT_NOT_PENDING" } });
+      .first<{ count: number }>())?.count).toBe(1);
   });
 
   it("uses the shared master lookup and ranking indexes", async () => {

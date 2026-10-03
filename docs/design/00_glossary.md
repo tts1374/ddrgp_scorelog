@@ -64,25 +64,25 @@ DDR GP scorelog の設計、PoC、テストで使う主要用語を定義する�
 - `player_id`: Web server内部でPlayerを参照する不変ID。client payloadや公開URLへ使用しない。
 - `public_player_id`: 公開URLと公開Player identityに使用する不変のランダムID。display name変更や将来Account追加で変更しない。
 - `App Credential`: DDRGP Score Logが既存Playerを管理できることを証明するopaque Credential。検索用Credential IDとsecretから成り、serverはsecretのdigestだけを保存する。
-- `registration request ID`: Player登録のresponse lossやretryで重複Playerを作らないためclientが生成するsecret。未完了registration中だけDPAPI CurrentUserで保護して保持し、Player identityや端末identityとして使用しない。
-- `UNREGISTERED`: localに利用可能なWeb Player identityがない状態。未完了registration request IDだけが残る場合を含む。
+- `registration request ID`: #203の旧匿名登録に使ったDPAPI保護secret。#213では新規発行せず、旧metadataの読込互換だけを保持する。
+- `UNREGISTERED`: localに利用可能なWeb Player identityがない状態。App-Web承認待ちは独立して保持する。
 - `REGISTERED`: localに`public_player_id`とDPAPI CurrentUserで保護したApp Credentialがある状態。
 - `AUTH_INVALID`: local App Credentialは存在するがserverに認証を拒否された状態。Network Error、timeout、5xxをこの状態へ変換せず、新しいPlayerを自動作成しない。
 
-### Google Account / Player recovery（後続実装の確定契約）
+### Google Account / Player recovery
 
-詳細は[`14_google_player_recovery.md`](14_google_player_recovery.md)を正本とする。以下は#210で確定した未実装の契約である。
+詳細は[`14_google_player_recovery.md`](14_google_player_recovery.md)を正本とする。#213の実装契約である。
 
 - `Google identity`: 検証済みGoogle issuerを`https://accounts.google.com`へ正規化し、case-sensitiveな`sub`と組み合わせた認証手段の永続キー。emailをidentityにしない。
-- `Player recovery`: Google identityで既存Playerへ新App Credentialを発行し、DPAPI保存後のactivationでPC権限を移行する。ローカル履歴移行と同期ONは別操作。
+- `Player recovery`: Google identityで既存Playerへ新App Credentialを発行し、DPAPI保存後のactivationでPC権限を移行する。activation成功後に同期ONとしてcapture集合をmergeする。ローカル履歴移行は別操作。
 - `app authorization request secret`: App-Web承認transactionの結果/activation/retryを開始アプリに結ぶ256 bit以上のsecret。serverはdigest、Windowsは用途別DPAPI保存。URLへ出さない。
 - `activation_state`: App Credentialの`pending`（通常API不可）/`active`（通常API可）。既存の失効属性を別に検証する。
 - `AppAuthorizationPending`: WindowsのApp-Web認証/結果受領待ち。既存Playerへのlink/unlinkは元の同期を維持、新Credential発行時は新PC同期不可。
 - `app authorization purpose`: `connect`（Web新規登録/ログイン共通）または`unlink`。開始時のPlayerと、Webの`register`/`login`意図をserverへ固定し、認証から自動登録へfallbackしない。
 - `expected_public_player_id`: App-Web開始時に読める旧公開IDを固定する誤操作防止条件。AUTH_INVALID/復号不能からのGoogle再ログインではserverで対象一致を要求する。所有証明やGoogle追加の権限に使わない。
-- `CredentialActivationPending`: WindowsのDPAPI保存済みCredentialについて権限移行結果が未確定。結果確認まで新PC同期停止、成功後REGISTERED＋同期OFF。
+- `CredentialActivationPending`: WindowsのDPAPI保存済みCredentialについて権限移行結果が未確定。結果確認まで新PC同期停止、成功後REGISTERED＋同期ON。
 
-### Webマイプロフィール（後続実装の確定契約）
+### Webマイプロフィール
 
 - `マイプロフィール`: Googleログイン必須のWeb管理画面`/my/profile`。公開プレーヤー名は既存`players.display_name`へ保存し、Windowsは表示cacheとWebへの導線を持つ。詳細は[15_web_my_profile.md](15_web_my_profile.md)。
 - `Web management session`: WorkerがGoogle認証後に発行する24時間期限のopaque browser session。Google tokenやWindows App Credentialとは分離し、既存Playerのプロフィール管理へ使う。
@@ -96,17 +96,21 @@ DDR GP scorelog の設計、PoC、テストで使う主要用語を定義する�
 - `REGISTRATION_MOVED_TO_WEB`: 旧匿名Player登録APIを拒否する410。App単一入口からWeb新規登録/Google認証/明示確認を行う。
 - `deletion confirmation proof`: Webアカウント削除の目的/対象/identity/session/本人最終確認と応答喪失後の完了結果を結ぶ256 bit以上の短期proof。serverはdigest保存、CookieはSecure/HttpOnly。確認成立のserver時刻から10分TTLで、一回だけDELETEを認可、削除後は結果照会だけ可能。
 
+## public-bests-delete
+
+Webマイプロフィールから公開自己ベストだけを削除する操作専用OAuth/操作proofのpurpose。アカウント全削除と分離し、Player/Google連携/App Credential/公開URL/PC内履歴を保持する。送信停止→Web削除→送信再開の利用者手順は設計15/16を正本とする。
+
 ## Web Best同期
 
 - `PlayerChartBestProjectionV1`: capture由来playだけから譜面単位に算出する公開用の`chart_id`、score、EX SCORE、clear type、flare rankの集合。正式個人スコアDBのplayやmaster metadataそのものではない。
-- `Web Best replica`: #204の現行replace-set公開集合。対応版の後続契約は[16](16_web_historical_best.md)のWeb自己歴代Bestへ移行する。
+- `Web Best replica`: #204のreplace-set公開集合の旧呼称。#213では[16](16_web_historical_best.md)のWeb自己歴代Bestを使う。
 - `Web自己歴代Best`: 各PC/各時点から公開したcapture由来Bestをfieldごとの改善で蓄積する公開集合。現在PCとの一致を要求せず、Local履歴の復元元にしない。
 - `HISTORICAL_BEST_REQUIRED`: 旧batchによる置換writeを全Playerで拒否する409。Credential無効ではなく、通常同期はmergeを要求する。
 - `REPLACEMENT_CONFIRMATION_REQUIRED`: snapshot commitに本人の明示置換許可がない際の409。通常mergeの前提ではない。
 - `Song Identity Registry`: 既存M4 masterのcanonical表記とsource aliasを既存`song_id`へ固定し、canonical修正や取得元表記差で永続identityが変わらないようにするreview済みregistry。
 - `stable_identity_id_v1`: UTF-8の各identity partをNULで区切り、SHA-1先頭16進16桁へ`song_`または`chart_`prefixを付ける既存master互換のID生成contract。
 - `pending upsert`: desired Projection hashがあり、synced hashと一致しないlocal同期状態。
-- `pending delete`: #204現行の、過去synced hashがあり現在desired Projectionがない状態。対応版の通常mergeでは公開deleteを送らずLocal追跡だけ除去する。
+- `pending delete`: #204の旧同期状態。#213の通常mergeではdesired ProjectionがなくなるとLocal追跡を除去し、公開deleteを送らない。
 - `UNKNOWN_CHART`: Web shared masterに`chart_id`がなく、その譜面だけをdeferredにする非fatalなitem error。ユーザー操作を要求しない。
 - `SYNC_CONFLICT`: snapshot開始後の公開revision変更でatomic replaceを拒否。歴代Bestの明示置換では再比較と本人再確認を要求する。
 
@@ -114,9 +118,9 @@ DDR GP scorelog の設計、PoC、テストで使う主要用語を定義する�
 | --- | --- |
 | `Disabled` | 同期OFF。Local保存、identity、Credential、既存公開Bestは維持し、Web requestを行わない。 |
 | `Idle` | このPCのdesired Projectionが受領済みで未送信変更がない。歴代Best同期ではWeb値との一致を意味しない。 |
-| `Dirty` | pending upsert/deleteまたはdeferred itemがあり、現在はrequestを実行していない。 |
-| `Syncing` | このPCの通常差分を送信中。現行はbatch、対応版の歴代Best同期はmerge。 |
-| `Reconciling` | 現行はstaging snapshot再整合。対応版はcapture集合のmerge再送、または本人が選んだ置換snapshot処理。 |
+| `Dirty` | pending upsertまたはdeferred itemがあり、現在はrequestを実行していない。 |
+| `Syncing` | このPCの通常差分をmergeで送信中。 |
+| `Reconciling` | capture集合のmerge再送、または本人が選んだ置換snapshot処理。 |
 | `ErrorRetryable` | network error、timeout、429、5xxによりbackoff中またはretry後も未完了。 |
 | `AuthInvalid` | 401/403を#203の`AUTH_INVALID`へ接続し、自動retryと自動Player登録を停止した。 |
 | `PublicBestsDeleted` | 公開Best削除が成功し、同期OFFで公開集合が空になった。Player identity、Credential、Local scoreは維持する。 |

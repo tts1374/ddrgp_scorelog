@@ -61,4 +61,4 @@ Public browse用migrationは既存tableへのindex・`title_search_key`追加と
 
 main更新時のdeploy workflowはWeb検証、master parser・identity registry test、同じcheckoutのregistryによるmaster生成・検査を実行する。D1 SQLは同じcheckoutのexporterと検索用別名から生成し、D1 migration、shared master SQL投入、Worker + Static Assets deployの順に進む。master sourceと検索用別名の変更も起動対象とし、master生成・検査・投入に失敗した場合はdeployを停止する。未登録の新曲・新表記は既存IDとの対応を確認してregistryへ追加する。初回公開前に新Workerへ既存productionと同じsecretを設定し、旧endpointを使う配布版のサポート期間中は旧WorkerのAPIを維持する。
 
-開発環境のWindows appは`http://127.0.0.1:5173/`へ登録・同期し、公開ページ導線も同じlocal originを使用する。`npm run dev`は開発用secretを`.dev.vars`へ保持し、`.wrangler/development`配下のlocal D1へmigrationとlocal masterのexportを適用してからViteを起動する。本番D1、browser E2Eのlocal D1、Windows側の本番identity・同期状態とは保存先を分離する。
+開発環境のWindows appは既定で`https://ddrgp-scorelog-dev.tts1374.workers.dev/`へ登録・同期し、公開ページ導線も同じdev Worker originを使用する。local Webは画面・API検証用として、`DDRGP_WEB_API_ORIGIN=http://127.0.0.1:5173/`で明示選択できる。Google実認証は14/15の固定HTTPS callbackを使用し、local HTTPで登録・引き継ぎを完結させない。`npm run dev`は開発用secretを`.dev.vars`へ保持し、`.wrangler/development`配下のlocal D1へmigrationとlocal masterのexportを適用してからViteを起動する。本番D1、browser E2Eのlocal D1、Windows側の本番identity・同期状態とは保存先を分離する。

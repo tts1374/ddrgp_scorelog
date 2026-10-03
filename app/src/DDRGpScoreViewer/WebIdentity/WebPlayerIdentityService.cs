@@ -11,7 +11,7 @@ using DDRGpScoreViewer.Models;
 
 namespace DDRGpScoreViewer.WebIdentity;
 
-internal sealed class WebPlayerIdentityService
+internal sealed partial class WebPlayerIdentityService
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -19,14 +19,23 @@ internal sealed class WebPlayerIdentityService
     };
     private readonly HttpClient httpClient;
     private readonly IWebPlayerIdentityStore identityStore;
+    private readonly IAppAuthorizationStore? authorizationStore;
+    private readonly Func<TimeSpan, CancellationToken, Task> authorizationDelay;
+    private readonly Func<DateTimeOffset> authorizationNow;
 
     public WebPlayerIdentityService(
         HttpClient httpClient,
         IWebPlayerIdentityStore identityStore,
-        bool allowLoopbackHttp = false)
+        bool allowLoopbackHttp = false,
+        IAppAuthorizationStore? authorizationStore = null,
+        Func<TimeSpan, CancellationToken, Task>? authorizationDelay = null,
+        Func<DateTimeOffset>? authorizationNow = null)
     {
         this.httpClient = httpClient;
         this.identityStore = identityStore;
+        this.authorizationStore = authorizationStore;
+        this.authorizationDelay = authorizationDelay ?? Task.Delay;
+        this.authorizationNow = authorizationNow ?? (() => DateTimeOffset.UtcNow);
         if (httpClient.BaseAddress is null ||
             !(httpClient.BaseAddress.Scheme == Uri.UriSchemeHttps ||
               allowLoopbackHttp && httpClient.BaseAddress.Scheme == Uri.UriSchemeHttp &&
@@ -46,9 +55,12 @@ internal sealed class WebPlayerIdentityService
             new FileWebPlayerIdentityStore(
                 paths.WebPlayerIdentityPath,
                 paths.WebPlayerCredentialPath),
-            allowLoopbackHttp: paths.Environment == ViewerDatabaseEnvironment.Development);
+            allowLoopbackHttp: paths.Environment == ViewerDatabaseEnvironment.Development,
+            authorizationStore: new FileAppAuthorizationStore(paths.WebPlayerCredentialPath + ".authorization"));
 
     public WebPlayerIdentitySnapshot LoadIdentity() => identityStore.Load();
+
+    public bool? GoogleLinked { get; private set; }
 
     public PlayerIdentityOperationResult ForgetInvalidIdentity()
     {
@@ -68,6 +80,7 @@ internal sealed class WebPlayerIdentityService
 
         try
         {
+            authorizationStore?.Clear();
             identityStore.Clear();
             return new(
                 PlayerIdentityRequestStatus.Succeeded,
@@ -79,123 +92,12 @@ internal sealed class WebPlayerIdentityService
         }
     }
 
-    public async Task<PlayerIdentityOperationResult> RegisterAsync(
-        string displayName,
-        CancellationToken cancellationToken = default)
-    {
-        WebPlayerIdentitySnapshot identity;
-        try
-        {
-            identity = identityStore.Load();
-        }
-        catch (Exception exception) when (IsLocalStorageException(exception))
-        {
-            return StorageFailure();
-        }
-        if (identity.State != PlayerIdentityState.Unregistered)
-        {
-            return new(PlayerIdentityRequestStatus.InvalidState, identity);
-        }
-
-        var requestId = identity.PendingRegistrationRequestId ??
-            Convert.ToBase64String(RandomNumberGenerator.GetBytes(32))
-                .TrimEnd('=')
-                .Replace('+', '-')
-                .Replace('/', '_');
-        try
-        {
-            identityStore.SavePendingRegistration(requestId);
-            identity = identityStore.Load();
-        }
-        catch (Exception exception) when (IsLocalStorageException(exception))
-        {
-            return StorageFailure();
-        }
-
-        using var request = new HttpRequestMessage(
-            HttpMethod.Post,
-            "api/v1/players/register");
-        request.Headers.Add("Idempotency-Key", requestId);
-        request.Content = JsonContent.Create(new RegistrationRequest(displayName), options: JsonOptions);
-
-        HttpResponseMessage response;
-        try
-        {
-            response = await httpClient.SendAsync(request, cancellationToken);
-        }
-        catch (Exception exception) when (IsNetworkException(exception, cancellationToken))
-        {
-            return new(PlayerIdentityRequestStatus.NetworkError, identity);
-        }
-        using (response)
-        {
-            if ((int)response.StatusCode >= 500)
-            {
-                return new(PlayerIdentityRequestStatus.ServerError, identity);
-            }
-            if (!response.IsSuccessStatusCode)
-            {
-                return new(PlayerIdentityRequestStatus.InvalidResponse, identity);
-            }
-
-            RegistrationResponse? registration;
-            try
-            {
-                registration = await response.Content.ReadFromJsonAsync<RegistrationResponse>(
-                    JsonOptions,
-                    cancellationToken);
-            }
-            catch (JsonException)
-            {
-                return new(PlayerIdentityRequestStatus.InvalidResponse, identity);
-            }
-            if (!IsValidRegistration(registration))
-            {
-                return new(PlayerIdentityRequestStatus.InvalidResponse, identity);
-            }
-            var validRegistration = registration!;
-            try
-            {
-                identityStore.SaveRegistered(
-                    validRegistration.PublicPlayerId,
-                    validRegistration.Credential,
-                    validRegistration.DisplayName);
-                var saved = identityStore.Load();
-                return new(
-                    PlayerIdentityRequestStatus.Succeeded,
-                    saved,
-                    ToPlayer(validRegistration));
-            }
-            catch (Exception exception) when (IsLocalStorageException(exception))
-            {
-                return StorageFailure();
-            }
-        }
-    }
-
     public Task<PlayerIdentityOperationResult> GetCurrentPlayerAsync(
         CancellationToken cancellationToken = default) =>
         SendAuthenticatedAsync(
             HttpMethod.Get,
             content: null,
             clearAfterSuccess: false,
-            cancellationToken);
-
-    public Task<PlayerIdentityOperationResult> UpdateDisplayNameAsync(
-        string displayName,
-        CancellationToken cancellationToken = default) =>
-        SendAuthenticatedAsync(
-            HttpMethod.Patch,
-            JsonContent.Create(new RegistrationRequest(displayName), options: JsonOptions),
-            clearAfterSuccess: false,
-            cancellationToken);
-
-    public Task<PlayerIdentityOperationResult> DeletePlayerAsync(
-        CancellationToken cancellationToken = default) =>
-        SendAuthenticatedAsync(
-            HttpMethod.Delete,
-            content: null,
-            clearAfterSuccess: true,
             cancellationToken);
 
     private async Task<PlayerIdentityOperationResult> SendAuthenticatedAsync(
@@ -208,13 +110,18 @@ internal sealed class WebPlayerIdentityService
         try
         {
             identity = identityStore.Load();
+            if (authorizationStore?.Load()?.State == AppAuthorizationState.CredentialActivationPending)
+            {
+                content?.Dispose();
+                return new(PlayerIdentityRequestStatus.InvalidState, identity);
+            }
         }
         catch (Exception exception) when (IsLocalStorageException(exception))
         {
             content?.Dispose();
             return StorageFailure();
         }
-        if (identity.AppCredential is null || identity.PublicPlayerId is null)
+        if (identity.State != PlayerIdentityState.Registered || identity.AppCredential is null || identity.PublicPlayerId is null)
         {
             content?.Dispose();
             return new(PlayerIdentityRequestStatus.InvalidState, identity);
@@ -253,7 +160,7 @@ internal sealed class WebPlayerIdentityService
                     return StorageFailure();
                 }
             }
-            if ((int)response.StatusCode >= 500)
+            if ((int)response.StatusCode >= 500 || response.StatusCode == HttpStatusCode.TooManyRequests)
             {
                 return new(PlayerIdentityRequestStatus.ServerError, identity);
             }
@@ -304,6 +211,7 @@ internal sealed class WebPlayerIdentityService
             {
                 identityStore.SetDisplayName(validPlayer.DisplayName);
                 identityStore.SetAuthenticationInvalid(false);
+                GoogleLinked = validPlayer.GoogleLinked;
                 return new(
                     PlayerIdentityRequestStatus.Succeeded,
                     identityStore.Load(),
@@ -326,19 +234,13 @@ internal sealed class WebPlayerIdentityService
         catch
         {
             fallback = new WebPlayerIdentitySnapshot(
-                PlayerIdentityState.Unregistered,
+                PlayerIdentityState.AuthInvalid,
                 null,
                 null,
                 null);
         }
         return new(PlayerIdentityRequestStatus.LocalStorageError, fallback);
     }
-
-    private static bool IsValidRegistration(RegistrationResponse? response) =>
-        response is not null &&
-        !string.IsNullOrWhiteSpace(response.PublicPlayerId) &&
-        !string.IsNullOrWhiteSpace(response.Credential) &&
-        !string.IsNullOrWhiteSpace(response.DisplayName);
 
     private static bool IsValidPlayer(PlayerResponse? response) =>
         response is not null &&
@@ -363,20 +265,11 @@ internal sealed class WebPlayerIdentityService
         CryptographicException or JsonException or InvalidDataException or
         InvalidOperationException;
 
-    private sealed record RegistrationRequest(
-        [property: JsonPropertyName("display_name")] string DisplayName);
-
     private record PlayerResponse(
         [property: JsonPropertyName("public_player_id")] string PublicPlayerId,
         [property: JsonPropertyName("display_name")] string DisplayName,
         [property: JsonPropertyName("created_at")] DateTimeOffset CreatedAt,
-        [property: JsonPropertyName("updated_at")] DateTimeOffset UpdatedAt);
+        [property: JsonPropertyName("updated_at")] DateTimeOffset UpdatedAt,
+        [property: JsonPropertyName("google_linked")] bool? GoogleLinked = null);
 
-    private sealed record RegistrationResponse(
-        string PublicPlayerId,
-        string DisplayName,
-        DateTimeOffset CreatedAt,
-        DateTimeOffset UpdatedAt,
-        [property: JsonPropertyName("credential")] string Credential) :
-        PlayerResponse(PublicPlayerId, DisplayName, CreatedAt, UpdatedAt);
 }

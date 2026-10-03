@@ -1,6 +1,6 @@
 # Web Best同期設計
 
-Issue #204で実装済みのPlayer Best同期契約の正本です。identityは[`11_web_player_identity.md`](11_web_player_identity.md)、初期decisionは[`ADR 0007`](../adr/0007-local-source-of-truth-and-stable-web-best-replica.md)を参照します。#210の未実装の現在契約は[`14_google_player_recovery.md`](14_google_player_recovery.md)、[`16_web_historical_best.md`](16_web_historical_best.md)、[`ADR 0012`](../adr/0012-purpose-bound-google-identity-confirmation.md)。本書の現行snapshot実装と、後続の通常merge同期を区別します。
+Issue #204のPlayer Best同期の初期設計記録です。初期decisionは[`ADR 0007`](../adr/0007-local-source-of-truth-and-stable-web-best-replica.md)を参照します。#213の現在契約は[`14_google_player_recovery.md`](14_google_player_recovery.md)、[`16_web_historical_best.md`](16_web_historical_best.md)、[`ADR 0012`](../adr/0012-purpose-bound-google-identity-confirmation.md)を正本とします。本書のbatch、通常full snapshot、設定保存による登録・名前編集およびstatement数は#204時点の記録です。現在の通常同期は追加・改善mergeで、snapshotは本人が内容を確認した明示置換に使用します。
 
 ## 責務境界
 
@@ -28,7 +28,7 @@ field順を固定したcanonical JSONのSHA-256をProjection hashとする。tit
 
 `data/web-sync/web-best-sync.sqlite`は正式個人スコアDBと分離したapp-owned stateで、同期ON/OFF、full snapshot要求、status、最終成功時刻、retry情報、譜面ごとのdesired hash・synced hash・deferred errorを保持する。desiredだけがある状態はpending upsert、syncedだけがある状態はpending delete、両hashが一致する状態はsyncedを表す。
 
-開発環境では`data/web-sync/development/web-best-sync.sqlite`を使用する。従来の本番originに紐付いた状態fileは保持し、開発用へ読み込まない。開発用の初期状態は同期OFFで、local Webのidentityと組み合わせて使用する。
+開発環境では`data/web-sync/development/web-best-sync.sqlite`を使用する。従来の本番originに紐付いた状態fileは保持し、開発用へ読み込まない。開発用の初期状態は同期OFFで、同じ開発接続先のidentityと組み合わせて使用する。
 
 capture由来playの正式保存成功後に対象を含む現在Projection集合を再計算し、hashが変わった譜面だけを最大50件のdelta batchへ送る。Projectionが変わらない場合はBest rowと公開更新時刻を変更しない。状態DBは正式個人スコアDBのschema、backup、formal save transactionへ含めない。
 
@@ -70,7 +70,7 @@ CIはmaster生成・inspection後に`master.d1_export`で`songs`、`charts`、`m
 - 公開ページの閲覧導線は`REGISTERED`と`AUTH_INVALID`で読み出せる公開IDを使用する。`AUTH_INVALID`でも認証不要の公開ページを開けるが、同期・公開データ削除は許可しない。
 - deltaの`UNKNOWN_CHART`は該当譜面をdeferredに保ち、他itemを同期する。ユーザー操作を要求せず、対象がそれだけなら「今すぐ同期」を無効にする。
 - 公開Best削除成功後は同期をOFFにし、同じPlayerへ再度ONにしたときfull snapshotで再公開する。
-- WindowsアプリはDBの実行環境に合わせ、本番ではproduction Worker origin、開発では`http://127.0.0.1:5173/`を既定接続先とする。`DDRGP_WEB_API_ORIGIN`はHTTPS overrideを受け付け、開発環境だけloopback HTTPも許可する。開発環境から`ddrgp-scorelog.tts1374.workers.dev`と`ddrgp-scorelog-identity-api.tts1374.workers.dev`へのoverrideは、portやhostの大文字・小文字によらず開発の既定接続先へ戻す。
+- WindowsアプリはDBの実行環境に合わせ、本番ではproduction Worker origin、開発では`https://ddrgp-scorelog-dev.tts1374.workers.dev/`を既定接続先とする。`DDRGP_WEB_API_ORIGIN`はHTTPS overrideを受け付け、開発環境だけ画面・API検証用のloopback HTTPも明示指定できる。Google実認証は14/15の固定HTTPS callbackで行う。開発環境から`ddrgp-scorelog.tts1374.workers.dev`と`ddrgp-scorelog-identity-api.tts1374.workers.dev`へのoverrideは、portやhostの大文字・小文字によらず開発の既定接続先へ戻す。
 
 ## D1 Free枠の確認
 

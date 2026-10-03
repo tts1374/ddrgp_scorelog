@@ -34,19 +34,25 @@ Debug専用のcapture・手動保存APIに依存するテストはDebug configur
 
 ## Web Player identity service
 
-Player registration / identityは`WebPlayerIdentityService`を通じてWeb Best同期から利用します。非秘密の`public_player_id`は既存設定pathと同じdirectoryの`web-player-identity.json`へ保存し、registration request IDは同じJSON内で、App Credentialは`web-player-credential.bin`で、それぞれDPAPI CurrentUser保護します。raw secretを`user-settings.json`、正式個人スコアDB、Release logへ保存しません。
+Player identityは`WebPlayerIdentityService`を通じてWeb Best同期から利用します。非秘密の`public_player_id`と表示名は既存設定pathと同じdirectoryの`web-player-identity.json`へ、App Credentialは`web-player-credential.bin`へ保存します。App-Web transactionのrequest secretとactivation待ちCredentialはCredential pathの`.authorization` fileへ保存し、Credentialとtransactionは用途別のDPAPI CurrentUserで保護します。raw secretを`user-settings.json`、正式個人スコアDB、Release logへ保存しません。
 
-認証済みoperationは401/403だけを`AUTH_INVALID`として記録し、Network Error、timeout、5xxではCredentialと`public_player_id`を維持します。認証失敗から自動registrationは行わず、明示的な`ForgetInvalidIdentity`操作後だけ新規registrationを許可します。Player削除のserver成功後は、途中失敗しても`UNREGISTERED`として回復できる順序でlocal identityを削除します。詳細契約とCloudflare APIの実行方法は[`docs/design/11_web_player_identity.md`](../docs/design/11_web_player_identity.md)と[`web/identity-api/README.md`](../web/identity-api/README.md)を参照してください。
+App単一入口でWebの新規登録/ログインを選び、Worker上のGoogle OIDCとpurpose-bound操作確認を経て結果を受領します。新CredentialはDPAPI保存・再読込後に別activationで有効化し、失敗時や応答喪失時は保存済みtransactionから再試行します。401/403とCredential復号失敗は`AUTH_INVALID`とし、Network Error、timeout、5xx、仕様上の409ではidentityを維持します。読める旧公開IDは復旧対象の一致条件へ使い、local情報削除は明示確認後に行います。詳細は[`14`](../docs/design/14_google_player_recovery.md)、[`15`](../docs/design/15_web_my_profile.md)、[`ADR 0012`](../docs/adr/0012-purpose-bound-google-identity-confirmation.md)と[`web/identity-api/README.md`](../web/identity-api/README.md)を参照してください。
 
 ## 公開データの同期
 
-設定画面で公開プレイヤー名と`公開データの同期`を編集し、設定を保存すると変更を反映します。未登録で同期をONにした場合は入力した公開プレイヤー名でPlayerを登録し、登録済みの場合は`PATCH /api/v1/me`で表示名だけを更新します。`source_captures.source_kind = 'capture'`の正式保存playだけから現在の譜面別Bestを再計算し、Webへ一方向同期します。初回ON、OFFからの再開、backup restore後はfull snapshot、通常のcapture保存後はProjection hashが変わった譜面だけを最大50件のbatchで同期します。OFF中もローカル保存、Player identity、Credential、公開済みBestを維持します。
+設定画面の停止・再開ボタンで連携を即時切り替えます。公開プレイヤー名の表示・編集はWebマイプロフィールで行います。Appには同期操作とWebへの導線を置きます。`source_captures.source_kind = 'capture'`の正式保存playだけから五項目のProjectionを再計算し、最大50件のmergeでWebの自己歴代Bestへ一方向に反映します。初回ON、再開、backup restore、同期状態消失時は対象集合をmergeで再送します。各fieldの改善だけを保存し、空集合・欠落・低い値・Local削除でWebを縮めません。受領hashは送ったProjectionのacknowledgementです。
 
-同期状態は正式個人スコアDBとは別に、本番では`data/web-sync/web-best-sync.sqlite`、開発では`data/web-sync/development/web-best-sync.sqlite`へ保存します。公開プレイヤー名は非秘密のPlayer identity metadataとしてローカルにも保持し、同期OFF中に設定画面を開いてもWeb requestを送信しません。正式個人スコアDBはread-onlyでProjectionを計算し、同期状態やWeb errorを書き込みません。`AUTH_INVALID`では新しいPlayerを自動作成せず、`認証情報を確認`から影響を確認したうえで利用できないlocal identityを削除できます。`UNKNOWN_CHART`は対象譜面だけを保留します。`公開データを削除`はWeb上のBestだけを消して同期をOFFにし、Player情報、公開URL、Credential、ローカルscoreを残します。
+同期状態は正式個人スコアDBとは別に、本番では`data/web-sync/web-best-sync.sqlite`、開発では`data/web-sync/development/web-best-sync.sqlite`へ保存します。公開プレイヤー名は非秘密のPlayer identity metadataとしてローカルにも保持し、同期OFF中に設定画面を開いてもWeb requestを送信しません。正式個人スコアDBはread-onlyでProjectionを計算し、同期状態やWeb errorを書き込みません。`AUTH_INVALID`では新しいPlayerを自動作成せず、`このPCの連携情報を削除`から影響を確認したうえで利用できないlocal identityを削除できます。`UNKNOWN_CHART`は対象譜面だけを保留します。公開記録の削除はWebから操作し、Player情報、Google連携、公開URL、Credential、ローカルscoreを残します。本人がApp送信停止→Web削除→App再開を行うと、このPCのcapture集合をmergeで送り直します。
 
-API接続先はDBと同じ実行環境から決定し、設定画面の`公開ページを開く`も同じoriginを使用します。本番の既定は`https://ddrgp-scorelog.tts1374.workers.dev/`、開発の既定は`http://127.0.0.1:5173/`です。`DDRGP_WEB_API_ORIGIN`でHTTPSの接続先を指定でき、開発環境ではloopback HTTPも指定できます。開発環境で本番originを指定した場合は開発の既定originを使用します。
+未登録では`アカウントを作成・引き継ぐ`を表示し、登録・引き継ぎのactivation成功後に同期ONでcapture集合をmerge送信します。Web最終確認に送信開始を表示し、未確定時は送信しません。Google連携・解除だけなら元の同期状態を維持します。登録済みでは送信停止/再開、今すぐ送信、公開ページと`マイプロフィールを開く`を表示します。App通常画面に公開名・情報更新・置換・公開削除を置きません。Google連携状態に応じた導線は折り畳みの`Web連携`にまとめ、不明時はWeb設定へ案内します。同期OFF中の自動通信は追加しません。未完了の連携があるときだけ、結果確認とキャンセルを表示します。
 
-開発用identityとCredentialは`data/settings/web-player-identity.development.json`と`web-player-credential.development.bin`へ保存します。初回は同期OFF・未登録で開始し、設定画面で同期をONにして保存するとlocal Webへ登録・同期します。開発環境では新旧production Workerのhostへの接続先overrideを受け付けず、local Webへ戻します。従来のidentity・Credential・同期状態fileは保持し、開発用には読み込みません。
+API接続先はDBと同じ実行環境から決定し、設定画面の`公開ページを開く`も同じoriginを使用します。本番の既定は`https://ddrgp-scorelog.tts1374.workers.dev/`、開発の既定は`https://ddrgp-scorelog-dev.tts1374.workers.dev/`です。`DDRGP_WEB_API_ORIGIN`でHTTPSの接続先を指定でき、開発環境では画面・API検証用のloopback HTTPも明示指定できます。Google実認証は固定HTTPS callbackで行います。開発環境で本番originを指定した場合は開発の既定originを使用します。
+
+HTTPSのdev Workerへ接続して起動する場合は、[`Start-DevWorker.bat`](Start-DevWorker.bat)をダブルクリックします。起動中のアプリは通知領域のメニューから終了してください。このlauncherはrepositoryの開発DBを使用し、接続先を`https://ddrgp-scorelog-dev.tts1374.workers.dev`へ固定して、最新ソースをDebug buildで起動します。.NET SDK、restore済み依存関係、`databases/ddrgp-master.sqlite`と`databases/jacket-catalog-release.sqlite`が必要です。接続先を上書きしない通常のDebug起動もdev Workerへ接続します。
+
+App UIからの置換導線はWebでの公開記録削除と送信再開へ集約します。既存snapshot APIの明示置換は通常同期とは別の固定snapshotです。Web全体との差分を確認し、未選択のcheckboxと最終操作後に、Credential・snapshot・canonical digest・revisionへ固定した10分許可でatomic replaceします。確認からcommitまでDB復元と排他し、captureの更新は固定集合を変更せず後続mergeへ回します。
+
+開発用identityとCredentialは`data/settings/web-player-identity.development.json`と`web-player-credential.development.bin`へ保存します。初回は連携停止・未登録で開始し、`アカウントを作成・引き継ぐ`から登録します。開発環境では新旧production Workerのhostへの接続先overrideを受け付けず、dev Workerへ戻します。従来のidentity・Credential・同期状態fileは保持し、開発用には読み込みません。
 
 ### Local WebとWindowsアプリの確認
 
@@ -57,13 +63,14 @@ cd web\identity-api
 npm run dev
 ```
 
-別のterminalでrepository rootからDebugアプリを起動し、設定画面で同期をONにして保存します。`公開ページを開く`はlocal WebのPlayerページを開きます。
+画面・APIのlocal検証では、別のterminalでrepository rootから接続先を明示してDebugアプリを起動します。Googleの実接続確認には上記のdev Workerを使用します。local Webの自動テストはGoogle交換と署名済みID tokenをfixtureで再現します。`公開ページを開く`はアプリと同じ接続先のPlayerページを開きます。
 
 ```powershell
+$env:DDRGP_WEB_API_ORIGIN = 'http://127.0.0.1:5173/'
 dotnet run --project app\src\DDRGpScoreViewer\DDRGpScoreViewer.csproj
 ```
 
-詳細契約は[`docs/design/12_web_best_sync.md`](../docs/design/12_web_best_sync.md)と[`docs/design/13_web_player_data.md`](../docs/design/13_web_player_data.md)を参照してください。
+同期の詳細契約は[`16_web_historical_best.md`](../docs/design/16_web_historical_best.md)、公開表示は[`13_web_player_data.md`](../docs/design/13_web_player_data.md)を参照してください。
 
 ## Debug buildの開発者向け操作
 

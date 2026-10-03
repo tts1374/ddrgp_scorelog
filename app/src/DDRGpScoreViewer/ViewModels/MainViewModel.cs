@@ -52,6 +52,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private WebPlayerIdentityService? webPlayerIdentityService;
     private readonly CancellationTokenSource webBestSyncCancellation = new();
     private Task? webBestSyncTask;
+    private bool webAuthorizationBusy;
+    private string webAuthorizationMessage = "";
     private PlayHistoryItem? selectedPlay;
     private ChartBestItem? selectedChartBest;
     private HomePlayItem? homeLatestPlay;
@@ -206,7 +208,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private string webPlayerDisplayName = "Player";
     private string appliedWebPlayerDisplayName = "Player";
     private bool webPlayerDisplayNameDirty;
-    private string webBestSyncStatusTitle = Localization.Get("同期OFF");
+    private string webBestSyncStatusTitle = Localization.Get("連携停止中");
     private string webBestSyncStatusMessage = Localization.Get(
         "同期をOFFにしても公開データは残ります。");
     private string webBestSyncLastSuccessDisplay = Localization.Get("未同期");
@@ -273,10 +275,23 @@ public sealed class MainViewModel : INotifyPropertyChanged
         ApplyWebBestSyncState(coordinator.State);
         try
         {
-            var displayName = identityService.LoadIdentity().DisplayName;
+            var identity = identityService.LoadIdentity();
+            var displayName = identity.DisplayName;
             if (!string.IsNullOrWhiteSpace(displayName))
             {
                 ApplyWebPlayerDisplayName(displayName);
+            }
+            if (identityService.PendingAuthorization is { } pending)
+            {
+                WebAuthorizationMessage = Localization.Get("連携の結果を確認してください。保存済みの情報は保持しています。");
+                if (pending.State == AppAuthorizationState.CredentialActivationPending)
+                {
+                    coordinator.SetEnabledAsync(false, CancellationToken.None).GetAwaiter().GetResult();
+                }
+            }
+            if (identity.State == PlayerIdentityState.AuthInvalid)
+            {
+                ApplyWebAuthenticationInvalid();
             }
         }
         catch (Exception exception) when (
@@ -290,6 +305,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(CanSyncWebBestsNow));
         OnPropertyChanged(nameof(CanDeletePublicBests));
         OnPropertyChanged(nameof(CanOpenPublicPlayerPage));
+        NotifyWebAccountActions();
     }
 
     internal Func<TimeSpan, Func<Task>, Task> UnresolvedNotificationScheduler { get; set; } =
@@ -360,6 +376,43 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public bool IsWebBestSyncAvailable =>
         webBestSyncCoordinator is not null && webPlayerIdentityService is not null;
 
+    public bool IsWebAuthorizationBusy => webAuthorizationBusy;
+    public bool CanBeginWebAuthorization => IsWebBestSyncAvailable && !webAuthorizationBusy && !IsPersonalDataOperationBusy;
+    public bool CanToggleWebSync => HasRegisteredWebIdentity && !webAuthorizationBusy && !IsPersonalDataOperationBusy;
+    public bool CanReplaceWebBests => HasRegisteredWebIdentity && !webAuthorizationBusy &&
+        !IsPersonalDataOperationBusy && !IsUpdateProcessing && !applicationExitRequested;
+    public string WebSyncToggleLabel => Localization.Get(WebBestSyncEnabled ? "連携を停止する" : "連携を再開する");
+    public System.Windows.Visibility GoogleConnectVisibility => webPlayerIdentityService?.GoogleLinked == false
+        ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
+    public System.Windows.Visibility GoogleUnlinkVisibility => webPlayerIdentityService?.GoogleLinked == true
+        ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
+    public System.Windows.Visibility GoogleSettingsVisibility => webPlayerIdentityService?.GoogleLinked is null
+        ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
+    public string WebAuthorizationMessage
+    {
+        get => webAuthorizationMessage;
+        private set => SetProperty(ref webAuthorizationMessage, value);
+    }
+    public System.Windows.Visibility WebAccountConnectVisibility => HasRegisteredWebIdentity
+        ? System.Windows.Visibility.Collapsed : System.Windows.Visibility.Visible;
+    public System.Windows.Visibility WebRegisteredActionsVisibility => HasRegisteredWebIdentity
+        ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed;
+    public System.Windows.Visibility WebAuthorizationPendingVisibility
+    {
+        get
+        {
+            try
+            {
+                return webPlayerIdentityService?.PendingAuthorization is null
+                    ? System.Windows.Visibility.Collapsed : System.Windows.Visibility.Visible;
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or CryptographicException or JsonException)
+            {
+                return System.Windows.Visibility.Visible;
+            }
+        }
+    }
+
     public bool WebBestSyncEnabled
     {
         get => webBestSyncEnabled;
@@ -423,7 +476,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             WebBestSyncStatus.Syncing or
             WebBestSyncStatus.Reconciling or
             WebBestSyncStatus.AuthInvalid) &&
-        webBestSyncPendingCount > webBestSyncUnknownChartCount;
+        !webAuthorizationBusy && !IsPersonalDataOperationBusy;
 
     public bool CanDeletePublicBests =>
         IsWebBestSyncAvailable &&
@@ -431,7 +484,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         webBestSyncStatus is not (
             WebBestSyncStatus.Syncing or
             WebBestSyncStatus.Reconciling or
-            WebBestSyncStatus.PublicBestsDeleted);
+            WebBestSyncStatus.PublicBestsDeleted) && !webAuthorizationBusy && !IsPersonalDataOperationBusy;
 
     public bool CanOpenPublicPlayerPage => GetPublicPlayerId() is not null;
 
@@ -458,12 +511,26 @@ public sealed class MainViewModel : INotifyPropertyChanged
     }
 
     public System.Windows.Visibility WebBestAuthActionVisibility =>
-        webBestSyncStatus == WebBestSyncStatus.AuthInvalid
+        LoadWebPlayerIdentity()?.State == PlayerIdentityState.AuthInvalid
             ? System.Windows.Visibility.Visible
             : System.Windows.Visibility.Collapsed;
 
-    private bool HasRegisteredWebIdentity =>
-        LoadWebPlayerIdentity()?.State == PlayerIdentityState.Registered;
+    private bool HasRegisteredWebIdentity
+    {
+        get
+        {
+            try
+            {
+                return LoadWebPlayerIdentity()?.State == PlayerIdentityState.Registered &&
+                    webPlayerIdentityService?.PendingAuthorization?.State != AppAuthorizationState.CredentialActivationPending;
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or
+                CryptographicException or JsonException)
+            {
+                return false;
+            }
+        }
+    }
 
     public LocalizedOption? SelectedBestLevelOption
     {
@@ -1858,10 +1925,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
         try
         {
-            if (webBestSyncCoordinator?.State.Enabled == true)
-            {
-                webBestSyncCoordinator.RequireReconciliation();
-            }
+            webBestSyncCoordinator?.RequireReconciliation();
             var result = personalScoreDataBackupService.RestoreBackup(
                 defaultDatabasePaths.ScoreDatabasePath,
                 backupPath);
@@ -1886,86 +1950,228 @@ public sealed class MainViewModel : INotifyPropertyChanged
         }
     }
 
-    public async Task ApplyWebSettingsAsync(
-        CancellationToken cancellationToken = default)
+    public Task ApplyWebSettingsAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+    internal async Task<WebBestReplacementReview?> PrepareWebBestReplacementAsync(CancellationToken cancellationToken)
     {
-        if (webBestSyncCoordinator is null || webPlayerIdentityService is null)
+        if (webBestSyncCoordinator is null || !CanReplaceWebBests ||
+            !TryReservePersonalDataOperation(allowLiveCapture: true))
         {
-            WebBestSyncStatusTitle = Localization.Get("Web同期を利用できません");
-            WebBestSyncStatusMessage = Localization.Get("Web接続先が構成されていません。");
-            return;
+            return null;
         }
-
-        var displayName = WebPlayerDisplayName.Trim();
-        if (displayName.Length is < 1 or > 64)
-        {
-            SettingsStatusMessage = Localization.Get(
-                "公開プレイヤー名は1文字以上64文字以下で入力してください。");
-            return;
-        }
-
-        var desiredEnabled = WebBestSyncEnabled;
-        if (!desiredEnabled && webBestSyncCoordinator.State.Enabled)
-        {
-            await webBestSyncCoordinator.SetEnabledAsync(false, cancellationToken);
-            webBestSyncEnabledDirty = false;
-            SetProperty(ref webBestSyncEnabled, false, nameof(WebBestSyncEnabled));
-        }
-
-        WebPlayerIdentitySnapshot identity;
         try
         {
-            identity = webPlayerIdentityService.LoadIdentity();
-        }
-        catch (Exception exception) when (
-            exception is IOException or UnauthorizedAccessException or
-            InvalidDataException or CryptographicException or JsonException)
-        {
-            SettingsStatusMessage = Localization.Get(
-                "Web Player情報を読み込めませんでした。ローカルの保存データは変更されていません。");
-            return;
-        }
-
-        if (identity.State == PlayerIdentityState.AuthInvalid)
-        {
-            ApplyWebAuthenticationInvalid();
-            return;
-        }
-
-        if (identity.State == PlayerIdentityState.Unregistered && desiredEnabled)
-        {
-            var registration = await webPlayerIdentityService.RegisterAsync(
-                displayName,
-                cancellationToken);
-            if (!ApplyPlayerIdentityResult(registration))
+            var review = await webBestSyncCoordinator.PrepareReplacementAsync(cancellationToken);
+            if (review is null)
             {
-                return;
+                ReleasePersonalDataOperation();
+            }
+            return review;
+        }
+        catch
+        {
+            ReleasePersonalDataOperation();
+            throw;
+        }
+    }
+
+    internal async Task<bool> ConfirmWebBestReplacementAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            return webBestSyncCoordinator is not null &&
+                await webBestSyncCoordinator.ConfirmReplacementAsync(cancellationToken);
+        }
+        finally
+        {
+            ReleasePersonalDataOperation();
+        }
+    }
+
+    internal async Task CancelWebBestReplacementAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (webBestSyncCoordinator is not null)
+            {
+                await webBestSyncCoordinator.CancelReplacementAsync(cancellationToken);
             }
         }
-        else if (identity.State == PlayerIdentityState.Registered &&
-                 webPlayerDisplayNameDirty)
+        finally
         {
-            var update = await webPlayerIdentityService.UpdateDisplayNameAsync(
-                displayName,
-                cancellationToken);
-            if (!ApplyPlayerIdentityResult(update))
+            ReleasePersonalDataOperation();
+        }
+    }
+
+    public async Task ToggleWebBestSyncAsync(CancellationToken cancellationToken = default)
+    {
+        if (webBestSyncCoordinator is null || !CanToggleWebSync)
+        {
+            return;
+        }
+        await webBestSyncCoordinator.SetEnabledAsync(!webBestSyncCoordinator.State.Enabled, cancellationToken);
+        webBestSyncEnabledDirty = false;
+        SetProperty(ref webBestSyncEnabled, webBestSyncCoordinator.State.Enabled, nameof(WebBestSyncEnabled));
+        OnPropertyChanged(nameof(WebSyncToggleLabel));
+        OnPropertyChanged(nameof(CanReplaceWebBests));
+        OnPropertyChanged(nameof(CanSyncWebBestsNow));
+        if (webBestSyncCoordinator.State.Enabled)
+        {
+            await RefreshWebPlayerAsync(cancellationToken);
+        }
+    }
+
+    public async Task RefreshWebPlayerAsync(CancellationToken cancellationToken = default)
+    {
+        if (webPlayerIdentityService is not null && HasRegisteredWebIdentity)
+        {
+            ApplyPlayerIdentityResult(await webPlayerIdentityService.GetCurrentPlayerAsync(cancellationToken));
+        }
+    }
+
+    internal Uri? GetWebProfileUri() => webPlayerIdentityService?.ProfileUri;
+
+    internal async Task<AppAuthorizationStartResult> BeginWebAuthorizationAsync(bool unlink, CancellationToken cancellationToken)
+    {
+        if (webPlayerIdentityService is null || !CanBeginWebAuthorization)
+        {
+            return new(PlayerIdentityRequestStatus.InvalidState);
+        }
+        SetProperty(ref webAuthorizationBusy, true, nameof(IsWebAuthorizationBusy));
+        NotifyWebAccountActions();
+        try
+        {
+            var result = await webPlayerIdentityService.BeginAppAuthorizationAsync(unlink, cancellationToken);
+            WebAuthorizationMessage = result.Status == PlayerIdentityRequestStatus.Succeeded
+                ? Localization.Format("ブラウザーで操作を確認してください。照合コード: {0}", result.ComparisonCode ?? "—")
+                : Localization.Get("連携を開始できませんでした。アプリで状態を確認して再度お試しください。");
+            if (result.Status == PlayerIdentityRequestStatus.AuthenticationInvalid)
             {
-                return;
+                ApplyWebAuthenticationInvalid();
+            }
+            return result;
+        }
+        finally
+        {
+            SetProperty(ref webAuthorizationBusy, false, nameof(IsWebAuthorizationBusy));
+            NotifyWebAccountActions();
+        }
+    }
+
+    public async Task CompleteWebAuthorizationAsync(CancellationToken cancellationToken = default)
+    {
+        if (webPlayerIdentityService is null || !CanBeginWebAuthorization)
+        {
+            return;
+        }
+        SetProperty(ref webAuthorizationBusy, true, nameof(IsWebAuthorizationBusy));
+        NotifyWebAccountActions();
+        try
+        {
+            var priorCredential = LoadWebPlayerIdentity()?.AppCredential;
+            var completingActivation = webPlayerIdentityService.PendingAuthorization?.State ==
+                AppAuthorizationState.CredentialActivationPending;
+            var result = await webPlayerIdentityService.CompleteAppAuthorizationAsync(cancellationToken);
+            if (result.Status == PlayerIdentityRequestStatus.Succeeded)
+            {
+                if (result.Identity.DisplayName is not null)
+                {
+                    ApplyWebPlayerDisplayName(result.Identity.DisplayName);
+                }
+                WebAuthorizationMessage = Localization.Get("連携操作が完了しました。公開ユーザーと同期状態を確認してください。");
+                if ((completingActivation || priorCredential != result.Identity.AppCredential) && webBestSyncCoordinator is not null)
+                {
+                    try
+                    {
+                        if (webBestSyncCoordinator.State.Enabled)
+                        {
+                            webBestSyncCoordinator.RequireReconciliation();
+                            await webBestSyncCoordinator.SynchronizeAsync(cancellationToken);
+                        }
+                        else
+                        {
+                            await webBestSyncCoordinator.SetEnabledAsync(true, cancellationToken);
+                        }
+                    }
+                    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                    {
+                    }
+                    catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException)
+                    {
+                        SettingsStatusMessage = Localization.Get("連携は完了しましたが、Webへの送信を開始できませんでした。アプリを再起動して送信状況を確認してください。");
+                    }
+                }
+            }
+            else
+            {
+                if (result.Status == PlayerIdentityRequestStatus.AuthenticationInvalid)
+                {
+                    ApplyWebAuthenticationInvalid();
+                    WebAuthorizationMessage = Localization.Get("連携待ちが終了しました。「アカウントを作成・引き継ぐ」から同じ公開ユーザーへログインしてください。");
+                }
+                else
+                {
+                    WebAuthorizationMessage = Localization.Get("結果を確認できませんでした。保存済みの連携情報で結果を確認してください。");
+                }
             }
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            WebAuthorizationMessage = Localization.Get("結果確認を中断しました。アプリで再確認できます。");
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or CryptographicException or JsonException)
+        {
+            WebAuthorizationMessage = Localization.Get("結果を確認できませんでした。保存済みの連携情報で結果を確認してください。");
+        }
+        finally
+        {
+            SetProperty(ref webAuthorizationBusy, false, nameof(IsWebAuthorizationBusy));
+            NotifyWebAccountActions();
+        }
+    }
 
-        if (desiredEnabled && !webBestSyncCoordinator.State.Enabled)
+    public async Task CancelWebAuthorizationAsync(CancellationToken cancellationToken = default)
+    {
+        if (webPlayerIdentityService is not null)
         {
-            await webBestSyncCoordinator.SetEnabledAsync(true, cancellationToken);
+            try
+            {
+                await webPlayerIdentityService.CancelAppAuthorizationAsync(cancellationToken);
+                WebAuthorizationMessage = Localization.Get(webPlayerIdentityService.PendingAuthorization is null
+                    ? "連携をキャンセルしました。"
+                    : "連携の結果を確認してください。保存済みの情報は保持しています。");
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+            }
+            catch (Exception exception) when (exception is System.Net.Http.HttpRequestException or
+                TaskCanceledException or IOException or UnauthorizedAccessException or CryptographicException or JsonException)
+            {
+                WebAuthorizationMessage = Localization.Get("キャンセル結果を確認できませんでした。保存済みの情報で再確認できます。");
+            }
+            finally
+            {
+                NotifyWebAccountActions();
+            }
         }
-        webBestSyncEnabledDirty = webBestSyncCoordinator.State.Enabled != desiredEnabled;
-        if (!webBestSyncEnabledDirty)
-        {
-            SetProperty(
-                ref webBestSyncEnabled,
-                webBestSyncCoordinator.State.Enabled,
-                nameof(WebBestSyncEnabled));
-        }
+    }
+
+    private void NotifyWebAccountActions()
+    {
+        OnPropertyChanged(nameof(WebAccountConnectVisibility));
+        OnPropertyChanged(nameof(WebRegisteredActionsVisibility));
+        OnPropertyChanged(nameof(WebAuthorizationPendingVisibility));
+        OnPropertyChanged(nameof(CanBeginWebAuthorization));
+        OnPropertyChanged(nameof(CanToggleWebSync));
+        OnPropertyChanged(nameof(CanOpenPublicPlayerPage));
+        OnPropertyChanged(nameof(WebBestAuthActionVisibility));
+        OnPropertyChanged(nameof(WebSyncToggleLabel));
+        OnPropertyChanged(nameof(CanReplaceWebBests));
+        OnPropertyChanged(nameof(CanSyncWebBestsNow));
+        OnPropertyChanged(nameof(CanDeletePublicBests));
+        OnPropertyChanged(nameof(GoogleConnectVisibility));
+        OnPropertyChanged(nameof(GoogleUnlinkVisibility));
+        OnPropertyChanged(nameof(GoogleSettingsVisibility));
     }
 
     public async Task ForgetInvalidWebIdentityAsync(
@@ -1988,6 +2194,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         SetProperty(ref webBestSyncEnabled, false, nameof(WebBestSyncEnabled));
         ApplyWebPlayerDisplayName("Player");
         OnPropertyChanged(nameof(CanOpenPublicPlayerPage));
+        NotifyWebAccountActions();
         SettingsStatusMessage = Localization.Get(
             "認証情報を削除しました。公開データの同期はOFFです。ローカルの保存データはそのまま利用できます。");
     }
@@ -2025,7 +2232,20 @@ public sealed class MainViewModel : INotifyPropertyChanged
     {
         try
         {
-            await webBestSyncCoordinator!.SynchronizeAsync(cancellationToken);
+            if (!HasRegisteredWebIdentity)
+            {
+                return;
+            }
+            if (webBestSyncCoordinator!.State.Enabled && webPlayerIdentityService is not null && HasRegisteredWebIdentity)
+            {
+                var result = await webPlayerIdentityService.GetCurrentPlayerAsync(cancellationToken);
+                ApplyPlayerIdentityResult(result);
+                if (result.Status == PlayerIdentityRequestStatus.AuthenticationInvalid)
+                {
+                    return;
+                }
+            }
+            await webBestSyncCoordinator.SynchronizeAsync(cancellationToken);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -2057,7 +2277,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         (WebBestSyncStatusTitle, WebBestSyncStatusMessage) = state.Status switch
         {
             WebBestSyncStatus.Disabled => (
-                Localization.Get("同期OFF"),
+                Localization.Get("連携停止中"),
                 Localization.Get(
                     "同期をOFFにしても公開データは残ります。")),
             WebBestSyncStatus.Idle => (
@@ -2106,6 +2326,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(CanDeletePublicBests));
         OnPropertyChanged(nameof(CanOpenPublicPlayerPage));
         OnPropertyChanged(nameof(WebBestAuthActionVisibility));
+        NotifyWebAccountActions();
     }
 
     private bool ApplyPlayerIdentityResult(PlayerIdentityOperationResult result)
@@ -2114,6 +2335,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         {
             ApplyWebPlayerDisplayName(result.Player.DisplayName);
             OnPropertyChanged(nameof(CanOpenPublicPlayerPage));
+            NotifyWebAccountActions();
             return true;
         }
         if (result.Status == PlayerIdentityRequestStatus.AuthenticationInvalid)
@@ -3001,9 +3223,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(CanManagePersonalData));
     }
 
-    private bool TryReservePersonalDataOperation()
+    private bool TryReservePersonalDataOperation(bool allowLiveCapture = false)
     {
-        if (!CanManagePersonalData ||
+        if (!(allowLiveCapture ? CanReplaceWebBests : CanManagePersonalData) ||
             Interlocked.CompareExchange(ref personalDataOperationReserved, 1, 0) != 0)
         {
             return false;
@@ -3012,6 +3234,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(IsPersonalDataOperationBusy));
         OnPropertyChanged(nameof(CanManagePersonalData));
         OnPropertyChanged(nameof(CanStartScreenshotImport));
+        OnPropertyChanged(nameof(CanReplaceWebBests));
+        NotifyWebAccountActions();
         return true;
     }
 
@@ -3021,6 +3245,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(IsPersonalDataOperationBusy));
         OnPropertyChanged(nameof(CanManagePersonalData));
         OnPropertyChanged(nameof(CanStartScreenshotImport));
+        OnPropertyChanged(nameof(CanReplaceWebBests));
+        NotifyWebAccountActions();
     }
 
     public void RestoreSavedPaths() =>
