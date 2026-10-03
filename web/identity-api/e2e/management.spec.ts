@@ -26,7 +26,55 @@ async function mockManagement(page: Page, options: { app?: boolean; delete?: boo
 }
 
 for (const width of [1280, 390]) {
-  test(`management profile at ${width}px saves the public name and guides App-only unlink`, async ({ page }) => {
+  for (const registered of [false, true]) {
+    test(`unified App entry at ${width}px confirms ${registered ? "transfer" : "creation"} after Google`, async ({ page }) => {
+      const errors: string[] = [];
+      page.on("pageerror", error => errors.push(error.message));
+      page.on("console", message => {
+        if (message.type() === "error" && !(message.location().url.endsWith("/api/v1/account/session") && message.text().includes("401"))) errors.push(message.text());
+      });
+      await page.setViewportSize({ width, height: 900 });
+      let authenticated = false;
+      let approvals = 0;
+      await page.route("**/api/v1/account/**", route => {
+        const path = new URL(route.request().url()).pathname;
+        if (path.endsWith("/session")) return authenticated
+          ? route.fulfill({ json: { email: "owner@example.com", google_linked: registered, csrf_token: "csrf" } })
+          : route.fulfill({ status: 401, json: { error: { code: "WEB_SESSION_REQUIRED" } } });
+        if (path.endsWith("/profile")) return route.fulfill({ json: profile });
+        return route.fulfill({ status: 400 });
+      });
+      await page.route("**/api/v1/auth/web/context", route => route.fulfill({ json: { csrf_token: "browser-csrf" } }));
+      await page.route("**/api/v1/auth/app-authorizations/**", route => {
+        const path = new URL(route.request().url()).pathname;
+        if (path.endsWith("/web-start")) {
+          expect(route.request().postDataJSON()).toEqual({});
+          expect(route.request().headers()["x-csrf-token"]).toBe("browser-csrf");
+          authenticated = true;
+          return route.fulfill({ json: { url: "/my/app-connect?request=unified-test" } });
+        }
+        if (path.endsWith("/confirmation")) return route.fulfill({ json: { status: "PENDING", intent: registered ? "login" : "register", purpose: "connect", player: registered ? profile : null, registered_google: registered, comparison_code: "482719AB" } });
+        if (path.endsWith("/approve")) approvals++;
+        return route.fulfill({ status: 400 });
+      });
+      await page.goto("/my/app-connect?request=unified-test");
+      await expect(page.getByRole("button", { name: "Googleで続ける", exact: true })).toBeEnabled();
+      await expect(page.getByRole("button", { name: /^(新規登録|ログイン)$/ })).toHaveCount(0);
+      await page.screenshot({ path: `../../logs/unified-entry-${width}.png`, fullPage: true });
+      await page.getByRole("button", { name: "Googleで続ける", exact: true }).click();
+      await expect(page.getByRole("heading", { name: registered ? "このPCへ引き継ぐ" : "アカウントの作成を確認", exact: true })).toBeVisible();
+      const approve = page.getByRole("button", { name: registered ? "このPCへ引き継ぐ" : "このアカウントを作成する", exact: true });
+      await expect(approve).toBeDisabled();
+      await page.getByRole("checkbox", { name: "手元のアプリとコードが一致しています。" }).check();
+      await expect(approve).toBeDisabled();
+      await page.getByRole("checkbox", { name: "アカウントと、この後に行うことを確認しました。" }).check();
+      await expect(approve).toBeEnabled();
+      expect(approvals).toBe(0);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
+      expect(errors).toEqual([]);
+    });
+  }
+  test(`management profile at ${width}px saves the public name and exposes only Web management actions`, async ({ page }) => {
     const errors: string[] = [];
     page.on("pageerror", e => errors.push(e.message));
     page.on("console", message => { if (message.type() === "error") errors.push(message.text()); });
@@ -40,8 +88,8 @@ for (const width of [1280, 390]) {
     await page.getByRole("button", { name: "名前を保存" }).click();
     await expect(page.getByRole("status")).toHaveText("公開プレーヤー名を保存しました。");
     await expect(page.getByRole("textbox", { name: "公開プレーヤー名" })).toHaveValue("2TEN");
-    await page.getByRole("button", { name: "Google連携を解除", exact: true }).click();
-    await expect(page.getByText("現在利用できるアプリで", { exact: false })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Google連携を解除", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "公開記録を削除する", exact: true })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
     expect(errors).toEqual([]);
     await page.screenshot({ path: `../../logs/management-profile-${width}.png`, fullPage: true });
@@ -135,7 +183,7 @@ test("unlinked and cancelled Google states cannot silently approve or create", a
   await expect(page.getByText("アカウントが登録・連携されていません", { exact: true })).toBeVisible();
   await expect(page.getByRole("textbox", { name: "公開プレーヤー名" })).toHaveCount(0);
   await page.goto("/my/app-connect?request=app-test&auth_error=cancelled");
-  await expect(page.getByRole("button", { name: "新規登録", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Googleで続ける", exact: true })).toBeVisible();
   await expect(page.getByRole("checkbox")).toHaveCount(0);
   await expect(page.getByRole("alert")).toContainText("Googleログインを中止しました。");
 });
@@ -155,7 +203,7 @@ test("Google choice logs out the bound session while preserving the App transact
   await page.goto("/my/app-connect?request=app-test");
   await page.getByRole("checkbox", { name: "手元のアプリとコードが一致しています。" }).check();
   await page.getByRole("button", { name: "別のアカウントでログイン" }).click();
-  await expect(page.getByRole("button", { name: "新規登録", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Googleで続ける", exact: true })).toBeVisible();
   expect(logouts).toEqual([{ app_authorization_id: "app-test" }]);
   await expect(page).toHaveURL(new URL("/my/app-connect?request=app-test", test.info().project.use.baseURL).href);
   await expect(page.getByRole("checkbox")).toHaveCount(0);
@@ -173,7 +221,7 @@ test("choosing Google before binding uses ordinary logout and retains the App en
   await page.route("**/api/v1/auth/web/context", route => route.fulfill({ json: { csrf_token: "browser-csrf" } }));
   await page.goto("/my/app-connect?request=app-test");
   await page.getByRole("button", { name: "別のアカウントでログイン" }).click();
-  await expect(page.getByRole("button", { name: "新規登録", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Googleで続ける", exact: true })).toBeVisible();
   expect(logouts).toEqual([{}]);
   await expect(page.getByText("owner@example.com", { exact: true })).toHaveCount(0);
 });

@@ -78,7 +78,7 @@ DDR GP scorelog の設計、PoC、テストで使う主要用語を定義する�
 - `app authorization request secret`: App-Web承認transactionの結果/activation/retryを開始アプリに結ぶ256 bit以上のsecret。serverはdigest、Windowsは用途別DPAPI保存。URLへ出さない。
 - `activation_state`: App Credentialの`pending`（通常API不可）/`active`（通常API可）。既存の失効属性を別に検証する。
 - `AppAuthorizationPending`: WindowsのApp-Web認証/結果受領待ち。既存Playerへのlink/unlinkは元の同期を維持、新Credential発行時は新PC同期不可。
-- `app authorization purpose`: `connect`（Web新規登録/ログイン共通）または`unlink`。開始時のPlayerと、Webの`register`/`login`意図をserverへ固定し、認証から自動登録へfallbackしない。
+- `app authorization purpose`: `connect`（Web新規登録/ログイン共通）または`unlink`。開始時のPlayerをserverへ固定する。Webの単一入口は`intent = null`で操作専用OAuth `login-connect`を開始し、検証済みGoogleの登録状況から`register`/`login`を確定して当該操作proofへbindingする。明示intentはその操作に固定する。作成は本人の最終確認を必須とし、認証失敗から自動登録へfallbackしない。
 - `expected_public_player_id`: App-Web開始時に読める旧公開IDを固定する誤操作防止条件。AUTH_INVALID/復号不能からのGoogle再ログインではserverで対象一致を要求する。所有証明やGoogle追加の権限に使わない。
 - `CredentialActivationPending`: WindowsのDPAPI保存済みCredentialについて権限移行結果が未確定。結果確認まで新PC同期停止、成功後REGISTERED＋同期ON。
 

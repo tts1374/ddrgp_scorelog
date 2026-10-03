@@ -103,11 +103,12 @@ export function registerAppAuthorizationRoutes(app: Hono<AppEnvironment>) {
     const session = await readWebSession(c);
     if (!await validOriginCsrf(c, session, true)) return accountError(c, "CSRF_REJECTED", 403);
     const body = await c.req.json().catch(() => null);
-    if (body === null || !["register", "login"].includes(body.intent) || Object.keys(body).some(key => key !== "intent"))
+    if (body === null || typeof body !== "object" || Array.isArray(body) ||
+        (body.intent !== undefined && !["register", "login"].includes(body.intent)) || Object.keys(body).some(key => key !== "intent"))
       return accountError(c, "INVALID_REQUEST", 400);
     const browser = await browserBinding(c);
     if (browser === null) return accountError(c, "BROWSER_REQUIRED", 403);
-    const intent = row.purpose === "unlink" ? "unlink" : row.start_player_id !== null ? "link" : body.intent;
+    const intent = row.purpose === "unlink" ? "unlink" : row.start_player_id !== null ? "link" : body.intent ?? null;
     const guard = randomId("ws_");
     const statements = [c.env.DB.prepare(`INSERT INTO account_write_guards (id, guard) VALUES (?1,
       CASE WHEN EXISTS (SELECT 1 FROM app_authorizations WHERE id = ?2 AND status = 'PENDING'
@@ -123,7 +124,7 @@ export function registerAppAuthorizationRoutes(app: Hono<AppEnvironment>) {
     let identity: { issuer: string; sub: string } | null = null;
     if (row.start_player_id !== null) identity = await c.env.DB.prepare("SELECT issuer, sub FROM google_identities WHERE player_id = ?1")
       .bind(row.start_player_id).first();
-    const url = await beginOAuth(c, { purpose: intent === "login" ? "login-connect" : intent,
+    const url = await beginOAuth(c, { purpose: intent === null || intent === "login" ? "login-connect" : intent,
       app: updated, session, playerId: row.start_player_id,
       issuer: identity?.issuer, sub: identity?.sub });
     return c.json({ url });

@@ -23,7 +23,7 @@ export function HomePage() {
         <dl className="home-features">
           <div><dt>Windowsアプリ</dt><dd>自己ベスト、プレー履歴、スコアの推移、FLARE SKILLを確認できます。</dd></div>
           <div><dt>公開Player Data</dt><dd>SINGLE / DOUBLE別のBestとFLARE SKILLを確認できます。Bestはレベル・バージョン・曲名から探せます。</dd></div>
-          <div><dt>マイページ</dt><dd>公開名の変更や、Google連携・公開記録の管理ができます。</dd></div>
+          <div><dt>マイページ</dt><dd>公開名の変更や、公開記録・アカウントの削除ができます。</dd></div>
         </dl>
       </section>
       <section className="home-section" id="getting-started" aria-labelledby="getting-started-heading">

@@ -7,8 +7,8 @@ Google identityと既存Playerの関係、App-Web承認、Windows App Credential
 ## 操作と責務
 
 - Web管理・引き継ぎの認証はGoogleログインを必須とする。`/player/{public_player_id}`とPublic APIは従来どおりログイン不要。
-- Webに`/my/profile`「マイプロフィール」を追加し、公開名、本人向けGoogleメールアドレス、連携状態、ログアウト/別アカウントでログイン、連携/解除の導線を表示する。名前編集は既存`players.display_name`だけ。公開ID/URLは変更しない。
-- 新規登録は14のApp入口→Web新規登録→Google認証→明示確認だけ。通常Webログインで未登録Googleを自動登録しない。解除後の有効App Credentialによる同期は継続できる。
+- Webに`/my/profile`「マイプロフィール」を追加し、公開名、本人向けGoogleメールアドレス、連携状態、ログアウト/別アカウントでログインを表示する。名前編集は既存`players.display_name`だけ。公開ID/URLは変更しない。
+- 新規登録は14のApp入口→WebのGoogleで続ける→Google認証→作成内容の明示確認だけ。通常Webログインで未登録Googleを自動登録しない。解除後の有効App Credentialによる同期は継続できる。
 - Windows未登録画面は単一の「アカウントを作成・引き継ぐ」。完了後は同期ステータス、停止/再開、公開ページ、今すぐ同期、Web連携/プロフィール導線を持つ。公開名の表示と情報更新ボタンはWebへ集約する。App通常画面に名前を表示せず、設定保存や同期再開で名前を送信しない。対象の取り違え防止に必要な確認画面ではWeb由来の名前とURLを表示する。
 - Webの新規作成は既定名`Player`。既存Playerの名前は維持し、Googleの名前/emailから自動生成しない。本人がマイプロフィールで任意の公開名を保存する。
 - 公開名は既存のtrim後1〜64文字の検証を継承し、空白のみ/上限超過は保存しない。Google identity、Credential、公開Best、正式個人スコアDBは名前編集で変更しない。
@@ -17,7 +17,7 @@ Google identityと既存Playerの関係、App-Web承認、Windows App Credential
 |---|---|
 | 未ログインでマイプロフィールを開く | Googleログインを案内し、プロフィール取得/更新を拒否。公開ページは閲覧できる |
 | Googleログイン済み、Player未登録/未連携 | 本人email、アカウントなし、アプリの単一入口からWeb新規登録する手順、ログアウト/選び直しを表示。名前編集不可。loginだけでは作成しない |
-| 既存Playerへ連携済み | 本人email、現在の公開名、編集欄、保存、read-only公開URL、公開ページ、連携解除、ログアウト/選び直しを表示 |
+| 既存Playerへ連携済み | 本人email、現在の公開名、編集欄、保存、read-only公開URL、公開ページ、公開記録/アカウント削除、ログアウト/選び直しを表示 |
 | 公開名を変更して保存 | 同じPlayerのdisplay_nameだけ更新し、保存結果と新しい名前を表示。公開ページの名前へ反映 |
 | 入力不正・通信失敗 | 入力とエラーを表示し、既存名を維持。通信結果不明時は現在値を取得し、保存済みか確認する |
 | セッション期限切れ・別Googleアカウントへログイン | 編集を止め、再ログイン後にGoogle identityから対象Playerを再解決。未保存入力を別Playerへ自動送信しない |
@@ -26,7 +26,7 @@ Google identityと既存Playerの関係、App-Web承認、Windows App Credential
 
 App未登録/同期OFF/ON、Web新規登録/ログインの入口、登録確認、登録済みGoogle/未登録Google、名前保存成功/失敗、session期限切れ、Google認証cancel、App-Web承認/アプリ保存待ち/activation完了、解除、アカウント削除確認/完了をwireframeに含める。Googleのemailは本人確認用で公開名欄と分け、公開page/API/通常Windows設定へ出さない。「別のアカウントでログイン」は現Web sessionをログアウトしてGoogle選択をやり直す操作で、既存連携の変更ではない。未保存入力は切替時に破棄する。
 
-連携/解除は14の有効App proof付きtransactionで行う。解除導線は手元アプリのWeb連携を案内し、操作専用のGoogle identity再確認とApp確認がそろった画面で最終確認する。アカウント全削除はWebへ集約する。公開記録だけの削除はWebの別画面に集約し、16の送信停止→Web削除→送信再開で作り直す。App通常画面には置換・公開記録削除ボタンを置かない。自己紹介/アバター/公開URL変更/端末管理は含めない。
+連携/解除は14の有効App proof付きtransactionで行う。手元アプリのWeb連携から開始し、操作専用のGoogle identity再確認とApp確認がそろった画面で最終確認する。アカウント全削除はWebへ集約する。公開記録だけの削除はWebの別画面に集約し、16の送信停止→Web削除→送信再開で作り直す。App通常画面には置換・公開記録削除ボタンを置かない。自己紹介/アバター/公開URL変更/端末管理は含めない。
 
 ## Webログイン / session / API
 
@@ -43,7 +43,7 @@ Googleの[Web Server Authorization Code](https://developers.google.com/identity/
 
 ### Google identity再確認と操作許可
 
-通常プロフィール取得/編集はWeb session＋Origin/CSRFで行う。登録/link/PC引き継ぎ/unlink/アカウント全削除は、通常loginとは独立したpurpose-bound Google OAuth transactionでidentityを再確認する。開始時にpurpose、対象Player（未登録は対象未確定）、開始session、browser binding、App transaction/登録・ログイン意図をserverへ固定し、独立state/nonceでAuthorization Code flowを行う。Google連携済みPlayerの操作は開始時のissuer/sub/Playerとcallback結果の一致を要求する。未連携既存PlayerへのlinkはApp CredentialでPlayerを固定し、Google identityはcallback結果をunique検証して追加する。未登録/新PCで対象未確定の場合だけ検証済みGoogleから対象を決め、14の旧公開ID制約も確認する。通常loginのcallbackを操作専用callback結果へ転用しない。
+通常プロフィール取得/編集はWeb session＋Origin/CSRFで行う。登録/link/PC引き継ぎ/unlink/アカウント全削除は、通常loginとは独立したpurpose-bound Google OAuth transactionでidentityを再確認する。開始時にpurpose、対象Player（未登録は対象未確定）、開始session、browser binding、App transactionをserverへ固定し、独立state/nonceでAuthorization Code flowを行う。Google連携済みPlayerの操作は開始時のissuer/sub/Playerとcallback結果の一致を要求する。未連携既存PlayerへのlinkはApp CredentialでPlayerを固定し、Google identityはcallback結果をunique検証して追加する。未登録/新PCで対象未確定の場合だけ検証済みGoogleから対象と作成/引き継ぎ操作を決めて操作proofへbindingし、14の旧公開ID制約も確認する。通常loginのcallbackを操作専用callback結果へ転用しない。
 
 操作専用の認証requestは`prompt=select_account`でアカウント選択を表示し、通常sessionの有無にかかわらず新しいOAuthを行う。アカウント選択後も本人の最終確認を要求する。Google認証済みの既存SSOを利用でき、アカウント選択そのものを追加認証の証明にしない。
 
@@ -118,7 +118,7 @@ Cloudflare Workers/D1はFreeから開始し、必要に応じてPaidへ移行す
 
 後続#213へ追加するScope:
 
-- Googleログイン必須のマイプロフィール、本人email・連携状態・解除導線・ログアウト/選び直し、Web session APIと公開名更新/アカウント削除API、状態別wireframe。
+- Googleログイン必須のマイプロフィール、本人email・連携状態・ログアウト/選び直し、Web session APIと公開名更新/アカウント削除API、状態別wireframe。
 - 公開名の表示・編集はWebへ集約する。App通常画面の名前表示・情報更新は除去し、対象確認用metadataは維持する。Web初回既定名、既存名保持、Google連携状態に応じたApp導線、Bearer名更新/アカウント削除拒否。
 - 最小D1 session/認証待機保存、Worker-first管理page routing、既存公開ページ/同期との境界、対象テストと手動確認。
 

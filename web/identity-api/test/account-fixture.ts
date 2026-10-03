@@ -89,9 +89,9 @@ export class BrowserFixture {
     expect(callback.headers.get("Location")).toBe("/my/profile");
     await this.session();
   }
-  async operation(google: GoogleFixture, id: string, intent: "register" | "login", overrides: Record<string, unknown> = {}) {
+  async operation(google: GoogleFixture, id: string, intent?: "register" | "login", overrides: Record<string, unknown> = {}) {
     if (!this.csrf) await this.context();
-    const start = await this.request(`/api/v1/auth/app-authorizations/${id}/web-start`, { intent });
+    const start = await this.request(`/api/v1/auth/app-authorizations/${id}/web-start`, intent ? { intent } : {});
     expect(start.status).toBe(200);
     const { url } = await start.json<{ url: string }>();
     const redirect = await this.request(url);
