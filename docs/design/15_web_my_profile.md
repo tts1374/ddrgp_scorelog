@@ -9,7 +9,7 @@ Google identityと既存Playerの関係、App-Web承認、Windows App Credential
 - Web管理・引き継ぎの認証はGoogleログインを必須とする。`/player/{public_player_id}`とPublic APIは従来どおりログイン不要。
 - Webに`/my/profile`「マイプロフィール」を追加し、公開名、本人向けGoogleメールアドレス、連携状態、ログアウト/別アカウントでログイン、連携/解除の導線を表示する。名前編集は既存`players.display_name`だけ。公開ID/URLは変更しない。
 - 新規登録は14のApp入口→Web新規登録→Google認証→明示確認だけ。通常Webログインで未登録Googleを自動登録しない。解除後の有効App Credentialによる同期は継続できる。
-- Windows未登録画面は単一の「アカウントを作成・引き継ぐ」。完了後は同期ステータス、停止/再開、公開ページ、今すぐ同期、Web連携/プロフィール導線を持つ。名前はread-onlyで、設定保存や同期再開で名前を送信しない。
+- Windows未登録画面は単一の「アカウントを作成・引き継ぐ」。完了後は同期ステータス、停止/再開、公開ページ、今すぐ同期、Web連携/プロフィール導線を持つ。公開名の表示と情報更新ボタンはWebへ集約する。App通常画面に名前を表示せず、設定保存や同期再開で名前を送信しない。対象の取り違え防止に必要な確認画面ではWeb由来の名前とURLを表示する。
 - Webの新規作成は既定名`Player`。既存Playerの名前は維持し、Googleの名前/emailから自動生成しない。本人がマイプロフィールで任意の公開名を保存する。
 - 公開名は既存のtrim後1〜64文字の検証を継承し、空白のみ/上限超過は保存しない。Google identity、Credential、公開Best、正式個人スコアDBは名前編集で変更しない。
 
@@ -26,7 +26,7 @@ Google identityと既存Playerの関係、App-Web承認、Windows App Credential
 
 App未登録/同期OFF/ON、Web新規登録/ログインの入口、登録確認、登録済みGoogle/未登録Google、名前保存成功/失敗、session期限切れ、Google認証cancel、App-Web承認/アプリ保存待ち/activation完了、解除、アカウント削除確認/完了をwireframeに含める。Googleのemailは本人確認用で公開名欄と分け、公開page/API/通常Windows設定へ出さない。「別のアカウントでログイン」は現Web sessionをログアウトしてGoogle選択をやり直す操作で、既存連携の変更ではない。未保存入力は切替時に破棄する。
 
-連携/解除は14の有効App proof付きtransactionで行う。解除導線は手元アプリのWeb連携を案内し、操作専用のGoogle identity再確認とApp確認がそろった画面で最終確認する。アカウント全削除はWebへ集約する。公開Best全削除は別操作として16のWindows操作を維持する。自己紹介/アバター/公開URL変更/端末管理は含めない。
+連携/解除は14の有効App proof付きtransactionで行う。解除導線は手元アプリのWeb連携を案内し、操作専用のGoogle identity再確認とApp確認がそろった画面で最終確認する。アカウント全削除はWebへ集約する。公開記録だけの削除はWebの別画面に集約し、16の送信停止→Web削除→送信再開で作り直す。App通常画面には置換・公開記録削除ボタンを置かない。自己紹介/アバター/公開URL変更/端末管理は含めない。
 
 ## Webログイン / session / API
 
@@ -87,15 +87,28 @@ Googleの[Security Bundle](https://developers.google.com/identity/siwg/security-
 - 確認前cancel/Google identity再確認失敗/削除transaction失敗は既存状態を維持。応答不明では結果確認を行い、成功を推測しない。
 - 完了後はログアウト状態/削除完了表示、公開URL404。各Appは次の認証requestで401→AUTH_INVALID、ローカル履歴は保持、Playerの自動再作成なし。未登録Googleへ戻っても新規登録は別の明示操作だけ。
 
+## Webで公開記録だけを削除する
+
+マイプロフィールの「公開記録を削除する」から`/my/public-data-delete`へ進む。16の手順に従い、先にAppの送信を止め、専用purpose `public-bests-delete`のOAuthで同じGoogle identityを確認する。対象の名前/URLを再表示し、送信停止と公開記録削除の影響を未選択checkboxで確認する。アカウント全削除とは別操作であり、Player/Google identity/session/active App Credential/公開URL/PC内履歴を保持する。
+
+| Method / route | 契約 |
+|---|---|
+| `POST /api/v1/account/bests/deletion-start` | session＋Origin/CSRFで目的/Player/Google identity/browserを固定し、専用OAuthを開始 |
+| `GET /api/v1/account/bests/deletion-confirmation` | 専用proofと現在sessionのbindingを検証して`UNCONFIRMED`/`DELETED`を返す。対象は`account/profile`で再取得 |
+| `DELETE /api/v1/account/bests` | `confirmed:true`と`sync_stopped:true`の本人確認、session＋Origin/CSRF＋専用proofで公開Bestだけをatomic削除。proof消費と未完了snapshot無効化を同transactionで行う |
+| `POST /api/v1/account/bests/deletion-cancel` | session＋Origin/CSRFで当該purposeのOAuth待機/操作proofだけを失効。アカウント削除やApp連携のproofを変更しない |
+
+通常sessionだけ、アカウント削除用proof、別Google/Player/browser、失効・期限切れproofから削除しない。更新transaction内でもsession/Google→Player/proofを再検証し、解除・他操作との並行更新を拒否する。消費済み同proofのretryは同じ削除結果だけを返し、その後Appから送り直した記録を再削除しない。失敗/cancelで公開記録を変更しない。完了画面はAppの「Webへの送信を再開する」を案内する。WebからAppのON/OFFを変えず、現在のPCの記録で作り直すかは本人の再開操作で決まる。
+
 ## App Credential APIとの接続
 
 公開名はGoogle認証sessionでのみ変更する。既存`PATCH /api/v1/me`のBearer名更新は全Playerで409 `WEB_PROFILE_REQUIRED`、既存`DELETE /api/v1/me`のアカウント全削除は409 `WEB_ACCOUNT_REQUIRED`で拒否する。Credentialは有効なまま、Windowsは認証エラーとして扱わない。匿名登録は14の410で拒否する。
 
 未リリースなので旧版互換を設けない。App側の自動登録/名前PATCH/アカウント削除を外し、Web管理と同期操作を分離する。利用する全Worker originで同じ新契約を適用し、旧originから匿名登録や通常置換を迂回できる状態で公開しない。本検討では配布/設定/deployを行わない。
 
-Windowsの名前cacheはWeb由来の非秘密表示cacheとして扱う。同期ON中の既存identity確認時、および「マイプロフィールを開く」後に本人が「情報を更新」した時、`GET /api/v1/me`で最新名を取得する。同期OFF中の自動requestは停止し、明示更新だけ許す。cacheを名前更新の入力に使わない。Webで変更した名前がWindows未更新でも公開ページはserverの名前を表示する。
+Windowsの名前metadataは対象確認用の非秘密情報として保持するが、通常設定画面の名前表示・情報更新ボタンは置かない。名前の表示と編集はWebを正本とする。同期ON中の既存identity確認では`GET /api/v1/me`のGoogle連携状態も受領する。連携済みの場合は追加連携ボタンを表示せず、未連携の場合だけ再連携を案内する。同期OFF中は自動requestを追加しない。状態をまだ取得していない場合は連携済み・未連携を断定せず、WebのGoogle連携設定へ案内する。名前metadataを名前更新の入力に使わない。
 
-名前変更は`players.updated_at`へ反映し、`public_bests_updated_at`は更新しない。Google login/session/プロフィール編集では同期ON/OFFを変えず、空DB/manifest復元から自動full snapshotを送らない。新PCは14のactivation後、本人の「連携を再開する」で16の追加・改善同期を開始できる。
+名前変更は`players.updated_at`へ反映し、`public_bests_updated_at`は更新しない。Google login/session/プロフィール編集では同期ON/OFFを変えず、空DB/manifest復元から自動full snapshotを送らない。新規登録・新PCの引き継ぎは14のactivation成功後に同期ONとなり、16の追加・改善同期を開始する。Web最終確認に送信開始を表示する。Google連携・解除だけでは元の同期設定を変更しない。
 
 ## 運用
 
@@ -106,7 +119,7 @@ Cloudflare Workers/D1はFreeから開始し、必要に応じてPaidへ移行す
 後続#213へ追加するScope:
 
 - Googleログイン必須のマイプロフィール、本人email・連携状態・解除導線・ログアウト/選び直し、Web session APIと公開名更新/アカウント削除API、状態別wireframe。
-- Windows名前編集をread-only表示とWeb導線へ移す。Web初回既定名、既存名保持、明示cache更新、Bearer名更新/アカウント削除拒否。
+- 公開名の表示・編集はWebへ集約する。App通常画面の名前表示・情報更新は除去し、対象確認用metadataは維持する。Web初回既定名、既存名保持、Google連携状態に応じたApp導線、Bearer名更新/アカウント削除拒否。
 - 最小D1 session/認証待機保存、Worker-first管理page routing、既存公開ページ/同期との境界、対象テストと手動確認。
 
 Non-scopeは14を継承し、追加プロフィール項目、WebからのBest編集/同期再開、管理機能の横展開、本番OAuth設定変更/deploy/有料プラン変更を含めない。
@@ -119,9 +132,11 @@ Non-scopeは14を継承し、追加プロフィール項目、WebからのBest�
 | P2 | 検証済みGoogle identityから同じPlayerを解決。正しいaudでazp欠落は成功、同clientのazpは成功、別client/型不正azp・別環境/client/aud/追加audienceは拒否。state/nonce/browser binding不正、認証待機期限切れ/replay、任意戻り先を拒否 |
 | P3 | 自分の公開名だけ更新できる。入力境界、任意Player指定、未連携、別Google identity、HTML/JSONへの名前安全表示を検証。ID/URL/Credential/Best/公開Best日時/Local履歴を維持 |
 | P4 | opaque sessionのdigest保存・24時間期限・cookie属性・Google token非保存・環境分離・no-store、Origin/CSRF拒否。emailは本人session画面だけ、expiry/logoutで当該sessionを削除、unlinkで同issuer/subの全session/email/認証待機・未完了承認をatomic失効。他identityは維持。別ブラウザの旧sessionとunlink並行requestを拒否し、後日同Googleを別Playerへ連携しても旧sessionへ権限を与えない。未連携でもCSRF取得/ログアウト可能 |
-| P5 | Web新規登録は`Player`、既存名維持、App名前編集なし、設定保存/同期再開で名前PATCHなし。cache更新はserver→表示のみ、OFF中は自動通信なし |
+| P5 | Web新規登録は`Player`、既存名維持、App名前編集なし、設定保存/同期再開で名前PATCHなし。App通常名前表示/情報更新なし、対象確認metadataはserver由来、Google連携済み/未連携/不明の表示を区別、OFF中は自動通信なし |
 | P6 | 全PlayerのBearer名更新/アカウント削除と匿名登録を拒否、データ不変/Credential維持。古いorigin/直接APIでも迂回なし |
 | P7 | 未認証/未連携/session期限/logout/Player削除、保存応答喪失/アカウント切替で誤保存なし。login/logout/名前編集でCredential/連携/同期/Best維持。raw session/secret/tokenの保存・公開/log混入なし、emailの公開/Windows設定混入なし |
 | P8 | 削除は独立OAuthで同issuer/subを再確認→対象再表示→未選択checkbox/最終確認→削除confirmation proof成立→DELETE。通常sessionだけ/通常login callback/CSRFだけではproof発行・削除不可、Appなしでも成立。目的/Player/session/browserの不一致・別Google・replay/消費済みproof拒否。auth_time欠落/古い値でも正しいフローは成功。期限はserver成立時刻から10分（600秒経過で不可）、Google時刻非依存、retry延長なし。全権限/Best/session/staging/操作proof削除がatomic、URL404、Local保持。cancel/認証失敗/transaction失敗は不変。確認成立/DELETE双方の応答喪失は先に保持した結果proofで未成立/確認済み/削除完了を区別し、未成立proofでDELETE不可、retryで別Player削除/自動再作成なし |
 
-手動確認はテスト用Web clientと開発Worker/D1で行う。公開page未ログイン閲覧、App単一入口→Web登録/ログイン→プロフィール編集→公開page、Windows名cache更新、未登録/別Google/選び直し/cancel/session期限/logout、解除/再連携、空DB引き継ぎ後の追加・改善同期、アカウント削除cancel/完了とApp401、PC/390px表示を確認する。追加でSecurity Bundle未設定/既存Google SSOでも操作専用OAuth確認が成立しGoogle側の再認証を要求しないこと、通常sessionだけからの危険操作拒否、目的/別Google/期限/replay拒否、App紛失状態でのWeb削除、別ブラウザの解除前sessionから全管理APIが401、同Google再連携後も旧sessionが使えないことを確認する。repository既定CI、14のT1〜T10、16のH1〜H6は後続実装。設計変更は文書整合・wireframe・差分検証のみ。
+| P9 | Web公開記録削除は専用Google identity再確認/操作proofと送信停止・削除確認を要求。通常session/他purpose/別Google/期限/失効/取消からの削除拒否、atomic消費、同proof再試行で再送済み記録を再削除しない。公開URL/Player/Google/session/active App Credential/Localを保持し、App再開で現在capture集合を再送 |
+
+手動確認はテスト用Web clientと開発Worker/D1で行う。公開page未ログイン閲覧、App単一入口→Web登録/ログイン→プロフィール編集→公開page、App名前表示/情報更新の除去とGoogle状態別導線、未登録/別Google/選び直し/cancel/session期限/logout、解除/再連携、空DB引き継ぎ後の追加・改善同期、アカウント削除cancel/完了とApp401、PC/390px表示を確認する。追加でSecurity Bundle未設定/既存Google SSOでも操作専用OAuth確認が成立しGoogle側の再認証を要求しないこと、通常sessionだけからの危険操作拒否、目的/別Google/期限/replay拒否、App紛失状態でのWeb削除、別ブラウザの解除前sessionから全管理APIが401、同Google再連携後も旧sessionが使えないことを確認する。repository既定CI、14のT1〜T10、16のH1〜H6は後続実装。設計変更は文書整合・wireframe・差分検証のみ。

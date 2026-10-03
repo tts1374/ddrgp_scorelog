@@ -31,7 +31,7 @@
       <option value="register">Web・新規登録の確認</option>
       <option value="already-registered">新規登録・登録済みGoogle</option>
       <option value="login-unregistered">ログイン・未登録Google</option>
-      <option value="app-off">App・連携停止中</option>
+      <option value="app-off">App・Webへの送信を停止中</option>
       <option value="app-on">App・同期ON</option>
       <option value="app-invalid">App・権限失効 / 認証情報を読み込めない</option>
       <option value="app-reset">App・このPCの連携情報の削除確認</option>
@@ -44,13 +44,15 @@
       <option value="link">既存公開ユーザーへのGoogle連携</option>
       <option value="recover">このPCへの引き継ぎ確認</option>
       <option value="waiting">アプリへの保存・完了確認待ち</option>
-      <option value="register-complete">新規登録完了・同期OFF</option>
-      <option value="complete">引き継ぎ完了・同期OFF</option>
+      <option value="register-complete">新規登録完了・同期ON</option>
+      <option value="complete">引き継ぎ完了・同期ON</option>
       <option value="cancelled">Googleログイン中止</option>
       <option value="auth-failed">Googleログイン失敗</option>
       <option value="waiting-failed">アプリ保存・完了結果を確認できない</option>
       <option value="unlink">Google連携解除・アプリ確認済み</option>
       <option value="unlink-help">Google連携解除・アプリ確認手順</option>
+      <option value="public-delete">公開記録削除の確認</option>
+      <option value="public-deleted">公開記録削除完了・App再開案内</option>
       <option value="delete">Web・アカウント削除確認</option>
       <option value="deleted">Web・アカウント削除完了</option>
     </select>
@@ -60,9 +62,9 @@
   <header><div><strong>GP Score Log</strong><span class="muted">公開ユーザーの管理</span></div></header>
   <main>
     <section id="app-view" hidden>
-      <h1>公開データの同期</h1>
+      <h1>Webに自己ベストを送る</h1>
       <div class="card" id="app-start"><p>公開アカウントを作成するか、これまでのアカウントをこのPCへ引き継ぎます。</p><div class="actions"><button class="primary" data-next="entry">アカウントを作成・引き継ぐ</button></div></div>
-      <div class="card" id="app-connected" hidden><div class="line"><span>公開プレーヤー名</span><strong id="app-public-name">DDR GP Player</strong></div><div class="notice" id="app-status" role="status">連携停止中</div><p>Webにはこれまで公開した自己ベストが残ります。このPCから新しい記録・改善した記録を追加できます。</p><div class="actions"><button class="primary" id="app-toggle">連携を再開する</button><button class="public-demo-button">公開ページを開く</button><button id="app-sync" disabled>今すぐ同期する</button></div><div class="actions"><button data-next="profile">マイプロフィールを開く</button><button data-next="link">Web連携</button></div><p id="app-note" class="muted">このPCのスコア履歴は0件、同期対象は0譜面です。Webの862譜面は保持されます。</p></div>
+      <div class="card" id="app-connected" hidden><div class="notice" id="app-status" role="status">Webへの送信を停止中</div><p>Webにはこれまで公開した自己ベストが残ります。このPCから新しい記録・改善した記録を追加できます。</p><div class="actions"><button class="primary" id="app-toggle">Webへの送信を再開する</button><button class="public-demo-button">公開ページを開く</button><button id="app-sync" disabled>今すぐWebに送る</button></div><div class="actions"><button data-next="profile">マイプロフィールを開く</button><button data-next="profile">Google連携の設定をWebで開く</button></div><p id="app-note" class="muted">このPCのスコア履歴は0件、同期対象は0譜面です。Webの862譜面は保持されます。</p></div>
     </section>
     <section id="app-invalid-view" hidden><h1>このPCの連携を確認してください</h1><div class="notice error">認証情報が失効しているか、読み込めません。同じアカウントでログインし直してください。</div><p class="value">これまでの公開URL: https://example.com/player/demo-player</p><div class="actions"><button class="primary" data-next="entry">アカウントを作成・引き継ぐ</button><button data-next="app-reset">このPCの連携情報を削除</button></div><p class="muted">削除済みアカウント等で戻れない場合は、このPCの連携情報を確認して削除できます。新規登録は、その後の別操作です。</p></section>
     <section id="app-reset-view" hidden><h1>このPCの連携情報を削除</h1><div class="card"><p class="value">これまでの公開URL: https://example.com/player/demo-player</p><div class="notice">このPCの認証情報だけを消します。Webの公開ユーザー・公開BestとPC内のスコア履歴は削除しません。同期は停止中になります。</div><div class="actions"><button class="danger" data-next="app-unregistered">このPCの連携情報を削除する</button><button data-next="app-invalid">キャンセル</button></div></div></section>
@@ -76,15 +78,18 @@
       <div class="card" id="name-card"><h2>公開プロフィール</h2><form id="name-form"><label for="player-name">公開プレーヤー名</label><input id="player-name" type="text" value="DDR GP Player" maxlength="64" required><p class="muted">1〜64文字。公開ページに表示されます。</p><label for="public-url">公開URL</label><input id="public-url" type="text" readonly value="https://example.com/player/demo-player"><div class="actions"><button class="primary" type="submit">名前を保存</button><button type="button" id="open-public">公開ページを開く</button></div></form><p id="public-demo" class="muted" hidden>wireframeの公開URLは仮の値です。</p></div>
       <div class="card" id="unlinked-card" hidden><h2>公開ユーザーが登録・連携されていません</h2><p>アプリで「アカウントを作成・引き継ぐ」から開始し、Webで新規登録してください。Google連携を解除した方は、現在のアプリの「Web連携」から同じ公開ユーザーへ再連携できます。</p><p class="muted">ログインだけでは、新しい公開ユーザーは作られません。</p></div>
       <div class="card" id="unlink-card"><h2>Google連携</h2><p>解除すると、このGoogleアカウントでのログイン・PC引き継ぎができなくなります。</p><div class="actions"><button class="danger" data-next="unlink-help">Google連携を解除</button></div></div>
+      <div class="card" id="public-delete-card"><h2>公開記録を作り直す</h2><p>このPCの自己ベストで作り直す場合は、アプリでWebへの送信を止めてから公開記録を削除してください。</p><button class="danger" data-next="public-delete">公開記録を削除する</button></div>
       <div class="card" id="delete-card"><h2>アカウントの削除</h2><p>公開ユーザーとすべてのPCの連携権限を削除します。</p><div class="actions"><button class="danger" data-next="delete">アカウントを削除する</button></div></div>
     </section>
     <section id="login-view" hidden><h1 id="login-title">マイプロフィール</h1><div class="card"><p id="login-message">Googleアカウントでログインしてください。</p><div class="actions"><button class="primary" id="login-retry">Googleでログイン</button></div></div><p class="muted">公開ページはログインせずに閲覧できます。</p></section>
     <section id="authorization-view" hidden><h1 id="authorization-title">このPCへ引き継ぐ</h1><div class="card"><h2>対象の公開ユーザー</h2><div class="line"><span>Googleアカウント</span><strong class="value">player@example.com</strong></div><div class="line"><span>公開名</span><strong id="authorization-name">DDR GP Player</strong></div><p class="value muted" id="authorization-url">https://example.com/player/demo-player</p><div class="actions"><button data-next="entry">別のアカウントでログイン</button></div></div><div class="card"><h2>手元のアプリと照合</h2><p>操作を始めたアプリにも、同じコードが表示されていることを確認してください。</p><div class="code">482 719</div><p id="authorization-message"></p><label class="check"><input id="authorization-check" type="checkbox"><span>手元のアプリとコードが一致しています。</span></label><div class="actions"><button class="primary" id="authorization-button" disabled>このPCへ引き継ぐ</button><button data-next="cancelled">キャンセル</button></div></div></section>
     <section id="waiting-view" hidden><h1>アプリで完了を確認してください</h1><div class="card"><p>新しい認証情報をアプリへ保存しています。</p><p id="waiting-message">引き継ぎの場合、保存に失敗しても旧PCは引き続き利用できます。新規登録済みのアカウントは、保存に失敗しても保持されます。</p><div class="notice">スコア履歴は移行されません。引き継ぎの場合、既存の公開Bestは保持されます。</div></div></section>
     <section id="waiting-failed-view" hidden><h1>アプリで状態を確認してください</h1><div class="notice error">この画面ではPCへの連携完了を確認できませんでした。アプリで結果を確認してください。新しいアカウントは自動作成されません。</div><p>新規登録済みのアカウントは保持されます。引き継ぎでは、アプリの保存・権限移行が未完了なら旧PCの権限は残ります。</p></section>
-    <section id="register-complete-view" hidden><h1>アカウントの作成とこのPCへの連携が完了しました</h1><div class="card"><p>公開プレーヤー名: Player</p><p class="value">https://example.com/player/new-player</p><p>同期は停止中です。アプリで「連携を再開する」を押すと、このPCの同期対象の記録を公開します。公開名はマイプロフィールで変更できます。</p><div class="actions"><button data-next="profile">マイプロフィールへ</button></div></div></section>
-    <section id="complete-view" hidden><h1>このPCへの引き継ぎが完了しました</h1><div class="notice success">同じ公開ユーザー・公開URLを利用できます。</div><div class="card"><div class="line"><span>Webの公開Best</span><strong>862譜面</strong></div><div class="line"><span>このPCのスコア履歴</span><strong>0件</strong></div><div class="line"><span>このPCの同期対象</span><strong>0譜面</strong></div><p>Webにはこれまで公開した自己ベストが残ります。このPCからは新しい記録や改善した記録を追加します。</p><p>アプリで「連携を再開する」を押してください。スコア履歴の移行は、バックアップから別途行えます。</p><p class="muted">旧PCからの同期・管理は停止しました。</p><div class="actions"><button class="primary" data-next="app-off">アプリ側の表示を確認</button><button data-next="profile">マイプロフィールへ</button></div></div></section>
+    <section id="register-complete-view" hidden><h1>アカウントの作成とこのPCへの連携が完了しました</h1><div class="card"><p>公開プレーヤー名: Player</p><p class="value">https://example.com/player/new-player</p><p>アプリで同期が始まります。このPCで自動記録した自己ベストをWebに送ります。名前はマイプロフィールで変更できます。</p><div class="actions"><button data-next="profile">マイプロフィールへ</button></div></div></section>
+    <section id="complete-view" hidden><h1>このPCへの引き継ぎが完了しました</h1><div class="notice success">同じ公開ユーザー・公開URLを利用できます。</div><div class="card"><div class="line"><span>Webの公開Best</span><strong>862譜面</strong></div><div class="line"><span>このPCのスコア履歴</span><strong>0件</strong></div><div class="line"><span>このPCの同期対象</span><strong>0譜面</strong></div><p>Webにはこれまで公開した自己ベストが残ります。このPCからは新しい記録や改善した記録を追加します。</p><p>アプリで同期が始まります。スコア履歴をこのPCに移すには、バックアップを使ってください。</p><p class="muted">旧PCからの同期・管理は停止しました。</p><div class="actions"><button class="primary" data-next="app-off">アプリ側の表示を確認</button><button data-next="profile">マイプロフィールへ</button></div></div></section>
     <section id="unlink-view" hidden><h1>Google連携を解除</h1><div class="card"><p class="value">player@example.com</p><div id="unlink-help"><p>現在利用できるアプリで「Web連携」から「Google連携を解除」を選び、この画面で確認してください。</p><p class="muted">解除後もアプリを利用できることを確認してから、解除します。</p></div><div id="unlink-confirm" hidden><p>手元アプリとの確認が完了しました。</p><div class="notice">このGoogleアカウントでのログイン・PC引き継ぎができなくなります。現在のアプリから再連携できます。公開URL・公開Best・アプリの記録は保持されます。</div><label class="check"><input type="checkbox" id="unlink-check"><span>Googleでの引き継ぎができなくなることを確認しました。</span></label><div class="actions"><button class="danger" id="unlink-button" disabled>Google連携を解除する</button></div></div><div class="actions"><button data-next="profile">戻る</button></div></div></section>
+    <section id="public-delete-view" hidden><h1>公開記録を削除する</h1><div class="card"><p>対象のアカウント: <strong id="public-delete-name">DDR GP Player</strong></p><p id="public-delete-url" class="value">https://example.com/player/demo-player</p><div class="notice">Webに公開した自己ベストがすべて消えます。アカウント、Googleとの連携、公開URL、このPCの連携権限、PC内のスコア履歴は残ります。過去PCにしかない公開記録は消えます。</div><p>先にアプリで「Webへの送信を止める」を押してください。</p><button id="public-delete-google">Googleでアカウントを確認</button><p id="public-delete-confirmed" hidden>同じGoogleアカウントを確認しました。削除する対象と内容を確認してください。</p><label class="check"><input type="checkbox" id="public-delete-check" disabled><span>アプリの送信を止め、公開記録がすべて消えることを確認しました。</span></label><div class="actions"><button class="danger" id="public-delete-final" disabled>公開記録を削除する</button><button data-next="profile">キャンセル</button></div></div></section>
+    <section id="public-deleted-view" hidden><h1>公開記録を削除しました</h1><div class="notice success">アカウント、Googleとの連携、公開URL、このPCの連携権限、PC内のスコア履歴は残っています。</div><p>アプリで「Webへの送信を再開する」を押すと、このPCで自動記録した自己ベストを送り直します。送信対象が0件なら公開記録は空のままです。</p><button data-next="profile">マイプロフィールへ</button></section>
     <section id="delete-view" hidden><h1>アカウントを削除する</h1><div class="card"><p class="value">player@example.com</p><strong id="delete-public-name">DDR GP Player</strong><p class="value" id="delete-public-url">https://example.com/player/demo-player</p><div class="notice error">公開Best、Google連携、すべてのPCの連携権限が削除され、公開URLは利用できなくなります。PC内のスコア履歴は残ります。</div><p id="delete-auth-message">Googleで同じアカウントを確認してください。その後、削除する対象をもう一度確認します。</p><div class="actions"><button id="delete-reauth">Googleでアカウントを確認</button></div><label class="check"><input id="delete-check" type="checkbox" disabled><span>アカウントと公開Bestを削除することを確認しました。</span></label><div class="actions"><button class="danger" id="delete-button" disabled>このアカウントを削除する</button><button data-next="profile">キャンセル</button></div></div></section>
     <section id="deleted-view" hidden><h1>アカウントを削除しました</h1><div class="notice">公開URLとすべてのPCの連携権限は利用できなくなりました。PC内のスコア履歴は残っています。</div></section>
     <footer>GP Score Log</footer>
@@ -110,7 +115,6 @@
         document.getElementById('player-name').value = account.name;
         document.getElementById('public-url').value = account.url;
       }
-      document.getElementById('app-public-name').textContent = account.name;
       document.getElementById('app-note').textContent = `このPCのスコア履歴は0件、同期対象は0譜面です。Webの${account.bests}譜面は保持されます。`;
       document.getElementById('delete-public-name').textContent = account.name;
       document.getElementById('delete-public-url').textContent = account.url;
@@ -122,14 +126,14 @@
       const profile = ['profile','unlinked','saved','error'].includes(value);
       if (profile) {
         document.getElementById('profile-view').hidden = false;
-        ['name-card','unlink-card','delete-card','linked-badge'].forEach(id => document.getElementById(id).hidden = value === 'unlinked');
+        ['name-card','unlink-card','delete-card','public-delete-card','linked-badge'].forEach(id => document.getElementById(id).hidden = value === 'unlinked');
         document.getElementById('unlinked-card').hidden = value !== 'unlinked';
       } else if (['app-unregistered','app-off','app-on'].includes(value)) {
         document.getElementById('app-view').hidden = false;
         document.getElementById('app-start').hidden = value !== 'app-unregistered';
         document.getElementById('app-connected').hidden = value === 'app-unregistered';
-        document.getElementById('app-status').textContent = value === 'app-on' ? '同期ON・未送信の変更はありません' : '連携停止中';
-        document.getElementById('app-toggle').textContent = value === 'app-on' ? '連携を停止する' : '連携を再開する';
+        document.getElementById('app-status').textContent = value === 'app-on' ? '送信済み・まだ送っていない記録はありません' : 'Webへの送信を停止中';
+        document.getElementById('app-toggle').textContent = value === 'app-on' ? 'Webへの送信を止める' : 'Webへの送信を再開する';
         document.getElementById('app-sync').disabled = value !== 'app-on';
       } else if (value === 'entry') {
         document.getElementById('entry-view').hidden = false;
@@ -153,7 +157,7 @@
         document.getElementById('authorization-name').textContent = registering ? 'Player（作成後に変更できます）' : 'DDR GP Player';
         document.getElementById('authorization-url').textContent = registering ? '公開URLは作成完了後に発行されます。' : 'https://example.com/player/demo-player';
         document.getElementById('authorization-button').textContent = registering ? 'このアカウントを作成する' : linking ? 'この公開ユーザーに連携する' : 'このPCへ引き継ぐ';
-        document.getElementById('authorization-message').textContent = registering ? '新しい公開ユーザーを作成し、このPCと連携します。同期は停止中で始まります。PC内のスコア履歴は変更されません。' : linking ? '現在のアプリと同じ公開ユーザーにGoogleアカウントを連携します。公開Best・スコア履歴・同期設定は変更しません。' : 'アプリへの保存完了後、旧PCからの同期・管理を停止します。公開Bestは残り、このPCのスコア履歴は変更されません。';
+        document.getElementById('authorization-message').textContent = registering ? 'アカウントを作成して、このPCと連携します。アプリへの保存が終わると、自己ベストをWebに送り始めます。PC内のスコア履歴はそのまま残ります。' : linking ? '現在のアプリと同じ公開ユーザーにGoogleアカウントを連携します。公開Best・スコア履歴・同期設定は変更しません。' : 'アプリへの保存が終わると、旧PCからの同期・管理を停止し、このPCから自己ベストをWebに送り始めます。Webの記録とこのPCのスコア履歴は残ります。';
         document.getElementById('authorization-check').checked = false;
         document.getElementById('authorization-button').disabled = true;
       } else if (['unlink','unlink-help'].includes(value)) {
@@ -162,6 +166,18 @@
         document.getElementById('unlink-confirm').hidden = value !== 'unlink';
         document.getElementById('unlink-check').checked = false;
         document.getElementById('unlink-button').disabled = true;
+      } else if (value === 'public-delete') {
+        document.getElementById('public-delete-view').hidden = false;
+        document.getElementById('public-delete-name').textContent = account.name;
+        document.getElementById('public-delete-url').textContent = account.url;
+        document.getElementById('public-delete-check').checked = false;
+        document.getElementById('public-delete-check').disabled = true;
+        document.getElementById('public-delete-final').disabled = true;
+        document.getElementById('public-delete-google').hidden = false;
+        document.getElementById('public-delete-confirmed').hidden = true;
+      } else if (value === 'public-deleted') {
+        account.bests = 0;
+        document.getElementById('public-deleted-view').hidden = false;
       } else if (value === 'delete') {
         document.getElementById('delete-view').hidden = false;
         document.getElementById('delete-check').checked = false;
@@ -182,12 +198,15 @@
     document.getElementById('unlink-check').addEventListener('change', event => document.getElementById('unlink-button').disabled = !event.target.checked);
     document.getElementById('unlink-button').addEventListener('click', () => show('signedout'));
     document.getElementById('app-toggle').addEventListener('click', () => show(state.value === 'app-on' ? 'app-off' : 'app-on'));
-    document.getElementById('app-sync').addEventListener('click', () => document.getElementById('app-status').textContent = '同期完了・このPCの同期対象は0譜面です');
+    document.getElementById('app-sync').addEventListener('click', () => document.getElementById('app-status').textContent = '送信済み・このPCから送る自己ベストは0譜面です');
     document.querySelectorAll('.public-demo-button').forEach(button => button.addEventListener('click', () => document.getElementById('app-note').textContent = 'wireframeの公開URLは仮の値です。'));
     document.getElementById('registration-result-button').addEventListener('click', () => show(state.value === 'already-registered' ? 'recover' : 'register'));
     document.getElementById('delete-check').addEventListener('change', event => document.getElementById('delete-button').disabled = !event.target.checked);
     document.getElementById('delete-reauth').addEventListener('click', () => {document.getElementById('delete-reauth').hidden = true; document.getElementById('delete-check').disabled = false; document.getElementById('delete-check').checked = false; document.getElementById('delete-button').disabled = true; document.getElementById('delete-auth-message').textContent = '同じGoogleアカウントを確認しました。表示されている対象の削除を確認してください。';});
     document.getElementById('delete-button').addEventListener('click', () => show('deleted'));
+    document.getElementById('public-delete-google').addEventListener('click', () => {document.getElementById('public-delete-google').hidden = true; document.getElementById('public-delete-confirmed').hidden = false; document.getElementById('public-delete-check').disabled = false;});
+    document.getElementById('public-delete-check').addEventListener('change', event => document.getElementById('public-delete-final').disabled = !event.target.checked);
+    document.getElementById('public-delete-final').addEventListener('click', () => show('public-deleted'));
     show('app-unregistered');
   </script>
 </body>

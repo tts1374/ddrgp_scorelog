@@ -8,7 +8,8 @@
     "not_found_handling": "single-page-application",
     "run_worker_first": [
       "/api/*",
-      "/player/*"
+      "/player/*",
+      "/my/*"
     ]
   },
   "vars": {
@@ -21,5 +22,21 @@
       "database_id": "9e7b336e-5880-4a47-a45d-375d2b5ab750",
       "migrations_dir": "migrations"
     }
-  ]
+  ],
+  "env": {
+    "dev": {
+      "name": "ddrgp-scorelog-dev",
+      "vars": {
+        "PUBLIC_WEB_ORIGIN": "https://ddrgp-scorelog-dev.tts1374.workers.dev"
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "ddrgp-scorelog-web-db-dev",
+          "database_id": "fd9ce78f-90fe-4571-ac84-563330c10198",
+          "migrations_dir": "migrations"
+        }
+      ]
+    }
+  }
 }

@@ -24,7 +24,7 @@ export function serializeBootstrap(value: unknown): string {
     .replaceAll("\u2029", "\\u2029");
 }
 
-function randomNonce(): string {
+export function randomNonce(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(18));
   let binary = "";
   for (const byte of bytes) binary += String.fromCharCode(byte);
@@ -44,7 +44,7 @@ function publicOrigin(c: Context<AppEnvironment>): URL {
   return new URL(c.req.url);
 }
 
-function securityHeaders(nonce: string): HeadersInit {
+export function securityHeaders(nonce: string): HeadersInit {
   return {
     "Cache-Control": "no-store",
     "Content-Security-Policy": [

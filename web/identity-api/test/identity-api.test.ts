@@ -1,194 +1,73 @@
 import { env, exports } from "cloudflare:workers";
 import { applyD1Migrations, reset } from "cloudflare:test";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-
-interface RegistrationResponse {
-  public_player_id: string;
-  display_name: string;
-  created_at: string;
-  updated_at: string;
-  credential: string;
-}
-
-const baseUrl = "https://identity.example.test";
-const defaultRegistrationRequestId = "registration-request-0000000000000001";
-
-async function register(
-  idempotencyKey = defaultRegistrationRequestId,
-  displayName = "Player",
-): Promise<{ response: Response; body: RegistrationResponse }> {
-  const response = await exports.default.fetch(`${baseUrl}/api/v1/players/register`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Idempotency-Key": idempotencyKey,
-    },
-    body: JSON.stringify({ display_name: displayName }),
-  });
-  return { response, body: await response.json<RegistrationResponse>() };
-}
-
-function authenticatedHeaders(credential: string): HeadersInit {
-  return { Authorization: `Bearer ${credential}` };
-}
+import { beforeEach, expect, it } from "vitest";
+import { seedPlayer, origin } from "./account-fixture";
 
 beforeEach(async () => {
   await reset();
   await applyD1Migrations(env.DB, env.TEST_MIGRATIONS);
 });
-
-describe("Player identity API", () => {
-  it("registers one Player and makes registration retries idempotent", async () => {
-    const first = await register(undefined, "2ten");
-    const retry = await register(undefined, "ignored on retry");
-
-    expect(first.response.status).toBe(201);
-    expect(retry.response.status).toBe(200);
-    expect(retry.body).toEqual(first.body);
-    expect(first.body.public_player_id).toMatch(/^p_[A-Za-z0-9_-]{22}$/u);
-    expect(first.body.credential).toMatch(/^ac_[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{43}$/u);
-
-    const playerCount = await env.DB.prepare("SELECT COUNT(*) AS count FROM players")
-      .first<{ count: number }>();
-    const credentialCount = await env.DB.prepare(
-      "SELECT COUNT(*) AS count FROM player_credentials",
-    ).first<{ count: number }>();
-    const registrationRequest = await env.DB.prepare(
-      "SELECT request_digest FROM player_registration_requests",
-    ).first<{ request_digest: string }>();
-    expect(playerCount?.count).toBe(1);
-    expect(credentialCount?.count).toBe(1);
-    expect(registrationRequest?.request_digest).toMatch(/^[0-9a-f]{64}$/u);
-    expect(registrationRequest?.request_digest).not.toContain(defaultRegistrationRequestId);
-  });
-
-  it("serializes concurrent registration retries without orphan Players", async () => {
-    const requestId = "concurrent-registration-request-000001";
-    const [left, right] = await Promise.all([
-      register(requestId),
-      register(requestId),
-    ]);
-
-    expect([left.response.status, right.response.status].sort()).toEqual([200, 201]);
-    expect(left.body).toEqual(right.body);
-    const counts = await env.DB.prepare(
-      `SELECT
-         (SELECT COUNT(*) FROM players) AS players,
-         (SELECT COUNT(*) FROM player_credentials) AS credentials,
-         (SELECT COUNT(*) FROM player_registration_requests) AS requests`,
-    ).first<{ players: number; credentials: number; requests: number }>();
-    expect(counts).toEqual({ players: 1, credentials: 1, requests: 1 });
-  });
-
-  it("authenticates, returns the current Player, and preserves public identity on update", async () => {
-    const registration = await register();
-
-    const current = await exports.default.fetch(`${baseUrl}/api/v1/me`, {
-      headers: authenticatedHeaders(registration.body.credential),
+it("T10/P6 rejects anonymous registration on every origin without creating data", async () => {
+  for (const host of [origin, "https://old-worker.example.test"]) {
+    const response = await exports.default.fetch(`${host}/api/v1/players/register`, {
+      method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": "legacy-request-00000000000000000000" },
+      body: JSON.stringify({ display_name: "Player" }),
     });
-    expect(current.status).toBe(200);
-    expect(await current.json()).toMatchObject({
-      public_player_id: registration.body.public_player_id,
-      display_name: "Player",
-    });
-
-    const update = await exports.default.fetch(`${baseUrl}/api/v1/me`, {
-      method: "PATCH",
-      headers: {
-        ...authenticatedHeaders(registration.body.credential),
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ display_name: "Updated player" }),
-    });
-    expect(update.status).toBe(200);
-    expect(await update.json()).toMatchObject({
-      public_player_id: registration.body.public_player_id,
-      display_name: "Updated player",
-    });
-  });
-
-  it("returns the same generic 401 for unknown and incorrect credentials", async () => {
-    const registration = await register();
-    const [credentialId] = registration.body.credential.split(".");
-    const unknown = `ac_AAAAAAAAAAAAAAAAAAAAAA.${"B".repeat(43)}`;
-    const incorrect = `${credentialId}.${"C".repeat(43)}`;
-
-    for (const credential of [unknown, incorrect]) {
-      const response = await exports.default.fetch(`${baseUrl}/api/v1/me`, {
-        headers: authenticatedHeaders(credential),
+    expect(response.status).toBe(410);
+    expect(await response.json()).toMatchObject({ error: { code: "REGISTRATION_MOVED_TO_WEB" } });
+  }
+  expect((await env.DB.prepare("SELECT COUNT(*) AS count FROM players").first())?.count).toBe(0);
+});
+it("T10/P6 rejects Bearer name changes and account deletion and preserves identity", async () => {
+  const player = await seedPlayer("Existing name");
+  for (const host of [origin, "https://old-worker.example.test"]) {
+    for (const [method, code] of [["PATCH", "WEB_PROFILE_REQUIRED"], ["DELETE", "WEB_ACCOUNT_REQUIRED"]]) {
+      const response = await exports.default.fetch(`${host}/api/v1/me`, {
+        method, headers: { Authorization: `Bearer ${player.credential}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ display_name: "Other name" }),
       });
-      expect(response.status).toBe(401);
-      expect(await response.json()).toEqual({
-        error: {
-          code: "UNAUTHORIZED",
-          message: "The App Credential is invalid.",
-        },
-      });
+      expect(response.status).toBe(409);
+      expect(await response.json()).toMatchObject({ error: { code } });
     }
-  });
-
-  it("fully deletes the Player and invalidates every associated credential", async () => {
-    const registration = await register();
-    const deletion = await exports.default.fetch(`${baseUrl}/api/v1/me`, {
-      method: "DELETE",
-      headers: authenticatedHeaders(registration.body.credential),
-    });
-    expect(deletion.status).toBe(204);
-
-    const retry = await exports.default.fetch(`${baseUrl}/api/v1/me`, {
-      headers: authenticatedHeaders(registration.body.credential),
-    });
-    expect(retry.status).toBe(401);
-    const counts = await env.DB.prepare(
-      `SELECT
-         (SELECT COUNT(*) FROM players) AS players,
-         (SELECT COUNT(*) FROM player_credentials) AS credentials,
-         (SELECT COUNT(*) FROM player_registration_requests) AS requests`,
-    ).first<{ players: number; credentials: number; requests: number }>();
-    expect(counts).toEqual({ players: 0, credentials: 0, requests: 0 });
-  });
-
-  it("stores only digests and permits multiple credentials for one Player", async () => {
-    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
-    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
-    const registration = await register();
-    const [credentialId, secret] = registration.body.credential.split(".");
-
-    const row = await env.DB.prepare(
-      "SELECT player_id, secret_digest FROM player_credentials WHERE id = ?1",
-    )
-      .bind(credentialId)
-      .first<{ player_id: string; secret_digest: string }>();
-    expect(row?.secret_digest).toMatch(/^[0-9a-f]{64}$/u);
-    expect(row?.secret_digest).not.toContain(secret);
-
-    await env.DB.prepare(
-      `INSERT INTO player_credentials
-         (id, player_id, type, secret_digest, created_at)
-       VALUES (?1, ?2, 'app', ?3, ?4)`,
-    )
-      .bind(`ac_${"Z".repeat(22)}`, row?.player_id, "f".repeat(64), new Date().toISOString())
-      .run();
-    const count = await env.DB.prepare(
-      "SELECT COUNT(*) AS count FROM player_credentials WHERE player_id = ?1",
-    )
-      .bind(row?.player_id)
-      .first<{ count: number }>();
-    expect(count?.count).toBe(2);
-    expect(log).not.toHaveBeenCalledWith(expect.stringContaining(secret));
-    expect(error).not.toHaveBeenCalledWith(expect.stringContaining(secret));
-    log.mockRestore();
-    error.mockRestore();
-  });
-
-  it("rejects plaintext transport before processing credentials", async () => {
-    const response = await exports.default.fetch(
-      "http://identity.example.test/api/v1/me",
-      { headers: authenticatedHeaders(`ac_${"A".repeat(22)}.${"B".repeat(43)}`) },
-    );
-    expect(response.status).toBe(400);
-    expect(await response.json()).toMatchObject({
-      error: { code: "HTTPS_REQUIRED" },
-    });
-  });
+  }
+  const response = await exports.default.fetch(`${origin}/api/v1/me`, { headers: { Authorization: `Bearer ${player.credential}` } });
+  expect(response.status).toBe(200);
+  expect(await response.json()).toMatchObject({ public_player_id: player.public_player_id, display_name: player.display_name,
+    google_linked: false, activation_state: "active" });
+});
+it("returns the same generic 401 for unknown, incorrect, revoked and pending credentials", async () => {
+  const player = await seedPlayer();
+  const [id] = player.credential.split(".");
+  for (const token of [`ac_${"A".repeat(22)}.${"B".repeat(43)}`, `${id}.${"C".repeat(43)}`]) {
+    const response = await exports.default.fetch(`${origin}/api/v1/me`, { headers: { Authorization: `Bearer ${token}` } });
+    expect(response.status).toBe(401);
+    expect(await response.json()).toEqual({ error: { code: "UNAUTHORIZED", message: "The App Credential is invalid." } });
+  }
+  await env.DB.prepare("UPDATE player_credentials SET activation_state = 'pending'").run();
+  expect((await exports.default.fetch(`${origin}/api/v1/me`, { headers: { Authorization: `Bearer ${player.credential}` } })).status).toBe(401);
+  await env.DB.prepare("UPDATE player_credentials SET activation_state = 'active', revoked_at = 'revoked'").run();
+  expect((await exports.default.fetch(`${origin}/api/v1/me`, { headers: { Authorization: `Bearer ${player.credential}` } })).status).toBe(401);
+});
+it("stores digests and keeps Player:Credential 1:N", async () => {
+  const player = await seedPlayer();
+  const row = await env.DB.prepare("SELECT secret_digest FROM player_credentials").first<{ secret_digest: string }>();
+  expect(row?.secret_digest).toMatch(/^[a-f0-9]{64}$/u);
+  expect(row?.secret_digest).not.toContain(player.credential.split(".")[1]);
+  await env.DB.prepare("INSERT INTO player_credentials (id,player_id,type,secret_digest,created_at) VALUES (?1,?2,'app',?3,'fixture')")
+    .bind(`ac_${"Z".repeat(22)}`, player.id, "f".repeat(64)).run();
+  expect((await env.DB.prepare("SELECT COUNT(*) AS count FROM player_credentials").first())?.count).toBe(2);
+});
+it("migrates development identity without deleting or recreating ownership", async () => {
+  await reset();
+  await applyD1Migrations(env.DB, env.TEST_MIGRATIONS.slice(0, 5));
+  const player = await seedPlayer("Keep this name");
+  const before = await env.DB.prepare("SELECT * FROM players").first();
+  await applyD1Migrations(env.DB, env.TEST_MIGRATIONS);
+  expect(await env.DB.prepare("SELECT * FROM players").first()).toEqual(before);
+  expect(await env.DB.prepare("SELECT player_id, activation_state FROM player_credentials").first()).toEqual({ player_id: player.id, activation_state: "active" });
+});
+it("rejects plaintext before processing credentials", async () => {
+  const response = await exports.default.fetch("http://identity.example.test/api/v1/me");
+  expect(response.status).toBe(400);
+  expect(await response.json()).toMatchObject({ error: { code: "HTTPS_REQUIRED" } });
 });

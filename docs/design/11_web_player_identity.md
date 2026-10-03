@@ -1,6 +1,6 @@
 # Web Player identity設計
 
-Issue #203で実装するWeb Player identity、App Credential、Windows側identity stateの正本です。Player Best同期、Web Player Data、Rankingは扱いません。長期的な責務分離の理由は[`ADR 0006`](../adr/0006-stable-web-player-identity-and-app-credential-boundary.md)に記録します。
+Issue #203のWeb Player identity、App Credential、Windows側identity stateの初期設計記録です。#213の現在の登録・復旧・Google連携・管理契約は[`14`](14_google_player_recovery.md)、[`15`](15_web_my_profile.md)、[`ADR 0012`](../adr/0012-purpose-bound-google-identity-confirmation.md)を正本とします。本書の匿名登録・Bearer編集・削除・設定保存からの登録とmetadata先行削除は初期実装の記録です。現在はApp単一入口のWeb承認、DPAPI保存後のactivation、Web管理、削除失敗時に旧IDを残すlocal解除を実装します。長期的な責務分離の理由は[`ADR 0006`](../adr/0006-stable-web-player-identity-and-app-credential-boundary.md)に記録します。
 
 ## 責務境界
 

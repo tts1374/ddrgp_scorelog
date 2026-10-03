@@ -15,6 +15,10 @@ export default defineConfig({
         bindings: {
           CREDENTIAL_PEPPER: "test-credential-pepper-at-least-32-bytes",
           REGISTRATION_SECRET: "test-registration-secret-at-least-32-bytes",
+          APP_AUTHORIZATION_SECRET: "test-app-authorization-secret-at-least-32-bytes",
+          PUBLIC_WEB_ORIGIN: "https://identity.example.test",
+          GOOGLE_CLIENT_ID: "test-client.apps.googleusercontent.com",
+          GOOGLE_CLIENT_SECRET: "test-google-client-secret",
           TEST_MIGRATIONS: await readD1Migrations(
             path.join(directory, "migrations"),
           ),

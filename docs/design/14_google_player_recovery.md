@@ -64,16 +64,16 @@ AUTH_INVALID/復号不能からの本人による再ログインは、失効/読
 
 | シナリオ | 利用者操作 | identity / Credential | 公開URL / Best | Localデータ | 同期 |
 |---|---|---|---|---|---|
-| 未登録→新規作成 | 単一ボタン→Web新規登録→Google選択→作成確認→App保存/activation | 新Player＋Google、active App Credential | 新URL、初期Best空 | 維持 | 初期OFF。本人の「連携を再開する」でmerge |
+| 未登録→新規作成 | 単一ボタン→Web新規登録→Google選択→作成確認→App保存/activation | 新Player＋Google、active App Credential | 新URL、初期Best空 | 維持 | activation成功後にONとなりmergeを開始。送信開始をWeb最終確認で示す |
 | 未連携既存Player→Google連携 | 設定のWeb連携→Google選択→現在Playerへ連携確認 | 同じPlayerへ追加、現在Credential維持 | 同じURL/Best | 維持 | 元のON/OFF維持 |
 | 利用開始後→後日連携 | Google解除後等に設定から同じ連携操作 | 同じPlayer/現在Credential | 維持 | 維持 | OFFでも明示認証可、自動ONなし |
-| 新PCの空DB→Googleログイン | 単一ボタン→Webログイン→既存Player確認→引き継ぎ→App保存/activation | 同じPlayerに新Credential、activationで他App Credential失効 | 同じURL/全Bestを維持 | 空のまま | 初期OFF。本人再開後、空集合no-op、新capture追加可 |
+| 新PCの空DB→Googleログイン | 単一ボタン→Webログイン→既存Player確認→引き継ぎ→App保存/activation | 同じPlayerに新Credential、activationで他App Credential失効 | 同じURL/全Bestを維持 | 空のまま | activation成功後にON。空集合no-op、新capture追加可 |
 | 正式backup復元後→ログイン | 復元と上記引き継ぎを別操作 | 同じPlayer、新Credential | 維持 | manifest履歴を保持 | 再開可。manifestだけなら同期対象0件no-op |
 | 不完全/十分なcapture集合 | 本人が同期再開 | 同じPlayer/active Credential | 新譜面・改善fieldだけ追加、既存Best保持 | 維持 | 完全性に依存せず可 |
 | Google認証cancel/失敗、最終承認前cancel | Web/アプリで中止、本人が再試行 | 操作前の状態を維持。未登録は未登録 | 維持 | 維持 | 自動作成/ONなし |
 | Web登録確定後の受領/保存失敗 | エラー表示、同transaction再照会 | 作成済みPlayer＋Googleは保持、pending Credentialは通常API不可 | 作成済みURL/空Best保持 | 維持 | 新PC不可。期限後は本人loginで同じPlayerへ新transaction |
 | 引き継ぎ承認後の受領/保存失敗 | 同transaction再照会 | 新Credentialは未activation、旧PC有効 | 維持 | 維持 | 新PC不可 |
-| activation応答喪失 | 保存済みCredentialで結果確認 | 成功なら新Credentialのみ有効、再発行/失効取消なし | 維持 | 維持 | 結果確定まで停止。確定後本人再開 |
+| activation応答喪失 | 保存済みCredentialで結果確認 | 成功なら新Credentialのみ有効、再発行/失効取消なし | 維持 | 維持 | 結果確定まで停止。activation成功確認後にON |
 
 「アカウントを作成する」は公開ユーザーの作成、「このPCへ引き継ぐ」は管理権限の移行。どちらもスコア履歴を移さない。新規登録確定後の遅いcancelは登録を巻き戻さず、確定結果を表示する。登録完了とCredential activation完了を別に示す。
 
@@ -111,7 +111,7 @@ transaction TTLは開始から10分。確定登録/link/unlink/activationとcanc
 
 解除後のGoogle再連携は有効Appから開始し、同じPlayerを固定する。初回登録のGoogle必須と、本人操作で後日解除したPlayerの継続利用を区別する。Webログアウトは解除ではない。Googleと全App Credentialの喪失の救済は保証しない。
 
-アカウント全削除は15の同Google identity再確認/削除confirmation proof付きWeb画面だけで行う。Appの公開Best全削除は別操作として16へ維持する。
+アカウント全削除は15の同Google identity再確認/削除confirmation proof付きWeb画面だけで行う。公開記録だけの削除もWebへ集約し、16の送信停止→Web削除→送信再開の手順で現在PCの記録から作り直す。アカウント全削除とは目的と操作proofを分離する。
 
 ## API / 永続化 / Windows状態
 
@@ -128,17 +128,17 @@ transaction TTLは開始から10分。確定登録/link/unlink/activationとcanc
 
 D1はGoogle issuer/sub/Player unique、15の短期session/認証待機/操作proof digest・binding・server成立時刻・expiry・消費状態、App authorizationのpurpose/登録・ログイン意図/開始Player・Credential/expected_public_player_id/secret digest/承認Google/expiry/確定結果、Credential activation stateを保存する。新規登録のPlayer・identity・pending Credential・操作proof消費・確定結果は一つのtransaction。raw Google token/code/secretは保存しない。emailは15の短期session以外へ保存しない。
 
-WindowsはID/secret/pending Credential/結果確認状態を用途別DPAPIで保護し正式DB/backupへ含めない。UNREGISTERED/REGISTERED/AUTH_INVALIDを維持し、独立状態は`AppAuthorizationPending`と`CredentialActivationPending`。既存Playerのlink/unlink中は既存同期維持、新Credential発行・activation待機は新PC送信禁止。完了後REGISTERED＋同期OFF。linkだけなら元の同期状態を維持する。
+WindowsはID/secret/pending Credential/結果確認状態を用途別DPAPIで保護し正式DB/backupへ含めない。UNREGISTERED/REGISTERED/AUTH_INVALIDを維持し、独立状態は`AppAuthorizationPending`と`CredentialActivationPending`。既存Playerのlink/unlink中は既存同期維持、新Credential発行・activation待機は新PC送信禁止。新規登録・引き継ぎのactivation成功後はREGISTERED＋同期ONとなり、このPCのcapture集合をmergeで送信する。Webの最終確認で送信開始を示す。承認だけ、DPAPI保存失敗、activation結果不明では送信を開始しない。link/unlinkだけなら元の同期状態を維持する。
 
 | アプリ状態 | 主操作と結果 |
 |---|---|
 | UNREGISTERED | 「アカウントを作成・引き継ぐ」のみ。同期checkbox/自動登録なし |
 | 認証・activation待機 | 照合コード/進行/中止または結果確認を表示。重複開始と新PC同期を禁止 |
-| REGISTERED＋同期OFF | ステータス「連携停止中」、「連携を再開する」「公開ページを開く」。今すぐ同期は無効 |
-| REGISTERED＋同期ON | ステータスと「連携を停止する」「公開ページを開く」「今すぐ同期する」。送信中は重複同期を禁止 |
+| REGISTERED＋同期OFF | ステータス「Webへの送信を停止中」、「Webへの送信を再開する」「公開ページを開く」。今すぐ同期は無効 |
+| REGISTERED＋同期ON | ステータスと「Webへの送信を止める」「公開ページを開く」「今すぐWebに送る」。送信中は重複同期を禁止 |
 | AUTH_INVALID | 権限失効/削除等を表示。失効Bearerなしの「アカウントを作成・引き継ぐ」で同じPlayerへ明示再ログイン。戻れない場合は確認付き「このPCの連携情報を削除」。自動作成なし |
 
-停止/再開はボタン押下で直ちに設定へ反映し、別の設定保存を待たない。停止はこのPCの送信停止であり、Google解除/Credential失効/公開削除ではない。OFFでも本人のプロフィール/認証/情報更新操作は許す。Google/session失敗はAppのAUTH_INVALIDに変換せず、真のBearer401だけAUTH_INVALID。network/timeout/5xx/契約409をCredential失効として扱わない。
+停止/再開はボタン押下で直ちに設定へ反映し、別の設定保存を待たない。停止はこのPCの送信停止であり、Google解除/Credential失効/公開削除ではない。OFFでも本人のプロフィール/認証操作は許す。Google/session失敗はAppのAUTH_INVALIDに変換せず、真のBearer401だけAUTH_INVALID。network/timeout/5xx/契約409をCredential失効として扱わない。
 
 ## Scope / Non-scope
 
@@ -158,10 +158,10 @@ Non-scope: 本番OAuth設定/D1変更/deploy、Google loginだけの自動Player
 | T6 | activation/他Credential失効/staging無効化がatomic、Best不変。並行activation/旧PC in-flight write/古いretryで失効取消なし。初回同期前に旧PC停止 |
 | T7 | 空DB/manifest復元/不完全captureでも本人再開後merge可、既存Best保持。16のH1〜H6を検証 |
 | T8 | unlinkの同Google identity再確認/操作proof＋有効App proof＋確認、App proof付き確定結果retry、同issuer/subの全session/email/認証待機・操作proof・未完了承認/削除確認のatomic失効を検証。別ブラウザの旧session/並行更新/未完了activationを拒否、再連携で旧sessionを復活させず、他Google session/active App Credential/URL/Best/Localは維持。同じPlayerへの再連携/別Googleを検証 |
-| T9 | 単一App入口→Web新規登録/ログイン→完了OFF。停止/再開は即反映、OFF中今すぐ同期無効/自動通信なし。選び直しは目的/開始Appを維持、cancel/失敗は正しい入口へ戻り、終了/timeout後は本人による新transaction。自動fallbackなし |
+| T9 | 単一App入口→Web新規登録/ログイン→activation成功後ON。承認/DPAPI失敗/結果不明では送信しない。Web最終確認に送信開始を表示。停止/再開は即反映、OFF中今すぐ同期無効/自動通信なし。選び直しは目的/開始Appを維持、cancel/失敗は正しい入口へ戻り、終了/timeout後は本人による新transaction。自動fallbackなし |
 | T10 | 匿名登録/Bearer名前更新/Bearerアカウント削除拒否、秘密/email/subの公開/log混入なし、DPAPI/URL/認証不要閲覧/正式DB/backup維持。Web障害でも正式保存継続 |
 
-手動確認はテストGoogle Web client、開発Worker/D1、別Windowsユーザー/PCで行う。新規登録/登録済みGoogleの再登録、login未登録、旧PC→新PC空DB→保存/activation→旧PC401→本人再開→新capture公開、manifest復元、DPAPI失敗、ブラウザ閉鎖、Google違い、解除/再連携、Web削除を確認。実装時にrepository既定CI、15のP1〜P8、16のH1〜H6が必要。現在は文書/wireframe確認のみ。
+手動確認はテストGoogle Web client、開発Worker/D1、別Windowsユーザー/PCで行う。新規登録/登録済みGoogleの再登録、login未登録、旧PC→新PC空DB→保存/activation成功→旧PC401→同期ON→新capture公開、manifest復元、DPAPI失敗、ブラウザ閉鎖、Google違い、解除/再連携、Web削除を確認。実装時にrepository既定CI、15のP1〜P9、16のH1〜H6が必要。現在は文書/wireframe確認のみ。
 
 ## セキュリティと失敗時
 

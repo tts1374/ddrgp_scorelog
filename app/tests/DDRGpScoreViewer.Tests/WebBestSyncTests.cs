@@ -44,13 +44,14 @@ public sealed class WebBestSyncTests
     }
 
     [Theory]
-    [InlineData(null, "http://127.0.0.1:5173/")]
+    [InlineData(null, "https://ddrgp-scorelog-dev.tts1374.workers.dev/")]
+    [InlineData("http://127.0.0.1:5173", "http://127.0.0.1:5173/")]
     [InlineData("http://localhost:8787", "http://localhost:8787/")]
-    [InlineData("http://remote.example.test", "http://127.0.0.1:5173/")]
+    [InlineData("http://remote.example.test", "https://ddrgp-scorelog-dev.tts1374.workers.dev/")]
     [InlineData("https://staging.example.test", "https://staging.example.test/")]
-    [InlineData("https://ddrgp-scorelog.tts1374.workers.dev", "http://127.0.0.1:5173/")]
-    [InlineData("https://ddrgp-scorelog-identity-api.tts1374.workers.dev", "http://127.0.0.1:5173/")]
-    [InlineData("https://DDRGP-SCORELOG-IDENTITY-API.tts1374.workers.dev:443/", "http://127.0.0.1:5173/")]
+    [InlineData("https://ddrgp-scorelog.tts1374.workers.dev", "https://ddrgp-scorelog-dev.tts1374.workers.dev/")]
+    [InlineData("https://ddrgp-scorelog-identity-api.tts1374.workers.dev", "https://ddrgp-scorelog-dev.tts1374.workers.dev/")]
+    [InlineData("https://DDRGP-SCORELOG-IDENTITY-API.tts1374.workers.dev:443/", "https://ddrgp-scorelog-dev.tts1374.workers.dev/")]
     public void DevelopmentSyncAndPublicPageUseTheDevelopmentOrigin(
         string? overrideOrigin,
         string expectedOrigin)
@@ -86,7 +87,7 @@ public sealed class WebBestSyncTests
         using var httpClient = new HttpClient
         {
             BaseAddress = MainWindow.ResolveWebApiOrigin(
-                ViewerDatabaseEnvironment.Development, null),
+                ViewerDatabaseEnvironment.Development, "http://127.0.0.1:5173/"),
         };
         var store = new MemoryWebPlayerIdentityStore();
 
@@ -193,7 +194,7 @@ public sealed class WebBestSyncTests
     }
 
     [Fact]
-    public void StatePersistsPendingUpsertDeleteAndSyncedTransitions()
+    public void StatePersistsReceivedHashesAndForgetsLocalRemovalWithoutSendingDelete()
     {
         var directory = Path.Combine(Path.GetTempPath(), $"web-sync-state-{Guid.NewGuid():N}");
         Directory.CreateDirectory(directory);
@@ -222,9 +223,8 @@ public sealed class WebBestSyncTests
             Assert.Equal(0, synced.PendingCount);
 
             var pendingDelete = restarted.Reconcile([]);
-            Assert.Equal(1, pendingDelete.PendingCount);
-            Assert.Null(pendingDelete.Entries[0].DesiredProjectionHash);
-            Assert.NotNull(pendingDelete.Entries[0].SyncedProjectionHash);
+            Assert.Equal(0, pendingDelete.PendingCount);
+            Assert.Empty(pendingDelete.Entries);
             var deleted = restarted.MarkSynced("chart_1", null);
             Assert.Empty(deleted.Entries);
         }
@@ -261,7 +261,7 @@ public sealed class WebBestSyncTests
     }
 
     [Fact]
-    public async Task OffToOnUsesFullSnapshotAndPublicDeleteTurnsSyncOff()
+    public async Task OffToOnReplaysCaptureMergeAndPublicDeleteTurnsSyncOff()
     {
         using var fixture = new DatabaseFixture();
         fixture.AddPlay("capture", "2026-09-20T01:00:00+00:00", 900_000, 1_000);
@@ -281,15 +281,16 @@ public sealed class WebBestSyncTests
 
         await coordinator.SetEnabledAsync(true, CancellationToken.None);
 
-        Assert.Equal(1, api.BeginSnapshotCalls);
-        Assert.Single(api.UploadedItems);
+        Assert.Equal(0, api.BeginSnapshotCalls);
+        Assert.Single(api.MergedItems);
         Assert.False(coordinator.State.FullSnapshotRequired);
         Assert.Equal(WebBestSyncStatus.Idle, coordinator.State.Status);
 
         await coordinator.SetEnabledAsync(false, CancellationToken.None);
         Assert.False(coordinator.State.Enabled);
         await coordinator.SetEnabledAsync(true, CancellationToken.None);
-        Assert.Equal(2, api.BeginSnapshotCalls);
+        Assert.Equal(0, api.BeginSnapshotCalls);
+        Assert.Equal(2, api.MergeCalls);
 
         await coordinator.DeletePublicBestsAsync(CancellationToken.None);
         Assert.Equal(1, api.DeleteCalls);
@@ -299,124 +300,48 @@ public sealed class WebBestSyncTests
     }
 
     [Fact]
-    public async Task SettingsToggleDoesNotPublishUntilSettingsAreApplied()
+    public async Task SettingsApplyDoesNotRegisterOrPatchNameAndToggleImmediatelyResumesMerge()
     {
         using var fixture = new DatabaseFixture();
-        var stateStore = new SqliteWebBestSyncStateStore(
-            Path.Combine(fixture.DirectoryPath, "settings-sync.sqlite"));
+        var stateStore = new SqliteWebBestSyncStateStore(Path.Combine(fixture.DirectoryPath, "settings-sync.sqlite"));
         var api = new FakeWebBestSyncApiClient();
         var identityStore = new MemoryWebPlayerIdentityStore();
-        identityStore.SaveRegistered("public-player", "credential-secret");
-        using var identityHttpClient = new HttpClient(new DelegateHttpMessageHandler(
-            _ => Task.FromResult(JsonResponse("Player"))))
+        var identityRequests = 0;
+        using var client = new HttpClient(new DelegateHttpMessageHandler(request =>
         {
-            BaseAddress = new Uri("https://best.example.test/"),
-        };
+            Assert.Equal(HttpMethod.Get, request.Method);
+            Assert.Equal("/api/v1/me", request.RequestUri?.AbsolutePath);
+            identityRequests++;
+            return Task.FromResult(JsonResponse("Web player"));
+        }))
+        { BaseAddress = new("https://best.example.test/") };
         var viewModel = new MainViewModel(new ScoreViewerRepository());
-        viewModel.ConfigureWebBestSync(
-            new WebBestSyncCoordinator(
-                stateStore,
-                new WebBestProjectionRepository(),
-                api,
-                fixture.ScorePath,
-                fixture.MasterPath,
-                delay: (_, _) => Task.CompletedTask),
-            new WebPlayerIdentityService(identityHttpClient, identityStore));
-
-        viewModel.WebBestSyncEnabled = true;
-
-        Assert.False(stateStore.Load().Enabled);
-        Assert.Equal(0, api.BeginSnapshotCalls);
-
+        viewModel.ConfigureWebBestSync(new WebBestSyncCoordinator(stateStore, new WebBestProjectionRepository(), api,
+            fixture.ScorePath, fixture.MasterPath), new WebPlayerIdentityService(client, identityStore));
+        viewModel.WebPlayerDisplayName = "2ten";
         await viewModel.ApplyWebSettingsAsync();
-
+        Assert.Equal(PlayerIdentityState.Unregistered, identityStore.Load().State);
+        Assert.False(stateStore.Load().Enabled);
+        Assert.False(viewModel.CanToggleWebSync);
+        identityStore.SaveRegistered("public-player", "credential-secret", "Existing player");
+        viewModel = new MainViewModel(new ScoreViewerRepository());
+        viewModel.ConfigureWebBestSync(new WebBestSyncCoordinator(stateStore, new WebBestProjectionRepository(), api,
+            fixture.ScorePath, fixture.MasterPath), new WebPlayerIdentityService(client, identityStore));
+        viewModel.WebPlayerDisplayName = "Updated player";
+        await viewModel.ApplyWebSettingsAsync();
+        Assert.Equal("Existing player", identityStore.Load().DisplayName);
+        Assert.Equal(0, identityRequests);
+        await viewModel.ToggleWebBestSyncAsync();
         Assert.True(stateStore.Load().Enabled);
-        Assert.Equal(1, api.BeginSnapshotCalls);
-    }
-
-    [Fact]
-    public async Task SettingsUsePublicPlayerNameForRegistrationAndMetadataUpdate()
-    {
-        using var fixture = new DatabaseFixture();
-        string? registrationBody = null;
-        var registrationStore = new MemoryWebPlayerIdentityStore();
-        using var registrationHttpClient = new HttpClient(new DelegateHttpMessageHandler(
-            async request =>
-            {
-                Assert.Equal(HttpMethod.Post, request.Method);
-                registrationBody = await request.Content!.ReadAsStringAsync();
-                return JsonResponse("2ten", includeCredential: true);
-            }))
-        {
-            BaseAddress = new Uri("https://best.example.test/"),
-        };
-        var registrationApi = new FakeWebBestSyncApiClient();
-        var registrationViewModel = new MainViewModel(new ScoreViewerRepository());
-        registrationViewModel.ConfigureWebBestSync(
-            new WebBestSyncCoordinator(
-                new SqliteWebBestSyncStateStore(
-                    Path.Combine(fixture.DirectoryPath, "registration-sync.sqlite")),
-                new WebBestProjectionRepository(),
-                registrationApi,
-                fixture.ScorePath,
-                fixture.MasterPath,
-                delay: (_, _) => Task.CompletedTask),
-            new WebPlayerIdentityService(registrationHttpClient, registrationStore));
-        registrationViewModel.WebPlayerDisplayName = "2ten";
-        registrationViewModel.WebBestSyncEnabled = true;
-        Assert.False(registrationViewModel.CanOpenPublicPlayerPage);
-
-        await registrationViewModel.ApplyWebSettingsAsync();
-
-        Assert.Contains("\"display_name\":\"2ten\"", registrationBody, StringComparison.Ordinal);
-        Assert.Equal(PlayerIdentityState.Registered, registrationStore.Load().State);
-        Assert.True(registrationViewModel.CanOpenPublicPlayerPage);
-        Assert.Equal("public-player", registrationViewModel.GetPublicPlayerId());
-        Assert.Equal(1, registrationApi.BeginSnapshotCalls);
-
-        string? updateBody = null;
-        var updateRequestCount = 0;
-        var updateStore = new MemoryWebPlayerIdentityStore();
-        updateStore.SaveRegistered(
-            "public-player",
-            "credential-secret",
-            "Existing player");
-        using var updateHttpClient = new HttpClient(new DelegateHttpMessageHandler(
-            async request =>
-            {
-                updateRequestCount += 1;
-                Assert.Equal(HttpMethod.Patch, request.Method);
-                updateBody = await request.Content!.ReadAsStringAsync();
-                return JsonResponse("Updated player");
-            }))
-        {
-            BaseAddress = new Uri("https://best.example.test/"),
-        };
-        var updateApi = new FakeWebBestSyncApiClient();
-        var updateViewModel = new MainViewModel(new ScoreViewerRepository());
-        updateViewModel.ConfigureWebBestSync(
-            new WebBestSyncCoordinator(
-                new SqliteWebBestSyncStateStore(
-                    Path.Combine(fixture.DirectoryPath, "update-sync.sqlite")),
-                new WebBestProjectionRepository(),
-                updateApi,
-                fixture.ScorePath,
-                fixture.MasterPath),
-            new WebPlayerIdentityService(updateHttpClient, updateStore));
-        Assert.Equal("Existing player", updateViewModel.WebPlayerDisplayName);
-        Assert.True(updateViewModel.CanOpenPublicPlayerPage);
-        Assert.Equal(0, updateRequestCount);
-        updateViewModel.WebPlayerDisplayName = "Updated player";
-
-        await updateViewModel.ApplyWebSettingsAsync();
-
-        Assert.Contains(
-            "\"display_name\":\"Updated player\"",
-            updateBody,
-            StringComparison.Ordinal);
-        Assert.Equal(0, updateApi.BeginSnapshotCalls);
-        Assert.Equal(1, updateRequestCount);
-        Assert.Equal("Updated player", updateViewModel.WebPlayerDisplayName);
+        Assert.Equal(1, identityRequests);
+        Assert.Equal("Web player", viewModel.WebPlayerDisplayName);
+        await viewModel.ToggleWebBestSyncAsync();
+        Assert.False(stateStore.Load().Enabled);
+        Assert.False(viewModel.CanSyncWebBestsNow);
+        await viewModel.SyncWebBestsNowAsync();
+        Assert.Equal(0, api.MergeCalls);
+        Assert.Equal(0, api.BeginSnapshotCalls);
+        Assert.Equal(1, identityRequests);
     }
 
     [Fact]
@@ -510,11 +435,7 @@ public sealed class WebBestSyncTests
         store.SetEnabled(true);
         var api = new FakeWebBestSyncApiClient
         {
-            BeginResult = new(
-                WebBestApiStatus.AuthenticationInvalid,
-                null,
-                null,
-                "AUTH_INVALID"),
+            DeltaHandler = _ => new(WebBestApiStatus.AuthenticationInvalid, [], "AUTH_INVALID"),
         };
         var coordinator = new WebBestSyncCoordinator(
             store,
@@ -623,9 +544,10 @@ public sealed class WebBestSyncTests
             Path.Combine(fixture.DirectoryPath, "sync.sqlite"));
         store.SetEnabled(true);
         var api = new FakeWebBestSyncApiClient();
-        api.BeginResults.Enqueue(new(
-            WebBestApiStatus.RetryableError, null, null, "SERVER_RETRYABLE"));
-        api.BeginResults.Enqueue(new(WebBestApiStatus.Success, "bs_fixture", 0));
+        var attempt = 0;
+        api.DeltaHandler = operations => ++attempt == 1
+            ? new(WebBestApiStatus.RetryableError, [], "SERVER_RETRYABLE")
+            : new(WebBestApiStatus.Success, operations.Select((_, index) => new WebBestDeltaItemResult(index, true, true, null)).ToArray());
         var delays = new List<TimeSpan>();
         var coordinator = new WebBestSyncCoordinator(
             store,
@@ -642,7 +564,8 @@ public sealed class WebBestSyncTests
 
         await coordinator.SynchronizeAsync(CancellationToken.None);
 
-        Assert.Equal(2, api.BeginSnapshotCalls);
+        Assert.Equal(0, api.BeginSnapshotCalls);
+        Assert.Equal(2, api.MergeCalls);
         Assert.Equal([TimeSpan.FromSeconds(5)], delays);
         Assert.Equal(WebBestSyncStatus.Idle, coordinator.State.Status);
         Assert.Equal(0, coordinator.State.RetryAttempt);
@@ -676,14 +599,14 @@ public sealed class WebBestSyncTests
 
         var cases = new[]
         {
-            (WebBestSyncStatus.Disabled, false, Array.Empty<WebBestSyncEntry>(), "同期OFF", false),
-            (WebBestSyncStatus.Idle, true, Array.Empty<WebBestSyncEntry>(), "同期済み", false),
+            (WebBestSyncStatus.Disabled, false, Array.Empty<WebBestSyncEntry>(), "連携停止中", false),
+            (WebBestSyncStatus.Idle, true, Array.Empty<WebBestSyncEntry>(), "同期済み", true),
             (WebBestSyncStatus.Dirty, true, new[] { pending }, "同期待ち", true),
             (WebBestSyncStatus.Syncing, true, new[] { pending }, "変更分を同期中", false),
             (WebBestSyncStatus.Reconciling, true, new[] { pending }, "自己ベストを同期中", false),
             (WebBestSyncStatus.ErrorRetryable, true, new[] { pending }, "同期できませんでした", true),
             (WebBestSyncStatus.AuthInvalid, true, new[] { pending }, "認証情報の確認が必要です", false),
-            (WebBestSyncStatus.Dirty, true, new[] { unknown }, "一部の譜面をあとで同期します", false),
+            (WebBestSyncStatus.Dirty, true, new[] { unknown }, "一部の譜面をあとで同期します", true),
             (WebBestSyncStatus.PublicBestsDeleted, false, Array.Empty<WebBestSyncEntry>(), "公開データなし", false),
         };
 
@@ -698,7 +621,7 @@ public sealed class WebBestSyncTests
                 null,
                 null,
                 entries));
-            Assert.Equal(title, viewModel.WebBestSyncStatusTitle);
+            Assert.Equal(Localization.Get(title), viewModel.WebBestSyncStatusTitle);
             Assert.Equal(canSync, viewModel.CanSyncWebBestsNow);
             if (status is WebBestSyncStatus.Idle or WebBestSyncStatus.Syncing or
                 WebBestSyncStatus.Reconciling or WebBestSyncStatus.PublicBestsDeleted)
@@ -728,6 +651,36 @@ public sealed class WebBestSyncTests
     }
 
     [Fact]
+    public async Task Stop_during_automatic_merge_retry_wait_prevents_further_requests_and_preserves_disabled_state()
+    {
+        using var fixture = new DatabaseFixture();
+        fixture.AddPlay("capture", "2026-10-02T01:00:00+00:00", 900000, 1000);
+        fixture.ExecuteScoreSql("UPDATE source_captures SET source_kind = 'capture';");
+        var store = new SqliteWebBestSyncStateStore(Path.Combine(fixture.DirectoryPath, "stop-retry.sqlite"));
+        store.SetEnabled(true);
+        var api = new FakeWebBestSyncApiClient
+        {
+            DeltaHandler = _ => new(WebBestApiStatus.RetryableError, [], "NETWORK_ERROR"),
+        };
+        WebBestSyncCoordinator? coordinator = null;
+        coordinator = new WebBestSyncCoordinator(store, new WebBestProjectionRepository(), api,
+            fixture.ScorePath, fixture.MasterPath, delay: async (_, _) =>
+            {
+                await coordinator!.SetEnabledAsync(false, CancellationToken.None);
+            });
+        await coordinator.SynchronizeAsync(CancellationToken.None);
+        Assert.Equal(1, api.MergeCalls);
+        Assert.False(coordinator.State.Enabled);
+        Assert.Equal(WebBestSyncStatus.Disabled, coordinator.State.Status);
+        Assert.True(coordinator.State.PendingCount > 0);
+        await coordinator.SynchronizeAsync(CancellationToken.None);
+        Assert.Equal(1, api.MergeCalls);
+        await coordinator.DeletePublicBestsAsync(CancellationToken.None);
+        Assert.Equal(1, api.DeleteCalls);
+        Assert.False(coordinator.State.Enabled);
+    }
+
+    [Fact]
     public void PostedSyncStateIsAppliedWhenDispatcherUsesAnotherContextInstance()
     {
         Localization.Configure(UserSettings.JapaneseLanguage);
@@ -742,11 +695,11 @@ public sealed class WebBestSyncTests
             viewModel.ApplyWebBestSyncState(new WebBestSyncSnapshot(
                 true, false, WebBestSyncStatus.Idle, null, 0, null, null, []));
             Assert.Equal(1, dispatcherContext.PendingCount);
-            Assert.Equal("同期OFF", viewModel.WebBestSyncStatusTitle);
+            Assert.Equal(Localization.Get("連携停止中"), viewModel.WebBestSyncStatusTitle);
 
             dispatcherContext.RunNext();
             Assert.Equal(0, dispatcherContext.PendingCount);
-            Assert.Equal("同期済み", viewModel.WebBestSyncStatusTitle);
+            Assert.Equal(Localization.Get("同期済み"), viewModel.WebBestSyncStatusTitle);
         }
         finally
         {
@@ -775,7 +728,7 @@ public sealed class WebBestSyncTests
     }
 
     [Fact]
-    public async Task BackupRestoreRunsAnEmptyFullReconciliationForRestoredManifestPlays()
+    public async Task BackupRestoreManifestHasNoNormalSnapshotOrDelete()
     {
         using var fixture = new DatabaseFixture();
         fixture.AddPlay("capture", "2026-09-20T01:00:00+00:00", 900_000, 1_000);
@@ -800,7 +753,7 @@ public sealed class WebBestSyncTests
         var identityStore = new MemoryWebPlayerIdentityStore();
         identityStore.SaveRegistered("public-player", "credential-secret");
         using var identityHttpClient = new HttpClient(new DelegateHttpMessageHandler(
-            _ => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK))))
+            _ => Task.FromResult(JsonResponse("Player"))))
         {
             BaseAddress = new Uri("https://best.example.test/"),
         };
@@ -826,31 +779,448 @@ public sealed class WebBestSyncTests
         await viewModel.WaitForOperationsAsync();
 
         Assert.True(result.Succeeded, result.Message);
-        Assert.Equal(1, api.BeginSnapshotCalls);
+        Assert.Equal(0, api.BeginSnapshotCalls);
         Assert.Empty(api.UploadedItems);
         Assert.False(coordinator.State.FullSnapshotRequired);
         Assert.Empty(coordinator.State.Entries);
         Assert.Equal(WebBestSyncStatus.Idle, coordinator.State.Status);
     }
 
+    [Fact]
+    public async Task Explicit_empty_replacement_requires_review_then_authorize_and_can_be_cancelled()
+    {
+        using var fixture = new DatabaseFixture();
+        var store = new SqliteWebBestSyncStateStore(Path.Combine(fixture.DirectoryPath, "explicit.sqlite"));
+        var api = new FakeWebBestSyncApiClient();
+        var coordinator = new WebBestSyncCoordinator(store, new WebBestProjectionRepository(), api,
+            fixture.ScorePath, fixture.MasterPath);
+        Assert.False(await coordinator.ConfirmReplacementAsync(CancellationToken.None));
+        Assert.Equal(0, api.CommitCalls);
+        var review = await coordinator.PrepareReplacementAsync(CancellationToken.None);
+        Assert.NotNull(review);
+        Assert.Equal(0, review.EligibleCount);
+        Assert.Equal(2, review.PublicCount);
+        Assert.Contains("removed-chart", review.Removed);
+        Assert.Equal(0, api.AuthorizeCalls);
+        Assert.Equal(0, api.CommitCalls);
+        await coordinator.CancelReplacementAsync(CancellationToken.None);
+        Assert.Equal(1, api.AbortCalls);
+        Assert.False(await coordinator.ConfirmReplacementAsync(CancellationToken.None));
+        await coordinator.PrepareReplacementAsync(CancellationToken.None);
+        Assert.True(await coordinator.ConfirmReplacementAsync(CancellationToken.None));
+        Assert.Equal(1, api.AuthorizeCalls);
+        Assert.Equal(1, api.CommitCalls);
+        Assert.False(coordinator.State.Enabled);
+    }
+
+    [Fact]
+    public async Task Replacement_response_loss_retries_same_authorized_snapshot_and_retains_fixed_content()
+    {
+        using var fixture = new DatabaseFixture();
+        var store = new SqliteWebBestSyncStateStore(Path.Combine(fixture.DirectoryPath, "replacement-retry.sqlite"));
+        var api = new FakeWebBestSyncApiClient { CommitStatus = WebBestApiStatus.RetryableError };
+        var coordinator = new WebBestSyncCoordinator(store, new WebBestProjectionRepository(), api,
+            fixture.ScorePath, fixture.MasterPath, delay: (_, _) => Task.CompletedTask);
+        var review = await coordinator.PrepareReplacementAsync(CancellationToken.None);
+        Assert.False(await coordinator.ConfirmReplacementAsync(CancellationToken.None));
+        Assert.Equal(1, api.AuthorizeCalls);
+        Assert.Equal(6, api.CommitCalls);
+        fixture.AddPlay("new-capture", "2026-10-02T01:00:00+00:00", 910000, 1200);
+        fixture.ExecuteScoreSql("UPDATE source_captures SET source_kind = 'capture';");
+        Assert.Same(review, await coordinator.PrepareReplacementAsync(CancellationToken.None));
+        api.CommitStatus = WebBestApiStatus.Success;
+        Assert.True(await coordinator.ConfirmReplacementAsync(CancellationToken.None));
+        Assert.Equal(1, api.BeginSnapshotCalls);
+        Assert.Equal(1, api.AuthorizeCalls);
+        Assert.Equal(7, api.CommitCalls);
+        Assert.Equal(1, coordinator.State.PendingCount);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Database_generation_invalidates_prepared_replacement_even_when_OFF(bool enabled)
+    {
+        using var fixture = new DatabaseFixture();
+        var store = new SqliteWebBestSyncStateStore(Path.Combine(fixture.DirectoryPath, "generation.sqlite"));
+        store.SetEnabled(enabled);
+        var api = new FakeWebBestSyncApiClient();
+        var coordinator = new WebBestSyncCoordinator(store, new WebBestProjectionRepository(), api,
+            fixture.ScorePath, fixture.MasterPath);
+        Assert.NotNull(await coordinator.PrepareReplacementAsync(CancellationToken.None));
+        coordinator.RequireReconciliation();
+        Assert.False(await coordinator.ConfirmReplacementAsync(CancellationToken.None));
+        Assert.Equal(0, api.AuthorizeCalls);
+        Assert.Equal(0, api.CommitCalls);
+        Assert.True(coordinator.State.FullSnapshotRequired);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Merge_ack_must_match_this_PC_received_hash_and_contract_409_keeps_identity(bool conflict)
+    {
+        var identity = new MemoryWebPlayerIdentityStore();
+        identity.SaveRegistered("public-player", "credential");
+        var projection = new PlayerChartBestProjectionV1("chart_1", 1000, 100, "CLEAR", null);
+        using var client = new HttpClient(new DelegateHttpMessageHandler(async request =>
+        {
+            Assert.Equal("/api/v1/me/bests/merge", request.RequestUri!.AbsolutePath);
+            var body = await request.Content!.ReadAsStringAsync();
+            Assert.Contains("items", body);
+            Assert.DoesNotContain("operations", body);
+            return new HttpResponseMessage(conflict ? HttpStatusCode.Conflict : HttpStatusCode.OK)
+            {
+                Content = new StringContent(conflict ? "{\"error\":{\"code\":\"HISTORICAL_BEST_REQUIRED\"}}" :
+                "{\"results\":[{\"index\":0,\"status\":\"accepted\",\"changed\":false,\"received_hash\":\"wrong\"}]}", Encoding.UTF8, "application/json")
+            };
+        }))
+        { BaseAddress = new("https://best.example.test/") };
+        var api = new WebBestSyncApiClient(client, identity);
+        var result = await api.SendDeltaAsync("v1", [new("upsert", projection.ChartId,
+            WebBestProjectionContract.Hash(projection), projection)], CancellationToken.None);
+        Assert.Equal(WebBestApiStatus.PermanentError, result.Status);
+        Assert.Equal(conflict ? "HISTORICAL_BEST_REQUIRED" : "INVALID_RESPONSE", result.ErrorCode);
+        Assert.Equal(PlayerIdentityState.Registered, identity.Load().State);
+    }
+
+    [Theory]
+    [InlineData(true, 0)]
+    [InlineData(false, 1)]
+    public async Task Startup_saved_activation_waits_for_result_while_pending_link_keeps_existing_sync(
+        bool activationPending, int expectedRequests)
+    {
+        using var fixture = new DatabaseFixture();
+        fixture.AddPlay("capture", "2026-10-02T01:00:00+00:00", 900000, 1000);
+        fixture.ExecuteScoreSql("UPDATE source_captures SET source_kind = 'capture';");
+        var store = new SqliteWebBestSyncStateStore(Path.Combine(fixture.DirectoryPath, "startup-sync.sqlite"));
+        store.SetEnabled(true);
+        var api = new FakeWebBestSyncApiClient();
+        var identity = new MemoryWebPlayerIdentityStore();
+        identity.SaveRegistered("public-player", "credential-secret");
+        var now = DateTimeOffset.UtcNow;
+        var pending = new PendingAuthorizationStore(new("request-id", new string('A', 43), "connect", "public-player",
+            now, now.AddMinutes(10), State: activationPending ? AppAuthorizationState.CredentialActivationPending : AppAuthorizationState.AppAuthorizationPending,
+            Credential: activationPending ? "saved-pending" : null));
+        var identityRequests = 0;
+        using var http = new HttpClient(new DelegateHttpMessageHandler(request =>
+        {
+            identityRequests++;
+            Assert.Equal(HttpMethod.Get, request.Method);
+            Assert.Equal("/api/v1/me", request.RequestUri!.AbsolutePath);
+            return Task.FromResult(JsonResponse("Player"));
+        }))
+        { BaseAddress = new("https://best.example.test/") };
+        var viewModel = new MainViewModel(new ScoreViewerRepository());
+        viewModel.ConfigureWebBestSync(new WebBestSyncCoordinator(store, new WebBestProjectionRepository(), api,
+            fixture.ScorePath, fixture.MasterPath), new WebPlayerIdentityService(http, identity, authorizationStore: pending));
+        await viewModel.ResumeWebBestSyncAsync();
+        Assert.Equal(expectedRequests, identityRequests);
+        Assert.Equal(expectedRequests, api.MergeCalls);
+        Assert.Equal(0, api.BeginSnapshotCalls);
+        if (expectedRequests == 0)
+        {
+            Assert.False(viewModel.CanToggleWebSync);
+            Assert.False(viewModel.CanSyncWebBestsNow);
+            await viewModel.SyncWebBestsNowAsync();
+            Assert.Equal(0, api.MergeCalls);
+        }
+        else
+        {
+            await viewModel.ToggleWebBestSyncAsync();
+            Assert.False(store.Load().Enabled);
+            await viewModel.ResumeWebBestSyncAsync();
+            await viewModel.SyncWebBestsNowAsync();
+            await viewModel.ApplyWebSettingsAsync();
+            Assert.Equal(1, identityRequests);
+            Assert.Equal(1, api.MergeCalls);
+        }
+    }
+
+    [Fact]
+    public async Task Activation_cleanup_failure_blocks_uploads_then_same_app_retry_enables_sync()
+    {
+        using var fixture = new DatabaseFixture();
+        const string playerId = "p_abcdefghijklmnopqrstuv";
+        const string credential = "ac_abcdefghijklmnopqrstuv.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+        var store = new SqliteWebBestSyncStateStore(Path.Combine(fixture.DirectoryPath, "activation-retry.sqlite"));
+        store.SetEnabled(true);
+        var api = new FakeWebBestSyncApiClient();
+        var identity = new MemoryWebPlayerIdentityStore();
+        identity.SaveRegistered(playerId, "old-credential");
+        identity.SetAuthenticationInvalid(true);
+        var now = DateTimeOffset.UtcNow;
+        var pending = new PendingAuthorizationStore(new("request-id", new string('A', 43), "connect", playerId,
+            now, now.AddMinutes(10)))
+        { FailClear = true };
+        var activationRequests = 0;
+        using var http = new HttpClient(new DelegateHttpMessageHandler(request =>
+        {
+            Assert.Equal(HttpMethod.Post, request.Method);
+            var activating = request.RequestUri!.AbsolutePath.EndsWith("/activate", StringComparison.Ordinal);
+            if (activating)
+            {
+                activationRequests++;
+            }
+            else
+            {
+                Assert.EndsWith("/result", request.RequestUri.AbsolutePath);
+            }
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(JsonSerializer.Serialize(new
+                {
+                    status = activating ? "ACTIVATED" : "APPROVED",
+                    public_player_id = playerId,
+                    credential,
+                    display_name = "Player",
+                    created_at = now,
+                    updated_at = now
+                }), Encoding.UTF8, "application/json")
+            });
+        }))
+        { BaseAddress = new("https://best.example.test/") };
+        var viewModel = new MainViewModel(new ScoreViewerRepository());
+        viewModel.ConfigureWebBestSync(new WebBestSyncCoordinator(store, new WebBestProjectionRepository(), api,
+            fixture.ScorePath, fixture.MasterPath), new WebPlayerIdentityService(http, identity, authorizationStore: pending));
+
+        await viewModel.CompleteWebAuthorizationAsync();
+        Assert.Equal(credential, identity.Load().AppCredential);
+        Assert.Equal(AppAuthorizationState.CredentialActivationPending, pending.Load()!.State);
+        Assert.True(store.Load().Enabled);
+        Assert.False(viewModel.CanSyncWebBestsNow);
+
+        pending.FailClear = false;
+        await viewModel.CompleteWebAuthorizationAsync();
+        Assert.Null(pending.Load());
+        Assert.Equal(PlayerIdentityState.Registered, identity.Load().State);
+        Assert.Equal(playerId, identity.Load().PublicPlayerId);
+        Assert.Equal(credential, identity.Load().AppCredential);
+        Assert.True(store.Load().Enabled);
+        Assert.True(viewModel.CanSyncWebBestsNow);
+        Assert.Equal(2, activationRequests);
+        Assert.Equal(0, api.MergeCalls);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Successful_registration_or_recovery_activation_enables_sync_and_uploads_current_bests(bool recovery)
+    {
+        using var fixture = new DatabaseFixture();
+        fixture.AddPlay("capture", "2026-10-02T01:00:00+00:00", 900000, 1000);
+        fixture.ExecuteScoreSql("UPDATE source_captures SET source_kind = 'capture';");
+        const string playerId = "p_abcdefghijklmnopqrstuv";
+        const string credential = "ac_abcdefghijklmnopqrstuv.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+        var identity = new MemoryWebPlayerIdentityStore();
+        if (recovery)
+        {
+            identity.SaveRegistered(playerId, "old-credential");
+            identity.SetAuthenticationInvalid(true);
+        }
+        var now = DateTimeOffset.UtcNow;
+        var pending = new PendingAuthorizationStore(new("request-id", new string('A', 43), "connect",
+            recovery ? playerId : null, now, now.AddMinutes(10)));
+        using var http = new HttpClient(new DelegateHttpMessageHandler(request => Task.FromResult(
+            new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(JsonSerializer.Serialize(new
+                {
+                    status = request.RequestUri!.AbsolutePath.EndsWith("/activate", StringComparison.Ordinal) ? "ACTIVATED" : "APPROVED",
+                    public_player_id = playerId,
+                    credential,
+                    display_name = "Player",
+                    created_at = now,
+                    updated_at = now
+                }), Encoding.UTF8, "application/json")
+            })))
+        { BaseAddress = new("https://best.example.test/") };
+        var store = new SqliteWebBestSyncStateStore(Path.Combine(fixture.DirectoryPath, "new-activation.sqlite"));
+        var api = new FakeWebBestSyncApiClient();
+        var viewModel = new MainViewModel(new ScoreViewerRepository());
+        viewModel.ConfigureWebBestSync(new WebBestSyncCoordinator(store, new WebBestProjectionRepository(), api,
+            fixture.ScorePath, fixture.MasterPath), new WebPlayerIdentityService(http, identity, authorizationStore: pending));
+        await viewModel.CompleteWebAuthorizationAsync();
+        Assert.Null(pending.Load());
+        Assert.True(store.Load().Enabled);
+        Assert.Equal(1, api.MergeCalls);
+        Assert.Equal(System.Windows.Visibility.Collapsed, viewModel.GoogleConnectVisibility);
+        Assert.Equal(System.Windows.Visibility.Visible, viewModel.GoogleUnlinkVisibility);
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task Google_link_or_unlink_preserves_sync_setting_and_updates_buttons(bool enabled, bool unlink)
+    {
+        using var fixture = new DatabaseFixture();
+        const string playerId = "p_abcdefghijklmnopqrstuv";
+        var identity = new MemoryWebPlayerIdentityStore();
+        identity.SaveRegistered(playerId, "existing-credential");
+        var now = DateTimeOffset.UtcNow;
+        var pending = new PendingAuthorizationStore(new("request-id", new string('A', 43), unlink ? "unlink" : "connect",
+            playerId, now, now.AddMinutes(10)));
+        using var http = new HttpClient(new DelegateHttpMessageHandler(_ => Task.FromResult(
+            new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(JsonSerializer.Serialize(new
+                {
+                    status = unlink ? "UNLINKED" : "LINKED",
+                    public_player_id = playerId,
+                    display_name = "Player",
+                    created_at = now,
+                    updated_at = now
+                }), Encoding.UTF8, "application/json")
+            })))
+        { BaseAddress = new("https://best.example.test/") };
+        var store = new SqliteWebBestSyncStateStore(Path.Combine(fixture.DirectoryPath, "google-link.sqlite"));
+        store.SetEnabled(enabled);
+        var api = new FakeWebBestSyncApiClient();
+        var viewModel = new MainViewModel(new ScoreViewerRepository());
+        viewModel.ConfigureWebBestSync(new WebBestSyncCoordinator(store, new WebBestProjectionRepository(), api,
+            fixture.ScorePath, fixture.MasterPath), new WebPlayerIdentityService(http, identity, authorizationStore: pending));
+        await viewModel.CompleteWebAuthorizationAsync();
+        Assert.Equal(enabled, store.Load().Enabled);
+        Assert.Equal("existing-credential", identity.Load().AppCredential);
+        Assert.Equal(0, api.MergeCalls);
+        Assert.Equal(unlink ? System.Windows.Visibility.Visible : System.Windows.Visibility.Collapsed, viewModel.GoogleConnectVisibility);
+        Assert.Equal(unlink ? System.Windows.Visibility.Collapsed : System.Windows.Visibility.Visible, viewModel.GoogleUnlinkVisibility);
+        Assert.Equal(System.Windows.Visibility.Collapsed, viewModel.GoogleSettingsVisibility);
+    }
+
+    [Theory]
+    [InlineData("io")]
+    [InlineData("access")]
+    [InlineData("dpapi")]
+    [InlineData("json")]
+    public async Task Activation_pending_read_failure_keeps_proof_and_does_not_interrupt_the_app(string failure)
+    {
+        using var fixture = new DatabaseFixture();
+        var identity = new MemoryWebPlayerIdentityStore();
+        var now = DateTimeOffset.UtcNow;
+        var pending = new PendingAuthorizationStore(new("request-id", new string('A', 43), "connect", null,
+            now, now.AddMinutes(10)));
+        using var http = new HttpClient(new DelegateHttpMessageHandler(_ => throw new Exception("No network request")))
+        { BaseAddress = new("https://best.example.test/") };
+        var viewModel = new MainViewModel(new ScoreViewerRepository());
+        viewModel.ConfigureWebBestSync(new WebBestSyncCoordinator(
+            new SqliteWebBestSyncStateStore(Path.Combine(fixture.DirectoryPath, "unreadable-pending.sqlite")),
+            new WebBestProjectionRepository(), new FakeWebBestSyncApiClient(), fixture.ScorePath, fixture.MasterPath),
+            new WebPlayerIdentityService(http, identity, authorizationStore: pending));
+        var saved = pending.Load();
+        pending.LoadFailure = failure switch
+        {
+            "io" => new IOException("Unreadable pending file"),
+            "access" => new UnauthorizedAccessException("Unreadable pending file"),
+            "dpapi" => new System.Security.Cryptography.CryptographicException("Unreadable pending file"),
+            _ => new JsonException("Unreadable pending file")
+        };
+        await viewModel.CompleteWebAuthorizationAsync();
+        Assert.False(viewModel.IsWebAuthorizationBusy);
+        Assert.Equal(System.Windows.Visibility.Visible, viewModel.WebAuthorizationPendingVisibility);
+        Assert.Equal(Localization.Get("結果を確認できませんでした。保存済みの連携情報で結果を確認してください。"), viewModel.WebAuthorizationMessage);
+        pending.LoadFailure = null;
+        Assert.Equal(saved, pending.Load());
+        Assert.Equal(PlayerIdentityState.Unregistered, identity.Load().State);
+    }
+
+    [Fact]
+    public async Task Cancellation_network_failure_keeps_pending_proof_and_does_not_interrupt_the_app()
+    {
+        using var fixture = new DatabaseFixture();
+        var identity = new MemoryWebPlayerIdentityStore();
+        var now = DateTimeOffset.UtcNow;
+        var pending = new PendingAuthorizationStore(new("request-id", new string('A', 43), "connect", null,
+            now, now.AddMinutes(10)));
+        using var http = new HttpClient(new DelegateHttpMessageHandler(_ => throw new HttpRequestException("Offline")))
+        { BaseAddress = new("https://best.example.test/") };
+        var viewModel = new MainViewModel(new ScoreViewerRepository());
+        viewModel.ConfigureWebBestSync(new WebBestSyncCoordinator(
+            new SqliteWebBestSyncStateStore(Path.Combine(fixture.DirectoryPath, "cancel-sync.sqlite")),
+            new WebBestProjectionRepository(), new FakeWebBestSyncApiClient(), fixture.ScorePath, fixture.MasterPath),
+            new WebPlayerIdentityService(http, identity, authorizationStore: pending));
+        await viewModel.CancelWebAuthorizationAsync();
+        Assert.NotNull(pending.Load());
+        Assert.Equal(PlayerIdentityState.Unregistered, identity.Load().State);
+        Assert.Equal(Localization.Get("キャンセル結果を確認できませんでした。保存済みの情報で再確認できます。"), viewModel.WebAuthorizationMessage);
+    }
+
+    [Fact]
+    public async Task Replacement_review_holds_restore_exclusion_and_disables_toggle_until_cancel()
+    {
+        using var fixture = new DatabaseFixture();
+        var store = new SqliteWebBestSyncStateStore(Path.Combine(fixture.DirectoryPath, "reserved-sync.sqlite"));
+        var api = new FakeWebBestSyncApiClient();
+        var identity = new MemoryWebPlayerIdentityStore();
+        identity.SaveRegistered("public-player", "credential-secret");
+        using var http = new HttpClient(new DelegateHttpMessageHandler(_ => throw new Exception("No identity request")))
+        { BaseAddress = new("https://best.example.test/") };
+        var viewModel = new MainViewModel(new ScoreViewerRepository());
+        viewModel.ConfigureWebBestSync(new WebBestSyncCoordinator(store, new WebBestProjectionRepository(), api,
+            fixture.ScorePath, fixture.MasterPath), new WebPlayerIdentityService(http, identity));
+        Assert.NotNull(await viewModel.PrepareWebBestReplacementAsync(CancellationToken.None));
+        Assert.True(viewModel.IsPersonalDataOperationBusy);
+        Assert.False(viewModel.CanToggleWebSync);
+        Assert.False(viewModel.CanDeletePublicBests);
+        await viewModel.ToggleWebBestSyncAsync();
+        Assert.False(store.Load().Enabled);
+        Assert.Equal(0, api.MergeCalls);
+        Assert.False(viewModel.RestorePersonalScoreBackup("unrelated-backup.json").Succeeded);
+        await viewModel.CancelWebBestReplacementAsync(CancellationToken.None);
+        Assert.False(viewModel.IsPersonalDataOperationBusy);
+        Assert.True(viewModel.CanToggleWebSync);
+    }
+
+    private sealed class PendingAuthorizationStore(PendingAppAuthorization value) : IAppAuthorizationStore
+    {
+        private PendingAppAuthorization? pending = value;
+        public bool FailClear { get; set; }
+        public Exception? LoadFailure { get; set; }
+        public PendingAppAuthorization? Load()
+        {
+            if (LoadFailure is not null)
+            {
+                throw LoadFailure;
+            }
+            return pending;
+        }
+        public void Save(PendingAppAuthorization authorization) => pending = authorization;
+        public void Clear()
+        {
+            if (FailClear)
+            {
+                throw new IOException("Pending authorization cleanup failed.");
+            }
+            pending = null;
+        }
+    }
+
     private sealed class FakeWebBestSyncApiClient : IWebBestSyncApiClient
     {
         public int BeginSnapshotCalls { get; private set; }
         public int DeleteCalls { get; private set; }
+        public int MergeCalls { get; private set; }
+        public int AuthorizeCalls { get; private set; }
+        public int CommitCalls { get; private set; }
+        public WebBestApiStatus CommitStatus { get; set; } = WebBestApiStatus.Success;
+        public int AbortCalls { get; private set; }
+        public List<PlayerChartBestProjectionV1> MergedItems { get; } = [];
         public List<PlayerChartBestProjectionV1> UploadedItems { get; } = [];
         public Queue<WebBestSnapshotBeginResult> BeginResults { get; } = new();
         public WebBestSnapshotBeginResult BeginResult { get; set; } =
             new(WebBestApiStatus.Success, "bs_fixture", 0);
         public Func<IReadOnlyList<WebBestDeltaOperation>, WebBestDeltaResult>? DeltaHandler { get; set; }
 
-        public Task<WebBestDeltaResult> SendDeltaAsync(
-            string masterVersion,
-            IReadOnlyList<WebBestDeltaOperation> operations,
-            CancellationToken cancellationToken) =>
-            Task.FromResult(DeltaHandler?.Invoke(operations) ?? new WebBestDeltaResult(
-                WebBestApiStatus.Success,
-                operations.Select((_, index) => new WebBestDeltaItemResult(
-                    index, true, true, null)).ToArray()));
+        public Task<WebBestDeltaResult> SendDeltaAsync(string masterVersion, IReadOnlyList<WebBestDeltaOperation> operations,
+            CancellationToken cancellationToken)
+        {
+            MergeCalls++;
+            MergedItems.AddRange(operations.Select(item => item.Projection!));
+            return Task.FromResult(DeltaHandler?.Invoke(operations) ?? new WebBestDeltaResult(WebBestApiStatus.Success,
+                operations.Select((_, index) => new WebBestDeltaItemResult(index, true, true, null)).ToArray()));
+        }
 
         public Task<WebBestSnapshotBeginResult> BeginSnapshotAsync(
             string masterVersion,
@@ -872,15 +1242,31 @@ public sealed class WebBestSyncTests
             return Task.FromResult(new WebBestApiResult(WebBestApiStatus.Success));
         }
 
-        public Task<WebBestApiResult> CommitSnapshotAsync(
-            string snapshotId,
-            CancellationToken cancellationToken) =>
-            Task.FromResult(new WebBestApiResult(WebBestApiStatus.Success));
-
-        public Task<WebBestApiResult> AbortSnapshotAsync(
-            string snapshotId,
-            CancellationToken cancellationToken) =>
-            Task.FromResult(new WebBestApiResult(WebBestApiStatus.Success));
+        public Task<WebBestApiResult> CommitSnapshotAsync(string snapshotId, CancellationToken cancellationToken)
+        {
+            CommitCalls++;
+            Assert.True(AuthorizeCalls > 0);
+            return Task.FromResult(new WebBestApiResult(CommitStatus));
+        }
+        public Task<WebBestApiResult> AbortSnapshotAsync(string snapshotId, CancellationToken cancellationToken)
+        {
+            AbortCalls++;
+            return Task.FromResult(new WebBestApiResult(WebBestApiStatus.Success));
+        }
+        public Task<WebBestReplacementReviewResult> ReviewReplacementAsync(string snapshotId, CancellationToken token)
+        {
+            var canonical = "[" + string.Join(",", UploadedItems.OrderBy(item => item.ChartId, StringComparer.Ordinal)
+                .Select(WebBestProjectionContract.CanonicalJson)) + "]";
+            var digest = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(Encoding.UTF8.GetBytes(canonical)));
+            return Task.FromResult(new WebBestReplacementReviewResult(WebBestApiStatus.Success,
+                new WebBestReplacementReview(2, UploadedItems.Count, ["removed-chart"],
+                    [new("chart-1", ["best_score", "best_flare_rank"])], digest, 0)));
+        }
+        public Task<WebBestApiResult> AuthorizeReplacementAsync(string snapshotId, WebBestReplacementReview review, CancellationToken token)
+        {
+            AuthorizeCalls++;
+            return Task.FromResult(new WebBestApiResult(WebBestApiStatus.Success));
+        }
 
         public Task<WebBestApiResult> DeletePublicBestsAsync(
             CancellationToken cancellationToken)

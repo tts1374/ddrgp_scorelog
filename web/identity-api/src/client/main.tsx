@@ -1,6 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { PlayerApp } from "./App";
+import { ManagementApp } from "./ManagementApp";
 import type { PublicPlayer } from "./types";
 import "./styles.css";
 
@@ -14,4 +15,5 @@ function readBootstrap(): PublicPlayer {
 
 const root = document.getElementById("root");
 if (root === null) throw new Error("Application root is missing.");
-createRoot(root).render(<StrictMode><PlayerApp player={readBootstrap()} /></StrictMode>);
+createRoot(root).render(<StrictMode>{location.pathname.startsWith("/my/")
+  ? <ManagementApp /> : <PlayerApp player={readBootstrap()} />}</StrictMode>);

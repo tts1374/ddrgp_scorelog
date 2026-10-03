@@ -9,6 +9,7 @@ using DDRGpScoreViewer.Controls;
 using DDRGpScoreViewer.Data;
 using DDRGpScoreViewer.Models;
 using DDRGpScoreViewer.WebBestSync;
+using DDRGpScoreViewer.WebIdentity;
 using Xunit;
 
 namespace DDRGpScoreViewer.Tests;
@@ -1077,14 +1078,13 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
     }
 
     [Theory]
-    [InlineData(UserSettings.JapaneseLanguage, UserSettings.LightTheme, "公開データの同期", "公開データを削除")]
-    [InlineData(UserSettings.EnglishLanguage, UserSettings.DarkTheme, "Published data sync", "Delete published data")]
-    [InlineData(UserSettings.KoreanLanguage, UserSettings.LightTheme, "공개 데이터 동기화", "공개 데이터 삭제")]
+    [InlineData(UserSettings.JapaneseLanguage, UserSettings.LightTheme, "Webに自己ベストを送る")]
+    [InlineData(UserSettings.EnglishLanguage, UserSettings.DarkTheme, "Share personal bests on the Web")]
+    [InlineData(UserSettings.KoreanLanguage, UserSettings.LightTheme, "웹에 개인 최고 기록 보내기")]
     public void Public_data_settings_are_compact_localized_and_use_existing_control_styles(
         string language,
         string theme,
-        string heading,
-        string deleteButtonText)
+        string heading)
     {
         using var databaseFixture = new DatabaseFixture();
         applicationFixture.Run(() =>
@@ -1120,22 +1120,15 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
                 window.SettingsNavigation.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 DrainDispatcher(window.Dispatcher);
 
-                Assert.False(window.WebBestSyncToggle.IsChecked);
-                Assert.True(window.WebBestSyncToggle.IsEnabled);
-                Assert.Equal(Localization.Get("同期OFF"), window.WebBestSyncStatusText.Text);
+                Assert.Equal(Visibility.Collapsed, window.WebBestSyncToggle.Visibility);
+                Assert.False(window.WebBestSyncToggle.IsEnabled);
+                Assert.Equal(Localization.Get("連携停止中"), window.WebBestSyncStatusText.Text);
                 Assert.False(window.SyncWebBestsNowButton.IsEnabled);
-                Assert.Equal("Player", window.WebPlayerDisplayNameTextBox.Text);
-                Assert.Equal(deleteButtonText, window.DeletePublicBestsButton.Content);
                 Assert.Contains(heading, FindVisualChildren<TextBlock>(window).Select(text => text.Text));
                 var settingsTexts = FindVisualChildren<TextBlock>(window).Select(text => text.Text).ToArray();
                 Assert.DoesNotContain(Localization.Get("起動時の監視と保存できない結果の通知を設定します"), settingsTexts);
                 Assert.DoesNotContain(Localization.Get("自己ベストの初期表示と起動時の画面を設定します"), settingsTexts);
-                Assert.Same(window.BestTitleSearchTextBox.Style, window.WebPlayerDisplayNameTextBox.Style);
-                Assert.Same(window.OpenPublicPlayerPageButton.Style, window.DeletePublicBestsButton.Style);
-                Assert.Equal(new Thickness(12, 8, 12, 8), window.WebPlayerDisplayNameTextBox.Padding);
-                Assert.Equal(64, window.WebPlayerDisplayNameTextBox.MaxLength);
                 Assert.Equal(string.Empty, window.PageSubtitle.Text);
-                Assert.DoesNotContain("公開Best", window.DeletePublicBestsButton.Content.ToString());
                 Assert.Equal(Visibility.Visible, window.WebBestSyncStatusMessageText.Visibility);
                 window.ViewModel.ApplyWebBestSyncState(new WebBestSyncSnapshot(
                     true, false, WebBestSyncStatus.Idle, null, 0, null, null, []));
@@ -1146,14 +1139,55 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
                 DrainDispatcher(window.Dispatcher);
                 Assert.Equal(Visibility.Visible, window.WebBestSyncStatusMessageText.Visibility);
                 Assert.False(string.IsNullOrWhiteSpace(window.WebBestSyncStatusMessageText.Text));
-                Assert.Equal(
-                    BindingMode.TwoWay,
-                    BindingOperations.GetBinding(
-                        window.WebBestSyncToggle,
-                        System.Windows.Controls.Primitives.ToggleButton.IsCheckedProperty)?.Mode);
-                Assert.Equal(
-                    BindingMode.TwoWay,
-                    BindingOperations.GetBinding(window.WebPlayerDisplayNameTextBox, TextBox.TextProperty)?.Mode);
+                Assert.NotNull(BindingOperations.GetBinding(window.WebBestSyncToggle, Button.ContentProperty));
+
+                var webSettingsPanel = Assert.IsType<StackPanel>(window.ConnectWebAccountButton.Parent);
+                Assert.Equal(new[] { Localization.Get("アカウントを作成・引き継ぐ") },
+                    FindVisualChildren<Button>(webSettingsPanel)
+                        .Where(button => button.IsVisible).Select(button => button.Content?.ToString()).ToArray());
+
+                var identityStore = new FileWebPlayerIdentityStore(
+                    Path.Combine(databaseFixture.DirectoryPath, "web-player-identity.development.json"),
+                    Path.Combine(databaseFixture.DirectoryPath, "web-player-credential.development.bin"));
+                identityStore.SaveRegistered("p_XXXXXXXXXXXXXXXXXXXXXX", "test-credential", "Existing player");
+                window.ViewModel.ApplyWebBestSyncState(new WebBestSyncSnapshot(
+                    false, false, WebBestSyncStatus.Disabled, null, 0, null, null, []));
+                DrainDispatcher(window.Dispatcher);
+                window.UpdateLayout();
+                Assert.False(window.ConnectWebAccountButton.IsVisible);
+                Assert.True(window.WebBestSyncToggle.IsVisible);
+                Assert.True(window.WebBestSyncToggle.IsEnabled);
+                Assert.Equal(Localization.Get("連携を再開する"), window.WebBestSyncToggle.Content);
+                Assert.True(window.OpenWebProfileButton.IsVisible);
+                Assert.False(window.SyncWebBestsNowButton.IsEnabled);
+                Assert.False(window.WebConnectionExpander.IsExpanded);
+                Assert.Equal(4, FindVisualChildren<Button>(webSettingsPanel).Count(button => button.IsVisible));
+
+                window.WebConnectionExpander.IsExpanded = true;
+                window.UpdateLayout();
+                Assert.Contains(Localization.Get("Google連携の設定をWebで開く"),
+                    FindVisualChildren<Button>(webSettingsPanel)
+                        .Where(button => button.IsVisible).Select(button => button.Content?.ToString()));
+                Assert.False(window.GoogleConnectButton.IsVisible);
+                Assert.False(window.GoogleUnlinkButton.IsVisible);
+                Assert.DoesNotContain(Localization.Get("プレイヤー情報を更新"),
+                    FindVisualChildren<Button>(webSettingsPanel).Select(button => button.Content?.ToString()));
+                Assert.DoesNotContain(Localization.Get("公開データを削除"),
+                    FindVisualChildren<Button>(webSettingsPanel).Select(button => button.Content?.ToString()));
+                Assert.DoesNotContain(Localization.Get("このPCの対象データでWebのBestを置き換える"),
+                    FindVisualChildren<Button>(webSettingsPanel).Select(button => button.Content?.ToString()));
+                Assert.DoesNotContain(Localization.Get("公開プレイヤー名"),
+                    FindVisualChildren<TextBlock>(webSettingsPanel).Select(text => text.Text));
+
+                identityStore.SetAuthenticationInvalid(true);
+                window.ViewModel.ApplyWebBestSyncState(new WebBestSyncSnapshot(
+                    false, false, WebBestSyncStatus.AuthInvalid, null, 0, null, null, []));
+                DrainDispatcher(window.Dispatcher);
+                window.UpdateLayout();
+                Assert.Equal(new[] { Localization.Get("アカウントを作成・引き継ぐ"), Localization.Get("このPCの連携情報を削除") },
+                    FindVisualChildren<Button>(webSettingsPanel)
+                        .Where(button => button.IsVisible).Select(button => button.Content?.ToString()).ToArray());
+                Assert.Equal("p_XXXXXXXXXXXXXXXXXXXXXX", identityStore.Load().PublicPlayerId);
             }
             finally
             {

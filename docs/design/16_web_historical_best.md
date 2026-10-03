@@ -6,10 +6,10 @@ Issue [#210](https://github.com/tts1374/ddrgp_scorelog/issues/210)の追加決�
 
 - 正式個人スコアDBは、そのPCが保持する履歴・Local BestのSource of Truth。AppのBestはそのDBから算出する。正式バックアップを復元すれば復元履歴もLocal Bestへ含む。
 - Webは同じPlayerについて、各時点・各PCから公開したcapture由来Bestを蓄積する。現在のPCにない過去のBestも保持し、現在のDBとの一致を同期条件にしない。履歴そのものは保存しない。
-- 同期はLocal → Webだけ。Web Bestを正式個人スコアDBへ復元しない。公開Player引き継ぎ、履歴移行、同期ONは別操作。
+- 同期はLocal → Webだけ。Web Bestを正式個人スコアDBへ復元しない。公開Player引き継ぎと履歴移行は別責務。引き継ぎではactivation成功後にこのPCの同期をONにする。
 - Web同期のeligible集合は既存の`source_kind = 'capture'`の正式保存playだけ。`manifest`復元をcaptureへ昇格しない。復元履歴があっても同期対象0件は正常。
 - 通常同期は追加・改善だけ。空集合、欠落譜面、値の低下、Local削除から公開Bestを削除・低下させない。
-- 意図的な訂正・削除は、既存の公開全削除または確認済みfull snapshot置換で行う。これらは本人が公開履歴をリセットする例外操作。
+- 意図的な訂正では、本人がAppの送信を停止し、Webで公開記録だけを削除してからAppの送信を再開する。このPCのcapture集合をmergeで送り直し、公開記録を作り直す。Player、公開URL、Google連携、App Credential、PC内の履歴を保持する。
 
 ## fieldごとのmerge
 
@@ -35,13 +35,13 @@ full snapshotのatomic replace-set契約は変更しない。改善だけの同�
 | 既存snapshot begin/items/commit/abort | staging、全件validation、revision、atomic replace、空snapshot有効性を維持。全Playerで明示置換許可が必要 |
 | `POST /api/v1/me/bests/snapshots/{id}/replacement-review` | 当該Credential所有snapshotの全集合と全公開集合を比較。公開・Local同期対象件数、欠落/低下field・譜面、base revision、集合digestを返す |
 | `POST /api/v1/me/bests/snapshots/{id}/replacement-authorize` | 本人の置換確認後、Credential/snapshot/digest/base revisionへ固定した10分TTLの一回限り許可を発行 |
-| 既存`DELETE /api/v1/me/bests` | active App Credentialによる明示全削除。既存確認と成功後同期OFFを維持。Player/URL/Credential/Local履歴は保持 |
+| 既存`DELETE /api/v1/me/bests` | 全Playerで409 `WEB_PROFILE_REQUIRED`。App Credentialによる公開記録削除はWebへ移す |
 
 全Playerに追加・改善同期を適用する。未リリースなので旧版互換のPlayer別policyは追加しない。既存の開発データは保持し、名前/ID/所有権をmigrationで再作成しない。
 
-既存batchの置換upsert/deleteは409 `HISTORICAL_BEST_REQUIRED`で拒否する。snapshot commitは置換許可なしなら409 `REPLACEMENT_CONFIRMATION_REQUIRED`。使用する全Worker originのwrite経路へ適用し、古いendpointから迂回できない。読み取りと明示公開全削除は維持する。
+既存batchの置換upsert/deleteは409 `HISTORICAL_BEST_REQUIRED`で拒否する。snapshot commitは置換許可なしなら409 `REPLACEMENT_CONFIRMATION_REQUIRED`。使用する全Worker originのwrite経路へ適用し、古いendpointから迂回できない。読み取りは維持する。公開記録削除はWebの専用確認を通して行い、旧App削除APIからの迂回を拒否する。
 
-merge、snapshot commit、公開全削除は変更transaction内でCredentialの未失効を再検証する。旧PCのin-flight requestが認証middlewareを通過済みでも、権限移行後の書込みを許さない。並行mergeはfield比較と書込みを一つのtransactionで行い、更新を失わない。
+mergeとsnapshot commitは変更transaction内でCredentialの未失効を再検証する。Webの公開記録削除はsessionとGoogle identity→Player対応、専用操作proofを変更transaction内で再検証する。旧PCのin-flight requestが認証middlewareを通過済みでも、権限移行後の書込みを許さない。並行mergeはfield比較と書込みを一つのtransactionで行い、更新を失わない。
 
 ## Windowsの同期と状態
 
@@ -50,20 +50,20 @@ merge、snapshot commit、公開全削除は変更transaction内でCredentialの
 - desired/synced hashは正式DB外の既存同期SQLiteを使う。syncedは「このPCのProjectionをWebが受領済み」を表し、Web値との一致を意味しない。受領hashと一致した時だけackし、送信中にcaptureが追加された場合は最新desiredを残す。
 - Localから消えたProjectionはpending deleteとして送らない。ローカル同期stateの追跡rowだけ除去できる。誤登録の訂正でも自動でWebを下げない。
 - `Idle`はこのPCに未送信の変更がない状態。空eligible集合でも同期ON/Idleへ進める。Web 862件・このPC同期対象0件等の差を異常表示にしない。
-- 新PCのCredential activation後は同期OFF。本人が「連携を再開する」を押せば空DB/manifest復元でもmergeできる。「連携を停止する」はこのPCの自動送信だけを止める。今すぐ同期はOFF中無効。完全なcapture集合再構築や既存Web値との比較を再開条件にしない。
+- 新規登録・新PCのCredential activation成功後は同期ON。送信開始をWeb最終確認で示し、空DB/manifest復元でもmergeを開始できる。activation結果不明では停止を維持する。「Webへの送信を止める」はこのPCの自動送信だけを止める。今すぐ同期はOFF中無効。完全なcapture集合再構築や既存Web値との比較を再開条件にしない。
 - 説明文: 「Webにはこれまで公開した自己ベストが残ります。このPCからは新しい記録や改善した記録を追加します。スコア履歴の移行はバックアップから行ってください。」Local Best件数とcapture同期対象件数を混同しない。
 
-## 明示置換と訂正
+## 公開記録を作り直す
 
-設定の別操作「このPCの記録で公開Bestを置き換える」を使用する。同期ON、引き継ぎ、復元、repair、retryでは自動で実行しない。
+1. 本人がAppの「Webへの送信を止める」を押す。WebからAppの同期設定を変更しない。
+2. Webマイプロフィールの「公開記録を削除する」へ進む。対象の名前・公開URL、Webの自己ベストがすべて消えること、このPCの履歴・アカウント・Google連携・PC権限・URLが残ることを表示する。
+3. 専用purpose `public-bests-delete`で同Google identityを再確認し、独立操作proofを発行する。通常loginやアカウント全削除用proofを代用しない。送信を止めたことと削除の影響を未選択checkboxで確認し、最終削除ボタンを押す。
+4. session/Origin/CSRF、purpose/Player/identity/session/browser/期限/未消費proofを検証し、削除・proof消費・未完了snapshot無効化をatomicに確定する。消費済み同proofのretryは同じ結果確認だけで、再送済みの記録を再削除しない。公開集合が変わった場合だけ公開日時/revisionを更新する。
+5. 本人がAppの「Webへの送信を再開する」を押す。既存OFF→ONの再送で現在のcapture集合をmergeする。manifest由来の履歴は送信対象外で、対象0件ならWebは空のまま。Web削除から自動再送は開始しない。
 
-1. 現在のcapture集合Lを固定して既存snapshot stagingへuploadする。通常の公開集合Wは変更しない。
-2. serverはremoved chartも含む全WとLを比較する。Public APIの絞込み・件数だけで判断しない。digestは`chart_id` ordinal昇順、V1固定field順canonical JSON arrayのUTF-8 SHA-256。
-3. 公開名/URL、公開件数、同期対象件数、消える譜面と低下する項目、代表譜面を表示。「このPCにない公開Bestも削除されます」と未選択の確認checkbox・最終実行ボタンを置く。L空は「公開Bestをすべて削除します」。manifest履歴がLocalにあっても同期対象外であることを説明する。
-4. 本人確認から許可を発行し、commit transactionでowner/active Credential/digest/revision/TTLを照合する。許可の転用、期限切れ、chunk変更、stale revisionはlive不変、再比較・再確認へ戻る。許可を自動更新しない。
-5. commitで公開集合をatomicに置換し許可を消費する。空snapshotも有効。応答喪失retryは同じ成功を返す。同内容なら公開日時不変。Credential activation/他PC失効はこの操作に含めない。
+App通常画面は送信停止/再開、今すぐ送信、公開ページとプロフィール導線に絞る。Web削除中に送信を続けると記録が再び追加されるため、送信停止が利用者手順であることを明示する。消した過去PCの公開値をWebからLocalへ復元しない。
 
-固定snapshotで失った過去Web値はLocalへ復元しない。訂正後は追加・改善の通常同期へ戻る。送信中のcaptureは継続し、最新desiredを再送する。DB復元/差替えは置換commitと排他し、DB世代変更時に未commitの比較・許可を破棄する。純粋なmerge再送は新DBから再計算すればよい。
+既存snapshot APIのatomic replace-set、全Web集合との比較、Credential/snapshot/canonical digest/revision/10分TTLの確認許可、空集合/同内容/同結果retryの安全機構は維持する。App通常画面からの直接置換導線は提供しない。H5はこのAPI安全境界の回帰検証とし、再開/復元/repair/retryではsnapshotを実行しない。
 
 ## Acceptance criteria / Required tests
 
@@ -74,6 +74,6 @@ merge、snapshot commit、公開全削除は変更transaction内でCredentialの
 | H3 | 初回ON/再ON/復元/repair/state欠損はmerge再送だけ。部分成功・通信失敗・送信中capture・ack応答喪失でも再送可能。synced hashをWeb一致として扱わない |
 | H4 | 全Playerの旧batch・無許可snapshotは409拒否。古いWorker origin、直接API、失効との並行writeも迂回不可。既存開発データのID/所有権はmigrationで保持 |
 | H5 | 明示置換は全W比較・欠落/独立field低下/removed chart/空の確認を伴う。許可転用/TTL/chunk変更/revision競合/unknown chart/中断ではlive不変。空置換・同内容・commit retryのatomic/冪等性を維持 |
-| H6 | 公開全削除は確認後同期OFF。Google解除やCredential activationでBest/URL/Localを変更しない。正式保存・backup・stable master ID・capture限定・一方向同期を維持 |
+| H6 | Appの置換・公開記録削除ボタンなし。App送信停止→Web公開記録削除→App再開で現在capture集合を再送する。Web削除は専用OAuth/操作proof/対象再表示/未選択確認/atomic消費を要求し、同proof retryでは再送済み記録を再削除しない。公開URL/Player/Google/active App Credential/Localを保持。通常session単独/別purpose/失効session/別Player/取消/失敗で削除しない。Google解除やCredential activation自体でBestを変更しない。正式保存・backup・stable master ID・capture限定・一方向同期を維持 |
 
-手動確認: 旧PCの公開Bestを残した新PCの空DB→Webログイン→activation→連携再開→新capture追加、manifest復元後再開、低いscoreと良いclearの組合せ、停止→再開、再起動、誤登録をLocal修正→明示置換、置換cancel/空全削除を開発環境で確認する。設計段階では実通信・runtime testを実施せず、後続実装でrepository既定CIとH1〜H6を実施する。
+手動確認: 旧PCの公開Bestを残した新PCの空DB→Webログイン→activation成功→同期ON→新capture追加、manifest復元後再開、低いscoreと良いclearの組合せ、停止→再開、再起動、誤記録をLocal修正→送信停止→Web公開記録削除→送信再開、削除cancel/対象0件/再送を開発環境で確認する。設計段階では実通信・runtime testを実施せず、後続実装でrepository既定CIとH1〜H6を実施する。

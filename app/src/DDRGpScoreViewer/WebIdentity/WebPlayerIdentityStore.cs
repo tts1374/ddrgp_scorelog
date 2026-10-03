@@ -28,6 +28,7 @@ internal enum UserSecretPurpose
 {
     AppCredential,
     RegistrationRequestId,
+    AppAuthorization,
 }
 
 internal interface IUserSecretProtector
@@ -82,6 +83,7 @@ internal sealed class DpapiCurrentUserSecretProtector : IUserSecretProtector
     {
         UserSecretPurpose.AppCredential => AppCredentialEntropy,
         UserSecretPurpose.RegistrationRequestId => RegistrationRequestEntropy,
+        UserSecretPurpose.AppAuthorization => Encoding.UTF8.GetBytes("DDRGpScoreViewer.WebPlayer.AppAuthorization.v1"),
         _ => throw new ArgumentOutOfRangeException(nameof(purpose)),
     };
 }
@@ -121,6 +123,11 @@ internal sealed class FileWebPlayerIdentityStore : IWebPlayerIdentityStore
                     protectedCredential,
                     UserSecretPurpose.AppCredential);
             }
+            catch (CryptographicException)
+            {
+                return new WebPlayerIdentitySnapshot(PlayerIdentityState.AuthInvalid,
+                    metadata.PublicPlayerId, null, null, metadata.DisplayName);
+            }
             finally
             {
                 CryptographicOperations.ZeroMemory(protectedCredential);
@@ -141,8 +148,8 @@ internal sealed class FileWebPlayerIdentityStore : IWebPlayerIdentityStore
 
         if (metadata.PublicPlayerId is not null)
         {
-            throw new InvalidDataException(
-                "Web Player identity metadata exists without its protected App Credential.");
+            return new WebPlayerIdentitySnapshot(PlayerIdentityState.AuthInvalid,
+                metadata.PublicPlayerId, null, null, metadata.DisplayName);
         }
 
         // A protected credential may have been committed immediately before a process
@@ -226,13 +233,13 @@ internal sealed class FileWebPlayerIdentityStore : IWebPlayerIdentityStore
 
     public void Clear()
     {
-        if (File.Exists(metadataPath))
-        {
-            File.Delete(metadataPath);
-        }
         if (File.Exists(credentialPath))
         {
             File.Delete(credentialPath);
+        }
+        if (File.Exists(metadataPath))
+        {
+            File.Delete(metadataPath);
         }
     }
 
@@ -292,7 +299,7 @@ internal sealed class FileWebPlayerIdentityStore : IWebPlayerIdentityStore
         WriteBytesAtomically(metadataPath, new UTF8Encoding(false).GetBytes(json));
     }
 
-    private static void WriteBytesAtomically(string path, byte[] content)
+    internal static void WriteBytesAtomically(string path, byte[] content)
     {
         var directory = Path.GetDirectoryName(path)
             ?? throw new InvalidOperationException(

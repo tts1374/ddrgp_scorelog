@@ -71,6 +71,7 @@ internal sealed class SqliteWebBestSyncStateStore : IWebBestSyncStateStore
 
     public WebBestSyncSnapshot RequestFullSnapshot()
     {
+        // Retained local column name: this flag now requests capture replay via merge.
         using var connection = Open();
         Execute(
             connection,
@@ -122,13 +123,16 @@ internal sealed class SqliteWebBestSyncStateStore : IWebBestSyncStateStore
         Execute(
             transaction,
             """
-            UPDATE web_best_sync_entries
-            SET desired_projection_hash = NULL,
-                deferred_error = NULL,
-                updated_at = $updated_at
+            DELETE FROM web_best_sync_entries
             WHERE chart_id NOT IN (SELECT chart_id FROM current_web_best_charts);
-            """,
-            ("$updated_at", now));
+            """);
+        Execute(
+            transaction,
+            """
+            UPDATE web_best_sync_entries SET synced_projection_hash = NULL, deferred_error = NULL
+            WHERE (SELECT full_snapshot_required FROM web_best_sync_metadata WHERE singleton_id = 1) = 1;
+            UPDATE web_best_sync_metadata SET full_snapshot_required = 0 WHERE singleton_id = 1;
+            """);
         Execute(
             transaction,
             "DELETE FROM web_best_sync_entries WHERE desired_projection_hash IS NULL AND synced_projection_hash IS NULL;");
