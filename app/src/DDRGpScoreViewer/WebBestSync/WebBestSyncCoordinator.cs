@@ -59,15 +59,27 @@ internal sealed class WebBestSyncCoordinator
     public async Task SetEnabledAsync(bool enabled, CancellationToken cancellationToken)
     {
         var current = stateStore.Load();
-        if (current.Enabled == enabled)
+        if (current.Enabled == enabled && enabled)
         {
             Publish(current);
             return;
         }
-        Publish(stateStore.SetEnabled(enabled));
+        if (current.Enabled != enabled)
+        {
+            current = stateStore.SetEnabled(enabled);
+        }
         if (enabled)
         {
+            Publish(current);
             await SynchronizeAsync(cancellationToken);
+        }
+        else
+        {
+            // Record OFF before draining: queued batches and retries must not start.
+            // Do not report a completed stop until an already-issued request has finished.
+            await operationGate.WaitAsync(cancellationToken);
+            operationGate.Release();
+            Publish(stateStore.Load());
         }
     }
 

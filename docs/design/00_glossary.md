@@ -74,13 +74,13 @@ DDR GP scorelog の設計、PoC、テストで使う主要用語を定義する�
 詳細は[`14_google_player_recovery.md`](14_google_player_recovery.md)を正本とする。#213の実装契約である。
 
 - `Google identity`: 検証済みGoogle issuerを`https://accounts.google.com`へ正規化し、case-sensitiveな`sub`と組み合わせた認証手段の永続キー。emailをidentityにしない。
-- `Player recovery`: Google identityで既存Playerへ新App Credentialを発行し、DPAPI保存後のactivationでPC権限を移行する。ローカル履歴移行と同期ONは別操作。
+- `Player recovery`: Google identityで既存Playerへ新App Credentialを発行し、DPAPI保存後のactivationでPC権限を移行する。activation成功後に同期ONとしてcapture集合をmergeする。ローカル履歴移行は別操作。
 - `app authorization request secret`: App-Web承認transactionの結果/activation/retryを開始アプリに結ぶ256 bit以上のsecret。serverはdigest、Windowsは用途別DPAPI保存。URLへ出さない。
 - `activation_state`: App Credentialの`pending`（通常API不可）/`active`（通常API可）。既存の失効属性を別に検証する。
 - `AppAuthorizationPending`: WindowsのApp-Web認証/結果受領待ち。既存Playerへのlink/unlinkは元の同期を維持、新Credential発行時は新PC同期不可。
 - `app authorization purpose`: `connect`（Web新規登録/ログイン共通）または`unlink`。開始時のPlayerと、Webの`register`/`login`意図をserverへ固定し、認証から自動登録へfallbackしない。
 - `expected_public_player_id`: App-Web開始時に読める旧公開IDを固定する誤操作防止条件。AUTH_INVALID/復号不能からのGoogle再ログインではserverで対象一致を要求する。所有証明やGoogle追加の権限に使わない。
-- `CredentialActivationPending`: WindowsのDPAPI保存済みCredentialについて権限移行結果が未確定。結果確認まで新PC同期停止、成功後REGISTERED＋同期OFF。
+- `CredentialActivationPending`: WindowsのDPAPI保存済みCredentialについて権限移行結果が未確定。結果確認まで新PC同期停止、成功後REGISTERED＋同期ON。
 
 ### Webマイプロフィール
 

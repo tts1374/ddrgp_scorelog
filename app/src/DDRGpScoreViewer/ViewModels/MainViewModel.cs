@@ -2083,7 +2083,15 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 {
                     try
                     {
-                        await webBestSyncCoordinator.SetEnabledAsync(true, cancellationToken);
+                        if (webBestSyncCoordinator.State.Enabled)
+                        {
+                            webBestSyncCoordinator.RequireReconciliation();
+                            await webBestSyncCoordinator.SynchronizeAsync(cancellationToken);
+                        }
+                        else
+                        {
+                            await webBestSyncCoordinator.SetEnabledAsync(true, cancellationToken);
+                        }
                     }
                     catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
                     {
