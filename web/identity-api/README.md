@@ -2,6 +2,10 @@
 
 Player identity、自己歴代Bestの追加・改善同期、公開Player Data、Google認証付きWeb管理を、同一Cloudflare Worker / D1 / originで提供します。React frontendはCloudflare Static Assetsとして同時にbuildします。認証・管理の正本は設計14/15/16とADR 0012です。
 
+## TOPページ
+
+`/`はアプリのダウンロード、記録・Web連携の始め方、公開Player Dataの使い方を案内します。右上の「マイページ」からログイン・プロフィール管理へ進めます。有効なWebログインと連携済みPlayerがある場合は、自分の公開ページ`/player/{public_player_id}`へ移動します。未ログイン、期限切れ、未連携の場合は案内ページを表示します。TOPの表示・移動は`no-store`で扱い、アカウントの作成や連携は開始しません。
+
 ## Local validation
 
 ```powershell
@@ -28,7 +32,7 @@ Windowsアプリの「アカウントを作成・引き継ぐ」からWebの新�
 
 Google実通信の手動確認には本番と分離したHTTPS開発Worker/D1、開発専用のGoogle Web client、当該HTTPS originの固定callback `/api/v1/auth/web/google/callback`、Googleテストユーザーを用意します。`GOOGLE_CLIENT_ID`、`GOOGLE_CLIENT_SECRET`、独立した32 byte以上の`APP_AUTHORIZATION_SECRET`を開発環境に設定します。本番client/secret/D1を流用しません。Desktop clientやWindows loopback callbackへ置き換えません。これらの設定とテストユーザーなしでは実OAuthを検証できません。ローカルHTTPはmock・fixtureの検証用です。自動UIテストは認証APIの応答をmockし、Google実通信を代替した成功とは扱いません。
 
-`/my/profile`、`/my/app-connect`、`/my/account-delete`、`/my/public-data-delete`、`/my/auth-error`はWorker-firstのno-store管理画面です。Google選び直しで未保存入力と確認checkboxを破棄します。Google解除は利用できるアプリの「Web連携」から開始し、アカウント全削除はAppなしでもWebから同じGoogleを確認して行えます。どちらもGoogleの選択だけでは確定しません。`/player/{public_player_id}`はログイン不要です。
+`/my/profile`、`/my/app-connect`、`/my/account-delete`、`/my/public-data-delete`、`/my/auth-error`はWorker-firstのno-store管理画面です。Google選び直しで未保存入力と確認checkboxを破棄します。Google解除は利用できるアプリの「Web連携」から開始し、アカウント全削除はAppなしでもWebから同じGoogleを確認して行えます。どちらもGoogleの選択だけでは確定しません。`/player/{public_player_id}`はログイン不要です。公開Player Dataの右上にある「マイページ」から`/my/profile`へ移動できます。未ログイン時はGoogleログインの案内を表示します。ログイン済みで公開プロフィールがある場合は、マイページの右上にある「公開ページ」から自分の公開Player Dataへ移動できます。
 
 ## Cloudflare setup
 

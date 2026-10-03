@@ -61,7 +61,7 @@ function FlareSummaryView({ summary }: { summary: PublicPlayer["styles"]["SP"]["
     <div className="flare-summary">
       <div className="flare-summary-block">
         <span className="flare-summary-label">TOTAL FLARE SKILL RANK</span>
-        <strong className="flare-rank-name">
+        <strong className="flare-rank-name" data-rank={summary.rank.main}>
           <span className="flare-rank-main">{summary.rank.main}</span>
           {summary.rank.sub !== null ? <span className="flare-rank-sub">{summary.rank.sub}</span> : null}
         </strong>
@@ -332,7 +332,7 @@ export function PlayerApp({ player }: { player: PublicPlayer }) {
   const hasAnyBest = player.styles.SP.published_best_count + player.styles.DP.published_best_count > 0;
   const updatedAt = player.public_bests_updated_at === null ? "まだありません" : dateFormat.format(new Date(player.public_bests_updated_at));
   return <>
-    <header className="site-header"><div className="site-header-inner"><a className="site-brand" href={`/player/${player.public_player_id}`}>GP Score Log</a><span className="site-context">公開 Player Data</span></div></header>
+    <header className="site-header"><div className="site-header-inner"><a className="site-brand" href={`/player/${player.public_player_id}`}>GP Score Log</a><a className="text-button site-nav-link" href="/my/profile">マイページ</a></div></header>
     <main className="page-shell"><header className="player-header"><div className="player-title"><h1>{player.display_name}</h1><p>公開データ更新：{updatedAt}</p></div>
       <div className="style-switch" role="group" aria-label="プレイスタイル">
         {(["SP", "DP"] as const).map((style) => <button className={state.style === style ? "active" : ""} type="button" aria-pressed={state.style === style} key={style} onClick={() => setState({ style })}>{style === "SP" ? "SINGLE" : "DOUBLE"}</button>)}

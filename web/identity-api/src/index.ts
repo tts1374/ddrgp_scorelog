@@ -4,7 +4,7 @@ import {
   verifyCredentialSecret,
 } from "./crypto";
 import { registerBestSyncRoutes } from "./best-sync";
-import { registerWebAccountRoutes, readWebSession } from "./web-account";
+import { registerWebAccountRoutes, readWebSession, linkedPlayer } from "./web-account";
 import { registerAppAuthorizationRoutes } from "./app-authorization";
 import { registerAccountDeletionRoutes } from "./account-deletion";
 import { registerPublicBestDeletionRoutes } from "./public-bests-deletion";
@@ -168,6 +168,20 @@ app.delete("/api/v1/me", c => errorResponse(c, 409, "WEB_ACCOUNT_REQUIRED", "Del
 registerBestSyncRoutes(app);
 registerPublicPlayerRoutes(app);
 registerPublicPageRoute(app);
+app.get("/", async c => {
+  c.header("Cache-Control", "no-store");
+  const session = await readWebSession(c);
+  const player = session === null ? null : await linkedPlayer(c, session);
+  if (player !== null) return c.redirect(`/player/${player.public_player_id}`);
+
+  const response = await c.env.ASSETS.fetch(new Request(new URL("/index.html", c.req.url)));
+  if (!response.ok) throw new Error("The home page could not be loaded.");
+  const nonce = randomNonce();
+  const html = (await response.text()).replaceAll("__PLAYER_CSP_NONCE__", nonce)
+    .replace("<!--PLAYER_HEAD-->", '<title>GP Score Log</title><meta name="description" content="DDR GRAND PRIXのプレー記録をPCに保存し、自己ベストやFLARE SKILLを確認・公開できるWindows用アプリです。">')
+    .replace("<!--PLAYER_BOOTSTRAP-->", "");
+  return new Response(html, { headers: securityHeaders(nonce) });
+});
 app.get("/my/*", async c => {
   const response = await c.env.ASSETS.fetch(new Request(new URL("/index.html", c.req.url)));
   if (!response.ok) throw new Error("The account page could not be loaded.");

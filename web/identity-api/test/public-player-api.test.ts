@@ -301,6 +301,19 @@ describe("Public Player API", () => {
 });
 
 describe("Public Player page", () => {
+  it("serves the signed-out home page without a Player bootstrap and preserves page security", async () => {
+    const response = await get("/");
+    expect(response.status).toBe(200);
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
+    expect(response.headers.get("Content-Security-Policy")).toContain("script-src 'self' 'nonce-");
+    expect(response.headers.get("Referrer-Policy")).toBe("no-referrer");
+    const html = await response.text();
+    expect(html).toContain("<title>GP Score Log</title>");
+    expect(html).not.toContain("__PLAYER_CSP_NONCE__");
+    expect(html).not.toContain("player-bootstrap");
+    expect(html).not.toContain(playerId);
+  });
+
   it("injects escaped bootstrap, Player metadata, canonical URL, and security headers", async () => {
     await env.DB.prepare("UPDATE players SET display_name = ?1 WHERE id = ?2")
       .bind('</script><script>alert("x")</script>', playerId).run();

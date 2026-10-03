@@ -627,6 +627,30 @@ it("P4 cookies/session are opaque, absolute, no-store and expiry removes identit
   expect((await env.DB.prepare("SELECT * FROM web_sessions").all()).results).toEqual([]);
 });
 
+it("home redirects an active linked session to its own public page and stops after session expiry", async () => {
+  const player = await registered();
+  const response = await browser.request("/?player=p_other");
+  expect(response.status).toBe(302);
+  expect(response.headers.get("Location")).toBe(`/player/${player.public_player_id}`);
+  expect(response.headers.get("Cache-Control")).toBe("no-store");
+  expect(await response.text()).not.toContain("private@example.test");
+
+  await env.DB.prepare("UPDATE web_sessions SET expires_at = '2000-01-01T00:00:00Z'").run();
+  const expired = await browser.request("/");
+  expect(expired.status).toBe(200);
+  expect(expired.headers.get("Location")).toBeNull();
+  expect(await expired.text()).toContain("<title>GP Score Log</title>");
+});
+
+it("home keeps the getting-started page for a Google session without a linked Player", async () => {
+  await browser.login(google);
+  const response = await browser.request("/");
+  expect(response.status).toBe(200);
+  expect(response.headers.get("Location")).toBeNull();
+  expect(response.headers.get("Cache-Control")).toBe("no-store");
+  expect(await counts()).toEqual({ players: 0, identities: 0, credentials: 0 });
+});
+
 it("P1/P4 Worker-first account screens load without exposing identity or proof and share the page safety policy", async () => {
   for (const route of ["/my/profile", "/my/app-connect?request=opaque-id", "/my/account-delete", "/my/auth-error"]) {
     const response = await exports.default.fetch(`${origin}${route}`);
