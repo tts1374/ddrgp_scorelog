@@ -63,7 +63,34 @@ public sealed class ContinuousWindowsGraphicsCaptureAdapter :
             throw new CaptureInvalidSizeException("Capture item has a zero-sized surface.");
         }
 
-        return CaptureFrameSource.Start(item, target.DisplayName, borderlessAccessGranted);
+        var clientBounds = GetClientCaptureBounds(targetWindowHandle, target, item.Size.Width, item.Size.Height);
+        return CaptureFrameSource.Start(item, target.DisplayName, borderlessAccessGranted, clientBounds);
+    }
+
+    private static BitmapBounds GetClientCaptureBounds(
+        nint window, CaptureTargetInfo target, int captureWidth, int captureHeight)
+    {
+        var origin = new NativePoint();
+        if (!GetClientRect(window, out var client) || !ClientToScreen(window, ref origin) ||
+            DwmGetWindowAttribute(window, 9, out var bounds, Marshal.SizeOf<NativeRect>()) != 0 ||
+            bounds.Right - bounds.Left != captureWidth || bounds.Bottom - bounds.Top != captureHeight ||
+            client.Right - client.Left != target.Width || client.Bottom - client.Top != target.Height)
+        {
+            throw new CaptureInvalidSizeException("The target client area could not be matched to the capture surface.");
+        }
+        return CreateClientCaptureBounds(captureWidth, captureHeight,
+            origin.X - bounds.Left, origin.Y - bounds.Top, target.Width, target.Height);
+    }
+
+    internal static BitmapBounds CreateClientCaptureBounds(
+        int captureWidth, int captureHeight, int x, int y, int width, int height)
+    {
+        if (x < 0 || y < 0 || width <= 0 || height <= 0 ||
+            x > captureWidth - width || y > captureHeight - height)
+        {
+            throw new CaptureInvalidSizeException("The target client area is outside the capture surface.");
+        }
+        return new BitmapBounds { X = (uint)x, Y = (uint)y, Width = (uint)width, Height = (uint)height };
     }
 
     private sealed class CaptureFrameSource : IContinuousFrameSource, IContinuousFrameSourceMetadata
@@ -78,6 +105,7 @@ public sealed class ContinuousWindowsGraphicsCaptureAdapter :
         private readonly int width;
         private readonly int height;
         private readonly string captureSource;
+        private readonly BitmapBounds? clientBounds;
         private int terminalSet;
         private int disposed;
         private long lastTimestamp = -1;
@@ -87,7 +115,8 @@ public sealed class ContinuousWindowsGraphicsCaptureAdapter :
             IDirect3DDevice device,
             Direct3D11CaptureFramePool framePool,
             GraphicsCaptureSession session,
-            string? captureSourceOverride)
+            string? captureSourceOverride,
+            BitmapBounds? clientBounds)
         {
             this.item = item;
             this.device = device;
@@ -95,6 +124,7 @@ public sealed class ContinuousWindowsGraphicsCaptureAdapter :
             this.session = session;
             width = item.Size.Width;
             height = item.Size.Height;
+            this.clientBounds = clientBounds;
             captureSource = string.IsNullOrWhiteSpace(captureSourceOverride)
                 ? string.IsNullOrWhiteSpace(item.DisplayName)
                     ? "selected_window"
@@ -110,12 +140,15 @@ public sealed class ContinuousWindowsGraphicsCaptureAdapter :
         }
 
         public Task<CaptureSessionEndReason> Completion => completion.Task;
-        public CaptureTargetInfo Target => new(captureSource, width, height);
+        public CaptureTargetInfo Target => clientBounds is { } bounds
+            ? new(captureSource, (int)bounds.Width, (int)bounds.Height)
+            : new(captureSource, width, height);
 
         public static CaptureFrameSource Start(
             GraphicsCaptureItem item,
             string? captureSourceOverride = null,
-            bool borderlessAccessGranted = false)
+            bool borderlessAccessGranted = false,
+            BitmapBounds? clientBounds = null)
         {
             IDirect3DDevice? device = null;
             Direct3D11CaptureFramePool? framePool = null;
@@ -138,7 +171,8 @@ public sealed class ContinuousWindowsGraphicsCaptureAdapter :
                     device,
                     framePool,
                     session,
-                    captureSourceOverride);
+                    captureSourceOverride,
+                    clientBounds);
                 source.framePool.FrameArrived += source.FrameArrived;
                 source.item.Closed += source.ItemClosed;
                 source.session.StartCapture();
@@ -169,7 +203,7 @@ public sealed class ContinuousWindowsGraphicsCaptureAdapter :
                         byte[] pngBytes;
                         try
                         {
-                            pngBytes = await EncodePngAsync(frame.Surface, cancellationToken);
+                            pngBytes = await EncodePngAsync(frame.Surface, cancellationToken, clientBounds);
                         }
                         catch (COMException exception) when (IsDeviceLost(exception.HResult))
                         {
@@ -179,8 +213,8 @@ public sealed class ContinuousWindowsGraphicsCaptureAdapter :
 
                         yield return new CapturedFrame(
                             pngBytes,
-                            frame.ContentSize.Width,
-                            frame.ContentSize.Height,
+                            Target.Width,
+                            Target.Height,
                             queuedFrame.TimestampMs,
                             queuedFrame.CapturedAtUtc,
                             captureSource);
@@ -505,7 +539,8 @@ public sealed class ContinuousWindowsGraphicsCaptureAdapter :
 
     private static async Task<byte[]> EncodePngAsync(
         IDirect3DSurface surface,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        BitmapBounds? clientBounds)
     {
         cancellationToken.ThrowIfCancellationRequested();
         using var bitmap = await SoftwareBitmap.CreateCopyFromSurfaceAsync(
@@ -514,6 +549,10 @@ public sealed class ContinuousWindowsGraphicsCaptureAdapter :
         using var stream = new InMemoryRandomAccessStream();
         var encoder = await BitmapEncoder.CreateAsync(BitmapEncoder.PngEncoderId, stream);
         encoder.SetSoftwareBitmap(bitmap);
+        if (clientBounds is { } bounds)
+        {
+            encoder.BitmapTransform.Bounds = bounds;
+        }
         await encoder.FlushAsync();
         if (stream.Size > int.MaxValue)
         {
@@ -639,4 +678,21 @@ public sealed class ContinuousWindowsGraphicsCaptureAdapter :
     private static extern int CreateDirect3D11DeviceFromDXGIDevice(
         nint dxgiDevice,
         out nint graphicsDevice);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativePoint { public int X; public int Y; }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeRect { public int Left; public int Top; public int Right; public int Bottom; }
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetClientRect(nint window, out NativeRect rect);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool ClientToScreen(nint window, ref NativePoint point);
+
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmGetWindowAttribute(nint window, int attribute, out NativeRect rect, int size);
 }

@@ -6,6 +6,32 @@ namespace DDRGpScoreViewer.Tests;
 
 public sealed class BorderlessCaptureTests
 {
+    [Theory]
+    [InlineData(1282, 754, 1, 33)]
+    [InlineData(1280, 720, 0, 0)]
+    public void Targeted_capture_uses_client_area_without_scaling(
+        int captureWidth, int captureHeight, int x, int y)
+    {
+        var bounds = ContinuousWindowsGraphicsCaptureAdapter.CreateClientCaptureBounds(
+            captureWidth, captureHeight, x, y, 1280, 720);
+        Assert.Equal((uint)x, bounds.X);
+        Assert.Equal((uint)y, bounds.Y);
+        Assert.Equal(1280u, bounds.Width);
+        Assert.Equal(720u, bounds.Height);
+    }
+
+    [Theory]
+    [InlineData(-1, 33, 1280, 720)]
+    [InlineData(1, -1, 1280, 720)]
+    [InlineData(3, 33, 1280, 720)]
+    [InlineData(1, 35, 1280, 720)]
+    [InlineData(1, 33, 0, 720)]
+    public void Invalid_client_area_is_rejected_without_guessing(int x, int y, int width, int height)
+    {
+        Assert.Throws<CaptureInvalidSizeException>(() =>
+            ContinuousWindowsGraphicsCaptureAdapter.CreateClientCaptureBounds(1282, 754, x, y, width, height));
+    }
+
     [Fact]
     public async Task Allowed_borderless_access_is_forwarded_to_session_setup()
     {

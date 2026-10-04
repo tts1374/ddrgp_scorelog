@@ -17,6 +17,8 @@ app-owned recognition、formal evidence、confirmed capture event IDによる正
 
 通常監視とscreenshot importは、RESULTS headerと左右の詳細リザルト枠の画像特徴から1P・2Pを自動判別する。詳細枠は既存しきい値を一方だけが満たす必要があり、両方またはどちらも満たさない画像を通常のRESULT候補にしない。選んだ配置を数値・状態・譜面条件の認識へ一貫して渡し、中央のジャケット・title/artistは共通領域を使う。2Pのrank・FLAREは隣接表示と明るい背景を避けるROIを用い、score・levelは白い数字から背景を除く局所前処理を加える。1PのROIと前処理、認識距離・margin、正式source・confidence・完全性条件は維持する。
 
+通常監視の対象windowはclient領域1280×720で特定する。Windows Graphics Captureのwindow surfaceにタイトルバー・枠が含まれる場合は、Windowsのclient位置と可視window boundsに一致する領域を取得段階で切り出し、拡大縮小せず解析へ渡す。client領域をsurface内へ対応付けられない場合は取得失敗とし、座標を推測しない。選択式のcapture-only入力とscreenshot importの入力条件は変更しない。
+
 配置は解析中の情報で、正式DBへプレー側を追加しない。任意のflare rank・消費カロリーが認識できない場合は従来どおりnullを許容する。カウントアップの代表画像は既存のscoreの10点単位validationで正式保存を拒否し、通常監視では既存の安定サンプル・capture event境界を使う。PoCの`transition_countup_*`による評価対象の除外は正式値の根拠にしない。期待値・ファイル名・metadataから認識値を補わず、同定根拠不足や不完全な認識は保存しない。
 
 ### `result_shape_candidate`
