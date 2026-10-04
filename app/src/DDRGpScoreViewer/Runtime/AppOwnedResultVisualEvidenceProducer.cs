@@ -75,7 +75,7 @@ internal sealed class AppOwnedResultVisualEvidenceProducer
 
         var imageBuffer = AppOwnedImageBuffer.From(image);
         var rank = RecognizeRank(imageBuffer.CropScaled(ResultScreenLayout.Map(ResultRois["rank"], secondPlayer)));
-        var flare = RecognizeFlare(imageBuffer.CropScaled(ResultScreenLayout.Map(ResultRois["flare_rank"], secondPlayer)));
+        var flare = RecognizeFlare(imageBuffer.CropScaled(ResultScreenLayout.Map(ResultRois["flare_rank"], secondPlayer)), secondPlayer);
         var ok = digitRecognizer.RecognizeRegion(
             image,
             "ok",
@@ -582,13 +582,23 @@ internal sealed class AppOwnedResultVisualEvidenceProducer
         return best;
     }
 
-    private static FlareVisualResult RecognizeFlare(AppOwnedImageBuffer image)
+    private static FlareVisualResult RecognizeFlare(AppOwnedImageBuffer image, bool secondPlayer)
     {
         var colored = new List<(double Hue, double Value)>();
         for (var y = 0; y < image.Height; y++)
         {
             for (var x = 0; x < image.Width; x++)
             {
+                if (secondPlayer)
+                {
+                    // The animated 2P background remains visible in the badge rectangle's corners.
+                    // Keep the measured hexagon, including its colored border used by the palette.
+                    var nx = (x + 0.5) / image.Width;
+                    var ny = (y + 0.5) / image.Height;
+                    var cornerHeight = Math.Abs(nx - 0.5) * 0.55;
+                    if (nx < 0.025 || nx > 0.975 || ny < cornerHeight || ny > 1.0 - cornerHeight)
+                        continue;
+                }
                 var pixel = image.GetPixel(x, y);
                 var (hue, saturation, value) = Hsv(pixel);
                 if (saturation >= 0.45 && value >= 0.35)

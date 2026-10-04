@@ -13,10 +13,14 @@ namespace DDRGpScoreViewer.Tests;
 
 public sealed class LocalResultFactAttribute : FactAttribute
 {
-    public LocalResultFactAttribute()
+    public LocalResultFactAttribute(params string[] additionalResultNumbers)
     {
         if (ResultScreenLayoutTests.RepositoryRoot is null)
             Skip = "Local Issue 216 screenshots and reference databases are unavailable.";
+        else if (additionalResultNumbers.Any(number => Directory.GetFiles(
+            Path.Combine(ResultScreenLayoutTests.RepositoryRoot, "samples/screenshots/organized/result"),
+            $"result_{number}_*.png").Length != 1))
+            Skip = "Local FLARE badge screenshots are unavailable.";
     }
 }
 
@@ -127,6 +131,56 @@ public sealed class ResultScreenLayoutTests(ITestOutputHelper output)
                     database.MasterPath, database.CatalogPath)).Status);
         }
         Assert.Equal(10L, PlayCount(database.ScorePath));
+    }
+
+    [LocalResultFact("295", "292", "289", "286", "283", "279", "276", "268", "267", "269")]
+    public async Task Two_player_flare_palette_ignores_background_outside_hexagonal_badge()
+    {
+        var analyzer = new AppOwnedLiveResultAnalyzer();
+        (string Number, string Rank)[] badges =
+        {
+            ("295", "I"), ("292", "II"), ("289", "III"), ("286", "IV"), ("283", "V"),
+            ("279", "VI"), ("276", "VII"), ("268", "VIII"), ("267", "IX"), ("269", "EX"),
+        };
+        foreach (var badge in badges)
+        {
+            var source = new FormatConvertedBitmap(Decode(File.ReadAllBytes(Sample("result", badge.Number))),
+                PixelFormats.Bgra32, null, 0);
+            var badgePixels = new byte[78 * 85 * 4];
+            source.CopyPixels(new Int32Rect(404, 163, 78, 85), badgePixels, 78 * 4, 0);
+            foreach (var background in new[] { (Red: 140, Green: 0, Blue: 53), (Red: 0, Green: 220, Blue: 255), (Red: 0, Green: 0, Blue: 0) })
+            {
+                var target = new FormatConvertedBitmap(Decode(File.ReadAllBytes(Sample("result", "376"))),
+                    PixelFormats.Bgra32, null, 0);
+                var pixels = new byte[1280 * 720 * 4];
+                target.CopyPixels(pixels, 1280 * 4, 0);
+                for (var y = 0; y < 85; y++)
+                {
+                    // Render the measured badge vertices (39,1), (75,22), (75,63),
+                    // (39,83), (3,63), (3,22) over different animated-background colors.
+                    var left = y < 22 ? 39.0 - (y - 1) * 36.0 / 21 :
+                        y > 63 ? 3.0 + (y - 63) * 36.0 / 20 : 3.0;
+                    for (var x = 0; x < 78; x++)
+                    {
+                        var offset = ((163 + y) * 1280 + 800 + x) * 4;
+                        if (y >= 1 && y <= 83 && x >= left && x <= 78 - left)
+                            Buffer.BlockCopy(badgePixels, (y * 78 + x) * 4, pixels, offset, 4);
+                        else
+                        {
+                            pixels[offset] = (byte)background.Blue;
+                            pixels[offset + 1] = (byte)background.Green;
+                            pixels[offset + 2] = (byte)background.Red;
+                            pixels[offset + 3] = 255;
+                        }
+                    }
+                }
+                var observation = await analyzer.AnalyzeAsync(Frame(Encode(pixels)));
+                Assert.True(observation.IsSecondPlayer);
+                Assert.Equal(badge.Rank, observation.FormalEvidence!.FlareRank);
+                Assert.Equal(FormalEvidenceSourceNames.ResultFlareRankVisualEvidence,
+                    observation.FormalEvidence.Sources!["flare_rank"]);
+            }
+        }
     }
 
     [LocalResultFact]
