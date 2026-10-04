@@ -115,7 +115,7 @@ internal sealed class AppOwnedVisualIdentityEvidenceProducer
 
             var bitmap = DecodeFrame(frame.PngBytes);
             var image = AppOwnedImageBuffer.From(bitmap);
-            var context = RecognizeChartContext(bitmap, image);
+            var context = RecognizeChartContext(bitmap, image, observation.IsSecondPlayer);
             observation = observation with
             {
                 LevelRecognition = context.LevelRecognition,
@@ -1000,15 +1000,16 @@ internal sealed class AppOwnedVisualIdentityEvidenceProducer
 
     private ChartContextResult RecognizeChartContext(
         BitmapSource bitmap,
-        AppOwnedImageBuffer image)
+        AppOwnedImageBuffer image,
+        bool secondPlayer)
     {
-        var style = RecognizeHue(image.CropScaled(StyleRoi), StyleHues);
+        var style = RecognizeHue(image.CropScaled(ResultScreenLayout.Map(StyleRoi, secondPlayer)), StyleHues);
         if (style.Value is null)
         {
             return ChartContextResult.Failed("formal_evidence.play_style_visual_ambiguous");
         }
 
-        var difficulty = RecognizeHue(image.CropScaled(DifficultyRoi), DifficultyHues);
+        var difficulty = RecognizeHue(image.CropScaled(ResultScreenLayout.Map(DifficultyRoi, secondPlayer)), DifficultyHues);
         if (difficulty.Value is null)
         {
             return ChartContextResult.Failed("formal_evidence.difficulty_visual_ambiguous");
@@ -1017,12 +1018,13 @@ internal sealed class AppOwnedVisualIdentityEvidenceProducer
         var level = digitRecognizer.RecognizeRegion(
             bitmap,
             fieldName: "level",
-            roiDefinition: LevelRoi,
+            roiDefinition: ResultScreenLayout.Map(LevelRoi, secondPlayer),
             segmentationRoiName: "chart_level",
             templateGroup: "chart_level",
             maximumDistance: 0.28,
             minimumMargin: 0.02,
-            formalVisualAcceptance: true);
+            formalVisualAcceptance: true,
+            secondPlayer: secondPlayer);
         if (level.Status != "recognized" ||
             !int.TryParse(
                 level.RecognizedDigits,

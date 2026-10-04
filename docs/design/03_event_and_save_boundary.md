@@ -13,6 +13,14 @@ app-owned recognition、formal evidence、confirmed capture event IDによる正
 
 ## 主要概念
 
+### RESULT配置の自動判別
+
+通常監視とscreenshot importは、RESULTS headerと左右の詳細リザルト枠の画像特徴から1P・2Pを自動判別する。詳細枠は既存しきい値を一方だけが満たす必要があり、両方またはどちらも満たさない画像を通常のRESULT候補にしない。選んだ配置を数値・状態・譜面条件の認識へ一貫して渡し、中央のジャケット・title/artistは共通領域を使う。2Pのrank・FLAREは隣接表示と明るい背景を避けるROIを用い、score・levelは白い数字から背景を除く局所前処理を加える。1PのROIと前処理、認識距離・margin、正式source・confidence・完全性条件は維持する。
+
+通常監視の対象windowはclient領域1280×720で特定する。Windows Graphics Captureのwindow surfaceにタイトルバー・枠が含まれる場合は、Windowsのclient位置と可視window boundsに一致する領域を取得段階で切り出し、拡大縮小せず解析へ渡す。client領域をsurface内へ対応付けられない場合は取得失敗とし、座標を推測しない。選択式のcapture-only入力とscreenshot importの入力条件は変更しない。
+
+配置は解析中の情報で、正式DBへプレー側を追加しない。任意のflare rank・消費カロリーが認識できない場合は従来どおりnullを許容する。カウントアップの代表画像は既存のscoreの10点単位validationで正式保存を拒否し、通常監視では既存の安定サンプル・capture event境界を使う。PoCの`transition_countup_*`による評価対象の除外は正式値の根拠にしない。期待値・ファイル名・metadataから認識値を補わず、同定根拠不足や不完全な認識は保存しない。
+
 ### `result_shape_candidate`
 
 リザルト画面らしい形状検出。
@@ -308,7 +316,9 @@ M3-6の保存候補ブロッカー代表整理では、`m3_save_candidate_blocke
 
 ## Continuous capture save workflow
 
-capture-onlyで明示停止して完成したWPF session manifestは `capture_save_workflow` が既存manifest modeへ渡す。入力順とstrictly increasingな `timestamp_ms` を維持し、分類、confirmed event、M5候補観測、M7a数字候補を再利用する。capture sessionの停止・失敗statusはこの解析statusと別で、captureが `Saved` でない場合は解析も正式workflowも起動しない。通常の `監視開始` はこのmanifest経路を使わず、1秒ごとに `results_header` を判定し、RESULT画面でSCOREが2サンプル連続して一致したframeだけを候補として既存workflowへ渡す。候補は処理中1件・待機1件に制限し、RESULTS 2回連続消失で同一結果の抑制をリセットする。
+capture-onlyで明示停止して完成したWPF session manifestは `capture_save_workflow` が既存manifest modeへ渡す。入力順とstrictly increasingな `timestamp_ms` を維持し、分類、confirmed event、M5候補観測、M7a数字候補を再利用する。capture sessionの停止・失敗statusはこの解析statusと別で、captureが `Saved` でない場合は解析も正式workflowも起動しない。通常の `監視開始` はこのmanifest経路を使わず、1秒ごとに `results_header` を判定し、必須数値・状態が揃い、RESULT画面でSCOREが2サンプル連続して一致したframeだけを候補として既存workflowへ渡す。候補は処理中1件・待機1件に制限し、画面離脱の根拠を2サンプル連続確認した場合に同一結果の抑制をリセットする。
+
+live監視では、必須数値・状態が不完全なframeを新しいcapture eventへ確定せず、保存済みRESULTや同定再試行の記憶を維持する。workflow完了は未解決終了も含むため、同じ画面内で完了した候補のfingerprintを集合で保持し、後続の未解決候補の完了で以前の保存済みkeyを置き換えない。単なるRESULT未検出、decode失敗、一色のframeも解除根拠にしない。離脱根拠は、RESULT見出しと1P・2P両側の詳細枠がすべて未検出、かつ中央ジャケットROI `(532,54,216,216)` の8×8 RGB featureが最後に検出したRESULTから平均絶対差 `0.20` 超で変わったこととする。RGBは0〜1に正規化し、各RGB channel内での最大値と最小値の差がすべて `0.10` 未満のfeatureは離脱判断に使わない。これらの観測とfingerprint集合はメモリ内だけに保持し、正式保存根拠・画像同定・DB duplicate keyへ流用しない。根拠の不足時は解除を保留するため、離脱を観測できなかった同値の次プレイは抑制される可能性がある。離脱後はfingerprint集合を解除し、候補処理の世代を進め、旧画面の遅い処理完了が新画面の抑制・再試行状態を上書きしない。旧画面の同定再試行は元のevent IDで未解決収束させ、新画面は同じ正式RESULT値でも別event IDで処理する。1P・2Pに共通の条件を使う。
 
 manual単発保存とcapture-saveはWPF ViewModelの `IsSaving` を共通排他にする。capture-saveはDB picker前に既存保存を拒否し、capture開始から完成manifestの解析・workflow終了まで排他を保持する。この間はmanual保存も開始せず、同一正式DBの並行writerとsave status競合を防ぐ。capture-onlyはDB writerを起動しないため対象外とする。
 

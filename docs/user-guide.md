@@ -12,6 +12,7 @@ GP Score Logは、DDR GRAND PRIXのリザルト画面を読み取り、プレー
 
 - DDR GRAND PRIXのグランプリプレー
 - SINGLE（SP）とDOUBLE（DP）
+- 1P・2Pのプレー側は自動判別（通常監視・スクリーンショットのインポート）
 - ゲーム画面の大きさ: 1280×720
 - Windows 11
 

@@ -146,8 +146,10 @@ public sealed class AppOwnedVisualIdentityEvidenceProducerTests
         }
     }
 
-    [Fact]
-    public async Task Ambiguous_jacket_is_resolved_by_title_feature_and_saved_once()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Ambiguous_jacket_is_resolved_by_title_feature_and_saved_once(bool secondPlayer)
     {
         using var database = new DatabaseFixture();
         database.AddMasterSongAndChart("song-2", "TITLE TWO", "Artist Two", "chart-2");
@@ -156,8 +158,8 @@ public sealed class AppOwnedVisualIdentityEvidenceProducerTests
         database.AddResultTextFeature("song-1", "title", 0, "MAX 300", "Artist");
         database.AddResultTextFeature("song-2", "title", 255, "TITLE TWO", "Artist Two");
 
-        var observation = CreateObservation();
-        var frame = BuildFrame(titleValue: 0);
+        var observation = CreateObservation() with { IsSecondPlayer = secondPlayer };
+        var frame = BuildFrame(titleValue: 0, secondPlayer: secondPlayer);
         var enriched = new AppOwnedVisualIdentityEvidenceProducer().Enrich(
             frame,
             observation,
@@ -646,19 +648,20 @@ public sealed class AppOwnedVisualIdentityEvidenceProducerTests
             artist);
     }
 
-    private static CapturedFrame BuildFrame(byte titleValue = 0, byte artistValue = 0)
+    private static CapturedFrame BuildFrame(byte titleValue = 0, byte artistValue = 0, bool secondPlayer = false)
     {
         const int width = 1280;
         const int height = 720;
         var stride = width * 4;
         var pixels = new byte[stride * height];
         Fill(pixels, stride, 532, 54, 216, 216, 255, 0, 0);
-        Fill(pixels, stride, 360, 56, 100, 24, 0, 128, 255);
-        Fill(pixels, stride, 378, 80, 84, 24, 0, 255, 34);
+        var offset = secondPlayer ? 460 : 0;
+        Fill(pixels, stride, 360 + offset, 56, 100, 24, 0, 128, 255);
+        Fill(pixels, stride, 378 + offset, 80, 84, 24, 0, 255, 34);
         Fill(pixels, stride, 488, 274, 304, 32, titleValue, titleValue, titleValue);
         Fill(pixels, stride, 548, 306, 184, 26, artistValue, artistValue, artistValue);
-        DrawTemplate(pixels, stride, 394, 105, "chart_level", "1.pbm");
-        DrawTemplate(pixels, stride, 413, 105, "chart_level", "7.pbm");
+        DrawTemplate(pixels, stride, 394 + offset, 105, "chart_level", "1.pbm");
+        DrawTemplate(pixels, stride, 413 + offset, 105, "chart_level", "7.pbm");
         var bitmap = BitmapSource.Create(
             width,
             height,

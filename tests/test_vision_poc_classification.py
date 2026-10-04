@@ -71,7 +71,7 @@ def test_result_candidate_allows_low_score_and_weak_rank_auxiliary_signals(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(runner, "score_header", lambda _features: signal(True))
-    monkeypatch.setattr(runner, "score_detail_panel", lambda _features, _border: signal(True))
+    monkeypatch.setattr(runner, "detect_result_layout", lambda _image: (False, signal(True)))
     monkeypatch.setattr(runner, "score_score_area", lambda _features: signal(False, 0.1))
     monkeypatch.setattr(runner, "score_rank", lambda _features: signal(False, 0.1))
 
@@ -93,7 +93,7 @@ def test_countup_with_finished_result_shape_stays_out_of_save_candidates(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(runner, "score_header", lambda _features: signal(True))
-    monkeypatch.setattr(runner, "score_detail_panel", lambda _features, _border: signal(True))
+    monkeypatch.setattr(runner, "detect_result_layout", lambda _image: (False, signal(True)))
     monkeypatch.setattr(runner, "score_score_area", lambda _features: signal(True))
     monkeypatch.setattr(runner, "score_rank", lambda _features: signal(True))
 
@@ -108,3 +108,37 @@ def test_countup_with_finished_result_shape_stays_out_of_save_candidates(
     assert item.result_shape_candidate
     assert not item.result_candidate
     assert item.transition_kind == "countup"
+
+
+def test_two_populated_detail_panels_cannot_choose_a_layout(monkeypatch) -> None:
+    monkeypatch.setattr(runner, "score_header", lambda _features: signal(True))
+    monkeypatch.setattr(runner, "score_detail_panel", lambda _features, _border: signal(True))
+    image = Image.new("RGB", (1280, 720), "black")
+    side, _ = runner.detect_result_layout(image)
+    assert side is None
+    item = runner.classify(image, {"organized_file": "unknown.png", "screen_type": "unknown"})
+    assert not item.result_candidate
+    assert not item.result_shape_candidate
+
+
+@pytest.mark.parametrize("second,first", [("373", "038"), ("375", "030"), ("376", "078"),
+                                       ("377", "051"), ("378", "053")])
+def test_local_paired_result_layout_uses_pixels_and_keeps_central_rois(second, first) -> None:
+    if not METADATA_PATH.exists():
+        pytest.skip("local screenshot metadata is not available")
+    rows = runner.read_metadata(METADATA_PATH)
+    for number, expected_side in ((second, True), (first, False)):
+        row = next((r for r in rows if Path(r["organized_file"]).name.startswith(
+            f"result_{number}_")), None)
+        if row is None or not (SCREENSHOTS_ROOT / row["organized_file"]).exists():
+            pytest.skip(f"local result_{number} screenshot is unavailable")
+        with Image.open(SCREENSHOTS_ROOT / row["organized_file"]) as image:
+            side, detail = runner.detect_result_layout(image)
+            assert side is expected_side
+            assert detail.value
+            # Filename and expected side are never passed to layout detection.
+            assert runner.classify(image, {"organized_file": "unknown.png",
+                                           "screen_type": "unknown"}).result_candidate
+            for name in ("jacket", "song_title", "artist"):
+                assert runner.crop_roi(image, runner.ROI_DEFINITIONS[name]).tobytes() == image.crop(
+                    runner.scaled_box(image, runner.ROI_DEFINITIONS[name])).tobytes()

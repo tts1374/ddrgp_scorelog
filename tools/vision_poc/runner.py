@@ -386,23 +386,18 @@ M7A_DIGIT_VECTOR_SIZE = (16, 24)
 M7A_DIGIT_MAX_DISTANCE = 0.28
 M7A_DIGIT_MIN_MARGIN = 0.02
 M7A_DIGIT_SEGMENT_GAP_TOLERANCE = 1
-M7A_DIGIT_FOCUS_LEFT_FRACTIONS: dict[str, float] = {
-    "max_combo": 0.65,
-    "marvelous": 0.52,
-    "perfect": 0.52,
-    "great": 0.52,
-    "good": 0.55,
-    "ok": 0.52,
-    "miss": 0.55,
-    "ex_score": 0.55,
+# Digit-only bounds used by the app; the wider OCR/preview ROIs stay unchanged.
+M7A_DIGIT_ROI_DEFINITIONS: dict[str, tuple[int, int, int, int]] = {
+    "score_digits": (197, 277, 269, 45),
+    "max_combo": (897, 370, 91, 23),
+    "marvelous": (896, 404, 92, 20),
+    "perfect": (896, 433, 92, 21),
+    "great": (896, 465, 92, 21),
+    "good": (896, 495, 92, 21),
+    "ok": (896, 524, 92, 28),
+    "miss": (897, 555, 92, 21),
+    "ex_score": (898, 584, 91, 23),
 }
-M7A_COMPONENT_MIN_HEIGHT_FRACTIONS: dict[str, float] = {
-    "miss": 0.45,
-}
-M7A_COMPONENT_MAX_WIDTH_HEIGHT_RATIOS: dict[str, float] = {
-    "miss": 1.6,
-}
-M7A_WHITE_FOREGROUND_ROIS = frozenset({"miss"})
 M7A_WHITE_FOREGROUND_LUMA_THRESHOLD = 180
 M7A_WHITE_FOREGROUND_CHANNEL_SPREAD_MAX = 50
 M7A_REJECT_BRIGHT_COLORED_BACKGROUND_ROIS = frozenset(
@@ -606,7 +601,39 @@ def scaled_box(image: Image.Image, roi: tuple[int, int, int, int]) -> tuple[int,
 
 
 def crop_roi(image: Image.Image, roi: tuple[int, int, int, int]) -> Image.Image:
+    # Determine the layout from image pixels only. Small template/ROI images
+    # are already cropped and do not have a RESULT layout.
+    if image.width >= 640 and image.height >= 360:
+        second_player, _ = detect_result_layout(image)
+        if second_player:
+            roi = second_player_roi(roi)
     return image.crop(scaled_box(image, roi))
+
+
+def second_player_roi(roi: tuple[int, int, int, int]) -> tuple[int, int, int, int]:
+    x, y, width, height = roi
+    if y >= 330 and x >= 662 and y < 654:
+        x -= 498
+    elif 56 <= y <= 104 and 360 <= x <= 392:
+        x += 460
+    elif (x, y) == (170, 122):
+        x, y, width, height = 902, 128, 91, 114
+    elif (x, y) == (385, 135):
+        x, y, width, height = 800, 163, 78, 85
+    elif 250 <= y <= 278 and x < 488:
+        x += 640
+    return x, y, width, height
+
+
+def detect_result_layout(image: Image.Image) -> tuple[bool | None, SignalResult]:
+    signals = []
+    for x in (662, 164):
+        region = image.crop(scaled_box(image, (x, 330, 462, 288)))
+        signals.append(score_detail_panel(extract_features(region), border_cyan_ratio(region)))
+    first, second = signals
+    if first.value == second.value:
+        return None, first
+    return second.value, second if second.value else first
 
 
 def crop_right_fraction(image: Image.Image, left_fraction: float) -> Image.Image:
@@ -727,17 +754,15 @@ def score_rank(features: RegionFeatures) -> SignalResult:
 
 def classify(image: Image.Image, row: dict[str, str]) -> Classification:
     header = score_header(extract_features(crop_roi(image, ROI_DEFINITIONS["results_header"])))
-    detail_region = crop_roi(image, ROI_DEFINITIONS["detail_result_panel"])
-    detail = score_detail_panel(extract_features(detail_region), border_cyan_ratio(detail_region))
+    second_player, detail = detect_result_layout(image)
     score_area = score_score_area(extract_features(crop_roi(image, ROI_DEFINITIONS["score_area"])))
     rank = score_rank(extract_features(crop_roi(image, ROI_DEFINITIONS["rank"])))
 
     is_countup = Path(row["organized_file"]).name.startswith("transition_countup_")
     transition_kind = "countup" if is_countup else ""
-    finished_result_frame = header.value and detail.value and not is_countup
-    result_shape_candidate = header.value and detail.value and (
-        score_area.value or rank.value or finished_result_frame
-    )
+    layout_resolved = second_player is not None
+    finished_result_frame = header.value and detail.value and layout_resolved and not is_countup
+    result_shape_candidate = header.value and detail.value and layout_resolved
     result_candidate = finished_result_frame
     expected = row["screen_type"] == "result"
 
@@ -1725,11 +1750,6 @@ def m7a_digit_foreground_mask(image: Image.Image, roi_name: str = "") -> np.ndar
     rgb = np.asarray(image.convert("RGB")).astype(np.int16)
     luma = np.asarray(image.convert("L"))
     channel_spread = rgb.max(axis=2) - rgb.min(axis=2)
-    if roi_name in M7A_WHITE_FOREGROUND_ROIS:
-        return (
-            (luma > M7A_WHITE_FOREGROUND_LUMA_THRESHOLD)
-            & (channel_spread <= M7A_WHITE_FOREGROUND_CHANNEL_SPREAD_MAX)
-        )
     mask = m7a_foreground_mask(image)
     if roi_name in M7A_REJECT_BRIGHT_COLORED_BACKGROUND_ROIS:
         bright_colored_background = (
@@ -1863,37 +1883,65 @@ def m7a_mask_components(mask: np.ndarray) -> list[tuple[int, int, int, int, int]
     return components
 
 
-def segment_m7a_score_digit_masks(mask: np.ndarray) -> list[np.ndarray]:
+def segment_m7a_score_digit_masks(
+    mask: np.ndarray, second_player: bool = False
+) -> list[np.ndarray]:
     height, _width = mask.shape
     min_digit_height = max(18, int(height * 0.45))
     digit_components = [
         (left, top, right, bottom, area)
         for left, top, right, bottom, area in m7a_mask_components(mask)
         if bottom - top >= min_digit_height and area >= 50
+        and top > (2 if second_player else 0)
+        and (not second_player or bottom < height)
     ]
     return [
         mask[top:bottom, left:right]
         for left, top, right, bottom, _area in sorted(digit_components)
     ]
+
+
+def m7a_merge_digit_fragments(
+    components: list[tuple[int, int, int, int, int]], minimum_height: int
+) -> list[tuple[int, int, int, int, int]]:
+    merged = sorted(components)
+    changed = True
+    while changed:
+        changed = False
+        for first_index, (left, top, right, bottom, area) in enumerate(merged):
+            for second_index in range(first_index + 1, len(merged)):
+                other_left, other_top, other_right, other_bottom, other_area = merged[second_index]
+                if bottom - top >= minimum_height or other_bottom - other_top >= minimum_height:
+                    continue
+                horizontal_overlap = min(right, other_right) - max(left, other_left)
+                vertical_gap = max(top, other_top) - min(bottom, other_bottom)
+                if horizontal_overlap < 1 or vertical_gap > 1:
+                    continue
+                merged[first_index] = (
+                    min(left, other_left), min(top, other_top),
+                    max(right, other_right), max(bottom, other_bottom), area + other_area,
+                )
+                merged.pop(second_index)
+                changed = True
+                break
+            if changed:
+                break
+    return merged
 
 
 def segment_m7a_component_digit_masks(
     mask: np.ndarray, roi_name: str = ""
 ) -> list[np.ndarray]:
     height, _width = mask.shape
-    min_height_fraction = M7A_COMPONENT_MIN_HEIGHT_FRACTIONS.get(roi_name, 0.35)
-    min_digit_height = max(10, int(height * min_height_fraction))
-    max_width_height_ratio = M7A_COMPONENT_MAX_WIDTH_HEIGHT_RATIOS.get(roi_name)
+    min_digit_height = max(10, int(height * 0.35))
     digit_components = [
         (left, top, right, bottom, area)
-        for left, top, right, bottom, area in m7a_mask_components(mask)
+        for left, top, right, bottom, area in m7a_merge_digit_fragments(
+            m7a_mask_components(mask), min_digit_height
+        )
         if bottom - top >= min_digit_height
         and right - left >= 2
         and area >= 20
-        and (
-            max_width_height_ratio is None
-            or (right - left) / (bottom - top) <= max_width_height_ratio
-        )
     ]
     return [
         mask[top:bottom, left:right]
@@ -1901,13 +1949,15 @@ def segment_m7a_component_digit_masks(
     ]
 
 
-def segment_m7a_digit_masks(image: Image.Image, roi_name: str = "") -> list[np.ndarray]:
-    focus_left_fraction = M7A_DIGIT_FOCUS_LEFT_FRACTIONS.get(roi_name)
-    if focus_left_fraction is not None:
-        image = crop_right_fraction(image, focus_left_fraction)
+def segment_m7a_digit_masks(
+    image: Image.Image, roi_name: str = "", second_player: bool = False
+) -> list[np.ndarray]:
     mask = m7a_digit_foreground_mask(image, roi_name)
+    if second_player and roi_name == "score_digits":
+        rgb = np.asarray(image.convert("RGB")).astype(np.int16)
+        mask = (np.asarray(image.convert("L")) > 180) & (rgb.max(axis=2) - rgb.min(axis=2) <= 10)
     if roi_name == "score_digits":
-        score_segments = segment_m7a_score_digit_masks(mask)
+        score_segments = segment_m7a_score_digit_masks(mask, second_player)
         if score_segments:
             return score_segments
     if roi_name in M7A_COMPONENT_SEGMENT_ROIS:
@@ -1958,8 +2008,9 @@ def recognize_m7a_digit_segments(
     image: Image.Image,
     templates: list[M7aDigitTemplate],
     roi_name: str = "",
+    second_player: bool = False,
 ) -> tuple[str, str, float | None, float | None, str, int, str]:
-    segments = segment_m7a_digit_masks(image, roi_name)
+    segments = segment_m7a_digit_masks(image, roi_name, second_player)
     missing_labels = m7a_missing_template_labels(templates)
     if missing_labels:
         reason = "missing_digit_templates=" + "".join(missing_labels)
@@ -2008,7 +2059,7 @@ def process_m7a_digit_roi(
     roi_name: str,
     templates: list[M7aDigitTemplate],
 ) -> M7aDigitRecognitionResult:
-    original = crop_roi(image, ROI_DEFINITIONS[roi_name]).convert("RGB")
+    original = crop_roi(image, M7A_DIGIT_ROI_DEFINITIONS[roi_name]).convert("RGB")
     (
         status,
         recognized_digits,
@@ -2017,7 +2068,9 @@ def process_m7a_digit_roi(
         failure_reason,
         segment_count,
         per_digit_distances,
-    ) = recognize_m7a_digit_segments(original, templates, roi_name)
+    ) = recognize_m7a_digit_segments(
+        original, templates, roi_name, second_player=detect_result_layout(image)[0] is True
+    )
     expected = expected_ocr_value_from_row(frame.row, roi_name)
     match = ocr_digits_match(recognized_digits, expected) if status == "recognized" else None
     if status == "recognized" and not expected:
