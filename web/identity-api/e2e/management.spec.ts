@@ -26,8 +26,11 @@ async function mockManagement(page: Page, options: { app?: boolean; delete?: boo
 }
 
 for (const width of [1280, 390]) {
-  for (const registered of [false, true]) {
-    test(`unified App entry at ${width}px confirms ${registered ? "transfer" : "creation"} after Google`, async ({ page }) => {
+  for (const intent of ["register", "login", "link", "unlink"] as const) {
+    const registered = intent === "login" || intent === "unlink";
+    const heading = { register: "アカウントの作成を確認", login: "このPCへ引き継ぐ", link: "Googleアカウントを連携", unlink: "Google連携を解除" }[intent];
+    const button = { register: "このアカウントを作成する", login: "このPCへ引き継ぐ", link: "このアカウントに連携する", unlink: "Google連携を解除する" }[intent];
+    test(`unified App entry at ${width}px confirms ${intent} after Google`, async ({ page }) => {
       const errors: string[] = [];
       page.on("pageerror", error => errors.push(error.message));
       page.on("console", message => {
@@ -53,21 +56,26 @@ for (const width of [1280, 390]) {
           authenticated = true;
           return route.fulfill({ json: { url: "/my/app-connect?request=unified-test" } });
         }
-        if (path.endsWith("/confirmation")) return route.fulfill({ json: { status: "PENDING", intent: registered ? "login" : "register", purpose: "connect", player: registered ? profile : null, registered_google: registered, comparison_code: "482719AB" } });
+        if (path.endsWith("/confirmation")) return route.fulfill({ json: { status: "PENDING", intent, purpose: intent === "unlink" ? "unlink" : "connect", player: intent === "register" ? null : profile, registered_google: registered, comparison_code: "482719AB" } });
         if (path.endsWith("/approve")) approvals++;
         return route.fulfill({ status: 400 });
       });
       await page.goto("/my/app-connect?request=unified-test");
       await expect(page.getByRole("button", { name: "Googleで続ける", exact: true })).toBeEnabled();
+      await expect(page).toHaveTitle("アプリの操作を確認 - GP Score Log");
+      await expect(page.getByRole("heading", { name: "アプリの操作を確認", exact: true })).toBeVisible();
+      await expect(page.getByText("ログイン後に対象のアカウントと操作内容を表示します。内容を確認してから、操作を確定してください。", { exact: true })).toBeVisible();
+      await expect(page.getByText(/初めて利用する場合はアカウントを作成|このPCへ引き継ぎます|前のPCのスコア履歴/)).toHaveCount(0);
       await expect(page.getByRole("button", { name: /^(新規登録|ログイン)$/ })).toHaveCount(0);
-      await page.screenshot({ path: `../../logs/unified-entry-${width}.png`, fullPage: true });
+      await page.screenshot({ path: `../../logs/unified-entry-${intent}-${width}.png`, fullPage: true });
       await page.getByRole("button", { name: "Googleで続ける", exact: true }).click();
-      await expect(page.getByRole("heading", { name: registered ? "このPCへ引き継ぐ" : "アカウントの作成を確認", exact: true })).toBeVisible();
-      const approve = page.getByRole("button", { name: registered ? "このPCへ引き継ぐ" : "このアカウントを作成する", exact: true });
+      await expect(page.getByRole("heading", { name: heading, exact: true })).toBeVisible();
+      if (intent === "login") await expect(page.getByText("前のPCのスコア履歴を使う場合は、バックアップから読み込んでください。", { exact: true })).toBeVisible();
+      const approve = page.getByRole("button", { name: button, exact: true });
       await expect(approve).toBeDisabled();
       await page.getByRole("checkbox", { name: "手元のアプリとコードが一致しています。" }).check();
       await expect(approve).toBeDisabled();
-      await page.getByRole("checkbox", { name: "アカウントと、この後に行うことを確認しました。" }).check();
+      await page.getByRole("checkbox", { name: intent === "unlink" ? "Googleでの引き継ぎができなくなることを確認しました。" : "アカウントと、この後に行うことを確認しました。" }).check();
       await expect(approve).toBeEnabled();
       expect(approvals).toBe(0);
       expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
