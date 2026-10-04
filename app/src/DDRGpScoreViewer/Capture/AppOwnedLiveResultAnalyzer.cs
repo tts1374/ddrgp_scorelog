@@ -73,13 +73,19 @@ public sealed class AppOwnedLiveResultAnalyzer : ILiveResultAnalyzer
                 BitmapCacheOption.OnLoad);
             var bitmap = decoder.Frames[0];
             var pixels = PixelBuffer.From(bitmap);
+            var detailScore = DetailScore(pixels.Measure(662, 330, 462, 288));
+            var secondDetailScore = DetailScore(pixels.Measure(164, 330, 462, 288));
+            var secondPlayer = secondDetailScore >= 0.74 && detailScore < 0.74;
+            if (detailScore >= 0.74 && secondDetailScore >= 0.74)
+            {
+                return new LiveResultObservation(false, string.Empty, string.Empty,
+                    "result_layout_ambiguous");
+            }
             if (!forceKnownResult)
             {
                 var header = pixels.Measure(480, 0, 320, 58);
-                var detail = pixels.Measure(662, 330, 462, 288);
                 var headerScore = HeaderScore(header);
-                var detailScore = DetailScore(detail);
-                if (headerScore < 0.72 || detailScore < 0.74)
+                if (headerScore < 0.72 || (detailScore >= 0.74) == (secondDetailScore >= 0.74))
                 {
                     return new LiveResultObservation(
                         false,
@@ -89,7 +95,7 @@ public sealed class AppOwnedLiveResultAnalyzer : ILiveResultAnalyzer
                 }
             }
 
-            var digitResults = digitRecognizer.RecognizeForFormalEvidence(bitmap);
+            var digitResults = digitRecognizer.RecognizeForFormalEvidence(bitmap, secondPlayer);
             var scoreResult = digitResults["score"];
             var score = scoreResult.HasCandidateDigits
                 ? scoreResult.RecognizedDigits
@@ -98,7 +104,7 @@ public sealed class AppOwnedLiveResultAnalyzer : ILiveResultAnalyzer
             var reason = scoreResult.HasCandidateDigits
                 ? $"result_digits_{scoreResult.Status}"
                 : $"result_digit_{scoreResult.Status}:{scoreResult.FailureReason}";
-            var formalEvidence = resultEvidenceProducer.Produce(bitmap, digitResults);
+            var formalEvidence = resultEvidenceProducer.Produce(bitmap, digitResults, secondPlayer);
             return new LiveResultObservation(
                 true,
                 score,
@@ -108,7 +114,8 @@ public sealed class AppOwnedLiveResultAnalyzer : ILiveResultAnalyzer
                 reason,
                 digitResults,
                 status,
-                formalEvidence);
+                formalEvidence,
+                IsSecondPlayer: secondPlayer);
         }
         catch (Exception exception) when (
             exception is ArgumentException or InvalidOperationException or IOException or

@@ -7,6 +7,48 @@ namespace DDRGpScoreViewer.Tests;
 
 public sealed class LiveMonitoringCaptureTests
 {
+    [LocalResultFact]
+    public async Task Two_player_image_replay_changes_score_confirms_once_and_resumes_next_result()
+    {
+        using var database = ResultScreenLayoutTests.LocalDatabase();
+        var source = new ControlledFrameSource();
+        var saved = Channel.CreateUnbounded<string>();
+        var service = new LiveMonitoringCaptureService(
+            new StubTargetedAdapter(source), new AppOwnedLiveResultAnalyzer());
+        var workflow = new DDRGpScoreViewer.Data.AppOwnedCaptureSaveWorkflowRunner();
+        var events = new List<string?>();
+        var run = service.RunAsync(123, new CaptureTargetInfo("DDR GRAND PRIX", 1280, 720),
+            new CallbackProgress<CaptureSessionProgress>(_ => { }),
+            async (frame, observation, _, token) =>
+            {
+                var result = await workflow.RunCandidateAsync(frame, observation, database.ScorePath,
+                    database.MasterPath, database.CatalogPath, token);
+                Assert.Single(result.SavedPlayIds);
+                events.Add(observation.ConfirmedEventId);
+                await saved.Writer.WriteAsync(observation.Score, token);
+                return LiveCandidateProcessingResult.Completed;
+            });
+
+        void Add(string kind, string number, long time) => source.Add(ResultScreenLayoutTests.Frame(
+            File.ReadAllBytes(ResultScreenLayoutTests.Sample(kind, number)), time));
+        Add("transition", "372", 0);
+        Add("transition", "374", 1000);
+        Add("result", "373", 2000);
+        Add("result", "373", 3000);
+        Assert.Equal("999910", await saved.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10)));
+        Add("result", "373", 4000);
+        source.Add(ResultScreenLayoutTests.Frame([1, 2, 3], 5000));
+        source.Add(ResultScreenLayoutTests.Frame([1, 2, 3], 6000));
+        Add("result", "375", 7000);
+        Add("result", "375", 8000);
+        Assert.Equal("950700", await saved.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10)));
+        Add("result", "375", 9000);
+        source.Complete();
+        await run;
+        Assert.Equal(2L, ResultScreenLayoutTests.PlayCount(database.ScorePath));
+        Assert.Equal(2, events.Distinct().Count());
+    }
+
     [Fact]
     public async Task Live_monitor_requires_two_stable_score_samples_and_two_result_resets()
     {

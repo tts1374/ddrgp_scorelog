@@ -9,6 +9,7 @@ GP Score Logは、DanceDanceRevolution GRAND PRIXのリザルト画面を読み�
 - Windows 11
 - DDR GRAND PRIXのグランプリプレー
 - SINGLE（SP）とDOUBLE（DP）
+- 1P・2PをRESULT画像から自動判別（通常監視・screenshot import）
 - ゲーム画面の大きさ: 1280×720
 
 「アーケードプレミアムプレー」および「アーケードノーマルプレー」は、認識・自動保存の対応対象外です。

@@ -118,17 +118,19 @@ public sealed class M7aDigitRecognizer
 
     public IReadOnlyDictionary<string, M7aDigitRecognitionResult> Recognize(
         BitmapSource image,
-        IReadOnlyDictionary<string, string>? expectedValues = null)
-        => RecognizeCore(image, expectedValues, formalVisualAcceptance: false);
+        IReadOnlyDictionary<string, string>? expectedValues = null,
+        bool secondPlayer = false)
+        => RecognizeCore(image, expectedValues, formalVisualAcceptance: false, secondPlayer);
 
     internal IReadOnlyDictionary<string, M7aDigitRecognitionResult> RecognizeForFormalEvidence(
-        BitmapSource image)
-        => RecognizeCore(image, expectedValues: null, formalVisualAcceptance: true);
+        BitmapSource image, bool secondPlayer = false)
+        => RecognizeCore(image, expectedValues: null, formalVisualAcceptance: true, secondPlayer);
 
     private IReadOnlyDictionary<string, M7aDigitRecognitionResult> RecognizeCore(
         BitmapSource image,
         IReadOnlyDictionary<string, string>? expectedValues,
-        bool formalVisualAcceptance)
+        bool formalVisualAcceptance,
+        bool secondPlayer)
     {
         ArgumentNullException.ThrowIfNull(image);
         var pixels = PixelImage.From(image);
@@ -167,7 +169,8 @@ public sealed class M7aDigitRecognizer
                 hasExpected,
                 expected,
                 root.ErrorReason,
-                formalVisualAcceptance);
+                formalVisualAcceptance,
+                secondPlayer);
         }
 
         return results;
@@ -204,12 +207,12 @@ public sealed class M7aDigitRecognizer
         string templateGroup,
         double maximumDistance = DigitMaxDistance,
         double minimumMargin = DigitMinMargin,
-        bool formalVisualAcceptance = false)
+        bool formalVisualAcceptance = false,
+        bool secondPlayer = false)
     {
-        // The eight RESULT numeric fields keep their original M7a ROI,
-        // template, segmentation, threshold, and recognition gate. This
-        // overload also supports the separate chart-context image evidence
-        // templates used for level recognition.
+        // The caller supplies the ROI for the selected RESULT layout.
+        // This overload also supports the separate chart-context image
+        // evidence templates used for level recognition.
         ArgumentNullException.ThrowIfNull(image);
         var root = templateRoot.Value;
         var templates = root.Path is null
@@ -226,7 +229,8 @@ public sealed class M7aDigitRecognizer
             root.ErrorReason,
             maximumDistance,
             minimumMargin,
-            formalVisualAcceptance);
+            formalVisualAcceptance,
+            secondPlayer);
     }
 
     private static M7aDigitRecognitionResult RecognizeRoi(
@@ -237,9 +241,10 @@ public sealed class M7aDigitRecognizer
         bool evaluateExpected,
         string expected,
         string? templateRootError,
-        bool formalVisualAcceptance)
+        bool formalVisualAcceptance,
+        bool secondPlayer)
     {
-        var roi = image.CropScaled(RoiDefinitions[roiName]);
+        var roi = image.CropScaled(ResultScreenLayout.Map(RoiDefinitions[roiName], secondPlayer));
         return RecognizePixels(
             roi,
             fieldName,
@@ -250,7 +255,8 @@ public sealed class M7aDigitRecognizer
             templateRootError,
             DigitMaxDistance,
             DigitMinMargin,
-            formalVisualAcceptance);
+            formalVisualAcceptance,
+            secondPlayer);
     }
 
     private static M7aDigitRecognitionResult RecognizePixels(
@@ -263,9 +269,10 @@ public sealed class M7aDigitRecognizer
         string? templateRootError,
         double maximumDistance,
         double minimumMargin,
-        bool formalVisualAcceptance)
+        bool formalVisualAcceptance,
+        bool secondPlayer)
     {
-        var segments = SegmentDigitMasks(roi, roiName);
+        var segments = SegmentDigitMasks(roi, roiName, secondPlayer);
         var missingLabels = RequiredLabels
             .Where(label => templates.All(template => template.Label != label))
             .ToArray();
@@ -549,16 +556,28 @@ public sealed class M7aDigitRecognizer
         return mask;
     }
 
-    private static List<bool[,]> SegmentDigitMasks(PixelImage source, string roiName)
+    private static List<bool[,]> SegmentDigitMasks(PixelImage source, string roiName, bool secondPlayer)
     {
         var image = source;
         var mask = ForegroundMask(image, roiName);
+        if (secondPlayer && roiName is "score_digits" or "chart_level")
+        {
+            // The 2P score/context sits over the bright moving background.
+            // Keep the neutral white glyphs rather than that colored background.
+            for (var y = 0; y < image.Height; y++)
+                for (var x = 0; x < image.Width; x++)
+                {
+                    var pixel = image.GetPixel(x, y);
+                    mask[y, x] = pixel.Luma > 180 && pixel.Spread <= 10;
+                }
+        }
         List<Component> components;
         if (roiName == "score_digits")
         {
             components = Components(mask)
                 .Where(component =>
-                    component.Top > 0 &&
+                    component.Top > (secondPlayer ? 2 : 0) &&
+                    (!secondPlayer || component.Bottom < image.Height) &&
                     component.Bottom - component.Top >= Math.Max(18, (int)(image.Height * 0.45)) &&
                     component.Area >= 50)
                 .OrderBy(component => component.Left)

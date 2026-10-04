@@ -108,7 +108,8 @@ public sealed record LiveResultObservation(
     string DigitRecognitionStatus = "not_evaluated",
     AppOwnedFormalEvidence? FormalEvidence = null,
     string? ConfirmedEventId = null,
-    Runtime.M7aDigitRecognitionResult? LevelRecognition = null);
+    Runtime.M7aDigitRecognitionResult? LevelRecognition = null,
+    bool IsSecondPlayer = false);
 
 internal static class ConfirmedResultEventId
 {

@@ -42,7 +42,8 @@ internal sealed class AppOwnedResultVisualEvidenceProducer
 
     public AppOwnedFormalEvidence Produce(
         BitmapSource image,
-        IReadOnlyDictionary<string, M7aDigitRecognitionResult> digitResults)
+        IReadOnlyDictionary<string, M7aDigitRecognitionResult> digitResults,
+        bool secondPlayer = false)
     {
         var sources = new Dictionary<string, string>(StringComparer.Ordinal);
         var confidences = new Dictionary<string, double?>(StringComparer.Ordinal);
@@ -73,16 +74,16 @@ internal sealed class AppOwnedResultVisualEvidenceProducer
         }
 
         var imageBuffer = AppOwnedImageBuffer.From(image);
-        var rank = RecognizeRank(imageBuffer.CropScaled(ResultRois["rank"]));
-        var flare = RecognizeFlare(imageBuffer.CropScaled(ResultRois["flare_rank"]));
+        var rank = RecognizeRank(imageBuffer.CropScaled(ResultScreenLayout.Map(ResultRois["rank"], secondPlayer)));
+        var flare = RecognizeFlare(imageBuffer.CropScaled(ResultScreenLayout.Map(ResultRois["flare_rank"], secondPlayer)));
         var ok = digitRecognizer.RecognizeRegion(
             image,
             "ok",
-            ResultRois["ok"],
+            ResultScreenLayout.Map(ResultRois["ok"], secondPlayer),
             "miss",
             "judgment_counts",
             formalVisualAcceptance: true);
-        var calories = RecognizeCalories(image, imageBuffer);
+        var calories = RecognizeCalories(image, imageBuffer, secondPlayer);
 
         int? okValue = null;
         if (ok.Status == "recognized" &&
@@ -191,13 +192,14 @@ internal sealed class AppOwnedResultVisualEvidenceProducer
 
     private CalorieVisualResult RecognizeCalories(
         BitmapSource image,
-        AppOwnedImageBuffer imageBuffer)
+        AppOwnedImageBuffer imageBuffer,
+        bool secondPlayer)
     {
         var threeDigitInteger = RecognizeCaloriesRegion(
             image,
             imageBuffer,
             "calories_three_digit_integer",
-            expectedDigitCount: 4);
+            expectedDigitCount: 4, secondPlayer);
         if (threeDigitInteger.Value is not null)
         {
             return threeDigitInteger;
@@ -207,7 +209,7 @@ internal sealed class AppOwnedResultVisualEvidenceProducer
             image,
             imageBuffer,
             "calories",
-            expectedDigitCount: 3);
+            expectedDigitCount: 3, secondPlayer);
         if (twoDigitInteger.Value is not null)
         {
             return twoDigitInteger;
@@ -215,7 +217,7 @@ internal sealed class AppOwnedResultVisualEvidenceProducer
 
         var separatedTwoDigitInteger = RecognizeSeparatedTwoDigitCalories(
             image,
-            imageBuffer);
+            imageBuffer, secondPlayer);
         if (separatedTwoDigitInteger.Value is not null)
         {
             return separatedTwoDigitInteger;
@@ -225,15 +227,16 @@ internal sealed class AppOwnedResultVisualEvidenceProducer
             image,
             imageBuffer,
             "calories_single_integer",
-            expectedDigitCount: 2);
+            expectedDigitCount: 2, secondPlayer);
     }
 
     private CalorieVisualResult RecognizeSeparatedTwoDigitCalories(
         BitmapSource image,
-        AppOwnedImageBuffer imageBuffer)
+        AppOwnedImageBuffer imageBuffer,
+        bool secondPlayer)
     {
         if (!HasDecimalPoint(
-                imageBuffer.CropScaled(ResultRois["calories"]),
+                imageBuffer.CropScaled(ResultScreenLayout.Map(ResultRois["calories"], secondPlayer)),
                 expectedCenterX: 38))
         {
             return new CalorieVisualResult(null, null);
@@ -243,7 +246,7 @@ internal sealed class AppOwnedResultVisualEvidenceProducer
             .Select(roiName => digitRecognizer.RecognizeRegion(
                 image,
                 roiName,
-                ResultRois[roiName],
+                ResultScreenLayout.Map(ResultRois[roiName], secondPlayer),
                 "miss",
                 "combo_ex_score",
                 formalVisualAcceptance: true))
@@ -275,12 +278,13 @@ internal sealed class AppOwnedResultVisualEvidenceProducer
         BitmapSource image,
         AppOwnedImageBuffer imageBuffer,
         string roiName,
-        int expectedDigitCount)
+        int expectedDigitCount,
+        bool secondPlayer)
     {
         var digits = digitRecognizer.RecognizeRegion(
             image,
             "calories",
-            ResultRois[roiName],
+            ResultScreenLayout.Map(ResultRois[roiName], secondPlayer),
             "miss",
             "combo_ex_score",
             formalVisualAcceptance: true);
@@ -292,7 +296,7 @@ internal sealed class AppOwnedResultVisualEvidenceProducer
                 NumberStyles.None,
                 CultureInfo.InvariantCulture,
                 out var tenths) ||
-            !HasDecimalPoint(imageBuffer.CropScaled(ResultRois[roiName])))
+            !HasDecimalPoint(imageBuffer.CropScaled(ResultScreenLayout.Map(ResultRois[roiName], secondPlayer))))
         {
             return new CalorieVisualResult(null, null);
         }
