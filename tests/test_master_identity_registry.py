@@ -33,7 +33,7 @@ def test_released_registry_keeps_canonical_and_source_presentations_on_one_id() 
 
     assert registry.resolve("RËVOLUTIФN", "TËЯRA") == "song_177d950f607b1894"
     assert registry.resolve("RЁVOLUTIФN", "TЁЯRA") == "song_177d950f607b1894"
-    assert len(registry.identities) == 1381
+    assert len(registry.identities) == 1386
 
 
 @pytest.mark.parametrize(
@@ -48,9 +48,18 @@ def test_released_registry_keeps_canonical_and_source_presentations_on_one_id() 
         ("eyesight", "タバサリサ", "song_9d7fb72874434523"),
         ("I'll Be With You", "ゆんゆん", "song_e74e9cf071c1206a"),
         ("Daisycutter", "ETIA.", "song_fb97eaa232785f2b"),
+        (
+            "チルノのパーフェクトさんすう学園【ビートまりお】",
+            "ビートまりお",
+            "song_23f9dc279a8dafb2",
+        ),
+        ("恋繋エピローグ", "Amateras Records feat. KUMI(ヲタみん)", "song_2e3e6552f7bdf8df"),
+        ("TURNING DOWN", "U-ske feat. 石橋桃", "song_8615f5118db290ca"),
+        ("Footnotes on BPM", "KirK+Tabi", "song_8f0caf96e9da8828"),
+        ("MonstaFesta", "アカツキ チョータ", "song_ce8e9d5bec66975c"),
     ],
 )
-def test_reviewed_september_songs_keep_master_and_chart_identity(
+def test_reviewed_additions_keep_master_and_chart_identity(
     title: str, artist: str, song_id: str
 ) -> None:
     registry = SongIdentityRegistry.load(DEFAULT_REGISTRY_PATH)
