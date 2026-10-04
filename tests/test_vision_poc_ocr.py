@@ -34,6 +34,60 @@ DIGIT_PATTERNS = {
 }
 
 
+def test_m7a_digit_fragments_join_before_height_filter_without_joining_neighbors() -> None:
+    mask = runner.np.zeros((21, 30), dtype=bool)
+    mask[2:9, 2:8] = True
+    mask[10:18, 2:8] = True  # One blank row splits the same glyph.
+    mask[2:18, 15:21] = True
+    segments = runner.segment_m7a_component_digit_masks(mask, "great")
+    assert len(segments) == 2
+    assert segments[0].shape == (16, 6)
+    assert int(segments[0].sum()) == 90
+    assert segments[1].shape == (16, 6)
+
+
+def test_m7a_miss_uses_same_foreground_for_input_and_dark_on_light_template(tmp_path) -> None:
+    image = digit_glyph("3", scale=4).convert("RGB")
+    inverted = Image.fromarray(255 - runner.np.asarray(image))
+    template_root = tmp_path / "templates"
+    (template_root / "miss").mkdir(parents=True)
+    inverted.save(template_root / "miss" / "3.png")
+    template = runner.load_m7a_digit_templates(template_root, "miss")[0]
+    vector = runner.m7a_vector_from_mask(runner.m7a_digit_foreground_mask(image, "miss"))
+    assert runner.np.array_equal(vector, template.vector)
+    assert vector.any()
+
+
+@pytest.mark.parametrize("second,first", [("373", "038"), ("375", "030"), ("376", "078"),
+                                       ("377", "051"), ("378", "053")])
+def test_m7a_local_paired_result_digits_use_app_bounds_and_pixel_layout(second, first) -> None:
+    if not METADATA_PATH.exists() or not runner.M7A_DIGIT_TEMPLATE_ROOT.exists():
+        pytest.skip("local screenshots or digit templates are unavailable")
+    rows = runner.read_metadata(METADATA_PATH)
+    for number in (second, first):
+        row = next((r for r in rows if Path(r["organized_file"]).name.startswith(
+            f"result_{number}_")), None)
+        if row is None or not (SCREENSHOTS_ROOT / row["organized_file"]).exists():
+            pytest.skip(f"local result_{number} screenshot is unavailable")
+        with Image.open(SCREENSHOTS_ROOT / row["organized_file"]) as image:
+            for field in runner.OCR_ROIS:
+                templates = runner.load_m7a_digit_templates(runner.M7A_DIGIT_TEMPLATE_ROOT, field)
+                if runner.m7a_missing_template_labels(templates):
+                    pytest.skip(f"local {field} templates are incomplete")
+                roi = runner.M7A_DIGIT_ROI_DEFINITIONS[field]
+                mapped = runner.second_player_roi(roi)
+                assert mapped[1:] == roi[1:]  # Both players share height and vertical position.
+                status, digits, *_ = runner.recognize_m7a_digit_segments(
+                    runner.crop_roi(image, roi), templates, field,
+                    second_player=runner.detect_result_layout(image)[0] is True,
+                )
+                assert status == "recognized", (number, field, status, digits)
+                expected = runner.expected_ocr_value_from_row(row, field)
+                assert runner.ocr_digits_match(digits, expected), (
+                    number, field, digits,
+                )
+
+
 def expected_m8_plays_schema_columns() -> list[dict[str, object]]:
     with sqlite3.connect(":memory:") as connection:
         runner.create_m8_score_db_schema(connection)
@@ -129,7 +183,9 @@ def write_digit_templates(root: Path, roi_name: str = "score_digits", *, scale: 
 
 def write_score_digit_image(path: Path, digits: str) -> None:
     image = Image.new("RGB", (1280, 720), "black")
-    left, top, _right, _bottom = runner.scaled_box(image, runner.ROI_DEFINITIONS["score_digits"])
+    left, top, _right, _bottom = runner.scaled_box(
+        image, runner.M7A_DIGIT_ROI_DEFINITIONS["score_digits"]
+    )
     cursor_x = left + 20
     cursor_y = top + 8
     for digit in digits:
@@ -142,7 +198,9 @@ def write_score_digit_image(path: Path, digits: str) -> None:
 
 def write_score_digit_image_with_comma(path: Path, digits: str) -> None:
     image = Image.new("RGB", (1280, 720), "black")
-    left, top, right, _bottom = runner.scaled_box(image, runner.ROI_DEFINITIONS["score_digits"])
+    left, top, right, _bottom = runner.scaled_box(
+        image, runner.M7A_DIGIT_ROI_DEFINITIONS["score_digits"]
+    )
     slot_width = (right - left) / 7
     cursor_y = top + 8
     slot_indices = (0, 1, 2, 4, 5, 6)
@@ -161,7 +219,9 @@ def write_score_digit_image_with_comma(path: Path, digits: str) -> None:
 
 def write_score_digit_display_image(path: Path, display_text: str) -> None:
     image = Image.new("RGB", (1280, 720), "black")
-    left, top, _right, _bottom = runner.scaled_box(image, runner.ROI_DEFINITIONS["score_digits"])
+    left, top, _right, _bottom = runner.scaled_box(
+        image, runner.M7A_DIGIT_ROI_DEFINITIONS["score_digits"]
+    )
     cursor_x = left + 2
     cursor_y = top + 8
     draw = ImageDraw.Draw(image)
@@ -194,9 +254,11 @@ def write_digit_roi_image(
         draw.rectangle((left + 24, top + 4, left + 54, top + 23), fill="white")
         if roi_name == "max_combo":
             draw.rectangle((left + 170, bottom - 4, right - 2, bottom - 1), fill="white")
-    digit_left_fraction = 0.65 if roi_name == "max_combo" else 0.56
-    cursor_x = left + int((right - left) * digit_left_fraction) + 10
-    cursor_y = top + 4
+    digit_left, digit_top, _right, _bottom = runner.scaled_box(
+        image, runner.M7A_DIGIT_ROI_DEFINITIONS[roi_name]
+    )
+    cursor_x = digit_left + 10
+    cursor_y = digit_top - 2
     for digit in digits:
         glyph = digit_glyph(digit, scale=4)
         image.paste(glyph, (cursor_x, cursor_y))

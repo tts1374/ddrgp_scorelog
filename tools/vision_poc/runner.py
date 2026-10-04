@@ -386,23 +386,18 @@ M7A_DIGIT_VECTOR_SIZE = (16, 24)
 M7A_DIGIT_MAX_DISTANCE = 0.28
 M7A_DIGIT_MIN_MARGIN = 0.02
 M7A_DIGIT_SEGMENT_GAP_TOLERANCE = 1
-M7A_DIGIT_FOCUS_LEFT_FRACTIONS: dict[str, float] = {
-    "max_combo": 0.65,
-    "marvelous": 0.52,
-    "perfect": 0.52,
-    "great": 0.52,
-    "good": 0.55,
-    "ok": 0.52,
-    "miss": 0.55,
-    "ex_score": 0.55,
+# Digit-only bounds used by the app; the wider OCR/preview ROIs stay unchanged.
+M7A_DIGIT_ROI_DEFINITIONS: dict[str, tuple[int, int, int, int]] = {
+    "score_digits": (197, 277, 269, 45),
+    "max_combo": (897, 370, 91, 23),
+    "marvelous": (896, 404, 92, 20),
+    "perfect": (896, 433, 92, 21),
+    "great": (896, 465, 92, 21),
+    "good": (896, 495, 92, 21),
+    "ok": (896, 524, 92, 28),
+    "miss": (897, 555, 92, 21),
+    "ex_score": (898, 584, 91, 23),
 }
-M7A_COMPONENT_MIN_HEIGHT_FRACTIONS: dict[str, float] = {
-    "miss": 0.45,
-}
-M7A_COMPONENT_MAX_WIDTH_HEIGHT_RATIOS: dict[str, float] = {
-    "miss": 1.6,
-}
-M7A_WHITE_FOREGROUND_ROIS = frozenset({"miss"})
 M7A_WHITE_FOREGROUND_LUMA_THRESHOLD = 180
 M7A_WHITE_FOREGROUND_CHANNEL_SPREAD_MAX = 50
 M7A_REJECT_BRIGHT_COLORED_BACKGROUND_ROIS = frozenset(
@@ -1755,11 +1750,6 @@ def m7a_digit_foreground_mask(image: Image.Image, roi_name: str = "") -> np.ndar
     rgb = np.asarray(image.convert("RGB")).astype(np.int16)
     luma = np.asarray(image.convert("L"))
     channel_spread = rgb.max(axis=2) - rgb.min(axis=2)
-    if roi_name in M7A_WHITE_FOREGROUND_ROIS:
-        return (
-            (luma > M7A_WHITE_FOREGROUND_LUMA_THRESHOLD)
-            & (channel_spread <= M7A_WHITE_FOREGROUND_CHANNEL_SPREAD_MAX)
-        )
     mask = m7a_foreground_mask(image)
     if roi_name in M7A_REJECT_BRIGHT_COLORED_BACKGROUND_ROIS:
         bright_colored_background = (
@@ -1902,7 +1892,8 @@ def segment_m7a_score_digit_masks(
         (left, top, right, bottom, area)
         for left, top, right, bottom, area in m7a_mask_components(mask)
         if bottom - top >= min_digit_height and area >= 50
-        and (not second_player or (top > 2 and bottom < height))
+        and top > (2 if second_player else 0)
+        and (not second_player or bottom < height)
     ]
     return [
         mask[top:bottom, left:right]
@@ -1910,23 +1901,47 @@ def segment_m7a_score_digit_masks(
     ]
 
 
+def m7a_merge_digit_fragments(
+    components: list[tuple[int, int, int, int, int]], minimum_height: int
+) -> list[tuple[int, int, int, int, int]]:
+    merged = sorted(components)
+    changed = True
+    while changed:
+        changed = False
+        for first_index, (left, top, right, bottom, area) in enumerate(merged):
+            for second_index in range(first_index + 1, len(merged)):
+                other_left, other_top, other_right, other_bottom, other_area = merged[second_index]
+                if bottom - top >= minimum_height or other_bottom - other_top >= minimum_height:
+                    continue
+                horizontal_overlap = min(right, other_right) - max(left, other_left)
+                vertical_gap = max(top, other_top) - min(bottom, other_bottom)
+                if horizontal_overlap < 1 or vertical_gap > 1:
+                    continue
+                merged[first_index] = (
+                    min(left, other_left), min(top, other_top),
+                    max(right, other_right), max(bottom, other_bottom), area + other_area,
+                )
+                merged.pop(second_index)
+                changed = True
+                break
+            if changed:
+                break
+    return merged
+
+
 def segment_m7a_component_digit_masks(
     mask: np.ndarray, roi_name: str = ""
 ) -> list[np.ndarray]:
     height, _width = mask.shape
-    min_height_fraction = M7A_COMPONENT_MIN_HEIGHT_FRACTIONS.get(roi_name, 0.35)
-    min_digit_height = max(10, int(height * min_height_fraction))
-    max_width_height_ratio = M7A_COMPONENT_MAX_WIDTH_HEIGHT_RATIOS.get(roi_name)
+    min_digit_height = max(10, int(height * 0.35))
     digit_components = [
         (left, top, right, bottom, area)
-        for left, top, right, bottom, area in m7a_mask_components(mask)
+        for left, top, right, bottom, area in m7a_merge_digit_fragments(
+            m7a_mask_components(mask), min_digit_height
+        )
         if bottom - top >= min_digit_height
         and right - left >= 2
         and area >= 20
-        and (
-            max_width_height_ratio is None
-            or (right - left) / (bottom - top) <= max_width_height_ratio
-        )
     ]
     return [
         mask[top:bottom, left:right]
@@ -1937,9 +1952,6 @@ def segment_m7a_component_digit_masks(
 def segment_m7a_digit_masks(
     image: Image.Image, roi_name: str = "", second_player: bool = False
 ) -> list[np.ndarray]:
-    focus_left_fraction = M7A_DIGIT_FOCUS_LEFT_FRACTIONS.get(roi_name)
-    if focus_left_fraction is not None:
-        image = crop_right_fraction(image, focus_left_fraction)
     mask = m7a_digit_foreground_mask(image, roi_name)
     if second_player and roi_name == "score_digits":
         rgb = np.asarray(image.convert("RGB")).astype(np.int16)
@@ -2047,7 +2059,7 @@ def process_m7a_digit_roi(
     roi_name: str,
     templates: list[M7aDigitTemplate],
 ) -> M7aDigitRecognitionResult:
-    original = crop_roi(image, ROI_DEFINITIONS[roi_name]).convert("RGB")
+    original = crop_roi(image, M7A_DIGIT_ROI_DEFINITIONS[roi_name]).convert("RGB")
     (
         status,
         recognized_digits,
