@@ -109,7 +109,9 @@ public sealed record LiveResultObservation(
     AppOwnedFormalEvidence? FormalEvidence = null,
     string? ConfirmedEventId = null,
     Runtime.M7aDigitRecognitionResult? LevelRecognition = null,
-    bool IsSecondPlayer = false);
+    bool IsSecondPlayer = false,
+    bool HasResultStructure = false,
+    IReadOnlyList<double>? ResultSceneFeature = null);
 
 internal static class ConfirmedResultEventId
 {

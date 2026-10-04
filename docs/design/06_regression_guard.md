@@ -486,6 +486,8 @@ M5bの変更では、少なくとも次のcurrent-only境界をfixtureで固定�
 
 ## WPF monitoring / task tray guard
 
+- live監視の同一RESULT抑制では、1P・2Pとも保存後のscore ambiguous、必須数値・状態の欠損、複数回の未検出・decode失敗・黒frameから復帰してもworkflowとplayが増えないことを確認する。RESULT構造が残るframeや同じ中央ジャケットのframeは離脱根拠にしない。プレー中画面などで構造消失とジャケット領域の変化を2回確認した後は、同じ正式値の次RESULTも新eventとして保存する。旧画面の候補が遅れて完了・同定未解決収束しても新eventを抑制しないこと、同定再試行のevent ID・8回上限・停止/キャンセル/対象消失の既存境界を維持することを確認する。静止画像の再生testと実機の連続監視確認は区別して報告する。
+
 - `idle`、`selecting_target`、`monitoring`、`stopping`、`stopped`、`target_closed`、`resized`、`device_lost`、`capture_failed`、`workflow_failed` を別状態としてfixtureで固定する。
 - capture progressは選択済みwindowの表示名・surface size、write済みframe数、開始時刻、最新event時刻だけをUIへ渡し、自動window探索や正式値生成へ使わない。
 - saved、duplicate、excluded、unresolved、analysis_failed、db_rejected、workflow_failedの件数を別々に投影し、saved IDだけをread-only再読込する。commit済みpartial successとfatal reasonを同時に失わない。

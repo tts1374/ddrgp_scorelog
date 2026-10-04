@@ -75,23 +75,34 @@ public sealed class AppOwnedLiveResultAnalyzer : ILiveResultAnalyzer
             var pixels = PixelBuffer.From(bitmap);
             var detailScore = DetailScore(pixels.Measure(662, 330, 462, 288));
             var secondDetailScore = DetailScore(pixels.Measure(164, 330, 462, 288));
+            var headerScore = HeaderScore(pixels.Measure(480, 0, 320, 58));
+            var hasResultStructure = headerScore >= 0.72 || detailScore >= 0.74 || secondDetailScore >= 0.74;
+            // The stationary jacket area is only evidence for scene continuity,
+            // never an identity source or a replacement for adopted RESULT values.
+            var scene = AppOwnedImageBuffer.From(bitmap).CropScaled((532, 54, 216, 216)).ResizeRgb(8, 8);
+            var hasSpatialVariation = Enumerable.Range(0, 3).Any(channel =>
+            {
+                var values = scene.Where((_, index) => index % 3 == channel).ToArray();
+                return values.Max() - values.Min() >= 0.10;
+            });
+            var sceneFeature = hasSpatialVariation ? scene : null;
             var secondPlayer = secondDetailScore >= 0.74 && detailScore < 0.74;
             if (detailScore >= 0.74 && secondDetailScore >= 0.74)
             {
                 return new LiveResultObservation(false, string.Empty, string.Empty,
-                    "result_layout_ambiguous");
+                    "result_layout_ambiguous", HasResultStructure: hasResultStructure,
+                    ResultSceneFeature: sceneFeature);
             }
             if (!forceKnownResult)
             {
-                var header = pixels.Measure(480, 0, 320, 58);
-                var headerScore = HeaderScore(header);
                 if (headerScore < 0.72 || (detailScore >= 0.74) == (secondDetailScore >= 0.74))
                 {
                     return new LiveResultObservation(
                         false,
                         string.Empty,
                         string.Empty,
-                        "results_header_not_detected");
+                        "results_header_not_detected", HasResultStructure: hasResultStructure,
+                        ResultSceneFeature: sceneFeature);
                 }
             }
 
@@ -115,7 +126,9 @@ public sealed class AppOwnedLiveResultAnalyzer : ILiveResultAnalyzer
                 digitResults,
                 status,
                 formalEvidence,
-                IsSecondPlayer: secondPlayer);
+                IsSecondPlayer: secondPlayer,
+                HasResultStructure: hasResultStructure,
+                ResultSceneFeature: sceneFeature);
         }
         catch (Exception exception) when (
             exception is ArgumentException or InvalidOperationException or IOException or

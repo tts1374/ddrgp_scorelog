@@ -1,5 +1,7 @@
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using DDRGpScoreViewer.Capture;
 using Xunit;
 
@@ -7,6 +9,272 @@ namespace DDRGpScoreViewer.Tests;
 
 public sealed class LiveMonitoringCaptureTests
 {
+    [Fact]
+    public async Task Completed_unresolved_candidate_does_not_replace_saved_result_key()
+    {
+        var normal = FormalResult("100", "saved");
+        var unresolved = FormalResult("200", "unresolved") with
+        {
+            FormalEvidence = FormalResult("200", "unresolved").FormalEvidence! with
+            {
+                Confidences = new Dictionary<string, double?> { ["score"] = 0.1 },
+            },
+        };
+        var observations = new Queue<LiveResultObservation>([normal, normal, unresolved, unresolved, normal, normal]);
+        var completed = Enumerable.Range(0, 2).Select(_ =>
+            new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously)).ToArray();
+        var reports = 0;
+        var calls = 0;
+        var source = new StubFrameSource(Frames(0, 1000, 2000, 3000, 4000, 5000),
+            beforeFrame: (index, token) => index is 2 or 4
+                ? completed[index / 2 - 1].Task.WaitAsync(token) : Task.CompletedTask);
+        var service = new LiveMonitoringCaptureService(new StubTargetedAdapter(source), new StubResultAnalyzer(observations));
+        await service.RunAsync(123, source.Target,
+            new CallbackProgress<CaptureSessionProgress>(value =>
+            {
+                if (value.StatusMessage.StartsWith("RESULT同定根拠を確認しています。", StringComparison.Ordinal) &&
+                    Interlocked.Increment(ref reports) is 2 or 4)
+                    completed[reports / 2 - 1].TrySetResult();
+            }),
+            (_, _, _, _) =>
+            {
+                calls++;
+                return Task.FromResult(LiveCandidateProcessingResult.Completed);
+            });
+        Assert.Equal(2, calls); // Saved attempt, unresolved attempt; no resave on recovery.
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Late_completion_from_departed_screen_does_not_suppress_identical_next_event(bool retryIdentity)
+    {
+        var firstStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseFirst = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var nextScreenObserved = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var firstCompleted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var observations = new Queue<LiveResultObservation>([
+            FormalResult("100", "first"), FormalResult("100", "first"), NonResult("play"), NonResult("play"),
+            FormalResult("100", "next"), FormalResult("100", "next"), FormalResult("100", "next")]);
+        var source = new ControlledFrameSource();
+        var events = new List<(string? EventId, bool Finalize)>();
+        var service = new LiveMonitoringCaptureService(new StubTargetedAdapter(source), new StubResultAnalyzer(observations));
+        var run = service.RunAsync(123, source.Target,
+            new CallbackProgress<CaptureSessionProgress>(value =>
+            {
+                if (value.SampledFrameCount == 5)
+                {
+                    nextScreenObserved.TrySetResult();
+                    if (releaseFirst.Task.IsCompleted) firstCompleted.TrySetResult();
+                }
+            }),
+            async (_, observation, context, token) =>
+            {
+                events.Add((observation.ConfirmedEventId, context.FinalizeUnresolved));
+                if (events.Count == 1)
+                {
+                    firstStarted.TrySetResult();
+                    await releaseFirst.Task.WaitAsync(token);
+                    return retryIdentity ? LiveCandidateProcessingResult.RetryIdentity : LiveCandidateProcessingResult.Completed;
+                }
+                return LiveCandidateProcessingResult.Completed;
+            });
+        var frames = Frames(0, 1000, 2000, 3000, 4000, 5000, 6000);
+        foreach (var frame in frames.Take(2)) source.Add(frame);
+        await firstStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        foreach (var frame in frames.Skip(2).Take(3)) source.Add(frame);
+        await nextScreenObserved.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        releaseFirst.TrySetResult();
+        await firstCompleted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        foreach (var frame in frames.Skip(5)) source.Add(frame);
+        source.Complete();
+        await run;
+        Assert.Equal(2, events.Select(item => item.EventId).Distinct().Count());
+        Assert.Equal(retryIdentity ? 3 : 2, events.Count);
+        if (retryIdentity)
+        {
+            Assert.True(events[1].Finalize);
+            Assert.Equal(events[0].EventId, events[1].EventId);
+        }
+    }
+
+    [Fact]
+    public async Task Initially_incomplete_app_owned_result_never_enters_workflow()
+    {
+        var incomplete = FormalResult("100", "incomplete") with
+        {
+            FormalEvidence = FormalResult("100", "incomplete").FormalEvidence! with { MaxCombo = null },
+        };
+        var source = new StubFrameSource(Frames(0, 1000, 2000));
+        var service = new LiveMonitoringCaptureService(new StubTargetedAdapter(source),
+            new StubResultAnalyzer(new Queue<LiveResultObservation>([incomplete, incomplete, incomplete])));
+        var calls = 0;
+        await service.RunAsync(123, source.Target, new CallbackProgress<CaptureSessionProgress>(_ => { }),
+            (_, _, _, _) =>
+            {
+                calls++;
+                return Task.FromResult(LiveCandidateProcessingResult.Completed);
+            });
+        Assert.Equal(0, calls);
+    }
+
+    [Fact]
+    public async Task Identity_retry_survives_incomplete_and_unknown_frames_with_the_same_event_id()
+    {
+        var normal = FormalResult("100", "stable");
+        var incomplete = normal with { FormalEvidence = normal.FormalEvidence! with { Score = null } };
+        var unknown = new LiveResultObservation(false, "", "", "frame_not_decodable");
+        var retryReady = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var observations = new Queue<LiveResultObservation>([normal, normal, incomplete, incomplete, unknown, unknown, unknown, normal, normal]);
+        var source = new StubFrameSource(Frames(0, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000),
+            frameDelayMs: 5, beforeFrame: (index, token) => index == 2 ? retryReady.Task.WaitAsync(token) : Task.CompletedTask);
+        var events = new List<string?>();
+        var service = new LiveMonitoringCaptureService(new StubTargetedAdapter(source), new StubResultAnalyzer(observations));
+        await service.RunAsync(123, source.Target,
+            new CallbackProgress<CaptureSessionProgress>(value =>
+            {
+                if (value.StatusMessage.Contains("後続frameを再評価", StringComparison.Ordinal)) retryReady.TrySetResult();
+            }),
+            (_, observation, context, _) =>
+            {
+                Assert.False(context.FinalizeUnresolved);
+                events.Add(observation.ConfirmedEventId);
+                return Task.FromResult(events.Count == 1 ? LiveCandidateProcessingResult.RetryIdentity : LiveCandidateProcessingResult.Completed);
+            });
+        Assert.Equal(2, events.Count);
+        Assert.Single(events.Distinct());
+    }
+
+    [LocalResultFact]
+    public async Task Image_replay_holds_saved_event_through_failures_and_saves_identical_next_play_on_both_sides()
+    {
+        foreach (var number in new[] { "038", "373" })
+        {
+            using var database = ResultScreenLayoutTests.LocalDatabase();
+            var png = File.ReadAllBytes(ResultScreenLayoutTests.Sample("result", number));
+            var secondPlayer = number == "373";
+            byte[] Mask(params (int X, int Y, int Width, int Height)[] regions)
+            {
+                var bitmap = new FormatConvertedBitmap(ResultScreenLayoutTests.Decode(png), PixelFormats.Bgra32, null, 0);
+                var pixels = new byte[1280 * 720 * 4];
+                bitmap.CopyPixels(pixels, 1280 * 4, 0);
+                foreach (var (x, y, width, height) in regions)
+                    for (var row = y; row < y + height; row++)
+                        Array.Clear(pixels, (row * 1280 + x) * 4, width * 4);
+                return ResultScreenLayoutTests.Encode(pixels);
+            }
+            var missingScore = Mask(DDRGpScoreViewer.Runtime.ResultScreenLayout.Map(
+                DDRGpScoreViewer.Runtime.M7aDigitRecognizer.RoiDefinitions["score_digits"], secondPlayer));
+            var missingRequired = Mask(DDRGpScoreViewer.Runtime.ResultScreenLayout.Map(
+                DDRGpScoreViewer.Runtime.M7aDigitRecognizer.RoiDefinitions["marvelous"], secondPlayer));
+            var missingStructure = Mask((480, 0, 320, 58), (662, 330, 462, 288), (164, 330, 462, 288));
+            var blackFrame = ResultScreenLayoutTests.Encode(new byte[1280 * 720 * 4]);
+            var gameplay = File.ReadAllBytes(Directory.GetFiles(
+                Path.Combine(ResultScreenLayoutTests.RepositoryRoot!, "samples/screenshots/organized/gameplay"),
+                "gameplay_037_*.png").Single());
+            var source = new ControlledFrameSource();
+            var analyzer = new AppOwnedLiveResultAnalyzer();
+            var workflow = new DDRGpScoreViewer.Data.AppOwnedCaptureSaveWorkflowRunner();
+            var completions = Channel.CreateUnbounded<int>();
+            var events = new List<string?>();
+            var processingReports = 0;
+            var service = new LiveMonitoringCaptureService(new StubTargetedAdapter(source), analyzer);
+            var run = service.RunAsync(123, source.Target,
+                new CallbackProgress<CaptureSessionProgress>(value =>
+                {
+                    if (value.StatusMessage.StartsWith("RESULT同定根拠を確認しています。", StringComparison.Ordinal) &&
+                        Interlocked.Increment(ref processingReports) % 2 == 0)
+                        completions.Writer.TryWrite(events.Count);
+                }),
+                async (frame, observation, _, token) =>
+                {
+                    var result = await workflow.RunCandidateAsync(frame, observation, database.ScorePath,
+                        database.MasterPath, database.CatalogPath, token);
+                    Assert.Single(result.SavedPlayIds);
+                    events.Add(observation.ConfirmedEventId);
+                    return LiveCandidateProcessingResult.Completed;
+                });
+            long time = 0;
+            void Add(byte[] bytes) { source.Add(ResultScreenLayoutTests.Frame(bytes, time)); time += 1000; }
+            Add(png); Add(png);
+            Assert.Equal(1, await completions.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10)));
+            foreach (var bytes in new[] { missingScore, missingRequired })
+            {
+                var observation = await analyzer.AnalyzeAsync(ResultScreenLayoutTests.Frame(bytes));
+                Assert.True(observation.IsResultScreen);
+                Assert.Null(AppOwnedResultEventFingerprint.TryCreate(observation, requireIdentity: false));
+                Add(bytes); Add(bytes); Add(png); Add(png);
+            }
+            var missed = await analyzer.AnalyzeAsync(ResultScreenLayoutTests.Frame(missingStructure));
+            Assert.False(missed.IsResultScreen);
+            Assert.False(missed.HasResultStructure);
+            Assert.NotNull(missed.ResultSceneFeature);
+            Add(missingStructure); Add(missingStructure); Add(missingStructure); Add(png); Add(png);
+            Add(blackFrame); Add(blackFrame); Add(png); Add(png);
+            Add([1, 2, 3]); Add([1, 2, 3]); Add(png); Add(png);
+            var departure = await analyzer.AnalyzeAsync(ResultScreenLayoutTests.Frame(gameplay));
+            Assert.False(departure.IsResultScreen);
+            Assert.False(departure.HasResultStructure);
+            Add(gameplay); Add(gameplay); Add(png); Add(png);
+            Assert.Equal(2, await completions.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10)));
+            source.Complete();
+            await run;
+            Assert.Equal(2L, ResultScreenLayoutTests.PlayCount(database.ScorePath));
+            Assert.Equal(2, events.Distinct().Count());
+        }
+    }
+
+    [Theory]
+    [InlineData(false, "score")]
+    [InlineData(true, "score")]
+    [InlineData(false, "required")]
+    [InlineData(true, "required")]
+    [InlineData(false, "undetected")]
+    [InlineData(true, "undetected")]
+    [InlineData(false, "state")]
+    [InlineData(true, "state")]
+    public async Task Saved_result_survives_incomplete_or_undetected_samples(bool secondPlayer, string failure)
+    {
+        var normal = FormalResult("100", "stable") with { IsSecondPlayer = secondPlayer };
+        var incomplete = failure == "undetected"
+            ? new LiveResultObservation(false, "", "", "frame_not_decodable")
+            : normal with
+            {
+                Score = failure == "score" ? "" : "100",
+                DigitRecognitions = new Dictionary<string, DDRGpScoreViewer.Runtime.M7aDigitRecognitionResult>
+                {
+                    ["score"] = new("score", "score_digits", "", "", null,
+                        failure == "score" ? "ambiguous" : "recognized", "", null, null, 0, 0, ""),
+                },
+                FormalEvidence = normal.FormalEvidence! with
+                {
+                    Score = failure == "score" ? null : 100,
+                    Marvelous = failure == "required" ? null : 1,
+                    ClearType = failure == "state" ? null : "CLEAR",
+                },
+            };
+        var firstCompleted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var processingReports = 0;
+        var observations = new Queue<LiveResultObservation>([normal, normal, incomplete, incomplete, incomplete, normal, normal]);
+        var source = new StubFrameSource(Frames(0, 1000, 2000, 3000, 4000, 5000, 6000),
+            frameDelayMs: 5, beforeFrame: (index, token) => index == 2
+                ? firstCompleted.Task.WaitAsync(token) : Task.CompletedTask);
+        var events = new List<string?>();
+        var service = new LiveMonitoringCaptureService(new StubTargetedAdapter(source), new StubResultAnalyzer(observations));
+        await service.RunAsync(123, source.Target,
+            new CallbackProgress<CaptureSessionProgress>(value =>
+            {
+                if (value.StatusMessage.StartsWith("RESULT同定根拠を確認しています。", StringComparison.Ordinal) &&
+                    Interlocked.Increment(ref processingReports) == 2) firstCompleted.TrySetResult();
+            }),
+            (_, observation, _, _) =>
+            {
+                events.Add(observation.ConfirmedEventId);
+                return Task.FromResult(LiveCandidateProcessingResult.Completed);
+            });
+        Assert.Single(events);
+    }
+
     [LocalResultFact]
     public async Task Two_player_image_replay_changes_score_confirms_once_and_resumes_next_result()
     {
@@ -498,7 +766,8 @@ public sealed class LiveMonitoringCaptureTests
             "DDR GRAND PRIX / ddr-konaste / client=1280 x 720")).ToArray();
 
     private static LiveResultObservation Result(string score, string title) =>
-        new(true, score, title, "result_score_detected");
+        new(true, score, title, "result_score_detected", HasResultStructure: true,
+            ResultSceneFeature: [0.1, 0.2, 0.3]);
 
     private static LiveResultObservation FormalResult(string score, string title) =>
         Result(score, title) with
@@ -523,7 +792,7 @@ public sealed class LiveMonitoringCaptureTests
         };
 
     private static LiveResultObservation NonResult(string reason) =>
-        new(false, "", "", reason);
+        new(false, "", "", reason, ResultSceneFeature: [0.8, 0.9, 1.0]);
 
     private sealed class CallbackProgress<T>(Action<T> callback) : IProgress<T>
     {

@@ -316,7 +316,7 @@ public sealed class LiveMonitoringCaptureService(
     {
         if (!observation.IsResultScreen)
         {
-            var finalCandidate = state.ObserveNonResultScreen();
+            var finalCandidate = state.ObserveNonResultScreen(observation);
             if (finalCandidate is not null)
             {
                 WriteCandidate(finalCandidate, candidateWriter, state);
@@ -326,10 +326,11 @@ public sealed class LiveMonitoringCaptureService(
         }
 
         state.IncrementResultFrameCount();
-        if (string.IsNullOrWhiteSpace(observation.Score) &&
-            observation.DigitRecognitions is null)
+        if ((string.IsNullOrWhiteSpace(observation.Score) && observation.DigitRecognitions is null) ||
+            ((observation.FormalEvidence is not null || observation.DigitRecognitions is not null) &&
+                AppOwnedResultEventFingerprint.TryCreate(observation, requireIdentity: false) is null))
         {
-            state.ObserveInvalidResult($"RESULT画面を検出しましたがSCOREを取得できません。{observation.Reason}");
+            state.ObserveInvalidResult($"RESULTの必須数値・状態が未解決のため、このframeを破棄しました。{observation.Reason}");
             progress.Report(state.ToProgress(state.StatusMessage));
             return;
         }
@@ -470,7 +471,8 @@ public sealed class LiveMonitoringCaptureService(
         LiveResultObservation Observation,
         string ResultKey,
         int Attempt,
-        bool FinalizeUnresolved = false);
+        bool FinalizeUnresolved = false,
+        int EventGeneration = 0);
 
     private sealed class LiveRunState(CaptureTargetInfo target, DateTimeOffset startedAtUtc)
     {
@@ -482,8 +484,12 @@ public sealed class LiveMonitoringCaptureService(
         private string? candidateEventId;
         private int candidateStreak;
         private int nonResultStreak;
-        private string? activeResultKey;
+        private readonly HashSet<string> activeResultKeys = new(StringComparer.Ordinal);
+        private IReadOnlyList<double>? resultSceneFeature;
         private string? inFlightResultKey;
+        private int resultEventGeneration;
+        private int inFlightEventGeneration;
+        private int pendingRetryEventGeneration;
         private string? pendingRetryResultKey;
         private string? pendingRetryEventId;
         private CapturedFrame? pendingRetryFrame;
@@ -567,19 +573,27 @@ public sealed class LiveMonitoringCaptureService(
             }
         }
 
-        public LiveCandidate? ObserveNonResultScreen()
+        public LiveCandidate? ObserveNonResultScreen(LiveResultObservation observation)
         {
             lock (gate)
             {
                 candidateScore = null;
                 candidateEventId = null;
                 candidateStreak = 0;
-                nonResultStreak++;
+                // A detection failure is not a screen transition. Require both
+                // absent RESULT structure and a changed, nonuniform jacket area.
+                var scene = observation.ResultSceneFeature;
+                var departed = !observation.HasResultStructure && scene is not null &&
+                    resultSceneFeature is not null && scene.Count == resultSceneFeature.Count &&
+                    scene.Zip(resultSceneFeature, (current, previous) => Math.Abs(current - previous)).Average() > 0.20;
+                nonResultStreak = departed ? nonResultStreak + 1 : 0;
                 if (nonResultStreak >= 2)
                 {
-                    activeResultKey = null;
+                    activeResultKeys.Clear();
                     resultMissing = true;
-                    statusMessage = "RESULTSが2回連続で消失したため、次のRESULTを新規候補として待機しています。";
+                    resultEventGeneration++;
+                    resultSceneFeature = null;
+                    statusMessage = "RESULT以外への画面遷移を2回確認したため、次のRESULTを新規候補として待機しています。";
                     if (inFlightResultKey is null && pendingRetryResultKey is not null)
                     {
                         return CreateFinalUnresolvedCandidate();
@@ -587,7 +601,7 @@ public sealed class LiveMonitoringCaptureService(
                 }
                 else
                 {
-                    statusMessage = "RESULT画面ではないため、このframeを破棄しました。";
+                    statusMessage = "RESULT未検出ですが画面離脱は未確認です。同じRESULTの抑制を維持します。";
                 }
             }
             Interlocked.Increment(ref discardedFrameCount);
@@ -614,11 +628,12 @@ public sealed class LiveMonitoringCaptureService(
             {
                 nonResultStreak = 0;
                 resultMissing = false;
+                resultSceneFeature = observation.ResultSceneFeature ?? resultSceneFeature;
                 var resultKey = AppOwnedResultEventFingerprint.TryCreate(
                         observation,
                         requireIdentity: false) ??
                     $"{observation.Score}\u001f{observation.TitleSignature}";
-                if (activeResultKey == resultKey)
+                if (activeResultKeys.Contains(resultKey))
                 {
                     candidateScore = null;
                     candidateStreak = 0;
@@ -627,7 +642,7 @@ public sealed class LiveMonitoringCaptureService(
                     Interlocked.Increment(ref discardedFrameCount);
                     return null;
                 }
-                if (inFlightResultKey == resultKey)
+                if (inFlightResultKey == resultKey && inFlightEventGeneration == resultEventGeneration)
                 {
                     pendingRetryFrame = LatestFrame;
                     pendingRetryObservation = observation;
@@ -636,7 +651,7 @@ public sealed class LiveMonitoringCaptureService(
                     Interlocked.Increment(ref discardedFrameCount);
                     return null;
                 }
-                if (pendingRetryResultKey == resultKey)
+                if (pendingRetryResultKey == resultKey && pendingRetryEventGeneration == resultEventGeneration)
                 {
                     var eventId = pendingRetryEventId ??= ConfirmedResultEventId.Create();
                     var attempt = pendingRetryAttempt + 1;
@@ -644,13 +659,15 @@ public sealed class LiveMonitoringCaptureService(
                     pendingRetryFrame = LatestFrame;
                     pendingRetryObservation = observation with { ConfirmedEventId = eventId };
                     inFlightResultKey = resultKey;
+                    inFlightEventGeneration = resultEventGeneration;
                     pendingRetryResultKey = null;
                     return new LiveCandidate(
                         LatestFrame,
                         pendingRetryObservation,
                         resultKey,
                         attempt,
-                        FinalizeUnresolved: attempt >= MaximumIdentityAttempts);
+                        FinalizeUnresolved: attempt >= MaximumIdentityAttempts,
+                        EventGeneration: resultEventGeneration);
                 }
 
                 if (candidateScore == observation.Score)
@@ -676,6 +693,7 @@ public sealed class LiveMonitoringCaptureService(
                 candidateEventId = null;
                 candidateStreak = 0;
                 inFlightResultKey = resultKey;
+                inFlightEventGeneration = resultEventGeneration;
                 pendingRetryFrame = LatestFrame;
                 pendingRetryObservation = observation with { ConfirmedEventId = confirmedEventId };
                 pendingRetryAttempt = 1;
@@ -683,7 +701,8 @@ public sealed class LiveMonitoringCaptureService(
                     LatestFrame,
                     pendingRetryObservation,
                     resultKey,
-                    Attempt: 1);
+                    Attempt: 1,
+                    EventGeneration: resultEventGeneration);
             }
         }
 
@@ -693,11 +712,23 @@ public sealed class LiveMonitoringCaptureService(
         {
             lock (gate)
             {
-                inFlightResultKey = null;
+                if (inFlightResultKey == candidate.ResultKey && inFlightEventGeneration == candidate.EventGeneration)
+                {
+                    inFlightResultKey = null;
+                }
+                // A late completion belongs to the departed screen. It cannot
+                // suppress or replace the new screen's candidate or retry state.
+                if (candidate.EventGeneration != resultEventGeneration)
+                {
+                    return result.Disposition == LiveCandidateProcessingDisposition.RetryIdentity && !candidate.FinalizeUnresolved
+                        ? candidate with { FinalizeUnresolved = true, Attempt = candidate.Attempt + 1 }
+                        : null;
+                }
                 if (result.Disposition == LiveCandidateProcessingDisposition.RetryIdentity &&
                     !candidate.FinalizeUnresolved)
                 {
                     pendingRetryResultKey = candidate.ResultKey;
+                    pendingRetryEventGeneration = candidate.EventGeneration;
                     pendingRetryEventId = candidate.Observation.ConfirmedEventId;
                     pendingRetryFrame ??= candidate.Frame;
                     pendingRetryObservation ??= candidate.Observation;
@@ -709,7 +740,9 @@ public sealed class LiveMonitoringCaptureService(
 
                 if (!resultMissing)
                 {
-                    activeResultKey = candidate.ResultKey;
+                    // Completed also includes unresolved workflow results. A
+                    // later completion must not replace the earlier saved key.
+                    activeResultKeys.Add(candidate.ResultKey);
                 }
                 ClearPendingRetry();
                 return null;
@@ -720,11 +753,14 @@ public sealed class LiveMonitoringCaptureService(
         {
             lock (gate)
             {
-                if (inFlightResultKey == candidate.ResultKey)
+                if (inFlightResultKey == candidate.ResultKey && inFlightEventGeneration == candidate.EventGeneration)
                 {
                     inFlightResultKey = null;
                 }
-                ClearPendingRetry();
+                if (candidate.EventGeneration == resultEventGeneration)
+                {
+                    ClearPendingRetry();
+                }
             }
         }
 
@@ -742,13 +778,15 @@ public sealed class LiveMonitoringCaptureService(
                 "Pending retry frame is missing.");
             var attempt = pendingRetryAttempt + 1;
             inFlightResultKey = resultKey;
+            inFlightEventGeneration = pendingRetryEventGeneration;
             pendingRetryResultKey = null;
             return new LiveCandidate(
                 frame,
                 observation,
                 resultKey,
                 attempt,
-                FinalizeUnresolved: true);
+                FinalizeUnresolved: true,
+                EventGeneration: pendingRetryEventGeneration);
         }
 
         private void ClearPendingRetry()

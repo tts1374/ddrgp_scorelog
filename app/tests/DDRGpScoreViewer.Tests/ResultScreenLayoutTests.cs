@@ -239,14 +239,14 @@ public sealed class ResultScreenLayoutTests(ITestOutputHelper output)
         return (long)command.ExecuteScalar()!;
     }
 
-    private static BitmapSource Decode(byte[] png)
+    internal static BitmapSource Decode(byte[] png)
     {
         using var stream = new MemoryStream(png, false);
         return new PngBitmapDecoder(stream, BitmapCreateOptions.PreservePixelFormat,
             BitmapCacheOption.OnLoad).Frames[0];
     }
 
-    private static byte[] Encode(byte[] pixels)
+    internal static byte[] Encode(byte[] pixels)
     {
         var bitmap = BitmapSource.Create(1280, 720, 96, 96, PixelFormats.Bgra32, null, pixels, 1280 * 4);
         var encoder = new PngBitmapEncoder();
