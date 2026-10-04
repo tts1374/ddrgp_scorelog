@@ -23,6 +23,34 @@ function mockApi(extra: (path: string, options: RequestInit) => unknown = () => 
 }
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
 describe("Web management", () => {
+  it.each(["link", "unlink"].flatMap(intent => [false, true].map(signedIn => ({ intent, signedIn }))))(
+    "$intent initial entry is operation-neutral with signedIn=$signedIn", async ({ intent, signedIn }) => {
+      window.history.replaceState(null, "", `/my/app-connect?request=${intent}-request`);
+      const fetcher = mockApi(path => {
+        if (path === "account/session" && !signedIn) return new Response(JSON.stringify({ error: { code: "WEB_SESSION_REQUIRED" } }), { status: 401 });
+        if (path.endsWith("/confirmation")) return new Response(JSON.stringify({ error: { code: "AUTHORIZATION_INVALID" } }), { status: 403 });
+      });
+      render(<ManagementApp />);
+      expect(await screen.findByRole("button", { name: "Googleで続ける" })).toBeEnabled();
+      expect(screen.getByRole("heading", { name: "アプリの操作を確認" })).toBeVisible();
+      expect(document.title).toBe("アプリの操作を確認 - GP Score Log");
+      expect(screen.getByText("ログイン後に対象のアカウントと操作内容を表示します。内容を確認してから、操作を確定してください。")).toBeVisible();
+      expect(screen.queryByText(/初めて利用する場合はアカウントを作成/u)).toBeNull();
+      expect(screen.queryByText(/このPCへ引き継ぎます/u)).toBeNull();
+      expect(screen.queryByText(/前のPCのスコア履歴/u)).toBeNull();
+      expect(screen.queryByRole("checkbox")).toBeNull();
+      expect(fetcher.mock.calls.some(([path]) => path.endsWith("/approve"))).toBe(false);
+    });
+  it("an unresolved unified request shows the entry without premature consent or approval", async () => {
+    window.history.replaceState(null, "", "/my/app-connect?request=app-request");
+    const fetcher = mockApi(path => path.endsWith("/confirmation") ? { ...confirm, intent: null } : undefined);
+    render(<ManagementApp />);
+    expect(await screen.findByRole("button", { name: "Googleで続ける" })).toBeEnabled();
+    expect(screen.queryByRole("checkbox")).toBeNull();
+    expect(screen.queryByRole("button", { name: "新規登録" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "ログイン" })).toBeNull();
+    expect(fetcher.mock.calls.some(([path]) => path.endsWith("/approve"))).toBe(false);
+  });
   it("public-record deletion requires stopped-sync consent, preserves the account and recovers a lost response", async () => {
     window.history.replaceState(null, "", "/my/public-data-delete");
     let deleted = false;
@@ -140,7 +168,7 @@ describe("Web management", () => {
   it("OAuth cancellation returns App start without restoring stale consent", async () => {
     window.history.replaceState(null, "", "/my/app-connect?request=app-request&auth_error=cancelled");
     const fetcher = mockApi(); render(<ManagementApp />);
-    expect(await screen.findByRole("button", { name: "新規登録" })).toBeEnabled();
+    expect(await screen.findByRole("button", { name: "Googleで続ける" })).toBeEnabled();
     expect(screen.getByRole("alert")).toHaveTextContent("Googleログインを中止");
     expect(fetcher.mock.calls.some(([path]) => path.endsWith("/approve"))).toBe(false);
   });

@@ -27,7 +27,7 @@
     <label for="state">確認する画面</label>
     <select id="state">
       <option value="app-unregistered">App・未登録</option>
-      <option value="entry">Web・新規登録 / ログイン</option>
+      <option value="entry">Web・Googleで続ける</option>
       <option value="register">Web・新規登録の確認</option>
       <option value="already-registered">新規登録・登録済みGoogle</option>
       <option value="login-unregistered">ログイン・未登録Google</option>
@@ -68,16 +68,15 @@
     </section>
     <section id="app-invalid-view" hidden><h1>このPCの連携を確認してください</h1><div class="notice error">認証情報が失効しているか、読み込めません。同じアカウントでログインし直してください。</div><p class="value">これまでの公開URL: https://example.com/player/demo-player</p><div class="actions"><button class="primary" data-next="entry">アカウントを作成・引き継ぐ</button><button data-next="app-reset">このPCの連携情報を削除</button></div><p class="muted">削除済みアカウント等で戻れない場合は、このPCの連携情報を確認して削除できます。新規登録は、その後の別操作です。</p></section>
     <section id="app-reset-view" hidden><h1>このPCの連携情報を削除</h1><div class="card"><p class="value">これまでの公開URL: https://example.com/player/demo-player</p><div class="notice">このPCの認証情報だけを消します。Webの公開ユーザー・公開BestとPC内のスコア履歴は削除しません。同期は停止中になります。</div><div class="actions"><button class="danger" data-next="app-unregistered">このPCの連携情報を削除する</button><button data-next="app-invalid">キャンセル</button></div></div></section>
-    <section id="entry-view" hidden><h1>アカウントを作成・引き継ぐ</h1><p>Googleアカウントで公開ユーザーを管理します。</p><div class="card"><h2>初めて利用する方</h2><p>Google認証後に内容を確認して、アカウントを作成します。</p><div class="actions"><button class="primary" data-next="register">新規登録</button></div></div><div class="card"><h2>既にアカウントをお持ちの方</h2><p>同じ公開ユーザー・公開URLをこのPCへ引き継ぎます。</p><div class="actions"><button data-next="recover">ログイン</button></div></div><p class="muted">スコア履歴の移行は、バックアップから別途行います。</p></section>
+    <section id="entry-view" hidden><h1>アプリの操作を確認</h1><p>Googleアカウントでログインし、手元のアプリで始めた操作を確認します。</p><div class="card"><p>ログイン後に対象のアカウントと操作内容を表示します。内容を確認してから、操作を確定してください。</p><div class="actions"><button class="primary" data-next="register">Googleで続ける</button></div></div></section>
     <section id="registration-result-view" hidden><h1 id="registration-result-title"></h1><div class="card"><p class="value">player@example.com</p><p id="registration-result-message"></p><p id="registration-result-player" class="value" hidden>DDR GP Player<br>https://example.com/player/demo-player</p><div class="actions"><button class="primary" id="registration-result-button"></button><button data-next="entry">戻る</button></div></div></section>
     <section id="profile-view">
-      <h1>マイプロフィール</h1><p class="muted">公開名とGoogle連携を管理します。</p>
+      <h1>マイプロフィール</h1><p class="muted">公開名の変更や、公開記録・アカウントの削除ができます。</p>
       <div class="notice success" id="saved-note" role="status" hidden>公開プレーヤー名を保存しました。</div>
       <div class="notice error" id="error-note" role="alert" hidden>保存結果を確認できませんでした。情報を更新してから、もう一度お試しください。</div>
       <div class="card"><h2>Googleアカウント</h2><div class="line"><span class="value">player@example.com</span><span class="badge" id="linked-badge">連携済み</span></div><p class="muted">このメールアドレスは、あなたの管理画面にだけ表示されます。</p><div class="actions"><button data-next="signedout">ログアウト</button><button data-next="unlinked">別のアカウントでログイン</button></div></div>
       <div class="card" id="name-card"><h2>公開プロフィール</h2><form id="name-form"><label for="player-name">公開プレーヤー名</label><input id="player-name" type="text" value="DDR GP Player" maxlength="64" required><p class="muted">1〜64文字。公開ページに表示されます。</p><label for="public-url">公開URL</label><input id="public-url" type="text" readonly value="https://example.com/player/demo-player"><div class="actions"><button class="primary" type="submit">名前を保存</button><button type="button" id="open-public">公開ページを開く</button></div></form><p id="public-demo" class="muted" hidden>wireframeの公開URLは仮の値です。</p></div>
-      <div class="card" id="unlinked-card" hidden><h2>公開ユーザーが登録・連携されていません</h2><p>アプリで「アカウントを作成・引き継ぐ」から開始し、Webで新規登録してください。Google連携を解除した方は、現在のアプリの「Web連携」から同じ公開ユーザーへ再連携できます。</p><p class="muted">ログインだけでは、新しい公開ユーザーは作られません。</p></div>
-      <div class="card" id="unlink-card"><h2>Google連携</h2><p>解除すると、このGoogleアカウントでのログイン・PC引き継ぎができなくなります。</p><div class="actions"><button class="danger" data-next="unlink-help">Google連携を解除</button></div></div>
+      <div class="card" id="unlinked-card" hidden><h2>公開ユーザーが登録・連携されていません</h2><p>アプリの「アカウントを作成・引き継ぐ」から「Googleで続ける」を選び、内容を確認してください。Google連携を解除した方は、現在のアプリの「Web連携」から同じ公開ユーザーへ再連携できます。</p><p class="muted">ログインだけでは、新しい公開ユーザーは作られません。</p></div>
       <div class="card" id="public-delete-card"><h2>公開記録を作り直す</h2><p>このPCの自己ベストで作り直す場合は、アプリでWebへの送信を止めてから公開記録を削除してください。</p><button class="danger" data-next="public-delete">公開記録を削除する</button></div>
       <div class="card" id="delete-card"><h2>アカウントの削除</h2><p>公開ユーザーとすべてのPCの連携権限を削除します。</p><div class="actions"><button class="danger" data-next="delete">アカウントを削除する</button></div></div>
     </section>
@@ -126,7 +125,7 @@
       const profile = ['profile','unlinked','saved','error'].includes(value);
       if (profile) {
         document.getElementById('profile-view').hidden = false;
-        ['name-card','unlink-card','delete-card','public-delete-card','linked-badge'].forEach(id => document.getElementById(id).hidden = value === 'unlinked');
+        ['name-card','delete-card','public-delete-card','linked-badge'].forEach(id => document.getElementById(id).hidden = value === 'unlinked');
         document.getElementById('unlinked-card').hidden = value !== 'unlinked';
       } else if (['app-unregistered','app-off','app-on'].includes(value)) {
         document.getElementById('app-view').hidden = false;

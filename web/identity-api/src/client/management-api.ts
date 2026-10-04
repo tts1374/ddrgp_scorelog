@@ -1,7 +1,7 @@
 export interface Session { email: string; google_linked: boolean; csrf_token: string }
 export interface Profile { public_player_id: string; display_name: string; public_url: string }
 export interface Confirmation {
-  status: string; purpose: "connect" | "unlink"; intent: "register" | "login" | "link" | "unlink";
+  status: string; purpose: "connect" | "unlink"; intent: "register" | "login" | "link" | "unlink" | null;
   player: Pick<Profile, "public_player_id" | "display_name"> | null;
   registered_google: boolean; comparison_code: string;
 }
