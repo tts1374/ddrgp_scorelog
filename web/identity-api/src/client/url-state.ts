@@ -1,4 +1,4 @@
-import type { BestSort, BrowseMode, PageState, PublicStyle, ViewName } from "./types";
+import type { BestSort, BrowseMode, PageState, PublicPlayer, PublicStyle, ViewName } from "./types";
 
 const styles = new Set<PublicStyle>(["SP", "DP"]);
 const views = new Set<ViewName>(["overview", "best", "flare"]);
@@ -7,18 +7,24 @@ const sorts = new Set<BestSort>(["score_desc", "score_asc", "ex_score_desc", "ti
 
 export const defaultVersion = "DanceDanceRevolution WORLD";
 
-export function readPageState(search: string, defaultStyle: PublicStyle): PageState {
+export function defaultLevel(player: PublicPlayer, style: PublicStyle): number {
+  return player.styles[style].levels.reduce((maximum, row) =>
+    row.active_published_best_count > 0 ? Math.max(maximum, row.level) : maximum, 0) || 17;
+}
+
+export function readPageState(search: string, player: PublicPlayer): PageState {
   const query = new URLSearchParams(search);
   const style = query.get("style") as PublicStyle | null;
   const view = query.get("view") as ViewName | null;
   const mode = query.get("mode") as BrowseMode | null;
   const sort = query.get("sort") as BestSort | null;
   const parsedLevel = Number(query.get("level"));
+  const selectedStyle = style !== null && styles.has(style) ? style : player.default_style;
   return {
-    style: style !== null && styles.has(style) ? style : defaultStyle,
+    style: selectedStyle,
     view: view !== null && views.has(view) ? view : "overview",
     mode: mode !== null && modes.has(mode) ? mode : "title",
-    level: Number.isInteger(parsedLevel) && parsedLevel >= 1 && parsedLevel <= 19 ? parsedLevel : 17,
+    level: Number.isInteger(parsedLevel) && parsedLevel >= 1 && parsedLevel <= 19 ? parsedLevel : defaultLevel(player, selectedStyle),
     version: query.get("version")?.slice(0, 100) || defaultVersion,
     q: query.get("q")?.slice(0, 100) ?? "",
     sort: sort !== null && sorts.has(sort) ? sort : "score_desc",

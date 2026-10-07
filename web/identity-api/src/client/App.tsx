@@ -14,7 +14,7 @@ import type {
   PublicPlayer,
   ViewName,
 } from "./types";
-import { pageStateSearch, readPageState } from "./url-state";
+import { defaultLevel, pageStateSearch, readPageState } from "./url-state";
 
 const numberFormat = new Intl.NumberFormat("ja-JP");
 const dateFormat = new Intl.DateTimeFormat("ja-JP", {
@@ -235,7 +235,10 @@ function FlareView({ state, response, loading, error, retry }: {
 }
 
 export function PlayerApp({ player }: { player: PublicPlayer }) {
-  const [state, setPageState] = useState(() => readPageState(window.location.search, player.default_style));
+  const [state, setPageState] = useState(() => readPageState(window.location.search, player));
+  const selectedLevelsRef = useRef({
+    SP: defaultLevel(player, "SP"), DP: defaultLevel(player, "DP"), [state.style]: state.level,
+  });
   const [bestResponse, setBestResponse] = useState<PublicBestsResponse | null>(null);
   const [bestStatus, setBestStatus] = useState<"idle" | "loading" | "error">("idle");
   const [bestRetry, setBestRetry] = useState(0);
@@ -260,10 +263,14 @@ export function PlayerApp({ player }: { player: PublicPlayer }) {
   stateRef.current = state;
   const setState = (patch: Partial<PageState>) => {
     const next = { ...stateRef.current, ...patch };
+    if (next.style !== stateRef.current.style && patch.level === undefined) {
+      next.level = selectedLevelsRef.current[next.style];
+    }
     if (pageStateSearch(next) === pageStateSearch(stateRef.current)) return;
     history[Object.keys(patch).every((key) => key === "q") ? "replaceState" : "pushState"](
       null, "", `${window.location.pathname}${pageStateSearch(next)}`,
     );
+    selectedLevelsRef.current[next.style] = next.level;
     stateRef.current = next;
     setPageState(next);
   };
@@ -271,10 +278,15 @@ export function PlayerApp({ player }: { player: PublicPlayer }) {
     history.replaceState(null, "", `${window.location.pathname}${pageStateSearch(stateRef.current)}`);
   }, []);
   useEffect(() => {
-    const restore = () => setPageState(readPageState(window.location.search, player.default_style));
+    const restore = () => {
+      const restored = readPageState(window.location.search, player);
+      selectedLevelsRef.current[restored.style] = restored.level;
+      stateRef.current = restored;
+      setPageState(restored);
+    };
     window.addEventListener("popstate", restore);
     return () => window.removeEventListener("popstate", restore);
-  }, [player.default_style]);
+  }, [player]);
 
   useEffect(() => {
     const generation = ++bestGenerationRef.current;

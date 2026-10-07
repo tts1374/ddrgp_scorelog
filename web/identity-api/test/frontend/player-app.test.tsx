@@ -161,6 +161,58 @@ describe("PlayerApp", () => {
     expect(fetchMock.mock.calls[1][0]).toContain("level=17");
   });
 
+  it.each(["SP", "DP"] as const)("defaults level browsing to the highest recorded active level for %s", async (style) => {
+    window.history.replaceState(null, "", `/player/p_test?style=${style}&view=best`);
+    const levels = (maximum: number) => [
+      { level: 19, active_chart_count: 2, active_published_best_count: 0 },
+      { level: maximum, active_chart_count: 2, active_published_best_count: 1 },
+      { level: 5, active_chart_count: 2, active_published_best_count: 1 },
+    ];
+    const customPlayer = { ...player, styles: {
+      SP: { ...summary(2), levels: levels(16) }, DP: { ...summary(2), levels: levels(13) },
+    } };
+    const fetchMock = vi.fn().mockImplementation(() => Promise.resolve(bestPage([bestItem("Recorded")])));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<PlayerApp player={customPlayer} />);
+    expect(await screen.findByText("Recorded")).toBeInTheDocument();
+    expect(document.querySelector(".result-count")).toHaveTextContent("全譜面");
+    fireEvent.click(screen.getByRole("tab", { name: "レベルから" }));
+    const initialLevel = style === "SP" ? 16 : 13;
+    expect(screen.getByRole("combobox", { name: "レベル" })).toHaveValue(String(initialLevel));
+    await waitFor(() => expect(fetchMock.mock.calls.at(-1)?.[0]).toContain(`level=${initialLevel}`));
+    fireEvent.change(screen.getByRole("combobox", { name: "レベル" }), { target: { value: "11" } });
+    fireEvent.click(screen.getByRole("button", { name: style === "SP" ? "DOUBLE" : "SINGLE" }));
+    expect(screen.getByRole("combobox", { name: "レベル" })).toHaveValue(style === "SP" ? "13" : "16");
+    fireEvent.click(screen.getByRole("button", { name: style === "SP" ? "SINGLE" : "DOUBLE" }));
+    expect(screen.getByRole("combobox", { name: "レベル" })).toHaveValue("11");
+  });
+
+  it.each(["", "&level=invalid"])("keeps the fallback for styles without active public records (%s)", async (suffix) => {
+    window.history.replaceState(null, "", `/player/p_test?style=DP&view=best&mode=level${suffix}`);
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(bestPage([])));
+    render(<PlayerApp player={{ ...player, styles: { ...player.styles, DP: summary(0) } }} />);
+    expect(screen.getByRole("combobox", { name: "レベル" })).toHaveValue("17");
+    expect(await screen.findByText("条件に一致する自己ベストの対象譜面はありません")).toBeInTheDocument();
+  });
+
+  it("prioritizes an explicit URL level and restores it without adding history", async () => {
+    window.history.replaceState(null, "", "/player/p_test?style=DP&view=best&mode=level&level=12");
+    const fetchMock = vi.fn().mockImplementation(() => Promise.resolve(bestPage([])));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<PlayerApp player={player} />);
+    expect(screen.getByRole("combobox", { name: "レベル" })).toHaveValue("12");
+    await waitFor(() => expect(fetchMock.mock.calls.at(-1)?.[0]).toContain("level=12"));
+    fireEvent.change(screen.getByRole("combobox", { name: "レベル" }), { target: { value: "10" } });
+    const historyLength = history.length;
+    window.history.replaceState(null, "", "/player/p_test?style=DP&view=best&mode=level&level=12");
+    act(() => window.dispatchEvent(new PopStateEvent("popstate")));
+    expect(screen.getByRole("combobox", { name: "レベル" })).toHaveValue("12");
+    expect(history.length).toBe(historyLength);
+    fireEvent.click(screen.getByRole("button", { name: "SINGLE" }));
+    fireEvent.click(screen.getByRole("button", { name: "DOUBLE" }));
+    expect(screen.getByRole("combobox", { name: "レベル" })).toHaveValue("12");
+  });
+
   it("expands each Flare category independently using its actual target count", async () => {
     const categories = (["CLASSIC", "WHITE", "GOLD"] as const).map((category, index) => ({
       category, total: 12345, target_count: [30, 17, 8][index],
