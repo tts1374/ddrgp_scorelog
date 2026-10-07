@@ -1,7 +1,17 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PlayerApp } from "../../src/client/App";
-import type { PublicPlayer } from "../../src/client/types";
+import type { PublicBestItem, PublicPlayer } from "../../src/client/types";
+
+function bestItem(title: string, overrides: Partial<PublicBestItem> = {}): PublicBestItem {
+  return { chart_id: title, title, artist: "Artist", difficulty: "EXPERT",
+    level: 17, version: "DDRMAX", is_removed: false, best: null, ...overrides };
+}
+
+function bestPage(items: PublicBestItem[], nextCursor: string | null = null) {
+  return new Response(JSON.stringify({ style: "SP", mode: "title", summary: null,
+    items, next_cursor: nextCursor }), { status: 200 });
+}
 
 function summary(bestCount: number) {
   return {
@@ -38,6 +48,10 @@ describe("PlayerApp", () => {
     render(<PlayerApp player={player} />);
     expect(screen.getByRole("heading", { name: "2TEN" })).toBeInTheDocument();
     expect(screen.getByText("SINGLE Flare Skill")).toBeInTheDocument();
+    expect(screen.getByText("自己ベスト譜面数")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Level別の自己ベスト" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "自己ベストを見る" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Level別の自己ベスト集計について" })).toHaveAttribute("data-tip", expect.stringContaining("公開された自己ベストあり"));
     expect(fetchMock).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "DOUBLE" }));
     expect(screen.getByText("DOUBLE Flare Skill")).toBeInTheDocument();
@@ -64,7 +78,7 @@ describe("PlayerApp", () => {
     }
     expect(row).not.toHaveTextContent("公開Bestなし");
     expect(row).not.toHaveTextContent("未プレー");
-    expect(screen.getByRole("button", { name: "Best一覧について" })).toHaveAttribute(
+    expect(screen.getByRole("button", { name: "自己ベスト一覧について" })).toHaveAttribute(
       "data-tip", expect.stringContaining("「—」は公開された記録がないことを表し、未プレーを意味しません。"),
     );
   });
@@ -74,17 +88,107 @@ describe("PlayerApp", () => {
     const fetchMock = vi.fn().mockImplementation(() => new Promise<Response>((resolve) => { resolveFetch = resolve; }));
     vi.stubGlobal("fetch", fetchMock);
     render(<PlayerApp player={player} />);
-    fireEvent.click(screen.getByRole("tab", { name: "Best" }));
-    expect(screen.getByLabelText("公開Bestを読み込んでいます")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "自己ベスト" }));
+    expect(screen.getByLabelText("自己ベストを読み込んでいます")).toBeInTheDocument();
     resolveFetch?.(new Response(JSON.stringify({ style: "SP", mode: "level", summary: { active_chart_count: 2, active_published_best_count: 0 }, items: [], next_cursor: null }), { status: 200 }));
-    expect(await screen.findByText("条件に一致する譜面はありません")).toBeInTheDocument();
+    expect(await screen.findByText("条件に一致する自己ベストの対象譜面はありません")).toBeInTheDocument();
 
     fetchMock.mockRejectedValueOnce(new Error("network"));
-    fireEvent.change(screen.getByRole("combobox", { name: "レベル" }), { target: { value: "18" } });
+    fireEvent.click(screen.getByRole("tab", { name: "レベルから" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("公開データを読み込めませんでした");
   });
 
-  it("ignores an old load-more response after the browse condition changes", async () => {
+  it("keeps loaded rows on additional-page failure and retries that cursor exactly once", async () => {
+    window.history.replaceState(null, "", "/player/p_test?view=best");
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(bestPage([bestItem("First"), bestItem("Second")], "same-page-2"))
+      .mockResolvedValueOnce(new Response("", { status: 503 }))
+      .mockResolvedValueOnce(bestPage([bestItem("Third")]));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<PlayerApp player={player} />);
+    expect(await screen.findByText("First")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "続きを見る" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("続きを読み込めませんでした");
+    expect(document.querySelectorAll(".best-table tbody tr")).toHaveLength(2);
+    expect(screen.getByText("2譜面")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "続きをもう一度読み込む" }));
+    expect(await screen.findByText("Third")).toBeInTheDocument();
+    expect(document.querySelectorAll(".best-table tbody tr")).toHaveLength(3);
+    expect(screen.getByText("3譜面")).toBeInTheDocument();
+    expect(screen.getAllByText("First")).toHaveLength(1);
+    expect(fetchMock.mock.calls[1][0]).toBe(fetchMock.mock.calls[2][0]);
+    expect(fetchMock.mock.calls[2][0]).toContain("cursor=same-page-2");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it.each(["UnknownVersion", "DDRMAX"])("restores the exact version option and API query for %s", async (version) => {
+    window.history.replaceState(null, "", `/player/p_test?view=best&mode=version&version=${version}&sort=level_asc`);
+    const fetchMock = vi.fn().mockResolvedValue(bestPage([bestItem("Version result")]));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<PlayerApp player={player} />);
+    expect(await screen.findByText("Version result")).toBeInTheDocument();
+    const select = screen.getByRole("combobox", { name: "バージョン" });
+    expect(select).toHaveValue(version);
+    expect(within(select).getByRole("option", { name: version })).toBeInTheDocument();
+    expect(document.querySelector(".result-count")).toHaveTextContent(version);
+    const query = new URL(fetchMock.mock.calls[0][0], window.location.origin).searchParams;
+    expect(query.get("version")).toBe(version);
+    expect(query.get("sort")).toBe("level_asc");
+    fireEvent.change(select, { target: { value: "DDR X" } });
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(fetchMock.mock.calls[1][0]).toContain("version=DDR+X");
+  });
+
+  it("initially browses all charts across levels and versions with the existing empty title query", async () => {
+    window.history.replaceState(null, "", "/player/p_test?view=best");
+    const fetchMock = vi.fn().mockResolvedValue(bestPage([
+      bestItem("Lv15 DDRMAX", { level: 15 }),
+      bestItem("Lv17 WORLD", { version: "DanceDanceRevolution WORLD" }),
+    ], "more"));
+    vi.stubGlobal("fetch", fetchMock);
+    render(<PlayerApp player={player} />);
+    expect(await screen.findByText("Lv15 DDRMAX")).toBeInTheDocument();
+    expect(screen.getByText("Lv17 WORLD")).toBeInTheDocument();
+    expect(document.querySelector(".result-count")).toHaveTextContent("全譜面");
+    expect(screen.getByRole("searchbox", { name: "曲名" })).toHaveValue("");
+    const query = new URL(fetchMock.mock.calls[0][0], window.location.origin).searchParams;
+    expect(query.get("mode")).toBe("title");
+    expect(query.get("sort")).toBe("score_desc");
+    for (const key of ["level", "version", "q"]) expect(query.has(key)).toBe(false);
+    expect(screen.getByRole("button", { name: "続きを見る" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "レベルから" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(fetchMock.mock.calls[1][0]).toContain("level=17");
+  });
+
+  it("expands each Flare category independently using its actual target count", async () => {
+    const categories = (["CLASSIC", "WHITE", "GOLD"] as const).map((category, index) => ({
+      category, total: 12345, target_count: [30, 17, 8][index],
+      targets: Array.from({ length: [30, 17, 8][index] }, (_, row) => ({
+        chart_id: `${category}-${row}`, title: `${category} song ${row + 1}`,
+        difficulty: "EXPERT", level: 17, flare_rank: "EX", flare_skill: 1000 - row,
+      })),
+    }));
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      style: "SP", total: 37035, rank: { main: "WORLD", sub: null }, categories,
+    }))));
+    render(<PlayerApp player={player} />);
+    fireEvent.click(screen.getByRole("tab", { name: "Flare Skill" }));
+    await screen.findByText("CLASSIC song 1");
+    const panels = Array.from(document.querySelectorAll(".flare-category-panel"));
+    expect(panels.map((panel) => panel.querySelectorAll(".flare-target-row").length)).toEqual([10, 10, 8]);
+    expect(within(panels[2] as HTMLElement).queryByRole("button")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "全30件を見る" }));
+    expect(panels.map((panel) => panel.querySelectorAll(".flare-target-row").length)).toEqual([30, 10, 8]);
+    fireEvent.click(screen.getByRole("button", { name: "全17件を見る" }));
+    expect(panels.map((panel) => panel.querySelectorAll(".flare-target-row").length)).toEqual([30, 17, 8]);
+    expect(Array.from(panels[0].querySelectorAll(".flare-target-rank")).map((row) => row.textContent))
+      .toEqual(Array.from({ length: 30 }, (_, index) => String(index + 1)));
+    expect(screen.getByText("37,035")).toBeInTheDocument();
+    expect(panels.every((panel) => panel.querySelector(".flare-category-score")?.textContent === "12,345")).toBe(true);
+  });
+
+  it.each(["mode", "style", "sort"])("ignores an old load-more retry after %s changes", async (condition) => {
     let finishOldPage: ((response: Response) => void) | undefined;
     const response = (title: string, nextCursor: string | null) => new Response(JSON.stringify({
       style: "SP", mode: "title", summary: null, next_cursor: nextCursor,
@@ -93,28 +197,36 @@ describe("PlayerApp", () => {
         level: 17, version: "DDRMAX", is_removed: false, best: null,
       }],
     }), { status: 200 });
+    let additionalRequests = 0;
     vi.stubGlobal("fetch", vi.fn((url: string) => {
       if (url.includes("cursor=")) {
+        if (++additionalRequests === 1) return Promise.resolve(new Response("", { status: 503 }));
         return new Promise<Response>((resolve) => { finishOldPage = resolve; });
       }
-      return Promise.resolve(response(url.includes("mode=version") ? "New version" : "Old result",
-        url.includes("mode=version") ? null : "page-2"));
+      const changed = url.includes("mode=version") || url.includes("style=DP") || url.includes("sort=title_asc");
+      return Promise.resolve(response(changed ? "New result" : "Old result", changed ? null : "page-2"));
     }));
     window.history.replaceState(null, "", "/player/p_test?style=SP&view=best&mode=title");
     render(<PlayerApp player={player} />);
     expect(await screen.findByText("Old result")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "続きを見る" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("続きを読み込めませんでした");
+    expect(screen.getByText("Old result")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "続きをもう一度読み込む" }));
     await waitFor(() => expect(finishOldPage).toBeDefined());
-    fireEvent.click(screen.getByRole("tab", { name: "バージョンから" }));
-    expect(await screen.findByText("New version")).toBeInTheDocument();
+    if (condition === "mode") fireEvent.click(screen.getByRole("tab", { name: "バージョンから" }));
+    if (condition === "style") fireEvent.click(screen.getByRole("button", { name: "DOUBLE" }));
+    if (condition === "sort") fireEvent.change(screen.getByRole("combobox", { name: "並び順" }), { target: { value: "title_asc" } });
+    expect(await screen.findByText("New result")).toBeInTheDocument();
     await act(async () => { finishOldPage!(response("Old next page", null)); });
-    expect(screen.getByText("New version")).toBeInTheDocument();
+    expect(screen.getByText("New result")).toBeInTheDocument();
     expect(screen.queryByText("Old next page")).not.toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
   it("distinguishes an existing Player with zero public Best from 404", () => {
     render(<PlayerApp player={{ ...player, styles: { SP: summary(0), DP: summary(0) } }} />);
-    expect(screen.getByText("公開Bestはまだありません")).toBeInTheDocument();
+    expect(screen.getByText("自己ベストはまだありません")).toBeInTheDocument();
     expect(screen.queryByText("Playerが見つかりません")).not.toBeInTheDocument();
   });
 

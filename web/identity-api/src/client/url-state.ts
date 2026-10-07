@@ -17,7 +17,7 @@ export function readPageState(search: string, defaultStyle: PublicStyle): PageSt
   return {
     style: style !== null && styles.has(style) ? style : defaultStyle,
     view: view !== null && views.has(view) ? view : "overview",
-    mode: mode !== null && modes.has(mode) ? mode : "level",
+    mode: mode !== null && modes.has(mode) ? mode : "title",
     level: Number.isInteger(parsedLevel) && parsedLevel >= 1 && parsedLevel <= 19 ? parsedLevel : 17,
     version: query.get("version")?.slice(0, 100) || defaultVersion,
     q: query.get("q")?.slice(0, 100) ?? "",
@@ -29,12 +29,11 @@ export function pageStateSearch(state: PageState): string {
   const query = new URLSearchParams();
   query.set("style", state.style);
   if (state.view !== "overview") query.set("view", state.view);
-  if (state.view === "best") {
-    query.set("mode", state.mode);
-    if (state.mode === "level") query.set("level", String(state.level));
-    if (state.mode === "version") query.set("version", state.version);
-    if (state.mode === "title" && state.q.trim().length > 0) query.set("q", state.q.trim());
-    if (state.sort !== "score_desc") query.set("sort", state.sort);
-  }
+  // Keep the selected conditions when visiting another top-level tab as well.
+  query.set("mode", state.mode);
+  query.set("level", String(state.level));
+  query.set("version", state.version);
+  if (state.q.length > 0) query.set("q", state.q);
+  if (state.sort !== "score_desc") query.set("sort", state.sort);
   return `?${query.toString()}`;
 }
