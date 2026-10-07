@@ -2104,7 +2104,7 @@
                                 </Grid.ColumnDefinitions>
                                 <Border MinHeight="38" Padding="12,9" Background="{DynamicResource InfoBackgroundBrush}"
                                         BorderBrush="{DynamicResource InfoBorderBrush}" BorderThickness="1" CornerRadius="7">
-                                    <TextBlock x:Name="FlareSkillDisclaimer" Text="保存済みのFLARE I〜EXだけから算出しています。ゲーム内の公式値と異なる場合があります。"
+                                    <TextBlock x:Name="FlareSkillDisclaimer" Text="GPの保存済みFLARE I〜EXから、現在GPでプレー可能な過去AC曲を含めて算出します。ゲーム内の公式値と異なる場合があります。"
                                                Foreground="{DynamicResource InfoTextBrush}" FontSize="12" TextWrapping="Wrap" />
                                 </Border>
                                 <Border Grid.Column="1" MinWidth="276" MinHeight="38" Padding="12,9" Margin="10,0,0,0"

@@ -43,6 +43,7 @@ interface FlareRow {
   level: number;
   version: string;
   best_flare_rank: FlareRank;
+  flare_category: "CLASSIC" | "WHITE" | "GOLD" | null;
 }
 
 export interface PublicPlayerV1 {
@@ -205,7 +206,7 @@ export async function loadPublicPlayer(
        ORDER BY c.play_style, c.level`,
     ).bind(player.id).all<LevelAggregateRow>(),
     db.prepare(
-      `SELECT c.play_style, c.chart_id, s.title, c.difficulty, c.level, s.version,
+      `SELECT c.play_style, c.chart_id, s.title, c.difficulty, c.level, s.version, s.flare_category,
               b.best_flare_rank
        FROM player_chart_bests b
        JOIN charts c ON c.chart_id = b.chart_id
@@ -229,6 +230,7 @@ export async function loadPublicPlayer(
         level: row.level,
         version: row.version,
         flare_rank: row.best_flare_rank,
+        flare_category: row.flare_category,
       })));
     return [style, {
       published_best_count: Number(published?.published_best_count ?? 0),
@@ -508,7 +510,7 @@ export function registerPublicPlayerRoutes(app: Hono<AppEnvironment>): void {
     const player = await findPlayer(c.env.DB, c.req.param("publicPlayerId"));
     if (player === null) return errorResponse(c, 404, "PLAYER_NOT_FOUND", "The player was not found.");
     const result = await c.env.DB.prepare(
-      `SELECT c.chart_id, s.title, c.difficulty, c.level, s.version, b.best_flare_rank
+      `SELECT c.chart_id, s.title, c.difficulty, c.level, s.version, s.flare_category, b.best_flare_rank
        FROM player_chart_bests b
        JOIN charts c ON c.chart_id = b.chart_id
        JOIN songs s ON s.song_id = c.song_id
@@ -524,6 +526,7 @@ export function registerPublicPlayerRoutes(app: Hono<AppEnvironment>): void {
       level: Number(row.level),
       version: row.version,
       flare_rank: row.best_flare_rank,
+      flare_category: row.flare_category,
     })));
     return c.json({ style, ...flare });
   });

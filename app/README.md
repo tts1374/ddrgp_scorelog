@@ -17,7 +17,7 @@ viewerの初期取得は、最近プレー履歴50件、譜面詳細履歴10件�
 
 通常のインストール、初回起動、監視、画面操作、設定、backup / restore、更新、終了、トラブルシューティングは[`docs/user-guide.md`](../docs/user-guide.md)を正本とします。このREADMEは、利用ガイドから参照される開発者向けbuild、runtime、保存境界、package、validationの技術契約を保持します。
 
-フレアスキル画面は、正式個人スコアDBの保存済み`FLARE I〜EX`とcurrent M4 masterをread-onlyで再読込し、SINGLE / DOUBLE別、CLASSIC / WHITE / GOLD別のTop30、31位の次点、TOTAL、ランクを都度導出します。`flare_rank=NULL`と`FAILED`は対象外とし、master参照不能・ID不整合・removed・不正levelは0へ丸めず異常除外件数へ分離します。完成値表とランク閾値はruntime定数であり、外部サイトへアクセスしません。集計用DB objectと永続cacheは持ちません。
+フレアスキル画面は、正式個人スコアDBの保存済み`FLARE I〜EX`とcurrent M4 masterをread-onlyで再読込し、SINGLE / DOUBLE別、CLASSIC / WHITE / GOLD別のTop30、31位の次点、TOTAL、ランクを都度導出します。`flare_rank=NULL`と`FAILED`は対象外とし、master参照不能・ID不整合・removed・不正levelは0へ丸めず異常除外件数へ分離します。曲版のAC初収録歴を持つcurrent masterのカテゴリを使用し、現在GPでプレー可能な過去AC曲も含めます。AC収録歴なし確認済み・未解決は正常な対象外です。旧masterは従来のACフォルダ分類を使用し、GP曲は分類保留となります。完成値表とランク閾値はruntime定数であり、外部サイトへアクセスしません。集計用DB objectと永続cacheは持ちません。
 
 ## Build configuration
 

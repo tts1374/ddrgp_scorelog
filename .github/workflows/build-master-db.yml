@@ -29,7 +29,7 @@ jobs:
         run: uv sync --frozen --extra dev
 
       - name: Run master parser and identity registry tests
-        run: uv run pytest tests/test_master_builder.py tests/test_master_identity_registry.py
+        run: uv run pytest tests/test_master_builder.py tests/test_master_identity_registry.py tests/test_ac_history.py
 
       - name: Build SQLite master database
         run: uv run python -m master --output data/master/ddrgp-master.sqlite

@@ -78,6 +78,19 @@ def write_master(
         )
 
 
+def test_master_identity_accepts_current_and_previous_schema_only(tmp_path: Path) -> None:
+    database = tmp_path / "master.sqlite"
+    write_master(database)
+    current = catalog.load_master_identity(database)
+    with sqlite3.connect(database) as connection:
+        connection.execute("DROP TABLE song_ac_history")
+    assert catalog.load_master_identity(database) == current
+    with sqlite3.connect(database) as connection:
+        connection.execute("CREATE TABLE unexpected(name TEXT)")
+    with pytest.raises(ValueError, match="schema mismatch"):
+        catalog.load_master_identity(database)
+
+
 def add_ddrworld_source_metadata(path: Path, *, content_hash: str = "ddrworld-hash") -> None:
     sources = (
         ("official", "https://example.test/official", "official-hash"),

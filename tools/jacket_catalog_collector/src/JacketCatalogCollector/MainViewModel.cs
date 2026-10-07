@@ -1550,7 +1550,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 ? $"新規 master {FormatSummary(result.After)} を公開しました。"
                 : $"before [{FormatSummary(result.Before)}] → after [{FormatSummary(result.After)}]";
             lastOperationResult =
-                $"曲情報を更新しました。\n更新日時: {MasterUpdatedAtDisplay}";
+                $"曲情報を更新しました。\n更新日時: {MasterUpdatedAtDisplay}\nAC収録歴の確認結果:\n{result.After.AcHistoryReport}";
             OnPropertyChanged(nameof(LastOperationResultDisplay));
         }
         catch (OperationCanceledException)

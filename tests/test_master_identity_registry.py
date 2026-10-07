@@ -173,7 +173,7 @@ def test_d1_export_is_deterministic_idempotent_and_resolves_metadata(tmp_path: P
         CREATE TABLE songs (
           song_id TEXT PRIMARY KEY, title TEXT NOT NULL,
           artist TEXT NOT NULL, version TEXT NOT NULL,
-          title_search_key TEXT NOT NULL DEFAULT ''
+          title_search_key TEXT NOT NULL DEFAULT '', flare_category TEXT
         );
         CREATE TABLE charts (
           chart_id TEXT PRIMARY KEY, song_id TEXT NOT NULL,

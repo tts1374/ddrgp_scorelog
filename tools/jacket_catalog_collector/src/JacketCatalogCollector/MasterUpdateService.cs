@@ -9,7 +9,8 @@ public sealed record MasterSummary(
     int SongCount,
     int ChartCount,
     int GrandPrixSongCount,
-    string GeneratedAt = "");
+    string GeneratedAt = "",
+    string AcHistoryReport = "");
 
 public sealed record MasterUpdateResult(MasterSummary? Before, MasterSummary After);
 
@@ -85,7 +86,7 @@ public sealed class MasterUpdateService(
                 throw new InvalidOperationException("Master build did not create the staging database.");
             }
 
-            var after = await InspectAsync(stagedPath, cancellationToken);
+            var after = await InspectCoreAsync(stagedPath, cancellationToken, before is null ? null : fullTarget);
             cancellationToken.ThrowIfCancellationRequested();
             Directory.CreateDirectory(targetParent);
             try
@@ -107,9 +108,11 @@ public sealed class MasterUpdateService(
         }
     }
 
-    public async Task<MasterSummary> InspectAsync(
-        string path,
-        CancellationToken cancellationToken)
+    public Task<MasterSummary> InspectAsync(string path, CancellationToken cancellationToken) =>
+        InspectCoreAsync(path, cancellationToken, null);
+
+    private async Task<MasterSummary> InspectCoreAsync(
+        string path, CancellationToken cancellationToken, string? previousMaster)
     {
         var fullPath = Path.GetFullPath(path);
         if (Directory.Exists(fullPath))
@@ -123,7 +126,9 @@ public sealed class MasterUpdateService(
         var result = await processRunner.RunAsync(
             new ProcessRequest(
                 pythonExecutable,
-                ["-X", "utf8", "-m", "master.inspect", fullPath],
+                previousMaster is null
+                    ? ["-X", "utf8", "-m", "master.inspect", fullPath]
+                    : ["-X", "utf8", "-m", "master.inspect", fullPath, "--previous-master", previousMaster],
                 repositoryRoot),
             cancellationToken);
         EnsureSuccess(result, "Master inspection");
@@ -137,7 +142,13 @@ public sealed class MasterUpdateService(
                 root.GetProperty("song_count").GetInt32(),
                 root.GetProperty("chart_count").GetInt32(),
                 ParseRequiredCount(root, "grand_prix_play_available_song_count"),
-                RequiredString(root, "generated_at"));
+                RequiredString(root, "generated_at"),
+                root.TryGetProperty(previousMaster is null ? "gp_folder_ac_history" : "added_song_ac_history", out var history) && history.ValueKind == JsonValueKind.Array
+                    ? string.Join("\n", history.EnumerateArray()
+                        .Select(row => $"{row.GetProperty("title").GetString()} / {row.GetProperty("artist").GetString()}: " +
+                            $"{row.GetProperty("status").GetString()} {row.GetProperty("flare_category").GetString()} " +
+                            $"({row.GetProperty("reason").GetString()})"))
+                    : "");
         }
         catch (Exception exception) when (exception is JsonException or InvalidOperationException or FormatException)
         {

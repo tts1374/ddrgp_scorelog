@@ -1,0 +1,665 @@
+{
+  "schema_version": 1,
+  "songs": [
+    {
+      "song_id": "song_0386e2cb79e47a0e",
+      "title": "一途",
+      "artist": "",
+      "status": "classified",
+      "ac_version": "DanceDanceRevolution A3",
+      "source_url": "https://github.com/tts1374/ddrgp_scorelog/issues/222",
+      "checked_on": "2026-10-05",
+      "reason": "Issue #222 confirmed first AC release for this song version"
+    },
+    {
+      "song_id": "song_053c08f68d4e90f3",
+      "title": "WOW WAR TONIGHT ～時には起こせよムーヴメント",
+      "artist": "Covered by uzumaki with Hommarju",
+      "status": "classified",
+      "ac_version": "DanceDanceRevolution WORLD",
+      "source_url": "https://bemaniwiki.com/?DanceDanceRevolution+WORLD/%E3%83%95%E3%82%A9%E3%83%AB%E3%83%80%E5%8F%8E%E9%8C%B2%E6%9B%B2%E3%83%AA%E3%82%B9%E3%83%88",
+      "checked_on": "2026-10-05",
+      "reason": "Exact title and artist match to WORLD first-release folder; cover identity checked"
+    },
+    {
+      "song_id": "song_082517c94c0b5fcb",
+      "title": "Lo-Fi-M",
+      "artist": "yaseta",
+      "status": "confirmed_no_ac",
+      "ac_version": "",
+      "source_url": "https://ddrcommunity.com/ddr-grand-prix-bemani-selection-music-pack-vol-5/",
+      "checked_on": "2026-10-05",
+      "reason": "Explicit GRAND PRIX-exclusive BEMANI SELECTION music pack vol.5 release list matches this title/artist; first DDR release on 2026-03-12 is GP, and the reviewed current AC folder/deleted lists contain no AC release. Other BEMANI arcade appearances are not DDR AC history"
+    },
+    {
+      "song_id": "song_0ce54bedb2077e09",
+      "title": "GUILTY DIAMONDS",
+      "artist": "SOUND HOLIC Vs. Eurobeat Union feat. Nana Takahashi",
+      "status": "classified",
+      "ac_version": "DanceDanceRevolution A20 PLUS",
+      "source_url": "https://bemaniwiki.com/index.php?DanceDanceRevolution+WORLD/%E3%83%95%E3%82%A9%E3%83%AB%E3%83%80%E5%8F%8E%E9%8C%B2%E6%9B%B2%E3%83%AA%E3%82%B9%E3%83%88",
+      "checked_on": "2026-10-05",
+      "reason": "Same title, artist and 84-168 BPM in GP and AC folder lists"
+    },
+    {
+      "song_id": "song_158382ddbda2756b",
+      "title": "リメンバーリメンバー",
+      "artist": "covered by 轟はじめ(ReGLOSS)",
+      "status": "classified",
+      "ac_version": "DanceDanceRevolution WORLD",
+      "source_url": "https://bemaniwiki.com/?DanceDanceRevolution+WORLD/%E3%83%95%E3%82%A9%E3%83%AB%E3%83%80%E5%8F%8E%E9%8C%B2%E6%9B%B2%E3%83%AA%E3%82%B9%E3%83%88",
+      "checked_on": "2026-10-05",
+      "reason": "Exact title and artist match to WORLD first-release folder; cover identity checked"
+    },
+    {
+      "song_id": "song_18a761269318c1f2",
+      "title": "色は匂へど散りぬるを",
+      "artist": "幽閉サテライト feat. senya",
+      "status": "classified",
+      "ac_version": "DanceDanceRevolution A",
+      "source_url": "https://bemaniwiki.com/index.php?DanceDanceRevolution+WORLD/%E3%83%95%E3%82%A9%E3%83%AB%E3%83%80%E5%8F%8E%E9%8C%B2%E6%9B%B2%E3%83%AA%E3%82%B9%E3%83%88",
+      "checked_on": "2026-10-05",
+      "reason": "GP chart-source artist is 幽閉サテライト(Arranged:Iceon) feat. senya, matching AC A at 138 BPM; official GP artist omits the arranger credit"
+    },
+    {
+      "song_id": "song_1a30ef0eba3a4208",
+      "title": "マジLOVE1000％",
+      "artist": "",
+      "status": "classified",
+      "ac_version": "DanceDanceRevolution (2013)",
+      "source_url": "https://github.com/tts1374/ddrgp_scorelog/issues/222",
+      "checked_on": "2026-10-05",
+      "reason": "Issue #222 confirmed first AC release for this song version"
+    },
+    {
+      "song_id": "song_1c1a2a5a82160edb",
+      "title": "月に叢雲華に風",
+      "artist": "幽閉サテライト feat. senya",
+      "status": "classified",
+      "ac_version": "DanceDanceRevolution WORLD",
+      "source_url": "https://bemaniwiki.com/?DanceDanceRevolution+WORLD/%E3%83%95%E3%82%A9%E3%83%AB%E3%83%80%E5%8F%8E%E9%8C%B2%E6%9B%B2%E3%83%AA%E3%82%B9%E3%83%88",
+      "checked_on": "2026-10-05",
+      "reason": "Exact title and artist match to WORLD first-release folder; cover identity checked"
+    },
+    {
+      "song_id": "song_1ef842bda1feb986",
+      "title": "夏祭り",
+      "artist": "",
+      "status": "confirmed_no_ac",
+      "ac_version": "",
+      "source_url": "https://w.atwiki.jp/asigami/pages/4341.html",
+      "checked_on": "2026-10-05",
+      "reason": "GP exclusive version in GP license new-song section; no AC release confirmed as of review date"
+    },
+    {
+      "song_id": "song_20aca4fc4884cbc3",
+      "title": "星が泳ぐ",
+      "artist": "",
+      "status": "confirmed_no_ac",
+      "ac_version": "",
+      "source_url": "https://w.atwiki.jp/asigami/pages/4341.html",
+      "checked_on": "2026-10-05",
+      "reason": "GP exclusive version in GP license new-song section; no AC release confirmed as of review date"
+    },
+    {
+      "song_id": "song_2275e7f76f2fc9a8",
+      "title": "only my railgun",
+      "artist": "",
+      "status": "confirmed_no_ac",
+      "ac_version": "",
+      "source_url": "https://dancedancerevolution.fandom.com/wiki/Only_my_railgun",
+      "checked_on": "2026-10-05",
+      "reason": "GP uses the MAI / pop'n cover, first appearing in DDR GP; AC X2-A20 PLUS used the fripSide original. The separate cover-version DDR history lists only GP, consistent with the reviewed current AC folder/deleted lists"
+    },
+    {
+      "song_id": "song_23b09dea23908af1",
+      "title": "murmur twins (guitar pop ver.)",
+      "artist": "covered by 音乃瀬奏(ReGLOSS)",
+      "status": "classified",
+      "ac_version": "DanceDanceRevolution WORLD",
+      "source_url": "https://bemaniwiki.com/?DanceDanceRevolution+WORLD/%E3%83%95%E3%82%A9%E3%83%AB%E3%83%80%E5%8F%8E%E9%8C%B2%E6%9B%B2%E3%83%AA%E3%82%B9%E3%83%88",
+      "checked_on": "2026-10-05",
+      "reason": "Exact title and artist match to WORLD first-release folder; cover identity checked"
+    },
+    {
+      "song_id": "song_2979d7586b75f345",
+      "title": "Pretender",
+      "artist": "",
+      "status": "confirmed_no_ac",
+      "ac_version": "",
+      "source_url": "https://w.atwiki.jp/asigami/pages/4341.html",
+      "checked_on": "2026-10-05",
+      "reason": "GP exclusive version in GP license new-song section; no AC release confirmed as of review date"
+    },
+    {
+      "song_id": "song_2b62eb3f599c4eb2",
+      "title": "Black or Red?",
+      "artist": "コスモドライバー join. shully & Nimo",
+      "status": "confirmed_no_ac",
+      "ac_version": "",
+      "source_url": "https://ddrcommunity.com/ddr-grand-prix-bemani-selection-music-pack-vol-5/",
+      "checked_on": "2026-10-05",
+      "reason": "Explicit GRAND PRIX-exclusive BEMANI SELECTION music pack vol.5 release list matches this title/artist; first DDR release on 2026-03-12 is GP, and the reviewed current AC folder/deleted lists contain no AC release. Other BEMANI arcade appearances are not DDR AC history"
+    },
+    {
+      "song_id": "song_2b69372faf69287b",
+      "title": "SOUVENIR",
+      "artist": "",
+      "status": "classified",
+      "ac_version": "DanceDanceRevolution A3",
+      "source_url": "https://github.com/tts1374/ddrgp_scorelog/issues/222",
+      "checked_on": "2026-10-05",
+      "reason": "Issue #222 confirmed first AC release for this song version"
+    },
+    {
+      "song_id": "song_2c3f7d53b8a3885c",
+      "title": "すいみん不足",
+      "artist": "パーキッツ",
+      "status": "confirmed_no_ac",
+      "ac_version": "",
+      "source_url": "https://w.atwiki.jp/asigami/pages/4341.html",
+      "checked_on": "2026-10-05",
+      "reason": "GP exclusive version in GP license new-song section; no AC release confirmed as of review date"
+    },
+    {
+      "song_id": "song_2d58310a925e380f",
+      "title": "朱と碧のランページ",
+      "artist": "covered by 儒烏風亭らでん(ReGLOSS)",
+      "status": "classified",
+      "ac_version": "DanceDanceRevolution WORLD",
+      "source_url": "https://bemaniwiki.com/?DanceDanceRevolution+WORLD/%E3%83%95%E3%82%A9%E3%83%AB%E3%83%80%E5%8F%8E%E9%8C%B2%E6%9B%B2%E3%83%AA%E3%82%B9%E3%83%88",
+      "checked_on": "2026-10-05",
+      "reason": "Exact title and artist match to WORLD first-release folder; cover identity checked"
+    },
+    {
+      "song_id": "song_322309e58ec9aa10",
+      "title": "勿忘",
+      "artist": "",
+      "status": "confirmed_no_ac",
+      "ac_version": "",
+      "source_url": "https://w.atwiki.jp/asigami/pages/4341.html",
+      "checked_on": "2026-10-05",
+      "reason": "GP exclusive version in GP license new-song section; no AC release confirmed as of review date"
+    },
+    {
+      "song_id": "song_33751e7e3fc5d1f8",
+      "title": "Homesick Pt.2&3",
+      "artist": "covered by 不知火フレア",
+      "status": "classified",
+      "ac_version": "DanceDanceRevolution WORLD",
+      "source_url": "https://bemaniwiki.com/?DanceDanceRevolution+WORLD/%E3%83%95%E3%82%A9%E3%83%AB%E3%83%80%E5%8F%8E%E9%8C%B2%E6%9B%B2%E3%83%AA%E3%82%B9%E3%83%88",
+      "checked_on": "2026-10-05",
+      "reason": "Exact title and artist match to WORLD first-release folder; cover identity checked"
+    },
+    {
+      "song_id": "song_34348cb33cc12c1b",
+      "title": "さくらんぼ",
+      "artist": "",
+      "status": "confirmed_no_ac",
+      "ac_version": "",
+      "source_url": "https://w.atwiki.jp/asigami/pages/4341.html",
+      "checked_on": "2026-10-05",
+      "reason": "GP exclusive version in GP license new-song section; no AC release confirmed as of review date"
+    },
+    {
+      "song_id": "song_37bc0923cea58840",
+      "title": "Dear Deer",
+      "artist": "Hylen",
+      "status": "confirmed_no_ac",
+      "ac_version": "",
+      "source_url": "https://ddrcommunity.com/ddr-grand-prix-bemani-selection-music-pack-vol-5/",
+      "checked_on": "2026-10-05",
+      "reason": "Explicit GRAND PRIX-exclusive BEMANI SELECTION music pack vol.5 release list matches this title/artist; first DDR release on 2026-03-12 is GP, and the reviewed current AC folder/deleted lists contain no AC release. Other BEMANI arcade appearances are not DDR AC history"
+    },
+    {
+      "song_id": "song_3c121be770a1efdb",
+      "title": "オリオンをなぞる",
+      "artist": "",
+      "status": "confirmed_no_ac",
+      "ac_version": "",
+      "source_url": "https://dancedancerevolution.fandom.com/wiki/Orion_wo_nazoru",
+      "checked_on": "2026-10-05",
+      "reason": "GP uses the FutureTomTom cover, first appearing in DDR GP; AC 2013-2014 used the UNISON SQUARE GARDEN original. The separate cover-version DDR history lists only GP, consistent with the reviewed current AC folder/deleted lists"
+    },
+    {
+      "song_id": "song_3c22e3f895830187",
+      "title": "唱",
+      "artist": "Covered by 滝沢玻琉",
+      "status": "classified",
+      "ac_version": "DanceDanceRevolution WORLD",
+      "source_url": "https://bemaniwiki.com/?DanceDanceRevolution+WORLD/%E3%83%95%E3%82%A9%E3%83%AB%E3%83%80%E5%8F%8E%E9%8C%B2%E6%9B%B2%E3%83%AA%E3%82%B9%E3%83%88",
+      "checked_on": "2026-10-05",
+      "reason": "Exact title and artist match to WORLD first-release folder; cover identity checked"
+    },
+    {
+      "song_id": "song_3dd17f0b63685d88",
+      "title": "LOVE & JOY -Risk Junk MIX-",
+      "artist": "Risk Junk",
+      "status": "classified",
+      "ac_version": "DanceDanceRevolution (2013)",
+      "source_url": "https://github.com/tts1374/ddrgp_scorelog/issues/222",
+      "checked_on": "2026-10-05",
+      "reason": "Issue #222 confirmed first AC release for this song version"
+    },
+    {
+      "song_id": "song_3f174adc0b8cc333",
+      "title": "Paradission",
+      "artist": "BlackY",
+      "status": "confirmed_no_ac",
+      "ac_version": "",
+      "source_url": "https://ddrcommunity.com/ddr-grand-prix-bemani-selection-music-pack-vol-5/",
+      "checked_on": "2026-10-05",
+      "reason": "Explicit GRAND PRIX-exclusive BEMANI SELECTION music pack vol.5 release list matches this title/artist; first DDR release on 2026-03-12 is GP, and the reviewed current AC folder/deleted lists contain no AC release. Other BEMANI arcade appearances are not DDR AC history"
+    },
+    {
+      "song_id": "song_4066a54f87add985",
+      "title": "HOT LIMIT",
+      "artist": "",
+      "status": "confirmed_no_ac",
+      "ac_version": "",
+      "source_url": "https://bemaniwiki.com/?DanceDanceRevolution+WORLD/%E5%89%8A%E9%99%A4%E6%9B%B2%E3%83%AA%E3%82%B9%E3%83%88",
+      "checked_on": "2026-10-05",
+      "reason": "CS-to-AC unreleased list identifies the HIGH and MIGHTY COLOR MUSIC FIT version; GP source and SP wiki identify this version, not the JOHN DESIRE 5thMIX version"
+    },
+    {
+      "song_id": "song_42318113b2af0cd5",
+      "title": "resonance",
+      "artist": "NAOKI-EX",
+      "status": "classified",
+      "ac_version": "DDR X2",
+      "source_url": "https://github.com/tts1374/ddrgp_scorelog/issues/222",
+      "checked_on": "2026-10-05",
+      "reason": "Issue #222 confirmed first AC release for this song version"
+    },
+    {
+      "song_id": "song_43ea21124fcd486c",
+      "title": "Damage Per Second",
+      "artist": "Maozon",
+      "status": "confirmed_no_ac",
+      "ac_version": "",
+      "source_url": "https://ddrcommunity.com/ddr-grand-prix-bemani-selection-music-pack-vol-5/",
+      "checked_on": "2026-10-05",
+      "reason": "Explicit GRAND PRIX-exclusive BEMANI SELECTION music pack vol.5 release list matches this title/artist; first DDR release on 2026-03-12 is GP, and the reviewed current AC folder/deleted lists contain no AC release. Other BEMANI arcade appearances are not DDR AC history"
+    },
+    {
+      "song_id": "song_44aff94d34675651",
+      "title": "No Life Queen [DJ Command Remix]",
+      "artist": "SOUND HOLIC Vs. Eurobeat Union feat. Nana Takahashi",
+      "status": "classified",
+      "ac_version": "DanceDanceRevolution A20 PLUS",
+      "source_url": "https://bemaniwiki.com/index.php?DanceDanceRevolution+WORLD/%E3%83%95%E3%82%A9%E3%83%AB%E3%83%80%E5%8F%8E%E9%8C%B2%E6%9B%B2%E3%83%AA%E3%82%B9%E3%83%88",
+      "checked_on": "2026-10-05",
+      "reason": "Same named DJ Command remix, artist and 165 BPM in GP and AC folder lists"
+    },
+    {
+      "song_id": "song_45c57aebcea96901",
+      "title": "打打打打打打打打打打 (にじさんじダンス部 ver.)",
+      "artist": "長尾景 & 倉持めると & セラフ・ダズルガーデン",
+      "status": "classified",
+      "ac_version": "DanceDanceRevolution WORLD",
+      "source_url": "https://bemaniwiki.com/?DanceDanceRevolution+WORLD/%E3%83%95%E3%82%A9%E3%83%AB%E3%83%80%E5%8F%8E%E9%8C%B2%E6%9B%B2%E3%83%AA%E3%82%B9%E3%83%88",
+      "checked_on": "2026-10-05",
+      "reason": "Exact title and artist match to WORLD first-release folder; cover identity checked"
+    },
+    {
+      "song_id": "song_48cfd0df8c413485",
+      "title": "コネクト",
+      "artist": "",
+      "status": "classified",
+      "ac_version": "DDR X3 VS 2ndMIX",
+      "source_url": "https://github.com/tts1374/ddrgp_scorelog/issues/222",
+      "checked_on": "2026-10-05",
+      "reason": "Issue #222 confirmed first AC release for this song version"
+    },
+    {
+      "song_id": "song_4dcd502a26f1b9f3",
+      "title": "愛のために。",
+      "artist": "",
+      "status": "confirmed_no_ac",
+      "ac_version": "",
+      "source_url": "https://w.atwiki.jp/asigami/pages/4341.html",
+      "checked_on": "2026-10-05",
+      "reason": "GP exclusive version in GP license new-song section; no AC release confirmed as of review date"
+    },
+    {
+      "song_id": "song_5c3eed3c13e29811",
+      "title": "空色デイズ",
+      "artist": "",
+      "status": "confirmed_no_ac",
+      "ac_version": "",
+      "source_url": "https://bemaniwiki.com/?DanceDanceRevolution+WORLD/%E5%89%8A%E9%99%A4%E6%9B%B2%E3%83%AA%E3%82%B9%E3%83%88",
+      "checked_on": "2026-10-05",
+      "reason": "CS-to-AC unreleased list identifies the 中川翔子 MUSIC FIT version at 174 BPM; GP new-song source identifies the same artist/source and BPM"
+    },
+    {
+      "song_id": "song_653589a320bdddd2",
+      "title": "群青",
+      "artist": "",
+      "status": "confirmed_no_ac",
+      "ac_version": "",
+      "source_url": "https://w.atwiki.jp/asigami/pages/4341.html",
+      "checked_on": "2026-10-05",
+      "reason": "GP exclusive version in GP license new-song section; no AC release confirmed as of review date"
+    },
+    {
+      "song_id": "song_6983334466fab09e",
+      "title": "夜に駆ける",
+      "artist": "",
+      "status": "confirmed_no_ac",
+      "ac_version": "",
+      "source_url": "https://w.atwiki.jp/asigami/pages/4341.html",
+      "checked_on": "2026-10-05",
+      "reason": "GP exclusive version in GP license new-song section; no AC release confirmed as of review date"
+    },
+    {
+      "song_id": "song_6f990296d9b34e40",
+      "title": "ドライフラワー",
+      "artist": "",
+      "status": "confirmed_no_ac",
+      "ac_version": "",
+      "source_url": "https://w.atwiki.jp/asigami/pages/4341.html",
+      "checked_on": "2026-10-05",
+      "reason": "GP exclusive version in GP license new-song section; no AC release confirmed as of review date"
+    },
+    {
+      "song_id": "song_70cbbf34ad4402b0",
+      "title": "Trickster",
+      "artist": "",
+      "status": "confirmed_no_ac",
+      "ac_version": "",
+      "source_url": "https://wiki.bemani.cc/index.php?title=DanceDanceRevolution_GRAND_PRIX%E6%9B%B2%E7%9B%AE%E5%88%97%E8%A1%A8",
+      "checked_on": "2026-10-05",
+      "reason": "Explicitly listed as a GRAND PRIX-exclusive licensed song in the reviewed BEMANICN GP history list (search-index copy); SP wiki confirms GP audio changed from the Nana Mizuki AC X original. Current AC folder/deleted lists contain no corresponding GP audio version"
+    },
+    {
+      "song_id": "song_7744ed77af5ee6d2",
+      "title": "おどるポンポコリン",
+      "artist": "",
+      "status": "confirmed_no_ac",
+      "ac_version": "",
+      "source_url": "https://bemaniwiki.com/?DanceDanceRevolution+WORLD/%E5%89%8A%E9%99%A4%E6%9B%B2%E3%83%AA%E3%82%B9%E3%83%88",
+      "checked_on": "2026-10-05",
+      "reason": "CS-to-AC unreleased list identifies the B.B.クイーンズ MUSIC FIT version; GP source and SP wiki identify this version with GP chart changes, not the CAPTAIN JACK 5thMIX version"
+    },
+    {
+      "song_id": "song_7794b20cf6beb5ab",
+      "title": "Midnight City Warfare",
+      "artist": "sky_delta",
+      "status": "confirmed_no_ac",
+      "ac_version": "",
+      "source_url": "https://ddrcommunity.com/ddr-grand-prix-bemani-selection-music-pack-vol-5/",
+      "checked_on": "2026-10-05",
+      "reason": "Explicit GRAND PRIX-exclusive BEMANI SELECTION music pack vol.5 release list matches this title/artist; first DDR release on 2026-03-12 is GP, and the reviewed current AC folder/deleted lists contain no AC release. Other BEMANI arcade appearances are not DDR AC history"
+    },
+    {
+      "song_id": "song_80b4a2a9d7079de8",
+      "title": "ジョジョ～その血の運命～",
+      "artist": "",
+      "status": "classified",
+      "ac_version": "DanceDanceRevolution (2013)",
+      "source_url": "https://github.com/tts1374/ddrgp_scorelog/issues/222",
+      "checked_on": "2026-10-05",
+      "reason": "Issue #222 confirmed first AC release for this song version"
+    },
+    {
+      "song_id": "song_8234f437bf447de4",
+      "title": "僕の飛行機",
+      "artist": "covered by 不知火フレア",
+      "status": "classified",
+      "ac_version": "DanceDanceRevolution WORLD",
+      "source_url": "https://bemaniwiki.com/?DanceDanceRevolution+WORLD/%E3%83%95%E3%82%A9%E3%83%AB%E3%83%80%E5%8F%8E%E9%8C%B2%E6%9B%B2%E3%83%AA%E3%82%B9%E3%83%88",
+      "checked_on": "2026-10-05",
+      "reason": "Exact title and artist match to WORLD first-release folder; cover identity checked"
+    },
+    {
+      "song_id": "song_82df8773e7f1e3e2",
+      "title": "紅蓮華",
+      "artist": "",
+      "status": "confirmed_no_ac",
+      "ac_version": "",
+      "source_url": "https://w.atwiki.jp/asigami/pages/4341.html",
+      "checked_on": "2026-10-05",
+      "reason": "GP exclusive version in GP license new-song section; no AC release confirmed as of review date"
+    },
+    {
+      "song_id": "song_851cec11d4703a40",
+      "title": "勇者",
+      "artist": "Covered by ぽめ",
+      "status": "classified",
+      "ac_version": "DanceDanceRevolution WORLD",
+      "source_url": "https://bemaniwiki.com/?DanceDanceRevolution+WORLD/%E3%83%95%E3%82%A9%E3%83%AB%E3%83%80%E5%8F%8E%E9%8C%B2%E6%9B%B2%E3%83%AA%E3%82%B9%E3%83%88",
+      "checked_on": "2026-10-05",
+      "reason": "Exact title and artist match to WORLD first-release folder; cover identity checked"
+    },
+    {
+      "song_id": "song_8550f5d1ec4b058c",
+      "title": "POP STAR",
+      "artist": "",
+      "status": "confirmed_no_ac",
+      "ac_version": "",
+      "source_url": "https://w.atwiki.jp/asigami/pages/4341.html",
+      "checked_on": "2026-10-05",
+      "reason": "GP exclusive version in GP license new-song section; no AC release confirmed as of review date"
+    },
+    {
+      "song_id": "song_85c2d8c3abdd2ef4",
+      "title": "つけまつける",
+      "artist": "",
+      "status": "classified",
+      "ac_version": "DanceDanceRevolution (2013)",
+      "source_url": "https://github.com/tts1374/ddrgp_scorelog/issues/222",
+      "checked_on": "2026-10-05",
+      "reason": "Issue #222 confirmed first AC release for this song version"
+    },
+    {
+      "song_id": "song_8cfbce3ab7614293",
+      "title": "Sulk",
+      "artist": "SYUNN",
+      "status": "confirmed_no_ac",
+      "ac_version": "",
+      "source_url": "https://ddrcommunity.com/ddr-grand-prix-bemani-selection-music-pack-vol-5/",
+      "checked_on": "2026-10-05",
+      "reason": "Explicit GRAND PRIX-exclusive BEMANI SELECTION music pack vol.5 release list matches this title/artist; first DDR release on 2026-03-12 is GP, and the reviewed current AC folder/deleted lists contain no AC release. Other BEMANI arcade appearances are not DDR AC history"
+    },
+    {
+      "song_id": "song_95cbf7939f3673e0",
+      "title": "ルカルカ★ナイトフィーバー",
+      "artist": "",
+      "status": "confirmed_no_ac",
+      "ac_version": "",
+      "source_url": "https://w.atwiki.jp/asigami/pages/4341.html",
+      "checked_on": "2026-10-05",
+      "reason": "GP exclusive version in GP license new-song section; no AC release confirmed as of review date"
+    },
+    {
+      "song_id": "song_971c61175dc308ff",
+      "title": "Help me, ERINNNNNN!!",
+      "artist": "ビートまりお（COOL&CREATE）",
+      "status": "classified",
+      "ac_version": "DanceDanceRevolution A",
+      "source_url": "https://bemaniwiki.com/index.php?DanceDanceRevolution+WORLD/%E3%83%95%E3%82%A9%E3%83%AB%E3%83%80%E5%8F%8E%E9%8C%B2%E6%9B%B2%E3%83%AA%E3%82%B9%E3%83%88",
+      "checked_on": "2026-10-05",
+      "reason": "Same title, COOL&CREATE artist and 180-184 BPM in GP and AC folder lists"
+    },
+    {
+      "song_id": "song_97cdce81fd107056",
+      "title": "カジノファイヤーことみちゃん",
+      "artist": "covered by 一条莉々華(ReGLOSS)",
+      "status": "classified",
+      "ac_version": "DanceDanceRevolution WORLD",
+      "source_url": "https://bemaniwiki.com/?DanceDanceRevolution+WORLD/%E3%83%95%E3%82%A9%E3%83%AB%E3%83%80%E5%8F%8E%E9%8C%B2%E6%9B%B2%E3%83%AA%E3%82%B9%E3%83%88",
+      "checked_on": "2026-10-05",
+      "reason": "Exact title and artist match to WORLD first-release folder; cover identity checked"
+    },
+    {
+      "song_id": "song_a6e09308f6d45eea",
+      "title": "創聖のアクエリオン",
+      "artist": "",
+      "status": "confirmed_no_ac",
+      "ac_version": "",
+      "source_url": "https://bemaniwiki.com/?DanceDanceRevolution+WORLD/%E5%89%8A%E9%99%A4%E6%9B%B2%E3%83%AA%E3%82%B9%E3%83%88",
+      "checked_on": "2026-10-05",
+      "reason": "CS-to-AC unreleased list identifies the AKINO MUSIC FIT version; official-only GP title and SP wiki GP chart entry (written 創世) identify this CS version"
+    },
+    {
+      "song_id": "song_a88d2762175be5b5",
+      "title": "Din Don Dan (にじさんじダンス部 ver.)",
+      "artist": "レイン・パターソン & 山神カルタ & 東堂コハク",
+      "status": "classified",
+      "ac_version": "DanceDanceRevolution WORLD",
+      "source_url": "https://bemaniwiki.com/?DanceDanceRevolution+WORLD/%E3%83%95%E3%82%A9%E3%83%AB%E3%83%80%E5%8F%8E%E9%8C%B2%E6%9B%B2%E3%83%AA%E3%82%B9%E3%83%88",
+      "checked_on": "2026-10-05",
+      "reason": "Exact title and artist match to WORLD first-release folder; cover identity checked"
+    },
+    {
+      "song_id": "song_b0d4759d95b9a298",
+      "title": "雑踏、僕らの街",
+      "artist": "Covered by taru",
+      "status": "classified",
+      "ac_version": "DanceDanceRevolution WORLD",
+      "source_url": "https://bemaniwiki.com/?DanceDanceRevolution+WORLD/%E3%83%95%E3%82%A9%E3%83%AB%E3%83%80%E5%8F%8E%E9%8C%B2%E6%9B%B2%E3%83%AA%E3%82%B9%E3%83%88",
+      "checked_on": "2026-10-05",
+      "reason": "Exact title and artist match to WORLD first-release folder; cover identity checked"
+    },
+    {
+      "song_id": "song_b1ef07a802ae8f51",
+      "title": "Lemon",
+      "artist": "",
+      "status": "confirmed_no_ac",
+      "ac_version": "",
+      "source_url": "https://w.atwiki.jp/asigami/pages/4341.html",
+      "checked_on": "2026-10-05",
+      "reason": "GP exclusive version in GP license new-song section; no AC release confirmed as of review date"
+    },
+    {
+      "song_id": "song_b491c4a63a404d6c",
+      "title": "怪物",
+      "artist": "",
+      "status": "confirmed_no_ac",
+      "ac_version": "",
+      "source_url": "https://w.atwiki.jp/asigami/pages/4341.html",
+      "checked_on": "2026-10-05",
+      "reason": "GP exclusive version in GP license new-song section; no AC release confirmed as of review date"
+    },
+    {
+      "song_id": "song_b9eb873f7a32bcea",
+      "title": "恋愛レボリューション21",
+      "artist": "",
+      "status": "confirmed_no_ac",
+      "ac_version": "",
+      "source_url": "https://w.atwiki.jp/asigami/pages/4341.html",
+      "checked_on": "2026-10-05",
+      "reason": "GP exclusive version in GP license new-song section; no AC release confirmed as of review date"
+    },
+    {
+      "song_id": "song_be19622709f09642",
+      "title": "CARNIVOROUS",
+      "artist": "SOUND HOLIC feat. Nana Takahashi",
+      "status": "confirmed_no_ac",
+      "ac_version": "",
+      "source_url": "https://ddrcommunity.com/ddr-grand-prix-bemani-selection-music-pack-vol-5/",
+      "checked_on": "2026-10-05",
+      "reason": "Explicit GRAND PRIX-exclusive BEMANI SELECTION music pack vol.5 release list matches this title/artist; first DDR release on 2026-03-12 is GP, and the reviewed current AC folder/deleted lists contain no AC release. Other BEMANI arcade appearances are not DDR AC history"
+    },
+    {
+      "song_id": "song_beda93bb0ed57033",
+      "title": "Shooting Star",
+      "artist": "ReGLOSS",
+      "status": "classified",
+      "ac_version": "DanceDanceRevolution WORLD",
+      "source_url": "https://bemaniwiki.com/?DanceDanceRevolution+WORLD/%E3%83%95%E3%82%A9%E3%83%AB%E3%83%80%E5%8F%8E%E9%8C%B2%E6%9B%B2%E3%83%AA%E3%82%B9%E3%83%88",
+      "checked_on": "2026-10-05",
+      "reason": "Exact title and artist match to WORLD first-release folder; cover identity checked"
+    },
+    {
+      "song_id": "song_bfaf6e26413ebe99",
+      "title": "廻廻奇譚",
+      "artist": "",
+      "status": "confirmed_no_ac",
+      "ac_version": "",
+      "source_url": "https://w.atwiki.jp/asigami/pages/4341.html",
+      "checked_on": "2026-10-05",
+      "reason": "GP exclusive version in GP license new-song section; no AC release confirmed as of review date"
+    },
+    {
+      "song_id": "song_c0ab5cf07d0241e9",
+      "title": "最終鬼畜妹フランドール・Ｓ",
+      "artist": "ビートまりお(COOL&CREATE)",
+      "status": "classified",
+      "ac_version": "DanceDanceRevolution A20",
+      "source_url": "https://bemaniwiki.com/index.php?DanceDanceRevolution+WORLD/%E3%83%95%E3%82%A9%E3%83%AB%E3%83%80%E5%8F%8E%E9%8C%B2%E6%9B%B2%E3%83%AA%E3%82%B9%E3%83%88",
+      "checked_on": "2026-10-05",
+      "reason": "GP and AC lists agree on COOL&CREATE artist and 200 BPM; final fullwidth Ｓ versus ASCII S is a presentation difference for this reviewed song version"
+    },
+    {
+      "song_id": "song_cf4f92ff8640b321",
+      "title": "ミックスナッツ",
+      "artist": "",
+      "status": "classified",
+      "ac_version": "DanceDanceRevolution A3",
+      "source_url": "https://github.com/tts1374/ddrgp_scorelog/issues/222",
+      "checked_on": "2026-10-05",
+      "reason": "Issue #222 confirmed first AC release for this song version"
+    },
+    {
+      "song_id": "song_d2edea4c7aa2c899",
+      "title": "ラムのラブソング",
+      "artist": "kaco",
+      "status": "confirmed_no_ac",
+      "ac_version": "",
+      "source_url": "https://w.atwiki.jp/asigami/pages/4341.html",
+      "checked_on": "2026-10-05",
+      "reason": "GP exclusive version in GP license new-song section; no AC release confirmed as of review date"
+    },
+    {
+      "song_id": "song_d5dd6bd2584e1e4c",
+      "title": "ポリリズム",
+      "artist": "Pink Lemonade",
+      "status": "classified",
+      "ac_version": "DDR X",
+      "source_url": "https://github.com/tts1374/ddrgp_scorelog/issues/222",
+      "checked_on": "2026-10-05",
+      "reason": "Issue #222 confirmed first AC release for this song version"
+    },
+    {
+      "song_id": "song_d614db4954315b7f",
+      "title": "BRIGHT STREAM",
+      "artist": "",
+      "status": "classified",
+      "ac_version": "DanceDanceRevolution (2013)",
+      "source_url": "https://github.com/tts1374/ddrgp_scorelog/issues/222",
+      "checked_on": "2026-10-05",
+      "reason": "Issue #222 confirmed first AC release for this song version"
+    },
+    {
+      "song_id": "song_dff4409d00a94a97",
+      "title": "JOK3R",
+      "artist": "Yuta Imai",
+      "status": "confirmed_no_ac",
+      "ac_version": "",
+      "source_url": "https://ddrcommunity.com/ddr-grand-prix-bemani-selection-music-pack-vol-5/",
+      "checked_on": "2026-10-05",
+      "reason": "Explicit GRAND PRIX-exclusive BEMANI SELECTION music pack vol.5 release list matches this title/artist; first DDR release on 2026-03-12 is GP, and the reviewed current AC folder/deleted lists contain no AC release. Other BEMANI arcade appearances are not DDR AC history"
+    },
+    {
+      "song_id": "song_e77db5a68040ea6d",
+      "title": "秒針を噛む",
+      "artist": "",
+      "status": "confirmed_no_ac",
+      "ac_version": "",
+      "source_url": "https://w.atwiki.jp/asigami/pages/4341.html",
+      "checked_on": "2026-10-05",
+      "reason": "GP exclusive version in GP license new-song section; no AC release confirmed as of review date"
+    },
+    {
+      "song_id": "song_f164aa3eb3f529e1",
+      "title": "Butterfly Twist",
+      "artist": "Yooh",
+      "status": "confirmed_no_ac",
+      "ac_version": "",
+      "source_url": "https://ddrcommunity.com/ddr-grand-prix-bemani-selection-music-pack-vol-5/",
+      "checked_on": "2026-10-05",
+      "reason": "Explicit GRAND PRIX-exclusive BEMANI SELECTION music pack vol.5 release list matches this title/artist; first DDR release on 2026-03-12 is GP, and the reviewed current AC folder/deleted lists contain no AC release. Other BEMANI arcade appearances are not DDR AC history"
+    }
+  ]
+}

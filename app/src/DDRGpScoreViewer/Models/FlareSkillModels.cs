@@ -19,7 +19,8 @@ public sealed record FlareSkillChartInput(
     string PlayStyle,
     string Difficulty,
     int Level,
-    bool IsRemoved);
+    bool IsRemoved,
+    string? FlareCategory);
 
 public sealed record FlareSkillChartResult(
     string PlayId,
@@ -303,8 +304,17 @@ public static class FlareSkillCalculator
                 CountAbnormal(chart.PlayStyle);
                 continue;
             }
-            if (!FlareRankIndexes.TryGetValue(play.FlareRank, out var rankIndex) ||
-                !VersionCategories.TryGetValue(chart.Version, out var category))
+            if (!FlareRankIndexes.TryGetValue(play.FlareRank, out var rankIndex))
+            {
+                CountAbnormal(chart.PlayStyle);
+                continue;
+            }
+            if (chart.FlareCategory is null)
+            {
+                continue;
+            }
+            var category = chart.FlareCategory;
+            if (category is not ("CLASSIC" or "WHITE" or "GOLD"))
             {
                 CountAbnormal(chart.PlayStyle);
                 continue;
@@ -404,6 +414,9 @@ public static class FlareSkillCalculator
             out var timestamp)
             ? timestamp
             : DateTimeOffset.MinValue;
+
+    public static string? LegacyCategory(string version) =>
+        VersionCategories.GetValueOrDefault(version);
 
     private static IReadOnlyDictionary<string, string> BuildVersionCategories()
     {

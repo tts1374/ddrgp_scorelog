@@ -35,7 +35,7 @@ Title部分一致はcanonical titleと検索用別名を対象とする。master
 
 ## Flare Skill
 
-Workerは現行・非removed chartの`best_flare_rank`、level、play style、versionだけを使う。Lv1〜19 × FLARE I〜EX完成値、CLASSIC / WHITE / GOLD分類、カテゴリTop30、tie-break、TOTAL rank閾値はDesktop #198と同じgolden fixtureで検証する。SP / DPは分離し、対象0件はTOTAL 0、rank NONEとして返す。
+Workerは現行・非removed chartの`best_flare_rank`、level、play styleと共有マスタの曲別`flare_category`を使う。GP表示用versionは維持し、現在GPでプレー可能な過去AC曲を含むGP用集計とする。確認済みAC収録歴なし・未解決・GP対象外のカテゴリNULLは正常な除外とする。Lv1〜19 × FLARE I〜EX完成値、CLASSIC / WHITE / GOLD分類、カテゴリTop30、tie-break、TOTAL rank閾値はDesktop #198と同じgolden fixtureで検証する。SP / DPは分離し、対象0件はTOTAL 0、rank NONEとして返す。
 
 ## HTML bootstrapとrouting
 

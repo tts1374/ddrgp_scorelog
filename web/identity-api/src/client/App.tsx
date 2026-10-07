@@ -91,7 +91,7 @@ function Overview({ player, state, openView }: {
   return <section className="view-panel" aria-labelledby="overview-heading">
     <div className="section-heading"><div className="heading-with-info">
       <h2 id="overview-heading">{state.style === "SP" ? "SINGLE" : "DOUBLE"} Flare Skill</h2>
-      <InfoTip label="公開フレアスキルについて">公開BestのFLARE実績から算出します。ローカルアプリや公式の値とは異なる場合があります。</InfoTip>
+      <InfoTip label="公開フレアスキルについて">GPの公開BestのFLARE実績から、現在GPでプレー可能な過去AC曲を含めて算出します。ローカルアプリや公式の値とは異なる場合があります。</InfoTip>
       <button className="text-button" type="button" onClick={() => openView("flare")}>対象楽曲を見る</button>
     </div></div>
     <FlareSummaryView summary={summary.flare_skill} />
@@ -212,7 +212,7 @@ function FlareView({ state, response, loading, error, retry }: {
   const ranges = { CLASSIC: "1st〜X3 VS 2ndMIX", WHITE: "2013〜A", GOLD: "A20〜WORLD" };
   return <section className="view-panel" aria-label="Flare Skill">
     <div className="flare-page-header"><div className="heading-with-info"><h2>{state.style === "SP" ? "SINGLE" : "DOUBLE"} Flare Skill対象楽曲</h2>
-      <InfoTip label="フレアスキル対象楽曲について">公開BestのFLARE実績から算出します。ローカルアプリや公式の値とは異なる場合があります。</InfoTip>
+      <InfoTip label="フレアスキル対象楽曲について">GPの公開BestのFLARE実績から、現在GPでプレー可能な過去AC曲を含めて算出します。ローカルアプリや公式の値とは異なる場合があります。</InfoTip>
     </div></div>
     <FlareSummaryView summary={summary} />
     <div className="flare-category-grid">{response.categories.map((category) => <article className="flare-category-panel" data-flare-category={category.category.toLowerCase()} key={category.category}>

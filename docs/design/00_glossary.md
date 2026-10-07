@@ -36,6 +36,15 @@ DDR GP scorelog の設計、PoC、テストで使う主要用語を定義する�
 | `live RESULT identity retry` | live監視でconfirmedになったRESULTの`RESULT同定根拠`だけが一時的に未解決の間、同じcapture event IDを維持して後続frameを再評価すること | `RetryIdentity`は正式保存workflowへ未接続であることを示し、画面離脱の確認または8回目の試行で未解決として収束する |
 | live監視の`HasResultStructure` / `ResultSceneFeature` | RESULTの見出し・詳細枠の残存と、中央ジャケット領域の8×8 RGB観測。画面離脱を確認するための一時的な材料 | 曲同定、正式数値、confidence、DBのduplicate keyには使わず、画像・featureを永続保存しない |
 
+## M4 AC収録歴分類
+
+- `song_ac_history`: 現在GPプレー可否と曲版の確認済みAC初収録歴を対応付けるM4参照データ。
+- `ac_version`: 曲版のAC初収録バージョン。Wiki「出典」の `source_version` と表示用 `songs.version` から分離する。
+- `flare_category`: 確認済みCLASSIC／WHITE／GOLD。確認済みAC収録歴なし・未解決・GP対象外はNULL。
+- AC収録歴の `classified` / `confirmed_no_ac` / `unresolved` / `excluded_non_gp`: 分類済み／AC収録歴なし確認済み／資料不足・曲版対応不明／現在GP対象外。保存判定やcollector review statusと別の分類状態。
+- `ac_history_json` / `ac_history_hash`: M4分類結果manifestとそのSHA-256。`checked_on` は根拠確認日、`reason` は曲版確認または保留理由。
+- `added_song_ac_history`: 現行マスタにない追加曲のM4 AC収録歴検査結果。
+
 ## 工程コード
 
 | 呼び方 | 正式な意味 | 主な対象・成果物 | この工程だけでは確定しないもの |
@@ -460,6 +469,10 @@ M3、M5、M7aなどの候補材料を、M8正式保存の前に1件単位で束�
 M8の明示的な正式保存入口。confirmed-eventsだけを対象にし、`RESULT同定根拠`、`RESULT数値認識根拠`、`RESULT状態認識根拠`、`capture event根拠`から構築したfieldごとの採用済みsource、formal play値、正式duplicate key、必要な時刻・master情報などをstrictに検証した `PersonalScoreDbSaveInput` だけを受け取る。`identity_signal_*`、`recognized_digits`、expected値、raw OCR、M8 preview rowは、そのまま正式値へ昇格しない。
 
 正式DB保存の詳細は `docs/design/10_personal_score_db_schema.md` と `docs/design/05_storage_io_spec.md` を正本とする。
+
+## GP folder AC history review
+
+マスタ検査結果の`gp_folder_ac_history`は、DDR GRAND PRIXフォルダの追加AC収録歴確認対象を表す。既存ACフォルダ曲の従来分類とGP対象外を除き、取得元で表示バージョンが空欄・配信日となるGP新曲も含む。共有用の全曲分類`ac_history`、今回の追加曲分類`added_song_ac_history`とは用途を分ける。
 
 ## Windows app automatic monitoring
 

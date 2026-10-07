@@ -64,6 +64,18 @@ GP対象候補の対応候補が0件なら`unmatchable_gp_candidate`、複数件
 
 ## Usage
 
+### AC収録歴を含む通常のマスタ更新
+
+1. 新曲・新表記を既存のSong Identity Registryへ登録した後、DDR GRAND PRIXフォルダの曲版についてAC初収録歴を追加確認する。既存ACフォルダの曲は従来のバージョン分類を使用し、GP対象全曲の再調査は行わない。現在のAC一覧だけでは過去の削除曲を判断できないため、[削除曲・CS→AC未収録曲リスト](https://bemaniwiki.com/?DanceDanceRevolution+WORLD/%E5%89%8A%E9%99%A4%E6%9B%B2%E3%83%AA%E3%82%B9%E3%83%88)等の過去作資料も確認する。曲名だけで原曲・カバー・音源変更版を対応付けない。GP収録カテゴリへの掲載だけでは専用曲と判断せず、曲別の音源・収録履歴やGP専用曲の明記を照合する。他BEMANI機種のAC収録歴はDDR AC収録歴として扱わない。
+2. ACフォルダが既存GPリストにある曲は、その初収録バージョンを使用する。GPバージョン、空欄、配信日表示の曲や例外は `master/ac_history.json` に既存song ID・canonical title/artist・根拠URL・確認日・理由を登録する。`classified` は `ac_version` 必須、`confirmed_no_ac` はその曲版のAC収録歴なし確認済み、`unresolved` は資料不足・対応不明。後二者の `ac_version` は空文字とする。未登録曲も理由付きの未解決へ出力される。更新時にはGPフォルダ内の既存の未解決・AC収録歴なし確認済みも最新資料で再確認し、AC収録が確認できた曲版は同じIDの分類を更新する。ACフォルダと以前のAC収録歴なし確認が矛盾する場合も未解決として再確認する。
+3. 未作成の候補pathで既存の生成コマンドを実行する。既定で確認済みJSONを読み込むため、collector・通常CLI・CIすべてへ同じ分類が渡る。`--ac-history <path>` で評価用の確認済みJSONを指定できる。欠損・不正JSON・不正バージョン・重複ID・取得失敗は生成失敗となる。
+4. `master.inspect <候補DB> --previous-master <現行DB> --summary <新規summary>` で検査する。`ac_history` は共有用の全曲分類、`gp_folder_ac_history` は追加調査対象のGPフォルダ曲、`added_song_ac_history` は現行DBにない追加曲の分類・対象外・未解決・根拠を示す。初回は `--previous-master` を省略し、`gp_folder_ac_history` を確認する。取得元で表示バージョンが空欄・配信日となる既知のGP新曲も追加調査一覧へ含め、表示バージョン自体は維持する。未解決は正常な分類保留であり、根拠を補って再生成するまで集計に含めない。
+5. 候補DBから `master.d1_export` を実行し、評価用Web DBへ既存migration（`0009_song_flare_category.sql` を含む）と共有SQLを適用する。アプリの候補マスタ再読込・Web取得で、同じ有効な評価用FLARE実績のカテゴリ・合計とGP表示バージョンを確認する。正式個人スコアDBやcatalogを上書きしない。
+
+分類は `song_ac_history` に保存し、AC初収録1st〜X3はCLASSIC、2013〜AはWHITE、A20〜WORLDはGOLDとする。GP対象外は `excluded_non_gp` でカテゴリを付けない。表示用 `songs.version`、`source_version`、song/chart ID、譜面削除判定を変更しない。確認日を含む分類manifest全体とhashを検査し、自動master versionには確認日を除いた分類内容を含める。確認済み分類だけの更新でも既存の参照データ更新経路で再読込できる。
+
+GP用のFLARE SKILLは現在GPでプレー可能な過去AC曲を含む保存済み実績から算出し、現行マスタの譜面レベルと既存集計ルールを使う。個人スコアのplayを変更しない。[判断理由](../docs/adr/0013-song-ac-history-reference-data.md)を参照。
+
 ローカルHTML snapshotから生成:
 
 ```powershell
@@ -130,7 +142,7 @@ Releases配布はまだ未実装です。まずはartifactで生成結果と取�
 - `master_metadata`: `master_version`、Wiki全曲リスト／新曲リスト／公式リスト／DDR WORLD公式楽曲一覧のsource URL・hash、DDR WORLD snapshot ID・取得ページ数・曲数・譜面数・差分report、確認済みCHALLENGE補正manifest・hash・件数、`generated_at`、`generator_version`、件数を保持する。
 - `source_snapshots`: 取得元URL、取得時刻、HTMLまたはDDR WORLD全ページ連結本文のhash、parser version、本文を保持する。
 
-自動生成時の `master_version` は、存在する入力snapshotのhashを `primary` → `new-song` → `official` → `ddrworld` の固定順序と種別ラベルで並べ、確認済みCHALLENGE補正manifestのhashを続けて計算する。CLIで `--master-version` を指定した場合は、その明示値を使用する。
+自動生成時の `master_version` は、存在する入力snapshotのhashを `primary` → `new-song` → `official` → `ddrworld` の固定順序と種別ラベルで並べ、確認済みCHALLENGE補正manifestのhashと、各行の `checked_on` を除いたAC収録歴manifestのhashを続けて計算する。取得日・確認日だけの変更ではversionを変更しない。検査用の `ac_history_json` / `ac_history_hash` は確認日も含む完全なmanifestを保持する。CLIで `--master-version` を指定した場合は、その明示値を使用する。
 
 ## Current Boundaries
 

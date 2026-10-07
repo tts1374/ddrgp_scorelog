@@ -6,6 +6,8 @@ import sqlite3
 import unicodedata
 from pathlib import Path
 
+from .ac_history import VERSION_CATEGORIES
+
 
 def sql_text(value: str) -> str:
     return "'" + value.replace("'", "''") + "'"
@@ -37,9 +39,26 @@ def export_shared_master_sql(master_db_path: Path) -> str:
         missing = required - actual
         if missing:
             raise ValueError(f"master DB is missing required tables: {sorted(missing)}")
+        metadata = dict(connection.execute("SELECT key, value FROM master_metadata"))
+        history_table = "song_ac_history" in actual
         songs = connection.execute(
             "SELECT song_id, title, artist, version FROM songs ORDER BY song_id"
         ).fetchall()
+        categories = dict(connection.execute(
+            "SELECT song_id, flare_category FROM song_ac_history"
+        )) if history_table else {}
+        if history_table or "ac_history_json" in metadata or "ac_history_hash" in metadata:
+            from .inspect import inspect_master_database
+            inspect_master_database(master_db_path)
+        else:
+            columns = {row[1] for row in connection.execute("PRAGMA table_info(songs)")}
+            eligible = (
+                dict(connection.execute("SELECT song_id, grand_prix_play_available FROM songs"))
+                if "grand_prix_play_available" in columns
+                else dict.fromkeys((s[0] for s in songs), 1)
+            )
+            categories = {sid: VERSION_CATEGORIES.get(version) if eligible[sid] else None
+                          for sid, _, _, version in songs}
         charts = connection.execute(
             "SELECT chart_id, song_id, play_style, difficulty, level, is_removed "
             "FROM charts ORDER BY chart_id"
@@ -47,9 +66,6 @@ def export_shared_master_sql(master_db_path: Path) -> str:
         source_aliases = connection.execute(
             "SELECT song_id, alias_title FROM song_aliases ORDER BY song_id, alias_title"
         ).fetchall()
-        metadata = dict(
-            connection.execute("SELECT key, value FROM master_metadata")
-        )
     master_version = metadata.get("master_version")
     if not isinstance(master_version, str) or not master_version:
         raise ValueError("master DB does not contain master_version metadata")
@@ -75,14 +91,18 @@ def export_shared_master_sql(master_db_path: Path) -> str:
             sql_text(value)
             for value in (song_id, title, artist, version, normalize_title_search(title))
         )
+        category = categories[song_id]
+        values += ", " + ("NULL" if category is None else sql_text(category))
         lines.extend(
             [
-                "INSERT INTO songs (song_id, title, artist, version, title_search_key)",
+                "INSERT INTO songs (song_id, title, artist, version, "
+                "title_search_key, flare_category)",
                 f"VALUES ({values})",
                 "ON CONFLICT(song_id) DO UPDATE SET",
                 "  title = excluded.title,",
                 "  artist = excluded.artist,",
                 "  version = excluded.version,",
+                "  flare_category = excluded.flare_category,",
                 "  title_search_key = excluded.title_search_key;",
             ]
         )

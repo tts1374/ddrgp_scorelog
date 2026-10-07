@@ -2003,10 +2003,18 @@ def apply_auto_confirmation_batch(
 def _validate_master_tables(connection: sqlite3.Connection) -> None:
     with closing(sqlite3.connect(":memory:")) as expected:
         master_builder.create_schema(expected)
-        if _schema_signature(connection) != _schema_signature(expected):
+        signature = _schema_signature(connection)
+        current_signature = _schema_signature(expected)
+        expected.execute("DROP TABLE song_ac_history")
+        if signature not in (current_signature, _schema_signature(expected)):
             raise ValueError("not a compatible M4 master database: exact schema mismatch")
-    if _user_tables(connection) != set(MASTER_TABLE_COLUMNS):
+    tables = _user_tables(connection)
+    if tables not in (set(MASTER_TABLE_COLUMNS), set(MASTER_TABLE_COLUMNS) | {"song_ac_history"}):
         raise ValueError("not a compatible M4 master database: table identity mismatch")
+    if "song_ac_history" in tables and _table_columns(connection, "song_ac_history") != {
+        "song_id", "status", "ac_version", "flare_category", "source_url", "checked_on", "reason"
+    }:
+        raise ValueError("not a compatible M4 master database: AC history columns mismatch")
     for table, expected_columns in MASTER_TABLE_COLUMNS.items():
         if _table_columns(connection, table) != expected_columns:
             raise ValueError(f"not a compatible M4 master database: {table} columns mismatch")
