@@ -33,7 +33,7 @@ OverviewとBestの見出し・集計・説明・loading / empty表示・アク�
 
 条件指定のないBest初回表示は、選択styleの全譜面一覧とする。空のTitle検索と同じ表示集合・paginationを利用し、レベル・バージョン・曲名で絞り込まない。結果欄は「全譜面」、初期sortはSCORE高い順で、記録なしは末尾に置く。有効なURLの探索条件・sortを初期値より優先し、一覧からLevel / Version / Title探索へ切り替えられる。未知のversionをURLから復元した場合も、その値をselectの選択肢として表示し、結果欄・内部状態・API検索条件を一致させる。
 
-Level探索の初期Lvは、選択styleの現行・非removed譜面で公開された自己ベストがある最大Lvとする。既存bootstrapのLevel別集計から選び、対象がないstyleでは従来のLv17を代替値とする。有効なURLのLv、手動選択、履歴から復元したLvを優先し、ページ内ではSP / DPごとに選択Lvを保持する。初回の全譜面表示は維持し、削除曲の記録は初期Lvの算出に含めない。
+Level探索の初期Lvは、選択styleの現行・非removed譜面で公開された自己ベストがある最大Lvとする。既存bootstrapのLevel別集計から選び、対象がないstyleではLv1を初期値とする。有効なURLのLv、手動選択、履歴から復元したLvを優先し、ページ内ではSP / DPごとに選択Lvを保持する。初回の全譜面表示は維持し、削除曲の記録は初期Lvの算出に含めない。
 
 sortは固定enumからD1の`ORDER BY`とcursor条件へ対応付け、title、difficulty固定順、`chart_id`までをsecondary keyにする。D1は`limit + 1`件だけ返し、次ページ判定に使う。score / EX SCORE sortでは`best: null`を常に末尾へ置く。cursorはversion、query scope、sort、最終rowの比較keyをbase64urlで表現し、frontendはopaque値として扱う。
 

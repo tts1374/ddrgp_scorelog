@@ -294,6 +294,7 @@ for (const width of [1280, 390]) {
     await page.getByRole("button", { name: "DOUBLE" }).click();
     await expect(page.locator(".music-title").first()).toContainText("DP");
     await page.getByRole("tab", { name: "レベルから" }).click();
+    await expect(page.getByRole("combobox", { name: "レベル", exact: true })).toHaveValue("1");
     await page.getByRole("combobox", { name: "レベル", exact: true }).selectOption("15");
     await expect(page.locator(".chart-meta")).toHaveText(Array(9).fill("Lv.15"));
     await page.getByRole("tab", { name: "バージョンから" }).click();
@@ -330,8 +331,9 @@ for (const width of [1280, 390]) {
     await expect(page.getByRole("combobox", { name: "レベル", exact: true })).toHaveValue("15");
     await expect(page.locator(".chart-meta")).toHaveText(Array(9).fill("Lv.15"));
     await page.goBack();
-    await expect(page.getByRole("combobox", { name: "レベル", exact: true })).toHaveValue("17");
-    await expect(page.locator(".chart-meta")).toHaveText(Array(8).fill("Lv.17"));
+    await expect(page.getByRole("combobox", { name: "レベル", exact: true })).toHaveValue("1");
+    await expect(page.locator(".chart-meta")).toHaveCount(0);
+    await expect(page.locator(".empty-row")).toContainText("自己ベストの対象譜面はありません");
     await page.goBack();
     await expect(page.locator(".result-count")).toContainText("全譜面");
     await expect(page.locator(".music-title").first()).toContainText("DP");
@@ -343,7 +345,7 @@ for (const width of [1280, 390]) {
     const forwardStates = [
       { view: "自己ベスト", style: "SINGLE", mode: "title", count: 17, sort: "score_desc" },
       { view: "自己ベスト", style: "DOUBLE", mode: "title", count: 17, sort: "score_desc" },
-      { view: "自己ベスト", style: "DOUBLE", mode: "level", level: "17", count: 8, sort: "score_desc" },
+      { view: "自己ベスト", style: "DOUBLE", mode: "level", level: "1", count: 0, sort: "score_desc" },
       { view: "自己ベスト", style: "DOUBLE", mode: "level", level: "15", count: 9, sort: "score_desc" },
       { view: "自己ベスト", style: "DOUBLE", mode: "version", version: "DanceDanceRevolution WORLD", count: 8, sort: "score_desc" },
       { view: "自己ベスト", style: "DOUBLE", mode: "version", version: "DDRMAX", count: 9, sort: "score_desc" },
@@ -358,7 +360,8 @@ for (const width of [1280, 390]) {
       await expect(page.getByRole("button", { name: expected.style })).toHaveAttribute("aria-pressed", "true");
       if (expected.view === "自己ベスト") {
         await expect(page.locator(".music-title")).toHaveCount(expected.count!);
-        await expect(page.locator(".music-title").first()).toContainText(expected.style === "SINGLE" ? "SP" : "DP");
+        if (expected.count! > 0) await expect(page.locator(".music-title").first()).toContainText(expected.style === "SINGLE" ? "SP" : "DP");
+        else await expect(page.locator(".empty-row")).toContainText("自己ベストの対象譜面はありません");
         await expect(page.getByRole("combobox", { name: "並び順" })).toHaveValue(expected.sort!);
         if (expected.mode === "title") await expect(page.getByRole("searchbox", { name: "曲名" })).toHaveValue(expected.q ?? "");
         if (expected.mode === "level") await expect(page.getByRole("combobox", { name: "レベル", exact: true })).toHaveValue(expected.level!);

@@ -9,7 +9,7 @@ export const defaultVersion = "DanceDanceRevolution WORLD";
 
 export function defaultLevel(player: PublicPlayer, style: PublicStyle): number {
   return player.styles[style].levels.reduce((maximum, row) =>
-    row.active_published_best_count > 0 ? Math.max(maximum, row.level) : maximum, 0) || 17;
+    row.active_published_best_count > 0 ? Math.max(maximum, row.level) : maximum, 0) || 1;
 }
 
 export function readPageState(search: string, player: PublicPlayer): PageState {

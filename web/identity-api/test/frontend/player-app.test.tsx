@@ -187,12 +187,20 @@ describe("PlayerApp", () => {
     expect(screen.getByRole("combobox", { name: "レベル" })).toHaveValue("11");
   });
 
-  it.each(["", "&level=invalid"])("keeps the fallback for styles without active public records (%s)", async (suffix) => {
+  it.each(["", "&level=invalid"])("defaults to level 1 for styles without active public records (%s)", async (suffix) => {
     window.history.replaceState(null, "", `/player/p_test?style=DP&view=best&mode=level${suffix}`);
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(bestPage([])));
+    vi.stubGlobal("fetch", vi.fn().mockImplementation(() => Promise.resolve(bestPage([]))));
     render(<PlayerApp player={{ ...player, styles: { ...player.styles, DP: summary(0) } }} />);
-    expect(screen.getByRole("combobox", { name: "レベル" })).toHaveValue("17");
+    expect(screen.getByRole("combobox", { name: "レベル" })).toHaveValue("1");
     expect(await screen.findByText("条件に一致する自己ベストの対象譜面はありません")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "SINGLE" }));
+    expect(screen.getByRole("combobox", { name: "レベル" })).toHaveValue("17");
+    fireEvent.click(screen.getByRole("button", { name: "DOUBLE" }));
+    expect(screen.getByRole("combobox", { name: "レベル" })).toHaveValue("1");
+    fireEvent.change(screen.getByRole("combobox", { name: "レベル" }), { target: { value: "8" } });
+    fireEvent.click(screen.getByRole("button", { name: "SINGLE" }));
+    fireEvent.click(screen.getByRole("button", { name: "DOUBLE" }));
+    expect(screen.getByRole("combobox", { name: "レベル" })).toHaveValue("8");
   });
 
   it("prioritizes an explicit URL level and restores it without adding history", async () => {
