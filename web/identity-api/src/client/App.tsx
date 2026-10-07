@@ -14,7 +14,7 @@ import type {
   PublicPlayer,
   ViewName,
 } from "./types";
-import { pageStateSearch, readPageState } from "./url-state";
+import { defaultLevel, pageStateSearch, readPageState } from "./url-state";
 
 const numberFormat = new Intl.NumberFormat("ja-JP");
 const dateFormat = new Intl.DateTimeFormat("ja-JP", {
@@ -91,18 +91,18 @@ function Overview({ player, state, openView }: {
   return <section className="view-panel" aria-labelledby="overview-heading">
     <div className="section-heading"><div className="heading-with-info">
       <h2 id="overview-heading">{state.style === "SP" ? "SINGLE" : "DOUBLE"} Flare Skill</h2>
-      <InfoTip label="公開フレアスキルについて">GPの公開BestのFLARE実績から、現在GPでプレー可能な過去AC曲を含めて算出します。ローカルアプリや公式の値とは異なる場合があります。</InfoTip>
+      <InfoTip label="公開フレアスキルについて">GPで公開された自己ベストのFLARE実績から、現在GPでプレー可能な過去AC曲を含めて算出します。ローカルアプリや公式の値とは異なる場合があります。</InfoTip>
       <button className="text-button" type="button" onClick={() => openView("flare")}>対象楽曲を見る</button>
     </div></div>
     <FlareSummaryView summary={summary.flare_skill} />
     <div className="overview-best-row">
-      <div className="overview-best-count"><span className="overview-best-label">公開Best譜面数</span>
+      <div className="overview-best-count"><span className="overview-best-label">自己ベスト譜面数</span>
         <strong className="overview-best-value">{numberFormat.format(summary.published_best_count)}</strong></div>
-      <button className="text-button" type="button" onClick={() => openView("best")}>公開Bestを見る</button>
+      <button className="text-button" type="button" onClick={() => openView("best")}>自己ベストを見る</button>
     </div>
     <div className="overview-grid"><section className="plain-panel">
-      <div className="plain-panel-header"><div className="heading-with-info"><h3>Level別の公開Best</h3>
-        <InfoTip label="Level別集計について">数値は公開Bestあり / 現行譜面です。収録終了譜面は母数に含みません。</InfoTip>
+      <div className="plain-panel-header"><div className="heading-with-info"><h3>Level別の自己ベスト</h3>
+        <InfoTip label="Level別の自己ベスト集計について">数値は公開された自己ベストあり / 現行譜面です。収録終了譜面は母数に含みません。</InfoTip>
       </div></div>
       <div className="level-overview">
         {summary.levels.map((level) => <div className="level-overview-row" key={level.level}>
@@ -117,10 +117,7 @@ function Overview({ player, state, openView }: {
 
 function ResultBadge({ value, kind }: { value: string | null; kind: "rank" | "clear" | "flare" }) {
   if (value === null) return <span className="no-best">—</span>;
-  const className = kind === "rank" ? "rank-badge" :
-    kind === "clear" ? (value === "FAILED" ? "failed-badge" : "clear-badge") :
-      `flare-badge ${value === "EX" ? "flare-badge-ex" : ""}`;
-  return <span className={`result-badge ${className}`}>{value}</span>;
+  return <span className="result-badge" data-kind={kind} data-value={value}>{value}</span>;
 }
 
 function BestRow({ item }: { item: PublicBestItem }) {
@@ -145,7 +142,7 @@ function BestRow({ item }: { item: PublicBestItem }) {
   </tr>;
 }
 
-function BestView({ state, setState, response, loading, error, retry, loadMore, loadingMore }: {
+function BestView({ state, setState, response, loading, error, retry, loadMore, loadingMore, moreError }: {
   state: PageState;
   setState: (patch: Partial<PageState>) => void;
   response: PublicBestsResponse | null;
@@ -154,10 +151,11 @@ function BestView({ state, setState, response, loading, error, retry, loadMore, 
   retry: () => void;
   loadMore: () => void;
   loadingMore: boolean;
+  moreError: boolean;
 }) {
-  const context = state.mode === "level" ? `・Lv.${state.level}` : state.mode === "version" ? `・${state.version}` : state.q.trim() ? `・「${state.q.trim()}」` : "・曲名検索";
-  return <section className="view-panel" aria-label="公開Best">
-    <div className="browse-card"><div className="browse-top"><h2>公開Bestを探す</h2>
+  const context = state.mode === "level" ? `・Lv.${state.level}` : state.mode === "version" ? `・${state.version}` : state.q.trim() ? `・「${state.q.trim()}」` : "・全譜面";
+  return <section className="view-panel" aria-label="自己ベスト">
+    <div className="browse-card"><div className="browse-top"><h2>自己ベストを探す</h2>
       <div className="browse-tabs" role="tablist" aria-label="探索方法">
         {(["level", "version", "title"] as BrowseMode[]).map((mode) => <button
           className={`browse-tab ${state.mode === mode ? "active" : ""}`} type="button" role="tab"
@@ -169,6 +167,7 @@ function BestView({ state, setState, response, loading, error, retry, loadMore, 
           {Array.from({ length: 19 }, (_, index) => index + 1).map((level) => <option value={level} key={level}>Lv.{level}</option>)}
         </select></label> : null}
         {state.mode === "version" ? <label className="control-field">バージョン<select className="control-select" value={state.version} onChange={(event) => setState({ version: event.target.value })}>
+          {!versions.includes(state.version) ? <option>{state.version}</option> : null}
           {versions.map((version) => <option key={version}>{version}</option>)}
         </select></label> : null}
         {state.mode === "title" ? <label className="control-field">曲名<input className="search-input" type="search" maxLength={100} placeholder="例：MAX" value={state.q} onChange={(event) => setState({ q: event.target.value })} /></label> : null}
@@ -176,22 +175,25 @@ function BestView({ state, setState, response, loading, error, retry, loadMore, 
     </div>
     {response?.summary !== null && response?.summary !== undefined ? <div className="progress-summary">
       <div className="progress-summary-item"><span className="progress-summary-label">対象譜面（現行）</span><strong className="progress-summary-value">{response.summary.active_chart_count}</strong></div>
-      <div className="progress-summary-item"><span className="progress-summary-label">公開Bestあり</span><strong className="progress-summary-value">{response.summary.active_published_best_count}</strong></div>
-      <div className="progress-summary-item"><span className="progress-summary-label">公開Bestなし</span><strong className="progress-summary-value">{response.summary.active_chart_count - response.summary.active_published_best_count}</strong></div>
+      <div className="progress-summary-item"><span className="progress-summary-label">自己ベストあり</span><strong className="progress-summary-value">{response.summary.active_published_best_count}</strong></div>
+      <div className="progress-summary-item"><span className="progress-summary-label">自己ベストなし</span><strong className="progress-summary-value">{response.summary.active_chart_count - response.summary.active_published_best_count}</strong></div>
     </div> : null}
     <div className="results-bar"><div className="inline-with-info"><p className="result-count"><strong>{response?.items.length ?? 0}譜面</strong> {context}</p>
-      <InfoTip label="Best一覧について">SCORE / EX SCORE / CLEAR / FLAREは、それぞれの最高記録です。異なるプレーの記録が表示される場合があります。「—」は公開された記録がないことを表し、未プレーを意味しません。</InfoTip>
+      <InfoTip label="自己ベスト一覧について">SCORE / EX SCORE / CLEAR / FLAREは、それぞれの最高記録です。異なるプレーの記録が表示される場合があります。「—」は公開された記録がないことを表し、未プレーを意味しません。</InfoTip>
     </div><label className="sort-control">並び順<select className="control-select" value={state.sort} onChange={(event) => setState({ sort: event.target.value as PageState["sort"] })}>
       <option value="score_desc">SCORE 高い順</option><option value="score_asc">SCORE 低い順</option>
       <option value="ex_score_desc">EX SCORE 高い順</option><option value="title_asc">曲名 昇順</option><option value="level_asc">レベル 昇順</option>
     </select></label></div>
-    {loading ? <LoadingState label="公開Bestを読み込んでいます" /> : error ? <ErrorState onRetry={retry} /> : <>
+    {loading ? <LoadingState label="自己ベストを読み込んでいます" /> : error ? <ErrorState onRetry={retry} /> : <>
       <div className="best-table-wrap"><table className="best-table"><thead><tr>
         <th>Music</th><th>Chart</th><th>SCORE</th><th>EX SCORE</th><th>RANK</th><th>CLEAR</th><th>FLARE</th>
       </tr></thead><tbody>
-        {response !== null && response.items.length > 0 ? response.items.map((item) => <BestRow item={item} key={item.chart_id} />) : <tr className="empty-row"><td colSpan={7}>条件に一致する譜面はありません</td></tr>}
+        {response !== null && response.items.length > 0 ? response.items.map((item) => <BestRow item={item} key={item.chart_id} />) : <tr className="empty-row"><td colSpan={7}>条件に一致する自己ベストの対象譜面はありません</td></tr>}
       </tbody></table></div>
-      {response?.next_cursor !== null && response?.next_cursor !== undefined ? <div className="load-more"><button className="text-button" type="button" disabled={loadingMore} onClick={loadMore}>{loadingMore ? "読み込み中…" : "続きを見る"}</button></div> : null}
+      {response?.next_cursor !== null && response?.next_cursor !== undefined ? <div className="load-more">
+        {moreError ? <p role="alert">続きを読み込めませんでした。通信状態を確認して、もう一度お試しください。</p> : null}
+        <button className="text-button" type="button" disabled={loadingMore} onClick={loadMore}>{loadingMore ? "読み込み中…" : moreError ? "続きをもう一度読み込む" : "続きを見る"}</button>
+      </div> : null}
     </>}
   </section>;
 }
@@ -203,6 +205,7 @@ function FlareView({ state, response, loading, error, retry }: {
   error: boolean;
   retry: () => void;
 }) {
+  const [expanded, setExpanded] = useState<string[]>([]);
   if (loading) return <LoadingState label="Flare Skillを読み込んでいます" />;
   if (error || response === null) return <ErrorState onRetry={retry} />;
   const summary = {
@@ -212,33 +215,40 @@ function FlareView({ state, response, loading, error, retry }: {
   const ranges = { CLASSIC: "1st〜X3 VS 2ndMIX", WHITE: "2013〜A", GOLD: "A20〜WORLD" };
   return <section className="view-panel" aria-label="Flare Skill">
     <div className="flare-page-header"><div className="heading-with-info"><h2>{state.style === "SP" ? "SINGLE" : "DOUBLE"} Flare Skill対象楽曲</h2>
-      <InfoTip label="フレアスキル対象楽曲について">GPの公開BestのFLARE実績から、現在GPでプレー可能な過去AC曲を含めて算出します。ローカルアプリや公式の値とは異なる場合があります。</InfoTip>
+      <InfoTip label="フレアスキル対象楽曲について">GPで公開された自己ベストのFLARE実績から、現在GPでプレー可能な過去AC曲を含めて算出します。ローカルアプリや公式の値とは異なる場合があります。</InfoTip>
     </div></div>
     <FlareSummaryView summary={summary} />
     <div className="flare-category-grid">{response.categories.map((category) => <article className="flare-category-panel" data-flare-category={category.category.toLowerCase()} key={category.category}>
       <header className="flare-category-header"><div><h3 className="flare-category-title">{category.category}</h3><span className="flare-category-range">{ranges[category.category]}</span></div>
         <div><div className="flare-category-score">{numberFormat.format(category.total)}</div><span className="flare-category-count">{category.target_count} / 30 TARGET</span></div>
       </header>
-      <div className="flare-target-list">{category.targets.slice(0, 10).map((target, index) => <div className="flare-target-row" key={target.chart_id}>
+      <div className="flare-target-list" id={`flare-targets-${category.category}`}>{category.targets.slice(0, expanded.includes(category.category) ? category.targets.length : 10).map((target, index) => <div className="flare-target-row" key={target.chart_id}>
         <span className="flare-target-rank">{index + 1}</span><div className="flare-target-song"><span className="flare-target-title" title={target.title}>{target.title}</span>
           <div className="flare-target-meta"><span className={`difficulty-badge ${difficultyClasses[target.difficulty]}`}>{target.difficulty}</span><span className="chart-meta">Lv.{target.level}</span></div>
         </div><div className="flare-target-result"><ResultBadge kind="flare" value={target.flare_rank} /><strong className="flare-target-skill">{numberFormat.format(target.flare_skill)}</strong></div>
-      </div>)}</div><div className="flare-category-footer">Top {Math.min(10, category.target_count)} / {category.target_count}譜面</div>
+      </div>)}</div><div className="flare-category-footer">
+        <div>Top {expanded.includes(category.category) ? category.targets.length : Math.min(10, category.targets.length)} / {category.targets.length}譜面</div>
+        {category.targets.length > 10 && !expanded.includes(category.category) ? <button className="text-button" type="button" aria-expanded="false" aria-controls={`flare-targets-${category.category}`} onClick={() => setExpanded((current) => [...current, category.category])}>全{category.targets.length}件を見る</button> : null}
+      </div>
     </article>)}</div>
   </section>;
 }
 
 export function PlayerApp({ player }: { player: PublicPlayer }) {
-  const [state, setPageState] = useState(() => readPageState(window.location.search, player.default_style));
+  const [state, setPageState] = useState(() => readPageState(window.location.search, player));
+  const selectedLevelsRef = useRef({
+    SP: defaultLevel(player, "SP"), DP: defaultLevel(player, "DP"), [state.style]: state.level,
+  });
   const [bestResponse, setBestResponse] = useState<PublicBestsResponse | null>(null);
   const [bestStatus, setBestStatus] = useState<"idle" | "loading" | "error">("idle");
   const [bestRetry, setBestRetry] = useState(0);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [moreError, setMoreError] = useState(false);
   const [flareResponse, setFlareResponse] = useState<PublicFlareResponse | null>(null);
   const [flareStatus, setFlareStatus] = useState<"idle" | "loading" | "error">("idle");
   const [flareRetry, setFlareRetry] = useState(0);
   const bestQueryKey = JSON.stringify([
-    state.style, state.mode, state.level, state.version, state.q, state.sort,
+    state.style, state.mode, state.level, state.version, state.q, state.sort, state.view,
   ]);
   const bestQueryKeyRef = useRef(bestQueryKey);
   bestQueryKeyRef.current = bestQueryKey;
@@ -249,21 +259,41 @@ export function PlayerApp({ player }: { player: PublicPlayer }) {
   flareRequestKeyRef.current = flareRequestKey;
   const flareGenerationRef = useRef(0);
 
-  const setState = (patch: Partial<PageState>) => setPageState((current) => ({ ...current, ...patch }));
+  const stateRef = useRef(state);
+  stateRef.current = state;
+  const setState = (patch: Partial<PageState>) => {
+    const next = { ...stateRef.current, ...patch };
+    if (next.style !== stateRef.current.style && patch.level === undefined) {
+      next.level = selectedLevelsRef.current[next.style];
+    }
+    if (pageStateSearch(next) === pageStateSearch(stateRef.current)) return;
+    history[Object.keys(patch).every((key) => key === "q") ? "replaceState" : "pushState"](
+      null, "", `${window.location.pathname}${pageStateSearch(next)}`,
+    );
+    selectedLevelsRef.current[next.style] = next.level;
+    stateRef.current = next;
+    setPageState(next);
+  };
   useEffect(() => {
-    history.replaceState(null, "", `${window.location.pathname}${pageStateSearch(state)}`);
-  }, [state]);
+    history.replaceState(null, "", `${window.location.pathname}${pageStateSearch(stateRef.current)}`);
+  }, []);
   useEffect(() => {
-    const restore = () => setPageState(readPageState(window.location.search, player.default_style));
+    const restore = () => {
+      const restored = readPageState(window.location.search, player);
+      selectedLevelsRef.current[restored.style] = restored.level;
+      stateRef.current = restored;
+      setPageState(restored);
+    };
     window.addEventListener("popstate", restore);
     return () => window.removeEventListener("popstate", restore);
-  }, [player.default_style]);
+  }, [player]);
 
   useEffect(() => {
     const generation = ++bestGenerationRef.current;
     loadMoreControllerRef.current?.abort();
     loadMoreControllerRef.current = null;
     setLoadingMore(false);
+    setMoreError(false);
     if (state.view !== "best") return;
     const controller = new AbortController();
     setBestStatus("loading");
@@ -312,6 +342,7 @@ export function PlayerApp({ player }: { player: PublicPlayer }) {
     const controller = new AbortController();
     loadMoreControllerRef.current = controller;
     setLoadingMore(true);
+    setMoreError(false);
     try {
       const next = await fetchBests(player.public_player_id, state, cursor, controller.signal);
       if (bestGenerationRef.current !== generation || bestQueryKeyRef.current !== bestQueryKey) return;
@@ -320,7 +351,7 @@ export function PlayerApp({ player }: { player: PublicPlayer }) {
         : current);
     } catch {
       if (!controller.signal.aborted && bestGenerationRef.current === generation &&
-          bestQueryKeyRef.current === bestQueryKey) setBestStatus("error");
+          bestQueryKeyRef.current === bestQueryKey) setMoreError(true);
     } finally {
       if (loadMoreControllerRef.current === controller) loadMoreControllerRef.current = null;
       if (bestGenerationRef.current === generation && bestQueryKeyRef.current === bestQueryKey) {
@@ -332,16 +363,16 @@ export function PlayerApp({ player }: { player: PublicPlayer }) {
   const hasAnyBest = player.styles.SP.published_best_count + player.styles.DP.published_best_count > 0;
   const updatedAt = player.public_bests_updated_at === null ? "まだありません" : dateFormat.format(new Date(player.public_bests_updated_at));
   return <>
-    <header className="site-header"><div className="site-header-inner"><a className="site-brand" href={`/player/${player.public_player_id}`}>GP Score Log</a><a className="text-button site-nav-link" href="/my/profile">マイページ</a></div></header>
+    <header className="site-header"><div className="site-header-inner"><a className="site-brand" href="/">GP Score Log</a><a className="text-button site-nav-link" href="/my/profile">マイページ</a></div></header>
     <main className="page-shell"><header className="player-header"><div className="player-title"><h1>{player.display_name}</h1><p>公開データ更新：{updatedAt}</p></div>
       <div className="style-switch" role="group" aria-label="プレイスタイル">
         {(["SP", "DP"] as const).map((style) => <button className={state.style === style ? "active" : ""} type="button" aria-pressed={state.style === style} key={style} onClick={() => setState({ style })}>{style === "SP" ? "SINGLE" : "DOUBLE"}</button>)}
       </div></header>
-      <nav className="primary-tabs" role="tablist" aria-label="Player Data">{(["overview", "best", "flare"] as ViewName[]).map((view) => <button className={`primary-tab ${state.view === view ? "active" : ""}`} type="button" role="tab" aria-selected={state.view === view} key={view} onClick={() => setState({ view })}>{{ overview: "Overview", best: "Best", flare: "Flare Skill" }[view]}</button>)}</nav>
-      {!hasAnyBest ? <section className="state-screen"><div className="state-content"><h2>公開Bestはまだありません</h2><p>このPlayerの公開Bestが同期されると、Player Dataに表示されます。</p></div></section> : state.view === "overview" ? <Overview player={player} state={state} openView={(view) => setState({ view })} /> : state.view === "best" ? <BestView
+      <nav className="primary-tabs" role="tablist" aria-label="Player Data">{(["overview", "best", "flare"] as ViewName[]).map((view) => <button className={`primary-tab ${state.view === view ? "active" : ""}`} type="button" role="tab" aria-selected={state.view === view} key={view} onClick={() => setState({ view })}>{{ overview: "Overview", best: "自己ベスト", flare: "Flare Skill" }[view]}</button>)}</nav>
+      {!hasAnyBest ? <section className="state-screen"><div className="state-content"><h2>自己ベストはまだありません</h2><p>このPlayerの自己ベストが同期されると、Player Dataに表示されます。</p></div></section> : state.view === "overview" ? <Overview player={player} state={state} openView={(view) => setState({ view })} /> : state.view === "best" ? <BestView
         state={state} setState={setState} response={bestResponse} loading={bestStatus === "loading"} error={bestStatus === "error"}
-        retry={() => setBestRetry((value) => value + 1)} loadMore={() => void loadMore()} loadingMore={loadingMore}
-      /> : <FlareView state={state} response={flareResponse} loading={flareStatus === "loading"} error={flareStatus === "error"} retry={() => setFlareRetry((value) => value + 1)} />}
+        retry={() => setBestRetry((value) => value + 1)} loadMore={() => void loadMore()} loadingMore={loadingMore} moreError={moreError}
+      /> : <FlareView key={state.style} state={state} response={flareResponse} loading={flareStatus === "loading"} error={flareStatus === "error"} retry={() => setFlareRetry((value) => value + 1)} />}
     </main>
   </>;
 }

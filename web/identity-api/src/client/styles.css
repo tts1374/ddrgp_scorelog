@@ -177,12 +177,32 @@ button:disabled { cursor: wait; opacity: .65; }
 .score-number { font-size: 14px; }
 .ex-number { color: var(--muted); }
 .no-best { color: var(--muted); font-weight: 650; white-space: nowrap; }
-.rank-badge { border-color: #e0b842; color: #6f4f00; background: #fef3c7; }
-.clear-badge { border-color: #7aa792; color: #234d36; background: #e8eee5; }
-.flare-badge { border-color: #a78bba; color: #4d2d62; background: #f3e8ff; }
-.flare-badge-ex { border-color: #d6a420; color: #754f00; background: #fef3c7; }
-.failed-badge { border-color: #d8a0a7; color: #842a36; background: #fee2e2; }
-.load-more { display: flex; justify-content: center; padding: 20px; }
+/* Match ResultBadge groups in ViewerModels.cs and the light Theme.xaml brushes. */
+.result-badge { border-color: #94a3b8; color: #334155; background: #f1f5f9; }
+.result-badge[data-kind="rank"][data-value^="A"],
+.result-badge[data-kind="clear"][data-value="PFC"],
+.result-badge[data-kind="flare"][data-value="IV"],
+.result-badge[data-kind="flare"][data-value="IX"] { border-color: #facc15; color: #854d0e; background: #fef3c7; }
+.result-badge[data-kind="flare"][data-value="IX"] { border-color: #fbbf24; }
+.result-badge[data-kind="rank"][data-value^="B"],
+.result-badge[data-kind="clear"][data-value="CLEAR"],
+.result-badge[data-kind="flare"][data-value="II"] { border-color: #38bdf8; color: #075985; background: #e0f2fe; }
+.result-badge[data-kind="rank"][data-value^="C"] { border-color: #f472b6; color: #9d174d; background: #fce7f3; }
+.result-badge[data-kind="rank"][data-value^="D"],
+.result-badge[data-kind="clear"][data-value="FAILED"],
+.result-badge[data-kind="flare"][data-value="V"] { border-color: #ef4444; color: #991b1b; background: #fee2e2; }
+.result-badge[data-kind="clear"][data-value="GFC"],
+.result-badge[data-kind="flare"][data-value="III"] { border-color: #22c55e; color: #166534; background: #dcfce7; }
+.result-badge[data-kind="clear"][data-value="FC"],
+.result-badge[data-kind="clear"][data-value="FULL COMBO"],
+.result-badge[data-kind="flare"][data-value="I"] { border-color: #2563eb; color: #1e3a8a; background: #dbeafe; }
+.result-badge[data-kind="flare"][data-value="VI"] { border-color: #8b5cf6; color: #5b21b6; background: #ede9fe; }
+.result-badge[data-kind="flare"][data-value="VII"] { border-color: #cbd5e1; color: #334155; background: #e2e8f0; }
+.result-badge[data-kind="flare"][data-value="VIII"] { border-color: #cbd5e1; }
+.result-badge[data-kind="clear"][data-value="MFC"],
+.result-badge[data-kind="flare"][data-value="EX"] { border-color: #a855f7; color: #0f172a; background: linear-gradient(90deg,#fecaca 0%,#fef3c7 25%,#dcfce7 50%,#e0f2fe 75%,#f3e8ff 100%); }
+.load-more { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 20px; text-align: center; }
+.load-more p { margin: 0; color: #991b1b; font-size: 12px; }
 
 .flare-page-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
 .flare-category-grid { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 16px; margin-top: 18px; }
@@ -203,6 +223,7 @@ button:disabled { cursor: wait; opacity: .65; }
 .flare-target-result { display: grid; justify-items: end; gap: 3px; }
 .flare-target-skill { font-family: "Courier New",monospace; font-size: 12px; font-weight: 800; }
 .flare-category-footer { padding: 10px; color: var(--muted); font-size: 11px; text-align: center; }
+.flare-category-footer button { margin-top: 8px; }
 
 .state-screen { min-height: 360px; display: grid; place-items: center; padding: 48px 20px; text-align: center; }
 .state-content { max-width: 520px; }
