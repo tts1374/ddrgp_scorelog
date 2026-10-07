@@ -1,5 +1,7 @@
 # M4 マスタDB生成設計
 
+曲版のAC初収録歴は `song_ac_history` に保持し、表示用バージョン、既存song/chart ID、正式個人スコアDBのplayと分離する。GP対象の過去AC曲もCLASSIC／WHITE／GOLD分類へ含める。確認済みAC収録歴なし・未解決はカテゴリNULLとし、根拠URL・確認日・理由を検査結果に残す。通常マスタ更新・collector・CIは同じ確認済み入力を使う。追加のAC収録歴調査はDDR GRAND PRIXフォルダを対象とし、既存ACフォルダ曲は従来のバージョン分類を使う。入力と検査手順は[master README](../../master/README.md)、責務の判断理由は[ADR 0013](../adr/0013-song-ac-history-reference-data.md)を参照。
+
 M4では、BEMANIWiki 由来の楽曲・譜面情報、公式収録曲一覧由来のプレー可否、DDR WORLD公式楽曲一覧由来の譜面レベルを、M5のマスタ照合PoCが参照できるSQLite DBへ変換する。ここでは本番配布や照合ロジックへ進みすぎず、HTML入力、解析境界、DBスキーマ、生成物の扱いを固定する。
 
 ## 目的

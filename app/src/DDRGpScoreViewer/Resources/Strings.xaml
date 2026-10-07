@@ -378,7 +378,7 @@
     <sys:String x:Key="3カテゴリのTARGET合計">3カテゴリのTARGET合計</sys:String>
     <sys:String x:Key="次のランク段階まで">次のランク段階まで</sys:String>
     <sys:String x:Key="現在のランク段階内での進捗">現在のランク段階内での進捗</sys:String>
-    <sys:String x:Key="保存済みのFLARE I〜EXだけから算出しています。ゲーム内の公式値と異なる場合があります。">保存済みのFLARE I〜EXだけから算出しています。ゲーム内の公式値と異なる場合があります。</sys:String>
+    <sys:String x:Key="GPの保存済みFLARE I〜EXから、現在GPでプレー可能な過去AC曲を含めて算出します。ゲーム内の公式値と異なる場合があります。">GPの保存済みFLARE I〜EXから、現在GPでプレー可能な過去AC曲を含めて算出します。ゲーム内の公式値と異なる場合があります。</sys:String>
     <sys:String x:Key="最高ランク">最高ランク</sys:String>
     <sys:String x:Key="到達済み">到達済み</sys:String>
     <sys:String x:Key="あと {0:N0}">あと {0:N0}</sys:String>

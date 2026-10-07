@@ -16,6 +16,7 @@ from urllib.parse import urlencode
 
 from bs4 import BeautifulSoup, FeatureNotFound
 
+from .ac_history import DEFAULT_HISTORY_PATH, classify_songs, load_history
 from .identity_registry import (
     DEFAULT_REGISTRY_PATH,
     SongIdentityRegistry,
@@ -178,6 +179,7 @@ class MasterBuild:
     confirmed_challenge_supplements: tuple[AppliedChallengeSupplement, ...] = ()
     ddrworld_snapshot: DdrWorldSnapshot | None = None
     ddrworld_merge_report: dict[str, Any] | None = None
+    ac_history: tuple[dict, ...] = ()
 
 
 DDRWORLD_CHALLENGE_SOURCE_URL = DDRWORLD_MUSIC_SOURCE_URL
@@ -1963,6 +1965,7 @@ def parse_master_html(
     official_source_url: str = OFFICIAL_MUSIC_LIST_URL,
     ddrworld_html: str | bytes | None = None,
     ddrworld_source: DdrWorldSnapshot | None = None,
+    ac_history_path: Path = DEFAULT_HISTORY_PATH,
     ddrworld_snapshot_path: Path | None = None,
     ddrworld_source_url: str = DDRWORLD_MUSIC_SOURCE_URL,
     ddrworld_fetched_at: str | None = None,
@@ -2065,6 +2068,10 @@ def parse_master_html(
         confirmed_challenge_supplements=confirmed_challenge_supplements,
         ddrworld_snapshot=ddrworld_source,
         ddrworld_merge_report=ddrworld_merge_report,
+        ac_history=tuple(classify_songs(
+            songs, load_history(ac_history_path), source_url=source_url,
+            checked_on=snapshot.fetched_at[:10],
+        )),
     )
 
 
@@ -2091,6 +2098,18 @@ def create_schema(connection: sqlite3.Connection) -> None:
           notes TEXT NOT NULL,
           created_at TEXT NOT NULL,
           updated_at TEXT NOT NULL
+        );
+
+        CREATE TABLE song_ac_history (
+          song_id TEXT PRIMARY KEY REFERENCES songs(song_id),
+          status TEXT NOT NULL CHECK (status IN (
+            'classified', 'confirmed_no_ac', 'unresolved', 'excluded_non_gp'
+          )),
+          ac_version TEXT NOT NULL,
+          flare_category TEXT CHECK (flare_category IN ('CLASSIC', 'WHITE', 'GOLD')),
+          source_url TEXT NOT NULL,
+          checked_on TEXT NOT NULL,
+          reason TEXT NOT NULL
         );
 
         CREATE TABLE charts (
@@ -2151,6 +2170,12 @@ def write_master_database(
     generator_version: str = PARSER_VERSION,
 ) -> None:
     generated_at = generated_at or datetime.now(UTC).isoformat(timespec="seconds")
+    history = build.ac_history or tuple(classify_songs(
+        build.songs, load_history(DEFAULT_HISTORY_PATH), source_url=build.snapshot.source_url,
+        checked_on=build.snapshot.fetched_at[:10],
+    ))
+    history_json = json.dumps(history, ensure_ascii=False, sort_keys=True)
+    history_hash = hashlib.sha256(history_json.encode("utf-8")).hexdigest()
     supplement_json = confirmed_challenge_supplements_json(
         build.confirmed_challenge_supplements
     )
@@ -2174,6 +2199,7 @@ def write_master_database(
             if snapshot is not None
         ]
         version_parts.append(f"confirmed-challenge\0{supplement_hash}")
+        version_parts.append(f"ac-history\0{history_hash}")
         version_material = "\0".join(version_parts)
         master_version = hashlib.sha256(version_material.encode("ascii")).hexdigest()[:12]
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -2211,6 +2237,15 @@ def write_master_database(
                 )
                 for song in build.songs
             ],
+        )
+        connection.executemany(
+            "INSERT INTO song_ac_history VALUES (?, ?, ?, ?, ?, ?, ?)",
+            [(r["song_id"], r["status"], r["ac_version"], r["flare_category"],
+              r["source_url"], r["checked_on"], r["reason"]) for r in history],
+        )
+        connection.executemany(
+            "INSERT INTO master_metadata VALUES (?, ?)",
+            [("ac_history_json", history_json), ("ac_history_hash", history_hash)],
         )
         connection.executemany(
             """
@@ -2393,6 +2428,7 @@ def summarize_build(build: MasterBuild) -> dict[str, object]:
         by_style[chart.play_style] += 1
         by_difficulty[chart.difficulty] += 1
     return {
+        "ac_history": build.ac_history,
         "songs": len(build.songs),
         "charts": len(build.charts),
         "song_aliases": len(build.song_aliases),
@@ -2594,11 +2630,14 @@ def build_parser() -> argparse.ArgumentParser:
             "before a master can be published."
         ),
     )
+    parser.add_argument("--ac-history", type=Path, default=DEFAULT_HISTORY_PATH,
+                        help="Reviewed AC history JSON; missing/invalid data fails the build.")
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    load_history(args.ac_history)
     html = (
         args.input.read_text(encoding="utf-8")
         if args.input is not None
@@ -2632,6 +2671,7 @@ def main(argv: list[str] | None = None) -> int:
         official_source_url=args.official_source_url,
         ddrworld_source=ddrworld_source,
         identity_registry=SongIdentityRegistry.load(args.identity_registry),
+        ac_history_path=args.ac_history,
     )
     write_master_database(args.output, build, master_version=args.master_version)
     summary = summarize_build(build)
@@ -2640,4 +2680,6 @@ def main(argv: list[str] | None = None) -> int:
         f"{args.output} ({summary['songs']} songs, {summary['charts']} charts, "
         f"source_hash={str(summary['source_hash'])[:12]})"
     )
+    from collections import Counter
+    print("AC history: " + json.dumps(Counter(r["status"] for r in build.ac_history)))
     return 0

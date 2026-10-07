@@ -39,6 +39,7 @@ async function seedPublicData(): Promise<void> {
          (?1, 'chart_d', 995000, 1400, 'MFC', 'EX', '2026-09-21T01:00:00.000Z')`,
     ).bind(playerId),
   ]);
+  await env.DB.prepare("UPDATE songs SET flare_category = CASE WHEN song_id='song_c' THEN 'CLASSIC' WHEN song_id IN ('song_a','song_b') THEN 'GOLD' ELSE 'WHITE' END").run();
 }
 
 async function get(path: string): Promise<Response> {
@@ -52,6 +53,21 @@ beforeEach(async () => {
 });
 
 describe("Public Player API", () => {
+  it("uses updated song category for saved GP Best in Overview and Flare endpoints", async () => {
+    await env.DB.prepare("UPDATE songs SET version='DDR GRAND PRIX',flare_category=NULL WHERE song_id='song_c'").run();
+    const route = `/api/v1/public/players/${publicPlayerId}`;
+    const before = await (await get(`${route}/flare-skill?style=SP`)).json<{ total: number }>();
+    await env.DB.prepare("UPDATE songs SET flare_category='CLASSIC' WHERE song_id='song_c'").run();
+    const after = await (await get(`${route}/flare-skill?style=SP`)).json<{ total: number; categories: { category: string; total: number }[] }>();
+    expect(after.total - before.total).toBe(1040);
+    expect(after.categories.find((row) => row.category === "CLASSIC")?.total).toBe(1040);
+    const overview = await (await get(route)).json<{ styles: { SP: { flare_skill: { total: number } } } }>();
+    expect(overview.styles.SP.flare_skill.total).toBe(after.total);
+    const song = await env.DB.prepare("SELECT version FROM songs WHERE song_id='song_c'").first<{version:string}>();
+    expect(song?.version).toBe("DDR GRAND PRIX");
+    const dp = await (await get(`${route}/flare-skill?style=DP`)).json<{ total: number }>();
+    expect(dp.total).toBe(0);
+  });
   it("returns Overview without internal identity and uses public_bests_updated_at", async () => {
     const response = await get(`/api/v1/public/players/${publicPlayerId}`);
     expect(response.status).toBe(200);

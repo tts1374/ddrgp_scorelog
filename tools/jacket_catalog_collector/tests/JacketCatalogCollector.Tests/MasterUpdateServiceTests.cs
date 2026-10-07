@@ -21,6 +21,9 @@ public sealed class MasterUpdateServiceTests : IDisposable
         var result = await service.UpdateAsync(target, CancellationToken.None);
 
         Assert.Equal("master-v2", result.After.MasterVersion);
+        Assert.Contains("GP review song", result.After.AcHistoryReport);
+        Assert.DoesNotContain("AC folder song", result.After.AcHistoryReport);
+        Assert.DoesNotContain("Added GP song", result.After.AcHistoryReport);
         Assert.Equal("2026-07-19T01:00:00+00:00", result.After.GeneratedAt);
         Assert.Equal("staged-master", File.ReadAllText(target));
         Assert.Equal(2, runner.Requests.Count);
@@ -62,6 +65,10 @@ public sealed class MasterUpdateServiceTests : IDisposable
         Assert.Equal("master-v2", result.After.MasterVersion);
         Assert.Equal("staged-master", File.ReadAllText(target));
         Assert.Equal(3, runner.Requests.Count);
+        Assert.Contains("Added GP song", result.After.AcHistoryReport);
+        Assert.DoesNotContain("GP review song", result.After.AcHistoryReport);
+        Assert.Contains("--previous-master", runner.Requests[^1].Arguments);
+        Assert.Equal(target, runner.Requests[^1].Arguments[^1]);
     }
 
     [Theory]
@@ -323,7 +330,10 @@ public sealed class MasterUpdateServiceTests : IDisposable
     }
 
     private static string SummaryJson(string version) => $$"""
-        {"master_version":"{{version}}","source_hash":"hash-{{version}}","song_count":10,"chart_count":20,"grand_prix_play_available_song_count":"8","generated_at":"2026-07-19T01:00:00+00:00"}
+        {"master_version":"{{version}}","source_hash":"hash-{{version}}","song_count":10,"chart_count":20,"grand_prix_play_available_song_count":"8","generated_at":"2026-07-19T01:00:00+00:00",
+        "ac_history":[{"title":"AC folder song","artist":"Artist","status":"classified","flare_category":"CLASSIC","reason":"AC folder"}],
+        "gp_folder_ac_history":[{"title":"GP review song","artist":"Artist","status":"unresolved","flare_category":null,"reason":"Unknown audio history"}],
+        "added_song_ac_history":[{"title":"Added GP song","artist":"Artist","status":"confirmed_no_ac","flare_category":null,"reason":"Confirmed CS version"}]}
         """;
 
     private static string Hash(string path) =>

@@ -1044,6 +1044,11 @@ public sealed class ScoreViewerRepository
         }
 
         var metadata = ReadMetadata(connection, "master_metadata");
+        if ((metadata.ContainsKey("ac_history_json") || metadata.ContainsKey("ac_history_hash")) &&
+            !tables.Contains("song_ac_history"))
+        {
+            throw new ViewerDatabaseException("楽曲データのAC収録歴が欠落しています。生成済みの楽曲データを確認してください。");
+        }
         if (MasterMetadataKeys.Any(key =>
                 !metadata.TryGetValue(key, out var value) || string.IsNullOrWhiteSpace(value)))
         {
@@ -1144,13 +1149,31 @@ public sealed class ScoreViewerRepository
     private static Dictionary<string, MasterChart> ReadMasterCharts(SqliteConnection connection)
     {
         using var command = connection.CreateCommand();
+        var hasHistory = ReadTableNames(connection).Contains("song_ac_history");
         command.CommandText =
             """
             SELECT c.chart_id, c.song_id, s.title, s.version,
-                   c.play_style, c.difficulty, c.level, c.is_removed
+                   c.play_style, c.difficulty, c.level, c.is_removed, s.grand_prix_play_available
             FROM charts c
             JOIN songs s ON s.song_id = c.song_id;
             """;
+        if (hasHistory)
+        {
+            command.CommandText = command.CommandText
+                .Replace("c.is_removed", "c.is_removed, h.flare_category")
+                .Replace("JOIN songs s ON s.song_id = c.song_id;",
+                    "JOIN songs s ON s.song_id = c.song_id LEFT JOIN song_ac_history h ON h.song_id=s.song_id;");
+            using var validation = connection.CreateCommand();
+            validation.CommandText = "SELECT COUNT(*) FROM songs s LEFT JOIN song_ac_history h USING(song_id) " +
+                "WHERE h.song_id IS NULL OR h.status IS NULL OR h.status NOT IN ('classified','confirmed_no_ac','unresolved','excluded_non_gp') " +
+                "OR (h.status='classified' AND (h.flare_category IS NULL OR h.flare_category NOT IN ('CLASSIC','WHITE','GOLD'))) " +
+                "OR (h.status!='classified' AND h.flare_category IS NOT NULL) " +
+                "OR (s.grand_prix_play_available=0) != (h.status='excluded_non_gp');";
+            if (Convert.ToInt64(validation.ExecuteScalar()) != 0)
+            {
+                throw new ViewerDatabaseException("楽曲データのAC収録歴が不正です。生成済みの楽曲データを確認してください。");
+            }
+        }
         using var reader = command.ExecuteReader();
         var result = new Dictionary<string, MasterChart>(StringComparer.Ordinal);
         while (reader.Read())
@@ -1163,7 +1186,9 @@ public sealed class ScoreViewerRepository
                 reader.GetString(4),
                 reader.GetString(5),
                 reader.GetInt32(6),
-                reader.GetInt64(7) != 0);
+                reader.GetInt64(7) != 0,
+                hasHistory ? (reader.IsDBNull(8) ? null : reader.GetString(8))
+                    : (reader.GetInt64(8) == 0 ? null : FlareSkillCalculator.LegacyCategory(reader.GetString(3))));
         }
         return result;
     }
@@ -1244,7 +1269,8 @@ public sealed class ScoreViewerRepository
             chart.PlayStyle,
             chart.Difficulty,
             chart.Level,
-            chart.IsRemoved));
+            chart.IsRemoved,
+            chart.FlareCategory));
         return FlareSkillCalculator.Calculate(plays, charts);
     }
 
@@ -1917,5 +1943,6 @@ public sealed class ScoreViewerRepository
         string PlayStyle,
         string Difficulty,
         int Level,
-        bool IsRemoved);
+        bool IsRemoved,
+        string? FlareCategory);
 }

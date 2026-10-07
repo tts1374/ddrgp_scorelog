@@ -8,6 +8,7 @@ from contextlib import closing
 from pathlib import Path
 from typing import Any
 
+from .ac_history import VERSION_CATEGORIES, validate_rows
 from .builder import (
     DDRWORLD_BLOCKING_STATUSES,
     DDRWORLD_MERGE_REPORT_SCHEMA,
@@ -409,6 +410,53 @@ def inspect_master_database(db_path: Path) -> dict[str, Any]:
             "generated database source snapshot count does not match source metadata"
         )
 
+    with closing(sqlite3.connect(db_path)) as connection:
+        history = None
+        gp_folder_ids = set()
+        history_table = connection.execute(
+            "SELECT name FROM sqlite_master WHERE name='song_ac_history'"
+        ).fetchone()
+        if history_table:
+            gp_folder_ids = {
+                song_id for song_id, version in connection.execute(
+                    "SELECT song_id, version FROM songs WHERE grand_prix_play_available=1"
+                ) if version not in VERSION_CATEGORIES
+            }
+            history = json.loads(metadata["ac_history_json"])
+            validate_rows(history)
+            if (
+                hashlib.sha256(metadata["ac_history_json"].encode("utf-8")).hexdigest()
+                != metadata["ac_history_hash"]
+            ):
+                raise ValueError("AC history hash mismatch")
+            actual_history = connection.execute(
+                "SELECT h.song_id, s.title, s.artist, h.status, h.ac_version, h.flare_category, "
+                "h.source_url, h.checked_on, h.reason FROM song_ac_history h "
+                "JOIN songs s USING(song_id) ORDER BY h.song_id"
+            ).fetchall()
+            keys = [
+                "song_id",
+                "title",
+                "artist",
+                "status",
+                "ac_version",
+                "flare_category",
+                "source_url",
+                "checked_on",
+                "reason",
+            ]
+            if (
+                history != [dict(zip(keys, r, strict=True)) for r in actual_history]
+                or len(history) != song_count
+            ):
+                raise ValueError("AC history manifest/table mismatch")
+            if connection.execute(
+                "SELECT COUNT(*) FROM songs s JOIN song_ac_history h USING(song_id) "
+                "WHERE (s.grand_prix_play_available=0) != (h.status='excluded_non_gp')"
+            ).fetchone()[0]:
+                raise ValueError("AC history GP availability mismatch")
+        elif "ac_history_json" in metadata or "ac_history_hash" in metadata:
+            raise ValueError("AC history table missing")
     return {
         "database": str(db_path),
         "song_count": song_count,
@@ -455,6 +503,13 @@ def inspect_master_database(db_path: Path) -> dict[str, Any]:
             None if ddrworld_report is None else ddrworld_report["counts"]
         ),
         "ddrworld_merge_report": ddrworld_report,
+        "ac_history": history,
+        "gp_folder_ac_history": (
+            [] if history is None else [
+                row for row in history
+                if row["song_id"] in gp_folder_ids
+            ]
+        ),
     }
 
 
@@ -476,12 +531,23 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         help="Optional JSON output path for the DDR WORLD chart merge report.",
     )
+    parser.add_argument(
+        "--previous-master", type=Path,
+        help="Read-only prior master for added-song AC history report.",
+    )
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     summary = inspect_master_database(args.database)
+    if args.previous_master is not None:
+        uri = f"file:{args.previous_master.resolve().as_posix()}?mode=ro"
+        with closing(sqlite3.connect(uri, uri=True)) as previous:
+            previous_ids = {r[0] for r in previous.execute("SELECT song_id FROM songs")}
+        summary["added_song_ac_history"] = [
+            row for row in summary["ac_history"] or [] if row["song_id"] not in previous_ids
+        ]
     if args.summary is not None:
         write_summary(args.summary, summary)
     if args.merge_report is not None:

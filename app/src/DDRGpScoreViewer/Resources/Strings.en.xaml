@@ -373,7 +373,7 @@
     <sys:String x:Key="3カテゴリのTARGET合計">TARGET total across 3 categories</sys:String>
     <sys:String x:Key="次のランク段階まで">To the next rank stage</sys:String>
     <sys:String x:Key="現在のランク段階内での進捗">Progress within the current rank stage</sys:String>
-    <sys:String x:Key="保存済みのFLARE I〜EXだけから算出しています。ゲーム内の公式値と異なる場合があります。">Calculated only from saved FLARE I–EX results. It may differ from the official in-game value.</sys:String>
+    <sys:String x:Key="GPの保存済みFLARE I〜EXから、現在GPでプレー可能な過去AC曲を含めて算出します。ゲーム内の公式値と異なる場合があります。">Calculated from saved GP FLARE I–EX records, including past AC songs currently playable in GP. This may differ from official in-game values.</sys:String>
     <sys:String x:Key="最高ランク">Highest rank</sys:String>
     <sys:String x:Key="到達済み">Reached</sys:String>
     <sys:String x:Key="あと {0:N0}">{0:N0} to go</sys:String>

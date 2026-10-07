@@ -79,7 +79,7 @@ public sealed class FlareSkillCalculatorTests
     }
 
     [Fact]
-    public void Master_mismatch_missing_removed_invalid_level_and_unknown_version_are_counted_as_abnormal()
+    public void Master_mismatch_missing_removed_invalid_level_are_abnormal_but_unclassified_is_normal()
     {
         var result = FlareSkillCalculator.Calculate(
             [
@@ -98,11 +98,11 @@ public sealed class FlareSkillCalculatorTests
                 Chart("valid", version: "DanceDanceRevolution (2013)"),
             ]);
 
-        Assert.Equal(4, result.Single.AbnormalExclusionCount);
+        Assert.Equal(3, result.Single.AbnormalExclusionCount);
         Assert.Equal(0, result.Double.AbnormalExclusionCount);
         Assert.Equal(1, result.Single.UnknownStyleAbnormalExclusionCount);
         Assert.Equal(1, result.Double.UnknownStyleAbnormalExclusionCount);
-        Assert.Equal(5, result.Single.TotalAbnormalExclusionCount);
+        Assert.Equal(4, result.Single.TotalAbnormalExclusionCount);
         Assert.Equal(1, result.Double.TotalAbnormalExclusionCount);
         Assert.Equal(673, result.Single.Total);
         Assert.Single(result.Single.White.TopCharts);
@@ -166,6 +166,7 @@ public sealed class FlareSkillCalculatorTests
                 title: index switch { 29 => "ZZZ", 30 => "ZZZ", _ => $"A TITLE {index:00}" },
                 difficulty: index == 30 ? "CHALLENGE" : "EXPERT",
                 version: "DDR 1st"))
+            .Select(chart => chart with { Version = "DDR GRAND PRIX" })
             .ToArray();
         var plays = charts.Select(chart => Play(chart.ChartId, chart.ChartId, "I", songId: chart.SongId));
 
@@ -309,6 +310,42 @@ public sealed class FlareSkillCalculatorTests
         Assert.Equal(System.Windows.Visibility.Collapsed, masterFailureViewModel.FlareSkillContentVisibility);
     }
 
+    [Fact]
+    public void Reviewed_master_reclassifies_saved_GP_plays_without_changing_score_DB()
+    {
+        using var fixture = new DatabaseFixture();
+        foreach (var (id, level) in new[] { ("classic", 1), ("white", 2), ("gold", 3) })
+        {
+            fixture.AddMasterSongAndChart($"song-{id}", id, "Artist", id, level: level);
+            fixture.AddPlay(id, "2025-01-01T00:00:00Z", 990000, 1000, $"song-{id}", id, "EX");
+        }
+        fixture.AddMasterSongAndChart("song-dp", "DP", "Artist", "dp", playStyle: "DOUBLE", level: 2);
+        fixture.AddPlay("dp", "2025-01-01T00:00:00Z", 990000, 1000, "song-dp", "dp", "EX");
+        fixture.AddPlay("null", "2025-01-01T00:00:00Z", 990000, 1000, "song-classic", "classic");
+        fixture.AddPlay("failed", "2025-01-01T00:00:00Z", 990000, 1000, "song-classic", "classic", "EX");
+        fixture.ExecuteScoreSql("UPDATE plays SET clear_type='FAILED' WHERE play_id='failed';");
+        var scoreBefore = File.ReadAllBytes(fixture.ScorePath);
+        var repository = new ScoreViewerRepository();
+        Assert.Equal(0, repository.LoadFlareSkill(fixture.ScorePath, fixture.MasterPath).Single.Total);
+        fixture.ExecuteMasterSql("""
+            CREATE TABLE song_ac_history(song_id TEXT PRIMARY KEY,status TEXT,flare_category TEXT);
+            INSERT INTO song_ac_history SELECT song_id,'unresolved',NULL FROM songs;
+            UPDATE song_ac_history SET status='classified',flare_category='CLASSIC' WHERE song_id='song-classic';
+            UPDATE song_ac_history SET status='classified',flare_category='WHITE' WHERE song_id IN ('song-white','song-dp');
+            UPDATE song_ac_history SET status='classified',flare_category='GOLD' WHERE song_id='song-gold';
+            """);
+        var result = repository.LoadFlareSkill(fixture.ScorePath, fixture.MasterPath);
+        Assert.Equal(752, result.Single.Total);
+        Assert.Equal(232, result.Single.Classic.Total);
+        Assert.Equal(248, result.Single.White.Total);
+        Assert.Equal(272, result.Single.Gold.Total);
+        Assert.Equal(248, result.Double.Total);
+        Assert.Equal(0, result.Single.AbnormalExclusionCount);
+        Assert.Equal(scoreBefore, File.ReadAllBytes(fixture.ScorePath));
+        fixture.ExecuteMasterSql("UPDATE song_ac_history SET flare_category='invalid' WHERE song_id='song-gold';");
+        Assert.Throws<ViewerDatabaseException>(() => repository.LoadFlareSkill(fixture.ScorePath, fixture.MasterPath));
+    }
+
     private static FlareSkillPlayInput Play(
         string playId,
         string chartId,
@@ -326,5 +363,5 @@ public sealed class FlareSkillCalculatorTests
         string difficulty = "EXPERT",
         int level = 17,
         bool removed = false) =>
-        new(chartId, $"song-{chartId}", title ?? chartId, version, playStyle, difficulty, level, removed);
+        new(chartId, $"song-{chartId}", title ?? chartId, version, playStyle, difficulty, level, removed, FlareSkillCalculator.LegacyCategory(version));
 }

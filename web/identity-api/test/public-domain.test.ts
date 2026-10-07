@@ -89,8 +89,9 @@ describe("public Player domain rules", () => {
       title: index >= 29 ? "Tie" : `Song ${String(index).padStart(2, "0")}`,
       difficulty: index === 31 ? "BASIC" : index === 32 ? "BEGINNER" : "EXPERT",
       level: 19,
-      version: "DanceDanceRevolution WORLD",
+      version: "DDR GRAND PRIX",
       flare_rank: "EX",
+      flare_category: "GOLD",
     }));
     const result = calculateFlareSkill(candidates);
     const gold = result.categories.find((category) => category.category === "GOLD")!;
@@ -99,6 +100,17 @@ describe("public Player domain rules", () => {
     expect(gold.targets.some((target) => target.chart_id === "chart_31")).toBe(false);
     expect(gold.total).toBe(30 * 1064);
     expect(result.total).toBe(gold.total);
+  });
+
+  it("reclassifies saved GP inputs with the same Desktop category totals", () => {
+    const inputs: FlareSkillCandidate[] = ["CLASSIC", "WHITE", "GOLD"].map((category, index) => ({
+      chart_id: category, title: category, difficulty: "EXPERT", level: index + 1,
+      version: "DDR GRAND PRIX", flare_rank: "EX", flare_category: category as "CLASSIC" | "WHITE" | "GOLD",
+    }));
+    expect(calculateFlareSkill(inputs.map((row) => ({ ...row, flare_category: null }))).total).toBe(0);
+    const result = calculateFlareSkill(inputs);
+    expect(result.categories.map((row) => row.total)).toEqual([232, 248, 272]);
+    expect(result.total).toBe(752);
   });
 
   it("returns TOTAL 0 / NONE for no eligible public Best", () => {

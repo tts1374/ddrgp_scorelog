@@ -37,6 +37,10 @@ detectorの内部状態は通常画面へ表示しません。同じ画像が連
 
 ## 新曲追加の標準運用
 
+曲情報の更新前に、[マスタのAC収録歴確認手順](../../master/README.md#ac収録歴を含む通常のマスタ更新)に沿ってDDR GRAND PRIXフォルダの追加曲の曲版・AC初収録バージョン・根拠URL・確認日を確認し、`master/ac_history.json`を更新する。現在のAC削除曲も確認し、AC収録歴なし確認済みと資料不足・曲版不明を区別する。collectorは既存 `python -m master` を使用し、分類logicを重複実装しない。
+
+`曲情報を更新`の完了表示には、今回追加した曲のAC分類結果・確認済み対象外・未解決理由を表示する。初回はGPフォルダの追加調査対象を表示する。ACフォルダ曲の分類は既存バージョンから引き継ぐ。詳細な根拠は、未作成の候補pathで生成したmasterを `master.inspect --previous-master <現行DB> --summary <新規summary>` で検査して確認する。分類保留を確認した後、アプリの候補master再読込・Web共有SQL出力／評価用DBへの適用による再取得も確認する。本番DB・D1への適用やdeployはこの検証に含めない。
+
 新曲をdevelopment runtimeで利用可能にするときは、次の順序でmaster、M5b jacket reference catalog、Debug実機確認を揃えます。
 
 1. `管理・設定` の `公式ジャケット情報を更新` を実行し、完成済みsnapshotの更新日時、取得曲数、保存画像数を確認する。

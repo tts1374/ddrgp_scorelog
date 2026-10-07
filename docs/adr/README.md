@@ -20,6 +20,7 @@
 | [`0010`](0010-web-historical-best-and-independent-pc-authorization.md) | Superseded by ADR 0011 | Web自己歴代Bestを追加・改善で蓄積し、明示置換とPC Credential activationを分離する後続実装契約 | Web Best merge、App-Web承認、独立PC権限移行 |
 | [`0011`](0011-web-account-registration-and-management.md) | Superseded by ADR 0012 | 未リリースの単一App入口、Google必須Web登録/管理、全Playerの歴代Best同期と独立PC権限移行 | Web登録/ログイン、マイプロフィール/削除、App Credential、Web Best |
 | [`0012`](0012-purpose-bound-google-identity-confirmation.md) | Accepted | Google identity再確認と本サービスの短期操作許可を分離し、Web登録/管理・独立PC権限移行・歴代Best境界を継承 | purpose-bound OAuth、Web操作proof、App proof、アカウント削除 |
+| [`0013`](0013-song-ac-history-reference-data.md) | Accepted | 曲版のAC収録歴を共有参照データで管理し、既存playを再集計する | マスタ更新、アプリ／Web FLARE SKILL |
 
 ## Status
 

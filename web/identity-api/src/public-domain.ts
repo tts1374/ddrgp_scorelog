@@ -130,6 +130,7 @@ export interface FlareSkillCandidate {
   level: number;
   version: string;
   flare_rank: FlareRank;
+  flare_category: FlareCategory | null;
 }
 
 export interface FlareSkillTarget {
@@ -150,8 +151,9 @@ export function calculateFlareSkill(candidates: FlareSkillCandidate[]) {
     ["CLASSIC", []], ["WHITE", []], ["GOLD", []],
   ]);
   for (const candidate of candidates) {
-    const category = flareCategory(candidate.version);
+    const category = candidate.flare_category;
     if (category === null) continue;
+    if (!grouped.has(category)) throw new Error("Invalid master flare category");
     grouped.get(category)!.push({
       chart_id: candidate.chart_id,
       title: candidate.title,
