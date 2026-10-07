@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -167,6 +168,55 @@ def test_missing_duplicate_input_and_fetch_failure_preserve_output(tmp_path, mon
     with pytest.raises(OSError, match="fetch failed"):
         builder.main(["--output", str(tmp_path / "new" / "master.sqlite")])
     assert not (tmp_path / "new").exists()
+
+
+@pytest.mark.parametrize("fallback_history", [False, True])
+def test_auto_master_version_ignores_fetch_date_but_keeps_provenance(tmp_path, fallback_history):
+    summaries = []
+    metadata = []
+    shared_sql = []
+    for day in ["2026-10-05", "2026-10-06"]:
+        build = builder.parse_master_html(
+            FIXTURE_HTML,
+            official_html=OFFICIAL_FIXTURE_HTML,
+            fetched_at=f"{day}T00:00:00+00:00",
+        )
+        if fallback_history:
+            build = replace(build, ac_history=())
+        output = tmp_path / f"{day}.sqlite"
+        builder.write_master_database(output, build)
+        summaries.append(inspect.inspect_master_database(output))
+        shared_sql.append(export_shared_master_sql(output))
+        with sqlite3.connect(output) as connection:
+            metadata.append(dict(connection.execute("SELECT key, value FROM master_metadata")))
+
+    assert summaries[0]["source_hash"] == summaries[1]["source_hash"]
+    assert summaries[0]["official_source_hash"] == summaries[1]["official_source_hash"]
+    assert summaries[0]["master_version"] == summaries[1]["master_version"]
+    assert shared_sql[0] == shared_sql[1]
+    assert metadata[0]["ac_history_hash"] != metadata[1]["ac_history_hash"]
+    for summary, day in zip(summaries, ["2026-10-05", "2026-10-06"], strict=True):
+        assert {row["checked_on"] for row in summary["ac_history"]} == {day}
+
+
+def test_auto_master_version_changes_when_only_ac_classification_changes(tmp_path):
+    build = builder.parse_master_html(
+        FIXTURE_HTML,
+        official_html=OFFICIAL_FIXTURE_HTML,
+        fetched_at="2026-10-05T00:00:00+00:00",
+    )
+    first = next(row for row in build.ac_history if row["flare_category"] == "CLASSIC")
+    changed = replace(build, ac_history=tuple(
+        {**row, "ac_version": "DanceDanceRevolution A3", "flare_category": "GOLD"}
+        if row["song_id"] == first["song_id"] else row
+        for row in build.ac_history
+    ))
+    versions = []
+    for name, candidate in [("original", build), ("changed", changed)]:
+        output = tmp_path / f"{name}.sqlite"
+        builder.write_master_database(output, candidate)
+        versions.append(inspect.inspect_master_database(output)["master_version"])
+    assert versions[0] != versions[1]
 
 
 def test_normal_update_addition_report_inspection_and_shared_output(tmp_path, monkeypatch):

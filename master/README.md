@@ -72,7 +72,7 @@ GP対象候補の対応候補が0件なら`unmatchable_gp_candidate`、複数件
 4. `master.inspect <候補DB> --previous-master <現行DB> --summary <新規summary>` で検査する。`ac_history` は共有用の全曲分類、`gp_folder_ac_history` は追加調査対象のGPフォルダ曲、`added_song_ac_history` は現行DBにない追加曲の分類・対象外・未解決・根拠を示す。初回は `--previous-master` を省略し、`gp_folder_ac_history` を確認する。取得元で表示バージョンが空欄・配信日となる既知のGP新曲も追加調査一覧へ含め、表示バージョン自体は維持する。未解決は正常な分類保留であり、根拠を補って再生成するまで集計に含めない。
 5. 候補DBから `master.d1_export` を実行し、評価用Web DBへ既存migration（`0009_song_flare_category.sql` を含む）と共有SQLを適用する。アプリの候補マスタ再読込・Web取得で、同じ有効な評価用FLARE実績のカテゴリ・合計とGP表示バージョンを確認する。正式個人スコアDBやcatalogを上書きしない。
 
-分類は `song_ac_history` に保存し、AC初収録1st〜X3はCLASSIC、2013〜AはWHITE、A20〜WORLDはGOLDとする。GP対象外は `excluded_non_gp` でカテゴリを付けない。表示用 `songs.version`、`source_version`、song/chart ID、譜面削除判定を変更しない。分類manifestとhashを検査し、自動master versionの計算にも含める。確認済み分類だけの更新でも既存の参照データ更新経路で再読込できる。
+分類は `song_ac_history` に保存し、AC初収録1st〜X3はCLASSIC、2013〜AはWHITE、A20〜WORLDはGOLDとする。GP対象外は `excluded_non_gp` でカテゴリを付けない。表示用 `songs.version`、`source_version`、song/chart ID、譜面削除判定を変更しない。確認日を含む分類manifest全体とhashを検査し、自動master versionには確認日を除いた分類内容を含める。確認済み分類だけの更新でも既存の参照データ更新経路で再読込できる。
 
 GP用のFLARE SKILLは現在GPでプレー可能な過去AC曲を含む保存済み実績から算出し、現行マスタの譜面レベルと既存集計ルールを使う。個人スコアのplayを変更しない。[判断理由](../docs/adr/0013-song-ac-history-reference-data.md)を参照。
 
@@ -142,7 +142,7 @@ Releases配布はまだ未実装です。まずはartifactで生成結果と取�
 - `master_metadata`: `master_version`、Wiki全曲リスト／新曲リスト／公式リスト／DDR WORLD公式楽曲一覧のsource URL・hash、DDR WORLD snapshot ID・取得ページ数・曲数・譜面数・差分report、確認済みCHALLENGE補正manifest・hash・件数、`generated_at`、`generator_version`、件数を保持する。
 - `source_snapshots`: 取得元URL、取得時刻、HTMLまたはDDR WORLD全ページ連結本文のhash、parser version、本文を保持する。
 
-自動生成時の `master_version` は、存在する入力snapshotのhashを `primary` → `new-song` → `official` → `ddrworld` の固定順序と種別ラベルで並べ、確認済みCHALLENGE補正manifestのhashとAC収録歴manifestのhashを続けて計算する。CLIで `--master-version` を指定した場合は、その明示値を使用する。
+自動生成時の `master_version` は、存在する入力snapshotのhashを `primary` → `new-song` → `official` → `ddrworld` の固定順序と種別ラベルで並べ、確認済みCHALLENGE補正manifestのhashと、各行の `checked_on` を除いたAC収録歴manifestのhashを続けて計算する。取得日・確認日だけの変更ではversionを変更しない。検査用の `ac_history_json` / `ac_history_hash` は確認日も含む完全なmanifestを保持する。CLIで `--master-version` を指定した場合は、その明示値を使用する。
 
 ## Current Boundaries
 

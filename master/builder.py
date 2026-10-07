@@ -2183,6 +2183,13 @@ def write_master_database(
         build.confirmed_challenge_supplements
     )
     if master_version is None:
+        # Keep dates in the validation manifest, but out of the content identity.
+        history_version_json = json.dumps(
+            [{key: value for key, value in row.items() if key != "checked_on"}
+             for row in history],
+            ensure_ascii=False, sort_keys=True,
+        )
+        history_version_hash = hashlib.sha256(history_version_json.encode("utf-8")).hexdigest()
         version_parts = [
             f"{source_kind}\0{snapshot.content_hash}"
             for source_kind, snapshot in (
@@ -2199,7 +2206,7 @@ def write_master_database(
             if snapshot is not None
         ]
         version_parts.append(f"confirmed-challenge\0{supplement_hash}")
-        version_parts.append(f"ac-history\0{history_hash}")
+        version_parts.append(f"ac-history\0{history_version_hash}")
         version_material = "\0".join(version_parts)
         master_version = hashlib.sha256(version_material.encode("ascii")).hexdigest()[:12]
     output_path.parent.mkdir(parents=True, exist_ok=True)
