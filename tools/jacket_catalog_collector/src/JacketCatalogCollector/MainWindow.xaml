@@ -444,7 +444,7 @@
                                                     <TextBox Text="{Binding SongSearch, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                                              ToolTip="title / alias / artist / song ID" />
                                                     <ComboBox ItemsSource="{Binding SongChoices}"
-                                                              SelectedItem="{Binding SelectedSearchResult, Mode=TwoWay}"
+                                                              SelectedItem="{Binding SelectedSearchResult, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                                               IsEditable="False">
                                                         <ComboBox.ItemTemplate>
                                                             <DataTemplate>
@@ -542,7 +542,7 @@
                                                     <TextBox Text="{Binding SongSearch, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                                              ToolTip="title / alias / artist / song ID" />
                                                     <ComboBox ItemsSource="{Binding SongChoices}"
-                                                              SelectedItem="{Binding SelectedSearchResult, Mode=TwoWay}"
+                                                              SelectedItem="{Binding SelectedSearchResult, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                                               IsEditable="False">
                                                         <ComboBox.ItemTemplate>
                                                             <DataTemplate>

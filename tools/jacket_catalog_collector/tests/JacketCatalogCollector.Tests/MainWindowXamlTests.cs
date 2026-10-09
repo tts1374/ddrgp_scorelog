@@ -1,10 +1,85 @@
 using System.Runtime.CompilerServices;
+using System.Runtime.ExceptionServices;
+using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Data;
+using System.Windows.Markup;
 using System.Xml.Linq;
 
 namespace JacketCatalogCollector.Tests;
 
 public sealed class MainWindowXamlTests
 {
+    [Theory]
+    [InlineData("確定曲", false)]
+    [InlineData("予定song", true)]
+    public void ReviewSongSelectionUpdatesDraftBeforeBindingGroupCommit(
+        string columnHeader, bool reviewed)
+    {
+        Exception? failure = null;
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                var projection = new ProjectionJsonLoader().Load(File.ReadAllText(
+                    Path.Combine(AppContext.BaseDirectory, "fixtures", "current.json")));
+                var reference = projection.ReviewReferences[0];
+                var songs = projection.Songs.ToDictionary(song => song.SongId);
+                var draft = new ManualReviewDraft
+                {
+                    ObservationId = reference.CandidateEvaluation.ObservationId,
+                    Status = "hold",
+                    TruthSongId = null,
+                    Notes = "",
+                };
+                object row = reviewed
+                    ? new ReviewedManualReviewRow(reference, draft, songs)
+                    : new ManualReviewDraftRow(reference, draft, songs);
+                var column = Assert.Single(LoadMainWindow().Descendants(), element =>
+                    element.Name.LocalName == "DataGridTemplateColumn"
+                    && element.Attribute("Header")?.Value == columnHeader);
+                var templateXml = Assert.Single(column.Descendants(), element =>
+                    element.Name.LocalName == "DataTemplate"
+                    && element.Parent?.Name.LocalName == "DataGridTemplateColumn.CellTemplate");
+                var template = (DataTemplate)XamlReader.Parse(templateXml.ToString());
+                var content = (StackPanel)template.LoadContent();
+                var panel = new StackPanel { DataContext = row, BindingGroup = new BindingGroup() };
+                panel.Children.Add(content);
+                panel.Measure(new Size(600, 300));
+                panel.Arrange(new Rect(0, 0, 600, 300));
+                panel.UpdateLayout();
+                var combo = Assert.Single(content.Children.OfType<ComboBox>());
+
+                combo.SelectedItem = projection.Songs[0];
+
+                if (row is ManualReviewDraftRow unreviewedRow)
+                {
+                    Assert.Equal("song-1", unreviewedRow.TruthSongId);
+                    Assert.Equal("confirmed", unreviewedRow.Status);
+                    Assert.Null(unreviewedRow.Validate(songs.Keys.ToHashSet()));
+                }
+                else
+                {
+                    var reviewedRow = (ReviewedManualReviewRow)row;
+                    Assert.Equal("song-1", reviewedRow.DraftSongId);
+                    Assert.Equal("confirmed", reviewedRow.DraftStatus);
+                    Assert.Null(reviewedRow.Validate(songs.Keys.ToHashSet()));
+                }
+            }
+            catch (Exception exception)
+            {
+                failure = exception;
+            }
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        Assert.True(thread.Join(TimeSpan.FromSeconds(10)), "Review binding test did not finish.");
+        if (failure is not null)
+        {
+            ExceptionDispatchInfo.Capture(failure).Throw();
+        }
+    }
+
     [Theory]
     [InlineData(false, false, true)]
     [InlineData(true, false, false)]
