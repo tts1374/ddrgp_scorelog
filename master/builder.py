@@ -307,7 +307,10 @@ def normalize_text(value: str) -> str:
 def normalize_table_cell_text(cell) -> str:
     cell_copy = BeautifulSoup(str(cell), "html.parser")
     for anchor in cell_copy.find_all("a"):
-        if re.fullmatch(r"\*\d+", anchor.get_text(strip=True)):
+        anchor_text = anchor.get_text(strip=True)
+        if re.fullmatch(r"\*\d+", anchor_text) or (
+            anchor_text == "※" and anchor.get("href") == "#BPM"
+        ):
             anchor.decompose()
     return normalize_text(cell_copy.get_text(" ", strip=True))
 

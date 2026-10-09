@@ -33,7 +33,7 @@ def test_released_registry_keeps_canonical_and_source_presentations_on_one_id() 
 
     assert registry.resolve("RËVOLUTIФN", "TËЯRA") == "song_177d950f607b1894"
     assert registry.resolve("RЁVOLUTIФN", "TЁЯRA") == "song_177d950f607b1894"
-    assert len(registry.identities) == 1386
+    assert len(registry.identities) == 1394
 
 
 @pytest.mark.parametrize(
@@ -57,6 +57,14 @@ def test_released_registry_keeps_canonical_and_source_presentations_on_one_id() 
         ("TURNING DOWN", "U-ske feat. 石橋桃", "song_8615f5118db290ca"),
         ("Footnotes on BPM", "KirK+Tabi", "song_8f0caf96e9da8828"),
         ("MonstaFesta", "アカツキ チョータ", "song_ce8e9d5bec66975c"),
+        ("三妖精SAY YA!!!", "森羅万象", "song_297d4a623731b96e"),
+        ("天狗の落とし文 (feat. ｙｔｒ)", "魂音泉", "song_1e25d5f48c780cea"),
+        ("マツヨイナイトバグ", "ビートまりおとまろん", "song_c9f3c1939c55b58c"),
+        ("Ultimate taste", "ぱらどっと", "song_0da01c1432715c12"),
+        ("アワデコノヨヲ", "AMAZE", "song_c53f356ede572199"),
+        ("ILL-STARRED Diver", "polysha", "song_385cbf90f5ea775f"),
+        ("Nostalgic Blood of the Strife", "Laur", "song_563b7bc934ac8d92"),
+        ("Princess K", "Retropolitaliens(Ms.+駄々子)", "song_dbe24db47ee70161"),
     ],
 )
 def test_reviewed_additions_keep_master_and_chart_identity(

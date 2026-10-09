@@ -1818,6 +1818,42 @@ def test_parse_master_html_rejects_conflicting_duplicate_chart_identity() -> Non
         raise AssertionError("parse_master_html should reject conflicting chart rows")
 
 
+def test_bpm_annotation_does_not_split_wiki_and_official_song_identity() -> None:
+    from master.identity_registry import SongIdentityRegistry
+
+    title = "Nostalgic Blood of the Strife"
+    html = FIXTURE_HTML.replace(
+        "MAKE IT BETTER", title + '<br class="spacer"/><a href="#BPM">※</a>'
+    ).replace("mitsu-O!", "Laur")
+    official_html = OFFICIAL_FIXTURE_HTML.replace("MAKE IT BETTER", title).replace(
+        "mitsu-O!", "Laur"
+    )
+
+    build = builder.parse_master_html(
+        html,
+        new_song_html=html.replace('<br class="spacer"/><a href="#BPM">※</a>', ""),
+        official_html=official_html,
+        identity_registry=SongIdentityRegistry.load(),
+    )
+
+    songs = [song for song in build.songs if song.title.startswith(title)]
+    assert len(songs) == 1
+    assert songs[0].title == title
+    assert songs[0].song_id == "song_563b7bc934ac8d92"
+    assert songs[0].grand_prix_play_available
+    assert songs[0].official_availability_match == "title_artist"
+    charts = [chart for chart in build.charts if chart.song_id == songs[0].song_id]
+    assert len(charts) == 9
+    assert len({chart.chart_id for chart in charts}) == 9
+
+
+@pytest.mark.parametrize("cell_html", ['<td>曲名※</td>', '<td>曲名<a href="#other">※</a></td>'])
+def test_literal_annotation_symbol_is_preserved(cell_html: str) -> None:
+    cell = builder.parse_soup(cell_html).find("td")
+
+    assert "※" in builder.normalize_table_cell_text(cell)
+
+
 def test_parse_master_html_rejects_missing_song_list_table() -> None:
     try:
         builder.parse_master_html("<html><table><tr><td>not songs</td></tr></table></html>")
