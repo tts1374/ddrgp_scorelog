@@ -52,6 +52,7 @@ flat comment一覧だけでthread状態を推測しない。
 - 公開契約、運用手順、設計判断へ影響しない場合は不要なdocs変更を作らない。
 - 対象test、影響範囲test、Ruff、構文検査、`git diff --check`を実行する。
 - 既存failureは今回差分との関係を確認し、無関係なら変更せず報告する。
+- 修正・検証が一巡したら、[Issue実装SkillのCycle Retrospective](../ddrgp-implement-github-issue/SKILL.md#7-cycle-retrospective)を行う。結果は後述の報告へ含め、Skill更新候補だけを理由に今回指摘外の変更や追加公開操作を行わない。
 
 ## Commit And Push
 
@@ -78,6 +79,7 @@ top-level commentを1件だけ投稿し、次を記載する。
 - validation結果
 - Issue仕様との差異
 - 別Issue候補
+- 振り返り結果（再発防止の変更・更新候補、または更新不要の理由）
 - full commit SHA
 
 自動で`@codex review`を依頼しない。再Reviewはユーザーが明示した場合だけ行う。
@@ -89,6 +91,7 @@ top-level commentを1件だけ投稿し、次を記載する。
 - 同じthread集合が現在headですでに対応済みで、新しいactionable指摘がなければfile変更、空commit、push、comment投稿を行わない。
 - 対応済み判定はthread node IDを優先する。文面類似だけで同一扱いしない。
 - no-op理由はGitHubへ投稿せずtask報告へ記載する。
+- 振り返りもtask報告内で行い、それだけを理由に上記のno-opを変更しない。
 
 ## Stop Conditions
 
