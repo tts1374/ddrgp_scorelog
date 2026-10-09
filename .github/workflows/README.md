@@ -4,11 +4,12 @@
 
 公開Web applicationをmain merge後にproductionへ反映するworkflow。
 
-- `web/identity-api/**`、`master/**`、`pyproject.toml`、`uv.lock`またはworkflow自身がmainで更新された場合に実行する。
+- `web/identity-api/**`、`master/**`、`.github/web-master.json`、`pyproject.toml`、`uv.lock`またはworkflow自身がmainで更新された場合に実行する。
 - `CLOUDFLARE_ACCOUNT_ID`と`CLOUDFLARE_API_TOKEN`をproduction environment secretから使用する。
 - 型検査、Worker + local D1 test、React test、production buildを再実行する。
-- master parser・identity registry testを実行し、checkoutしたcommitのregistryで取得元からmaster DBを生成・検査する。同じcommitの曲名検索用別名を含むD1 SQLをexportする。
-- additive D1 migration、shared master SQL投入、`ddrgp-scorelog` WorkerとStatic Assetsのdeployを順に実行する。master生成・検査・投入の失敗時はdeployへ進まない。未登録の新曲・新表記がある場合は、既存IDとの対応を確認してregistryへ追加してから再実行する。
+- 固定入力・export・identity・カテゴリのtestを実行し、`.github/web-master.json`の明示Release tagから既存`reference-set.json`とM4 master DBを取得する。manifestとDBのSHA-256、固定metadata、DB整合性、`master_version`を検査し、checkoutの`master.d1_export`で検索用別名・フレアカテゴリを含むSQLを出力する。SQLはcheckoutの実migrationを適用したメモリDBで検証する。
+- 取得・検証・exportがすべて成功した後、additive D1 migration、shared master SQL投入、`ddrgp-scorelog` WorkerとStatic Assetsのdeployを順に実行する。各段階の失敗で後続を停止する。
+- 初回固定対象は`v0.6.0`、content version `0.6.0`、master version `a0e53c0236cf`。[固定入力の検証・更新手順](../../master/README.md#本番webの固定入力)に従ってpinをreviewする。通常の`ci.yml`は維持する。
 - 初回deploy前に、公開用Workerへ既存production Workerと同じ`CREDENTIAL_PEPPER`と`REGISTRATION_SECRET`をCloudflare secretとして登録する。既存配布版が参照する旧WorkerのAPIは、旧endpointを利用する配布版のサポート期間中維持する。
 
 ## `build-master-db.yml`
@@ -23,4 +24,4 @@ M4マスタDBを生成する手動・定期実行workflow。
 - `ddrgp-master-<run_number>` artifact として `ddrgp-master.sqlite`、`master-summary.json`、`ddrworld-merge-report.json`、`ddrgp-web-master.sql` をアップロードする。
 - `master-summary.json` にはテーブル件数、snapshot件数、Wiki/公式/DDR WORLD source hash、snapshot側source URL、parser version、公式プレー可否の突合件数、DDR WORLD差分件数を含める。
 
-生成DBはGit管理しない。Releases配布は、artifact運用で生成結果の確認が安定してから別フェーズで追加する。
+生成DBはGit管理しない。このworkflowの成功は本番入力を更新しない。artifactは調査・候補生成用で、検証済みreference data setの公開・Web固定入力の更新は別操作で行う。

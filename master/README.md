@@ -132,7 +132,28 @@ workflowでは、ネットワークに依存しないfixture・identity registry
 
 `master.inspect` は、必須metadataキー、`songs` / `charts` の実件数、確認済みCHALLENGE補正manifestとchartの対応、`source_snapshots` がWikiのみなら1件、公式込みなら2件、新曲リスト込みなら3件、DDR WORLD公式譜面込みなら4件であること、各source hashとsource URLがmetadataとsnapshotで一致すること、chart ID重複・曲+style+difficulty重複・外部キー違反がないこと、DDR WORLD差分reportの全行がstatus contractへ一意に分類されて件数と一致すること、最終レベルが一致すること、Stop対象statusが0件であることを検査します。`master-summary.json` にはテーブル件数、補正chart件数とhash、snapshot件数、各source hash、snapshot側のsource URL、parser version、公式プレー可否の突合件数、DDR WORLD差分件数を出力し、artifact単体でも生成元を確認できるようにします。
 
-Releases配布はまだ未実装です。まずはartifactで生成結果と取得元構造変化の検出を確認し、安定後にReleases配布を別フェーズで追加します。
+このworkflowのartifactは調査・候補生成用です。成功だけでは本番Web入力を更新しません。reference data setは既存のRelease手順で検証・配布します。
+
+### 本番Webの固定入力
+
+`.github/web-master.json`は明示Release tagのasset URL、manifestのSHA-256、既存`reference-set.json`のmetadata・checksumを固定します。初回対象は`v0.6.0`（content version `0.6.0`、`master_version=a0e53c0236cf`）です。DB・画像はGitへ追加せず、pinだけをreviewします。
+
+未作成の`data/`出力先を指定すると、manifest取得・checksum・固定metadata検査、master取得・checksum・整合性・既存`master.inspect`検査、現在の`master.d1_export`、実migrationを適用したメモリDBでのSQL検証を1コマンドで実行できます。
+
+```powershell
+uv run python -X utf8 -m master.web_input --pin .github/web-master.json --output-dir data/web-master-evaluation-<id>
+```
+
+出力は`reference-set.json`、`ddrgp-master.sqlite`、`master-summary.json`、`ddrgp-web-master.sql`です。既存directoryは拒否し、再試行は新しいdirectoryで行います。Webデプロイではmasterとmanifestだけを取得し、固定した検証済みsetのmasterを使用します。旧masterにAC収録歴がない場合は既存のバージョン・GP可否によるカテゴリ算出を維持し、checkoutから新曲情報やAC収録歴を補完しません。曲名検索用別名はcheckoutの確認済み別名を含みます。
+
+固定対象を更新する手順:
+
+1. #227の新曲準備として、Song Identity Registry・曲情報、jacket収集・確定、候補M4 master DBとM5b jacket reference catalogの整合、代表RESULTの実機確認を完了する。既存DB・collector source・素材を保護し、未作成の候補pathで検証する。
+2. 既存のreference data set手順で同じversionのmaster/catalogとmanifestを検証し、別途許可されたRelease公開で3 assetを揃える。公開済みassetは差し替えず、新しい明示tagを使う。
+3. 候補pinへasset URL・manifest checksum・manifestの7 fieldを転記し、上のコマンドを`--pin <候補pin>`で実行する。実migrationとSQLを未作成のローカル評価用D1へ適用し、Webから曲・譜面ID、`master_version`、検索用別名・カテゴリを確認する。
+4. `.github/web-master.json`の更新PRに、取得元、version、checksum、master/catalog・代表RESULT・Web評価の検証記録と未実施項目を残す。review後のmain反映で本番workflowがその固定入力を使用する。最新Releaseや最新Actions artifactへ自動追従しない。
+
+本番適用は固定入力検証 → SQL出力・検証 → additive migration → import → deployの順で、失敗時は後続を停止します。remote操作を含む手順は[Web README](../web/identity-api/README.md#本番worker--d1)を参照してください。
 
 ## Tables
 
@@ -147,7 +168,7 @@ Releases配布はまだ未実装です。まずはartifactで生成結果と取�
 ## Current Boundaries
 
 - マスタDB生成と公式canonical／プレー可否付与までを扱い、ファジーマッチ、候補スコア、一意照合は別責務に残します。
-- GitHub Actions による手動・週次artifact生成入口は追加済みです。Releases配布は未実装です。
+- GitHub Actions による手動・週次artifact生成入口と、検証済みReleaseの固定masterを使う本番Webデプロイ入口は別責務です。
 - BEMANIWikiとDDR WORLD公式楽曲一覧の表構造は変わり得るため、本番取得前にfixtureと実HTMLの両方で件数・ヘッダ検出を確認します。
 - 脚注リンクは曲名本文に混ぜず、本文としてのアスタリスクは残します。
 - `song_id` はSong Identity Registryで既存互換IDへ固定し、`chart_id`は固定済み`song_id + play_style + difficulty`から既存`stable_identity_id_v1` contractで生成します。canonical修正ではIDを変えません。

@@ -81,25 +81,23 @@ npx wrangler deploy --config dist/ddrgp_scorelog/wrangler.json
    npx wrangler secret put GOOGLE_CLIENT_SECRET
    ```
 
-3. repository rootでmaster DBを生成・検査し、同じcheckoutの曲名検索用別名を含むshared master SQLをexportする。
+3. repository rootで固定したreference masterを取得・検査し、同じcheckoutの曲名検索用別名・フレアカテゴリを含むshared master SQLをexportする。出力先は未作成directoryにする。
 
    ```powershell
    uv sync --frozen --extra dev
-   uv run pytest tests/test_master_builder.py tests/test_master_identity_registry.py
-   uv run python -X utf8 -m master --output data/master/ddrgp-master.sqlite
-   uv run python -X utf8 -m master.inspect data/master/ddrgp-master.sqlite --summary data/master/master-summary.json --merge-report data/master/ddrworld-merge-report.json
-   uv run python -X utf8 -m master.d1_export --master-db data/master/ddrgp-master.sqlite --output data/master/ddrgp-web-master.sql
+   uv run pytest tests/test_web_deploy_workflow.py tests/test_web_master_input.py tests/test_master_identity_registry.py tests/test_ac_history.py
+   uv run python -X utf8 -m master.web_input --pin .github/web-master.json --output-dir data/web-deploy-master
    ```
 
-4. このdirectoryでmigration、shared master SQL投入、Worker deployを順に実行する。migrationはtableと公開検索用columnを作成し、SQLがLocal masterと同じsong/chart identity、曲名の検索key・別名、`master_version`を反映する。各commandの成功を確認してから次へ進み、投入失敗時はdeployしない。
+4. 取得・checksum・metadata・DB・export検証の成功後、明示的に許可された本番適用として、このdirectoryでmigration、shared master SQL投入、Worker deployを順に実行する。SQLが固定masterのsong/chart identityと`master_version`、checkoutの検索key・別名、既存互換のフレアカテゴリを反映する。各commandの成功を確認してから次へ進み、失敗時は後続を実行しない。
 
    ```powershell
    npm run migrate:remote
-   npx wrangler d1 execute DB --remote --file ..\..\data\master\ddrgp-web-master.sql
+   npx wrangler d1 execute DB --remote --file ..\..\data\web-deploy-master\ddrgp-web-master.sql
    npm run deploy
    ```
 
-main更新時の`deploy-web.yml`も同じcommitからmasterを生成・検査・exportし、上記の適用順を実行する。master生成・検査・投入に失敗した場合はdeployへ進まない。未登録の新曲・新表記は、既存IDとの対応を確認して`master/song_identity_registry.json`へ追加してから再実行する。
+main更新時の`deploy-web.yml`も`.github/web-master.json`を使用し、上記の適用順を実行する。公式・Wikiの楽曲情報取得や最新master生成を行わず、外部一覧の新曲は取り込まない。Release tag、manifest・DBのchecksumとversionはrepository上でreviewする。[固定対象の更新手順](../../master/README.md#本番webの固定入力)では、M5b jacket reference catalogとの整合・収集・代表RESULT確認の完了後にpinを更新する。`build-master-db.yml`の成功だけでは切り替えない。
 
 `CREDENTIAL_PEPPER`はApp Credential/session/proofのdigest、`APP_AUTHORIZATION_SECRET`は開始Appへの冪等Credential受領とWeb CSRFを支えます。raw secretやGoogle tokenをDB、Git、log、browser localStorageへ保存しません。設定値を失う、または入れ替えると既存認証や未完了操作の回復に影響します。
 
