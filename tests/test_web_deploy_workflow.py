@@ -8,13 +8,13 @@ WORKFLOW = Path(__file__).resolve().parents[1] / ".github/workflows/deploy-web.y
 def test_shared_master_import_must_succeed_before_worker_deploy() -> None:
     workflow = WORKFLOW.read_text(encoding="utf-8")
     commands = [
+        "npm run check",
         "uv sync --frozen",
-        "uv run pytest tests/test_master_builder.py tests/test_master_identity_registry.py",
-        "uv run python -m master --output data/master/ddrgp-master.sqlite",
-        "uv run python -m master.inspect data/master/ddrgp-master.sqlite",
-        "uv run python -m master.d1_export",
+        "uv run pytest tests/test_web_deploy_workflow.py tests/test_web_master_input.py",
+        "uv run python -m master.web_input --pin .github/web-master.json",
         "npm run migrate:remote",
-        "npx wrangler d1 execute DB --remote --file ../../data/master/ddrgp-web-master.sql",
+        "npx wrangler d1 execute DB --remote --file "
+        "../../data/web-deploy-master/ddrgp-web-master.sql",
         "npm run deploy",
     ]
 
@@ -25,9 +25,16 @@ def test_shared_master_import_must_succeed_before_worker_deploy() -> None:
     assert "GH_TOKEN" not in workflow
     assert "continue-on-error:" not in workflow
     assert "always()" not in workflow
+    assert "if:" not in workflow
+    assert "uv run python -m master --output" not in workflow
+    assert "latest" not in workflow.replace("ubuntu-latest", "")
+    assert "bemaniwiki.com" not in workflow
+    assert "p.eagate.573.jp" not in workflow
 
 
-@pytest.mark.parametrize("source", ["master/**", "pyproject.toml", "uv.lock"])
+@pytest.mark.parametrize(
+    "source", [".github/web-master.json", "master/**", "pyproject.toml", "uv.lock"]
+)
 def test_shared_master_sources_trigger_production_deploy(source: str) -> None:
     workflow = WORKFLOW.read_text(encoding="utf-8")
     push_paths = workflow.split("    paths:\n", 1)[1].split("  workflow_dispatch:", 1)[0]

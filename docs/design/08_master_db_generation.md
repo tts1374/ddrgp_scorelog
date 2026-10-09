@@ -81,11 +81,11 @@ GP対象候補について対応候補が0件なら`unmatchable_gp_candidate`、
 data/master/ddrgp-master.sqlite
 ```
 
-生成DBはGit管理しない。将来の配布用DBは GitHub Releases 成果物として扱う。
+生成DBはGit管理しない。配布用DBは既存reference data setのGitHub Releases成果物として扱う。
 
 CI生成では `.github/workflows/build-master-db.yml` を使う。workflowは手動実行と週次定期実行を持ち、fixture・identity registry test、Wiki・公式収録曲一覧・DDR WORLD公式楽曲一覧の実HTMLからのSQLite生成、`python -X utf8 -m master.inspect` による必須metadataキー検査、`master_metadata` と実テーブル件数の整合検査、`source_snapshots` 件数検査、source hash / source URLの整合検査、chart ID重複・chart identity重複・外部キー違反の検査を行う。生成DB、`master-summary.json`、DDR WORLD差分report、D1 shared master用の`ddrgp-web-master.sql`は `ddrgp-master-<run_number>` artifactとして保存し、Git管理対象にはしない。`master-summary.json` にはテーブル件数、snapshot件数、Wiki/公式source URL、parser version、公式プレー可否の突合件数、DDR WORLD差分件数を出力する。
 
-Releases配布は、artifactで生成結果と取得元構造変化検出を確認できる状態が安定してから追加する。
+手動・定期生成artifactは調査・候補生成用で、本番Web入力を自動更新しない。本番Webは`.github/web-master.json`で明示Release tag、content/master version、manifest・master checksumを固定し、既存reference data setのmanifestとM4 master DBを検査して使用する。取得・検証・現在の`master.d1_export`によるSQL出力と実migrationに対する検証をremote操作前に完了し、additive migration → import → deployの順で失敗時停止する。M5b jacket reference catalogとの整合、対象曲の収集・確定、代表RESULT実機確認が完了したセットだけを更新PRで切り替える。[固定入力・更新手順](../../master/README.md#本番webの固定入力)を参照。
 
 ## 初期スキーマ
 

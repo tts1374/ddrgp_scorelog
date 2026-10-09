@@ -1,0 +1,11 @@
+{
+  "release_base_url": "https://github.com/tts1374/ddrgp_scorelog/releases/download/v0.6.0",
+  "manifest_sha256": "5f343b7bd055873767fd9c813cb6082c821382703f10270378981030e228ef0c",
+  "content_version": "0.6.0",
+  "master_schema_version": 1,
+  "catalog_schema_version": 1,
+  "master_content_version": "a0e53c0236cf",
+  "catalog_master_content_version": "a0e53c0236cf",
+  "master_sha256": "c8ac40445eb1cc537069f1efad9634f41f06537ef63f2b8d7538a9eb3c109ca6",
+  "catalog_sha256": "e567177eaaff535bc0c9c9ecd40bd910247f0b50a8ec5d3cf665bbd48ea9eff8"
+}
