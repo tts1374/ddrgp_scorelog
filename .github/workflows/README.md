@@ -9,8 +9,8 @@
 - 型検査、Worker + local D1 test、React test、production buildを再実行する。
 - 固定入力・export・identity・カテゴリのtestを実行し、`.github/web-master.json`の明示Release tagから既存`reference-set.json`とM4 master DBを取得する。manifestとDBのSHA-256、固定metadata、DB整合性、`master_version`を検査し、checkoutの`master.d1_export`で検索用別名・フレアカテゴリを含むSQLを出力する。SQLはcheckoutの実migrationを適用したメモリDBで検証する。
 - 取得・検証・exportがすべて成功した後、additive D1 migration、shared master SQL投入、`ddrgp-scorelog` WorkerとStatic Assetsのdeployを順に実行する。各段階の失敗で後続を停止する。
-- 初回固定対象は`v0.6.0`、content version `0.6.0`、master version `a0e53c0236cf`。[固定入力の検証・更新手順](../../master/README.md#本番webの固定入力)に従ってpinをreviewする。通常の`ci.yml`は維持する。
-- 初回deploy前に、公開用Workerへ既存production Workerと同じ`CREDENTIAL_PEPPER`と`REGISTRATION_SECRET`をCloudflare secretとして登録する。既存配布版が参照する旧WorkerのAPIは、旧endpointを利用する配布版のサポート期間中維持する。
+- 本番Webの固定Release、content version、master versionは[`.github/web-master.json`](../web-master.json)を正本として参照する。[固定入力の検証・更新手順](../../master/README.md#本番webの固定入力)に従ってpinをreviewする。通常の`ci.yml`は維持する。
+- 本番Workerの認証用secret・Google OAuth設定は[Web README](../../web/identity-api/README.md#本番worker--d1)を正本として確認する。既存配布版が参照する旧WorkerのAPIは、旧endpointを利用する配布版のサポート期間中維持する。
 
 ## `build-master-db.yml`
 

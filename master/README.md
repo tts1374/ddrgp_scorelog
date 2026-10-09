@@ -136,7 +136,7 @@ workflowでは、ネットワークに依存しないfixture・identity registry
 
 ### 本番Webの固定入力
 
-`.github/web-master.json`は明示Release tagのasset URL、manifestのSHA-256、既存`reference-set.json`のmetadata・checksumを固定します。初回対象は`v0.6.0`（content version `0.6.0`、`master_version=a0e53c0236cf`）です。DB・画像はGitへ追加せず、pinだけをreviewします。
+`.github/web-master.json`は明示Release tagのasset URL、manifestのSHA-256、既存`reference-set.json`のmetadata・checksumを固定します。本番Webが参照するRelease、content version、master versionはこのpinを正本とします。DB・画像はGitへ追加せず、pinだけをreviewします。
 
 未作成の`data/`出力先を指定すると、manifest取得・checksum・固定metadata検査、master取得・checksum・整合性・既存`master.inspect`検査、現在の`master.d1_export`、実migrationを適用したメモリDBでのSQL検証を1コマンドで実行できます。
 
