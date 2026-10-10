@@ -24,7 +24,7 @@ npm ci
 npm run check
 ```
 
-`check`は型検査、Worker + local D1 test、React test、production buildを実行します。browser smokeはChromiumを準備したうえで`npm run test:e2e`を実行します。
+`check`は型検査、Worker + local D1 test、React test、production buildを実行します。browser smokeはChromiumを準備したうえで`npm run test:e2e`を実行します。browser用buildは`e2e` modeで認証用のダミー値を設定し、Cookie取得後のトップページ表示も検証します。通常のproduction buildにはダミー値を設定しません。
 
 ## Local development
 

@@ -311,7 +311,8 @@ def test_normal_update_addition_report_inspection_and_shared_output(tmp_path, mo
         "version TEXT,title_search_key TEXT); CREATE TABLE charts(chart_id TEXT "
         "PRIMARY KEY,song_id TEXT,play_style TEXT,difficulty TEXT,level INTEGER,"
         "is_removed INTEGER);CREATE TABLE web_master_metadata(key TEXT PRIMARY KEY,value TEXT);"
-        "CREATE TABLE song_title_search_aliases(song_id TEXT,search_key TEXT);"
+        "CREATE TABLE song_title_search_aliases(song_id TEXT,search_key TEXT,"
+        "PRIMARY KEY(song_id,search_key));"
     )
     target.executescript(
         Path("web/identity-api/migrations/0009_song_flare_category.sql").read_text()

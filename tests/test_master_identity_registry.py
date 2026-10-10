@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -198,7 +199,9 @@ def test_d1_export_is_deterministic_idempotent_and_resolves_metadata(tmp_path: P
     )
     target.executescript(alias_migration.read_text(encoding="utf-8"))
     target.executescript(first)
+    before_reimport = target.total_changes
     target.executescript(first)
+    assert target.total_changes == before_reimport
     assert target.execute(
         "SELECT c.chart_id, s.title FROM charts c "
         "JOIN songs s ON s.song_id = c.song_id"
@@ -232,6 +235,223 @@ def test_d1_export_is_deterministic_idempotent_and_resolves_metadata(tmp_path: P
     assert target.execute(
         "SELECT search_key FROM song_title_search_aliases WHERE song_id = 'song_1'"
     ).fetchall() == [("changed",)]
+
+
+@pytest.fixture
+def shared_master_target(tmp_path: Path) -> Iterator[tuple[Path, sqlite3.Connection]]:
+    database = tmp_path / "master.sqlite"
+    create_master_fixture(database)
+    with sqlite3.connect(database) as source:
+        source.executescript(
+            """
+            INSERT INTO songs VALUES ('song_2', 'Other', 'Artist', 'DDR');
+            INSERT INTO charts VALUES ('chart_2', 'song_2', 'DOUBLE', 'BASIC', 5, 0);
+            INSERT INTO song_aliases VALUES ('song_2', 'Keeper', 'Artist');
+            """
+        )
+    target = sqlite3.connect(":memory:")
+    migrations = Path(__file__).resolve().parents[1] / "web/identity-api/migrations"
+    for migration in sorted(migrations.glob("*.sql")):
+        target.executescript(migration.read_text(encoding="utf-8"))
+    target.executescript(export_shared_master_sql(database))
+    try:
+        yield database, target
+    finally:
+        target.close()
+
+
+@pytest.mark.parametrize(
+    ("table", "id_column", "row_id", "column", "different_value"),
+    [
+        ("songs", "song_id", "song_1", "title", "Changed"),
+        ("songs", "song_id", "song_1", "artist", "Changed artist"),
+        ("songs", "song_id", "song_1", "version", "DDR 1st"),
+        ("songs", "song_id", "song_1", "title_search_key", "stale key"),
+        ("songs", "song_id", "song_1", "flare_category", "WHITE"),
+        ("charts", "chart_id", "chart_1", "song_id", "song_2"),
+        ("charts", "chart_id", "chart_1", "play_style", "DOUBLE"),
+        ("charts", "chart_id", "chart_1", "difficulty", "BASIC"),
+        ("charts", "chart_id", "chart_1", "level", 16),
+        ("charts", "chart_id", "chart_1", "is_removed", 1),
+    ],
+)
+def test_d1_export_repairs_only_the_changed_row(
+    shared_master_target: tuple[Path, sqlite3.Connection],
+    table: str,
+    id_column: str,
+    row_id: str,
+    column: str,
+    different_value: str | int,
+) -> None:
+    database, target = shared_master_target
+    select = f"SELECT {column} FROM {table} WHERE {id_column} = ?"
+    original = target.execute(select, (row_id,)).fetchone()
+    target.execute(
+        f"UPDATE {table} SET {column} = ? WHERE {id_column} = ?",
+        (different_value, row_id),
+    )
+    before = target.total_changes
+    sql = export_shared_master_sql(database)
+    target.executescript(sql)
+    assert target.total_changes - before == 1
+    assert target.execute(select, (row_id,)).fetchone() == original
+    before = target.total_changes
+    target.executescript(sql)
+    assert target.total_changes == before
+
+
+def test_d1_export_reflects_null_category_transitions(
+    shared_master_target: tuple[Path, sqlite3.Connection],
+) -> None:
+    database, target = shared_master_target
+    with sqlite3.connect(database) as source:
+        source.executescript(
+            "ALTER TABLE songs ADD COLUMN grand_prix_play_available INTEGER NOT NULL DEFAULT 1;"
+            "UPDATE songs SET version = 'DDR 1st' WHERE song_id = 'song_1';"
+        )
+    for available, category in [(1, "CLASSIC"), (0, None), (1, "CLASSIC")]:
+        with sqlite3.connect(database) as source:
+            source.execute(
+                "UPDATE songs SET grand_prix_play_available = ? WHERE song_id = 'song_1'",
+                (available,),
+            )
+        before = target.total_changes
+        target.executescript(export_shared_master_sql(database))
+        assert target.total_changes - before == 1
+        assert target.execute(
+            "SELECT flare_category FROM songs WHERE song_id = 'song_1'"
+        ).fetchone() == (category,)
+
+
+def test_d1_export_inserts_new_rows_and_updates_only_changed_metadata(
+    shared_master_target: tuple[Path, sqlite3.Connection],
+) -> None:
+    database, target = shared_master_target
+    with sqlite3.connect(database) as source:
+        source.executescript(
+            """
+            INSERT INTO songs VALUES ('song_3', 'New song', 'Artist', 'DDR');
+            INSERT INTO charts VALUES ('chart_3', 'song_3', 'SINGLE', 'EXPERT', 12, 0);
+            INSERT INTO song_aliases VALUES ('song_3', 'New alias', 'Artist');
+            """
+        )
+    before = target.total_changes
+    target.executescript(export_shared_master_sql(database))
+    assert target.total_changes - before == 3
+    assert target.execute(
+        "SELECT c.chart_id, c.level, a.search_key FROM charts c "
+        "JOIN song_title_search_aliases a USING(song_id) WHERE c.chart_id = 'chart_3'"
+    ).fetchone() == ("chart_3", 12, "new alias")
+
+    with sqlite3.connect(database) as source:
+        source.execute("UPDATE master_metadata SET value = 'fixture-v2'")
+    before = target.total_changes
+    sql = export_shared_master_sql(database)
+    target.executescript(sql)
+    assert target.total_changes - before == 1
+    assert target.execute("SELECT value FROM web_master_metadata").fetchone() == ("fixture-v2",)
+    before = target.total_changes
+    target.executescript(sql)
+    assert target.total_changes == before
+
+
+@pytest.mark.parametrize(
+    ("aliases", "expected", "changes"),
+    [
+        (["Source", "New's alias", "NEW'S ALIAS", "Canonical"], ["new's alias", "source"], 1),
+        (["Changed"], ["changed"], 2),
+        ([], [], 1),
+    ],
+)
+def test_d1_export_applies_only_alias_differences_with_the_same_version(
+    shared_master_target: tuple[Path, sqlite3.Connection],
+    aliases: list[str],
+    expected: list[str],
+    changes: int,
+) -> None:
+    database, target = shared_master_target
+    with sqlite3.connect(database) as source:
+        source.execute("DELETE FROM song_aliases WHERE song_id = 'song_1'")
+        source.executemany(
+            "INSERT INTO song_aliases VALUES ('song_1', ?, 'Artist')",
+            [(alias,) for alias in aliases],
+        )
+    before = target.total_changes
+    sql = export_shared_master_sql(database)
+    target.executescript(sql)
+    assert target.total_changes - before == changes
+    assert target.execute(
+        "SELECT song_id, search_key FROM song_title_search_aliases ORDER BY song_id, search_key"
+    ).fetchall() == [("song_1", alias) for alias in expected] + [("song_2", "keeper")]
+    assert target.execute("SELECT value FROM web_master_metadata").fetchone() == ("fixture-v1",)
+    before = target.total_changes
+    target.executescript(sql)
+    assert target.total_changes == before
+
+
+def test_d1_export_clears_an_empty_alias_set_once(
+    shared_master_target: tuple[Path, sqlite3.Connection],
+) -> None:
+    database, target = shared_master_target
+    with sqlite3.connect(database) as source:
+        source.execute("DELETE FROM song_aliases")
+    before = target.total_changes
+    sql = export_shared_master_sql(database)
+    target.executescript(sql)
+    assert target.total_changes - before == 2
+    assert target.execute("SELECT * FROM song_title_search_aliases").fetchall() == []
+    before = target.total_changes
+    target.executescript(sql)
+    assert target.total_changes == before
+
+
+def test_d1_export_preserves_player_data_and_existing_chart_references(
+    shared_master_target: tuple[Path, sqlite3.Connection],
+) -> None:
+    database, target = shared_master_target
+    target.executescript(
+        """
+        INSERT INTO players (id, public_player_id, display_name, created_at, updated_at)
+        VALUES ('player_1', 'public_1', 'Player', '2026-10-10', '2026-10-10');
+        INSERT INTO player_credentials (id, player_id, type, secret_digest, created_at)
+        VALUES ('credential_1', 'player_1', 'app',
+                'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', '2026-10-10');
+        INSERT INTO player_chart_bests
+          (player_id, chart_id, best_score, best_ex_score, best_clear_type, updated_at)
+        VALUES ('player_1', 'chart_2', 900000, 1000, 'CLEAR', '2026-10-10');
+        """
+    )
+    protected = {
+        table: target.execute(f"SELECT * FROM {table}").fetchall()
+        for table in ["players", "player_credentials", "player_chart_bests"]
+    }
+    retained_chart = target.execute("SELECT * FROM charts WHERE chart_id = 'chart_2'").fetchone()
+    with sqlite3.connect(database) as source:
+        source.executescript(
+            """
+            UPDATE songs SET title = 'Renamed' WHERE song_id = 'song_1';
+            UPDATE charts SET is_removed = 1 WHERE chart_id = 'chart_1';
+            DELETE FROM charts WHERE chart_id = 'chart_2';
+            DELETE FROM songs WHERE song_id = 'song_2';
+            DELETE FROM song_aliases WHERE song_id = 'song_2';
+            """
+        )
+    target.executescript(export_shared_master_sql(database))
+    assert target.execute("SELECT title FROM songs WHERE song_id = 'song_1'").fetchone() == (
+        "Renamed",
+    )
+    assert target.execute(
+        "SELECT is_removed FROM charts WHERE chart_id = 'chart_1'"
+    ).fetchone() == (1,)
+    assert target.execute(
+        "SELECT * FROM charts WHERE chart_id = 'chart_2'"
+    ).fetchone() == retained_chart
+    assert target.execute("SELECT song_id FROM songs WHERE song_id = 'song_2'").fetchone() == (
+        "song_2",
+    )
+    for table, rows in protected.items():
+        assert target.execute(f"SELECT * FROM {table}").fetchall() == rows
+    assert target.execute("PRAGMA foreign_key_check").fetchall() == []
 
 
 def test_title_search_normalization_and_existing_d1_backfill() -> None:

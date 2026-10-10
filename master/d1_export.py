@@ -103,15 +103,37 @@ def export_shared_master_sql(master_db_path: Path) -> str:
                 "  artist = excluded.artist,",
                 "  version = excluded.version,",
                 "  flare_category = excluded.flare_category,",
-                "  title_search_key = excluded.title_search_key;",
+                "  title_search_key = excluded.title_search_key",
+                "WHERE songs.title IS NOT excluded.title",
+                "   OR songs.artist IS NOT excluded.artist",
+                "   OR songs.version IS NOT excluded.version",
+                "   OR songs.flare_category IS NOT excluded.flare_category",
+                "   OR songs.title_search_key IS NOT excluded.title_search_key;",
             ]
         )
     lines.append("")
-    lines.append("DELETE FROM song_title_search_aliases;")
+    if search_aliases:
+        lines.append("WITH desired_aliases (song_id, search_key) AS (VALUES")
+        lines.append(",\n".join(
+            f"  ({sql_text(song_id)}, {sql_text(search_key)})"
+            for song_id, search_key in sorted(search_aliases)
+        ))
+        lines.extend([
+            ")",
+            "DELETE FROM song_title_search_aliases",
+            "WHERE NOT EXISTS (",
+            "  SELECT 1 FROM desired_aliases",
+            "  WHERE desired_aliases.song_id = song_title_search_aliases.song_id",
+            "    AND desired_aliases.search_key = song_title_search_aliases.search_key",
+            ");",
+        ])
+    else:
+        lines.append("DELETE FROM song_title_search_aliases;")
     for song_id, search_key in sorted(search_aliases):
         lines.append(
             "INSERT INTO song_title_search_aliases (song_id, search_key) "
-            f"VALUES ({sql_text(song_id)}, {sql_text(search_key)});"
+            f"VALUES ({sql_text(song_id)}, {sql_text(search_key)}) "
+            "ON CONFLICT(song_id, search_key) DO NOTHING;"
         )
     lines.append("")
     for chart_id, song_id, play_style, difficulty, level, is_removed in charts:
@@ -134,7 +156,12 @@ def export_shared_master_sql(master_db_path: Path) -> str:
                 "  play_style = excluded.play_style,",
                 "  difficulty = excluded.difficulty,",
                 "  level = excluded.level,",
-                "  is_removed = excluded.is_removed;",
+                "  is_removed = excluded.is_removed",
+                "WHERE charts.song_id IS NOT excluded.song_id",
+                "   OR charts.play_style IS NOT excluded.play_style",
+                "   OR charts.difficulty IS NOT excluded.difficulty",
+                "   OR charts.level IS NOT excluded.level",
+                "   OR charts.is_removed IS NOT excluded.is_removed;",
             ]
         )
     lines.extend(
@@ -142,7 +169,8 @@ def export_shared_master_sql(master_db_path: Path) -> str:
             "",
             "INSERT INTO web_master_metadata (key, value)",
             f"VALUES ('master_version', {sql_text(master_version)})",
-            "ON CONFLICT(key) DO UPDATE SET value = excluded.value;",
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            "WHERE web_master_metadata.value IS NOT excluded.value;",
             "",
         ]
     )
