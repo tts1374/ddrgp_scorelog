@@ -5,6 +5,9 @@ for (const width of [1280, 390]) {
     await page.setViewportSize({ width, height: 844 });
     const errors: string[] = [];
     page.on("pageerror", error => errors.push(error.message));
+    const context = await page.request.get("/api/v1/auth/web/context");
+    expect(context.status()).toBe(200);
+    expect((await page.context().cookies()).some(cookie => cookie.name.endsWith("-browser"))).toBe(true);
     const response = await page.goto("/");
     expect(response?.status()).toBe(200);
     expect(response?.headers()["cache-control"]).toBe("no-store");
