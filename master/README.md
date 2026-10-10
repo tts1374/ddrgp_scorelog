@@ -120,6 +120,8 @@ python -X utf8 -m master.d1_export --master-db data\master\ddrgp-master.sqlite -
 
 このSQLにはcanonical曲名の検索keyに加え、master DBの`song_aliases`と`master/title_search_aliases.json`の確認済み曲名別表記を含めます。D1へ適用する前に検索用別名tableのmigrationを適用してください。
 
+投入は差分更新です。既存曲・譜面は値が異なる行だけ更新し、検索別名は追加分だけ挿入・不要分だけ削除します。同じ内容の再投入では共有マスタのデータ行を書き換えません。`master_version`が同じでも検索別名等の差分は反映し、既存曲・譜面のIDと参照先の自己ベストを保持します。D1のRows writtenにはインデックス等の書き込みも含まれ、日次枠は通常の同期・dev・migration等と共用するため、差分更新だけでアカウント全体の100k以内を保証するものではありません。
+
 通常生成は`master/song_identity_registry.json`を読み、既存配布masterからfreezeしたcanonical表記とalias表記を既存`song_id`へ解決します。未登録の新曲・新表記は推測採番せず候補を表示して失敗するため、review後にregistryへ追加してください。bootstrap CLIは既存配布masterからregistryを初期作成・監査するときだけ使用します。
 
 生成DB、取得元snapshot、解析ログはGit管理しません。ローカル生成物は原則 `data/` 配下に置きます。
