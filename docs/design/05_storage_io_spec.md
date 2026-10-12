@@ -56,7 +56,7 @@ production起動時はlatest GitHub Releaseのreference data setを確認する�
 
 データ管理画面の個人スコアデータバックアップは、固定score pathの現行正式schemaをread-onlyで検証した後、`plays`の履歴表示・自己ベスト算出に必要な値だけをUTF-8 BOMなし、LF、末尾改行のJSONへ出力する。形式は`ddrgp.personal-score-data`、現行`formatVersion=2`とし、バックアップのJSONには`plays`の個人プレー値、保存日時、正式ID、重複判定に必要な値、nullableな`ok` / `calories`だけを置く。旧`formatVersion=1`も復元入力として受け付け、両値は未取得の`NULL`として復元する。settings、master/catalog、jacket参照、source capture、解析ログ、診断ログは対象外であり、migration用SQLite backupとは別のファイル形式・保持契約である。
 
-v1/v2の復元入力の`playedAt`は、既存の正式保存が受け付ける日付・時刻とtimezoneを持つISO 8601日時として検証する。コロンなしoffset、7桁を超える小数秒、basic形式やISO週日付も保持し、復元側の日時型が表現できる形式だけに限定しない。`savedAt`は同じtimezone付き日時に加え、SQLite `CURRENT_TIMESTAMP`由来のoffsetなし`yyyy-MM-dd HH:mm:ss`をUTCとして受け付ける。受け付けた日時文字列は変換せず復元する。
+v1/v2の復元入力の`playedAt`は、既存の正式保存が受け付ける日付・時刻とtimezoneを持つ日時として検証する。Python側のISO 8601日時はコロンなしoffset、7桁を超える小数秒、basic形式やISO週日付も保持し、復元側の日時型が表現できる形式だけに限定しない。アプリ側writerが保存するInvariantCultureの暦日形式（例: `08/01/2026 10:00:00+09:00`）も、日付の全要素・時刻・timezoneが明示された値を受け付ける。`savedAt`は同じtimezone付き日時に加え、SQLite `CURRENT_TIMESTAMP`由来のoffsetなし`yyyy-MM-dd HH:mm:ss`をUTCとして受け付ける。受け付けた日時文字列は変換せず復元する。
 
 復元は選択ファイルをDBへ接続する前に形式、version、必須値、重複ID、正式schemaの制約に照らして検証する。未対応・破損・不正値はscore DBを変更せず拒否する。確認後の有効復元だけ、固定score pathの正式schemaを検証したSQLite transaction内で既存`plays`を置き換える。置換前の`analysis_logs`は旧playへの参照だけを切り離し、未解決を含むログと既存`source_captures`は保持する。バックアップに含めなかった取得元・解析情報は復元せず、既存schemaの外部キーを満たすための最小内部参照だけを復元したプレーごとにアプリが再構成する。insert件数をtransaction内で確認してからcommitし、失敗時はrollbackする。完了後は既存read-only repositoryで再読込し、履歴・自己ベストへ反映する。設定、master/catalog、既存のformal save workflow、Debug/Release境界は変更しない。
 

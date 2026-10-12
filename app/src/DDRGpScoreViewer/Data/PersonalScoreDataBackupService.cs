@@ -306,7 +306,7 @@ public sealed class PersonalScoreDataBackupService : IPersonalScoreDataBackupSer
 
     private static void RequireTimestamp(string? value, string field, bool allowSqliteUtc = false)
     {
-        var validTimestamp = IsFormalTimestamp(value);
+        var validTimestamp = IsFormalTimestamp(value) || IsAppWriterTimestamp(value);
         if (!validTimestamp &&
             !(allowSqliteUtc && DateTimeOffset.TryParseExact(
                 value,
@@ -317,6 +317,57 @@ public sealed class PersonalScoreDataBackupService : IPersonalScoreDataBackupSer
         {
             throw new InvalidDataException($"バックアップの{field}を確認できません。");
         }
+    }
+
+    private static bool IsAppWriterTimestamp(string? value)
+    {
+        if (value is null) return false;
+        // The app-owned writer also stores invariant-culture calendar timestamps.
+        // Require an explicit date, clock and offset so parsing never supplies a date.
+        const string date = @"(?<date>[\s\S]+?)";
+        const string clock = @"[0-9]{1,2}(?::[0-9]{2}(?::[0-9]{2}(?:[.,][0-9]+)?)?)?(?:\s*[AP]\.?M\.?)?";
+        const string offset = @"(?:Z|[+-][0-9]{1,2}(?::?[0-9]{2})?)";
+        const string separator = @"(?:T|\s+)";
+        if (!DateTimeOffset.TryParse(
+                value,
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.RoundtripKind,
+                out var timestamp))
+        {
+            return false;
+        }
+
+        foreach (var pattern in new[]
+        {
+            date + separator + clock + @"\s*" + offset,
+            clock + separator + date + @"\s*" + offset,
+            clock + @"\s*" + offset + separator + date,
+            date + @"\s*" + offset + separator + clock,
+            offset + @"\s*" + date + separator + clock,
+            offset + @"\s*" + clock + separator + date,
+        })
+        {
+            var match = Regex.Match(value, @"\A\s*" + pattern + @"\s*\z",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            if (!match.Success) continue;
+            var calendar = match.Groups["date"].Value;
+            if (!DateTime.TryParse(calendar, CultureInfo.InvariantCulture,
+                    DateTimeStyles.NoCurrentDateDefault | DateTimeStyles.RoundtripKind, out var parsedDate) ||
+                parsedDate.Kind != DateTimeKind.Unspecified || parsedDate.TimeOfDay != TimeSpan.Zero ||
+                parsedDate.Date != timestamp.Date)
+            {
+                continue;
+            }
+            var dateNumbers = Regex.Matches(calendar, "[0-9]+").Count;
+            var format = CultureInfo.InvariantCulture.DateTimeFormat;
+            if (dateNumbers == 3 ||
+                (dateNumbers == 2 && format.MonthNames.Concat(format.AbbreviatedMonthNames)
+                    .Any(month => month.Length > 0 && calendar.Contains(month, StringComparison.OrdinalIgnoreCase))))
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static bool IsFormalTimestamp(string? value)

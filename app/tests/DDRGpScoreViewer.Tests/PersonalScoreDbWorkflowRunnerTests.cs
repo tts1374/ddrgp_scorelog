@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using DDRGpScoreViewer.Data;
 using Microsoft.Data.Sqlite;
 using Xunit;
@@ -35,6 +36,62 @@ public sealed class PersonalScoreDbWorkflowRunnerTests
             fixture.MasterPath,
             fixture.CatalogPath);
         Assert.Contains(data.Plays, play => play.PlayId == "play-app-owned");
+    }
+
+    [Theory]
+    [InlineData(1, "08/01/2026 10:00:00+09:00")]
+    [InlineData(2, "08/01/2026 10:00:00+09:00")]
+    [InlineData(1, "Aug 1, 2026 10:00:00+09:00")]
+    [InlineData(2, "Aug 1, 2026 10:00:00+09:00")]
+    [InlineData(1, "08.01.2026 10:00:00+09:00")]
+    [InlineData(2, "08.01.2026 10:00:00+09:00")]
+    [InlineData(1, "Sat, 01 Aug 2026 10:00:00 +0900")]
+    [InlineData(2, "Sat, 01 Aug 2026 10:00:00 +0900")]
+    [InlineData(1, "08/01/26 10:00 PM+09:00")]
+    [InlineData(2, "08/01/26 10:00 PM+09:00")]
+    [InlineData(1, "10:00:00 08/01/2026+09:00")]
+    [InlineData(2, "10:00:00 08/01/2026+09:00")]
+    [InlineData(1, "10:00:00+09:00 2026-08-01")]
+    [InlineData(2, "10:00:00+09:00 2026-08-01")]
+    [InlineData(1, "2026-08-01+09:00 10:00:00")]
+    [InlineData(2, "2026-08-01+09:00 10:00:00")]
+    [InlineData(1, "+09:00 2026-08-01 10:00:00")]
+    [InlineData(2, "+09:00 2026-08-01 10:00:00")]
+    [InlineData(1, "+09:00 10:00:00 2026-08-01")]
+    [InlineData(2, "+09:00 10:00:00 2026-08-01")]
+    public async Task App_writer_timestamp_forms_roundtrip_through_personal_backup(
+        int version,
+        string timestamp)
+    {
+        using var fixture = new DatabaseFixture();
+        var input = SaveInput();
+        input["captured_at"] = timestamp;
+        var formal = Assert.IsType<Dictionary<string, object?>>(input["formal_play"]);
+        formal["played_at"] = timestamp;
+        var inputPath = WriteWorkflowInput(fixture.DirectoryPath, input);
+        var runner = new AppOwnedPersonalScoreDbWorkflowRunner(
+            () => ViewerDatabasePaths.ForDevelopment(fixture.DirectoryPath));
+        var saved = await runner.RunAsync(inputPath, fixture.ScorePath);
+        Assert.Equal("saved", saved.WorkflowStatus);
+        Assert.True(saved.Written);
+        var backupPath = Path.Combine(fixture.DirectoryPath, "personal-backup.json");
+        var service = new PersonalScoreDataBackupService();
+        Assert.True(service.CreateBackup(fixture.ScorePath, backupPath).Succeeded);
+        var root = JsonNode.Parse(File.ReadAllText(backupPath))!;
+        Assert.Equal(timestamp, root["plays"]![0]!["playedAt"]!.GetValue<string>());
+        root["formatVersion"] = version;
+        File.WriteAllText(backupPath, root.ToJsonString() + "\n", new UTF8Encoding(false));
+        fixture.AddPlay("later-play", "2026-08-02T10:00:00+09:00", 990_000, 1_300);
+
+        var restored = service.RestoreBackup(fixture.ScorePath, backupPath);
+
+        Assert.True(restored.Succeeded, restored.Message);
+        var play = Assert.Single(new ScoreViewerRepository().Load(
+            fixture.ScorePath,
+            fixture.MasterPath,
+            fixture.CatalogPath).Plays);
+        Assert.Equal("play-app-owned", play.PlayId);
+        Assert.Equal(timestamp, play.PlayedAt);
     }
 
     [Fact]
