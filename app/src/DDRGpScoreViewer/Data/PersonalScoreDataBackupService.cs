@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.IO;
 using System.Security.Cryptography;
 using System.Text;
@@ -263,8 +264,8 @@ public sealed class PersonalScoreDataBackupService : IPersonalScoreDataBackupSer
         ISet<string> duplicateKeys)
     {
         RequireText(play.PlayId, "play_id", playIds);
-        RequireText(play.PlayedAt, "played_at");
-        RequireText(play.SavedAt, "created_at");
+        RequireTimestamp(play.PlayedAt, "プレー日時");
+        RequireTimestamp(play.SavedAt, "保存日時");
         RequireText(play.MasterVersion, "master_version");
         RequireText(play.SongId, "song_id");
         RequireText(play.ChartId, "chart_id");
@@ -299,6 +300,18 @@ public sealed class PersonalScoreDataBackupService : IPersonalScoreDataBackupSer
             (!double.IsFinite(play.Calories.Value) || play.Calories.Value < 0.0))
         {
             throw new InvalidDataException("バックアップの消費カロリーを確認できません。");
+        }
+    }
+
+    private static void RequireTimestamp(string? value, string field)
+    {
+        if (!DateTimeOffset.TryParse(
+                value,
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.AllowWhiteSpaces | DateTimeStyles.AssumeUniversal,
+                out _))
+        {
+            throw new InvalidDataException($"バックアップの{field}を確認できません。");
         }
     }
 
@@ -418,6 +431,10 @@ public sealed class PersonalScoreDataBackupService : IPersonalScoreDataBackupSer
 
     private static string ToUserMessage(Exception exception) => exception switch
     {
+        InvalidDataException when exception.Message is
+            "バックアップのプレー日時を確認できません。" or
+            "バックアップの保存日時を確認できません。" =>
+            Localization.Get(exception.Message),
         JsonException or InvalidDataException =>
             Localization.Get("対応していない形式または壊れたバックアップです。"),
         ViewerDatabaseException =>
@@ -475,14 +492,14 @@ public sealed class PersonalScoreDataBackupService : IPersonalScoreDataBackupSer
         [property: JsonPropertyName("masterVersion")] string MasterVersion,
         [property: JsonPropertyName("songId")] string SongId,
         [property: JsonPropertyName("chartId")] string ChartId,
-        [property: JsonPropertyName("score")] int Score,
-        [property: JsonPropertyName("maxCombo")] int MaxCombo,
-        [property: JsonPropertyName("marvelous")] int Marvelous,
-        [property: JsonPropertyName("perfect")] int Perfect,
-        [property: JsonPropertyName("great")] int Great,
-        [property: JsonPropertyName("good")] int Good,
-        [property: JsonPropertyName("miss")] int Miss,
-        [property: JsonPropertyName("exScore")] int ExScore,
+        [property: JsonPropertyName("score"), JsonRequired] int Score,
+        [property: JsonPropertyName("maxCombo"), JsonRequired] int MaxCombo,
+        [property: JsonPropertyName("marvelous"), JsonRequired] int Marvelous,
+        [property: JsonPropertyName("perfect"), JsonRequired] int Perfect,
+        [property: JsonPropertyName("great"), JsonRequired] int Great,
+        [property: JsonPropertyName("good"), JsonRequired] int Good,
+        [property: JsonPropertyName("miss"), JsonRequired] int Miss,
+        [property: JsonPropertyName("exScore"), JsonRequired] int ExScore,
         [property: JsonPropertyName("rank")] string Rank,
         [property: JsonPropertyName("clearType")] string ClearType,
         [property: JsonPropertyName("flareRank")] string? FlareRank,

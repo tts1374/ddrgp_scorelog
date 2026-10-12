@@ -352,6 +352,8 @@
     <sys:String x:Key="バックアップを作成できませんでした。現在のデータは変更していません。{0}">Could not create the backup. Current data was not changed. {0}</sys:String>
     <sys:String x:Key="バックアップを復元できませんでした。現在のデータは変更していません。{0}">Could not restore the backup. Current data was not changed. {0}</sys:String>
     <sys:String x:Key="対応していない形式または壊れたバックアップです。">The backup format is unsupported or corrupted.</sys:String>
+    <sys:String x:Key="バックアップのプレー日時を確認できません。">The backup contains an invalid play timestamp.</sys:String>
+    <sys:String x:Key="バックアップの保存日時を確認できません。">The backup contains an invalid saved timestamp.</sys:String>
     <sys:String x:Key="保存済みデータの形式を確認できませんでした。">Could not verify the saved data format.</sys:String>
     <sys:String x:Key="保存済みデータを確認できませんでした。">Could not verify the saved data.</sys:String>
     <sys:String x:Key="ファイルのアクセス権を確認してください。">Check the file permissions.</sys:String>
