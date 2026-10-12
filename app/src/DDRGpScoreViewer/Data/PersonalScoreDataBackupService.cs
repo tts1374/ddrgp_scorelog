@@ -325,8 +325,8 @@ public sealed class PersonalScoreDataBackupService : IPersonalScoreDataBackupSer
         // The app-owned writer also stores invariant-culture calendar timestamps.
         // Require an explicit date, clock and offset so parsing never supplies a date.
         const string date = @"(?<date>[\s\S]+?)";
-        const string clock = @"[0-9]{1,2}(?::[0-9]{2}(?::[0-9]{2}(?:[.,][0-9]+)?)?)?(?:\s*[AP]\.?M\.?)?";
-        const string offset = @"(?:Z|[+-][0-9]{1,2}(?::?[0-9]{2})?)";
+        const string clock = @"[0-9]{1,2}(?::[0-9]{1,2}(?::[0-9]{1,2}(?:[.,][0-9]+)?)?)?(?:\s*[AP]\.?M\.?)?";
+        const string offset = @"(?:Z|GMT|[+-][0-9]{1,2}(?::[0-9]{1,2}|[0-9]{2})?)";
         const string separator = @"(?:T|\s+)";
         if (!DateTimeOffset.TryParse(
                 value,

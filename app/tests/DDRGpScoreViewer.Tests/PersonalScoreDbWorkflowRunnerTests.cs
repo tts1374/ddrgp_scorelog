@@ -63,6 +63,14 @@ public sealed class PersonalScoreDbWorkflowRunnerTests
     [InlineData(2, "08/01/2026 10: 00:00 +09:00")]
     [InlineData(1, "08 / 01 / 2026 10 : 00 : 00 +09:00")]
     [InlineData(2, "08 / 01 / 2026 10 : 00 : 00 +09:00")]
+    [InlineData(1, "08/01/2026 10:0:0+09:00")]
+    [InlineData(2, "08/01/2026 10:0:0+09:00")]
+    [InlineData(1, "08/01/2026 10: 0: 0 +9:0")]
+    [InlineData(2, "08/01/2026 10: 0: 0 +9:0")]
+    [InlineData(1, "08/01/2026 10:00:00+09:0")]
+    [InlineData(2, "08/01/2026 10:00:00+09:0")]
+    [InlineData(1, "10:00:00 2026-08-01 GMT")]
+    [InlineData(2, "10:00:00 2026-08-01 GMT")]
     public async Task App_writer_timestamp_forms_roundtrip_through_personal_backup(
         int version,
         string timestamp)
