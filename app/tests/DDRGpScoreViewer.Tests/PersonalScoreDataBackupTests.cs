@@ -186,9 +186,9 @@ public sealed class PersonalScoreDataBackupTests
         Assert.Equal(1L, CountRows(connection, "plays"));
     }
 
-    public static TheoryData<int, string, bool> InvalidRequiredPlayFields()
+    public static TheoryData<int, string, string?> InvalidRequiredPlayFields()
     {
-        var cases = new TheoryData<int, string, bool>();
+        var cases = new TheoryData<int, string, string?>();
         foreach (var version in new[] { 1, 2 })
         {
             foreach (var field in new[]
@@ -196,10 +196,25 @@ public sealed class PersonalScoreDataBackupTests
                 "score", "maxCombo", "marvelous", "perfect", "great", "good", "miss", "exScore",
             })
             {
-                cases.Add(version, field, true);
+                cases.Add(version, field, null);
             }
-            cases.Add(version, "playedAt", false);
-            cases.Add(version, "savedAt", false);
+            foreach (var field in new[] { "playedAt", "savedAt" })
+            {
+                foreach (var timestamp in new[]
+                {
+                    "invalid-timestamp",
+                    "2026-08-01",
+                    "10:00:00",
+                    "08/01/2026 10:00:00+09:00",
+                    "2026-08-01T10:00:00",
+                    "2026-02-30T10:00:00+09:00",
+                    "2026-08-01T10:00:00.Z",
+                })
+                {
+                    cases.Add(version, field, timestamp);
+                }
+            }
+            cases.Add(version, "playedAt", "2026-08-01 10:00:00");
         }
         return cases;
     }
@@ -209,7 +224,7 @@ public sealed class PersonalScoreDataBackupTests
     public void Missing_integer_or_invalid_timestamp_rejects_restore_before_database_changes(
         int version,
         string field,
-        bool removeField)
+        string? invalidTimestamp)
     {
         using var fixture = new DatabaseFixture();
         fixture.AddPlay("backup-play", "2026-08-01T10:00:00+09:00", 900_000, 1_000);
@@ -219,13 +234,13 @@ public sealed class PersonalScoreDataBackupTests
         var root = JsonNode.Parse(File.ReadAllText(backupPath))!.AsObject();
         root["formatVersion"] = version;
         var play = root["plays"]![0]!.AsObject();
-        if (removeField)
+        if (invalidTimestamp is null)
         {
             Assert.True(play.Remove(field));
         }
         else
         {
-            play[field] = "invalid-timestamp";
+            play[field] = invalidTimestamp;
         }
         WriteBackup(backupPath, root);
         fixture.AddPlay("current-play", "2026-08-02T10:00:00+09:00", 990_000, 1_300);
@@ -237,7 +252,7 @@ public sealed class PersonalScoreDataBackupTests
         Assert.False(result.Succeeded);
         Assert.Equal(0, result.PlayCount);
         Assert.Contains("現在のデータは変更していません。", result.Message, StringComparison.Ordinal);
-        if (!removeField)
+        if (invalidTimestamp is not null)
         {
             Assert.Contains(field == "playedAt" ? "プレー日時" : "保存日時", result.Message, StringComparison.Ordinal);
         }
@@ -253,6 +268,8 @@ public sealed class PersonalScoreDataBackupTests
     [InlineData(2, "2026-08-01T10:00:00+09:00", "2026-08-01 01:00:00")]
     [InlineData(1, "2026-08-01T01:00:00.1234567Z", "2026-08-01T10:00:00.1234567+09:00")]
     [InlineData(2, "2026-08-01T01:00:00.1234567Z", "2026-08-01T10:00:00.1234567+09:00")]
+    [InlineData(1, "2026-08-01T10:00:00.123456-04:00", "2026-08-01T14:00:00.1Z")]
+    [InlineData(2, "2026-08-01T10:00:00.123456-04:00", "2026-08-01T14:00:00.1Z")]
     public void Valid_restore_roundtrips_zero_null_and_supported_timestamps(
         int version,
         string playedAt,

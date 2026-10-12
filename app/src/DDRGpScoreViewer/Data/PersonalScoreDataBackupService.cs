@@ -4,6 +4,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 using DDRGpScoreViewer;
 using Microsoft.Data.Sqlite;
 
@@ -265,7 +266,7 @@ public sealed class PersonalScoreDataBackupService : IPersonalScoreDataBackupSer
     {
         RequireText(play.PlayId, "play_id", playIds);
         RequireTimestamp(play.PlayedAt, "プレー日時");
-        RequireTimestamp(play.SavedAt, "保存日時");
+        RequireTimestamp(play.SavedAt, "保存日時", allowSqliteUtc: true);
         RequireText(play.MasterVersion, "master_version");
         RequireText(play.SongId, "song_id");
         RequireText(play.ChartId, "chart_id");
@@ -303,13 +304,24 @@ public sealed class PersonalScoreDataBackupService : IPersonalScoreDataBackupSer
         }
     }
 
-    private static void RequireTimestamp(string? value, string field)
+    private static void RequireTimestamp(string? value, string field, bool allowSqliteUtc = false)
     {
-        if (!DateTimeOffset.TryParse(
+        var validTimestamp = value is not null &&
+            Regex.IsMatch(
+                value,
+                @"\A[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]{1,7})?(?:Z|[+-][0-9]{2}:[0-9]{2})\z") &&
+            DateTimeOffset.TryParse(
                 value,
                 CultureInfo.InvariantCulture,
-                DateTimeStyles.AllowWhiteSpaces | DateTimeStyles.AssumeUniversal,
-                out _))
+                DateTimeStyles.AssumeUniversal,
+                out _);
+        if (!validTimestamp &&
+            !(allowSqliteUtc && DateTimeOffset.TryParseExact(
+                value,
+                "yyyy-MM-dd HH:mm:ss",
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.AssumeUniversal,
+                out _)))
         {
             throw new InvalidDataException($"バックアップの{field}を確認できません。");
         }
