@@ -323,7 +323,8 @@ public sealed class PersonalScoreDataBackupService : IPersonalScoreDataBackupSer
     {
         if (value is null) return false;
         // The app-owned writer also stores invariant-culture calendar timestamps.
-        // Require an explicit date, clock and offset so parsing never supplies a date.
+        // Require a complete date and offset so parsing never supplies a date.
+        // The legacy writer accepts a missing clock as midnight; keep its raw value.
         const string date = @"(?<date>[\s\S]+?)";
         const string clock = @"[0-9]{1,2}(?::[0-9]{1,2}(?::[0-9]{1,2}(?:[.,][0-9]+)?)?)?(?:\s*[AP]\.?M\.?)?";
         const string offset = @"(?:Z|GMT|[+-][0-9]{1,2}(?::[0-9]{1,2}|[0-9]{2})?)";
@@ -348,6 +349,8 @@ public sealed class PersonalScoreDataBackupService : IPersonalScoreDataBackupSer
             date + @"\s*" + offset + separator + clock,
             offset + @"\s*" + date + separator + clock,
             offset + @"\s*" + clock + separator + date,
+            date + @"\s*" + offset,
+            offset + @"\s*" + date,
         })
         {
             var match = Regex.Match(candidate, @"\A\s*" + pattern + @"\s*\z",

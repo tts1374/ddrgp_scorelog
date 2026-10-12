@@ -56,7 +56,16 @@ production起動時はlatest GitHub Releaseのreference data setを確認する�
 
 データ管理画面の個人スコアデータバックアップは、固定score pathの現行正式schemaをread-onlyで検証した後、`plays`の履歴表示・自己ベスト算出に必要な値だけをUTF-8 BOMなし、LF、末尾改行のJSONへ出力する。形式は`ddrgp.personal-score-data`、現行`formatVersion=2`とし、バックアップのJSONには`plays`の個人プレー値、保存日時、正式ID、重複判定に必要な値、nullableな`ok` / `calories`だけを置く。旧`formatVersion=1`も復元入力として受け付け、両値は未取得の`NULL`として復元する。settings、master/catalog、jacket参照、source capture、解析ログ、診断ログは対象外であり、migration用SQLite backupとは別のファイル形式・保持契約である。
 
-v1/v2の復元入力の`playedAt`は、既存の正式保存が受け付ける日付・時刻とtimezoneを持つ日時として検証する。Python側のISO 8601日時はコロンなしoffset、7桁を超える小数秒、basic形式やISO週日付も保持し、復元側の日時型が表現できる形式だけに限定しない。アプリ側writerが保存するInvariantCultureの暦日形式（例: `08/01/2026 10:00:00+09:00`）も、日付の全要素・時刻・timezoneが明示された値を受け付ける。`savedAt`は同じtimezone付き日時に加え、SQLite `CURRENT_TIMESTAMP`由来のoffsetなし`yyyy-MM-dd HH:mm:ss`をUTCとして受け付ける。受け付けた日時文字列は変換せず復元する。
+v1/v2の復元入力の`playedAt` / `savedAt`は、既存のPython/C#正式保存経路が未変換で保存する有効な日時との互換性を維持する。日付・時刻・offsetの実在性を検証し、受け付けた文字列は正規化せず復元する。互換性対象は次のとおり。
+
+| 既存の保存経路 | 復元時に受け付ける日時 |
+| --- | --- |
+| Python正式writer | `datetime.fromisoformat`が受け付けるtimezone付きISO 8601。コロンなし・短縮・秒付きoffset、7桁を超える小数秒、comma区切り、basic形式、ISO週日付、日時区切りの違いも保持し、.NETの日時型の表現範囲だけに限定しない |
+| C# app-owned正式writer | InvariantCultureで解釈できる完全な暦日と明示的なtimezone。slash/dot暦日、英語月名、12時間表記、日付・時刻・offsetの並び順、内部空白、1桁の分・秒・offset分、GMT表記も受け付ける |
+| C# app-owned正式writerの時刻省略値 | `08/01/2026 +09:00`、`2026-08-01Z`など、完全な暦日とtimezoneがある値。旧writerが午前0時として受け付けた値との復元互換性を維持し、元の文字列を保持する |
+| SQLite保存日時 | `savedAt`だけは、`CURRENT_TIMESTAMP`由来のoffsetなし`yyyy-MM-dd HH:mm:ss`もUTCとして受け付ける |
+
+timezoneなしの`playedAt`、年月日不足により実行日などから補完される値、実在しない日付・時刻・offsetは拒否する。時刻省略の互換性は旧保存値の復元に限定し、今後の保存側の検証・正規化契約は別Issueで扱う。
 
 復元は選択ファイルをDBへ接続する前に形式、version、必須値、重複ID、正式schemaの制約に照らして検証する。未対応・破損・不正値はscore DBを変更せず拒否する。確認後の有効復元だけ、固定score pathの正式schemaを検証したSQLite transaction内で既存`plays`を置き換える。置換前の`analysis_logs`は旧playへの参照だけを切り離し、未解決を含むログと既存`source_captures`は保持する。バックアップに含めなかった取得元・解析情報は復元せず、既存schemaの外部キーを満たすための最小内部参照だけを復元したプレーごとにアプリが再構成する。insert件数をtransaction内で確認してからcommitし、失敗時はrollbackする。完了後は既存read-only repositoryで再読込し、履歴・自己ベストへ反映する。設定、master/catalog、既存のformal save workflow、Debug/Release境界は変更しない。
 
