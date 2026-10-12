@@ -337,6 +337,9 @@ public sealed class PersonalScoreDataBackupService : IPersonalScoreDataBackupSer
             return false;
         }
 
+        // Ignore permitted whitespace around punctuation only for the shape check.
+        // The original text has already been parsed and is still the restored value.
+        var candidate = Regex.Replace(value, @"\s*([:/.,+\-])\s*", "$1");
         foreach (var pattern in new[]
         {
             date + separator + clock + @"\s*" + offset,
@@ -347,7 +350,7 @@ public sealed class PersonalScoreDataBackupService : IPersonalScoreDataBackupSer
             offset + @"\s*" + clock + separator + date,
         })
         {
-            var match = Regex.Match(value, @"\A\s*" + pattern + @"\s*\z",
+            var match = Regex.Match(candidate, @"\A\s*" + pattern + @"\s*\z",
                 RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
             if (!match.Success) continue;
             var calendar = match.Groups["date"].Value;

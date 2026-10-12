@@ -306,6 +306,8 @@ public sealed class PersonalScoreDataBackupTests
                 "2026-08-01+09:00 10:00:00",
                 "+09:00 2026-08-01 10:00:00",
                 "+09:00 10:00:00 2026-08-01",
+                "08/01/2026 10: 00:00 +09:00",
+                "08 / 01 / 2026 10 : 00 : 00 +09:00",
             })
             {
                 cases.Add(version, timestamp, timestamp);
