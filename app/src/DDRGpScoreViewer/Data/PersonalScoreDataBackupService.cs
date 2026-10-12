@@ -385,7 +385,7 @@ public sealed class PersonalScoreDataBackupService : IPersonalScoreDataBackupSer
             value,
             @"\A(?<date>(?<year>[0-9]{4})(?:(?<dateSeparator>-?)(?<month>[0-9]{2})\k<dateSeparator>(?<day>[0-9]{2})|-W(?<week>[0-9]{2})(?:-(?<weekDay>[1-7])(?![0-9]))?|W(?<week>[0-9]{2})(?<weekDay>[1-7])?))" +
             @"(?:[\uD800-\uDBFF][\uDC00-\uDFFF]|[\s\S])" +
-            @"(?<hour>[0-9]{2})(?:(?<timeSeparator>:?)(?<minute>[0-9]{2})(?:\k<timeSeparator>(?<second>[0-9]{2}))?)?(?:[.,][0-9]+)?" +
+            @"(?<hour>[0-9]{2})(?:(?<timeSeparator>:?)(?<minute>[0-9]{2})(?:\k<timeSeparator>(?<second>[0-9]{2}))?)?(?:[.,][0-9]*)?" +
             @"(?:Z|[+-](?<offsetHour>[0-9]{2})(?:(?<offsetSeparator>:?)(?<offsetMinute>[0-9]{2})(?:\k<offsetSeparator>(?<offsetSecond>[0-9]{2}))?)?(?:[.,][0-9]+)?)\z");
         if (!match.Success) return false;
 
@@ -421,6 +421,7 @@ public sealed class PersonalScoreDataBackupService : IPersonalScoreDataBackupSer
             return false;
         }
 
+        // The Python writer accepts an empty clock fraction before the timezone.
         // Python permits normalized offset components; the total must be below 24 hours.
         var offsetSeconds = Part("offsetHour") * 3600 + Part("offsetMinute") * 60 + Part("offsetSecond");
         return Part("hour") < 24 && Part("minute") < 60 && Part("second") < 60 && offsetSeconds < 86400;

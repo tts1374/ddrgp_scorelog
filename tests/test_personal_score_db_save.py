@@ -135,6 +135,14 @@ def test_personal_score_db_save_input_accepts_resolved_formal_values() -> None:
         "2026W316T1000+09",
         "2026-W31T10+09",
         "2026-08-01T10:00:00+09:99",
+        "2026-08-01T10:00:00.Z",
+        "2026-08-01T10:00:00,Z",
+        "2026-08-01T10:00:00.+09:00",
+        "2026-08-01T10:00:00,+0900",
+        "2026-08-01T10.+09",
+        "2026-08-01T10:00,+09:00:01",
+        "20260801T100000.Z",
+        "2026-W31-6T10:00:00,+09:00",
     ],
 )
 def test_formal_timestamp_forms_are_stored_unchanged_for_backup(timestamp: str) -> None:
