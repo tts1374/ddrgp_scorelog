@@ -60,7 +60,8 @@ v1/v2の復元入力の`playedAt` / `savedAt`は、既存のPython/C#正式保�
 
 | 既存の保存経路 | 復元時に受け付ける日時 |
 | --- | --- |
-| Python正式writer | 末尾の`Z`を`+00:00`へ置き換えて`datetime.fromisoformat`で検証を通すtimezone付き日時。コロンなし・短縮・秒付きoffset、7桁を超える小数秒、comma区切り、basic形式、ISO週日付、日時区切りの違いに加え、timezone直前の空の小数部（例: `2026-08-01T10:00:00.Z`）も保持し、.NETの日時型の表現範囲だけに限定しない |
+| Python正式writer | 末尾の`Z`を`+00:00`へ置き換えて`datetime.fromisoformat`で検証を通すtimezone付き日時。コロンなし・短縮・秒付きoffset、7桁を超える小数秒、comma区切り、basic形式、ISO週日付、日時区切りの違いを保持し、.NETの日時型の表現範囲だけに限定しない |
+| 旧Python正式writerの空の小数部 | Python 3.13.5で保存できるtimezone直前の空の小数部（例: `2026-08-01T10:00:00.Z`）も元の文字列で復元する。[CPythonのパーサー修正](https://github.com/python/cpython/issues/152157)後の3.13.16は同じ入力を拒否するが、新しいwriterの受理範囲を旧バックアップの復元条件にしない |
 | C# app-owned正式writer | InvariantCultureで解釈できる完全な暦日と明示的なtimezone。slash/dot暦日、英語月名、12時間表記、日付・時刻・offsetの並び順、内部空白、1桁の分・秒・offset分、GMT表記も受け付ける |
 | C# app-owned正式writerの時刻省略値 | `08/01/2026 +09:00`、`2026-08-01Z`など、完全な暦日とtimezoneがある値。旧writerが午前0時として受け付けた値との復元互換性を維持し、元の文字列を保持する |
 | SQLite保存日時 | `savedAt`だけは、`CURRENT_TIMESTAMP`由来のoffsetなし`yyyy-MM-dd HH:mm:ss`もUTCとして受け付ける |

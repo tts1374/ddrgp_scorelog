@@ -277,7 +277,7 @@ public sealed class PersonalScoreDataBackupTests
         Assert.Equal(1L, CountRows(connection, "analysis_logs"));
     }
 
-    public static TheoryData<int, string, string> FormalWriterTimestampForms()
+    public static TheoryData<int, string, string> SavedTimestampCompatibilityForms()
     {
         var cases = new TheoryData<int, string, string>();
         foreach (var version in new[] { 1, 2 })
@@ -302,6 +302,7 @@ public sealed class PersonalScoreDataBackupTests
                 "2026W316T1000+09",
                 "2026-W31T10+09",
                 "2026-08-01T10:00:00+09:99",
+                // Python 3.13.5 stored these; later parser fixes must not strand old backups.
                 "2026-08-01T10:00:00.Z",
                 "2026-08-01T10:00:00,Z",
                 "2026-08-01T10:00:00.+09:00",
@@ -341,7 +342,7 @@ public sealed class PersonalScoreDataBackupTests
     }
 
     [Theory]
-    [MemberData(nameof(FormalWriterTimestampForms))]
+    [MemberData(nameof(SavedTimestampCompatibilityForms))]
     [InlineData(1, "2026-08-01T10:00:00+09:00", "2026-08-01 01:00:00")]
     [InlineData(2, "2026-08-01T10:00:00+09:00", "2026-08-01 01:00:00")]
     [InlineData(1, "2026-08-01T01:00:00.1234567Z", "2026-08-01T10:00:00.1234567+09:00")]
