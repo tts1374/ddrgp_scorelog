@@ -209,6 +209,11 @@ public sealed class PersonalScoreDataBackupTests
                     "2026-08-01T10:00:00",
                     "2026-02-30T10:00:00+09:00",
                     "2026-08-01T10:00:00.Z",
+                    "20260230T100000+0900",
+                    "2025-W53-1T10:00+09",
+                    "20260801T250000+0900",
+                    "2026-08-01T10:00:00+24:00",
+                    "2026-W31-250000+09",
                 })
                 {
                     cases.Add(version, field, timestamp);
@@ -263,7 +268,41 @@ public sealed class PersonalScoreDataBackupTests
         Assert.Equal(1L, CountRows(connection, "analysis_logs"));
     }
 
+    public static TheoryData<int, string, string> FormalWriterTimestampForms()
+    {
+        var cases = new TheoryData<int, string, string>();
+        foreach (var version in new[] { 1, 2 })
+        {
+            foreach (var timestamp in new[]
+            {
+                "2026-08-01T10:00:00+0900",
+                "2026-08-01T10:00:00.123456789+09:00",
+                "2026-08-01T10:00:00.123456789Z",
+                "2026-08-01 10:00:00+0900",
+                "2026-08-01T10:00:00+09",
+                "2026-08-01T10:00+09:00",
+                "2026-08-01T10:00:00,123456-0400",
+                "20260801T100000+0900",
+                "2026-W31-6T10:00:00+09:00",
+                "2026-08-01T10:00:00+090001",
+                "2026-08-01T10:00:00+15:00",
+                "2026-08-01T10:00:00+09:00:00.5",
+                "2026-08-01T10+09",
+                "2026-08-01X10:00:00+09:00",
+                "2026-08-01🎮10:00:00+09:00",
+                "2026W316T1000+09",
+                "2026-W31T10+09",
+                "2026-08-01T10:00:00+09:99",
+            })
+            {
+                cases.Add(version, timestamp, timestamp);
+            }
+        }
+        return cases;
+    }
+
     [Theory]
+    [MemberData(nameof(FormalWriterTimestampForms))]
     [InlineData(1, "2026-08-01T10:00:00+09:00", "2026-08-01 01:00:00")]
     [InlineData(2, "2026-08-01T10:00:00+09:00", "2026-08-01 01:00:00")]
     [InlineData(1, "2026-08-01T01:00:00.1234567Z", "2026-08-01T10:00:00.1234567+09:00")]

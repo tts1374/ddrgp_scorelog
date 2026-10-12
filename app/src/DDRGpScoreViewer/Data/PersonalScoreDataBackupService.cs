@@ -306,15 +306,7 @@ public sealed class PersonalScoreDataBackupService : IPersonalScoreDataBackupSer
 
     private static void RequireTimestamp(string? value, string field, bool allowSqliteUtc = false)
     {
-        var validTimestamp = value is not null &&
-            Regex.IsMatch(
-                value,
-                @"\A[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]{1,7})?(?:Z|[+-][0-9]{2}:[0-9]{2})\z") &&
-            DateTimeOffset.TryParse(
-                value,
-                CultureInfo.InvariantCulture,
-                DateTimeStyles.AssumeUniversal,
-                out _);
+        var validTimestamp = IsFormalTimestamp(value);
         if (!validTimestamp &&
             !(allowSqliteUtc && DateTimeOffset.TryParseExact(
                 value,
@@ -325,6 +317,56 @@ public sealed class PersonalScoreDataBackupService : IPersonalScoreDataBackupSer
         {
             throw new InvalidDataException($"バックアップの{field}を確認できません。");
         }
+    }
+
+    private static bool IsFormalTimestamp(string? value)
+    {
+        if (value is null) return false;
+        // Match the ISO forms accepted by Python's formal writer without imposing
+        // DateTimeOffset's fractional precision or +/-14-hour offset limits.
+        var match = Regex.Match(
+            value,
+            @"\A(?<date>(?<year>[0-9]{4})(?:(?<dateSeparator>-?)(?<month>[0-9]{2})\k<dateSeparator>(?<day>[0-9]{2})|-W(?<week>[0-9]{2})(?:-(?<weekDay>[1-7])(?![0-9]))?|W(?<week>[0-9]{2})(?<weekDay>[1-7])?))" +
+            @"(?:[\uD800-\uDBFF][\uDC00-\uDFFF]|[\s\S])" +
+            @"(?<hour>[0-9]{2})(?:(?<timeSeparator>:?)(?<minute>[0-9]{2})(?:\k<timeSeparator>(?<second>[0-9]{2}))?)?(?:[.,][0-9]+)?" +
+            @"(?:Z|[+-](?<offsetHour>[0-9]{2})(?:(?<offsetSeparator>:?)(?<offsetMinute>[0-9]{2})(?:\k<offsetSeparator>(?<offsetSecond>[0-9]{2}))?)?(?:[.,][0-9]+)?)\z");
+        if (!match.Success) return false;
+
+        int Part(string name) => match.Groups[name].Success
+            ? int.Parse(match.Groups[name].Value, CultureInfo.InvariantCulture)
+            : 0;
+
+        if (match.Groups["week"].Success)
+        {
+            var year = Part("year");
+            var week = Part("week");
+            if (year is < 1 or > 9999 || week < 1 || week > ISOWeek.GetWeeksInYear(year))
+            {
+                return false;
+            }
+            var day = match.Groups["weekDay"].Success ? Part("weekDay") : 1;
+            try
+            {
+                _ = ISOWeek.ToDateTime(year, week, (DayOfWeek)(day % 7));
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                return false;
+            }
+        }
+        else if (!DateOnly.TryParseExact(
+            match.Groups["date"].Value,
+            new[] { "yyyy-MM-dd", "yyyyMMdd" },
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.None,
+            out _))
+        {
+            return false;
+        }
+
+        // Python permits normalized offset components; the total must be below 24 hours.
+        var offsetSeconds = Part("offsetHour") * 3600 + Part("offsetMinute") * 60 + Part("offsetSecond");
+        return Part("hour") < 24 && Part("minute") < 60 && Part("second") < 60 && offsetSeconds < 86400;
     }
 
     private static void RequireText(
