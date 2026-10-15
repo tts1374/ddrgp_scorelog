@@ -1,8 +1,10 @@
+using System.Globalization;
 using System.IO;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 using DDRGpScoreViewer;
 using Microsoft.Data.Sqlite;
 
@@ -263,8 +265,8 @@ public sealed class PersonalScoreDataBackupService : IPersonalScoreDataBackupSer
         ISet<string> duplicateKeys)
     {
         RequireText(play.PlayId, "play_id", playIds);
-        RequireText(play.PlayedAt, "played_at");
-        RequireText(play.SavedAt, "created_at");
+        RequireTimestamp(play.PlayedAt, "プレー日時");
+        RequireTimestamp(play.SavedAt, "保存日時", allowSqliteUtc: true);
         RequireText(play.MasterVersion, "master_version");
         RequireText(play.SongId, "song_id");
         RequireText(play.ChartId, "chart_id");
@@ -300,6 +302,129 @@ public sealed class PersonalScoreDataBackupService : IPersonalScoreDataBackupSer
         {
             throw new InvalidDataException("バックアップの消費カロリーを確認できません。");
         }
+    }
+
+    private static void RequireTimestamp(string? value, string field, bool allowSqliteUtc = false)
+    {
+        var validTimestamp = IsFormalTimestamp(value) || IsAppWriterTimestamp(value);
+        if (!validTimestamp &&
+            !(allowSqliteUtc && DateTimeOffset.TryParseExact(
+                value,
+                "yyyy-MM-dd HH:mm:ss",
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.AssumeUniversal,
+                out _)))
+        {
+            throw new InvalidDataException($"バックアップの{field}を確認できません。");
+        }
+    }
+
+    private static bool IsAppWriterTimestamp(string? value)
+    {
+        if (value is null) return false;
+        // The app-owned writer also stores invariant-culture calendar timestamps.
+        // Require a complete date and offset so parsing never supplies a date.
+        // The legacy writer accepts a missing clock as midnight; keep its raw value.
+        const string date = @"(?<date>[\s\S]+?)";
+        const string clock = @"[0-9]{1,2}(?::[0-9]{1,2}(?::[0-9]{1,2}(?:[.,][0-9]+)?)?)?(?:\s*[AP]\.?M\.?)?";
+        const string offset = @"(?:Z|GMT|[+-][0-9]{1,2}(?::[0-9]{1,2}|[0-9]{2})?)";
+        const string separator = @"(?:T|\s+)";
+        if (!DateTimeOffset.TryParse(
+                value,
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.RoundtripKind,
+                out var timestamp))
+        {
+            return false;
+        }
+
+        // Ignore permitted whitespace around punctuation only for the shape check.
+        // The original text has already been parsed and is still the restored value.
+        var candidate = Regex.Replace(value, @"\s*([:/.,+\-])\s*", "$1");
+        foreach (var pattern in new[]
+        {
+            date + separator + clock + @"\s*" + offset,
+            clock + separator + date + @"\s*" + offset,
+            clock + @"\s*" + offset + separator + date,
+            date + @"\s*" + offset + separator + clock,
+            offset + @"\s*" + date + separator + clock,
+            offset + @"\s*" + clock + separator + date,
+            date + @"\s*" + offset,
+            offset + @"\s*" + date,
+        })
+        {
+            var match = Regex.Match(candidate, @"\A\s*" + pattern + @"\s*\z",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            if (!match.Success) continue;
+            var calendar = match.Groups["date"].Value;
+            if (!DateTime.TryParse(calendar, CultureInfo.InvariantCulture,
+                    DateTimeStyles.NoCurrentDateDefault | DateTimeStyles.RoundtripKind, out var parsedDate) ||
+                parsedDate.Kind != DateTimeKind.Unspecified || parsedDate.TimeOfDay != TimeSpan.Zero ||
+                parsedDate.Date != timestamp.Date)
+            {
+                continue;
+            }
+            var dateNumbers = Regex.Matches(calendar, "[0-9]+").Count;
+            var format = CultureInfo.InvariantCulture.DateTimeFormat;
+            if (dateNumbers == 3 ||
+                (dateNumbers == 2 && format.MonthNames.Concat(format.AbbreviatedMonthNames)
+                    .Any(month => month.Length > 0 && calendar.Contains(month, StringComparison.OrdinalIgnoreCase))))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static bool IsFormalTimestamp(string? value)
+    {
+        if (value is null) return false;
+        // Match the ISO forms accepted by Python's formal writer without imposing
+        // DateTimeOffset's fractional precision or +/-14-hour offset limits.
+        var match = Regex.Match(
+            value,
+            @"\A(?<date>(?<year>[0-9]{4})(?:(?<dateSeparator>-?)(?<month>[0-9]{2})\k<dateSeparator>(?<day>[0-9]{2})|-W(?<week>[0-9]{2})(?:-(?<weekDay>[1-7])(?![0-9]))?|W(?<week>[0-9]{2})(?<weekDay>[1-7])?))" +
+            @"(?:[\uD800-\uDBFF][\uDC00-\uDFFF]|[\s\S])" +
+            @"(?<hour>[0-9]{2})(?:(?<timeSeparator>:?)(?<minute>[0-9]{2})(?:\k<timeSeparator>(?<second>[0-9]{2}))?)?(?:[.,][0-9]*)?" +
+            @"(?:Z|[+-](?<offsetHour>[0-9]{2})(?:(?<offsetSeparator>:?)(?<offsetMinute>[0-9]{2})(?:\k<offsetSeparator>(?<offsetSecond>[0-9]{2}))?)?(?:[.,][0-9]+)?)\z");
+        if (!match.Success) return false;
+
+        int Part(string name) => match.Groups[name].Success
+            ? int.Parse(match.Groups[name].Value, CultureInfo.InvariantCulture)
+            : 0;
+
+        if (match.Groups["week"].Success)
+        {
+            var year = Part("year");
+            var week = Part("week");
+            if (year is < 1 or > 9999 || week < 1 || week > ISOWeek.GetWeeksInYear(year))
+            {
+                return false;
+            }
+            var day = match.Groups["weekDay"].Success ? Part("weekDay") : 1;
+            try
+            {
+                _ = ISOWeek.ToDateTime(year, week, (DayOfWeek)(day % 7));
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                return false;
+            }
+        }
+        else if (!DateOnly.TryParseExact(
+            match.Groups["date"].Value,
+            new[] { "yyyy-MM-dd", "yyyyMMdd" },
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.None,
+            out _))
+        {
+            return false;
+        }
+
+        // The Python writer accepts an empty clock fraction before the timezone.
+        // Python permits normalized offset components; the total must be below 24 hours.
+        var offsetSeconds = Part("offsetHour") * 3600 + Part("offsetMinute") * 60 + Part("offsetSecond");
+        return Part("hour") < 24 && Part("minute") < 60 && Part("second") < 60 && offsetSeconds < 86400;
     }
 
     private static void RequireText(
@@ -418,6 +543,10 @@ public sealed class PersonalScoreDataBackupService : IPersonalScoreDataBackupSer
 
     private static string ToUserMessage(Exception exception) => exception switch
     {
+        InvalidDataException when exception.Message is
+            "バックアップのプレー日時を確認できません。" or
+            "バックアップの保存日時を確認できません。" =>
+            Localization.Get(exception.Message),
         JsonException or InvalidDataException =>
             Localization.Get("対応していない形式または壊れたバックアップです。"),
         ViewerDatabaseException =>
@@ -475,14 +604,14 @@ public sealed class PersonalScoreDataBackupService : IPersonalScoreDataBackupSer
         [property: JsonPropertyName("masterVersion")] string MasterVersion,
         [property: JsonPropertyName("songId")] string SongId,
         [property: JsonPropertyName("chartId")] string ChartId,
-        [property: JsonPropertyName("score")] int Score,
-        [property: JsonPropertyName("maxCombo")] int MaxCombo,
-        [property: JsonPropertyName("marvelous")] int Marvelous,
-        [property: JsonPropertyName("perfect")] int Perfect,
-        [property: JsonPropertyName("great")] int Great,
-        [property: JsonPropertyName("good")] int Good,
-        [property: JsonPropertyName("miss")] int Miss,
-        [property: JsonPropertyName("exScore")] int ExScore,
+        [property: JsonPropertyName("score"), JsonRequired] int Score,
+        [property: JsonPropertyName("maxCombo"), JsonRequired] int MaxCombo,
+        [property: JsonPropertyName("marvelous"), JsonRequired] int Marvelous,
+        [property: JsonPropertyName("perfect"), JsonRequired] int Perfect,
+        [property: JsonPropertyName("great"), JsonRequired] int Great,
+        [property: JsonPropertyName("good"), JsonRequired] int Good,
+        [property: JsonPropertyName("miss"), JsonRequired] int Miss,
+        [property: JsonPropertyName("exScore"), JsonRequired] int ExScore,
         [property: JsonPropertyName("rank")] string Rank,
         [property: JsonPropertyName("clearType")] string ClearType,
         [property: JsonPropertyName("flareRank")] string? FlareRank,

@@ -115,6 +115,45 @@ def test_personal_score_db_save_input_accepts_resolved_formal_values() -> None:
 
 
 @pytest.mark.parametrize(
+    "timestamp",
+    [
+        "2026-08-01T10:00:00+0900",
+        "2026-08-01T10:00:00.123456789+09:00",
+        "2026-08-01T10:00:00.123456789Z",
+        "2026-08-01 10:00:00+0900",
+        "2026-08-01T10:00:00+09",
+        "2026-08-01T10:00+09:00",
+        "2026-08-01T10:00:00,123456-0400",
+        "20260801T100000+0900",
+        "2026-W31-6T10:00:00+09:00",
+        "2026-08-01T10:00:00+090001",
+        "2026-08-01T10:00:00+15:00",
+        "2026-08-01T10:00:00+09:00:00.5",
+        "2026-08-01T10+09",
+        "2026-08-01X10:00:00+09:00",
+        "2026-08-01🎮10:00:00+09:00",
+        "2026W316T1000+09",
+        "2026-W31T10+09",
+        "2026-08-01T10:00:00+09:99",
+    ],
+)
+def test_formal_timestamp_forms_are_stored_unchanged_for_backup(timestamp: str) -> None:
+    save_input = saved_input()
+    assert save_input.play is not None
+    save_input = replace(
+        save_input,
+        source_capture=replace(save_input.source_capture, captured_at=timestamp),
+        play=replace(save_input.play, played_at=timestamp),
+    )
+    with sqlite3.connect(":memory:") as connection:
+        score_save.write_personal_score_db_save(connection, save_input)
+        assert connection.execute("SELECT played_at FROM plays").fetchone() == (timestamp,)
+        assert connection.execute("SELECT captured_at FROM source_captures").fetchone() == (
+            timestamp,
+        )
+
+
+@pytest.mark.parametrize(
     ("ok", "calories"),
     [(21, 28.6), (21, None), (None, 28.6), (None, None)],
 )
