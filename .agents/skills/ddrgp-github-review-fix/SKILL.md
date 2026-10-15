@@ -45,14 +45,16 @@ flat comment一覧だけでthread状態を推測しない。
 
 ## Fix And Validate
 
+既存データの受理条件を狭める場合や入出力境界の拒否testの期待値を決める場合は、修正前に[Issue実装Skillの契約確認](../ddrgp-implement-github-issue/SKILL.md#1-resolve-the-contract)を行う。
+
 - Issue契約内のactionable指摘をすべて修正する。
-- P0/P1/P2を修正した場合は、同じ原因で発生しうる近接コードを変更責務の範囲内で検索し、同種不具合の有無を確認する。
+- P0/P1/P2を修正した場合は、同じ原因で発生しうる近接コードを変更責務の範囲内で検索し、同種不具合の有無を確認する。同じ契約不一致が原因の互換性指摘が続くと確認した場合は、追加の個別分岐を編集する前に上記の対応表・契約照合・往復検証へ戻る。レビュー件数だけを理由に停止しない。
 - 指摘ごとに回帰testを追加するか、既存testで再現性を示す。
 - docs-only指摘では、関連contract、link、実装との整合を検証する。
 - 公開契約、運用手順、設計判断へ影響しない場合は不要なdocs変更を作らない。
 - 対象test、影響範囲test、Ruff、構文検査、`git diff --check`を実行する。
 - 既存failureは今回差分との関係を確認し、無関係なら変更せず報告する。
-- 修正・検証が一巡したら、[Issue実装SkillのCycle Retrospective](../ddrgp-implement-github-issue/SKILL.md#7-cycle-retrospective)を行う。結果は後述の報告へ含め、Skill更新候補だけを理由に今回指摘外の変更や追加公開操作を行わない。
+- 修正・検証の結果を報告する直前に、[Issue実装SkillのCycle Retrospective](../ddrgp-implement-github-issue/SKILL.md#7-cycle-retrospective)を行う。結果は後述の報告へ含め、Skill更新候補だけを理由に今回指摘外の変更や追加公開操作を行わない。
 
 ## Commit And Push
 
@@ -83,6 +85,8 @@ top-level commentを1件だけ投稿し、次を記載する。
 - full commit SHA
 
 自動で`@codex review`を依頼しない。再Reviewはユーザーが明示した場合だけ行う。
+
+レビュー完了までの追跡も依頼されている場合は、[Issue実装SkillのReview Follow-up](../ddrgp-implement-github-issue/SKILL.md#review-follow-up)へ引き継ぐ。
 
 同じfull SHAの有効markerが既にあれば再投稿しない。投稿結果が不明な場合はconversationを再取得し、有効markerがないことを確認できた場合だけ1回再試行する。
 
