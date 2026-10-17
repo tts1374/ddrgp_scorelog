@@ -56,21 +56,42 @@ production起動時はlatest GitHub Releaseのreference data setを確認する�
 
 データ管理画面の個人スコアデータバックアップは、固定score pathの現行正式schemaをread-onlyで検証した後、`plays`の履歴表示・自己ベスト算出に必要な値だけをUTF-8 BOMなし、LF、末尾改行のJSONへ出力する。形式は`ddrgp.personal-score-data`、現行`formatVersion=2`とし、バックアップのJSONには`plays`の個人プレー値、保存日時、正式ID、重複判定に必要な値、nullableな`ok` / `calories`だけを置く。旧`formatVersion=1`も復元入力として受け付け、両値は未取得の`NULL`として復元する。settings、master/catalog、jacket参照、source capture、解析ログ、診断ログは対象外であり、migration用SQLite backupとは別のファイル形式・保持契約である。
 
-v1/v2の復元入力の`playedAt` / `savedAt`は、既存のPython/C#正式保存経路が未変換で保存する有効な日時との互換性を維持する。日付・時刻・offsetの実在性を検証し、受け付けた文字列は正規化せず復元する。互換性対象は次のとおり。
-
-| 既存の保存経路 | 復元時に受け付ける日時 |
-| --- | --- |
-| Python正式writer | 末尾の`Z`を`+00:00`へ置き換えて`datetime.fromisoformat`で検証を通すtimezone付き日時。コロンなし・短縮・秒付きoffset、7桁を超える小数秒、comma区切り、basic形式、ISO週日付、日時区切りの違いを保持し、.NETの日時型の表現範囲だけに限定しない |
-| 旧Python正式writerの空の小数部 | Python 3.13.5で保存できるtimezone直前の空の小数部（例: `2026-08-01T10:00:00.Z`）も元の文字列で復元する。[CPythonのパーサー修正](https://github.com/python/cpython/issues/152157)後の3.13.16は同じ入力を拒否するが、新しいwriterの受理範囲を旧バックアップの復元条件にしない |
-| C# app-owned正式writer | InvariantCultureで解釈できる完全な暦日と明示的なtimezone。slash/dot暦日、英語月名、12時間表記、日付・時刻・offsetの並び順、内部空白、1桁の分・秒・offset分、GMT表記も受け付ける |
-| C# app-owned正式writerの時刻省略値 | `08/01/2026 +09:00`、`2026-08-01Z`など、完全な暦日とtimezoneがある値。旧writerが午前0時として受け付けた値との復元互換性を維持し、元の文字列を保持する |
-| SQLite保存日時 | `savedAt`だけは、`CURRENT_TIMESTAMP`由来のoffsetなし`yyyy-MM-dd HH:mm:ss`もUTCとして受け付ける |
-
-timezoneなしの`playedAt`、年月日不足により実行日などから補完される値、実在しない日付・時刻・offsetは拒否する。時刻省略の互換性は旧保存値の復元に限定し、今後の保存側の検証・正規化契約は別Issueで扱う。
+v1/v2の復元日時は、[正式保存日時の契約](#formal-timestamps)に定義する通常のISO日時と、`savedAt`だけに認めるSQLite UTC保存日時を互換対象とする。受理した`playedAt` / `savedAt`は原文のまま復元する。この受理範囲はIssue #238で確定した後続実装契約であり、現行readerはPR #237の広い互換判定をまだ持つ。現行実装と後続の期待値は[検証表](10_personal_score_db_schema.md#formal-timestamp-validation)で区別する。
 
 復元は選択ファイルをDBへ接続する前に形式、version、必須値、重複ID、正式schemaの制約に照らして検証する。未対応・破損・不正値はscore DBを変更せず拒否する。確認後の有効復元だけ、固定score pathの正式schemaを検証したSQLite transaction内で既存`plays`を置き換える。置換前の`analysis_logs`は旧playへの参照だけを切り離し、未解決を含むログと既存`source_captures`は保持する。バックアップに含めなかった取得元・解析情報は復元せず、既存schemaの外部キーを満たすための最小内部参照だけを復元したプレーごとにアプリが再構成する。insert件数をtransaction内で確認してからcommitし、失敗時はrollbackする。完了後は既存read-only repositoryで再読込し、履歴・自己ベストへ反映する。設定、master/catalog、既存のformal save workflow、Debug/Release境界は変更しない。
 
 バックアップ作成・復元はデータ管理画面からのみ明示実行し、任意DB pathの読み込み、DB path変更、CSV/export、外部入力、repair、migration、自動実行を追加しない。保存・監視・更新・終了処理中は操作を開始しない。作成先は既存のユーザー選択directoryに限り、途中ファイルを残さず公開する。
+
+<a id="formal-timestamps"></a>
+
+### 正式保存日時の契約（Issue #238・後続実装）
+
+この節は[Issue #238](https://github.com/tts1374/ddrgp_scorelog/issues/238)で確定した入力・保存・互換性の正本である。writer、reader、日時順query・表示のコード適用は後続作業とし、この仕様同期だけで正規化や受理範囲の変更が実装済みとは扱わない。decisionの理由は[ADR 0014](../adr/0014-formal-timestamps-and-bounded-compatibility.md)に記録する。
+
+通常のISO日時は、ASCIIの`YYYY-MM-DDTHH:mm:ss[.小数秒](Z|±HH:MM)`だけとする。`[]`は任意部分、`|`は選択を表し、実文字ではない。
+
+- 暦日は年0001〜9999の実在するGregorian暦日。時刻は00:00:00〜23:59:59で、日付・秒までの時刻・timezoneをすべて明示する。
+- 日時区切りは大文字`T`、UTCは大文字`Z`、数値offsetは分単位の`±HH:MM`。offset分は00〜59、絶対値は14:00以下とし、14時の分は00だけ。UTC換算後も年0001〜9999に収まることを要求する。
+- 小数部は省略、または`.`に続く1〜7桁。7桁を超える入力は末尾0でも拒否し、切捨て・丸めで受理しない。空の小数部、comma、前後・内部空白は受理しない。
+- 不足要素を実行日・端末timezone・現在時刻で補完しない。非実在日付、24時、うるう秒、範囲外offsetも拒否する。
+
+| 項目・入口 | 受理条件 | 保存・復元値と役割 |
+| --- | --- | --- |
+| 新規正式保存の`plays.played_at` | 通常のISO日時 | リザルト確定時刻。同じ時点のUTCへ変換し、`yyyy-MM-ddTHH:mm:ss.fffffffZ`で保存 |
+| 新規正式保存の`source_captures.captured_at` | 通常のISO日時。playなしの保存でも検証 | 元フレーム取得時刻。同じcanonicalへ正規化。取得時刻と保存時刻を同一視しない |
+| `plays` / `source_captures` / `analysis_logs`の新規`created_at` | writer入力として受け取らず、既存SQLite `CURRENT_TIMESTAMP`で生成 | `yyyy-MM-dd HH:mm:ss`、offsetなしUTC、秒精度を維持する明示例外 |
+| v1/v2の`playedAt` | 通常のISO日時 | offsetと小数桁数を含め原文復元。新規保存のcanonical表記を強制しない |
+| v1/v2の`savedAt` | 通常のISO日時、または実在する`yyyy-MM-dd HH:mm:ss` | 原文を`plays.created_at`へ復元。SQLite形式だけはoffsetなしをUTCとして扱う |
+| 復元で再構成するsource capture | 検証済み`playedAt`を使用 | `captured_at`はその原文、`created_at`は今回のSQLite生成日時。過去の取得元情報を復元したとは扱わない |
+| backup最上位の`createdAt` | 既存のbackup metadata契約を維持 | backup作成日時。playの`savedAt`や新規正式writer入力と分け、現在のUTC `O`形式の生成とreaderを変更しない |
+
+新規保存はPython/C#の両方で同じ受理条件・canonical値とする。小数秒なしは`.0000000`、短い小数部は末尾0で7桁にそろえる。7桁目をPythonのmicrosecond変換で失わず、時点を保持してUTC化する。OSのcapture UTCや元ファイル最終更新UTCは明示的な時刻sourceとして使える。manifest等の外部文字列は日時型への変換・`O`形式への再出力より前に検査し、補完や精度変換で元の不正を隠さない。解析だけに使う最小manifest契約は維持し、時刻不足のmanifestを正式保存へ昇格させない。
+
+復元互換性の保証範囲は上表に限定する。範囲外の日時を含むbackupは全体をDB変更前に拒否し、一部playだけ復元しない。既存DBの値を一括変換・削除せず、schemaやbackup format versionを変更しない。保証範囲外の既存値について、現在の原文表示等を完全な日時解釈と扱わず、推測補完や新しい形式別対応を追加しない。
+
+新規保存の不正日時はDBの新規作成・準備・transaction変更前に拒否し、既存の未解決・不正入力結果と理由へ接続する。理由で対象fieldと不足・形式不正・範囲/精度超過を確認でき、`written=false`を保存成功にしない。直接writerの検証例外もDB変更前とする。復元失敗は既存の「現在のデータは変更していません」と日時項目の理由を返す。既存transaction、duplicate、source capture / analysis logの保持契約を維持する。
+
+日時順query・表示は、保証対象の旧ISO値、新canonical、SQLite保存日時が混在しても同じ時点として解釈する。小数秒7桁の時点比較を保ち、同一時点のtie breakだけを安定IDで行う。対象は最近履歴、譜面別最終プレー、Bestの時刻tie break、過去Best差分、当日集計、グラフ・FLARE等の時刻比較、最終保存日時である。`julianday`のミリ秒精度や文字列`MAX(created_at)`だけを正確な時点比較の根拠にしない。表示は既存の端末ローカル時刻への変換と秒・分の表示粒度を維持し、表示上の桁省略と保存精度の変更を分ける。年の端点でローカル変換が表現範囲を超える場合は、時刻を丸めずtimezone付きISOの原文を表示する。query・表示実装の方式やindex変更はこの契約確定に含めない。
 
 ### 二つのmaster DBのread-only inspection
 

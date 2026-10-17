@@ -21,6 +21,7 @@
 | [`0011`](0011-web-account-registration-and-management.md) | Superseded by ADR 0012 | 未リリースの単一App入口、Google必須Web登録/管理、全Playerの歴代Best同期と独立PC権限移行 | Web登録/ログイン、マイプロフィール/削除、App Credential、Web Best |
 | [`0012`](0012-purpose-bound-google-identity-confirmation.md) | Accepted | Google identity再確認と本サービスの短期操作許可を分離し、Web登録/管理・独立PC権限移行・歴代Best境界を継承 | purpose-bound OAuth、Web操作proof、App proof、アカウント削除 |
 | [`0013`](0013-song-ac-history-reference-data.md) | Accepted | 曲版のAC収録歴を共有参照データで管理し、既存playを再集計する | マスタ更新、アプリ／Web FLARE SKILL |
+| [`0014`](0014-formal-timestamps-and-bounded-compatibility.md) | Accepted | 新規プレー・取得日時をUTC正規化し、通常ISO・SQLite UTCに復元互換性を限定する後続実装契約 | 正式保存日時、backup・復元、日時順query・表示 |
 
 ## Status
 
