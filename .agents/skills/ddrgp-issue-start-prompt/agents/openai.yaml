@@ -1,0 +1,6 @@
+interface:
+  display_name: "DDRGP Issue開始指示文"
+  short_description: "指定Issueの契約と実行ルールを参照する簡潔な開始指示文を作る"
+  default_prompt: "$ddrgp-issue-start-prompt で、次のIssueを別チャットで進めるための指示文を作成してください。"
+policy:
+  allow_implicit_invocation: true
