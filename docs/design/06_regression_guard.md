@@ -364,6 +364,7 @@
 
 ## 正式個人スコアDB save input / transaction
 
+- Issue #238で確定した[日時の入力・保存・互換性契約](05_storage_io_spec.md#formal-timestamps)と[現行実測・後続回帰条件](10_personal_score_db_schema.md#formal-timestamp-validation)を正本とする。新規UTC canonicalと旧ISO/SQLiteの原文復元を分け、現行コードの成功を後続正規化の成功と扱わない。
 - 正式保存入力はM8 preview payload/rowを直接受け取らず、`RESULT同定根拠`、`RESULT数値認識根拠`、`RESULT状態認識根拠`、`capture event根拠`から得たtimezone付き時刻、master version、正式ID、rank、clear type、正式duplicate key、confidence、app versionが確定済みであることを要求する。
 - timestampなしpreviewの `played_at_ms=0`、PoCの `score:` / `file:` duplicate key、`source_kind=unknown` を正式writerへ渡さない。
 - pure adapterは `candidate_material` の `identity_signal_*`、`recognized_digits`、OCR、`played_at_ms` / `timestamp_ms` を正式play値へ暗黙昇格せず、正式値不足時に `unresolved` から保存入力を返さない。
