@@ -1895,6 +1895,13 @@ public sealed class WebBestSyncTests
 
         public void SetAuthenticationInvalid(bool invalid) => authenticationInvalid = invalid;
 
+        public bool TryInvalidateAuthentication(string requestCredential)
+        {
+            if (credential != requestCredential) return false;
+            SetAuthenticationInvalid(true);
+            return true;
+        }
+
         public void Clear()
         {
             publicPlayerId = null;

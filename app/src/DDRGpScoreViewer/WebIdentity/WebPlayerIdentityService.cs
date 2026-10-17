@@ -223,13 +223,10 @@ internal sealed partial class WebPlayerIdentityService
 
     private PlayerIdentityOperationResult InvalidateRejectedCredential(string requestCredential)
     {
+        var invalidated = identityStore.TryInvalidateAuthentication(requestCredential);
         var current = identityStore.Load();
-        if (!string.Equals(current.AppCredential, requestCredential, StringComparison.Ordinal))
-        {
-            return new(PlayerIdentityRequestStatus.CredentialChanged, current);
-        }
-        identityStore.SetAuthenticationInvalid(true);
-        return new(PlayerIdentityRequestStatus.AuthenticationInvalid, identityStore.Load());
+        return new(invalidated && string.Equals(current.AppCredential, requestCredential, StringComparison.Ordinal)
+            ? PlayerIdentityRequestStatus.AuthenticationInvalid : PlayerIdentityRequestStatus.CredentialChanged, current);
     }
 
     private PlayerIdentityOperationResult StorageFailure()

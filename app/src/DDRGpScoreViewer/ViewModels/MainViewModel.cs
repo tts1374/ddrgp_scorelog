@@ -2343,7 +2343,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     private bool ApplyPlayerIdentityResult(PlayerIdentityOperationResult result)
     {
-        if (result.Status == PlayerIdentityRequestStatus.CredentialChanged)
+        if (result.Status == PlayerIdentityRequestStatus.CredentialChanged ||
+            result.Status == PlayerIdentityRequestStatus.AuthenticationInvalid &&
+            !string.Equals(result.Identity.AppCredential, LoadWebPlayerIdentity()?.AppCredential, StringComparison.Ordinal))
         {
             return false;
         }
