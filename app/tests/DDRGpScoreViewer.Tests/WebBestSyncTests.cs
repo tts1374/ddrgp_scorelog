@@ -423,6 +423,185 @@ public sealed class WebBestSyncTests
         Assert.Equal(1, coordinator.State.PendingCount);
     }
 
+    [Theory]
+    [InlineData(49, true)]
+    [InlineData(50, true)]
+    [InlineData(51, true)]
+    [InlineData(50, false)]
+    [InlineData(51, false)]
+    public async Task UnknownChartsAreDeferredOncePerRunAcrossBatchBoundariesAndRetriedNextRun(
+        int unknownCount, bool hasFollowingKnownChart)
+    {
+        using var fixture = new DatabaseFixture();
+        var total = unknownCount + (hasFollowingKnownChart ? 1 : 0);
+        AddCaptureCharts(fixture, total);
+        var statePath = Path.Combine(fixture.DirectoryPath, "batch-sync.sqlite");
+        var store = new SqliteWebBestSyncStateStore(statePath);
+        store.SetEnabled(true);
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var api = new FakeWebBestSyncApiClient
+        {
+            DeltaHandler = operations =>
+            {
+                Assert.InRange(operations.Count, 1, 50);
+                return new(WebBestApiStatus.Success, operations.Select((operation, index) =>
+                {
+                    // Fail immediately on repetition instead of hanging on the regression.
+                    Assert.True(seen.Add(operation.ChartId), $"Repeated chart: {operation.ChartId}");
+                    var accepted = operation.ChartId == $"batch-chart-{unknownCount:D3}";
+                    return new WebBestDeltaItemResult(index, accepted, accepted,
+                        accepted ? null : "UNKNOWN_CHART");
+                }).ToArray());
+            },
+        };
+        var coordinator = new WebBestSyncCoordinator(store, new WebBestProjectionRepository(), api,
+            fixture.ScorePath, fixture.MasterPath);
+
+        await coordinator.SynchronizeAsync(CancellationToken.None);
+
+        Assert.Equal((total + 49) / 50, api.MergeCalls);
+        Assert.Equal(total, seen.Count);
+        var deferred = new SqliteWebBestSyncStateStore(statePath).Load();
+        Assert.Equal(total, deferred.Entries.Count);
+        Assert.Equal(unknownCount, deferred.PendingCount);
+        Assert.Equal(unknownCount, deferred.UnknownChartCount);
+        Assert.Equal(WebBestSyncStatus.Dirty, deferred.Status);
+        Assert.Equal("UNKNOWN_CHART", deferred.LastErrorCode);
+        Assert.Equal(hasFollowingKnownChart, deferred.LastSuccessfulSyncAt.HasValue);
+        Assert.Equal(0, deferred.RetryAttempt);
+        Assert.Null(deferred.NextRetryAt);
+        Assert.All(deferred.Entries.Take(unknownCount), entry =>
+        {
+            Assert.NotNull(entry.DesiredProjectionHash);
+            Assert.Null(entry.SyncedProjectionHash);
+            Assert.Equal("UNKNOWN_CHART", entry.DeferredError);
+        });
+        if (hasFollowingKnownChart)
+        {
+            var known = deferred.Entries.Last();
+            Assert.Equal(known.DesiredProjectionHash, known.SyncedProjectionHash);
+            Assert.Null(known.DeferredError);
+        }
+
+        // Reuse the persisted state without toggling ON or changing any projection.
+        seen.Clear();
+        var beforeRetry = api.MergeCalls;
+        await coordinator.SynchronizeAsync(CancellationToken.None);
+        Assert.Equal((unknownCount + 49) / 50, api.MergeCalls - beforeRetry);
+        Assert.Equal(unknownCount, seen.Count);
+        Assert.Equal(unknownCount, coordinator.State.UnknownChartCount);
+
+        // Simulate Web master availability; only previously deferred entries are resent.
+        api.MergedItems.Clear();
+        api.DeltaHandler = null;
+        var beforeAccept = api.MergeCalls;
+        await coordinator.SynchronizeAsync(CancellationToken.None);
+
+        Assert.Equal((unknownCount + 49) / 50, api.MergeCalls - beforeAccept);
+        Assert.Equal(unknownCount, api.MergedItems.Count);
+        Assert.Equal(unknownCount, api.MergedItems.Select(item => item.ChartId).Distinct().Count());
+        Assert.All(api.MergedItems, item => Assert.Contains(item.ChartId, seen));
+        var synced = new SqliteWebBestSyncStateStore(statePath).Load();
+        Assert.Equal(total, synced.Entries.Count);
+        Assert.Equal(0, synced.PendingCount);
+        Assert.Equal(0, synced.UnknownChartCount);
+        Assert.Equal(WebBestSyncStatus.Idle, synced.Status);
+        Assert.Null(synced.LastErrorCode);
+        Assert.NotNull(synced.LastSuccessfulSyncAt);
+        Assert.All(synced.Entries, entry =>
+        {
+            Assert.Equal(entry.DesiredProjectionHash, entry.SyncedProjectionHash);
+            Assert.Null(entry.DeferredError);
+        });
+        Assert.Equal(0, api.BeginSnapshotCalls);
+        Assert.Equal(0, api.DeleteCalls);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task StopOrCancellationDuringLaterBatchPreventsFollowingBatch(bool cancel)
+    {
+        using var fixture = new DatabaseFixture();
+        AddCaptureCharts(fixture, 102);
+        var store = new SqliteWebBestSyncStateStore(Path.Combine(fixture.DirectoryPath, "batch-stop.sqlite"));
+        store.SetEnabled(true);
+        using var cancellation = new CancellationTokenSource();
+        var secondBatchStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var finishSecondBatch = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var calls = 0;
+        var api = new FakeWebBestSyncApiClient
+        {
+            AsyncDeltaHandler = async (operations, token) =>
+            {
+                Assert.True(++calls <= 2, "A subsequent batch must not start after stopping.");
+                if (calls == 2)
+                {
+                    secondBatchStarted.SetResult();
+                    await finishSecondBatch.Task.WaitAsync(token);
+                }
+                return new(WebBestApiStatus.Success, operations.Select((_, index) =>
+                    new WebBestDeltaItemResult(index, false, false, "UNKNOWN_CHART")).ToArray());
+            },
+        };
+        var coordinator = new WebBestSyncCoordinator(store, new WebBestProjectionRepository(), api,
+            fixture.ScorePath, fixture.MasterPath);
+        var sync = coordinator.SynchronizeAsync(cancellation.Token);
+        await secondBatchStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.Equal(50, coordinator.State.UnknownChartCount);
+        try
+        {
+            if (cancel)
+            {
+                cancellation.Cancel();
+                await Assert.ThrowsAnyAsync<OperationCanceledException>(
+                    () => sync.WaitAsync(TimeSpan.FromSeconds(5)));
+            }
+            else
+            {
+                var stop = coordinator.SetEnabledAsync(false, CancellationToken.None);
+                Assert.False(stop.IsCompleted);
+                Assert.False(coordinator.State.Enabled);
+                finishSecondBatch.SetResult();
+                await Task.WhenAll(sync, stop).WaitAsync(TimeSpan.FromSeconds(5));
+                Assert.Equal(WebBestSyncStatus.Disabled, coordinator.State.Status);
+                await coordinator.SynchronizeAsync(CancellationToken.None);
+            }
+        }
+        finally
+        {
+            finishSecondBatch.TrySetResult();
+            try
+            {
+                await sync.WaitAsync(TimeSpan.FromSeconds(5));
+            }
+            catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+            {
+            }
+        }
+
+        Assert.Equal(2, api.MergeCalls);
+        Assert.Equal(100, api.MergedItems.Count);
+        Assert.Equal(100, api.MergedItems.Select(item => item.ChartId).Distinct().Count());
+        Assert.Equal(102, coordinator.State.PendingCount);
+        Assert.Equal(50, coordinator.State.UnknownChartCount);
+        Assert.All(coordinator.State.Entries, entry => Assert.Null(entry.SyncedProjectionHash));
+        Assert.Equal(0, api.BeginSnapshotCalls);
+    }
+
+    private static void AddCaptureCharts(DatabaseFixture fixture, int count)
+    {
+        for (var index = 0; index < count; index++)
+        {
+            var songId = $"batch-song-{index:D3}";
+            var chartId = $"batch-chart-{index:D3}";
+            fixture.AddMasterSongAndChart(songId, $"Batch song {index}", "Artist", chartId);
+            fixture.AddPlay($"batch-play-{index:D3}", "2026-10-12T01:00:00+00:00",
+                900_000, 1_000, songId, chartId);
+        }
+        fixture.ExecuteScoreSql("UPDATE source_captures SET source_kind = 'capture';");
+    }
+
     [Fact]
     public async Task AuthInvalidStopsWithoutRegistrationAndRetryPolicyIsBounded()
     {
@@ -664,7 +843,7 @@ public sealed class WebBestSyncTests
         var commits = 0;
         var api = new FakeWebBestSyncApiClient
         {
-            AsyncDeltaHandler = async operations =>
+            AsyncDeltaHandler = async (operations, _) =>
             {
                 sendStarted.SetResult();
                 await finishSend.Task;
@@ -1305,7 +1484,7 @@ public sealed class WebBestSyncTests
         public WebBestSnapshotBeginResult BeginResult { get; set; } =
             new(WebBestApiStatus.Success, "bs_fixture", 0);
         public Func<IReadOnlyList<WebBestDeltaOperation>, WebBestDeltaResult>? DeltaHandler { get; set; }
-        public Func<IReadOnlyList<WebBestDeltaOperation>, Task<WebBestDeltaResult>>? AsyncDeltaHandler { get; set; }
+        public Func<IReadOnlyList<WebBestDeltaOperation>, CancellationToken, Task<WebBestDeltaResult>>? AsyncDeltaHandler { get; set; }
 
         public Task<WebBestDeltaResult> SendDeltaAsync(string masterVersion, IReadOnlyList<WebBestDeltaOperation> operations,
             CancellationToken cancellationToken)
@@ -1314,7 +1493,7 @@ public sealed class WebBestSyncTests
             MergedItems.AddRange(operations.Select(item => item.Projection!));
             if (AsyncDeltaHandler is not null)
             {
-                return AsyncDeltaHandler(operations);
+                return AsyncDeltaHandler(operations, cancellationToken);
             }
             return Task.FromResult(DeltaHandler?.Invoke(operations) ?? new WebBestDeltaResult(WebBestApiStatus.Success,
                 operations.Select((_, index) => new WebBestDeltaItemResult(index, true, true, null)).ToArray()));

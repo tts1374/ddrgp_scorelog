@@ -172,6 +172,8 @@ internal sealed class WebBestSyncCoordinator
             StringComparer.Ordinal);
         var masterVersion = WebBestProjectionRepository.ReadMasterVersion(masterDatabasePath);
         var anyAccepted = false;
+        // Defer only for this run; persisted UNKNOWN_CHART entries must be retried next time.
+        var deferredCharts = new HashSet<string>(StringComparer.Ordinal);
         while (true)
         {
             var state = stateStore.Load();
@@ -181,6 +183,7 @@ internal sealed class WebBestSyncCoordinator
                 return;
             }
             var pending = state.Entries
+                .Where(entry => !deferredCharts.Contains(entry.ChartId))
                 .Where(entry => !string.Equals(
                     entry.DesiredProjectionHash,
                     entry.SyncedProjectionHash,
@@ -189,10 +192,12 @@ internal sealed class WebBestSyncCoordinator
                 .ToArray();
             if (pending.Length == 0)
             {
+                var hasDeferred = state.UnknownChartCount > 0;
                 var status = stateStore.RecordStatus(
-                    WebBestSyncStatus.Idle,
+                    hasDeferred ? WebBestSyncStatus.Dirty : WebBestSyncStatus.Idle,
                     lastSuccessfulSyncAt: anyAccepted ? utcNow() : null,
-                    retryAttempt: 0);
+                    retryAttempt: 0,
+                    errorCode: hasDeferred ? "UNKNOWN_CHART" : null);
                 Publish(status);
                 return;
             }
@@ -260,6 +265,7 @@ internal sealed class WebBestSyncCoordinator
                 }
                 else if (string.Equals(item.ErrorCode, "UNKNOWN_CHART", StringComparison.Ordinal))
                 {
+                    deferredCharts.Add(operation.ChartId);
                     Publish(stateStore.MarkDeferred(operation.ChartId, "UNKNOWN_CHART"));
                 }
                 else
@@ -269,21 +275,6 @@ internal sealed class WebBestSyncCoordinator
                         errorCode: item.ErrorCode ?? "INVALID_PROJECTION"));
                     return;
                 }
-            }
-
-            if (stateStore.Load().UnknownChartCount > 0 && stateStore.Load().Entries.All(entry =>
-                    string.Equals(entry.DeferredError, "UNKNOWN_CHART", StringComparison.Ordinal) ||
-                    string.Equals(
-                        entry.DesiredProjectionHash,
-                        entry.SyncedProjectionHash,
-                        StringComparison.Ordinal)))
-            {
-                Publish(stateStore.RecordStatus(
-                    WebBestSyncStatus.Dirty,
-                    lastSuccessfulSyncAt: anyAccepted ? utcNow() : null,
-                    retryAttempt: 0,
-                    errorCode: "UNKNOWN_CHART"));
-                return;
             }
         }
     }
