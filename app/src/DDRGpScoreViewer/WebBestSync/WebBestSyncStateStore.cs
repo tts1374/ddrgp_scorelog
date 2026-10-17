@@ -44,6 +44,15 @@ internal sealed class SqliteWebBestSyncStateStore : IWebBestSyncStateStore
         {
             Initialize();
         }
+        else
+        {
+            using var connection = Open(SqliteOpenMode.ReadWrite);
+            using var transaction = connection.BeginTransaction();
+            // SQLite checks write access even when no rows match. Never update a row
+            // or commit this startup probe, including for a healthy existing store.
+            Execute(transaction, "UPDATE web_best_sync_metadata SET enabled = enabled WHERE 0;");
+            transaction.Rollback();
+        }
     }
 
     public WebBestSyncSnapshot Load()

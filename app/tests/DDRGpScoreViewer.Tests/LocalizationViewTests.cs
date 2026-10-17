@@ -32,6 +32,8 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
     [InlineData("missing-table")]
     [InlineData("locked")]
     [InlineData("blocked-parent")]
+    [InlineData("read-only")]
+    [InlineData("read-only-pending")]
     public async Task Sync_state_failure_preserves_local_startup_history_and_formal_save(string failure)
     {
         using var fixture = new DatabaseFixture();
@@ -41,7 +43,16 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
         new FileWebPlayerIdentityStore(paths.WebPlayerIdentityPath, paths.WebPlayerCredentialPath)
             .SaveRegistered("p_XXXXXXXXXXXXXXXXXXXXXX", "fixture-credential", "Existing player");
         File.WriteAllText(paths.WebPlayerCredentialPath + ".authorization", "preserved authorization fixture");
+        if (failure == "read-only-pending")
+        {
+            new FileAppAuthorizationStore(paths.WebPlayerCredentialPath + ".authorization").Save(new(
+                "fixture-authorization", "fixture-secret", "login", "p_XXXXXXXXXXXXXXXXXXXXXX",
+                DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(10),
+                State: AppAuthorizationState.CredentialActivationPending,
+                Credential: "fixture-pending-credential"));
+        }
         var protectedStatePath = paths.WebBestSyncStatePath;
+        FileAttributes? originalStateAttributes = null;
         if (failure == "blocked-parent")
         {
             protectedStatePath = Path.Combine(paths.DataDirectory, "web-sync");
@@ -56,7 +67,15 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
             }
             else
             {
-                new SqliteWebBestSyncStateStore(protectedStatePath).SetEnabled(true);
+                var stateStore = new SqliteWebBestSyncStateStore(protectedStatePath);
+                stateStore.SetEnabled(true);
+                if (failure is "read-only" or "read-only-pending")
+                {
+                    originalStateAttributes = File.GetAttributes(protectedStatePath);
+                    File.SetAttributes(protectedStatePath, originalStateAttributes.Value | FileAttributes.ReadOnly);
+                    // Reproduce a store whose read succeeds but whose write must be rejected.
+                    Assert.True(stateStore.Load().Enabled);
+                }
                 if (failure is "invalid-timestamp" or "missing-table")
                 {
                     using var connection = new SqliteConnection($"Data Source={protectedStatePath};Pooling=False");
@@ -106,6 +125,10 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
                 Assert.Contains("Web送信を停止", window.WebBestSyncStatusMessageText.Text);
                 Assert.Contains("再起動", window.WebBestSyncStatusMessageText.Text);
                 Assert.Contains(paths.WebBestSyncStatePath, window.ViewModel.WebBestSyncDetails);
+                if (failure is "read-only" or "read-only-pending")
+                {
+                    Assert.Contains("SQLite Error 8", window.ViewModel.WebBestSyncDetails);
+                }
                 Assert.False(string.IsNullOrWhiteSpace(window.ViewModel.WebBestSyncDetails));
                 Assert.Equal("不明", window.ViewModel.WebBestSyncLastSuccessDisplay);
                 Assert.False(window.ConnectWebAccountButton.IsEnabled);
@@ -137,6 +160,10 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
             {
                 window?.PrepareForApplicationExit();
                 window?.Close();
+                if (originalStateAttributes is { } attributes)
+                {
+                    File.SetAttributes(protectedStatePath, attributes);
+                }
             }
         });
         locked?.Dispose();
@@ -162,6 +189,7 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
                 .SaveRegistered("p_XXXXXXXXXXXXXXXXXXXXXX", "fixture-credential", "Existing player");
             new SqliteWebBestSyncStateStore(paths.WebBestSyncStatePath).SetEnabled(enabled);
         }
+        var initialSyncBytes = registered ? File.ReadAllBytes(paths.WebBestSyncStatePath) : null;
         using var handler = new StartupWebHandler();
         await applicationFixture.RunAsync(async () =>
         {
@@ -171,6 +199,10 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
                 PrepareStartupResources();
                 window = new MainWindow(paths, handler);
                 await window.RestoreSavedPathsAsync();
+                if (initialSyncBytes is not null)
+                {
+                    Assert.Equal(initialSyncBytes, File.ReadAllBytes(paths.WebBestSyncStatePath));
+                }
                 Assert.True(window.ViewModel.HasData);
                 Assert.True(window.ViewModel.IsWebBestSyncAvailable);
                 Assert.Equal(enabled, window.ViewModel.WebBestSyncEnabled);
