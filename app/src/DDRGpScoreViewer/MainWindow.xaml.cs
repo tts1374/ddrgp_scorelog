@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using System.IO;
 using System.Net.Http;
 using System.Runtime.InteropServices;
 using System.Windows;
@@ -17,6 +18,7 @@ using DDRGpScoreViewer.Updates;
 using DDRGpScoreViewer.ViewModels;
 using DDRGpScoreViewer.WebBestSync;
 using DDRGpScoreViewer.WebIdentity;
+using Microsoft.Data.Sqlite;
 using Microsoft.Win32;
 using WpfButton = System.Windows.Controls.Button;
 using WpfBrush = System.Windows.Media.Brush;
@@ -60,7 +62,7 @@ public partial class MainWindow : System.Windows.Window
     {
     }
 
-    internal MainWindow(ViewerDatabasePaths databasePaths)
+    internal MainWindow(ViewerDatabasePaths databasePaths, HttpMessageHandler? webApiHandler = null)
     {
         InitializeComponent();
         ThemeManager.ThemeChanged += ThemeManager_ThemeChanged;
@@ -68,7 +70,7 @@ public partial class MainWindow : System.Windows.Window
         var webApiUri = ResolveWebApiOrigin(
             databasePaths.Environment,
             Environment.GetEnvironmentVariable("DDRGP_WEB_API_ORIGIN"));
-        webApiHttpClient = new HttpClient
+        webApiHttpClient = new HttpClient(webApiHandler ?? new HttpClientHandler())
         {
             BaseAddress = webApiUri,
             Timeout = TimeSpan.FromSeconds(30),
@@ -81,15 +83,6 @@ public partial class MainWindow : System.Windows.Window
             identityStore,
             allowLoopbackHttp: databasePaths.Environment == ViewerDatabaseEnvironment.Development,
             authorizationStore: new FileAppAuthorizationStore(databasePaths.WebPlayerCredentialPath + ".authorization"));
-        var webBestSyncCoordinator = new WebBestSyncCoordinator(
-            new SqliteWebBestSyncStateStore(databasePaths.WebBestSyncStatePath),
-            new WebBestProjectionRepository(),
-            new WebBestSyncApiClient(
-                webApiHttpClient,
-                identityStore,
-                allowLoopbackHttp: databasePaths.Environment == ViewerDatabaseEnvironment.Development),
-            databasePaths.ScoreDatabasePath,
-            databasePaths.MasterDatabasePath);
         viewModel = new MainViewModel(
             new ScoreViewerRepository(),
             workflowRunner: new AppOwnedPersonalScoreDbWorkflowRunner(),
@@ -110,9 +103,33 @@ public partial class MainWindow : System.Windows.Window
             applicationUpdateService: databasePaths.Environment == ViewerDatabaseEnvironment.Production
                 ? new ApplicationUpdateService()
                 : null);
-        viewModel.ConfigureWebBestSync(
-            webBestSyncCoordinator,
-            webPlayerIdentityService);
+        WebBestSyncCoordinator? webBestSyncCoordinator = null;
+        WebBestSyncSnapshot? initialWebBestSyncState = null;
+        try
+        {
+            var coordinator = new WebBestSyncCoordinator(
+                new SqliteWebBestSyncStateStore(databasePaths.WebBestSyncStatePath),
+                new WebBestProjectionRepository(),
+                new WebBestSyncApiClient(
+                    webApiHttpClient,
+                    identityStore,
+                    allowLoopbackHttp: databasePaths.Environment == ViewerDatabaseEnvironment.Development),
+                databasePaths.ScoreDatabasePath,
+                databasePaths.MasterDatabasePath);
+            initialWebBestSyncState = coordinator.State;
+            webBestSyncCoordinator = coordinator;
+        }
+        catch (Exception exception) when (exception is SqliteException or IOException or
+            UnauthorizedAccessException or InvalidDataException or FormatException or
+            ArgumentException or InvalidCastException or OverflowException)
+        {
+            viewModel.ReportWebBestSyncUnavailable(databasePaths.WebBestSyncStatePath, exception);
+        }
+        if (webBestSyncCoordinator is not null)
+        {
+            viewModel.ConfigureWebBestSync(
+                webBestSyncCoordinator, webPlayerIdentityService, initialWebBestSyncState);
+        }
         DataContext = viewModel;
         ApplyHomeResponsiveLayout(Width);
         ApplyBestResponsiveLayout(Width);

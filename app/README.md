@@ -54,6 +54,8 @@ App UIからの置換導線はWebでの公開記録削除と送信再開へ集�
 
 開発用identityとCredentialは`data/settings/web-player-identity.development.json`と`web-player-credential.development.bin`へ保存します。初回は連携停止・未登録で開始し、`アカウントを作成・引き継ぐ`から登録します。開発環境では新旧production Workerのhostへの接続先overrideを受け付けず、dev Workerへ戻します。従来のidentity・Credential・同期状態fileは保持し、開発用には読み込みません。
 
+起動時に同期状態ファイルを初期化・読み込みできない場合は、Web送信とアプリ内のWeb連携操作を停止し、設定画面に理由と対象pathを表示します。正式DB・参照DBが正常なら、主画面・履歴閲覧・ローカル保存を継続できます。アプリを終了し、表示された同期状態ファイルのアクセス権と保管状態を確認してから再起動してください。既存ファイルを削除・再作成せず、identity・Credentialも保持してください。アプリは異常な同期状態を空状態として扱わず、自動修復や同一起動中の自動再開を行いません。
+
 ### Local WebとWindowsアプリの確認
 
 repositoryの`databases/ddrgp-master.sqlite`を準備し、次を実行します。`npm run dev`はlocal用secretの準備、local D1 migration、同じmasterの投入後にWebを起動します。

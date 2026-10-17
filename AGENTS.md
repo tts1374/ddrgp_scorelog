@@ -28,4 +28,10 @@
 - 長期仕様は関連docsへ残す。ADRは複数componentまたは複数PRへ影響する、変更しにくい公開契約・永続化・データ保護・配布境界の確定decisionに限定する。
 - 作業状態、受け入れ条件、追加の実装判断はIssueまたはPR上に残す。投稿・更新は許可範囲内で行う。
 
+## Issue Execution Authorization
+
+- ユーザーから指定Issueの実行を依頼された場合、明示的な制限がない限り、実装・検証、今回差分のcommit・通常push、PR作成、対象PR上の結果報告、Issue契約内のレビュー指摘修正・再レビュー依頼、最新headのレビューとCIの完了確認までを許可範囲に含める。既に許可された操作を工程ごとに再確認しない。ローカル作業のみ・追跡のみ・修正禁止など、現在の明示的な制限を優先する。
+- レビュー修正は`ddrgp-github-review-fix`に従う。同じ契約不一致が原因の互換性指摘が続く場合は、個別分岐を重ねる前に対応表・契約照合・往復検証へ戻る。指摘件数やレビュー回数だけを理由に停止しない。
+- merge、release、force-push、本番DBへの操作、Issue契約外の変更は、この既定許可に含めない。
+
 Issue作成・仕様固定は`ddrgp-issue-authoring`、指定Issueの実装・検証は`ddrgp-implement-github-issue`を使う。workflow詳細と参照資料は、そのtaskに必要なSkillを選択してから読む。

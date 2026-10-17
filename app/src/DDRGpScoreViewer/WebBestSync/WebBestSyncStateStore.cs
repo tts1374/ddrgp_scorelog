@@ -39,12 +39,25 @@ internal sealed class SqliteWebBestSyncStateStore : IWebBestSyncStateStore
     public SqliteWebBestSyncStateStore(string path)
     {
         this.path = Path.GetFullPath(path);
-        Initialize();
+        // Existing state must be read as-is, never initialized or repaired on startup.
+        if (!File.Exists(this.path))
+        {
+            Initialize();
+        }
+        else
+        {
+            using var connection = Open(SqliteOpenMode.ReadWrite);
+            using var transaction = connection.BeginTransaction();
+            // SQLite checks write access even when no rows match. Never update a row
+            // or commit this startup probe, including for a healthy existing store.
+            Execute(transaction, "UPDATE web_best_sync_metadata SET enabled = enabled WHERE 0;");
+            transaction.Rollback();
+        }
     }
 
     public WebBestSyncSnapshot Load()
     {
-        using var connection = Open();
+        using var connection = Open(SqliteOpenMode.ReadOnly);
         return Read(connection);
     }
 
@@ -336,12 +349,12 @@ internal sealed class SqliteWebBestSyncStateStore : IWebBestSyncStateStore
             """);
     }
 
-    private SqliteConnection Open()
+    private SqliteConnection Open(SqliteOpenMode mode = SqliteOpenMode.ReadWriteCreate)
     {
         var connection = new SqliteConnection(new SqliteConnectionStringBuilder
         {
             DataSource = path,
-            Mode = SqliteOpenMode.ReadWriteCreate,
+            Mode = mode,
             Pooling = false,
         }.ToString());
         connection.Open();

@@ -1,4 +1,7 @@
 using System.Threading;
+using System.Net;
+using System.Net.Http;
+using System.Text;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
@@ -10,6 +13,7 @@ using DDRGpScoreViewer.Data;
 using DDRGpScoreViewer.Models;
 using DDRGpScoreViewer.WebBestSync;
 using DDRGpScoreViewer.WebIdentity;
+using Microsoft.Data.Sqlite;
 using Xunit;
 
 namespace DDRGpScoreViewer.Tests;
@@ -21,6 +25,259 @@ public sealed class LocalizationViewCollection;
 public sealed class LocalizationViewTests(LocalizationApplicationFixture applicationFixture)
     : IClassFixture<LocalizationApplicationFixture>
 {
+#if DEBUG
+    [Theory]
+    [InlineData("not-sqlite")]
+    [InlineData("invalid-timestamp")]
+    [InlineData("missing-table")]
+    [InlineData("locked")]
+    [InlineData("blocked-parent")]
+    [InlineData("read-only")]
+    [InlineData("read-only-pending")]
+    public async Task Sync_state_failure_preserves_local_startup_history_and_formal_save(string failure)
+    {
+        using var fixture = new DatabaseFixture();
+        fixture.AddPlay("existing", "2026-10-01T10:00:00+09:00", 900_000, 1_000);
+        var paths = StartupPaths(fixture);
+        paths.EnsureDefaultDirectories();
+        new FileWebPlayerIdentityStore(paths.WebPlayerIdentityPath, paths.WebPlayerCredentialPath)
+            .SaveRegistered("p_XXXXXXXXXXXXXXXXXXXXXX", "fixture-credential", "Existing player");
+        File.WriteAllText(paths.WebPlayerCredentialPath + ".authorization", "preserved authorization fixture");
+        if (failure == "read-only-pending")
+        {
+            new FileAppAuthorizationStore(paths.WebPlayerCredentialPath + ".authorization").Save(new(
+                "fixture-authorization", "fixture-secret", "login", "p_XXXXXXXXXXXXXXXXXXXXXX",
+                DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(10),
+                State: AppAuthorizationState.CredentialActivationPending,
+                Credential: "fixture-pending-credential"));
+        }
+        var protectedStatePath = paths.WebBestSyncStatePath;
+        FileAttributes? originalStateAttributes = null;
+        if (failure == "blocked-parent")
+        {
+            protectedStatePath = Path.Combine(paths.DataDirectory, "web-sync");
+            File.WriteAllText(protectedStatePath, "preserved blocking file");
+        }
+        else
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(protectedStatePath)!);
+            if (failure == "not-sqlite")
+            {
+                File.WriteAllText(protectedStatePath, "preserved non-SQLite fixture");
+            }
+            else
+            {
+                var stateStore = new SqliteWebBestSyncStateStore(protectedStatePath);
+                stateStore.SetEnabled(true);
+                if (failure is "read-only" or "read-only-pending")
+                {
+                    originalStateAttributes = File.GetAttributes(protectedStatePath);
+                    File.SetAttributes(protectedStatePath, originalStateAttributes.Value | FileAttributes.ReadOnly);
+                    // Reproduce a store whose read succeeds but whose write must be rejected.
+                    Assert.True(stateStore.Load().Enabled);
+                }
+                if (failure is "invalid-timestamp" or "missing-table")
+                {
+                    using var connection = new SqliteConnection($"Data Source={protectedStatePath};Pooling=False");
+                    connection.Open();
+                    using var command = connection.CreateCommand();
+                    command.CommandText = failure == "missing-table"
+                        ? "DROP TABLE web_best_sync_entries;"
+                        : "UPDATE web_best_sync_metadata SET last_success_at = 'invalid timestamp';";
+                    command.ExecuteNonQuery();
+                }
+            }
+        }
+        var protectedFiles = new[] { fixture.ScorePath, fixture.MasterPath, fixture.CatalogPath,
+            protectedStatePath, paths.WebPlayerIdentityPath, paths.WebPlayerCredentialPath,
+            paths.WebPlayerCredentialPath + ".authorization" }
+            .ToDictionary(path => path, File.ReadAllBytes);
+        using var locked = failure == "locked"
+            ? new FileStream(protectedStatePath, FileMode.Open, FileAccess.ReadWrite, FileShare.None)
+            : null;
+        using var handler = new StartupWebHandler();
+
+        await applicationFixture.RunAsync(async () =>
+        {
+            MainWindow? window = null;
+            try
+            {
+                PrepareStartupResources();
+                window = new MainWindow(paths, handler);
+                await window.RestoreSavedPathsAsync();
+                window.Show();
+                window.HistoryNavigation.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                DrainDispatcher(window.Dispatcher);
+                Assert.Equal("existing", Assert.Single(window.ViewModel.Plays).PlayId);
+                Assert.Single(window.RecentPlayGrid.Items.Cast<object>());
+                Assert.True(window.ViewModel.CanRunDeveloperOperations);
+                // Startup and browsing must leave the formal DB byte-for-byte unchanged.
+                Assert.Equal(protectedFiles[fixture.ScorePath], File.ReadAllBytes(fixture.ScorePath));
+                Assert.False(window.ViewModel.IsWebBestSyncAvailable);
+                Assert.False(window.ViewModel.CanBeginWebAuthorization);
+                Assert.False(window.ViewModel.CanSyncWebBestsNow);
+                Assert.False(window.ViewModel.CanToggleWebSync);
+                Assert.False(window.ViewModel.CanDeletePublicBests);
+                Assert.False(window.ViewModel.CanReplaceWebBests);
+                window.SettingsNavigation.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                DrainDispatcher(window.Dispatcher);
+                Assert.Equal("Web同期状態を読み込めません", window.WebBestSyncStatusText.Text);
+                Assert.Contains("Web送信を停止", window.WebBestSyncStatusMessageText.Text);
+                Assert.Contains("再起動", window.WebBestSyncStatusMessageText.Text);
+                Assert.Contains(paths.WebBestSyncStatePath, window.ViewModel.WebBestSyncDetails);
+                if (failure is "read-only" or "read-only-pending")
+                {
+                    Assert.Contains("SQLite Error 8", window.ViewModel.WebBestSyncDetails);
+                }
+                Assert.False(string.IsNullOrWhiteSpace(window.ViewModel.WebBestSyncDetails));
+                Assert.Equal("不明", window.ViewModel.WebBestSyncLastSuccessDisplay);
+                Assert.False(window.ConnectWebAccountButton.IsEnabled);
+
+                await window.ViewModel.ResumeWebBestSyncAsync();
+                await window.ViewModel.ToggleWebBestSyncAsync();
+                await window.ViewModel.SyncWebBestsNowAsync();
+                await window.ViewModel.DeletePublicBestsAsync();
+                await window.ViewModel.RefreshWebPlayerAsync();
+                await window.ViewModel.BeginWebAuthorizationAsync(false, CancellationToken.None);
+                await window.ViewModel.CompleteWebAuthorizationAsync();
+                await window.ViewModel.CancelWebAuthorizationAsync();
+                await window.ViewModel.ForgetInvalidWebIdentityAsync();
+                Assert.Null(await window.ViewModel.PrepareWebBestReplacementAsync(CancellationToken.None));
+                Assert.False(await window.ViewModel.ConfirmWebBestReplacementAsync(CancellationToken.None));
+                await window.ViewModel.CancelWebBestReplacementAsync(CancellationToken.None);
+                Assert.Equal(0, handler.RequestCount);
+                // Exercise the real app-owned writer through the existing UI save entry.
+                await window.ViewModel.SaveAndReloadConfiguredAsync(WriteStartupSaveWorkflow(fixture.DirectoryPath));
+                Assert.Equal("プレーを保存しました", window.ViewModel.SaveStatusTitle);
+                Assert.Equal(2, window.ViewModel.Plays.Count);
+                Assert.Contains(window.ViewModel.Plays, play => play.PlayId == "existing");
+                Assert.Contains(window.ViewModel.Plays, play => play.PlayId == "new-local-play");
+                Assert.False(protectedFiles[fixture.ScorePath].SequenceEqual(File.ReadAllBytes(fixture.ScorePath)));
+                Assert.Equal(0, handler.RequestCount);
+                Assert.Equal("Web同期状態を読み込めません", window.ViewModel.WebBestSyncStatusTitle);
+            }
+            finally
+            {
+                window?.PrepareForApplicationExit();
+                window?.Close();
+                if (originalStateAttributes is { } attributes)
+                {
+                    File.SetAttributes(protectedStatePath, attributes);
+                }
+            }
+        });
+        locked?.Dispose();
+        foreach (var (path, bytes) in protectedFiles.Where(item => item.Key != fixture.ScorePath))
+        {
+            Assert.Equal(bytes, File.ReadAllBytes(path));
+        }
+    }
+#endif
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task Healthy_sync_startup_preserves_unregistered_off_and_enabled_states(bool registered, bool enabled)
+    {
+        using var fixture = new DatabaseFixture();
+        var paths = StartupPaths(fixture);
+        paths.EnsureDefaultDirectories();
+        if (registered)
+        {
+            new FileWebPlayerIdentityStore(paths.WebPlayerIdentityPath, paths.WebPlayerCredentialPath)
+                .SaveRegistered("p_XXXXXXXXXXXXXXXXXXXXXX", "fixture-credential", "Existing player");
+            new SqliteWebBestSyncStateStore(paths.WebBestSyncStatePath).SetEnabled(enabled);
+        }
+        var initialSyncBytes = registered ? File.ReadAllBytes(paths.WebBestSyncStatePath) : null;
+        using var handler = new StartupWebHandler();
+        await applicationFixture.RunAsync(async () =>
+        {
+            MainWindow? window = null;
+            try
+            {
+                PrepareStartupResources();
+                window = new MainWindow(paths, handler);
+                await window.RestoreSavedPathsAsync();
+                if (initialSyncBytes is not null)
+                {
+                    Assert.Equal(initialSyncBytes, File.ReadAllBytes(paths.WebBestSyncStatePath));
+                }
+                Assert.True(window.ViewModel.HasData);
+                Assert.True(window.ViewModel.IsWebBestSyncAvailable);
+                Assert.Equal(enabled, window.ViewModel.WebBestSyncEnabled);
+                Assert.Equal(registered, window.ViewModel.CanToggleWebSync);
+                Assert.Equal(enabled, window.ViewModel.CanSyncWebBestsNow);
+                await window.ViewModel.ResumeWebBestSyncAsync();
+                Assert.Equal(enabled ? 1 : 0, handler.RequestCount);
+                Assert.Equal(Localization.Get(enabled ? "同期済み" : "連携停止中"), window.ViewModel.WebBestSyncStatusTitle);
+            }
+            finally
+            {
+                window?.PrepareForApplicationExit();
+                window?.Close();
+            }
+        });
+    }
+
+    private static ViewerDatabasePaths StartupPaths(DatabaseFixture fixture) => new(
+        ViewerDatabaseEnvironment.Development, fixture.DirectoryPath, fixture.MasterPath,
+        fixture.CatalogPath, fixture.ScorePath, null, Path.Combine(fixture.DirectoryPath, "data"),
+        Path.Combine(fixture.DirectoryPath, "logs"), Path.Combine(fixture.DirectoryPath, "viewer-settings.json"));
+
+    private static void PrepareStartupResources()
+    {
+        foreach (var resourceName in new[] { "Theme.xaml", "Components.xaml", "Strings.xaml" })
+        {
+            Application.Current.Resources.MergedDictionaries.Add(new ResourceDictionary
+            {
+                Source = new Uri($"/DDRGpScoreViewer;component/Resources/{resourceName}", UriKind.Relative),
+            });
+        }
+        Localization.Configure(UserSettings.JapaneseLanguage);
+    }
+
+    private sealed class StartupWebHandler : HttpMessageHandler
+    {
+        public int RequestCount { get; private set; }
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            RequestCount++;
+            Assert.Equal("/api/v1/me", request.RequestUri!.AbsolutePath);
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("""
+                    {"public_player_id":"p_XXXXXXXXXXXXXXXXXXXXXX","display_name":"Existing player"}
+                    """, Encoding.UTF8, "application/json"),
+            });
+        }
+    }
+
+#if DEBUG
+    private static string WriteStartupSaveWorkflow(string root)
+    {
+        var path = Path.Combine(root, "workflow.json");
+        File.WriteAllText(path, """
+            {"workflow_schema_version":1,"analysis_detail":null,"save_input":{
+              "input_schema_version":1,"candidate_material":{},
+              "capture_id":"new-capture","capture_hash":"sha256:new-capture",
+              "captured_at":"2026-10-17T10:00:00+09:00","source_kind":"manual","source_path":"fixture",
+              "analysis_id":"new-analysis","event_type":"confirmed","confirmed_result":true,"duplicate":false,
+              "confirmation_mode":"manual","identity_signal_status":"reviewed","digit_review_status":"reviewed",
+              "analysis_confidence":0.99,"analysis_summary_json":"{}","app_version":"test",
+              "formal_play":{"play_id":"new-local-play","played_at":"2026-10-17T10:00:00+09:00",
+                "master_version":"master-v1","song_id":"song-1","chart_id":"chart-1","score":950000,
+                "max_combo":456,"marvelous":400,"perfect":40,"great":10,"good":4,"miss":2,"ex_score":1750,
+                "rank":"AAA","clear_type":"CLEAR","flare_rank":null,"ok":null,"calories":null,
+                "duplicate_key":"play:v1:new-local-play"},
+              "exclusion":null,"manifest_image_path":"","frame_index":null,"timestamp_ms":null,
+              "candidate_duration_ms":null,"log_path":""}}
+            """, new UTF8Encoding(false));
+        return path;
+    }
+#endif
+
     [Fact]
     public void Applying_localization_keeps_recycled_data_grid_row_display_bound()
     {
@@ -1246,6 +1503,8 @@ public sealed class LocalizationApplicationFixture : IDisposable
     }
 
     public void Run(Action action) => application.Dispatcher.Invoke(action);
+
+    public Task RunAsync(Func<Task> action) => application.Dispatcher.InvokeAsync(action).Task.Unwrap();
 
     public void Dispose()
     {

@@ -161,7 +161,7 @@ public sealed class ViewerDatabasePathsTests
 
             Assert.True(Directory.Exists(Path.Combine(root, "databases")));
             Assert.True(Directory.Exists(Path.Combine(root, "data")));
-            Assert.True(Directory.Exists(Path.Combine(root, "data", "web-sync")));
+            Assert.False(Directory.Exists(Path.Combine(root, "data", "web-sync")));
             Assert.True(Directory.Exists(Path.Combine(root, "logs")));
             Assert.False(File.Exists(paths.MasterDatabasePath));
             Assert.False(File.Exists(paths.JacketCatalogDatabasePath));

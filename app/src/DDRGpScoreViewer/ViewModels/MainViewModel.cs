@@ -261,7 +261,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     internal void ConfigureWebBestSync(
         WebBestSyncCoordinator coordinator,
-        WebPlayerIdentityService identityService)
+        WebPlayerIdentityService identityService,
+        WebBestSyncSnapshot? initialState = null)
     {
         ArgumentNullException.ThrowIfNull(coordinator);
         ArgumentNullException.ThrowIfNull(identityService);
@@ -269,10 +270,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
         {
             throw new InvalidOperationException("Web Best sync is already configured.");
         }
+        // Read before connecting Web operations; a failed store must remain disconnected.
+        var state = initialState ?? coordinator.State;
         webBestSyncCoordinator = coordinator;
         webPlayerIdentityService = identityService;
         coordinator.StateChanged += ApplyWebBestSyncState;
-        ApplyWebBestSyncState(coordinator.State);
+        ApplyWebBestSyncState(state);
         try
         {
             var identity = identityService.LoadIdentity();
@@ -306,6 +309,15 @@ public sealed class MainViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(CanDeletePublicBests));
         OnPropertyChanged(nameof(CanOpenPublicPlayerPage));
         NotifyWebAccountActions();
+    }
+
+    internal void ReportWebBestSyncUnavailable(string statePath, Exception exception)
+    {
+        WebBestSyncStatusTitle = Localization.Get("Web同期状態を読み込めません");
+        WebBestSyncStatusMessage = Localization.Get(
+            "Web送信を停止しています。履歴閲覧とローカル保存は利用できます。アプリを終了し、同期状態ファイルのアクセス権と保管状態を確認してから再起動してください。ファイルの削除・再作成は行わないでください。");
+        WebBestSyncLastSuccessDisplay = Localization.Get("不明");
+        WebBestSyncDetails = Localization.Format("同期状態ファイル: {0} / 理由: {1}", statePath, exception.Message);
     }
 
     internal Func<TimeSpan, Func<Task>, Task> UnresolvedNotificationScheduler { get; set; } =

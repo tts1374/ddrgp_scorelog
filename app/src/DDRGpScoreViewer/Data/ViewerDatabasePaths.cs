@@ -115,7 +115,6 @@ public sealed record ViewerDatabasePaths(
         CreateParentDirectory(JacketCatalogDatabasePath);
         CreateParentDirectory(ScoreDatabasePath);
         CreateParentDirectory(SettingsPath);
-        CreateParentDirectory(WebBestSyncStatePath);
         if (EvaluationDatabasePath is not null)
         {
             CreateParentDirectory(EvaluationDatabasePath);
