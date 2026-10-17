@@ -1,6 +1,10 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                     xmlns:sys="clr-namespace:System;assembly=System.Runtime">
+    <sys:String x:Key="Web同期状態を読み込めません">Cannot read Web sync state</sys:String>
+    <sys:String x:Key="Web送信を停止しています。履歴閲覧とローカル保存は利用できます。アプリを終了し、同期状態ファイルのアクセス権と保管状態を確認してから再起動してください。ファイルの削除・再作成は行わないでください。">Web sending is stopped. History and local saving remain available. Close the app, check the sync state file's permissions and condition, then restart. Keep the original file; do not delete or recreate it.</sys:String>
+    <sys:String x:Key="同期状態ファイル: {0} / 理由: {1}">Sync state file: {0} / Reason: {1}</sys:String>
+    <sys:String x:Key="不明">Unknown</sys:String>
     <sys:String x:Key="自動記録：待機中">Auto recording: Waiting</sys:String>
     <sys:String x:Key="DDR GP ウィンドウ待機中">Waiting for DDR GP window</sys:String>
     <sys:String x:Key="監視を開始する">Start monitoring</sys:String>

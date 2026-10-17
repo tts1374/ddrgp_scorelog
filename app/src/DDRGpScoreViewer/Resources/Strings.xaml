@@ -2,6 +2,10 @@
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                     xmlns:sys="clr-namespace:System;assembly=System.Runtime">
     <!-- Japanese is the base language and the fallback for every missing entry. -->
+    <sys:String x:Key="Web同期状態を読み込めません">Web同期状態を読み込めません</sys:String>
+    <sys:String x:Key="Web送信を停止しています。履歴閲覧とローカル保存は利用できます。アプリを終了し、同期状態ファイルのアクセス権と保管状態を確認してから再起動してください。ファイルの削除・再作成は行わないでください。">Web送信を停止しています。履歴閲覧とローカル保存は利用できます。アプリを終了し、同期状態ファイルのアクセス権と保管状態を確認してから再起動してください。ファイルの削除・再作成は行わないでください。</sys:String>
+    <sys:String x:Key="同期状態ファイル: {0} / 理由: {1}">同期状態ファイル: {0} / 理由: {1}</sys:String>
+    <sys:String x:Key="不明">不明</sys:String>
     <sys:String x:Key="自動記録：待機中">自動記録：待機中</sys:String>
     <sys:String x:Key="DDR GP ウィンドウ待機中">DDR GP ウィンドウ待機中</sys:String>
     <sys:String x:Key="監視を開始する">監視を開始する</sys:String>
