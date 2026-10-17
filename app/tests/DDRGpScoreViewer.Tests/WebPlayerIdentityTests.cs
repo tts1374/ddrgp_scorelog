@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
+using DDRGpScoreViewer.WebBestSync;
 using DDRGpScoreViewer.WebIdentity;
 using Xunit;
 
@@ -475,14 +476,121 @@ public sealed class WebPlayerIdentityTests
         Assert.Equal(PublicPlayerId, result.Identity.PublicPlayerId);
     }
 
-    [Fact]
-    public async Task Network_and_server_errors_preserve_registered_identity()
+    [Theory]
+    [InlineData(401, false)]
+    [InlineData(403, false)]
+    [InlineData(401, true)]
+    [InlineData(403, true)]
+    public async Task Credential_adoption_cannot_interleave_rejection_comparison_and_write(int code, bool syncClient)
+    {
+        using var directory = new TemporaryDirectory();
+        using var protector = new PausingSecretProtector();
+        var identity = new FileWebPlayerIdentityStore(Path.Combine(directory.Path, "identity.json"),
+            Path.Combine(directory.Path, "credential.bin"), protector);
+        identity.SaveRegistered(PublicPlayerId, Credential);
+        var response = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var handler = new DelegatingHandlerStub(async (_, _, _) =>
+        {
+            await response.Task;
+            return new HttpResponseMessage((HttpStatusCode)code);
+        });
+        using var http = new HttpClient(handler) { BaseAddress = new("https://identity.example.test/") };
+        async Task RejectAsync()
+        {
+            if (syncClient)
+                await new WebBestSyncApiClient(http, identity).DeletePublicBestsAsync(CancellationToken.None);
+            else
+                await new WebPlayerIdentityService(http, identity).GetCurrentPlayerAsync();
+        }
+        var rejection = RejectAsync();
+        protector.PauseNextRead = true;
+        response.SetResult();
+        await protector.ReadEntered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        Exception? writeError = null;
+        var writer = new Thread(() =>
+        {
+            try { identity.SaveRegistered(PublicPlayerId, "new-credential", "Recovered"); }
+            catch (Exception exception) { writeError = exception; }
+        });
+        try
+        {
+            writer.Start();
+            // Observe the writer either finishing (the broken check/set interleaving) or
+            // waiting for the store's mutation lock. No timing sleep selects the winner.
+            Assert.True(SpinWait.SpinUntil(() => !writer.IsAlive ||
+                (writer.ThreadState & System.Threading.ThreadState.WaitSleepJoin) != 0, TimeSpan.FromSeconds(10)));
+        }
+        finally
+        {
+            protector.ContinueRead.Set();
+            Assert.True(writer.Join(TimeSpan.FromSeconds(10)));
+        }
+        await rejection;
+        Assert.Null(writeError);
+        Assert.Equal(PlayerIdentityState.Registered, identity.Load().State);
+        Assert.Equal("new-credential", identity.Load().AppCredential);
+        Assert.Equal("Recovered", identity.Load().DisplayName);
+    }
+
+    [Theory]
+    [InlineData(401, false, false)]
+    [InlineData(403, false, false)]
+    [InlineData(401, true, false)]
+    [InlineData(403, true, false)]
+    [InlineData(401, false, true)]
+    [InlineData(403, false, true)]
+    [InlineData(401, true, true)]
+    [InlineData(403, true, true)]
+    public async Task Rejection_is_bound_to_sent_credential(int code, bool changeCredential, bool authorizationStart)
+    {
+        var identity = MemoryWebPlayerIdentityStore.Registered();
+        var pending = new MemoryAuthorizationStore();
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var response = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var credentials = new List<string?>();
+        var handler = new DelegatingHandlerStub(async (request, _, _) =>
+        {
+            credentials.Add(request.Headers.Authorization?.Parameter);
+            started.TrySetResult();
+            await response.Task;
+            return new HttpResponseMessage((HttpStatusCode)code);
+        });
+        var service = CreateService(handler, identity, pending);
+        async Task<PlayerIdentityRequestStatus> SendAsync() => authorizationStart
+            ? (await service.BeginAppAuthorizationAsync()).Status
+            : (await service.GetCurrentPlayerAsync()).Status;
+
+        var request = SendAsync();
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        if (changeCredential) identity.SaveRegistered(PublicPlayerId, "new-credential", "Recovered");
+        response.SetResult();
+
+        Assert.Equal(changeCredential ? PlayerIdentityRequestStatus.CredentialChanged :
+            PlayerIdentityRequestStatus.AuthenticationInvalid, await request);
+        Assert.Equal(changeCredential ? PlayerIdentityState.Registered : PlayerIdentityState.AuthInvalid, identity.Load().State);
+        Assert.Equal(Credential, credentials[0]);
+        if (changeCredential)
+        {
+            Assert.Equal("new-credential", identity.Load().AppCredential);
+            Assert.Equal("Recovered", identity.Load().DisplayName);
+            if (authorizationStart) Assert.NotNull(pending.Load());
+            Assert.Equal(PlayerIdentityRequestStatus.AuthenticationInvalid, await SendAsync());
+            Assert.Equal("new-credential", credentials[1]);
+            Assert.Equal(PlayerIdentityState.AuthInvalid, identity.Load().State);
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Network_and_server_errors_preserve_registered_identity(bool timeout)
     {
         var store = MemoryWebPlayerIdentityStore.Registered();
         var handler = new DelegatingHandlerStub((_, attempt, _) =>
         {
             if (attempt == 1)
             {
+                if (timeout) throw new TaskCanceledException("timeout");
                 throw new HttpRequestException("offline");
             }
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.ServiceUnavailable));
@@ -618,6 +726,27 @@ public sealed class WebPlayerIdentityTests
             updated_at = DateTimeOffset.UtcNow
         });
 
+    private sealed class PausingSecretProtector : IUserSecretProtector, IDisposable
+    {
+        private readonly DpapiCurrentUserSecretProtector inner = new();
+        public bool PauseNextRead { get; set; }
+        public TaskCompletionSource ReadEntered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public ManualResetEventSlim ContinueRead { get; } = new();
+        public byte[] Protect(string secret, UserSecretPurpose purpose) => inner.Protect(secret, purpose);
+        public string Unprotect(byte[] protectedSecret, UserSecretPurpose purpose)
+        {
+            var secret = inner.Unprotect(protectedSecret, purpose);
+            if (PauseNextRead)
+            {
+                PauseNextRead = false;
+                ReadEntered.SetResult();
+                if (!ContinueRead.Wait(TimeSpan.FromSeconds(10))) throw new TimeoutException("Read was not released.");
+            }
+            return secret;
+        }
+        public void Dispose() => ContinueRead.Dispose();
+    }
+
     private sealed class MemoryAuthorizationStore : IAppAuthorizationStore
     {
         public PendingAppAuthorization? Value { get; set; }
@@ -746,6 +875,13 @@ public sealed class WebPlayerIdentityTests
         {
             if (FailAuthenticationInvalid) throw new IOException("authentication state save failed");
             authenticationInvalid = invalid;
+        }
+
+        public bool TryInvalidateAuthentication(string requestCredential)
+        {
+            if (appCredential != requestCredential) return false;
+            SetAuthenticationInvalid(true);
+            return true;
         }
 
         public void Clear()

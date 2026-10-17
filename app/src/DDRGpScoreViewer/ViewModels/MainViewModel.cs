@@ -2252,7 +2252,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             {
                 var result = await webPlayerIdentityService.GetCurrentPlayerAsync(cancellationToken);
                 ApplyPlayerIdentityResult(result);
-                if (result.Status == PlayerIdentityRequestStatus.AuthenticationInvalid)
+                if (result.Status is PlayerIdentityRequestStatus.AuthenticationInvalid or PlayerIdentityRequestStatus.CredentialChanged)
                 {
                     return;
                 }
@@ -2343,6 +2343,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     private bool ApplyPlayerIdentityResult(PlayerIdentityOperationResult result)
     {
+        if (result.Status == PlayerIdentityRequestStatus.CredentialChanged ||
+            result.Status == PlayerIdentityRequestStatus.AuthenticationInvalid &&
+            !string.Equals(result.Identity.AppCredential, LoadWebPlayerIdentity()?.AppCredential, StringComparison.Ordinal))
+        {
+            return false;
+        }
         if (result.Status == PlayerIdentityRequestStatus.Succeeded && result.Player is not null)
         {
             ApplyWebPlayerDisplayName(result.Player.DisplayName);

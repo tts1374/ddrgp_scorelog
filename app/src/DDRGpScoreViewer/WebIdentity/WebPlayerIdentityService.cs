@@ -150,10 +150,7 @@ internal sealed partial class WebPlayerIdentityService
             {
                 try
                 {
-                    identityStore.SetAuthenticationInvalid(true);
-                    return new(
-                        PlayerIdentityRequestStatus.AuthenticationInvalid,
-                        identityStore.Load());
+                    return InvalidateRejectedCredential(identity.AppCredential);
                 }
                 catch (Exception exception) when (IsLocalStorageException(exception))
                 {
@@ -222,6 +219,14 @@ internal sealed partial class WebPlayerIdentityService
                 return StorageFailure();
             }
         }
+    }
+
+    private PlayerIdentityOperationResult InvalidateRejectedCredential(string requestCredential)
+    {
+        var invalidated = identityStore.TryInvalidateAuthentication(requestCredential);
+        var current = identityStore.Load();
+        return new(invalidated && string.Equals(current.AppCredential, requestCredential, StringComparison.Ordinal)
+            ? PlayerIdentityRequestStatus.AuthenticationInvalid : PlayerIdentityRequestStatus.CredentialChanged, current);
     }
 
     private PlayerIdentityOperationResult StorageFailure()

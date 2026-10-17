@@ -102,18 +102,22 @@ internal sealed partial class WebPlayerIdentityService
         }
         using (response)
         {
-            if (response.StatusCode == HttpStatusCode.Unauthorized && request.Headers.Authorization is not null)
+            if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden &&
+                request.Headers.Authorization?.Parameter is { } requestCredential)
             {
                 try
                 {
-                    identityStore.SetAuthenticationInvalid(true);
-                    authorizationStore.Clear();
+                    var rejected = InvalidateRejectedCredential(requestCredential);
+                    if (rejected.Status == PlayerIdentityRequestStatus.AuthenticationInvalid)
+                    {
+                        authorizationStore.Clear();
+                    }
+                    return new(rejected.Status);
                 }
                 catch (Exception exception) when (IsLocalStorageException(exception))
                 {
                     return new(PlayerIdentityRequestStatus.LocalStorageError);
                 }
-                return new(PlayerIdentityRequestStatus.AuthenticationInvalid);
             }
             if (!response.IsSuccessStatusCode)
             {

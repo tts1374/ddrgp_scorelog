@@ -99,6 +99,7 @@ transaction TTLは開始から10分。確定登録/link/unlink/activationとcanc
 - activationは新Credential proof＋request secret＋確定Web承認を検証し、active化、他App Credential全失効、他Credentialの未完了snapshot無効化を同じtransactionで行う。Best/日時・Local DBは変更しない。
 - 保存/activation未成功なら旧PC維持。成功後は旧PC401→AUTH_INVALID。最初の同期を失効条件にしない。serverは端末保存を直接検証できないため対応Appが保存/再読込後だけactivationする。
 - Best write transaction内で未失効を再検証し、middleware通過済みの旧requestもactivation後は拒否する。
+- Windowsのidentity service / Web Best同期API clientは、401/403を送信時のCredentialへ対応付ける。採用済みCredentialと異なる旧拒否では、現在のidentity・ViewModelの認証表示・同期操作・coordinatorをAUTH_INVALIDへ戻さない。Credential変更なし、および採用済みCredential自身の401/403は従来どおり認証無効化と自動送信停止へ反映する。
 - activation後のDB復元/再起動/同期停止・再開では再発行しない。1:N schemaを維持し、今回の操作は1台への権限移行。端末一覧/個別失効/同時複数PC同期UIは含めない。
 
 ## 連携解除とアカウント削除

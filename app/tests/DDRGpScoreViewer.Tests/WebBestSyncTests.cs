@@ -671,6 +671,129 @@ public sealed class WebBestSyncTests
     }
 
     [Theory]
+    [InlineData(401)]
+    [InlineData(403)]
+    public async Task Api_rejections_for_each_route_are_bound_to_sent_credential(int code)
+    {
+        for (var route = 0; route < 8; route++)
+        {
+            foreach (var changeCredential in new[] { false, true })
+            {
+                var identity = new MemoryWebPlayerIdentityStore();
+                identity.SaveRegistered("player", "old-credential");
+                var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                var credentials = new List<string?>();
+                using var http = new HttpClient(new DelegateHttpMessageHandler(async request =>
+                {
+                    credentials.Add(request.Headers.Authorization?.Parameter);
+                    started.TrySetResult();
+                    await release.Task;
+                    return new HttpResponseMessage((HttpStatusCode)code);
+                }))
+                { BaseAddress = new("https://best.example.test/") };
+                var api = new WebBestSyncApiClient(http, identity);
+                var review = new WebBestReplacementReview(0, 0, [], [], new string('A', 64), 0);
+                async Task<WebBestApiStatus> SendAsync() => route switch
+                {
+                    0 => (await api.SendDeltaAsync("master", [], CancellationToken.None)).Status,
+                    1 => (await api.BeginSnapshotAsync("master", 0, CancellationToken.None)).Status,
+                    2 => (await api.UploadSnapshotChunkAsync("snapshot", "chunk", [], CancellationToken.None)).Status,
+                    3 => (await api.CommitSnapshotAsync("snapshot", CancellationToken.None)).Status,
+                    4 => (await api.AbortSnapshotAsync("snapshot", CancellationToken.None)).Status,
+                    5 => (await api.DeletePublicBestsAsync(CancellationToken.None)).Status,
+                    6 => (await api.ReviewReplacementAsync("snapshot", CancellationToken.None)).Status,
+                    _ => (await api.AuthorizeReplacementAsync("snapshot", review, CancellationToken.None)).Status,
+                };
+
+                var request = SendAsync();
+                await started.Task.WaitAsync(TimeSpan.FromSeconds(10));
+                if (changeCredential) identity.SaveRegistered("player", "new-credential");
+                release.SetResult();
+                Assert.Equal(changeCredential ? WebBestApiStatus.RetryableError : WebBestApiStatus.AuthenticationInvalid,
+                    await request);
+                Assert.Equal(changeCredential ? PlayerIdentityState.Registered : PlayerIdentityState.AuthInvalid,
+                    identity.Load().State);
+                Assert.Equal("old-credential", credentials[0]);
+                if (changeCredential)
+                {
+                    Assert.Equal("new-credential", identity.Load().AppCredential);
+                    Assert.Equal(WebBestApiStatus.AuthenticationInvalid, await SendAsync());
+                    Assert.Equal("new-credential", credentials[1]);
+                    Assert.Equal(PlayerIdentityState.AuthInvalid, identity.Load().State);
+                }
+            }
+        }
+    }
+
+    [Theory]
+    [InlineData(401, false)]
+    [InlineData(403, false)]
+    [InlineData(401, true)]
+    [InlineData(403, true)]
+    public async Task Coordinator_retries_old_rejection_with_current_credential_and_honors_current_rejection(int code, bool rejectCurrent)
+    {
+        using var fixture = new DatabaseFixture();
+        fixture.AddPlay("capture", "2026-10-02T01:00:00+00:00", 900000, 1000);
+        fixture.ExecuteScoreSql("UPDATE source_captures SET source_kind = 'capture';");
+        var projections = new WebBestProjectionRepository();
+        var hash = WebBestProjectionContract.Hash(Assert.Single(projections.ReadAll(fixture.ScorePath)));
+        var identity = new MemoryWebPlayerIdentityStore();
+        identity.SaveRegistered("player", "old-credential");
+        var stateStore = new SqliteWebBestSyncStateStore(Path.Combine(fixture.DirectoryPath, "credential-sync.sqlite"));
+        stateStore.SetEnabled(true);
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var credentials = new List<string?>();
+        using var http = new HttpClient(new DelegateHttpMessageHandler(async request =>
+        {
+            credentials.Add(request.Headers.Authorization?.Parameter);
+            if (credentials.Count == 1)
+            {
+                started.SetResult();
+                await release.Task;
+                return new HttpResponseMessage((HttpStatusCode)code);
+            }
+            return rejectCurrent ? new HttpResponseMessage((HttpStatusCode)code) : new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(JsonSerializer.Serialize(new
+                {
+                    results = new[] { new { index = 0, status = "accepted", changed = true, received_hash = hash } }
+                }), Encoding.UTF8, "application/json")
+            };
+        }))
+        { BaseAddress = new("https://best.example.test/") };
+        var retries = 0;
+        var coordinator = new WebBestSyncCoordinator(stateStore, projections, new WebBestSyncApiClient(http, identity),
+            fixture.ScorePath, fixture.MasterPath, delay: (_, _) => { retries++; return Task.CompletedTask; });
+        var statuses = new List<WebBestSyncStatus>();
+        coordinator.StateChanged += state => statuses.Add(state.Status);
+        var sync = coordinator.SynchronizeAsync(CancellationToken.None);
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        identity.SaveRegistered("player", "new-credential");
+        release.SetResult();
+        await sync;
+
+        Assert.Equal(new[] { "old-credential", "new-credential" }, credentials);
+        Assert.Equal(1, retries);
+        Assert.Equal("new-credential", identity.Load().AppCredential);
+        Assert.Equal(rejectCurrent ? PlayerIdentityState.AuthInvalid : PlayerIdentityState.Registered, identity.Load().State);
+        Assert.Equal(rejectCurrent ? WebBestSyncStatus.AuthInvalid : WebBestSyncStatus.Idle, coordinator.State.Status);
+        if (rejectCurrent)
+        {
+            Assert.Equal("AUTH_INVALID", coordinator.State.LastErrorCode);
+            await coordinator.SynchronizeAsync(CancellationToken.None);
+            Assert.Equal(2, credentials.Count);
+        }
+        else
+        {
+            Assert.DoesNotContain(WebBestSyncStatus.AuthInvalid, statuses);
+            Assert.Null(coordinator.State.LastErrorCode);
+            Assert.Equal(0, coordinator.State.PendingCount);
+        }
+    }
+
+    [Theory]
     [InlineData(429)]
     [InlineData(500)]
     public async Task ApiClientMapsRateLimitAndServerFailureToRetryable(int statusCode)
@@ -1186,6 +1309,142 @@ public sealed class WebBestSyncTests
         }
     }
 
+    [Theory]
+    [InlineData(401)]
+    [InlineData(403)]
+    public async Task Delayed_old_rejection_preserves_view_model_after_normal_recovery(int code)
+    {
+        using var fixture = new DatabaseFixture();
+        fixture.AddPlay("capture", "2026-10-02T01:00:00+00:00", 900000, 1000);
+        fixture.ExecuteScoreSql("UPDATE source_captures SET source_kind = 'capture';");
+        const string playerId = "p_abcdefghijklmnopqrstuv";
+        const string newCredential = "ac_abcdefghijklmnopqrstuv.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+        var identity = new FileWebPlayerIdentityStore(Path.Combine(fixture.DirectoryPath, "identity.json"),
+            Path.Combine(fixture.DirectoryPath, "credential.bin"));
+        identity.SaveRegistered(playerId, "old-credential", "Old player");
+        var pending = new FileAppAuthorizationStore(Path.Combine(fixture.DirectoryPath, "authorization.bin"));
+        var stateStore = new SqliteWebBestSyncStateStore(Path.Combine(fixture.DirectoryPath, "recovery-sync.sqlite"));
+        stateStore.SetEnabled(true);
+        var firstResponse = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var secondResponse = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var bothStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var checks = 0;
+        var activations = 0;
+        var viewModel = new MainViewModel(new ScoreViewerRepository());
+        using var http = new HttpClient(new DelegateHttpMessageHandler(async request =>
+        {
+            var path = request.RequestUri!.AbsolutePath;
+            if (path == "/api/v1/me")
+            {
+                var checkNumber = ++checks;
+                if (checkNumber <= 2)
+                {
+                    Assert.Equal("old-credential", request.Headers.Authorization?.Parameter);
+                    var response = checkNumber == 1 ? firstResponse : secondResponse;
+                    if (checkNumber == 2) bothStarted.SetResult();
+                    await response.Task;
+                    return new HttpResponseMessage(checkNumber == 1 ? HttpStatusCode.Unauthorized : (HttpStatusCode)code);
+                }
+                Assert.Equal(newCredential, request.Headers.Authorization?.Parameter);
+                return new HttpResponseMessage((HttpStatusCode)code);
+            }
+            if (path == "/api/v1/auth/app-authorizations")
+            {
+                Assert.Null(request.Headers.Authorization);
+                using var body = JsonDocument.Parse(await request.Content!.ReadAsStringAsync());
+                Assert.Equal(playerId, body.RootElement.GetProperty("expected_public_player_id").GetString());
+                var id = body.RootElement.GetProperty("id").GetString();
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(JsonSerializer.Serialize(new
+                    {
+                        authorization_id = id,
+                        url = "https://best.example.test/my/app-connect?request=" + id,
+                        comparison_code = "1234ABCD",
+                        expires_at = DateTimeOffset.UtcNow.AddMinutes(9)
+                    }), Encoding.UTF8, "application/json")
+                };
+            }
+            var activating = path.EndsWith("/activate", StringComparison.Ordinal);
+            if (activating)
+            {
+                activations++;
+                Assert.Equal(newCredential, request.Headers.Authorization?.Parameter);
+                Assert.Equal(AppAuthorizationState.CredentialActivationPending, pending.Load()!.State);
+                Assert.False(viewModel.CanSyncWebBestsNow);
+            }
+            else
+            {
+                Assert.EndsWith("/result", path);
+            }
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(JsonSerializer.Serialize(new
+                {
+                    status = activating ? "ACTIVATED" : "APPROVED",
+                    public_player_id = playerId,
+                    credential = newCredential,
+                    display_name = "Recovered player",
+                    created_at = DateTimeOffset.UtcNow,
+                    updated_at = DateTimeOffset.UtcNow
+                }), Encoding.UTF8, "application/json")
+            };
+        }))
+        { BaseAddress = new("https://best.example.test/") };
+        var api = new FakeWebBestSyncApiClient();
+        var coordinator = new WebBestSyncCoordinator(stateStore, new WebBestProjectionRepository(), api,
+            fixture.ScorePath, fixture.MasterPath);
+        viewModel.ConfigureWebBestSync(coordinator, new WebPlayerIdentityService(http, identity, authorizationStore: pending));
+
+        var first = viewModel.ResumeWebBestSyncAsync();
+        var second = viewModel.ResumeWebBestSyncAsync();
+        await bothStarted.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        firstResponse.SetResult();
+        await first;
+        Assert.Equal(PlayerIdentityState.AuthInvalid, identity.Load().State);
+        Assert.False(viewModel.CanToggleWebSync);
+        Assert.False(viewModel.CanSyncWebBestsNow);
+        Assert.Equal(System.Windows.Visibility.Visible, viewModel.WebBestAuthActionVisibility);
+        Assert.Equal(PlayerIdentityRequestStatus.Succeeded, (await viewModel.BeginWebAuthorizationAsync(false, CancellationToken.None)).Status);
+        await viewModel.CompleteWebAuthorizationAsync();
+        Assert.Equal(1, activations);
+        Assert.Null(pending.Load());
+        Assert.Equal(1, api.MergeCalls);
+        Assert.Equal(PlayerIdentityState.Registered, identity.Load().State);
+        Assert.Equal(newCredential, identity.Load().AppCredential);
+        Assert.Equal(playerId, identity.Load().PublicPlayerId);
+        Assert.True(viewModel.CanToggleWebSync);
+        Assert.True(viewModel.CanSyncWebBestsNow);
+        Assert.Equal(WebBestSyncStatus.Idle, coordinator.State.Status);
+        var title = viewModel.WebBestSyncStatusTitle;
+        var details = viewModel.WebBestSyncDetails;
+        var message = viewModel.SettingsStatusMessage;
+        secondResponse.SetResult();
+        await second;
+
+        Assert.Equal(PlayerIdentityState.Registered, identity.Load().State);
+        Assert.Equal(newCredential, identity.Load().AppCredential);
+        Assert.Equal("Recovered player", viewModel.WebPlayerDisplayName);
+        Assert.True(viewModel.CanToggleWebSync);
+        Assert.True(viewModel.CanSyncWebBestsNow);
+        Assert.Equal(System.Windows.Visibility.Collapsed, viewModel.WebBestAuthActionVisibility);
+        Assert.Equal(title, viewModel.WebBestSyncStatusTitle);
+        Assert.Equal(details, viewModel.WebBestSyncDetails);
+        Assert.Equal(message, viewModel.SettingsStatusMessage);
+        Assert.Equal(WebBestSyncStatus.Idle, coordinator.State.Status);
+        Assert.Null(coordinator.State.LastErrorCode);
+        Assert.Equal(1, api.MergeCalls);
+
+        // A rejection of the recovered credential still stops automatic sending.
+        await viewModel.ResumeWebBestSyncAsync();
+        Assert.Equal(PlayerIdentityState.AuthInvalid, identity.Load().State);
+        Assert.False(viewModel.CanSyncWebBestsNow);
+        Assert.Equal(System.Windows.Visibility.Visible, viewModel.WebBestAuthActionVisibility);
+        await viewModel.ResumeWebBestSyncAsync();
+        Assert.Equal(3, checks);
+        Assert.Equal(1, api.MergeCalls);
+    }
+
     [Fact]
     public async Task Activation_cleanup_failure_blocks_uploads_then_same_app_retry_enables_sync()
     {
@@ -1635,6 +1894,13 @@ public sealed class WebBestSyncTests
         public void SetDisplayName(string savedDisplayName) => displayName = savedDisplayName;
 
         public void SetAuthenticationInvalid(bool invalid) => authenticationInvalid = invalid;
+
+        public bool TryInvalidateAuthentication(string requestCredential)
+        {
+            if (credential != requestCredential) return false;
+            SetAuthenticationInvalid(true);
+            return true;
+        }
 
         public void Clear()
         {

@@ -21,6 +21,8 @@ internal interface IWebPlayerIdentityStore
 
     void SetAuthenticationInvalid(bool invalid);
 
+    bool TryInvalidateAuthentication(string requestCredential);
+
     void Clear();
 }
 
@@ -98,6 +100,7 @@ internal sealed class FileWebPlayerIdentityStore : IWebPlayerIdentityStore
     private readonly string metadataPath;
     private readonly string credentialPath;
     private readonly IUserSecretProtector protector;
+    private readonly object mutationGate = new();
 
     public FileWebPlayerIdentityStore(
         string metadataPath,
@@ -110,6 +113,14 @@ internal sealed class FileWebPlayerIdentityStore : IWebPlayerIdentityStore
     }
 
     public WebPlayerIdentitySnapshot Load()
+    {
+        lock (mutationGate)
+        {
+            return LoadCore();
+        }
+    }
+
+    private WebPlayerIdentitySnapshot LoadCore()
     {
         var metadata = ReadMetadata();
         var pendingRegistrationRequestId = UnprotectPendingRegistrationRequest(metadata);
@@ -164,6 +175,14 @@ internal sealed class FileWebPlayerIdentityStore : IWebPlayerIdentityStore
 
     public void SavePendingRegistration(string registrationRequestId)
     {
+        lock (mutationGate)
+        {
+            SavePendingRegistrationCore(registrationRequestId);
+        }
+    }
+
+    private void SavePendingRegistrationCore(string registrationRequestId)
+    {
         ArgumentException.ThrowIfNullOrWhiteSpace(registrationRequestId);
         var current = ReadMetadata();
         var protectedRequestId = protector.Protect(
@@ -188,6 +207,14 @@ internal sealed class FileWebPlayerIdentityStore : IWebPlayerIdentityStore
         string appCredential,
         string? displayName = null)
     {
+        lock (mutationGate)
+        {
+            SaveRegisteredCore(publicPlayerId, appCredential, displayName);
+        }
+    }
+
+    private void SaveRegisteredCore(string publicPlayerId, string appCredential, string? displayName)
+    {
         ArgumentException.ThrowIfNullOrWhiteSpace(publicPlayerId);
         ArgumentException.ThrowIfNullOrWhiteSpace(appCredential);
         var protectedCredential = protector.Protect(
@@ -210,6 +237,14 @@ internal sealed class FileWebPlayerIdentityStore : IWebPlayerIdentityStore
 
     public void SetDisplayName(string displayName)
     {
+        lock (mutationGate)
+        {
+            SetDisplayNameCore(displayName);
+        }
+    }
+
+    private void SetDisplayNameCore(string displayName)
+    {
         ArgumentException.ThrowIfNullOrWhiteSpace(displayName);
         var current = ReadMetadata();
         if (current.PublicPlayerId is null || !File.Exists(credentialPath))
@@ -222,6 +257,27 @@ internal sealed class FileWebPlayerIdentityStore : IWebPlayerIdentityStore
 
     public void SetAuthenticationInvalid(bool invalid)
     {
+        lock (mutationGate)
+        {
+            SetAuthenticationInvalidCore(invalid);
+        }
+    }
+
+    public bool TryInvalidateAuthentication(string requestCredential)
+    {
+        lock (mutationGate)
+        {
+            if (!string.Equals(LoadCore().AppCredential, requestCredential, StringComparison.Ordinal))
+            {
+                return false;
+            }
+            SetAuthenticationInvalidCore(true);
+            return true;
+        }
+    }
+
+    private void SetAuthenticationInvalidCore(bool invalid)
+    {
         var current = ReadMetadata();
         if (current.PublicPlayerId is null || !File.Exists(credentialPath))
         {
@@ -232,6 +288,14 @@ internal sealed class FileWebPlayerIdentityStore : IWebPlayerIdentityStore
     }
 
     public void Clear()
+    {
+        lock (mutationGate)
+        {
+            ClearCore();
+        }
+    }
+
+    private void ClearCore()
     {
         if (File.Exists(credentialPath))
         {

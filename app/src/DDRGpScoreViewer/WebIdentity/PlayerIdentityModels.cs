@@ -11,6 +11,7 @@ internal enum PlayerIdentityRequestStatus
 {
     Succeeded,
     AuthenticationInvalid,
+    CredentialChanged,
     NetworkError,
     ServerError,
     InvalidResponse,
