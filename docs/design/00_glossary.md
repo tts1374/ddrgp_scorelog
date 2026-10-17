@@ -78,6 +78,8 @@ DDR GP scorelog の設計、PoC、テストで使う主要用語を定義する�
 - `UNREGISTERED`: localに利用可能なWeb Player identityがない状態。App-Web承認待ちは独立して保持する。
 - `REGISTERED`: localに`public_player_id`とDPAPI CurrentUserで保護したApp Credentialがある状態。
 - `AUTH_INVALID`: local App Credentialは存在するがserverに認証を拒否された状態。Network Error、timeout、5xxをこの状態へ変換せず、新しいPlayerを自動作成しない。
+- Windows identity requestの`CredentialChanged`: 401/403が拒否した送信Credentialと現在のCredentialが異なる結果。現在のidentityを無効化せず、ViewModelは旧失敗を表示へ反映しない。認証状態を追加するものではない。
+- Windows Web Best APIの`CREDENTIAL_CHANGED`: 同じCredential不一致による401/403を、既存の`RetryableError`として返す内部error code。coordinatorは採用済みCredentialで再試行し、そのCredential自身の401/403は従来どおり`AUTH_INVALID`へ反映する。
 
 ### Google Account / Player recovery
 

@@ -282,6 +282,12 @@ internal sealed class WebBestSyncApiClient : IWebBestSyncApiClient
         if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
         {
             response.Dispose();
+            if (!string.Equals(identityStore.Load().AppCredential,
+                    request.Headers.Authorization?.Parameter, StringComparison.Ordinal))
+            {
+                // Retry with the adopted credential; this rejection cannot invalidate it.
+                return new(WebBestApiStatus.RetryableError, null, "CREDENTIAL_CHANGED");
+            }
             identityStore.SetAuthenticationInvalid(true);
             return new(WebBestApiStatus.AuthenticationInvalid, null, "AUTH_INVALID");
         }

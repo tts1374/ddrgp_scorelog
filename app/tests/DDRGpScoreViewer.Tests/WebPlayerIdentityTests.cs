@@ -475,14 +475,65 @@ public sealed class WebPlayerIdentityTests
         Assert.Equal(PublicPlayerId, result.Identity.PublicPlayerId);
     }
 
-    [Fact]
-    public async Task Network_and_server_errors_preserve_registered_identity()
+    [Theory]
+    [InlineData(401, false, false)]
+    [InlineData(403, false, false)]
+    [InlineData(401, true, false)]
+    [InlineData(403, true, false)]
+    [InlineData(401, false, true)]
+    [InlineData(403, false, true)]
+    [InlineData(401, true, true)]
+    [InlineData(403, true, true)]
+    public async Task Rejection_is_bound_to_sent_credential(int code, bool changeCredential, bool authorizationStart)
+    {
+        var identity = MemoryWebPlayerIdentityStore.Registered();
+        var pending = new MemoryAuthorizationStore();
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var response = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var credentials = new List<string?>();
+        var handler = new DelegatingHandlerStub(async (request, _, _) =>
+        {
+            credentials.Add(request.Headers.Authorization?.Parameter);
+            started.TrySetResult();
+            await response.Task;
+            return new HttpResponseMessage((HttpStatusCode)code);
+        });
+        var service = CreateService(handler, identity, pending);
+        async Task<PlayerIdentityRequestStatus> SendAsync() => authorizationStart
+            ? (await service.BeginAppAuthorizationAsync()).Status
+            : (await service.GetCurrentPlayerAsync()).Status;
+
+        var request = SendAsync();
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        if (changeCredential) identity.SaveRegistered(PublicPlayerId, "new-credential", "Recovered");
+        response.SetResult();
+
+        Assert.Equal(changeCredential ? PlayerIdentityRequestStatus.CredentialChanged :
+            PlayerIdentityRequestStatus.AuthenticationInvalid, await request);
+        Assert.Equal(changeCredential ? PlayerIdentityState.Registered : PlayerIdentityState.AuthInvalid, identity.Load().State);
+        Assert.Equal(Credential, credentials[0]);
+        if (changeCredential)
+        {
+            Assert.Equal("new-credential", identity.Load().AppCredential);
+            Assert.Equal("Recovered", identity.Load().DisplayName);
+            if (authorizationStart) Assert.NotNull(pending.Load());
+            Assert.Equal(PlayerIdentityRequestStatus.AuthenticationInvalid, await SendAsync());
+            Assert.Equal("new-credential", credentials[1]);
+            Assert.Equal(PlayerIdentityState.AuthInvalid, identity.Load().State);
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Network_and_server_errors_preserve_registered_identity(bool timeout)
     {
         var store = MemoryWebPlayerIdentityStore.Registered();
         var handler = new DelegatingHandlerStub((_, attempt, _) =>
         {
             if (attempt == 1)
             {
+                if (timeout) throw new TaskCanceledException("timeout");
                 throw new HttpRequestException("offline");
             }
             return Task.FromResult(new HttpResponseMessage(HttpStatusCode.ServiceUnavailable));
