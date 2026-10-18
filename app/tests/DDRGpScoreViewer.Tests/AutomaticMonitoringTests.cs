@@ -22,7 +22,7 @@ public sealed class AutomaticMonitoringTests
 
         Assert.Equal(1, capture.TargetedRunCount);
         Assert.Equal(MonitoringState.Monitoring, viewModel.CurrentMonitoringState);
-        Assert.Equal("監視中", viewModel.MonitoringStateDisplay);
+        Assert.Equal("自動記録中", viewModel.MonitoringStateDisplay);
         Assert.False(viewModel.CanStartMonitoring);
         Assert.True(viewModel.CanStopMonitoring);
         Assert.Equal(
@@ -69,7 +69,7 @@ public sealed class AutomaticMonitoringTests
 
         Assert.Equal(0, capture.TargetedRunCount);
         Assert.Equal(MonitoringState.WaitingForGame, viewModel.CurrentMonitoringState);
-        Assert.Equal("ゲーム待機中", viewModel.MonitoringStateDisplay);
+        Assert.Equal("ゲームを待っています", viewModel.MonitoringStateDisplay);
         Assert.True(viewModel.CanStartMonitoring);
         Assert.False(viewModel.CanStopMonitoring);
         Assert.Equal(
@@ -96,13 +96,13 @@ public sealed class AutomaticMonitoringTests
 
         Assert.Equal(1, capture.StopCount);
         Assert.Equal(MonitoringState.ManuallyStopped, viewModel.CurrentMonitoringState);
-        Assert.Equal("手動停止済み", viewModel.MonitoringStateDisplay);
+        Assert.Equal("自動記録を停止中", viewModel.MonitoringStateDisplay);
         Assert.True(viewModel.CanStartMonitoring);
         Assert.False(viewModel.CanStopMonitoring);
         Assert.Equal(
             System.Windows.Visibility.Visible,
             viewModel.MonitoringStartActionVisibility);
-        Assert.Equal("監視を再開", viewModel.MonitoringStartActionDisplay);
+        Assert.Equal("自動記録を再開", viewModel.MonitoringStartActionDisplay);
         await Task.Delay(80);
         Assert.Equal(1, capture.TargetedRunCount);
 
@@ -213,7 +213,7 @@ public sealed class AutomaticMonitoringTests
 
         Assert.Equal(0, capture.TargetedRunCount);
         Assert.Contains("自動監視を開始しません", viewModel.MonitoringReason, StringComparison.Ordinal);
-        Assert.Equal("監視開始不可", viewModel.MonitoringStateDisplay);
+        Assert.Equal("自動記録を始められません", viewModel.MonitoringStateDisplay);
         Assert.True(viewModel.CanStartMonitoring);
         Assert.False(viewModel.CanStopMonitoring);
         Assert.Equal(
@@ -307,7 +307,7 @@ public sealed class AutomaticMonitoringTests
         Assert.Equal(
             System.Windows.Visibility.Visible,
             viewModel.MonitoringStartActionVisibility);
-        Assert.Equal("監視を開始する", viewModel.MonitoringStartActionDisplay);
+        Assert.Equal("自動記録を始める", viewModel.MonitoringStartActionDisplay);
         Assert.Equal(0, capture.TargetedRunCount);
 
         viewModel.RequestApplicationExit();

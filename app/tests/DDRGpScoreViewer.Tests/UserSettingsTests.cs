@@ -305,38 +305,44 @@ public sealed class UserSettingsTests
     }
 
     [Theory]
-    [InlineData("プレー記録（07:00切り替え）", "play records (07:00 boundary)", "플레이 기록 (07:00 전환)")]
-    [InlineData("保存済みプレーの件数", "Saved play count", "저장된 플레이 수")]
-    [InlineData("総ノーツ数", "Total notes", "총 노트 수")]
-    [InlineData("各判定数の合計", "Sum of all judgment counts", "각 판정 수 합계")]
-    [InlineData("消費カロリー", "Calories burned", "소비 칼로리")]
-    [InlineData("プレーごとの消費カロリー合計", "Total calories burned across plays", "플레이별 소비 칼로리 합계")]
-    [InlineData("振り返りをコピー", "Copy recap", "요약 복사")]
-    [InlineData("コピーしました", "Copied", "복사했습니다")]
-    [InlineData("コピーできませんでした", "Could not copy", "복사하지 못했습니다")]
+    [InlineData("プレー記録（07:00切り替え）", "プレー記録（07:00切り替え）", "play records (07:00 boundary)", "플레이 기록 (07:00 전환)")]
+    [InlineData("保存済みプレーの件数", "保存済みプレーの件数", "Saved play count", "저장된 플레이 수")]
+    [InlineData("総ノーツ数", "総ノーツ数", "Total notes", "총 노트 수")]
+    [InlineData("各判定数の合計", "各判定数の合計", "Sum of all judgment counts", "각 판정 수 합계")]
+    [InlineData("消費カロリー", "消費カロリー", "Calories burned", "소비 칼로리")]
+    [InlineData("プレーごとの消費カロリー合計", "プレーごとの消費カロリー合計", "Total calories burned across plays", "플레이별 소비 칼로리 합계")]
+    [InlineData("振り返りをコピー", "今日の記録をコピー", "Copy today’s records", "오늘 기록 복사")]
+    [InlineData("今日のプレー", "今日のプレー", "Today’s play", "오늘 플레이")]
+    [InlineData("毎朝7時に切り替わります", "毎朝7時に切り替わります", "Resets every morning at 7", "매일 아침 7시에 바뀝니다")]
+    [InlineData("プレー前の自己ベストとの差（スコア）", "プレー前の自己ベストとの差（スコア）", "Change from best before this play (score)", "플레이 전 최고 기록과의 차이 (점수)")]
+    [InlineData("プレー前の自己ベストとの差（EX）", "プレー前の自己ベストとの差（EX）", "Change from best before this play (EX)", "플레이 전 최고 기록과의 차이 (EX)")]
+    [InlineData("コピーしました", "コピーしました", "Copied", "복사했습니다")]
+    [InlineData("コピーできませんでした", "コピーできませんでした", "Could not copy", "복사하지 못했습니다")]
     public void Home_recap_strings_are_translated_for_supported_languages(
         string japaneseText,
+        string japaneseDisplay,
         string englishText,
         string koreanText)
     {
-        Assert.Equal(japaneseText, Localization.GetForLanguage(japaneseText, UserSettings.JapaneseLanguage));
+        Assert.Equal(japaneseDisplay, Localization.GetForLanguage(japaneseText, UserSettings.JapaneseLanguage));
         Assert.Equal(englishText, Localization.GetForLanguage(japaneseText, UserSettings.EnglishLanguage));
         Assert.Equal(koreanText, Localization.GetForLanguage(japaneseText, UserSettings.KoreanLanguage));
     }
 
     [Theory]
-    [InlineData("待機中", "Waiting", "대기 중")]
-    [InlineData("監視中", "Monitoring", "모니터링 중")]
-    [InlineData("手動停止済み", "Stopped manually", "수동 중지됨")]
-    [InlineData("監視開始不可", "Monitoring unavailable", "모니터링 시작 불가")]
-    [InlineData("capture失敗", "Capture failed", "캡처 실패")]
-    [InlineData("workflow失敗", "Workflow failed", "workflow 실패")]
+    [InlineData("待機中", "待機中", "Waiting", "대기 중")]
+    [InlineData("監視中", "自動記録中", "Recording automatically", "자동 기록 중")]
+    [InlineData("手動停止済み", "自動記録を停止中", "Recording paused", "자동 기록 일시 중지")]
+    [InlineData("監視開始不可", "自動記録を始められません", "Cannot start recording", "자동 기록을 시작할 수 없습니다")]
+    [InlineData("capture失敗", "画面を取得できません", "Cannot capture game screen", "게임 화면을 가져올 수 없습니다")]
+    [InlineData("workflow失敗", "記録できませんでした", "Could not save result", "결과를 기록하지 못했습니다")]
     public void Monitoring_state_labels_are_translated_for_supported_languages(
         string japaneseText,
+        string japaneseDisplay,
         string englishText,
         string koreanText)
     {
-        Assert.Equal(japaneseText, Localization.GetForLanguage(japaneseText, UserSettings.JapaneseLanguage));
+        Assert.Equal(japaneseDisplay, Localization.GetForLanguage(japaneseText, UserSettings.JapaneseLanguage));
         Assert.Equal(englishText, Localization.GetForLanguage(japaneseText, UserSettings.EnglishLanguage));
         Assert.Equal(koreanText, Localization.GetForLanguage(japaneseText, UserSettings.KoreanLanguage));
     }
@@ -364,70 +370,39 @@ public sealed class UserSettingsTests
     }
 
     [Theory]
-    [InlineData("監視を開始する", "Start monitoring", "모니터링 시작")]
-    [InlineData("監視を再開", "Resume monitoring", "모니터링 재개")]
+    [InlineData("監視を開始する", "自動記録を始める", "Start recording", "자동 기록 시작")]
+    [InlineData("監視を再開", "自動記録を再開", "Resume recording", "자동 기록 재개")]
     public void Monitoring_action_labels_are_translated_for_supported_languages(
         string japaneseText,
+        string japaneseDisplay,
         string englishText,
         string koreanText)
     {
-        Assert.Equal(japaneseText, Localization.GetForLanguage(japaneseText, UserSettings.JapaneseLanguage));
+        Assert.Equal(japaneseDisplay, Localization.GetForLanguage(japaneseText, UserSettings.JapaneseLanguage));
         Assert.Equal(englishText, Localization.GetForLanguage(japaneseText, UserSettings.EnglishLanguage));
         Assert.Equal(koreanText, Localization.GetForLanguage(japaneseText, UserSettings.KoreanLanguage));
     }
 
     [Theory]
-    [InlineData(
-        "DDR GRAND PRIX windowを待っています。",
-        "Waiting for the DDR GRAND PRIX window.",
-        "DDR GRAND PRIX window를 기다리는 중입니다.")]
-    [InlineData(
-        "更新処理が完了しました。DDR GRAND PRIX windowを待っています。",
-        "The update finished. Waiting for the DDR GRAND PRIX window.",
-        "업데이트가 완료되었습니다. DDR GRAND PRIX window를 기다리는 중입니다.")]
-    [InlineData(
-        "安定して検出したDDR GRAND PRIX windowへ監視を接続しています。",
-        "Connecting monitoring to the stably detected DDR GRAND PRIX window.",
-        "안정적으로 감지된 DDR GRAND PRIX window에 모니터링을 연결하는 중입니다.")]
-    [InlineData(
-        "検出したDDR GRAND PRIX windowへ監視を接続しています。",
-        "Connecting monitoring to the detected DDR GRAND PRIX window.",
-        "감지된 DDR GRAND PRIX window에 모니터링을 연결하는 중입니다.")]
-    [InlineData("frameを取得しています。", "Capturing frames.", "프레임을 캡처하는 중입니다.")]
-    [InlineData(
-        "対象windowの選択を待っています。",
-        "Waiting for target window selection.",
-        "대상 window 선택을 기다리는 중입니다.")]
-    [InlineData(
-        "停止とresource解放を待っています。",
-        "Waiting for monitoring to stop and resources to be released.",
-        "모니터링 중지와 리소스 해제를 기다리는 중입니다.")]
-    [InlineData(
-        "手動停止済みです。このアプリセッション中は自動再開しません。明示的に監視開始できます。",
-        "Stopped manually. Monitoring will not restart automatically during this app session. Start monitoring explicitly when ready.",
-        "수동으로 중지되었습니다. 이 앱 세션에서는 자동으로 다시 시작하지 않습니다. 준비되면 모니터링을 직접 시작하세요.")]
-    [InlineData(
-        "終了処理中です。新しい監視を開始しません。",
-        "Shutting down. New monitoring sessions will not start.",
-        "종료 처리 중입니다. 새 모니터링을 시작하지 않습니다.")]
-    [InlineData(
-        "対象windowが消失したため安全に停止しました。再出現を待っています。",
-        "Stopped safely because the target window disappeared. Waiting for it to reappear.",
-        "대상 window가 사라져 안전하게 중지했습니다. 다시 나타나기를 기다리는 중입니다.")]
-    [InlineData(
-        "対象windowの消失を確認しました。再出現を待っています。",
-        "The target window disappeared. Waiting for it to reappear.",
-        "대상 window가 사라진 것을 확인했습니다. 다시 나타나기를 기다리는 중입니다.")]
-    [InlineData(
-        "対象windowの再出現を待っています。現在のwindowを推測して再接続しません。",
-        "Waiting for the target window to reappear. The current window will not be guessed or reconnected.",
-        "대상 window가 다시 나타나기를 기다리는 중입니다. 현재 window를 추측해 다시 연결하지 않습니다.")]
+    [InlineData("DDR GRAND PRIX windowを待っています。", "DDR GRAND PRIXを待っています。", "Waiting for DDR GRAND PRIX.", "DDR GRAND PRIX를 기다리고 있습니다.")]
+    [InlineData("更新処理が完了しました。DDR GRAND PRIX windowを待っています。", "更新が終わりました。DDR GRAND PRIXを待っています。", "Update finished. Waiting for DDR GRAND PRIX.", "업데이트가 끝났습니다. DDR GRAND PRIX를 기다리고 있습니다.")]
+    [InlineData("安定して検出したDDR GRAND PRIX windowへ監視を接続しています。", "DDR GRAND PRIXの自動記録を準備しています。", "Preparing to record DDR GRAND PRIX.", "DDR GRAND PRIX 자동 기록을 준비하고 있습니다.")]
+    [InlineData("検出したDDR GRAND PRIX windowへ監視を接続しています。", "DDR GRAND PRIXの自動記録を準備しています。", "Preparing to record DDR GRAND PRIX.", "DDR GRAND PRIX 자동 기록을 준비하고 있습니다.")]
+    [InlineData("frameを取得しています。", "ゲーム画面を確認しています。", "Checking the game screen.", "게임 화면을 확인하고 있습니다.")]
+    [InlineData("対象windowの選択を待っています。", "記録するゲーム画面を選んでください。", "Choose the game window to record.", "기록할 게임 창을 선택해 주세요.")]
+    [InlineData("停止とresource解放を待っています。", "自動記録を止めています。しばらくお待ちください。", "Stopping recording. Please wait.", "자동 기록을 중지하고 있습니다. 잠시 기다려 주세요.")]
+    [InlineData("手動停止済みです。このアプリセッション中は自動再開しません。明示的に監視開始できます。", "自動記録を止めています。アプリを開き直すまで自動では再開しません。「自動記録を再開」で再開できます。", "Recording is paused. It will not restart automatically until you reopen the app. Choose “Resume recording” to resume.", "자동 기록을 중지했습니다. 앱을 다시 열기 전에는 자동으로 재개하지 않습니다. “자동 기록 재개”로 다시 시작할 수 있습니다.")]
+    [InlineData("終了処理中です。新しい監視を開始しません。", "アプリを終了しています。自動記録は始まりません。", "Closing the app. Recording will not start.", "앱을 종료하고 있습니다. 자동 기록은 시작하지 않습니다.")]
+    [InlineData("対象windowが消失したため安全に停止しました。再出現を待っています。", "対象windowが消失したため安全に停止しました。再出現を待っています。", "Stopped safely because the target window disappeared. Waiting for it to reappear.", "대상 window가 사라져 안전하게 중지했습니다. 다시 나타나기를 기다리는 중입니다.")]
+    [InlineData("対象windowの消失を確認しました。再出現を待っています。", "対象windowの消失を確認しました。再出現を待っています。", "The target window disappeared. Waiting for it to reappear.", "대상 window가 사라진 것을 확인했습니다. 다시 나타나기를 기다리는 중입니다.")]
+    [InlineData("対象windowの再出現を待っています。現在のwindowを推測して再接続しません。", "対象windowの再出現を待っています。現在のwindowを推測して再接続しません。", "Waiting for the target window to reappear. The current window will not be guessed or reconnected.", "대상 window가 다시 나타나기를 기다리는 중입니다. 현재 window를 추측해 다시 연결하지 않습니다.")]
     public void Monitoring_reason_strings_are_translated_for_supported_languages(
         string japaneseText,
+        string japaneseDisplay,
         string englishText,
         string koreanText)
     {
-        Assert.Equal(japaneseText, Localization.GetForLanguage(japaneseText, UserSettings.JapaneseLanguage));
+        Assert.Equal(japaneseDisplay, Localization.GetForLanguage(japaneseText, UserSettings.JapaneseLanguage));
         Assert.Equal(englishText, Localization.GetForLanguage(japaneseText, UserSettings.EnglishLanguage));
         Assert.Equal(koreanText, Localization.GetForLanguage(japaneseText, UserSettings.KoreanLanguage));
     }
