@@ -25,6 +25,88 @@ public sealed class LocalizationViewCollection;
 public sealed class LocalizationViewTests(LocalizationApplicationFixture applicationFixture)
     : IClassFixture<LocalizationApplicationFixture>
 {
+    [Theory]
+    [InlineData("ja", "light", 1280, 760, false, "今日の記録をコピー")]
+    [InlineData("en", "dark", 960, 640, true, "Copy today’s records")]
+    [InlineData("ko", "light", 960, 640, true, "오늘 기록 복사")]
+    public void Home_keeps_both_lists_copy_and_navigation_reachable(
+        string language, string theme, double width, double height, bool longTitle, string copyButtonText)
+    {
+        using var fixture = new DatabaseFixture();
+        var now = HomeDisplayPeriod.From(DateTimeOffset.Now).Start.AddHours(5);
+        for (var index = 0; index < 6; index++)
+        {
+            var songId = $"home-song-{index}";
+            var chartId = $"home-chart-{index}";
+            fixture.AddMasterSongAndChart(songId,
+                longTitle ? "アルストロメリア (walk with you remix) — A long title to check wrapping" : "POSSESSION",
+                "Artist", chartId);
+            fixture.AddPlay($"before-{index}", now.AddDays(-1).AddMinutes(-index).ToString("O"),
+                900_000, 1_000, songId, chartId);
+            fixture.AddPlay($"latest-{index}", now.AddMinutes(-index).ToString("O"),
+                980_000, 1_500, songId, chartId, flareRank: "IX", ok: 4, calories: 15.3);
+        }
+
+        applicationFixture.Run(() =>
+        {
+            MainWindow? window = null;
+            try
+            {
+                PrepareStartupResources();
+                Localization.Configure(language);
+                ThemeManager.Apply(theme);
+                window = new MainWindow(StartupPaths(fixture)) { Width = width, Height = height };
+                window.ViewModel.Load(fixture.ScorePath, fixture.MasterPath, fixture.CatalogPath, persist: false);
+                window.Show();
+                DrainDispatcher(window.Dispatcher);
+
+                Assert.Equal(copyButtonText, window.HomeSummaryCopyButton.Content);
+                Assert.Equal(5, window.ViewModel.HomeRecentPlays.Count);
+                Assert.Equal(5, window.ViewModel.HomeBestUpdates.Count);
+                var lists = FindVisualChildren<ItemsControl>(window.HomeListsGrid).ToArray();
+                Assert.Contains(lists, list => ReferenceEquals(list.ItemsSource, window.ViewModel.HomeRecentPlays));
+                Assert.Contains(lists, list => ReferenceEquals(list.ItemsSource, window.ViewModel.HomeBestUpdates));
+                Assert.Equal(0, window.HomeScrollViewer.ScrollableWidth);
+                // A hosted desktop can constrain native window bounds. Verify access
+                // here; the 1280x760 one-screen fit is checked on the real 100% desktop.
+                window.HomeScrollViewer.ScrollToEnd();
+                DrainDispatcher(window.Dispatcher);
+                if (longTitle)
+                {
+                    Assert.True(window.HomeScrollViewer.VerticalOffset > 0);
+                }
+                Assert.Equal(window.HomeScrollViewer.ScrollableHeight, window.HomeScrollViewer.VerticalOffset);
+
+                window.HomeScrollViewer.ScrollToTop();
+                window.HomeSummaryCopyButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                Assert.Equal(window.ViewModel.HomeTodaySummaryCopyText, Clipboard.GetText());
+                Assert.Equal(Localization.Get("コピーしました"), window.HomeSummaryCopyButton.Content);
+
+                var historyLink = FindVisualChildren<Button>(window.HomeHistoryPanel).Single();
+                historyLink.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                DrainDispatcher(window.Dispatcher);
+                Assert.Equal("Selected", window.HistoryNavigation.Tag);
+                window.HomeNavigation.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                DrainDispatcher(window.Dispatcher);
+                var bestLink = FindVisualChildren<Button>(window.HomeUpdatesPanel).Single();
+                bestLink.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                DrainDispatcher(window.Dispatcher);
+                Assert.Equal("Selected", window.BestNavigation.Tag);
+                window.HomeNavigation.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                DrainDispatcher(window.Dispatcher);
+                Assert.Equal("Selected", window.HomeNavigation.Tag);
+                Assert.NotNull(window.HomeLatestPlayCard.DataContext);
+            }
+            finally
+            {
+                window?.PrepareForApplicationExit();
+                window?.Close();
+                ThemeManager.Apply(UserSettings.LightTheme);
+                Localization.Configure(UserSettings.JapaneseLanguage);
+            }
+        });
+    }
+
 #if DEBUG
     [Theory]
     [InlineData("not-sqlite")]
@@ -596,7 +678,7 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
                 Assert.Equal("—", window.MonitoringReasonText.Text);
                 Assert.Equal(TextWrapping.Wrap, window.MonitoringReasonText.TextWrapping);
                 Assert.Equal(Visibility.Collapsed, window.StartMonitoringButton.Visibility);
-                Assert.Equal("監視を開始する", window.StartMonitoringButton.Content);
+                Assert.Equal("自動記録を始める", window.StartMonitoringButton.Content);
                 Assert.True(window.StartMonitoringButton.IsEnabled);
                 Assert.Equal(Visibility.Collapsed, window.StopMonitoringButton.Visibility);
                 Assert.False(window.StopMonitoringButton.IsEnabled);
@@ -610,9 +692,9 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
                 window.ViewModel.StopContinuousCaptureAsync().GetAwaiter().GetResult();
                 DrainDispatcher(window.Dispatcher);
 
-                Assert.Equal("手動停止済み", window.MonitoringStateText.Text);
+                Assert.Equal("自動記録を停止中", window.MonitoringStateText.Text);
                 Assert.Equal(Visibility.Visible, window.StartMonitoringButton.Visibility);
-                Assert.Equal("監視を再開", window.StartMonitoringButton.Content);
+                Assert.Equal("自動記録を再開", window.StartMonitoringButton.Content);
                 Assert.True(window.StartMonitoringButton.IsEnabled);
                 Assert.Equal(Visibility.Collapsed, window.StopMonitoringButton.Visibility);
                 Assert.False(window.StopMonitoringButton.IsEnabled);
@@ -621,7 +703,7 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
                 DrainDispatcher(window.Dispatcher);
 
                 Assert.Equal("終了処理中", window.MonitoringStateText.Text);
-                Assert.Contains("終了処理中", window.MonitoringReasonText.Text, StringComparison.Ordinal);
+                Assert.Contains("アプリを終了", window.MonitoringReasonText.Text, StringComparison.Ordinal);
                 Assert.Equal(Visibility.Collapsed, window.StartMonitoringButton.Visibility);
                 Assert.False(window.StartMonitoringButton.IsEnabled);
                 Assert.Equal(Visibility.Collapsed, window.StopMonitoringButton.Visibility);
