@@ -269,6 +269,11 @@ public sealed class MainViewModelTests
         Assert.Equal("101回", viewModel.ChartDetailPlayCountDisplay);
         Assert.Equal("101回", viewModel.ChartDetailFullComboCountDisplay);
         Assert.Equal(100, viewModel.ChartDetailAllPlayPoints.Count);
+        Assert.Equal("10 / 101プレー", viewModel.ChartDetailHistoryLoadMoreHintDisplay);
+        var latest = viewModel.ChartDetailLatestPlay;
+        viewModel.SetChartDetailGraphMode(MainViewModel.ChartDetailBestProgressionMode);
+        Assert.Same(latest, viewModel.ChartDetailLatestPlay);
+        Assert.Equal(10, viewModel.ChartDetailHistory.Count);
 
         viewModel.LoadMoreChartDetailHistory();
         Assert.Equal(20, viewModel.ChartDetailHistory.Count);
@@ -280,6 +285,7 @@ public sealed class MainViewModelTests
         }
 
         Assert.Equal(101, viewModel.ChartDetailHistory.Count);
+        Assert.Equal("101 / 101プレー", viewModel.ChartDetailHistoryLoadMoreHintDisplay);
         Assert.False(viewModel.CanLoadMoreChartDetailHistory);
         Assert.Equal(
             System.Windows.Visibility.Collapsed,
@@ -674,7 +680,7 @@ public sealed class MainViewModelTests
         viewModel.BestSongQuery = "UNPLAYED";
         Assert.Single(viewModel.ChartBests);
         Assert.Equal("UNPLAYED SONG", viewModel.ChartBests[0].SongTitle);
-        Assert.Equal("1譜面", viewModel.ChartBestRangeDisplay);
+        Assert.Equal("表示 1〜1 / 全1譜面", viewModel.ChartBestRangeDisplay);
         Assert.Equal(1, viewModel.ChartBestDisplayedCount);
 
         viewModel.BestSongQuery = "";

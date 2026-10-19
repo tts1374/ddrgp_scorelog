@@ -516,4 +516,20 @@
     <sys:String x:Key="{}{0}件を表示">{0} plays shown</sys:String>
     <sys:String x:Key="判定">Judgments</sys:String>
     <sys:String x:Key="プレーの記録はありません">No plays recorded</sys:String>
+    <sys:String x:Key="スコアの自己ベスト">Best score</sys:String>
+    <sys:String x:Key="EX SCOREの自己ベスト">Best EX SCORE</sys:String>
+    <sys:String x:Key="スコアの変化">Score history</sys:String>
+    <sys:String x:Key="グラフは直近100回分">Graph: last 100 plays</sys:String>
+    <sys:String x:Key="更新したプレーだけ">Best updates only</sys:String>
+    <sys:String x:Key="差はプレー前の自己ベストとの比較">Differences compare with your best before each play</sys:String>
+    <sys:String x:Key="表示中のプレー ">Plays shown </sys:String>
+    <sys:String x:Key="{}{0} / {1}プレー">{0} / {1} plays</sys:String>
+    <sys:String x:Key="スコアが高い順">Highest score first</sys:String>
+    <sys:String x:Key="スコアが低い順">Lowest score first</sys:String>
+    <sys:String x:Key="曲名順">Song title</sys:String>
+    <sys:String x:Key="レベルが低い順">Lowest level first</sys:String>
+    <sys:String x:Key="最近プレーした順">Most recently played</sys:String>
+    <sys:String x:Key="プレー回数が多い順">Most plays first</sys:String>
+    <sys:String x:Key="回数">Plays</sys:String>
+    <sys:String x:Key="続きを見る">Load more</sys:String>
 </ResourceDictionary>

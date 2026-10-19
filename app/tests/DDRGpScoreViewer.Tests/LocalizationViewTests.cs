@@ -902,126 +902,89 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
         });
     }
 
-    [Fact]
-    public void Best_screen_switches_between_four_exclusive_modes_and_closes_choice_grid()
+    [Theory]
+    [InlineData("ja", "light", 1280, 760)]
+    [InlineData("en", "dark", 960, 640)]
+    [InlineData("ko", "light", 960, 640)]
+    public void Best_candidates_share_codes_across_sizes_and_keep_modes_and_focus_reachable(
+        string language, string theme, double width, double height)
     {
-        using var databaseFixture = new DatabaseFixture();
+        using var fixture = new DatabaseFixture();
         applicationFixture.Run(() =>
         {
             MainWindow? window = null;
             try
             {
-                foreach (var resourceName in new[] { "Theme.xaml", "Components.xaml", "Strings.xaml" })
-                {
-                    Application.Current.Resources.MergedDictionaries.Add(
-                        new ResourceDictionary
-                        {
-                            Source = new Uri(
-                                $"/DDRGpScoreViewer;component/Resources/{resourceName}",
-                                UriKind.Relative),
-                        });
-                }
-
-                window = new MainWindow(
-                    new ViewerDatabasePaths(
-                        ViewerDatabaseEnvironment.Development,
-                        databaseFixture.DirectoryPath,
-                        databaseFixture.MasterPath,
-                        databaseFixture.CatalogPath,
-                        databaseFixture.ScorePath,
-                        Path.Combine(databaseFixture.DirectoryPath, "evaluation.db"),
-                        Path.Combine(databaseFixture.DirectoryPath, "data"),
-                        Path.Combine(databaseFixture.DirectoryPath, "logs"),
-                        Path.Combine(databaseFixture.DirectoryPath, "viewer-settings.json")))
-                {
-                    Width = 960,
-                    Height = 640,
-                };
-
-                Assert.Equal(UserSettings.LevelBrowseMode, window.ViewModel.BestBrowseMode);
-                Assert.Equal(UserSettings.DefaultBestLevel, window.ViewModel.BestLevelFilter);
-                Assert.Equal(UserSettings.DefaultBestVersion, window.ViewModel.BestVersionFilter);
-
-                window.ViewModel.BestLevelFilter = "level_17";
-                window.ViewModel.Load(
-                    databaseFixture.ScorePath,
-                    databaseFixture.MasterPath,
-                    databaseFixture.CatalogPath,
-                    persist: false);
+                PrepareStartupResources();
+                Localization.Configure(language);
+                ThemeManager.Apply(theme);
+                window = new MainWindow(StartupPaths(fixture)) { Width = width, Height = height };
+                window.ViewModel.Load(fixture.ScorePath, fixture.MasterPath, fixture.CatalogPath, persist: false);
                 window.Show();
-                window.BestNavigation.RaiseEvent(
-                    new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
-                window.UpdateLayout();
+                window.BestNavigation.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 DrainDispatcher(window.Dispatcher);
-
-                Assert.Equal(UserSettings.LevelBrowseMode, window.ViewModel.BestBrowseMode);
-                Assert.Equal(Visibility.Collapsed, window.BestAxisPanel.Visibility);
-                Assert.Equal("レベルを変更", window.BestAxisChangeButton.Content);
-                Assert.Equal(1, Grid.GetColumn(window.BestAxisChangeButton));
-                Assert.Equal(2, Grid.GetRow(window.BestResultSummary));
-                Assert.Equal(Visibility.Visible, window.BestProgressCard.Visibility);
-
-                window.BestAxisChangeButton.RaiseEvent(
-                    new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
-                window.UpdateLayout();
-                Assert.Equal(Visibility.Visible, window.BestAxisPanel.Visibility);
-
-                window.BestLevelOptionsGrid.SelectedValue = "level_18";
+                var vm = window.ViewModel;
+                Assert.Equal(width <= 1100 ? 1 : 0, Grid.GetColumn(window.BestConditionsPanel));
+                Assert.True(window.BestChartGrid.ActualHeight > 180);
+                window.BestVersionModeButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                foreach (var option in vm.BestVersionOptions)
+                {
+                    window.BestVersionOptionsGrid.SelectedValue = option.Code;
+                    DrainDispatcher(window.Dispatcher);
+                    Assert.Equal(option.Code, vm.BestVersionFilter);
+                    Assert.Equal(option.Code, window.BestVersionComboBox.SelectedValue);
+                    Assert.Same(vm.BestVersionOptions, window.BestVersionOptionsGrid.ItemsSource);
+                    Assert.Same(vm.BestVersionOptions, window.BestVersionComboBox.ItemsSource);
+                    Localization.ApplyToWindow(window);
+                    Assert.Equal(option.Display, ((LocalizedOption)window.BestVersionComboBox.SelectedItem).Display);
+                }
+                window.Width = 1280;
                 DrainDispatcher(window.Dispatcher);
-                Assert.Equal("level_18", window.ViewModel.BestLevelFilter);
-                Assert.Equal(Visibility.Collapsed, window.BestAxisPanel.Visibility);
-
-                window.BestVersionModeButton.RaiseEvent(
-                    new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
-                window.UpdateLayout();
-                Assert.Equal(UserSettings.VersionBrowseMode, window.ViewModel.BestBrowseMode);
-                Assert.Equal("バージョンを変更", window.BestAxisChangeButton.Content);
-                Assert.Equal(Visibility.Visible, window.BestVersionOptionsPanel.Visibility);
-                Assert.Equal(Visibility.Visible, window.BestProgressCard.Visibility);
-
-                window.BestGoalModeButton.RaiseEvent(
-                    new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
-                window.UpdateLayout();
-                Assert.Equal(UserSettings.GoalBrowseMode, window.ViewModel.BestBrowseMode);
-                Assert.Equal("AAA", window.ViewModel.BestGoalFilter);
-                var selectionValue = Assert.Single(
-                    FindVisualChildren<TextBlock>(window.BestSelectionSummaryPanel),
-                    textBlock => textBlock.Text == "AAAを目指す");
-                Assert.Equal(8, selectionValue.Margin.Left);
-                Assert.Equal("目標を変更", window.BestAxisChangeButton.Content);
+                Assert.True(window.BestVersionOptionsGrid.IsVisible);
+                var candidate = (ListBoxItem)window.BestVersionOptionsGrid.ItemContainerGenerator.ContainerFromIndex(0);
+                candidate.Focus();
+                window.BestVersionOptionsGrid.SelectedIndex = 0;
+                DrainDispatcher(window.Dispatcher);
+                Assert.True(window.BestVersionOptionsGrid.IsKeyboardFocusWithin);
+                Assert.True(candidate.IsVisible);
+                window.Width = 960;
+                DrainDispatcher(window.Dispatcher);
+                Assert.True(window.BestVersionComboBox.IsVisible);
+                window.BestVersionComboBox.SelectedIndex = vm.BestVersionOptions.Count - 1;
+                DrainDispatcher(window.Dispatcher);
+                Assert.Equal(((LocalizedOption)window.BestVersionComboBox.SelectedItem).Code, vm.BestVersionFilter);
+                Assert.Equal(vm.BestVersionFilter, window.BestVersionOptionsGrid.SelectedValue);
+                window.BestLevelModeButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                foreach (var option in vm.BestLevelOptions)
+                {
+                    window.BestLevelComboBox.SelectedValue = option.Code;
+                    DrainDispatcher(window.Dispatcher);
+                    Assert.Equal(option.Code, window.BestLevelOptionsGrid.SelectedValue);
+                    Assert.Equal(option.Code, vm.BestLevelFilter);
+                }
+                window.BestGoalModeButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                DrainDispatcher(window.Dispatcher);
+                Assert.True(window.BestGoalComboBox.IsVisible);
                 Assert.Equal(Visibility.Collapsed, window.BestProgressCard.Visibility);
                 Assert.Equal(Visibility.Collapsed, window.BestResultActions.Visibility);
-                Assert.Equal(Visibility.Collapsed, window.BestAxisPanel.Visibility);
-                Assert.Equal(Visibility.Visible, window.BestGoalOptionsPanel.Visibility);
                 Assert.Equal(Visibility.Visible, window.BestChartGrid.Columns[3].Visibility);
-                Assert.Equal(Visibility.Visible, window.BestEmptyStatePanel.Visibility);
-
-                window.BestAxisChangeButton.RaiseEvent(
-                    new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
-                window.UpdateLayout();
-                Assert.Equal(Visibility.Visible, window.BestAxisPanel.Visibility);
-                Assert.Equal(Visibility.Visible, window.BestGoalOptionsPanel.Visibility);
-                window.BestGoalOptionsGrid.SelectedValue = "AA+";
+                window.BestGoalComboBox.SelectedValue = "AA+";
+                Assert.Equal("AA+", vm.BestGoalFilter);
+                window.BestTitleModeButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                window.BestTitleSearchTextBox.Text = "not-a-song";
                 DrainDispatcher(window.Dispatcher);
-                Assert.Equal("AA+", window.ViewModel.BestGoalFilter);
-                Assert.Equal(Visibility.Collapsed, window.BestAxisPanel.Visibility);
-
-                window.BestTitleModeButton.RaiseEvent(
-                    new RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
-                window.UpdateLayout();
-                Assert.Equal(UserSettings.TitleBrowseMode, window.ViewModel.BestBrowseMode);
-                Assert.Equal(Visibility.Visible, window.BestTitleSearchPanel.Visibility);
-                Assert.Equal(Visibility.Visible, window.BestAxisPanel.Visibility);
-                Assert.Equal(36, window.BestTitleSearchTextBox.MinHeight);
+                Assert.True(window.BestTitleSearchTextBox.IsVisible);
+                Assert.Empty(vm.ChartBests);
+                Assert.Equal(Visibility.Visible, window.BestEmptyStatePanel.Visibility);
                 Assert.Equal(Visibility.Collapsed, window.BestProgressCard.Visibility);
+                Assert.Equal(Visibility.Visible, window.BestResultActions.Visibility);
             }
             finally
             {
-                if (window is not null)
-                {
-                    window.PrepareForApplicationExit();
-                    window.Close();
-                }
+                window?.PrepareForApplicationExit();
+                window?.Close();
+                Localization.Configure("ja");
+                ThemeManager.Apply("light");
             }
         });
     }
@@ -1110,6 +1073,39 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
                 Assert.Equal(101, window.ViewModel.ChartBests.Count);
                 Assert.Equal(secondBottomOffset, scrollViewer.VerticalOffset, precision: 3);
                 Assert.False(emptyButtonWasVisible);
+                var loaded = window.ViewModel.ChartBests;
+                var selectedRow = FindVisualChildren<DataGridRow>(window.BestChartGrid)
+                    .First(row => row.TranslatePoint(new Point(), window.BestChartGrid).Y >= window.BestChartGrid.ColumnHeaderHeight &&
+                        row.TranslatePoint(new Point(), window.BestChartGrid).Y + row.ActualHeight < window.BestChartGrid.ActualHeight - 20);
+                var selected = (ChartBestItem)selectedRow.Item;
+                var offset = scrollViewer.VerticalOffset;
+                var mode = window.ViewModel.BestBrowseMode;
+                var sort = window.ViewModel.BestSortFilter;
+                window.BestChartGrid.SelectedItem = selected;
+                DrainDispatcher(window.Dispatcher);
+                Assert.Equal(2, window.ContentTabs.SelectedIndex);
+                window.BestNavigation.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                DrainDispatcher(window.Dispatcher);
+                DrainDispatcher(window.Dispatcher);
+                Assert.Equal(1, window.ContentTabs.SelectedIndex);
+                Assert.Same(loaded, window.ViewModel.ChartBests);
+                Assert.Same(selected, window.BestChartGrid.SelectedItem);
+                Assert.Equal(offset, scrollViewer.VerticalOffset, precision: 3);
+                Assert.Equal(mode, window.ViewModel.BestBrowseMode);
+                Assert.Equal(sort, window.ViewModel.BestSortFilter);
+                selectedRow = (DataGridRow)window.BestChartGrid.ItemContainerGenerator.ContainerFromItem(selected);
+                Assert.NotNull(selectedRow);
+                var rowTop = selectedRow.TranslatePoint(new Point(), window.BestChartGrid).Y;
+                Assert.True(rowTop >= window.BestChartGrid.ColumnHeaderHeight - 1);
+                var horizontalBar = FindVisualChildren<System.Windows.Controls.Primitives.ScrollBar>(window.BestChartGrid)
+                    .Single(bar => bar.Orientation == Orientation.Horizontal);
+                var bottom = horizontalBar.IsVisible
+                    ? horizontalBar.TranslatePoint(new Point(), window.BestChartGrid).Y : window.BestChartGrid.ActualHeight;
+                Assert.True(rowTop + selectedRow.ActualHeight <= bottom + 1);
+                window.BestSortComboBox.SelectedIndex = 2;
+                DrainDispatcher(window.Dispatcher);
+                Assert.Equal(0, scrollViewer.VerticalOffset);
+                Assert.Equal(50, window.ViewModel.ChartBests.Count);
             }
             finally
             {
@@ -1118,6 +1114,79 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
                     window.PrepareForApplicationExit();
                     window.Close();
                 }
+            }
+        });
+    }
+
+    [Theory]
+    [InlineData("ja", "light", 1280, 760)]
+    [InlineData("en", "dark", 960, 640)]
+    [InlineData("ko", "light", 960, 640)]
+    public void Chart_detail_keeps_dates_history_and_load_more_reachable(
+        string language, string theme, double width, double height)
+    {
+        using var fixture = new DatabaseFixture();
+        fixture.ExecuteMasterSql("UPDATE songs SET title = 'アルストロメリア (walk with you remix) — A very long song title for wrapping and checking chart detail';");
+        for (var index = 0; index < 101; index++)
+            fixture.AddPlay($"detail-{index}", new DateTimeOffset(2026, 10, 1, 12, 0, 0, TimeSpan.Zero).AddMinutes(index).ToString("O"),
+                980_000 - index * 10, 1_000 + index);
+        applicationFixture.Run(() =>
+        {
+            MainWindow? window = null;
+            try
+            {
+                PrepareStartupResources();
+                Localization.Configure(language);
+                ThemeManager.Apply(theme);
+                window = new MainWindow(StartupPaths(fixture)) { Width = width, Height = height };
+                window.ViewModel.Load(fixture.ScorePath, fixture.MasterPath, fixture.CatalogPath, persist: false);
+                window.ViewModel.BestBrowseMode = UserSettings.TitleBrowseMode;
+                window.Show();
+                window.BestNavigation.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                window.ViewModel.SelectChartBest(window.ViewModel.ChartBests.First());
+                DrainDispatcher(window.Dispatcher);
+                var vm = window.ViewModel;
+                Assert.Equal(TextWrapping.Wrap, window.PageTitle.TextWrapping);
+                Assert.Equal(10, vm.ChartDetailDisplayedCount);
+                Assert.Equal(100, vm.ChartDetailAllPlayPoints.Count);
+                Assert.NotEqual(vm.ChartDetailScoreBestAtDisplay, vm.ChartDetailExScoreBestAtDisplay);
+                var texts = FindVisualChildren<TextBlock>(window.ChartDetailScrollViewer).ToArray();
+                Assert.Contains(texts, text => text.Text == vm.ChartDetailScoreBestAtDisplay);
+                Assert.Contains(texts, text => text.Text == vm.ChartDetailExScoreBestAtDisplay);
+                Assert.Contains(texts, text => text.Text == Localization.Get("スコアの自己ベスト"));
+                Assert.Contains(texts, text => text.Text == Localization.Get("EX SCOREの自己ベスト"));
+                var latest = vm.ChartDetailLatestPlay;
+                window.ChartDetailBestProgressionButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                DrainDispatcher(window.Dispatcher);
+                Assert.Same(latest, vm.ChartDetailLatestPlay);
+                Assert.Equal(10, vm.ChartDetailHistory.Count);
+                window.ChartDetailScrollViewer.ScrollToBottom();
+                DrainDispatcher(window.Dispatcher);
+                var button = FindVisualChildren<Button>(window.ChartDetailScrollViewer)
+                    .Single(item => Equals(item.Content, Localization.Get("続きを見る")));
+                Assert.Equal(language switch { "en" => "Load more", "ko" => "더 보기", _ => "続きを見る" }, button.Content);
+                var point = button.TranslatePoint(new Point(), window.ChartDetailScrollViewer);
+                Assert.True(point.Y >= 0 && point.Y + button.ActualHeight <= window.ChartDetailScrollViewer.ActualHeight);
+                var date = (DataGridTextColumn)FindVisualChildren<DataGrid>(window.ChartDetailScrollViewer).Single().Columns[0];
+                Assert.Equal(TextWrapping.Wrap, FindStyleSetterValue(date.ElementStyle, TextBlock.TextWrappingProperty));
+                var offset = window.ChartDetailScrollViewer.VerticalOffset;
+                button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                DrainDispatcher(window.Dispatcher);
+                Assert.Equal(20, vm.ChartDetailHistory.Count);
+                Assert.Equal(offset, window.ChartDetailScrollViewer.VerticalOffset, precision: 3);
+                Assert.Equal(Localization.Format("{0} / {1}プレー", 20, 101), vm.ChartDetailHistoryLoadMoreHintDisplay);
+                window.ChartDetailScrollViewer.ScrollToBottom();
+                DrainDispatcher(window.Dispatcher);
+                point = button.TranslatePoint(new Point(), window.ChartDetailScrollViewer);
+                Assert.True(point.Y + button.ActualHeight <= window.ChartDetailScrollViewer.ActualHeight);
+                Assert.Equal(0, window.ChartDetailScrollViewer.ScrollableWidth);
+            }
+            finally
+            {
+                window?.PrepareForApplicationExit();
+                window?.Close();
+                Localization.Configure("ja");
+                ThemeManager.Apply("light");
             }
         });
     }

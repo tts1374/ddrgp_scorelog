@@ -49,8 +49,8 @@ public partial class MainWindow : System.Windows.Window
     private DispatcherTimer? homeSummaryCopyFeedbackTimer;
     private bool applicationExitRequested;
     private bool restoringBestChartListState;
+    private bool resettingBestChartListPosition;
     private double bestChartScrollOffset;
-    private bool bestAxisPanelOpen;
     private Func<Task>? applicationUpdatePrepareExitHandler;
     private Func<Task>? applicationUpdateExitHandler;
     private Action? applicationUpdateForceExitHandler;
@@ -595,18 +595,41 @@ public partial class MainWindow : System.Windows.Window
             : new Thickness(32, ContentTabs.SelectedIndex == 0 ? 14 : 22, 32, ContentTabs.SelectedIndex == 0 ? 14 : 22);
         PageNoticeRow.MinHeight = ContentTabs.SelectedIndex is 0 or 3 ? 4 : 12;
         BestChartGrid.Tag = compact ? "Compact" : "Wide";
+        BestChartGrid.RowHeight = compact ? 40 : 52;
+        BestLayoutGrid.ColumnDefinitions[0].Width = new GridLength(compact ? 0 : 232);
+        Grid.SetColumn(BestConditionsPanel, compact ? 1 : 0);
+        Grid.SetRowSpan(BestConditionsPanel, compact ? 1 : 4);
+        BestConditionsPanel.Margin = compact ? new Thickness(0, 0, 0, 12) : new Thickness(0, 0, 24, 0);
+        BestConditionsPanel.Padding = compact ? new Thickness(0) : new Thickness(0, 0, 20, 0);
+        BestConditionsPanel.BorderThickness = compact ? new Thickness(0) : new Thickness(0, 0, 1, 0);
+        BestModeButtons.Width = compact ? double.NaN : 188;
+        BestProgressMetrics.Columns = 6;
+        foreach (var panel in new[] { BestLevelOptionsPanel, BestVersionOptionsPanel, BestGoalOptionsPanel, BestTitleSearchPanel })
+        {
+            panel.Orientation = compact ? WpfOrientation.Horizontal : WpfOrientation.Vertical;
+            if (panel.Children[0] is TextBlock label)
+            {
+                label.VerticalAlignment = VerticalAlignment.Center;
+                label.Margin = compact ? new Thickness(0, 0, 12, 0) : new Thickness(0, 0, 0, 8);
+            }
+        }
+        BestTitleSearchTextBox.Width = compact ? 300 : double.NaN;
+        UpdateBestBrowseModeUi();
+
         if (BestChartGrid.Columns.Count != 9)
         {
             return;
         }
 
-        var weights = compact
-            ? new[] { 2.1, 1.05, 1.3, 1.1, 0.65, 0.85, 0.85, 0.95, 1.15 }
-            : new[] { 2.4, 1.35, 1.55, 1.2, 0.8, 1.0, 1.0, 1.05, 1.3 };
+        var compactWidths = new[] { 120.0, 62, 96, 110, 56, 70, 88, 72, 100 };
+        var minimums = new[] { 145.0, 85, 115, 110, 74, 92, 100, 20, 20 };
+        var weights = new[] { 2.4, 1.35, 1.55, 1.2, 0.8, 1.0, 1.0, 1.05, 1.3 };
         for (var index = 0; index < weights.Length; index++)
         {
-            BestChartGrid.Columns[index].Width =
-                new DataGridLength(weights[index], DataGridLengthUnitType.Star);
+            BestChartGrid.Columns[index].MinWidth = compact ? compactWidths[index] : minimums[index];
+            BestChartGrid.Columns[index].Width = compact
+                ? index == 0 ? new DataGridLength(1, DataGridLengthUnitType.Star) : new DataGridLength(compactWidths[index])
+                : new DataGridLength(weights[index], DataGridLengthUnitType.Star);
         }
     }
 
@@ -1122,52 +1145,7 @@ public partial class MainWindow : System.Windows.Window
                 : ReferenceEquals(sender, BestGoalModeButton)
                     ? UserSettings.GoalBrowseMode
                     : UserSettings.LevelBrowseMode;
-        bestAxisPanelOpen = false;
         UpdateBestBrowseModeButtons();
-        UpdateBestBrowseModeUi();
-    }
-
-    private void BestAxisChange_Click(object sender, RoutedEventArgs e)
-    {
-        if (viewModel.BestBrowseMode == UserSettings.TitleBrowseMode)
-        {
-            return;
-        }
-
-        bestAxisPanelOpen = !bestAxisPanelOpen;
-        UpdateBestBrowseModeUi();
-    }
-
-    private void BestLevelOptionsGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (e.AddedItems.Count == 0 || restoringBestChartListState)
-        {
-            return;
-        }
-
-        bestAxisPanelOpen = false;
-        UpdateBestBrowseModeUi();
-    }
-
-    private void BestVersionOptionsGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (e.AddedItems.Count == 0 || restoringBestChartListState)
-        {
-            return;
-        }
-
-        bestAxisPanelOpen = false;
-        UpdateBestBrowseModeUi();
-    }
-
-    private void BestGoalOptionsGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (e.AddedItems.Count == 0 || restoringBestChartListState)
-        {
-            return;
-        }
-
-        bestAxisPanelOpen = false;
         UpdateBestBrowseModeUi();
     }
 
@@ -1195,40 +1173,19 @@ public partial class MainWindow : System.Windows.Window
 
     private void UpdateBestBrowseModeUi()
     {
-        if (BestSelectionSummaryPanel is null || BestTitleSearchPanel is null ||
-            BestAxisPanel is null || BestLevelOptionsPanel is null ||
-            BestVersionOptionsPanel is null || BestGoalOptionsPanel is null ||
-            BestAxisChangeButton is null)
-        {
-            return;
-        }
-
+        if (BestAxisPanel is null) return;
         var titleMode = viewModel.BestBrowseMode == UserSettings.TitleBrowseMode;
         var versionMode = viewModel.BestBrowseMode == UserSettings.VersionBrowseMode;
         var goalMode = viewModel.BestBrowseMode == UserSettings.GoalBrowseMode;
-        BestSelectionSummaryPanel.Visibility = titleMode
-            ? Visibility.Collapsed
-            : Visibility.Visible;
-        BestTitleSearchPanel.Visibility = titleMode
-            ? Visibility.Visible
-            : Visibility.Collapsed;
-        BestAxisPanel.Visibility = titleMode || bestAxisPanelOpen
-            ? Visibility.Visible
-            : Visibility.Collapsed;
-        BestLevelOptionsPanel.Visibility = titleMode || versionMode || goalMode
-            ? Visibility.Collapsed
-            : Visibility.Visible;
-        BestVersionOptionsPanel.Visibility = versionMode
-            ? Visibility.Visible
-            : Visibility.Collapsed;
-        BestGoalOptionsPanel.Visibility = goalMode
-            ? Visibility.Visible
-            : Visibility.Collapsed;
-        BestAxisChangeButton.Content = goalMode
-            ? Localization.Get("目標を変更")
-            : versionMode
-                ? Localization.Get("バージョンを変更")
-                : Localization.Get("レベルを変更");
+        var compact = (ActualWidth > 0 ? ActualWidth : Width) <= 1100;
+        BestTitleSearchPanel.Visibility = titleMode ? Visibility.Visible : Visibility.Collapsed;
+        BestLevelOptionsPanel.Visibility = titleMode || versionMode || goalMode ? Visibility.Collapsed : Visibility.Visible;
+        BestVersionOptionsPanel.Visibility = versionMode ? Visibility.Visible : Visibility.Collapsed;
+        BestGoalOptionsPanel.Visibility = goalMode ? Visibility.Visible : Visibility.Collapsed;
+        foreach (var element in new FrameworkElement[] { BestLevelOptionsGrid, BestVersionOptionsGrid, BestGoalOptionsGrid })
+            element.Visibility = compact ? Visibility.Collapsed : Visibility.Visible;
+        foreach (var element in new FrameworkElement[] { BestLevelComboBox, BestVersionComboBox, BestGoalComboBox })
+            element.Visibility = compact ? Visibility.Visible : Visibility.Collapsed;
         if (BestChartGrid is not null && BestChartGrid.Columns.Count > 3)
         {
             BestChartGrid.Columns[3].Visibility = goalMode
@@ -1266,7 +1223,8 @@ public partial class MainWindow : System.Windows.Window
 
     private void BestChartGrid_ScrollChanged(object sender, ScrollChangedEventArgs e)
     {
-        if (e.ExtentHeight <= 0 || e.ViewportHeight <= 0)
+        if (resettingBestChartListPosition || !BestChartGrid.IsVisible ||
+            e.ExtentHeight <= 0 || e.ViewportHeight <= 0)
         {
             return;
         }
@@ -1483,7 +1441,8 @@ public partial class MainWindow : System.Windows.Window
         {
             Mode = BindingMode.OneWay,
         });
-        PageSubtitle.Text = Localization.Get("自己ベストから選択した1譜面の記録とプレー推移を確認できます");
+        PageSubtitle.Text = "";
+        ChartDetailScrollViewer.ScrollToTop();
         Localization.ApplyToWindow(this);
         HomeNavigation.Tag = null;
         BestNavigation.Tag = "Selected";
@@ -1507,8 +1466,16 @@ public partial class MainWindow : System.Windows.Window
         RenderChartDetailGraph();
     }
 
-    private void ChartDetailLoadMore_Click(object sender, RoutedEventArgs e) =>
+    private void ChartDetailLoadMore_Click(object sender, RoutedEventArgs e)
+    {
+        var offset = ChartDetailScrollViewer.VerticalOffset;
         viewModel.LoadMoreChartDetailHistory();
+        Dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(() =>
+        {
+            ChartDetailScrollViewer.UpdateLayout();
+            ChartDetailScrollViewer.ScrollToVerticalOffset(offset);
+        }));
+    }
 
     private void ChartDetailGraphCanvas_SizeChanged(object sender, SizeChangedEventArgs e) =>
         RenderChartDetailGraph();
@@ -1533,12 +1500,17 @@ public partial class MainWindow : System.Windows.Window
             {
                 var scrollViewer = FindVisualChild<ScrollViewer>(BestChartGrid);
                 scrollViewer?.ScrollToVerticalOffset(bestChartScrollOffset);
+                BestChartGrid.UpdateLayout();
                 restoringBestChartListState = true;
                 try
                 {
                     if (viewModel.SelectedChartBest is not null)
                     {
                         BestChartGrid.SelectedItem = viewModel.SelectedChartBest;
+                        if (BestChartGrid.ItemContainerGenerator.ContainerFromItem(viewModel.SelectedChartBest) is DataGridRow row)
+                        {
+                            row.Focus();
+                        }
                     }
                 }
                 finally
@@ -1557,15 +1529,16 @@ public partial class MainWindow : System.Windows.Window
 
     private void ViewModel_ChartBestListReset(object? sender, EventArgs e)
     {
+        resettingBestChartListPosition = true;
         bestChartScrollOffset = 0;
         Dispatcher.BeginInvoke(
-            DispatcherPriority.Background,
+            DispatcherPriority.ApplicationIdle,
             new Action(() =>
             {
-                if (BestChartGrid.Items.Count > 0)
-                {
-                    BestChartGrid.ScrollIntoView(BestChartGrid.Items[0]);
-                }
+                BestChartGrid.UpdateLayout();
+                FindVisualChild<ScrollViewer>(BestChartGrid)?.ScrollToTop();
+                BestChartGrid.UpdateLayout();
+                resettingBestChartListPosition = false;
             }));
     }
 

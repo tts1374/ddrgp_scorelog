@@ -516,4 +516,20 @@
     <sys:String x:Key="{}{0}件を表示">{0}건 표시</sys:String>
     <sys:String x:Key="判定">판정</sys:String>
     <sys:String x:Key="プレーの記録はありません">플레이 기록이 없습니다</sys:String>
+    <sys:String x:Key="スコアの自己ベスト">스코어 최고 기록</sys:String>
+    <sys:String x:Key="EX SCOREの自己ベスト">EX SCORE 최고 기록</sys:String>
+    <sys:String x:Key="スコアの変化">스코어 변화</sys:String>
+    <sys:String x:Key="グラフは直近100回分">그래프: 최근 100회 플레이</sys:String>
+    <sys:String x:Key="更新したプレーだけ">최고 기록 갱신만</sys:String>
+    <sys:String x:Key="差はプレー前の自己ベストとの比較">차이는 각 플레이 이전 최고 기록과 비교합니다</sys:String>
+    <sys:String x:Key="表示中のプレー ">표시 중인 플레이 </sys:String>
+    <sys:String x:Key="{}{0} / {1}プレー">{0} / {1}회</sys:String>
+    <sys:String x:Key="スコアが高い順">스코어 높은 순</sys:String>
+    <sys:String x:Key="スコアが低い順">스코어 낮은 순</sys:String>
+    <sys:String x:Key="曲名順">곡명순</sys:String>
+    <sys:String x:Key="レベルが低い順">레벨 낮은 순</sys:String>
+    <sys:String x:Key="最近プレーした順">최근 플레이 순</sys:String>
+    <sys:String x:Key="プレー回数が多い順">플레이 횟수 많은 순</sys:String>
+    <sys:String x:Key="回数">횟수</sys:String>
+    <sys:String x:Key="続きを見る">더 보기</sys:String>
 </ResourceDictionary>
