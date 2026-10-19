@@ -968,6 +968,8 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
                 window.BestGoalModeButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 DrainDispatcher(window.Dispatcher);
                 Assert.True(window.BestGoalComboBox.IsVisible);
+                Assert.Equal(language switch { "en" => "Goal", "ko" => "목표", _ => "目標" },
+                    ((TextBlock)window.BestGoalOptionsPanel.Children[0]).Text);
                 Assert.Equal(Visibility.Collapsed, window.BestProgressCard.Visibility);
                 Assert.Equal(Visibility.Collapsed, window.BestResultActions.Visibility);
                 Assert.Equal(Visibility.Visible, window.BestChartGrid.Columns[3].Visibility);

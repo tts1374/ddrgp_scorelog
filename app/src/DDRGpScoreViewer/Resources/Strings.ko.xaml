@@ -532,4 +532,5 @@
     <sys:String x:Key="プレー回数が多い順">플레이 횟수 많은 순</sys:String>
     <sys:String x:Key="回数">횟수</sys:String>
     <sys:String x:Key="続きを見る">더 보기</sys:String>
+    <sys:String x:Key="目標">목표</sys:String>
 </ResourceDictionary>

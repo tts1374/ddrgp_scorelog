@@ -532,4 +532,5 @@
     <sys:String x:Key="プレー回数が多い順">Most plays first</sys:String>
     <sys:String x:Key="回数">Plays</sys:String>
     <sys:String x:Key="続きを見る">Load more</sys:String>
+    <sys:String x:Key="目標">Goal</sys:String>
 </ResourceDictionary>
