@@ -924,7 +924,7 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
                 window.BestNavigation.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 DrainDispatcher(window.Dispatcher);
                 var vm = window.ViewModel;
-                Assert.Equal(width <= 1100 ? 1 : 0, Grid.GetColumn(window.BestConditionsPanel));
+                Assert.Equal(window.ActualWidth <= 1100 ? 1 : 0, Grid.GetColumn(window.BestConditionsPanel));
                 Assert.True(window.BestChartGrid.ActualHeight > 180);
                 window.BestVersionModeButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 foreach (var option in vm.BestVersionOptions)
@@ -938,6 +938,8 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
                     Localization.ApplyToWindow(window);
                     Assert.Equal(option.Display, ((LocalizedOption)window.BestVersionComboBox.SelectedItem).Display);
                 }
+                // CI desktops may be narrower than 1280; keep this WPF window at the tested logical width.
+                window.MinWidth = 1280;
                 window.Width = 1280;
                 DrainDispatcher(window.Dispatcher);
                 Assert.True(window.BestVersionOptionsGrid.IsVisible);
@@ -947,6 +949,7 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
                 DrainDispatcher(window.Dispatcher);
                 Assert.True(window.BestVersionOptionsGrid.IsKeyboardFocusWithin);
                 Assert.True(candidate.IsVisible);
+                window.MinWidth = 960;
                 window.Width = 960;
                 DrainDispatcher(window.Dispatcher);
                 Assert.True(window.BestVersionComboBox.IsVisible);
@@ -1085,6 +1088,8 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
                 DrainDispatcher(window.Dispatcher);
                 Assert.Equal(2, window.ContentTabs.SelectedIndex);
                 window.BestNavigation.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                // Reattaching the page can reset the viewer before the queued restoration.
+                scrollViewer.ScrollToTop();
                 DrainDispatcher(window.Dispatcher);
                 DrainDispatcher(window.Dispatcher);
                 Assert.Equal(1, window.ContentTabs.SelectedIndex);

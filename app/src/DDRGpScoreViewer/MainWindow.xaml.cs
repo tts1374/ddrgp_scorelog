@@ -714,6 +714,7 @@ public partial class MainWindow : System.Windows.Window
 
     private void ShowBestPage()
     {
+        restoringBestChartListState = true;
         viewModel.SetFlareSkillPage(false);
         viewModel.SetSettingsPage(false);
         viewModel.SetDataManagementPage(false);
@@ -1223,7 +1224,7 @@ public partial class MainWindow : System.Windows.Window
 
     private void BestChartGrid_ScrollChanged(object sender, ScrollChangedEventArgs e)
     {
-        if (resettingBestChartListPosition || !BestChartGrid.IsVisible ||
+        if (restoringBestChartListState || resettingBestChartListPosition || !BestChartGrid.IsVisible ||
             e.ExtentHeight <= 0 || e.ViewportHeight <= 0)
         {
             return;
@@ -1494,12 +1495,13 @@ public partial class MainWindow : System.Windows.Window
 
     private void RestoreBestChartListState()
     {
+        var offset = bestChartScrollOffset;
         Dispatcher.BeginInvoke(
-            DispatcherPriority.Background,
+            DispatcherPriority.ApplicationIdle,
             new Action(() =>
             {
                 var scrollViewer = FindVisualChild<ScrollViewer>(BestChartGrid);
-                scrollViewer?.ScrollToVerticalOffset(bestChartScrollOffset);
+                scrollViewer?.ScrollToVerticalOffset(offset);
                 BestChartGrid.UpdateLayout();
                 restoringBestChartListState = true;
                 try
