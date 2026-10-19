@@ -1236,6 +1236,7 @@
                                           SelectionChanged="BestChartGrid_SelectionChanged"
                                           PreviewMouseLeftButtonDown="BestChartGrid_PreviewMouseLeftButtonDown"
                                           ScrollViewer.ScrollChanged="BestChartGrid_ScrollChanged"
+                                          CanUserSortColumns="False"
                                           RowHeight="42" ColumnHeaderHeight="32"
                                           HeadersVisibility="Column"
                                           ScrollViewer.HorizontalScrollBarVisibility="Auto"
@@ -1720,9 +1721,9 @@
                                     </GroupStyle>
                                 </DataGrid.GroupStyle>
                                 <DataGrid.Columns>
-                                    <DataGridTextColumn ElementStyle="{StaticResource HistoryTimeTextStyle}" Header="日時" Binding="{Binding HistoryTimeDisplay, Mode=OneWay}" Width="64" />
-                                    <DataGridTextColumn ElementStyle="{StaticResource TableTextStyle}" Header="曲名" Binding="{Binding SongTitle, Mode=OneWay}" MinWidth="120" Width="*" />
-                                    <DataGridTemplateColumn Header="譜面" Width="116">
+                                    <DataGridTextColumn ElementStyle="{StaticResource HistoryTimeTextStyle}" Header="日時" Binding="{Binding HistoryTimeDisplay, Mode=OneWay}" MinWidth="64" Width="64" />
+                                    <DataGridTextColumn ElementStyle="{StaticResource TableTextStyle}" Header="曲名" Binding="{Binding SongTitle, Mode=OneWay}" MinWidth="220" Width="*" />
+                                    <DataGridTemplateColumn Header="譜面" MinWidth="116" Width="SizeToCells">
                                         <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
                                                 <StackPanel ToolTip="{Binding ChartDisplay}">
@@ -1736,9 +1737,9 @@
                                             </DataTemplate>
                                         </DataGridTemplateColumn.CellTemplate>
                                     </DataGridTemplateColumn>
-                                    <DataGridTextColumn ElementStyle="{StaticResource HistoryNumberTextStyle}" HeaderStyle="{StaticResource HistoryNumberHeaderStyle}" Header="SCORE" Binding="{Binding ScoreDisplay, Mode=OneWay}" Width="88" />
-                                    <DataGridTextColumn ElementStyle="{StaticResource HistoryNumberTextStyle}" HeaderStyle="{StaticResource HistoryNumberHeaderStyle}" Header="EX SCORE" Binding="{Binding ExScoreDisplay, Mode=OneWay}" Width="80" />
-                                    <DataGridTemplateColumn Header="ランク" Width="64">
+                                    <DataGridTextColumn ElementStyle="{StaticResource HistoryNumberTextStyle}" HeaderStyle="{StaticResource HistoryNumberHeaderStyle}" Header="SCORE" Binding="{Binding ScoreDisplay, Mode=OneWay}" MinWidth="88" Width="88" />
+                                    <DataGridTextColumn ElementStyle="{StaticResource HistoryNumberTextStyle}" HeaderStyle="{StaticResource HistoryNumberHeaderStyle}" Header="EX SCORE" Binding="{Binding ExScoreDisplay, Mode=OneWay}" MinWidth="80" Width="80" />
+                                    <DataGridTemplateColumn Header="ランク" MinWidth="64" Width="Auto">
                                         <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
                                                 <ContentControl Content="{Binding}"
@@ -1748,7 +1749,7 @@
                                             </DataTemplate>
                                         </DataGridTemplateColumn.CellTemplate>
                                     </DataGridTemplateColumn>
-                                    <DataGridTemplateColumn Header="CLEAR" MinWidth="80" Width="88">
+                                    <DataGridTemplateColumn Header="CLEAR" MinWidth="88" Width="Auto">
                                         <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
                                                 <ContentControl Content="{Binding}"
@@ -1758,7 +1759,7 @@
                                             </DataTemplate>
                                         </DataGridTemplateColumn.CellTemplate>
                                     </DataGridTemplateColumn>
-                                    <DataGridTemplateColumn Header="FLARE" Width="102">
+                                    <DataGridTemplateColumn Header="FLARE" MinWidth="102" Width="Auto">
                                         <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
                                                 <ContentControl Content="{Binding}"

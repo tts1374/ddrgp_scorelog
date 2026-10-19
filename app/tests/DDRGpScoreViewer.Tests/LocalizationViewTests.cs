@@ -27,6 +27,88 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
     : IClassFixture<LocalizationApplicationFixture>
 {
     [Theory]
+    [InlineData("ja", "light", 1280, 760)]
+    [InlineData("en", "dark", 1280, 760)]
+    [InlineData("ko", "light", 1280, 760)]
+    [InlineData("ja", "dark", 960, 640)]
+    [InlineData("en", "light", 960, 640)]
+    [InlineData("ko", "dark", 960, 640)]
+    public void History_initial_columns_fit_headers_scores_and_badges(
+        string language, string theme, double width, double height)
+    {
+        using var fixture = new DatabaseFixture();
+        fixture.AddMasterSongAndChart("long-song", "アルストロメリア (walk with you remix) — A long title",
+            "Artist", "double-chart", "DOUBLE", "CHALLENGE", 19);
+        fixture.AddPlay("history-max", "2026-10-18T14:26:12+09:00", 1_000_000, 9_999,
+            "long-song", "double-chart", flareRank: "EX");
+        fixture.ExecuteScoreSql("UPDATE plays SET clear_type = 'MFC'");
+        applicationFixture.Run(() =>
+        {
+            MainWindow? window = null;
+            try
+            {
+                PrepareStartupResources();
+                Localization.Configure(language);
+                ThemeManager.Apply(theme);
+                window = new MainWindow(StartupPaths(fixture)) { MinWidth = width, Width = width, Height = height };
+                window.ViewModel.Load(fixture.ScorePath, fixture.MasterPath, fixture.CatalogPath, persist: false);
+                window.Show();
+                window.HistoryNavigation.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                DrainDispatcher(window.Dispatcher);
+                var grid = window.RecentPlayGrid;
+                var play = window.ViewModel.Plays.Single();
+                foreach (var column in grid.Columns)
+                {
+                    grid.ScrollIntoView(play, column);
+                    DrainDispatcher(window.Dispatcher);
+                    var row = (DataGridRow)grid.ItemContainerGenerator.ContainerFromItem(play);
+                    var cell = FindVisualChildren<DataGridCell>(row).Single(cell => cell.Column == column);
+                    // The title deliberately truncates, with the full title also in the detail pane.
+                    if (column == grid.Columns[1])
+                    {
+                        Assert.True(cell.ActualWidth >= 220);
+                        Assert.Equal(play.SongTitle, FindVisualChildren<TextBlock>(cell).Single().ToolTip);
+                        continue;
+                    }
+                    foreach (var text in FindVisualChildren<TextBlock>(cell).Where(text => text.IsVisible))
+                    {
+                        AssertTextFits(text, cell);
+                    }
+                    var header = FindVisualChildren<System.Windows.Controls.Primitives.DataGridColumnHeader>(grid)
+                        .Single(header => header.Column == column);
+                    foreach (var text in FindVisualChildren<TextBlock>(header).Where(text => text.IsVisible))
+                    {
+                        AssertTextFits(text, header);
+                    }
+                }
+                Assert.Same(play, window.HistoryDetailGrid.DataContext);
+                Assert.Equal(width, window.ActualWidth);
+            }
+            finally
+            {
+                window?.PrepareForApplicationExit();
+                window?.Close();
+                ThemeManager.Apply(UserSettings.LightTheme);
+                Localization.Configure(UserSettings.JapaneseLanguage);
+            }
+        });
+    }
+
+    private static void AssertTextFits(TextBlock text, FrameworkElement container)
+    {
+        var formatted = new FormattedText(text.Text, System.Globalization.CultureInfo.CurrentUICulture,
+            text.FlowDirection, new Typeface(text.FontFamily, text.FontStyle, text.FontWeight, text.FontStretch),
+            text.FontSize, text.Foreground, VisualTreeHelper.GetDpi(text).PixelsPerDip);
+        Assert.True(formatted.Width <= text.ActualWidth + 1,
+            $"'{text.Text}' needs {formatted.Width} but has {text.ActualWidth}");
+        var position = text.TranslatePoint(new Point(), container);
+        Assert.True(position.X >= -1 && position.X + text.ActualWidth <= container.ActualWidth + 1,
+            $"'{text.Text}' exceeds its column: {position.X} + {text.ActualWidth} > {container.ActualWidth}");
+        Assert.True(position.Y >= -1 && position.Y + text.ActualHeight <= container.ActualHeight + 1,
+            $"'{text.Text}' exceeds its row");
+    }
+
+    [Theory]
     [InlineData(true, "ja", "light", 1280, 760)]
     [InlineData(false, "en", "dark", 960, 640)]
     [InlineData(true, "ko", "light", 960, 640)]
@@ -168,6 +250,8 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
                 window.Show();
                 window.HistoryNavigation.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 DrainDispatcher(window.Dispatcher);
+                window.RecentPlayGrid.Columns[1].Width = 400;
+                DrainDispatcher(window.Dispatcher);
                 foreach (var lastIndex in new[] { 49, 99, 100 })
                 {
                     var grid = window.RecentPlayGrid;
@@ -184,6 +268,7 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
                         $"{lastIndex}: {bottom} > {scroll.ViewportHeight}");
                     var horizontalBar = FindVisualChildren<System.Windows.Controls.Primitives.ScrollBar>(grid)
                         .Single(bar => bar.Orientation == Orientation.Horizontal);
+                    Assert.True(horizontalBar.IsVisible);
                     if (horizontalBar.IsVisible)
                     {
                         Assert.True(row.TranslatePoint(new Point(), grid).Y + row.ActualHeight <=
@@ -1117,6 +1202,25 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
                 var bottom = horizontalBar.IsVisible
                     ? horizontalBar.TranslatePoint(new Point(), window.BestChartGrid).Y : window.BestChartGrid.ActualHeight;
                 Assert.True(rowTop + selectedRow.ActualHeight <= bottom + 1);
+                var sortingEvents = 0;
+                window.BestChartGrid.Sorting += (_, _) => sortingEvents++;
+                var beforeHeaderClicks = window.BestChartGrid.Items.Cast<ChartBestItem>().ToArray();
+                foreach (var header in FindVisualChildren<System.Windows.Controls.Primitives.DataGridColumnHeader>(window.BestChartGrid)
+                    .Where(header => header.Column is not null))
+                {
+                    Assert.False(header.Column.CanUserSort);
+                    // Exercise the same OnClick path as an actual header click, twice for both directions.
+                    var click = typeof(System.Windows.Controls.Primitives.DataGridColumnHeader).GetMethod("OnClick",
+                        System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+                    click.Invoke(header, null);
+                    click.Invoke(header, null);
+                    DrainDispatcher(window.Dispatcher);
+                }
+                Assert.Equal(0, sortingEvents);
+                Assert.Equal(beforeHeaderClicks, window.BestChartGrid.Items.Cast<ChartBestItem>());
+                Assert.Equal(1, window.ContentTabs.SelectedIndex);
+                Assert.Same(selected, window.BestChartGrid.SelectedItem);
+                Assert.Equal(offset, scrollViewer.VerticalOffset, precision: 3);
                 window.BestSortComboBox.SelectedIndex = 2;
                 DrainDispatcher(window.Dispatcher);
                 Assert.Equal(0, scrollViewer.VerticalOffset);
