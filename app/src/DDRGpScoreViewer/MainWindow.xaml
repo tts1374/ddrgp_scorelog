@@ -1288,8 +1288,16 @@
                                             </DataTemplate>
                                         </DataGridTemplateColumn.CellTemplate>
                                     </DataGridTemplateColumn>
-                                    <DataGridTextColumn ElementStyle="{StaticResource TableTextStyle}" Header="目標まで" MinWidth="110" Binding="{Binding GoalRemainingScoreDisplay, Mode=OneWay}"
-                                                        Width="1.2*" Visibility="Collapsed" />
+                                    <DataGridTextColumn Header="目標まで" MinWidth="110" Binding="{Binding GoalRemainingScoreDisplay, Mode=OneWay}"
+                                                        Width="1.2*" Visibility="Collapsed">
+                                        <DataGridTextColumn.ElementStyle>
+                                            <Style TargetType="TextBlock" BasedOn="{StaticResource TableTextStyle}">
+                                                <Setter Property="FontSize" Value="12" />
+                                                <Setter Property="TextWrapping" Value="Wrap" />
+                                                <Setter Property="TextTrimming" Value="None" />
+                                            </Style>
+                                        </DataGridTextColumn.ElementStyle>
+                                    </DataGridTextColumn>
                                     <DataGridTemplateColumn Header="RANK" MinWidth="74" Width="0.8*">
                                         <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>

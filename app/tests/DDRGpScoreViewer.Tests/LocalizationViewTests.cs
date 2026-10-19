@@ -910,6 +910,7 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
         string language, string theme, double width, double height)
     {
         using var fixture = new DatabaseFixture();
+        fixture.AddPlay("goal-label", "2026-10-01T12:00:00Z", 980_000, 1_000);
         applicationFixture.Run(() =>
         {
             MainWindow? window = null;
@@ -970,6 +971,13 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
                 Assert.True(window.BestGoalComboBox.IsVisible);
                 Assert.Equal(language switch { "en" => "Goal", "ko" => "목표", _ => "目標" },
                     ((TextBlock)window.BestGoalOptionsPanel.Children[0]).Text);
+                var goalChart = Assert.Single(vm.ChartBests);
+                var goalText = FindVisualChildren<TextBlock>(window.BestChartGrid)
+                    .Single(text => text.Text == goalChart.GoalRemainingScoreDisplay);
+                var goalRow = (DataGridRow)window.BestChartGrid.ItemContainerGenerator.ContainerFromItem(goalChart);
+                var textTop = goalText.TranslatePoint(new Point(), goalRow).Y;
+                Assert.True(textTop >= 0 && textTop + goalText.ActualHeight <= goalRow.ActualHeight);
+                Assert.Equal(TextTrimming.None, goalText.TextTrimming);
                 Assert.Equal(Visibility.Collapsed, window.BestProgressCard.Visibility);
                 Assert.Equal(Visibility.Collapsed, window.BestResultActions.Visibility);
                 Assert.Equal(Visibility.Visible, window.BestChartGrid.Columns[3].Visibility);
