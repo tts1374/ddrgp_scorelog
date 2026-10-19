@@ -7,6 +7,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Interop;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Shapes;
 using System.Windows.Threading;
@@ -133,6 +134,7 @@ public partial class MainWindow : System.Windows.Window
         DataContext = viewModel;
         ApplyHomeResponsiveLayout(Width);
         ApplyBestResponsiveLayout(Width);
+        ApplyHistoryResponsiveLayout(Width);
         viewModel.ChartBestListReset += ViewModel_ChartBestListReset;
         viewModel.ChartBestSelectionRequested += ViewModel_ChartBestSelectionRequested;
         viewModel.ChartDetailUpdated += ViewModel_ChartDetailUpdated;
@@ -576,6 +578,7 @@ public partial class MainWindow : System.Windows.Window
     {
         ApplyHomeResponsiveLayout(e.NewSize.Width);
         ApplyBestResponsiveLayout(e.NewSize.Width);
+        ApplyHistoryResponsiveLayout(e.NewSize.Width);
         RenderChartDetailGraph();
     }
 
@@ -590,14 +593,8 @@ public partial class MainWindow : System.Windows.Window
         MainContentGrid.Margin = compact
             ? new Thickness(20)
             : new Thickness(32, ContentTabs.SelectedIndex == 0 ? 14 : 22, 32, ContentTabs.SelectedIndex == 0 ? 14 : 22);
-        PageNoticeRow.MinHeight = ContentTabs.SelectedIndex == 0 ? 4 : 12;
+        PageNoticeRow.MinHeight = ContentTabs.SelectedIndex is 0 or 3 ? 4 : 12;
         BestChartGrid.Tag = compact ? "Compact" : "Wide";
-        if (RecentPlayGrid is not null && RecentPlayGrid.Columns.Count == 8)
-        {
-            RecentPlayGrid.Columns[1].MinWidth = 190;
-            RecentPlayGrid.Columns[2].Width = new DataGridLength(compact ? 140 : 170);
-        }
-
         if (BestChartGrid.Columns.Count != 9)
         {
             return;
@@ -633,6 +630,40 @@ public partial class MainWindow : System.Windows.Window
 
         HomeHistoryPanel.Margin = new Thickness(0, 0, 16, 0);
         HomeUpdatesPanel.Margin = new Thickness(16, 0, 0, 0);
+    }
+
+    private void ApplyHistoryResponsiveLayout(double windowWidth)
+    {
+        if (HistoryLayoutGrid is null)
+        {
+            return;
+        }
+        var compact = windowWidth <= 1200;
+        HistoryLayoutGrid.ColumnDefinitions[1].Width = new GridLength(compact ? 0 : 280);
+        HistoryLayoutGrid.RowDefinitions[0].Height = new GridLength(compact ? 1.4 : 1, GridUnitType.Star);
+        HistoryLayoutGrid.RowDefinitions[1].Height = compact
+            ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
+        Grid.SetColumn(HistoryDetailPanel, compact ? 0 : 1);
+        Grid.SetRow(HistoryDetailPanel, compact ? 1 : 0);
+        HistoryDetailPanel.Margin = compact ? new Thickness(0, 14, 0, 0) : new Thickness(24, 0, 0, 0);
+        HistoryDetailPanel.Padding = compact ? new Thickness(0, 12, 0, 0) : new Thickness(24, 0, 0, 0);
+        HistoryDetailPanel.BorderThickness = compact ? new Thickness(0, 1, 0, 0) : new Thickness(1, 0, 0, 0);
+        RecentPlayGrid.Tag = compact ? "Compact" : "Wide";
+        RecentPlayGrid.RowHeight = compact ? 40 : 48;
+        HistoryDetailGrid.ColumnDefinitions[0].Width = new GridLength(1.1, GridUnitType.Star);
+        HistoryDetailGrid.ColumnDefinitions[1].Width = compact ? new GridLength(1.2, GridUnitType.Star) : new GridLength(0);
+        HistoryDetailGrid.ColumnDefinitions[2].Width = compact ? new GridLength(0.9, GridUnitType.Star) : new GridLength(0);
+        Grid.SetColumn(HistoryJudgmentPanel, compact ? 1 : 0);
+        Grid.SetRow(HistoryJudgmentPanel, compact ? 0 : 1);
+        Grid.SetColumn(HistoryTimestampPanel, compact ? 2 : 0);
+        Grid.SetRow(HistoryTimestampPanel, compact ? 0 : 2);
+        HistorySummaryPanel.Margin = compact ? new Thickness(0, 0, 20, 0) : new Thickness(0);
+        HistoryJudgmentPanel.Margin = compact ? new Thickness(0, 0, 20, 0) : new Thickness(0, 24, 0, 0);
+        HistoryTimestampPanel.Margin = compact ? new Thickness(0) : new Thickness(0, 18, 0, 0);
+        HistoryJudgments.Tag = compact ? 2 : 1;
+        HistoryScorePanel.Orientation = compact ? WpfOrientation.Horizontal : WpfOrientation.Vertical;
+        HistoryScoreText.FontSize = compact ? 32 : 36;
+        HistoryExScoreText.Margin = compact ? new Thickness(8, 0, 0, 4) : new Thickness(0, 2, 0, 0);
     }
 
     private void ShowHome_Click(object sender, RoutedEventArgs e) => ShowHomePage();
@@ -1272,6 +1303,7 @@ public partial class MainWindow : System.Windows.Window
 
     private void RecentPlayGrid_ScrollChanged(object sender, ScrollChangedEventArgs e)
     {
+        UpdateHistoryStickyDate();
         if (e.ExtentHeight <= 0 || e.ViewportHeight <= 0 ||
             e.VerticalOffset + e.ViewportHeight < e.ExtentHeight - 1 ||
             !viewModel.CanLoadMorePlays ||
@@ -1280,6 +1312,13 @@ public partial class MainWindow : System.Windows.Window
             return;
         }
 
+        var offset = e.VerticalOffset;
+        var selectedRow = RecentPlayGrid.SelectedItem is { } selected
+            ? RecentPlayGrid.ItemContainerGenerator.ContainerFromItem(selected) as DataGridRow : null;
+        var selectedTop = selectedRow?.TranslatePoint(new WpfPoint(), RecentPlayGrid).Y;
+        var selectionWasVisible = selectedTop >= HistoryStickyDate.Margin.Top + HistoryStickyDate.ActualHeight &&
+            selectedTop < RecentPlayGrid.ActualHeight;
+        var previousCount = viewModel.Plays.Count;
         try
         {
             viewModel.LoadMorePlays();
@@ -1289,7 +1328,114 @@ public partial class MainWindow : System.Windows.Window
             // Adding rows causes follow-up ScrollChanged events before the UI settles.
             Dispatcher.BeginInvoke(
                 DispatcherPriority.ApplicationIdle,
-                new Action(() => recentPlayPageRequestGate.Complete()));
+                new Action(() =>
+                {
+                    RecentPlayGrid.UpdateLayout();
+                    FindVisualChild<ScrollViewer>(RecentPlayGrid)?.ScrollToVerticalOffset(offset);
+                    UpdateHistoryStickyDate();
+                    recentPlayPageRequestGate.Complete();
+                    if (selectionWasVisible || RecentPlayGrid.SelectedIndex == previousCount - 1)
+                    {
+                        QueueHistorySelectionVisibility();
+                    }
+                }));
+        }
+    }
+
+    private void RecentPlayGrid_PreviewKeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (e.Key is not (Key.Up or Key.Down) || RecentPlayGrid.Items.Count == 0)
+        {
+            return;
+        }
+        var index = Math.Clamp(RecentPlayGrid.SelectedIndex + (e.Key == Key.Down ? 1 : -1),
+            0, RecentPlayGrid.Items.Count - 1);
+        if (RecentPlayGrid.SelectedIndex == index)
+        {
+            QueueHistorySelectionVisibility();
+        }
+        else
+        {
+            RecentPlayGrid.SelectedIndex = index;
+        }
+        e.Handled = true;
+    }
+
+    private void RecentPlayGrid_SelectionChanged(object sender, SelectionChangedEventArgs e) =>
+        QueueHistorySelectionVisibility();
+
+    private void QueueHistorySelectionVisibility()
+    {
+        Dispatcher.BeginInvoke(DispatcherPriority.ContextIdle, new Action(() =>
+        {
+            if (!RecentPlayGrid.IsVisible || RecentPlayGrid.SelectedItem is not PlayHistoryItem play)
+            {
+                return;
+            }
+            RecentPlayGrid.ScrollIntoView(play);
+            RecentPlayGrid.UpdateLayout();
+            var scrollViewer = FindVisualChild<ScrollViewer>(RecentPlayGrid);
+            var viewport = FindVisualChild<ScrollContentPresenter>(RecentPlayGrid);
+            if (scrollViewer is not null && RecentPlayGrid.ItemContainerGenerator.ContainerFromItem(play) is DataGridRow row)
+            {
+                // ScrollIntoView knows the column header, but not the pinned date.
+                var top = row.TranslatePoint(new WpfPoint(), RecentPlayGrid).Y;
+                var visibleTop = HistoryStickyDate.Margin.Top + HistoryStickyDate.ActualHeight;
+                if (top < visibleTop)
+                {
+                    scrollViewer.ScrollToVerticalOffset(scrollViewer.VerticalOffset + top - visibleTop);
+                }
+                else if (viewport is not null)
+                {
+                    var visibleBottom = viewport.TranslatePoint(new WpfPoint(), RecentPlayGrid).Y +
+                        Math.Min(viewport.ActualHeight, scrollViewer.ViewportHeight);
+                    visibleBottom = Math.Min(visibleBottom, RecentPlayGrid.ActualHeight -
+                        RecentPlayGrid.BorderThickness.Bottom -
+                        (scrollViewer.ComputedHorizontalScrollBarVisibility == Visibility.Visible
+                            ? SystemParameters.HorizontalScrollBarHeight : 0));
+                    if (top + row.ActualHeight > visibleBottom)
+                    {
+                        scrollViewer.ScrollToVerticalOffset(scrollViewer.VerticalOffset + top + row.ActualHeight - visibleBottom);
+                    }
+                }
+            }
+            UpdateHistoryStickyDate();
+        }));
+    }
+
+    private void UpdateHistoryStickyDate()
+    {
+        if (HistoryStickyDateText is null || !RecentPlayGrid.IsVisible)
+        {
+            return;
+        }
+        var date = viewModel.Plays.FirstOrDefault()?.HistoryDateDisplay ?? "";
+        var pinnedBottom = HistoryStickyDate.Margin.Top + HistoryStickyDate.ActualHeight;
+        foreach (var group in FindHistoryGroups(RecentPlayGrid))
+        {
+            if (group.DataContext is CollectionViewGroup data &&
+                group.TranslatePoint(new WpfPoint(), RecentPlayGrid).Y <= pinnedBottom)
+            {
+                date = data.Name?.ToString() ?? date;
+            }
+        }
+        HistoryStickyDateText.Text = date;
+        HistoryStickyDate.Visibility = date.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    private static IEnumerable<GroupItem> FindHistoryGroups(DependencyObject root)
+    {
+        for (var index = 0; index < VisualTreeHelper.GetChildrenCount(root); index++)
+        {
+            var child = VisualTreeHelper.GetChild(root, index);
+            if (child is GroupItem group)
+            {
+                yield return group;
+            }
+            foreach (var descendant in FindHistoryGroups(child))
+            {
+                yield return descendant;
+            }
         }
     }
 

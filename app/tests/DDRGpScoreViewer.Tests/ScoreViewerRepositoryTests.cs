@@ -8,6 +8,24 @@ namespace DDRGpScoreViewer.Tests;
 
 public sealed class ScoreViewerRepositoryTests
 {
+    [Fact]
+    public void History_uses_local_calendar_days_instead_of_the_home_0700_period()
+    {
+        using var fixture = new DatabaseFixture();
+        var beforeSeven = LocalTime(2026, 10, 18, 6, 59);
+        fixture.AddPlay("midnight", LocalTime(2026, 10, 18, 0).ToUniversalTime().ToString("O"), 900_000, 1_000);
+        fixture.AddPlay("before-seven", beforeSeven.ToUniversalTime().ToString("O"), 910_000, 1_010);
+        fixture.AddPlay("seven", LocalTime(2026, 10, 18, 7).ToUniversalTime().ToString("O"), 920_000, 1_020);
+        fixture.AddPlay("previous-day", LocalTime(2026, 10, 17, 23, 59).ToString("O"), 930_000, 1_030);
+
+        var plays = new ScoreViewerRepository().Load(fixture.ScorePath, fixture.MasterPath).Plays;
+        Assert.Equal(new[] { "seven", "before-seven", "midnight", "previous-day" }, plays.Select(play => play.PlayId));
+        Assert.All(plays.Take(3), play => Assert.Equal("2026/10/18", play.HistoryDateDisplay));
+        Assert.Equal("2026/10/17", plays[3].HistoryDateDisplay);
+        Assert.Equal("06:59", plays[1].HistoryTimeDisplay);
+        Assert.Equal("2026/10/17", HomeDisplayPeriod.From(beforeSeven).Start.ToString("yyyy/MM/dd"));
+    }
+
     [Theory]
     [InlineData("AAA", "Upper")]
     [InlineData("B", "B")]

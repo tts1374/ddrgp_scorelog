@@ -513,4 +513,7 @@
     <sys:String x:Key="プレー前の自己ベストとの差（スコア）">플레이 전 최고 기록과의 차이 (점수)</sys:String>
     <sys:String x:Key="プレー前の自己ベストとの差（EX）">플레이 전 최고 기록과의 차이 (EX)</sys:String>
     <sys:String x:Key="RESULT画面を検出しています。">결과 화면을 기다리고 있습니다.</sys:String>
+    <sys:String x:Key="{}{0}件を表示">{0}건 표시</sys:String>
+    <sys:String x:Key="判定">판정</sys:String>
+    <sys:String x:Key="プレーの記録はありません">플레이 기록이 없습니다</sys:String>
 </ResourceDictionary>

@@ -513,4 +513,7 @@
     <sys:String x:Key="プレー前の自己ベストとの差（スコア）">Change from best before this play (score)</sys:String>
     <sys:String x:Key="プレー前の自己ベストとの差（EX）">Change from best before this play (EX)</sys:String>
     <sys:String x:Key="RESULT画面を検出しています。">Waiting for a result screen.</sys:String>
+    <sys:String x:Key="{}{0}件を表示">{0} plays shown</sys:String>
+    <sys:String x:Key="判定">Judgments</sys:String>
+    <sys:String x:Key="プレーの記録はありません">No plays recorded</sys:String>
 </ResourceDictionary>

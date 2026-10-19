@@ -1096,9 +1096,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         ? Localization.Format("表示 {0}件 / 全{1}件", 0, 0)
         : Localization.Format("表示 1〜{0}件 / 全{1}件", Plays.Count, totalPlayCount);
 
-    public string RecentPlayLoadMoreHintDisplay => CanLoadMorePlays
-        ? Localization.Get("下端までスクロールすると次の50プレーを表示")
-        : Localization.Format("全{0}プレーを表示中", totalPlayCount);
+    public string RecentPlayLoadMoreHintDisplay => Localization.Format("{0}件を表示", Plays.Count);
 
     public HomePlayItem? HomeLatestPlay
     {

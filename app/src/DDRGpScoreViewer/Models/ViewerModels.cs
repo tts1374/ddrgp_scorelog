@@ -31,6 +31,17 @@ public sealed record PlayHistoryItem(
 {
     public string PlayedAtDisplay => FormatTimestamp(PlayedAt);
     public string CompactPlayedAtDisplay => HomeTimestampFormatter.Format(PlayedAt);
+    public string HistoryDateDisplay => ViewerTimestampFormatter.Format(PlayedAt, "yyyy/MM/dd");
+    public string HistoryTimeDisplay => ViewerTimestampFormatter.Format(PlayedAt, "HH:mm");
+    public string HistoryChartDisplay => $"{PlayStyleDisplay} {Difficulty switch
+    {
+        "BEGINNER" => "BGN",
+        "BASIC" => "BAS",
+        "DIFFICULT" => "DIF",
+        "EXPERT" => "EXP",
+        "CHALLENGE" => "CHA",
+        _ => Difficulty,
+    }}";
     public string SavedAtDisplay => FormatTimestamp(SavedAt);
     public string PlayStyleDisplay => PlayStyle switch
     {
