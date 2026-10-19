@@ -9,6 +9,11 @@
         SizeChanged="MainWindow_SizeChanged"
         Loaded="MainWindow_Loaded">
     <Window.Resources>
+        <CollectionViewSource x:Key="HistoryPlays" Source="{Binding Plays}">
+            <CollectionViewSource.GroupDescriptions>
+                <PropertyGroupDescription PropertyName="HistoryDateDisplay" />
+            </CollectionViewSource.GroupDescriptions>
+        </CollectionViewSource>
         <Style x:Key="TableTextStyle" TargetType="TextBlock">
             <Setter Property="VerticalAlignment" Value="Center" />
             <Setter Property="TextTrimming" Value="CharacterEllipsis" />
@@ -1862,46 +1867,79 @@
                     </ScrollViewer>
                 </TabItem>
                 <TabItem>
-                    <Grid>
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="*" MinHeight="180" />
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="210" />
-                        </Grid.RowDefinitions>
-                        <Border Grid.Row="0" Style="{StaticResource CardStyle}" Padding="0">
+                    <Grid x:Name="HistoryLayoutGrid">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="280" /></Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions><RowDefinition Height="*" /><RowDefinition Height="0" /></Grid.RowDefinitions>
+                        <Grid x:Name="HistoryListPanel">
+                            <Grid.Style><Style TargetType="Grid"><Style.Triggers><DataTrigger Binding="{Binding Plays.Count}" Value="0"><Setter Property="Visibility" Value="Collapsed" /></DataTrigger></Style.Triggers></Style></Grid.Style>
+                            <Grid.RowDefinitions><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+                            <Grid>
                             <DataGrid x:Name="RecentPlayGrid" TabIndex="100"
-                                      ItemsSource="{Binding Plays}" SelectedItem="{Binding SelectedPlay}"
+                                      ItemsSource="{Binding Source={StaticResource HistoryPlays}}" SelectedItem="{Binding SelectedPlay}"
                                       ScrollViewer.ScrollChanged="RecentPlayGrid_ScrollChanged"
+                                      SelectionChanged="RecentPlayGrid_SelectionChanged"
+                                      PreviewKeyDown="RecentPlayGrid_PreviewKeyDown"
+                                      VirtualizingPanel.IsVirtualizingWhenGrouping="True" VirtualizingPanel.ScrollUnit="Pixel"
+                                      CanUserSortColumns="False" CanUserReorderColumns="False"
                                       RowHeight="48" ColumnHeaderHeight="32"
                                       Style="{StaticResource ViewerDataGridStyle}">
                                 <DataGrid.Resources>
+                                    <Style x:Key="HistoryTimeTextStyle" TargetType="TextBlock" BasedOn="{StaticResource TableTextStyle}">
+                                        <Setter Property="ToolTip" Value="{Binding PlayedAtDisplay}" />
+                                    </Style>
                                     <Style TargetType="DataGridCell" BasedOn="{StaticResource {x:Type DataGridCell}}">
-                                        <Setter Property="Padding" Value="10,2" />
+                                        <Setter Property="Padding" Value="7,2" />
+                                        <Setter Property="FontSize" Value="12" />
+                                    </Style>
+                                    <Style TargetType="DataGridColumnHeader" BasedOn="{StaticResource {x:Type DataGridColumnHeader}}">
+                                        <Setter Property="Padding" Value="7,4" />
+                                        <Setter Property="FontSize" Value="11" />
                                     </Style>
                                     <Style x:Key="HistoryNumberTextStyle" TargetType="TextBlock" BasedOn="{StaticResource TableTextStyle}">
                                         <Setter Property="TextAlignment" Value="Right" />
                                         <Setter Property="Typography.NumeralAlignment" Value="Tabular" />
+                                        <Setter Property="FontWeight" Value="SemiBold" />
                                     </Style>
                                     <Style x:Key="HistoryNumberHeaderStyle" TargetType="DataGridColumnHeader" BasedOn="{StaticResource {x:Type DataGridColumnHeader}}">
                                         <Setter Property="HorizontalContentAlignment" Value="Right" />
                                     </Style>
                                 </DataGrid.Resources>
+                                <DataGrid.GroupStyle>
+                                    <GroupStyle>
+                                        <GroupStyle.ContainerStyle>
+                                            <Style TargetType="GroupItem">
+                                                <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="GroupItem">
+                                                    <StackPanel>
+                                                        <Border Height="28" Background="{DynamicResource SurfaceSecondaryBrush}" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,0,0,1" Padding="7,4">
+                                                            <TextBlock Text="{Binding Name}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                        </Border>
+                                                        <ItemsPresenter />
+                                                    </StackPanel>
+                                                </ControlTemplate></Setter.Value></Setter>
+                                            </Style>
+                                        </GroupStyle.ContainerStyle>
+                                    </GroupStyle>
+                                </DataGrid.GroupStyle>
                                 <DataGrid.Columns>
-                                    <DataGridTextColumn ElementStyle="{StaticResource TableTextStyle}" Header="日時" Binding="{Binding CompactPlayedAtDisplay, Mode=OneWay}" Width="120" />
-                                    <DataGridTextColumn ElementStyle="{StaticResource TableTextStyle}" Header="曲名" Binding="{Binding SongTitle, Mode=OneWay}" Width="*" />
-                                    <DataGridTemplateColumn Header="譜面" MinWidth="85" Width="170">
+                                    <DataGridTextColumn ElementStyle="{StaticResource HistoryTimeTextStyle}" Header="日時" Binding="{Binding HistoryTimeDisplay, Mode=OneWay}" Width="64" />
+                                    <DataGridTextColumn ElementStyle="{StaticResource TableTextStyle}" Header="曲名" Binding="{Binding SongTitle, Mode=OneWay}" MinWidth="120" Width="*" />
+                                    <DataGridTemplateColumn Header="譜面" Width="116">
                                         <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
-                                                <StackPanel><Border Style="{StaticResource DifficultyBadgeStyle}">
-                                                    <TextBlock Text="{Binding ChartDisplay}"
+                                                <StackPanel ToolTip="{Binding ChartDisplay}">
+                                                    <StackPanel.Style><Style TargetType="StackPanel"><Style.Triggers><DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource AncestorType=DataGrid}}" Value="Compact"><Setter Property="Orientation" Value="Horizontal" /></DataTrigger></Style.Triggers></Style></StackPanel.Style>
+                                                    <Border Style="{StaticResource DifficultyBadgeStyle}">
+                                                    <TextBlock Text="{Binding HistoryChartDisplay}"
                                                                Style="{StaticResource DifficultyBadgeTextStyle}" />
-                                                </Border><TextBlock Text="{Binding LevelDisplay}" Style="{StaticResource ScorebookCaptionStyle}" Margin="0,4,0,0" /></StackPanel>
+                                                </Border><TextBlock Text="{Binding LevelDisplay}" VerticalAlignment="Center">
+                                                    <TextBlock.Style><Style TargetType="TextBlock" BasedOn="{StaticResource ScorebookCaptionStyle}"><Setter Property="Margin" Value="0,2,0,0" /><Style.Triggers><DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource AncestorType=DataGrid}}" Value="Compact"><Setter Property="Margin" Value="4,0,0,0" /></DataTrigger></Style.Triggers></Style></TextBlock.Style>
+                                                </TextBlock></StackPanel>
                                             </DataTemplate>
                                         </DataGridTemplateColumn.CellTemplate>
                                     </DataGridTemplateColumn>
-                                    <DataGridTextColumn ElementStyle="{StaticResource HistoryNumberTextStyle}" HeaderStyle="{StaticResource HistoryNumberHeaderStyle}" Header="SCORE" Binding="{Binding ScoreDisplay, Mode=OneWay}" Width="110" />
-                                    <DataGridTextColumn ElementStyle="{StaticResource HistoryNumberTextStyle}" HeaderStyle="{StaticResource HistoryNumberHeaderStyle}" Header="EX SCORE" Binding="{Binding ExScoreDisplay, Mode=OneWay}" Width="92" />
-                                    <DataGridTemplateColumn Header="ランク" Width="76">
+                                    <DataGridTextColumn ElementStyle="{StaticResource HistoryNumberTextStyle}" HeaderStyle="{StaticResource HistoryNumberHeaderStyle}" Header="SCORE" Binding="{Binding ScoreDisplay, Mode=OneWay}" Width="88" />
+                                    <DataGridTextColumn ElementStyle="{StaticResource HistoryNumberTextStyle}" HeaderStyle="{StaticResource HistoryNumberHeaderStyle}" Header="EX SCORE" Binding="{Binding ExScoreDisplay, Mode=OneWay}" Width="80" />
+                                    <DataGridTemplateColumn Header="ランク" Width="64">
                                         <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
                                                 <ContentControl Content="{Binding}"
@@ -1911,7 +1949,7 @@
                                             </DataTemplate>
                                         </DataGridTemplateColumn.CellTemplate>
                                     </DataGridTemplateColumn>
-                                    <DataGridTemplateColumn Header="CLEAR" MinWidth="92" Width="110">
+                                    <DataGridTemplateColumn Header="CLEAR" MinWidth="80" Width="88">
                                         <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
                                                 <ContentControl Content="{Binding}"
@@ -1921,7 +1959,7 @@
                                             </DataTemplate>
                                         </DataGridTemplateColumn.CellTemplate>
                                     </DataGridTemplateColumn>
-                                    <DataGridTemplateColumn Header="FLARE" MinWidth="100" Width="102">
+                                    <DataGridTemplateColumn Header="FLARE" Width="102">
                                         <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
                                                 <ContentControl Content="{Binding}"
@@ -1933,25 +1971,22 @@
                                     </DataGridTemplateColumn>
                                 </DataGrid.Columns>
                             </DataGrid>
-                        </Border>
-
-                        <TextBlock Grid.Row="1"
-                                   Text="{Binding RecentPlayLoadMoreHintDisplay, Mode=OneWay}"
-                                   Foreground="{DynamicResource TextSecondaryBrush}"
-                                   FontSize="12"
-                                   Margin="4,6,4,6" />
-
-                        <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"><Border Style="{StaticResource CardStyle}" DataContext="{Binding SelectedPlay}"
-                                Padding="20,14">
-                            <Grid x:Name="HistoryDetailGrid">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="2.2*" />
-                                    <ColumnDefinition Width="1.4*" />
-                                    <ColumnDefinition Width="1.2*" />
-                                </Grid.ColumnDefinitions>
-                                <StackPanel Grid.Column="0" Margin="0,0,20,0">
+                            <Border x:Name="HistoryStickyDate" Height="28" Margin="1,33,18,0" VerticalAlignment="Top" IsHitTestVisible="False"
+                                    Background="{DynamicResource SurfaceSecondaryBrush}" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,0,0,1" Padding="7,4">
+                                <TextBlock x:Name="HistoryStickyDateText" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
+                            </Border>
+                            </Grid>
+                            <TextBlock Grid.Row="1" Text="{Binding RecentPlayLoadMoreHintDisplay}" Style="{StaticResource ScorebookCaptionStyle}" Margin="4,6" />
+                        </Grid>
+                        <Border x:Name="HistoryDetailPanel" Grid.Column="1" Margin="24,0,0,0" Padding="24,0,0,0" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="1,0,0,0">
+                            <Border.Style><Style TargetType="Border"><Style.Triggers><DataTrigger Binding="{Binding SelectedPlay}" Value="{x:Null}"><Setter Property="Visibility" Value="Collapsed" /></DataTrigger></Style.Triggers></Style></Border.Style>
+                            <ScrollViewer x:Name="HistoryDetailScrollViewer" TabIndex="101" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" Padding="0,0,8,0">
+                            <Grid x:Name="HistoryDetailGrid" DataContext="{Binding SelectedPlay}">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="0" /><ColumnDefinition Width="0" /></Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+                                <StackPanel x:Name="HistorySummaryPanel">
                                     <TextBlock Text="{Binding SongTitle}" FontSize="18" FontWeight="SemiBold"
-                                               TextTrimming="CharacterEllipsis" ToolTip="{Binding SongTitle}" />
+                                               TextWrapping="Wrap" />
                                     <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
                                         <Border Style="{StaticResource DifficultyBadgeStyle}" Margin="0,0,10,0"
                                                 VerticalAlignment="Center">
@@ -1963,17 +1998,17 @@
                                                    Foreground="{DynamicResource TextSecondaryBrush}" />
                                         <TextBlock Text="{Binding LevelDisplay}" FontWeight="SemiBold" VerticalAlignment="Center" />
                                     </StackPanel>
-                                    <StackPanel Margin="0,8,0,0"
+                                    <StackPanel x:Name="HistoryScorePanel" Margin="0,8,0,0"
                                                 VerticalAlignment="Center">
-                                        <TextBlock Text="{Binding ScoreDisplay}" FontSize="32" FontWeight="Bold"
+                                        <TextBlock x:Name="HistoryScoreText" Text="{Binding ScoreDisplay}" FontSize="36" FontWeight="Bold"
                                                    Typography.NumeralAlignment="Tabular" Foreground="{DynamicResource AccentPrimaryBrush}" />
-                                        <TextBlock Margin="0,2,0,0" VerticalAlignment="Bottom"
+                                        <TextBlock x:Name="HistoryExScoreText" Margin="0,2,0,0" VerticalAlignment="Bottom"
                                                    Foreground="{DynamicResource TextSecondaryBrush}">
                                             <Run Text="EX SCORE: " />
                                             <Run Text="{Binding ExScoreDisplay, Mode=OneWay}" FontWeight="Bold" />
                                         </TextBlock>
                                     </StackPanel>
-                                    <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                                    <WrapPanel Margin="0,10,0,0">
                                         <ContentControl Content="{Binding}"
                                                         ContentTemplate="{StaticResource RankBadgeOrPlaceholderTemplate}"
                                                         Margin="0,0,6,0"
@@ -1988,21 +2023,18 @@
                                                         ContentTemplate="{StaticResource FlareBadgeOrPlaceholderTemplate}"
                                                         HorizontalContentAlignment="Left"
                                                         VerticalContentAlignment="Center" />
-                                    </StackPanel>
+                                    </WrapPanel>
                                 </StackPanel>
-                                <Border Grid.Column="1" Background="{DynamicResource GraphBackgroundBrush}"
-                                        BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="1,0,0,0"
-                                        CornerRadius="0" Padding="18,0" Margin="0,0,20,0"
-                                        VerticalAlignment="Center">
-                                    <ItemsControl ItemsSource="{Binding JudgementBreakdown}">
+                                <Border x:Name="HistoryJudgmentPanel" Grid.Row="1" Margin="0,24,0,0">
+                                    <StackPanel><TextBlock Text="判定" Style="{StaticResource ScorebookCaptionStyle}" Margin="0,0,0,6" /><ItemsControl x:Name="HistoryJudgments" Tag="1" ItemsSource="{Binding JudgementBreakdown}">
                                         <ItemsControl.ItemsPanel>
                                             <ItemsPanelTemplate>
-                                                <UniformGrid Columns="1" />
+                                                <UniformGrid Columns="{Binding Tag, RelativeSource={RelativeSource AncestorType=ItemsControl}}" />
                                             </ItemsPanelTemplate>
                                         </ItemsControl.ItemsPanel>
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate>
-                                                <Grid Margin="0,3,8,3">
+                                                <Grid Margin="0,0,12,1" Height="30">
                                                     <Grid.ColumnDefinitions>
                                                         <ColumnDefinition Width="*" />
                                                         <ColumnDefinition Width="Auto" />
@@ -2016,16 +2048,21 @@
                                                 </Grid>
                                             </DataTemplate>
                                         </ItemsControl.ItemTemplate>
-                                    </ItemsControl>
+                                    </ItemsControl></StackPanel>
                                 </Border>
-                                <StackPanel Grid.Column="2" VerticalAlignment="Center">
+                                <StackPanel x:Name="HistoryTimestampPanel" Grid.Row="2" Margin="0,18,0,0">
                                     <TextBlock Text="プレー日時" FontWeight="SemiBold" />
                                     <Separator Margin="0,8" />
                                     <TextBlock Text="{Binding PlayedAtDisplay}"
                                                FontSize="12" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
                                 </StackPanel>
+
                             </Grid>
-                        </Border></ScrollViewer>
+                            </ScrollViewer>
+                        </Border>
+                        <TextBlock Text="プレーの記録はありません" FontSize="16" Margin="0,16" Grid.ColumnSpan="2">
+                            <TextBlock.Style><Style TargetType="TextBlock"><Setter Property="Visibility" Value="Collapsed" /><Style.Triggers><DataTrigger Binding="{Binding Plays.Count}" Value="0"><Setter Property="Visibility" Value="Visible" /></DataTrigger></Style.Triggers></Style></TextBlock.Style>
+                        </TextBlock>
                     </Grid>
                 </TabItem>
                 <TabItem x:Name="FlareSkillTab">

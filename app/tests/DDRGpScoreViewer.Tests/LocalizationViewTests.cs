@@ -5,6 +5,7 @@ using System.Text;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
 using DDRGpScoreViewer;
@@ -25,6 +26,181 @@ public sealed class LocalizationViewCollection;
 public sealed class LocalizationViewTests(LocalizationApplicationFixture applicationFixture)
     : IClassFixture<LocalizationApplicationFixture>
 {
+    [Theory]
+    [InlineData(true, "ja", "light", 1280, 760)]
+    [InlineData(false, "en", "dark", 960, 640)]
+    [InlineData(true, "ko", "light", 960, 640)]
+    public void History_keeps_calendar_groups_paging_selection_and_pinned_header_reachable(
+        bool dateChangesAtPage, string language, string theme, double width, double height)
+    {
+        using var fixture = new DatabaseFixture();
+        var local = new DateTime(2026, 10, 18, 0, dateChangesAtPage ? 49 : 55, 0);
+        var start = new DateTimeOffset(local, TimeZoneInfo.Local.GetUtcOffset(local));
+        fixture.AddMasterSongAndChart("long-song", "アルストロメリア (walk with you remix) — A long title for wrapping",
+            "Artist", "double-chart", "DOUBLE", "CHALLENGE", 16);
+        for (var index = 0; index < 101; index++)
+        {
+            fixture.AddPlay($"history-{index:000}", start.AddMinutes(-index).ToString("O"),
+                980_000 - index * 10, 1_500 - index,
+                index % 2 == 0 ? "song-1" : "long-song", index % 2 == 0 ? "chart-1" : "double-chart");
+        }
+
+        applicationFixture.Run(() =>
+        {
+            MainWindow? window = null;
+            try
+            {
+                PrepareStartupResources();
+                Localization.Configure(language);
+                ThemeManager.Apply(theme);
+                window = new MainWindow(StartupPaths(fixture)) { Width = width, Height = height };
+                window.ViewModel.Load(fixture.ScorePath, fixture.MasterPath, fixture.CatalogPath, persist: false);
+                window.Show();
+                window.HistoryNavigation.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                DrainDispatcher(window.Dispatcher);
+                var grid = window.RecentPlayGrid;
+                var scroll = FindVisualChildren<ScrollViewer>(grid).Single();
+                var view = (System.ComponentModel.ICollectionView)grid.ItemsSource;
+                Assert.Equal(50, window.ViewModel.Plays.Count);
+                Assert.Single(view.Groups!);
+
+                var selected = window.ViewModel.Plays[47];
+                grid.SelectedItem = selected;
+                DrainDispatcher(window.Dispatcher);
+                var firstOffset = scroll.ScrollableHeight;
+                scroll.ScrollToEnd();
+                DrainDispatcher(window.Dispatcher);
+                DrainDispatcher(window.Dispatcher);
+                Assert.Equal(100, window.ViewModel.Plays.Count);
+                Assert.Equal(firstOffset, scroll.VerticalOffset, precision: 3);
+                Assert.Same(selected, window.ViewModel.SelectedPlay);
+                Assert.Same(selected, window.HistoryDetailGrid.DataContext);
+                var groups = view.Groups!.Cast<CollectionViewGroup>().ToArray();
+                Assert.Equal(2, groups.Length);
+                Assert.Equal(dateChangesAtPage ? 50 : 56, groups[0].ItemCount);
+                Assert.Equal(window.ViewModel.Plays, groups.SelectMany(group => group.Items.Cast<PlayHistoryItem>()));
+                Assert.NotEqual(window.ViewModel.Plays[49].HistoryDateDisplay == window.ViewModel.Plays[50].HistoryDateDisplay,
+                    dateChangesAtPage);
+
+                var secondOffset = scroll.ScrollableHeight;
+                scroll.ScrollToEnd();
+                DrainDispatcher(window.Dispatcher);
+                DrainDispatcher(window.Dispatcher);
+                Assert.Equal(101, window.ViewModel.Plays.Count);
+                Assert.Equal(secondOffset, scroll.VerticalOffset, precision: 3);
+                Assert.Equal(101, grid.Items.Count);
+
+                grid.SelectedIndex = 100;
+                DrainDispatcher(window.Dispatcher);
+                Assert.Equal(window.ViewModel.Plays[100].HistoryDateDisplay, window.HistoryStickyDateText.Text);
+                var source = PresentationSource.FromVisual(window)!;
+                var viewport = FindVisualChildren<ScrollContentPresenter>(grid).Single();
+                for (var index = 100; index >= 0; index--)
+                {
+                    var play = window.ViewModel.Plays[index];
+                    Assert.Same(play, window.ViewModel.SelectedPlay);
+                    Assert.Same(play, window.HistoryDetailGrid.DataContext);
+                    var detailTexts = FindVisualChildren<TextBlock>(window.HistoryDetailGrid).Select(text => text.Text).ToArray();
+                    Assert.Contains(play.SongTitle, detailTexts);
+                    Assert.Contains(play.ScoreDisplay, detailTexts);
+                    Assert.Contains(play.PlayedAtDisplay, detailTexts);
+                    Assert.Contains(FindVisualChildren<TextBlock>(window.HistoryDetailGrid)
+                            .SelectMany(text => text.Inlines.OfType<System.Windows.Documents.Run>()),
+                        run => run.Text == play.ExScoreDisplay);
+                    var row = (DataGridRow)grid.ItemContainerGenerator.ContainerFromItem(play);
+                    Assert.NotNull(row);
+                    var top = row.TranslatePoint(new Point(), grid).Y;
+                    var pinnedBottom = window.HistoryStickyDate.Margin.Top + window.HistoryStickyDate.ActualHeight;
+                    Assert.True(top >= pinnedBottom - 1, $"{index}: row {top} hidden by date {pinnedBottom}");
+                    var visibleBottom = viewport.TranslatePoint(new Point(), grid).Y + Math.Min(viewport.ActualHeight, scroll.ViewportHeight);
+                    var horizontalBar = FindVisualChildren<System.Windows.Controls.Primitives.ScrollBar>(grid)
+                        .Single(bar => bar.Orientation == Orientation.Horizontal);
+                    if (horizontalBar.IsVisible)
+                    {
+                        visibleBottom = Math.Min(visibleBottom, horizontalBar.TranslatePoint(new Point(), grid).Y);
+                    }
+                    Assert.True(top + row.ActualHeight <= visibleBottom + 1,
+                        $"{index}: row bottom {top + row.ActualHeight} exceeds viewport {visibleBottom}");
+                    if (index > 0)
+                    {
+                        grid.RaiseEvent(new KeyEventArgs(Keyboard.PrimaryDevice, source, 0, Key.Up)
+                        {
+                            RoutedEvent = Keyboard.PreviewKeyDownEvent,
+                        });
+                        DrainDispatcher(window.Dispatcher);
+                    }
+                }
+                Assert.Equal(window.ViewModel.Plays[0].HistoryDateDisplay, window.HistoryStickyDateText.Text);
+                window.HistoryDetailScrollViewer.ScrollToEnd();
+                DrainDispatcher(window.Dispatcher);
+                Assert.Equal(window.HistoryDetailScrollViewer.ScrollableHeight, window.HistoryDetailScrollViewer.VerticalOffset);
+                Assert.Equal(0, window.HistoryDetailScrollViewer.ScrollableWidth);
+                Assert.Contains(Localization.Get("判定"), FindVisualChildren<TextBlock>(window.HistoryDetailGrid).Select(text => text.Text));
+                Assert.Equal(Localization.Format("{0}件を表示", 101), window.ViewModel.RecentPlayLoadMoreHintDisplay);
+            }
+            finally
+            {
+                window?.PrepareForApplicationExit();
+                window?.Close();
+                ThemeManager.Apply(UserSettings.LightTheme);
+                Localization.Configure(UserSettings.JapaneseLanguage);
+            }
+        });
+    }
+
+    [Fact]
+    public void History_keeps_the_selected_last_row_visible_after_a_page_changes_the_scrollbars()
+    {
+        using var fixture = new DatabaseFixture();
+        var start = DateTimeOffset.Now;
+        for (var index = 0; index < 101; index++)
+        {
+            fixture.AddPlay($"last-row-{index:000}", start.AddMinutes(-index).ToString("O"), 980_000, 1_500);
+        }
+        applicationFixture.Run(() =>
+        {
+            MainWindow? window = null;
+            try
+            {
+                PrepareStartupResources();
+                window = new MainWindow(StartupPaths(fixture));
+                window.ViewModel.Load(fixture.ScorePath, fixture.MasterPath, fixture.CatalogPath, persist: false);
+                window.Show();
+                window.HistoryNavigation.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                DrainDispatcher(window.Dispatcher);
+                foreach (var lastIndex in new[] { 49, 99, 100 })
+                {
+                    var grid = window.RecentPlayGrid;
+                    grid.SelectedIndex = lastIndex;
+                    grid.CurrentCell = new DataGridCellInfo(grid.SelectedItem, grid.Columns.Last());
+                    grid.ScrollIntoView(grid.SelectedItem, grid.Columns.Last());
+                    DrainDispatcher(window.Dispatcher);
+                    DrainDispatcher(window.Dispatcher);
+                    var row = (DataGridRow)grid.ItemContainerGenerator.ContainerFromItem(grid.SelectedItem);
+                    var viewport = FindVisualChildren<ScrollContentPresenter>(grid).Single();
+                    var scroll = FindVisualChildren<ScrollViewer>(grid).Single();
+                    var bottom = row.TranslatePoint(new Point(), viewport).Y + row.ActualHeight;
+                    Assert.True(bottom <= Math.Min(viewport.ActualHeight, scroll.ViewportHeight) + 1,
+                        $"{lastIndex}: {bottom} > {scroll.ViewportHeight}");
+                    var horizontalBar = FindVisualChildren<System.Windows.Controls.Primitives.ScrollBar>(grid)
+                        .Single(bar => bar.Orientation == Orientation.Horizontal);
+                    if (horizontalBar.IsVisible)
+                    {
+                        Assert.True(row.TranslatePoint(new Point(), grid).Y + row.ActualHeight <=
+                            horizontalBar.TranslatePoint(new Point(), grid).Y + 1);
+                    }
+                    Assert.Same(window.ViewModel.Plays[lastIndex], window.HistoryDetailGrid.DataContext);
+                    Assert.Equal(lastIndex == 49 ? 100 : 101, window.ViewModel.Plays.Count);
+                }
+            }
+            finally
+            {
+                window?.PrepareForApplicationExit();
+                window?.Close();
+            }
+        });
+    }
+
     [Theory]
     [InlineData("ja", "light", 1280, 760, false, "今日の記録をコピー")]
     [InlineData("en", "dark", 960, 640, true, "Copy today’s records")]

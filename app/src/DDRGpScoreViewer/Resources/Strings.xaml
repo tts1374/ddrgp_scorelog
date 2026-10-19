@@ -514,4 +514,7 @@
     <sys:String x:Key="プレー前の自己ベストとの差（スコア）">プレー前の自己ベストとの差（スコア）</sys:String>
     <sys:String x:Key="プレー前の自己ベストとの差（EX）">プレー前の自己ベストとの差（EX）</sys:String>
     <sys:String x:Key="RESULT画面を検出しています。">リザルト画面を待っています。</sys:String>
+    <sys:String x:Key="{}{0}件を表示">{0}件を表示</sys:String>
+    <sys:String x:Key="判定">判定</sys:String>
+    <sys:String x:Key="プレーの記録はありません">プレーの記録はありません</sys:String>
 </ResourceDictionary>
