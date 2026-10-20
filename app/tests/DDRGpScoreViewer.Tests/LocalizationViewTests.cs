@@ -44,12 +44,21 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
                 PrepareStartupResources();
                 Localization.Configure(language);
                 ThemeManager.Apply(theme);
-                window = new MainWindow(StartupPaths(fixture)) { Width = width, Height = height };
+                // Keep the requested logical size even on a smaller CI desktop.
+                window = new MainWindow(StartupPaths(fixture))
+                {
+                    MinWidth = width,
+                    MinHeight = height,
+                    Width = width,
+                    Height = height,
+                };
                 window.ViewModel.Load(fixture.ScorePath, fixture.MasterPath, fixture.CatalogPath, persist: false);
                 window.Show();
                 window.SettingsNavigation.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 window.WebConnectionExpander.IsExpanded = true;
                 DrainDispatcher(window.Dispatcher);
+                Assert.Equal(width, window.ActualWidth);
+                Assert.Equal(height, window.ActualHeight);
                 var savePosition = window.SettingsSaveBar.TranslatePoint(new Point(), window);
                 window.ViewModel.StartMonitoringOnLaunch = !window.ViewModel.StartMonitoringOnLaunch;
                 window.SettingsBodyScrollViewer.ScrollToEnd();

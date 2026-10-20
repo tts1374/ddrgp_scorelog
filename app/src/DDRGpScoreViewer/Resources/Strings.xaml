@@ -403,12 +403,12 @@
     <sys:String x:Key="保存">保存</sys:String>
     <sys:String x:Key="重複">記録済み</sys:String>
     <sys:String x:Key="認識失敗">読み取り失敗</sys:String>
-    <sys:String x:Key="入力エラー">使えない画像</sys:String>
+    <sys:String x:Key="入力エラー">記録失敗</sys:String>
     <sys:String x:Key="インポート中">読み取り中</sys:String>
     <sys:String x:Key="完了">完了</sys:String>
     <sys:String x:Key="キャンセル済み">キャンセル済み</sys:String>
     <sys:String x:Key="{}{0} / {1}件を処理中">{0} / {1}件を処理中</sys:String>
-    <sys:String x:Key="保存 {0}件 / 重複 {1}件 / 認識失敗 {2}件 / 入力エラー {3}件">保存 {0}件 / 記録済み {1}件 / 読み取り失敗 {2}件 / 使えない画像 {3}件</sys:String>
+    <sys:String x:Key="保存 {0}件 / 重複 {1}件 / 認識失敗 {2}件 / 入力エラー {3}件">保存 {0}件 / 記録済み {1}件 / 読み取り失敗 {2}件 / 記録失敗 {3}件</sys:String>
     <sys:String x:Key="PNGをドロップするか、ファイルを選択してください。">PNGをドロップするか、ファイルを選択してください。</sys:String>
     <sys:String x:Key="PNG画像 (*.png)|*.png">PNG画像 (*.png)|*.png</sys:String>
     <sys:String x:Key="インポートするスクリーンショットを選択">インポートするスクリーンショットを選択</sys:String>

@@ -10,6 +10,34 @@ namespace DDRGpScoreViewer.Tests;
 
 public sealed class ScreenshotImportServiceTests
 {
+    [Theory]
+    [InlineData("ja", "記録失敗")]
+    [InlineData("en", "Could not record")]
+    [InlineData("ko", "기록 실패")]
+    public async Task Valid_image_with_rejected_save_keeps_a_broad_failure_category_and_storage_reason(
+        string language, string failureLabel)
+    {
+        using var fixture = new DatabaseFixture();
+        var path = WritePng(fixture.DirectoryPath, "valid-result.png", 1280, 720, 0x22);
+        var service = new AppOwnedScreenshotImportService(
+            (_, _) => Task.FromResult(FormalObservation()),
+            (_, observation, _, _) => observation,
+            (input, _, _) => Task.FromResult(WorkflowResult("db_rejected", false, input) with
+            {
+                DatabaseStatus = "rejected",
+                Reasons = ["score_db_read_only"],
+            }));
+
+        var result = await service.ProcessAsync(
+            path, fixture.ScorePath, fixture.MasterPath, fixture.CatalogPath);
+
+        Assert.Equal(ScreenshotImportItemStatus.InputError, result.Status);
+        Assert.Equal(failureLabel, Localization.GetForLanguage("入力エラー", language));
+        Assert.Equal(Localization.Get("保存処理を完了できませんでした。"), result.Message);
+        Assert.Equal(["score_db_read_only"], result.InternalReasons);
+        Assert.Equal(0L, Scalar(fixture.ScorePath, "SELECT COUNT(*) FROM plays;"));
+    }
+
     [Fact]
     public async Task Valid_png_uses_normal_result_detection_and_preserves_source_metadata()
     {

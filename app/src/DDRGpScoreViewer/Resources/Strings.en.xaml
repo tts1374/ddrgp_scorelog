@@ -398,12 +398,12 @@
     <sys:String x:Key="保存">Saved</sys:String>
     <sys:String x:Key="重複">Already recorded</sys:String>
     <sys:String x:Key="認識失敗">Could not read</sys:String>
-    <sys:String x:Key="入力エラー">Unusable image</sys:String>
+    <sys:String x:Key="入力エラー">Could not record</sys:String>
     <sys:String x:Key="インポート中">Reading images</sys:String>
     <sys:String x:Key="完了">Completed</sys:String>
     <sys:String x:Key="キャンセル済み">Cancelled</sys:String>
     <sys:String x:Key="{}{0} / {1}件を処理中">Processing {0} / {1}</sys:String>
-    <sys:String x:Key="保存 {0}件 / 重複 {1}件 / 認識失敗 {2}件 / 入力エラー {3}件">Saved: {0} / Already recorded: {1} / Could not read: {2} / Unusable: {3}</sys:String>
+    <sys:String x:Key="保存 {0}件 / 重複 {1}件 / 認識失敗 {2}件 / 入力エラー {3}件">Saved: {0} / Already recorded: {1} / Could not read: {2} / Could not record: {3}</sys:String>
     <sys:String x:Key="PNGをドロップするか、ファイルを選択してください。">Drop PNG files or choose files.</sys:String>
     <sys:String x:Key="PNG画像 (*.png)|*.png">PNG images (*.png)|*.png</sys:String>
     <sys:String x:Key="インポートするスクリーンショットを選択">Choose screenshots to import</sys:String>
