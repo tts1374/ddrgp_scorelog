@@ -1087,6 +1087,81 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
         });
     }
 
+    [Theory]
+    [InlineData("ja", "light", 1280, 760)]
+    [InlineData("en", "dark", 960, 640)]
+    [InlineData("ko", "light", 960, 640)]
+    public void Best_header_and_selected_row_accept_mouse_events_from_inline_text(
+        string language, string theme, double width, double height)
+    {
+        using var fixture = new DatabaseFixture();
+        fixture.AddPlay("inline-click", "2026-10-18T14:26:12+09:00", 980_000, 1_500);
+        applicationFixture.Run(() =>
+        {
+            MainWindow? window = null;
+            try
+            {
+                PrepareStartupResources();
+                Localization.Configure(language);
+                ThemeManager.Apply(theme);
+                window = new MainWindow(StartupPaths(fixture)) { MinWidth = width, Width = width, Height = height };
+                window.ViewModel.Load(fixture.ScorePath, fixture.MasterPath, fixture.CatalogPath, persist: false);
+                window.Show();
+                window.BestNavigation.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                window.ViewModel.BestLevelFilter = "level_17";
+                DrainDispatcher(window.Dispatcher);
+                var grid = window.BestChartGrid;
+                var inlineClicks = 0;
+                grid.AddHandler(UIElement.PreviewMouseLeftButtonDownEvent,
+                    new MouseButtonEventHandler((_, e) =>
+                    {
+                        Assert.IsType<System.Windows.Documents.Run>(e.OriginalSource);
+                        inlineClicks++;
+                    }), handledEventsToo: true);
+                var headers = FindVisualChildren<System.Windows.Controls.Primitives.DataGridColumnHeader>(grid)
+                    .Where(header => header.Column is not null).ToArray();
+                Assert.NotEmpty(headers);
+                foreach (var header in headers)
+                {
+                    var text = FindVisualChildren<TextBlock>(header).Single(text => text.Text == header.Content.ToString());
+                    var run = text.Inlines.OfType<System.Windows.Documents.Run>().First();
+                    // Native text clicks originate at Run and tunnel through PreviewMouseDown before OnClick.
+                    run.RaiseEvent(new MouseButtonEventArgs(Mouse.PrimaryDevice, 0, MouseButton.Left)
+                    {
+                        RoutedEvent = Mouse.PreviewMouseDownEvent,
+                    });
+                }
+                DrainDispatcher(window.Dispatcher);
+                Assert.Equal(headers.Length, inlineClicks);
+                Assert.Equal(1, window.ContentTabs.SelectedIndex);
+                var selected = window.ViewModel.ChartBests.First();
+                grid.SelectedItem = selected;
+                DrainDispatcher(window.Dispatcher);
+                Assert.Equal(2, window.ContentTabs.SelectedIndex);
+                window.BestNavigation.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                DrainDispatcher(window.Dispatcher);
+                var row = (DataGridRow)grid.ItemContainerGenerator.ContainerFromItem(selected);
+                var title = FindVisualChildren<TextBlock>(row).Single(text => text.Text == selected.SongTitle);
+                title.Inlines.OfType<System.Windows.Documents.Run>().First().RaiseEvent(
+                    new MouseButtonEventArgs(Mouse.PrimaryDevice, 0, MouseButton.Left)
+                    {
+                        RoutedEvent = Mouse.PreviewMouseDownEvent,
+                    });
+                DrainDispatcher(window.Dispatcher);
+                Assert.Equal(headers.Length + 1, inlineClicks);
+                Assert.Equal(2, window.ContentTabs.SelectedIndex);
+                Assert.Same(selected, window.ViewModel.SelectedChartBest);
+            }
+            finally
+            {
+                window?.PrepareForApplicationExit();
+                window?.Close();
+                ThemeManager.Apply(UserSettings.LightTheme);
+                Localization.Configure(UserSettings.JapaneseLanguage);
+            }
+        });
+    }
+
     [Fact]
     public void Loading_the_next_best_page_keeps_the_previous_scroll_offset()
     {
@@ -1209,7 +1284,7 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
                     .Where(header => header.Column is not null))
                 {
                     Assert.False(header.Column.CanUserSort);
-                    // Exercise the same OnClick path as an actual header click, twice for both directions.
+                    // Check the header's sort action independently of the preview mouse route.
                     var click = typeof(System.Windows.Controls.Primitives.DataGridColumnHeader).GetMethod("OnClick",
                         System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
                     click.Invoke(header, null);

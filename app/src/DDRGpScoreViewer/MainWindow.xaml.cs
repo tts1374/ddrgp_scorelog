@@ -1210,7 +1210,9 @@ public partial class MainWindow : System.Windows.Window
         DependencyObject? current = e.OriginalSource as DependencyObject;
         while (current is not null && current is not DataGridRow)
         {
-            current = VisualTreeHelper.GetParent(current);
+            current = current is Visual or System.Windows.Media.Media3D.Visual3D
+                ? VisualTreeHelper.GetParent(current)
+                : LogicalTreeHelper.GetParent(current);
         }
 
         if (current is DataGridRow row &&
