@@ -135,6 +135,7 @@ public partial class MainWindow : System.Windows.Window
         ApplyHomeResponsiveLayout(Width);
         ApplyBestResponsiveLayout(Width);
         ApplyHistoryResponsiveLayout(Width);
+        ApplySettingsAndRecordsResponsiveLayout(Width);
         viewModel.ChartBestListReset += ViewModel_ChartBestListReset;
         viewModel.ChartBestSelectionRequested += ViewModel_ChartBestSelectionRequested;
         viewModel.ChartDetailUpdated += ViewModel_ChartDetailUpdated;
@@ -579,7 +580,28 @@ public partial class MainWindow : System.Windows.Window
         ApplyHomeResponsiveLayout(e.NewSize.Width);
         ApplyBestResponsiveLayout(e.NewSize.Width);
         ApplyHistoryResponsiveLayout(e.NewSize.Width);
+        ApplySettingsAndRecordsResponsiveLayout(e.NewSize.Width);
         RenderChartDetailGraph();
+    }
+
+    private void ApplySettingsAndRecordsResponsiveLayout(double windowWidth)
+    {
+        if (SettingsColumns is null || RecordsColumns is null)
+        {
+            return;
+        }
+
+        var compact = windowWidth <= 1100;
+        SettingsColumns.ColumnDefinitions[0].Width = new GridLength(1, GridUnitType.Star);
+        SettingsColumns.ColumnDefinitions[1].Width = compact ? new GridLength(0) : new GridLength(1.1, GridUnitType.Star);
+        RecordsColumns.ColumnDefinitions[0].Width = new GridLength(0.85, GridUnitType.Star);
+        RecordsColumns.ColumnDefinitions[1].Width = compact ? new GridLength(0) : new GridLength(1.15, GridUnitType.Star);
+        Grid.SetColumn(WebSettingsCard, compact ? 0 : 1);
+        Grid.SetRow(WebSettingsCard, compact ? 1 : 0);
+        Grid.SetColumn(ImageImportCard, compact ? 0 : 1);
+        Grid.SetRow(ImageImportCard, compact ? 1 : 0);
+        LocalSettingsPanel.Margin = compact ? new Thickness(0, 0, 0, 16) : new Thickness(0, 0, 24, 0);
+        RecordStoragePanel.Margin = compact ? new Thickness(0) : new Thickness(0, 0, 24, 0);
     }
 
     private void ApplyBestResponsiveLayout(double windowWidth)

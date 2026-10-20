@@ -28,6 +28,80 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
 {
     [Theory]
     [InlineData("ja", "light", 1280, 760)]
+    [InlineData("en", "dark", 960, 640)]
+    [InlineData("ko", "light", 960, 640)]
+    public void Settings_and_records_keep_save_fixed_and_supplements_reachable(
+        string language, string theme, double width, double height)
+    {
+        using var fixture = new DatabaseFixture();
+        fixture.AddPlay("saved", "2026-10-18T14:26:12+09:00", 980000, 1300);
+        fixture.ExecuteScoreSql("UPDATE plays SET created_at = '2026-10-20T10:00:00+09:00'");
+        applicationFixture.Run(() =>
+        {
+            MainWindow? window = null;
+            try
+            {
+                PrepareStartupResources();
+                Localization.Configure(language);
+                ThemeManager.Apply(theme);
+                window = new MainWindow(StartupPaths(fixture)) { Width = width, Height = height };
+                window.ViewModel.Load(fixture.ScorePath, fixture.MasterPath, fixture.CatalogPath, persist: false);
+                window.Show();
+                window.SettingsNavigation.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                window.WebConnectionExpander.IsExpanded = true;
+                DrainDispatcher(window.Dispatcher);
+                var savePosition = window.SettingsSaveBar.TranslatePoint(new Point(), window);
+                window.ViewModel.StartMonitoringOnLaunch = !window.ViewModel.StartMonitoringOnLaunch;
+                window.SettingsBodyScrollViewer.ScrollToEnd();
+                DrainDispatcher(window.Dispatcher);
+                Assert.Equal(savePosition, window.SettingsSaveBar.TranslatePoint(new Point(), window));
+                Assert.True(savePosition.Y + window.SettingsSaveBar.ActualHeight <= window.ActualHeight);
+                Assert.False(string.IsNullOrWhiteSpace(window.ViewModel.SettingsStatusMessage));
+                Assert.True(window.SaveSettingsButton.IsVisible);
+                Assert.Equal(0, window.SettingsBodyScrollViewer.ScrollableWidth);
+                Assert.Equal(window.SettingsBodyScrollViewer.ScrollableHeight, window.SettingsBodyScrollViewer.VerticalOffset);
+                Assert.Equal(width <= 1100 ? 1 : 0, Grid.GetRow(window.WebSettingsCard));
+                Assert.Equal(width <= 1100 ? 0 : 1, Grid.GetColumn(window.WebSettingsCard));
+                Assert.Equal(window.ViewModel.CanBeginWebAuthorization, window.ConnectWebAccountButton.IsEnabled);
+                Assert.Equal(window.ViewModel.CanToggleWebSync, window.WebBestSyncToggle.IsEnabled);
+                Assert.Equal(window.FindResource("TextPrimaryBrush"), window.WebConnectionExpander.Foreground);
+                foreach (var checkBox in FindVisualChildren<CheckBox>(window.LocalSettingsPanel))
+                {
+                    Assert.Equal(window.FindResource("TextPrimaryBrush"), checkBox.Foreground);
+                }
+
+                window.DataManagementNavigation.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                window.RecordInfoExpander.IsExpanded = true;
+                window.ImageRequirementsExpander.IsExpanded = true;
+                DrainDispatcher(window.Dispatcher);
+                window.RecordsBodyScrollViewer.ScrollToEnd();
+                DrainDispatcher(window.Dispatcher);
+                Assert.Equal(0, window.RecordsBodyScrollViewer.ScrollableWidth);
+                Assert.Equal(window.RecordsBodyScrollViewer.ScrollableHeight, window.RecordsBodyScrollViewer.VerticalOffset);
+                Assert.Equal(width <= 1100 ? 1 : 0, Grid.GetRow(window.ImageImportCard));
+                Assert.Equal(window.ViewModel.CanManagePersonalData, window.SaveRecordCopyButton.IsEnabled);
+                Assert.Equal(window.ViewModel.CanManagePersonalData, window.RestoreRecordCopyButton.IsEnabled);
+                Assert.Equal(window.ViewModel.CanStartScreenshotImport, window.SelectResultImagesButton.IsEnabled);
+                Assert.Equal(window.FindResource("TextPrimaryBrush"), window.RecordInfoExpander.Foreground);
+                Assert.Equal(window.FindResource("TextPrimaryBrush"), window.ImageRequirementsExpander.Foreground);
+                Assert.Contains("2026/10/20", window.ViewModel.DataManagementLastSavedDisplay);
+                Assert.DoesNotContain("2026/10/18", window.ViewModel.DataManagementLastSavedDisplay);
+                var texts = FindVisualChildren<TextBlock>(window).Select(text => text.Text).ToArray();
+                Assert.Contains(Localization.Get("PNG・1280×720の画像が使えます。"), texts);
+                Assert.Contains(Localization.Get("コピーから戻すと、今の記録がその内容に置き換わります。"), texts);
+            }
+            finally
+            {
+                window?.PrepareForApplicationExit();
+                window?.Close();
+                ThemeManager.Apply(UserSettings.LightTheme);
+                Localization.Configure(UserSettings.JapaneseLanguage);
+            }
+        });
+    }
+
+    [Theory]
+    [InlineData("ja", "light", 1280, 760)]
     [InlineData("en", "dark", 1280, 760)]
     [InlineData("ko", "light", 1280, 760)]
     [InlineData("ja", "dark", 960, 640)]
@@ -2063,6 +2137,16 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
                 Assert.True(window.WebBestSyncToggle.IsVisible);
                 Assert.True(window.WebBestSyncToggle.IsEnabled);
                 Assert.Equal(Localization.Get("連携を再開する"), window.WebBestSyncToggle.Content);
+                Assert.Equal(Localization.Get("連携を再開する"),
+                    FindVisualChildren<TextBlock>(window.WebBestSyncToggle).Single().Text);
+                window.ViewModel.ApplyWebBestSyncState(new WebBestSyncSnapshot(
+                    true, false, WebBestSyncStatus.Idle, null, 0, null, null, []));
+                DrainDispatcher(window.Dispatcher);
+                Assert.Equal(Localization.Get("連携を停止する"),
+                    FindVisualChildren<TextBlock>(window.WebBestSyncToggle).Single().Text);
+                window.ViewModel.ApplyWebBestSyncState(new WebBestSyncSnapshot(
+                    false, false, WebBestSyncStatus.Disabled, null, 0, null, null, []));
+                DrainDispatcher(window.Dispatcher);
                 Assert.True(window.OpenWebProfileButton.IsVisible);
                 Assert.False(window.SyncWebBestsNowButton.IsEnabled);
                 Assert.False(window.WebConnectionExpander.IsExpanded);
@@ -2088,6 +2172,8 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
                 window.ViewModel.ApplyWebBestSyncState(new WebBestSyncSnapshot(
                     false, false, WebBestSyncStatus.AuthInvalid, null, 0, null, null, []));
                 DrainDispatcher(window.Dispatcher);
+                window.UpdateLayout();
+                window.WebConnectionExpander.IsExpanded = true;
                 window.UpdateLayout();
                 Assert.Equal(new[] { Localization.Get("アカウントを作成・引き継ぐ"), Localization.Get("このPCの連携情報を削除") },
                     FindVisualChildren<Button>(webSettingsPanel)

@@ -1971,446 +1971,449 @@
                     </Grid>
                 </TabItem>
                 <TabItem>
-                    <ScrollViewer HorizontalScrollBarVisibility="Disabled"
-                                  VerticalScrollBarVisibility="Auto"
-                                  Padding="0,0,8,0">
-                        <StackPanel MinWidth="0">
-                            <Grid Margin="0,0,0,12">
-
-                                <Button Content="初期値に戻す" TabIndex="100"
-                                        HorizontalAlignment="Right"
-                                        Style="{StaticResource SecondaryButtonStyle}"
-                                        Click="ResetSettings_Click" />
-                            </Grid>
-
-                            <Border Style="{StaticResource CardStyle}" Padding="16" Margin="0,0,0,12">
-                                <StackPanel>
-                                    <TextBlock Text="自動記録" FontSize="14" FontWeight="SemiBold" Margin="0,0,0,12" />
-                                    <CheckBox Content="アプリ起動時に監視を開始" TabIndex="101"
-                                              IsChecked="{Binding StartMonitoringOnLaunch, Mode=TwoWay}"
-                                              FontSize="13" Margin="0,0,0,12" />
-                                    <CheckBox Content="保存できない結果を通知" TabIndex="102"
-                                              IsChecked="{Binding NotifyUnresolvedResults, Mode=TwoWay}"
-                                              FontSize="13" />
-                                </StackPanel>
-                            </Border>
-
-                            <Border Style="{StaticResource CardStyle}" Padding="16" Margin="0,0,0,12">
-                                <StackPanel>
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="Auto" />
-                                        </Grid.ColumnDefinitions>
-                                        <TextBlock Text="公開データの同期" FontSize="14" FontWeight="SemiBold"
-                                                   VerticalAlignment="Center" />
-                                        <Button x:Name="WebBestSyncToggle" Grid.Column="1"
-                                                Content="{Binding WebSyncToggleLabel}" TabIndex="103"
-                                                Style="{StaticResource SecondaryButtonStyle}"
-                                                Visibility="{Binding WebRegisteredActionsVisibility}"
-                                                IsEnabled="{Binding CanToggleWebSync}" Click="ToggleWebSync_Click" />
-                                    </Grid>
-                                    <Separator Margin="0,12" />
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="220" />
-                                            <ColumnDefinition Width="*" />
-                                        </Grid.ColumnDefinitions>
-                                        <TextBlock Text="現在の同期状態" FontSize="12" />
-                                        <TextBlock x:Name="WebBestSyncStatusText" Grid.Column="1"
-                                                   Text="{Binding WebBestSyncStatusTitle}"
-                                                   FontSize="12" FontWeight="SemiBold" />
-                                    </Grid>
-                                    <Grid Margin="0,8,0,0">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="220" />
-                                            <ColumnDefinition Width="*" />
-                                        </Grid.ColumnDefinitions>
-                                        <TextBlock Text="最終同期" FontSize="12" />
-                                        <TextBlock Grid.Column="1" Text="{Binding WebBestSyncLastSuccessDisplay}"
-                                                   FontSize="12" />
-                                    </Grid>
-                                    <TextBlock x:Name="WebBestSyncStatusMessageText" Text="{Binding WebBestSyncStatusMessage}"
-                                               Foreground="{DynamicResource TextSecondaryBrush}"
-                                               FontSize="12" Margin="0,10,0,0" TextWrapping="Wrap">
-                                        <TextBlock.Style>
-                                            <Style TargetType="TextBlock">
-                                                <Style.Triggers>
-                                                    <Trigger Property="Text" Value="">
-                                                        <Setter Property="Visibility" Value="Collapsed" />
-                                                    </Trigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </TextBlock.Style>
-                                    </TextBlock>
-                                    <TextBlock Text="{Binding WebBestSyncDetails}"
-                                               Foreground="{DynamicResource TextMutedBrush}"
-                                               FontSize="11" Margin="0,5,0,0" TextWrapping="Wrap">
-                                        <TextBlock.Style>
-                                            <Style TargetType="TextBlock">
-                                                <Style.Triggers>
-                                                    <Trigger Property="Text" Value="">
-                                                        <Setter Property="Visibility" Value="Collapsed" />
-                                                    </Trigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </TextBlock.Style>
-                                    </TextBlock>
-                                    <Button x:Name="ConnectWebAccountButton" Content="アカウントを作成・引き継ぐ" Margin="0,12,0,0" HorizontalAlignment="Left"
-                                            Style="{StaticResource PrimaryButtonStyle}"
-                                            Visibility="{Binding WebAccountConnectVisibility}"
-                                            IsEnabled="{Binding CanBeginWebAuthorization}" Click="ConnectWebAccount_Click" />
-                                    <WrapPanel Margin="0,12,0,0" Visibility="{Binding WebRegisteredActionsVisibility}">
-                                        <Button x:Name="SyncWebBestsNowButton"
-                                                Content="今すぐ同期" TabIndex="104"
-                                                Style="{StaticResource PrimaryButtonStyle}"
-                                                IsEnabled="{Binding CanSyncWebBestsNow}"
-                                                Click="SyncWebBestsNow_Click" />
-                                        <Button x:Name="OpenPublicPlayerPageButton" Content="公開ページを開く" TabIndex="105" Margin="8,0,0,0"
-                                                Style="{StaticResource SecondaryButtonStyle}"
-                                                IsEnabled="{Binding CanOpenPublicPlayerPage}"
-                                                Click="OpenPublicPlayerPage_Click" />
-                                    </WrapPanel>
-                                    <Button Content="このPCの連携情報を削除" Margin="0,10,0,0" HorizontalAlignment="Left"
-                                            Style="{StaticResource SecondaryButtonStyle}"
-                                            Visibility="{Binding WebBestAuthActionVisibility}"
-                                            Click="CheckWebBestIdentity_Click" />
-                                    <WrapPanel Margin="0,10,0,0" Visibility="{Binding WebRegisteredActionsVisibility}">
-                                        <Button x:Name="OpenWebProfileButton" Content="マイプロフィールを開く"
-                                                Style="{StaticResource SecondaryButtonStyle}" Click="OpenWebProfile_Click" />
-                                    </WrapPanel>
-                                    <Expander x:Name="WebConnectionExpander" Header="Web連携" Margin="0,10,0,0"
-                                              Visibility="{Binding WebRegisteredActionsVisibility}">
-                                        <WrapPanel Margin="0,10,0,0">
-                                            <Button x:Name="GoogleConnectButton" Content="Googleを連携"
-                                                Style="{StaticResource SecondaryButtonStyle}"
-                                                Visibility="{Binding GoogleConnectVisibility}"
-                                                IsEnabled="{Binding CanBeginWebAuthorization}" Click="ConnectWebAccount_Click" />
-                                            <Button x:Name="GoogleUnlinkButton" Content="Google連携を解除"
-                                                Style="{StaticResource SecondaryButtonStyle}"
-                                                Visibility="{Binding GoogleUnlinkVisibility}"
-                                                IsEnabled="{Binding CanBeginWebAuthorization}" Click="UnlinkGoogle_Click" />
-                                            <Button x:Name="GoogleSettingsButton" Content="Google連携の設定をWebで開く"
-                                                Style="{StaticResource SecondaryButtonStyle}"
-                                                Visibility="{Binding GoogleSettingsVisibility}" Click="OpenWebProfile_Click" />
-                                        </WrapPanel>
-                                    </Expander>
-                                    <TextBlock Text="{Binding WebAuthorizationMessage}" FontSize="12" Margin="0,10,0,0"
-                                               Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" />
-                                    <WrapPanel Margin="0,8,0,0" Visibility="{Binding WebAuthorizationPendingVisibility}">
-                                        <Button Content="連携結果を確認" Style="{StaticResource SecondaryButtonStyle}"
-                                                IsEnabled="{Binding CanBeginWebAuthorization}" Click="ConfirmWebAuthorizationResult_Click" />
-                                        <Button Content="連携をキャンセル" Margin="8,0,0,0"
-                                                Style="{StaticResource SecondaryButtonStyle}" Click="CancelWebAuthorization_Click" />
-                                    </WrapPanel>
-                                    <TextBlock Text="自動記録から作る自己ベストをWebの歴代Bestへ反映します。通常の同期ではWebの記録を下げたり削除したりしません。連携を停止しても公開データは残ります。"
-                                               Visibility="{Binding WebRegisteredActionsVisibility}"
-                                               Foreground="{DynamicResource TextSecondaryBrush}"
-                                               FontSize="12" Margin="0,12,0,0" TextWrapping="Wrap" />
-                                </StackPanel>
-                            </Border>
-
-                            <Border Style="{StaticResource CardStyle}" Padding="16" Margin="0,0,0,12">
-                                <StackPanel>
-                                    <TextBlock Text="表示" FontSize="14" FontWeight="SemiBold" Margin="0,0,0,12" />
-                                    <Grid Margin="0,0,0,10">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="220" />
-                                            <ColumnDefinition Width="*" />
-                                        </Grid.ColumnDefinitions>
-                                        <TextBlock Text="既定のプレイスタイル"
-                                                   VerticalAlignment="Center" FontSize="12" />
-                                        <StackPanel Grid.Column="1" Orientation="Horizontal">
-                                            <Button x:Name="SettingsSinglePlayStyleButton" Content="SINGLE" TabIndex="103"
-                                                    Style="{StaticResource SettingsSinglePlayStyleButtonStyle}"
-                                                    Click="SettingsSinglePlayStyle_Click" />
-                                            <Button x:Name="SettingsDoublePlayStyleButton" Content="DOUBLE" TabIndex="104"
-                                                    Style="{StaticResource SettingsDoublePlayStyleButtonStyle}"
-                                                    Click="SettingsDoublePlayStyle_Click" Margin="8,0,0,0" />
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="*" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+                        <ScrollViewer x:Name="SettingsBodyScrollViewer" HorizontalScrollBarVisibility="Disabled"
+                                VerticalScrollBarVisibility="Auto" Padding="0,0,8,0">
+                            <Grid x:Name="SettingsColumns">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="1.1*" />
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <StackPanel x:Name="LocalSettingsPanel" Margin="0,0,24,0">
+                                    <Border Style="{StaticResource CardStyle}" Padding="16" Margin="0,0,0,12">
+                                        <StackPanel>
+                                            <TextBlock Text="自動記録" FontSize="14" FontWeight="SemiBold" Margin="0,0,0,12" />
+                                            <CheckBox Content="アプリ起動時に監視を開始" TabIndex="101"
+                                                    IsChecked="{Binding StartMonitoringOnLaunch, Mode=TwoWay}"
+                                                    Foreground="{DynamicResource TextPrimaryBrush}"
+                                                    FontSize="13" Margin="0,0,0,12" />
+                                            <CheckBox Content="保存できない結果を通知" TabIndex="102"
+                                                    IsChecked="{Binding NotifyUnresolvedResults, Mode=TwoWay}"
+                                                    Foreground="{DynamicResource TextPrimaryBrush}"
+                                                    FontSize="13" />
                                         </StackPanel>
-                                    </Grid>
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="220" />
-                                            <ColumnDefinition Width="*" />
-                                        </Grid.ColumnDefinitions>
-                                        <TextBlock Text="起動時に表示する画面"
-                                                   VerticalAlignment="Center" FontSize="12" />
-                                        <ComboBox Grid.Column="1" Width="180" TabIndex="105" HorizontalAlignment="Left"
-                                                  ItemsSource="{Binding StartupPageOptions}"
-                                                  DisplayMemberPath="Display"
-                                                  SelectedItem="{Binding SelectedStartupPageOption, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                    </Grid>
-                                    <Grid Margin="0,10,0,0">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="220" />
-                                            <ColumnDefinition Width="*" />
-                                        </Grid.ColumnDefinitions>
-                                        <TextBlock Text="テーマ" VerticalAlignment="Center" FontSize="12" />
-                                        <ComboBox Grid.Column="1" Width="180" TabIndex="106" HorizontalAlignment="Left"
-                                                  ItemsSource="{Binding ThemeOptions}"
-                                                  DisplayMemberPath="Display"
-                                                  SelectedItem="{Binding SelectedThemeOption, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                    </Grid>
-                                    <TextBlock Text="システムを選ぶとWindowsのアプリモードに合わせて配色を切り替えます"
-                                               Foreground="{DynamicResource TextSecondaryBrush}"
-                                               FontSize="12" Margin="220,8,0,0"
-                                               TextWrapping="Wrap" />
-                                    <Grid Margin="0,10,0,0">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="220" />
-                                            <ColumnDefinition Width="*" />
-                                        </Grid.ColumnDefinitions>
-                                        <TextBlock Text="言語" VerticalAlignment="Center" FontSize="12" />
-                                        <ComboBox Grid.Column="1" Width="180" TabIndex="107" HorizontalAlignment="Left"
-                                                  ItemsSource="{Binding LanguageOptions}"
-                                                  DisplayMemberPath="Display"
-                                                  SelectedItem="{Binding SelectedLanguageOption, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                                    </Grid>
-                                    <TextBlock Text="言語の変更を保存するとアプリが自動的に再起動します"
-                                               Foreground="{DynamicResource TextSecondaryBrush}"
-                                               FontSize="12" Margin="220,8,0,0"
-                                               TextWrapping="Wrap" />
+                                    </Border>
+                                    <Border Style="{StaticResource CardStyle}" Padding="16" Margin="0,0,0,12">
+                                        <StackPanel>
+                                            <TextBlock Text="表示" FontSize="14" FontWeight="SemiBold" Margin="0,0,0,12" />
+                                            <Grid Margin="0,0,0,10">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="*" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="既定のプレイスタイル"
+                                                        VerticalAlignment="Center" FontSize="12" />
+                                                <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                                    <Button x:Name="SettingsSinglePlayStyleButton" Content="SINGLE" TabIndex="103"
+                                                            Style="{StaticResource SettingsSinglePlayStyleButtonStyle}"
+                                                            Click="SettingsSinglePlayStyle_Click" />
+                                                    <Button x:Name="SettingsDoublePlayStyleButton" Content="DOUBLE" TabIndex="104"
+                                                            Style="{StaticResource SettingsDoublePlayStyleButtonStyle}"
+                                                            Click="SettingsDoublePlayStyle_Click" Margin="8,0,0,0" />
+                                                </StackPanel>
+                                            </Grid>
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="*" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="起動時に表示する画面"
+                                                        VerticalAlignment="Center" FontSize="12" />
+                                                <ComboBox Grid.Column="1" MinWidth="170" TabIndex="105" HorizontalAlignment="Stretch"
+                                                        ItemsSource="{Binding StartupPageOptions}"
+                                                        DisplayMemberPath="Display"
+                                                        SelectedItem="{Binding SelectedStartupPageOption, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                            </Grid>
+                                            <Grid Margin="0,10,0,0">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="*" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="テーマ" VerticalAlignment="Center" FontSize="12" />
+                                                <ComboBox Grid.Column="1" MinWidth="170" TabIndex="106" HorizontalAlignment="Stretch"
+                                                        ItemsSource="{Binding ThemeOptions}"
+                                                        DisplayMemberPath="Display"
+                                                        SelectedItem="{Binding SelectedThemeOption, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                            </Grid>
+                                            <Grid Margin="0,10,0,0">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="*" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="言語" VerticalAlignment="Center" FontSize="12" />
+                                                <ComboBox Grid.Column="1" MinWidth="170" TabIndex="107" HorizontalAlignment="Stretch"
+                                                        ItemsSource="{Binding LanguageOptions}"
+                                                        DisplayMemberPath="Display"
+                                                        SelectedItem="{Binding SelectedLanguageOption, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                                            </Grid>
+                                            <TextBlock Text="言語の変更を保存するとアプリが自動的に再起動します"
+                                                    Foreground="{DynamicResource TextSecondaryBrush}"
+                                                    FontSize="12" Margin="0,10,0,0"
+                                                    TextWrapping="Wrap" />
+                                        </StackPanel>
+                                    </Border>
+                                    <Button x:Name="ResetSettingsButton" Content="初期値に戻す" TabIndex="109" HorizontalAlignment="Left"
+                                            Style="{StaticResource SecondaryButtonStyle}" Click="ResetSettings_Click" />
                                 </StackPanel>
-                            </Border>
-
-                            <Border Style="{StaticResource CardStyle}" Padding="14,10">
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Text="{Binding SettingsStatusMessage}"
-                                               VerticalAlignment="Center"
-                                               Foreground="{DynamicResource TextSecondaryBrush}"
-                                               FontSize="12" TextWrapping="Wrap" Margin="0,0,16,0" />
-                                    <Button Grid.Column="1" Content="変更を保存" TabIndex="108"
-                                            Style="{StaticResource PrimaryButtonStyle}"
-                                            Click="SaveSettings_Click" />
-                                </Grid>
-                            </Border>
-                        </StackPanel>
-                    </ScrollViewer>
+                                <Border x:Name="WebSettingsCard" Grid.Column="1" Style="{StaticResource CardStyle}" Padding="16" Margin="0,0,0,12">
+                                    <StackPanel>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="公開データの同期" TextWrapping="Wrap" Margin="0,0,12,0"
+                                                    FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                            <Button x:Name="WebBestSyncToggle" Grid.Column="1" Content="{Binding WebSyncToggleLabel}" TabIndex="110"
+                                                    Style="{StaticResource SecondaryButtonStyle}"
+                                                    Visibility="{Binding WebRegisteredActionsVisibility}"
+                                                    IsEnabled="{Binding CanToggleWebSync}" Click="ToggleWebSync_Click">
+                                                <Button.ContentTemplate>
+                                                    <DataTemplate>
+                                                        <TextBlock Text="{Binding}" />
+                                                    </DataTemplate>
+                                                </Button.ContentTemplate>
+                                            </Button>
+                                        </Grid>
+                                        <Separator Margin="0,12" />
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="0.9*" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="現在の同期状態" TextWrapping="Wrap" Margin="0,0,8,0" FontSize="12" />
+                                            <TextBlock x:Name="WebBestSyncStatusText" Grid.Column="1"
+                                                    Text="{Binding WebBestSyncStatusTitle}"
+                                                    FontSize="12" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                        </Grid>
+                                        <Grid Margin="0,8,0,0">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="0.9*" />
+                                                <ColumnDefinition Width="*" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="最終同期" TextWrapping="Wrap" Margin="0,0,8,0" FontSize="12" />
+                                            <TextBlock Grid.Column="1" Text="{Binding WebBestSyncLastSuccessDisplay}" TextWrapping="Wrap"
+                                                    FontSize="12" />
+                                        </Grid>
+                                        <TextBlock x:Name="WebBestSyncStatusMessageText" Text="{Binding WebBestSyncStatusMessage}"
+                                                Foreground="{DynamicResource TextSecondaryBrush}"
+                                                FontSize="12" Margin="0,10,0,0" TextWrapping="Wrap">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Style.Triggers>
+                                                        <Trigger Property="Text" Value="">
+                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                        </Trigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                        <TextBlock Text="{Binding WebBestSyncDetails}"
+                                                Foreground="{DynamicResource TextMutedBrush}"
+                                                FontSize="11" Margin="0,5,0,0" TextWrapping="Wrap">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Style.Triggers>
+                                                        <Trigger Property="Text" Value="">
+                                                            <Setter Property="Visibility" Value="Collapsed" />
+                                                        </Trigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                        <Button x:Name="ConnectWebAccountButton" Content="アカウントを作成・引き継ぐ" Margin="0,12,0,0" HorizontalAlignment="Left"
+                                                Style="{StaticResource PrimaryButtonStyle}"
+                                                Visibility="{Binding WebAccountConnectVisibility}"
+                                                IsEnabled="{Binding CanBeginWebAuthorization}" Click="ConnectWebAccount_Click" />
+                                        <WrapPanel Margin="0,12,0,0" Visibility="{Binding WebRegisteredActionsVisibility}">
+                                            <Button x:Name="SyncWebBestsNowButton"
+                                                    Content="今すぐ同期" TabIndex="104"
+                                                    Style="{StaticResource PrimaryButtonStyle}"
+                                                    IsEnabled="{Binding CanSyncWebBestsNow}"
+                                                    Click="SyncWebBestsNow_Click" Margin="0,0,8,8" />
+                                            <Button x:Name="OpenPublicPlayerPageButton" Content="公開ページを開く" TabIndex="105" Margin="0,0,8,8"
+                                                    Style="{StaticResource SecondaryButtonStyle}"
+                                                    IsEnabled="{Binding CanOpenPublicPlayerPage}"
+                                                    Click="OpenPublicPlayerPage_Click" />
+                                        </WrapPanel>
+                                        <WrapPanel Margin="0,10,0,0" Visibility="{Binding WebRegisteredActionsVisibility}">
+                                            <Button x:Name="OpenWebProfileButton" Content="マイプロフィールを開く"
+                                                    Style="{StaticResource SecondaryButtonStyle}" Click="OpenWebProfile_Click" />
+                                        </WrapPanel>
+                                        <Expander x:Name="WebConnectionExpander" Header="アカウント" Margin="0,12,0,0"
+                                                Foreground="{DynamicResource TextPrimaryBrush}">
+                                            <StackPanel Margin="18,8,0,0">
+                                                <Button Content="このPCの連携情報を削除" Margin="0,10,0,0" HorizontalAlignment="Left"
+                                                        Style="{StaticResource SecondaryButtonStyle}"
+                                                        Visibility="{Binding WebBestAuthActionVisibility}"
+                                                        Click="CheckWebBestIdentity_Click" />
+                                                <WrapPanel Visibility="{Binding WebRegisteredActionsVisibility}">
+                                                    <Button x:Name="GoogleConnectButton" Content="Googleを連携"
+                                                            Style="{StaticResource SecondaryButtonStyle}"
+                                                            Visibility="{Binding GoogleConnectVisibility}"
+                                                            IsEnabled="{Binding CanBeginWebAuthorization}" Click="ConnectWebAccount_Click" />
+                                                    <Button x:Name="GoogleUnlinkButton" Content="Google連携を解除"
+                                                            Style="{StaticResource SecondaryButtonStyle}"
+                                                            Visibility="{Binding GoogleUnlinkVisibility}"
+                                                            IsEnabled="{Binding CanBeginWebAuthorization}" Click="UnlinkGoogle_Click" />
+                                                    <Button x:Name="GoogleSettingsButton" Content="Google連携の設定をWebで開く"
+                                                            Style="{StaticResource SecondaryButtonStyle}"
+                                                            Visibility="{Binding GoogleSettingsVisibility}" Click="OpenWebProfile_Click" />
+                                                </WrapPanel>
+                                            </StackPanel>
+                                        </Expander>
+                                        <TextBlock Text="{Binding WebAuthorizationMessage}" FontSize="12" Margin="0,10,0,0"
+                                                Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" />
+                                        <WrapPanel Margin="0,8,0,0" Visibility="{Binding WebAuthorizationPendingVisibility}">
+                                            <Button Content="連携結果を確認" Style="{StaticResource SecondaryButtonStyle}" Margin="0,0,8,8"
+                                                    IsEnabled="{Binding CanBeginWebAuthorization}" Click="ConfirmWebAuthorizationResult_Click" />
+                                            <Button Content="連携をキャンセル" Margin="0,0,8,8"
+                                                    Style="{StaticResource SecondaryButtonStyle}" Click="CancelWebAuthorization_Click" />
+                                        </WrapPanel>
+                                        <TextBlock Text="自動記録から作る自己ベストをWebの歴代Bestへ反映します。通常の同期ではWebの記録を下げたり削除したりしません。連携を停止しても公開データは残ります。"
+                                                Foreground="{DynamicResource TextSecondaryBrush}"
+                                                FontSize="12" Margin="0,12,0,0" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                </Border>
+                            </Grid>
+                        </ScrollViewer>
+                        <Border x:Name="SettingsSaveBar" Grid.Row="1" BorderBrush="{DynamicResource BorderDefaultBrush}"
+                                BorderThickness="0,1,0,0" Padding="0,12,0,0" Margin="0,12,0,0">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Text="{Binding SettingsStatusMessage}"
+                                        VerticalAlignment="Center"
+                                        Foreground="{DynamicResource TextSecondaryBrush}"
+                                        FontSize="12" TextWrapping="Wrap" Margin="0,0,16,0" />
+                                <Button x:Name="SaveSettingsButton" Grid.Column="1" Content="変更を保存" TabIndex="108"
+                                        Style="{StaticResource PrimaryButtonStyle}"
+                                        Click="SaveSettings_Click" />
+                            </Grid>
+                        </Border>
+                    </Grid>
                 </TabItem>
                 <TabItem>
-                    <ScrollViewer HorizontalScrollBarVisibility="Disabled"
-                                  VerticalScrollBarVisibility="Auto"
-                                  Padding="0,0,8,0">
+                    <ScrollViewer x:Name="RecordsBodyScrollViewer" HorizontalScrollBarVisibility="Disabled"
+                            VerticalScrollBarVisibility="Auto" Padding="0,0,8,0">
                         <StackPanel MinWidth="0">
-                            <Grid Margin="0,0,0,12">
+                            <Grid Margin="0,0,0,16">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="*" />
                                 </Grid.ColumnDefinitions>
-                                <Border Grid.Column="0" Style="{StaticResource HomeSummaryCardStyle}"
+                                <Border Grid.Column="0" Padding="0,0,0,12" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,0,0,1"
                                         Margin="0,0,8,0">
                                     <StackPanel>
                                         <TextBlock Text="保存済みプレー"
-                                                   Foreground="{DynamicResource TextSecondaryBrush}"
-                                                   FontSize="12" />
+                                                Foreground="{DynamicResource TextSecondaryBrush}"
+                                                FontSize="12" />
                                         <TextBlock Text="{Binding DataManagementPlayCountDisplay}"
-                                                   FontSize="20" FontWeight="Bold" Margin="0,5,0,0" />
-                                        <TextBlock Text="個人スコアデータ"
-                                                   Foreground="{DynamicResource TextSecondaryBrush}"
-                                                   FontSize="12" Margin="0,2,0,0" />
+                                                FontSize="20" FontWeight="Bold" Margin="0,5,0,0" />
                                     </StackPanel>
                                 </Border>
-                                <Border Grid.Column="1" Style="{StaticResource HomeSummaryCardStyle}"
+                                <Border Grid.Column="1" Padding="0,0,0,12" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,0,0,1"
                                         Margin="4,0,4,0">
                                     <StackPanel>
                                         <TextBlock Text="自己ベスト譜面"
-                                                   Foreground="{DynamicResource TextSecondaryBrush}"
-                                                   FontSize="12" />
+                                                Foreground="{DynamicResource TextSecondaryBrush}"
+                                                FontSize="12" />
                                         <TextBlock Text="{Binding DataManagementBestChartCountDisplay}"
-                                                   FontSize="20" FontWeight="Bold" Margin="0,5,0,0" />
-                                        <TextBlock Text="SINGLE / DOUBLE"
-                                                   Foreground="{DynamicResource TextSecondaryBrush}"
-                                                   FontSize="12" Margin="0,2,0,0" />
+                                                FontSize="20" FontWeight="Bold" Margin="0,5,0,0" />
                                     </StackPanel>
                                 </Border>
-                                <Border Grid.Column="2" Style="{StaticResource HomeSummaryCardStyle}"
+                                <Border Grid.Column="2" Padding="0,0,0,12" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,0,0,1"
                                         Margin="8,0,0,0">
                                     <StackPanel>
                                         <TextBlock Text="データ状態"
-                                                   Foreground="{DynamicResource TextSecondaryBrush}"
-                                                   FontSize="12" />
+                                                Foreground="{DynamicResource TextSecondaryBrush}"
+                                                FontSize="12" />
                                         <TextBlock Text="{Binding PersonalScoreDataStatusDisplay}"
-                                                   FontSize="20" FontWeight="Bold" Margin="0,5,0,0" />
-
+                                                FontSize="20" FontWeight="Bold" Margin="0,5,0,0" />
                                     </StackPanel>
                                 </Border>
                             </Grid>
-
-                            <Border Style="{StaticResource CardStyle}" Padding="16" Margin="0,0,0,12">
-                                <Grid>
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="*" />
-                                        <ColumnDefinition Width="Auto" />
-                                    </Grid.ColumnDefinitions>
-                                    <StackPanel Margin="0,0,16,0">
-                                        <TextBlock Text="保存データ" FontSize="14" FontWeight="SemiBold" />
-                                        <TextBlock Text="最後の保存" Foreground="{DynamicResource TextSecondaryBrush}"
-                                                   FontSize="12" Margin="0,10,0,2" />
-                                        <TextBlock Text="{Binding DataManagementLastSavedDisplay}"
-                                                   FontSize="13" />
-                                        <TextBlock Text="データ状態" Foreground="{DynamicResource TextSecondaryBrush}"
-                                                   FontSize="12" Margin="0,8,0,2" />
-                                        <TextBlock Text="{Binding PersonalScoreDataStatusDisplay}"
-                                                   FontSize="13" />
-                                    </StackPanel>
-                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                        <TextBlock Text="個人スコアデータの退避・復元"
-                                                   FontSize="13" FontWeight="SemiBold"
-                                                   TextWrapping="Wrap" Margin="0,0,0,10" />
-                                        <Button Content="バックアップを作成" TabIndex="100"
-                                                Style="{StaticResource PrimaryButtonStyle}"
-                                                IsEnabled="{Binding CanManagePersonalData}"
-                                                Click="CreatePersonalScoreBackup_Click" />
-                                        <Button Content="バックアップから復元" TabIndex="101"
-                                                Style="{StaticResource SecondaryButtonStyle}"
-                                                IsEnabled="{Binding CanManagePersonalData}"
-                                                Click="RestorePersonalScoreBackup_Click"
-                                                Margin="0,8,0,0" />
-                                    </StackPanel>
-                                </Grid>
-                            </Border>
-
-                            <Border Style="{StaticResource CardStyle}" Padding="16" Margin="0,0,0,12">
-                                <StackPanel>
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="Auto" />
-                                        </Grid.ColumnDefinitions>
+                            <Grid x:Name="RecordsColumns">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="0.85*" />
+                                    <ColumnDefinition Width="1.15*" />
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto" />
+                                    <RowDefinition Height="Auto" />
+                                </Grid.RowDefinitions>
+                                <StackPanel x:Name="RecordStoragePanel" Margin="0,0,24,0">
+                                    <Border x:Name="RecordCopyCard" Style="{StaticResource CardStyle}" Padding="16" Margin="0,0,0,12">
                                         <StackPanel>
-                                            <TextBlock Text="スクリーンショットからインポート"
-                                                       FontSize="14" FontWeight="SemiBold" />
-                                            <TextBlock Text="DDR GRAND PRIXのRESULT画面（1280×720 PNG）を正式な保存処理で読み込みます。"
-                                                       Foreground="{DynamicResource TextSecondaryBrush}"
-                                                       FontSize="12" TextWrapping="Wrap" Margin="0,3,0,0" />
-                                        </StackPanel>
-                                        <Border Grid.Column="1" Background="{DynamicResource InfoBackgroundBrush}"
-                                                BorderBrush="{DynamicResource InfoBorderBrush}" BorderThickness="1"
-                                                CornerRadius="12" Padding="10,4" VerticalAlignment="Top">
-                                            <TextBlock Text="{Binding ScreenshotImportStateDisplay}"
-                                                       Foreground="{DynamicResource InfoTextBrush}"
-                                                       FontSize="11" FontWeight="SemiBold" />
-                                        </Border>
-                                    </Grid>
-                                    <Border Margin="0,14,0,0" Padding="20" CornerRadius="8"
-                                            BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="1"
-                                            Background="{DynamicResource SurfaceSecondaryBrush}"
-                                            AllowDrop="True" PreviewDragOver="ScreenshotImport_DragOver"
-                                            Drop="ScreenshotImport_Drop">
-                                        <StackPanel HorizontalAlignment="Center">
-                                            <TextBlock Text="PNGファイルをここにドラッグ＆ドロップ"
-                                                       FontSize="13" FontWeight="SemiBold" />
-                                            <TextBlock Text="複数ファイルを選択できます"
-                                                       Foreground="{DynamicResource TextSecondaryBrush}"
-                                                       FontSize="12" HorizontalAlignment="Center" Margin="0,4,0,10" />
-                                            <Button Content="ファイルを選択" TabIndex="102"
-                                                    Style="{StaticResource PrimaryButtonStyle}"
-                                                    IsEnabled="{Binding CanStartScreenshotImport}"
-                                                    Click="SelectScreenshots_Click" />
+                                            <TextBlock Text="保存データ" FontSize="14" FontWeight="SemiBold" />
+                                            <WrapPanel Margin="0,12,0,0">
+                                                <TextBlock Text="最後の保存" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" Margin="0,0,16,4" />
+                                                <TextBlock Text="{Binding DataManagementLastSavedDisplay}" FontSize="12" />
+                                            </WrapPanel>
+                                            <TextBlock Text="コピーから戻すと、今の記録がその内容に置き換わります。" TextWrapping="Wrap"
+                                                    Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" Margin="0,8,0,12" />
+                                            <WrapPanel>
+                                                <Button x:Name="SaveRecordCopyButton" Content="バックアップを作成" TabIndex="100" Margin="0,0,8,0"
+                                                        Style="{StaticResource PrimaryButtonStyle}" IsEnabled="{Binding CanManagePersonalData}"
+                                                        Click="CreatePersonalScoreBackup_Click" />
+                                                <Button x:Name="RestoreRecordCopyButton" Content="バックアップから復元" TabIndex="101"
+                                                        Style="{StaticResource SecondaryButtonStyle}" IsEnabled="{Binding CanManagePersonalData}"
+                                                        Click="RestorePersonalScoreBackup_Click" />
+                                            </WrapPanel>
                                         </StackPanel>
                                     </Border>
-                                    <Grid Margin="0,14,0,0"
-                                          Visibility="{Binding ScreenshotImportProgressVisibility}">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="Auto" />
-                                        </Grid.ColumnDefinitions>
-                                        <StackPanel Margin="0,0,16,0">
-                                            <TextBlock Text="{Binding ScreenshotImportProgressDisplay}"
-                                                       FontSize="12" FontWeight="SemiBold" />
-                                            <ProgressBar Minimum="0"
-                                                         Maximum="{Binding ScreenshotImportTotalCount, Mode=OneWay}"
-                                                         Value="{Binding ScreenshotImportCompletedCount, Mode=OneWay}"
-                                                         Height="6" Margin="0,7,0,0" />
-                                            <TextBlock Text="{Binding ScreenshotImportCurrentFileDisplay}"
-                                                       Foreground="{DynamicResource TextSecondaryBrush}"
-                                                       FontSize="12" TextTrimming="CharacterEllipsis" Margin="0,6,0,0" />
+                                    <Border Style="{StaticResource CardStyle}" Padding="16" Margin="0,0,0,12">
+                                        <StackPanel>
+                                            <TextBlock Text="楽曲・譜面データ" FontSize="14" FontWeight="SemiBold" />
+                                            <Grid Margin="0,12,0,0">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="*" />
+                                                </Grid.ColumnDefinitions>
+                                                <StackPanel Grid.Column="0">
+                                                    <TextBlock Text="状態" Foreground="{DynamicResource TextSecondaryBrush}"
+                                                            FontSize="12" />
+                                                    <TextBlock TextWrapping="Wrap" Text="{Binding BundledDataStatusDisplay}"
+                                                            FontSize="13" Margin="0,3,0,0" />
+                                                </StackPanel>
+                                                <Expander x:Name="RecordInfoExpander" Grid.Column="1" Header="詳しい情報" FontSize="12"
+                                                        Foreground="{DynamicResource TextPrimaryBrush}" Margin="8,0">
+                                                    <StackPanel Margin="18,8,0,0">
+                                                        <TextBlock Text="データバージョン" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                        <TextBlock Text="{Binding BundledDataVersionDisplay}" FontSize="12" TextWrapping="Wrap" Margin="0,4,0,0" />
+                                                    </StackPanel>
+                                                </Expander>
+                                                <StackPanel Grid.Column="2">
+                                                    <TextBlock TextWrapping="Wrap" Text="収録譜面数" Foreground="{DynamicResource TextSecondaryBrush}"
+                                                            FontSize="12" />
+                                                    <TextBlock Text="{Binding BundledChartCountDisplay}"
+                                                            FontSize="13" Margin="0,3,0,0" />
+                                                </StackPanel>
+                                            </Grid>
+                                            <TextBlock Text="初回はアプリ同梱データを使用し、起動時に新しい楽曲・譜面データを確認します。"
+                                                    Foreground="{DynamicResource TextSecondaryBrush}"
+                                                    FontSize="12" TextWrapping="Wrap" Margin="0,14,0,0" />
                                         </StackPanel>
-                                        <Button Grid.Column="1" Content="キャンセル" TabIndex="103"
-                                                Style="{StaticResource SecondaryButtonStyle}"
-                                                IsEnabled="{Binding CanCancelScreenshotImport}"
-                                                Click="CancelScreenshotImport_Click"
-                                                VerticalAlignment="Center" />
-                                    </Grid>
-                                    <StackPanel Margin="0,14,0,0"
+                                    </Border>
+                                </StackPanel>
+                                <Border x:Name="ImageImportCard" Grid.Column="1" Style="{StaticResource CardStyle}" Padding="16" Margin="0,0,0,12">
+                                    <StackPanel>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel>
+                                                <TextBlock Text="スクリーンショットからインポート"
+                                                        FontSize="14" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,0,12,0" />
+                                                <TextBlock Text="DDR GRAND PRIXのRESULT画面（1280×720 PNG）を正式な保存処理で読み込みます。"
+                                                        Foreground="{DynamicResource TextSecondaryBrush}"
+                                                        FontSize="12" TextWrapping="Wrap" Margin="0,3,0,0" />
+                                            </StackPanel>
+                                            <Border Grid.Column="1" Background="{DynamicResource InfoBackgroundBrush}"
+                                                    BorderBrush="{DynamicResource InfoBorderBrush}" BorderThickness="1"
+                                                    CornerRadius="12" Padding="10,4" VerticalAlignment="Top">
+                                                <TextBlock Text="{Binding ScreenshotImportStateDisplay}"
+                                                        Foreground="{DynamicResource InfoTextBrush}"
+                                                        FontSize="11" FontWeight="SemiBold" />
+                                            </Border>
+                                        </Grid>
+                                        <Expander x:Name="ImageRequirementsExpander" Header="使える画像" FontSize="12" Margin="0,8,0,0"
+                                                Foreground="{DynamicResource TextPrimaryBrush}">
+                                            <TextBlock Text="PNG・1280×720の画像が使えます。" TextWrapping="Wrap" Margin="18,6,0,0"
+                                                    Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" />
+                                        </Expander>
+                                        <Border Margin="0,14,0,0" Padding="20" CornerRadius="8"
+                                                BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="1"
+                                                Background="{DynamicResource SurfaceSecondaryBrush}"
+                                                AllowDrop="True" PreviewDragOver="ScreenshotImport_DragOver"
+                                                Drop="ScreenshotImport_Drop">
+                                            <StackPanel HorizontalAlignment="Center">
+                                                <TextBlock Text="PNGファイルをここにドラッグ＆ドロップ"
+                                                        FontSize="13" FontWeight="SemiBold" />
+                                                <TextBlock Text="複数ファイルを選択できます"
+                                                        Foreground="{DynamicResource TextSecondaryBrush}"
+                                                        FontSize="12" HorizontalAlignment="Center" Margin="0,4,0,10" />
+                                                <Button x:Name="SelectResultImagesButton" Content="ファイルを選択" TabIndex="102"
+                                                        Style="{StaticResource PrimaryButtonStyle}"
+                                                        IsEnabled="{Binding CanStartScreenshotImport}"
+                                                        Click="SelectScreenshots_Click" />
+                                            </StackPanel>
+                                        </Border>
+                                        <Grid Margin="0,14,0,0"
+                                                Visibility="{Binding ScreenshotImportProgressVisibility}">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel Margin="0,0,16,0">
+                                                <TextBlock Text="{Binding ScreenshotImportProgressDisplay}"
+                                                        FontSize="12" FontWeight="SemiBold" />
+                                                <ProgressBar Minimum="0"
+                                                        Maximum="{Binding ScreenshotImportTotalCount, Mode=OneWay}"
+                                                        Value="{Binding ScreenshotImportCompletedCount, Mode=OneWay}"
+                                                        Height="6" Margin="0,7,0,0" />
+                                                <TextBlock Text="{Binding ScreenshotImportCurrentFileDisplay}"
+                                                        Foreground="{DynamicResource TextSecondaryBrush}"
+                                                        FontSize="12" TextTrimming="CharacterEllipsis" Margin="0,6,0,0" />
+                                            </StackPanel>
+                                            <Button x:Name="CancelResultImagesButton" Grid.Column="1" Content="中断" TabIndex="103"
+                                                    Style="{StaticResource SecondaryButtonStyle}"
+                                                    IsEnabled="{Binding CanCancelScreenshotImport}"
+                                                    Click="CancelScreenshotImport_Click"
+                                                    VerticalAlignment="Center" />
+                                        </Grid>
+                                        <StackPanel Margin="0,14,0,0"
                                                 Visibility="{Binding ScreenshotImportResultsVisibility}">
-                                        <TextBlock Text="{Binding ScreenshotImportSummaryDisplay}"
-                                                   FontSize="12" FontWeight="SemiBold" Margin="0,0,0,8" />
-                                        <ItemsControl ItemsSource="{Binding ScreenshotImportResults}">
-                                            <ItemsControl.ItemTemplate>
-                                                <DataTemplate>
-                                                    <Border BorderBrush="{DynamicResource BorderDefaultBrush}"
-                                                            BorderThickness="0,1,0,0" Padding="0,8">
-                                                        <Grid>
-                                                            <Grid.ColumnDefinitions>
-                                                                <ColumnDefinition Width="90" />
-                                                                <ColumnDefinition Width="180" />
-                                                                <ColumnDefinition Width="*" />
-                                                            </Grid.ColumnDefinitions>
-                                                            <TextBlock Text="{Binding StatusDisplay}"
-                                                                       FontSize="12" FontWeight="SemiBold" />
-                                                            <TextBlock Grid.Column="1" Text="{Binding FileName}"
-                                                                       FontSize="12" TextTrimming="CharacterEllipsis"
-                                                                       Margin="8,0" />
-                                                            <TextBlock Grid.Column="2" Text="{Binding Message}"
-                                                                       Foreground="{DynamicResource TextSecondaryBrush}"
-                                                                       FontSize="12" TextWrapping="Wrap" />
-                                                        </Grid>
-                                                    </Border>
-                                                </DataTemplate>
-                                            </ItemsControl.ItemTemplate>
-                                        </ItemsControl>
+                                            <TextBlock Text="{Binding ScreenshotImportSummaryDisplay}"
+                                                    FontSize="12" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,0,0,8" />
+                                            <ItemsControl ItemsSource="{Binding ScreenshotImportResults}">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Border BorderBrush="{DynamicResource BorderDefaultBrush}"
+                                                                BorderThickness="0,1,0,0" Padding="0,8">
+                                                            <Grid>
+                                                                <Grid.ColumnDefinitions>
+                                                                    <ColumnDefinition Width="Auto" />
+                                                                    <ColumnDefinition Width="*" />
+                                                                </Grid.ColumnDefinitions>
+                                                                <Grid.RowDefinitions>
+                                                                    <RowDefinition Height="Auto" />
+                                                                    <RowDefinition Height="Auto" />
+                                                                </Grid.RowDefinitions>
+                                                                <TextBlock Text="{Binding StatusDisplay}"
+                                                                        FontSize="12" FontWeight="SemiBold" />
+                                                                <TextBlock Grid.Column="1" Text="{Binding FileName}"
+                                                                        FontSize="12" TextTrimming="CharacterEllipsis"
+                                                                        Margin="8,0" />
+                                                                <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Margin="0,5,0,0" Text="{Binding Message}"
+                                                                        Foreground="{DynamicResource TextSecondaryBrush}"
+                                                                        FontSize="12" TextWrapping="Wrap" />
+                                                            </Grid>
+                                                        </Border>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </StackPanel>
                                     </StackPanel>
-                                </StackPanel>
-                            </Border>
-
-                            <Border Style="{StaticResource CardStyle}" Padding="16" Margin="0,0,0,12">
-                                <StackPanel>
-                                    <TextBlock Text="楽曲・譜面データ" FontSize="14" FontWeight="SemiBold" />
-                                    <TextBlock Text="アプリに同梱された楽曲・譜面情報"
-                                               Foreground="{DynamicResource TextSecondaryBrush}"
-                                               FontSize="12" Margin="0,3,0,12" />
-                                    <Grid>
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="*" />
-                                            <ColumnDefinition Width="*" />
-                                        </Grid.ColumnDefinitions>
-                                        <StackPanel Grid.Column="0">
-                                            <TextBlock Text="状態" Foreground="{DynamicResource TextSecondaryBrush}"
-                                                       FontSize="12" />
-                                            <TextBlock Text="{Binding BundledDataStatusDisplay}"
-                                                       FontSize="13" Margin="0,3,0,0" />
-                                        </StackPanel>
-                                        <StackPanel Grid.Column="1">
-                                            <TextBlock Text="データバージョン" Foreground="{DynamicResource TextSecondaryBrush}"
-                                                       FontSize="12" />
-                                            <TextBlock Text="{Binding BundledDataVersionDisplay}"
-                                                       FontSize="13" Margin="0,3,0,0" />
-                                        </StackPanel>
-                                        <StackPanel Grid.Column="2">
-                                            <TextBlock Text="収録譜面数" Foreground="{DynamicResource TextSecondaryBrush}"
-                                                       FontSize="12" />
-                                            <TextBlock Text="{Binding BundledChartCountDisplay}"
-                                                       FontSize="13" Margin="0,3,0,0" />
-                                        </StackPanel>
-                                    </Grid>
-                                    <TextBlock Text="初回はアプリ同梱データを使用し、起動時に新しい楽曲・譜面データを確認します。"
-                                               Foreground="{DynamicResource TextSecondaryBrush}"
-                                               FontSize="12" TextWrapping="Wrap" Margin="0,14,0,0" />
-                                </StackPanel>
-                            </Border>
-
+                                </Border>
+                            </Grid>
                             <Border Background="{DynamicResource InfoBackgroundBrush}" BorderBrush="{DynamicResource InfoBorderBrush}" BorderThickness="1"
                                     CornerRadius="8" Padding="14,10" Margin="0,0,0,12">
                                 <TextBlock Text="{Binding DataManagementStatusMessage}"
-                                           Foreground="{DynamicResource InfoTextBrush}" FontSize="12" TextWrapping="Wrap" />
+                                        Foreground="{DynamicResource InfoTextBrush}" FontSize="12" TextWrapping="Wrap" />
                             </Border>
                         </StackPanel>
                     </ScrollViewer>
