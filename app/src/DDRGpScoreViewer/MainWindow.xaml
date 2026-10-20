@@ -715,7 +715,7 @@
                         <RowDefinition Height="*" />
                         <RowDefinition Height="Auto" />
                     </Grid.RowDefinitions>
-                    <Border MinHeight="73" Padding="14,12" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,0,0,1">
+                    <Border MinHeight="66" Padding="12,9" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,0,0,1">
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
@@ -738,13 +738,13 @@
                                     </Border.Style>
                                 </Border>
                                 <StackPanel VerticalAlignment="Center">
-                                    <TextBlock Text="{Binding Name}" FontSize="16" FontWeight="Bold" />
+                                    <TextBlock Text="{Binding Name}" FontSize="14" FontWeight="Bold" />
                                     <TextBlock Text="{Binding VersionRange}" FontSize="10"
                                                Foreground="{DynamicResource TextMutedBrush}" Margin="0,2,0,0" />
                                 </StackPanel>
                             </StackPanel>
                             <StackPanel Grid.Column="1" HorizontalAlignment="Right">
-                                <TextBlock Text="{Binding TotalDisplay}" FontSize="21" FontWeight="Bold"
+                                <TextBlock Text="{Binding TotalDisplay}" FontSize="22" FontWeight="SemiBold"
                                            TextAlignment="Right" Typography.NumeralAlignment="Tabular" />
                                 <TextBlock Text="{Binding CountDisplay}" FontSize="11" TextAlignment="Right"
                                            Foreground="{DynamicResource TextSecondaryBrush}" />
@@ -755,7 +755,7 @@
                         <ItemsControl ItemsSource="{Binding TopCharts}" AlternationCount="5">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
-                                    <Border MinHeight="61" Padding="8,8,10,8" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,0,0,1">
+                                    <Border MinHeight="58" Padding="5,7,8,7" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,0,0,1">
                                         <Border.Style>
                                             <Style TargetType="Border">
                                                 <Setter Property="BorderBrush" Value="{DynamicResource BorderDefaultBrush}" />
@@ -797,7 +797,7 @@
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
                     </ScrollViewer>
-                    <TextBlock Grid.Row="1" Text="対象実績なし" HorizontalAlignment="Center" VerticalAlignment="Center"
+                    <TextBlock Grid.Row="1" Text="対象の記録がありません" TextWrapping="Wrap" TextAlignment="Center" Margin="8" HorizontalAlignment="Center" VerticalAlignment="Center"
                                Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12">
                         <TextBlock.Style>
                             <Style TargetType="TextBlock">
@@ -810,7 +810,7 @@
                             </Style>
                         </TextBlock.Style>
                     </TextBlock>
-                    <Border Grid.Row="2" MinHeight="54" Padding="10,7" Background="{DynamicResource SurfaceSecondaryBrush}"
+                    <Border Grid.Row="2" MinHeight="60" Padding="10,7" Background="{DynamicResource SurfaceSecondaryBrush}"
                             BorderBrush="{DynamicResource BorderStrongBrush}" BorderThickness="0,1,0,0">
                         <Border.Style>
                             <Style TargetType="Border">
@@ -828,12 +828,10 @@
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                             </Grid.ColumnDefinitions>
-                            <Border Padding="6,3" Background="{DynamicResource SurfacePrimaryBrush}" BorderBrush="{DynamicResource BorderStrongBrush}"
-                                    BorderThickness="1" CornerRadius="4" VerticalAlignment="Center">
-                                <TextBlock Text="次点 31位" FontSize="9" FontWeight="Bold" Foreground="{DynamicResource TextSecondaryBrush}" />
-                            </Border>
+                            <TextBlock Text="次の候補 31位" Width="62" TextWrapping="Wrap" FontSize="10"
+                                       Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" />
                             <StackPanel Grid.Column="1" Margin="8,0" VerticalAlignment="Center">
-                                <TextBlock Text="{Binding SongTitle}" FontSize="11" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                <TextBlock Text="{Binding SongTitle}" FontSize="12" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" ToolTip="{Binding SongTitle}" />
                                 <StackPanel Orientation="Horizontal" Margin="0,3,0,0">
                                     <Border Style="{StaticResource FlareSkillDifficultyBadgeStyle}">
                                         <TextBlock Text="{Binding DifficultyShortDisplay}" Style="{StaticResource FlareSkillDifficultyTextStyle}" />
@@ -1874,28 +1872,28 @@
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto" />
                                 <RowDefinition Height="Auto" />
-                                <RowDefinition Height="*" MinHeight="180" />
+                                <RowDefinition Height="*" />
                             </Grid.RowDefinitions>
 
-                            <Border BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,1"
-                                    Background="{DynamicResource SurfacePrimaryBrush}" MinHeight="126" Margin="0,0,0,10">
+                            <Border x:Name="FlareSummary" BorderBrush="{DynamicResource BorderDefaultBrush}"
+                                    BorderThickness="0,1" Padding="0,12" Margin="0,0,0,10">
                                 <Grid>
                                     <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="1.15*" MinWidth="260" />
-                                        <ColumnDefinition Width="0.9*" MinWidth="220" />
-                                        <ColumnDefinition Width="1.25*" MinWidth="290" />
+                                        <ColumnDefinition Width="1.05*" />
+                                        <ColumnDefinition Width="0.9*" />
+                                        <ColumnDefinition Width="1.45*" />
                                     </Grid.ColumnDefinitions>
-                                    <StackPanel VerticalAlignment="Center" Margin="22,16">
-                                        <TextBlock Text="TOTAL FLARE SKILL RANK" FontSize="11" FontWeight="SemiBold"
-                                                   Foreground="{DynamicResource TextSecondaryBrush}" />
-                                        <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
-                                            <TextBlock Text="{Binding FlareRankMainDisplay}" FontSize="46" FontWeight="ExtraBold"
-                                                       Style="{StaticResource FlareRankTextStyle}" />
-                                            <TextBlock Text="{Binding FlareRankSubDisplay}" FontSize="26" FontWeight="ExtraBold"
-                                                       Style="{StaticResource FlareRankTextStyle}" VerticalAlignment="Top" Margin="7,4,0,0" />
-                                        </StackPanel>
-                                        <TextBlock Text="{Binding FlareRankJapaneseDisplay}" FontSize="12" Margin="0,4,0,0"
-                                                   Foreground="{DynamicResource TextSecondaryBrush}">
+                                    <StackPanel VerticalAlignment="Center" Margin="0,0,18,0">
+                                        <TextBlock Text="ランク" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                        <Viewbox Stretch="Uniform" StretchDirection="DownOnly" HorizontalAlignment="Left" Margin="0,3,0,0">
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock x:Name="FlareRankMain" Text="{Binding FlareRankMainDisplay}" FontSize="42" FontWeight="ExtraBold"
+                                                           Style="{StaticResource FlareRankTextStyle}" />
+                                                <TextBlock x:Name="FlareRankSub" Text="{Binding FlareRankSubDisplay}" FontSize="24" FontWeight="ExtraBold"
+                                                           Style="{StaticResource FlareRankTextStyle}" VerticalAlignment="Top" Margin="5,4,0,0" />
+                                            </StackPanel>
+                                        </Viewbox>
+                                        <TextBlock Text="{Binding FlareRankJapaneseDisplay}" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}">
                                             <TextBlock.Style>
                                                 <Style TargetType="TextBlock">
                                                     <Style.Triggers>
@@ -1908,51 +1906,53 @@
                                         </TextBlock>
                                     </StackPanel>
                                     <Border Grid.Column="1" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="1,0,0,0">
-                                        <StackPanel VerticalAlignment="Center" Margin="22,16">
-                                        <TextBlock Text="TOTAL FLARE SKILL" FontSize="11" FontWeight="SemiBold"
-                                                   Foreground="{DynamicResource TextSecondaryBrush}" />
-                                        <TextBlock Text="{Binding FlareTotalDisplay}" FontSize="35" FontWeight="SemiBold" Margin="0,3,0,0"
-                                                   Typography.NumeralAlignment="Tabular" />
-                                        <TextBlock Text="3カテゴリのTARGET合計" FontSize="11" Margin="0,2,0,0"
-                                                   Foreground="{DynamicResource TextMutedBrush}" />
+                                        <StackPanel VerticalAlignment="Center" Margin="24,0,18,0">
+                                            <TextBlock Text="合計" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                            <TextBlock x:Name="FlareTotal" Text="{Binding FlareTotalDisplay}" FontSize="36" FontWeight="SemiBold" Margin="0,4,0,0"
+                                                       Foreground="{DynamicResource TextPrimaryBrush}" Typography.NumeralAlignment="Tabular" />
                                         </StackPanel>
                                     </Border>
                                     <Border Grid.Column="2" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="1,0,0,0">
-                                        <StackPanel VerticalAlignment="Center" Margin="22,16">
-                                        <TextBlock Text="次のランク段階まで" FontSize="11" FontWeight="SemiBold"
-                                                   Foreground="{DynamicResource TextSecondaryBrush}" />
-                                        <Grid Margin="0,5,0,0">
-                                            <TextBlock Text="{Binding FlarePointsToNextDisplay}" FontSize="25" FontWeight="SemiBold"
-                                                       Foreground="{DynamicResource AccentPrimaryBrush}" />
-                                            <TextBlock Text="{Binding FlareNextRankThresholdDisplay}" FontSize="12" HorizontalAlignment="Right"
-                                                       VerticalAlignment="Bottom" Foreground="{DynamicResource TextSecondaryBrush}" />
-                                        </Grid>
-                                        <ProgressBar Value="{Binding FlareRankProgress, Mode=OneWay}" Maximum="100" Margin="0,11,0,0"
-                                                     Style="{StaticResource FlareRankProgressStyle}" />
-                                        <TextBlock Text="現在のランク段階内での進捗" FontSize="11" Margin="0,3,0,0"
-                                                   Foreground="{DynamicResource TextMutedBrush}" />
+                                        <StackPanel VerticalAlignment="Center" Margin="24,0,0,0">
+                                            <TextBlock Text="次のランクまで" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                            <Grid Margin="0,5,0,0">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="{Binding FlarePointsToNextDisplay}" FontSize="25" FontWeight="SemiBold" Margin="0,0,14,0" TextWrapping="Wrap"
+                                                           Foreground="{DynamicResource AccentPrimaryBrush}" />
+                                                <TextBlock Grid.Column="1" Text="{Binding FlareNextRankThresholdDisplay}" FontSize="11" VerticalAlignment="Bottom" Margin="0,0,0,3"
+                                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                                            </Grid>
+                                            <ProgressBar Value="{Binding FlareRankProgress, Mode=OneWay}" Maximum="100" Margin="0,7,0,0"
+                                                         ToolTip="次のランクまでの進み具合"
+                                                         AutomationProperties.Name="{Binding ToolTip, RelativeSource={RelativeSource Self}}" Style="{StaticResource FlareRankProgressStyle}" />
                                         </StackPanel>
                                     </Border>
                                 </Grid>
                             </Border>
 
-                            <Grid Grid.Row="1" Margin="0,0,0,10">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <Border MinHeight="38" Padding="12,9" Background="{DynamicResource InfoBackgroundBrush}"
-                                        BorderBrush="{DynamicResource InfoBorderBrush}" BorderThickness="1" CornerRadius="7">
-                                    <TextBlock x:Name="FlareSkillDisclaimer" Text="GPの保存済みFLARE I〜EXから、現在GPでプレー可能な過去AC曲を含めて算出します。ゲーム内の公式値と異なる場合があります。"
-                                               Foreground="{DynamicResource InfoTextBrush}" FontSize="12" TextWrapping="Wrap" />
-                                </Border>
-                                <Border Grid.Column="1" MinWidth="276" MinHeight="38" Padding="12,9" Margin="10,0,0,0"
+                            <StackPanel Grid.Row="1" Margin="0,0,0,12">
+                                <TextBlock x:Name="FlareSkillDisclaimer" Text="ゲーム内の数値と異なる場合があります。"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" FontSize="11" TextWrapping="Wrap" />
+                                <Expander x:Name="FlareCalculationNotes" Header="計算に使う記録" FontSize="11" Margin="0,3,0,0"
+                                          Foreground="{DynamicResource TextSecondaryBrush}">
+                                    <TextBlock Text="保存済みのFLARE I〜EXと現在の曲・譜面の情報を使います。いまGPで遊べる曲は、過去のアーケード曲も含みます。"
+                                               Margin="18,4,0,0" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                </Expander>
+                                <Border x:Name="FlareExclusionNotice" Padding="10,6" Margin="0,6,0,0"
                                         Background="{DynamicResource NotificationWarningBackgroundBrush}"
-                                        BorderBrush="{DynamicResource NotificationWarningBorderBrush}" BorderThickness="1" CornerRadius="7">
-                                    <TextBlock Text="{Binding FlareAbnormalExclusionDisplay}"
-                                               Foreground="{DynamicResource NotificationWarningTextBrush}" FontSize="12" FontWeight="SemiBold" />
+                                        BorderBrush="{DynamicResource NotificationWarningBorderBrush}" BorderThickness="1"
+                                        Visibility="{Binding FlareAbnormalExclusionVisibility}">
+                                    <WrapPanel>
+                                        <TextBlock Text="{Binding FlareAbnormalExclusionDisplay}" Margin="0,0,12,0" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource NotificationWarningTextBrush}" FontSize="11" />
+                                        <TextBlock Text="曲・譜面の情報不足や記録の不整合などがあるため、計算に使えません。"
+                                                   TextWrapping="Wrap" Foreground="{DynamicResource NotificationWarningTextBrush}" FontSize="11" />
+                                    </WrapPanel>
                                 </Border>
-                            </Grid>
+                            </StackPanel>
 
                             <Grid Grid.Row="2" Margin="-6,0">
                                 <Grid.ColumnDefinitions>

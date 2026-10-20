@@ -128,8 +128,8 @@ public sealed class FlareSkillCalculatorTests
         Assert.Equal(2, result.Double.AbnormalExclusionCount);
         Assert.Equal(1, result.Single.UnknownStyleAbnormalExclusionCount);
         Assert.Equal(1, result.Double.UnknownStyleAbnormalExclusionCount);
-        Assert.Equal("算出対象外: 2件（style不明: 1件）", result.Single.AbnormalExclusionDisplay);
-        Assert.Equal("算出対象外: 3件（style不明: 1件）", result.Double.AbnormalExclusionDisplay);
+        Assert.Equal("計算に入らない記録：2件（SINGLE / DOUBLEが不明：1件）", result.Single.AbnormalExclusionDisplay);
+        Assert.Equal("計算に入らない記録：3件（SINGLE / DOUBLEが不明：1件）", result.Double.AbnormalExclusionDisplay);
     }
 
     [Fact]

@@ -533,4 +533,15 @@
     <sys:String x:Key="回数">Plays</sys:String>
     <sys:String x:Key="続きを見る">Load more</sys:String>
     <sys:String x:Key="目標">Goal</sys:String>
+    <sys:String x:Key="合計">Total</sys:String>
+    <sys:String x:Key="次のランクまで">To the next rank</sys:String>
+    <sys:String x:Key="次のランクまでの進み具合">Progress to the next rank</sys:String>
+    <sys:String x:Key="次の候補 31位">Next candidate #31</sys:String>
+    <sys:String x:Key="ゲーム内の数値と異なる場合があります。">Values may differ from those in the game.</sys:String>
+    <sys:String x:Key="計算に使う記録">Records used for calculation</sys:String>
+    <sys:String x:Key="保存済みのFLARE I〜EXと現在の曲・譜面の情報を使います。いまGPで遊べる曲は、過去のアーケード曲も含みます。">Uses saved FLARE I–EX records and current song and chart information. Songs currently playable in GP include past arcade songs.</sys:String>
+    <sys:String x:Key="計算に入らない記録：{0:N0}件">Records left out: {0:N0}</sys:String>
+    <sys:String x:Key="計算に入らない記録：{0:N0}件（SINGLE / DOUBLEが不明：{1:N0}件）">Records left out: {0:N0} (unknown SINGLE / DOUBLE: {1:N0})</sys:String>
+    <sys:String x:Key="曲・譜面の情報不足や記録の不整合などがあるため、計算に使えません。">Missing song or chart information, inconsistent records, or similar issues prevent calculation.</sys:String>
+    <sys:String x:Key="対象の記録がありません">No eligible records</sys:String>
 </ResourceDictionary>

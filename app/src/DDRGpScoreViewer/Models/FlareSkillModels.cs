@@ -57,7 +57,7 @@ public sealed record FlareSkillCategoryResult(
     FlareSkillChartResult? RunnerUp,
     int Total)
 {
-    public string CountDisplay => $"{TopCharts.Count} / 30 TARGET";
+    public string CountDisplay => $"{TopCharts.Count} / 30";
     public string TotalDisplay => Total.ToString("N0", CultureInfo.CurrentCulture);
     public bool HasRunnerUp => RunnerUp is not null;
 }
@@ -139,9 +139,9 @@ public sealed record FlareSkillStyleResult(
     public int TotalAbnormalExclusionCount =>
         AbnormalExclusionCount + UnknownStyleAbnormalExclusionCount;
     public string AbnormalExclusionDisplay => UnknownStyleAbnormalExclusionCount == 0
-        ? Localization.Format("算出対象外: {0:N0}件", AbnormalExclusionCount)
+        ? Localization.Format("計算に入らない記録：{0:N0}件", AbnormalExclusionCount)
         : Localization.Format(
-            "算出対象外: {0:N0}件（style不明: {1:N0}件）",
+            "計算に入らない記録：{0:N0}件（SINGLE / DOUBLEが不明：{1:N0}件）",
             TotalAbnormalExclusionCount,
             UnknownStyleAbnormalExclusionCount);
     public string PointsToNextDisplay => Rank.PointsToNextDisplay(Total);

@@ -1717,7 +1717,7 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
                 Assert.IsType<FlareSkillCategoryResult>(window.FlareWhiteColumn.Content);
                 Assert.IsType<FlareSkillCategoryResult>(window.FlareGoldColumn.Content);
                 Assert.Contains(
-                    "公式値と異なる場合があります",
+                    "ゲーム内の数値と異なる場合があります。",
                     window.FlareSkillDisclaimer.Text,
                     StringComparison.Ordinal);
 
@@ -1769,7 +1769,7 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
                 Assert.Equal("DOUBLE", window.ViewModel.FlareSkillPlayStyle);
                 Assert.Equal("0", window.ViewModel.FlareTotalDisplay);
                 Assert.Equal("NONE", window.ViewModel.FlareRankMainDisplay);
-                Assert.Equal("0 / 30 TARGET", window.ViewModel.FlareGold.CountDisplay);
+                Assert.Equal("0 / 30", window.ViewModel.FlareGold.CountDisplay);
                 Assert.Empty(window.ViewModel.FlareGold.TopCharts);
                 Assert.Null(window.ViewModel.FlareGold.RunnerUp);
 
@@ -1790,16 +1790,141 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
     }
 
     [Theory]
+    [InlineData(UserSettings.JapaneseLanguage, UserSettings.LightTheme, 1280, 760)]
+    [InlineData(UserSettings.EnglishLanguage, UserSettings.DarkTheme, 960, 640)]
+    [InlineData(UserSettings.KoreanLanguage, UserSettings.LightTheme, 960, 640)]
+    public void Flare_columns_keep_runner_up_fixed_and_preserve_theme_and_result_states(
+        string language, string theme, double width, double height)
+    {
+        using var database = new DatabaseFixture();
+        foreach (var (version, category) in new[]
+        {
+            ("DDR X2", "classic"), ("DanceDanceRevolution A", "white"),
+            ("DanceDanceRevolution WORLD", "gold"),
+        })
+        {
+            for (var index = 0; index < 31; index++)
+            {
+                var id = $"{category}-{index:00}";
+                database.AddMasterSongAndChart(id, $"Long title アルストロメリア (walk with you remix) {index:00}",
+                    "Artist", id, level: 19, version: version);
+                database.AddPlay(id, "2026-10-20T12:00:00+09:00", 990_000, 1500, id, id, "EX");
+            }
+        }
+        database.AddPlay("unknown", "2026-10-20T12:00:00+09:00", 990_000, 1500, "missing", "missing", "EX");
+        applicationFixture.Run(() =>
+        {
+            MainWindow? window = null;
+            try
+            {
+                foreach (var resource in new[] { "Theme.xaml", "Components.xaml", "Strings.xaml" })
+                {
+                    Application.Current.Resources.MergedDictionaries.Add(new ResourceDictionary
+                    {
+                        Source = new Uri($"/DDRGpScoreViewer;component/Resources/{resource}", UriKind.Relative),
+                    });
+                }
+                Localization.Configure(language);
+                ThemeManager.Apply(theme);
+                window = new MainWindow(new ViewerDatabasePaths(
+                    ViewerDatabaseEnvironment.Development, database.DirectoryPath,
+                    database.MasterPath, database.CatalogPath, database.ScorePath, null,
+                    Path.Combine(database.DirectoryPath, "data"), Path.Combine(database.DirectoryPath, "logs"),
+                    Path.Combine(database.DirectoryPath, "settings.json")))
+                { Width = width, Height = height };
+                window.ViewModel.Load(database.ScorePath, database.MasterPath, database.CatalogPath, persist: false);
+                window.Show();
+                window.FlareSkillNavigation.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                DrainDispatcher(window.Dispatcher);
+
+                Assert.Equal("WORLD", window.ViewModel.FlareRankMainDisplay);
+                Assert.Equal("95,760", window.ViewModel.FlareTotalDisplay);
+                Assert.Equal(100d, window.ViewModel.FlareRankProgress);
+                Assert.Equal(Localization.Get("到達済み"), window.ViewModel.FlarePointsToNextDisplay);
+                Assert.Equal(Localization.Get("最高ランク"), window.ViewModel.FlareNextRankThresholdDisplay);
+                Assert.Equal(Visibility.Visible, window.FlareExclusionNotice.Visibility);
+                Assert.Contains("1", window.ViewModel.FlareAbnormalExclusionDisplay);
+                Assert.Same(Application.Current.FindResource("FlareRankWorldBrush"), window.FlareRankMain.Foreground);
+                Assert.Same(Application.Current.FindResource("FlareRankWorldBrush"), window.FlareRankSub.Foreground);
+                Assert.Same(Application.Current.FindResource("TextPrimaryBrush"), window.FlareTotal.Foreground);
+                Assert.Same(Application.Current.FindResource("TextSecondaryBrush"), window.FlareCalculationNotes.Foreground);
+                Assert.Equal(Localization.Get("次のランクまでの進み具合"),
+                    System.Windows.Automation.AutomationProperties.GetName(
+                        Assert.Single(FindVisualChildren<ProgressBar>(window.FlareSummary))));
+
+                var columns = new[] { window.FlareClassicColumn, window.FlareWhiteColumn, window.FlareGoldColumn };
+                var scrolls = columns.Select(column => Assert.Single(FindVisualChildren<ScrollViewer>(column))).ToArray();
+                var runners = columns.Select(column => Assert.Single(FindVisualChildren<TextBlock>(column),
+                    text => text.Text == Localization.Get("次の候補 31位"))).ToArray();
+                var runnerY = runners.Select(text => text.TranslatePoint(new Point(), window).Y).ToArray();
+                for (var index = 0; index < columns.Length; index++)
+                {
+                    Assert.True(scrolls[index].ViewportHeight > 0);
+                    Assert.Equal(0d, scrolls[index].ScrollableWidth);
+                    scrolls[index].ScrollToBottom();
+                    DrainDispatcher(window.Dispatcher);
+                    Assert.Equal(scrolls[index].ScrollableHeight, scrolls[index].VerticalOffset);
+                    Assert.Equal(runnerY, runners.Select(text => text.TranslatePoint(new Point(), window).Y).ToArray());
+                    if (index + 1 < columns.Length) Assert.Equal(0d, scrolls[index + 1].VerticalOffset);
+                    var last = Assert.Single(FindVisualChildren<TextBlock>(columns[index]), text => text.Text == "30");
+                    Assert.True(last.TranslatePoint(new Point(), scrolls[index]).Y < scrolls[index].ViewportHeight);
+                    Assert.True(runnerY[index] + runners[index].ActualHeight < window.ActualHeight);
+                }
+                window.FlareCalculationNotes.IsExpanded = true;
+                DrainDispatcher(window.Dispatcher);
+                Localization.ApplyToWindow(window);
+                Assert.All(scrolls, scroll => Assert.True(scroll.ViewportHeight > 0));
+                Assert.Contains(FindVisualChildren<TextBlock>(window.FlareCalculationNotes),
+                    text => text.Text == Localization.Get("保存済みのFLARE I〜EXと現在の曲・譜面の情報を使います。いまGPで遊べる曲は、過去のアーケード曲も含みます。"));
+                ThemeManager.Apply(theme == UserSettings.LightTheme ? UserSettings.DarkTheme : UserSettings.LightTheme);
+                DrainDispatcher(window.Dispatcher);
+                Assert.Same(Application.Current.FindResource("FlareRankWorldBrush"), window.FlareRankMain.Foreground);
+                Assert.Same(Application.Current.FindResource("TextPrimaryBrush"), window.FlareTotal.Foreground);
+                var badge = Assert.IsType<Border>(VisualTreeHelper.GetParent(
+                    FindVisualChildren<TextBlock>(columns[0]).First(text => text.Text == "FLARE EX")));
+                var canonical = new Border { Style = (Style)Application.Current.FindResource("FlareBadgeStyle"), Tag = "EX" };
+                var expectedBrush = Assert.IsType<LinearGradientBrush>(canonical.Background);
+                var actualBrush = Assert.IsType<LinearGradientBrush>(badge.Background);
+                Assert.Equal(expectedBrush.StartPoint, actualBrush.StartPoint);
+                Assert.Equal(expectedBrush.EndPoint, actualBrush.EndPoint);
+                Assert.Equal(expectedBrush.GradientStops.Select(stop => (stop.Offset, stop.Color)),
+                    actualBrush.GradientStops.Select(stop => (stop.Offset, stop.Color)));
+                database.ExecuteMasterSql("UPDATE charts SET level = 15;");
+                window.ViewModel.RefreshFlareSkill();
+                DrainDispatcher(window.Dispatcher);
+                Assert.Equal("SUN", window.ViewModel.FlareRankMainDisplay);
+                Assert.Equal("+++", window.ViewModel.FlareRankSubDisplay);
+                Assert.Same(Application.Current.FindResource("FlareRankSunBrush"), window.FlareRankMain.Foreground);
+                Assert.Same(Application.Current.FindResource("FlareRankSunBrush"), window.FlareRankSub.Foreground);
+                window.FlareDoubleButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                DrainDispatcher(window.Dispatcher);
+                Assert.Equal("0", window.ViewModel.FlareTotalDisplay);
+                Assert.Equal("NONE", window.ViewModel.FlareRankMainDisplay);
+                Assert.Same(Application.Current.FindResource("FlareRankNoneBrush"), window.FlareRankMain.Foreground);
+                Assert.All(new[] { window.ViewModel.FlareClassic, window.ViewModel.FlareWhite, window.ViewModel.FlareGold },
+                    category => { Assert.Empty(category.TopCharts); Assert.False(category.HasRunnerUp); });
+            }
+            finally
+            {
+                window?.PrepareForApplicationExit();
+                window?.Close();
+                ThemeManager.Apply(UserSettings.LightTheme);
+                Localization.Configure(UserSettings.JapaneseLanguage);
+            }
+        });
+    }
+
+    [Theory]
     [InlineData(
         UserSettings.EnglishLanguage,
-        "TARGET total across 3 categories",
-        "To the next rank stage",
-        "Progress within the current rank stage")]
+        "Total",
+        "To the next rank",
+        "Records used for calculation")]
     [InlineData(
         UserSettings.KoreanLanguage,
-        "3개 카테고리 TARGET 합계",
-        "다음 랭크 단계까지",
-        "현재 랭크 단계 내 진행도")]
+        "합계",
+        "다음 랭크까지",
+        "계산에 쓰는 기록")]
     public void Flare_skill_static_labels_are_localized(
         string language,
         string categoryTotal,
@@ -1842,7 +1967,9 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
                     .ToArray();
                 Assert.Contains(categoryTotal, displayedTexts);
                 Assert.Contains(nextRank, displayedTexts);
-                Assert.Contains(progress, displayedTexts);
+                Assert.Equal(progress, window.FlareCalculationNotes.Header);
+                Assert.False(window.FlareCalculationNotes.IsExpanded);
+                Assert.Equal(Visibility.Collapsed, window.FlareExclusionNotice.Visibility);
                 Assert.Equal(string.Empty, window.ViewModel.FlareRankJapaneseDisplay);
                 Assert.DoesNotContain("なし", displayedTexts);
             }
