@@ -1,785 +1,117 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ja">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>DDR GP Score Log - 自己ベスト一覧 UI Mockup (v10)</title>
-  <style>
-    :root {
-      --bg-app: #F8FAFC;
-      --sidebar-bg: #152238;
-      --sidebar-active: #2563EB;
-      --sidebar-text: #94A3B8;
-      --sidebar-text-active: #FFFFFF;
-      --card-bg: #FFFFFF;
-      --border-color: #E2E8F0;
-      --text-main: #0F172A;
-      --text-muted: #64748B;
-      --primary: #2563EB;
-      --primary-hover: #1D4ED8;
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>GP Score Log — 自己ベスト・譜面詳細</title>
+<style>
 
-      /* DDR WORLD / 公式準拠カラー */
-      --diff-bgn: #00A3E0;
-      --diff-bas: #EAB308;
-      --diff-dif: #ED1C24;
-      --diff-exp: #10B981;
-      --diff-cha: #92278F;
+*{box-sizing:border-box}body{margin:0;background:#e6e8e3;color:#252722;font:14px/1.5 "Segoe UI","Yu Gothic UI",Meiryo,sans-serif}button,select{font:inherit}button{cursor:pointer}button:focus-visible,select:focus-visible,a:focus-visible{outline:3px solid #739d7d;outline-offset:3px}button{color:inherit}button:disabled{cursor:default;opacity:.5}a{color:#38644b}.review{padding:22px 28px 20px;background:#fff;border-bottom:1px solid #c8cec6}.review h1{font-size:20px;margin:0 0 4px;font-weight:600}.review p{margin:0 0 15px;color:#62695f}.review-controls{display:flex;gap:14px;align-items:center;flex-wrap:wrap}.switch{display:flex;gap:4px;padding:4px;background:#ecefe9;border-radius:8px}.switch button{border:0;padding:8px 16px;border-radius:5px;background:transparent;font-weight:600;white-space:nowrap}.switch button[aria-pressed=true]{background:#38644b;color:white}.review label{display:flex;gap:6px;align-items:center;font-size:12px}.review select{padding:7px 8px;border:1px solid #bec6bb;border-radius:5px;background:white;color:#252722}.direction{margin-top:12px;max-width:1200px;font-size:13px;color:#535d50}.stage{padding:24px;overflow:auto}.app{--bg:#faf9f6;--surface:#f0efe9;--line:#dcddd5;--text:#252722;--sub:#666c61;--accent:#38644b;--subtle:#e8eee5;--up:#38644b;--down:#ae3949;--badge:#fff5cc;--badge-text:#74550f;--badge-line:#dbc25b;--blue:#e6f5fc;--blue-text:#175774;--blue-line:#87c8e6;--green:#e4f6e9;--green-text:#216a3c;--green-line:#8ccda0;width:1280px;height:760px;margin:0 auto;background:var(--bg);color:var(--text);box-shadow:0 8px 32px #23312320;border:1px solid #b5b9ae;border-radius:8px;overflow:hidden;display:flex;flex-direction:column}
+.app.dark{--bg:#191d19;--surface:#252b25;--line:#3c443b;--text:#f2f1e9;--sub:#bbc3b4;--accent:#92bd9d;--subtle:#2d4032;--up:#92bd9d;--down:#ff9ca6;--badge:#42391c;--badge-text:#f4d67e;--badge-line:#89723c;--blue:#20323d;--blue-text:#a0d9ef;--blue-line:#4c8196;--green:#20382b;--green-text:#a2dfb1;--green-line:#4b8860}
+.chrome{height:31px;flex-shrink:0;display:flex;align-items:center;padding:0 12px;gap:8px;font-size:12px;border-bottom:1px solid var(--line);background:var(--surface)}.app-mark{width:13px;height:13px;fill:var(--accent)}.window-actions{margin-left:auto;display:flex;gap:33px;color:var(--sub)}.nav{display:flex;align-items:center;padding:0 30px;min-height:60px;border-bottom:1px solid var(--line);gap:26px;flex-shrink:0}.brand{font-size:24px;font-weight:600;white-space:nowrap;letter-spacing:-.6px}.nav-group{display:flex;gap:4px}.nav .utility{margin-left:auto}.nav button{background:none;border:0;border-bottom:2px solid transparent;padding:18px 10px;color:var(--sub);white-space:nowrap}.nav button.active{border-color:var(--accent);color:var(--accent);font-weight:600}.monitor{display:flex;align-items:center;gap:13px;padding:7px 30px;border-bottom:1px solid var(--line);font-size:12px;color:var(--sub);flex-shrink:0}.monitor .state{color:var(--accent);font-weight:600}.monitor .state:before{content:"";width:7px;height:7px;display:inline-block;border-radius:50%;background:var(--accent);margin-right:8px}.workspace{padding:24px 32px 28px;flex:1;min-height:0;overflow:auto;scrollbar-gutter:stable}.page-head{display:flex;align-items:center;margin-bottom:22px;gap:15px}.page-head h2{font-size:28px;line-height:1.2;margin:0;font-weight:600}.muted,.caption{color:var(--sub);font-size:12px}.caption{display:block}.num{font-variant-numeric:tabular-nums;font-family:"Segoe UI",sans-serif;letter-spacing:-.025em}.section-top{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}.section-top h3{font-size:16px;font-weight:600;margin:0}.text-link{color:var(--accent);background:none;border:0;padding:4px 0;font-size:12px;font-weight:600;white-space:nowrap}.btn{border:1px solid var(--line);border-radius:5px;background:var(--bg);padding:8px 13px;font-size:12px;color:var(--accent);white-space:normal}.btn:hover,.text-link:hover{background:var(--subtle)}.summary{display:grid;grid-template-columns:1.5fr repeat(3,1fr) auto;align-items:center;gap:20px;padding:15px 20px;border:1px solid var(--line);margin:20px 0 24px}.summary .metric strong{display:block;font-size:25px;color:var(--accent);font-weight:600}.summary h3{margin:0;font-size:14px;color:var(--accent);font-weight:600}.summary .metric small{font-size:12px;color:var(--sub);margin-left:5px;letter-spacing:0;font-family:"Segoe UI","Yu Gothic UI",sans-serif}.latest-label{display:flex;gap:16px;align-items:center;margin-bottom:18px;flex-wrap:wrap}.latest-label strong{font-size:14px;font-weight:600}.result{padding:0 0 24px;border-bottom:1px solid var(--line)}.result-grid{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1.2fr) minmax(0,.9fr);gap:24px;align-items:center}.song h3{font-size:34px;font-weight:600;line-height:1.25;overflow-wrap:anywhere;margin:0 0 14px;letter-spacing:-.8px}.meta,.badges{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.meta{font-size:13px}.difficulty{display:inline-block;border-radius:4px;padding:3px 7px;background:#d23847;color:#fff;font-size:11px;font-weight:600}.difficulty.expert{background:#238c50}.difficulty.challenge{background:#8051b6}.difficulty.basic{background:#e9a91c;color:#29220d}.badge{font-size:11px;font-weight:600;border:1px solid var(--badge-line);color:var(--badge-text);background:var(--badge);padding:4px 8px;border-radius:5px;white-space:nowrap}.badge.clear{background:var(--blue);color:var(--blue-text);border-color:var(--blue-line)}.badge.gfc{background:var(--green);color:var(--green-text);border-color:var(--green-line)}.result-score{font-size:64px;font-weight:600;line-height:1.08;color:var(--accent);white-space:nowrap}.ex-score{font-size:15px;margin:8px 0 13px}.deltas{display:grid;gap:15px;padding-left:24px;border-left:1px solid var(--line)}.delta strong{display:block;font-size:25px;font-weight:600;margin-top:3px;color:var(--up)}.delta strong.negative{color:var(--down)}.delta strong.neutral{color:var(--sub)}.home-lists{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:40px;margin-top:24px}.list-note{color:var(--sub);font-size:12px;margin:-4px 0 9px}.play-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:16px;padding:12px 0;border-top:1px solid var(--line);min-height:70px;align-items:center}.row-name{font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}.row-meta{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:5px;font-size:11px;color:var(--sub)}.row-score{text-align:right;white-space:nowrap}.row-score strong{font-size:18px;color:var(--accent);font-weight:600}.row-score small{display:block;font-size:11px;color:var(--sub)}.empty{padding:32px 0;color:var(--sub)}.toast{position:absolute;bottom:20px;right:24px;background:var(--accent);color:var(--bg);padding:9px 16px;border-radius:6px;font-size:13px;max-width:65%}.viewport{position:relative;flex:1;display:flex;flex-direction:column;min-height:0}.observed{width:1181px;height:775px;display:block;margin:auto}.note-bar{max-width:1280px;margin:14px auto 0;color:#535d50;font-size:12px}.comparison-tables{margin:10px 0}.history-table{border-collapse:collapse;width:100%;font-size:12px;table-layout:fixed}.history-table th{font-size:11px;font-weight:400;color:var(--sub);text-align:left;background:var(--surface);padding:8px 10px;border-bottom:1px solid var(--line)}.history-table td{padding:10px;border-bottom:1px solid var(--line);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.history-table tr[data-row]{cursor:pointer}.history-table tr[data-row]:hover,.history-table tr.selected{background:var(--subtle)}.history-table .score-cell{text-align:right;font-size:15px;font-weight:600}.history-detail{display:grid;grid-template-columns:1.3fr 1fr 1fr;gap:30px;border-top:1px solid var(--line);margin-top:16px;padding:20px 12px}.history-detail h3{font-size:20px;margin:0 0 6px}.history-detail .big{font-size:32px;color:var(--accent);font-weight:600;margin:12px 0 0}.history-detail dl{margin:0;display:grid;grid-template-columns:1fr auto;gap:7px;font-size:12px}.history-detail dd{margin:0}.sparse-note{font-size:12px;color:var(--sub);margin-top:10px}.mode-b .page-head{margin-bottom:18px}.mode-b .b-layout{display:grid;grid-template-columns:minmax(0,1.65fr) minmax(0,1fr);gap:32px}.mode-b .result{padding:22px 26px 24px;background:var(--subtle);border:0;border-radius:8px}.mode-b .result-grid{display:block}.mode-b .song h3{font-size:30px;margin-bottom:10px}.mode-b .result-score{font-size:86px;margin-top:24px}.mode-b .deltas{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);border:0;border-top:1px solid var(--line);padding:16px 0 0;margin-top:22px;gap:22px}.mode-b .delta strong{font-size:28px}.mode-b .summary{margin-top:20px;margin-bottom:0;grid-template-columns:1.2fr repeat(3,1fr);gap:16px;padding:16px 0;border:0;border-bottom:1px solid var(--line)}.mode-b .summary .btn{grid-column:1/-1;justify-self:start}.mode-b .b-recent{margin-top:24px}.mode-b .b-updates{padding-top:2px}.mode-b .b-updates .play-row{min-height:82px}.mode-c .page-head{margin-bottom:18px}.mode-c .result{border-top:3px solid var(--accent);padding:18px 0}.mode-c .latest-label{margin-bottom:12px}.mode-c .song h3{font-size:28px;margin-bottom:10px}.mode-c .result-score{font-size:52px}.mode-c .result-grid{grid-template-columns:minmax(0,1.1fr) minmax(0,1fr) minmax(0,1fr)}.mode-c .delta strong{font-size:22px}.mode-c .deltas{gap:10px}.mode-c .summary{border:0;border-bottom:1px solid var(--line);background:var(--surface);margin:0;padding:12px 16px;gap:16px}.mode-c .summary .metric strong{font-size:22px}.mode-c .home-lists{gap:30px;margin-top:22px}.mode-c .play-row{min-height:59px;padding:8px 0}.mode-c .row-score strong{font-size:17px}.mode-current .summary{margin:0 0 24px}.mode-current .result-score{font-size:54px}.mode-current .home-lists{margin-top:24px}.mode-current .song h3{font-size:34px}.mode-current .delta strong{font-size:24px}.mode-current .page-head{margin-bottom:22px}.mode-current .result-grid{grid-template-columns:1.15fr 1.15fr 1fr}.mode-current .play-row{padding:14px 0;min-height:79px}
+.app.narrow .nav{gap:14px;padding:0 20px}.app.narrow .brand{font-size:21px}.app.narrow .nav button{padding:18px 7px;font-size:12px}.app.narrow .workspace{padding:20px}.app.narrow .result-grid{gap:20px;grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.app.narrow .deltas{grid-column:1/-1;border-left:0;border-top:1px solid var(--line);padding:14px 0 0;grid-template-columns:1fr 1fr}.app.narrow .song h3{font-size:30px}.app.narrow .result-score{font-size:60px}.app.narrow .summary{gap:14px;padding:14px;grid-template-columns:1.3fr repeat(3,1fr) auto}.app.narrow .summary .metric strong{font-size:23px}.app.narrow .summary .btn{max-width:138px}.app.narrow .home-lists{gap:24px}.app.narrow.mode-b .b-layout{grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:24px}.app.narrow.mode-b .result{padding:20px}.app.narrow.mode-b .result-score{font-size:72px}.app.narrow.mode-b .deltas{gap:12px}.app.narrow.mode-b .delta strong{font-size:23px}.app.narrow.mode-c .result-grid{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.app.narrow.mode-c .deltas{grid-template-columns:1fr 1fr;padding-top:12px}.app.narrow.mode-current .result-grid{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.app.narrow.mode-current .home-lists{display:block}.app.narrow.mode-current .home-lists section+section{margin-top:24px}
+.mode-a-fit .workspace{padding:14px 32px;scrollbar-gutter:auto}
+.mode-a-fit .page-head{margin-bottom:8px}
+.mode-a-fit .result{padding-bottom:10px}
+.mode-a-fit .result-grid{grid-template-columns:minmax(0,1.25fr) minmax(0,1.15fr) minmax(0,.8fr);gap:20px}
+.mode-a-fit .latest-label{margin-bottom:8px}
+.mode-a-fit .song h3{font-size:32px;margin-bottom:10px}
+.mode-a-fit .result-score{font-size:60px}
+.mode-a-fit .ex-score{font-size:14px;line-height:21px;margin:6px 0 8px}
+.mode-a-fit .badges .badge{padding:3px 8px}
+.mode-a-fit .deltas{gap:12px}
+.mode-a-fit .delta strong{line-height:30px}
+.mode-a-fit .summary{margin:12px 0 10px;padding:6px 16px;gap:20px}
+.mode-a-fit .summary>div:first-child{display:grid;grid-template-columns:auto auto;column-gap:10px;align-items:baseline}
+.mode-a-fit .summary>div:first-child>.caption:last-child{grid-column:1/-1}
+.mode-a-fit .summary .metric strong{font-size:24px;line-height:29px}
+.mode-a-fit .home-lists{margin-top:0;gap:32px}
+.mode-a-fit .home-lists section{display:flex;flex-direction:column;min-width:0}
+.mode-a-fit .section-top{margin-bottom:6px}
+.mode-a-fit .play-row{order:1;min-height:53px;padding:6px 0;gap:14px}
+.mode-a-fit .row-name{line-height:20px}
+.mode-a-fit .row-meta{margin-top:2px;line-height:17px;font-size:12px;gap:8px}
+.mode-a-fit .row-meta .difficulty{font-size:10px;line-height:17px;padding:0 5px}
+.mode-a-fit .row-score strong{display:block;font-size:18px;line-height:22px}
+.mode-a-fit .row-score small{font-size:12px;line-height:16px}
+.mode-a-fit .empty{padding:20px 0;margin:0}
+.app.narrow.mode-a-fit .workspace{padding:16px 20px}
+.app.narrow.mode-a-fit .song h3{font-size:30px}
+.app.narrow.mode-a-fit .deltas{gap:12px;padding-top:12px}
+.app.narrow.mode-a-fit .summary{gap:12px;padding:8px 12px}
+.app.narrow.mode-a-fit .summary>div:first-child{display:block}
 
-      /* DDR WORLD / リザルト画面のランクカラー */
-      --rank-upper: #FACC15; /* AAA〜A-: 黄 */
-      --rank-b: #38BDF8;     /* B+〜B-: 水色 */
-      --rank-c: #F472B6;     /* C+〜C-: 桃色 */
-      --rank-d: #EF4444;     /* D+〜D: 赤 */
-      --rank-e: #E2E8F0;     /* E: 白〜灰 */
-      --rank-upper-text: #854D0E;
-      --rank-b-text: #075985;
-      --rank-c-text: #9D174D;
-      --rank-d-text: #991B1B;
-      --rank-e-text: #334155;
-
-      /* DDR WORLD / クリアランプカラー */
-      --clear-pfc: #FACC15;  /* PFC: 黄 */
-      --clear-gfc: #22C55E;  /* GFC: 緑 */
-      --clear-fc: #2563EB;   /* FC: 青 */
-      --clear-cle: #38BDF8;  /* CLEAR: 水色 */
-      --clear-pfc-text: #854D0E;
-      --clear-gfc-text: #166534;
-      --clear-fc-text: #1E3A8A;
-      --clear-cle-text: #075985;
-
-      /* DDR WORLD / FLAREアイコンカラー */
-      --flare-ix: #FBBF24;   /* IX: 金 */
-      --flare-viii: #CBD5E1; /* VIII: 白銀 */
-      --flare-vii: #94A3B8;  /* VII: 灰色 */
-      --flare-vi: #8B5CF6;   /* VI: 紫 */
-      --flare-v: #EF4444;    /* V: 赤 */
-      --flare-iv: #FACC15;   /* IV: 黄 */
-      --flare-iii: #22C55E;  /* III: 緑 */
-      --flare-ii: #38BDF8;   /* II: 水色 */
-      --flare-i: #2563EB;    /* I: 青 */
-    }
-
-    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
-    body { background: #CBD5E1; color: var(--text-main); display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; font-size: 14px; }
-
-    /* アプリウィンドウ */
-    .app-window { width: min(1280px, calc(100vw - 40px)); height: min(740px, calc(100vh - 40px)); min-height: 0; background: var(--bg-app); border: 1px solid #CBD5E1; border-radius: 12px; box-shadow: 0 20px 40px rgba(0,0,0,0.15); display: flex; overflow: hidden; }
-
-    /* サイドバー */
-    .sidebar { width: 230px; background: var(--sidebar-bg); display: flex; flex-direction: column; justify-content: space-between; padding: 20px 0; flex-shrink: 0; }
-    .brand { padding: 0 20px 20px 20px; border-bottom: 1px solid #263A56; }
-    .brand h1 { color: #FFF; font-size: 20px; font-weight: 800; letter-spacing: -0.5px; }
-    .brand p { color: var(--sidebar-text); font-size: 11px; margin-top: 2px; }
-
-    .nav-list { list-style: none; padding: 16px 12px; display: flex; flex-direction: column; gap: 4px; }
-    .nav-item a { display: flex; align-items: center; gap: 10px; padding: 10px 14px; color: var(--sidebar-text); text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 13px; transition: all 0.15s; }
-    .nav-item a:hover { color: #FFF; background: rgba(255,255,255,0.05); }
-    .nav-item.active a { background: var(--sidebar-active); color: var(--sidebar-text-active); }
-    .nav-divider { height: 1px; background: #263A56; margin: 8px 12px; }
-
-    /* サイドバー下部: 監視操作 & ステータス */
-    .sidebar-control-box { margin: 0 12px; padding: 14px; background: #1E293B; border-radius: 10px; border: 1px solid #334155; display: flex; flex-direction: column; gap: 12px; }
-    .status-badge { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 700; color: #38BDF8; }
-    .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #38BDF8; box-shadow: 0 0 8px #38BDF8; }
-    .status-sub { color: #94A3B8; font-size: 11px; }
-
-    .btn-monitor { width: 100%; padding: 10px; border-radius: 6px; font-weight: 800; font-size: 13px; cursor: pointer; border: none; text-align: center; transition: background 0.15s; }
-    .btn-start { background: var(--primary); color: #FFF; }
-    .btn-start:hover { background: var(--primary-hover); }
-
-    /* メインコンテンツエリア */
-    .main-content { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; padding: 24px 28px; overflow-y: auto; gap: 20px; }
-
-    /* ヘッダー */
-    .header-bar { display: flex; justify-content: space-between; align-items: flex-end; }
-    .page-title h2 { font-size: 24px; font-weight: 800; color: var(--text-main); }
-    .page-title p { font-size: 13px; color: var(--text-muted); margin-top: 2px; }
-
-    /* 探索軸・プレイスタイル切り替え */
-    .filter-card { background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 10px; padding: 12px 16px; display: flex; flex-direction: column; gap: 10px; }
-    .filter-main-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 20px; }
-    .style-segmented { display: flex; background: #F1F5F9; border-radius: 8px; padding: 3px; gap: 2px; }
-    .style-btn { padding: 6px 16px; border: none; background: transparent; font-weight: 700; font-size: 13px; color: var(--text-muted); border-radius: 6px; cursor: pointer; transition: all 0.15s; }
-    .style-btn.active { background: #FFF; color: var(--primary); box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-    .browse-heading { font-size: 13px; font-weight: 800; color: var(--text-main); }
-    .browse-tabs { display: flex; flex-wrap: wrap; gap: 6px; }
-    .browse-tab { min-width: 128px; padding: 8px 16px; border: 1px solid var(--border-color); border-radius: 6px; background: #FFF; color: var(--text-main); font-size: 13px; font-weight: 700; cursor: pointer; }
-    .browse-tab.active { background: var(--primary); border-color: var(--primary); color: #FFF; }
-    .selection-summary { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; padding-top: 10px; border-top: 1px solid var(--border-color); }
-    .selection-summary[hidden] { display: none; }
-    .selection-label { color: var(--text-muted); font-size: 11px; font-weight: 700; }
-    .selection-value { margin-left: 8px; color: var(--text-main); font-size: 14px; font-weight: 800; }
-    .change-axis-button { padding: 6px 10px; border: 1px solid var(--primary); border-radius: 6px; background: #FFF; color: var(--primary); font-size: 12px; font-weight: 800; cursor: pointer; }
-    .axis-panel { padding-top: 12px; border-top: 1px solid var(--border-color); }
-    .axis-panel[hidden] { display: none; }
-    .axis-panel-header { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 12px; margin-bottom: 10px; }
-    .axis-panel-title { font-size: 13px; font-weight: 800; }
-    .axis-panel-note { color: var(--text-muted); font-size: 11px; }
-    .axis-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(64px, 1fr)); gap: 6px; }
-    .axis-grid.version-grid { grid-template-columns: repeat(auto-fit, minmax(132px, 1fr)); }
-    .axis-option { min-height: 36px; padding: 6px 8px; border: 1px solid var(--border-color); border-radius: 5px; background: #FFF; color: var(--text-main); font-size: 12px; font-weight: 700; cursor: pointer; }
-    .axis-option.active { background: #DBEAFE; border-color: var(--primary); color: #1E40AF; }
-    .title-search { width: 100%; padding: 9px 12px; border: 1px solid var(--border-color); border-radius: 6px; background: #FFF; color: var(--text-main); font-size: 13px; outline: none; }
-    .title-search:focus { border-color: var(--primary); box-shadow: 0 0 0 2px #DBEAFE; }
-
-    /* 選択したレベルまたはバージョン単位の記録状況 */
-    .progress-card { background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 10px; padding: 10px 16px; display: flex; align-items: center; gap: 18px; }
-    .progress-card[hidden] { display: none; }
-    .progress-header { min-width: 235px; }
-    .progress-title { font-size: 14px; font-weight: 800; }
-    .progress-metrics { display: grid; grid-template-columns: repeat(6, minmax(68px, 1fr)); flex: 1; }
-    .progress-metric { padding: 3px 10px; border-left: 1px solid var(--border-color); }
-    .progress-label { color: var(--text-muted); font-size: 11px; }
-    .progress-value { margin-top: 2px; font-size: 14px; font-weight: 800; font-variant-numeric: tabular-nums; }
-
-    .result-summary { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; color: var(--text-muted); font-size: 12px; }
-    .result-summary strong { color: var(--text-main); font-weight: 800; }
-    .result-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-    .result-actions[hidden] { display: none; }
-    .sort-label { font-size: 11px; font-weight: 700; }
-    .sort-select { min-width: 160px; padding: 6px 10px; border: 1px solid var(--border-color); border-radius: 6px; background: #FFF; color: var(--text-main); font-size: 12px; }
-
-    /* 自己ベスト一覧 */
-    .content-grid { display: flex; flex-direction: column; gap: 20px; flex: 1; min-height: 0; }
-
-    /* 自己ベストテーブル */
-    .table-panel { background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 10px; flex: 1; overflow-y: auto; display: flex; flex-direction: column; }
-    .table-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; margin-top: auto; padding: 10px 16px; border-top: 1px solid var(--border-color); background: #F8FAFC; color: var(--text-muted); font-size: 11px; }
-    .table-footer strong { color: var(--text-main); font-weight: 800; }
-    .load-more-hint { color: var(--primary); font-weight: 800; }
-    table { width: 100%; border-collapse: collapse; font-size: 13px; }
-    thead { position: sticky; top: 0; background: #F1F5F9; z-index: 10; }
-    th { padding: 12px 16px; text-align: left; font-size: 12px; font-weight: 700; color: var(--text-muted); border-bottom: 1px solid var(--border-color); }
-    td { padding: 12px 16px; border-bottom: 1px solid var(--border-color); color: var(--text-main); }
-    tbody tr { cursor: pointer; transition: background 0.1s; }
-    tbody tr:hover { background: #F8FAFC; }
-    tbody tr.selected { background: #EFF6FF; }
-    tbody tr.selected td { font-weight: 600; }
-
-    .chart-cell { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; }
-    .chart-level { color: var(--text-muted); font-size: 12px; font-weight: 700; }
-    .score-cell { display: flex; flex-direction: column; gap: 2px; white-space: nowrap; }
-    .score-main { font-family: 'Courier New', monospace; font-weight: 800; }
-    .goal-distance { color: #1D4ED8; font-family: 'Courier New', monospace; font-size: 13px; font-weight: 900; white-space: nowrap; }
-    .score-sub { color: var(--text-muted); font-size: 11px; font-weight: 700; }
-    .table-panel .badge-flare { min-width: 56px; padding: 2px 6px; }
-
-    /* 難易度バッジ (DDR WORLD準拠カラー) */
-    .badge-diff { display: inline-block; padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: 800; color: #FFF; text-align: center; min-width: 108px; }
-    .diff-bgn { background: var(--diff-bgn); }
-    .diff-bas { background: var(--diff-bas); color: #000; }
-    .diff-dif { background: var(--diff-dif); }
-    .diff-exp { background: var(--diff-exp); }
-    .diff-cha { background: var(--diff-cha); }
-
-    /* ランク・クリア・フレアバッジ */
-    .badge-rank {
-      display: inline-block;
-      min-width: 42px;
-      padding: 2px 6px;
-      border: 1px solid transparent;
-      border-radius: 5px;
-      font-weight: 900;
-      line-height: 1.2;
-      text-align: center;
-    }
-    .rank-aaa, .rank-aa, .rank-a {
-      color: var(--rank-upper-text);
-      background: #FEF3C7;
-      border-color: var(--rank-upper);
-    }
-    .rank-b {
-      color: var(--rank-b-text);
-      background: #E0F2FE;
-      border-color: var(--rank-b);
-    }
-    .rank-c {
-      color: var(--rank-c-text);
-      background: #FCE7F3;
-      border-color: var(--rank-c);
-    }
-    .rank-d {
-      color: var(--rank-d-text);
-      background: #FEE2E2;
-      border-color: var(--rank-d);
-    }
-    .rank-e {
-      color: var(--rank-e-text);
-      background: #F1F5F9;
-      border-color: #94A3B8;
-    }
-
-    .clear-pfc, .clear-gfc, .clear-fc, .clear-cle, .clear-mfc {
-      display: inline-block;
-      padding: 2px 6px;
-      border: 1px solid transparent;
-      border-radius: 5px;
-      line-height: 1.2;
-    }
-    .clear-pfc {
-      color: var(--clear-pfc-text);
-      background: #FEF3C7;
-      border-color: var(--clear-pfc);
-      font-weight: 800;
-    }
-    .clear-gfc {
-      color: var(--clear-gfc-text);
-      background: #DCFCE7;
-      border-color: var(--clear-gfc);
-      font-weight: 800;
-    }
-    .clear-fc {
-      color: var(--clear-fc-text);
-      background: #DBEAFE;
-      border-color: var(--clear-fc);
-      font-weight: 800;
-    }
-    .clear-cle {
-      color: var(--clear-cle-text);
-      background: #E0F2FE;
-      border-color: var(--clear-cle);
-      font-weight: 800;
-    }
-    .clear-mfc {
-      color: #0F172A;
-      background: linear-gradient(90deg, #FECACA, #FEF3C7, #DCFCE7, #E0F2FE, #F3E8FF);
-      border-color: #A855F7;
-      font-weight: 900;
-    }
-
-    .badge-flare {
-      display: inline-flex;
-      min-width: 74px;
-      align-items: center;
-      justify-content: center;
-      padding: 2px 8px;
-      border: 1px solid transparent;
-      border-radius: 5px;
-      font-size: 11px;
-      font-weight: 800;
-      line-height: 1.2;
-    }
-    .flare-ex {
-      background: linear-gradient(90deg, #FECACA, #FEF3C7, #DCFCE7, #E0F2FE, #F3E8FF);
-      border-color: #A855F7;
-      color: #0F172A;
-    }
-    .flare-ix { background: #FEF3C7; border-color: var(--flare-ix); color: #854D0E; }
-    .flare-viii { background: #F1F5F9; border-color: var(--flare-viii); color: #334155; }
-    .flare-vii { background: #E2E8F0; border-color: var(--flare-vii); color: #334155; }
-    .flare-vi { background: #EDE9FE; border-color: var(--flare-vi); color: #5B21B6; }
-    .flare-v { background: #FEE2E2; border-color: var(--flare-v); color: #991B1B; }
-    .flare-iv { background: #FEF3C7; border-color: var(--flare-iv); color: #854D0E; }
-    .flare-iii { background: #DCFCE7; border-color: var(--flare-iii); color: #166534; }
-    .flare-ii { background: #E0F2FE; border-color: var(--flare-ii); color: #075985; }
-    .flare-i { background: #DBEAFE; border-color: var(--flare-i); color: #1E3A8A; }
-
-    @media (max-width: 1100px) {
-      body { padding: 0; align-items: stretch; }
-      .app-window { width: 100%; height: 100vh; border-radius: 0; }
-      .sidebar { width: 190px; }
-      .main-content { padding: 20px; gap: 16px; }
-      .filter-main-row { align-items: flex-start; flex-direction: column; }
-      .style-segmented { align-self: flex-start; }
-      .browse-tabs { width: 100%; }
-      .browse-tab { flex: 1 1 128px; }
-      .progress-card { align-items: stretch; flex-direction: column; gap: 8px; }
-      .progress-header { min-width: 0; }
-      .progress-metrics { grid-template-columns: repeat(3, 1fr); }
-      .progress-metric:nth-child(4) { border-left: none; }
-    }
-
-    @media (max-width: 760px) {
-      .sidebar { width: 170px; }
-      .main-content { padding: 16px; }
-      .progress-metrics { grid-template-columns: repeat(2, 1fr); }
-    }
-
-  </style>
-  <link rel="stylesheet" href="screen-mock-shared.css?v=20260920a">
-</head>
-<body>
-
-<div class="app-window">
-  <!-- 左サイドバー -->
-  <aside class="sidebar">
-    <div>
-      <div class="brand">
-        <h1>GP Score Log</h1>
-        <p>DDR GRAND PRIX Score Tracker</p>
-      </div>
-      <ul class="nav-list">
-        <li class="nav-item"><a href="home-mock.html">ホーム</a></li>
-        <li class="nav-item active"><a href="chart-bests-mock.html" aria-current="page">自己ベスト</a></li>
-        <li class="nav-item"><a href="play-history-mock.html">直近プレー履歴</a></li>
-        <li class="nav-item"><a href="flare-skill.html">フレアスキル</a></li>
-        <div class="nav-divider"></div>
-        <li class="nav-item"><a href="settings-mock.html">設定</a></li>
-        <li class="nav-item"><a href="data-management-mock.html">データ管理</a></li>
-      </ul>
-    </div>
-
-    <!-- サイドバー下部: 監視操作 & ステータス -->
-    <div class="sidebar-control-box">
-      <div class="status-badge">
-        <span class="status-dot"></span>
-        自動記録：待機中
-      </div>
-      <div class="status-sub">DDR GP ウィンドウ待機中</div>
-      <button class="btn-monitor btn-start">監視を開始する</button>
-    </div>
-  </aside>
-
-  <!-- メインコンテンツ -->
-  <main class="main-content">
-    <!-- ヘッダーバー -->
-    <header class="header-bar">
-      <div class="page-title">
-        <h2>自己ベスト</h2>
-        <p>レベル・バージョン・曲名・目標から譜面別のベスト記録を探します</p>
-      </div>
-    </header>
-
-    <!-- 探索軸・プレイスタイル切り替え -->
-    <div class="filter-card">
-      <div class="filter-main-row">
-        <div class="style-segmented">
-          <button class="style-btn active" type="button" data-style="SP">SINGLE (SP)</button>
-          <button class="style-btn" type="button" data-style="DP">DOUBLE (DP)</button>
-        </div>
-
-        <div>
-          <div class="browse-heading">曲を探す</div>
-          <div class="browse-tabs" role="tablist" aria-label="探索方法">
-            <button class="browse-tab active" type="button" role="tab" aria-selected="true" data-mode="level">レベルから</button>
-            <button class="browse-tab" type="button" role="tab" aria-selected="false" data-mode="version">バージョンから</button>
-            <button class="browse-tab" type="button" role="tab" aria-selected="false" data-mode="title">曲名から</button>
-            <button class="browse-tab" type="button" role="tab" aria-selected="false" data-mode="goal">目標から</button>
-          </div>
-        </div>
-      </div>
-
-      <div class="selection-summary" id="selection-summary">
-        <div>
-          <span class="selection-label">選択中</span>
-          <span class="selection-value" id="selection-value">Lv.1</span>
-        </div>
-        <button class="change-axis-button" id="change-axis-button" type="button" aria-expanded="false">レベルを変更</button>
-      </div>
-
-      <section class="axis-panel" data-axis-panel="level" aria-label="レベル選択" hidden>
-        <div class="axis-panel-header">
-          <div class="axis-panel-title">レベルを選択</div>
-          <div class="axis-panel-note">レベル別に記録状況を確認</div>
-        </div>
-        <div class="axis-grid">
-          <button class="axis-option active" type="button" data-level="1">Lv.1</button>
-          <button class="axis-option" type="button" data-level="2">Lv.2</button>
-          <button class="axis-option" type="button" data-level="3">Lv.3</button>
-          <button class="axis-option" type="button" data-level="4">Lv.4</button>
-          <button class="axis-option" type="button" data-level="5">Lv.5</button>
-          <button class="axis-option" type="button" data-level="6">Lv.6</button>
-          <button class="axis-option" type="button" data-level="7">Lv.7</button>
-          <button class="axis-option" type="button" data-level="8">Lv.8</button>
-          <button class="axis-option" type="button" data-level="9">Lv.9</button>
-          <button class="axis-option" type="button" data-level="10">Lv.10</button>
-          <button class="axis-option" type="button" data-level="11">Lv.11</button>
-          <button class="axis-option" type="button" data-level="12">Lv.12</button>
-          <button class="axis-option" type="button" data-level="13">Lv.13</button>
-          <button class="axis-option" type="button" data-level="14">Lv.14</button>
-          <button class="axis-option" type="button" data-level="15">Lv.15</button>
-          <button class="axis-option" type="button" data-level="16">Lv.16</button>
-          <button class="axis-option" type="button" data-level="17">Lv.17</button>
-          <button class="axis-option" type="button" data-level="18">Lv.18</button>
-          <button class="axis-option" type="button" data-level="19">Lv.19</button>
-        </div>
-      </section>
-
-      <section class="axis-panel" data-axis-panel="version" aria-label="バージョン選択" hidden>
-        <div class="axis-panel-header">
-          <div class="axis-panel-title">バージョンを選択</div>
-          <div class="axis-panel-note">バージョン別に記録状況を確認</div>
-        </div>
-        <div class="axis-grid version-grid">
-          <button class="axis-option active" type="button" data-version="DDR GRAND PRIX">DDR GRAND PRIX</button>
-          <button class="axis-option" type="button" data-version="DDR WORLD">DDR WORLD</button>
-          <button class="axis-option" type="button" data-version="DDR A3">DDR A3</button>
-          <button class="axis-option" type="button" data-version="DDR A20 PLUS">DDR A20 PLUS</button>
-          <button class="axis-option" type="button" data-version="DDR A20">DDR A20</button>
-          <button class="axis-option" type="button" data-version="DDR A">DDR A</button>
-          <button class="axis-option" type="button" data-version="DDR (2014)">DDR (2014)</button>
-          <button class="axis-option" type="button" data-version="DDR (2013)">DDR (2013)</button>
-          <button class="axis-option" type="button" data-version="X3 VS 2ndMIX">X3 VS 2ndMIX</button>
-          <button class="axis-option" type="button" data-version="X2">X2</button>
-          <button class="axis-option" type="button" data-version="X">X</button>
-          <button class="axis-option" type="button" data-version="SuperNOVA 2">SuperNOVA 2</button>
-          <button class="axis-option" type="button" data-version="SuperNOVA">SuperNOVA</button>
-          <button class="axis-option" type="button" data-version="EXTREME">EXTREME</button>
-          <button class="axis-option" type="button" data-version="DDRMAX2">DDRMAX2</button>
-          <button class="axis-option" type="button" data-version="DDRMAX">DDRMAX</button>
-          <button class="axis-option" type="button" data-version="5thMIX">5thMIX</button>
-          <button class="axis-option" type="button" data-version="4thMIX">4thMIX</button>
-          <button class="axis-option" type="button" data-version="3rdMIX">3rdMIX</button>
-          <button class="axis-option" type="button" data-version="2ndMIX">2ndMIX</button>
-          <button class="axis-option" type="button" data-version="1st">1st</button>
-        </div>
-      </section>
-
-      <section class="axis-panel" data-axis-panel="title" aria-label="曲名検索" hidden>
-        <div class="axis-panel-header">
-          <div class="axis-panel-title">曲名を入力</div>
-          <div class="axis-panel-note">曲名検索では記録状況を集計しません</div>
-        </div>
-        <label for="title-search" class="axis-panel-note">曲名の一部</label>
-        <input id="title-search" class="title-search" type="search" placeholder="例: MAX">
-      </section>
-
-      <section class="axis-panel" data-axis-panel="goal" aria-label="目標ランク選択" hidden>
-        <div class="axis-panel-header">
-          <div class="axis-panel-title">目標ランクを選択</div>
-          <div class="axis-panel-note">達成済み・記録なしを除き、目標まで近い順に表示</div>
-        </div>
-        <div class="axis-grid">
-          <button class="axis-option active" type="button" data-goal="AAA">AAA</button>
-          <button class="axis-option" type="button" data-goal="AA+">AA+</button>
-          <button class="axis-option" type="button" data-goal="AA">AA</button>
-        </div>
-      </section>
-    </div>
-
-    <section class="progress-card" id="progress-card" aria-live="polite">
-      <div class="progress-header">
-        <div class="progress-title" id="progress-title">Lv.1・SPの記録状況</div>
-      </div>
-      <div class="progress-metrics">
-        <div class="progress-metric"><div class="progress-label">対象譜面</div><div class="progress-value" data-metric="total">84</div></div>
-        <div class="progress-metric"><div class="progress-label">記録あり</div><div class="progress-value" data-metric="recorded">67</div></div>
-        <div class="progress-metric"><div class="progress-label">記録なし</div><div class="progress-value" data-metric="missing">17</div></div>
-        <div class="progress-metric"><div class="progress-label">CLEAR以上</div><div class="progress-value" data-metric="clear">61</div></div>
-        <div class="progress-metric"><div class="progress-label">FC以上</div><div class="progress-value" data-metric="fc">18</div></div>
-        <div class="progress-metric"><div class="progress-label">AAA以上</div><div class="progress-value" data-metric="aaa">7</div></div>
-      </div>
-    </section>
-
-    <div class="result-summary" aria-live="polite">
-      <span><strong id="result-count">表示 1〜50 / 全84譜面</strong>　<span id="result-context">Lv.1</span></span>
-      <div class="result-actions" id="result-actions">
-        <label class="sort-label" for="best-sort">並び順</label>
-        <select id="best-sort" class="sort-select">
-          <option selected>スコア（高い順）</option>
-          <option>スコア（低い順）</option>
-          <option>曲名（昇順）</option>
-          <option>レベル（昇順）</option>
-          <option>最終プレー（新しい順）</option>
-          <option>プレー回数（多い順）</option>
-        </select>
-      </div>
-    </div>
-
-    <!-- メインコンテンツグリッド -->
-    <div class="content-grid">
-      <!-- 自己ベストテーブル (960px幅を考慮した8列構成) -->
-      <div class="table-panel">
-        <table>
-          <thead>
-            <tr>
-              <th>曲名</th>
-              <th style="width: 120px;">譜面</th>
-              <th style="width: 105px;">SCORE / EX</th>
-              <th style="width: 105px;" data-goal-column hidden>目標まで</th>
-              <th style="width: 55px;">ランク</th>
-              <th style="width: 65px;">CLEAR</th>
-              <th style="width: 65px;">FLARE</th>
-              <th style="width: 80px;">プレー回数</th>
-              <th style="width: 95px;">最終プレー</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr class="selected" data-song-title="POSSESSION" data-score="991400">
-              <td>POSSESSION</td>
-              <td><div class="chart-cell"><span class="badge-diff diff-cha">CHALLENGE</span><span class="chart-level">Lv.15</span></div></td>
-              <td><div class="score-cell"><span class="score-main">991,400</span><span class="score-sub">EX 1,420</span></div></td>
-              <td data-goal-column hidden><span class="goal-distance"></span></td>
-              <td><span class="badge-rank rank-aaa">AAA</span></td>
-              <td><span class="clear-pfc">PFC</span></td>
-              <td><span class="badge-flare flare-ex">EX</span></td>
-              <td>14 回</td>
-              <td>08/02 22:31</td>
-            </tr>
-            <tr data-song-title="MAX 300" data-score="982100">
-              <td>MAX 300</td>
-              <td><div class="chart-cell"><span class="badge-diff diff-exp">EXPERT</span><span class="chart-level">Lv.15</span></div></td>
-              <td><div class="score-cell"><span class="score-main">982,100</span><span class="score-sub">EX 1,210</span></div></td>
-              <td data-goal-column hidden><span class="goal-distance"></span></td>
-              <td><span class="badge-rank rank-aaa">AAA</span></td>
-              <td><span class="clear-fc">FC</span></td>
-              <td><span class="badge-flare flare-viii">VIII</span></td>
-              <td>8 回</td>
-              <td>08/02 22:18</td>
-            </tr>
-            <tr data-song-title="London EVOLVED ver.B" data-score="972840">
-              <td>London EVOLVED ver.B</td>
-              <td><div class="chart-cell"><span class="badge-diff diff-dif">DIFFICULT</span><span class="chart-level">Lv.15</span></div></td>
-              <td><div class="score-cell"><span class="score-main">972,840</span><span class="score-sub">EX 1,016</span></div></td>
-              <td data-goal-column hidden><span class="goal-distance"></span></td>
-              <td><span class="badge-rank rank-aa">AA+</span></td>
-              <td><span class="clear-fc">FC</span></td>
-              <td><span class="badge-flare flare-ix">IX</span></td>
-              <td>5 回</td>
-              <td>08/02 22:50</td>
-            </tr>
-            <tr data-song-title="London EVOLVED ver.A" data-score="895120">
-              <td>London EVOLVED ver.A</td>
-              <td><div class="chart-cell"><span class="badge-diff diff-exp">EXPERT</span><span class="chart-level">Lv.15</span></div></td>
-              <td><div class="score-cell"><span class="score-main">895,120</span><span class="score-sub">EX 1,120</span></div></td>
-              <td data-goal-column hidden><span class="goal-distance"></span></td>
-              <td><span class="badge-rank rank-a">A+</span></td>
-              <td><span class="clear-cle">CLEAR</span></td>
-              <td><span class="badge-flare flare-vi">VI</span></td>
-              <td>3 回</td>
-              <td>08/02 22:42</td>
-            </tr>
-            <tr data-song-title="PARANOiA MAX~DIRTY MIX~" data-score="998500">
-              <td>PARANOiA MAX~DIRTY MIX~</td>
-              <td><div class="chart-cell"><span class="badge-diff diff-bas">BASIC</span><span class="chart-level">Lv.15</span></div></td>
-              <td><div class="score-cell"><span class="score-main">998,500</span><span class="score-sub">EX 890</span></div></td>
-              <td data-goal-column hidden><span class="goal-distance"></span></td>
-              <td><span class="badge-rank rank-aaa">AAA</span></td>
-              <td><span class="clear-pfc">PFC</span></td>
-              <td><span class="badge-flare flare-iii">III</span></td>
-              <td>2 回</td>
-              <td>08/02 22:05</td>
-            </tr>
-          </tbody>
-        </table>
-        <div class="table-footer">
-          <span><strong id="footer-range">1〜50譜面</strong>を表示中</span>
-          <span class="load-more-hint">下端までスクロールすると次の50譜面を読み込み</span>
-        </div>
-      </div>
-    </div>
-  </main>
-</div>
-
+</style>
+<style>
+.review{padding:16px 28px}.review-controls{gap:12px}.review h1{font-size:20px}.direction{margin-top:10px}
+.best-app .workspace{padding:18px 32px 20px;display:flex;flex-direction:column;overflow:hidden;scrollbar-gutter:auto}.best-app .page-head{margin-bottom:14px;flex-shrink:0;justify-content:space-between}.best-app .page-head h2{overflow-wrap:anywhere}
+.best-body{flex:1;min-height:0;display:flex;flex-direction:column;gap:14px}.controls{flex-shrink:0}.filter-line{display:flex;align-items:center;gap:22px;flex-wrap:wrap}.segments,.browse-tabs{display:flex;gap:4px}.segments{padding:3px;background:var(--surface);border-radius:6px}.segments button,.browse-tabs button,.axis-options button,.graph-modes button{background:transparent;border:1px solid transparent;border-radius:4px;padding:7px 12px;font-size:13px;white-space:nowrap}.segments button[aria-pressed=true]{border-color:var(--accent);color:var(--accent);background:var(--bg);font-weight:600}.browse-tabs button{border-bottom:2px solid transparent;border-radius:0;padding:9px 14px}.browse-tabs button[aria-pressed=true]{color:var(--accent);border-bottom-color:var(--accent);font-weight:600}.axis-row{border-top:1px solid var(--line);padding-top:12px;margin-top:10px;display:flex;gap:18px;align-items:center;flex-wrap:wrap;min-height:47px}.axis-row label{font-size:12px;color:var(--sub)}.axis-row select,.query-input,.list-actions select{background:var(--bg);color:var(--text);border:1px solid var(--line);border-radius:4px;padding:7px 10px;font:inherit;min-height:34px}.axis-row select{font-size:13px;min-width:140px}.query-field{display:flex;align-items:center;gap:12px;flex:1}.query-input{width:330px;font-size:14px;max-width:100%}.axis-note{color:var(--sub);font-size:12px}.axis-options{display:flex;gap:4px;flex-wrap:wrap}.axis-options button{border:1px solid var(--line);min-width:52px}.axis-options button[aria-pressed=true]{background:var(--accent);border-color:var(--accent);color:var(--bg);font-weight:600}
+.progress-summary{display:grid;grid-template-columns:150px repeat(6,minmax(0,1fr));gap:18px;padding:11px 14px;background:var(--surface);align-items:center}.progress-summary h3{font-size:13px;margin:0;font-weight:600}.progress-summary strong{display:block;font-size:22px;font-weight:600;color:var(--accent)}.progress-summary span{font-size:12px;color:var(--sub)}
+.result-area{flex:1;display:flex;flex-direction:column;min-height:0;gap:8px}.list-actions{display:flex;justify-content:space-between;gap:16px;align-items:center;font-size:13px;flex-shrink:0}.list-actions select{font-size:12px;padding:5px 8px}.sort-label{font-size:12px;color:var(--sub);display:flex;align-items:center;gap:8px}.best-list{overflow:auto;border:1px solid var(--line);min-height:0;flex:1;scrollbar-gutter:stable}.best-table{table-layout:fixed;border-collapse:separate;border-spacing:0;width:100%;font-size:13px}.best-table th{position:sticky;top:0;background:var(--surface);height:32px;padding:6px 10px;font-size:12px;color:var(--sub);font-weight:400;text-align:left;white-space:nowrap;z-index:1}.best-table td{height:48px;padding:5px 10px;border-top:1px solid var(--line);vertical-align:middle;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.best-table .song-title{font-size:14px;font-weight:600}.best-table tr[data-chart]{cursor:pointer;outline:none}.best-table tr[data-chart]:hover,.best-table tr[data-chart]:focus-visible{background:var(--subtle)}.best-table tr[data-chart]:focus-visible td:first-child{box-shadow:inset 3px 0 var(--accent)}.table-score strong{font-size:16px;font-weight:600}.table-score small{display:block;font-size:12px;color:var(--sub)}.best-table .difficulty{font-size:10px;padding:1px 6px;line-height:17px}.chart-level{display:block;font-size:12px;color:var(--sub);margin-top:1px}.best-table .badge{padding:3px 6px;font-size:10px}.table-number{text-align:right}.goal-distance{font-weight:600;color:var(--accent)}.goal-distance small{display:block;font-size:10px;color:var(--sub);font-weight:400}.list-hint{font-size:12px;color:var(--sub);margin:0}.no-records{padding:26px;color:var(--sub)}
+.layout-sidebar .best-body{display:grid;grid-template-columns:228px minmax(0,1fr);grid-template-rows:auto minmax(0,1fr);gap:14px 24px}.layout-sidebar .controls{grid-row:1/3;border-right:1px solid var(--line);padding-right:20px;overflow:auto}.layout-sidebar .filter-line{display:block}.layout-sidebar .segments button{padding:7px 9px}.layout-sidebar .browse-tabs{display:grid;margin-top:16px}.layout-sidebar .browse-tabs button{text-align:left;border-bottom:0;border-left:3px solid transparent}.layout-sidebar .browse-tabs button[aria-pressed=true]{background:var(--subtle);border-left-color:var(--accent)}.layout-sidebar .axis-row{display:block;margin-top:14px}.layout-sidebar .axis-row select{width:100%;margin-top:5px}.layout-sidebar .query-field{display:block}.layout-sidebar .query-input{width:100%;margin-top:6px}.layout-sidebar .axis-note{display:block;margin-top:10px}.layout-sidebar .axis-options{margin-top:8px;gap:5px}.layout-sidebar .axis-options button{padding:7px 9px;min-width:48px}.layout-sidebar .progress-summary{grid-column:2;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px;padding:10px}.layout-sidebar .progress-summary h3{grid-column:1/-1}.layout-sidebar .result-area{grid-column:2}.layout-sidebar .best-table th,.layout-sidebar .best-table td{padding-left:7px;padding-right:7px}
+.detail-view{overflow:auto;min-height:0;padding-right:4px;scrollbar-gutter:stable}.detail-summary{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,.9fr) minmax(0,1.4fr);gap:28px;padding:0 0 14px;border-bottom:1px solid var(--line)}.detail-identity{display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap;font-size:13px}.best-value{font-size:46px;font-weight:600;line-height:1.1;color:var(--accent);margin:4px 0 5px;white-space:nowrap}.best-ex-value{font-size:34px;font-weight:600;line-height:1.2;color:var(--accent);margin:5px 0 8px}.updated{font-size:11px;color:var(--sub);line-height:1.6}.detail-badges{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}.detail-statistics{display:grid;grid-template-columns:1fr 1fr;gap:10px 16px;align-content:center}.detail-statistics>div{padding-bottom:8px;border-bottom:1px solid var(--line)}.detail-statistics strong{font-size:22px;color:var(--accent);display:block;font-weight:600}.detail-middle{display:grid;grid-template-columns:minmax(0,1fr) 276px;gap:28px;margin-top:14px}.graph-section h3,.chart-history h3{font-size:16px;font-weight:600;margin:0 0 6px}.graph-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}.graph-modes{display:flex;gap:4px}.graph-modes button{font-size:12px;padding:4px 10px;border:1px solid var(--line)}.graph-modes button[aria-pressed=true]{border-color:var(--accent);color:var(--accent);font-weight:600}.score-graph{width:100%;height:145px;display:block}.score-graph text{font:11px 'Segoe UI',sans-serif;fill:var(--sub)}.score-graph .line{fill:none;stroke:var(--accent);stroke-width:1.5}.score-graph .gridline{stroke:var(--line)}.score-graph .best-dot{fill:var(--accent);stroke:var(--bg);stroke-width:2}.score-graph .normal-dot{fill:var(--sub);stroke:var(--bg);stroke-width:2}.graph-legend{font-size:11px;color:var(--sub);margin-top:2px}.latest-chart-play{padding-left:20px;border-left:1px solid var(--line)}.latest-chart-play h3{font-size:13px;font-weight:600;margin:0 0 3px}.latest-value{font-size:28px;font-weight:600;margin:5px 0 0}.latest-ex{font-size:12px}.latest-delta{font-size:12px;margin-top:8px;display:grid;grid-template-columns:1fr auto;gap:4px 12px}.latest-delta strong{font-weight:600}.chart-history{margin-top:14px;border-top:1px solid var(--line);padding-top:12px}.chart-history .best-table td{height:40px;font-size:12px}.chart-history .best-table th{font-size:11px}.chart-history .best-table{margin-top:8px}.muted-value{color:var(--sub)}
+.best-app.narrow .workspace{padding:16px 20px}.best-app.narrow .progress-summary{grid-template-columns:116px repeat(6,minmax(0,1fr));gap:10px;padding:9px 12px}.best-app.narrow .progress-summary strong{font-size:20px}.best-app.narrow .filter-line{gap:14px}.best-app.narrow .browse-tabs button{padding:8px 10px}.best-app.narrow .best-table th,.best-app.narrow .best-table td{padding-left:7px;padding-right:7px}.best-app.narrow.layout-sidebar .best-body{display:flex}.best-app.narrow.layout-sidebar .controls{border-right:0;padding:0;overflow:visible}.best-app.narrow.layout-sidebar .filter-line{display:flex}.best-app.narrow.layout-sidebar .browse-tabs{display:flex;margin-top:0}.best-app.narrow.layout-sidebar .browse-tabs button{border-left:0;border-bottom:2px solid transparent;padding:8px 10px}.best-app.narrow.layout-sidebar .browse-tabs button[aria-pressed=true]{border-bottom-color:var(--accent);background:transparent}.best-app.narrow.layout-sidebar .axis-row{display:flex;margin-top:10px;gap:12px}.best-app.narrow.layout-sidebar .axis-options{margin-top:0}.best-app.narrow.layout-sidebar .axis-options.levels{display:none}.best-app.narrow.layout-sidebar .axis-row select{width:auto;margin-top:0}.best-app.narrow.layout-sidebar .query-field{display:flex}.best-app.narrow.layout-sidebar .query-input{width:330px;margin-top:0}.best-app.narrow.layout-sidebar .axis-note{margin-top:0}.best-app.narrow .detail-summary{gap:20px;grid-template-columns:minmax(0,1.2fr) minmax(0,.9fr) minmax(0,1.1fr)}.best-app.narrow .detail-statistics strong{font-size:20px}.best-app.narrow .detail-middle{grid-template-columns:minmax(0,1fr) 245px;gap:20px}.best-app.narrow .best-value{font-size:40px}.best-app.narrow .best-ex-value{font-size:30px}
+.layout-top .controls{display:flex;flex-wrap:wrap;align-items:center;gap:10px 24px}
+.layout-top .axis-row{border:0;padding:0;margin:0;min-height:38px;flex:1}
+.layout-top .axis-row:has(.query-field){flex-basis:100%;padding-top:10px;border-top:1px solid var(--line)}
+.progress-summary{padding:7px 14px}.progress-summary strong{font-size:20px;line-height:26px}
+.layout-sidebar .best-body:not(:has(.progress-summary)) .result-area{grid-row:1/3}
+.best-app.narrow .chart-history td:first-child{white-space:normal}
+.layout-sidebar:not(.narrow) .axis-row:has(.levels)>label select{display:none}
+.badge.flare-ex{background:linear-gradient(110deg,#e9e9ff,#e5fff0,#fff0cb,#fae8ff);border-color:#9b63c8;color:#48324e}
+.graph-legend .best-key{color:var(--accent)}
+.layout-top .best-body{gap:12px}
+.layout-top-direct .axis-row{flex-basis:100%;display:block;border-top:1px solid var(--line);padding-top:10px;margin-top:0}
+.layout-top-direct .axis-options{margin-top:6px;display:grid;gap:4px}
+.layout-top-direct .axis-options.levels{grid-template-columns:repeat(10,minmax(0,1fr));max-width:1000px}
+.layout-top-direct .axis-options.versions{grid-template-columns:repeat(5,minmax(0,1fr))}
+.layout-top-direct .axis-options:not(.levels):not(.versions){display:flex}
+.layout-top-direct .axis-options button{padding:5px 8px;min-width:0;min-height:32px}
+.layout-top-direct .controls{flex-shrink:0}
+.layout-sidebar .axis-options.versions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}
+.layout-sidebar .axis-options.versions button{min-width:0;white-space:normal;overflow-wrap:anywhere;padding:5px 6px;font-size:12px;min-height:34px;line-height:16px}
+.layout-sidebar:not(.narrow) .browse-tabs{grid-template-columns:1fr 1fr}
+.layout-sidebar:not(.narrow) .browse-tabs button{padding:8px 6px;font-size:12px;white-space:normal}
+.layout-sidebar .axis-options.versions{gap:4px}
+.layout-sidebar .axis-options.versions button{padding:4px 6px;min-height:30px}
+.best-app.narrow.layout-top-direct .axis-row{display:flex;gap:12px;align-items:center}
+</style>
+<header class="review"><h1>自己ベスト / 楽曲・譜面詳細：表示例</h1><p>左側で条件を選び、右側で自己ベストを確認します。行を選ぶと、譜面詳細へ進みます。</p><div class="review-controls"><div class="switch"><button data-layout="sidebar" aria-pressed="true">自己ベストB · 採用</button></div><label>画面<select id="size"><option value="1280">1280 × 760</option><option value="960">960 × 640</option></select></label><label>表示<select id="theme"><option value="light">ライト</option><option value="dark">ダーク</option></select></label><label>状態<select id="fixture"><option value="normal">通常</option><option value="long">長い曲名</option><option value="empty">記録なし</option></select></label><label>言語<select id="language"><option value="ja">日本語</option><option value="en">English</option><option value="ko">한국어</option></select></label></div><div class="direction" id="direction"></div></header>
+<div class="stage"><div id="best-window" class="app best-app"></div><p class="note-bar">表示を試すための画面です。記録や設定は変わりません。 <a href="screen-spec.md">画面仕様を確認</a></p></div>
 <script>
-  (() => {
-    const modeButtons = [...document.querySelectorAll('[data-mode]')];
-    const axisPanels = [...document.querySelectorAll('[data-axis-panel]')];
-    const styleButtons = [...document.querySelectorAll('[data-style]')];
-    const levelButtons = [...document.querySelectorAll('[data-level]')];
-    const versionButtons = [...document.querySelectorAll('[data-version]')];
-    const goalButtons = [...document.querySelectorAll('[data-goal]')];
-    const goalColumns = [...document.querySelectorAll('[data-goal-column]')];
-    const progressCard = document.getElementById('progress-card');
-    const progressTitle = document.getElementById('progress-title');
-    const resultCount = document.getElementById('result-count');
-    const resultContext = document.getElementById('result-context');
-    const footerRange = document.getElementById('footer-range');
-    const titleSearch = document.getElementById('title-search');
-    const selectionSummary = document.getElementById('selection-summary');
-    const selectionValue = document.getElementById('selection-value');
-    const changeAxisButton = document.getElementById('change-axis-button');
-    const resultActions = document.getElementById('result-actions');
-    const tableRows = [...document.querySelectorAll('tbody tr')];
-    const storageKey = 'ddrgp-chart-bests-mock-v10';
-    const goalScores = { AAA: 990000, 'AA+': 950000, AA: 900000 };
-    let activeMode = 'level';
-    let activeStyle = 'SP';
-    let activeLevel = '1';
-    let activeVersion = 'DDR GRAND PRIX';
-    let activeGoal = 'AAA';
-    let axisExpanded = false;
+'use strict';
+const words={ja:{home:'ホーム',best:'自己ベスト',history:'直近プレー履歴',flare:'フレアスキル',settings:'設定',data:'データ管理',monitor:'ゲーム待機中',reason:'DDR GRAND PRIXの起動を待っています。',level:'レベルから',version:'バージョンから',title:'曲名から',goal:'目標から',levelLabel:'レベル',versionLabel:'バージョン',goalLabel:'目標ランク',query:'曲名の一部',queryNote:'曲名検索では記録状況を集計しません',goalNote:'達成済み・記録なしを除き、目標まで近い順に表示',total:'対象譜面',recorded:'記録あり',unrecorded:'記録なし',clearCount:'CLEAR以上',fcCount:'FC以上',aaaCount:'AAA以上',charts:'譜面',sort:'並び順',song:'曲名',chart:'譜面',remaining:'目標まで',playCount:'プレー回数',last:'最終プレー',empty:'条件に合う譜面がありません。',back:'← 自己ベストに戻る',scoreBest:'通常スコアBEST',exBest:'EX SCORE BEST',updated:'更新',fullcombos:'フルコンボ回数',graph:'スコア推移',all:'全プレー',bestProgress:'自己ベスト推移',graphNote:'プレーごとの通常スコアと自己ベスト更新点（グラフは直近100プレー）',legend:'● 通常スコア　● 自己ベスト更新',latest:'最新プレー',scoreDelta:'通常スコア自己ベスト差',exDelta:'EXスコア自己ベスト差',chartHistory:'プレー履歴',played:'日時',scoreDiff:'SCORE差',exDiff:'EX差',initial:'初プレー',none:'まだプレーの記録がありません。',allShown:'全プレーを表示中',listHint:'行を選ぶと楽曲・譜面詳細を開きます'},en:{home:'Home',best:'Personal Bests',history:'Recent Play History',flare:'Flare Skill',settings:'Settings',data:'Data Management',monitor:'Waiting for game',reason:'Waiting for DDR GRAND PRIX to start.',level:'By level',version:'By version',title:'By song',goal:'By goal',levelLabel:'Level',versionLabel:'Version',goalLabel:'Target rank',query:'Part of song title',queryNote:'Record summaries are not shown for song search.',goalNote:'Unmet goals with recorded plays, nearest first',total:'Charts',recorded:'Recorded',unrecorded:'Unrecorded',clearCount:'CLEAR+',fcCount:'FC+',aaaCount:'AAA+',charts:'charts',sort:'Sort',song:'Song',chart:'Chart',remaining:'To goal',playCount:'Play count',last:'Last played',empty:'No charts match these conditions.',back:'← Back to Personal Bests',scoreBest:'SCORE BEST',exBest:'EX SCORE BEST',updated:'Updated',fullcombos:'Full combos',graph:'Score trend',all:'All plays',bestProgress:'Best progression',graphNote:'Scores and new bests, latest 100 plays in graph',legend:'● Score　● New personal best',latest:'Latest play',scoreDelta:'Score vs. personal best',exDelta:'EX vs. personal best',chartHistory:'Play history',played:'Date / time',scoreDiff:'SCORE diff',exDiff:'EX diff',initial:'First play',none:'No plays recorded yet.',allShown:'Showing all plays',listHint:'Select a row to open chart details'},ko:{home:'홈',best:'개인 최고 기록',history:'최근 플레이 기록',flare:'플레어 스킬',settings:'설정',data:'데이터 관리',monitor:'게임 대기 중',reason:'DDR GRAND PRIX 실행을 기다리고 있습니다.',level:'레벨별',version:'버전별',title:'곡명별',goal:'목표별',levelLabel:'레벨',versionLabel:'버전',goalLabel:'목표 랭크',query:'곡명의 일부',queryNote:'곡명 검색에서는 기록 현황을 집계하지 않습니다.',goalNote:'미달성 기록을 목표에 가까운 순서로 표시',total:'대상 채보',recorded:'기록 있음',unrecorded:'기록 없음',clearCount:'CLEAR 이상',fcCount:'FC 이상',aaaCount:'AAA 이상',charts:'채보',sort:'정렬',song:'곡명',chart:'채보',remaining:'목표까지',playCount:'플레이 횟수',last:'최근 플레이',empty:'조건에 맞는 채보가 없습니다.',back:'← 개인 최고 기록으로',scoreBest:'일반 점수 BEST',exBest:'EX SCORE BEST',updated:'갱신',fullcombos:'풀콤보 횟수',graph:'점수 추이',all:'모든 플레이',bestProgress:'최고 기록 추이',graphNote:'플레이 점수와 최고 기록 갱신점 (그래프는 최근 100회)',legend:'● 일반 점수　● 최고 기록 갱신',latest:'최근 플레이',scoreDelta:'일반 점수 최고 기록 차이',exDelta:'EX 최고 기록 차이',chartHistory:'플레이 기록',played:'일시',scoreDiff:'SCORE 차이',exDiff:'EX 차이',initial:'첫 플레이',none:'아직 플레이 기록이 없습니다.',allShown:'모든 플레이 표시 중',listHint:'행을 선택하면 채보 상세를 엽니다'}};
+const versionChoices=["DDR GRAND PRIX", "DDR WORLD", "DDR A3", "DDR A20 PLUS", "DDR A20", "DDR A", "DDR (2014)", "DDR (2013)", "X3 VS 2ndMIX", "X2", "X", "SuperNOVA 2", "SuperNOVA", "EXTREME", "DDRMAX2", "DDRMAX", "5thMIX", "4thMIX", "3rdMIX", "2ndMIX", "1st"];
+const seed=[['POSSESSION','DIFFICULT',14,988230,1398,'CLEAR','IX','X2'],['GHOST KINGDOM','EXPERT',14,977360,989,'GFC','IX','DDR A20'],['ミッドナイト☆WAR','EXPERT',14,985990,1410,'CLEAR','IX','DDR A'],['量子の海のリントヴルム','DIFFICULT',14,987570,1356,'GFC','IX','DDR (2014)'],['In The Breeze','CHALLENGE',14,981210,1257,'CLEAR','IX','DDR (2014)'],['風鈴花火','DIFFICULT',8,976550,705,'GFC','EX','DDR A20'],['IN BETWEEN','BASIC',7,999810,617,'PFC','EX','DDR A'],['未プレーのサンプル譜面','EXPERT',14,null,null,null,null,'DDR A20']];
+const charts=['SP','DP'].flatMap((style,s)=>seed.map((r,i)=>({id:s*8+i,song:r[0],difficulty:r[1],level:r[2],score:r[3],ex:r[4],clear:r[5],flare:r[6],version:r[7],style,played:r[3]!=null})));
+let state={layout:'sidebar',width:1280,height:760,theme:'light',fixture:'normal',language:'ja',mode:'level',style:'SP',level:14,version:'DDR A20',goal:'AAA',query:'',sort:'score-desc',page:'list',selected:0,graph:'all',listScroll:0};
+const q=new URLSearchParams(location.search);for(const k of ['theme','fixture','language','mode'])if(q.has(k))state[k]=q.get(k);if(q.get('width')==='960'){state.width=960;state.height=640;}if(q.get('page')==='detail')state.page='detail';
+const t=k=>words[state.language][k],fmt=n=>n==null?'—':n.toLocaleString('en-US'),esc=v=>String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const rank=n=>n==null?'—':n>=990000?'AAA':n>=980000?'AA+':n>=950000?'AA':'A';
+const diff=r=>'<span class="difficulty '+r.difficulty.toLowerCase()+'" title="'+r.style+' '+r.difficulty+'">'+r.difficulty+'</span>';
+function badge(v,cls=''){return v?'<span class="badge '+cls+(['EX','FLARE EX'].includes(v)?' flare-ex':'')+'">'+v+'</span>':'<span class="muted-value">—</span>';}
+function badges(r){return badge(r.played?rank(r.score):null)+badge(r.clear,r.clear==='GFC'?'gfc':r.clear==='PFC'?'':'clear')+badge(r.flare?'FLARE '+r.flare:null);}
+function data(){return charts.map(r=>({...r,played:r.played&&state.fixture!=='empty',score:state.fixture==='empty'?null:r.score,ex:state.fixture==='empty'?null:r.ex,clear:state.fixture==='empty'?null:r.clear,flare:state.fixture==='empty'?null:r.flare,song:state.fixture==='long'&&r.id%8===0?'アルストロメリア (walk with you remix) — 比較用の長い曲名':r.song}));}
+function filtered(){let rows=data().filter(r=>r.style===state.style);if(state.mode==='level')rows=rows.filter(r=>r.level===state.level);if(state.mode==='version')rows=rows.filter(r=>r.version===state.version);if(state.mode==='title')rows=rows.filter(r=>r.song.toLowerCase().includes(state.query.toLowerCase()));if(state.mode==='goal'){let target={AAA:990000,'AA+':980000,AA:950000}[state.goal];return rows.filter(r=>r.played&&r.score<target).map(r=>({...r,remaining:target-r.score})).sort((a,b)=>a.remaining-b.remaining);}return rows.sort((a,b)=>state.sort==='score-asc'?(a.score??0)-(b.score??0):state.sort==='title'?a.song.localeCompare(b.song):state.sort==='level'?a.level-b.level:state.sort==='latest'?b.id-a.id:state.sort==='count'?Number(b.played)-Number(a.played):(b.score??0)-(a.score??0));}
+function options(values,current,attr){return values.map(v=>'<option value="'+v+'" '+(String(current)===String(v)?'selected':'')+'>'+v+'</option>').join('');}
+function controls(){
+let axis='',direct=state.width>1100&&['top-direct','sidebar'].includes(state.layout);
+if(state.mode==='level')axis='<label>'+t('levelLabel')+(direct?'':' <select id="level-select">'+options(Array.from({length:19},(_,i)=>i+1),state.level)+'</select>')+'</label>'+(direct?'<div class="axis-options levels">'+Array.from({length:19},(_,i)=>'<button data-level="'+(i+1)+'" aria-pressed="'+(state.level===i+1)+'">'+(i+1)+'</button>').join('')+'</div>':'');
+if(state.mode==='version')axis='<label>'+t('versionLabel')+(direct?'':' <select id="version-select">'+options(versionChoices,state.version)+'</select>')+'</label>'+(direct?'<div class="axis-options versions">'+versionChoices.map(v=>'<button data-version="'+esc(v)+'" aria-pressed="'+(state.version===v)+'">'+esc(v)+'</button>').join('')+'</div>':'');
+if(state.mode==='goal')axis='<label>'+t('goalLabel')+'</label><div class="axis-options">'+['AAA','AA+','AA'].map(v=>'<button data-goal="'+v+'" aria-pressed="'+(state.goal===v)+'">'+v+'</button>').join('')+'</div><span class="axis-note">'+t('goalNote')+'</span>';
+if(state.mode==='title')axis='<label class="query-field">'+t('query')+' <input id="song-query" class="query-input" value="'+esc(state.query)+'" type="search"></label>';
+return '<section class="controls" aria-label="'+t('best')+'"><div class="filter-line"><div class="segments">'+['SP','DP'].map(v=>'<button data-style="'+v+'" aria-pressed="'+(state.style===v)+'">'+(v==='SP'?'SINGLE (SP)':'DOUBLE (DP)')+'</button>').join('')+'</div><div class="browse-tabs">'+['level','version','title','goal'].map(v=>'<button data-mode="'+v+'" aria-pressed="'+(state.mode===v)+'">'+t(v)+'</button>').join('')+'</div></div><div class="axis-row">'+axis+'</div></section>';
+}
+function progress(rows){if(!['level','version'].includes(state.mode))return '';let vals=[rows.length,rows.filter(r=>r.played).length,rows.filter(r=>!r.played).length,rows.filter(r=>r.played&&r.clear).length,rows.filter(r=>['GFC','PFC','FC'].includes(r.clear)).length,rows.filter(r=>r.played&&r.score>=990000).length];return '<section class="progress-summary"><h3>'+(state.mode==='level'?'Lv.'+state.level:state.version)+'</h3>'+['total','recorded','unrecorded','clearCount','fcCount','aaaCount'].map((k,i)=>'<div><span>'+t(k)+'</span><strong class="num">'+vals[i]+'</strong></div>').join('')+'</section>';}
+function table(rows){let goal=state.mode==='goal',side=state.layout==='sidebar'&&state.width>1100;let fixed=goal?[86,112,90,60,70,72,72,105]:[112,120,70,82,82,82,112];if(side)fixed=goal?[76,100,80,52,58,62,62,88]:[94,112,60,68,68,68,94];let widths='<col><col style="width:'+fixed[0]+'px"><col style="width:'+fixed[1]+'px">'+(goal?'<col style="width:'+fixed[2]+'px">':'')+fixed.slice(goal?3:2).map(n=>'<col style="width:'+n+'px">').join('');return '<table class="best-table"><colgroup>'+widths+'</colgroup><thead><tr>'+[t('song'),t('chart'),'BEST / EX',...(goal?[t('remaining')]:[]),'RANK','CLEAR','FLARE',t('playCount'),t('last')].map(v=>'<th>'+v+'</th>').join('')+'</tr></thead><tbody>'+rows.map(r=>'<tr data-chart="'+r.id+'" tabindex="0" aria-label="'+esc(r.song+' '+r.style+' '+r.difficulty+' Lv.'+r.level)+'"><td class="song-title" title="'+esc(r.song)+'">'+esc(r.song)+'</td><td>'+diff(r)+'<span class="chart-level">'+r.style+' · Lv.'+r.level+'</span></td><td class="table-score num"><strong>'+fmt(r.score)+'</strong><small>EX '+fmt(r.played?r.ex+12:null)+'</small></td>'+(goal?'<td class="goal-distance num">'+fmt(r.remaining)+'<small>'+state.goal+'</small></td>':'')+'<td>'+badge(r.played?rank(r.score):null)+'</td><td>'+badge(r.clear,r.clear==='GFC'?'gfc':r.clear==='PFC'?'':'clear')+'</td><td>'+badge(r.flare)+'</td><td class="num">'+(r.played?'3':'0')+'</td><td title="'+(r.played?'2026/10/18 14:26:12':'')+'">'+(r.played?'10/18 14:26':'—')+'</td></tr>').join('')+'</tbody></table>'+(rows.length?'':'<div class="no-records">'+t('empty')+'</div>');}
+function resultArea(rows){let sortText=state.language==='ja'?['スコアが高い順','スコアが低い順','曲名順','レベルが低い順','最近プレーした順','プレー回数が多い順']:state.language==='ko'?['점수 높은 순','점수 낮은 순','곡명순','레벨순','최근 플레이순','플레이 횟수순']:['Score, high to low','Score, low to high','Song title','Level','Latest play','Play count'];return '<section class="result-area"><div class="list-actions">'+(['level','version'].includes(state.mode)?'':'<strong>'+rows.length+' '+t('charts')+'</strong>')+''+(state.mode==='goal'?'':'<label class="sort-label" style="margin-left:auto">'+t('sort')+' <select id="sort">'+['score-desc','score-asc','title','level','latest','count'].map((v,i)=>'<option value="'+v+'" '+(state.sort===v?'selected':'')+'>'+sortText[i]+'</option>').join('')+'</select></label>')+'</div><div class="best-list">'+table(rows)+'</div></section>';}
+function plays(r){if(!r.played)return [];return [{score:r.score-1810,ex:r.ex-9,at:'2026/10/18 14:26:12',clear:'CLEAR',newBest:false,delta:-1810,exDelta:-21},{score:r.score,ex:r.ex,at:'2026/10/17 22:36:20',clear:r.clear,newBest:true,delta:1330,exDelta:-12},{score:r.score-1330,ex:r.ex+12,at:'2026/10/15 21:10:32',clear:'CLEAR',newBest:true,delta:null,exDelta:null}];}
+function graph(r){let p=plays(r).slice().reverse();if(state.graph==='best')p=p.filter(v=>v.newBest);if(!p.length)return '<div class="no-records">'+t('none')+'</div>';let max=r.score+800,min=r.score-2800,y=n=>120-(n-min)/(max-min)*90,x=i=>p.length===1?360:72+i*600/(p.length-1);return '<svg class="score-graph" viewBox="0 0 720 150" role="img" aria-label="'+t('graph')+'">'+[0,1,2].map(i=>{let v=min+i*(max-min)/2;return '<line class="gridline" x1="62" x2="700" y1="'+y(v)+'" y2="'+y(v)+'"/><text x="4" y="'+(y(v)+4)+'">'+fmt(Math.round(v))+'</text>';}).join('')+'<polyline class="line" points="'+p.map((v,i)=>x(i)+','+y(v.score)).join(' ')+'"/>'+p.map((v,i)=>'<circle class="'+(v.newBest?'best-dot':'normal-dot')+'" cx="'+x(i)+'" cy="'+y(v.score)+'" r="4"><title>'+v.at+' · '+fmt(v.score)+'</title></circle><text x="'+x(i)+'" y="143" text-anchor="middle">'+v.at.slice(5,10)+'</text>').join('')+'</svg>';}
+function detail(r){let p=plays(r),latest=p[0];return '<div class="detail-view"><section class="detail-summary"><div><div class="detail-identity">'+diff(r)+'<span>'+r.style+' / Lv.'+r.level+'</span></div><span class="caption">'+t('scoreBest')+'</span><div class="best-value num">'+fmt(r.score)+'</div><div class="updated">'+t('updated')+' '+(r.played?'2026/10/17 22:36:20':'—')+'</div><div class="detail-badges">'+badges(r)+'</div></div><div style="padding-top:36px"><span class="caption">'+t('exBest')+'</span><div class="best-ex-value num">'+fmt(r.played?r.ex+12:null)+'</div><div class="updated">'+t('updated')+' '+(r.played?'2026/10/15 21:10:32':'—')+'</div></div><div class="detail-statistics"><div><span class="caption">'+t('playCount')+'</span><strong class="num">'+p.length+'</strong></div><div><span class="caption">'+t('fullcombos')+'</span><strong class="num">'+(r.played&&['GFC','PFC','FC'].includes(r.clear)?1:0)+'</strong></div></div></section><div class="detail-middle"><section class="graph-section"><div class="graph-heading"><h3>'+t('graph')+'</h3><div class="graph-modes"><button data-graph="all" aria-pressed="'+(state.graph==='all')+'">'+t('all')+'</button><button data-graph="best" aria-pressed="'+(state.graph==='best')+'">'+t('bestProgress')+'</button></div></div><div class="caption">'+t('graphNote')+'</div>'+graph(r)+'<div class="graph-legend"><span>'+t('legend').split('　')[0]+'</span>　<span class="best-key">'+t('legend').split('　')[1]+'</span></div></section><section class="latest-chart-play"><h3>'+t('latest')+'</h3><span class="updated">'+(latest?latest.at:'—')+'</span><div class="latest-value num">'+fmt(latest?.score)+'</div><div class="latest-ex">EX SCORE <strong class="num">'+fmt(latest?.ex)+'</strong></div><div class="detail-badges">'+(latest?badge(rank(latest.score))+badge(latest.clear,'clear')+badge('FLARE '+r.flare):'')+'</div><div class="latest-delta"><span>'+t('scoreDelta')+'</span><strong class="num">'+(latest?'−1,810':'—')+'</strong><span>'+t('exDelta')+'</span><strong class="num">'+(latest?'−21':'—')+'</strong></div></section></div><section class="chart-history"><h3>'+t('chartHistory')+'</h3><span class="caption">'+(state.language==='ja'?'プレー'+p.length+'回':p.length+' '+t('all'))+'</span>'+(p.length?'<table class="best-table"><thead><tr>'+[t('played'),'SCORE','EX SCORE','RANK','CLEAR','FLARE',t('scoreDiff'),t('exDiff')].map(v=>'<th>'+v+'</th>').join('')+'</tr></thead><tbody>'+p.map(v=>'<tr><td title="'+v.at+'">'+v.at+'</td><td class="num">'+fmt(v.score)+'</td><td class="num">'+fmt(v.ex)+'</td><td>'+badge(rank(v.score))+'</td><td>'+badge(v.clear,v.clear==='GFC'?'gfc':v.clear==='PFC'?'':'clear')+'</td><td>'+badge('FLARE '+r.flare)+'</td><td class="num" title="'+(state.language==='ja'?'プレー前の自己ベストとの差':state.language==='en'?'Difference from the personal best before this play':'플레이 전 개인 최고 기록과의 차이')+'">'+(v.delta==null?t('initial'):(v.delta>0?'+':'')+fmt(v.delta))+'</td><td class="num" title="'+(state.language==='ja'?'プレー前の自己ベストとの差':state.language==='en'?'Difference from the personal best before this play':'플레이 전 개인 최고 기록과의 차이')+'">'+(v.exDelta==null?t('initial'):fmt(v.exDelta))+'</td></tr>').join('')+'</tbody></table>':'<p class="no-records">'+t('none')+'</p>')+'</section></div>';}
 
-    try {
-      const savedState = JSON.parse(localStorage.getItem(storageKey));
-      const availableVersions = versionButtons.map(button => button.dataset.version);
-      if (['level', 'version', 'title', 'goal'].includes(savedState?.mode)) activeMode = savedState.mode;
-      if (['SP', 'DP'].includes(savedState?.style)) activeStyle = savedState.style;
-      if (/^(?:[1-9]|1[0-9])$/.test(savedState?.level)) activeLevel = savedState.level;
-      if (availableVersions.includes(savedState?.version)) activeVersion = savedState.version;
-      if (Object.hasOwn(goalScores, savedState?.goal)) activeGoal = savedState.goal;
-    } catch {
-      // localStorageを利用できない場合も、既定値でモックを表示する。
-    }
-
-    const saveState = () => {
-      try {
-        localStorage.setItem(storageKey, JSON.stringify({
-          mode: activeMode,
-          style: activeStyle,
-          level: activeLevel,
-          version: activeVersion,
-          goal: activeGoal
-        }));
-      } catch {
-        // 状態保存に失敗してもモックの操作は継続する。
-      }
-    };
-
-    const seedFor = value => [...value].reduce((sum, character) => sum + character.charCodeAt(0), 0);
-
-    const updateMetrics = label => {
-      const seed = seedFor(`${label}-${activeStyle}`);
-      const total = 62 + (seed % 47);
-      const recorded = Math.max(1, total - (8 + seed % 20));
-      const values = {
-        total,
-        recorded,
-        missing: total - recorded,
-        clear: Math.max(0, recorded - (4 + seed % 7)),
-        fc: Math.floor(recorded * 0.28),
-        aaa: Math.floor(recorded * 0.11)
-      };
-
-      Object.entries(values).forEach(([name, value]) => {
-        document.querySelector(`[data-metric="${name}"]`).textContent = value;
-      });
-      resultCount.textContent = `表示 1〜${Math.min(50, total)} / 全${total}譜面`;
-      footerRange.textContent = `1〜${Math.min(50, total)}譜面`;
-    };
-
-    const syncControls = () => {
-      modeButtons.forEach(button => {
-        const selected = button.dataset.mode === activeMode;
-        button.classList.toggle('active', selected);
-        button.setAttribute('aria-selected', String(selected));
-      });
-      styleButtons.forEach(button => button.classList.toggle('active', button.dataset.style === activeStyle));
-      levelButtons.forEach(button => button.classList.toggle('active', button.dataset.level === activeLevel));
-      versionButtons.forEach(button => button.classList.toggle('active', button.dataset.version === activeVersion));
-      goalButtons.forEach(button => button.classList.toggle('active', button.dataset.goal === activeGoal));
-
-      const isTitleMode = activeMode === 'title';
-      const isGoalMode = activeMode === 'goal';
-      selectionSummary.hidden = isTitleMode;
-      axisPanels.forEach(panel => {
-        if (panel.dataset.axisPanel === 'title') {
-          panel.hidden = !isTitleMode;
-          return;
-        }
-        panel.hidden = isTitleMode || panel.dataset.axisPanel !== activeMode || !axisExpanded;
-      });
-
-      if (!isTitleMode) {
-        const isLevelMode = activeMode === 'level';
-        selectionValue.textContent = isLevelMode ? `Lv.${activeLevel}` : isGoalMode ? `${activeGoal}を目指す` : activeVersion;
-        changeAxisButton.textContent = isLevelMode ? 'レベルを変更' : isGoalMode ? '目標を変更' : 'バージョンを変更';
-        changeAxisButton.setAttribute('aria-expanded', String(axisExpanded));
-      }
-
-      resultActions.hidden = isGoalMode;
-    };
-
-    const refresh = () => {
-      syncControls();
-      goalColumns.forEach(column => { column.hidden = activeMode !== 'goal'; });
-      if (activeMode === 'title') {
-        const query = titleSearch.value.trim().toLocaleLowerCase();
-        let matches = 0;
-        progressCard.hidden = true;
-        tableRows.forEach(row => {
-          const matched = !query || row.dataset.songTitle.toLocaleLowerCase().includes(query);
-          row.hidden = !matched;
-          if (matched) matches += 1;
-        });
-        resultCount.textContent = query ? `${matches}譜面` : '曲名を入力';
-        resultContext.textContent = query ? `「${titleSearch.value.trim()}」の検索結果` : '検索条件なし';
-        footerRange.textContent = query ? `${matches}譜面` : '0譜面';
-        return;
-      }
-
-      if (activeMode === 'goal') {
-        const targetScore = goalScores[activeGoal];
-        let matches = 0;
-        progressCard.hidden = true;
-        tableRows.forEach(row => {
-          const score = Number(row.dataset.score);
-          const remaining = targetScore - score;
-          const matched = Number.isFinite(score) && remaining > 0;
-          row.hidden = !matched;
-          row.classList.remove('selected');
-          row.querySelector('.goal-distance').textContent = matched ? `あと ${remaining.toLocaleString('ja-JP')}点` : '';
-          if (matched) matches += 1;
-        });
-        const firstVisibleRow = tableRows.find(row => !row.hidden);
-        firstVisibleRow?.classList.add('selected');
-        resultCount.textContent = `${matches}譜面`;
-        resultContext.textContent = `${activeGoal}まで近い順（達成済み・記録なしを除く）`;
-        footerRange.textContent = `${matches}譜面`;
-        return;
-      }
-
-      tableRows.forEach((row, index) => {
-        row.hidden = false;
-        row.classList.toggle('selected', index === 0);
-      });
-      progressCard.hidden = false;
-      const label = activeMode === 'level' ? `Lv.${activeLevel}` : activeVersion;
-      progressTitle.textContent = `${label}・${activeStyle}の記録状況`;
-      resultContext.textContent = label;
-      updateMetrics(label);
-
-      if (activeMode === 'level') {
-        document.querySelectorAll('.chart-level').forEach(element => {
-          element.textContent = `Lv.${activeLevel}`;
-        });
-      }
-    };
-
-    modeButtons.forEach(button => {
-      button.addEventListener('click', () => {
-        activeMode = button.dataset.mode;
-        axisExpanded = false;
-        saveState();
-        refresh();
-        if (activeMode === 'title') titleSearch.focus();
-      });
-    });
-
-    styleButtons.forEach(button => {
-      button.addEventListener('click', () => {
-        activeStyle = button.dataset.style;
-        saveState();
-        refresh();
-      });
-    });
-
-    levelButtons.forEach(button => {
-      button.addEventListener('click', () => {
-        activeLevel = button.dataset.level;
-        axisExpanded = false;
-        saveState();
-        refresh();
-      });
-    });
-
-    versionButtons.forEach(button => {
-      button.addEventListener('click', () => {
-        activeVersion = button.dataset.version;
-        axisExpanded = false;
-        saveState();
-        refresh();
-      });
-    });
-
-    goalButtons.forEach(button => {
-      button.addEventListener('click', () => {
-        activeGoal = button.dataset.goal;
-        axisExpanded = false;
-        saveState();
-        refresh();
-      });
-    });
-
-    changeAxisButton.addEventListener('click', () => {
-      axisExpanded = !axisExpanded;
-      refresh();
-    });
-
-    titleSearch.addEventListener('input', refresh);
-    refresh();
-  })();
-</script>
-
-</body>
-</html>
+// 画面で使う日本語（内部の識別子は維持）
+Object.assign(words.en,{history:'Play history',data:'Manage records',scoreBest:'Best score',exBest:'Best EX SCORE',graph:'Score history',bestProgress:'Best updates only',graphNote:'Graph: last 100 plays',scoreDelta:'Change from best before this play (score)',exDelta:'Change from best before this play (EX)',queryNote:'',listHint:'',allShown:''});
+Object.assign(words.ko,{history:'플레이 기록',data:'기록 관리',scoreBest:'스코어 최고 기록',exBest:'EX SCORE 최고 기록',graph:'스코어 변화',bestProgress:'최고 기록 갱신만',graphNote:'그래프: 최근 100회 플레이',scoreDelta:'플레이 전 최고 기록과의 차이 (스코어)',exDelta:'플레이 전 최고 기록과의 차이 (EX)',queryNote:'',listHint:'',allShown:''});
+Object.assign(words.ja,{"history":"プレー履歴","data":"記録の管理","monitor":"ゲーム待機中","queryNote":"","goalNote":"記録のある未達成の譜面を、目標に近い順に表示","scoreBest":"スコアの自己ベスト","exBest":"EX SCOREの自己ベスト","graph":"スコアの変化","bestProgress":"更新したプレーだけ","graphNote":"グラフは直近100回分","scoreDelta":"プレー前の自己ベストとの差（スコア）","exDelta":"プレー前の自己ベストとの差（EX）","allShown":"","listHint":""});
+function render(){let app=document.getElementById('best-window'),rows=filtered(),r=data().find(v=>v.id===state.selected);app.className='app best-app layout-'+state.layout+(state.layout==='top-direct'?' layout-top':'')+(state.width<=1100?' narrow':'')+(state.theme==='dark'?' dark':'');app.style.width=state.width+'px';app.style.height=state.height+'px';document.documentElement.lang=state.language;document.querySelectorAll('[data-layout]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.layout===state.layout)));for(let k of ['theme','fixture','language'])document.getElementById(k).value=state[k];document.getElementById('size').value=String(state.width);document.getElementById('direction').textContent=state.page==='detail'?'譜面詳細：曲・譜面と2種類の自己ベストを先に確認。通常スコアBESTとEX BESTの更新日時は別々に表示し、推移・最新プレー・履歴へ続きます。':'B：候補を左へ並べ、1クリックで切り替えます。一覧の高さを保ち、曲名の横幅を使います。小窓では上部の選択欄へ切り替わります。';app.innerHTML='<div class="chrome"><svg class="app-mark" viewBox="0 0 16 16"><path d="M2 12h3V8h3V4h3V1l4 4h-3v8H2z"/></svg>GP Score Log<div class="window-actions"><span>−</span><span>□</span><span>×</span></div></div><nav class="nav"><span class="brand">GP Score Log</span><div class="nav-group">'+['home','best','history','flare'].map(k=>'<button data-nav="'+k+'" class="'+(k==='best'?'active':'')+'">'+t(k)+'</button>').join('')+'</div><div class="nav-group utility">'+['settings','data'].map(k=>'<button data-nav="'+k+'">'+t(k)+'</button>').join('')+'</div></nav><div class="monitor"><span class="state">'+t('monitor')+'</span><span>'+t('reason')+'</span></div><div class="viewport"><main class="workspace"><div class="page-head"><h2>'+(state.page==='detail'?esc(r.song):t('best'))+'</h2>'+(state.page==='detail'?'<button class="text-link" data-back>'+t('back')+'</button>':'')+'</div>'+(state.page==='list'?'<div class="best-body">'+controls()+progress(rows)+resultArea(rows)+'</div>':detail(r))+'</main></div>';if(state.page==='list')document.querySelector('.best-list').scrollTop=state.listScroll;}
+function openChart(id){state.listScroll=document.querySelector('.best-list').scrollTop;state.selected=id;state.page='detail';state.graph='all';render();}
+document.querySelector('.review').addEventListener('click',e=>{let b=e.target.closest('[data-layout]');if(b){state.layout=b.dataset.layout;render();}});for(let k of ['theme','fixture','language'])document.getElementById(k).addEventListener('change',e=>{state[k]=e.target.value;render();});document.getElementById('size').addEventListener('change',e=>{state.width=Number(e.target.value);state.height=state.width===960?640:760;render();});document.getElementById('best-window').addEventListener('click',e=>{let b=e.target.closest('button'),r=e.target.closest('[data-chart]');if(r){openChart(Number(r.dataset.chart));return;}if(!b)return;let d=b.dataset;if(d.back!=null){state.page='list';render();document.querySelector('[data-chart="'+state.selected+'"]')?.focus({preventScroll:true});return;}if(d.nav==='home'){location.href='home-mock.html';return;}if(d.nav==='history'){location.href='play-history-mock.html';return;}if(d.nav==='best'){state.page='list';render();return;}for(let key of ['mode','style','goal','graph','version'])if(d[key]!=null){state[key]=d[key];state.listScroll=0;render();document.querySelector('[data-'+key+'="'+CSS.escape(d[key])+'"]')?.focus({preventScroll:true});return;}if(d.level){state.level=Number(d.level);state.listScroll=0;render();document.querySelector('[data-level="'+d.level+'"]')?.focus({preventScroll:true});}});document.getElementById('best-window').addEventListener('change',e=>{if(e.target.id==='level-select')state.level=Number(e.target.value);if(e.target.id==='version-select')state.version=e.target.value;if(e.target.id==='sort')state.sort=e.target.value;state.listScroll=0;render();});document.getElementById('best-window').addEventListener('input',e=>{if(e.target.id==='song-query'){let caret=e.target.selectionStart;state.query=e.target.value;state.listScroll=0;render();let input=document.getElementById('song-query');input.focus();input.setSelectionRange(caret,caret);}});document.getElementById('best-window').addEventListener('keydown',e=>{let row=e.target.closest('[data-chart]');if(row&&(e.key==='Enter'||e.key===' ')){e.preventDefault();openChart(Number(row.dataset.chart));}if(row&&['ArrowDown','ArrowUp'].includes(e.key)){e.preventDefault();let next=e.key==='ArrowDown'?row.nextElementSibling:row.previousElementSibling;next?.focus();}});render();
+</script></html>

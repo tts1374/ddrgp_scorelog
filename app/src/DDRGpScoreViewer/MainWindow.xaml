@@ -966,7 +966,9 @@
                 </Border>
                 <StackPanel>
                 <TextBlock x:Name="PageTitle" Text="ホーム" FontSize="30" FontWeight="SemiBold"
-                           TextTrimming="CharacterEllipsis" ToolTip="{Binding ElementName=PageSubtitle, Path=Text}" />
+                           >
+                    <TextBlock.Style><Style TargetType="TextBlock"><Setter Property="TextTrimming" Value="CharacterEllipsis" /><Setter Property="ToolTip" Value="{Binding ElementName=PageSubtitle, Path=Text}" /><Style.Triggers><DataTrigger Binding="{Binding ElementName=ContentTabs, Path=SelectedIndex}" Value="2"><Setter Property="ToolTip" Value="{Binding ElementName=PageTitle, Path=Text}" /><Setter Property="TextWrapping" Value="Wrap" /><Setter Property="TextTrimming" Value="None" /></DataTrigger></Style.Triggers></Style></TextBlock.Style>
+                </TextBlock>
                 <TextBlock x:Name="PageSubtitle" Visibility="Collapsed"
                            Text="今日のプレー状況と最近の記録を確認できます"
                            Foreground="{DynamicResource TextSecondaryBrush}"
@@ -1102,232 +1104,68 @@
                     </ScrollViewer>
                 </TabItem>
                 <TabItem>
-                    <Grid MinWidth="0" MinHeight="0">
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="Auto" />
-                            <RowDefinition Height="*" MinHeight="260" />
-                        </Grid.RowDefinitions>
-
-                        <Border Grid.Row="0" Style="{StaticResource CardStyle}" Padding="0,8">
-                            <StackPanel>
-                                <WrapPanel>
-                                    <Border Background="{DynamicResource SegmentBackgroundBrush}" CornerRadius="8" Padding="3"
-                                            Margin="0,0,16,4">
-                                        <StackPanel Orientation="Horizontal">
-                                            <Button x:Name="BestSingleButton" Content="SINGLE (SP)"
-                                                    Tag="Selected" Style="{StaticResource BestSegmentButtonStyle}"
-                                                    TabIndex="100"
-                                                    Click="BestPlayStyle_Click" />
-                                            <Button x:Name="BestDoubleButton" Content="DOUBLE (DP)"
-                                                    Tag="" Style="{StaticResource BestSegmentButtonStyle}"
-                                                    TabIndex="101"
-                                                    Click="BestPlayStyle_Click" />
+                    <Grid x:Name="BestLayoutGrid" MinWidth="0" MinHeight="0">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="232" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+                        <Border x:Name="BestConditionsPanel" Grid.RowSpan="4" BorderBrush="{DynamicResource BorderDefaultBrush}" BorderThickness="0,0,1,0" Padding="0,0,20,0" Margin="0,0,24,0">
+                            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                                <StackPanel>
+                                    <WrapPanel x:Name="BestConditionHeader">
+                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                                            <Button x:Name="BestSingleButton" MinWidth="0" Width="92" Padding="4,8" FontSize="12" Content="SINGLE (SP)" Style="{StaticResource BestSegmentButtonStyle}" TabIndex="100" Click="BestPlayStyle_Click" />
+                                            <Button x:Name="BestDoubleButton" MinWidth="0" Width="92" Padding="4,8" FontSize="12" Content="DOUBLE (DP)" Style="{StaticResource BestSegmentButtonStyle}" TabIndex="101" Click="BestPlayStyle_Click" />
                                         </StackPanel>
-                                    </Border>
-                                    <StackPanel Margin="0,0,12,4" VerticalAlignment="Center">
-                                        <WrapPanel>
-                                            <Button x:Name="BestLevelModeButton" Content="レベルから"
-                                                    Tag="Selected" Style="{StaticResource BestBrowseTabButtonStyle}"
-                                                    TabIndex="102"
-                                                    Click="BestBrowseMode_Click" />
-                                            <Button x:Name="BestVersionModeButton" Content="バージョンから"
-                                                    Tag="" Style="{StaticResource BestBrowseTabButtonStyle}"
-                                                    TabIndex="103"
-                                                    Click="BestBrowseMode_Click" />
-                                            <Button x:Name="BestTitleModeButton" Content="曲名から"
-                                                    Tag="" Style="{StaticResource BestBrowseTabButtonStyle}"
-                                                    TabIndex="104"
-                                                    Click="BestBrowseMode_Click" />
-                                            <Button x:Name="BestGoalModeButton" Content="目標から"
-                                                    Tag="" Style="{StaticResource BestBrowseTabButtonStyle}"
-                                                    TabIndex="105"
-                                                    Click="BestBrowseMode_Click" />
+                                        <WrapPanel x:Name="BestModeButtons" Margin="0,0,0,12">
+                                            <Button x:Name="BestLevelModeButton" MinWidth="0" Width="88" Margin="0,0,4,4" Padding="2,8" FontSize="12" Content="レベルから" Style="{StaticResource BestBrowseTabButtonStyle}" TabIndex="102" Click="BestBrowseMode_Click" />
+                                            <Button x:Name="BestVersionModeButton" MinWidth="0" Width="88" Margin="0,0,4,4" Padding="2,8" FontSize="12" Content="バージョンから" Style="{StaticResource BestBrowseTabButtonStyle}" TabIndex="103" Click="BestBrowseMode_Click" />
+                                            <Button x:Name="BestTitleModeButton" MinWidth="0" Width="88" Margin="0,0,4,4" Padding="2,8" FontSize="12" Content="曲名から" Style="{StaticResource BestBrowseTabButtonStyle}" TabIndex="104" Click="BestBrowseMode_Click" />
+                                            <Button x:Name="BestGoalModeButton" MinWidth="0" Width="88" Margin="0,0,4,4" Padding="2,8" FontSize="12" Content="目標から" Style="{StaticResource BestBrowseTabButtonStyle}" TabIndex="105" Click="BestBrowseMode_Click" />
                                         </WrapPanel>
-                                    </StackPanel>
-                                    <Border x:Name="BestSelectionSummaryPanel"
-                                            BorderBrush="{DynamicResource BorderDefaultBrush}"
-                                            BorderThickness="0"
-                                            Padding="0" VerticalAlignment="Center"
-                                            Margin="0,0,0,4">
-                                        <Grid>
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="Auto" />
-                                                <ColumnDefinition Width="Auto" />
-                                            </Grid.ColumnDefinitions>
-                                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                                <TextBlock Text="選択中"
-                                                           Foreground="{DynamicResource TextSecondaryBrush}"
-                                                           FontSize="12" FontWeight="SemiBold" />
-                                                <TextBlock Text="{Binding BestSelectionDisplay}"
-                                                           Foreground="{DynamicResource TextPrimaryBrush}"
-                                                           FontWeight="Bold"
-                                                           Margin="8,0,0,0" />
-                                            </StackPanel>
-                                            <Button x:Name="BestAxisChangeButton" Grid.Column="1"
-                                                    Content="レベルを変更" Margin="12,0,0,0"
-                                                    Style="{StaticResource BestAxisChangeButtonStyle}"
-                                                    TabIndex="106"
-                                                    HorizontalAlignment="Right"
-                                                    Click="BestAxisChange_Click" />
-                                        </Grid>
-                                    </Border>
-
-                                </WrapPanel>
-
-                                <Border x:Name="BestAxisPanel"
-                                        BorderBrush="{DynamicResource BorderDefaultBrush}"
-                                        BorderThickness="0,1,0,0"
-                                        Padding="0,12,0,0"
-                                        Margin="0,10,0,0"
-                                        Visibility="Collapsed">
-                                    <StackPanel>
+                                    </WrapPanel>
+                                    <StackPanel x:Name="BestAxisPanel">
                                         <StackPanel x:Name="BestTitleSearchPanel" Visibility="Collapsed">
-                                            <Grid Margin="0,0,0,10">
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="*" />
-                                                    <ColumnDefinition Width="Auto" />
-                                                </Grid.ColumnDefinitions>
-                                                <TextBlock Text="曲名を入力" FontSize="13" FontWeight="Bold" />
-                                                <TextBlock Grid.Column="1"
-                                                           Text="曲名検索では記録状況を集計しません"
-                                                           Foreground="{DynamicResource TextSecondaryBrush}"
-                                                           FontSize="12" VerticalAlignment="Center" />
-                                            </Grid>
-                                            <TextBlock Text="曲名の一部"
-                                                       Foreground="{DynamicResource TextSecondaryBrush}"
-                                                       FontSize="12" FontWeight="SemiBold"
-                                                       Margin="0,0,0,4" />
-                                            <TextBox x:Name="BestTitleSearchTextBox"
-                                                     Text="{Binding BestSongQuery, UpdateSourceTrigger=PropertyChanged}"
-                                                     Style="{StaticResource BestTitleSearchTextBoxStyle}"
-                                                     TabIndex="107"
-                                                     HorizontalAlignment="Stretch"
-                                                     ToolTip="曲名の一部で検索" />
-                                        </StackPanel>
-                                        <StackPanel x:Name="BestGoalOptionsPanel" Visibility="Collapsed">
-                                            <Grid Margin="0,0,0,10">
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="*" />
-                                                    <ColumnDefinition Width="Auto" />
-                                                </Grid.ColumnDefinitions>
-                                                <TextBlock Text="目標ランクを選択" FontSize="13" FontWeight="Bold" />
-                                                <TextBlock Grid.Column="1"
-                                                           Text="達成済み・記録なしを除き、目標まで近い順に表示"
-                                                           Foreground="{DynamicResource TextSecondaryBrush}"
-                                                           FontSize="12" VerticalAlignment="Center" />
-                                            </Grid>
-                                            <ListBox x:Name="BestGoalOptionsGrid"
-                                                     ItemsSource="{Binding BestGoalOptions}"
-                                                     TabIndex="107"
-                                                     SelectedValuePath="Code"
-                                                     SelectedValue="{Binding BestGoalFilter, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                                     SelectionChanged="BestGoalOptionsGrid_SelectionChanged"
-                                                     ItemContainerStyle="{StaticResource BestAxisOptionStyle}"
-                                                     BorderThickness="0"
-                                                     Background="Transparent"
-                                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                                                     ScrollViewer.VerticalScrollBarVisibility="Disabled">
-                                                <ListBox.ItemsPanel>
-                                                    <ItemsPanelTemplate>
-                                                        <WrapPanel />
-                                                    </ItemsPanelTemplate>
-                                                </ListBox.ItemsPanel>
-                                                <ListBox.ItemTemplate>
-                                                    <DataTemplate>
-                                                        <TextBlock Text="{Binding Display}" />
-                                                    </DataTemplate>
-                                                </ListBox.ItemTemplate>
-                                            </ListBox>
+                                            <TextBlock Text="曲名の一部" Style="{StaticResource ScorebookCaptionStyle}" Margin="0,0,0,6" />
+                                            <TextBox x:Name="BestTitleSearchTextBox" Text="{Binding BestSongQuery, UpdateSourceTrigger=PropertyChanged}" Style="{StaticResource BestTitleSearchTextBoxStyle}" TabIndex="107" ToolTip="曲名の一部で検索" />
                                         </StackPanel>
                                         <StackPanel x:Name="BestLevelOptionsPanel">
-                                            <Grid Margin="0,0,0,10">
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="*" />
-                                                    <ColumnDefinition Width="Auto" />
-                                                </Grid.ColumnDefinitions>
-                                                <TextBlock Text="レベルを選択" FontSize="13" FontWeight="Bold" />
-                                                <TextBlock Grid.Column="1" Text="レベル別に記録状況を確認"
-                                                           Foreground="{DynamicResource TextSecondaryBrush}"
-                                                           FontSize="12" VerticalAlignment="Center" />
-                                            </Grid>
-                                            <ListBox x:Name="BestLevelOptionsGrid"
-                                                     ItemsSource="{Binding BestLevelOptions}"
-                                                     TabIndex="107"
-                                                     SelectedValuePath="Code"
-                                                     SelectedValue="{Binding BestLevelFilter, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                                     SelectionChanged="BestLevelOptionsGrid_SelectionChanged"
-                                                     ItemContainerStyle="{StaticResource BestAxisOptionStyle}"
-                                                     BorderThickness="0"
-                                                     Background="Transparent"
-                                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                                                     ScrollViewer.VerticalScrollBarVisibility="Disabled">
-                                                <ListBox.ItemsPanel>
-                                                    <ItemsPanelTemplate>
-                                                        <WrapPanel />
-                                                    </ItemsPanelTemplate>
-                                                </ListBox.ItemsPanel>
-                                                <ListBox.ItemTemplate>
-                                                    <DataTemplate>
-                                                        <TextBlock Text="{Binding Display}" />
-                                                    </DataTemplate>
-                                                </ListBox.ItemTemplate>
+                                            <TextBlock Text="レベル" Style="{StaticResource ScorebookCaptionStyle}" Margin="0,0,0,8" />
+                                            <ComboBox x:Name="BestLevelComboBox" ItemsSource="{Binding BestLevelOptions}" DisplayMemberPath="Display" SelectedValuePath="Code" SelectedValue="{Binding BestLevelFilter, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" MinWidth="160" TabIndex="107" />
+                                            <ListBox x:Name="BestLevelOptionsGrid" ItemsSource="{Binding BestLevelOptions}" SelectedValuePath="Code" SelectedValue="{Binding BestLevelFilter, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"  BorderThickness="0" Background="Transparent" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Disabled" TabIndex="107">
+                                                <ListBox.ItemContainerStyle><Style TargetType="ListBoxItem" BasedOn="{StaticResource BestAxisOptionStyle}"><Setter Property="Width" Value="40" /><Setter Property="Padding" Value="2,6" /><Setter Property="FontSize" Value="11" /></Style></ListBox.ItemContainerStyle><ListBox.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ListBox.ItemsPanel>
+                                                <ListBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Display}" TextWrapping="Wrap" /></DataTemplate></ListBox.ItemTemplate>
                                             </ListBox>
                                         </StackPanel>
-                                        <StackPanel x:Name="BestVersionOptionsPanel" Visibility="Collapsed"
-                                                    Margin="0,2,0,0">
-                                            <Grid Margin="0,0,0,10">
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="*" />
-                                                    <ColumnDefinition Width="Auto" />
-                                                </Grid.ColumnDefinitions>
-                                                <TextBlock Text="バージョンを選択" FontSize="13" FontWeight="Bold" />
-                                                <TextBlock Grid.Column="1" Text="バージョン別に記録状況を確認"
-                                                           Foreground="{DynamicResource TextSecondaryBrush}"
-                                                           FontSize="12" VerticalAlignment="Center" />
-                                            </Grid>
-                                            <ListBox x:Name="BestVersionOptionsGrid"
-                                                     ItemsSource="{Binding BestVersionOptions}"
-                                                     TabIndex="107"
-                                                     SelectedValuePath="Code"
-                                                     SelectedValue="{Binding BestVersionFilter, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                                                     SelectionChanged="BestVersionOptionsGrid_SelectionChanged"
-                                                     ItemContainerStyle="{StaticResource BestAxisOptionStyle}"
-                                                     BorderThickness="0"
-                                                     Background="Transparent"
-                                                     ScrollViewer.HorizontalScrollBarVisibility="Disabled"
-                                                     ScrollViewer.VerticalScrollBarVisibility="Disabled">
-                                                <ListBox.ItemsPanel>
-                                                    <ItemsPanelTemplate>
-                                                        <WrapPanel />
-                                                    </ItemsPanelTemplate>
-                                                </ListBox.ItemsPanel>
-                                                <ListBox.ItemTemplate>
-                                                    <DataTemplate>
-                                                        <TextBlock Text="{Binding Display}" />
-                                                    </DataTemplate>
-                                                </ListBox.ItemTemplate>
+                                        <StackPanel x:Name="BestVersionOptionsPanel">
+                                            <TextBlock Text="バージョン" Style="{StaticResource ScorebookCaptionStyle}" Margin="0,0,0,8" />
+                                            <ComboBox x:Name="BestVersionComboBox" ItemsSource="{Binding BestVersionOptions}" DisplayMemberPath="Display" SelectedValuePath="Code" SelectedValue="{Binding BestVersionFilter, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" MinWidth="160" TabIndex="107" />
+                                            <ListBox x:Name="BestVersionOptionsGrid" ItemsSource="{Binding BestVersionOptions}" SelectedValuePath="Code" SelectedValue="{Binding BestVersionFilter, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"  BorderThickness="0" Background="Transparent" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Disabled" TabIndex="107">
+                                                <ListBox.ItemContainerStyle><Style TargetType="ListBoxItem" BasedOn="{StaticResource BestAxisOptionStyle}"><Setter Property="Width" Value="88" /><Setter Property="MinHeight" Value="28" /><Setter Property="Padding" Value="2,4" /><Setter Property="FontSize" Value="11" /><Setter Property="Margin" Value="0,0,4,4" /></Style></ListBox.ItemContainerStyle><ListBox.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ListBox.ItemsPanel>
+                                                <ListBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Display}" TextWrapping="Wrap" /></DataTemplate></ListBox.ItemTemplate>
+                                            </ListBox>
+                                        </StackPanel>
+                                        <StackPanel x:Name="BestGoalOptionsPanel">
+                                            <TextBlock Text="目標" Style="{StaticResource ScorebookCaptionStyle}" Margin="0,0,0,8" />
+                                            <ComboBox x:Name="BestGoalComboBox" ItemsSource="{Binding BestGoalOptions}" DisplayMemberPath="Display" SelectedValuePath="Code" SelectedValue="{Binding BestGoalFilter, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" MinWidth="160" TabIndex="107" />
+                                            <ListBox x:Name="BestGoalOptionsGrid" ItemsSource="{Binding BestGoalOptions}" SelectedValuePath="Code" SelectedValue="{Binding BestGoalFilter, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" ItemContainerStyle="{StaticResource BestAxisOptionStyle}" BorderThickness="0" Background="Transparent" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Disabled" TabIndex="107">
+                                                <ListBox.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ListBox.ItemsPanel>
+                                                <ListBox.ItemTemplate><DataTemplate><TextBlock Text="{Binding Display}" TextWrapping="Wrap" /></DataTemplate></ListBox.ItemTemplate>
                                             </ListBox>
                                         </StackPanel>
                                     </StackPanel>
-                                </Border>
-                            </StackPanel>
+                                </StackPanel>
+                            </ScrollViewer>
                         </Border>
 
-                        <Border x:Name="BestProgressCard" Grid.Row="1" Style="{StaticResource CardStyle}" Padding="10,4"
+                        <Border x:Name="BestProgressCard" Grid.Column="1" Grid.Row="1" Style="{StaticResource CardStyle}" Padding="10,4"
                                 Margin="0,0,0,4"
                                 Visibility="{Binding BestProgressVisibility, Mode=OneWay}">
                             <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="185" />
-                                    <ColumnDefinition Width="*" />
-                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
                                 <TextBlock Text="{Binding BestProgressTitle, Mode=OneWay}"
                                            FontSize="13" FontWeight="Bold"
                                            VerticalAlignment="Center"
                                            TextWrapping="Wrap" />
-                                <UniformGrid Grid.Column="1" Columns="6">
+                                <UniformGrid x:Name="BestProgressMetrics" Grid.Row="1" Margin="0,8,0,6" Columns="6">
                                     <StackPanel Margin="8,0,0,0">
                                         <TextBlock Text="対象譜面" Foreground="{DynamicResource TextSecondaryBrush}"
                                                    FontSize="12" />
@@ -1368,7 +1206,7 @@
                             </Grid>
                         </Border>
 
-                        <Grid x:Name="BestResultSummary" Grid.Row="2" Margin="0,0,0,8">
+                        <Grid x:Name="BestResultSummary" Grid.Column="1" Grid.Row="2" Margin="0,0,0,8">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
@@ -1391,30 +1229,31 @@
                             </StackPanel>
                         </Grid>
 
-                        <Grid Grid.Row="3">
+                        <Grid x:Name="BestResultsPanel" Grid.Column="1" Grid.Row="3">
                             <Border Style="{StaticResource CardStyle}" Padding="0">
                                 <DataGrid x:Name="BestChartGrid" TabIndex="109" ItemsSource="{Binding ChartBests}"
                                           SelectedItem="{Binding SelectedChartBest, Mode=OneWay}"
                                           SelectionChanged="BestChartGrid_SelectionChanged"
                                           PreviewMouseLeftButtonDown="BestChartGrid_PreviewMouseLeftButtonDown"
                                           ScrollViewer.ScrollChanged="BestChartGrid_ScrollChanged"
+                                          CanUserSortColumns="False"
                                           RowHeight="42" ColumnHeaderHeight="32"
                                           HeadersVisibility="Column"
                                           ScrollViewer.HorizontalScrollBarVisibility="Auto"
                                           Style="{StaticResource ViewerDataGridStyle}">
                                     <DataGrid.Resources>
                                         <Style TargetType="DataGridCell" BasedOn="{StaticResource {x:Type DataGridCell}}">
-                                            <Setter Property="Padding" Value="10,2" />
+                                            <Setter Property="Padding" Value="6,2" />
                                         </Style>
                                     </DataGrid.Resources>
                                     <DataGrid.Columns>
                                     <DataGridTextColumn ElementStyle="{StaticResource TableTextStyle}" Header="曲名" Binding="{Binding SongTitle, Mode=OneWay}"
-                                                        Width="2.3*" MinWidth="190" />
+                                                        Width="2.3*" MinWidth="145" />
                                     <DataGridTemplateColumn Header="譜面" MinWidth="85" Width="1.3*">
                                         <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
                                                 <StackPanel>
-                                                    <Border Style="{StaticResource DifficultyBadgeStyle}">
+                                                    <Border Style="{StaticResource DifficultyBadgeStyle}" Padding="5,1">
                                                         <Grid>
                                                             <TextBlock x:Name="FullDifficulty" Text="{Binding DifficultyDisplay, Mode=OneWay}"
                                                                        Style="{StaticResource DifficultyBadgeTextStyle}" />
@@ -1436,7 +1275,7 @@
                                             </DataTemplate>
                                         </DataGridTemplateColumn.CellTemplate>
                                     </DataGridTemplateColumn>
-                                    <DataGridTemplateColumn Header="SCORE / EX" MinWidth="115" Width="1.5*">
+                                    <DataGridTemplateColumn Header="BEST / EX" MinWidth="115" Width="1.5*">
                                         <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
                                                 <StackPanel>
@@ -1450,8 +1289,16 @@
                                             </DataTemplate>
                                         </DataGridTemplateColumn.CellTemplate>
                                     </DataGridTemplateColumn>
-                                    <DataGridTextColumn ElementStyle="{StaticResource TableTextStyle}" Header="目標まで" Binding="{Binding GoalRemainingScoreDisplay, Mode=OneWay}"
-                                                        Width="1.2*" Visibility="Collapsed" />
+                                    <DataGridTextColumn Header="目標まで" MinWidth="110" Binding="{Binding GoalRemainingScoreDisplay, Mode=OneWay}"
+                                                        Width="1.2*" Visibility="Collapsed">
+                                        <DataGridTextColumn.ElementStyle>
+                                            <Style TargetType="TextBlock" BasedOn="{StaticResource TableTextStyle}">
+                                                <Setter Property="FontSize" Value="12" />
+                                                <Setter Property="TextWrapping" Value="Wrap" />
+                                                <Setter Property="TextTrimming" Value="None" />
+                                            </Style>
+                                        </DataGridTextColumn.ElementStyle>
+                                    </DataGridTextColumn>
                                     <DataGridTemplateColumn Header="RANK" MinWidth="74" Width="0.8*">
                                         <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
@@ -1482,7 +1329,7 @@
                                             </DataTemplate>
                                         </DataGridTemplateColumn.CellTemplate>
                                     </DataGridTemplateColumn>
-                                    <DataGridTextColumn ElementStyle="{StaticResource TableTextStyle}" Header="プレー回数" Binding="{Binding PlayCountDisplay, Mode=OneWay}"
+                                    <DataGridTextColumn ElementStyle="{StaticResource TableTextStyle}" Header="回数" Binding="{Binding PlayCountDisplay, Mode=OneWay}"
                                                         Width="1.05*" />
                                     <DataGridTextColumn ElementStyle="{StaticResource TableTextStyle}" Header="最終プレー" Binding="{Binding LastPlayedAtDisplay, Mode=OneWay}"
                                                         Width="1.25*" />
@@ -1537,20 +1384,14 @@
                                             <ColumnDefinition Width="1*" MinWidth="0" />
                                         </Grid.ColumnDefinitions>
                                         <StackPanel Grid.Column="0" MinWidth="0" Margin="0,0,18,0">
-                                            <TextBlock Text="通常スコアBEST"
+                                            <TextBlock TextWrapping="Wrap" Text="スコアの自己ベスト"
                                                        ToolTip="通常スコアとEXスコアの自己ベストは、それぞれの更新日時を基準に表示しています。"
                                                        Foreground="{DynamicResource TextSecondaryBrush}"
                                                        FontSize="12" FontWeight="SemiBold" />
                                             <TextBlock Text="{Binding ChartDetailBestScoreDisplay, Mode=OneWay}"
                                                        FontFamily="Segoe UI Variable, Segoe UI" Typography.NumeralAlignment="Tabular" FontSize="46" FontWeight="SemiBold" Foreground="{DynamicResource AccentPrimaryBrush}"
                                                        Margin="0,3,0,0" />
-                                            <WrapPanel Margin="0,6,0,0">
-                                                <TextBlock Text="EX SCORE "
-                                                           Foreground="{DynamicResource TextSecondaryBrush}"
-                                                           FontWeight="SemiBold" />
-                                                <TextBlock Text="{Binding ChartDetailBestExScoreDisplay, Mode=OneWay}"
-                                                           FontFamily="Segoe UI Variable, Segoe UI" Typography.NumeralAlignment="Tabular" FontWeight="Bold" />
-                                            </WrapPanel>
+                                            <TextBlock Text="{Binding ChartDetailScoreBestAtDisplay, Mode=OneWay}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,4,0,0" />
                                             <WrapPanel Margin="0,10,0,0">
                                                 <Border Style="{StaticResource RankBadgeStyle}"
                                                         Tag="{Binding ChartDetailRankBadgeGroup, Mode=OneWay}"
@@ -1590,54 +1431,17 @@
                                             </WrapPanel>
                                         </StackPanel>
 
-                                        <UniformGrid Grid.Column="1" Columns="2" MinWidth="0">
-                                            <Border Background="Transparent"
-                                                    BorderBrush="{DynamicResource BorderDefaultBrush}"
-                                                    BorderThickness="0,0,0,1" CornerRadius="0"
-                                                    Padding="11,9" Margin="0,0,6,6">
-                                                <StackPanel>
-                                                    <TextBlock Text="プレー回数" Foreground="{DynamicResource TextSecondaryBrush}"
-                                                               FontSize="12" FontWeight="SemiBold" />
-                                                    <TextBlock Text="{Binding ChartDetailPlayCountDisplay, Mode=OneWay}"
-                                                               FontWeight="Bold" Margin="0,3,0,0" />
-                                                </StackPanel>
-                                            </Border>
-                                            <Border Background="Transparent"
-                                                    BorderBrush="{DynamicResource BorderDefaultBrush}"
-                                                    BorderThickness="0,0,0,1" CornerRadius="0"
-                                                    Padding="11,9" Margin="6,0,0,6">
-                                                <StackPanel>
-                                                    <TextBlock Text="フルコンボ回数" Foreground="{DynamicResource TextSecondaryBrush}"
-                                                               FontSize="12" FontWeight="SemiBold" />
-                                                    <TextBlock Text="{Binding ChartDetailFullComboCountDisplay, Mode=OneWay}"
-                                                               FontWeight="Bold" Margin="0,3,0,0" />
-                                                </StackPanel>
-                                            </Border>
-                                            <Border Background="Transparent"
-                                                    BorderBrush="{DynamicResource BorderDefaultBrush}"
-                                                    BorderThickness="0,0,0,1" CornerRadius="0"
-                                                    Padding="11,9" Margin="0,6,6,0">
-                                                <StackPanel>
-                                                    <TextBlock Text="通常スコアBEST更新" Foreground="{DynamicResource TextSecondaryBrush}"
-                                                               FontSize="12" FontWeight="SemiBold" />
-                                                    <TextBlock Text="{Binding ChartDetailScoreBestAtDisplay, Mode=OneWay}"
-                                                               FontSize="12" FontWeight="Bold" Margin="0,3,0,0"
-                                                               TextWrapping="Wrap" />
-                                                </StackPanel>
-                                            </Border>
-                                            <Border Background="Transparent"
-                                                    BorderBrush="{DynamicResource BorderDefaultBrush}"
-                                                    BorderThickness="0,0,0,1" CornerRadius="0"
-                                                    Padding="11,9" Margin="6,6,0,0">
-                                                <StackPanel>
-                                                    <TextBlock Text="EXスコアBEST更新" Foreground="{DynamicResource TextSecondaryBrush}"
-                                                               FontSize="12" FontWeight="SemiBold" />
-                                                    <TextBlock Text="{Binding ChartDetailExScoreBestAtDisplay, Mode=OneWay}"
-                                                               FontSize="12" FontWeight="Bold" Margin="0,3,0,0"
-                                                               TextWrapping="Wrap" />
-                                                </StackPanel>
-                                            </Border>
-                                        </UniformGrid>
+                                        <StackPanel Grid.Column="1">
+                                            <TextBlock Text="EX SCOREの自己ベスト" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" />
+                                            <TextBlock Text="{Binding ChartDetailBestExScoreDisplay, Mode=OneWay}" FontFamily="Segoe UI Variable, Segoe UI" FontSize="34" FontWeight="SemiBold" Foreground="{DynamicResource AccentPrimaryBrush}" Margin="0,6,0,0" />
+                                            <TextBlock Text="{Binding ChartDetailExScoreBestAtDisplay, Mode=OneWay}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" Margin="0,8,0,0" />
+                                            <WrapPanel Margin="0,16,0,0">
+                                                <TextBlock Text="プレー回数" Style="{StaticResource ScorebookCaptionStyle}" Margin="0,0,8,0" />
+                                                <TextBlock Text="{Binding ChartDetailPlayCountDisplay, Mode=OneWay}" FontWeight="SemiBold" Margin="0,0,16,0" />
+                                                <TextBlock Text="フルコンボ回数" Style="{StaticResource ScorebookCaptionStyle}" Margin="0,0,8,0" />
+                                                <TextBlock Text="{Binding ChartDetailFullComboCountDisplay, Mode=OneWay}" FontWeight="SemiBold" />
+                                            </WrapPanel>
+                                        </StackPanel>
                                     </Grid>
                                 </Grid>
                             </Border>
@@ -1645,8 +1449,8 @@
                             <Border Style="{StaticResource CardStyle}" Padding="0" Margin="0,0,0,16">
                                 <StackPanel>
                                     <StackPanel Margin="18,15,18,0">
-                                        <TextBlock Text="スコア推移" FontSize="16" FontWeight="Bold" />
-                                        <TextBlock Text="プレーごとの通常スコアと自己ベスト更新点（グラフは直近100プレー）"
+                                        <TextBlock Text="スコアの変化" FontSize="16" FontWeight="Bold" />
+                                        <TextBlock Text="グラフは直近100回分"
                                                    Foreground="{DynamicResource TextSecondaryBrush}"
                                                    FontSize="12" Margin="0,3,0,0" />
                                     </StackPanel>
@@ -1656,15 +1460,15 @@
                                             <ColumnDefinition Width="250" MinWidth="210" />
                                         </Grid.ColumnDefinitions>
                                         <StackPanel Grid.Column="0" MinWidth="0" Margin="0,0,18,0">
-                                            <StackPanel Orientation="Horizontal" Background="{DynamicResource SegmentBackgroundBrush}"
+                                            <WrapPanel Background="{DynamicResource SegmentBackgroundBrush}"
                                                         HorizontalAlignment="Left" Margin="0,0,0,8">
                                                 <Button x:Name="ChartDetailAllPlaysButton" Content="全プレー" TabIndex="101"
                                                         Tag="Selected" Style="{StaticResource BestStyleButtonStyle}"
                                                         Click="ChartDetailGraphMode_Click" />
-                                                <Button x:Name="ChartDetailBestProgressionButton" Content="自己ベスト推移" TabIndex="102"
+                                                <Button x:Name="ChartDetailBestProgressionButton" Content="更新したプレーだけ" TabIndex="102"
                                                         Tag="" Style="{StaticResource BestStyleButtonStyle}"
                                                         Click="ChartDetailGraphMode_Click" />
-                                            </StackPanel>
+                                            </WrapPanel>
                                             <WrapPanel Margin="0,0,0,4">
                                                 <TextBlock Text="● 通常スコア" Foreground="{DynamicResource AccentPrimaryBrush}"
                                                            FontSize="12" FontWeight="SemiBold" Margin="0,0,14,0" />
@@ -1707,7 +1511,7 @@
                                                                FontSize="12" TextWrapping="Wrap" TextAlignment="Right" />
                                                 </Grid>
                                                 <TextBlock Text="{Binding ChartDetailLatestPlay.ScoreDisplay, Mode=OneWay}"
-                                                           FontFamily="Segoe UI Variable, Segoe UI" Typography.NumeralAlignment="Tabular" FontSize="26" FontWeight="Bold"
+                                                           FontFamily="Segoe UI Variable, Segoe UI" Typography.NumeralAlignment="Tabular" FontSize="32" FontWeight="Bold"
                                                            Margin="0,12,0,0" />
                                                 <WrapPanel Margin="0,4,0,0">
                                                     <TextBlock Text="EX SCORE " Foreground="{DynamicResource TextSecondaryBrush}"
@@ -1739,7 +1543,7 @@
                                                                 <ColumnDefinition Width="*" />
                                                                 <ColumnDefinition Width="Auto" />
                                                             </Grid.ColumnDefinitions>
-                                                            <TextBlock Text="通常スコア差" Foreground="{DynamicResource TextSecondaryBrush}"
+                                                            <TextBlock Text="プレー前の自己ベストとの差（スコア）" TextWrapping="Wrap" Margin="0,0,8,0" Foreground="{DynamicResource TextSecondaryBrush}"
                                                                        FontSize="12" FontWeight="SemiBold" />
                                                             <TextBlock Grid.Column="1"
                                                                        Text="{Binding ChartDetailLatestPlay.ScoreBestDeltaDisplay, Mode=OneWay}"
@@ -1751,7 +1555,7 @@
                                                                 <ColumnDefinition Width="*" />
                                                                 <ColumnDefinition Width="Auto" />
                                                             </Grid.ColumnDefinitions>
-                                                            <TextBlock Text="EXスコア差" Foreground="{DynamicResource TextSecondaryBrush}"
+                                                            <TextBlock Text="プレー前の自己ベストとの差（EX）" TextWrapping="Wrap" Margin="0,0,8,0" Foreground="{DynamicResource TextSecondaryBrush}"
                                                                        FontSize="12" FontWeight="SemiBold" />
                                                             <TextBlock Grid.Column="1"
                                                                        Text="{Binding ChartDetailLatestPlay.ExScoreBestDeltaDisplay, Mode=OneWay}"
@@ -1769,11 +1573,11 @@
                             <Border Style="{StaticResource CardStyle}" Padding="0">
                                 <StackPanel>
                                     <StackPanel Margin="18,15,18,12">
-                                        <TextBlock Text="プレー履歴" FontSize="16" FontWeight="Bold" />
+                                        <TextBlock Text="プレー履歴" FontSize="16" FontWeight="Bold" /><TextBlock Text="差はプレー前の自己ベストとの比較" Style="{StaticResource ScorebookCaptionStyle}" TextWrapping="Wrap" Margin="0,4,0,0" />
                                         <TextBlock Foreground="{DynamicResource TextSecondaryBrush}"
                                                    FontSize="12" Margin="0,3,0,0">
-                                            <Run Text="この譜面の保存済みプレー " />
-                                            <Run Text="{Binding ChartDetailHistoryCountDisplay, Mode=OneWay}" />
+                                            <Run Text="表示中のプレー " />
+                                            <Run Text="{Binding ChartDetailHistoryLoadMoreHintDisplay, Mode=OneWay}" />
                                         </TextBlock>
                                     </StackPanel>
                                     <TextBlock Text="未プレーのため、記録・推移・履歴はありません。"
@@ -1787,9 +1591,9 @@
                                               ScrollViewer.VerticalScrollBarVisibility="Disabled"
                                               Style="{StaticResource ViewerDataGridStyle}">
                                         <DataGrid.Columns>
-                                            <DataGridTextColumn ElementStyle="{StaticResource TableTextStyle}" Header="日時"
+                                            <DataGridTextColumn Header="日時"
                                                                 Binding="{Binding Play.PlayedAtDisplay, Mode=OneWay}"
-                                                                Width="1.35*" />
+                                                                Width="1.6*"><DataGridTextColumn.ElementStyle><Style TargetType="TextBlock" BasedOn="{StaticResource TableTextStyle}"><Setter Property="TextWrapping" Value="Wrap" /><Setter Property="ToolTip" Value="{Binding Play.PlayedAtDisplay}" /></Style></DataGridTextColumn.ElementStyle></DataGridTextColumn>
                                             <DataGridTextColumn ElementStyle="{StaticResource TableTextStyle}" Header="SCORE"
                                                                 Binding="{Binding ScoreDisplay, Mode=OneWay}"
                                                                 Width="1*" />
@@ -1855,11 +1659,7 @@
                                                 Style="{StaticResource HomeSectionLinkStyle}"
                                                 Visibility="{Binding ChartDetailLoadMoreVisibility, Mode=OneWay}"
                                                 Click="ChartDetailLoadMore_Click" />
-                                        <TextBlock Text="{Binding ChartDetailHistoryLoadMoreHintDisplay, Mode=OneWay}"
-                                                   Foreground="{DynamicResource TextSecondaryBrush}"
-                                                   FontSize="12"
-                                                   VerticalAlignment="Center"
-                                                   Margin="12,0,0,0" />
+
                                     </StackPanel>
                                 </StackPanel>
                             </Border>
@@ -1921,9 +1721,9 @@
                                     </GroupStyle>
                                 </DataGrid.GroupStyle>
                                 <DataGrid.Columns>
-                                    <DataGridTextColumn ElementStyle="{StaticResource HistoryTimeTextStyle}" Header="日時" Binding="{Binding HistoryTimeDisplay, Mode=OneWay}" Width="64" />
-                                    <DataGridTextColumn ElementStyle="{StaticResource TableTextStyle}" Header="曲名" Binding="{Binding SongTitle, Mode=OneWay}" MinWidth="120" Width="*" />
-                                    <DataGridTemplateColumn Header="譜面" Width="116">
+                                    <DataGridTextColumn ElementStyle="{StaticResource HistoryTimeTextStyle}" Header="日時" Binding="{Binding HistoryTimeDisplay, Mode=OneWay}" MinWidth="64" Width="64" />
+                                    <DataGridTextColumn ElementStyle="{StaticResource TableTextStyle}" Header="曲名" Binding="{Binding SongTitle, Mode=OneWay}" MinWidth="220" Width="*" />
+                                    <DataGridTemplateColumn Header="譜面" MinWidth="116" Width="SizeToCells">
                                         <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
                                                 <StackPanel ToolTip="{Binding ChartDisplay}">
@@ -1937,9 +1737,9 @@
                                             </DataTemplate>
                                         </DataGridTemplateColumn.CellTemplate>
                                     </DataGridTemplateColumn>
-                                    <DataGridTextColumn ElementStyle="{StaticResource HistoryNumberTextStyle}" HeaderStyle="{StaticResource HistoryNumberHeaderStyle}" Header="SCORE" Binding="{Binding ScoreDisplay, Mode=OneWay}" Width="88" />
-                                    <DataGridTextColumn ElementStyle="{StaticResource HistoryNumberTextStyle}" HeaderStyle="{StaticResource HistoryNumberHeaderStyle}" Header="EX SCORE" Binding="{Binding ExScoreDisplay, Mode=OneWay}" Width="80" />
-                                    <DataGridTemplateColumn Header="ランク" Width="64">
+                                    <DataGridTextColumn ElementStyle="{StaticResource HistoryNumberTextStyle}" HeaderStyle="{StaticResource HistoryNumberHeaderStyle}" Header="SCORE" Binding="{Binding ScoreDisplay, Mode=OneWay}" MinWidth="88" Width="88" />
+                                    <DataGridTextColumn ElementStyle="{StaticResource HistoryNumberTextStyle}" HeaderStyle="{StaticResource HistoryNumberHeaderStyle}" Header="EX SCORE" Binding="{Binding ExScoreDisplay, Mode=OneWay}" MinWidth="80" Width="80" />
+                                    <DataGridTemplateColumn Header="ランク" MinWidth="64" Width="Auto">
                                         <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
                                                 <ContentControl Content="{Binding}"
@@ -1949,7 +1749,7 @@
                                             </DataTemplate>
                                         </DataGridTemplateColumn.CellTemplate>
                                     </DataGridTemplateColumn>
-                                    <DataGridTemplateColumn Header="CLEAR" MinWidth="80" Width="88">
+                                    <DataGridTemplateColumn Header="CLEAR" MinWidth="88" Width="Auto">
                                         <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
                                                 <ContentControl Content="{Binding}"
@@ -1959,7 +1759,7 @@
                                             </DataTemplate>
                                         </DataGridTemplateColumn.CellTemplate>
                                     </DataGridTemplateColumn>
-                                    <DataGridTemplateColumn Header="FLARE" Width="102">
+                                    <DataGridTemplateColumn Header="FLARE" MinWidth="102" Width="Auto">
                                         <DataGridTemplateColumn.CellTemplate>
                                             <DataTemplate>
                                                 <ContentControl Content="{Binding}"

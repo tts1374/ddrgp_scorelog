@@ -349,12 +349,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public IReadOnlyList<LocalizedOption> BestSortOptions { get; } =
     [
-        Localization.Option(BestSortScoreDescending, "スコア（高い順）"),
-        Localization.Option(BestSortScoreAscending, "スコア（低い順）"),
-        Localization.Option(BestSortTitleAscending, "曲名（昇順）"),
-        Localization.Option(BestSortLevelAscending, "レベル（昇順）"),
-        Localization.Option(BestSortLastPlayedDescending, "最終プレー（新しい順）"),
-        Localization.Option(BestSortPlayCountDescending, "プレー回数（多い順）"),
+        Localization.Option(BestSortScoreDescending, "スコアが高い順"),
+        Localization.Option(BestSortScoreAscending, "スコアが低い順"),
+        Localization.Option(BestSortTitleAscending, "曲名順"),
+        Localization.Option(BestSortLevelAscending, "レベルが低い順"),
+        Localization.Option(BestSortLastPlayedDescending, "最近プレーした順"),
+        Localization.Option(BestSortPlayCountDescending, "プレー回数が多い順"),
     ];
 
     public IReadOnlyList<LocalizedOption> BestGoalOptions { get; } =
@@ -778,9 +778,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
             ? System.Windows.Visibility.Visible
             : System.Windows.Visibility.Collapsed;
 
-    public string ChartDetailHistoryLoadMoreHintDisplay => CanLoadMoreChartDetailHistory
-        ? Localization.Get("続きを見ると次の10プレーを表示")
-        : Localization.Format("全{0}プレーを表示中", ChartDetailTotalCount);
+    public string ChartDetailHistoryLoadMoreHintDisplay =>
+        Localization.Format("{0} / {1}プレー", ChartDetailDisplayedCount, ChartDetailTotalCount);
 
     public string ChartDetailSongTitle => selectedChartBest?.SongTitle ?? "—";
 
@@ -1014,7 +1013,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
             : System.Windows.Visibility.Visible;
 
     public System.Windows.Visibility BestEmptyStateVisibility =>
-        BestBrowseMode == UserSettings.GoalBrowseMode && ChartBestTotalCount == 0
+        ChartBestTotalCount == 0
             ? System.Windows.Visibility.Visible
             : System.Windows.Visibility.Collapsed;
 
@@ -1075,8 +1074,6 @@ public sealed class MainViewModel : INotifyPropertyChanged
         ? BestBrowseMode is UserSettings.TitleBrowseMode or UserSettings.GoalBrowseMode
             ? Localization.Get("該当する譜面はありません")
             : Localization.Format("表示 {0}譜面 / 全{1}譜面", 0, 0)
-        : BestBrowseMode == UserSettings.TitleBrowseMode
-            ? Localization.Format("{0}譜面", ChartBestTotalCount)
         : Localization.Format(
             "表示 1〜{0} / 全{1}譜面",
             ChartBestDisplayedCount,
