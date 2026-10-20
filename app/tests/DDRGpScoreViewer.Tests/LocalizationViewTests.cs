@@ -27,6 +27,229 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
     : IClassFixture<LocalizationApplicationFixture>
 {
     [Theory]
+    [InlineData(1280, 760, true, false)]
+    [InlineData(960, 640, true, true)]
+    [InlineData(960, 640, false, false)]
+    public void Settings_keyboard_focus_follows_local_web_and_save_order(
+        double width, double height, bool registered, bool expandAccount)
+    {
+        using var fixture = new DatabaseFixture();
+        applicationFixture.Run(() =>
+        {
+            MainWindow? window = null;
+            try
+            {
+                PrepareStartupResources();
+                var paths = StartupPaths(fixture);
+                if (registered)
+                {
+                    new FileWebPlayerIdentityStore(paths.WebPlayerIdentityPath, paths.WebPlayerCredentialPath)
+                        .SaveRegistered("p_XXXXXXXXXXXXXXXXXXXXXX", "test-credential", "Player");
+                }
+                window = new MainWindow(paths)
+                {
+                    MinWidth = width,
+                    MinHeight = height,
+                    Width = width,
+                    Height = height,
+                };
+                window.Show();
+                window.SettingsNavigation.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                window.ViewModel.ApplyWebBestSyncState(new WebBestSyncSnapshot(
+                    true, false, WebBestSyncStatus.Idle, null, 0, null, null, []));
+                window.WebConnectionExpander.IsExpanded = expandAccount;
+                DrainDispatcher(window.Dispatcher);
+                var checkBoxes = FindVisualChildren<CheckBox>(window.LocalSettingsPanel).ToArray();
+                var selectors = FindVisualChildren<ComboBox>(window.LocalSettingsPanel).ToArray();
+                var expected = new List<Control>
+                {
+                    checkBoxes[0], checkBoxes[1], window.SettingsSinglePlayStyleButton,
+                    window.SettingsDoublePlayStyleButton, selectors[0], selectors[1], selectors[2],
+                    window.ResetSettingsButton,
+                };
+                expected.AddRange(registered
+                    ? [window.WebBestSyncToggle, window.SyncWebBestsNowButton,
+                        window.OpenPublicPlayerPageButton, window.OpenWebProfileButton]
+                    : [window.ConnectWebAccountButton]);
+                Assert.True(expected[0].Focus());
+                var visited = new List<UIElement> { expected[0] };
+                void Next()
+                {
+                    Assert.True(((UIElement)Keyboard.FocusedElement).MoveFocus(
+                        new TraversalRequest(FocusNavigationDirection.Next)));
+                    DrainDispatcher(window.Dispatcher);
+                    visited.Add((UIElement)Keyboard.FocusedElement);
+                }
+                foreach (var control in expected.Skip(1))
+                {
+                    Next();
+                    Assert.Same(control, Keyboard.FocusedElement);
+                }
+                Next();
+                Assert.True(window.WebConnectionExpander.IsKeyboardFocusWithin);
+                if (expandAccount)
+                {
+                    Next();
+                    Assert.Same(window.GoogleSettingsButton, Keyboard.FocusedElement);
+                }
+                Next();
+                Assert.Same(window.SaveSettingsButton, Keyboard.FocusedElement);
+                foreach (var control in visited.AsEnumerable().Reverse().Skip(1))
+                {
+                    Assert.True(((UIElement)Keyboard.FocusedElement).MoveFocus(
+                        new TraversalRequest(FocusNavigationDirection.Previous)));
+                    DrainDispatcher(window.Dispatcher);
+                    Assert.Same(control, Keyboard.FocusedElement);
+                }
+            }
+            finally
+            {
+                window?.PrepareForApplicationExit();
+                window?.Close();
+            }
+        });
+    }
+
+    [Theory]
+    [InlineData(1280, 760)]
+    [InlineData(960, 640)]
+    public void Records_keyboard_focus_follows_copy_details_and_image_order(double width, double height)
+    {
+        using var fixture = new DatabaseFixture();
+        applicationFixture.Run(() =>
+        {
+            MainWindow? window = null;
+            try
+            {
+                PrepareStartupResources();
+                window = new MainWindow(StartupPaths(fixture))
+                {
+                    MinWidth = width,
+                    MinHeight = height,
+                    Width = width,
+                    Height = height,
+                };
+                window.ViewModel.Load(fixture.ScorePath, fixture.MasterPath, fixture.CatalogPath, persist: false);
+                window.Show();
+                window.DataManagementNavigation.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                DrainDispatcher(window.Dispatcher);
+                Assert.True(window.SaveRecordCopyButton.Focus());
+                var visited = new List<UIElement> { window.SaveRecordCopyButton };
+                void Next()
+                {
+                    Assert.True(((UIElement)Keyboard.FocusedElement).MoveFocus(
+                        new TraversalRequest(FocusNavigationDirection.Next)));
+                    DrainDispatcher(window.Dispatcher);
+                    visited.Add((UIElement)Keyboard.FocusedElement);
+                }
+                Next();
+                Assert.Same(window.RestoreRecordCopyButton, Keyboard.FocusedElement);
+                Next();
+                Assert.True(window.RecordInfoExpander.IsKeyboardFocusWithin);
+                Next();
+                Assert.True(window.ImageRequirementsExpander.IsKeyboardFocusWithin);
+                Next();
+                Assert.Same(window.SelectResultImagesButton, Keyboard.FocusedElement);
+                foreach (var control in visited.AsEnumerable().Reverse().Skip(1))
+                {
+                    Assert.True(((UIElement)Keyboard.FocusedElement).MoveFocus(
+                        new TraversalRequest(FocusNavigationDirection.Previous)));
+                    DrainDispatcher(window.Dispatcher);
+                    Assert.Same(control, Keyboard.FocusedElement);
+                }
+            }
+            finally
+            {
+                window?.PrepareForApplicationExit();
+                window?.Close();
+            }
+        });
+    }
+
+    [Theory]
+    [InlineData("ja", "light", 1280, 760)]
+    [InlineData("en", "dark", 960, 640)]
+    [InlineData("ko", "light", 960, 640)]
+    public void Settings_and_records_keep_save_fixed_and_supplements_reachable(
+        string language, string theme, double width, double height)
+    {
+        using var fixture = new DatabaseFixture();
+        fixture.AddPlay("saved", "2026-10-18T14:26:12+09:00", 980000, 1300);
+        fixture.ExecuteScoreSql("UPDATE plays SET created_at = '2026-10-20T10:00:00+09:00'");
+        applicationFixture.Run(() =>
+        {
+            MainWindow? window = null;
+            try
+            {
+                PrepareStartupResources();
+                Localization.Configure(language);
+                ThemeManager.Apply(theme);
+                // Keep the requested logical size even on a smaller CI desktop.
+                window = new MainWindow(StartupPaths(fixture))
+                {
+                    MinWidth = width,
+                    MinHeight = height,
+                    Width = width,
+                    Height = height,
+                };
+                window.ViewModel.Load(fixture.ScorePath, fixture.MasterPath, fixture.CatalogPath, persist: false);
+                window.Show();
+                window.SettingsNavigation.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                window.WebConnectionExpander.IsExpanded = true;
+                DrainDispatcher(window.Dispatcher);
+                Assert.Equal(width, window.ActualWidth);
+                Assert.Equal(height, window.ActualHeight);
+                var savePosition = window.SettingsSaveBar.TranslatePoint(new Point(), window);
+                window.ViewModel.StartMonitoringOnLaunch = !window.ViewModel.StartMonitoringOnLaunch;
+                window.SettingsBodyScrollViewer.ScrollToEnd();
+                DrainDispatcher(window.Dispatcher);
+                Assert.Equal(savePosition, window.SettingsSaveBar.TranslatePoint(new Point(), window));
+                Assert.True(savePosition.Y + window.SettingsSaveBar.ActualHeight <= window.ActualHeight);
+                Assert.False(string.IsNullOrWhiteSpace(window.ViewModel.SettingsStatusMessage));
+                Assert.True(window.SaveSettingsButton.IsVisible);
+                Assert.Equal(0, window.SettingsBodyScrollViewer.ScrollableWidth);
+                Assert.Equal(window.SettingsBodyScrollViewer.ScrollableHeight, window.SettingsBodyScrollViewer.VerticalOffset);
+                Assert.Equal(width <= 1100 ? 1 : 0, Grid.GetRow(window.WebSettingsCard));
+                Assert.Equal(width <= 1100 ? 0 : 1, Grid.GetColumn(window.WebSettingsCard));
+                Assert.Equal(window.ViewModel.CanBeginWebAuthorization, window.ConnectWebAccountButton.IsEnabled);
+                Assert.Equal(window.ViewModel.CanToggleWebSync, window.WebBestSyncToggle.IsEnabled);
+                Assert.Equal(window.FindResource("TextPrimaryBrush"), window.WebConnectionExpander.Foreground);
+                foreach (var checkBox in FindVisualChildren<CheckBox>(window.LocalSettingsPanel))
+                {
+                    Assert.Equal(window.FindResource("TextPrimaryBrush"), checkBox.Foreground);
+                }
+
+                window.DataManagementNavigation.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                window.RecordInfoExpander.IsExpanded = true;
+                window.ImageRequirementsExpander.IsExpanded = true;
+                DrainDispatcher(window.Dispatcher);
+                window.RecordsBodyScrollViewer.ScrollToEnd();
+                DrainDispatcher(window.Dispatcher);
+                Assert.Equal(0, window.RecordsBodyScrollViewer.ScrollableWidth);
+                Assert.Equal(window.RecordsBodyScrollViewer.ScrollableHeight, window.RecordsBodyScrollViewer.VerticalOffset);
+                Assert.Equal(width <= 1100 ? 1 : 0, Grid.GetRow(window.ImageImportCard));
+                Assert.Equal(window.ViewModel.CanManagePersonalData, window.SaveRecordCopyButton.IsEnabled);
+                Assert.Equal(window.ViewModel.CanManagePersonalData, window.RestoreRecordCopyButton.IsEnabled);
+                Assert.Equal(window.ViewModel.CanStartScreenshotImport, window.SelectResultImagesButton.IsEnabled);
+                Assert.Equal(window.FindResource("TextPrimaryBrush"), window.RecordInfoExpander.Foreground);
+                Assert.Equal(window.FindResource("TextPrimaryBrush"), window.ImageRequirementsExpander.Foreground);
+                Assert.Contains("2026/10/20", window.ViewModel.DataManagementLastSavedDisplay);
+                Assert.DoesNotContain("2026/10/18", window.ViewModel.DataManagementLastSavedDisplay);
+                var texts = FindVisualChildren<TextBlock>(window).Select(text => text.Text).ToArray();
+                Assert.Contains(Localization.Get("PNG・1280×720の画像が使えます。"), texts);
+                Assert.Contains(Localization.Get("コピーから戻すと、今の記録がその内容に置き換わります。"), texts);
+            }
+            finally
+            {
+                window?.PrepareForApplicationExit();
+                window?.Close();
+                ThemeManager.Apply(UserSettings.LightTheme);
+                Localization.Configure(UserSettings.JapaneseLanguage);
+            }
+        });
+    }
+
+    [Theory]
     [InlineData("ja", "light", 1280, 760)]
     [InlineData("en", "dark", 1280, 760)]
     [InlineData("ko", "light", 1280, 760)]
@@ -2063,6 +2286,16 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
                 Assert.True(window.WebBestSyncToggle.IsVisible);
                 Assert.True(window.WebBestSyncToggle.IsEnabled);
                 Assert.Equal(Localization.Get("連携を再開する"), window.WebBestSyncToggle.Content);
+                Assert.Equal(Localization.Get("連携を再開する"),
+                    FindVisualChildren<TextBlock>(window.WebBestSyncToggle).Single().Text);
+                window.ViewModel.ApplyWebBestSyncState(new WebBestSyncSnapshot(
+                    true, false, WebBestSyncStatus.Idle, null, 0, null, null, []));
+                DrainDispatcher(window.Dispatcher);
+                Assert.Equal(Localization.Get("連携を停止する"),
+                    FindVisualChildren<TextBlock>(window.WebBestSyncToggle).Single().Text);
+                window.ViewModel.ApplyWebBestSyncState(new WebBestSyncSnapshot(
+                    false, false, WebBestSyncStatus.Disabled, null, 0, null, null, []));
+                DrainDispatcher(window.Dispatcher);
                 Assert.True(window.OpenWebProfileButton.IsVisible);
                 Assert.False(window.SyncWebBestsNowButton.IsEnabled);
                 Assert.False(window.WebConnectionExpander.IsExpanded);
@@ -2088,6 +2321,8 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
                 window.ViewModel.ApplyWebBestSyncState(new WebBestSyncSnapshot(
                     false, false, WebBestSyncStatus.AuthInvalid, null, 0, null, null, []));
                 DrainDispatcher(window.Dispatcher);
+                window.UpdateLayout();
+                window.WebConnectionExpander.IsExpanded = true;
                 window.UpdateLayout();
                 Assert.Equal(new[] { Localization.Get("アカウントを作成・引き継ぐ"), Localization.Get("このPCの連携情報を削除") },
                     FindVisualChildren<Button>(webSettingsPanel)

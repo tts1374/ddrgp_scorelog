@@ -42,9 +42,9 @@ App単一入口でWebの新規登録/ログインを選び、Worker上のGoogle 
 
 設定画面の停止・再開ボタンで連携を即時切り替えます。公開プレイヤー名の表示・編集はWebマイプロフィールで行います。Appには同期操作とWebへの導線を置きます。`source_captures.source_kind = 'capture'`の正式保存playだけから五項目のProjectionを再計算し、最大50件のmergeでWebの自己歴代Bestへ一方向に反映します。初回ON、再開、backup restore、同期状態消失時は対象集合をmergeで再送します。各fieldの改善だけを保存し、空集合・欠落・低い値・Local削除でWebを縮めません。受領hashは送ったProjectionのacknowledgementです。
 
-同期状態は正式個人スコアDBとは別に、本番では`data/web-sync/web-best-sync.sqlite`、開発では`data/web-sync/development/web-best-sync.sqlite`へ保存します。公開プレイヤー名は非秘密のPlayer identity metadataとしてローカルにも保持し、同期OFF中に設定画面を開いてもWeb requestを送信しません。正式個人スコアDBはread-onlyでProjectionを計算し、同期状態やWeb errorを書き込みません。`AUTH_INVALID`では新しいPlayerを自動作成せず、`このPCの連携情報を削除`から影響を確認したうえで利用できないlocal identityを削除できます。`UNKNOWN_CHART`は対象譜面だけを保留します。公開記録の削除はWebから操作し、Player情報、Google連携、公開URL、Credential、ローカルscoreを残します。本人がApp送信停止→Web削除→App再開を行うと、このPCのcapture集合をmergeで送り直します。
+同期状態は正式個人スコアDBとは別に、本番では`data/web-sync/web-best-sync.sqlite`、開発では`data/web-sync/development/web-best-sync.sqlite`へ保存します。公開プレイヤー名は非秘密のPlayer identity metadataとしてローカルにも保持し、同期OFF中に設定画面を開いてもWeb requestを送信しません。正式個人スコアDBはread-onlyでProjectionを計算し、同期状態やWeb errorを書き込みません。`AUTH_INVALID`では新しいPlayerを自動作成せず、`このアプリのWebログイン情報を消す`から影響を確認したうえで利用できないlocal identityを削除できます。`UNKNOWN_CHART`は対象譜面だけを保留します。公開記録の削除はWebから操作し、Player情報、Google連携、公開URL、Credential、ローカルscoreを残します。本人がApp送信停止→Web削除→App再開を行うと、このPCのcapture集合をmergeで送り直します。
 
-未登録では`アカウントを作成・引き継ぐ`を表示し、登録・引き継ぎのactivation成功後に同期ONでcapture集合をmerge送信します。Web最終確認に送信開始を表示し、未確定時は送信しません。Google連携・解除だけなら元の同期状態を維持します。登録済みでは送信停止/再開、今すぐ送信、公開ページと`マイプロフィールを開く`を表示します。App通常画面に公開名・情報更新・置換・公開削除を置きません。Google連携状態に応じた導線は折り畳みの`Web連携`にまとめ、不明時はWeb設定へ案内します。同期OFF中の自動通信は追加しません。未完了の連携があるときだけ、結果確認とキャンセルを表示します。
+未登録では`アカウントを作成・引き継ぐ`を表示し、登録・引き継ぎのactivation成功後に同期ONでcapture集合をmerge送信します。Web最終確認に送信開始を表示し、未確定時は送信しません。Google連携・解除だけなら元の同期状態を維持します。登録済みでは送信停止/再開、今すぐ送信、公開ページと`マイプロフィールを開く`を表示します。App通常画面に公開名・情報更新・置換・公開削除を置きません。Google連携状態に応じた導線は折り畳みの`アカウント`にまとめ、不明時はWeb設定へ案内します。同期OFF中の自動通信は追加しません。未完了の連携があるときだけ、結果確認とキャンセルを表示します。
 
 API接続先はDBと同じ実行環境から決定し、設定画面の`公開ページを開く`も同じoriginを使用します。本番の既定は`https://ddrgp-scorelog.tts1374.workers.dev/`、開発の既定は`https://ddrgp-scorelog-dev.tts1374.workers.dev/`です。`DDRGP_WEB_API_ORIGIN`でHTTPSの接続先を指定でき、開発環境では画面・API検証用のloopback HTTPも明示指定できます。Google実認証は固定HTTPS callbackで行います。開発環境で本番originを指定した場合は開発の既定originを使用します。
 
@@ -183,7 +183,7 @@ windowの×ボタンはwindowをtrayへ格納し、最小化ボタンは通常�
 
 ### 表示言語
 
-設定画面の「テーマ」では、システム（`system`）、ライト（`light`）、ダーク（`dark`）を選択できます。保存成功時に再起動なしで反映し、システムはWindowsの既定アプリモード変更に追従します。取得できない場合はライトとして扱い、明示したライト／ダークは追従しません。表示ラベルは日本語・英語・韓国語へ翻訳します。「言語」では日本語（`ja`）、英語（`en`）、韓国語（`ko`）を選択できます。変更は「変更を保存」を押した後、アプリを再起動すると反映されます。`user-settings.json` の既存設定に言語項目がない場合は日本語、対応外の保存値は英語として扱います。
+設定画面の「画面の色」では、Windowsに合わせる（`system`）、明るい（`light`）、暗い（`dark`）を選択できます。保存成功時に再起動なしで反映し、Windowsに合わせるはWindowsの既定アプリモード変更に追従します。取得できない場合は明るい画面として扱い、明示した明るい／暗いは追従しません。表示ラベルは日本語・英語・韓国語へ翻訳します。「言語」では日本語（`ja`）、英語（`en`）、韓国語（`ko`）を選択できます。変更は「設定を保存」を押した後、アプリを再起動すると反映されます。`user-settings.json` の既存設定に言語項目がない場合は日本語、対応外の保存値は英語として扱います。
 
 新しい環境ではOSの表示言語が日本語（`ja*`）なら日本語、韓国語（`ko*`）なら韓国語、それ以外は英語を初期値にします。翻訳が用意されていない表示文は日本語を基底言語として表示します。起動時画面の保存値は `home` / `best` / `history` を使用し、旧形式の「ホーム」／「自己ベスト」／「直近プレー履歴」も読み込めます。
 
@@ -318,6 +318,12 @@ production固定pathは`%LOCALAPPDATA%\DDRGpScoreViewer\data\master\`です。�
 | score migration backup | `data\score\migration-backup\score.db.bak`の最新1件 |
 | Release log | 5MB × 3 file |
 | `data\cache\`、`data\temp\`、reference download staging | 処理完了時または次回起動時に削除 |
+
+## 設定・記録の管理の表示
+
+設定本文は1280×760では左に自動記録・表示、右にWeb操作を置き、960×640では縦に積んでスクロールします。6項目の「設定を保存」と保存状態は本文の外に固定します。「最初の設定に戻す」は画面上の値だけを戻し、保存で反映します。Webの送信停止・再開・今すぐ送信、アカウント操作は即時操作です。アカウント領域にGoogle連携状態に応じた操作と「このアプリのWebログイン情報を消す」を置き、既存の確認・Can*・失敗表示を維持します。
+
+記録の管理は上部に件数と状態、左に「記録のコピー」と曲・譜面の情報、右に「リザルト画像から記録する」を置き、小窓では縦積みにします。「最後に保存した日時」は`plays.created_at`の最大値であり、プレー日時ではありません。「コピーを保存」「コピーから戻す」の対象と形式、復元前の確認は下記の契約を維持します。更新番号は「詳しい情報」、PNG・1280×720は「使える画像」へまとめます。進捗・現在ファイル・「中断」、保存／記録済み／読み取り失敗／記録失敗の件数と理由を表示し、内部statusは変えません。明暗と3言語は既存resourceで表示します。
 
 ## 個人スコアデータのバックアップ / 復元
 
