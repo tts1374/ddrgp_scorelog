@@ -1129,6 +1129,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public string FlarePointsToNextDisplay => SelectedFlareSkill.PointsToNextDisplay;
     public double FlareRankProgress => SelectedFlareSkill.Rank.Progress(SelectedFlareSkill.Total);
     public string FlareAbnormalExclusionDisplay => SelectedFlareSkill.AbnormalExclusionDisplay;
+    public System.Windows.Visibility FlareAbnormalExclusionVisibility => SelectedFlareSkill.TotalAbnormalExclusionCount > 0
+        ? System.Windows.Visibility.Visible
+        : System.Windows.Visibility.Collapsed;
     public bool IsFlareSkillAvailable => isFlareSkillAvailable;
     public string FlareSkillUnavailableMessage => flareSkillUnavailableMessage;
     public System.Windows.Visibility FlareSkillContentVisibility => IsFlareSkillAvailable
@@ -4911,6 +4914,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(FlarePointsToNextDisplay));
         OnPropertyChanged(nameof(FlareRankProgress));
         OnPropertyChanged(nameof(FlareAbnormalExclusionDisplay));
+        OnPropertyChanged(nameof(FlareAbnormalExclusionVisibility));
         OnPropertyChanged(nameof(IsFlareSkillAvailable));
         OnPropertyChanged(nameof(FlareSkillUnavailableMessage));
         OnPropertyChanged(nameof(FlareSkillContentVisibility));

@@ -517,4 +517,15 @@
     <sys:String x:Key="{}{0}件を表示">{0}件を表示</sys:String>
     <sys:String x:Key="判定">判定</sys:String>
     <sys:String x:Key="プレーの記録はありません">プレーの記録はありません</sys:String>
+    <sys:String x:Key="合計">合計</sys:String>
+    <sys:String x:Key="次のランクまで">次のランクまで</sys:String>
+    <sys:String x:Key="次のランクまでの進み具合">次のランクまでの進み具合</sys:String>
+    <sys:String x:Key="次の候補 31位">次の候補 31位</sys:String>
+    <sys:String x:Key="ゲーム内の数値と異なる場合があります。">ゲーム内の数値と異なる場合があります。</sys:String>
+    <sys:String x:Key="計算に使う記録">計算に使う記録</sys:String>
+    <sys:String x:Key="保存済みのFLARE I〜EXと現在の曲・譜面の情報を使います。いまGPで遊べる曲は、過去のアーケード曲も含みます。">保存済みのFLARE I〜EXと現在の曲・譜面の情報を使います。いまGPで遊べる曲は、過去のアーケード曲も含みます。</sys:String>
+    <sys:String x:Key="計算に入らない記録：{0:N0}件">計算に入らない記録：{0:N0}件</sys:String>
+    <sys:String x:Key="計算に入らない記録：{0:N0}件（SINGLE / DOUBLEが不明：{1:N0}件）">計算に入らない記録：{0:N0}件（SINGLE / DOUBLEが不明：{1:N0}件）</sys:String>
+    <sys:String x:Key="曲・譜面の情報不足や記録の不整合などがあるため、計算に使えません。">曲・譜面の情報不足や記録の不整合などがあるため、計算に使えません。</sys:String>
+    <sys:String x:Key="対象の記録がありません">対象の記録がありません</sys:String>
 </ResourceDictionary>
