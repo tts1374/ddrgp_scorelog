@@ -1991,11 +1991,11 @@
                                     <Border Style="{StaticResource CardStyle}" Padding="16" Margin="0,0,0,12">
                                         <StackPanel>
                                             <TextBlock Text="自動記録" FontSize="14" FontWeight="SemiBold" Margin="0,0,0,12" />
-                                            <CheckBox Content="アプリ起動時に監視を開始" TabIndex="101"
+                                            <CheckBox Content="アプリ起動時に監視を開始"
                                                     IsChecked="{Binding StartMonitoringOnLaunch, Mode=TwoWay}"
                                                     Foreground="{DynamicResource TextPrimaryBrush}"
                                                     FontSize="13" Margin="0,0,0,12" />
-                                            <CheckBox Content="保存できない結果を通知" TabIndex="102"
+                                            <CheckBox Content="保存できない結果を通知"
                                                     IsChecked="{Binding NotifyUnresolvedResults, Mode=TwoWay}"
                                                     Foreground="{DynamicResource TextPrimaryBrush}"
                                                     FontSize="13" />
@@ -2012,10 +2012,10 @@
                                                 <TextBlock Text="既定のプレイスタイル"
                                                         VerticalAlignment="Center" FontSize="12" />
                                                 <StackPanel Grid.Column="1" Orientation="Horizontal">
-                                                    <Button x:Name="SettingsSinglePlayStyleButton" Content="SINGLE" TabIndex="103"
+                                                    <Button x:Name="SettingsSinglePlayStyleButton" Content="SINGLE"
                                                             Style="{StaticResource SettingsSinglePlayStyleButtonStyle}"
                                                             Click="SettingsSinglePlayStyle_Click" />
-                                                    <Button x:Name="SettingsDoublePlayStyleButton" Content="DOUBLE" TabIndex="104"
+                                                    <Button x:Name="SettingsDoublePlayStyleButton" Content="DOUBLE"
                                                             Style="{StaticResource SettingsDoublePlayStyleButtonStyle}"
                                                             Click="SettingsDoublePlayStyle_Click" Margin="8,0,0,0" />
                                                 </StackPanel>
@@ -2027,7 +2027,7 @@
                                                 </Grid.ColumnDefinitions>
                                                 <TextBlock Text="起動時に表示する画面"
                                                         VerticalAlignment="Center" FontSize="12" />
-                                                <ComboBox Grid.Column="1" MinWidth="170" TabIndex="105" HorizontalAlignment="Stretch"
+                                                <ComboBox Grid.Column="1" MinWidth="170" HorizontalAlignment="Stretch"
                                                         ItemsSource="{Binding StartupPageOptions}"
                                                         DisplayMemberPath="Display"
                                                         SelectedItem="{Binding SelectedStartupPageOption, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
@@ -2038,7 +2038,7 @@
                                                     <ColumnDefinition Width="*" />
                                                 </Grid.ColumnDefinitions>
                                                 <TextBlock Text="テーマ" VerticalAlignment="Center" FontSize="12" />
-                                                <ComboBox Grid.Column="1" MinWidth="170" TabIndex="106" HorizontalAlignment="Stretch"
+                                                <ComboBox Grid.Column="1" MinWidth="170" HorizontalAlignment="Stretch"
                                                         ItemsSource="{Binding ThemeOptions}"
                                                         DisplayMemberPath="Display"
                                                         SelectedItem="{Binding SelectedThemeOption, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
@@ -2049,7 +2049,7 @@
                                                     <ColumnDefinition Width="*" />
                                                 </Grid.ColumnDefinitions>
                                                 <TextBlock Text="言語" VerticalAlignment="Center" FontSize="12" />
-                                                <ComboBox Grid.Column="1" MinWidth="170" TabIndex="107" HorizontalAlignment="Stretch"
+                                                <ComboBox Grid.Column="1" MinWidth="170" HorizontalAlignment="Stretch"
                                                         ItemsSource="{Binding LanguageOptions}"
                                                         DisplayMemberPath="Display"
                                                         SelectedItem="{Binding SelectedLanguageOption, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
@@ -2060,7 +2060,7 @@
                                                     TextWrapping="Wrap" />
                                         </StackPanel>
                                     </Border>
-                                    <Button x:Name="ResetSettingsButton" Content="初期値に戻す" TabIndex="109" HorizontalAlignment="Left"
+                                    <Button x:Name="ResetSettingsButton" Content="初期値に戻す" HorizontalAlignment="Left"
                                             Style="{StaticResource SecondaryButtonStyle}" Click="ResetSettings_Click" />
                                 </StackPanel>
                                 <Border x:Name="WebSettingsCard" Grid.Column="1" Style="{StaticResource CardStyle}" Padding="16" Margin="0,0,0,12">
@@ -2072,7 +2072,7 @@
                                             </Grid.ColumnDefinitions>
                                             <TextBlock Text="公開データの同期" TextWrapping="Wrap" Margin="0,0,12,0"
                                                     FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center" />
-                                            <Button x:Name="WebBestSyncToggle" Grid.Column="1" Content="{Binding WebSyncToggleLabel}" TabIndex="110"
+                                            <Button x:Name="WebBestSyncToggle" Grid.Column="1" Content="{Binding WebSyncToggleLabel}"
                                                     Style="{StaticResource SecondaryButtonStyle}"
                                                     Visibility="{Binding WebRegisteredActionsVisibility}"
                                                     IsEnabled="{Binding CanToggleWebSync}" Click="ToggleWebSync_Click">
@@ -2135,11 +2135,11 @@
                                                 IsEnabled="{Binding CanBeginWebAuthorization}" Click="ConnectWebAccount_Click" />
                                         <WrapPanel Margin="0,12,0,0" Visibility="{Binding WebRegisteredActionsVisibility}">
                                             <Button x:Name="SyncWebBestsNowButton"
-                                                    Content="今すぐ同期" TabIndex="104"
+                                                    Content="今すぐ同期"
                                                     Style="{StaticResource PrimaryButtonStyle}"
                                                     IsEnabled="{Binding CanSyncWebBestsNow}"
                                                     Click="SyncWebBestsNow_Click" Margin="0,0,8,8" />
-                                            <Button x:Name="OpenPublicPlayerPageButton" Content="公開ページを開く" TabIndex="105" Margin="0,0,8,8"
+                                            <Button x:Name="OpenPublicPlayerPageButton" Content="公開ページを開く" Margin="0,0,8,8"
                                                     Style="{StaticResource SecondaryButtonStyle}"
                                                     IsEnabled="{Binding CanOpenPublicPlayerPage}"
                                                     Click="OpenPublicPlayerPage_Click" />
@@ -2196,7 +2196,7 @@
                                         VerticalAlignment="Center"
                                         Foreground="{DynamicResource TextSecondaryBrush}"
                                         FontSize="12" TextWrapping="Wrap" Margin="0,0,16,0" />
-                                <Button x:Name="SaveSettingsButton" Grid.Column="1" Content="変更を保存" TabIndex="108"
+                                <Button x:Name="SaveSettingsButton" Grid.Column="1" Content="変更を保存"
                                         Style="{StaticResource PrimaryButtonStyle}"
                                         Click="SaveSettings_Click" />
                             </Grid>
@@ -2264,10 +2264,10 @@
                                             <TextBlock Text="コピーから戻すと、今の記録がその内容に置き換わります。" TextWrapping="Wrap"
                                                     Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" Margin="0,8,0,12" />
                                             <WrapPanel>
-                                                <Button x:Name="SaveRecordCopyButton" Content="バックアップを作成" TabIndex="100" Margin="0,0,8,0"
+                                                <Button x:Name="SaveRecordCopyButton" Content="バックアップを作成" Margin="0,0,8,0"
                                                         Style="{StaticResource PrimaryButtonStyle}" IsEnabled="{Binding CanManagePersonalData}"
                                                         Click="CreatePersonalScoreBackup_Click" />
-                                                <Button x:Name="RestoreRecordCopyButton" Content="バックアップから復元" TabIndex="101"
+                                                <Button x:Name="RestoreRecordCopyButton" Content="バックアップから復元"
                                                         Style="{StaticResource SecondaryButtonStyle}" IsEnabled="{Binding CanManagePersonalData}"
                                                         Click="RestorePersonalScoreBackup_Click" />
                                             </WrapPanel>
@@ -2346,7 +2346,7 @@
                                                 <TextBlock Text="複数ファイルを選択できます"
                                                         Foreground="{DynamicResource TextSecondaryBrush}"
                                                         FontSize="12" HorizontalAlignment="Center" Margin="0,4,0,10" />
-                                                <Button x:Name="SelectResultImagesButton" Content="ファイルを選択" TabIndex="102"
+                                                <Button x:Name="SelectResultImagesButton" Content="ファイルを選択"
                                                         Style="{StaticResource PrimaryButtonStyle}"
                                                         IsEnabled="{Binding CanStartScreenshotImport}"
                                                         Click="SelectScreenshots_Click" />
@@ -2369,7 +2369,7 @@
                                                         Foreground="{DynamicResource TextSecondaryBrush}"
                                                         FontSize="12" TextTrimming="CharacterEllipsis" Margin="0,6,0,0" />
                                             </StackPanel>
-                                            <Button x:Name="CancelResultImagesButton" Grid.Column="1" Content="中断" TabIndex="103"
+                                            <Button x:Name="CancelResultImagesButton" Grid.Column="1" Content="中断"
                                                     Style="{StaticResource SecondaryButtonStyle}"
                                                     IsEnabled="{Binding CanCancelScreenshotImport}"
                                                     Click="CancelScreenshotImport_Click"

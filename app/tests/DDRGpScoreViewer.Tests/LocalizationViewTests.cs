@@ -27,6 +27,146 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
     : IClassFixture<LocalizationApplicationFixture>
 {
     [Theory]
+    [InlineData(1280, 760, true, false)]
+    [InlineData(960, 640, true, true)]
+    [InlineData(960, 640, false, false)]
+    public void Settings_keyboard_focus_follows_local_web_and_save_order(
+        double width, double height, bool registered, bool expandAccount)
+    {
+        using var fixture = new DatabaseFixture();
+        applicationFixture.Run(() =>
+        {
+            MainWindow? window = null;
+            try
+            {
+                PrepareStartupResources();
+                var paths = StartupPaths(fixture);
+                if (registered)
+                {
+                    new FileWebPlayerIdentityStore(paths.WebPlayerIdentityPath, paths.WebPlayerCredentialPath)
+                        .SaveRegistered("p_XXXXXXXXXXXXXXXXXXXXXX", "test-credential", "Player");
+                }
+                window = new MainWindow(paths)
+                {
+                    MinWidth = width,
+                    MinHeight = height,
+                    Width = width,
+                    Height = height,
+                };
+                window.Show();
+                window.SettingsNavigation.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                window.ViewModel.ApplyWebBestSyncState(new WebBestSyncSnapshot(
+                    true, false, WebBestSyncStatus.Idle, null, 0, null, null, []));
+                window.WebConnectionExpander.IsExpanded = expandAccount;
+                DrainDispatcher(window.Dispatcher);
+                var checkBoxes = FindVisualChildren<CheckBox>(window.LocalSettingsPanel).ToArray();
+                var selectors = FindVisualChildren<ComboBox>(window.LocalSettingsPanel).ToArray();
+                var expected = new List<Control>
+                {
+                    checkBoxes[0], checkBoxes[1], window.SettingsSinglePlayStyleButton,
+                    window.SettingsDoublePlayStyleButton, selectors[0], selectors[1], selectors[2],
+                    window.ResetSettingsButton,
+                };
+                expected.AddRange(registered
+                    ? [window.WebBestSyncToggle, window.SyncWebBestsNowButton,
+                        window.OpenPublicPlayerPageButton, window.OpenWebProfileButton]
+                    : [window.ConnectWebAccountButton]);
+                Assert.True(expected[0].Focus());
+                var visited = new List<UIElement> { expected[0] };
+                void Next()
+                {
+                    Assert.True(((UIElement)Keyboard.FocusedElement).MoveFocus(
+                        new TraversalRequest(FocusNavigationDirection.Next)));
+                    DrainDispatcher(window.Dispatcher);
+                    visited.Add((UIElement)Keyboard.FocusedElement);
+                }
+                foreach (var control in expected.Skip(1))
+                {
+                    Next();
+                    Assert.Same(control, Keyboard.FocusedElement);
+                }
+                Next();
+                Assert.True(window.WebConnectionExpander.IsKeyboardFocusWithin);
+                if (expandAccount)
+                {
+                    Next();
+                    Assert.Same(window.GoogleSettingsButton, Keyboard.FocusedElement);
+                }
+                Next();
+                Assert.Same(window.SaveSettingsButton, Keyboard.FocusedElement);
+                foreach (var control in visited.AsEnumerable().Reverse().Skip(1))
+                {
+                    Assert.True(((UIElement)Keyboard.FocusedElement).MoveFocus(
+                        new TraversalRequest(FocusNavigationDirection.Previous)));
+                    DrainDispatcher(window.Dispatcher);
+                    Assert.Same(control, Keyboard.FocusedElement);
+                }
+            }
+            finally
+            {
+                window?.PrepareForApplicationExit();
+                window?.Close();
+            }
+        });
+    }
+
+    [Theory]
+    [InlineData(1280, 760)]
+    [InlineData(960, 640)]
+    public void Records_keyboard_focus_follows_copy_details_and_image_order(double width, double height)
+    {
+        using var fixture = new DatabaseFixture();
+        applicationFixture.Run(() =>
+        {
+            MainWindow? window = null;
+            try
+            {
+                PrepareStartupResources();
+                window = new MainWindow(StartupPaths(fixture))
+                {
+                    MinWidth = width,
+                    MinHeight = height,
+                    Width = width,
+                    Height = height,
+                };
+                window.ViewModel.Load(fixture.ScorePath, fixture.MasterPath, fixture.CatalogPath, persist: false);
+                window.Show();
+                window.DataManagementNavigation.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                DrainDispatcher(window.Dispatcher);
+                Assert.True(window.SaveRecordCopyButton.Focus());
+                var visited = new List<UIElement> { window.SaveRecordCopyButton };
+                void Next()
+                {
+                    Assert.True(((UIElement)Keyboard.FocusedElement).MoveFocus(
+                        new TraversalRequest(FocusNavigationDirection.Next)));
+                    DrainDispatcher(window.Dispatcher);
+                    visited.Add((UIElement)Keyboard.FocusedElement);
+                }
+                Next();
+                Assert.Same(window.RestoreRecordCopyButton, Keyboard.FocusedElement);
+                Next();
+                Assert.True(window.RecordInfoExpander.IsKeyboardFocusWithin);
+                Next();
+                Assert.True(window.ImageRequirementsExpander.IsKeyboardFocusWithin);
+                Next();
+                Assert.Same(window.SelectResultImagesButton, Keyboard.FocusedElement);
+                foreach (var control in visited.AsEnumerable().Reverse().Skip(1))
+                {
+                    Assert.True(((UIElement)Keyboard.FocusedElement).MoveFocus(
+                        new TraversalRequest(FocusNavigationDirection.Previous)));
+                    DrainDispatcher(window.Dispatcher);
+                    Assert.Same(control, Keyboard.FocusedElement);
+                }
+            }
+            finally
+            {
+                window?.PrepareForApplicationExit();
+                window?.Close();
+            }
+        });
+    }
+
+    [Theory]
     [InlineData("ja", "light", 1280, 760)]
     [InlineData("en", "dark", 960, 640)]
     [InlineData("ko", "light", 960, 640)]
