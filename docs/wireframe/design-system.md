@@ -92,47 +92,67 @@ XAMLの共通styleとコードで描画するグラフ・状態表示は、ラ�
 
 ### 3.2 ライトテーマトークン
 
-推奨値：
+採用値：
 
 ```text
-BackgroundPrimary      #FAF9F6
-BackgroundSidebar      #FAF9F6
-SurfacePrimary         #FAF9F6
-SurfaceSecondary       #F0EFE9
-BorderDefault          #DCDDD5
-BorderStrong           #B5B9AE
-TextPrimary            #252722
-TextSecondary          #666C61
-TextMuted              #787F72
-AccentPrimary          #38644B
-AccentHover            #2D533E
-AccentPressed          #224330
-AccentSubtle           #E8EEE5
-Danger                 #D6384B
-FocusRing              #739D7D
+BackgroundPrimary      #F4F7F9
+BackgroundSidebar      #FFFFFF
+SurfacePrimary         #FFFFFF
+SurfaceSecondary       #E9EFF3
+BorderDefault          #CFDCE3
+BorderStrong           #718594
+TextPrimary            #202D36
+TextSecondary          #546574
+TextMuted              #546574
+AccentPrimary          #076E7D
+AccentHover            #075866
+AccentPressed          #064753
+AccentSubtle           #DCEEF2
+Danger                 #AE3949
+FocusRing              #076E7D
 ```
+
+選択行はAccentSubtle、hover行は`#E9F3F5`。塗りつぶし操作の文字色は`#FFFFFF`、スクロールつまみは`#718594`。
 
 ### 3.3 ダークテーマトークン
 
-推奨値：
+採用値：
 
 ```text
-BackgroundPrimary      #191D19
-BackgroundSidebar      #191D19
-SurfacePrimary         #191D19
-SurfaceSecondary       #252B25
-BorderDefault          #3C443B
-BorderStrong           #66725F
-TextPrimary            #F2F1E9
-TextSecondary          #BBC3B4
-TextMuted              #9AA591
-AccentPrimary          #92BD9D
-AccentHover            #ABD0B4
-AccentPressed          #749E80
-AccentSubtle           #2D4032
-Danger                 #F87171
-FocusRing              #B4D3BB
+BackgroundPrimary      #111B25
+BackgroundSidebar      #182631
+SurfacePrimary         #182631
+SurfaceSecondary       #1B2B38
+BorderDefault          #344957
+BorderStrong           #6B8496
+TextPrimary            #EDF3F7
+TextSecondary          #B3C2CE
+TextMuted              #B3C2CE
+AccentPrimary          #61CBD3
+AccentHover            #8BDEE3
+AccentPressed          #45AFB8
+AccentSubtle           #244655
+Danger                 #FF9CA6
+FocusRing              #61CBD3
 ```
+
+選択行はAccentSubtle、hover行は`#1E3543`。塗りつぶし操作の文字色は`#102A32`、スクロールつまみは`#6B8496`。
+
+### 採用する強調と面（#259）
+
+ホーム最新結果・譜面詳細の通常スコア自己ベスト・履歴詳細の通常スコアを青緑にする。EX自己ベスト・集計値・プレー回数・一覧の通常スコアは本文色。差分の上昇色はライト`#38644B`／ダーク`#92BD9D`を保ち、難易度・RANK・CLEAR・FLARE・FlareRankの意味色は既存値を使う。
+
+最新結果と譜面詳細上部には、パネルへ青緑をライト7%／ダーク12%混ぜ、右の65%位置でパネル色へ薄くする。ナビは同じ青緑から62%位置のパネルを経て薄い紫（`#B9A0D9`の5%／`#BBA2DD`の9%）へ。フレア上部は紫（7%／12%）から42%位置のパネルを経て青緑（7%／12%）へつなぐ。「次のランクまで」は上部全体の面を使う。
+
+難易度の意味色面に載せる文字（OnAccentBrush）は明暗とも白を保つ。青緑の塗りつぶし操作とチェックにはPrimaryButtonTextBrushを使い、ライトは白、ダークは`#102A32`とする。
+
+一覧はパネル色、hoverは薄い青緑、選択はAccentSubtleと左端3pxのアクセント線で表す。キーボードfocusはアクセント色、disabledは補助面と補助文字、失敗は理由の文字と既存の意味色で識別する。
+
+ホーム最新結果は12px×16px、集計帯と一覧パネルは8px×16px、2行一覧は51px以上・上下5pxとし、日本語1280×760で履歴5件と更新5件を保つ。通常パネルの16px／小窓12pxを一律に重ねず、表の左右端16pxと見出しを揃える。譜面詳細では見出しと端のセルの左端を合わせ、余白を二重に加えない。フレアの列見出しは12px×16px、行と固定候補は8px×12px。グラフ・操作ラベルは小窓で折り返し、軸文字は13pxを基本とする。
+
+設定・記録管理も同じパネルと余白を使う。フォーム・主要操作は高さ36px以上、カード間16px、設定の保存欄は本文スクロールの外で常時表示する。既存の3言語・確認・無効化・キャンセル・失敗理由を維持する。
+
+7画面のmockは共通の`app-theme.css`を既存の画面スタイルへ重ねた表示を採用基準とする。比較用コントロールは製品へ含めない。HTMLとWPFでは文字の計測やバッジ高さが異なるため、WPFの既存配置・操作を保ち、実際の論理寸法・Windows倍率で収まりを確認する。
 
 ### 3.4 コントラスト
 
@@ -277,7 +297,7 @@ Windows標準環境での可読性を優先する。
 
 ### 6.5 ホーム下段
 
-最新結果 → 今日の集計帯 → `プレー履歴` と `最近の自己ベスト更新` の2列とする。通常1280×760・100%相当・日本語の代表例で各5件と導線まで縦スクロールなしで表示する。ホームだけは上下約14pxの余白と小さな見出し間隔を使い、一覧は約53pxの2行構成を目安とする。960×640・長文・長い翻訳では内容の高さを確保し、全体の縦スクロールで到達できるようにする。
+最新結果 → 今日の集計帯 → `プレー履歴` と `最近の自己ベスト更新` の2列とする。通常1280×760・100%相当・日本語の代表例で各5件と導線まで縦スクロールなしで表示する。ホームは上下12pxの外側余白と小さな見出し間隔を使い、一覧は51px以上の2行構成とする。960×640・長文・長い翻訳では内容の高さを確保し、全体の縦スクロールで到達できるようにする。
 
 最新結果の通常スコアは約60px、曲名は約32px、差分は約24pxとする。通常スコアとEXの差分ラベルには比較時点と対象を明示する。意味を持つ既存の難易度・ランク・CLEAR・FLARE・差分のテーマ色を保持する。
 
@@ -298,7 +318,7 @@ Windows標準環境での可読性を優先する。
 
 仕様：
 
-- 基本カードは上辺の1px境界線とし、角丸と影を付けない
+- 基本パネルは1px境界線、6px角丸、通常16px／小窓12pxの内側余白とする。まとまり間は16〜24px。影は付けない
 - 集計や通知など独立性が必要なカードだけ、用途に応じて全周の1px枠線を使用する
 - カード内に過度な装飾を置かない
 - ジャケット画像用の空き領域を作らない
@@ -437,7 +457,7 @@ EX SCORE
 
 統一ルール：
 
-- 更新：AccentPrimary
+- 更新：PositiveDelta（ライト`#38644B`／ダーク`#92BD9D`）
 - 未更新：Danger
 - タイ：TextMuted
 - 初プレー：Info
@@ -526,9 +546,9 @@ EX SCORE
 
 ランクは既存Appの`FlareRank*Brush`の方向・stopを含めて継承し、合計は`TextPrimaryBrush`、FLARE I〜EXは`Components.xaml`と明暗テーマを正本とする。HTMLの色は参照表現でありAppの色定義を置き換えない。注意は常時表示し、計算条件を折りたたむ。異常除外0件と自明な合計・進捗説明は置かず、非0の件数・理由、読込失敗の説明は残す。960×640では次段階の不足点・閾値の折り返しと長いランク名の縮小を許可して重なりを防ぐ。
 
-設定と記録の管理は、見出し14、通常ラベル12〜13、補足12を基本に、値と操作を先に読める強弱にする。本文のまとまりは既存CardStyleと12〜24の余白で区切る。設定保存は本文外の固定欄、Webは即時操作として同じまとまりに置く。1280×760は2列、幅1100以下は縦積みで、補足の展開後も末尾までスクロールできる。画像結果は状態とファイル名の下に理由を折り返し、4区分の長い翻訳を欠落させない。
+設定と記録の管理は、見出し14、通常ラベル12〜13、補足12を基本に、値と操作を先に読める強弱にする。本文のまとまりは6px角丸のCardStyleと16〜24pxのまとまり間隔で区切る。設定保存は本文外の固定欄、Webは即時操作として同じまとまりに置く。1280×760は2列、幅1100以下は縦積みで、補足の展開後も末尾までスクロールできる。画像結果は状態とファイル名の下に理由を折り返し、4区分の長い翻訳を欠落させない。
 
-チェック項目、アカウント・詳しい情報・使える画像のExpander見出しは明暗に対応した文字色を明示する。動的な送信停止／再開の文字は表示更新後もbindingを維持する。3言語で操作の文字部分をクリックし、スクロールバー出現後も展開・保存・中断へ到達できることを確認する。HTMLは配置と余白の基準、実WPFは既存テーマ色・Can*・確認・キャンセル・進捗・失敗表示を正本とする。
+チェック項目、アカウント・詳しい情報・使える画像のExpander見出しは明暗に対応した文字色を明示する。動的な送信停止／再開の文字は表示更新後もbindingを維持する。3言語で操作の文字部分をクリックし、スクロールバー出現後も展開・保存・中断へ到達できることを確認する。HTMLは配置と余白の基準、実WPFは採用テーマ色・既存のCan*・確認・キャンセル・進捗・失敗表示を正本とする。
 
 設定と記録の管理の本文では、Tab／Shift+Tabがコントロールの配置順に進む。設定は自動記録・表示、Web操作、固定の設定保存欄の順とし、小窓でも領域間を行き戻りしない。折りたたみ・非表示・無効の操作は、その時点の状態に従って移動対象を切り替える。
 

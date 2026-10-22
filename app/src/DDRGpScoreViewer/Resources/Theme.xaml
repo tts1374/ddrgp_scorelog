@@ -1,20 +1,20 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <Color x:Key="BackgroundPrimaryColor">#FAF9F6</Color>
-    <Color x:Key="BackgroundSidebarColor">#FAF9F6</Color>
-    <Color x:Key="SurfacePrimaryColor">#FAF9F6</Color>
-    <Color x:Key="SurfaceSecondaryColor">#F0EFE9</Color>
-    <Color x:Key="BorderDefaultColor">#DCDDD5</Color>
-    <Color x:Key="BorderStrongColor">#B5B9AE</Color>
-    <Color x:Key="TextPrimaryColor">#252722</Color>
-    <Color x:Key="TextSecondaryColor">#666C61</Color>
-    <Color x:Key="TextMutedColor">#787F72</Color>
-    <Color x:Key="AccentPrimaryColor">#38644B</Color>
-    <Color x:Key="AccentHoverColor">#2D533E</Color>
-    <Color x:Key="AccentPressedColor">#224330</Color>
-    <Color x:Key="AccentSubtleColor">#E8EEE5</Color>
-    <Color x:Key="DangerColor">#D6384B</Color>
-    <Color x:Key="FocusRingColor">#739D7D</Color>
+    <Color x:Key="BackgroundPrimaryColor">#F4F7F9</Color>
+    <Color x:Key="BackgroundSidebarColor">#FFFFFF</Color>
+    <Color x:Key="SurfacePrimaryColor">#FFFFFF</Color>
+    <Color x:Key="SurfaceSecondaryColor">#E9EFF3</Color>
+    <Color x:Key="BorderDefaultColor">#CFDCE3</Color>
+    <Color x:Key="BorderStrongColor">#718594</Color>
+    <Color x:Key="TextPrimaryColor">#202D36</Color>
+    <Color x:Key="TextSecondaryColor">#546574</Color>
+    <Color x:Key="TextMutedColor">#546574</Color>
+    <Color x:Key="AccentPrimaryColor">#076E7D</Color>
+    <Color x:Key="AccentHoverColor">#075866</Color>
+    <Color x:Key="AccentPressedColor">#064753</Color>
+    <Color x:Key="AccentSubtleColor">#DCEEF2</Color>
+    <Color x:Key="DangerColor">#AE3949</Color>
+    <Color x:Key="FocusRingColor">#076E7D</Color>
 
     <SolidColorBrush x:Key="BackgroundPrimaryBrush" Color="{StaticResource BackgroundPrimaryColor}" />
     <SolidColorBrush x:Key="BackgroundSidebarBrush" Color="{StaticResource BackgroundSidebarColor}" />
@@ -31,6 +31,18 @@
     <SolidColorBrush x:Key="AccentSubtleBrush" Color="{StaticResource AccentSubtleColor}" />
     <SolidColorBrush x:Key="DangerBrush" Color="{StaticResource DangerColor}" />
     <SolidColorBrush x:Key="FocusRingBrush" Color="{StaticResource FocusRingColor}" />
+    <SolidColorBrush x:Key="RowHoverBrush" Color="#E9F3F5" />
+    <SolidColorBrush x:Key="PositiveDeltaBrush" Color="#38644B" />
+    <SolidColorBrush x:Key="ScrollThumbBrush" Color="#718594" />
+    <LinearGradientBrush x:Key="HeroBackgroundBrush" StartPoint="0,0" EndPoint="1,0.36">
+        <GradientStop Color="#EEF5F6" Offset="0" /><GradientStop Color="#FFFFFF" Offset="0.65" />
+    </LinearGradientBrush>
+    <LinearGradientBrush x:Key="NavigationBackgroundBrush" StartPoint="0,0" EndPoint="1,0.36">
+        <GradientStop Color="#EEF5F6" Offset="0" /><GradientStop Color="#FFFFFF" Offset="0.62" /><GradientStop Color="#FCFAFD" Offset="1" />
+    </LinearGradientBrush>
+    <LinearGradientBrush x:Key="FlareSummaryBackgroundBrush" StartPoint="0,0" EndPoint="1,0.36">
+        <GradientStop Color="#FAF8FC" Offset="0" /><GradientStop Color="#FFFFFF" Offset="0.42" /><GradientStop Color="#EEF5F6" Offset="1" />
+    </LinearGradientBrush>
     <LinearGradientBrush x:Key="FlareRankNoneBrush" StartPoint="0,0" EndPoint="0,1"><GradientStop Color="#DEDEDE" Offset="0" /><GradientStop Color="#7A7A7B" Offset="0.5" /><GradientStop Color="#393B3B" Offset="1" /></LinearGradientBrush>
     <LinearGradientBrush x:Key="FlareRankMercuryBrush" StartPoint="0,0" EndPoint="0,1"><GradientStop Color="#60CCF4" Offset="0" /><GradientStop Color="#009EDC" Offset="0.5" /><GradientStop Color="#0079BB" Offset="1" /></LinearGradientBrush>
     <LinearGradientBrush x:Key="FlareRankVenusBrush" StartPoint="0,0" EndPoint="0,1"><GradientStop Color="#FFCD01" Offset="0" /><GradientStop Color="#FFB500" Offset="0.5" /><GradientStop Color="#E36613" Offset="1" /></LinearGradientBrush>
@@ -73,15 +85,15 @@
     <SolidColorBrush x:Key="SuccessBrush" Color="#059669" />
     <SolidColorBrush x:Key="WarningBrush" Color="#FACC15" />
     <SolidColorBrush x:Key="HomeNotesBorderBrush" Color="#10B981" />
-    <SolidColorBrush x:Key="DeltaDangerBackgroundBrush" Color="#F0EFE9" />
-    <SolidColorBrush x:Key="DeltaDangerBorderBrush" Color="#DCDDD5" />
-    <SolidColorBrush x:Key="DeltaFirstBackgroundBrush" Color="#F0EFE9" />
-    <SolidColorBrush x:Key="DeltaFirstBorderBrush" Color="#DCDDD5" />
-    <SolidColorBrush x:Key="DeltaFirstTextBrush" Color="#666C61" />
+    <SolidColorBrush x:Key="DeltaDangerBackgroundBrush" Color="#E9EFF3" />
+    <SolidColorBrush x:Key="DeltaDangerBorderBrush" Color="#CFDCE3" />
+    <SolidColorBrush x:Key="DeltaFirstBackgroundBrush" Color="#E9EFF3" />
+    <SolidColorBrush x:Key="DeltaFirstBorderBrush" Color="#CFDCE3" />
+    <SolidColorBrush x:Key="DeltaFirstTextBrush" Color="#546574" />
     <SolidColorBrush x:Key="GraphBestBrush" Color="#059669" />
-    <SolidColorBrush x:Key="GraphBackgroundBrush" Color="#FAF9F6" />
-    <SolidColorBrush x:Key="GraphMarkerOutlineBrush" Color="#FAF9F6" />
-    <SolidColorBrush x:Key="SegmentBackgroundBrush" Color="#F0EFE9" />
+    <SolidColorBrush x:Key="GraphBackgroundBrush" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="GraphMarkerOutlineBrush" Color="#FFFFFF" />
+    <SolidColorBrush x:Key="SegmentBackgroundBrush" Color="#E9EFF3" />
     <SolidColorBrush x:Key="LatestBadgeBackgroundBrush" Color="#EAF2FF" />
     <SolidColorBrush x:Key="LatestBadgeBorderBrush" Color="#93C5FD" />
     <SolidColorBrush x:Key="LatestBadgeTextBrush" Color="#1D4ED8" />
