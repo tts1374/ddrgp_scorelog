@@ -29,7 +29,7 @@ Public APIは認証不要だがsame-origin UI用とし、wildcard CORSを付与�
 
 RANKはD1へ保存せず、Desktopと同じscore境界からWorkerで導出する。SCORE、EX SCORE、CLEAR、FLAREは譜面ごとの独立Bestであり、1回のRESULTを表さない。
 
-OverviewとBestの見出し・集計・説明・loading / empty表示・アクセシブル名では「自己ベスト」を使用する。公開された記録の有無と未プレーの違い、各指標が独立Bestである説明を維持する。RANK / CLEAR / FLAREのbadgeはDesktopの`ViewerModels.cs`の分類と`Components.xaml`・light themeの`Theme.xaml`の背景・枠・文字色に揃え、値を文字でも表示する。MFC / EXは同じ多色gradientを使い、BestとFlare Skill対象一覧の同じFLARE値は同じ配色にする。
+OverviewとBestの見出し・集計・説明・loading / empty表示・アクセシブル名では「自己ベスト」を使用する。公開された記録の有無と未プレーの違い、各指標が独立Bestである説明を維持する。RANK / CLEAR / FLAREのbadgeはDesktopの`ViewerModels.cs`の分類と`Theme.xaml`（ライト）・`DarkTheme.xaml`（ダーク）の背景・枠・文字色に揃え、値を文字でも表示する。MFC / EXは明暗それぞれで同じ多色gradientを使い、BestとFlare Skill対象一覧の同じFLARE値は同じ配色にする。
 
 条件指定のないBest初回表示は、選択styleの全譜面一覧とする。空のTitle検索と同じ表示集合・paginationを利用し、レベル・バージョン・曲名で絞り込まない。結果欄は「全譜面」、初期sortはSCORE高い順で、記録なしは末尾に置く。有効なURLの探索条件・sortを初期値より優先し、一覧からLevel / Version / Title探索へ切り替えられる。未知のversionをURLから復元した場合も、その値をselectの選択肢として表示し、結果欄・内部状態・API検索条件を一致させる。
 
@@ -67,7 +67,17 @@ Bestの追加取得失敗は一覧の後ろに表示し、既存行と件数・�
 
 公開ページの「GP Score Log」ロゴはTOP `/`へ移動する。右上の「マイページ」から`/my/profile`へ進む導線も維持する。
 
-desktopではBest table、680px以下では同じ行をcard状に再配置する。390pxでは単一columnとし、主要操作と情報に横scrollを要求しない。
+desktopではBest tableとFlare3カテゴリ、680px以下では同じ行をcard状に再配置し、Flareは縦積みとする。mobileカードは曲・譜面の下にSCORE／EXを2列、RANK／CLEAR／FLAREを3列でまとめ、項目と順序を保つ。1280／960／390pxで主要操作と情報にページの横scrollを要求しない。
+
+## 採用した視覚基準
+
+Issue #260で採用した全10画面の青緑・成績強調・余白を適用する。基準は`data/theme-study-20261021/web/`の`design=proposed`で、現行UIに`proposal.css`・`dark-semantic.css`を重ねたライト／ダーク表示。資料はGit管理外とし、製品のCSSを実装の正本とする。
+
+トップ、Overview／自己ベスト／Flare Skill、マイプロフィール、App連携確認、公開記録削除、アカウント削除、ログイン失敗、Worker生成404で、CSSの`prefers-color-scheme`により閲覧端末・ブラウザーの明暗へ初期表示から自動追従する。表示中の変更にも追従し、情報がない環境はライト。切替操作、テーマ用URL状態、Cookie／localStorageへの選択値保存は追加しない。Appの保存設定とは独立する。共通の色は`public/theme.css`を利用し、同じoriginのCSS配信と既存CSPを維持する。
+
+青緑は通常操作と主要SCORE、EX・集計値は本文色、背景・パネル・補助面・罫線・補助文字・focusは共通の役割に揃える。危険操作と失敗は赤系とし、難易度・FlareRankの色とグラデーションは維持する。ナビ・Flare上部・トップの既存説明領域へ薄い色面を適用し、既存のダウンロード入口を主要操作として強調する。
+
+成績数字はSegoe UI系とtabular-nums、SCOREはDesktop16px／mobile20px、Flare対象の曲名13px・skill14pxとする。既存パネルは6px角丸、内側余白Desktop16〜24px／mobile12〜16px、まとまり間16〜24px。主要操作はDesktop36〜40px／mobile44pxを基準にし、focus・hover・disabledを識別できるようにする。既存の文言、状態、注意、入力・確認条件、認証・削除・配信の条件は維持する。
 
 ## Migrationとdeploy
 

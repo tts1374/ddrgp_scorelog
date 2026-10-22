@@ -16,6 +16,12 @@ Player identity、自己歴代Bestの追加・改善同期、公開Player Data�
 
 タブ・SINGLE / DOUBLE・探索方法・レベル・バージョン・並び順は、ブラウザの戻る・進むで復元できます。検索文字は現在の履歴項目を更新し、1文字ごとの履歴を増やしません。公開ページの「GP Score Log」ロゴからTOPへ、右上の「マイページ」から管理画面へ移動できます。
 
+## 配色と画面幅
+
+トップ、公開Player Data、管理・確認・失敗画面、HTTP 404は、端末・ブラウザーの明暗設定に初期表示から自動追従し、表示中の変更にも追従します。明暗情報がない場合はライトです。製品内の切替操作や選択値保存はありません。
+
+採用した青緑の操作・SCOREと冷たい中立背景、パネル、補助文字を共通化しています。EX・集計値は本文色、成績バッジはAppと同じ意味群の明暗色を使用します。パネルは6px角丸、内側余白はDesktop16〜24px／mobile12〜16px、主要操作はDesktop36〜40px／mobile44pxを基準とします。Desktopの表・Flare3カテゴリ、680px以下のカード・縦積みを維持し、mobileカードでは曲・譜面の下にSCORE／EXを2列、RANK／CLEAR／FLAREを3列で表示します。詳細は[Web Player Data設計](../../docs/design/13_web_player_data.md)を参照してください。
+
 ## Local validation
 
 ```powershell

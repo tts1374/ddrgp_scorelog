@@ -1,28 +1,26 @@
-:root {
-  color: #1f2933;
-  background: #f5f7fa;
-  font-family: Inter, "Noto Sans JP", system-ui, sans-serif;
-}
+@import url("/theme.css");
 
 body {
   display: grid;
   min-height: 100vh;
   margin: 0;
   place-items: center;
+  font-size: 14px;
 }
 
 main {
   width: min(100% - 32px, 560px);
-  padding: 40px;
-  border: 1px solid #dce2e8;
-  border-top: 4px solid #e43d30;
-  background: #fff;
+  padding: 32px;
+  border: 1px solid var(--border);
+  border-top: 4px solid var(--danger);
+  border-radius: 6px;
+  background: var(--panel);
   box-sizing: border-box;
 }
 
 .error-code {
   margin: 0 0 8px;
-  color: #e43d30;
+  color: var(--danger);
   font-size: 13px;
   font-weight: 800;
   letter-spacing: .12em;
@@ -34,6 +32,11 @@ h1 {
 }
 
 p {
-  color: #59636e;
   line-height: 1.8;
+}
+
+p:not(.error-code) { color: var(--muted); }
+
+@media (max-width: 680px) {
+  main { padding: 24px; }
 }
