@@ -1,0 +1,58 @@
+/* Shared by the application and Worker-rendered 404. Light is the fallback. */
+:root {
+  color-scheme: light;
+  --bg: #f4f7f9;
+  --panel: #fff;
+  --surface-muted: #e9eff3;
+  --border: #cfdce3;
+  --border-strong: #a9bdc9;
+  --main: #202d36;
+  --muted: #546574;
+  --primary: #076e7d;
+  --primary-dark: #075866;
+  --accent-subtle: #dceef2;
+  --focus-ring: #076e7d;
+  --on-accent: #fff;
+  --row-hover: #e9f3f5;
+  --danger: #9c3529;
+  --danger-line: #bd746a;
+  --danger-bg: #f9e9e5;
+  --danger-text: #813128;
+  --success-bg: #e7f1e7;
+  --hero-tint: 7%;
+  --purple-tint: 5%;
+  --brand-detail: #b9a0d9;
+  background: var(--bg);
+  color: var(--main);
+  font-family: "Segoe UI Variable", "Segoe UI", "Yu Gothic UI", sans-serif;
+  scrollbar-color: #718594 transparent;
+  scrollbar-width: thin;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --bg: #111b25;
+    --panel: #182631;
+    --surface-muted: #1b2b38;
+    --border: #344957;
+    --border-strong: #58717f;
+    --main: #edf3f7;
+    --muted: #b3c2ce;
+    --primary: #61cbd3;
+    --primary-dark: #8bdee3;
+    --accent-subtle: #244655;
+    --focus-ring: #61cbd3;
+    --on-accent: #102a32;
+    --row-hover: #1e3543;
+    --danger: #ffb4a9;
+    --danger-line: #ad7167;
+    --danger-bg: #3a2528;
+    --danger-text: #ffb4a9;
+    --success-bg: #20382b;
+    --hero-tint: 12%;
+    --purple-tint: 9%;
+    --brand-detail: #bba2dd;
+    scrollbar-color: #6b8496 transparent;
+  }
+}

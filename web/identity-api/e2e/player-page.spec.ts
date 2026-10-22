@@ -141,51 +141,54 @@ for (const width of [1280, 390]) {
     await page.screenshot({ path: `../../logs/issue-224-level-default-${width}.png` });
   });
 
-  test(`${width}px matches Desktop light badge colors and shares FLARE colors between views`, async ({ page }) => {
-    await page.setViewportSize({ width, height: 844 });
-    await mockBrowse(page);
-    const theme = readFileSync("../../app/src/DDRGpScoreViewer/Resources/Theme.xaml", "utf8");
-    const rgb = (hex: string) => `rgb(${[0, 2, 4].map((offset) => parseInt(hex.slice(offset, offset + 2), 16)).join(", ")})`;
-    const brush = (key: string) => rgb(theme.match(new RegExp(`x:Key="${key}" Color="#([0-9A-F]{6})"`))![1]);
-    const colors = async (kind: string, value: string, group: string, borderGroup = group) => {
-      const badge = page.locator(`.best-table .result-badge[data-kind="${kind}"][data-value="${value}"]`).first();
-      await expect(badge).toHaveText(value);
-      await expect(badge).toHaveCSS("color", brush(`Badge${group}TextBrush`));
-      await expect(badge).toHaveCSS("border-top-color", brush(`Badge${borderGroup}BorderBrush`));
-      if (group !== "Mfc") await expect(badge).toHaveCSS("background-color", brush(`Badge${group}BackgroundBrush`));
-      else {
-        const stops = ["Danger", "Warning", "Success", "Cyan", "Purple"].map((name) =>
-          rgb(theme.match(new RegExp(`x:Key="MfcGradient${name}Color">#([0-9A-F]{6})`))![1]));
-        await expect(badge).toHaveCSS("background-image", `linear-gradient(90deg, ${stops.join(", ")})`);
+  for (const appearance of ["light", "dark"] as const) {
+    test(`${width}px matches Desktop ${appearance} badge colors and shares FLARE colors between views`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 844 });
+      await page.emulateMedia({ colorScheme: appearance });
+      await mockBrowse(page);
+      const theme = readFileSync(`../../app/src/DDRGpScoreViewer/Resources/${appearance === "dark" ? "DarkTheme" : "Theme"}.xaml`, "utf8");
+      const rgb = (hex: string) => `rgb(${[0, 2, 4].map((offset) => parseInt(hex.slice(offset, offset + 2), 16)).join(", ")})`;
+      const brush = (key: string) => rgb(theme.match(new RegExp(`x:Key="${key}" Color="#([0-9A-F]{6})"`))![1]);
+      const colors = async (kind: string, value: string, group: string, borderGroup = group) => {
+        const badge = page.locator(`.best-table .result-badge[data-kind="${kind}"][data-value="${value}"]`).first();
+        await expect(badge).toHaveText(value);
+        await expect(badge).toHaveCSS("color", brush(`Badge${group}TextBrush`));
+        await expect(badge).toHaveCSS("border-top-color", brush(`Badge${borderGroup}BorderBrush`));
+        if (group !== "Mfc") await expect(badge).toHaveCSS("background-color", brush(`Badge${group}BackgroundBrush`));
+        else {
+          const stops = ["Danger", "Warning", "Success", "Cyan", "Purple"].map((name) =>
+            rgb(theme.match(new RegExp(`x:Key="MfcGradient${name}Color">#([0-9A-F]{6})`))![1]));
+          await expect(badge).toHaveCSS("background-image", `linear-gradient(90deg, ${stops.join(", ")})`);
+        }
+      };
+      await page.goto(`/player/${publicPlayerId}?view=best`);
+      await expect(page.locator(".best-table tbody tr")).toHaveCount(17);
+      for (const rank of ranks) await colors("rank", rank,
+        rank.startsWith("A") ? "Warning" : rank.startsWith("B") ? "Cyan" : rank.startsWith("C") ? "Pink" : rank.startsWith("D") ? "Danger" : "Neutral");
+      for (const [index, group] of ["Mfc", "Warning", "Success", "Info", "Cyan", "Danger"].entries()) await colors("clear", clears[index], group);
+      for (const [index, group] of ["Info", "Cyan", "Success", "Warning", "Danger", "Purple", "Slate", "Neutral", "Warning", "Mfc"].entries()) {
+        await colors("flare", flares[index], group, index === 7 ? "Slate" : index === 8 ? "WarningStrong" : group);
       }
-    };
-    await page.goto(`/player/${publicPlayerId}?view=best`);
-    await expect(page.locator(".best-table tbody tr")).toHaveCount(17);
-    for (const rank of ranks) await colors("rank", rank,
-      rank.startsWith("A") ? "Warning" : rank.startsWith("B") ? "Cyan" : rank.startsWith("C") ? "Pink" : rank.startsWith("D") ? "Danger" : "Neutral");
-    for (const [index, group] of ["Mfc", "Warning", "Success", "Info", "Cyan", "Danger"].entries()) await colors("clear", clears[index], group);
-    for (const [index, group] of ["Info", "Cyan", "Success", "Warning", "Danger", "Purple", "Slate", "Neutral", "Warning", "Mfc"].entries()) {
-      await colors("flare", flares[index], group, index === 7 ? "Slate" : index === 8 ? "WarningStrong" : group);
-    }
-    const missing = page.locator(".best-table tbody tr").last();
-    await expect(missing.locator(".no-best")).toHaveText(Array(5).fill("—"));
-    await expect(missing.locator(".result-badge")).toHaveCount(0);
-    const flareColors = await page.locator('.best-table .result-badge[data-kind="flare"]').evaluateAll((badges) =>
-      Object.fromEntries(badges.map((badge) => {
-        const style = getComputedStyle(badge);
-        return [badge.getAttribute("data-value"), [style.backgroundColor, style.backgroundImage, style.borderTopColor, style.color]];
-      })));
-    await noOverflow(page);
-    await page.screenshot({ path: `../../logs/issue-224-colors-${width}.png` });
-    await page.getByRole("tab", { name: "Flare Skill", exact: true }).click();
-    await expect(page.locator('[data-flare-category="classic"] .flare-target-row')).toHaveCount(10);
-    const targetColors = await page.locator('.flare-target-list .result-badge').evaluateAll((badges) =>
-      Object.fromEntries(badges.map((badge) => {
-        const style = getComputedStyle(badge);
-        return [badge.getAttribute("data-value"), [style.backgroundColor, style.backgroundImage, style.borderTopColor, style.color]];
-      })));
-    expect(targetColors).toEqual(flareColors);
-  });
+      const missing = page.locator(".best-table tbody tr").last();
+      await expect(missing.locator(".no-best")).toHaveText(Array(5).fill("—"));
+      await expect(missing.locator(".result-badge")).toHaveCount(0);
+      const flareColors = await page.locator('.best-table .result-badge[data-kind="flare"]').evaluateAll((badges) =>
+        Object.fromEntries(badges.map((badge) => {
+          const style = getComputedStyle(badge);
+          return [badge.getAttribute("data-value"), [style.backgroundColor, style.backgroundImage, style.borderTopColor, style.color]];
+        })));
+      await noOverflow(page);
+      await page.screenshot({ path: `../../logs/issue-224-colors-${appearance}-${width}.png` });
+      await page.getByRole("tab", { name: "Flare Skill", exact: true }).click();
+      await expect(page.locator('[data-flare-category="classic"] .flare-target-row')).toHaveCount(10);
+      const targetColors = await page.locator('.flare-target-list .result-badge').evaluateAll((badges) =>
+        Object.fromEntries(badges.map((badge) => {
+          const style = getComputedStyle(badge);
+          return [badge.getAttribute("data-value"), [style.backgroundColor, style.backgroundImage, style.borderTopColor, style.color]];
+        })));
+      expect(targetColors).toEqual(flareColors);
+    });
+  }
 
   test(`${width}px initially shows all levels and versions and can narrow the real API results`, async ({ page }) => {
     await page.setViewportSize({ width, height: 844 });
