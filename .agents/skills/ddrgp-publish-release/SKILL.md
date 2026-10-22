@@ -1,6 +1,6 @@
 ---
 name: ddrgp-publish-release
-description: DDRGPのrelease readiness監査、candidate生成、明示許可されたGitHub Release公開、公開済みRelease検証を依頼されたときに使う。通常実装・CI修正は対象外。
+description: DDRGPのrelease readiness監査、candidate生成、明示許可されたGitHub Release公開、公開済みRelease検証、リリース文・X告知文の作成や修正を依頼されたときに使う。通常実装・CI修正は対象外。
 ---
 
 # DDRGP Publish Release
@@ -10,6 +10,8 @@ description: DDRGPのrelease readiness監査、candidate生成、明示許可さ
 ## Select And Route
 
 開始modeを選ぶ前に、依頼で指定された入力から対象version/Release URLと操作制約を確認する。その結果からmodeを1つ選び、なお曖昧なら`READINESS_AUDIT`から始める。詳細は到達したphaseで読む。
+
+リリース文・X告知文の作成や修正だけの依頼は、[publish.md](references/publish.md)の文章基準と該当節を読む。build・Release公開modeへ進まず、投稿や公開済み本文の更新は依頼で許可された範囲だけ行う。
 
 | Mode | 許可範囲と読むreference |
 | --- | --- |
