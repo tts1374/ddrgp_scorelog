@@ -1759,6 +1759,76 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
     }
 
     [Fact]
+    public void Dark_difficulty_badges_keep_contrast_separate_from_teal_button_text()
+    {
+        using var fixture = new DatabaseFixture();
+        applicationFixture.Run(() =>
+        {
+            MainWindow? resources = null;
+            Window? host = null;
+            try
+            {
+                PrepareStartupResources();
+                resources = new MainWindow(StartupPaths(fixture));
+                var content = new StackPanel();
+                var badges = new List<Border>();
+                foreach (var difficulty in new[] { "DIFFICULT", "EXPERT", "CHALLENGE" })
+                {
+                    var badge = new Border
+                    {
+                        DataContext = new { Difficulty = difficulty },
+                        Style = (Style)resources.FindResource("DifficultyBadgeStyle"),
+                        Child = new TextBlock
+                        {
+                            Text = difficulty,
+                            Style = (Style)resources.FindResource("DifficultyBadgeTextStyle"),
+                        },
+                    };
+                    badges.Add(badge);
+                    content.Children.Add(badge);
+                }
+                var button = new Button { Content = "Action", Style = (Style)resources.FindResource("PrimaryButtonStyle") };
+                content.Children.Add(button);
+                host = new Window { Content = content, Width = 320, Height = 240 };
+                host.Show();
+                foreach (var theme in new[] { UserSettings.DarkTheme, UserSettings.LightTheme, UserSettings.DarkTheme })
+                {
+                    ThemeManager.Apply(theme);
+                    DrainDispatcher(host.Dispatcher);
+                    Assert.Same(resources.FindResource("PrimaryButtonTextBrush"), button.Foreground);
+                    if (theme != UserSettings.DarkTheme) continue;
+                    foreach (var badge in badges)
+                    {
+                        var foreground = Assert.IsType<SolidColorBrush>(((TextBlock)badge.Child).Foreground).Color;
+                        var background = Assert.IsType<SolidColorBrush>(badge.Background).Color;
+                        Assert.True(Contrast(foreground, background) >= 4.5, $"Unreadable {((TextBlock)badge.Child).Text}");
+                        Assert.NotEqual(Assert.IsType<SolidColorBrush>(button.Foreground).Color, foreground);
+                    }
+                    Assert.True(Contrast(Assert.IsType<SolidColorBrush>(button.Foreground).Color,
+                        Assert.IsType<SolidColorBrush>(button.Background).Color) >= 4.5);
+                }
+            }
+            finally
+            {
+                resources?.PrepareForApplicationExit();
+                resources?.Close();
+                host?.Close();
+                ThemeManager.Apply(UserSettings.LightTheme);
+            }
+        });
+
+        static double Contrast(Color first, Color second)
+        {
+            static double Linear(byte component) => component / 255d <= 0.04045
+                ? component / 255d / 12.92 : Math.Pow((component / 255d + 0.055) / 1.055, 2.4);
+            static double Luminance(Color color) => 0.2126 * Linear(color.R) + 0.7152 * Linear(color.G) + 0.0722 * Linear(color.B);
+            var a = Luminance(first);
+            var b = Luminance(second);
+            return (Math.Max(a, b) + 0.05) / (Math.Min(a, b) + 0.05);
+        }
+    }
+
+    [Fact]
     public void State_panel_text_colors_follow_runtime_theme_changes()
     {
         applicationFixture.Run(() =>

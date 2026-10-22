@@ -58,7 +58,7 @@
     <SolidColorBrush x:Key="FlareWhiteCategoryBrush" Color="#F8FAFC" />
     <SolidColorBrush x:Key="FlareGoldCategoryBrush" Color="#B1842F" />
 
-    <SolidColorBrush x:Key="OnAccentBrush" Color="#102A32" />
+    <SolidColorBrush x:Key="OnAccentBrush" Color="#FFFFFF" />
     <SolidColorBrush x:Key="PrimaryButtonTextBrush" Color="#102A32" />
     <SolidColorBrush x:Key="OnSidebarBrush" Color="#FFFFFF" />
     <SolidColorBrush x:Key="SidebarHoverBrush" Color="#1E3A5F" />

@@ -159,7 +159,7 @@
                                 <Setter TargetName="CopyButtonBorder"
                                         Property="BorderBrush"
                                         Value="{DynamicResource AccentPressedBrush}" />
-                                <Setter Property="Foreground" Value="{DynamicResource OnAccentBrush}" />
+                                <Setter Property="Foreground" Value="{DynamicResource PrimaryButtonTextBrush}" />
                             </MultiTrigger>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter TargetName="CopyButtonBorder"
@@ -278,7 +278,7 @@
                                     <Condition Property="IsPressed" Value="True" />
                                 </MultiTrigger.Conditions>
                                 <Setter TargetName="SegmentButtonBorder" Property="Background" Value="{DynamicResource AccentPressedBrush}" />
-                                <Setter Property="Foreground" Value="{DynamicResource OnAccentBrush}" />
+                                <Setter Property="Foreground" Value="{DynamicResource PrimaryButtonTextBrush}" />
                             </MultiTrigger>
                             <Trigger Property="Tag" Value="Selected">
                                 <Setter TargetName="SegmentButtonBorder" Property="Background" Value="{DynamicResource SurfacePrimaryBrush}" />
@@ -301,7 +301,7 @@
                                     <Condition Property="IsPressed" Value="True" />
                                 </MultiTrigger.Conditions>
                                 <Setter TargetName="SegmentButtonBorder" Property="Background" Value="{DynamicResource AccentPressedBrush}" />
-                                <Setter Property="Foreground" Value="{DynamicResource OnAccentBrush}" />
+                                <Setter Property="Foreground" Value="{DynamicResource PrimaryButtonTextBrush}" />
                             </MultiTrigger>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter TargetName="SegmentButtonBorder" Property="Background" Value="{DynamicResource SurfaceSecondaryBrush}" />
@@ -345,7 +345,7 @@
                                         Value="{DynamicResource AccentPrimaryBrush}" />
                                 <Setter TargetName="BrowseTabBorder" Property="BorderBrush"
                                         Value="{DynamicResource AccentPrimaryBrush}" />
-                                <Setter Property="Foreground" Value="{DynamicResource OnAccentBrush}" />
+                                <Setter Property="Foreground" Value="{DynamicResource PrimaryButtonTextBrush}" />
                             </Trigger>
                             <MultiTrigger>
                                 <MultiTrigger.Conditions>
@@ -364,7 +364,7 @@
                                         Value="{DynamicResource AccentPressedBrush}" />
                                 <Setter TargetName="BrowseTabBorder" Property="BorderBrush"
                                         Value="{DynamicResource AccentPressedBrush}" />
-                                <Setter Property="Foreground" Value="{DynamicResource OnAccentBrush}" />
+                                <Setter Property="Foreground" Value="{DynamicResource PrimaryButtonTextBrush}" />
                             </MultiTrigger>
                             <MultiTrigger>
                                 <MultiTrigger.Conditions>
@@ -376,7 +376,7 @@
                                         Value="{DynamicResource AccentPrimaryBrush}" />
                                 <Setter TargetName="BrowseTabBorder" Property="BorderBrush"
                                         Value="{DynamicResource AccentPrimaryBrush}" />
-                                <Setter Property="Foreground" Value="{DynamicResource OnAccentBrush}" />
+                                <Setter Property="Foreground" Value="{DynamicResource PrimaryButtonTextBrush}" />
                             </MultiTrigger>
                             <MultiTrigger>
                                 <MultiTrigger.Conditions>
@@ -388,7 +388,7 @@
                                         Value="{DynamicResource AccentPressedBrush}" />
                                 <Setter TargetName="BrowseTabBorder" Property="BorderBrush"
                                         Value="{DynamicResource AccentPressedBrush}" />
-                                <Setter Property="Foreground" Value="{DynamicResource OnAccentBrush}" />
+                                <Setter Property="Foreground" Value="{DynamicResource PrimaryButtonTextBrush}" />
                             </MultiTrigger>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter TargetName="BrowseTabBorder" Property="Background"
@@ -445,7 +445,7 @@
                                         Value="{DynamicResource AccentPressedBrush}" />
                                 <Setter TargetName="AxisChangeBorder" Property="BorderBrush"
                                         Value="{DynamicResource AccentPressedBrush}" />
-                                <Setter Property="Foreground" Value="{DynamicResource OnAccentBrush}" />
+                                <Setter Property="Foreground" Value="{DynamicResource PrimaryButtonTextBrush}" />
                             </MultiTrigger>
                             <Trigger Property="IsEnabled" Value="False">
                                 <Setter TargetName="AxisChangeBorder" Property="Background"
