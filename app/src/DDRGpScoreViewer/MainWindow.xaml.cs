@@ -592,6 +592,7 @@ public partial class MainWindow : System.Windows.Window
         }
 
         var compact = windowWidth <= 1100;
+        Resources["PanelPadding"] = new Thickness(compact ? 12 : 16);
         SettingsColumns.ColumnDefinitions[0].Width = new GridLength(1, GridUnitType.Star);
         SettingsColumns.ColumnDefinitions[1].Width = compact ? new GridLength(0) : new GridLength(1.1, GridUnitType.Star);
         RecordsColumns.ColumnDefinitions[0].Width = new GridLength(0.85, GridUnitType.Star);
@@ -614,7 +615,7 @@ public partial class MainWindow : System.Windows.Window
         var compact = windowWidth <= 1100;
         MainContentGrid.Margin = compact
             ? new Thickness(20)
-            : new Thickness(32, ContentTabs.SelectedIndex == 0 ? 14 : 22, 32, ContentTabs.SelectedIndex == 0 ? 14 : 22);
+            : new Thickness(32, ContentTabs.SelectedIndex == 0 ? 12 : 22, 32, ContentTabs.SelectedIndex == 0 ? 12 : 22);
         PageNoticeRow.MinHeight = ContentTabs.SelectedIndex is 0 or 3 ? 4 : 12;
         BestChartGrid.Tag = compact ? "Compact" : "Wide";
         BestChartGrid.RowHeight = compact ? 40 : 52;
@@ -673,8 +674,8 @@ public partial class MainWindow : System.Windows.Window
         LatestInfoBorder.Padding = compact ? new Thickness(0, 12, 0, 0) : new Thickness(20, 0, 0, 0);
         LatestInfoBorder.BorderThickness = compact ? new Thickness(0, 1, 0, 0) : new Thickness(1, 0, 0, 0);
 
-        HomeHistoryPanel.Margin = new Thickness(0, 0, 16, 0);
-        HomeUpdatesPanel.Margin = new Thickness(16, 0, 0, 0);
+        HomeHistoryPanel.Margin = new Thickness(16, 8, 16, 8);
+        HomeUpdatesPanel.Margin = new Thickness(16, 8, 16, 8);
     }
 
     private void ApplyHistoryResponsiveLayout(double windowWidth)
@@ -691,8 +692,8 @@ public partial class MainWindow : System.Windows.Window
         Grid.SetColumn(HistoryDetailPanel, compact ? 0 : 1);
         Grid.SetRow(HistoryDetailPanel, compact ? 1 : 0);
         HistoryDetailPanel.Margin = compact ? new Thickness(0, 14, 0, 0) : new Thickness(24, 0, 0, 0);
-        HistoryDetailPanel.Padding = compact ? new Thickness(0, 12, 0, 0) : new Thickness(24, 0, 0, 0);
-        HistoryDetailPanel.BorderThickness = compact ? new Thickness(0, 1, 0, 0) : new Thickness(1, 0, 0, 0);
+        HistoryDetailPanel.Padding = new Thickness(compact ? 12 : 16);
+        HistoryDetailPanel.BorderThickness = new Thickness(1);
         RecentPlayGrid.Tag = compact ? "Compact" : "Wide";
         RecentPlayGrid.RowHeight = compact ? 40 : 48;
         HistoryDetailGrid.ColumnDefinitions[0].Width = new GridLength(1.1, GridUnitType.Star);
@@ -1676,7 +1677,7 @@ public partial class MainWindow : System.Windows.Window
             {
                 Text = $"{score / 1_000:N0}k",
                 Foreground = (WpfBrush)FindResource("TextSecondaryBrush"),
-                FontSize = 12,
+                FontSize = ActualWidth <= 1100 ? 13 : 12,
             };
             ChartDetailGraphCanvas.Children.Add(label);
             Canvas.SetLeft(label, 5);
@@ -1729,7 +1730,7 @@ public partial class MainWindow : System.Windows.Window
         {
             Text = points[0].HomePlayedAtDisplay,
             Foreground = (WpfBrush)FindResource("TextSecondaryBrush"),
-            FontSize = 12,
+            FontSize = ActualWidth <= 1100 ? 13 : 12,
         };
         ChartDetailGraphCanvas.Children.Add(firstDate);
         Canvas.SetLeft(firstDate, left);
@@ -1740,7 +1741,7 @@ public partial class MainWindow : System.Windows.Window
             {
                 Text = points[^1].HomePlayedAtDisplay,
                 Foreground = (WpfBrush)FindResource("TextSecondaryBrush"),
-                FontSize = 12,
+                FontSize = ActualWidth <= 1100 ? 13 : 12,
             };
             ChartDetailGraphCanvas.Children.Add(latestDate);
             Canvas.SetRight(latestDate, right);

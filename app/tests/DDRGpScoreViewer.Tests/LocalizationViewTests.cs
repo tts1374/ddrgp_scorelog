@@ -238,6 +238,25 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
                 var texts = FindVisualChildren<TextBlock>(window).Select(text => text.Text).ToArray();
                 Assert.Contains(Localization.Get("PNG・1280×720の画像が使えます。"), texts);
                 Assert.Contains(Localization.Get("コピーから戻すと、今の記録がその内容に置き換わります。"), texts);
+
+                foreach (var status in Enum.GetValues<ScreenshotImportItemStatus>())
+                {
+                    window.ViewModel.ScreenshotImportResults.Add(new ScreenshotImportItemResult(
+                        $"{status}.png", status, "Result reason", []));
+                }
+                var results = FindVisualChildren<ItemsControl>(window.ImageImportCard)
+                    .Single(control => ReferenceEquals(control.ItemsSource, window.ViewModel.ScreenshotImportResults));
+                ((FrameworkElement)results.Parent).GetBindingExpression(UIElement.VisibilityProperty)!.UpdateTarget();
+                DrainDispatcher(window.Dispatcher);
+                Assert.Equal(4, results.Items.Count);
+                foreach (var result in window.ViewModel.ScreenshotImportResults.Where(result =>
+                    result.Status is ScreenshotImportItemStatus.RecognitionFailed or ScreenshotImportItemStatus.InputError))
+                {
+                    var statusText = FindVisualChildren<TextBlock>(results)
+                        .Single(text => ReferenceEquals(text.DataContext, result) && text.Text == result.StatusDisplay);
+                    Assert.Same(window.FindResource("DangerBrush"), statusText.Foreground);
+                }
+
             }
             finally
             {
@@ -539,7 +558,7 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
                 PrepareStartupResources();
                 Localization.Configure(language);
                 ThemeManager.Apply(theme);
-                window = new MainWindow(StartupPaths(fixture)) { Width = width, Height = height };
+                window = new MainWindow(StartupPaths(fixture)) { MinWidth = width, MinHeight = height, Width = width, Height = height };
                 window.ViewModel.Load(fixture.ScorePath, fixture.MasterPath, fixture.CatalogPath, persist: false);
                 window.Show();
                 DrainDispatcher(window.Dispatcher);
@@ -551,8 +570,11 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
                 Assert.Contains(lists, list => ReferenceEquals(list.ItemsSource, window.ViewModel.HomeRecentPlays));
                 Assert.Contains(lists, list => ReferenceEquals(list.ItemsSource, window.ViewModel.HomeBestUpdates));
                 Assert.Equal(0, window.HomeScrollViewer.ScrollableWidth);
-                // A hosted desktop can constrain native window bounds. Verify access
-                // here; the 1280x760 one-screen fit is checked on the real 100% desktop.
+                if (!longTitle && width == 1280 && height == 760 &&
+                    Math.Abs(window.ActualWidth - width) < 1 && Math.Abs(window.ActualHeight - height) < 1)
+                {
+                    Assert.InRange(window.HomeScrollViewer.ScrollableHeight, 0, 1);
+                }
                 window.HomeScrollViewer.ScrollToEnd();
                 DrainDispatcher(window.Dispatcher);
                 if (longTitle)
@@ -1069,6 +1091,8 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
                     options.ItemContainerGenerator.ContainerFromIndex(0));
                 Assert.Same(focusVisualStyle, listItem.FocusVisualStyle);
                 Assert.True(listItem.IsSelected);
+                Assert.Same(resourceWindow.FindResource("AccentPrimaryBrush"), listItem.Background);
+                Assert.Same(resourceWindow.FindResource("PrimaryButtonTextBrush"), listItem.Foreground);
 
                 var primaryWidth = primaryButton.ActualWidth;
                 var primaryHeight = primaryButton.ActualHeight;
