@@ -16,6 +16,7 @@ EXPECTED_CONFIRMED_CHALLENGE_LEVELS = {
     "7 Colors": (16, 16),
     "Ace out": (14, 14),
     "ALPACORE": (17, 17),
+    "BE LOVIN": (15, 15),
     "BITTER CHOCOLATE STRIKER": (18, 18),
     "Come Back To Me": (16, 16),
     "CyberConnect": (17, 17),
@@ -32,6 +33,7 @@ EXPECTED_CONFIRMED_CHALLENGE_LEVELS = {
     "Lightspeed": (18, 18),
     "MUTEKI BUFFALO": (17, 17),
     "New Era": (18, 18),
+    "PARANOIA EVOLUTION": (18, 18),
     "Rampage Hero": (17, 17),
     "Run The Show": (16, 16),
     "Starlight in the Snow": (16, 16),
@@ -47,6 +49,7 @@ EXPECTED_CONFIRMED_CHALLENGE_LEVELS = {
     "和風インザ洋風": (17, 17),
     "打打打打打打打打打打 (にじさんじダンス部 ver.)": (16, 16),
     "灼熱Beach Side Bunny": (18, 18),
+    "華爛漫 -Flowers-": (14, 14),
 }
 
 FIXTURE_HTML = """
@@ -1293,14 +1296,14 @@ def test_parse_master_html_merges_new_song_levels_and_records_snapshot() -> None
     assert build.new_song_snapshot.source_url == "https://example.test/new-songs"
 
 
-def test_confirmed_challenge_supplement_generates_expected_68_charts(
+def test_confirmed_challenge_supplement_generates_expected_74_charts(
     tmp_path: Path,
 ) -> None:
     build = confirmed_challenge_fixture_build()
     output_path = tmp_path / "ddrgp-master.sqlite"
 
-    assert len(build.confirmed_challenge_supplements) == 68
-    assert len({row.chart_id for row in build.confirmed_challenge_supplements}) == 68
+    assert len(build.confirmed_challenge_supplements) == 74
+    assert len({row.chart_id for row in build.confirmed_challenge_supplements}) == 74
     builder.write_master_database(output_path, build)
 
     with sqlite3.connect(output_path) as connection:
@@ -1338,10 +1341,11 @@ def test_confirmed_challenge_supplement_generates_expected_68_charts(
     assert control_rows == [("SINGLE", "CHALLENGE", 12, "12", "control")]
 
     manifest = json.loads(metadata["confirmed_challenge_supplement_json"])
-    assert metadata["confirmed_challenge_chart_count"] == "68"
-    assert len(manifest) == 68
+    assert metadata["confirmed_challenge_chart_count"] == "74"
+    assert len(manifest) == 74
     assert sum(row["acquired_on"] == "2026-07-25" for row in manifest) == 50
     assert sum(row["acquired_on"] == "2026-08-09" for row in manifest) == 18
+    assert sum(row["acquired_on"] == "2026-10-25" for row in manifest) == 6
     assert metadata["confirmed_challenge_supplement_hash"] == (
         builder.confirmed_challenge_supplements_hash(
             build.confirmed_challenge_supplements
@@ -1349,7 +1353,7 @@ def test_confirmed_challenge_supplement_generates_expected_68_charts(
     )
 
     summary = master_inspect.inspect_master_database(output_path)
-    assert summary["confirmed_challenge_chart_count"] == 68
+    assert summary["confirmed_challenge_chart_count"] == 74
     assert summary["confirmed_challenge_supplement_hash"] == metadata[
         "confirmed_challenge_supplement_hash"
     ]
@@ -1396,6 +1400,17 @@ def test_confirmed_challenge_supplement_resolves_representative_song_chart_ids()
     ]
     assert len(wiki_rows) == 18
     assert all(row.source_url == builder.BEMANIWIKI_PACK_SOURCE_URL for row in wiki_rows)
+
+    world_old_song_rows = [
+        row for row in build.confirmed_challenge_supplements
+        if row.title in {"華爛漫 -Flowers-", "BE LOVIN", "PARANOIA EVOLUTION"}
+    ]
+    assert len(world_old_song_rows) == 6
+    assert all(
+        row.source_url == builder.BEMANIWIKI_WORLD_OLD_SONGS_SOURCE_URL
+        and row.acquired_on == "2026-10-25"
+        for row in world_old_song_rows
+    )
 
 
 def test_confirmed_challenge_supplement_rejects_level_conflict() -> None:
