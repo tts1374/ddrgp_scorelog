@@ -187,6 +187,10 @@ BEMANIWIKI_PACK_SOURCE_URL = (
     "https://bemaniwiki.com/?"
     "DanceDanceRevolution+GRAND+PRIX/%E6%A5%BD%E6%9B%B2%E3%83%91%E3%83%83%E3%82%AF"
 )
+BEMANIWIKI_WORLD_OLD_SONGS_SOURCE_URL = (
+    "https://bemaniwiki.com/?"
+    "DanceDanceRevolution+WORLD/%E6%97%A7%E6%9B%B2%E3%83%AA%E3%82%B9%E3%83%88"
+)
 
 
 def _confirmed_challenge_source(
@@ -296,6 +300,27 @@ CONFIRMED_CHALLENGE_SOURCES = (
         17,
         source_url=BEMANIWIKI_PACK_SOURCE_URL,
         acquired_on="2026-08-09",
+    ),
+    _confirmed_challenge_source(
+        "華爛漫 -Flowers-",
+        14,
+        14,
+        source_url=BEMANIWIKI_WORLD_OLD_SONGS_SOURCE_URL,
+        acquired_on="2026-10-25",
+    ),
+    _confirmed_challenge_source(
+        "BE LOVIN",
+        15,
+        15,
+        source_url=BEMANIWIKI_WORLD_OLD_SONGS_SOURCE_URL,
+        acquired_on="2026-10-25",
+    ),
+    _confirmed_challenge_source(
+        "PARANOIA EVOLUTION",
+        18,
+        18,
+        source_url=BEMANIWIKI_WORLD_OLD_SONGS_SOURCE_URL,
+        acquired_on="2026-10-25",
     ),
 )
 
