@@ -17,7 +17,7 @@ description: DDRGPの既存PRで、ownerまたはwrite権限ユーザーの明�
 
 ## Issue Contract
 
-- PR本文から対象Issueと親Issueを確認する。
+- PR本文から対象Issueを確認する。親Issueは契約・依存を参照している場合だけ読む。
 - IssueのScope、Non-scope、Acceptance criteria、Required testsを修正範囲の上限とする。
 - review指摘であっても、Issue外の仕様追加、非互換変更、別機能、大規模refactorは自動実装しない。
 - 範囲外だが妥当な指摘は、別Issue候補としてtask報告へ記載する。
@@ -52,7 +52,7 @@ flat comment一覧だけでthread状態を推測しない。
 - 指摘ごとに回帰testを追加するか、既存testで再現性を示す。
 - docs-only指摘では、関連contract、link、実装との整合を検証する。
 - 公開契約、運用手順、設計判断へ影響しない場合は不要なdocs変更を作らない。
-- 対象test、影響範囲test、Ruff、構文検査、`git diff --check`を実行する。
+- [Issue実装Skillのリスク別検証](../ddrgp-implement-github-issue/SKILL.md#4-validate)で変更責務を再評価し、対象・影響範囲test、変更言語のlint・構文検査、`git diff --check`を実行する。docs-onlyでは形式・link・契約整合を確認する。repository必須CIは省略しない。
 - 既存failureは今回差分との関係を確認し、無関係なら変更せず報告する。
 - 修正・検証の結果を報告する直前に、[Issue実装SkillのCycle Retrospective](../ddrgp-implement-github-issue/SKILL.md#7-cycle-retrospective)を行う。結果は後述の報告へ含め、Skill更新候補だけを理由に今回指摘外の変更や追加公開操作を行わない。
 

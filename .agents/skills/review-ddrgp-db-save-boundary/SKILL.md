@@ -9,21 +9,22 @@ description: DDRGPの保存判定・正式DB・duplicate・診断・analysis log
 
 ## Read First
 
-- `AGENTS.md`
-- `docs/design/00_glossary.md`
-- 指定されたGitHub Issue
-- 関連する親Issue
-- `docs/design/03_event_and_save_boundary.md`
-- `docs/design/04_data_model.md`
-- `docs/design/05_storage_io_spec.md`
-- `docs/design/06_regression_guard.md`
-- `docs/design/10_personal_score_db_schema.md`
+指定Issue・適用AGENTSを確認し、既に読んだ同一内容は再取得しない。親Issueは契約・依存を参照する場合だけ読む。変更境界に対応する次の資料を選び、全件読込を既定にしない。
 
-変更対象に応じて `tools/vision_poc/README.md`、`tools/vision_poc/personal_score_db_schema.py`、`tools/vision_poc/personal_score_db_save.py`、`tools/vision_poc/personal_score_db_save_adapter.py`、`tools/vision_poc/runner.py`、関連テストも読む。
+| 変更境界 | 読む資料 |
+| --- | --- |
+| field・status・正式根拠の意味 | `docs/design/00_glossary.md` |
+| 正式保存可否・候補から正式値への接続 | `docs/design/03_event_and_save_boundary.md` |
+| entity間の責務・参照 | `docs/design/04_data_model.md` |
+| backup/restore・入出力互換性 | `docs/design/05_storage_io_spec.md` |
+| 回帰条件の確認・変更 | `docs/design/06_regression_guard.md` |
+| schema・transaction・DB identity | `docs/design/10_personal_score_db_schema.md` |
+
+対象のproducer・consumer・testは実際の経路を追う。Pythonなら関連する `tools/vision_poc/README.md`、schema/save/adapter/runner、C#なら対応するapp-owned writer/backup/readerを読む。checklistは影響する不変条件の確認に使い、未変更責務の調査・追加実装へ広げない。
 
 ## Workflow
 
-1. 指定Issueと親IssueのScope、Non-scope、Acceptance criteria、Required testsを確認する。明示されていない本番insert、自動migration、既定自動保存へ進めない。
+1. 指定IssueのScope、Non-scope、Acceptance criteria、Required testsを確認する。親Issueの扱いは上記に従い、明示されていない本番insert、自動migration、既定自動保存へ進めない。
 2. 変更対象を次の責務へ分類する: イベント確定、候補材料、正式保存入力、`plays`、`source_captures`、`analysis_logs`、DB diagnostic output/log。
 3. 入力から出力までの値の由来を追い、候補値を正式保存値へ暗黙昇格させていないか確認する。
 4. 変更前に、影響する不変条件を既存テストで特定する。未固定なら最小の回帰テストを追加する。

@@ -22,6 +22,7 @@
 ## Contract And Safety
 
 - 指定Issueの本文を実装契約とし、Scope、Non-scope、Acceptance criteria、Required testsに従う。親Issueの項目は子Issueが明示的に取り込んだ範囲だけ実装する。
+- Issueは追跡・契約の正本、Goalはその契約内で目的と完了条件を満たす実行・反復の単位とする。工程・リスク判断は`ddrgp-implement-github-issue`を参照し、小さな修正へ専用Goalモードや多段計画を強制しない。
 - Issue外の追加機能やrefactorを混入させない。別課題は別Issue候補として報告する。
 - 正本の矛盾は推測で仕様を拡張せず、矛盾内容と採用した最小判断を報告する。契約を越える挙動・保存データの変更や、未許可の公開操作は人間判断を求める。
 - repository既定CIを検証対象とする。未実施・失敗と残るリスクを報告し、対象PRの必須GitHub Actionsが成功してからmergeする。再実行だけで成功扱いにしない。
@@ -31,7 +32,7 @@
 ## Issue Execution Authorization
 
 - ユーザーから指定Issueの実行を依頼された場合、明示的な制限がない限り、実装・検証、今回差分のcommit・通常push、PR作成、対象PR上の結果報告、Issue契約内のレビュー指摘修正・再レビュー依頼、最新headのレビューとCIの完了確認までを許可範囲に含める。既に許可された操作を工程ごとに再確認しない。ローカル作業のみ・追跡のみ・修正禁止など、現在の明示的な制限を優先する。
-- レビュー修正は`ddrgp-github-review-fix`に従う。同じ契約不一致が原因の互換性指摘が続く場合は、個別分岐を重ねる前に対応表・契約照合・往復検証へ戻る。指摘件数やレビュー回数だけを理由に停止しない。
+- レビュー修正・同種原因の調査は`ddrgp-github-review-fix`に従う。
 - merge、release、force-push、本番DBへの操作、Issue契約外の変更は、この既定許可に含めない。
 
 Issue作成・仕様固定は`ddrgp-issue-authoring`、指定Issueの実装・検証は`ddrgp-implement-github-issue`を使う。workflow詳細と参照資料は、そのtaskに必要なSkillを選択してから読む。
