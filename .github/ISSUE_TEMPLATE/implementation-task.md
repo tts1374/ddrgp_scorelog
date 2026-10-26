@@ -8,7 +8,7 @@ assignees: ""
 
 ## Objective
 
-<!-- 今回達成するユーザー価値、不具合修正、または実測で必要と判明した作業を書く。 -->
+<!-- 今回達成する価値・目的（Goal）を書く。実装方式や専用Goalモードは指定せず、変えてはいけない契約はScope / Non-scope、完了条件はAcceptance criteriaへ置く。 -->
 
 ## Implementation level
 
