@@ -36,7 +36,9 @@ M4のDDR WORLD parserは、snapshot pageの現行`table.table-ui`とlegacy`table
 
 ### 確認済みCHALLENGE欠落の局所補正
 
-通常の譜面表にCHALLENGEがない一方でプレー可能と確認済みの37曲について、SP/DP計74譜面だけを生成時に局所補正します。レベルと確認元は、2026-07-25取得のDDR WORLD楽曲一覧snapshotで確認した25曲50譜面、2026-08-09取得のBEMANIWiki楽曲パック一覧で確認した9曲18譜面、2026-10-25取得の[BEMANIWiki WORLD旧曲リスト](https://bemaniwiki.com/?DanceDanceRevolution+WORLD/%E6%97%A7%E6%9B%B2%E3%83%AA%E3%82%B9%E3%83%88)で確認した3曲6譜面です。WORLD旧曲リストから補正する3曲は「華爛漫 -Flowers-」SP/DP 14、「BE LOVIN」SP/DP 15、「PARANOIA EVOLUTION」SP/DP 18です。
+通常の譜面表にCHALLENGEがない場合に、プレー可能と確認済みの47曲についてSP/DP計94譜面を生成時に局所補正します。レベルと確認元は、2026-07-25取得のDDR WORLD楽曲一覧snapshotで確認した25曲50譜面、2026-08-09取得のBEMANIWiki楽曲パック一覧で確認した9曲18譜面、2026-10-25取得の[BEMANIWiki WORLD旧曲リスト](https://bemaniwiki.com/?DanceDanceRevolution+WORLD/%E6%97%A7%E6%9B%B2%E3%83%AA%E3%82%B9%E3%83%88)で確認した3曲6譜面、2026-10-29取得の[BEMANIWiki楽曲パック一覧](https://bemaniwiki.com/?DanceDanceRevolution+GRAND+PRIX/%E6%A5%BD%E6%9B%B2%E3%83%91%E3%83%83%E3%82%AF)で確認したグランプリ譜面パック vol.8の10曲20譜面です。WORLD旧曲リストから補正する3曲は「華爛漫 -Flowers-」SP/DP 14、「BE LOVIN」SP/DP 15、「PARANOIA EVOLUTION」SP/DP 18です。
+
+vol.8の確認値は「Bloody Tears(IIDX EDITION)」16/16、「CaptivAte～誓い～」15/15、「DROP THE BOMB」14/14、「FIRE」16/16、「GENOM SCREAMS」15/16、「La Bamba」13/13、「rainbow flyer」16/16、「Saturday Night Love」12/12、「THE SHINING POLARIS」12/12、「Votum stellarum -forest #25 DDR RMX-」17/17（SP/DP）です。対象曲は[公式GP収録曲一覧](https://p.eagate.573.jp/game/eacddr/konaddr/info/mlist.html#chart_pack)と照合しています。
 
 補正は同じ `song_id + play_style + CHALLENGE` の譜面がない場合だけ追加します。譜面情報の優先順位はDDR WORLD公式、BEMANIWiki、確認済みCHALLENGE補正の順です。公式に同じCHALLENGE譜面があれば公式レベルを採用し、公式にない譜面ではWiki由来または確認済み補正を維持します。確認値と異なるWiki既存譜面がある場合は生成を失敗させます。追加chartの `notes` には確認元URLと取得日を保持し、`master_metadata` の `confirmed_challenge_supplement_json` でchart ID、song ID、曲名、SP/DP、レベル、確認元URL、取得日を譜面単位で追跡します。manifest件数とhashは `confirmed_challenge_chart_count` / `confirmed_challenge_supplement_hash` に記録し、`master.inspect` で実chart、notes、manifest、hashの整合を検査します。
 
