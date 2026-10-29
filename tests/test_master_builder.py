@@ -18,11 +18,16 @@ EXPECTED_CONFIRMED_CHALLENGE_LEVELS = {
     "ALPACORE": (17, 17),
     "BE LOVIN": (15, 15),
     "BITTER CHOCOLATE STRIKER": (18, 18),
+    "Bloody Tears(IIDX EDITION)": (16, 16),
+    "CaptivAte～誓い～": (15, 15),
     "Come Back To Me": (16, 16),
     "CyberConnect": (17, 17),
     "DIGITALIZER": (18, 18),
     "Din Don Dan (にじさんじダンス部 ver.)": (16, 16),
     "Draw the Savage": (15, 14),
+    "DROP THE BOMB": (14, 14),
+    "FIRE": (16, 16),
+    "GENOM SCREAMS": (15, 16),
     "Give Me": (16, 16),
     "Glitch Angel": (18, 18),
     "Going Hypersonic": (17, 17),
@@ -30,19 +35,24 @@ EXPECTED_CONFIRMED_CHALLENGE_LEVELS = {
     "Good Looking": (17, 18),
     "Harmonia": (16, 16),
     "In The Breeze": (14, 14),
+    "La Bamba": (13, 13),
     "Lightspeed": (18, 18),
     "MUTEKI BUFFALO": (17, 17),
     "New Era": (18, 18),
     "PARANOIA EVOLUTION": (18, 18),
     "Rampage Hero": (17, 17),
+    "rainbow flyer": (16, 16),
     "Run The Show": (16, 16),
+    "Saturday Night Love": (12, 12),
     "Starlight in the Snow": (16, 16),
     "Step This Way": (17, 17),
     "Superior MAXXX": (19, 19),
     "Take A Step Forward": (15, 15),
     "The World Ends Now": (18, 18),
+    "THE SHINING POLARIS": (12, 12),
     "Touch My Body": (14, 14),
     "True Blue": (17, 17),
+    "Votum stellarum -forest #25 DDR RMX-": (17, 17),
     "Yuni's Nocturnal Days": (18, 18),
     "クリムゾンゲイト": (16, 16),
     "パ→ピ→プ→Yeah!": (15, 16),
@@ -1296,14 +1306,14 @@ def test_parse_master_html_merges_new_song_levels_and_records_snapshot() -> None
     assert build.new_song_snapshot.source_url == "https://example.test/new-songs"
 
 
-def test_confirmed_challenge_supplement_generates_expected_74_charts(
+def test_confirmed_challenge_supplement_generates_expected_94_charts(
     tmp_path: Path,
 ) -> None:
     build = confirmed_challenge_fixture_build()
     output_path = tmp_path / "ddrgp-master.sqlite"
 
-    assert len(build.confirmed_challenge_supplements) == 74
-    assert len({row.chart_id for row in build.confirmed_challenge_supplements}) == 74
+    assert len(build.confirmed_challenge_supplements) == 94
+    assert len({row.chart_id for row in build.confirmed_challenge_supplements}) == 94
     builder.write_master_database(output_path, build)
 
     with sqlite3.connect(output_path) as connection:
@@ -1341,11 +1351,17 @@ def test_confirmed_challenge_supplement_generates_expected_74_charts(
     assert control_rows == [("SINGLE", "CHALLENGE", 12, "12", "control")]
 
     manifest = json.loads(metadata["confirmed_challenge_supplement_json"])
-    assert metadata["confirmed_challenge_chart_count"] == "74"
-    assert len(manifest) == 74
+    assert metadata["confirmed_challenge_chart_count"] == "94"
+    assert len(manifest) == 94
     assert sum(row["acquired_on"] == "2026-07-25" for row in manifest) == 50
     assert sum(row["acquired_on"] == "2026-08-09" for row in manifest) == 18
     assert sum(row["acquired_on"] == "2026-10-25" for row in manifest) == 6
+    assert sum(row["acquired_on"] == "2026-10-29" for row in manifest) == 20
+    assert all(
+        row["source_url"] == builder.BEMANIWIKI_PACK_SOURCE_URL
+        for row in manifest
+        if row["acquired_on"] == "2026-10-29"
+    )
     assert metadata["confirmed_challenge_supplement_hash"] == (
         builder.confirmed_challenge_supplements_hash(
             build.confirmed_challenge_supplements
@@ -1353,7 +1369,7 @@ def test_confirmed_challenge_supplement_generates_expected_74_charts(
     )
 
     summary = master_inspect.inspect_master_database(output_path)
-    assert summary["confirmed_challenge_chart_count"] == 74
+    assert summary["confirmed_challenge_chart_count"] == 94
     assert summary["confirmed_challenge_supplement_hash"] == metadata[
         "confirmed_challenge_supplement_hash"
     ]
@@ -1411,6 +1427,38 @@ def test_confirmed_challenge_supplement_resolves_representative_song_chart_ids()
         and row.acquired_on == "2026-10-25"
         for row in world_old_song_rows
     )
+
+
+@pytest.mark.parametrize("play_style,level", [("SINGLE", 15), ("DOUBLE", 16)])
+def test_vol8_existing_challenge_is_preserved(play_style: str, level: int) -> None:
+    build = confirmed_challenge_fixture_build()
+    song = next(song for song in build.songs if song.title == "GENOM SCREAMS")
+    existing = builder.MasterChart(
+        chart_id=builder.stable_id("chart", song.song_id, play_style, "CHALLENGE"),
+        song_id=song.song_id,
+        play_style=play_style,
+        difficulty="CHALLENGE",
+        level=level,
+        raw_level=str(level),
+        shock_arrow=True,
+        is_removed=False,
+        is_limited=True,
+        notes="existing Wiki chart",
+    )
+
+    charts, supplements = builder.apply_confirmed_challenge_supplements((song,), (existing,))
+
+    assert len(charts) == 2
+    assert next(chart for chart in charts if chart.chart_id == existing.chart_id) == existing
+    assert len(supplements) == 1
+    assert supplements[0].play_style != play_style
+    assert supplements[0].source_url == builder.BEMANIWIKI_PACK_SOURCE_URL
+    assert supplements[0].acquired_on == "2026-10-29"
+
+    with pytest.raises(ValueError, match="conflicts with source chart"):
+        builder.apply_confirmed_challenge_supplements(
+            (song,), (replace(existing, level=16 if play_style == "SINGLE" else 15),)
+        )
 
 
 def test_confirmed_challenge_supplement_rejects_level_conflict() -> None:
