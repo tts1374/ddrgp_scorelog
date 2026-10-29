@@ -1869,6 +1869,41 @@ def test_literal_annotation_symbol_is_preserved(cell_html: str) -> None:
     assert "※" in builder.normalize_table_cell_text(cell)
 
 
+def test_registered_arcade_only_song_stays_outside_grand_prix(tmp_path: Path) -> None:
+    from master.identity_registry import SongIdentityRegistry
+
+    title = "access super [hyper] focus"
+    html = FIXTURE_HTML.replace("MAKE IT BETTER", title).replace("mitsu-O!", "kiraku")
+    official_html = OFFICIAL_FIXTURE_HTML + """
+    <table class="m_list">
+      <tr><th>タイトル</th><th>アーティスト</th><th>トライアルノーマルプレー</th>
+          <th>アーケードノーマルプレー</th><th>アーケードプレミアムプレー</th></tr>
+      <tr><td>access super [hyper] focus</td><td>kiraku</td>
+          <td>〇</td><td>〇</td><td>〇</td></tr>
+    </table>
+    """
+
+    build = builder.parse_master_html(
+        html,
+        official_html=official_html,
+        identity_registry=SongIdentityRegistry.load(),
+    )
+    song = next(song for song in build.songs if song.title == title)
+    assert song.song_id == "song_5efa1f4b770dea46"
+    assert not song.grand_prix_play_available
+    assert not song.free_play_available
+    assert song.official_availability_match == "not_found"
+    assert len([chart for chart in build.charts if chart.song_id == song.song_id]) == 9
+
+    output = tmp_path / "master.sqlite"
+    builder.write_master_database(output, build)
+    master_inspect.inspect_master_database(output)
+    with sqlite3.connect(output) as connection:
+        assert connection.execute(
+            "SELECT grand_prix_play_available FROM songs WHERE song_id = ?", (song.song_id,)
+        ).fetchone() == (0,)
+
+
 def test_parse_master_html_rejects_missing_song_list_table() -> None:
     try:
         builder.parse_master_html("<html><table><tr><td>not songs</td></tr></table></html>")
