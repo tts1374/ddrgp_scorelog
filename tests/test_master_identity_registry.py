@@ -34,7 +34,7 @@ def test_released_registry_keeps_canonical_and_source_presentations_on_one_id() 
 
     assert registry.resolve("RËVOLUTIФN", "TËЯRA") == "song_177d950f607b1894"
     assert registry.resolve("RЁVOLUTIФN", "TЁЯRA") == "song_177d950f607b1894"
-    assert len(registry.identities) == 1394
+    assert len(registry.identities) == 1395
 
 
 @pytest.mark.parametrize(
@@ -66,6 +66,7 @@ def test_released_registry_keeps_canonical_and_source_presentations_on_one_id() 
         ("ILL-STARRED Diver", "polysha", "song_385cbf90f5ea775f"),
         ("Nostalgic Blood of the Strife", "Laur", "song_563b7bc934ac8d92"),
         ("Princess K", "Retropolitaliens(Ms.+駄々子)", "song_dbe24db47ee70161"),
+        ("access super [hyper] focus", "kiraku", "song_5efa1f4b770dea46"),
     ],
 )
 def test_reviewed_additions_keep_master_and_chart_identity(
