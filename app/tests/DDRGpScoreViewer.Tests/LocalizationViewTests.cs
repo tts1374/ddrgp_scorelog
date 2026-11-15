@@ -26,6 +26,7 @@ public sealed class LocalizationViewCollection;
 public sealed class LocalizationViewTests(LocalizationApplicationFixture applicationFixture)
     : IClassFixture<LocalizationApplicationFixture>
 {
+
     [Theory]
     [InlineData(1280, 760, true, false)]
     [InlineData(960, 640, true, true)]
@@ -67,9 +68,11 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
                     window.SettingsDoublePlayStyleButton, selectors[0], selectors[1], selectors[2],
                     window.ResetSettingsButton,
                 };
+                if (registered) expected.Add(window.WebBestSyncToggle);
+                expected.Add(FindVisualChildren<System.Windows.Controls.Primitives.ToggleButton>(
+                    window.WebPublicRecordsExpander).First());
                 expected.AddRange(registered
-                    ? [window.WebBestSyncToggle, window.SyncWebBestsNowButton,
-                        window.OpenPublicPlayerPageButton, window.OpenWebProfileButton]
+                    ? [window.SyncWebBestsNowButton, window.OpenPublicPlayerPageButton, window.OpenWebProfileButton]
                     : [window.ConnectWebAccountButton]);
                 Assert.True(expected[0].Focus());
                 var visited = new List<UIElement> { expected[0] };
@@ -2351,7 +2354,7 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
                 Assert.DoesNotContain(Localization.Get("起動時の監視と保存できない結果の通知を設定します"), settingsTexts);
                 Assert.DoesNotContain(Localization.Get("自己ベストの初期表示と起動時の画面を設定します"), settingsTexts);
                 Assert.Equal(string.Empty, window.PageSubtitle.Text);
-                Assert.Equal(Visibility.Visible, window.WebBestSyncStatusMessageText.Visibility);
+                Assert.Equal(Visibility.Collapsed, window.WebBestSyncStatusMessageText.Visibility);
                 window.ViewModel.ApplyWebBestSyncState(new WebBestSyncSnapshot(
                     true, false, WebBestSyncStatus.Idle, null, 0, null, null, []));
                 DrainDispatcher(window.Dispatcher);
@@ -2431,6 +2434,112 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
                 Localization.Configure(UserSettings.JapaneseLanguage);
             }
         });
+    }
+
+
+    [Theory]
+    [InlineData("ja", "light", 1280, 760)]
+    [InlineData("ja", "dark", 960, 640)]
+    [InlineData("en", "light", 1280, 760)]
+    [InlineData("en", "dark", 960, 640)]
+    [InlineData("ko", "light", 1280, 760)]
+    [InlineData("ko", "dark", 960, 640)]
+    public void Web_sending_keeps_scope_actions_and_recovery_visible_with_diagnostics_in_details(
+        string language, string theme, double width, double height)
+    {
+        foreach (var state in new[] { "ready", "stopped", "unlinked", "pending", "auth", "network", "state-file" })
+        {
+            using var database = new DatabaseFixture();
+            using var handler = new StartupWebHandler();
+            applicationFixture.Run(() =>
+            {
+                MainWindow? window = null;
+                try
+                {
+                    PrepareStartupResources();
+                    Localization.Configure(language);
+                    ThemeManager.Apply(theme);
+                    var paths = StartupPaths(database);
+                    paths.EnsureDefaultDirectories();
+                    var registered = state is "ready" or "stopped" or "network";
+                    var identity = new FileWebPlayerIdentityStore(paths.WebPlayerIdentityPath, paths.WebPlayerCredentialPath);
+                    if (registered || state == "auth") identity.SaveRegistered("p_XXXXXXXXXXXXXXXXXXXXXX", "fixture-credential", "Player");
+                    if (state == "auth") identity.SetAuthenticationInvalid(true);
+                    if (state == "pending")
+                        new FileAppAuthorizationStore(paths.WebPlayerCredentialPath + ".authorization").Save(new(
+                            "fixture", "fixture-secret", "connect", null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(10)));
+                    if (state == "state-file")
+                    {
+                        Directory.CreateDirectory(Path.GetDirectoryName(paths.WebBestSyncStatePath)!);
+                        File.WriteAllText(paths.WebBestSyncStatePath, "not sqlite");
+                    }
+                    window = new MainWindow(paths, handler)
+                    {
+                        Width = width,
+                        MinWidth = width,
+                        Height = height,
+                        MinHeight = height,
+                    };
+                    window.Show();
+                    window.SettingsNavigation.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                    if (state != "state-file")
+                        window.ViewModel.ApplyWebBestSyncState(new WebBestSyncSnapshot(
+                            state is "ready" or "network", false,
+                            state == "network" ? WebBestSyncStatus.ErrorRetryable : state == "auth" ? WebBestSyncStatus.AuthInvalid :
+                            state == "ready" ? WebBestSyncStatus.Idle : WebBestSyncStatus.Disabled,
+                            DateTimeOffset.Parse("2026-11-15T12:34:56+09:00"), 0, null,
+                            state == "network" ? "NETWORK_ERROR" : null,
+                            state == "network" ? [new WebBestSyncEntry("fixture", "new", null, null)] : []));
+                    DrainDispatcher(window.Dispatcher);
+                    Assert.Equal(Localization.Get("自動記録の自己ベストを公開します。ログインなしで誰でも閲覧できます。"), window.WebPublicSummary.Text);
+                    Assert.Equal(registered, window.WebBestSyncToggle.IsVisible);
+                    Assert.Equal(registered, window.WebSendingStopNotice.IsVisible);
+                    Assert.Equal(registered, window.WebBestSyncToggle.IsEnabled);
+                    Assert.Equal(state is "ready" or "network", window.SyncWebBestsNowButton.IsEnabled);
+                    Assert.Equal(!registered && state != "state-file", window.ConnectWebAccountButton.IsVisible && window.ConnectWebAccountButton.IsEnabled);
+                    Assert.Equal(state == "pending" ? Visibility.Visible : Visibility.Collapsed, window.ViewModel.WebAuthorizationPendingVisibility);
+                    Assert.Equal(Localization.Get("公開する記録について"), window.WebPublicRecordsExpander.Header);
+                    Assert.False(window.WebPublicRecordsExpander.IsExpanded);
+                    var exclusion = ((StackPanel)window.WebPublicRecordsExpander.Content).Children.OfType<TextBlock>()
+                        .Single(t => t.Text == Localization.Get("画像から追加・バックアップから復元したプレーは送信しません。"));
+                    Assert.False(exclusion.IsVisible);
+                    window.WebPublicRecordsExpander.IsExpanded = true;
+                    DrainDispatcher(window.Dispatcher);
+                    Assert.True(exclusion.IsVisible);
+                    Assert.False(window.WebSyncDiagnosticsExpander.IsExpanded);
+                    Assert.False(window.WebBestSyncDiagnosticText.IsVisible);
+                    Assert.True(window.WebBestSyncPendingText.IsVisible);
+                    Assert.Equal(state == "state-file" ? Localization.Get("未送信: 不明") : Localization.Format("未同期: {0:N0}譜面", state == "network" ? 1 : 0), window.WebBestSyncPendingText.Text);
+                    if (state is "network" or "state-file")
+                    {
+                        Assert.True(window.WebBestSyncStatusMessageText.IsVisible);
+                        Assert.Equal(Localization.Get(state == "network"
+                            ? "ローカルの保存データには影響しません。通信状態を確認し、自動再試行をお待ちください。"
+                            : "Web送信を停止しています。履歴閲覧とローカル保存は利用できます。アプリを終了し、同期状態ファイルのアクセス権と保管状態を確認してから再起動してください。ファイルの削除・再作成は行わないでください。"), window.WebBestSyncStatusMessageText.Text);
+                        window.WebSyncDiagnosticsExpander.IsExpanded = true;
+                        DrainDispatcher(window.Dispatcher);
+                        Assert.True(window.WebBestSyncDiagnosticText.IsVisible);
+                        Assert.Contains(state == "network" ? "NETWORK_ERROR" : paths.WebBestSyncStatePath, window.WebBestSyncDiagnosticText.Text);
+                    }
+                    if (state == "auth") Assert.Equal(Localization.Get("確認が完了するまでWeb同期を停止しています。"), window.WebBestSyncStatusMessageText.Text);
+                    if (state == "stopped") Assert.Equal(string.Empty, window.WebBestSyncStatusMessageText.Text);
+                    window.SettingsBodyScrollViewer.ScrollToEnd();
+                    DrainDispatcher(window.Dispatcher);
+                    Assert.Equal(0, window.SettingsBodyScrollViewer.ScrollableWidth);
+                    Assert.True(window.SaveSettingsButton.IsVisible);
+                    Assert.Equal(window.FindResource("TextPrimaryBrush"), window.WebPublicRecordsExpander.Foreground);
+                    Assert.Equal(window.FindResource("TextPrimaryBrush"), window.WebSyncDiagnosticsExpander.Foreground);
+                    Assert.Equal(0, handler.RequestCount);
+                }
+                finally
+                {
+                    window?.PrepareForApplicationExit();
+                    window?.Close();
+                    ThemeManager.Apply("light");
+                    Localization.Configure("ja");
+                }
+            });
+        }
     }
 
     private sealed record GridItem(string Display);

@@ -209,10 +209,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private string appliedWebPlayerDisplayName = "Player";
     private bool webPlayerDisplayNameDirty;
     private string webBestSyncStatusTitle = Localization.Get("連携停止中");
-    private string webBestSyncStatusMessage = Localization.Get(
-        "同期をOFFにしても公開データは残ります。");
+    private string webBestSyncStatusMessage = "";
     private string webBestSyncLastSuccessDisplay = Localization.Get("未同期");
     private string webBestSyncDetails = "";
+    private string webBestSyncPendingDisplay = Localization.Format("未同期: {0:N0}譜面", 0);
     private WebBestSyncStatus webBestSyncStatus = WebBestSyncStatus.Disabled;
     private int webBestSyncPendingCount;
     private int webBestSyncUnknownChartCount;
@@ -317,6 +317,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         WebBestSyncStatusMessage = Localization.Get(
             "Web送信を停止しています。履歴閲覧とローカル保存は利用できます。アプリを終了し、同期状態ファイルのアクセス権と保管状態を確認してから再起動してください。ファイルの削除・再作成は行わないでください。");
         WebBestSyncLastSuccessDisplay = Localization.Get("不明");
+        WebBestSyncPendingDisplay = Localization.Get("未送信: 不明");
         WebBestSyncDetails = Localization.Format("同期状態ファイル: {0} / 理由: {1}", statePath, exception.Message);
     }
 
@@ -472,6 +473,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
     {
         get => webBestSyncLastSuccessDisplay;
         private set => SetProperty(ref webBestSyncLastSuccessDisplay, value);
+    }
+
+    public string WebBestSyncPendingDisplay
+    {
+        get => webBestSyncPendingDisplay;
+        private set => SetProperty(ref webBestSyncPendingDisplay, value);
     }
 
     public string WebBestSyncDetails
@@ -2288,8 +2295,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         {
             WebBestSyncStatus.Disabled => (
                 Localization.Get("連携停止中"),
-                Localization.Get(
-                    "同期をOFFにしても公開データは残ります。")),
+                ""),
             WebBestSyncStatus.Idle => (
                 Localization.Get("同期済み"),
                 ""),
@@ -2324,14 +2330,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
             : state.LastSuccessfulSyncAt is null
             ? Localization.Get("未同期")
             : state.LastSuccessfulSyncAt.Value.ToLocalTime().ToString("yyyy/MM/dd HH:mm:ss");
-        WebBestSyncDetails = state.LastErrorCode is null
-            ? state.PendingCount > 0
-                ? Localization.Format("未同期: {0:N0}譜面", state.PendingCount)
-                : ""
-            : Localization.Format(
-                "{0} / 未同期: {1:N0}譜面",
-                state.LastErrorCode,
-                state.PendingCount);
+        WebBestSyncPendingDisplay = Localization.Format("未同期: {0:N0}譜面", state.PendingCount);
+        WebBestSyncDetails = state.LastErrorCode ?? "";
         OnPropertyChanged(nameof(CanSyncWebBestsNow));
         OnPropertyChanged(nameof(CanDeletePublicBests));
         OnPropertyChanged(nameof(CanOpenPublicPlayerPage));

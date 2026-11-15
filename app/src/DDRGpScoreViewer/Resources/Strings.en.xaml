@@ -550,4 +550,11 @@
     <sys:String x:Key="PNG・1280×720の画像が使えます。">Use PNG images at 1280×720.</sys:String>
     <sys:String x:Key="コピーから戻すと、今の記録がその内容に置き換わります。">Restoring replaces your current records with the selected copy.</sys:String>
     <sys:String x:Key="中断">Stop reading</sys:String>
+    <sys:String x:Key="自動記録の自己ベストを公開します。ログインなしで誰でも閲覧できます。">Share automatically recorded personal bests. Anyone can view them without signing in.</sys:String>
+    <sys:String x:Key="公開する記録について">About shared records</sys:String>
+    <sys:String x:Key="画像から追加・バックアップから復元したプレーは送信しません。">Plays added from images or restored from a backup are not sent.</sys:String>
+    <sys:String x:Key="通常の送信ではWebの記録を下げたり削除したりしません。名前の変更や公開記録の削除はプロフィールで行えます。">Normal sending never lowers or deletes Web records. Change your name or delete shared records in your profile.</sys:String>
+    <sys:String x:Key="送信を止めても、公開した記録は残ります。">Shared records remain public when sending is stopped.</sys:String>
+    <sys:String x:Key="送信の詳しい情報">Sending details</sys:String>
+    <sys:String x:Key="未送信: 不明">Not sent: unknown</sys:String>
 </ResourceDictionary>
