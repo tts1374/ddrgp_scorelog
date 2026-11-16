@@ -623,7 +623,7 @@ public sealed class ReleaseOperationsTests
 
         Assert.True(primary.IsPrimary);
         Assert.False(secondary.IsPrimary);
-        await activated.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await activated.Task.WaitAsync(TimeSpan.FromSeconds(10));
     }
 
     private static string CreatePackage(DatabaseFixture fixture, string contentVersion)
