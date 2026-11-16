@@ -901,7 +901,7 @@ public sealed class WebBestSyncTests
 
         var cases = new[]
         {
-            (WebBestSyncStatus.Disabled, false, Array.Empty<WebBestSyncEntry>(), "連携停止中", false),
+            (WebBestSyncStatus.Disabled, false, Array.Empty<WebBestSyncEntry>(), "送信停止中（公開は継続）", false),
             (WebBestSyncStatus.Idle, true, Array.Empty<WebBestSyncEntry>(), "同期済み", true),
             (WebBestSyncStatus.Dirty, true, new[] { pending }, "同期待ち", true),
             (WebBestSyncStatus.Syncing, true, new[] { pending }, "変更分を同期中", false),
@@ -925,8 +925,7 @@ public sealed class WebBestSyncTests
                 entries));
             Assert.Equal(Localization.Get(title), viewModel.WebBestSyncStatusTitle);
             Assert.Equal(canSync, viewModel.CanSyncWebBestsNow);
-            if (status is WebBestSyncStatus.Idle or WebBestSyncStatus.Syncing or
-                WebBestSyncStatus.Reconciling or WebBestSyncStatus.PublicBestsDeleted)
+            if (status is not (WebBestSyncStatus.ErrorRetryable or WebBestSyncStatus.AuthInvalid))
             {
                 Assert.Empty(viewModel.WebBestSyncStatusMessage);
             }

@@ -2294,7 +2294,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         (WebBestSyncStatusTitle, WebBestSyncStatusMessage) = state.Status switch
         {
             WebBestSyncStatus.Disabled => (
-                Localization.Get("連携停止中"),
+                Localization.Get(HasRegisteredWebIdentity ? "送信停止中（公開は継続）" : "連携停止中"),
                 ""),
             WebBestSyncStatus.Idle => (
                 Localization.Get("同期済み"),
@@ -2317,13 +2317,10 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 ""),
             _ when state.UnknownChartCount > 0 => (
                 Localization.Get("一部の譜面をあとで同期します"),
-                Localization.Get(
-                    "Web側の準備ができ次第、自動で同期されます。ユーザー操作は不要です。")),
+                ""),
             _ => (
                 Localization.Get("同期待ち"),
-                Localization.Format(
-                    "自動記録で更新された{0:N0}譜面が同期を待っています。",
-                    state.PendingCount)),
+                ""),
         };
         WebBestSyncLastSuccessDisplay = state.Status == WebBestSyncStatus.PublicBestsDeleted
             ? "—"

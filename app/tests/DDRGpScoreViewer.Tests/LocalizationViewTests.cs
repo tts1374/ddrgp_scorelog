@@ -801,7 +801,7 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
                 Assert.Equal(enabled, window.ViewModel.CanSyncWebBestsNow);
                 await window.ViewModel.ResumeWebBestSyncAsync();
                 Assert.Equal(enabled ? 1 : 0, handler.RequestCount);
-                Assert.Equal(Localization.Get(enabled ? "同期済み" : "連携停止中"), window.ViewModel.WebBestSyncStatusTitle);
+                Assert.Equal(Localization.Get(enabled ? "同期済み" : registered ? "送信停止中（公開は継続）" : "連携停止中"), window.ViewModel.WebBestSyncStatusTitle);
             }
             finally
             {
@@ -2491,9 +2491,12 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
                             state == "network" ? "NETWORK_ERROR" : null,
                             state == "network" ? [new WebBestSyncEntry("fixture", "new", null, null)] : []));
                     DrainDispatcher(window.Dispatcher);
-                    Assert.Equal(Localization.Get("自動記録の自己ベストを公開します。ログインなしで誰でも閲覧できます。"), window.WebPublicSummary.Text);
+                    Assert.Equal(Localization.Get("公開対象：自動記録の自己ベスト"), window.WebPublicSummary.Text);
                     Assert.Equal(registered, window.WebBestSyncToggle.IsVisible);
-                    Assert.Equal(registered, window.WebSendingStopNotice.IsVisible);
+                    Assert.Equal(!registered, window.WebPublicAudience.IsVisible);
+                    Assert.DoesNotContain(FindVisualChildren<TextBlock>(window.WebSettingsCard),
+                        text => text.Text == Localization.Get("送信を止めても、公開した記録は残ります。"));
+                    if (state == "stopped") Assert.Equal(Localization.Get("送信停止中（公開は継続）"), window.WebBestSyncStatusText.Text);
                     Assert.Equal(registered, window.WebBestSyncToggle.IsEnabled);
                     Assert.Equal(state is "ready" or "network", window.SyncWebBestsNowButton.IsEnabled);
                     Assert.Equal(!registered && state != "state-file", window.ConnectWebAccountButton.IsVisible && window.ConnectWebAccountButton.IsEnabled);
