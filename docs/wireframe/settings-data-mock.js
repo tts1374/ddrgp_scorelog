@@ -72,7 +72,7 @@ const messages={
     "現在の同期状態": "Webへの送信状況",
     "最終同期": "最後に送った日時",
     "今すぐ同期": "今すぐWebに送る",
-    "確認が完了するまでWeb同期を停止しています。": "「アカウントを作成・引き継ぐ」から、同じアカウントにログインしてください。",
+    "確認が完了するまでWeb同期を停止しています。": "以前と同じアカウントを使用してください。",
     "アカウントを作成・引き継ぐ": "アカウントを作成・引き継ぐ",
     "連携を停止する": "Webへの送信を止める",
     "マイプロフィールを開く": "マイプロフィールを開く",
@@ -96,7 +96,22 @@ const messages={
     "Webへの送信に失敗しました。": "Webへの送信に失敗しました。ネット接続を確認してください。",
     "個人スコアデータを読み込めませんでした。": "プレー記録を読み込めませんでした。",
     "送信済み": "送信済み",
-    "DDR GRAND PRIXの起動を待っています。": "DDR GRAND PRIXの起動を待っています。"
+    "DDR GRAND PRIXの起動を待っています。": "DDR GRAND PRIXの起動を待っています。",
+    "Web同期状態を読み込めません": "Web同期状態を読み込めません",
+    "Web送信を停止しています。履歴閲覧とローカル保存は利用できます。アプリを終了し、同期状態ファイルのアクセス権と保管状態を確認してから再起動してください。ファイルの削除・再作成は行わないでください。": "Web送信を停止しています。履歴閲覧とローカル保存は利用できます。アプリを終了し、同期状態ファイルのアクセス権と保管状態を確認してから再起動してください。ファイルの削除・再作成は行わないでください。",
+    "ローカルの保存データには影響しません。通信状態を確認し、自動再試行をお待ちください。": "通信状態を確認してください。自動で再送します。",
+    "未同期: {0:N0}譜面": "未送信: {0:N0}譜面",
+    "連携停止中": "Webへの送信を停止中",
+    "連携を再開する": "Webへの送信を再開する",
+    "公開する記録について": "公開する記録について",
+    "画像から追加・バックアップから復元したプレーは送信しません。": "画像から追加・バックアップから復元したプレーは送信しません。",
+    "送信の詳しい情報": "送信の詳しい情報",
+    "未送信: 不明": "未送信: 不明",
+    "公開対象：自動記録の自己ベスト": "公開対象：自動記録の自己ベスト",
+    "ログインなしで誰でも閲覧できます。": "ログインなしで誰でも閲覧できます。",
+    "公開記録の削除はプロフィールから行えます。": "公開記録の削除はプロフィールから行えます。",
+    "送信停止中（公開は継続）": "送信停止中（公開は継続）",
+    "連携の結果を確認してください。保存済みの情報は保持しています。": "連携待ちです。"
   },
   "en": {
     "ホーム": "Home",
@@ -172,7 +187,7 @@ const messages={
     "今すぐ同期": "Upload now",
     "公開ページを開く": "Open public page",
     "公開ページ": "Public page",
-    "確認が完了するまでWeb同期を停止しています。": "Select Create or transfer account and sign in to the same account.",
+    "確認が完了するまでWeb同期を停止しています。": "Use the same account as before.",
     "アカウントを作成・引き継ぐ": "Create or recover an account",
     "連携を停止する": "Stop sending to the Web",
     "マイプロフィールを開く": "Open my profile",
@@ -196,7 +211,22 @@ const messages={
     "Webへの送信に失敗しました。": "Could not send to the Web. Check your connection.",
     "個人スコアデータを読み込めませんでした。": "Could not load play records.",
     "送信済み": "Sent",
-    "DDR GRAND PRIXの起動を待っています。": "Waiting for DDR GRAND PRIX to start."
+    "DDR GRAND PRIXの起動を待っています。": "Waiting for DDR GRAND PRIX to start.",
+    "Web同期状態を読み込めません": "Cannot read Web sync state",
+    "Web送信を停止しています。履歴閲覧とローカル保存は利用できます。アプリを終了し、同期状態ファイルのアクセス権と保管状態を確認してから再起動してください。ファイルの削除・再作成は行わないでください。": "Web sending is stopped. History and local saving remain available. Close the app, check the sync state file's permissions and condition, then restart. Keep the original file; do not delete or recreate it.",
+    "ローカルの保存データには影響しません。通信状態を確認し、自動再試行をお待ちください。": "Check your connection. Sending will retry automatically.",
+    "未同期: {0:N0}譜面": "Not uploaded: {0:N0} charts",
+    "連携停止中": "Uploads stopped",
+    "連携を再開する": "Resume sending to the Web",
+    "公開する記録について": "About shared records",
+    "画像から追加・バックアップから復元したプレーは送信しません。": "Plays added from images or restored from a backup are not sent.",
+    "送信の詳しい情報": "Sending details",
+    "未送信: 不明": "Not sent: unknown",
+    "公開対象：自動記録の自己ベスト": "Shared records: automatically recorded personal bests",
+    "ログインなしで誰でも閲覧できます。": "Anyone can view them without signing in.",
+    "公開記録の削除はプロフィールから行えます。": "Delete shared records from your profile.",
+    "送信停止中（公開は継続）": "Sending stopped (records remain public)",
+    "連携の結果を確認してください。保存済みの情報は保持しています。": "Connection pending."
   },
   "ko": {
     "ホーム": "홈",
@@ -272,7 +302,7 @@ const messages={
     "今すぐ同期": "지금 웹에 보내기",
     "公開ページを開く": "공개 페이지 열기",
     "公開ページ": "공개 페이지",
-    "確認が完了するまでWeb同期を停止しています。": "계정 만들기·이어받기에서 같은 계정에 로그인하세요.",
+    "確認が完了するまでWeb同期を停止しています。": "이전에 사용한 계정으로 로그인하세요.",
     "アカウントを作成・引き継ぐ": "계정 만들기·이어받기",
     "連携を停止する": "웹 전송 중지",
     "マイプロフィールを開く": "내 프로필 열기",
@@ -296,7 +326,22 @@ const messages={
     "Webへの送信に失敗しました。": "웹으로 보내지 못했습니다. 인터넷 연결을 확인하세요.",
     "個人スコアデータを読み込めませんでした。": "플레이 기록을 불러오지 못했습니다.",
     "送信済み": "전송 완료",
-    "DDR GRAND PRIXの起動を待っています。": "DDR GRAND PRIX가 시작되기를 기다리고 있습니다."
+    "DDR GRAND PRIXの起動を待っています。": "DDR GRAND PRIX가 시작되기를 기다리고 있습니다.",
+    "Web同期状態を読み込めません": "웹 동기화 상태를 읽을 수 없습니다",
+    "Web送信を停止しています。履歴閲覧とローカル保存は利用できます。アプリを終了し、同期状態ファイルのアクセス権と保管状態を確認してから再起動してください。ファイルの削除・再作成は行わないでください。": "웹 전송이 중지되었습니다. 기록 조회와 로컬 저장은 계속 이용할 수 있습니다. 앱을 종료하고 동기화 상태 파일의 접근 권한과 상태를 확인한 후 다시 시작하세요. 원본 파일을 삭제하거나 다시 만들지 마세요.",
+    "ローカルの保存データには影響しません。通信状態を確認し、自動再試行をお待ちください。": "인터넷 연결을 확인하세요. 자동으로 다시 전송합니다.",
+    "未同期: {0:N0}譜面": "미전송: 채보 {0:N0}개",
+    "連携停止中": "웹 전송 중지됨",
+    "連携を再開する": "웹 전송 재개",
+    "公開する記録について": "공개하는 기록에 대해",
+    "画像から追加・バックアップから復元したプレーは送信しません。": "이미지에서 추가하거나 백업에서 복원한 플레이는 전송하지 않습니다.",
+    "送信の詳しい情報": "전송 상세 정보",
+    "未送信: 不明": "미전송: 알 수 없음",
+    "公開対象：自動記録の自己ベスト": "공개 대상: 자동 기록한 개인 최고 기록",
+    "ログインなしで誰でも閲覧できます。": "누구나 로그인 없이 볼 수 있습니다.",
+    "公開記録の削除はプロフィールから行えます。": "공개 기록은 프로필에서 삭제할 수 있습니다.",
+    "送信停止中（公開は継続）": "전송 중지 (기록은 계속 공개)",
+    "連携の結果を確認してください。保存済みの情報は保持しています。": "연결 대기 중입니다."
   }
 };
 
@@ -307,7 +352,7 @@ const t=k=>messages[state.language][k]??messages.ja[k]??k,esc=v=>String(v).repla
 function format(key,...values){return t(key).replace(/\{(\d+)(?::[^}]+)?\}/g,(_,i)=>values[Number(i)]??'');}
 function button(key,primary=false,disabled=false){return '<button class="action '+(primary?'primary':'')+'" data-action="'+esc(key)+'" '+(disabled?'disabled':'')+'>'+esc(t(key))+'</button>';}
 function select(id,values,value){return '<select id="'+id+'">'+values.map(v=>'<option value="'+v+'" '+(value===v?'selected':'')+'>'+esc(t(v))+'</option>').join('')+'</select>';}
-function settings(){let registered=!['unlinked','auth','pending'].includes(state.fixture),busy=state.fixture==='importing',sending=state.fixture==='syncing',pending=state.fixture==='pending',auth=state.fixture==='auth';return '<div class="settings-layout"><div class="card-stack"><section class="setting-card"><h3>'+t('自動記録')+'</h3><label class="check-row"><input id="auto" type="checkbox" '+(state.auto?'checked':'')+'>'+t('アプリ起動時に監視を開始')+'</label><label class="check-row"><input id="notify" type="checkbox" '+(state.notify?'checked':'')+'>'+t('保存できない結果を通知')+'</label></section><section class="setting-card"><h3>'+t('表示')+'</h3><div class="field-row"><label>'+t('既定のプレイスタイル')+'</label><div class="style-switch">'+['SP','DP'].map(v=>'<button data-style="'+v+'" aria-pressed="'+(state.style===v)+'">'+(v==='SP'?'SINGLE':'DOUBLE')+'</button>').join('')+'</div></div><div class="field-row"><label for="startup">'+t('起動時に表示する画面')+'</label>'+select('startup',['ホーム','自己ベスト','直近プレー履歴'],state.startup)+'</div><div class="field-row"><label for="preferenceTheme">'+t('テーマ')+'</label>'+select('preferenceTheme',['システム','ライト','ダーク'],state.preferenceTheme)+'</div><div class="field-row"><label for="preferenceLanguage">'+t('言語')+'</label>'+select('preferenceLanguage',['日本語','英語','韓国語'],state.preferenceLanguage)+'</div><p class="field-note">'+t('言語の変更を保存するとアプリが自動的に再起動します')+'</p></section></div><section class="setting-card web-card"><div class="card-heading"><h3>'+t('公開データの同期')+'</h3>'+(registered?button('連携を停止する',false,busy):'')+'</div><dl class="web-status"><dt>'+t('現在の同期状態')+'</dt><dd><strong>'+(sending?t('送信中'):auth?t('確認が必要'):pending?t('連携待ち'):registered?(state.fixture==='error'?t('送信失敗'):t('送信済み')):t('未連携'))+'</strong></dd><dt>'+t('最終同期')+'</dt><dd>'+(registered?'2026/10/18 14:26:12':'—')+'</dd></dl>'+(auth?'<p class="web-message">'+t('確認が完了するまでWeb同期を停止しています。')+'</p>':'')+(state.fixture==='error'?'<p class="web-message error-message">'+t('Webへの送信に失敗しました。')+'</p>':'')+(registered?'<div class="actions">'+button('今すぐ同期',true,busy||sending)+button('公開ページを開く')+'</div><div class="actions">'+button('マイプロフィールを開く')+'</div><details class="web-extra"><summary>'+t('アカウント')+'</summary><div class="actions">'+button('Googleを連携',false,busy)+'</div></details><p class="web-note">'+t('自動記録から作る自己ベストをWebの歴代Bestへ反映します。通常の同期ではWebの記録を下げたり削除したりしません。連携を停止しても公開データは残ります。')+'</p>':'<div class="actions">'+button('アカウントを作成・引き継ぐ',true,busy)+'</div>')+(auth?'<div class="actions">'+button('このPCの連携情報を削除')+'</div>':'')+(pending?'<p class="web-message">'+t('ブラウザで連携を完了してください。')+'</p><div class="actions">'+button('連携結果を確認')+button('連携をキャンセル')+'</div>':'')+'</section></div>';}
+function settings(){let registered=!['unlinked','auth','pending','state-file'].includes(state.fixture),busy=state.fixture==='importing',sending=state.fixture==='syncing',pending=state.fixture==='pending',auth=state.fixture==='auth';return '<div class="settings-layout"><div class="card-stack"><section class="setting-card"><h3>'+t('自動記録')+'</h3><label class="check-row"><input id="auto" type="checkbox" '+(state.auto?'checked':'')+'>'+t('アプリ起動時に監視を開始')+'</label><label class="check-row"><input id="notify" type="checkbox" '+(state.notify?'checked':'')+'>'+t('保存できない結果を通知')+'</label></section><section class="setting-card"><h3>'+t('表示')+'</h3><div class="field-row"><label>'+t('既定のプレイスタイル')+'</label><div class="style-switch">'+['SP','DP'].map(v=>'<button data-style="'+v+'" aria-pressed="'+(state.style===v)+'">'+(v==='SP'?'SINGLE':'DOUBLE')+'</button>').join('')+'</div></div><div class="field-row"><label for="startup">'+t('起動時に表示する画面')+'</label>'+select('startup',['ホーム','自己ベスト','直近プレー履歴'],state.startup)+'</div><div class="field-row"><label for="preferenceTheme">'+t('テーマ')+'</label>'+select('preferenceTheme',['システム','ライト','ダーク'],state.preferenceTheme)+'</div><div class="field-row"><label for="preferenceLanguage">'+t('言語')+'</label>'+select('preferenceLanguage',['日本語','英語','韓国語'],state.preferenceLanguage)+'</div><p class="field-note">'+t('言語の変更を保存するとアプリが自動的に再起動します')+'</p></section></div><section class="setting-card web-card"><div class="card-heading"><h3>'+t('公開データの同期')+'</h3>'+(registered?button(state.fixture==='stopped'?'連携を再開する':'連携を停止する',false,busy):'')+'</div><p class="web-note">'+t('公開対象：自動記録の自己ベスト')+'</p>'+(!registered?'<p class="web-note">'+t('ログインなしで誰でも閲覧できます。')+'</p>':'')+'<details class="web-extra"><summary>'+t('公開する記録について')+'</summary><p>'+t('画像から追加・バックアップから復元したプレーは送信しません。')+'</p><p>'+t('公開記録の削除はプロフィールから行えます。')+'</p></details>'+'<dl class="web-status"><dt>'+t('現在の同期状態')+'</dt><dd><strong>'+(state.fixture==='state-file'?t('Web同期状態を読み込めません'):sending?t('送信中'):auth?t('確認が必要'):pending?t('連携待ち'):registered?(state.fixture==='error'?t('送信失敗'):state.fixture==='stopped'?t('送信停止中（公開は継続）'):t('送信済み')):t('未連携'))+'</strong></dd><dt>'+t('最終同期')+'</dt><dd>'+(registered?'2026/10/18 14:26:12':'—')+'</dd></dl><p class="web-note">'+(state.fixture==='state-file'?t('未送信: 不明'):t('未同期: {0:N0}譜面').replace('{0:N0}',state.fixture==='error'?'1':'0'))+'</p>'+(auth?'<p class="web-message">'+t('確認が完了するまでWeb同期を停止しています。')+'</p>':'')+(state.fixture==='error'?'<p class="web-message error-message">'+t('ローカルの保存データには影響しません。通信状態を確認し、自動再試行をお待ちください。')+'</p>':'')+(state.fixture==='state-file'?'<p class="web-message error-message">'+t('Web送信を停止しています。履歴閲覧とローカル保存は利用できます。アプリを終了し、同期状態ファイルのアクセス権と保管状態を確認してから再起動してください。ファイルの削除・再作成は行わないでください。')+'</p>':'')+(['error','state-file'].includes(state.fixture)?'<details class="web-extra"><summary>'+t('送信の詳しい情報')+'</summary><p>'+(state.fixture==='error'?'NETWORK_ERROR':'C:/example/web-sync.sqlite / SQLITE_ERROR')+'</p></details>':'')+(registered?'<div class="actions">'+button('今すぐ同期',true,busy||sending||state.fixture==='stopped')+button('公開ページを開く')+'</div><div class="actions">'+button('マイプロフィールを開く')+'</div><details class="web-extra"><summary>'+t('アカウント')+'</summary><div class="actions">'+button('Googleを連携',false,busy)+'</div></details>':'<div class="actions">'+button('アカウントを作成・引き継ぐ',true,busy||state.fixture==='state-file')+'</div>')+(auth?'<div class="actions">'+button('このPCの連携情報を削除')+'</div>':'')+(pending?'<p class="web-message">'+t('ブラウザで連携を完了してください。')+'</p><div class="actions">'+button('連携結果を確認')+button('連携をキャンセル')+'</div>':'')+'</section></div>';}
 function data(){let busy=state.fixture==='importing',error=state.fixture==='error',results=state.fixture==='results';return '<div class="data-overview"><div><span class="caption">'+t('保存済みプレー')+'</span><strong class="num">'+(error?'—':'14')+'</strong></div><div><span class="caption">'+t('自己ベスト譜面')+'</span><strong class="num">'+(error?'—':'8')+'</strong></div><div><span class="caption">'+t('データ状態')+'</span><strong>'+(error?t('読み込み失敗'):t('正常'))+'</strong></div></div><div class="data-layout"><div class="card-stack"><section class="setting-card"><h3>'+t('保存データ')+'</h3><dl class="saved-info"><dt>'+t('最後の保存')+'</dt><dd>'+(error?'—':'2026/10/18 14:26:12')+'</dd></dl><p class="field-note" style="margin-top:12px">'+t('コピーから戻すと、今の記録がその内容に置き換わります。')+'</p><div class="actions">'+button('バックアップを作成',true,busy||error)+button('バックアップから復元',false,busy||error)+'</div></section><section class="setting-card"><h3>'+t('楽曲・譜面データ')+'</h3><div class="master-grid"><div><span class="caption">'+t('状態')+'</span><strong>'+t('利用可能')+'</strong></div><details><summary>'+t('詳しい情報')+'</summary><span class="caption">'+t('データバージョン')+'</span><strong>a1b2c3d4e5f6</strong></details><div><span class="caption">'+t('収録譜面数')+'</span><strong class="num">9,967</strong></div></div><p class="master-note">'+t('初回はアプリ同梱データを使用し、起動時に新しい楽曲・譜面データを確認します。')+'</p></section></div><section class="setting-card"><div class="card-heading"><h3>'+t('スクリーンショットからインポート')+'</h3><span class="import-state">'+t(busy?'インポート中':results?'完了':'待機中')+'</span></div><span class="caption">'+t('DDR GRAND PRIXのRESULT画面（1280×720 PNG）を正式な保存処理で読み込みます。')+'</span><details class="image-help"><summary>'+t('使える画像')+'</summary><p>'+t('PNG・1280×720の画像が使えます。')+'</p></details><div class="drop-zone"><strong>'+t('PNGファイルをここにドラッグ＆ドロップ')+'</strong><span class="caption">'+t('複数ファイルを選択できます')+'</span>'+button('ファイルを選択',true,busy||error)+'</div>'+(busy?'<div class="import-progress"><div><strong>'+format(''+'{0} / {1}件を処理中',4,5)+'</strong><progress max="5" value="3"></progress><span class="caption">result-004.png</span></div>'+button('中断')+'</div>':'')+(results?'<section class="result-list"><h4>'+format('保存 {0}件 / 重複 {1}件 / 認識失敗 {2}件 / 入力エラー {3}件',1,1,1,1)+'</h4>'+[['保存','result-001.png','スコアを保存しました。'],['重複','result-002.png','同じPNGから保存済みのため、重複として保存しませんでした。'],['認識失敗','result-003.png','スコア情報を確定できなかったため保存しませんでした。'],['入力エラー','result-004.png','1280×720のPNG画像を選択してください。']].map(r=>'<div class="result-row"><strong>'+t(r[0])+'</strong><span class="file" title="'+r[1]+'">'+r[1]+'</span><span class="message">'+t(r[2])+'</span></div>').join('')+'</section>':'')+'</section></div><p class="data-message '+(error?'error-message':'')+'">'+t(error?'個人スコアデータを読み込めませんでした。':'バックアップと復元は個人スコアデータだけを対象にします。')+'</p>';}
 
 function render(){let a=document.getElementById('utility-window');a.className='app utility-app'+(state.width<=1100?' narrow':'')+(state.theme==='dark'?' dark':'');a.style.width=state.width+'px';a.style.height=state.height+'px';document.documentElement.lang=state.language;for(let k of ['theme','fixture','language'])document.getElementById(k).value=state[k];document.getElementById('size').value=String(state.width);document.querySelectorAll('[data-page]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.page===state.page)));a.innerHTML='<div class="chrome"><svg class="app-mark" viewBox="0 0 16 16"><path d="M2 12h3V8h3V4h3V1l4 4h-3v8H2z"/></svg>GP Score Log<div class="window-actions"><span>−</span><span>□</span><span>×</span></div></div><nav class="nav"><span class="brand">GP Score Log</span><div class="nav-group">'+['ホーム','自己ベスト','直近プレー履歴','フレアスキル'].map(k=>'<button data-nav="'+k+'">'+t(k)+'</button>').join('')+'</div><div class="nav-group utility">'+[['settings','設定'],['data','データ管理']].map(([v,k])=>'<button data-page="'+v+'" class="'+(state.page===v?'active':'')+'">'+t(k)+'</button>').join('')+'</div></nav><div class="monitor"><span class="state">'+t('ゲーム待機中')+'</span><span>'+t('DDR GRAND PRIXの起動を待っています。')+'</span></div><div class="viewport"><main class="workspace"><div class="page-head"><h2>'+t(state.page==='settings'?'設定':'データ管理')+'</h2>'+(state.page==='settings'?button('初期値に戻す'):'')+'</div><div class="pane-scroll">'+(state.page==='settings'?settings():data())+'</div>'+(state.page==='settings'?'<footer class="save-bar"><span class="save-status" role="status">'+(state.dirty?t('変更内容は保存時に反映されます'):'')+'</span>'+button('変更を保存',true)+'</footer>':'')+'</main></div>';}

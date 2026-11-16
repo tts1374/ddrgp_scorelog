@@ -446,8 +446,8 @@
     <sys:String x:Key="変更分を同期中">새 기록 전송 중</sys:String>
     <sys:String x:Key="自己ベストを同期中">개인 최고 기록 전송 중</sys:String>
     <sys:String x:Key="同期できませんでした">웹에 보내지 못했습니다</sys:String>
-    <sys:String x:Key="ローカルの保存データには影響しません。通信状態を確認し、自動再試行をお待ちください。">PC의 기록은 그대로입니다. 인터넷 연결을 확인하세요. 나중에 다시 보냅니다.</sys:String>
-    <sys:String x:Key="確認が完了するまでWeb同期を停止しています。">계정 만들기·이어받기에서 같은 계정에 로그인하세요.</sys:String>
+    <sys:String x:Key="ローカルの保存データには影響しません。通信状態を確認し、自動再試行をお待ちください。">인터넷 연결을 확인하세요. 자동으로 다시 전송합니다.</sys:String>
+    <sys:String x:Key="確認が完了するまでWeb同期を停止しています。">이전에 사용한 계정으로 로그인하세요.</sys:String>
     <sys:String x:Key="一部の譜面をあとで同期します">일부 채보는 나중에 보냅니다</sys:String>
     <sys:String x:Key="Web側の準備ができ次第、自動で同期されます。ユーザー操作は不要です。">웹 준비가 완료되면 자동으로 보냅니다. 그대로 기다려 주세요.</sys:String>
     <sys:String x:Key="同期待ち">전송 대기 중</sys:String>
@@ -502,7 +502,7 @@
     <sys:String x:Key="クリア状況">클리어 상태</sys:String>
     <sys:String x:Key="フレアランク">플레어 랭크</sys:String>
     <sys:String x:Key="連携をキャンセルしました。">계정 연결을 취소했습니다.</sys:String>
-    <sys:String x:Key="連携の結果を確認してください。保存済みの情報は保持しています。">진행 중인 연결이 있습니다. 연결 결과 확인을 눌러 주세요.</sys:String>
+    <sys:String x:Key="連携の結果を確認してください。保存済みの情報は保持しています。">연결 대기 중입니다.</sys:String>
     <sys:String x:Key="キャンセル結果を確認できませんでした。保存済みの情報で再確認できます。">취소되었는지 확인하지 못했습니다. 연결 결과 확인으로 확인할 수 있습니다.</sys:String>
     <sys:String x:Key="連携待ちが終了しました。「アカウントを作成・引き継ぐ」から同じ公開ユーザーへログインしてください。">연결 대기 시간이 끝났습니다. 계정 만들기·이어받기에서 같은 계정에 로그인하세요.</sys:String>
     <sys:String x:Key="Google連携の設定をWebで開く">웹에서 Google 연결 설정 열기</sys:String>
@@ -550,4 +550,12 @@
     <sys:String x:Key="PNG・1280×720の画像が使えます。">1280×720 PNG 이미지를 사용할 수 있습니다.</sys:String>
     <sys:String x:Key="コピーから戻すと、今の記録がその内容に置き換わります。">복원하면 현재 기록이 선택한 사본의 내용으로 바뀝니다.</sys:String>
     <sys:String x:Key="中断">읽기 중단</sys:String>
+    <sys:String x:Key="公開する記録について">공개하는 기록에 대해</sys:String>
+    <sys:String x:Key="画像から追加・バックアップから復元したプレーは送信しません。">이미지에서 추가하거나 백업에서 복원한 플레이는 전송하지 않습니다.</sys:String>
+    <sys:String x:Key="送信の詳しい情報">전송 상세 정보</sys:String>
+    <sys:String x:Key="未送信: 不明">미전송: 알 수 없음</sys:String>
+    <sys:String x:Key="公開対象：自動記録の自己ベスト">공개 대상: 자동 기록한 개인 최고 기록</sys:String>
+    <sys:String x:Key="ログインなしで誰でも閲覧できます。">누구나 로그인 없이 볼 수 있습니다.</sys:String>
+    <sys:String x:Key="公開記録の削除はプロフィールから行えます。">공개 기록은 프로필에서 삭제할 수 있습니다.</sys:String>
+    <sys:String x:Key="送信停止中（公開は継続）">전송 중지 (기록은 계속 공개)</sys:String>
 </ResourceDictionary>

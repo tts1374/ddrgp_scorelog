@@ -446,8 +446,8 @@
     <sys:String x:Key="変更分を同期中">Uploading new records</sys:String>
     <sys:String x:Key="自己ベストを同期中">Uploading personal bests</sys:String>
     <sys:String x:Key="同期できませんでした">Could not upload</sys:String>
-    <sys:String x:Key="ローカルの保存データには影響しません。通信状態を確認し、自動再試行をお待ちください。">Your PC records are safe. Check your internet connection. Uploads will retry later.</sys:String>
-    <sys:String x:Key="確認が完了するまでWeb同期を停止しています。">Select Create or transfer account and sign in to the same account.</sys:String>
+    <sys:String x:Key="ローカルの保存データには影響しません。通信状態を確認し、自動再試行をお待ちください。">Check your connection. Sending will retry automatically.</sys:String>
+    <sys:String x:Key="確認が完了するまでWeb同期を停止しています。">Use the same account as before.</sys:String>
     <sys:String x:Key="一部の譜面をあとで同期します">Some charts will upload later</sys:String>
     <sys:String x:Key="Web側の準備ができ次第、自動で同期されます。ユーザー操作は不要です。">These records will upload automatically when the Web service is ready. Please wait.</sys:String>
     <sys:String x:Key="同期待ち">Waiting to upload</sys:String>
@@ -502,7 +502,7 @@
     <sys:String x:Key="クリア状況">Clear status</sys:String>
     <sys:String x:Key="フレアランク">Flare rank</sys:String>
     <sys:String x:Key="連携をキャンセルしました。">Account connection was cancelled.</sys:String>
-    <sys:String x:Key="連携の結果を確認してください。保存済みの情報は保持しています。">A connection is in progress. Select Check connection result.</sys:String>
+    <sys:String x:Key="連携の結果を確認してください。保存済みの情報は保持しています。">Connection pending.</sys:String>
     <sys:String x:Key="キャンセル結果を確認できませんでした。保存済みの情報で再確認できます。">Could not confirm cancellation. Select Check connection result.</sys:String>
     <sys:String x:Key="連携待ちが終了しました。「アカウントを作成・引き継ぐ」から同じ公開ユーザーへログインしてください。">The connection request expired. Select Create or transfer account and sign in to the same account.</sys:String>
     <sys:String x:Key="Google連携の設定をWebで開く">Open Google connection settings on the Web</sys:String>
@@ -550,4 +550,12 @@
     <sys:String x:Key="PNG・1280×720の画像が使えます。">Use PNG images at 1280×720.</sys:String>
     <sys:String x:Key="コピーから戻すと、今の記録がその内容に置き換わります。">Restoring replaces your current records with the selected copy.</sys:String>
     <sys:String x:Key="中断">Stop reading</sys:String>
+    <sys:String x:Key="公開する記録について">About shared records</sys:String>
+    <sys:String x:Key="画像から追加・バックアップから復元したプレーは送信しません。">Plays added from images or restored from a backup are not sent.</sys:String>
+    <sys:String x:Key="送信の詳しい情報">Sending details</sys:String>
+    <sys:String x:Key="未送信: 不明">Not sent: unknown</sys:String>
+    <sys:String x:Key="公開対象：自動記録の自己ベスト">Shared records: automatically recorded personal bests</sys:String>
+    <sys:String x:Key="ログインなしで誰でも閲覧できます。">Anyone can view them without signing in.</sys:String>
+    <sys:String x:Key="公開記録の削除はプロフィールから行えます。">Delete shared records from your profile.</sys:String>
+    <sys:String x:Key="送信停止中（公開は継続）">Sending stopped (records remain public)</sys:String>
 </ResourceDictionary>
