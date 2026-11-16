@@ -141,11 +141,11 @@
     <sys:String x:Key="個人スコアデータ">개인 점수 데이터</sys:String>
     <sys:String x:Key="自己ベスト譜面">기록이 있는 채보</sys:String>
     <sys:String x:Key="データ状態">기록 상태</sys:String>
-    <sys:String x:Key="保存データ">기록 사본</sys:String>
+    <sys:String x:Key="保存データ">플레이 기록 백업</sys:String>
     <sys:String x:Key="最後の保存">마지막 저장 일시</sys:String>
     <sys:String x:Key="個人スコアデータの退避・復元">개인 점수 데이터 백업 및 복원</sys:String>
-    <sys:String x:Key="バックアップを作成">사본 저장</sys:String>
-    <sys:String x:Key="バックアップから復元">사본에서 복원</sys:String>
+    <sys:String x:Key="バックアップを作成">백업 저장</sys:String>
+    <sys:String x:Key="バックアップから復元">백업에서 복원</sys:String>
     <sys:String x:Key="楽曲・譜面データ">곡·채보 정보</sys:String>
     <sys:String x:Key="アプリに同梱された楽曲・譜面情報">앱에 포함된 곡·채보 정보</sys:String>
     <sys:String x:Key="状態">상태</sys:String>
@@ -254,7 +254,7 @@
     <sys:String x:Key="バックアップを作成できませんでした">백업을 만들지 못했습니다</sys:String>
     <sys:String x:Key="バックアップを復元できませんでした">백업을 복원하지 못했습니다</sys:String>
     <sys:String x:Key="個人スコアデータの復元確認">개인 점수 데이터 복원 확인</sys:String>
-    <sys:String x:Key="現在の個人スコアデータを、選択したバックアップで置き換えます。">현재 개인 점수 데이터를 선택한 백업으로 바꿉니다.</sys:String>
+    <sys:String x:Key="現在の個人スコアデータを、選択したバックアップで置き換えます。">현재 플레이 기록을 선택한 백업의 내용으로 바꿉니다.</sys:String>
     <sys:String x:Key="この操作は取り消せません。続行しますか？">이 작업은 취소할 수 없습니다. 계속하시겠습니까?</sys:String>
     <sys:String x:Key="自己ベスト更新はまだありません">개인 최고 기록 갱신이 아직 없습니다</sys:String>
     <sys:String x:Key="直近の自己ベスト更新を{0}件表示">최근 개인 최고 기록 갱신 {0}건 표시</sys:String>
@@ -263,7 +263,7 @@
     <sys:String x:Key="起動後にGitHub Releasesを確認します。">실행 후 GitHub Releases를 확인합니다.</sys:String>
     <sys:String x:Key="既定のDBを確認しています">기본 DB를 확인하는 중</sys:String>
     <sys:String x:Key="現在の環境に対応する既定pathのDBを検証して、履歴と自己ベストを表示します。">이 환경의 기본 DB를 확인한 후 기록과 개인 최고 기록을 표시합니다.</sys:String>
-    <sys:String x:Key="バックアップと復元は個人スコアデータだけを対象にします。">사본에는 내 플레이 기록만 포함됩니다. 곡·채보 정보는 포함되지 않습니다.</sys:String>
+    <sys:String x:Key="バックアップと復元は個人スコアデータだけを対象にします。">플레이 기록만 저장합니다. 곡·채보 정보는 포함하지 않습니다.</sys:String>
     <sys:String x:Key="development（development root）">개발 환경 (개발 루트)</sys:String>
     <sys:String x:Key="production（LocalAppData）">운영 환경 (LocalAppData)</sys:String>
     <sys:String x:Key="unknown">알 수 없음</sys:String>
@@ -547,7 +547,7 @@
     <sys:String x:Key="アカウント">계정</sys:String>
     <sys:String x:Key="詳しい情報">자세한 정보</sys:String>
     <sys:String x:Key="使える画像">사용 가능한 이미지</sys:String>
-    <sys:String x:Key="PNG・1280×720の画像が使えます。">1280×720 PNG 이미지를 사용할 수 있습니다.</sys:String>
+    <sys:String x:Key="PNG・1280×720の画像が使えます。">DDR GRAND PRIX 리절트 화면(PNG·1280×720).</sys:String>
     <sys:String x:Key="コピーから戻すと、今の記録がその内容に置き換わります。">복원하면 현재 기록이 선택한 사본의 내용으로 바뀝니다.</sys:String>
     <sys:String x:Key="中断">읽기 중단</sys:String>
     <sys:String x:Key="公開する記録について">공개하는 기록에 대해</sys:String>
@@ -558,4 +558,5 @@
     <sys:String x:Key="ログインなしで誰でも閲覧できます。">누구나 로그인 없이 볼 수 있습니다.</sys:String>
     <sys:String x:Key="公開記録の削除はプロフィールから行えます。">공개 기록은 프로필에서 삭제할 수 있습니다.</sys:String>
     <sys:String x:Key="送信停止中（公開は継続）">전송 중지 (기록은 계속 공개)</sys:String>
+    <sys:String x:Key="バックアップの対象">백업 대상</sys:String>
 </ResourceDictionary>

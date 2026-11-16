@@ -141,11 +141,11 @@
     <sys:String x:Key="個人スコアデータ">Personal score data</sys:String>
     <sys:String x:Key="自己ベスト譜面">Charts with records</sys:String>
     <sys:String x:Key="データ状態">Record status</sys:String>
-    <sys:String x:Key="保存データ">Copy of your records</sys:String>
+    <sys:String x:Key="保存データ">Play record backups</sys:String>
     <sys:String x:Key="最後の保存">Last saved at</sys:String>
     <sys:String x:Key="個人スコアデータの退避・復元">Back up and restore personal score data</sys:String>
-    <sys:String x:Key="バックアップを作成">Save a copy</sys:String>
-    <sys:String x:Key="バックアップから復元">Restore from a copy</sys:String>
+    <sys:String x:Key="バックアップを作成">Save backup</sys:String>
+    <sys:String x:Key="バックアップから復元">Restore from backup</sys:String>
     <sys:String x:Key="楽曲・譜面データ">Song and chart info</sys:String>
     <sys:String x:Key="アプリに同梱された楽曲・譜面情報">Song and chart information bundled with the app</sys:String>
     <sys:String x:Key="状態">Status</sys:String>
@@ -256,7 +256,7 @@
     <sys:String x:Key="バックアップを作成できませんでした">Could not create backup</sys:String>
     <sys:String x:Key="バックアップを復元できませんでした">Could not restore backup</sys:String>
     <sys:String x:Key="個人スコアデータの復元確認">Confirm personal score data restore</sys:String>
-    <sys:String x:Key="現在の個人スコアデータを、選択したバックアップで置き換えます。">Replace current personal score data with the selected backup.</sys:String>
+    <sys:String x:Key="現在の個人スコアデータを、選択したバックアップで置き換えます。">Your current play records will be replaced with the selected backup.</sys:String>
     <sys:String x:Key="この操作は取り消せません。続行しますか？">This cannot be undone. Continue?</sys:String>
     <sys:String x:Key="自己ベスト更新はまだありません">No personal-best updates yet</sys:String>
     <sys:String x:Key="直近の自己ベスト更新を{0}件表示">Showing {0} recent personal-best updates</sys:String>
@@ -265,7 +265,7 @@
     <sys:String x:Key="起動後にGitHub Releasesを確認します。">GitHub Releases will be checked after launch.</sys:String>
     <sys:String x:Key="既定のDBを確認しています">Checking the default databases</sys:String>
     <sys:String x:Key="現在の環境に対応する既定pathのDBを検証して、履歴と自己ベストを表示します。">The default databases for this environment will be verified before showing history and personal bests.</sys:String>
-    <sys:String x:Key="バックアップと復元は個人スコアデータだけを対象にします。">Only your personal play records are copied. Song and chart info is not included.</sys:String>
+    <sys:String x:Key="バックアップと復元は個人スコアデータだけを対象にします。">Only play records are saved. Song and chart info is not included.</sys:String>
     <sys:String x:Key="development（development root）">Development (development root)</sys:String>
     <sys:String x:Key="production（LocalAppData）">Production (LocalAppData)</sys:String>
     <sys:String x:Key="unknown">Unknown</sys:String>
@@ -547,7 +547,7 @@
     <sys:String x:Key="アカウント">Account</sys:String>
     <sys:String x:Key="詳しい情報">Details</sys:String>
     <sys:String x:Key="使える画像">Supported images</sys:String>
-    <sys:String x:Key="PNG・1280×720の画像が使えます。">Use PNG images at 1280×720.</sys:String>
+    <sys:String x:Key="PNG・1280×720の画像が使えます。">DDR GRAND PRIX result screen (PNG, 1280×720).</sys:String>
     <sys:String x:Key="コピーから戻すと、今の記録がその内容に置き換わります。">Restoring replaces your current records with the selected copy.</sys:String>
     <sys:String x:Key="中断">Stop reading</sys:String>
     <sys:String x:Key="公開する記録について">About shared records</sys:String>
@@ -558,4 +558,5 @@
     <sys:String x:Key="ログインなしで誰でも閲覧できます。">Anyone can view them without signing in.</sys:String>
     <sys:String x:Key="公開記録の削除はプロフィールから行えます。">Delete shared records from your profile.</sys:String>
     <sys:String x:Key="送信停止中（公開は継続）">Sending stopped (records remain public)</sys:String>
+    <sys:String x:Key="バックアップの対象">Backup contents</sys:String>
 </ResourceDictionary>

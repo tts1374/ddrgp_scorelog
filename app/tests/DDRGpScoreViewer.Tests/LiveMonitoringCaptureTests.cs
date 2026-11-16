@@ -529,6 +529,7 @@ public sealed class LiveMonitoringCaptureTests
     [Fact]
     public async Task Live_monitor_retries_ambiguous_identity_with_the_same_event_id_then_completes_once()
     {
+        var retryReady = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var observations = new Queue<LiveResultObservation>(
         [
             FormalResult("100", "ambiguous-a"),
@@ -536,7 +537,10 @@ public sealed class LiveMonitoringCaptureTests
             FormalResult("100", "resolved"),
             FormalResult("100", "resolved-after-save"),
         ]);
-        var source = new StubFrameSource(Frames(0, 1_000, 2_000, 3_000), frameDelayMs: 5);
+        var source = new StubFrameSource(Frames(0, 1_000, 2_000, 3_000),
+            beforeFrame: (index, token) => index == 2
+                ? retryReady.Task.WaitAsync(TimeSpan.FromSeconds(10), token)
+                : Task.CompletedTask);
         var attempts = new List<(string? EventId, bool Finalize)>();
         var completedWorkflowCount = 0;
         var service = new LiveMonitoringCaptureService(
@@ -546,7 +550,13 @@ public sealed class LiveMonitoringCaptureTests
         var result = await service.RunAsync(
             123,
             new CaptureTargetInfo("DDR GRAND PRIX", 1280, 720),
-            new CallbackProgress<CaptureSessionProgress>(_ => { }),
+            new CallbackProgress<CaptureSessionProgress>(progress =>
+            {
+                if (progress.StatusMessage.Contains("後続frameを再評価", StringComparison.Ordinal))
+                {
+                    retryReady.TrySetResult();
+                }
+            }),
             (_, observation, context, _) =>
             {
                 attempts.Add((observation.ConfirmedEventId, context.FinalizeUnresolved));

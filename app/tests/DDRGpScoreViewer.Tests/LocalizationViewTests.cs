@@ -148,6 +148,8 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
                 Next();
                 Assert.Same(window.RestoreRecordCopyButton, Keyboard.FocusedElement);
                 Next();
+                Assert.True(window.BackupScopeExpander.IsKeyboardFocusWithin);
+                Next();
                 Assert.True(window.RecordInfoExpander.IsKeyboardFocusWithin);
                 Next();
                 Assert.True(window.ImageRequirementsExpander.IsKeyboardFocusWithin);
@@ -223,6 +225,7 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
                 }
 
                 window.DataManagementNavigation.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                window.BackupScopeExpander.IsExpanded = true;
                 window.RecordInfoExpander.IsExpanded = true;
                 window.ImageRequirementsExpander.IsExpanded = true;
                 DrainDispatcher(window.Dispatcher);
@@ -240,7 +243,18 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
                 Assert.DoesNotContain("2026/10/18", window.ViewModel.DataManagementLastSavedDisplay);
                 var texts = FindVisualChildren<TextBlock>(window).Select(text => text.Text).ToArray();
                 Assert.Contains(Localization.Get("PNG・1280×720の画像が使えます。"), texts);
-                Assert.Contains(Localization.Get("コピーから戻すと、今の記録がその内容に置き換わります。"), texts);
+                Assert.Contains(Localization.Get("バックアップと復元は個人スコアデータだけを対象にします。"), texts);
+                Assert.DoesNotContain(Localization.Get("コピーから戻すと、今の記録がその内容に置き換わります。"), texts);
+                Assert.Equal(Localization.Get("バックアップを作成"), window.SaveRecordCopyButton.Content);
+                Assert.Equal(Localization.Get("バックアップから復元"), window.RestoreRecordCopyButton.Content);
+                Assert.Empty(window.ViewModel.DataManagementStatusMessage);
+                var operationMessage = FindVisualChildren<TextBlock>(window.RecordsBodyScrollViewer)
+                    .Single(text => BindingOperations.GetBinding(text, TextBlock.TextProperty)?.Path.Path == nameof(window.ViewModel.DataManagementStatusMessage));
+                Assert.False(operationMessage.IsVisible);
+                Assert.True(window.ViewModel.CreatePersonalScoreBackup(Path.Combine(fixture.DirectoryPath, "backup.json")).Succeeded);
+                DrainDispatcher(window.Dispatcher);
+                Assert.True(operationMessage.IsVisible);
+                Assert.Equal(window.ViewModel.DataManagementStatusMessage, operationMessage.Text);
 
                 foreach (var status in Enum.GetValues<ScreenshotImportItemStatus>())
                 {
