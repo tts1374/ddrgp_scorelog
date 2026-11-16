@@ -103,8 +103,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private string masterVersion = "—";
     private int bundledChartCount;
     private string personalScoreDataStatus = "未確認";
-    private string dataManagementStatusMessage = Localization.Get(
-        "バックアップと復元は個人スコアデータだけを対象にします。");
+    private string dataManagementStatusMessage = "";
     private string saveStatusTitle = "";
     private string saveStatusMessage = "";
     private bool hasSaveStatus;

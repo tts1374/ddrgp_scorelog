@@ -2278,9 +2278,7 @@
                                                 <TextBlock Text="最後の保存" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" Margin="0,0,16,4" />
                                                 <TextBlock Text="{Binding DataManagementLastSavedDisplay}" FontSize="12" />
                                             </WrapPanel>
-                                            <TextBlock Text="コピーから戻すと、今の記録がその内容に置き換わります。" TextWrapping="Wrap"
-                                                    Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" Margin="0,8,0,12" />
-                                            <WrapPanel>
+                                            <WrapPanel Margin="0,12,0,0">
                                                 <Button x:Name="SaveRecordCopyButton" Content="バックアップを作成" Margin="0,0,8,0"
                                                         Style="{StaticResource PrimaryButtonStyle}" IsEnabled="{Binding CanManagePersonalData}"
                                                         Click="CreatePersonalScoreBackup_Click" />
@@ -2288,6 +2286,12 @@
                                                         Style="{StaticResource SecondaryButtonStyle}" IsEnabled="{Binding CanManagePersonalData}"
                                                         Click="RestorePersonalScoreBackup_Click" />
                                             </WrapPanel>
+                                            <Expander x:Name="BackupScopeExpander" Header="バックアップの対象" FontSize="12" Margin="0,12,0,0"
+                                                    Foreground="{DynamicResource TextPrimaryBrush}">
+                                                <TextBlock Text="バックアップと復元は個人スコアデータだけを対象にします。"
+                                                        TextWrapping="Wrap" Margin="18,6,0,0" FontSize="12"
+                                                        Foreground="{DynamicResource TextSecondaryBrush}" />
+                                            </Expander>
                                         </StackPanel>
                                     </Border>
                                     <Border Style="{StaticResource CardStyle}" Margin="0,0,0,16">
@@ -2297,31 +2301,25 @@
                                                 <Grid.ColumnDefinitions>
                                                     <ColumnDefinition Width="*" />
                                                     <ColumnDefinition Width="*" />
-                                                    <ColumnDefinition Width="*" />
                                                 </Grid.ColumnDefinitions>
-                                                <StackPanel Grid.Column="0">
-                                                    <TextBlock Text="状態" Foreground="{DynamicResource TextSecondaryBrush}"
-                                                            FontSize="12" />
-                                                    <TextBlock TextWrapping="Wrap" Text="{Binding BundledDataStatusDisplay}"
-                                                            FontSize="13" Margin="0,3,0,0" />
+                                                <StackPanel>
+                                                    <TextBlock Text="状態" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" />
+                                                    <TextBlock Text="{Binding BundledDataStatusDisplay}" TextWrapping="Wrap" FontSize="13" Margin="0,3,0,0" />
                                                 </StackPanel>
-                                                <Expander x:Name="RecordInfoExpander" Grid.Column="1" Header="詳しい情報" FontSize="12"
-                                                        Foreground="{DynamicResource TextPrimaryBrush}" Margin="8,0">
-                                                    <StackPanel Margin="18,8,0,0">
-                                                        <TextBlock Text="データバージョン" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
-                                                        <TextBlock Text="{Binding BundledDataVersionDisplay}" FontSize="12" TextWrapping="Wrap" Margin="0,4,0,0" />
-                                                    </StackPanel>
-                                                </Expander>
-                                                <StackPanel Grid.Column="2">
-                                                    <TextBlock TextWrapping="Wrap" Text="収録譜面数" Foreground="{DynamicResource TextSecondaryBrush}"
-                                                            FontSize="12" />
-                                                    <TextBlock Text="{Binding BundledChartCountDisplay}"
-                                                            FontSize="13" Margin="0,3,0,0" />
+                                                <StackPanel Grid.Column="1">
+                                                    <TextBlock Text="収録譜面数" Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" TextWrapping="Wrap" />
+                                                    <TextBlock Text="{Binding BundledChartCountDisplay}" FontSize="13" Margin="0,3,0,0" />
                                                 </StackPanel>
                                             </Grid>
-                                            <TextBlock Text="初回はアプリ同梱データを使用し、起動時に新しい楽曲・譜面データを確認します。"
-                                                    Foreground="{DynamicResource TextSecondaryBrush}"
-                                                    FontSize="12" TextWrapping="Wrap" Margin="0,14,0,0" />
+                                            <Expander x:Name="RecordInfoExpander" Header="詳しい情報" FontSize="12" Margin="0,12,0,0"
+                                                    Foreground="{DynamicResource TextPrimaryBrush}">
+                                                <StackPanel Margin="18,6,0,0">
+                                                    <TextBlock Text="データバージョン" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                    <TextBlock Text="{Binding BundledDataVersionDisplay}" FontSize="12" TextWrapping="Wrap" Margin="0,4,0,0" />
+                                                    <TextBlock Text="初回はアプリ同梱データを使用し、起動時に新しい楽曲・譜面データを確認します。"
+                                                            Foreground="{DynamicResource TextSecondaryBrush}" FontSize="12" TextWrapping="Wrap" Margin="0,8,0,0" />
+                                                </StackPanel>
+                                            </Expander>
                                         </StackPanel>
                                     </Border>
                                 </StackPanel>
@@ -2335,9 +2333,6 @@
                                             <StackPanel>
                                                 <TextBlock Text="スクリーンショットからインポート"
                                                         FontSize="14" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,0,12,0" />
-                                                <TextBlock Text="DDR GRAND PRIXのRESULT画面（1280×720 PNG）を正式な保存処理で読み込みます。"
-                                                        Foreground="{DynamicResource TextSecondaryBrush}"
-                                                        FontSize="12" TextWrapping="Wrap" Margin="0,3,0,0" />
                                             </StackPanel>
                                             <Border Grid.Column="1" Background="{DynamicResource InfoBackgroundBrush}"
                                                     BorderBrush="{DynamicResource InfoBorderBrush}" BorderThickness="1"
@@ -2435,6 +2430,15 @@
                             </Grid>
                             <Border Background="{DynamicResource InfoBackgroundBrush}" BorderBrush="{DynamicResource InfoBorderBrush}" BorderThickness="1"
                                     CornerRadius="8" Padding="14,10" Margin="0,0,0,16">
+                                <Border.Style>
+                                    <Style TargetType="Border">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding DataManagementStatusMessage}" Value="">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Border.Style>
                                 <TextBlock Text="{Binding DataManagementStatusMessage}"
                                         Foreground="{DynamicResource InfoTextBrush}" FontSize="12" TextWrapping="Wrap" />
                             </Border>
