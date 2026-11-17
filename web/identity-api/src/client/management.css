@@ -34,3 +34,17 @@
 @media (max-width:680px) {
  .management-card { padding: 16px; }
  :is(.management-shell button,.management-button) { min-height: 44px; } }
+
+.management-profile .management-card { margin: 20px 0; }
+.management-profile form > label:first-child { margin-top: 0; }
+.management-profile #profile-name-help { font-size: 13px; margin: 6px 0; }
+.management-profile .profile-public-page { border-top: 1px solid var(--border); margin-top: 24px; padding-top: 12px; }
+.management-profile .profile-account { border: 1px solid var(--border); border-radius: 6px; background: var(--panel); padding: 16px 24px; }
+.management-profile .profile-account summary { cursor: pointer; font-weight: 600; }
+.management-profile .profile-account[open] summary { margin-bottom: 16px; }
+.management-profile .profile-deletion { border-top: 1px solid var(--border); margin-top: 32px; padding-top: 24px; display: grid; gap: 24px; }
+.management-profile .profile-deletion p { font-size: 13px; margin: 6px 0 0; }
+.management-profile summary:focus-visible { outline: 3px solid var(--primary); outline-offset: 3px; }
+@media (max-width: 680px) {
+ .management-profile .profile-account { padding: 16px; }
+}

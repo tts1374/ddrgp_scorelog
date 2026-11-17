@@ -82,6 +82,40 @@ for (const width of [1280, 390]) {
       expect(errors).toEqual([]);
     });
   }
+  test(`management profile at ${width}px preserves draft and saved name on failure and disables pending actions`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await mockManagement(page);
+    let releaseSave!: () => void;
+    const savePending = new Promise<void>(resolve => { releaseSave = resolve; });
+    let patches = 0;
+    await page.route("**/api/v1/account/profile", async route => {
+      if (route.request().method() === "PATCH") {
+        patches++;
+        expect(route.request().postDataJSON()).toEqual({ display_name: "編集中の名前" });
+        await savePending;
+        return route.fulfill({ status: 503, json: { error: { code: "SERVICE_UNAVAILABLE" } } });
+      }
+      return route.fulfill({ json: profile });
+    });
+    await page.goto("/my/profile");
+    await page.getByText("Googleアカウント", { exact: true }).click();
+    const input = page.getByRole("textbox", { name: "公開名", exact: true });
+    await input.fill("編集中の名前");
+    await page.getByRole("button", { name: "名前を保存", exact: true }).click();
+    await expect(page.getByRole("button", { name: "名前を保存", exact: true })).toBeDisabled();
+    await expect(input).toBeDisabled();
+    await expect(page.getByRole("button", { name: "ログアウト", exact: true })).toBeDisabled();
+    await expect(page.getByRole("button", { name: "別のアカウントでログイン", exact: true })).toBeDisabled();
+    releaseSave();
+    await expect(page.getByRole("alert")).toContainText("通信結果を確認できませんでした。");
+    await expect(input).toHaveValue("編集中の名前");
+    await expect(input).toBeEnabled();
+    await expect(page.getByText(`保存済み: ${profile.display_name}`, { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "名前を保存", exact: true })).toBeEnabled();
+    await expect(page.getByRole("button", { name: "情報を更新", exact: true })).toBeEnabled();
+    expect(patches).toBe(1);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
+  });
   test(`management profile at ${width}px saves the public name and exposes only Web management actions`, async ({ page }) => {
     const errors: string[] = [];
     page.on("pageerror", e => errors.push(e.message));
@@ -92,10 +126,21 @@ for (const width of [1280, 390]) {
     expect(response?.headers()["cache-control"]).toContain("no-store");
     await expect(page).toHaveTitle("マイプロフィール - GP Score Log");
     await expect(page.getByRole("heading", { name: "マイプロフィール" })).toBeVisible();
-    await page.getByRole("textbox", { name: "公開プレーヤー名" }).fill("  2TEN  ");
+    await expect(page.getByRole("button", { name: "ログアウト", exact: true })).toBeHidden();
+    await expect(page.getByRole("link", { name: "公開ページを開く", exact: true })).toHaveAttribute("href", profile.public_url);
+    await expect(page.getByRole("textbox", { name: "公開URL", exact: true })).toHaveValue(profile.public_url);
+    await page.getByText("Googleアカウント", { exact: true }).click();
+    await expect(page.getByText("owner@example.com", { exact: true })).toBeVisible();
+    await expect(page.getByText("このメールアドレスは管理画面にだけ表示されます。", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "ログアウト", exact: true })).toBeEnabled();
+    await expect(page.getByRole("button", { name: "別のアカウントでログイン", exact: true })).toBeEnabled();
+    await expect(page.getByRole("link", { name: "アカウントを削除する", exact: true })).toHaveAttribute("href", "/my/account-delete");
+    await page.getByRole("textbox", { name: "公開名" }).fill("  2TEN  ");
+    await expect(page.getByText(`保存済み: ${profile.display_name}`, { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "名前を保存" }).click();
     await expect(page.getByRole("status")).toHaveText("公開プレーヤー名を保存しました。");
-    await expect(page.getByRole("textbox", { name: "公開プレーヤー名" })).toHaveValue("2TEN");
+    await expect(page.getByRole("textbox", { name: "公開名" })).toHaveValue("2TEN");
+    await expect(page.getByText(/^保存済み:/)).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Google連携を解除", exact: true })).toHaveCount(0);
     await expect(page.getByRole("link", { name: "公開記録を削除する", exact: true })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
@@ -189,7 +234,7 @@ test("unlinked and cancelled Google states cannot silently approve or create", a
   await mockManagement(page, { unlinked: true, app: true });
   await page.goto("/my/profile");
   await expect(page.getByText("アカウントが登録・連携されていません", { exact: true })).toBeVisible();
-  await expect(page.getByRole("textbox", { name: "公開プレーヤー名" })).toHaveCount(0);
+  await expect(page.getByRole("textbox", { name: "公開名" })).toHaveCount(0);
   await page.goto("/my/app-connect?request=app-test&auth_error=cancelled");
   await expect(page.getByRole("button", { name: "Googleで続ける", exact: true })).toBeVisible();
   await expect(page.getByRole("checkbox")).toHaveCount(0);

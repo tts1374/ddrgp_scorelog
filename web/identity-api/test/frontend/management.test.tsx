@@ -92,7 +92,7 @@ describe("Web management", () => {
     mockApi(path => path === "account/session" ? new Response(JSON.stringify({ error: { code: "WEB_SESSION_REQUIRED" } }), { status: 401 }) : undefined);
     render(<ManagementApp />);
     expect(await screen.findByRole("link", { name: "Googleでログイン" })).toHaveAttribute("href", "/api/v1/auth/web/google/start");
-    expect(screen.queryByRole("textbox", { name: "公開プレーヤー名" })).toBeNull();
+    expect(screen.queryByRole("textbox", { name: "公開名" })).toBeNull();
   });
   it("unlinked Google can log out but never sees a creation or editing form", async () => {
     window.history.replaceState(null, "", "/my/profile");
@@ -111,7 +111,7 @@ describe("Web management", () => {
       if (path === "account/profile" && saved) return { ...profile, display_name: "新しい名前" };
     });
     render(<ManagementApp />);
-    const input = await screen.findByRole("textbox", { name: "公開プレーヤー名" });
+    const input = await screen.findByRole("textbox", { name: "公開名" });
     fireEvent.change(input, { target: { value: "   " } });
     fireEvent.click(screen.getByRole("button", { name: "名前を保存" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("1〜64文字");
@@ -126,18 +126,38 @@ describe("Web management", () => {
     expect(options?.headers).toHaveProperty("X-CSRF-Token", "csrf");
     expect(input).toHaveValue("新しい名前");
   });
+  it("keeps the draft distinct from the saved name after a failed save and permits retry", async () => {
+    window.history.replaceState(null, "", "/my/profile");
+    let failure = true;
+    mockApi((path, options) => path === "account/profile" && options.method === "PATCH"
+      ? failure ? new Response(JSON.stringify({ error: { code: "SERVICE_UNAVAILABLE" } }), { status: 503 }) : { ...profile, display_name: "編集中" }
+      : undefined);
+    render(<ManagementApp />);
+    const input = await screen.findByRole("textbox", { name: "公開名" });
+    expect(screen.queryByText(/^保存済み:/u)).toBeNull();
+    fireEvent.change(input, { target: { value: "編集中" } });
+    fireEvent.click(screen.getByRole("button", { name: "名前を保存" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("通信結果を確認できませんでした。");
+    expect(input).toHaveValue("編集中");
+    expect(screen.getByText(/^保存済み:/u)).toHaveTextContent("保存済み: Player");
+    expect(screen.getByRole("button", { name: "名前を保存" })).toBeEnabled();
+    failure = false;
+    fireEvent.click(screen.getByRole("button", { name: "名前を保存" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("公開プレーヤー名を保存しました。");
+    expect(screen.queryByText(/^保存済み:/u)).toBeNull();
+  });
   it("clears editing on session expiry and safely displays HTML-like names", async () => {
     window.history.replaceState(null, "", "/my/profile");
     mockApi((path, options) => path === "account/profile" ? options.method === "PATCH"
       ? new Response(JSON.stringify({ error: { code: "WEB_SESSION_REQUIRED" } }), { status: 401 })
       : { ...profile, display_name: "<img src=x onerror=alert(1)>" } : undefined);
     render(<ManagementApp />);
-    const input = await screen.findByRole("textbox", { name: "公開プレーヤー名" });
+    const input = await screen.findByRole("textbox", { name: "公開名" });
     expect(document.querySelector("img")).toBeNull();
     fireEvent.change(input, { target: { value: "変更" } });
     fireEvent.click(screen.getByRole("button", { name: "名前を保存" }));
     expect(await screen.findByRole("link", { name: "Googleでログイン" })).toBeVisible();
-    expect(screen.queryByRole("textbox", { name: "公開プレーヤー名" })).toBeNull();
+    expect(screen.queryByRole("textbox", { name: "公開名" })).toBeNull();
   });
   it("requires two unchecked confirmations and keeps APPROVED separate from activation", async () => {
     window.history.replaceState(null, "", "/my/app-connect?request=app-request");

@@ -19,6 +19,7 @@
     .value{overflow-wrap:anywhere}.line{display:flex;justify-content:space-between;gap:18px;margin:10px 0}.badge{font-size:13px;border-radius:20px;background:#e7f1e7;padding:4px 10px;white-space:nowrap}
     .code{letter-spacing:.2em;font-size:26px;font-weight:700;text-align:center;padding:12px;background:var(--mock-soft-gray);border-radius:6px}.check{display:flex;gap:10px;align-items:flex-start;font-weight:400}.check input{margin-top:6px;flex-shrink:0}
     [hidden]{display:none!important}footer{margin-top:28px;color:var(--mock-muted);font-size:13px}button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid #83a992;outline-offset:3px}
+    #profile-view .profile-public-page{border-top:1px solid var(--mock-border);margin-top:24px;padding-top:12px}#profile-view .name-help{font-size:13px;margin:6px 0}#name-form>label:first-child{margin-top:0}#profile-view .profile-account{border:1px solid var(--mock-border);border-radius:6px;background:white;padding:16px 24px}#profile-view summary{cursor:pointer;font-weight:600}#profile-view .profile-account[open] summary{margin-bottom:16px}#profile-view .profile-deletion{border-top:1px solid var(--mock-border);margin-top:32px;padding-top:24px;display:grid;gap:24px}#profile-view .profile-deletion p{font-size:13px;margin:6px 0 0}
     @media(max-width:500px){.review{padding:12px 16px;gap:6px}header{padding:18px 16px}main{margin-top:24px;padding:0 16px 24px}.card{padding:18px}.line{display:block}.line strong{display:block}.actions button{width:100%}h1{font-size:24px}}
   </style>
 </head>
@@ -38,7 +39,7 @@
       <option value="profile">マイプロフィール・連携済み</option>
       <option value="signedout">未ログイン</option>
       <option value="unlinked">ログイン済み・未連携</option>
-      <option value="saved">名前保存成功</option>
+      <option value="editing">公開名を編集中</option><option value="saving">名前保存中</option><option value="saved">名前保存成功</option>
       <option value="error">名前保存失敗</option>
       <option value="expired">ログイン期限切れ</option>
       <option value="link">既存公開ユーザーへのGoogle連携</option>
@@ -71,14 +72,13 @@
     <section id="entry-view" hidden><h1>アプリの操作を確認</h1><p>Googleアカウントでログインし、手元のアプリで始めた操作を確認します。</p><div class="card"><p>ログイン後に対象のアカウントと操作内容を表示します。内容を確認してから、操作を確定してください。</p><div class="actions"><button class="primary" data-next="register">Googleで続ける</button></div></div></section>
     <section id="registration-result-view" hidden><h1 id="registration-result-title"></h1><div class="card"><p class="value">player@example.com</p><p id="registration-result-message"></p><p id="registration-result-player" class="value" hidden>DDR GP Player<br>https://example.com/player/demo-player</p><div class="actions"><button class="primary" id="registration-result-button"></button><button data-next="entry">戻る</button></div></div></section>
     <section id="profile-view">
-      <h1>マイプロフィール</h1><p class="muted">公開名の変更や、公開記録・アカウントの削除ができます。</p>
+      <h1>マイプロフィール</h1>
       <div class="notice success" id="saved-note" role="status" hidden>公開プレーヤー名を保存しました。</div>
-      <div class="notice error" id="error-note" role="alert" hidden>保存結果を確認できませんでした。情報を更新してから、もう一度お試しください。</div>
-      <div class="card"><h2>Googleアカウント</h2><div class="line"><span class="value">player@example.com</span><span class="badge" id="linked-badge">連携済み</span></div><p class="muted">このメールアドレスは、あなたの管理画面にだけ表示されます。</p><div class="actions"><button data-next="signedout">ログアウト</button><button data-next="unlinked">別のアカウントでログイン</button></div></div>
-      <div class="card" id="name-card"><h2>公開プロフィール</h2><form id="name-form"><label for="player-name">公開プレーヤー名</label><input id="player-name" type="text" value="DDR GP Player" maxlength="64" required><p class="muted">1〜64文字。公開ページに表示されます。</p><label for="public-url">公開URL</label><input id="public-url" type="text" readonly value="https://example.com/player/demo-player"><div class="actions"><button class="primary" type="submit">名前を保存</button><button type="button" id="open-public">公開ページを開く</button></div></form><p id="public-demo" class="muted" hidden>wireframeの公開URLは仮の値です。</p></div>
+      <div class="notice error" id="error-note" role="alert" hidden>通信結果を確認できませんでした。情報を更新してから、もう一度お試しください。<div><button data-next="profile">情報を更新</button></div></div>
+      <div class="card" id="name-card"><form id="name-form"><label for="player-name">公開名</label><input id="player-name" type="text" value="DDR GP Player" required><p class="muted name-help">1〜64文字</p><p id="saved-name-note" hidden>保存済み: <strong id="saved-name">DDR GP Player</strong></p><div class="actions"><button class="primary" id="save-name" type="submit">名前を保存</button></div></form><div class="profile-public-page"><label for="public-url">公開URL</label><input id="public-url" type="text" readonly value="https://example.com/player/demo-player"><div class="actions"><button type="button" id="open-public">公開ページを開く</button></div></div><p id="public-demo" class="muted" hidden>wireframeの公開URLは仮の値です。</p></div>
+      <details class="profile-account"><summary>Googleアカウント</summary><div class="line"><span class="value">player@example.com</span><span class="badge" id="linked-badge">連携済み</span></div><p class="muted">このメールアドレスは管理画面にだけ表示されます。</p><div class="actions"><button data-next="signedout">ログアウト</button><button data-next="unlinked">別のアカウントでログイン</button></div></details>
       <div class="card" id="unlinked-card" hidden><h2>公開ユーザーが登録・連携されていません</h2><p>アプリの「アカウントを作成・引き継ぐ」から「Googleで続ける」を選び、内容を確認してください。Google連携を解除した方は、現在のアプリの「Web連携」から同じ公開ユーザーへ再連携できます。</p><p class="muted">ログインだけでは、新しい公開ユーザーは作られません。</p></div>
-      <div class="card" id="public-delete-card"><h2>公開記録を作り直す</h2><p>このPCの自己ベストで作り直す場合は、アプリでWebへの送信を止めてから公開記録を削除してください。</p><button class="danger" data-next="public-delete">公開記録を削除する</button></div>
-      <div class="card" id="delete-card"><h2>アカウントの削除</h2><p>公開ユーザーとすべてのPCの連携権限を削除します。</p><div class="actions"><button class="danger" data-next="delete">アカウントを削除する</button></div></div>
+      <div class="profile-deletion"><div id="public-delete-card"><button class="danger" data-next="public-delete">公開記録を削除する</button><p class="muted">Webに公開した自己ベストを削除</p></div><div id="delete-card"><button class="danger" data-next="delete">アカウントを削除する</button><p class="muted">アカウントとすべてのPCとの連携を削除</p></div></div>
     </section>
     <section id="login-view" hidden><h1 id="login-title">マイプロフィール</h1><div class="card"><p id="login-message">Googleアカウントでログインしてください。</p><div class="actions"><button class="primary" id="login-retry">Googleでログイン</button></div></div><p class="muted">公開ページはログインせずに閲覧できます。</p></section>
     <section id="authorization-view" hidden><h1 id="authorization-title">このPCへ引き継ぐ</h1><div class="card"><h2>対象の公開ユーザー</h2><div class="line"><span>Googleアカウント</span><strong class="value">player@example.com</strong></div><div class="line"><span>公開名</span><strong id="authorization-name">DDR GP Player</strong></div><p class="value muted" id="authorization-url">https://example.com/player/demo-player</p><div class="actions"><button data-next="entry">別のアカウントでログイン</button></div></div><div class="card"><h2>手元のアプリと照合</h2><p>操作を始めたアプリにも、同じコードが表示されていることを確認してください。</p><div class="code">482 719</div><p id="authorization-message"></p><label class="check"><input id="authorization-check" type="checkbox"><span>手元のアプリとコードが一致しています。</span></label><div class="actions"><button class="primary" id="authorization-button" disabled>このPCへ引き継ぐ</button><button data-next="cancelled">キャンセル</button></div></div></section>
@@ -110,7 +110,7 @@
       if (value === 'register-complete') accountFixture = 'new';
       if (['recover','complete','already-registered','link'].includes(value)) accountFixture = 'existing';
       const account = accountFixtures[accountFixture];
-      if (['profile','saved','unlinked','delete'].includes(value)) {
+      if (['profile','editing','saving','error','saved','unlinked','delete'].includes(value)) {
         document.getElementById('player-name').value = account.name;
         document.getElementById('public-url').value = account.url;
       }
@@ -122,11 +122,17 @@
       document.getElementById('saved-note').hidden = value !== 'saved';
       document.getElementById('error-note').hidden = value !== 'error';
       document.getElementById('simulate-complete').hidden = value !== 'waiting';
-      const profile = ['profile','unlinked','saved','error'].includes(value);
+      const profile = ['profile','editing','saving','unlinked','saved','error'].includes(value);
       if (profile) {
         document.getElementById('profile-view').hidden = false;
         ['name-card','delete-card','public-delete-card','linked-badge'].forEach(id => document.getElementById(id).hidden = value === 'unlinked');
         document.getElementById('unlinked-card').hidden = value !== 'unlinked';
+        document.querySelector('#profile-view details').open = value === 'unlinked';
+        document.getElementById('saved-name').textContent = account.name;
+        document.getElementById('player-name').value = ['editing','saving','error'].includes(value) ? '編集中の名前' : account.name;
+        document.getElementById('saved-name-note').hidden = !['editing','saving','error'].includes(value);
+        document.querySelectorAll('#name-form input, #name-form button, #profile-view details button').forEach(control => control.disabled = value === 'saving');
+        document.getElementById('save-name').textContent = '名前を保存';
       } else if (['app-unregistered','app-off','app-on'].includes(value)) {
         document.getElementById('app-view').hidden = false;
         document.getElementById('app-start').hidden = value !== 'app-unregistered';
@@ -188,6 +194,7 @@
     }
     state.addEventListener('change', () => show(state.value));
     document.querySelectorAll('[data-next]').forEach(button => button.addEventListener('click', () => show(button.dataset.next)));
+    document.getElementById('player-name').addEventListener('input', event => {document.getElementById('saved-name-note').hidden = event.target.value === accountFixtures[accountFixture].name;});
     document.getElementById('name-form').addEventListener('submit', event => {event.preventDefault(); const input = document.getElementById('player-name'); input.value = input.value.trim(); if (!input.value) {input.reportValidity(); return;} accountFixtures[accountFixture].name = input.value; show('saved');});
     document.getElementById('open-public').addEventListener('click', () => document.getElementById('public-demo').hidden = false);
     document.getElementById('authorization-check').addEventListener('change', event => document.getElementById('authorization-button').disabled = !event.target.checked);
