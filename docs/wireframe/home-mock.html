@@ -47,6 +47,7 @@
 
 <label>表示<select id="theme"><option value="light">ライト</option><option value="dark">ダーク</option></select></label>
 <label>画面<select id="size"><option value="1280">1280 × 760</option><option value="960">960 × 640</option><option value="1181">実画面相当 1181 × 775</option></select></label>
+<label>未保存通知<select id="notification"><option value="">なし</option><option value="number">数値不明</option><option value="song">曲不明</option><option value="unknown">未知の理由</option></select></label>
 <label>状態<select id="fixture"><option value="update">自己ベスト更新</option><option value="negative">自己ベスト未更新</option><option value="first">初プレー</option><option value="long">長い曲名</option><option value="old">今日の記録なし</option><option value="empty">記録なし</option></select></label>
 <label>言語<select id="language"><option value="ja">日本語</option><option value="en">English</option><option value="ko">한국어</option></select></label>
 </div>
@@ -97,7 +98,7 @@ return '<section><div class="section-top"><h3>'+heading+'</h3><button class="tex
 }
 function home(){
 const head='<div class="page-head"><h2>'+text('home')+'</h2></div>';
-return head+(result()+summary())+'<div class="home-lists">'+list(false)+list(true)+'</div>';
+return head+unresolvedNotice()+(result()+summary())+'<div class="home-lists">'+list(false)+list(true)+'</div>';
 }
 
 // 画面で使う日本語（内部の識別子は維持）
@@ -108,6 +109,9 @@ Object.assign(words.ko,{history:'플레이 기록',data:'기록 관리',monitor:
 Object.assign(words.ja,{mockOnly:'表示例です。実際の操作はアプリで確認できます。'});
 Object.assign(words.en,{mockOnly:'This is a display example. Use the app to navigate.'});
 Object.assign(words.ko,{mockOnly:'표시 예시입니다. 실제 조작은 앱에서 확인할 수 있습니다.'});
+const unresolvedCopy={ja:['プレー結果は保存されていません','スコアや判定数などの数値を読み取れませんでした。','曲を特定できませんでした。','理由を特定できませんでした。'],en:['The play result was not saved','Numbers such as the score or judgment counts could not be read.','The song could not be identified.','The reason could not be determined.'],ko:['플레이 결과가 저장되지 않았습니다','점수나 판정 수 등의 수치를 읽을 수 없었습니다.','곡을 확인할 수 없었습니다.','이유를 확인할 수 없었습니다.']};
+function unresolvedNotice(){const value=document.getElementById('notification').value;if(!value)return '';const t=unresolvedCopy[state.language];return '<aside role="status" style="margin:0 0 16px;padding:12px;border:1px solid #f2a15c;border-radius:8px;background:#fff8ed;color:#993400"><strong>'+t[0]+'</strong><div>'+t[{number:1,song:2,unknown:3}[value]]+'</div></aside>';}
+document.getElementById('notification').addEventListener('change',render);
 function render(){
 const app=document.getElementById('app-window');
 app.className='app '+(state.width<=1100?'narrow ':'')+(state.theme==='dark'?'dark ':'')+'mode-'+state.variant;

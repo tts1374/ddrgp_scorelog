@@ -2559,6 +2559,64 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
         }
     }
 
+    [Theory]
+    [InlineData("ja", "プレー結果は保存されていません", "曲を特定できませんでした。", "理由を特定できませんでした。")]
+    [InlineData("en", "The play result was not saved", "The song could not be identified.", "The reason could not be determined.")]
+    [InlineData("ko", "플레이 결과가 저장되지 않았습니다", "곡을 확인할 수 없었습니다.", "이유를 확인할 수 없었습니다.")]
+    public void Unresolved_notification_localizes_both_channels_and_keeps_raw_diagnostics(
+        string language, string title, string knownMessage, string unknownMessage)
+    {
+        applicationFixture.Run(() =>
+        {
+            try
+            {
+                PrepareStartupResources();
+                Localization.Configure(language);
+                var vm = new DDRGpScoreViewer.ViewModels.MainViewModel(new ScoreViewerRepository());
+                using var tray = new NotificationTray();
+                using var lifecycle = new DDRGpScoreViewer.Tray.ApplicationLifecycleCoordinator(
+                    tray, () => Task.CompletedTask, () => Task.CompletedTask, () => { }, () => { });
+                var diagnostics = new List<UnresolvedCaptureNotification>();
+                vm.UnresolvedCaptureDiagnosticRecorded += diagnostics.Add;
+                vm.UnresolvedCaptureNotificationRequested += lifecycle.NotifyUnresolvedCapture;
+                var publish = typeof(DDRGpScoreViewer.ViewModels.MainViewModel).GetMethod(
+                    "PublishUnresolvedCaptureNotifications",
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+                foreach (var (id, reasons, expected) in new (string, string[], string)[]
+                {
+                    ("known", ["formal_evidence.identity_visual_ambiguous", "formal_evidence.song_id_missing", "future.unknown"], knownMessage),
+                    ("unknown", ["future.unknown"], unknownMessage),
+                    ("empty", [], unknownMessage),
+                })
+                {
+                    var result = new CaptureSaveWorkflowResult("completed", 1,
+                        new Dictionary<string, int> { ["unresolved"] = 1 }, [], reasons, null,
+                        [new CaptureSaveEventResult(id, "unresolved", reasons)]);
+                    publish.Invoke(vm, [result]);
+                    Assert.Equal(title, vm.UnresolvedNotificationTitle);
+                    Assert.Equal(expected, vm.UnresolvedNotificationMessage);
+                    Assert.Equal((title, expected), tray.Notifications.Last());
+                    Assert.Equal(id, diagnostics.Last().EventId);
+                    Assert.Equal(reasons, diagnostics.Last().Reasons);
+                }
+            }
+            finally { Localization.Configure("ja"); }
+        });
+    }
+
+    private sealed class NotificationTray : DDRGpScoreViewer.Tray.ITrayIconService
+    {
+        public event EventHandler? StartRequested { add { } remove { } }
+        public event EventHandler? StopRequested { add { } remove { } }
+        public event EventHandler? ShowRequested { add { } remove { } }
+        public event EventHandler? ExitRequested { add { } remove { } }
+        public List<(string Title, string Message)> Notifications { get; } = [];
+        public void UpdateMenu(TrayMenuState state, string statusText) { }
+        public void ShowNotification(string title, string message, DDRGpScoreViewer.Tray.TrayNotificationKind kind)
+            => Notifications.Add((title, message));
+        public void Dispose() { }
+    }
+
     private sealed record GridItem(string Display);
 }
 
