@@ -4321,13 +4321,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 continue;
             }
 
-            var reasons = eventResult.Reasons.Count == 0
-                ? "診断理由は監視結果を確認してください。"
-                : string.Join(
-                    " / ",
-                    eventResult.Reasons.Distinct(StringComparer.Ordinal));
-            var message =
-                $"正式DBには保存されていません。理由: {reasons} 診断参照: {eventId}";
+            var message = BuildUnresolvedCaptureMessage(eventResult.Reasons);
             var notification = new UnresolvedCaptureNotification(
                 eventId,
                 message,
@@ -4338,12 +4332,31 @@ public sealed class MainViewModel : INotifyPropertyChanged
                 continue;
             }
 
-            UnresolvedNotificationTitle = "自動保存できないプレーが発生しました";
+            UnresolvedNotificationTitle = "プレー結果は保存されていません";
             UnresolvedNotificationMessage = message;
             HasUnresolvedNotification = true;
             ScheduleUnresolvedNotificationAutoClear();
             UnresolvedCaptureNotificationRequested?.Invoke(notification);
         }
+    }
+
+    private static string BuildUnresolvedCaptureMessage(IReadOnlyList<string> reasons)
+    {
+        // Translate only known evidence failures. Raw reasons and event IDs remain
+        // on the existing diagnostic event; unknown codes must not imply a cause.
+        var messages = reasons.Select(reason => reason switch
+        {
+            "formal_evidence.identity_visual_ambiguous" or
+                "formal_evidence.song_id_missing" => "曲を特定できませんでした。",
+            "formal_evidence.chart_visual_ambiguous" or
+                "formal_evidence.chart_id_missing" => "譜面を特定できませんでした。",
+            "formal_evidence.level_visual_ambiguous" => "譜面レベルを読み取れませんでした。",
+            "digit_recognition.ambiguous" => "スコアや判定数などの数値を読み取れませんでした。",
+            _ => null,
+        }).Where(message => message is not null).Distinct(StringComparer.Ordinal).ToArray();
+        return messages.Length == 0
+            ? Localization.Get("理由を特定できませんでした。")
+            : string.Join(" ", messages.Select(message => Localization.Get(message!)));
     }
 
     private void ScheduleUnresolvedNotificationAutoClear()

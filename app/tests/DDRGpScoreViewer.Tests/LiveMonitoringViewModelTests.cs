@@ -23,10 +23,10 @@ public sealed class LiveMonitoringViewModelTests
         [
             UnresolvedResult(
                 "confirmed-event-v1:first",
-                "first_reason"),
+                "formal_evidence.identity_visual_ambiguous"),
             UnresolvedResult(
                 "confirmed-event-v1:latest",
-                "latest_reason"),
+                "digit_recognition.ambiguous"),
         ]);
         var live = new StubLiveMonitoringService(candidateCount: 2);
         var workflow = new StubLiveWorkflowRunner(() => results.Dequeue());
@@ -46,8 +46,8 @@ public sealed class LiveMonitoringViewModelTests
         await viewModel.StartConfiguredContinuousCaptureAndSaveAsync(123);
 
         Assert.True(viewModel.HasUnresolvedNotification);
-        Assert.Contains("confirmed-event-v1:latest", viewModel.UnresolvedNotificationMessage);
-        Assert.Contains("latest_reason", viewModel.UnresolvedNotificationMessage);
+        Assert.Equal("スコアや判定数などの数値を読み取れませんでした。", viewModel.UnresolvedNotificationMessage);
+        Assert.DoesNotContain("digit_recognition.ambiguous", viewModel.UnresolvedNotificationMessage);
         Assert.Equal(2, viewModel.MonitoringResults.Unresolved);
         Assert.Empty(viewModel.Plays);
         Assert.Equal(2, scheduler.Scheduled.Count);
@@ -57,7 +57,7 @@ public sealed class LiveMonitoringViewModelTests
 
         await scheduler.Scheduled[0].ExpireAsync();
         Assert.True(viewModel.HasUnresolvedNotification);
-        Assert.Contains("confirmed-event-v1:latest", viewModel.UnresolvedNotificationMessage);
+        Assert.Equal("スコアや判定数などの数値を読み取れませんでした。", viewModel.UnresolvedNotificationMessage);
 
         await scheduler.Scheduled[1].ExpireAsync();
 

@@ -559,4 +559,10 @@
     <sys:String x:Key="公開記録の削除はプロフィールから行えます。">공개 기록은 프로필에서 삭제할 수 있습니다.</sys:String>
     <sys:String x:Key="送信停止中（公開は継続）">전송 중지 (기록은 계속 공개)</sys:String>
     <sys:String x:Key="バックアップの対象">백업 대상</sys:String>
+    <sys:String x:Key="プレー結果は保存されていません">플레이 결과가 저장되지 않았습니다</sys:String>
+    <sys:String x:Key="曲を特定できませんでした。">곡을 확인할 수 없었습니다.</sys:String>
+    <sys:String x:Key="譜面を特定できませんでした。">채보를 확인할 수 없었습니다.</sys:String>
+    <sys:String x:Key="譜面レベルを読み取れませんでした。">채보 레벨을 읽을 수 없었습니다.</sys:String>
+    <sys:String x:Key="スコアや判定数などの数値を読み取れませんでした。">점수나 판정 수 등의 수치를 읽을 수 없었습니다.</sys:String>
+    <sys:String x:Key="理由を特定できませんでした。">이유를 확인할 수 없었습니다.</sys:String>
 </ResourceDictionary>

@@ -637,7 +637,7 @@ public sealed class MonitoringTests
             () => { });
         var notification = new UnresolvedCaptureNotification(
             "confirmed-event-v1:unresolved",
-            "正式DBには保存されていません。理由: digit_recognition.ambiguous");
+            "スコアや判定数などの数値を読み取れませんでした。");
 
         lifecycle.NotifyUnresolvedCapture(notification);
         lifecycle.NotifyUnresolvedCapture(notification);
@@ -650,7 +650,8 @@ public sealed class MonitoringTests
         Assert.All(
             tray.Notifications,
             item => Assert.Equal(TrayNotificationKind.Information, item.Kind));
-        Assert.Contains("正式DBには保存されていません", tray.Notifications[0].Message);
+        Assert.Equal("プレー結果は保存されていません", tray.Notifications[0].Title);
+        Assert.Equal(notification.Message, tray.Notifications[0].Message);
     }
 
     private sealed class MonitoringCaptureService(CaptureOperationStatus status)

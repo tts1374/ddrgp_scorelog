@@ -543,4 +543,10 @@
     <sys:String x:Key="公開記録の削除はプロフィールから行えます。">公開記録の削除はプロフィールから行えます。</sys:String>
     <sys:String x:Key="送信停止中（公開は継続）">送信停止中（公開は継続）</sys:String>
     <sys:String x:Key="バックアップの対象">バックアップの対象</sys:String>
+    <sys:String x:Key="プレー結果は保存されていません">プレー結果は保存されていません</sys:String>
+    <sys:String x:Key="曲を特定できませんでした。">曲を特定できませんでした。</sys:String>
+    <sys:String x:Key="譜面を特定できませんでした。">譜面を特定できませんでした。</sys:String>
+    <sys:String x:Key="譜面レベルを読み取れませんでした。">譜面レベルを読み取れませんでした。</sys:String>
+    <sys:String x:Key="スコアや判定数などの数値を読み取れませんでした。">スコアや判定数などの数値を読み取れませんでした。</sys:String>
+    <sys:String x:Key="理由を特定できませんでした。">理由を特定できませんでした。</sys:String>
 </ResourceDictionary>

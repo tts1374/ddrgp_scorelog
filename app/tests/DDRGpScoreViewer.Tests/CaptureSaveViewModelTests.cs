@@ -153,8 +153,9 @@ public sealed class CaptureSaveViewModelTests
             123, fixture.ScorePath, fixture.MasterPath);
 
         Assert.True(viewModel.HasUnresolvedNotification);
-        Assert.Contains("正式DBには保存されていません", viewModel.UnresolvedNotificationMessage);
-        Assert.Contains(unresolvedEventId, viewModel.UnresolvedNotificationMessage);
+        Assert.Equal("プレー結果は保存されていません", viewModel.UnresolvedNotificationTitle);
+        Assert.Equal("スコアや判定数などの数値を読み取れませんでした。", viewModel.UnresolvedNotificationMessage);
+        Assert.DoesNotContain(unresolvedEventId, viewModel.UnresolvedNotificationMessage);
         Assert.Single(notifications);
         Assert.Equal(["digit_recognition.ambiguous"], notifications[0].Reasons);
         Assert.Single(levelDiagnostics);
@@ -171,6 +172,44 @@ public sealed class CaptureSaveViewModelTests
         Assert.Equal(2, levelDiagnostics.Count);
         Assert.Equal("saved", levelDiagnostics[1].Status);
         Assert.Equal("17", levelDiagnostics[1].LevelRecognition!.BestCandidate);
+    }
+
+    [Theory]
+    [InlineData("formal_evidence.identity_visual_ambiguous", "曲を特定できませんでした。")]
+    [InlineData("formal_evidence.song_id_missing", "曲を特定できませんでした。")]
+    [InlineData("formal_evidence.chart_visual_ambiguous", "譜面を特定できませんでした。")]
+    [InlineData("formal_evidence.chart_id_missing", "譜面を特定できませんでした。")]
+    [InlineData("formal_evidence.level_visual_ambiguous", "譜面レベルを読み取れませんでした。")]
+    [InlineData("future.unknown_reason", "理由を特定できませんでした。")]
+    [InlineData(null, "理由を特定できませんでした。")]
+    public async Task Unresolved_notification_separates_display_from_diagnostics(string? reason, string expected)
+    {
+        using var fixture = new DatabaseFixture();
+        const string eventId = "confirmed-event-v1:display-fixture";
+        string[] reasons = reason is null ? [] : [reason];
+        var workflow = new StubCaptureSaveWorkflowRunner((_, _, _) =>
+            new CaptureSaveWorkflowResult("completed", 1,
+                new Dictionary<string, int> { ["unresolved"] = 1 }, [], reasons, null,
+                [new CaptureSaveEventResult(eventId, "ambiguous", reasons)]));
+        var viewModel = new MainViewModel(new ScoreViewerRepository(), new UnusedManualWorkflowRunner(),
+            continuousCaptureService: new StubContinuousCaptureService(CaptureOperationStatus.Saved),
+            captureSaveWorkflowRunner: workflow);
+        var notifications = new List<UnresolvedCaptureNotification>();
+        var diagnostics = new List<UnresolvedCaptureNotification>();
+        viewModel.UnresolvedCaptureNotificationRequested += notifications.Add;
+        viewModel.UnresolvedCaptureDiagnosticRecorded += diagnostics.Add;
+
+        await viewModel.StartContinuousCaptureAndSaveAsync(123, fixture.ScorePath, fixture.MasterPath);
+
+        Assert.Equal("プレー結果は保存されていません", viewModel.UnresolvedNotificationTitle);
+        Assert.Equal(expected, viewModel.UnresolvedNotificationMessage);
+        Assert.Equal(expected, Assert.Single(notifications).Message);
+        var diagnostic = Assert.Single(diagnostics);
+        Assert.Equal(eventId, diagnostic.EventId);
+        Assert.Equal(reasons, diagnostic.Reasons);
+        Assert.DoesNotContain(eventId, viewModel.UnresolvedNotificationMessage);
+        Assert.Equal(1, viewModel.MonitoringResults.Unresolved);
+        Assert.Empty(viewModel.Plays);
     }
 
     [Fact]

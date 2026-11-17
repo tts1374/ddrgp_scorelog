@@ -268,7 +268,7 @@ public sealed class ApplicationLifecycleCoordinator : IDisposable
         }
 
         trayIcon.ShowNotification(
-            Localization.Get("自動保存できないプレーが発生しました"),
+            Localization.Get("プレー結果は保存されていません"),
             Localization.Get(notification.Message),
             TrayNotificationKind.Information);
     }
