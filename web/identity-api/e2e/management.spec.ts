@@ -102,7 +102,7 @@ for (const width of [1280, 390]) {
     const input = page.getByRole("textbox", { name: "公開名", exact: true });
     await input.fill("編集中の名前");
     await page.getByRole("button", { name: "名前を保存", exact: true }).click();
-    await expect(page.getByRole("button", { name: "保存中…", exact: true })).toBeDisabled();
+    await expect(page.getByRole("button", { name: "名前を保存", exact: true })).toBeDisabled();
     await expect(input).toBeDisabled();
     await expect(page.getByRole("button", { name: "ログアウト", exact: true })).toBeDisabled();
     await expect(page.getByRole("button", { name: "別のアカウントでログイン", exact: true })).toBeDisabled();

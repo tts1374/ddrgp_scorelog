@@ -132,7 +132,7 @@
         document.getElementById('player-name').value = ['editing','saving','error'].includes(value) ? '編集中の名前' : account.name;
         document.getElementById('saved-name-note').hidden = !['editing','saving','error'].includes(value);
         document.querySelectorAll('#name-form input, #name-form button, #profile-view details button').forEach(control => control.disabled = value === 'saving');
-        document.getElementById('save-name').textContent = value === 'saving' ? '保存中…' : '名前を保存';
+        document.getElementById('save-name').textContent = '名前を保存';
       } else if (['app-unregistered','app-off','app-on'].includes(value)) {
         document.getElementById('app-view').hidden = false;
         document.getElementById('app-start').hidden = value !== 'app-unregistered';

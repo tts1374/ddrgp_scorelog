@@ -248,7 +248,7 @@ export function ManagementApp() {
           <input id="public-name" type="text" value={name} disabled={busy} aria-describedby={edited ? "profile-name-help profile-name-saved" : "profile-name-help"} onChange={e => setName(e.target.value)} />
           <p id="profile-name-help" className="management-muted">1〜64文字</p>
           {edited ? <p id="profile-name-saved">保存済み: <strong>{profile.display_name}</strong></p> : null}
-          <div className="management-actions"><button className="primary" disabled={busy}>{busy ? "保存中…" : "名前を保存"}</button></div>
+          <div className="management-actions"><button className="primary" disabled={busy}>名前を保存</button></div>
         </form>
         <div className="profile-public-page">
           <label htmlFor="public-url">公開URL</label>
