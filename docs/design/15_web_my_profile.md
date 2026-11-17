@@ -28,6 +28,12 @@ App未登録/同期OFF/ON、Web新規登録/ログインの入口、登録確認
 
 連携/解除は14の有効App proof付きtransactionで行う。手元アプリのWeb連携から開始し、操作専用のGoogle identity再確認とApp確認がそろった画面で最終確認する。アカウント全削除はWebへ集約する。公開記録だけの削除はWebの別画面に集約し、16の送信停止→Web削除→送信再開で作り直す。App通常画面には置換・公開記録削除ボタンを置かない。自己紹介/アバター/公開URL変更/端末管理は含めない。
 
+### マイプロフィールの表示順
+
+連携済みの `/my/profile` は、公開名の入力と保存、read-only公開URLと「公開ページを開く」を先に配置する。ラベルは「公開名」とし、文字数条件だけを補足する。通常時に同じ名前を繰り返し表示しない。入力が保存済み名と異なる間だけ「保存済み: 名前」を入力の近くに表示し、保存中・保存失敗でも入力との違いを保つ。保存処理中は入力・保存・アカウント操作を無効にし、保存ボタンを「保存中…」とする。既存の入力検証・保存結果確認・セッション期限切れ処理は維持する。
+
+Googleアカウントはその下の初期状態で閉じた補助表示にまとめる。展開箇所に本人email、連携状態、管理画面だけに表示される意味、ログアウトとアカウント切替を置く。公開記録削除とアカウント削除の入口はさらに下へ分けて配置し、対象の違いを短く添える。削除の影響・本人確認・キャンセルは既存の専用確認画面で維持する。未ログイン・未登録/未連携の案内と操作は既存どおり。共通のGoogleカード、App連携確認、削除確認画面の表示は変更しない。
+
 ## Webログイン / session / API
 
 Googleの[Web Server Authorization Code](https://developers.google.com/identity/protocols/oauth2/web-server)と[OpenID Connect](https://developers.google.com/identity/openid-connect/openid-connect)でGoogle identityを検証し、Workerが本サービス専用sessionを発行する。WindowsからのWeb連携も同じWeb clientを使い、Google認証と14のアプリproofを別に検証する。client IDは環境別に固定する。

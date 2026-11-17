@@ -238,7 +238,35 @@ export function ManagementApp() {
   }
   function profileView() {
     if (!session) return <><h1>マイプロフィール</h1><Card><p>Googleアカウントでログインしてください。</p><a className="management-button primary" href="/api/v1/auth/web/google/start">Googleでログイン</a></Card><p className="management-muted">公開ページはログインせずに閲覧できます。</p></>;
-    return <><h1>マイプロフィール</h1><p className="management-muted">公開ページに出す名前の変更や、公開記録・アカウントの削除ができます。</p>{googleCard()}{profile ? <><Card title="公開プロフィール"><form onSubmit={save}><label htmlFor="public-name">公開プレーヤー名</label><input id="public-name" type="text" value={name} disabled={busy} onChange={e => setName(e.target.value)} /><p className="management-muted">1〜64文字。公開ページに表示されます。</p><p>現在の公開名: <strong>{profile.display_name}</strong></p><label htmlFor="public-url">公開URL</label><input id="public-url" type="text" readOnly value={profile.public_url} /><div className="management-actions"><button className="primary" disabled={busy}>名前を保存</button><a className="management-button" href={profile.public_url}>公開ページを開く</a></div></form></Card><Card title="公開記録の削除"><p>Webに公開した自己ベストを削除できます。</p><a className="management-button danger" href="/my/public-data-delete">公開記録を削除する</a></Card><Card title="アカウントの削除"><p>アカウントとすべてのPCとの連携を削除します。</p><a className="management-button danger" href="/my/account-delete">アカウントを削除する</a></Card></> : <Card title="アカウントが登録・連携されていません"><p>アプリの「アカウントを作成・引き継ぐ」から「Googleで続ける」を選び、内容を確認してください。Google連携を解除した方は、現在のアプリの「Web連携」から同じアカウントへ再連携できます。</p><p className="management-muted">ログインだけでは、新しいアカウントは作られません。</p></Card>}</>;
+    if (!profile) return <><h1>マイプロフィール</h1>{googleCard()}<Card title="アカウントが登録・連携されていません"><p>アプリの「アカウントを作成・引き継ぐ」から「Googleで続ける」を選び、内容を確認してください。Google連携を解除した方は、現在のアプリの「Web連携」から同じアカウントへ再連携できます。</p><p className="management-muted">ログインだけでは、新しいアカウントは作られません。</p></Card></>;
+    const edited = name !== profile.display_name;
+    return <div className="management-profile">
+      <h1>マイプロフィール</h1>
+      <Card>
+        <form onSubmit={save}>
+          <label htmlFor="public-name">公開名</label>
+          <input id="public-name" type="text" value={name} disabled={busy} aria-describedby={edited ? "profile-name-help profile-name-saved" : "profile-name-help"} onChange={e => setName(e.target.value)} />
+          <p id="profile-name-help" className="management-muted">1〜64文字</p>
+          {edited ? <p id="profile-name-saved">保存済み: <strong>{profile.display_name}</strong></p> : null}
+          <div className="management-actions"><button className="primary" disabled={busy}>{busy ? "保存中…" : "名前を保存"}</button></div>
+        </form>
+        <div className="profile-public-page">
+          <label htmlFor="public-url">公開URL</label>
+          <input id="public-url" type="text" readOnly value={profile.public_url} />
+          <div className="management-actions"><a className="management-button" href={profile.public_url}>公開ページを開く</a></div>
+        </div>
+      </Card>
+      <details className="profile-account">
+        <summary>Googleアカウント</summary>
+        <div className="management-line"><span className="management-value">{session.email}</span><span className="management-badge">連携済み</span></div>
+        <p className="management-muted">このメールアドレスは管理画面にだけ表示されます。</p>
+        <div className="management-actions"><button disabled={busy} onClick={() => void action(() => switchAccount(false))}>ログアウト</button><button disabled={busy} onClick={() => void action(() => switchAccount(true))}>別のアカウントでログイン</button></div>
+      </details>
+      <section className="profile-deletion" aria-label="削除">
+        <div><a className="management-button danger" href="/my/public-data-delete">公開記録を削除する</a><p className="management-muted">Webに公開した自己ベストを削除</p></div>
+        <div><a className="management-button danger" href="/my/account-delete">アカウントを削除する</a><p className="management-muted">アカウントとすべてのPCとの連携を削除</p></div>
+      </section>
+    </div>;
   }
   function deleteView() {
     if (deletion?.status === "DELETED") return <><h1>アカウントを削除しました</h1><Card><p>公開URLは利用できなくなりました。PC内のスコア履歴は残ります。</p><a href="/my/profile">マイプロフィールへ</a></Card></>;
