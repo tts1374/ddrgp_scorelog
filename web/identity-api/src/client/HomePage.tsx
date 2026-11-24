@@ -9,8 +9,8 @@ export function HomePage() {
     </div></header>
     <main className="home-shell">
       <section className="home-about" aria-labelledby="home-heading">
-        <h1 id="home-heading">GP Score Logについて</h1>
-        <p>DDR GRAND PRIXのリザルト画面を読み取り、プレー結果をPCに記録するWindows用アプリです。自己ベストやプレー履歴、FLARE SKILLを確認でき、自己ベストをWebに公開できます。</p>
+        <h1 id="home-heading">DDR GRAND PRIXの自動記録</h1>
+        <p>リザルト画面を読み取り、プレー結果をPCに保存するWindowsアプリです。</p>
         <p className="home-note">Windows 11・グランプリプレー・1280×720に対応</p>
         <nav className="home-links" aria-label="利用を始める">
           <a href={`${repositoryUrl}/releases/latest`}>アプリをダウンロード</a>

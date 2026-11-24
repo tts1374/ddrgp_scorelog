@@ -511,8 +511,7 @@
     <sys:String x:Key="連携は完了しましたが、Webへの送信を開始できませんでした。アプリを再起動して送信状況を確認してください。">連携は完了しましたが、Webへの送信を開始できませんでした。アプリを再起動して送信状況を確認してください。</sys:String>
     <sys:String x:Key="今日のプレー">今日のプレー</sys:String>
     <sys:String x:Key="毎朝7時に切り替わります">毎朝7時に切り替わります</sys:String>
-    <sys:String x:Key="プレー前の自己ベストとの差（スコア）">プレー前の自己ベストとの差（スコア）</sys:String>
-    <sys:String x:Key="プレー前の自己ベストとの差（EX）">プレー前の自己ベストとの差（EX）</sys:String>
+    <sys:String x:Key="プレー前の自己ベストとの差">プレー前の自己ベストとの差</sys:String>
     <sys:String x:Key="RESULT画面を検出しています。">リザルト画面を待っています。</sys:String>
     <sys:String x:Key="{}{0}件を表示">{0}件を表示</sys:String>
     <sys:String x:Key="判定">判定</sys:String>

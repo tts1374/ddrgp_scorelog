@@ -510,8 +510,7 @@
     <sys:String x:Key="GPU device lost">게임 화면을 가져올 수 없습니다</sys:String>
     <sys:String x:Key="今日のプレー">오늘 플레이</sys:String>
     <sys:String x:Key="毎朝7時に切り替わります">매일 아침 7시에 바뀝니다</sys:String>
-    <sys:String x:Key="プレー前の自己ベストとの差（スコア）">플레이 전 최고 기록과의 차이 (점수)</sys:String>
-    <sys:String x:Key="プレー前の自己ベストとの差（EX）">플레이 전 최고 기록과의 차이 (EX)</sys:String>
+    <sys:String x:Key="プレー前の自己ベストとの差">이번 플레이 전 개인 최고 기록과의 차이</sys:String>
     <sys:String x:Key="RESULT画面を検出しています。">결과 화면을 기다리고 있습니다.</sys:String>
     <sys:String x:Key="{}{0}件を表示">{0}건 표시</sys:String>
     <sys:String x:Key="判定">판정</sys:String>
