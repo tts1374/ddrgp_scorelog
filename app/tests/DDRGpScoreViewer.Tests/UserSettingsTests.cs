@@ -315,8 +315,7 @@ public sealed class UserSettingsTests
     [InlineData("振り返りをコピー", "今日の記録をコピー", "Copy today’s records", "오늘 기록 복사")]
     [InlineData("今日のプレー", "今日のプレー", "Today’s play", "오늘 플레이")]
     [InlineData("毎朝7時に切り替わります", "毎朝7時に切り替わります", "Resets every morning at 7", "매일 아침 7시에 바뀝니다")]
-    [InlineData("プレー前の自己ベストとの差（スコア）", "プレー前の自己ベストとの差（スコア）", "Change from best before this play (score)", "플레이 전 최고 기록과의 차이 (점수)")]
-    [InlineData("プレー前の自己ベストとの差（EX）", "プレー前の自己ベストとの差（EX）", "Change from best before this play (EX)", "플레이 전 최고 기록과의 차이 (EX)")]
+    [InlineData("プレー前の自己ベストとの差", "プレー前の自己ベストとの差", "Change from your best before this play", "이번 플레이 전 개인 최고 기록과의 차이")]
     [InlineData("コピーしました", "コピーしました", "Copied", "복사했습니다")]
     [InlineData("コピーできませんでした", "コピーできませんでした", "Could not copy", "복사하지 못했습니다")]
     public void Home_recap_strings_are_translated_for_supported_languages(

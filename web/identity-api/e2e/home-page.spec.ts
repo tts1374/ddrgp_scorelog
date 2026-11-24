@@ -12,9 +12,15 @@ for (const width of [1280, 390]) {
     expect(response?.status()).toBe(200);
     expect(response?.headers()["cache-control"]).toBe("no-store");
     await expect(page).toHaveTitle("GP Score Log");
-    await expect(page.getByRole("heading", { level: 1 })).toHaveText("GP Score Logについて");
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("DDR GRAND PRIXの自動記録");
+    await expect(page.getByText("Windows 11・グランプリプレー・1280×720に対応")).toBeVisible();
     await expect(page.getByRole("link", { name: "アプリをダウンロード", exact: true }))
       .toHaveAttribute("href", "https://github.com/tts1374/ddrgp_scorelog/releases/latest");
+    await expect(page.getByRole("navigation", { name: "利用を始める" }).getByRole("link", { name: "利用ガイド" }))
+      .toHaveAttribute("href", "https://github.com/tts1374/ddrgp_scorelog/blob/main/docs/user-guide.md");
+    const publicData = page.getByRole("region", { name: "Webへの公開について" });
+    await expect(publicData.getByText(/公開URLを共有すると、ログインせずに/u)).toBeVisible();
+    await expect(publicData.getByText(/Webには自動記録した自己ベストを送信します/u)).toBeVisible();
     await page.getByRole("link", { name: "使い方を見る", exact: true }).click();
     await expect(page).toHaveURL(/#getting-started$/);
     await expect(page.getByRole("heading", { name: "使い方", exact: true })).toBeInViewport();
