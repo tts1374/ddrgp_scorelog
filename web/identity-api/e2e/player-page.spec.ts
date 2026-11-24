@@ -380,6 +380,6 @@ for (const width of [1280, 390]) {
     await page.goBack();
     await page.getByRole("link", { name: "GP Score Log", exact: true }).click();
     await expect(page).toHaveURL("/");
-    await expect(page.getByRole("heading", { name: "GP Score Logについて" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "アプリをダウンロード", exact: true })).toBeVisible();
   });
 }
