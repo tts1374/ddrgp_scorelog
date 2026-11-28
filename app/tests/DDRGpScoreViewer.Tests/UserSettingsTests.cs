@@ -312,7 +312,7 @@ public sealed class UserSettingsTests
     [InlineData("各判定数の合計", "各判定数の合計", "Sum of all judgment counts", "각 판정 수 합계")]
     [InlineData("消費カロリー", "消費カロリー", "Calories burned", "소비 칼로리")]
     [InlineData("プレーごとの消費カロリー合計", "プレーごとの消費カロリー合計", "Total calories burned across plays", "플레이별 소비 칼로리 합계")]
-    [InlineData("振り返りをコピー", "今日の記録をコピー", "Copy today’s records", "오늘 기록 복사")]
+    [InlineData("今日の記録をコピー", "今日の記録をコピー", "Copy today’s records", "오늘 기록 복사")]
     [InlineData("今日のプレー", "今日のプレー", "Today’s play", "오늘 플레이")]
     [InlineData("毎朝7時に切り替わります", "毎朝7時に切り替わります", "Resets every morning at 7", "매일 아침 7시에 바뀝니다")]
     [InlineData("プレー前の自己ベストとの差", "プレー前の自己ベストとの差", "Change from your best before this play", "이번 플레이 전 개인 최고 기록과의 차이")]

@@ -43,7 +43,7 @@
     <sys:String x:Key="各判定数の合計">各判定数の合計</sys:String>
     <sys:String x:Key="消費カロリー">消費カロリー</sys:String>
     <sys:String x:Key="プレーごとの消費カロリー合計">プレーごとの消費カロリー合計</sys:String>
-    <sys:String x:Key="振り返りをコピー">今日の記録をコピー</sys:String>
+    <sys:String x:Key="今日の記録をコピー">今日の記録をコピー</sys:String>
     <sys:String x:Key="コピーしました">コピーしました</sys:String>
     <sys:String x:Key="コピーできませんでした">コピーできませんでした</sys:String>
     <sys:String x:Key="{}{0}のDDR GRAND PRIX">{0}のDDR GRAND PRIX</sys:String>
@@ -550,4 +550,12 @@
     <sys:String x:Key="理由を特定できませんでした。">理由を特定できませんでした。</sys:String>
     <sys:String x:Key="色の見方">色の見方</sys:String>
     <sys:String x:Key="フレアスキルカテゴリ">フレアスキルカテゴリ</sys:String>
+    <sys:String x:Key="記録を見る">記録を見る</sys:String>
+    <sys:String x:Key="管理">管理</sys:String>
+    <sys:String x:Key="記録の管理">記録の管理</sys:String>
+    <sys:String x:Key="← ホームに戻る">← ホームに戻る</sys:String>
+    <sys:String x:Key="最近のプレー">最近のプレー</sys:String>
+    <sys:String x:Key="AAA {0:N0} 到達（+{1:N0}）">AAA {0:N0} 到達（+{1:N0}）</sys:String>
+    <sys:String x:Key="AAA {0:N0} まであと {1:N0}">AAA {0:N0} まであと {1:N0}</sys:String>
+    <sys:String x:Key="開発者向け操作">開発者向け操作</sys:String>
 </ResourceDictionary>

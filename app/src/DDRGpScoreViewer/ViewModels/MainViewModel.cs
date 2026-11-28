@@ -56,6 +56,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
     private string webAuthorizationMessage = "";
     private PlayHistoryItem? selectedPlay;
     private ChartBestItem? selectedChartBest;
+    private ChartBestItem? homeDetailChart;
+    private NavigationOrigin backOrigin;
     private HomePlayItem? homeLatestPlay;
     private HomePlayItem? chartDetailLatestPlay;
     private HomePlayItem? chartDetailScoreBestPlay;
@@ -751,9 +753,46 @@ public sealed class MainViewModel : INotifyPropertyChanged
             {
                 return;
             }
-            RefreshChartDetail();
+            if (homeDetailChart is null)
+            {
+                RefreshChartDetail();
+            }
         }
     }
+
+    internal enum NavigationOrigin
+    {
+        None,
+        Home,
+        PersonalBests,
+    }
+
+    internal NavigationOrigin BackOrigin
+    {
+        get => backOrigin;
+        private set
+        {
+            if (SetProperty(ref backOrigin, value))
+            {
+                OnPropertyChanged(nameof(BackActionDisplay));
+                OnPropertyChanged(nameof(BackActionVisibility));
+            }
+        }
+    }
+
+    public string BackActionDisplay => BackOrigin switch
+    {
+        NavigationOrigin.Home => Localization.Get("← ホームに戻る"),
+        NavigationOrigin.PersonalBests => Localization.Get("← 自己ベストに戻る"),
+        _ => "",
+    };
+
+    public System.Windows.Visibility BackActionVisibility =>
+        BackOrigin == NavigationOrigin.None
+            ? System.Windows.Visibility.Collapsed
+            : System.Windows.Visibility.Visible;
+
+    public ChartBestItem? ChartDetailChart => homeDetailChart ?? SelectedChartBest;
 
     public string ChartDetailGraphMode
     {
@@ -787,70 +826,70 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public string ChartDetailHistoryLoadMoreHintDisplay =>
         Localization.Format("{0} / {1}プレー", ChartDetailDisplayedCount, ChartDetailTotalCount);
 
-    public string ChartDetailSongTitle => selectedChartBest?.SongTitle ?? "—";
+    public string ChartDetailSongTitle => ChartDetailChart?.SongTitle ?? "—";
 
-    public string ChartDetailPlayStyleDisplay => selectedChartBest?.PlayStyleDisplay ?? "—";
+    public string ChartDetailPlayStyleDisplay => ChartDetailChart?.PlayStyleDisplay ?? "—";
 
-    public string ChartDetailDifficultyDisplay => selectedChartBest?.DifficultyDisplay ?? "—";
+    public string ChartDetailDifficultyDisplay => ChartDetailChart?.DifficultyDisplay ?? "—";
 
-    public string ChartDetailLevelDisplay => selectedChartBest?.LevelDisplay ?? "—";
+    public string ChartDetailLevelDisplay => ChartDetailChart?.LevelDisplay ?? "—";
 
-    public string ChartDetailBestScoreDisplay => selectedChartBest?.BestScoreDisplay ?? "—";
+    public string ChartDetailBestScoreDisplay => ChartDetailChart?.BestScoreDisplay ?? "—";
 
-    public string ChartDetailBestExScoreDisplay => selectedChartBest?.BestExScoreDisplay ?? "—";
+    public string ChartDetailBestExScoreDisplay => ChartDetailChart?.BestExScoreDisplay ?? "—";
 
-    public string ChartDetailRankDisplay => selectedChartBest is { IsPlayed: true }
-        ? selectedChartBest.RankDisplay
+    public string ChartDetailRankDisplay => ChartDetailChart is { IsPlayed: true } chart
+        ? chart.RankDisplay
         : "—";
 
     public System.Windows.Visibility ChartDetailRankBadgeVisibility =>
-        selectedChartBest is { IsPlayed: true, HasRank: true }
+        ChartDetailChart is { IsPlayed: true, HasRank: true }
             ? System.Windows.Visibility.Visible
             : System.Windows.Visibility.Collapsed;
 
     public System.Windows.Visibility ChartDetailRankPlaceholderVisibility =>
-        selectedChartBest is { IsPlayed: true, HasRank: true }
+        ChartDetailChart is { IsPlayed: true, HasRank: true }
             ? System.Windows.Visibility.Collapsed
             : System.Windows.Visibility.Visible;
 
-    public string ChartDetailClearDisplay => selectedChartBest is { IsPlayed: true }
-        ? selectedChartBest.ClearDisplay
+    public string ChartDetailClearDisplay => ChartDetailChart is { IsPlayed: true } chart
+        ? chart.ClearDisplay
         : "—";
 
     public System.Windows.Visibility ChartDetailClearBadgeVisibility =>
-        selectedChartBest is { IsPlayed: true, HasClear: true }
+        ChartDetailChart is { IsPlayed: true, HasClear: true }
             ? System.Windows.Visibility.Visible
             : System.Windows.Visibility.Collapsed;
 
     public System.Windows.Visibility ChartDetailClearPlaceholderVisibility =>
-        selectedChartBest is { IsPlayed: true, HasClear: true }
+        ChartDetailChart is { IsPlayed: true, HasClear: true }
             ? System.Windows.Visibility.Collapsed
             : System.Windows.Visibility.Visible;
 
-    public string ChartDetailFlareRankDisplay => selectedChartBest is { IsPlayed: true }
-        ? selectedChartBest.FlareRankDisplay
+    public string ChartDetailFlareRankDisplay => ChartDetailChart is { IsPlayed: true } chart
+        ? chart.FlareRankDisplay
         : "—";
 
     public System.Windows.Visibility ChartDetailFlareBadgeVisibility =>
-        selectedChartBest is { IsPlayed: true, FlareBadgeGroup: not "None" }
+        ChartDetailChart is { IsPlayed: true, FlareBadgeGroup: not "None" }
             ? System.Windows.Visibility.Visible
             : System.Windows.Visibility.Collapsed;
 
     public System.Windows.Visibility ChartDetailFlarePlaceholderVisibility =>
-        selectedChartBest is { IsPlayed: true, FlareBadgeGroup: not "None" }
+        ChartDetailChart is { IsPlayed: true, FlareBadgeGroup: not "None" }
             ? System.Windows.Visibility.Collapsed
             : System.Windows.Visibility.Visible;
 
-    public string ChartDetailRankBadgeGroup => selectedChartBest is { IsPlayed: true }
-        ? selectedChartBest.RankBadgeGroup
+    public string ChartDetailRankBadgeGroup => ChartDetailChart is { IsPlayed: true } chart
+        ? chart.RankBadgeGroup
         : "Neutral";
 
-    public string ChartDetailClearBadgeGroup => selectedChartBest is { IsPlayed: true }
-        ? selectedChartBest.ClearBadgeGroup
+    public string ChartDetailClearBadgeGroup => ChartDetailChart is { IsPlayed: true } chart
+        ? chart.ClearBadgeGroup
         : "Neutral";
 
-    public string ChartDetailFlareBadgeGroup => selectedChartBest is { IsPlayed: true }
-        ? selectedChartBest.FlareBadgeGroup
+    public string ChartDetailFlareBadgeGroup => ChartDetailChart is { IsPlayed: true } chart
+        ? chart.FlareBadgeGroup
         : "None";
 
     public string ChartDetailScoreBestAtDisplay => chartDetailScoreBestPlay?.Play.PlayedAtDisplay ?? "—";
@@ -1114,6 +1153,11 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public string HomeTodayTotalNotesDisplay => homeTodaySummary.TotalNotesDisplay;
 
     public string HomeTodayCaloriesDisplay => homeTodaySummary.CaloriesDisplay;
+
+    public string HomeTodayCaloriesGroupedDisplay =>
+        homeTodaySummary.Calories is double calories && double.IsFinite(calories)
+            ? $"{calories:N1} kcal"
+            : "—";
 
     public string HomeTodaySummaryCopyText => homeTodaySummary.CopyText;
 
@@ -4836,12 +4880,20 @@ public sealed class MainViewModel : INotifyPropertyChanged
             ? data.Plays.Select(play => play.SavedAt).FirstOrDefault() ?? ""
             : data.LastSavedAt;
         allChartBests = MergeChartBests(data.ChartBests, data.ChartCatalog);
+        if (homeDetailChart is { } homeChart)
+        {
+            homeDetailChart = FindChart(homeChart.SongId, homeChart.ChartId);
+        }
         titleSearchAliases = data.TitleSearchAliases;
         UpdateBestVersionOptions();
         RefreshChartBests(
             resetDisplayedCount: true,
             selectedChartKey: selectedChartKey,
             preservedDisplayedCount: preservedDisplayedCount);
+        if (homeDetailChart is not null)
+        {
+            RefreshChartDetail();
+        }
         ApplyHomeData(data.Home, data.Plays);
         if (IsFlareSkillPage)
         {
@@ -4877,6 +4929,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         totalPlayCount = 0;
         lastSavedAt = "";
         allChartBests = [];
+        homeDetailChart = null;
+        BackOrigin = NavigationOrigin.None;
         titleSearchAliases = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
         UpdateBestVersionOptions();
         RefreshChartBests(resetDisplayedCount: true);
@@ -4973,7 +5027,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public void LoadMoreChartDetailHistory()
     {
-        if (selectedChartBest is null || !CanLoadMoreChartDetailHistory)
+        if (ChartDetailChart is not { } chart || !CanLoadMoreChartDetailHistory)
         {
             return;
         }
@@ -4981,8 +5035,8 @@ public sealed class MainViewModel : INotifyPropertyChanged
         var detail = repository.LoadChartDetail(
             ScoreDatabasePath,
             MasterDatabasePath,
-            selectedChartBest.SongId,
-            selectedChartBest.ChartId,
+            chart.SongId,
+            chart.ChartId,
             ChartDetailHistory.Count,
             ChartDetailHistoryPageSize);
         foreach (var play in detail.History)
@@ -5001,9 +5055,65 @@ public sealed class MainViewModel : INotifyPropertyChanged
             return;
         }
 
+        ClearNavigationOrigin();
         SelectedChartBest = chartBest;
+        BackOrigin = NavigationOrigin.PersonalBests;
         ChartBestSelectionRequested?.Invoke(chartBest);
     }
+
+    internal bool OpenChartFromHome(HomePlayItem play)
+    {
+        var chart = FindChart(play.Play.SongId, play.Play.ChartId);
+        if (chart is null)
+        {
+            return false;
+        }
+
+        homeDetailChart = chart;
+        BackOrigin = NavigationOrigin.Home;
+        RefreshChartDetail();
+        return true;
+    }
+
+    internal bool SelectHistoryPlayFromHome(HomePlayItem homePlay)
+    {
+        var playId = homePlay.Play.PlayId;
+        var play = Plays.FirstOrDefault(item => item.PlayId == playId);
+        while (play is null && CanLoadMorePlays)
+        {
+            var previousCount = Plays.Count;
+            LoadMorePlays();
+            if (previousCount == Plays.Count)
+            {
+                break;
+            }
+
+            play = Plays.Skip(previousCount).FirstOrDefault(item => item.PlayId == playId);
+        }
+
+        if (play is null)
+        {
+            return false;
+        }
+
+        ClearNavigationOrigin();
+        SelectedPlay = play;
+        BackOrigin = NavigationOrigin.Home;
+        return true;
+    }
+
+    internal void ClearNavigationOrigin()
+    {
+        BackOrigin = NavigationOrigin.None;
+        if (homeDetailChart is not null)
+        {
+            homeDetailChart = null;
+            RefreshChartDetail();
+        }
+    }
+
+    private ChartBestItem? FindChart(string songId, string chartId) =>
+        allChartBests.FirstOrDefault(item => item.SongId == songId && item.ChartId == chartId);
 
     public void SetChartDetailGraphMode(string mode)
     {
@@ -5054,7 +5164,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
                     selectedChartBest,
                     restoredSelection);
             SelectedChartBest = restoredSelection;
-            if (selectionWasUnchanged && restoredSelection is not null)
+            if (selectionWasUnchanged && restoredSelection is not null && homeDetailChart is null)
             {
                 RefreshChartDetail();
             }
@@ -5075,7 +5185,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     private void RefreshChartDetail()
     {
-        var selected = selectedChartBest;
+        var selected = ChartDetailChart;
         if (selected is null)
         {
             ClearChartDetailData();
@@ -5132,6 +5242,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
                      nameof(ChartDetailAllPlayPoints),
                      nameof(ChartDetailBestPlayPoints),
                      nameof(ChartDetailLatestPlay),
+                     nameof(ChartDetailChart),
                      nameof(ChartDetailSongTitle),
                      nameof(ChartDetailPlayStyleDisplay),
                      nameof(ChartDetailDifficultyDisplay),
@@ -5552,6 +5663,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(HomeTodayPlayCount));
         OnPropertyChanged(nameof(HomeTodayTotalNotesDisplay));
         OnPropertyChanged(nameof(HomeTodayCaloriesDisplay));
+        OnPropertyChanged(nameof(HomeTodayCaloriesGroupedDisplay));
         OnPropertyChanged(nameof(HomeTodaySummaryCopyText));
         OnPropertyChanged(nameof(HomeTodayDateDisplay));
     }

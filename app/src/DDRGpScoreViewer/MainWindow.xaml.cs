@@ -33,7 +33,7 @@ namespace DDRGpScoreViewer;
 
 public partial class MainWindow : System.Windows.Window
 {
-    private const double HomeSingleColumnThreshold = 1100;
+    private const double CompactShellThreshold = 1100;
     internal const string ProductionWebApiOrigin =
         "https://ddrgp-scorelog.tts1374.workers.dev/";
     internal const string DevelopmentWebApiOrigin = "https://ddrgp-scorelog-dev.tts1374.workers.dev/";
@@ -132,7 +132,7 @@ public partial class MainWindow : System.Windows.Window
                 webBestSyncCoordinator, webPlayerIdentityService, initialWebBestSyncState);
         }
         DataContext = viewModel;
-        ApplyHomeResponsiveLayout(Width);
+        ApplyShellAndHomeLayout(Width);
         ApplyBestResponsiveLayout(Width);
         ApplyHistoryResponsiveLayout(Width);
         ApplySettingsAndRecordsResponsiveLayout(Width);
@@ -171,58 +171,38 @@ public partial class MainWindow : System.Windows.Window
 #if DEBUG
     private void AddDeveloperActions()
     {
-        var buttons = new StackPanel { Orientation = WpfOrientation.Horizontal };
-        buttons.Children.Add(CreateDeveloperActionButton(
-            Localization.Get("1フレーム取得"),
-            CaptureOneFrame_Click));
-        buttons.Children.Add(CreateDeveloperActionButton(
-            Localization.Get("連続取得を開始"),
-            StartContinuousCapture_Click));
-        buttons.Children.Add(CreateDeveloperActionButton(
-            Localization.Get("単発保存"),
-            SaveOnePlay_Click));
+        var actions = new System.Windows.Controls.ContextMenu();
+        AddAction("1フレーム取得", CaptureOneFrame_Click);
+        AddAction("連続取得を開始", StartContinuousCapture_Click);
+        AddAction("単発保存", SaveOnePlay_Click);
 
-        var content = new StackPanel();
-        content.Children.Add(new TextBlock
+        var openActions = new WpfButton
         {
-            Text = Localization.Get("Debug build / 開発者向け操作"),
-            FontWeight = FontWeights.SemiBold,
-            Margin = new Thickness(0, 0, 0, 3),
-        });
-        content.Children.Add(buttons);
-
-        var panel = new Border
-        {
-            Background = (WpfBrush)FindResource("DeveloperPanelBackgroundBrush"),
-            BorderBrush = (WpfBrush)FindResource("DeveloperPanelBorderBrush"),
-            BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(6),
-            Padding = new Thickness(8, 4, 8, 4),
-            Margin = new Thickness(0, 0, 12, 0),
-            Child = content,
+            Name = "DeveloperOperationsNavigation",
+            Content = Localization.Get("開発者向け操作"),
+            CommandParameter = "\uEBE8",
+            ContextMenu = actions,
+            Margin = new Thickness(0, 4, 0, 0),
+            TabIndex = 6,
+            Style = (Style)FindResource("SidebarButtonStyle"),
         };
-        DockPanel.SetDock(panel, Dock.Right);
-        ActionBar.Children.Insert(0, panel);
-    }
-
-    private WpfButton CreateDeveloperActionButton(
-        string content,
-        RoutedEventHandler clickHandler)
-    {
-        var button = new WpfButton
+        openActions.Click += (_, _) =>
         {
-            Content = content,
-            Margin = new Thickness(0, 0, 8, 0),
-            Style = (Style)FindResource("PrimaryButtonStyle"),
+            actions.PlacementTarget = openActions;
+            actions.Placement = System.Windows.Controls.Primitives.PlacementMode.Right;
+            actions.IsOpen = true;
         };
-        button.SetBinding(
-            WpfButton.IsEnabledProperty,
-            new WpfBinding(nameof(MainViewModel.CanRunDeveloperOperations))
-            {
-                Mode = BindingMode.OneWay,
-            });
-        button.Click += clickHandler;
-        return button;
+        RailMenu.Children.Add(openActions);
+
+        void AddAction(string label, RoutedEventHandler clickHandler)
+        {
+            var item = new System.Windows.Controls.MenuItem { Header = Localization.Get(label) };
+            item.SetBinding(
+                IsEnabledProperty,
+                new WpfBinding(nameof(MainViewModel.CanRunDeveloperOperations)) { Source = viewModel });
+            item.Click += clickHandler;
+            actions.Items.Add(item);
+        }
     }
 #endif
 
@@ -493,7 +473,7 @@ public partial class MainWindow : System.Windows.Window
 
     private void ShowHomeSummaryCopyFeedback(string message)
     {
-        HomeSummaryCopyButton.Content = Localization.Get(message);
+        HomeSummaryCopyButton.SetCurrentValue(ContentControl.ContentProperty, Localization.Get(message));
         homeSummaryCopyFeedbackTimer ??= new DispatcherTimer
         {
             Interval = TimeSpan.FromSeconds(1.6),
@@ -515,7 +495,7 @@ public partial class MainWindow : System.Windows.Window
         homeSummaryCopyFeedbackTimer.Tick -= HomeSummaryCopyFeedbackTimer_Tick;
         if (!applicationExitRequested)
         {
-            HomeSummaryCopyButton.Content = Localization.Get("振り返りをコピー");
+            HomeSummaryCopyButton.SetResourceReference(ContentControl.ContentProperty, "今日の記録をコピー");
         }
     }
 
@@ -577,7 +557,7 @@ public partial class MainWindow : System.Windows.Window
 
     private void MainWindow_SizeChanged(object sender, SizeChangedEventArgs e)
     {
-        ApplyHomeResponsiveLayout(e.NewSize.Width);
+        ApplyShellAndHomeLayout(e.NewSize.Width);
         ApplyBestResponsiveLayout(e.NewSize.Width);
         ApplyHistoryResponsiveLayout(e.NewSize.Width);
         ApplySettingsAndRecordsResponsiveLayout(e.NewSize.Width);
@@ -613,9 +593,9 @@ public partial class MainWindow : System.Windows.Window
         }
 
         var compact = windowWidth <= 1100;
-        MainContentGrid.Margin = compact
-            ? new Thickness(20)
-            : new Thickness(32, ContentTabs.SelectedIndex == 0 ? 12 : 22, 32, ContentTabs.SelectedIndex == 0 ? 12 : 22);
+        MainContentGrid.Margin = ContentTabs.SelectedIndex == 0
+            ? new Thickness(24, compact ? 8 : 12, 8, 12)
+            : new Thickness(compact ? 20 : 24, 20, compact ? 20 : 24, 20);
         PageNoticeRow.MinHeight = ContentTabs.SelectedIndex is 0 or 3 ? 4 : 12;
         BestChartGrid.Tag = compact ? "Compact" : "Wide";
         BestChartGrid.RowHeight = compact ? 40 : 52;
@@ -656,26 +636,98 @@ public partial class MainWindow : System.Windows.Window
         }
     }
 
-    private void ApplyHomeResponsiveLayout(double windowWidth)
+    private void ApplyShellAndHomeLayout(double windowWidth)
     {
-        if (LatestFeaturedBody is null || LatestInfoBorder is null || LatestScorePanel is null ||
-            HomeListsGrid is null)
+        if (HomeListsGrid is null || RailColumn is null)
         {
             return;
         }
 
-        var compact = windowWidth <= HomeSingleColumnThreshold;
-        LatestDeltaGrid.Columns = compact ? 2 : 1;
-        LatestFeaturedBody.ColumnDefinitions[2].Width = compact ? new GridLength(0) : new GridLength(0.8, GridUnitType.Star);
-        Grid.SetColumn(LatestInfoBorder, compact ? 0 : 2);
-        Grid.SetRow(LatestInfoBorder, compact ? 1 : 0);
-        Grid.SetColumnSpan(LatestInfoBorder, compact ? 2 : 1);
-        LatestInfoBorder.Margin = compact ? new Thickness(0, 16, 0, 0) : new Thickness(0);
-        LatestInfoBorder.Padding = compact ? new Thickness(0, 12, 0, 0) : new Thickness(20, 0, 0, 0);
-        LatestInfoBorder.BorderThickness = compact ? new Thickness(0, 1, 0, 0) : new Thickness(1, 0, 0, 0);
+        var compact = windowWidth <= CompactShellThreshold;
+        RailColumn.Width = new GridLength(compact ? 72 : 216);
+        var labelVisibility = compact ? Visibility.Collapsed : Visibility.Visible;
+        var iconOnlyVisibility = compact ? Visibility.Visible : Visibility.Collapsed;
+        Resources["RailLabelVisibility"] = labelVisibility;
+        Resources["RailIconOnlyVisibility"] = iconOnlyVisibility;
+        Resources["HomeMetricValueSize"] = compact ? 22.0 : 26.0;
+        Resources["HomeMetricValueLineHeight"] = compact ? 23.0 : 32.0;
+        Resources["HomeMetricRowGap"] = new Thickness(0, 0, 0, compact ? 4 : 6);
+        Resources["HomeDeltaValueSize"] = compact ? 18.0 : 20.0;
+        BrandText.Visibility = labelVisibility;
+        RecordsRailHeading.Visibility = labelVisibility;
+        ManagementRailHeading.Visibility = labelVisibility;
+        SettingsNavigation.Margin = compact ? new Thickness(0, 14, 0, 0) : new Thickness(0);
+        MonitoringStatusCard.Padding = new Thickness(compact ? 4 : 8);
+        MonitoringStatusFullText.Visibility = labelVisibility;
+        MonitoringStatusSummary.Focusable = compact;
+        MonitoringStatusSummary.MinHeight = compact ? 20 : 0;
+        MonitoringStateIndicator.Width = MonitoringStateIndicator.Height = compact ? 10 : 8;
+        MonitoringStateIndicator.HorizontalAlignment = compact ? System.Windows.HorizontalAlignment.Center : System.Windows.HorizontalAlignment.Left;
+        MonitoringStateIndicator.VerticalAlignment = compact ? VerticalAlignment.Center : VerticalAlignment.Top;
+        MonitoringStateIndicator.Margin = compact ? new Thickness(0) : new Thickness(1, 5, 0, 0);
 
-        HomeHistoryPanel.Margin = new Thickness(16, 8, 16, 8);
-        HomeUpdatesPanel.Margin = new Thickness(16, 8, 16, 8);
+        HomeLatestSongTitle.FontSize = compact ? 28 : 32;
+        HomeLatestSongTitle.LineHeight = compact ? 31 : 36;
+        HomeLatestScore.FontSize = compact ? 52 : 60;
+        HomeLatestScore.LineHeight = compact ? 56 : 65;
+        HomeLatestPlayBody.Margin = new Thickness(16, compact ? 10 : 12, 16, compact ? 10 : 12);
+        HomeTodayCard.Padding = new Thickness(16, compact ? 8 : 12, 16, compact ? 8 : 12);
+        HomeTodayMetrics.Margin = new Thickness(0, compact ? 4 : 8, 0, compact ? 4 : 8);
+
+        HomeLatestScoreAndDelta.Orientation = compact ? WpfOrientation.Vertical : WpfOrientation.Horizontal;
+        HomeLatestScoreAndDelta.Margin = new Thickness(0, compact ? 0 : 3, 0, 0);
+        HomeLatestDeltaPanel.Margin = compact ? new Thickness(0, 6, 0, 0) : new Thickness(12, 0, 0, 0);
+
+        HomeTopGrid.ColumnDefinitions[1].Width = new GridLength(compact ? 0 : 1, GridUnitType.Star);
+        Grid.SetColumn(HomeTodayCard, compact ? 0 : 1);
+        Grid.SetRow(HomeTodayCard, compact ? 1 : 0);
+        HomeLatestPlayCard.Margin = compact ? new Thickness(0, 0, 0, 12) : new Thickness(0, 0, 16, 0);
+
+        HomeListsGrid.ColumnDefinitions[1].Width = new GridLength(compact ? 0 : 1, GridUnitType.Star);
+        Grid.SetColumn(HomeUpdatesCard, compact ? 0 : 1);
+        Grid.SetRow(HomeUpdatesCard, compact ? 1 : 0);
+        HomeHistoryCard.Margin = compact ? new Thickness(0, 0, 0, 16) : new Thickness(0, 0, 16, 0);
+    }
+
+    private void HomeBestUpdate_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is WpfButton { DataContext: HomePlayItem play } && viewModel.OpenChartFromHome(play))
+        {
+            ShowChartDetail();
+        }
+    }
+
+    private void HomeRecentPlay_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is WpfButton { DataContext: HomePlayItem play } && viewModel.SelectHistoryPlayFromHome(play))
+        {
+            ShowHistoryPage(keepHomeOrigin: true);
+            QueueHistorySelectionVisibility();
+        }
+    }
+
+    private void GoBack_Click(object sender, RoutedEventArgs e)
+    {
+        if (viewModel.BackOrigin == MainViewModel.NavigationOrigin.Home)
+        {
+            ShowHomePage();
+        }
+        else if (viewModel.BackOrigin == MainViewModel.NavigationOrigin.PersonalBests)
+        {
+            ShowBestPage();
+        }
+    }
+
+    private void SelectNavigation(WpfButton selected)
+    {
+        foreach (var button in new[]
+                 {
+                     HomeNavigation, BestNavigation, HistoryNavigation,
+                     FlareSkillNavigation, SettingsNavigation, DataManagementNavigation,
+                 })
+        {
+            button.Tag = ReferenceEquals(button, selected) ? "Selected" : null;
+        }
     }
 
     private void ApplyHistoryResponsiveLayout(double windowWidth)
@@ -716,6 +768,7 @@ public partial class MainWindow : System.Windows.Window
 
     private void ShowHomePage()
     {
+        viewModel.ClearNavigationOrigin();
         viewModel.SetFlareSkillPage(false);
         viewModel.SetSettingsPage(false);
         viewModel.SetDataManagementPage(false);
@@ -725,18 +778,14 @@ public partial class MainWindow : System.Windows.Window
         PageTitle.Text = Localization.Get("ホーム");
         PageSubtitle.Text = Localization.Get("今日のプレー状況と最近の記録を確認できます");
         Localization.ApplyToWindow(this);
-        HomeNavigation.Tag = "Selected";
-        BestNavigation.Tag = null;
-        HistoryNavigation.Tag = null;
-        FlareSkillNavigation.Tag = null;
-        SettingsNavigation.Tag = null;
-        DataManagementNavigation.Tag = null;
+        SelectNavigation(HomeNavigation);
     }
 
     private void ShowBest_Click(object sender, RoutedEventArgs e) => ShowBestPage();
 
     private void ShowBestPage()
     {
+        viewModel.ClearNavigationOrigin();
         restoringBestChartListState = true;
         viewModel.SetFlareSkillPage(false);
         viewModel.SetSettingsPage(false);
@@ -751,18 +800,14 @@ public partial class MainWindow : System.Windows.Window
         UpdateBestBrowseModeButtons();
         UpdateBestBrowseModeUi();
         RestoreBestChartListState();
-        HomeNavigation.Tag = null;
-        BestNavigation.Tag = "Selected";
-        HistoryNavigation.Tag = null;
-        FlareSkillNavigation.Tag = null;
-        SettingsNavigation.Tag = null;
-        DataManagementNavigation.Tag = null;
+        SelectNavigation(BestNavigation);
     }
 
     private void ShowSettings_Click(object sender, RoutedEventArgs e) => ShowSettingsPage();
 
     private void ShowSettingsPage()
     {
+        viewModel.ClearNavigationOrigin();
         viewModel.SetFlareSkillPage(false);
         viewModel.SetDataManagementPage(false);
         viewModel.SetSettingsPage(true);
@@ -772,12 +817,7 @@ public partial class MainWindow : System.Windows.Window
         PageTitle.Text = Localization.Get("設定");
         PageSubtitle.Text = "";
         Localization.ApplyToWindow(this);
-        HomeNavigation.Tag = null;
-        BestNavigation.Tag = null;
-        HistoryNavigation.Tag = null;
-        FlareSkillNavigation.Tag = null;
-        SettingsNavigation.Tag = "Selected";
-        DataManagementNavigation.Tag = null;
+        SelectNavigation(SettingsNavigation);
     }
 
     private async void SyncWebBestsNow_Click(object sender, RoutedEventArgs e)
@@ -978,21 +1018,17 @@ public partial class MainWindow : System.Windows.Window
 
     private void ShowDataManagementPage()
     {
+        viewModel.ClearNavigationOrigin();
         viewModel.SetFlareSkillPage(false);
         viewModel.SetSettingsPage(false);
         viewModel.SetDataManagementPage(true);
         ContentTabs.SelectedIndex = 6;
         ApplyBestResponsiveLayout(ActualWidth);
         BindingOperations.ClearBinding(PageTitle, TextBlock.TextProperty);
-        PageTitle.Text = Localization.Get("データ管理");
+        PageTitle.Text = Localization.Get("記録の管理");
         PageSubtitle.Text = Localization.Get("保存済みプレーと楽曲・譜面データの状態を確認できます");
         Localization.ApplyToWindow(this);
-        HomeNavigation.Tag = null;
-        BestNavigation.Tag = null;
-        HistoryNavigation.Tag = null;
-        FlareSkillNavigation.Tag = null;
-        SettingsNavigation.Tag = null;
-        DataManagementNavigation.Tag = "Selected";
+        SelectNavigation(DataManagementNavigation);
     }
 
     private async void SaveSettings_Click(object sender, RoutedEventArgs e)
@@ -1470,12 +1506,8 @@ public partial class MainWindow : System.Windows.Window
         PageSubtitle.Text = "";
         ChartDetailScrollViewer.ScrollToTop();
         Localization.ApplyToWindow(this);
-        HomeNavigation.Tag = null;
-        BestNavigation.Tag = "Selected";
-        HistoryNavigation.Tag = null;
-        FlareSkillNavigation.Tag = null;
-        SettingsNavigation.Tag = null;
-        DataManagementNavigation.Tag = null;
+        SelectNavigation(viewModel.BackOrigin == MainViewModel.NavigationOrigin.Home
+            ? HomeNavigation : BestNavigation);
         UpdateChartDetailGraphModeButtons();
         Dispatcher.BeginInvoke(
             DispatcherPriority.Background,
@@ -1525,6 +1557,12 @@ public partial class MainWindow : System.Windows.Window
             DispatcherPriority.ApplicationIdle,
             new Action(() =>
             {
+                if (ContentTabs.SelectedIndex != 1)
+                {
+                    restoringBestChartListState = false;
+                    return;
+                }
+
                 var scrollViewer = FindVisualChild<ScrollViewer>(BestChartGrid);
                 scrollViewer?.ScrollToVerticalOffset(offset);
                 BestChartGrid.UpdateLayout();
@@ -1571,29 +1609,29 @@ public partial class MainWindow : System.Windows.Window
 
     private void ShowHistory_Click(object sender, RoutedEventArgs e) => ShowHistoryPage();
 
-    private void ShowHistoryPage()
+    private void ShowHistoryPage(bool keepHomeOrigin = false)
     {
+        if (!keepHomeOrigin)
+        {
+            viewModel.ClearNavigationOrigin();
+        }
         viewModel.SetFlareSkillPage(false);
         viewModel.SetSettingsPage(false);
         viewModel.SetDataManagementPage(false);
         ContentTabs.SelectedIndex = 3;
         ApplyBestResponsiveLayout(ActualWidth);
         BindingOperations.ClearBinding(PageTitle, TextBlock.TextProperty);
-        PageTitle.Text = Localization.Get("直近プレー履歴");
+        PageTitle.Text = Localization.Get("プレー履歴");
         PageSubtitle.Text = Localization.Get("保存済みのプレーを新しい順に表示します");
         Localization.ApplyToWindow(this);
-        HomeNavigation.Tag = null;
-        BestNavigation.Tag = null;
-        HistoryNavigation.Tag = "Selected";
-        FlareSkillNavigation.Tag = null;
-        SettingsNavigation.Tag = null;
-        DataManagementNavigation.Tag = null;
+        SelectNavigation(HistoryNavigation);
     }
 
     private void ShowFlareSkill_Click(object sender, RoutedEventArgs e) => ShowFlareSkillPage();
 
     private void ShowFlareSkillPage()
     {
+        viewModel.ClearNavigationOrigin();
         viewModel.SetSettingsPage(false);
         viewModel.SetDataManagementPage(false);
         viewModel.SetFlareSkillPage(true);
@@ -1605,12 +1643,7 @@ public partial class MainWindow : System.Windows.Window
         PageSubtitle.Text = Localization.Get("保存済みFLARE実績から現在のフレアスキルを確認できます");
         Localization.ApplyToWindow(this);
         UpdateFlarePlayStyleButtons();
-        HomeNavigation.Tag = null;
-        BestNavigation.Tag = null;
-        HistoryNavigation.Tag = null;
-        FlareSkillNavigation.Tag = "Selected";
-        SettingsNavigation.Tag = null;
-        DataManagementNavigation.Tag = null;
+        SelectNavigation(FlareSkillNavigation);
     }
 
     private void FlarePlayStyle_Click(object sender, RoutedEventArgs e)
