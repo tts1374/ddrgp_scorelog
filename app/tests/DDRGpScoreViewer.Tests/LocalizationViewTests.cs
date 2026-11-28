@@ -1108,7 +1108,7 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
                     options.ItemContainerGenerator.ContainerFromIndex(0));
                 Assert.Same(focusVisualStyle, listItem.FocusVisualStyle);
                 Assert.True(listItem.IsSelected);
-                Assert.Same(resourceWindow.FindResource("AccentPrimaryBrush"), listItem.Background);
+                Assert.Same(resourceWindow.FindResource("AccentSolidBrush"), listItem.Background);
                 Assert.Same(resourceWindow.FindResource("PrimaryButtonTextBrush"), listItem.Foreground);
 
                 var primaryWidth = primaryButton.ActualWidth;
@@ -1208,10 +1208,10 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
                 Assert.Equal(Visibility.Collapsed, window.StopMonitoringButton.Visibility);
                 Assert.False(window.StopMonitoringButton.IsEnabled);
                 Assert.Equal(
-                    Color.FromRgb(56, 189, 248),
+                    Color.FromRgb(3, 105, 161),
                     Assert.IsType<SolidColorBrush>(window.MonitoringStateIndicator.Fill).Color);
                 Assert.Equal(
-                    Color.FromRgb(56, 189, 248),
+                    Color.FromRgb(3, 105, 161),
                     Assert.IsType<SolidColorBrush>(window.MonitoringStateText.Foreground).Color);
 
                 window.ViewModel.StopContinuousCaptureAsync().GetAwaiter().GetResult();
@@ -1234,10 +1234,10 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
                 Assert.Equal(Visibility.Collapsed, window.StopMonitoringButton.Visibility);
                 Assert.False(window.StopMonitoringButton.IsEnabled);
                 Assert.Equal(
-                    Color.FromRgb(100, 116, 139),
+                    Color.FromRgb(71, 85, 105),
                     Assert.IsType<SolidColorBrush>(window.MonitoringStateIndicator.Fill).Color);
                 Assert.Equal(
-                    Color.FromRgb(100, 116, 139),
+                    Color.FromRgb(71, 85, 105),
                     Assert.IsType<SolidColorBrush>(window.MonitoringStateText.Foreground).Color);
             }
             finally
@@ -1710,18 +1710,63 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
                     "/DDRGpScoreViewer;component/Resources/DarkTheme.xaml",
                     UriKind.Relative),
             };
-            foreach (var key in new[]
+            Assert.Equal(light.Keys.Cast<string>().Order(), dark.Keys.Cast<string>().Order());
+            foreach (var (key, lightHex, darkHex) in new[]
                      {
-                         "BackgroundPrimaryBrush",
-                         "SurfacePrimaryBrush",
-                         "TextPrimaryBrush",
-                         "BadgeInfoBackgroundBrush",
-                         "GraphBestBrush",
-                         "FocusRingBrush",
+                         ("BackgroundPrimary", "#F5F7FA", "#0B0F17"),
+                         ("BackgroundSidebar", "#FFFFFF", "#0F1520"),
+                         ("SurfacePrimary", "#FFFFFF", "#141C2A"),
+                         ("SurfaceSecondary", "#EEF2F6", "#1B2537"),
+                         ("RowHover", "#E8EEF5", "#212E45"),
+                         ("AccentPrimary", "#2563EB", "#60A5FA"),
+                         ("AccentSolid", "#2563EB", "#3B82F6"),
+                         ("FocusRing", "#2563EB", "#60A5FA"),
+                         ("TextPrimary", "#0F172A", "#F1F5F9"),
+                         ("TextSecondary", "#475569", "#94A3B8"),
+                         ("PositiveDelta", "#15803D", "#4ADE80"),
+                         ("Danger", "#BE123C", "#FB7185"),
+                         ("Beginner", "#5FB8E8", "#23749C"),
+                         ("BeginnerText", "#0B2330", "#FFFFFF"),
+                         ("Basic", "#F3A621", "#B97708"),
+                         ("BasicText", "#2B1A00", "#FFFFFF"),
+                         ("Difficult", "#E64949", "#B8333A"),
+                         ("DifficultText", "#FFFFFF", "#FFFFFF"),
+                         ("Expert", "#27A85A", "#1F7D49"),
+                         ("ExpertText", "#FFFFFF", "#FFFFFF"),
+                         ("Challenge", "#8C55C9", "#6F42A6"),
+                         ("ChallengeText", "#FFFFFF", "#FFFFFF"),
+                         ("JudgementMarvelous", "#0284C7", "#E0F2FE"),
+                         ("JudgementPerfect", "#EAB308", "#FACC15"),
+                         ("JudgementGreat", "#16A34A", "#4ADE80"),
+                         ("JudgementGood", "#06B6D4", "#38BDF8"),
+                         ("JudgementOk", "#475569", "#94A3B8"),
+                         ("JudgementMiss", "#E11D48", "#FB7185"),
+                         ("FlareClassicCategory", "#C97C4E", "#D29067"),
+                         ("FlareWhiteCategory", "#96B3C4", "#B9C9D1"),
+                         ("FlareGoldCategory", "#D9A31E", "#ECBF2F"),
+                         ("BadgeYellowBackground", "#FEF9A6", "#3C4112"),
+                         ("BadgeYellowBorder", "#ADA21A", "#E0E645"),
+                         ("BadgeOrangeBackground", "#FFEDD5", "#5E2405"),
+                         ("BadgeOrangeBorder", "#F97316", "#FF8C24"),
+                         ("BadgeOrangeText", "#9A3412", "#FFE0B2"),
+                         ("BadgeBronzeBackground", "#F7EBE3", "#36241E"),
+                         ("BadgeBronzeBorder", "#C27849", "#C98A68"),
+                         ("BadgeBronzeText", "#6B3719", "#EED0BE"),
+                         ("BadgeSilverBackground", "#E2E8F0", "#273545"),
+                         ("BadgeSilverBorder", "#7C8FA8", "#CBD5E1"),
+                         ("BadgeGoldBackground", "#FEF3C7", "#4C3911"),
+                         ("BadgeGoldBorder", "#EAB308", "#E5B83F"),
+                         ("BadgeGoldText", "#854D0E", "#FFE9A6"),
+                         ("BadgeCyanText", "#075985", "#B8ECFF"),
+                         ("BadgePinkText", "#9D174D", "#FFD0E8"),
+                         ("BadgeRedText", "#991B1B", "#FFD1D5"),
+                         ("BadgeNeutralText", "#334155", "#D5DEE9"),
+                         ("RankUpperText", "#A16207", "#FACC15"),
+                         ("BadgeRainbowBorder", "#A855F7", "#C084FC"),
                      })
             {
-                Assert.Contains(key, light.Keys.Cast<object>().Select(value => value.ToString()));
-                Assert.Contains(key, dark.Keys.Cast<object>().Select(value => value.ToString()));
+                Assert.Equal((Color)ColorConverter.ConvertFromString(lightHex), Assert.IsType<SolidColorBrush>(light[$"{key}Brush"]).Color);
+                Assert.Equal((Color)ColorConverter.ConvertFromString(darkHex), Assert.IsType<SolidColorBrush>(dark[$"{key}Brush"]).Color);
             }
 
             var lightBackground = Assert.IsType<SolidColorBrush>(light["BackgroundPrimaryBrush"]);
@@ -1776,7 +1821,7 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
     }
 
     [Fact]
-    public void Dark_difficulty_badges_keep_contrast_separate_from_teal_button_text()
+    public void Difficulty_badges_and_primary_button_follow_runtime_theme_changes()
     {
         using var fixture = new DatabaseFixture();
         applicationFixture.Run(() =>
@@ -1819,10 +1864,14 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
                         var foreground = Assert.IsType<SolidColorBrush>(((TextBlock)badge.Child).Foreground).Color;
                         var background = Assert.IsType<SolidColorBrush>(badge.Background).Color;
                         Assert.True(Contrast(foreground, background) >= 4.5, $"Unreadable {((TextBlock)badge.Child).Text}");
-                        Assert.NotEqual(Assert.IsType<SolidColorBrush>(button.Foreground).Color, foreground);
+                        Assert.Equal(Colors.White, foreground);
                     }
-                    Assert.True(Contrast(Assert.IsType<SolidColorBrush>(button.Foreground).Color,
-                        Assert.IsType<SolidColorBrush>(button.Background).Color) >= 4.5);
+                    Assert.Equal(Colors.White, Assert.IsType<SolidColorBrush>(button.Foreground).Color);
+                    Assert.Equal((Color)ColorConverter.ConvertFromString("#3B82F6"), Assert.IsType<SolidColorBrush>(button.Background).Color);
+                    foreach (var stateBrush in new[] { "AccentSolidHoverBrush", "AccentSolidPressedBrush" })
+                    {
+                        Assert.True(Contrast(Colors.White, Assert.IsType<SolidColorBrush>(resources.FindResource(stateBrush)).Color) >= 4.5);
+                    }
                 }
             }
             finally
@@ -1843,6 +1892,59 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
             var b = Luminance(second);
             return (Math.Max(a, b) + 0.05) / (Math.Min(a, b) + 0.05);
         }
+    }
+
+    [Theory]
+    [InlineData("ja", "色の見方", "フレアスキルカテゴリ")]
+    [InlineData("en", "Color guide", "Flare Skill categories")]
+    [InlineData("ko", "색상 안내", "플레어 스킬 카테고리")]
+    public void Color_guide_uses_translated_headings_and_shared_theme_resources(string language, string title, string categories)
+    {
+        applicationFixture.Run(() =>
+        {
+            PrepareStartupResources();
+            Localization.Configure(language);
+            var legend = new ContentControl { Style = Assert.IsType<Style>(Application.Current.FindResource("ColorLegendStyle")) };
+            var host = new Window { Content = legend, Width = 960, Height = 430 };
+            try
+            {
+                host.Show();
+                foreach (var theme in new[] { UserSettings.LightTheme, UserSettings.DarkTheme })
+                {
+                    ThemeManager.Apply(theme);
+                    DrainDispatcher(host.Dispatcher);
+                    var labels = FindVisualChildren<TextBlock>(legend).Select(text => text.Text);
+                    Assert.Contains(title, labels);
+                    Assert.Contains(categories, labels);
+                    Assert.Contains("CLASSIC (1st〜X3 VS 2ndMIX)", labels);
+                    Assert.Contains("WHITE (2013〜A)", labels);
+                    Assert.Contains("GOLD (A20〜WORLD)", labels);
+                    var upperRank = Assert.Single(FindVisualChildren<TextBlock>(legend), text => text.Text == "AAA–A-");
+                    Assert.Same(Application.Current.FindResource("BadgeGoldTextBrush"), upperRank.Foreground);
+                    var stages = new[] { "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "EX" };
+                    var flareBadges = FindVisualChildren<Border>(legend)
+                        .Where(badge => Equals(badge.Style, Application.Current.FindResource("FlareBadgeStyle"))).ToArray();
+                    Assert.Equal(stages, flareBadges.Select(badge => Assert.IsType<string>(badge.Tag)));
+                    Assert.Equal(9, flareBadges.Take(9).Select(badge => Assert.IsType<SolidColorBrush>(badge.Background).Color).Distinct().Count());
+                    Assert.Equal(10, flareBadges.Select(badge => Assert.IsType<SolidColorBrush>(badge.BorderBrush).Color).Distinct().Count());
+                    var groups = new[] { "Blue", "Cyan", "Green", "Yellow", "Orange", "Purple", "Bronze", "Silver", "Gold", "Rainbow" };
+                    for (var i = 0; i < stages.Length; i++)
+                    {
+                        Assert.Same(Application.Current.FindResource($"Badge{groups[i]}BackgroundBrush"), flareBadges[i].Background);
+                        Assert.Same(Application.Current.FindResource($"Badge{groups[i]}BorderBrush"), flareBadges[i].BorderBrush);
+                    }
+                    Assert.Equal(5, Assert.IsType<LinearGradientBrush>(flareBadges[^1].Background).GradientStops.Count);
+                    Assert.Equal(6, FindVisualChildren<System.Windows.Shapes.Ellipse>(legend).Count(lamp => lamp.Fill is not null));
+                    Assert.Equal(3, FindVisualChildren<System.Windows.Shapes.Rectangle>(legend).Count(swatch => swatch.Fill is not null));
+                }
+            }
+            finally
+            {
+                host.Close();
+                ThemeManager.Apply(UserSettings.LightTheme);
+                Localization.Configure(UserSettings.JapaneseLanguage);
+            }
+        });
     }
 
     [Fact]
@@ -2060,7 +2162,7 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
                 Assert.True(selectorTop < titleTop + window.PageTitle.ActualHeight);
                 Assert.True(selectorTop + window.FlareSingleButton.ActualHeight > titleTop);
 
-                var categoryColors = new[] { "#475569", "#F8FAFC", "#B1842F" };
+                var categoryColors = new[] { "#C97C4E", "#96B3C4", "#D9A31E" };
                 var categoryColumns = new[] { window.FlareClassicColumn, window.FlareWhiteColumn, window.FlareGoldColumn };
                 for (var index = 0; index < categoryColumns.Length; index++)
                 {

@@ -1,0 +1,1363 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>GP Score Log — Web Zero-Base Redesign Concept</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; }
+html, body {
+  margin: 0; padding: 0;
+  font-family: "Segoe UI Variable", "Segoe UI", "Yu Gothic UI", "Meiryo", sans-serif;
+  font-size: 14px; line-height: 1.6;
+  background: #0d1117; color: #e6edf3;
+}
+button, input, select { font: inherit; color: inherit; }
+button, select { cursor: pointer; }
+.num { font-variant-numeric: tabular-nums; font-family: "Segoe UI Variable", "Segoe UI", sans-serif; letter-spacing: -.02em; }
+
+/* ===== Outer Showcase Bar (Review-Only Chrome) ===== */
+.showcase-bar {
+  position: sticky; top: 0; z-index: 100;
+  background: rgba(13, 17, 23, .92); backdrop-filter: blur(12px);
+  border-bottom: 1px solid rgba(255,255,255,.1);
+  padding: 10px 24px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+}
+.showcase-title { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.showcase-title h1 { margin: 0; font-size: 15px; font-weight: 700; color: #f8fafc; }
+.showcase-pill { font-size: 11px; font-weight: 700; padding: 2px 9px; border-radius: 99px; background: rgba(96,165,250,.18); color: #93c5fd; border: 1px solid rgba(96,165,250,.35); }
+.showcase-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.showcase-controls label { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #94a3b8; font-weight: 600; }
+.showcase-controls select {
+  background: #161b22; color: #f1f5f9; border: 1px solid #30363d; border-radius: 6px;
+  padding: 4px 10px; font-size: 12px; font-weight: 600;
+}
+.nav-link-chip {
+  text-decoration: none; font-size: 12px; font-weight: 700; color: #e2e8f0;
+  padding: 4px 10px; border-radius: 6px; border: 1px solid #30363d; background: #161b22;
+}
+.nav-link-chip:hover { border-color: #60a5fa; color: #93c5fd; }
+
+.page-switcher { display: flex; gap: 6px; flex-wrap: wrap; }
+.page-switcher button {
+  border: 1px solid #30363d; background: #161b22; color: #cbd5e1;
+  padding: 4px 11px; border-radius: 6px; font-size: 12px; font-weight: 600;
+}
+.page-switcher button[aria-pressed="true"] { background: #2563eb; border-color: #2563eb; color: #fff; }
+
+.stage { padding: 22px 24px 48px; display: flex; flex-direction: column; align-items: center; gap: 14px; overflow-x: auto; }
+.concept-strip {
+  width: min(1280px, 100%); font-size: 12px; color: #94a3b8;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+}
+.concept-strip strong { color: #e2e8f0; }
+
+/* ===== Shared Design Tokens (Identical to App Zero-Base Concept) ===== */
+.web-root {
+  --canvas: #0b0f17;
+  --header-bg: rgba(15, 21, 32, .88);
+  --surface: #141c2a;
+  --surface-2: #1b2537;
+  --surface-hover: #212e45;
+  --border: rgba(148, 163, 184, .16);
+  --border-strong: rgba(148, 163, 184, .32);
+  --text: #f1f5f9;
+  --text-2: #94a3b8;
+  --text-3: #94a3b8;
+  --accent: #60a5fa;
+  --accent-solid: #3b82f6;
+  --accent-soft: rgba(96, 165, 250, .14);
+  --on-accent: #ffffff;
+  --up: #4ade80;
+  --up-bg: rgba(74, 222, 128, .12);
+  --danger: #fb7185;
+  --danger-bg: rgba(251, 113, 133, .14);
+  --danger-bd: rgba(251, 113, 133, .4);
+
+  /* DDR WORLD Official Semantic Colors */
+  --diff-bgn: #5fb8e8; --diff-bgn-bg: #23749c; --diff-bgn-fg: #ffffff;
+  --diff-bas: #f3a621; --diff-bas-bg: #b97708; --diff-bas-fg: #ffffff;
+  --diff-dif: #e64949; --diff-dif-bg: #b8333a; --diff-dif-fg: #ffffff;
+  --diff-exp: #27a85a; --diff-exp-bg: #1f7d49; --diff-exp-fg: #ffffff;
+  --diff-cha: #8c55c9; --diff-cha-bg: #6f42a6; --diff-cha-fg: #ffffff;
+
+  --flare-classic: #d29067;
+  --flare-white: #b9c9d1;
+  --flare-gold: #ecbf2f;
+
+  --b-gold-bg: #4c3911; --b-gold-bd: #e5b83f; --b-gold-fg: #ffe9a6;
+  --b-yellow-bg: #3c4112; --b-yellow-bd: #e0e645; --b-yellow-fg: #f2f78a;
+  --b-cyan-bg: #123e52; --b-cyan-bd: #46b9e9; --b-cyan-fg: #b8ecff;
+  --b-green-bg: #153f2a; --b-green-bd: #4ad17a; --b-green-fg: #b9f5cd;
+  --b-blue-bg: #173a68; --b-blue-bd: #65a8ff; --b-blue-fg: #c7e0ff;
+  --b-orange-bg: #5e2405; --b-orange-bd: #ff8c24; --b-orange-fg: #ffe0b2;
+  --b-purple-bg: #3b2a59; --b-purple-bd: #b48af5; --b-purple-fg: #e4d4ff;
+  --b-bronze-bg: #36241e; --b-bronze-bd: #c98a68; --b-bronze-fg: #eed0be;
+  --b-silver-bg: #273545; --b-silver-bd: #cbd5e1; --b-silver-fg: #f1f5f9;
+  --b-red-bg: #541b22; --b-red-bd: #f26a78; --b-red-fg: #ffd1d5;
+  --b-pink-bg: #531b3c; --b-pink-bd: #e06aae; --b-pink-fg: #ffd0e8;
+  --b-slate-bg: #253246; --b-slate-bd: #66768a; --b-slate-fg: #d5dee9;
+  --b-ex-bg: linear-gradient(90deg, #68252d 0%, #5a4310 25%, #153f2a 50%, #123e52 75%, #3b2a59 100%);
+  --b-ex-bd: #c084fc; --b-ex-fg: #f0e9ff;
+
+  --lamp-mfc: conic-gradient(#f87171, #facc15, #4ade80, #38bdf8, #c084fc, #f87171);
+  --lamp-pfc: #facc15;
+  --lamp-gfc: #4ade80;
+  --lamp-fc: #60a5fa;
+  --lamp-clear: #38bdf8;
+  --lamp-failed: #fb7185;
+
+  width: 1280px; min-height: 780px;
+  background: var(--canvas); color: var(--text);
+  border: 1px solid var(--border-strong); border-radius: 14px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, .52);
+  overflow: hidden; display: flex; flex-direction: column; position: relative;
+}
+
+.web-root.light {
+  --canvas: #f5f7fa;
+  --header-bg: rgba(255, 255, 255, .92);
+  --surface: #ffffff;
+  --surface-2: #eef2f6;
+  --surface-hover: #e8eef5;
+  --border: rgba(15, 23, 42, .10);
+  --border-strong: rgba(15, 23, 42, .20);
+  --text: #0f172a;
+  --text-2: #475569;
+  --text-3: #64748b;
+  --accent: #2563eb;
+  --accent-solid: #2563eb;
+  --accent-soft: rgba(37, 99, 235, .10);
+  --on-accent: #ffffff;
+  --up: #15803d;
+  --up-bg: rgba(21, 128, 61, .10);
+  --danger: #be123c;
+  --danger-bg: #fff1f2;
+  --danger-bd: #fda4af;
+
+  --diff-bgn-bg: #5fb8e8; --diff-bgn-fg: #0b2330;
+  --diff-bas-bg: #f3a621; --diff-bas-fg: #2b1a00;
+  --diff-dif-bg: #e64949; --diff-dif-fg: #ffffff;
+  --diff-exp-bg: #27a85a; --diff-exp-fg: #ffffff;
+  --diff-cha-bg: #8c55c9; --diff-cha-fg: #ffffff;
+
+  --flare-classic: #c97c4e;
+  --flare-white: #96b3c4;
+  --flare-gold: #d9a31e;
+
+  --b-gold-bg: #fef3c7; --b-gold-bd: #eab308; --b-gold-fg: #854d0e;
+  --b-yellow-bg: #fef9a6; --b-yellow-bd: #ada21a; --b-yellow-fg: #524600;
+  --b-cyan-bg: #e0f2fe; --b-cyan-bd: #38bdf8; --b-cyan-fg: #075985;
+  --b-green-bg: #dcfce7; --b-green-bd: #22c55e; --b-green-fg: #166534;
+  --b-blue-bg: #dbeafe; --b-blue-bd: #2563eb; --b-blue-fg: #1e3a8a;
+  --b-orange-bg: #ffedd5; --b-orange-bd: #f97316; --b-orange-fg: #9a3412;
+  --b-purple-bg: #ede9fe; --b-purple-bd: #8b5cf6; --b-purple-fg: #5b21b6;
+  --b-bronze-bg: #f7ebe3; --b-bronze-bd: #c27849; --b-bronze-fg: #6b3719;
+  --b-silver-bg: #e2e8f0; --b-silver-bd: #7c8fa8; --b-silver-fg: #334155;
+  --b-red-bg: #fee2e2; --b-red-bd: #ef4444; --b-red-fg: #991b1b;
+  --b-pink-bg: #fce7f3; --b-pink-bd: #f472b6; --b-pink-fg: #9d174d;
+  --b-slate-bg: #f1f5f9; --b-slate-bd: #94a3b8; --b-slate-fg: #334155;
+  --b-ex-bg: linear-gradient(90deg, #fecaca 0%, #fef3c7 25%, #dcfce7 50%, #e0f2fe 75%, #f3e8ff 100%);
+  --b-ex-bd: #a855f7; --b-ex-fg: #0f172a;
+
+  --lamp-pfc: #d97706;
+  --lamp-gfc: #16a34a;
+  --lamp-fc: #2563eb;
+  --lamp-clear: #0284c7;
+  --lamp-failed: #e11d48;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, .16);
+}
+
+.web-root.tablet { width: 768px; }
+.web-root.mobile { width: 390px; }
+.web-root :is(button, input, select, a, summary):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ===== Site Header & Footer ===== */
+.site-header {
+  border-bottom: 1px solid var(--border);
+  background: var(--header-bg); backdrop-filter: blur(12px);
+}
+.site-inner { max-width: 1180px; margin: 0 auto; padding: 0 24px; }
+.site-header .site-inner { min-height: 58px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.site-brand {
+  display: inline-flex; align-items: center; gap: 10px;
+  text-decoration: none; color: var(--text); font-size: 17px; font-weight: 800; letter-spacing: -.03em; white-space: nowrap;
+}
+.site-footer { margin-top: auto; border-top: 1px solid var(--border); background: var(--surface); }
+.site-footer .site-inner { min-height: 56px; display: flex; align-items: center; justify-content: space-between; font-size: 12px; color: var(--text-2); }
+
+.web-shell { max-width: 1180px; width: 100%; margin: 0 auto; padding: 24px 24px 48px; }
+.web-root.mobile .site-inner, .web-root.mobile .web-shell { padding-left: 16px; padding-right: 16px; }
+.web-root.mobile .web-shell { padding-top: 18px; }
+
+/* ===== Primitives ===== */
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px; min-width: 0; }
+.web-root.mobile .card { padding: 14px 16px; }
+.muted { color: var(--text-2); font-size: 12.5px; }
+.label-xs { font-size: 11px; font-weight: 700; color: var(--text-2); letter-spacing: .04em; }
+.ellipsis { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  min-height: 36px; padding: 0 14px; border-radius: 8px; text-decoration: none;
+  border: 1px solid var(--border-strong); background: var(--surface-2); color: var(--text);
+  font-size: 13px; font-weight: 600; white-space: nowrap;
+}
+.btn:hover { background: var(--surface-hover); border-color: var(--accent); }
+.btn.primary { background: var(--accent-solid); border-color: var(--accent-solid); color: var(--on-accent); }
+.btn.primary:hover { filter: brightness(1.08); }
+.btn.danger { background: var(--danger-bg); border-color: var(--danger-bd); color: var(--danger); }
+.btn.ghost { background: transparent; border-color: transparent; color: var(--text-2); }
+.btn.ghost:hover { background: var(--surface-2); color: var(--text); }
+.btn.sm { min-height: 30px; padding: 0 10px; font-size: 12px; }
+.web-root.mobile .btn { min-height: 40px; }
+.web-root.mobile .btn.sm { min-height: 34px; }
+
+.seg {
+  display: inline-flex; padding: 3px; border-radius: 9px;
+  background: var(--surface-2); border: 1px solid var(--border); gap: 2px;
+}
+.seg button { border: 0; background: transparent; color: var(--text-2); padding: 5px 13px; border-radius: 6px; font-size: 12.5px; font-weight: 700; white-space: nowrap; }
+.seg button[aria-pressed="true"] { background: var(--surface); color: var(--text); box-shadow: 0 1px 4px rgba(0,0,0,.22); }
+
+.chip {
+  border: 1px solid var(--border); background: var(--surface-2); color: var(--text-2);
+  border-radius: 99px; padding: 4px 11px; font-size: 12px; font-weight: 600; white-space: nowrap;
+}
+.chip:hover { border-color: var(--accent); color: var(--text); }
+.chip[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+
+.input-field {
+  width: 100%; min-height: 38px; padding: 7px 11px; border-radius: 8px;
+  border: 1px solid var(--border-strong); background: var(--canvas); color: var(--text); font-size: 13px;
+}
+
+/* Info Popover (<details>) */
+details.info-pop { display: inline-block; position: relative; }
+details.info-pop summary {
+  list-style: none; display: inline-flex; align-items: center; justify-content: center;
+  width: 21px; height: 21px; border-radius: 50%; border: 1px solid var(--border-strong);
+  background: var(--surface-2); color: var(--accent); font-size: 11.5px; font-weight: 800; cursor: pointer;
+}
+details.info-pop summary::-webkit-details-marker { display: none; }
+details.info-pop[open] summary { background: var(--accent-solid); border-color: var(--accent-solid); color: #fff; }
+.info-pop-body {
+  position: absolute; top: 26px; left: 0; z-index: 30; width: min(320px, 80vw);
+  background: var(--surface); color: var(--text); border: 1px solid var(--border-strong);
+  border-radius: 10px; padding: 11px 13px; font-size: 12px; line-height: 1.6;
+  box-shadow: 0 14px 32px rgba(0,0,0,.35);
+}
+.web-root.mobile .info-pop-body { left: -110px; width: 280px; }
+
+/* ===== DDR Official Semantic Visuals (Identical to App) ===== */
+.diff-pill { display: inline-flex; align-items: center; justify-content: center; padding: 2px 7px; border-radius: 5px; font-size: 10.5px; font-weight: 800; line-height: 1.3; white-space: nowrap; }
+.diff-bgn { background: var(--diff-bgn-bg); color: var(--diff-bgn-fg); }
+.diff-bas { background: var(--diff-bas-bg); color: var(--diff-bas-fg); }
+.diff-dif { background: var(--diff-dif-bg); color: var(--diff-dif-fg); }
+.diff-exp { background: var(--diff-exp-bg); color: var(--diff-exp-fg); }
+.diff-cha { background: var(--diff-cha-bg); color: var(--diff-cha-fg); }
+.diff-bar { width: 4px; border-radius: 99px; flex-shrink: 0; align-self: stretch; }
+.diff-bar.bgn { background: var(--diff-bgn); }
+.diff-bar.bas { background: var(--diff-bas); }
+.diff-bar.dif { background: var(--diff-dif); }
+.diff-bar.exp { background: var(--diff-exp); }
+.diff-bar.cha { background: var(--diff-cha); }
+
+.rank-inline { font-weight: 900; letter-spacing: -.03em; line-height: 1; }
+.rank-upper { color: #facc15; }
+.rank-b { color: #46b9e9; }
+.rank-c { color: #f472b6; }
+.rank-d { color: #f26a78; }
+.rank-e { color: #94a3b8; }
+.web-root.light .rank-upper { color: #a16207; }
+.web-root.light .rank-b { color: #0369a1; }
+.web-root.light .rank-c { color: #be185d; }
+.web-root.light .rank-d { color: #b91c1c; }
+.web-root.light .rank-e { color: #475569; }
+
+.clear-lamp {
+  display: inline-flex; align-items: center; gap: 6px; padding: 2px 9px 2px 7px; min-height: 22px; border-radius: 99px;
+  background: var(--surface-2); border: 1px solid var(--border-strong); font-size: 11px; font-weight: 800; color: var(--text); white-space: nowrap;
+}
+.lamp-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.lamp-mfc { background: var(--lamp-mfc); box-shadow: 0 0 6px rgba(192,132,252,.7); }
+.lamp-pfc { background: var(--lamp-pfc); box-shadow: 0 0 6px rgba(250,204,21,.6); }
+.lamp-gfc { background: var(--lamp-gfc); box-shadow: 0 0 6px rgba(74,222,128,.55); }
+.lamp-fc { background: var(--lamp-fc); }
+.lamp-clear { background: var(--lamp-clear); }
+.lamp-failed { background: var(--lamp-failed); }
+
+.badge {
+  display: inline-flex; align-items: center; justify-content: center; padding: 2px 8px; min-height: 22px; border-radius: 5px;
+  border: 1px solid var(--border-strong); background: var(--surface-2); color: var(--text); font-size: 10.5px; font-weight: 800; white-space: nowrap;
+}
+.badge.gold { background: var(--b-gold-bg); border-color: var(--b-gold-bd); color: var(--b-gold-fg); }
+.badge.yellow { background: var(--b-yellow-bg); border-color: var(--b-yellow-bd); color: var(--b-yellow-fg); }
+.badge.cyan { background: var(--b-cyan-bg); border-color: var(--b-cyan-bd); color: var(--b-cyan-fg); }
+.badge.green { background: var(--b-green-bg); border-color: var(--b-green-bd); color: var(--b-green-fg); }
+.badge.blue { background: var(--b-blue-bg); border-color: var(--b-blue-bd); color: var(--b-blue-fg); }
+.badge.orange { background: var(--b-orange-bg); border-color: var(--b-orange-bd); color: var(--b-orange-fg); }
+.badge.purple { background: var(--b-purple-bg); border-color: var(--b-purple-bd); color: var(--b-purple-fg); }
+.badge.bronze { background: var(--b-bronze-bg); border-color: var(--b-bronze-bd); color: var(--b-bronze-fg); }
+.badge.silver { background: var(--b-silver-bg); border-color: var(--b-silver-bd); color: var(--b-silver-fg); }
+.badge.red { background: var(--b-red-bg); border-color: var(--b-red-bd); color: var(--b-red-fg); }
+.badge.pink { background: var(--b-pink-bg); border-color: var(--b-pink-bd); color: var(--b-pink-fg); }
+.badge.slate { background: var(--b-slate-bg); border-color: var(--b-slate-bd); color: var(--b-slate-fg); }
+.badge.ex { background: var(--b-ex-bg); border-color: var(--b-ex-bd); color: var(--b-ex-fg); }
+
+/* ===== 1. Zero-Base Landing Page ===== */
+.lp-hero-grid {
+  display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 24px; align-items: center;
+  background: radial-gradient(circle at 6% 10%, rgba(59, 130, 246, .14), transparent 46%), var(--surface);
+  padding: 28px;
+}
+.web-root.tablet .lp-hero-grid, .web-root.mobile .lp-hero-grid { grid-template-columns: 1fr; padding: 20px; gap: 18px; }
+
+.lp-preview-box {
+  background: var(--canvas); border: 1px solid var(--border-strong); border-radius: 12px;
+  padding: 14px 16px; display: grid; gap: 10px;
+}
+.lp-mini-row {
+  display: grid; grid-template-columns: 4px minmax(0, 1fr) auto; gap: 10px; align-items: center;
+  padding: 8px 10px; border-radius: 8px; background: var(--surface); border: 1px solid var(--border);
+}
+
+.lp-steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.lp-compare { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.web-root.mobile .lp-steps, .web-root.mobile .lp-compare, .web-root.tablet .lp-compare { grid-template-columns: 1fr; }
+
+.step-card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px;
+  display: grid; gap: 6px; align-content: start;
+}
+.step-index { font-size: 11px; font-weight: 800; color: var(--accent); letter-spacing: .06em; }
+.scope-list { margin: 10px 0 0; padding: 0; list-style: none; display: grid; gap: 8px; }
+.scope-list li { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; }
+.scope-dot { width: 6px; height: 6px; border-radius: 50%; margin-top: 8px; flex-shrink: 0; background: var(--accent); }
+
+/* ===== 2. Zero-Base Public Player Dossier ===== */
+.dossier-banner {
+  background: radial-gradient(circle at 88% 20%, rgba(106, 220, 213, .16), transparent 46%), var(--surface);
+  border: 1px solid var(--border); border-radius: 14px; padding: 18px 22px;
+  display: grid; grid-template-columns: minmax(0, 1.15fr) auto; gap: 20px; align-items: center;
+}
+.web-root.tablet .dossier-banner, .web-root.mobile .dossier-banner { grid-template-columns: 1fr; padding: 16px; gap: 14px; }
+
+.dossier-name { margin: 0; font-size: 28px; font-weight: 800; letter-spacing: -.03em; line-height: 1.15; overflow-wrap: anywhere; }
+.web-root.mobile .dossier-name { font-size: 22px; }
+
+.dossier-kpis {
+  display: flex; align-items: stretch; gap: 12px; flex-wrap: wrap;
+}
+.kpi-chip-card {
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px;
+  padding: 10px 14px; min-width: 130px; display: flex; flex-direction: column; justify-content: center;
+}
+.web-root.mobile .kpi-chip-card { flex: 1 1 130px; min-width: 0; }
+
+.flare-rank-inline {
+  font-size: 22px; font-weight: 900; line-height: 1.05; letter-spacing: -.03em;
+  background: linear-gradient(180deg, #cefff9 0%, #6adcd5 55%, #41cdae 100%);
+  -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-fill-color: transparent;
+}
+.web-root.light .flare-rank-inline {
+  background: linear-gradient(180deg, #0d9488 0%, #0f766e 55%, #115e59 100%);
+  -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-fill-color: transparent;
+}
+.flare-rank-big {
+  font-size: 40px; font-weight: 900; line-height: 1; letter-spacing: -.04em;
+  background: linear-gradient(180deg, #cefff9 0%, #6adcd5 55%, #41cdae 100%);
+  -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-fill-color: transparent;
+}
+.web-root.light .flare-rank-big {
+  background: linear-gradient(180deg, #0d9488 0%, #0f766e 55%, #115e59 100%);
+  -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-fill-color: transparent;
+}
+
+.cat-mini-bar { display: flex; gap: 3px; height: 4px; border-radius: 99px; overflow: hidden; margin-top: 6px; }
+.cat-mini-bar span { height: 100%; display: block; }
+
+/* View Bar (2 clean modes: 自己ベスト | フレアスキル) */
+.dossier-toolbar {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  margin-top: 16px; margin-bottom: 16px;
+}
+.mode-tabs {
+  display: inline-flex; padding: 4px; border-radius: 10px;
+  background: var(--surface); border: 1px solid var(--border); gap: 4px;
+}
+.mode-tab {
+  border: 0; background: transparent; color: var(--text-2);
+  padding: 7px 16px; border-radius: 7px; font-size: 13.5px; font-weight: 700; white-space: nowrap;
+}
+.mode-tab[aria-pressed="true"] { background: var(--accent-solid); color: #fff; }
+.web-root.mobile .mode-tabs { width: 100%; }
+.web-root.mobile .mode-tab { flex: 1; text-align: center; }
+
+/* 2-Pane Bests Workspace (Left Level/Scope Rail + Right Score Telemetry) */
+.bests-workspace {
+  display: grid; grid-template-columns: 244px minmax(0, 1fr); gap: 16px; align-items: start;
+}
+.web-root.tablet .bests-workspace, .web-root.mobile .bests-workspace { grid-template-columns: 1fr; }
+
+.scope-rail {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+  padding: 12px; display: grid; gap: 10px; min-width: 0;
+}
+.rail-mode-tabs {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px;
+  background: var(--surface-2); padding: 3px; border-radius: 8px;
+}
+.rail-mode-tabs button {
+  border: 0; background: transparent; color: var(--text-2); font-size: 11.5px; font-weight: 700;
+  padding: 5px 4px; border-radius: 6px;
+}
+.rail-mode-tabs button[aria-pressed="true"] { background: var(--surface); color: var(--text); }
+
+.lv-rail-list { display: grid; gap: 2px; }
+.lv-rail-item {
+  width: 100%; border: 1px solid transparent; background: transparent; color: var(--text);
+  border-radius: 8px; padding: 6px 9px; text-align: left;
+  display: grid; grid-template-columns: 42px minmax(0, 1fr) 52px; gap: 8px; align-items: center;
+}
+.lv-rail-item:hover { background: var(--surface-hover); }
+.lv-rail-item[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); }
+.lv-rail-bar { height: 6px; border-radius: 99px; background: var(--surface-2); overflow: hidden; }
+.lv-rail-fill { height: 100%; border-radius: 99px; background: linear-gradient(90deg, var(--accent-solid), #38bdf8); }
+
+.ver-rail-item {
+  width: 100%; border: 1px solid transparent; background: transparent; color: var(--text-2);
+  border-radius: 7px; padding: 6px 9px; text-align: left; font-size: 12.5px; font-weight: 600;
+  display: flex; justify-content: space-between; align-items: center; gap: 6px;
+}
+.ver-rail-item:hover { background: var(--surface-hover); color: var(--text); }
+.ver-rail-item[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+
+/* Stacked Attainment Bar (Same as App) */
+.stacked-bar {
+  display: flex; height: 9px; border-radius: 99px; overflow: hidden; background: var(--surface-2); gap: 2px;
+}
+.st-aaa { background: #facc15; }
+.st-aa { background: #38bdf8; }
+.st-a { background: #4ade80; }
+.st-un { background: transparent; }
+
+/* Score Table & Expandable Row */
+.table-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+table.w-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13px; table-layout: fixed; }
+table.w-table th {
+  background: var(--surface-2); color: var(--text-2); font-size: 11px; font-weight: 700;
+  text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--border); white-space: nowrap;
+}
+table.w-table td { padding: 10px 12px; border-bottom: 1px solid var(--border); vertical-align: middle; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+table.w-table tbody tr.score-row { cursor: pointer; }
+table.w-table tbody tr.score-row:hover { background: var(--surface-hover); }
+table.w-table tbody tr.score-row.expanded { background: var(--accent-soft); }
+table.w-table tbody tr.detail-drawer td {
+  background: var(--surface-2); white-space: normal; padding: 12px 16px; border-bottom: 1px solid var(--border-strong);
+}
+table.w-table tbody tr:last-child td { border-bottom: 0; }
+
+.mobile-best-card {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 11px; padding: 12px 14px;
+  display: grid; grid-template-columns: 4px minmax(0, 1fr); gap: 11px;
+}
+
+/* Flare Skill View */
+.flare-progress-card {
+  background: radial-gradient(circle at 12% 50%, rgba(106, 220, 213, .16), transparent 48%), var(--surface);
+  border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px;
+  display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 24px; align-items: center;
+}
+.web-root.mobile .flare-progress-card { grid-template-columns: 1fr; gap: 14px; }
+
+.flare-grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-top: 14px; }
+.web-root.tablet .flare-grid-3, .web-root.mobile .flare-grid-3 { grid-template-columns: 1fr; }
+.flare-panel { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; display: flex; flex-direction: column; min-width: 0; }
+.cat-top-bar { height: 4px; width: 100%; }
+.flare-row {
+  display: grid; grid-template-columns: 22px 4px minmax(0, 1fr) auto; gap: 9px; align-items: center;
+  padding: 9px 12px; border-bottom: 1px solid var(--border); min-width: 0;
+}
+.flare-panel-footer {
+  padding: 9px 12px; background: var(--surface-2); font-size: 11.5px; color: var(--text-2);
+  display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: auto;
+}
+
+/* ===== 3. Zero-Base My Page (2-Column Hub) ===== */
+.mypage-grid {
+  display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, .85fr); gap: 18px; align-items: start;
+}
+.web-root.tablet .mypage-grid, .web-root.mobile .mypage-grid { grid-template-columns: 1fr; }
+.public-preview-strip {
+  background: var(--canvas); border: 1px solid var(--border-strong); border-radius: 10px;
+  padding: 14px 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+}
+
+/* ===== 4. App Connect Confirmation ===== */
+.connect-shell { max-width: 560px; width: 100%; margin: 0 auto; padding: 32px 24px 48px; display: grid; gap: 16px; }
+.web-root.mobile .connect-shell { padding: 20px 16px 36px; }
+.code-box {
+  font-size: 32px; font-weight: 900; letter-spacing: .24em; text-align: center;
+  padding: 16px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--border-strong); color: var(--accent);
+}
+
+/* ===== DDR Official Color Legend Modal ===== */
+.modal-backdrop {
+  position: absolute; inset: 0; z-index: 90; background: rgba(6, 10, 18, .72); backdrop-filter: blur(4px);
+  display: flex; align-items: center; justify-content: center; padding: 20px;
+}
+.modal-card {
+  width: min(720px, 100%); max-height: 90%; overflow: auto;
+  background: var(--surface); border: 1px solid var(--border-strong); border-radius: 14px;
+  padding: 20px 22px; box-shadow: 0 24px 60px rgba(0,0,0,.5); display: grid; gap: 14px;
+}
+.legend-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.web-root.mobile .legend-grid { grid-template-columns: 1fr; }
+.legend-box { background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; display: grid; gap: 8px; }
+</style>
+</head>
+<body>
+
+<header class="showcase-bar">
+  <div class="showcase-title">
+    <h1>GP Score Log — Web Zero-Base Redesign</h1>
+    <span class="showcase-pill">ページ構成もゼロベース · App 完全統一</span>
+    <a class="nav-link-chip" href="app-mock.html">← App モックへ戻る</a>
+  </div>
+  <div class="showcase-controls">
+    <div class="page-switcher" id="page-switcher"></div>
+    <label>ストレス
+      <select id="w-stress">
+        <option value="stress">最長公式曲名</option>
+        <option value="normal">通常曲名</option>
+      </select>
+    </label>
+    <label>テーマ
+      <select id="w-theme">
+        <option value="dark">ダーク</option>
+        <option value="light">ライト</option>
+      </select>
+    </label>
+    <label>幅
+      <select id="w-size">
+        <option value="pc">PC (1280px)</option>
+        <option value="tablet">Tablet (768px)</option>
+        <option value="mobile">Mobile (390px)</option>
+      </select>
+    </label>
+  </div>
+</header>
+
+<div class="stage">
+  <div class="concept-strip">
+    <div><strong>ゼロベース構成変更：</strong>①公開ページの「概要」タブを廃止→上部プレイヤーバナー（フレアスキル常時表示）＋左レベル別進捗レール＋右スコア一覧の2ペイン化で1画面完結 ②絞り込みチップ・行クリック詳細展開・色の見方モーダル追加 ③マイページを「公開ページ＆PC連携」＋「アカウント＆削除」の2カラム管理ハブへ再設計 ④TOPは事実ベースの2カラム構成＋ローカル/Web役割比較</div>
+  </div>
+  <div id="mount"></div>
+</div>
+
+<script>
+'use strict';
+
+const state = {
+  page: 'player',     // 'home' | 'player' | 'profile' | 'connect'
+  playerView: 'best', // 'best' | 'flare' (2 modes only — Overview merged into Dossier!)
+  style: 'SP',        // 'SP' | 'DP'
+  railMode: 'level',  // 'level' | 'version' | 'title'
+  level: 14,
+  version: 'DDR A20',
+  query: '',
+  quickFilter: 'all', // 'all' | 'aaa' | 'fc' | 'flare9'
+  sort: 'score-desc',
+  expandedRowId: null,
+  flareCatMobile: 'ALL',
+  flareExpanded: false,
+  showLegend: false,
+  theme: 'dark',
+  size: 'pc',
+  stress: 'stress',
+  toast: '',
+};
+
+const NORMAL_TITLES = [
+  ['POSSESSION', 'TAG underground', 'DDR X2'],
+  ['量子の海のリントヴルム', '黒猫ダンジョン', 'DDR (2014)'],
+  ['ミッドナイト☆WAR', 'いちか', 'DDR A20'],
+  ['In The Breeze', '96 & Sota ft. Mayumi Morinaga', 'DDR (2014)'],
+  ['GHOST KINGDOM', 'L.E.D.-G', 'DDR A3'],
+  ['IN BETWEEN', 'BEMANI Sound Team "L.E.D."', 'DDR A20 PLUS'],
+  ['風鈴花火', 'BEMANI Sound Team "劇団レコード"', 'DDR WORLD'],
+];
+
+const LONG_TITLES = [
+  ['50th Memorial Songs -二人の時 ～under the cherry blossoms～-', 'BEMANI Sound Team', 'DDR A20'],
+  ['お米の美味しい炊き方、そしてお米を食べることによるその効果。', '大日本鉄倶楽部【あさき&96】', 'DDR (2014)'],
+  ["Taj He Spitz (Tommie Sunshine's Brooklyn Fire Re-Touch)", 'Tommie Sunshine', 'DDR X2'],
+  ['†渚の小悪魔ラヴリィ～レイディオ† (STARDOM Remix)', '夏色ビキニのPrim', 'DDR (2013)'],
+  ['チルノのパーフェクトさんすう学園【ビートまりお】', 'IOSYSとビートまりお', 'DDR WORLD'],
+  ['STARS☆☆☆（Re-tuned by HΛL） - DDR EDITION -', 'TЁЯRA', 'SuperNOVA 2'],
+  ['阿波おどり -Awaodori- やっぱり踊りはやめられない', 'U1 ミライダガッキ連と矢印連', 'DDR A3'],
+];
+
+const STYLE_DATA = {
+  SP: {
+    rank: 'URANUS', sub: '+', jp: '天王星', total: 48970, nextRank: 'WORLD', nextNeed: 1030, nextPct: 86,
+    classic: 15840, white: 16210, gold: 16920,
+    borders: { CLASSIC: 508, WHITE: 524, GOLD: 545 },
+    recordedCharts: 412, aaaCount: 184, fcCount: 136,
+    levels: [
+      { lv: 19, done: 1, total: 6, aaa: 0, aa: 0, a: 1 },
+      { lv: 18, done: 12, total: 34, aaa: 1, aa: 5, a: 6 },
+      { lv: 17, done: 38, total: 68, aaa: 6, aa: 19, a: 13 },
+      { lv: 16, done: 74, total: 112, aaa: 18, aa: 36, a: 20 },
+      { lv: 15, done: 118, total: 165, aaa: 38, aa: 56, a: 24 },
+      { lv: 14, done: 96, total: 142, aaa: 42, aa: 39, a: 15 },
+      { lv: 13, done: 120, total: 180, aaa: 71, aa: 38, a: 11 },
+      { lv: 12, done: 134, total: 210, aaa: 98, aa: 28, a: 8 },
+    ],
+    rows: [
+      { id: 's1', diff: 'DIFFICULT', key: 'dif', short: 'DIF', level: 14, score: 991420, ex: 1412, rank: 'AAA', clear: 'GFC', flare: 'IX', flarePt: 885, flareCat: 'GOLD' },
+      { id: 's2', diff: 'EXPERT', key: 'exp', short: 'EXP', level: 14, score: 988230, ex: 1368, rank: 'AA+', clear: 'CLEAR', flare: 'VIII', flarePt: 851, flareCat: 'WHITE' },
+      { id: 's3', diff: 'EXPERT', key: 'exp', short: 'EXP', level: 14, score: 985990, ex: 1410, rank: 'AA+', clear: 'FC', flare: 'VII', flarePt: 817, flareCat: 'CLASSIC' },
+      { id: 's4', diff: 'CHALLENGE', key: 'cha', short: 'CHA', level: 14, score: 981210, ex: 1257, rank: 'AA+', clear: 'CLEAR', flare: 'VI', flarePt: 782, flareCat: 'WHITE' },
+      { id: 's5', diff: 'EXPERT', key: 'exp', short: 'EXP', level: 14, score: 977360, ex: 989, rank: 'AA', clear: 'GFC', flare: 'V', flarePt: 748, flareCat: 'GOLD' },
+      { id: 's6', diff: 'BASIC', key: 'bas', short: 'BAS', level: 14, score: 999810, ex: 1492, rank: 'AAA', clear: 'PFC', flare: 'EX', flarePt: 920, flareCat: 'CLASSIC' },
+      { id: 's7', diff: 'BEGINNER', key: 'bgn', short: 'BGN', level: 14, score: 998500, ex: 1460, rank: 'AAA', clear: 'MFC', flare: 'EX', flarePt: 920, flareCat: 'GOLD' },
+    ],
+  },
+  DP: {
+    rank: 'SATURN', sub: '++', jp: '土星', total: 36420, nextRank: 'URANUS', nextNeed: 1580, nextPct: 72,
+    classic: 11820, white: 12090, gold: 12510,
+    borders: { CLASSIC: 382, WHITE: 394, GOLD: 408 },
+    recordedCharts: 198, aaaCount: 74, fcCount: 52,
+    levels: [
+      { lv: 18, done: 2, total: 28, aaa: 0, aa: 0, a: 2 },
+      { lv: 17, done: 8, total: 54, aaa: 0, aa: 3, a: 5 },
+      { lv: 16, done: 24, total: 96, aaa: 3, aa: 11, a: 10 },
+      { lv: 15, done: 46, total: 148, aaa: 11, aa: 22, a: 13 },
+      { lv: 14, done: 58, total: 136, aaa: 19, aa: 26, a: 13 },
+      { lv: 13, done: 60, total: 172, aaa: 32, aa: 21, a: 7 },
+    ],
+    rows: [
+      { id: 'd1', diff: 'EXPERT', key: 'exp', short: 'EXP', level: 14, score: 992180, ex: 1388, rank: 'AAA', clear: 'PFC', flare: 'IX', flarePt: 885, flareCat: 'GOLD' },
+      { id: 'd2', diff: 'DIFFICULT', key: 'dif', short: 'DIF', level: 14, score: 984120, ex: 1290, rank: 'AA+', clear: 'FC', flare: 'VII', flarePt: 817, flareCat: 'WHITE' },
+      { id: 'd3', diff: 'CHALLENGE', key: 'cha', short: 'CHA', level: 14, score: 969440, ex: 1142, rank: 'AA', clear: 'CLEAR', flare: 'V', flarePt: 748, flareCat: 'CLASSIC' },
+      { id: 'd4', diff: 'EXPERT', key: 'exp', short: 'EXP', level: 14, score: 995210, ex: 1421, rank: 'AAA', clear: 'GFC', flare: 'EX', flarePt: 920, flareCat: 'GOLD' },
+    ],
+  },
+};
+
+const VERSIONS = ['DDR WORLD','DDR A3','DDR A20 PLUS','DDR A20','DDR A','DDR (2014)','DDR (2013)','X3 VS 2ndMIX','X2','SuperNOVA 2'];
+
+const fmt = n => n == null ? '—' : n.toLocaleString('en-US');
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const rankCls = r => !r ? 'rank-e' : r.startsWith('A') ? 'rank-upper' : r.startsWith('B') ? 'rank-b' : r.startsWith('C') ? 'rank-c' : r.startsWith('D') ? 'rank-d' : 'rank-e';
+const lampCls = c => ({ MFC: 'lamp-mfc', PFC: 'lamp-pfc', GFC: 'lamp-gfc', FC: 'lamp-fc', CLEAR: 'lamp-clear', FAILED: 'lamp-failed' }[c] || 'lamp-clear');
+const flareCls = f => ({ EX: 'ex', IX: 'gold', VIII: 'silver', VII: 'bronze', VI: 'purple', V: 'orange', IV: 'yellow', III: 'green', II: 'cyan', I: 'blue' }[f] || '');
+
+function getStyleObj() { return STYLE_DATA[state.style]; }
+
+function getRows() {
+  const src = state.stress === 'stress' ? LONG_TITLES : NORMAL_TITLES;
+  let rows = getStyleObj().rows.map((r, i) => ({
+    ...r,
+    level: state.railMode === 'level' ? state.level : r.level,
+    song: src[i % src.length][0],
+    artist: src[i % src.length][1],
+    version: src[i % src.length][2],
+  }));
+  if (state.railMode === 'title' && state.query.trim()) {
+    const q = state.query.trim().toLowerCase();
+    rows = rows.filter(r => r.song.toLowerCase().includes(q) || r.artist.toLowerCase().includes(q));
+  }
+  if (state.quickFilter === 'aaa') rows = rows.filter(r => r.rank === 'AAA');
+  if (state.quickFilter === 'fc') rows = rows.filter(r => ['MFC', 'PFC', 'GFC', 'FC'].includes(r.clear));
+  if (state.quickFilter === 'flare9') rows = rows.filter(r => ['IX', 'EX'].includes(r.flare));
+
+  if (state.sort === 'score-desc') rows.sort((a, b) => b.score - a.score);
+  else if (state.sort === 'score-asc') rows.sort((a, b) => a.score - b.score);
+  else if (state.sort === 'ex-desc') rows.sort((a, b) => b.ex - a.ex);
+  else if (state.sort === 'title-asc') rows.sort((a, b) => a.song.localeCompare(b.song, 'ja'));
+  return rows;
+}
+
+function brandMark() {
+  return `<svg width="26" height="26" viewBox="0 0 32 32" aria-hidden="true" style="flex-shrink:0">
+    <rect width="32" height="32" rx="8" fill="#2563eb"/>
+    <path d="M16 7l7 7h-4.5v11h-5V14H9l7-7z" fill="#ffffff"/>
+    <circle cx="24" cy="24" r="3" fill="#4ade80"/>
+  </svg>`;
+}
+function renderClearLamp(clear, asBadge = false) {
+  const badge = asBadge ? ' badge ' + { MFC: 'ex', PFC: 'gold', GFC: 'green', FC: 'blue', CLEAR: 'cyan', FAILED: 'red' }[clear] : '';
+  return `<span class="clear-lamp${badge}"><span class="lamp-dot ${lampCls(clear)}"></span>${clear}</span>`;
+}
+function renderFlareBadge(flare, withPrefix = false) {
+  return `<span class="badge ${flareCls(flare)}">${withPrefix ? 'FLARE ' : ''}${flare}</span>`;
+}
+function infoPop(label, body) {
+  return `<details class="info-pop"><summary aria-label="${esc(label)}">i</summary><div class="info-pop-body">${esc(body)}</div></details>`;
+}
+
+function toast(msg) {
+  state.toast = msg;
+  render();
+  setTimeout(() => { if (state.toast === msg) { state.toast = ''; render(); } }, 2200);
+}
+
+function renderLegendModal() {
+  if (!state.showLegend) return '';
+  return `
+    <div class="modal-backdrop" data-act="close-legend">
+      <div class="modal-card">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+          <div>
+            <h2 style="margin:0;font-size:17px">色の見方（DDR WORLD 公式準拠）</h2>
+            <p class="muted" style="margin:2px 0 0;font-size:12px">アプリ版・Web版で共通の色ルールを使用しています。</p>
+          </div>
+          <button class="btn sm" data-act="close-legend">閉じる</button>
+        </div>
+        <div class="legend-grid">
+          <div class="legend-box">
+            <strong style="font-size:12.5px">RANK</strong>
+            <div style="display:flex;gap:12px;flex-wrap:wrap;font-size:14px">
+              <span><strong class="badge gold">AAA〜A-</strong> <span class="muted">金</span></span>
+              <span><strong class="badge cyan">B+〜B-</strong> <span class="muted">水</span></span>
+              <span><strong class="badge pink">C+〜C-</strong> <span class="muted">桃</span></span>
+              <span><strong class="badge red">D+〜D</strong> <span class="muted">赤</span></span>
+              <span><strong class="badge slate">E</strong> <span class="muted">灰</span></span>
+            </div>
+          </div>
+          <div class="legend-box">
+            <strong style="font-size:12.5px">CLEAR（クリアランプ）</strong>
+            <div style="display:flex;gap:6px;flex-wrap:wrap">
+              ${['MFC','PFC','GFC','FC','CLEAR','FAILED'].map(clear => renderClearLamp(clear, true)).join('')}
+            </div>
+          </div>
+          <div class="legend-box" style="grid-column:1 / -1">
+            <strong style="font-size:12.5px">FLARE（フレアゲージ I〜EX）</strong>
+            <div style="display:flex;gap:6px;flex-wrap:wrap">
+              ${['I','II','III','IV','V','VI','VII','VIII','IX','EX'].map(f => renderFlareBadge(f, true)).join('')}
+            </div>
+          </div>
+          <div class="legend-box" style="grid-column:1 / -1">
+            <strong style="font-size:12.5px">フレアスキル対象カテゴリ</strong>
+            <div style="display:flex;gap:16px;flex-wrap:wrap;font-size:12.5px">
+              <span style="display:inline-flex;align-items:center;gap:6px"><span style="width:12px;height:12px;border-radius:3px;background:var(--flare-classic)"></span><strong>CLASSIC</strong>（1st〜X3 VS 2ndMIX）</span>
+              <span style="display:inline-flex;align-items:center;gap:6px"><span style="width:12px;height:12px;border-radius:3px;background:var(--flare-white)"></span><strong>WHITE</strong>（2013〜A）</span>
+              <span style="display:inline-flex;align-items:center;gap:6px"><span style="width:12px;height:12px;border-radius:3px;background:var(--flare-gold)"></span><strong>GOLD</strong>（A20〜WORLD）</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+
+function renderWebShell(bodyHtml, { rightAction = '<button class="btn sm" data-page="profile">マイページ</button>' } = {}) {
+  return `
+  <div class="web-root ${state.theme === 'light' ? 'light' : ''} ${state.size === 'tablet' ? 'tablet' : state.size === 'mobile' ? 'mobile' : ''}">
+    <header class="site-header">
+      <div class="site-inner">
+        <a href="#" class="site-brand" data-page="home" title="トップページへ戻る">
+          ${brandMark()}<span>GP Score Log</span>
+        </a>
+        <div style="display:flex;align-items:center;gap:8px">
+          ${rightAction}
+        </div>
+      </div>
+    </header>
+    ${bodyHtml}
+    <footer class="site-footer">
+      <div class="site-inner">
+        <strong>GP Score Log</strong>
+        <div style="display:flex;gap:16px">
+          <a href="#" data-act="guide" style="color:var(--text-2);text-decoration:none">利用ガイド</a>
+          <a href="#" data-act="repo" style="color:var(--text-2);text-decoration:none">GitHub</a>
+        </div>
+      </div>
+    </footer>
+    ${renderLegendModal()}
+    ${state.toast ? `<div style="position:fixed;right:24px;bottom:20px;z-index:200;background:var(--accent-solid);color:#fff;padding:8px 14px;border-radius:9px;font-size:12.5px;font-weight:700;box-shadow:0 12px 28px rgba(0,0,0,.35)">${state.toast}</div>` : ''}
+  </div>`;
+}
+
+/* ===== 1. Zero-Base Landing Page ===== */
+function viewLanding() {
+  const sampleItems = [
+    { key: 'exp', short: 'EXP', lv: 15, song: 'POSSESSION', score: 991420, rank: 'AAA', clear: 'GFC', flare: 'IX' },
+    { key: 'dif', short: 'DIF', lv: 14, song: '量子の海のリントヴルム', score: 998500, rank: 'AAA', clear: 'PFC', flare: 'EX' },
+    { key: 'cha', short: 'CHA', lv: 16, song: 'ミッドナイト☆WAR', score: 982110, rank: 'AA+', clear: 'CLEAR', flare: 'VII' },
+  ];
+
+  return renderWebShell(`
+    <main class="web-shell" style="max-width:1040px;display:grid;gap:20px">
+      <section class="card lp-hero-grid">
+        <div style="display:grid;gap:14px">
+          <h1 style="margin:0;font-size:28px;line-height:1.3;letter-spacing:-.03em">GP Score Log</h1>
+          <p style="margin:0;font-size:14.5px;color:var(--text)">DDR GRAND PRIX のリザルト画面を自動で読み取り、PC にプレー記録を保存する Windows 用アプリです。自己ベスト・プレー履歴・フレアスキルを振り返ったり、希望すれば自己ベストを Web で共有できます。</p>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:2px">
+            <button class="btn primary" data-act="dl">アプリをダウンロード</button>
+            <button class="btn" data-act="guide">利用ガイド</button>
+          </div>
+        </div>
+
+        <div class="lp-preview-box" aria-label="記録されるデータのイメージ">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <span class="label-xs">記録されるデータのイメージ</span>
+            <span class="muted" style="font-size:11px">SCORE · RANK · CLEAR · FLARE</span>
+          </div>
+          ${sampleItems.map(it => `
+            <div class="lp-mini-row">
+              <div class="diff-bar ${it.key}" style="height:28px"></div>
+              <div style="min-width:0">
+                <strong class="ellipsis" style="font-size:12.5px">${esc(it.song)}</strong>
+                <div style="display:flex;align-items:center;gap:5px;margin-top:2px">
+                  <span class="diff-pill diff-${it.key}" style="font-size:9.5px;padding:1px 5px">${it.short}</span>
+                  <span class="muted num" style="font-size:11px">Lv.${it.lv}</span>
+                </div>
+              </div>
+              <div style="text-align:right;flex-shrink:0">
+                <div><strong class="num" style="font-size:14px">${fmt(it.score)}</strong> <span class="rank-inline ${rankCls(it.rank)}" style="font-size:12px;margin-left:3px">${it.rank}</span></div>
+                <div style="display:flex;gap:4px;justify-content:flex-end;margin-top:3px">
+                  ${renderClearLamp(it.clear)}
+                  ${renderFlareBadge(it.flare)}
+                </div>
+              </div>
+            </div>`).join('')}
+        </div>
+      </section>
+
+      <section style="display:grid;gap:12px">
+        <h2 style="margin:0;font-size:17px">はじめる手順</h2>
+        <div class="lp-steps">
+          <div class="step-card">
+            <span class="step-index">STEP 01</span>
+            <strong>アプリを準備する</strong>
+            <p class="muted" style="margin:0">セットアップをインストールして起動します。DDR GRAND PRIX は 1280×720 でプレーします。</p>
+          </div>
+          <div class="step-card">
+            <span class="step-index">STEP 02</span>
+            <strong>普段どおりプレーする</strong>
+            <p class="muted" style="margin:0">ゲーム画面を自動で見つけ、リザルトが出ると自己ベストやプレー履歴に自動で反映します。</p>
+          </div>
+          <div class="step-card">
+            <span class="step-index">STEP 03</span>
+            <strong>必要なら Web に公開する</strong>
+            <p class="muted" style="margin:0">アプリの設定から Google 連携を行うと、この PC の自己ベストを公開 URL で見返せるようになります。</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="lp-compare">
+        <article class="card">
+          <strong style="font-size:15.5px">PC アプリでできること</strong>
+          <ul class="scope-list">
+            <li><span class="scope-dot"></span><span>レベル別・バージョン別・曲名検索での自己ベスト管理</span></li>
+            <li><span class="scope-dot"></span><span>全プレー履歴の確認（MARVELOUS〜MISS の判定内訳つき）</span></li>
+            <li><span class="scope-dot"></span><span>譜面ごとのスコア推移グラフとフレアスキル対象一覧</span></li>
+            <li><span class="scope-dot"></span><span>画像からの手動取り込みや、バックアップからの復元</span></li>
+          </ul>
+        </article>
+        <article class="card">
+          <strong style="font-size:15.5px">Web でできること</strong>
+          <ul class="scope-list">
+            <li><span class="scope-dot"></span><span>公開 URL の共有（ログイン不要でスマホ・PC から閲覧可能）</span></li>
+            <li><span class="scope-dot"></span><span>SINGLE / DOUBLE 別の自己ベストとフレアスキル表示</span></li>
+            <li><span class="scope-dot"></span><span>マイページでの公開プレーヤー名変更・公開記録削除・アカウント削除</span></li>
+          </ul>
+          <p class="muted" style="margin:12px 0 0;font-size:11.5px;padding-top:10px;border-top:1px solid var(--border)">Web に送られるのは自動記録した自己ベストのみです。画像から追加した記録や復元した記録は PC 内に留まります。</p>
+        </article>
+      </section>
+    </main>
+  `);
+}
+
+/* ===== 2. Zero-Base Public Player Dossier ===== */
+function viewPlayer() {
+  const st = getStyleObj();
+  const rows = getRows();
+  const isMobile = state.size === 'mobile';
+  const curLv = st.levels.find(x => x.lv === state.level) || st.levels[0];
+  const unplayed = Math.max(0, curLv.total - curLv.done);
+  const pAaa = Math.round(curLv.aaa / curLv.total * 100);
+  const pAa = Math.round(curLv.aa / curLv.total * 100);
+  const pA = Math.round(curLv.a / curLv.total * 100);
+
+  const catSum = st.classic + st.white + st.gold;
+
+  let workspaceHtml = '';
+  if (state.playerView === 'best') {
+    const railContent = state.railMode === 'level' ? (isMobile ? `
+      <div style="display:grid;gap:8px">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+          <select class="input-field" id="m-lv-sel" style="flex:1">
+            ${st.levels.map(x => `<option value="${x.lv}" ${state.level === x.lv ? 'selected' : ''}>Lv.${x.lv}（${x.done} / ${x.total} 譜面）</option>`).join('')}
+          </select>
+        </div>
+      </div>` : `
+      <div class="lv-rail-list">
+        ${st.levels.map(x => `
+          <button class="lv-rail-item" data-wlv="${x.lv}" aria-pressed="${state.level === x.lv}">
+            <strong class="num" style="font-size:12.5px">Lv.${x.lv}</strong>
+            <div class="lv-rail-bar"><div class="lv-rail-fill" style="width:${Math.round(x.done / x.total * 100)}%"></div></div>
+            <span class="muted num" style="font-size:11px;text-align:right">${x.done}/${x.total}</span>
+          </button>`).join('')}
+      </div>`)
+    : state.railMode === 'version' ? `
+      <div style="display:grid;gap:2px;max-height:360px;overflow:auto">
+        ${VERSIONS.map(v => `<button class="ver-rail-item" data-wver="${v}" aria-pressed="${state.version === v}"><span>${v}</span></button>`).join('')}
+      </div>`
+    : `<div>
+        <input id="w-q-input" class="input-field" type="search" value="${esc(state.query)}" placeholder="曲名・アーティスト名で検索">
+        <div class="muted" style="font-size:11.5px;margin-top:6px">入力すると右の一覧をすぐ絞り込みます。</div>
+      </div>`;
+
+    const listHtml = rows.length === 0
+      ? `<div class="card" style="text-align:center;padding:32px"><p class="muted" style="margin:0">条件に一致する公開記録がありません。</p></div>`
+      : isMobile ? `
+        <div style="display:grid;gap:10px">
+          ${rows.map(r => `
+            <article class="mobile-best-card">
+              <div class="diff-bar ${r.key}"></div>
+              <div style="min-width:0;display:grid;gap:8px">
+                <div>
+                  <div style="font-weight:700;font-size:13.5px;line-height:1.3;overflow-wrap:anywhere">${esc(r.song)}</div>
+                  <div class="muted" style="font-size:11px;margin-top:2px">${esc(r.artist)} · ${esc(r.version)}</div>
+                </div>
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+                  <div style="display:flex;align-items:center;gap:6px">
+                    <span class="diff-pill diff-${r.key}">${r.short}</span>
+                    <span class="muted num" style="font-weight:700">Lv.${r.level}</span>
+                  </div>
+                  <div style="display:flex;align-items:baseline;gap:6px">
+                    <strong class="num" style="font-size:18px">${fmt(r.score)}</strong>
+                    <span class="rank-inline ${rankCls(r.rank)}" style="font-size:14px">${r.rank}</span>
+                  </div>
+                </div>
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding-top:6px;border-top:1px solid var(--border)">
+                  <span class="muted num" style="font-size:11.5px">EX <strong style="color:var(--text)">${fmt(r.ex)}</strong> · ${r.flarePt}pt</span>
+                  <div style="display:flex;gap:6px;align-items:center">
+                    ${renderClearLamp(r.clear)}
+                    ${renderFlareBadge(r.flare, true)}
+                  </div>
+                </div>
+              </div>
+            </article>`).join('')}
+        </div>`
+      : `
+        <div class="table-card">
+          <table class="w-table">
+            <colgroup>
+              <col>
+              <col style="width:106px">
+              <col style="width:138px">
+              <col style="width:82px">
+              <col style="width:94px">
+              <col style="width:92px">
+            </colgroup>
+            <thead>
+              <tr><th>曲名（クリックで詳細）</th><th>譜面</th><th>SCORE / RANK</th><th>EX SCORE</th><th>CLEAR</th><th>FLARE</th></tr>
+            </thead>
+            <tbody>
+              ${rows.map(r => {
+                const open = state.expandedRowId === r.id;
+                return `
+                  <tr class="score-row ${open ? 'expanded' : ''}" data-expand-row="${r.id}">
+                    <td title="${esc(r.song)}">
+                      <div style="display:flex;align-items:center;gap:10px;min-width:0">
+                        <span class="diff-bar ${r.key}" style="height:28px"></span>
+                        <div style="min-width:0">
+                          <strong class="ellipsis" style="font-size:13.5px">${esc(r.song)}</strong>
+                          <span class="muted ellipsis" style="font-size:11px">${esc(r.artist)}</span>
+                        </div>
+                      </div>
+                    </td>
+                    <td><span class="diff-pill diff-${r.key}">${r.short}</span> <span class="muted num" style="margin-left:3px;font-weight:700">Lv.${r.level}</span></td>
+                    <td>
+                      <span class="num" style="font-size:15.5px;font-weight:800">${fmt(r.score)}</span>
+                      <span class="rank-inline ${rankCls(r.rank)}" style="font-size:13px;margin-left:7px">${r.rank}</span>
+                    </td>
+                    <td class="num muted" style="font-weight:700">${fmt(r.ex)}</td>
+                    <td>${renderClearLamp(r.clear)}</td>
+                    <td>${renderFlareBadge(r.flare, true)}</td>
+                  </tr>
+                  ${open ? `<tr class="detail-drawer"><td colspan="6">
+                    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap">
+                      <div style="min-width:0;flex:1">
+                        <div style="font-weight:800;font-size:14px;overflow-wrap:anywhere">${esc(r.song)}</div>
+                        <div class="muted" style="font-size:12px;margin-top:2px">${esc(r.artist)} · 初出：${esc(r.version)}</div>
+                      </div>
+                      <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;font-size:12.5px">
+                        <span>フレアスキル枠：<strong>${r.flareCat}</strong></span>
+                        <span>算出ポイント：<strong class="num">${r.flarePt} pt</strong></span>
+                      </div>
+                    </div>
+                  </td></tr>` : ''}`;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>`;
+
+    workspaceHtml = `
+      <div class="bests-workspace">
+        <aside class="scope-rail">
+          <div style="display:flex;align-items:center;justify-content:space-between">
+            <span class="label-xs">探し方</span>
+            ${infoPop('レベル別進捗について', '公開された自己ベストあり / 現行譜面数です。レベルを選ぶと右の達成状況と一覧が切り替わります。')}
+          </div>
+          <div class="rail-mode-tabs">
+            ${[['level','レベル'],['version','バージョン'],['title','曲名']].map(([m, l]) =>
+              `<button data-rail="${m}" aria-pressed="${state.railMode === m}">${l}</button>`).join('')}
+          </div>
+          ${railContent}
+        </aside>
+
+        <section style="min-width:0;display:grid;gap:12px">
+          <div class="card" style="padding:14px 16px;display:grid;gap:10px">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+              <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+                <strong style="font-size:18px" class="num">${state.railMode === 'level' ? 'Lv.' + curLv.lv : state.railMode === 'version' ? state.version : '曲名検索'}</strong>
+                <span class="muted">公開記録 <strong style="color:var(--text)" class="num">${curLv.done}</strong> / ${curLv.total} 譜面</span>
+                ${infoPop('自己ベストの各項目', 'SCORE・EX SCORE・CLEAR・FLARE はそれぞれの最高記録です。別のプレーで達成した値が並ぶことがあります。')}
+              </div>
+              <label class="muted" style="display:inline-flex;align-items:center;gap:6px;font-size:12px">並び順
+                <select id="w-sort" class="input-field" style="width:auto;min-height:30px;padding:3px 9px;font-size:12px">
+                  <option value="score-desc" ${state.sort==='score-desc'?'selected':''}>スコアが高い順</option>
+                  <option value="score-asc" ${state.sort==='score-asc'?'selected':''}>スコアが低い順</option>
+                  <option value="ex-desc" ${state.sort==='ex-desc'?'selected':''}>EXスコアが高い順</option>
+                  <option value="title-asc" ${state.sort==='title-asc'?'selected':''}>曲名順</option>
+                </select>
+              </label>
+            </div>
+
+            ${state.railMode === 'level' ? `
+              <div>
+                <div class="stacked-bar" title="AAA / AA / A以下 / 未記録">
+                  <div class="st-aaa" style="width:${pAaa}%"></div>
+                  <div class="st-aa" style="width:${pAa}%"></div>
+                  <div class="st-a" style="width:${pA}%"></div>
+                </div>
+                <div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:6px;font-size:11.5px" class="muted num">
+                  <span><strong style="color:#facc15">●</strong> AAA ${curLv.aaa}</span>
+                  <span><strong style="color:#38bdf8">●</strong> AA帯 ${curLv.aa}</span>
+                  <span><strong style="color:#4ade80">●</strong> A以下 ${curLv.a}</span>
+                  <span>未記録 ${unplayed}</span>
+                </div>
+              </div>` : ''}
+
+            <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+              ${[['all','すべて'],['aaa','AAA のみ'],['fc','FC 以上'],['flare9','FLARE IX / EX']].map(([id, l]) =>
+                `<button class="chip" data-qf="${id}" aria-pressed="${state.quickFilter === id}">${l}</button>`).join('')}
+            </div>
+          </div>
+
+          ${listHtml}
+        </section>
+      </div>`;
+  } else {
+    const names = (state.stress === 'stress' ? LONG_TITLES : NORMAL_TITLES).map(x => x[0]);
+    const itemCount = state.flareExpanded ? 7 : 4;
+    const makeItems = (offset, basePt) => Array.from({ length: itemCount }, (_, i) => ({
+      pos: i + 1,
+      song: names[(i + offset) % names.length],
+      key: ['exp','dif','cha','bas','exp','dif','bgn'][i % 7],
+      short: ['EXP','DIF','CHA','BAS','EXP','DIF','BGN'][i % 7],
+      lv: [16, 15, 14, 13, 14, 12, 11][i % 7],
+      flare: ['EX','IX','VIII','VII','VI','V','IV'][i % 7],
+      pt: basePt - i * 32,
+    }));
+    const cats = [
+      { name: 'CLASSIC', range: '1st〜X3 VS 2ndMIX', col: 'var(--flare-classic)', total: st.classic, border: st.borders.CLASSIC, items: makeItems(0, 920) },
+      { name: 'WHITE', range: '2013〜A', col: 'var(--flare-white)', total: st.white, border: st.borders.WHITE, items: makeItems(2, 960) },
+      { name: 'GOLD', range: 'A20〜WORLD', col: 'var(--flare-gold)', total: st.gold, border: st.borders.GOLD, items: makeItems(4, 1012) },
+    ];
+    const visibleCats = (isMobile && state.flareCatMobile !== 'ALL')
+      ? cats.filter(c => c.name === state.flareCatMobile)
+      : cats;
+
+    workspaceHtml = `
+      <section class="flare-progress-card">
+        <div>
+          <div class="label-xs">${state.style === 'SP' ? 'SINGLE' : 'DOUBLE'} フレアスキルランク</div>
+          <div class="flare-rank-big" style="margin-top:4px">${st.rank} <span style="font-size:24px">${st.sub}</span></div>
+          <div class="muted">${st.jp}</div>
+        </div>
+        <div style="min-width:0;display:grid;gap:8px">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap">
+            <div>
+              <span class="label-xs">トータル</span>
+              <strong class="num" style="font-size:32px;margin-left:8px">${fmt(st.total)}</strong>
+            </div>
+            <div class="muted" style="font-size:12.5px">
+              次のランク <strong style="color:var(--text)">${st.nextRank}</strong> まであと <strong class="num" style="color:var(--accent)">${fmt(st.nextNeed)} pt</strong>
+            </div>
+          </div>
+          <div class="lv-rail-bar" style="height:8px"><div class="lv-rail-fill" style="width:${st.nextPct}%"></div></div>
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+            <span class="muted" style="font-size:11.5px">CLASSIC / WHITE / GOLD 各上位30譜面の合計から算出</span>
+            ${infoPop('公開フレアスキルの算出', 'GP で公開された自己ベストの FLARE 実績から算出します。ローカルアプリやゲーム内の値と異なる場合があります。')}
+          </div>
+        </div>
+      </section>
+
+      ${isMobile ? `
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:12px">
+          ${['ALL','CLASSIC','WHITE','GOLD'].map(c =>
+            `<button class="chip" data-fcat="${c}" aria-pressed="${state.flareCatMobile === c}">${c === 'ALL' ? 'すべて' : c}</button>`).join('')}
+        </div>` : ''}
+
+      <div class="flare-grid-3">
+        ${visibleCats.map(c => `
+          <article class="flare-panel">
+            <div class="cat-top-bar" style="background:${c.col}"></div>
+            <div style="padding:12px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:8px">
+              <div style="min-width:0"><strong style="font-size:14px">${c.name}</strong><div class="muted" style="font-size:11px">${c.range}</div></div>
+              <div style="text-align:right;flex-shrink:0">
+                <strong class="num" style="font-size:20px;display:block;line-height:1.1">${fmt(c.total)}</strong>
+                <span class="muted num" style="font-size:11px">30位ボーダー ${c.border} pt</span>
+              </div>
+            </div>
+            ${c.items.map(it => `
+              <div class="flare-row" title="${esc(it.song)}">
+                <span class="muted num" style="text-align:center;font-size:11.5px">${it.pos}</span>
+                <span class="diff-bar ${it.key}" style="height:26px"></span>
+                <div style="min-width:0">
+                  <span class="ellipsis" style="font-size:12.5px;font-weight:700">${esc(it.song)}</span>
+                  <div style="display:flex;gap:5px;align-items:center;margin-top:2px">
+                    <span class="diff-pill diff-${it.key}" style="font-size:10px;padding:1px 5px">${it.short}</span>
+                    <span class="muted num" style="font-size:11px">Lv.${it.lv}</span>
+                  </div>
+                </div>
+                <div style="text-align:right;flex-shrink:0">
+                  ${renderFlareBadge(it.flare, true)}
+                  <div class="num" style="font-size:15px;font-weight:800;margin-top:2px">${it.pt}</div>
+                </div>
+              </div>`).join('')}
+            <div class="flare-panel-footer">
+              <span>上位 ${c.items.length} / 30 譜面</span>
+              <button class="btn ghost sm" data-act="toggle-flare-more" style="min-height:24px;padding:0 8px;font-size:11.5px">${state.flareExpanded ? '折りたたむ' : 'さらに表示'}</button>
+            </div>
+          </article>`).join('')}
+      </div>`;
+  }
+
+  return renderWebShell(`
+    <main class="web-shell">
+      <section class="dossier-banner">
+        <div style="min-width:0;display:grid;gap:8px">
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <h1 class="dossier-name">${state.stress === 'stress' ? 'DDR_PLAYER_LONG_DISPLAY_NAME_2026' : 'PLAYER_DDR'}</h1>
+            <div class="seg">
+              <button data-wstyle="SP" aria-pressed="${state.style === 'SP'}">SINGLE</button>
+              <button data-wstyle="DP" aria-pressed="${state.style === 'DP'}">DOUBLE</button>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+            <span class="muted">最終更新：2026/11/28 14:26</span>
+            <button class="btn sm" data-act="copy-url">URLをコピー</button>
+            <button class="btn sm" data-act="open-legend">色の見方</button>
+          </div>
+        </div>
+
+        <div class="dossier-kpis">
+          <div class="kpi-chip-card" style="min-width:210px">
+            <div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px">
+              <span class="flare-rank-inline">${st.rank} ${st.sub}</span>
+              <strong class="num" style="font-size:18px">${fmt(st.total)}</strong>
+            </div>
+            <div class="cat-mini-bar" title="CLASSIC / WHITE / GOLD 比率">
+              <span style="width:${Math.round(st.classic / catSum * 100)}%;background:var(--flare-classic)"></span>
+              <span style="width:${Math.round(st.white / catSum * 100)}%;background:var(--flare-white)"></span>
+              <span style="width:${Math.round(st.gold / catSum * 100)}%;background:var(--flare-gold)"></span>
+            </div>
+            <div class="muted num" style="font-size:10.5px;margin-top:4px;display:flex;justify-content:space-between;gap:6px">
+              <span>C ${fmt(st.classic)}</span><span>W ${fmt(st.white)}</span><span>G ${fmt(st.gold)}</span>
+            </div>
+          </div>
+          <div class="kpi-chip-card">
+            <span class="label-xs">公開譜面</span>
+            <strong class="num" style="font-size:20px;line-height:1.2;margin-top:2px">${st.recordedCharts}</strong>
+            <span class="muted num" style="font-size:11px">AAA ${st.aaaCount} · FC+ ${st.fcCount}</span>
+          </div>
+        </div>
+      </section>
+
+      <div class="dossier-toolbar">
+        <div class="mode-tabs" role="tablist">
+          <button class="mode-tab" data-pview="best" aria-pressed="${state.playerView === 'best'}">自己ベスト</button>
+          <button class="mode-tab" data-pview="flare" aria-pressed="${state.playerView === 'flare'}">フレアスキル</button>
+        </div>
+        <span class="muted" style="font-size:12px">${state.playerView === 'best' ? '左のレベル進捗から譜面を切り替えられます' : 'カテゴリ別上位30譜面の内訳を表示しています'}</span>
+      </div>
+
+      ${workspaceHtml}
+    </main>
+  `);
+}
+
+/* ===== 3. Zero-Base My Page (2-Column Management Hub) ===== */
+function viewProfile() {
+  return renderWebShell(`
+    <main class="web-shell" style="max-width:1040px;display:grid;gap:18px">
+      <div>
+        <h1 style="margin:0 0 4px;font-size:26px;letter-spacing:-.02em">マイページ</h1>
+        <p class="muted" style="margin:0">公開ページの管理、PC アプリの連携状態、アカウント設定を確認できます。</p>
+      </div>
+
+      <div class="mypage-grid">
+        <div style="display:grid;gap:16px">
+          <section class="card" style="display:grid;gap:14px">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+              <strong style="font-size:16px">公開ページ</strong>
+              <span style="font-size:11.5px;font-weight:700;padding:3px 10px;border-radius:99px;background:var(--up-bg);color:var(--up)">● 公開中</span>
+            </div>
+
+            <div class="public-preview-strip">
+              <div style="min-width:0">
+                <div class="label-xs">現在の公開URL</div>
+                <div class="ellipsis" style="font-weight:700;font-size:13.5px;margin-top:2px">https://ddrgp-scorelog.example/player/p_9f82a1c4</div>
+              </div>
+              <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <button class="btn sm" data-act="copy-url">URLをコピー</button>
+                <button class="btn sm primary" data-page="player">公開ページを開く</button>
+              </div>
+            </div>
+
+            <div>
+              <label class="label-xs" style="display:block;margin-bottom:5px">公開プレーヤー名（1〜64文字）</label>
+              <div style="display:flex;gap:8px">
+                <input class="input-field" type="text" value="PLAYER_DDR">
+                <button class="btn primary" data-act="save-name">保存</button>
+              </div>
+            </div>
+          </section>
+
+          <section class="card" style="display:grid;gap:10px">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
+              <strong style="font-size:16px">PC アプリとの連携</strong>
+              <span class="muted" style="font-size:12px">最終同期：2026/11/28 14:26</span>
+            </div>
+            <p class="muted" style="margin:0">PC アプリの設定画面から連携すると、自動記録した自己ベストが公開ページへ反映されます。別の PC へ切り替えるときは、新しい PC のアプリから連携操作を行ってください。</p>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:2px">
+              <button class="btn sm" data-page="connect">連携確認画面を見る</button>
+            </div>
+          </section>
+        </div>
+
+        <div style="display:grid;gap:16px">
+          <section class="card" style="display:grid;gap:10px">
+            <strong style="font-size:15.5px">Google アカウント</strong>
+            <div style="font-weight:700;overflow-wrap:anywhere">player.example@gmail.com</div>
+            <div class="muted" style="font-size:12px">メールアドレスはマイページにだけ表示され、公開ページには出ません。</div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px">
+              <button class="btn sm">ログアウト</button>
+              <button class="btn sm">別アカウントでログイン</button>
+            </div>
+          </section>
+
+          <section class="card" style="border-color:var(--danger-bd);display:grid;gap:10px">
+            <strong style="font-size:15.5px;color:var(--danger)">公開記録・アカウントの削除</strong>
+            <p class="muted" style="margin:0;font-size:12.5px">削除した公開データやアカウントは元に戻せません。PC アプリ内に保存されたスコア履歴は残ります。</p>
+            <div style="display:grid;gap:8px;margin-top:4px">
+              <button class="btn danger" data-act="danger-demo">公開記録を削除する</button>
+              <button class="btn danger" data-act="danger-demo">アカウントを削除する</button>
+            </div>
+          </section>
+        </div>
+      </div>
+    </main>
+  `, { rightAction: '<button class="btn sm" data-page="player">公開ページ</button>' });
+}
+
+/* ===== 4. App Connect Confirmation ===== */
+function viewConnect() {
+  return renderWebShell(`
+    <main class="connect-shell">
+      <div>
+        <h1 style="margin:0 0 4px;font-size:24px">この PC へ連携を引き継ぐ</h1>
+        <p class="muted" style="margin:0">操作を始めた PC アプリに、同じ 6 桁のコードが表示されていることを確認してください。</p>
+      </div>
+      <section class="card" style="display:grid;gap:14px">
+        <div class="label-xs">確認コード</div>
+        <div class="code-box num">482 917</div>
+        <div style="padding:11px 13px;border-radius:9px;background:var(--surface-2);font-size:12.5px;color:var(--text-2)">
+          連携が完了すると、この PC の自己ベストが Web の公開ページへ反映されます。PC 内のスコア履歴はそのまま残ります。
+        </div>
+        <label style="display:flex;gap:10px;align-items:flex-start;font-size:13px"><input type="checkbox" checked style="margin-top:4px"> 手元のアプリとコードが一致しています。</label>
+        <label style="display:flex;gap:10px;align-items:flex-start;font-size:13px"><input type="checkbox" checked style="margin-top:4px"> ログイン中のアカウントと引き継ぎ内容を確認しました。</label>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button class="btn primary" data-act="approve">この PC へ引き継ぐ</button>
+          <button class="btn" data-page="profile">キャンセル</button>
+        </div>
+      </section>
+    </main>
+  `, { rightAction: '<button class="btn sm" data-page="profile">マイページへ</button>' });
+}
+
+function renderSwitcher() {
+  const pages = [['home','トップ'],['player','公開ページ'],['profile','マイページ'],['connect','アプリ連携確認']];
+  document.getElementById('page-switcher').innerHTML = pages.map(([id, l]) =>
+    `<button data-page="${id}" aria-pressed="${state.page === id}">${l}</button>`).join('');
+}
+
+function render() {
+  renderSwitcher();
+  document.getElementById('w-stress').value = state.stress;
+  document.getElementById('w-theme').value = state.theme;
+  document.getElementById('w-size').value = state.size;
+  const views = { home: viewLanding, player: viewPlayer, profile: viewProfile, connect: viewConnect };
+  document.getElementById('mount').innerHTML = (views[state.page] || viewPlayer)();
+
+  const q = document.getElementById('w-q-input');
+  if (q) q.addEventListener('input', e => {
+    state.query = e.target.value; render();
+    const el = document.getElementById('w-q-input');
+    if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); }
+  });
+  const mlv = document.getElementById('m-lv-sel');
+  if (mlv) mlv.addEventListener('change', e => { state.level = Number(e.target.value); render(); });
+  const srt = document.getElementById('w-sort');
+  if (srt) srt.addEventListener('change', e => { state.sort = e.target.value; render(); });
+}
+
+document.addEventListener('click', e => {
+  const el = e.target.closest('[data-page],[data-pview],[data-wstyle],[data-rail],[data-wlv],[data-wver],[data-qf],[data-expand-row],[data-fcat],[data-act]');
+  if (!el) return;
+  if (el.tagName === 'A') e.preventDefault();
+  if (el.dataset.page) { state.page = el.dataset.page; state.showLegend = false; render(); return; }
+  if (el.dataset.pview) { state.playerView = el.dataset.pview; render(); return; }
+  if (el.dataset.wstyle) {
+    state.style = el.dataset.wstyle;
+    const avail = STYLE_DATA[state.style].levels;
+    if (!avail.some(x => x.lv === state.level)) state.level = avail[0].lv;
+    state.expandedRowId = null;
+    render(); return;
+  }
+  if (el.dataset.rail) { state.railMode = el.dataset.rail; render(); return; }
+  if (el.dataset.wlv) { state.level = Number(el.dataset.wlv); state.expandedRowId = null; render(); return; }
+  if (el.dataset.wver) { state.version = el.dataset.wver; state.expandedRowId = null; render(); return; }
+  if (el.dataset.qf) { state.quickFilter = el.dataset.qf; render(); return; }
+  if (el.dataset.expandRow) { state.expandedRowId = state.expandedRowId === el.dataset.expandRow ? null : el.dataset.expandRow; render(); return; }
+  if (el.dataset.fcat) { state.flareCatMobile = el.dataset.fcat; render(); return; }
+
+  const a = el.dataset.act;
+  if (a === 'open-legend') { state.showLegend = true; render(); }
+  else if (a === 'close-legend' && (!el.classList.contains('modal-backdrop') || e.target === el)) { state.showLegend = false; render(); }
+  else if (a === 'toggle-flare-more') { state.flareExpanded = !state.flareExpanded; render(); }
+  else if (a === 'copy-url') toast('公開URLをコピーしました');
+  else if (a === 'save-name') toast('公開プレーヤー名を保存しました');
+  else if (a === 'dl') toast('GitHub Releases の最新セットアップへ移動します');
+  else if (a === 'guide') toast('利用ガイド（GitHub）を開きます');
+  else if (a === 'repo') toast('GitHub リポジトリを開きます');
+  else if (a === 'approve') toast('アプリ側の連携完了を確認してください');
+  else if (a === 'danger-demo') toast('再認証と確認画面を経て安全に実行されます');
+});
+
+document.getElementById('w-stress').addEventListener('change', e => { state.stress = e.target.value; render(); });
+document.getElementById('w-theme').addEventListener('change', e => { state.theme = e.target.value; render(); });
+document.getElementById('w-size').addEventListener('change', e => { state.size = e.target.value; render(); });
+
+render();
+</script>
+</body>
+</html>

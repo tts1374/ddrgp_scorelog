@@ -230,9 +230,9 @@ public static class Localization
         var dictionaries = application.Resources.MergedDictionaries;
         for (var index = dictionaries.Count - 1; index >= 0; index--)
         {
-            var source = dictionaries[index].Source?.OriginalString ?? string.Empty;
-            if (source.Contains("/Strings.", StringComparison.OrdinalIgnoreCase) ||
-                source.Contains("\\Strings.", StringComparison.OrdinalIgnoreCase))
+            var fileName = Path.GetFileName(dictionaries[index].Source?.OriginalString);
+            if (fileName?.StartsWith("Strings.", StringComparison.OrdinalIgnoreCase) == true &&
+                !string.Equals(fileName, "Strings.xaml", StringComparison.OrdinalIgnoreCase))
             {
                 dictionaries.RemoveAt(index);
             }

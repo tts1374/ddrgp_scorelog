@@ -1,4 +1,4 @@
-/* App visual standard adopted in #258 and implemented in #259. Semantic achievement colours and screen behaviour stay in each mock. */
+/* Shared styles for the earlier screen-specific prototypes. See app-mock.html and design-system.md for the design reference. */
 html .chrome{background:var(--surface);}
 html .monitor{background:var(--bg);}
 html .nav button.active{background:var(--subtle);}
@@ -34,8 +34,8 @@ html .text-link:hover{color:var(--accent-hover);}
 html .app input:focus-visible,
 html .app a:focus-visible,
 html .category-list:focus-visible{outline:3px solid var(--accent);outline-offset:2px;}
-html .app{--bg:#f4f7f9;--surface:#e9eff3;--panel:#ffffff;--line:#cfdce3;--text:#202d36;--sub:#546574;--accent:#076e7d;--subtle:#dceef2;--up:#38644b;--down:#ae3949;--brand-detail:#b9a0d9;border-color:var(--line);background:var(--bg);--accent-hover:#075866;--selected:#dceef2;--row-hover:#e9f3f5;--on-accent:#ffffff;--hero-tint:7%;--secondary-tint:5%;--on-accent-muted:#e2f2f5;--space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:20px;--space-6:24px;--panel-radius:6px;--scroll-thumb:#718594;}
-html .app.dark{--bg:#111b25;--surface:#1b2b38;--panel:#182631;--line:#344957;--text:#edf3f7;--sub:#b3c2ce;--accent:#61cbd3;--subtle:#244655;--up:#92bd9d;--down:#ff9ca6;--brand-detail:#bba2dd;--accent-hover:#8bdee3;--selected:#244655;--row-hover:#1e3543;--on-accent:#102a32;--hero-tint:12%;--secondary-tint:9%;--on-accent-muted:#1c414b;--scroll-thumb:#6b8496;}
+html .app{--bg:#f5f7fa;--surface:#eef2f6;--panel:#ffffff;--line:#d9e0e8;--text:#0f172a;--sub:#475569;--accent:#2563eb;--subtle:#e9effd;--up:#15803d;--down:#be123c;--brand-detail:#b9a0d9;border-color:var(--line);background:var(--bg);--accent-solid:#2563eb;--accent-solid-hover:#1d4ed8;--accent-hover:#1d4ed8;--selected:#e9effd;--row-hover:#e8eef5;--on-accent:#ffffff;--hero-tint:7%;--secondary-tint:5%;--on-accent-muted:#dbeafe;--space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:20px;--space-6:24px;--panel-radius:6px;--scroll-thumb:#718096;}
+html .app.dark{--accent-solid:#3b82f6;--accent-solid-hover:#2563eb;--bg:#0b0f17;--surface:#1b2537;--panel:#141c2a;--line:#2a3749;--text:#f1f5f9;--sub:#94a3b8;--accent:#60a5fa;--subtle:#1f2f48;--up:#4ade80;--down:#fb7185;--brand-detail:#bba2dd;--accent-hover:#93c5fd;--selected:#1f2f48;--row-hover:#212e45;--on-accent:#ffffff;--hero-tint:12%;--secondary-tint:9%;--on-accent-muted:#dbeafe;--scroll-thumb:#66768a;}
 html .app :is(.workspace,.detail-view,.best-list,.scroller,.detail,.category-list,.controls){scrollbar-color:var(--scroll-thumb) var(--surface);scrollbar-width:thin;}
 html .mode-a-fit .workspace{padding:12px 32px;}
 html .mode-a-fit .result{padding:12px 16px;border:1px solid var(--line);border-radius:var(--panel-radius);}
@@ -98,10 +98,10 @@ html .app.narrow .flare-summary{padding:12px 16px;gap:16px;}
 html .app.narrow .category-head{padding:10px 12px;min-height:68px;}
 html .app.narrow .skill-row{padding:8px;gap:6px;}
 html .app.narrow .runner-up{padding:8px;gap:6px;}
-html .utility-app .action.primary{color:var(--on-accent);}
+html .utility-app .action.primary{background:var(--accent-solid);color:var(--on-accent);}
 html .utility-app .action:not(:disabled):hover,
 html .utility-app .style-switch button:hover{background:var(--row-hover);color:var(--accent-hover);filter:none;}
-html .utility-app .action.primary:not(:disabled):hover{background:var(--accent-hover);color:var(--on-accent);}
+html .utility-app .action.primary:not(:disabled):hover{background:var(--accent-solid-hover);color:var(--on-accent);}
 html .utility-app .action:disabled{opacity:1;background:var(--surface);color:var(--sub);border-color:var(--line);}
 html .utility-app :is(input,summary):focus-visible{outline:3px solid var(--accent);outline-offset:3px;}
 html .utility-app summary{cursor:pointer;}

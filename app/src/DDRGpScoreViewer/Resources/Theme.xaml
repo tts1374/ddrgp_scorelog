@@ -1,20 +1,20 @@
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <Color x:Key="BackgroundPrimaryColor">#F4F7F9</Color>
+    <Color x:Key="BackgroundPrimaryColor">#F5F7FA</Color>
     <Color x:Key="BackgroundSidebarColor">#FFFFFF</Color>
     <Color x:Key="SurfacePrimaryColor">#FFFFFF</Color>
-    <Color x:Key="SurfaceSecondaryColor">#E9EFF3</Color>
-    <Color x:Key="BorderDefaultColor">#CFDCE3</Color>
-    <Color x:Key="BorderStrongColor">#718594</Color>
-    <Color x:Key="TextPrimaryColor">#202D36</Color>
-    <Color x:Key="TextSecondaryColor">#546574</Color>
-    <Color x:Key="TextMutedColor">#546574</Color>
-    <Color x:Key="AccentPrimaryColor">#076E7D</Color>
-    <Color x:Key="AccentHoverColor">#075866</Color>
-    <Color x:Key="AccentPressedColor">#064753</Color>
-    <Color x:Key="AccentSubtleColor">#DCEEF2</Color>
-    <Color x:Key="DangerColor">#AE3949</Color>
-    <Color x:Key="FocusRingColor">#076E7D</Color>
+    <Color x:Key="SurfaceSecondaryColor">#EEF2F6</Color>
+    <Color x:Key="BorderDefaultColor">#D9E0E8</Color>
+    <Color x:Key="BorderStrongColor">#718096</Color>
+    <Color x:Key="TextPrimaryColor">#0F172A</Color>
+    <Color x:Key="TextSecondaryColor">#475569</Color>
+    <Color x:Key="TextMutedColor">#475569</Color>
+    <Color x:Key="AccentPrimaryColor">#2563EB</Color>
+    <Color x:Key="AccentHoverColor">#1D4ED8</Color>
+    <Color x:Key="AccentPressedColor">#1E40AF</Color>
+    <Color x:Key="AccentSubtleColor">#E9EFFD</Color>
+    <Color x:Key="DangerColor">#BE123C</Color>
+    <Color x:Key="FocusRingColor">#2563EB</Color>
 
     <SolidColorBrush x:Key="BackgroundPrimaryBrush" Color="{StaticResource BackgroundPrimaryColor}" />
     <SolidColorBrush x:Key="BackgroundSidebarBrush" Color="{StaticResource BackgroundSidebarColor}" />
@@ -31,17 +31,20 @@
     <SolidColorBrush x:Key="AccentSubtleBrush" Color="{StaticResource AccentSubtleColor}" />
     <SolidColorBrush x:Key="DangerBrush" Color="{StaticResource DangerColor}" />
     <SolidColorBrush x:Key="FocusRingBrush" Color="{StaticResource FocusRingColor}" />
-    <SolidColorBrush x:Key="RowHoverBrush" Color="#E9F3F5" />
-    <SolidColorBrush x:Key="PositiveDeltaBrush" Color="#38644B" />
-    <SolidColorBrush x:Key="ScrollThumbBrush" Color="#718594" />
+    <SolidColorBrush x:Key="AccentSolidBrush" Color="#2563EB" />
+    <SolidColorBrush x:Key="AccentSolidHoverBrush" Color="#1D4ED8" />
+    <SolidColorBrush x:Key="AccentSolidPressedBrush" Color="#1E40AF" />
+    <SolidColorBrush x:Key="RowHoverBrush" Color="#E8EEF5" />
+    <SolidColorBrush x:Key="PositiveDeltaBrush" Color="#15803D" />
+    <SolidColorBrush x:Key="ScrollThumbBrush" Color="#718096" />
     <LinearGradientBrush x:Key="HeroBackgroundBrush" StartPoint="0,0" EndPoint="1,0.36">
-        <GradientStop Color="#EEF5F6" Offset="0" /><GradientStop Color="#FFFFFF" Offset="0.65" />
+        <GradientStop Color="#EEF3FD" Offset="0" /><GradientStop Color="#FFFFFF" Offset="0.65" />
     </LinearGradientBrush>
     <LinearGradientBrush x:Key="NavigationBackgroundBrush" StartPoint="0,0" EndPoint="1,0.36">
-        <GradientStop Color="#EEF5F6" Offset="0" /><GradientStop Color="#FFFFFF" Offset="0.62" /><GradientStop Color="#FCFAFD" Offset="1" />
+        <GradientStop Color="#F2F6FD" Offset="0" /><GradientStop Color="#FFFFFF" Offset="0.62" /><GradientStop Color="#F9F7FC" Offset="1" />
     </LinearGradientBrush>
     <LinearGradientBrush x:Key="FlareSummaryBackgroundBrush" StartPoint="0,0" EndPoint="1,0.36">
-        <GradientStop Color="#FAF8FC" Offset="0" /><GradientStop Color="#FFFFFF" Offset="0.42" /><GradientStop Color="#EEF5F6" Offset="1" />
+        <GradientStop Color="#F8F6FC" Offset="0" /><GradientStop Color="#FFFFFF" Offset="0.42" /><GradientStop Color="#EEF3FD" Offset="1" />
     </LinearGradientBrush>
     <LinearGradientBrush x:Key="FlareRankNoneBrush" StartPoint="0,0" EndPoint="0,1"><GradientStop Color="#DEDEDE" Offset="0" /><GradientStop Color="#7A7A7B" Offset="0.5" /><GradientStop Color="#393B3B" Offset="1" /></LinearGradientBrush>
     <LinearGradientBrush x:Key="FlareRankMercuryBrush" StartPoint="0,0" EndPoint="0,1"><GradientStop Color="#60CCF4" Offset="0" /><GradientStop Color="#009EDC" Offset="0.5" /><GradientStop Color="#0079BB" Offset="1" /></LinearGradientBrush>
@@ -54,9 +57,9 @@
     <LinearGradientBrush x:Key="FlareRankNeptuneBrush" StartPoint="0,0" EndPoint="0,1"><GradientStop Color="#AFBDE0" Offset="0" /><GradientStop Color="#23379A" Offset="0.5" /><GradientStop Color="#35356C" Offset="1" /></LinearGradientBrush>
     <LinearGradientBrush x:Key="FlareRankSunBrush" StartPoint="0,0" EndPoint="0,1"><GradientStop Color="#FFB200" Offset="0" /><GradientStop Color="#FF7300" Offset="0.5" /><GradientStop Color="#FF1F00" Offset="1" /></LinearGradientBrush>
     <LinearGradientBrush x:Key="FlareRankWorldBrush" StartPoint="0,0" EndPoint="0,1"><GradientStop Color="#B782FF" Offset="0" /><GradientStop Color="#FB6587" Offset="0.33" /><GradientStop Color="#FFF11E" Offset="0.66" /><GradientStop Color="#96FF8F" Offset="1" /></LinearGradientBrush>
-    <SolidColorBrush x:Key="FlareClassicCategoryBrush" Color="#475569" />
-    <SolidColorBrush x:Key="FlareWhiteCategoryBrush" Color="#F8FAFC" />
-    <SolidColorBrush x:Key="FlareGoldCategoryBrush" Color="#B1842F" />
+    <SolidColorBrush x:Key="FlareClassicCategoryBrush" Color="#C97C4E" />
+    <SolidColorBrush x:Key="FlareWhiteCategoryBrush" Color="#96B3C4" />
+    <SolidColorBrush x:Key="FlareGoldCategoryBrush" Color="#D9A31E" />
 
     <SolidColorBrush x:Key="OnAccentBrush" Color="#FFFFFF" />
     <SolidColorBrush x:Key="PrimaryButtonTextBrush" Color="#FFFFFF" />
@@ -68,12 +71,12 @@
     <SolidColorBrush x:Key="StatusCardBorderBrush" Color="#334155" />
     <SolidColorBrush x:Key="StatusCardSecondaryTextBrush" Color="#94A3B8" />
 
-    <SolidColorBrush x:Key="MonitoringInfoBrush" Color="#38BDF8" />
-    <SolidColorBrush x:Key="MonitoringWarningBrush" Color="#F59E0B" />
-    <SolidColorBrush x:Key="MonitoringSuccessBrush" Color="#22C55E" />
-    <SolidColorBrush x:Key="MonitoringNeutralBrush" Color="#94A3B8" />
-    <SolidColorBrush x:Key="MonitoringErrorBrush" Color="#EF4444" />
-    <SolidColorBrush x:Key="MonitoringShuttingDownBrush" Color="#64748B" />
+    <SolidColorBrush x:Key="MonitoringInfoBrush" Color="#0369A1" />
+    <SolidColorBrush x:Key="MonitoringWarningBrush" Color="#92400E" />
+    <SolidColorBrush x:Key="MonitoringSuccessBrush" Color="#15803D" />
+    <SolidColorBrush x:Key="MonitoringNeutralBrush" Color="#475569" />
+    <SolidColorBrush x:Key="MonitoringErrorBrush" Color="{StaticResource DangerColor}" />
+    <SolidColorBrush x:Key="MonitoringShuttingDownBrush" Color="#475569" />
 
     <SolidColorBrush x:Key="NotificationWarningBackgroundBrush" Color="#FFF7ED" />
     <SolidColorBrush x:Key="NotificationWarningBorderBrush" Color="#FDBA74" />
@@ -85,15 +88,15 @@
     <SolidColorBrush x:Key="SuccessBrush" Color="#059669" />
     <SolidColorBrush x:Key="WarningBrush" Color="#FACC15" />
     <SolidColorBrush x:Key="HomeNotesBorderBrush" Color="#10B981" />
-    <SolidColorBrush x:Key="DeltaDangerBackgroundBrush" Color="#E9EFF3" />
-    <SolidColorBrush x:Key="DeltaDangerBorderBrush" Color="#CFDCE3" />
-    <SolidColorBrush x:Key="DeltaFirstBackgroundBrush" Color="#E9EFF3" />
-    <SolidColorBrush x:Key="DeltaFirstBorderBrush" Color="#CFDCE3" />
-    <SolidColorBrush x:Key="DeltaFirstTextBrush" Color="#546574" />
+    <SolidColorBrush x:Key="DeltaDangerBackgroundBrush" Color="#EEF2F6" />
+    <SolidColorBrush x:Key="DeltaDangerBorderBrush" Color="#D9E0E8" />
+    <SolidColorBrush x:Key="DeltaFirstBackgroundBrush" Color="#EEF2F6" />
+    <SolidColorBrush x:Key="DeltaFirstBorderBrush" Color="#D9E0E8" />
+    <SolidColorBrush x:Key="DeltaFirstTextBrush" Color="#475569" />
     <SolidColorBrush x:Key="GraphBestBrush" Color="#059669" />
     <SolidColorBrush x:Key="GraphBackgroundBrush" Color="#FFFFFF" />
     <SolidColorBrush x:Key="GraphMarkerOutlineBrush" Color="#FFFFFF" />
-    <SolidColorBrush x:Key="SegmentBackgroundBrush" Color="#E9EFF3" />
+    <SolidColorBrush x:Key="SegmentBackgroundBrush" Color="#EEF2F6" />
     <SolidColorBrush x:Key="LatestBadgeBackgroundBrush" Color="#EAF2FF" />
     <SolidColorBrush x:Key="LatestBadgeBorderBrush" Color="#93C5FD" />
     <SolidColorBrush x:Key="LatestBadgeTextBrush" Color="#1D4ED8" />
@@ -103,42 +106,78 @@
     <SolidColorBrush x:Key="BadgeNeutralBackgroundBrush" Color="#F1F5F9" />
     <SolidColorBrush x:Key="BadgeNeutralBorderBrush" Color="#94A3B8" />
     <SolidColorBrush x:Key="BadgeNeutralTextBrush" Color="#334155" />
-    <SolidColorBrush x:Key="BadgeWarningBackgroundBrush" Color="#FEF3C7" />
-    <SolidColorBrush x:Key="BadgeWarningBorderBrush" Color="#FACC15" />
-    <SolidColorBrush x:Key="BadgeWarningStrongBorderBrush" Color="#FBBF24" />
-    <SolidColorBrush x:Key="BadgeWarningTextBrush" Color="#854D0E" />
+    <SolidColorBrush x:Key="BadgeGoldBackgroundBrush" Color="#FEF3C7" />
+    <SolidColorBrush x:Key="BadgeGoldBorderBrush" Color="#EAB308" />
+    <SolidColorBrush x:Key="BadgeGoldTextBrush" Color="#854D0E" />
+    <SolidColorBrush x:Key="RankUpperTextBrush" Color="#A16207" />
     <SolidColorBrush x:Key="BadgeCyanBackgroundBrush" Color="#E0F2FE" />
     <SolidColorBrush x:Key="BadgeCyanBorderBrush" Color="#38BDF8" />
     <SolidColorBrush x:Key="BadgeCyanTextBrush" Color="#075985" />
     <SolidColorBrush x:Key="BadgePinkBackgroundBrush" Color="#FCE7F3" />
     <SolidColorBrush x:Key="BadgePinkBorderBrush" Color="#F472B6" />
     <SolidColorBrush x:Key="BadgePinkTextBrush" Color="#9D174D" />
-    <SolidColorBrush x:Key="BadgeDangerBackgroundBrush" Color="#FEE2E2" />
-    <SolidColorBrush x:Key="BadgeDangerBorderBrush" Color="#EF4444" />
-    <SolidColorBrush x:Key="BadgeDangerTextBrush" Color="#991B1B" />
-    <SolidColorBrush x:Key="BadgeSuccessBackgroundBrush" Color="#DCFCE7" />
-    <SolidColorBrush x:Key="BadgeSuccessBorderBrush" Color="#22C55E" />
-    <SolidColorBrush x:Key="BadgeSuccessTextBrush" Color="#166534" />
-    <SolidColorBrush x:Key="BadgeInfoBackgroundBrush" Color="#DBEAFE" />
-    <SolidColorBrush x:Key="BadgeInfoBorderBrush" Color="#2563EB" />
-    <SolidColorBrush x:Key="BadgeInfoTextBrush" Color="#1E3A8A" />
+    <SolidColorBrush x:Key="BadgeRedBackgroundBrush" Color="#FEE2E2" />
+    <SolidColorBrush x:Key="BadgeRedBorderBrush" Color="#EF4444" />
+    <SolidColorBrush x:Key="BadgeRedTextBrush" Color="#991B1B" />
+    <SolidColorBrush x:Key="BadgeGreenBackgroundBrush" Color="#DCFCE7" />
+    <SolidColorBrush x:Key="BadgeGreenBorderBrush" Color="#22C55E" />
+    <SolidColorBrush x:Key="BadgeGreenTextBrush" Color="#166534" />
+    <SolidColorBrush x:Key="BadgeBlueBackgroundBrush" Color="#DBEAFE" />
+    <SolidColorBrush x:Key="BadgeBlueBorderBrush" Color="#2563EB" />
+    <SolidColorBrush x:Key="BadgeBlueTextBrush" Color="#1E3A8A" />
     <SolidColorBrush x:Key="BadgePurpleBackgroundBrush" Color="#EDE9FE" />
     <SolidColorBrush x:Key="BadgePurpleBorderBrush" Color="#8B5CF6" />
     <SolidColorBrush x:Key="BadgePurpleTextBrush" Color="#5B21B6" />
-    <SolidColorBrush x:Key="BadgeSlateBackgroundBrush" Color="#E2E8F0" />
-    <SolidColorBrush x:Key="BadgeSlateBorderBrush" Color="#CBD5E1" />
-    <SolidColorBrush x:Key="BadgeSlateTextBrush" Color="#334155" />
-    <SolidColorBrush x:Key="BadgeMfcBorderBrush" Color="#A855F7" />
-    <SolidColorBrush x:Key="BadgeMfcTextBrush" Color="#0F172A" />
-    <Color x:Key="MfcGradientDangerColor">#FECACA</Color>
-    <Color x:Key="MfcGradientWarningColor">#FEF3C7</Color>
-    <Color x:Key="MfcGradientSuccessColor">#DCFCE7</Color>
-    <Color x:Key="MfcGradientCyanColor">#E0F2FE</Color>
-    <Color x:Key="MfcGradientPurpleColor">#F3E8FF</Color>
+    <SolidColorBrush x:Key="BadgeYellowBackgroundBrush" Color="#FEF9A6" />
+    <SolidColorBrush x:Key="BadgeYellowBorderBrush" Color="#ADA21A" />
+    <SolidColorBrush x:Key="BadgeYellowTextBrush" Color="#524600" />
+    <SolidColorBrush x:Key="BadgeOrangeBackgroundBrush" Color="#FFEDD5" />
+    <SolidColorBrush x:Key="BadgeOrangeBorderBrush" Color="#F97316" />
+    <SolidColorBrush x:Key="BadgeOrangeTextBrush" Color="#9A3412" />
+    <SolidColorBrush x:Key="BadgeBronzeBackgroundBrush" Color="#F7EBE3" />
+    <SolidColorBrush x:Key="BadgeBronzeBorderBrush" Color="#C27849" />
+    <SolidColorBrush x:Key="BadgeBronzeTextBrush" Color="#6B3719" />
+    <SolidColorBrush x:Key="BadgeSilverBackgroundBrush" Color="#E2E8F0" />
+    <SolidColorBrush x:Key="BadgeSilverBorderBrush" Color="#7C8FA8" />
+    <SolidColorBrush x:Key="BadgeSilverTextBrush" Color="#334155" />
+    <LinearGradientBrush x:Key="BadgeRainbowBackgroundBrush" StartPoint="0,0" EndPoint="1,0">
+        <GradientStop Color="#FECACA" Offset="0" />
+        <GradientStop Color="#FEF3C7" Offset="0.25" />
+        <GradientStop Color="#DCFCE7" Offset="0.5" />
+        <GradientStop Color="#E0F2FE" Offset="0.75" />
+        <GradientStop Color="#F3E8FF" Offset="1" />
+    </LinearGradientBrush>
+    <SolidColorBrush x:Key="BadgeRainbowBorderBrush" Color="#A855F7" />
+    <SolidColorBrush x:Key="BadgeRainbowTextBrush" Color="#0F172A" />
+
+    <LinearGradientBrush x:Key="ClearLampMfcBrush" StartPoint="0,0" EndPoint="1,0">
+        <GradientStop Color="#F87171" Offset="0" />
+        <GradientStop Color="#FACC15" Offset="0.25" />
+        <GradientStop Color="#4ADE80" Offset="0.5" />
+        <GradientStop Color="#38BDF8" Offset="0.75" />
+        <GradientStop Color="#C084FC" Offset="1" />
+    </LinearGradientBrush>
+    <SolidColorBrush x:Key="ClearLampPfcBrush" Color="#D97706" />
+    <SolidColorBrush x:Key="ClearLampGfcBrush" Color="#16A34A" />
+    <SolidColorBrush x:Key="ClearLampFcBrush" Color="#2563EB" />
+    <SolidColorBrush x:Key="ClearLampClearBrush" Color="#0284C7" />
+    <SolidColorBrush x:Key="ClearLampFailedBrush" Color="#E11D48" />
 
     <SolidColorBrush x:Key="BeginnerBrush" Color="#5FB8E8" />
+    <SolidColorBrush x:Key="BeginnerTextBrush" Color="#0B2330" />
     <SolidColorBrush x:Key="BasicBrush" Color="#F3A621" />
+    <SolidColorBrush x:Key="BasicTextBrush" Color="#2B1A00" />
     <SolidColorBrush x:Key="DifficultBrush" Color="#E64949" />
+    <SolidColorBrush x:Key="DifficultTextBrush" Color="#FFFFFF" />
     <SolidColorBrush x:Key="ExpertBrush" Color="#27A85A" />
+    <SolidColorBrush x:Key="ExpertTextBrush" Color="#FFFFFF" />
     <SolidColorBrush x:Key="ChallengeBrush" Color="#8C55C9" />
+    <SolidColorBrush x:Key="ChallengeTextBrush" Color="#FFFFFF" />
+
+    <SolidColorBrush x:Key="JudgementMarvelousBrush" Color="#0284C7" />
+    <SolidColorBrush x:Key="JudgementPerfectBrush" Color="#EAB308" />
+    <SolidColorBrush x:Key="JudgementGreatBrush" Color="#16A34A" />
+    <SolidColorBrush x:Key="JudgementGoodBrush" Color="#06B6D4" />
+    <SolidColorBrush x:Key="JudgementOkBrush" Color="#475569" />
+    <SolidColorBrush x:Key="JudgementMissBrush" Color="#E11D48" />
 </ResourceDictionary>
