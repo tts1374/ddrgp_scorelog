@@ -1511,7 +1511,11 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
                 Assert.False(window.StartMonitoringButton.IsVisible);
                 capturing.SetValue(window.ViewModel, false);
 
+                // WPF can constrain Width to the desktop work area unless the test sets MinWidth.
+                window.MinWidth = 1280;
                 window.Width = 1280;
+                DrainDispatcher(window.Dispatcher);
+                Assert.Equal(1280, window.ActualWidth);
                 const string failureReason = "ゲーム画面のサイズが変わったため、自動記録を止めました。ゲーム画面を1280×720に戻してください。";
                 foreach (var state in new[]
                          {
