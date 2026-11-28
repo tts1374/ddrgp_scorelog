@@ -43,7 +43,7 @@
     <sys:String x:Key="各判定数の合計">Sum of all judgment counts</sys:String>
     <sys:String x:Key="消費カロリー">Calories burned</sys:String>
     <sys:String x:Key="プレーごとの消費カロリー合計">Total calories burned across plays</sys:String>
-    <sys:String x:Key="振り返りをコピー">Copy today’s records</sys:String>
+    <sys:String x:Key="今日の記録をコピー">Copy today’s records</sys:String>
     <sys:String x:Key="コピーしました">Copied</sys:String>
     <sys:String x:Key="コピーできませんでした">Could not copy</sys:String>
     <sys:String x:Key="{}{0}のDDR GRAND PRIX">DDR GRAND PRIX on {0}</sys:String>
@@ -566,4 +566,12 @@
     <sys:String x:Key="理由を特定できませんでした。">The reason could not be determined.</sys:String>
     <sys:String x:Key="色の見方">Color guide</sys:String>
     <sys:String x:Key="フレアスキルカテゴリ">Flare Skill categories</sys:String>
+    <sys:String x:Key="記録を見る">Your scores</sys:String>
+    <sys:String x:Key="管理">Manage</sys:String>
+    <sys:String x:Key="記録の管理">Manage records</sys:String>
+    <sys:String x:Key="← ホームに戻る">← Back to Home</sys:String>
+    <sys:String x:Key="最近のプレー">Recent plays</sys:String>
+    <sys:String x:Key="AAA {0:N0} 到達（+{1:N0}）">AAA {0:N0} reached (+{1:N0})</sys:String>
+    <sys:String x:Key="AAA {0:N0} まであと {1:N0}">{1:N0} to AAA {0:N0}</sys:String>
+    <sys:String x:Key="開発者向け操作">Developer actions</sys:String>
 </ResourceDictionary>

@@ -110,6 +110,10 @@
     <SolidColorBrush x:Key="BadgeGoldBorderBrush" Color="#E5B83F" />
     <SolidColorBrush x:Key="BadgeGoldTextBrush" Color="#FFE9A6" />
     <SolidColorBrush x:Key="RankUpperTextBrush" Color="#FACC15" />
+    <SolidColorBrush x:Key="RankBTextBrush" Color="#46B9E9" />
+    <SolidColorBrush x:Key="RankCTextBrush" Color="#F472B6" />
+    <SolidColorBrush x:Key="RankDTextBrush" Color="#F26A78" />
+    <SolidColorBrush x:Key="RankETextBrush" Color="#94A3B8" />
     <SolidColorBrush x:Key="BadgeCyanBackgroundBrush" Color="#123E52" />
     <SolidColorBrush x:Key="BadgeCyanBorderBrush" Color="#46B9E9" />
     <SolidColorBrush x:Key="BadgeCyanTextBrush" Color="#B8ECFF" />

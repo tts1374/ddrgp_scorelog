@@ -100,20 +100,42 @@
         <Setter Property="Focusable" Value="False" />
     </Style>
 
+    <Style x:Key="RailIconStyle" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="Segoe MDL2 Assets" />
+        <Setter Property="FontSize" Value="17" />
+        <Setter Property="Width" Value="44" />
+        <Setter Property="TextAlignment" Value="Center" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+
+    <Style x:Key="RailLabelStyle" TargetType="TextBlock">
+        <Setter Property="Visibility" Value="{DynamicResource RailLabelVisibility}" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+
     <Style x:Key="SidebarButtonStyle" TargetType="Button">
         <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
         <Setter Property="Background" Value="Transparent" />
-        <Setter Property="Padding" Value="16,18" />
-        <Setter Property="FontSize" Value="14" />
+        <Setter Property="MinHeight" Value="40" />
+        <Setter Property="FontSize" Value="13" />
         <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="AutomationProperties.Name" Value="{Binding Content, RelativeSource={RelativeSource Self}}" />
+        <Setter Property="ToolTip" Value="{Binding Content, RelativeSource={RelativeSource Self}}" />
         <Setter Property="FocusVisualStyle" Value="{StaticResource ControlFocusVisualStyle}" />
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="Button">
-                    <Border x:Name="NavigationBorder" Background="{TemplateBinding Background}"
-                            BorderThickness="0,0,0,2" BorderBrush="Transparent"
-                            Padding="{TemplateBinding Padding}">
-                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    <Border x:Name="NavigationBorder" Background="{TemplateBinding Background}" CornerRadius="6">
+                        <Grid>
+                            <Border x:Name="SelectedIndicator" Width="3" Height="22" CornerRadius="1.5"
+                                    HorizontalAlignment="Left" VerticalAlignment="Center" Visibility="Collapsed"
+                                    Background="{DynamicResource AccentPrimaryBrush}" />
+                            <DockPanel>
+                                <TextBlock Text="{TemplateBinding CommandParameter}" Style="{StaticResource RailIconStyle}"
+                                           DockPanel.Dock="Left" />
+                                <TextBlock Text="{TemplateBinding Content}" Style="{StaticResource RailLabelStyle}" />
+                            </DockPanel>
+                        </Grid>
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsMouseOver" Value="True">
@@ -121,22 +143,31 @@
                         </Trigger>
                         <Trigger Property="Tag" Value="Selected">
                             <Setter Property="Foreground" Value="{DynamicResource AccentPrimaryBrush}" />
-                            <Setter Property="FontWeight" Value="SemiBold" />
+                            <Setter Property="FontWeight" Value="Bold" />
                             <Setter TargetName="NavigationBorder" Property="Background" Value="{DynamicResource AccentSubtleBrush}" />
-                            <Setter TargetName="NavigationBorder" Property="BorderBrush" Value="{DynamicResource AccentPrimaryBrush}" />
+                            <Setter TargetName="SelectedIndicator" Property="Visibility" Value="Visible" />
                         </Trigger>
                         <Trigger Property="IsPressed" Value="True">
                             <Setter TargetName="NavigationBorder" Property="Background" Value="{DynamicResource AccentSubtleBrush}" />
-                        </Trigger>
-                        <Trigger Property="IsEnabled" Value="False">
-                            <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
-                            <Setter Property="Cursor" Value="Arrow" />
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
             </Setter.Value>
         </Setter>
     </Style>
+
+    <Style x:Key="InlineRankStyle" TargetType="TextBlock">
+        <Setter Property="Foreground" Value="{DynamicResource TextMutedBrush}" />
+        <Setter Property="FontWeight" Value="ExtraBold" />
+        <Style.Triggers>
+            <Trigger Property="Tag" Value="Upper"><Setter Property="Foreground" Value="{DynamicResource RankUpperTextBrush}" /></Trigger>
+            <Trigger Property="Tag" Value="B"><Setter Property="Foreground" Value="{DynamicResource RankBTextBrush}" /></Trigger>
+            <Trigger Property="Tag" Value="C"><Setter Property="Foreground" Value="{DynamicResource RankCTextBrush}" /></Trigger>
+            <Trigger Property="Tag" Value="D"><Setter Property="Foreground" Value="{DynamicResource RankDTextBrush}" /></Trigger>
+            <Trigger Property="Tag" Value="E"><Setter Property="Foreground" Value="{DynamicResource RankETextBrush}" /></Trigger>
+        </Style.Triggers>
+    </Style>
+
 
     <Style x:Key="SecondaryButtonStyle" TargetType="Button">
         <Setter Property="MinHeight" Value="36" />
@@ -167,6 +198,27 @@
                         </Trigger>
                     </ControlTemplate.Triggers>
                 </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="RailActionStyle" TargetType="Button" BasedOn="{StaticResource SecondaryButtonStyle}">
+        <Setter Property="MinWidth" Value="0" />
+        <Setter Property="Padding" Value="3,6" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="AutomationProperties.Name" Value="{Binding Content, RelativeSource={RelativeSource Self}}" />
+        <Setter Property="ToolTip" Value="{Binding Content, RelativeSource={RelativeSource Self}}" />
+        <Setter Property="ContentTemplate">
+            <Setter.Value>
+                <DataTemplate>
+                    <Grid>
+                        <TextBlock Text="{Binding}" Style="{StaticResource RailLabelStyle}"
+                                   TextWrapping="Wrap" TextAlignment="Center" />
+                        <TextBlock Text="{Binding CommandParameter, RelativeSource={RelativeSource AncestorType=Button}}"
+                                   FontFamily="Segoe MDL2 Assets" FontSize="15"
+                                   Visibility="{DynamicResource RailIconOnlyVisibility}" />
+                    </Grid>
+                </DataTemplate>
             </Setter.Value>
         </Setter>
     </Style>
@@ -717,6 +769,12 @@
                 <Setter Property="Background" Value="{DynamicResource ChallengeBrush}" />
             </DataTrigger>
         </Style.Triggers>
+    </Style>
+
+    <Style x:Key="DifficultyStripeStyle" TargetType="Border" BasedOn="{StaticResource DifficultyBadgeStyle}">
+        <Setter Property="Width" Value="3" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="VerticalAlignment" Value="Stretch" />
     </Style>
 
     <Style x:Key="DifficultyBadgeTextStyle" TargetType="TextBlock">

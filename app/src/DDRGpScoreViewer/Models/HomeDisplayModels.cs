@@ -174,6 +174,8 @@ public sealed class HomePlayItem
 
     public string HomePlayedAtDisplay => HomeTimestampFormatter.Format(Play.PlayedAt);
 
+    public string ChartAndTimeDisplay => $"{PlayStyleDisplay} · {Difficulty} · {LevelDisplay} · {HomePlayedAtDisplay}";
+
     public string PreviousScoreDisplay => PreviousScore is int score
         ? Localization.Format("前回 {0:N0}", score)
         : Localization.Get("前回 —");
@@ -207,6 +209,16 @@ public sealed class HomePlayItem
 
     public string ExScoreBestDeltaGroup =>
         GetDeltaGroup(Play.ExScore, PreviousExScore);
+
+    public string ExScoreUpdateWithLabelDisplay => IsExScoreBestUpdate
+        ? $"EX {ExScoreUpdateAmountDisplay}"
+        : "—";
+
+    public string AaaTargetDisplay => Play.Score >= AaaTarget
+        ? Localization.Format("AAA {0:N0} 到達（+{1:N0}）", AaaTarget, Play.Score - AaaTarget)
+        : Localization.Format("AAA {0:N0} まであと {1:N0}", AaaTarget, AaaTarget - Play.Score);
+
+    private const int AaaTarget = 990_000;
 
     private static string FormatDelta(int current, int? previous)
     {

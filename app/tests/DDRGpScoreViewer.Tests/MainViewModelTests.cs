@@ -9,6 +9,33 @@ namespace DDRGpScoreViewer.Tests;
 public sealed class MainViewModelTests
 {
     [Fact]
+    public void Home_history_handoff_loads_the_target_into_the_existing_play_collection()
+    {
+        using var fixture = new DatabaseFixture();
+        var repository = new ScoreViewerRepository();
+        var date = DateTimeOffset.Parse("2026-11-28T12:00:00+09:00");
+        for (var i = 0; i <= ScoreViewerRepository.RecentPlayPageSize; i++)
+        {
+            fixture.AddPlay($"play-{i}", date.AddMinutes(i).ToString("O"), 990_000, 1200);
+        }
+
+        var viewModel = new MainViewModel(repository);
+        viewModel.Load(fixture.ScorePath, fixture.MasterPath, fixture.CatalogPath, persist: false);
+        var olderPlay = Assert.Single(repository.LoadRecentPlays(
+            fixture.ScorePath, fixture.MasterPath, ScoreViewerRepository.RecentPlayPageSize, 1));
+        Assert.DoesNotContain(viewModel.Plays, play => play.PlayId == olderPlay.PlayId);
+
+        Assert.True(viewModel.SelectHistoryPlayFromHome(new HomePlayItem(olderPlay, null, null)));
+
+        Assert.Same(viewModel.Plays.Last(), viewModel.SelectedPlay);
+        Assert.Equal("play-0", viewModel.SelectedPlay?.PlayId);
+        Assert.Equal(MainViewModel.NavigationOrigin.Home, viewModel.BackOrigin);
+        viewModel.ClearNavigationOrigin();
+        Assert.Equal(MainViewModel.NavigationOrigin.None, viewModel.BackOrigin);
+        Assert.Equal("play-0", viewModel.SelectedPlay?.PlayId);
+    }
+
+    [Fact]
     public void Load_projects_home_summary_recent_plays_and_best_updates()
     {
         using var fixture = new DatabaseFixture();

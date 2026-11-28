@@ -4,6 +4,7 @@ using System.Net.Http;
 using System.Text;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Automation;
 using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -12,6 +13,7 @@ using DDRGpScoreViewer;
 using DDRGpScoreViewer.Controls;
 using DDRGpScoreViewer.Data;
 using DDRGpScoreViewer.Models;
+using DDRGpScoreViewer.ViewModels;
 using DDRGpScoreViewer.WebBestSync;
 using DDRGpScoreViewer.WebIdentity;
 using Microsoft.Data.Sqlite;
@@ -547,25 +549,40 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
 
     [Theory]
     [InlineData("ja", "light", 1280, 760, false, "今日の記録をコピー")]
-    [InlineData("en", "dark", 960, 640, true, "Copy today’s records")]
+    [InlineData("ja", "dark", 1280, 760, true, "今日の記録をコピー")]
+    [InlineData("ja", "light", 960, 640, true, "今日の記録をコピー")]
+    [InlineData("ja", "dark", 960, 640, true, "今日の記録をコピー")]
+    [InlineData("en", "dark", 1280, 760, true, "Copy today’s records")]
+    [InlineData("en", "dark", 1108, 760, true, "Copy today’s records")]
+    [InlineData("en", "light", 960, 640, true, "Copy today’s records")]
+    [InlineData("ko", "dark", 1280, 760, true, "오늘 기록 복사")]
     [InlineData("ko", "light", 960, 640, true, "오늘 기록 복사")]
     public void Home_keeps_both_lists_copy_and_navigation_reachable(
         string language, string theme, double width, double height, bool longTitle, string copyButtonText)
     {
         using var fixture = new DatabaseFixture();
         var now = HomeDisplayPeriod.From(DateTimeOffset.Now).Start.AddHours(5);
+        var latestScore = width == 1108 ? 1_000_000 : 991_420;
+        var previousScore = width == 1108 ? 0 : 900_000;
         for (var index = 0; index < 6; index++)
         {
             var songId = $"home-song-{index}";
             var chartId = $"home-chart-{index}";
             fixture.AddMasterSongAndChart(songId,
-                longTitle ? "アルストロメリア (walk with you remix) — A long title to check wrapping" : "POSSESSION",
+                longTitle
+                    ? (index + (language == "ko" ? 1 : 0)) % 2 == 0
+                        ? "50th Memorial Songs -二人の時 ～under the cherry blossoms～-"
+                        : "お米の美味しい炊き方、そしてお米を食べることによるその効果。"
+                    : "POSSESSION",
                 "Artist", chartId);
             fixture.AddPlay($"before-{index}", now.AddDays(-1).AddMinutes(-index).ToString("O"),
-                900_000, 1_000, songId, chartId);
+                previousScore, 1_000, songId, chartId);
             fixture.AddPlay($"latest-{index}", now.AddMinutes(-index).ToString("O"),
-                980_000, 1_500, songId, chartId, flareRank: "IX", ok: 4, calories: 15.3);
+                latestScore - index * 10, 1_500, songId, chartId, flareRank: "IX", ok: 4, calories: 247.1);
         }
+
+        fixture.ExecuteScoreSql("UPDATE plays SET marvelous = 20000 WHERE play_id LIKE 'latest-%'; " +
+                                "UPDATE plays SET marvelous = 24268 WHERE play_id = 'latest-0';");
 
         applicationFixture.Run(() =>
         {
@@ -577,24 +594,84 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
                 ThemeManager.Apply(theme);
                 window = new MainWindow(StartupPaths(fixture)) { MinWidth = width, MinHeight = height, Width = width, Height = height };
                 window.ViewModel.Load(fixture.ScorePath, fixture.MasterPath, fixture.CatalogPath, persist: false);
+                if (width == 1108)
+                {
+                    window.HomeLatestScoreAndDelta.MaxWidth = 420;
+                }
                 window.Show();
                 DrainDispatcher(window.Dispatcher);
 
                 Assert.Equal(copyButtonText, window.HomeSummaryCopyButton.Content);
+                Assert.Same(window.FindResource("PrimaryButtonStyle"), window.HomeSummaryCopyButton.Style);
+                Assert.Same(window.FindResource("AccentSolidBrush"), window.HomeSummaryCopyButton.Background);
+                var rankColors = theme == UserSettings.LightTheme
+                    ? new[] { "#0369A1", "#BE185D", "#B91C1C", "#475569" }
+                    : new[] { "#46B9E9", "#F472B6", "#F26A78", "#94A3B8" };
+                foreach (var (rank, expected) in "BCDE".Zip(rankColors))
+                {
+                    var brush = Assert.IsType<SolidColorBrush>(window.FindResource($"Rank{rank}TextBrush"));
+                    Assert.Equal(ColorConverter.ConvertFromString(expected), brush.Color);
+                }
+                Assert.Equal(3, window.HomeTodayMetrics.Children.Count);
+                Assert.All(window.HomeTodayMetrics.Children.Cast<Border>(), metric =>
+                {
+                    Assert.Equal(new CornerRadius(8), metric.CornerRadius);
+                    Assert.Equal(new Thickness(12, 6, 12, 6), metric.Padding);
+                    Assert.Same(window.FindResource("SurfaceSecondaryBrush"), metric.Background);
+                    var label = Assert.Single(FindVisualChildren<TextBlock>(metric), item => item.FontWeight == FontWeights.SemiBold &&
+                        ReferenceEquals(item.Foreground, window.FindResource("TextSecondaryBrush")));
+                    AssertTextFits(label, metric);
+                });
+                Assert.Equal("124,850", window.HomeTodayNotesValue.Text);
+                Assert.Equal("1,482.6 kcal", window.HomeTodayCaloriesValue.Text);
+                AssertTextFits(window.HomeTodayNotesValue, window.HomeTodayCard);
+                AssertTextFits(window.HomeTodayCaloriesValue, window.HomeTodayCard);
+                Assert.Equal(width <= 1100 ? 1 : 0, Grid.GetRow(window.HomeTodayCard));
+                var deltaPosition = window.HomeLatestDeltaPanel.TranslatePoint(new Point(), window.HomeLatestScorePanel);
+                if (width == 1280)
+                {
+                    Assert.True(deltaPosition.X >= window.HomeLatestScorePanel.ActualWidth);
+                    Assert.Equal(window.HomeLatestScorePanel.ActualHeight, deltaPosition.Y + window.HomeLatestDeltaPanel.ActualHeight, precision: 2);
+                }
+                else
+                {
+                    Assert.True(deltaPosition.Y + 0.5 >= window.HomeLatestScorePanel.ActualHeight,
+                        $"Deltas start at {deltaPosition} relative to the {window.HomeLatestScorePanel.ActualHeight}-DIP score panel.");
+                }
+                Assert.Equal(TextWrapping.Wrap, window.HomeLatestSongTitle.TextWrapping);
+                Assert.Equal(window.ViewModel.HomeLatestPlay!.SongTitle, window.HomeLatestSongTitle.Text);
+                if (longTitle && width > 1100)
+                {
+                    Assert.True(window.HomeLatestSongTitle.ActualHeight > window.HomeLatestSongTitle.LineHeight);
+                }
+                else if (window.HomeLatestSongTitle.ActualHeight <= window.HomeLatestSongTitle.LineHeight)
+                {
+                    AssertTextFits(window.HomeLatestSongTitle, window.HomeLatestPlayCard);
+                }
+                Assert.Equal(latestScore, window.HomeScoreGauge.Value);
+                Assert.Equal(1_000_000, window.HomeScoreGauge.Maximum);
+                Assert.Contains((latestScore - 990_000).ToString("N0"), window.ViewModel.HomeLatestPlay.AaaTargetDisplay);
                 Assert.Equal(5, window.ViewModel.HomeRecentPlays.Count);
                 Assert.Equal(5, window.ViewModel.HomeBestUpdates.Count);
                 var lists = FindVisualChildren<ItemsControl>(window.HomeListsGrid).ToArray();
                 Assert.Contains(lists, list => ReferenceEquals(list.ItemsSource, window.ViewModel.HomeRecentPlays));
                 Assert.Contains(lists, list => ReferenceEquals(list.ItemsSource, window.ViewModel.HomeBestUpdates));
                 Assert.Equal(0, window.HomeScrollViewer.ScrollableWidth);
-                if (!longTitle && width == 1280 && height == 760 &&
+                var copyBottom = window.HomeSummaryCopyButton.TranslatePoint(
+                    new Point(0, window.HomeSummaryCopyButton.ActualHeight), window.HomeScrollViewer);
+                Assert.InRange(copyBottom.Y, 0, window.HomeScrollViewer.ViewportHeight + 1);
+                var firstUpdate = window.ViewModel.HomeBestUpdates[0];
+                var updateDelta = FindVisualChildren<TextBlock>(window.HomeUpdatesPanel)
+                    .First(text => text.IsVisible && text.Text == firstUpdate.ScoreUpdateAmountDisplay);
+                Assert.Equal(window.FindResource("PositiveDeltaBrush"), updateDelta.Foreground);
+                if (width == 1280 && height == 760 &&
                     Math.Abs(window.ActualWidth - width) < 1 && Math.Abs(window.ActualHeight - height) < 1)
                 {
                     Assert.InRange(window.HomeScrollViewer.ScrollableHeight, 0, 1);
                 }
                 window.HomeScrollViewer.ScrollToEnd();
                 DrainDispatcher(window.Dispatcher);
-                if (longTitle)
+                if (width <= 1100)
                 {
                     Assert.True(window.HomeScrollViewer.VerticalOffset > 0);
                 }
@@ -604,14 +681,18 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
                 window.HomeSummaryCopyButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 Assert.Equal(window.ViewModel.HomeTodaySummaryCopyText, Clipboard.GetText());
                 Assert.Equal(Localization.Get("コピーしました"), window.HomeSummaryCopyButton.Content);
+                Assert.Contains(FindVisualChildren<TextBlock>(window.HomeSummaryCopyButton),
+                    text => text.IsVisible && text.Text == Localization.Get("コピーしました"));
 
-                var historyLink = FindVisualChildren<Button>(window.HomeHistoryPanel).Single();
+                var historyLink = FindVisualChildren<Button>(window.HomeHistoryPanel)
+                    .Single(button => Equals(button.Content, Localization.Get("履歴を見る")));
                 historyLink.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 DrainDispatcher(window.Dispatcher);
                 Assert.Equal("Selected", window.HistoryNavigation.Tag);
                 window.HomeNavigation.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 DrainDispatcher(window.Dispatcher);
-                var bestLink = FindVisualChildren<Button>(window.HomeUpdatesPanel).Single();
+                var bestLink = FindVisualChildren<Button>(window.HomeUpdatesPanel)
+                    .Single(button => Equals(button.Content, Localization.Get("自己ベストを見る")));
                 bestLink.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 DrainDispatcher(window.Dispatcher);
                 Assert.Equal("Selected", window.BestNavigation.Tag);
@@ -628,6 +709,168 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
                 Localization.Configure(UserSettings.JapaneseLanguage);
             }
         });
+    }
+
+    [Fact]
+    public void Home_feed_rows_open_their_records_and_keep_their_back_target()
+    {
+        using var fixture = new DatabaseFixture();
+        fixture.AddMasterSongAndChart("double", "Double chart", "Artist", "double-chart",
+            playStyle: "DOUBLE", difficulty: "CHALLENGE", level: 18);
+        fixture.AddPlay("earlier-double", "2026-07-10T02:00:00Z", 950_000, 1000, "double", "double-chart");
+        fixture.AddPlay("home-target", "2026-07-11T02:00:00Z", 980_000, 1200, "double", "double-chart");
+        fixture.AddPlay("latest-single", "2026-07-12T02:00:00Z", 990_000, 1300);
+        applicationFixture.Run(() =>
+        {
+            PrepareStartupResources();
+            using var scope = new Issue293WindowScope(new MainWindow(StartupPaths(fixture)));
+            var window = scope.Window;
+            var vm = window.ViewModel;
+            vm.Load(fixture.ScorePath, fixture.MasterPath, fixture.CatalogPath, persist: false);
+            vm.BestPlayStyleFilter = "SINGLE";
+            vm.BestLevelFilter = "level_17";
+            window.Show();
+            DrainDispatcher(window.Dispatcher);
+            var bestRows = vm.ChartBests.ToArray();
+
+            static Button FindHomeRow(FrameworkElement panel, string playId) =>
+                FindVisualChildren<Button>(panel).Single(button =>
+                    button.DataContext is HomePlayItem { Play.PlayId: var id } && id == playId);
+
+            FindHomeRow(window.HomeUpdatesPanel, "home-target").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            DrainDispatcher(window.Dispatcher);
+            Assert.Equal(2, window.ContentTabs.SelectedIndex);
+            Assert.Equal("Double chart", window.PageTitle.Text);
+            Assert.Equal("double-chart", vm.ChartDetailChart?.ChartId);
+            Assert.Equal("← ホームに戻る", window.PageBackButton.Content);
+            Assert.Same(window.FindResource("SecondaryButtonStyle"), window.PageBackButton.Style);
+            Assert.Equal(32, window.PageBackButton.MinHeight);
+            Assert.Equal(new Thickness(12, 5, 12, 5), window.PageBackButton.Padding);
+            Assert.Equal(12.5, window.PageBackButton.FontSize);
+            Assert.Contains(FindVisualChildren<TextBlock>(window.PageBackButton),
+                text => text.IsVisible && text.Text == "← ホームに戻る");
+            Assert.Equal("Selected", window.HomeNavigation.Tag);
+            Assert.Equal("SINGLE", vm.BestPlayStyleFilter);
+            Assert.Equal("level_17", vm.BestLevelFilter);
+            Assert.Equal(bestRows, vm.ChartBests);
+            Assert.Null(vm.SelectedChartBest);
+            window.PageBackButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            DrainDispatcher(window.Dispatcher);
+            Assert.Equal(0, window.ContentTabs.SelectedIndex);
+            Assert.Equal(Visibility.Collapsed, window.PageBackButton.Visibility);
+
+            FindHomeRow(window.HomeHistoryPanel, "home-target").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            DrainDispatcher(window.Dispatcher);
+            Assert.Equal(3, window.ContentTabs.SelectedIndex);
+            Assert.Equal("← ホームに戻る", window.PageBackButton.Content);
+            Assert.Equal("home-target", vm.SelectedPlay?.PlayId);
+            Assert.Same(vm.SelectedPlay, window.RecentPlayGrid.SelectedItem);
+            Assert.Same(vm.SelectedPlay, window.HistoryDetailGrid.DataContext);
+            Assert.NotNull(window.RecentPlayGrid.ItemContainerGenerator.ContainerFromItem(vm.SelectedPlay));
+            window.PageBackButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            DrainDispatcher(window.Dispatcher);
+            Assert.Equal(0, window.ContentTabs.SelectedIndex);
+
+            FindHomeRow(window.HomeHistoryPanel, "home-target").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            window.HistoryNavigation.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Assert.Equal(3, window.ContentTabs.SelectedIndex);
+            Assert.Equal(Visibility.Collapsed, window.PageBackButton.Visibility);
+            window.HomeNavigation.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            DrainDispatcher(window.Dispatcher);
+            FindHomeRow(window.HomeUpdatesPanel, "home-target").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            window.SettingsNavigation.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Assert.Equal(5, window.ContentTabs.SelectedIndex);
+            Assert.Equal(MainViewModel.NavigationOrigin.None, vm.BackOrigin);
+            Assert.Equal(Visibility.Collapsed, window.PageBackButton.Visibility);
+        });
+    }
+
+    [Theory]
+    [InlineData("ja", "dark", 1280, 760)]
+    [InlineData("en", "light", 1280, 760)]
+    [InlineData("ko", "dark", 960, 640)]
+    public void Empty_home_shows_guidance_without_a_difficulty_stripe(
+        string language, string theme, double width, double height)
+    {
+        using var fixture = new DatabaseFixture();
+        applicationFixture.Run(() =>
+        {
+            PrepareStartupResources();
+            Localization.Configure(language);
+            ThemeManager.Apply(theme);
+            try
+            {
+                using var scope = new Issue293WindowScope(new MainWindow(StartupPaths(fixture))
+                {
+                    MinWidth = width,
+                    MinHeight = height,
+                    Width = width,
+                    Height = height,
+                });
+                var window = scope.Window;
+                window.ViewModel.Load(fixture.ScorePath, fixture.MasterPath, fixture.CatalogPath, persist: false);
+                window.Show();
+                DrainDispatcher(window.Dispatcher);
+                Assert.All(new[]
+                {
+                    "まだプレーの記録がありません。ゲームのリザルト画面から自動で記録します。",
+                    "自己ベスト更新はまだありません",
+                }, message => Assert.Contains(FindVisualChildren<TextBlock>(window.HomeScrollViewer),
+                    text => text.IsVisible && text.Text == Localization.Get(message)));
+                Assert.Equal(Visibility.Collapsed, window.HomeLatestDifficultyStripe.Visibility);
+                Assert.Equal(0, window.HomeScrollViewer.ScrollableWidth);
+            }
+            finally
+            {
+                ThemeManager.Apply(UserSettings.LightTheme);
+                Localization.Configure(UserSettings.JapaneseLanguage);
+            }
+        });
+    }
+
+    [Fact]
+    public void Rail_has_six_product_screens_and_a_debug_only_developer_entry()
+    {
+        using var fixture = new DatabaseFixture();
+        applicationFixture.Run(() =>
+        {
+            PrepareStartupResources();
+            using var scope = new Issue293WindowScope(new MainWindow(StartupPaths(fixture)));
+            var window = scope.Window;
+            var railButtons = window.RailMenu.Children.OfType<Button>().ToArray();
+            var productScreens = new[]
+            {
+                window.HomeNavigation, window.BestNavigation, window.HistoryNavigation,
+                window.FlareSkillNavigation, window.SettingsNavigation, window.DataManagementNavigation,
+            };
+#if DEBUG
+            Assert.Equal(productScreens, railButtons.Take(6));
+            Assert.Equal(7, railButtons.Length);
+            var developerEntry = railButtons[6];
+            Assert.Equal("DeveloperOperationsNavigation", developerEntry.Name);
+            var menu = Assert.IsType<ContextMenu>(Assert.IsType<Button>(developerEntry).ContextMenu);
+            var actions = menu.Items.Cast<MenuItem>().ToArray();
+            Assert.Equal(new[] { "1フレーム取得", "連続取得を開始", "単発保存" }, actions.Select(action => action.Header));
+            Assert.All(actions, action => Assert.True(action.IsEnabled));
+            window.ViewModel.SetMonitoringStartPending(true);
+            Assert.All(actions, action => Assert.False(action.IsEnabled));
+#else
+            Assert.Equal(productScreens, railButtons);
+            Assert.Null(typeof(MainWindow).GetMethod("AddDeveloperActions",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic));
+#endif
+        });
+    }
+
+    private sealed class Issue293WindowScope(MainWindow window) : IDisposable
+    {
+        public MainWindow Window { get; } = window;
+
+        public void Dispose()
+        {
+            Window.PrepareForApplicationExit();
+            Window.Close();
+        }
     }
 
 #if DEBUG
@@ -1076,7 +1319,7 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
                              "PrimaryButtonStyle",
                              "SidebarButtonStyle",
                              "HomeSectionLinkStyle",
-                             "HomeSummaryCopyButtonStyle",
+                             "SecondaryButtonStyle",
                              "BestStyleButtonStyle",
                              "BestSegmentButtonStyle",
                              "BestBrowseTabButtonStyle",
@@ -1201,6 +1444,27 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
                 Assert.Equal(640, window.MinHeight);
                 Assert.Equal("待機中", window.MonitoringStateText.Text);
                 Assert.Equal("—", window.MonitoringReasonText.Text);
+                Assert.Contains(window.MonitoringStatusCard,
+                    FindVisualChildren<Border>(window.NavigationRail));
+                Assert.DoesNotContain(window.MonitoringStatusCard,
+                    FindVisualChildren<Border>(window.MainContentGrid));
+                Assert.Equal("待機中 — —", AutomationProperties.GetName(window.MonitoringStatusSummary));
+                Assert.IsType<ToolTip>(window.MonitoringStatusSummary.ToolTip);
+                Assert.True(window.MonitoringStatusSummary.Focusable);
+                Assert.True(ToolTipService.GetShowsToolTipOnKeyboardFocus(window.MonitoringStatusSummary));
+                window.Activate();
+                var lastRailButton = window.RailMenu.Children.OfType<Button>().Last();
+                Assert.True(lastRailButton.Focus());
+                Assert.True(lastRailButton.MoveFocus(new TraversalRequest(FocusNavigationDirection.Next)));
+                Assert.Same(window.MonitoringStatusSummary, Keyboard.FocusedElement);
+                Assert.False(window.MonitoringStatusFullText.IsVisible);
+                Assert.False(window.MonitoringStateText.IsVisible);
+                Assert.False(window.MonitoringReasonText.IsVisible);
+                Assert.Equal(10, window.MonitoringStateIndicator.ActualWidth);
+                Assert.Equal(10, window.MonitoringStateIndicator.ActualHeight);
+                var dot = window.MonitoringStateIndicator.TranslatePoint(new Point(5, 5), window.MonitoringStatusSummary);
+                Assert.Equal(window.MonitoringStatusSummary.ActualWidth / 2, dot.X, precision: 2);
+                Assert.Equal(window.MonitoringStatusSummary.ActualHeight / 2, dot.Y, precision: 2);
                 Assert.Equal(TextWrapping.Wrap, window.MonitoringReasonText.TextWrapping);
                 Assert.Equal(Visibility.Collapsed, window.StartMonitoringButton.Visibility);
                 Assert.Equal("自動記録を始める", window.StartMonitoringButton.Content);
@@ -1214,6 +1478,13 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
                     Color.FromRgb(3, 105, 161),
                     Assert.IsType<SolidColorBrush>(window.MonitoringStateText.Foreground).Color);
 
+                window.ViewModel.StartMonitoringOnLaunch = false;
+                Assert.True(window.ViewModel.SaveUserSettings());
+                DrainDispatcher(window.Dispatcher);
+                Assert.True(window.StartMonitoringButton.IsVisible && window.StartMonitoringButton.IsEnabled);
+                Assert.Equal("自動記録を始める", window.StartMonitoringButton.Content);
+                Assert.True(window.StartMonitoringButton.ActualWidth <= window.MonitoringStatusCard.ActualWidth);
+
                 window.ViewModel.StopContinuousCaptureAsync().GetAwaiter().GetResult();
                 DrainDispatcher(window.Dispatcher);
 
@@ -1224,10 +1495,48 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
                 Assert.Equal(Visibility.Collapsed, window.StopMonitoringButton.Visibility);
                 Assert.False(window.StopMonitoringButton.IsEnabled);
 
+                Assert.True(window.StartMonitoringButton.ActualWidth <= window.MonitoringStatusCard.ActualWidth);
+                Assert.Equal(window.StartMonitoringButton.Content, AutomationProperties.GetName(window.StartMonitoringButton));
+
+                var viewModelType = typeof(MainViewModel);
+                var setMonitoringState = viewModelType.GetMethod("SetMonitoringState",
+                    System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+                var capturing = viewModelType.GetProperty(nameof(MainViewModel.IsContinuousCapturing))!;
+                capturing.SetValue(window.ViewModel, true);
+                setMonitoringState.Invoke(window.ViewModel, [MonitoringState.Monitoring, "リザルト画面を待っています。"]);
+                DrainDispatcher(window.Dispatcher);
+                Assert.True(window.StopMonitoringButton.IsVisible && window.StopMonitoringButton.IsEnabled);
+                Assert.True(window.StopMonitoringButton.ActualWidth <= window.MonitoringStatusCard.ActualWidth);
+                Assert.Equal(window.StopMonitoringButton.Content, AutomationProperties.GetName(window.StopMonitoringButton));
+                Assert.False(window.StartMonitoringButton.IsVisible);
+                capturing.SetValue(window.ViewModel, false);
+
+                window.Width = 1280;
+                const string failureReason = "ゲーム画面のサイズが変わったため、自動記録を止めました。ゲーム画面を1280×720に戻してください。";
+                foreach (var state in new[]
+                         {
+                             MonitoringState.Blocked, MonitoringState.CaptureFailed, MonitoringState.WorkflowFailed,
+                             MonitoringState.TargetClosed, MonitoringState.DeviceLost, MonitoringState.Resized,
+                         })
+                {
+                    setMonitoringState.Invoke(window.ViewModel, [state, failureReason]);
+                    DrainDispatcher(window.Dispatcher);
+                    Assert.Same(window.FindResource("NotificationWarningBackgroundBrush"), window.MonitoringStatusCard.Background);
+                    Assert.Same(window.FindResource("NotificationWarningBorderBrush"), window.MonitoringStatusCard.BorderBrush);
+                }
+                Assert.Equal(failureReason, window.MonitoringReasonText.Text);
+                Assert.True(window.MonitoringReasonText.IsVisible);
+                Assert.Equal(TextTrimming.None, window.MonitoringReasonText.TextTrimming);
+                Assert.True(window.MonitoringReasonText.ActualHeight > window.MonitoringReasonText.FontSize * 2);
+                Assert.DoesNotContain(FindVisualChildren<TextBlock>(window.MainContentGrid),
+                    text => text.IsVisible && text.Text == failureReason);
+
                 window.ViewModel.RequestApplicationExit();
                 DrainDispatcher(window.Dispatcher);
 
                 Assert.Equal("終了処理中", window.MonitoringStateText.Text);
+                Assert.Same(window.FindResource("SurfacePrimaryBrush"), window.MonitoringStatusCard.Background);
+                Assert.Same(window.FindResource("BorderDefaultBrush"), window.MonitoringStatusCard.BorderBrush);
                 Assert.Contains("アプリを終了", window.MonitoringReasonText.Text, StringComparison.Ordinal);
                 Assert.Equal(Visibility.Collapsed, window.StartMonitoringButton.Visibility);
                 Assert.False(window.StartMonitoringButton.IsEnabled);
@@ -1521,7 +1830,11 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
                 window.BestChartGrid.SelectedItem = selected;
                 DrainDispatcher(window.Dispatcher);
                 Assert.Equal(2, window.ContentTabs.SelectedIndex);
-                window.BestNavigation.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                Assert.Equal("← 自己ベストに戻る", window.PageBackButton.Content);
+                Assert.Contains(FindVisualChildren<TextBlock>(window.PageBackButton),
+                    text => text.IsVisible && text.Text == "← 自己ベストに戻る");
+                Assert.Equal("Selected", window.BestNavigation.Tag);
+                window.PageBackButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                 // Reattaching the page can reset the viewer before the queued restoration.
                 scrollViewer.ScrollToTop();
                 DrainDispatcher(window.Dispatcher);
@@ -2057,15 +2370,18 @@ public sealed class LocalizationViewTests(LocalizationApplicationFixture applica
                 DrainDispatcher(window.Dispatcher);
 
                 var navigation = new[] { window.HomeNavigation, window.BestNavigation, window.HistoryNavigation, window.FlareSkillNavigation, window.SettingsNavigation, window.DataManagementNavigation };
-                var previousRight = 0.0;
+                Assert.Equal(72, window.RailColumn.ActualWidth);
+                Assert.Equal(Localization.Get("プレー履歴"), window.HistoryNavigation.Content);
+                Assert.Equal(Localization.Get("記録の管理"), window.DataManagementNavigation.Content);
+                var previousBottom = 0.0;
                 foreach (var button in navigation)
                 {
-                    var position = button.TranslatePoint(new Point(0, 0), window);
-                    Assert.True(
-                        position.X + 0.5 >= previousRight,
-                        $"Top navigation must not overlap: {button.Name} starts at {position.X} before {previousRight}.");
-                    Assert.True(position.X + button.ActualWidth <= window.ActualWidth, "Top navigation must fit the smallest window.");
-                    previousRight = position.X + button.ActualWidth;
+                    var position = button.TranslatePoint(new Point(), window.NavigationRail);
+                    Assert.True(position.Y >= previousBottom);
+                    Assert.True(position.X + button.ActualWidth <= window.NavigationRail.ActualWidth);
+                    Assert.Equal(button.Content, button.ToolTip);
+                    Assert.Equal(button.Content, AutomationProperties.GetName(button));
+                    previousBottom = position.Y + button.ActualHeight;
                     button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
                     DrainDispatcher(window.Dispatcher);
                     Assert.Equal("Selected", button.Tag);
