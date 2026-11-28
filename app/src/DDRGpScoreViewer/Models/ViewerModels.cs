@@ -62,39 +62,9 @@ public sealed record PlayHistoryItem(
     public string RankDisplay => string.IsNullOrWhiteSpace(Rank) ? "—" : Rank;
     public bool HasRank => !string.IsNullOrWhiteSpace(Rank);
     public bool HasClear => !string.IsNullOrWhiteSpace(ClearType);
-    public string RankBadgeGroup => Rank switch
-    {
-        "AAA" or "AA+" or "AA" or "AA-" or "A+" or "A" or "A-" => "Upper",
-        "B+" or "B" or "B-" => "B",
-        "C+" or "C" or "C-" => "C",
-        "D+" or "D" => "D",
-        "E" => "E",
-        _ => "Neutral",
-    };
-    public string ClearBadgeGroup => ClearType switch
-    {
-        "PFC" => "Pfc",
-        "GFC" => "Gfc",
-        "FC" or "FULL COMBO" => "Fc",
-        "CLEAR" => "Clear",
-        "MFC" => "Mfc",
-        "FAILED" => "Failed",
-        _ => "Neutral",
-    };
-    public string FlareBadgeGroup => FlareRank switch
-    {
-        "I" => "I",
-        "II" => "II",
-        "III" => "III",
-        "IV" => "IV",
-        "V" => "V",
-        "VI" => "VI",
-        "VII" => "VII",
-        "VIII" => "VIII",
-        "IX" => "IX",
-        "EX" => "EX",
-        _ => "None",
-    };
+    public string RankBadgeGroup => ResultBadgeColors.RankGroup(Rank);
+    public string ClearBadgeGroup => ResultBadgeColors.ClearGroup(ClearType);
+    public string FlareBadgeGroup => ResultBadgeColors.FlareGroup(FlareRank);
     public string FlareRankDisplay =>
         string.IsNullOrWhiteSpace(FlareRank) ? "—" : $"FLARE {FlareRank}";
     public IReadOnlyList<JudgementBreakdownItem> JudgementBreakdown =>
@@ -183,7 +153,18 @@ public sealed record ChartBestItem(
         : FlareRank;
     public string VersionDisplay => string.IsNullOrWhiteSpace(Version) ? "—" : Version;
     public string PlayCountDisplay => Localization.Format("{0} 回", PlayCount);
-    public string RankBadgeGroup => Rank switch
+    public string RankBadgeGroup => ResultBadgeColors.RankGroup(Rank);
+    public string ClearBadgeGroup => ResultBadgeColors.ClearGroup(ClearType);
+    public string FlareBadgeGroup => ResultBadgeColors.FlareGroup(FlareRank);
+    public string LastPlayedAtDisplay =>
+        string.IsNullOrWhiteSpace(LastPlayedAt)
+            ? "—"
+            : ViewerTimestampFormatter.FormatBestTimestamp(LastPlayedAt);
+}
+
+internal static class ResultBadgeColors
+{
+    public static string RankGroup(string rank) => rank switch
     {
         "AAA" or "AA+" or "AA" or "AA-" or "A+" or "A" or "A-" => "Upper",
         "B+" or "B" or "B-" => "B",
@@ -192,7 +173,8 @@ public sealed record ChartBestItem(
         "E" => "E",
         _ => "Neutral",
     };
-    public string ClearBadgeGroup => ClearType switch
+
+    public static string ClearGroup(string clearType) => clearType switch
     {
         "PFC" => "Pfc",
         "GFC" => "Gfc",
@@ -202,7 +184,8 @@ public sealed record ChartBestItem(
         "FAILED" => "Failed",
         _ => "Neutral",
     };
-    public string FlareBadgeGroup => FlareRank switch
+
+    public static string FlareGroup(string? flareRank) => flareRank switch
     {
         "I" => "I",
         "II" => "II",
@@ -216,10 +199,6 @@ public sealed record ChartBestItem(
         "EX" => "EX",
         _ => "None",
     };
-    public string LastPlayedAtDisplay =>
-        string.IsNullOrWhiteSpace(LastPlayedAt)
-            ? "—"
-            : ViewerTimestampFormatter.FormatBestTimestamp(LastPlayedAt);
 }
 
 internal static class ViewerTimestampFormatter

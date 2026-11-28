@@ -149,25 +149,26 @@ for (const width of [1280, 390]) {
       const theme = readFileSync(`../../app/src/DDRGpScoreViewer/Resources/${appearance === "dark" ? "DarkTheme" : "Theme"}.xaml`, "utf8");
       const rgb = (hex: string) => `rgb(${[0, 2, 4].map((offset) => parseInt(hex.slice(offset, offset + 2), 16)).join(", ")})`;
       const brush = (key: string) => rgb(theme.match(new RegExp(`x:Key="${key}" Color="#([0-9A-F]{6})"`))![1]);
-      const colors = async (kind: string, value: string, group: string, borderGroup = group) => {
+      const colors = async (kind: string, value: string, group: string) => {
         const badge = page.locator(`.best-table .result-badge[data-kind="${kind}"][data-value="${value}"]`).first();
         await expect(badge).toHaveText(value);
         await expect(badge).toHaveCSS("color", brush(`Badge${group}TextBrush`));
-        await expect(badge).toHaveCSS("border-top-color", brush(`Badge${borderGroup}BorderBrush`));
-        if (group !== "Mfc") await expect(badge).toHaveCSS("background-color", brush(`Badge${group}BackgroundBrush`));
+        await expect(badge).toHaveCSS("border-top-color", brush(`Badge${group}BorderBrush`));
+        if (group !== "Rainbow") await expect(badge).toHaveCSS("background-color", brush(`Badge${group}BackgroundBrush`));
         else {
-          const stops = ["Danger", "Warning", "Success", "Cyan", "Purple"].map((name) =>
-            rgb(theme.match(new RegExp(`x:Key="MfcGradient${name}Color">#([0-9A-F]{6})`))![1]));
+          const gradient = theme.match(/x:Key="BadgeRainbowBackgroundBrush"[^>]*>([\s\S]+?)<\/LinearGradientBrush>/)![1];
+          const stops = [...gradient.matchAll(/Color="#([0-9A-F]{6})" Offset="([\d.]+)"/g)]
+            .map((match) => `${rgb(match[1])} ${Number(match[2]) * 100}%`);
           await expect(badge).toHaveCSS("background-image", `linear-gradient(90deg, ${stops.join(", ")})`);
         }
       };
       await page.goto(`/player/${publicPlayerId}?view=best`);
       await expect(page.locator(".best-table tbody tr")).toHaveCount(17);
       for (const rank of ranks) await colors("rank", rank,
-        rank.startsWith("A") ? "Warning" : rank.startsWith("B") ? "Cyan" : rank.startsWith("C") ? "Pink" : rank.startsWith("D") ? "Danger" : "Neutral");
-      for (const [index, group] of ["Mfc", "Warning", "Success", "Info", "Cyan", "Danger"].entries()) await colors("clear", clears[index], group);
-      for (const [index, group] of ["Info", "Cyan", "Success", "Warning", "Danger", "Purple", "Slate", "Neutral", "Warning", "Mfc"].entries()) {
-        await colors("flare", flares[index], group, index === 7 ? "Slate" : index === 8 ? "WarningStrong" : group);
+        rank.startsWith("A") ? "Gold" : rank.startsWith("B") ? "Cyan" : rank.startsWith("C") ? "Pink" : rank.startsWith("D") ? "Red" : "Neutral");
+      for (const [index, group] of ["Rainbow", "Gold", "Green", "Blue", "Cyan", "Red"].entries()) await colors("clear", clears[index], group);
+      for (const [index, group] of ["Blue", "Cyan", "Green", "Yellow", "Orange", "Purple", "Bronze", "Silver", "Gold", "Rainbow"].entries()) {
+        await colors("flare", flares[index], group);
       }
       const missing = page.locator(".best-table tbody tr").last();
       await expect(missing.locator(".no-best")).toHaveText(Array(5).fill("—"));

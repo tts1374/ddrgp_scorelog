@@ -1,0 +1,1586 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>GP Score Log — Gemini Zero-Base Concept v2</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; }
+html, body {
+  margin: 0; padding: 0;
+  font-family: "Segoe UI Variable", "Segoe UI", "Yu Gothic UI", "Meiryo", sans-serif;
+  font-size: 14px; line-height: 1.5;
+  background: #0d1117; color: #e6edf3;
+}
+button, input, select { font: inherit; color: inherit; }
+button, select { cursor: pointer; }
+.num { font-variant-numeric: tabular-nums; font-family: "Segoe UI Variable", "Segoe UI", sans-serif; letter-spacing: -.02em; }
+
+/* ===== Outer Showcase Bar ===== */
+.showcase-bar {
+  position: sticky; top: 0; z-index: 100;
+  background: rgba(13, 17, 23, .92); backdrop-filter: blur(12px);
+  border-bottom: 1px solid rgba(255,255,255,.1);
+  padding: 10px 24px; display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap;
+}
+.showcase-title { display: flex; align-items: center; gap: 10px; }
+.showcase-title h1 { margin: 0; font-size: 15px; font-weight: 700; color: #f8fafc; letter-spacing: -.01em; }
+.showcase-pill { font-size: 11px; font-weight: 700; padding: 2px 9px; border-radius: 99px; background: rgba(96,165,250,.18); color: #93c5fd; border: 1px solid rgba(96,165,250,.35); }
+.showcase-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.showcase-controls label { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #94a3b8; font-weight: 600; }
+.showcase-controls select {
+  background: #161b22; color: #f1f5f9; border: 1px solid #30363d; border-radius: 6px;
+  padding: 4px 10px; font-size: 12px; font-weight: 600;
+}
+.stage { padding: 20px 24px 40px; display: flex; flex-direction: column; align-items: center; gap: 12px; overflow-x: auto; }
+.concept-strip {
+  width: min(1280px, 100%); font-size: 12px; color: #94a3b8;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+}
+.concept-strip strong { color: #e2e8f0; }
+
+/* ===== Gemini Concept Design Tokens (Neutral Canvas so DDR Semantic Colors Shine) ===== */
+.app-shell {
+  --canvas: #0b0f17;
+  --rail: #0f1520;
+  --surface: #141c2a;
+  --surface-2: #1b2537;
+  --surface-hover: #212e45;
+  --border: rgba(148, 163, 184, .16);
+  --border-strong: rgba(148, 163, 184, .32);
+  --text: #f1f5f9;
+  --text-2: #94a3b8;
+  --text-3: #94a3b8;
+  --accent: #60a5fa;
+  --accent-solid: #3b82f6;
+  --accent-soft: rgba(96, 165, 250, .14);
+  --on-accent: #ffffff;
+  --up: #4ade80;
+  --up-bg: rgba(74, 222, 128, .12);
+  --down: #fb7185;
+  --down-bg: rgba(251, 113, 133, .12);
+  --danger: #fb7185;
+  --danger-bg: rgba(251, 113, 133, .14);
+  --danger-bd: rgba(251, 113, 133, .4);
+  --warn-bg: rgba(245, 158, 11, .14);
+  --warn-bd: rgba(245, 158, 11, .45);
+  --warn-fg: #fcd34d;
+  --shadow: 0 24px 64px rgba(0, 0, 0, .55);
+
+  /* DDR Official Semantic Colors (Preserved) */
+  --diff-bgn: #5fb8e8; --diff-bgn-bg: #23749c; --diff-bgn-fg: #ffffff;
+  --diff-bas: #f3a621; --diff-bas-bg: #b97708; --diff-bas-fg: #ffffff;
+  --diff-dif: #e64949; --diff-dif-bg: #b8333a; --diff-dif-fg: #ffffff;
+  --diff-exp: #27a85a; --diff-exp-bg: #1f7d49; --diff-exp-fg: #ffffff;
+  --diff-cha: #8c55c9; --diff-cha-bg: #6f42a6; --diff-cha-fg: #ffffff;
+
+  /* DDR WORLD Official Flare Category Colors (from playdata.css: CLASSIC=#d29067, WHITE=#b9c9d1, GOLD=#ecbf2f) */
+  --flare-classic: #d29067;
+  --flare-white: #b9c9d1;
+  --flare-gold: #ecbf2f;
+
+  /* Result badges (DDR WORLD faithful, Dark calibrated) */
+  --b-gold-bg: #4c3911; --b-gold-bd: #e5b83f; --b-gold-fg: #ffe9a6;
+  --b-yellow-bg: #3c4112; --b-yellow-bd: #e0e645; --b-yellow-fg: #f2f78a;
+  --b-cyan-bg: #123e52; --b-cyan-bd: #46b9e9; --b-cyan-fg: #b8ecff;
+  --b-green-bg: #153f2a; --b-green-bd: #4ad17a; --b-green-fg: #b9f5cd;
+  --b-blue-bg: #173a68; --b-blue-bd: #65a8ff; --b-blue-fg: #c7e0ff;
+  --b-orange-bg: #5e2405; --b-orange-bd: #ff8c24; --b-orange-fg: #ffe0b2;
+  --b-purple-bg: #3b2a59; --b-purple-bd: #b48af5; --b-purple-fg: #e4d4ff;
+  --b-bronze-bg: #36241e; --b-bronze-bd: #c98a68; --b-bronze-fg: #eed0be;
+  --b-silver-bg: #273545; --b-silver-bd: #cbd5e1; --b-silver-fg: #f1f5f9;
+  --b-red-bg: #541b22; --b-red-bd: #f26a78; --b-red-fg: #ffd1d5;
+  --b-pink-bg: #531b3c; --b-pink-bd: #e06aae; --b-pink-fg: #ffd0e8;
+  --b-slate-bg: #253246; --b-slate-bd: #66768a; --b-slate-fg: #d5dee9;
+  --b-ex-bg: linear-gradient(90deg, #68252d 0%, #5a4310 25%, #153f2a 50%, #123e52 75%, #3b2a59 100%);
+  --b-ex-bd: #c084fc; --b-ex-fg: #f0e9ff;
+
+  /* Clear Lamp Glow Dots (DDR Clear colors) */
+  --lamp-mfc: conic-gradient(#f87171, #facc15, #4ade80, #38bdf8, #c084fc, #f87171);
+  --lamp-pfc: #facc15;
+  --lamp-gfc: #4ade80;
+  --lamp-fc: #60a5fa;
+  --lamp-clear: #38bdf8;
+  --lamp-failed: #fb7185;
+
+  /* Judgement bar colors */
+  --j-marv: #e0f2fe;
+  --j-perf: #facc15;
+  --j-great: #4ade80;
+  --j-good: #38bdf8;
+  --j-miss: #fb7185;
+
+  width: 1280px; height: 760px;
+  background: var(--canvas); color: var(--text);
+  border: 1px solid var(--border-strong); border-radius: 14px;
+  box-shadow: var(--shadow); overflow: hidden;
+  display: grid; grid-template-columns: 216px minmax(0, 1fr);
+  position: relative;
+}
+
+.app-shell.light {
+  --canvas: #f5f7fa;
+  --rail: #ffffff;
+  --surface: #ffffff;
+  --surface-2: #eef2f6;
+  --surface-hover: #e8eef5;
+  --border: rgba(15, 23, 42, .10);
+  --border-strong: rgba(15, 23, 42, .20);
+  --text: #0f172a;
+  --text-2: #475569;
+  --text-3: #64748b;
+  --accent: #2563eb;
+  --accent-solid: #2563eb;
+  --accent-soft: rgba(37, 99, 235, .10);
+  --on-accent: #ffffff;
+  --up: #15803d;
+  --up-bg: rgba(21, 128, 61, .10);
+  --down: #be123c;
+  --down-bg: rgba(190, 18, 60, .09);
+  --danger: #be123c;
+  --danger-bg: #fff1f2;
+  --danger-bd: #fda4af;
+  --warn-bg: #fffbeb;
+  --warn-bd: #f59e0b;
+  --warn-fg: #92400e;
+  --shadow: 0 24px 60px rgba(15, 23, 42, .16);
+
+  --diff-bgn-bg: #5fb8e8; --diff-bgn-fg: #0b2330;
+  --diff-bas-bg: #f3a621; --diff-bas-fg: #2b1a00;
+  --diff-dif-bg: #e64949; --diff-dif-fg: #ffffff;
+  --diff-exp-bg: #27a85a; --diff-exp-fg: #ffffff;
+  --diff-cha-bg: #8c55c9; --diff-cha-fg: #ffffff;
+
+  --flare-classic: #c97c4e;
+  --flare-white: #96b3c4;
+  --flare-gold: #d9a31e;
+
+  --b-gold-bg: #fef3c7; --b-gold-bd: #eab308; --b-gold-fg: #854d0e;
+  --b-yellow-bg: #fef9a6; --b-yellow-bd: #ada21a; --b-yellow-fg: #524600;
+  --b-cyan-bg: #e0f2fe; --b-cyan-bd: #38bdf8; --b-cyan-fg: #075985;
+  --b-green-bg: #dcfce7; --b-green-bd: #22c55e; --b-green-fg: #166534;
+  --b-blue-bg: #dbeafe; --b-blue-bd: #2563eb; --b-blue-fg: #1e3a8a;
+  --b-orange-bg: #ffedd5; --b-orange-bd: #f97316; --b-orange-fg: #9a3412;
+  --b-purple-bg: #ede9fe; --b-purple-bd: #8b5cf6; --b-purple-fg: #5b21b6;
+  --b-bronze-bg: #f7ebe3; --b-bronze-bd: #c27849; --b-bronze-fg: #6b3719;
+  --b-silver-bg: #e2e8f0; --b-silver-bd: #7c8fa8; --b-silver-fg: #334155;
+  --b-red-bg: #fee2e2; --b-red-bd: #ef4444; --b-red-fg: #991b1b;
+  --b-pink-bg: #fce7f3; --b-pink-bd: #f472b6; --b-pink-fg: #9d174d;
+  --b-slate-bg: #f1f5f9; --b-slate-bd: #94a3b8; --b-slate-fg: #334155;
+  --b-ex-bg: linear-gradient(90deg, #fecaca 0%, #fef3c7 25%, #dcfce7 50%, #e0f2fe 75%, #f3e8ff 100%);
+  --b-ex-bd: #a855f7; --b-ex-fg: #0f172a;
+
+  --lamp-pfc: #d97706;
+  --lamp-gfc: #16a34a;
+  --lamp-fc: #2563eb;
+  --lamp-clear: #0284c7;
+  --lamp-failed: #e11d48;
+
+  --j-marv: #0284c7;
+  --j-perf: #eab308;
+  --j-great: #16a34a;
+  --j-good: #06b6d4;
+  --j-miss: #e11d48;
+}
+
+.app-shell.narrow { width: 960px; height: 640px; grid-template-columns: 68px minmax(0, 1fr); }
+.app-shell :is(button, input, select):focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ===== Left Navigation Rail ===== */
+.rail {
+  background: var(--rail); border-right: 1px solid var(--border);
+  display: flex; flex-direction: column; padding: 14px 12px; gap: 6px; min-height: 0;
+}
+.rail-brand { display: flex; align-items: center; gap: 10px; padding: 4px 8px 14px; }
+.rail-brand-text { display: flex; flex-direction: column; line-height: 1.15; }
+.rail-brand-text strong { font-size: 15px; font-weight: 800; letter-spacing: -.03em; }
+.rail-brand-text span { font-size: 10.5px; color: var(--text-3); font-weight: 600; }
+.rail-section { font-size: 10.5px; font-weight: 700; letter-spacing: .05em; color: var(--text-3); padding: 8px 10px 4px; }
+.rail-item {
+  width: 100%; border: 0; background: transparent; color: var(--text-2);
+  display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 9px;
+  font-size: 13px; font-weight: 600; text-align: left; transition: background .12s, color .12s;
+}
+.rail-item svg { width: 17px; height: 17px; flex-shrink: 0; opacity: .82; }
+.rail-item:hover { background: var(--surface-hover); color: var(--text); }
+.rail-item.active { background: var(--accent-soft); color: var(--accent); font-weight: 700; }
+.rail-item.active svg { opacity: 1; }
+.rail-spacer { flex: 1; }
+
+.live-module {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 11px;
+  padding: 10px 11px; display: flex; flex-direction: column; gap: 8px;
+}
+.live-module.error { background: var(--warn-bg); border-color: var(--warn-bd); }
+.live-top { display: flex; align-items: center; gap: 8px; }
+.pulse-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.pulse-dot.ok { background: #22c55e; box-shadow: 0 0 0 4px rgba(34, 197, 94, .2); }
+.pulse-dot.wait { background: #38bdf8; }
+.pulse-dot.err { background: #ef4444; box-shadow: 0 0 0 4px rgba(239, 68, 68, .22); }
+.live-btn {
+  width: 100%; border: 1px solid var(--border-strong); background: var(--surface-2); color: var(--text);
+  border-radius: 7px; padding: 5px 8px; font-size: 11.5px; font-weight: 700;
+}
+.live-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+.app-shell.narrow .rail { padding: 14px 8px; align-items: center; }
+.app-shell.narrow .rail-brand { padding: 4px 0 12px; justify-content: center; }
+.app-shell.narrow .rail-brand-text,
+.app-shell.narrow .rail-section,
+.app-shell.narrow .rail-item span,
+.app-shell.narrow .live-text,
+.app-shell.narrow .live-btn { display: none; }
+.app-shell.narrow .rail-item { justify-content: center; padding: 10px; }
+.app-shell.narrow .live-module { padding: 10px; align-items: center; }
+
+/* ===== Right Main Column ===== */
+.main-col { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.top-bar {
+  height: 52px; flex-shrink: 0; padding: 0 24px;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+}
+.top-bar-left { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.top-bar h2 { margin: 0; font-size: 17px; font-weight: 800; letter-spacing: -.02em; white-space: nowrap; }
+.top-bar-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.quick-search {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+  padding: 0 10px; height: 32px; width: 210px; color: var(--text-2); font-size: 12px;
+}
+.quick-search input { border: 0; background: transparent; outline: none; width: 100%; color: var(--text); font-size: 12.5px; }
+.kbd { font-size: 10px; padding: 1px 5px; border-radius: 4px; background: var(--surface-2); border: 1px solid var(--border); color: var(--text-3); font-weight: 700; }
+
+.seg {
+  display: inline-flex; padding: 3px; border-radius: 9px;
+  background: var(--surface-2); border: 1px solid var(--border); gap: 2px;
+}
+.seg button {
+  border: 0; background: transparent; color: var(--text-2);
+  padding: 4px 12px; border-radius: 6px; font-size: 12px; font-weight: 700;
+}
+.seg button[aria-pressed="true"] { background: var(--surface); color: var(--text); box-shadow: 0 1px 4px rgba(0, 0, 0, .18); }
+
+.workspace {
+  flex: 1; min-height: 0; overflow-y: auto; padding: 16px 24px 20px;
+  display: flex; flex-direction: column; gap: 14px;
+}
+.app-shell.narrow .top-bar { padding: 0 16px; }
+.app-shell.narrow .quick-search { width: 150px; }
+.app-shell.narrow .workspace { padding: 14px 16px; gap: 12px; }
+
+/* ===== Cards & Primitives ===== */
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; min-width: 0; }
+.muted { color: var(--text-2); font-size: 12px; }
+.label-xs { font-size: 11px; font-weight: 700; color: var(--text-2); letter-spacing: .03em; }
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  height: 34px; padding: 0 13px; border-radius: 8px;
+  border: 1px solid var(--border-strong); background: var(--surface-2); color: var(--text);
+  font-size: 12.5px; font-weight: 600; white-space: nowrap;
+}
+.btn:hover { background: var(--surface-hover); border-color: var(--accent); }
+.btn.primary { background: var(--accent-solid); border-color: var(--accent-solid); color: var(--on-accent); }
+.btn.primary:hover { filter: brightness(1.08); }
+.btn.danger { background: var(--danger-bg); border-color: var(--danger-bd); color: var(--danger); }
+.btn.ghost { background: transparent; border-color: transparent; color: var(--accent); }
+.btn.ghost:hover { background: var(--accent-soft); }
+
+/* Difficulty Visuals */
+.diff-pill {
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 2px 7px; border-radius: 5px; font-size: 10.5px; font-weight: 800; line-height: 1.3; white-space: nowrap;
+}
+.diff-bgn { background: var(--diff-bgn-bg); color: var(--diff-bgn-fg); }
+.diff-bas { background: var(--diff-bas-bg); color: var(--diff-bas-fg); }
+.diff-dif { background: var(--diff-dif-bg); color: var(--diff-dif-fg); }
+.diff-exp { background: var(--diff-exp-bg); color: var(--diff-exp-fg); }
+.diff-cha { background: var(--diff-cha-bg); color: var(--diff-cha-fg); }
+.diff-bar { width: 4px; border-radius: 99px; flex-shrink: 0; align-self: stretch; }
+.diff-bar.bgn { background: var(--diff-bgn); }
+.diff-bar.bas { background: var(--diff-bas); }
+.diff-bar.dif { background: var(--diff-dif); }
+.diff-bar.exp { background: var(--diff-exp); }
+.diff-bar.cha { background: var(--diff-cha); }
+
+/* ===== Refined 3-Axis Evaluation (Instead of 3 Identical Boxes!) ===== */
+/* 1. RANK: Borderless bold typography paired directly beside Score (DDR Official 5 color groups from ViewerModels.cs) */
+.rank-inline {
+  font-weight: 900; letter-spacing: -.03em; line-height: 1;
+}
+.rank-upper { color: #facc15; }
+.rank-b { color: #46b9e9; }
+.rank-c { color: #f472b6; }
+.rank-d { color: #f26a78; }
+.rank-e { color: #94a3b8; }
+.app-shell.light .rank-upper { color: #a16207; }
+.app-shell.light .rank-b { color: #0369a1; }
+.app-shell.light .rank-c { color: #be185d; }
+.app-shell.light .rank-d { color: #b91c1c; }
+.app-shell.light .rank-e { color: #475569; }
+
+/* Color Palette Popover / Reference Modal */
+.palette-overlay {
+  position: fixed; inset: 0; z-index: 200;
+  background: rgba(5, 10, 18, .68); backdrop-filter: blur(4px);
+  display: flex; align-items: center; justify-content: center; padding: 20px;
+}
+.palette-modal {
+  width: min(1040px, 100%); max-height: calc(100vh - 48px); overflow-y: auto;
+  background: var(--surface); color: var(--text);
+  border: 1px solid var(--border-strong); border-radius: 14px;
+  padding: 20px 24px; box-shadow: 0 24px 64px rgba(0,0,0,.45);
+  display: flex; flex-direction: column; gap: 18px;
+}
+.palette-section {
+  border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px;
+  background: var(--canvas); display: flex; flex-direction: column; gap: 10px;
+}
+.palette-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.palette-chip {
+  position: relative; display: inline-flex; flex-direction: column; align-items: center; gap: 5px;
+  padding: 8px 10px; min-width: 82px; border-radius: 8px;
+  background: var(--surface); border: 1px solid var(--border);
+}
+.palette-chip:hover { border-color: var(--accent); }
+.palette-chip .chip-meta { font-size: 10px; color: var(--text-2); text-align: center; line-height: 1.25; }
+.palette-chip .chip-tip {
+  display: none; position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%);
+  z-index: 20; width: 196px; padding: 7px 9px; border-radius: 7px;
+  background: #0f172a; color: #f8fafc; border: 1px solid #334155;
+  font-size: 11px; line-height: 1.45; box-shadow: 0 10px 24px rgba(0,0,0,.4); pointer-events: none;
+}
+.palette-chip:hover .chip-tip { display: block; }
+.swatch-mini { display: inline-block; width: 10px; height: 10px; border-radius: 3px; vertical-align: -1px; margin-right: 4px; border: 1px solid rgba(255,255,255,.25); }
+
+/* 2. CLEAR: DDR Clear Lamp pill (subtle neutral surface + glowing lamp dot) */
+.clear-lamp {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 2px 9px 2px 7px; min-height: 22px; border-radius: 99px;
+  background: var(--surface-2); border: 1px solid var(--border-strong);
+  font-size: 11px; font-weight: 800; color: var(--text); white-space: nowrap;
+}
+.lamp-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.lamp-mfc { background: var(--lamp-mfc); box-shadow: 0 0 6px rgba(192,132,252,.7); }
+.lamp-pfc { background: var(--lamp-pfc); box-shadow: 0 0 6px rgba(250,204,21,.6); }
+.lamp-gfc { background: var(--lamp-gfc); box-shadow: 0 0 6px rgba(74,222,128,.55); }
+.lamp-fc { background: var(--lamp-fc); }
+.lamp-clear { background: var(--lamp-clear); }
+.lamp-failed { background: var(--lamp-failed); }
+
+/* 3. FLARE: Official DDR Flare Badge */
+.badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 2px 8px; min-height: 22px; border-radius: 5px;
+  border: 1px solid var(--b-slate-bd); background: var(--b-slate-bg); color: var(--b-slate-fg);
+  font-size: 10.5px; font-weight: 800; white-space: nowrap;
+}
+.badge.gold { background: var(--b-gold-bg); border-color: var(--b-gold-bd); color: var(--b-gold-fg); }
+.badge.yellow { background: var(--b-yellow-bg); border-color: var(--b-yellow-bd); color: var(--b-yellow-fg); }
+.badge.cyan { background: var(--b-cyan-bg); border-color: var(--b-cyan-bd); color: var(--b-cyan-fg); }
+.badge.green { background: var(--b-green-bg); border-color: var(--b-green-bd); color: var(--b-green-fg); }
+.badge.blue { background: var(--b-blue-bg); border-color: var(--b-blue-bd); color: var(--b-blue-fg); }
+.badge.orange { background: var(--b-orange-bg); border-color: var(--b-orange-bd); color: var(--b-orange-fg); }
+.badge.purple { background: var(--b-purple-bg); border-color: var(--b-purple-bd); color: var(--b-purple-fg); }
+.badge.bronze { background: var(--b-bronze-bg); border-color: var(--b-bronze-bd); color: var(--b-bronze-fg); }
+.badge.silver { background: var(--b-silver-bg); border-color: var(--b-silver-bd); color: var(--b-silver-fg); }
+.badge.red { background: var(--b-red-bg); border-color: var(--b-red-bd); color: var(--b-red-fg); }
+.badge.pink { background: var(--b-pink-bg); border-color: var(--b-pink-bd); color: var(--b-pink-fg); }
+.badge.ex { background: var(--b-ex-bg); border-color: var(--b-ex-bd); color: var(--b-ex-fg); }
+
+.delta-pill {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 3px 9px; border-radius: 99px; font-size: 12px; font-weight: 800; white-space: nowrap;
+}
+.delta-pill.up { background: var(--up-bg); color: var(--up); }
+.delta-pill.down { background: var(--down-bg); color: var(--down); }
+
+/* ===== Screen 1: Home (Session Cockpit Bento) ===== */
+.bento-top { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(276px, .9fr); gap: 14px; }
+.app-shell.narrow .bento-top { grid-template-columns: 1fr; }
+
+.hero-card {
+  display: grid; grid-template-columns: 5px minmax(0, 1fr); gap: 16px;
+  background: linear-gradient(125deg, color-mix(in srgb, var(--diff-dif) 10%, var(--surface)) 0%, var(--surface) 48%);
+}
+.hero-title {
+  margin: 4px 0 8px; font-size: 24px; font-weight: 800; letter-spacing: -.025em;
+  line-height: 1.24; overflow-wrap: anywhere;
+}
+.hero-score-big { font-size: 52px; font-weight: 800; line-height: 1; letter-spacing: -.035em; }
+.score-meter { position: relative; height: 7px; border-radius: 99px; background: var(--surface-2); margin: 10px 0 6px; }
+.score-meter-fill { height: 100%; border-radius: 99px; background: linear-gradient(90deg, var(--accent-solid), var(--up)); }
+.score-meter-mark { position: absolute; top: -4px; width: 2px; height: 15px; background: #f59e0b; border-radius: 2px; }
+
+/* Today's Session: Vertical Key-Value rows so 5-6 digit Notes & 4-digit kcal NEVER overflow! */
+.session-card { display: flex; flex-direction: column; justify-content: space-between; gap: 10px; }
+.session-rows { display: flex; flex-direction: column; gap: 6px; }
+.session-row {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+  background: var(--surface-2); border-radius: 8px; padding: 8px 12px;
+}
+.session-row .s-val { font-size: 20px; font-weight: 800; line-height: 1.1; white-space: nowrap; }
+.session-row .s-unit { font-size: 11.5px; color: var(--text-2); font-weight: 600; margin-left: 3px; }
+
+.home-feeds { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; flex: 1; min-height: 0; }
+.feed-row {
+  width: 100%; border: 0; background: transparent; color: inherit; text-align: left;
+  display: grid; grid-template-columns: 4px minmax(0, 1fr) auto; gap: 10px; align-items: center;
+  padding: 8px 9px; border-radius: 9px; transition: background .1s; min-width: 0;
+}
+.feed-row:hover { background: var(--surface-hover); }
+.ellipsis { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+
+/* ===== Screen 2: Personal Bests ===== */
+.ribbon-card { padding: 12px 16px; display: flex; flex-direction: column; gap: 10px; }
+.level-ribbon { display: grid; grid-template-columns: repeat(19, minmax(0, 1fr)); gap: 4px; }
+.app-shell.narrow .level-ribbon { grid-template-columns: repeat(10, minmax(0, 1fr)); }
+.lv-pill {
+  border: 1px solid var(--border); background: var(--surface-2); color: var(--text-2);
+  border-radius: 6px; padding: 5px 0; font-size: 12px; font-weight: 700; text-align: center;
+}
+.lv-pill:hover { border-color: var(--accent); color: var(--text); }
+.lv-pill[aria-pressed="true"] { background: var(--accent-solid); border-color: var(--accent-solid); color: #fff; }
+
+.attainment-bar { display: flex; height: 8px; border-radius: 99px; overflow: hidden; background: var(--surface-2); gap: 2px; }
+
+/* Fixed-layout table so long official titles NEVER push right columns off-screen! */
+.table-wrap { flex: 1; min-height: 0; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: auto; }
+table.g-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13px; table-layout: fixed; }
+table.g-table th {
+  position: sticky; top: 0; z-index: 2; background: var(--surface-2); color: var(--text-2);
+  font-size: 11px; font-weight: 700; text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--border); white-space: nowrap;
+}
+table.g-table td { padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: middle; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+table.g-table tbody tr { cursor: pointer; }
+table.g-table tbody tr:hover { background: var(--surface-hover); }
+table.g-table tbody tr.selected { background: var(--accent-soft); }
+.mini-score-bar { width: 72px; height: 4px; border-radius: 99px; background: var(--surface-2); overflow: hidden; margin-top: 3px; }
+.mini-score-bar > span { display: block; height: 100%; background: var(--accent); border-radius: 99px; }
+
+/* ===== Screen 3: Chart Detail ===== */
+.detail-title-card { display: grid; grid-template-columns: 5px minmax(0, 1fr); gap: 16px; }
+.detail-song-full { margin: 0 0 8px; font-size: 22px; font-weight: 800; line-height: 1.25; overflow-wrap: anywhere; }
+.detail-kpis { display: grid; grid-template-columns: 1.25fr 1fr .95fr; gap: 14px; }
+.app-shell.narrow .detail-kpis { grid-template-columns: 1fr 1fr; }
+.judge-bar { display: flex; height: 10px; border-radius: 99px; overflow: hidden; gap: 2px; margin: 10px 0 8px; }
+
+/* ===== Screen 4: Play History ===== */
+.split-view { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 316px; gap: 14px; }
+.app-shell.narrow .split-view { grid-template-columns: 1fr; grid-template-rows: 1.2fr 1fr; }
+.j-dot { width: 8px; height: 8px; border-radius: 3px; display: inline-block; margin-right: 7px; }
+
+/* ===== Screen 5: Flare Skill ===== */
+.flare-hero {
+  display: grid; grid-template-columns: 1.15fr .85fr 1.35fr; gap: 22px; align-items: center;
+  background: radial-gradient(circle at 12% 50%, rgba(106, 220, 213, .18), transparent 48%), var(--surface);
+}
+.flare-rank-title {
+  font-size: 42px; font-weight: 900; line-height: 1; letter-spacing: -.04em;
+  background: linear-gradient(180deg, #cefff9 0%, #6adcd5 50%, #41cdae 100%);
+  -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-fill-color: transparent;
+}
+.flare-grid-3 { flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.flare-panel {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+  display: flex; flex-direction: column; min-height: 0; overflow: hidden; min-width: 0;
+}
+.flare-top-accent { height: 4px; width: 100%; flex-shrink: 0; }
+.flare-rows { flex: 1; min-height: 0; overflow-y: auto; }
+.flare-row {
+  display: grid; grid-template-columns: 22px 4px minmax(0, 1fr) auto; gap: 8px; align-items: center;
+  padding: 8px 11px; border-bottom: 1px solid var(--border);
+}
+.flare-row:hover { background: var(--surface-hover); }
+.flare-border-footer {
+  background: var(--surface-2); border-top: 1px solid var(--border-strong); padding: 8px 11px;
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center;
+}
+
+/* ===== Screen 6: Settings ===== */
+.theme-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 8px; }
+.theme-card {
+  border: 1.5px solid var(--border); border-radius: 10px; padding: 8px; background: var(--surface-2);
+  text-align: left; display: flex; flex-direction: column; gap: 6px;
+}
+.theme-card[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); }
+.theme-thumb { height: 32px; border-radius: 6px; border: 1px solid rgba(128,128,128,.25); padding: 5px; display: flex; gap: 4px; }
+.switch-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.switch-row:last-child { border-bottom: 0; }
+.toggle-pill { width: 40px; height: 22px; border-radius: 99px; background: var(--accent-solid); position: relative; border: 0; flex-shrink: 0; }
+.toggle-pill::after { content: ""; position: absolute; top: 3px; right: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform .15s; }
+.toggle-pill[aria-pressed="false"] { background: var(--text-3); }
+.toggle-pill[aria-pressed="false"]::after { transform: translateX(-18px); }
+</style>
+</head>
+<body>
+
+<header class="showcase-bar">
+  <div class="showcase-title">
+    <h1>GP Score Log — Gemini Zero-Base Concept</h1>
+    <span class="showcase-pill">v2 · 6点の指摘反映済み</span>
+    <a href="web-mock.html" style="text-decoration:none;font-size:12px;font-weight:700;color:#e2e8f0;padding:4px 10px;border-radius:6px;border:1px solid #30363d;background:#161b22">Web モックを見る →</a>
+  </div>
+  <div class="showcase-controls">
+    <label>ストレス確認
+      <select id="g-stress">
+        <option value="stress">実在する最長公式曲名 ＋ 6桁ノーツ（推奨確認）</option>
+        <option value="normal">通常曲名 ＋ 5桁ノーツ</option>
+      </select>
+    </label>
+    <label>テーマ
+      <select id="g-theme">
+        <option value="dark">ダーク</option>
+        <option value="light">ライト</option>
+      </select>
+    </label>
+    <label>サイズ
+      <select id="g-size">
+        <option value="wide">1280 × 760</option>
+        <option value="narrow">960 × 640</option>
+      </select>
+    </label>
+    <label>自動記録状態
+      <select id="g-mon">
+        <option value="ok">自動記録中</option>
+        <option value="wait">ゲーム待機中</option>
+        <option value="err">要対処（エラー）</option>
+      </select>
+    </label>
+    <button id="g-palette-btn" style="background:#2563eb;color:#fff;border:0;border-radius:6px;padding:5px 12px;font-size:12px;font-weight:700">色見本（RANK / CLEAR / FLARE 全色）</button>
+  </div>
+</header>
+
+<div class="stage">
+  <div class="concept-strip">
+    <div><strong>v2 改善点：</strong>①遷移元に応じた戻り先（ホーム→詳細なら「← ホームに戻る」） ②専門用語廃止 ③5〜6桁ノーツ対応の縦並びセッション欄 ④スコア＋RANK一体・CLEARランプ・FLAREの3軸差別化 ⑤公式最長曲名（54文字／全角30文字）での崩れ防止</div>
+  </div>
+  <div id="mount"></div>
+</div>
+
+<script>
+'use strict';
+
+const state = {
+  screen: 'home',
+  stress: 'stress', // default ON so the user can immediately verify long official titles + 6-digit notes!
+  theme: 'dark',
+  size: 'wide',
+  mon: 'ok',
+  style: 'SP',
+  bestMode: 'level',
+  bestLevel: 14,
+  bestVersion: 'DDR A20',
+  bestGoal: 'AAA',
+  query: '',
+  selectedChart: 0,
+  detailOrigin: 'bests', // 'home' | 'bests' | 'history'
+  historyOrigin: null,   // 'home' | null
+  selectedHistory: 0,
+  graphMode: 'all',
+  autoStart: true,
+  notifyFail: true,
+  showPalette: false,
+  toast: '',
+};
+
+const NORMAL_TITLES = [
+  'POSSESSION',
+  '量子の海のリントヴルム',
+  'ミッドナイト☆WAR',
+  'In The Breeze',
+  'GHOST KINGDOM',
+  'IN BETWEEN',
+  '風鈴花火',
+];
+
+// Real longest official titles extracted from databases/ddrgp-master.sqlite
+const LONG_OFFICIAL_TITLES = [
+  '50th Memorial Songs -二人の時 ～under the cherry blossoms～-',
+  'お米の美味しい炊き方、そしてお米を食べることによるその効果。',
+  "Taj He Spitz (Tommie Sunshine's Brooklyn Fire Re-Touch)",
+  '†渚の小悪魔ラヴリィ～レイディオ† (STARDOM Remix)',
+  'チルノのパーフェクトさんすう学園【ビートまりお】',
+  'STARS☆☆☆（Re-tuned by HΛL） - DDR EDITION -',
+  '阿波おどり -Awaodori- やっぱり踊りはやめられない',
+];
+
+const BASE_CHARTS = [
+  { id: 0, diff: 'DIFFICULT', key: 'dif', short: 'DIF', level: 14, score: 991420, ex: 1412, rank: 'AAA', clear: 'GFC', flare: 'IX', plays: 18, last: '14:26', version: 'X2', delta: 3510, exDelta: 27 },
+  { id: 1, diff: 'EXPERT', key: 'exp', short: 'EXP', level: 14, score: 988230, ex: 1368, rank: 'AA+', clear: 'CLEAR', flare: 'IX', plays: 12, last: '14:16', version: 'DDR (2014)', delta: 4810, exDelta: 12 },
+  { id: 2, diff: 'EXPERT', key: 'exp', short: 'EXP', level: 14, score: 985990, ex: 1410, rank: 'AA+', clear: 'FC', flare: 'VIII', plays: 9, last: '14:19', version: 'DDR A20', delta: 16160, exDelta: 18 },
+  { id: 3, diff: 'CHALLENGE', key: 'cha', short: 'CHA', level: 14, score: 981210, ex: 1257, rank: 'AA+', clear: 'CLEAR', flare: 'VII', plays: 6, last: '14:13', version: 'DDR (2014)', delta: 6750, exDelta: 20 },
+  { id: 4, diff: 'EXPERT', key: 'exp', short: 'EXP', level: 14, score: 977360, ex: 989, rank: 'AA', clear: 'GFC', flare: 'EX', plays: 11, last: '14:22', version: 'DDR A20', delta: 7930, exDelta: 28 },
+  { id: 5, diff: 'BASIC', key: 'bas', short: 'BAS', level: 7, score: 999810, ex: 617, rank: 'AAA', clear: 'PFC', flare: 'EX', plays: 5, last: '昨日 21:05', version: 'DDR A', delta: 420, exDelta: 4 },
+  { id: 6, diff: 'BEGINNER', key: 'bgn', short: 'BGN', level: 4, score: 998500, ex: 412, rank: 'AAA', clear: 'MFC', flare: 'EX', plays: 3, last: '昨日 20:40', version: 'DDR A20', delta: 1500, exDelta: 9 },
+];
+
+function getCharts() {
+  const names = state.stress === 'stress' ? LONG_OFFICIAL_TITLES : NORMAL_TITLES;
+  return BASE_CHARTS.map((c, i) => ({ ...c, song: names[i] }));
+}
+
+const VERSIONS = ['DDR GRAND PRIX','DDR WORLD','DDR A3','DDR A20 PLUS','DDR A20','DDR A','DDR (2014)','DDR (2013)','X3 VS 2ndMIX','X2','X','SuperNOVA 2'];
+
+const DETAIL_PTS = [
+  { at: '11/10', full: '2026/11/10 21:04', score: 978400, ex: 1310, rank: 'AA', clear: 'CLEAR', flare: 'VI', delta: null, best: true },
+  { at: '11/14', full: '2026/11/14 22:18', score: 982150, ex: 1344, rank: 'AA+', clear: 'CLEAR', flare: 'VII', delta: 3750, best: true },
+  { at: '11/18', full: '2026/11/18 20:51', score: 979620, ex: 1330, rank: 'AA', clear: 'CLEAR', flare: 'VII', delta: -2530, best: false },
+  { at: '11/22', full: '2026/11/22 19:33', score: 987910, ex: 1385, rank: 'AA+', clear: 'FC', flare: 'VIII', delta: 5760, best: true },
+  { at: '11/25', full: '2026/11/25 23:02', score: 986100, ex: 1379, rank: 'AA+', clear: 'CLEAR', flare: 'VIII', delta: -1810, best: false },
+  { at: '11/28', full: '2026/11/28 14:26', score: 991420, ex: 1412, rank: 'AAA', clear: 'GFC', flare: 'IX', delta: 3510, best: true },
+];
+
+const fmt = n => n == null ? '—' : n.toLocaleString('en-US');
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const lampCls = c => ({ MFC: 'lamp-mfc', PFC: 'lamp-pfc', GFC: 'lamp-gfc', FC: 'lamp-fc', CLEAR: 'lamp-clear', FAILED: 'lamp-failed' }[c] || 'lamp-clear');
+const flareCls = f => ({ EX: 'ex', IX: 'gold', VIII: 'silver', VII: 'bronze', VI: 'purple', V: 'orange', IV: 'yellow', III: 'green', II: 'cyan', I: 'blue' }[f] || '');
+const rankCls = r => !r ? 'rank-e' : r.startsWith('A') ? 'rank-upper' : r.startsWith('B') ? 'rank-b' : r.startsWith('C') ? 'rank-c' : r.startsWith('D') ? 'rank-d' : 'rank-e';
+const rankGroupLabel = r => !r ? '—' : r.startsWith('A') ? 'Upper (AAA〜A- · 金系)' : r.startsWith('B') ? 'B帯 (B+〜B- · シアン系)' : r.startsWith('C') ? 'C帯 (C+〜C- · ピンク系)' : r.startsWith('D') ? 'D帯 (D+〜D · 赤系)' : 'E (グレー系)';
+
+function renderRankInline(rank, sizePx = 14) {
+  return `<span class="rank-inline ${rankCls(rank)}" style="font-size:${sizePx}px" title="RANK ${rank} · ${rankGroupLabel(rank)}">${rank}</span>`;
+}
+function renderClearLamp(clear, asBadge = false) {
+  const badge = asBadge ? ' badge ' + { MFC: 'ex', PFC: 'gold', GFC: 'green', FC: 'blue', CLEAR: 'cyan', FAILED: 'red' }[clear] : '';
+  const names = { MFC: 'MARVELOUS FULL COMBO（虹）', PFC: 'PERFECT FULL COMBO（金）', GFC: 'GREAT FULL COMBO（緑）', FC: 'FULL COMBO（青）', CLEAR: 'CLEAR（水色）', FAILED: 'FAILED（赤）' };
+  return `<span class="clear-lamp${badge}" title="CLEAR: ${names[clear] || clear}"><span class="lamp-dot ${lampCls(clear)}"></span>${clear}</span>`;
+}
+function renderFlareBadge(flare, withPrefix = true) {
+  const desc = { EX: 'FLARE EX（虹）', IX: 'FLARE IX（金）', VIII: 'FLARE VIII（銀・白銀）', VII: 'FLARE VII（銅・ブロンズ）', VI: 'FLARE VI（紫）', V: 'FLARE V（橙）', IV: 'FLARE IV（黄）', III: 'FLARE III（緑）', II: 'FLARE II（水色）', I: 'FLARE I（青）' };
+  return `<span class="badge ${flareCls(flare)}" title="${desc[flare] || ('FLARE ' + flare)}">${withPrefix ? 'FLARE ' : ''}${flare}</span>`;
+}
+
+function renderPaletteModal() {
+  const isLight = state.theme === 'light';
+  const ranks = [
+    { v: 'AAA', g: 'Upper', note: '990,000〜', badge: 'gold', hex: isLight ? '#854D0E' : '#FFE9A6', bg: isLight ? '#FEF3C7' : '#4C3911' },
+    { v: 'AA+', g: 'Upper', note: '950,000〜', badge: 'gold', hex: isLight ? '#854D0E' : '#FFE9A6', bg: isLight ? '#FEF3C7' : '#4C3911' },
+    { v: 'AA', g: 'Upper', note: '900,000〜', badge: 'gold', hex: isLight ? '#854D0E' : '#FFE9A6', bg: isLight ? '#FEF3C7' : '#4C3911' },
+    { v: 'AA-', g: 'Upper', note: '890,000〜', badge: 'gold', hex: isLight ? '#854D0E' : '#FFE9A6', bg: isLight ? '#FEF3C7' : '#4C3911' },
+    { v: 'A+', g: 'Upper', note: '850,000〜', badge: 'gold', hex: isLight ? '#854D0E' : '#FFE9A6', bg: isLight ? '#FEF3C7' : '#4C3911' },
+    { v: 'A', g: 'Upper', note: '800,000〜', badge: 'gold', hex: isLight ? '#854D0E' : '#FFE9A6', bg: isLight ? '#FEF3C7' : '#4C3911' },
+    { v: 'A-', g: 'Upper', note: '790,000〜', badge: 'gold', hex: isLight ? '#854D0E' : '#FFE9A6', bg: isLight ? '#FEF3C7' : '#4C3911' },
+    { v: 'B+', g: 'B帯', note: '750,000〜', badge: 'cyan', hex: isLight ? '#075985' : '#B8ECFF', bg: isLight ? '#E0F2FE' : '#123E52' },
+    { v: 'B', g: 'B帯', note: '700,000〜', badge: 'cyan', hex: isLight ? '#075985' : '#B8ECFF', bg: isLight ? '#E0F2FE' : '#123E52' },
+    { v: 'B-', g: 'B帯', note: '690,000〜', badge: 'cyan', hex: isLight ? '#075985' : '#B8ECFF', bg: isLight ? '#E0F2FE' : '#123E52' },
+    { v: 'C+', g: 'C帯', note: '650,000〜', badge: 'pink', hex: isLight ? '#9D174D' : '#FFD0E8', bg: isLight ? '#FCE7F3' : '#531B3C' },
+    { v: 'C', g: 'C帯', note: '600,000〜', badge: 'pink', hex: isLight ? '#9D174D' : '#FFD0E8', bg: isLight ? '#FCE7F3' : '#531B3C' },
+    { v: 'C-', g: 'C帯', note: '590,000〜', badge: 'pink', hex: isLight ? '#9D174D' : '#FFD0E8', bg: isLight ? '#FCE7F3' : '#531B3C' },
+    { v: 'D+', g: 'D帯', note: '550,000〜', badge: 'red', hex: isLight ? '#991B1B' : '#FFD1D5', bg: isLight ? '#FEE2E2' : '#541B22' },
+    { v: 'D', g: 'D帯', note: '〜549,990', badge: 'red', hex: isLight ? '#991B1B' : '#FFD1D5', bg: isLight ? '#FEE2E2' : '#541B22' },
+    { v: 'E', g: 'E', note: 'FAILED時', badge: 'slate', hex: isLight ? '#334155' : '#D5DEE9', bg: isLight ? '#F1F5F9' : '#253246' },
+  ];
+  const clears = [
+    { v: 'MFC', desc: 'MARVELOUS FULL COMBO', col: '虹グラデーション', hex: 'Rainbow + #A855F7' },
+    { v: 'PFC', desc: 'PERFECT FULL COMBO', col: '金・黄', hex: isLight ? '#D97706' : '#FACC15' },
+    { v: 'GFC', desc: 'GREAT FULL COMBO', col: '緑', hex: isLight ? '#16A34A' : '#4ADE80' },
+    { v: 'FC', desc: 'FULL COMBO', col: '青', hex: isLight ? '#2563EB' : '#60A5FA' },
+    { v: 'CLEAR', desc: 'STAGE CLEAR', col: 'シアン・水色', hex: isLight ? '#0284C7' : '#38BDF8' },
+    { v: 'FAILED', desc: 'STAGE FAILED', col: '赤', hex: isLight ? '#E11D48' : '#FB7185' },
+  ];
+  const flares = [
+    { v: 'EX', col: '虹', hex: isLight ? 'Rainbow / #A855F7' : 'Dark Rainbow / #C084FC' },
+    { v: 'IX', col: '金', hex: isLight ? '#FEF3C7 / #EAB308' : '#4C3911 / #E5B83F' },
+    { v: 'VIII', col: '銀（白銀）', hex: isLight ? '#E2E8F0 / #7C8FA8' : '#273545 / #CBD5E1' },
+    { v: 'VII', col: '銅（ブロンズ）', hex: isLight ? '#F7EBE3 / #C27849' : '#36241E / #C98A68' },
+    { v: 'VI', col: '紫', hex: isLight ? '#EDE9FE / #8B5CF6' : '#3B2A59 / #B48AF5' },
+    { v: 'V', col: '橙', hex: isLight ? '#FFEDD5 / #F97316' : '#5E2405 / #FF8C24' },
+    { v: 'IV', col: '黄', hex: isLight ? '#FEF9A6 / #ADA21A' : '#3C4112 / #E0E645' },
+    { v: 'III', col: '緑', hex: isLight ? '#DCFCE7 / #22C55E' : '#153F2A / #4AD17A' },
+    { v: 'II', col: '水色', hex: isLight ? '#E0F2FE / #38BDF8' : '#123E52 / #46B9E9' },
+    { v: 'I', col: '青', hex: isLight ? '#DBEAFE / #2563EB' : '#173A68 / #65A8FF' },
+  ];
+  const diffs = [
+    { v: 'BEGINNER', s: 'BGN', key: 'bgn', hex: isLight ? '#5FB8E8 / #0B2330' : '#23749C / #FFFFFF' },
+    { v: 'BASIC', s: 'BAS', key: 'bas', hex: isLight ? '#F3A621 / #2B1A00' : '#B97708 / #FFFFFF' },
+    { v: 'DIFFICULT', s: 'DIF', key: 'dif', hex: isLight ? '#E64949 / #FFFFFF' : '#B8333A / #FFFFFF' },
+    { v: 'EXPERT', s: 'EXP', key: 'exp', hex: isLight ? '#27A85A / #FFFFFF' : '#1F7D49 / #FFFFFF' },
+    { v: 'CHALLENGE', s: 'CHA', key: 'cha', hex: isLight ? '#8C55C9 / #FFFFFF' : '#6F42A6 / #FFFFFF' },
+  ];
+  const flareRanks = [
+    ['WORLD', 'linear-gradient(180deg,#B782FF 0%,#FB6587 33%,#FFF11E 66%,#96FF8F 100%)', '世界 · 90,000〜'],
+    ['SUN', 'linear-gradient(180deg,#FFB200 0%,#FF7300 50%,#FF1F00 100%)', '太陽 · 75,000〜'],
+    ['NEPTUNE', 'linear-gradient(180deg,#AFBDE0 0%,#23379A 50%,#35356C 100%)', '海王星 · 60,000〜'],
+    ['URANUS', 'linear-gradient(180deg,#CEFFF9 0%,#6ADCD5 50%,#41CDAE 100%)', '天王星 · 45,000〜'],
+    ['SATURN', 'linear-gradient(180deg,#FFA8DD 0%,#C2457F 50%,#562060 100%)', '土星 · 34,000〜'],
+    ['JUPITER', 'linear-gradient(180deg,#FFD2B8 0%,#D7B58D 50%,#AB540B 100%)', '木星 · 24,000〜'],
+    ['MARS', 'linear-gradient(180deg,#FF8C9D 0%,#FF3800 50%,#A01500 100%)', '火星 · 16,000〜'],
+    ['EARTH', 'linear-gradient(180deg,#00D296 0%,#00C386 50%,#006D74 100%)', '地球 · 10,000〜'],
+    ['VENUS', 'linear-gradient(180deg,#FFCD01 0%,#FFB500 50%,#E36613 100%)', '金星 · 6,000〜'],
+    ['MERCURY', 'linear-gradient(180deg,#60CCF4 0%,#009EDC 50%,#0079BB 100%)', '水星 · 2,000〜'],
+    ['NONE', 'linear-gradient(180deg,#DEDEDE 0%,#7A7A7B 50%,#393B3B 100%)', 'なし · 0〜'],
+  ];
+
+  return `
+  <div class="palette-overlay" data-act="close-palette">
+    <div class="palette-modal">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+        <div>
+          <h2 style="margin:0;font-size:18px">DDR 依存色リファレンス（RANK / CLEAR / FLARE / 難易度 / フレアランク）</h2>
+          <div class="muted">各チップにカーソルを合わせると色コード・グループ・条件のツールチップが出ます。右上でライト／ダーク切替可。</div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="btn" data-act="flip-theme">${isLight ? 'ダークで確認' : 'ライトで確認'}</button>
+          <button class="btn primary" data-act="close-palette">閉じる</button>
+        </div>
+      </div>
+
+      <section class="palette-section">
+        <strong style="font-size:13.5px">1. RANK（5色グループ · 全16段階 · ViewerModels.cs 正本準拠）</strong>
+        <div class="muted">AAA〜A- はすべて Upper（金系）、B帯はシアン系、C帯はピンク系、D帯は赤系、Eはグレー系。スコア横の枠なしRANKにも同じ色の系統を使います。</div>
+        <div class="palette-row">
+          ${ranks.map(r => `
+            <div class="palette-chip" style="min-width:68px">
+              <span class="badge ${r.badge}">${r.v}</span>
+              <span class="chip-meta">${r.g}</span>
+              <div class="chip-tip"><strong>RANK ${r.v}</strong> (${r.g})<br>目安: ${r.note}<br><span class="swatch-mini" style="background:${r.hex}"></span>文字色 ${r.hex}</div>
+            </div>`).join('')}
+        </div>
+      </section>
+
+      <section class="palette-section">
+        <strong style="font-size:13.5px">2. CLEAR（全6種 · DDRクリアランプ表現）</strong>
+        <div class="muted">バッジの中にランプとCLEARの値を表示します。</div>
+        <div class="palette-row">
+          ${clears.map(c => `
+            <div class="palette-chip" style="min-width:110px">
+              ${renderClearLamp(c.v, true)}
+              <span class="chip-meta">${c.col}</span>
+              <div class="chip-tip"><strong>${c.v}</strong><br>${c.desc}<br>ランプ色: ${c.hex}</div>
+            </div>`).join('')}
+        </div>
+      </section>
+
+      <section class="palette-section">
+        <strong style="font-size:13.5px">3. FLARE（全10段階 · DDR WORLD 公式色照合済み：V=橙 / VII=銅 / VIII=銀 / IX=金 / EX=虹）</strong>
+        <div class="palette-row">
+          ${flares.map(f => `
+            <div class="palette-chip" style="min-width:92px">
+              ${renderFlareBadge(f.v)}
+              <span class="chip-meta">${f.col}</span>
+              <div class="chip-tip"><strong>FLARE ${f.v}</strong> (${f.col})<br>背景 / 枠: ${f.hex}</div>
+            </div>`).join('')}
+        </div>
+      </section>
+
+      <div style="display:grid;grid-template-columns:1fr 1.35fr;gap:14px">
+        <section class="palette-section">
+          <strong style="font-size:13.5px">4. 難易度カラー（5種 · 明暗AA+コントラスト）</strong>
+          <div class="palette-row">
+            ${diffs.map(d => `
+              <div class="palette-chip" style="min-width:86px">
+                <span class="diff-pill diff-${d.key}">${d.v}</span>
+                <span class="chip-meta">${d.s}</span>
+                <div class="chip-tip"><strong>${d.v}</strong> (${d.s})<br>背景 / 文字: ${d.hex}</div>
+              </div>`).join('')}
+          </div>
+        </section>
+
+        <section class="palette-section">
+          <strong style="font-size:13.5px">5. フレアスキルランク（11段階グラデーション）</strong>
+          <div class="palette-row">
+            ${flareRanks.map(([name, grad, note]) => `
+              <div class="palette-chip" style="min-width:82px;padding:6px 8px">
+                <span style="font-size:13px;font-weight:900;letter-spacing:-.02em;background:${grad};-webkit-background-clip:text;background-clip:text;color:transparent;-webkit-text-fill-color:transparent">${name}</span>
+                <div class="chip-tip"><strong>${name}</strong><br>${note}</div>
+              </div>`).join('')}
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>`;
+}
+
+const ICONS = {
+  home: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V20h14V9.5"/></svg>',
+  bests: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9H4a2 2 0 0 1 0-4h2"/><path d="M18 9h2a2 2 0 0 0 0-4h-2"/><path d="M6 4h12v6a6 6 0 0 1-12 0V4Z"/><path d="M12 16v4"/><path d="M8 20h8"/></svg>',
+  history: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+  flare: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 14.8 9.2 22 12l-7.2 2.8L12 22l-2.8-7.2L2 12l7.2-2.8Z"/></svg>',
+  settings: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.26.6.85 1 1.51 1H21a2 2 0 1 1 0 4h-.09c-.66 0-1.25.4-1.51 1Z"/></svg>',
+  data: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/></svg>',
+};
+
+function brandMark() {
+  return `<svg width="28" height="28" viewBox="0 0 32 32" aria-hidden="true" style="flex-shrink:0">
+    <rect width="32" height="32" rx="8" fill="#2563eb"/>
+    <path d="M16 7l7 7h-4.5v11h-5V14H9l7-7z" fill="#ffffff"/>
+    <circle cx="24" cy="24" r="3" fill="#4ade80"/>
+  </svg>`;
+}
+
+function toast(msg) {
+  state.toast = msg;
+  render();
+  setTimeout(() => { if (state.toast === msg) { state.toast = ''; render(); } }, 2200);
+}
+
+function renderShell(title, bodyHtml, { showStyle = true, leftExtra = '' } = {}) {
+  const navMain = [['home', 'ホーム'], ['bests', '自己ベスト'], ['history', 'プレー履歴'], ['flare', 'フレアスキル']];
+  const navUtil = [['settings', '設定'], ['data', '記録の管理']];
+  // Active nav reflects where the user came from when viewing Chart Detail!
+  const active = state.screen === 'detail' ? state.detailOrigin : state.screen;
+
+  const monMeta = {
+    ok: { cls: 'ok', title: '自動記録中', sub: 'リザルトを待っています', btn: '自動記録を止める' },
+    wait: { cls: 'wait', title: 'ゲームを待っています', sub: 'GP未起動', btn: '自動記録を始める' },
+    err: { cls: 'err', title: '画面を取得できません', sub: 'サイズ変更を検出', btn: '再開する' },
+  }[state.mon];
+
+  return `
+  <div class="app-shell ${state.theme === 'light' ? 'light' : ''} ${state.size === 'narrow' ? 'narrow' : ''}">
+    <aside class="rail">
+      <div class="rail-brand">
+        ${brandMark()}
+        <div class="rail-brand-text">
+          <strong>GP Score Log</strong>
+          <span>DDR GRAND PRIX</span>
+        </div>
+      </div>
+
+      <div class="rail-section">記録を見る</div>
+      ${navMain.map(([id, label]) => `
+        <button class="rail-item ${active === id ? 'active' : ''}" data-nav="${id}" title="${label}">
+          ${ICONS[id]}<span>${label}</span>
+        </button>`).join('')}
+
+      <div class="rail-section" style="margin-top:8px">管理</div>
+      ${navUtil.map(([id, label]) => `
+        <button class="rail-item ${active === id ? 'active' : ''}" data-nav="${id}" title="${label}">
+          ${ICONS[id]}<span>${label}</span>
+        </button>`).join('')}
+
+      <div class="rail-spacer"></div>
+
+      <div class="live-module ${state.mon === 'err' ? 'error' : ''}" title="${monMeta.title} — ${monMeta.sub}">
+        <div class="live-top">
+          <span class="pulse-dot ${monMeta.cls}"></span>
+          <div class="live-text" style="min-width:0">
+            <div style="font-size:12px;font-weight:700;line-height:1.2">${monMeta.title}</div>
+            <div style="font-size:11px;color:var(--text-2)">${monMeta.sub}</div>
+          </div>
+        </div>
+        <button class="live-btn" data-act="toggle-mon">${monMeta.btn}</button>
+      </div>
+    </aside>
+
+    <section class="main-col">
+      <header class="top-bar">
+        <div class="top-bar-left">
+          ${leftExtra}
+          <h2>${title}</h2>
+        </div>
+        <div class="top-bar-right">
+          <label class="quick-search" title="どの画面からでも曲名検索へ移動できます">
+            <span>⌕</span>
+            <input id="global-search" type="search" value="${esc(state.query)}" placeholder="曲名で探す…">
+            <span class="kbd">⌘K</span>
+          </label>
+          ${showStyle ? `<div class="seg">
+            <button data-style="SP" aria-pressed="${state.style === 'SP'}">SINGLE</button>
+            <button data-style="DP" aria-pressed="${state.style === 'DP'}">DOUBLE</button>
+          </div>` : ''}
+        </div>
+      </header>
+
+      ${state.mon === 'err' ? `
+        <div style="padding:8px 24px;background:var(--warn-bg);border-bottom:1px solid var(--warn-bd);color:var(--warn-fg);display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:12.5px">
+          <span><strong>要対処：</strong>ゲーム画面のサイズが 1280×720 から変わったため自動記録を止めています。元のサイズに戻して再開してください。</span>
+          <button class="btn" style="height:28px;font-size:11.5px" data-act="toggle-mon">自動記録を再開</button>
+        </div>` : ''}
+
+      <main class="workspace">${bodyHtml}</main>
+    </section>
+
+    ${state.showPalette ? renderPaletteModal() : ''}
+    ${state.toast ? `<div style="position:absolute;right:24px;bottom:20px;background:var(--accent-solid);color:#fff;padding:8px 14px;border-radius:9px;font-size:12.5px;font-weight:700;box-shadow:0 12px 28px rgba(0,0,0,.35)">${state.toast}</div>` : ''}
+  </div>`;
+}
+
+/* ===== 1. Home ===== */
+function viewHome() {
+  const charts = getCharts();
+  const c = charts[0];
+  // Stress test: 6-digit notes (124,850) + 4-digit kcal (1,482.6) vs typical 5-digit notes (24,680)
+  const todayStats = state.stress === 'stress'
+    ? { plays: '142', notes: '124,850', kcal: '1,482.6' }
+    : { plays: '28', notes: '24,680', kcal: '412.8' };
+
+  return renderShell('ホーム', `
+    <div class="bento-top">
+      <section class="card hero-card">
+        <div class="diff-bar ${c.key}"></div>
+        <div style="display:flex;flex-direction:column;justify-content:space-between;gap:10px;min-width:0">
+          <div>
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+              <span class="label-xs">最後に記録したプレー · 2026/11/28 14:26</span>
+              <div style="display:flex;align-items:center;gap:7px">
+                ${renderClearLamp(c.clear)}
+                ${renderFlareBadge(c.flare)}
+              </div>
+            </div>
+            <h3 class="hero-title">${esc(c.song)}</h3>
+            <div style="display:flex;align-items:center;gap:8px">
+              <span class="diff-pill diff-${c.key}">${c.diff}</span>
+              <span style="font-weight:700;font-size:13px">${state.style} · Lv.${c.level}</span>
+            </div>
+          </div>
+
+          <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:14px;flex-wrap:wrap">
+            <div>
+              <div style="display:flex;align-items:baseline;gap:12px;flex-wrap:wrap">
+                <span class="hero-score-big num">${fmt(c.score)}</span>
+                ${renderRankInline(c.rank, 26)}
+              </div>
+              <div class="muted" style="margin-top:3px">EX SCORE <strong class="num" style="color:var(--text);font-size:15px">${fmt(c.ex)}</strong></div>
+            </div>
+            <div style="display:flex;gap:7px;flex-wrap:wrap">
+              <span class="delta-pill up num">スコア ↑ +${fmt(c.delta)}</span>
+              <span class="delta-pill up num">EX ↑ +${c.exDelta}</span>
+            </div>
+          </div>
+
+          <div>
+            <div class="score-meter">
+              <div class="score-meter-fill" style="width:99.14%"></div>
+              <div class="score-meter-mark" style="left:99%" title="AAA 990,000"></div>
+            </div>
+            <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-3)">
+              <span>0</span>
+              <span style="color:#f59e0b;font-weight:700">AAA 990,000 到達（+1,420）</span>
+              <span>1,000,000</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card session-card">
+        <div style="display:flex;justify-content:space-between;align-items:baseline">
+          <strong style="font-size:15px">今日のプレー（11/28）</strong>
+          <span class="muted" style="font-size:11px">毎朝7時切替</span>
+        </div>
+        <div class="session-rows">
+          <div class="session-row">
+            <span class="muted" style="font-weight:600">プレー数</span>
+            <span class="s-val num">${todayStats.plays}<span class="s-unit">回</span></span>
+          </div>
+          <div class="session-row">
+            <span class="muted" style="font-weight:600">総ノーツ数</span>
+            <span class="s-val num">${todayStats.notes}</span>
+          </div>
+          <div class="session-row">
+            <span class="muted" style="font-weight:600">消費カロリー</span>
+            <span class="s-val num">${todayStats.kcal}<span class="s-unit">kcal</span></span>
+          </div>
+        </div>
+        <button class="btn primary" style="width:100%" data-act="copy-today">今日の記録をコピー</button>
+      </section>
+    </div>
+
+    <div class="home-feeds">
+      <section class="card" style="padding:12px 14px;display:flex;flex-direction:column;gap:2px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;padding:0 4px">
+          <div>
+            <strong style="font-size:14.5px">最近のプレー</strong>
+            <span class="muted" style="margin-left:6px;font-size:11px">クリックで判定内訳を表示</span>
+          </div>
+          <button class="btn ghost" style="height:26px;font-size:12px" data-nav="history">履歴を見る →</button>
+        </div>
+        ${charts.slice(1, 6).map((r, i) => `
+          <button class="feed-row" data-home-history="${i + 1}" title="${esc(r.song)} — クリックでプレー履歴の詳細を開く">
+            <span class="diff-bar ${r.key}"></span>
+            <div style="min-width:0">
+              <span class="ellipsis" style="font-weight:700">${esc(r.song)}</span>
+              <div class="muted" style="font-size:11.5px">${state.style} ${r.short} · Lv.${r.level} · ${r.last}</div>
+            </div>
+            <div style="text-align:right;flex-shrink:0">
+              <div class="num" style="font-size:15px;font-weight:800">${fmt(r.score)}</div>
+              <div class="muted num" style="font-size:11px">EX ${fmt(r.ex)}</div>
+            </div>
+          </button>`).join('')}
+      </section>
+
+      <section class="card" style="padding:12px 14px;display:flex;flex-direction:column;gap:2px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;padding:0 4px">
+          <div>
+            <strong style="font-size:14.5px">最近の自己ベスト更新</strong>
+            <span class="muted" style="margin-left:6px;font-size:11px">クリックで譜面詳細を表示</span>
+          </div>
+          <button class="btn ghost" style="height:26px;font-size:12px" data-nav="bests">自己ベストを見る →</button>
+        </div>
+        ${charts.slice(0, 5).map(r => `
+          <button class="feed-row" data-home-detail="${r.id}" title="${esc(r.song)} — クリックで譜面詳細を開く（戻る先はホーム）">
+            <span class="diff-bar ${r.key}"></span>
+            <div style="min-width:0">
+              <span class="ellipsis" style="font-weight:700">${esc(r.song)}</span>
+              <div class="muted" style="font-size:11.5px">${state.style} ${r.short} · Lv.${r.level} · ${r.last}</div>
+            </div>
+            <div style="text-align:right;flex-shrink:0">
+              <div class="num" style="font-size:14.5px;font-weight:800;color:var(--up)">↑ +${fmt(r.delta)}</div>
+              <div class="muted num" style="font-size:11px">EX ↑ +${r.exDelta}</div>
+            </div>
+          </button>`).join('')}
+      </section>
+    </div>
+  `);
+}
+
+/* ===== 2. Personal Bests ===== */
+function viewBests() {
+  const charts = getCharts();
+  const rows = charts.filter(r => !state.query || r.song.toLowerCase().includes(state.query.toLowerCase()));
+  const isGoal = state.bestMode === 'goal';
+  return renderShell('自己ベスト', `
+    <section class="card ribbon-card">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+        <div class="seg">
+          ${[['level','レベル別'],['version','バージョン別'],['goal','目標まで']].map(([m, l]) =>
+            `<button data-bmode="${m}" aria-pressed="${state.bestMode === m}">${l}</button>`).join('')}
+        </div>
+        <div style="display:flex;align-items:center;gap:14px;font-size:12px;flex-wrap:wrap">
+          <span>対象 <strong class="num">142</strong></span>
+          <span>記録あり <strong class="num">96</strong></span>
+          <span style="color:#38bdf8">CLEAR+ <strong class="num">94</strong></span>
+          <span style="color:#22c55e">FC+ <strong class="num">42</strong></span>
+          <span style="color:#eab308">AAA+ <strong class="num">28</strong></span>
+        </div>
+      </div>
+
+      ${state.bestMode === 'level' ? `
+        <div class="level-ribbon">
+          ${Array.from({ length: 19 }, (_, i) => i + 1).map(lv =>
+            `<button class="lv-pill num" data-lv="${lv}" aria-pressed="${state.bestLevel === lv}">${lv}</button>`).join('')}
+        </div>` : state.bestMode === 'version' ? `
+        <div style="display:flex;gap:5px;flex-wrap:wrap">
+          ${VERSIONS.map(v => `<button class="lv-pill" style="padding:4px 10px" data-ver="${v}" aria-pressed="${state.bestVersion === v}">${v}</button>`).join('')}
+        </div>` : `
+        <div style="display:flex;align-items:center;gap:8px">
+          ${['AAA','AA+','AA'].map(g => `<button class="lv-pill" style="padding:5px 16px" data-goal="${g}" aria-pressed="${state.bestGoal === g}">${g} を目指す</button>`).join('')}
+          <span class="muted">記録あり・未達成の譜面を近い順に表示</span>
+        </div>`}
+
+      <div class="attainment-bar" title="AAA: 28 / FC+: 14 / CLEAR+: 52 / 未CLEAR: 2 / 未プレー: 46">
+        <div style="width:19.7%;background:#eab308"></div>
+        <div style="width:9.8%;background:#22c55e"></div>
+        <div style="width:36.6%;background:#38bdf8"></div>
+        <div style="width:1.4%;background:#64748b"></div>
+      </div>
+    </section>
+
+    <div class="table-wrap">
+      <table class="g-table">
+        <colgroup>
+          <col>
+          <col style="width:100px">
+          <col style="width:132px">
+          ${isGoal ? '<col style="width:96px">' : ''}
+          <col style="width:76px">
+          <col style="width:88px">
+          <col style="width:72px">
+          <col style="width:52px">
+          <col style="width:82px">
+        </colgroup>
+        <thead>
+          <tr>
+            <th>曲名</th><th>譜面</th><th>SCORE / RANK</th>
+            ${isGoal ? '<th>目標まで</th>' : ''}
+            <th>EX</th><th>CLEAR</th><th>FLARE</th><th style="text-align:right">回数</th><th>最終</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map(r => `
+            <tr data-bests-detail="${r.id}">
+              <td title="${esc(r.song)}">
+                <div style="display:flex;align-items:center;gap:9px;min-width:0">
+                  <span class="diff-bar ${r.key}" style="height:22px"></span>
+                  <strong class="ellipsis" style="font-size:13px">${esc(r.song)}</strong>
+                </div>
+              </td>
+              <td><span class="diff-pill diff-${r.key}">${r.short}</span> <span class="muted num" style="margin-left:3px;font-weight:700">Lv.${r.level}</span></td>
+              <td>
+                <div style="display:flex;align-items:baseline;gap:7px">
+                  <span class="num" style="font-size:14.5px;font-weight:800">${fmt(r.score)}</span>
+                  ${renderRankInline(r.rank, 12)}
+                </div>
+                <div class="mini-score-bar"><span style="width:${(r.score / 10000).toFixed(1)}%"></span></div>
+              </td>
+              ${isGoal ? `<td class="num" style="font-weight:800;color:var(--accent)">${r.score < 990000 ? 'あと ' + fmt(990000 - r.score) : '達成済'}</td>` : ''}
+              <td class="num muted" style="font-weight:700">${fmt(r.ex)}</td>
+              <td>${renderClearLamp(r.clear)}</td>
+              <td>${renderFlareBadge(r.flare, false)}</td>
+              <td class="num muted" style="text-align:right">${r.plays}</td>
+              <td class="muted num">${r.last}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+  `);
+}
+
+/* ===== 3. Chart Detail (Origin-aware Back Button + Full Wrapping Song Title Card) ===== */
+function viewDetail() {
+  const c = getCharts().find(x => x.id === state.selectedChart) || getCharts()[0];
+  const backMap = {
+    home: { label: '← ホームに戻る', target: 'home' },
+    bests: { label: '← 自己ベストに戻る', target: 'bests' },
+    history: { label: '← プレー履歴に戻る', target: 'history' },
+  };
+  const back = backMap[state.detailOrigin] || backMap.bests;
+
+  const pts = state.graphMode === 'best' ? DETAIL_PTS.filter(p => p.best) : DETAIL_PTS;
+  const W = 680, H = 185, L = 64, R = 20, T = 16, B = 28;
+  const minV = 975000, maxV = 995000;
+  const x = i => pts.length === 1 ? L + (W - L - R) / 2 : L + (W - L - R) * (i / (pts.length - 1));
+  const y = v => T + (H - T - B) * (1 - (v - minV) / (maxV - minV));
+  const linePts = pts.map((p, i) => `${x(i)},${y(p.score)}`).join(' ');
+  const areaPts = `${x(0)},${H - B} ${linePts} ${x(pts.length - 1)},${H - B}`;
+
+  return renderShell('楽曲・譜面詳細', `
+    <section class="card detail-title-card">
+      <div class="diff-bar ${c.key}"></div>
+      <div style="min-width:0">
+        <h3 class="detail-song-full">${esc(c.song)}</h3>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <span class="diff-pill diff-${c.key}">${c.diff}</span>
+          <span style="font-weight:700;font-size:13px">${state.style} · Lv.${c.level}</span>
+          <span class="muted">· ${c.version}</span>
+        </div>
+      </div>
+    </section>
+
+    <div class="detail-kpis">
+      <section class="card">
+        <div class="label-xs">スコアの自己ベスト</div>
+        <div style="display:flex;align-items:baseline;gap:10px;margin-top:4px;flex-wrap:wrap">
+          <span class="num" style="font-size:36px;font-weight:800;line-height:1">${fmt(c.score)}</span>
+          ${renderRankInline(c.rank, 22)}
+        </div>
+        <div class="muted" style="margin-top:6px">更新 2026/11/28 14:26</div>
+      </section>
+
+      <section class="card">
+        <div class="label-xs">EX SCOREの自己ベスト</div>
+        <div class="num" style="font-size:30px;font-weight:800;line-height:1.15;margin-top:4px">${fmt(c.ex)}</div>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap">
+          ${renderClearLamp(c.clear)}
+          ${renderFlareBadge(c.flare)}
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="label-xs">最新プレーの判定バランス</div>
+        <div class="judge-bar" title="MARVELOUS 85.1% / PERFECT 13.0% / GREAT 1.6% / GOOD 0.2%">
+          <div style="width:85.1%;background:var(--j-marv)"></div>
+          <div style="width:13.0%;background:var(--j-perf)"></div>
+          <div style="width:1.6%;background:var(--j-great)"></div>
+          <div style="width:.3%;background:var(--j-good)"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;margin-top:6px">
+          <span class="muted">プレー <strong class="num" style="color:var(--text)">${c.plays}回</strong></span>
+          <span class="muted">フルコンボ <strong class="num" style="color:var(--text)">4回</strong></span>
+        </div>
+        <div style="margin-top:8px"><span class="delta-pill up num">最新 ↑ +${fmt(c.delta)}</span></div>
+      </section>
+    </div>
+
+    <section class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;flex-wrap:wrap;gap:8px">
+        <div>
+          <strong style="font-size:14.5px">スコアの変化</strong>
+          <span class="muted" style="margin-left:8px">グラフは直近100回分 · ランク境界線付き</span>
+        </div>
+        <div class="seg">
+          <button data-gmode="all" aria-pressed="${state.graphMode === 'all'}">全プレー</button>
+          <button data-gmode="best" aria-pressed="${state.graphMode === 'best'}">更新したプレーだけ</button>
+        </div>
+      </div>
+      <svg viewBox="0 0 ${W} ${H}" style="width:100%;height:185px;display:block">
+        <defs>
+          <linearGradient id="gArea" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#60a5fa" stop-opacity=".28"/>
+            <stop offset="100%" stop-color="#60a5fa" stop-opacity="0"/>
+          </linearGradient>
+        </defs>
+        ${[995000, 990000, 985000, 980000, 975000].map(v => `
+          <line x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}" stroke="var(--border)" stroke-width="1"/>
+          <text x="${L - 8}" y="${y(v) + 4}" text-anchor="end" fill="var(--text-3)" font-size="11" class="num">${fmt(v)}</text>`).join('')}
+        <line x1="${L}" x2="${W - R}" y1="${y(990000)}" y2="${y(990000)}" stroke="#f59e0b" stroke-dasharray="4 4" stroke-opacity=".75"/>
+        <text x="${W - R}" y="${y(990000) - 5}" text-anchor="end" fill="#f59e0b" font-size="10.5" font-weight="800">AAA 990,000</text>
+        <polygon points="${areaPts}" fill="url(#gArea)"/>
+        <polyline fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linejoin="round" points="${linePts}"/>
+        ${pts.map((p, i) => `
+          <g>
+            <circle cx="${x(i)}" cy="${y(p.score)}" r="${p.best ? 5.5 : 4}" fill="${p.best ? 'var(--up)' : 'var(--accent)'}" stroke="var(--surface)" stroke-width="2">
+              <title>${p.full} / ${fmt(p.score)} (${p.rank})</title>
+            </circle>
+            <text x="${x(i)}" y="${H - 7}" text-anchor="middle" fill="var(--text-3)" font-size="11">${p.at}</text>
+          </g>`).join('')}
+      </svg>
+    </section>
+
+    <div class="table-wrap" style="min-height:150px">
+      <table class="g-table">
+        <colgroup><col style="width:140px"><col style="width:130px"><col style="width:80px"><col style="width:92px"><col style="width:88px"><col></colgroup>
+        <thead><tr><th>日時</th><th>SCORE / RANK</th><th>EX</th><th>CLEAR</th><th>FLARE</th><th>プレー前の自己ベストとの差</th></tr></thead>
+        <tbody>
+          ${[...DETAIL_PTS].reverse().map(p => `<tr>
+            <td class="muted num">${p.full}</td>
+            <td><span class="num" style="font-weight:800">${fmt(p.score)}</span> <span style="margin-left:5px">${renderRankInline(p.rank, 11.5)}</span></td>
+            <td class="num muted">${fmt(p.ex)}</td>
+            <td>${renderClearLamp(p.clear)}</td>
+            <td>${renderFlareBadge(p.flare)}</td>
+            <td class="num" style="font-weight:800;color:${p.delta == null ? 'var(--text-3)' : p.delta > 0 ? 'var(--up)' : 'var(--down)'}">${p.delta == null ? '初プレー' : p.delta > 0 ? '↑ +' + fmt(p.delta) : '↓ ' + fmt(p.delta)}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+  `, { showStyle: false, leftExtra: `<button class="btn" style="height:30px;padding:0 11px" data-nav="${back.target}">${back.label}</button>` });
+}
+
+/* ===== 4. Play History ===== */
+function viewHistory() {
+  const charts = getCharts();
+  const sel = charts[state.selectedHistory] || charts[0];
+  const judges = [
+    ['MARVELOUS', 418, 'var(--j-marv)'],
+    ['PERFECT', 64, 'var(--j-perf)'],
+    ['GREAT', 8, 'var(--j-great)'],
+    ['GOOD', 1, 'var(--j-good)'],
+    ['O.K.', 14, 'var(--text-2)'],
+    ['MISS', 0, 'var(--j-miss)'],
+  ];
+  return renderShell('プレー履歴', `
+    <div class="split-view">
+      <div class="table-wrap">
+        <table class="g-table">
+          <colgroup>
+            <col style="width:74px">
+            <col>
+            <col style="width:96px">
+            <col style="width:118px">
+            <col style="width:86px">
+            <col style="width:66px">
+          </colgroup>
+          <thead><tr><th>時刻</th><th>曲名</th><th>譜面</th><th>SCORE / RANK</th><th>CLEAR</th><th>FLARE</th></tr></thead>
+          <tbody>
+            ${charts.map((r, i) => `
+              <tr class="${i === state.selectedHistory ? 'selected' : ''}" data-sel-h="${i}">
+                <td class="muted num">${r.last}</td>
+                <td title="${esc(r.song)}"><div style="display:flex;align-items:center;gap:8px;min-width:0"><span class="diff-bar ${r.key}" style="height:20px"></span><strong class="ellipsis">${esc(r.song)}</strong></div></td>
+                <td><span class="diff-pill diff-${r.key}">${r.short}</span> <span class="muted num">Lv.${r.level}</span></td>
+                <td><span class="num" style="font-weight:800">${fmt(r.score)}</span> <span style="margin-left:4px">${renderRankInline(r.rank, 11.5)}</span></td>
+                <td>${renderClearLamp(r.clear)}</td>
+                <td>${renderFlareBadge(r.flare, false)}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+
+      <aside class="card" style="overflow-y:auto;display:flex;flex-direction:column;gap:12px">
+        <div style="display:flex;gap:12px;min-width:0">
+          <div class="diff-bar ${sel.key}"></div>
+          <div style="min-width:0">
+            <strong style="font-size:16px;line-height:1.28;display:block;overflow-wrap:anywhere">${esc(sel.song)}</strong>
+            <div style="display:flex;gap:6px;align-items:center;margin-top:6px;flex-wrap:wrap">
+              <span class="diff-pill diff-${sel.key}">${sel.diff}</span>
+              <span class="muted" style="font-weight:700">${state.style} · Lv.${sel.level}</span>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <div style="display:flex;align-items:baseline;gap:10px">
+            <span class="num" style="font-size:34px;font-weight:800;line-height:1">${fmt(sel.score)}</span>
+            ${renderRankInline(sel.rank, 20)}
+          </div>
+          <div class="muted" style="margin-top:4px">EX SCORE <strong class="num" style="color:var(--text)">${fmt(sel.ex)}</strong></div>
+          <div style="display:flex;align-items:center;gap:7px;margin-top:10px;flex-wrap:wrap">
+            ${renderClearLamp(sel.clear)}
+            ${renderFlareBadge(sel.flare)}
+          </div>
+        </div>
+
+        <div>
+          <div class="label-xs">判定</div>
+          <div class="judge-bar">
+            <div style="width:85%;background:var(--j-marv)"></div>
+            <div style="width:13%;background:var(--j-perf)"></div>
+            <div style="width:1.7%;background:var(--j-great)"></div>
+            <div style="width:.3%;background:var(--j-good)"></div>
+          </div>
+          ${judges.map(([k, v, col]) => `
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid var(--border);font-size:12.5px">
+              <span style="color:var(--text-2);font-weight:600"><span class="j-dot" style="background:${col}"></span>${k}</span>
+              <strong class="num">${v}</strong>
+            </div>`).join('')}
+          <div style="display:flex;justify-content:space-between;padding-top:7px;font-size:12.5px">
+            <span class="muted" style="font-weight:700">MAX COMBO</span><strong class="num">491</strong>
+          </div>
+        </div>
+
+        <button class="btn" style="width:100%;margin-top:auto" data-history-detail="${sel.id}">この譜面の詳細・推移を見る →</button>
+      </aside>
+    </div>
+  `, {
+    showStyle: false,
+    leftExtra: state.historyOrigin === 'home' ? '<button class="btn" style="height:30px;padding:0 11px" data-nav="home">← ホームに戻る</button>' : ''
+  });
+}
+
+/* ===== 5. Flare Skill ===== */
+function viewFlare() {
+  const names = state.stress === 'stress' ? LONG_OFFICIAL_TITLES : NORMAL_TITLES;
+  const cats = [
+    { name: 'CLASSIC', range: '1st〜X3 VS 2ndMIX', color: 'var(--flare-classic)', total: 15840, list: [
+      { pos: 1, song: names[0], key: 'exp', short: 'EXP', lv: 15, flare: 'EX', pt: 920 },
+      { pos: 2, song: names[1], key: 'dif', short: 'DIF', lv: 14, flare: 'IX', pt: 885 },
+      { pos: 3, song: 'PARANOiA', key: 'bas', short: 'BAS', lv: 11, flare: 'EX', pt: 744 },
+      { pos: 4, song: 'BRILLIANT 2U', key: 'bgn', short: 'BGN', lv: 8, flare: 'EX', pt: 620 },
+    ], runner: { song: names[2], short: 'EXP', lv: 14, flare: 'VI', pt: 710, diff: -14 } },
+    { name: 'WHITE', range: '2013〜A', color: 'var(--flare-white)', total: 16210, list: [
+      { pos: 1, song: names[3], key: 'exp', short: 'EXP', lv: 15, flare: 'EX', pt: 960 },
+      { pos: 2, song: names[4], key: 'cha', short: 'CHA', lv: 14, flare: 'IX', pt: 885 },
+      { pos: 3, song: names[5], key: 'bas', short: 'BAS', lv: 7, flare: 'EX', pt: 617 },
+      { pos: 4, song: names[6], key: 'dif', short: 'DIF', lv: 13, flare: 'VIII', pt: 806 },
+    ], runner: { song: 'printemps', short: 'EXP', lv: 14, flare: 'V', pt: 722, diff: -8 } },
+    { name: 'GOLD', range: 'A20〜WORLD', color: 'var(--flare-gold)', total: 16920, list: [
+      { pos: 1, song: names[1], key: 'exp', short: 'EXP', lv: 16, flare: 'EX', pt: 1012 },
+      { pos: 2, song: names[2], key: 'exp', short: 'EXP', lv: 14, flare: 'IX', pt: 885 },
+      { pos: 3, song: names[3], key: 'exp', short: 'EXP', lv: 14, flare: 'VIII', pt: 851 },
+      { pos: 4, song: names[6], key: 'bgn', short: 'BGN', lv: 4, flare: 'EX', pt: 580 },
+    ], runner: { song: names[0], short: 'CHA', lv: 14, flare: 'IV', pt: 744, diff: -22 } },
+  ];
+
+  return renderShell('フレアスキル', `
+    <section class="card flare-hero">
+      <div>
+        <div class="label-xs">ランク · ${state.style}</div>
+        <div class="flare-rank-title" style="margin-top:4px">URANUS <span style="font-size:26px">+</span></div>
+        <div class="muted" style="margin-top:2px">天王星</div>
+      </div>
+      <div style="border-left:1px solid var(--border);padding-left:20px">
+        <div class="label-xs">合計</div>
+        <div class="num" style="font-size:38px;font-weight:800;line-height:1.1;margin-top:4px">48,970</div>
+      </div>
+      <div style="border-left:1px solid var(--border);padding-left:20px">
+        <div style="display:flex;justify-content:space-between;align-items:baseline">
+          <span class="label-xs">次のランクまで（URANUS ++）</span>
+          <span class="muted num">52,500</span>
+        </div>
+        <div class="num" style="font-size:24px;font-weight:800;color:var(--accent);margin-top:4px">あと 3,530</div>
+        <div style="height:7px;border-radius:99px;background:var(--surface-2);overflow:hidden;margin-top:8px">
+          <div style="width:62%;height:100%;background:linear-gradient(90deg, #41cdae, #6adcd5);border-radius:99px"></div>
+        </div>
+      </div>
+    </section>
+
+    <div class="flare-grid-3">
+      ${cats.map(c => `
+        <section class="flare-panel">
+          <div class="flare-top-accent" style="background:${c.color}"></div>
+          <div style="padding:11px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+            <div>
+              <strong style="font-size:14px">${c.name}</strong>
+              <div class="muted" style="font-size:11px">${c.range}</div>
+            </div>
+            <div style="text-align:right">
+              <strong class="num" style="font-size:20px;display:block;line-height:1.1">${fmt(c.total)}</strong>
+              <span class="muted" style="font-size:11px">30 / 30</span>
+            </div>
+          </div>
+          <div class="flare-rows">
+            ${c.list.map(it => `
+              <div class="flare-row" title="${esc(it.song)}">
+                <span class="muted num" style="text-align:center;font-size:11.5px">${it.pos}</span>
+                <span class="diff-bar ${it.key}" style="height:26px"></span>
+                <div style="min-width:0">
+                  <span class="ellipsis" style="font-size:12.5px;font-weight:700">${esc(it.song)}</span>
+                  <div style="display:flex;gap:5px;align-items:center;margin-top:2px">
+                    <span class="diff-pill diff-${it.key}" style="font-size:10px;padding:1px 5px">${it.short}</span>
+                    <span class="muted num" style="font-size:11px">Lv.${it.lv}</span>
+                  </div>
+                </div>
+                <div style="text-align:right;flex-shrink:0">
+                  ${renderFlareBadge(it.flare)}
+                  <div class="num" style="font-size:15px;font-weight:800;margin-top:2px">${it.pt}</div>
+                </div>
+              </div>`).join('')}
+          </div>
+          <div class="flare-border-footer" title="${esc(c.runner.song)}">
+            <div style="min-width:0">
+              <div style="font-size:10.5px;color:var(--text-3);font-weight:700">次の候補 #31（30位まで ${c.runner.diff}）</div>
+              <span class="ellipsis" style="font-size:12px;font-weight:700">${esc(c.runner.song)}</span>
+            </div>
+            <div style="text-align:right;flex-shrink:0">
+              ${renderFlareBadge(c.runner.flare)}
+              <div class="num" style="font-size:14px;font-weight:800">${c.runner.pt}</div>
+            </div>
+          </div>
+        </section>`).join('')}
+    </div>
+  `);
+}
+
+/* ===== 6. Settings (Plain Everyday Language!) ===== */
+function viewSettings() {
+  return renderShell('設定', `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start">
+      <div style="display:grid;gap:16px">
+        <section class="card">
+          <div class="label-xs" style="margin-bottom:6px">自動記録</div>
+          <div class="switch-row">
+            <div><strong style="font-size:13.5px">アプリを開いたら、自動記録を始める</strong><div class="muted">ゲームが開くと自動で記録の準備を始めます</div></div>
+            <button class="toggle-pill" data-act="toggle-auto" aria-pressed="${state.autoStart}"></button>
+          </div>
+          <div class="switch-row">
+            <div><strong style="font-size:13.5px">記録できなかった結果を知らせる</strong><div class="muted">プレーの邪魔をせず、画面の上に3秒ほどお知らせを出します</div></div>
+            <button class="toggle-pill" data-act="toggle-notify" aria-pressed="${state.notifyFail}"></button>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="label-xs">画面の色（選ぶとすぐ確認できます）</div>
+          <div class="theme-cards">
+            <button class="theme-card" data-set-theme="dark" aria-pressed="${state.theme === 'dark'}">
+              <div class="theme-thumb" style="background:#0b0f17"><div style="width:12px;background:#141c2a;border-radius:3px"></div><div style="flex:1;background:#1b2537;border-radius:3px"></div></div>
+              <strong style="font-size:12px">暗い</strong>
+            </button>
+            <button class="theme-card" data-set-theme="light" aria-pressed="${state.theme === 'light'}">
+              <div class="theme-thumb" style="background:#f5f7fa"><div style="width:12px;background:#ffffff;border-radius:3px"></div><div style="flex:1;background:#e2e8f0;border-radius:3px"></div></div>
+              <strong style="font-size:12px">明るい</strong>
+            </button>
+            <button class="theme-card" data-set-theme="dark" aria-pressed="false">
+              <div class="theme-thumb" style="background:linear-gradient(135deg,#f5f7fa 50%,#0b0f17 50%)"></div>
+              <strong style="font-size:12px">Windowsに合わせる</strong>
+            </button>
+          </div>
+        </section>
+      </div>
+
+      <section class="card" style="display:flex;flex-direction:column;gap:14px">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div>
+            <div class="label-xs">Webに自己ベストを送る</div>
+            <strong style="font-size:15px">公開ページの同期</strong>
+          </div>
+          <span class="delta-pill up" style="font-size:11.5px">● 送信ON</span>
+        </div>
+        <div class="muted">最後に送った日時：<strong class="num" style="color:var(--text)">2026/11/28 14:26</strong> · Google連携済み</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn primary" data-act="sync-now">今すぐ送る</button>
+          <button class="btn">公開ページを開く</button>
+          <button class="btn">送信を止める</button>
+        </div>
+        <div style="border-top:1px solid var(--border);padding-top:12px;display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn danger" data-act="danger-demo">このPCのログイン情報を消す</button>
+          <button class="btn danger" data-act="danger-demo">Google連携を解除</button>
+        </div>
+      </section>
+    </div>
+  `, { showStyle: false });
+}
+
+/* ===== 7. Data Management ===== */
+function viewData() {
+  return renderShell('記録の管理', `
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px">
+      <section class="card"><span class="label-xs">プレー記録</span><strong class="num" style="display:block;font-size:28px;margin-top:4px">1,284件</strong></section>
+      <section class="card"><span class="label-xs">記録のある譜面</span><strong class="num" style="display:block;font-size:28px;margin-top:4px">412譜面</strong></section>
+      <section class="card"><span class="label-xs">記録の状態</span><strong style="display:block;font-size:24px;color:var(--up);margin-top:6px">● 正常</strong></section>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1.15fr;gap:16px">
+      <section class="card" style="display:flex;flex-direction:column;gap:12px">
+        <div class="label-xs">記録のコピー</div>
+        <div class="muted">最後に保存した日時：<strong class="num" style="color:var(--text)">2026/11/28 14:26</strong></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn primary" data-act="backup">コピーを保存</button>
+          <button class="btn danger" data-act="danger-demo">コピーから戻す</button>
+        </div>
+        <div style="border-top:1px solid var(--border);padding-top:12px">
+          <div class="label-xs">曲・譜面の情報</div>
+          <div style="margin-top:4px;font-weight:700">6,482 譜面収録 · v0.6.4</div>
+        </div>
+      </section>
+
+      <section class="card" style="display:flex;flex-direction:column;gap:12px">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <span class="label-xs">リザルト画像から記録する</span>
+          <span class="badge cyan">待機中</span>
+        </div>
+        <div style="flex:1;min-height:130px;border:1.5px dashed var(--border-strong);border-radius:10px;background:var(--surface-2);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:18px;text-align:center">
+          <strong>画像をここに置く</strong>
+          <span class="muted">DDR GRAND PRIXのリザルト画像（PNG・1280×720）をまとめて選べます</span>
+          <button class="btn primary">画像を選ぶ</button>
+        </div>
+      </section>
+    </div>
+  `, { showStyle: false });
+}
+
+function render() {
+  document.getElementById('g-stress').value = state.stress;
+  document.getElementById('g-theme').value = state.theme;
+  document.getElementById('g-size').value = state.size;
+  document.getElementById('g-mon').value = state.mon;
+  const views = { home: viewHome, bests: viewBests, detail: viewDetail, history: viewHistory, flare: viewFlare, settings: viewSettings, data: viewData };
+  document.getElementById('mount').innerHTML = (views[state.screen] || viewHome)();
+
+  const gs = document.getElementById('global-search');
+  if (gs) {
+    gs.addEventListener('input', e => {
+      state.query = e.target.value;
+      if (state.screen !== 'bests') state.screen = 'bests';
+      render();
+      const el = document.getElementById('global-search');
+      if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); }
+    });
+  }
+}
+
+document.addEventListener('click', e => {
+  const el = e.target.closest('[data-nav],[data-style],[data-home-detail],[data-bests-detail],[data-history-detail],[data-home-history],[data-sel-h],[data-bmode],[data-lv],[data-ver],[data-goal],[data-gmode],[data-set-theme],[data-act]');
+  if (!el) return;
+  if (el.dataset.nav) {
+    if (el.dataset.nav === 'history') state.historyOrigin = null;
+    state.screen = el.dataset.nav;
+    render();
+    return;
+  }
+  if (el.dataset.style) { state.style = el.dataset.style; render(); return; }
+  if (el.dataset.homeDetail) { state.selectedChart = Number(el.dataset.homeDetail); state.detailOrigin = 'home'; state.screen = 'detail'; render(); return; }
+  if (el.dataset.bestsDetail) { state.selectedChart = Number(el.dataset.bestsDetail); state.detailOrigin = 'bests'; state.screen = 'detail'; render(); return; }
+  if (el.dataset.historyDetail) { state.selectedChart = Number(el.dataset.historyDetail); state.detailOrigin = 'history'; state.screen = 'detail'; render(); return; }
+  if (el.dataset.homeHistory) { state.selectedHistory = Number(el.dataset.homeHistory); state.historyOrigin = 'home'; state.screen = 'history'; render(); return; }
+  if (el.dataset.selH) { state.selectedHistory = Number(el.dataset.selH); render(); return; }
+  if (el.dataset.bmode) { state.bestMode = el.dataset.bmode; render(); return; }
+  if (el.dataset.lv) { state.bestLevel = Number(el.dataset.lv); render(); return; }
+  if (el.dataset.ver) { state.bestVersion = el.dataset.ver; render(); return; }
+  if (el.dataset.goal) { state.bestGoal = el.dataset.goal; render(); return; }
+  if (el.dataset.gmode) { state.graphMode = el.dataset.gmode; render(); return; }
+  if (el.dataset.setTheme) { state.theme = el.dataset.setTheme; render(); return; }
+
+  const a = el.dataset.act;
+  if (a === 'toggle-mon') { state.mon = state.mon === 'ok' ? 'wait' : 'ok'; render(); }
+  else if (a === 'copy-today') toast('今日の記録をコピーしました');
+  else if (a === 'toggle-auto') { state.autoStart = !state.autoStart; render(); }
+  else if (a === 'toggle-notify') { state.notifyFail = !state.notifyFail; render(); }
+  else if (a === 'sync-now') toast('Webへの自己ベスト送信を始めました');
+  else if (a === 'backup') toast('記録のコピーを保存しました');
+  else if (a === 'danger-demo') toast('確認のあと、安全に実行されます');
+  else if (a === 'close-palette' && (!el.classList.contains('palette-overlay') || e.target === el)) { state.showPalette = false; render(); }
+  else if (a === 'flip-theme') { state.theme = state.theme === 'dark' ? 'light' : 'dark'; render(); }
+});
+
+document.getElementById('g-palette-btn').addEventListener('click', () => { state.showPalette = !state.showPalette; render(); });
+
+document.getElementById('g-stress').addEventListener('change', e => { state.stress = e.target.value; render(); });
+document.getElementById('g-theme').addEventListener('change', e => { state.theme = e.target.value; render(); });
+document.getElementById('g-size').addEventListener('change', e => { state.size = e.target.value; render(); });
+document.getElementById('g-mon').addEventListener('change', e => { state.mon = e.target.value; render(); });
+
+render();
+</script>
+</body>
+</html>
